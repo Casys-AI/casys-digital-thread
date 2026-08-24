@@ -119,7 +119,9 @@ export class ModelCapturePartDefinitionsRunExecutor {
     command: ModelCapturePartDefinitionsRunExecutorCommand,
   ): Promise<EngineeringProjectSnapshot> {
     if (origin.kind !== "agent") {
-      throw denied("Only an authenticated agent can capture generic PartDefinitions.");
+      throw denied(
+        "Only an authenticated agent can capture generic PartDefinitions.",
+      );
     }
     const initial = await this.project(command.projectId);
     const initialRun = requireRun(initial, command.runId);
@@ -136,7 +138,10 @@ export class ModelCapturePartDefinitionsRunExecutor {
           let project = await this.project(command.projectId);
           let run = requireRun(project, command.runId);
           if (run.status === "completed") {
-            const durable = await this.d.publications.read(project.project.id, run.id);
+            const durable = await this.d.publications.read(
+              project.project.id,
+              run.id,
+            );
             if (!durable) {
               throw denied(
                 "A completed PartDefinitions run has no durable publication record to verify or repair.",
@@ -146,9 +151,17 @@ export class ModelCapturePartDefinitionsRunExecutor {
           }
           await assertThreadWriteBasisAvailable(project, run);
           if (run.status === "publishing" || run.status === "running") {
-            const durable = await this.d.publications.read(project.project.id, run.id);
+            const durable = await this.d.publications.read(
+              project.project.id,
+              run.id,
+            );
             if (durable) {
-              return await this.resumePublication(origin, command, project, run);
+              return await this.resumePublication(
+                origin,
+                command,
+                project,
+                run,
+              );
             }
           }
           if (run.status === "publishing") {
@@ -199,7 +212,7 @@ export class ModelCapturePartDefinitionsRunExecutor {
             artifact,
             input.tip,
             capturedAt,
-            input.architecture.package.id,
+            input.architecture.scopeRoot.id,
           );
           publicationAttempted = true;
           await this.d.publications.save({
@@ -214,7 +227,8 @@ export class ModelCapturePartDefinitionsRunExecutor {
           persisted = true;
           const readback = await freshSnapshot(this.d.snapshots, snapshot.id);
           if (
-            !readback || deterministicJson(readback) !== deterministicJson(snapshot)
+            !readback ||
+            deterministicJson(readback) !== deterministicJson(snapshot)
           ) {
             throw new Error(
               "The persisted PartDefinitions snapshot did not read back exactly.",
@@ -252,11 +266,15 @@ export class ModelCapturePartDefinitionsRunExecutor {
           return complete(await this.project(command.projectId), command);
         } catch (error) {
           const recoveredPublication = publicationAttempted && !publicationPersisted
-            ? await this.d.publications.read(command.projectId, command.runId).catch(
-              () => undefined,
-            )
+            ? await this.d.publications.read(command.projectId, command.runId)
+              .catch(
+                () => undefined,
+              )
             : undefined;
-          if (claimed && !persisted && !publicationPersisted && !recoveredPublication) {
+          if (
+            claimed && !persisted && !publicationPersisted &&
+            !recoveredPublication
+          ) {
             await this.fail(origin, command);
           }
           throw error;
@@ -272,7 +290,10 @@ export class ModelCapturePartDefinitionsRunExecutor {
     run: EngineeringAgentRun,
   ): Promise<EngineeringProjectSnapshot> {
     shape(project, run);
-    const publication = await this.d.publications.read(project.project.id, run.id);
+    const publication = await this.d.publications.read(
+      project.project.id,
+      run.id,
+    );
     if (!publication) {
       throw denied(
         "The publishing PartDefinitions run has no durable exact publication record; it will not re-query SysON.",
@@ -301,16 +322,23 @@ export class ModelCapturePartDefinitionsRunExecutor {
     if (
       deterministicJson(expected.fingerprint) !==
         deterministicJson(publication.fingerprint) ||
-      deterministicJson(expected.snapshot) !== deterministicJson(publication.snapshot)
+      deterministicJson(expected.snapshot) !==
+        deterministicJson(publication.snapshot)
     ) {
       throw denied(
         "The durable PartDefinitions publication does not reconstruct from the exact capture and run.",
       );
     }
-    let persisted = await freshSnapshot(this.d.snapshots, publication.snapshot.id);
+    let persisted = await freshSnapshot(
+      this.d.snapshots,
+      publication.snapshot.id,
+    );
     if (!persisted) {
       await this.d.snapshots.save(publication.snapshot);
-      persisted = await freshSnapshot(this.d.snapshots, publication.snapshot.id);
+      persisted = await freshSnapshot(
+        this.d.snapshots,
+        publication.snapshot.id,
+      );
     }
     if (
       !persisted ||
@@ -336,8 +364,10 @@ export class ModelCapturePartDefinitionsRunExecutor {
         id: artifact.id,
       }];
       if (
-        deterministicJson(run.resultSnapshot) !== deterministicJson(expectedResult) ||
-        deterministicJson(run.evidenceRefs) !== deterministicJson(expectedEvidence)
+        deterministicJson(run.resultSnapshot) !==
+          deterministicJson(expectedResult) ||
+        deterministicJson(run.evidenceRefs) !==
+          deterministicJson(expectedEvidence)
       ) {
         throw denied(
           "The completed PartDefinitions run does not attach the exact durable publication evidence.",
@@ -414,11 +444,15 @@ export class ModelCapturePartDefinitionsRunExecutor {
           id: tip.id,
         })
     ) {
-      throw denied("The run does not bind the exact current generic architecture tip.");
+      throw denied(
+        "The run does not bind the exact current generic architecture tip.",
+      );
     }
     const text = await this.d.architectureCaptures.read(tip.fingerprint);
     if (!text) {
-      throw denied("The exact content-addressed architecture capture is not readable.");
+      throw denied(
+        "The exact content-addressed architecture capture is not readable.",
+      );
     }
     let architecture: ExactArchitectureCapture;
     try {
@@ -431,7 +465,9 @@ export class ModelCapturePartDefinitionsRunExecutor {
       );
     }
     if (deterministicJson(architecture) !== text) {
-      throw denied("The architecture capture did not round-trip to its stored bytes.");
+      throw denied(
+        "The architecture capture did not round-trip to its stored bytes.",
+      );
     }
     if (architecture.trustedRunId !== tip.producer.runId) {
       throw denied(
@@ -455,7 +491,9 @@ export class ModelCapturePartDefinitionsRunExecutor {
       throw denied("The same architecture artifact cannot be captured twice.");
     }
 
-    const seedBytes = await this.d.seedCaptures.read(architecture.seed.fingerprint);
+    const seedBytes = await this.d.seedCaptures.read(
+      architecture.seed.fingerprint,
+    );
     if (!seedBytes) {
       throw denied(
         "The SysON seed capture referenced by the architecture capture is not durably readable.",
@@ -490,7 +528,9 @@ export class ModelCapturePartDefinitionsRunExecutor {
     );
     if (
       seedArtifact.producer.tool !== "syson_model_create" ||
-      seedArtifact.uri?.startsWith("casys://syson-model-seed-capture/sha256/") !==
+      seedArtifact.uri?.startsWith(
+          "casys://syson-model-seed-capture/sha256/",
+        ) !==
         true ||
       seedCapture.trustedRunId !== seedArtifact.producer.runId
     ) {
@@ -553,7 +593,9 @@ async function reconstructPublication(
   input: CaptureInputs,
   run: EngineeringAgentRun,
   text: string,
-): Promise<Readonly<{ fingerprint: ContentFingerprint; snapshot: ThreadSnapshot }>> {
+): Promise<
+  Readonly<{ fingerprint: ContentFingerprint; snapshot: ThreadSnapshot }>
+> {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
@@ -592,7 +634,7 @@ async function reconstructPublication(
       artifact,
       input.tip,
       requiredStart(run),
-      input.architecture.package.id,
+      input.architecture.scopeRoot.id,
     ),
   };
 }
@@ -619,7 +661,8 @@ function buildRecord(
       schemaVersion: input.architecture.schemaVersion,
       packageName: input.architecture.packageName,
       systemName: input.architecture.systemName,
-      package: input.architecture.package,
+      scopeRoot: input.architecture.scopeRoot,
+      semanticRoot: input.architecture.semanticRoot,
     },
     seed: {
       artifactId: input.seedArtifact.id,
@@ -632,13 +675,17 @@ function buildRecord(
   } as const;
 }
 
-function shape(project: EngineeringProjectSnapshot, run: EngineeringAgentRun): void {
+function shape(
+  project: EngineeringProjectSnapshot,
+  run: EngineeringAgentRun,
+): void {
   const operation = project.workItems.find((item) => item.id === run.workItemId)
     ?.operation;
   if (
     operation?.id !== MODEL_CAPTURE_PART_DEFINITIONS_OPERATION.id ||
     operation.version !== MODEL_CAPTURE_PART_DEFINITIONS_OPERATION.version ||
-    operation.bindings.length !== 1 || operation.bindings[0]?.name !== "architecture"
+    operation.bindings.length !== 1 ||
+    operation.bindings[0]?.name !== "architecture"
   ) {
     throw denied(
       "This executor may run only the generic model.capture-part-definitions@1 operation.",
@@ -701,7 +748,11 @@ function partDefinitionArtifact(
     mediaType: "application/json",
     producer: { serverId: "syson", tool: "syson_element_children", runId },
     inputArtifactIds: [architectureId],
-    freshness: { status: "fresh", changedAt: capturedAt, invalidatedByChangeIds: [] },
+    freshness: {
+      status: "fresh",
+      changedAt: capturedAt,
+      invalidatedByChangeIds: [],
+    },
   };
 }
 
@@ -762,7 +813,13 @@ function currentPartDefinitionsEvidenceRef(
   expected: ThreadArtifact,
   architectureTipId: string,
 ): EngineeringThreadEntityRef {
-  if (!isExactCurrentPartDefinitionsEvidence(expected, expected, architectureTipId)) {
+  if (
+    !isExactCurrentPartDefinitionsEvidence(
+      expected,
+      expected,
+      architectureTipId,
+    )
+  ) {
     throw denied(
       "The server-built PartDefinitions artifact is not exact current-run evidence.",
     );
@@ -787,7 +844,9 @@ function currentPartDefinitionsEvidenceRef(
       "The successor snapshot does not contain the expected PartDefinitions artifact identity.",
     );
   }
-  if (!isExactCurrentPartDefinitionsEvidence(found, expected, architectureTipId)) {
+  if (
+    !isExactCurrentPartDefinitionsEvidence(found, expected, architectureTipId)
+  ) {
     throw denied(
       "The successor snapshot PartDefinitions artifact is not the exact artifact built for this run.",
     );

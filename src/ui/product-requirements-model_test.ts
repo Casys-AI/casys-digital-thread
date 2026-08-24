@@ -67,16 +67,21 @@ Deno.test("requirement matrix filter is a status partition, not a second ranking
   assertEquals(filterRequirementRows(matrix, "all").length, matrix.counts.all);
 });
 
-Deno.test("requirement matrix names an anchor only from a matching SysON binding", () => {
+Deno.test("requirement matrix names an anchor only from the exact target PartDefinition", () => {
   const snapshot = structuredClone(GENERIC_THREAD_FIXTURE);
-  snapshot.components.components[0]!.bindings[0] = {
-    ...snapshot.components.components[0]!.bindings[0]!,
-    id: "fixture:REQ-MASS-006",
-  };
+  const definition = snapshot.components.components[0]!.bindings.find(
+    (binding) => binding.kind === "part-definition",
+  ) ?? snapshot.components.components[0]!.bindings[0]!;
+  definition.kind = "part-definition";
+  definition.provider = "syson";
+  snapshot.requirements.find((item) => item.id === "REQ-MASS-006")!
+    .targetElementId = definition.id;
+  snapshot.requirements.find((item) => item.id === "REQ-MASS-006")!
+    .sourceElementId = "requirement-usage:mass";
   const row = buildRequirementMatrix(snapshot).rows.find((item) =>
     item.id === "REQ-MASS-006"
   );
-  assertEquals(row?.anchor, "Support bracket");
+  assertEquals(row?.anchor, snapshot.components.components[0]!.label);
 });
 
 Deno.test("expanded requirement trail walks a recorded family and hides historical members", () => {

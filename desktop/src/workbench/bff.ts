@@ -15,6 +15,7 @@ import {
   GEOMETRY_CAPTURE_DESCRIPTOR,
   PRINT_ESTIMATE_CASE_CAPTURE_DESCRIPTOR,
   PRINTABILITY_CASE_CAPTURE_DESCRIPTOR,
+  REQUIREMENTS_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
   SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
   SYSML_SOURCE_CAPTURE_DESCRIPTOR,
@@ -38,8 +39,11 @@ import { FileLiveThreadUpdateStore } from "../../../src/adapters/shared/stores/l
 import { FileByteStore } from "../../../src/adapters/shared/cas/file-byte-store.ts";
 import { createArchitectureSysmlSourceAnalysisCaptureService } from "../../../src/adapters/architecture/agent-seal/architecture-sysml-source-analysis-composition.ts";
 import { fileArchitectureSysmlSealCaptureReader } from "../../../src/adapters/architecture/agent-seal/file-architecture-sysml-seal-capture-reader.ts";
-import type { SealedCadLeverAdmissionReader } from "../../../src/adapters/thread/sealed-cad-lever-workbench-enricher.ts";
+import type { SealedCadLeverAdmissionReader } from "../../../src/adapters/thread/technical-admission-workbench-enricher.ts";
 import type { EngineeringCaseWorkbenchEnricherDependencies } from "../../../src/adapters/thread/verification-case-workbench-enricher.ts";
+import type { RequirementsCaptureReader } from "../../../src/adapters/thread/requirements-target-workbench-enricher.ts";
+import { FileProjectSourceWorkspaceStore } from "../../../src/adapters/project-source-workspace/file-project-source-workspace-store.ts";
+import { DEFAULT_PROJECT_SOURCE_WORKSPACE_DIRECTORY } from "../../../src/adapters/project-source-workspace/server-composition.ts";
 import type { EvaluationCloseoutCaptureReader } from "../../../src/adapters/thread/evaluation-closeout-workbench-enricher.ts";
 import { readDeclaredCockpitFleet } from "../../../src/adapters/thread/cockpit-fleet-projector.ts";
 import { joinWorkspace } from "../sidecar/contracts.ts";
@@ -140,6 +144,13 @@ export function createPackagedWorkbenchBff(
         : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
     },
   };
+  const projectSourceWorkspace = new FileProjectSourceWorkspaceStore(
+    rooted(controlPlaneRoot, DEFAULT_PROJECT_SOURCE_WORKSPACE_DIRECTORY),
+  );
+  const requirementsCaptures: RequirementsCaptureReader = captureAt(
+    controlPlaneRoot,
+    REQUIREMENTS_CAPTURE_DESCRIPTOR,
+  );
   const engineeringCaseCaptures: EngineeringCaseWorkbenchEnricherDependencies = {
     mechanicalProof: captureAt(controlPlaneRoot, FEA_PROOF_CASE_CAPTURE_DESCRIPTOR),
     sensitivityStudy: new FileCaptureStore(
@@ -197,6 +208,11 @@ export function createPackagedWorkbenchBff(
     architectureSysmlSeals,
     architectureSysmlSources,
     technicalCompilationAdmissions,
+    projectSourceWorkspace,
+    requirementsCaptures,
+    productStructureCaptures: archCaptures,
+    geometryCaptures,
+    sysmlSourceAnalysis,
     engineeringCaseCaptures,
     evaluationCloseoutCaptures,
     liveUpdates,

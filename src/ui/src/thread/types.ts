@@ -89,6 +89,14 @@ import {
   type ThreadWorkbenchPreviousSnapshot,
   type ThreadWorkbenchSnapshot,
 } from "../../../presentation/workbench/thread/snapshot.ts";
+import {
+  THREAD_SOURCE_FILE_CATALOG_SCHEMA,
+  type ThreadSourceFileCatalog,
+} from "../../../presentation/workbench/thread/source-files.ts";
+import {
+  PRODUCT_NAVIGATION_QUERY_SCHEMA,
+  type ProductNavigationProjection,
+} from "../../../presentation/workbench/thread/product-navigation.ts";
 import type {
   ThreadComponent,
   ThreadComponentBinding,
@@ -104,6 +112,8 @@ import {
   isEngineeringPublicPretechnicalProjectSnapshot,
 } from "../project/contract.ts";
 
+export type { ThreadSourceFileCatalog } from "../../../presentation/workbench/thread/source-files.ts";
+export type { ProductNavigationProjection } from "../../../presentation/workbench/thread/product-navigation.ts";
 export type {
   ThreadAction,
   ThreadArtifact,
@@ -362,9 +372,7 @@ function isProjectPathProjection(
         engineeringActivityIdFromRootRevision(expected.rootRevisionId) ||
       activity.rootRevisionId !== expected.rootRevisionId ||
       activity.revisionIds.length !== expected.revisionIds.length ||
-      activity.revisionIds.some((id, index) =>
-        id !== expected.revisionIds[index]
-      )
+      activity.revisionIds.some((id, index) => id !== expected.revisionIds[index])
     ) {
       return false;
     }
@@ -858,6 +866,8 @@ export function isThreadWorkbenchSnapshot(
     "components",
     "engineeringCases",
     "evaluationCloseouts",
+    "sourceFiles",
+    "productNavigation",
     "graph",
     "evidenceFamilyGraph",
     "flow",
@@ -900,6 +910,10 @@ export function isThreadWorkbenchSnapshot(
         artifacts: candidate.artifacts,
         previous: candidate.previous,
       })) &&
+    (candidate.sourceFiles === undefined ||
+      isThreadSourceFileCatalog(candidate.sourceFiles, candidate.graph)) &&
+    (candidate.productNavigation === undefined ||
+      isProductNavigationProjection(candidate.productNavigation)) &&
     Array.isArray(candidate.observations) &&
     candidate.observations.every(isThreadObservation) &&
     Array.isArray(candidate.requirements) &&
@@ -938,7 +952,8 @@ function isThreadEvaluationCloseoutIndex(
     return cards.some((card) => card.status === "current");
   }
   if (value.status === "historical") {
-    return cards.length > 0 && cards.every((card) => card.status === "historical");
+    return cards.length > 0 &&
+      cards.every((card) => card.status === "historical");
   }
   return true;
 }
@@ -966,7 +981,8 @@ function isThreadEvaluationCloseoutCard(
     typeof value.captureFingerprint !== "string" ||
     !/^sha256:[a-f0-9]{64}$/.test(value.captureFingerprint) ||
     !isThreadEvaluationCloseoutBasis(value.basis) ||
-    (value.humanDisposition !== "accept" && value.humanDisposition !== "reject") ||
+    (value.humanDisposition !== "accept" &&
+      value.humanDisposition !== "reject") ||
     (value.rejectionDisposition !== "none" &&
       value.rejectionDisposition !== "mechanical-review-required") ||
     typeof value.acceptanceEligibility !== "boolean" ||
@@ -1029,7 +1045,8 @@ function isThreadEvaluationCloseoutCriterion(
     typeof value.evaluationId === "string" && value.evaluationId.length > 0 &&
     (value.status === "pass" || value.status === "fail" ||
       value.status === "unresolved" || value.status === "error") &&
-    typeof value.evidenceArtifactId === "string" && value.evidenceArtifactId.length > 0;
+    typeof value.evidenceArtifactId === "string" &&
+    value.evidenceArtifactId.length > 0;
 }
 
 function isThreadEvaluationCloseoutEvidenceRef(
@@ -1056,8 +1073,10 @@ function isThreadEvaluationCloseoutProofLimitations(
       "proofScope",
       "evidenceBoundary",
       "cadEngineeringBoundary",
-    ]) || typeof value.proofScope !== "string" || value.proofScope.length === 0 ||
-    typeof value.evidenceBoundary !== "string" || value.evidenceBoundary.length === 0 ||
+    ]) || typeof value.proofScope !== "string" ||
+    value.proofScope.length === 0 ||
+    typeof value.evidenceBoundary !== "string" ||
+    value.evidenceBoundary.length === 0 ||
     !isRecord(value.cadEngineeringBoundary) ||
     !hasExactKeys(value.cadEngineeringBoundary, [
       "designIntent",
@@ -1070,7 +1089,8 @@ function isThreadEvaluationCloseoutProofLimitations(
   return (boundary.designIntent === "preserved" ||
     boundary.designIntent === "partial" ||
     boundary.designIntent === "lost") &&
-    (boundary.editableCad === "native" || boundary.editableCad === "reconstructed" ||
+    (boundary.editableCad === "native" ||
+      boundary.editableCad === "reconstructed" ||
       boundary.editableCad === "absent") &&
     boundary.manufacturability === "not-established" &&
     Array.isArray(boundary.limitations) && boundary.limitations.length > 0 &&
@@ -1338,7 +1358,7 @@ function isThreadAction(value: unknown): value is ThreadAction {
 function isThreadRequirement(value: unknown): value is ThreadRequirement {
   if (!isRecord(value)) return false;
   const requirement = value as Partial<ThreadRequirement>;
-  return hasExactKeys(value, [
+  const required = [
     "id",
     "label",
     "source",
@@ -1348,11 +1368,17 @@ function isThreadRequirement(value: unknown): value is ThreadRequirement {
     "observationIds",
     "violationIds",
     "rationale",
-  ]) && typeof requirement.id === "string" && requirement.id.length > 0 &&
+  ] as const;
+  return required.every((key) => Object.hasOwn(value, key)) &&
+    hasAllowedKeys(value, [...required, "targetElementId"]) &&
+    typeof requirement.id === "string" && requirement.id.length > 0 &&
     typeof requirement.label === "string" &&
     typeof requirement.source === "string" &&
     typeof requirement.sourceElementId === "string" &&
     requirement.sourceElementId.length > 0 &&
+    (requirement.targetElementId === undefined ||
+      (typeof requirement.targetElementId === "string" &&
+        requirement.targetElementId.length > 0)) &&
     typeof requirement.expression === "string" &&
     (requirement.status === "pass" || requirement.status === "fail" ||
       requirement.status === "unresolved") &&
@@ -1924,7 +1950,7 @@ function isEngineeringCase(
 ): value is EngineeringCase {
   if (!isRecord(value)) return false;
   const candidate = value as Partial<EngineeringCase>;
-  return hasExactKeys(value, [
+  const required = [
     "key",
     "family",
     "caseSchemaVersion",
@@ -1933,7 +1959,14 @@ function isEngineeringCase(
     "scope",
     "caseDigest",
     "authorityArtifactIds",
-  ]) && typeof candidate.key === "string" && candidate.key.length > 0 &&
+  ] as const;
+  const allowed = [
+    ...required,
+    ...(candidate.family === "mechanical-proof" ? ["target"] : []),
+  ];
+  return required.every((key) => Object.hasOwn(value, key)) &&
+    hasAllowedKeys(value, allowed) &&
+    typeof candidate.key === "string" && candidate.key.length > 0 &&
     isEngineeringCaseFamily(candidate.family) &&
     caseSchemaMatchesFamily(
       candidate.family,
@@ -1948,7 +1981,200 @@ function isEngineeringCase(
     candidate.authorityArtifactIds.length > 0 &&
     candidate.authorityArtifactIds.every((id) =>
       typeof id === "string" && id.length > 0
-    ) && hasUniqueStrings(candidate.authorityArtifactIds);
+    ) && hasUniqueStrings(candidate.authorityArtifactIds) &&
+    (candidate.family !== "mechanical-proof" ||
+      candidate.target === undefined ||
+      isMechanicalProofTarget(candidate.target));
+}
+
+function isMechanicalProofTarget(
+  value: unknown,
+): value is { modelElementId: string } {
+  return isRecord(value) &&
+    hasExactKeys(value, ["modelElementId"]) &&
+    typeof value.modelElementId === "string" &&
+    value.modelElementId.length > 0;
+}
+
+function isProductNavigationProjection(
+  value: unknown,
+): value is ProductNavigationProjection {
+  if (
+    !isRecord(value) ||
+    !hasAllowedKeys(value, [
+      "schemaVersion",
+      "status",
+      "basis",
+      "roots",
+      "children",
+      "attachments",
+    ]) ||
+    value.schemaVersion !== PRODUCT_NAVIGATION_QUERY_SCHEMA ||
+    (value.status !== "observed" && value.status !== "unavailable" &&
+      value.status !== "unattached" && value.status !== "unresolved") ||
+    !Array.isArray(value.roots) ||
+    !Array.isArray(value.children) ||
+    !isProductNavigationAttachments(value.attachments)
+  ) {
+    return false;
+  }
+  if (value.status === "unavailable") {
+    return value.roots.length === 0 && value.children.length === 0;
+  }
+  if (value.status === "observed") {
+    return value.basis !== undefined && isProductNavigationBasis(value.basis) &&
+      value.roots.length > 0 &&
+      value.roots.every(isProductNavigationNode) &&
+      value.children.every(isProductNavigationNode);
+  }
+  return value.roots.every(isProductNavigationNode) &&
+    value.children.every(isProductNavigationNode) &&
+    (value.basis === undefined || isProductNavigationBasis(value.basis));
+}
+
+function isProductNavigationAttachments(value: unknown): boolean {
+  return isRecord(value) &&
+    hasExactKeys(value, ["sources", "geometry", "physics", "requirements"]) &&
+    Array.isArray(value.sources) &&
+    Array.isArray(value.geometry) &&
+    Array.isArray(value.physics) &&
+    Array.isArray(value.requirements) &&
+    [
+      ...value.sources,
+      ...value.geometry,
+      ...value.physics,
+      ...value.requirements,
+    ]
+      .every(isProductNavigationAttachment);
+}
+
+function isProductNavigationAttachment(value: unknown): boolean {
+  return isRecord(value) &&
+    hasExactKeys(value, ["group", "kind", "id", "label"]) &&
+    (value.group === "sources" || value.group === "geometry" ||
+      value.group === "physics" || value.group === "requirements") &&
+    (value.kind === "source-file" || value.kind === "artifact" ||
+      value.kind === "requirement") &&
+    typeof value.id === "string" &&
+    typeof value.label === "string";
+}
+
+function isProductNavigationBasis(value: unknown): boolean {
+  return isRecord(value) &&
+    hasExactKeys(value, [
+      "projectId",
+      "threadSnapshotId",
+      "threadRevision",
+      "architectureArtifactId",
+      "architectureFingerprint",
+      "captureSchema",
+    ]) &&
+    typeof value.projectId === "string" &&
+    typeof value.threadSnapshotId === "string" &&
+    isPositiveSafeInteger(value.threadRevision) &&
+    typeof value.architectureArtifactId === "string" &&
+    typeof value.architectureFingerprint === "string" &&
+    /^sha256:[a-f0-9]{64}$/.test(value.architectureFingerprint) &&
+    value.captureSchema === "architecture-capture/4.0";
+}
+
+function isProductNavigationNode(value: unknown): boolean {
+  return isRecord(value) &&
+    hasAllowedKeys(value, [
+      "kind",
+      "id",
+      "label",
+      "definitionId",
+      "usageId",
+      "path",
+      "expandable",
+    ]) &&
+    (value.kind === "part-definition" || value.kind === "part-usage") &&
+    typeof value.id === "string" &&
+    typeof value.label === "string" &&
+    typeof value.definitionId === "string" &&
+    Array.isArray(value.path) &&
+    value.path.every((item) => typeof item === "string") &&
+    typeof value.expandable === "boolean";
+}
+
+function isThreadSourceFileCatalog(
+  value: unknown,
+  graph: ThreadGraph,
+): value is ThreadSourceFileCatalog {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["schemaVersion", "status", "files"]) ||
+    value.schemaVersion !== THREAD_SOURCE_FILE_CATALOG_SCHEMA ||
+    (value.status !== "observed" && value.status !== "unattached" &&
+      value.status !== "unavailable") ||
+    !Array.isArray(value.files)
+  ) {
+    return false;
+  }
+  const files = value.files as ThreadSourceFileCatalog["files"];
+  if (value.status === "unavailable" || value.status === "unattached") {
+    return files.length === 0;
+  }
+  if (files.length === 0) return false;
+  const sourceFileIds = new Set(
+    graph.nodes.flatMap((node) => node.ref.kind === "source-file" ? [node.ref.id] : []),
+  );
+  return files.every((file) =>
+    isThreadSourceFileRecord(file) &&
+    sourceFileIds.has(`${file.fileId}@${file.fileRevision}`)
+  );
+}
+
+function isThreadSourceFileRecord(
+  value: unknown,
+): value is ThreadSourceFileCatalog["files"][number] {
+  if (!isRecord(value)) return false;
+  return hasAllowedKeys(value, [
+    "fileId",
+    "fileRevision",
+    "workspaceRevision",
+    "workspaceEventFingerprint",
+    "fileFingerprint",
+    "resourceFingerprint",
+    "resourceUri",
+    "resourceName",
+    "mimeType",
+    "moduleId",
+    "role",
+    "admissionArtifactId",
+    "bindings",
+    "derivedPath",
+  ]) &&
+    typeof value.fileId === "string" && value.fileId.length > 0 &&
+    isPositiveSafeInteger(value.fileRevision) &&
+    isPositiveSafeInteger(value.workspaceRevision) &&
+    typeof value.workspaceEventFingerprint === "string" &&
+    typeof value.fileFingerprint === "string" &&
+    typeof value.resourceFingerprint === "string" &&
+    typeof value.resourceUri === "string" &&
+    typeof value.resourceName === "string" &&
+    typeof value.mimeType === "string" &&
+    typeof value.moduleId === "string" &&
+    typeof value.role === "string" &&
+    typeof value.admissionArtifactId === "string" &&
+    Array.isArray(value.bindings) &&
+    value.bindings.every(isThreadSourceFileBinding) &&
+    (value.derivedPath === undefined || typeof value.derivedPath === "string");
+}
+
+function isThreadSourceFileBinding(value: unknown): boolean {
+  return isRecord(value) &&
+    hasExactKeys(value, [
+      "relation",
+      "sourceSymbolId",
+      "sysmlElementId",
+      "sysmlElementKind",
+    ]) &&
+    (value.relation === "represents" || value.relation === "parameterizes") &&
+    typeof value.sourceSymbolId === "string" &&
+    typeof value.sysmlElementId === "string" &&
+    typeof value.sysmlElementKind === "string";
 }
 
 function isEngineeringCaseIssue(
@@ -2002,7 +2228,8 @@ function authorityArtifactMatchesCase(
   const captureDigest = fingerprint[1]!;
   const binding = ENGINEERING_CASE_AUTHORITY[engineeringCase.family];
   return artifact.producedBy === binding.producedBy &&
-    artifact.id === binding.artifactId(captureDigest, engineeringCase.caseDigest) &&
+    artifact.id ===
+      binding.artifactId(captureDigest, engineeringCase.caseDigest) &&
     artifact.uri === `${binding.uriPrefix}${captureDigest}`;
 }
 
@@ -2195,7 +2422,8 @@ function isThreadGraphRef(value: unknown): value is ThreadGraphRef {
       reference.kind === "part-usage" ||
       reference.kind === "attribute-usage" ||
       reference.kind === "cad-lever" ||
-      reference.kind === "cad-unnamed-literal");
+      reference.kind === "cad-unnamed-literal" ||
+      reference.kind === "source-file");
 }
 
 function isThreadRef(value: unknown): value is ThreadRef {
@@ -2234,6 +2462,8 @@ function isThreadGraphRelation(value: unknown): value is ThreadGraphRelation {
     value === "represented_by" ||
     value === "parameterizes" ||
     value === "unnamed_in" ||
+    value === "verified_by" ||
+    value === "constrained_by" ||
     isThreadAnalysisRelation(value);
 }
 

@@ -26,6 +26,7 @@ import {
   DFM_CASE_CAPTURE_DESCRIPTOR,
   DFM_CHECK_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
+  GEOMETRY_CAPTURE_DESCRIPTOR,
   PRINT_ESTIMATE_CASE_CAPTURE_DESCRIPTOR,
   PRINT_ESTIMATE_OBSERVATION_CAPTURE_DESCRIPTOR,
   PRINTABILITY_CASE_CAPTURE_DESCRIPTOR,
@@ -147,6 +148,9 @@ import {
   type ProjectControlToolDependencies,
   registerProjectControlTools,
 } from "./src/tools/project-control.ts";
+import { ProjectProductNavigation } from "./src/application/use-cases/product-navigation/project-product-navigation.ts";
+import { CaptureProductStructureTraversal } from "./src/adapters/architecture/renderer/capture-product-structure-traversal.ts";
+import { WorkbenchProductNavigationAttachmentReader } from "./src/adapters/thread/product-navigation-workbench.ts";
 import {
   type ProjectBriefToolDependencies,
   registerProjectBriefTools,
@@ -1078,6 +1082,10 @@ async function createProjectControl(
       lease,
     })
     : undefined;
+  const productNavigationGeometryCaptures = new FileCaptureStore({
+    ...GEOMETRY_CAPTURE_DESCRIPTOR,
+    directory: DEFAULT_GEOMETRY_CAPTURE_DIRECTORY,
+  });
   return {
     brief: {
       projects: runtime.projects,
@@ -1124,6 +1132,29 @@ async function createProjectControl(
       admittedSpiceRunReview: spiceProject.admittedSpiceRunReview,
       resourceCapture: agentResourceIngress.capture,
       sourceWorkspace: sourceWorkspace.sourceWorkspace,
+      productNavigation: new ProjectProductNavigation({
+        projects: runtime.projects,
+        snapshots: threadSnapshots,
+        traversal: new CaptureProductStructureTraversal(
+          architectureFoundation.genericArchitectureCaptures,
+          architectureFoundation.sysmlSourceAnalysis,
+        ),
+        workspace: sourceWorkspaceStore,
+        attachments: new WorkbenchProductNavigationAttachmentReader({
+          architectureCaptures: architectureFoundation.genericArchitectureCaptures,
+          geometryCaptures: productNavigationGeometryCaptures,
+          sysmlSourceAnalysis: architectureFoundation.sysmlSourceAnalysis,
+          admissions: compilationFoundation.technicalCompilationSeals,
+          workspace: sourceWorkspaceStore,
+          requirementsCaptures: architectureFoundation.requirementsCaptures,
+          engineeringCases: {
+            mechanicalProof: feaFoundation.feaProofCaptures,
+            printabilityCheck: printabilityCaseCaptures,
+            printEstimate: printEstimateCaseCaptures,
+            dfmCheck: dfmCaseCaptures,
+          },
+        }),
+      }),
       electricalObservationMethodSheetSealReview:
         electricalProject.electricalObservationMethodSheetSealReview,
       admittedSpiceEvaluationReview: electricalProject.admittedSpiceEvaluationReview,

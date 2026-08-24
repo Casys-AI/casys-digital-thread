@@ -51,6 +51,8 @@ export type EngineeringCase =
     | {
       family: "mechanical-proof";
       caseSchemaVersion: "mechanical-proof-case/1.0";
+      /** Exact proofCase.target.modelElementId; omitted when the seal did not retain it. */
+      target?: { modelElementId: string };
     }
     | {
       family: "sensitivity-study";

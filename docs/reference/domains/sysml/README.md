@@ -7,7 +7,7 @@ v2 authoring. It has two non-interchangeable paths:
 
 - `model.write-architecture@1` parses a human-approved flat proposal, renders
   deterministic SysML, inserts it into the seeded SysON model, and rereads
-  `architecture-capture/3.0`.
+  `architecture-capture/4.0`.
 - `model.seal-architecture-sysml@1` seals a previously captured closed-subset analysis
   as a documentary Thread document only. It never calls SysON. Public ingress is
   `project_resource_capture` → full `resourceRef` →

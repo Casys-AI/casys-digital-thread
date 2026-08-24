@@ -399,7 +399,10 @@ export class ModelWriteRequirementsRunExecutor {
       // Idempotent path: if already completed by this exact command, return.
       const alreadyCompleted = await this.#completedFor(command, proposal);
       if (alreadyCompleted) {
-        await this.#reconcileLive(alreadyCompleted.project.subjectId, command.runId);
+        await this.#reconcileLive(
+          alreadyCompleted.project.subjectId,
+          command.runId,
+        );
         return alreadyCompleted;
       }
 
@@ -501,7 +504,9 @@ export class ModelWriteRequirementsRunExecutor {
           fingerprint: architectureArtifact.fingerprint.digest,
         },
         partDefName: proposal.partDefName,
-        requirements: requirementEntriesToOracleRequirements(proposal.requirements),
+        requirements: requirementEntriesToOracleRequirements(
+          proposal.requirements,
+        ),
       };
 
       // Step 12: read the unique prior requirements artifact (enrichment path).
@@ -603,11 +608,12 @@ export class ModelWriteRequirementsRunExecutor {
       // Pre-WAL lookup runs in every mode. An initial/re-authoring run may not
       // silently create a homonym, while enrichment must prove the exact live
       // predecessor before it is irreversibly deleted.
-      const liveRequirementsElementId = await this.#findElementByLabelOrUndefined(
-        editingContextId,
-        target.elementId,
-        proposal.partDefName,
-      );
+      const liveRequirementsElementId = await this
+        .#findElementByLabelOrUndefined(
+          editingContextId,
+          target.elementId,
+          proposal.partDefName,
+        );
       let priorRequirementsElementId: string | undefined;
       if (recoveryElementId !== undefined) {
         providerAcknowledged = true;
@@ -672,7 +678,9 @@ export class ModelWriteRequirementsRunExecutor {
           );
           priorRequirementsElementId = liveRequirementsElementId;
         } catch (error) {
-          if (error instanceof RequirementsWriteOutcomeUnknownError) throw error;
+          if (error instanceof RequirementsWriteOutcomeUnknownError) {
+            throw error;
+          }
           throw new EngineeringProjectCommandError(
             "invalid_transition",
             `prior_requirements_live_mismatch: the live predecessor no longer ` +
@@ -744,7 +752,10 @@ export class ModelWriteRequirementsRunExecutor {
                 sysml_text: sysmlText,
               },
             });
-            verifyInsertionAck(insertResult.structuredContent, target.elementId);
+            verifyInsertionAck(
+              insertResult.structuredContent,
+              target.elementId,
+            );
             // Step 18: from this point any error takes the post-acknowledgement path.
             providerAcknowledged = true;
           } catch (error) {
@@ -816,7 +827,8 @@ export class ModelWriteRequirementsRunExecutor {
             command.runId,
           );
           if (
-            durable?.status !== "completed" || durable.planDigest !== planDigest ||
+            durable?.status !== "completed" ||
+            durable.planDigest !== planDigest ||
             durable.result?.requirementsElementId !== requirementsElementId
           ) {
             throw new RequirementsWriteOutcomeUnknownError();
@@ -1069,7 +1081,8 @@ export class ModelWriteRequirementsRunExecutor {
     if (
       architectureArtifact.id !==
         `architecture-${architectureArtifact.fingerprint.digest}` ||
-      architectureArtifact.version !== architectureArtifact.fingerprint.digest ||
+      architectureArtifact.version !==
+        architectureArtifact.fingerprint.digest ||
       architectureArtifact.kind !== "sysml-model" ||
       architectureArtifact.uri !==
         `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${architectureArtifact.fingerprint.digest}` ||
@@ -1078,7 +1091,8 @@ export class ModelWriteRequirementsRunExecutor {
       architectureArtifact.producer.tool !== "syson_element_insert_sysml" ||
       archCapture.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA ||
       archCapture.operation.id !== MODEL_WRITE_ARCHITECTURE_OPERATION.id ||
-      archCapture.operation.version !== MODEL_WRITE_ARCHITECTURE_OPERATION.version ||
+      archCapture.operation.version !==
+        MODEL_WRITE_ARCHITECTURE_OPERATION.version ||
       archCapture.trustedRunId !== architectureArtifact.producer.runId
     ) {
       throw new EngineeringProjectCommandError(
@@ -1110,8 +1124,12 @@ export class ModelWriteRequirementsRunExecutor {
     );
     if (
       !seedArtifact ||
-      !fingerprintsEqual(seedArtifact.fingerprint, archCapture.seed.fingerprint) ||
-      seedArtifact.id !== `syson-model-seed-${seedArtifact.fingerprint.digest}` ||
+      !fingerprintsEqual(
+        seedArtifact.fingerprint,
+        archCapture.seed.fingerprint,
+      ) ||
+      seedArtifact.id !==
+        `syson-model-seed-${seedArtifact.fingerprint.digest}` ||
       seedArtifact.kind !== "sysml-model" ||
       seedArtifact.uri !==
         `casys://syson-model-seed-capture/sha256/${seedArtifact.fingerprint.digest}` ||
@@ -1379,7 +1397,7 @@ export class ModelWriteRequirementsRunExecutor {
     } catch (error) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        `The historical architecture capture is not exact architecture-capture/3.0 evidence: ${
+        `The historical architecture capture is not exact architecture-capture/4.0 evidence: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -1423,15 +1441,18 @@ export class ModelWriteRequirementsRunExecutor {
     if (
       !architectureBasis || typeof architectureBasis.snapshotId !== "string" ||
       !Number.isSafeInteger(architectureBasis.revision) ||
-      architectureBasis.fingerprint !== historicalArchitecture.fingerprint.digest ||
+      architectureBasis.fingerprint !==
+        historicalArchitecture.fingerprint.digest ||
       !basisSnapshot || basisSnapshot.id !== architectureBasis.snapshotId ||
       basisSnapshot.revision !== architectureBasis.revision ||
       basisSnapshot.subject.id !== base.subject.id ||
       !basisSnapshot.artifacts.some((artifact) =>
         artifact.id === historicalArchitecture.id &&
-        deterministicJson(artifact) === deterministicJson(historicalArchitecture)
+        deterministicJson(artifact) ===
+          deterministicJson(historicalArchitecture)
       ) ||
-      historicalCapture.trustedRunId !== historicalArchitecture.producer.runId ||
+      historicalCapture.trustedRunId !==
+        historicalArchitecture.producer.runId ||
       !historicalSeedArtifact ||
       historicalSeedArtifact.id !==
         `syson-model-seed-${historicalSeedArtifact.fingerprint.digest}` ||
@@ -1456,7 +1477,8 @@ export class ModelWriteRequirementsRunExecutor {
             `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${historicalPredecessor.fingerprint.digest}` ||
           historicalPredecessor.mediaType !== "application/json" ||
           historicalPredecessor.producer.serverId !== "syson" ||
-          historicalPredecessor.producer.tool !== "syson_element_insert_sysml" ||
+          historicalPredecessor.producer.tool !==
+            "syson_element_insert_sysml" ||
           historicalPredecessor.producer.runId !==
             historicalCapture.predecessor.producerRunId ||
           !fingerprintsEqual(
@@ -1475,7 +1497,10 @@ export class ModelWriteRequirementsRunExecutor {
       !isContentFingerprint(priorSeed.fingerprint) ||
       priorSeed.artifactId !== historicalCapture.seed.artifactId ||
       priorSeed.producerRunId !== historicalCapture.seed.producerRunId ||
-      !fingerprintsEqual(priorSeed.fingerprint, historicalCapture.seed.fingerprint)
+      !fingerprintsEqual(
+        priorSeed.fingerprint,
+        historicalCapture.seed.fingerprint,
+      )
     ) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
@@ -1645,7 +1670,10 @@ export class ModelWriteRequirementsRunExecutor {
             kind: "consumption" as const,
             id: `consume-${predecessorRequirementsArtifact.id}-by-${priorArtifact.id}`,
           },
-          to: { kind: "artifact" as const, id: predecessorRequirementsArtifact.id },
+          to: {
+            kind: "artifact" as const,
+            id: predecessorRequirementsArtifact.id,
+          },
           rationale:
             "The executor read the exact prior requirements capture to plan the enrichment.",
         }]
@@ -1902,7 +1930,12 @@ export class ModelWriteRequirementsRunExecutor {
       throw new RequirementsRunQuarantinedError();
     }
     try {
-      return await this.#attempts.begin({ projectId, runId, planDigest, dispatchedAt });
+      return await this.#attempts.begin({
+        projectId,
+        runId,
+        planDigest,
+        dispatchedAt,
+      });
     } catch (error) {
       if (error instanceof RequirementsWriteOutcomeUnknownError) throw error;
       throw new RequirementsWriteOutcomeUnknownError();
@@ -1957,7 +1990,9 @@ export class ModelWriteRequirementsRunExecutor {
     const run = requireRun(project, command.runId);
     const result = run.resultSnapshot;
     if (!result) {
-      throw completedRequirementsIntegrityError("the run has no result snapshot");
+      throw completedRequirementsIntegrityError(
+        "the run has no result snapshot",
+      );
     }
     const snapshot = await this.#snapshots.get(result.snapshotId);
     if (
@@ -2140,7 +2175,10 @@ export class ModelWriteRequirementsRunExecutor {
       requirements,
       requirementsElementId,
     });
-    const reapplied = applyThreadSnapshotExtensionIfNew(base, expectedExtension);
+    const reapplied = applyThreadSnapshotExtensionIfNew(
+      base,
+      expectedExtension,
+    );
     if (
       !reapplied.applied ||
       deterministicJson(reapplied.snapshot) !== deterministicJson(snapshot)
@@ -2195,7 +2233,8 @@ export class ModelWriteRequirementsRunExecutor {
     );
     if (
       parsedResult.requirementsElementId !== requirementsElementId ||
-      deterministicJson(parsedResult.requirements) !== deterministicJson(requirements)
+      deterministicJson(parsedResult.requirements) !==
+        deterministicJson(requirements)
     ) {
       throw completedRequirementsIntegrityError(
         "the result capture and Thread projection diverge from the signed requirements or completed WAL identity",
@@ -2226,15 +2265,17 @@ export class ModelWriteRequirementsRunExecutor {
         ...command,
         commandId: commandStep(command.commandId, "fail"),
         expectedRevision: project.revision,
-        summary:
-          failure.code === "model-write-requirements-post-acknowledgement-quarantined"
-            ? "Generic requirements run quarantined after an acknowledged SysON insertion."
-            : "Generic requirements run stopped before evidence was published.",
+        summary: failure.code ===
+            "model-write-requirements-post-acknowledgement-quarantined"
+          ? "Generic requirements run quarantined after an acknowledged SysON insertion."
+          : "Generic requirements run stopped before evidence was published.",
         code: failure.code,
         message: failure.message,
       });
     } catch {
-      if (required) throw new Error("Could not record requirements run failure.");
+      if (required) {
+        throw new Error("Could not record requirements run failure.");
+      }
     }
   }
 
@@ -2246,7 +2287,9 @@ export class ModelWriteRequirementsRunExecutor {
     }
   }
 
-  async #requiredProject(projectId: string): Promise<EngineeringProjectSnapshot> {
+  async #requiredProject(
+    projectId: string,
+  ): Promise<EngineeringProjectSnapshot> {
     const project = await this.#projects.get(projectId);
     if (!project) {
       throw new EngineeringProjectCommandError(
@@ -2488,7 +2531,9 @@ function buildExtension(options: {
     )
     : [];
   const priorByMetric = new Map(
-    priorRequirements.map((requirement) => [requirement.criterion.metric, requirement]),
+    priorRequirements.map((
+      requirement,
+    ) => [requirement.criterion.metric, requirement]),
   );
   const priorArchiveCascade = priorRequirementsArtifact
     ? computePriorRequirementsArchiveCascade(base, priorRequirementsArtifact)
@@ -2666,7 +2711,9 @@ async function requireMrtrApproval(
     const decision = project.decisions.find(
       (d) => d.id === decisionId && d.status === "approved",
     );
-    if (!decision?.proposal || decision.proposal.parameters.length === 0) continue;
+    if (!decision?.proposal || decision.proposal.parameters.length === 0) {
+      continue;
+    }
     const exactHumanApprovals = project.approvals.filter(
       (a: EngineeringApproval) =>
         a.decisionId === decision.id &&
@@ -2750,7 +2797,8 @@ function sameSnapshotBasis(
   basis: EngineeringThreadSnapshotBasis,
 ): boolean {
   if (!value || !("snapshotId" in value)) return false;
-  return value.snapshotId === basis.snapshotId && value.revision === basis.revision &&
+  return value.snapshotId === basis.snapshotId &&
+    value.revision === basis.revision &&
     value.subjectId === basis.subjectId;
 }
 
@@ -2824,7 +2872,8 @@ async function assertNoBlockedRequirementsSibling(
     const siblingContainer = requirementsRunContainer(project, candidate);
     return operation?.id === MODEL_WRITE_REQUIREMENTS_OPERATION.id &&
       operation.version === MODEL_WRITE_REQUIREMENTS_OPERATION.version &&
-      (siblingContainer === undefined || siblingContainer === containerComponent);
+      (siblingContainer === undefined ||
+        siblingContainer === containerComponent);
   });
   for (const sibling of siblings) {
     if (
@@ -2886,7 +2935,9 @@ function staleRequirementsBasisSibling(): EngineeringProjectCommandError {
 
 function verifyInsertionAck(value: unknown, expectedParentId: string): void {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("SysON requirements insert response must be a non-null object.");
+    throw new Error(
+      "SysON requirements insert response must be a non-null object.",
+    );
   }
   const record = value as Record<string, unknown>;
   if (record.inserted !== true) {
@@ -2917,7 +2968,8 @@ function parseProviderChildren(
   const record = value as Record<string, unknown>;
   if (
     record.parentId !== expectedParentId || !Array.isArray(record.children) ||
-    !Number.isSafeInteger(record.count) || record.count !== record.children.length
+    !Number.isSafeInteger(record.count) ||
+    record.count !== record.children.length
   ) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
@@ -2976,7 +3028,8 @@ function isExactProviderTarget(
 ): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const candidate = value as Record<string, unknown>;
-  return candidate.id === target.elementId && candidate.label === target.label &&
+  return candidate.id === target.elementId &&
+    candidate.label === target.label &&
     isSysmlEntityKind(candidate.kind, "PartDefinition");
 }
 

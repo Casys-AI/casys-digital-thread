@@ -20,6 +20,18 @@ microVM:
 | `model.capture-inspection-drone-part-definitions@1` | Retired product-specific r4 read. Not registered             | Generic `model.capture-part-definitions@1`                              |
 | `architecture-sysml-source-analysis-capture/1.0`    | Agent-authored closed-subset CAS                             | A renderer manifest                                                     |
 
+## Product navigation
+
+SysML-first reads share one application port. Workbench GET/SSE is a projection, not a
+command surface. Graphology is a disposable index, never domain or authority.
+
+| This                                 | Is                                                                            | Is not                                                             |
+| ------------------------------------ | ----------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `project_product_navigation_*`       | Server read-side index over exact `architecture-capture/4.0` + ThreadGraph    | Direct SysON tools, `project_source_tree`, or a UI Graphology walk |
+| `project_product_navigation_context` | Exact node plus grouped attachments (`unattached` stays literal)              | A mega JSON dump or a Workbench POST                               |
+| `project_product_source_closure`     | Technical file dependencies **after** an exact attached `fileId@fileRevision` | Product structure or a label/path join                             |
+| Graphology                           | Algorithmic navigation index in server/application adapters                   | Domain authority or a second Workbench product-structure browser   |
+
 ## Engineering Case catalog
 
 The Workbench read-side `engineering-cases/1.0` catalog is the typed id+revision case

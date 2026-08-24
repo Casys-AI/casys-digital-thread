@@ -547,6 +547,13 @@ Deno.test(
       const names = app.getToolNames();
       assertEquals(names.includes("project_admitted_geometry_export"), true);
       assertEquals(names.includes("project_geometry_preview"), false);
+      assertEquals(names.includes("project_product_navigation_roots"), true);
+      assertEquals(names.includes("project_product_navigation_children"), true);
+      assertEquals(names.includes("project_product_navigation_path"), true);
+      assertEquals(names.includes("project_product_navigation_search"), true);
+      assertEquals(names.includes("project_product_navigation_neighborhood"), true);
+      assertEquals(names.includes("project_product_navigation_context"), true);
+      assertEquals(names.includes("project_product_source_closure"), true);
     } finally {
       await Deno.remove(temporaryDirectory, { recursive: true });
     }
@@ -612,6 +619,13 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_led_driver_source_capture",
     "project_led_driver_source_review",
     "project_plan_publish",
+    "project_product_navigation_children",
+    "project_product_navigation_context",
+    "project_product_navigation_neighborhood",
+    "project_product_navigation_path",
+    "project_product_navigation_roots",
+    "project_product_navigation_search",
+    "project_product_source_closure",
     "project_question_propose",
     "project_resource_capture",
     "project_sensitivity_base_evaluation_review",
@@ -690,6 +704,13 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_led_driver_source_capture",
       "project_led_driver_source_review",
       "project_plan_publish",
+      "project_product_navigation_children",
+      "project_product_navigation_context",
+      "project_product_navigation_neighborhood",
+      "project_product_navigation_path",
+      "project_product_navigation_roots",
+      "project_product_navigation_search",
+      "project_product_source_closure",
       "project_question_propose",
       "project_resource_capture",
       "project_sensitivity_base_evaluation_review",
@@ -915,6 +936,13 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_source_tree" ||
           tool.name === "project_source_search" ||
           tool.name === "project_source_file_read" ||
+          tool.name === "project_product_navigation_children" ||
+          tool.name === "project_product_navigation_context" ||
+          tool.name === "project_product_navigation_neighborhood" ||
+          tool.name === "project_product_navigation_path" ||
+          tool.name === "project_product_navigation_roots" ||
+          tool.name === "project_product_navigation_search" ||
+          tool.name === "project_product_source_closure" ||
           tool.name === "project_agent_run_plan_get" ||
           tool.name === "project_isolated_geometry_seal_review" ||
           tool.name === "project_led_driver_source_review" ||
@@ -942,6 +970,13 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_source_tree" ||
           tool.name === "project_source_search" ||
           tool.name === "project_source_file_read" ||
+          tool.name === "project_product_navigation_children" ||
+          tool.name === "project_product_navigation_context" ||
+          tool.name === "project_product_navigation_neighborhood" ||
+          tool.name === "project_product_navigation_path" ||
+          tool.name === "project_product_navigation_roots" ||
+          tool.name === "project_product_navigation_search" ||
+          tool.name === "project_product_source_closure" ||
           tool.name === "project_source_module_put" ||
           tool.name === "project_source_file_put" ||
           tool.name === "project_source_file_remove" ||

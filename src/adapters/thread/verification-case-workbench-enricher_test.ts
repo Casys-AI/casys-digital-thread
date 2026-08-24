@@ -156,6 +156,52 @@ Deno.test(
 );
 
 Deno.test(
+  "verification case enricher retains the exact FEA target and links the PartDefinition without a label join",
+  async () => {
+    const proof = await sealedProof(PROOF_CASE, "run.seal.target");
+    const snapshot = workbenchFor([proof]);
+    snapshot.graph.nodes.push(
+      graphNode(
+        "part-definition",
+        PROOF_CASE.target.modelElementId,
+        "Display text must not carry identity",
+        "syson",
+      ),
+    );
+
+    const enriched = await enrichThreadWorkbenchWithEngineeringCases(
+      snapshot,
+      caseReaders({
+        mechanicalProof: { read: () => Promise.resolve(proof.captureText) },
+      }),
+      CASE_CONTEXT,
+    );
+
+    const mechanical = enriched.engineeringCases.cases[0];
+    assertEquals(mechanical?.family, "mechanical-proof");
+    assertEquals(
+      mechanical?.family === "mechanical-proof"
+        ? mechanical.target?.modelElementId
+        : undefined,
+      PROOF_CASE.target.modelElementId,
+    );
+    const link = enriched.graph.edges.find((edge) =>
+      edge.relation === "verified_by" &&
+      edge.from.kind === "part-definition" &&
+      edge.from.id === PROOF_CASE.target.modelElementId &&
+      edge.to.kind === "artifact" &&
+      edge.to.id === proof.artifact.id
+    );
+    assertEquals(link?.origin, "structure");
+    const distractor = enriched.graph.edges.find((edge) =>
+      edge.relation === "verified_by" &&
+      edge.from.id !== PROOF_CASE.target.modelElementId
+    );
+    assertEquals(distractor, undefined);
+  },
+);
+
+Deno.test(
   "verification case enricher reopens a sensitivity case without treating it as a proof verdict",
   async () => {
     const studyCase = sensitivityStudyCase();

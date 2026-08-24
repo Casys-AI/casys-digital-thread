@@ -11,7 +11,12 @@ import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import {
   ARCHITECTURE_CAPTURE_SCHEMA,
   type ArchitectureCapturePartDefinition,
+  type ArchitectureCaptureScopeRoot,
+  type ArchitectureCaptureSemanticRoot,
   parseArchitectureCapturePartDefinitions,
+  parseArchitectureCaptureScopeRoot,
+  parseArchitectureCaptureSemanticRoot,
+  requireSealedSemanticRoot,
 } from "../renderer/architecture-capture.ts";
 
 export { PART_DEFINITIONS_CAPTURE_STATEMENT };
@@ -28,7 +33,8 @@ export interface PartDefinitionsCaptureArchitectureReference {
   readonly schemaVersion: typeof ARCHITECTURE_CAPTURE_SCHEMA;
   readonly packageName: string;
   readonly systemName: string;
-  readonly package: { readonly id: string; readonly label: string };
+  readonly scopeRoot: ArchitectureCaptureScopeRoot;
+  readonly semanticRoot: ArchitectureCaptureSemanticRoot;
 }
 
 export interface PartDefinitionsCaptureSeedReference {
@@ -72,7 +78,10 @@ export function parseExactPartDefinitionsCapture(
     ],
     "PartDefinitions capture",
   );
-  const operation = exactObject(record.operation, "PartDefinitions capture operation");
+  const operation = exactObject(
+    record.operation,
+    "PartDefinitions capture operation",
+  );
   exactKeys(operation, ["id", "version"], "PartDefinitions capture operation");
   if (
     record.schemaVersion !== PART_DEFINITIONS_CAPTURE_SCHEMA ||
@@ -82,26 +91,21 @@ export function parseExactPartDefinitionsCapture(
     operation.id !== MODEL_CAPTURE_PART_DEFINITIONS_OPERATION.id ||
     operation.version !== MODEL_CAPTURE_PART_DEFINITIONS_OPERATION.version
   ) {
-    throw new Error("PartDefinitions capture operation or schema is not exact.");
+    throw new Error(
+      "PartDefinitions capture operation or schema is not exact.",
+    );
   }
 
   const trustedRunId = exactNonEmpty(record.trustedRunId, "trustedRunId");
   const capturedAt = exactCanonicalInstant(record.capturedAt, "capturedAt");
   const architecture = parseArchitectureReference(record.architecture);
-  if (architecture.package.label !== architecture.packageName) {
-    throw new Error(
-      "PartDefinitions capture package label does not match packageName.",
-    );
-  }
   const seed = parseSeedReference(record.seed);
   const partDefinitions = parseArchitectureCapturePartDefinitions(
     record.partDefinitions,
     "partDefinitions",
-    [architecture.package.id],
+    [architecture.scopeRoot.id],
   );
-  if (!partDefinitions.some((part) => part.label === architecture.systemName)) {
-    throw new Error("PartDefinitions capture systemName is not a PartDefinition.");
-  }
+  requireSealedSemanticRoot(architecture.semanticRoot, partDefinitions);
 
   return {
     schemaVersion: PART_DEFINITIONS_CAPTURE_SCHEMA,
@@ -128,7 +132,9 @@ export function toArchitectureCapturePartDefinitions(
 ): readonly ArchitectureCapturePartDefinition[] {
   return partDefs.map((part, index) => {
     if (!part.id || !part.label) {
-      throw new Error(`Live PartDefinition ${index} is missing a sealed identity.`);
+      throw new Error(
+        `Live PartDefinition ${index} is missing a sealed identity.`,
+      );
     }
     return {
       id: part.id,
@@ -151,18 +157,20 @@ export function toArchitectureCapturePartDefinitions(
       }),
       ...((part.attributes ?? []).length > 0
         ? {
-          attributes: (part.attributes ?? []).map((attribute, attributeIndex) => {
-            if (!attribute.id || !attribute.label) {
-              throw new Error(
-                `Live AttributeUsage ${index}/${attributeIndex} is missing a sealed identity.`,
-              );
-            }
-            return {
-              id: attribute.id,
-              kind: "AttributeUsage" as const,
-              label: attribute.label,
-            };
-          }),
+          attributes: (part.attributes ?? []).map(
+            (attribute, attributeIndex) => {
+              if (!attribute.id || !attribute.label) {
+                throw new Error(
+                  `Live AttributeUsage ${index}/${attributeIndex} is missing a sealed identity.`,
+                );
+              }
+              return {
+                id: attribute.id,
+                kind: "AttributeUsage" as const,
+                label: attribute.label,
+              };
+            },
+          ),
         }
         : {}),
     };
@@ -178,36 +186,43 @@ function parseArchitectureReference(
     [
       "artifactId",
       "fingerprint",
-      "package",
       "packageName",
       "producerRunId",
       "schemaVersion",
+      "scopeRoot",
+      "semanticRoot",
       "systemName",
       "uri",
     ],
     "architecture",
   );
   if (record.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA) {
-    throw new Error("PartDefinitions capture architecture schema is not exact.");
+    throw new Error(
+      "PartDefinitions capture architecture schema is not exact.",
+    );
   }
-  const rawPackage = exactObject(record.package, "architecture.package");
-  exactKeys(rawPackage, ["id", "label"], "architecture.package");
   return {
     artifactId: exactNonEmpty(record.artifactId, "architecture.artifactId"),
-    fingerprint: exactFingerprint(record.fingerprint, "architecture.fingerprint"),
-    producerRunId: exactNonEmpty(record.producerRunId, "architecture.producerRunId"),
+    fingerprint: exactFingerprint(
+      record.fingerprint,
+      "architecture.fingerprint",
+    ),
+    producerRunId: exactNonEmpty(
+      record.producerRunId,
+      "architecture.producerRunId",
+    ),
     uri: exactNonEmpty(record.uri, "architecture.uri"),
     schemaVersion: record.schemaVersion,
     packageName: exactNonEmpty(record.packageName, "architecture.packageName"),
     systemName: exactNonEmpty(record.systemName, "architecture.systemName"),
-    package: {
-      id: exactNonEmpty(rawPackage.id, "architecture.package.id"),
-      label: exactNonEmpty(rawPackage.label, "architecture.package.label"),
-    },
+    scopeRoot: parseArchitectureCaptureScopeRoot(record.scopeRoot),
+    semanticRoot: parseArchitectureCaptureSemanticRoot(record.semanticRoot),
   };
 }
 
-function parseSeedReference(value: unknown): PartDefinitionsCaptureSeedReference {
+function parseSeedReference(
+  value: unknown,
+): PartDefinitionsCaptureSeedReference {
   const record = exactObject(value, "seed");
   exactKeys(
     record,
@@ -224,7 +239,10 @@ function parseSeedReference(value: unknown): PartDefinitionsCaptureSeedReference
     artifactId: exactNonEmpty(record.artifactId, "seed.artifactId"),
     fingerprint: exactFingerprint(record.fingerprint, "seed.fingerprint"),
     producerRunId: exactNonEmpty(record.producerRunId, "seed.producerRunId"),
-    editingContextId: exactNonEmpty(record.editingContextId, "seed.editingContextId"),
+    editingContextId: exactNonEmpty(
+      record.editingContextId,
+      "seed.editingContextId",
+    ),
     rootPackageId: exactNonEmpty(record.rootPackageId, "seed.rootPackageId"),
   };
 }

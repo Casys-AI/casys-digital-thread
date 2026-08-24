@@ -20,6 +20,37 @@ agent-authored CAS, never SysON), `seed/` (`architecture.seed-syson-model@2`),
 `architecture.author-inspection-drone@3` /
 `model.capture-inspection-drone-part-definitions@1` are retired and unregistered
 
+#### [`src/application/ports/in/product-navigation/`](../../../src/application/ports/in/product-navigation)
+
+Read-only SysML-first product navigation port. MCP tools and the Workbench GET/SSE slice
+are thin consumers. Not a domain aggregate.
+
+#### [`src/application/use-cases/product-navigation/`](../../../src/application/use-cases/product-navigation)
+
+Selects the unique Thread tip and unique `architecture-capture/4.0`, then queries a
+disposable capture-keyed traversal index.
+
+#### [`src/adapters/architecture/renderer/architecture-capture-navigation-index.ts`](../../../src/adapters/architecture/renderer/architecture-capture-navigation-index.ts)
+
+Graphology traversal index for one exact architecture capture. Algorithmic, disposable.
+Not product authority. Not imported into `src/domain`. Exposed by MCP tools and the
+Workbench GET/SSE DTO. The existing SysML catalog view is not a second product tree.
+
+#### [`src/adapters/architecture/renderer/capture-product-structure-traversal.ts`](../../../src/adapters/architecture/renderer/capture-product-structure-traversal.ts)
+
+Reopens the unique `architecture-capture/4.0` tip and caches the Graphology index by
+capture fingerprint.
+
+#### [`src/adapters/thread/product-navigation-workbench.ts`](../../../src/adapters/thread/product-navigation-workbench.ts)
+
+Shared catalog + admission/requirements/case recross used by MCP context/closure.
+Workbench GET still publishes only the roots slice; it is not a command surface.
+
+#### [`src/tools/project-control/product-navigation-tools.ts`](../../../src/tools/project-control/product-navigation-tools.ts)
+
+Lean MCP read tools: roots, children, path, context, source closure. Grants none.
+Workbench stays GET/SSE.
+
 #### [`src/application/ports/in/architecture/`](../../../src/application/ports/in/architecture)
 
 Inbound architecture ports split by authority: renderer brief-review ≠ agent-seal
@@ -203,7 +234,7 @@ Write-ahead no-blind-retry store for generic architecture insertions
 
 #### [`src/adapters/architecture/renderer/product-structure-catalog.ts`](../../../src/adapters/architecture/renderer/product-structure-catalog.ts)
 
-Generic projector reading current `architecture-capture/3.0` only: causal tip, PartUsage
+Generic projector reading current `architecture-capture/4.0` only: causal tip, PartUsage
 occurrence hierarchy, exact seed/predecessor and source-analysis evidence; quantity is
 one reviewed occurrence, never inferred BOM/provider multiplicity
 

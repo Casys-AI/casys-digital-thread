@@ -247,10 +247,10 @@ reviewed ArchitectureProposal
   -> reopen CAS + re-render the signed proposal and compare text + manifest
   -> dispatch only the reopened source text to the private SysON MCP
   -> separate provider readback
-  -> architecture-capture/3.0 seals the same references
+  -> architecture-capture/4.0 seals the same references
 ```
 
-Requirements, geometry and Product Structure reopen every current 3.0 source and
+Requirements, geometry and Product Structure reopen every current 4.0 source and
 analysis CAS reference before treating the architecture as current. Missing, altered,
 foreign or rejected analysis blocks authoritative writers; the read-only catalog returns
 `unavailable`. Older architecture capture and WAL schemas are unsupported and are
@@ -281,7 +281,7 @@ calls a provider.
 | Parser         | Server renderer + manifest-attested companion         | Lexical guard + closed-subset parser                  |
 | Operation      | `model.write-architecture@1`                          | `model.seal-architecture-sysml@1`                     |
 | SysON          | Inserts, journals, readback                           | Never called                                          |
-| Thread write   | `architecture-capture/3.0`                            | Document + `architecture-sysml-seal-capture/1.0`      |
+| Thread write   | `architecture-capture/4.0`                            | Document + `architecture-sysml-seal-capture/1.0`      |
 
 ```text
 agent-authored SysML UTF-8

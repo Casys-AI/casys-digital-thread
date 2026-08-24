@@ -37,7 +37,10 @@ import {
 } from "../../../domain/thread/thread-component-catalog.ts";
 import { archivedRefKeys } from "../../../domain/thread/thread-snapshot.ts";
 import { ARCHITECTURE_CAPTURE_URI_PREFIX } from "../../shared/cas/file-capture-store.ts";
-import { parseExactArchitectureCapture } from "./architecture-capture.ts";
+import {
+  type ExactArchitectureCapture,
+  parseExactArchitectureCapture,
+} from "./architecture-capture.ts";
 import {
   requireCurrentArchitectureSourceAnalyses,
   type SysmlSourceAnalysisReader,
@@ -58,42 +61,7 @@ export interface GenericArchitectureCaptureReader {
 
 // ── Internal capture shape ────────────────────────────────────────────────────
 
-interface GenericArchitectureCapture {
-  readonly operation: { readonly id: string; readonly version: string };
-  readonly trustedRunId: string;
-  readonly insertedAt: string;
-  readonly packageName: string;
-  readonly systemName: string;
-  readonly package: { readonly id: string; readonly label: string };
-  readonly seed: {
-    readonly artifactId: string;
-    readonly fingerprint: ContentFingerprint;
-    readonly producerRunId: string;
-  };
-  readonly predecessor?: {
-    readonly artifactId: string;
-    readonly fingerprint: ContentFingerprint;
-    readonly producerRunId: string;
-  };
-  readonly partDefinitions: readonly {
-    readonly id: string;
-    readonly kind: string;
-    readonly label: string;
-    readonly usages: readonly {
-      readonly id: string;
-      readonly kind: string;
-      readonly label: string;
-      readonly targetId: string;
-      readonly targetKind: string;
-      readonly targetLabel: string;
-    }[];
-    readonly attributes?: readonly {
-      readonly id: string;
-      readonly kind: string;
-      readonly label: string;
-    }[];
-  }[];
-}
+type GenericArchitectureCapture = ExactArchitectureCapture;
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -115,21 +83,72 @@ export async function resolveGenericProductStructureCatalog(
   geometryCaptures?: GenericGeometryCaptureReader,
   sysmlSourceAnalysis?: SysmlSourceAnalysisReader,
 ): Promise<ThreadComponentCatalog | undefined> {
-  const architectures = genericArchitectureArtifacts(snapshot);
-  const selected = findArchitectureTip(snapshot, architectures);
-  if (selected.kind === "absent") return undefined;
-  if (selected.kind === "retired") {
+  const verified = await reopenVerifiedArchitectureCapture(
+    snapshot,
+    captures,
+    sysmlSourceAnalysis,
+  );
+  if (verified.kind === "absent") return undefined;
+  if (verified.kind === "retired") {
     return unavailable(
       snapshot.subject.id,
       "The generic architecture current tip was explicitly archived; no current product structure is available.",
     );
   }
-  if (selected.kind === "ambiguous") {
+  if (verified.kind === "ambiguous") {
     return unavailable(
       snapshot.subject.id,
       "Generic architecture evidence has multiple current tips; manual lineage review is required.",
     );
   }
+  if (verified.kind !== "one") {
+    return unavailable(
+      snapshot.subject.id,
+      verified.kind === "unreadable"
+        ? "The architecture capture is not readable for this snapshot revision."
+        : "The architecture capture could not be verified for this snapshot revision.",
+    );
+  }
+  const catalog = buildCatalog(
+    snapshot.subject.id,
+    verified.artifact.id,
+    verified.capture,
+  );
+  return catalog && geometryCaptures
+    ? await enrichGenericProductCatalogWithGeometryBundle(
+      snapshot,
+      catalog,
+      geometryCaptures,
+    )
+    : catalog;
+}
+
+/**
+ * Reopen the unique current architecture-capture/4.0 after the same lineage
+ * checks as the product-structure catalog: artifact identity, seed,
+ * predecessor and exact source analyses. Absent, retired, ambiguous or
+ * unverified evidence yields undefined.
+ */
+export type VerifiedArchitectureCapture =
+  | { readonly kind: "absent" }
+  | { readonly kind: "retired" }
+  | { readonly kind: "ambiguous" }
+  | { readonly kind: "unreadable" }
+  | { readonly kind: "unverified" }
+  | {
+    readonly kind: "one";
+    readonly artifact: ThreadArtifact;
+    readonly capture: ExactArchitectureCapture;
+  };
+
+export async function reopenVerifiedArchitectureCapture(
+  snapshot: ThreadSnapshot,
+  captures: GenericArchitectureCaptureReader,
+  sysmlSourceAnalysis?: SysmlSourceAnalysisReader,
+): Promise<VerifiedArchitectureCapture> {
+  const architectures = genericArchitectureArtifacts(snapshot);
+  const selected = findArchitectureTip(snapshot, architectures);
+  if (selected.kind !== "one") return selected;
   try {
     const capture = await verifyArchitectureLineage(
       snapshot,
@@ -138,25 +157,13 @@ export async function resolveGenericProductStructureCatalog(
       architectures,
       sysmlSourceAnalysis,
     );
-    const catalog = buildCatalog(
-      snapshot.subject.id,
-      selected.artifact.id,
-      capture,
-    );
-    return catalog && geometryCaptures
-      ? await enrichGenericProductCatalogWithGeometryBundle(
-        snapshot,
-        catalog,
-        geometryCaptures,
-      )
-      : catalog;
+    return { kind: "one", artifact: selected.artifact, capture };
   } catch (error) {
-    return unavailable(
-      snapshot.subject.id,
-      error instanceof ArchitectureCaptureUnreadableError
-        ? "The architecture capture is not readable for this snapshot revision."
-        : "The architecture capture could not be verified for this snapshot revision.",
-    );
+    return {
+      kind: error instanceof ArchitectureCaptureUnreadableError
+        ? "unreadable"
+        : "unverified",
+    };
   }
 }
 
@@ -181,7 +188,9 @@ function findArchitectureTip(
   | { readonly kind: "ambiguous" }
   | { readonly kind: "one"; readonly artifact: ThreadArtifact } {
   if (matches.length === 0) return { kind: "absent" };
-  const consumed = new Set(matches.flatMap((artifact) => artifact.inputArtifactIds));
+  const consumed = new Set(
+    matches.flatMap((artifact) => artifact.inputArtifactIds),
+  );
   const tips = matches.filter((artifact) => !consumed.has(artifact.id));
   if (tips.length === 0) return { kind: "ambiguous" };
   const archived = archivedRefKeys(snapshot);
@@ -207,19 +216,23 @@ async function verifyArchitectureLineage(
   tip: ThreadArtifact,
   architectures: readonly ThreadArtifact[],
   sysmlSourceAnalysis: SysmlSourceAnalysisReader | undefined,
-): Promise<GenericArchitectureCapture> {
-  const byId = new Map(architectures.map((artifact) => [artifact.id, artifact]));
+): Promise<ExactArchitectureCapture> {
+  const byId = new Map(
+    architectures.map((artifact) => [artifact.id, artifact]),
+  );
   if (byId.size !== architectures.length) {
     throw new Error("Generic architecture artifact identities are ambiguous.");
   }
 
   const visited = new Set<string>();
   let current = tip;
-  let tipCapture: GenericArchitectureCapture | undefined;
+  let tipCapture: ExactArchitectureCapture | undefined;
 
   while (true) {
     if (visited.has(current.id)) {
-      throw new Error("Generic architecture predecessor lineage contains a cycle.");
+      throw new Error(
+        "Generic architecture predecessor lineage contains a cycle.",
+      );
     }
     visited.add(current.id);
 
@@ -255,7 +268,9 @@ async function verifyArchitectureLineage(
       !artifactMatches(snapshot, capture.seed) ||
       !hasExactConsumption(snapshot, capture.seed, capture)
     ) {
-      throw new Error("A generic architecture capture has no exact seed evidence.");
+      throw new Error(
+        "A generic architecture capture has no exact seed evidence.",
+      );
     }
 
     if (!capture.predecessor) {
@@ -272,7 +287,9 @@ async function verifyArchitectureLineage(
       ]) ||
       !hasExactConsumption(snapshot, capture.predecessor, capture)
     ) {
-      throw new Error("A generic architecture enrichment has non-exact inputs.");
+      throw new Error(
+        "A generic architecture enrichment has non-exact inputs.",
+      );
     }
 
     const predecessor = byId.get(capture.predecessor.artifactId);
@@ -280,7 +297,9 @@ async function verifyArchitectureLineage(
       !predecessor ||
       !architectureEvidenceMatches(predecessor, capture.predecessor)
     ) {
-      throw new Error("A generic architecture predecessor is not exact evidence.");
+      throw new Error(
+        "A generic architecture predecessor is not exact evidence.",
+      );
     }
     current = predecessor;
   }
@@ -293,7 +312,10 @@ async function verifyArchitectureLineage(
   return tipCapture!;
 }
 
-function sameInputs(actual: readonly string[], expected: readonly string[]): boolean {
+function sameInputs(
+  actual: readonly string[],
+  expected: readonly string[],
+): boolean {
   return actual.length === expected.length &&
     actual.every((id, index) => id === expected[index]);
 }
@@ -348,7 +370,10 @@ function isExactArchitectureArtifact(
 
 function hasExactConsumption(
   snapshot: ThreadSnapshot,
-  evidence: { readonly artifactId: string; readonly fingerprint: ContentFingerprint },
+  evidence: {
+    readonly artifactId: string;
+    readonly fingerprint: ContentFingerprint;
+  },
   capture: GenericArchitectureCapture,
 ): boolean {
   return snapshot.consumptions.filter((consumption) =>
@@ -369,16 +394,15 @@ function buildCatalog(
   evidenceArtifactId: string,
   capture: GenericArchitectureCapture,
 ): ThreadComponentCatalog | undefined {
-  const systemDeclarations = capture.partDefinitions.filter((d) =>
-    d.label === capture.systemName
+  const systemDecl = capture.partDefinitions.find((d) =>
+    d.id === capture.semanticRoot.id
   );
-  if (systemDeclarations.length !== 1) {
+  if (!systemDecl || systemDecl.kind !== "PartDefinition") {
     return unavailable(
       subjectId,
-      `The architecture capture must have exactly one system PartDefinition named "${capture.systemName}".`,
+      "The architecture capture must seal a unique semanticRoot PartDefinition.",
     );
   }
-  const systemDecl = systemDeclarations[0]!;
   const systemId = `${subjectId}:system`;
   const systemAttributes = architectureAttributes(systemDecl);
   const systemComponent = {
@@ -511,7 +535,9 @@ function buildCatalog(
 
 function architectureAttributes(
   declaration: GenericArchitectureCapture["partDefinitions"][number],
-): readonly { id: string; kind: "AttributeUsage"; label: string }[] | undefined {
+):
+  | readonly { id: string; kind: "AttributeUsage"; label: string }[]
+  | undefined {
   const attributes = declaration.attributes ?? [];
   if (attributes.length === 0) return undefined;
   return attributes.map((attribute) => ({
@@ -521,7 +547,10 @@ function architectureAttributes(
   }));
 }
 
-function unavailable(subjectId: string, rationale: string): ThreadComponentCatalog {
+function unavailable(
+  subjectId: string,
+  rationale: string,
+): ThreadComponentCatalog {
   return {
     schemaVersion: "thread-components/1.0",
     authority: "workspace-declared",
@@ -568,231 +597,9 @@ async function parseAndVerifyCapture(
     );
   }
 
-  // Validate the current architecture-capture/3.0 record, including
-  // source-analysis context, before this read-only projection omits fields
-  // it does not display.
   const exact = parseExactArchitectureCapture(record);
   if (deterministicJson(exact) !== text) {
     throw new Error("Architecture capture is not canonical JSON.");
   }
-
-  const operation = record.operation as Record<string, unknown>;
-  if (operation?.id !== "model.write-architecture" || operation.version !== "1") {
-    throw new Error(
-      "Architecture capture operation is not model.write-architecture@1.",
-    );
-  }
-  const _trustedRunId = nonEmptyString(record.trustedRunId, "trustedRunId");
-  const _insertedAt = canonicalInstant(record.insertedAt, "insertedAt");
-  const _packageName = nonEmptyString(record.packageName, "packageName");
-  const _systemName = nonEmptyString(record.systemName, "systemName");
-  const packageRecord = objectRecord(record.package, "package");
-  const seedRecord = objectRecord(record.seed, "seed");
-  if (!packageRecord || !seedRecord || !Array.isArray(record.partDefinitions)) {
-    throw new Error(
-      "Architecture capture does not contain its exact package, seed, and PartDefinition graph.",
-    );
-  }
-  assertOnlyKeys(packageRecord, ["id", "label"]);
-  assertOnlyKeys(seedRecord, ["artifactId", "fingerprint", "producerRunId"]);
-  const _packageValue = {
-    id: nonEmptyString(packageRecord.id, "package.id"),
-    label: nonEmptyString(packageRecord.label, "package.label"),
-  };
-  const _seed = {
-    artifactId: nonEmptyString(seedRecord.artifactId, "seed.artifactId"),
-    fingerprint: fingerprintRecord(seedRecord.fingerprint, "seed.fingerprint"),
-    producerRunId: nonEmptyString(seedRecord.producerRunId, "seed.producerRunId"),
-  };
-  const _predecessor = record.predecessor === undefined ? undefined : (() => {
-    const predecessorRecord = objectRecord(record.predecessor, "predecessor");
-    assertOnlyKeys(predecessorRecord, ["artifactId", "fingerprint", "producerRunId"]);
-    return {
-      artifactId: nonEmptyString(
-        predecessorRecord.artifactId,
-        "predecessor.artifactId",
-      ),
-      fingerprint: fingerprintRecord(
-        predecessorRecord.fingerprint,
-        "predecessor.fingerprint",
-      ),
-      producerRunId: nonEmptyString(
-        predecessorRecord.producerRunId,
-        "predecessor.producerRunId",
-      ),
-    };
-  })();
-  const partDefinitions = record.partDefinitions.map((raw, i) => {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-      throw new Error(`Architecture capture declaration[${i}] is not an object.`);
-    }
-    const decl = raw as Record<string, unknown>;
-    const hasAttributes = Object.hasOwn(decl, "attributes");
-    assertOnlyKeys(
-      decl,
-      hasAttributes
-        ? ["id", "kind", "label", "usages", "attributes"]
-        : ["id", "kind", "label", "usages"],
-    );
-    if (decl.kind !== "PartDefinition") {
-      throw new Error(
-        `Architecture capture declaration[${i}] is not a PartDefinition.`,
-      );
-    }
-    if (hasAttributes) {
-      if (!Array.isArray(decl.attributes)) {
-        throw new Error(
-          `Architecture capture declaration[${i}].attributes is not an array.`,
-        );
-      }
-      for (const [attrIndex, rawAttr] of decl.attributes.entries()) {
-        if (!rawAttr || typeof rawAttr !== "object" || Array.isArray(rawAttr)) {
-          throw new Error(
-            `Architecture capture declaration[${i}].attributes[${attrIndex}] is not an object.`,
-          );
-        }
-        const attr = rawAttr as Record<string, unknown>;
-        assertOnlyKeys(attr, ["id", "kind", "label"]);
-        if (attr.kind !== "AttributeUsage") {
-          throw new Error(
-            `Architecture capture declaration[${i}].attributes[${attrIndex}] is not an AttributeUsage.`,
-          );
-        }
-        nonEmptyString(
-          attr.id,
-          `declaration[${i}].attributes[${attrIndex}].id`,
-        );
-        nonEmptyString(
-          attr.label,
-          `declaration[${i}].attributes[${attrIndex}].label`,
-        );
-      }
-    }
-    return {
-      id: nonEmptyString(decl.id, `declaration[${i}].id`),
-      kind: nonEmptyString(decl.kind, `declaration[${i}].kind`),
-      label: nonEmptyString(decl.label, `declaration[${i}].label`),
-      usages: Array.isArray(decl.usages)
-        ? decl.usages.map((rawUsage, usageIndex) => {
-          const usage = rawUsage as Record<string, unknown>;
-          assertOnlyKeys(usage, [
-            "id",
-            "kind",
-            "label",
-            "targetId",
-            "targetKind",
-            "targetLabel",
-          ]);
-          if (usage.kind !== "PartUsage" || usage.targetKind !== "PartDefinition") {
-            throw new Error(
-              `Architecture capture usage ${i}/${usageIndex} has an invalid SysON kind.`,
-            );
-          }
-          return {
-            id: nonEmptyString(
-              usage?.id,
-              `partDefinitions[${i}].usages[${usageIndex}].id`,
-            ),
-            kind: nonEmptyString(
-              usage?.kind,
-              `partDefinitions[${i}].usages[${usageIndex}].kind`,
-            ),
-            label: nonEmptyString(
-              usage?.label,
-              `partDefinitions[${i}].usages[${usageIndex}].label`,
-            ),
-            targetId: nonEmptyString(
-              usage?.targetId,
-              `partDefinitions[${i}].usages[${usageIndex}].targetId`,
-            ),
-            targetKind: nonEmptyString(
-              usage?.targetKind,
-              `partDefinitions[${i}].usages[${usageIndex}].targetKind`,
-            ),
-            targetLabel: nonEmptyString(
-              usage?.targetLabel,
-              `partDefinitions[${i}].usages[${usageIndex}].targetLabel`,
-            ),
-          };
-        })
-        : (() => {
-          throw new Error(
-            `Architecture capture declaration[${i}] has no usages array.`,
-          );
-        })(),
-    };
-  });
-
-  // Duplicate IDs are a tamper/corruption indicator.
-  const ids = new Set(partDefinitions.map((d) => d.id));
-  const labels = new Set(partDefinitions.map((d) => d.label));
-  const usageIds = partDefinitions.flatMap((def) =>
-    def.usages.map((usage) => usage.id)
-  );
-  if (
-    ids.size !== partDefinitions.length || labels.size !== partDefinitions.length ||
-    new Set(usageIds).size !== usageIds.length ||
-    partDefinitions.some((def) => {
-      const occurrences = new Set<string>();
-      return def.usages.some((usage) => {
-        const occurrence = `${usage.label}\u0000${usage.targetId}`;
-        if (occurrences.has(occurrence)) return true;
-        occurrences.add(occurrence);
-        return !ids.has(usage.targetId);
-      });
-    })
-  ) {
-    throw new Error(
-      "Architecture capture has duplicate or ambiguous declaration identities.",
-    );
-  }
-
   return exact;
-}
-
-function objectRecord(value: unknown, name: string): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`Architecture capture ${name} is not an object.`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function assertOnlyKeys(
-  value: Record<string, unknown>,
-  allowed: readonly string[],
-): void {
-  if (Object.keys(value).some((key) => !allowed.includes(key))) {
-    throw new Error("Architecture capture contains unsupported fields.");
-  }
-}
-
-function fingerprintRecord(value: unknown, name: string): ContentFingerprint {
-  const record = objectRecord(value, name);
-  assertOnlyKeys(record, ["algorithm", "digest"]);
-  if (
-    record.algorithm !== "sha256" || typeof record.digest !== "string" ||
-    !/^[a-f0-9]{64}$/.test(record.digest)
-  ) {
-    throw new Error(`Architecture capture ${name} is not a SHA-256 fingerprint.`);
-  }
-  return { algorithm: "sha256", digest: record.digest };
-}
-
-function canonicalInstant(value: unknown, name: string): string {
-  if (
-    typeof value !== "string" || Number.isNaN(Date.parse(value)) ||
-    new Date(value).toISOString() !== value
-  ) {
-    throw new Error(`Architecture capture ${name} is not a canonical ISO instant.`);
-  }
-  return value;
-}
-
-function nonEmptyString(value: unknown, field: string): string {
-  if (typeof value !== "string" || !value.trim()) {
-    throw new Error(
-      `Architecture capture field "${field}" must be a non-empty string.`,
-    );
-  }
-  return value;
 }

@@ -29,13 +29,28 @@ function sourceReference() {
   };
 }
 
+function roots() {
+  return {
+    scopeRoot: {
+      id: "package-drone-v4",
+      kind: "Package" as const,
+      label: PACKAGE_NAME,
+    },
+    semanticRoot: {
+      id: "part-def-drone-system",
+      kind: "PartDefinition" as const,
+      label: "DroneSystem",
+    },
+  };
+}
+
 function baseCapture() {
   return {
     operation: { id: "model.write-architecture", version: "1" },
     trustedRunId: RUN_ID,
     packageName: PACKAGE_NAME,
     systemName: "DroneSystem",
-    package: { id: "package-drone-v4", label: PACKAGE_NAME },
+    ...roots(),
     seed: {
       artifactId: "artifact:seed",
       fingerprint: fingerprint("d"),
@@ -74,8 +89,8 @@ function currentCapture(): Record<string, unknown> {
 function liveFromBase() {
   const capture = baseCapture();
   return {
-    packageId: capture.package.id,
-    packageLabel: capture.package.label,
+    packageId: capture.scopeRoot.id,
+    packageLabel: capture.scopeRoot.label ?? PACKAGE_NAME,
     partDefs: capture.partDefinitions.map((part) => ({
       ...part,
       attributes: [],
@@ -83,16 +98,87 @@ function liveFromBase() {
   };
 }
 
-Deno.test("architecture capture parser accepts only exact architecture-capture/3.0", () => {
+Deno.test("architecture capture parser accepts only exact architecture-capture/4.0", () => {
   const current = parseExactArchitectureCapture(currentCapture());
   assertEquals(current.schemaVersion, ARCHITECTURE_CAPTURE_SCHEMA);
+  assertEquals(current.scopeRoot, roots().scopeRoot);
+  assertEquals(current.semanticRoot, roots().semanticRoot);
   assertEquals(current.sourceAnalyses, [sourceReference()]);
+  assertThrows(() =>
+    parseExactArchitectureCapture({
+      schemaVersion: "architecture-capture/3.0",
+      ...baseCapture(),
+      package: { id: "package-drone-v4", label: PACKAGE_NAME },
+      sourceAnalyses: [sourceReference()],
+    })
+  );
   assertThrows(() =>
     parseExactArchitectureCapture({
       schemaVersion: "architecture-capture/2.0",
       ...baseCapture(),
+      sourceAnalyses: [sourceReference()],
     })
   );
+});
+
+Deno.test("architecture capture parser rejects a legacy package field and empty root ids", () => {
+  const withPackage = currentCapture();
+  withPackage.package = { id: "package-drone-v4", label: PACKAGE_NAME };
+  assertThrows(() => parseExactArchitectureCapture(withPackage));
+
+  const emptyScope = currentCapture();
+  emptyScope.scopeRoot = { id: "", kind: "Package", label: PACKAGE_NAME };
+  assertThrows(() => parseExactArchitectureCapture(emptyScope));
+
+  const emptySemantic = currentCapture();
+  emptySemantic.semanticRoot = {
+    id: "",
+    kind: "PartDefinition",
+    label: "DroneSystem",
+  };
+  assertThrows(() => parseExactArchitectureCapture(emptySemantic));
+
+  const wrongScopeKind = currentCapture();
+  wrongScopeKind.scopeRoot = {
+    id: "package-drone-v4",
+    kind: "PartDefinition",
+    label: PACKAGE_NAME,
+  };
+  assertThrows(() => parseExactArchitectureCapture(wrongScopeKind));
+
+  const wrongSemanticKind = currentCapture();
+  wrongSemanticKind.semanticRoot = {
+    id: "part-def-drone-system",
+    kind: "Package",
+    label: "DroneSystem",
+  };
+  assertThrows(() => parseExactArchitectureCapture(wrongSemanticKind));
+});
+
+Deno.test("architecture capture parser requires semanticRoot exactly once among PartDefinitions", () => {
+  const missing = currentCapture();
+  missing.semanticRoot = {
+    id: "part-def-absent",
+    kind: "PartDefinition",
+    label: "DroneSystem",
+  };
+  assertThrows(() => parseExactArchitectureCapture(missing));
+
+  const asUsage = currentCapture();
+  asUsage.semanticRoot = {
+    id: "part-usage-wing",
+    kind: "PartDefinition",
+    label: "wing",
+  };
+  assertThrows(() => parseExactArchitectureCapture(asUsage));
+});
+
+Deno.test("architecture capture parser does not choose a root by systemName or topology", () => {
+  const renamedDisplay = currentCapture();
+  renamedDisplay.systemName = "DisplayOnlySystem";
+  const parsed = parseExactArchitectureCapture(renamedDisplay);
+  assertEquals(parsed.semanticRoot.id, "part-def-drone-system");
+  assertEquals(parsed.packageName, PACKAGE_NAME);
 });
 
 Deno.test("current architecture capture requires non-empty exact source analyses", () => {
@@ -153,7 +239,7 @@ Deno.test("current architecture capture rejects repeated references and selector
 });
 
 Deno.test(
-  "parseExactArchitectureCapture remains the only reader of architecture-capture/3.0 keys",
+  "parseExactArchitectureCapture remains the only reader of architecture-capture/4.0 keys",
   async () => {
     const parser = await Deno.readTextFile(
       new URL("./architecture-capture.ts", import.meta.url),
@@ -174,13 +260,20 @@ Deno.test(
       parser.includes("export function parseExactArchitectureCapture"),
       true,
     );
-    assertEquals(parser.includes("parseArchitectureCapturePartDefinitions("), true);
+    assertEquals(
+      parser.includes("parseArchitectureCapturePartDefinitions("),
+      true,
+    );
+    assertEquals(parser.includes("architecture-capture/4.0"), true);
+    assertEquals(parser.includes("architecture-capture/3.0"), false);
+    assertEquals(parser.includes("ARCHITECTURE_CAPTURE_SCHEMA_LEGACY"), false);
     assertEquals(sibling.includes("parseExactArchitectureCapture("), false);
-    assertEquals(sibling.includes("parseArchitectureCapturePartDefinitions("), true);
+    assertEquals(
+      sibling.includes("parseArchitectureCapturePartDefinitions("),
+      true,
+    );
     assertEquals(executor.includes("parseExactArchitectureCapture("), true);
     assertEquals(executor.includes("exactKeys("), false);
-    assertEquals(parser.includes("architecture-capture/2.0"), false);
-    assertEquals(parser.includes("ARCHITECTURE_CAPTURE_SCHEMA_LEGACY"), false);
   },
 );
 
@@ -188,7 +281,10 @@ Deno.test(
   "extractPartDefinitionsFromCapture returns the sealed PartDefinition graph without re-reading schema keys",
   () => {
     const parsed = parseExactArchitectureCapture(currentCapture());
-    assertEquals(extractPartDefinitionsFromCapture(parsed), parsed.partDefinitions);
+    assertEquals(
+      extractPartDefinitionsFromCapture(parsed),
+      parsed.partDefinitions,
+    );
   },
 );
 
@@ -220,7 +316,8 @@ Deno.test(
         schemaVersion: ARCHITECTURE_CAPTURE_SCHEMA,
         packageName: PACKAGE_NAME,
         systemName: "DroneSystem",
-        package: { id: "package-drone-v4", label: PACKAGE_NAME },
+        scopeRoot: roots().scopeRoot,
+        semanticRoot: roots().semanticRoot,
       },
       seed: {
         artifactId: "artifact:seed",
@@ -235,13 +332,14 @@ Deno.test(
   },
 );
 
-Deno.test("buildExactArchitectureCapture requires source analyses and always writes 3.0", () => {
+Deno.test("buildExactArchitectureCapture requires source analyses and always writes 4.0", () => {
   assertThrows(() =>
     buildExactArchitectureCapture({
       trustedRunId: RUN_ID,
       packageName: PACKAGE_NAME,
       systemName: "DroneSystem",
-      architecturePackage: baseCapture().package,
+      scopeRoot: roots().scopeRoot,
+      semanticRoot: roots().semanticRoot,
       seed: baseCapture().seed,
       live: liveFromBase(),
       insertedAt: AT,
@@ -267,17 +365,23 @@ Deno.test("buildExactArchitectureCapture requires source analyses and always wri
     trustedRunId: RUN_ID,
     packageName: PACKAGE_NAME,
     systemName: "DroneSystem",
-    architecturePackage: baseCapture().package,
+    scopeRoot: roots().scopeRoot,
+    semanticRoot: roots().semanticRoot,
     seed: baseCapture().seed,
     live: liveFromBase(),
     insertedAt: AT,
     sourceAnalyses: [first, second],
   });
   assertEquals(built.schemaVersion, ARCHITECTURE_CAPTURE_SCHEMA);
+  assertEquals(built.scopeRoot.kind, "Package");
+  assertEquals(built.semanticRoot.kind, "PartDefinition");
   assertEquals(built.sourceAnalyses, [first, second]);
   assertEquals(parseExactArchitectureCapture(built), built);
   const graph = architectureGraphFromCapture(built);
   assertEquals(graph.packageId, "package-drone-v4");
-  assertEquals(graph.partDefs.map((part) => part.label), ["DroneSystem", "Wing"]);
+  assertEquals(graph.partDefs.map((part) => part.label), [
+    "DroneSystem",
+    "Wing",
+  ]);
   assertEquals(graph.partDefs[0]?.usages.map((usage) => usage.label), ["wing"]);
 });

@@ -20,13 +20,13 @@ RequirementUsages and ConstraintUsages—must therefore cite exact semantic iden
 and the exact project and thread basis; labels are display data and never join keys.
 
 That basis is deliberately not advertised as a full SysON model AST. Compilation V1
-reopens the parser-backed `architecture-capture/3.0` Package, PartDefinitions and
-PartUsages. It also admits exact RequirementUsage and ConstraintUsage identities from an
-active `requirements-capture/3.0` only after the capture bytes, provider identities,
-architecture basis and Thread artifact lineage have all been reread. Each anchor element
-carries the exact capture artifact fingerprint that attests it. An active older
-requirements capture is unsupported and fail-closed; a container, label or capture id is
-never expanded into fictional per-requirement anchors.
+reopens the parser-backed `architecture-capture/4.0` Package (`scopeRoot.id`),
+PartDefinitions and PartUsages. It also admits exact RequirementUsage and
+ConstraintUsage identities from an active `requirements-capture/3.0` only after the
+capture bytes, provider identities, architecture basis and Thread artifact lineage have
+all been reread. Each anchor element carries the exact capture artifact fingerprint that
+attests it. An active older requirements capture is unsupported and fail-closed; a
+container, label or capture id is never expanded into fictional per-requirement anchors.
 
 The compiler consumes only closed, fingerprinted inputs: the reread SysML basis, exact
 native source bytes with their analysis, explicit source-symbol-to-SysML bindings and a

@@ -368,16 +368,12 @@ export function resolveSealedAssemblyGeometry(
   );
   if (records.some((record) => !record)) return undefined;
   const exactRecords = records as GeometryBinaryRecord[];
-  const hasV2Records = exactRecords.some((record) =>
-    record.generation === "v2"
-  );
+  const hasV2Records = exactRecords.some((record) => record.generation === "v2");
   if (
     hasV2Records && exactRecords.some((record) => record.generation !== "v2")
   ) return undefined;
 
-  const assemblyRecords = exactRecords.filter((record) =>
-    record.scope === "assembly"
-  )
+  const assemblyRecords = exactRecords.filter((record) => record.scope === "assembly")
     .toSorted((left, right) =>
       left.generation === "v2" && right.generation === "v2"
         ? left.formatIndex - right.formatIndex
@@ -893,14 +889,15 @@ export function buildSysmlSubtree(
       .map((c) => toSubtreeNode(c, selected.id))
     : [];
 
-  // The SysON element id for the selected component (from its syson binding).
-  const sysonElementId = sysonBindingId(selected);
+  const definitionId = uniqueSysonBindingId(selected, "part-definition");
 
-  // Only the dedicated structured source identity anchors a requirement.
-  // Display provenance remains for people; it never participates in joins.
-  const anchoredRequirements: SysmlAnchoredRequirement[] = sysonElementId
+  // RequirementUsage is sourceElementId. The target PartDefinition is exact
+  // targetElementId when present; a constrained_by graph edge is fallback only
+  // when targetElementId is absent. Never the first SysON binding, never
+  // rationale text.
+  const anchoredRequirements: SysmlAnchoredRequirement[] = definitionId
     ? snapshot.requirements
-      .filter((req) => req.sourceElementId === sysonElementId)
+      .filter((req) => requirementTargetsDefinition(snapshot, req, definitionId))
       .map(toAnchoredRequirement)
     : [];
 
@@ -927,14 +924,38 @@ function toSubtreeNode(
   return {
     id: component.id,
     label: component.label,
-    elementId: sysonBindingId(component),
+    elementId: uniqueSysonBindingId(component, "part-definition") ??
+      uniqueSysonBindingId(component, "part-usage"),
     kind: component.kind,
     isCurrent: component.id === selectedId,
   };
 }
 
-function sysonBindingId(component: ThreadComponent): string | undefined {
-  return component.bindings.find((b) => b.provider === "syson")?.id;
+function uniqueSysonBindingId(
+  component: ThreadComponent,
+  kind: "part-definition" | "part-usage",
+): string | undefined {
+  const matches = component.bindings.filter((binding) =>
+    binding.provider === "syson" && binding.kind === kind
+  );
+  return matches.length === 1 ? matches[0]?.id : undefined;
+}
+
+function requirementTargetsDefinition(
+  snapshot: ThreadWorkbenchSnapshot,
+  requirement: ThreadRequirement,
+  definitionId: string,
+): boolean {
+  if (requirement.targetElementId) {
+    return requirement.targetElementId === definitionId;
+  }
+  return snapshot.graph.edges.some((edge) =>
+    edge.relation === "constrained_by" &&
+    edge.from.kind === "part-definition" &&
+    edge.from.id === definitionId &&
+    edge.to.kind === "requirement" &&
+    edge.to.id === requirement.id
+  );
 }
 
 function toAnchoredRequirement(
@@ -1033,13 +1054,10 @@ export function buildComponentTree(
     kind: component.kind,
     quantity: component.quantity,
     verified: component.bindings.some(
-      (binding) =>
-        binding.provider === "syson" && binding.status === "verified",
+      (binding) => binding.provider === "syson" && binding.status === "verified",
     ),
-    children: seen.has(component.id)
-      ? []
-      : (childrenByParent.get(component.id) ??
-        []).map((child) => project(child, new Set([...seen, component.id]))),
+    children: seen.has(component.id) ? [] : (childrenByParent.get(component.id) ??
+      []).map((child) => project(child, new Set([...seen, component.id]))),
   });
   return roots.map((root) => project(root, new Set()));
 }

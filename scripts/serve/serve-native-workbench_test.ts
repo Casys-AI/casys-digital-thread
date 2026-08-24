@@ -36,6 +36,7 @@ import {
   resolveNativeWorkbenchSubjectId,
   resolveWorkbenchUiAssetPath,
 } from "./serve-native-workbench.ts";
+import { verifiedArchitectureNavigationFixture } from "../../src/adapters/architecture/renderer/capture-product-structure-traversal_test.ts";
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
@@ -374,6 +375,254 @@ Deno.test("native Workbench applies the engineering-case read model after pure p
   });
 });
 
+Deno.test("native Workbench applies source-file and requirements-target enrichers after pure projection", async () => {
+  const r2 = genericArchitectureThreadSnapshot(2);
+  const r3 = genericArchitectureThreadSnapshot(3, r2);
+  const project = genericArchitectureProject("completed", r2, r3);
+  let workspaceLoads = 0;
+  let requirementReads = 0;
+  const handler = createNativeWorkbenchHandler({
+    store: new ThreadStore([r2, r3]),
+    projectStore: new ProjectStore([project]),
+    projectId: project.project.id,
+    subjectId: project.project.subjectId,
+    html: "unused",
+    technicalCompilationAdmissions: {
+      read: () => Promise.resolve(undefined),
+    },
+    projectSourceWorkspace: {
+      load: () => {
+        workspaceLoads += 1;
+        return Promise.reject(new Error("no workspace for this snapshot"));
+      },
+      loadAtFresh: () => {
+        workspaceLoads += 1;
+        return Promise.reject(new Error("no workspace for this snapshot"));
+      },
+    },
+    requirementsCaptures: {
+      read: () => {
+        requirementReads += 1;
+        return Promise.resolve(undefined);
+      },
+    },
+  });
+
+  const response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
+  const body = await response.json();
+
+  assertEquals(response.status, 200);
+  assertEquals(body.surface, "evidence");
+  assertEquals(body.thread.sourceFiles, {
+    schemaVersion: "thread-source-files/1.0",
+    status: "unavailable",
+    files: [],
+  });
+  assertEquals(
+    body.thread.requirements.every((item: { targetElementId?: string }) =>
+      item.targetElementId === undefined
+    ),
+    true,
+  );
+  assertEquals(workspaceLoads, 0);
+  assertEquals(requirementReads, 0);
+});
+
+Deno.test("native Workbench publishes the product-navigation slice from the architecture capture port", async () => {
+  const r2 = genericArchitectureThreadSnapshot(2);
+  const r3 = genericArchitectureThreadSnapshot(3, r2);
+  const project = genericArchitectureProject("completed", r2, r3);
+  const handler = createNativeWorkbenchHandler({
+    store: new ThreadStore([r2, r3]),
+    projectStore: new ProjectStore([project]),
+    projectId: project.project.id,
+    subjectId: project.project.subjectId,
+    html: "unused",
+    productStructureCaptures: {
+      read: () => Promise.resolve(undefined),
+    },
+  });
+  const response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
+  const body = await response.json();
+  assertEquals(response.status, 200);
+  assertEquals(body.thread.productNavigation, {
+    schemaVersion: "product-navigation-query/1.0",
+    status: "unavailable",
+    roots: [],
+    children: [],
+    attachments: {
+      sources: [],
+      geometry: [],
+      physics: [],
+      requirements: [],
+    },
+  });
+});
+
+Deno.test("native Workbench product-navigation GET publishes exact roots and default projection", async () => {
+  const fixture = await verifiedArchitectureNavigationFixture();
+  const projectId = "project.verified-architecture";
+  const project = {
+    project: {
+      id: projectId,
+      subjectId: fixture.snapshot.subject.id,
+    },
+    threadSnapshots: [{
+      snapshotId: fixture.snapshot.id,
+      revision: fixture.snapshot.revision,
+      subjectId: fixture.snapshot.subject.id,
+    }],
+  } as unknown as EngineeringProjectSnapshot;
+  const handler = createNativeWorkbenchHandler({
+    store: new ThreadStore([fixture.snapshot]),
+    projectStore: new ProjectStore([project]),
+    projectId,
+    subjectId: fixture.snapshot.subject.id,
+    html: "unused",
+    productStructureCaptures: fixture.reader,
+    sysmlSourceAnalysis: fixture.sourceAnalysis,
+  });
+  const roots = await (await handler(
+    new Request("http://localhost/api/thread/product-navigation?view=roots"),
+  )).json();
+  assertEquals(roots.status, "observed");
+  assertEquals(roots.roots[0]?.id, "sys-def-001");
+  assertEquals(
+    roots.basis.architectureArtifactId,
+    `architecture-${fixture.fingerprint.digest}`,
+  );
+  assertEquals(
+    roots.basis.architectureFingerprint,
+    `sha256:${fixture.fingerprint.digest}`,
+  );
+  const def = await (await handler(
+    new Request("http://localhost/api/thread/product-navigation"),
+  )).json();
+  assertEquals(def.status, "observed");
+  assertEquals(def.roots[0]?.id, "sys-def-001");
+  assertEquals(def.children.map((node: { id: string }) => node.id), [
+    "alpha-use-001",
+  ]);
+  assertEquals(def.basis.architectureArtifactId, roots.basis.architectureArtifactId);
+});
+
+Deno.test("native Workbench product-navigation GET stays on the declared Thread tip", async () => {
+  const fixture = await verifiedArchitectureNavigationFixture();
+  const projectId = "project.verified-architecture";
+  const descendant: ThreadSnapshot = {
+    ...fixture.snapshot,
+    id: `${fixture.snapshot.subject.id}:r2-undeclared`,
+    revision: fixture.snapshot.revision + 1,
+    previous: {
+      snapshotId: fixture.snapshot.id,
+      revision: fixture.snapshot.revision,
+    },
+  };
+  const project = {
+    project: {
+      id: projectId,
+      subjectId: fixture.snapshot.subject.id,
+    },
+    threadSnapshots: [{
+      snapshotId: fixture.snapshot.id,
+      revision: fixture.snapshot.revision,
+      subjectId: fixture.snapshot.subject.id,
+    }],
+  } as unknown as EngineeringProjectSnapshot;
+  const handler = createNativeWorkbenchHandler({
+    store: new ThreadStore([fixture.snapshot, descendant]),
+    projectStore: new ProjectStore([project]),
+    projectId,
+    subjectId: fixture.snapshot.subject.id,
+    html: "unused",
+    productStructureCaptures: fixture.reader,
+    sysmlSourceAnalysis: fixture.sourceAnalysis,
+  });
+  const roots = await (await handler(
+    new Request("http://localhost/api/thread/product-navigation?view=roots"),
+  )).json();
+  assertEquals(roots.status, "observed");
+  assertEquals(roots.basis.threadSnapshotId, fixture.snapshot.id);
+  assertEquals(roots.basis.threadRevision, fixture.snapshot.revision);
+  const def = await (await handler(
+    new Request("http://localhost/api/thread/product-navigation"),
+  )).json();
+  assertEquals(def.status, "observed");
+  assertEquals(def.basis.threadSnapshotId, fixture.snapshot.id);
+  assertEquals(def.basis.threadRevision, fixture.snapshot.revision);
+});
+
+Deno.test("native Workbench product-navigation GET refuses latest in exact paths", async () => {
+  const fixture = await verifiedArchitectureNavigationFixture();
+  const projectId = "project.verified-architecture";
+  const project = {
+    project: {
+      id: projectId,
+      subjectId: fixture.snapshot.subject.id,
+    },
+    threadSnapshots: [{
+      snapshotId: fixture.snapshot.id,
+      revision: fixture.snapshot.revision,
+      subjectId: fixture.snapshot.subject.id,
+    }],
+  } as unknown as EngineeringProjectSnapshot;
+  const handler = createNativeWorkbenchHandler({
+    store: new ThreadStore([fixture.snapshot]),
+    projectStore: new ProjectStore([project]),
+    projectId,
+    subjectId: fixture.snapshot.subject.id,
+    html: "unused",
+    productStructureCaptures: fixture.reader,
+    sysmlSourceAnalysis: fixture.sourceAnalysis,
+  });
+  for (
+    const url of [
+      "http://localhost/api/thread/product-navigation?view=path&usagePath=latest",
+      "http://localhost/api/thread/product-navigation?view=path&usagePath=foo,latest",
+      "http://localhost/api/thread/product-navigation?view=children&path=latest",
+    ]
+  ) {
+    const response = await handler(new Request(url));
+    assertEquals(response.status, 400, url);
+    assertStringIncludes(await response.text(), "latest");
+  }
+});
+
+Deno.test("native Workbench product-navigation GET is read-only and shares the application port", async () => {
+  const r2 = genericArchitectureThreadSnapshot(2);
+  const r3 = genericArchitectureThreadSnapshot(3, r2);
+  const project = genericArchitectureProject("completed", r2, r3);
+  const handler = createNativeWorkbenchHandler({
+    store: new ThreadStore([r2, r3]),
+    projectStore: new ProjectStore([project]),
+    projectId: project.project.id,
+    subjectId: project.project.subjectId,
+    html: "unused",
+    productStructureCaptures: {
+      read: () => Promise.resolve(undefined),
+    },
+  });
+  const post = await handler(
+    new Request("http://localhost/api/thread/product-navigation", {
+      method: "POST",
+    }),
+  );
+  assertEquals(post.status, 405);
+  const response = await handler(
+    new Request(
+      "http://localhost/api/thread/product-navigation?view=search&id=def-system",
+    ),
+  );
+  const body = await response.json();
+  assertEquals(response.status, 200);
+  assertEquals(body.schemaVersion, "product-navigation-query/1.0");
+  assertEquals(body.status, "unavailable");
+});
+
 Deno.test("native Workbench hides durable unattached generic requirements and geometry snapshots", async () => {
   for (
     const operation of [
@@ -703,6 +952,7 @@ Deno.test("native Workbench API routes reject non-GET verbs and keep SSE on GET"
   const routes = [
     "/healthz",
     "/api/thread/workbench",
+    "/api/thread/product-navigation",
     "/api/thread/workbench/events",
     "/api/fleet",
     `/api/thread/assets/${digest}.glb`,

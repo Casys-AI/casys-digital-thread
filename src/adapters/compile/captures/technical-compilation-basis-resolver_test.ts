@@ -37,13 +37,21 @@ Deno.test("technical basis resolver reopens exact project Thread and canonical S
     resolved?.thread.snapshotFingerprint,
     await sha256Fingerprint(fixture.snapshot),
   );
-  assertEquals(resolved?.sysmlAnchor.artifactId, fixture.architectureArtifactId);
+  assertEquals(
+    resolved?.sysmlAnchor.artifactId,
+    fixture.architectureArtifactId,
+  );
   assertEquals(
     resolved?.sysmlAnchor.artifactFingerprint.digest,
     fixture.architectureDigest,
   );
   assertEquals(resolved?.sysmlAnchor.captureId, fixture.architectureDigest);
-  assertEquals(resolved?.sysmlAnchor.editingContextId, "editing-context-basis-test");
+  assertEquals(
+    resolved?.sysmlAnchor.editingContextId,
+    "editing-context-basis-test",
+  );
+  assertEquals(resolved?.sysmlAnchor.rootElementId, "package-basis-test");
+  assertEquals(resolved?.sysmlAnchor.rootElementKind, "Package");
   const architectureProvenance = {
     artifactId: fixture.architectureArtifactId,
     artifactFingerprint: {
@@ -299,7 +307,8 @@ async function exactFixture(options: FixtureOptions = {}) {
   const initialSeed = await materializeSysonModelSeed(seedInput);
   const seed = await materializeSysonModelSeed({
     ...seedInput,
-    captureUri: `casys://syson-model-seed-capture/sha256/${initialSeed.sha256.digest}`,
+    captureUri:
+      `casys://syson-model-seed-capture/sha256/${initialSeed.sha256.digest}`,
   });
   const seedArtifact = seed.snapshot.artifacts.find((artifact) =>
     artifact.kind === "sysml-model"
@@ -311,7 +320,16 @@ async function exactFixture(options: FixtureOptions = {}) {
     trustedRunId: "run:architecture-basis-test",
     packageName: "BasisPackage",
     systemName: "BasisSystem",
-    package: { id: "package-basis-test", label: "BasisPackage" },
+    scopeRoot: {
+      id: "package-basis-test",
+      kind: "Package",
+      label: "BasisPackage",
+    },
+    semanticRoot: {
+      id: "part-definition-system",
+      kind: "PartDefinition",
+      label: "BasisSystem",
+    },
     seed: {
       artifactId: seedArtifact.id,
       fingerprint: seedArtifact.fingerprint,
@@ -330,7 +348,9 @@ async function exactFixture(options: FixtureOptions = {}) {
         targetLabel: "Frame",
       }],
     }, {
-      id: options.duplicateSysmlId ? "part-definition-system" : "part-definition-frame",
+      id: options.duplicateSysmlId
+        ? "part-definition-system"
+        : "part-definition-frame",
       kind: "PartDefinition",
       label: "Frame",
       usages: [],
@@ -367,7 +387,8 @@ async function exactFixture(options: FixtureOptions = {}) {
     kind: "sysml-model" as const,
     version: architectureFingerprint.digest,
     fingerprint: architectureFingerprint,
-    uri: `casys://architecture-capture/sha256/${architectureFingerprint.digest}`,
+    uri:
+      `casys://architecture-capture/sha256/${architectureFingerprint.digest}`,
     mediaType: "application/json",
     producer: {
       serverId: "syson",
@@ -486,9 +507,12 @@ async function exactFixture(options: FixtureOptions = {}) {
         }
         : {}),
     };
-    const requirementsFingerprint = await sha256Fingerprint(requirementsCapture);
+    const requirementsFingerprint = await sha256Fingerprint(
+      requirementsCapture,
+    );
     requirementsDigest = requirementsFingerprint.digest;
-    requirementsArtifactId = `requirements-Frame-${requirementsFingerprint.digest}`;
+    requirementsArtifactId =
+      `requirements-Frame-${requirementsFingerprint.digest}`;
     const requirementsArtifact = {
       id: requirementsArtifactId,
       name: "Requirements: Frame",
@@ -719,7 +743,9 @@ async function exactFixture(options: FixtureOptions = {}) {
   const snapshots = new Map<string, ThreadSnapshot>([
     [documentary.id, documentary],
     [seed.snapshot.id, seed.snapshot],
-    ...successorSnapshots.map((candidate) => [candidate.id, candidate] as const),
+    ...successorSnapshots.map((candidate) =>
+      [candidate.id, candidate] as const
+    ),
   ]);
   const architectureCaptures = new Map([
     [originalArchitectureDigest, deterministicJson(architectureCapture)],
@@ -730,15 +756,19 @@ async function exactFixture(options: FixtureOptions = {}) {
   ]);
   const resolver = new CaptureBackedTechnicalCompilationBasisResolver({
     projects: { get: () => Promise.resolve(project) },
-    snapshots: { get: (snapshotId) => Promise.resolve(snapshots.get(snapshotId)) },
+    snapshots: {
+      get: (snapshotId) => Promise.resolve(snapshots.get(snapshotId)),
+    },
     architectureCaptures: {
-      read: (expected) => Promise.resolve(architectureCaptures.get(expected.digest)),
+      read: (expected) =>
+        Promise.resolve(architectureCaptures.get(expected.digest)),
     },
     seedCaptures: {
       read: (expected) => Promise.resolve(seedCaptures.get(expected.digest)),
     },
     requirementsCaptures: {
-      read: (expected) => Promise.resolve(requirementsCaptures.get(expected.digest)),
+      read: (expected) =>
+        Promise.resolve(requirementsCaptures.get(expected.digest)),
     },
   });
   const request: TechnicalCompilationBasisResolutionRequest = {
@@ -832,9 +862,11 @@ function projectSnapshot(
         rationale: "Confirmed for the technical-basis fixture.",
       },
     },
-    threadSnapshots: declareBasis
-      ? snapshots.map(threadRef)
-      : [{ snapshotId: "foreign-snapshot", revision: 1, subjectId: SUBJECT_ID }],
+    threadSnapshots: declareBasis ? snapshots.map(threadRef) : [{
+      snapshotId: "foreign-snapshot",
+      revision: 1,
+      subjectId: SUBJECT_ID,
+    }],
     phases: [],
     workItems: [],
     agentRuns: [],
@@ -903,13 +935,19 @@ function seedLineage(base: ThreadSnapshot) {
     },
     plan: {
       publishedAt: "2026-08-12T08:55:00.000Z",
-      publishedBy: { id: "agent:technical-basis-test", origin: "agent" as const },
+      publishedBy: {
+        id: "agent:technical-basis-test",
+        origin: "agent" as const,
+      },
     },
     projectChange: {
       id: "change:append-syson-seed",
       commandId: "append-syson-seed",
       publishedAt: "2026-08-12T08:56:00.000Z",
-      publishedBy: { id: "agent:technical-basis-test", origin: "agent" as const },
+      publishedBy: {
+        id: "agent:technical-basis-test",
+        origin: "agent" as const,
+      },
     },
     workItemId: "seed-syson-model",
     baseSnapshot: {

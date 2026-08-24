@@ -1177,7 +1177,7 @@ Deno.test("buildSysmlSubtree returns the assembly itself as root and selected wh
   assertEquals(subtree.siblings.length, 0);
 });
 
-Deno.test("buildSysmlSubtree anchors requirements by exact SysON element identity", () => {
+Deno.test("buildSysmlSubtree anchors requirements by exact target PartDefinition, not RequirementUsage", () => {
   const snapshot = minimalSnapshot();
   const dripTray: ThreadComponent = {
     id: "generic-v3:drip-tray",
@@ -1192,6 +1192,13 @@ Deno.test("buildSysmlSubtree anchors requirements by exact SysON element identit
       label: "DripTray",
       evidenceArtifactId: "arch",
       status: "verified",
+    }, {
+      provider: "syson",
+      kind: "part-usage",
+      id: "sysml-drip-tray-usage",
+      label: "dripTray",
+      evidenceArtifactId: "arch",
+      status: "verified",
     }],
   };
   snapshot.components.components = [dripTray];
@@ -1199,8 +1206,9 @@ Deno.test("buildSysmlSubtree anchors requirements by exact SysON element identit
     {
       id: "req-displacement",
       label: "DripTray displacement",
-      source: "syson · sysml-drip-tray-def",
-      sourceElementId: "sysml-drip-tray-def",
+      source: "syson · requirement-usage:displacement",
+      sourceElementId: "requirement-usage:displacement",
+      targetElementId: "sysml-drip-tray-def",
       expression: "displacement ≤ 1 mm",
       status: "pass",
       observationIds: [],
@@ -1210,8 +1218,9 @@ Deno.test("buildSysmlSubtree anchors requirements by exact SysON element identit
     {
       id: "req-stress",
       label: "DripTray stress",
-      source: "syson · sysml-drip-tray-def",
-      sourceElementId: "sysml-drip-tray-def",
+      source: "syson · requirement-usage:stress",
+      sourceElementId: "requirement-usage:stress",
+      targetElementId: "sysml-drip-tray-def",
       expression: "von_mises ≤ 150 MPa",
       status: "unresolved",
       observationIds: [],
@@ -1221,8 +1230,9 @@ Deno.test("buildSysmlSubtree anchors requirements by exact SysON element identit
     {
       id: "req-boiler",
       label: "Boiler pressure",
-      source: "syson · sysml-boiler-def",
-      sourceElementId: "sysml-boiler-def",
+      source: "syson · requirement-usage:boiler",
+      sourceElementId: "requirement-usage:boiler",
+      targetElementId: "sysml-boiler-def",
       expression: "pressure ≤ 15 bar",
       status: "pass",
       observationIds: [],
@@ -1230,14 +1240,93 @@ Deno.test("buildSysmlSubtree anchors requirements by exact SysON element identit
       rationale:
         "Fixture requirement for Boiler, must not appear for DripTray.",
     },
+    {
+      id: "req-first-binding-decoy",
+      label: "Must not join via first SysON binding",
+      source: "syson · sysml-drip-tray-usage",
+      sourceElementId: "sysml-drip-tray-usage",
+      expression: "value <= 1",
+      status: "pass",
+      observationIds: [],
+      violationIds: [],
+      rationale: "sourceElementId is a PartUsage, not a target.",
+    },
   ];
 
   const subtree = buildSysmlSubtree(snapshot, dripTray);
 
-  assertEquals(subtree.anchoredRequirements.length, 2);
-  assertEquals(subtree.anchoredRequirements[0]?.id, "req-displacement");
-  assertEquals(subtree.anchoredRequirements[1]?.id, "req-stress");
+  assertEquals(
+    subtree.anchoredRequirements.map((requirement) => requirement.id),
+    ["req-displacement", "req-stress"],
+  );
 });
+
+Deno.test(
+  "buildSysmlSubtree never lets a contradictory constrained_by edge override targetElementId",
+  () => {
+    const snapshot = minimalSnapshot();
+    const dripTray: ThreadComponent = {
+      id: "generic-v3:drip-tray",
+      label: "DripTray",
+      kind: "part",
+      quantity: 1,
+      bindings: [{
+        provider: "syson",
+        kind: "part-definition",
+        id: "sysml-drip-tray-def",
+        label: "DripTray",
+        evidenceArtifactId: "arch",
+        status: "verified",
+      }],
+    };
+    const boiler: ThreadComponent = {
+      id: "generic-v3:boiler",
+      label: "Boiler",
+      kind: "part",
+      quantity: 1,
+      bindings: [{
+        provider: "syson",
+        kind: "part-definition",
+        id: "sysml-boiler-def",
+        label: "Boiler",
+        evidenceArtifactId: "arch",
+        status: "verified",
+      }],
+    };
+    snapshot.components.components = [dripTray, boiler];
+    snapshot.requirements = [{
+      id: "req-displacement",
+      label: "DripTray displacement",
+      source: "syson · requirement-usage:displacement",
+      sourceElementId: "requirement-usage:displacement",
+      targetElementId: "sysml-drip-tray-def",
+      expression: "displacement ≤ 1 mm",
+      status: "pass",
+      observationIds: [],
+      violationIds: [],
+      rationale: "Exact target is DripTray.",
+    }];
+    snapshot.graph.edges.push({
+      id: "edge-contradictory",
+      from: { kind: "part-definition", id: "sysml-boiler-def" },
+      to: { kind: "requirement", id: "req-displacement" },
+      relation: "constrained_by",
+      rationale: "Contradictory edge must not override targetElementId.",
+      origin: "structure",
+    });
+
+    assertEquals(
+      buildSysmlSubtree(snapshot, dripTray).anchoredRequirements.map((item) =>
+        item.id
+      ),
+      ["req-displacement"],
+    );
+    assertEquals(
+      buildSysmlSubtree(snapshot, boiler).anchoredRequirements,
+      [],
+    );
+  },
+);
 
 Deno.test("buildSysmlSubtree never treats a prefix SysML identity as an anchor", () => {
   const snapshot = minimalSnapshot();
@@ -1259,8 +1348,9 @@ Deno.test("buildSysmlSubtree never treats a prefix SysML identity as an anchor",
   snapshot.requirements = [{
     id: "req-id-1",
     label: "Exact",
-    source: "syson · id-1",
-    sourceElementId: "id-1",
+    source: "syson · requirement-usage:1",
+    sourceElementId: "requirement-usage:1",
+    targetElementId: "id-1",
     expression: "value <= 1",
     status: "pass",
     observationIds: [],
@@ -1269,8 +1359,9 @@ Deno.test("buildSysmlSubtree never treats a prefix SysML identity as an anchor",
   }, {
     id: "req-id-10",
     label: "Prefix only",
-    source: "syson · id-10",
-    sourceElementId: "id-10",
+    source: "syson · requirement-usage:10",
+    sourceElementId: "requirement-usage:10",
+    targetElementId: "id-10",
     expression: "value <= 1",
     status: "pass",
     observationIds: [],

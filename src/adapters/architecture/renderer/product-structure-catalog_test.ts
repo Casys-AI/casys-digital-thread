@@ -53,48 +53,63 @@ function makeCaptureRecord(
   overrides?: Partial<{
     systemName: string;
     trustedRunId: string;
+    semanticRootId: string;
+    semanticRootLabel: string;
     declarations: {
       id: string;
       label: string;
-      usages?: { id: string; label: string; targetId: string; targetLabel: string }[];
+      usages?: {
+        id: string;
+        label: string;
+        targetId: string;
+        targetLabel: string;
+      }[];
     }[];
   }>,
 ): Record<string, unknown> {
   const trustedRunId = overrides?.trustedRunId ?? "run:arch";
+  const defaultDeclarations = [
+    {
+      id: "sys-def-001",
+      label: "SystemUnit",
+      usages: [
+        {
+          id: "alpha-use-001",
+          label: "alpha",
+          targetId: "alpha-def-001",
+          targetLabel: "AlphaModule",
+        },
+        {
+          id: "beta-use-001",
+          label: "beta",
+          targetId: "beta-def-001",
+          targetLabel: "BetaModule",
+        },
+      ],
+    },
+    { id: "alpha-def-001", label: "AlphaModule" },
+    { id: "beta-def-001", label: "BetaModule" },
+  ];
+  const declarations = overrides?.declarations ?? defaultDeclarations;
   return {
-    schemaVersion: "architecture-capture/3.0",
+    schemaVersion: "architecture-capture/4.0",
     operation: { id: "model.write-architecture", version: "1" },
     trustedRunId,
     packageName: "SystemV1",
     systemName: overrides?.systemName ?? "SystemUnit",
-    package: { id: "pkg-001", label: "SystemV1" },
+    scopeRoot: { id: "pkg-001", kind: "Package", label: "SystemV1" },
+    semanticRoot: {
+      id: overrides?.semanticRootId ?? declarations[0]?.id ?? "sys-def-001",
+      kind: "PartDefinition",
+      label: overrides?.semanticRootLabel ?? declarations[0]?.label ??
+        "SystemUnit",
+    },
     seed: {
       artifactId: "seed-artifact",
       fingerprint: fingerprint("1"),
       producerRunId: "run:seed",
     },
-    partDefinitions: (overrides?.declarations ?? [
-      {
-        id: "sys-def-001",
-        label: "SystemUnit",
-        usages: [
-          {
-            id: "alpha-use-001",
-            label: "alpha",
-            targetId: "alpha-def-001",
-            targetLabel: "AlphaModule",
-          },
-          {
-            id: "beta-use-001",
-            label: "beta",
-            targetId: "beta-def-001",
-            targetLabel: "BetaModule",
-          },
-        ],
-      },
-      { id: "alpha-def-001", label: "AlphaModule" },
-      { id: "beta-def-001", label: "BetaModule" },
-    ]).map((declaration) => ({
+    partDefinitions: declarations.map((declaration) => ({
       id: declaration.id,
       kind: "PartDefinition",
       label: declaration.label,
@@ -173,7 +188,11 @@ function snapshotWithArchArtifact(captureFp: ContentFingerprint) {
       version: "1".repeat(64),
       fingerprint: fingerprint("1"),
       uri: "casys://syson-model-seed-capture/sha256/" + "1".repeat(64),
-      producer: { serverId: "syson", tool: "syson_model_create", runId: "run:seed" },
+      producer: {
+        serverId: "syson",
+        tool: "syson_model_create",
+        runId: "run:seed",
+      },
       inputArtifactIds: [],
       freshness: fresh(),
     }, {
@@ -213,7 +232,8 @@ function snapshotWithArchArtifact(captureFp: ContentFingerprint) {
       relation: "changes",
       from: { kind: "change", id: "change-r1" },
       to: { kind: "artifact", id: archId },
-      rationale: "The architecture fixture change records the initial evidence.",
+      rationale:
+        "The architecture fixture change records the initial evidence.",
     }, {
       id: "uses-seed",
       relation: "uses",
@@ -355,7 +375,8 @@ function resolveCatalog(
   geometryCaptures?: Parameters<
     typeof resolveGenericProductStructureCatalog
   >[2],
-  sourceAnalysis: SysmlSourceAnalysisReader | undefined = passingSourceAnalysis(),
+  sourceAnalysis: SysmlSourceAnalysisReader | undefined =
+    passingSourceAnalysis(),
 ) {
   return resolveGenericProductStructureCatalog(
     snapshot,
@@ -378,7 +399,8 @@ function readerFor(
     ]),
   );
   return {
-    read: (fingerprint) => Promise.resolve(textByDigest.get(fingerprint.digest)),
+    read: (fingerprint) =>
+      Promise.resolve(textByDigest.get(fingerprint.digest)),
   };
 }
 
@@ -443,7 +465,8 @@ Deno.test(
         relation: "changes",
         from: { kind: "change", id: "change-other" },
         to: { kind: "artifact", id: "other-model-artifact" },
-        rationale: "The fixture change records a non-generic architecture artifact.",
+        rationale:
+          "The fixture change records a non-generic architecture artifact.",
       }],
       proposedActions: [],
     });
@@ -678,12 +701,11 @@ Deno.test(
 );
 
 Deno.test(
-  "resolveGenericProductStructureCatalog returns unavailable when the capture has no system declaration",
+  "resolveGenericProductStructureCatalog returns unavailable when semanticRoot is absent from PartDefinitions",
   async () => {
-    // systemName = "SystemUnit" but declarations only contain "AlphaModule" and
-    // "BetaModule" — the system label is absent.
     const captureRecord = makeCaptureRecord({
-      systemName: "SystemUnit",
+      semanticRootId: "sys-def-missing",
+      semanticRootLabel: "MissingSystem",
       declarations: [
         { id: "alpha-def-001", label: "AlphaModule" },
         { id: "beta-def-001", label: "BetaModule" },
@@ -901,12 +923,44 @@ Deno.test(
 );
 
 Deno.test(
+  "resolveGenericProductStructureCatalog uses sealed semanticRoot.id, not systemName",
+  async () => {
+    const captureRecord = makeCaptureRecord({
+      systemName: "DisplayOnlyName",
+    });
+    const captureFp = await sha256Fingerprint(captureRecord);
+    const catalog = await resolveCatalog(
+      snapshotWithArchArtifact(captureFp),
+      makeReader(captureFp, captureRecord),
+    );
+    assertEquals(catalog?.components[0]?.bindings[0]?.id, "sys-def-001");
+    assertEquals(catalog?.components[0]?.label, "SystemUnit");
+  },
+);
+
+Deno.test(
+  "resolveGenericProductStructureCatalog rejects architecture-capture/3.0 rather than projecting it",
+  async () => {
+    const captureRecord = makeCaptureRecord();
+    captureRecord.schemaVersion = "architecture-capture/3.0";
+    const captureFp = await sha256Fingerprint(captureRecord);
+    const catalog = await resolveCatalog(
+      snapshotWithArchArtifact(captureFp),
+      makeReader(captureFp, captureRecord),
+    );
+    assertEquals(catalog?.components, []);
+    assertStringIncludes(catalog?.rationale ?? "", "could not be verified");
+  },
+);
+
+Deno.test(
   "resolveGenericProductStructureCatalog keeps a system-only AttributeUsage as architecture, not a component",
   async () => {
     const captureRecord = makeCaptureRecord({
       declarations: [{ id: "sys-def-001", label: "SystemUnit" }],
     });
-    const part = (captureRecord.partDefinitions as Array<Record<string, unknown>>)[0]!;
+    const part =
+      (captureRecord.partDefinitions as Array<Record<string, unknown>>)[0]!;
     part.attributes = [{
       id: "attr-thickness",
       kind: "AttributeUsage",
@@ -1001,7 +1055,11 @@ Deno.test(
     );
     const third = await appendEnrichment(
       second.snapshot,
-      { id: second.artifact.id, fingerprint: second.fingerprint, runId: "run:arch-2" },
+      {
+        id: second.artifact.id,
+        fingerprint: second.fingerprint,
+        runId: "run:arch-2",
+      },
       "run:arch-3",
       "2026-08-08T00:02:00.000Z",
     );
@@ -1036,11 +1094,18 @@ Deno.test(
     );
     const third = await appendEnrichment(
       second.snapshot,
-      { id: second.artifact.id, fingerprint: second.fingerprint, runId: "run:arch-2" },
+      {
+        id: second.artifact.id,
+        fingerprint: second.fingerprint,
+        runId: "run:arch-2",
+      },
       "run:arch-3",
       "2026-08-08T00:02:00.000Z",
     );
-    const tamperedSecond = { ...second.capture, packageName: "TamperedPackage" };
+    const tamperedSecond = {
+      ...second.capture,
+      packageName: "TamperedPackage",
+    };
 
     const catalog = await resolveCatalog(
       third.snapshot,

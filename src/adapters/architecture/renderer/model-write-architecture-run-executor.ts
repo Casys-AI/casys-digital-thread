@@ -196,7 +196,9 @@ export function findArchitectureArtifact(
  * are applied to those tips.  Filtering archived artifacts before calculating
  * the graph would incorrectly revive an archived predecessor.
  */
-function requireArchitectureTip(snapshot: ThreadSnapshot): ThreadArtifact | undefined {
+function requireArchitectureTip(
+  snapshot: ThreadSnapshot,
+): ThreadArtifact | undefined {
   const selected = selectArchitectureTip(snapshot);
   if (selected.kind === "absent") return undefined;
   if (selected.kind === "retired") {
@@ -233,7 +235,9 @@ function selectArchitectureTip(snapshot: ThreadSnapshot):
   );
   if (all.length === 0) return { kind: "absent" };
 
-  const byId = new Map(snapshot.artifacts.map((artifact) => [artifact.id, artifact]));
+  const byId = new Map(
+    snapshot.artifacts.map((artifact) => [artifact.id, artifact]),
+  );
   const architectureIds = new Set(all.map((artifact) => artifact.id));
   for (const artifact of all) {
     const uniqueInputs = new Set(artifact.inputArtifactIds);
@@ -253,7 +257,9 @@ function selectArchitectureTip(snapshot: ThreadSnapshot):
       return { kind: "invalid" };
     }
   }
-  const consumed = new Set(all.flatMap((artifact) => artifact.inputArtifactIds));
+  const consumed = new Set(
+    all.flatMap((artifact) => artifact.inputArtifactIds),
+  );
   const tips = all.filter((artifact) => !consumed.has(artifact.id));
   if (tips.length === 0) return { kind: "ambiguous" };
   const archived = archivedRefKeys(snapshot);
@@ -268,7 +274,8 @@ function selectArchitectureTip(snapshot: ThreadSnapshot):
 
 function isExactSysonSeedArtifact(artifact: ThreadArtifact): boolean {
   return artifact.kind === "sysml-model" &&
-    artifact.uri?.startsWith("casys://syson-model-seed-capture/sha256/") === true &&
+    artifact.uri?.startsWith("casys://syson-model-seed-capture/sha256/") ===
+      true &&
     artifact.producer.serverId === "syson" &&
     artifact.producer.tool === "syson_model_create";
 }
@@ -427,9 +434,15 @@ export class ModelWriteArchitectureRunExecutor {
       // command chain, return without re-claiming (the completeRun receipt is
       // keyed by commandId, not expectedRevision, so the check survives a retry
       // that carries a newer expectedRevision).
-      const alreadyCompleted = await this.#completedFor(command, architectureProposal);
+      const alreadyCompleted = await this.#completedFor(
+        command,
+        architectureProposal,
+      );
       if (alreadyCompleted) {
-        await this.#reconcileLive(alreadyCompleted.project.subjectId, command.runId);
+        await this.#reconcileLive(
+          alreadyCompleted.project.subjectId,
+          command.runId,
+        );
         return alreadyCompleted;
       }
       await assertThreadWriteBasisAvailable(
@@ -570,7 +583,10 @@ export class ModelWriteArchitectureRunExecutor {
             plan.toInsert,
             run.id,
           );
-          this.#assertSourcesMatchCurrentProposal(sealedSources, architectureProposal);
+          this.#assertSourcesMatchCurrentProposal(
+            sealedSources,
+            architectureProposal,
+          );
           const sourceAnalyses = sealedSources.map((source) => source.reference);
           const planDigest = await architectureWritePlanDigest({
             items: plan.toInsert,
@@ -694,7 +710,11 @@ export class ModelWriteArchitectureRunExecutor {
             }
             architecturePackageId = postInsert.packageId;
             adopted = plan.adopted;
-            verifyAllComponentsPresent(postInsert, architectureProposal, adopted);
+            verifyAllComponentsPresent(
+              postInsert,
+              architectureProposal,
+              adopted,
+            );
             await this.#assertNoUnattestedLiveArchitecture(
               postInsert,
               architectureProposal,
@@ -718,7 +738,8 @@ export class ModelWriteArchitectureRunExecutor {
                 command.runId,
               );
               if (
-                durable?.status !== "completed" || durable.planDigest !== planDigest ||
+                durable?.status !== "completed" ||
+                durable.planDigest !== planDigest ||
                 durable.result.architecturePackageId !== architecturePackageId
               ) {
                 throw new ArchitectureWriteOutcomeUnknownError();
@@ -755,12 +776,20 @@ export class ModelWriteArchitectureRunExecutor {
         previousArchitectureArtifact,
       );
 
-      // Step 13: build + save capture.
+      // Step 13: build + save capture. Roots are sealed here; readers consume ids.
       const captureRecord = buildExactArchitectureCapture({
         trustedRunId: run.id,
         packageName: architectureProposal.packageName,
         systemName: architectureProposal.system.name,
-        architecturePackage: { id: architecturePackageId, label: verified.packageLabel },
+        scopeRoot: {
+          id: architecturePackageId,
+          kind: "Package",
+          label: verified.packageLabel,
+        },
+        semanticRoot: resolveSealedSemanticRoot(
+          verified,
+          architectureProposal.system.name,
+        ),
         seed: {
           artifactId: seedArtifact.id,
           fingerprint: seedVerifiedFingerprint,
@@ -877,7 +906,10 @@ export class ModelWriteArchitectureRunExecutor {
       return complete;
     } catch (error) {
       if (snapshotPersisted && materializedSnapshot) {
-        const complete = await this.#completedFor(command, architectureProposal);
+        const complete = await this.#completedFor(
+          command,
+          architectureProposal,
+        );
         if (complete) return complete;
         throw new EngineeringProjectCommandError(
           "invalid_transition",
@@ -1047,7 +1079,12 @@ export class ModelWriteArchitectureRunExecutor {
     runId: string,
   ): Promise<readonly VerifiedSysmlSourceAnalysis[]> {
     const selectors = mode === "initial"
-      ? [architectureWriteSelector({ kind: "full-package" }, proposal.packageName)]
+      ? [
+        architectureWriteSelector(
+          { kind: "full-package" },
+          proposal.packageName,
+        ),
+      ]
       : items.map((item) => {
         if (item.kind === "full-package") {
           throw new EngineeringProjectCommandError(
@@ -1302,7 +1339,8 @@ export class ModelWriteArchitectureRunExecutor {
     }
     const seedCandidates = base.artifacts.filter(
       (artifact) =>
-        artifact.kind === "sysml-model" && artifact.producer.serverId === "syson" &&
+        artifact.kind === "sysml-model" &&
+        artifact.producer.serverId === "syson" &&
         artifact.producer.tool === "syson_model_create" &&
         artifact.inputArtifactIds.length === 0 &&
         artifact.uri?.startsWith("casys://syson-model-seed-capture/sha256/"),
@@ -1530,7 +1568,7 @@ export class ModelWriteArchitectureRunExecutor {
       ) {
         throw new EngineeringProjectCommandError(
           "invalid_input",
-          "The predecessor architecture capture is not exact architecture-capture/3.0 evidence.",
+          "The predecessor architecture capture is not exact architecture-capture/4.0 evidence.",
         );
       }
       predecessorGraph = architectureGraphFromCapture(capture);
@@ -1572,7 +1610,7 @@ export class ModelWriteArchitectureRunExecutor {
     } catch (error) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        `The predecessor architecture capture is not canonical architecture-capture/3.0 evidence: ${
+        `The predecessor architecture capture is not canonical architecture-capture/4.0 evidence: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -1592,7 +1630,7 @@ export class ModelWriteArchitectureRunExecutor {
     ) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        "The predecessor architecture capture is not exact architecture-capture/3.0 evidence.",
+        "The predecessor architecture capture is not exact architecture-capture/4.0 evidence.",
       );
     }
     const captureSeed = capture.seed;
@@ -1614,10 +1652,12 @@ export class ModelWriteArchitectureRunExecutor {
         artifact.id === capturePredecessor.artifactId
       );
       if (
-        !declaredPredecessor || !isGenericArchitectureArtifact(declaredPredecessor) ||
+        !declaredPredecessor ||
+        !isGenericArchitectureArtifact(declaredPredecessor) ||
         declaredPredecessor.id !==
           `architecture-${declaredPredecessor.fingerprint.digest}` ||
-        declaredPredecessor.version !== declaredPredecessor.fingerprint.digest ||
+        declaredPredecessor.version !==
+          declaredPredecessor.fingerprint.digest ||
         declaredPredecessor.uri !==
           `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${declaredPredecessor.fingerprint.digest}` ||
         declaredPredecessor.mediaType !== "application/json" ||
@@ -1674,10 +1714,10 @@ export class ModelWriteArchitectureRunExecutor {
         ...command,
         commandId: commandStep(command.commandId, "fail"),
         expectedRevision: project.revision,
-        summary:
-          failure.code === "model-write-architecture-post-acknowledgement-quarantined"
-            ? "Generic architecture run quarantined after an acknowledged SysON insertion."
-            : "Generic architecture run stopped before evidence was published.",
+        summary: failure.code ===
+            "model-write-architecture-post-acknowledgement-quarantined"
+          ? "Generic architecture run quarantined after an acknowledged SysON insertion."
+          : "Generic architecture run stopped before evidence was published.",
         code: failure.code,
         message: failure.message,
       });
@@ -1692,11 +1732,17 @@ export class ModelWriteArchitectureRunExecutor {
     architectureProposal: ArchitectureProposal,
   ): Promise<EngineeringProjectSnapshot | undefined> {
     const project = await this.#requiredProject(command.projectId);
-    if (requireRun(project, command.runId).status !== "completed") return undefined;
+    if (requireRun(project, command.runId).status !== "completed") {
+      return undefined;
+    }
     // A completed run is terminal: invalid evidence is a hard integrity error,
     // never a reason to fall through to claim/publish logic.
     assertCompleted(project, command);
-    await this.#assertCompletedEvidenceExact(project, command, architectureProposal);
+    await this.#assertCompletedEvidenceExact(
+      project,
+      command,
+      architectureProposal,
+    );
     return project;
   }
 
@@ -1823,7 +1869,7 @@ export class ModelWriteArchitectureRunExecutor {
     } catch (error) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
-        `Completed architecture capture is not canonical architecture-capture/3.0 evidence: ${
+        `Completed architecture capture is not canonical architecture-capture/4.0 evidence: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -1856,7 +1902,8 @@ export class ModelWriteArchitectureRunExecutor {
     );
     if (
       !seedArtifact || !isExactSysonSeedArtifact(seedArtifact) ||
-      seedArtifact.id !== `syson-model-seed-${seedArtifact.fingerprint.digest}` ||
+      seedArtifact.id !==
+        `syson-model-seed-${seedArtifact.fingerprint.digest}` ||
       seedArtifact.version !== seedArtifact.fingerprint.digest ||
       seedArtifact.uri !==
         `casys://syson-model-seed-capture/sha256/${seedArtifact.fingerprint.digest}` ||
@@ -1876,10 +1923,12 @@ export class ModelWriteArchitectureRunExecutor {
         candidate.id === capture.predecessor!.artifactId
       );
       if (
-        !predecessorArtifact || !isGenericArchitectureArtifact(predecessorArtifact) ||
+        !predecessorArtifact ||
+        !isGenericArchitectureArtifact(predecessorArtifact) ||
         predecessorArtifact.id !==
           `architecture-${predecessorArtifact.fingerprint.digest}` ||
-        predecessorArtifact.version !== predecessorArtifact.fingerprint.digest ||
+        predecessorArtifact.version !==
+          predecessorArtifact.fingerprint.digest ||
         predecessorArtifact.uri !==
           `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${predecessorArtifact.fingerprint.digest}` ||
         predecessorArtifact.mediaType !== "application/json" ||
@@ -1908,7 +1957,10 @@ export class ModelWriteArchitectureRunExecutor {
     ) =>
       snapshot.consumptions.filter((consumption) =>
         consumption.artifactId === input.id &&
-        fingerprintsEqual(consumption.observedFingerprint, expectedFingerprint) &&
+        fingerprintsEqual(
+          consumption.observedFingerprint,
+          expectedFingerprint,
+        ) &&
         consumption.status === "verified" &&
         consumption.verifiedAt === capture.insertedAt &&
         consumption.consumer.serverId === artifact.producer.serverId &&
@@ -1917,7 +1969,8 @@ export class ModelWriteArchitectureRunExecutor {
       ).length === 1;
     if (
       artifact.inputArtifactIds.length !== expectedInputs.length ||
-      new Set(artifact.inputArtifactIds).size !== artifact.inputArtifactIds.length ||
+      new Set(artifact.inputArtifactIds).size !==
+        artifact.inputArtifactIds.length ||
       expectedInputs.some((id) => !artifact.inputArtifactIds.includes(id)) ||
       !exactConsumption(seedArtifact, capture.seed.fingerprint) ||
       (capture.predecessor && predecessorArtifact &&
@@ -2008,7 +2061,10 @@ export class ModelWriteArchitectureRunExecutor {
       ReturnType<FileArchitectureAttemptStore["readRun"]>
     >;
     try {
-      completedAttempt = await this.#attempts.readRun(project.project.id, run.id);
+      completedAttempt = await this.#attempts.readRun(
+        project.project.id,
+        run.id,
+      );
     } catch (error) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
@@ -2020,7 +2076,7 @@ export class ModelWriteArchitectureRunExecutor {
     if (
       completedAttempt?.status !== "completed" ||
       completedAttempt.dispatchedAt !== capture.insertedAt ||
-      completedAttempt.result.architecturePackageId !== capture.package.id
+      completedAttempt.result.architecturePackageId !== capture.scopeRoot.id
     ) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
@@ -2177,7 +2233,9 @@ async function requireMrtrApproval(
     const decision = project.decisions.find(
       (d) => d.id === decisionId && d.status === "approved",
     );
-    if (!decision?.proposal || decision.proposal.parameters.length === 0) continue;
+    if (!decision?.proposal || decision.proposal.parameters.length === 0) {
+      continue;
+    }
 
     const exactHumanApprovals = project.approvals.filter(
       (a: EngineeringApproval) =>
@@ -2267,7 +2325,8 @@ function sameSnapshotBasis(
   basis: EngineeringThreadSnapshotBasis,
 ): boolean {
   if (!value || !("snapshotId" in value)) return false;
-  return value?.snapshotId === basis.snapshotId && value.revision === basis.revision &&
+  return value?.snapshotId === basis.snapshotId &&
+    value.revision === basis.revision &&
     value.subjectId === basis.subjectId;
 }
 
@@ -2400,7 +2459,10 @@ function requireAcceptedArchitectureRatchet(
   result: ArchitectureGraphRatchetResult,
 ): void {
   if (result.status === "rejected") {
-    throw new EngineeringProjectCommandError("invalid_transition", result.message);
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      result.message,
+    );
   }
 }
 
@@ -2412,6 +2474,35 @@ function verifyAllComponentsPresent(
   requireAcceptedArchitectureRatchet(
     verifyProposedArchitecturePresence({ live: verified, proposal, adopted }),
   );
+}
+
+/**
+ * Producer-only identity seal. Readers consume the sealed id and never repeat
+ * this name lookup. SysON already returns PartDefinition ids; the proposed
+ * system name selects among them exactly once after post-write verification.
+ */
+function resolveSealedSemanticRoot(
+  verified: ExistingArchitectureStructure,
+  proposedSystemName: string,
+): {
+  readonly id: string;
+  readonly kind: "PartDefinition";
+  readonly label: string;
+} {
+  const matches = verified.partDefs.filter((part) =>
+    part.label === proposedSystemName && part.id
+  );
+  if (matches.length !== 1) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "Verification failed: the proposed system PartDefinition is not unique after readback.",
+    );
+  }
+  return {
+    id: matches[0]!.id,
+    kind: "PartDefinition",
+    label: matches[0]!.label,
+  };
 }
 
 // ── Private: lifecycle helpers ────────────────────────────────────────────────
@@ -2489,7 +2580,8 @@ async function assertNoBlockedArchitectureSibling(
 }
 
 function isTerminalArchitectureFailure(run: EngineeringAgentRun): boolean {
-  return run.failure?.code === "model-write-architecture-provider-outcome-unknown" ||
+  return run.failure?.code ===
+      "model-write-architecture-provider-outcome-unknown" ||
     run.failure?.code ===
       "model-write-architecture-post-acknowledgement-quarantined" ||
     run.failure?.code ===

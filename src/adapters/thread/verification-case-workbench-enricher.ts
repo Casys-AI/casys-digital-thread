@@ -13,6 +13,7 @@ import type {
   ThreadWorkbenchSnapshot,
 } from "../../presentation/workbench/thread/snapshot.ts";
 import type {
+  ThreadGraph,
   ThreadGraphNode,
   ThreadGraphRelation,
 } from "../../presentation/workbench/thread/graph.ts";
@@ -110,6 +111,7 @@ type ExtractedCase =
     | {
       readonly family: "mechanical-proof";
       readonly caseSchemaVersion: "mechanical-proof-case/1.0";
+      readonly targetModelElementId: string;
     }
     | {
       readonly family: "sensitivity-study";
@@ -300,6 +302,10 @@ export async function enrichThreadWorkbenchWithEngineeringCases(
         }
         : withoutStaleMembership;
     }),
+    edges: [
+      ...snapshot.graph.edges,
+      ...projectVerifiedByEdges(snapshot, cases),
+    ].sort((left, right) => left.id.localeCompare(right.id)),
   };
   const coverage = drivers
     .filter((driver) => driver.advertiseCoverage !== false)
@@ -343,6 +349,7 @@ function caseDrivers(
           subjectId: capture.proofCase.project.subjectId,
           expectedAuthorityArtifactId: `fea-proof-${fingerprint.digest}`,
           expectedAuthorityRunId: capture.trustedRunId,
+          targetModelElementId: capture.proofCase.target.modelElementId,
           inputArtifacts: [
             capture.geometryArtifact,
             capture.requirementsArtifact,
@@ -594,12 +601,21 @@ function sameDeclaration(
   existing: EngineeringCase,
   extracted: ExtractedCase,
 ): boolean {
-  return existing.family === extracted.family &&
-    existing.caseSchemaVersion === extracted.caseSchemaVersion &&
-    existing.id === extracted.id &&
-    existing.revision === extracted.revision &&
-    existing.scope === extracted.scope &&
-    existing.caseDigest === extracted.caseDigest;
+  if (
+    existing.family !== extracted.family ||
+    existing.caseSchemaVersion !== extracted.caseSchemaVersion ||
+    existing.id !== extracted.id ||
+    existing.revision !== extracted.revision ||
+    existing.scope !== extracted.scope ||
+    existing.caseDigest !== extracted.caseDigest
+  ) {
+    return false;
+  }
+  if (existing.family === "mechanical-proof") {
+    return extracted.family === "mechanical-proof" &&
+      existing.target?.modelElementId === extracted.targetModelElementId;
+  }
+  return true;
 }
 
 function projectCaseDeclaration(
@@ -621,6 +637,7 @@ function projectCaseDeclaration(
         ...common,
         family: extracted.family,
         caseSchemaVersion: extracted.caseSchemaVersion,
+        target: { modelElementId: extracted.targetModelElementId },
       };
     case "sensitivity-study":
       return {
@@ -647,6 +664,42 @@ function projectCaseDeclaration(
         caseSchemaVersion: extracted.caseSchemaVersion,
       };
   }
+}
+
+function projectVerifiedByEdges(
+  snapshot: ThreadWorkbenchSnapshot,
+  cases: readonly EngineeringCase[],
+): ThreadGraph["edges"] {
+  const partIds = new Set(
+    snapshot.graph.nodes
+      .filter((node) => node.entityKind === "part-definition")
+      .map((node) => node.ref.id),
+  );
+  const artifactIds = new Set(
+    snapshot.graph.nodes
+      .filter((node) => node.entityKind === "artifact")
+      .map((node) => node.ref.id),
+  );
+  const edges: ThreadGraph["edges"] = [];
+  for (const item of cases) {
+    if (item.family !== "mechanical-proof" || !item.target) continue;
+    const modelElementId = item.target.modelElementId;
+    if (!partIds.has(modelElementId)) continue;
+    for (const artifactId of item.authorityArtifactIds) {
+      if (!artifactIds.has(artifactId)) continue;
+      edges.push({
+        id: `structure:verified-by:${modelElementId}:${artifactId}`,
+        from: { kind: "part-definition", id: modelElementId },
+        to: { kind: "artifact", id: artifactId },
+        relation: "verified_by",
+        rationale:
+          `PartDefinition ${modelElementId} is the exact FEA proof target of ` +
+          `sealed case ${item.id}.`,
+        origin: "structure",
+      });
+    }
+  }
+  return edges;
 }
 
 function graphNodeKey(node: ThreadGraphNode): string {

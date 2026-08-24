@@ -7,6 +7,8 @@ import type {
   ThreadEvidenceFamilyGraph,
   ThreadFlowStage,
 } from "./evidence.ts";
+import type { ThreadSourceFileCatalog } from "./source-files.ts";
+import type { ProductNavigationProjection } from "./product-navigation.ts";
 
 export interface ThreadArtifact {
   id: string;
@@ -48,7 +50,13 @@ export interface ThreadRequirement {
   id: string;
   label: string;
   source: string;
+  /** Native RequirementUsage identity from the Thread trace. Not the target part. */
   sourceElementId: string;
+  /**
+   * Exact requirements-capture/3.0 target.elementId (PartDefinition).
+   * Absent until the requirements-target enricher recrosses the capture.
+   */
+  targetElementId?: string;
   expression: string;
   status: "pass" | "fail" | "unresolved";
   observationIds: string[];
@@ -159,6 +167,16 @@ export interface ThreadWorkbenchSnapshot {
   engineeringCases?: EngineeringCaseCatalog;
   /** Absent means the BFF has no local closeout-capture reader configured. */
   evaluationCloseouts?: ThreadEvaluationCloseoutIndex;
+  /**
+   * Exact project source files recrossed from sealed technical admissions.
+   * Absent means the BFF has no workspace recross configured.
+   */
+  sourceFiles?: ThreadSourceFileCatalog;
+  /**
+   * SysML-first navigation slice from the same application port as MCP tools.
+   * Absent when the BFF has no architecture-capture reader.
+   */
+  productNavigation?: ProductNavigationProjection;
   graph: ThreadGraph;
   evidenceFamilyGraph: ThreadEvidenceFamilyGraph;
   flow: ThreadFlowStage[];

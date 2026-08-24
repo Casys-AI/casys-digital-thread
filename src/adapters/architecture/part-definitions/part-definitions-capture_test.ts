@@ -51,7 +51,12 @@ function validCapture(): Record<string, unknown> {
       schemaVersion: ARCHITECTURE_CAPTURE_SCHEMA,
       packageName: "LampPackage",
       systemName: "LampSystem",
-      package: { id: "package-lamp", label: "LampPackage" },
+      scopeRoot: { id: "package-lamp", kind: "Package", label: "LampPackage" },
+      semanticRoot: {
+        id: "part-def-system",
+        kind: "PartDefinition",
+        label: "LampSystem",
+      },
     },
     seed: {
       artifactId: "syson-model-seed-" + "d".repeat(64),
@@ -95,6 +100,6 @@ Deno.test(
   },
 );
 
-Deno.test("part-definitions-capture/1.0 cannot be parsed as architecture-capture/3.0", () => {
+Deno.test("part-definitions-capture/1.0 cannot be parsed as architecture-capture/4.0", () => {
   assertThrows(() => parseExactArchitectureCapture(validCapture()));
 });

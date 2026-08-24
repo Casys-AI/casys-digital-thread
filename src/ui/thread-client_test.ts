@@ -798,7 +798,63 @@ Deno.test("the Workbench contract accepts exact SysML structure nodes and reject
     freshness: "fresh",
     summary: "named numeric lever · unit undeclared",
     selection: { kind: "artifact", id: "ART-SYSML-017" },
+  }, {
+    id: "graph:source-file:source.cad@1",
+    ref: { kind: "source-file", id: "source.cad@1" },
+    entityKind: "source-file",
+    label: "rail.py",
+    system: "project-source-workspace",
+    freshness: "fresh",
+    summary: "cad-script · source.cad@1",
+    selection: { kind: "artifact", id: "ART-SYSML-017" },
   });
+  snapshot.graph.edges.push({
+    id: "structure:represented-by:def-system:source.cad@1",
+    from: { kind: "part-definition", id: "def-system" },
+    to: { kind: "source-file", id: "source.cad@1" },
+    relation: "represented_by",
+    rationale: "The exact source file represents this PartDefinition.",
+    origin: "structure",
+  }, {
+    id: "structure:verified-by:def-system:fea-proof",
+    from: { kind: "part-definition", id: "def-system" },
+    to: { kind: "artifact", id: "ART-STEP-018" },
+    relation: "verified_by",
+    rationale: "The exact proof case targets this PartDefinition.",
+    origin: "structure",
+  }, {
+    id: "structure:constrained-by:def-system:REQ-MASS-006",
+    from: { kind: "part-definition", id: "def-system" },
+    to: { kind: "requirement", id: "REQ-MASS-006" },
+    relation: "constrained_by",
+    rationale: "The exact requirements capture targets this PartDefinition.",
+    origin: "structure",
+  });
+  snapshot.sourceFiles = {
+    schemaVersion: "thread-source-files/1.0",
+    status: "observed",
+    files: [{
+      fileId: "source.cad",
+      fileRevision: 1,
+      workspaceRevision: 2,
+      workspaceEventFingerprint: `sha256:${"e".repeat(64)}`,
+      fileFingerprint: `sha256:${"f".repeat(64)}`,
+      resourceFingerprint: `sha256:${"c".repeat(64)}`,
+      resourceUri: `casys://agent-resource-capture/sha256/${"c".repeat(64)}`,
+      resourceName: "rail.py",
+      mimeType: "text/x-python",
+      moduleId: "mod-rail",
+      role: "cad-script",
+      admissionArtifactId: "technical-compilation-admission-" + "a".repeat(64),
+      bindings: [{
+        relation: "represents",
+        sourceSymbolId: "artifact.result",
+        sysmlElementId: "def-system",
+        sysmlElementKind: "PartDefinition",
+      }],
+    }],
+  };
+  snapshot.requirements[1]!.targetElementId = "def-system";
   assertEquals(isThreadWorkbenchSnapshot(snapshot), true);
 
   snapshot.graph.nodes.at(-1)!.entityKind = "artifact";

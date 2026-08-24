@@ -88,7 +88,7 @@ Recovery control state for uncertain SysON writes; not evidence
 
 #### `state/local/architecture-captures/`
 
-Current `architecture-capture/3.0` CAS captures for `model.write-architecture@1`, with
+Current `architecture-capture/4.0` CAS captures for `model.write-architecture@1`, with
 exact source-analysis refs, hashed parent-to-usage-to-type graph and causal predecessor.
 Older capture schemas are unsupported and are rejected rather than projected.
 

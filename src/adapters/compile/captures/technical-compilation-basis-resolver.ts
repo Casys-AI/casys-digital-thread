@@ -92,7 +92,9 @@ export class CaptureBackedTechnicalCompilationBasisResolver
     private readonly dependencies: TechnicalCompilationBasisResolverDependencies,
   ) {}
 
-  async resolve(value: unknown): Promise<TechnicalCompilationBasis | undefined> {
+  async resolve(
+    value: unknown,
+  ): Promise<TechnicalCompilationBasis | undefined> {
     const request = parseRequest(value);
     const rawProject = await this.dependencies.projects.get(request.projectId);
     if (!rawProject) return undefined;
@@ -161,7 +163,7 @@ export class CaptureBackedTechnicalCompilationBasisResolver
     );
     if (capture.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA) {
       throw new TechnicalCompilationBasisResolutionError(
-        "only parser-backed architecture-capture/3.0 evidence is admissible",
+        "only parser-backed architecture-capture/4.0 evidence is admissible",
       );
     }
     if (capture.trustedRunId !== artifact.producer.runId) {
@@ -257,11 +259,11 @@ export class CaptureBackedTechnicalCompilationBasisResolver
     const sysmlAnchor = deepFreeze({
       artifactId: artifact.id,
       artifactFingerprint: artifact.fingerprint,
-      // architecture-capture/3.0 has no separate capture UUID. Its exact
+      // architecture-capture/4.0 has no separate capture UUID. Its exact
       // content digest is therefore the only non-fabricated capture identity.
       captureId: artifact.fingerprint.digest,
       editingContextId: seedCapture.normalizedResults.project.editingContextId,
-      rootElementId: capture.package.id,
+      rootElementId: capture.scopeRoot.id,
       rootElementKind: "Package" as const,
       elements,
     });
@@ -300,7 +302,9 @@ function parseRequest(value: unknown): {
   literalValue(rawBasis.kind, "thread-snapshot", "$request.basis.kind");
   const snapshotId = safeId(rawBasis.snapshotId, "$request.basis.snapshotId");
   if (snapshotId.toLowerCase() === "latest") {
-    throw new TypeError("$request.basis.snapshotId must not be a latest alias.");
+    throw new TypeError(
+      "$request.basis.snapshotId must not be a latest alias.",
+    );
   }
   return {
     projectId,
@@ -335,9 +339,13 @@ function selectUniqueActiveArchitectureTip(
     artifact.uri?.startsWith(ARCHITECTURE_CAPTURE_URI_PREFIX)
   );
   if (candidates.length === 0) return undefined;
-  for (const candidate of candidates) assertExactArchitectureArtifact(candidate);
+  for (const candidate of candidates) {
+    assertExactArchitectureArtifact(candidate);
+  }
 
-  const consumed = new Set(candidates.flatMap((artifact) => artifact.inputArtifactIds));
+  const consumed = new Set(
+    candidates.flatMap((artifact) => artifact.inputArtifactIds),
+  );
   const tips = candidates.filter((artifact) => !consumed.has(artifact.id));
   if (tips.length !== 1) {
     throw new TechnicalCompilationBasisResolutionError(
@@ -382,7 +390,8 @@ function assertExactSeedArtifact(
   const digest = artifact.fingerprint.digest;
   if (
     artifact.kind !== "sysml-model" ||
-    artifact.id !== `syson-model-seed-${digest}` || artifact.version !== digest ||
+    artifact.id !== `syson-model-seed-${digest}` ||
+    artifact.version !== digest ||
     artifact.uri !== `${SEED_CAPTURE_URI_PREFIX}${digest}` ||
     artifact.mediaType !== "application/json" ||
     artifact.producer.serverId !== "syson" ||
@@ -426,14 +435,20 @@ function assertArchitectureInputs(
     }
     if (
       predecessorArtifact.producer.runId !== predecessor.producerRunId ||
-      !fingerprintsEqual(predecessorArtifact.fingerprint, predecessor.fingerprint)
+      !fingerprintsEqual(
+        predecessorArtifact.fingerprint,
+        predecessor.fingerprint,
+      )
     ) {
       throw new TechnicalCompilationBasisResolutionError(
         "the architecture predecessor capture reference is foreign",
       );
     }
   }
-  const expected = [seed.id, ...(predecessorArtifact ? [predecessorArtifact.id] : [])];
+  const expected = [
+    seed.id,
+    ...(predecessorArtifact ? [predecessorArtifact.id] : []),
+  ];
   if (
     architecture.inputArtifactIds.length !== expected.length ||
     new Set(architecture.inputArtifactIds).size !== expected.length ||
@@ -443,7 +458,9 @@ function assertArchitectureInputs(
       "architecture inputs are not bijective with its seed and predecessor captures",
     );
   }
-  for (const input of [seed, ...(predecessorArtifact ? [predecessorArtifact] : [])]) {
+  for (
+    const input of [seed, ...(predecessorArtifact ? [predecessorArtifact] : [])]
+  ) {
     const attestations = snapshot.consumptions.filter((consumption) =>
       consumption.artifactId === input.id &&
       consumption.consumer.serverId === architecture.producer.serverId &&
@@ -479,7 +496,9 @@ async function exactCanonicalCapture(
   expected: ContentFingerprint,
   label: string,
 ): Promise<unknown> {
-  const actualDigest = await fingerprintResourceBytes(new TextEncoder().encode(text));
+  const actualDigest = await fingerprintResourceBytes(
+    new TextEncoder().encode(text),
+  );
   if (expected.algorithm !== "sha256" || actualDigest !== expected.digest) {
     throw new TechnicalCompilationBasisResolutionError(
       `${label} CAS bytes do not match the Thread fingerprint`,
@@ -507,9 +526,9 @@ function architectureElements(
 ): readonly TechnicalSysmlElementRef[] {
   const elements: TechnicalSysmlElementRef[] = [
     {
-      id: capture.package.id,
+      id: capture.scopeRoot.id,
       kind: "Package",
-      name: capture.package.label,
+      name: capture.scopeRoot.label ?? capture.packageName,
       provenance,
     },
   ];
@@ -561,7 +580,9 @@ async function requirementsElements(
     artifact.kind === "sysml-model" &&
     artifact.uri?.startsWith(REQUIREMENTS_CAPTURE_URI_PREFIX)
   );
-  const consumed = new Set(candidates.flatMap((artifact) => artifact.inputArtifactIds));
+  const consumed = new Set(
+    candidates.flatMap((artifact) => artifact.inputArtifactIds),
+  );
   const archived = archivedRefKeys(snapshot);
   const activeTips = candidates.filter((artifact) =>
     !consumed.has(artifact.id) && !archived.has(`artifact:${artifact.id}`)
@@ -615,8 +636,12 @@ async function requirementsElements(
     if (
       capture.architecture.artifactId !== architecture.id ||
       capture.architecture.producerRunId !== architecture.producer.runId ||
-      !fingerprintsEqual(capture.architecture.fingerprint, architecture.fingerprint) ||
-      capture.architectureBasis.fingerprint !== architecture.fingerprint.digest ||
+      !fingerprintsEqual(
+        capture.architecture.fingerprint,
+        architecture.fingerprint,
+      ) ||
+      capture.architectureBasis.fingerprint !==
+        architecture.fingerprint.digest ||
       capture.seed.artifactId !== seed.id ||
       capture.seed.producerRunId !== seed.producer.runId ||
       !fingerprintsEqual(capture.seed.fingerprint, seed.fingerprint)
@@ -677,7 +702,8 @@ function assertExactRequirementsArtifact(
   const digest = artifact.fingerprint.digest;
   if (
     artifact.id !== `requirements-${component}-${digest}` ||
-    artifact.uri !== `${REQUIREMENTS_CAPTURE_URI_PREFIX}${component}/sha256/${digest}`
+    artifact.uri !==
+      `${REQUIREMENTS_CAPTURE_URI_PREFIX}${component}/sha256/${digest}`
   ) {
     throw new TechnicalCompilationBasisResolutionError(
       `requirements artifact ${artifact.id} does not match its exact captured component`,
@@ -696,7 +722,8 @@ function assertRequirementsInputs(
     !requirements.inputArtifactIds.includes(architecture.id) ||
     new Set(requirements.inputArtifactIds).size !==
       requirements.inputArtifactIds.length ||
-    requirements.inputArtifactIds.length < 1 || requirements.inputArtifactIds.length > 2
+    requirements.inputArtifactIds.length < 1 ||
+    requirements.inputArtifactIds.length > 2
   ) {
     throw new TechnicalCompilationBasisResolutionError(
       `requirements artifact ${requirements.id} inputs are not exact`,
@@ -713,7 +740,8 @@ function assertRequirementsInputs(
       consumption.consumer.serverId === requirements.producer.serverId &&
       consumption.consumer.tool === requirements.producer.tool &&
       consumption.consumer.runId === requirements.producer.runId &&
-      consumption.status === "verified" && consumption.verifiedAt === verifiedAt &&
+      consumption.status === "verified" &&
+      consumption.verifiedAt === verifiedAt &&
       fingerprintsEqual(consumption.observedFingerprint, input.fingerprint)
     );
     if (attestations.length !== 1) {
@@ -766,7 +794,8 @@ async function assertRequirementsArchitectureBasis(
   }
   if (
     declarations.length !== 1 || !historical ||
-    historical.id !== basis.snapshotId || historical.revision !== basis.revision ||
+    historical.id !== basis.snapshotId ||
+    historical.revision !== basis.revision ||
     historical.subject.id !== current.subject.id
   ) {
     throw new TechnicalCompilationBasisResolutionError(
@@ -809,7 +838,9 @@ function integrity<T>(detail: string, action: () => T): T {
   try {
     return action();
   } catch (error) {
-    throw new TechnicalCompilationBasisResolutionError(`${detail}: ${message(error)}`);
+    throw new TechnicalCompilationBasisResolutionError(
+      `${detail}: ${message(error)}`,
+    );
   }
 }
 

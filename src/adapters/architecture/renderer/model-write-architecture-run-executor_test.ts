@@ -107,7 +107,11 @@ const DRONE_ENRICHMENT_PARAMS = [
   { key: "system.name", label: "System name", value: "DroneSystem" },
   { key: "component.motor.name", label: "Motor name", value: "Motor" },
   { key: "component.motor.usage", label: "Motor usage", value: "motor" },
-  { key: "component.motor.parent", label: "Motor parent", value: "DroneSystem" },
+  {
+    key: "component.motor.parent",
+    label: "Motor parent",
+    value: "DroneSystem",
+  },
 ];
 
 const DRONE_ATTRIBUTE_PARAMS = [
@@ -163,7 +167,9 @@ function ctx(
 class SeedSyson implements McpToolClient {
   callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
     return Promise.reject(
-      new Error(`callToolTextResult not implemented by SeedSyson (${call.name})`),
+      new Error(
+        `callToolTextResult not implemented by SeedSyson (${call.name})`,
+      ),
     );
   }
 
@@ -246,7 +252,10 @@ class InitialArchSyson implements McpToolClient {
       // Any insertion: acknowledge with the requested parentId.
       return Promise.resolve({
         text: "inserted",
-        structuredContent: { inserted: true, parentId: call.arguments?.parent_id },
+        structuredContent: {
+          inserted: true,
+          parentId: call.arguments?.parent_id,
+        },
       });
     }
 
@@ -284,12 +293,14 @@ class InitialArchSyson implements McpToolClient {
             children: [
               {
                 id: "sys-def-001",
-                kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                kind:
+                  "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
                 label: "DroneSystem",
               },
               {
                 id: "wing-def-001",
-                kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                kind:
+                  "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
                 label: "Wing",
               },
             ],
@@ -336,7 +347,8 @@ class InitialArchSyson implements McpToolClient {
             type: "objects",
             results: [{
               id: "wing-def-001",
-              kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+              kind:
+                "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
               label: "Wing",
             }],
             count: 1,
@@ -367,7 +379,8 @@ class CrossKindSemanticIdCollisionInitialArchSyson extends InitialArchSyson {
           type: "objects",
           results: [{
             id: "wing-def-001",
-            kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+            kind:
+              "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
             label: "Wing",
           }],
           count: 1,
@@ -437,7 +450,8 @@ class ScopedHomonymInitialArchSyson extends InitialArchSyson {
         ];
         const children = labels.map(([id, label]) => ({
           id,
-          kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+          kind:
+            "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
           label,
         }));
         return Promise.resolve({
@@ -449,7 +463,10 @@ class ScopedHomonymInitialArchSyson extends InitialArchSyson {
           },
         });
       }
-      const usagesByParent: Record<string, Array<{ id: string; label: string }>> = {
+      const usagesByParent: Record<
+        string,
+        Array<{ id: string; label: string }>
+      > = {
         "sys-def-001": [
           { id: "left-wing-usage-001", label: "leftWing" },
           { id: "right-wing-usage-001", label: "rightWing" },
@@ -475,7 +492,10 @@ class ScopedHomonymInitialArchSyson extends InitialArchSyson {
       const objectId = call.arguments?.object_id as string;
       const targets: Record<string, { id: string; label: string }> = {
         "left-wing-usage-001": { id: "left-wing-def-001", label: "LeftWing" },
-        "right-wing-usage-001": { id: "right-wing-def-001", label: "RightWing" },
+        "right-wing-usage-001": {
+          id: "right-wing-def-001",
+          label: "RightWing",
+        },
         "left-motor-usage-001": { id: "motor-def-001", label: "Motor" },
         "right-motor-usage-001": { id: "motor-def-001", label: "Motor" },
       };
@@ -489,14 +509,17 @@ class ScopedHomonymInitialArchSyson extends InitialArchSyson {
             type: "objects",
             results: [{
               ...target,
-              kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+              kind:
+                "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
             }],
             count: 1,
           },
         });
       }
     }
-    return Promise.reject(new Error(`Unexpected scoped-homonym tool: ${call.name}`));
+    return Promise.reject(
+      new Error(`Unexpected scoped-homonym tool: ${call.name}`),
+    );
   }
 }
 
@@ -515,7 +538,9 @@ class EnrichmentArchSyson implements McpToolClient {
     if (call.name === "syson_element_insert_sysml") {
       const parentId = call.arguments?.parent_id as string;
       const text = call.arguments?.sysml_text as string;
-      if (text.startsWith("part def Motor")) this.#motorDefinitionInserted = true;
+      if (text.startsWith("part def Motor")) {
+        this.#motorDefinitionInserted = true;
+      }
       if (text.startsWith("part motor")) this.#motorUsageInserted = true;
       return Promise.resolve({
         text: "inserted",
@@ -542,25 +567,32 @@ class EnrichmentArchSyson implements McpToolClient {
         const children = [
           {
             id: "sys-def-001",
-            kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+            kind:
+              "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
             label: "DroneSystem",
           },
           {
             id: "wing-def-001",
-            kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+            kind:
+              "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
             label: "Wing",
           },
           ...(this.#motorDefinitionInserted
             ? [{
               id: "motor-def-001",
-              kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+              kind:
+                "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
               label: "Motor",
             }]
             : []),
         ];
         return Promise.resolve({
           text: "parts",
-          structuredContent: { parentId: elementId, children, count: children.length },
+          structuredContent: {
+            parentId: elementId,
+            children,
+            count: children.length,
+          },
         });
       }
       if (elementId === "sys-def-001") {
@@ -580,7 +612,11 @@ class EnrichmentArchSyson implements McpToolClient {
         ];
         return Promise.resolve({
           text: "system-usages",
-          structuredContent: { parentId: elementId, children, count: children.length },
+          structuredContent: {
+            parentId: elementId,
+            children,
+            count: children.length,
+          },
         });
       }
       return Promise.resolve({
@@ -600,7 +636,8 @@ class EnrichmentArchSyson implements McpToolClient {
           type: "objects",
           results: [{
             id: motor ? "motor-def-001" : "wing-def-001",
-            kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+            kind:
+              "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
             label,
           }],
           count: 1,
@@ -628,7 +665,8 @@ class AttributeInitialArchSyson extends InitialArchSyson {
             label: "wing",
           }, {
             id: "attribute-thickness-001",
-            kind: "siriusComponents://semantic?domain=sysml&entity=AttributeUsage",
+            kind:
+              "siriusComponents://semantic?domain=sysml&entity=AttributeUsage",
             label: "thickness",
           }],
           count: 2,
@@ -656,7 +694,8 @@ class ForeignAttributeInitialArchSyson extends InitialArchSyson {
             label: "wing",
           }, {
             id: "attribute-foreign-001",
-            kind: "siriusComponents://semantic?domain=sysml&entity=AttributeUsage",
+            kind:
+              "siriusComponents://semantic?domain=sysml&entity=AttributeUsage",
             label: "foreignFlag",
           }],
           count: 2,
@@ -706,7 +745,8 @@ class LostInheritedAttributeEnrichmentSyson extends EnrichmentArchSyson {
   }
 }
 
-class DuplicateInheritedPartDefinitionEnrichmentSyson extends EnrichmentArchSyson {
+class DuplicateInheritedPartDefinitionEnrichmentSyson
+  extends EnrichmentArchSyson {
   #architecturePackageReads = 0;
 
   override async callTool(call: McpToolCall): Promise<McpToolResult> {
@@ -827,7 +867,9 @@ async function queuedArchitectureFixture(
   proposalParams = DRONE_PROPOSAL_PARAMS,
   prepareParallelSibling = false,
 ): Promise<ArchFixture> {
-  const projects = new FileEngineeringProjectRevisionStore(`${directory}/projects`);
+  const projects = new FileEngineeringProjectRevisionStore(
+    `${directory}/projects`,
+  );
   const snapshots = new FileThreadSnapshotStore(`${directory}/snapshots`);
   const baselineCaptures = new FileCaptureStore({
     ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
@@ -841,8 +883,12 @@ async function queuedArchitectureFixture(
     ...ARCHITECTURE_CAPTURE_DESCRIPTOR,
     directory: `${directory}/arch-captures`,
   });
-  const seedAttempts = new FileSysonModelSeedAttemptStore(`${directory}/seed-attempts`);
-  const archAttempts = new FileArchitectureAttemptStore(`${directory}/arch-attempts`);
+  const seedAttempts = new FileSysonModelSeedAttemptStore(
+    `${directory}/seed-attempts`,
+  );
+  const archAttempts = new FileArchitectureAttemptStore(
+    `${directory}/arch-attempts`,
+  );
   const sysmlSourceCaptures = new FileCaptureStore({
     ...SYSML_SOURCE_CAPTURE_DESCRIPTOR,
     directory: `${directory}/sysml-source-captures`,
@@ -859,7 +905,8 @@ async function queuedArchitectureFixture(
 
   let tick = 0;
   const now = () =>
-    new Date(Date.parse("2026-08-08T12:00:00.000Z") + ++tick * 1_000).toISOString();
+    new Date(Date.parse("2026-08-08T12:00:00.000Z") + ++tick * 1_000)
+      .toISOString();
 
   const briefs = new ProjectBriefCommandService(projects, now);
   let project = await briefs.startProject(AGENT, {
@@ -930,7 +977,10 @@ async function queuedArchitectureFixture(
       operation: {
         id: "baseline.from-approved-brief",
         version: "1",
-        bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+        bindings: [{
+          name: "approvedBrief",
+          source: { kind: "approved-brief" },
+        }],
       },
     }],
     requiredDecisions: [],
@@ -978,7 +1028,10 @@ async function queuedArchitectureFixture(
       decisionIds: [],
       operation: {
         ...SYSON_MODEL_SEED_OPERATION,
-        bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+        bindings: [{
+          name: "approvedBrief",
+          source: { kind: "approved-brief" },
+        }],
       },
     }],
     requiredDecisions: [],
@@ -1028,14 +1081,18 @@ async function queuedArchitectureFixture(
       decisionIds: ["decision:arch-params"],
       operation: {
         ...MODEL_WRITE_ARCHITECTURE_OPERATION,
-        bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+        bindings: [{
+          name: "approvedBrief",
+          source: { kind: "approved-brief" },
+        }],
       },
     }],
     requiredDecisions: [{
       id: "decision:arch-params",
       phaseId: "arch",
       title: "Architecture component declaration",
-      question: "Which components and package name should be authored into SysON?",
+      question:
+        "Which components and package name should be authored into SysON?",
     }],
   });
 
@@ -1049,7 +1106,9 @@ async function queuedArchitectureFixture(
       parameters: proposalParams,
     },
   });
-  const decision = project.decisions.find((d) => d.id === "decision:arch-params")!;
+  const decision = project.decisions.find((d) =>
+    d.id === "decision:arch-params"
+  )!;
   const approval = project.approvals.find((a) =>
     a.decisionId === "decision:arch-params"
   )!;
@@ -1070,7 +1129,8 @@ async function queuedArchitectureFixture(
       phases: [{
         id: "arch-parallel",
         name: "Parallel architecture",
-        description: "Reviewed sibling sealed to the original architecture basis.",
+        description:
+          "Reviewed sibling sealed to the original architecture basis.",
       }],
       workItems: [{
         id: "wi:architecture-parallel",
@@ -1080,14 +1140,18 @@ async function queuedArchitectureFixture(
         decisionIds: ["decision:arch-parallel"],
         operation: {
           ...MODEL_WRITE_ARCHITECTURE_OPERATION,
-          bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+          bindings: [{
+            name: "approvedBrief",
+            source: { kind: "approved-brief" },
+          }],
         },
       }],
       requiredDecisions: [{
         id: "decision:arch-parallel",
         phaseId: "arch-parallel",
         title: "Parallel architecture declaration",
-        question: "Which reviewed architecture is proposed from the original basis?",
+        question:
+          "Which reviewed architecture is proposed from the original basis?",
       }],
     });
     project = await commands.proposeDecision(AGENT, {
@@ -1157,7 +1221,8 @@ function makeExecutor(
     snapshots: options.snapshots ?? fixture.snapshots,
     seedCaptures: fixture.seedCaptures,
     captures: options.captures ?? fixture.archCaptures,
-    sysmlSourceAnalysis: options.sysmlSourceAnalysis ?? fixture.sysmlSourceAnalysis,
+    sysmlSourceAnalysis: options.sysmlSourceAnalysis ??
+      fixture.sysmlSourceAnalysis,
     attempts: options.attempts ?? fixture.archAttempts,
     syson: options.syson,
     lease: new FileEngineeringProjectRunLease(
@@ -1262,91 +1327,19 @@ async function queuedArchitectureBasisSnapshot(
     throw new Error("Architecture fixture run has no thread-snapshot basis.");
   }
   const snapshot = await fixture.snapshots.get(run.basis.snapshotId);
-  if (!snapshot) throw new Error("Architecture fixture basis snapshot is missing.");
+  if (!snapshot) {
+    throw new Error("Architecture fixture basis snapshot is missing.");
+  }
   return snapshot;
-}
-
-async function queueArchitectureReseal(
-  fixture: Pick<ArchFixture, "projects" | "commands" | "snapshots">,
-  completed: Awaited<ReturnType<ModelWriteArchitectureRunExecutor["execute"]>>,
-): Promise<{ readonly revision: number; readonly runId: string }> {
-  const firstRun = completed.agentRuns.find((run) => run.id === "run:architecture");
-  assertExists(firstRun?.resultSnapshot);
-  const base = await fixture.snapshots.get(firstRun.resultSnapshot.snapshotId);
-  assertExists(base);
-  let project = await fixture.commands.appendChange(AGENT, {
-    ...ctx("append-architecture-reseal", completed.revision),
-    baseSnapshot: {
-      snapshotId: base.id,
-      revision: base.revision,
-      subjectId: base.subject.id,
-    },
-    phases: [{
-      id: "arch-reseal",
-      name: "Architecture source attestation",
-      description: "Seal parser-backed architecture evidence for the adopted graph.",
-    }],
-    workItems: [{
-      id: "wi:architecture-reseal",
-      phaseId: "arch-reseal",
-      owner: "agent",
-      dependsOnWorkItemIds: ["wi:architecture"],
-      decisionIds: ["decision:arch-reseal"],
-      operation: {
-        ...MODEL_WRITE_ARCHITECTURE_OPERATION,
-        bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
-      },
-    }],
-    requiredDecisions: [{
-      id: "decision:arch-reseal",
-      phaseId: "arch-reseal",
-      title: "Architecture source attestation",
-      question: "Seal the already-adopted architecture as parser-backed 3.0 evidence?",
-    }],
-  });
-  project = await fixture.commands.proposeDecision(AGENT, {
-    ...ctx("propose-architecture-reseal", project.revision),
-    decisionId: "decision:arch-reseal",
-    baseSnapshot: {
-      snapshotId: base.id,
-      revision: base.revision,
-      subjectId: base.subject.id,
-    },
-    proposal: {
-      summary: "Attest the adopted DroneV4 architecture",
-      parameters: DRONE_PROPOSAL_PARAMS,
-    },
-  });
-  const approval = project.approvals.find((candidate) =>
-    candidate.decisionId === "decision:arch-reseal"
-  );
-  assertExists(approval);
-  project = await fixture.commands.approveDecision(HUMAN, {
-    ...ctx("approve-architecture-reseal", project.revision),
-    decisionId: "decision:arch-reseal",
-    rationale: "Approved source attestation.",
-    inputFingerprint: approval.inputFingerprint!,
-  });
-  const queued = await fixture.commands.queueRun(AGENT, {
-    ...ctx("queue-architecture-reseal", project.revision),
-    runId: "run:architecture-reseal",
-    workItemId: "wi:architecture-reseal",
-    summary: "Attest the adopted DroneV4 architecture.",
-    basis: {
-      kind: "thread-snapshot",
-      snapshotId: base.id,
-      revision: base.revision,
-      subjectId: base.subject.id,
-    },
-  });
-  return { revision: queued.revision, runId: "run:architecture-reseal" };
 }
 
 async function queueArchitectureEnrichment(
   fixture: Pick<ArchFixture, "projects" | "commands" | "snapshots">,
   completed: Awaited<ReturnType<ModelWriteArchitectureRunExecutor["execute"]>>,
 ): Promise<{ readonly revision: number; readonly runId: string }> {
-  const firstRun = completed.agentRuns.find((run) => run.id === "run:architecture");
+  const firstRun = completed.agentRuns.find((run) =>
+    run.id === "run:architecture"
+  );
   assertExists(firstRun?.resultSnapshot);
   const base = await fixture.snapshots.get(firstRun.resultSnapshot.snapshotId);
   assertExists(base);
@@ -1370,7 +1363,10 @@ async function queueArchitectureEnrichment(
       decisionIds: ["decision:arch-enrichment"],
       operation: {
         ...MODEL_WRITE_ARCHITECTURE_OPERATION,
-        bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+        bindings: [{
+          name: "approvedBrief",
+          source: { kind: "approved-brief" },
+        }],
       },
     }],
     requiredDecisions: [{
@@ -1424,7 +1420,9 @@ async function queueParallelArchitectureSibling(
 ): Promise<{ readonly revision: number; readonly runId: string }> {
   const project = await fixture.projects.get(PROJECT_ID);
   if (!project) throw new Error("Architecture fixture project is missing.");
-  const original = project.agentRuns.find((run) => run.id === "run:architecture");
+  const original = project.agentRuns.find((run) =>
+    run.id === "run:architecture"
+  );
   if (!original?.basis || original.basis.kind !== "thread-snapshot") {
     throw new Error("Architecture fixture run has no thread-snapshot basis.");
   }
@@ -1464,20 +1462,37 @@ Deno.test(
 
       // The architecture artifact must be present and URI-prefixed.
       const archArtifact = findArchitectureArtifact(snap);
-      assertExists(archArtifact, "architecture artifact must be in the snapshot");
+      assertExists(
+        archArtifact,
+        "architecture artifact must be in the snapshot",
+      );
       assertEquals(archArtifact.kind, "sysml-model");
-      assertEquals(archArtifact.uri?.startsWith("casys://architecture-capture/"), true);
+      assertEquals(
+        archArtifact.uri?.startsWith("casys://architecture-capture/"),
+        true,
+      );
 
       // The capture must be readable.
-      const captureText = await fixture.archCaptures.read(archArtifact.fingerprint);
+      const captureText = await fixture.archCaptures.read(
+        archArtifact.fingerprint,
+      );
       assertExists(captureText, "architecture capture must be readable");
       const captureJson = JSON.parse(captureText) as Record<string, unknown>;
       assertEquals(captureJson.packageName, "DroneV4");
       assertEquals(captureJson.systemName, "DroneSystem");
-      assertEquals(captureJson.schemaVersion, "architecture-capture/3.0");
+      assertEquals(captureJson.schemaVersion, "architecture-capture/4.0");
+      const scopeRoot = captureJson.scopeRoot as Record<string, unknown>;
+      const semanticRoot = captureJson.semanticRoot as Record<string, unknown>;
+      assertEquals(scopeRoot.kind, "Package");
+      assertEquals(typeof scopeRoot.id, "string");
+      assertEquals(semanticRoot.kind, "PartDefinition");
+      assertEquals(typeof semanticRoot.id, "string");
+      assertEquals(captureJson.package, undefined);
       const sourceAnalyses = captureJson.sourceAnalyses as unknown[];
       assertEquals(sourceAnalyses.length, 1);
-      const reopened = await fixture.sysmlSourceAnalysis.reopen(sourceAnalyses[0]);
+      const reopened = await fixture.sysmlSourceAnalysis.reopen(
+        sourceAnalyses[0],
+      );
       const attempt = await fixture.archAttempts.readRun(
         PROJECT_ID,
         fixture.queued.runId,
@@ -1511,7 +1526,9 @@ Deno.test(
 Deno.test(
   "model.write-architecture rejects a cross-kind semantic id collision before capture save or snapshot promotion",
   async () => {
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-id-collision-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-id-collision-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(directory);
       let snapshotSaveCalls = 0;
@@ -1554,7 +1571,10 @@ Deno.test(
       assertEquals(run?.resultSnapshot, undefined);
       assertEquals(run?.evidenceRefs, []);
       assertEquals(
-        await fixture.archAttempts.isQuarantined(PROJECT_ID, fixture.queued.runId),
+        await fixture.archAttempts.isQuarantined(
+          PROJECT_ID,
+          fixture.queued.runId,
+        ),
         true,
       );
     } finally {
@@ -1566,7 +1586,9 @@ Deno.test(
 Deno.test(
   "model.write-architecture completes with scoped homonyms and a shared PartDefinition",
   async () => {
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-occurrences-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-occurrences-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(
         directory,
@@ -1584,7 +1606,10 @@ Deno.test(
         "completed",
       );
       assertEquals(
-        await fixture.archAttempts.isQuarantined(PROJECT_ID, fixture.queued.runId),
+        await fixture.archAttempts.isQuarantined(
+          PROJECT_ID,
+          fixture.queued.runId,
+        ),
         false,
       );
       const inserted = syson.calls.find((call) =>
@@ -1616,7 +1641,10 @@ Deno.test(
         "unreviewed AttributeUsage",
       );
       assertEquals(
-        await fixture.archAttempts.isQuarantined(PROJECT_ID, fixture.queued.runId),
+        await fixture.archAttempts.isQuarantined(
+          PROJECT_ID,
+          fixture.queued.runId,
+        ),
         true,
       );
     } finally {
@@ -1638,15 +1666,19 @@ Deno.test(
       );
       await assertRejects(
         () =>
-          makeExecutor(fixture, { syson: new InitialArchSyson(), directory }).execute(
-            AGENT,
-            executionCommand(fixture),
-          ),
+          makeExecutor(fixture, { syson: new InitialArchSyson(), directory })
+            .execute(
+              AGENT,
+              executionCommand(fixture),
+            ),
         EngineeringProjectCommandError,
         "proposal AttributeUsage is absent",
       );
       assertEquals(
-        await fixture.archAttempts.isQuarantined(PROJECT_ID, fixture.queued.runId),
+        await fixture.archAttempts.isQuarantined(
+          PROJECT_ID,
+          fixture.queued.runId,
+        ),
         true,
       );
     } finally {
@@ -1676,7 +1708,9 @@ Deno.test(
       }
     }
 
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-invalid-ack-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-invalid-ack-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(directory);
       const syson = new InvalidInitialAckSyson();
@@ -1690,13 +1724,17 @@ Deno.test(
         "outcome is unknown",
       );
       assertEquals(
-        await fixture.archAttempts.isQuarantined(PROJECT_ID, fixture.queued.runId),
+        await fixture.archAttempts.isQuarantined(
+          PROJECT_ID,
+          fixture.queued.runId,
+        ),
         false,
         "a malformed acknowledgement must not be treated as a validated ACK",
       );
       const failed = await fixture.projects.get(PROJECT_ID);
       assertEquals(
-        failed?.agentRuns.find((run) => run.id === fixture.queued.runId)?.failure?.code,
+        failed?.agentRuns.find((run) => run.id === fixture.queued.runId)
+          ?.failure?.code,
         "model-write-architecture-provider-outcome-unknown",
       );
     } finally {
@@ -1710,7 +1748,9 @@ Deno.test(
 Deno.test(
   "model.write-architecture executor is idempotent when the run is already completed",
   async () => {
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-idempotent-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-idempotent-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(directory);
       const syson = new InitialArchSyson();
@@ -1730,7 +1770,9 @@ Deno.test(
         artifact.producer.runId === "run:architecture"
       );
       assertExists(firstArtifact);
-      const firstCapture = await fixture.archCaptures.read(firstArtifact.fingerprint);
+      const firstCapture = await fixture.archCaptures.read(
+        firstArtifact.fingerprint,
+      );
       assertExists(firstCapture);
       const firstSysonCalls = syson.calls.length;
       const firstSnapshotJson = deterministicJson(firstSnapshot);
@@ -1740,7 +1782,9 @@ Deno.test(
         ...cmd,
         expectedRevision: first.revision,
       });
-      const secondRun = second.agentRuns.find((r) => r.id === "run:architecture");
+      const secondRun = second.agentRuns.find((r) =>
+        r.id === "run:architecture"
+      );
       assertEquals(secondRun?.status, "completed");
       assertEquals(secondRun?.resultSnapshot, firstRun.resultSnapshot);
       assertEquals(syson.calls.length, firstSysonCalls);
@@ -1761,7 +1805,8 @@ Deno.test(
 Deno.test(
   "model.write-architecture completed replay rejects artifact and capture mutations before provider access",
   async () => {
-    class MutatedCaptureReadStore extends FileCaptureStore<"architecture-capture"> {
+    class MutatedCaptureReadStore
+      extends FileCaptureStore<"architecture-capture"> {
       constructor(
         directory: string,
         private readonly source: FileCaptureStore<"architecture-capture">,
@@ -1784,7 +1829,9 @@ Deno.test(
       }
     }
 
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-replay-guard-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-replay-guard-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(directory);
       const command = executionCommand(fixture);
@@ -1796,7 +1843,9 @@ Deno.test(
         candidate.id === fixture.queued.runId
       );
       assertExists(run?.resultSnapshot);
-      const resultSnapshot = await fixture.snapshots.get(run.resultSnapshot.snapshotId);
+      const resultSnapshot = await fixture.snapshots.get(
+        run.resultSnapshot.snapshotId,
+      );
       assertExists(resultSnapshot);
       const resultArtifact = resultSnapshot.artifacts.find((artifact) =>
         artifact.producer.runId === fixture.queued.runId &&
@@ -1825,7 +1874,10 @@ Deno.test(
         name: "input",
         mutateArtifact: (artifact) => ({
           ...artifact,
-          inputArtifactIds: [...artifact.inputArtifactIds, "artifact:unreviewed-extra"],
+          inputArtifactIds: [
+            ...artifact.inputArtifactIds,
+            "artifact:unreviewed-extra",
+          ],
         }),
       }, {
         name: "schema",
@@ -1910,7 +1962,11 @@ Deno.test(
           EngineeringProjectCommandError,
           "Completed architecture",
         );
-        assertEquals(syson.calls, [], `${testCase.name} must stop before SysON`);
+        assertEquals(
+          syson.calls,
+          [],
+          `${testCase.name} must stop before SysON`,
+        );
       }
     } finally {
       await Deno.remove(directory, { recursive: true });
@@ -1921,7 +1977,8 @@ Deno.test(
 Deno.test(
   "model.write-architecture completed replay rejects coordinated capture and result rewrites with unchanged MRTR",
   async () => {
-    class CoordinatedCaptureReadStore extends FileCaptureStore<"architecture-capture"> {
+    class CoordinatedCaptureReadStore
+      extends FileCaptureStore<"architecture-capture"> {
       constructor(
         directory: string,
         private readonly fingerprint: ContentFingerprint,
@@ -1943,7 +2000,9 @@ Deno.test(
       }
     }
 
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-replay-seal-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-replay-seal-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(
         directory,
@@ -1959,7 +2018,9 @@ Deno.test(
       );
       assertExists(run?.resultSnapshot);
       assertExists(run.startedAt);
-      const resultSnapshot = await fixture.snapshots.get(run.resultSnapshot.snapshotId);
+      const resultSnapshot = await fixture.snapshots.get(
+        run.resultSnapshot.snapshotId,
+      );
       assertExists(resultSnapshot);
       const artifact = resultSnapshot.artifacts.find((candidate) =>
         candidate.producer.runId === run.id &&
@@ -1968,7 +2029,10 @@ Deno.test(
       assertExists(artifact);
       const captureText = await fixture.archCaptures.read(artifact.fingerprint);
       assertExists(captureText);
-      const originalCapture = JSON.parse(captureText) as Record<string, unknown>;
+      const originalCapture = JSON.parse(captureText) as Record<
+        string,
+        unknown
+      >;
       const forgedTime = "2026-08-08T12:16:00.000Z";
       const cases: ReadonlyArray<{
         readonly name: string;
@@ -1978,7 +2042,8 @@ Deno.test(
         name: "package",
         mutateCapture: (capture) => {
           capture.packageName = "ForgedDroneV4";
-          (capture.package as Record<string, unknown>).label = "ForgedDroneV4";
+          (capture.scopeRoot as Record<string, unknown>).label =
+            "ForgedDroneV4";
         },
         mutateSnapshot: (snapshot) => ({
           ...snapshot,
@@ -2028,7 +2093,8 @@ Deno.test(
           artifact.fingerprint.digest,
           forgedFingerprint.digest,
         );
-        forgedSnapshot = testCase.mutateSnapshot?.(forgedSnapshot) ?? forgedSnapshot;
+        forgedSnapshot = testCase.mutateSnapshot?.(forgedSnapshot) ??
+          forgedSnapshot;
         const forgedProject = replaceStringDeep(
           completed,
           artifact.fingerprint.digest,
@@ -2044,7 +2110,9 @@ Deno.test(
           latest: (subjectId) => fixture.snapshots.latest(subjectId),
           save: (_snapshot) => {
             snapshotWrites++;
-            return Promise.reject(new Error("unexpected replay snapshot write"));
+            return Promise.reject(
+              new Error("unexpected replay snapshot write"),
+            );
           },
         };
         let projectWrites = 0;
@@ -2104,7 +2172,9 @@ Deno.test(
 Deno.test(
   "model.write-architecture completed replay requires one exact completed WAL acknowledgement",
   async () => {
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-replay-wal-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-replay-wal-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(directory);
       const command = executionCommand(fixture);
@@ -2124,7 +2194,9 @@ Deno.test(
         completedAttempt?.status !== "completed" ||
         completedAttempt.schemaVersion !== "architecture-write-attempt/3.0"
       ) {
-        throw new Error("Expected the production execution to persist a v3 WAL.");
+        throw new Error(
+          "Expected the production execution to persist a v3 WAL.",
+        );
       }
       const exactWalInput = {
         projectId: completedAttempt.projectId,
@@ -2136,7 +2208,9 @@ Deno.test(
         dispatchedAt: completedAttempt.dispatchedAt,
       };
 
-      const absent = new FileArchitectureAttemptStore(`${directory}/wal-absent`);
+      const absent = new FileArchitectureAttemptStore(
+        `${directory}/wal-absent`,
+      );
       const dispatched = new FileArchitectureAttemptStore(
         `${directory}/wal-dispatched`,
       );
@@ -2167,7 +2241,9 @@ Deno.test(
           latest: (subjectId) => fixture.snapshots.latest(subjectId),
           save: (_snapshot) => {
             snapshotWrites++;
-            return Promise.reject(new Error("unexpected replay snapshot write"));
+            return Promise.reject(
+              new Error("unexpected replay snapshot write"),
+            );
           },
         };
         const syson = new InitialArchSyson();
@@ -2233,7 +2309,9 @@ Deno.test(
       }
     }
 
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-same-basis-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-same-basis-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(
         directory,
@@ -2242,10 +2320,13 @@ Deno.test(
       );
       const sibling = await queueParallelArchitectureSibling(fixture);
       const syson = new BarrierInitialArchSyson();
-      const winner = makeExecutor(fixture, { syson, directory }).execute(AGENT, {
-        ...executionCommand(fixture),
-        expectedRevision: sibling.revision,
-      });
+      const winner = makeExecutor(fixture, { syson, directory }).execute(
+        AGENT,
+        {
+          ...executionCommand(fixture),
+          expectedRevision: sibling.revision,
+        },
+      );
       await syson.insertionEntered.promise;
 
       const loser = makeExecutor(fixture, { syson, directory }).execute(AGENT, {
@@ -2270,7 +2351,8 @@ Deno.test(
         "Thread write basis is unavailable",
       );
       assertEquals(
-        syson.calls.filter((call) => call.name === "syson_element_insert_sysml").length,
+        syson.calls.filter((call) => call.name === "syson_element_insert_sysml")
+          .length,
         1,
         "only the basis-lease winner may insert into SysON",
       );
@@ -2283,7 +2365,9 @@ Deno.test(
 Deno.test(
   "model.write-architecture refuses a sequential same-basis sibling after completion",
   async () => {
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-stale-basis-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-stale-basis-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(
         directory,
@@ -2301,13 +2385,16 @@ Deno.test(
       const blockedSyson = new InitialArchSyson();
       await assertRejects(
         () =>
-          makeExecutor(fixture, { syson: blockedSyson, directory }).execute(AGENT, {
-            commandId: "agent-author-architecture-stale-sibling",
-            projectId: PROJECT_ID,
-            expectedRevision: winner.revision,
-            issuedAt: "2026-08-08T12:17:00.000Z",
-            runId: sibling.runId,
-          }),
+          makeExecutor(fixture, { syson: blockedSyson, directory }).execute(
+            AGENT,
+            {
+              commandId: "agent-author-architecture-stale-sibling",
+              projectId: PROJECT_ID,
+              expectedRevision: winner.revision,
+              issuedAt: "2026-08-08T12:17:00.000Z",
+              runId: sibling.runId,
+            },
+          ),
         EngineeringProjectCommandError,
         "Thread write basis is unavailable",
       );
@@ -2321,7 +2408,9 @@ Deno.test(
 Deno.test(
   "model.write-architecture binds the second enrichment completion to its own current tip and replays it exactly",
   async () => {
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-enrichment-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-enrichment-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(directory);
       const initial = await makeExecutor(fixture, {
@@ -2339,7 +2428,9 @@ Deno.test(
       };
       const executor = makeExecutor(fixture, { syson, directory });
       const completed = await executor.execute(AGENT, command);
-      const secondRun = completed.agentRuns.find((run) => run.id === queued.runId);
+      const secondRun = completed.agentRuns.find((run) =>
+        run.id === queued.runId
+      );
       assertExists(secondRun?.resultSnapshot);
       assertEquals(secondRun.evidenceRefs.length, 1);
       const resultSnapshot = await fixture.snapshots.get(
@@ -2355,7 +2446,9 @@ Deno.test(
       assertEquals(secondRun.evidenceRefs[0]?.id, current[0]?.id);
       assertEquals(current[0]?.inputArtifactIds.length, 2);
 
-      const captureText = await fixture.archCaptures.read(current[0]!.fingerprint);
+      const captureText = await fixture.archCaptures.read(
+        current[0]!.fingerprint,
+      );
       assertExists(captureText);
       const capture = JSON.parse(captureText) as {
         sourceAnalyses: readonly unknown[];
@@ -2380,7 +2473,8 @@ Deno.test(
       });
       assertEquals(replay.revision, completed.revision);
       assertEquals(
-        syson.calls.filter((call) => call.name === "syson_element_insert_sysml").length,
+        syson.calls.filter((call) => call.name === "syson_element_insert_sysml")
+          .length,
         insertsBeforeReplay,
       );
 
@@ -2414,7 +2508,9 @@ function deferred<T>(): {
 Deno.test(
   "model.write-architecture rejects a transplanted valid seed capture before SysON dispatch",
   async () => {
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-seed-subject-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-seed-subject-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(directory);
       const base = await queuedArchitectureBasisSnapshot(fixture);
@@ -2429,7 +2525,10 @@ Deno.test(
       };
       capture.lineage.baseSnapshot.subjectId = "project:foreign";
       const changedFingerprint = await sha256Fingerprint(capture);
-      await fixture.seedCaptures.save(changedFingerprint, deterministicJson(capture));
+      await fixture.seedCaptures.save(
+        changedFingerprint,
+        deterministicJson(capture),
+      );
       const changedSeedId = `syson-model-seed-${changedFingerprint.digest}`;
       const transplanted = {
         ...base,
@@ -2495,7 +2594,9 @@ Deno.test(
 Deno.test(
   "model.write-architecture quarantines a post-ack duplicate inherited PartUsage without attaching evidence",
   async () => {
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-duplicate-usage-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-duplicate-usage-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(directory);
       const initial = await makeExecutor(fixture, {
@@ -2521,7 +2622,9 @@ Deno.test(
         true,
       );
       const failed = await fixture.projects.get(PROJECT_ID);
-      const failedRun = failed?.agentRuns.find((run) => run.id === queued.runId);
+      const failedRun = failed?.agentRuns.find((run) =>
+        run.id === queued.runId
+      );
       assertEquals(failedRun?.status, "failed");
       assertEquals(failedRun?.resultSnapshot, undefined);
       assertEquals(failedRun?.evidenceRefs, []);
@@ -2606,12 +2709,15 @@ Deno.test(
         true,
       );
       const failed = await fixture.projects.get(PROJECT_ID);
-      const failedRun = failed?.agentRuns.find((run) => run.id === queued.runId);
+      const failedRun = failed?.agentRuns.find((run) =>
+        run.id === queued.runId
+      );
       assertEquals(failedRun?.status, "failed");
       assertEquals(failedRun?.resultSnapshot, undefined);
       assertEquals(failedRun?.evidenceRefs, []);
       assertEquals(
-        syson.calls.filter((call) => call.name === "syson_element_insert_sysml").length,
+        syson.calls.filter((call) => call.name === "syson_element_insert_sysml")
+          .length,
         2,
         "only the reviewed enrichment writes occur before the concurrent duplicate is detected",
       );
@@ -2664,7 +2770,9 @@ Deno.test(
         true,
       );
       const failed = await fixture.projects.get(PROJECT_ID);
-      const failedRun = failed?.agentRuns.find((run) => run.id === queued.runId);
+      const failedRun = failed?.agentRuns.find((run) =>
+        run.id === queued.runId
+      );
       assertEquals(failedRun?.status, "failed");
       assertEquals(
         failedRun?.failure?.code,
@@ -2682,13 +2790,16 @@ Deno.test(
       const blockedSyson = new EnrichmentArchSyson();
       await assertRejects(
         () =>
-          makeExecutor(fixture, { syson: blockedSyson, directory }).execute(AGENT, {
-            commandId: "agent-phase-b-sibling",
-            projectId: PROJECT_ID,
-            expectedRevision: sibling.revision,
-            issuedAt: "2026-08-08T12:21:00.000Z",
-            runId: "run:architecture-enrichment-sibling",
-          }),
+          makeExecutor(fixture, { syson: blockedSyson, directory }).execute(
+            AGENT,
+            {
+              commandId: "agent-phase-b-sibling",
+              projectId: PROJECT_ID,
+              expectedRevision: sibling.revision,
+              issuedAt: "2026-08-08T12:21:00.000Z",
+              runId: "run:architecture-enrichment-sibling",
+            },
+          ),
         EngineeringProjectCommandError,
         "Thread write basis is unavailable",
       );
@@ -2712,7 +2823,9 @@ Deno.test(
       "model-write-architecture-quarantine-write-failed",
     ] as const;
     for (const code of terminalCodes) {
-      const directory = await Deno.makeTempDir({ prefix: "casys-arch-sibling-" });
+      const directory = await Deno.makeTempDir({
+        prefix: "casys-arch-sibling-",
+      });
       try {
         const fixture = await queuedArchitectureFixture(directory);
         let project = await fixture.commands.claimRun(AGENT, {
@@ -2767,7 +2880,9 @@ Deno.test(
         input: Parameters<FileArchitectureAttemptStore["complete"]>[0],
       ): Promise<void> {
         await super.complete(input);
-        throw new Error("simulated fsync acknowledgement error after durable rename");
+        throw new Error(
+          "simulated fsync acknowledgement error after durable rename",
+        );
       }
     }
 
@@ -2788,7 +2903,8 @@ Deno.test(
         "completed",
       );
       assertEquals(
-        syson.calls.filter((call) => call.name === "syson_element_insert_sysml").length,
+        syson.calls.filter((call) => call.name === "syson_element_insert_sysml")
+          .length,
         1,
       );
     } finally {
@@ -2800,7 +2916,9 @@ Deno.test(
 Deno.test(
   "model.write-architecture resumes a completed run WAL before live preflight with zero inserts",
   async () => {
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-wal-resume-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-wal-resume-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(directory);
       const command = executionCommand(fixture);
@@ -2861,7 +2979,8 @@ Deno.test(
         "completed",
       );
       assertEquals(
-        syson.calls.filter((call) => call.name === "syson_element_insert_sysml").length,
+        syson.calls.filter((call) => call.name === "syson_element_insert_sysml")
+          .length,
         0,
       );
       assertEquals(
@@ -2878,7 +2997,9 @@ Deno.test(
 Deno.test(
   "model.write-architecture refuses completed-WAL recovery when the live Package id replaced the pinned id",
   async () => {
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-wal-package-pin-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-wal-package-pin-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(directory);
       const command = executionCommand(fixture);
@@ -2935,10 +3056,15 @@ Deno.test(
       );
 
       assertEquals(
-        syson.calls.filter((call) => call.name === "syson_element_insert_sysml").length,
+        syson.calls.filter((call) => call.name === "syson_element_insert_sysml")
+          .length,
         0,
       );
-      assertEquals(snapshotSaveCalls, 0, "replacement Package B must not be promoted");
+      assertEquals(
+        snapshotSaveCalls,
+        0,
+        "replacement Package B must not be promoted",
+      );
       let captureFileCount = 0;
       try {
         for await (const entry of Deno.readDir(`${directory}/arch-captures`)) {
@@ -3038,7 +3164,9 @@ Deno.test(
 Deno.test(
   "model.write-architecture never preflights or inserts after a dispatched WAL under another plan digest",
   async () => {
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-wal-unknown-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-wal-unknown-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(directory);
       await fixture.archAttempts.begin(
@@ -3153,7 +3281,9 @@ Deno.test(
 Deno.test(
   "model.write-architecture rejects persisted MRTR summary or parameter mutation before SysON",
   async () => {
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-mrtr-seal-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-mrtr-seal-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(directory);
       const mutations: ReadonlyArray<[
@@ -3166,7 +3296,9 @@ Deno.test(
         }],
         ["parameters", (decision) => {
           const proposal = decision.proposal as Record<string, unknown>;
-          const parameters = proposal.parameters as Array<Record<string, unknown>>;
+          const parameters = proposal.parameters as Array<
+            Record<string, unknown>
+          >;
           parameters[0]!.value = "MutatedPackage";
         }],
       ];
@@ -3236,7 +3368,9 @@ Deno.test(
 Deno.test(
   "model.write-architecture executor rejects a non-agent origin",
   async () => {
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-human-origin-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-human-origin-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(directory);
       const executor = makeExecutor(fixture, {
@@ -3262,7 +3396,9 @@ Deno.test(
 Deno.test(
   "model.write-architecture executor refuses when the MRTR decision has no human approval",
   async () => {
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-no-human-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-no-human-",
+    });
     try {
       // Build fixture normally — then manually replace the approval's decidedByOrigin
       // by building a project where only an agent approved the decision.
@@ -3285,7 +3421,9 @@ Deno.test(
       const project = await fixture.projects.get(PROJECT_ID);
       assertExists(project, "project must exist");
       const humanApproval = project.approvals.find(
-        (a) => a.decisionId === "decision:arch-params" && a.decidedByOrigin === "human",
+        (a) =>
+          a.decisionId === "decision:arch-params" &&
+          a.decidedByOrigin === "human",
       );
       assertExists(humanApproval, "human approval must exist in the fixture");
 
@@ -3306,7 +3444,9 @@ Deno.test(
         const projects2 = new FileEngineeringProjectRevisionStore(
           `${directory2}/projects`,
         );
-        const snapshots2 = new FileThreadSnapshotStore(`${directory2}/snapshots`);
+        const snapshots2 = new FileThreadSnapshotStore(
+          `${directory2}/snapshots`,
+        );
         const baselineCaptures2 = new FileCaptureStore({
           ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
           directory: `${directory2}/baseline-captures`,
@@ -3382,7 +3522,11 @@ Deno.test(
         proj2 = await commands2.publishPlan(AGENT, {
           ...ctx("publish-plan2", proj2.revision),
           startingPoint: "idea-or-spec",
-          phases: [{ id: "baseline", name: "Baseline", description: "Record." }],
+          phases: [{
+            id: "baseline",
+            name: "Baseline",
+            description: "Record.",
+          }],
           workItems: [{
             id: "wi:baseline",
             phaseId: "baseline",
@@ -3392,7 +3536,10 @@ Deno.test(
             operation: {
               id: "baseline.from-approved-brief",
               version: "1",
-              bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+              bindings: [{
+                name: "approvedBrief",
+                source: { kind: "approved-brief" },
+              }],
             },
           }],
           requiredDecisions: [],
@@ -3410,7 +3557,9 @@ Deno.test(
           captures: baselineCaptures2,
           ...approvedBriefSourceAnalysisFixture(directory2),
           snapshots: snapshots2,
-          lease: new FileEngineeringProjectRunLease(`${directory2}/baseline-leases`),
+          lease: new FileEngineeringProjectRunLease(
+            `${directory2}/baseline-leases`,
+          ),
           now: () => "2026-08-08T12:05:00.000Z",
         }).execute(AGENT, {
           commandId: "agent-baseline2",
@@ -3434,7 +3583,10 @@ Deno.test(
             decisionIds: [],
             operation: {
               ...SYSON_MODEL_SEED_OPERATION,
-              bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+              bindings: [{
+                name: "approvedBrief",
+                source: { kind: "approved-brief" },
+              }],
             },
           }],
           requiredDecisions: [],
@@ -3453,7 +3605,9 @@ Deno.test(
           captures: seedCaptures2,
           attempts: seedAttempts2,
           syson: new SeedSyson(),
-          lease: new FileEngineeringProjectRunLease(`${directory2}/seed-leases`),
+          lease: new FileEngineeringProjectRunLease(
+            `${directory2}/seed-leases`,
+          ),
           now: () => "2026-08-08T12:10:00.000Z",
         }).execute(AGENT, {
           commandId: "agent-seed2",
@@ -3469,7 +3623,11 @@ Deno.test(
         proj2 = await commands2.appendChange(AGENT, {
           ...ctx("append-arch2", afterSeed2.revision),
           baseSnapshot: r22,
-          phases: [{ id: "arch", name: "Architecture", description: "Author." }],
+          phases: [{
+            id: "arch",
+            name: "Architecture",
+            description: "Author.",
+          }],
           workItems: [{
             id: "wi:architecture",
             phaseId: "arch",
@@ -3478,7 +3636,10 @@ Deno.test(
             decisionIds: [],
             operation: {
               ...MODEL_WRITE_ARCHITECTURE_OPERATION,
-              bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+              bindings: [{
+                name: "approvedBrief",
+                source: { kind: "approved-brief" },
+              }],
             },
           }],
           requiredDecisions: [],
@@ -3513,7 +3674,9 @@ Deno.test(
           syson: {
             callTool: () => Promise.reject(new Error("must not call provider")),
           } as unknown as McpToolClient,
-          lease: new FileEngineeringProjectRunLease(`${directory2}/arch-leases`),
+          lease: new FileEngineeringProjectRunLease(
+            `${directory2}/arch-leases`,
+          ),
           now: () => "2026-08-08T12:15:00.000Z",
         });
 
@@ -3543,7 +3706,9 @@ Deno.test(
 Deno.test(
   "model.write-architecture executor refuses when all proposed components already exist in SysON",
   async () => {
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-all-adopted-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-all-adopted-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(directory);
 
@@ -3560,7 +3725,8 @@ Deno.test(
                   parentId: id,
                   children: [{
                     id: "arch-pkg-001",
-                    kind: "siriusComponents://semantic?domain=sysml&entity=Package",
+                    kind:
+                      "siriusComponents://semantic?domain=sysml&entity=Package",
                     label: "DroneV4",
                   }],
                   count: 1,
@@ -3597,7 +3763,8 @@ Deno.test(
                   parentId: id,
                   children: [{
                     id: "wing-usage-001",
-                    kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
+                    kind:
+                      "siriusComponents://semantic?domain=sysml&entity=PartUsage",
                     label: "wing",
                   }],
                   count: 1,
@@ -3640,7 +3807,10 @@ Deno.test(
         },
       } as unknown as McpToolClient;
 
-      const executor = makeExecutor(fixture, { syson: allAdoptedSyson, directory });
+      const executor = makeExecutor(fixture, {
+        syson: allAdoptedSyson,
+        directory,
+      });
 
       await assertRejects(
         () => executor.execute(AGENT, executionCommand(fixture)),
@@ -3671,7 +3841,11 @@ Deno.test(
       fingerprint: { algorithm: "sha256" as const, digest: "a".repeat(64) },
       uri: "casys://syson-model-seed-capture/sha256/" + "a".repeat(64),
       mediaType: "application/json",
-      producer: { serverId: "syson", tool: "syson_model_create", runId: "run:seed" },
+      producer: {
+        serverId: "syson",
+        tool: "syson_model_create",
+        runId: "run:seed",
+      },
       inputArtifactIds: [],
       freshness,
     };
@@ -3848,7 +4022,9 @@ Deno.test(
 Deno.test(
   "model.write-architecture capture fingerprint matches the stored text after execution",
   async () => {
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-capture-fp-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-capture-fp-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(directory);
       const executor = makeExecutor(fixture, {
@@ -3864,7 +4040,9 @@ Deno.test(
       const archArtifact = findArchitectureArtifact(snap);
       assertExists(archArtifact);
 
-      const storedText = await fixture.archCaptures.read(archArtifact.fingerprint);
+      const storedText = await fixture.archCaptures.read(
+        archArtifact.fingerprint,
+      );
       assertExists(storedText);
       // sha256Fingerprint on an object hashes deterministicJson(object), which is
       // the exact bytes that were saved as the capture text. Passing the raw string
@@ -3879,7 +4057,11 @@ Deno.test(
       // The capture text must be round-trip stable (re-serialising the parsed
       // object produces the exact same bytes that were stored).
       const recomputedFromJson = deterministicJson(JSON.parse(storedText));
-      assertEquals(recomputedFromJson, storedText, "capture is round-trip stable");
+      assertEquals(
+        recomputedFromJson,
+        storedText,
+        "capture is round-trip stable",
+      );
     } finally {
       await Deno.remove(directory, { recursive: true });
     }
@@ -3891,7 +4073,9 @@ Deno.test(
 Deno.test(
   "model.write-architecture consumption attestation uses the fingerprint computed from bytes read, not the snapshot record",
   async () => {
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-consumption-fp-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-consumption-fp-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(directory);
       const executor = makeExecutor(fixture, {
@@ -3946,7 +4130,9 @@ Deno.test(
 Deno.test(
   "assertArchitectureArtifactNotRemoved is inert when the lineage crosses a subject boundary",
   async () => {
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-ratchet-subject-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-ratchet-subject-",
+    });
     try {
       const snapshots = new FileThreadSnapshotStore(`${directory}/snapshots`);
 
@@ -4059,7 +4245,9 @@ Deno.test(
 Deno.test(
   "model.write-architecture rejects an architecture merge input before WAL or provider access",
   async () => {
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-merge-lineage-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-merge-lineage-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(directory);
       const initial = await makeExecutor(fixture, {
@@ -4071,7 +4259,9 @@ Deno.test(
         run.id === fixture.queued.runId
       );
       assertExists(initialRun?.resultSnapshot);
-      const base = await fixture.snapshots.get(initialRun.resultSnapshot.snapshotId);
+      const base = await fixture.snapshots.get(
+        initialRun.resultSnapshot.snapshotId,
+      );
       assertExists(base);
       const seed = base.artifacts.find((artifact) =>
         artifact.producer.tool === "syson_model_create"
@@ -4129,7 +4319,8 @@ Deno.test(
             id: `consume-${input.id}-by-${consumer.id}`,
           },
           to: { kind: "artifact" as const, id: input.id },
-          rationale: "Synthetic verified consumption for the lineage guard test.",
+          rationale:
+            "Synthetic verified consumption for the lineage guard test.",
         }],
       });
       const addedEvidence = [
@@ -4162,18 +4353,25 @@ Deno.test(
 
       await assertRejects(
         () =>
-          makeExecutor(fixture, { syson, directory, snapshots }).execute(AGENT, {
-            commandId: "agent-reject-architecture-merge",
-            projectId: PROJECT_ID,
-            expectedRevision: queued.revision,
-            issuedAt: "2026-08-08T12:20:00.000Z",
-            runId: queued.runId,
-          }),
+          makeExecutor(fixture, { syson, directory, snapshots }).execute(
+            AGENT,
+            {
+              commandId: "agent-reject-architecture-merge",
+              projectId: PROJECT_ID,
+              expectedRevision: queued.revision,
+              issuedAt: "2026-08-08T12:20:00.000Z",
+              runId: queued.runId,
+            },
+          ),
         EngineeringProjectCommandError,
         "input lineage is not exact",
       );
 
-      assertEquals(syson.calls, [], "invalid lineage must stop before provider access");
+      assertEquals(
+        syson.calls,
+        [],
+        "invalid lineage must stop before provider access",
+      );
       assertEquals(
         await fixture.archAttempts.readRun(PROJECT_ID, queued.runId),
         undefined,
@@ -4188,7 +4386,9 @@ Deno.test(
 Deno.test(
   "model.write-architecture rejects a cross-subject predecessor before any SysON call",
   async () => {
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-lineage-subject-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-lineage-subject-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(directory);
       const base = await queuedArchitectureBasisSnapshot(fixture);
@@ -4230,7 +4430,9 @@ Deno.test(
 Deno.test(
   "model.write-architecture rejects a missing predecessor before any SysON call",
   async () => {
-    const directory = await Deno.makeTempDir({ prefix: "casys-arch-lineage-missing-" });
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-lineage-missing-",
+    });
     try {
       const fixture = await queuedArchitectureFixture(directory);
       const base = await queuedArchitectureBasisSnapshot(fixture);
@@ -4256,7 +4458,11 @@ Deno.test(
         EngineeringProjectCommandError,
         "invalid predecessor lineage",
       );
-      assertEquals(syson.calls, [], "missing predecessor must stop before SysON");
+      assertEquals(
+        syson.calls,
+        [],
+        "missing predecessor must stop before SysON",
+      );
     } finally {
       await Deno.remove(directory, { recursive: true });
     }
@@ -4294,7 +4500,11 @@ Deno.test(
             if (this.#childrenCallCount === 1) {
               return Promise.resolve({
                 text: "empty",
-                structuredContent: { parentId: elementId, children: [], count: 0 },
+                structuredContent: {
+                  parentId: elementId,
+                  children: [],
+                  count: 0,
+                },
               });
             }
             return Promise.resolve({
@@ -4303,7 +4513,8 @@ Deno.test(
                 parentId: elementId,
                 children: [{
                   id: "arch-pkg-001",
-                  kind: "siriusComponents://semantic?domain=sysml&entity=Package",
+                  kind:
+                    "siriusComponents://semantic?domain=sysml&entity=Package",
                   label: "DroneV4",
                 }],
                 count: 1,
@@ -4340,7 +4551,8 @@ Deno.test(
                 parentId: elementId,
                 children: [{
                   id: "wing-usage-001",
-                  kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
+                  kind:
+                    "siriusComponents://semantic?domain=sysml&entity=PartUsage",
                   label: "wing",
                 }],
                 count: 1,
@@ -4409,11 +4621,13 @@ Deno.test(
       );
       const failed = await fixture.projects.get(PROJECT_ID);
       assertEquals(
-        failed?.agentRuns.find((run) => run.id === fixture.queued.runId)?.status,
+        failed?.agentRuns.find((run) => run.id === fixture.queued.runId)
+          ?.status,
         "failed",
       );
       assertEquals(
-        failed?.agentRuns.find((run) => run.id === fixture.queued.runId)?.failure?.code,
+        failed?.agentRuns.find((run) => run.id === fixture.queued.runId)
+          ?.failure?.code,
         "model-write-architecture-post-acknowledgement-quarantined",
       );
     } finally {
@@ -4459,7 +4673,10 @@ Deno.test(
         ArchitectureStructureExtractionError,
       );
       assertEquals(
-        await fixture.archAttempts.isQuarantined(PROJECT_ID, fixture.queued.runId),
+        await fixture.archAttempts.isQuarantined(
+          PROJECT_ID,
+          fixture.queued.runId,
+        ),
         true,
       );
       assertEquals(
@@ -4469,7 +4686,8 @@ Deno.test(
         "failed",
       );
       assertEquals(
-        syson.calls.filter((call) => call.name === "syson_element_insert_sysml").length,
+        syson.calls.filter((call) => call.name === "syson_element_insert_sysml")
+          .length,
         1,
       );
     } finally {
@@ -4484,7 +4702,9 @@ Deno.test(
     const calls: McpToolCall[] = [];
     let rootChildrenCalls = 0;
     const syson: McpToolClient = {
-      callToolTextResult: (call: McpToolCall): Promise<Record<string, unknown>> =>
+      callToolTextResult: (
+        call: McpToolCall,
+      ): Promise<Record<string, unknown>> =>
         Promise.reject(new Error(`Unexpected text call: ${call.name}`)),
       callTool: (call: McpToolCall): Promise<McpToolResult> => {
         calls.push(structuredClone(call));
@@ -4504,7 +4724,11 @@ Deno.test(
             if (rootChildrenCalls === 1) {
               return Promise.resolve({
                 text: "empty",
-                structuredContent: { parentId: elementId, children: [], count: 0 },
+                structuredContent: {
+                  parentId: elementId,
+                  children: [],
+                  count: 0,
+                },
               });
             }
             return Promise.resolve({
@@ -4513,7 +4737,8 @@ Deno.test(
                 parentId: elementId,
                 children: [{
                   id: "arch-pkg-001",
-                  kind: "siriusComponents://semantic?domain=sysml&entity=Package",
+                  kind:
+                    "siriusComponents://semantic?domain=sysml&entity=Package",
                   label: "DroneV4",
                 }],
                 count: 1,
@@ -4551,12 +4776,14 @@ Deno.test(
                 children: [
                   {
                     id: "wing-usage-conformant",
-                    kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
+                    kind:
+                      "siriusComponents://semantic?domain=sysml&entity=PartUsage",
                     label: "wing",
                   },
                   {
                     id: "wing-usage-mistyped",
-                    kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
+                    kind:
+                      "siriusComponents://semantic?domain=sysml&entity=PartUsage",
                     label: "wing",
                   },
                 ],
@@ -4571,7 +4798,9 @@ Deno.test(
         }
         if (call.name === "syson_query_aql") {
           const objectId = call.arguments?.object_id as string;
-          const target = objectId === "wing-usage-conformant" ? "Wing" : "Motor";
+          const target = objectId === "wing-usage-conformant"
+            ? "Wing"
+            : "Motor";
           return Promise.resolve({
             text: "feature-typing",
             structuredContent: {
@@ -4580,7 +4809,8 @@ Deno.test(
               type: "objects",
               results: [{
                 id: `${target.toLowerCase()}-def-001`,
-                kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                kind:
+                  "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
                 label: target,
               }],
               count: 1,
@@ -4604,7 +4834,8 @@ Deno.test(
         "appears 2 times",
       );
       assertEquals(
-        calls.filter((call) => call.name === "syson_element_insert_sysml").length,
+        calls.filter((call) => call.name === "syson_element_insert_sysml")
+          .length,
         1,
         "initial package insertion is acknowledged once, then readback rejects the ambiguity",
       );
@@ -4622,7 +4853,9 @@ Deno.test(
     const calls: McpToolCall[] = [];
     let packageChildrenCalls = 0;
     const syson: McpToolClient = {
-      callToolTextResult: (call: McpToolCall): Promise<Record<string, unknown>> =>
+      callToolTextResult: (
+        call: McpToolCall,
+      ): Promise<Record<string, unknown>> =>
         Promise.reject(new Error(`Unexpected text call: ${call.name}`)),
       callTool: (call: McpToolCall): Promise<McpToolResult> => {
         calls.push(structuredClone(call));
@@ -4636,7 +4869,9 @@ Deno.test(
           });
         }
         if (call.name !== "syson_element_children") {
-          return Promise.reject(new Error(`Unexpected tool call: ${call.name}`));
+          return Promise.reject(
+            new Error(`Unexpected tool call: ${call.name}`),
+          );
         }
         const elementId = call.arguments?.element_id as string;
         if (elementId === "root-pkg-drone") {
@@ -4658,23 +4893,27 @@ Deno.test(
           const children = packageChildrenCalls === 1
             ? [{
               id: "sys-def-001",
-              kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+              kind:
+                "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
               label: "DroneSystem",
             }]
             : [
               {
                 id: "sys-def-001",
-                kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                kind:
+                  "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
                 label: "DroneSystem",
               },
               {
                 id: "concurrent-sys-def-002",
-                kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                kind:
+                  "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
                 label: "DroneSystem",
               },
               {
                 id: "wing-def-001",
-                kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                kind:
+                  "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
                 label: "Wing",
               },
             ];
@@ -4709,7 +4948,11 @@ Deno.test(
       const insertions = calls.filter((call) =>
         call.name === "syson_element_insert_sysml"
       );
-      assertEquals(insertions.length, 1, "only the Phase A PartDefinition was written");
+      assertEquals(
+        insertions.length,
+        1,
+        "only the Phase A PartDefinition was written",
+      );
       assertEquals(
         insertions.some((call) =>
           String(call.arguments?.sysml_text).startsWith("part wing")

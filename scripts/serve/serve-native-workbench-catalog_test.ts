@@ -39,7 +39,11 @@ function fingerprint(char: string): ContentFingerprint {
 }
 
 function freshness() {
-  return { status: "fresh" as const, changedAt: AT, invalidatedByChangeIds: [] };
+  return {
+    status: "fresh" as const,
+    changedAt: AT,
+    invalidatedByChangeIds: [],
+  };
 }
 
 function passingSourceAnalysis(): SysmlSourceAnalysisReader {
@@ -63,12 +67,17 @@ async function snapshotWithGenericArch(): Promise<
   }
 > {
   const captureRecord = {
-    schemaVersion: "architecture-capture/3.0",
+    schemaVersion: "architecture-capture/4.0",
     operation: { id: "model.write-architecture", version: "1" },
     trustedRunId: "run:arch",
     packageName: "DroneV4",
     systemName: "DroneSystem",
-    package: { id: "pkg-drone-001", label: "DroneV4" },
+    scopeRoot: { id: "pkg-drone-001", kind: "Package", label: "DroneV4" },
+    semanticRoot: {
+      id: "sys-def-001",
+      kind: "PartDefinition",
+      label: "DroneSystem",
+    },
     seed: {
       artifactId: "seed-artifact",
       fingerprint: fingerprint("a"),
@@ -140,7 +149,11 @@ async function snapshotWithGenericArch(): Promise<
       fingerprint: fingerprint("a"),
       uri: "casys://syson-model-seed-capture/sha256/" + "a".repeat(64),
       mediaType: "application/json",
-      producer: { serverId: "syson", tool: "syson_model_create", runId: "run:seed" },
+      producer: {
+        serverId: "syson",
+        tool: "syson_model_create",
+        runId: "run:seed",
+      },
       inputArtifactIds: [],
       freshness: freshness(),
     }, {
@@ -268,7 +281,8 @@ function snapshotWithoutArch(): ReturnType<typeof validateThreadSnapshot> {
 Deno.test(
   "resolveSnapshotComponentCatalog returns a generic catalog for an architecture artifact",
   async () => {
-    const { snapshot, captureFp, captureRecord } = await snapshotWithGenericArch();
+    const { snapshot, captureFp, captureRecord } =
+      await snapshotWithGenericArch();
     const captureText = deterministicJson(captureRecord);
 
     // Generic reader returns the capture text for this exact fingerprint.
@@ -327,7 +341,8 @@ Deno.test(
 Deno.test(
   "resolveSnapshotComponentCatalog forwards the canonical geometry reader to the generic Product projector",
   async () => {
-    const { snapshot, captureFp, captureRecord } = await snapshotWithGenericArch();
+    const { snapshot, captureFp, captureRecord } =
+      await snapshotWithGenericArch();
     const withGeometry = mutableClone(snapshot);
     const geometryFp = fingerprint("c");
     withGeometry.artifacts.push({

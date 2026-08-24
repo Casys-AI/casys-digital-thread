@@ -56,7 +56,7 @@ SysML statement belongs to this renderer surface.
 
 After insertion the server reopens the package, definitions and features. `PartUsage`
 typing is resolved through one code-owned AQL expression over `FeatureTyping.type`, not
-from labels. The resulting `architecture-capture/3.0` and Thread artifact record the
+from labels. The resulting `architecture-capture/4.0` and Thread artifact record the
 provider identities and the reviewed graph.
 
 ### AttributeUsage ratchet

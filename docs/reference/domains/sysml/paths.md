@@ -15,14 +15,14 @@ Lookalike table: [lookalike traps](../../agent/lookalike-traps.md).
 | Envelope       | `sysml-source-capture/1.0`                                                                                                                 | `architecture-sysml-source-analysis-capture/1.0`                                                                                                                           |
 | Operation      | `model.write-architecture@1`                                                                                                               | `model.seal-architecture-sysml@1`                                                                                                                                          |
 | SysON          | `syson_element_insert_sysml` then reread                                                                                                   | Never called                                                                                                                                                               |
-| Thread         | `architecture-capture/3.0` plus `sysml-model` artifact                                                                                     | Documentary Thread **document** plus `architecture-sysml-seal-capture/1.0`                                                                                                 |
+| Thread         | `architecture-capture/4.0` plus `sysml-model` artifact                                                                                     | Documentary Thread **document** plus `architecture-sysml-seal-capture/1.0`                                                                                                 |
 | Success is not | Agent-authored SysML, compilation admission, a verdict                                                                                     | SysON write, `compile.seal-admission@2`, renderer envelope, Product Structure                                                                                              |
 
 ```text
 human MRTR (flat architecture.* / component.* / attribute.*)
   → model.write-architecture@1
   → server render + SysON insert + reread
-  → architecture-capture/3.0
+  → architecture-capture/4.0
 ```
 
 ```text

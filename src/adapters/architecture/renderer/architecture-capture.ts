@@ -11,12 +11,24 @@ import {
   validateSysmlSourceAnalysisReference,
 } from "./sysml-source-analysis-capture.ts";
 
-export const ARCHITECTURE_CAPTURE_SCHEMA = "architecture-capture/3.0" as const;
+export const ARCHITECTURE_CAPTURE_SCHEMA = "architecture-capture/4.0" as const;
 
 export interface ArchitectureCaptureArtifactReference {
   readonly artifactId: string;
   readonly fingerprint: ContentFingerprint;
   readonly producerRunId: string;
+}
+
+export interface ArchitectureCaptureScopeRoot {
+  readonly id: string;
+  readonly kind: "Package";
+  readonly label?: string;
+}
+
+export interface ArchitectureCaptureSemanticRoot {
+  readonly id: string;
+  readonly kind: "PartDefinition";
+  readonly label?: string;
 }
 
 export interface ArchitectureCapturePartDefinition {
@@ -48,7 +60,8 @@ export interface ExactArchitectureCapture {
   readonly trustedRunId: string;
   readonly packageName: string;
   readonly systemName: string;
-  readonly package: { readonly id: string; readonly label: string };
+  readonly scopeRoot: ArchitectureCaptureScopeRoot;
+  readonly semanticRoot: ArchitectureCaptureSemanticRoot;
   readonly seed: ArchitectureCaptureArtifactReference;
   readonly predecessor?: ArchitectureCaptureArtifactReference;
   readonly partDefinitions: readonly ArchitectureCapturePartDefinition[];
@@ -60,7 +73,8 @@ export interface ExactArchitectureCaptureBuildInput {
   readonly trustedRunId: string;
   readonly packageName: string;
   readonly systemName: string;
-  readonly architecturePackage: { readonly id: string; readonly label: string };
+  readonly scopeRoot: ArchitectureCaptureScopeRoot;
+  readonly semanticRoot: ArchitectureCaptureSemanticRoot;
   readonly seed: ArchitectureCaptureArtifactReference;
   readonly predecessor?: ArchitectureCaptureArtifactReference;
   readonly live: ExistingArchitectureStructure;
@@ -71,7 +85,7 @@ export interface ExactArchitectureCaptureBuildInput {
 /**
  * Deterministic architecture-capture construction. Source-analysis references
  * stay adapter-owned and keep caller order. Provider identities are copied,
- * never reconstructed or sorted.
+ * never reconstructed or sorted. Roots are sealed by id; names are display.
  */
 export function buildExactArchitectureCapture(
   input: ExactArchitectureCaptureBuildInput,
@@ -101,19 +115,27 @@ export function buildExactArchitectureCapture(
       ...(attributes.length > 0 ? { attributes } : {}),
     };
   });
+  const scopeRoot = sealedScopeRoot(input.scopeRoot, input.live.packageId);
+  const semanticRoot = sealedSemanticRoot(
+    input.semanticRoot,
+    partDefinitions,
+  );
   const base = {
     operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
     trustedRunId: input.trustedRunId,
     packageName: input.packageName,
     systemName: input.systemName,
-    package: input.architecturePackage,
+    scopeRoot,
+    semanticRoot,
     seed: input.seed,
     ...(input.predecessor ? { predecessor: input.predecessor } : {}),
     partDefinitions,
     insertedAt: input.insertedAt,
   };
   if (input.sourceAnalyses.length === 0) {
-    throw new Error("Current architecture capture must seal SysML source analyses.");
+    throw new Error(
+      "Current architecture capture must seal SysML source analyses.",
+    );
   }
   return {
     schemaVersion: ARCHITECTURE_CAPTURE_SCHEMA,
@@ -131,8 +153,8 @@ export function architectureGraphFromCapture(
   capture: ExactArchitectureCapture,
 ): ExistingArchitectureStructure {
   return {
-    packageId: capture.package.id,
-    packageLabel: capture.package.label,
+    packageId: capture.scopeRoot.id,
+    packageLabel: capture.scopeRoot.label ?? capture.packageName,
     partDefs: capture.partDefinitions.map((part) => ({
       id: part.id,
       kind: part.kind,
@@ -155,11 +177,11 @@ export function architectureGraphFromCapture(
 }
 
 /**
- * Parse a current architecture-capture/3.0 record fail-closed.
+ * Parse a current architecture-capture/4.0 record fail-closed.
  *
- * Source references are not opaque extras: their run, operation and package
- * selector are bound to the capture identity here, before any authoritative
- * reader is allowed to project the semantic graph. Older schemas are rejected.
+ * Roots are sealed ids. packageName/systemName are write/display context and
+ * are not used to choose a Package or PartDefinition. Older schemas are
+ * rejected. There is no dual parser, alias, or label/topology fallback.
  */
 export function parseExactArchitectureCapture(
   value: unknown,
@@ -173,7 +195,8 @@ export function parseExactArchitectureCapture(
       "trustedRunId",
       "packageName",
       "systemName",
-      "package",
+      "scopeRoot",
+      "semanticRoot",
       "seed",
       ...(record.predecessor === undefined ? [] : ["predecessor"]),
       "partDefinitions",
@@ -182,7 +205,10 @@ export function parseExactArchitectureCapture(
     ],
     "Architecture capture",
   );
-  const operation = exactObject(record.operation, "Architecture capture operation");
+  const operation = exactObject(
+    record.operation,
+    "Architecture capture operation",
+  );
   exactKeys(operation, ["id", "version"], "Architecture capture operation");
   if (
     record.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA ||
@@ -196,15 +222,10 @@ export function parseExactArchitectureCapture(
   const packageName = exactNonEmpty(record.packageName, "packageName");
   const systemName = exactNonEmpty(record.systemName, "systemName");
   const insertedAt = exactCanonicalInstant(record.insertedAt, "insertedAt");
-  const rawPackage = exactObject(record.package, "Architecture capture package");
-  exactKeys(rawPackage, ["id", "label"], "Architecture capture package");
-  const architecturePackage = {
-    id: exactNonEmpty(rawPackage.id, "package.id"),
-    label: exactNonEmpty(rawPackage.label, "package.label"),
-  };
-  if (architecturePackage.label !== packageName) {
-    throw new Error("Architecture capture package label does not match packageName.");
-  }
+  const scopeRoot = parseArchitectureCaptureScopeRoot(record.scopeRoot);
+  const semanticRoot = parseArchitectureCaptureSemanticRoot(
+    record.semanticRoot,
+  );
 
   const seed = parseArtifactReference(record.seed, "seed");
   const predecessor = record.predecessor === undefined
@@ -219,18 +240,17 @@ export function parseExactArchitectureCapture(
   const partDefinitions = parseArchitectureCapturePartDefinitions(
     record.partDefinitions,
     "partDefinitions",
-    [architecturePackage.id],
+    [scopeRoot.id],
   );
-  if (!partDefinitions.some((part) => part.label === systemName)) {
-    throw new Error("Architecture capture systemName is not a PartDefinition.");
-  }
+  requireSealedSemanticRoot(semanticRoot, partDefinitions);
 
   const base = {
     operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
     trustedRunId,
     packageName,
     systemName,
-    package: architecturePackage,
+    scopeRoot,
+    semanticRoot,
     seed,
     ...(predecessor ? { predecessor } : {}),
     partDefinitions,
@@ -241,6 +261,18 @@ export function parseExactArchitectureCapture(
     ...base,
     sourceAnalyses,
   };
+}
+
+export function parseArchitectureCaptureScopeRoot(
+  value: unknown,
+): ArchitectureCaptureScopeRoot {
+  return parseCaptureRoot(value, "scopeRoot", "Package");
+}
+
+export function parseArchitectureCaptureSemanticRoot(
+  value: unknown,
+): ArchitectureCaptureSemanticRoot {
+  return parseCaptureRoot(value, "semanticRoot", "PartDefinition");
 }
 
 /**
@@ -285,7 +317,9 @@ export function parseArchitectureCapturePartDefinitions(
       part.kind !== "PartDefinition" || !Array.isArray(part.usages) ||
       semanticIds.has(id) || definitionLabels.has(label)
     ) {
-      throw new Error(`Architecture capture PartDefinition ${index} is ambiguous.`);
+      throw new Error(
+        `Architecture capture PartDefinition ${index} is ambiguous.`,
+      );
     }
     semanticIds.add(id);
     definitionLabels.add(label);
@@ -382,7 +416,9 @@ export function parseArchitectureCapturePartDefinitions(
     };
   });
 
-  const definitionsById = new Map(partDefinitions.map((part) => [part.id, part]));
+  const definitionsById = new Map(
+    partDefinitions.map((part) => [part.id, part]),
+  );
   for (const part of partDefinitions) {
     for (const usage of part.usages) {
       if (definitionsById.get(usage.targetId)?.label !== usage.targetLabel) {
@@ -393,6 +429,80 @@ export function parseArchitectureCapturePartDefinitions(
     }
   }
   return partDefinitions;
+}
+
+export function requireSealedSemanticRoot(
+  semanticRoot: ArchitectureCaptureSemanticRoot,
+  partDefinitions: readonly ArchitectureCapturePartDefinition[],
+): ArchitectureCapturePartDefinition {
+  const matches = partDefinitions.filter((part) => part.id === semanticRoot.id);
+  if (matches.length !== 1 || matches[0]?.kind !== "PartDefinition") {
+    throw new Error(
+      "Architecture capture semanticRoot is not present exactly once as a PartDefinition.",
+    );
+  }
+  const match = matches[0];
+  if (semanticRoot.label !== undefined && semanticRoot.label !== match.label) {
+    throw new Error(
+      "Architecture capture semanticRoot label does not match the sealed PartDefinition.",
+    );
+  }
+  return match;
+}
+
+function sealedScopeRoot(
+  scopeRoot: ArchitectureCaptureScopeRoot,
+  attestedPackageId: string,
+): ArchitectureCaptureScopeRoot {
+  if (
+    scopeRoot.kind !== "Package" || !scopeRoot.id ||
+    scopeRoot.id !== attestedPackageId
+  ) {
+    throw new Error(
+      "Architecture capture scopeRoot does not match the attested Package.",
+    );
+  }
+  return scopeRoot.label === undefined
+    ? { id: scopeRoot.id, kind: "Package" }
+    : { id: scopeRoot.id, kind: "Package", label: scopeRoot.label };
+}
+
+function sealedSemanticRoot(
+  semanticRoot: ArchitectureCaptureSemanticRoot,
+  partDefinitions: readonly ArchitectureCapturePartDefinition[],
+): ArchitectureCaptureSemanticRoot {
+  requireSealedSemanticRoot(semanticRoot, partDefinitions);
+  return semanticRoot.label === undefined
+    ? { id: semanticRoot.id, kind: "PartDefinition" }
+    : {
+      id: semanticRoot.id,
+      kind: "PartDefinition",
+      label: semanticRoot.label,
+    };
+}
+
+function parseCaptureRoot<Kind extends "Package" | "PartDefinition">(
+  value: unknown,
+  path: string,
+  kind: Kind,
+): { readonly id: string; readonly kind: Kind; readonly label?: string } {
+  const record = exactObject(value, path);
+  const hasLabel = Object.hasOwn(record, "label");
+  exactKeys(
+    record,
+    hasLabel ? ["id", "kind", "label"] : ["id", "kind"],
+    path,
+  );
+  if (record.kind !== kind) {
+    throw new Error(`${path}.kind must be ${kind}.`);
+  }
+  const id = exactNonEmpty(record.id, `${path}.id`);
+  if (!hasLabel) return { id, kind };
+  return {
+    id,
+    kind,
+    label: exactNonEmpty(record.label, `${path}.label`),
+  };
 }
 
 function parseArtifactReference(
@@ -408,7 +518,10 @@ function parseArtifactReference(
   return {
     artifactId: exactNonEmpty(record.artifactId, `${field}.artifactId`),
     fingerprint: exactFingerprint(record.fingerprint, `${field}.fingerprint`),
-    producerRunId: exactNonEmpty(record.producerRunId, `${field}.producerRunId`),
+    producerRunId: exactNonEmpty(
+      record.producerRunId,
+      `${field}.producerRunId`,
+    ),
   };
 }
 
@@ -418,7 +531,9 @@ function parseExactSysmlSourceAnalyses(
   packageName: string,
 ): readonly SysmlSourceAnalysisReference[] {
   if (!Array.isArray(value) || value.length === 0) {
-    throw new Error("Current architecture capture must seal SysML source analyses.");
+    throw new Error(
+      "Current architecture capture must seal SysML source analyses.",
+    );
   }
   const references = value.map((rawReference, index) => {
     let reference: SysmlSourceAnalysisReference;

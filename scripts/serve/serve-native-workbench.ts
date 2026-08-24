@@ -19,10 +19,13 @@ import {
   GEOMETRY_CAPTURE_DESCRIPTOR,
   PRINT_ESTIMATE_CASE_CAPTURE_DESCRIPTOR,
   PRINTABILITY_CASE_CAPTURE_DESCRIPTOR,
+  REQUIREMENTS_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
   SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
   SYSML_SOURCE_CAPTURE_DESCRIPTOR,
 } from "../../src/adapters/shared/cas/file-capture-store.ts";
+import { FileProjectSourceWorkspaceStore } from "../../src/adapters/project-source-workspace/file-project-source-workspace-store.ts";
+import { DEFAULT_PROJECT_SOURCE_WORKSPACE_DIRECTORY } from "../../src/adapters/project-source-workspace/server-composition.ts";
 import {
   requireSysmlSourceAnalysis,
   type SysmlSourceAnalysisReader,
@@ -78,12 +81,27 @@ import { FileByteStore } from "../../src/adapters/shared/cas/file-byte-store.ts"
 import { fileArchitectureSysmlSealCaptureReader } from "../../src/adapters/architecture/agent-seal/file-architecture-sysml-seal-capture-reader.ts";
 import { createArchitectureSysmlSourceAnalysisCaptureService } from "../../src/adapters/architecture/agent-seal/architecture-sysml-source-analysis-composition.ts";
 import { enrichThreadWorkbenchWithArchitectureSysmlSeals } from "../../src/adapters/thread/architecture-sysml-seal-workbench-enricher.ts";
-import { enrichThreadWorkbenchWithSealedCadLevers } from "../../src/adapters/thread/sealed-cad-lever-workbench-enricher.ts";
-import type { SealedCadLeverAdmissionReader } from "../../src/adapters/thread/sealed-cad-lever-workbench-enricher.ts";
+import {
+  enrichThreadWorkbenchWithTechnicalAdmissions,
+  type SealedCadLeverAdmissionReader,
+  type TechnicalAdmissionWorkbenchEnricherDependencies,
+} from "../../src/adapters/thread/technical-admission-workbench-enricher.ts";
 import {
   type EngineeringCaseWorkbenchEnricherDependencies,
   enrichThreadWorkbenchWithEngineeringCases,
 } from "../../src/adapters/thread/verification-case-workbench-enricher.ts";
+import {
+  enrichThreadWorkbenchWithRequirementsTargets,
+  type RequirementsCaptureReader,
+} from "../../src/adapters/thread/requirements-target-workbench-enricher.ts";
+import { CaptureProductStructureTraversal } from "../../src/adapters/architecture/renderer/capture-product-structure-traversal.ts";
+import { ProjectProductNavigation } from "../../src/application/use-cases/product-navigation/project-product-navigation.ts";
+import type { ProductNavigationUseCase } from "../../src/application/ports/in/product-navigation/product-navigation.ts";
+import { WorkbenchProductNavigationAttachmentReader } from "../../src/adapters/thread/product-navigation-workbench.ts";
+import {
+  PRODUCT_NAVIGATION_QUERY_SCHEMA,
+  unavailableProductNavigationProjection,
+} from "../../src/application/ports/in/product-navigation/product-navigation-read-model.ts";
 import {
   enrichThreadWorkbenchWithEvaluationCloseouts,
   type EvaluationCloseoutCaptureReader,
@@ -174,6 +192,20 @@ export interface NativeWorkbenchHandlerOptions {
    * The pure projector never reads this store.
    */
   technicalCompilationAdmissions?: SealedCadLeverAdmissionReader;
+  /**
+   * Optional exact ProjectSourceWorkspace recross for source-file projection.
+   * Absent means source-file attachments stay unavailable.
+   */
+  projectSourceWorkspace?: TechnicalAdmissionWorkbenchEnricherDependencies["workspace"];
+  /** Optional exact CAS reopen of `model.write-requirements@1` captures. */
+  requirementsCaptures?: RequirementsCaptureReader;
+  /**
+   * Optional exact architecture-capture/4.0 reopen for the product-navigation
+   * GET slice. Same application port as MCP read tools. Workbench stays GET/SSE.
+   */
+  productStructureCaptures?: GenericArchitectureCaptureReader;
+  geometryCaptures?: GenericGeometryCaptureReader;
+  sysmlSourceAnalysis?: SysmlSourceAnalysisReader;
   /** Optional exact CAS reopen of supported sealed engineering cases. */
   engineeringCaseCaptures?: EngineeringCaseWorkbenchEnricherDependencies;
   /** Optional exact CAS reopen of provider-free static-mechanical L5 records. */
@@ -372,6 +404,10 @@ export function createNativeWorkbenchHandler(
     if (url.pathname === "/api/projects") {
       if (request.method !== "GET") return methodNotAllowed();
       return await serveProjectCatalog(options);
+    }
+    if (url.pathname === "/api/thread/product-navigation") {
+      if (request.method !== "GET") return methodNotAllowed();
+      return await serveProductNavigationQuery(url, options);
     }
     if (url.pathname === "/api/thread/workbench/events") {
       if (request.method !== "GET") return methodNotAllowed();
@@ -772,25 +808,43 @@ async function projectThreadSnapshot(
         sources: options.architectureSysmlSources,
       })
       : projected;
-  const withCadLevers = options.technicalCompilationAdmissions
-    ? await enrichThreadWorkbenchWithSealedCadLevers(
+  const withAdmissions = options.technicalCompilationAdmissions
+    ? await enrichThreadWorkbenchWithTechnicalAdmissions(
       withArchitecture,
-      options.technicalCompilationAdmissions,
+      {
+        admissions: options.technicalCompilationAdmissions,
+        workspace: options.projectSourceWorkspace,
+      },
+      { projectId },
     )
     : withArchitecture;
+  const withRequirements = options.requirementsCaptures
+    ? await enrichThreadWorkbenchWithRequirementsTargets(
+      withAdmissions,
+      options.requirementsCaptures,
+      snapshot,
+    )
+    : withAdmissions;
   const withEngineeringCases = options.engineeringCaseCaptures
     ? await enrichThreadWorkbenchWithEngineeringCases(
-      withCadLevers,
+      withRequirements,
       options.engineeringCaseCaptures,
       { projectId },
     )
-    : withCadLevers;
-  const canonical = options.evaluationCloseoutCaptures
+    : withRequirements;
+  const withCases = options.evaluationCloseoutCaptures
     ? await enrichThreadWorkbenchWithEvaluationCloseouts(
       withEngineeringCases,
       options.evaluationCloseoutCaptures,
     )
     : withEngineeringCases;
+  const navigation = composeProductNavigation(options);
+  const canonical = navigation
+    ? {
+      ...withCases,
+      productNavigation: await navigation.projection({ projectId }),
+    }
+    : withCases;
   const updates = liveUpdates ??
     (await options.liveUpdates?.list(subjectId) ?? []);
   return overlayLiveThreadUpdates(
@@ -798,6 +852,109 @@ async function projectThreadSnapshot(
     snapshot.revision,
     updates,
     updates.at(-1)?.sequence ?? 0,
+  );
+}
+
+function composeProductNavigation(
+  options: NativeWorkbenchHandlerOptions,
+): ProductNavigationUseCase | undefined {
+  const captures = options.productStructureCaptures;
+  if (!captures) return undefined;
+  return new ProjectProductNavigation({
+    projects: options.projectStore,
+    snapshots: options.store,
+    traversal: new CaptureProductStructureTraversal(
+      captures,
+      options.sysmlSourceAnalysis,
+    ),
+    workspace: options.projectSourceWorkspace,
+    attachments: new WorkbenchProductNavigationAttachmentReader({
+      architectureCaptures: captures,
+      geometryCaptures: options.geometryCaptures,
+      sysmlSourceAnalysis: options.sysmlSourceAnalysis,
+      admissions: options.technicalCompilationAdmissions,
+      workspace: options.projectSourceWorkspace,
+      requirementsCaptures: options.requirementsCaptures,
+      engineeringCases: options.engineeringCaseCaptures,
+    }),
+  });
+}
+
+async function serveProductNavigationQuery(
+  url: URL,
+  options: NativeWorkbenchHandlerOptions,
+): Promise<Response> {
+  const navigation = composeProductNavigation(options);
+  if (!navigation) {
+    return json(unavailableProductNavigationProjection(), 200);
+  }
+  let context: ActiveTargetResolution;
+  try {
+    context = await resolveActiveProject(options);
+  } catch (error) {
+    if (error instanceof NativeWorkbenchProjectNotFoundError) {
+      return projectNotFound(error.projectId);
+    }
+    throw error;
+  }
+  const projectId = context.projectId;
+  const view = url.searchParams.get("view");
+  const nodeId = url.searchParams.get("id") ?? "";
+  const nodeKind = url.searchParams.get("kind") === "part-usage"
+    ? "part-usage" as const
+    : "part-definition" as const;
+  if (view === "children" || view === "context" || view === "neighborhood") {
+    const path = parseExactElementPath(url.searchParams.get("path"));
+    if (path === "invalid") return invalidExactElementPath();
+    const node = { kind: nodeKind, id: nodeId, path };
+    const result = view === "children"
+      ? await navigation.children({ projectId, node })
+      : view === "context"
+      ? await navigation.context({ projectId, node })
+      : await navigation.neighborhood({ projectId, node });
+    return json(result, 200);
+  }
+  if (view === "path") {
+    const usagePath = parseExactElementPath(url.searchParams.get("usagePath"));
+    if (usagePath === "invalid") return invalidExactElementPath();
+    return json(await navigation.path({ projectId, usagePath }), 200);
+  }
+  const result = view === "search"
+    ? await navigation.search({ projectId, id: nodeId })
+    : view === "roots"
+    ? await navigation.roots({ projectId })
+    : view === null || view === ""
+    ? await navigation.projection({ projectId })
+    : {
+      schemaVersion: PRODUCT_NAVIGATION_QUERY_SCHEMA,
+      status: "unavailable" as const,
+    };
+  return json(result, 200);
+}
+
+const EXACT_ELEMENT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+const MAX_EXACT_ELEMENT_PATH = 32;
+
+function parseExactElementPath(value: string | null): string[] | "invalid" {
+  if (value === null || value === "") return [];
+  const segments = value.split(",");
+  if (segments.length > MAX_EXACT_ELEMENT_PATH) return "invalid";
+  for (const segment of segments) {
+    if (
+      segment === "" ||
+      segment === "latest" ||
+      !EXACT_ELEMENT_ID.test(segment)
+    ) {
+      return "invalid";
+    }
+  }
+  return segments;
+}
+
+function invalidExactElementPath(): Response {
+  return new Response(
+    "Invalid exact element path. Empty segments and latest are refused.",
+    { status: 400 },
   );
 }
 
@@ -1016,7 +1173,9 @@ if (import.meta.main) {
     ...ARCHITECTURE_CAPTURE_DESCRIPTOR,
     directory: architectureCaptureDirectory,
   });
-  const sysmlSourceCaptures = new FileCaptureStore(SYSML_SOURCE_CAPTURE_DESCRIPTOR);
+  const sysmlSourceCaptures = new FileCaptureStore(
+    SYSML_SOURCE_CAPTURE_DESCRIPTOR,
+  );
   const sourceAnalysisCaptures = new FileCaptureStore(
     SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
   );
@@ -1070,6 +1229,13 @@ if (import.meta.main) {
         : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
     },
   };
+  const projectSourceWorkspace = new FileProjectSourceWorkspaceStore(
+    cliArgs["project-source-workspace-dir"] ??
+      DEFAULT_PROJECT_SOURCE_WORKSPACE_DIRECTORY,
+  );
+  const requirementsCaptures: RequirementsCaptureReader = new FileCaptureStore(
+    REQUIREMENTS_CAPTURE_DESCRIPTOR,
+  );
   const engineeringCaseCaptures: EngineeringCaseWorkbenchEnricherDependencies = {
     mechanicalProof: new FileCaptureStore(
       FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
@@ -1140,6 +1306,11 @@ if (import.meta.main) {
     architectureSysmlSeals,
     architectureSysmlSources,
     technicalCompilationAdmissions,
+    projectSourceWorkspace,
+    requirementsCaptures,
+    productStructureCaptures: archCaptures,
+    geometryCaptures,
+    sysmlSourceAnalysis,
     engineeringCaseCaptures,
     evaluationCloseoutCaptures,
     liveUpdates,

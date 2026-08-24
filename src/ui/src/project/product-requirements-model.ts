@@ -99,9 +99,7 @@ export function buildRequirementMatrix(
   const unresolved = rows.length - pass - fail;
   const failMargins = rows.flatMap((row) => {
     if (row.status !== "fail") return [];
-    const violation = thread.violations.find((item) =>
-      item.id === row.violationId
-    );
+    const violation = thread.violations.find((item) => item.id === row.violationId);
     return violation?.margin ? [violation.margin] : [];
   });
   return {
@@ -285,9 +283,7 @@ function orderedFamilyRefs(family: ThreadEvidenceFamily): ThreadGraphRef[] {
   }
 
   const remaining = new Map(
-    familyRefs(family).map((reference) =>
-      [refKey(reference), reference] as const
-    ),
+    familyRefs(family).map((reference) => [refKey(reference), reference] as const),
   );
   const successorKeys = new Set(
     family.transitions.map((transition) => refKey(transition.successor)),
@@ -320,11 +316,15 @@ function anchorLabel(
   requirement: ThreadRequirement,
   components: readonly ThreadComponent[],
 ): string {
-  const component = components.find((item) =>
-    item.bindings.some((binding) =>
-      binding.provider === "syson" &&
-      binding.id === requirement.sourceElementId
-    )
-  );
-  return component?.label ?? requirement.sourceElementId;
+  if (requirement.targetElementId) {
+    const component = components.find((item) =>
+      item.bindings.some((binding) =>
+        binding.provider === "syson" &&
+        binding.kind === "part-definition" &&
+        binding.id === requirement.targetElementId
+      )
+    );
+    return component?.label ?? requirement.targetElementId;
+  }
+  return requirement.sourceElementId;
 }
