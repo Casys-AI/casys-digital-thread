@@ -3,34 +3,17 @@ import {
   type EngineeringAgentRunStatus,
   type EngineeringAgentRunUncertainWriterReconciliation,
   type EngineeringCancelledRunReceiptBinding,
-  type EngineeringDecision,
   type EngineeringProjectCommandName,
   type EngineeringProjectSnapshot,
   type EngineeringQueuedRunReceiptBinding,
-  type EngineeringWorkItem,
 } from "../../../domain/project/engineering-project.ts";
 import { validateEngineeringProjectSnapshot } from "../../../domain/project/engineering-project-validation.ts";
 import {
-  deterministicJson,
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/thread/thread-snapshot.ts";
-import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../../domain/cad/canonical/geometry-proposal.ts";
-import {
-  requireApprovedUncertainWriterReconciliationDecision,
-  TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES,
-} from "../../../domain/record/reconcile-uncertain-writer-proposal.ts";
-import { DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION } from "../../../domain/impact/cross-domain-impact-decision-proposal.ts";
-import {
-  applyCrossDomainImpactWorkItemClaims,
-  canonicalizeCrossDomainImpactWorkItemClaims,
-  recrossCrossDomainImpactWorkItemClaims,
-} from "../../../domain/impact/cross-domain-impact-decision.ts";
-import {
-  uncertainWriterBasisReleaseIds,
-  uncertainWriterBasisReleaseText,
-} from "../../../domain/record/uncertain-writer-basis-release.ts";
+import { TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES } from "../../../domain/record/reconcile-uncertain-writer-proposal.ts";
 import {
   type EngineeringProjectRevisionStore,
   EngineeringProjectStoreConflictError,
@@ -90,27 +73,17 @@ import {
   hasCallerCancelledRunBinding,
   hasCallerQueuedRunBinding,
 } from "./commands/engineering-run-transitions.ts";
+import { applyReconcileAnnotationRun } from "./commands/reconcile-uncertain-writer-transition.ts";
+import { applyAcceptCrossDomainImpactDecision } from "./commands/accept-cross-domain-impact-transition.ts";
+import { applyReconcileWorkItemWithSuccessor } from "./commands/reconcile-successor-transition.ts";
+import { applyAbandonWorkItems } from "./commands/abandon-work-items-transition.ts";
 import {
   actor,
-  addThreadSnapshot,
-  assertDeclaredSnapshot,
-  assertExactResultEvidence,
-  assertResultAdvancesBase,
-  findDecision,
-  findRun,
-  findWorkItem,
   invalidInput,
   invalidTransition,
-  mergeEvidence,
   type Mutable,
   nonEmpty,
-  notFound,
-  recomputeWorkReadiness,
-  sameEvidenceReferences,
-  sameSnapshotReference,
   stale,
-  threadSnapshotReference,
-  transition,
 } from "./commands/engineering-project-transition-values.ts";
 
 export {
@@ -387,189 +360,7 @@ export class EngineeringProjectCommandService {
       "agent-run.reconcile-annotation",
       command,
       async (draft, appliedAt) => {
-        nonEmpty(command.reconciliationRunId, "reconciliationRunId");
-        nonEmpty(command.failedRunId, "failedRunId");
-        nonEmpty(command.decisionId, "decisionId");
-        nonEmpty(
-          command.providerInspectionAttestation,
-          "providerInspectionAttestation",
-        );
-        if (
-          command.outcome !== "provider-did-not-write" &&
-          command.outcome !== "write-effect-accepted"
-        ) {
-          invalidInput(
-            'outcome must be "provider-did-not-write" or "write-effect-accepted".',
-          );
-        }
-        if (command.reconciliationRunId === command.failedRunId) {
-          invalidInput("A reconciliation run cannot target itself as the failed run.");
-        }
-
-        // Reconciliation run must be queued and unstarted.
-        const reconciliationRun = findRun(draft, command.reconciliationRunId);
-        if (!reconciliationRun) {
-          notFound("reconciliation agent run", command.reconciliationRunId);
-        }
-        if (reconciliationRun.status !== "queued") {
-          invalidTransition(
-            `Reconciliation run ${reconciliationRun.id} must be queued; it is ${reconciliationRun.status}.`,
-          );
-        }
-        if (
-          reconciliationRun.startedAt || reconciliationRun.completedAt ||
-          reconciliationRun.claimedAt || reconciliationRun.claimedBy ||
-          reconciliationRun.waitingForDecisionIds || reconciliationRun.resultSnapshot ||
-          reconciliationRun.failure || reconciliationRun.evidenceRefs.length !== 0
-        ) {
-          invalidTransition(
-            `Queued reconciliation run ${reconciliationRun.id} has unexpected execution state.`,
-          );
-        }
-
-        // Target run must be a terminal failed run with no existing reconciliation.
-        const failedRun = findRun(draft, command.failedRunId);
-        if (!failedRun) notFound("failed agent run", command.failedRunId);
-        if (failedRun.status !== "failed" || !failedRun.failure) {
-          invalidTransition(
-            `Target run ${failedRun.id} must be a failed run with a structured failure.`,
-          );
-        }
-
-        // Domain eligibility guard: only terminal-uncertain failures (or the geometry
-        // write, which is conservatively terminal) may be reconciled.  This prevents
-        // bypassing the executor-level gate via a direct domain call.
-        const failedWorkItem = findWorkItem(draft, failedRun.workItemId);
-        if (!failedWorkItem) {
-          notFound("work item for failed run", failedRun.workItemId);
-        }
-        const failedOperation = failedWorkItem.operation;
-        const isGeometryWrite = failedOperation
-          ? `${failedOperation.id}@${failedOperation.version}` ===
-            `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}`
-          : false;
-        if (
-          !ELIGIBLE_UNCERTAIN_WRITE_FAILURE_CODES.has(failedRun.failure.code) &&
-          !isGeometryWrite
-        ) {
-          invalidTransition(
-            `Target run ${failedRun.id} failure code "${failedRun.failure.code}" is not in ` +
-              "ELIGIBLE_UNCERTAIN_WRITE_FAILURE_CODES and is not the geometry write operation. " +
-              "Only terminal-uncertain failures are eligible for uncertain-writer reconciliation.",
-          );
-        }
-
-        if (failedRun.uncertainWriterReconciliation !== undefined) {
-          invalidTransition(
-            `Target run ${failedRun.id} already has an uncertainWriterReconciliation; ` +
-              "a run can be reconciled only once.",
-          );
-        }
-        if (failedRun.evidenceRefs.length !== 0) {
-          invalidTransition(
-            `Target run ${failedRun.id} has evidence refs; uncertain writer reconciliation ` +
-              "is not applicable to runs that produced evidence.",
-          );
-        }
-
-        try {
-          await requireApprovedUncertainWriterReconciliationDecision(
-            draft,
-            reconciliationRun,
-            failedRun,
-            {
-              decisionId: command.decisionId,
-              outcome: command.outcome,
-              providerInspectionAttestation: command.providerInspectionAttestation,
-            },
-          );
-        } catch (error) {
-          invalidTransition(
-            `The reconciliation command has no exact approved MRTR authority: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-        }
-
-        // The service owns provenance. Caller-supplied actors or timestamps can
-        // never masquerade as the authoritative application event.
-        failedRun.uncertainWriterReconciliation = {
-          kind: "uncertain-writer-resolved",
-          outcome: command.outcome,
-          reconciledAt: appliedAt,
-          reconciledBy: actor(origin),
-          decisionId: command.decisionId,
-          providerInspectionAttestation: command.providerInspectionAttestation,
-        };
-
-        // An accepted provider effect creates a server-owned blocker plus a
-        // separate required decision. The decision is phase/blocker-linked but
-        // deliberately not attached to the failed writer work item: doing so
-        // would apply that writer operation's proposal grammar to this release.
-        if (command.outcome === "write-effect-accepted") {
-          const ids = uncertainWriterBasisReleaseIds(failedRun.id);
-          const text = uncertainWriterBasisReleaseText(failedRun.id);
-          if (draft.blockers.some((b) => b.id === ids.blockerId)) {
-            invalidInput(`Blocker id ${ids.blockerId} already exists.`);
-          }
-          if (findDecision(draft, ids.decisionId)) {
-            invalidInput(
-              `Resolution decision id ${ids.decisionId} already exists.`,
-            );
-          }
-          const resolutionDecision: Mutable<EngineeringDecision> = {
-            id: ids.decisionId,
-            phaseId: failedWorkItem.phaseId,
-            title: text.decisionTitle,
-            question: text.decisionQuestion,
-            status: "required",
-            requestedAt: appliedAt,
-            inputEvidenceRefs: [],
-            approvalIds: [],
-          };
-          draft.decisions.push(resolutionDecision);
-          const phase = draft.phases.find((item) =>
-            item.id === failedWorkItem.phaseId
-          )!;
-          phase.requiredDecisionIds = [
-            ...phase.requiredDecisionIds,
-            resolutionDecision.id,
-          ];
-          draft.blockers.push({
-            id: ids.blockerId,
-            phaseId: failedWorkItem.phaseId,
-            title: text.blockerTitle,
-            description: text.blockerDescription,
-            kind: "tool-failure",
-            status: "open",
-            openedAt: appliedAt,
-            workItemIds: [failedWorkItem.id],
-            decisionIds: [resolutionDecision.id],
-          });
-          // Bidirectional cross-reference: the failed work item must know it has a blocker.
-          failedWorkItem.blockerIds = [
-            ...failedWorkItem.blockerIds,
-            ids.blockerId,
-          ];
-        }
-
-        // Complete the reconciliation run (annotation-only, no ThreadSnapshot).
-        const summary = "Uncertain-writer reconciliation completed by human operator.";
-        reconciliationRun.status = "completed";
-        reconciliationRun.annotationOnly = true;
-        reconciliationRun.completedAt = appliedAt;
-        reconciliationRun.summary = summary;
-        reconciliationRun.statusHistory ??= [];
-        reconciliationRun.statusHistory.push(transition(
-          { commandId: command.commandId, summary },
-          origin,
-          "completed",
-          appliedAt,
-        ));
-
-        const workItem = findWorkItem(draft, reconciliationRun.workItemId)!;
-        workItem.status = "completed";
-        recomputeWorkReadiness(draft);
+        await applyReconcileAnnotationRun(draft, appliedAt, origin, command);
       },
     );
   }
@@ -588,141 +379,13 @@ export class EngineeringProjectCommandService {
       "impact-decision.accept",
       command,
       async (draft, appliedAt) => {
-        nonEmpty(command.runId, "runId");
-        nonEmpty(command.summary, "summary");
-        nonEmpty(command.decisionId, "decisionId");
-        if (
-          command.limits.providerCalls !== "none" ||
-          command.limits.solverCalls !== "none" ||
-          command.limits.reruns !== "none" ||
-          command.limits.newWorkItems !== "none"
-        ) {
-          invalidInput(
-            "An impact decision cannot grant a provider, solver, rerun, or new work item.",
-          );
-        }
-        const run = findRun(draft, command.runId);
-        if (!run) notFound("agent run", command.runId);
-        const decisionWork = findWorkItem(draft, run.workItemId);
-        if (!decisionWork) notFound("work item", run.workItemId);
-        const operation = decisionWork.operation;
-        if (
-          run.basis?.kind !== "thread-snapshot" ||
-          operation?.id !== DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.id ||
-          operation.version !== DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.version
-        ) {
-          invalidTransition(
-            "This command may complete only decide.accept-cross-domain-impact@1.",
-          );
-        }
-        if (run.status !== "queued") {
-          invalidTransition(
-            `Impact-decision run ${run.id} can complete only from queued; it is ${run.status}.`,
-          );
-        }
-        const decision = findDecision(draft, command.decisionId);
-        if (
-          !decision ||
-          decision.status !== "approved" ||
-          !decisionWork.decisionIds.includes(command.decisionId)
-        ) {
-          invalidTransition(
-            "The impact decision is not the exact approved MRTR bound to this run.",
-          );
-        }
-        const workItemIds = draft.workItems.map((item) => item.id);
-        const runIds = draft.agentRuns.map((item) => item.id);
-        const appliedGateClaims = canonicalizeCrossDomainImpactWorkItemClaims(
-          command.appliedGateClaims,
-        );
-        const recrossed = recrossCrossDomainImpactWorkItemClaims(
-          draft.workItems,
-          appliedGateClaims.map((item) => ({
-            gateItemId: item.gateItemId,
-            role: item.role,
-            status: item.status,
-          })),
-          { excludeWorkItemId: decisionWork.id },
-        );
-        if (deterministicJson(recrossed) !== deterministicJson(appliedGateClaims)) {
-          invalidTransition(
-            "Current work-item gate claims do not equal the signed impact-decision recross.",
-          );
-        }
-        if (
-          command.evaluationCapture.id !==
-            `cross-domain-impact-evaluation-${command.evaluationCapture.fingerprint.digest}`
-        ) {
-          invalidInput(
-            "The impact-decision evaluation capture id must derive from its digest.",
-          );
-        }
-        assertExactResultEvidence(
+        await applyAcceptCrossDomainImpactDecision(
           draft,
-          command.resultSnapshot,
-          command.evidenceRefs,
-        );
-        const basis = run.basis;
-        if (basis?.kind !== "thread-snapshot") {
-          invalidTransition(
-            "This command may complete only decide.accept-cross-domain-impact@1.",
-          );
-        }
-        const baseSnapshot = threadSnapshotReference(basis);
-        assertResultAdvancesBase(baseSnapshot, command.resultSnapshot);
-        if (!this.evidenceValidator) {
-          invalidInput(
-            "Completion evidence validation is unavailable; refusing to publish unverified refs.",
-          );
-        }
-        await this.evidenceValidator.validate(
-          baseSnapshot,
-          command.resultSnapshot,
-          command.evidenceRefs,
-        );
-        draft.workItems = structuredClone(
-          applyCrossDomainImpactWorkItemClaims(
-            draft.workItems,
-            appliedGateClaims,
-            { excludeWorkItemId: decisionWork.id },
-          ),
-        ) as Mutable<EngineeringWorkItem>[];
-        addThreadSnapshot(draft, command.resultSnapshot);
-        run.status = "completed";
-        run.summary = command.summary;
-        run.claimedAt = appliedAt;
-        run.claimedBy = actor(origin);
-        run.startedAt = appliedAt;
-        run.completedAt = appliedAt;
-        run.resultSnapshot = structuredClone(command.resultSnapshot);
-        run.evidenceRefs = [...structuredClone(command.evidenceRefs)];
-        run.statusHistory ??= [];
-        run.statusHistory.push(transition(
-          { commandId: command.commandId, summary: command.summary },
-          origin,
-          "completed",
           appliedAt,
-        ));
-        const completedWork = findWorkItem(draft, run.workItemId)!;
-        completedWork.status = "completed";
-        completedWork.evidenceRefs = [...structuredClone(command.evidenceRefs)];
-        const phase = draft.phases.find((item) => item.id === completedWork.phaseId)!;
-        phase.evidenceRefs = mergeEvidence(phase.evidenceRefs, command.evidenceRefs);
-        if (
-          deterministicJson(draft.workItems.map((item) => item.id)) !==
-            deterministicJson(workItemIds) ||
-          deterministicJson(draft.agentRuns.map((item) => item.id)) !==
-            deterministicJson(runIds) ||
-          draft.agentRuns.some((item) =>
-            item.id !== run.id && item.status === "queued" &&
-            !runIds.includes(item.id)
-          )
-        ) {
-          invalidTransition(
-            "An impact decision cannot add a work item or enqueue a rerun.",
-          );
-        }
-        recomputeWorkReadiness(draft);
+          origin,
+          command,
+          this.evidenceValidator,
+        );
       },
     );
   }
@@ -741,213 +404,14 @@ export class EngineeringProjectCommandService {
       "work-item.reconcile-successor",
       command,
       async (draft, appliedAt) => {
-        nonEmpty(command.failedWorkItemId, "failedWorkItemId");
-        nonEmpty(command.failedRunId, "failedRunId");
-        nonEmpty(command.successorRunId, "successorRunId");
-        nonEmpty(command.rationale, "rationale");
-        if (command.failedRunId === command.successorRunId) {
-          invalidInput("A failed run cannot reconcile itself as its successor.");
-        }
-        assertDeclaredSnapshot(draft, command.successorRunSnapshot);
-        if (command.successorSnapshot !== undefined) {
-          // Full closeout path: a separate closeout snapshot was produced and
-          // must immediately follow the successor result in the project lineage.
-          if (
-            command.successorSnapshot.subjectId !== draft.project.subjectId ||
-            command.successorSnapshot.snapshotId.toLowerCase() === "latest" ||
-            command.successorSnapshot.revision !==
-              command.successorRunSnapshot.revision + 1 ||
-            !sameSnapshotReference(
-              draft.threadSnapshots.at(-1)!,
-              command.successorRunSnapshot,
-            )
-          ) {
-            invalidInput(
-              "The closeout snapshot must directly follow the current completed successor snapshot.",
-            );
-          }
-          if (!this.reconciliationSnapshotValidator) {
-            invalidInput(
-              "Successor reconciliation requires an exact persisted closeout snapshot validator.",
-            );
-          }
-          await this.reconciliationSnapshotValidator.validate(
-            command.successorRunSnapshot,
-            command.successorSnapshot,
-          );
-        } else {
-          // Direct reconciliation does not create a synthetic ThreadSnapshot.
-          // The successor result may already be an immutable ancestor of the
-          // current project head (e.g. a later independently published run).
-          // Prove that topology through the injected persistence reader; a
-          // familiar subject/revision is never accepted as a substitute.
-          const currentHead = draft.threadSnapshots.at(-1)!;
-          if (
-            currentHead.subjectId !== command.successorRunSnapshot.subjectId ||
-            currentHead.revision < command.successorRunSnapshot.revision
-          ) {
-            invalidInput(
-              "Direct reconciliation requires the current project thread head to be at or after the successor run snapshot.",
-            );
-          }
-          if (!this.reconciliationSnapshotValidator) {
-            invalidInput(
-              "Direct reconciliation requires an exact persisted thread-lineage validator.",
-            );
-          }
-          await this.reconciliationSnapshotValidator.validateCurrentHeadDescendsFrom(
-            currentHead,
-            command.successorRunSnapshot,
-          );
-        }
-        const failedWork = findWorkItem(draft, command.failedWorkItemId);
-        if (!failedWork) notFound("work item", command.failedWorkItemId);
-        if (failedWork.status !== "ready") {
-          invalidTransition(
-            `Work item ${failedWork.id} can reconcile only from ready after its failed attempt.`,
-          );
-        }
-        if (failedWork.evidenceRefs.length !== 0) {
-          invalidTransition(
-            `Work item ${failedWork.id} already owns evidence and cannot be reconciled as failed work.`,
-          );
-        }
-        const failedRun = findRun(draft, command.failedRunId);
-        if (!failedRun) notFound("agent run", command.failedRunId);
-        // Accept either an evidence-free failed run (explicit failure record) or
-        // a run that was cancelled by a human before any agent claim — meaning no
-        // provider was ever touched (no claimedAt, no startedAt). A queued run
-        // must be cancelled first via human elicitation before reconciliation is
-        // valid; reconciliation is not a substitute for cancellation.
-        const isEvidenceFreeFailure = failedRun.status === "failed" &&
-          !!failedRun.failure &&
-          failedRun.evidenceRefs.length === 0;
-        const isPreClaimCancellation = failedRun.status === "cancelled" &&
-          !failedRun.claimedAt &&
-          !failedRun.startedAt && failedRun.evidenceRefs.length === 0;
-        if (
-          failedRun.workItemId !== failedWork.id ||
-          (!isEvidenceFreeFailure && !isPreClaimCancellation)
-        ) {
-          invalidTransition(
-            `Run ${command.failedRunId} must be an evidence-free failed attempt or a pre-claim cancelled run for ${failedWork.id}.`,
-          );
-        }
-        const successor = findRun(draft, command.successorRunId);
-        if (!successor) notFound("agent run", command.successorRunId);
-        if (
-          successor.workItemId === failedWork.id || successor.status !== "completed" ||
-          !successor.resultSnapshot || successor.evidenceRefs.length === 0
-        ) {
-          invalidTransition(
-            `Run ${command.successorRunId} is not a completed successor with evidence.`,
-          );
-        }
-        if (
-          !sameSnapshotReference(
-            successor.resultSnapshot,
-            command.successorRunSnapshot,
-          ) ||
-          !sameEvidenceReferences(
-            successor.evidenceRefs,
-            command.successorEvidenceRefs,
-          )
-        ) {
-          invalidInput(
-            "The declared successor snapshot and evidence must exactly match the completed successor run.",
-          );
-        }
-        const successorWork = findWorkItem(draft, successor.workItemId)!;
-        if (successorWork.activityId !== failedWork.activityId) {
-          invalidInput(
-            `Successor work item ${successorWork.id} is not in the same stable activity as ${failedWork.id}.`,
-          );
-        }
-        if (
-          successorWork.status !== "completed" ||
-          !sameEvidenceReferences(
-            successorWork.evidenceRefs,
-            successor.evidenceRefs,
-          )
-        ) {
-          invalidTransition(
-            `Completed successor run ${successor.id} has inconsistent work-item evidence.`,
-          );
-        }
-        // Equivalent operations are always safe. A different operation is
-        // forbidden on the direct recovery form and requires a code-owned,
-        // injected proof on the full closeout form. The mere presence of a
-        // direct-child snapshot proves topology, not semantic compatibility.
-        if (failedWork.operation !== undefined) {
-          const operationsMatch =
-            successorWork.operation?.id === failedWork.operation.id &&
-            successorWork.operation?.version === failedWork.operation.version &&
-            deterministicJson(successorWork.operation.bindings) ===
-              deterministicJson(failedWork.operation.bindings);
-          if (!operationsMatch && command.successorSnapshot === undefined) {
-            invalidInput(
-              `Successor work item ${successorWork.id} does not carry the same operation ` +
-                `(id, version, bindings) as the failed work item ${failedWork.id}. ` +
-                `Use the exact registered operation the failed work was supposed to execute.`,
-            );
-          }
-          if (!operationsMatch && command.successorSnapshot !== undefined) {
-            if (!this.reconciliationOperationPolicy) {
-              invalidInput(
-                `Full closeout from operation ${failedWork.operation.id}@${failedWork.operation.version} ` +
-                  `to ${successorWork.operation?.id ?? "an undeclared operation"}@${
-                    successorWork.operation?.version ?? "unknown"
-                  } requires an injected operation-transition policy.`,
-              );
-            }
-            await this.reconciliationOperationPolicy.authorize({
-              failedWorkItemId: failedWork.id,
-              failedOperation: structuredClone(failedWork.operation),
-              successorWorkItemId: successorWork.id,
-              successorOperation: successorWork.operation
-                ? structuredClone(successorWork.operation)
-                : undefined,
-              successorRunSnapshot: structuredClone(command.successorRunSnapshot),
-              successorSnapshot: structuredClone(command.successorSnapshot),
-            });
-          }
-        }
-        // Lineage guard: the successor run must have been executed against a snapshot
-        // that belongs to this project's declared thread lineage. This prevents
-        // cross-project runs from being used as reconciliation successors.
-        {
-          const lineageIds = new Set(draft.threadSnapshots.map((s) => s.snapshotId));
-          const successorBaseId = successor.baseSnapshot?.snapshotId ??
-            (successor.basis?.kind === "thread-snapshot"
-              ? successor.basis.snapshotId
-              : successor.basis?.kind === "approved-brief"
-              ? successor.basis.projectSnapshotId
-              : undefined);
-          if (!successorBaseId || !lineageIds.has(successorBaseId)) {
-            invalidInput(
-              `Successor run ${successor.id} was not executed against this project's ` +
-                "declared thread lineage.",
-            );
-          }
-        }
-        if (command.successorSnapshot !== undefined) {
-          addThreadSnapshot(draft, command.successorSnapshot);
-        }
-        failedWork.status = "cancelled";
-        failedWork.reconciliation = {
-          kind: "superseded-by-successor",
-          reconciledAt: appliedAt,
-          reconciledBy: actor(origin),
-          failedRunId: failedRun.id,
-          successorRunId: successor.id,
-          successorRunSnapshot: structuredClone(command.successorRunSnapshot),
-          ...(command.successorSnapshot !== undefined
-            ? { successorSnapshot: structuredClone(command.successorSnapshot) }
-            : {}),
-          successorEvidenceRefs: structuredClone([...command.successorEvidenceRefs]),
-          rationale: command.rationale,
-        };
-        recomputeWorkReadiness(draft);
+        await applyReconcileWorkItemWithSuccessor(
+          draft,
+          appliedAt,
+          origin,
+          command,
+          this.reconciliationSnapshotValidator,
+          this.reconciliationOperationPolicy,
+        );
       },
     );
   }
@@ -972,63 +436,7 @@ export class EngineeringProjectCommandService {
       "work-item.abandon",
       command,
       (draft, appliedAt) => {
-        if (!Array.isArray(command.workItemIds) || command.workItemIds.length === 0) {
-          invalidInput("At least one workItemId is required.");
-        }
-        nonEmpty(command.rationale, "rationale");
-
-        for (const workItemId of command.workItemIds) {
-          if (typeof workItemId !== "string" || !workItemId.trim()) {
-            invalidInput(`Invalid workItemId value: ${String(workItemId)}.`);
-          }
-          const work = findWorkItem(draft, workItemId);
-          if (!work) notFound("work item", workItemId);
-          if (work.status !== "ready" && work.status !== "waiting-for-decision") {
-            invalidTransition(
-              `Work item ${work.id} has status ${work.status}; only ready or waiting-for-decision items without runs can be abandoned.`,
-            );
-          }
-          if (draft.agentRuns.some((run) => run.workItemId === work.id)) {
-            invalidTransition(
-              `Work item ${work.id} has an associated run and cannot be abandoned.`,
-            );
-          }
-          if (work.evidenceRefs.length > 0) {
-            invalidTransition(
-              `Work item ${work.id} carries evidence refs and cannot be abandoned.`,
-            );
-          }
-          work.status = "abandoned";
-        }
-
-        for (const decisionId of command.decisionIds ?? []) {
-          if (typeof decisionId !== "string" || !decisionId.trim()) {
-            invalidInput(`Invalid decisionId value: ${String(decisionId)}.`);
-          }
-          const decision = findDecision(draft, decisionId);
-          if (!decision) notFound("decision", decisionId);
-          if (decision.status !== "required" && decision.status !== "proposed") {
-            invalidTransition(
-              `Decision ${decision.id} has status ${decision.status}; only required or proposed decisions can be abandoned.`,
-            );
-          }
-          // Revoke any pending approval to keep the approval ledger consistent.
-          if (decision.status === "proposed") {
-            const pendingApproval = [...decision.approvalIds].reverse().map((id) =>
-              draft.approvals.find((approval) => approval.id === id)
-            ).find((approval) => approval?.status === "pending");
-            if (pendingApproval) {
-              pendingApproval.status = "revoked";
-              pendingApproval.decidedAt = appliedAt;
-              pendingApproval.decidedBy = origin.actorId;
-              pendingApproval.decidedByOrigin = origin.kind;
-              pendingApproval.rationale = command.rationale;
-            }
-          }
-          decision.status = "abandoned";
-        }
-
-        recomputeWorkReadiness(draft);
+        applyAbandonWorkItems(draft, appliedAt, origin, command);
       },
     );
   }
