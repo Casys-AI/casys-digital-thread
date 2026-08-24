@@ -38,11 +38,13 @@ DAG. Any server product-structure view is derived from an exact SysON capture an
 rebuildable, cacheable and disposable. CAD and FEA may attach artifacts or analyses to
 exact SysML identities; they cannot create, move or delete product structure.
 
-Product and source navigation therefore starts from the exact SysML/SysON graph. From a
-`System`, `PartUsage` or `PartDefinition`, the Workbench exposes attached sources,
-geometry, physics and verdict evidence. Only after a semantic target and attached source
-are selected does `ProjectSourceWorkspace` resolve technical imports or includes. Its
-dependency DAG is never the product tree or a parallel product explorer.
+Product and source navigation therefore starts from the exact sealed SysML/SysON graph.
+Lean MCP read controls for the engineering agent and Workbench GET/SSE are thin consumers
+of one application read-side navigation service. From a `System`, `PartUsage` or
+`PartDefinition`, they expose attached sources, geometry, physics and verdict evidence.
+Only after a semantic target and attached source are selected does
+`ProjectSourceWorkspace` resolve technical imports or includes. Its dependency DAG is
+never the product tree or a parallel product explorer.
 
 The first proving vehicle is `motorized-camera-slider-mcs01`. Its architecture has
 separate rail, carriage, mount, transmission, motor, driver and controller identities.

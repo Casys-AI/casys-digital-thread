@@ -18,14 +18,30 @@ trees cannot add, delete, move or retarget any of those elements.
 
 ## Derived server view
 
-For bounded joins, the server may derive a read model from one exact SysON capture. It
-may contain definition nodes, usage nodes, exact owner and target links, immediate-child
-indexes, reverse parent indexes and occurrence paths.
+One application read-side product-navigation service derives its answers from one exact
+sealed SysON capture. For bounded joins, its read model may contain definition nodes,
+usage nodes, exact owner and target links, immediate-child indexes, reverse parent
+indexes and occurrence paths.
+
+The service offers small composable reads for:
+
+- roots and bounded immediate children;
+- an exact path or bounded neighborhood around one node;
+- one selected node's context and exact attachments;
+- a source dependency closure only after an exact attached source is selected.
+
+Lean MCP controls expose these reads to the engineering agent. Workbench GET/SSE exposes
+the same semantics to the UI. Neither adapter owns traversal rules or a separate read
+model.
 
 This projection is rebuildable, cacheable and disposable. Its only semantic identities
 are the exact SysML element identities from its capture basis. A cache key includes the
 exact SysON capture reference or fingerprint; it never uses a project label, timestamp
 or implicit `latest`.
+
+Every response publishes its exact sealed SysON basis. Reads that include source closure
+also publish the exact workspace revision and closure basis. Callers cannot select a
+provider, runtime, parser or lowering profile through this navigation surface.
 
 Deleting or rebuilding the projection cannot change product truth. A projection that
 cannot be reproduced from its exact capture is `unavailable` and must not be repaired
@@ -34,13 +50,13 @@ from CAD labels or workspace layout.
 ## Traversal index
 
 Native SysON traversal APIs are the first choice. If they cannot provide bounded
-immediate-child traversal, reverse indexes or occurrence paths efficiently, the server
-may derive a Graphology index from the exact SysON capture.
+immediate-child traversal, reverse indexes or occurrence paths efficiently, a read-side
+adapter may derive a Graphology index from the exact sealed SysON capture.
 
 The Graphology index is keyed by that exact capture and contains only derived identities
-and edges. It is rebuildable, cacheable and disposable; it is never product authority,
-never merged back into SysON and never repaired from workspace files or evidence labels.
-Deleting it must leave no product state to recover.
+and edges. It is rebuildable, cacheable and disposable; it is never a domain object or
+product authority, never merged back into SysON and never repaired from workspace files
+or evidence labels. Deleting it must leave no product state to recover.
 
 ## Semantic navigation and attachments
 

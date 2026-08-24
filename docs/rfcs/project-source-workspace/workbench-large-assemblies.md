@@ -4,9 +4,10 @@ Status: proposed · not implemented
 
 ## Read-only projection
 
-The Workbench remains a read-only consumer of server projections and Thread evidence. It
-does not parse CAD files, mutate SysML, resolve source dependencies, queue builds or hold
-provider credentials.
+The Workbench remains a thin, read-only GET/SSE consumer of the same application
+product-navigation service used by the agent's lean MCP read controls. It does not own a
+second traversal model, parse CAD files, mutate SysML, resolve source dependencies,
+queue builds or hold provider credentials. It is not a command surface.
 
 Its primary navigation always starts from one exact SysML/SysON `System`, `PartUsage` or
 `PartDefinition` graph node. It expands only immediate children from the native SysON
@@ -17,6 +18,10 @@ does not materialize the complete occurrence tree.
 There is no parallel product-shaped file explorer. After selecting a semantic node, the
 Workbench may reveal its exact attached source roots and let the user drill into the
 workspace dependency closure for imports or includes.
+
+GET responses publish the exact sealed SysON basis and, when relevant, the exact
+workspace basis. SSE notifications also carry an exact basis; they prompt a bounded
+read and never instruct the client to choose `latest`, a label, provider or runtime.
 
 ## Definition and occurrence views
 

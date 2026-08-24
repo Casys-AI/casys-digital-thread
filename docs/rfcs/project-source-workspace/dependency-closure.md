@@ -10,6 +10,10 @@ at this point does the server resolve the root's technical dependency closure fr
 exact `ProjectSourceWorkspace` revision instead of copying every source file into one
 request.
 
+This is the final composable read of the shared application product-navigation service.
+The engineering agent reaches it through a lean MCP read control; the Workbench reaches
+the same semantics through GET after node and attachment selection.
+
 The workspace remains responsible only for:
 
 - stable module and file identities;
@@ -42,6 +46,10 @@ an implicit `latest` must not repair it.
 The public operation should return an opaque locator plus a bounded summary. The full
 closure may be retained in CAS for review and later reopened by exact reference. It
 grants no permission to compile, execute, seal or judge.
+
+The response publishes the exact sealed SysON basis, selected semantic target, exact
+attachment, workspace revision and closure fingerprint. It accepts no `latest`, label,
+provider, runtime, parser or lowering-profile selection.
 
 A file tree may be displayed as a drill-down of this selected closure. It must not be an
 independent entry point for navigating the product or choosing product structure.
