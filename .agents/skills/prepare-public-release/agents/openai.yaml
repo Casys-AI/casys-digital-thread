@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prepare Public Release"
+  short_description: "Audit and prove public repository readiness"
+  default_prompt: "Use $prepare-public-release to audit the exact current commit and prepare it for public release without publishing anything yet."

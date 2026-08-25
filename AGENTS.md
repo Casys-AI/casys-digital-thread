@@ -6,6 +6,10 @@ This workspace is the Casys Digital Thread atelier. Engineering provider servers
 Read this file first, then the linked pages. Do not improvise a second authority model
 from UI copy or tool descriptions.
 
+Reusable workflows live in the [agent skill catalogue](.agents/skills/README.md). Skills
+route into the authorities below; they never redefine operation identities, contracts,
+or persisted truth.
+
 ## Non-negotiable
 
 | Actor     | Owns                                                     | Must not                                                                                                         |
@@ -23,14 +27,14 @@ from UI copy or tool descriptions.
    substitutes
 3. [Source analysis and authority pipeline](docs/reference/pipeline/analysis-authority-pipeline.md)
    — capture → analysis → MRTR → dispatch
-4. [Local runtime and ports](docs/reference/runtime/local-runtime-and-ports.md) — ports, YOLO, runtime
-   ownership. File census:
+4. [Local runtime and ports](docs/reference/runtime/local-runtime-and-ports.md) — ports,
+   YOLO, runtime ownership. File census:
    [codebase map](docs/reference/codebase/codebase-map.md).
 5. [CLAUDE.md](CLAUDE.md) — commands, hexagonal rules, CM-01 retirement
 6. [Run the behave loop from zero](docs/how-to/verify-design/verify-a-new-design-from-scratch.md)
    — new project, behave only. Do not repair dl05. Do not open make/buy.
-7. [Walk the post-proof loop](docs/how-to/verify-design/review-and-correct-after-a-proof.md) — join,
-   fail-only correction, `z*`, reseal. Historical **dl05 r16** is `UNLINKED`
+7. [Walk the post-proof loop](docs/how-to/verify-design/review-and-correct-after-a-proof.md)
+   — join, fail-only correction, `z*`, reseal. Historical **dl05 r16** is `UNLINKED`
    (`assembly_max_*`). A later join on that atelier can be `pass` (Thread r19). Do not
    invent a mapping or a fail.
 8. [Three judgement branches](docs/explanations/product/product-direction.md#three-judgement-branches)

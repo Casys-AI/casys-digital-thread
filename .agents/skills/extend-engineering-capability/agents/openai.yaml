@@ -1,0 +1,4 @@
+interface:
+  display_name: "Extend Engineering Capability"
+  short_description: "Extend a bounded engineering authority surface"
+  default_prompt: "Use $extend-engineering-capability to implement a bounded, versioned engineering capability extension."

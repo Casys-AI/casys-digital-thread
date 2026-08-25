@@ -1,0 +1,4 @@
+interface:
+  display_name: "Recover Engineering Run"
+  short_description: "Reconcile uncertain provider writes safely"
+  default_prompt: "Use $recover-engineering-run to diagnose this quarantined provider run and stop at each exact human decision gate."

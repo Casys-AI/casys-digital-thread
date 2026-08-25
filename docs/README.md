@@ -17,13 +17,15 @@ verdict, release decision, conformity finding, or certification claim.
 
 ## Choose your path
 
-- **Understand the product:** read [Product direction](explanations/product/product-direction.md),
-  then [Proofs and verdicts](explanations/product/proofs-and-verdicts.md).
+- **Understand the product:** read
+  [Product direction](explanations/product/product-direction.md), then
+  [Proofs and verdicts](explanations/product/proofs-and-verdicts.md).
 - **See the engineering sequence:** use
   [Walk through an engineering project](how-to/verify-design/walk-through-an-engineering-project.md).
 - **Verify a new design:** follow
   [Verify a new design from scratch](how-to/verify-design/verify-a-new-design-from-scratch.md),
-  then [Review and correct after a proof](how-to/verify-design/review-and-correct-after-a-proof.md).
+  then
+  [Review and correct after a proof](how-to/verify-design/review-and-correct-after-a-proof.md).
 - **Author or compile engineering source:** enter [compile how-tos](how-to/compile/).
 - **Run admitted Modelica or SPICE:** enter [run how-tos](how-to/run/).
 - **Preview the Workbench:** use
@@ -32,7 +34,8 @@ verdict, release decision, conformity finding, or certification claim.
   [project-dossier index](project-dossiers/README.md). These pages track observations;
   they do not replace persisted project, Thread, CAS, provider, or human-decision state.
 - **Find an exact contract, operation, port, or code location:** enter
-  [reference](reference/README.md), especially the [engineering domains](reference/domains/README.md),
+  [reference](reference/README.md), especially the
+  [engineering domains](reference/domains/README.md),
   [local runtime and ports](reference/runtime/local-runtime-and-ports.md), and
   [codebase map](reference/codebase/codebase-map.md).
 - **Understand why a boundary exists:** enter [explanations](explanations/README.md).
@@ -45,6 +48,9 @@ Agents must start with [AGENTS.md](../AGENTS.md), then read the
 [agent workspace](reference/agent/agent-workspace.md) and
 [lookalike traps](reference/agent/lookalike-traps.md). After that, use the exact how-to
 for the task. This navigation page never substitutes for those authority contracts.
+Reusable orchestration lives in the
+[agent skill catalogue](../.agents/skills/README.md): skills route to these public pages
+and never replace their contracts.
 
 ## How Diátaxis is used here
 
@@ -57,21 +63,21 @@ complete a concrete task against the current product contracts.
   limits, ports, and code locations.
 - **Explanations** describe why the product, authority, evidence, and UX boundaries
   exist.
-- **Project dossiers, RFCs, and legacy pages are outside Diátaxis.** They preserve
-  dated observations, design history, or retired material; they are not live product
+- **Project dossiers, RFCs, and legacy pages are outside Diátaxis.** They preserve dated
+  observations, design history, or retired material; they are not live product
   authority.
 
 ## Directory map
 
-| Directory | Purpose |
-| --- | --- |
-| [`how-to/`](how-to/README.md) | Walkthroughs and task recipes, grouped by human goal |
-| [`reference/`](reference/README.md) | Exact contracts, domains, providers, runtime, pipeline, and codebase maps |
-| [`explanations/`](explanations/README.md) | Product rationale, verification doctrine, and Workbench design |
-| [`project-dossiers/`](project-dossiers/README.md) | Dated, non-authoritative project tracking and evidence pointers |
-| [`rfcs/`](rfcs/README.md) | Active briefs, implemented or rejected designs, and studies |
-| `legacy/` (reserved) | Retired, non-executable historical dossiers; never admission or live evidence |
-| [`assets/`](assets/) | Images and supporting visual artifacts used by documentation |
+| Directory                                         | Purpose                                                                       |
+| ------------------------------------------------- | ----------------------------------------------------------------------------- |
+| [`how-to/`](how-to/README.md)                     | Walkthroughs and task recipes, grouped by human goal                          |
+| [`reference/`](reference/README.md)               | Exact contracts, domains, providers, runtime, pipeline, and codebase maps     |
+| [`explanations/`](explanations/README.md)         | Product rationale, verification doctrine, and Workbench design                |
+| [`project-dossiers/`](project-dossiers/README.md) | Dated, non-authoritative project tracking and evidence pointers               |
+| [`rfcs/`](rfcs/README.md)                         | Active briefs, implemented or rejected designs, and studies                   |
+| `legacy/` (reserved)                              | Retired, non-executable historical dossiers; never admission or live evidence |
+| [`assets/`](assets/)                              | Images and supporting visual artifacts used by documentation                  |
 
 Each deeper index routes its own scope, while domain-specific indexes own detailed
 inventories. This page stays short as the tree grows.
