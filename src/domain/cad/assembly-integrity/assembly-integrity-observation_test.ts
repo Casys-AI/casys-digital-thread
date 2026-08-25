@@ -342,12 +342,17 @@ Deno.test("mcp-build123d adapter sends only exact STEP and normalizes factual pr
   });
   const calls: Parameters<McpToolClient["callTool"]>[0][] = [];
   const client: McpToolClient = {
-    async callTool(call) {
+    callTool(call) {
       calls.push(call);
-      return { structuredContent: rawObservedResult(bundle), text: "observed" };
+      return Promise.resolve({
+        structuredContent: rawObservedResult(bundle),
+        text: "observed",
+      });
     },
-    async callToolTextResult() {
-      throw new Error("text result is not part of this fixed adapter contract");
+    callToolTextResult() {
+      return Promise.reject(
+        new Error("text result is not part of this fixed adapter contract"),
+      );
     },
   };
   const observer = new McpBuild123dAssemblyIntegrityObserver({ client, profiles });
@@ -387,11 +392,16 @@ Deno.test("mcp-build123d adapter sends only exact STEP and normalizes factual pr
   );
 
   const failedClient: McpToolClient = {
-    async callTool() {
-      return { structuredContent: rawFailedResult(bundle), text: "failed" };
+    callTool() {
+      return Promise.resolve({
+        structuredContent: rawFailedResult(bundle),
+        text: "failed",
+      });
     },
-    async callToolTextResult() {
-      throw new Error("text result is not part of this fixed adapter contract");
+    callToolTextResult() {
+      return Promise.reject(
+        new Error("text result is not part of this fixed adapter contract"),
+      );
     },
   };
   const failed = await new McpBuild123dAssemblyIntegrityObserver({
@@ -511,10 +521,12 @@ Deno.test("exact reopener recrosses geometry-module primary, sealed STEP graph, 
     const profile = await profiles.initial();
     const reopener = new ExactAssemblyIntegrityInputReopener({
       geometryCaptures: {
-        async read(fingerprint) {
-          return fingerprint.digest === source.geometryModule.fingerprint.digest
-            ? deterministicJson(capture)
-            : undefined;
+        read(fingerprint) {
+          return Promise.resolve(
+            fingerprint.digest === source.geometryModule.fingerprint.digest
+              ? deterministicJson(capture)
+              : undefined,
+          );
         },
       },
       stepAssets: new FileCanonicalAssetReader({ directory }),
