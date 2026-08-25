@@ -2,8 +2,8 @@
  * Format checks for the module-assembler output pair.
  *
  * STEP is one complete Part 21 file plus an injected OCCT import. GLB is a
- * structural GLB 2.0 container. Neither check claims mesh fitness, collision
- * freedom, or physical geometry validity.
+ * self-contained GLB 2.0 container with one embedded BIN. Neither check
+ * claims mesh fitness, collision freedom, or physical geometry validity.
  */
 
 import type { IsolatedCodeOutputDeclaration } from "../../../domain/compile/isolation/isolated-code-execution.ts";
@@ -149,9 +149,11 @@ function validateGlb(bytes: Uint8Array): void {
     }
     throw validationError("invalid_glb");
   }
-  const document = parseGlbJson(chunks[0]!.data);
-  const bin = chunks[1]?.type === GLB_BIN_CHUNK ? chunks[1].data : undefined;
-  validateGlbBinRelationship(document, bin);
+  if (binCount !== 1) throw validationError("invalid_glb");
+  validateGlbBinRelationship(
+    parseGlbJson(chunks[0]!.data),
+    chunks[1]!.data,
+  );
 }
 
 function readGlbChunks(bytes: Uint8Array, view: DataView): GlbChunk[] {
@@ -211,34 +213,30 @@ function parseGlbJson(data: Uint8Array): Record<string, unknown> {
 
 function validateGlbBinRelationship(
   document: Record<string, unknown>,
-  bin: Uint8Array | undefined,
+  bin: Uint8Array,
 ): void {
   const declared = declaredBinBuffer(Reflect.get(document, "buffers"));
-  if (declared === undefined) {
-    if (bin !== undefined) throw validationError("invalid_glb");
-    return;
-  }
   const byteLength = Reflect.get(declared, "byteLength");
   if (
-    bin === undefined ||
     typeof byteLength !== "number" ||
     !Number.isInteger(byteLength) ||
-    byteLength < 1 ||
-    byteLength > bin.byteLength
+    byteLength < 1
   ) {
     throw validationError("invalid_glb");
   }
+  const paddedLength = Math.ceil(byteLength / 4) * 4;
+  if (bin.byteLength !== paddedLength) throw validationError("invalid_glb");
 }
 
-function declaredBinBuffer(buffers: unknown): object | undefined {
-  if (buffers === undefined) return undefined;
-  if (!Array.isArray(buffers)) throw validationError("invalid_glb");
-  if (buffers.length === 0) return undefined;
+function declaredBinBuffer(buffers: unknown): object {
+  if (!Array.isArray(buffers) || buffers.length !== 1) {
+    throw validationError("invalid_glb");
+  }
   const first = buffers[0];
   if (first === null || typeof first !== "object" || Array.isArray(first)) {
     throw validationError("invalid_glb");
   }
-  if (Object.hasOwn(first, "uri")) return undefined;
+  if (Object.hasOwn(first, "uri")) throw validationError("invalid_glb");
   return first;
 }
 

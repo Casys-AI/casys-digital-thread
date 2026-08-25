@@ -20,6 +20,16 @@ Deno.test("module-assembly output validator accepts the registered STEP and GLB 
   }));
   await validator.validateOutput(stepDeclaration(), STEP);
   await validator.validateOutput(glbDeclaration(), structuralGlb());
+  await validator.validateOutput(
+    glbDeclaration(),
+    encodeGlb([
+      jsonChunk({
+        asset: { version: "2.0" },
+        buffers: [{ byteLength: 1 }],
+      }),
+      binChunk(new Uint8Array(4)),
+    ]),
+  );
 });
 
 Deno.test("module-assembly output validator refuses the untrusted Build123d declaration and broken containers", async () => {
@@ -75,11 +85,14 @@ Deno.test("module-assembly output validator refuses structurally broken GLB cont
     asset: { version: "2.0" },
     buffers: [{ byteLength: 4 }],
   });
+  const embeddedBin = binChunk(new Uint8Array(4));
   for (
     const bytes of [
       headerOnlyGlb(),
+      encodeGlb([jsonOnly]),
       encodeGlb([declaredBin]),
       encodeGlb([binChunk(new Uint8Array(4))]),
+      encodeGlb([jsonOnly, embeddedBin]),
       encodeGlb([jsonOnly, { type: 0x12345678, data: new Uint8Array(4) }]),
       encodeGlb([jsonOnly, jsonOnly]),
       encodeGlb([
@@ -94,6 +107,79 @@ Deno.test("module-assembly output validator refuses structurally broken GLB cont
       }),
       encodeGlb([{ type: GLB_JSON, data: new TextEncoder().encode("{") }]),
       encodeGlb([jsonChunk({ asset: { version: 2 } })]),
+      encodeGlb([
+        jsonChunk({
+          asset: { version: "2.0" },
+          buffers: [{ byteLength: 4, uri: "buffer.bin" }],
+        }),
+        embeddedBin,
+      ]),
+      encodeGlb([
+        jsonChunk({
+          asset: { version: "2.0" },
+          buffers: [
+            { byteLength: 4, uri: "buffer.bin" },
+            { byteLength: 4 },
+          ],
+        }),
+        embeddedBin,
+      ]),
+      encodeGlb([
+        jsonChunk({
+          asset: { version: "2.0" },
+          buffers: [{ byteLength: 4 }, { byteLength: 4 }],
+        }),
+        embeddedBin,
+      ]),
+      encodeGlb([
+        jsonChunk({
+          asset: { version: "2.0" },
+          buffers: [{ byteLength: 4 }],
+        }),
+        binChunk(new Uint8Array(8)),
+      ]),
+      encodeGlb([
+        jsonChunk({
+          asset: { version: "2.0" },
+          buffers: [{}],
+        }),
+        embeddedBin,
+      ]),
+      encodeGlb([
+        jsonChunk({
+          asset: { version: "2.0" },
+          buffers: [{ byteLength: 0 }],
+        }),
+        embeddedBin,
+      ]),
+      encodeGlb([
+        jsonChunk({
+          asset: { version: "2.0" },
+          buffers: [{ byteLength: 1.5 }],
+        }),
+        embeddedBin,
+      ]),
+      encodeGlb([
+        jsonChunk({
+          asset: { version: "2.0" },
+          buffers: { byteLength: 4 },
+        }),
+        embeddedBin,
+      ]),
+      encodeGlb([
+        jsonChunk({
+          asset: { version: "2.0" },
+          buffers: [],
+        }),
+        embeddedBin,
+      ]),
+      encodeGlb([
+        jsonChunk({
+          asset: { version: "2.0" },
+          buffers: [4],
+        }),
+        embeddedBin,
+      ]),
     ]
   ) {
     await expectCode(
