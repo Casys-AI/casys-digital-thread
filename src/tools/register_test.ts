@@ -186,6 +186,24 @@ Deno.test("local geometry-module assembly binding is code-owned and digest pinne
   ]);
 });
 
+Deno.test("server shares one module-assembly composition with export and geometry sealing", async () => {
+  const source = await Deno.readTextFile("server.ts");
+  const assemblyStart = source.indexOf("const geometryModuleAssembly =");
+  const cadProjectStart = source.indexOf("const cadProject = createCadProject({");
+  const moduleExportStart = source.indexOf("const geometryModuleExport =");
+
+  assert(assemblyStart >= 0);
+  assert(cadProjectStart >= 0);
+  assert(moduleExportStart >= 0);
+  assert(assemblyStart < cadProjectStart);
+  assert(cadProjectStart < moduleExportStart);
+  assertStringIncludes(
+    source.slice(cadProjectStart, moduleExportStart),
+    "moduleAssembly: geometryModuleAssembly?.execution?.publications,",
+  );
+  assertEquals((source.match(/const geometryModuleAssembly =/g) ?? []).length, 1);
+});
+
 Deno.test("local Modelica startup binding is code-owned, digest pinned, and qualification-gated", async () => {
   const first = await createLocalModelicaIsolatedExecutionServerOptions();
   const second = await createLocalModelicaIsolatedExecutionServerOptions();

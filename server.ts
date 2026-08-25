@@ -874,6 +874,14 @@ async function createProjectControl(
     projects: runtime.projects,
     methodSheets: thermalJoin.thermalMethodSheetCompilationJoin,
   });
+  const geometryModuleAssembly = options.geometryModuleAssembly === undefined
+    ? undefined
+    : await createGeometryModuleAssemblyComposition(
+      options.geometryModuleAssembly,
+      {
+        outputCasDirectory: `${recordedAnalysisDirectory}/geometry-module/outputs`,
+      },
+    );
 
   const cadProject = createCadProject({
     projects: runtime.projects,
@@ -889,6 +897,7 @@ async function createProjectControl(
     sysmlSourceAnalysis: architectureFoundation.sysmlSourceAnalysis,
     geometryDraftCaptureDirectory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
     geometryCaptureDirectory: DEFAULT_GEOMETRY_CAPTURE_DIRECTORY,
+    moduleAssembly: geometryModuleAssembly?.execution?.publications,
   });
   const modelicaProject = createModelicaProject({
     projects: runtime.projects,
@@ -1147,14 +1156,6 @@ async function createProjectControl(
     directory: options.partDefinitionsCaptureDirectory ??
       DEFAULT_PART_DEFINITIONS_CAPTURE_DIRECTORY,
   });
-  const geometryModuleAssembly = options.geometryModuleAssembly === undefined
-    ? undefined
-    : await createGeometryModuleAssemblyComposition(
-      options.geometryModuleAssembly,
-      {
-        outputCasDirectory: `${recordedAnalysisDirectory}/geometry-module/outputs`,
-      },
-    );
   const geometryModuleExport = geometryModuleAssembly === undefined
     ? undefined
     : createGeometryModuleExportComposition({
