@@ -24,9 +24,12 @@ import {
   createLocalAdmittedSpiceExecutionServerOptions,
   createLocalBuild123dExecutionServerOptions,
   createLocalCalculixIsolatedExecutionServerOptions,
+  createLocalGeometryModuleAssemblyServerOptions,
   createLocalModelicaIsolatedExecutionServerOptions,
   LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
   LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
+  LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
+  LOCAL_GEOMETRY_MODULE_ASSEMBLY_WRAPPER_SHA256,
   LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
   localExecutionForBinding,
   parseConsoleCli,
@@ -134,6 +137,52 @@ Deno.test("local execution startup binding is code-owned and digest pinned", asy
     "imageReference",
     "limits",
     "policy",
+  ]);
+});
+
+Deno.test("local geometry-module assembly binding is code-owned and digest pinned", async () => {
+  const first = await createLocalGeometryModuleAssemblyServerOptions();
+  const second = await createLocalGeometryModuleAssemblyServerOptions();
+
+  assertEquals(first, second);
+  assertEquals(
+    first.profile.imageReference,
+    LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
+  );
+  assertEquals(
+    first.profile.imageReference,
+    "casys/build123d-module-assembler-worker@sha256:5aa833e19f1956a001013661e726c19c4566677a75f58493a6534456b99b6707",
+  );
+  assertEquals(
+    first.profile.wrapperSha256,
+    LOCAL_GEOMETRY_MODULE_ASSEMBLY_WRAPPER_SHA256,
+  );
+  assertEquals(
+    first.profile.wrapperSha256,
+    "609eaf93f2564b88b9103d5e0d53d1dd3e93fcdf8e54c61cc313b957370bf581",
+  );
+  assertEquals(
+    first.profile.policy.id,
+    "geometry-module-assembler-microsandbox-deny-all-v1",
+  );
+  assertEquals(first.profile.policy.version, "1.0.0");
+  assertEquals(first.profile.limits, {
+    maxWallTimeMs: 120_000,
+    maxCpuTimeMs: 90_000,
+    maxMemoryBytes: 2 * 1_073_741_824,
+    maxProcesses: 32,
+    maxStdoutBytes: 65_536,
+    maxStderrBytes: 65_536,
+    maxOutputFileBytes: 64 * 1_048_576,
+    maxOutputTotalBytes: 128 * 1_048_576,
+  });
+  assertEquals(first.runtime, {});
+  assertEquals(Object.keys(first).sort(), ["profile", "runtime"]);
+  assertEquals(Object.keys(first.profile).sort(), [
+    "imageReference",
+    "limits",
+    "policy",
+    "wrapperSha256",
   ]);
 });
 

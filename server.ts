@@ -285,6 +285,10 @@ const DEFAULT_RECORDED_ANALYSIS_DIRECTORY = "state/local/recorded-analysis";
 
 export const LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE =
   "casys/build123d-microsandbox-worker@sha256:0e19aee61aaab326ec29e50753a0ef56432d255fb44fd21c40988e90ff7601f8" as const;
+export const LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE =
+  "casys/build123d-module-assembler-worker@sha256:5aa833e19f1956a001013661e726c19c4566677a75f58493a6534456b99b6707" as const;
+export const LOCAL_GEOMETRY_MODULE_ASSEMBLY_WRAPPER_SHA256 =
+  "609eaf93f2564b88b9103d5e0d53d1dd3e93fcdf8e54c61cc313b957370bf581" as const;
 
 export const LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE =
   "casys/modelica-microsandbox-worker@sha256:7d3fdeabe794b0ded5360921b16724c7904487e9d11bc24fa37c72f9b92a1894" as const;
@@ -324,6 +328,29 @@ const LOCAL_BUILD123D_EXECUTION_POLICY_BODY = Object.freeze({
   supervisorUser: "0:0",
   untrustedChildUser: "65532:65532",
   limits: LOCAL_BUILD123D_EXECUTION_LIMITS,
+});
+
+const LOCAL_GEOMETRY_MODULE_ASSEMBLY_LIMITS = Object.freeze({
+  maxWallTimeMs: 120_000,
+  maxCpuTimeMs: 90_000,
+  maxMemoryBytes: 2 * 1_073_741_824,
+  maxProcesses: 32,
+  maxStdoutBytes: 65_536,
+  maxStderrBytes: 65_536,
+  maxOutputFileBytes: 64 * 1_048_576,
+  maxOutputTotalBytes: 128 * 1_048_576,
+});
+
+const LOCAL_GEOMETRY_MODULE_ASSEMBLY_POLICY_BODY = Object.freeze({
+  schemaVersion: "geometry-module-assembler-microsandbox-policy/1.0",
+  backend: "microsandbox-local@0.6.8",
+  imageReference: LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
+  network: "deny-all",
+  pullPolicy: "never",
+  securityProfile: "restricted",
+  workerUser: "65532:65532",
+  fixedExecutable: "/usr/local/bin/python3",
+  limits: LOCAL_GEOMETRY_MODULE_ASSEMBLY_LIMITS,
 });
 
 const LOCAL_MODELICA_EXECUTION_LIMITS = Object.freeze({
@@ -1143,6 +1170,7 @@ async function createProjectControl(
       geometryDraftAssetDirectory: GEOMETRY_DRAFT_ASSETS_DIR,
       profiles: geometryModuleAssembly.profiles,
       runner: geometryModuleAssembly.execution?.runner,
+      publications: geometryModuleAssembly.execution?.publications,
     }).geometryModuleExport;
   return {
     brief: {
@@ -1468,6 +1496,9 @@ if (import.meta.main) {
     build123dExecution: localExecution
       ? await createLocalBuild123dExecutionServerOptions()
       : undefined,
+    geometryModuleAssembly: localExecution
+      ? await createLocalGeometryModuleAssemblyServerOptions()
+      : undefined,
     modelicaIsolatedExecution: localExecution
       ? await createLocalModelicaIsolatedExecutionServerOptions()
       : undefined,
@@ -1496,7 +1527,7 @@ if (import.meta.main) {
       }
       if (localExecution) {
         console.error(
-          `LOCAL EXECUTION ACTIVE: qualified Build123d, Modelica kit, admitted Modelica, admitted SPICE, and CalculiX runs use ${LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE}, ${LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE}, ${LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE}, ${LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE}, and ${LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE} through the attached local Microsandbox backend; CalculiX publication still requires the SysON oracle.`,
+          `LOCAL EXECUTION ACTIVE: qualified Build123d, geometry-module assembly, Modelica kit, admitted Modelica, admitted SPICE, and CalculiX runs use ${LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE}, ${LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE}, ${LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE}, ${LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE}, ${LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE}, and ${LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE} through the attached local Microsandbox backend; CalculiX publication still requires the SysON oracle.`,
         );
       }
       if (!projectToolsEnabled) {
@@ -1577,6 +1608,28 @@ export async function createLocalBuild123dExecutionServerOptions(): Promise<
       imageReference: LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
       policy,
       limits: LOCAL_BUILD123D_EXECUTION_LIMITS,
+    }),
+    runtime: Object.freeze({}),
+  });
+}
+
+/** Code-owned binding for deterministic one-level geometry-module assembly. */
+export async function createLocalGeometryModuleAssemblyServerOptions(): Promise<
+  GeometryModuleAssemblyServerOptions
+> {
+  const policy = Object.freeze({
+    id: "geometry-module-assembler-microsandbox-deny-all-v1",
+    version: "1.0.0",
+    fingerprint: await sha256Fingerprint(
+      LOCAL_GEOMETRY_MODULE_ASSEMBLY_POLICY_BODY,
+    ),
+  });
+  return Object.freeze({
+    profile: Object.freeze({
+      imageReference: LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
+      wrapperSha256: LOCAL_GEOMETRY_MODULE_ASSEMBLY_WRAPPER_SHA256,
+      policy,
+      limits: LOCAL_GEOMETRY_MODULE_ASSEMBLY_LIMITS,
     }),
     runtime: Object.freeze({}),
   });
