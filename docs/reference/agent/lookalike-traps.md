@@ -70,6 +70,8 @@ Domain contracts: [closed subset](../domains/cad/build123d-closed-subset-v1.md) 
 | `cad-immediate-placement-source/1.0`                      | Closed JSON of exact immediate `PartUsage` transforms. File role `cad-placement-source`; attachments stay `design-source@1` | A CAD script, compiler profile, assembly manifest, or new attachment role |
 | `project_cad_placement_capture`                           | Same-file coverage recross. Opaque `cad-placement-analysis-capture` locator only when fully resolved          | `project_technical_source_capture`, module export, or a verdict |
 | `project_geometry_module_export`                          | Accepted public draft for a later one-level module build. Not implemented                                     | Placement capture or `design.write-geometry@1` |
+| Isolated Build123d worker (`/input/source.py`)            | Untrusted admitted CAD source executed in the existing image                                                  | The module assembler; it never execs agent Python            |
+| `geometry-module-input-bundle/1.0` assembler image        | Code-owned one-level STEP compound from a closed child-STEP bundle                                            | Concatenated CAD scripts, `design.execute-build123d@1`, or collision freedom |
 
 ## Modelica
 

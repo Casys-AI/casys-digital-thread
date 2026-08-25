@@ -176,3 +176,22 @@ before promoting
 
 Browser-safe parser for MRTR geometry decision parameters; returns `{ kind: "valid" }`
 or `{ kind: "invalid", reason }`; no domain imports
+
+#### [`src/domain/cad/module-assembly/geometry-module-input-bundle.ts`](../../../src/domain/cad/module-assembly/geometry-module-input-bundle.ts)
+
+Closed `geometry-module-input-bundle/1.0`: canonical manifest, usage-ordered immediate
+occurrences, placements, child-capture and STEP identities, packed offsets, then exact
+child STEP bytes. Encode/decode/re-hash only. No agent CAD source and no exporter
+
+#### [`src/adapters/cad/module-assembly/geometry-module-assembly-composition.ts`](../../../src/adapters/cad/module-assembly/geometry-module-assembly-composition.ts)
+
+Digest-pinned module-assembler composition: profile-only review facts; empty runtime
+marker reuses the single-source Microsandbox broker and atomic output CAS. Not wired
+to MCP, the sealer, or the product catalog
+
+#### [`images/build123d-module-assembler-worker/run-module-assembler.py`](../../../images/build123d-module-assembler-worker/run-module-assembler.py)
+
+Code-owned Build123d assembler: decode/rehash the bundle, import staged child STEPs,
+apply right-handed mm extrinsic XYZ, export `assembly.step` and `assembly.glb`. Leaves
+the untrusted `build123d-microsandbox-worker` unchanged. Image digest is not yet
+qualified
