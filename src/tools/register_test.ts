@@ -605,6 +605,72 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "server composes L3 assembly-integrity only through the pinned normal build123d server",
+  async () => {
+    const temporaryDirectory = await Deno.makeTempDir({
+      prefix: "casys-assembly-integrity-composition-",
+    });
+    try {
+      const sandboxOnly = await createConsoleServer({
+        manifest: {
+          version: 1,
+          servers: [{
+            id: "build123d-sandbox",
+            displayName: "build123d sandbox",
+            role: "sandbox",
+            serviceName: "mcp-build123d-sandbox",
+            transport: "streamable-http",
+            mcpUrl: "http://127.0.0.1:3998/mcp",
+            healthUrl: "http://127.0.0.1:3998/health",
+            image: "example.test/sandbox:1",
+            required: false,
+            expectedTools: ["build123d_export"],
+          }],
+        },
+        runs: [],
+        logger: () => {},
+        activeProjectDirectory: `${temporaryDirectory}/sandbox/projects`,
+      });
+      assertEquals(
+        sandboxOnly.app.getToolNames().includes(
+          "project_assembly_integrity_review",
+        ),
+        false,
+      );
+
+      const normal = await createConsoleServer({
+        manifest: assemblyIntegrityBuild123dManifest(
+          `example.test/build123d@sha256:${"a".repeat(64)}`,
+        ),
+        runs: [],
+        logger: () => {},
+        activeProjectDirectory: `${temporaryDirectory}/normal/projects`,
+      });
+      assertEquals(
+        normal.app.getToolNames().includes("project_assembly_integrity_review"),
+        true,
+      );
+
+      await assertRejects(
+        () =>
+          createConsoleServer({
+            manifest: assemblyIntegrityBuild123dManifest(
+              "example.test/build123d:0.5.0",
+            ),
+            runs: [],
+            logger: () => {},
+            activeProjectDirectory: `${temporaryDirectory}/unpinned/projects`,
+          }),
+        TypeError,
+        "$assemblyIntegrityBuild123d.image must be one OCI image name pinned by a lowercase sha256 digest.",
+      );
+    } finally {
+      await Deno.remove(temporaryDirectory, { recursive: true });
+    }
+  },
+);
+
 Deno.test("control-plane MCP tools are namespaced, read-only, and return structured roots", async () => {
   const temporaryDirectory = await Deno.makeTempDir({
     prefix: "casys-project-tools-",
@@ -1336,6 +1402,24 @@ function manifestFixture(): FleetManifest {
       image: "example.test/toolchain:1",
       required: true,
       expectedTools: ["test_read"],
+    }],
+  };
+}
+
+function assemblyIntegrityBuild123dManifest(image: string): FleetManifest {
+  return {
+    version: 1,
+    servers: [{
+      id: "build123d",
+      displayName: "build123d",
+      role: "factual assembly integrity",
+      serviceName: "mcp-build123d",
+      transport: "streamable-http",
+      mcpUrl: "http://127.0.0.1:3014/mcp",
+      healthUrl: "http://127.0.0.1:3014/health",
+      image,
+      required: true,
+      expectedTools: ["build123d_observe_assembly_integrity"],
     }],
   };
 }

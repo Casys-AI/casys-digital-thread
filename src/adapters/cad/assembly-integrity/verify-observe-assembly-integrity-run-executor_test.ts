@@ -213,6 +213,37 @@ Deno.test("verify.observe-assembly-integrity@1 resumes a recorded capture after 
   }
 });
 
+Deno.test("verify.observe-assembly-integrity@1 keeps a completed WAL resumable when publication retries fail", async () => {
+  const fixture = await createFixture({ publishFailures: 2 });
+  try {
+    // This first failure creates the successor and advances the WAL to
+    // completed, while the run remains running for publication recovery.
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      Error,
+      "publish interrupted",
+    );
+    assertEquals(fixture.project.agentRuns[0]!.status, "running");
+    assertEquals(fixture.observer.calls, 1);
+
+    // The second attempt exercises wal.action === completed. It must not
+    // terminally fail the run if publication itself remains unavailable.
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      Error,
+      "publish interrupted",
+    );
+    assertEquals(fixture.project.agentRuns[0]!.status, "running");
+    assertEquals(fixture.observer.calls, 1);
+
+    const completed = await fixture.executor.execute(AGENT, fixture.command);
+    assertEquals(completed.agentRuns[0]!.status, "completed");
+    assertEquals(fixture.observer.calls, 1);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 Deno.test("verify.observe-assembly-integrity@1 rejects a tampered MRTR fingerprint before claim", async () => {
   const fixture = await createFixture({ tamperDecisionFingerprint: true });
   try {
@@ -234,6 +265,7 @@ interface FixtureOptions {
   readonly observerFailure?: Error;
   readonly tamperCaptureRead?: boolean;
   readonly failSnapshotSave?: boolean;
+  readonly publishFailures?: number;
   readonly tamperDecisionFingerprint?: boolean;
 }
 
@@ -495,7 +527,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
   const observer = new FakeObserver(options.observerFailure);
   const resolved = resolvedInput(profile, geometryFingerprint, stepFingerprint);
   const inputs = new FakeInputs(resolved, options.inputFailure);
-  const commands = new MemoryCommands(project);
+  const commands = new MemoryCommands(project, options.publishFailures ?? 0);
   const projects = new MemoryProjects(project, approvedBriefProject);
 
   return {
@@ -868,7 +900,10 @@ class MemoryProjects implements EngineeringProjectRevisionStore {
 }
 
 class MemoryCommands {
-  constructor(private readonly project: MutableProject) {}
+  constructor(
+    private readonly project: MutableProject,
+    private remainingPublishFailures: number,
+  ) {}
 
   claimRun(
     origin: typeof AGENT,
@@ -886,6 +921,10 @@ class MemoryCommands {
   }
 
   publishRun(): Promise<EngineeringProjectSnapshot> {
+    if (this.remainingPublishFailures > 0) {
+      this.remainingPublishFailures -= 1;
+      return Promise.reject(new Error("publish interrupted"));
+    }
     const run = this.project.agentRuns[0]!;
     if (run.status === "running") {
       run.status = "publishing";

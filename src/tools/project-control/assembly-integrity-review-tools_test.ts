@@ -61,7 +61,8 @@ Deno.test("project_assembly_integrity_review exposes only the exact closed publi
   assertEquals(geometryModule.properties.artifactId.pattern, "^geometry-[a-f0-9]{64}$");
   assertStringIncludes(tool.description, "verify.observe-assembly-integrity@1");
   assertStringIncludes(tool.description, "decisionParameters");
-  assertStringIncludes(tool.description, "planning-only");
+  assertStringIncludes(tool.description, "read-only");
+  assertEquals(tool.description.includes("planning-only"), false);
   assertStringIncludes(tool.description, "verdict");
 });
 

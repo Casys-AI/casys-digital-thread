@@ -25,7 +25,7 @@ export function registerProjectAssemblyIntegrityReviewTools(
   app.registerTool(projectAssemblyIntegrityReviewTool, async (args) => {
     const result = await review.execute(args);
     const content = result.status === "resolved"
-      ? "Resolved the exact current Thread basis and unique primary geometry-module identity for a factual assembly-integrity observation. Paste next.append.arguments, then next.propose.arguments. The registered operation remains planning-only: no observation ran, no provider was called, no project or Thread state was written, and no verdict was produced."
+      ? "Resolved the exact current Thread basis and unique primary geometry-module identity for a factual assembly-integrity observation. Paste next.append.arguments when present, then next.propose.arguments. This review is read-only: no observation ran, no provider was called, no project or Thread state was written, and no verdict was produced. After human approval, queue and execute the registered operation separately."
       : result.status === "unavailable"
       ? "Unavailable: the exact current Thread basis or primary geometry module could not be reopened. No admission, decisionParameters, append, proposal, observation, or verdict was produced."
       : "Unresolved: the named exact basis or geometry module was not the current unique primary identity. No admission, decisionParameters, append, proposal, observation, or verdict was produced.";
@@ -77,7 +77,7 @@ const GEOMETRY_MODULE_SCHEMA = {
 const projectAssemblyIntegrityReviewTool: MCPTool = {
   name: "project_assembly_integrity_review",
   description:
-    "Prepare the factual verify.observe-assembly-integrity@1 review from only projectId, an exact current EngineeringThreadSnapshotBasis, and the exact primary geometryModule { artifactId, fingerprint } returned by review. The server recrosses current Thread/module state and selects the signed observation profile, method and exact configured runtime, returning decisionParameters only after that recross. provider, tool, profile, runtime, children, transform, tolerance, result, verdict, latest and aliases are refused. This is read-only and planning-only: it emits no observer request, execution, project/Thread write, or product verdict.",
+    "Prepare the factual verify.observe-assembly-integrity@1 review from only projectId, an exact current EngineeringThreadSnapshotBasis, and the exact primary geometryModule { artifactId, fingerprint } returned by review. The server recrosses current Thread/module state and selects the signed observation profile, method and exact configured runtime, returning decisionParameters only after that recross. provider, tool, profile, runtime, children, transform, tolerance, result, verdict, latest and aliases are refused. This review is read-only: it emits no observer request, execution, project/Thread write, or product verdict. After human approval, queue and execute the registered operation separately.",
   inputSchema: {
     type: "object",
     properties: {

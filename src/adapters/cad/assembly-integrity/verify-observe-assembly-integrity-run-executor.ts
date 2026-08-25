@@ -299,6 +299,10 @@ export class VerifyObserveAssemblyIntegrityRunExecutor {
       });
 
       if (wal.action === "completed") {
+        // A prior attempt has already recorded the exact successor and closed
+        // its WAL. A later publish/complete failure must remain resumable;
+        // falling through to failRun would make the durable recovery terminal.
+        snapshotSaveMayHaveBeenDispatched = true;
         await this.#requireExactPersistedSuccessor(successor.snapshot);
       } else {
         snapshotSaveMayHaveBeenDispatched = true;

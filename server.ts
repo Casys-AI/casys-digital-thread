@@ -22,6 +22,7 @@ import { FileThreadSnapshotStore } from "./src/adapters/shared/stores/file-threa
 import { installGracefulHttpShutdown } from "./src/adapters/shared/graceful-http-shutdown.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+  ASSEMBLY_INTEGRITY_OBSERVATION_CAPTURE_DESCRIPTOR,
   BRIEF_SOURCE_CAPTURE_DESCRIPTOR,
   DFM_CASE_CAPTURE_DESCRIPTOR,
   DFM_CHECK_CAPTURE_DESCRIPTOR,
@@ -81,6 +82,16 @@ import {
 } from "./src/adapters/record/reconcile-uncertain-writer-run-executor.ts";
 import { VERIFY_SEAL_PROOF_CASE_OPERATION } from "./src/adapters/fea/seal-case/verify-seal-proof-case-run-executor.ts";
 import { FileCanonicalAssetReader } from "./src/adapters/assets/canonical-asset-reader.ts";
+import { ExactAssemblyIntegrityInputReopener } from "./src/adapters/cad/assembly-integrity/exact-assembly-integrity-input-reopener.ts";
+import { FileAssemblyIntegrityObservationAttemptStore } from "./src/adapters/cad/assembly-integrity/file-assembly-integrity-observation-attempt-store.ts";
+import { FileAssemblyIntegrityObservationCaptureStore } from "./src/adapters/cad/assembly-integrity/file-assembly-integrity-observation-capture-store.ts";
+import { FixedAssemblyIntegrityObserverProfileCatalog } from "./src/adapters/cad/assembly-integrity/fixed-assembly-integrity-observer-profile-catalog.ts";
+import { McpBuild123dAssemblyIntegrityObserver } from "./src/adapters/cad/assembly-integrity/mcp-build123d-assembly-integrity-observer.ts";
+import { ProjectAssemblyIntegrityReviewResolver } from "./src/adapters/cad/assembly-integrity/project-assembly-integrity-review-resolver.ts";
+import {
+  VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION,
+  VerifyObserveAssemblyIntegrityRunExecutor,
+} from "./src/adapters/cad/assembly-integrity/verify-observe-assembly-integrity-run-executor.ts";
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "./src/adapters/compile/executors/compile-seal-admission-run-executor.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "./src/adapters/cad/isolated/design-execute-build123d-run-executor.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "./src/adapters/modelica/qualified-kit/run-executor.ts";
@@ -119,6 +130,7 @@ import {
 } from "./src/adapters/make/dfm/industrialize-run-dfm-checks-run-executor.ts";
 import { FileDfmCheckAttemptStore } from "./src/adapters/make/dfm/file-dfm-check-attempt-store.ts";
 import { RegisteredProjectRunExecutor } from "./src/application/use-cases/registered-project-run-executor.ts";
+import { PrepareProjectAssemblyIntegrityReview } from "./src/application/use-cases/cad/assembly-integrity/prepare-project-assembly-integrity-review.ts";
 import { FileEngineeringProjectRunLease } from "./src/adapters/shared/stores/file-engineering-project-run-lease.ts";
 import { FileLiveThreadUpdateStore } from "./src/adapters/shared/stores/live-thread-update-store.ts";
 import { FileEngineeringProjectRevisionStore } from "./src/adapters/shared/stores/engineering-project-store.ts";
@@ -162,6 +174,8 @@ import {
   registerCockpitFocusTools,
 } from "./src/tools/cockpit-focus.ts";
 import { sha256Fingerprint } from "./src/domain/kernel/deterministic-json.ts";
+import type { ContentFingerprint } from "./src/domain/kernel/primitives.ts";
+import { pinnedOciImageReference } from "./src/domain/compile/isolation/local-isolation-runtime.ts";
 import {
   createArchitectureFoundation,
   createArchitectureProject,
@@ -274,6 +288,10 @@ const DEFAULT_PRINT_ESTIMATE_ATTEMPT_DIRECTORY = "state/local/print-estimate-att
 const DEFAULT_PRINT_ESTIMATE_OBSERVATION_CAPTURE_DIRECTORY =
   "state/local/print-estimate-observation-captures";
 const DEFAULT_PRINT_ESTIMATE_EXPORT_DIRECTORY = "state/local/print-estimate-exports";
+const DEFAULT_ASSEMBLY_INTEGRITY_OBSERVATION_CAPTURE_DIRECTORY =
+  "state/local/assembly-integrity-observation-captures";
+const DEFAULT_ASSEMBLY_INTEGRITY_OBSERVATION_ATTEMPT_DIRECTORY =
+  "state/local/assembly-integrity-observation-attempts";
 const DEFAULT_ENGINEERING_PROJECT_RUN_LEASE_DIRECTORY =
   "state/local/engineering-project-run-leases";
 const DEFAULT_PROJECT_BASELINE_DIRECTORY = "config/projects/baselines";
@@ -500,6 +518,10 @@ export interface CreateConsoleServerOptions {
   dfmCaseCaptureDirectory?: string;
   dfmCheckCaptureDirectory?: string;
   dfmCheckAttemptDirectory?: string;
+  /** Canonical factual L3 assembly-integrity observation CAS. */
+  assemblyIntegrityObservationCaptureDirectory?: string;
+  /** Durable L3 assembly-integrity observation dispatch journal. */
+  assemblyIntegrityObservationAttemptDirectory?: string;
   engineeringProjectRunLeaseDirectory?: string;
   projectBaselineDirectory?: string;
   /** Root of the closed CAS/WAL layout used by isolated-analysis operations. */
@@ -555,6 +577,7 @@ export async function createConsoleServer(
         [env("MCP_RUN_FIXTURE") ?? DEFAULT_RUN_FIXTURE_PATH],
     );
   const syson = manifest.servers.find((server) => server.id === "syson");
+  const build123d = manifest.servers.find((server) => server.id === "build123d");
   const build123dSandbox = manifest.servers.find((server) =>
     server.id === "build123d-sandbox"
   );
@@ -577,6 +600,7 @@ export async function createConsoleServer(
       options,
       syson?.mcpUrl,
       build123dSandbox?.mcpUrl,
+      build123d,
       calculix?.mcpUrl,
       calculix?.image,
       calculix,
@@ -669,6 +693,7 @@ async function createProjectControl(
   options: CreateConsoleServerOptions,
   sysonMcpUrl?: string,
   build123dSandboxMcpUrl?: string,
+  assemblyIntegrityBuild123dServer?: DesiredServer,
   calculixMcpUrl?: string,
   calculixRuntimeImage?: string,
   calculixServer?: DesiredServer,
@@ -1151,6 +1176,58 @@ async function createProjectControl(
     ...GEOMETRY_CAPTURE_DESCRIPTOR,
     directory: DEFAULT_GEOMETRY_CAPTURE_DIRECTORY,
   });
+  const assemblyIntegrityBuild123d = assemblyIntegrityBuild123dProvider(
+    assemblyIntegrityBuild123dServer,
+  );
+  let assemblyIntegrityReview: PrepareProjectAssemblyIntegrityReview | undefined;
+  let verifyObserveAssemblyIntegrity:
+    | VerifyObserveAssemblyIntegrityRunExecutor
+    | undefined;
+  if (assemblyIntegrityBuild123d !== undefined) {
+    const profiles = new FixedAssemblyIntegrityObserverProfileCatalog({
+      imageDigest: assemblyIntegrityBuild123d.imageDigest,
+    });
+    const inputs = new ExactAssemblyIntegrityInputReopener({
+      geometryCaptures: productNavigationGeometryCaptures,
+      stepAssets: new FileCanonicalAssetReader({
+        directory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
+      }),
+      profiles,
+    });
+    const captures = new FileAssemblyIntegrityObservationCaptureStore(
+      new FileCaptureStore({
+        ...ASSEMBLY_INTEGRITY_OBSERVATION_CAPTURE_DESCRIPTOR,
+        directory: options.assemblyIntegrityObservationCaptureDirectory ??
+          DEFAULT_ASSEMBLY_INTEGRITY_OBSERVATION_CAPTURE_DIRECTORY,
+      }),
+    );
+    assemblyIntegrityReview = new PrepareProjectAssemblyIntegrityReview({
+      resolver: new ProjectAssemblyIntegrityReviewResolver({
+        projects: runtime.projects,
+        snapshots: build123dThreadSnapshots,
+        inputs,
+        profiles,
+      }),
+    });
+    verifyObserveAssemblyIntegrity = new VerifyObserveAssemblyIntegrityRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: build123dThreadSnapshots,
+      inputs,
+      observer: new McpBuild123dAssemblyIntegrityObserver({
+        client: new HttpMcpToolClient({
+          mcpUrl: assemblyIntegrityBuild123d.mcpUrl,
+          timeoutMs: 120_000,
+        }),
+      }),
+      captures,
+      attempts: new FileAssemblyIntegrityObservationAttemptStore(
+        options.assemblyIntegrityObservationAttemptDirectory ??
+          DEFAULT_ASSEMBLY_INTEGRITY_OBSERVATION_ATTEMPT_DIRECTORY,
+      ),
+      lease,
+    });
+  }
   const partDefinitionsCaptures = new FileCaptureStore({
     ...PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
     directory: options.partDefinitionsCaptureDirectory ??
@@ -1191,6 +1268,7 @@ async function createProjectControl(
       technicalSourceCapture: compilationFoundation.technicalSourceCapture,
       cadPlacementCapture: cadPlacement.cadPlacementCapture,
       geometryModuleExport,
+      assemblyIntegrityReview,
       technicalCompilationPreview,
       architectureSysmlSourceCapture:
         architectureFoundation.architectureSysmlSourceCapture,
@@ -1460,6 +1538,13 @@ async function createProjectControl(
               "configured for this run (dfm provider is required).",
           },
           {
+            operation: VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION,
+            executor: verifyObserveAssemblyIntegrity,
+            unavailableMessage:
+              "The server has no trusted verify.observe-assembly-integrity@1 executor " +
+              "configured for this run (mcp-build123d provider is required).",
+          },
+          {
             operation: DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
             executor: sensitivity.designApplyVectorCorrection,
           },
@@ -1467,6 +1552,36 @@ async function createProjectControl(
       }),
     },
   };
+}
+
+interface AssemblyIntegrityBuild123dProvider {
+  readonly mcpUrl: string;
+  readonly imageDigest: ContentFingerprint;
+}
+
+/**
+ * L3 observes only the regular pinned mcp-build123d deployment. The sandbox
+ * remains a separate private geometry surface and cannot supply this runtime.
+ */
+function assemblyIntegrityBuild123dProvider(
+  server: DesiredServer | undefined,
+): AssemblyIntegrityBuild123dProvider | undefined {
+  if (server === undefined) return undefined;
+  if (server.id !== "build123d") {
+    throw new TypeError(
+      "Assembly-integrity observation requires the normal build123d fleet server.",
+    );
+  }
+  const image = pinnedOciImageReference(
+    server.image,
+    "$assemblyIntegrityBuild123d.image",
+  );
+  const marker = "@sha256:";
+  const digest = image.slice(image.lastIndexOf(marker) + marker.length);
+  return Object.freeze({
+    mcpUrl: server.mcpUrl,
+    imageDigest: Object.freeze({ algorithm: "sha256" as const, digest }),
+  });
 }
 
 function createCockpitFocus(
