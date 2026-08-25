@@ -76,6 +76,14 @@ Deno.test("cad-immediate-placement-source refuses duplicate usages, latest alias
   assertThrows(
     () =>
       validateCadImmediatePlacementSource(sourceFixture({
+        placements: [],
+      })),
+    TypeError,
+    "at least one entry",
+  );
+  assertThrows(
+    () =>
+      validateCadImmediatePlacementSource(sourceFixture({
         placements: [
           sourceFixture().placements[0],
           sourceFixture().placements[0],

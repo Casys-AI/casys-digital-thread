@@ -112,3 +112,19 @@ Deno.test("placement coverage recrosses typed_by and refuses a label-shaped defi
     true,
   );
 });
+
+Deno.test("placement coverage keeps duplicate active attachments unresolved", () => {
+  const duplicated = assessCadPlacementCoverage({
+    source: source(),
+    attachedUsageIds: ["usage-left", "usage-left", "usage-right"],
+    architecture: architecture(),
+  });
+  assertEquals(duplicated.status, "unresolved");
+  if (duplicated.status !== "unresolved") return;
+  assertEquals(
+    duplicated.gaps.some((gap) =>
+      gap.name === "usage-left" && gap.relation === "attachment"
+    ),
+    true,
+  );
+});

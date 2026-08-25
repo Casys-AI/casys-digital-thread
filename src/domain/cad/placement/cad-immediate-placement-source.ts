@@ -115,6 +115,9 @@ export function validateCadImmediatePlacementSource(
   if (!Array.isArray(root.placements)) {
     throw new TypeError(`${path}.placements must be an array.`);
   }
+  if (root.placements.length === 0) {
+    throw new TypeError(`${path}.placements must contain at least one entry.`);
+  }
   if (root.placements.length > CAD_IMMEDIATE_PLACEMENT_SOURCE_MAX_ENTRIES) {
     throw new TypeError(
       `${path}.placements may contain at most ${CAD_IMMEDIATE_PLACEMENT_SOURCE_MAX_ENTRIES} entries.`,

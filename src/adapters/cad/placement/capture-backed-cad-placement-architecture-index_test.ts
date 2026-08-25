@@ -26,6 +26,13 @@ Deno.test("placement architecture index recrosses owner, immediate usages and ty
   assertEquals(facts?.typedDefinitionId("usage-right"), "def-rail");
   assertEquals(
     await index.open({
+      artifactId: "architecture-foreign",
+      fingerprint: FINGERPRINT,
+    }),
+    undefined,
+  );
+  assertEquals(
+    await index.open({
       artifactId: "architecture-missing",
       fingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
     }),

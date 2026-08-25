@@ -29,7 +29,8 @@ export class CaptureBackedCadPlacementArchitectureIndex
   ): Promise<CadPlacementArchitectureFacts | undefined> {
     if (
       query.artifactId.length === 0 ||
-      query.artifactId.toLowerCase() === "latest"
+      query.artifactId.toLowerCase() === "latest" ||
+      query.artifactId !== `architecture-${query.fingerprint.digest}`
     ) {
       return undefined;
     }

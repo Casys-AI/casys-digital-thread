@@ -54,6 +54,15 @@ export function assessCadPlacementCoverage(input: {
   const attachedSet = new Set(attached);
   const gaps: CadPlacementCoverageGap[] = [];
 
+  for (const usageId of duplicateIds(input.attachedUsageIds)) {
+    gaps.push({
+      name: usageId,
+      relation: "attachment",
+      recovery:
+        "Keep exactly one active same-file placement attachment for this PartUsage.",
+    });
+  }
+
   for (const usageId of attached) {
     if (!sourceSet.has(usageId)) {
       gaps.push({
@@ -179,6 +188,15 @@ export function assessCadPlacementCoverage(input: {
 
 function uniqueSorted(ids: readonly string[]): string[] {
   return [...new Set(ids)].sort((left, right) => left.localeCompare(right));
+}
+
+function duplicateIds(ids: readonly string[]): string[] {
+  const counts = new Map<string, number>();
+  for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
+  return [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([id]) => id)
+    .sort((left, right) => left.localeCompare(right));
 }
 
 function dedupeGaps(
