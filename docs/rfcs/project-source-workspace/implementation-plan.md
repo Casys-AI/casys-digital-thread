@@ -42,9 +42,12 @@ from the real MCP and runtime path, not fixtures or UI copy.
 
 ## Phase D: one-level module build
 
+Architecture locked; implementation and real-runtime proof pending.
+
 - Admit one typed placement input for the exact immediate `PartUsage` set.
 - Build one modest composite definition from exact child-definition geometry.
 - Seal the first bounded module evidence with exact structure, source and asset bases.
+- Observe assembly integrity separately; do not infer it from successful STEP export.
 
 ## Phase E: hierarchy and incremental rebuild
 

@@ -1,6 +1,6 @@
 # Hierarchical geometry evidence
 
-Status: proposed · not implemented
+Status: Phase D contract accepted · implementation and runtime proof pending
 
 ## Bounded evidence unit
 
@@ -18,6 +18,26 @@ Each capture records:
 - exact generated STEP and presentation assets;
 - compiler and lowering profile identities;
 - the predecessor capture for the same semantic target, when one exists.
+
+The accepted document family is:
+
+- `geometry-module-manifest/1.0`: the signed decision input;
+- `geometry-module-draft-capture/1.0`: immutable provider output and multi-source
+  provenance before MRTR;
+- `geometry-module-capture/1.0`: canonical Thread evidence after
+  `design.write-geometry@1`.
+
+The manifest root is the exact composite `PartDefinition`. Its child table contains
+exactly one entry per immediate `PartUsage`, ordered by usage identity, with the exact
+target `PartDefinition`, local placement, placement-capture reference and canonical
+child geometry reference. It references children; it never copies their descendant
+manifests or source text.
+
+The module's assembly STEP and presentation asset are the only new geometry bytes. Child
+definition assets stay owned by their existing canonical captures. The module draft
+records the exact generated assembly-program digest and versioned server lowerer, plus
+the exact admissions reopened to generate it. These fields prove derivation; they grant
+no independent execution authority.
 
 A leaf definition capture records the same exact structure basis, target identity,
 source provenance and assets without fabricating child entries.
@@ -37,6 +57,10 @@ remains readable.
 Two different `PartDefinition` targets remain distinct even if their geometry bytes are
 identical. A newer capture supersedes only the same exact module target and never mutates
 old evidence.
+
+A leaf `geometry-part-capture/1.0` and a composite `geometry-module-capture/1.0` may
+coexist because succession is scoped by exact semantic target and capture family. A
+child capture is never archived merely because a parent module consumes it.
 
 ## Failure boundary
 

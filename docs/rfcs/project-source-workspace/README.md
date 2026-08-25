@@ -34,6 +34,7 @@ operation by itself:
 - [SysML product-structure projection](sysml-product-structure-projection.md)
 - [CAD part and module builds](cad-part-and-module-builds.md)
 - [hierarchical geometry evidence](hierarchical-geometry-evidence.md)
+- [assembly integrity observation](assembly-integrity-observation.md)
 - [incremental rebuild](incremental-rebuild.md)
 - [Workbench for large assemblies](workbench-large-assemblies.md)
 - [FEA targeting](fea-targeting.md)
