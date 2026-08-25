@@ -88,19 +88,26 @@ definition geometry. Promotion occurs only by sealing new Thread evidence; succe
 isolated execution alone is not canonical geometry.
 
 The accepted public draft surface is `project_geometry_module_export`. It receives only
-the project, exact current Thread basis, exact composite `PartDefinition`, exact
-placement-capture locator and the exact canonical child geometry references selected by
-the server. The caller cannot submit source text, a manifest, transforms, child targets,
-provider or runtime selection.
+the project, exact current Thread basis, exact composite `PartDefinition` and exact
+placement-capture locator. The server resolves the canonical child captures; the caller
+cannot submit source text, a manifest, transforms, child targets, child assets, provider
+or runtime selection.
 
-The server-owned lowerer reopens all child admissions and canonical child captures,
-orders them by exact usage identity, constructs one assembly program from those admitted
-sources plus the captured local transforms, then invokes the registered canonical CAD
-provider. The generated program is an execution detail identified by a versioned lowerer
-ID and digest; it is not an agent-authored source or a second product model.
+The server orders the immediate occurrences by exact usage identity, reopens every
+canonical child STEP by digest, then creates one deterministic
+`geometry-module-input-bundle/1.0`. The binary bundle contains a canonical manifest,
+placements, offsets, byte counts and digests followed by the exact STEP bytes. It does
+not copy agent CAD source text or flatten descendant manifests.
 
-The draft carries a multi-source admission stamp. It recrosses every child source,
-attachment, admission, canonical child capture, structure basis and placement capture.
+A dedicated digest-pinned microVM profile owns the assembly algorithm. Its fixed worker
+decodes and rehashes the bundle, imports each STEP, applies the captured transform,
+creates the compound and exports the server-fixed STEP plus GLB. The caller supplies no
+program. This reuses the isolated execution broker's single immutable input, bounded
+outputs, atomic CAS publication and destruction proof without widening the generic
+broker contract.
+
+The draft recrosses every canonical child capture and asset, the exact structure basis,
+the placement capture, input-bundle fingerprint, runtime profile and execution receipt.
 A successful export still writes no Thread state. The existing
 `design.write-geometry@1` remains the only canonical geometry sealer; it is extended to
 accept the bounded module manifest rather than duplicating the operation.

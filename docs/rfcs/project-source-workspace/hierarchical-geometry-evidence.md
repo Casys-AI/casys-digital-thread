@@ -35,9 +35,9 @@ manifests or source text.
 
 The module's assembly STEP and presentation asset are the only new geometry bytes. Child
 definition assets stay owned by their existing canonical captures. The module draft
-records the exact generated assembly-program digest and versioned server lowerer, plus
-the exact admissions reopened to generate it. These fields prove derivation; they grant
-no independent execution authority.
+records the exact `geometry-module-input-bundle/1.0` fingerprint, digest-pinned assembly
+profile, microVM receipt and every child capture reopened to build it. These fields prove
+derivation; they grant no independent execution authority.
 
 A leaf definition capture records the same exact structure basis, target identity,
 source provenance and assets without fabricating child entries.
