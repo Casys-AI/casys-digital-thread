@@ -440,6 +440,29 @@ export function assemblyIntegrityEvaluationCaptureUri(digest: string): string {
   return `${ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_URI_PREFIX}${digest}`;
 }
 
+/** Build one closed L4 record from server-recossed identities and facts. */
+export async function createAssemblyIntegrityEvaluationCapture(
+  value: AssemblyIntegrityEvaluationCapture,
+): Promise<AssemblyIntegrityEvaluationCapture> {
+  return await validateAssemblyIntegrityEvaluationCapture(value);
+}
+
+/** Exact content identity used by the custom L4 CAS and Thread artifact. */
+export async function fingerprintAssemblyIntegrityEvaluationCapture(
+  value: unknown,
+): Promise<ContentFingerprint> {
+  return await sha256Fingerprint(
+    await validateAssemblyIntegrityEvaluationCapture(value),
+  );
+}
+
+/** Canonical persisted bytes for the custom L4 capture. */
+export async function canonicalAssemblyIntegrityEvaluationCaptureText(
+  value: unknown,
+): Promise<string> {
+  return deterministicJson(await validateAssemblyIntegrityEvaluationCapture(value));
+}
+
 /** Validate an L4 capture before content-addressed persistence or reread. */
 export async function validateAssemblyIntegrityEvaluationCapture(
   value: unknown,

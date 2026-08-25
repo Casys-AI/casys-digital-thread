@@ -46,10 +46,10 @@ import {
 } from "../../../domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
 import {
-  resolveExactCompletedDependencyDocument,
-  resolveExactCompletedWorkDocument,
+  resolveExactCompletedDependencyArtifact,
+  resolveExactCompletedWorkArtifact,
   selectUniqueCompletedOperationLeaf,
-} from "../project/resolve-exact-completed-dependency-document.ts";
+} from "../project/resolve-exact-completed-dependency-artifact.ts";
 
 export type CrossDomainImpactDecisionRecrossCode =
   | "evaluation_capture_unavailable"
@@ -101,7 +101,7 @@ export async function recrossCrossDomainImpactDecision(
     );
   }
   const selected = input.trustedRunId
-    ? await resolveExactCompletedDependencyDocument({
+    ? await resolveExactCompletedDependencyArtifact({
       project: input.project,
       trustedRunId: input.trustedRunId,
       head: input.snapshot,
@@ -288,7 +288,7 @@ async function resolvePreflightX08EvaluationDocument(
     ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION,
   );
   if (leaf.status !== "resolved") return leaf;
-  return await resolveExactCompletedWorkDocument({
+  return await resolveExactCompletedWorkArtifact({
     project: input.project,
     dependencyWork: leaf.work,
     head: input.snapshot,

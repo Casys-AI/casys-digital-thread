@@ -1,8 +1,8 @@
 import { assertEquals } from "@std/assert";
 import {
-  resolveExactCompletedDependencyDocument,
+  resolveExactCompletedDependencyArtifact,
   selectUniqueCompletedOperationLeaf,
-} from "./resolve-exact-completed-dependency-document.ts";
+} from "./resolve-exact-completed-dependency-artifact.ts";
 import { engineeringActivityIdFromRootRevision } from "../../../domain/project/engineering-activity.ts";
 import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
 import type {
@@ -39,7 +39,7 @@ const EXPECTED_PRODUCER = {
 
 Deno.test("named completed dependency is reused on a later descendant retry", async () => {
   const world = fixture("retry");
-  const result = await resolveExactCompletedDependencyDocument(world.input());
+  const result = await resolveExactCompletedDependencyArtifact(world.input());
   assertEquals(result.status, "resolved");
   if (result.status !== "resolved") return;
   assertEquals(result.dependencyWork.id, DEP_WORK);
@@ -50,7 +50,7 @@ Deno.test("named completed dependency is reused on a later descendant retry", as
 
 Deno.test("a producer-labeled lookalike on the head cannot steal the named evidence", async () => {
   const world = fixture("lookalike-on-head");
-  const result = await resolveExactCompletedDependencyDocument(world.input());
+  const result = await resolveExactCompletedDependencyArtifact(world.input());
   assertEquals(result.status, "resolved");
   if (result.status !== "resolved") return;
   assertEquals(result.artifact.id, ARTIFACT);
@@ -58,7 +58,7 @@ Deno.test("a producer-labeled lookalike on the head cannot steal the named evide
 
 Deno.test("an archived named artifact fails closed", async () => {
   const world = fixture("archived");
-  const result = await resolveExactCompletedDependencyDocument(world.input());
+  const result = await resolveExactCompletedDependencyArtifact(world.input());
   assertEquals(result.status, "unresolved");
   if (result.status === "resolved") return;
   assertEquals(result.code, "artifact_archived");
@@ -66,13 +66,13 @@ Deno.test("an archived named artifact fails closed", async () => {
 
 Deno.test("a stale or forked activity leaf fails closed without sibling inference", async () => {
   const stale = fixture("stale");
-  const staleResult = await resolveExactCompletedDependencyDocument(stale.input());
+  const staleResult = await resolveExactCompletedDependencyArtifact(stale.input());
   assertEquals(staleResult.status, "unavailable");
   if (staleResult.status !== "unavailable") return;
   assertEquals(staleResult.code, "dependency_unavailable");
 
   const forked = fixture("forked");
-  const forkedResult = await resolveExactCompletedDependencyDocument(forked.input());
+  const forkedResult = await resolveExactCompletedDependencyArtifact(forked.input());
   assertEquals(forkedResult.status, "unavailable");
   if (forkedResult.status !== "unavailable") return;
   assertEquals(forkedResult.code, "dependency_ambiguous");
@@ -80,7 +80,7 @@ Deno.test("a stale or forked activity leaf fails closed without sibling inferenc
 
 Deno.test("a lookalike attachment without exact unique evidence fails closed", async () => {
   const world = fixture("lookalike-attachment");
-  const result = await resolveExactCompletedDependencyDocument(world.input());
+  const result = await resolveExactCompletedDependencyArtifact(world.input());
   assertEquals(result.status, "unavailable");
   if (result.status === "resolved") return;
   assertEquals(result.code, "evidence_mismatch");
@@ -88,7 +88,7 @@ Deno.test("a lookalike attachment without exact unique evidence fails closed", a
 
 Deno.test("a sibling lineage that does not descend from the named result fails closed", async () => {
   const world = fixture("sibling");
-  const result = await resolveExactCompletedDependencyDocument(world.input());
+  const result = await resolveExactCompletedDependencyArtifact(world.input());
   assertEquals(result.status, "unavailable");
   if (result.status === "resolved") return;
   assertEquals(result.code, "ancestry_unavailable");
@@ -183,7 +183,7 @@ Deno.test("a trusted current run on a different Thread head fails closed", async
         : run
     ),
   };
-  const result = await resolveExactCompletedDependencyDocument({
+  const result = await resolveExactCompletedDependencyArtifact({
     ...input,
     project,
   });

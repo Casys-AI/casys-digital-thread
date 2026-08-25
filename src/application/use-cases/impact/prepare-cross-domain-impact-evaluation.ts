@@ -60,8 +60,8 @@ import {
   VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION,
 } from "../../../domain/impact/cross-domain-impact-manifest-proposal.ts";
 import {
-  resolveExactCompletedDependencyDocument,
-} from "../project/resolve-exact-completed-dependency-document.ts";
+  resolveExactCompletedDependencyArtifact,
+} from "../project/resolve-exact-completed-dependency-artifact.ts";
 import { positiveInteger, safeId } from "../../../domain/kernel/case-validation.ts";
 import {
   fingerprintsEqual,
@@ -173,7 +173,7 @@ export class PrepareCrossDomainImpactEvaluation
       );
     }
 
-    const selected = await resolveExactCompletedDependencyDocument({
+    const selected = await resolveExactCompletedDependencyArtifact({
       project,
       trustedRunId: normalized.trustedRunId,
       head,

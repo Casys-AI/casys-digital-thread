@@ -43,8 +43,8 @@ import {
   MECHANICAL_PRESERVATION_LIMITS,
 } from "../../../domain/impact/cross-domain-impact-mechanical-preservation-proposal.ts";
 import {
-  resolveExactCompletedDependencyDocument,
-} from "../project/resolve-exact-completed-dependency-document.ts";
+  resolveExactCompletedDependencyArtifact,
+} from "../project/resolve-exact-completed-dependency-artifact.ts";
 import {
   evaluateMechanicalPreservation,
   type MechanicalPreservationCloseoutEvidence,
@@ -173,7 +173,7 @@ export class PrepareMechanicalPreservation
       );
     }
 
-    const selected = await resolveExactCompletedDependencyDocument({
+    const selected = await resolveExactCompletedDependencyArtifact({
       project,
       trustedRunId: normalized.trustedRunId,
       head,

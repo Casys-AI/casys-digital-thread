@@ -1,5 +1,5 @@
 /**
- * Exact completed work document, and the current-revision dependsOn wrapper.
+ * Exact completed work artifact, and the current-revision dependsOn wrapper.
  *
  * The wrapper's authority is `dependsOnWorkItemIds` plus
  * `requiresDependsOnOperation`. The lower-level function recrosses one already
@@ -30,7 +30,7 @@ import {
 import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 
-export type ExactCompletedDependencyDocumentIssueCode =
+export type ExactCompletedDependencyArtifactIssueCode =
   | "current_run_unavailable"
   | "current_work_unavailable"
   | "current_work_mismatch"
@@ -45,7 +45,7 @@ export type ExactCompletedDependencyDocumentIssueCode =
   | "artifact_stale"
   | "artifact_mismatch";
 
-export interface ResolvedExactCompletedDependencyDocument {
+export interface ResolvedExactCompletedDependencyArtifact {
   readonly dependencyWork: EngineeringWorkItem;
   readonly producerRun: EngineeringAgentRun;
   readonly resultSnapshot: ThreadSnapshot;
@@ -53,7 +53,7 @@ export interface ResolvedExactCompletedDependencyDocument {
   readonly artifact: ThreadArtifact;
 }
 
-export type ResolveExactCompletedDependencyDocumentResult =
+export type ResolveExactCompletedDependencyArtifactResult =
   | {
     readonly status: "resolved";
     readonly dependencyWork: EngineeringWorkItem;
@@ -64,11 +64,11 @@ export type ResolveExactCompletedDependencyDocumentResult =
   }
   | {
     readonly status: "unavailable" | "unresolved";
-    readonly code: ExactCompletedDependencyDocumentIssueCode;
+    readonly code: ExactCompletedDependencyArtifactIssueCode;
     readonly reason: string;
   };
 
-export interface ResolveExactCompletedWorkDocumentInput {
+export interface ResolveExactCompletedWorkArtifactInput {
   readonly project: EngineeringProjectSnapshot;
   readonly dependencyWork: EngineeringWorkItem;
   readonly head: ThreadSnapshot;
@@ -76,17 +76,28 @@ export interface ResolveExactCompletedWorkDocumentInput {
   readonly expectedDependencyOperation: {
     readonly id: string;
     readonly version: string;
-    readonly bindings: readonly EngineeringOperationInputBinding[];
+    /**
+     * Omit only when the downstream recross must validate a dynamic exact
+     * binding against the reopened capture itself. Existing callers retain
+     * their full operation equality check.
+     */
+    readonly bindings?: readonly EngineeringOperationInputBinding[];
   };
   readonly expectedProducer: {
     readonly serverId: string;
     readonly tool: string;
   };
+  /**
+   * The exact Thread artifact class emitted by the completed dependency.
+   * Existing callers remain document-only; factual observer leaves opt into
+   * `evidence` explicitly rather than treating a lookalike artifact as proof.
+   */
+  readonly expectedArtifactKind?: ThreadArtifact["kind"];
   readonly snapshots: Pick<ThreadSnapshotStore, "get">;
 }
 
-export interface ResolveExactCompletedDependencyDocumentInput
-  extends Omit<ResolveExactCompletedWorkDocumentInput, "dependencyWork"> {
+export interface ResolveExactCompletedDependencyArtifactInput
+  extends Omit<ResolveExactCompletedWorkArtifactInput, "dependencyWork"> {
   readonly trustedRunId?: string;
   readonly currentWork?: EngineeringWorkItem;
   readonly currentOperation: {
@@ -122,9 +133,9 @@ export type SelectUniqueCompletedOperationLeafResult<
     readonly reason: string;
   };
 
-export async function resolveExactCompletedDependencyDocument(
-  input: ResolveExactCompletedDependencyDocumentInput,
-): Promise<ResolveExactCompletedDependencyDocumentResult> {
+export async function resolveExactCompletedDependencyArtifact(
+  input: ResolveExactCompletedDependencyArtifactInput,
+): Promise<ResolveExactCompletedDependencyArtifactResult> {
   if (
     input.head.id !== input.basis.snapshotId ||
     input.head.revision !== input.basis.revision ||
@@ -198,7 +209,7 @@ export async function resolveExactCompletedDependencyDocument(
       "The named required dependency work item is not unique in the project.",
     );
   }
-  return await resolveExactCompletedWorkDocument({
+  return await resolveExactCompletedWorkArtifact({
     project: input.project,
     dependencyWork: dependencyWorks[0]!,
     head: input.head,
@@ -280,9 +291,9 @@ export function selectUniqueCompletedOperationLeaf<
   return { status: "resolved", work };
 }
 
-export async function resolveExactCompletedWorkDocument(
-  input: ResolveExactCompletedWorkDocumentInput,
-): Promise<ResolveExactCompletedDependencyDocumentResult> {
+export async function resolveExactCompletedWorkArtifact(
+  input: ResolveExactCompletedWorkArtifactInput,
+): Promise<ResolveExactCompletedDependencyArtifactResult> {
   if (
     input.head.id !== input.basis.snapshotId ||
     input.head.revision !== input.basis.revision ||
@@ -306,11 +317,11 @@ export async function resolveExactCompletedWorkDocument(
   const dependencyWork = dependencyWorks[0]!;
   if (
     dependencyWork.status !== "completed" ||
-    deterministicJson({
-        id: dependencyWork.operation?.id,
-        version: dependencyWork.operation?.version,
-        bindings: dependencyWork.operation?.bindings,
-      }) !== deterministicJson(input.expectedDependencyOperation)
+    dependencyWork.operation?.id !== input.expectedDependencyOperation.id ||
+    dependencyWork.operation.version !== input.expectedDependencyOperation.version ||
+    (input.expectedDependencyOperation.bindings !== undefined &&
+      deterministicJson(dependencyWork.operation.bindings) !==
+        deterministicJson(input.expectedDependencyOperation.bindings))
   ) {
     return unavailable(
       "producer_unavailable",
@@ -388,14 +399,14 @@ export async function resolveExactCompletedWorkDocument(
   const produced = uniqueArtifact(resultSnapshot, evidence.id);
   if (
     !produced ||
-    produced.kind !== "document" ||
+    produced.kind !== (input.expectedArtifactKind ?? "document") ||
     produced.producer.serverId !== input.expectedProducer.serverId ||
     produced.producer.tool !== input.expectedProducer.tool ||
     produced.producer.runId !== producerRun.id
   ) {
     return unavailable(
       "artifact_unavailable",
-      "The named dependency result does not contain the exact producer document.",
+      "The named dependency result does not contain the exact producer artifact.",
     );
   }
 
@@ -410,25 +421,25 @@ export async function resolveExactCompletedWorkDocument(
   if (!onHead) {
     return unavailable(
       "artifact_unavailable",
-      "The named dependency document is not present on the current Thread head.",
+      "The named dependency artifact is not present on the current Thread head.",
     );
   }
   if (deterministicJson(onHead) !== deterministicJson(produced)) {
     return unresolved(
       "artifact_mismatch",
-      "The named dependency document is not byte-identical on the current Thread head.",
+      "The named dependency artifact is not byte-identical on the current Thread head.",
     );
   }
   if (archivedRefKeys(input.head).has(`artifact:${onHead.id}`)) {
     return unresolved(
       "artifact_archived",
-      "The named dependency document is archived on the current Thread head.",
+      "The named dependency artifact is archived on the current Thread head.",
     );
   }
   if (onHead.freshness.status !== "fresh") {
     return unresolved(
       "artifact_stale",
-      "The named dependency document is not fresh on the current Thread head.",
+      "The named dependency artifact is not fresh on the current Thread head.",
     );
   }
 
@@ -443,10 +454,10 @@ export async function resolveExactCompletedWorkDocument(
 }
 
 function resolveCurrentWork(
-  input: ResolveExactCompletedDependencyDocumentInput,
+  input: ResolveExactCompletedDependencyArtifactInput,
 ):
   | { readonly kind: "current-work"; readonly work: EngineeringWorkItem }
-  | ResolveExactCompletedDependencyDocumentResult {
+  | ResolveExactCompletedDependencyArtifactResult {
   if (input.trustedRunId) {
     const runs = input.project.agentRuns.filter((candidate) =>
       candidate.id === input.trustedRunId
@@ -532,16 +543,16 @@ function uniqueArtifact(
 }
 
 function unavailable(
-  code: ExactCompletedDependencyDocumentIssueCode,
+  code: ExactCompletedDependencyArtifactIssueCode,
   reason: string,
-): ResolveExactCompletedDependencyDocumentResult {
+): ResolveExactCompletedDependencyArtifactResult {
   return { status: "unavailable", code, reason };
 }
 
 function unresolved(
-  code: ExactCompletedDependencyDocumentIssueCode,
+  code: ExactCompletedDependencyArtifactIssueCode,
   reason: string,
-): ResolveExactCompletedDependencyDocumentResult {
+): ResolveExactCompletedDependencyArtifactResult {
   return { status: "unresolved", code, reason };
 }
 

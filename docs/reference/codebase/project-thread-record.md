@@ -61,9 +61,9 @@ stamps `activityId`; labels, timestamps and `latest` never group or select revis
 Exact selected `dependsOn` leaf for `requiresDependsOnOperation`. Planning issues and
 runtime resolution share this rule. No sibling inference
 
-#### [`src/application/use-cases/project/resolve-exact-completed-dependency-document.ts`](../../../src/application/use-cases/project/resolve-exact-completed-dependency-document.ts)
+#### [`src/application/use-cases/project/resolve-exact-completed-dependency-artifact.ts`](../../../src/application/use-cases/project/resolve-exact-completed-dependency-artifact.ts)
 
-Named completed work document plus current-revision `dependsOn` wrapper. Runtime uses
+Named completed work artifact plus current-revision `dependsOn` wrapper. Runtime uses
 `dependsOn` + required operation; preflight review uses unique completed operation leaf
 then the same evidence resolver. Not an active-head label scan. Used by X07/X09/X11
 structural selectors
