@@ -216,6 +216,7 @@ export async function resolveExactCompletedDependencyArtifact(
     basis: input.basis,
     expectedDependencyOperation: input.expectedDependencyOperation,
     expectedProducer: input.expectedProducer,
+    expectedArtifactKind: input.expectedArtifactKind,
     snapshots: input.snapshots,
   });
 }

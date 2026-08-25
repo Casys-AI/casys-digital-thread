@@ -330,14 +330,10 @@ export function selectUniquePendingL4Work(
       deterministicJson(change.approvedBriefBasis) !==
         deterministicJson(currentBriefBasis)
     ) continue;
-    if (work.status !== "waiting-for-decision") {
-      return {
-        status: "unavailable",
-        code: "l4-work-not-pending",
-        message:
-          "The current-tip L4 work is no longer waiting for its one human MRTR decision.",
-      };
-    }
+    // A non-pending historical/current revision never competes with the
+    // reviewable leaf. The public review selects waiting-for-decision only;
+    // it must not let an unrelated non-pending leaf hide a valid one.
+    if (work.status !== "waiting-for-decision") continue;
     const gateIssue = assemblyIntegrityEvaluationGateClaimIssue(project, work);
     if (gateIssue) {
       return {

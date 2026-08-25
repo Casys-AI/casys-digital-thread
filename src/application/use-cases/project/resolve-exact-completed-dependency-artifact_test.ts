@@ -56,6 +56,28 @@ Deno.test("a producer-labeled lookalike on the head cannot steal the named evide
   assertEquals(result.artifact.id, ARTIFACT);
 });
 
+Deno.test("the exact dependency propagates its required evidence artifact kind", async () => {
+  const world = fixture("retry");
+  const result = await resolveExactCompletedDependencyArtifact({
+    ...world.input(),
+    expectedArtifactKind: "evidence",
+  });
+  assertEquals(result.status, "unavailable");
+  if (result.status === "resolved") return;
+  assertEquals(result.code, "artifact_unavailable");
+});
+
+Deno.test("the exact dependency accepts its required evidence artifact kind", async () => {
+  const world = fixture("retry", "evidence");
+  const result = await resolveExactCompletedDependencyArtifact({
+    ...world.input(),
+    expectedArtifactKind: "evidence",
+  });
+  assertEquals(result.status, "resolved");
+  if (result.status !== "resolved") return;
+  assertEquals(result.artifact.kind, "evidence");
+});
+
 Deno.test("an archived named artifact fails closed", async () => {
   const world = fixture("archived");
   const result = await resolveExactCompletedDependencyArtifact(world.input());
@@ -201,9 +223,9 @@ type Kind =
   | "lookalike-attachment"
   | "sibling";
 
-function fixture(kind: Kind) {
+function fixture(kind: Kind, artifactKind: ThreadArtifact["kind"] = "document") {
   const r1 = snapshot(1);
-  const artifact = document(ARTIFACT, DEP_RUN);
+  const artifact = document(ARTIFACT, DEP_RUN, artifactKind);
   const r2 = snapshot(2, r1, [artifact]);
   const evalArtifact = document("premature-evaluation", "run-premature");
   const r3 = snapshot(3, r2, [artifact, evalArtifact], [evalArtifact.id]);
@@ -490,11 +512,15 @@ function snapshot(
   });
 }
 
-function document(id: string, runId: string): ThreadArtifact {
+function document(
+  id: string,
+  runId: string,
+  kind: ThreadArtifact["kind"] = "document",
+): ThreadArtifact {
   return {
     id,
     name: id,
-    kind: "document",
+    kind,
     version: "1",
     fingerprint: digest(id),
     producer: {

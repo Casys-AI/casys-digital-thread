@@ -294,8 +294,35 @@ not duplicate the recross, write state, call an observer or compose an executor
 #### [`src/tools/project-control/assembly-integrity-review-tools.ts`](../../../src/tools/project-control/assembly-integrity-review-tools.ts)
 
 Conditional `project_assembly_integrity_review` MCP registration for the closed
-read-only review command. The descriptor remains planning-only until a distinct trusted
-observer executor is introduced
+read-only factual L3 review command. The separate trusted observer executor persists
+only a normalized custom evidence capture, never a product verdict
+
+#### [`src/domain/cad/assembly-integrity/assembly-integrity-evaluation.ts`](../../../src/domain/cad/assembly-integrity/assembly-integrity-evaluation.ts)
+
+Code-owned `assembly-integrity-evaluation-method/1.0` and custom
+`assembly-integrity-evaluation-capture/1.0`: five deterministic L4 criteria over exact
+normalized L3 facts, fixed rigid-matrix representation epsilon, diagnostics-only
+measurement tolerance, and explicit limits for joints, clearance, motion, load,
+fabricability and safety. No generic SysML RequirementEvaluation
+
+#### [`src/application/use-cases/cad/assembly-integrity/recross-assembly-integrity-evaluation.ts`](../../../src/application/use-cases/cad/assembly-integrity/recross-assembly-integrity-evaluation.ts)
+
+Server-only L4 input recross: selects the exact current L4 leaf and its completed L3
+dependency, then reopens and checks the L3 custom capture, dynamic module binding,
+canonical module/STEP, signed profile, full bundle and normalized observation before
+evaluation. Provider, tool, tolerance, facts and verdict never enter the public command
+
+#### [`src/adapters/cad/assembly-integrity/verify-evaluate-assembly-integrity-run-executor.ts`](../../../src/adapters/cad/assembly-integrity/verify-evaluate-assembly-integrity-run-executor.ts)
+
+Trusted provider-free L4 executor with deterministic WAL recovery. It emits one custom
+`evidence` artifact over ordered module, STEP and L3 observation inputs; it writes no
+generic SysML evaluation and never satisfies a Brief gate
+
+#### [`src/tools/project-control/assembly-integrity-evaluation-review-tools.ts`](../../../src/tools/project-control/assembly-integrity-evaluation-review-tools.ts)
+
+Conditional project-only `project_assembly_integrity_evaluation_review` MCP review:
+server selection and recross precede canonical MRTR parameters. It never accepts a
+provider, tolerance, fact, criterion, verdict or gate selection from the caller
 
 #### [`images/build123d-module-assembler-worker/run-module-assembler.py`](../../../images/build123d-module-assembler-worker/run-module-assembler.py)
 

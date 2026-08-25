@@ -638,6 +638,12 @@ Deno.test(
         ),
         false,
       );
+      assertEquals(
+        sandboxOnly.app.getToolNames().includes(
+          "project_assembly_integrity_evaluation_review",
+        ),
+        false,
+      );
 
       const normal = await createConsoleServer({
         manifest: assemblyIntegrityBuild123dManifest(
@@ -649,6 +655,12 @@ Deno.test(
       });
       assertEquals(
         normal.app.getToolNames().includes("project_assembly_integrity_review"),
+        true,
+      );
+      assertEquals(
+        normal.app.getToolNames().includes(
+          "project_assembly_integrity_evaluation_review",
+        ),
         true,
       );
 

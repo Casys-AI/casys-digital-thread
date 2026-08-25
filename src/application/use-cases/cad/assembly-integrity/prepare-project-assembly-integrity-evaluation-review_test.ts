@@ -31,8 +31,13 @@ const TIP = {
 Deno.test("L4 review ignores historical evaluation activity and selects only the pending current-tip append", () => {
   const historical = work("work-l4-historical", "activity:l4-historical");
   const current = work("work-l4-current", "activity:l4-current");
+  const settled = work(
+    "work-l4-settled",
+    "activity:l4-settled",
+    "completed",
+  );
   const project = {
-    workItems: [historical, current],
+    workItems: [historical, current, settled],
     planChanges: [
       change("change:l4-historical", historical.id, {
         snapshotId: "thread-assembly-r8",
@@ -40,6 +45,7 @@ Deno.test("L4 review ignores historical evaluation activity and selects only the
         subjectId: SUBJECT,
       }),
       change("change:l4-current", current.id, TIP),
+      change("change:l4-settled", settled.id, TIP),
     ],
   } as unknown as EngineeringProjectSnapshot;
 
@@ -49,7 +55,11 @@ Deno.test("L4 review ignores historical evaluation activity and selects only the
   assertEquals(result.work.id, current.id);
 });
 
-function work(id: string, activityId: string) {
+function work(
+  id: string,
+  activityId: string,
+  status: "waiting-for-decision" | "completed" = "waiting-for-decision",
+) {
   return {
     id,
     activityId,
@@ -59,7 +69,7 @@ function work(id: string, activityId: string) {
       version: VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION.version,
       bindings: [],
     },
-    status: "waiting-for-decision" as const,
+    status,
   };
 }
 

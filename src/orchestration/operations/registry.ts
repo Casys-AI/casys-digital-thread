@@ -16,6 +16,7 @@ import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/compile/admission
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/cad/isolated/build123d-execution-proposal.ts";
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/cad/sealed-isolated/isolated-geometry-seal-proposal.ts";
 import { VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-observation.ts";
+import { VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-evaluation-proposal.ts";
 import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "../../domain/sensitivity/vector-correction/vector-correction-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/modelica/qualified-kit/run-proposal.ts";
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
@@ -365,6 +366,34 @@ const OPERATIONS = [
       allowedThreadEntityKinds: ["artifact"],
       uniqueThreadEntityReferences: true,
     }],
+  },
+  /**
+   * Provider-free L4 verdict over one exact completed L3 observation.
+   *
+   * The server selects and recrosses the dependency capture, canonical module,
+   * STEP and bundle.  No caller can bind a provider, tolerance, observation
+   * facts, rule, or requested verdict.  This is evidence only: L4 may
+   * contribute to Brief gates but never satisfies one.
+   */
+  {
+    id: VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION.id,
+    version: VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Evaluate assembly integrity",
+    description:
+      "Recross one exact completed factual assembly-integrity observation and its canonical module, STEP, and input bundle, " +
+      "then record the code-owned L4 verdict capture. No provider, tool, tolerance, factual values, criteria, or verdict is caller-selected; " +
+      "the result does not satisfy a product gate.",
+    workItemKind: "verify",
+    riskClass: "consequential",
+    execution: "trusted",
+    requiresAdditiveChange: true,
+    requiresDependsOnOperation: {
+      id: VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION.id,
+      version: VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION.version,
+    },
+    bindings: [],
   },
   /**
    * One closed local Modelica solver-conformance kit. This operation is

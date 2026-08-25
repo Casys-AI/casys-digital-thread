@@ -1,5 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-observation.ts";
+import { VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-evaluation-proposal.ts";
 import { listRegisteredEngineeringOperationKeys } from "./registry.ts";
 import {
   listRegisteredEngineeringOperationPathLaneKeys,
@@ -26,5 +27,14 @@ Deno.test("assembly-integrity observation belongs to the physics lane", () => {
       VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION,
     ),
     { kind: "fixed", lane: "physics" },
+  );
+});
+
+Deno.test("assembly-integrity L4 evaluation belongs to the verdicts lane", () => {
+  assertEquals(
+    REGISTERED_ENGINEERING_OPERATION_PATH_LANE_RESOLVER.resolve(
+      VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION,
+    ),
+    { kind: "fixed", lane: "verdicts" },
   );
 });

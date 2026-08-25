@@ -22,6 +22,7 @@ import { FileThreadSnapshotStore } from "./src/adapters/shared/stores/file-threa
 import { installGracefulHttpShutdown } from "./src/adapters/shared/graceful-http-shutdown.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+  ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_DESCRIPTOR,
   ASSEMBLY_INTEGRITY_OBSERVATION_CAPTURE_DESCRIPTOR,
   BRIEF_SOURCE_CAPTURE_DESCRIPTOR,
   DFM_CASE_CAPTURE_DESCRIPTOR,
@@ -83,6 +84,8 @@ import {
 import { VERIFY_SEAL_PROOF_CASE_OPERATION } from "./src/adapters/fea/seal-case/verify-seal-proof-case-run-executor.ts";
 import { FileCanonicalAssetReader } from "./src/adapters/assets/canonical-asset-reader.ts";
 import { ExactAssemblyIntegrityInputReopener } from "./src/adapters/cad/assembly-integrity/exact-assembly-integrity-input-reopener.ts";
+import { FileAssemblyIntegrityEvaluationAttemptStore } from "./src/adapters/cad/assembly-integrity/file-assembly-integrity-evaluation-attempt-store.ts";
+import { FileAssemblyIntegrityEvaluationCaptureStore } from "./src/adapters/cad/assembly-integrity/file-assembly-integrity-evaluation-capture-store.ts";
 import { FileAssemblyIntegrityObservationAttemptStore } from "./src/adapters/cad/assembly-integrity/file-assembly-integrity-observation-attempt-store.ts";
 import { FileAssemblyIntegrityObservationCaptureStore } from "./src/adapters/cad/assembly-integrity/file-assembly-integrity-observation-capture-store.ts";
 import { FixedAssemblyIntegrityObserverProfileCatalog } from "./src/adapters/cad/assembly-integrity/fixed-assembly-integrity-observer-profile-catalog.ts";
@@ -92,6 +95,8 @@ import {
   VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION,
   VerifyObserveAssemblyIntegrityRunExecutor,
 } from "./src/adapters/cad/assembly-integrity/verify-observe-assembly-integrity-run-executor.ts";
+import { VerifyEvaluateAssemblyIntegrityRunExecutor } from "./src/adapters/cad/assembly-integrity/verify-evaluate-assembly-integrity-run-executor.ts";
+import { VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION } from "./src/domain/cad/assembly-integrity/assembly-integrity-evaluation-proposal.ts";
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "./src/adapters/compile/executors/compile-seal-admission-run-executor.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "./src/adapters/cad/isolated/design-execute-build123d-run-executor.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "./src/adapters/modelica/qualified-kit/run-executor.ts";
@@ -131,6 +136,8 @@ import {
 import { FileDfmCheckAttemptStore } from "./src/adapters/make/dfm/file-dfm-check-attempt-store.ts";
 import { RegisteredProjectRunExecutor } from "./src/application/use-cases/registered-project-run-executor.ts";
 import { PrepareProjectAssemblyIntegrityReview } from "./src/application/use-cases/cad/assembly-integrity/prepare-project-assembly-integrity-review.ts";
+import { PrepareAssemblyIntegrityEvaluation } from "./src/application/use-cases/cad/assembly-integrity/prepare-assembly-integrity-evaluation.ts";
+import { PrepareProjectAssemblyIntegrityEvaluationReview } from "./src/application/use-cases/cad/assembly-integrity/prepare-project-assembly-integrity-evaluation-review.ts";
 import { FileEngineeringProjectRunLease } from "./src/adapters/shared/stores/file-engineering-project-run-lease.ts";
 import { FileLiveThreadUpdateStore } from "./src/adapters/shared/stores/live-thread-update-store.ts";
 import { FileEngineeringProjectRevisionStore } from "./src/adapters/shared/stores/engineering-project-store.ts";
@@ -292,6 +299,10 @@ const DEFAULT_ASSEMBLY_INTEGRITY_OBSERVATION_CAPTURE_DIRECTORY =
   "state/local/assembly-integrity-observation-captures";
 const DEFAULT_ASSEMBLY_INTEGRITY_OBSERVATION_ATTEMPT_DIRECTORY =
   "state/local/assembly-integrity-observation-attempts";
+const DEFAULT_ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_DIRECTORY =
+  "state/local/assembly-integrity-evaluation-captures";
+const DEFAULT_ASSEMBLY_INTEGRITY_EVALUATION_ATTEMPT_DIRECTORY =
+  "state/local/assembly-integrity-evaluation-attempts";
 const DEFAULT_ENGINEERING_PROJECT_RUN_LEASE_DIRECTORY =
   "state/local/engineering-project-run-leases";
 const DEFAULT_PROJECT_BASELINE_DIRECTORY = "config/projects/baselines";
@@ -522,6 +533,10 @@ export interface CreateConsoleServerOptions {
   assemblyIntegrityObservationCaptureDirectory?: string;
   /** Durable L3 assembly-integrity observation dispatch journal. */
   assemblyIntegrityObservationAttemptDirectory?: string;
+  /** Provider-free L4 assembly-integrity evaluation CAS. */
+  assemblyIntegrityEvaluationCaptureDirectory?: string;
+  /** Durable L4 assembly-integrity evaluation publication journal. */
+  assemblyIntegrityEvaluationAttemptDirectory?: string;
   engineeringProjectRunLeaseDirectory?: string;
   projectBaselineDirectory?: string;
   /** Root of the closed CAS/WAL layout used by isolated-analysis operations. */
@@ -1183,6 +1198,12 @@ async function createProjectControl(
   let verifyObserveAssemblyIntegrity:
     | VerifyObserveAssemblyIntegrityRunExecutor
     | undefined;
+  let assemblyIntegrityEvaluationReview:
+    | PrepareProjectAssemblyIntegrityEvaluationReview
+    | undefined;
+  let verifyEvaluateAssemblyIntegrity:
+    | VerifyEvaluateAssemblyIntegrityRunExecutor
+    | undefined;
   if (assemblyIntegrityBuild123d !== undefined) {
     const profiles = new FixedAssemblyIntegrityObserverProfileCatalog({
       imageDigest: assemblyIntegrityBuild123d.imageDigest,
@@ -1224,6 +1245,38 @@ async function createProjectControl(
       attempts: new FileAssemblyIntegrityObservationAttemptStore(
         options.assemblyIntegrityObservationAttemptDirectory ??
           DEFAULT_ASSEMBLY_INTEGRITY_OBSERVATION_ATTEMPT_DIRECTORY,
+      ),
+      lease,
+    });
+    const evaluationCaptures = new FileAssemblyIntegrityEvaluationCaptureStore(
+      new FileCaptureStore({
+        ...ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_DESCRIPTOR,
+        directory: options.assemblyIntegrityEvaluationCaptureDirectory ??
+          DEFAULT_ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_DIRECTORY,
+      }),
+    );
+    const evaluation = new PrepareAssemblyIntegrityEvaluation({
+      projects: runtime.projects,
+      snapshots: build123dThreadSnapshots,
+      observations: captures,
+      inputs,
+    });
+    assemblyIntegrityEvaluationReview =
+      new PrepareProjectAssemblyIntegrityEvaluationReview({
+        projects: runtime.projects,
+        snapshots: build123dThreadSnapshots,
+        observations: captures,
+        inputs,
+      });
+    verifyEvaluateAssemblyIntegrity = new VerifyEvaluateAssemblyIntegrityRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: build123dThreadSnapshots,
+      evaluation,
+      captures: evaluationCaptures,
+      attempts: new FileAssemblyIntegrityEvaluationAttemptStore(
+        options.assemblyIntegrityEvaluationAttemptDirectory ??
+          DEFAULT_ASSEMBLY_INTEGRITY_EVALUATION_ATTEMPT_DIRECTORY,
       ),
       lease,
     });
@@ -1269,6 +1322,7 @@ async function createProjectControl(
       cadPlacementCapture: cadPlacement.cadPlacementCapture,
       geometryModuleExport,
       assemblyIntegrityReview,
+      assemblyIntegrityEvaluationReview,
       technicalCompilationPreview,
       architectureSysmlSourceCapture:
         architectureFoundation.architectureSysmlSourceCapture,
@@ -1543,6 +1597,13 @@ async function createProjectControl(
             unavailableMessage:
               "The server has no trusted verify.observe-assembly-integrity@1 executor " +
               "configured for this run (mcp-build123d provider is required).",
+          },
+          {
+            operation: VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION,
+            executor: verifyEvaluateAssemblyIntegrity,
+            unavailableMessage:
+              "The server has no trusted verify.evaluate-assembly-integrity@1 executor " +
+              "configured for this run (exact L3 observation evidence and its closed recross are required).",
           },
           {
             operation: DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,

@@ -26,6 +26,11 @@ import {
   encodeAssemblyIntegrityObservationAdmissionParameters,
 } from "../../domain/cad/assembly-integrity/assembly-integrity-observation-proposal.ts";
 import { VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-observation.ts";
+import {
+  ASSEMBLY_INTEGRITY_EVALUATION_ADMISSION_SCHEMA,
+  encodeAssemblyIntegrityEvaluationAdmissionParameters,
+} from "../../domain/cad/assembly-integrity/assembly-integrity-evaluation-admission.ts";
+import { VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-evaluation-proposal.ts";
 
 const VALID_ARCHITECTURE = [
   { key: "architecture.package", label: "Package", value: "DemoArchitecture" },
@@ -182,6 +187,57 @@ Deno.test("assembly-integrity observation cannot enter human review without its 
     ProposalGrammarError,
   );
   assertEquals(error.operationKey, "verify.observe-assembly-integrity@1");
+});
+
+Deno.test("assembly-integrity L4 cannot enter human review with caller-selected facts or tolerance", () => {
+  const parameters = encodeAssemblyIntegrityEvaluationAdmissionParameters({
+    schemaVersion: ASSEMBLY_INTEGRITY_EVALUATION_ADMISSION_SCHEMA,
+    operation: VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION,
+    projectId: "project.assembly-integrity",
+    basis: {
+      kind: "thread-snapshot",
+      snapshotId: "thread.snapshot.12",
+      revision: 12,
+      subjectId: "subject.assembly",
+    },
+    observation: {
+      artifactId: `assembly-integrity-observation-${"a".repeat(64)}`,
+      fingerprint: fingerprint("a"),
+      observationFingerprint: fingerprint("b"),
+    },
+    geometryModule: {
+      artifactId: `geometry-${"c".repeat(64)}`,
+      fingerprint: fingerprint("c"),
+    },
+    assemblyStep: {
+      artifactId: `cad-asset-${"c".repeat(64)}-module-step-${"d".repeat(64)}`,
+      fingerprint: fingerprint("d"),
+    },
+    inputBundle: {
+      schemaVersion: "assembly-integrity-input-bundle/1.0",
+      fingerprint: fingerprint("e"),
+      byteCount: 123,
+    },
+    method: {
+      schemaVersion: "assembly-integrity-evaluation-method/1.0",
+      id: "assembly-integrity-evaluation",
+      version: "1.0",
+      fingerprint: fingerprint("f"),
+    },
+  });
+  assertProposalMatchesOperationGrammar(
+    VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION,
+    parameters,
+  );
+  const error = assertThrows(
+    () =>
+      assertProposalMatchesOperationGrammar(
+        VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION,
+        [...parameters, { key: "tolerance", label: "tolerance", value: 1 }],
+      ),
+    ProposalGrammarError,
+  );
+  assertEquals(error.operationKey, "verify.evaluate-assembly-integrity@1");
 });
 
 Deno.test("a proposal naming an unknown parent is refused with the offending component", () => {
@@ -408,6 +464,7 @@ Deno.test("every operation carrying an MRTR grammar is gated", () => {
     "simulate.run-qualified-modelica-kit@1",
     "verify.evaluate-admitted-modelica-observations@1",
     "verify.evaluate-admitted-spice-observations@1",
+    "verify.evaluate-assembly-integrity@1",
     "verify.observe-assembly-integrity@1",
     "verify.seal-cross-domain-impact-manifest@2",
     "verify.seal-electrical-observation-method-sheet@1",

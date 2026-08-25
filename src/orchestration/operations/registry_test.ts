@@ -19,6 +19,7 @@ import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../domain/architect
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/cad/isolated/build123d-execution-proposal.ts";
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/cad/sealed-isolated/isolated-geometry-seal-proposal.ts";
 import { VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-observation.ts";
+import { VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-evaluation-proposal.ts";
 import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "../../domain/sensitivity/vector-correction/vector-correction-proposal.ts";
 import {
   DESIGN_PREVIEW_GEOMETRY_OPERATION,
@@ -125,6 +126,46 @@ Deno.test("cross-domain impact-manifest seal is a provider-free review with only
     allowedSourceKinds: ["approved-brief"],
   }]);
   assertEquals(operation.decisionEvidenceScope, undefined);
+});
+
+Deno.test("assembly-integrity L4 is a trusted consequential zero-binding verdict recross", () => {
+  const operation = getRegisteredEngineeringOperation(
+    VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION,
+  )!;
+  assertEquals(operation.workItemKind, "verify");
+  assertEquals(operation.riskClass, "consequential");
+  assertEquals(operation.execution, "trusted");
+  assertEquals(operation.requiresAdditiveChange, true);
+  assertEquals(
+    operation.requiresDependsOnOperation,
+    VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION,
+  );
+  assertEquals(operation.bindings, []);
+
+  const error = assertThrows(
+    () =>
+      validateRegisteredEngineeringOperationInput({
+        operation: {
+          ...VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION,
+          bindings: [{
+            name: "callerSelectedTolerance",
+            source: {
+              kind: "thread-entity" as const,
+              reference: {
+                snapshotId: "thread.snapshot.9",
+                snapshotRevision: 9,
+                kind: "artifact" as const,
+                id: "artifact.tolerance",
+              },
+            },
+          }],
+        },
+        stage: "queue",
+        basisKind: "thread-snapshot",
+      }),
+    EngineeringOperationRegistryError,
+  );
+  assertEquals(error.code, "invalid_bindings");
 });
 
 Deno.test("cross-domain impact evaluation follows the manifest seal without an MRTR or caller-selected artifact binding", () => {

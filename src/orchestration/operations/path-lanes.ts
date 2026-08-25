@@ -41,6 +41,7 @@ const PATH_LANE_BY_OPERATION: Readonly<
   "design.write-geometry@1": fixed("geometry"),
   "design.apply-vector-correction@1": fixed("geometry"),
   "verify.observe-assembly-integrity@1": fixed("physics"),
+  "verify.evaluate-assembly-integrity@1": fixed("verdicts"),
   "simulate.run-qualified-modelica-kit@1": fixed("physics"),
   "simulate.run-admitted-modelica@1": fixed("physics"),
   "verify.seal-modelica-thermal-method-sheet@1": fixed("physics"),

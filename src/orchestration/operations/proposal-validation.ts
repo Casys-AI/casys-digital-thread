@@ -65,6 +65,12 @@ import {
 } from "../../domain/cad/assembly-integrity/assembly-integrity-observation-proposal.ts";
 import { VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-observation.ts";
 import {
+  parseAssemblyIntegrityEvaluationAdmissionParameters,
+} from "../../domain/cad/assembly-integrity/assembly-integrity-evaluation-admission.ts";
+import {
+  VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION,
+} from "../../domain/cad/assembly-integrity/assembly-integrity-evaluation-proposal.ts";
+import {
   DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
   parseVectorCorrectionDecisionParameters,
 } from "../../domain/sensitivity/vector-correction/vector-correction-proposal.ts";
@@ -163,6 +169,12 @@ const PROPOSAL_VALIDATORS = new Map<
     keyOf(VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION),
     (parameters) => {
       parseAssemblyIntegrityObservationAdmissionParameters(parameters);
+    },
+  ],
+  [
+    keyOf(VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION),
+    (parameters) => {
+      parseAssemblyIntegrityEvaluationAdmissionParameters(parameters);
     },
   ],
   [
