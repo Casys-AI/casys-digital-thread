@@ -566,8 +566,8 @@ function assertGeometryModuleArtifactId(
   reference: AssemblyIntegrityGeometryModuleReference,
   path: string,
 ): void {
-  if (reference.artifactId !== `geometry-module-${reference.fingerprint.digest}`) {
-    throw new TypeError(`${path}.artifactId must be geometry-module-<digest>.`);
+  if (reference.artifactId !== `geometry-${reference.fingerprint.digest}`) {
+    throw new TypeError(`${path}.artifactId must be geometry-<digest>.`);
   }
 }
 

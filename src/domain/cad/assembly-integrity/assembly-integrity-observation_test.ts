@@ -383,7 +383,7 @@ async function validSource() {
     source: {
       geometryModule: {
         schemaVersion: GEOMETRY_MODULE_CAPTURE_SCHEMA,
-        artifactId: `geometry-module-${captureFingerprint.digest}`,
+        artifactId: `geometry-${captureFingerprint.digest}`,
         fingerprint: captureFingerprint,
       },
       geometryModuleCapture: capture,
