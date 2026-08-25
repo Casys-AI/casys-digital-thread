@@ -129,16 +129,40 @@ encoding for `design.write-geometry@1`
 
 #### [`src/domain/cad/canonical/geometry-module-evidence.ts`](../../../src/domain/cad/canonical/geometry-module-evidence.ts)
 
-Bounded hierarchical module contracts: `geometry-module-manifest/1.0`,
-`geometry-module-draft-capture/1.0`, and `geometry-module-capture/1.0`. One exact
-composite PartDefinition and its immediate children; child rows are usage → definition →
-placement → canonical child capture references. No descendant dump, source text,
-exporter, or verdict.
+Public facade for the bounded module family. Identities, isolation recross, manifest,
+draft and capture stay in the sibling files below.
+
+#### [`src/domain/cad/canonical/geometry-module-identities.ts`](../../../src/domain/cad/canonical/geometry-module-identities.ts)
+
+Shared value objects: immediate-child table, structure/placement locators, input-bundle
+identity, and child capture plus authoritative STEP identities. No program, lowerer, or
+admission stamp.
+
+#### [`src/domain/cad/canonical/geometry-module-isolation.ts`](../../../src/domain/cad/canonical/geometry-module-isolation.ts)
+
+Recross of the existing `IsolatedCodeExecutionReceiptRecord` to the input-bundle digest,
+proven destruction, accepted termination, and exact STEP plus binary GLB outputs. Does
+not restate receipt fields.
+
+#### [`src/domain/cad/canonical/geometry-module-manifest.ts`](../../../src/domain/cad/canonical/geometry-module-manifest.ts)
+
+`geometry-module-manifest/1.0` and its flat MRTR grammar. A completed manifest names the
+input-bundle identity and assembly STEP/GLB fingerprints.
+
+#### [`src/domain/cad/canonical/geometry-module-draft.ts`](../../../src/domain/cad/canonical/geometry-module-draft.ts)
+
+Review-only `geometry-module-draft-capture/1.0`: input bundle, isolated receipt,
+reopened child capture/STEP identities, produced STEP+GLB. No Thread write.
+
+#### [`src/domain/cad/canonical/geometry-module-capture.ts`](../../../src/domain/cad/canonical/geometry-module-capture.ts)
+
+Canonical `geometry-module-capture/1.0` after the existing geometry seal. Recrosses the
+signed manifest, input bundle, receipt and produced assets.
 
 #### [`src/application/ports/out/cad/canonical/geometry-module-evidence-store.ts`](../../../src/application/ports/out/cad/canonical/geometry-module-evidence-store.ts)
 
-Typed draft/capture CAS ports for the later admitted exporter and
-`design.write-geometry@1` sealer. They do not select a provider.
+Typed draft/capture CAS ports. They persist through existing geometry CAS families and
+do not export, call a provider, or seal Thread state.
 
 #### [`src/adapters/cad/canonical/file-geometry-module-evidence-store.ts`](../../../src/adapters/cad/canonical/file-geometry-module-evidence-store.ts)
 

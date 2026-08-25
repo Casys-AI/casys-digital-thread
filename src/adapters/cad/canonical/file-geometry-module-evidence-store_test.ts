@@ -3,9 +3,13 @@ import {
   CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_KIND,
   CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
   CAD_PLACEMENT_ANALYSIS_CAPTURE_URI_PREFIX,
+  GEOMETRY_MODULE_ASSEMBLY_GLB_OUTPUT,
+  GEOMETRY_MODULE_ASSEMBLY_ISOLATED_PROFILE,
+  GEOMETRY_MODULE_ASSEMBLY_STEP_OUTPUT,
   GEOMETRY_MODULE_CAPTURE_SCHEMA,
   GEOMETRY_MODULE_DRAFT_CAPTURE_SCHEMA,
   GEOMETRY_MODULE_DRAFT_KIND,
+  GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
   GEOMETRY_MODULE_MANIFEST_SCHEMA,
   GEOMETRY_MODULE_PLACEMENT_CONVENTION,
   GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA,
@@ -14,7 +18,6 @@ import {
   type GeometryModuleManifest,
 } from "../../../domain/cad/canonical/geometry-module-evidence.ts";
 import { GEOMETRY_PART_CAPTURE_SCHEMA } from "../../../domain/cad/canonical/geometry-part-manifest.ts";
-import { GEOMETRY_PART_DRAFT_ADMISSION_SCHEMA } from "../../../domain/cad/canonical/geometry-draft-admission.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../../domain/cad/canonical/geometry-proposal.ts";
 import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
 import {
@@ -22,6 +25,15 @@ import {
   PROJECT_SOURCE_CLOSURE_LOCATOR_SCHEMA,
   PROJECT_SOURCE_CLOSURE_URI_PREFIX,
 } from "../../../domain/project-source-workspace/closure.ts";
+import {
+  createIsolatedCodeExecutionReceipt,
+  createIsolatedOutputPublicationRef,
+  fingerprintIsolatedOutputPublicationManifest,
+  ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
+  isolatedCodeExecutionReceiptRecord,
+  validateIsolatedCodeExecutionRequest,
+} from "../../../domain/compile/isolation/isolated-code-execution.ts";
+import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
 import {
   FileCaptureStore,
   GEOMETRY_CAPTURE_DESCRIPTOR,
@@ -34,18 +46,117 @@ import {
 
 const A = "a".repeat(64);
 const B = "b".repeat(64);
-const C = "c".repeat(64);
-const D = "d".repeat(64);
 const E = "e".repeat(64);
 const F = "f".repeat(64);
 const G = "1".repeat(64);
-const H = "2".repeat(64);
+const encoder = new TextEncoder();
+const BUNDLE_BYTES = encoder.encode("geometry-module-input-bundle/1.0");
+const STEP_BYTES = encoder.encode("ISO-10303-21;MODULE-STEP");
+const GLB_BYTES = new Uint8Array([0x67, 0x6c, 0x54, 0x46, 1, 2, 3, 4]);
+const ARM_STEP_BYTES = encoder.encode("ISO-10303-21;ARM-STEP");
 
 function fp(digest: string) {
   return { algorithm: "sha256" as const, digest };
 }
 
-function fixture() {
+async function fixture() {
+  const bundleDigest = await fingerprintResourceBytes(BUNDLE_BYTES);
+  const stepDigest = await fingerprintResourceBytes(STEP_BYTES);
+  const glbDigest = await fingerprintResourceBytes(GLB_BYTES);
+  const armDigest = await fingerprintResourceBytes(ARM_STEP_BYTES);
+  const runId = "run.geometry-module.assembly.1";
+  const outputs = [
+    { ...GEOMETRY_MODULE_ASSEMBLY_STEP_OUTPUT, bytes: STEP_BYTES, sha256: stepDigest },
+    { ...GEOMETRY_MODULE_ASSEMBLY_GLB_OUTPUT, bytes: GLB_BYTES, sha256: glbDigest },
+  ];
+  const request = await validateIsolatedCodeExecutionRequest({
+    schemaVersion: ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
+    runId,
+    producerGeneration: 0,
+    profile: GEOMETRY_MODULE_ASSEMBLY_ISOLATED_PROFILE,
+    source: { bytes: BUNDLE_BYTES, sha256: bundleDigest },
+    policy: {
+      id: "isolation.geometry-module-assembly-v1",
+      version: "1.0.0",
+      fingerprint: fp(A),
+    },
+    outputs: outputs.map(({ role, basename, mediaType, format }) => ({
+      role,
+      basename,
+      mediaType,
+      format,
+    })),
+  });
+  const publicationMembers = outputs.map((output) => ({
+    role: output.role,
+    basename: output.basename,
+    mediaType: output.mediaType,
+    format: output.format,
+    byteCount: output.bytes.byteLength,
+    sha256: output.sha256,
+    casUri: `casys://isolated-output/sha256/${output.sha256}`,
+  }));
+  const receipt = isolatedCodeExecutionReceiptRecord(
+    await createIsolatedCodeExecutionReceipt({
+      request,
+      runtime: {
+        isolationClass: "kernel-isolated",
+        imageDigest: fp(A),
+        requestedLimits: {
+          maxWallTimeMs: 1_000,
+          maxCpuTimeMs: 500,
+          maxMemoryBytes: 64_000_000,
+          maxProcesses: 4,
+          maxStdoutBytes: 1_024,
+          maxStderrBytes: 1_024,
+          maxOutputFileBytes: 1_024,
+          maxOutputTotalBytes: 2_048,
+        },
+        limitAssurance: {
+          maxWallTimeMs: "backend-attested",
+          maxCpuTimeMs: "unattested",
+          maxMemoryBytes: "backend-attested",
+          maxProcesses: "unattested",
+          maxStdoutBytes: "broker-observed-cap",
+          maxStderrBytes: "broker-observed-cap",
+          maxOutputFileBytes: "broker-observed-cap",
+          maxOutputTotalBytes: "broker-observed-cap",
+        },
+      },
+      termination: { kind: "exited", exitCode: 0, signal: null },
+      logs: {
+        stdout: { bytes: new Uint8Array(), truncated: false },
+        stderr: { bytes: new Uint8Array(), truncated: false },
+      },
+      outputs: publicationMembers.map((member, index) => ({
+        ...member,
+        validation: "accepted" as const,
+        persistence: "staged-reread-atomic-commit" as const,
+        bytes: outputs[index]!.bytes,
+      })),
+      destruction: {
+        status: "proven",
+        runId,
+        proofFingerprint: fp(E),
+      },
+      publication: await createIsolatedOutputPublicationRef(
+        runId,
+        0,
+        await fingerprintIsolatedOutputPublicationManifest(
+          runId,
+          0,
+          publicationMembers,
+        ),
+      ),
+    }),
+  );
+  const inputBundle = {
+    schemaVersion: GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
+    fingerprint: fp(bundleDigest),
+    byteCount: BUNDLE_BYTES.byteLength,
+  };
+  const assemblyStep = { fingerprint: fp(stepDigest), bytes: STEP_BYTES.byteLength };
+  const assemblyGlb = { fingerprint: fp(glbDigest), bytes: GLB_BYTES.byteLength };
   const manifest: GeometryModuleManifest = {
     schemaVersion: GEOMETRY_MODULE_MANIFEST_SCHEMA,
     architectureBasis: {
@@ -92,16 +203,17 @@ function fixture() {
         artifactId: `geometry-${E}`,
         fingerprint: fp(E),
       },
+      authoritativeStep: {
+        fingerprint: fp(armDigest),
+        bytes: ARM_STEP_BYTES.byteLength,
+      },
     }],
     unitSystem: "mm",
     placementConvention: GEOMETRY_MODULE_PLACEMENT_CONVENTION,
-    exportFormats: ["step", "gltf"],
     assembly: {
-      programDigest: fp(H),
-      files: [
-        { format: "step", name: "geometry-module-assembly", fingerprint: fp(C) },
-        { format: "gltf", name: "geometry-module-assembly", fingerprint: fp(D) },
-      ],
+      inputBundle,
+      step: { fingerprint: assemblyStep.fingerprint },
+      glb: { fingerprint: assemblyGlb.fingerprint },
     },
   };
   const draft: Omit<GeometryModuleDraftCapture, "fingerprint"> = {
@@ -113,53 +225,14 @@ function fixture() {
     target: manifest.target,
     predecessor: manifest.predecessor,
     sourceClosure: manifest.sourceClosure,
-    targetAdmission: {
-      schemaVersion: GEOMETRY_PART_DRAFT_ADMISSION_SCHEMA,
-      artifactId: `technical-compilation-admission-${C}`,
-      fingerprint: fp(C),
-      sourceFingerprint: fp(D),
-      target: manifest.target,
-    },
     placementAnalysis: manifest.placementAnalysis,
     children: manifest.children,
     unitSystem: "mm",
     placementConvention: GEOMETRY_MODULE_PLACEMENT_CONVENTION,
-    exportFormats: manifest.exportFormats,
-    lowerer: {
-      id: "geometry-module-assembly-lowerer",
-      version: "1.0",
-      fingerprint: fp(A),
-    },
-    compilerProfile: {
-      profileId: "cad-compiler",
-      profileVersion: "1.0",
-      profileFingerprint: fp(B),
-    },
-    assemblyProgramDigest: fp(H),
-    reopenedAdmissions: [{
-      usageElementId: "sysml.usage.arm",
-      admission: {
-        schemaVersion: GEOMETRY_PART_DRAFT_ADMISSION_SCHEMA,
-        artifactId: `technical-compilation-admission-${C}`,
-        fingerprint: fp(C),
-        sourceFingerprint: fp(D),
-        target: { partDefinitionElementId: "sysml.part.arm", label: "Arm" },
-      },
-    }],
-    assemblyFiles: [
-      {
-        format: "step",
-        name: "geometry-module-assembly",
-        fingerprint: fp(C),
-        bytes: 2048,
-      },
-      {
-        format: "gltf",
-        name: "geometry-module-assembly",
-        fingerprint: fp(D),
-        bytes: 1024,
-      },
-    ],
+    inputBundle,
+    receipt,
+    assemblyStep,
+    assemblyGlb,
   };
   const capture: GeometryModuleCapture = {
     schemaVersion: GEOMETRY_MODULE_CAPTURE_SCHEMA,
@@ -174,17 +247,13 @@ function fixture() {
     },
     structureCapture: manifest.structureCapture,
     sourceClosure: manifest.sourceClosure,
-    targetAdmission: draft.targetAdmission,
     placementAnalysis: manifest.placementAnalysis,
     children: manifest.children,
     predecessor: manifest.predecessor,
-    lowerer: draft.lowerer,
-    compilerProfile: draft.compilerProfile,
-    assembly: {
-      programDigest: fp(H),
-      files: draft.assemblyFiles,
-      authoritativeStep: { fileIndex: 0, fingerprint: fp(C), bytes: 2048 },
-    },
+    inputBundle,
+    receipt,
+    assemblyStep,
+    assemblyGlb,
     sealedAt: "2026-08-25T10:05:00.000Z",
   };
   return { draft, capture };
@@ -192,7 +261,7 @@ function fixture() {
 
 Deno.test("module evidence stores save and reread through the existing geometry CAS", async () => {
   await usingDirectory(async (directory) => {
-    const { draft, capture } = fixture();
+    const { draft, capture } = await fixture();
     const draftStore = new FileGeometryModuleDraftStore(
       new FileCaptureStore({
         ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
@@ -231,7 +300,7 @@ Deno.test("module evidence stores save and reread through the existing geometry 
 
 Deno.test("module evidence stores reject foreign schemas and corrupted bytes", async () => {
   await usingDirectory(async (directory) => {
-    const { draft, capture } = fixture();
+    const { draft, capture } = await fixture();
     const draftStore = new FileGeometryModuleDraftStore(
       new FileCaptureStore({
         ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,

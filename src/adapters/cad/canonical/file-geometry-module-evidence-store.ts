@@ -1,8 +1,9 @@
 /**
  * File CAS adapters for geometry-module draft and capture records.
  *
- * They wrap the existing geometry-draft and geometry-capture stores so the
- * later sealer and exporter do not invent a second geometry authority.
+ * They persist those records through the existing geometry-draft and
+ * geometry-capture stores. They do not export, call a provider, or seal
+ * Thread state.
  */
 
 import {
@@ -48,7 +49,7 @@ export class FileGeometryModuleDraftStore implements GeometryModuleDraftStore {
   }
 
   async save(value: unknown): Promise<PersistedGeometryModuleDraft> {
-    const unsigned = parseGeometryModuleDraftCapture(value);
+    const unsigned = await parseGeometryModuleDraftCapture(value);
     const fingerprint = await sha256Fingerprint(unsigned);
     const canonical = deterministicJson(unsigned);
     await this.#store.save(fingerprint, canonical);
@@ -84,7 +85,7 @@ export class FileGeometryModuleDraftStore implements GeometryModuleDraftStore {
     }
     let unsigned: Omit<GeometryModuleDraftCapture, "fingerprint">;
     try {
-      unsigned = parseGeometryModuleDraftCapture(parsed);
+      unsigned = await parseGeometryModuleDraftCapture(parsed);
     } catch {
       throw new GeometryModuleEvidenceStoreIntegrityError(
         "The geometry-module draft failed exact replay validation.",
@@ -115,7 +116,7 @@ export class FileGeometryModuleCaptureStore implements GeometryModuleCaptureStor
   }
 
   async save(value: unknown): Promise<PersistedGeometryModuleCapture> {
-    const capture = parseGeometryModuleCapture(value);
+    const capture = await parseGeometryModuleCapture(value);
     const fingerprint = await sha256Fingerprint(capture);
     const canonical = deterministicJson(capture);
     await this.#store.save(fingerprint, canonical);
@@ -147,7 +148,7 @@ export class FileGeometryModuleCaptureStore implements GeometryModuleCaptureStor
     }
     let capture: GeometryModuleCapture;
     try {
-      capture = parseGeometryModuleCapture(parsed);
+      capture = await parseGeometryModuleCapture(parsed);
     } catch {
       throw new GeometryModuleEvidenceStoreIntegrityError(
         "The geometry-module capture failed exact replay validation.",

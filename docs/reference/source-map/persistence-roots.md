@@ -179,9 +179,10 @@ only, never an approval or execution authority
 #### `state/local/geometry-draft-captures/`
 
 Current analysis-bearing `geometry-draft-capture/1.2` and `2.1`, plus
-`geometry-module-draft-capture/1.0`; records seal exact source-analysis or module
-derivation references before preview and never enter a `ThreadSnapshot`. Older draft
-schemas are unsupported.
+`geometry-module-draft-capture/1.0`. The module draft binds the exact
+`geometry-module-input-bundle/1.0` fingerprint, isolated receipt, reopened child
+capture/STEP identities, and produced assembly STEP plus binary GLB. These records never
+enter a `ThreadSnapshot`. Older draft schemas are unsupported.
 
 #### `state/local/geometry-draft-assets/<sha256>`
 
@@ -191,5 +192,6 @@ read-only by `/api/draft-assets/<digest>`
 #### `state/local/geometry-captures/`
 
 Current `geometry-capture/1.2` and `2.1`, plus `geometry-module-capture/1.0`; records
-seal verified passive source-analysis or immediate-child capture references, predecessor
-lineage, and independent assembly STEP assets. Older capture schemas are unsupported.
+seal verified immediate-child capture plus authoritative STEP identities, predecessor
+lineage, input-bundle identity, isolated receipt, and independent assembly STEP plus
+binary GLB assets. Older capture schemas are unsupported.

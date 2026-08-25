@@ -1,9 +1,9 @@
 /**
  * Durable CAS ports for module drafts and canonical module captures.
  *
- * These are the only persistence seams the later admitted exporter and
- * `design.write-geometry@1` sealer need. They reuse the existing geometry
- * draft and capture stores; schemaVersion is the family discriminant.
+ * They persist review-only drafts and sealed captures through the existing
+ * geometry CAS families. They do not export, call a provider, or seal
+ * Thread state. schemaVersion is the family discriminant.
  */
 
 import type {
