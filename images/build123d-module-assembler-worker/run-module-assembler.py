@@ -93,7 +93,9 @@ def main() -> None:
         if imported is None:
             fail(f"Child STEP {index} could not be imported from its staged path.")
         location = extrinsic_xyz_location(occurrence["placement"])
-        placed.append(location * imported)
+        placed_shape = location * imported
+        label_placed_occurrence(placed_shape, occurrence)
+        placed.append(placed_shape)
     compound = Compound(children=placed)
     if export_step(compound, ASSEMBLY_STEP_PATH) is not True:
         fail("Assembly STEP export was rejected.")
@@ -104,6 +106,22 @@ def main() -> None:
     ASSEMBLY_GLB_PATH.chmod(0o400)
     assert_exact_outputs()
     write_control_evidence()
+
+
+def label_placed_occurrence(shape: object, occurrence: object) -> object:
+    """Stamp usageElementId on the already-transformed child. Location may drop labels."""
+    if not isinstance(occurrence, dict):
+        fail("An occurrence record is required.")
+    usage = occurrence.get("usageElementId")
+    if not isinstance(usage, str) or usage == "":
+        fail("An occurrence usageElementId is required.")
+    try:
+        setattr(shape, "label", usage)
+    except Exception:
+        fail("The placed shape refused the occurrence usage label.")
+    if getattr(shape, "label", None) != usage:
+        fail("The placed shape usage label readback differs.")
+    return shape
 
 
 def extrinsic_xyz_location(placement: object) -> Location:

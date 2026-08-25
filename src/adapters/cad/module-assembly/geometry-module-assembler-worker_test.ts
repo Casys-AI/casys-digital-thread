@@ -98,6 +98,56 @@ Deno.test("module-assembler wrapper reaches the sibling decoder under isolated P
   }
 });
 
+Deno.test("module-assembler wrapper labels placed children by usage after Location", async () => {
+  const python = await findPython();
+  if (python === undefined) return;
+  const output = await runWrapperPython(python, [
+    "class DiscardingLocation:",
+    "    def __mul__(self, imported):",
+    "        return types.SimpleNamespace(source=getattr(imported, 'name', None))",
+    "def place(imported, occurrence):",
+    "    return module.label_placed_occurrence(DiscardingLocation() * imported, occurrence)",
+    "first = place(types.SimpleNamespace(name='child-b'), {'usageElementId': 'usage-b'})",
+    "second = place(types.SimpleNamespace(name='child-a'), {'usageElementId': 'usage-a'})",
+    "by_label = {shape.label: getattr(shape, 'source', None) for shape in (second, first)}",
+    "def rejected(shape, occurrence):",
+    "    try:",
+    "        module.label_placed_occurrence(shape, occurrence)",
+    "        return False",
+    "    except SystemExit as error:",
+    "        return str(error).startswith('casys-module-assembler:')",
+    "class Refusing:",
+    "    def __setattr__(self, name, value):",
+    "        raise TypeError('refused')",
+    "class Liar:",
+    "    def __init__(self):",
+    "        self._written = None",
+    "    @property",
+    "    def label(self):",
+    "        return 'not-the-usage'",
+    "    @label.setter",
+    "    def label(self, value):",
+    "        self._written = value",
+    "print(json.dumps({",
+    "    'byLabel': by_label,",
+    "    'labels': sorted(by_label),",
+    "    'emptyRejected': rejected(types.SimpleNamespace(), {'usageElementId': ''}),",
+    "    'missingRejected': rejected(types.SimpleNamespace(), {}),",
+    "    'refusedRejected': rejected(Refusing(), {'usageElementId': 'usage-a'}),",
+    "    'readbackRejected': rejected(Liar(), {'usageElementId': 'usage-a'}),",
+    "}))",
+  ]);
+  assertEquals(output.success, true, output.stderr);
+  assertEquals(JSON.parse(output.stdout), {
+    byLabel: { "usage-a": "child-a", "usage-b": "child-b" },
+    labels: ["usage-a", "usage-b"],
+    emptyRejected: true,
+    missingRejected: true,
+    refusedRejected: true,
+    readbackRejected: true,
+  });
+});
+
 Deno.test("module-assembler wrapper rewrites only the unique OCC FILE_NAME timestamp", async () => {
   const python = await findPython();
   if (python === undefined) return;
