@@ -442,6 +442,16 @@ export const ASSEMBLY_INTEGRITY_OBSERVATION_CAPTURE_DESCRIPTOR: CaptureStoreDesc
   label: "Assembly-integrity observation",
 };
 
+/** Provider-free L4 assembly-integrity evaluation captures. */
+export const ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "assembly-integrity-evaluation-capture"
+> = {
+  kind: "assembly-integrity-evaluation-capture",
+  directory: "state/local/assembly-integrity-evaluation-captures",
+  uriNamespace: "assembly-integrity-evaluation-capture",
+  label: "Assembly-integrity evaluation",
+};
+
 export const PRINT_ESTIMATE_CASE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   "print-estimate-case"
 > = {
