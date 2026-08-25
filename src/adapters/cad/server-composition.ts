@@ -33,6 +33,7 @@ import {
   DESIGN_WRITE_GEOMETRY_OPERATION,
   DesignWriteGeometryRunExecutor,
 } from "./canonical/design-write-geometry-run-executor.ts";
+import { GeometryModuleAssemblyOutputValidator } from "./module-assembly/geometry-module-assembly-output-validator.ts";
 import type { Build123dExecutionServerOptions } from "./isolated/build123d-execution-composition.ts";
 import type { Build123dExecutionComposition } from "./isolated/build123d-execution-composition.ts";
 import {
@@ -119,8 +120,7 @@ export async function createBuild123dCapability(
     : await (await import(
       "./isolated/build123d-execution-composition.ts"
     )).createBuild123dExecutionComposition(options.build123dExecution, {
-      outputCasDirectory:
-        `${options.recordedAnalysisDirectory}/build123d/outputs`,
+      outputCasDirectory: `${options.recordedAnalysisDirectory}/build123d/outputs`,
     });
   const build123dExecutionReview = build123dExecution === undefined
     ? undefined
@@ -131,24 +131,21 @@ export async function createBuild123dCapability(
   const build123dExecutionCaptures = new FileBuild123dExecutionCaptureStore(
     `${options.recordedAnalysisDirectory}/build123d/captures`,
   );
-  const isolatedOutputPublications =
-    build123dExecution?.execution?.publications ??
-      new FileIsolatedOutputCas(
-        `${options.recordedAnalysisDirectory}/build123d/outputs`,
-      );
+  const isolatedOutputPublications = build123dExecution?.execution?.publications ??
+    new FileIsolatedOutputCas(
+      `${options.recordedAnalysisDirectory}/build123d/outputs`,
+    );
   const isolatedGeometrySealBytes = new FileByteStore({
     kind: "isolated-geometry-seal-capture",
-    directory:
-      `${options.recordedAnalysisDirectory}/isolated-geometry-seals`,
+    directory: `${options.recordedAnalysisDirectory}/isolated-geometry-seals`,
     uriNamespace: "isolated-geometry-seal-capture",
     label: "Sealed isolated geometry document",
   });
   const isolatedGeometrySeals = fileTextCaptureStore(isolatedGeometrySealBytes);
-  const isolatedGeometrySealReview =
-    new PrepareProjectIsolatedGeometrySealReview({
-      snapshots: options.snapshots,
-      captures: build123dExecutionCaptures,
-    });
+  const isolatedGeometrySealReview = new PrepareProjectIsolatedGeometrySealReview({
+    snapshots: options.snapshots,
+    captures: build123dExecutionCaptures,
+  });
   return {
     build123dExecution,
     build123dExecutionReview,
@@ -214,6 +211,8 @@ export function createCadProject(options: CadProjectOptions): CadProject {
       directory: options.geometryCaptureDirectory,
     }),
     admissions: options.admissions,
+    isolatedPublications: options.capability.isolatedOutputPublications,
+    moduleAssemblyOutputValidator: new GeometryModuleAssemblyOutputValidator(),
     lease: options.lease,
     now: () => new Date().toISOString(),
   });

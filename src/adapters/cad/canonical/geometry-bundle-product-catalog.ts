@@ -35,6 +35,22 @@ import {
   parseGeometryPartDecisionParameters,
 } from "../../../domain/cad/canonical/geometry-part-manifest.ts";
 import {
+  encodeGeometryModuleDecisionParameters,
+  GEOMETRY_MODULE_CAPTURE_SCHEMA,
+  type GeometryModuleManifest,
+  parseGeometryModuleCapture,
+  parseGeometryModuleDecisionParameters,
+} from "../../../domain/cad/canonical/geometry-module-evidence.ts";
+import {
+  GEOMETRY_MODULE_STRUCTURE_DERIVATION_RATIONALE,
+  GEOMETRY_MODULE_STRUCTURE_USE_RATIONALE,
+  geometryModuleAssemblyGlbArtifactId,
+  geometryModuleAssemblyStepArtifactId,
+  geometryModuleBinaryProducer,
+  geometryModulePrimaryInputIds,
+  geometryModuleStructureConsumptionId,
+} from "./design-write-geometry-module-seal.ts";
+import {
   parseGeometryPartDraftAdmission,
   requireNamedCadLeverInDraftScript,
 } from "../../../domain/cad/canonical/geometry-draft-admission.ts";
@@ -76,7 +92,10 @@ interface VerifiedGeometryBundle {
 
 interface VerifiedTargetGeometry {
   readonly primary: ThreadArtifact;
-  readonly manifest: GeometryPartManifest;
+  readonly target: {
+    readonly partDefinitionElementId: string;
+    readonly label: string;
+  };
   readonly step: ThreadArtifact;
   readonly glb?: ThreadArtifact;
 }
@@ -114,14 +133,16 @@ export async function enrichGenericProductCatalogWithGeometryBundle(
     );
   }
   try {
-    const results = await Promise.all(selected.artifacts.map((artifact) =>
-      verifyGeometryCapture(
-        snapshot,
-        architectureCatalog,
-        artifact,
-        captures,
-      )
-    ));
+    const results = await Promise.all(
+      selected.artifacts.map((artifact) =>
+        verifyGeometryCapture(
+          snapshot,
+          architectureCatalog,
+          artifact,
+          captures,
+        )
+      ),
+    );
     const targets = results.flatMap((result) =>
       result.kind === "targeted" ? [result.target] : []
     );
@@ -130,7 +151,7 @@ export async function enrichGenericProductCatalogWithGeometryBundle(
     );
     const assemblyCount = results.filter((result) => result.kind === "assembly").length;
     const targetIds = new Set(
-      targets.map((target) => target.manifest.target.partDefinitionElementId),
+      targets.map((target) => target.target.partDefinitionElementId),
     );
     if (
       targetIds.size !== targets.length || bundles.length > 1 || assemblyCount > 1 ||
@@ -213,7 +234,8 @@ async function verifyGeometryCapture(
   if (
     schemaVersion !== GEOMETRY_CAPTURE_SCHEMA &&
     schemaVersion !== GEOMETRY_BUNDLE_CAPTURE_SCHEMA &&
-    schemaVersion !== GEOMETRY_PART_CAPTURE_SCHEMA
+    schemaVersion !== GEOMETRY_PART_CAPTURE_SCHEMA &&
+    schemaVersion !== GEOMETRY_MODULE_CAPTURE_SCHEMA
   ) {
     fail(
       `The active geometry capture schema ${String(schemaVersion)} is unsupported.`,
@@ -231,6 +253,19 @@ async function verifyGeometryCapture(
     return {
       kind: "targeted",
       target: await verifyTargetGeometryCapture(
+        snapshot,
+        catalog,
+        primary,
+        capture,
+        sealedAt,
+      ),
+    };
+  }
+
+  if (schemaVersion === GEOMETRY_MODULE_CAPTURE_SCHEMA) {
+    return {
+      kind: "targeted",
+      target: await verifyModuleGeometryCapture(
         snapshot,
         catalog,
         primary,
@@ -463,7 +498,9 @@ async function verifyTargetGeometryCapture(
       primary,
       file,
       `cad-asset-${primary.fingerprint.digest}-target-${fileIndex}-${file.fingerprint.digest}`,
-      `${file.format === "step" ? "Authoritative STEP" : file.format.toUpperCase()}: ${manifest.target.label}`,
+      `${
+        file.format === "step" ? "Authoritative STEP" : file.format.toUpperCase()
+      }: ${manifest.target.label}`,
       previewProducer,
       sealedAt,
       "part-definition",
@@ -480,10 +517,199 @@ async function verifyTargetGeometryCapture(
   }
   return {
     primary,
-    manifest,
+    target: {
+      partDefinitionElementId: manifest.target.partDefinitionElementId,
+      label: manifest.target.label,
+    },
     step: step[0]!,
     ...(glb[0] ? { glb: glb[0] } : {}),
   };
+}
+
+async function verifyModuleGeometryCapture(
+  snapshot: ThreadSnapshot,
+  catalog: ThreadComponentCatalog,
+  primary: ThreadArtifact,
+  capture: Record<string, unknown>,
+  sealedAt: string,
+): Promise<VerifiedTargetGeometry> {
+  let parsed;
+  try {
+    parsed = await parseGeometryModuleCapture(capture);
+  } catch {
+    fail("The active geometry-module capture failed exact replay validation.");
+  }
+  const observed = await sha256Fingerprint(parsed);
+  if (!fingerprintsEqual(observed, primary.fingerprint)) {
+    fail("The active geometry-module capture does not match its artifact fingerprint.");
+  }
+  const manifest = normalizeCompletedModuleManifest(
+    parsed.manifest,
+    parsed.draftDigest,
+  );
+  if (deterministicJson(manifest) !== deterministicJson(parsed.manifest)) {
+    fail("The geometry-module manifest is not an exact canonical record.");
+  }
+  const architectureArtifact = exactArchitectureArtifact(snapshot, catalog);
+  assertArchitectureBasis(
+    parsed.architectureBasis,
+    manifest,
+    architectureArtifact,
+  );
+  const structure = snapshot.artifacts.find((artifact) =>
+    artifact.id === parsed.structureCapture.artifactId &&
+    fingerprintsEqual(artifact.fingerprint, parsed.structureCapture.fingerprint)
+  );
+  if (!structure) {
+    fail("The geometry-module structure basis artifact is absent.");
+  }
+  const expectedInputs = geometryModulePrimaryInputIds({
+    architectureId: architectureArtifact.id,
+    structureId: structure.id,
+    predecessorId: manifest.predecessor?.artifactId,
+  });
+  if (
+    deterministicJson(primary.inputArtifactIds) !== deterministicJson(expectedInputs)
+  ) {
+    fail(
+      "The geometry-module capture artifact has non-exact architecture/structure/predecessor inputs.",
+    );
+  }
+  assertExactArchitectureAttestation(
+    snapshot,
+    primary,
+    architectureArtifact,
+    sealedAt,
+  );
+  assertExactModuleStructureAttestation(snapshot, primary, structure, sealedAt);
+  if (manifest.predecessor) {
+    const matches = snapshot.artifacts.filter((artifact) =>
+      artifact.id === manifest.predecessor!.artifactId &&
+      fingerprintsEqual(artifact.fingerprint, manifest.predecessor!.fingerprint)
+    );
+    if (
+      matches.length !== 1 ||
+      !archivedRefKeys(snapshot).has(`artifact:${manifest.predecessor.artifactId}`)
+    ) {
+      fail("The geometry-module predecessor is absent, inexact, or still active.");
+    }
+    assertPredecessorFamilyArchived(snapshot, matches[0]!);
+    for (const relation of ["derived_from", "supersedes"] as const) {
+      const links = snapshot.provenance.filter((link) =>
+        link.relation === relation && link.from.kind === "artifact" &&
+        link.from.id === primary.id && link.to.kind === "artifact" &&
+        link.to.id === manifest.predecessor!.artifactId
+      );
+      const expectedId = relation === "derived_from"
+        ? `derived-from-geometry-${primary.fingerprint.digest}`
+        : `supersedes-geometry-${primary.fingerprint.digest}`;
+      const expectedRationale = relation === "derived_from"
+        ? GEOMETRY_PREDECESSOR_DERIVATION_RATIONALE
+        : GEOMETRY_PREDECESSOR_SUPERSEDES_RATIONALE;
+      if (
+        links.length !== 1 || links[0]!.id !== expectedId ||
+        links[0]!.rationale !== expectedRationale
+      ) {
+        fail(`The geometry-module has no unique ${relation} predecessor edge.`);
+      }
+    }
+  }
+  const producer = geometryModuleBinaryProducer(parsed.receipt);
+  const step = requireExactBinary(
+    snapshot,
+    primary,
+    { format: "step", fingerprint: parsed.assemblyStep.fingerprint },
+    geometryModuleAssemblyStepArtifactId(
+      primary.fingerprint.digest,
+      parsed.assemblyStep.fingerprint.digest,
+    ),
+    `Authoritative STEP: ${manifest.target.label}`,
+    producer,
+    sealedAt,
+    "part-definition",
+  );
+  const glb = requireExactBinary(
+    snapshot,
+    primary,
+    { format: "gltf", fingerprint: parsed.assemblyGlb.fingerprint },
+    geometryModuleAssemblyGlbArtifactId(
+      primary.fingerprint.digest,
+      parsed.assemblyGlb.fingerprint.digest,
+    ),
+    `GLB: ${manifest.target.label}`,
+    producer,
+    sealedAt,
+    "part-definition",
+  );
+  return {
+    primary,
+    target: {
+      partDefinitionElementId: manifest.target.partDefinitionElementId,
+      label: manifest.target.label,
+    },
+    step,
+    glb,
+  };
+}
+
+function normalizeCompletedModuleManifest(
+  value: unknown,
+  draftDigest: string,
+): GeometryModuleManifest {
+  try {
+    const encoded = encodeGeometryModuleDecisionParameters(
+      draftDigest,
+      value as GeometryModuleManifest,
+    );
+    const normalized = parseGeometryModuleDecisionParameters(
+      new Map(encoded.map((parameter) => [parameter.key, parameter.value])),
+    );
+    if (deterministicJson(normalized.manifest) !== deterministicJson(value)) {
+      fail("The geometry-module manifest is not an exact canonical record.");
+    }
+    return normalized.manifest;
+  } catch (error) {
+    if (error instanceof GeometryBundleProjectionError) throw error;
+    fail("The geometry-module manifest is structurally invalid.");
+  }
+}
+
+function assertExactModuleStructureAttestation(
+  snapshot: ThreadSnapshot,
+  primary: ThreadArtifact,
+  structure: ThreadArtifact,
+  sealedAt: string,
+): void {
+  const expectedConsumptionId = geometryModuleStructureConsumptionId(
+    structure.id,
+    primary.id,
+  );
+  const consumptions = snapshot.consumptions.filter((consumption) =>
+    consumption.id === expectedConsumptionId &&
+    consumption.artifactId === structure.id &&
+    deterministicJson(consumption.consumer) === deterministicJson(primary.producer) &&
+    fingerprintsEqual(consumption.observedFingerprint, structure.fingerprint) &&
+    consumption.status === "verified" && consumption.verifiedAt === sealedAt
+  );
+  const derived = snapshot.provenance.filter((link) =>
+    link.relation === "derived_from" && link.from.kind === "artifact" &&
+    link.from.id === primary.id && link.to.kind === "artifact" &&
+    link.to.id === structure.id
+  );
+  const uses = snapshot.provenance.filter((link) =>
+    link.relation === "uses" && link.from.kind === "consumption" &&
+    link.from.id === expectedConsumptionId && link.to.kind === "artifact" &&
+    link.to.id === structure.id
+  );
+  if (
+    consumptions.length !== 1 || derived.length !== 1 || uses.length !== 1 ||
+    derived[0]!.id !== `derived-from-structure-${primary.fingerprint.digest}` ||
+    derived[0]!.rationale !== GEOMETRY_MODULE_STRUCTURE_DERIVATION_RATIONALE ||
+    uses[0]!.id !== `uses-${expectedConsumptionId}` ||
+    uses[0]!.rationale !== GEOMETRY_MODULE_STRUCTURE_USE_RATIONALE
+  ) {
+    fail("The geometry-module structure-basis attestation is not exact.");
+  }
 }
 
 function assertExactTargetFamily(
@@ -540,8 +766,9 @@ function exactArchitectureArtifact(
 
 function assertArchitectureBasis(
   value: unknown,
-  manifest: Pick<GeometryBundleManifest, "architectureBasis"> |
-    Pick<GeometryPartManifest, "architectureBasis">,
+  manifest:
+    | Pick<GeometryBundleManifest, "architectureBasis">
+    | Pick<GeometryPartManifest, "architectureBasis">,
   artifact: ThreadArtifact,
 ): void {
   const basis = exactObject(
@@ -1268,7 +1495,7 @@ function attachExactTargetCadBindings(
 ): ThreadComponentCatalog {
   const targetByDefinitionId = new Map(
     targets.map((target) => [
-      target.manifest.target.partDefinitionElementId,
+      target.target.partDefinitionElementId,
       target,
     ]),
   );
@@ -1287,23 +1514,23 @@ function attachExactTargetCadBindings(
     if (matching.length === 0) return component;
     const { definition, target } = matching[0]!;
     if (
-      matching.length !== 1 || definition.label !== target.manifest.target.label ||
+      matching.length !== 1 || definition.label !== target.target.label ||
       component.bindings.some((binding) =>
         binding.provider === "digital-thread" && binding.kind === "artifact"
       )
     ) {
       fail(
-        `PartDefinition ${target.manifest.target.partDefinitionElementId} has an ambiguous Product catalog binding.`,
+        `PartDefinition ${target.target.partDefinitionElementId} has an ambiguous Product catalog binding.`,
       );
     }
-    matchedTargetIds.add(target.manifest.target.partDefinitionElementId);
+    matchedTargetIds.add(target.target.partDefinitionElementId);
     return {
       ...component,
       bindings: [
         ...component.bindings,
         cadBinding(
           target.step,
-          `Authoritative STEP: ${target.manifest.target.label}`,
+          `Authoritative STEP: ${target.target.label}`,
           target.primary.id,
         ),
       ],
@@ -1311,11 +1538,13 @@ function attachExactTargetCadBindings(
     };
   });
   const unmatched = targets.filter((target) =>
-    !matchedTargetIds.has(target.manifest.target.partDefinitionElementId)
+    !matchedTargetIds.has(target.target.partDefinitionElementId)
   );
   if (unmatched.length > 0) {
     fail(
-      `The targeted geometry PartDefinition ${unmatched[0]!.manifest.target.partDefinitionElementId} is absent from the exact SysON Product catalog.`,
+      `The targeted geometry PartDefinition ${
+        unmatched[0]!.target.partDefinitionElementId
+      } is absent from the exact SysON Product catalog.`,
     );
   }
   return validateThreadComponentCatalog({

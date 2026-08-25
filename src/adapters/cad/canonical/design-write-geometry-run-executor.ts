@@ -168,6 +168,27 @@ import {
   type SysmlSourceAnalysisReader,
 } from "../../architecture/renderer/sysml-source-analysis-capture.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../../shared/stores/live-thread-update-store.ts";
+import type { IsolatedOutputPublicationReader } from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
+import {
+  GEOMETRY_MODULE_CAPTURE_SCHEMA,
+  geometryModuleAssemblyArtifacts,
+  type GeometryModuleAssemblyOutputValidation,
+  geometryModuleCaptureRecord,
+  geometryModulePrimaryInputIds,
+  geometryModuleStructureAttestation,
+  isGeometryModuleManifest,
+  loadReviewedGeometryModuleDraft,
+  promoteReopenedModuleAsset,
+  requireGeometryModulePredecessor,
+  requireStructureCaptureArtifact,
+  type ReviewedGeometryModuleDraft,
+  rollbackPromotedCanonicalAssets,
+} from "./design-write-geometry-module-seal.ts";
+import {
+  type GeometryModuleManifest,
+  geometryModuleManifestFromDraft,
+  parseGeometryModuleCapture,
+} from "../../../domain/cad/canonical/geometry-module-evidence.ts";
 
 // ── Public constants ──────────────────────────────────────────────────────────
 
@@ -219,6 +240,9 @@ function geometryManifestPredecessor(
 ):
   | { readonly artifactId: string; readonly fingerprint: ContentFingerprint }
   | undefined {
+  if (isGeometryModuleManifest(manifest)) {
+    return manifest.predecessor;
+  }
   if (
     manifest.schemaVersion === "geometry-manifest/2.0" ||
     manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA
@@ -314,12 +338,26 @@ type AssemblyGeometryDraftManifestShape = {
 };
 
 export function assertMrtrManifestMatchesDraft(
-  signed: AnyGeometryManifest | GeometryPartManifest,
+  signed: AnyGeometryManifest | GeometryPartManifest | GeometryModuleManifest,
   draft:
     | AssemblyGeometryDraftManifestShape
     | Omit<GeometryBundleDraftCapture, "fingerprint">
-    | Omit<GeometryPartDraftCapture, "fingerprint">,
+    | Omit<GeometryPartDraftCapture, "fingerprint">
+    | Omit<ReviewedGeometryModuleDraft["draft"], never>,
 ): void {
+  if (isGeometryModuleManifest(signed)) {
+    const reconstructed = geometryModuleManifestFromDraft(
+      draft as ReviewedGeometryModuleDraft["draft"],
+    );
+    if (deterministicJson(signed) !== deterministicJson(reconstructed)) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "geometry_module_manifest_mismatch: the signed module MRTR manifest " +
+          "is not exactly the manifest reconstructed from the reviewed draft.",
+      );
+    }
+    return;
+  }
   if (signed.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA) {
     const reconstructed = geometryPartManifestFromDraft(
       draft as Omit<GeometryPartDraftCapture, "fingerprint">,
@@ -432,6 +470,12 @@ export interface DesignWriteGeometryRunExecutorDependencies {
    * reopens the actual `compile.seal-admission@3` evidence through this port.
    */
   readonly admissions: Pick<TechnicalCompilationAdmissionReader, "read">;
+  /**
+   * Publication-gated isolated CAS. Required for the geometry-module family;
+   * assembly STEP/GLB are reopened by draft/receipt identity, never by filename.
+   */
+  readonly isolatedPublications?: IsolatedOutputPublicationReader;
+  readonly moduleAssemblyOutputValidator?: GeometryModuleAssemblyOutputValidation;
   readonly lease: EngineeringProjectRunLease;
   readonly liveUpdates?: LiveThreadUpdateMilestoneJournal;
   readonly canonicalAssetDirectory?: string;
@@ -465,6 +509,10 @@ export class DesignWriteGeometryRunExecutor {
   readonly #sourceAnalysisCaptures: FileCaptureStore<"source-analysis">;
   readonly #geometryCaptures: GeometryCaptureStore;
   readonly #admissions: Pick<TechnicalCompilationAdmissionReader, "read">;
+  readonly #isolatedPublications: IsolatedOutputPublicationReader | undefined;
+  readonly #moduleAssemblyOutputValidator:
+    | GeometryModuleAssemblyOutputValidation
+    | undefined;
   readonly #lease: EngineeringProjectRunLease;
   readonly #liveUpdates: LiveThreadUpdateMilestoneJournal | undefined;
   readonly #canonicalAssetDirectory: string;
@@ -482,6 +530,8 @@ export class DesignWriteGeometryRunExecutor {
     this.#sourceAnalysisCaptures = dependencies.sourceAnalysisCaptures;
     this.#geometryCaptures = dependencies.geometryCaptures;
     this.#admissions = dependencies.admissions;
+    this.#isolatedPublications = dependencies.isolatedPublications;
+    this.#moduleAssemblyOutputValidator = dependencies.moduleAssemblyOutputValidator;
     this.#lease = dependencies.lease;
     this.#liveUpdates = dependencies.liveUpdates;
     this.#canonicalAssetDirectory = dependencies.canonicalAssetDirectory ??
@@ -541,6 +591,7 @@ export class DesignWriteGeometryRunExecutor {
   ): Promise<EngineeringProjectSnapshot> {
     let snapshotPersisted = false;
     let materializedSnapshot: ThreadSnapshot | undefined;
+    const stagedCanonicalPaths: string[] = [];
 
     try {
       // Post-lease shape re-check.
@@ -564,23 +615,6 @@ export class DesignWriteGeometryRunExecutor {
 
       const preClaimRun = requireRun(preClaim, command.runId);
       const preClaimBasis = requireBasis(preClaimRun);
-
-      // Reject malformed or stale persisted drafts before the run claim is
-      // recorded. In particular, legacy `format: gltf` records must prove the
-      // provider's binary `.glb` path contract before any project, capture,
-      // asset, or snapshot write occurs.
-      await loadReviewedGeometryDraft(
-        params,
-        this.#geometryDraftCaptures,
-        this.#geometrySourceCaptures,
-        this.#sourceAnalysisCaptures,
-        this.#draftAssetDirectory,
-        {
-          projectId: command.projectId,
-          basis: preClaimBasis,
-          admissions: this.#admissions,
-        },
-      );
 
       // The reviewed architecture is part of the MRTR input, so validate its
       // exact active tip, capture bytes, seed/predecessor lineage, and component
@@ -608,6 +642,12 @@ export class DesignWriteGeometryRunExecutor {
         this.#architectureCaptures,
         this.#sysmlSourceAnalysis,
       );
+      if (isGeometryModuleManifest(params.manifest)) {
+        requireStructureCaptureArtifact(
+          preClaimBase,
+          params.manifest.structureCapture,
+        );
+      }
       await requireGeometryPredecessor(
         preClaimBase,
         params,
@@ -615,6 +655,27 @@ export class DesignWriteGeometryRunExecutor {
         {
           geometrySourceCaptures: this.#geometrySourceCaptures,
           sourceAnalysisCaptures: this.#sourceAnalysisCaptures,
+        },
+      );
+
+      // Reject malformed or stale persisted drafts before the run claim is
+      // recorded. Module drafts also reopen child STEP bytes and isolated
+      // assembly outputs here so a mismatch leaves the run queued.
+      await loadReviewedGeometryDraft(
+        params,
+        this.#geometryDraftCaptures,
+        this.#geometrySourceCaptures,
+        this.#sourceAnalysisCaptures,
+        this.#draftAssetDirectory,
+        {
+          projectId: command.projectId,
+          basis: preClaimBasis,
+          admissions: this.#admissions,
+          baseSnapshot: preClaimBase,
+          geometryCaptures: this.#geometryCaptures,
+          isolatedPublications: this.#isolatedPublications,
+          moduleAssemblyOutputValidator: this.#moduleAssemblyOutputValidator,
+          canonicalAssetDirectory: this.#canonicalAssetDirectory,
         },
       );
 
@@ -667,6 +728,7 @@ export class DesignWriteGeometryRunExecutor {
         bundleAssetBytes,
         bundleSources,
         partDraft,
+        moduleDraft,
         previewProducer,
         sourceAnalyses,
       } = await loadReviewedGeometryDraft(
@@ -679,6 +741,11 @@ export class DesignWriteGeometryRunExecutor {
           projectId: command.projectId,
           basis,
           admissions: this.#admissions,
+          baseSnapshot: base,
+          geometryCaptures: this.#geometryCaptures,
+          isolatedPublications: this.#isolatedPublications,
+          moduleAssemblyOutputValidator: this.#moduleAssemblyOutputValidator,
+          canonicalAssetDirectory: this.#canonicalAssetDirectory,
         },
       );
 
@@ -699,19 +766,31 @@ export class DesignWriteGeometryRunExecutor {
           sourceAnalysisCaptures: this.#sourceAnalysisCaptures,
         },
       );
+      const structureArtifact = isGeometryModuleManifest(params.manifest)
+        ? requireStructureCaptureArtifact(base, params.manifest.structureCapture)
+        : undefined;
 
       // Step 11: build and durably record the canonical geometry capture before
       // any binary is published. The capture is derived only from the signed
       // decision, the verified draft record, and the verified architecture.
       const { assemblyFiles = [], partMeshes = [] } = params.manifest.artifactHashes ??
         {};
-      if (!partDraft && !sourceAnalyses) {
+      if (!partDraft && !moduleDraft && !sourceAnalyses) {
         throw new EngineeringProjectCommandError(
           "invalid_transition",
           "Current generic geometry capture requires exact source analyses.",
         );
       }
-      const captureRecord = partDraft
+      const captureRecord = moduleDraft && isGeometryModuleManifest(params.manifest)
+        ? geometryModuleCaptureRecord({
+          runId: run.id,
+          draftDigest: params.draftDigest,
+          manifest: params.manifest,
+          capturedAt,
+          architectureArtifact,
+          draft: moduleDraft.draft,
+        })
+        : partDraft
         ? geometryPartCaptureRecord({
           params,
           runId: run.id,
@@ -745,6 +824,16 @@ export class DesignWriteGeometryRunExecutor {
         throw new Error(
           "Geometry capture was not durably readable after save.",
         );
+      }
+      if (moduleDraft) {
+        const parsedModule = await parseGeometryModuleCapture(
+          JSON.parse(persistedCapture),
+        );
+        if (deterministicJson(parsedModule) !== captureText) {
+          throw new Error(
+            "Geometry-module capture failed parseGeometryModuleCapture after save.",
+          );
+        }
       }
 
       // Step 12: every binary promotion consumes the persisted capture. The
@@ -823,6 +912,26 @@ export class DesignWriteGeometryRunExecutor {
           });
         }
       }
+      if (moduleDraft && isGeometryModuleManifest(params.manifest)) {
+        const stepPath = await promoteReopenedModuleAsset({
+          captureFp,
+          assetFingerprint: moduleDraft.draft.assemblyStep.fingerprint,
+          bytes: moduleDraft.assemblyStepBytes,
+          extension: "step",
+          geometryCaptures: this.#geometryCaptures,
+          canonicalDirectory: this.#canonicalAssetDirectory,
+        });
+        const glbPath = await promoteReopenedModuleAsset({
+          captureFp,
+          assetFingerprint: moduleDraft.draft.assemblyGlb.fingerprint,
+          bytes: moduleDraft.assemblyGlbBytes,
+          extension: "glb",
+          geometryCaptures: this.#geometryCaptures,
+          canonicalDirectory: this.#canonicalAssetDirectory,
+        });
+        if (stepPath) stagedCanonicalPaths.push(stepPath);
+        if (glbPath) stagedCanonicalPaths.push(glbPath);
+      }
 
       // Step 13: build thread extension + validate.
       const captureUri = this.#geometryCaptures.uriFor(captureFp);
@@ -836,6 +945,7 @@ export class DesignWriteGeometryRunExecutor {
         params,
         previewProducer,
         predecessor,
+        structureArtifact,
       });
 
       const applied = applyThreadSnapshotExtensionIfNew(base, extension, {
@@ -910,6 +1020,9 @@ export class DesignWriteGeometryRunExecutor {
           "Geometry evidence is durable but project attachment did not finish. " +
             "Retry this exact command; it will not re-seal the draft.",
         );
+      }
+      if (!snapshotPersisted && stagedCanonicalPaths.length > 0) {
+        await rollbackPromotedCanonicalAssets(stagedCanonicalPaths);
       }
       throw error;
     }
@@ -1038,7 +1151,13 @@ export class DesignWriteGeometryRunExecutor {
         `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}` ||
       primary.producer.runId !== run.id ||
       primary.inputArtifactIds.length !==
-        (geometryManifestPredecessor(params.manifest) ? 2 : 1)
+        (isGeometryModuleManifest(params.manifest)
+          ? geometryModulePrimaryInputIds({
+            architectureId: "architecture",
+            structureId: "structure",
+            predecessorId: geometryManifestPredecessor(params.manifest)?.artifactId,
+          }).length
+          : (geometryManifestPredecessor(params.manifest) ? 2 : 1))
     ) {
       throw completedGeometryIntegrityError(
         "the primary geometry artifact identity, URI, media type, producer, or inputs are not exact",
@@ -1098,7 +1217,7 @@ export class DesignWriteGeometryRunExecutor {
       );
     }
 
-    const { bundleSources, partDraft, previewProducer, sourceAnalyses } =
+    const { bundleSources, partDraft, moduleDraft, previewProducer, sourceAnalyses } =
       await loadReviewedGeometryDraft(
         params,
         this.#geometryDraftCaptures,
@@ -1109,15 +1228,29 @@ export class DesignWriteGeometryRunExecutor {
           projectId: command.projectId,
           basis,
           admissions: this.#admissions,
+          baseSnapshot: baseSnapshot,
+          geometryCaptures: this.#geometryCaptures,
+          isolatedPublications: this.#isolatedPublications,
+          moduleAssemblyOutputValidator: this.#moduleAssemblyOutputValidator,
+          canonicalAssetDirectory: this.#canonicalAssetDirectory,
         },
       );
     const capturedAt = requiredStart(run);
-    if (!partDraft && !sourceAnalyses) {
+    if (!partDraft && !moduleDraft && !sourceAnalyses) {
       throw completedGeometryIntegrityError(
         "the primary capture is missing exact source analyses",
       );
     }
-    const expectedCapture = partDraft
+    const expectedCapture = moduleDraft && isGeometryModuleManifest(params.manifest)
+      ? geometryModuleCaptureRecord({
+        runId: run.id,
+        draftDigest: params.draftDigest,
+        manifest: params.manifest,
+        capturedAt,
+        architectureArtifact,
+        draft: moduleDraft.draft,
+      })
+      : partDraft
       ? geometryPartCaptureRecord({
         params,
         runId: run.id,
@@ -1153,7 +1286,19 @@ export class DesignWriteGeometryRunExecutor {
     }
 
     let predecessor: GeometryPredecessorContext | undefined;
+    let structureArtifact: ThreadArtifact | undefined;
     try {
+      if (isGeometryModuleManifest(params.manifest)) {
+        structureArtifact = requireStructureCaptureArtifact(
+          baseSnapshot,
+          params.manifest.structureCapture,
+        );
+        if (primary.inputArtifactIds[1] !== structureArtifact.id) {
+          throw new Error(
+            "primary artifact does not name the reviewed structure basis",
+          );
+        }
+      }
       predecessor = await requireGeometryPredecessor(
         baseSnapshot,
         params,
@@ -1163,8 +1308,10 @@ export class DesignWriteGeometryRunExecutor {
           sourceAnalysisCaptures: this.#sourceAnalysisCaptures,
         },
       );
+      const predecessorIndex = structureArtifact ? 2 : 1;
       if (
-        predecessor && primary.inputArtifactIds[1] !== predecessor.artifact.id
+        predecessor &&
+        primary.inputArtifactIds[predecessorIndex] !== predecessor.artifact.id
       ) {
         throw new Error("primary artifact does not name the reviewed predecessor");
       }
@@ -1185,6 +1332,7 @@ export class DesignWriteGeometryRunExecutor {
       params,
       previewProducer,
       predecessor,
+      structureArtifact,
     });
     const expectedArtifactIds = new Set(
       expectedExtension.artifacts.map((artifact) => artifact.id),
@@ -1263,6 +1411,18 @@ export class DesignWriteGeometryRunExecutor {
           this.#canonicalAssetDirectory,
         );
       }
+    }
+    if (isGeometryModuleManifest(params.manifest) && params.manifest.assembly) {
+      await assertCanonicalGeometryAssetExact(
+        params.manifest.assembly.step.fingerprint,
+        "step",
+        this.#canonicalAssetDirectory,
+      );
+      await assertCanonicalGeometryAssetExact(
+        params.manifest.assembly.glb.fingerprint,
+        "glb",
+        this.#canonicalAssetDirectory,
+      );
     }
   }
 
@@ -1476,6 +1636,44 @@ async function assertComponentBindingsMatchArchitecture(
     }
   }
 
+  if (isGeometryModuleManifest(params.manifest)) {
+    const moduleManifest: GeometryModuleManifest = params.manifest;
+    const matches = definitions.filter((definition) =>
+      definition.id === moduleManifest.target.partDefinitionElementId
+    );
+    if (matches.length !== 1) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        `D5 violation: module PartDefinition elementId "${moduleManifest.target.partDefinitionElementId}" is not uniquely present in the architecture capture.`,
+      );
+    }
+    if (matches[0]!.label !== moduleManifest.target.label) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        `D5 violation: module PartDefinition elementId "${moduleManifest.target.partDefinitionElementId}" has label "${
+          matches[0]!.label
+        }" in the architecture capture, not ` +
+          `"${moduleManifest.target.label}" from the signed module draft.`,
+      );
+    }
+    const targetUsages = new Map(
+      matches[0]!.usages.map((usage) => [usage.id, usage]),
+    );
+    for (const child of moduleManifest.children) {
+      const usage = targetUsages.get(child.usageElementId);
+      if (
+        usage === undefined ||
+        usage.targetId !== child.partDefinitionElementId
+      ) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          `D5 violation: module child usage "${child.usageElementId}" is not an immediate usage of the signed composite PartDefinition.`,
+        );
+      }
+    }
+    return;
+  }
+
   if (params.manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA) {
     const targetManifest = params.manifest as GeometryPartManifest;
     const matches = definitions.filter((definition) =>
@@ -1576,6 +1774,13 @@ async function requireGeometryPredecessor(
   geometryCaptures: GeometryCaptureStore,
   sourceAnalysisStores?: GeometrySourceAnalysisStores,
 ): Promise<GeometryPredecessorContext | undefined> {
+  if (isGeometryModuleManifest(params.manifest)) {
+    return await requireGeometryModulePredecessor(
+      base,
+      params.manifest,
+      geometryCaptures,
+    );
+  }
   return params.manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA
     ? await requireGeometryPartPredecessor(
       base,
@@ -1747,6 +1952,11 @@ async function requireGeometryPartPredecessor(
         }
         candidates.push({ artifact, capture });
       }
+      continue;
+    }
+    if (record.schemaVersion === GEOMETRY_MODULE_CAPTURE_SCHEMA) {
+      // Family-scoped succession: a module capture is never a part predecessor
+      // and must remain active when a different family is sealed.
       continue;
     }
     if (isGeometryCaptureSchema(record.schemaVersion)) {
@@ -3078,6 +3288,11 @@ interface TargetPartAdmissionReopenContext {
   readonly projectId: string;
   readonly basis: EngineeringThreadSnapshotBasis;
   readonly admissions: Pick<TechnicalCompilationAdmissionReader, "read">;
+  readonly baseSnapshot?: ThreadSnapshot;
+  readonly geometryCaptures?: GeometryCaptureStore;
+  readonly isolatedPublications?: IsolatedOutputPublicationReader;
+  readonly moduleAssemblyOutputValidator?: GeometryModuleAssemblyOutputValidation;
+  readonly canonicalAssetDirectory?: string;
 }
 
 /**
@@ -3236,6 +3451,7 @@ async function loadReviewedGeometryDraft(
   readonly sourceAnalyses: SealedGeometrySourceAnalyses | undefined;
   /** Present only for the deliberately separate one-PartDefinition family. */
   readonly partDraft: Omit<GeometryPartDraftCapture, "fingerprint"> | undefined;
+  readonly moduleDraft: ReviewedGeometryModuleDraft | undefined;
 }> {
   const draftFp: ContentFingerprint = {
     algorithm: "sha256",
@@ -3258,6 +3474,39 @@ async function loadReviewedGeometryDraft(
         "store do not hash to the signed draft digest. Operator inspection required.",
     );
   }
+  if (isGeometryModuleManifest(params.manifest)) {
+    if (
+      !targetAdmissionContext?.baseSnapshot ||
+      !targetAdmissionContext.geometryCaptures ||
+      !targetAdmissionContext.isolatedPublications ||
+      !targetAdmissionContext.moduleAssemblyOutputValidator ||
+      !targetAdmissionContext.canonicalAssetDirectory
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "Geometry-module sealing requires the exact Thread basis, child capture store, isolated publication reader, and registered output validators.",
+      );
+    }
+    const moduleDraft = await loadReviewedGeometryModuleDraft(
+      draftRecord,
+      params.manifest,
+      {
+        base: targetAdmissionContext.baseSnapshot,
+        geometryCaptures: targetAdmissionContext.geometryCaptures,
+        publications: targetAdmissionContext.isolatedPublications,
+        outputValidator: targetAdmissionContext.moduleAssemblyOutputValidator,
+        canonicalDirectory: targetAdmissionContext.canonicalAssetDirectory,
+      },
+    );
+    return {
+      previewProducer: moduleDraft.binaryProducer,
+      bundleSources: undefined,
+      bundleAssetBytes: undefined,
+      sourceAnalyses: undefined,
+      partDraft: undefined,
+      moduleDraft,
+    };
+  }
   if (params.manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA) {
     if (!targetAdmissionContext) {
       throw new EngineeringProjectCommandError(
@@ -3265,14 +3514,17 @@ async function loadReviewedGeometryDraft(
         "Target PartDefinition sealing requires an exact compile.seal-admission@3 reader.",
       );
     }
-    return await loadReviewedGeometryPartDraft(
-      draftRecord,
-      params.manifest,
-      geometrySourceCaptures,
-      sourceAnalysisCaptures,
-      draftAssetDirectory,
-      targetAdmissionContext,
-    );
+    return {
+      ...await loadReviewedGeometryPartDraft(
+        draftRecord,
+        params.manifest,
+        geometrySourceCaptures,
+        sourceAnalysisCaptures,
+        draftAssetDirectory,
+        targetAdmissionContext,
+      ),
+      moduleDraft: undefined,
+    };
   }
   try {
     requireCanonicalGeometryDraftAdmission(draftRecord);
@@ -3333,6 +3585,7 @@ async function loadReviewedGeometryDraft(
     bundleAssetBytes,
     sourceAnalyses,
     partDraft: undefined,
+    moduleDraft: undefined,
   };
 }
 
@@ -4184,6 +4437,7 @@ function buildExtension(options: {
   params: GeometryDecisionParameters;
   previewProducer: ThreadOperationRef;
   predecessor: GeometryPredecessorContext | undefined;
+  structureArtifact?: ThreadArtifact;
 }) {
   const {
     base,
@@ -4195,6 +4449,7 @@ function buildExtension(options: {
     params,
     previewProducer,
     predecessor,
+    structureArtifact,
   } = options;
 
   const artifactId = `geometry-${captureFp.digest}`;
@@ -4213,7 +4468,9 @@ function buildExtension(options: {
   // Primary geometry artifact: the sealed geometry capture (JSON).
   const primaryArtifact: ThreadArtifact = {
     id: artifactId,
-    name: params.manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA
+    name: isGeometryModuleManifest(params.manifest)
+      ? `Canonical module geometry: ${params.manifest.target.label}`
+      : params.manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA
       ? `Canonical PartDefinition geometry: ${params.manifest.target.label}`
       : `Geometry: ${
         params.manifest.components.length === 0
@@ -4228,6 +4485,7 @@ function buildExtension(options: {
     producer: sealProducer,
     inputArtifactIds: [
       architectureArtifact.id,
+      ...(structureArtifact ? [structureArtifact.id] : []),
       ...(predecessor ? [predecessor.artifact.id] : []),
     ],
     freshness,
@@ -4305,6 +4563,14 @@ function buildExtension(options: {
         freshness,
       }))
       : [];
+  const moduleAssemblyArtifacts = isGeometryModuleManifest(params.manifest)
+    ? geometryModuleAssemblyArtifacts({
+      captureDigest: captureFp.digest,
+      manifest: params.manifest,
+      producer: previewProducer,
+      freshness,
+    })
+    : [];
 
   // Per-assembly-file artifacts: one artifact per exported format (step, gltf, stl).
   const assemblyFileArtifacts: ThreadArtifact[] =
@@ -4334,6 +4600,15 @@ function buildExtension(options: {
     verifiedAt: capturedAt,
     status: "verified",
   };
+  const structureAttestation = structureArtifact
+    ? geometryModuleStructureAttestation({
+      primaryId: artifactId,
+      captureDigest: captureFp.digest,
+      structure: structureArtifact,
+      sealProducer,
+      capturedAt,
+    })
+    : undefined;
   const predecessorConsumption: ThreadArtifactConsumption | undefined = predecessor
     ? {
       id: `consume-geometry-${predecessor.artifact.id}-by-${artifactId}`,
@@ -4349,6 +4624,7 @@ function buildExtension(options: {
     ...partMeshArtifacts,
     ...partDefinitionArtifacts,
     ...targetPartArtifacts,
+    ...moduleAssemblyArtifacts,
   ];
   const binaryConsumptions: ThreadArtifactConsumption[] = binaryArtifacts.map(
     (artifact) => ({
@@ -4374,9 +4650,11 @@ function buildExtension(options: {
       ...partMeshArtifacts,
       ...partDefinitionArtifacts,
       ...targetPartArtifacts,
+      ...moduleAssemblyArtifacts,
     ],
     consumptions: [
       consumption,
+      ...(structureAttestation ? [structureAttestation.consumption] : []),
       ...(predecessorConsumption ? [predecessorConsumption] : []),
       ...binaryConsumptions,
     ],
@@ -4392,6 +4670,13 @@ function buildExtension(options: {
         to: { kind: "artifact" as const, id: architectureArtifact.id },
         rationale: GEOMETRY_ARCHITECTURE_DERIVATION_RATIONALE,
       },
+      ...(structureAttestation
+        ? structureAttestation.provenance.map((link) => ({
+          ...link,
+          from: { kind: link.from.kind, id: link.from.id },
+          to: { kind: link.to.kind, id: link.to.id },
+        }))
+        : []),
       ...(predecessor && predecessorConsumption
         ? [{
           id: `derived-from-geometry-${captureFp.digest}`,
@@ -4442,12 +4727,13 @@ function buildExtension(options: {
       ? {
         archived: predecessor.archiveEntries.map((entry) => ({
           target: entry.ref,
-          summary:
-            `Retired by ${
-              params.manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA
-                ? "canonical PartDefinition geometry"
-                : "geometry bundle"
-            } ${captureFp.digest.slice(0, 16)}; ` +
+          summary: `Retired by ${
+            isGeometryModuleManifest(params.manifest)
+              ? "canonical module geometry"
+              : params.manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA
+              ? "canonical PartDefinition geometry"
+              : "geometry bundle"
+          } ${captureFp.digest.slice(0, 16)}; ` +
             `cascade source ${entry.because}.`,
         })),
       }
