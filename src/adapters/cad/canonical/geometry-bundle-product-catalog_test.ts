@@ -5,7 +5,10 @@ import {
 } from "../../../domain/kernel/deterministic-json.ts";
 import { GEOMETRY_CAPTURE_URI_PREFIX } from "../../shared/cas/file-capture-store.ts";
 import type { ThreadComponentCatalog } from "../../../domain/thread/thread-component-catalog.ts";
-import type { ThreadArtifact, ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
+import type {
+  ThreadArtifact,
+  ThreadSnapshot,
+} from "../../../domain/thread/thread-snapshot.ts";
 import { enrichGenericProductCatalogWithGeometryBundle } from "./geometry-bundle-product-catalog.ts";
 
 const SEALED_AT = "2026-08-08T00:00:00.000Z";
@@ -66,6 +69,28 @@ Deno.test("product catalog admits current geometry-capture/2.1 into the bundle p
       },
       sourceScripts: { assembly: {}, partDefinitions: [], providerCalls: [] },
       sourceAnalyses: { assembly: {}, partDefinitions: [] },
+    },
+  });
+  const catalog = await enrichGenericProductCatalogWithGeometryBundle(
+    world.snapshot,
+    world.architecture,
+    world.captures,
+  );
+  assertEquals(catalog.rationale.includes("unsupported"), false);
+  assertEquals(catalog.rationale.includes("assembly-only seal"), false);
+});
+
+Deno.test("product catalog admits current geometry-module-capture/1.0 into the target path", async () => {
+  const world = await catalogWorld({
+    schemaVersion: "geometry-module-capture/1.0",
+    extra: {
+      draftDigest: "d".repeat(64),
+      manifest: { schemaVersion: "geometry-module-manifest/1.0" },
+      architectureBasis: {
+        artifactId: ARCH_ID,
+        fingerprint: { algorithm: "sha256", digest: ARCH_DIGEST },
+        producerRunId: "run:architecture",
+      },
     },
   });
   const catalog = await enrichGenericProductCatalogWithGeometryBundle(

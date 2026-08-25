@@ -144,8 +144,8 @@ import { resolveThreadComponentCatalog } from "../../../domain/thread/thread-com
 const HEX64 = "a".repeat(64);
 const HEX64_B = "b".repeat(64);
 const EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-const AGENT = { kind: "agent" as const, actorId: "mcp:paired-chat@1" };
-const HUMAN = {
+export const AGENT = { kind: "agent" as const, actorId: "mcp:paired-chat@1" };
+export const HUMAN = {
   kind: "human" as const,
   actorId: "mcp-elicitation:paired-chat@1",
 };
@@ -173,7 +173,7 @@ const acceptingSysmlSourceAnalysisReader: SysmlSourceAnalysisReader = {
     );
   },
 };
-const PROJECT_ID = "project:geo-test-01";
+export const PROJECT_ID = "project:geo-test-01";
 const PARAMETERIZED_ASSEMBLY = [
   "from build123d import Box",
   "thickness = 10",
@@ -1337,7 +1337,7 @@ for (
 
 // ── Integration fixture ───────────────────────────────────────────────────────
 
-interface GeoFixture {
+export interface GeoFixture {
   readonly projects: FileEngineeringProjectRevisionStore;
   readonly commands: EngineeringProjectCommandService;
   readonly snapshots: FileThreadSnapshotStore;
@@ -1371,7 +1371,7 @@ interface GeoFixture {
  * "human" origin to call decision.approve, so the test cannot force an agent
  * approval. Instead, a work item with no decisions exercises the same guard path.
  */
-async function buildGeoFixture(
+export async function buildGeoFixture(
   directory: string,
   opts: {
     mode: "no-mrtr" | "with-mrtr" | "happy";
@@ -2386,11 +2386,20 @@ async function buildGeoFixture(
   };
 }
 
-function makeExecutor(
+export function makeExecutor(
   fixture: GeoFixture,
   directory: string,
   geometryCaptures: GeometryCaptureStore = fixture.geoCaptures,
   snapshots: ThreadSnapshotStore = fixture.snapshots,
+  extras: {
+    readonly isolatedPublications?: ConstructorParameters<
+      typeof DesignWriteGeometryRunExecutor
+    >[0]["isolatedPublications"];
+    readonly moduleAssemblyOutputValidator?: ConstructorParameters<
+      typeof DesignWriteGeometryRunExecutor
+    >[0]["moduleAssemblyOutputValidator"];
+    readonly now?: () => string;
+  } = {},
 ): DesignWriteGeometryRunExecutor {
   return new DesignWriteGeometryRunExecutor({
     projects: fixture.projects,
@@ -2403,10 +2412,12 @@ function makeExecutor(
     sourceAnalysisCaptures: fixture.sourceAnalysis.analysisCaptures,
     geometryCaptures,
     admissions: fixture.admissions,
+    isolatedPublications: extras.isolatedPublications,
+    moduleAssemblyOutputValidator: extras.moduleAssemblyOutputValidator,
     lease: new FileEngineeringProjectRunLease(`${directory}/geo-leases`),
     draftAssetDirectory: fixture.draftAssetDirectory,
     canonicalAssetDirectory: fixture.canonicalAssetDirectory,
-    now: () => "2026-08-08T12:10:00.000Z",
+    now: extras.now ?? (() => "2026-08-08T12:10:00.000Z"),
   });
 }
 
@@ -2449,7 +2460,7 @@ async function sha256Bytes(bytes: Uint8Array): Promise<string> {
     .join("");
 }
 
-function executionCommand(
+export function executionCommand(
   fixture: Pick<GeoFixture, "queued">,
 ): {
   commandId: string;
