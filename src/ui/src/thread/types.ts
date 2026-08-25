@@ -372,7 +372,9 @@ function isProjectPathProjection(
         engineeringActivityIdFromRootRevision(expected.rootRevisionId) ||
       activity.rootRevisionId !== expected.rootRevisionId ||
       activity.revisionIds.length !== expected.revisionIds.length ||
-      activity.revisionIds.some((id, index) => id !== expected.revisionIds[index])
+      activity.revisionIds.some((id, index) =>
+        id !== expected.revisionIds[index]
+      )
     ) {
       return false;
     }
@@ -899,7 +901,9 @@ export function isThreadWorkbenchSnapshot(
     Array.isArray(candidate.artifacts) &&
     candidate.artifacts.every(isThreadArtifact) &&
     (candidate.engineeringCases === undefined
-      ? candidate.graph.nodes.every((node) => node.engineeringCaseRefs === undefined)
+      ? candidate.graph.nodes.every((node) =>
+        node.engineeringCaseRefs === undefined
+      )
       : isEngineeringCaseCatalog(
         candidate.engineeringCases,
         candidate.artifacts,
@@ -1016,7 +1020,9 @@ function isThreadEvaluationCloseoutCard(
       (!snapshot.previous ||
         snapshot.previous.snapshotId !== value.basis.snapshotId ||
         snapshot.previous.revision !== value.basis.revision ||
-        !snapshot.artifacts.some((artifact) => artifact.id === value.artifactId)))
+        !snapshot.artifacts.some((artifact) =>
+          artifact.id === value.artifactId
+        )))
   ) return false;
   return true;
 }
@@ -1094,7 +1100,9 @@ function isThreadEvaluationCloseoutProofLimitations(
       boundary.editableCad === "absent") &&
     boundary.manufacturability === "not-established" &&
     Array.isArray(boundary.limitations) && boundary.limitations.length > 0 &&
-    boundary.limitations.every((item) => typeof item === "string" && item.length > 0);
+    boundary.limitations.every((item) =>
+      typeof item === "string" && item.length > 0
+    );
 }
 
 function isThreadSubject(
@@ -1892,7 +1900,9 @@ function isEngineeringCaseCatalog(
     `${item.family}:${item.caseDigest}`
   );
   if (!hasUniqueStrings(exactCaseIdentities)) return false;
-  const authorityIds = catalog.cases.flatMap((item) => item.authorityArtifactIds);
+  const authorityIds = catalog.cases.flatMap((item) =>
+    item.authorityArtifactIds
+  );
   if (!hasUniqueStrings(authorityIds)) return false;
   const coverageByFamily = new Map(
     catalog.coverage.map((item) => [item.family, item.status]),
@@ -2065,6 +2075,7 @@ function isProductNavigationBasis(value: unknown): boolean {
       "projectId",
       "threadSnapshotId",
       "threadRevision",
+      "threadSubjectId",
       "architectureArtifactId",
       "architectureFingerprint",
       "captureSchema",
@@ -2072,6 +2083,8 @@ function isProductNavigationBasis(value: unknown): boolean {
     typeof value.projectId === "string" &&
     typeof value.threadSnapshotId === "string" &&
     isPositiveSafeInteger(value.threadRevision) &&
+    typeof value.threadSubjectId === "string" &&
+    value.threadSubjectId.length > 0 &&
     typeof value.architectureArtifactId === "string" &&
     typeof value.architectureFingerprint === "string" &&
     /^sha256:[a-f0-9]{64}$/.test(value.architectureFingerprint) &&
@@ -2081,21 +2094,41 @@ function isProductNavigationBasis(value: unknown): boolean {
 function isProductNavigationNode(value: unknown): boolean {
   return isRecord(value) &&
     hasAllowedKeys(value, [
-      "kind",
-      "id",
+      "element",
+      "occurrence",
+      "typedDefinition",
       "label",
-      "definitionId",
-      "usageId",
-      "path",
       "expandable",
     ]) &&
-    (value.kind === "part-definition" || value.kind === "part-usage") &&
-    typeof value.id === "string" &&
+    isProductStructureElementRef(value.element) &&
     typeof value.label === "string" &&
-    typeof value.definitionId === "string" &&
+    typeof value.expandable === "boolean" &&
+    (value.occurrence === undefined ||
+      isProductStructureOccurrenceRef(value.occurrence)) &&
+    (value.typedDefinition === undefined ||
+      isProductStructureElementRef(value.typedDefinition));
+}
+
+function isProductStructureElementRef(
+  value: unknown,
+): value is { elementKind: "PartDefinition" | "PartUsage"; elementId: string } {
+  return isRecord(value) &&
+    hasExactKeys(value, ["elementKind", "elementId"]) &&
+    (value.elementKind === "PartDefinition" ||
+      value.elementKind === "PartUsage") &&
+    typeof value.elementId === "string" &&
+    value.elementId.length > 0;
+}
+
+function isProductStructureOccurrenceRef(value: unknown): boolean {
+  return isRecord(value) &&
+    hasExactKeys(value, ["element", "path"]) &&
+    isProductStructureElementRef(value.element) &&
+    value.element.elementKind === "PartUsage" &&
     Array.isArray(value.path) &&
+    value.path.length > 0 &&
     value.path.every((item) => typeof item === "string") &&
-    typeof value.expandable === "boolean";
+    value.path[value.path.length - 1] === value.element.elementId;
 }
 
 function isThreadSourceFileCatalog(
@@ -2118,7 +2151,9 @@ function isThreadSourceFileCatalog(
   }
   if (files.length === 0) return false;
   const sourceFileIds = new Set(
-    graph.nodes.flatMap((node) => node.ref.kind === "source-file" ? [node.ref.id] : []),
+    graph.nodes.flatMap((node) =>
+      node.ref.kind === "source-file" ? [node.ref.id] : []
+    ),
   );
   return files.every((file) =>
     isThreadSourceFileRecord(file) &&
@@ -2248,17 +2283,20 @@ const ENGINEERING_CASE_AUTHORITY: Record<
   },
   "sensitivity-study": {
     producedBy: "analyze.seal-sensitivity-study@1",
-    artifactId: (_captureDigest, caseDigest) => `sensitivity-case-${caseDigest}`,
+    artifactId: (_captureDigest, caseDigest) =>
+      `sensitivity-case-${caseDigest}`,
     uriPrefix: "casys://sensitivity-study-case-capture/sha256/",
   },
   "printability-check": {
     producedBy: "industrialize.seal-printability-case@1",
-    artifactId: (_captureDigest, caseDigest) => `printability-case-${caseDigest}`,
+    artifactId: (_captureDigest, caseDigest) =>
+      `printability-case-${caseDigest}`,
     uriPrefix: "casys://printability-case-capture/sha256/",
   },
   "print-estimate": {
     producedBy: "industrialize.seal-print-estimate-case@1",
-    artifactId: (_captureDigest, caseDigest) => `print-estimate-case-${caseDigest}`,
+    artifactId: (_captureDigest, caseDigest) =>
+      `print-estimate-case-${caseDigest}`,
     uriPrefix: "casys://print-estimate-case-capture/sha256/",
   },
   "dfm-check": {

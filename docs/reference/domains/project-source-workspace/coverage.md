@@ -14,11 +14,11 @@ Audience: both · Diátaxis: reference · Kind: coverage
 - Versioned authoring attachments (`fileId` → exact SysML element) with put, detach,
   exact read and bounded list. Replay never contacts SysON, Graphology, or the role
   catalog.
-- Product-navigation authoring-attachment page from an exact SysML node: MCP
-  `project_product_navigation_authoring_attachments` and Workbench GET
-  `view=authoring-attachments`. Distinct from Thread/admission evidence. MCS-02 proved
-  the MCP read against active attachments on both their declared bases and a descendant
-  Thread basis.
+- Product-navigation authoring-attachment page from an exact SysML element: MCP
+  `project_product_inspect` and Workbench GET `view=authoring-attachments`. Distinct
+  from Thread/admission evidence. MCS-02 proved the earlier authoring-attachment read
+  against active attachments on both their declared bases and a descendant Thread
+  basis; the public tool is now `project_product_inspect`.
 - Exact `AgentResourceReference` reopening before a file revision is accepted.
 - Revision-anchored snapshot, tree, search and file reads with bounded pagination.
 - Fail-closed recovery for gaps, corruption, incomplete claims and concurrent writers.
@@ -43,11 +43,12 @@ plus a successor file revision.
 
 ## Current runtime proof
 
-MCS-02 reached workspace r15 through the loopback MCP on 2026-08-25. Event fingerprint
-`0cb8b448174c7bb18af9584d7a2b03a1af1dc23219437f118dcc892252806092`
+MCS-02 reached workspace r16 through the loopback MCP on 2026-08-25. Event fingerprint
+`7a6352a1a22df54900d00bf0500f1fe88f227752ad7084f37fac7f3f07387757`
 seals five modules, four active files and three active attachments. RailFrame kept its
-attachment while its file advanced r1 → r2. Modelica and SPICE kept stable files while
-their attachment chains advanced to exact later Thread bases.
+stable attachment identity while its file advanced r1 → r2 and the attachment advanced
+r1 → r2. Modelica and SPICE kept stable files while their attachment chains advanced
+to exact later Thread bases.
 
 Attachment-rooted v3 captures and `compile.seal-admission@3` produced the CAD,
 Modelica and SPICE admissions at Thread r4–r6. The exact CAD admission produced the
@@ -55,9 +56,13 @@ canonical RailFrame geometry at r7. The downstream part-level FEA branch reached
 r12; admitted Modelica motion reached L5 at r16; admitted SPICE current reached L5 at
 r20. This is a real single-root bridge proof, not a complete assembly claim.
 
-At Thread r20 the active RailFrame attachment is still observable with
-`basisStatus: different-basis`. A closure drill-down against that historical attachment
-is currently `unavailable`; the already sealed admission remains historical evidence.
+At Thread r20 the historical RailFrame attachment r1 remains observable as
+`different-basis`; its closure drill-down returns `unavailable / basis.stale`, while the
+already sealed admission remains historical evidence. The live recovery created
+attachment successor r2 against the exact unchanged r20 architecture basis. Inspect then
+returned `exact-basis`, and `project_source_closure` returned `observed` for one exact CAD
+file, zero edges and closure fingerprint
+`ad9c55638cb0d4003011bc059269456ce3e6750629ed11acbdeeb223fb0e51c6`.
 
 ## Not implemented yet
 

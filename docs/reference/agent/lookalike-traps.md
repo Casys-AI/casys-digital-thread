@@ -25,13 +25,13 @@ microVM:
 SysML-first reads share one application port. Workbench GET/SSE is a projection, not a
 command surface. Graphology is a disposable index, never domain or authority.
 
-| This                                               | Is                                                                                    | Is not                                                                |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `project_product_navigation_*`                     | Server read-side index over exact `architecture-capture/4.0` + ThreadGraph            | Direct SysON tools, `project_source_tree`, or a UI Graphology walk    |
-| `project_product_navigation_context`               | Exact node plus grouped Thread/admission evidence (`unattached` stays literal)        | Workspace authoring heads or a Workbench POST                         |
-| `project_product_navigation_authoring_attachments` | Active workspace authoring heads of one exact SysML target. Grants none               | Thread evidence, `represented_by`, admission, or source closure       |
-| `project_product_source_closure`                   | Technical dependency closure of one versioned authoring attachment (`attachmentId` + `attachmentRevision` at an exact workspace revision). `PartUsage` keeps its usage id | Product structure, a free `fileId`/`fileRevision` root, or a definition reduction |
-| Graphology                                         | Algorithmic navigation index in server/application adapters                           | Domain authority or a second Workbench product-structure browser      |
+| This                        | Is                                                                                                                                                         | Is not                                                                 |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `project_product_explore`   | Stateless walk from the unique root `PartDefinition` **element** or one exact `PartUsage` occurrence pinned to the published basis                         | A persisted focus, empty-path root occurrence, or `project_source_tree` |
+| `project_product_search`    | Exact-id or token discovery returning exact element refs. Labels never join                                                                                | Occurrence expansion, a join key, or SysON search                      |
+| `project_product_inspect`   | One exact element or occurrence: definition-scoped Thread evidence, element-level authoring heads, ready/blocked actions                                   | Reducing a usage to its typed definition, or merging attachment lists  |
+| `project_source_closure`    | Technical DAG of one versioned authoring attachment (`attachmentId` + `attachmentRevision` at an exact workspace revision). One `entries` stream of files and edges. `PartUsage` keeps its usage id | Product structure, a free `fileId`/`fileRevision` root, or admission   |
+| Graphology                  | Disposable algorithmic index reconstructed from exact `architecture-capture/4.0`                                                                           | Domain authority, persistence, or a second Workbench product browser   |
 
 ## Engineering Case catalog
 

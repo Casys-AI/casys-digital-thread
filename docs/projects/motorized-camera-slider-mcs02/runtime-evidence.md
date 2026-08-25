@@ -11,8 +11,8 @@ drift. These identities record what was reread; this page grants no authority.
   `motorized-camera-slider-mcs02:project:r146:22874eb0e7f6ee79`.
 - Thread r20:
   `project:motorized-camera-slider-mcs02:r20:decide-accept-admitted-spice-evaluation-run:mcs02-queue-spice-closeout-r142`.
-- Workspace r15, event fingerprint
-  `0cb8b448174c7bb18af9584d7a2b03a1af1dc23219437f118dcc892252806092`.
+- Workspace r16, event fingerprint
+  `7a6352a1a22df54900d00bf0500f1fe88f227752ad7084f37fac7f3f07387757`.
 - Approved brief fingerprint
   `61b35129dac6bf613f5ee62ac5e7a58980a800aef41b1dbeba7fad652291f917`.
 
@@ -45,10 +45,36 @@ activity contains both
 `work-mcs02-run-admitted-modelica-r2` in one `revisionIds` chain. The first queued run
 was cancelled before claim; no OMC provider call occurred for it.
 
-`project_product_navigation_authoring_attachments` still observes the active RailFrame
-attachment on r20 with `basisStatus: different-basis`. The corresponding historical
-closure drill-down is currently `unavailable`; the sealed r4 admission is still carried
-as exact historical Thread evidence.
+Historical r20 observation, recorded under the retired MCP name and not rewritten:
+`project_product_navigation_authoring_attachments` observed the active RailFrame
+attachment with `basisStatus: different-basis`. The corresponding historical closure
+drill-down was `unavailable`; the sealed r4 admission is still carried as exact
+historical Thread evidence. The current public names are `project_product_inspect`
+and `project_source_closure`.
+
+## Product-navigation live recross
+
+The current four-tool MCP surface was exercised on the loopback YOLO server after the
+refactor. `tools/list` exposed exactly `project_product_explore`,
+`project_product_search`, `project_product_inspect` and `project_source_closure`; no
+retired `project_product_navigation_*` or `project_product_source_closure` alias was
+registered.
+
+`project_product_explore` reopened the exact r20 basis, including
+`threadSubjectId: project:motorized-camera-slider-mcs02`, and returned the
+`MotorizedCameraSlider` root plus seven `PartUsage` children. Searching `RailFrame`
+returned its exact `PartDefinition` and `PartUsage` identities. The first inspect kept
+the historical RailFrame attachment r1 visible as `different-basis`, and the matching
+closure call failed literally as `unavailable / basis.stale`.
+
+The server recovery was then executed without changing source bytes: attachment
+`mcs02.attachment.rail-frame` advanced from r1 to r2 against the exact r20 Thread and
+unchanged architecture fingerprint. Workspace r16 reopened that successor as
+`exact-basis`. Its ready closure call returned `observed` with fingerprint
+`ad9c55638cb0d4003011bc059269456ce3e6750629ed11acbdeeb223fb0e51c6`, one exact
+`mcs02.rail-frame@2` CAD file and zero dependency edges. This proves both the
+fail-closed historical path and the positive current-basis path; it does not add an
+assembly claim.
 
 ## Current review localization
 

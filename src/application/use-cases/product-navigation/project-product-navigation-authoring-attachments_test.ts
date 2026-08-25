@@ -1,8 +1,13 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals } from "@std/assert";
 import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
 import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import type { OpenedProductStructure } from "../../ports/out/product-navigation/product-structure-traversal.ts";
-import type { ProductNavigationNode } from "../../ports/in/product-navigation/product-navigation-read-model.ts";
+import {
+  type ProductNavigationBasis,
+  productNavigationElementNode,
+  productNavigationOccurrenceNode,
+} from "../../ports/in/product-navigation/product-navigation-read-model.ts";
+import { productStructureElementRef } from "../../../domain/architecture/product-structure-ref.ts";
 import type { ProductNavigationEvidenceAttachmentFacts } from "../../ports/out/product-navigation/product-navigation-evidence-attachment-reader.ts";
 import { sampleAgentResourceReference } from "../../../testing/agent-resource-test-support.ts";
 import { ProjectSourceWorkspaceAuthoringAttachmentReader } from "../../../adapters/project-source-workspace/product-navigation-authoring-attachment-reader.ts";
@@ -21,39 +26,75 @@ const SNAPSHOT = "thread:slider:r4";
 const SUBJECT = "subject.slider";
 const ARCHITECTURE_ID = "architecture-" + "1".repeat(64);
 const ARCHITECTURE_FP = { algorithm: "sha256" as const, digest: "1".repeat(64) };
+const BASIS: ProductNavigationBasis = {
+  projectId: PROJECT,
+  threadSnapshotId: SNAPSHOT,
+  threadRevision: 4,
+  threadSubjectId: SUBJECT,
+  architectureArtifactId: ARCHITECTURE_ID,
+  architectureFingerprint: `sha256:${ARCHITECTURE_FP.digest}`,
+  captureSchema: "architecture-capture/4.0",
+};
+
+const SYSTEM_ELEMENT = {
+  kind: "element" as const,
+  element: productStructureElementRef("PartDefinition", "def-system"),
+};
+const USAGE_OCCURRENCE = {
+  kind: "occurrence" as const,
+  occurrence: {
+    element: productStructureElementRef("PartUsage", "usage-left"),
+    path: ["usage-left"],
+  },
+};
+const RAIL_ELEMENT = {
+  kind: "element" as const,
+  element: productStructureElementRef("PartDefinition", "def-rail"),
+};
 
 Deno.test("authoring attachments keep PartDefinition and PartUsage exact and never reduce usage to definition", async () => {
   const seeded = await seedAuthoringWorkspace();
   const navigation = navigationWith(seeded.head, seeded.revisions);
-  const definition = await navigation.authoringAttachments({
+  const definition = await navigation.inspect({
     projectId: PROJECT,
-    node: { kind: "part-definition", id: "def-system" },
+    expectedBasis: BASIS,
+    selection: SYSTEM_ELEMENT,
   });
   assertEquals(definition.status, "observed");
   assertEquals(definition.grants, "none");
-  assertEquals(definition.attachments.map((item) => item.target), [
+  assertEquals(definition.authoringAttachments.attachments.map((item) => item.target), [
     { elementId: "def-system", elementKind: "PartDefinition" },
     { elementId: "def-system", elementKind: "PartDefinition" },
   ]);
   assertEquals(
-    definition.attachments.some((item) => item.target.elementId === "def-rail"),
+    definition.authoringAttachments.attachments.some((item) =>
+      item.target.elementId === "def-rail"
+    ),
     false,
   );
-  const usage = await navigation.authoringAttachments({
+  const usage = await navigation.inspect({
     projectId: PROJECT,
-    node: { kind: "part-usage", id: "usage-left", path: ["usage-left"] },
+    expectedBasis: BASIS,
+    selection: USAGE_OCCURRENCE,
   });
-  assertEquals(usage.attachments.map((item) => item.attachmentId), ["att-usage"]);
-  assertEquals(usage.attachments[0]?.target, {
+  assertEquals(
+    usage.authoringAttachments.attachments.map((item) => item.attachmentId),
+    ["att-usage"],
+  );
+  assertEquals(usage.authoringAttachments.attachments[0]?.target, {
     elementId: "usage-left",
     elementKind: "PartUsage",
   });
-  const rail = await navigation.authoringAttachments({
+  const rail = await navigation.inspect({
     projectId: PROJECT,
-    node: { kind: "part-definition", id: "def-rail" },
+    expectedBasis: BASIS,
+    selection: RAIL_ELEMENT,
   });
-  assertEquals(rail.attachments.map((item) => item.attachmentId), ["att-rail-def"]);
-  assertEquals(rail.attachments[0]?.target, {
+  assertEquals(
+    rail.authoringAttachments.attachments.map((item) => item.attachmentId),
+    ["att-rail-def"],
+  );
+  assertEquals(rail.authoringAttachments.attachments[0]?.target, {
     elementId: "def-rail",
     elementKind: "PartDefinition",
   });
@@ -62,20 +103,23 @@ Deno.test("authoring attachments keep PartDefinition and PartUsage exact and nev
 Deno.test("authoring attachments expose successor heads, omit detached, and keep source-removed", async () => {
   const seeded = await seedAuthoringWorkspace();
   const navigation = navigationWith(seeded.head, seeded.revisions);
-  const definition = await navigation.authoringAttachments({
+  const definition = await navigation.inspect({
     projectId: PROJECT,
-    node: { kind: "part-definition", id: "def-system" },
+    expectedBasis: BASIS,
+    selection: SYSTEM_ELEMENT,
   });
-  const successor = definition.attachments.find((item) =>
+  const successor = definition.authoringAttachments.attachments.find((item) =>
     item.attachmentId === "att-a"
   );
   assertEquals(successor?.attachmentRevision, 2);
   assertEquals(successor?.role, { id: "behavior-source", version: 1 });
   assertEquals(
-    definition.attachments.some((item) => item.attachmentId === "att-detached"),
+    definition.authoringAttachments.attachments.some((item) =>
+      item.attachmentId === "att-detached"
+    ),
     false,
   );
-  const removed = definition.attachments.find((item) =>
+  const removed = definition.authoringAttachments.attachments.find((item) =>
     item.attachmentId === "att-removed"
   );
   assertEquals(removed?.sourceStatus, "source-removed");
@@ -85,12 +129,15 @@ Deno.test("authoring attachments expose successor heads, omit detached, and keep
 Deno.test("authoring attachments publish exact-basis versus different-basis without repairing the capture", async () => {
   const seeded = await seedAuthoringWorkspace();
   const navigation = navigationWith(seeded.head, seeded.revisions);
-  const definition = await navigation.authoringAttachments({
+  const definition = await navigation.inspect({
     projectId: PROJECT,
-    node: { kind: "part-definition", id: "def-system" },
+    expectedBasis: BASIS,
+    selection: SYSTEM_ELEMENT,
   });
-  const exact = definition.attachments.find((item) => item.attachmentId === "att-a");
-  const different = definition.attachments.find((item) =>
+  const exact = definition.authoringAttachments.attachments.find((item) =>
+    item.attachmentId === "att-a"
+  );
+  const different = definition.authoringAttachments.attachments.find((item) =>
     item.attachmentId === "att-removed"
   );
   assertEquals(exact?.basisStatus, "exact-basis");
@@ -102,32 +149,44 @@ Deno.test("authoring attachments pin pagination to the first-call workspace revi
   const seeded = await seedAuthoringWorkspace();
   const spy = spyWorkspace(seeded.head, seeded.revisions);
   const navigation = navigationWith(seeded.head, seeded.revisions, spy.store);
-  const first = await navigation.authoringAttachments({
+  const first = await navigation.inspect({
     projectId: PROJECT,
-    node: { kind: "part-definition", id: "def-system" },
+    expectedBasis: BASIS,
+    selection: SYSTEM_ELEMENT,
     pageSize: 1,
   });
-  assertEquals(first.workspaceRevision, seeded.head.workspaceRevision);
-  assertEquals(first.attachments.map((item) => item.attachmentId), ["att-a"]);
-  assertEquals(first.nextCursor !== null, true);
+  assertEquals(
+    first.authoringAttachments.workspaceRevision,
+    seeded.head.workspaceRevision,
+  );
+  assertEquals(
+    first.authoringAttachments.attachments.map((item) => item.attachmentId),
+    ["att-a"],
+  );
+  assertEquals(first.authoringAttachments.nextCursor !== null, true);
   const advanced = await apply(
     seeded.head,
     modulePut("later", seeded.head.workspaceRevision, "mod-later", "later"),
   );
   spy.head = advanced.state;
   spy.revisions.set(advanced.state.workspaceRevision, advanced.state);
-  const second = await navigation.authoringAttachments({
+  const second = await navigation.inspect({
     projectId: PROJECT,
-    node: { kind: "part-definition", id: "def-system" },
+    expectedBasis: BASIS,
+    selection: SYSTEM_ELEMENT,
     pageSize: 1,
-    cursor: first.nextCursor ?? undefined,
+    cursor: first.authoringAttachments.nextCursor ?? undefined,
   });
-  assertEquals(second.workspaceRevision, first.workspaceRevision);
-  assertEquals(second.attachments.map((item) => item.attachmentId), [
-    "att-removed",
-  ]);
   assertEquals(
-    spy.freshRevisions.includes(first.workspaceRevision ?? -1),
+    second.authoringAttachments.workspaceRevision,
+    first.authoringAttachments.workspaceRevision,
+  );
+  assertEquals(
+    second.authoringAttachments.attachments.map((item) => item.attachmentId),
+    ["att-removed"],
+  );
+  assertEquals(
+    spy.freshRevisions.includes(first.authoringAttachments.workspaceRevision ?? -1),
     true,
   );
   assertEquals(
@@ -136,88 +195,205 @@ Deno.test("authoring attachments pin pagination to the first-call workspace revi
   );
 });
 
+Deno.test("authoring attachments refuse an old cursor under a later current Thread basis", async () => {
+  const seeded = await seedAuthoringWorkspace();
+  const laterSnapshot = "thread:slider:r5";
+  const laterBasis: ProductNavigationBasis = {
+    ...BASIS,
+    threadSnapshotId: laterSnapshot,
+    threadRevision: 5,
+  };
+  let tip: "current" | "later" = "current";
+  const spy = spyWorkspace(seeded.head, seeded.revisions);
+  const navigation = new ProjectProductNavigation({
+    projects: {
+      get: (projectId: string) =>
+        Promise.resolve(
+          projectId === PROJECT
+            ? (tip === "current" ? project() : laterProject(laterSnapshot))
+            : undefined,
+        ),
+    },
+    snapshots: {
+      get: (snapshotId: string) => {
+        if (snapshotId === SNAPSHOT) return Promise.resolve(thread());
+        if (snapshotId === laterSnapshot) {
+          return Promise.resolve({
+            id: laterSnapshot,
+            revision: 5,
+            subject: { id: SUBJECT },
+          } as ThreadSnapshot);
+        }
+        return Promise.resolve(undefined);
+      },
+    },
+    traversal: { open: () => Promise.resolve(opened()) },
+    workspace: spy.store,
+    evidenceAttachments: { read: () => Promise.resolve(attachmentFacts()) },
+    authoringAttachments: new ProjectSourceWorkspaceAuthoringAttachmentReader(
+      spy.store,
+    ),
+  });
+  const first = await navigation.inspect({
+    projectId: PROJECT,
+    expectedBasis: BASIS,
+    selection: SYSTEM_ELEMENT,
+    pageSize: 1,
+  });
+  assertEquals(first.status, "observed");
+  assertEquals(first.authoringAttachments.nextCursor !== null, true);
+  const afterFirst = spy.freshRevisions.length;
+  tip = "later";
+  const replayed = await navigation.inspect({
+    projectId: PROJECT,
+    expectedBasis: laterBasis,
+    selection: SYSTEM_ELEMENT,
+    pageSize: 1,
+    cursor: first.authoringAttachments.nextCursor ?? undefined,
+  });
+  assertEquals(replayed.status, "unresolved");
+  assertEquals(replayed.diagnostics[0]?.code, "cursor.mismatch");
+  assertEquals(replayed.authoringAttachments.attachments, []);
+  const omittedBasis = await navigation.inspect({
+    projectId: PROJECT,
+    selection: SYSTEM_ELEMENT,
+    pageSize: 1,
+    cursor: first.authoringAttachments.nextCursor ?? undefined,
+  });
+  assertEquals(omittedBasis.status, "unresolved");
+  assertEquals(omittedBasis.diagnostics[0]?.code, "cursor.mismatch");
+  assertEquals(omittedBasis.authoringAttachments.attachments, []);
+  const wrapped = btoa(JSON.stringify({
+    basis: laterBasis,
+    inner: first.authoringAttachments.nextCursor,
+  })).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+  const rewrittenWrapper = await navigation.inspect({
+    projectId: PROJECT,
+    expectedBasis: laterBasis,
+    selection: SYSTEM_ELEMENT,
+    pageSize: 1,
+    cursor: wrapped,
+  });
+  assertEquals(rewrittenWrapper.status, "unresolved");
+  assertEquals(rewrittenWrapper.diagnostics[0]?.code, "cursor.mismatch");
+  assertEquals(rewrittenWrapper.authoringAttachments.attachments, []);
+  assertEquals(spy.freshRevisions.length, afterFirst);
+});
+
+Deno.test("authoring attachments refuse a cursor reused on another inspect selection", async () => {
+  const seeded = await seedAuthoringWorkspace();
+  const navigation = navigationWith(seeded.head, seeded.revisions);
+  const first = await navigation.inspect({
+    projectId: PROJECT,
+    expectedBasis: BASIS,
+    selection: SYSTEM_ELEMENT,
+    pageSize: 1,
+  });
+  assertEquals(first.authoringAttachments.nextCursor !== null, true);
+  const otherElement = await navigation.inspect({
+    projectId: PROJECT,
+    expectedBasis: BASIS,
+    selection: RAIL_ELEMENT,
+    pageSize: 1,
+    cursor: first.authoringAttachments.nextCursor ?? undefined,
+  });
+  assertEquals(otherElement.status, "unresolved");
+  assertEquals(otherElement.diagnostics[0]?.code, "cursor.mismatch");
+  assertEquals(otherElement.authoringAttachments.attachments, []);
+  const otherOccurrence = await navigation.inspect({
+    projectId: PROJECT,
+    expectedBasis: BASIS,
+    selection: USAGE_OCCURRENCE,
+    pageSize: 1,
+    cursor: first.authoringAttachments.nextCursor ?? undefined,
+  });
+  assertEquals(otherOccurrence.status, "unresolved");
+  assertEquals(otherOccurrence.diagnostics[0]?.code, "cursor.mismatch");
+  assertEquals(otherOccurrence.authoringAttachments.attachments, []);
+});
+
 Deno.test("authoring attachments refuse a tampered or foreign-filter cursor", async () => {
   const seeded = await seedAuthoringWorkspace();
   const navigation = navigationWith(seeded.head, seeded.revisions);
-  const first = await navigation.authoringAttachments({
+  const first = await navigation.inspect({
     projectId: PROJECT,
-    node: { kind: "part-definition", id: "def-system" },
+    expectedBasis: BASIS,
+    selection: SYSTEM_ELEMENT,
     pageSize: 1,
   });
-  const sealed = first.nextCursor!;
+  const sealed = first.authoringAttachments.nextCursor!;
   const [prefix, payload, mac] = sealed.split(".");
   const flipped = mac![0] === "A" ? "B" : "A";
-  await assertRejects(
-    () =>
-      navigation.authoringAttachments({
-        projectId: PROJECT,
-        node: { kind: "part-definition", id: "def-system" },
-        pageSize: 1,
-        cursor: `${prefix}.${payload}.${flipped}${mac!.slice(1)}`,
-      }),
-    ProjectSourceWorkspaceError,
-    "not a valid opaque cursor",
-  );
+  const tampered = await navigation.inspect({
+    projectId: PROJECT,
+    expectedBasis: BASIS,
+    selection: SYSTEM_ELEMENT,
+    pageSize: 1,
+    cursor: `${prefix}.${payload}.${flipped}${mac!.slice(1)}`,
+  });
+  assertEquals(tampered.status, "unresolved");
+  assertEquals(tampered.diagnostics[0]?.code, "cursor.mismatch");
   const domainCursor = btoa(JSON.stringify({
     kind: "attachment-list",
-    workspaceRevision: first.workspaceRevision,
+    workspaceRevision: first.authoringAttachments.workspaceRevision,
     filter: {
       target: { elementId: "def-system", elementKind: "PartDefinition" },
     },
   }));
-  await assertRejects(
-    () =>
-      navigation.authoringAttachments({
-        projectId: PROJECT,
-        node: { kind: "part-definition", id: "def-system" },
-        pageSize: 1,
-        cursor: domainCursor,
-      }),
-    ProjectSourceWorkspaceError,
-    "not a valid opaque cursor",
-  );
-  await assertRejects(
-    () =>
-      navigation.authoringAttachments({
-        projectId: PROJECT,
-        node: { kind: "part-definition", id: "def-system" },
-        cursor: "not-a-cursor",
-      }),
-    ProjectSourceWorkspaceError,
-    "not a valid opaque cursor",
-  );
+  const domain = await navigation.inspect({
+    projectId: PROJECT,
+    expectedBasis: BASIS,
+    selection: SYSTEM_ELEMENT,
+    pageSize: 1,
+    cursor: domainCursor,
+  });
+  assertEquals(domain.status, "unresolved");
+  const invalid = await navigation.inspect({
+    projectId: PROJECT,
+    expectedBasis: BASIS,
+    selection: SYSTEM_ELEMENT,
+    cursor: "not-a-cursor",
+  });
+  assertEquals(invalid.status, "unresolved");
 });
 
 Deno.test("authoring attachments stay out of evidence and admission; an exact attachment exposes a read-only closure", async () => {
   const seeded = await seedAuthoringWorkspace();
   const navigation = navigationWith(seeded.head, seeded.revisions);
-  const authoring = await navigation.authoringAttachments({
+  const authoring = await navigation.inspect({
     projectId: PROJECT,
-    node: { kind: "part-usage", id: "usage-left", path: ["usage-left"] },
+    expectedBasis: BASIS,
+    selection: USAGE_OCCURRENCE,
   });
   assertEquals(authoring.grants, "none");
-  assertEquals(authoring.attachments.map((item) => item.fileId), ["file-usage"]);
-  const context = await navigation.context({
-    projectId: PROJECT,
-    node: { kind: "part-usage", id: "usage-left", path: ["usage-left"] },
-  });
-  assertEquals(context.attachments.sources.map((item) => item.id), [
-    "source.cad@1",
-  ]);
   assertEquals(
-    context.attachments.sources.some((item) => item.id.includes("file-usage")),
+    authoring.authoringAttachments.attachments.map((item) => item.fileId),
+    ["file-usage"],
+  );
+  assertEquals(
+    authoring.definitionScopedEvidence?.attachments.sources.map((item) => item.id),
+    ["source.cad@1"],
+  );
+  assertEquals(
+    authoring.definitionScopedEvidence?.attachments.sources.some((item) =>
+      item.id.includes("file-usage")
+    ),
     false,
   );
   const closure = await navigation.sourceClosure({
     projectId: PROJECT,
-    node: { kind: "part-usage", id: "usage-left", path: ["usage-left"] },
-    workspaceRevision: authoring.workspaceRevision ?? seeded.head.workspaceRevision,
+    expectedBasis: BASIS,
+    selection: USAGE_OCCURRENCE,
+    workspaceRevision: authoring.authoringAttachments.workspaceRevision ??
+      seeded.head.workspaceRevision,
     attachmentId: "att-usage",
     attachmentRevision: 1,
   });
   assertEquals(closure.status, "observed");
   assertEquals(
-    closure.files.map((file) => `${file.fileId}@${file.fileRevision}`),
+    closure.entries.filter((entry) => entry.kind === "file").map((entry) =>
+      `${entry.fileId}@${entry.fileRevision}`
+    ),
     ["file-usage@1"],
   );
   assertEquals(closure.attachmentId, "att-usage");
@@ -518,6 +694,24 @@ function project(): EngineeringProjectSnapshot {
   } as unknown as EngineeringProjectSnapshot;
 }
 
+function laterProject(laterSnapshotId: string): EngineeringProjectSnapshot {
+  return {
+    project: { id: PROJECT, name: "Slider", subjectId: SUBJECT },
+    threadSnapshots: [
+      {
+        snapshotId: SNAPSHOT,
+        revision: 4,
+        subjectId: SUBJECT,
+      },
+      {
+        snapshotId: laterSnapshotId,
+        revision: 5,
+        subjectId: SUBJECT,
+      },
+    ],
+  } as unknown as EngineeringProjectSnapshot;
+}
+
 function thread(): ThreadSnapshot {
   return {
     id: SNAPSHOT,
@@ -527,43 +721,65 @@ function thread(): ThreadSnapshot {
 }
 
 function opened(): OpenedProductStructure {
-  const root: ProductNavigationNode = {
-    kind: "part-definition",
-    id: "def-system",
+  const root = productNavigationElementNode({
+    element: productStructureElementRef("PartDefinition", "def-system"),
     label: "Slider",
-    definitionId: "def-system",
-    path: [],
     expandable: true,
-  };
-  const left: ProductNavigationNode = {
-    kind: "part-usage",
-    id: "usage-left",
-    label: "left_rail",
-    definitionId: "def-rail",
-    usageId: "usage-left",
+  });
+  const left = productNavigationOccurrenceNode({
+    element: productStructureElementRef("PartUsage", "usage-left"),
     path: ["usage-left"],
+    label: "left_rail",
+    typedDefinition: productStructureElementRef("PartDefinition", "def-rail"),
     expandable: true,
-  };
+  });
+  const rail = productStructureElementRef("PartDefinition", "def-rail");
   return {
     architectureArtifactId: ARCHITECTURE_ID,
     architectureFingerprint: ARCHITECTURE_FP,
     root: () => root,
+    childrenOfRoot: () => [left],
     childrenOf: () => [left],
-    path: (usageIds) =>
-      usageIds.length === 1 && usageIds[0] === "usage-left" ? [root, left] : undefined,
-    locate: (id) => {
-      if (id === "def-system") return [root];
-      if (id === "usage-left" || id === "def-rail") return [left];
-      return [];
+    path: (usageIds) => {
+      if (usageIds.length === 0) return [root];
+      if (usageIds.length === 1 && usageIds[0] === "usage-left") {
+        return [root, left];
+      }
+      return undefined;
     },
     neighborhood: () => ({ siblings: [], children: [] }),
+    element: (id) => {
+      if (id === "def-system") {
+        return { element: root.element, label: root.label, expandable: true };
+      }
+      if (id === "def-rail") {
+        return { element: rail, label: "Rail", expandable: true };
+      }
+      if (id === "usage-left") {
+        return { element: left.element, label: left.label, expandable: true };
+      }
+      return undefined;
+    },
+    searchElements: () => [],
+    pageOccurrences: (element, offset, limit) => {
+      const all = element.elementId === "def-rail" || element.elementId === "usage-left"
+        ? [left]
+        : [];
+      const items = all.slice(offset, offset + limit);
+      return {
+        items,
+        nextOffset: offset + items.length < all.length ? offset + items.length : null,
+      };
+    },
     hasDefinition: (id) => id === "def-system" || id === "def-rail",
     hasElement: (query) => {
-      if (query.kind === "PartDefinition") {
-        return query.id === "def-system" || query.id === "def-rail";
+      if (query.elementKind === "PartDefinition") {
+        return query.elementId === "def-system" || query.elementId === "def-rail";
       }
-      return query.id === "usage-left";
+      return query.elementId === "usage-left";
     },
+    typedDefinition: (usageId) =>
+      usageId === "usage-left" ? { element: rail, label: "Rail" } : undefined,
   };
 }
 

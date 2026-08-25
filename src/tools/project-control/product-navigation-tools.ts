@@ -1,12 +1,29 @@
 /**
  * Lean MCP read tools for SysML-first product navigation.
  *
- * Lean composable queries, not one dump. Workbench remains GET/SSE only.
+ * Four composable queries. Workbench remains GET/SSE only.
  * Source bytes stay on project_source_* / project_resource_capture.
  */
 
 import type { McpApp, MCPTool } from "@casys/mcp-server";
 import type { ProductNavigationUseCase } from "../../application/ports/in/product-navigation/product-navigation.ts";
+import type {
+  ProductNavigationBasis,
+  ProductSearchQueryKind,
+  ProductStructureSelection,
+} from "../../application/ports/in/product-navigation/product-navigation-read-model.ts";
+import {
+  PRODUCT_EXPLORE_SCHEMA,
+  PRODUCT_INSPECT_SCHEMA,
+  PRODUCT_NAVIGATION_BOUNDS,
+  PRODUCT_SEARCH_SCHEMA,
+  PRODUCT_SOURCE_CLOSURE_SCHEMA,
+} from "../../application/ports/in/product-navigation/product-navigation-read-model.ts";
+import {
+  parseProductStructureElementRef,
+  parseProductStructureOccurrenceRef,
+  type ProductStructureOccurrenceRef,
+} from "../../domain/architecture/product-structure-ref.ts";
 import { PROJECT_SOURCE_WORKSPACE_BOUNDS } from "../../domain/project-source-workspace/types.ts";
 import {
   FINGERPRINT_SCHEMA,
@@ -19,11 +36,6 @@ export interface ProjectProductNavigationToolDependencies {
   productNavigation?: ProductNavigationUseCase;
 }
 
-const NODE_KIND = {
-  type: "string",
-  enum: ["part-definition", "part-usage"],
-} as const;
-
 const ELEMENT_ID = {
   type: "string",
   minLength: 1,
@@ -32,21 +44,59 @@ const ELEMENT_ID = {
   not: { const: "latest" },
 } as const;
 
-const NODE_QUERY = {
+const ELEMENT_REF = {
   type: "object",
   properties: {
-    kind: NODE_KIND,
-    id: ELEMENT_ID,
+    elementKind: { enum: ["PartDefinition", "PartUsage"] },
+    elementId: ELEMENT_ID,
+  },
+  required: ["elementKind", "elementId"],
+  additionalProperties: false,
+} as const;
+
+const OCCURRENCE_REF = {
+  type: "object",
+  properties: {
+    element: {
+      type: "object",
+      properties: {
+        elementKind: { const: "PartUsage" },
+        elementId: ELEMENT_ID,
+      },
+      required: ["elementKind", "elementId"],
+      additionalProperties: false,
+    },
     path: {
       type: "array",
       items: ELEMENT_ID,
-      maxItems: 32,
-      description:
-        "Exact PartUsage occurrence path from the system root. Required for a PartUsage. latest is refused.",
+      minItems: 1,
     },
   },
-  required: ["kind", "id"],
+  required: ["element", "path"],
   additionalProperties: false,
+} as const;
+
+const SELECTION = {
+  oneOf: [
+    {
+      type: "object",
+      properties: {
+        kind: { const: "element" },
+        element: ELEMENT_REF,
+      },
+      required: ["kind", "element"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: {
+        kind: { const: "occurrence" },
+        occurrence: OCCURRENCE_REF,
+      },
+      required: ["kind", "occurrence"],
+      additionalProperties: false,
+    },
+  ],
 } as const;
 
 const BASIS = {
@@ -55,6 +105,7 @@ const BASIS = {
     projectId: PROJECT_ID,
     threadSnapshotId: ELEMENT_ID,
     threadRevision: { type: "integer", minimum: 1 },
+    threadSubjectId: ELEMENT_ID,
     architectureArtifactId: ELEMENT_ID,
     architectureFingerprint: {
       type: "string",
@@ -66,6 +117,7 @@ const BASIS = {
     "projectId",
     "threadSnapshotId",
     "threadRevision",
+    "threadSubjectId",
     "architectureArtifactId",
     "architectureFingerprint",
     "captureSchema",
@@ -73,281 +125,68 @@ const BASIS = {
   additionalProperties: false,
 } as const;
 
-export function registerProjectProductNavigationTools(
-  app: McpApp,
-  dependencies: ProjectProductNavigationToolDependencies,
-): void {
-  if (!dependencies.productNavigation) return;
-  const navigation = dependencies.productNavigation;
-
-  app.registerTool(projectProductNavigationRootsTool, async (args) => {
-    const result = await navigation.roots({
-      projectId: String(args.projectId),
-    });
-    return {
-      content: contentFor(result.status, "roots"),
-      structuredContent: result as unknown as Record<string, unknown>,
-    };
-  });
-
-  app.registerTool(projectProductNavigationChildrenTool, async (args) => {
-    const result = await navigation.children({
-      projectId: String(args.projectId),
-      node: nodeArg(args.node),
-    });
-    return {
-      content: contentFor(result.status, "children"),
-      structuredContent: result as unknown as Record<string, unknown>,
-    };
-  });
-
-  app.registerTool(projectProductNavigationPathTool, async (args) => {
-    const result = await navigation.path({
-      projectId: String(args.projectId),
-      usagePath: usagePathArg(args.usagePath),
-    });
-    return {
-      content: contentFor(result.status, "path"),
-      structuredContent: result as unknown as Record<string, unknown>,
-    };
-  });
-
-  app.registerTool(projectProductNavigationSearchTool, async (args) => {
-    const result = await navigation.search({
-      projectId: String(args.projectId),
-      id: String(args.id),
-    });
-    return {
-      content: contentFor(result.status, "search"),
-      structuredContent: result as unknown as Record<string, unknown>,
-    };
-  });
-
-  app.registerTool(projectProductNavigationNeighborhoodTool, async (args) => {
-    const result = await navigation.neighborhood({
-      projectId: String(args.projectId),
-      node: nodeArg(args.node),
-    });
-    return {
-      content: contentFor(result.status, "neighborhood"),
-      structuredContent: result as unknown as Record<string, unknown>,
-    };
-  });
-
-  app.registerTool(projectProductNavigationContextTool, async (args) => {
-    const result = await navigation.context({
-      projectId: String(args.projectId),
-      node: nodeArg(args.node),
-    });
-    return {
-      content: contentFor(result.status, "context"),
-      structuredContent: result as unknown as Record<string, unknown>,
-    };
-  });
-
-  app.registerTool(projectProductSourceClosureTool, async (args) => {
-    const result = await navigation.sourceClosure({
-      projectId: String(args.projectId),
-      node: nodeArg(args.node),
-      workspaceRevision: Number(args.workspaceRevision),
-      attachmentId: String(args.attachmentId),
-      attachmentRevision: Number(args.attachmentRevision),
-    });
-    return {
-      content: contentFor(result.status, "source closure"),
-      structuredContent: result as unknown as Record<string, unknown>,
-    };
-  });
-
-  app.registerTool(
-    projectProductNavigationAuthoringAttachmentsTool,
-    async (args) => {
-      const result = await navigation.authoringAttachments({
-        projectId: String(args.projectId),
-        node: nodeArg(args.node),
-        ...(args.pageSize === undefined ? {} : { pageSize: Number(args.pageSize) }),
-        ...(args.cursor === undefined ? {} : { cursor: String(args.cursor) }),
-      });
-      return {
-        content: contentFor(result.status, "authoring attachments"),
-        structuredContent: result as unknown as Record<string, unknown>,
-      };
-    },
-  );
-}
-
-function nodeArg(value: unknown): {
-  kind: "part-definition" | "part-usage";
-  id: string;
-  path?: readonly string[];
-} {
-  const node = value as {
-    kind: "part-definition" | "part-usage";
-    id: string;
-    path?: readonly string[];
-  };
-  return {
-    kind: node.kind,
-    id: node.id,
-    ...(node.path ? { path: node.path } : {}),
-  };
-}
-
-function usagePathArg(value: unknown): readonly string[] {
-  return Array.isArray(value) ? value.map((item) => String(item)) : [];
-}
-
-function contentFor(status: string, surface: string): string {
-  if (status === "observed") {
-    return `Product ${surface} recrossed the exact current architecture-capture/4.0 basis. Grants none.`;
-  }
-  return `Product ${surface} is ${status}. The exact architecture basis is required; latest and labels are refused. Grants none.`;
-}
-
-const QUERY_OUTPUT = {
-  type: "object",
-  additionalProperties: true,
-  properties: {
-    schemaVersion: { const: "product-navigation-query/1.0" },
-    status: {
-      type: "string",
-      enum: ["observed", "unavailable", "unattached", "unresolved"],
-    },
-    basis: BASIS,
-  },
-  required: ["schemaVersion", "status"],
+const PAGE_SIZE = {
+  type: "integer",
+  minimum: 1,
+  maximum: PRODUCT_NAVIGATION_BOUNDS.maxPageSize,
 } as const;
 
-const projectProductNavigationRootsTool: MCPTool = {
-  name: "project_product_navigation_roots",
-  description:
-    "Read the unique current SysML product-structure root for a project. The server selects the unique Thread tip and unique architecture-capture/4.0. The response always publishes that exact basis. latest, labels, providers and runtimes are refused. Grants none. Workbench remains GET/SSE only.",
-  inputSchema: {
-    type: "object",
-    properties: { projectId: PROJECT_ID },
-    required: ["projectId"],
-    additionalProperties: false,
-  },
-  outputSchema: QUERY_OUTPUT,
-  annotations: READ_ONLY_ANNOTATIONS,
-};
+const CURSOR = {
+  type: "string",
+  minLength: 1,
+  maxLength: PRODUCT_NAVIGATION_BOUNDS.maxCursorLength,
+  not: { const: "latest" },
+} as const;
 
-const projectProductNavigationChildrenTool: MCPTool = {
-  name: "project_product_navigation_children",
-  description:
-    "Read immediate SysML children of one exact PartDefinition or PartUsage occurrence. Pass the occurrence path for a PartUsage. The server reopens the current architecture-capture/4.0 and republishes that basis. Do not walk the workspace DAG as product structure. Grants none.",
-  inputSchema: {
-    type: "object",
-    properties: {
-      projectId: PROJECT_ID,
-      node: NODE_QUERY,
-    },
-    required: ["projectId", "node"],
-    additionalProperties: false,
-  },
-  outputSchema: QUERY_OUTPUT,
-  annotations: READ_ONLY_ANNOTATIONS,
-};
+const STATUS = {
+  type: "string",
+  enum: ["observed", "unavailable", "unattached", "unresolved"],
+} as const;
 
-const projectProductNavigationPathTool: MCPTool = {
-  name: "project_product_navigation_path",
-  description:
-    "Read the exact SysML occurrence path from the system root through named PartUsage identities. An empty path is the unique system PartDefinition. A foreign or out-of-order usage stays unattached. The server reopens the current architecture-capture/4.0 and republishes that basis. Grants none.",
-  inputSchema: {
-    type: "object",
-    properties: {
-      projectId: PROJECT_ID,
-      usagePath: {
-        type: "array",
-        items: ELEMENT_ID,
-        maxItems: 32,
-        description:
-          "Exact PartUsage occurrence path from the system root. Empty is the root. latest is refused.",
-      },
+const DIAGNOSTIC = {
+  type: "object",
+  properties: {
+    code: {
+      enum: [
+        "basis.stale",
+        "basis.unavailable",
+        "selection.unattached",
+        "selection.invalid",
+        "selection.expected-basis-required",
+        "cursor.mismatch",
+        "architecture.unresolved",
+      ],
     },
-    required: ["projectId", "usagePath"],
-    additionalProperties: false,
+    relation: { type: "string", minLength: 1 },
+    recovery: { type: "string", minLength: 1 },
   },
-  outputSchema: QUERY_OUTPUT,
-  annotations: READ_ONLY_ANNOTATIONS,
-};
+  required: ["code", "relation", "recovery"],
+  additionalProperties: false,
+} as const;
 
-const projectProductNavigationSearchTool: MCPTool = {
-  name: "project_product_navigation_search",
-  description:
-    "Locate one exact SysML element id in the current architecture-capture/4.0. A reused PartDefinition returns every occurrence path. Labels are not searched. latest is refused. Grants none. Compose with project_product_navigation_context and project_source_file_read; do not add SysON tools.",
-  inputSchema: {
-    type: "object",
-    properties: {
-      projectId: PROJECT_ID,
-      id: ELEMENT_ID,
-    },
-    required: ["projectId", "id"],
-    additionalProperties: false,
+const NODE = {
+  type: "object",
+  properties: {
+    element: ELEMENT_REF,
+    occurrence: OCCURRENCE_REF,
+    typedDefinition: ELEMENT_REF,
+    label: { type: "string", minLength: 1 },
+    expandable: { type: "boolean" },
   },
-  outputSchema: QUERY_OUTPUT,
-  annotations: READ_ONLY_ANNOTATIONS,
-};
+  required: ["element", "label", "expandable"],
+  additionalProperties: false,
+} as const;
 
-const projectProductNavigationNeighborhoodTool: MCPTool = {
-  name: "project_product_navigation_neighborhood",
-  description:
-    "Read parent, siblings and immediate children of one exact SysML node. Pass the occurrence path for a PartUsage. The server reopens the current architecture-capture/4.0 and republishes that basis. Grants none.",
-  inputSchema: {
-    type: "object",
-    properties: {
-      projectId: PROJECT_ID,
-      node: NODE_QUERY,
-    },
-    required: ["projectId", "node"],
-    additionalProperties: false,
+const SEARCH_HIT = {
+  type: "object",
+  properties: {
+    element: ELEMENT_REF,
+    label: { type: "string", minLength: 1 },
+    match: { enum: ["exact-id", "label-token", "id-token"] },
   },
-  outputSchema: QUERY_OUTPUT,
-  annotations: READ_ONLY_ANNOTATIONS,
-};
-
-const projectProductNavigationContextTool: MCPTool = {
-  name: "project_product_navigation_context",
-  description:
-    "Read one exact SysML node with attachments grouped as sources, geometry, physics/cases and requirements/verdicts. Empty groups stay unattached. The server reopens the current architecture-capture/4.0 and republishes that basis. Do not parse labels or rationale. Grants none.",
-  inputSchema: {
-    type: "object",
-    properties: {
-      projectId: PROJECT_ID,
-      node: NODE_QUERY,
-    },
-    required: ["projectId", "node"],
-    additionalProperties: false,
-  },
-  outputSchema: QUERY_OUTPUT,
-  annotations: READ_ONLY_ANNOTATIONS,
-};
-
-const projectProductSourceClosureTool: MCPTool = {
-  name: "project_product_source_closure",
-  description:
-    "Read the technical dependency closure of one versioned authoring attachment. Name projectId, the semantic node, workspaceRevision, attachmentId and attachmentRevision. PartUsage keeps its usage id and is never reduced to a definition. The server recrosses that exact workspace snapshot; a detached, source-removed or foreign-target attachment stays unattached or unavailable. Grants none. Not admission.",
-  inputSchema: {
-    type: "object",
-    properties: {
-      projectId: PROJECT_ID,
-      node: NODE_QUERY,
-      workspaceRevision: { type: "integer", minimum: 1 },
-      attachmentId: ELEMENT_ID,
-      attachmentRevision: { type: "integer", minimum: 1 },
-    },
-    required: [
-      "projectId",
-      "node",
-      "workspaceRevision",
-      "attachmentId",
-      "attachmentRevision",
-    ],
-    additionalProperties: false,
-  },
-  outputSchema: QUERY_OUTPUT,
-  annotations: READ_ONLY_ANNOTATIONS,
-};
+  required: ["element", "label", "match"],
+  additionalProperties: false,
+} as const;
 
 const AUTHORING_ATTACHMENT = {
   type: "object",
@@ -369,15 +208,7 @@ const AUTHORING_ATTACHMENT = {
       required: ["id", "version"],
       additionalProperties: false,
     },
-    target: {
-      type: "object",
-      properties: {
-        elementId: ELEMENT_ID,
-        elementKind: { enum: ["PartDefinition", "PartUsage"] },
-      },
-      required: ["elementId", "elementKind"],
-      additionalProperties: false,
-    },
+    target: ELEMENT_REF,
     declaredAgainst: {
       type: "object",
       properties: {
@@ -413,82 +244,707 @@ const AUTHORING_ATTACHMENT = {
   additionalProperties: false,
 } as const;
 
-const AUTHORING_ATTACHMENTS_OUTPUT = {
+const ATTACHMENT = {
   type: "object",
   properties: {
-    schemaVersion: { const: "product-navigation-query/1.0" },
-    status: {
-      type: "string",
-      enum: ["observed", "unavailable", "unattached", "unresolved"],
-    },
-    basis: BASIS,
-    node: {
+    group: { enum: ["sources", "geometry", "physics", "requirements"] },
+    kind: { enum: ["source-file", "artifact", "requirement"] },
+    id: { type: "string", minLength: 1 },
+    label: { type: "string" },
+  },
+  required: ["group", "kind", "id", "label"],
+  additionalProperties: false,
+} as const;
+
+const ATTACHMENTS = {
+  type: "object",
+  properties: {
+    sources: { type: "array", items: ATTACHMENT },
+    geometry: { type: "array", items: ATTACHMENT },
+    physics: { type: "array", items: ATTACHMENT },
+    requirements: { type: "array", items: ATTACHMENT },
+  },
+  required: ["sources", "geometry", "physics", "requirements"],
+  additionalProperties: false,
+} as const;
+
+const READY_ACTION = {
+  oneOf: [
+    {
       type: "object",
       properties: {
-        kind: NODE_KIND,
-        id: ELEMENT_ID,
-        label: { type: "string", minLength: 1 },
-        definitionId: ELEMENT_ID,
-        usageId: ELEMENT_ID,
-        path: { type: "array", items: ELEMENT_ID, maxItems: 32 },
-        expandable: { type: "boolean" },
+        status: { const: "ready" },
+        kind: { const: "read-attachment" },
+        tool: { const: "project_source_attachment_read" },
+        arguments: {
+          type: "object",
+          properties: {
+            projectId: PROJECT_ID,
+            workspaceRevision: { type: "integer", minimum: 0 },
+            attachmentId: ELEMENT_ID,
+            attachmentRevision: { type: "integer", minimum: 1 },
+          },
+          required: [
+            "projectId",
+            "workspaceRevision",
+            "attachmentId",
+            "attachmentRevision",
+          ],
+          additionalProperties: false,
+        },
       },
-      required: ["kind", "id", "label", "definitionId", "path", "expandable"],
+      required: ["status", "kind", "tool", "arguments"],
       additionalProperties: false,
     },
-    workspaceRevision: { type: "integer", minimum: 0 },
-    workspaceEventFingerprint: {
+    {
+      type: "object",
+      properties: {
+        status: { const: "ready" },
+        kind: { const: "read-source-file" },
+        tool: { const: "project_source_file_read" },
+        arguments: {
+          type: "object",
+          properties: {
+            projectId: PROJECT_ID,
+            workspaceRevision: { type: "integer", minimum: 0 },
+            fileId: ELEMENT_ID,
+            fileRevision: { type: "integer", minimum: 1 },
+          },
+          required: [
+            "projectId",
+            "workspaceRevision",
+            "fileId",
+            "fileRevision",
+          ],
+          additionalProperties: false,
+        },
+      },
+      required: ["status", "kind", "tool", "arguments"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: {
+        status: { const: "ready" },
+        kind: { const: "read-source-closure" },
+        tool: { const: "project_source_closure" },
+        arguments: {
+          type: "object",
+          properties: {
+            projectId: PROJECT_ID,
+            expectedBasis: BASIS,
+            selection: SELECTION,
+            workspaceRevision: { type: "integer", minimum: 1 },
+            attachmentId: ELEMENT_ID,
+            attachmentRevision: { type: "integer", minimum: 1 },
+          },
+          required: [
+            "projectId",
+            "expectedBasis",
+            "selection",
+            "workspaceRevision",
+            "attachmentId",
+            "attachmentRevision",
+          ],
+          additionalProperties: false,
+        },
+      },
+      required: ["status", "kind", "tool", "arguments"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: {
+        status: { const: "ready" },
+        kind: { const: "capture-technical-source" },
+        tool: { const: "project_technical_source_capture" },
+        arguments: {
+          type: "object",
+          properties: {
+            projectId: PROJECT_ID,
+            workspaceRevision: { type: "integer", minimum: 1 },
+            attachmentId: ELEMENT_ID,
+            attachmentRevision: { type: "integer", minimum: 1 },
+          },
+          required: [
+            "projectId",
+            "workspaceRevision",
+            "attachmentId",
+            "attachmentRevision",
+          ],
+          additionalProperties: false,
+        },
+      },
+      required: ["status", "kind", "tool", "arguments"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: {
+        status: { const: "ready" },
+        kind: { const: "explore-selection" },
+        tool: { const: "project_product_explore" },
+        arguments: {
+          type: "object",
+          properties: {
+            projectId: PROJECT_ID,
+            expectedBasis: BASIS,
+            selection: OCCURRENCE_REF,
+          },
+          required: ["projectId", "expectedBasis", "selection"],
+          additionalProperties: false,
+        },
+      },
+      required: ["status", "kind", "tool", "arguments"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: {
+        status: { const: "ready" },
+        kind: { const: "inspect-selection" },
+        tool: { const: "project_product_inspect" },
+        arguments: {
+          type: "object",
+          properties: {
+            projectId: PROJECT_ID,
+            expectedBasis: BASIS,
+            selection: SELECTION,
+          },
+          required: ["projectId", "expectedBasis", "selection"],
+          additionalProperties: false,
+        },
+      },
+      required: ["status", "kind", "tool", "arguments"],
+      additionalProperties: false,
+    },
+  ],
+} as const;
+
+const BLOCKED_ACTION = {
+  type: "object",
+  properties: {
+    status: { const: "blocked" },
+    kind: {
+      enum: [
+        "read-attachment",
+        "read-source-file",
+        "read-source-closure",
+        "capture-technical-source",
+        "explore-selection",
+        "inspect-selection",
+      ],
+    },
+    code: {
+      enum: [
+        "action.source-removed",
+        "action.different-basis",
+        "action.file-head-missing",
+      ],
+    },
+    recovery: { type: "string", minLength: 1 },
+  },
+  required: ["status", "kind", "code", "recovery"],
+  additionalProperties: false,
+} as const;
+
+const ACTION = { oneOf: [READY_ACTION, BLOCKED_ACTION] } as const;
+
+const CLOSURE_FILE = {
+  type: "object",
+  properties: {
+    fileId: ELEMENT_ID,
+    fileRevision: { type: "integer", minimum: 1 },
+    role: { type: "string", minLength: 1 },
+    resourceUri: { type: "string", minLength: 1 },
+    resourceFingerprint: {
       type: "string",
       pattern: "^sha256:[a-f0-9]{64}$",
     },
-    attachments: { type: "array", items: AUTHORING_ATTACHMENT },
-    nextCursor: {
-      anyOf: [
-        {
-          type: "string",
-          minLength: 1,
-          maxLength: PROJECT_SOURCE_WORKSPACE_BOUNDS.maxCursorLength,
-        },
-        { type: "null" },
-      ],
+  },
+  required: [
+    "fileId",
+    "fileRevision",
+    "role",
+    "resourceUri",
+    "resourceFingerprint",
+  ],
+  additionalProperties: false,
+} as const;
+
+const CLOSURE_EDGE = {
+  type: "object",
+  properties: {
+    from: {
+      type: "object",
+      properties: {
+        fileId: ELEMENT_ID,
+        fileRevision: { type: "integer", minimum: 1 },
+      },
+      required: ["fileId", "fileRevision"],
+      additionalProperties: false,
     },
+    to: {
+      type: "object",
+      properties: {
+        fileId: ELEMENT_ID,
+        fileRevision: { type: "integer", minimum: 1 },
+      },
+      required: ["fileId", "fileRevision"],
+      additionalProperties: false,
+    },
+  },
+  required: ["from", "to"],
+  additionalProperties: false,
+} as const;
+
+const EXPLORE_OUTPUT = {
+  type: "object",
+  properties: {
+    schemaVersion: { const: PRODUCT_EXPLORE_SCHEMA },
+    status: STATUS,
+    basis: BASIS,
+    diagnostics: { type: "array", items: DIAGNOSTIC },
+    focus: NODE,
+    breadcrumbs: { type: "array", items: NODE },
+    parent: NODE,
+    children: { type: "array", items: NODE },
+    selections: {
+      type: "object",
+      properties: {
+        focus: SELECTION,
+        parent: SELECTION,
+        children: { type: "array", items: OCCURRENCE_REF },
+      },
+      required: ["focus", "children"],
+      additionalProperties: false,
+    },
+    nextCursor: { anyOf: [CURSOR, { type: "null" }] },
     grants: { const: "none" },
   },
   required: [
     "schemaVersion",
     "status",
-    "node",
-    "attachments",
+    "diagnostics",
+    "breadcrumbs",
+    "children",
     "nextCursor",
     "grants",
   ],
   additionalProperties: false,
 } as const;
 
-const projectProductNavigationAuthoringAttachmentsTool: MCPTool = {
-  name: "project_product_navigation_authoring_attachments",
+const SEARCH_OUTPUT = {
+  type: "object",
+  properties: {
+    schemaVersion: { const: PRODUCT_SEARCH_SCHEMA },
+    status: STATUS,
+    basis: BASIS,
+    diagnostics: { type: "array", items: DIAGNOSTIC },
+    matches: { type: "array", items: SEARCH_HIT },
+    nextCursor: { anyOf: [CURSOR, { type: "null" }] },
+    grants: { const: "none" },
+  },
+  required: [
+    "schemaVersion",
+    "status",
+    "diagnostics",
+    "matches",
+    "nextCursor",
+    "grants",
+  ],
+  additionalProperties: false,
+} as const;
+
+const INSPECT_OUTPUT = {
+  type: "object",
+  properties: {
+    schemaVersion: { const: PRODUCT_INSPECT_SCHEMA },
+    status: STATUS,
+    basis: BASIS,
+    diagnostics: { type: "array", items: DIAGNOSTIC },
+    selectedElement: ELEMENT_REF,
+    selectedOccurrence: OCCURRENCE_REF,
+    typedDefinition: {
+      type: "object",
+      properties: {
+        relation: { const: "typed_by" },
+        element: ELEMENT_REF,
+        label: { type: "string", minLength: 1 },
+      },
+      required: ["relation", "element", "label"],
+      additionalProperties: false,
+    },
+    definitionScopedEvidence: {
+      type: "object",
+      properties: {
+        status: { enum: ["observed", "unattached"] },
+        relation: { enum: ["typed_by", "selected-element"] },
+        definition: ELEMENT_REF,
+        attachments: ATTACHMENTS,
+      },
+      required: ["status", "relation", "definition", "attachments"],
+      additionalProperties: false,
+    },
+    authoringAttachments: {
+      type: "object",
+      properties: {
+        workspaceRevision: { type: "integer", minimum: 0 },
+        workspaceEventFingerprint: {
+          type: "string",
+          pattern: "^sha256:[a-f0-9]{64}$",
+        },
+        attachments: { type: "array", items: AUTHORING_ATTACHMENT },
+        nextCursor: { anyOf: [CURSOR, { type: "null" }] },
+      },
+      required: ["attachments", "nextCursor"],
+      additionalProperties: false,
+    },
+    occurrences: {
+      type: "object",
+      properties: {
+        occurrences: { type: "array", items: NODE },
+        nextCursor: { anyOf: [CURSOR, { type: "null" }] },
+      },
+      required: ["occurrences", "nextCursor"],
+      additionalProperties: false,
+    },
+    applicableActions: { type: "array", items: ACTION },
+    grants: { const: "none" },
+  },
+  required: [
+    "schemaVersion",
+    "status",
+    "diagnostics",
+    "authoringAttachments",
+    "occurrences",
+    "applicableActions",
+    "grants",
+  ],
+  additionalProperties: false,
+} as const;
+
+const CLOSURE_OUTPUT = {
+  type: "object",
+  properties: {
+    schemaVersion: { const: PRODUCT_SOURCE_CLOSURE_SCHEMA },
+    status: STATUS,
+    basis: BASIS,
+    diagnostics: { type: "array", items: DIAGNOSTIC },
+    workspaceRevision: { type: "integer", minimum: 0 },
+    workspaceEventFingerprint: {
+      type: "string",
+      pattern: "^sha256:[a-f0-9]{64}$",
+    },
+    attachmentId: ELEMENT_ID,
+    attachmentRevision: { type: "integer", minimum: 1 },
+    closureFingerprint: {
+      type: "string",
+      pattern: "^sha256:[a-f0-9]{64}$",
+    },
+    entries: {
+      type: "array",
+      maxItems: PRODUCT_NAVIGATION_BOUNDS.maxPageSize,
+      items: {
+        oneOf: [
+          {
+            type: "object",
+            properties: {
+              kind: { const: "file" },
+              fileId: CLOSURE_FILE.properties.fileId,
+              fileRevision: CLOSURE_FILE.properties.fileRevision,
+              role: CLOSURE_FILE.properties.role,
+              resourceUri: CLOSURE_FILE.properties.resourceUri,
+              resourceFingerprint: CLOSURE_FILE.properties.resourceFingerprint,
+            },
+            required: [
+              "kind",
+              "fileId",
+              "fileRevision",
+              "role",
+              "resourceUri",
+              "resourceFingerprint",
+            ],
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            properties: {
+              kind: { const: "edge" },
+              from: CLOSURE_EDGE.properties.from,
+              to: CLOSURE_EDGE.properties.to,
+            },
+            required: ["kind", "from", "to"],
+            additionalProperties: false,
+          },
+        ],
+      },
+    },
+    fileCount: { type: "integer", minimum: 0 },
+    edgeCount: { type: "integer", minimum: 0 },
+    nextCursor: { anyOf: [CURSOR, { type: "null" }] },
+    grants: { const: "none" },
+  },
+  required: [
+    "schemaVersion",
+    "status",
+    "diagnostics",
+    "entries",
+    "fileCount",
+    "edgeCount",
+    "nextCursor",
+    "grants",
+  ],
+  additionalProperties: false,
+} as const;
+
+export function registerProjectProductNavigationTools(
+  app: McpApp,
+  dependencies: ProjectProductNavigationToolDependencies,
+): void {
+  if (!dependencies.productNavigation) return;
+  const navigation = dependencies.productNavigation;
+
+  app.registerTool(projectProductExploreTool, async (args) => {
+    const result = await navigation.explore({
+      projectId: String(args.projectId),
+      ...(args.expectedBasis ? { expectedBasis: basisArg(args.expectedBasis) } : {}),
+      ...(args.selection ? { selection: occurrenceArg(args.selection) } : {}),
+      ...(args.pageSize === undefined ? {} : { pageSize: Number(args.pageSize) }),
+      ...(args.cursor === undefined ? {} : { cursor: String(args.cursor) }),
+    });
+    return {
+      content: contentFor(result.status, "explore"),
+      structuredContent: result as unknown as Record<string, unknown>,
+    };
+  });
+
+  app.registerTool(projectProductSearchTool, async (args) => {
+    const result = await navigation.search({
+      projectId: String(args.projectId),
+      ...(args.expectedBasis ? { expectedBasis: basisArg(args.expectedBasis) } : {}),
+      query: searchQueryArg(args.query),
+      ...(args.pageSize === undefined ? {} : { pageSize: Number(args.pageSize) }),
+      ...(args.cursor === undefined ? {} : { cursor: String(args.cursor) }),
+    });
+    return {
+      content: contentFor(result.status, "search"),
+      structuredContent: result as unknown as Record<string, unknown>,
+    };
+  });
+
+  app.registerTool(projectProductInspectTool, async (args) => {
+    const result = await navigation.inspect({
+      projectId: String(args.projectId),
+      expectedBasis: basisArg(args.expectedBasis),
+      selection: selectionArg(args.selection),
+      ...(args.pageSize === undefined ? {} : { pageSize: Number(args.pageSize) }),
+      ...(args.cursor === undefined ? {} : { cursor: String(args.cursor) }),
+      ...(args.occurrencesPageSize === undefined
+        ? {}
+        : { occurrencesPageSize: Number(args.occurrencesPageSize) }),
+      ...(args.occurrencesCursor === undefined
+        ? {}
+        : { occurrencesCursor: String(args.occurrencesCursor) }),
+    });
+    return {
+      content: contentFor(result.status, "inspect"),
+      structuredContent: result as unknown as Record<string, unknown>,
+    };
+  });
+
+  app.registerTool(projectSourceClosureTool, async (args) => {
+    const result = await navigation.sourceClosure({
+      projectId: String(args.projectId),
+      expectedBasis: basisArg(args.expectedBasis),
+      selection: selectionArg(args.selection),
+      workspaceRevision: Number(args.workspaceRevision),
+      attachmentId: String(args.attachmentId),
+      attachmentRevision: Number(args.attachmentRevision),
+      ...(args.pageSize === undefined ? {} : { pageSize: Number(args.pageSize) }),
+      ...(args.cursor === undefined ? {} : { cursor: String(args.cursor) }),
+    });
+    return {
+      content: contentFor(result.status, "source closure"),
+      structuredContent: result as unknown as Record<string, unknown>,
+    };
+  });
+}
+
+function basisArg(value: unknown): ProductNavigationBasis {
+  const rec = value as ProductNavigationBasis;
+  return {
+    projectId: String(rec.projectId),
+    threadSnapshotId: String(rec.threadSnapshotId),
+    threadRevision: Number(rec.threadRevision),
+    threadSubjectId: String(rec.threadSubjectId),
+    architectureArtifactId: String(rec.architectureArtifactId),
+    architectureFingerprint: String(rec.architectureFingerprint),
+    captureSchema: "architecture-capture/4.0",
+  };
+}
+
+function occurrenceArg(value: unknown): ProductStructureOccurrenceRef {
+  return parseProductStructureOccurrenceRef(value, "$selection");
+}
+
+function selectionArg(value: unknown): ProductStructureSelection {
+  const rec = value as { kind?: string; element?: unknown; occurrence?: unknown };
+  if (rec.kind === "element") {
+    return {
+      kind: "element",
+      element: parseProductStructureElementRef(rec.element, "$selection.element"),
+    };
+  }
+  return {
+    kind: "occurrence",
+    occurrence: parseProductStructureOccurrenceRef(
+      rec.occurrence,
+      "$selection.occurrence",
+    ),
+  };
+}
+
+function searchQueryArg(value: unknown): ProductSearchQueryKind {
+  const rec = value as { kind?: string; elementId?: string; text?: string };
+  if (rec.kind === "exact-id") {
+    return { kind: "exact-id", elementId: String(rec.elementId) };
+  }
+  return { kind: "text", text: String(rec.text) };
+}
+
+function contentFor(status: string, surface: string): string {
+  if (status === "observed") {
+    return `Product ${surface} recrossed the exact current architecture-capture/4.0 basis. Grants none.`;
+  }
+  if (status === "unavailable") {
+    return `Product ${surface} is unavailable. A stale expected basis republishes the current basis and never becomes historical navigation. Grants none.`;
+  }
+  return `Product ${surface} is ${status}. Exact SysML identities and the architecture basis are required; latest and labels are refused. Grants none.`;
+}
+
+const projectProductExploreTool: MCPTool = {
+  name: "project_product_explore",
   description:
-    "Read versioned ProjectSourceWorkspace authoring attachments of one exact SysML PartDefinition or PartUsage. The server selects the unique current Thread tip and architecture-capture/4.0, then lists active workspace heads for that exact target. Detached identities are omitted; source-removed stays visible. Not Thread evidence, not admission, not source closure. latest, snapshot, workspaceRevision, providers and runtimes are refused. Grants none.",
+    "Start SysML product-structure exploration from a projectId, or continue from one exact occurrence pinned to the published architecture basis. Returns focus, breadcrumbs, parent, a bounded page of immediate children, the exact basis, and pasteable selections. Stateless: no persisted focus. latest, labels, providers and runtimes are refused. Grants none. Workbench remains GET/SSE only.",
   inputSchema: {
     type: "object",
     properties: {
       projectId: PROJECT_ID,
-      node: NODE_QUERY,
-      pageSize: {
-        type: "integer",
-        minimum: 1,
-        maximum: PROJECT_SOURCE_WORKSPACE_BOUNDS.maxPageSize,
+      expectedBasis: BASIS,
+      selection: OCCURRENCE_REF,
+      pageSize: PAGE_SIZE,
+      cursor: CURSOR,
+    },
+    required: ["projectId"],
+    additionalProperties: false,
+    dependentRequired: {
+      selection: ["expectedBasis"],
+    },
+  },
+  outputSchema: EXPLORE_OUTPUT,
+  annotations: READ_ONLY_ANNOTATIONS,
+};
+
+const projectProductSearchTool: MCPTool = {
+  name: "project_product_search",
+  description:
+    "Discover exact SysML element identities in the current architecture-capture/4.0. Query kind exact-id matches one element id without expanding the occurrence tree. Query kind text matches normalized label and id tokens only to discover; labels never join or authorize. Every hit is an exact PartDefinition or PartUsage ref. Paginated. latest is refused. Grants none.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: PROJECT_ID,
+      expectedBasis: BASIS,
+      query: {
+        oneOf: [
+          {
+            type: "object",
+            properties: {
+              kind: { const: "exact-id" },
+              elementId: ELEMENT_ID,
+            },
+            required: ["kind", "elementId"],
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            properties: {
+              kind: { const: "text" },
+              text: {
+                type: "string",
+                minLength: 1,
+                maxLength: PRODUCT_NAVIGATION_BOUNDS.maxSearchTextLength,
+                not: { const: "latest" },
+              },
+            },
+            required: ["kind", "text"],
+            additionalProperties: false,
+          },
+        ],
       },
+      pageSize: PAGE_SIZE,
+      cursor: CURSOR,
+    },
+    required: ["projectId", "query"],
+    additionalProperties: false,
+  },
+  outputSchema: SEARCH_OUTPUT,
+  annotations: READ_ONLY_ANNOTATIONS,
+};
+
+const projectProductInspectTool: MCPTool = {
+  name: "project_product_inspect",
+  description:
+    "Inspect one exact SysML element or occurrence selection pinned to the published architecture basis. A PartUsage remains that usage and is never reduced to its typed PartDefinition. Thread evidence is definition-scoped and labelled as such. Authoring attachment heads stay element-level, bounded, and unmerged. Ready actions are complete calls to this server only. Grants none.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: PROJECT_ID,
+      expectedBasis: BASIS,
+      selection: SELECTION,
+      pageSize: PAGE_SIZE,
       cursor: {
         type: "string",
         minLength: 1,
         maxLength: PROJECT_SOURCE_WORKSPACE_BOUNDS.maxCursorLength,
         not: { const: "latest" },
       },
+      occurrencesPageSize: PAGE_SIZE,
+      occurrencesCursor: CURSOR,
     },
-    required: ["projectId", "node"],
+    required: ["projectId", "expectedBasis", "selection"],
     additionalProperties: false,
   },
-  outputSchema: AUTHORING_ATTACHMENTS_OUTPUT,
+  outputSchema: INSPECT_OUTPUT,
+  annotations: READ_ONLY_ANNOTATIONS,
+};
+
+const projectSourceClosureTool: MCPTool = {
+  name: "project_source_closure",
+  description:
+    "Read the technical dependency closure of one versioned authoring attachment from an exact selected element or occurrence plus exact attachment revision. PartUsage keeps its usage id. The server recrosses that exact workspace snapshot; a detached, source-removed, foreign-target or different-basis attachment stays unattached or unavailable. Bounded page. Grants none. Not admission.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: PROJECT_ID,
+      expectedBasis: BASIS,
+      selection: SELECTION,
+      workspaceRevision: { type: "integer", minimum: 1 },
+      attachmentId: ELEMENT_ID,
+      attachmentRevision: { type: "integer", minimum: 1 },
+      pageSize: PAGE_SIZE,
+      cursor: CURSOR,
+    },
+    required: [
+      "projectId",
+      "expectedBasis",
+      "selection",
+      "workspaceRevision",
+      "attachmentId",
+      "attachmentRevision",
+    ],
+    additionalProperties: false,
+  },
+  outputSchema: CLOSURE_OUTPUT,
   annotations: READ_ONLY_ANNOTATIONS,
 };

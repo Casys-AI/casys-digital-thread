@@ -181,26 +181,36 @@ Contract: [project source workspace](../domains/project-source-workspace/README.
 
 ### Product navigation (SysML-first)
 
-Read-only. The server selects the unique current Thread tip and unique
-`architecture-capture/4.0`. Every response publishes that exact basis. The workspace DAG
+Read-only. Four tools. The server selects the unique current Thread tip and unique
+`architecture-capture/4.0`. Every response publishes that exact basis, including
+`threadSubjectId` from the snapshot. A later exact selection pins that basis; a stale
+pin is `unavailable` and republishes the current basis. It never becomes historical
+navigation or a hidden `latest`. The workspace DAG
 is not product structure. Workbench GET `/api/thread/workbench` (roots neighborhood) and
 GET `/api/thread/product-navigation` consume the same application port; they are not a
-command surface. Authoring workspace heads are `view=authoring-attachments` on that GET
-and `project_product_navigation_authoring_attachments`; they are not mixed into the
-Workbench root snapshot. After a source attachment, use `project_source_file_read`,
+command surface. Authoring heads live on `project_product_inspect`, not in the Workbench
+root snapshot. After a source attachment, use `project_source_file_read`,
 `project_source_tree`, `project_source_search`, or `project_resource_capture`. No
 agent-facing SysON tools.
 
-| Tool                                               | Authority | Effect                                                                                                                                                                                                                                                                                                                                          |
-| -------------------------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `project_product_navigation_roots`                 | Read      | Unique structural PartDefinition root. `latest` refused. Grants none.                                                                                                                                                                                                                                                                           |
-| `project_product_navigation_children`              | Read      | Immediate PartUsage children of one exact definition or occurrence path.                                                                                                                                                                                                                                                                        |
-| `project_product_navigation_path`                  | Read      | Exact occurrence path from the system root. Empty path is the root. A foreign usage stays `unattached`.                                                                                                                                                                                                                                         |
-| `project_product_navigation_search`                | Read      | Exact SysML element id. A reused definition returns every occurrence path. Labels are not searched.                                                                                                                                                                                                                                             |
-| `project_product_navigation_neighborhood`          | Read      | Parent, siblings and immediate children of one exact node.                                                                                                                                                                                                                                                                                      |
-| `project_product_navigation_context`               | Read      | Selected node plus Thread/admission evidence grouped as sources, geometry, physics/cases, requirements/verdicts. Empty groups stay `unattached`. Not workspace authoring heads.                                                                                                                                                                 |
-| `project_product_navigation_authoring_attachments` | Read      | Active ProjectSourceWorkspace attachment heads of one exact SysML node. Server selects Thread tip + `architecture-capture/4.0`, then the workspace head. `nextCursor` is an HMAC-sealed server envelope; a domain attachment-list cursor is refused. `PartUsage` keeps `usageId`. Grants none. Not evidence, not admission, not source closure. |
-| `project_product_source_closure`                   | Read      | Technical dependency closure of one versioned authoring attachment. Name `projectId`, the semantic node, `workspaceRevision`, `attachmentId` and `attachmentRevision`. `PartUsage` keeps its usage id. Grants none. Not admission. Then use `project_source_file_read` / `project_source_tree`.                                                                                                                     |
+The unique product root is a `PartDefinition` **element**, never an occurrence. A
+`PartUsage` occurrence always has a nonempty path ending in its usage id. Labels never
+join or authorize. Graphology is a disposable index, not an aggregate. `pageSize` max
+50 is an operational bound, not a SysML cardinality.
+
+Journey: `project_product_explore` (root element, then pasteable usage occurrences) →
+`project_product_search` (exact ids) → `project_product_inspect` (one selection,
+definition-scoped Thread evidence, authoring heads, ready actions) →
+`project_source_closure` (exact attachment DAG). Remaining limits: no persisted focus,
+no historical navigation, no first-attachment inference, no language-specific lowering
+for multi-file closures.
+
+| Tool                       | Authority | Effect                                                                                                                                                                                                                                                                                                                                                          |
+| -------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `project_product_explore`  | Read      | Start with `{projectId}` at the unique root `PartDefinition` element, or continue from one exact `PartUsage` occurrence pinned to `expectedBasis`. Returns focus, breadcrumbs, parent, a bounded page of immediate children, the exact basis, and pasteable selections. Stateless. Grants none.                                                                 |
+| `project_product_search`   | Read      | Exact-id **or** non-authoritative text discovery over the disposable Graphology index. Hits are exact `PartDefinition` / `PartUsage` element refs. Labels and tokens never join. Paginated. Grants none.                                                                                                                                                        |
+| `project_product_inspect`  | Read      | One exact element or occurrence. A `PartUsage` stays that usage. Thread evidence is definition-scoped and labelled. Authoring heads stay element-level and unmerged. Ready actions are complete calls to this server only; blocked offers have closed codes and no partial args. Grants none.                                                                  |
+| `project_source_closure`   | Read      | Technical DAG of one versioned authoring attachment from an exact selected element/occurrence plus exact `attachmentId`/`attachmentRevision` at a named workspace revision. One discriminated `entries` page of files then edges; `fileCount`, `edgeCount` and the closure fingerprint stay on every page. Cursor binds the full basis, selection, workspace revision, attachment revision and fingerprint. `PartUsage` keeps its usage id. Grants none. Not admission. Then `project_source_file_read`. |
 
 ### LED-driver human source
 

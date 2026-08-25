@@ -105,8 +105,15 @@ import {
 } from "../../src/domain/project-source-workspace/types.ts";
 import {
   PRODUCT_NAVIGATION_QUERY_SCHEMA,
+  type ProductExploreResult,
+  unavailableExplore,
   unavailableProductNavigationProjection,
 } from "../../src/application/ports/in/product-navigation/product-navigation-read-model.ts";
+import {
+  productStructureElementRef,
+  productStructureElementRefsEqual,
+  type ProductStructureOccurrenceRef,
+} from "../../src/domain/architecture/product-structure-ref.ts";
 import {
   enrichThreadWorkbenchWithEvaluationCloseouts,
   type EvaluationCloseoutCaptureReader,
@@ -916,33 +923,69 @@ async function serveProductNavigationQuery(
   }
   const projectId = context.projectId;
   const view = url.searchParams.get("view");
-  const nodeId = url.searchParams.get("id") ?? "";
-  const nodeKind = url.searchParams.get("kind") === "part-usage"
-    ? "part-usage" as const
-    : "part-definition" as const;
-  if (view === "authoring-attachments") {
-    return await serveAuthoringAttachmentsQuery(url, navigation, projectId);
+  if (view === "authoring-attachments" || view === "context") {
+    return await serveInspectQuery(url, navigation, projectId);
   }
-  if (view === "children" || view === "context" || view === "neighborhood") {
-    const path = parseExactElementPath(url.searchParams.get("path"));
-    if (path === "invalid") return invalidExactElementPath();
-    const node = { kind: nodeKind, id: nodeId, path };
-    const result = view === "children"
-      ? await navigation.children({ projectId, node })
-      : view === "context"
-      ? await navigation.context({ projectId, node })
-      : await navigation.neighborhood({ projectId, node });
-    return json(result, 200);
+  if (view === "children" || view === "neighborhood") {
+    const occurrence = occurrenceFromQuery(url);
+    if (occurrence === "invalid") return invalidExactElementPath();
+    if (occurrence === "missing") {
+      return invalidAuthoringAttachmentsQuery(
+        "id must be an exact SysML element identity. latest is refused.",
+      );
+    }
+    if (occurrence === "kind-invalid") {
+      return invalidAuthoringAttachmentsQuery(
+        "kind must be part-definition or part-usage. latest is refused.",
+      );
+    }
+    if (occurrence.kind === "semantic-root") {
+      return json(
+        exactSemanticRootExplore(
+          await navigation.explore({ projectId }),
+          occurrence.elementId,
+        ),
+        200,
+      );
+    }
+    return json(
+      await navigation.explore({
+        projectId,
+        selection: occurrence.occurrence,
+      }),
+      200,
+    );
   }
   if (view === "path") {
     const usagePath = parseExactElementPath(url.searchParams.get("usagePath"));
     if (usagePath === "invalid") return invalidExactElementPath();
-    return json(await navigation.path({ projectId, usagePath }), 200);
+    if (usagePath.length === 0) {
+      return json(await navigation.explore({ projectId }), 200);
+    }
+    return json(
+      await navigation.explore({
+        projectId,
+        selection: {
+          element: productStructureElementRef(
+            "PartUsage",
+            usagePath[usagePath.length - 1]!,
+          ),
+          path: usagePath,
+        },
+      }),
+      200,
+    );
   }
   const result = view === "search"
-    ? await navigation.search({ projectId, id: nodeId })
+    ? await navigation.search({
+      projectId,
+      query: {
+        kind: "exact-id",
+        elementId: url.searchParams.get("id") ?? "",
+      },
+    })
     : view === "roots"
-    ? await navigation.roots({ projectId })
+    ? await navigation.explore({ projectId })
     : view === null || view === ""
     ? await navigation.projection({ projectId })
     : {
@@ -953,12 +996,10 @@ async function serveProductNavigationQuery(
 }
 
 const EXACT_ELEMENT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
-const MAX_EXACT_ELEMENT_PATH = 32;
 
 function parseExactElementPath(value: string | null): string[] | "invalid" {
   if (value === null || value === "") return [];
   const segments = value.split(",");
-  if (segments.length > MAX_EXACT_ELEMENT_PATH) return "invalid";
   for (const segment of segments) {
     if (
       segment === "" ||
@@ -978,7 +1019,7 @@ function invalidExactElementPath(): Response {
   );
 }
 
-async function serveAuthoringAttachmentsQuery(
+async function serveInspectQuery(
   url: URL,
   navigation: ProductNavigationUseCase,
   projectId: string,
@@ -1013,13 +1054,33 @@ async function serveAuthoringAttachmentsQuery(
       "cursor must be the opaque nextCursor from this view. latest is refused.",
     );
   }
+  const selection = kindParam === "part-usage"
+    ? {
+      kind: "occurrence" as const,
+      occurrence: {
+        element: productStructureElementRef("PartUsage", nodeId),
+        path: path.length === 0 ? [nodeId] : path,
+      },
+    }
+    : {
+      kind: "element" as const,
+      element: productStructureElementRef("PartDefinition", nodeId),
+    };
   try {
-    const result = await navigation.authoringAttachments({
+    const result = await navigation.inspect({
       projectId,
-      node: { kind: kindParam, id: nodeId, path },
+      selection,
       ...(pageSize === undefined ? {} : { pageSize }),
       ...(cursor === undefined ? {} : { cursor }),
     });
+    if (
+      result.status === "unresolved" &&
+      result.diagnostics.some((item) => item.code === "cursor.mismatch")
+    ) {
+      return invalidAuthoringAttachmentsQuery(
+        "cursor must be the opaque nextCursor from this view. latest is refused.",
+      );
+    }
     return json(result, 200);
   } catch (error) {
     if (error instanceof ProjectSourceWorkspaceError) {
@@ -1027,6 +1088,63 @@ async function serveAuthoringAttachmentsQuery(
     }
     throw error;
   }
+}
+
+function occurrenceFromQuery(url: URL):
+  | "invalid"
+  | "missing"
+  | "kind-invalid"
+  | { readonly kind: "semantic-root"; readonly elementId: string }
+  | {
+    readonly kind: "occurrence";
+    readonly occurrence: ProductStructureOccurrenceRef;
+  } {
+  const kindParam = url.searchParams.get("kind");
+  const nodeId = url.searchParams.get("id") ?? "";
+  const path = parseExactElementPath(url.searchParams.get("path"));
+  if (path === "invalid") return "invalid";
+  if (nodeId === "" || nodeId === "latest" || !EXACT_ELEMENT_ID.test(nodeId)) {
+    return "missing";
+  }
+  if (kindParam === "part-usage") {
+    return {
+      kind: "occurrence",
+      occurrence: {
+        element: productStructureElementRef("PartUsage", nodeId),
+        path: path.length === 0 ? [nodeId] : path,
+      },
+    };
+  }
+  if (kindParam !== "part-definition") return "kind-invalid";
+  if (path.length !== 0) return "invalid";
+  return { kind: "semantic-root", elementId: nodeId };
+}
+
+function exactSemanticRootExplore(
+  result: ProductExploreResult,
+  elementId: string,
+): ProductExploreResult {
+  if (
+    result.status === "observed" &&
+    result.focus &&
+    productStructureElementRefsEqual(
+      result.focus.element,
+      productStructureElementRef("PartDefinition", elementId),
+    )
+  ) {
+    return result;
+  }
+  if (result.status !== "observed") return result;
+  return unavailableExplore({
+    basis: result.basis,
+    status: "unattached",
+    diagnostics: [{
+      code: "selection.unattached",
+      relation: "selection",
+      recovery:
+        "Pass a PartUsage occurrence published by explore or inspect on this exact basis.",
+    }],
+  });
 }
 
 function parseExactPageSize(value: string | null): number | undefined | "invalid" {

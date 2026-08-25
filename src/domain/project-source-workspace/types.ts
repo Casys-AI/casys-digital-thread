@@ -8,6 +8,11 @@
 
 import type { AgentResourceReference } from "../resource/agent-resource-capture.ts";
 import type { ContentFingerprint } from "../kernel/primitives.ts";
+import {
+  PRODUCT_STRUCTURE_ELEMENT_KINDS,
+  type ProductStructureElementKind,
+  type ProductStructureElementRef,
+} from "../architecture/product-structure-ref.ts";
 
 export const PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA =
   "project-source-workspace-event/3.0" as const;
@@ -15,10 +20,7 @@ export const PROJECT_SOURCE_WORKSPACE_SNAPSHOT_SCHEMA =
   "project-source-workspace-snapshot/2.0" as const;
 export const PROJECT_SOURCE_ATTACHMENT_CAPTURE_SCHEMA =
   "architecture-capture/4.0" as const;
-export const PROJECT_SOURCE_ATTACHMENT_ELEMENT_KINDS = [
-  "PartDefinition",
-  "PartUsage",
-] as const;
+export const PROJECT_SOURCE_ATTACHMENT_ELEMENT_KINDS = PRODUCT_STRUCTURE_ELEMENT_KINDS;
 
 export const PROJECT_SOURCE_WORKSPACE_BOUNDS = Object.freeze({
   maxSlugLength: 64,
@@ -114,8 +116,7 @@ export interface ProjectSourceFileRemove {
   readonly activeFileRevision: number;
 }
 
-export type ProjectSourceAttachmentElementKind =
-  typeof PROJECT_SOURCE_ATTACHMENT_ELEMENT_KINDS[number];
+export type ProjectSourceAttachmentElementKind = ProductStructureElementKind;
 
 /** Product-relation role. Distinct from the file capture role. */
 export interface ProjectSourceAttachmentRole {
@@ -123,10 +124,7 @@ export interface ProjectSourceAttachmentRole {
   readonly version: number;
 }
 
-export interface ProjectSourceAttachmentTarget {
-  readonly elementId: string;
-  readonly elementKind: ProjectSourceAttachmentElementKind;
-}
+export type ProjectSourceAttachmentTarget = ProductStructureElementRef;
 
 export interface ProjectSourceAttachmentThreadBasis {
   readonly snapshotId: string;

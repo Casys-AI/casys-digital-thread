@@ -29,8 +29,9 @@ or execution authority.
 
 ## Resolution contract
 
-A closure request names the exact `projectId`, semantic `node`, `workspaceRevision`,
-`attachmentId` and `attachmentRevision`. The server reopens the exact SysML and
+A closure request names the exact `projectId`, published architecture `expectedBasis`,
+exact element or occurrence `selection`, `workspaceRevision`, `attachmentId` and
+`attachmentRevision`. The server reopens the exact SysML and
 workspace bases, verifies the active attachment and target, resolves its stable
 `fileId` to the exact head at that workspace revision, walks only exact dependency
 edges and emits a deterministic topological closure containing:
@@ -47,14 +48,17 @@ broken fingerprint or dependency outside the named workspace basis makes the clo
 `unavailable`; labels, paths, timestamps, matching digests and an implicit `latest` must
 not repair it.
 
-`project_product_source_closure` returns that bounded closure directly: exact bases,
-files, directed edges and fingerprints. The opaque locator belongs instead to
-`project_technical_source_capture`, which persists the private closure for later
-admission recross. Neither operation grants permission to compile, execute, seal or
-judge.
+`project_source_closure` returns that bounded closure as one discriminated, paginated
+`entries` stream (files then edges), plus `fileCount`, `edgeCount` and the closure
+fingerprint. An `observed` page never includes an unreachable edge. The opaque locator
+belongs instead to `project_technical_source_capture`, which persists the private
+closure for later admission recross. Neither operation grants permission to compile,
+execute, seal or judge.
 
-The response publishes the exact sealed SysON basis, selected semantic target, exact
-attachment, workspace revision and closure fingerprint. It accepts no `latest`, label,
+The response publishes the exact sealed SysON basis (including `threadSubjectId`),
+selected semantic target, exact attachment, workspace revision and closure fingerprint.
+The page cursor binds that full basis, the selection, the workspace revision, the
+attachment revision and the closure fingerprint. It accepts no `latest`, label,
 provider, runtime, parser or lowering-profile selection.
 
 MCS-02 exercised both sides of the boundary. The initial RailFrame r1 root reached a

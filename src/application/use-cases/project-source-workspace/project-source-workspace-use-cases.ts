@@ -291,12 +291,7 @@ export class ProjectSourceWorkspaceUseCases implements ProjectSourceWorkspaceUse
         "Architecture recross does not match declaredAgainst.architecture on architecture-capture/4.0.",
       );
     }
-    if (
-      !opened.hasElement({
-        id: mutation.target.elementId,
-        kind: mutation.target.elementKind,
-      })
-    ) {
+    if (!opened.hasElement(mutation.target)) {
       throw new ProjectSourceWorkspaceApplicationError(
         "target_not_found",
         `Target ${mutation.target.elementKind} ${mutation.target.elementId} is not present on the recrossed architecture capture.`,

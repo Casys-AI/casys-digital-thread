@@ -7,6 +7,7 @@ import type { ContentFingerprint } from "../../../domain/thread/thread-snapshot.
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import { ARCHITECTURE_CAPTURE_URI_PREFIX } from "../../shared/cas/file-capture-store.ts";
 import { CaptureProductStructureTraversal } from "./capture-product-structure-traversal.ts";
+import { reopenVerifiedArchitectureCapture } from "./product-structure-catalog.ts";
 import type { SysmlSourceAnalysisReader } from "./sysml-source-analysis-capture.ts";
 
 const AT = "2026-08-08T00:00:00.000Z";
@@ -41,17 +42,26 @@ Deno.test(
       opened?.architectureArtifactId,
       `architecture-${fixture.fingerprint.digest}`,
     );
-    assertEquals(opened?.root()?.id, "sys-def-001");
+    assertEquals(opened?.root()?.element.elementId, "sys-def-001");
     assertEquals(
-      opened?.hasElement({ id: "sys-def-001", kind: "PartDefinition" }),
+      opened?.hasElement({
+        elementId: "sys-def-001",
+        elementKind: "PartDefinition",
+      }),
       true,
     );
     assertEquals(
-      opened?.hasElement({ id: "alpha-use-001", kind: "PartUsage" }),
+      opened?.hasElement({
+        elementId: "alpha-use-001",
+        elementKind: "PartUsage",
+      }),
       true,
     );
     assertEquals(
-      opened?.hasElement({ id: "sys-def-001", kind: "PartUsage" }),
+      opened?.hasElement({
+        elementId: "sys-def-001",
+        elementKind: "PartUsage",
+      }),
       false,
     );
     assertEquals(
@@ -63,10 +73,110 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "product structure traversal refuses a cyclic definition graph after capture reopen",
+  async () => {
+    const opened = await openCapture(cyclicArchitectureCapture());
+    assertEquals(opened, undefined);
+  },
+);
+
+Deno.test(
+  "product structure traversal refuses an unreachable definition graph after capture reopen",
+  async () => {
+    const opened = await openCapture(unreachableArchitectureCapture());
+    assertEquals(opened, undefined);
+  },
+);
+
+Deno.test(
+  "reopenVerifiedArchitectureCapture returns the capture without building a catalog",
+  async () => {
+    const fixture = await verifiedArchitectureNavigationFixture();
+    const verified = await reopenVerifiedArchitectureCapture(
+      fixture.snapshot,
+      fixture.reader,
+      fixture.sourceAnalysis,
+    );
+    assertEquals(verified.kind, "one");
+    if (verified.kind === "one") {
+      assertEquals("components" in verified, false);
+      assertEquals(verified.capture.semanticRoot.id, "sys-def-001");
+    }
+  },
+);
+
+async function openCapture(capture: Record<string, unknown>) {
+  const fingerprint = await sha256Fingerprint(capture);
+  return await new CaptureProductStructureTraversal(
+    {
+      read: (value: ContentFingerprint) =>
+        Promise.resolve(
+          value.digest === fingerprint.digest ? deterministicJson(capture) : undefined,
+        ),
+    },
+    passingSourceAnalysis(),
+  ).open(architectureSnapshot(fingerprint));
+}
+
 function passingSourceAnalysis(): SysmlSourceAnalysisReader {
   return {
     reopen: (value) => Promise.resolve({ reference: structuredClone(value) } as never),
   };
+}
+
+function cyclicArchitectureCapture(): Record<string, unknown> {
+  const capture = architectureCapture();
+  const parts = capture.partDefinitions as Array<Record<string, unknown>>;
+  const system = parts[0] as {
+    usages: Array<Record<string, unknown>>;
+  };
+  system.usages = [{
+    id: "cycle-use-a",
+    kind: "PartUsage",
+    label: "a",
+    targetId: "cycle-def-a",
+    targetKind: "PartDefinition",
+    targetLabel: "CycleA",
+  }];
+  capture.partDefinitions = [parts[0], {
+    id: "cycle-def-a",
+    kind: "PartDefinition",
+    label: "CycleA",
+    usages: [{
+      id: "cycle-use-b",
+      kind: "PartUsage",
+      label: "b",
+      targetId: "cycle-def-b",
+      targetKind: "PartDefinition",
+      targetLabel: "CycleB",
+    }],
+  }, {
+    id: "cycle-def-b",
+    kind: "PartDefinition",
+    label: "CycleB",
+    usages: [{
+      id: "cycle-use-back",
+      kind: "PartUsage",
+      label: "back",
+      targetId: "cycle-def-a",
+      targetKind: "PartDefinition",
+      targetLabel: "CycleA",
+    }],
+  }];
+  return capture;
+}
+
+function unreachableArchitectureCapture(): Record<string, unknown> {
+  const capture = architectureCapture();
+  const parts = capture.partDefinitions as Array<Record<string, unknown>>;
+  capture.partDefinitions = [...parts, {
+    id: "orphan-def-001",
+    kind: "PartDefinition",
+    label: "Orphan",
+    usages: [],
+  }];
+  return capture;
 }
 
 function architectureCapture(): Record<string, unknown> {

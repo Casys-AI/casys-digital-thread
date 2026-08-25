@@ -7,8 +7,23 @@
  */
 
 import { MultiDirectedGraph } from "graphology";
+import {
+  type ProductStructureElementRef,
+  productStructureElementRef,
+  type ProductStructureOccurrenceRef,
+} from "../../../domain/architecture/product-structure-ref.ts";
 import type { ExactArchitectureCapture } from "./architecture-capture.ts";
-import type { ProductNavigationNode } from "../../../application/ports/in/product-navigation/product-navigation-read-model.ts";
+import { architectureCaptureIsNavigable } from "./architecture-capture-structure.ts";
+import {
+  productNavigationElementNode,
+  type ProductNavigationNode,
+  productNavigationOccurrenceNode,
+  type ProductSearchHit,
+} from "../../../application/ports/in/product-navigation/product-navigation-read-model.ts";
+import type {
+  OpenedProductStructure,
+  ProductStructureElementRecord,
+} from "../../../application/ports/out/product-navigation/product-structure-traversal.ts";
 
 interface CaptureNavNodeAttrs {
   readonly kind: "part-definition" | "part-usage";
@@ -30,32 +45,45 @@ export interface ArchitectureCaptureNeighborhood {
 
 export interface ArchitectureCaptureNavigationIndex {
   root(): ProductNavigationNode | undefined;
-  childrenOf(node: {
-    readonly kind: "part-definition" | "part-usage";
-    readonly id: string;
-    readonly path: readonly string[];
-  }): readonly ProductNavigationNode[];
+  childrenOfRoot(): readonly ProductNavigationNode[];
+  childrenOf(
+    occurrence: ProductStructureOccurrenceRef,
+  ): readonly ProductNavigationNode[];
   path(
     usageIds: readonly string[],
   ): readonly ProductNavigationNode[] | undefined;
-  locate(id: string): readonly ProductNavigationNode[];
-  neighborhood(node: {
-    readonly kind: "part-definition" | "part-usage";
-    readonly id: string;
-    readonly path: readonly string[];
-  }): ArchitectureCaptureNeighborhood;
+  neighborhood(
+    occurrence: ProductStructureOccurrenceRef,
+  ): ArchitectureCaptureNeighborhood;
+  element(id: string): ProductStructureElementRecord | undefined;
+  searchElements(
+    query:
+      | { readonly kind: "exact-id"; readonly elementId: string }
+      | { readonly kind: "text"; readonly text: string },
+  ): readonly ProductSearchHit[];
+  pageOccurrences(
+    element: ProductStructureElementRef,
+    offset: number,
+    limit: number,
+  ): {
+    readonly items: readonly ProductNavigationNode[];
+    readonly nextOffset: number | null;
+  };
   definition(
     id: string,
   ): { readonly id: string; readonly label: string } | undefined;
-  hasElement(query: {
-    readonly id: string;
-    readonly kind: "PartDefinition" | "PartUsage";
-  }): boolean;
+  hasElement(query: ProductStructureElementRef): boolean;
+  typedDefinition(
+    usageId: string,
+  ):
+    | { readonly element: ProductStructureElementRef; readonly label: string }
+    | undefined;
 }
 
 export function architectureCaptureNavigationIndex(
   capture: ExactArchitectureCapture,
 ): ArchitectureCaptureNavigationIndex {
+  if (!architectureCaptureIsNavigable(capture)) return emptyIndex();
   const graph = new MultiDirectedGraph<
     CaptureNavNodeAttrs,
     CaptureNavEdgeAttrs
@@ -101,22 +129,15 @@ export function architectureCaptureNavigationIndex(
   }
 
   return {
-    root: () => {
-      if (!rootId) return undefined;
-      const node = graph.getNodeAttributes(definitionKey(rootId));
-      return {
-        kind: "part-definition",
-        id: rootId,
-        label: node.label,
-        definitionId: rootId,
-        path: [],
-        expandable: hasUsageChildren(graph, rootId),
-      };
-    },
-    childrenOf: (node) => childrenOf(graph, node),
+    root: () => rootNode(graph, rootId),
+    childrenOfRoot: () => childrenFromDefinition(graph, rootId, []),
+    childrenOf: (occurrence) => childrenOf(graph, occurrence),
     path: (usageIds) => walkPath(graph, rootId, usageIds),
-    locate: (id) => locateOccurrences(graph, rootId, id),
-    neighborhood: (node) => neighborhoodOf(graph, rootId, node),
+    neighborhood: (occurrence) => neighborhoodOf(graph, rootId, occurrence),
+    element: (id) => elementRecord(graph, id),
+    searchElements: (query) => searchElements(graph, query),
+    pageOccurrences: (element, offset, limit) =>
+      pageOccurrences(graph, rootId, element, offset, limit),
     definition: (id) => {
       const key = definitionKey(id);
       if (!graph.hasNode(key)) return undefined;
@@ -124,22 +145,42 @@ export function architectureCaptureNavigationIndex(
       return { id, label: node.label };
     },
     hasElement: (query) => hasElement(graph, query),
+    typedDefinition: (usageId) => typedDefinitionOf(graph, usageId),
   };
+}
+
+function rootNode(
+  graph: MultiDirectedGraph<CaptureNavNodeAttrs, CaptureNavEdgeAttrs>,
+  rootId: string | undefined,
+): ProductNavigationNode | undefined {
+  if (!rootId) return undefined;
+  const key = definitionKey(rootId);
+  if (!graph.hasNode(key)) return undefined;
+  const node = graph.getNodeAttributes(key);
+  return productNavigationElementNode({
+    element: productStructureElementRef("PartDefinition", rootId),
+    label: node.label,
+    expandable: hasUsageChildren(graph, rootId),
+  });
 }
 
 function childrenOf(
   graph: MultiDirectedGraph<CaptureNavNodeAttrs, CaptureNavEdgeAttrs>,
-  node: {
-    readonly kind: "part-definition" | "part-usage";
-    readonly id: string;
-    readonly path: readonly string[];
-  },
+  occurrence: ProductStructureOccurrenceRef,
 ): readonly ProductNavigationNode[] {
-  const definitionId = node.kind === "part-definition"
-    ? node.id
-    : graph.hasNode(usageNodeKey(node.id))
-    ? graph.getNodeAttribute(usageNodeKey(node.id), "definitionId")
-    : undefined;
+  if (occurrence.element.elementKind !== "PartUsage") return [];
+  const usageKey = usageNodeKey(occurrence.element.elementId);
+  if (!graph.hasNode(usageKey)) return [];
+  const typedId = graph.getNodeAttribute(usageKey, "definitionId");
+  if (!typedId) return [];
+  return childrenFromDefinition(graph, typedId, occurrence.path);
+}
+
+function childrenFromDefinition(
+  graph: MultiDirectedGraph<CaptureNavNodeAttrs, CaptureNavEdgeAttrs>,
+  definitionId: string | undefined,
+  pathPrefix: readonly string[],
+): readonly ProductNavigationNode[] {
   if (!definitionId) return [];
   const from = definitionKey(definitionId);
   if (!graph.hasNode(from)) return [];
@@ -150,19 +191,21 @@ function childrenOf(
     const typed = usage.definitionId
       ? graph.getNodeAttributes(definitionKey(usage.definitionId))
       : undefined;
-    if (!typed) return;
-    const path = [...node.path, usage.id];
-    children.push({
-      kind: "part-usage",
-      id: usage.id,
+    if (!typed || !usage.definitionId) return;
+    children.push(productNavigationOccurrenceNode({
+      element: productStructureElementRef("PartUsage", usage.id),
+      path: [...pathPrefix, usage.id],
       label: usage.label,
-      definitionId: typed.id,
-      usageId: usage.id,
-      path,
+      typedDefinition: productStructureElementRef(
+        "PartDefinition",
+        usage.definitionId,
+      ),
       expandable: hasUsageChildren(graph, typed.id),
-    });
+    }));
   });
-  return children.sort((left, right) => left.id.localeCompare(right.id));
+  return children.sort((left, right) =>
+    left.element.elementId.localeCompare(right.element.elementId)
+  );
 }
 
 function walkPath(
@@ -170,16 +213,9 @@ function walkPath(
   rootId: string | undefined,
   usageIds: readonly string[],
 ): readonly ProductNavigationNode[] | undefined {
-  if (!rootId) return undefined;
-  const rootAttrs = graph.getNodeAttributes(definitionKey(rootId));
-  const nodes: ProductNavigationNode[] = [{
-    kind: "part-definition",
-    id: rootId,
-    label: rootAttrs.label,
-    definitionId: rootId,
-    path: [],
-    expandable: hasUsageChildren(graph, rootId),
-  }];
+  const origin = rootNode(graph, rootId);
+  if (!origin || !rootId) return undefined;
+  const nodes: ProductNavigationNode[] = [origin];
   let owner = rootId;
   const path: string[] = [];
   for (const usageId of usageIds) {
@@ -191,15 +227,13 @@ function walkPath(
     if (!typedId) return undefined;
     path.push(usageId);
     const typed = graph.getNodeAttributes(definitionKey(typedId));
-    nodes.push({
-      kind: "part-usage",
-      id: usageId,
-      label: usage.label,
-      definitionId: typed.id,
-      usageId,
+    nodes.push(productNavigationOccurrenceNode({
+      element: productStructureElementRef("PartUsage", usageId),
       path: [...path],
+      label: usage.label,
+      typedDefinition: productStructureElementRef("PartDefinition", typed.id),
       expandable: hasUsageChildren(graph, typed.id),
-    });
+    }));
     owner = typed.id;
   }
   return nodes;
@@ -218,78 +252,200 @@ function hasUsageChildren(
   return expandable;
 }
 
-function locateOccurrences(
-  graph: MultiDirectedGraph<CaptureNavNodeAttrs, CaptureNavEdgeAttrs>,
-  rootId: string | undefined,
-  id: string,
-): readonly ProductNavigationNode[] {
-  if (!rootId || id.length === 0 || id === "latest") return [];
-  const matches: ProductNavigationNode[] = [];
-  const root = walkPath(graph, rootId, []);
-  const origin = root?.[0];
-  if (!origin) return [];
-  if (origin.id === id) matches.push(origin);
-  const stack = [origin];
-  while (stack.length > 0) {
-    const current = stack.pop()!;
-    for (const child of childrenOf(graph, current)) {
-      if (child.id === id || child.definitionId === id) matches.push(child);
-      stack.push(child);
-    }
-  }
-  return matches;
-}
-
 function neighborhoodOf(
   graph: MultiDirectedGraph<CaptureNavNodeAttrs, CaptureNavEdgeAttrs>,
   rootId: string | undefined,
-  node: {
-    readonly kind: "part-definition" | "part-usage";
-    readonly id: string;
-    readonly path: readonly string[];
-  },
+  occurrence: ProductStructureOccurrenceRef,
 ): ArchitectureCaptureNeighborhood {
-  const children = childrenOf(graph, node);
-  if (node.path.length === 0) {
-    return { siblings: [], children };
-  }
-  const parentPath = node.path.slice(0, -1);
+  const children = childrenOf(graph, occurrence);
+  const parentPath = occurrence.path.slice(0, -1);
   const parentNodes = walkPath(graph, rootId, parentPath);
   const parent = parentNodes?.at(-1);
   if (!parent) return { siblings: [], children };
-  const siblings = childrenOf(graph, parent).filter((item) =>
-    item.id !== node.id ||
-    item.path.join("\0") !== node.path.join("\0")
+  const siblingsSource = parent.occurrence
+    ? childrenOf(graph, parent.occurrence)
+    : childrenFromDefinition(graph, rootId, []);
+  const siblings = siblingsSource.filter((item) =>
+    item.element.elementId !== occurrence.element.elementId ||
+    (item.occurrence?.path.join("\0") ?? "") !== occurrence.path.join("\0")
   );
   return { parent, siblings, children };
 }
 
+function elementRecord(
+  graph: MultiDirectedGraph<CaptureNavNodeAttrs, CaptureNavEdgeAttrs>,
+  id: string,
+): ProductStructureElementRecord | undefined {
+  if (id.length === 0 || id.toLowerCase() === "latest") return undefined;
+  const definition = definitionKey(id);
+  if (graph.hasNode(definition)) {
+    const node = graph.getNodeAttributes(definition);
+    return {
+      element: productStructureElementRef("PartDefinition", id),
+      label: node.label,
+      expandable: hasUsageChildren(graph, id),
+    };
+  }
+  const usage = usageNodeKey(id);
+  if (!graph.hasNode(usage)) return undefined;
+  const node = graph.getNodeAttributes(usage);
+  const typedId = node.definitionId;
+  return {
+    element: productStructureElementRef("PartUsage", id),
+    label: node.label,
+    expandable: typedId ? hasUsageChildren(graph, typedId) : false,
+  };
+}
+
+function searchElements(
+  graph: MultiDirectedGraph<CaptureNavNodeAttrs, CaptureNavEdgeAttrs>,
+  query:
+    | { readonly kind: "exact-id"; readonly elementId: string }
+    | { readonly kind: "text"; readonly text: string },
+): readonly ProductSearchHit[] {
+  if (query.kind === "exact-id") {
+    const found = elementRecord(graph, query.elementId);
+    if (!found || found.element.elementId !== query.elementId) return [];
+    return [{
+      element: found.element,
+      label: found.label,
+      match: "exact-id",
+    }];
+  }
+  const needle = query.text.trim().toLowerCase();
+  if (needle.length === 0 || needle === "latest") return [];
+  const queryTokens = tokenize(needle);
+  if (queryTokens.length === 0) return [];
+  const hits: ProductSearchHit[] = [];
+  graph.forEachNode((_key, attrs) => {
+    const element = attrs.kind === "part-definition"
+      ? productStructureElementRef("PartDefinition", attrs.id)
+      : productStructureElementRef("PartUsage", attrs.id);
+    const idTokens = tokenize(attrs.id);
+    const labelTokens = tokenize(attrs.label);
+    if (tokensMatch(queryTokens, idTokens)) {
+      hits.push({ element, label: attrs.label, match: "id-token" });
+      return;
+    }
+    if (tokensMatch(queryTokens, labelTokens)) {
+      hits.push({ element, label: attrs.label, match: "label-token" });
+    }
+  });
+  return hits.sort((left, right) =>
+    left.element.elementKind.localeCompare(right.element.elementKind) ||
+    left.element.elementId.localeCompare(right.element.elementId)
+  );
+}
+
+function pageOccurrences(
+  graph: MultiDirectedGraph<CaptureNavNodeAttrs, CaptureNavEdgeAttrs>,
+  rootId: string | undefined,
+  element: ProductStructureElementRef,
+  offset: number,
+  limit: number,
+): {
+  readonly items: readonly ProductNavigationNode[];
+  readonly nextOffset: number | null;
+} {
+  if (!rootId || limit < 1 || offset < 0) {
+    return { items: [], nextOffset: null };
+  }
+  const items: ProductNavigationNode[] = [];
+  let skipped = 0;
+  let hasMore = false;
+  const queue = [...childrenFromDefinition(graph, rootId, [])];
+  while (queue.length > 0) {
+    const child = queue.shift()!;
+    const matched = (child.element.elementKind === element.elementKind &&
+      child.element.elementId === element.elementId) ||
+      (element.elementKind === "PartDefinition" &&
+        child.typedDefinition?.elementId === element.elementId);
+    if (matched) {
+      if (skipped < offset) {
+        skipped += 1;
+      } else if (items.length < limit) {
+        items.push(child);
+      } else {
+        hasMore = true;
+        break;
+      }
+    }
+    if (child.occurrence) {
+      queue.push(...childrenOf(graph, child.occurrence));
+    }
+  }
+  return {
+    items,
+    nextOffset: hasMore ? offset + items.length : null,
+  };
+}
+
 function hasElement(
   graph: MultiDirectedGraph<CaptureNavNodeAttrs, CaptureNavEdgeAttrs>,
-  query: { readonly id: string; readonly kind: "PartDefinition" | "PartUsage" },
+  query: ProductStructureElementRef,
 ): boolean {
-  if (query.id.length === 0 || query.id.toLowerCase() === "latest") return false;
-  const key = query.kind === "PartDefinition"
-    ? definitionKey(query.id)
-    : query.kind === "PartUsage"
-    ? usageNodeKey(query.id)
-    : undefined;
-  if (!key || !graph.hasNode(key)) return false;
+  if (
+    query.elementId.length === 0 ||
+    query.elementId.toLowerCase() === "latest"
+  ) {
+    return false;
+  }
+  const key = query.elementKind === "PartDefinition"
+    ? definitionKey(query.elementId)
+    : usageNodeKey(query.elementId);
+  if (!graph.hasNode(key)) return false;
   const kind = graph.getNodeAttribute(key, "kind");
-  return query.kind === "PartDefinition"
+  return query.elementKind === "PartDefinition"
     ? kind === "part-definition"
     : kind === "part-usage";
+}
+
+function typedDefinitionOf(
+  graph: MultiDirectedGraph<CaptureNavNodeAttrs, CaptureNavEdgeAttrs>,
+  usageId: string,
+):
+  | { readonly element: ProductStructureElementRef; readonly label: string }
+  | undefined {
+  const key = usageNodeKey(usageId);
+  if (!graph.hasNode(key)) return undefined;
+  const typedId = graph.getNodeAttribute(key, "definitionId");
+  if (!typedId) return undefined;
+  const typedKey = definitionKey(typedId);
+  if (!graph.hasNode(typedKey)) return undefined;
+  return {
+    element: productStructureElementRef("PartDefinition", typedId),
+    label: graph.getNodeAttribute(typedKey, "label"),
+  };
+}
+
+function tokenize(value: string): string[] {
+  return value.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length > 0);
+}
+
+function tokensMatch(
+  queryTokens: readonly string[],
+  candidateTokens: readonly string[],
+): boolean {
+  return queryTokens.every((token) =>
+    candidateTokens.some((candidate) =>
+      candidate === token || candidate.startsWith(token)
+    )
+  );
 }
 
 function emptyIndex(): ArchitectureCaptureNavigationIndex {
   return {
     root: () => undefined,
+    childrenOfRoot: () => [],
     childrenOf: () => [],
     path: () => undefined,
-    locate: () => [],
     neighborhood: () => ({ siblings: [], children: [] }),
+    element: () => undefined,
+    searchElements: () => [],
+    pageOccurrences: () => ({ items: [], nextOffset: null }),
     definition: () => undefined,
     hasElement: () => false,
+    typedDefinition: () => undefined,
   };
 }
 
@@ -299,4 +455,27 @@ function definitionKey(id: string): string {
 
 function usageNodeKey(id: string): string {
   return `part-usage:${id}`;
+}
+
+export function openedFromIndex(
+  architectureArtifactId: string,
+  architectureFingerprint: OpenedProductStructure["architectureFingerprint"],
+  index: ArchitectureCaptureNavigationIndex,
+): OpenedProductStructure {
+  return {
+    architectureArtifactId,
+    architectureFingerprint,
+    root: () => index.root(),
+    childrenOfRoot: () => index.childrenOfRoot(),
+    childrenOf: (occurrence) => index.childrenOf(occurrence),
+    path: (usageIds) => index.path(usageIds),
+    neighborhood: (occurrence) => index.neighborhood(occurrence),
+    element: (id) => index.element(id),
+    searchElements: (query) => index.searchElements(query),
+    pageOccurrences: (element, offset, limit) =>
+      index.pageOccurrences(element, offset, limit),
+    hasDefinition: (id) => index.definition(id) !== undefined,
+    hasElement: (query) => index.hasElement(query),
+    typedDefinition: (usageId) => index.typedDefinition(usageId),
+  };
 }

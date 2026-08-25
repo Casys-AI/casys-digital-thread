@@ -14,17 +14,16 @@ import {
   rejectDuplicates,
   safeId,
 } from "../kernel/case-validation.ts";
+import { parseProductStructureElementRef } from "../architecture/product-structure-ref.ts";
 import { parseAgentResourceReference } from "../resource/agent-resource-reference.ts";
 import type { ContentFingerprint } from "../kernel/primitives.ts";
 import type { AgentResourceReference } from "../resource/agent-resource-capture.ts";
 import {
   PROJECT_SOURCE_ATTACHMENT_CAPTURE_SCHEMA,
-  PROJECT_SOURCE_ATTACHMENT_ELEMENT_KINDS,
   PROJECT_SOURCE_WORKSPACE_BOUNDS as BOUNDS,
   PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA,
   type ProjectSourceAttachmentDeclaredAgainst,
   type ProjectSourceAttachmentDetach,
-  type ProjectSourceAttachmentElementKind,
   type ProjectSourceAttachmentListQuery,
   type ProjectSourceAttachmentPut,
   type ProjectSourceAttachmentReadQuery,
@@ -326,26 +325,11 @@ export function parseAttachmentTarget(
   value: unknown,
   path: string,
 ): ProjectSourceAttachmentTarget {
-  const rec = exactClosed(
-    value,
-    ["elementId", "elementKind"],
-    ["elementId", "elementKind"],
-    path,
-  );
-  if (
-    rec.elementKind !== "PartDefinition" && rec.elementKind !== "PartUsage"
-  ) {
-    workspaceError(
-      "invalid_request",
-      `${path}.elementKind must be ${
-        PROJECT_SOURCE_ATTACHMENT_ELEMENT_KINDS.join(" or ")
-      }.`,
-    );
+  try {
+    return parseProductStructureElementRef(value, path);
+  } catch (cause) {
+    asWorkspaceError(cause, path);
   }
-  return deepFreeze({
-    elementId: parseProjectId(rec.elementId, `${path}.elementId`),
-    elementKind: rec.elementKind as ProjectSourceAttachmentElementKind,
-  });
 }
 
 export function parseAttachmentDeclaredAgainst(

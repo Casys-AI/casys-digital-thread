@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { parseExactArchitectureCapture } from "./architecture-capture.ts";
 import { architectureCaptureNavigationIndex } from "./architecture-capture-navigation-index.ts";
+import { productStructureElementRef } from "../../../domain/architecture/product-structure-ref.ts";
 
 const AT = "2026-08-08T12:15:00.000Z";
 
@@ -9,28 +10,25 @@ Deno.test(
   () => {
     const index = architectureCaptureNavigationIndex(capture());
     const root = index.root();
-    assertEquals(root, {
-      kind: "part-definition",
-      id: "def-system",
-      label: "Slider",
-      definitionId: "def-system",
-      path: [],
-      expandable: true,
+    assertEquals(root?.element, {
+      elementKind: "PartDefinition",
+      elementId: "def-system",
     });
-    const children = index.childrenOf({
-      kind: "part-definition",
-      id: "def-system",
-      path: [],
-    });
-    assertEquals(children.map((node) => node.usageId), [
+    assertEquals(root?.occurrence, undefined);
+    assertEquals(root?.expandable, true);
+    const children = index.childrenOfRoot();
+    assertEquals(children.map((node) => node.element.elementId), [
       "usage-left",
       "usage-right",
     ]);
-    assertEquals(children[0]?.definitionId, "def-rail");
-    assertEquals(children[1]?.definitionId, "def-rail");
-    assertEquals(children[0]?.path, ["usage-left"]);
-    assertEquals(children[1]?.path, ["usage-right"]);
-    assertEquals(children[0]?.id === children[1]?.id, false);
+    assertEquals(children[0]?.typedDefinition?.elementId, "def-rail");
+    assertEquals(children[1]?.typedDefinition?.elementId, "def-rail");
+    assertEquals(children[0]?.occurrence?.path, ["usage-left"]);
+    assertEquals(children[1]?.occurrence?.path, ["usage-right"]);
+    assertEquals(
+      children[0]?.element.elementId === children[1]?.element.elementId,
+      false,
+    );
   },
 );
 
@@ -39,19 +37,20 @@ Deno.test(
   () => {
     const index = architectureCaptureNavigationIndex(capture());
     const nested = index.childrenOf({
-      kind: "part-usage",
-      id: "usage-left",
+      element: productStructureElementRef("PartUsage", "usage-left"),
       path: ["usage-left"],
     });
-    assertEquals(nested, [{
-      kind: "part-usage",
-      id: "usage-pad",
-      label: "pad",
-      definitionId: "def-pad",
-      usageId: "usage-pad",
-      path: ["usage-left", "usage-pad"],
-      expandable: false,
-    }]);
+    assertEquals(nested.length, 1);
+    assertEquals(nested[0]?.element, {
+      elementKind: "PartUsage",
+      elementId: "usage-pad",
+    });
+    assertEquals(nested[0]?.typedDefinition, {
+      elementKind: "PartDefinition",
+      elementId: "def-pad",
+    });
+    assertEquals(nested[0]?.occurrence?.path, ["usage-left", "usage-pad"]);
+    assertEquals(nested[0]?.expandable, false);
   },
 );
 
@@ -60,7 +59,7 @@ Deno.test(
   () => {
     const index = architectureCaptureNavigationIndex(capture());
     const path = index.path(["usage-left", "usage-pad"]);
-    assertEquals(path?.map((node) => node.id), [
+    assertEquals(path?.map((node) => node.element.elementId), [
       "def-system",
       "usage-left",
       "usage-pad",
@@ -71,7 +70,7 @@ Deno.test(
 );
 
 Deno.test(
-  "architecture capture navigation index uses sealed semanticRoot.id, not topology",
+  "architecture capture navigation index uses sealed semanticRoot.id, not array order",
   () => {
     const capture = parseExactArchitectureCapture({
       schemaVersion: "architecture-capture/4.0",
@@ -79,6 +78,64 @@ Deno.test(
       trustedRunId: "run:architecture",
       packageName: "Slider",
       systemName: "DisplayOnly",
+      scopeRoot: { id: "package-slider", kind: "Package", label: "Slider" },
+      semanticRoot: {
+        id: "def-system",
+        kind: "PartDefinition",
+        label: "Slider",
+      },
+      seed: {
+        artifactId: "artifact:seed",
+        fingerprint: { algorithm: "sha256", digest: "d".repeat(64) },
+        producerRunId: "run:seed",
+      },
+      partDefinitions: [{
+        id: "def-rail",
+        kind: "PartDefinition",
+        label: "Rail",
+        usages: [],
+      }, {
+        id: "def-system",
+        kind: "PartDefinition",
+        label: "Slider",
+        usages: [{
+          id: "usage-left",
+          kind: "PartUsage",
+          label: "left_rail",
+          targetId: "def-rail",
+          targetKind: "PartDefinition",
+          targetLabel: "Rail",
+        }],
+      }],
+      insertedAt: AT,
+      sourceAnalyses: [{
+        sourceId: "sysml-source:slider",
+        selector: { kind: "full-package", packageName: "Slider" },
+        runId: "run:architecture",
+        operation: { id: "model.write-architecture", version: "1" },
+        sourceFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+        sourceCaptureFingerprint: {
+          algorithm: "sha256",
+          digest: "b".repeat(64),
+        },
+        analysisFingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+      }],
+    });
+    const index = architectureCaptureNavigationIndex(capture);
+    assertEquals(index.root()?.element.elementId, "def-system");
+    assertEquals(index.root()?.element.elementId === "def-rail", false);
+  },
+);
+
+Deno.test(
+  "architecture capture navigation index refuses an unreachable PartDefinition before traversal",
+  () => {
+    const capture = parseExactArchitectureCapture({
+      schemaVersion: "architecture-capture/4.0",
+      operation: { id: "model.write-architecture", version: "1" },
+      trustedRunId: "run:architecture",
+      packageName: "Slider",
+      systemName: "Slider",
       scopeRoot: { id: "package-slider", kind: "Package", label: "Slider" },
       semanticRoot: {
         id: "def-system",
@@ -128,64 +185,231 @@ Deno.test(
       }],
     });
     const index = architectureCaptureNavigationIndex(capture);
-    assertEquals(index.root()?.id, "def-system");
-    assertEquals(index.root()?.id === "def-orphan", false);
+    assertEquals(index.root(), undefined);
+    assertEquals(
+      index.pageOccurrences(
+        productStructureElementRef("PartDefinition", "def-rail"),
+        0,
+        50,
+      ).items,
+      [],
+    );
   },
 );
 
 Deno.test(
-  "architecture capture navigation index locates a reused definition as two occurrence paths",
+  "architecture capture navigation index enumerates reused definition occurrences without search expanding the tree",
   () => {
     const index = architectureCaptureNavigationIndex(capture());
     assertEquals(
-      index.locate("def-rail").map((node) => node.path),
+      index.pageOccurrences(
+        productStructureElementRef("PartDefinition", "def-system"),
+        0,
+        50,
+      ).items,
+      [],
+    );
+    assertEquals(
+      index.pageOccurrences(
+        productStructureElementRef("PartDefinition", "def-rail"),
+        0,
+        50,
+      ).items.map((node) => node.occurrence?.path),
       [["usage-left"], ["usage-right"]],
     );
+    const first = index.pageOccurrences(
+      productStructureElementRef("PartDefinition", "def-rail"),
+      0,
+      1,
+    );
+    assertEquals(first.items.map((node) => node.occurrence?.path), [[
+      "usage-left",
+    ]]);
+    assertEquals(first.nextOffset, 1);
+    const second = index.pageOccurrences(
+      productStructureElementRef("PartDefinition", "def-rail"),
+      1,
+      1,
+    );
+    assertEquals(second.items.map((node) => node.occurrence?.path), [[
+      "usage-right",
+    ]]);
+    assertEquals(second.nextOffset, null);
+    const many = architectureCaptureNavigationIndex(manyRailCapture());
+    const firstMany = many.pageOccurrences(
+      productStructureElementRef("PartDefinition", "def-rail"),
+      0,
+      2,
+    );
+    assertEquals(
+      firstMany.items.map((node) => node.occurrence?.path),
+      [["usage-left"], ["usage-mid"]],
+    );
+    assertEquals(firstMany.nextOffset, 2);
+    const secondMany = many.pageOccurrences(
+      productStructureElementRef("PartDefinition", "def-rail"),
+      2,
+      2,
+    );
+    assertEquals(
+      secondMany.items.map((node) => node.occurrence?.path),
+      [["usage-rear"], ["usage-right"]],
+    );
+    assertEquals(secondMany.nextOffset, null);
+    const exact = index.searchElements({
+      kind: "exact-id",
+      elementId: "def-rail",
+    });
+    assertEquals(exact, [{
+      element: { elementKind: "PartDefinition", elementId: "def-rail" },
+      label: "Rail",
+      match: "exact-id",
+    }]);
     const around = index.neighborhood({
-      kind: "part-usage",
-      id: "usage-left",
+      element: productStructureElementRef("PartUsage", "usage-left"),
       path: ["usage-left"],
     });
-    assertEquals(around.parent?.id, "def-system");
-    assertEquals(around.siblings.map((node) => node.id), ["usage-right"]);
-    assertEquals(around.children.map((node) => node.id), ["usage-pad"]);
+    assertEquals(around.parent?.element.elementId, "def-system");
+    assertEquals(
+      around.siblings.map((node) => node.element.elementId),
+      ["usage-right"],
+    );
+    assertEquals(
+      around.children.map((node) => node.element.elementId),
+      ["usage-pad"],
+    );
   },
 );
 
 Deno.test(
-  "architecture capture navigation index hasElement matches exact id and SysML kind, not locate heuristics",
+  "architecture capture navigation index text search matches normalized label and id tokens as exact element refs",
+  () => {
+    const index = architectureCaptureNavigationIndex(capture());
+    const byLabel = index.searchElements({ kind: "text", text: "rail" });
+    assertEquals(
+      byLabel.map((hit) => [hit.element.elementKind, hit.element.elementId, hit.match]),
+      [
+        ["PartDefinition", "def-rail", "id-token"],
+        ["PartUsage", "usage-left", "label-token"],
+        ["PartUsage", "usage-right", "label-token"],
+      ],
+    );
+    assertEquals(
+      index.searchElements({ kind: "text", text: "latest" }),
+      [],
+    );
+  },
+);
+
+Deno.test(
+  "architecture capture navigation index hasElement matches exact id and SysML kind, not occurrence heuristics",
   () => {
     const index = architectureCaptureNavigationIndex(capture());
     assertEquals(
-      index.hasElement({ id: "def-rail", kind: "PartDefinition" }),
+      index.hasElement(productStructureElementRef("PartDefinition", "def-rail")),
       true,
     );
     assertEquals(
-      index.hasElement({ id: "def-rail", kind: "PartUsage" }),
+      index.hasElement({ elementKind: "PartUsage", elementId: "def-rail" }),
       false,
     );
     assertEquals(
-      index.hasElement({ id: "usage-left", kind: "PartUsage" }),
+      index.hasElement(productStructureElementRef("PartUsage", "usage-left")),
       true,
     );
     assertEquals(
-      index.hasElement({ id: "usage-left", kind: "PartDefinition" }),
+      index.hasElement({
+        elementKind: "PartDefinition",
+        elementId: "usage-left",
+      }),
       false,
     );
     assertEquals(
-      index.locate("def-rail").map((node) => node.id),
-      ["usage-left", "usage-right"],
-    );
-    assertEquals(
-      index.hasElement({ id: "latest", kind: "PartDefinition" }),
+      index.hasElement({
+        elementKind: "PartDefinition",
+        elementId: "latest",
+      }),
       false,
     );
     assertEquals(
-      index.hasElement({ id: "missing", kind: "PartDefinition" }),
+      index.hasElement({
+        elementKind: "PartDefinition",
+        elementId: "missing",
+      }),
       false,
     );
   },
 );
+
+function manyRailCapture() {
+  return parseExactArchitectureCapture({
+    schemaVersion: "architecture-capture/4.0",
+    operation: { id: "model.write-architecture", version: "1" },
+    trustedRunId: "run:architecture",
+    packageName: "Slider",
+    systemName: "Slider",
+    scopeRoot: { id: "package-slider", kind: "Package", label: "Slider" },
+    semanticRoot: {
+      id: "def-system",
+      kind: "PartDefinition",
+      label: "Slider",
+    },
+    seed: {
+      artifactId: "artifact:seed",
+      fingerprint: { algorithm: "sha256", digest: "d".repeat(64) },
+      producerRunId: "run:seed",
+    },
+    partDefinitions: [{
+      id: "def-system",
+      kind: "PartDefinition",
+      label: "Slider",
+      usages: [{
+        id: "usage-left",
+        kind: "PartUsage",
+        label: "left_rail",
+        targetId: "def-rail",
+        targetKind: "PartDefinition",
+        targetLabel: "Rail",
+      }, {
+        id: "usage-mid",
+        kind: "PartUsage",
+        label: "mid_rail",
+        targetId: "def-rail",
+        targetKind: "PartDefinition",
+        targetLabel: "Rail",
+      }, {
+        id: "usage-rear",
+        kind: "PartUsage",
+        label: "rear_rail",
+        targetId: "def-rail",
+        targetKind: "PartDefinition",
+        targetLabel: "Rail",
+      }, {
+        id: "usage-right",
+        kind: "PartUsage",
+        label: "right_rail",
+        targetId: "def-rail",
+        targetKind: "PartDefinition",
+        targetLabel: "Rail",
+      }],
+    }, {
+      id: "def-rail",
+      kind: "PartDefinition",
+      label: "Rail",
+      usages: [],
+    }],
+    insertedAt: AT,
+    sourceAnalyses: [{
+      sourceId: "sysml-source:slider",
+      selector: { kind: "full-package", packageName: "Slider" },
+      runId: "run:architecture",
+      operation: { id: "model.write-architecture", version: "1" },
+      sourceFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+      sourceCaptureFingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
+      analysisFingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+    }],
+  });
+}
 
 function capture() {
   return parseExactArchitectureCapture({

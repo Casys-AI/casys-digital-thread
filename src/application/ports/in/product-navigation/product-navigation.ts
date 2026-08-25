@@ -7,62 +7,33 @@
  */
 
 import type {
-  ProductNavigationAuthoringAttachments,
-  ProductNavigationChildren,
-  ProductNavigationContext,
-  ProductNavigationNeighborhood,
-  ProductNavigationNodeQuery,
-  ProductNavigationPath,
+  ProductExploreQuery,
+  ProductExploreResult,
+  ProductInspectQuery,
+  ProductInspectResult,
   ProductNavigationProjection,
-  ProductNavigationRoots,
   ProductNavigationScope,
-  ProductNavigationSearch,
-  ProductNavigationSourceClosure,
+  ProductSearchQuery,
+  ProductSearchResult,
+  ProductSourceClosureQuery,
+  ProductSourceClosureResult,
 } from "./product-navigation-read-model.ts";
 
 export type {
-  ProductNavigationNodeQuery,
+  ProductExploreQuery,
+  ProductInspectQuery,
   ProductNavigationScope,
+  ProductSearchQuery,
+  ProductSourceClosureQuery,
 } from "./product-navigation-read-model.ts";
 
 export interface ProductNavigationUseCase {
-  roots(query: ProductNavigationScope): Promise<ProductNavigationRoots>;
-  children(
-    query: ProductNavigationScope & {
-      readonly node: ProductNavigationNodeQuery;
-    },
-  ): Promise<ProductNavigationChildren>;
-  path(
-    query: ProductNavigationScope & { readonly usagePath: readonly string[] },
-  ): Promise<ProductNavigationPath>;
-  context(
-    query: ProductNavigationScope & {
-      readonly node: ProductNavigationNodeQuery;
-    },
-  ): Promise<ProductNavigationContext>;
-  search(
-    query: ProductNavigationScope & { readonly id: string },
-  ): Promise<ProductNavigationSearch>;
-  neighborhood(
-    query: ProductNavigationScope & {
-      readonly node: ProductNavigationNodeQuery;
-    },
-  ): Promise<ProductNavigationNeighborhood>;
+  explore(query: ProductExploreQuery): Promise<ProductExploreResult>;
+  search(query: ProductSearchQuery): Promise<ProductSearchResult>;
+  inspect(query: ProductInspectQuery): Promise<ProductInspectResult>;
   sourceClosure(
-    query: ProductNavigationScope & {
-      readonly node: ProductNavigationNodeQuery;
-      readonly workspaceRevision: number;
-      readonly attachmentId: string;
-      readonly attachmentRevision: number;
-    },
-  ): Promise<ProductNavigationSourceClosure>;
-  authoringAttachments(
-    query: ProductNavigationScope & {
-      readonly node: ProductNavigationNodeQuery;
-      readonly pageSize?: number;
-      readonly cursor?: string;
-    },
-  ): Promise<ProductNavigationAuthoringAttachments>;
+    query: ProductSourceClosureQuery,
+  ): Promise<ProductSourceClosureResult>;
   /**
    * Workbench GET packaging: unique root plus its immediate children and
    * grouped attachments. Same open/basis rules as the other reads.

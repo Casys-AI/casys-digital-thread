@@ -3,6 +3,9 @@
  *
  * Reads active ProjectSourceWorkspace attachment heads for one exact SysML
  * target. Produces no Thread evidence, represented_by edge, or admission.
+ * `cursorBinding` is an opaque application-owned digest of the opened
+ * ProductNavigationBasis and exact inspect selection. The adapter HMAC-seals
+ * it; it does not interpret Thread or occurrence fields.
  */
 
 import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
@@ -16,6 +19,8 @@ import type {
 export interface ProductNavigationAuthoringAttachmentQuery {
   readonly projectId: string;
   readonly target: ProjectSourceAttachmentTarget;
+  /** Application-provided digest of the full inspect basis and selection. */
+  readonly cursorBinding: string;
   readonly pageSize?: number;
   readonly cursor?: string;
 }

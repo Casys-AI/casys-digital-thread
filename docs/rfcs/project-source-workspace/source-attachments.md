@@ -1,9 +1,8 @@
 # Versioned source attachments
 
-Status: implemented and runtime-proven on MCS-02 for attachment creation and
-successors, product-navigation authoring reads, attachment-rooted closure, technical
-capture and admission recross. Authoring attachments inside context evidence groups
-remain pending.
+Status: implemented and runtime-proven on MCS-02 for attachment creation and successors,
+product-navigation authoring reads, attachment-rooted closure, technical capture and
+admission recross. Authoring attachments inside context evidence groups remain pending.
 
 ## Purpose
 
@@ -80,8 +79,8 @@ The current read model derives only two target-basis states:
 
 It does not infer lineage, carry-forward, or orphan repair. A closure read on a
 `different-basis` attachment is `unavailable`; current recross requires an explicit
-reviewed successor attachment revision against the current basis. No label or
-occurrence path can repair or retarget the edge.
+reviewed successor attachment revision against the current basis. No label or occurrence
+path can repair or retarget the edge.
 
 The initial implementation supports only element kinds sealed by the architecture
 capture contract. Adding another SysML kind first extends that capture and its exact
@@ -97,11 +96,11 @@ module tree does not retarget the edge; updating file bytes preserves it.
 `project_technical_source_capture` and `compile.seal-admission@3` reopen the exact
 active attachment head and persist a `project-source-closure/1.0`. Product navigation
 exposes authoring heads as a distinct collection from Thread evidence:
-`project_product_navigation_authoring_attachments` and Workbench GET
-`view=authoring-attachments`. `project_product_navigation_context` still reads
-Thread/admission evidence. `project_product_source_closure` recrosses the named
-authoring attachment, not a free file root. Graphology may later index the relation for
-bounded reads; it must never own or repair it.
+`project_product_inspect` and Workbench GET `view=authoring-attachments`.
+Definition-scoped Thread/admission evidence stays on the same inspect payload, labelled
+as such. `project_source_closure` recrosses the named authoring attachment, not a free
+file root. Graphology may index the relation for bounded reads; it must never own or
+repair it.
 
 A draft edit still does not revoke a historical Thread admission. Refusing future use of
 a sealed admission requires an explicit Thread invalidation or archive, not a hidden
@@ -118,32 +117,34 @@ The workspace MCP surface implemented now is:
 
 Product-navigation authoring reads implemented now:
 
-- `project_product_navigation_authoring_attachments` (MCP, grants none);
+- `project_product_inspect` (MCP, grants none; authoring heads plus definition-scoped
+  evidence and ready/blocked actions);
 - Workbench GET `/api/thread/product-navigation?view=authoring-attachments`.
 
-Both consume `ProductNavigationUseCase.authoringAttachments`. The first page selects the
-server workspace head then recrosses it. `nextCursor` is an HMAC-sealed server envelope
-covering project, exact target, workspace revision and the internal domain sort key; a
-domain attachment-list cursor is refused. Page two reopens that pinned revision via
-`loadAtFresh`. `PartUsage` keeps `usageId` and is never reduced to `definitionId`.
-`basisStatus` is `exact-basis` or `different-basis` against the opened Thread
-architecture; SysON/Graphology are not called to repair or infer. Detached heads are
-omitted; `source-removed` stays visible.
+Inspect consumes the authoring-attachment reader privately. The first page selects the
+server workspace head then recrosses it. The application derives a deterministic inspect
+binding from the full `ProductNavigationBasis` and exact selection, including occurrence
+path. `nextCursor` is an HMAC-sealed server envelope covering that binding, project,
+exact target, workspace revision and the internal domain sort key; a domain
+attachment-list cursor is refused. Replaying the cursor on a later Thread basis or
+another selection is `cursor.mismatch` and never returns historical observed
+attachments. Page two reopens that pinned revision via `loadAtFresh`. A `PartUsage`
+selection keeps its usage id and is never reduced to its typed definition. `basisStatus`
+is `exact-basis` or `different-basis` against the opened Thread architecture;
+SysON/Graphology are not called to repair or infer. Detached heads are omitted;
+`source-removed` stays visible. Unsafe capture/closure actions on `different-basis` or
+`source-removed` heads are blocked.
 
 The HMAC key is ephemeral and local to one server process. A restart or another process
 invalidates an in-flight page cursor; cursors are pagination continuity, never durable
 project authority.
 
-Pending, not implemented:
-
-- `project_product_navigation_context` / Workbench reading authoring attachments as
-  evidence groups (authoring stays a distinct collection; an exact attachment may
-  expose a read-only `project_product_source_closure`).
-
-MCS-02 observed `exact-basis` authoring reads before each admission. At Thread r20,
-the active RailFrame attachment remains visible with `basisStatus: different-basis`;
-the historical `project_product_source_closure` drill-down is `unavailable`. Neither
-state invalidates the historical sealed admission carried by that descendant Thread.
+MCS-02 observed `exact-basis` authoring reads before each admission. At Thread r20, the
+active RailFrame attachment remains visible with `basisStatus: different-basis`; the
+historical source-closure drill-down is `unavailable`. Neither state invalidates the
+historical sealed admission carried by that descendant Thread. The public MCP names at
+that proof were the retired `project_product_navigation_*` tools; the current surface is
+`project_product_inspect` / `project_source_closure`.
 
 Fail-closed catalogue decision: the five generic v1 roles (`architecture-source`,
 `design-source`, `behavior-source`, `verification-source`, `supporting-document`) are

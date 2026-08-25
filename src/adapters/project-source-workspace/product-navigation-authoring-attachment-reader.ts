@@ -4,8 +4,9 @@
  * Lists active attachment heads for one exact SysML target. Detached identities
  * are omitted. source-removed heads stay visible. No Thread evidence, no
  * represented_by edge, no admission. Public nextCursor is an HMAC-sealed
- * envelope; the domain attachment-list cursor is never accepted on this
- * surface.
+ * envelope over project, exact target, workspace revision, the application
+ * inspect binding, and the domain sort key. The domain attachment-list
+ * cursor is never accepted on this surface.
  */
 
 import type {
@@ -31,10 +32,11 @@ import {
 } from "../../domain/project-source-workspace/validation.ts";
 
 export const PRODUCT_NAVIGATION_AUTHORING_CURSOR_SCHEMA =
-  "product-navigation-authoring-attachments-cursor/1.0" as const;
+  "product-navigation-authoring-attachments-cursor/2.0" as const;
 
-const CURSOR_PREFIX = "pn-aa1";
+const CURSOR_PREFIX = "pn-aa2";
 const HMAC_KEY_BYTES = 32;
+const MAX_CURSOR_BINDING_LENGTH = 128;
 
 export interface ProjectSourceWorkspaceAuthoringAttachmentReaderOptions {
   /** Test-only 32-byte HMAC key. Production generates an ephemeral random key. */
@@ -63,6 +65,11 @@ export class ProjectSourceWorkspaceAuthoringAttachmentReader
   ): Promise<ProductNavigationAuthoringAttachmentPage> {
     const projectId = parseProjectId(query.projectId, "$query.projectId");
     const target = parseAttachmentTarget(query.target, "$query.target");
+    const cursorBinding = parseBoundedText(
+      query.cursorBinding,
+      "$query.cursorBinding",
+      MAX_CURSOR_BINDING_LENGTH,
+    );
     const pageSize = parsePageSize(query.pageSize, "$query.pageSize");
     const publicCursor = query.cursor === undefined ? undefined : parseBoundedText(
       query.cursor,
@@ -86,6 +93,12 @@ export class ProjectSourceWorkspaceAuthoringAttachmentReader
         throw new ProjectSourceWorkspaceError(
           "cursor_mismatch",
           "Attachment list cursor does not match the requested exact target.",
+        );
+      }
+      if (sealed.cursorBinding !== cursorBinding) {
+        throw new ProjectSourceWorkspaceError(
+          "cursor_mismatch",
+          "Attachment list cursor does not match the requested inspect binding.",
         );
       }
       workspaceRevision = sealed.workspaceRevision;
@@ -121,6 +134,7 @@ export class ProjectSourceWorkspaceAuthoringAttachmentReader
         projectId,
         target,
         workspaceRevision: page.workspaceRevision,
+        cursorBinding,
         inner: page.nextCursor,
       }),
     };
@@ -141,6 +155,7 @@ export class ProjectSourceWorkspaceAuthoringAttachmentReader
     readonly projectId: string;
     readonly target: ProjectSourceAttachmentTarget;
     readonly workspaceRevision: number;
+    readonly cursorBinding: string;
     readonly inner: string;
   }): Promise<string> {
     const payload = deterministicJson({
@@ -148,6 +163,7 @@ export class ProjectSourceWorkspaceAuthoringAttachmentReader
       projectId: value.projectId,
       target: value.target,
       workspaceRevision: value.workspaceRevision,
+      cursorBinding: value.cursorBinding,
       inner: value.inner,
     });
     const payloadBytes = new TextEncoder().encode(payload);
@@ -165,6 +181,7 @@ export class ProjectSourceWorkspaceAuthoringAttachmentReader
     readonly projectId: string;
     readonly target: ProjectSourceAttachmentTarget;
     readonly workspaceRevision: number;
+    readonly cursorBinding: string;
     readonly inner: string;
   }> {
     const parts = cursor.split(".");
@@ -212,6 +229,7 @@ export class ProjectSourceWorkspaceAuthoringAttachmentReader
           "projectId",
           "target",
           "workspaceRevision",
+          "cursorBinding",
           "inner",
         ],
         [
@@ -219,6 +237,7 @@ export class ProjectSourceWorkspaceAuthoringAttachmentReader
           "projectId",
           "target",
           "workspaceRevision",
+          "cursorBinding",
           "inner",
         ],
         "$cursor",
@@ -234,6 +253,11 @@ export class ProjectSourceWorkspaceAuthoringAttachmentReader
         workspaceRevision: parseWorkspaceRevision(
           rec.workspaceRevision,
           "$cursor.workspaceRevision",
+        ),
+        cursorBinding: parseBoundedText(
+          rec.cursorBinding,
+          "$cursor.cursorBinding",
+          MAX_CURSOR_BINDING_LENGTH,
         ),
         inner: parseBoundedText(
           rec.inner,

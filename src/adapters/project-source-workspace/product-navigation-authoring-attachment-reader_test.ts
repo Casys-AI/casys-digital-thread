@@ -16,6 +16,8 @@ const TARGET = {
   elementId: "def-system",
   elementKind: "PartDefinition" as const,
 };
+const BINDING = `sha256:${"a".repeat(64)}`;
+const OTHER_BINDING = `sha256:${"b".repeat(64)}`;
 
 Deno.test("authoring attachment reader refuses MAC mutation, domain JSON, and a cross-project cursor before historical read", async () => {
   const seeded = await seedTwoHeads();
@@ -37,6 +39,7 @@ Deno.test("authoring attachment reader refuses MAC mutation, domain JSON, and a 
   const first = await reader.listActiveHeads({
     projectId: PROJECT,
     target: TARGET,
+    cursorBinding: BINDING,
     pageSize: 1,
   });
   assertEquals(first.attachments.map((item) => item.attachmentId), ["att-a"]);
@@ -49,6 +52,7 @@ Deno.test("authoring attachment reader refuses MAC mutation, domain JSON, and a 
       reader.listActiveHeads({
         projectId: PROJECT,
         target: TARGET,
+        cursorBinding: BINDING,
         pageSize: 1,
         cursor: `${prefix}.${payload}.${mac!.slice(0, -1)}${flipped}`,
       }),
@@ -60,6 +64,7 @@ Deno.test("authoring attachment reader refuses MAC mutation, domain JSON, and a 
       reader.listActiveHeads({
         projectId: PROJECT,
         target: TARGET,
+        cursorBinding: BINDING,
         pageSize: 1,
         cursor: btoa(JSON.stringify({
           kind: "attachment-list",
@@ -75,6 +80,7 @@ Deno.test("authoring attachment reader refuses MAC mutation, domain JSON, and a 
       reader.listActiveHeads({
         projectId: OTHER,
         target: TARGET,
+        cursorBinding: BINDING,
         pageSize: 1,
         cursor: first.nextCursor!,
       }),
@@ -86,6 +92,7 @@ Deno.test("authoring attachment reader refuses MAC mutation, domain JSON, and a 
       reader.listActiveHeads({
         projectId: PROJECT,
         target: { elementId: "def-rail", elementKind: "PartDefinition" },
+        cursorBinding: BINDING,
         pageSize: 1,
         cursor: first.nextCursor!,
       }),
@@ -101,6 +108,7 @@ Deno.test("authoring attachment reader refuses MAC mutation, domain JSON, and a 
       reader.listActiveHeads({
         projectId: PROJECT,
         target: TARGET,
+        cursorBinding: BINDING,
         pageSize: 1,
         cursor: `${prefix}.${
           encodeBase64Url(new TextEncoder().encode(JSON.stringify(recoded)))
@@ -110,6 +118,54 @@ Deno.test("authoring attachment reader refuses MAC mutation, domain JSON, and a 
     "not a valid opaque cursor",
   );
   assertEquals(freshRevisions.length, afterHead);
+});
+
+Deno.test("authoring attachment reader refuses a cursor under a different inspect binding before historical read", async () => {
+  const seeded = await seedTwoHeads();
+  const freshRevisions: number[] = [];
+  const reader = new ProjectSourceWorkspaceAuthoringAttachmentReader({
+    load: () => Promise.resolve(seeded.head),
+    loadAtFresh: (_projectId, workspaceRevision) => {
+      freshRevisions.push(workspaceRevision);
+      const named = seeded.revisions.get(workspaceRevision);
+      if (!named) {
+        throw new ProjectSourceWorkspaceError(
+          "revision_not_found",
+          `missing ${workspaceRevision}`,
+        );
+      }
+      return Promise.resolve(named);
+    },
+  });
+  const first = await reader.listActiveHeads({
+    projectId: PROJECT,
+    target: TARGET,
+    cursorBinding: BINDING,
+    pageSize: 1,
+  });
+  assertEquals(first.nextCursor !== null, true);
+  const afterHead = freshRevisions.length;
+  await assertRejects(
+    () =>
+      reader.listActiveHeads({
+        projectId: PROJECT,
+        target: TARGET,
+        cursorBinding: OTHER_BINDING,
+        pageSize: 1,
+        cursor: first.nextCursor!,
+      }),
+    ProjectSourceWorkspaceError,
+    "does not match the requested inspect binding",
+  );
+  const second = await reader.listActiveHeads({
+    projectId: PROJECT,
+    target: TARGET,
+    cursorBinding: BINDING,
+    pageSize: 1,
+    cursor: first.nextCursor!,
+  });
+  assertEquals(second.attachments.map((item) => item.attachmentId), ["att-b"]);
+  assertEquals(freshRevisions.length, afterHead + 1);
 });
 
 function encodeBase64Url(bytes: Uint8Array): string {

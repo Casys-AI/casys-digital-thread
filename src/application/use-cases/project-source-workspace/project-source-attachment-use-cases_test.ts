@@ -16,7 +16,10 @@ const PROJECT = "generic-project";
 const SNAPSHOT_ID = "thread:p:r1";
 const SUBJECT = "subject.p";
 const ARCHITECTURE_ID = "architecture-" + "a".repeat(64);
-const ARCHITECTURE_FP = { algorithm: "sha256" as const, digest: "a".repeat(64) };
+const ARCHITECTURE_FP = {
+  algorithm: "sha256" as const,
+  digest: "a".repeat(64),
+};
 
 Deno.test("attachment put recrosses tip, snapshot, V4 architecture, element and role", async () => {
   const root = await Deno.makeTempDir({ prefix: "psw-att-uc-" });
@@ -109,7 +112,11 @@ Deno.test("attachment put fails closed on tip, declared, snapshot, architecture,
       attachmentCases(workspace, persisted.reference, contacts).putAttachment(
         attachmentPut(2, {
           declaredAgainst: declaredAgainst({
-            thread: { snapshotId: "thread:other", revision: 9, subjectId: SUBJECT },
+            thread: {
+              snapshotId: "thread:other",
+              revision: 9,
+              subjectId: SUBJECT,
+            },
           }),
         }),
       ),
@@ -266,14 +273,19 @@ function attachmentCases(
       accept: (role, target) => {
         contacts.roles += 1;
         if (overrides.acceptRole === false) return false;
-        return new FixedProjectSourceAttachmentRoleCatalog().accept(role, target);
+        return new FixedProjectSourceAttachmentRoleCatalog().accept(
+          role,
+          target,
+        );
       },
     },
   });
 }
 
 function projectSnapshot(
-  overrides: { threadSnapshots?: EngineeringProjectSnapshot["threadSnapshots"] } = {},
+  overrides: {
+    threadSnapshots?: EngineeringProjectSnapshot["threadSnapshots"];
+  } = {},
 ): EngineeringProjectSnapshot {
   return {
     project: { id: PROJECT, name: "P", subjectId: SUBJECT },
@@ -298,12 +310,16 @@ function openedStructure(hasElement = true): OpenedProductStructure {
     architectureArtifactId: ARCHITECTURE_ID,
     architectureFingerprint: ARCHITECTURE_FP,
     root: () => undefined,
+    childrenOfRoot: () => [],
     childrenOf: () => [],
     path: () => undefined,
-    locate: () => [],
     neighborhood: () => ({ siblings: [], children: [] }),
+    element: () => undefined,
+    searchElements: () => [],
+    pageOccurrences: () => ({ items: [], nextOffset: null }),
     hasDefinition: () => false,
     hasElement: () => hasElement,
+    typedDefinition: () => undefined,
   };
 }
 

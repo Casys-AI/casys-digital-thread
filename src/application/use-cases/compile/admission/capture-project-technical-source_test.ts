@@ -32,7 +32,10 @@ const PROJECT = "project.vertical-two";
 const SUBJECT = "subject.vertical-two";
 const SNAPSHOT_ID = "snapshot.1";
 const ARCHITECTURE_ID = "architecture-" + "a".repeat(64);
-const ARCHITECTURE_FP = { algorithm: "sha256" as const, digest: "a".repeat(64) };
+const ARCHITECTURE_FP = {
+  algorithm: "sha256" as const,
+  digest: "a".repeat(64),
+};
 const CAD_SOURCE = [
   "from build123d import Box",
   "length = 20",
@@ -378,7 +381,11 @@ Deno.test("cross-project reuse and v2 locators are rejected", async () => {
   });
 });
 
-function uniqueSourceText(mimeType: string, text: string, fileId: string): string {
+function uniqueSourceText(
+  mimeType: string,
+  text: string,
+  fileId: string,
+): string {
   if (mimeType.includes("python")) return `${text}# ${fileId}\n`;
   if (mimeType.includes("modelica")) return `${text}\n// ${fileId}\n`;
   if (mimeType.includes("spice")) return `${text}* ${fileId}\n`;
@@ -388,7 +395,9 @@ function uniqueSourceText(mimeType: string, text: string, fileId: string): strin
 async function withWorkspace(
   run: (harness: WorkspaceHarness) => Promise<void>,
 ): Promise<void> {
-  const directory = await Deno.makeTempDir({ prefix: "technical-source-workspace-" });
+  const directory = await Deno.makeTempDir({
+    prefix: "technical-source-workspace-",
+  });
   try {
     const resourceStore = new FileAgentResourceStore(`${directory}/resources`);
     const reopen = new ReopenAgentResource(resourceStore);
@@ -440,7 +449,9 @@ async function withWorkspace(
         displayName: "Sources",
       },
     });
-    const stores = technicalSourceAnalysisCaptureStores(`${directory}/captures`);
+    const stores = technicalSourceAnalysisCaptureStores(
+      `${directory}/captures`,
+    );
     const captures = createInitialTechnicalSourceAnalysisCaptureService(stores);
     const closures = new FileProjectSourceClosureStore(stores.closureDocuments);
     const capture = new CaptureProjectTechnicalSource({
@@ -559,12 +570,16 @@ function openedStructure(): OpenedProductStructure {
     architectureArtifactId: ARCHITECTURE_ID,
     architectureFingerprint: ARCHITECTURE_FP,
     root: () => undefined,
+    childrenOfRoot: () => [],
     childrenOf: () => [],
     path: () => undefined,
-    locate: () => [],
     neighborhood: () => ({ siblings: [], children: [] }),
+    element: () => undefined,
+    searchElements: () => [],
+    pageOccurrences: () => ({ items: [], nextOffset: null }),
     hasDefinition: () => false,
     hasElement: () => true,
+    typedDefinition: () => undefined,
   };
 }
 
@@ -573,7 +588,9 @@ interface WorkspaceHarness {
   workspace: ProjectSourceWorkspaceUseCases;
   store: FileProjectSourceWorkspaceStore;
   capture: CaptureProjectTechnicalSource;
-  captures: ReturnType<typeof createInitialTechnicalSourceAnalysisCaptureService>;
+  captures: ReturnType<
+    typeof createInitialTechnicalSourceAnalysisCaptureService
+  >;
   closures: FileProjectSourceClosureStore;
   resources: ReopenAgentResource;
   reader: CaptureBackedTechnicalCompilationSourceReader;

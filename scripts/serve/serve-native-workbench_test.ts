@@ -456,7 +456,7 @@ Deno.test("native Workbench publishes the product-navigation slice from the arch
   const body = await response.json();
   assertEquals(response.status, 200);
   assertEquals(body.thread.productNavigation, {
-    schemaVersion: "product-navigation-query/1.0",
+    schemaVersion: "product-navigation-query/2.0",
     status: "unavailable",
     roots: [],
     children: [],
@@ -496,7 +496,7 @@ Deno.test("native Workbench product-navigation GET publishes exact roots and def
     new Request("http://localhost/api/thread/product-navigation?view=roots"),
   )).json();
   assertEquals(roots.status, "observed");
-  assertEquals(roots.roots[0]?.id, "sys-def-001");
+  assertEquals(roots.focus.element.elementId, "sys-def-001");
   assertEquals(
     roots.basis.architectureArtifactId,
     `architecture-${fixture.fingerprint.digest}`,
@@ -509,10 +509,13 @@ Deno.test("native Workbench product-navigation GET publishes exact roots and def
     new Request("http://localhost/api/thread/product-navigation"),
   )).json();
   assertEquals(def.status, "observed");
-  assertEquals(def.roots[0]?.id, "sys-def-001");
-  assertEquals(def.children.map((node: { id: string }) => node.id), [
-    "alpha-use-001",
-  ]);
+  assertEquals(def.roots[0]?.element.elementId, "sys-def-001");
+  assertEquals(
+    def.children.map((node: { element: { elementId: string } }) =>
+      node.element.elementId
+    ),
+    ["alpha-use-001"],
+  );
   assertEquals(def.basis.architectureArtifactId, roots.basis.architectureArtifactId);
 });
 
@@ -554,12 +557,98 @@ Deno.test("native Workbench product-navigation GET stays on the declared Thread 
   assertEquals(roots.status, "observed");
   assertEquals(roots.basis.threadSnapshotId, fixture.snapshot.id);
   assertEquals(roots.basis.threadRevision, fixture.snapshot.revision);
+  assertEquals(roots.basis.threadSubjectId, fixture.snapshot.subject.id);
   const def = await (await handler(
     new Request("http://localhost/api/thread/product-navigation"),
   )).json();
   assertEquals(def.status, "observed");
   assertEquals(def.basis.threadSnapshotId, fixture.snapshot.id);
   assertEquals(def.basis.threadRevision, fixture.snapshot.revision);
+  assertEquals(def.basis.threadSubjectId, fixture.snapshot.subject.id);
+});
+
+Deno.test("native Workbench product-navigation children and neighborhood GET stay exact to the semantic root or a PartUsage", async () => {
+  const fixture = await verifiedArchitectureNavigationFixture();
+  const projectId = "project.verified-architecture";
+  const project = {
+    project: {
+      id: projectId,
+      subjectId: fixture.snapshot.subject.id,
+    },
+    threadSnapshots: [{
+      snapshotId: fixture.snapshot.id,
+      revision: fixture.snapshot.revision,
+      subjectId: fixture.snapshot.subject.id,
+    }],
+  } as unknown as EngineeringProjectSnapshot;
+  const handler = createNativeWorkbenchHandler({
+    store: new ThreadStore([fixture.snapshot]),
+    projectStore: new ProjectStore([project]),
+    projectId,
+    subjectId: fixture.snapshot.subject.id,
+    html: "unused",
+    productStructureCaptures: fixture.reader,
+    sysmlSourceAnalysis: fixture.sourceAnalysis,
+  });
+  for (const view of ["children", "neighborhood"]) {
+    const root = await (await handler(
+      new Request(
+        `http://localhost/api/thread/product-navigation?view=${view}&kind=part-definition&id=sys-def-001`,
+      ),
+    )).json();
+    assertEquals(root.status, "observed", view);
+    assertEquals(root.schemaVersion, "product-explore/1.0");
+    assertEquals(root.focus.element, {
+      elementKind: "PartDefinition",
+      elementId: "sys-def-001",
+    });
+    assertEquals(root.focus.occurrence, undefined);
+    assertEquals(
+      root.children.map((node: { element: { elementId: string } }) =>
+        node.element.elementId
+      ),
+      ["alpha-use-001"],
+    );
+
+    const usage = await (await handler(
+      new Request(
+        `http://localhost/api/thread/product-navigation?view=${view}&kind=part-usage&id=alpha-use-001&path=alpha-use-001`,
+      ),
+    )).json();
+    assertEquals(usage.status, "observed", view);
+    assertEquals(usage.focus.element, {
+      elementKind: "PartUsage",
+      elementId: "alpha-use-001",
+    });
+    assertEquals(usage.focus.occurrence.path, ["alpha-use-001"]);
+
+    const nested = await (await handler(
+      new Request(
+        `http://localhost/api/thread/product-navigation?view=${view}&kind=part-definition&id=alpha-def-001`,
+      ),
+    )).json();
+    assertEquals(nested.status, "unattached", view);
+    assertEquals(nested.focus, undefined);
+    assertEquals(nested.children, []);
+    assertEquals(nested.diagnostics[0]?.code, "selection.unattached");
+    assertEquals(
+      nested.basis.architectureArtifactId,
+      root.basis.architectureArtifactId,
+    );
+
+    for (
+      const url of [
+        `http://localhost/api/thread/product-navigation?view=${view}&id=sys-def-001`,
+        `http://localhost/api/thread/product-navigation?view=${view}&id=alpha-def-001`,
+        `http://localhost/api/thread/product-navigation?view=${view}&kind=latest&id=sys-def-001`,
+        `http://localhost/api/thread/product-navigation?view=${view}&kind=part&id=sys-def-001`,
+      ]
+    ) {
+      const response = await handler(new Request(url));
+      assertEquals(response.status, 400, url);
+      assertStringIncludes(await response.text(), "kind");
+    }
+  }
 });
 
 Deno.test("native Workbench product-navigation GET refuses latest in exact paths", async () => {
@@ -625,7 +714,7 @@ Deno.test("native Workbench product-navigation GET is read-only and shares the a
   );
   const body = await response.json();
   assertEquals(response.status, 200);
-  assertEquals(body.schemaVersion, "product-navigation-query/1.0");
+  assertEquals(body.schemaVersion, "product-search/1.0");
   assertEquals(body.status, "unavailable");
 });
 
@@ -661,24 +750,26 @@ Deno.test("native Workbench product-navigation GET publishes authoring attachmen
   );
   const body = await response.json();
   assertEquals(response.status, 200);
-  assertEquals(body.schemaVersion, "product-navigation-query/1.0");
+  assertEquals(body.schemaVersion, "product-inspect/1.0");
   assertEquals(body.status, "observed");
   assertEquals(body.grants, "none");
   assertEquals(
-    body.attachments.map((item: { attachmentId: string }) => item.attachmentId),
+    body.authoringAttachments.attachments.map((item: { attachmentId: string }) =>
+      item.attachmentId
+    ),
     ["att-system"],
   );
-  assertEquals(body.attachments[0]?.target, {
+  assertEquals(body.authoringAttachments.attachments[0]?.target, {
     elementId: "sys-def-001",
     elementKind: "PartDefinition",
   });
-  assertEquals(body.attachments[0]?.basisStatus, "exact-basis");
+  assertEquals(body.authoringAttachments.attachments[0]?.basisStatus, "exact-basis");
   const usage = await (await handler(
     new Request(
       "http://localhost/api/thread/product-navigation?view=authoring-attachments&kind=part-usage&id=alpha-use-001&path=alpha-use-001",
     ),
   )).json();
-  assertEquals(usage.attachments, []);
+  assertEquals(usage.authoringAttachments.attachments, []);
   const projection = await (await handler(
     new Request("http://localhost/api/thread/product-navigation"),
   )).json();
@@ -771,21 +862,28 @@ Deno.test("native Workbench authoring attachments GET pins nextCursor across two
   )).json();
   assertEquals(first.status, "observed");
   assertEquals(
-    first.attachments.map((item: { attachmentId: string }) => item.attachmentId),
+    first.authoringAttachments.attachments.map((item: { attachmentId: string }) =>
+      item.attachmentId
+    ),
     ["att-extra"],
   );
-  assertEquals(typeof first.nextCursor, "string");
+  assertEquals(typeof first.authoringAttachments.nextCursor, "string");
   const second = await (await handler(
     new Request(
       `http://localhost/api/thread/product-navigation?view=authoring-attachments&kind=part-definition&id=sys-def-001&pageSize=1&cursor=${
-        encodeURIComponent(first.nextCursor)
+        encodeURIComponent(first.authoringAttachments.nextCursor)
       }`,
     ),
   )).json();
   assertEquals(second.status, "observed");
-  assertEquals(second.workspaceRevision, first.workspaceRevision);
   assertEquals(
-    second.attachments.map((item: { attachmentId: string }) => item.attachmentId),
+    second.authoringAttachments.workspaceRevision,
+    first.authoringAttachments.workspaceRevision,
+  );
+  assertEquals(
+    second.authoringAttachments.attachments.map((item: { attachmentId: string }) =>
+      item.attachmentId
+    ),
     ["att-system"],
   );
   const forged = await handler(

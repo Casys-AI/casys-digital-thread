@@ -46,16 +46,20 @@ sealed SysON capture. For bounded joins, its read model may contain definition n
 usage nodes, exact owner and target links, immediate-child indexes, reverse parent
 indexes and occurrence paths.
 
-The service offers small composable reads for:
+The service offers four composable reads:
 
-- roots and bounded immediate children;
-- an exact path or bounded neighborhood around one node;
-- one selected node's context and exact attachments;
-- a source dependency closure only after an exact attached source is selected.
+- `project_product_explore` — unique root `PartDefinition` **element**, then bounded
+  immediate `PartUsage` children / continue from one exact occurrence;
+- `project_product_search` — exact-id or token discovery of exact element refs;
+- `project_product_inspect` — one exact element or occurrence, definition-scoped
+  Thread evidence, element-level authoring heads, ready/blocked actions;
+- `project_source_closure` — technical DAG only after an exact attached source is
+  selected.
 
-Lean MCP controls expose these reads to the engineering agent. Workbench GET/SSE exposes
-the same semantics to the UI. Neither adapter owns traversal rules or a separate read
-model.
+A PartUsage occurrence path is nonempty and ends in its usage id. The root is never an
+empty-path occurrence. Lean MCP controls expose these reads to the engineering agent.
+Workbench GET/SSE exposes the same semantics to the UI. Neither adapter owns traversal
+rules or a separate read model.
 
 This projection is rebuildable, cacheable and disposable. Its only semantic identities
 are the exact SysML element identities from its capture basis. A cache key includes the

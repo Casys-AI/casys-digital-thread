@@ -32,8 +32,10 @@ import {
   parseConsoleCli,
 } from "../../server.ts";
 import { CONSOLE_RESOURCE_URI } from "./control-plane.ts";
-
-const NEUTRAL_PROJECT_ID = "neutral-system-ns01";
+import {
+  createNeutralStartedProject,
+  NEUTRAL_PROJECT_ID,
+} from "../testing/neutral-started-engineering-project-fixture.ts";
 
 Deno.test("console CLI parses loopback bind options without a review-intent outbox", () => {
   assertEquals(
@@ -463,37 +465,14 @@ Deno.test("server seals the local CalculiX profile into ROP2 but composes @3 onl
 
 Deno.test("Build123d execution registration stays unavailable until the explicit runtime is complete", async () => {
   const operation = DESIGN_EXECUTE_BUILD123D_OPERATION;
-  const project = neutralProjectFixture() as unknown as EngineeringProjectSnapshot;
-  const withOperation = {
-    ...project,
-    schemaVersion: "4.0",
-    workItems: [{
-      ...project.workItems[0]!,
-      status: "in-progress",
-      operation: { ...operation, bindings: [] },
-    }],
-    agentRuns: [{
-      id: "run-build123d-unavailable",
-      workItemId: project.workItems[0]!.id,
-      status: "queued",
-      summary: "Execute reviewed Build123d source",
-      queuedAt: project.generatedAt,
-      basis: {
-        kind: "thread-snapshot",
-        snapshotId: project.threadSnapshots[0]!.snapshotId,
-        revision: project.threadSnapshots[0]!.revision,
-        subjectId: project.threadSnapshots[0]!.subjectId,
-      },
-      evidenceRefs: [],
-    }],
-  } as EngineeringProjectSnapshot;
+  const project = build123dUnavailableProjectFixture();
   const baseline: ProjectRunExecutor = {
-    execute: () => Promise.resolve(withOperation),
+    execute: () => Promise.resolve(project),
   };
   const unavailable = new (await import(
     "../application/use-cases/registered-project-run-executor.ts"
   )).RegisteredProjectRunExecutor({
-    projects: { get: () => Promise.resolve(withOperation) },
+    projects: { get: () => Promise.resolve(project) },
     baseline,
     additional: [{
       operation,
@@ -505,8 +484,8 @@ Deno.test("Build123d execution registration stays unavailable until the explicit
     () =>
       unavailable.execute({ kind: "agent", actorId: "agent:test" }, {
         commandId: "execute-build123d",
-        projectId: withOperation.project.id,
-        expectedRevision: withOperation.revision,
+        projectId: project.project.id,
+        expectedRevision: project.revision,
         issuedAt: "2026-08-13T00:00:00.000Z",
         runId: "run-build123d-unavailable",
       }),
@@ -547,17 +526,12 @@ Deno.test(
       const names = app.getToolNames();
       assertEquals(names.includes("project_admitted_geometry_export"), true);
       assertEquals(names.includes("project_geometry_preview"), false);
-      assertEquals(names.includes("project_product_navigation_roots"), true);
-      assertEquals(names.includes("project_product_navigation_children"), true);
-      assertEquals(names.includes("project_product_navigation_path"), true);
-      assertEquals(names.includes("project_product_navigation_search"), true);
-      assertEquals(names.includes("project_product_navigation_neighborhood"), true);
-      assertEquals(names.includes("project_product_navigation_context"), true);
-      assertEquals(
-        names.includes("project_product_navigation_authoring_attachments"),
-        true,
-      );
-      assertEquals(names.includes("project_product_source_closure"), true);
+      assertEquals(names.includes("project_product_explore"), true);
+      assertEquals(names.includes("project_product_inspect"), true);
+      assertEquals(names.includes("project_product_search"), true);
+      assertEquals(names.includes("project_source_closure"), true);
+      assertEquals(names.includes("project_product_navigation_roots"), false);
+      assertEquals(names.includes("project_product_source_closure"), false);
     } finally {
       await Deno.remove(temporaryDirectory, { recursive: true });
     }
@@ -572,7 +546,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
   const projectPath = `${temporaryDirectory}/neutral-project.json`;
   await Deno.writeTextFile(
     projectPath,
-    `${JSON.stringify(neutralProjectFixture())}\n`,
+    `${JSON.stringify(await createNeutralStartedProject())}\n`,
   );
   const { app } = await createConsoleServer({
     manifest: manifestFixture(),
@@ -623,14 +597,9 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_led_driver_source_capture",
     "project_led_driver_source_review",
     "project_plan_publish",
-    "project_product_navigation_authoring_attachments",
-    "project_product_navigation_children",
-    "project_product_navigation_context",
-    "project_product_navigation_neighborhood",
-    "project_product_navigation_path",
-    "project_product_navigation_roots",
-    "project_product_navigation_search",
-    "project_product_source_closure",
+    "project_product_explore",
+    "project_product_inspect",
+    "project_product_search",
     "project_question_propose",
     "project_resource_capture",
     "project_sensitivity_base_evaluation_review",
@@ -640,6 +609,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_source_attachment_list",
     "project_source_attachment_put",
     "project_source_attachment_read",
+    "project_source_closure",
     "project_source_file_put",
     "project_source_file_read",
     "project_source_file_remove",
@@ -713,14 +683,9 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_led_driver_source_capture",
       "project_led_driver_source_review",
       "project_plan_publish",
-      "project_product_navigation_authoring_attachments",
-      "project_product_navigation_children",
-      "project_product_navigation_context",
-      "project_product_navigation_neighborhood",
-      "project_product_navigation_path",
-      "project_product_navigation_roots",
-      "project_product_navigation_search",
-      "project_product_source_closure",
+      "project_product_explore",
+      "project_product_inspect",
+      "project_product_search",
       "project_question_propose",
       "project_resource_capture",
       "project_sensitivity_base_evaluation_review",
@@ -730,6 +695,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_source_attachment_list",
       "project_source_attachment_put",
       "project_source_attachment_read",
+      "project_source_closure",
       "project_source_file_put",
       "project_source_file_read",
       "project_source_file_remove",
@@ -850,7 +816,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       arguments: { projectId },
     });
     const project = projectSnapshot.structuredContent as Record<string, unknown>;
-    assertEquals(project.schemaVersion, "1.0");
+    assertEquals(project.schemaVersion, "4.0");
     assertEquals(
       (project.project as Record<string, unknown>).id,
       projectId,
@@ -866,42 +832,49 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       projectId,
       expectedRevision: 1,
       issuedAt: "2026-08-01T22:10:00+08:00",
-      decisionId: "review-neutral-material-card",
-      proposal: {
-        summary: "Use the reviewed aluminium material card.",
-        parameters: [{
-          key: "youngs-modulus",
-          label: "Young's modulus",
-          value: 69,
-          unit: "GPa",
+      question: {
+        id: "neutral-review-scope",
+        prompt: "Which review boundary should this isolated control-plane test keep?",
+        whyItMatters:
+          "It keeps the registry contract in framing, not fabricated planning.",
+        recommendation: {
+          value: "framing-only",
+          rationale:
+            "Revision 1 owns intent; planning state arrives only after later commands.",
+          confidence: "high",
+        },
+        options: [{
+          value: "framing-only",
+          label: "Framing only",
+          consequences: "The first mutation stays a living-brief question.",
         }],
+        allowUnknown: true,
+        risk: "reversible",
+        evidenceNeeded: ["paired conversation"],
       },
     };
     const proposal = await client.call("tools/call", {
-      name: "project_decision_propose",
+      name: "project_question_propose",
       arguments: proposalArguments,
     });
     const proposedProject = proposal.structuredContent as Record<string, unknown>;
     assertEquals(proposedProject.revision, 2);
     assertEquals(
-      (proposedProject.commandReceipts as Array<Record<string, unknown>>)[0]
-        .issuedAt,
+      (proposedProject.commandReceipts as Array<Record<string, unknown>>).at(-1)
+        ?.issuedAt,
       "2026-08-01T14:10:00.000Z",
     );
-    const proposedDecision = (proposedProject.decisions as Array<
-      Record<string, unknown>
-    >).find((item) => item.id === "review-neutral-material-card")!;
-    assertEquals(proposedDecision.status, "proposed");
+    const proposedQuestion = ((proposedProject.framing as Record<string, unknown>)
+      .questions as Array<Record<string, unknown>>).find((item) =>
+        item.id === "neutral-review-scope"
+      )!;
     assertEquals(
-      (proposedDecision.proposal as Record<string, unknown>).proposedBy as Record<
-        string,
-        unknown
-      >,
+      proposedQuestion.proposedBy as Record<string, unknown>,
       { id: "mcp:test@1", origin: "agent" },
     );
 
     const replay = await client.call("tools/call", {
-      name: "project_decision_propose",
+      name: "project_question_propose",
       arguments: proposalArguments,
     });
     assertEquals(
@@ -910,11 +883,14 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     );
 
     const stale = await client.call("tools/call", {
-      name: "project_decision_propose",
+      name: "project_question_propose",
       arguments: {
         ...proposalArguments,
         commandId: "mcp-stale-proposal-2",
-        decisionId: "review-neutral-material-card",
+        question: {
+          ...proposalArguments.question,
+          id: "neutral-stale-review-scope",
+        },
       },
     });
     assertEquals(stale.isError, true);
@@ -952,14 +928,10 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_source_file_read" ||
           tool.name === "project_source_attachment_read" ||
           tool.name === "project_source_attachment_list" ||
-          tool.name === "project_product_navigation_authoring_attachments" ||
-          tool.name === "project_product_navigation_children" ||
-          tool.name === "project_product_navigation_context" ||
-          tool.name === "project_product_navigation_neighborhood" ||
-          tool.name === "project_product_navigation_path" ||
-          tool.name === "project_product_navigation_roots" ||
-          tool.name === "project_product_navigation_search" ||
-          tool.name === "project_product_source_closure" ||
+          tool.name === "project_product_explore" ||
+          tool.name === "project_product_inspect" ||
+          tool.name === "project_product_search" ||
+          tool.name === "project_source_closure" ||
           tool.name === "project_agent_run_plan_get" ||
           tool.name === "project_isolated_geometry_seal_review" ||
           tool.name === "project_led_driver_source_review" ||
@@ -989,14 +961,10 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_source_file_read" ||
           tool.name === "project_source_attachment_read" ||
           tool.name === "project_source_attachment_list" ||
-          tool.name === "project_product_navigation_authoring_attachments" ||
-          tool.name === "project_product_navigation_children" ||
-          tool.name === "project_product_navigation_context" ||
-          tool.name === "project_product_navigation_neighborhood" ||
-          tool.name === "project_product_navigation_path" ||
-          tool.name === "project_product_navigation_roots" ||
-          tool.name === "project_product_navigation_search" ||
-          tool.name === "project_product_source_closure" ||
+          tool.name === "project_product_explore" ||
+          tool.name === "project_product_inspect" ||
+          tool.name === "project_product_search" ||
+          tool.name === "project_source_closure" ||
           tool.name === "project_source_module_put" ||
           tool.name === "project_source_file_put" ||
           tool.name === "project_source_file_remove" ||
@@ -1217,78 +1185,61 @@ async function parseResponse(
   return JSON.parse(text);
 }
 
-function neutralProjectFixture(): EngineeringProjectSnapshot {
-  const generatedAt = "2026-08-01T14:00:00.000Z";
-  const phaseId = "review";
-  const workItemId = "review-neutral-material";
-  const decisionId = "review-neutral-material-card";
-  const blockerId = "missing-neutral-material-review";
+function build123dUnavailableProjectFixture(): EngineeringProjectSnapshot {
+  const generatedAt = "2026-08-13T00:00:00.000Z";
+  const workItemId = "execute-build123d";
   return {
     schemaVersion: "4.0",
-    id: `${NEUTRAL_PROJECT_ID}:project:r1`,
-    revision: 1,
+    id: `${NEUTRAL_PROJECT_ID}:project:r2:build123d-unavailable`,
+    revision: 2,
+    previous: {
+      snapshotId: `${NEUTRAL_PROJECT_ID}:project:r1`,
+      revision: 1,
+    },
     generatedAt,
     project: {
       id: NEUTRAL_PROJECT_ID,
       name: "Neutral engineering system",
-      subjectId: NEUTRAL_PROJECT_ID,
+      subjectId: `project:${NEUTRAL_PROJECT_ID}`,
       objective: {
-        title: "Maintain a reviewable engineering record",
-        statement:
-          "Exercise the project control boundary without a product-specific fixture.",
+        title: "Execute reviewed Build123d source",
+        statement: "Dispatch fixture for an unavailable local Build123d runtime.",
       },
     },
-    threadSnapshots: [{
-      snapshotId: `${NEUTRAL_PROJECT_ID}:thread:r1`,
-      revision: 1,
-      subjectId: NEUTRAL_PROJECT_ID,
-    }],
-    phases: [{
-      id: phaseId,
-      name: "Review",
-      order: 1,
-      description: "Review one bounded material proposal.",
-      workItemIds: [workItemId],
-      requiredDecisionIds: [decisionId],
-      evidenceRefs: [],
-    }],
+    threadSnapshots: [],
+    phases: [],
     workItems: [{
       id: workItemId,
       activityId: `activity:${workItemId}`,
-      phaseId,
-      title: "Review the neutral material card",
-      description: "Record a human-reviewable material decision.",
-      kind: "review",
-      status: "waiting-for-decision",
-      owner: "shared",
+      phaseId: "design",
+      title: "Execute reviewed Build123d source",
+      description: "Later work item used only to probe executor registration.",
+      kind: "design",
+      status: "in-progress",
+      owner: "agent",
+      operation: { ...DESIGN_EXECUTE_BUILD123D_OPERATION, bindings: [] },
       dependsOnWorkItemIds: [],
       evidenceRefs: [],
-      decisionIds: [decisionId],
-      blockerIds: [blockerId],
+      decisionIds: [],
+      blockerIds: [],
     }],
-    agentRuns: [],
-    decisions: [{
-      id: decisionId,
-      phaseId,
-      title: "Review the neutral material card",
-      question: "May the neutral material card be used for this bounded test?",
-      status: "required",
-      requestedAt: generatedAt,
-      inputEvidenceRefs: [],
-      approvalIds: [],
+    agentRuns: [{
+      id: "run-build123d-unavailable",
+      workItemId,
+      status: "queued",
+      summary: "Execute reviewed Build123d source",
+      queuedAt: generatedAt,
+      basis: {
+        kind: "thread-snapshot",
+        snapshotId: `${NEUTRAL_PROJECT_ID}:thread:r1`,
+        revision: 1,
+        subjectId: `project:${NEUTRAL_PROJECT_ID}`,
+      },
+      evidenceRefs: [],
     }],
+    decisions: [],
     approvals: [],
-    blockers: [{
-      id: blockerId,
-      phaseId,
-      title: "Material review is required",
-      description: "The test proposal still requires explicit human review.",
-      kind: "decision-required",
-      status: "open",
-      openedAt: generatedAt,
-      workItemIds: [workItemId],
-      decisionIds: [decisionId],
-    }],
+    blockers: [],
   };
 }
 

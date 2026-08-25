@@ -58,13 +58,19 @@ or invalidate a sealed historical admission.
 - `project_source_search` filters one exact revision. `pathPrefix` starts with `/`.
 - `project_source_file_read` returns one exact content revision or tombstone.
 - `resources/read` reopens the bytes named by a content revision.
-- `project_product_navigation_authoring_attachments` starts from an exact SysML node and
-  lists its current workspace attachments.
-- `project_product_source_closure` opens the exact technical DAG only after one
-  attachment is selected.
+- `project_product_explore` starts at the unique root `PartDefinition` **element**
+  (`{projectId}`) then continues from a pasteable `PartUsage` occurrence plus
+  `expectedBasis`.
+- `project_product_search` returns exact element refs (exact-id or label/id tokens).
+- `project_product_inspect` lists element-level authoring heads of one exact SysML
+  selection and offers ready capture/closure actions per exact-basis active attachment.
+- `project_source_closure` opens the exact technical DAG only after one attachment is
+  selected, with the same `expectedBasis` and exact element/occurrence. It pages files
+  and edges as one `entries` stream.
 
-MCP navigation node kinds are the literal kebab-case values `part-definition` and
-`part-usage`. Do not send provider kinds such as `PartDefinition` to that read surface.
+Product identities use `elementKind` `PartDefinition` | `PartUsage`. A PartUsage
+occurrence path is nonempty and ends in its usage id. The root is never an empty-path
+occurrence.
 
 Tree and search are paginated. Keep their revision-anchored cursor; do not reuse it with
 another revision or filter.

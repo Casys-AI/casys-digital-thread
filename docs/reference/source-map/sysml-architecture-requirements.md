@@ -16,7 +16,9 @@ Architecture authorities: `renderer/` (`model.write-architecture@1` +
 `sysml-source-capture/1.0`), `agent-seal/` (`model.seal-architecture-sysml@1` +
 agent-authored CAS, never SysON), `seed/` (`architecture.seed-syson-model@2`),
 `requirements/` (`model.write-requirements@1`), `part-definitions/`
-(`model.capture-part-definitions@1`). Not interchangeable. Product
+(`model.capture-part-definitions@1`). `product-structure-ref.ts` owns exact
+`ProductStructureElementRef` / `ProductStructureOccurrenceRef` (PartUsage path
+nonempty; a PartDefinition is never an occurrence). Not interchangeable. Product
 `architecture.author-inspection-drone@3` /
 `model.capture-inspection-drone-part-definitions@1` are retired and unregistered
 
@@ -36,35 +38,45 @@ authoring (ProjectSourceWorkspace heads). They are not substitutes.
 Selects the unique Thread tip and unique `architecture-capture/4.0`, then queries a
 disposable capture-keyed traversal index.
 
+#### [`src/adapters/architecture/renderer/architecture-capture-structure.ts`](../../../src/adapters/architecture/renderer/architecture-capture-structure.ts)
+
+Navigability of one exact `architecture-capture/4.0`: missing root, inexact target,
+cycle, or unreachable definition. Navigation calls this before Graphology.
+`reopenVerifiedArchitectureCapture` does not.
+
 #### [`src/adapters/architecture/renderer/architecture-capture-navigation-index.ts`](../../../src/adapters/architecture/renderer/architecture-capture-navigation-index.ts)
 
 Graphology traversal index for one exact architecture capture. Algorithmic, disposable.
-Not product authority. Not imported into `src/domain`. `hasElement({id, kind})` matches
-exact `PartDefinition` or `PartUsage` identity, not locate/occurrence heuristics.
-Exposed by MCP tools and the Workbench GET/SSE DTO. The existing SysML catalog view is
-not a second product tree.
+Not product authority. Not imported into `src/domain`. `hasElement` matches an exact
+`ProductStructureElementRef`. Search matches exact ids or normalized label/id tokens
+without expanding the occurrence tree. Occurrences are a bounded page, not a full
+materialization. The unique root is a `PartDefinition` element. Exposed by MCP tools
+and the Workbench GET/SSE DTO. The existing SysML catalog view is not a second product
+tree.
 
 #### [`src/adapters/architecture/renderer/capture-product-structure-traversal.ts`](../../../src/adapters/architecture/renderer/capture-product-structure-traversal.ts)
 
-Reopens the unique `architecture-capture/4.0` tip and caches the Graphology index by
-capture fingerprint.
+Reopens the unique `architecture-capture/4.0` tip, rejects a cyclic or unreachable
+definition graph, then caches a bounded LRU of Graphology indexes by capture
+fingerprint. Not a storage subsystem. Does not call `buildCatalog`.
 
 #### [`src/adapters/thread/product-navigation-workbench.ts`](../../../src/adapters/thread/product-navigation-workbench.ts)
 
-Shared catalog + admission/requirements/case recross used by MCP context/closure.
+Shared catalog + admission/requirements/case recross used by inspect evidence.
 Evidence attachments only. Workbench GET still publishes only the roots slice; it is not
 a command surface.
 
 #### [`src/adapters/project-source-workspace/product-navigation-authoring-attachment-reader.ts`](../../../src/adapters/project-source-workspace/product-navigation-authoring-attachment-reader.ts)
 
 Outbound adapter: active workspace attachment heads for one exact SysML target. Shared
-by MCP `project_product_navigation_authoring_attachments` and Workbench GET
-`view=authoring-attachments`. No evidence, no admission.
+by MCP `project_product_inspect` and Workbench GET `view=authoring-attachments`. No
+evidence, no admission.
 
 #### [`src/tools/project-control/product-navigation-tools.ts`](../../../src/tools/project-control/product-navigation-tools.ts)
 
-Lean MCP read tools: roots, children, path, context, authoring attachments, source
-closure. Grants none. Workbench stays GET/SSE.
+Four closed MCP reads: `project_product_explore`, `project_product_search`,
+`project_product_inspect`, `project_source_closure`. Grants none. Workbench stays
+GET/SSE. The retired `project_product_navigation_*` names are not aliases.
 
 #### [`src/application/ports/in/architecture/`](../../../src/application/ports/in/architecture)
 

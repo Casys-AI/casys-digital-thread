@@ -1,7 +1,24 @@
 import { assertEquals } from "@std/assert";
 import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
 import { registerProjectProductNavigationTools } from "./product-navigation-tools.ts";
-import { PRODUCT_NAVIGATION_QUERY_SCHEMA } from "../../application/ports/in/product-navigation/product-navigation-read-model.ts";
+import {
+  PRODUCT_EXPLORE_SCHEMA,
+  PRODUCT_INSPECT_SCHEMA,
+  PRODUCT_SEARCH_SCHEMA,
+  PRODUCT_SOURCE_CLOSURE_SCHEMA,
+} from "../../application/ports/in/product-navigation/product-navigation-read-model.ts";
+import type { ProductNavigationUseCase } from "../../application/ports/in/product-navigation/product-navigation.ts";
+
+const OLD_TOOLS = [
+  "project_product_navigation_authoring_attachments",
+  "project_product_navigation_children",
+  "project_product_navigation_context",
+  "project_product_navigation_neighborhood",
+  "project_product_navigation_path",
+  "project_product_navigation_roots",
+  "project_product_navigation_search",
+  "project_product_source_closure",
+] as const;
 
 Deno.test("product navigation tools are absent until the use case is composed", () => {
   const app = capturingApp();
@@ -9,133 +26,20 @@ Deno.test("product navigation tools are absent until the use case is composed", 
   assertEquals(app.names, []);
 });
 
-Deno.test("product navigation tools are read-only and refuse latest in their schemas", () => {
+Deno.test("product navigation tools are the four closed AX reads and refuse latest", () => {
   const app = capturingApp();
   registerProjectProductNavigationTools(app as unknown as McpApp, {
-    productNavigation: {
-      roots: () =>
-        Promise.resolve({
-          schemaVersion: PRODUCT_NAVIGATION_QUERY_SCHEMA,
-          status: "unavailable",
-          roots: [],
-        }),
-      children: () =>
-        Promise.resolve({
-          schemaVersion: PRODUCT_NAVIGATION_QUERY_SCHEMA,
-          status: "unavailable",
-          parent: {
-            kind: "part-definition",
-            id: "x",
-            label: "x",
-            definitionId: "x",
-            path: [],
-            expandable: false,
-          },
-          children: [],
-        }),
-      path: () =>
-        Promise.resolve({
-          schemaVersion: PRODUCT_NAVIGATION_QUERY_SCHEMA,
-          status: "unavailable",
-          nodes: [],
-        }),
-      search: () =>
-        Promise.resolve({
-          schemaVersion: PRODUCT_NAVIGATION_QUERY_SCHEMA,
-          status: "unavailable",
-          matches: [],
-        }),
-      neighborhood: () =>
-        Promise.resolve({
-          schemaVersion: PRODUCT_NAVIGATION_QUERY_SCHEMA,
-          status: "unavailable",
-          node: {
-            kind: "part-definition",
-            id: "x",
-            label: "x",
-            definitionId: "x",
-            path: [],
-            expandable: false,
-          },
-          siblings: [],
-          children: [],
-        }),
-      context: () =>
-        Promise.resolve({
-          schemaVersion: PRODUCT_NAVIGATION_QUERY_SCHEMA,
-          status: "unavailable",
-          node: {
-            kind: "part-definition",
-            id: "x",
-            label: "x",
-            definitionId: "x",
-            path: [],
-            expandable: false,
-          },
-          attachments: {
-            sources: [],
-            geometry: [],
-            physics: [],
-            requirements: [],
-          },
-        }),
-      sourceClosure: () =>
-        Promise.resolve({
-          schemaVersion: PRODUCT_NAVIGATION_QUERY_SCHEMA,
-          status: "unavailable",
-          files: [],
-          edges: [],
-        }),
-      authoringAttachments: () =>
-        Promise.resolve({
-          schemaVersion: PRODUCT_NAVIGATION_QUERY_SCHEMA,
-          status: "unavailable",
-          node: {
-            kind: "part-definition",
-            id: "x",
-            label: "x",
-            definitionId: "x",
-            path: [],
-            expandable: false,
-          },
-          attachments: [],
-          nextCursor: null,
-          grants: "none",
-        }),
-      projection: () =>
-        Promise.resolve({
-          schemaVersion: PRODUCT_NAVIGATION_QUERY_SCHEMA,
-          status: "unavailable",
-          roots: [],
-          children: [],
-          attachments: {
-            sources: [],
-            geometry: [],
-            physics: [],
-            requirements: [],
-          },
-        }),
-    },
+    productNavigation: stubUseCase(),
   });
   assertEquals(app.names.toSorted(), [
-    "project_product_navigation_authoring_attachments",
-    "project_product_navigation_children",
-    "project_product_navigation_context",
-    "project_product_navigation_neighborhood",
-    "project_product_navigation_path",
-    "project_product_navigation_roots",
-    "project_product_navigation_search",
-    "project_product_source_closure",
+    "project_product_explore",
+    "project_product_inspect",
+    "project_product_search",
+    "project_source_closure",
   ]);
-  const pathSchema = app.tool("project_product_navigation_path")
-    .inputSchema as {
-      required: string[];
-      additionalProperties: boolean;
-      properties: { usagePath: { items: { not: { const: string } } } };
-    };
-  assertEquals(pathSchema.required, ["projectId", "usagePath"]);
-  assertEquals(pathSchema.additionalProperties, false);
-  assertEquals(pathSchema.properties.usagePath.items.not, { const: "latest" });
+  for (const retired of OLD_TOOLS) {
+    assertEquals(app.names.includes(retired), false);
+  }
   for (const name of app.names) {
     assertEquals(app.tool(name).annotations, {
       readOnlyHint: true,
@@ -154,140 +58,165 @@ Deno.test("product navigation tools are read-only and refuse latest in their sch
     assertEquals("snapshotId" in schema.properties, false);
     assertEquals("provider" in schema.properties, false);
     assertEquals("runtime" in schema.properties, false);
-    if (name !== "project_product_source_closure") {
-      assertEquals("workspaceRevision" in schema.properties, false);
-    }
+    const output = app.tool(name).outputSchema as {
+      additionalProperties: boolean;
+      required: string[];
+    };
+    assertEquals(output.additionalProperties, false);
   }
-  const closure = app.tool("project_product_source_closure").inputSchema as {
+  const explore = app.tool("project_product_explore").inputSchema as {
     required: string[];
-    additionalProperties: boolean;
+    properties: Record<string, unknown>;
+  };
+  assertEquals(explore.required, ["projectId"]);
+  assertEquals("expectedBasis" in explore.properties, true);
+  assertEquals("selection" in explore.properties, true);
+  const inspect = app.tool("project_product_inspect").inputSchema as {
+    required: string[];
+    properties: { expectedBasis: { required: string[] } };
+  };
+  assertEquals(inspect.required, ["projectId", "expectedBasis", "selection"]);
+  assertEquals(
+    inspect.properties.expectedBasis.required.includes("threadSubjectId"),
+    true,
+  );
+  const basis = inspect.properties.expectedBasis as {
+    required: string[];
+    properties: Record<string, unknown>;
+  };
+  assertEquals("threadSubjectId" in basis.properties, true);
+  const occurrencePath = (
+    app.tool("project_product_explore").inputSchema as {
+      properties: {
+        selection: { properties: { path: { maxItems?: number } } };
+      };
+    }
+  ).properties.selection.properties.path;
+  assertEquals(occurrencePath.maxItems, undefined);
+  const closure = app.tool("project_source_closure").inputSchema as {
+    required: string[];
     properties: Record<string, unknown>;
   };
   assertEquals(closure.required, [
     "projectId",
-    "node",
+    "expectedBasis",
+    "selection",
     "workspaceRevision",
     "attachmentId",
     "attachmentRevision",
   ]);
   assertEquals("fileId" in closure.properties, false);
-  assertEquals("fileRevision" in closure.properties, false);
-  const authoring = app.tool("project_product_navigation_authoring_attachments")
-    .inputSchema as {
-      required: string[];
-      additionalProperties: boolean;
-      properties: Record<string, unknown>;
-    };
-  assertEquals(authoring.required, ["projectId", "node"]);
-  assertEquals(authoring.additionalProperties, false);
-  assertEquals("snapshot" in authoring.properties, false);
-  assertEquals("workspaceRevision" in authoring.properties, false);
-  const cursor = authoring.properties.cursor as { not: { const: string } };
-  assertEquals(cursor.not, { const: "latest" });
-});
-
-Deno.test("product navigation roots tool forwards the use case structured result", async () => {
-  const app = capturingApp();
-  registerProjectProductNavigationTools(app as unknown as McpApp, {
-    productNavigation: {
-      roots: (query) => {
-        assertEquals(query.projectId, "project.slider");
-        return Promise.resolve({
-          schemaVersion: PRODUCT_NAVIGATION_QUERY_SCHEMA,
-          status: "observed",
-          basis: {
-            projectId: "project.slider",
-            threadSnapshotId: "thread:slider:r4",
-            threadRevision: 4,
-            architectureArtifactId: "architecture-" + "1".repeat(64),
-            architectureFingerprint: `sha256:${"1".repeat(64)}`,
-            captureSchema: "architecture-capture/4.0",
-          },
-          roots: [{
-            kind: "part-definition",
-            id: "def-system",
-            label: "Slider",
-            definitionId: "def-system",
-            path: [],
-            expandable: true,
-          }],
-        });
-      },
-      children: () => Promise.reject(new Error("must not children")),
-      path: () => Promise.reject(new Error("must not path")),
-      search: () => Promise.reject(new Error("must not search")),
-      neighborhood: () => Promise.reject(new Error("must not neighborhood")),
-      context: () => Promise.reject(new Error("must not context")),
-      sourceClosure: () => Promise.reject(new Error("must not closure")),
-      authoringAttachments: () => Promise.reject(new Error("must not authoring")),
-      projection: () => Promise.reject(new Error("must not projection")),
-    },
-  });
-  const result = await app.handle("project_product_navigation_roots", {
-    projectId: "project.slider",
-  }) as {
-    structuredContent: { status: string; roots: { id: string }[] };
+  const search = app.tool("project_product_search").inputSchema as {
+    required: string[];
   };
-  assertEquals(result.structuredContent.status, "observed");
-  assertEquals(result.structuredContent.roots[0]?.id, "def-system");
+  assertEquals(search.required, ["projectId", "query"]);
 });
 
-Deno.test("product navigation authoring attachments tool forwards the use case structured result", async () => {
+Deno.test("product explore tool forwards the use case structured result", async () => {
   const app = capturingApp();
   registerProjectProductNavigationTools(app as unknown as McpApp, {
     productNavigation: {
-      roots: () => Promise.reject(new Error("must not roots")),
-      children: () => Promise.reject(new Error("must not children")),
-      path: () => Promise.reject(new Error("must not path")),
-      search: () => Promise.reject(new Error("must not search")),
-      neighborhood: () => Promise.reject(new Error("must not neighborhood")),
-      context: () => Promise.reject(new Error("must not context")),
-      sourceClosure: () => Promise.reject(new Error("must not closure")),
-      authoringAttachments: (query) => {
+      ...stubUseCase(),
+      explore: (query) => {
         assertEquals(query.projectId, "project.slider");
-        assertEquals(query.node, {
-          kind: "part-usage",
-          id: "usage-left",
-          path: ["usage-left"],
-        });
-        assertEquals(query.pageSize, 1);
         return Promise.resolve({
-          schemaVersion: PRODUCT_NAVIGATION_QUERY_SCHEMA,
+          schemaVersion: PRODUCT_EXPLORE_SCHEMA,
           status: "observed",
-          node: {
-            kind: "part-usage",
-            id: "usage-left",
-            label: "left_rail",
-            definitionId: "def-rail",
-            usageId: "usage-left",
-            path: ["usage-left"],
+          basis: sampleBasis(),
+          diagnostics: [],
+          focus: {
+            element: { elementKind: "PartDefinition", elementId: "def-system" },
+            label: "Slider",
             expandable: true,
           },
-          attachments: [],
+          breadcrumbs: [],
+          children: [],
           nextCursor: null,
           grants: "none",
         });
       },
-      projection: () => Promise.reject(new Error("must not projection")),
     },
   });
-  const result = await app.handle(
-    "project_product_navigation_authoring_attachments",
-    {
-      projectId: "project.slider",
-      node: {
-        kind: "part-usage",
-        id: "usage-left",
-        path: ["usage-left"],
-      },
-      pageSize: 1,
-    },
-  ) as {
-    structuredContent: { status: string; grants: string };
+  const result = await app.handle("project_product_explore", {
+    projectId: "project.slider",
+  }) as {
+    content: string;
+    structuredContent: { status: string; focus: { element: { elementId: string } } };
   };
   assertEquals(result.structuredContent.status, "observed");
-  assertEquals(result.structuredContent.grants, "none");
+  assertEquals(result.structuredContent.focus.element.elementId, "def-system");
+  assertEquals(result.content.includes("{"), false);
 });
+
+function stubUseCase(): ProductNavigationUseCase {
+  return {
+    explore: () =>
+      Promise.resolve({
+        schemaVersion: PRODUCT_EXPLORE_SCHEMA,
+        status: "unavailable",
+        diagnostics: [],
+        breadcrumbs: [],
+        children: [],
+        nextCursor: null,
+        grants: "none",
+      }),
+    search: () =>
+      Promise.resolve({
+        schemaVersion: PRODUCT_SEARCH_SCHEMA,
+        status: "unavailable",
+        diagnostics: [],
+        matches: [],
+        nextCursor: null,
+        grants: "none",
+      }),
+    inspect: () =>
+      Promise.resolve({
+        schemaVersion: PRODUCT_INSPECT_SCHEMA,
+        status: "unavailable",
+        diagnostics: [],
+        authoringAttachments: { attachments: [], nextCursor: null },
+        occurrences: { occurrences: [], nextCursor: null },
+        applicableActions: [],
+        grants: "none",
+      }),
+    sourceClosure: () =>
+      Promise.resolve({
+        schemaVersion: PRODUCT_SOURCE_CLOSURE_SCHEMA,
+        status: "unavailable",
+        diagnostics: [],
+        entries: [],
+        fileCount: 0,
+        edgeCount: 0,
+        nextCursor: null,
+        grants: "none",
+      }),
+    projection: () =>
+      Promise.resolve({
+        schemaVersion: "product-navigation-query/2.0",
+        status: "unavailable",
+        roots: [],
+        children: [],
+        attachments: {
+          sources: [],
+          geometry: [],
+          physics: [],
+          requirements: [],
+        },
+      }),
+  };
+}
+
+function sampleBasis() {
+  return {
+    projectId: "project.slider",
+    threadSnapshotId: "thread:slider:r4",
+    threadRevision: 4,
+    threadSubjectId: "subject.slider",
+    architectureArtifactId: "architecture-" + "1".repeat(64),
+    architectureFingerprint: `sha256:${"1".repeat(64)}`,
+    captureSchema: "architecture-capture/4.0" as const,
+  };
+}
 
 function capturingApp() {
   const names: string[] = [];

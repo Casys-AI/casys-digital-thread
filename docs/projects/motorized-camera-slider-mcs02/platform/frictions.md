@@ -22,9 +22,11 @@ how to lower it. RailFrame r1 proved that unsupported executable dependencies st
 ## Historical attachment versus current drill-down
 
 At Thread r20, the r3 RailFrame attachment is active and visible as
-`different-basis`, while `project_product_source_closure` on that historical edge is
-`unavailable`. Historical sealed admission replay still works. Current authoring
-navigation and historical technical authority are intentionally distinct.
+`different-basis`. The historical MCP name for that closure drill-down was
+`project_product_source_closure`; on that edge it was `unavailable`. The current
+read is `project_source_closure`. Historical sealed admission replay still works.
+Current authoring navigation and historical technical authority are intentionally
+distinct.
 
 ## Activity revision projection
 
