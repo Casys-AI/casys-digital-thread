@@ -278,13 +278,13 @@ Deno.test("model.capture-part-definitions@1 cannot appear in the initial plan", 
   assertEquals(registered.requiresAdditiveChange, true);
 });
 
-Deno.test("assembly-integrity observation is planning-only and binds exactly one canonical geometry module artifact", () => {
+Deno.test("assembly-integrity observation is trusted and binds exactly one canonical geometry module artifact", () => {
   const registered = getRegisteredEngineeringOperation(
     VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION,
   )!;
   assertEquals(registered.workItemKind, "verify");
   assertEquals(registered.riskClass, "consequential");
-  assertEquals(registered.execution, "planning-only");
+  assertEquals(registered.execution, "trusted");
   assertEquals(registered.decisionEvidenceScope, "thread-entity-bindings");
   assertEquals(registered.allowedBasisKinds, ["thread-snapshot"]);
   assertEquals(registered.bindings, [{

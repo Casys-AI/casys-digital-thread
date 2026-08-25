@@ -39,6 +39,9 @@ being observed.
 - every immediate child capture and occurrence transform;
 - one registered, digest-pinned geometry-analysis method.
 
+For this module contract, `rotationDeg: [x, y, z]` is lowered with Build123d semantics
+as `Rx · Ry · Rz`; the historical `extrinsic-xyz` label alone is ambiguous.
+
 The first qualified method should report facts in three groups:
 
 1. STEP import and topology: unit, solid count, BRep validity, degenerate entities and

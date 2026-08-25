@@ -339,9 +339,10 @@ const OPERATIONS = [
     }],
   },
   /**
-   * Factual assembly-integrity observation is a review/planning vertical only.
-   * A later trusted observer executor must be a distinct composition change;
-   * this descriptor never grants provider dispatch or a product verdict.
+   * Trusted factual assembly-integrity observation.
+   *
+   * Its executor reopens a human-approved exact module and profile, records
+   * recovery state, and seals facts. It never grants a product verdict.
    */
   {
     id: VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION.id,
@@ -350,12 +351,12 @@ const OPERATIONS = [
     allowedBasisKinds: ["thread-snapshot"],
     title: "Observe factual assembly integrity",
     description:
-      "Prepare a human-reviewed factual observation over one exact current primary geometry module. " +
+      "Reopen one human-approved factual observation over one exact current primary geometry module. " +
       "The signed admission names only the server-owned observation profile, method and exact configured runtime; " +
       "it supplies no verdict, provider capability, tool, runtime, transform, or caller-selected tolerance.",
     workItemKind: "verify",
     riskClass: "consequential",
-    execution: "planning-only",
+    execution: "trusted",
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: "geometryModule",

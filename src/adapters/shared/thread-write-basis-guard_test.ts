@@ -27,6 +27,7 @@ import {
 } from "../../orchestration/operations/fea-isolated-static-proof.ts";
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/compile/admission/technical-compilation-proposal.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/cad/isolated/build123d-execution-proposal.ts";
+import { VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-observation.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/modelica/qualified-kit/run-proposal.ts";
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
 import { ARCHIVE_LINEAGE_OPERATION } from "../../domain/thread/thread-retirement.ts";
@@ -53,6 +54,7 @@ Deno.test("all generic Thread writers share one lease for an exact basis", () =>
     run("admission", "queued"),
     run("build123d-execution", "queued"),
     run("part-definitions", "queued"),
+    run("assembly-integrity", "queued"),
   ].map(threadWriteBasisLeaseScope);
 
   assertEquals(new Set(scopes).size, 1);
@@ -75,6 +77,16 @@ Deno.test(
 Deno.test("a completed PartDefinitions capture blocks a same-basis sibling", async () => {
   const current = run("architecture", "queued");
   const sibling = run("part-definitions", "completed");
+  await assertRejects(
+    () => assertThreadWriteBasisAvailable(project([current, sibling]), current),
+    EngineeringProjectCommandError,
+    "sibling run",
+  );
+});
+
+Deno.test("a completed assembly-integrity observation blocks a same-basis sibling", async () => {
+  const current = run("architecture", "queued");
+  const sibling = run("assembly-integrity", "completed");
   await assertRejects(
     () => assertThreadWriteBasisAvailable(project([current, sibling]), current),
     EngineeringProjectCommandError,
@@ -645,7 +657,8 @@ type OperationName =
   | "geometry"
   | "admission"
   | "build123d-execution"
-  | "part-definitions";
+  | "part-definitions"
+  | "assembly-integrity";
 
 function operation(name: OperationName): EngineeringOperationRef {
   const identity = name === "architecture"
@@ -658,6 +671,8 @@ function operation(name: OperationName): EngineeringOperationRef {
     ? COMPILE_SEAL_ADMISSION_OPERATION
     : name === "part-definitions"
     ? MODEL_CAPTURE_PART_DEFINITIONS_OPERATION
+    : name === "assembly-integrity"
+    ? VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION
     : DESIGN_EXECUTE_BUILD123D_OPERATION;
   return { ...identity, bindings: [] };
 }
