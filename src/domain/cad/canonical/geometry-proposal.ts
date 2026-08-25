@@ -31,6 +31,12 @@ import {
   type GeometryPartManifest,
   parseGeometryPartDecisionParameters,
 } from "./geometry-part-manifest.ts";
+import {
+  encodeGeometryModuleDecisionParameters,
+  GEOMETRY_MODULE_MANIFEST_SCHEMA,
+  type GeometryModuleManifest,
+  parseGeometryModuleDecisionParameters,
+} from "./geometry-module-evidence.ts";
 
 /**
  * Reviewed operation identities live in the domain so the registry can import
@@ -126,15 +132,22 @@ type GeometryPartManifestForLegacySealer = GeometryPartManifest & {
   readonly scriptHash?: never;
 };
 
+type GeometryModuleManifestForLegacySealer = GeometryModuleManifest & {
+  readonly components: never;
+  readonly artifactHashes?: never;
+  readonly scriptHash?: never;
+};
+
 /**
  * Additive read/write union. Existing geometry-manifest/1.0 and /2.0 remain
- * unchanged; a targeted PartDefinition draft deliberately has its own schema
- * family rather than pretending to be a partial assembly bundle.
+ * unchanged; targeted part and module families keep their own schemas rather
+ * than pretending to be a partial assembly bundle.
  */
 export type AnyGeometryManifest =
   | GeometryManifest
   | GeometryBundleManifest
-  | GeometryPartManifestForLegacySealer;
+  | GeometryPartManifestForLegacySealer
+  | GeometryModuleManifestForLegacySealer;
 
 /**
  * Flat parameter encoding carried in an `EngineeringDecisionProposal`.
@@ -212,6 +225,12 @@ export function parseGeometryDecisionParameters(
     // The cast is type-only: the strict target parser returns an object with
     // no legacy fields, and the P2a use case never hands it to the old sealer.
     return parseGeometryPartDecisionParameters(params) as GeometryDecisionParameters;
+  }
+  if (
+    String(params.get("geometry.manifest.schemaVersion")) ===
+      GEOMETRY_MODULE_MANIFEST_SCHEMA
+  ) {
+    return parseGeometryModuleDecisionParameters(params) as GeometryDecisionParameters;
   }
   const draftDigest = requireStringParam(
     params,
@@ -450,13 +469,16 @@ export function geometryDecisionParametersToMap(
  */
 export function encodeGeometryDecisionParameters(
   draftDigest: string,
-  manifest: AnyGeometryManifest | GeometryPartManifest,
+  manifest: AnyGeometryManifest | GeometryPartManifest | GeometryModuleManifest,
 ): ReadonlyArray<{ key: string; label: string; value: string | number | boolean }> {
   if (manifest.schemaVersion === GEOMETRY_BUNDLE_MANIFEST_SCHEMA) {
     return encodeGeometryBundleDecisionParameters(draftDigest, manifest);
   }
   if (manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA) {
     return encodeGeometryPartDecisionParameters(draftDigest, manifest);
+  }
+  if (manifest.schemaVersion === GEOMETRY_MODULE_MANIFEST_SCHEMA) {
+    return encodeGeometryModuleDecisionParameters(draftDigest, manifest);
   }
   if (!manifest.scriptHash || !manifest.artifactHashes) {
     throw new GeometryProposalError(

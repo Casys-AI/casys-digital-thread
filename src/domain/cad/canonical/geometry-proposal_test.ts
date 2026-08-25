@@ -1,5 +1,6 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import {
+  type AnyGeometryManifest,
   encodeGeometryDecisionParameters,
   GEOMETRY_MANIFEST_SCHEMA,
   geometryDecisionParametersToMap,
@@ -7,6 +8,13 @@ import {
   GeometryProposalError,
   parseGeometryDecisionParameters,
 } from "./geometry-proposal.ts";
+
+function requireGeometryV1(manifest: AnyGeometryManifest): GeometryManifest {
+  if (manifest.schemaVersion !== GEOMETRY_MANIFEST_SCHEMA) {
+    throw new Error(`expected ${GEOMETRY_MANIFEST_SCHEMA}`);
+  }
+  return manifest;
+}
 
 Deno.test("geometry decision parameters reject an unexpected signed key", () => {
   const params = new Map(
@@ -215,7 +223,10 @@ Deno.test("parseGeometryDecisionParameters accepts zero assembly files", () => {
   mut.delete("geometry.manifest.assemblyFiles.0.name");
   mut.delete("geometry.manifest.assemblyFiles.0.fingerprint");
   const result = parseGeometryDecisionParameters(mut);
-  assertEquals(result.manifest.artifactHashes?.assemblyFiles.length, 0);
+  assertEquals(
+    requireGeometryV1(result.manifest).artifactHashes?.assemblyFiles.length,
+    0,
+  );
 });
 
 // ── Round-trip test ───────────────────────────────────────────────────────────
@@ -226,25 +237,26 @@ Deno.test("encodeGeometryDecisionParameters and parseGeometryDecisionParameters 
   const params = new Map(encoded.map(({ key, value }) => [key, value]));
   const result = parseGeometryDecisionParameters(params);
 
+  const manifest = requireGeometryV1(result.manifest);
   assertEquals(result.draftDigest, draft);
-  assertEquals(result.manifest.schemaVersion, GEOMETRY_MANIFEST_SCHEMA);
-  assertEquals(result.manifest.architectureBasis.snapshotId, "snap-001");
-  assertEquals(result.manifest.architectureBasis.revision, 3);
-  assertEquals(result.manifest.architectureBasis.artifactFingerprint.digest, HEX64);
-  assertEquals(result.manifest.unitSystem, "mm");
-  assertEquals([...result.manifest.exportFormats], ["gltf", "step"]);
-  assertEquals(result.manifest.scriptHash?.digest, HEX64_B);
-  assertEquals(result.manifest.artifactHashes?.assemblyFiles.length, 1);
-  assertEquals(result.manifest.artifactHashes?.assemblyFiles[0]?.format, "gltf");
-  assertEquals(result.manifest.artifactHashes?.assemblyFiles[0]?.name, "assembly.glb");
+  assertEquals(manifest.schemaVersion, GEOMETRY_MANIFEST_SCHEMA);
+  assertEquals(manifest.architectureBasis.snapshotId, "snap-001");
+  assertEquals(manifest.architectureBasis.revision, 3);
+  assertEquals(manifest.architectureBasis.artifactFingerprint.digest, HEX64);
+  assertEquals(manifest.unitSystem, "mm");
+  assertEquals([...manifest.exportFormats], ["gltf", "step"]);
+  assertEquals(manifest.scriptHash?.digest, HEX64_B);
+  assertEquals(manifest.artifactHashes?.assemblyFiles.length, 1);
+  assertEquals(manifest.artifactHashes?.assemblyFiles[0]?.format, "gltf");
+  assertEquals(manifest.artifactHashes?.assemblyFiles[0]?.name, "assembly.glb");
   assertEquals(
-    result.manifest.artifactHashes?.assemblyFiles[0]?.fingerprint.digest,
+    manifest.artifactHashes?.assemblyFiles[0]?.fingerprint.digest,
     HEX64_C,
   );
-  assertEquals(result.manifest.components.length, 1);
-  assertEquals(result.manifest.components[0]?.usageName, "dripTray");
-  assertEquals(result.manifest.components[0]?.elementId, "elem-01");
-  assertEquals(result.manifest.components[0]?.label, "Drip Tray");
+  assertEquals(manifest.components.length, 1);
+  assertEquals(manifest.components[0]?.usageName, "dripTray");
+  assertEquals(manifest.components[0]?.elementId, "elem-01");
+  assertEquals(manifest.components[0]?.label, "Drip Tray");
 });
 
 Deno.test("round-trip with zero components preserves empty component list", () => {
@@ -255,7 +267,7 @@ Deno.test("round-trip with zero components preserves empty component list", () =
   const encoded = encodeGeometryDecisionParameters(HEX64, manifestNoComponents);
   const params = new Map(encoded.map(({ key, value }) => [key, value]));
   const result = parseGeometryDecisionParameters(params);
-  assertEquals(result.manifest.components.length, 0);
+  assertEquals(requireGeometryV1(result.manifest).components.length, 0);
 });
 
 Deno.test("geometry manifest accepts scoped homonymous usages with distinct provider IDs", () => {
@@ -271,7 +283,7 @@ Deno.test("geometry manifest accepts scoped homonymous usages with distinct prov
     new Map(encoded.map(({ key, value }) => [key, value])),
   );
 
-  assertEquals(result.manifest.components, manifest.components);
+  assertEquals(requireGeometryV1(result.manifest).components, manifest.components);
 });
 
 Deno.test("geometry manifest rejects a provider element bound more than once", () => {
@@ -312,10 +324,11 @@ Deno.test("round-trip with multiple part meshes preserves all entries", () => {
   const encoded = encodeGeometryDecisionParameters(HEX64, manifestWithMeshes);
   const params = new Map(encoded.map(({ key, value }) => [key, value]));
   const result = parseGeometryDecisionParameters(params);
-  assertEquals(result.manifest.artifactHashes?.partMeshes.length, 2);
-  assertEquals(result.manifest.artifactHashes?.partMeshes[0]?.semanticKey, "drip-tray");
+  const parsed = requireGeometryV1(result.manifest);
+  assertEquals(parsed.artifactHashes?.partMeshes.length, 2);
+  assertEquals(parsed.artifactHashes?.partMeshes[0]?.semanticKey, "drip-tray");
   assertEquals(
-    result.manifest.artifactHashes?.partMeshes[1]?.semanticKey,
+    parsed.artifactHashes?.partMeshes[1]?.semanticKey,
     "water-tank",
   );
 });
