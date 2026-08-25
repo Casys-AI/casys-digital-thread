@@ -1,6 +1,7 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import type {
   AssemblyIntegrityInputResolver,
+  ExactAssemblyIntegrityInputRequest,
   ResolvedAssemblyIntegrityInput,
 } from "../../../application/ports/out/cad/assembly-integrity/exact-assembly-integrity-input-resolver.ts";
 import type { AssemblyIntegrityObservationCaptureStore } from "../../../application/ports/out/cad/assembly-integrity/assembly-integrity-observation-capture-store.ts";
@@ -113,6 +114,23 @@ Deno.test("verify.observe-assembly-integrity@1 appends only factual L3 evidence"
       role: "contributes-to",
       status: "current",
     }]);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("verify.observe-assembly-integrity@1 lowers the signed observer profile for the exact input boundary", async () => {
+  const fixture = await createFixture();
+  try {
+    await fixture.executor.execute(AGENT, fixture.command);
+
+    assertEquals(fixture.inputs.calls[0]?.observerProfile, {
+      profile: {
+        id: fixture.profile.profile.id,
+        version: fixture.profile.profile.version,
+      },
+      fingerprint: fixture.profile.profileFingerprint,
+    });
   } finally {
     await fixture.dispose();
   }
@@ -280,7 +298,11 @@ interface Fixture {
   };
   readonly project: MutableProject;
   readonly snapshots: MemorySnapshots;
+  readonly inputs: FakeInputs;
   readonly observer: FakeObserver;
+  readonly profile: Awaited<
+    ReturnType<typeof createAssemblyIntegrityObserverProfile>
+  >;
   readonly dispose: () => Promise<void>;
 }
 
@@ -550,7 +572,9 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
     },
     project,
     snapshots,
+    inputs,
     observer,
+    profile,
     dispose: () => Deno.remove(directory, { recursive: true }),
   };
 }
@@ -733,12 +757,17 @@ function fingerprint(digestCharacter: string): ContentFingerprint {
 }
 
 class FakeInputs implements AssemblyIntegrityInputResolver {
+  readonly calls: ExactAssemblyIntegrityInputRequest[] = [];
+
   constructor(
     private readonly resolved: ResolvedAssemblyIntegrityInput,
     private readonly failure?: Error,
   ) {}
 
-  resolve(): Promise<ResolvedAssemblyIntegrityInput> {
+  resolve(
+    value: ExactAssemblyIntegrityInputRequest,
+  ): Promise<ResolvedAssemblyIntegrityInput> {
+    this.calls.push(value);
     if (this.failure) return Promise.reject(this.failure);
     return Promise.resolve(this.resolved);
   }

@@ -404,7 +404,10 @@ export class VerifyObserveAssemblyIntegrityRunExecutor {
         fingerprint: authorization.admission.geometryModule.fingerprint,
       },
       observerProfile: {
-        profile: authorization.admission.observer.profile,
+        profile: {
+          id: authorization.admission.observer.profile.id,
+          version: authorization.admission.observer.profile.version,
+        },
         fingerprint: authorization.admission.observer.profile.fingerprint,
       },
     });
