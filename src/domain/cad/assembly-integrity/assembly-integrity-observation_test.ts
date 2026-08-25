@@ -339,6 +339,13 @@ async function validSource() {
       schemaVersion: "part-definitions-capture/1.0",
       artifactId: `part-definitions-${C}`,
       fingerprint: fp(C),
+      uri: `casys://part-definitions-capture/sha256/${C}`,
+      byteCount: 1,
+      architecture: {
+        artifactId: `architecture-${A}`,
+        fingerprint: fp(A),
+        uri: `casys://architecture-capture/sha256/${A}`,
+      },
     },
     target: { partDefinitionElementId: "definition-assembly", label: "Assembly" },
     placementAnalysis: {
