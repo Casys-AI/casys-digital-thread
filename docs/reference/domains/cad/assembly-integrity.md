@@ -104,6 +104,12 @@ only by implementing the same neutral port and gaining its own reviewed profile 
 runtime proof. An absent or unqualified adapter is `unavailable`, not a reason to fall
 back to local OCCT, sandbox execution, or a caller-selected provider.
 
+At a strict provider boundary, the server must project the selected profile to the
+consumer's accepted shape explicitly. Profile extension fields are not portable merely
+because they are valid on the server side. Preserve a rejected attempt as historical
+friction; only a later captured observation, with its raw request/response provenance,
+is L3 evidence.
+
 ## Explicit non-claims
 
 This family does not prove or grant any of the following:

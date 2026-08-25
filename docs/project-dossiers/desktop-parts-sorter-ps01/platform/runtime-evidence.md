@@ -2,63 +2,44 @@
 
 Audience: both · Diátaxis: reference · Kind: local observation
 
-The persisted Thread snapshot below was observed locally on 2026-08-25 with `start:yolo`
-and `preview:cockpit` running. The provider smoke below is a separate direct
-observation.
+The following local state was observed on 2026-08-26: Engineering Project r216 and
+Thread r26. `state/local/` is gitignored and may drift.
 
-- Project r101; Thread snapshot
-  `project:desktop-parts-sorter-ps01:r10:design-write-geometry-225ec098c68860ef5c596d62f0aee556da5fc1d8f3765014a7c665ec7120bd33`.
-- Current architecture artifact:
-  `architecture-6cf575e5ccdc339f78bf5c75614afe30ff08cb1685688a9935058b1ead6eafd8`.
-- Workspace r31; event fingerprint
-  `1908ef627d79fd08e25ee579b1c830a0f45fa9d35032e2e7d1bb33115fee2b11`; 8 modules, 6
-  active files and 6 active attachments.
-- Ready single-root technical captures:
-  - SPICE at workspace r28: `0ce29730…1df3`;
-  - Modelica at workspace r29: `a26f443a…646e`;
-  - Frame CAD at workspace r31: `3a541368…9c1d`.
-- Fresh admitted SPICE observations from Thread r6:
-  - `@rdrive[i]` and `@rreturn[i]`: `0.0004545455 A`;
-  - `i(vlogic)`: `-0.000454545 A`;
-  - `v(output)`: `4.545455 V`;
-  - `v(supply)`: `5 V`.
-- Fresh admitted Modelica observations from Thread r8: `normalizedPosition.final` and
-  `normalizedPosition.max_abs` are both `0.999954433048095 1`.
-- Canonical Frame PartDefinition geometry from Thread r10:
-  - authoritative STEP
-    `1187c5725bc16f6c6d4c6caba144b394195834fed8958aaa0b6a4257e521cd3e`;
-  - visual GLB `fb7bb6f54fce1e25b45271b6f59e4890ac40a76e5b719837505b131126bacebe`.
-- Workbench projection: FRAME `1/1`, SYSTEM MODEL `4/4`, GEOMETRY `2/2`, PHYSICS `4/4`,
-  VERIFICATION `0/0`; Frame opens with exact STEP and GLB while the other component
-  geometry buttons remain disabled. The evidence inspector exposes 5 Modelica and 8
-  SPICE records as engineering facets while their exact host provenance stays
-  `digital-thread`.
+## Captured Digital Thread assembly-integrity chain
 
-## Assembly-integrity provider smoke (not Digital Thread evidence)
+The current approved Brief V2 r2 contains `verify-digital-assembly-integrity`, with
+verification authority `assembly-integrity@1.0`.
 
-A direct smoke ran through the normal provider fleet on the exact canonical PS-01 STEP
-at
-`state/local/thread-assets/415401322b6ce4678db220c4ad34358a788c73ce81a58745fa0e9e735a5d4968.step`:
+1. L3 completed as `run:ps01-queue-assembly-integrity-l3-r2`, publishing Thread r24
+   observation
+   `assembly-integrity-observation-9eb0e48bd4d080435ca796ec189918e8081252b96c588e224ba74e6089dd3df6`.
+   It recorded 6 occurrences and 15 pairs; valid BRep; 0 degenerate edges and 0 free
+   edges; zero intersection volume for every pair; and a minimum pairwise distance of 19
+   mm or more. Its raw provenance names the Build123d observer, but this is stronger
+   than merely naming a configured runtime: the capture retains request/response
+   fingerprints.
+2. Provider-free L4 completed as `run:ps01-queue-assembly-integrity-l4`, publishing
+   Thread r25 evaluation
+   `assembly-integrity-evaluation-97cf33228d98878a8af28dc1d1c62fee32892d48d551daf337641046b75e6a85`.
+   The aggregate verdict is `pass`: `assembly-import`, `occurrence-coverage`,
+   `placement-recross`, `brep-validity`, and `pairwise-intersection` all passed.
+3. Human L5 completed as `run:ps01-queue-assembly-integrity-l5`, publishing Thread r26
+   closeout
+   `assembly-integrity-evaluation-closeout-80d2c42801dd139591d8f8aeb1392d908c5365ca685242d84639946bfedcb932`.
+   Its exact gate claim is `verify-digital-assembly-integrity` with role `satisfies` and
+   status `current`.
 
-- 97,975 bytes; SHA-256
-  `415401322b6ce4678db220c4ad34358a788c73ce81a58745fa0e9e735a5d4968`;
-- `mcp-build123d` 0.5.0, raw tool `build123d_observe_assembly_integrity`, through the
-  normal fleet (not the sandbox);
-- toolchain
-  `ghcr.io/casys-ai/engineering-toolchain@sha256:7a255f24448ddb6de496c4e47c2d1634c63daea67e9082b558257287215b23b5`;
-- unit `mm`; valid BRep; 6 solids and 6 shells; 0 degenerate edges and 0 free edges; 6
-  observed occurrences/transforms; 15 pairs; every `intersectionVolume` was `0`;
-- every pair was no-contact with minimum distance at least 19 mm.
+## Historical friction and boundary
 
-This is a real provider smoke over these exact bytes, **not** a Digital Thread run. It
-does not establish a `verify.observe-assembly-integrity@1` receipt or
-`assembly-integrity-observation/1.0` capture, an L4
-`verify.evaluate-assembly-integrity@1` capture, or an L5 closeout/gate result. In
-particular, no-contact and a distance of at least 19 mm do not prove joints, required
-contact, physical assemblability, required clearance, motion, load behavior, safety, or
-certification. Digital Thread runtime closeout remains pending.
+The earlier `run:ps01-queue-assembly-integrity-l3` failed because a profile projection
+crossed a strict observer boundary with an unsupported field. It is retained as
+historical friction, not L3 evidence. Commit `422bedaa` corrected that projection; the
+successor r24 capture above is the current factual record.
 
-SPICE and Modelica are documentary L3 observations. The persisted Thread geometry is one
-exact PartDefinition, not an assembly-integrity result. No Digital Thread
-assembly-integrity L3/L4/L5, requirement, routing judgement, FEA, or product verdict has
-been recorded.
+A direct normal-fleet provider smoke over the same STEP also exists, but it is not used
+as a substitute for the captured L3 run. The PS-01 claim rests on the L3/L4/L5 records
+above.
+
+Those records do not evaluate or prove physical joints, required clearance, motion,
+load, fabricability, safety, or certification. They also do not establish a general
+product verdict.

@@ -106,6 +106,9 @@ may only `satisfies/current` an existing current Brief V2 gate; reject never doe
   [Recover a quarantined provider run](../run/recover-a-quarantined-provider-run.md).
 - L3 at `capture-recorded` or `completed`: recovery reopens the exact capture; it must
   not call the provider again.
+- If an L3 profile projection is rejected at a strict provider boundary, retain that run
+  as historical friction. Correct the server-side projection, then obtain a new review
+  and queue a successor; do not relabel the rejected attempt as a provider observation.
 - L4 recovery is deterministic over the exact capture. It must reuse that capture rather
   than replace facts or change criteria.
 - L5 recovery reopens the exact closeout capture only while the L4 result is still fresh

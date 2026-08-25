@@ -2,26 +2,22 @@
 
 Audience: both · Diátaxis: none · Kind: tracking
 
-Thread state observed locally on 2026-08-25. `state/local/` is gitignored and may drift;
-the provider smoke below is a separate direct observation that does not alter Thread
-state.
+Thread state observed locally on 2026-08-26. `state/local/` is gitignored and may drift.
+The rows below distinguish the captured Digital Thread chain from a historical direct
+provider smoke.
 
-| Surface                           | Current fact                                                                                                                                                                                                                                                                |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Engineering Project               | `desktop-parts-sorter-ps01` r101; approved brief; all 13 recorded work items completed                                                                                                                                                                                      |
-| Thread                            | r10; current snapshot seals canonical Frame geometry                                                                                                                                                                                                                        |
-| Product structure                 | One `DesktopPartsSorter` root, six exact typed `PartUsage` occurrences and nine technical `AttributeUsage` handles                                                                                                                                                          |
-| Source workspace                  | r31; 8 modules, 6 active files, 6 active attachments                                                                                                                                                                                                                        |
-| Electrical                        | SPICE admitted at Thread r5 and executed through ngspice at r6                                                                                                                                                                                                              |
-| Behavior                          | Modelica admitted at Thread r7 and executed through OMC/DASSL at r8                                                                                                                                                                                                         |
-| Geometry                          | Frame CAD admitted at Thread r9; exact PartDefinition STEP and GLB sealed at r10                                                                                                                                                                                            |
-| Assembly-integrity provider smoke | Direct normal-fleet `mcp-build123d` 0.5.0 smoke over exact local STEP `415401322b6ce4678db220c4ad34358a788c73ce81a58745fa0e9e735a5d4968` (97,975 bytes): valid BRep, 6 solids, 6 shells, 6 occurrences, 15 zero-volume no-contact pairs; outside the current Digital Thread |
-| Assembly-integrity Digital Thread | Pending: no `verify.observe-assembly-integrity@1` L3 capture, `verify.evaluate-assembly-integrity@1` L4 capture, or human L5 closeout/gate result                                                                                                                           |
-| Remaining compile gap             | Diverter multi-file CAD stays `source.dependency-lowering-unavailable`                                                                                                                                                                                                      |
-| Workbench                         | Product structure 7/7; Frame geometry opens; unavailable component geometry buttons stay disabled                                                                                                                                                                           |
-| Verdict                           | zero requirement, evaluation or verdict recorded                                                                                                                                                                                                                            |
+| Surface                   | Current fact                                                                                                                                                                        |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Engineering Project       | `desktop-parts-sorter-ps01` r216; current approved Brief V2 r2                                                                                                                      |
+| Thread                    | r26, closed by the human L5 assembly-integrity accept                                                                                                                               |
+| Assembly gate             | `verify-digital-assembly-integrity`, authority `assembly-integrity@1.0`; the r26 closeout claims `satisfies/current`                                                                |
+| L3 factual observation    | Completed run `run:ps01-queue-assembly-integrity-l3-r2` published r24 observation `9eb0e48bd4d080435ca796ec189918e8081252b96c588e224ba74e6089dd3df6`                                |
+| L4 evaluation             | Completed run `run:ps01-queue-assembly-integrity-l4` published r25 evaluation `97cf33228d98878a8af28dc1d1c62fee32892d48d551daf337641046b75e6a85`: `pass` on all five fixed criteria |
+| L5 human closeout         | Completed human run `run:ps01-queue-assembly-integrity-l5` published r26 closeout `80d2c42801dd139591d8f8aeb1392d908c5365ca685242d84639946bfedcb932`                                |
+| L3 observed facts         | 6 occurrences, 15 pairs, valid BRep, 0 degenerate edges, 0 free edges, every intersection volume `0`, and pairwise minimum distances of 19 mm or more                               |
+| Historical friction       | The first L3 queue attempt failed at strict profile projection; it is not evidence. The projection defect was fixed by `422bedaa`, after which the r24 capture was recorded         |
+| Historical provider smoke | A separate direct smoke exists, but is not substituted for the r24 Digital Thread observation                                                                                       |
 
-The project has proved incremental multi-file authoring, graph navigation and three
-single-root technical verticals. Its `Completed` activity status is not product
-completion: the direct provider smoke does not create a Digital Thread
-assembly-integrity run, FEA, routing evaluation, L4, or L5 claim.
+The completed chain is limited to the exact assembly-integrity gate. It does not prove
+physical joints, required clearance, motion, load behavior, fabricability, safety, or
+certification; it is not a general product verdict.
