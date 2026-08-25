@@ -15,9 +15,9 @@ verification authority `assembly-integrity@1.0`.
    `assembly-integrity-observation-9eb0e48bd4d080435ca796ec189918e8081252b96c588e224ba74e6089dd3df6`.
    It recorded 6 occurrences and 15 pairs; valid BRep; 0 degenerate edges and 0 free
    edges; zero intersection volume for every pair; and a minimum pairwise distance of 19
-   mm or more. Its raw provenance names the Build123d observer, but this is stronger
-   than merely naming a configured runtime: the capture retains request/response
-   fingerprints.
+   mm or more. Its raw provenance names the Build123d observer and the capture retains
+   request/response fingerprints. Those fingerprints bind the captured exchange; they
+   do not attest by themselves that the configured image actually ran.
 2. Provider-free L4 completed as `run:ps01-queue-assembly-integrity-l4`, publishing
    Thread r25 evaluation
    `assembly-integrity-evaluation-97cf33228d98878a8af28dc1d1c62fee32892d48d551daf337641046b75e6a85`.
