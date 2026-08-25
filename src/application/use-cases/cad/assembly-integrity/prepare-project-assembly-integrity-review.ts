@@ -14,6 +14,7 @@ import type {
   ProjectAssemblyIntegrityReviewUseCase,
 } from "../../../ports/in/cad/assembly-integrity/project-assembly-integrity-review.ts";
 import type {
+  AssemblyIntegrityReviewExistingWork,
   AssemblyIntegrityReviewResolutionDiagnostic,
   AssemblyIntegrityReviewResolver,
 } from "../../../ports/out/cad/assembly-integrity/assembly-integrity-review-resolver.ts";
@@ -113,7 +114,13 @@ export class PrepareProjectAssemblyIntegrityReview
       if (!admissionMatchesCommand(replay, command)) {
         throw new TypeError("The signed observation admission did not replay exactly.");
       }
-      return resolved(command, replay, decisionParameters, expectedProjectRevision);
+      return resolved(
+        command,
+        replay,
+        decisionParameters,
+        expectedProjectRevision,
+        resolution.existingWork,
+      );
     } catch {
       return notResolved(command, "unresolved", [{
         code: "review-admission-invalid",
@@ -163,29 +170,56 @@ function resolved(
     typeof encodeAssemblyIntegrityObservationAdmissionParameters
   >,
   expectedProjectRevision: number,
+  existingWork: AssemblyIntegrityReviewExistingWork | undefined,
 ): ProjectAssemblyIntegrityReviewResult {
+  const operation = operationFor(command);
+  const proposed = {
+    summary:
+      "Prepare a factual assembly-integrity observation over the exact current canonical geometry module.",
+    parameters: decisionParameters,
+  } as const;
+  if (existingWork !== undefined) {
+    const selected = parseExistingWork(existingWork);
+    return deepFreeze({
+      status: "resolved" as const,
+      projectId: command.projectId,
+      basis: command.basis,
+      geometryModule: command.geometryModule,
+      diagnostics: [],
+      operation,
+      work: {
+        phaseId: selected.phaseId,
+        workItemId: selected.workItemId,
+        operation,
+        ...(selected.gateClaims.length === 0
+          ? {}
+          : { gateClaims: selected.gateClaims }),
+      },
+      decision: {
+        decisionId: selected.decision.id,
+        title: selected.decision.title,
+        question: selected.decision.question,
+      },
+      admission,
+      decisionParameters,
+      next: {
+        propose: {
+          tool: "project_decision_propose" as const,
+          arguments: {
+            decisionId: selected.decision.id,
+            proposal: proposed,
+          },
+        },
+      },
+      grants: "none" as const,
+    });
+  }
   const digestPrefix = command.geometryModule.fingerprint.digest.slice(0, 16);
   const phaseId = `phase-assembly-integrity-${digestPrefix}-r${command.basis.revision}`;
   const workItemId =
     `work-assembly-integrity-${digestPrefix}-r${command.basis.revision}`;
   const decisionId =
     `decision-assembly-integrity-${digestPrefix}-r${command.basis.revision}`;
-  const operation: EngineeringOperationRef = deepFreeze({
-    id: VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION.id,
-    version: VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION.version,
-    bindings: [{
-      name: "geometryModule",
-      source: {
-        kind: "thread-entity",
-        reference: {
-          snapshotId: command.basis.snapshotId,
-          snapshotRevision: command.basis.revision,
-          kind: "artifact",
-          id: command.geometryModule.artifactId,
-        },
-      },
-    }],
-  });
   const phase = {
     id: phaseId,
     name: "Assembly integrity observation",
@@ -231,9 +265,7 @@ function resolved(
       arguments: {
         decisionId,
         proposal: {
-          summary:
-            "Prepare a factual assembly-integrity observation over the exact current canonical geometry module.",
-          parameters: decisionParameters,
+          ...proposed,
         },
       },
     },
@@ -251,6 +283,94 @@ function resolved(
     decisionParameters,
     next,
     grants: "none" as const,
+  });
+}
+
+function operationFor(
+  command: ProjectAssemblyIntegrityReviewCommand,
+): EngineeringOperationRef {
+  return deepFreeze({
+    id: VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION.id,
+    version: VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION.version,
+    bindings: [{
+      name: "geometryModule",
+      source: {
+        kind: "thread-entity",
+        reference: {
+          snapshotId: command.basis.snapshotId,
+          snapshotRevision: command.basis.revision,
+          kind: "artifact",
+          id: command.geometryModule.artifactId,
+        },
+      },
+    }],
+  });
+}
+
+function parseExistingWork(
+  value: AssemblyIntegrityReviewExistingWork,
+): AssemblyIntegrityReviewExistingWork {
+  const root = exactRecord(
+    value,
+    ["phaseId", "workItemId", "decision", "gateClaims"],
+    "$assemblyIntegrityReview.existingWork",
+  );
+  const decision = exactRecord(
+    root.decision,
+    ["id", "title", "question"],
+    "$assemblyIntegrityReview.existingWork.decision",
+  );
+  if (!Array.isArray(root.gateClaims)) {
+    throw new TypeError(
+      "$assemblyIntegrityReview.existingWork.gateClaims must be an array.",
+    );
+  }
+  const gateClaimIds = new Set<string>();
+  const gateClaims = root.gateClaims.map((value, index) => {
+    const claim = exactRecord(
+      value,
+      ["gateItemId", "role", "status"],
+      `$assemblyIntegrityReview.existingWork.gateClaims[${index}]`,
+    );
+    if (claim.role !== "contributes-to" || claim.status !== "current") {
+      throw new TypeError(
+        "$assemblyIntegrityReview.existingWork.gateClaims must remain contributes-to/current.",
+      );
+    }
+    const gateItemId = exactId(
+      claim.gateItemId,
+      `$assemblyIntegrityReview.existingWork.gateClaims[${index}].gateItemId`,
+    );
+    if (gateClaimIds.has(gateItemId)) {
+      throw new TypeError(
+        "$assemblyIntegrityReview.existingWork.gateClaims must not duplicate a gate item.",
+      );
+    }
+    gateClaimIds.add(gateItemId);
+    return {
+      gateItemId,
+      role: "contributes-to" as const,
+      status: "current" as const,
+    };
+  });
+  return deepFreeze({
+    phaseId: exactId(root.phaseId, "$assemblyIntegrityReview.existingWork.phaseId"),
+    workItemId: exactId(
+      root.workItemId,
+      "$assemblyIntegrityReview.existingWork.workItemId",
+    ),
+    decision: {
+      id: exactId(decision.id, "$assemblyIntegrityReview.existingWork.decision.id"),
+      title: nonBlankText(
+        decision.title,
+        "$assemblyIntegrityReview.existingWork.decision.title",
+      ),
+      question: nonBlankText(
+        decision.question,
+        "$assemblyIntegrityReview.existingWork.decision.question",
+      ),
+    },
+    gateClaims,
   });
 }
 
@@ -307,4 +427,11 @@ function positiveInteger(value: unknown, path: string): number {
     throw new TypeError(`${path} must be a positive integer.`);
   }
   return Number(value);
+}
+
+function nonBlankText(value: unknown, path: string): string {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new TypeError(`${path} must be non-blank text.`);
+  }
+  return value;
 }

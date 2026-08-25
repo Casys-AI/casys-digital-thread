@@ -26,6 +26,27 @@ export interface AssemblyIntegrityReviewResolutionDiagnostic {
   readonly message: string;
 }
 
+/**
+ * An already-planned observation leaf selected only by its structural
+ * operation/binding identity. This is not caller input and contains no
+ * provider or executor detail.
+ */
+export interface AssemblyIntegrityReviewExistingWork {
+  readonly phaseId: string;
+  readonly workItemId: string;
+  readonly decision: {
+    readonly id: string;
+    readonly title: string;
+    readonly question: string;
+  };
+  /** Existing generic brief claims recrossed as contributes-to/current only. */
+  readonly gateClaims: readonly {
+    readonly gateItemId: string;
+    readonly role: "contributes-to";
+    readonly status: "current";
+  }[];
+}
+
 export type AssemblyIntegrityReviewResolution =
   | {
     readonly status: "resolved";
@@ -33,6 +54,8 @@ export type AssemblyIntegrityReviewResolution =
     readonly admission: AssemblyIntegrityObservationAdmission;
     /** Current EngineeringProject aggregate revision used by next.append. */
     readonly expectedProjectRevision: number;
+    /** Present only when a matching planned leaf already exists. */
+    readonly existingWork?: AssemblyIntegrityReviewExistingWork;
   }
   | {
     readonly status: "unresolved" | "unavailable";

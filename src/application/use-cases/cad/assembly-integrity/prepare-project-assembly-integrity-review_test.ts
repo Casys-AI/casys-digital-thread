@@ -110,6 +110,9 @@ Deno.test("assembly-integrity review compiles one exact current primary geometry
     }],
   });
   assertEquals(result.work.operation, result.operation);
+  if (!("append" in result.next)) {
+    throw new Error("Expected fallback review to append its bounded plan leaf.");
+  }
   assertEquals(result.next.append.arguments.expectedRevision, 24);
   assertEquals(result.next.append.arguments.workItems[0]?.operation, result.operation);
   assertEquals("queue" in result.next, false);
@@ -162,6 +165,48 @@ Deno.test("assembly-integrity review leaves a non-current or non-primary exact r
   const mismatch = await service.execute(input);
   assertEquals(mismatch.status, "unresolved");
   assertEquals(mismatch.diagnostics[0]?.code, "review-resolution-mismatch");
+});
+
+Deno.test("assembly-integrity review proposes a structurally selected planned leaf without appending another", async () => {
+  const input = command();
+  const resolver = new FakeResolver({
+    status: "resolved",
+    admission: admission(input),
+    expectedProjectRevision: 24,
+    existingWork: {
+      phaseId: "verify-assembly-current",
+      workItemId: "observe-assembly-current",
+      decision: {
+        id: "review-assembly-current",
+        title: "Approve factual assembly observation",
+        question: "May this exact factual observation be dispatched?",
+      },
+      gateClaims: [{
+        gateItemId: "verification-activity-current-assembly",
+        role: "contributes-to",
+        status: "current",
+      }],
+    },
+  });
+
+  const result = await new PrepareProjectAssemblyIntegrityReview({ resolver })
+    .execute(input);
+  if (result.status !== "resolved") throw new Error("Expected resolved review.");
+
+  assertEquals("append" in result.next, false);
+  assertEquals(result.next.propose.arguments.decisionId, "review-assembly-current");
+  assertEquals(result.work, {
+    phaseId: "verify-assembly-current",
+    workItemId: "observe-assembly-current",
+    operation: result.operation,
+    gateClaims: [{
+      gateItemId: "verification-activity-current-assembly",
+      role: "contributes-to",
+      status: "current",
+    }],
+  });
+  assertEquals(result.decision.decisionId, "review-assembly-current");
+  assertEquals(result.grants, "none");
 });
 
 Deno.test("assembly-integrity review refuses closed-command extras, latest aliases, and geometry aliases before resolving", async () => {

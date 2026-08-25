@@ -704,10 +704,10 @@ function sameTransformMatrix(
 }
 
 /**
- * Convert the bundle's right-handed, millimetre, Build123d placement to a
- * canonical row-major homogeneous matrix. The composition is Rx * Ry * Rz,
- * then translation. This is one-way recrossing only: it never attempts an
- * Euler inversion of an observed provider matrix.
+ * Convert the bundle's canonical right-handed millimetre placement to a
+ * row-major homogeneous matrix. The geometry-module/input-bundle convention
+ * composes Rx * Ry * Rz, then translation. This is one-way recrossing only:
+ * it never attempts an Euler inversion of an observed provider matrix.
  */
 export function assemblyIntegrityExpectedPlacementMatrix(
   placement: AssemblyIntegrityExpectedPlacement,

@@ -11,6 +11,7 @@ import type { AssemblyIntegrityObservationAdmission } from "../../../../../domai
 import type { ContentFingerprint } from "../../../../../domain/kernel/primitives.ts";
 import type {
   EngineeringDecisionProposalParameter,
+  EngineeringGateClaim,
   EngineeringOperationRef,
   EngineeringThreadSnapshotBasis,
   EngineeringThreadSnapshotRef,
@@ -35,6 +36,8 @@ export interface ProjectAssemblyIntegrityReviewWork {
   readonly phaseId: string;
   readonly workItemId: string;
   readonly operation: EngineeringOperationRef;
+  /** Present only when an existing planned leaf supplied generic gate claims. */
+  readonly gateClaims?: readonly EngineeringGateClaim[];
 }
 
 export interface ProjectAssemblyIntegrityReviewDecision {
@@ -44,48 +47,61 @@ export interface ProjectAssemblyIntegrityReviewDecision {
 }
 
 /**
- * Paste-ready project mutations for the review. There is deliberately no
- * queue hop: the registered operation remains planning-only until a separate
- * trusted observer vertical exists.
+ * Paste-ready project mutations for the review. A pre-existing structurally
+ * exact planned leaf receives only the MRTR proposal; otherwise the review
+ * retains the bounded append-plus-propose fallback without a gate claim.
  */
-export interface ProjectAssemblyIntegrityReviewNext {
-  readonly append: {
-    readonly tool: "project_change_append";
-    readonly arguments: {
-      readonly baseSnapshot: EngineeringThreadSnapshotRef;
-      readonly expectedRevision: number;
-      readonly phases: readonly {
-        readonly id: string;
-        readonly name: string;
-        readonly description: string;
-      }[];
-      readonly workItems: readonly {
-        readonly id: string;
-        readonly phaseId: string;
-        readonly owner: "agent";
-        readonly dependsOnWorkItemIds: readonly string[];
-        readonly decisionIds: readonly string[];
-        readonly operation: EngineeringOperationRef;
-      }[];
-      readonly requiredDecisions: readonly {
-        readonly id: string;
-        readonly phaseId: string;
-        readonly title: string;
-        readonly question: string;
-      }[];
+export type ProjectAssemblyIntegrityReviewNext =
+  | {
+    readonly append: {
+      readonly tool: "project_change_append";
+      readonly arguments: {
+        readonly baseSnapshot: EngineeringThreadSnapshotRef;
+        readonly expectedRevision: number;
+        readonly phases: readonly {
+          readonly id: string;
+          readonly name: string;
+          readonly description: string;
+        }[];
+        readonly workItems: readonly {
+          readonly id: string;
+          readonly phaseId: string;
+          readonly owner: "agent";
+          readonly dependsOnWorkItemIds: readonly string[];
+          readonly decisionIds: readonly string[];
+          readonly operation: EngineeringOperationRef;
+        }[];
+        readonly requiredDecisions: readonly {
+          readonly id: string;
+          readonly phaseId: string;
+          readonly title: string;
+          readonly question: string;
+        }[];
+      };
     };
-  };
-  readonly propose: {
-    readonly tool: "project_decision_propose";
-    readonly arguments: {
-      readonly decisionId: string;
-      readonly proposal: {
-        readonly summary: string;
-        readonly parameters: readonly EngineeringDecisionProposalParameter[];
+    readonly propose: {
+      readonly tool: "project_decision_propose";
+      readonly arguments: {
+        readonly decisionId: string;
+        readonly proposal: {
+          readonly summary: string;
+          readonly parameters: readonly EngineeringDecisionProposalParameter[];
+        };
+      };
+    };
+  }
+  | {
+    readonly propose: {
+      readonly tool: "project_decision_propose";
+      readonly arguments: {
+        readonly decisionId: string;
+        readonly proposal: {
+          readonly summary: string;
+          readonly parameters: readonly EngineeringDecisionProposalParameter[];
+        };
       };
     };
   };
-}
 
 export type ProjectAssemblyIntegrityReviewResult =
   | {
