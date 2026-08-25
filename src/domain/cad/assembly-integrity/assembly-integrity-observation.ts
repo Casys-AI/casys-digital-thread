@@ -29,6 +29,8 @@ import {
 
 export const ASSEMBLY_INTEGRITY_OBSERVATION_SCHEMA =
   "assembly-integrity-observation/1.0" as const;
+/** Structural recross tolerance shared with the fixed provider matrix parser. */
+export const ASSEMBLY_INTEGRITY_RIGID_MATRIX_TOLERANCE = 1e-9;
 
 /** Registered operation identity, not a runtime or provider capability. */
 export const VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION = Object.freeze(
@@ -58,23 +60,46 @@ export interface AssemblyIntegrityInputBundleIdentity {
 }
 
 export interface AssemblyIntegrityImportFacts {
-  readonly unitSystem: "mm";
-  readonly solidCount: number;
+  readonly unitSystem: AssemblyIntegrityFact<"mm">;
+  readonly solidCount: AssemblyIntegrityFact<number>;
 }
 
 export interface AssemblyIntegrityTopologyFacts {
   readonly brepValidity: AssemblyIntegrityFact<"valid" | "invalid">;
-  readonly degenerateEntityCount: AssemblyIntegrityFact<number>;
+  readonly degenerateEdgeCount: AssemblyIntegrityFact<number>;
   readonly freeEdgeCount: AssemblyIntegrityFact<number>;
   readonly shellCount: AssemblyIntegrityFact<number>;
 }
+
+/** Canonical row-major homogeneous 4x4 placement matrix in millimetres. */
+export type AssemblyIntegrityTransformMatrix = readonly [
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+];
 
 export interface AssemblyIntegrityOccurrenceFacts {
   readonly usageElementId: string;
   readonly target: AssemblyIntegrityFact<{ readonly partDefinitionElementId: string }>;
   readonly transform: AssemblyIntegrityFact<{
     readonly expectedPlacement: AssemblyIntegrityExpectedPlacement;
-    readonly observedPlacement: AssemblyIntegrityExpectedPlacement;
+    /** Derived from the exact bundle, never reverse-engineered from a matrix. */
+    readonly expectedMatrix: AssemblyIntegrityTransformMatrix;
+    /** Provider-observed factual matrix; no match criterion is applied here. */
+    readonly observedMatrix: AssemblyIntegrityTransformMatrix;
   }>;
 }
 
@@ -92,7 +117,8 @@ export interface AssemblyIntegrityObservation {
   readonly operation: typeof VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION;
   readonly inputBundle: AssemblyIntegrityInputBundleIdentity;
   readonly method: AssemblyIntegrityMethodIdentity;
-  readonly importFacts: AssemblyIntegrityFact<AssemblyIntegrityImportFacts>;
+  readonly importability: AssemblyIntegrityFact<"imported" | "failed">;
+  readonly importFacts: AssemblyIntegrityImportFacts;
   readonly topology: AssemblyIntegrityTopologyFacts;
   readonly occurrences: readonly AssemblyIntegrityOccurrenceFacts[];
   readonly pairs: readonly AssemblyIntegrityPairFacts[];
@@ -114,6 +140,7 @@ export function parseAssemblyIntegrityObservation(
       "operation",
       "inputBundle",
       "method",
+      "importability",
       "importFacts",
       "topology",
       "occurrences",
@@ -153,14 +180,23 @@ export function parseAssemblyIntegrityObservation(
     );
   }
 
-  const importFacts = parseObservationFact(
+  const importability = parseObservationFact(
+    root.importability,
+    "$assemblyIntegrityObservation.importability",
+    (candidate, path) => {
+      if (candidate !== "imported" && candidate !== "failed") {
+        throw new TypeError(`${path} must be imported or failed.`);
+      }
+      return candidate;
+    },
+  );
+  const importFacts = parseImportFacts(
     root.importFacts,
     "$assemblyIntegrityObservation.importFacts",
-    parseImportFacts,
   );
   if (
-    importFacts.status === "observed" &&
-    importFacts.value.unitSystem !== inputBundle.manifest.unitSystem
+    importFacts.unitSystem.status === "observed" &&
+    importFacts.unitSystem.value !== inputBundle.manifest.unitSystem
   ) {
     throw new TypeError(
       "$assemblyIntegrityObservation.importFacts.unitSystem diverges from the exact STEP basis.",
@@ -211,12 +247,20 @@ export function parseAssemblyIntegrityObservation(
       `$assemblyIntegrityObservation.pairs[${index}]`,
     )
   );
+  assertImportFailureGapInvariant(
+    importability,
+    importFacts,
+    topology,
+    occurrences,
+    pairs,
+  );
 
   return deepFreeze({
     schemaVersion: ASSEMBLY_INTEGRITY_OBSERVATION_SCHEMA,
     operation: VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION,
     inputBundle: bundleIdentity,
     method,
+    importability,
     importFacts,
     topology,
     occurrences,
@@ -266,17 +310,27 @@ function assertBundleIdentity(
 
 function parseImportFacts(value: unknown, path: string): AssemblyIntegrityImportFacts {
   const root = exactRecord(value, ["unitSystem", "solidCount"], path);
-  literalValue(root.unitSystem, "mm", `${path}.unitSystem`);
   return deepFreeze({
-    unitSystem: "mm",
-    solidCount: nonNegativeFiniteInteger(root.solidCount, `${path}.solidCount`),
+    unitSystem: parseObservationFact(
+      root.unitSystem,
+      `${path}.unitSystem`,
+      (candidate, candidatePath) => {
+        literalValue(candidate, "mm", candidatePath);
+        return "mm" as const;
+      },
+    ),
+    solidCount: parseObservationFact(
+      root.solidCount,
+      `${path}.solidCount`,
+      nonNegativeFiniteInteger,
+    ),
   });
 }
 
 function parseTopology(value: unknown): AssemblyIntegrityTopologyFacts {
   const root = exactRecord(
     value,
-    ["brepValidity", "degenerateEntityCount", "freeEdgeCount", "shellCount"],
+    ["brepValidity", "degenerateEdgeCount", "freeEdgeCount", "shellCount"],
     "$assemblyIntegrityObservation.topology",
   );
   return deepFreeze({
@@ -290,9 +344,9 @@ function parseTopology(value: unknown): AssemblyIntegrityTopologyFacts {
         return candidate;
       },
     ),
-    degenerateEntityCount: parseObservationFact(
-      root.degenerateEntityCount,
-      "$assemblyIntegrityObservation.topology.degenerateEntityCount",
+    degenerateEdgeCount: parseObservationFact(
+      root.degenerateEdgeCount,
+      "$assemblyIntegrityObservation.topology.degenerateEdgeCount",
       nonNegativeFiniteInteger,
     ),
     freeEdgeCount: parseObservationFact(
@@ -347,7 +401,7 @@ function parseOccurrenceFacts(
     (candidate, candidatePath) => {
       const record = exactRecord(
         candidate,
-        ["expectedPlacement", "observedPlacement"],
+        ["expectedPlacement", "expectedMatrix", "observedMatrix"],
         candidatePath,
       );
       return deepFreeze({
@@ -355,9 +409,13 @@ function parseOccurrenceFacts(
           record.expectedPlacement,
           `${candidatePath}.expectedPlacement`,
         ),
-        observedPlacement: parsePlacement(
-          record.observedPlacement,
-          `${candidatePath}.observedPlacement`,
+        expectedMatrix: parseAssemblyIntegrityTransformMatrix(
+          record.expectedMatrix,
+          `${candidatePath}.expectedMatrix`,
+        ),
+        observedMatrix: parseAssemblyIntegrityTransformMatrix(
+          record.observedMatrix,
+          `${candidatePath}.observedMatrix`,
         ),
       });
     },
@@ -367,6 +425,17 @@ function parseOccurrenceFacts(
     !samePlacement(transform.value.expectedPlacement, expected.expectedPlacement)
   ) {
     throw new TypeError(`${path}.transform.expectedPlacement must equal the bundle.`);
+  }
+  if (
+    transform.status === "observed" &&
+    !sameTransformMatrix(
+      transform.value.expectedMatrix,
+      assemblyIntegrityExpectedPlacementMatrix(expected.expectedPlacement),
+    )
+  ) {
+    throw new TypeError(
+      `${path}.transform.expectedMatrix must be derived from the exact bundle placement.`,
+    );
   }
   return deepFreeze({ usageElementId, target, transform });
 }
@@ -524,6 +593,196 @@ function samePlacement(
     value === right.translationMm[index]
   ) &&
     left.rotationDeg.every((value, index) => value === right.rotationDeg[index]);
+}
+
+function sameTransformMatrix(
+  left: AssemblyIntegrityTransformMatrix,
+  right: AssemblyIntegrityTransformMatrix,
+): boolean {
+  return left.every((value, index) => Object.is(value, right[index]));
+}
+
+/**
+ * Convert the bundle's right-handed, millimetre, extrinsic XYZ placement to a
+ * canonical row-major homogeneous matrix. The composition is Rz * Ry * Rx,
+ * then translation. This is one-way recrossing only: it never attempts an
+ * Euler inversion of an observed provider matrix.
+ */
+export function assemblyIntegrityExpectedPlacementMatrix(
+  placement: AssemblyIntegrityExpectedPlacement,
+): AssemblyIntegrityTransformMatrix {
+  const [translationX, translationY, translationZ] = placement.translationMm;
+  const rotationX = placement.rotationDeg[0] * Math.PI / 180;
+  const rotationY = placement.rotationDeg[1] * Math.PI / 180;
+  const rotationZ = placement.rotationDeg[2] * Math.PI / 180;
+  const cosineX = Math.cos(rotationX);
+  const sineX = Math.sin(rotationX);
+  const cosineY = Math.cos(rotationY);
+  const sineY = Math.sin(rotationY);
+  const cosineZ = Math.cos(rotationZ);
+  const sineZ = Math.sin(rotationZ);
+  return matrix16([
+    cosineZ * cosineY,
+    cosineZ * sineY * sineX - sineZ * cosineX,
+    cosineZ * sineY * cosineX + sineZ * sineX,
+    translationX,
+    sineZ * cosineY,
+    sineZ * sineY * sineX + cosineZ * cosineX,
+    sineZ * sineY * cosineX - cosineZ * sineX,
+    translationY,
+    -sineY,
+    cosineY * sineX,
+    cosineY * cosineX,
+    translationZ,
+    0,
+    0,
+    0,
+    1,
+  ], "$assemblyIntegrityExpectedPlacementMatrix");
+}
+
+/**
+ * Validate and canonicalize a provider-observed transform. The last row is
+ * structural evidence for a homogeneous affine matrix; no tolerance/match
+ * rule is inferred from its rotation or translation values here.
+ */
+export function parseAssemblyIntegrityTransformMatrix(
+  value: unknown,
+  path = "$assemblyIntegrityTransformMatrix",
+): AssemblyIntegrityTransformMatrix {
+  return matrix16(value, path);
+}
+
+function matrix16(
+  value: unknown,
+  path: string,
+): AssemblyIntegrityTransformMatrix {
+  if (!Array.isArray(value) || value.length !== 16) {
+    throw new TypeError(`${path} must contain exactly sixteen finite numbers.`);
+  }
+  const matrix = value.map((entry, index) =>
+    normalizeZero(finite(entry, `${path}[${index}]`))
+  );
+  if (
+    matrix[12] !== 0 || matrix[13] !== 0 || matrix[14] !== 0 ||
+    matrix[15] !== 1
+  ) {
+    throw new TypeError(
+      `${path} must use the row-major homogeneous bottom row [0, 0, 0, 1].`,
+    );
+  }
+  assertRightHandedRigidRotation(matrix, path);
+  return deepFreeze(matrix as unknown as AssemblyIntegrityTransformMatrix);
+}
+
+function assertRightHandedRigidRotation(
+  matrix: readonly number[],
+  path: string,
+): void {
+  const rotation = [
+    [matrix[0]!, matrix[1]!, matrix[2]!],
+    [matrix[4]!, matrix[5]!, matrix[6]!],
+    [matrix[8]!, matrix[9]!, matrix[10]!],
+  ] as const;
+  for (let row = 0; row < rotation.length; row += 1) {
+    const norm = dot(rotation[row]!, rotation[row]!);
+    if (Math.abs(norm - 1) > ASSEMBLY_INTEGRITY_RIGID_MATRIX_TOLERANCE) {
+      throw new TypeError(`${path} rotation row ${row} is not unit length.`);
+    }
+    for (let other = row + 1; other < rotation.length; other += 1) {
+      if (
+        Math.abs(dot(rotation[row]!, rotation[other]!)) >
+          ASSEMBLY_INTEGRITY_RIGID_MATRIX_TOLERANCE
+      ) {
+        throw new TypeError(`${path} rotation rows are not orthogonal.`);
+      }
+    }
+  }
+  const determinant = rotation[0]![0]! *
+      (rotation[1]![1]! * rotation[2]![2]! -
+        rotation[1]![2]! * rotation[2]![1]!) -
+    rotation[0]![1]! *
+      (rotation[1]![0]! * rotation[2]![2]! -
+        rotation[1]![2]! * rotation[2]![0]!) +
+    rotation[0]![2]! *
+      (rotation[1]![0]! * rotation[2]![1]! -
+        rotation[1]![1]! * rotation[2]![0]!);
+  if (
+    Math.abs(determinant - 1) > ASSEMBLY_INTEGRITY_RIGID_MATRIX_TOLERANCE
+  ) {
+    throw new TypeError(`${path} rotation determinant must be +1.`);
+  }
+}
+
+function dot(left: readonly number[], right: readonly number[]): number {
+  return left[0]! * right[0]! + left[1]! * right[1]! + left[2]! * right[2]!;
+}
+
+function normalizeZero(value: number): number {
+  return value === 0 ? 0 : value;
+}
+
+function assertImportFailureGapInvariant(
+  importability: AssemblyIntegrityFact<"imported" | "failed">,
+  importFacts: AssemblyIntegrityImportFacts,
+  topology: AssemblyIntegrityTopologyFacts,
+  occurrences: readonly AssemblyIntegrityOccurrenceFacts[],
+  pairs: readonly AssemblyIntegrityPairFacts[],
+): void {
+  if (importability.status !== "observed" || importability.value !== "failed") {
+    return;
+  }
+  const requireGap = (fact: AssemblyIntegrityFact<unknown>, path: string) => {
+    if (
+      fact.status !== "unresolved" || fact.reason !== "observability-missing"
+    ) {
+      throw new TypeError(
+        `${path} must remain unresolved with observability-missing after a failed import.`,
+      );
+    }
+  };
+  requireGap(
+    importFacts.unitSystem,
+    "$assemblyIntegrityObservation.importFacts.unitSystem",
+  );
+  requireGap(
+    importFacts.solidCount,
+    "$assemblyIntegrityObservation.importFacts.solidCount",
+  );
+  requireGap(
+    topology.brepValidity,
+    "$assemblyIntegrityObservation.topology.brepValidity",
+  );
+  requireGap(
+    topology.degenerateEdgeCount,
+    "$assemblyIntegrityObservation.topology.degenerateEdgeCount",
+  );
+  requireGap(
+    topology.freeEdgeCount,
+    "$assemblyIntegrityObservation.topology.freeEdgeCount",
+  );
+  requireGap(topology.shellCount, "$assemblyIntegrityObservation.topology.shellCount");
+  occurrences.forEach((occurrence, index) => {
+    requireGap(
+      occurrence.target,
+      `$assemblyIntegrityObservation.occurrences[${index}].target`,
+    );
+    requireGap(
+      occurrence.transform,
+      `$assemblyIntegrityObservation.occurrences[${index}].transform`,
+    );
+  });
+  pairs.forEach((pair, index) => {
+    requireGap(
+      pair.minimumDistanceMm,
+      `$assemblyIntegrityObservation.pairs[${index}].minimumDistanceMm`,
+    );
+    requireGap(
+      pair.intersectionVolumeMm3,
+      `$assemblyIntegrityObservation.pairs[${index}].intersectionVolumeMm3`,
+    );
+    requireGap(pair.contact, `$assemblyIntegrityObservation.pairs[${index}].contact`);
+  });
 }
 
 function vector3(value: unknown, path: string): readonly [number, number, number] {

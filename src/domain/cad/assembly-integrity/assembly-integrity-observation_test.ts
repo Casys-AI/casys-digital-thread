@@ -1,5 +1,8 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { sha256Fingerprint } from "../../kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../kernel/deterministic-json.ts";
 import { fingerprintResourceBytes } from "../../compile/source/provider-resource-reader.ts";
 import {
   createIsolatedCodeExecutionReceipt,
@@ -28,9 +31,33 @@ import {
 } from "./assembly-integrity-input-bundle.ts";
 import {
   ASSEMBLY_INTEGRITY_OBSERVATION_SCHEMA,
+  assemblyIntegrityExpectedPlacementMatrix,
   parseAssemblyIntegrityObservation,
+  parseAssemblyIntegrityTransformMatrix,
   VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION,
 } from "./assembly-integrity-observation.ts";
+import {
+  ExactAssemblyIntegrityInputReopener,
+} from "../../../adapters/cad/assembly-integrity/exact-assembly-integrity-input-reopener.ts";
+import {
+  FixedAssemblyIntegrityObserverProfileCatalog,
+} from "../../../adapters/cad/assembly-integrity/fixed-assembly-integrity-observer-profile-catalog.ts";
+import {
+  McpBuild123dAssemblyIntegrityObserver,
+} from "../../../adapters/cad/assembly-integrity/mcp-build123d-assembly-integrity-observer.ts";
+import { FileCanonicalAssetReader } from "../../../adapters/assets/canonical-asset-reader.ts";
+import {
+  GEOMETRY_MODULE_ASSET_DERIVATION_RATIONALE,
+  geometryModuleAssemblyStepArtifactId,
+  geometryModuleBinaryProducer,
+} from "../../../adapters/cad/canonical/design-write-geometry-module-seal.ts";
+import { GEOMETRY_CAPTURE_URI_PREFIX } from "../../../adapters/shared/cas/file-capture-store.ts";
+import {
+  GEOMETRY_BINARY_CAPTURE_USE_RATIONALE,
+  GEOMETRY_BINARY_TRACE_RATIONALE,
+} from "../canonical/geometry-bundle.ts";
+import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
+import type { ThreadSnapshot } from "../../thread/thread-snapshot.ts";
 
 const A = "a".repeat(64);
 const B = "b".repeat(64);
@@ -76,9 +103,10 @@ Deno.test("assembly-integrity observations preserve facts without creating a ver
   const parsed = parseAssemblyIntegrityObservation(observation, bundle);
 
   assertEquals(parsed.operation, VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION);
+  assertEquals(parsed.importability, { status: "observed", value: "imported" });
   assertEquals(parsed.importFacts, {
-    status: "observed",
-    value: { unitSystem: "mm", solidCount: 2 },
+    unitSystem: { status: "observed", value: "mm" },
+    solidCount: { status: "observed", value: 2 },
   });
   assertEquals(parsed.topology.brepValidity, { status: "observed", value: "valid" });
   assertEquals(parsed.occurrences[0]?.usageElementId, "usage-arm");
@@ -148,46 +176,72 @@ Deno.test("assembly-integrity observations preserve facts without creating a ver
   );
 });
 
-Deno.test("assembly-integrity observations retain unresolved and unavailable facts literally", async () => {
+Deno.test("assembly-integrity failed imports retain expected-sized literal observability gaps", async () => {
   const { source } = await validSource();
   const bundle = await createAssemblyIntegrityInputBundle(source);
   const observation = observedResult(bundle);
   const incomplete = {
     ...observation,
+    importability: { status: "observed" as const, value: "failed" as const },
     importFacts: {
-      status: "unresolved" as const,
-      reason: "observability-missing" as const,
+      unitSystem: {
+        status: "unresolved" as const,
+        reason: "observability-missing" as const,
+      },
+      solidCount: {
+        status: "unresolved" as const,
+        reason: "observability-missing" as const,
+      },
     },
     topology: {
-      brepValidity: { status: "unavailable" as const, reason: "unsupported" as const },
-      degenerateEntityCount: {
-        status: "unavailable" as const,
-        reason: "unsupported" as const,
+      brepValidity: {
+        status: "unresolved" as const,
+        reason: "observability-missing" as const,
       },
-      freeEdgeCount: { status: "unavailable" as const, reason: "unsupported" as const },
-      shellCount: { status: "unavailable" as const, reason: "unsupported" as const },
+      degenerateEdgeCount: {
+        status: "unresolved" as const,
+        reason: "observability-missing" as const,
+      },
+      freeEdgeCount: {
+        status: "unresolved" as const,
+        reason: "observability-missing" as const,
+      },
+      shellCount: {
+        status: "unresolved" as const,
+        reason: "observability-missing" as const,
+      },
     },
     occurrences: observation.occurrences.map((occurrence) => ({
       ...occurrence,
-      target: { status: "unresolved" as const, reason: "identity-missing" as const },
-      transform: { status: "unavailable" as const, reason: "unsupported" as const },
+      target: {
+        status: "unresolved" as const,
+        reason: "observability-missing" as const,
+      },
+      transform: {
+        status: "unresolved" as const,
+        reason: "observability-missing" as const,
+      },
     })),
     pairs: observation.pairs.map((pair) => ({
       ...pair,
       minimumDistanceMm: {
-        status: "unavailable" as const,
-        reason: "unsupported" as const,
+        status: "unresolved" as const,
+        reason: "observability-missing" as const,
       },
       intersectionVolumeMm3: {
         status: "unresolved" as const,
         reason: "observability-missing" as const,
       },
-      contact: { status: "unavailable" as const, reason: "unsupported" as const },
+      contact: {
+        status: "unresolved" as const,
+        reason: "observability-missing" as const,
+      },
     })),
   };
   const parsed = parseAssemblyIntegrityObservation(incomplete, bundle);
-  assertEquals(parsed.importFacts.status, "unresolved");
-  assertEquals(parsed.topology.brepValidity.status, "unavailable");
+  assertEquals(parsed.importability, { status: "observed", value: "failed" });
+  assertEquals(parsed.importFacts.unitSystem.status, "unresolved");
+  assertEquals(parsed.topology.brepValidity.status, "unresolved");
   assertEquals(parsed.occurrences[0]?.target.status, "unresolved");
   assertEquals(parsed.pairs[0]?.intersectionVolumeMm3.status, "unresolved");
 
@@ -197,12 +251,295 @@ Deno.test("assembly-integrity observations retain unresolved and unavailable fac
         ...incomplete,
         topology: {
           ...incomplete.topology,
-          freeEdgeCount: { status: "unavailable", reason: "identity-missing" },
+          freeEdgeCount: { status: "unavailable", reason: "unsupported" },
         },
       }, bundle),
     TypeError,
-    'must equal "unsupported"',
+    "must remain unresolved",
   );
+});
+
+Deno.test("assembly-integrity transforms recross expected XYZ and reject non-rigid observations", async () => {
+  const { source } = await validSource();
+  const bundle = await createAssemblyIntegrityInputBundle(source);
+  const observation = observedResult(bundle);
+  const arm = bundle.manifest.occurrences[0]!;
+  assertEquals(arm.usageElementId, "usage-arm");
+  const expectedMatrix = assemblyIntegrityExpectedPlacementMatrix(
+    arm.expectedPlacement,
+  );
+  assertEquals(expectedMatrix[2], 1);
+  assertEquals(expectedMatrix[8], -1);
+  assertEquals(expectedMatrix.slice(12), [0, 0, 0, 1]);
+  assertEquals(Math.abs(expectedMatrix[0]!) < 1e-12, true);
+  const normalizedZero = parseAssemblyIntegrityTransformMatrix([
+    1,
+    -0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+  ]);
+  assertEquals(Object.is(normalizedZero[1], -0), false);
+  assertThrows(
+    () =>
+      parseAssemblyIntegrityObservation({
+        ...observation,
+        occurrences: observation.occurrences.map((occurrence, index) =>
+          index === 0
+            ? {
+              ...occurrence,
+              transform: {
+                status: "observed" as const,
+                value: {
+                  ...occurrence.transform.value,
+                  observedMatrix: [
+                    2,
+                    0,
+                    0,
+                    0,
+                    0,
+                    1,
+                    0,
+                    0,
+                    0,
+                    0,
+                    1,
+                    0,
+                    0,
+                    0,
+                    0,
+                    1,
+                  ],
+                },
+              },
+            }
+            : occurrence
+        ),
+      }, bundle),
+    TypeError,
+    "not unit length",
+  );
+});
+
+Deno.test("mcp-build123d adapter sends only exact STEP and normalizes factual provenance", async () => {
+  const { source } = await validSource();
+  const profiles = new FixedAssemblyIntegrityObserverProfileCatalog();
+  const profile = await profiles.initial();
+  const bundle = await createAssemblyIntegrityInputBundle({
+    ...source,
+    method: profile.method,
+  });
+  const calls: Parameters<McpToolClient["callTool"]>[0][] = [];
+  const client: McpToolClient = {
+    async callTool(call) {
+      calls.push(call);
+      return { structuredContent: rawObservedResult(bundle), text: "observed" };
+    },
+    async callToolTextResult() {
+      throw new Error("text result is not part of this fixed adapter contract");
+    },
+  };
+  const observer = new McpBuild123dAssemblyIntegrityObserver({ client, profiles });
+  const result = await observer.observe({
+    inputBundle: bundle,
+    observerProfile: {
+      profile: profile.profile,
+      fingerprint: profile.profileFingerprint,
+    },
+  });
+
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0]?.name, "build123d_observe_assembly_integrity");
+  assertEquals(Object.keys(calls[0]?.arguments ?? {}), ["step"]);
+  assertEquals(calls[0]?.arguments, {
+    step: {
+      mimeType: "model/step",
+      sha256: bundle.manifest.assemblyStep.sha256,
+      bytes: bundle.assemblyStep.byteLength,
+      blob: bundle.assemblyStep.copy().toBase64(),
+    },
+  });
+  assertEquals(result.execution.profile.fingerprint, profile.profileFingerprint);
+  assertEquals(result.execution.raw.producer, {
+    service: "mcp-build123d",
+    packageVersion: "0.5.0",
+    tool: "build123d_observe_assembly_integrity",
+    engine: { id: "cadquery-ocp", version: "7.9.3.1" },
+  });
+  assertEquals(result.observation.importability, {
+    status: "observed",
+    value: "imported",
+  });
+  assertEquals(
+    result.observation.occurrences[0]?.transform.status,
+    "observed",
+  );
+
+  const failedClient: McpToolClient = {
+    async callTool() {
+      return { structuredContent: rawFailedResult(bundle), text: "failed" };
+    },
+    async callToolTextResult() {
+      throw new Error("text result is not part of this fixed adapter contract");
+    },
+  };
+  const failed = await new McpBuild123dAssemblyIntegrityObserver({
+    client: failedClient,
+    profiles,
+  }).observe({
+    inputBundle: bundle,
+    observerProfile: {
+      profile: profile.profile,
+      fingerprint: profile.profileFingerprint,
+    },
+  });
+  assertEquals(failed.observation.importability, {
+    status: "observed",
+    value: "failed",
+  });
+  assertEquals(
+    failed.observation.occurrences.length,
+    bundle.manifest.occurrences.length,
+  );
+  assertEquals(failed.observation.occurrences[0]?.transform, {
+    status: "unresolved",
+    reason: "observability-missing",
+  });
+});
+
+Deno.test("exact reopener recrosses geometry-module primary, sealed STEP graph, and signed profile", async () => {
+  const { source, stepBytes } = await validSource();
+  const capture = await parseGeometryModuleCapture(source.geometryModuleCapture);
+  const primary = {
+    id: source.geometryModule.artifactId,
+    name: "Canonical module capture",
+    kind: "cad-model" as const,
+    version: source.geometryModule.fingerprint.digest,
+    fingerprint: source.geometryModule.fingerprint,
+    uri:
+      `${GEOMETRY_CAPTURE_URI_PREFIX}sha256/${source.geometryModule.fingerprint.digest}`,
+    mediaType: "application/json",
+    producer: {
+      serverId: "digital-thread",
+      tool: "design.write-geometry@1",
+      runId: capture.trustedRunId,
+    },
+    inputArtifactIds: [],
+    freshness: {
+      status: "fresh" as const,
+      changedAt: capture.sealedAt,
+      invalidatedByChangeIds: [],
+    },
+  };
+  const stepId = geometryModuleAssemblyStepArtifactId(
+    primary.fingerprint.digest,
+    capture.assemblyStep.fingerprint.digest,
+  );
+  const step = {
+    id: stepId,
+    name: `Authoritative STEP: ${capture.manifest.target.label}`,
+    kind: "step" as const,
+    version: capture.assemblyStep.fingerprint.digest,
+    fingerprint: capture.assemblyStep.fingerprint,
+    uri: `/api/thread/assets/${capture.assemblyStep.fingerprint.digest}.step`,
+    mediaType: "model/step",
+    producer: geometryModuleBinaryProducer(capture.receipt),
+    inputArtifactIds: [primary.id],
+    freshness: {
+      status: "fresh" as const,
+      changedAt: capture.sealedAt,
+      invalidatedByChangeIds: [],
+    },
+  };
+  const consumptionId = `consume-${primary.id}-by-${step.id}`;
+  const snapshot = {
+    id: "assembly-integrity-basis",
+    revision: 1,
+    subject: { id: "assembly-subject" },
+    artifacts: [primary, step],
+    consumptions: [{
+      id: consumptionId,
+      artifactId: primary.id,
+      consumer: step.producer,
+      observedFingerprint: primary.fingerprint,
+      verifiedAt: capture.sealedAt,
+      status: "verified" as const,
+    }],
+    provenance: [
+      {
+        id: `traces-${step.id}-from-${primary.id}`,
+        relation: "traces_to" as const,
+        from: { kind: "artifact" as const, id: step.id },
+        to: { kind: "artifact" as const, id: primary.id },
+        rationale: GEOMETRY_BINARY_TRACE_RATIONALE,
+      },
+      {
+        id: `uses-${consumptionId}`,
+        relation: "uses" as const,
+        from: { kind: "consumption" as const, id: consumptionId },
+        to: { kind: "artifact" as const, id: primary.id },
+        rationale: GEOMETRY_BINARY_CAPTURE_USE_RATIONALE,
+      },
+      {
+        id: `derived-from-module-primary-${step.id}`,
+        relation: "derived_from" as const,
+        from: { kind: "artifact" as const, id: step.id },
+        to: { kind: "artifact" as const, id: primary.id },
+        rationale: GEOMETRY_MODULE_ASSET_DERIVATION_RATIONALE,
+      },
+    ],
+    changeSet: { changes: [] },
+  } as unknown as ThreadSnapshot;
+  const directory = await Deno.makeTempDir({ prefix: "assembly-integrity-step-" });
+  try {
+    await Deno.writeFile(
+      `${directory}/${capture.assemblyStep.fingerprint.digest}.step`,
+      stepBytes,
+    );
+    const profiles = new FixedAssemblyIntegrityObserverProfileCatalog();
+    const profile = await profiles.initial();
+    const reopener = new ExactAssemblyIntegrityInputReopener({
+      geometryCaptures: {
+        async read(fingerprint) {
+          return fingerprint.digest === source.geometryModule.fingerprint.digest
+            ? deterministicJson(capture)
+            : undefined;
+        },
+      },
+      stepAssets: new FileCanonicalAssetReader({ directory }),
+      profiles,
+    });
+    const resolved = await reopener.resolve({
+      basis: {
+        snapshotId: snapshot.id,
+        revision: snapshot.revision,
+        subjectId: snapshot.subject.id,
+      },
+      snapshot,
+      geometryModule: source.geometryModule,
+      observerProfile: {
+        profile: profile.profile,
+        fingerprint: profile.profileFingerprint,
+      },
+    });
+    assertEquals(resolved.primary.id, primary.id);
+    assertEquals(resolved.assemblyStep.id, step.id);
+    assertEquals(resolved.inputBundle.manifest.method, profile.method);
+    assertEquals(resolved.observerProfile.fingerprint, profile.profileFingerprint);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
 });
 
 async function validSource() {
@@ -417,13 +754,14 @@ function observedResult(
       byteCount: bundle.bytes.byteLength,
     },
     method: bundle.manifest.method,
+    importability: { status: "observed" as const, value: "imported" as const },
     importFacts: {
-      status: "observed" as const,
-      value: { unitSystem: "mm", solidCount: 2 },
+      unitSystem: { status: "observed" as const, value: "mm" as const },
+      solidCount: { status: "observed" as const, value: 2 },
     },
     topology: {
       brepValidity: { status: "observed" as const, value: "valid" as const },
-      degenerateEntityCount: { status: "observed" as const, value: 0 },
+      degenerateEdgeCount: { status: "observed" as const, value: 0 },
       freeEdgeCount: { status: "observed" as const, value: 0 },
       shellCount: { status: "observed" as const, value: 1 },
     },
@@ -437,7 +775,12 @@ function observedResult(
         status: "observed" as const,
         value: {
           expectedPlacement: occurrence.expectedPlacement,
-          observedPlacement: occurrence.expectedPlacement,
+          expectedMatrix: assemblyIntegrityExpectedPlacementMatrix(
+            occurrence.expectedPlacement,
+          ),
+          observedMatrix: assemblyIntegrityExpectedPlacementMatrix(
+            occurrence.expectedPlacement,
+          ),
         },
       },
     })),
@@ -449,6 +792,92 @@ function observedResult(
       intersectionVolumeMm3: { status: "observed" as const, value: 0 },
       contact: { status: "observed" as const, value: "no-contact" as const },
     }],
+  };
+}
+
+function rawObservedResult(
+  bundle: Awaited<ReturnType<typeof createAssemblyIntegrityInputBundle>>,
+) {
+  const labels = bundle.manifest.occurrences.map(
+    (occurrence) => occurrence.usageElementId,
+  );
+  return {
+    schemaVersion: "build123d-assembly-integrity-observation/1.0",
+    kind: "assembly-integrity-observation",
+    producer: {
+      service: "mcp-build123d",
+      packageVersion: "0.5.0",
+      tool: "build123d_observe_assembly_integrity",
+      engine: { name: "cadquery-ocp", version: "7.9.3.1" },
+    },
+    inputArtifact: {
+      mimeType: "model/step",
+      sha256: bundle.manifest.assemblyStep.sha256,
+      bytes: bundle.assemblyStep.byteLength,
+    },
+    method: {
+      id: "occt-assembly-integrity-v1",
+      version: "1.0.0",
+      linearToleranceMm: 0.000001,
+    },
+    importability: { status: "observed" as const, value: "imported" as const },
+    unitSystem: { status: "observed" as const, value: "mm" as const },
+    topology: {
+      brepValidity: { status: "observed" as const, value: "valid" as const },
+      solidCount: { status: "observed" as const, value: 2 },
+      shellCount: { status: "observed" as const, value: 1 },
+      degenerateEdgeCount: { status: "observed" as const, value: 0 },
+      freeEdgeCount: { status: "observed" as const, value: 0 },
+    },
+    occurrences: {
+      status: "observed" as const,
+      value: bundle.manifest.occurrences.map((occurrence) => ({
+        label: occurrence.usageElementId,
+        transform: {
+          status: "observed" as const,
+          value: assemblyIntegrityExpectedPlacementMatrix(
+            occurrence.expectedPlacement,
+          ),
+        },
+      })),
+    },
+    pairs: {
+      status: "observed" as const,
+      value: labels.flatMap((firstLabel, first) =>
+        labels.slice(first + 1).map((secondLabel) => ({
+          firstLabel,
+          secondLabel,
+          linearToleranceMm: 0.000001,
+          minimumDistanceMm: { status: "observed" as const, value: 1.5 },
+          intersectionVolumeMm3: { status: "observed" as const, value: 0 },
+          contact: { status: "observed" as const, value: "no-contact" as const },
+        }))
+      ),
+    },
+  };
+}
+
+function rawFailedResult(
+  bundle: Awaited<ReturnType<typeof createAssemblyIntegrityInputBundle>>,
+) {
+  const observed = rawObservedResult(bundle);
+  const gap = {
+    status: "unresolved" as const,
+    reason: "observability-missing" as const,
+  };
+  return {
+    ...observed,
+    importability: { status: "observed" as const, value: "failed" as const },
+    unitSystem: gap,
+    topology: {
+      brepValidity: gap,
+      solidCount: gap,
+      shellCount: gap,
+      degenerateEdgeCount: gap,
+      freeEdgeCount: gap,
+    },
+    occurrences: gap,
+    pairs: gap,
   };
 }
 
