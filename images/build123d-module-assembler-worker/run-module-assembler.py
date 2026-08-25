@@ -13,6 +13,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import sys
 
 
@@ -52,6 +53,17 @@ STDOUT_PATH = CONTROL_DIRECTORY / "stdout.bin"
 STDERR_PATH = CONTROL_DIRECTORY / "stderr.bin"
 ASSEMBLY_STEP_PATH = OUTPUT_DIRECTORY / "assembly.step"
 ASSEMBLY_GLB_PATH = OUTPUT_DIRECTORY / "assembly.glb"
+# SOURCE_DATE_EPOCH=0 convention. The wrapper never reads the caller environment.
+CANONICAL_FILE_NAME_TIMESTAMP = b"1970-01-01T00:00:00"
+assert len(CANONICAL_FILE_NAME_TIMESTAMP) == 19
+FILE_NAME_TOKEN_RE = re.compile(rb"\bFILE_NAME\b")
+OCC_FILE_NAME_TIMESTAMP_RE = re.compile(
+    rb"FILE_NAME\s*\(\s*'Open CASCADE Shape Model'\s*,\s*'"
+    rb"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})'"
+)
+QUOTED_ISO_SECOND_TIMESTAMP_RE = re.compile(
+    rb"'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})'"
+)
 QUIESCENCE_TEXT = (
     '{"schemaVersion":"casys-geometry-module-assembler-quiescence/1.0",'
     '"status":"bundle-decoded-compound-exported"}\n'
@@ -85,6 +97,7 @@ def main() -> None:
     compound = Compound(children=placed)
     if export_step(compound, ASSEMBLY_STEP_PATH) is not True:
         fail("Assembly STEP export was rejected.")
+    normalize_assembly_step_file_name_timestamp(ASSEMBLY_STEP_PATH)
     if export_gltf(compound, str(ASSEMBLY_GLB_PATH), binary=True) is not True:
         fail("Assembly GLB export was rejected.")
     ASSEMBLY_STEP_PATH.chmod(0o400)
@@ -114,6 +127,60 @@ def extrinsic_xyz_location(placement: object) -> Location:
         gp_Vec(float(translation[0]), float(translation[1]), float(translation[2])),
     )
     return Location(translation_trsf.Multiplied(rotation_trsf))
+
+
+def normalize_assembly_step_file_name_timestamp(path: Path) -> None:
+    original = path.read_bytes()
+    offset = locate_unique_file_name_timestamp(original)
+    with path.open("r+b") as handle:
+        handle.seek(offset)
+        written = handle.write(CANONICAL_FILE_NAME_TIMESTAMP)
+        if written != len(CANONICAL_FILE_NAME_TIMESTAMP):
+            fail("The assembly STEP FILE_NAME timestamp rewrite was incomplete.")
+    rewritten = path.read_bytes()
+    stamp_end = offset + len(CANONICAL_FILE_NAME_TIMESTAMP)
+    if len(rewritten) != len(original):
+        fail("The assembly STEP byte count changed during FILE_NAME timestamp rewrite.")
+    if rewritten[:offset] != original[:offset] or rewritten[stamp_end:] != original[stamp_end:]:
+        fail("Assembly STEP bytes outside the FILE_NAME timestamp changed.")
+    reread_offset = locate_unique_file_name_timestamp(rewritten)
+    if (
+        reread_offset != offset
+        or rewritten[offset:stamp_end] != CANONICAL_FILE_NAME_TIMESTAMP
+    ):
+        fail("The assembly STEP FILE_NAME timestamp reread is not the canonical field.")
+
+
+def locate_unique_file_name_timestamp(data: bytes) -> int:
+    header_mark = b"HEADER;"
+    endsec_mark = b"ENDSEC;"
+    header_at = data.find(header_mark)
+    if header_at < 0:
+        fail("The assembly STEP header is missing.")
+    start = header_at + len(header_mark)
+    end = data.find(endsec_mark, start)
+    if end < 0:
+        fail("The assembly STEP header is not terminated.")
+    header = data[start:end]
+    token_count = len(FILE_NAME_TOKEN_RE.findall(header))
+    if token_count != 1:
+        fail(
+            "The assembly STEP header FILE_NAME token is missing."
+            if token_count == 0
+            else "The assembly STEP header FILE_NAME token is duplicated."
+        )
+    field_matches = list(OCC_FILE_NAME_TIMESTAMP_RE.finditer(header))
+    if len(field_matches) != 1:
+        fail(
+            "The assembly STEP header FILE_NAME timestamp field is missing or malformed."
+            if len(field_matches) == 0
+            else "The assembly STEP header FILE_NAME timestamp field is duplicated."
+        )
+    quoted = list(QUOTED_ISO_SECOND_TIMESTAMP_RE.finditer(header))
+    field = field_matches[0]
+    if len(quoted) != 1 or quoted[0].start(1) != field.start(1):
+        fail("The assembly STEP header FILE_NAME timestamp is ambiguous.")
+    return start + field.start(1)
 
 
 def assert_empty_directory(path: Path) -> None:
