@@ -11,6 +11,7 @@ import {
   isThreadWorkbenchSnapshot,
   type ThreadArtifact,
   type ThreadGraphNode,
+  type ThreadWorkbenchSnapshot,
 } from "./src/thread/types.ts";
 
 Deno.test("native Workbench rejects a missing bootstrap instead of selecting a product fixture", async () => {
@@ -199,6 +200,39 @@ Deno.test("evidence Workbench rejects unknown fields and incomplete array entiti
     id: "action-without-authority-boundary",
   }];
   assertEquals(isEngineeringWorkbenchSnapshot(malformedActions), false);
+});
+
+Deno.test("client validator accepts only exact provider-free assembly-integrity L3/L4/L5 projection", () => {
+  const snapshot = assemblyIntegrityThreadFixture();
+  assertEquals(isThreadWorkbenchSnapshot(snapshot), true);
+
+  const rawProvider = structuredClone(snapshot) as unknown as {
+    assemblyIntegrity: {
+      chains: Array<{ observation: { record: Record<string, unknown> } }>;
+    };
+  };
+  rawProvider.assemblyIntegrity.chains[0]!.observation.record.provider =
+    "must-not-leak";
+  assertEquals(isThreadWorkbenchSnapshot(rawProvider), false);
+
+  const sixthCriterion = structuredClone(snapshot) as {
+    assemblyIntegrity: {
+      chains: Array<{ evaluation: { criteria: unknown[] } }>;
+    };
+  };
+  sixthCriterion.assemblyIntegrity.chains[0]!.evaluation.criteria.push({
+    id: "invented-criterion",
+    verdict: "pass",
+  });
+  assertEquals(isThreadWorkbenchSnapshot(sixthCriterion), false);
+
+  const l3Verdict = structuredClone(snapshot) as unknown as {
+    assemblyIntegrity: {
+      chains: Array<{ observation: Record<string, unknown> }>;
+    };
+  };
+  l3Verdict.assemblyIntegrity.chains[0]!.observation.aggregateVerdict = "pass";
+  assertEquals(isThreadWorkbenchSnapshot(l3Verdict), false);
 });
 
 Deno.test("evidence Workbench rejects incoherent revisions and malformed live overlays", () => {
@@ -1432,4 +1466,220 @@ function evidenceWorkbenchWithDeclaredFamily() {
   }];
   workbench.thread.evidenceFamilyGraph.omittedCycleEdges = [];
   return workbench;
+}
+
+function assemblyIntegrityThreadFixture(): ThreadWorkbenchSnapshot {
+  const a = "a".repeat(64);
+  const b = "b".repeat(64);
+  const c = "c".repeat(64);
+  const d = "d".repeat(64);
+  const e = "e".repeat(64);
+  const geometry = assemblyProjectionRef(
+    "geometry-" + a,
+    a,
+    "run-geometry",
+    [],
+  );
+  const step = assemblyProjectionRef(
+    "cad-asset-" + a + "-module-step-" + b,
+    b,
+    "run-geometry",
+    [],
+  );
+  const observation = assemblyProjectionRef(
+    "assembly-integrity-observation-" + c,
+    c,
+    "run-l3",
+    [geometry.id, step.id],
+  );
+  const evaluation = assemblyProjectionRef(
+    "assembly-integrity-evaluation-" + d,
+    d,
+    "run-l4",
+    [geometry.id, step.id, observation.id],
+  );
+  const closeout = assemblyProjectionRef(
+    "assembly-integrity-evaluation-closeout-" + e,
+    e,
+    "run-l5",
+    [evaluation.id],
+  );
+  const snapshot = structuredClone(GENERIC_THREAD_FIXTURE);
+  snapshot.previous = { snapshotId: "assembly-basis", revision: 4 };
+  snapshot.artifacts = [
+    ...snapshot.artifacts,
+    assemblyProjectionArtifact(geometry, "cad-model", "design.write-geometry@1"),
+    assemblyProjectionArtifact(step, "step", "design.write-geometry@1"),
+    assemblyProjectionArtifact(
+      observation,
+      "evidence",
+      "verify.observe-assembly-integrity@1",
+    ),
+    assemblyProjectionArtifact(
+      evaluation,
+      "evidence",
+      "verify.evaluate-assembly-integrity@1",
+    ),
+    assemblyProjectionArtifact(
+      closeout,
+      "document",
+      "decide.accept-assembly-integrity-evaluation@1",
+    ),
+  ];
+  snapshot.assemblyIntegrity = {
+    schemaVersion: "thread-assembly-integrity/1.0",
+    family: "assembly-integrity",
+    status: "current",
+    chains: [{
+      id: closeout.id,
+      status: "current",
+      observation: {
+        record: observation,
+        basis: {
+          snapshotId: "assembly-basis",
+          revision: 2,
+          subjectId: snapshot.subject.id,
+        },
+        inputBundle: { fingerprint: "sha256:" + a, byteCount: 1 },
+        evidence: { geometryModule: geometry, assemblyStep: step },
+        facts: {
+          importability: { status: "observed", value: "imported" },
+          importFacts: {
+            unitSystem: { status: "observed", value: "mm" },
+            solidCount: { status: "observed", value: 1 },
+          },
+          topology: {
+            brepValidity: { status: "observed", value: "valid" },
+            degenerateEdgeCount: { status: "observed", value: 0 },
+            freeEdgeCount: { status: "observed", value: 0 },
+            shellCount: { status: "observed", value: 1 },
+          },
+          occurrences: [],
+          pairs: [],
+        },
+        limitations: {
+          verdict: "none",
+          fitness: "none",
+          safety: "none",
+          motion: "none",
+          strength: "none",
+        },
+      },
+      evaluation: {
+        record: evaluation,
+        basis: {
+          snapshotId: "assembly-basis",
+          revision: 3,
+          subjectId: snapshot.subject.id,
+        },
+        evidence: {
+          geometryModule: geometry,
+          assemblyStep: step,
+          observation,
+        },
+        method: {
+          id: "assembly-integrity-evaluation",
+          version: "1.0",
+          fingerprint: "sha256:" + a,
+        },
+        criteria: [
+          { id: "assembly-import", verdict: "pass" },
+          { id: "occurrence-coverage", verdict: "pass" },
+          { id: "placement-recross", verdict: "pass" },
+          { id: "brep-validity", verdict: "pass" },
+          { id: "pairwise-intersection", verdict: "pass" },
+        ],
+        aggregateVerdict: "pass",
+        limitations: {
+          providerCalls: "none",
+          genericSysmlRequirementEvaluation: "none",
+          safety: "not-evaluated",
+          physicalJoints: "not-evaluated",
+          clearance: "not-evaluated",
+          motion: "not-evaluated",
+          load: "not-evaluated",
+          fabricability: "not-evaluated",
+        },
+      },
+      closeout: {
+        record: closeout,
+        basis: {
+          snapshotId: "assembly-basis",
+          revision: 4,
+          fingerprint: "sha256:" + b,
+        },
+        humanDisposition: "accept",
+        rejectionDisposition: "none",
+        approvedBriefBasis: {
+          projectId: "project-generic",
+          projectSnapshotId: "project-generic-r2",
+          projectRevision: 2,
+          briefId: "brief-generic",
+          briefSnapshotId: "brief-generic-r2",
+          briefRevision: 2,
+          fingerprint: "sha256:" + c,
+        },
+        verificationAuthority: { id: "assembly-integrity", version: "1.0" },
+        gateClaims: [{
+          gateItemId: "assembly-gate",
+          role: "satisfies",
+          status: "current",
+        }],
+        evidence: {
+          evaluation,
+          geometryModule: geometry,
+          assemblyStep: step,
+          observation,
+        },
+        l4Limitations: {
+          providerCalls: "none",
+          genericSysmlRequirementEvaluation: "none",
+          safety: "not-evaluated",
+          physicalJoints: "not-evaluated",
+          clearance: "not-evaluated",
+          motion: "not-evaluated",
+          load: "not-evaluated",
+          fabricability: "not-evaluated",
+        },
+        limitations: {
+          providerCalls: "none",
+          genericSysmlRequirementEvaluation: "none",
+          certification: "not-issued",
+          l4PassIsNotL5: true,
+        },
+      },
+    }],
+  };
+  return snapshot;
+}
+
+function assemblyProjectionRef(
+  id: string,
+  digest: string,
+  producerRunId: string,
+  dependsOn: string[],
+) {
+  return {
+    id,
+    uri: "casys://fixture/sha256/" + digest,
+    fingerprint: "sha256:" + digest,
+    producerRunId,
+    dependsOn,
+    freshness: "fresh" as const,
+  };
+}
+
+function assemblyProjectionArtifact(
+  reference: ReturnType<typeof assemblyProjectionRef>,
+  kind: string,
+  producedBy: string,
+): ThreadArtifact {
+  return {
+    ...reference,
+    label: reference.id,
+    kind,
+    system: "assembly-fixture",
+    revision: reference.fingerprint,
+    producedBy,
+  };
 }

@@ -243,6 +243,10 @@ export function ProjectOperations({
         <EvaluationCloseoutCard index={thread.evaluationCloseouts} />
       )}
 
+      {thread.assemblyIntegrity && (
+        <AssemblyIntegrityCard index={thread.assemblyIntegrity} />
+      )}
+
       <ContributingSystemsCard view={view} />
 
       <RunTimelineCard project={project} />
@@ -445,6 +449,217 @@ function EvaluationCloseoutCard({
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * Read-only L3 → L4 → L5 assembly-integrity lineage. L4 is the only
+ * engineering verdict shown here; L5 is an independently signed disposition.
+ */
+function AssemblyIntegrityCard({
+  index,
+}: {
+  index: NonNullable<ThreadWorkbenchSnapshot["assemblyIntegrity"]>;
+}): JSX.Element {
+  const current = index.chains.find((chain) => chain.status === "current");
+  const chain = current ?? index.chains[0];
+  const l4 = chain?.evaluation;
+  const l5 = chain?.closeout;
+  const variant: BadgeVariant = index.status === "current"
+    ? "success"
+    : index.status === "historical" || index.status === "unresolved"
+    ? "warning"
+    : "secondary";
+  return (
+    <Card
+      className="overflow-hidden"
+      data-closeout-family="assembly-integrity"
+      aria-labelledby="operations-assembly-integrity-title"
+    >
+      <CardHeader className="flex-row items-center justify-between gap-3 border-b border-border px-3 py-2">
+        <div>
+          <h4
+            id="operations-assembly-integrity-title"
+            className="font-mono text-[9.5px] tracking-[.1em] text-muted-foreground"
+          >
+            ASSEMBLY INTEGRITY · L3 → L4 → L5
+          </h4>
+          <p className="m-0 mt-0.5 text-[10px] text-muted-foreground">
+            Versioned evidence chain · read only
+          </p>
+        </div>
+        <Badge variant={variant}>{sentenceLabel(index.status)}</Badge>
+      </CardHeader>
+      <CardContent className="space-y-3 px-3 py-3">
+        {!chain
+          ? (
+            <p className="text-sm text-muted-foreground">
+              No assembly-integrity record is available on this Thread.
+            </p>
+          )
+          : (
+            <>
+              <section className="rounded-md border border-border bg-muted/15 px-3 py-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="m-0 text-xs font-medium">L3 · observed facts</p>
+                  <Badge variant="secondary">No verdict</Badge>
+                </div>
+                <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
+                  Import {assemblyFactLabel(chain.observation.facts.importability)} ·
+                  {" "}
+                  solid count{" "}
+                  {assemblyFactLabel(chain.observation.facts.importFacts.solidCount)} ·
+                  {" "}
+                  {chain.observation.facts.occurrences.length} occurrence facts ·{" "}
+                  {chain.observation.facts.pairs.length} pair facts.
+                </p>
+                <p className="m-0 text-[10px] text-muted-foreground">
+                  Limits · no fitness, safety, motion or strength conclusion.
+                </p>
+              </section>
+
+              <section className="rounded-md border border-border px-3 py-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="m-0 text-xs font-medium">L4 · recorded evaluation</p>
+                  {l4
+                    ? (
+                      <Badge variant={assemblyVerdictVariant(l4.aggregateVerdict)}>
+                        {l4.aggregateVerdict}
+                      </Badge>
+                    )
+                    : <Badge variant="secondary">Not recorded</Badge>}
+                </div>
+                {l4
+                  ? (
+                    <>
+                      <ul className="mt-2 grid gap-1 sm:grid-cols-2 xl:grid-cols-5">
+                        {l4.criteria.map((criterion) => (
+                          <li
+                            key={criterion.id}
+                            className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground"
+                          >
+                            <span>{sentenceLabel(criterion.id)}</span>
+                            <Badge variant={assemblyVerdictVariant(criterion.verdict)}>
+                              {criterion.verdict}
+                            </Badge>
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="mb-0 mt-2 text-[10px] leading-snug text-muted-foreground">
+                        Scope only: import, occurrence coverage, placement recross, BRep
+                        validity and pairwise intersection. Not safety, joints,
+                        clearance, motion, load or fabrication.
+                      </p>
+                    </>
+                  )
+                  : (
+                    <p className="mb-0 mt-1.5 text-[11px] text-muted-foreground">
+                      No L4 evaluation is recorded for this L3 observation.
+                    </p>
+                  )}
+              </section>
+
+              <section className="rounded-md border border-border px-3 py-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="m-0 text-xs font-medium">L5 · human disposition</p>
+                  {l5
+                    ? (
+                      <Badge
+                        variant={l5.humanDisposition === "accept"
+                          ? "success"
+                          : "warning"}
+                      >
+                        Human {l5.humanDisposition}
+                      </Badge>
+                    )
+                    : <Badge variant="secondary">Not recorded</Badge>}
+                </div>
+                {l5
+                  ? (
+                    <>
+                      <p className="mb-0 mt-1.5 text-[11px] text-muted-foreground">
+                        Authority · {l5.verificationAuthority.id}@
+                        {l5.verificationAuthority.version}. A recorded L4 pass is not
+                        the human L5 decision.
+                      </p>
+                      <div
+                        className="mt-2 rounded border border-border bg-muted/20 px-2.5 py-2"
+                        data-formal-gate="assembly-integrity"
+                      >
+                        <p className="m-0 text-[10px] font-medium text-muted-foreground">
+                          Formal gate claims · separate from the activity stage band
+                        </p>
+                        {l5.gateClaims.length
+                          ? (
+                            <ul className="mt-1 space-y-1">
+                              {l5.gateClaims.map((claim) => (
+                                <li
+                                  key={claim.gateItemId}
+                                  className="font-mono text-[10px] text-muted-foreground"
+                                >
+                                  {claim.gateItemId} · {claim.role} · {claim.status}
+                                </li>
+                              ))}
+                            </ul>
+                          )
+                          : (
+                            <p className="mb-0 mt-1 text-[10px] text-muted-foreground">
+                              No signed gate claim is recorded.
+                            </p>
+                          )}
+                      </div>
+                      <p className="mb-0 mt-2 text-[10px] leading-snug text-muted-foreground">
+                        Limits · no certification; no generic SysML requirement
+                        evaluation; L4 scope remains unchanged.
+                      </p>
+                    </>
+                  )
+                  : (
+                    <p className="mb-0 mt-1.5 text-[11px] text-muted-foreground">
+                      No human L5 disposition is recorded. L4 remains a separate
+                      engineering result.
+                    </p>
+                  )}
+              </section>
+
+              <details className="rounded-md border border-border bg-muted/10">
+                <summary className="cursor-pointer px-3 py-2 text-[10px] text-muted-foreground select-none">
+                  Exact lineage and evidence identities
+                </summary>
+                <div className="space-y-1 border-t border-border px-3 py-2 font-mono text-[9.5px] text-muted-foreground break-all">
+                  <p className="m-0">L3 · {chain.observation.record.id}</p>
+                  {l4 && <p className="m-0">L4 · {l4.record.id}</p>}
+                  {l5 && <p className="m-0">L5 · {l5.record.id}</p>}
+                  <p className="m-0">
+                    chain state · {chain.status} · basis{" "}
+                    {chain.observation.basis.snapshotId}@
+                    {chain.observation.basis.revision}
+                  </p>
+                </div>
+              </details>
+            </>
+          )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function assemblyFactLabel(
+  fact:
+    | { readonly status: "observed"; readonly value: unknown }
+    | { readonly status: "unresolved"; readonly reason: string }
+    | { readonly status: "unavailable"; readonly reason: string },
+): string {
+  return fact.status === "observed" ? String(fact.value) : fact.status;
+}
+
+function assemblyVerdictVariant(
+  verdict: "pass" | "fail" | "unresolved",
+): BadgeVariant {
+  return verdict === "pass"
+    ? "success"
+    : verdict === "fail"
+    ? "destructive"
+    : "warning";
 }
 
 // ---------------------------------------------------------------------------

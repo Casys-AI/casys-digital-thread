@@ -117,6 +117,7 @@ export function ProjectOverview({
     caseActivityJoins,
   );
   const requirementMatrix = buildRequirementMatrix(thread);
+  const assemblyIntegrity = recordedAssemblyIntegrityL4(thread);
   const currentFocus = selectCurrentProjectFocus(project);
   const openBlocker = brief.openBlockers[0];
   const statusTone = projectStatusTone(projectPath.status);
@@ -189,7 +190,10 @@ export function ProjectOverview({
         >
           <dl
             className={cn(
-              "grid max-w-full grid-cols-[minmax(0,1.4fr)_auto_auto] divide-x divide-border overflow-hidden",
+              "grid max-w-full divide-x divide-border overflow-hidden",
+              thread.assemblyIntegrity
+                ? "grid-cols-[minmax(0,1.4fr)_auto_auto_auto]"
+                : "grid-cols-[minmax(0,1.4fr)_auto_auto]",
               CARD_SURFACE,
             )}
           >
@@ -212,7 +216,7 @@ export function ProjectOverview({
             </div>
             <div className="flex flex-col gap-px px-3 py-1.5">
               <dt className="font-mono text-[9px] font-medium tracking-wider text-muted-foreground">
-                Verdicts
+                Requirements
               </dt>
               <dd className="m-0 font-mono text-[13px] tabular-nums">
                 <span className="text-success">
@@ -228,6 +232,18 @@ export function ProjectOverview({
                   : ""}
               </dd>
             </div>
+            {thread.assemblyIntegrity && (
+              <div className="flex min-w-0 flex-col gap-px px-3 py-1.5">
+                <dt className="font-mono text-[9px] font-medium tracking-wider text-muted-foreground">
+                  Assembly integrity
+                </dt>
+                <dd className="m-0 truncate font-mono text-[13px] tabular-nums">
+                  {assemblyIntegrity
+                    ? `${assemblyIntegrity.verdict} · L4`
+                    : "no L4 verdict"}
+                </dd>
+              </div>
+            )}
             <div className="flex flex-col gap-px px-3 py-1.5">
               <dt className="font-mono text-[9px] font-medium tracking-wider text-muted-foreground">
                 Snapshot
@@ -563,7 +579,8 @@ function OverviewVerdictTiles({
   onOpenRequirements: () => void;
 }): JSX.Element | null {
   const matrix = buildRequirementMatrix(thread);
-  if (matrix.rows.length === 0) return null;
+  const assemblyIntegrity = recordedAssemblyIntegrityL4(thread);
+  if (matrix.rows.length === 0 && !assemblyIntegrity) return null;
   return (
     <section aria-labelledby="overview-verdicts-title">
       <div className="mb-3 flex items-end justify-between gap-4">
@@ -584,9 +601,62 @@ function OverviewVerdictTiles({
       </div>
       <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-5">
         {matrix.rows.map((row) => <VerdictTile key={row.id} row={row} />)}
+        {assemblyIntegrity && (
+          <AssemblyIntegrityVerdictTile
+            value={assemblyIntegrity}
+          />
+        )}
       </div>
     </section>
   );
+}
+
+/** L4 is displayed as recorded; the browser does not derive an engineering result. */
+function AssemblyIntegrityVerdictTile({
+  value,
+}: {
+  value: NonNullable<ReturnType<typeof recordedAssemblyIntegrityL4>>;
+}): JSX.Element {
+  const variant = value.verdict === "pass"
+    ? "success"
+    : value.verdict === "fail"
+    ? "destructive"
+    : "warning";
+  return (
+    <Card data-verdict-family="assembly-integrity">
+      <CardContent className="flex flex-col gap-0.5 px-3 py-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate text-[12.5px] font-medium">
+            Assembly integrity
+          </span>
+          <Badge variant={variant}>{value.verdict}</Badge>
+        </div>
+        <span className="font-mono text-[9.5px] text-muted-foreground">
+          Recorded L4 evaluation · {value.chainStatus}
+        </span>
+        <p className="m-0 mt-1 text-[11px] leading-snug text-muted-foreground">
+          Assembly import, occurrences, placement, BRep and pairwise intersection only.
+          Not safety, clearance, motion, load or fabrication.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function recordedAssemblyIntegrityL4(thread: ThreadWorkbenchSnapshot): {
+  readonly verdict: "pass" | "fail" | "unresolved";
+  readonly chainStatus: "current" | "historical" | "unresolved";
+} | undefined {
+  const chains = thread.assemblyIntegrity?.chains ?? [];
+  const current = chains.find((chain) =>
+    chain.status === "current" && chain.evaluation !== undefined
+  );
+  const firstRecorded = chains.find((chain) => chain.evaluation !== undefined);
+  const chain = current ?? firstRecorded;
+  return chain?.evaluation === undefined ? undefined : {
+    verdict: chain.evaluation.aggregateVerdict,
+    chainStatus: chain.status,
+  };
 }
 
 /**

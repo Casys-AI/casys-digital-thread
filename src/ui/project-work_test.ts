@@ -68,10 +68,15 @@ Deno.test("operations leads with recorded execution and human confirmations", as
   const queue = operations.indexOf("<QueueCard");
   const confirmations = operations.indexOf("<MrtrCard");
   const closeout = operations.indexOf("<EvaluationCloseoutCard");
+  const assemblyIntegrity = operations.indexOf("<AssemblyIntegrityCard");
   const systems = operations.indexOf("<ContributingSystemsCard");
   assertEquals(start >= 0 && end > start, true);
   assertEquals(queue >= 0 && queue < confirmations, true);
-  assertEquals(confirmations < closeout && closeout < systems, true);
+  assertEquals(
+    confirmations < closeout && closeout < assemblyIntegrity &&
+      assemblyIntegrity < systems,
+    true,
+  );
   assertStringIncludes(
     operations,
     "pendingHumanConfirmationDecisions(project)",
@@ -148,6 +153,30 @@ Deno.test("operations closeout keeps exact evidence identifiers behind details",
   assertStringIncludes(closeout, "card.evidence.sealedProof.id");
   assertStringIncludes(closeout, "card.evidence.executionEvidence.id");
   assertStringIncludes(closeout, "card.evidence.evaluationCapture.id");
+});
+
+Deno.test("assembly-integrity work card keeps L3 facts, L4 verdict and L5 formal gates separate", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./src/project/work.tsx", import.meta.url),
+  );
+  const start = source.indexOf("function AssemblyIntegrityCard");
+  const end = source.indexOf("// Contributing systems", start);
+  const card = source.slice(start, end);
+
+  assertEquals(start >= 0 && end > start, true);
+  assertStringIncludes(card, "L3 · observed facts");
+  assertStringIncludes(card, "No verdict");
+  assertStringIncludes(card, "L4 · recorded evaluation");
+  assertStringIncludes(card, "l4.aggregateVerdict");
+  assertStringIncludes(card, "L5 · human disposition");
+  assertStringIncludes(card, 'data-formal-gate="assembly-integrity"');
+  assertStringIncludes(
+    card,
+    "separate from the activity stage band",
+  );
+  assertStringIncludes(card, "Exact lineage and evidence identities");
+  assertEquals(card.includes("onClick"), false);
+  assertEquals(card.includes("<button"), false);
 });
 
 Deno.test("operations page heading describes recorded state rather than fleet health", async () => {

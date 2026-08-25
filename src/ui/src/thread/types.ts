@@ -77,6 +77,16 @@ import {
   THREAD_WORKBENCH_SCHEMA,
   type ThreadAction,
   type ThreadArtifact,
+  type ThreadAssemblyIntegrityArtifactRef,
+  type ThreadAssemblyIntegrityBasis,
+  type ThreadAssemblyIntegrityChain,
+  type ThreadAssemblyIntegrityCloseoutCard,
+  type ThreadAssemblyIntegrityEvaluationCard,
+  type ThreadAssemblyIntegrityEvaluationCriterion,
+  type ThreadAssemblyIntegrityFact,
+  type ThreadAssemblyIntegrityIndex,
+  type ThreadAssemblyIntegrityObservationCard,
+  type ThreadAssemblyIntegrityObservationFacts,
   type ThreadEvaluationCloseoutBasis,
   type ThreadEvaluationCloseoutCard,
   type ThreadEvaluationCloseoutCriterion,
@@ -117,6 +127,16 @@ export type { ProductNavigationProjection } from "../../../presentation/workbenc
 export type {
   ThreadAction,
   ThreadArtifact,
+  ThreadAssemblyIntegrityArtifactRef,
+  ThreadAssemblyIntegrityBasis,
+  ThreadAssemblyIntegrityChain,
+  ThreadAssemblyIntegrityCloseoutCard,
+  ThreadAssemblyIntegrityEvaluationCard,
+  ThreadAssemblyIntegrityEvaluationCriterion,
+  ThreadAssemblyIntegrityFact,
+  ThreadAssemblyIntegrityIndex,
+  ThreadAssemblyIntegrityObservationCard,
+  ThreadAssemblyIntegrityObservationFacts,
   ThreadEvaluationCloseoutBasis,
   ThreadEvaluationCloseoutCard,
   ThreadEvaluationCloseoutCriterion,
@@ -868,6 +888,7 @@ export function isThreadWorkbenchSnapshot(
     "components",
     "engineeringCases",
     "evaluationCloseouts",
+    "assemblyIntegrity",
     "sourceFiles",
     "productNavigation",
     "graph",
@@ -913,6 +934,12 @@ export function isThreadWorkbenchSnapshot(
       isThreadEvaluationCloseoutIndex(candidate.evaluationCloseouts, {
         artifacts: candidate.artifacts,
         previous: candidate.previous,
+      })) &&
+    (candidate.assemblyIntegrity === undefined ||
+      isThreadAssemblyIntegrityIndex(candidate.assemblyIntegrity, {
+        artifacts: candidate.artifacts,
+        previous: candidate.previous,
+        subjectId: candidate.subject.id,
       })) &&
     (candidate.sourceFiles === undefined ||
       isThreadSourceFileCatalog(candidate.sourceFiles, candidate.graph)) &&
@@ -1103,6 +1130,567 @@ function isThreadEvaluationCloseoutProofLimitations(
     boundary.limitations.every((item) =>
       typeof item === "string" && item.length > 0
     );
+}
+
+function isThreadAssemblyIntegrityIndex(
+  value: unknown,
+  snapshot: Pick<ThreadWorkbenchSnapshot, "artifacts" | "previous"> & {
+    subjectId: string;
+  },
+): value is ThreadAssemblyIntegrityIndex {
+  if (
+    !isRecord(value) || !hasExactKeys(value, [
+      "schemaVersion",
+      "family",
+      "status",
+      "chains",
+    ]) || value.schemaVersion !== "thread-assembly-integrity/1.0" ||
+    value.family !== "assembly-integrity" ||
+    !isAssemblyIntegrityIndexStatus(value.status) ||
+    !Array.isArray(value.chains) ||
+    !value.chains.every((chain) => isThreadAssemblyIntegrityChain(chain, snapshot))
+  ) {
+    return false;
+  }
+  const chains = value.chains as ThreadAssemblyIntegrityChain[];
+  if (new Set(chains.map((chain) => chain.id)).size !== chains.length) return false;
+  if (value.status === "not-recorded") return chains.length === 0;
+  if (value.status === "current") {
+    return chains.some((chain) => chain.status === "current");
+  }
+  if (value.status === "historical") {
+    return chains.length > 0 && chains.every((chain) => chain.status === "historical");
+  }
+  return true;
+}
+
+function isThreadAssemblyIntegrityChain(
+  value: unknown,
+  snapshot: Pick<ThreadWorkbenchSnapshot, "artifacts" | "previous"> & {
+    subjectId: string;
+  },
+): value is ThreadAssemblyIntegrityChain {
+  if (
+    !isRecord(value) || !hasAllowedKeys(value, [
+      "id",
+      "status",
+      "observation",
+      "evaluation",
+      "closeout",
+    ]) || typeof value.id !== "string" || value.id.length === 0 ||
+    !isAssemblyIntegrityChainStatus(value.status) ||
+    !isThreadAssemblyIntegrityObservationCard(value.observation, snapshot) ||
+    (value.evaluation !== undefined &&
+      !isThreadAssemblyIntegrityEvaluationCard(value.evaluation, snapshot)) ||
+    (value.closeout !== undefined &&
+      !isThreadAssemblyIntegrityCloseoutCard(value.closeout, snapshot))
+  ) {
+    return false;
+  }
+  const observation = value.observation as ThreadAssemblyIntegrityObservationCard;
+  const evaluation = value.evaluation as
+    | ThreadAssemblyIntegrityEvaluationCard
+    | undefined;
+  const closeout = value.closeout as ThreadAssemblyIntegrityCloseoutCard | undefined;
+  if (closeout && !evaluation) return false;
+  if (
+    evaluation && !sameAssemblyArtifactRef(
+      evaluation.evidence.observation,
+      observation.record,
+    )
+  ) return false;
+  if (
+    evaluation && (!sameAssemblyArtifactRef(
+      evaluation.evidence.geometryModule,
+      observation.evidence.geometryModule,
+    ) || !sameAssemblyArtifactRef(
+      evaluation.evidence.assemblyStep,
+      observation.evidence.assemblyStep,
+    ))
+  ) return false;
+  if (
+    closeout && (!sameAssemblyArtifactRef(
+      closeout.evidence.evaluation,
+      evaluation!.record,
+    ) || !sameAssemblyArtifactRef(
+      closeout.evidence.geometryModule,
+      observation.evidence.geometryModule,
+    ) || !sameAssemblyArtifactRef(
+      closeout.evidence.assemblyStep,
+      observation.evidence.assemblyStep,
+    ) || !sameAssemblyArtifactRef(
+      closeout.evidence.observation,
+      observation.record,
+    ))
+  ) return false;
+  const terminal = closeout?.record ?? evaluation?.record ?? observation.record;
+  const terminalBasis = closeout?.basis ?? evaluation?.basis ?? observation.basis;
+  if (value.id !== terminal.id) return false;
+  if (value.status !== "current") return true;
+  return snapshot.previous !== undefined &&
+    snapshot.previous.snapshotId === terminalBasis.snapshotId &&
+    snapshot.previous.revision === terminalBasis.revision &&
+    assemblyArtifactIsInSnapshot(terminal, snapshot.artifacts) &&
+    [
+      observation.record,
+      observation.evidence.geometryModule,
+      observation.evidence.assemblyStep,
+      ...(evaluation === undefined ? [] : [
+        evaluation.record,
+        evaluation.evidence.geometryModule,
+        evaluation.evidence.assemblyStep,
+        evaluation.evidence.observation,
+      ]),
+      ...(closeout === undefined ? [] : [
+        closeout.record,
+        closeout.evidence.evaluation,
+        closeout.evidence.geometryModule,
+        closeout.evidence.assemblyStep,
+        closeout.evidence.observation,
+      ]),
+    ].every((artifact) => artifact.freshness === "fresh");
+}
+
+function isThreadAssemblyIntegrityObservationCard(
+  value: unknown,
+  snapshot: Pick<ThreadWorkbenchSnapshot, "artifacts"> & { subjectId: string },
+): value is ThreadAssemblyIntegrityObservationCard {
+  if (
+    !isRecord(value) || !hasExactKeys(value, [
+      "record",
+      "basis",
+      "inputBundle",
+      "evidence",
+      "facts",
+      "limitations",
+    ]) || !isThreadAssemblyIntegrityArtifactRef(value.record, snapshot.artifacts) ||
+    !isThreadAssemblyIntegrityBasis(value.basis, snapshot.subjectId) ||
+    !isAssemblyIntegrityInputBundle(value.inputBundle) ||
+    !isRecord(value.evidence) || !hasExactKeys(value.evidence, [
+      "geometryModule",
+      "assemblyStep",
+    ]) || !isThreadAssemblyIntegrityArtifactRef(
+      value.evidence.geometryModule,
+      snapshot.artifacts,
+    ) || !isThreadAssemblyIntegrityArtifactRef(
+      value.evidence.assemblyStep,
+      snapshot.artifacts,
+    ) || !isThreadAssemblyIntegrityObservationFacts(value.facts) ||
+    !isAssemblyIntegrityL3Limitations(value.limitations)
+  ) return false;
+  const record = value.record as ThreadAssemblyIntegrityArtifactRef;
+  const evidence = value.evidence as ThreadAssemblyIntegrityObservationCard["evidence"];
+  return record.id.startsWith("assembly-integrity-observation-") &&
+    record.dependsOn.length === 2 &&
+    record.dependsOn[0] === evidence.geometryModule.id &&
+    record.dependsOn[1] === evidence.assemblyStep.id;
+}
+
+function isThreadAssemblyIntegrityEvaluationCard(
+  value: unknown,
+  snapshot: Pick<ThreadWorkbenchSnapshot, "artifacts"> & { subjectId: string },
+): value is ThreadAssemblyIntegrityEvaluationCard {
+  if (
+    !isRecord(value) || !hasExactKeys(value, [
+      "record",
+      "basis",
+      "evidence",
+      "method",
+      "criteria",
+      "aggregateVerdict",
+      "limitations",
+    ]) || !isThreadAssemblyIntegrityArtifactRef(value.record, snapshot.artifacts) ||
+    !isThreadAssemblyIntegrityBasis(value.basis, snapshot.subjectId) ||
+    !isRecord(value.evidence) || !hasExactKeys(value.evidence, [
+      "geometryModule",
+      "assemblyStep",
+      "observation",
+    ]) || !isThreadAssemblyIntegrityArtifactRef(
+      value.evidence.geometryModule,
+      snapshot.artifacts,
+    ) || !isThreadAssemblyIntegrityArtifactRef(
+      value.evidence.assemblyStep,
+      snapshot.artifacts,
+    ) || !isThreadAssemblyIntegrityArtifactRef(
+      value.evidence.observation,
+      snapshot.artifacts,
+    ) || !isAssemblyIntegrityMethod(value.method) ||
+    !Array.isArray(value.criteria) ||
+    !value.criteria.every(isThreadAssemblyIntegrityEvaluationCriterion) ||
+    !isAssemblyIntegrityVerdict(value.aggregateVerdict) ||
+    !isAssemblyIntegrityL4Limitations(value.limitations)
+  ) return false;
+  const record = value.record as ThreadAssemblyIntegrityArtifactRef;
+  const evidence = value.evidence as ThreadAssemblyIntegrityEvaluationCard["evidence"];
+  const criteria = value.criteria as ThreadAssemblyIntegrityEvaluationCriterion[];
+  return record.id.startsWith("assembly-integrity-evaluation-") &&
+    sameIds(record.dependsOn, [
+      evidence.geometryModule.id,
+      evidence.assemblyStep.id,
+      evidence.observation.id,
+    ]) && criteria.length === 5 &&
+    sameIds(criteria.map((criterion) => criterion.id), [
+      "assembly-import",
+      "occurrence-coverage",
+      "placement-recross",
+      "brep-validity",
+      "pairwise-intersection",
+    ]);
+}
+
+function isThreadAssemblyIntegrityCloseoutCard(
+  value: unknown,
+  snapshot: Pick<ThreadWorkbenchSnapshot, "artifacts"> & { subjectId: string },
+): value is ThreadAssemblyIntegrityCloseoutCard {
+  if (
+    !isRecord(value) || !hasExactKeys(value, [
+      "record",
+      "basis",
+      "humanDisposition",
+      "rejectionDisposition",
+      "approvedBriefBasis",
+      "verificationAuthority",
+      "gateClaims",
+      "evidence",
+      "l4Limitations",
+      "limitations",
+    ]) || !isThreadAssemblyIntegrityArtifactRef(value.record, snapshot.artifacts) ||
+    !isThreadAssemblyIntegrityCloseoutBasis(value.basis) ||
+    (value.humanDisposition !== "accept" && value.humanDisposition !== "reject") ||
+    (value.rejectionDisposition !== "none" &&
+      value.rejectionDisposition !== "assembly-integrity-review-required") ||
+    !isAssemblyIntegrityApprovedBriefBasis(value.approvedBriefBasis) ||
+    !isAssemblyIntegrityAuthority(value.verificationAuthority) ||
+    !Array.isArray(value.gateClaims) ||
+    !value.gateClaims.every(isAssemblyIntegrityGateClaim) ||
+    !isRecord(value.evidence) || !hasExactKeys(value.evidence, [
+      "evaluation",
+      "geometryModule",
+      "assemblyStep",
+      "observation",
+    ]) || !isThreadAssemblyIntegrityArtifactRef(
+      value.evidence.evaluation,
+      snapshot.artifacts,
+    ) || !isThreadAssemblyIntegrityArtifactRef(
+      value.evidence.geometryModule,
+      snapshot.artifacts,
+    ) || !isThreadAssemblyIntegrityArtifactRef(
+      value.evidence.assemblyStep,
+      snapshot.artifacts,
+    ) || !isThreadAssemblyIntegrityArtifactRef(
+      value.evidence.observation,
+      snapshot.artifacts,
+    ) || !isAssemblyIntegrityL4Limitations(value.l4Limitations) ||
+    !isAssemblyIntegrityL5Limitations(value.limitations)
+  ) return false;
+  const record = value.record as ThreadAssemblyIntegrityArtifactRef;
+  const evidence = value.evidence as ThreadAssemblyIntegrityCloseoutCard["evidence"];
+  const claims = value.gateClaims as ThreadAssemblyIntegrityCloseoutCard["gateClaims"];
+  return record.id.startsWith("assembly-integrity-evaluation-closeout-") &&
+    sameIds(record.dependsOn, [evidence.evaluation.id]) &&
+    (value.humanDisposition === "reject"
+      ? claims.length === 0
+      : claims.every((claim) =>
+        claim.role === "satisfies" && claim.status === "current"
+      ));
+}
+
+function isThreadAssemblyIntegrityArtifactRef(
+  value: unknown,
+  artifacts: readonly ThreadArtifact[],
+): value is ThreadAssemblyIntegrityArtifactRef {
+  if (
+    !isRecord(value) || !hasExactKeys(value, [
+      "id",
+      "uri",
+      "fingerprint",
+      "producerRunId",
+      "dependsOn",
+      "freshness",
+    ]) || typeof value.id !== "string" || value.id.length === 0 ||
+    typeof value.uri !== "string" || value.uri.length === 0 ||
+    typeof value.fingerprint !== "string" ||
+    !/^sha256:[a-f0-9]{64}$/.test(value.fingerprint) ||
+    typeof value.producerRunId !== "string" || value.producerRunId.length === 0 ||
+    !Array.isArray(value.dependsOn) ||
+    !value.dependsOn.every((entry) => typeof entry === "string" && entry.length > 0) ||
+    (value.freshness !== "fresh" && value.freshness !== "stale" &&
+      value.freshness !== "unavailable")
+  ) return false;
+  return assemblyArtifactIsInSnapshot(
+    value as unknown as ThreadAssemblyIntegrityArtifactRef,
+    artifacts,
+  );
+}
+
+function assemblyArtifactIsInSnapshot(
+  reference: ThreadAssemblyIntegrityArtifactRef,
+  artifacts: readonly ThreadArtifact[],
+): boolean {
+  const matches = artifacts.filter((artifact) => artifact.id === reference.id);
+  const artifact = matches[0];
+  const expectedFreshness = artifact?.freshness === "fresh"
+    ? "fresh"
+    : artifact?.freshness === "stale"
+    ? "stale"
+    : "unavailable";
+  return matches.length === 1 && artifact !== undefined &&
+    artifact.uri === reference.uri && artifact.fingerprint === reference.fingerprint &&
+    artifact.producerRunId === reference.producerRunId &&
+    sameIds(artifact.dependsOn, reference.dependsOn) &&
+    reference.freshness === expectedFreshness;
+}
+
+function isThreadAssemblyIntegrityBasis(
+  value: unknown,
+  subjectId: string,
+): value is ThreadAssemblyIntegrityBasis {
+  return isRecord(value) && hasExactKeys(value, [
+    "snapshotId",
+    "revision",
+    "subjectId",
+  ]) && typeof value.snapshotId === "string" && value.snapshotId.length > 0 &&
+    isPositiveSafeInteger(value.revision) && value.subjectId === subjectId;
+}
+
+function isThreadAssemblyIntegrityCloseoutBasis(
+  value: unknown,
+): value is ThreadAssemblyIntegrityCloseoutCard["basis"] {
+  return isRecord(value) && hasExactKeys(value, [
+    "snapshotId",
+    "revision",
+    "fingerprint",
+  ]) && typeof value.snapshotId === "string" && value.snapshotId.length > 0 &&
+    isPositiveSafeInteger(value.revision) && typeof value.fingerprint === "string" &&
+    /^sha256:[a-f0-9]{64}$/.test(value.fingerprint);
+}
+
+function isAssemblyIntegrityInputBundle(
+  value: unknown,
+): value is ThreadAssemblyIntegrityObservationCard["inputBundle"] {
+  return isRecord(value) && hasExactKeys(value, ["fingerprint", "byteCount"]) &&
+    typeof value.fingerprint === "string" &&
+    /^sha256:[a-f0-9]{64}$/.test(value.fingerprint) &&
+    isPositiveSafeInteger(value.byteCount);
+}
+
+function isThreadAssemblyIntegrityObservationFacts(
+  value: unknown,
+): value is ThreadAssemblyIntegrityObservationFacts {
+  if (
+    !isRecord(value) || !hasExactKeys(value, [
+      "importability",
+      "importFacts",
+      "topology",
+      "occurrences",
+      "pairs",
+    ]) ||
+    !isAssemblyIntegrityFact(
+      value.importability,
+      (candidate) => candidate === "imported" || candidate === "failed",
+    ) ||
+    !isRecord(value.importFacts) || !hasExactKeys(value.importFacts, [
+      "unitSystem",
+      "solidCount",
+    ]) ||
+    !isAssemblyIntegrityFact(
+      value.importFacts.unitSystem,
+      (candidate) => candidate === "mm",
+    ) ||
+    !isAssemblyIntegrityFact(value.importFacts.solidCount, isFiniteNumber) ||
+    !isRecord(value.topology) || !hasExactKeys(value.topology, [
+      "brepValidity",
+      "degenerateEdgeCount",
+      "freeEdgeCount",
+      "shellCount",
+    ]) ||
+    !isAssemblyIntegrityFact(
+      value.topology.brepValidity,
+      (candidate) => candidate === "valid" || candidate === "invalid",
+    ) ||
+    !isAssemblyIntegrityFact(value.topology.degenerateEdgeCount, isFiniteNumber) ||
+    !isAssemblyIntegrityFact(value.topology.freeEdgeCount, isFiniteNumber) ||
+    !isAssemblyIntegrityFact(value.topology.shellCount, isFiniteNumber) ||
+    !Array.isArray(value.occurrences) ||
+    !value.occurrences.every(isAssemblyIntegrityOccurrence) ||
+    !Array.isArray(value.pairs) || !value.pairs.every(isAssemblyIntegrityPair)
+  ) return false;
+  return true;
+}
+
+function isAssemblyIntegrityOccurrence(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, [
+    "usageElementId",
+    "target",
+    "transformStatus",
+  ]) && typeof value.usageElementId === "string" && value.usageElementId.length > 0 &&
+    isAssemblyIntegrityFact(value.target, isAssemblyIntegrityTarget) &&
+    (value.transformStatus === "observed" ||
+      value.transformStatus === "unresolved" ||
+      value.transformStatus === "unavailable");
+}
+
+function isAssemblyIntegrityTarget(
+  candidate: unknown,
+): candidate is { partDefinitionElementId: string } {
+  return isRecord(candidate) && hasExactKeys(candidate, ["partDefinitionElementId"]) &&
+    typeof candidate.partDefinitionElementId === "string" &&
+    candidate.partDefinitionElementId.length > 0;
+}
+
+function isAssemblyIntegrityPair(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, [
+    "firstUsageElementId",
+    "secondUsageElementId",
+    "linearToleranceMm",
+    "minimumDistanceMm",
+    "intersectionVolumeMm3",
+    "contact",
+  ]) && typeof value.firstUsageElementId === "string" &&
+    value.firstUsageElementId.length > 0 &&
+    typeof value.secondUsageElementId === "string" &&
+    value.secondUsageElementId.length > 0 && isFiniteNumber(value.linearToleranceMm) &&
+    isAssemblyIntegrityFact(value.minimumDistanceMm, isFiniteNumber) &&
+    isAssemblyIntegrityFact(value.intersectionVolumeMm3, isFiniteNumber) &&
+    isAssemblyIntegrityFact(
+      value.contact,
+      (candidate) => candidate === "contact" || candidate === "no-contact",
+    );
+}
+
+function isAssemblyIntegrityFact<T>(
+  value: unknown,
+  isObservedValue: (candidate: unknown) => candidate is T,
+): value is ThreadAssemblyIntegrityFact<T> {
+  if (!isRecord(value)) return false;
+  if (value.status === "observed") {
+    return hasExactKeys(value, ["status", "value"]) && isObservedValue(value.value);
+  }
+  if (value.status === "unresolved") {
+    return hasExactKeys(value, ["status", "reason"]) &&
+      (value.reason === "identity-missing" || value.reason === "observability-missing");
+  }
+  return value.status === "unavailable" && hasExactKeys(value, ["status", "reason"]) &&
+    value.reason === "unsupported";
+}
+
+function isThreadAssemblyIntegrityEvaluationCriterion(
+  value: unknown,
+): value is ThreadAssemblyIntegrityEvaluationCriterion {
+  return isRecord(value) && hasExactKeys(value, ["id", "verdict"]) &&
+    (value.id === "assembly-import" || value.id === "occurrence-coverage" ||
+      value.id === "placement-recross" || value.id === "brep-validity" ||
+      value.id === "pairwise-intersection") &&
+    isAssemblyIntegrityVerdict(value.verdict);
+}
+
+function isAssemblyIntegrityMethod(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, ["id", "version", "fingerprint"]) &&
+    value.id === "assembly-integrity-evaluation" && value.version === "1.0" &&
+    typeof value.fingerprint === "string" &&
+    /^sha256:[a-f0-9]{64}$/.test(value.fingerprint);
+}
+
+function isAssemblyIntegrityVerdict(value: unknown): boolean {
+  return value === "pass" || value === "fail" || value === "unresolved";
+}
+
+function isAssemblyIntegrityL3Limitations(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, [
+    "verdict",
+    "fitness",
+    "safety",
+    "motion",
+    "strength",
+  ]) && value.verdict === "none" && value.fitness === "none" &&
+    value.safety === "none" && value.motion === "none" && value.strength === "none";
+}
+
+function isAssemblyIntegrityL4Limitations(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, [
+    "providerCalls",
+    "genericSysmlRequirementEvaluation",
+    "safety",
+    "physicalJoints",
+    "clearance",
+    "motion",
+    "load",
+    "fabricability",
+  ]) && value.providerCalls === "none" &&
+    value.genericSysmlRequirementEvaluation === "none" &&
+    value.safety === "not-evaluated" && value.physicalJoints === "not-evaluated" &&
+    value.clearance === "not-evaluated" && value.motion === "not-evaluated" &&
+    value.load === "not-evaluated" && value.fabricability === "not-evaluated";
+}
+
+function isAssemblyIntegrityL5Limitations(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, [
+    "providerCalls",
+    "genericSysmlRequirementEvaluation",
+    "certification",
+    "l4PassIsNotL5",
+  ]) && value.providerCalls === "none" &&
+    value.genericSysmlRequirementEvaluation === "none" &&
+    value.certification === "not-issued" && value.l4PassIsNotL5 === true;
+}
+
+function isAssemblyIntegrityApprovedBriefBasis(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, [
+    "projectId",
+    "projectSnapshotId",
+    "projectRevision",
+    "briefId",
+    "briefSnapshotId",
+    "briefRevision",
+    "fingerprint",
+  ]) && typeof value.projectId === "string" && value.projectId.length > 0 &&
+    typeof value.projectSnapshotId === "string" && value.projectSnapshotId.length > 0 &&
+    isPositiveSafeInteger(value.projectRevision) && typeof value.briefId === "string" &&
+    value.briefId.length > 0 && typeof value.briefSnapshotId === "string" &&
+    value.briefSnapshotId.length > 0 && isPositiveSafeInteger(value.briefRevision) &&
+    typeof value.fingerprint === "string" &&
+    /^sha256:[a-f0-9]{64}$/.test(value.fingerprint);
+}
+
+function isAssemblyIntegrityAuthority(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, ["id", "version"]) &&
+    value.id === "assembly-integrity" && value.version === "1.0";
+}
+
+function isAssemblyIntegrityGateClaim(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, ["gateItemId", "role", "status"]) &&
+    typeof value.gateItemId === "string" && value.gateItemId.length > 0 &&
+    (value.role === "contributes-to" || value.role === "satisfies") &&
+    (value.status === "current" || value.status === "impact-unresolved" ||
+      value.status === "invalidated" || value.status === "carried-forward");
+}
+
+function isAssemblyIntegrityIndexStatus(value: unknown): boolean {
+  return value === "not-recorded" || value === "current" ||
+    value === "historical" || value === "unresolved" || value === "unavailable";
+}
+
+function isAssemblyIntegrityChainStatus(value: unknown): boolean {
+  return value === "current" || value === "historical" || value === "unresolved";
+}
+
+function sameAssemblyArtifactRef(
+  left: ThreadAssemblyIntegrityArtifactRef,
+  right: ThreadAssemblyIntegrityArtifactRef,
+): boolean {
+  return left.id === right.id && left.uri === right.uri &&
+    left.fingerprint === right.fingerprint &&
+    left.producerRunId === right.producerRunId &&
+    sameIds(left.dependsOn, right.dependsOn) && left.freshness === right.freshness;
+}
+
+function sameIds(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length &&
+    left.every((value, index) => value === right[index]);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
 }
 
 function isThreadSubject(

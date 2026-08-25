@@ -7,6 +7,9 @@ import {
 import { FileCockpitFocusStore } from "../../../src/adapters/project/file-cockpit-focus-store.ts";
 import {
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
+  ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_DESCRIPTOR,
+  ASSEMBLY_INTEGRITY_EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
+  ASSEMBLY_INTEGRITY_OBSERVATION_CAPTURE_DESCRIPTOR,
   type CaptureStoreDescriptor,
   DFM_CASE_CAPTURE_DESCRIPTOR,
   EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
@@ -45,6 +48,7 @@ import type { RequirementsCaptureReader } from "../../../src/adapters/thread/req
 import { FileProjectSourceWorkspaceStore } from "../../../src/adapters/project-source-workspace/file-project-source-workspace-store.ts";
 import { DEFAULT_PROJECT_SOURCE_WORKSPACE_DIRECTORY } from "../../../src/adapters/project-source-workspace/server-composition.ts";
 import type { EvaluationCloseoutCaptureReader } from "../../../src/adapters/thread/evaluation-closeout-workbench-enricher.ts";
+import type { AssemblyIntegrityWorkbenchCaptureReaders } from "../../../src/adapters/thread/assembly-integrity-workbench-enricher.ts";
 import { readDeclaredCockpitFleet } from "../../../src/adapters/thread/cockpit-fleet-projector.ts";
 import { joinWorkspace } from "../sidecar/contracts.ts";
 import { WORKBENCH_ACCESS_HEADER, WORKBENCH_WORKSPACE_ID } from "./contracts.ts";
@@ -175,6 +179,20 @@ export function createPackagedWorkbenchBff(
       ),
       syncBoundary: recordedAnalysisDirectory,
     });
+  const assemblyIntegrityCaptures: AssemblyIntegrityWorkbenchCaptureReaders = {
+    observations: captureAt(
+      controlPlaneRoot,
+      ASSEMBLY_INTEGRITY_OBSERVATION_CAPTURE_DESCRIPTOR,
+    ),
+    evaluations: captureAt(
+      controlPlaneRoot,
+      ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_DESCRIPTOR,
+    ),
+    closeouts: captureAt(
+      controlPlaneRoot,
+      ASSEMBLY_INTEGRITY_EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
+    ),
+  };
   const assetReader = new OrderedEngineeringAssetReader([
     new FileEngineeringAssetReader(threadAssetDirectory),
     new Base64EngineeringAssetReader(projectBaselineAssetDirectory),
@@ -215,6 +233,7 @@ export function createPackagedWorkbenchBff(
     sysmlSourceAnalysis,
     engineeringCaseCaptures,
     evaluationCloseoutCaptures,
+    assemblyIntegrityCaptures,
     liveUpdates,
     assetReader: (filename) => assetReader.read(filename),
     cockpitFleet: () =>

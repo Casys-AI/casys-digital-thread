@@ -1274,6 +1274,60 @@ Deno.test("native Workbench API routes reject non-GET verbs and keep SSE on GET"
   );
 });
 
+Deno.test("native Workbench carries the assembly-integrity index through both GET and SSE projections", async () => {
+  const r2 = genericArchitectureThreadSnapshot(2);
+  const r3 = genericArchitectureThreadSnapshot(3, r2);
+  const project = genericArchitectureProject("completed", r2, r3);
+  const emptyAssemblyIntegrityCaptures = {
+    observations: { read: () => Promise.resolve(undefined) },
+    evaluations: { read: () => Promise.resolve(undefined) },
+    closeouts: { read: () => Promise.resolve(undefined) },
+  };
+  const handler = createNativeWorkbenchHandler({
+    store: new ThreadStore([r2, r3]),
+    projectStore: new ProjectStore([project]),
+    projectId: project.project.id,
+    subjectId: project.project.subjectId,
+    html: "unused",
+    assemblyIntegrityCaptures: emptyAssemblyIntegrityCaptures,
+    pollIntervalMs: 50,
+  });
+
+  const get = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
+  assertEquals(get.status, 200);
+  const projection = await get.json() as {
+    surface: string;
+    thread?: {
+      assemblyIntegrity?: {
+        schemaVersion?: string;
+        status?: string;
+        family?: string;
+        chains?: unknown[];
+      };
+    };
+  };
+  assertEquals(projection.surface, "evidence");
+  assertEquals(projection.thread?.assemblyIntegrity, {
+    schemaVersion: "thread-assembly-integrity/1.0",
+    family: "assembly-integrity",
+    status: "not-recorded",
+    chains: [],
+  });
+
+  const events = await handler(
+    new Request("http://localhost/api/thread/workbench/events"),
+  );
+  const reader = events.body!.getReader();
+  const first = await reader.read();
+  await reader.cancel();
+  const text = new TextDecoder().decode(first.value);
+  assertStringIncludes(text, "event: workbench-snapshot");
+  assertStringIncludes(text, '"assemblyIntegrity"');
+  assertStringIncludes(text, '"not-recorded"');
+});
+
 Deno.test("native Workbench refuses mutated canonical content-addressed bytes", async () => {
   const digest = "a".repeat(64);
   const project = projectFixture("project-one", "subject-one");

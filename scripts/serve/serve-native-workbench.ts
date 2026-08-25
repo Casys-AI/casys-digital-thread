@@ -12,6 +12,9 @@ import { FileCockpitFocusStore } from "../../src/adapters/project/file-cockpit-f
 import type { CockpitFocusStore } from "../../src/application/ports/out/project/cockpit-focus-store.ts";
 import {
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
+  ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_DESCRIPTOR,
+  ASSEMBLY_INTEGRITY_EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
+  ASSEMBLY_INTEGRITY_OBSERVATION_CAPTURE_DESCRIPTOR,
   DFM_CASE_CAPTURE_DESCRIPTOR,
   EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
   FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
@@ -118,6 +121,10 @@ import {
   enrichThreadWorkbenchWithEvaluationCloseouts,
   type EvaluationCloseoutCaptureReader,
 } from "../../src/adapters/thread/evaluation-closeout-workbench-enricher.ts";
+import {
+  type AssemblyIntegrityWorkbenchCaptureReaders,
+  enrichThreadWorkbenchWithAssemblyIntegrity,
+} from "../../src/adapters/thread/assembly-integrity-workbench-enricher.ts";
 import { readDeclaredCockpitFleet } from "../../src/adapters/thread/cockpit-fleet-projector.ts";
 import type { CockpitFleetProjection } from "../../src/presentation/workbench/fleet/projection.ts";
 import type { ArchitectureSysmlSealCaptureReader } from "../../src/application/ports/out/architecture/agent-seal/architecture-sysml-seal-capture-reader.ts";
@@ -222,6 +229,11 @@ export interface NativeWorkbenchHandlerOptions {
   engineeringCaseCaptures?: EngineeringCaseWorkbenchEnricherDependencies;
   /** Optional exact CAS reopen of provider-free static-mechanical L5 records. */
   evaluationCloseoutCaptures?: EvaluationCloseoutCaptureReader;
+  /**
+   * Optional exact CAS reopen of the versioned assembly-integrity L3/L4/L5
+   * chain. The Workbench remains a GET/SSE projection and never dispatches it.
+   */
+  assemblyIntegrityCaptures?: AssemblyIntegrityWorkbenchCaptureReaders;
   /** Optional non-canonical activity journal projected into the same feed. */
   liveUpdates?: LiveThreadUpdateJournal;
   assetReader?: (filename: string) => Promise<Uint8Array | undefined>;
@@ -858,12 +870,18 @@ async function projectThreadSnapshot(
       options.evaluationCloseoutCaptures,
     )
     : withEngineeringCases;
+  const withAssemblyIntegrity = options.assemblyIntegrityCaptures
+    ? await enrichThreadWorkbenchWithAssemblyIntegrity(
+      withCases,
+      options.assemblyIntegrityCaptures,
+    )
+    : withCases;
   const canonical = navigation
     ? {
-      ...withCases,
+      ...withAssemblyIntegrity,
       productNavigation: await navigation.projection({ projectId }),
     }
-    : withCases;
+    : withAssemblyIntegrity;
   const updates = liveUpdates ??
     (await options.liveUpdates?.list(subjectId) ?? []);
   return overlayLiveThreadUpdates(
@@ -1475,6 +1493,17 @@ if (import.meta.main) {
         `${recordedAnalysisDirectory}/calculix/evaluation-closeout-captures`,
       syncBoundary: recordedAnalysisDirectory,
     });
+  const assemblyIntegrityCaptures: AssemblyIntegrityWorkbenchCaptureReaders = {
+    observations: new FileCaptureStore(
+      ASSEMBLY_INTEGRITY_OBSERVATION_CAPTURE_DESCRIPTOR,
+    ),
+    evaluations: new FileCaptureStore(
+      ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_DESCRIPTOR,
+    ),
+    closeouts: new FileCaptureStore(
+      ASSEMBLY_INTEGRITY_EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
+    ),
+  };
   // The paired MCP owns all project commands and initialisation. The cockpit
   // reads existing immutable revisions and never seeds a fallback.
   const projectStore: EngineeringProjectRevisionStore =
@@ -1530,6 +1559,7 @@ if (import.meta.main) {
     sysmlSourceAnalysis,
     engineeringCaseCaptures,
     evaluationCloseoutCaptures,
+    assemblyIntegrityCaptures,
     liveUpdates,
     assetReader: (filename) => assetReader.read(filename),
     cockpitFleet: () =>
