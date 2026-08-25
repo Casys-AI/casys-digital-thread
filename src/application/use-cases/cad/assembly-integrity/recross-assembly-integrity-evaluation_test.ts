@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import {
   recrossExactL3ObservationCaptureBinding,
+  reopenExactL3AssemblyIntegrityInput,
 } from "./recross-assembly-integrity-evaluation.ts";
 import {
   assemblyIntegrityObservationCaptureUri,
@@ -18,6 +19,10 @@ import type {
   ThreadArtifact,
   ThreadSnapshot,
 } from "../../../../domain/thread/thread-snapshot.ts";
+import type {
+  AssemblyIntegrityInputResolver,
+  ResolvedAssemblyIntegrityInput,
+} from "../../../ports/out/cad/assembly-integrity/exact-assembly-integrity-input-resolver.ts";
 
 const A = "a".repeat(64);
 const B = "b".repeat(64);
@@ -25,6 +30,42 @@ const C = "c".repeat(64);
 const D = "d".repeat(64);
 const E = "e".repeat(64);
 const AT = "2026-08-26T10:00:00.000Z";
+
+Deno.test("L4 projects the L3 capture Thread basis before reopening exact inputs", async () => {
+  const capture = await validCapture();
+  const source = {
+    id: capture.basis.snapshotId,
+    revision: capture.basis.revision,
+    subject: { id: capture.basis.subjectId },
+  } as ThreadSnapshot;
+  let received: unknown;
+  const inputs: AssemblyIntegrityInputResolver = {
+    async resolve(request) {
+      received = request;
+      return {} as ResolvedAssemblyIntegrityInput;
+    },
+  };
+
+  await reopenExactL3AssemblyIntegrityInput(inputs, capture, source);
+
+  assertEquals(capture.basis.kind, "thread-snapshot");
+  assertEquals(received, {
+    basis: {
+      snapshotId: capture.basis.snapshotId,
+      revision: capture.basis.revision,
+      subjectId: capture.basis.subjectId,
+    },
+    snapshot: source,
+    geometryModule: capture.geometryModule,
+    observerProfile: {
+      profile: {
+        id: capture.profile.id,
+        version: capture.profile.version,
+      },
+      fingerprint: capture.profile.fingerprint,
+    },
+  });
+});
 
 Deno.test(
   "L4 refuses a completed L3 evidence lookalike whose dynamic geometry binding diverges from its capture",

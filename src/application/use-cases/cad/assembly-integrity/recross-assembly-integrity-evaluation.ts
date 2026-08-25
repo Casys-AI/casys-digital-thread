@@ -15,9 +15,9 @@ import type {
 import type { AssemblyIntegrityInputResolver } from "../../../ports/out/cad/assembly-integrity/exact-assembly-integrity-input-resolver.ts";
 import type { AssemblyIntegrityObservationCaptureStore } from "../../../ports/out/cad/assembly-integrity/assembly-integrity-observation-capture-store.ts";
 import {
-  assemblyIntegrityEvaluationMethod,
   type AssemblyIntegrityEvaluation,
   type AssemblyIntegrityEvaluationMethod,
+  assemblyIntegrityEvaluationMethod,
   evaluateAssemblyIntegrity,
 } from "../../../../domain/cad/assembly-integrity/assembly-integrity-evaluation.ts";
 import {
@@ -28,9 +28,9 @@ import {
   assemblyIntegrityEvaluationGateClaimIssue,
 } from "../../../../domain/cad/assembly-integrity/assembly-integrity-evaluation-gate-policy.ts";
 import {
+  type AssemblyIntegrityObservationCapture,
   assemblyIntegrityObservationCaptureUri,
   fingerprintAssemblyIntegrityObservationCapture,
-  type AssemblyIntegrityObservationCapture,
 } from "../../../../domain/cad/assembly-integrity/assembly-integrity-observation-capture.ts";
 import {
   parseAssemblyIntegrityObservation,
@@ -41,7 +41,11 @@ import {
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../../../domain/kernel/deterministic-json.ts";
-import type { EngineeringProjectSnapshot, EngineeringThreadSnapshotBasis, EngineeringWorkItem } from "../../../../domain/project/engineering-project.ts";
+import type {
+  EngineeringProjectSnapshot,
+  EngineeringThreadSnapshotBasis,
+  EngineeringWorkItem,
+} from "../../../../domain/project/engineering-project.ts";
 import { validateEngineeringProjectSnapshot } from "../../../../domain/project/engineering-project-validation.ts";
 import {
   archivedRefKeys,
@@ -211,18 +215,11 @@ export async function recrossAssemblyIntegrityEvaluation(
 
   let resolved;
   try {
-    resolved = await dependencies.inputs.resolve({
-      basis: observationCapture.basis,
-      snapshot: source,
-      geometryModule: observationCapture.geometryModule,
-      observerProfile: {
-        profile: {
-          id: observationCapture.profile.id,
-          version: observationCapture.profile.version,
-        },
-        fingerprint: observationCapture.profile.fingerprint,
-      },
-    });
+    resolved = await reopenExactL3AssemblyIntegrityInput(
+      dependencies.inputs,
+      observationCapture,
+      source,
+    );
   } catch {
     return unavailable(
       "exact-input-unavailable",
@@ -255,10 +252,12 @@ export async function recrossAssemblyIntegrityEvaluation(
     );
   }
   const observationFingerprint = await sha256Fingerprint(observation);
-  if (!fingerprintsEqual(
-    observationFingerprint,
-    observationCapture.observationFingerprint,
-  )) {
+  if (
+    !fingerprintsEqual(
+      observationFingerprint,
+      observationCapture.observationFingerprint,
+    )
+  ) {
     return unresolved(
       "observation-fingerprint-mismatch",
       "The L3 normalized observation no longer matches its stored observation fingerprint.",
@@ -296,6 +295,33 @@ export async function recrossAssemblyIntegrityEvaluation(
   };
 }
 
+/**
+ * The L3 capture retains its Thread-basis discriminant. The narrow exact-input
+ * port intentionally does not: it accepts only the immutable identity fields.
+ */
+export async function reopenExactL3AssemblyIntegrityInput(
+  inputs: AssemblyIntegrityInputResolver,
+  observationCapture: AssemblyIntegrityObservationCapture,
+  source: ThreadSnapshot,
+) {
+  return await inputs.resolve({
+    basis: {
+      snapshotId: observationCapture.basis.snapshotId,
+      revision: observationCapture.basis.revision,
+      subjectId: observationCapture.basis.subjectId,
+    },
+    snapshot: source,
+    geometryModule: observationCapture.geometryModule,
+    observerProfile: {
+      profile: {
+        id: observationCapture.profile.id,
+        version: observationCapture.profile.version,
+      },
+      fingerprint: observationCapture.profile.fingerprint,
+    },
+  });
+}
+
 function validateL4Work(
   project: EngineeringProjectSnapshot,
   work: EngineeringWorkItem,
@@ -318,17 +344,24 @@ function validateL4Work(
 export async function recrossExactL3ObservationCaptureBinding(input: {
   readonly capture: AssemblyIntegrityObservationCapture;
   readonly artifact: ThreadArtifact;
-  readonly producerRun: { readonly id: string; readonly basis?: unknown; readonly startedAt?: string };
+  readonly producerRun: {
+    readonly id: string;
+    readonly basis?: unknown;
+    readonly startedAt?: string;
+  };
   readonly resultSnapshot: ThreadSnapshot;
   readonly dependencyWork: EngineeringWorkItem;
 }): Promise<string | undefined> {
   const { capture, artifact, producerRun, resultSnapshot, dependencyWork } = input;
-  const captureFingerprint = await fingerprintAssemblyIntegrityObservationCapture(capture);
+  const captureFingerprint = await fingerprintAssemblyIntegrityObservationCapture(
+    capture,
+  );
   if (
     !fingerprintsEqual(captureFingerprint, artifact.fingerprint) ||
     artifact.id !== `assembly-integrity-observation-${artifact.fingerprint.digest}` ||
     artifact.version !== artifact.fingerprint.digest ||
-    artifact.uri !== assemblyIntegrityObservationCaptureUri(artifact.fingerprint.digest) ||
+    artifact.uri !==
+      assemblyIntegrityObservationCaptureUri(artifact.fingerprint.digest) ||
     artifact.mediaType !== "application/json" ||
     artifact.freshness.changedAt !== capture.observedAt ||
     capture.trustedRunId !== producerRun.id ||
@@ -345,10 +378,12 @@ export async function recrossExactL3ObservationCaptureBinding(input: {
   ) {
     return "The L3 capture is not anchored on the exact direct predecessor of its completed result.";
   }
-  if (deterministicJson(artifact.inputArtifactIds) !== deterministicJson([
-    capture.geometryModule.artifactId,
-    capture.assemblyStep.artifactId,
-  ])) {
+  if (
+    deterministicJson(artifact.inputArtifactIds) !== deterministicJson([
+      capture.geometryModule.artifactId,
+      capture.assemblyStep.artifactId,
+    ])
+  ) {
     return "The L3 evidence artifact does not retain the exact ordered module and STEP inputs.";
   }
   const bindings = dependencyWork.operation?.bindings;
@@ -419,7 +454,8 @@ async function validateExactInputBinding(input: {
     ) ||
     deterministicJson(resolved.profile.configuredRuntime) !==
       deterministicJson(capture.profile.configuredRuntime) ||
-    resolved.inputBundle.fingerprint.algorithm !== capture.inputBundle.fingerprint.algorithm ||
+    resolved.inputBundle.fingerprint.algorithm !==
+      capture.inputBundle.fingerprint.algorithm ||
     !fingerprintsEqual(
       resolved.inputBundle.fingerprint,
       capture.inputBundle.fingerprint,
