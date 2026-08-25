@@ -200,7 +200,13 @@ export class PrepareProjectAssemblyIntegrityEvaluationReview
           fingerprint: recrossed.artifactInputs[2]!.fingerprint,
           observationFingerprint: recrossed.observationCapture.observationFingerprint,
         },
-        geometryModule: recrossed.observationCapture.geometryModule,
+        // The L3 capture keeps its own schema discriminant.  L4 admission
+        // signs only the immutable geometry identity, whose strict contract
+        // deliberately has no capture schema field.
+        geometryModule: {
+          artifactId: recrossed.observationCapture.geometryModule.artifactId,
+          fingerprint: recrossed.observationCapture.geometryModule.fingerprint,
+        },
         assemblyStep: recrossed.observationCapture.assemblyStep,
         inputBundle: recrossed.observationCapture.inputBundle,
         method: {

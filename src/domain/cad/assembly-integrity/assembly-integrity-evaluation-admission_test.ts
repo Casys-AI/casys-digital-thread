@@ -49,6 +49,37 @@ Deno.test("assembly-integrity L4 admission binds only server-derived identities"
   );
 });
 
+Deno.test("assembly-integrity L4 admission projects an L3 geometry capture before strict MRTR encoding", () => {
+  const l3GeometryModule = {
+    schemaVersion: "geometry-module-capture/1.0" as const,
+    artifactId: `geometry-${A}`,
+    fingerprint: fp(A),
+  };
+  const admission = {
+    ...validAdmission(),
+    geometryModule: {
+      artifactId: l3GeometryModule.artifactId,
+      fingerprint: l3GeometryModule.fingerprint,
+    },
+  };
+
+  assertEquals(
+    parseAssemblyIntegrityEvaluationAdmissionParameters(
+      encodeAssemblyIntegrityEvaluationAdmissionParameters(admission),
+    ).geometryModule,
+    admission.geometryModule,
+  );
+  assertThrows(
+    () =>
+      encodeAssemblyIntegrityEvaluationAdmissionParameters({
+        ...admission,
+        geometryModule: l3GeometryModule,
+      }),
+    TypeError,
+    "unsupported field schemaVersion",
+  );
+});
+
 function validAdmission() {
   return validateAssemblyIntegrityEvaluationAdmission({
     schemaVersion: "assembly-integrity-evaluation-admission/1.0",
