@@ -1,11 +1,15 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import type { EngineeringProjectSnapshot } from "../../../../domain/project/engineering-project.ts";
 import type { ThreadSnapshot } from "../../../../domain/thread/thread-snapshot.ts";
-import type { IsolatedCodeExecutionRequest } from "../../../../domain/compile/isolation/isolated-code-execution.ts";
+import type {
+  IsolatedCodeExecutionReceipt,
+  IsolatedCodeExecutionRequest,
+} from "../../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
   createIsolatedCodeExecutionReceipt,
   createIsolatedOutputPublicationRef,
   fingerprintIsolatedOutputPublicationManifest,
+  isolatedCodeExecutionReceiptRecord,
   validateIsolatedCodeExecutionRequest,
 } from "../../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
@@ -23,12 +27,15 @@ import {
   parseGeometryModuleDecisionParameters,
 } from "../../../../domain/cad/canonical/geometry-module-evidence.ts";
 import type { CadPlacementAnalysisDocument } from "../../../../domain/cad/placement/cad-placement-analysis-capture.ts";
+import { GEOMETRY_MODULE_CAPTURE_SCHEMA } from "../../../../domain/cad/canonical/geometry-module-evidence.ts";
+import { geometrySourceIdFor } from "../../../../domain/cad/source/geometry-source-analysis-reference.ts";
 import { GEOMETRY_PART_CAPTURE_SCHEMA } from "../../../../domain/cad/canonical/geometry-part-manifest.ts";
 import { GEOMETRY_PART_MANIFEST_SCHEMA } from "../../../../domain/cad/canonical/geometry-part-manifest.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
   sha256Fingerprint,
+  sha256Hex,
 } from "../../../../domain/kernel/deterministic-json.ts";
 import { fingerprintResourceBytes } from "../../../../domain/compile/source/provider-resource-reader.ts";
 import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
@@ -56,6 +63,9 @@ const ARM_STEP = encoder.encode(
 const BASE_STEP = encoder.encode(
   "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#1=BASE;\nENDSEC;\nEND-ISO-10303-21;\n",
 );
+const TARGET_STEP = encoder.encode(
+  "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#1=TARGET;\nENDSEC;\nEND-ISO-10303-21;\n",
+);
 const ASSEMBLY_STEP = encoder.encode(
   "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#1=ASSEMBLY;\nENDSEC;\nEND-ISO-10303-21;\n",
 );
@@ -64,6 +74,33 @@ const ASSEMBLY_GLB = new Uint8Array([0x67, 0x6c, 0x54, 0x46, 1, 2, 3, 4]);
 function fp(digest: string): ContentFingerprint {
   return { algorithm: "sha256", digest };
 }
+
+const FAKE_LIMITS = {
+  maxWallTimeMs: 1_000,
+  maxCpuTimeMs: 500,
+  maxMemoryBytes: 64_000_000,
+  maxProcesses: 4,
+  maxStdoutBytes: 1_024,
+  maxStderrBytes: 1_024,
+  maxOutputFileBytes: 1_024,
+  maxOutputTotalBytes: 2_048,
+} as const;
+
+const FAKE_RUNTIME = {
+  isolationClass: "kernel-isolated",
+  imageDigest: fp("a".repeat(64)),
+  requestedLimits: FAKE_LIMITS,
+  limitAssurance: {
+    maxWallTimeMs: "backend-attested",
+    maxCpuTimeMs: "unattested",
+    maxMemoryBytes: "backend-attested",
+    maxProcesses: "unattested",
+    maxStdoutBytes: "broker-observed-cap",
+    maxStderrBytes: "broker-observed-cap",
+    maxOutputFileBytes: "broker-observed-cap",
+    maxOutputTotalBytes: "broker-observed-cap",
+  },
+} as const;
 
 function basis(revision = 12) {
   return {
@@ -167,6 +204,58 @@ Deno.test("geometry-module export refuses an extra public field", async () => {
   });
 });
 
+Deno.test("geometry-module export treats a provider PartDefinition id as opaque", async () => {
+  await withHarness(async (harness) => {
+    const error = await assertRejects(
+      () =>
+        harness.service.execute({
+          ...harness.command,
+          partDefinitionElementId: "https://syson.example/elements#assembly/1",
+        }),
+      ProjectGeometryModuleExportError,
+    );
+    assertEquals(error.code, "unavailable");
+  });
+});
+
+Deno.test("geometry-module export proposes the unique active same-target leaf as predecessor", async () => {
+  await withHarness(async (harness) => {
+    const targetStepDigest = await fingerprintResourceBytes(TARGET_STEP);
+    const targetCapture = await partCapture(
+      TARGET,
+      "Assembly leaf",
+      targetStepDigest,
+      "7".repeat(64),
+      {
+        trustedRunId: "run.geometry.assembly-leaf",
+        stepBytes: TARGET_STEP.byteLength,
+      },
+    );
+    harness.geometryCaptures.captures.set(
+      targetCapture.fingerprint.digest,
+      targetCapture.text,
+    );
+    harness.stepAssets.bytes.set(targetStepDigest, TARGET_STEP);
+    harness.snapshots.artifacts = [
+      ...harness.snapshots.artifacts,
+      geometryArtifact(
+        targetCapture.fingerprint,
+        "run.geometry.assembly-leaf",
+      ),
+    ];
+    harness.snapshots.sync();
+
+    await harness.service.execute(harness.command);
+
+    assertEquals(harness.draftStore.lastUnsigned?.predecessor, {
+      schemaVersion: GEOMETRY_PART_CAPTURE_SCHEMA,
+      artifactId: `geometry-${targetCapture.fingerprint.digest}`,
+      fingerprint: targetCapture.fingerprint,
+      partDefinitionElementId: TARGET,
+    });
+  });
+});
+
 Deno.test("geometry-module export fails when the current Thread tip is not the command basis", async () => {
   await withHarness(async (harness) => {
     harness.projects.project = {
@@ -221,6 +310,7 @@ Deno.test("geometry-module export fails when a child capture is missing or ambig
       "Arm-alt",
       harness.armStepDigest,
       "8".repeat(64),
+      { trustedRunId: "run.geometry.arm-alt", stepBytes: ARM_STEP.byteLength },
     );
     harness.geometryCaptures.captures.set(
       extraCapture.fingerprint.digest,
@@ -228,7 +318,7 @@ Deno.test("geometry-module export fails when a child capture is missing or ambig
     );
     harness.snapshots.artifacts = [
       ...harness.snapshots.artifacts,
-      geometryArtifact(extraCapture.fingerprint),
+      geometryArtifact(extraCapture.fingerprint, "run.geometry.arm-alt"),
     ];
     harness.snapshots.sync();
     await assertCode(harness, "unresolved");
@@ -242,10 +332,118 @@ Deno.test("geometry-module export fails when a child STEP digest does not match 
   });
 });
 
+Deno.test("geometry-module export fails when a child STEP byteCount does not match reopened bytes", async () => {
+  await withHarness(async (harness) => {
+    const corrupt = await partCapture(
+      ARM,
+      "Arm",
+      harness.armStepDigest,
+      "c".repeat(64),
+      {
+        trustedRunId: harness.armRunId,
+        stepBytes: ARM_STEP.byteLength + 1,
+      },
+    );
+    harness.geometryCaptures.captures.delete(harness.armCaptureDigest);
+    harness.geometryCaptures.captures.set(corrupt.fingerprint.digest, corrupt.text);
+    harness.snapshots.artifacts = harness.snapshots.artifacts.map((artifact) =>
+      artifact.fingerprint.digest === harness.armCaptureDigest
+        ? geometryArtifact(corrupt.fingerprint, harness.armRunId)
+        : artifact
+    );
+    harness.snapshots.sync();
+    await assertCode(harness, "asset_digest_mismatch");
+  });
+});
+
+Deno.test("geometry-module export fails when a child geometry producer is not digital-thread design.write-geometry@1", async () => {
+  await withHarness(async (harness) => {
+    harness.snapshots.artifacts = harness.snapshots.artifacts.map((artifact) =>
+      artifact.fingerprint.digest === harness.armCaptureDigest
+        ? {
+          ...artifact,
+          producer: {
+            serverId: "build123d-sandbox",
+            tool: "build123d_export",
+            runId: harness.armRunId,
+          },
+        }
+        : artifact
+    );
+    harness.snapshots.sync();
+    await assertCode(harness, "unresolved");
+  });
+});
+
+Deno.test("geometry-module export fails closed when an exact-family module capture is corrupt", async () => {
+  await withHarness(async (harness) => {
+    const corrupt = await storedJson({
+      schemaVersion: GEOMETRY_MODULE_CAPTURE_SCHEMA,
+    });
+    harness.geometryCaptures.captures.set(corrupt.fingerprint.digest, corrupt.text);
+    harness.snapshots.artifacts = [
+      ...harness.snapshots.artifacts,
+      geometryArtifact(corrupt.fingerprint, "run.geometry.corrupt"),
+    ];
+    harness.snapshots.sync();
+    await assertCode(harness, "unresolved");
+  });
+});
+
+Deno.test("geometry-module export fails closed on a near-canonical active primary identity", async () => {
+  await withHarness(async (harness) => {
+    harness.snapshots.artifacts = harness.snapshots.artifacts.map((artifact) =>
+      artifact.fingerprint.digest === harness.armCaptureDigest
+        ? { ...artifact, version: "foreign-version" }
+        : artifact
+    );
+    harness.snapshots.sync();
+    await assertCode(harness, "unresolved");
+  });
+});
+
+Deno.test("geometry-module export fails when the structure capture URI is not the exact sha256 identity", async () => {
+  await withHarness(async (harness) => {
+    harness.snapshots.artifacts = harness.snapshots.artifacts.map((artifact) =>
+      artifact.id.startsWith("part-definitions-")
+        ? {
+          ...artifact,
+          uri: `casys://part-definitions-capture/${artifact.fingerprint.digest}`,
+        }
+        : artifact
+    );
+    harness.snapshots.sync();
+    await assertCode(harness, "unresolved");
+  });
+});
+
 Deno.test("geometry-module export fails when isolated assembly is rejected", async () => {
   await withHarness(async (harness) => {
     harness.runner.failure = new Error("isolated assembler rejected");
     await assertCode(harness, "isolated_failure");
+  });
+});
+
+Deno.test("geometry-module export reopens the same published generation zero without redispatch", async () => {
+  await withHarness(async (harness) => {
+    const first = await harness.service.execute(harness.command);
+    const second = await harness.service.execute(harness.command);
+    assertEquals(second.draftDigest, first.draftDigest);
+    assertEquals(harness.runner.requests.length, 1);
+    assertEquals(harness.publications.resolveCalls, 2);
+    assertEquals(harness.publications.readCalls, 1);
+    assertEquals(
+      harness.runner.requests.map((request) => request.producerGeneration),
+      [0],
+    );
+  });
+});
+
+Deno.test("geometry-module export never dispatches when generation-zero publication outcome is unknown", async () => {
+  await withHarness(async (harness) => {
+    harness.publications.outcomeUnknown = true;
+    await assertCode(harness, "isolated_failure");
+    assertEquals(harness.runner.requests.length, 0);
   });
 });
 
@@ -274,9 +472,12 @@ interface Harness {
   readonly geometryCaptures: FakeGeometryCaptures;
   readonly stepAssets: FakeStepAssets;
   readonly runner: FakeRunner;
+  readonly publications: FakePublications;
   readonly draftStore: FakeDraftStore;
   readonly armStepDigest: string;
   readonly baseStepDigest: string;
+  readonly armCaptureDigest: string;
+  readonly armRunId: string;
 }
 
 async function createHarness(): Promise<Harness> {
@@ -284,27 +485,33 @@ async function createHarness(): Promise<Harness> {
   const baseStepDigest = await fingerprintResourceBytes(BASE_STEP);
   const glbDigest = "c".repeat(64);
   const placementDigest = "b".repeat(64);
-  const armCapture = await partCapture(ARM, "Arm", armStepDigest, glbDigest);
-  const baseCapture = await partCapture(BASE, "Base", baseStepDigest, glbDigest);
-  const structure = await storedJson({
-    schemaVersion: "part-definitions-capture/1.0",
+  const armRunId = "run.geometry.arm";
+  const baseRunId = "run.geometry.base";
+  const armCapture = await partCapture(ARM, "Arm", armStepDigest, glbDigest, {
+    trustedRunId: armRunId,
+    stepBytes: ARM_STEP.byteLength,
   });
+  const baseCapture = await partCapture(BASE, "Base", baseStepDigest, glbDigest, {
+    trustedRunId: baseRunId,
+    stepBytes: BASE_STEP.byteLength,
+  });
+  const structureFingerprint = fp("9".repeat(64));
   const projects = new FakeProjects();
   const snapshots = new FakeSnapshots([
-    structureArtifact(structure.fingerprint, ARCH_ID),
-    geometryArtifact(armCapture.fingerprint),
-    geometryArtifact(baseCapture.fingerprint),
+    structureArtifact(structureFingerprint, ARCH_ID),
+    geometryArtifact(armCapture.fingerprint, armRunId),
+    geometryArtifact(baseCapture.fingerprint, baseRunId),
   ]);
   const placements = new FakePlacements(placementLocator(placementDigest));
   const geometryCaptures = new FakeGeometryCaptures();
   geometryCaptures.captures.set(armCapture.fingerprint.digest, armCapture.text);
   geometryCaptures.captures.set(baseCapture.fingerprint.digest, baseCapture.text);
-  const partDefinitions = new FakeTextStore();
-  partDefinitions.captures.set(structure.fingerprint.digest, structure.text);
+  const partDefinitions = new FakeStructureReader();
   const stepAssets = new FakeStepAssets();
   stepAssets.bytes.set(armStepDigest, ARM_STEP);
   stepAssets.bytes.set(baseStepDigest, BASE_STEP);
-  const runner = new FakeRunner();
+  const publications = new FakePublications();
+  const runner = new FakeRunner(publications);
   const draftStore = new FakeDraftStore();
   const draftAssets = new FakeDraftAssets();
   const service = new ExportProjectGeometryModule({
@@ -330,10 +537,13 @@ async function createHarness(): Promise<Harness> {
             fingerprint: fp("a".repeat(64)),
           },
           outputManifest: GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
+          runtime: FAKE_RUNTIME,
+          minimumDestructionAssurance: "proven",
         } as never),
       resolve: () => Promise.reject(new Error("not used")),
     },
     runner,
+    publications,
     draftStore,
     draftAssets,
   });
@@ -351,9 +561,12 @@ async function createHarness(): Promise<Harness> {
     geometryCaptures,
     stepAssets,
     runner,
+    publications,
     draftStore,
     armStepDigest,
     baseStepDigest,
+    armCaptureDigest: armCapture.fingerprint.digest,
+    armRunId,
   };
 }
 
@@ -483,11 +696,43 @@ class FakeGeometryCaptures {
   }
 }
 
-class FakeTextStore {
-  readonly captures = new Map<string, string>();
-
-  read(fingerprint: ContentFingerprint): Promise<string | undefined> {
-    return Promise.resolve(this.captures.get(fingerprint.digest));
+class FakeStructureReader {
+  reopen(
+    identity: {
+      readonly artifactId: string;
+      readonly fingerprint: ContentFingerprint;
+      readonly uri: string;
+    },
+    architecture: {
+      readonly artifactId: string;
+      readonly fingerprint: ContentFingerprint;
+    },
+  ) {
+    const digest = identity.fingerprint.digest;
+    if (identity.uri !== `casys://part-definitions-capture/sha256/${digest}`) {
+      return Promise.reject(new TypeError("structure URI is not exact"));
+    }
+    if (identity.artifactId !== `part-definitions-${digest}`) {
+      return Promise.reject(new TypeError("structure id is not exact"));
+    }
+    if (
+      architecture.artifactId !== ARCH_ID ||
+      architecture.fingerprint.digest !== ARCH_DIGEST
+    ) {
+      return Promise.reject(new TypeError("architecture reference is not exact"));
+    }
+    return Promise.resolve({
+      schemaVersion: "part-definitions-capture/1.0" as const,
+      artifactId: identity.artifactId,
+      fingerprint: identity.fingerprint,
+      uri: identity.uri,
+      byteCount: 512,
+      architecture: {
+        artifactId: architecture.artifactId,
+        fingerprint: architecture.fingerprint,
+        uri: `casys://architecture-capture/sha256/${architecture.fingerprint.digest}`,
+      },
+    });
   }
 }
 
@@ -506,6 +751,8 @@ class FakeStepAssets {
 class FakeRunner {
   readonly requests: IsolatedCodeExecutionRequest[] = [];
   failure?: Error;
+
+  constructor(readonly publications: FakePublications) {}
 
   async run(request: IsolatedCodeExecutionRequest) {
     this.requests.push(request);
@@ -527,32 +774,9 @@ class FakeRunner {
       sha256: output.sha256,
       casUri: `casys://isolated-output/sha256/${output.sha256}`,
     }));
-    return await createIsolatedCodeExecutionReceipt({
+    const receipt = await createIsolatedCodeExecutionReceipt({
       request: validated,
-      runtime: {
-        isolationClass: "kernel-isolated",
-        imageDigest: fp("a".repeat(64)),
-        requestedLimits: {
-          maxWallTimeMs: 1_000,
-          maxCpuTimeMs: 500,
-          maxMemoryBytes: 64_000_000,
-          maxProcesses: 4,
-          maxStdoutBytes: 1_024,
-          maxStderrBytes: 1_024,
-          maxOutputFileBytes: 1_024,
-          maxOutputTotalBytes: 2_048,
-        },
-        limitAssurance: {
-          maxWallTimeMs: "backend-attested",
-          maxCpuTimeMs: "unattested",
-          maxMemoryBytes: "backend-attested",
-          maxProcesses: "unattested",
-          maxStdoutBytes: "broker-observed-cap",
-          maxStderrBytes: "broker-observed-cap",
-          maxOutputFileBytes: "broker-observed-cap",
-          maxOutputTotalBytes: "broker-observed-cap",
-        },
-      },
+      runtime: FAKE_RUNTIME,
       termination: { kind: "exited", exitCode: 0, signal: null },
       logs: {
         stdout: { bytes: new Uint8Array(), truncated: false },
@@ -579,6 +803,56 @@ class FakeRunner {
         ),
       ),
     });
+    this.publications.publish(receipt);
+    return receipt;
+  }
+}
+
+class FakePublications {
+  receipt?: IsolatedCodeExecutionReceipt;
+  outcomeUnknown = false;
+  resolveCalls = 0;
+  readCalls = 0;
+
+  publish(receipt: IsolatedCodeExecutionReceipt) {
+    this.receipt = receipt;
+  }
+
+  resolvePublicationByRunId(runId: string, producerGeneration: 0 | 1) {
+    this.resolveCalls += 1;
+    if (this.outcomeUnknown) {
+      return Promise.resolve({
+        status: "outcome-unknown" as const,
+        runId,
+        producerGeneration,
+      });
+    }
+    if (
+      this.receipt?.runId === runId &&
+      this.receipt.producerGeneration === producerGeneration
+    ) {
+      return Promise.resolve({
+        status: "published" as const,
+        runId,
+        producerGeneration,
+        ref: this.receipt.publication.ref,
+        receipt: isolatedCodeExecutionReceiptRecord(this.receipt),
+      });
+    }
+    return Promise.resolve({
+      status: "not-published" as const,
+      runId,
+      producerGeneration,
+    });
+  }
+
+  readReceipt() {
+    this.readCalls += 1;
+    return Promise.resolve(this.receipt);
+  }
+
+  readPublishedObject() {
+    return Promise.resolve(undefined);
   }
 }
 
@@ -586,6 +860,12 @@ class FakeDraftStore {
   saveCalls = 0;
   readCalls = 0;
   lastUnsigned?: {
+    readonly predecessor?: {
+      readonly schemaVersion: string;
+      readonly artifactId: string;
+      readonly fingerprint: ContentFingerprint;
+      readonly partDefinitionElementId: string;
+    };
     readonly children: readonly {
       readonly usageElementId: string;
       readonly authoritativeStep: { readonly fingerprint: ContentFingerprint };
@@ -696,7 +976,7 @@ function structureArtifact(
   };
 }
 
-function geometryArtifact(fingerprint: ContentFingerprint) {
+function geometryArtifact(fingerprint: ContentFingerprint, trustedRunId: string) {
   return {
     id: `geometry-${fingerprint.digest}`,
     name: "Child geometry",
@@ -708,7 +988,7 @@ function geometryArtifact(fingerprint: ContentFingerprint) {
     producer: {
       serverId: "digital-thread",
       tool: "design.write-geometry@1",
-      runId: "run.2",
+      runId: trustedRunId,
     },
     inputArtifactIds: [ARCH_ID],
     freshness: {
@@ -719,14 +999,31 @@ function geometryArtifact(fingerprint: ContentFingerprint) {
   };
 }
 
+const PART_SCRIPT = [
+  "from build123d import Box",
+  "width = 10",
+  "result = Box(width, 2, 3)",
+  "",
+].join("\n");
+
 async function partCapture(
   targetId: string,
   label: string,
   stepDigest: string,
   glbDigest: string,
+  options: {
+    readonly trustedRunId: string;
+    readonly stepBytes: number;
+  },
 ) {
+  const scriptHash = fp(await sha256Hex(encoder.encode(PART_SCRIPT)));
+  const admissionFingerprint = fp("e".repeat(64));
+  const selector = { kind: "part-definition" as const, elementId: targetId };
   return await storedJson({
     schemaVersion: GEOMETRY_PART_CAPTURE_SCHEMA,
+    operation: { id: "design.write-geometry", version: "1" },
+    trustedRunId: options.trustedRunId,
+    draftDigest: "f".repeat(64),
     manifest: {
       schemaVersion: GEOMETRY_PART_MANIFEST_SCHEMA,
       architectureBasis: {
@@ -737,7 +1034,7 @@ async function partCapture(
       target: {
         partDefinitionElementId: targetId,
         label,
-        scriptHash: fp("d".repeat(64)),
+        scriptHash,
         files: [
           { format: "step", name: "part.step", fingerprint: fp(stepDigest) },
           { format: "gltf", name: "part.glb", fingerprint: fp(glbDigest) },
@@ -746,6 +1043,42 @@ async function partCapture(
       unitSystem: "mm",
       exportFormats: ["step", "gltf"],
     },
+    architectureBasis: {
+      artifactId: ARCH_ID,
+      fingerprint: fp(ARCH_DIGEST),
+      producerRunId: "run.architecture.12",
+    },
+    previewProducer: {
+      serverId: "build123d-sandbox",
+      tool: "build123d_export",
+      runId: "run.preview",
+    },
+    sourceScript: {
+      partDefinitionElementId: targetId,
+      label,
+      script: PART_SCRIPT,
+      scriptHash,
+      admission: {
+        schemaVersion: "geometry-draft-admission/2.0",
+        artifactId: `technical-compilation-admission-${admissionFingerprint.digest}`,
+        fingerprint: admissionFingerprint,
+        sourceFingerprint: scriptHash,
+        target: { partDefinitionElementId: targetId, label },
+      },
+      authoritativeStep: {
+        fileIndex: 0,
+        fingerprint: fp(stepDigest),
+        bytes: options.stepBytes,
+      },
+    },
+    sourceAnalysis: {
+      sourceId: await geometrySourceIdFor(selector),
+      selector,
+      sourceFingerprint: scriptHash,
+      sourceCaptureFingerprint: fp("1".repeat(64)),
+      analysisFingerprint: fp("2".repeat(64)),
+    },
+    sealedAt: "2026-08-25T10:00:00.000Z",
   });
 }
 

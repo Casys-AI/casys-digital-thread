@@ -42,6 +42,7 @@ import {
   parseStructureCapture,
   parseTarget,
   recrossChildPlacementCaptures,
+  recrossStructureCaptureArchitecture,
   unsignedDraftRecord,
 } from "./geometry-module-identities.ts";
 import { recrossGeometryModuleIsolation } from "./geometry-module-isolation.ts";
@@ -121,6 +122,7 @@ export async function parseGeometryModuleDraftCapture(
     root.structureCapture,
     "$geometryModuleDraft.structureCapture",
   );
+  recrossStructureCaptureArchitecture(structureCapture, architectureBasis);
   const target = parseTarget(root.target, "$geometryModuleDraft.target");
   const predecessor = root.predecessor === undefined ? undefined : parsePredecessor(
     root.predecessor,

@@ -13,6 +13,7 @@ import type {
   GeometryPartDraftAdmission,
 } from "../../../../../domain/cad/canonical/geometry-draft-admission.ts";
 import type { GeometryExportFormat } from "../../../../../domain/cad/canonical/geometry-proposal.ts";
+import type { GeometryTargetPredecessor } from "../../../../../domain/cad/geometry-capture-contract.ts";
 
 /** Exact admitted source plus the current Thread architecture identity. */
 export interface AdmittedGeometryExportRequest {
@@ -95,10 +96,7 @@ export interface AdmittedGeometryTargetedPartExportRequest {
     readonly label: string;
   };
   /** Unique active canonical capture for this exact target only. */
-  readonly predecessor?: {
-    readonly artifactId: string;
-    readonly fingerprint: ContentFingerprint;
-  };
+  readonly predecessor?: GeometryTargetPredecessor;
 }
 
 export interface AdmittedGeometryTargetedPartExportedFile {
@@ -117,10 +115,7 @@ export interface AdmittedGeometryTargetedPartExportDraft {
     readonly scriptHash: ContentFingerprint;
     readonly files: readonly AdmittedGeometryTargetedPartExportedFile[];
   };
-  readonly predecessor?: {
-    readonly artifactId: string;
-    readonly fingerprint: ContentFingerprint;
-  };
+  readonly predecessor?: GeometryTargetPredecessor;
   readonly sourceAnalysis: {
     readonly sourceId: string;
     readonly selector: unknown;

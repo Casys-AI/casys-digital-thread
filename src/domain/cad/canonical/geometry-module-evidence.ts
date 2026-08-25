@@ -20,10 +20,12 @@ export {
 
 export {
   assertGeometryModuleInputBundleMatchesIdentity,
+  GEOMETRY_MODULE_ARCHITECTURE_CAPTURE_URI_PREFIX,
   GEOMETRY_MODULE_DRAFT_CAPTURE_SCHEMA,
   GEOMETRY_MODULE_DRAFT_KIND,
   GEOMETRY_MODULE_MANIFEST_SCHEMA,
   GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA,
+  GEOMETRY_MODULE_STRUCTURE_CAPTURE_URI_PREFIX,
   type GeometryModuleArchitectureBasis,
   type GeometryModuleAssetIdentity,
   type GeometryModuleChild,
@@ -37,6 +39,7 @@ export {
   type GeometryModuleStructureCapture,
   type GeometryModuleTarget,
   recrossGeometryModuleInputBundleToChildren,
+  recrossStructureCaptureArchitecture,
   sameInputBundle,
 } from "./geometry-module-identities.ts";
 

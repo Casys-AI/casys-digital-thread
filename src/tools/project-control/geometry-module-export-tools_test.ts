@@ -49,6 +49,11 @@ Deno.test("project_geometry_module_export names only the closed public command a
   assertEquals("provider" in input.properties, false);
   assertEquals("profile" in input.properties, false);
   assertEquals("runtime" in input.properties, false);
+  assertEquals(
+    "pattern" in
+      (input.properties.partDefinitionElementId as Record<string, unknown>),
+    false,
+  );
   assertStringIncludes(tool.description, "design.write-geometry@1");
   assertStringIncludes(tool.description, "decisionParameters");
   assertStringIncludes(tool.description, "workspaceRevision");

@@ -304,6 +304,13 @@ function completeManifest(assets: IsolationAssets): GeometryModuleManifest {
       schemaVersion: GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA,
       artifactId: `part-definitions-${F}`,
       fingerprint: fp(F),
+      uri: `casys://part-definitions-capture/sha256/${F}`,
+      byteCount: 512,
+      architecture: {
+        artifactId: `architecture-${A}`,
+        fingerprint: fp(A),
+        uri: `casys://architecture-capture/sha256/${A}`,
+      },
     },
     target: {
       partDefinitionElementId: "sysml.part.assembly",
@@ -540,6 +547,22 @@ Deno.test("parseStructureCapture rejects a non-canonical part-definitions artifa
         structureCapture: {
           ...manifest.structureCapture,
           artifactId: `part-definitions-${A}`,
+          fingerprint: fp(A),
+        },
+      }),
+    GeometryModuleEvidenceError,
+  );
+  assertThrows(
+    () =>
+      parseGeometryModuleManifest({
+        ...manifest,
+        structureCapture: {
+          ...manifest.structureCapture,
+          architecture: {
+            artifactId: `architecture-${B}`,
+            fingerprint: fp(B),
+            uri: `casys://architecture-capture/sha256/${B}`,
+          },
         },
       }),
     GeometryModuleEvidenceError,
@@ -569,6 +592,34 @@ Deno.test("module predecessor is scoped to the exact PartDefinition target", asy
         },
       }),
     Error,
+  );
+});
+
+Deno.test("module evidence round-trips an opaque target with a leaf predecessor", async () => {
+  const manifest = completeManifest(await isolationAssets());
+  const opaqueTarget = "https://syson.example/elements#assembly/1";
+  const leafPredecessor = {
+    ...manifest.predecessor!,
+    schemaVersion: GEOMETRY_PART_CAPTURE_SCHEMA,
+    partDefinitionElementId: opaqueTarget,
+  };
+  const changed = {
+    ...manifest,
+    target: { ...manifest.target, partDefinitionElementId: opaqueTarget },
+    predecessor: leafPredecessor,
+  };
+  const encoded = encodeGeometryModuleDecisionParameters(F, changed);
+  const decoded = parseGeometryModuleDecisionParameters(
+    new Map(encoded.map((parameter) => [parameter.key, parameter.value])),
+  );
+  assertEquals(decoded.manifest.target.partDefinitionElementId, opaqueTarget);
+  assertEquals(
+    decoded.manifest.predecessor?.schemaVersion,
+    GEOMETRY_PART_CAPTURE_SCHEMA,
+  );
+  assertEquals(
+    decoded.manifest.structureCapture,
+    manifest.structureCapture,
   );
 });
 
@@ -706,6 +757,7 @@ Deno.test("module capture recrosses architecture and structure identities exactl
           ...capture.structureCapture,
           fingerprint: fp(A),
           artifactId: `part-definitions-${A}`,
+          uri: `casys://part-definitions-capture/sha256/${A}`,
         },
       }),
     GeometryModuleEvidenceError,

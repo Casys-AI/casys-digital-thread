@@ -42,6 +42,11 @@ const MODULE_ID_SCHEMA = {
   pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
 } as const;
 
+const OPAQUE_ELEMENT_ID_SCHEMA = {
+  type: "string",
+  minLength: 1,
+} as const;
+
 const THREAD_BASIS_SCHEMA = {
   type: "object",
   properties: {
@@ -86,7 +91,7 @@ const projectGeometryModuleExportTool: MCPTool = {
     properties: {
       projectId: PROJECT_ID,
       basis: THREAD_BASIS_SCHEMA,
-      partDefinitionElementId: MODULE_ID_SCHEMA,
+      partDefinitionElementId: OPAQUE_ELEMENT_ID_SCHEMA,
       placementAnalysis: PLACEMENT_LOCATOR_SCHEMA,
     },
     required: [

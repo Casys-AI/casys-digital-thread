@@ -375,8 +375,10 @@ export class ExportAdmittedProjectGeometry
         ...(predecessor.status === "ok"
           ? {
             predecessor: {
+              schemaVersion: predecessor.schemaVersion,
               artifactId: predecessor.artifactId,
               fingerprint: predecessor.fingerprint,
+              partDefinitionElementId: predecessor.partDefinitionElementId,
             },
           }
           : {}),
@@ -772,8 +774,10 @@ type TargetedPartPredecessor =
   | { readonly status: "absent" }
   | {
     readonly status: "ok";
+    readonly schemaVersion: typeof GEOMETRY_PART_CAPTURE_SCHEMA;
     readonly artifactId: string;
     readonly fingerprint: ContentFingerprint;
+    readonly partDefinitionElementId: string;
   };
 
 class TargetedPartPredecessorError extends Error {
@@ -822,8 +826,10 @@ async function selectTargetedPartPredecessor(
     !archived.has(`artifact:${artifact.id}`)
   );
   const matching: Array<{
+    readonly schemaVersion: typeof GEOMETRY_PART_CAPTURE_SCHEMA;
     readonly artifactId: string;
     readonly fingerprint: ContentFingerprint;
+    readonly partDefinitionElementId: string;
   }> = [];
 
   for (const artifact of active) {
@@ -858,7 +864,12 @@ async function selectTargetedPartPredecessor(
         "An active targeted geometry capture names the represented PartDefinition with a different label.",
       );
     }
-    matching.push({ artifactId: artifact.id, fingerprint: artifact.fingerprint });
+    matching.push({
+      schemaVersion: GEOMETRY_PART_CAPTURE_SCHEMA,
+      artifactId: artifact.id,
+      fingerprint: artifact.fingerprint,
+      partDefinitionElementId: target.elementId,
+    });
   }
   if (matching.length === 0) return { status: "absent" };
   if (matching.length > 1) {

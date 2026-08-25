@@ -37,7 +37,10 @@ import {
   fingerprintsEqual,
 } from "../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
-import type { GeometryTargetPredecessor } from "../geometry-capture-contract.ts";
+import {
+  GEOMETRY_PART_CAPTURE_SCHEMA,
+  type GeometryTargetPredecessor,
+} from "../geometry-capture-contract.ts";
 import {
   type ProjectSourceClosureLocator,
   projectSourceClosureLocatorsEqual,
@@ -50,6 +53,10 @@ export const GEOMETRY_MODULE_DRAFT_CAPTURE_SCHEMA =
 export const GEOMETRY_MODULE_DRAFT_KIND = "geometry-module-draft" as const;
 export const GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA =
   "part-definitions-capture/1.0" as const;
+export const GEOMETRY_MODULE_STRUCTURE_CAPTURE_URI_PREFIX =
+  "casys://part-definitions-capture/sha256/" as const;
+export const GEOMETRY_MODULE_ARCHITECTURE_CAPTURE_URI_PREFIX =
+  "casys://architecture-capture/sha256/" as const;
 
 export type { CadPlacementAnalysisCaptureLocator, GeometryModuleChildCaptureSchema };
 
@@ -63,6 +70,13 @@ export interface GeometryModuleStructureCapture {
   readonly schemaVersion: typeof GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA;
   readonly artifactId: string;
   readonly fingerprint: ContentFingerprint;
+  readonly uri: string;
+  readonly byteCount: number;
+  readonly architecture: {
+    readonly artifactId: string;
+    readonly fingerprint: ContentFingerprint;
+    readonly uri: string;
+  };
 }
 
 export interface GeometryModuleTarget {
@@ -156,7 +170,14 @@ export function parseStructureCapture(
 ): GeometryModuleStructureCapture {
   const capture = exactRecord(
     value,
-    ["schemaVersion", "artifactId", "fingerprint"],
+    [
+      "schemaVersion",
+      "artifactId",
+      "fingerprint",
+      "uri",
+      "byteCount",
+      "architecture",
+    ],
     path,
   );
   literalValue(
@@ -172,17 +193,80 @@ export function parseStructureCapture(
       `${path}.artifactId must be part-definitions-<digest>.`,
     );
   }
+  const uri = nonEmptyText(capture.uri, `${path}.uri`);
+  if (uri !== `${GEOMETRY_MODULE_STRUCTURE_CAPTURE_URI_PREFIX}${fingerprint.digest}`) {
+    invalid(
+      "invalid_identity",
+      `${path}.uri must be the exact part-definitions capture CAS URI.`,
+    );
+  }
+  const architectureRecord = exactRecord(
+    capture.architecture,
+    ["artifactId", "fingerprint", "uri"],
+    `${path}.architecture`,
+  );
+  const architectureFingerprint = parseFingerprint(
+    architectureRecord.fingerprint,
+    `${path}.architecture.fingerprint`,
+  );
+  const architectureArtifactId = safeId(
+    architectureRecord.artifactId,
+    `${path}.architecture.artifactId`,
+  );
+  if (architectureArtifactId !== `architecture-${architectureFingerprint.digest}`) {
+    invalid(
+      "invalid_identity",
+      `${path}.architecture.artifactId must be architecture-<digest>.`,
+    );
+  }
+  const architectureUri = nonEmptyText(
+    architectureRecord.uri,
+    `${path}.architecture.uri`,
+  );
+  if (
+    architectureUri !==
+      `${GEOMETRY_MODULE_ARCHITECTURE_CAPTURE_URI_PREFIX}${architectureFingerprint.digest}`
+  ) {
+    invalid(
+      "invalid_identity",
+      `${path}.architecture.uri must be the exact architecture capture CAS URI.`,
+    );
+  }
   return {
     schemaVersion: GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA,
     artifactId,
     fingerprint,
+    uri,
+    byteCount: positiveInteger(capture.byteCount, `${path}.byteCount`),
+    architecture: {
+      artifactId: architectureArtifactId,
+      fingerprint: architectureFingerprint,
+      uri: architectureUri,
+    },
   };
+}
+
+export function recrossStructureCaptureArchitecture(
+  structureCapture: GeometryModuleStructureCapture,
+  architectureBasis: GeometryModuleArchitectureBasis,
+): void {
+  if (
+    !fingerprintsEqual(
+      structureCapture.architecture.fingerprint,
+      architectureBasis.artifactFingerprint,
+    )
+  ) {
+    invalid(
+      "unresolved",
+      "The structure capture architecture must equal the exact Thread architecture basis.",
+    );
+  }
 }
 
 export function parseTarget(value: unknown, path: string): GeometryModuleTarget {
   const target = exactRecord(value, ["partDefinitionElementId", "label"], path);
   return {
-    partDefinitionElementId: safeId(
+    partDefinitionElementId: nonEmptyText(
       target.partDefinitionElementId,
       `${path}.partDefinitionElementId`,
     ),
@@ -200,12 +284,17 @@ export function parsePredecessor(
     ["schemaVersion", "artifactId", "fingerprint", "partDefinitionElementId"],
     path,
   );
-  literalValue(
-    predecessor.schemaVersion,
-    GEOMETRY_MODULE_CAPTURE_SCHEMA,
-    `${path}.schemaVersion`,
-  );
-  const partDefinitionElementId = safeId(
+  const schemaVersion = predecessor.schemaVersion;
+  if (
+    schemaVersion !== GEOMETRY_PART_CAPTURE_SCHEMA &&
+    schemaVersion !== GEOMETRY_MODULE_CAPTURE_SCHEMA
+  ) {
+    invalid(
+      "invalid_schema",
+      `${path}.schemaVersion must name a canonical target geometry capture family.`,
+    );
+  }
+  const partDefinitionElementId = nonEmptyText(
     predecessor.partDefinitionElementId,
     `${path}.partDefinitionElementId`,
   );
@@ -216,7 +305,7 @@ export function parsePredecessor(
     );
   }
   return {
-    schemaVersion: GEOMETRY_MODULE_CAPTURE_SCHEMA,
+    schemaVersion,
     artifactId: safeId(predecessor.artifactId, `${path}.artifactId`),
     fingerprint: parseFingerprint(predecessor.fingerprint, `${path}.fingerprint`),
     partDefinitionElementId,
@@ -468,7 +557,8 @@ export function sameOptionalPredecessor(
   right: GeometryModulePredecessor | undefined,
 ): boolean {
   if (left === undefined || right === undefined) return left === right;
-  return left.artifactId === right.artifactId &&
+  return left.schemaVersion === right.schemaVersion &&
+    left.artifactId === right.artifactId &&
     left.partDefinitionElementId === right.partDefinitionElementId &&
     fingerprintsEqual(left.fingerprint, right.fingerprint);
 }
@@ -504,7 +594,15 @@ export function sameStructureCapture(
 ): boolean {
   return left.schemaVersion === right.schemaVersion &&
     left.artifactId === right.artifactId &&
-    fingerprintsEqual(left.fingerprint, right.fingerprint);
+    fingerprintsEqual(left.fingerprint, right.fingerprint) &&
+    left.uri === right.uri &&
+    left.byteCount === right.byteCount &&
+    left.architecture.artifactId === right.architecture.artifactId &&
+    fingerprintsEqual(
+      left.architecture.fingerprint,
+      right.architecture.fingerprint,
+    ) &&
+    left.architecture.uri === right.architecture.uri;
 }
 
 export function parseFingerprint(value: unknown, path: string): ContentFingerprint {
@@ -576,7 +674,7 @@ function parseChild(value: unknown, path: string): GeometryModuleChild {
   ], path);
   return {
     usageElementId: safeId(child.usageElementId, `${path}.usageElementId`),
-    partDefinitionElementId: safeId(
+    partDefinitionElementId: nonEmptyText(
       child.partDefinitionElementId,
       `${path}.partDefinitionElementId`,
     ),

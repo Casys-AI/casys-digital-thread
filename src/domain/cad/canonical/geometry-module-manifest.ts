@@ -12,6 +12,7 @@ import {
   GEOMETRY_MODULE_PLACEMENT_CONVENTION,
   GEOMETRY_MODULE_UNIT_SYSTEM,
 } from "../geometry-module-contract.ts";
+import { GEOMETRY_PART_CAPTURE_SCHEMA } from "../geometry-capture-contract.ts";
 import {
   closedRecord,
   deepFreeze,
@@ -47,6 +48,7 @@ import {
   parseStructureCapture,
   parseTarget,
   recrossChildPlacementCaptures,
+  recrossStructureCaptureArchitecture,
 } from "./geometry-module-identities.ts";
 
 export interface GeometryModuleAssembly {
@@ -117,6 +119,7 @@ export function parseGeometryModuleManifest(
     root.structureCapture,
     "$geometryModuleManifest.structureCapture",
   );
+  recrossStructureCaptureArchitecture(structureCapture, architectureBasis);
   const target = parseTarget(root.target, "$geometryModuleManifest.target");
   const predecessor = root.predecessor === undefined ? undefined : parsePredecessor(
     root.predecessor,
@@ -223,6 +226,31 @@ export function encodeGeometryModuleDecisionParameters(
     complete.structureCapture.fingerprint.digest,
   );
   add(
+    "geometry.manifest.structureCapture.uri",
+    "Structure capture CAS URI",
+    complete.structureCapture.uri,
+  );
+  add(
+    "geometry.manifest.structureCapture.byteCount",
+    "Structure capture byte count",
+    complete.structureCapture.byteCount,
+  );
+  add(
+    "geometry.manifest.structureCapture.architecture.artifactId",
+    "Structure capture architecture artifact ID",
+    complete.structureCapture.architecture.artifactId,
+  );
+  add(
+    "geometry.manifest.structureCapture.architecture.fingerprint",
+    "Structure capture architecture SHA-256",
+    complete.structureCapture.architecture.fingerprint.digest,
+  );
+  add(
+    "geometry.manifest.structureCapture.architecture.uri",
+    "Structure capture architecture CAS URI",
+    complete.structureCapture.architecture.uri,
+  );
+  add(
     "geometry.manifest.sourceClosure.present",
     "Module own source-closure present",
     complete.sourceClosure !== undefined,
@@ -237,6 +265,11 @@ export function encodeGeometryModuleDecisionParameters(
     complete.predecessor !== undefined,
   );
   if (complete.predecessor) {
+    add(
+      "geometry.manifest.predecessor.schemaVersion",
+      "Same-target predecessor capture family",
+      complete.predecessor.schemaVersion,
+    );
     add(
       "geometry.manifest.predecessor.artifactId",
       "Same-target predecessor artifact ID",
@@ -423,6 +456,17 @@ export function parseGeometryModuleDecisionParameters(
     schemaVersion: GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA,
     artifactId: string("geometry.manifest.structureCapture.artifactId"),
     fingerprint: fingerprint("geometry.manifest.structureCapture.fingerprint"),
+    uri: string("geometry.manifest.structureCapture.uri"),
+    byteCount: integer("geometry.manifest.structureCapture.byteCount"),
+    architecture: {
+      artifactId: string(
+        "geometry.manifest.structureCapture.architecture.artifactId",
+      ),
+      fingerprint: fingerprint(
+        "geometry.manifest.structureCapture.architecture.fingerprint",
+      ),
+      uri: string("geometry.manifest.structureCapture.architecture.uri"),
+    },
   };
   const sourceClosure = bool("geometry.manifest.sourceClosure.present")
     ? parseLocatorParams(string, integer, fingerprint, "sourceClosure")
@@ -433,16 +477,27 @@ export function parseGeometryModuleDecisionParameters(
     fingerprint,
     "placementAnalysis",
   );
-  const predecessor = bool("geometry.manifest.predecessor.present")
-    ? {
-      schemaVersion: GEOMETRY_MODULE_CAPTURE_SCHEMA,
-      artifactId: string("geometry.manifest.predecessor.artifactId"),
-      fingerprint: fingerprint("geometry.manifest.predecessor.fingerprint"),
-      partDefinitionElementId: string(
-        "geometry.manifest.predecessor.partDefinitionElementId",
-      ),
-    }
+  const predecessorSchema = bool("geometry.manifest.predecessor.present")
+    ? string("geometry.manifest.predecessor.schemaVersion")
     : undefined;
+  if (
+    predecessorSchema !== undefined &&
+    predecessorSchema !== GEOMETRY_PART_CAPTURE_SCHEMA &&
+    predecessorSchema !== GEOMETRY_MODULE_CAPTURE_SCHEMA
+  ) {
+    invalid(
+      "invalid_schema",
+      "The same-target predecessor capture family is not canonical geometry.",
+    );
+  }
+  const predecessor = predecessorSchema === undefined ? undefined : {
+    schemaVersion: predecessorSchema,
+    artifactId: string("geometry.manifest.predecessor.artifactId"),
+    fingerprint: fingerprint("geometry.manifest.predecessor.fingerprint"),
+    partDefinitionElementId: string(
+      "geometry.manifest.predecessor.partDefinitionElementId",
+    ),
+  };
   if (string("geometry.manifest.unitSystem") !== GEOMETRY_MODULE_UNIT_SYSTEM) {
     invalid("invalid_schema", "Geometry module unitSystem must be mm.");
   }

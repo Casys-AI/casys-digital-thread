@@ -207,6 +207,13 @@ async function fixture() {
       schemaVersion: GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA,
       artifactId: `part-definitions-${F}`,
       fingerprint: fp(F),
+      uri: `casys://part-definitions-capture/sha256/${F}`,
+      byteCount: 512,
+      architecture: {
+        artifactId: `architecture-${A}`,
+        fingerprint: fp(A),
+        uri: `casys://architecture-capture/sha256/${A}`,
+      },
     },
     target: {
       partDefinitionElementId: "sysml.part.assembly",

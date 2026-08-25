@@ -6,17 +6,34 @@
  * Caller-selected programs, profiles and child assets stay refused.
  */
 
-import { ExportProjectGeometryModule } from "../../../application/use-cases/cad/canonical/export-project-geometry-module.ts";
+import {
+  ExportProjectGeometryModule,
+  type StructureCaptureArchitecture,
+  type StructureCaptureOpen,
+  type StructureCaptureReader,
+} from "../../../application/use-cases/cad/canonical/export-project-geometry-module.ts";
 import type { ProjectGeometryModuleExportUseCase } from "../../../application/ports/in/cad/canonical/project-geometry-module-export.ts";
-import type { IsolatedCodeRunner } from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
+import type {
+  IsolatedCodeRunner,
+  IsolatedOutputPublicationReader,
+} from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
 import type { GeometryModuleAssemblyExecutionProfileCatalog } from "../../../application/ports/out/cad/module-assembly/geometry-module-assembly-profile.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
 import type { ProductStructureTraversal } from "../../../application/ports/out/product-navigation/product-structure-traversal.ts";
+import type { GeometryModuleStructureCapture } from "../../../domain/cad/canonical/geometry-module-evidence.ts";
+import { GEOMETRY_MODULE_STRUCTURE_CAPTURE_URI_PREFIX } from "../../../domain/cad/canonical/geometry-module-evidence.ts";
 import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
+import {
+  deterministicJson,
+  fingerprintsEqual,
+  sha256Fingerprint,
+} from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
+import { parseExactPartDefinitionsCapture } from "../../architecture/part-definitions/part-definitions-capture.ts";
 import { FileCanonicalAssetReader } from "../../assets/canonical-asset-reader.ts";
 import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
 import {
+  ARCHITECTURE_CAPTURE_URI_PREFIX,
   FileCaptureStore,
   GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
 } from "../../shared/cas/file-capture-store.ts";
@@ -44,6 +61,7 @@ export interface GeometryModuleExportCompositionOptions {
   readonly geometryDraftAssetDirectory: string;
   readonly profiles: GeometryModuleAssemblyExecutionProfileCatalog;
   readonly runner?: IsolatedCodeRunner;
+  readonly publications?: IsolatedOutputPublicationReader;
 }
 
 export interface GeometryModuleExportComposition {
@@ -53,7 +71,7 @@ export interface GeometryModuleExportComposition {
 export function createGeometryModuleExportComposition(
   options: GeometryModuleExportCompositionOptions,
 ): GeometryModuleExportComposition {
-  if (options.runner === undefined) {
+  if (options.runner === undefined || options.publications === undefined) {
     return Object.freeze({ geometryModuleExport: undefined });
   }
   const geometryModuleExport = new ExportProjectGeometryModule({
@@ -63,7 +81,9 @@ export function createGeometryModuleExportComposition(
     architectureIndex: new CaptureBackedCadPlacementArchitectureIndex(
       options.architectureCaptures,
     ),
-    partDefinitions: options.partDefinitionsCaptures,
+    partDefinitions: new CaptureBackedPartDefinitionsStructureReader(
+      options.partDefinitionsCaptures,
+    ),
     placements: new FileCadPlacementAnalysisCaptureStore(
       new FileByteStore({
         kind: "cad-placement-analysis-capture",
@@ -78,6 +98,7 @@ export function createGeometryModuleExportComposition(
     }),
     profiles: options.profiles,
     runner: options.runner,
+    publications: options.publications,
     draftStore: new FileGeometryModuleDraftStore(
       new FileCaptureStore({
         ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
@@ -94,4 +115,84 @@ export function createGeometryModuleExportComposition(
     ),
   });
   return Object.freeze({ geometryModuleExport });
+}
+
+export class CaptureBackedPartDefinitionsStructureReader
+  implements StructureCaptureReader {
+  readonly #captures: {
+    read(fingerprint: ContentFingerprint): Promise<string | undefined>;
+  };
+
+  constructor(
+    captures: {
+      read(fingerprint: ContentFingerprint): Promise<string | undefined>;
+    },
+  ) {
+    this.#captures = captures;
+  }
+
+  async reopen(
+    identity: StructureCaptureOpen,
+    architecture: StructureCaptureArchitecture,
+  ): Promise<GeometryModuleStructureCapture | undefined> {
+    const digest = identity.fingerprint.digest;
+    const expectedUri = `${GEOMETRY_MODULE_STRUCTURE_CAPTURE_URI_PREFIX}${digest}`;
+    const expectedArchitectureUri =
+      `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${architecture.fingerprint.digest}`;
+    if (
+      identity.fingerprint.algorithm !== "sha256" ||
+      identity.artifactId !== `part-definitions-${digest}` ||
+      identity.uri !== expectedUri
+    ) {
+      throw new TypeError(
+        "The part-definitions structure identity is not casys://part-definitions-capture/sha256/<digest>.",
+      );
+    }
+    const text = await this.#captures.read(identity.fingerprint);
+    if (text === undefined) return undefined;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+      if (deterministicJson(parsed) !== text) {
+        throw new TypeError("non-canonical");
+      }
+    } catch {
+      throw new TypeError(
+        "The part-definitions structure capture is not canonical JSON.",
+      );
+    }
+    const observed = await sha256Fingerprint(parsed);
+    if (!fingerprintsEqual(observed, identity.fingerprint)) {
+      throw new TypeError(
+        "The part-definitions structure capture failed exact rehash.",
+      );
+    }
+    const capture = parseExactPartDefinitionsCapture(parsed);
+    if (
+      capture.architecture.artifactId !== architecture.artifactId ||
+      capture.architecture.artifactId !==
+        `architecture-${architecture.fingerprint.digest}` ||
+      !fingerprintsEqual(
+        capture.architecture.fingerprint,
+        architecture.fingerprint,
+      ) ||
+      capture.architecture.uri !== expectedArchitectureUri
+    ) {
+      throw new TypeError(
+        "The part-definitions structure capture does not name the exact architecture reference.",
+      );
+    }
+    return {
+      schemaVersion: capture.schemaVersion,
+      artifactId: identity.artifactId,
+      fingerprint: identity.fingerprint,
+      uri: identity.uri,
+      byteCount: new TextEncoder().encode(text).byteLength,
+      architecture: {
+        artifactId: capture.architecture.artifactId,
+        fingerprint: capture.architecture.fingerprint,
+        uri: capture.architecture.uri,
+      },
+    };
+  }
 }

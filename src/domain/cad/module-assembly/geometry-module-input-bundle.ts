@@ -36,6 +36,7 @@ import {
   finite,
   literalValue,
   nonEmptyArray,
+  nonEmptyText,
   rejectDuplicates,
   safeId,
 } from "../../kernel/case-validation.ts";
@@ -292,7 +293,7 @@ async function prepareOccurrences(
     }
     return {
       usageElementId: safeId(record.usageElementId, `${path}.usageElementId`),
-      partDefinitionElementId: safeId(
+      partDefinitionElementId: nonEmptyText(
         record.partDefinitionElementId,
         `${path}.partDefinitionElementId`,
       ),
@@ -378,7 +379,7 @@ function validateOccurrence(
   ], path);
   return deepFreeze({
     usageElementId: safeId(root.usageElementId, `${path}.usageElementId`),
-    partDefinitionElementId: safeId(
+    partDefinitionElementId: nonEmptyText(
       root.partDefinitionElementId,
       `${path}.partDefinitionElementId`,
     ),

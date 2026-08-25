@@ -260,7 +260,7 @@ function parseRequest(value: unknown): AdmittedGeometryExportRequest {
   }
   const predecessor = request.predecessor === undefined
     ? undefined
-    : parsePredecessor(request.predecessor);
+    : parseLegacyPredecessor(request.predecessor);
   return {
     script: request.script,
     architectureBasis: {
@@ -326,7 +326,7 @@ function parseArchitectureBasis(value: unknown, path: string) {
   };
 }
 
-function parsePredecessor(value: unknown): NonNullable<
+function parseLegacyPredecessor(value: unknown): NonNullable<
   AdmittedGeometryExportRequest["predecessor"]
 > {
   const predecessor = exactRecord(
@@ -363,6 +363,58 @@ function parsePredecessor(value: unknown): NonNullable<
   return {
     artifactId: predecessor.artifactId,
     fingerprint: { algorithm: "sha256", digest: fingerprint.digest },
+  };
+}
+
+function parseTargetPredecessor(
+  value: unknown,
+  targetId: string,
+): NonNullable<AdmittedGeometryTargetedPartExportRequest["predecessor"]> {
+  const predecessor = exactRecord(
+    value,
+    ["schemaVersion", "artifactId", "fingerprint", "partDefinitionElementId"],
+    "$admittedGeometryTargetedPartExportRequest.predecessor",
+  );
+  if (
+    predecessor.schemaVersion !== "geometry-part-capture/1.0" &&
+    predecessor.schemaVersion !== "geometry-module-capture/1.0"
+  ) {
+    throw new TypeError(
+      "$admittedGeometryTargetedPartExportRequest.predecessor.schemaVersion must name a canonical target geometry capture family.",
+    );
+  }
+  if (
+    typeof predecessor.artifactId !== "string" ||
+    predecessor.artifactId.trim() === ""
+  ) {
+    throw new TypeError(
+      "$admittedGeometryTargetedPartExportRequest.predecessor.artifactId must be non-empty.",
+    );
+  }
+  if (predecessor.partDefinitionElementId !== targetId) {
+    throw new TypeError(
+      "$admittedGeometryTargetedPartExportRequest.predecessor must name the exact target PartDefinition.",
+    );
+  }
+  const fingerprint = exactRecord(
+    predecessor.fingerprint,
+    ["algorithm", "digest"],
+    "$admittedGeometryTargetedPartExportRequest.predecessor.fingerprint",
+  );
+  if (
+    fingerprint.algorithm !== "sha256" ||
+    typeof fingerprint.digest !== "string" ||
+    !/^[a-f0-9]{64}$/.test(fingerprint.digest)
+  ) {
+    throw new TypeError(
+      "$admittedGeometryTargetedPartExportRequest.predecessor.fingerprint must be SHA-256.",
+    );
+  }
+  return {
+    schemaVersion: predecessor.schemaVersion,
+    artifactId: predecessor.artifactId,
+    fingerprint: { algorithm: "sha256", digest: fingerprint.digest },
+    partDefinitionElementId: targetId,
   };
 }
 
@@ -404,7 +456,10 @@ function parseTargetedPartRequest(
   }
   const predecessor = request.predecessor === undefined
     ? undefined
-    : parsePredecessor(request.predecessor);
+    : parseTargetPredecessor(
+      request.predecessor,
+      target.partDefinitionElementId as string,
+    );
   return {
     script: request.script,
     architectureBasis,

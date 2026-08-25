@@ -26,6 +26,7 @@ import type { GeometryModuleAssemblyExecutionProfileCatalog } from "../../../por
 import {
   IsolatedCodeExecutionRejectedError,
   type IsolatedCodeRunner,
+  type IsolatedOutputPublicationReader,
 } from "../../../ports/out/compile/isolation/isolated-code-runner.ts";
 import type { EngineeringProjectRevisionStore } from "../../../ports/out/engineering-project-revision-store.ts";
 import type { ProductStructureTraversal } from "../../../ports/out/product-navigation/product-structure-traversal.ts";
@@ -43,24 +44,34 @@ import {
   GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA,
   GEOMETRY_MODULE_UNIT_SYSTEM,
   type GeometryModuleChild,
-  type GeometryModuleChildCaptureSchema,
   geometryModuleManifestFromDraft,
   type GeometryModulePredecessor,
+  type GeometryModuleStructureCapture,
   parseGeometryModuleDraftCapture,
 } from "../../../../domain/cad/canonical/geometry-module-evidence.ts";
 import {
-  GEOMETRY_PART_CAPTURE_SCHEMA,
-  parseGeometryPartManifest,
-} from "../../../../domain/cad/canonical/geometry-part-manifest.ts";
+  type CanonicalGeometryCapture,
+  parseCanonicalGeometryCapture,
+} from "../../../../domain/cad/canonical/geometry-part-capture.ts";
+import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../../../domain/cad/canonical/geometry-proposal.ts";
 import {
   createGeometryModuleInputBundle,
   geometryModuleAssemblyExecutionRequest,
 } from "../../../../domain/cad/module-assembly/geometry-module-input-bundle.ts";
-import { isolatedCodeExecutionReceiptRecord } from "../../../../domain/compile/isolation/isolated-code-execution.ts";
+import {
+  type IsolatedCodeExecutionReceipt,
+  isolatedCodeExecutionReceiptRecord,
+  type IsolatedCodeExecutionRequest,
+  isolatedCodeOutputManifestsEqual,
+  isolatedCodeRefsEqual,
+  runtimeAttestationsEqual,
+  validateIsolatedCodeExecutionReceiptRecord,
+} from "../../../../domain/compile/isolation/isolated-code-execution.ts";
 import { fingerprintResourceBytes } from "../../../../domain/compile/source/provider-resource-reader.ts";
 import {
   deepFreeze,
   exactRecord,
+  nonEmptyText,
   safeId,
 } from "../../../../domain/kernel/case-validation.ts";
 import {
@@ -84,14 +95,33 @@ import type { ThreadSnapshotStore } from "../../../../domain/thread/thread-snaps
 export { ProjectGeometryModuleExportError };
 
 const GEOMETRY_CAPTURE_URI_PREFIX = "casys://geometry-capture/sha256/";
-const PART_DEFINITIONS_CAPTURE_URI_PREFIX = "casys://part-definitions-capture/";
+const DESIGN_WRITE_GEOMETRY_TOOL =
+  `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}`;
 
 export interface GeometryCaptureReader {
   read(fingerprint: ContentFingerprint): Promise<string | undefined>;
 }
 
+export interface StructureCaptureOpen {
+  readonly artifactId: string;
+  readonly fingerprint: ContentFingerprint;
+  readonly uri: string;
+}
+
+export interface StructureCaptureArchitecture {
+  readonly artifactId: string;
+  readonly fingerprint: ContentFingerprint;
+}
+
+/**
+ * Validated structure projection. The adapter owns CAS text, canonical JSON,
+ * rehash, exact part-definitions identity and architecture recross.
+ */
 export interface StructureCaptureReader {
-  read(fingerprint: ContentFingerprint): Promise<string | undefined>;
+  reopen(
+    identity: StructureCaptureOpen,
+    architecture: StructureCaptureArchitecture,
+  ): Promise<GeometryModuleStructureCapture | undefined>;
 }
 
 export interface ExportProjectGeometryModuleDependencies {
@@ -105,6 +135,7 @@ export interface ExportProjectGeometryModuleDependencies {
   readonly stepAssets: CanonicalAssetReader;
   readonly profiles: GeometryModuleAssemblyExecutionProfileCatalog;
   readonly runner: IsolatedCodeRunner;
+  readonly publications: IsolatedOutputPublicationReader;
   readonly draftStore: Pick<GeometryModuleDraftStore, "save" | "read">;
   readonly draftAssets: GeometryDraftAssetStore;
 }
@@ -120,6 +151,7 @@ export class ExportProjectGeometryModule implements ProjectGeometryModuleExportU
   readonly #stepAssets: CanonicalAssetReader;
   readonly #profiles: GeometryModuleAssemblyExecutionProfileCatalog;
   readonly #runner: IsolatedCodeRunner;
+  readonly #publications: IsolatedOutputPublicationReader;
   readonly #draftStore: Pick<GeometryModuleDraftStore, "save" | "read">;
   readonly #draftAssets: GeometryDraftAssetStore;
 
@@ -134,6 +166,7 @@ export class ExportProjectGeometryModule implements ProjectGeometryModuleExportU
     this.#stepAssets = dependencies.stepAssets;
     this.#profiles = dependencies.profiles;
     this.#runner = dependencies.runner;
+    this.#publications = dependencies.publications;
     this.#draftStore = dependencies.draftStore;
     this.#draftAssets = dependencies.draftAssets;
   }
@@ -242,7 +275,7 @@ export class ExportProjectGeometryModule implements ProjectGeometryModuleExportU
 
     const structureCapture = await this.#reopenStructureCapture(
       snapshot,
-      architecture.artifactId,
+      architecture,
     );
 
     let placement;
@@ -285,14 +318,15 @@ export class ExportProjectGeometryModule implements ProjectGeometryModuleExportU
       scope,
     });
 
-    const children = await this.#resolveChildren(
-      snapshot,
+    const geometryPrimaries = await this.#loadExactGeometryPrimaries(snapshot);
+    const children = this.#resolveChildren(
+      geometryPrimaries,
       scope,
       placement.document.placements,
       command.placementAnalysis.fingerprint,
     );
-    const predecessor = await this.#resolvePredecessor(
-      snapshot,
+    const predecessor = resolvePredecessor(
+      geometryPrimaries,
       command.partDefinitionElementId,
     );
 
@@ -308,26 +342,13 @@ export class ExportProjectGeometryModule implements ProjectGeometryModuleExportU
 
     const profile = await this.#profiles.initial();
     const runId = await moduleExportRunId(command);
-    let receipt;
-    try {
-      receipt = await this.#runner.run(geometryModuleAssemblyExecutionRequest({
-        profile,
-        bundle,
-        runId,
-        producerGeneration: 0,
-      }));
-    } catch (cause) {
-      if (cause instanceof IsolatedCodeExecutionRejectedError) {
-        throw exportError(
-          "isolated_failure",
-          "The isolated module-assembler run was rejected.",
-        );
-      }
-      throw exportError(
-        "isolated_failure",
-        "The isolated module-assembler run failed.",
-      );
-    }
+    const request = geometryModuleAssemblyExecutionRequest({
+      profile,
+      bundle,
+      runId,
+      producerGeneration: 0,
+    });
+    const receipt = await this.#resolveOrRunGenerationZero(request, profile);
 
     const stepOutput = receipt.outputs.find((output) =>
       output.role === "assembly.step"
@@ -430,18 +451,15 @@ export class ExportProjectGeometryModule implements ProjectGeometryModuleExportU
 
   async #reopenStructureCapture(
     snapshot: ThreadSnapshot,
-    architectureArtifactId: string,
-  ): Promise<{
-    readonly schemaVersion: typeof GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA;
-    readonly artifactId: string;
-    readonly fingerprint: ContentFingerprint;
-  }> {
+    architecture: StructureCaptureArchitecture,
+  ): Promise<GeometryModuleStructureCapture> {
     const archived = archivedRefKeys(snapshot);
     const candidates = snapshot.artifacts.filter((artifact) =>
       artifact.kind === "sysml-model" &&
+      artifact.fingerprint.algorithm === "sha256" &&
+      isCanonicalDigest(artifact.fingerprint.digest) &&
       artifact.id === `part-definitions-${artifact.fingerprint.digest}` &&
-      artifact.uri?.startsWith(PART_DEFINITIONS_CAPTURE_URI_PREFIX) &&
-      artifact.inputArtifactIds.includes(architectureArtifactId) &&
+      artifact.inputArtifactIds.includes(architecture.artifactId) &&
       !archived.has(`artifact:${artifact.id}`)
     );
     if (candidates.length === 0) {
@@ -457,51 +475,43 @@ export class ExportProjectGeometryModule implements ProjectGeometryModuleExportU
       );
     }
     const artifact = candidates[0]!;
-    const text = await this.#partDefinitions.read(artifact.fingerprint);
-    if (!text) {
+    let projection: GeometryModuleStructureCapture | undefined;
+    try {
+      projection = await this.#partDefinitions.reopen(
+        {
+          artifactId: artifact.id,
+          fingerprint: artifact.fingerprint,
+          uri: artifact.uri ?? "",
+        },
+        architecture,
+      );
+    } catch {
+      throw exportError(
+        "unresolved",
+        "The part-definitions structure capture could not be recrossed.",
+      );
+    }
+    if (!projection) {
       throw exportError(
         "unavailable",
         "The part-definitions structure capture could not be reopened.",
       );
     }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-      if (deterministicJson(parsed) !== text) throw new TypeError("non-canonical");
-    } catch {
-      throw exportError(
-        "unresolved",
-        "The part-definitions structure capture is not canonical JSON.",
-      );
-    }
-    const observed = await sha256Fingerprint(parsed);
-    if (!fingerprintsEqual(observed, artifact.fingerprint)) {
-      throw exportError(
-        "unresolved",
-        "The part-definitions structure capture failed exact rehash.",
-      );
-    }
     if (
-      !parsed ||
-      typeof parsed !== "object" ||
-      Array.isArray(parsed) ||
-      (parsed as { schemaVersion?: unknown }).schemaVersion !==
-        GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA
+      projection.schemaVersion !== GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA ||
+      projection.artifactId !== artifact.id ||
+      !fingerprintsEqual(projection.fingerprint, artifact.fingerprint)
     ) {
       throw exportError(
         "unresolved",
-        "The reopened structure capture is not part-definitions-capture/1.0.",
+        "The reopened structure projection is not the named Thread artifact.",
       );
     }
-    return {
-      schemaVersion: GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA,
-      artifactId: artifact.id,
-      fingerprint: artifact.fingerprint,
-    };
+    return projection;
   }
 
-  async #resolveChildren(
-    snapshot: ThreadSnapshot,
+  #resolveChildren(
+    primaries: readonly CanonicalGeometryPrimary[],
     scope: readonly {
       readonly usageElementId: string;
       readonly partDefinitionElementId: string;
@@ -515,12 +525,10 @@ export class ExportProjectGeometryModule implements ProjectGeometryModuleExportU
       };
     }[],
     placementCapture: ContentFingerprint,
-  ): Promise<
-    readonly {
-      readonly row: GeometryModuleChild;
-      readonly stepBytes: Uint8Array;
-    }[]
-  > {
+  ): readonly {
+    readonly row: GeometryModuleChild;
+    readonly stepBytes: Uint8Array;
+  }[] {
     const byUsage = new Map(
       placements.map((entry) => [entry.usageElementId, entry] as const),
     );
@@ -529,20 +537,9 @@ export class ExportProjectGeometryModule implements ProjectGeometryModuleExportU
         scope.map((item) => item.partDefinitionElementId),
       ),
     ];
-    const resolved = new Map<string, {
-      readonly childGeometry: {
-        readonly schemaVersion: GeometryModuleChildCaptureSchema;
-        readonly artifactId: string;
-        readonly fingerprint: ContentFingerprint;
-      };
-      readonly stepBytes: Uint8Array;
-      readonly stepFingerprint: ContentFingerprint;
-    }>();
+    const resolved = new Map<string, CanonicalGeometryPrimary>();
     for (const targetId of uniqueTargets) {
-      resolved.set(
-        targetId,
-        await this.#resolveUniqueChildCapture(snapshot, targetId),
-      );
+      resolved.set(targetId, uniquePrimaryForTarget(primaries, targetId));
     }
     return scope.map((item) => {
       const placement = byUsage.get(item.usageElementId);
@@ -562,10 +559,14 @@ export class ExportProjectGeometryModule implements ProjectGeometryModuleExportU
             rotationDeg: placement.placement.rotationDeg,
           },
           placementCapture,
-          childGeometry: child.childGeometry,
+          childGeometry: {
+            schemaVersion: child.capture.schemaVersion,
+            artifactId: child.artifact.id,
+            fingerprint: child.artifact.fingerprint,
+          },
           authoritativeStep: {
-            fingerprint: child.stepFingerprint,
-            bytes: child.stepBytes.byteLength,
+            fingerprint: child.step.fingerprint,
+            bytes: child.step.bytes,
           },
         },
         stepBytes: child.stepBytes,
@@ -573,139 +574,102 @@ export class ExportProjectGeometryModule implements ProjectGeometryModuleExportU
     });
   }
 
-  async #resolveUniqueChildCapture(
+  async #loadExactGeometryPrimaries(
     snapshot: ThreadSnapshot,
-    targetId: string,
-  ): Promise<{
-    readonly childGeometry: {
-      readonly schemaVersion: GeometryModuleChildCaptureSchema;
-      readonly artifactId: string;
-      readonly fingerprint: ContentFingerprint;
-    };
-    readonly stepBytes: Uint8Array;
-    readonly stepFingerprint: ContentFingerprint;
-  }> {
+  ): Promise<readonly CanonicalGeometryPrimary[]> {
     const archived = archivedRefKeys(snapshot);
-    const matching: ThreadArtifact[] = [];
+    const primaries: CanonicalGeometryPrimary[] = [];
     for (const artifact of snapshot.artifacts) {
-      if (
-        artifact.kind !== "cad-model" ||
-        !artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX)
-      ) {
-        continue;
-      }
-      const extracted = await this.#extractChildGeometry(artifact);
-      if (!extracted || extracted.targetId !== targetId) continue;
+      if (!isCanonicalGeometryPrimaryCandidate(artifact)) continue;
       if (archived.has(`artifact:${artifact.id}`)) continue;
-      matching.push(artifact);
+      if (!isExactCanonicalGeometryPrimary(artifact)) {
+        throw exportError(
+          "unresolved",
+          "An active canonical geometry primary has a divergent Thread identity.",
+        );
+      }
+      primaries.push(await this.#consumeCanonicalGeometryPrimary(artifact));
     }
-    if (matching.length === 0) {
-      throw exportError(
-        "unavailable",
-        "No unique active canonical child geometry capture exists for an immediate target.",
-      );
-    }
-    if (matching.length > 1) {
-      throw exportError(
-        "unresolved",
-        "More than one active canonical child geometry capture exists for an immediate target.",
-      );
-    }
-    const artifact = matching[0]!;
-    const extracted = await this.#extractChildGeometry(artifact);
-    if (!extracted) {
-      throw exportError(
-        "unavailable",
-        "The unique child geometry capture could not be reopened.",
-      );
-    }
-    const stepBytes = await this.#reopenAuthoritativeStep(extracted.stepDigest);
-    return {
-      childGeometry: {
-        schemaVersion: extracted.schemaVersion,
-        artifactId: artifact.id,
-        fingerprint: artifact.fingerprint,
-      },
-      stepBytes,
-      stepFingerprint: {
-        algorithm: "sha256",
-        digest: extracted.stepDigest,
-      },
-    };
+    return primaries;
   }
 
-  async #extractChildGeometry(
+  async #consumeCanonicalGeometryPrimary(
     artifact: ThreadArtifact,
-  ): Promise<
-    | {
-      readonly schemaVersion: GeometryModuleChildCaptureSchema;
-      readonly targetId: string;
-      readonly stepDigest: string;
-    }
-    | undefined
-  > {
-    const digest = artifact.fingerprint.digest;
-    if (
-      artifact.fingerprint.algorithm !== "sha256" ||
-      !isCanonicalDigest(digest) ||
-      artifact.id !== `geometry-${digest}` ||
-      artifact.uri !== `${GEOMETRY_CAPTURE_URI_PREFIX}${digest}`
-    ) {
-      return undefined;
-    }
+  ): Promise<CanonicalGeometryPrimary> {
     let text: string | undefined;
     try {
       text = await this.#geometryCaptures.read(artifact.fingerprint);
     } catch {
-      return undefined;
+      throw exportError(
+        "unavailable",
+        "A canonical child geometry capture could not be reopened.",
+      );
     }
-    if (!text) return undefined;
+    if (!text) {
+      throw exportError(
+        "unavailable",
+        "A canonical child geometry capture could not be reopened.",
+      );
+    }
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
-      if (deterministicJson(parsed) !== text) return undefined;
+      if (deterministicJson(parsed) !== text) {
+        throw new TypeError("non-canonical");
+      }
     } catch {
-      return undefined;
+      throw exportError(
+        "unresolved",
+        "A canonical child geometry capture is not canonical JSON.",
+      );
     }
     const observed = await sha256Fingerprint(parsed);
-    if (!fingerprintsEqual(observed, artifact.fingerprint)) return undefined;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return undefined;
+    if (!fingerprintsEqual(observed, artifact.fingerprint)) {
+      throw exportError(
+        "unresolved",
+        "A canonical child geometry capture failed exact rehash.",
+      );
     }
-    const record = parsed as Record<string, unknown>;
-    if (record.schemaVersion === GEOMETRY_PART_CAPTURE_SCHEMA) {
-      try {
-        const manifest = parseGeometryPartManifest(record.manifest, {
-          requireCompleted: true,
-        });
-        const step = manifest.target.files?.find((file) => file.format === "step");
-        if (!step) return undefined;
-        return {
-          schemaVersion: GEOMETRY_PART_CAPTURE_SCHEMA,
-          targetId: manifest.target.partDefinitionElementId,
-          stepDigest: step.fingerprint.digest,
-        };
-      } catch {
-        return undefined;
-      }
+    let capture: CanonicalGeometryCapture;
+    try {
+      capture = await parseCanonicalGeometryCapture(parsed);
+    } catch {
+      throw exportError(
+        "unresolved",
+        "A canonical child geometry capture could not be parsed.",
+      );
     }
-    if (record.schemaVersion === GEOMETRY_MODULE_CAPTURE_SCHEMA) {
-      const target = childModuleTarget(record.manifest);
-      const step = childModuleStep(record.assemblyStep);
-      if (!target || !step) return undefined;
-      return {
-        schemaVersion: GEOMETRY_MODULE_CAPTURE_SCHEMA,
-        targetId: target,
-        stepDigest: step,
-      };
+    if (
+      artifact.producer.serverId !== "digital-thread" ||
+      artifact.producer.tool !== DESIGN_WRITE_GEOMETRY_TOOL ||
+      artifact.producer.runId !== capture.trustedRunId
+    ) {
+      throw exportError(
+        "unresolved",
+        "A canonical child geometry producer is not the trusted design.write-geometry@1 run.",
+      );
     }
-    return undefined;
+    if (artifact.freshness.status !== "fresh") {
+      throw exportError(
+        "unresolved",
+        "A canonical child geometry capture is not fresh.",
+      );
+    }
+    const targetId = canonicalGeometryTargetId(capture);
+    const step = canonicalGeometryStep(capture);
+    const stepBytes = await this.#reopenAuthoritativeStep(step);
+    return { artifact, capture, targetId, step, stepBytes };
   }
 
-  async #reopenAuthoritativeStep(digest: string): Promise<Uint8Array> {
+  async #reopenAuthoritativeStep(
+    step: {
+      readonly fingerprint: ContentFingerprint;
+      readonly bytes: number;
+    },
+  ): Promise<Uint8Array> {
     let bytes: Uint8Array;
     try {
-      bytes = await this.#stepAssets.read(digest);
+      bytes = await this.#stepAssets.read(step.fingerprint.digest);
     } catch (cause) {
       if (errorCode(cause) === "integrity_mismatch") {
         throw exportError(
@@ -719,52 +683,123 @@ export class ExportProjectGeometryModule implements ProjectGeometryModuleExportU
       );
     }
     const observed = await fingerprintResourceBytes(bytes);
-    if (observed !== digest) {
+    if (
+      observed !== step.fingerprint.digest ||
+      bytes.byteLength !== step.bytes
+    ) {
       throw exportError(
         "asset_digest_mismatch",
-        "A child STEP digest does not match the reopened bytes.",
+        "A child STEP digest or byteCount does not match the reopened bytes.",
       );
     }
     return bytes;
   }
 
-  async #resolvePredecessor(
-    snapshot: ThreadSnapshot,
-    targetId: string,
-  ): Promise<GeometryModulePredecessor | undefined> {
-    const archived = archivedRefKeys(snapshot);
-    const matching: GeometryModulePredecessor[] = [];
-    for (const artifact of snapshot.artifacts) {
-      if (
-        artifact.kind !== "cad-model" ||
-        !artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX) ||
-        archived.has(`artifact:${artifact.id}`)
-      ) {
-        continue;
-      }
-      const extracted = await this.#extractChildGeometry(artifact);
-      if (
-        !extracted ||
-        extracted.schemaVersion !== GEOMETRY_MODULE_CAPTURE_SCHEMA ||
-        extracted.targetId !== targetId
-      ) {
-        continue;
-      }
-      matching.push({
-        schemaVersion: GEOMETRY_MODULE_CAPTURE_SCHEMA,
-        artifactId: artifact.id,
-        fingerprint: artifact.fingerprint,
-        partDefinitionElementId: targetId,
-      });
-    }
-    if (matching.length === 0) return undefined;
-    if (matching.length > 1) {
+  async #resolveOrRunGenerationZero(
+    request: IsolatedCodeExecutionRequest,
+    profile: Awaited<
+      ReturnType<GeometryModuleAssemblyExecutionProfileCatalog["initial"]>
+    >,
+  ): Promise<IsolatedCodeExecutionReceipt> {
+    let resolution;
+    try {
+      resolution = await this.#publications.resolvePublicationByRunId(
+        request.runId,
+        0,
+      );
+    } catch {
       throw exportError(
-        "unresolved",
-        "More than one active same-target geometry-module predecessor exists.",
+        "isolated_failure",
+        "The generation-zero module-assembly publication could not be resolved safely.",
       );
     }
-    return matching[0];
+    if (resolution.status === "outcome-unknown") {
+      throw exportError(
+        "isolated_failure",
+        "The generation-zero module-assembly publication outcome is unknown; no redispatch occurs.",
+      );
+    }
+    if (resolution.status === "published") {
+      let receipt: IsolatedCodeExecutionReceipt | undefined;
+      try {
+        receipt = await this.#publications.readReceipt(resolution.ref);
+      } catch {
+        throw exportError(
+          "isolated_failure",
+          "The published generation-zero module-assembly receipt could not be reopened.",
+        );
+      }
+      if (
+        !receipt ||
+        deterministicJson(isolatedCodeExecutionReceiptRecord(receipt)) !==
+          deterministicJson(resolution.receipt)
+      ) {
+        throw exportError(
+          "isolated_failure",
+          "The published generation-zero module-assembly receipt is unavailable or divergent.",
+        );
+      }
+      await assertReceiptMatchesAssemblyContext(receipt, request, profile);
+      return receipt;
+    }
+    try {
+      const receipt = await this.#runner.run(request);
+      await assertReceiptMatchesAssemblyContext(receipt, request, profile);
+      return receipt;
+    } catch (cause) {
+      if (cause instanceof ProjectGeometryModuleExportError) throw cause;
+      if (cause instanceof IsolatedCodeExecutionRejectedError) {
+        throw exportError(
+          "isolated_failure",
+          "The isolated module-assembler run was rejected.",
+        );
+      }
+      throw exportError(
+        "isolated_failure",
+        "The isolated module-assembler run failed.",
+      );
+    }
+  }
+}
+
+async function assertReceiptMatchesAssemblyContext(
+  receipt: IsolatedCodeExecutionReceipt,
+  request: IsolatedCodeExecutionRequest,
+  profile: Awaited<
+    ReturnType<GeometryModuleAssemblyExecutionProfileCatalog["initial"]>
+  >,
+): Promise<void> {
+  let record;
+  try {
+    record = await validateIsolatedCodeExecutionReceiptRecord(
+      isolatedCodeExecutionReceiptRecord(receipt),
+    );
+  } catch {
+    throw exportError(
+      "isolated_failure",
+      "The module-assembly receipt failed exact validation.",
+    );
+  }
+  if (
+    record.runId !== request.runId ||
+    record.producerGeneration !== 0 ||
+    record.publication.ref.runId !== request.runId ||
+    record.publication.ref.producerGeneration !== 0 ||
+    !isolatedCodeRefsEqual(record.profile, request.profile) ||
+    record.sourceSha256 !== request.source.sha256 ||
+    !isolatedCodeRefsEqual(record.policy, request.policy) ||
+    !isolatedCodeOutputManifestsEqual(record.outputs, request.outputs) ||
+    !runtimeAttestationsEqual(record.runtime, profile.runtime) ||
+    record.termination.kind !== "exited" ||
+    record.termination.exitCode !== 0 ||
+    record.termination.signal !== null ||
+    record.destruction.status !== profile.minimumDestructionAssurance ||
+    record.destruction.runId !== request.runId
+  ) {
+    throw exportError(
+      "isolated_failure",
+      "The module-assembly receipt differs from the exact generation-zero request and profile context.",
+    );
   }
 }
 
@@ -777,7 +812,7 @@ function parseCommand(value: unknown): ProjectGeometryModuleExportCommand {
   return {
     projectId: safeId(root.projectId, "$geometryModuleExport.projectId"),
     basis: parseExactThreadSnapshotBasis(root.basis, "$geometryModuleExport.basis"),
-    partDefinitionElementId: safeId(
+    partDefinitionElementId: nonEmptyText(
       root.partDefinitionElementId,
       "$geometryModuleExport.partDefinitionElementId",
     ),
@@ -897,24 +932,93 @@ async function moduleExportRunId(
   return `geom-mod-export-${fingerprint.digest}`;
 }
 
-function childModuleTarget(value: unknown): string | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const target = (value as { target?: unknown }).target;
-  if (!target || typeof target !== "object" || Array.isArray(target)) {
-    return undefined;
-  }
-  const id = (target as { partDefinitionElementId?: unknown }).partDefinitionElementId;
-  return typeof id === "string" && id.length > 0 ? id : undefined;
+interface CanonicalGeometryPrimary {
+  readonly artifact: ThreadArtifact;
+  readonly capture: CanonicalGeometryCapture;
+  readonly targetId: string;
+  readonly step: {
+    readonly fingerprint: ContentFingerprint;
+    readonly bytes: number;
+  };
+  readonly stepBytes: Uint8Array;
 }
 
-function childModuleStep(value: unknown): string | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const fingerprint = (value as { fingerprint?: unknown }).fingerprint;
-  if (!fingerprint || typeof fingerprint !== "object" || Array.isArray(fingerprint)) {
-    return undefined;
+function isExactCanonicalGeometryPrimary(artifact: ThreadArtifact): boolean {
+  const digest = artifact.fingerprint.digest;
+  return artifact.kind === "cad-model" &&
+    artifact.fingerprint.algorithm === "sha256" &&
+    isCanonicalDigest(digest) &&
+    artifact.id === `geometry-${digest}` &&
+    artifact.version === digest &&
+    artifact.uri === `${GEOMETRY_CAPTURE_URI_PREFIX}${digest}` &&
+    artifact.mediaType === "application/json";
+}
+
+function isCanonicalGeometryPrimaryCandidate(artifact: ThreadArtifact): boolean {
+  return artifact.kind === "cad-model" &&
+    (
+      artifact.uri?.startsWith("casys://geometry-capture/") === true ||
+      (
+        artifact.producer.serverId === "digital-thread" &&
+        artifact.producer.tool === DESIGN_WRITE_GEOMETRY_TOOL
+      )
+    );
+}
+
+function canonicalGeometryTargetId(capture: CanonicalGeometryCapture): string {
+  return capture.schemaVersion === GEOMETRY_MODULE_CAPTURE_SCHEMA
+    ? capture.manifest.target.partDefinitionElementId
+    : capture.sourceScript.partDefinitionElementId;
+}
+
+function canonicalGeometryStep(capture: CanonicalGeometryCapture): {
+  readonly fingerprint: ContentFingerprint;
+  readonly bytes: number;
+} {
+  return capture.schemaVersion === GEOMETRY_MODULE_CAPTURE_SCHEMA
+    ? capture.assemblyStep
+    : capture.sourceScript.authoritativeStep;
+}
+
+function uniquePrimaryForTarget(
+  primaries: readonly CanonicalGeometryPrimary[],
+  targetId: string,
+): CanonicalGeometryPrimary {
+  const matching = primaries.filter((item) => item.targetId === targetId);
+  if (matching.length === 0) {
+    throw exportError(
+      "unavailable",
+      "No unique active canonical child geometry capture exists for an immediate target.",
+    );
   }
-  const digest = (fingerprint as { digest?: unknown }).digest;
-  return typeof digest === "string" && isCanonicalDigest(digest) ? digest : undefined;
+  if (matching.length > 1) {
+    throw exportError(
+      "unresolved",
+      "More than one active canonical child geometry capture exists for an immediate target.",
+    );
+  }
+  return matching[0]!;
+}
+
+function resolvePredecessor(
+  primaries: readonly CanonicalGeometryPrimary[],
+  targetId: string,
+): GeometryModulePredecessor | undefined {
+  const matching = primaries.filter((item) => item.targetId === targetId);
+  if (matching.length === 0) return undefined;
+  if (matching.length > 1) {
+    throw exportError(
+      "unresolved",
+      "More than one active same-target canonical geometry predecessor exists.",
+    );
+  }
+  const primary = matching[0]!;
+  return {
+    schemaVersion: primary.capture.schemaVersion,
+    artifactId: primary.artifact.id,
+    fingerprint: primary.artifact.fingerprint,
+    partDefinitionElementId: targetId,
+  };
 }
 
 function isCanonicalDigest(value: string): boolean {

@@ -1003,8 +1003,10 @@ async function addPartCapture(
   fixture: Harness,
   suffix: string,
 ): Promise<{
+  readonly schemaVersion: typeof GEOMETRY_PART_CAPTURE_SCHEMA;
   readonly artifactId: string;
   readonly fingerprint: { readonly algorithm: "sha256"; readonly digest: string };
+  readonly partDefinitionElementId: string;
 }> {
   const sealedAt = "2026-08-13T08:00:00.000Z";
   const architectureFingerprint =
@@ -1107,8 +1109,10 @@ async function addPartCapture(
     ],
   } as unknown as ThreadSnapshot;
   return {
+    schemaVersion: GEOMETRY_PART_CAPTURE_SCHEMA,
     artifactId: `geometry-${fingerprint.digest}`,
     fingerprint,
+    partDefinitionElementId: "sysml.part.box",
   };
 }
 
