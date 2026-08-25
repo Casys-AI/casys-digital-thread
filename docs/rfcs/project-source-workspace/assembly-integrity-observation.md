@@ -16,8 +16,8 @@ bytes. It never changes product structure, rebuilds CAD, or invents a product ve
 
 The raw `build123d_observe_assembly_integrity` capability belongs to standalone
 `mcp-build123d`. It receives engine-native input and returns raw geometry facts plus its
-own receipt; it knows no Casys project, Thread snapshot, MRTR, approval, requirement,
-evaluation or verdict.
+own producer provenance; it knows no Casys project, Thread snapshot, MRTR, approval,
+requirement, evaluation or verdict.
 
 The pending Digital Thread vertical reopens the exact `geometry-module-capture/1.0` and
 its canonical assembly STEP, selects a registered provider profile server-side, and
@@ -53,10 +53,14 @@ metrics remain `unavailable`. A successful import must not be renamed “valid a
 
 ## Evaluation boundary
 
-The observation contains measurements and diagnostics only. A later registered
-evaluation may compare them with a sealed requirement or a versioned policy. Zero
-interference can use a method-owned numerical tolerance; a required clearance, load
-capacity, motion envelope or functional fitness needs explicit engineering criteria.
+L3 is the facts-only observation. L4 is a later, registered evaluation with an explicit
+`pass`, `fail` or `unresolved` result; L5 is a human closeout of the consequential
+decision. `design.write-geometry@1` seals geometry and never satisfies that gate.
+
+The first L4 gate can cover numerical integrity only. A later registered evaluation may
+compare it with a sealed requirement or versioned policy. Zero interference can use a
+method-owned numerical tolerance; joints, required clearance, motion, load capacity and
+fabricability still need their own explicit engineering criteria.
 
 FEA remains a separate proof family. It answers a declared mechanical proof case and
 cannot substitute for structure coverage, placement recross or interference analysis.
