@@ -6,6 +6,7 @@
  * does not invent a second receipt vocabulary.
  */
 
+import { GEOMETRY_MODULE_CAPTURE_SCHEMA } from "../geometry-module-contract.ts";
 import {
   closedRecord,
   deepFreeze,
@@ -20,7 +21,6 @@ import { DESIGN_WRITE_GEOMETRY_OPERATION } from "./geometry-proposal.ts";
 import {
   type CadPlacementAnalysisCaptureLocator,
   digest,
-  GEOMETRY_MODULE_CAPTURE_SCHEMA,
   type GeometryModuleAssetIdentity,
   type GeometryModuleChild,
   type GeometryModuleInputBundleIdentity,
@@ -32,16 +32,17 @@ import {
   parseChildren,
   parseFingerprint,
   parseInputBundleIdentity,
-  parseOptionalPlacementAnalysis,
   parseOptionalSourceClosure,
+  parsePlacementAnalysis,
   parsePredecessor,
   parseStructureCapture,
   recrossChildPlacementCaptures,
   sameChildren,
   sameInputBundle,
-  sameOptionalPlacementAnalysis,
   sameOptionalPredecessor,
   sameOptionalSourceClosure,
+  samePlacementAnalysis,
+  sameStructureCapture,
 } from "./geometry-module-identities.ts";
 import { recrossGeometryModuleIsolation } from "./geometry-module-isolation.ts";
 import {
@@ -65,7 +66,7 @@ export interface GeometryModuleCapture {
   };
   readonly structureCapture: GeometryModuleStructureCapture;
   readonly sourceClosure?: ProjectSourceClosureLocator;
-  readonly placementAnalysis?: CadPlacementAnalysisCaptureLocator;
+  readonly placementAnalysis: CadPlacementAnalysisCaptureLocator;
   readonly children: ReadonlyArray<GeometryModuleChild>;
   readonly predecessor?: GeometryModulePredecessor;
   readonly inputBundle: GeometryModuleInputBundleIdentity;
@@ -143,16 +144,36 @@ export async function parseGeometryModuleCapture(
     ["artifactId", "fingerprint", "producerRunId"],
     "$geometryModuleCapture.architectureBasis",
   );
+  const architectureFingerprint = parseFingerprint(
+    architectureBasis.fingerprint,
+    "$geometryModuleCapture.architectureBasis.fingerprint",
+  );
+  const architectureArtifactId = safeId(
+    architectureBasis.artifactId,
+    "$geometryModuleCapture.architectureBasis.artifactId",
+  );
+  if (architectureArtifactId !== `architecture-${architectureFingerprint.digest}`) {
+    invalid(
+      "invalid_identity",
+      "$geometryModuleCapture.architectureBasis.artifactId must be architecture-<digest>.",
+    );
+  }
+  if (
+    !fingerprintsEqual(
+      architectureFingerprint,
+      manifest.architectureBasis.artifactFingerprint,
+    )
+  ) {
+    invalid(
+      "unresolved",
+      "Module capture architecture fingerprint must equal the signed architecture fingerprint.",
+    );
+  }
   const structureCapture = parseStructureCapture(
     root.structureCapture,
     "$geometryModuleCapture.structureCapture",
   );
-  if (
-    !fingerprintsEqual(
-      structureCapture.fingerprint,
-      manifest.structureCapture.fingerprint,
-    )
-  ) {
+  if (!sameStructureCapture(structureCapture, manifest.structureCapture)) {
     invalid(
       "unresolved",
       "Module capture structure capture must equal the signed manifest structure capture.",
@@ -175,13 +196,12 @@ export async function parseGeometryModuleCapture(
       "Module capture children must equal the signed immediate-child table.",
     );
   }
-  const placementAnalysis = parseOptionalPlacementAnalysis(
+  const placementAnalysis = parsePlacementAnalysis(
     root.placementAnalysis,
-    children,
     "$geometryModuleCapture.placementAnalysis",
   );
   recrossChildPlacementCaptures(children, placementAnalysis);
-  if (!sameOptionalPlacementAnalysis(placementAnalysis, manifest.placementAnalysis)) {
+  if (!samePlacementAnalysis(placementAnalysis, manifest.placementAnalysis)) {
     invalid(
       "unresolved",
       "Module capture placement analysis must equal the signed manifest placement analysis.",
@@ -200,6 +220,7 @@ export async function parseGeometryModuleCapture(
   }
   const inputBundle = parseInputBundleIdentity(
     root.inputBundle,
+    children,
     "$geometryModuleCapture.inputBundle",
   );
   if (
@@ -242,14 +263,8 @@ export async function parseGeometryModuleCapture(
     draftDigest: digest(root.draftDigest, "$geometryModuleCapture.draftDigest"),
     manifest,
     architectureBasis: {
-      artifactId: safeId(
-        architectureBasis.artifactId,
-        "$geometryModuleCapture.architectureBasis.artifactId",
-      ),
-      fingerprint: parseFingerprint(
-        architectureBasis.fingerprint,
-        "$geometryModuleCapture.architectureBasis.fingerprint",
-      ),
+      artifactId: architectureArtifactId,
+      fingerprint: architectureFingerprint,
       producerRunId: safeId(
         architectureBasis.producerRunId,
         "$geometryModuleCapture.architectureBasis.producerRunId",
@@ -257,7 +272,7 @@ export async function parseGeometryModuleCapture(
     },
     structureCapture,
     ...(sourceClosure === undefined ? {} : { sourceClosure }),
-    ...(placementAnalysis === undefined ? {} : { placementAnalysis }),
+    placementAnalysis,
     children,
     ...(predecessor === undefined ? {} : { predecessor }),
     inputBundle,

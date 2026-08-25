@@ -7,8 +7,20 @@
  * descendant manifests or source text.
  */
 
-import { GEOMETRY_BUNDLE_PLACEMENT_CONVENTION } from "./geometry-bundle.ts";
-import { GEOMETRY_PART_CAPTURE_SCHEMA } from "./geometry-part-manifest.ts";
+import {
+  GEOMETRY_MODULE_CAPTURE_SCHEMA,
+  GEOMETRY_MODULE_CHILD_CAPTURE_SCHEMAS,
+  GEOMETRY_MODULE_CHILD_STEP_MEDIA_TYPE,
+  GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
+  type GeometryModuleChildCaptureSchema,
+} from "../geometry-module-contract.ts";
+import type { GeometryModuleInputBundleManifest } from "../module-assembly/geometry-module-input-bundle.ts";
+import { validateGeometryModuleInputBundleManifest } from "../module-assembly/geometry-module-input-bundle.ts";
+import {
+  type CadPlacementAnalysisCaptureLocator,
+  cadPlacementAnalysisCaptureLocatorsEqual,
+  validateCadPlacementAnalysisCaptureLocator,
+} from "../placement/cad-placement-analysis-capture.ts";
 import {
   arrayOf,
   deepFreeze,
@@ -20,44 +32,25 @@ import {
   rejectDuplicates,
   safeId,
 } from "../../kernel/case-validation.ts";
-import { fingerprintsEqual } from "../../kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  fingerprintsEqual,
+} from "../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
 import {
   type ProjectSourceClosureLocator,
+  projectSourceClosureLocatorsEqual,
   validateProjectSourceClosureLocator,
 } from "../../project-source-workspace/closure.ts";
 
 export const GEOMETRY_MODULE_MANIFEST_SCHEMA = "geometry-module-manifest/1.0" as const;
 export const GEOMETRY_MODULE_DRAFT_CAPTURE_SCHEMA =
   "geometry-module-draft-capture/1.0" as const;
-export const GEOMETRY_MODULE_CAPTURE_SCHEMA = "geometry-module-capture/1.0" as const;
 export const GEOMETRY_MODULE_DRAFT_KIND = "geometry-module-draft" as const;
 export const GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA =
   "part-definitions-capture/1.0" as const;
-export const GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA =
-  "geometry-module-input-bundle/1.0" as const;
-export const CAD_PLACEMENT_ANALYSIS_CAPTURE_SCHEMA =
-  "cad-placement-analysis-capture/1.0" as const;
-export const CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_SCHEMA =
-  "cad-placement-analysis-capture-locator/1.0" as const;
-export const CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_KIND =
-  "cad-placement-analysis-capture-locator" as const;
-export const CAD_PLACEMENT_ANALYSIS_CAPTURE_URI_PREFIX =
-  "casys://cad-placement-analysis-capture/sha256/" as const;
-export const CAD_PLACEMENT_ANALYSIS_CAPTURE_URI_PATTERN =
-  /^casys:\/\/cad-placement-analysis-capture\/sha256\/[a-f0-9]{64}$/;
-export const GEOMETRY_MODULE_PLACEMENT_CONVENTION =
-  GEOMETRY_BUNDLE_PLACEMENT_CONVENTION;
-export const GEOMETRY_MODULE_CHILD_CAPTURE_SCHEMAS = [
-  GEOMETRY_PART_CAPTURE_SCHEMA,
-  GEOMETRY_MODULE_CAPTURE_SCHEMA,
-] as const;
-export const GEOMETRY_MODULE_EXPORT_FORMATS = ["step", "glb"] as const;
 
-export type GeometryModuleExportFormat =
-  (typeof GEOMETRY_MODULE_EXPORT_FORMATS)[number];
-export type GeometryModuleChildCaptureSchema =
-  (typeof GEOMETRY_MODULE_CHILD_CAPTURE_SCHEMAS)[number];
+export type { CadPlacementAnalysisCaptureLocator, GeometryModuleChildCaptureSchema };
 
 export interface GeometryModuleArchitectureBasis {
   readonly snapshotId: string;
@@ -79,14 +72,6 @@ export interface GeometryModuleTarget {
 export interface GeometryModulePlacement {
   readonly translationMm: readonly [number, number, number];
   readonly rotationDeg: readonly [number, number, number];
-}
-
-export interface CadPlacementAnalysisCaptureLocator {
-  readonly schemaVersion: typeof CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_SCHEMA;
-  readonly kind: typeof CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_KIND;
-  readonly fingerprint: ContentFingerprint;
-  readonly byteCount: number;
-  readonly casUri: string;
 }
 
 export interface GeometryModuleChildGeometry {
@@ -116,10 +101,17 @@ export interface GeometryModulePredecessor {
   readonly partDefinitionElementId: string;
 }
 
+/**
+ * Persisted input-bundle identity for draft, manifest and capture.
+ *
+ * Exact child STEP bytes must be reopened or rebuilt before a canonical
+ * seal. This identity is not a proof of those bytes.
+ */
 export interface GeometryModuleInputBundleIdentity {
   readonly schemaVersion: typeof GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA;
   readonly fingerprint: ContentFingerprint;
   readonly byteCount: number;
+  readonly manifest: GeometryModuleInputBundleManifest;
 }
 
 export type GeometryModuleEvidenceErrorCode =
@@ -176,10 +168,18 @@ export function parseStructureCapture(
     GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA,
     `${path}.schemaVersion`,
   );
+  const fingerprint = parseFingerprint(capture.fingerprint, `${path}.fingerprint`);
+  const artifactId = safeId(capture.artifactId, `${path}.artifactId`);
+  if (artifactId !== `part-definitions-${fingerprint.digest}`) {
+    invalid(
+      "invalid_identity",
+      `${path}.artifactId must be part-definitions-<digest>.`,
+    );
+  }
   return {
     schemaVersion: GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA,
-    artifactId: safeId(capture.artifactId, `${path}.artifactId`),
-    fingerprint: parseFingerprint(capture.fingerprint, `${path}.fingerprint`),
+    artifactId,
+    fingerprint,
   };
 }
 
@@ -227,24 +227,14 @@ export function parsePredecessor(
   };
 }
 
-export function parseOptionalPlacementAnalysis(
+export function parsePlacementAnalysis(
   value: unknown,
-  children: ReadonlyArray<GeometryModuleChild>,
   path: string,
-): CadPlacementAnalysisCaptureLocator | undefined {
+): CadPlacementAnalysisCaptureLocator {
   if (value === undefined) {
-    if (children.length > 0) {
-      invalid(
-        "unavailable",
-        `${path} is required when the module has immediate children.`,
-      );
-    }
-    return undefined;
-  }
-  if (children.length === 0) {
     invalid(
-      "invalid_identity",
-      `${path} must be absent when the module has no immediate children.`,
+      "unavailable",
+      `${path} is required for every geometry module.`,
     );
   }
   return validateCadPlacementAnalysisCaptureLocator(value, path);
@@ -260,6 +250,12 @@ export function parseOptionalSourceClosure(
 
 export function parseChildren(value: unknown, path: string): GeometryModuleChild[] {
   const rows = arrayOf(value, path);
+  if (rows.length === 0) {
+    invalid(
+      "invalid_identity",
+      `${path} must name at least one immediate child.`,
+    );
+  }
   const children = rows.map((candidate, index) =>
     parseChild(candidate, `${path}[${index}]`)
   );
@@ -277,9 +273,8 @@ export function parseChildren(value: unknown, path: string): GeometryModuleChild
 
 export function recrossChildPlacementCaptures(
   children: ReadonlyArray<GeometryModuleChild>,
-  placementAnalysis: CadPlacementAnalysisCaptureLocator | undefined,
+  placementAnalysis: CadPlacementAnalysisCaptureLocator,
 ): void {
-  if (placementAnalysis === undefined) return;
   for (const [index, child] of children.entries()) {
     if (!fingerprintsEqual(child.placementCapture, placementAnalysis.fingerprint)) {
       invalid(
@@ -292,11 +287,12 @@ export function recrossChildPlacementCaptures(
 
 export function parseInputBundleIdentity(
   value: unknown,
+  children: ReadonlyArray<GeometryModuleChild>,
   path: string,
 ): GeometryModuleInputBundleIdentity {
   const bundle = exactRecord(
     value,
-    ["schemaVersion", "fingerprint", "byteCount"],
+    ["schemaVersion", "fingerprint", "byteCount", "manifest"],
     path,
   );
   literalValue(
@@ -304,11 +300,127 @@ export function parseInputBundleIdentity(
     GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
     `${path}.schemaVersion`,
   );
-  return {
+  const identity = {
     schemaVersion: GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
     fingerprint: parseFingerprint(bundle.fingerprint, `${path}.fingerprint`),
     byteCount: positiveInteger(bundle.byteCount, `${path}.byteCount`),
+    manifest: parseInputBundleManifest(bundle.manifest, `${path}.manifest`),
   };
+  recrossGeometryModuleInputBundleToChildren(
+    identity.manifest,
+    children,
+    `${path}.manifest`,
+  );
+  return identity;
+}
+
+/**
+ * Recross every sorted runtime occurrence against the evidence child table.
+ * Receipt or bundle A cannot be paired with child table B.
+ */
+export function recrossGeometryModuleInputBundleToChildren(
+  manifest: GeometryModuleInputBundleManifest,
+  children: ReadonlyArray<GeometryModuleChild>,
+  path: string,
+): void {
+  if (manifest.occurrences.length !== children.length) {
+    invalid(
+      "unresolved",
+      `${path}.occurrences must have the same dense count and order as the child table.`,
+    );
+  }
+  for (const [index, occurrence] of manifest.occurrences.entries()) {
+    const child = children[index]!;
+    const occurrencePath = `${path}.occurrences[${index}]`;
+    if (occurrence.usageElementId !== child.usageElementId) {
+      invalid(
+        "unresolved",
+        `${occurrencePath}.usageElementId must equal children[${index}].usageElementId.`,
+      );
+    }
+    if (occurrence.partDefinitionElementId !== child.partDefinitionElementId) {
+      invalid(
+        "unresolved",
+        `${occurrencePath}.partDefinitionElementId must equal children[${index}].partDefinitionElementId.`,
+      );
+    }
+    if (
+      !sameTriple(occurrence.placement.translationMm, child.placement.translationMm) ||
+      !sameTriple(occurrence.placement.rotationDeg, child.placement.rotationDeg)
+    ) {
+      invalid(
+        "unresolved",
+        `${occurrencePath}.placement must equal children[${index}].placement.`,
+      );
+    }
+    if (
+      occurrence.childCapture.schemaVersion !== child.childGeometry.schemaVersion ||
+      occurrence.childCapture.artifactId !== child.childGeometry.artifactId ||
+      !fingerprintsEqual(
+        occurrence.childCapture.fingerprint,
+        child.childGeometry.fingerprint,
+      )
+    ) {
+      invalid(
+        "unresolved",
+        `${occurrencePath}.childCapture must equal children[${index}].childGeometry.`,
+      );
+    }
+    if (occurrence.step.mediaType !== GEOMETRY_MODULE_CHILD_STEP_MEDIA_TYPE) {
+      invalid(
+        "unresolved",
+        `${occurrencePath}.step.mediaType must be ${GEOMETRY_MODULE_CHILD_STEP_MEDIA_TYPE}.`,
+      );
+    }
+    if (occurrence.step.sha256 !== child.authoritativeStep.fingerprint.digest) {
+      invalid(
+        "unresolved",
+        `${occurrencePath}.step.sha256 must equal children[${index}].authoritativeStep digest.`,
+      );
+    }
+    if (occurrence.step.byteCount !== child.authoritativeStep.bytes) {
+      invalid(
+        "unresolved",
+        `${occurrencePath}.step.byteCount must equal children[${index}].authoritativeStep bytes.`,
+      );
+    }
+  }
+}
+
+/**
+ * Compare a reopened runtime bundle to the persisted draft identity.
+ *
+ * Exact child STEP bytes must still be reopened or rebuilt before a
+ * canonical seal. Matching this identity is not a proof of those bytes.
+ */
+export function geometryModuleInputBundleMatchesIdentity(
+  bundle: {
+    readonly fingerprint: ContentFingerprint;
+    readonly bytes: { readonly byteLength: number };
+    readonly manifest: GeometryModuleInputBundleManifest;
+  },
+  identity: GeometryModuleInputBundleIdentity,
+): boolean {
+  return fingerprintsEqual(bundle.fingerprint, identity.fingerprint) &&
+    bundle.bytes.byteLength === identity.byteCount &&
+    sameInputBundleManifest(bundle.manifest, identity.manifest);
+}
+
+export function assertGeometryModuleInputBundleMatchesIdentity(
+  bundle: {
+    readonly fingerprint: ContentFingerprint;
+    readonly bytes: { readonly byteLength: number };
+    readonly manifest: GeometryModuleInputBundleManifest;
+  },
+  identity: GeometryModuleInputBundleIdentity,
+  path: string,
+): void {
+  if (!geometryModuleInputBundleMatchesIdentity(bundle, identity)) {
+    invalid(
+      "unresolved",
+      `${path} does not match the persisted input-bundle identity.`,
+    );
+  }
 }
 
 export function parseAssetIdentity(
@@ -329,46 +441,6 @@ export function parseSignedAssetFingerprint(
   return parseAssetFingerprint(value, path);
 }
 
-export function validateCadPlacementAnalysisCaptureLocator(
-  value: unknown,
-  path = "$cadPlacementAnalysisCaptureLocator",
-): CadPlacementAnalysisCaptureLocator {
-  const root = exactRecord(
-    value,
-    ["schemaVersion", "kind", "fingerprint", "byteCount", "casUri"],
-    path,
-  );
-  literalValue(
-    root.schemaVersion,
-    CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
-    `${path}.schemaVersion`,
-  );
-  literalValue(
-    root.kind,
-    CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_KIND,
-    `${path}.kind`,
-  );
-  const fingerprint = parseFingerprint(root.fingerprint, `${path}.fingerprint`);
-  const byteCount = nonNegativeInteger(root.byteCount, `${path}.byteCount`);
-  const casUri = nonEmptyText(root.casUri, `${path}.casUri`);
-  if (
-    !CAD_PLACEMENT_ANALYSIS_CAPTURE_URI_PATTERN.test(casUri) ||
-    casUri !== `${CAD_PLACEMENT_ANALYSIS_CAPTURE_URI_PREFIX}${fingerprint.digest}`
-  ) {
-    invalid(
-      "invalid_identity",
-      `${path}.casUri must be ${CAD_PLACEMENT_ANALYSIS_CAPTURE_URI_PREFIX}<digest>.`,
-    );
-  }
-  return deepFreeze({
-    schemaVersion: CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
-    kind: CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_KIND,
-    fingerprint,
-    byteCount,
-    casUri,
-  });
-}
-
 export function sameChildren(
   left: ReadonlyArray<GeometryModuleChild>,
   right: ReadonlyArray<GeometryModuleChild>,
@@ -378,12 +450,8 @@ export function sameChildren(
     const other = right[index]!;
     return child.usageElementId === other.usageElementId &&
       child.partDefinitionElementId === other.partDefinitionElementId &&
-      child.placement.translationMm.every((value, axis) =>
-        value === other.placement.translationMm[axis]
-      ) &&
-      child.placement.rotationDeg.every((value, axis) =>
-        value === other.placement.rotationDeg[axis]
-      ) &&
+      sameTriple(child.placement.translationMm, other.placement.translationMm) &&
+      sameTriple(child.placement.rotationDeg, other.placement.rotationDeg) &&
       fingerprintsEqual(child.placementCapture, other.placementCapture) &&
       child.childGeometry.schemaVersion === other.childGeometry.schemaVersion &&
       child.childGeometry.artifactId === other.childGeometry.artifactId &&
@@ -414,23 +482,33 @@ export function sameOptionalSourceClosure(
   right: ProjectSourceClosureLocator | undefined,
 ): boolean {
   if (left === undefined || right === undefined) return left === right;
-  return left.casUri === right.casUri;
+  return projectSourceClosureLocatorsEqual(left, right);
 }
 
-export function sameOptionalPlacementAnalysis(
-  left: CadPlacementAnalysisCaptureLocator | undefined,
-  right: CadPlacementAnalysisCaptureLocator | undefined,
+export function samePlacementAnalysis(
+  left: CadPlacementAnalysisCaptureLocator,
+  right: CadPlacementAnalysisCaptureLocator,
 ): boolean {
-  if (left === undefined || right === undefined) return left === right;
-  return left.casUri === right.casUri;
+  return cadPlacementAnalysisCaptureLocatorsEqual(left, right);
 }
 
 export function sameInputBundle(
   left: GeometryModuleInputBundleIdentity,
   right: GeometryModuleInputBundleIdentity,
 ): boolean {
-  return fingerprintsEqual(left.fingerprint, right.fingerprint) &&
-    left.byteCount === right.byteCount;
+  return left.schemaVersion === right.schemaVersion &&
+    fingerprintsEqual(left.fingerprint, right.fingerprint) &&
+    left.byteCount === right.byteCount &&
+    sameInputBundleManifest(left.manifest, right.manifest);
+}
+
+export function sameStructureCapture(
+  left: GeometryModuleStructureCapture,
+  right: GeometryModuleStructureCapture,
+): boolean {
+  return left.schemaVersion === right.schemaVersion &&
+    left.artifactId === right.artifactId &&
+    fingerprintsEqual(left.fingerprint, right.fingerprint);
 }
 
 export function parseFingerprint(value: unknown, path: string): ContentFingerprint {
@@ -468,6 +546,27 @@ export function invalid(
   message: string,
 ): never {
   throw new GeometryModuleEvidenceError(code, message);
+}
+
+function parseInputBundleManifest(
+  value: unknown,
+  path: string,
+): GeometryModuleInputBundleManifest {
+  try {
+    return validateGeometryModuleInputBundleManifest(value, path);
+  } catch (error) {
+    invalid(
+      "invalid_schema",
+      error instanceof Error ? error.message : `${path} is invalid.`,
+    );
+  }
+}
+
+function sameInputBundleManifest(
+  left: GeometryModuleInputBundleManifest,
+  right: GeometryModuleInputBundleManifest,
+): boolean {
+  return deterministicJson(left) === deterministicJson(right);
 }
 
 function parseChild(value: unknown, path: string): GeometryModuleChild {
@@ -527,8 +626,8 @@ function parseChildCaptureSchema(
   path: string,
 ): GeometryModuleChildCaptureSchema {
   if (
-    value !== GEOMETRY_PART_CAPTURE_SCHEMA &&
-    value !== GEOMETRY_MODULE_CAPTURE_SCHEMA
+    value !== GEOMETRY_MODULE_CHILD_CAPTURE_SCHEMAS[0] &&
+    value !== GEOMETRY_MODULE_CHILD_CAPTURE_SCHEMAS[1]
   ) {
     invalid(
       "invalid_schema",
@@ -561,9 +660,9 @@ function triple(value: unknown, path: string): readonly [number, number, number]
   ];
 }
 
-function nonNegativeInteger(value: unknown, path: string): number {
-  if (!Number.isSafeInteger(value) || Number(value) < 0) {
-    invalid("invalid_format", `${path} must be a non-negative integer.`);
-  }
-  return Number(value);
+function sameTriple(
+  left: readonly [number, number, number],
+  right: readonly [number, number, number],
+): boolean {
+  return left[0] === right[0] && left[1] === right[1] && left[2] === right[2];
 }

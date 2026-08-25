@@ -1,50 +1,28 @@
 /**
  * Isolation recross for a geometry-module draft or capture.
  *
- * The caller supplies no program. The isolated profile lives on the existing
- * receipt. This module only recrosses that record to the input-bundle digest
- * and the produced assembly STEP plus binary GLB. It does not restate receipt
- * fields.
+ * The caller supplies no program. The isolated profile is the code-owned
+ * module-assembler receipt. This module only recrosses that record to the
+ * input-bundle digest and the produced assembly STEP plus binary GLB. It
+ * does not restate receipt fields.
  */
 
 import type { IsolatedCodeExecutionReceiptRecord } from "../../compile/isolation/isolated-code-execution.ts";
 import {
   type IsolatedCodeOutputDeclaration,
-  type IsolatedCodeProfileRef,
   isolatedCodeRefsEqual,
   isolatedCodeTerminationIsRejected,
   validateIsolatedCodeExecutionReceiptRecord,
 } from "../../compile/isolation/isolated-code-execution.ts";
+import {
+  GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
+  GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
+} from "../module-assembly/geometry-module-assembly-execution.ts";
 import type {
   GeometryModuleAssetIdentity,
   GeometryModuleInputBundleIdentity,
 } from "./geometry-module-identities.ts";
 import { invalid } from "./geometry-module-identities.ts";
-
-export const GEOMETRY_MODULE_ASSEMBLY_ISOLATED_PROFILE = Object.freeze(
-  {
-    id: "geometry-module-assembly-isolated-v1",
-    version: "1.0.0",
-  } satisfies IsolatedCodeProfileRef,
-);
-
-export const GEOMETRY_MODULE_ASSEMBLY_STEP_OUTPUT = Object.freeze(
-  {
-    role: "assembly-step",
-    basename: "assembly.step",
-    mediaType: "model/step",
-    format: "step",
-  } satisfies IsolatedCodeOutputDeclaration,
-);
-
-export const GEOMETRY_MODULE_ASSEMBLY_GLB_OUTPUT = Object.freeze(
-  {
-    role: "assembly-glb",
-    basename: "assembly.glb",
-    mediaType: "model/gltf-binary",
-    format: "glb",
-  } satisfies IsolatedCodeOutputDeclaration,
-);
 
 export async function recrossGeometryModuleIsolation(
   inputBundle: GeometryModuleInputBundleIdentity,
@@ -65,12 +43,12 @@ export async function recrossGeometryModuleIsolation(
   if (
     !isolatedCodeRefsEqual(
       receipt.profile,
-      GEOMETRY_MODULE_ASSEMBLY_ISOLATED_PROFILE,
+      GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
     )
   ) {
     invalid(
       "unresolved",
-      `${path}.receipt.profile must be the code-owned geometry-module assembly isolated profile.`,
+      `${path}.receipt.profile must be the code-owned geometry-module assembly profile.`,
     );
   }
   if (receipt.destruction.status !== "proven") {
@@ -91,25 +69,37 @@ export async function recrossGeometryModuleIsolation(
       `${path}.receipt.sourceSha256 must equal the input-bundle digest.`,
     );
   }
-  if (receipt.outputs.length !== 2) {
+  if (receipt.outputs.length !== GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST.length) {
     invalid(
       "unresolved",
       `${path}.receipt.outputs must be exactly assembly STEP and binary GLB.`,
     );
   }
-  recrossOutput(
-    receipt,
-    GEOMETRY_MODULE_ASSEMBLY_STEP_OUTPUT,
-    assemblyStep,
-    `${path}.assemblyStep`,
-  );
-  recrossOutput(
-    receipt,
-    GEOMETRY_MODULE_ASSEMBLY_GLB_OUTPUT,
-    assemblyGlb,
-    `${path}.assemblyGlb`,
-  );
+  for (const expected of GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST) {
+    recrossOutput(
+      receipt,
+      expected,
+      assetForRole(expected.role, assemblyStep, assemblyGlb, path),
+      expected.role === "assembly.step"
+        ? `${path}.assemblyStep`
+        : `${path}.assemblyGlb`,
+    );
+  }
   return receipt;
+}
+
+function assetForRole(
+  role: string,
+  assemblyStep: GeometryModuleAssetIdentity,
+  assemblyGlb: GeometryModuleAssetIdentity,
+  path: string,
+): GeometryModuleAssetIdentity {
+  if (role === "assembly.step") return assemblyStep;
+  if (role === "assembly.glb") return assemblyGlb;
+  invalid(
+    "unresolved",
+    `${path}.receipt.outputs has an unexpected role ${role}.`,
+  );
 }
 
 function recrossOutput(

@@ -1,22 +1,21 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import {
-  CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_KIND,
-  CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
-  CAD_PLACEMENT_ANALYSIS_CAPTURE_URI_PREFIX,
   encodeGeometryModuleDecisionParameters,
-  GEOMETRY_MODULE_ASSEMBLY_GLB_OUTPUT,
-  GEOMETRY_MODULE_ASSEMBLY_ISOLATED_PROFILE,
-  GEOMETRY_MODULE_ASSEMBLY_STEP_OUTPUT,
   GEOMETRY_MODULE_CAPTURE_SCHEMA,
+  GEOMETRY_MODULE_CHILD_STEP_MEDIA_TYPE,
   GEOMETRY_MODULE_DRAFT_CAPTURE_SCHEMA,
   GEOMETRY_MODULE_DRAFT_KIND,
   GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
   GEOMETRY_MODULE_MANIFEST_SCHEMA,
   GEOMETRY_MODULE_PLACEMENT_CONVENTION,
   GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA,
+  GEOMETRY_MODULE_UNIT_SYSTEM,
   type GeometryModuleCapture,
+  type GeometryModuleChild,
   type GeometryModuleDraftCapture,
   GeometryModuleEvidenceError,
+  type GeometryModuleInputBundleIdentity,
+  geometryModuleInputBundleMatchesIdentity,
   type GeometryModuleManifest,
   geometryModuleManifestFromDraft,
   parseGeometryModuleCapture,
@@ -26,6 +25,16 @@ import {
 } from "./geometry-module-evidence.ts";
 import { GEOMETRY_PART_CAPTURE_SCHEMA } from "./geometry-part-manifest.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "./geometry-proposal.ts";
+import {
+  GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
+  GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
+} from "../module-assembly/geometry-module-assembly-execution.ts";
+import { validateGeometryModuleInputBundleManifest } from "../module-assembly/geometry-module-input-bundle.ts";
+import {
+  CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_KIND,
+  CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
+  CAD_PLACEMENT_ANALYSIS_CAPTURE_URI_PREFIX,
+} from "../placement/cad-placement-analysis-capture.ts";
 import {
   PROJECT_SOURCE_CLOSURE_LOCATOR_KIND,
   PROJECT_SOURCE_CLOSURE_LOCATOR_SCHEMA,
@@ -58,22 +67,22 @@ function fp(digest: string) {
   return { algorithm: "sha256" as const, digest };
 }
 
-function sourceClosure(digest = A) {
+function sourceClosure(digest = A, byteCount = 128) {
   return {
     schemaVersion: PROJECT_SOURCE_CLOSURE_LOCATOR_SCHEMA,
     kind: PROJECT_SOURCE_CLOSURE_LOCATOR_KIND,
     fingerprint: fp(digest),
-    byteCount: 128,
+    byteCount,
     casUri: `${PROJECT_SOURCE_CLOSURE_URI_PREFIX}${digest}`,
   };
 }
 
-function placementAnalysis(digest = B) {
+function placementAnalysis(digest = B, byteCount = 64) {
   return {
     schemaVersion: CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
     kind: CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_KIND,
     fingerprint: fp(digest),
-    byteCount: 64,
+    byteCount,
     casUri: `${CAD_PLACEMENT_ANALYSIS_CAPTURE_URI_PREFIX}${digest}`,
   };
 }
@@ -82,13 +91,13 @@ function child(
   usageElementId: string,
   partDefinitionElementId: string,
   step: { readonly fingerprint: ReturnType<typeof fp>; readonly bytes: number },
-) {
+): GeometryModuleChild {
   return {
     usageElementId,
     partDefinitionElementId,
     placement: {
-      translationMm: [1, 0, 0] as const,
-      rotationDeg: [0, 90, 0] as const,
+      translationMm: [1, 0, 0],
+      rotationDeg: [0, 90, 0],
     },
     placementCapture: fp(B),
     childGeometry: {
@@ -97,6 +106,40 @@ function child(
       fingerprint: fp(E),
     },
     authoritativeStep: step,
+  };
+}
+
+function inputBundleIdentity(
+  assets: IsolationAssets,
+  children: ReadonlyArray<GeometryModuleChild>,
+): GeometryModuleInputBundleIdentity {
+  let offset = 0;
+  const occurrences = children.map((row) => {
+    const occurrence = {
+      usageElementId: row.usageElementId,
+      partDefinitionElementId: row.partDefinitionElementId,
+      placement: row.placement,
+      childCapture: row.childGeometry,
+      step: {
+        mediaType: GEOMETRY_MODULE_CHILD_STEP_MEDIA_TYPE,
+        byteOffset: offset,
+        byteCount: row.authoritativeStep.bytes,
+        sha256: row.authoritativeStep.fingerprint.digest,
+      },
+    };
+    offset += row.authoritativeStep.bytes;
+    return occurrence;
+  });
+  return {
+    schemaVersion: GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
+    fingerprint: assets.bundle.fingerprint,
+    byteCount: assets.bundle.byteCount,
+    manifest: validateGeometryModuleInputBundleManifest({
+      schemaVersion: GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
+      unitSystem: GEOMETRY_MODULE_UNIT_SYSTEM,
+      placementConvention: GEOMETRY_MODULE_PLACEMENT_CONVENTION,
+      occurrences,
+    }),
   };
 }
 
@@ -136,17 +179,18 @@ async function isolationAssets(
   const armDigest = await fingerprintResourceBytes(ARM_STEP_BYTES);
   const baseDigest = await fingerprintResourceBytes(BASE_STEP_BYTES);
   const runId = "run.geometry-module.assembly.1";
-  const outputs = [
-    { ...GEOMETRY_MODULE_ASSEMBLY_STEP_OUTPUT, bytes: STEP_BYTES, sha256: stepDigest },
-    { ...GEOMETRY_MODULE_ASSEMBLY_GLB_OUTPUT, bytes: GLB_BYTES, sha256: glbDigest },
-  ];
+  const outputs = GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST.map((declaration) => ({
+    ...declaration,
+    bytes: declaration.role === "assembly.step" ? STEP_BYTES : GLB_BYTES,
+    sha256: declaration.role === "assembly.step" ? stepDigest : glbDigest,
+  }));
   const request = await validateIsolatedCodeExecutionRequest({
     schemaVersion: ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
     runId,
     producerGeneration: 0,
     profile: {
-      id: overrides.profileId ?? GEOMETRY_MODULE_ASSEMBLY_ISOLATED_PROFILE.id,
-      version: GEOMETRY_MODULE_ASSEMBLY_ISOLATED_PROFILE.version,
+      id: overrides.profileId ?? GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE.id,
+      version: GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE.version,
     },
     source: { bytes: sourceBytes, sha256: bundleDigest },
     policy: {
@@ -245,6 +289,10 @@ async function isolationAssets(
 }
 
 function completeManifest(assets: IsolationAssets): GeometryModuleManifest {
+  const children = [
+    child("sysml.usage.arm", "sysml.part.arm", assets.armStep),
+    child("sysml.usage.base", "sysml.part.base", assets.baseStep),
+  ];
   return {
     schemaVersion: GEOMETRY_MODULE_MANIFEST_SCHEMA,
     architectureBasis: {
@@ -269,31 +317,14 @@ function completeManifest(assets: IsolationAssets): GeometryModuleManifest {
     },
     sourceClosure: sourceClosure(),
     placementAnalysis: placementAnalysis(),
-    children: [
-      child("sysml.usage.arm", "sysml.part.arm", assets.armStep),
-      child("sysml.usage.base", "sysml.part.base", assets.baseStep),
-    ],
-    unitSystem: "mm",
+    children,
+    unitSystem: GEOMETRY_MODULE_UNIT_SYSTEM,
     placementConvention: GEOMETRY_MODULE_PLACEMENT_CONVENTION,
     assembly: {
-      inputBundle: {
-        schemaVersion: GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
-        fingerprint: assets.bundle.fingerprint,
-        byteCount: assets.bundle.byteCount,
-      },
+      inputBundle: inputBundleIdentity(assets, children),
       step: { fingerprint: assets.step.fingerprint },
       glb: { fingerprint: assets.glb.fingerprint },
     },
-  };
-}
-
-function leafManifest(assets: IsolationAssets): GeometryModuleManifest {
-  const { placementAnalysis: _placement, predecessor: _pred, ...rest } =
-    completeManifest(assets);
-  return {
-    ...rest,
-    target: { partDefinitionElementId: "sysml.part.leaf", label: "Leaf" },
-    children: [],
   };
 }
 
@@ -312,7 +343,7 @@ function completeDraft(
     sourceClosure: manifest.sourceClosure,
     placementAnalysis: manifest.placementAnalysis,
     children: manifest.children,
-    unitSystem: "mm",
+    unitSystem: GEOMETRY_MODULE_UNIT_SYSTEM,
     placementConvention: GEOMETRY_MODULE_PLACEMENT_CONVENTION,
     inputBundle: manifest.assembly!.inputBundle,
     receipt: assets.receipt,
@@ -345,6 +376,27 @@ function completeCapture(assets: IsolationAssets): GeometryModuleCapture {
     assemblyStep: draft.assemblyStep,
     assemblyGlb: draft.assemblyGlb,
     sealedAt: "2026-08-25T10:05:00.000Z",
+  };
+}
+
+function withChildren(
+  assets: IsolationAssets,
+  children: ReadonlyArray<GeometryModuleChild>,
+): GeometryModuleCapture {
+  const capture = completeCapture(assets);
+  const inputBundle = inputBundleIdentity(assets, children);
+  return {
+    ...capture,
+    manifest: {
+      ...capture.manifest,
+      children,
+      assembly: {
+        ...capture.manifest.assembly!,
+        inputBundle,
+      },
+    },
+    children,
+    inputBundle,
   };
 }
 
@@ -455,6 +507,46 @@ Deno.test("module children must be immediate, ordered by usage identity, and nam
   );
 });
 
+Deno.test("a geometry module rejects empty children and a missing placement analysis", async () => {
+  const assets = await isolationAssets();
+  const manifest = completeManifest(assets);
+  assertThrows(
+    () => parseGeometryModuleManifest({ ...manifest, children: [] }),
+    GeometryModuleEvidenceError,
+  );
+  const { placementAnalysis: _placement, ...withoutPlacement } = manifest;
+  assertThrows(
+    () => parseGeometryModuleManifest(withoutPlacement),
+    GeometryModuleEvidenceError,
+  );
+});
+
+Deno.test("parseStructureCapture rejects a non-canonical part-definitions artifact id", async () => {
+  const manifest = completeManifest(await isolationAssets());
+  assertThrows(
+    () =>
+      parseGeometryModuleManifest({
+        ...manifest,
+        structureCapture: {
+          ...manifest.structureCapture,
+          artifactId: `structure-${F}`,
+        },
+      }),
+    GeometryModuleEvidenceError,
+  );
+  assertThrows(
+    () =>
+      parseGeometryModuleManifest({
+        ...manifest,
+        structureCapture: {
+          ...manifest.structureCapture,
+          artifactId: `part-definitions-${A}`,
+        },
+      }),
+    GeometryModuleEvidenceError,
+  );
+});
+
 Deno.test("module predecessor is scoped to the exact PartDefinition target", async () => {
   const manifest = completeManifest(await isolationAssets());
   assertThrows(
@@ -481,24 +573,13 @@ Deno.test("module predecessor is scoped to the exact PartDefinition target", asy
   );
 });
 
-Deno.test("a leaf module records structure and assets without fabricating children", async () => {
-  const assets = await isolationAssets();
-  const manifest = parseGeometryModuleManifest(leafManifest(assets), {
-    requireCompleted: true,
-  });
-  assertEquals(manifest.children, []);
-  assertEquals(manifest.placementAnalysis, undefined);
-  assertEquals(manifest.assembly?.step.fingerprint, assets.step.fingerprint);
-  assertEquals(manifest.assembly?.glb.fingerprint, assets.glb.fingerprint);
-});
-
 Deno.test("module draft binds the input bundle, isolated receipt, child STEP and produced assets", async () => {
   const assets = await isolationAssets();
   const draft = await parseGeometryModuleDraftCapture(completeDraft(assets));
   assertEquals(draft.inputBundle.schemaVersion, GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA);
   assertEquals(draft.receipt.sourceSha256, assets.bundle.fingerprint.digest);
   assertEquals(draft.receipt.destruction.status, "proven");
-  assertEquals(draft.receipt.profile, GEOMETRY_MODULE_ASSEMBLY_ISOLATED_PROFILE);
+  assertEquals(draft.receipt.profile, GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE);
   assertEquals(draft.children[0]?.authoritativeStep, assets.armStep);
   assertEquals(Object.hasOwn(draft, "script"), false);
   assertEquals(Object.hasOwn(draft, "lowerer"), false);
@@ -589,5 +670,183 @@ Deno.test("module capture seals assembly STEP plus GLB and exact child reference
         children: [completeCapture(assets).children[0]!],
       }),
     GeometryModuleEvidenceError,
+  );
+});
+
+Deno.test("module capture recrosses architecture and structure identities exactly", async () => {
+  const assets = await isolationAssets();
+  const capture = completeCapture(assets);
+  await assertRejects(
+    () =>
+      parseGeometryModuleCapture({
+        ...capture,
+        architectureBasis: {
+          ...capture.architectureBasis,
+          artifactId: `architecture-${B}`,
+        },
+      }),
+    GeometryModuleEvidenceError,
+  );
+  await assertRejects(
+    () =>
+      parseGeometryModuleCapture({
+        ...capture,
+        architectureBasis: {
+          ...capture.architectureBasis,
+          fingerprint: fp(B),
+          artifactId: `architecture-${B}`,
+        },
+      }),
+    GeometryModuleEvidenceError,
+  );
+  await assertRejects(
+    () =>
+      parseGeometryModuleCapture({
+        ...capture,
+        structureCapture: {
+          ...capture.structureCapture,
+          fingerprint: fp(A),
+          artifactId: `part-definitions-${A}`,
+        },
+      }),
+    GeometryModuleEvidenceError,
+  );
+});
+
+Deno.test("module capture refuses a receipt or bundle A paired with child table B", async () => {
+  const assets = await isolationAssets();
+  const capture = completeCapture(assets);
+  const moved = withChildren(assets, [{
+    ...capture.children[0]!,
+    placement: { translationMm: [9, 0, 0], rotationDeg: [0, 0, 0] },
+  }, capture.children[1]!]);
+  await assertRejects(
+    () =>
+      parseGeometryModuleCapture({
+        ...moved,
+        inputBundle: capture.inputBundle,
+        manifest: {
+          ...moved.manifest,
+          assembly: {
+            ...moved.manifest.assembly!,
+            inputBundle: capture.inputBundle,
+          },
+        },
+      }),
+    GeometryModuleEvidenceError,
+  );
+
+  const otherCapture = withChildren(assets, [{
+    ...capture.children[0]!,
+    childGeometry: {
+      schemaVersion: GEOMETRY_PART_CAPTURE_SCHEMA,
+      artifactId: `geometry-${A}`,
+      fingerprint: fp(A),
+    },
+  }, capture.children[1]!]);
+  await assertRejects(
+    () =>
+      parseGeometryModuleCapture({
+        ...otherCapture,
+        inputBundle: capture.inputBundle,
+        manifest: {
+          ...otherCapture.manifest,
+          assembly: {
+            ...otherCapture.manifest.assembly!,
+            inputBundle: capture.inputBundle,
+          },
+        },
+      }),
+    GeometryModuleEvidenceError,
+  );
+
+  const otherStep = withChildren(assets, [{
+    ...capture.children[0]!,
+    authoritativeStep: {
+      fingerprint: fp(A),
+      bytes: capture.children[0]!.authoritativeStep.bytes + 1,
+    },
+  }, capture.children[1]!]);
+  await assertRejects(
+    () =>
+      parseGeometryModuleCapture({
+        ...otherStep,
+        inputBundle: capture.inputBundle,
+        manifest: {
+          ...otherStep.manifest,
+          assembly: {
+            ...otherStep.manifest.assembly!,
+            inputBundle: capture.inputBundle,
+          },
+        },
+      }),
+    GeometryModuleEvidenceError,
+  );
+
+  await assertRejects(
+    () =>
+      parseGeometryModuleCapture({
+        ...capture,
+        children: [],
+        manifest: { ...capture.manifest, children: [] },
+      }),
+    GeometryModuleEvidenceError,
+  );
+});
+
+Deno.test("module locators compare the complete identity, not only casUri", async () => {
+  const assets = await isolationAssets();
+  const capture = completeCapture(assets);
+  await assertRejects(
+    () =>
+      parseGeometryModuleCapture({
+        ...capture,
+        sourceClosure: sourceClosure(A, 256),
+      }),
+    GeometryModuleEvidenceError,
+  );
+  await assertRejects(
+    () =>
+      parseGeometryModuleCapture({
+        ...capture,
+        placementAnalysis: placementAnalysis(B, 128),
+      }),
+    GeometryModuleEvidenceError,
+  );
+});
+
+Deno.test("the sealer helper matches the persisted identity and is not a byte proof", async () => {
+  const assets = await isolationAssets();
+  const identity = completeManifest(assets).assembly!.inputBundle;
+  assertEquals(
+    geometryModuleInputBundleMatchesIdentity({
+      fingerprint: identity.fingerprint,
+      bytes: { byteLength: identity.byteCount },
+      manifest: identity.manifest,
+    }, identity),
+    true,
+  );
+  assertEquals(
+    geometryModuleInputBundleMatchesIdentity({
+      fingerprint: identity.fingerprint,
+      bytes: { byteLength: identity.byteCount + 1 },
+      manifest: identity.manifest,
+    }, identity),
+    false,
+  );
+  const foreign = inputBundleIdentity(assets, [
+    child("sysml.usage.arm", "sysml.part.arm", assets.armStep),
+    {
+      ...child("sysml.usage.base", "sysml.part.base", assets.baseStep),
+      placement: { translationMm: [0, 0, 4], rotationDeg: [0, 0, 0] },
+    },
+  ]);
+  assertEquals(
+    geometryModuleInputBundleMatchesIdentity({
+      fingerprint: identity.fingerprint,
+      bytes: { byteLength: identity.byteCount },
+      manifest: foreign.manifest,
+    }, identity),
+    false,
   );
 });

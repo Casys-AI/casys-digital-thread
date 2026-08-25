@@ -7,6 +7,10 @@
  */
 
 import {
+  GEOMETRY_MODULE_PLACEMENT_CONVENTION,
+  GEOMETRY_MODULE_UNIT_SYSTEM,
+} from "../geometry-module-contract.ts";
+import {
   closedRecord,
   deepFreeze,
   literalValue,
@@ -20,7 +24,6 @@ import {
   GEOMETRY_MODULE_DRAFT_CAPTURE_SCHEMA,
   GEOMETRY_MODULE_DRAFT_KIND,
   GEOMETRY_MODULE_MANIFEST_SCHEMA,
-  GEOMETRY_MODULE_PLACEMENT_CONVENTION,
   type GeometryModuleArchitectureBasis,
   type GeometryModuleAssetIdentity,
   type GeometryModuleChild,
@@ -34,8 +37,8 @@ import {
   parseAssetIdentity,
   parseChildren,
   parseInputBundleIdentity,
-  parseOptionalPlacementAnalysis,
   parseOptionalSourceClosure,
+  parsePlacementAnalysis,
   parsePredecessor,
   parseStructureCapture,
   parseTarget,
@@ -57,9 +60,9 @@ export interface GeometryModuleDraftCapture {
   readonly target: GeometryModuleTarget;
   readonly predecessor?: GeometryModulePredecessor;
   readonly sourceClosure?: ProjectSourceClosureLocator;
-  readonly placementAnalysis?: CadPlacementAnalysisCaptureLocator;
+  readonly placementAnalysis: CadPlacementAnalysisCaptureLocator;
   readonly children: ReadonlyArray<GeometryModuleChild>;
-  readonly unitSystem: "mm";
+  readonly unitSystem: typeof GEOMETRY_MODULE_UNIT_SYSTEM;
   readonly placementConvention: typeof GEOMETRY_MODULE_PLACEMENT_CONVENTION;
   readonly inputBundle: GeometryModuleInputBundleIdentity;
   readonly receipt: IsolatedCodeExecutionReceiptRecord;
@@ -133,13 +136,16 @@ export async function parseGeometryModuleDraftCapture(
     "$geometryModuleDraft.sourceClosure",
   );
   const children = parseChildren(root.children, "$geometryModuleDraft.children");
-  const placementAnalysis = parseOptionalPlacementAnalysis(
+  const placementAnalysis = parsePlacementAnalysis(
     root.placementAnalysis,
-    children,
     "$geometryModuleDraft.placementAnalysis",
   );
   recrossChildPlacementCaptures(children, placementAnalysis);
-  literalValue(root.unitSystem, "mm", "$geometryModuleDraft.unitSystem");
+  literalValue(
+    root.unitSystem,
+    GEOMETRY_MODULE_UNIT_SYSTEM,
+    "$geometryModuleDraft.unitSystem",
+  );
   literalValue(
     root.placementConvention,
     GEOMETRY_MODULE_PLACEMENT_CONVENTION,
@@ -147,6 +153,7 @@ export async function parseGeometryModuleDraftCapture(
   );
   const inputBundle = parseInputBundleIdentity(
     root.inputBundle,
+    children,
     "$geometryModuleDraft.inputBundle",
   );
   const assemblyStep = parseAssetIdentity(
@@ -179,9 +186,9 @@ export async function parseGeometryModuleDraftCapture(
     target,
     ...(predecessor === undefined ? {} : { predecessor }),
     ...(sourceClosure === undefined ? {} : { sourceClosure }),
-    ...(placementAnalysis === undefined ? {} : { placementAnalysis }),
+    placementAnalysis,
     children,
-    unitSystem: "mm" as const,
+    unitSystem: GEOMETRY_MODULE_UNIT_SYSTEM,
     placementConvention: GEOMETRY_MODULE_PLACEMENT_CONVENTION,
     inputBundle,
     receipt,
@@ -202,11 +209,9 @@ export function geometryModuleManifestFromDraft(
     ...(draft.sourceClosure === undefined
       ? {}
       : { sourceClosure: draft.sourceClosure }),
-    ...(draft.placementAnalysis === undefined
-      ? {}
-      : { placementAnalysis: draft.placementAnalysis }),
+    placementAnalysis: draft.placementAnalysis,
     children: draft.children,
-    unitSystem: "mm",
+    unitSystem: GEOMETRY_MODULE_UNIT_SYSTEM,
     placementConvention: GEOMETRY_MODULE_PLACEMENT_CONVENTION,
     assembly: {
       inputBundle: draft.inputBundle,

@@ -1,24 +1,30 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import {
-  CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_KIND,
-  CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
-  CAD_PLACEMENT_ANALYSIS_CAPTURE_URI_PREFIX,
-  GEOMETRY_MODULE_ASSEMBLY_GLB_OUTPUT,
-  GEOMETRY_MODULE_ASSEMBLY_ISOLATED_PROFILE,
-  GEOMETRY_MODULE_ASSEMBLY_STEP_OUTPUT,
   GEOMETRY_MODULE_CAPTURE_SCHEMA,
+  GEOMETRY_MODULE_CHILD_STEP_MEDIA_TYPE,
   GEOMETRY_MODULE_DRAFT_CAPTURE_SCHEMA,
   GEOMETRY_MODULE_DRAFT_KIND,
   GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
   GEOMETRY_MODULE_MANIFEST_SCHEMA,
   GEOMETRY_MODULE_PLACEMENT_CONVENTION,
   GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA,
+  GEOMETRY_MODULE_UNIT_SYSTEM,
   type GeometryModuleCapture,
   type GeometryModuleDraftCapture,
   type GeometryModuleManifest,
 } from "../../../domain/cad/canonical/geometry-module-evidence.ts";
 import { GEOMETRY_PART_CAPTURE_SCHEMA } from "../../../domain/cad/canonical/geometry-part-manifest.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../../domain/cad/canonical/geometry-proposal.ts";
+import {
+  GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
+  GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
+} from "../../../domain/cad/module-assembly/geometry-module-assembly-execution.ts";
+import { validateGeometryModuleInputBundleManifest } from "../../../domain/cad/module-assembly/geometry-module-input-bundle.ts";
+import {
+  CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_KIND,
+  CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
+  CAD_PLACEMENT_ANALYSIS_CAPTURE_URI_PREFIX,
+} from "../../../domain/cad/placement/cad-placement-analysis-capture.ts";
 import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
 import {
   PROJECT_SOURCE_CLOSURE_LOCATOR_KIND,
@@ -65,15 +71,16 @@ async function fixture() {
   const glbDigest = await fingerprintResourceBytes(GLB_BYTES);
   const armDigest = await fingerprintResourceBytes(ARM_STEP_BYTES);
   const runId = "run.geometry-module.assembly.1";
-  const outputs = [
-    { ...GEOMETRY_MODULE_ASSEMBLY_STEP_OUTPUT, bytes: STEP_BYTES, sha256: stepDigest },
-    { ...GEOMETRY_MODULE_ASSEMBLY_GLB_OUTPUT, bytes: GLB_BYTES, sha256: glbDigest },
-  ];
+  const outputs = GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST.map((declaration) => ({
+    ...declaration,
+    bytes: declaration.role === "assembly.step" ? STEP_BYTES : GLB_BYTES,
+    sha256: declaration.role === "assembly.step" ? stepDigest : glbDigest,
+  }));
   const request = await validateIsolatedCodeExecutionRequest({
     schemaVersion: ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
     runId,
     producerGeneration: 0,
-    profile: GEOMETRY_MODULE_ASSEMBLY_ISOLATED_PROFILE,
+    profile: GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
     source: { bytes: BUNDLE_BYTES, sha256: bundleDigest },
     policy: {
       id: "isolation.geometry-module-assembly-v1",
@@ -150,10 +157,42 @@ async function fixture() {
       ),
     }),
   );
+  const children = [{
+    usageElementId: "sysml.usage.arm",
+    partDefinitionElementId: "sysml.part.arm",
+    placement: { translationMm: [1, 0, 0] as const, rotationDeg: [0, 90, 0] as const },
+    placementCapture: fp(B),
+    childGeometry: {
+      schemaVersion: GEOMETRY_PART_CAPTURE_SCHEMA,
+      artifactId: `geometry-${E}`,
+      fingerprint: fp(E),
+    },
+    authoritativeStep: {
+      fingerprint: fp(armDigest),
+      bytes: ARM_STEP_BYTES.byteLength,
+    },
+  }];
   const inputBundle = {
     schemaVersion: GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
     fingerprint: fp(bundleDigest),
     byteCount: BUNDLE_BYTES.byteLength,
+    manifest: validateGeometryModuleInputBundleManifest({
+      schemaVersion: GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
+      unitSystem: GEOMETRY_MODULE_UNIT_SYSTEM,
+      placementConvention: GEOMETRY_MODULE_PLACEMENT_CONVENTION,
+      occurrences: [{
+        usageElementId: children[0]!.usageElementId,
+        partDefinitionElementId: children[0]!.partDefinitionElementId,
+        placement: children[0]!.placement,
+        childCapture: children[0]!.childGeometry,
+        step: {
+          mediaType: GEOMETRY_MODULE_CHILD_STEP_MEDIA_TYPE,
+          byteOffset: 0,
+          byteCount: children[0]!.authoritativeStep.bytes,
+          sha256: children[0]!.authoritativeStep.fingerprint.digest,
+        },
+      }],
+    }),
   };
   const assemblyStep = { fingerprint: fp(stepDigest), bytes: STEP_BYTES.byteLength };
   const assemblyGlb = { fingerprint: fp(glbDigest), bytes: GLB_BYTES.byteLength };
@@ -193,22 +232,8 @@ async function fixture() {
       byteCount: 64,
       casUri: `${CAD_PLACEMENT_ANALYSIS_CAPTURE_URI_PREFIX}${B}`,
     },
-    children: [{
-      usageElementId: "sysml.usage.arm",
-      partDefinitionElementId: "sysml.part.arm",
-      placement: { translationMm: [1, 0, 0], rotationDeg: [0, 90, 0] },
-      placementCapture: fp(B),
-      childGeometry: {
-        schemaVersion: GEOMETRY_PART_CAPTURE_SCHEMA,
-        artifactId: `geometry-${E}`,
-        fingerprint: fp(E),
-      },
-      authoritativeStep: {
-        fingerprint: fp(armDigest),
-        bytes: ARM_STEP_BYTES.byteLength,
-      },
-    }],
-    unitSystem: "mm",
+    children,
+    unitSystem: GEOMETRY_MODULE_UNIT_SYSTEM,
     placementConvention: GEOMETRY_MODULE_PLACEMENT_CONVENTION,
     assembly: {
       inputBundle,
@@ -227,7 +252,7 @@ async function fixture() {
     sourceClosure: manifest.sourceClosure,
     placementAnalysis: manifest.placementAnalysis,
     children: manifest.children,
-    unitSystem: "mm",
+    unitSystem: GEOMETRY_MODULE_UNIT_SYSTEM,
     placementConvention: GEOMETRY_MODULE_PLACEMENT_CONVENTION,
     inputBundle,
     receipt,

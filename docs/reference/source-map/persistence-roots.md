@@ -35,8 +35,8 @@ Build123d `{outputs,attempts,drafts,captures}`; admitted Modelica
 `{outputs,attempts,captures}`; isolated CalculiX `{outputs,attempts,evidence,leases}`;
 resolved operation plans; agent-authored architecture SysML `{sources,analyses,seals}`
 under `architecture-sysml/`; LED-driver human-source bytes under
-`electrical/led-driver-source/`; and CAD placement
-`cad/placement/{sources,analyses}`. CAS children use fixed namespaces
+`electrical/led-driver-source/`; and CAD placement `cad/placement/{sources,analyses}`.
+CAS children use fixed namespaces
 
 #### `state/local/recorded-analysis/cad/placement/{sources,analyses}/`
 
@@ -180,7 +180,7 @@ only, never an approval or execution authority
 
 Current analysis-bearing `geometry-draft-capture/1.2` and `2.1`, plus
 `geometry-module-draft-capture/1.0`. The module draft binds the exact
-`geometry-module-input-bundle/1.0` fingerprint, isolated receipt, reopened child
+`geometry-module-input-bundle/1.0` identity, isolated receipt, reopened child
 capture/STEP identities, and produced assembly STEP plus binary GLB. These records never
 enter a `ThreadSnapshot`. Older draft schemas are unsupported.
 

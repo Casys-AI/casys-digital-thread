@@ -132,32 +132,44 @@ encoding for `design.write-geometry@1`
 Public facade for the bounded module family. Identities, isolation recross, manifest,
 draft and capture stay in the sibling files below.
 
+#### [`src/domain/cad/geometry-module-contract.ts`](../../../src/domain/cad/geometry-module-contract.ts)
+
+Shared geometry-module literal identities (capture schema, input-bundle schema,
+unit/placement convention, child capture schemas, child STEP media type). Imported by
+runtime encoding and canonical evidence. Not a parser and not a second authority.
+
 #### [`src/domain/cad/canonical/geometry-module-identities.ts`](../../../src/domain/cad/canonical/geometry-module-identities.ts)
 
-Shared value objects: immediate-child table, structure/placement locators, input-bundle
-identity, and child capture plus authoritative STEP identities. No program, lowerer, or
+Shared value objects: nonempty immediate-child table, structure capture with canonical
+`part-definitions-<digest>` id, complete input-bundle identity including the validated
+runtime manifest, and child capture plus authoritative STEP identities. Placement
+locator authority stays on `cad-placement-analysis-capture.ts`. No program, lowerer, or
 admission stamp.
 
 #### [`src/domain/cad/canonical/geometry-module-isolation.ts`](../../../src/domain/cad/canonical/geometry-module-isolation.ts)
 
-Recross of the existing `IsolatedCodeExecutionReceiptRecord` to the input-bundle digest,
-proven destruction, accepted termination, and exact STEP plus binary GLB outputs. Does
-not restate receipt fields.
+Recross of the existing `IsolatedCodeExecutionReceiptRecord` to the code-owned
+`build123d-module-assembler-v1` profile, input-bundle digest, proven destruction,
+accepted termination, and `assembly.step` / `assembly.glb` outputs. Does not restate
+receipt fields.
 
 #### [`src/domain/cad/canonical/geometry-module-manifest.ts`](../../../src/domain/cad/canonical/geometry-module-manifest.ts)
 
 `geometry-module-manifest/1.0` and its flat MRTR grammar. A completed manifest names the
-input-bundle identity and assembly STEP/GLB fingerprints.
+complete input-bundle identity and assembly STEP/GLB fingerprints. Placement analysis is
+mandatory.
 
 #### [`src/domain/cad/canonical/geometry-module-draft.ts`](../../../src/domain/cad/canonical/geometry-module-draft.ts)
 
-Review-only `geometry-module-draft-capture/1.0`: input bundle, isolated receipt,
-reopened child capture/STEP identities, produced STEP+GLB. No Thread write.
+Review-only `geometry-module-draft-capture/1.0`: complete input-bundle identity,
+isolated receipt, reopened child capture/STEP identities, produced STEP+GLB. No Thread
+write.
 
 #### [`src/domain/cad/canonical/geometry-module-capture.ts`](../../../src/domain/cad/canonical/geometry-module-capture.ts)
 
 Canonical `geometry-module-capture/1.0` after the existing geometry seal. Recrosses the
-signed manifest, input bundle, receipt and produced assets.
+signed manifest, complete input-bundle identity against every child, architecture
+`architecture-<digest>` plus structure identity, receipt and produced assets.
 
 #### [`src/application/ports/out/cad/canonical/geometry-module-evidence-store.ts`](../../../src/application/ports/out/cad/canonical/geometry-module-evidence-store.ts)
 
@@ -186,10 +198,10 @@ constructs, no execution, provider call, source rewrite or authority
 
 #### [`src/domain/cad/placement/`](../../../src/domain/cad/placement)
 
-Closed `cad-immediate-placement-source/1.0`, same-file `design-source@1`
-`PartUsage` resolution, exact immediate-usage coverage plus `typed_by` recross, and
-the opaque `cad-placement-analysis-capture/1.0` locator. No provider, runtime, MRTR or
-verdict fields.
+Closed `cad-immediate-placement-source/1.0`, same-file `design-source@1` `PartUsage`
+resolution, exact immediate-usage coverage plus `typed_by` recross, and the opaque
+`cad-placement-analysis-capture/1.0` locator. No provider, runtime, MRTR or verdict
+fields.
 
 #### [`src/application/use-cases/cad/placement/capture-project-cad-placement.ts`](../../../src/application/use-cases/cad/placement/capture-project-cad-placement.ts)
 
@@ -223,13 +235,14 @@ or `{ kind: "invalid", reason }`; no domain imports
 
 Closed `geometry-module-input-bundle/1.0`: canonical manifest, usage-ordered immediate
 occurrences, placements, child-capture and STEP identities, packed offsets, then exact
-child STEP bytes. Encode/decode/re-hash only. No agent CAD source and no exporter
+child STEP bytes. Shared literals come from `geometry-module-contract.ts`.
+Encode/decode/re-hash only. No agent CAD source and no exporter
 
 #### [`src/adapters/cad/module-assembly/geometry-module-assembly-composition.ts`](../../../src/adapters/cad/module-assembly/geometry-module-assembly-composition.ts)
 
 Digest-pinned module-assembler composition: profile-only review facts; empty runtime
-marker reuses the single-source Microsandbox broker and atomic output CAS. Not wired
-to MCP, the sealer, or the product catalog
+marker reuses the single-source Microsandbox broker and atomic output CAS. Not wired to
+MCP, the sealer, or the product catalog
 
 #### [`images/build123d-module-assembler-worker/run-module-assembler.py`](../../../images/build123d-module-assembler-worker/run-module-assembler.py)
 

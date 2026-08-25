@@ -7,21 +7,28 @@
  */
 
 import {
+  GEOMETRY_MODULE_CAPTURE_SCHEMA,
+  GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
+  GEOMETRY_MODULE_PLACEMENT_CONVENTION,
+  GEOMETRY_MODULE_UNIT_SYSTEM,
+} from "../geometry-module-contract.ts";
+import {
   closedRecord,
   deepFreeze,
   exactRecord,
   literalValue,
 } from "../../kernel/case-validation.ts";
-import { fingerprintsEqual } from "../../kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  fingerprintsEqual,
+} from "../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
 import type { ProjectSourceClosureLocator } from "../../project-source-workspace/closure.ts";
 import { validateProjectSourceClosureLocator } from "../../project-source-workspace/closure.ts";
 import {
   type CadPlacementAnalysisCaptureLocator,
   digest,
-  GEOMETRY_MODULE_CAPTURE_SCHEMA,
   GEOMETRY_MODULE_MANIFEST_SCHEMA,
-  GEOMETRY_MODULE_PLACEMENT_CONVENTION,
   GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA,
   type GeometryModuleArchitectureBasis,
   type GeometryModuleChild,
@@ -33,14 +40,13 @@ import {
   parseArchitectureBasis,
   parseChildren,
   parseInputBundleIdentity,
-  parseOptionalPlacementAnalysis,
   parseOptionalSourceClosure,
+  parsePlacementAnalysis,
   parsePredecessor,
   parseSignedAssetFingerprint,
   parseStructureCapture,
   parseTarget,
   recrossChildPlacementCaptures,
-  validateCadPlacementAnalysisCaptureLocator,
 } from "./geometry-module-identities.ts";
 
 export interface GeometryModuleAssembly {
@@ -56,9 +62,9 @@ export interface GeometryModuleManifest {
   readonly target: GeometryModuleTarget;
   readonly predecessor?: GeometryModulePredecessor;
   readonly sourceClosure?: ProjectSourceClosureLocator;
-  readonly placementAnalysis?: CadPlacementAnalysisCaptureLocator;
+  readonly placementAnalysis: CadPlacementAnalysisCaptureLocator;
   readonly children: ReadonlyArray<GeometryModuleChild>;
-  readonly unitSystem: "mm";
+  readonly unitSystem: typeof GEOMETRY_MODULE_UNIT_SYSTEM;
   readonly placementConvention: typeof GEOMETRY_MODULE_PLACEMENT_CONVENTION;
   readonly assembly?: GeometryModuleAssembly;
 }
@@ -125,19 +131,22 @@ export function parseGeometryModuleManifest(
     root.children,
     "$geometryModuleManifest.children",
   );
-  const placementAnalysis = parseOptionalPlacementAnalysis(
+  const placementAnalysis = parsePlacementAnalysis(
     root.placementAnalysis,
-    children,
     "$geometryModuleManifest.placementAnalysis",
   );
-  literalValue(root.unitSystem, "mm", "$geometryModuleManifest.unitSystem");
+  literalValue(
+    root.unitSystem,
+    GEOMETRY_MODULE_UNIT_SYSTEM,
+    "$geometryModuleManifest.unitSystem",
+  );
   literalValue(
     root.placementConvention,
     GEOMETRY_MODULE_PLACEMENT_CONVENTION,
     "$geometryModuleManifest.placementConvention",
   );
   const assembly = Object.hasOwn(root, "assembly")
-    ? parseAssembly(root.assembly, "$geometryModuleManifest.assembly")
+    ? parseAssembly(root.assembly, children, "$geometryModuleManifest.assembly")
     : undefined;
   if (options.requireCompleted && assembly === undefined) {
     invalid(
@@ -153,9 +162,9 @@ export function parseGeometryModuleManifest(
     target,
     ...(predecessor === undefined ? {} : { predecessor }),
     ...(sourceClosure === undefined ? {} : { sourceClosure }),
-    ...(placementAnalysis === undefined ? {} : { placementAnalysis }),
+    placementAnalysis,
     children,
-    unitSystem: "mm",
+    unitSystem: GEOMETRY_MODULE_UNIT_SYSTEM,
     placementConvention: GEOMETRY_MODULE_PLACEMENT_CONVENTION,
     ...(assembly === undefined ? {} : { assembly }),
   });
@@ -221,14 +230,7 @@ export function encodeGeometryModuleDecisionParameters(
   if (complete.sourceClosure) {
     encodeLocator(add, "sourceClosure", complete.sourceClosure);
   }
-  add(
-    "geometry.manifest.placementAnalysis.present",
-    "Placement analysis present",
-    complete.placementAnalysis !== undefined,
-  );
-  if (complete.placementAnalysis) {
-    encodeLocator(add, "placementAnalysis", complete.placementAnalysis);
-  }
+  encodeLocator(add, "placementAnalysis", complete.placementAnalysis);
   add(
     "geometry.manifest.predecessor.present",
     "Same-target predecessor present",
@@ -276,6 +278,11 @@ export function encodeGeometryModuleDecisionParameters(
     "geometry.manifest.assembly.inputBundle.byteCount",
     "Input-bundle byte count",
     complete.assembly!.inputBundle.byteCount,
+  );
+  add(
+    "geometry.manifest.assembly.inputBundle.manifest",
+    "Input-bundle manifest",
+    deterministicJson(complete.assembly!.inputBundle.manifest),
   );
   add(
     "geometry.manifest.assembly.step.fingerprint",
@@ -420,9 +427,12 @@ export function parseGeometryModuleDecisionParameters(
   const sourceClosure = bool("geometry.manifest.sourceClosure.present")
     ? parseLocatorParams(string, integer, fingerprint, "sourceClosure")
     : undefined;
-  const placementAnalysis = bool("geometry.manifest.placementAnalysis.present")
-    ? parseLocatorParams(string, integer, fingerprint, "placementAnalysis")
-    : undefined;
+  const placementAnalysis = parseLocatorParams(
+    string,
+    integer,
+    fingerprint,
+    "placementAnalysis",
+  );
   const predecessor = bool("geometry.manifest.predecessor.present")
     ? {
       schemaVersion: GEOMETRY_MODULE_CAPTURE_SCHEMA,
@@ -433,7 +443,7 @@ export function parseGeometryModuleDecisionParameters(
       ),
     }
     : undefined;
-  if (string("geometry.manifest.unitSystem") !== "mm") {
+  if (string("geometry.manifest.unitSystem") !== GEOMETRY_MODULE_UNIT_SYSTEM) {
     invalid("invalid_schema", "Geometry module unitSystem must be mm.");
   }
   if (
@@ -449,21 +459,7 @@ export function parseGeometryModuleDecisionParameters(
     partDefinitionElementId: string("geometry.manifest.target.partDefinitionElementId"),
     label: string("geometry.manifest.target.label"),
   };
-  const inputBundle = parseInputBundleIdentity({
-    schemaVersion: "geometry-module-input-bundle/1.0",
-    fingerprint: fingerprint("geometry.manifest.assembly.inputBundle.fingerprint"),
-    byteCount: integer("geometry.manifest.assembly.inputBundle.byteCount"),
-  }, "geometry.manifest.assembly.inputBundle");
-  const assembly = {
-    inputBundle,
-    step: {
-      fingerprint: fingerprint("geometry.manifest.assembly.step.fingerprint"),
-    },
-    glb: {
-      fingerprint: fingerprint("geometry.manifest.assembly.glb.fingerprint"),
-    },
-  };
-  const childCount = integer("geometry.manifest.children.count", true);
+  const childCount = integer("geometry.manifest.children.count");
   const children: GeometryModuleChild[] = [];
   for (let index = 0; index < childCount; index++) {
     const prefix = `geometry.manifest.children.${index}`;
@@ -500,6 +496,27 @@ export function parseGeometryModuleDecisionParameters(
       },
     });
   }
+  const inputBundle = parseInputBundleIdentity(
+    {
+      schemaVersion: GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
+      fingerprint: fingerprint("geometry.manifest.assembly.inputBundle.fingerprint"),
+      byteCount: integer("geometry.manifest.assembly.inputBundle.byteCount"),
+      manifest: parseDecisionInputBundleManifest(
+        string("geometry.manifest.assembly.inputBundle.manifest"),
+      ),
+    },
+    children,
+    "geometry.manifest.assembly.inputBundle",
+  );
+  const assembly = {
+    inputBundle,
+    step: {
+      fingerprint: fingerprint("geometry.manifest.assembly.step.fingerprint"),
+    },
+    glb: {
+      fingerprint: fingerprint("geometry.manifest.assembly.glb.fingerprint"),
+    },
+  };
   for (const key of params.keys()) {
     if (!expected.has(key)) {
       invalid("unexpected_parameter", `Unexpected geometry decision parameter: ${key}`);
@@ -512,19 +529,24 @@ export function parseGeometryModuleDecisionParameters(
     target,
     ...(predecessor === undefined ? {} : { predecessor }),
     ...(sourceClosure === undefined ? {} : { sourceClosure }),
-    ...(placementAnalysis === undefined ? {} : { placementAnalysis }),
+    placementAnalysis,
     children,
-    unitSystem: "mm",
+    unitSystem: GEOMETRY_MODULE_UNIT_SYSTEM,
     placementConvention: GEOMETRY_MODULE_PLACEMENT_CONVENTION,
     assembly,
   }, { requireCompleted: true });
   return { draftDigest, manifest };
 }
 
-function parseAssembly(value: unknown, path: string): GeometryModuleAssembly {
+function parseAssembly(
+  value: unknown,
+  children: ReadonlyArray<GeometryModuleChild>,
+  path: string,
+): GeometryModuleAssembly {
   const assembly = exactRecord(value, ["inputBundle", "step", "glb"], path);
   const inputBundle = parseInputBundleIdentity(
     assembly.inputBundle,
+    children,
     `${path}.inputBundle`,
   );
   const step = exactRecord(assembly.step, ["fingerprint"], `${path}.step`);
@@ -550,6 +572,37 @@ function parseAssembly(value: unknown, path: string): GeometryModuleAssembly {
   };
 }
 
+function parseDecisionInputBundleManifest(value: string): unknown {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    invalid(
+      "invalid_format",
+      "geometry.manifest.assembly.inputBundle.manifest must be canonical JSON.",
+    );
+  }
+  if (deterministicJson(parsed) !== value) {
+    invalid(
+      "invalid_format",
+      "geometry.manifest.assembly.inputBundle.manifest must be canonical JSON.",
+    );
+  }
+  return parsed;
+}
+
+function parseLocatorParams(
+  string: (key: string) => string,
+  integer: (key: string, allowZero?: boolean) => number,
+  fingerprint: (key: string) => ContentFingerprint,
+  field: "sourceClosure",
+): ProjectSourceClosureLocator;
+function parseLocatorParams(
+  string: (key: string) => string,
+  integer: (key: string, allowZero?: boolean) => number,
+  fingerprint: (key: string) => ContentFingerprint,
+  field: "placementAnalysis",
+): CadPlacementAnalysisCaptureLocator;
 function parseLocatorParams(
   string: (key: string) => string,
   integer: (key: string, allowZero?: boolean) => number,
@@ -557,22 +610,17 @@ function parseLocatorParams(
   field: "sourceClosure" | "placementAnalysis",
 ): ProjectSourceClosureLocator | CadPlacementAnalysisCaptureLocator {
   const prefix = `geometry.manifest.${field}`;
-  if (field === "sourceClosure") {
-    return validateProjectSourceClosureLocator({
-      schemaVersion: string(`${prefix}.schemaVersion`),
-      kind: string(`${prefix}.kind`),
-      fingerprint: fingerprint(`${prefix}.fingerprint`),
-      byteCount: integer(`${prefix}.byteCount`, true),
-      casUri: string(`${prefix}.casUri`),
-    }, `$${field}`);
-  }
-  return validateCadPlacementAnalysisCaptureLocator({
+  const locator = {
     schemaVersion: string(`${prefix}.schemaVersion`),
     kind: string(`${prefix}.kind`),
     fingerprint: fingerprint(`${prefix}.fingerprint`),
     byteCount: integer(`${prefix}.byteCount`, true),
     casUri: string(`${prefix}.casUri`),
-  }, `$${field}`);
+  };
+  if (field === "sourceClosure") {
+    return validateProjectSourceClosureLocator(locator, `$${field}`);
+  }
+  return parsePlacementAnalysis(locator, `$${field}`);
 }
 
 function encodeLocator(

@@ -6,11 +6,7 @@
  * decodes and rehashes this blob; it never receives agent CAD source.
  */
 
-import { GEOMETRY_PART_CAPTURE_SCHEMA } from "../canonical/geometry-part-manifest.ts";
-import {
-  GEOMETRY_BUNDLE_PLACEMENT_CONVENTION,
-  type GeometryBundlePlacement,
-} from "../canonical/geometry-bundle.ts";
+import type { GeometryBundlePlacement } from "../canonical/geometry-bundle.ts";
 import type { IsolatedCodeExecutionRequest } from "../../compile/isolation/isolated-code-execution.ts";
 import {
   ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
@@ -25,6 +21,14 @@ import {
   immutableBytes,
   sha256Hex,
 } from "../../compile/source/provider-resource-reader.ts";
+import {
+  GEOMETRY_MODULE_CHILD_CAPTURE_SCHEMAS,
+  GEOMETRY_MODULE_CHILD_STEP_MEDIA_TYPE,
+  GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
+  GEOMETRY_MODULE_PLACEMENT_CONVENTION,
+  GEOMETRY_MODULE_UNIT_SYSTEM,
+  type GeometryModuleChildCaptureSchema,
+} from "../geometry-module-contract.ts";
 import {
   arrayOf,
   deepFreeze,
@@ -43,30 +47,13 @@ import {
   type GeometryModuleAssemblyRequestProfile,
 } from "./geometry-module-assembly-execution.ts";
 
-export const GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA =
-  "geometry-module-input-bundle/1.0" as const;
-export const GEOMETRY_MODULE_CAPTURE_SCHEMA = "geometry-module-capture/1.0" as const;
 export const GEOMETRY_MODULE_INPUT_BUNDLE_MAGIC = new TextEncoder().encode(
   "CASYS-GEOMETRY-MODULE-BUNDLE/1.0\n",
 );
-export const GEOMETRY_MODULE_UNIT_SYSTEM = "mm" as const;
-export const GEOMETRY_MODULE_PLACEMENT_CONVENTION =
-  GEOMETRY_BUNDLE_PLACEMENT_CONVENTION;
 export const GEOMETRY_MODULE_MAXIMUM_MANIFEST_BYTES = 1_048_576;
 export const GEOMETRY_MODULE_MAXIMUM_OCCURRENCES = 32;
 export const GEOMETRY_MODULE_MAXIMUM_CHILD_STEP_BYTES = 32 * 1_048_576;
 export const GEOMETRY_MODULE_MAXIMUM_BUNDLE_BYTES = 256 * 1_048_576;
-export const GEOMETRY_MODULE_CHILD_STEP_MEDIA_TYPE = "model/step" as const;
-
-export const GEOMETRY_MODULE_CHILD_CAPTURE_SCHEMAS = Object.freeze(
-  [
-    GEOMETRY_PART_CAPTURE_SCHEMA,
-    GEOMETRY_MODULE_CAPTURE_SCHEMA,
-  ] as const,
-);
-
-export type GeometryModuleChildCaptureSchema =
-  typeof GEOMETRY_MODULE_CHILD_CAPTURE_SCHEMAS[number];
 
 export interface GeometryModuleChildCaptureIdentity {
   readonly schemaVersion: GeometryModuleChildCaptureSchema;
@@ -192,45 +179,46 @@ export async function parseGeometryModuleInputBundle(
 
 export function validateGeometryModuleInputBundleManifest(
   value: unknown,
+  path = "$bundle.manifest",
 ): GeometryModuleInputBundleManifest {
   const root = exactRecord(value, [
     "schemaVersion",
     "unitSystem",
     "placementConvention",
     "occurrences",
-  ], "$bundle.manifest");
+  ], path);
   literalValue(
     root.schemaVersion,
     GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
-    "$bundle.manifest.schemaVersion",
+    `${path}.schemaVersion`,
   );
   literalValue(
     root.unitSystem,
     GEOMETRY_MODULE_UNIT_SYSTEM,
-    "$bundle.manifest.unitSystem",
+    `${path}.unitSystem`,
   );
   literalValue(
     root.placementConvention,
     GEOMETRY_MODULE_PLACEMENT_CONVENTION,
-    "$bundle.manifest.placementConvention",
+    `${path}.placementConvention`,
   );
   const occurrences = nonEmptyArray(
     root.occurrences,
-    "$bundle.manifest.occurrences",
+    `${path}.occurrences`,
   ).map((occurrence, index) =>
-    validateOccurrence(occurrence, `$bundle.manifest.occurrences[${index}]`)
+    validateOccurrence(occurrence, `${path}.occurrences[${index}]`)
   );
   if (occurrences.length > GEOMETRY_MODULE_MAXIMUM_OCCURRENCES) {
     throw new TypeError(
-      "$bundle.manifest.occurrences exceeds the one-level occurrence ceiling.",
+      `${path}.occurrences exceeds the one-level occurrence ceiling.`,
     );
   }
   rejectDuplicates(
     occurrences.map((occurrence) => occurrence.usageElementId),
-    "$bundle.manifest.occurrences usageElementId",
+    `${path}.occurrences usageElementId`,
   );
-  assertUsageIdentityOrder(occurrences);
-  assertPackedStepOffsets(occurrences);
+  assertUsageIdentityOrder(occurrences, path);
+  assertPackedStepOffsets(occurrences, path);
   return deepFreeze({
     schemaVersion: GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
     unitSystem: GEOMETRY_MODULE_UNIT_SYSTEM,
@@ -469,6 +457,7 @@ function validateStepIdentity(
 
 function assertUsageIdentityOrder(
   occurrences: readonly GeometryModuleInputOccurrence[],
+  path: string,
 ): void {
   for (let index = 1; index < occurrences.length; index += 1) {
     if (
@@ -478,7 +467,7 @@ function assertUsageIdentityOrder(
       ) >= 0
     ) {
       throw new TypeError(
-        "$bundle.manifest.occurrences must be ordered by exact usage identity.",
+        `${path}.occurrences must be ordered by exact usage identity.`,
       );
     }
   }
@@ -486,12 +475,13 @@ function assertUsageIdentityOrder(
 
 function assertPackedStepOffsets(
   occurrences: readonly GeometryModuleInputOccurrence[],
+  path: string,
 ): void {
   let expectedOffset = 0;
   for (const [index, occurrence] of occurrences.entries()) {
     if (occurrence.step.byteOffset !== expectedOffset) {
       throw new TypeError(
-        `$bundle.manifest.occurrences[${index}].step.byteOffset is not densely packed.`,
+        `${path}.occurrences[${index}].step.byteOffset is not densely packed.`,
       );
     }
     expectedOffset += occurrence.step.byteCount;

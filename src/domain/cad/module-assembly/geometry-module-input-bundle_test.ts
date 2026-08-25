@@ -6,12 +6,14 @@ import {
   GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
 } from "./geometry-module-assembly-execution.ts";
 import {
-  createGeometryModuleInputBundle,
   GEOMETRY_MODULE_CHILD_STEP_MEDIA_TYPE,
-  GEOMETRY_MODULE_INPUT_BUNDLE_MAGIC,
   GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
-  GEOMETRY_MODULE_MAXIMUM_OCCURRENCES,
   GEOMETRY_MODULE_PLACEMENT_CONVENTION,
+} from "../geometry-module-contract.ts";
+import {
+  createGeometryModuleInputBundle,
+  GEOMETRY_MODULE_INPUT_BUNDLE_MAGIC,
+  GEOMETRY_MODULE_MAXIMUM_OCCURRENCES,
   geometryModuleAssemblyExecutionRequest,
   type GeometryModuleInputOccurrenceInput,
   parseGeometryModuleInputBundle,
