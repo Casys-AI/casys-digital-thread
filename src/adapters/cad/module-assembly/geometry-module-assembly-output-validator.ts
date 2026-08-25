@@ -2,19 +2,20 @@
  * Format checks for the module-assembler output pair.
  *
  * STEP is one complete Part 21 file plus an injected OCCT import. GLB is a
- * binary glTF container. Neither check claims collision freedom or fitness.
+ * structural GLB 2.0 container. Neither check claims mesh fitness, collision
+ * freedom, or physical geometry validity.
  */
 
 import type { IsolatedCodeOutputDeclaration } from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import { isolatedCodeOutputManifestsEqual } from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
 import { GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST } from "../../../domain/cad/module-assembly/geometry-module-assembly-execution.ts";
-import { validatePart21 } from "../../../domain/cad/module-assembly/geometry-module-input-bundle.ts";
-import type {
-  OcctStepReader,
-  OcctStepReaderFactory,
+import {
+  loadOcctStepReader,
+  OcctStepOutputValidationError,
+  OcctStepOutputValidator,
+  type OcctStepReaderFactory,
 } from "../isolated/occt-step-output-validator.ts";
-import { loadOcctStepReader } from "../isolated/occt-step-output-validator.ts";
 
 export type GeometryModuleAssemblyOutputValidationErrorCode =
   | "unsupported_output_contract"
@@ -22,6 +23,7 @@ export type GeometryModuleAssemblyOutputValidationErrorCode =
   | "invalid_step"
   | "parser_unavailable"
   | "parse_rejected"
+  | "invalid_geometry"
   | "invalid_glb";
 
 export class GeometryModuleAssemblyOutputValidationError extends Error {
@@ -38,13 +40,10 @@ export class GeometryModuleAssemblyOutputValidationError extends Error {
 }
 
 export class GeometryModuleAssemblyOutputValidator {
-  readonly #readerFactory: OcctStepReaderFactory;
+  readonly #stepValidator: OcctStepOutputValidator;
 
   constructor(readerFactory: OcctStepReaderFactory = loadOcctStepReader) {
-    if (typeof readerFactory !== "function") {
-      throw new TypeError("A STEP reader factory is required.");
-    }
-    this.#readerFactory = readerFactory;
+    this.#stepValidator = new OcctStepOutputValidator(readerFactory);
   }
 
   readonly validateOutput = async (
@@ -66,29 +65,25 @@ export class GeometryModuleAssemblyOutputValidator {
     const bytes = Uint8Array.from(observedBytes);
     if (declaration.role === "assembly.step") {
       try {
-        validatePart21(bytes, "assembly.step");
-      } catch {
-        throw validationError("invalid_step");
-      }
-      let reader: OcctStepReader;
-      try {
-        reader = await this.#readerFactory();
-      } catch {
-        throw validationError("parser_unavailable");
-      }
-      try {
-        const parsed = reader.ReadStepFile(bytes, { linearUnit: "millimeter" });
-        if (
-          parsed === null || typeof parsed !== "object" ||
-          Reflect.get(parsed, "success") === false
-        ) {
-          throw validationError("parse_rejected");
-        }
+        await this.#stepValidator.validateOutput({
+          role: "geometry",
+          basename: "geometry.step",
+          mediaType: "model/step",
+          format: "step-ap214",
+        }, bytes);
       } catch (error) {
-        if (error instanceof GeometryModuleAssemblyOutputValidationError) {
-          throw error;
+        if (error instanceof OcctStepOutputValidationError) {
+          if (error.code === "parser_unavailable") {
+            throw validationError("parser_unavailable");
+          }
+          if (error.code === "parse_rejected") {
+            throw validationError("parse_rejected");
+          }
+          if (error.code === "invalid_geometry") {
+            throw validationError("invalid_geometry");
+          }
         }
-        throw validationError("parse_rejected");
+        throw validationError("invalid_step");
       }
       return;
     }
@@ -111,16 +106,140 @@ export function validateGeometryModuleAssemblyOutputManifest(
   }
 }
 
+const GLB_MAGIC = 0x46546c67;
+const GLB_VERSION = 2;
+const GLB_HEADER_BYTES = 12;
+const GLB_CHUNK_HEADER_BYTES = 8;
+const GLB_JSON_CHUNK = 0x4e4f534a;
+const GLB_BIN_CHUNK = 0x004e4942;
+const GLB_JSON_DECODER = new TextDecoder("utf-8", { fatal: true });
+
+interface GlbChunk {
+  readonly type: number;
+  readonly data: Uint8Array;
+}
+
 function validateGlb(bytes: Uint8Array): void {
-  if (bytes.byteLength < 12) throw validationError("invalid_glb");
+  if (bytes.byteLength < GLB_HEADER_BYTES) throw validationError("invalid_glb");
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (
-    view.getUint32(0, true) !== 0x46546c67 ||
-    view.getUint32(4, true) !== 2 ||
+    view.getUint32(0, true) !== GLB_MAGIC ||
+    view.getUint32(4, true) !== GLB_VERSION ||
     view.getUint32(8, true) !== bytes.byteLength
   ) {
     throw validationError("invalid_glb");
   }
+  const chunks = readGlbChunks(bytes, view);
+  if (chunks.length === 0 || chunks[0]!.type !== GLB_JSON_CHUNK) {
+    throw validationError("invalid_glb");
+  }
+  let jsonCount = 0;
+  let binCount = 0;
+  for (let index = 0; index < chunks.length; index++) {
+    const chunk = chunks[index]!;
+    if (chunk.type === GLB_JSON_CHUNK) {
+      jsonCount += 1;
+      if (index !== 0 || jsonCount !== 1) throw validationError("invalid_glb");
+      continue;
+    }
+    if (chunk.type === GLB_BIN_CHUNK) {
+      binCount += 1;
+      if (index !== 1 || binCount !== 1) throw validationError("invalid_glb");
+      continue;
+    }
+    throw validationError("invalid_glb");
+  }
+  const document = parseGlbJson(chunks[0]!.data);
+  const bin = chunks[1]?.type === GLB_BIN_CHUNK ? chunks[1].data : undefined;
+  validateGlbBinRelationship(document, bin);
+}
+
+function readGlbChunks(bytes: Uint8Array, view: DataView): GlbChunk[] {
+  const chunks: GlbChunk[] = [];
+  let offset = GLB_HEADER_BYTES;
+  while (offset < bytes.byteLength) {
+    if (
+      offset % 4 !== 0 ||
+      offset + GLB_CHUNK_HEADER_BYTES > bytes.byteLength
+    ) {
+      throw validationError("invalid_glb");
+    }
+    const chunkLength = view.getUint32(offset, true);
+    const chunkType = view.getUint32(offset + 4, true);
+    const dataStart = offset + GLB_CHUNK_HEADER_BYTES;
+    const dataEnd = dataStart + chunkLength;
+    if (chunkLength % 4 !== 0 || dataEnd > bytes.byteLength) {
+      throw validationError("invalid_glb");
+    }
+    chunks.push({
+      type: chunkType,
+      data: bytes.subarray(dataStart, dataEnd),
+    });
+    offset = dataEnd;
+  }
+  if (offset !== bytes.byteLength) throw validationError("invalid_glb");
+  return chunks;
+}
+
+function parseGlbJson(data: Uint8Array): Record<string, unknown> {
+  let text: string;
+  try {
+    text = GLB_JSON_DECODER.decode(data);
+  } catch {
+    throw validationError("invalid_glb");
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw validationError("invalid_glb");
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw validationError("invalid_glb");
+  }
+  const asset = Reflect.get(parsed, "asset");
+  if (
+    asset === null ||
+    typeof asset !== "object" ||
+    Array.isArray(asset) ||
+    Reflect.get(asset, "version") !== "2.0"
+  ) {
+    throw validationError("invalid_glb");
+  }
+  return parsed as Record<string, unknown>;
+}
+
+function validateGlbBinRelationship(
+  document: Record<string, unknown>,
+  bin: Uint8Array | undefined,
+): void {
+  const declared = declaredBinBuffer(Reflect.get(document, "buffers"));
+  if (declared === undefined) {
+    if (bin !== undefined) throw validationError("invalid_glb");
+    return;
+  }
+  const byteLength = Reflect.get(declared, "byteLength");
+  if (
+    bin === undefined ||
+    typeof byteLength !== "number" ||
+    !Number.isInteger(byteLength) ||
+    byteLength < 1 ||
+    byteLength > bin.byteLength
+  ) {
+    throw validationError("invalid_glb");
+  }
+}
+
+function declaredBinBuffer(buffers: unknown): object | undefined {
+  if (buffers === undefined) return undefined;
+  if (!Array.isArray(buffers)) throw validationError("invalid_glb");
+  if (buffers.length === 0) return undefined;
+  const first = buffers[0];
+  if (first === null || typeof first !== "object" || Array.isArray(first)) {
+    throw validationError("invalid_glb");
+  }
+  if (Object.hasOwn(first, "uri")) return undefined;
+  return first;
 }
 
 function validationError(

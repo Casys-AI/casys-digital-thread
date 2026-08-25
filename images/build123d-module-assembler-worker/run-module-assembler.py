@@ -67,7 +67,8 @@ def main() -> None:
     compound = Compound(children=placed)
     if export_step(compound, ASSEMBLY_STEP_PATH) is not True:
         fail("Assembly STEP export was rejected.")
-    export_gltf(compound, str(ASSEMBLY_GLB_PATH))
+    if export_gltf(compound, str(ASSEMBLY_GLB_PATH), binary=True) is not True:
+        fail("Assembly GLB export was rejected.")
     ASSEMBLY_STEP_PATH.chmod(0o400)
     ASSEMBLY_GLB_PATH.chmod(0o400)
     assert_exact_outputs()

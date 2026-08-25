@@ -54,13 +54,15 @@ def parse_bundle(raw: bytes) -> dict[str, object]:
         fail("The geometry-module bundle manifest is truncated.")
     manifest_text = decode_utf8(bytes_value[manifest_start:manifest_end], "bundle manifest")
     try:
-        manifest = json.loads(manifest_text)
+        manifest = json.loads(
+            manifest_text,
+            object_pairs_hook=reject_duplicate_object_keys,
+            parse_constant=reject_json_constant,
+        )
     except json.JSONDecodeError:
         fail("The geometry-module bundle manifest is not JSON.")
     if not isinstance(manifest, dict):
         fail("The geometry-module bundle manifest is not an object.")
-    if canonical_json(manifest) != manifest_text:
-        fail("The geometry-module bundle manifest is not canonical.")
     occurrences = validate_manifest(manifest)
     payload = bytes_value[manifest_end:]
     steps = slice_steps(occurrences, payload)
@@ -233,30 +235,17 @@ def validate_part21(value: bytes, path: str) -> None:
         fail(f"{path} is not one complete STEP Part 21 exchange file.")
 
 
-def canonical_json(value: object) -> str:
-    if value is None:
-        return "null"
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, str):
-        return json.dumps(value, ensure_ascii=False)
-    if isinstance(value, int) and not isinstance(value, bool):
-        return str(value)
-    if isinstance(value, float):
-        if not math.isfinite(value):
-            fail("Deterministic JSON cannot encode a non-finite number.")
-        if value.is_integer() and abs(value) < 2**53:
-            return str(int(value))
-        return json.dumps(value)
-    if isinstance(value, list):
-        return "[" + ",".join(canonical_json(item) for item in value) + "]"
-    if isinstance(value, dict):
-        keys = sorted(key for key, item in value.items() if item is not None)
-        return "{" + ",".join(
-            json.dumps(key, ensure_ascii=False) + ":" + canonical_json(value[key])
-            for key in keys
-        ) + "}"
-    fail(f"Deterministic JSON cannot encode {type(value).__name__}.")
+def reject_duplicate_object_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            fail("The geometry-module bundle manifest contains a duplicate key.")
+        result[key] = value
+    return result
+
+
+def reject_json_constant(value: str) -> object:
+    fail(f"The geometry-module bundle manifest contains unsupported constant {value}.")
 
 
 def exact_keys(value: dict[str, object], keys: tuple[str, ...]) -> None:

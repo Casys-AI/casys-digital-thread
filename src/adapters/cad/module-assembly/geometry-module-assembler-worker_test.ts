@@ -22,7 +22,7 @@ Deno.test("module-assembler Python decoder rehashes a TypeScript-encoded bundle"
   const bundle = await createGeometryModuleInputBundle([{
     usageElementId: "usage-b",
     partDefinitionElementId: "def-shared",
-    placement: { translationMm: [10, 0, 0], rotationDeg: [0, 0, 90] },
+    placement: { translationMm: [1e-7, 0, 0], rotationDeg: [0, 0, 90] },
     childCapture: {
       schemaVersion: "geometry-part-capture/1.0",
       artifactId: "geometry-part-usage-b",
