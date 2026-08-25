@@ -181,6 +181,15 @@ do not export, call a provider, or seal Thread state.
 File adapters that persist those records through the existing
 `casys://geometry-draft-capture/` and `casys://geometry-capture/` stores.
 
+#### [`src/application/ports/out/cad/canonical/geometry-draft-asset-store.ts`](../../../src/application/ports/out/cad/canonical/geometry-draft-asset-store.ts)
+
+Outward port for review-only assembly STEP/GLB bytes. The application names only bytes;
+CAS layout stays in the adapter. Not Thread evidence.
+
+#### [`src/adapters/cad/canonical/file-geometry-draft-asset-store.ts`](../../../src/adapters/cad/canonical/file-geometry-draft-asset-store.ts)
+
+File CAS adapter for those draft binaries under `casys://geometry-draft-asset/`.
+
 #### [`src/domain/cad/canonical/geometry-bundle.ts`](../../../src/domain/cad/canonical/geometry-bundle.ts)
 
 `geometry-manifest/2.0`: exhaustive PartUsage/PartDefinition identities, explicit
@@ -241,8 +250,30 @@ Encode/decode/re-hash only. No agent CAD source and no exporter
 #### [`src/adapters/cad/module-assembly/geometry-module-assembly-composition.ts`](../../../src/adapters/cad/module-assembly/geometry-module-assembly-composition.ts)
 
 Digest-pinned module-assembler composition: profile-only review facts; empty runtime
-marker reuses the single-source Microsandbox broker and atomic output CAS. Not wired to
-MCP, the sealer, or the product catalog
+marker reuses the single-source Microsandbox broker and atomic output CAS. Not the
+public export tool and not the sealer
+
+#### [`src/application/ports/in/cad/canonical/project-geometry-module-export.ts`](../../../src/application/ports/in/cad/canonical/project-geometry-module-export.ts)
+
+Closed public command for `project_geometry_module_export`: project, exact Thread basis,
+composite PartDefinition and placement locator only
+
+#### [`src/application/use-cases/cad/canonical/export-project-geometry-module.ts`](../../../src/application/use-cases/cad/canonical/export-project-geometry-module.ts)
+
+Server recross of architecture, part-definitions structure, exact immediate placement
+coverage, unique active child geometry and authoritative STEP, then isolated
+module-assembler execution and a review-only draft. No Thread write
+
+#### [`src/adapters/cad/module-assembly/geometry-module-export-composition.ts`](../../../src/adapters/cad/module-assembly/geometry-module-export-composition.ts)
+
+Separate composition for the public export vertical. Wires the use case only when an
+`IsolatedCodeRunner` is supplied. Does not enter `createCadProject` or the sealer
+
+#### [`src/tools/project-control/geometry-module-export-tools.ts`](../../../src/tools/project-control/geometry-module-export-tools.ts)
+
+MCP registration for `project_geometry_module_export`. Conditional on the composed use
+case. Description teaches the later `design.write-geometry@1` step from
+`decisionParameters` and names the forbidden fields
 
 #### [`images/build123d-module-assembler-worker/run-module-assembler.py`](../../../images/build123d-module-assembler-worker/run-module-assembler.py)
 
