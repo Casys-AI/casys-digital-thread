@@ -91,6 +91,7 @@ import {
 import { GeometryModuleAssemblyOutputValidator } from "../module-assembly/geometry-module-assembly-output-validator.ts";
 import { GeometrySourceAnalysisCaptureService } from "../source/geometry-source-analysis-capture.ts";
 import { resolveGenericProductStructureCatalog } from "../../architecture/renderer/product-structure-catalog.ts";
+import { enrichGenericProductCatalogWithGeometryBundle } from "./geometry-bundle-product-catalog.ts";
 import {
   assertMrtrManifestMatchesDraft,
 } from "./design-write-geometry-run-executor.ts";
@@ -178,6 +179,86 @@ Deno.test("module seal reopens exact child STEP, promotes isolated outputs, and 
     assertEquals(archived.has(`artifact:${world.unrelatedChildId}`), false);
     assertEquals(archived.has(`artifact:${world.v1PrimaryId}`), false);
     await world.executor.execute(AGENT, world.command);
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("current module CAD remains projected when an active leaf is bound to a foreign architecture", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-module-foreign-leaf-" });
+  try {
+    const world = await prepareModuleWorld(tmpDir);
+    const completed = await world.executor.execute(AGENT, world.command);
+    const run = completed.agentRuns.find((candidate) =>
+      candidate.id === world.fixture.queued.runId
+    );
+    assertExists(run?.resultSnapshot);
+    const snapshot = await world.fixture.snapshots.get(run.resultSnapshot.snapshotId);
+    assertExists(snapshot);
+    const currentArchitecture = snapshot.artifacts.find((artifact) =>
+      artifact.id.startsWith("architecture-")
+    );
+    assertExists(currentArchitecture);
+
+    const foreignDigest = "f".repeat(64);
+    const foreignArchitecture: ThreadArtifact = {
+      ...currentArchitecture,
+      id: `architecture-${foreignDigest}`,
+      version: foreignDigest,
+      fingerprint: fp(foreignDigest),
+    };
+    const foreignLeaf = await materializeChildCapture(world.fixture, {
+      basis: snapshot,
+      architecture: foreignArchitecture,
+      runId: "run:foreign-architecture-leaf",
+      partDefinitionElementId: "part-definition:foreign",
+      label: "ForeignDefinition",
+      stepBytes: part21("FOREIGN"),
+    });
+    const withForeignLeaf: ThreadSnapshot = {
+      ...snapshot,
+      artifacts: [
+        ...snapshot.artifacts,
+        foreignArchitecture,
+        ...foreignLeaf.artifacts,
+      ],
+      consumptions: [...snapshot.consumptions, ...foreignLeaf.consumptions],
+      provenance: [...snapshot.provenance, ...foreignLeaf.provenance],
+    };
+    const architectureCatalog = await resolveGenericProductStructureCatalog(
+      snapshot,
+      world.fixture.archCaptures,
+      undefined,
+      world.fixture.sysmlSourceAnalysis,
+    );
+    assertExists(architectureCatalog);
+
+    const catalog = await enrichGenericProductCatalogWithGeometryBundle(
+      withForeignLeaf,
+      architectureCatalog,
+      world.fixture.geoCaptures,
+    );
+    const root = catalog.components.find((component) => component.kind === "assembly");
+    assertExists(root);
+    assertEquals(
+      root.bindings.filter((binding) =>
+        binding.provider === "digital-thread" && binding.kind === "artifact"
+      ).length,
+      1,
+    );
+    assertEquals(
+      catalog.components.filter((component) => component.kind === "part")
+        .every((component) =>
+          component.bindings.filter((binding) =>
+            binding.provider === "digital-thread" && binding.kind === "artifact"
+          ).length === 1
+        ),
+      true,
+    );
+    assertStringIncludes(
+      catalog.rationale,
+      "different exact architecture capture and is not projected",
+    );
   } finally {
     await Deno.remove(tmpDir, { recursive: true });
   }

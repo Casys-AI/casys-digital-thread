@@ -102,6 +102,24 @@ interface VerifiedTargetGeometry {
   readonly glb?: ThreadArtifact;
 }
 
+/**
+ * An active geometry family can remain historical evidence while the product
+ * catalog has advanced to a later architecture capture. It is not invalid
+ * evidence, but it cannot become a CAD binding on that later catalog without
+ * an exact recross. Keep that distinction separate from an unreadable or
+ * malformed capture, which still closes the projection.
+ */
+type GeometryVerification =
+  | { readonly kind: "assembly" }
+  | { readonly kind: "targeted"; readonly target: VerifiedTargetGeometry }
+  | { readonly kind: "bundle"; readonly bundle: VerifiedGeometryBundle }
+  | { readonly kind: "foreign-architecture" };
+
+interface ResolvedArchitectureBasis {
+  readonly scope: "current" | "foreign";
+  readonly artifact: ThreadArtifact;
+}
+
 class GeometryBundleProjectionError extends Error {
   constructor(readonly reason: string) {
     super(reason);
@@ -152,6 +170,9 @@ export async function enrichGenericProductCatalogWithGeometryBundle(
       result.kind === "bundle" ? [result.bundle] : []
     );
     const assemblyCount = results.filter((result) => result.kind === "assembly").length;
+    const foreignArchitectureCount = results.filter((result) =>
+      result.kind === "foreign-architecture"
+    ).length;
     const targetIds = new Set(
       targets.map((target) => target.target.partDefinitionElementId),
     );
@@ -166,20 +187,29 @@ export async function enrichGenericProductCatalogWithGeometryBundle(
       );
     }
     if (targets.length > 0) {
-      return attachExactTargetCadBindings(architectureCatalog, targets);
+      return withForeignArchitectureScope(
+        attachExactTargetCadBindings(architectureCatalog, targets),
+        foreignArchitectureCount,
+      );
     }
     if (bundles[0]) {
-      return attachExactCadBindings(architectureCatalog, bundles[0]);
+      return withForeignArchitectureScope(
+        attachExactCadBindings(architectureCatalog, bundles[0]),
+        foreignArchitectureCount,
+      );
     }
     if (assemblyCount === 1) {
       return withoutCad(
         architectureCatalog,
-        "The active geometry capture is an assembly-only seal; it contains no independent PartDefinition STEP mapping.",
+        "The active geometry capture is an assembly-only seal; it contains no independent PartDefinition STEP mapping." +
+          foreignArchitectureScopeRationale(foreignArchitectureCount),
       );
     }
     return withoutCad(
       architectureCatalog,
-      "No verifiable active geometry capture result is available.",
+      foreignArchitectureCount > 0
+        ? "Active geometry captures are bound to a different exact architecture capture; no current component CAD binding is claimed."
+        : "No verifiable active geometry capture result is available.",
     );
   } catch (error) {
     const reason = error instanceof GeometryBundleProjectionError
@@ -206,11 +236,7 @@ async function verifyGeometryCapture(
   catalog: ThreadComponentCatalog,
   primary: ThreadArtifact,
   captures: GenericGeometryCaptureReader,
-): Promise<
-  | { readonly kind: "assembly" }
-  | { readonly kind: "targeted"; readonly target: VerifiedTargetGeometry }
-  | { readonly kind: "bundle"; readonly bundle: VerifiedGeometryBundle }
-> {
+): Promise<GeometryVerification> {
   const text = await captures.read(primary.fingerprint);
   if (!text) {
     fail(
@@ -252,29 +278,23 @@ async function verifyGeometryCapture(
   assertExactPrimary(primary, trustedRunId, sealedAt);
 
   if (schemaVersion === GEOMETRY_PART_CAPTURE_SCHEMA) {
-    return {
-      kind: "targeted",
-      target: await verifyTargetGeometryCapture(
-        snapshot,
-        catalog,
-        primary,
-        capture,
-        sealedAt,
-      ),
-    };
+    return await verifyTargetGeometryCapture(
+      snapshot,
+      exactArchitectureArtifact(snapshot, catalog),
+      primary,
+      capture,
+      sealedAt,
+    );
   }
 
   if (schemaVersion === GEOMETRY_MODULE_CAPTURE_SCHEMA) {
-    return {
-      kind: "targeted",
-      target: await verifyModuleGeometryCapture(
-        snapshot,
-        catalog,
-        primary,
-        capture,
-        sealedAt,
-      ),
-    };
+    return await verifyModuleGeometryCapture(
+      snapshot,
+      exactArchitectureArtifact(snapshot, catalog),
+      primary,
+      capture,
+      sealedAt,
+    );
   }
 
   if (schemaVersion === GEOMETRY_CAPTURE_SCHEMA) {
@@ -296,11 +316,11 @@ async function verifyGeometryCapture(
   const draftDigest = digest(capture.draftDigest, "draftDigest");
   const manifest = normalizeCompletedManifest(capture.manifest, draftDigest);
   const previewProducer = exactPreviewProducer(capture.previewProducer);
-  const architectureArtifact = exactArchitectureArtifact(snapshot, catalog);
-  assertArchitectureBasis(
+  const architecture = resolveArchitectureBasis(
+    snapshot,
     capture.architectureBasis,
     manifest,
-    architectureArtifact,
+    exactArchitectureArtifact(snapshot, catalog),
   );
   await assertCanonicalSources(capture.sourceScripts, manifest);
   if (schemaVersion === GEOMETRY_BUNDLE_CAPTURE_SCHEMA) {
@@ -309,7 +329,7 @@ async function verifyGeometryCapture(
   assertExactPrimaryInputs(
     snapshot,
     primary,
-    architectureArtifact,
+    architecture.artifact,
     manifest,
     sealedAt,
   );
@@ -322,6 +342,9 @@ async function verifyGeometryCapture(
       previewProducer,
       sealedAt,
     );
+  if (architecture.scope === "foreign") {
+    return { kind: "foreign-architecture" };
+  }
   assertManifestMatchesCatalog(catalog, manifest);
   return {
     kind: "bundle",
@@ -378,11 +401,11 @@ function normalizeCompletedTargetManifest(
 
 async function verifyTargetGeometryCapture(
   snapshot: ThreadSnapshot,
-  catalog: ThreadComponentCatalog,
+  currentArchitecture: ThreadArtifact,
   primary: ThreadArtifact,
   capture: Record<string, unknown>,
   sealedAt: string,
-): Promise<VerifiedTargetGeometry> {
+): Promise<GeometryVerification> {
   assertOnlyKeys(capture, [
     "schemaVersion",
     "operation",
@@ -401,16 +424,16 @@ async function verifyTargetGeometryCapture(
     draftDigest,
   );
   const previewProducer = exactPreviewProducer(capture.previewProducer);
-  const architectureArtifact = exactArchitectureArtifact(snapshot, catalog);
-  assertArchitectureBasis(
+  const architecture = resolveArchitectureBasis(
+    snapshot,
     capture.architectureBasis,
     manifest,
-    architectureArtifact,
+    currentArchitecture,
   );
   assertExactPrimaryInputs(
     snapshot,
     primary,
-    architectureArtifact,
+    architecture.artifact,
     manifest,
     sealedAt,
   );
@@ -517,7 +540,7 @@ async function verifyTargetGeometryCapture(
   if (glb.length > 1) {
     fail("The targeted geometry has ambiguous GLB presentation assets.");
   }
-  return {
+  const target: VerifiedTargetGeometry = {
     coverage: "leaf",
     primary,
     target: {
@@ -527,15 +550,18 @@ async function verifyTargetGeometryCapture(
     step: step[0]!,
     ...(glb[0] ? { glb: glb[0] } : {}),
   };
+  return architecture.scope === "current"
+    ? { kind: "targeted", target }
+    : { kind: "foreign-architecture" };
 }
 
 async function verifyModuleGeometryCapture(
   snapshot: ThreadSnapshot,
-  catalog: ThreadComponentCatalog,
+  currentArchitecture: ThreadArtifact,
   primary: ThreadArtifact,
   capture: Record<string, unknown>,
   sealedAt: string,
-): Promise<VerifiedTargetGeometry> {
+): Promise<GeometryVerification> {
   let parsed;
   try {
     parsed = await parseGeometryModuleCapture(capture);
@@ -553,11 +579,11 @@ async function verifyModuleGeometryCapture(
   if (deterministicJson(manifest) !== deterministicJson(parsed.manifest)) {
     fail("The geometry-module manifest is not an exact canonical record.");
   }
-  const architectureArtifact = exactArchitectureArtifact(snapshot, catalog);
-  assertArchitectureBasis(
+  const architecture = resolveArchitectureBasis(
+    snapshot,
     parsed.architectureBasis,
     manifest,
-    architectureArtifact,
+    currentArchitecture,
   );
   const structure = snapshot.artifacts.find((artifact) =>
     artifact.id === parsed.structureCapture.artifactId &&
@@ -567,7 +593,7 @@ async function verifyModuleGeometryCapture(
     fail("The geometry-module structure basis artifact is absent.");
   }
   const expectedInputs = geometryModulePrimaryInputIds({
-    architectureId: architectureArtifact.id,
+    architectureId: architecture.artifact.id,
     structureId: structure.id,
     childPrimaryIds: parsed.children.map((child) => child.childGeometry.artifactId),
     predecessorId: manifest.predecessor?.artifactId,
@@ -582,7 +608,7 @@ async function verifyModuleGeometryCapture(
   assertExactArchitectureAttestation(
     snapshot,
     primary,
-    architectureArtifact,
+    architecture.artifact,
     sealedAt,
   );
   assertExactModuleStructureAttestation(snapshot, primary, structure, sealedAt);
@@ -645,7 +671,7 @@ async function verifyModuleGeometryCapture(
     sealedAt,
     "module",
   );
-  return {
+  const target: VerifiedTargetGeometry = {
     coverage: "module",
     primary,
     target: {
@@ -655,6 +681,9 @@ async function verifyModuleGeometryCapture(
     step,
     glb,
   };
+  return architecture.scope === "current"
+    ? { kind: "targeted", target }
+    : { kind: "foreign-architecture" };
 }
 
 function normalizeCompletedModuleManifest(
@@ -769,13 +798,15 @@ function exactArchitectureArtifact(
   return artifact;
 }
 
-function assertArchitectureBasis(
+function resolveArchitectureBasis(
+  snapshot: ThreadSnapshot,
   value: unknown,
   manifest:
     | Pick<GeometryBundleManifest, "architectureBasis">
-    | Pick<GeometryPartManifest, "architectureBasis">,
-  artifact: ThreadArtifact,
-): void {
+    | Pick<GeometryPartManifest, "architectureBasis">
+    | Pick<GeometryModuleManifest, "architectureBasis">,
+  currentArchitecture: ThreadArtifact,
+): ResolvedArchitectureBasis {
   const basis = exactObject(
     value,
     ["artifactId", "fingerprint", "producerRunId"],
@@ -785,16 +816,30 @@ function assertArchitectureBasis(
     basis.fingerprint,
     "architectureBasis.fingerprint",
   );
-  if (
-    basis.artifactId !== artifact.id ||
-    basis.producerRunId !== artifact.producer.runId ||
-    !fingerprintsEqual(fingerprint, artifact.fingerprint) ||
-    !fingerprintsEqual(manifest.architectureBasis.artifactFingerprint, fingerprint)
-  ) {
+  const architectures = snapshot.artifacts.filter((artifact) =>
+    artifact.id === basis.artifactId &&
+    fingerprintsEqual(artifact.fingerprint, fingerprint) &&
+    artifact.producer.runId === basis.producerRunId
+  );
+  if (architectures.length !== 1) {
     fail(
-      "The geometry bundle is not bound to the catalog's exact architecture artifact.",
+      "The geometry capture architecture basis is absent or inexact in the Thread.",
     );
   }
+  if (!fingerprintsEqual(manifest.architectureBasis.artifactFingerprint, fingerprint)) {
+    fail(
+      "The geometry capture architecture basis does not match its signed manifest basis.",
+    );
+  }
+  const artifact = architectures[0]!;
+  return {
+    scope: artifact.id === currentArchitecture.id &&
+        artifact.producer.runId === currentArchitecture.producer.runId &&
+        fingerprintsEqual(artifact.fingerprint, currentArchitecture.fingerprint)
+      ? "current"
+      : "foreign",
+    artifact,
+  };
 }
 
 async function assertCanonicalSources(
@@ -1699,6 +1744,24 @@ function withoutCad(
     ...catalog,
     rationale: `${catalog.rationale} ${reason}`,
   };
+}
+
+function withForeignArchitectureScope(
+  catalog: ThreadComponentCatalog,
+  count: number,
+): ThreadComponentCatalog {
+  if (count === 0) return catalog;
+  return {
+    ...catalog,
+    rationale: `${catalog.rationale}${foreignArchitectureScopeRationale(count)}`,
+  };
+}
+
+function foreignArchitectureScopeRationale(count: number): string {
+  if (count === 0) return "";
+  return count === 1
+    ? " One active geometry capture is bound to a different exact architecture capture and is not projected as a current component CAD surface."
+    : ` ${count} active geometry captures are bound to different exact architecture captures and are not projected as current component CAD surfaces.`;
 }
 
 function exactPreviewProducer(value: unknown): ThreadOperationRef {
