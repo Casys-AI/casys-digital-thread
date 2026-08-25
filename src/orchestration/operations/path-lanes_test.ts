@@ -1,4 +1,5 @@
 import { assertEquals } from "@std/assert";
+import { VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-observation.ts";
 import { listRegisteredEngineeringOperationKeys } from "./registry.ts";
 import {
   listRegisteredEngineeringOperationPathLaneKeys,
@@ -17,4 +18,13 @@ Deno.test("every registered operation has one exact project-path lane declaratio
       .resolve({ id: key.slice(0, separator), version: key.slice(separator + 1) });
     assertEquals(declaration !== undefined, true, key);
   }
+});
+
+Deno.test("assembly-integrity observation belongs to the physics lane", () => {
+  assertEquals(
+    REGISTERED_ENGINEERING_OPERATION_PATH_LANE_RESOLVER.resolve(
+      VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION,
+    ),
+    { kind: "fixed", lane: "physics" },
+  );
 });

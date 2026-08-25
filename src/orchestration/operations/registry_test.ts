@@ -18,6 +18,7 @@ import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "../../domain/architectu
 import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../domain/architecture/part-definitions/part-definitions-capture.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/cad/isolated/build123d-execution-proposal.ts";
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/cad/sealed-isolated/isolated-geometry-seal-proposal.ts";
+import { VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-observation.ts";
 import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "../../domain/sensitivity/vector-correction/vector-correction-proposal.ts";
 import {
   DESIGN_PREVIEW_GEOMETRY_OPERATION,
@@ -275,6 +276,72 @@ Deno.test("model.capture-part-definitions@1 cannot appear in the initial plan", 
     MODEL_CAPTURE_PART_DEFINITIONS_OPERATION,
   )!;
   assertEquals(registered.requiresAdditiveChange, true);
+});
+
+Deno.test("assembly-integrity observation is planning-only and binds exactly one canonical geometry module artifact", () => {
+  const registered = getRegisteredEngineeringOperation(
+    VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION,
+  )!;
+  assertEquals(registered.workItemKind, "verify");
+  assertEquals(registered.riskClass, "consequential");
+  assertEquals(registered.execution, "planning-only");
+  assertEquals(registered.decisionEvidenceScope, "thread-entity-bindings");
+  assertEquals(registered.allowedBasisKinds, ["thread-snapshot"]);
+  assertEquals(registered.bindings, [{
+    name: "geometryModule",
+    allowedSourceKinds: ["thread-entity"],
+    cardinality: "one",
+    allowedThreadEntityKinds: ["artifact"],
+    uniqueThreadEntityReferences: true,
+  }]);
+
+  const binding = {
+    name: "geometryModule",
+    source: {
+      kind: "thread-entity" as const,
+      reference: {
+        snapshotId: "thread.snapshot.12",
+        snapshotRevision: 12,
+        kind: "artifact" as const,
+        id: "geometry-" + "a".repeat(64),
+      },
+    },
+  };
+  const planned = validateRegisteredEngineeringOperationInput({
+    operation: {
+      ...VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION,
+      bindings: [binding],
+    },
+    stage: "planning",
+  });
+  assertEquals(planned.bindings, [binding]);
+
+  for (
+    const bindings of [
+      [],
+      [binding, structuredClone(binding)],
+      [{
+        ...binding,
+        source: {
+          ...binding.source,
+          reference: { ...binding.source.reference, kind: "observation" as const },
+        },
+      }],
+    ]
+  ) {
+    const error = assertThrows(
+      () =>
+        validateRegisteredEngineeringOperationInput({
+          operation: {
+            ...VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION,
+            bindings,
+          },
+          stage: "planning",
+        }),
+      EngineeringOperationRegistryError,
+    );
+    assertEquals(error.code, "invalid_bindings");
+  }
 });
 
 Deno.test(

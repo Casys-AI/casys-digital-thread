@@ -61,6 +61,10 @@ import {
   parseIsolatedGeometrySealParameters,
 } from "../../domain/cad/sealed-isolated/isolated-geometry-seal-proposal.ts";
 import {
+  parseAssemblyIntegrityObservationAdmissionParameters,
+} from "../../domain/cad/assembly-integrity/assembly-integrity-observation-proposal.ts";
+import { VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-observation.ts";
+import {
   DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
   parseVectorCorrectionDecisionParameters,
 } from "../../domain/sensitivity/vector-correction/vector-correction-proposal.ts";
@@ -153,6 +157,12 @@ const PROPOSAL_VALIDATORS = new Map<
     keyOf(DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION),
     (parameters) => {
       parseIsolatedGeometrySealParameters(parameters);
+    },
+  ],
+  [
+    keyOf(VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION),
+    (parameters) => {
+      parseAssemblyIntegrityObservationAdmissionParameters(parameters);
     },
   ],
   [

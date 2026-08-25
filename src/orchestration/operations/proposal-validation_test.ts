@@ -21,6 +21,11 @@ import {
   sampleAdmissionSourceWorkspaceFields,
 } from "../../testing/technical-source-capture-test-support.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/cad/isolated/build123d-execution-proposal.ts";
+import {
+  ASSEMBLY_INTEGRITY_OBSERVATION_ADMISSION_SCHEMA,
+  encodeAssemblyIntegrityObservationAdmissionParameters,
+} from "../../domain/cad/assembly-integrity/assembly-integrity-observation-proposal.ts";
+import { VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-observation.ts";
 
 const VALID_ARCHITECTURE = [
   { key: "architecture.package", label: "Package", value: "DemoArchitecture" },
@@ -129,6 +134,54 @@ Deno.test("Build123d execution cannot enter human review without its closed admi
     ProposalGrammarError,
   );
   assertEquals(error.operationKey, "design.execute-build123d@1");
+});
+
+Deno.test("assembly-integrity observation cannot enter human review without its closed factual grammar", () => {
+  const geometryFingerprint = fingerprint("a");
+  const parameters = encodeAssemblyIntegrityObservationAdmissionParameters({
+    schemaVersion: ASSEMBLY_INTEGRITY_OBSERVATION_ADMISSION_SCHEMA,
+    operation: VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION,
+    projectId: "project.assembly-integrity",
+    basis: {
+      kind: "thread-snapshot",
+      snapshotId: "thread.snapshot.12",
+      revision: 12,
+      subjectId: "subject.assembly",
+    },
+    geometryModule: {
+      artifactId: `geometry-${geometryFingerprint.digest}`,
+      fingerprint: geometryFingerprint,
+    },
+    observer: {
+      profile: {
+        id: "assembly-integrity-observation",
+        version: "1.0.0",
+        fingerprint: fingerprint("b"),
+      },
+      method: {
+        id: "occt-assembly-observer",
+        version: "1.0.0",
+        linearToleranceMm: 0.01,
+      },
+      configuredRuntime: {
+        kind: "image-digest",
+        imageDigest: fingerprint("c"),
+      },
+    },
+  });
+  assertProposalMatchesOperationGrammar(
+    VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION,
+    parameters,
+  );
+  const error = assertThrows(
+    () =>
+      assertProposalMatchesOperationGrammar(
+        VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION,
+        [...parameters, { key: "provider", label: "Provider", value: "caller" }],
+      ),
+    ProposalGrammarError,
+  );
+  assertEquals(error.operationKey, "verify.observe-assembly-integrity@1");
 });
 
 Deno.test("a proposal naming an unknown parent is refused with the offending component", () => {
@@ -355,6 +408,7 @@ Deno.test("every operation carrying an MRTR grammar is gated", () => {
     "simulate.run-qualified-modelica-kit@1",
     "verify.evaluate-admitted-modelica-observations@1",
     "verify.evaluate-admitted-spice-observations@1",
+    "verify.observe-assembly-integrity@1",
     "verify.seal-cross-domain-impact-manifest@2",
     "verify.seal-electrical-observation-method-sheet@1",
     "verify.seal-modelica-thermal-method-sheet@1",

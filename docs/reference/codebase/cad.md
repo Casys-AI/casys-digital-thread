@@ -278,6 +278,25 @@ MCP registration for `project_geometry_module_export`. Conditional on the compos
 case. Description teaches the later `design.write-geometry@1` step from
 `decisionParameters` and names the forbidden fields
 
+#### [`src/domain/cad/assembly-integrity/assembly-integrity-observation-proposal.ts`](../../../src/domain/cad/assembly-integrity/assembly-integrity-observation-proposal.ts)
+
+Closed MRTR grammar for the factual `verify.observe-assembly-integrity@1` review: exact
+Thread and geometry-module capture, server-owned profile/method and neutral
+digest-pinned configured runtime; no caller-selected provider/runtime/tool, transform,
+tolerance or verdict
+
+#### [`src/application/ports/out/cad/assembly-integrity/assembly-integrity-review-resolver.ts`](../../../src/application/ports/out/cad/assembly-integrity/assembly-integrity-review-resolver.ts)
+
+Injected read-only seam that alone reopens the exact current Thread and unique primary
+geometry-module capture for review. The use case compiles only append/propose; it does
+not duplicate the recross, write state, call an observer or compose an executor
+
+#### [`src/tools/project-control/assembly-integrity-review-tools.ts`](../../../src/tools/project-control/assembly-integrity-review-tools.ts)
+
+Conditional `project_assembly_integrity_review` MCP registration for the closed
+read-only review command. The descriptor remains planning-only until a distinct trusted
+observer executor is introduced
+
 #### [`images/build123d-module-assembler-worker/run-module-assembler.py`](../../../images/build123d-module-assembler-worker/run-module-assembler.py)
 
 Code-owned Build123d assembler: decode/rehash the bundle, import staged child STEPs,

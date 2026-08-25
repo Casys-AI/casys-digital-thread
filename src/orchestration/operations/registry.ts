@@ -15,6 +15,7 @@ import { COMPILATION_ADMISSION_BINDING_NAME } from "../../domain/compile/admissi
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/compile/admission/technical-compilation-proposal.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/cad/isolated/build123d-execution-proposal.ts";
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/cad/sealed-isolated/isolated-geometry-seal-proposal.ts";
+import { VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-observation.ts";
 import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "../../domain/sensitivity/vector-correction/vector-correction-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/modelica/qualified-kit/run-proposal.ts";
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
@@ -335,6 +336,33 @@ const OPERATIONS = [
       allowedSourceKinds: ["thread-entity"],
       cardinality: "one",
       allowedThreadEntityKinds: ["artifact"],
+    }],
+  },
+  /**
+   * Factual assembly-integrity observation is a review/planning vertical only.
+   * A later trusted observer executor must be a distinct composition change;
+   * this descriptor never grants provider dispatch or a product verdict.
+   */
+  {
+    id: VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION.id,
+    version: VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Observe factual assembly integrity",
+    description:
+      "Prepare a human-reviewed factual observation over one exact current primary geometry module. " +
+      "The signed admission names only the server-owned observation profile, method and exact configured runtime; " +
+      "it supplies no verdict, provider capability, tool, runtime, transform, or caller-selected tolerance.",
+    workItemKind: "verify",
+    riskClass: "consequential",
+    execution: "planning-only",
+    decisionEvidenceScope: "thread-entity-bindings",
+    bindings: [{
+      name: "geometryModule",
+      allowedSourceKinds: ["thread-entity"],
+      cardinality: "one",
+      allowedThreadEntityKinds: ["artifact"],
+      uniqueThreadEntityReferences: true,
     }],
   },
   /**
