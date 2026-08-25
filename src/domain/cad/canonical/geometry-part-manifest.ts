@@ -9,6 +9,11 @@
 
 import type { ContentFingerprint } from "../../thread/thread-snapshot.ts";
 import {
+  GEOMETRY_PART_CAPTURE_SCHEMA,
+  GEOMETRY_TARGET_CAPTURE_SCHEMAS,
+  type GeometryTargetPredecessor,
+} from "../geometry-capture-contract.ts";
+import {
   closedRecord,
   deepFreeze,
   exactRecord,
@@ -18,16 +23,14 @@ import {
   safeId,
 } from "../../kernel/case-validation.ts";
 
-export const GEOMETRY_PART_MANIFEST_SCHEMA =
-  "geometry-part-manifest/1.0" as const;
+export const GEOMETRY_PART_MANIFEST_SCHEMA = "geometry-part-manifest/1.0" as const;
 
 /**
  * Reserved canonical-capture family for the later targeted sealer. P2a only
  * recognizes it as a fail-closed predecessor seam; it never writes or seals
  * this envelope.
  */
-export const GEOMETRY_PART_CAPTURE_SCHEMA =
-  "geometry-part-capture/1.0" as const;
+export { GEOMETRY_PART_CAPTURE_SCHEMA };
 
 export type GeometryPartExportFormat = "step" | "gltf" | "stl";
 
@@ -45,10 +48,7 @@ export interface GeometryPartManifest {
     readonly artifactFingerprint: ContentFingerprint;
   };
   /** Exact prior canonical capture for this same PartDefinition only. */
-  readonly predecessor?: {
-    readonly artifactId: string;
-    readonly fingerprint: ContentFingerprint;
-  };
+  readonly predecessor?: GeometryTargetPredecessor;
   readonly target: {
     /** Exact captured SysON PartDefinition identity, never a label join. */
     readonly partDefinitionElementId: string;
@@ -111,12 +111,15 @@ export function parseGeometryPartManifest(
     "$geometryPartManifest.schemaVersion",
   );
   const architectureBasis = parseArchitectureBasis(root.architectureBasis);
+  const target = parseTarget(root.target);
   const predecessor = root.predecessor === undefined
     ? undefined
-    : parsePredecessor(root.predecessor);
-  const target = parseTarget(root.target);
+    : parsePredecessor(root.predecessor, target.partDefinitionElementId);
   literalValue(root.unitSystem, "mm", "$geometryPartManifest.unitSystem");
-  const exportFormats = parseFormats(root.exportFormats, "$geometryPartManifest.exportFormats");
+  const exportFormats = parseFormats(
+    root.exportFormats,
+    "$geometryPartManifest.exportFormats",
+  );
 
   if ((target.scriptHash === undefined) !== (target.files === undefined)) {
     invalid(
@@ -133,7 +136,10 @@ export function parseGeometryPartManifest(
       );
     }
   }
-  if (options.requireCompleted && (target.scriptHash === undefined || target.files === undefined)) {
+  if (
+    options.requireCompleted &&
+    (target.scriptHash === undefined || target.files === undefined)
+  ) {
     invalid(
       "manifest_incomplete",
       "Completed targeted geometry manifest requires target scriptHash and files.",
@@ -202,6 +208,11 @@ export function encodeGeometryPartDecisionParameters(
   );
   if (complete.predecessor) {
     add(
+      "geometry.manifest.predecessor.schemaVersion",
+      "Same-target predecessor capture schema",
+      complete.predecessor.schemaVersion,
+    );
+    add(
       "geometry.manifest.predecessor.artifactId",
       "Same-target predecessor artifact ID",
       complete.predecessor.artifactId,
@@ -210,6 +221,11 @@ export function encodeGeometryPartDecisionParameters(
       "geometry.manifest.predecessor.fingerprint",
       "Same-target predecessor SHA-256",
       complete.predecessor.fingerprint.digest,
+    );
+    add(
+      "geometry.manifest.predecessor.partDefinitionElementId",
+      "Same-target predecessor PartDefinition",
+      complete.predecessor.partDefinitionElementId,
     );
   }
   add("geometry.manifest.unitSystem", "Unit system", complete.unitSystem);
@@ -223,7 +239,11 @@ export function encodeGeometryPartDecisionParameters(
     "Target PartDefinition element ID",
     complete.target.partDefinitionElementId,
   );
-  add("geometry.manifest.target.label", "Target PartDefinition label", complete.target.label);
+  add(
+    "geometry.manifest.target.label",
+    "Target PartDefinition label",
+    complete.target.label,
+  );
   add(
     "geometry.manifest.target.scriptHash",
     "Target script SHA-256",
@@ -238,7 +258,11 @@ export function encodeGeometryPartDecisionParameters(
     const prefix = `geometry.manifest.target.files.${index}`;
     add(`${prefix}.format`, `Target file ${index} format`, file.format);
     add(`${prefix}.name`, `Target file ${index} name`, file.name);
-    add(`${prefix}.fingerprint`, `Target file ${index} SHA-256`, file.fingerprint.digest);
+    add(
+      `${prefix}.fingerprint`,
+      `Target file ${index} SHA-256`,
+      file.fingerprint.digest,
+    );
   });
   return params;
 }
@@ -282,7 +306,10 @@ export function parseGeometryPartDecisionParameters(
 
   const draftDigest = digest(string("geometry.draft.digest"), "geometry.draft.digest");
   if (string("geometry.manifest.schemaVersion") !== GEOMETRY_PART_MANIFEST_SCHEMA) {
-    invalid("invalid_schema", "Geometry part schema must be geometry-part-manifest/1.0.");
+    invalid(
+      "invalid_schema",
+      "Geometry part schema must be geometry-part-manifest/1.0.",
+    );
   }
   const architectureBasis = {
     snapshotId: string("geometry.manifest.architectureBasis.snapshotId"),
@@ -300,8 +327,12 @@ export function parseGeometryPartDecisionParameters(
   }
   const predecessor = predecessorPresent
     ? {
+      schemaVersion: string("geometry.manifest.predecessor.schemaVersion"),
       artifactId: string("geometry.manifest.predecessor.artifactId"),
       fingerprint: fingerprint("geometry.manifest.predecessor.fingerprint"),
+      partDefinitionElementId: string(
+        "geometry.manifest.predecessor.partDefinitionElementId",
+      ),
     }
     : undefined;
   if (string("geometry.manifest.unitSystem") !== "mm") {
@@ -346,7 +377,9 @@ export function parseGeometryPartDecisionParameters(
   return { draftDigest, manifest };
 }
 
-function parseArchitectureBasis(value: unknown): GeometryPartManifest["architectureBasis"] {
+function parseArchitectureBasis(
+  value: unknown,
+): GeometryPartManifest["architectureBasis"] {
   const basis = exactRecord(
     value,
     ["snapshotId", "revision", "artifactFingerprint"],
@@ -370,13 +403,39 @@ function parseArchitectureBasis(value: unknown): GeometryPartManifest["architect
 
 function parsePredecessor(
   value: unknown,
+  targetId: string,
 ): NonNullable<GeometryPartManifest["predecessor"]> {
   const predecessor = exactRecord(
     value,
-    ["artifactId", "fingerprint"],
+    ["schemaVersion", "artifactId", "fingerprint", "partDefinitionElementId"],
     "$geometryPartManifest.predecessor",
   );
+  const schemaVersion = opaqueElementId(
+    predecessor.schemaVersion,
+    "$geometryPartManifest.predecessor.schemaVersion",
+  );
+  if (
+    !GEOMETRY_TARGET_CAPTURE_SCHEMAS.includes(
+      schemaVersion as (typeof GEOMETRY_TARGET_CAPTURE_SCHEMAS)[number],
+    )
+  ) {
+    invalid(
+      "invalid_schema",
+      "$geometryPartManifest.predecessor.schemaVersion must name a canonical target capture family.",
+    );
+  }
+  const partDefinitionElementId = opaqueElementId(
+    predecessor.partDefinitionElementId,
+    "$geometryPartManifest.predecessor.partDefinitionElementId",
+  );
+  if (partDefinitionElementId !== targetId) {
+    invalid(
+      "invalid_identity",
+      "$geometryPartManifest.predecessor must name the exact target PartDefinition.",
+    );
+  }
   return {
+    schemaVersion: schemaVersion as (typeof GEOMETRY_TARGET_CAPTURE_SCHEMAS)[number],
     artifactId: safeId(
       predecessor.artifactId,
       "$geometryPartManifest.predecessor.artifactId",
@@ -385,6 +444,7 @@ function parsePredecessor(
       predecessor.fingerprint,
       "$geometryPartManifest.predecessor.fingerprint",
     ),
+    partDefinitionElementId,
   };
 }
 
@@ -415,7 +475,11 @@ function parseTarget(value: unknown): GeometryPartManifest["target"] {
 function parseFiles(value: unknown, path: string): GeometryPartManifestFile[] {
   if (!Array.isArray(value)) invalid("invalid_format", `${path} must be an array.`);
   return value.map((candidate, index) => {
-    const file = exactRecord(candidate, ["format", "name", "fingerprint"], `${path}[${index}]`);
+    const file = exactRecord(
+      candidate,
+      ["format", "name", "fingerprint"],
+      `${path}[${index}]`,
+    );
     const format = file.format;
     if (format !== "step" && format !== "gltf" && format !== "stl") {
       invalid("invalid_format", `${path}[${index}].format is unsupported.`);
@@ -456,7 +520,10 @@ function assertFiles(
   }
   files.forEach((file, index) => {
     if (file.format !== exportFormats[index]) {
-      invalid("invalid_format", `${path}[${index}] is not in fixed export format order.`);
+      invalid(
+        "invalid_format",
+        `${path}[${index}] is not in fixed export format order.`,
+      );
     }
     nonEmptyText(file.name, `${path}[${index}].name`);
     parseFingerprint(file.fingerprint, `${path}[${index}].fingerprint`);

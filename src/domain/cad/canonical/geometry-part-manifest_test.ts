@@ -3,10 +3,10 @@ import {
   assertGeometryPartManifest,
   encodeGeometryPartDecisionParameters,
   GEOMETRY_PART_MANIFEST_SCHEMA,
+  type GeometryPartManifest,
   GeometryPartManifestError,
   parseGeometryPartDecisionParameters,
   parseGeometryPartManifest,
-  type GeometryPartManifest,
 } from "./geometry-part-manifest.ts";
 import { parseGeometryDecisionParameters } from "./geometry-proposal.ts";
 
@@ -24,8 +24,10 @@ function completeManifest(): GeometryPartManifest {
       artifactFingerprint: { algorithm: "sha256", digest: A },
     },
     predecessor: {
+      schemaVersion: "geometry-module-capture/1.0",
       artifactId: `geometry-${B}`,
       fingerprint: { algorithm: "sha256", digest: B },
+      partDefinitionElementId: "sysml.part.arm",
     },
     target: {
       partDefinitionElementId: "sysml.part.arm",
@@ -85,13 +87,14 @@ Deno.test("targeted PartDefinition manifest requires STEP and completed target f
     GeometryPartManifestError,
   );
   assertThrows(
-    () => assertGeometryPartManifest({
-      ...manifest,
-      target: {
-        partDefinitionElementId: manifest.target.partDefinitionElementId,
-        label: manifest.target.label,
-      },
-    }, { requireCompleted: true }),
+    () =>
+      assertGeometryPartManifest({
+        ...manifest,
+        target: {
+          partDefinitionElementId: manifest.target.partDefinitionElementId,
+          label: manifest.target.label,
+        },
+      }, { requireCompleted: true }),
     GeometryPartManifestError,
   );
 });

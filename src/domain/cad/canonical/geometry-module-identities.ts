@@ -37,6 +37,7 @@ import {
   fingerprintsEqual,
 } from "../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
+import type { GeometryTargetPredecessor } from "../geometry-capture-contract.ts";
 import {
   type ProjectSourceClosureLocator,
   projectSourceClosureLocatorsEqual,
@@ -94,12 +95,7 @@ export interface GeometryModuleChild {
   readonly authoritativeStep: GeometryModuleAssetIdentity;
 }
 
-export interface GeometryModulePredecessor {
-  readonly schemaVersion: typeof GEOMETRY_MODULE_CAPTURE_SCHEMA;
-  readonly artifactId: string;
-  readonly fingerprint: ContentFingerprint;
-  readonly partDefinitionElementId: string;
-}
+export type GeometryModulePredecessor = GeometryTargetPredecessor;
 
 /**
  * Persisted input-bundle identity for draft, manifest and capture.
