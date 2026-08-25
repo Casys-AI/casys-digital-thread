@@ -41,8 +41,18 @@ import {
   parseGeometryModuleManifest,
 } from "../../../domain/cad/canonical/geometry-module-evidence.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../../domain/architecture/renderer/architecture-proposal.ts";
-import { GEOMETRY_PART_CAPTURE_SCHEMA } from "../../../domain/cad/canonical/geometry-part-manifest.ts";
+import {
+  GEOMETRY_PART_CAPTURE_SCHEMA,
+  GEOMETRY_PART_MANIFEST_SCHEMA,
+} from "../../../domain/cad/canonical/geometry-part-manifest.ts";
+import { GEOMETRY_PART_DRAFT_ADMISSION_SCHEMA } from "../../../domain/cad/canonical/geometry-draft-admission.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../../domain/cad/canonical/geometry-proposal.ts";
+import {
+  GEOMETRY_ARCHITECTURE_CAPTURE_USE_RATIONALE,
+  GEOMETRY_ARCHITECTURE_DERIVATION_RATIONALE,
+  GEOMETRY_BINARY_CAPTURE_USE_RATIONALE,
+  GEOMETRY_BINARY_TRACE_RATIONALE,
+} from "../../../domain/cad/canonical/geometry-bundle.ts";
 import { createGeometryModuleInputBundle } from "../../../domain/cad/module-assembly/geometry-module-input-bundle.ts";
 import {
   GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
@@ -72,6 +82,7 @@ import {
   PART_DEFINITIONS_CAPTURE_URI_PREFIX,
 } from "../../shared/cas/file-capture-store.ts";
 import { GeometryModuleAssemblyOutputValidator } from "../module-assembly/geometry-module-assembly-output-validator.ts";
+import { GeometrySourceAnalysisCaptureService } from "../source/geometry-source-analysis-capture.ts";
 import {
   assertMrtrManifestMatchesDraft,
 } from "./design-write-geometry-run-executor.ts";
@@ -195,8 +206,8 @@ Deno.test("module seal refuses when rebuilt bundle identity does not match reope
   }
 });
 
-Deno.test("module seal refuses a missing, ambiguous, or superseded child capture", async () => {
-  for (const defect of ["missing", "ambiguous", "superseded"] as const) {
+Deno.test("module seal refuses a missing, ambiguous, superseded, or shallow child capture", async () => {
+  for (const defect of ["missing", "ambiguous", "superseded", "shallow"] as const) {
     const tmpDir = await Deno.makeTempDir({ prefix: `geo-module-child-${defect}-` });
     try {
       const world = await prepareModuleWorld(tmpDir, { childDefect: defect });
@@ -207,7 +218,9 @@ Deno.test("module seal refuses a missing, ambiguous, or superseded child capture
           ? "geometry_module_child_missing"
           : defect === "ambiguous"
           ? "geometry_module_child_ambiguous"
-          : "geometry_module_child_superseded",
+          : defect === "superseded"
+          ? "geometry_module_child_superseded"
+          : "canonical capture failed exact replay",
       );
       await assertQueued(world.fixture);
     } finally {
@@ -404,7 +417,7 @@ async function prepareModuleWorld(
   directory: string,
   options: {
     readonly swapChildBytes?: boolean;
-    readonly childDefect?: "missing" | "ambiguous" | "superseded";
+    readonly childDefect?: "missing" | "ambiguous" | "superseded" | "shallow";
     readonly outputDigestMismatch?: boolean;
     readonly wrongPredecessor?: boolean;
     readonly tamperSignedLabel?: boolean;
@@ -435,12 +448,17 @@ async function prepareModuleWorld(
   const frameStep = part21("FRAME");
   const boltStep = part21("BOLT");
   const frame = await materializeChildCapture(initial, {
+    basis,
+    architecture,
     runId: "run:child-frame",
     partDefinitionElementId: "part-definition:frame",
     label: "FrameDefinition",
     stepBytes: frameStep,
+    shallow: options.childDefect === "shallow",
   });
   const bolt = await materializeChildCapture(initial, {
+    basis,
+    architecture,
     runId: "run:child-bolt",
     partDefinitionElementId: "part-definition:bolt",
     label: "BoltDefinition",
@@ -449,6 +467,8 @@ async function prepareModuleWorld(
   const extras = options.childDefect === "ambiguous"
     ? [
       await materializeChildCapture(initial, {
+        basis,
+        architecture,
         runId: "run:child-frame-extra",
         partDefinitionElementId: "part-definition:frame",
         label: "FrameDefinition",
@@ -944,10 +964,13 @@ async function attachInstalledSnapshot(
 async function materializeChildCapture(
   fixture: GeoFixture,
   options: {
+    readonly basis: ThreadSnapshot;
+    readonly architecture: ThreadArtifact;
     readonly runId: string;
     readonly partDefinitionElementId: string;
     readonly label: string;
     readonly stepBytes: Uint8Array;
+    readonly shallow?: boolean;
   },
 ): Promise<{
   readonly artifacts: readonly ThreadArtifact[];
@@ -956,26 +979,92 @@ async function materializeChildCapture(
   readonly child: GeometryModuleChild;
 }> {
   const stepDigest = await fingerprintResourceBytes(options.stepBytes);
-  const capture = {
+  const script = [
+    "from build123d import Box",
+    `size = ${options.label === "FrameDefinition" ? 8 : 2}`,
+    "result = Box(size, size, size)",
+    "",
+  ].join("\n");
+  const scriptHash = fp(
+    await fingerprintResourceBytes(new TextEncoder().encode(script)),
+  );
+  const sourceAnalysis = await new GeometrySourceAnalysisCaptureService(
+    fixture.sourceAnalysis,
+  ).capture({
+    selector: {
+      kind: "part-definition",
+      elementId: options.partDefinitionElementId,
+    },
+    sourceText: script,
+  });
+  const sealedAt = "2026-08-08T12:50:00.000Z";
+  const completeCapture = {
     schemaVersion: GEOMETRY_PART_CAPTURE_SCHEMA,
     operation: DESIGN_WRITE_GEOMETRY_OPERATION,
     trustedRunId: options.runId,
     draftDigest: A,
     manifest: {
-      schemaVersion: "geometry-part-manifest/1.0",
+      schemaVersion: GEOMETRY_PART_MANIFEST_SCHEMA,
+      architectureBasis: {
+        snapshotId: options.basis.id,
+        revision: options.basis.revision,
+        artifactFingerprint: options.architecture.fingerprint,
+      },
       target: {
         partDefinitionElementId: options.partDefinitionElementId,
         label: options.label,
+        scriptHash,
+        files: [{
+          format: "step" as const,
+          name: `${options.label}.step`,
+          fingerprint: fp(stepDigest),
+        }],
       },
+      unitSystem: "mm" as const,
+      exportFormats: ["step" as const],
+    },
+    architectureBasis: {
+      artifactId: options.architecture.id,
+      fingerprint: options.architecture.fingerprint,
+      producerRunId: options.architecture.producer.runId,
+    },
+    previewProducer: {
+      serverId: "build123d-sandbox" as const,
+      tool: "build123d_export" as const,
+      runId: `${options.runId}-preview`,
     },
     sourceScript: {
+      partDefinitionElementId: options.partDefinitionElementId,
+      label: options.label,
+      script,
+      scriptHash,
+      admission: {
+        schemaVersion: GEOMETRY_PART_DRAFT_ADMISSION_SCHEMA,
+        artifactId: `technical-compilation-admission-${E}`,
+        fingerprint: fp(E),
+        sourceFingerprint: scriptHash,
+        target: {
+          partDefinitionElementId: options.partDefinitionElementId,
+          label: options.label,
+        },
+      },
       authoritativeStep: {
         fileIndex: 0,
         fingerprint: fp(stepDigest),
         bytes: options.stepBytes.byteLength,
       },
     },
+    sourceAnalysis,
+    sealedAt,
   };
+  const capture = options.shallow
+    ? {
+      schemaVersion: GEOMETRY_PART_CAPTURE_SCHEMA,
+      operation: DESIGN_WRITE_GEOMETRY_OPERATION,
+      trustedRunId: options.runId,
+      manifest: completeCapture.manifest,
+    }
+    : completeCapture;
   const captureFp = await sha256Fingerprint(capture);
   await fixture.geoCaptures.save(captureFp, deterministicJson(capture));
   await Deno.mkdir(fixture.canonicalAssetDirectory, { recursive: true });
@@ -983,7 +1072,6 @@ async function materializeChildCapture(
     `${fixture.canonicalAssetDirectory}/${stepDigest}.step`,
     options.stepBytes,
   );
-  const sealedAt = "2026-08-08T12:50:00.000Z";
   const primary: ThreadArtifact = {
     id: `geometry-${captureFp.digest}`,
     name: `Canonical PartDefinition geometry: ${options.label}`,
@@ -997,7 +1085,7 @@ async function materializeChildCapture(
       tool: "design.write-geometry@1",
       runId: options.runId,
     },
-    inputArtifactIds: [],
+    inputArtifactIds: [options.architecture.id],
     freshness: { status: "fresh", changedAt: sealedAt, invalidatedByChangeIds: [] },
   };
   const step: ThreadArtifact = {
@@ -1016,28 +1104,53 @@ async function materializeChildCapture(
     inputArtifactIds: [],
     freshness: { status: "fresh", changedAt: sealedAt, invalidatedByChangeIds: [] },
   };
+  const binaryConsumptionId = `consume-${primary.id}-by-${step.id}`;
+  const architectureConsumptionId =
+    `consume-arch-${options.architecture.id}-by-${primary.id}`;
   return {
     artifacts: [primary, step],
-    consumptions: [{
-      id: `consume-${primary.id}-by-${step.id}`,
-      artifactId: primary.id,
-      consumer: primary.producer,
-      observedFingerprint: primary.fingerprint,
-      verifiedAt: sealedAt,
-      status: "verified",
-    }],
+    consumptions: [
+      {
+        id: architectureConsumptionId,
+        artifactId: options.architecture.id,
+        consumer: primary.producer,
+        observedFingerprint: options.architecture.fingerprint,
+        verifiedAt: sealedAt,
+        status: "verified",
+      },
+      {
+        id: binaryConsumptionId,
+        artifactId: primary.id,
+        consumer: primary.producer,
+        observedFingerprint: primary.fingerprint,
+        verifiedAt: sealedAt,
+        status: "verified",
+      },
+    ],
     provenance: [{
+      id: `derived-from-architecture-${primary.fingerprint.digest}`,
+      relation: "derived_from",
+      from: { kind: "artifact", id: primary.id },
+      to: { kind: "artifact", id: options.architecture.id },
+      rationale: GEOMETRY_ARCHITECTURE_DERIVATION_RATIONALE,
+    }, {
+      id: `uses-${architectureConsumptionId}`,
+      relation: "uses",
+      from: { kind: "consumption", id: architectureConsumptionId },
+      to: { kind: "artifact", id: options.architecture.id },
+      rationale: GEOMETRY_ARCHITECTURE_CAPTURE_USE_RATIONALE,
+    }, {
       id: `traces-${step.id}-from-${primary.id}`,
       relation: "traces_to",
       from: { kind: "artifact", id: step.id },
       to: { kind: "artifact", id: primary.id },
-      rationale: "Installed child STEP traces to its capture.",
+      rationale: GEOMETRY_BINARY_TRACE_RATIONALE,
     }, {
-      id: `uses-consume-${primary.id}-by-${step.id}`,
+      id: `uses-${binaryConsumptionId}`,
       relation: "uses",
-      from: { kind: "consumption", id: `consume-${primary.id}-by-${step.id}` },
+      from: { kind: "consumption", id: binaryConsumptionId },
       to: { kind: "artifact", id: primary.id },
-      rationale: "Installed child STEP consumed its capture.",
+      rationale: GEOMETRY_BINARY_CAPTURE_USE_RATIONALE,
     }],
     child: {
       usageElementId: options.partDefinitionElementId === "part-definition:frame"

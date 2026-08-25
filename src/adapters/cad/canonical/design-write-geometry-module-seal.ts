@@ -32,10 +32,13 @@ import {
   type GeometryModuleInputBundleIdentity,
   type GeometryModuleManifest,
   geometryModuleManifestFromDraft,
-  parseGeometryModuleCapture,
   parseGeometryModuleDraftCapture,
   recrossGeometryModuleIsolation,
 } from "../../../domain/cad/canonical/geometry-module-evidence.ts";
+import {
+  type CanonicalGeometryCapture,
+  parseCanonicalGeometryCapture,
+} from "../../../domain/cad/canonical/geometry-part-capture.ts";
 import { GEOMETRY_PART_CAPTURE_SCHEMA } from "../../../domain/cad/canonical/geometry-part-manifest.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../../domain/cad/canonical/geometry-proposal.ts";
 import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
@@ -351,7 +354,12 @@ export async function requireGeometryModulePredecessor(
     assertCanonicalGeometryPrimaryIdentity(artifact);
     const record = await readExactGeometryCaptureRecord(artifact, geometryCaptures);
     if (record.schemaVersion === GEOMETRY_MODULE_CAPTURE_SCHEMA) {
-      const capture = await parseExactModuleCapture(record);
+      const capture = await parseExactCanonicalGeometryCapture(record);
+      if (capture.schemaVersion !== GEOMETRY_MODULE_CAPTURE_SCHEMA) {
+        throw moduleTransition(
+          "geometry_module_predecessor_mismatch: active module capture changed family during exact replay.",
+        );
+      }
       if (
         capture.manifest.target.partDefinitionElementId ===
           manifest.target.partDefinitionElementId
@@ -648,6 +656,7 @@ async function reopenExactChildAuthoritativeStep(
       `geometry_module_child_missing: child capture ${artifact.id} is not the named capture family.`,
     );
   }
+  const capture = await parseExactCanonicalGeometryCapture(record);
   const sameTarget = await collectActiveSameFamilyTarget(
     base,
     geometryCaptures,
@@ -664,7 +673,7 @@ async function reopenExactChildAuthoritativeStep(
       `geometry_module_child_superseded: named child ${artifact.id} is not the unique active capture for ${child.partDefinitionElementId}.`,
     );
   }
-  const step = await authoritativeStepFromChildCapture(record, child);
+  const step = authoritativeStepFromChildCapture(capture, child);
   const bytes = await readOptionalFile(
     `${canonicalDirectory}/${step.digest}.step`,
   );
@@ -702,86 +711,64 @@ async function collectActiveSameFamilyTarget(
     }
     const record = await readExactGeometryCaptureRecord(artifact, geometryCaptures);
     if (record.schemaVersion !== schemaVersion) continue;
-    const targetId = childTargetId(record);
+    const capture = await parseExactCanonicalGeometryCapture(record);
+    const targetId = capture.manifest.target.partDefinitionElementId;
     if (targetId === partDefinitionElementId) matches.push(artifact);
   }
   return matches;
 }
 
-function childTargetId(record: Record<string, unknown>): string | undefined {
-  const manifest = record.manifest;
-  if (manifest === null || typeof manifest !== "object" || Array.isArray(manifest)) {
-    return undefined;
-  }
-  const target = (manifest as { target?: unknown }).target;
-  if (target === null || typeof target !== "object" || Array.isArray(target)) {
-    return undefined;
-  }
-  const id = (target as { partDefinitionElementId?: unknown }).partDefinitionElementId;
-  return typeof id === "string" ? id : undefined;
-}
-
-async function authoritativeStepFromChildCapture(
-  record: Record<string, unknown>,
+function authoritativeStepFromChildCapture(
+  capture: CanonicalGeometryCapture,
   child: GeometryModuleChild,
-): Promise<{ readonly digest: string; readonly bytes: number }> {
-  if (record.schemaVersion === GEOMETRY_PART_CAPTURE_SCHEMA) {
-    const source = asObject(record.sourceScript, "child sourceScript");
-    const step = asObject(source.authoritativeStep, "child authoritativeStep");
-    const fingerprint = asObject(step.fingerprint, "child STEP fingerprint");
-    const digest = fingerprint.digest;
-    const bytes = step.bytes;
+): { readonly digest: string; readonly bytes: number } {
+  if (capture.schemaVersion === GEOMETRY_PART_CAPTURE_SCHEMA) {
+    const step = capture.sourceScript.authoritativeStep;
     if (
-      typeof digest !== "string" || typeof bytes !== "number" ||
-      digest !== child.authoritativeStep.fingerprint.digest ||
-      bytes !== child.authoritativeStep.bytes
+      !fingerprintsEqual(step.fingerprint, child.authoritativeStep.fingerprint) ||
+      step.bytes !== child.authoritativeStep.bytes
     ) {
       throw moduleTransition(
         `geometry_module_bundle_mismatch: child part capture STEP identity does not match the signed child table.`,
       );
     }
-    if (childTargetId(record) !== child.partDefinitionElementId) {
+    if (
+      capture.manifest.target.partDefinitionElementId !==
+        child.partDefinitionElementId
+    ) {
       throw moduleTransition(
         `geometry_module_child_missing: child part capture does not name ${child.partDefinitionElementId}.`,
       );
     }
-    return { digest, bytes };
+    return { digest: step.fingerprint.digest, bytes: step.bytes };
   }
-  if (record.schemaVersion === GEOMETRY_MODULE_CAPTURE_SCHEMA) {
-    const capture = await parseExactModuleCapture(record);
-    if (
-      capture.manifest.target.partDefinitionElementId !==
-        child.partDefinitionElementId ||
-      !fingerprintsEqual(
-        capture.assemblyStep.fingerprint,
-        child.authoritativeStep.fingerprint,
-      ) ||
-      capture.assemblyStep.bytes !== child.authoritativeStep.bytes
-    ) {
-      throw moduleTransition(
-        "geometry_module_bundle_mismatch: child module capture STEP identity does not match the signed child table.",
-      );
-    }
-    return {
-      digest: capture.assemblyStep.fingerprint.digest,
-      bytes: capture.assemblyStep.bytes,
-    };
+  if (
+    capture.manifest.target.partDefinitionElementId !==
+      child.partDefinitionElementId ||
+    !fingerprintsEqual(
+      capture.assemblyStep.fingerprint,
+      child.authoritativeStep.fingerprint,
+    ) ||
+    capture.assemblyStep.bytes !== child.authoritativeStep.bytes
+  ) {
+    throw moduleTransition(
+      "geometry_module_bundle_mismatch: child module capture STEP identity does not match the signed child table.",
+    );
   }
-  throw moduleTransition(
-    `geometry_module_child_missing: child capture schema ${
-      String(record.schemaVersion)
-    } is not a canonical geometry family.`,
-  );
+  return {
+    digest: capture.assemblyStep.fingerprint.digest,
+    bytes: capture.assemblyStep.bytes,
+  };
 }
 
-async function parseExactModuleCapture(
+async function parseExactCanonicalGeometryCapture(
   record: Record<string, unknown>,
-): Promise<GeometryModuleCapture> {
+): Promise<CanonicalGeometryCapture> {
   try {
-    return await parseGeometryModuleCapture(record);
+    return await parseCanonicalGeometryCapture(record);
   } catch (error) {
     throw moduleTransition(
-      `geometry_module_child_missing: module capture failed exact replay: ${
+      `geometry_module_child_missing: canonical capture failed exact replay: ${
         detail(error)
       }`,
     );
@@ -937,13 +924,6 @@ async function readExactGeometryCaptureRecord(
     );
   }
   return parsed as Record<string, unknown>;
-}
-
-function asObject(value: unknown, path: string): Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw moduleTransition(`geometry_module_child_missing: ${path} is not an object.`);
-  }
-  return value as Record<string, unknown>;
 }
 
 async function readOptionalFile(path: string): Promise<Uint8Array | undefined> {

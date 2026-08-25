@@ -130,6 +130,7 @@ import {
 } from "../../../domain/cad/canonical/geometry-bundle.ts";
 import {
   encodeGeometryPartDecisionParameters,
+  GEOMETRY_PART_CAPTURE_SCHEMA,
   type GeometryPartManifest,
 } from "../../../domain/cad/canonical/geometry-part-manifest.ts";
 import {
@@ -2951,10 +2952,13 @@ async function queueGeometryPartSeal(
       break;
     }
   }
-  const predecessor = options.predecessor === "omit"
-    ? undefined
-    : activeTarget
-    ? { artifactId: activeTarget.id, fingerprint: activeTarget.fingerprint }
+  const predecessor = options.predecessor === "omit" ? undefined : activeTarget
+    ? {
+      schemaVersion: GEOMETRY_PART_CAPTURE_SCHEMA,
+      artifactId: activeTarget.id,
+      fingerprint: activeTarget.fingerprint,
+      partDefinitionElementId: target.elementId,
+    }
     : undefined;
   const requestedManifest: GeometryPartManifest = {
     schemaVersion: "geometry-part-manifest/1.0",
