@@ -199,34 +199,45 @@ function resolveAuthoritativeStepSurface(
     const artifact = snapshot.artifacts.find((candidate) =>
       candidate.id === binding.id
     );
-    if (!artifact || artifact.system !== "build123d-sandbox") return [];
+    if (!artifact) return [];
     const record = classifyGeometryBinary(artifact, captureDigest);
-    const exactScope = record?.scope === "target"
+    // Module binaries are digital-thread assembler products. Every other
+    // authoritative STEP still requires the exact sandbox namespace.
+    if (
+      !record ||
+      (record.generation !== "module" &&
+        artifact.system !== "build123d-sandbox")
+    ) return [];
+    const exactScope = record.generation === "module"
+      ? true
+      : record.scope === "target"
       ? component.kind === "part"
       : component.kind === "assembly"
-      ? record?.scope === "assembly"
-      : record?.scope === "definition";
+      ? record.scope === "assembly"
+      : record.scope === "definition";
     if (
-      !record || record.generation === "legacy" || record.format !== "STEP" ||
+      record.generation === "legacy" || record.format !== "STEP" ||
       !exactScope ||
       (record.generation === "v2" &&
         resolveSealedAssemblyGeometry(snapshot)?.captureArtifact.id !==
           captureArtifact.id)
     ) return [];
-    const traced = snapshot.graph.edges.filter((edge) =>
-      edge.relation === "traces_to" && edge.from.kind === "artifact" &&
-      edge.from.id === captureArtifact.id &&
-      edge.to.kind === "artifact" && edge.to.id === artifact.id
-    );
-    return traced.length === 1
+    return uniqueCaptureAssetTrace(snapshot, captureArtifact.id, artifact.id)
       ? [{ binding, artifact, record, captureArtifact, captureDigest }]
       : [];
   });
   if (candidates.length !== 1) return undefined;
   const resolved = candidates[0]!;
-  const presentation = component.kind === "part" &&
-      (resolved.record.scope === "definition" ||
-        resolved.record.scope === "target")
+  const presentation = resolved.record.generation === "module"
+    ? resolveExactModuleGlb(
+      snapshot,
+      component.preview,
+      resolved.captureArtifact,
+      resolved.captureDigest,
+    )
+    : component.kind === "part" &&
+        (resolved.record.scope === "definition" ||
+          resolved.record.scope === "target")
     ? resolveExactPartDefinitionGlb(
       snapshot,
       component.preview,
@@ -298,12 +309,47 @@ function resolveExactPartDefinitionGlb(
     !record || record.generation === "legacy" || !sameTarget ||
     record.format !== "GLB"
   ) return undefined;
-  const traces = snapshot.graph.edges.filter((edge) =>
-    edge.relation === "traces_to" && edge.from.kind === "artifact" &&
-    edge.from.id === captureArtifact.id && edge.to.kind === "artifact" &&
-    edge.to.id === artifact.id
+  return uniqueCaptureAssetTrace(snapshot, captureArtifact.id, artifact.id)
+    ? { artifact, preview }
+    : undefined;
+}
+
+/**
+ * Pair the catalog-declared module GLB only when it is the unique assembler
+ * derivative of the same capture as the module STEP. Labels never join them.
+ */
+function resolveExactModuleGlb(
+  snapshot: ThreadWorkbenchSnapshot,
+  preview: ThreadComponentPreview | undefined,
+  captureArtifact: ThreadArtifact,
+  captureDigest: string,
+):
+  | {
+    readonly artifact: ThreadArtifact;
+    readonly preview: ThreadComponentPreview;
+  }
+  | undefined {
+  if (!preview || preview.mediaType !== "model/gltf-binary") return undefined;
+  const urlMatch = preview.url.match(
+    /^\/api\/thread\/assets\/([a-f0-9]{64})\.glb$/,
   );
-  return traces.length === 1 ? { artifact, preview } : undefined;
+  if (!urlMatch || urlMatch[1] !== preview.sha256) return undefined;
+  const candidates = snapshot.artifacts.filter((artifact) =>
+    artifact.id === preview.artifactId
+  );
+  if (candidates.length !== 1) return undefined;
+  const artifact = candidates[0]!;
+  if (
+    artifact.uri !== preview.url ||
+    fingerprintDigest(artifact.fingerprint) !== preview.sha256
+  ) return undefined;
+  const record = classifyGeometryBinary(artifact, captureDigest);
+  if (
+    !record || record.generation !== "module" || record.format !== "GLB"
+  ) return undefined;
+  return uniqueCaptureAssetTrace(snapshot, captureArtifact.id, artifact.id)
+    ? { artifact, preview }
+    : undefined;
 }
 
 export function cadSurfaceCoverage(
@@ -339,7 +385,7 @@ export function resolveSealedAssemblyGeometry(
   const captures = snapshot.artifacts.filter((artifact) =>
     geometryCaptureDigest(artifact) !== undefined
   );
-  const captureArtifact = selectActiveGeometryCapture(snapshot, captures);
+  const captureArtifact = selectSealedAssemblyCapture(snapshot, captures);
   if (!captureArtifact) return undefined;
 
   const captureDigest = geometryCaptureDigest(captureArtifact)!;
@@ -368,12 +414,23 @@ export function resolveSealedAssemblyGeometry(
   );
   if (records.some((record) => !record)) return undefined;
   const exactRecords = records as GeometryBinaryRecord[];
-  const hasV2Records = exactRecords.some((record) => record.generation === "v2");
+  const hasV2Records = exactRecords.some((record) =>
+    record.generation === "v2"
+  );
+  const hasModuleRecords = exactRecords.some((record) =>
+    record.generation === "module"
+  );
   if (
     hasV2Records && exactRecords.some((record) => record.generation !== "v2")
   ) return undefined;
+  if (
+    hasModuleRecords &&
+    exactRecords.some((record) => record.generation !== "module")
+  ) return undefined;
 
-  const assemblyRecords = exactRecords.filter((record) => record.scope === "assembly")
+  const assemblyRecords = exactRecords.filter((record) =>
+    record.scope === "assembly"
+  )
     .toSorted((left, right) =>
       left.generation === "v2" && right.generation === "v2"
         ? left.formatIndex - right.formatIndex
@@ -575,6 +632,113 @@ function geometryCaptureDigest(artifact: ThreadArtifact): string | undefined {
   return digest;
 }
 
+function uniqueCaptureAssetTrace(
+  snapshot: ThreadWorkbenchSnapshot,
+  captureId: string,
+  artifactId: string,
+): boolean {
+  return snapshot.graph.edges.filter((edge) =>
+    edge.relation === "traces_to" &&
+    edge.from.kind === "artifact" &&
+    edge.from.id === captureId &&
+    edge.to.kind === "artifact" &&
+    edge.to.id === artifactId
+  ).length === 1;
+}
+
+function isExactDigitalThreadArtifactBinding(
+  binding: ThreadComponentBinding,
+): boolean {
+  return binding.provider === "digital-thread" &&
+    binding.kind === "artifact" &&
+    binding.status === "verified";
+}
+
+/**
+ * Prefer the unique root assembly's exact catalog STEP. An unrelated active
+ * leaf capture may then coexist. The unbound global-tip path is only for
+ * historical legacy/v2 snapshots: a targeted or module child capture is
+ * never promoted to the product assembly. Several resolvable roots, or a
+ * bound root that does not resolve, close.
+ */
+function selectSealedAssemblyCapture(
+  snapshot: ThreadWorkbenchSnapshot,
+  captures: readonly ThreadArtifact[],
+): ThreadArtifact | undefined {
+  const components = snapshot.components.components;
+  const known = new Set(components.map((component) => component.id));
+  const roots = components.filter((component) =>
+    component.kind === "assembly" &&
+    (component.parentId === undefined || !known.has(component.parentId))
+  );
+  const boundRoots = roots.filter((root) =>
+    root.bindings.some(isExactDigitalThreadArtifactBinding)
+  );
+  if (boundRoots.length === 0) {
+    const tip = selectActiveGeometryCapture(snapshot, captures);
+    if (!tip || captureProjectsTargetedOrModuleBinaries(snapshot, tip)) {
+      return undefined;
+    }
+    return tip;
+  }
+
+  const resolved = boundRoots.map((root) =>
+    exactRootAssemblyBindingCapture(snapshot, root, captures)
+  );
+  if (resolved.some((capture) => capture === undefined)) return undefined;
+  const uniqueIds = new Set(resolved.map((capture) => capture!.id));
+  return uniqueIds.size === 1 ? resolved[0] : undefined;
+}
+
+function exactRootAssemblyBindingCapture(
+  snapshot: ThreadWorkbenchSnapshot,
+  root: ThreadComponent,
+  captures: readonly ThreadArtifact[],
+): ThreadArtifact | undefined {
+  const found: ThreadArtifact[] = [];
+  for (const binding of root.bindings) {
+    if (!isExactDigitalThreadArtifactBinding(binding)) continue;
+    const capture = captures.find((candidate) =>
+      candidate.id === binding.evidenceArtifactId
+    );
+    if (!capture) continue;
+    const captureDigest = geometryCaptureDigest(capture);
+    if (!captureDigest) continue;
+    const artifact = snapshot.artifacts.find((candidate) =>
+      candidate.id === binding.id
+    );
+    if (!artifact) continue;
+    const record = classifyGeometryBinary(artifact, captureDigest);
+    if (
+      !record || record.scope !== "assembly" || record.format !== "STEP" ||
+      !uniqueCaptureAssetTrace(snapshot, capture.id, artifact.id)
+    ) continue;
+    found.push(capture);
+  }
+  const uniqueIds = new Set(found.map((capture) => capture.id));
+  return uniqueIds.size === 1 ? found[0] : undefined;
+}
+
+function captureProjectsTargetedOrModuleBinaries(
+  snapshot: ThreadWorkbenchSnapshot,
+  capture: ThreadArtifact,
+): boolean {
+  const digest = geometryCaptureDigest(capture);
+  if (!digest) return false;
+  return snapshot.graph.edges.some((edge) => {
+    if (
+      edge.relation !== "traces_to" || edge.from.kind !== "artifact" ||
+      edge.from.id !== capture.id || edge.to.kind !== "artifact"
+    ) return false;
+    const artifact = snapshot.artifacts.find((candidate) =>
+      candidate.id === edge.to.id
+    );
+    if (!artifact) return false;
+    const record = classifyGeometryBinary(artifact, digest);
+    return record?.generation === "module" || record?.generation === "target";
+  });
+}
+
 function selectActiveGeometryCapture(
   snapshot: ThreadWorkbenchSnapshot,
   captures: readonly ThreadArtifact[],
@@ -630,7 +794,7 @@ function reachesTip(
 type GeometryBinaryRecord =
   & {
     readonly artifact: ThreadArtifact;
-    readonly generation: "legacy" | "v2" | "target";
+    readonly generation: "legacy" | "v2" | "target" | "module";
     readonly format: string;
   }
   & (
@@ -642,6 +806,10 @@ type GeometryBinaryRecord =
     | {
       readonly scope: "assembly";
       readonly generation: "legacy";
+    }
+    | {
+      readonly scope: "assembly";
+      readonly generation: "module";
     }
     | { readonly scope: "legacy-part-mesh" }
     | {
@@ -660,6 +828,8 @@ function classifyGeometryBinary(
   artifact: ThreadArtifact,
   captureDigest: string,
 ): GeometryBinaryRecord | undefined {
+  const moduleRecord = classifyModuleGeometryBinary(artifact, captureDigest);
+  if (moduleRecord) return moduleRecord;
   if (
     artifact.freshness !== "fresh" || !isBuild123dArtifact(artifact)
   ) return undefined;
@@ -739,6 +909,42 @@ function classifyGeometryBinary(
       scope: "legacy-part-mesh",
       format,
     };
+  }
+  return undefined;
+}
+
+/**
+ * Module STEP/GLB identities are digital-thread assembler products. This
+ * path never widens the Build123d classifier above.
+ */
+function classifyModuleGeometryBinary(
+  artifact: ThreadArtifact,
+  captureDigest: string,
+): GeometryBinaryRecord | undefined {
+  if (
+    artifact.freshness !== "fresh" ||
+    artifact.system !== "digital-thread" ||
+    artifact.producedBy !== "build123d-module-assembler-v1@1"
+  ) return undefined;
+  const assetDigest = fingerprintDigest(artifact.fingerprint);
+  if (
+    !assetDigest || !/^[a-f0-9]{64}$/.test(assetDigest) ||
+    artifact.fingerprint !== `sha256:${assetDigest}` ||
+    artifact.uri !== expectedGeometryAssetUri(assetDigest, artifact)
+  ) return undefined;
+  const format = geometryAssetFormat(artifact)[0];
+  if (!format) return undefined;
+  if (
+    artifact.id === `cad-asset-${captureDigest}-module-step-${assetDigest}` &&
+    artifact.kind === "step" && format === "STEP"
+  ) {
+    return { artifact, generation: "module", scope: "assembly", format };
+  }
+  if (
+    artifact.id === `cad-asset-${captureDigest}-module-glb-${assetDigest}` &&
+    artifact.kind === "cad-model" && format === "GLB"
+  ) {
+    return { artifact, generation: "module", scope: "assembly", format };
   }
   return undefined;
 }
@@ -897,7 +1103,9 @@ export function buildSysmlSubtree(
   // rationale text.
   const anchoredRequirements: SysmlAnchoredRequirement[] = definitionId
     ? snapshot.requirements
-      .filter((req) => requirementTargetsDefinition(snapshot, req, definitionId))
+      .filter((req) =>
+        requirementTargetsDefinition(snapshot, req, definitionId)
+      )
       .map(toAnchoredRequirement)
     : [];
 
@@ -1054,10 +1262,13 @@ export function buildComponentTree(
     kind: component.kind,
     quantity: component.quantity,
     verified: component.bindings.some(
-      (binding) => binding.provider === "syson" && binding.status === "verified",
+      (binding) =>
+        binding.provider === "syson" && binding.status === "verified",
     ),
-    children: seen.has(component.id) ? [] : (childrenByParent.get(component.id) ??
-      []).map((child) => project(child, new Set([...seen, component.id]))),
+    children: seen.has(component.id)
+      ? []
+      : (childrenByParent.get(component.id) ??
+        []).map((child) => project(child, new Set([...seen, component.id]))),
   });
   return roots.map((root) => project(root, new Set()));
 }

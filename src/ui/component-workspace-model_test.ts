@@ -447,6 +447,297 @@ Deno.test("a targeted PartDefinition capture resolves its exact STEP and GLB wit
   assertEquals(sealedAssemblyGeometryBlocker(snapshot), undefined);
 });
 
+Deno.test("root module STEP and GLB resolve while an unrelated active leaf capture coexists", () => {
+  const snapshot = minimalSnapshot();
+  const moduleDigest = "a".repeat(64);
+  const stepDigest = "b".repeat(64);
+  const glbDigest = "c".repeat(64);
+  const leafDigest = "d".repeat(64);
+  const leafStepDigest = "e".repeat(64);
+  const leafGlbDigest = "f".repeat(64);
+  const moduleCapture = projectedGeometryCapture(moduleDigest);
+  const moduleStep = projectedModuleGeometryBinary(
+    moduleDigest,
+    stepDigest,
+    "step",
+    "step",
+  );
+  const moduleGlb = projectedModuleGeometryBinary(
+    moduleDigest,
+    glbDigest,
+    "cad-model",
+    "glb",
+  );
+  const leafCapture = projectedGeometryCapture(leafDigest);
+  const leafStep = projectedTargetGeometryBinary(
+    leafDigest,
+    leafStepDigest,
+    "step",
+    "step",
+    0,
+  );
+  const leafGlb = projectedTargetGeometryBinary(
+    leafDigest,
+    leafGlbDigest,
+    "cad-model",
+    "glb",
+    1,
+  );
+  snapshot.artifacts.push(
+    moduleCapture,
+    moduleStep,
+    moduleGlb,
+    leafCapture,
+    leafStep,
+    leafGlb,
+  );
+  snapshot.graph.edges.push(
+    projectedTrace(moduleCapture.id, moduleStep.id),
+    projectedTrace(moduleCapture.id, moduleGlb.id),
+    projectedTrace(leafCapture.id, leafStep.id),
+    projectedTrace(leafCapture.id, leafGlb.id),
+  );
+  const root: ThreadComponent = {
+    id: "system-root",
+    label: "Module",
+    kind: "assembly",
+    quantity: 1,
+    bindings: [{
+      provider: "digital-thread",
+      kind: "artifact",
+      id: moduleStep.id,
+      label: "Authoritative module STEP",
+      evidenceArtifactId: moduleCapture.id,
+      status: "verified",
+    }],
+    preview: {
+      provider: "build123d",
+      artifactId: moduleGlb.id,
+      mediaType: "model/gltf-binary",
+      url: moduleGlb.uri!,
+      sha256: glbDigest,
+    },
+  };
+  const leaf: ThreadComponent = {
+    id: "usage-leaf",
+    parentId: root.id,
+    label: "Leaf",
+    kind: "part",
+    quantity: 1,
+    bindings: [{
+      provider: "digital-thread",
+      kind: "artifact",
+      id: leafStep.id,
+      label: "Authoritative STEP: Leaf",
+      evidenceArtifactId: leafCapture.id,
+      status: "verified",
+    }],
+    preview: {
+      provider: "build123d",
+      artifactId: leafGlb.id,
+      mediaType: "model/gltf-binary",
+      url: leafGlb.uri!,
+      sha256: leafGlbDigest,
+    },
+  };
+  snapshot.components.components = [root, leaf];
+
+  const surface = resolveCadSurface(snapshot, root);
+  const sealed = resolveSealedAssemblyGeometry(snapshot);
+  const leafSurface = resolveCadSurface(snapshot, leaf);
+
+  assertEquals(surface?.scope, "assembly");
+  assertEquals(surface?.representation, "authoritative-step");
+  assertEquals(surface?.authoritativeArtifact.id, moduleStep.id);
+  assertEquals(surface?.presentationArtifact?.id, moduleGlb.id);
+  assertEquals(surface?.preview?.url, moduleGlb.uri);
+  assertEquals(sealed?.captureArtifact.id, moduleCapture.id);
+  assertEquals(sealed?.assemblyFormats, ["STEP", "GLB"]);
+  assertEquals(sealedAssemblyGlbAsset(sealed!)?.id, moduleGlb.id);
+  assertEquals(sealedAssemblyGeometryBlocker(snapshot), undefined);
+  assertEquals(leafSurface?.scope, "part");
+  assertEquals(leafSurface?.authoritativeArtifact.id, leafStep.id);
+  assertEquals(leafSurface?.presentationArtifact?.id, leafGlb.id);
+  assertEquals(cadSurfaceCoverage(snapshot), {
+    assemblySurfaces: 1,
+    partSurfaces: 1,
+    totalComponents: 2,
+  });
+});
+
+Deno.test("a child module binding is not the product assembly when the root is unbound", () => {
+  const snapshot = minimalSnapshot();
+  const captureDigest = "1".repeat(64);
+  const stepDigest = "2".repeat(64);
+  const glbDigest = "3".repeat(64);
+  const capture = projectedGeometryCapture(captureDigest);
+  const step = projectedModuleGeometryBinary(
+    captureDigest,
+    stepDigest,
+    "step",
+    "step",
+  );
+  const glb = projectedModuleGeometryBinary(
+    captureDigest,
+    glbDigest,
+    "cad-model",
+    "glb",
+  );
+  snapshot.artifacts.push(capture, step, glb);
+  snapshot.graph.edges.push(
+    projectedTrace(capture.id, step.id),
+    projectedTrace(capture.id, glb.id),
+  );
+  const root: ThreadComponent = {
+    id: "system-root",
+    label: "System",
+    kind: "assembly",
+    quantity: 1,
+    bindings: [{
+      provider: "syson",
+      kind: "part-definition",
+      id: "def-system",
+      label: "System",
+      evidenceArtifactId: "architecture",
+      status: "verified",
+    }],
+  };
+  const child: ThreadComponent = {
+    id: "usage-module",
+    parentId: root.id,
+    label: "Child module",
+    kind: "part",
+    quantity: 1,
+    bindings: [{
+      provider: "digital-thread",
+      kind: "artifact",
+      id: step.id,
+      label: "Authoritative module STEP",
+      evidenceArtifactId: capture.id,
+      status: "verified",
+    }],
+    preview: {
+      provider: "build123d",
+      artifactId: glb.id,
+      mediaType: "model/gltf-binary",
+      url: glb.uri!,
+      sha256: glbDigest,
+    },
+  };
+  snapshot.components.components = [root, child];
+
+  const childSurface = resolveCadSurface(snapshot, child);
+
+  assertEquals(childSurface?.scope, "part");
+  assertEquals(childSurface?.authoritativeArtifact.id, step.id);
+  assertEquals(childSurface?.presentationArtifact?.id, glb.id);
+  assertEquals(resolveCadSurface(snapshot, root), undefined);
+  assertEquals(resolveSealedAssemblyGeometry(snapshot), undefined);
+  assertEquals(cadSurfaceCoverage(snapshot), {
+    assemblySurfaces: 0,
+    partSurfaces: 1,
+    totalComponents: 2,
+  });
+});
+
+Deno.test("module binaries fail closed on the wrong tool, system, id, URI, or trace", () => {
+  const assertClosed = (
+    mutate: (fixture: ReturnType<typeof moduleAssemblyFixture>) => void,
+  ) => {
+    const fixture = moduleAssemblyFixture();
+    mutate(fixture);
+    assertEquals(resolveCadSurface(fixture.snapshot, fixture.root), undefined);
+    assertEquals(resolveSealedAssemblyGeometry(fixture.snapshot), undefined);
+  };
+
+  assertClosed(({ step }) => {
+    step.producedBy = "lookalike-module-assembler-v1@1";
+  });
+  assertClosed(({ step }) => {
+    step.system = "build123d-sandbox";
+  });
+  assertClosed(({ step, root }) => {
+    const wrongId = `cad-asset-${"a".repeat(64)}-assembly-0-${"b".repeat(64)}`;
+    step.id = wrongId;
+    root.bindings[0]!.id = wrongId;
+  });
+  assertClosed(({ step }) => {
+    step.uri = `/exports/module-${"b".repeat(64)}.step`;
+  });
+  assertClosed(({ snapshot, capture, step }) => {
+    snapshot.graph.edges.push({
+      ...projectedTrace(capture.id, step.id),
+      id: "duplicate-module-trace",
+    });
+  });
+});
+
+Deno.test("legacy targeted PartDefinition validation stays exact after module classification", () => {
+  const snapshot = minimalSnapshot();
+  const captureDigest = "3".repeat(64);
+  const stepDigest = "4".repeat(64);
+  const glbDigest = "5".repeat(64);
+  const capture = projectedGeometryCapture(captureDigest);
+  const step = projectedTargetGeometryBinary(
+    captureDigest,
+    stepDigest,
+    "step",
+    "step",
+    0,
+  );
+  const glb = projectedTargetGeometryBinary(
+    captureDigest,
+    glbDigest,
+    "cad-model",
+    "glb",
+    1,
+  );
+  snapshot.artifacts.push(capture, step, glb);
+  snapshot.graph.edges.push(
+    projectedTrace(capture.id, step.id),
+    projectedTrace(capture.id, glb.id),
+  );
+  snapshot.components.components = [{
+    id: "usage-arm",
+    label: "Arm",
+    kind: "part",
+    quantity: 1,
+    bindings: [{
+      provider: "digital-thread",
+      kind: "artifact",
+      id: step.id,
+      label: "Authoritative STEP: Arm",
+      evidenceArtifactId: capture.id,
+      status: "verified",
+    }],
+    preview: {
+      provider: "build123d",
+      artifactId: glb.id,
+      mediaType: "model/gltf-binary",
+      url: glb.uri!,
+      sha256: glbDigest,
+    },
+  }];
+
+  const surface = resolveCadSurface(
+    snapshot,
+    snapshot.components.components[0]!,
+  );
+
+  assertEquals(resolveSealedAssemblyGeometry(snapshot), undefined);
+  assertEquals(surface?.scope, "part");
+  assertEquals(surface?.authoritativeArtifact.id, step.id);
+  assertEquals(surface?.presentationArtifact?.id, glb.id);
+  assertEquals(sealedAssemblyGeometryBlocker(snapshot), undefined);
+
+  step.system = "digital-thread";
+  step.producedBy = "build123d-module-assembler-v1@1";
+  assertEquals(
+    resolveCadSurface(snapshot, snapshot.components.components[0]!),
+    undefined,
+  );
+});
+
 Deno.test("exact v2 PartDefinition mapping resolves one reusable GLB viewer per selected part", () => {
   const snapshot = minimalSnapshot();
   const captureDigest = "7".repeat(64);
@@ -1684,6 +1975,81 @@ function projectedV2GeometryBinary(
     uri: `/api/thread/assets/${assetDigest}.${extension}`,
     dependsOn: [],
   };
+}
+
+function projectedModuleGeometryBinary(
+  captureDigest: string,
+  assetDigest: string,
+  kind: "step" | "cad-model",
+  extension: "step" | "glb",
+): ThreadArtifact {
+  const role = extension === "step" ? "module-step" : "module-glb";
+  return {
+    id: `cad-asset-${captureDigest}-${role}-${assetDigest}`,
+    label: `${extension.toUpperCase()} module geometry asset`,
+    kind,
+    system: "digital-thread",
+    revision: assetDigest,
+    freshness: "fresh",
+    fingerprint: `sha256:${assetDigest}`,
+    uri: `/api/thread/assets/${assetDigest}.${extension}`,
+    producedBy: "build123d-module-assembler-v1@1",
+    dependsOn: [],
+  };
+}
+
+function moduleAssemblyFixture(): {
+  snapshot: ThreadWorkbenchSnapshot;
+  root: ThreadComponent;
+  capture: ThreadArtifact;
+  step: ThreadArtifact;
+  glb: ThreadArtifact;
+} {
+  const snapshot = minimalSnapshot();
+  const captureDigest = "a".repeat(64);
+  const stepDigest = "b".repeat(64);
+  const glbDigest = "c".repeat(64);
+  const capture = projectedGeometryCapture(captureDigest);
+  const step = projectedModuleGeometryBinary(
+    captureDigest,
+    stepDigest,
+    "step",
+    "step",
+  );
+  const glb = projectedModuleGeometryBinary(
+    captureDigest,
+    glbDigest,
+    "cad-model",
+    "glb",
+  );
+  snapshot.artifacts.push(capture, step, glb);
+  snapshot.graph.edges.push(
+    projectedTrace(capture.id, step.id),
+    projectedTrace(capture.id, glb.id),
+  );
+  const root: ThreadComponent = {
+    id: "system-root",
+    label: "Module",
+    kind: "assembly",
+    quantity: 1,
+    bindings: [{
+      provider: "digital-thread",
+      kind: "artifact",
+      id: step.id,
+      label: "Authoritative module STEP",
+      evidenceArtifactId: capture.id,
+      status: "verified",
+    }],
+    preview: {
+      provider: "build123d",
+      artifactId: glb.id,
+      mediaType: "model/gltf-binary",
+      url: glb.uri!,
+      sha256: glbDigest,
+    },
+  };
+  snapshot.components.components = [root];
+  return { snapshot, root, capture, step, glb };
 }
 
 function projectedTargetGeometryBinary(
