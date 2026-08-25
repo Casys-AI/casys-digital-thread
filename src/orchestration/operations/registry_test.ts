@@ -51,7 +51,6 @@ import {
   DECIDE_ACCEPT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION,
   DECIDE_REJECT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION,
 } from "../../domain/cad/assembly-integrity/assembly-integrity-evaluation-closeout-proposal.ts";
-import { VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-evaluation-proposal.ts";
 import {
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
