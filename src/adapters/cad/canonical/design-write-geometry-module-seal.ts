@@ -23,15 +23,18 @@ import {
   assertGeometryModuleInputBundleMatchesIdentity,
   GEOMETRY_MODULE_CAPTURE_SCHEMA,
   GEOMETRY_MODULE_DRAFT_CAPTURE_SCHEMA,
+  GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
   GEOMETRY_MODULE_MANIFEST_SCHEMA,
   type GeometryModuleCapture,
   type GeometryModuleChild,
   type GeometryModuleDraftCapture,
   GeometryModuleEvidenceError,
+  type GeometryModuleInputBundleIdentity,
   type GeometryModuleManifest,
   geometryModuleManifestFromDraft,
   parseGeometryModuleCapture,
   parseGeometryModuleDraftCapture,
+  recrossGeometryModuleIsolation,
 } from "../../../domain/cad/canonical/geometry-module-evidence.ts";
 import { GEOMETRY_PART_CAPTURE_SCHEMA } from "../../../domain/cad/canonical/geometry-part-manifest.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../../domain/cad/canonical/geometry-proposal.ts";
@@ -198,11 +201,24 @@ export async function loadReviewedGeometryModuleDraft(
       "geometry_module_manifest_mismatch: the signed module MRTR manifest is not exactly reconstructible from the draft.",
     );
   }
-  await reopenGeometryModuleChildrenAndBundle(
+  if (manifest.assembly === undefined) {
+    throw moduleTransition(
+      "geometry_module_bundle_mismatch: the signed module manifest is incomplete.",
+    );
+  }
+  const rebuiltInputBundle = await reopenGeometryModuleChildrenAndBundle(
     unsigned,
     options.base,
     options.geometryCaptures,
     options.canonicalDirectory,
+    manifest.assembly.inputBundle,
+  );
+  await recrossGeometryModuleIsolation(
+    rebuiltInputBundle,
+    unsigned.receipt,
+    unsigned.assemblyStep,
+    unsigned.assemblyGlb,
+    "$geometryModuleSeal.rebuiltInputBundle",
   );
   const outputs = await reopenGeometryModuleAssemblyOutputs(
     unsigned,
@@ -222,7 +238,8 @@ export async function reopenGeometryModuleChildrenAndBundle(
   base: ThreadSnapshot,
   geometryCaptures: GeometryCaptureReader,
   canonicalDirectory: string,
-): Promise<void> {
+  signedInputBundle: GeometryModuleInputBundleIdentity = draft.inputBundle,
+): Promise<GeometryModuleInputBundleIdentity> {
   const occurrences = [];
   for (const child of draft.children) {
     const stepBytes = await reopenExactChildAuthoritativeStep(
@@ -262,6 +279,11 @@ export async function reopenGeometryModuleChildrenAndBundle(
       draft.inputBundle,
       "$geometryModuleDraft.inputBundle",
     );
+    assertGeometryModuleInputBundleMatchesIdentity(
+      rebuilt,
+      signedInputBundle,
+      "$geometryModuleManifest.assembly.inputBundle",
+    );
   } catch (error) {
     if (error instanceof GeometryModuleEvidenceError) {
       throw moduleTransition(
@@ -270,6 +292,12 @@ export async function reopenGeometryModuleChildrenAndBundle(
     }
     throw error;
   }
+  return {
+    schemaVersion: GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
+    fingerprint: rebuilt.fingerprint,
+    byteCount: rebuilt.bytes.byteLength,
+    manifest: rebuilt.manifest,
+  };
 }
 
 export async function reopenGeometryModuleAssemblyOutputs(
