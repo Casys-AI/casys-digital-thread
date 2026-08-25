@@ -333,6 +333,82 @@ Deno.test("assembly-integrity transforms recross expected XYZ and reject non-rig
   );
 });
 
+Deno.test("assembly-integrity transforms recross the Build123d multi-axis placement order", async () => {
+  const placement = {
+    translationMm: [4, 5, 6] as const,
+    rotationDeg: [10, 20, 30] as const,
+  };
+  const matrix = assemblyIntegrityExpectedPlacementMatrix(placement);
+  const expectedRow = [
+    0.8137976813493738,
+    -0.46984631039295416,
+    0.3420201433256687,
+  ];
+  for (const [index, value] of expectedRow.entries()) {
+    assertEquals(Math.abs(matrix[index]! - value) < 1e-12, true);
+  }
+  assertEquals(matrix.slice(3, 4), [4]);
+  assertEquals(matrix.slice(7, 8), [5]);
+  assertEquals(matrix.slice(11), [6, 0, 0, 0, 1]);
+
+  const { source } = await validSource({ armPlacement: placement });
+  const bundle = await createAssemblyIntegrityInputBundle(source);
+  const observation = observedResult(bundle);
+  const parsed = parseAssemblyIntegrityObservation(observation, bundle);
+  const arm = parsed.occurrences.find((occurrence) =>
+    occurrence.usageElementId === "usage-arm"
+  );
+  assertEquals(arm?.transform, {
+    status: "observed",
+    value: {
+      expectedPlacement: placement,
+      expectedMatrix: matrix,
+      observedMatrix: matrix,
+    },
+  });
+
+  const oldRzRyRx = [
+    0.8137976813493738,
+    -0.44096961052988237,
+    0.37852230636979245,
+    4,
+    0.46984631039295416,
+    0.8825641192593856,
+    0.01802831123629725,
+    5,
+    -0.3420201433256687,
+    0.16317591116653482,
+    0.9254165783983234,
+    6,
+    0,
+    0,
+    0,
+    1,
+  ];
+  assertThrows(
+    () =>
+      parseAssemblyIntegrityObservation({
+        ...observation,
+        occurrences: observation.occurrences.map((occurrence) =>
+          occurrence.usageElementId === "usage-arm"
+            ? {
+              ...occurrence,
+              transform: {
+                status: "observed" as const,
+                value: {
+                  ...occurrence.transform.value,
+                  expectedMatrix: oldRzRyRx,
+                },
+              },
+            }
+            : occurrence
+        ),
+      }, bundle),
+    TypeError,
+    "must be derived from the exact bundle placement",
+  );
+});
+
 Deno.test("mcp-build123d adapter sends only exact STEP and normalizes factual provenance", async () => {
   const { source } = await validSource();
   const profiles = new FixedAssemblyIntegrityObserverProfileCatalog();
@@ -592,11 +668,22 @@ Deno.test("exact reopener recrosses geometry-module primary, sealed STEP graph, 
   }
 });
 
-async function validSource() {
+async function validSource(
+  options: {
+    readonly armPlacement?: {
+      readonly translationMm: readonly [number, number, number];
+      readonly rotationDeg: readonly [number, number, number];
+    };
+  } = {},
+) {
   const childArm = step("CHILD ARM");
   const childBase = step("CHILD BASE");
   const assemblyStep = step("ASSEMBLY");
   const assemblyGlb = new Uint8Array([0x67, 0x6c, 0x54, 0x46, 1, 2, 3, 4]);
+  const armPlacement = options.armPlacement ?? {
+    translationMm: [0, 0, 0] as const,
+    rotationDeg: [0, 90, 0] as const,
+  };
   const childBundle = await createGeometryModuleInputBundle([
     {
       usageElementId: "usage-base",
@@ -612,7 +699,7 @@ async function validSource() {
     {
       usageElementId: "usage-arm",
       partDefinitionElementId: "definition-arm",
-      placement: { translationMm: [0, 0, 0], rotationDeg: [0, 90, 0] },
+      placement: armPlacement,
       childCapture: {
         schemaVersion: "geometry-part-capture/1.0",
         artifactId: "geometry-part-arm",

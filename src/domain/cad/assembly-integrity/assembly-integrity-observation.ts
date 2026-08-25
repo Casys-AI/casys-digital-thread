@@ -603,8 +603,8 @@ function sameTransformMatrix(
 }
 
 /**
- * Convert the bundle's right-handed, millimetre, extrinsic XYZ placement to a
- * canonical row-major homogeneous matrix. The composition is Rz * Ry * Rx,
+ * Convert the bundle's right-handed, millimetre, Build123d placement to a
+ * canonical row-major homogeneous matrix. The composition is Rx * Ry * Rz,
  * then translation. This is one-way recrossing only: it never attempts an
  * Euler inversion of an observed provider matrix.
  */
@@ -622,17 +622,17 @@ export function assemblyIntegrityExpectedPlacementMatrix(
   const cosineZ = Math.cos(rotationZ);
   const sineZ = Math.sin(rotationZ);
   return matrix16([
-    cosineZ * cosineY,
-    cosineZ * sineY * sineX - sineZ * cosineX,
-    cosineZ * sineY * cosineX + sineZ * sineX,
+    cosineY * cosineZ,
+    -cosineY * sineZ,
+    sineY,
     translationX,
-    sineZ * cosineY,
-    sineZ * sineY * sineX + cosineZ * cosineX,
-    sineZ * sineY * cosineX - cosineZ * sineX,
+    sineX * sineY * cosineZ + cosineX * sineZ,
+    -sineX * sineY * sineZ + cosineX * cosineZ,
+    -sineX * cosineY,
     translationY,
-    -sineY,
-    cosineY * sineX,
-    cosineY * cosineX,
+    -cosineX * sineY * cosineZ + sineX * sineZ,
+    cosineX * sineY * sineZ + sineX * cosineZ,
+    cosineX * cosineY,
     translationZ,
     0,
     0,
