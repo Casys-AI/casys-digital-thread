@@ -28,6 +28,14 @@ Deno.test("loadFleetManifest accepts the workspace manifest and preserves postur
     "first-party-local-privileged",
   );
   assertEquals(manifest.servers[1].trust?.executesArbitraryCode, true);
+  for (const serverId of ["build123d", "build123d-sandbox"]) {
+    const build123d = manifest.servers.find((server) => server.id === serverId);
+    assertEquals(build123d?.expectedTools, [
+      "build123d_execute",
+      "build123d_export",
+      "build123d_observe_assembly_integrity",
+    ]);
+  }
   const erpnext = manifest.servers.find((server) => server.id === "erpnext");
   assertEquals(erpnext?.expectedTools, [
     "erpnext_bom_list",
@@ -71,6 +79,7 @@ Deno.test("toolchain Compose defaults remain in parity with fleet desired images
     const [serverId, imageVariable] of [
       ["syson", "MCP_SYSON_IMAGE"],
       ["build123d", "TOOLCHAIN_IMAGE"],
+      ["build123d-sandbox", "TOOLCHAIN_IMAGE"],
       ["calculix", "MCP_CALCULIX_IMAGE"],
     ] as const
   ) {

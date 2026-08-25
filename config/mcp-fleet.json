@@ -82,11 +82,12 @@
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3014/mcp",
       "healthUrl": "http://127.0.0.1:3014/health",
-      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:c04922cc2c0f503c34277c5a1dc81ab28b141945acad90345e2d16882535b4bc",
+      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:7a255f24448ddb6de496c4e47c2d1634c63daea67e9082b558257287215b23b5",
       "required": true,
       "expectedTools": [
         "build123d_execute",
-        "build123d_export"
+        "build123d_export",
+        "build123d_observe_assembly_integrity"
       ],
       "expectedViews": [
         "ui://mcp-build123d/results-viewer",
@@ -117,11 +118,12 @@
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3024/mcp",
       "healthUrl": "http://127.0.0.1:3024/health",
-      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:c04922cc2c0f503c34277c5a1dc81ab28b141945acad90345e2d16882535b4bc",
+      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:7a255f24448ddb6de496c4e47c2d1634c63daea67e9082b558257287215b23b5",
       "required": false,
       "expectedTools": [
         "build123d_execute",
-        "build123d_export"
+        "build123d_export",
+        "build123d_observe_assembly_integrity"
       ],
       "expectedViews": [
         "ui://mcp-build123d/results-viewer",
