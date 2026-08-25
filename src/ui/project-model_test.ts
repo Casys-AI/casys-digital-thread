@@ -448,9 +448,9 @@ Deno.test("Project Path wraps a later architecture-capture tip under the origina
   );
 });
 
-Deno.test("phase status labels name planned explicitly and never fall through to Gate satisfied", () => {
+Deno.test("phase status labels describe activity progress without claiming gate satisfaction", () => {
   assertEquals(phaseStatusLabel("planned"), "Planned");
-  assertEquals(phaseStatusLabel("completed"), "Gate satisfied");
+  assertEquals(phaseStatusLabel("completed"), "Completed");
   assertEquals(phaseStatusLabel("active"), "In progress");
   assertEquals(phaseStatusLabel("blocked"), "Blocked");
 });

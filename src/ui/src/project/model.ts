@@ -678,7 +678,7 @@ export function projectStatusLabel(status: EngineeringProjectStatus): string {
 }
 
 export function phaseStatusLabel(status: EngineeringPhaseStatus): string {
-  if (status === "completed") return "Gate satisfied";
+  if (status === "completed") return "Completed";
   if (status === "active") return "In progress";
   if (status === "blocked") return "Blocked";
   if (status === "planned") return "Planned";
