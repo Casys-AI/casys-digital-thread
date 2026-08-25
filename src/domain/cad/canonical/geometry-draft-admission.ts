@@ -7,7 +7,12 @@
  */
 
 import { listNamedNumericLevers } from "../../compile/source/named-cad-levers.ts";
-import { exactRecord, literalValue, safeId } from "../../kernel/case-validation.ts";
+import {
+  exactRecord,
+  literalValue,
+  nonEmptyText,
+  safeId,
+} from "../../kernel/case-validation.ts";
 import { fingerprintsEqual } from "../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
 
@@ -103,7 +108,7 @@ export function parseGeometryPartDraftAdmission(
     ["partDefinitionElementId", "label"],
     `${path}.target`,
   );
-  const partDefinitionElementId = safeId(
+  const partDefinitionElementId = nonEmptyText(
     target.partDefinitionElementId,
     `${path}.target.partDefinitionElementId`,
   );
@@ -202,7 +207,7 @@ export function requireCanonicalGeometryPartDraftAdmission(
     ["partDefinitionElementId", "label", "script", "scriptHash", "files"],
     "$geometryPartDraft.target",
   );
-  const partDefinitionElementId = safeId(
+  const partDefinitionElementId = nonEmptyText(
     target.partDefinitionElementId,
     "$geometryPartDraft.target.partDefinitionElementId",
   );

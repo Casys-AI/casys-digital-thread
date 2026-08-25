@@ -13,6 +13,7 @@ import {
   deepFreeze,
   exactRecord,
   literalValue,
+  nonEmptyText as opaqueElementId,
   positiveInteger,
   safeId,
 } from "../../kernel/case-validation.ts";
@@ -401,7 +402,7 @@ function parseTarget(value: unknown): GeometryPartManifest["target"] {
     ? parseFiles(target.files, "$geometryPartManifest.target.files")
     : undefined;
   return {
-    partDefinitionElementId: safeId(
+    partDefinitionElementId: opaqueElementId(
       target.partDefinitionElementId,
       "$geometryPartManifest.target.partDefinitionElementId",
     ),

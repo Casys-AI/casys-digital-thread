@@ -62,3 +62,13 @@ export {
   type GeometryModuleCapture,
   parseGeometryModuleCapture,
 } from "./geometry-module-capture.ts";
+
+export {
+  type CanonicalGeometryCapture,
+  type GeometryPartCapture,
+  type GeometryPartCaptureArchitectureBasis,
+  type GeometryPartCapturePreviewProducer,
+  type GeometryPartCaptureSourceScript,
+  parseCanonicalGeometryCapture,
+  parseGeometryPartCapture,
+} from "./geometry-part-capture.ts";

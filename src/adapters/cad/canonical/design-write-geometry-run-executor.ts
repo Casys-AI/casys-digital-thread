@@ -137,9 +137,11 @@ import {
   geometryPartManifestFromDraft,
 } from "./geometry-part-draft-capture.ts";
 import {
-  type GeometrySourceAnalysisReference,
   requireGeometrySourceAnalysis,
 } from "../source/geometry-source-analysis-capture.ts";
+import type {
+  GeometrySourceAnalysisReference,
+} from "../../../domain/cad/source/geometry-source-analysis-reference.ts";
 import { assertThreadSnapshotLineageIntact } from "../../shared/stores/thread-snapshot-lineage.ts";
 import type { EngineeringProjectRunLease } from "../../shared/stores/file-engineering-project-run-lease.ts";
 import {

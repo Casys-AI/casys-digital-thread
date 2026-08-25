@@ -65,8 +65,10 @@ import type { FileCaptureStore } from "../../shared/cas/file-capture-store.ts";
 import {
   type GeometrySourceAnalysisCaptureDependencies,
   GeometrySourceAnalysisCaptureService,
-  type GeometrySourceAnalysisReference,
 } from "../source/geometry-source-analysis-capture.ts";
+import type {
+  GeometrySourceAnalysisReference,
+} from "../../../domain/cad/source/geometry-source-analysis-reference.ts";
 
 // ── Schema constant ───────────────────────────────────────────────────────────
 

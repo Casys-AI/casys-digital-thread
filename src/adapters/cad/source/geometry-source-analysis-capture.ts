@@ -19,12 +19,15 @@ import {
 } from "../../../domain/compile/source/source-analysis.ts";
 import type { SourceAnalysisFrontend } from "../../../domain/compile/source/source-analysis-frontend.ts";
 import type { FileCaptureStore } from "../../shared/cas/file-capture-store.ts";
+import {
+  type GeometrySourceAnalysisReference,
+  geometrySourceIdFor,
+  type GeometrySourceSelector,
+  parseGeometrySourceAnalysisReference,
+  parseGeometrySourceSelector,
+} from "../../../domain/cad/source/geometry-source-analysis-reference.ts";
 
 export const GEOMETRY_SOURCE_CAPTURE_SCHEMA = "geometry-source-capture/1.0" as const;
-
-export type GeometrySourceSelector =
-  | { readonly kind: "assembly" }
-  | { readonly kind: "part-definition"; readonly elementId: string };
 
 /** Immutable source envelope retained before the local frontend observes it. */
 export interface GeometrySourceCapture {
@@ -34,15 +37,6 @@ export interface GeometrySourceCapture {
   readonly selector: GeometrySourceSelector;
   readonly sourceText: string;
   readonly sourceFingerprint: ContentFingerprint;
-}
-
-/** The only reference a later draft/seal needs to retain for this source. */
-export interface GeometrySourceAnalysisReference {
-  readonly sourceId: string;
-  readonly selector: GeometrySourceSelector;
-  readonly sourceFingerprint: ContentFingerprint;
-  readonly sourceCaptureFingerprint: ContentFingerprint;
-  readonly analysisFingerprint: ContentFingerprint;
 }
 
 export interface GeometrySourceAnalysisCaptureDependencies {
@@ -95,7 +89,7 @@ export class GeometrySourceAnalysisCaptureService {
   }): Promise<GeometrySourceAnalysisReference> {
     const selector = normalizeSelector(input.selector);
     const sourceText = requireSourceText(input.sourceText);
-    const sourceId = await sourceIdFor(selector);
+    const sourceId = await geometrySourceIdFor(selector);
     const sourceFingerprint = await fingerprintUtf8(sourceText);
     const sourceCapture: GeometrySourceCapture = {
       schemaVersion: GEOMETRY_SOURCE_CAPTURE_SCHEMA,
@@ -173,7 +167,7 @@ export async function requireGeometrySourceAnalysis(
 ): Promise<VerifiedGeometrySourceAnalysis> {
   let reference: GeometrySourceAnalysisReference;
   try {
-    reference = await parseReference(value);
+    reference = await parseGeometrySourceAnalysisReference(value);
   } catch (error) {
     throw new GeometrySourceAnalysisCaptureError(
       "source_reference_invalid",
@@ -270,71 +264,7 @@ export async function requireGeometrySourceAnalysis(
 }
 
 function normalizeSelector(selector: GeometrySourceSelector): GeometrySourceSelector {
-  if (selector.kind === "assembly") {
-    return Object.freeze({ kind: "assembly" });
-  }
-  if (selector.kind === "part-definition") {
-    return Object.freeze({
-      kind: "part-definition",
-      elementId: requirePartDefinitionElementId(selector.elementId),
-    });
-  }
-  throw new TypeError(
-    "Geometry source selector kind must be assembly or part-definition.",
-  );
-}
-
-async function sourceIdFor(selector: GeometrySourceSelector): Promise<string> {
-  if (selector.kind === "assembly") return "cad-assembly";
-  // Provider element ids are opaque identities, not Casys safe ids. Hash the
-  // exact value for the bundle-local id and retain the unmodified elementId in
-  // the selector. Two definitions with equal source bytes therefore remain
-  // distinct without narrowing the provider's identifier alphabet.
-  const elementIdFingerprint = await fingerprintUtf8(selector.elementId);
-  return `cad-part-definition:${elementIdFingerprint.digest}`;
-}
-
-async function parseReference(
-  value: unknown,
-): Promise<GeometrySourceAnalysisReference> {
-  const reference = exactRecord(
-    value,
-    [
-      "sourceId",
-      "selector",
-      "sourceFingerprint",
-      "sourceCaptureFingerprint",
-      "analysisFingerprint",
-    ],
-    "$geometrySourceAnalysisReference",
-  );
-  const selector = parseSelector(
-    reference.selector,
-    "$geometrySourceAnalysisReference.selector",
-  );
-  const sourceId = requireSafeId(
-    reference.sourceId,
-    "$geometrySourceAnalysisReference.sourceId",
-  );
-  if (sourceId !== await sourceIdFor(selector)) {
-    throw new TypeError("sourceId does not match the exact selector");
-  }
-  return Object.freeze({
-    sourceId,
-    selector,
-    sourceFingerprint: parseFingerprint(
-      reference.sourceFingerprint,
-      "$geometrySourceAnalysisReference.sourceFingerprint",
-    ),
-    sourceCaptureFingerprint: parseFingerprint(
-      reference.sourceCaptureFingerprint,
-      "$geometrySourceAnalysisReference.sourceCaptureFingerprint",
-    ),
-    analysisFingerprint: parseFingerprint(
-      reference.analysisFingerprint,
-      "$geometrySourceAnalysisReference.analysisFingerprint",
-    ),
-  });
+  return parseGeometrySourceSelector(selector);
 }
 
 function parseSourceCapture(value: unknown): GeometrySourceCapture {
@@ -360,30 +290,15 @@ function parseSourceCapture(value: unknown): GeometrySourceCapture {
     schemaVersion: GEOMETRY_SOURCE_CAPTURE_SCHEMA,
     kind: "geometry-source",
     sourceId: requireSafeId(source.sourceId, "$geometrySourceCapture.sourceId"),
-    selector: parseSelector(source.selector, "$geometrySourceCapture.selector"),
+    selector: parseGeometrySourceSelector(
+      source.selector,
+      "$geometrySourceCapture.selector",
+    ),
     sourceText: requireSourceText(source.sourceText),
     sourceFingerprint: parseFingerprint(
       source.sourceFingerprint,
       "$geometrySourceCapture.sourceFingerprint",
     ),
-  });
-}
-
-function parseSelector(value: unknown, path: string): GeometrySourceSelector {
-  const raw = value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
-  if (raw?.kind === "assembly") {
-    exactRecord(value, ["kind"], path);
-    return Object.freeze({ kind: "assembly" });
-  }
-  const selector = exactRecord(value, ["kind", "elementId"], path);
-  if (selector.kind !== "part-definition") {
-    throw new TypeError(`${path}.kind must be assembly or part-definition`);
-  }
-  return Object.freeze({
-    kind: "part-definition",
-    elementId: requirePartDefinitionElementId(selector.elementId),
   });
 }
 
@@ -405,15 +320,6 @@ function requireSafeId(value: unknown, path: string): string {
     !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(value)
   ) {
     throw new TypeError(`${path} must be a safe id`);
-  }
-  return value;
-}
-
-function requirePartDefinitionElementId(value: unknown): string {
-  if (typeof value !== "string" || value.length === 0 || value !== value.trim()) {
-    throw new TypeError(
-      "PartDefinition elementId must be non-empty and have no edge whitespace.",
-    );
   }
   return value;
 }

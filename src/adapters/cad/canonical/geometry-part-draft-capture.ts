@@ -32,8 +32,10 @@ import type { FileCaptureStore } from "../../shared/cas/file-capture-store.ts";
 import {
   type GeometrySourceAnalysisCaptureDependencies,
   GeometrySourceAnalysisCaptureService,
-  type GeometrySourceAnalysisReference,
 } from "../source/geometry-source-analysis-capture.ts";
+import type {
+  GeometrySourceAnalysisReference,
+} from "../../../domain/cad/source/geometry-source-analysis-reference.ts";
 import { GEOMETRY_DRAFT_ASSETS_DIR } from "./geometry-draft-capture.ts";
 
 /** Fixed by the server; no caller can choose an export profile. */
