@@ -77,7 +77,7 @@ services:
     # Keep the SysON sidecar independently selectable for a locally verified
     # protocol fix. This avoids replacing it with the shared toolchain image
     # when Compose is started for build123d or CalculiX.
-    image: "${MCP_SYSON_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:4d6bb732aa427bab2af96f00b814f71ba688a1feb60f141891d3d9824fc82b0c}"
+    image: "${MCP_SYSON_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:c04922cc2c0f503c34277c5a1dc81ab28b141945acad90345e2d16882535b4bc}"
     command: ["syson", "--port=3009", "--hostname=0.0.0.0"]
     environment:
       SYSON_URL: http://syson-app:8080
@@ -89,7 +89,7 @@ services:
     networks: [chain]
 
   mcp-build123d:
-    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:4d6bb732aa427bab2af96f00b814f71ba688a1feb60f141891d3d9824fc82b0c}"
+    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:c04922cc2c0f503c34277c5a1dc81ab28b141945acad90345e2d16882535b4bc}"
     command: ["build123d", "--port=3014", "--hostname=0.0.0.0"]
     ports:
       - "127.0.0.1:3014:3014"
@@ -124,7 +124,7 @@ services:
   # its bytes out with `docker compose cp` + fail-closed SHA-256 verification,
   # exactly as it already does for attested assets.
   mcp-build123d-sandbox:
-    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:4d6bb732aa427bab2af96f00b814f71ba688a1feb60f141891d3d9824fc82b0c}"
+    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:c04922cc2c0f503c34277c5a1dc81ab28b141945acad90345e2d16882535b4bc}"
     command: ["build123d", "--port=3014", "--hostname=0.0.0.0"]
     ports:
       - "127.0.0.1:3024:3014"
@@ -206,7 +206,7 @@ services:
   # prusaslicer and spice mount /exports read-only: they verify artifacts the
   # chain produced (or dropped) there — they never write into it.
   mcp-dfm:
-    image: "${MCP_DFM_IMAGE:-ghcr.io/casys-ai/mcp-dfm@sha256:b0013717a77712bab741ec1ec54c10f74b09ac66ad66f988e33d96ca660d93a6}"
+    image: "${MCP_DFM_IMAGE:-ghcr.io/casys-ai/mcp-dfm@sha256:a31aa702e45e4445c67454f807832b60455211664fa98ff36f54948aedec4fb9}"
     ports:
       - "127.0.0.1:3018:3018"
     volumes:
@@ -225,7 +225,7 @@ services:
     networks: [chain]
 
   mcp-tolerance:
-    image: "${MCP_TOLERANCE_IMAGE:-ghcr.io/casys-ai/mcp-tolerance@sha256:0a45eaade244bfb4beb0c179bd42efb0aabe9ec1de20edaff1fc1b069b03f323}"
+    image: "${MCP_TOLERANCE_IMAGE:-ghcr.io/casys-ai/mcp-tolerance@sha256:fb84ac18847561c9003d0ca19111fa8ab2afe7e99dfcd325129de279dff01aea}"
     ports:
       - "127.0.0.1:3019:3019"
     healthcheck:
@@ -242,7 +242,7 @@ services:
     networks: [chain]
 
   mcp-prusaslicer:
-    image: "${MCP_PRUSASLICER_IMAGE:-ghcr.io/casys-ai/mcp-prusaslicer@sha256:6d55cb3d8c62d1f0372fa65a772a5f6941b7175c49881dfaba168cb1a3389975}"
+    image: "${MCP_PRUSASLICER_IMAGE:-ghcr.io/casys-ai/mcp-prusaslicer@sha256:52bb17da9db8fa59e62ce49d5695cd9982ea91fb0150f720e029ef9612f0a342}"
     ports:
       - "127.0.0.1:3022:3022"
     volumes:
