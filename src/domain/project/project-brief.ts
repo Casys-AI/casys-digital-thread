@@ -154,6 +154,25 @@ export interface ProjectBriefSourceRef {
   readonly reference: string;
 }
 
+/**
+ * A versioned, provider-neutral verification method authority.
+ *
+ * It identifies the semantic method that may legitimately own a verification
+ * activity. It is deliberately not a provider, MCP tool, runtime, or solver
+ * selection.
+ */
+export interface ProjectBriefVerificationAuthority {
+  readonly id: string;
+  readonly version: string;
+}
+
+export function sameProjectBriefVerificationAuthority(
+  left: ProjectBriefVerificationAuthority,
+  right: ProjectBriefVerificationAuthority,
+): boolean {
+  return left.id === right.id && left.version === right.version;
+}
+
 export interface ProjectBriefItem {
   readonly id: string;
   readonly kind: ProjectBriefItemKind;
@@ -169,6 +188,11 @@ export interface ProjectBriefItem {
    * brief items. Its absence remains the V1 historical representation.
    */
   readonly dependsOnItemIds?: readonly string[];
+  /**
+   * V2-only authority for one verification activity. It is absent for
+   * unqualified activities and is never a provider/runtime configuration.
+   */
+  readonly verificationAuthority?: ProjectBriefVerificationAuthority;
 }
 
 export interface ProjectBriefPreviousRevision {

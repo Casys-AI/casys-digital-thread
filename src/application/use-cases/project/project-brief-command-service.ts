@@ -28,6 +28,10 @@ import {
   type ProjectQuestionOption,
   type ProjectQuestionRisk,
 } from "../../../domain/project/project-brief.ts";
+import {
+  safeId as safeAuthorityId,
+  safeVersion,
+} from "../../../domain/kernel/case-validation.ts";
 import type { ContentFingerprint } from "../../../domain/thread/thread-snapshot.ts";
 
 export interface StartEngineeringProjectCommand {
@@ -357,6 +361,12 @@ export class ProjectBriefCommandService {
             }
             if (item.dependsOnItemIds !== undefined) {
               copy.dependsOnItemIds = [...item.dependsOnItemIds];
+            }
+            if (item.verificationAuthority !== undefined) {
+              copy.verificationAuthority = {
+                id: item.verificationAuthority.id,
+                version: item.verificationAuthority.version,
+              };
             }
             return copy;
           }),
@@ -829,6 +839,17 @@ function validateBriefItems(items: readonly ProjectBriefItem[]): void {
         `Only a V2 success-criterion or verification-activity may declare dependsOnItemIds (item ${item.id}).`,
       );
     }
+    if (item.verificationAuthority !== undefined) {
+      if (item.kind !== "verification-activity") {
+        invalidInput(
+          `Only a V2 verification-activity may declare verificationAuthority (item ${item.id}).`,
+        );
+      }
+      validateVerificationAuthority(
+        item.verificationAuthority,
+        `items[${index}].verificationAuthority`,
+      );
+    }
     if (item.kind === "assumption") {
       if (item.owner === undefined || item.reviewTrigger === undefined) {
         invalidInput(
@@ -863,6 +884,31 @@ function validateBriefItems(items: readonly ProjectBriefItem[]): void {
   if (objectives !== 1 || missions === 0 || successCriteria === 0) {
     invalidInput(
       `items must include exactly one objective, at least one mission-scenario, and at least one success-criterion (got objective=${objectives}, mission-scenario=${missions}, success-criterion=${successCriteria}).`,
+    );
+  }
+}
+
+function validateVerificationAuthority(
+  value: NonNullable<ProjectBriefItem["verificationAuthority"]>,
+  name: string,
+): void {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    invalidInput(`${name} must be an object with id and version.`);
+  }
+  const authority = value as unknown as Record<string, unknown>;
+  const keys = Object.keys(authority);
+  if (
+    keys.length !== 2 || !Object.hasOwn(authority, "id") ||
+    !Object.hasOwn(authority, "version")
+  ) {
+    invalidInput(`${name} must contain exactly id and version.`);
+  }
+  try {
+    safeAuthorityId(authority.id, `${name}.id`);
+    safeVersion(authority.version, `${name}.version`);
+  } catch {
+    invalidInput(
+      `${name} must contain a stable authority id and a safe authority version.`,
     );
   }
 }

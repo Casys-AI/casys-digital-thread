@@ -18,6 +18,7 @@ import {
   validateArray,
   validateJson,
 } from "./engineering-project-value-validation.ts";
+import { safeId, safeVersion } from "../../kernel/case-validation.ts";
 
 /**
  * Exact JSON-shape walk of one project snapshot. Graph invariants stay on the
@@ -448,7 +449,7 @@ function validateProjectBriefItem(
     path,
     ["id", "kind", "statement", "sourceRefs"],
     contractVersion === "2.0"
-      ? ["owner", "reviewTrigger", "dependsOnItemIds"]
+      ? ["owner", "reviewTrigger", "dependsOnItemIds", "verificationAuthority"]
       : ["owner", "reviewTrigger"],
     issues,
   );
@@ -527,9 +528,7 @@ function validateProjectBriefItem(
   }
   if (isGate) {
     stringArray(input.dependsOnItemIds, `${path}.dependsOnItemIds`, issues);
-    return;
-  }
-  if (hasDependencyDeclaration) {
+  } else if (hasDependencyDeclaration) {
     issueWithRecovery(
       issues,
       "invalid_gate_dependency_declaration",
@@ -540,6 +539,56 @@ function validateProjectBriefItem(
         itemKind: typeof input.kind === "string" ? input.kind : "",
       },
       "Move dependsOnItemIds to the gate that depends on this normative item.",
+    );
+  }
+  const hasVerificationAuthority = Object.hasOwn(
+    input,
+    "verificationAuthority",
+  );
+  if (hasVerificationAuthority && input.kind !== "verification-activity") {
+    issueWithRecovery(
+      issues,
+      "invalid_verification_authority_owner",
+      `${path}.verificationAuthority`,
+      "only a verification-activity may declare a verification authority",
+      { itemKind: typeof input.kind === "string" ? input.kind : "" },
+      "Move verificationAuthority to the verification activity it qualifies.",
+    );
+  }
+  if (hasVerificationAuthority) {
+    validateVerificationAuthority(
+      input.verificationAuthority,
+      `${path}.verificationAuthority`,
+      issues,
+    );
+  }
+}
+
+function validateVerificationAuthority(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(value, path, ["id", "version"], [], issues);
+  if (!input) return;
+  try {
+    safeId(input.id, `${path}.id`);
+  } catch {
+    issue(
+      issues,
+      "invalid_verification_authority_id",
+      `${path}.id`,
+      "must be a stable authority identifier",
+    );
+  }
+  try {
+    safeVersion(input.version, `${path}.version`);
+  } catch {
+    issue(
+      issues,
+      "invalid_verification_authority_version",
+      `${path}.version`,
+      "must be a safe authority version",
     );
   }
 }

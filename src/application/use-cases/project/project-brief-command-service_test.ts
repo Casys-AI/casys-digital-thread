@@ -429,6 +429,64 @@ Deno.test("V2 briefs require explicit gate dependencies while V1 brief records r
   assertEquals(collectEngineeringProjectIssues(historical), []);
 });
 
+Deno.test("V2 verification authorities round-trip only on verification activities", async () => {
+  const service = serviceFor(new MemoryProjectStore());
+  const started = await start(service);
+  const items = briefItems("Demonstrate a reviewable system safely").map((item) =>
+    item.id === "verify-traceable-record"
+      ? {
+        ...item,
+        verificationAuthority: { id: "assembly-integrity", version: "1.0" },
+      }
+      : item
+  );
+
+  const proposed = await service.proposeBrief(AGENT, {
+    ...context("propose-authorized-verification", started.revision),
+    items,
+  });
+  const authority = proposed.framing!.proposedBrief!.items.find((item) =>
+    item.id === "verify-traceable-record"
+  )?.verificationAuthority;
+  assertEquals(authority, { id: "assembly-integrity", version: "1.0" });
+
+  const persistedWrongOwner = structuredClone(proposed) as unknown as {
+    framing: {
+      proposedBrief: {
+        items: Array<Record<string, unknown>>;
+      };
+    };
+  };
+  persistedWrongOwner.framing.proposedBrief.items.find((item) =>
+    item.id === "success-reviewed-system"
+  )!.verificationAuthority = { id: "assembly-integrity", version: "1.0" };
+  assertEquals(
+    collectEngineeringProjectIssues(persistedWrongOwner).some((issue) =>
+      issue.code === "invalid_verification_authority_owner"
+    ),
+    true,
+  );
+
+  const wrongOwner = briefItems("Demonstrate a reviewable system safely").map((item) =>
+    item.id === "success-reviewed-system"
+      ? {
+        ...item,
+        verificationAuthority: { id: "assembly-integrity", version: "1.0" },
+      }
+      : item
+  );
+  const rejectingService = serviceFor(new MemoryProjectStore());
+  const rejectingProject = await start(rejectingService);
+  await assertCommandError(
+    () =>
+      rejectingService.proposeBrief(AGENT, {
+        ...context("reject-authority-on-criterion", rejectingProject.revision),
+        items: wrongOwner,
+      }),
+    "invalid_input",
+  );
+});
+
 Deno.test("gate claims resolve only to canonical V2 gates and preserve link status", async () => {
   const store = new MemoryProjectStore();
   const briefs = serviceFor(store);

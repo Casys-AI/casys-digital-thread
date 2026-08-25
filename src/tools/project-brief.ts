@@ -36,6 +36,15 @@ const MUTATION = {
 } as const;
 
 const STRING = { type: "string", minLength: 1 } as const;
+const VERIFICATION_AUTHORITY = {
+  type: "object",
+  properties: {
+    id: STRING,
+    version: STRING,
+  },
+  required: ["id", "version"],
+  additionalProperties: false,
+} as const;
 const SOURCE = {
   type: "object",
   properties: {
@@ -348,7 +357,7 @@ const projectBriefProposeTool: MCPTool = {
       type: "array",
       minItems: 3,
       description:
-        "Must include exactly one objective, at least one mission-scenario, and at least one success-criterion. V2 gates require dependsOnItemIds ([] declares independence). Assumptions require owner and reviewTrigger.",
+        "Must include exactly one objective, at least one mission-scenario, and at least one success-criterion. V2 gates require dependsOnItemIds ([] declares independence). verificationAuthority is optional only on verification-activity items and names a versioned semantic method, never a provider. Assumptions require owner and reviewTrigger.",
       items: {
         type: "object",
         properties: {
@@ -364,6 +373,7 @@ const projectBriefProposeTool: MCPTool = {
             description:
               "Required by the V2 brief contract on success-criterion and verification-activity items. Use [] only to declare independence from other brief items.",
           },
+          verificationAuthority: VERIFICATION_AUTHORITY,
         },
         required: ["id", "kind", "statement", "sourceRefs"],
         additionalProperties: false,
@@ -566,7 +576,7 @@ function briefItems(value: unknown): ProjectBriefItem[] {
     exactKeys(
       input,
       ["id", "kind", "statement", "sourceRefs"],
-      ["owner", "reviewTrigger", "dependsOnItemIds"],
+      ["owner", "reviewTrigger", "dependsOnItemIds", "verificationAuthority"],
       path,
     );
     if (!Array.isArray(input.sourceRefs)) {
@@ -609,8 +619,23 @@ function briefItems(value: unknown): ProjectBriefItem[] {
         `${path}.dependsOnItemIds`,
       );
     }
+    if (input.verificationAuthority !== undefined) {
+      item.verificationAuthority = verificationAuthority(
+        input.verificationAuthority,
+        `${path}.verificationAuthority`,
+      );
+    }
     return item;
   });
+}
+
+function verificationAuthority(value: unknown, path: string) {
+  const authority = exactRecord(value, path);
+  exactKeys(authority, ["id", "version"], [], path);
+  return {
+    id: requiredString(authority.id, `${path}.id`),
+    version: requiredString(authority.version, `${path}.version`),
+  };
 }
 
 async function requiredPendingBrief(

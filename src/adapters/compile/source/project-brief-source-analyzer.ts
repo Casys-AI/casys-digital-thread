@@ -10,6 +10,7 @@ import {
   exactRecord,
   nonEmptyText,
   safeId,
+  safeVersion,
 } from "../../../domain/kernel/case-validation.ts";
 import {
   SOURCE_ANALYSIS_SCHEMA,
@@ -240,7 +241,9 @@ function parseBriefItem(
   exactKeys(
     raw,
     ["id", "kind", "statement", "sourceRefs"],
-    isV2 ? ["owner", "reviewTrigger", "dependsOnItemIds"] : ["owner", "reviewTrigger"],
+    isV2
+      ? ["owner", "reviewTrigger", "dependsOnItemIds", "verificationAuthority"]
+      : ["owner", "reviewTrigger"],
     path,
   );
   const id = safeId(raw.id, `${path}.id`);
@@ -271,6 +274,21 @@ function parseBriefItem(
     );
   }
   const hasDependencies = Object.hasOwn(raw, "dependsOnItemIds");
+  const hasVerificationAuthority = Object.hasOwn(raw, "verificationAuthority");
+  if (hasVerificationAuthority) {
+    if (kind !== "verification-activity") {
+      throw new TypeError(
+        `${path}.verificationAuthority is only permitted on a verification-activity.`,
+      );
+    }
+    const authority = exactRecord(
+      raw.verificationAuthority,
+      ["id", "version"],
+      `${path}.verificationAuthority`,
+    );
+    safeId(authority.id, `${path}.verificationAuthority.id`);
+    safeVersion(authority.version, `${path}.verificationAuthority.version`);
+  }
   if (!isV2) return { id, kind };
   if (isGate(kind)) {
     if (!hasDependencies) {

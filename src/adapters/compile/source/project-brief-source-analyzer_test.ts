@@ -170,6 +170,41 @@ Deno.test("ProjectBriefSourceAnalyzer rejects a structurally inadmissible brief"
   assertEquals(bundle.symbols, []);
 });
 
+Deno.test("ProjectBriefSourceAnalyzer accepts an exact V2 verification authority and refuses another owner", async () => {
+  const sourceId = await briefSourceIdFor("project-a:brief", "brief-snapshot-2", 2);
+  const admitted = structuredClone(V2_BRIEF) as typeof V2_BRIEF & {
+    items: Array<Record<string, unknown>>;
+  };
+  admitted.items.push({
+    id: "verify-assembly",
+    kind: "verification-activity",
+    statement: "Observe the exact assembly integrity method.",
+    sourceRefs: [{ kind: "document", reference: "method:assembly" }],
+    dependsOnItemIds: ["gate-thermal"],
+    verificationAuthority: { id: "assembly-integrity", version: "1.0" },
+  });
+  const passed = await new ProjectBriefSourceAnalyzer().analyze({
+    sourceId,
+    role: "brief",
+    language: "plain-text",
+    sourceText: deterministicJson(admitted),
+  });
+  assertEquals(passed.policy.status, "passed");
+
+  const wrongOwner = structuredClone(admitted);
+  wrongOwner.items[2]!.verificationAuthority = {
+    id: "assembly-integrity",
+    version: "1.0",
+  };
+  const rejected = await new ProjectBriefSourceAnalyzer().analyze({
+    sourceId,
+    role: "brief",
+    language: "plain-text",
+    sourceText: deterministicJson(wrongOwner),
+  });
+  assertEquals(rejected.policy.status, "rejected");
+});
+
 Deno.test("brief source identity is injective across delimiter-bearing ids", async () => {
   const left = await briefSourceIdFor("x", "y:snapshot:z", 2);
   const right = await briefSourceIdFor("x:snapshot:y", "z", 2);

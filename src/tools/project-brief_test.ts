@@ -57,6 +57,16 @@ Deno.test("project MCP framing uses one project identity from intent through app
       "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
     );
     assertEquals(startSchema?.projectId?.not, { const: "latest" });
+    const briefSchema = tools.find((tool) => tool.name === "project_brief_propose")
+      ?.inputSchema?.properties;
+    assertEquals(
+      Object.hasOwn(
+        (briefSchema?.items as { items?: { properties?: object } })?.items
+          ?.properties ?? {},
+        "verificationAuthority",
+      ),
+      true,
+    );
 
     let result = await client.tool("project_start", {
       commandId: "start-project",
@@ -89,6 +99,13 @@ Deno.test("project MCP framing uses one project identity from intent through app
           "Complete the reviewed scenario with a traceable engineering record.",
         sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
         dependsOnItemIds: [],
+      }, {
+        id: "verify-assembly",
+        kind: "verification-activity",
+        statement: "Verify the digital assembly-integrity method.",
+        sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+        dependsOnItemIds: ["success"],
+        verificationAuthority: { id: "assembly-integrity", version: "1.0" },
       }],
     });
     project = result.structuredContent as Record<string, unknown>;
@@ -106,6 +123,12 @@ Deno.test("project MCP framing uses one project identity from intent through app
         item.id === "success"
       ))?.dependsOnItemIds,
       [],
+    );
+    assertEquals(
+      ((proposal.items as Array<Record<string, unknown>>).find((item) =>
+        item.id === "verify-assembly"
+      ))?.verificationAuthority,
+      { id: "assembly-integrity", version: "1.0" },
     );
     assertEquals(review.status, "pending");
 
