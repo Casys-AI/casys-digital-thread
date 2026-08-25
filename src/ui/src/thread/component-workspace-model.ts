@@ -914,6 +914,12 @@ function classifyGeometryBinary(
 }
 
 /**
+ * Exact projector identity for module binaries. The browser copies the
+ * profile `id@version` string; it does not import the assembler manifest.
+ */
+const MODULE_GEOMETRY_BINARY_PRODUCER = "build123d-module-assembler-v1@1.0.0";
+
+/**
  * Module STEP/GLB identities are digital-thread assembler products. This
  * path never widens the Build123d classifier above.
  */
@@ -924,7 +930,7 @@ function classifyModuleGeometryBinary(
   if (
     artifact.freshness !== "fresh" ||
     artifact.system !== "digital-thread" ||
-    artifact.producedBy !== "build123d-module-assembler-v1@1"
+    artifact.producedBy !== MODULE_GEOMETRY_BINARY_PRODUCER
   ) return undefined;
   const assetDigest = fingerprintDigest(artifact.fingerprint);
   if (

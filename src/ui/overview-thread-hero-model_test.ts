@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "@std/assert";
 import { GENERIC_THREAD_FIXTURE } from "../testing/workbench/generic-thread-workbench-fixture.ts";
 import {
   buildOverviewThreadHero,
@@ -8,6 +8,7 @@ import {
   overviewLaneFor,
 } from "./src/project/overview-thread-hero-model.ts";
 import type { ProjectPathActivityView } from "./src/project/model.ts";
+import type { ThreadGraphNode } from "./src/thread/types.ts";
 
 Deno.test("overview hero places recorded nodes in 2a lanes and never invents ids", () => {
   const hero = buildOverviewThreadHero(GENERIC_THREAD_FIXTURE);
@@ -48,6 +49,42 @@ Deno.test("overview hero places recorded nodes in 2a lanes and never invents ids
     hero.nodes.find((item) => recordedId(item) === "OBS-STRESS-MAX")?.lane,
     "physics",
   );
+});
+
+Deno.test("assembly-integrity-observation/1.0 stays an observation in the physics lane", () => {
+  const node: ThreadGraphNode = {
+    id: "graph:observation:assembly-integrity",
+    ref: { kind: "observation", id: "assembly-integrity" },
+    entityKind: "observation",
+    artifactKind: "assembly-integrity-observation/1.0",
+    label: "Assembly integrity observation",
+    system: "digital-thread",
+    freshness: "fresh",
+    summary: "Projected integrity observation, not a verdict.",
+  };
+
+  assertEquals(overviewLaneFor(node), "physics");
+  assertEquals(overviewLaneFor(node) === "verdicts", false);
+});
+
+Deno.test("Overview sealed preview opens exact STEP and GLB as accessible GET links", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./src/project/overview.tsx", import.meta.url),
+  );
+  const links = await Deno.readTextFile(
+    new URL("./src/cad/thread-asset-open-links.tsx", import.meta.url),
+  );
+  assertStringIncludes(source, 'from "../cad/thread-asset-open-links.tsx"');
+  assertStringIncludes(source, "<ThreadAssetOpenLinks");
+  assertStringIncludes(links, "{`Open ${format}`}");
+  assertStringIncludes(links, 'target="_blank"');
+  assertStringIncludes(links, 'rel="noreferrer"');
+  assertStringIncludes(links, "aria-label={`Open ${format} for ${subject}`}");
+  assertStringIncludes(links, "Open CAD assets for ${subject}");
+  assertEquals(source.includes('method="POST"'), false);
+  assertEquals(source.includes('method: "POST"'), false);
+  assertEquals(source.includes("download="), false);
+  assertEquals(source.includes("fetch("), false);
 });
 
 Deno.test("overview lane assignment skips change and action nodes", () => {

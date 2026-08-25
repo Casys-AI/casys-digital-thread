@@ -1,4 +1,5 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
+import { exactThreadAssetHref } from "./src/cad/exact-thread-asset.ts";
 import {
   buildComponentTree,
   buildSysmlSubtree,
@@ -651,7 +652,10 @@ Deno.test("module binaries fail closed on the wrong tool, system, id, URI, or tr
   };
 
   assertClosed(({ step }) => {
-    step.producedBy = "lookalike-module-assembler-v1@1";
+    step.producedBy = "build123d-module-assembler-v1@1";
+  });
+  assertClosed(({ step }) => {
+    step.producedBy = "lookalike-module-assembler-v1@1.0.0";
   });
   assertClosed(({ step }) => {
     step.system = "build123d-sandbox";
@@ -731,7 +735,7 @@ Deno.test("legacy targeted PartDefinition validation stays exact after module cl
   assertEquals(sealedAssemblyGeometryBlocker(snapshot), undefined);
 
   step.system = "digital-thread";
-  step.producedBy = "build123d-module-assembler-v1@1";
+  step.producedBy = "build123d-module-assembler-v1@1.0.0";
   assertEquals(
     resolveCadSurface(snapshot, snapshot.components.components[0]!),
     undefined,
@@ -872,6 +876,99 @@ Deno.test("Product renders exact GLB parts and keeps STEP-only bundles honest", 
     source,
     "No exact PartDefinition GLB was published in this bundle",
   );
+});
+
+Deno.test("exactThreadAssetHref admits matching relative STEP and GLB URIs", () => {
+  const digest = "a".repeat(64);
+  const fingerprint = `sha256:${digest}`;
+  const stepUri = `/api/thread/assets/${digest}.step`;
+  const glbUri = `/api/thread/assets/${digest}.glb`;
+  assertEquals(exactThreadAssetHref(stepUri, fingerprint, "step"), stepUri);
+  assertEquals(exactThreadAssetHref(glbUri, fingerprint, "glb"), glbUri);
+});
+
+Deno.test("exactThreadAssetHref rejects absent, bare, mismatched, or widened identities", () => {
+  const digest = "a".repeat(64);
+  const fingerprint = `sha256:${digest}`;
+  const stepUri = `/api/thread/assets/${digest}.step`;
+  const glbUri = `/api/thread/assets/${digest}.glb`;
+  assertEquals(exactThreadAssetHref(stepUri, undefined, "step"), undefined);
+  assertEquals(exactThreadAssetHref(stepUri, digest, "step"), undefined);
+  assertEquals(
+    exactThreadAssetHref(stepUri, `sha256:${digest.toUpperCase()}`, "step"),
+    undefined,
+  );
+  assertEquals(exactThreadAssetHref(undefined, fingerprint, "step"), undefined);
+  assertEquals(
+    exactThreadAssetHref(
+      `https://evil.example/api/thread/assets/${digest}.step`,
+      fingerprint,
+      "step",
+    ),
+    undefined,
+  );
+  assertEquals(
+    exactThreadAssetHref(
+      `https://localhost/api/thread/assets/${digest}.step`,
+      fingerprint,
+      "step",
+    ),
+    undefined,
+  );
+  assertEquals(
+    exactThreadAssetHref(
+      `/api/thread/assets/${"b".repeat(64)}.step`,
+      fingerprint,
+      "step",
+    ),
+    undefined,
+  );
+  assertEquals(exactThreadAssetHref(glbUri, fingerprint, "step"), undefined);
+  assertEquals(exactThreadAssetHref(stepUri, fingerprint, "glb"), undefined);
+  assertEquals(
+    exactThreadAssetHref(
+      `/api/thread/assets/${digest.toUpperCase()}.step`,
+      fingerprint,
+      "step",
+    ),
+    undefined,
+  );
+  assertEquals(
+    exactThreadAssetHref(`${stepUri}?download=1`, fingerprint, "step"),
+    undefined,
+  );
+  assertEquals(
+    exactThreadAssetHref(`${stepUri}#fragment`, fingerprint, "step"),
+    undefined,
+  );
+  assertEquals(
+    exactThreadAssetHref(`${stepUri}.bak`, fingerprint, "step"),
+    undefined,
+  );
+});
+
+Deno.test("Product CAD opens exact STEP and GLB as accessible GET links", async () => {
+  const product = await Deno.readTextFile(
+    new URL("./src/thread/component-workspace.tsx", import.meta.url),
+  );
+  const links = await Deno.readTextFile(
+    new URL("./src/cad/thread-asset-open-links.tsx", import.meta.url),
+  );
+  assertStringIncludes(product, 'from "../cad/thread-asset-open-links.tsx"');
+  assertStringIncludes(product, "<ThreadAssetOpenLinks");
+  assertStringIncludes(links, "{`Open ${format}`}");
+  assertStringIncludes(links, 'target="_blank"');
+  assertStringIncludes(links, 'rel="noreferrer"');
+  assertStringIncludes(links, "aria-label={`Open ${format} for ${subject}`}");
+  assertStringIncludes(links, "Open CAD assets for ${subject}");
+  assertEquals(links.includes('method="POST"'), false);
+  assertEquals(links.includes('method: "POST"'), false);
+  assertEquals(links.includes("download="), false);
+  assertEquals(links.includes("fetch("), false);
+  assertEquals(product.includes('method="POST"'), false);
+  assertEquals(product.includes('method: "POST"'), false);
+  assertEquals(product.includes("download="), false);
+  assertEquals(product.includes("fetch("), false);
 });
 
 Deno.test("v2 definitions are not deduplicated when exact STEP bytes match", () => {
@@ -1993,7 +2090,7 @@ function projectedModuleGeometryBinary(
     freshness: "fresh",
     fingerprint: `sha256:${assetDigest}`,
     uri: `/api/thread/assets/${assetDigest}.${extension}`,
-    producedBy: "build123d-module-assembler-v1@1",
+    producedBy: "build123d-module-assembler-v1@1.0.0",
     dependsOn: [],
   };
 }

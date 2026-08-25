@@ -16,6 +16,8 @@ import type {
   ThreadGraphRef,
   ThreadWorkbenchSnapshot,
 } from "../thread/types.ts";
+import { exactThreadAssetHref } from "../cad/exact-thread-asset.ts";
+import { ThreadAssetOpenLinks } from "../cad/thread-asset-open-links.tsx";
 import { GltfAssetCanvas } from "../thread/gltf-asset-canvas.tsx";
 import {
   resolveSealedAssemblyGeometry,
@@ -123,6 +125,9 @@ export function ProjectOverview({
   const sealedAssemblyGlb = sealedAssembly
     ? sealedAssemblyGlbAsset(sealedAssembly)
     : undefined;
+  const sealedAssemblyStep = sealedAssembly?.assemblyAssets.find((artifact) =>
+    artifact.kind === "step"
+  );
   const pathStages = groupProjectPathGatesByLane(
     projectPath.activities,
     phaseLanes,
@@ -285,13 +290,28 @@ export function ProjectOverview({
         </Card>
         {sealedAssemblyGlb?.uri && (
           <Card className="overflow-hidden">
-            <div className="flex items-center justify-between border-b border-border px-3 py-2">
+            <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
               <p className={cn("m-0", SECTION_LABEL)}>
                 Sealed assembly preview · GLB
               </p>
-              <span className="font-mono text-[9.5px] text-muted-foreground">
-                {sealedAssembly?.assemblyFormats.join(" · ") || "GLB"}
-              </span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <ThreadAssetOpenLinks
+                  stepHref={exactThreadAssetHref(
+                    sealedAssemblyStep?.uri,
+                    sealedAssemblyStep?.fingerprint,
+                    "step",
+                  )}
+                  glbHref={exactThreadAssetHref(
+                    sealedAssemblyGlb.uri,
+                    sealedAssemblyGlb.fingerprint,
+                    "glb",
+                  )}
+                  subject="sealed assembly"
+                />
+                <span className="font-mono text-[9.5px] text-muted-foreground">
+                  {sealedAssembly?.assemblyFormats.join(" · ") || "GLB"}
+                </span>
+              </div>
             </div>
             <div className="h-[158px] overflow-hidden bg-muted/30">
               <GltfAssetCanvas

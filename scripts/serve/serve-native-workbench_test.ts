@@ -1237,6 +1237,7 @@ Deno.test("native Workbench API routes reject non-GET verbs and keep SSE on GET"
     "/api/thread/workbench/events",
     "/api/fleet",
     `/api/thread/assets/${digest}.glb`,
+    `/api/thread/assets/${digest}.step`,
     `/api/draft-assets/${digest}`,
     "/",
     "/native-workbench.html",
@@ -1309,6 +1310,27 @@ Deno.test("native Workbench serves exact canonical GLB bytes with their binary m
   );
   assertEquals(response.status, 200);
   assertEquals(response.headers.get("Content-Type"), "model/gltf-binary");
+  assertEquals(new Uint8Array(await response.arrayBuffer()), bytes);
+});
+
+Deno.test("native Workbench serves exact canonical STEP bytes with model/step", async () => {
+  const bytes = new TextEncoder().encode("exact-step-bytes");
+  const digest = await sha256Hex(bytes);
+  const project = projectFixture("project-one", "subject-one");
+  const handler = createNativeWorkbenchHandler({
+    store: new EmptyThreadStore(),
+    projectStore: new ProjectStore([project]),
+    projectId: project.project.id,
+    subjectId: project.project.subjectId,
+    html: "unused",
+    assetReader: () => Promise.resolve(bytes),
+  });
+
+  const response = await handler(
+    new Request(`http://localhost/api/thread/assets/${digest}.step`),
+  );
+  assertEquals(response.status, 200);
+  assertEquals(response.headers.get("Content-Type"), "model/step");
   assertEquals(new Uint8Array(await response.arrayBuffer()), bytes);
 });
 

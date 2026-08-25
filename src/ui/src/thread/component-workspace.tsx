@@ -5,6 +5,8 @@ import { Splitter } from "@ark-ui/react/splitter";
 import { createTreeCollection, TreeView } from "@ark-ui/react/tree-view";
 import * as THREE from "three";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
+import { exactThreadAssetHref } from "../cad/exact-thread-asset.ts";
+import { ThreadAssetOpenLinks } from "../cad/thread-asset-open-links.tsx";
 import { createThreeOrbitViewport } from "../cad/three-orbit-viewport.ts";
 import { cn } from "../lib/utils.ts";
 import { Badge } from "../ui/badge.tsx";
@@ -532,6 +534,9 @@ function CadGeometry({ snapshot, selected, onInspect }: {
     : undefined;
   const geometryBlocker = sealedAssemblyGeometryBlocker(snapshot);
   const meshStatus = resolveCadMeshStatus(snapshot, selected);
+  const assemblyStep = sealedAssembly?.assemblyAssets.find((artifact) =>
+    artifact.kind === "step"
+  );
   return (
     <section className="flex flex-col gap-4" aria-label="build123d geometry">
       {geometryBlocker && (
@@ -551,6 +556,11 @@ function CadGeometry({ snapshot, selected, onInspect }: {
             {glbBlocks.assembly && sealedAssembly && (
               <SealedAssemblyGlbViewer
                 asset={glbBlocks.assembly}
+                stepHref={exactThreadAssetHref(
+                  assemblyStep?.uri,
+                  assemblyStep?.fingerprint,
+                  "step",
+                )}
                 captureArtifact={sealedAssembly.captureArtifact}
               />
             )}
@@ -609,6 +619,14 @@ function CadGeometry({ snapshot, selected, onInspect }: {
                 label={`${selected.label} authoritative STEP fingerprint`}
               />
             )}
+            <ThreadAssetOpenLinks
+              stepHref={exactThreadAssetHref(
+                surface.authoritativeArtifact.uri,
+                surface.authoritativeArtifact.fingerprint,
+                "step",
+              )}
+              subject={selected.label}
+            />
           </CadRecordNotice>
         )
         : meshStatus === "not-exported"
@@ -745,8 +763,9 @@ function CadRecordNotice({
   );
 }
 
-function SealedAssemblyGlbViewer({ asset, captureArtifact }: {
+function SealedAssemblyGlbViewer({ asset, stepHref, captureArtifact }: {
   asset: ThreadArtifact;
+  stepHref?: string;
   captureArtifact: ThreadArtifact;
 }): JSX.Element {
   return (
@@ -758,10 +777,21 @@ function SealedAssemblyGlbViewer({ asset, captureArtifact }: {
           </small>
           <strong className="block text-sm font-semibold">{asset.label}</strong>
         </div>
-        <CompactIdentifier
-          value={asset.fingerprint ?? asset.id}
-          label="sealed assembly GLB fingerprint"
-        />
+        <div className="flex flex-wrap items-center gap-3">
+          <ThreadAssetOpenLinks
+            stepHref={stepHref}
+            glbHref={exactThreadAssetHref(
+              asset.uri,
+              asset.fingerprint,
+              "glb",
+            )}
+            subject="sealed assembly"
+          />
+          <CompactIdentifier
+            value={asset.fingerprint ?? asset.id}
+            label="sealed assembly GLB fingerprint"
+          />
+        </div>
       </header>
       <GltfAssetCanvas
         url={asset.uri!}
@@ -811,10 +841,25 @@ function PartDefinitionGlbViewer({
           </small>
           <strong className="block text-sm font-semibold">{label}</strong>
         </div>
-        <CompactIdentifier
-          value={presentationArtifact.fingerprint ?? presentationArtifact.id}
-          label={`${label} GLB fingerprint`}
-        />
+        <div className="flex flex-wrap items-center gap-3">
+          <ThreadAssetOpenLinks
+            stepHref={exactThreadAssetHref(
+              authoritativeArtifact.uri,
+              authoritativeArtifact.fingerprint,
+              "step",
+            )}
+            glbHref={exactThreadAssetHref(
+              presentationArtifact.uri ?? preview.url,
+              presentationArtifact.fingerprint ?? preview.sha256,
+              "glb",
+            )}
+            subject={label}
+          />
+          <CompactIdentifier
+            value={presentationArtifact.fingerprint ?? presentationArtifact.id}
+            label={`${label} GLB fingerprint`}
+          />
+        </div>
       </header>
       <GltfAssetCanvas
         url={preview.url}
