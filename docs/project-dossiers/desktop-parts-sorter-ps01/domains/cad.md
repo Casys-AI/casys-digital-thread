@@ -13,5 +13,9 @@ The diverter file declares an exact dependency on frame v2. Its capture succeeds
 combined compilation remains `source.dependency-lowering-unavailable` because no
 deterministic multi-file CAD lowering exists yet.
 
-No Diverter geometry, assembly placement, assembly geometry, geometry verdict or FEA
-claim exists for PS-01. Canonical Frame geometry does not imply any of them.
+No Digital Thread record has published a Diverter target geometry capture, assembly
+placement, `assembly-integrity-observation/1.0`, assembly-integrity L4 evaluation, or L5
+closeout for PS-01. The direct provider smoke over an exact canonical PS-01 assembly
+STEP is recorded separately in [runtime evidence](../platform/runtime-evidence.md); it
+does not backfill any of those Thread records or become a geometry verdict. Canonical
+Frame geometry alone does not imply any of them.

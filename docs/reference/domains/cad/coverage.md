@@ -47,12 +47,13 @@ These states must remain literal: they are not degraded success.
   `attachmentId` + `attachmentRevision`). Public capture does not accept `sourceText`,
   `fileId`, `profileId` or `resourceRef`. Isolated execution still starts from
   `compile.seal-admission@3`.
-- Assembly-integrity observation is **pending**, not a current product tool or CAD
-  execution path. Its raw `build123d_observe_assembly_integrity` capability belongs to
-  `mcp-build123d`; after provider profile and runtime proof, Digital Thread will reopen
-  an exact module capture and canonical assembly STEP, then seal factual
-  `assembly-integrity-observation/1.0`. This vertical has no local OCCT worker or
-  verdict.
+- [Assembly integrity](assembly-integrity.md) is a separate post-publication evidence
+  family, not a CAD language construct or an export path. Its L3 operation,
+  `verify.observe-assembly-integrity@1`, reopens an exact canonical module and assembly
+  STEP only when a trusted normal-provider observer is composed; otherwise it remains
+  `unavailable`. L3 facts, the provider-free L4 evaluation, and human L5 closeout do not
+  create geometry or a product verdict. There is no local OCCT, sandbox, or
+  caller-selected-provider fallback.
 
 ## Candidates and non-goals
 
