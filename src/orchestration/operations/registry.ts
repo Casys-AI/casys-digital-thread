@@ -17,6 +17,10 @@ import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/cad/isolated/bu
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/cad/sealed-isolated/isolated-geometry-seal-proposal.ts";
 import { VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-observation.ts";
 import { VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-evaluation-proposal.ts";
+import {
+  DECIDE_ACCEPT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION,
+  DECIDE_REJECT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION,
+} from "../../domain/cad/assembly-integrity/assembly-integrity-evaluation-closeout-proposal.ts";
 import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "../../domain/sensitivity/vector-correction/vector-correction-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/modelica/qualified-kit/run-proposal.ts";
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
@@ -778,6 +782,57 @@ const OPERATIONS = [
     riskClass: "consequential",
     execution: "trusted",
     mustOrigin: "human",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  /**
+   * Human-only L5 over one exact current provider-free L4 assembly-integrity
+   * capture. The appended work is anchored to the L4 tip by the generic
+   * dependency declaration and executor recross; no caller chooses a gate,
+   * provider, SysON envelope, tolerance, verdict, safety conclusion, or
+   * certification.
+   */
+  {
+    id: DECIDE_ACCEPT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION.id,
+    version: DECIDE_ACCEPT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Accept the assembly-integrity evaluation closeout",
+    description:
+      "Reopen one exact current assembly-integrity L4 capture and record a human accept closeout only when all five literal L4 criteria are pass. No provider or SysON call occurs; this is neither safety nor certification.",
+    workItemKind: "review",
+    riskClass: "consequential",
+    execution: "trusted",
+    mustOrigin: "human",
+    requiresAdditiveChange: true,
+    requiresDependsOnOperation: {
+      id: VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION.id,
+      version: VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION.version,
+    },
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  {
+    id: DECIDE_REJECT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION.id,
+    version: DECIDE_REJECT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Reject the assembly-integrity evaluation closeout",
+    description:
+      "Reopen one exact current assembly-integrity L4 capture and record a human reject closeout. Reject grants no correction, CAD, FEA, provider, SysON, safety, or certification authority.",
+    workItemKind: "review",
+    riskClass: "consequential",
+    execution: "trusted",
+    mustOrigin: "human",
+    requiresAdditiveChange: true,
+    requiresDependsOnOperation: {
+      id: VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION.id,
+      version: VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION.version,
+    },
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],

@@ -48,6 +48,8 @@ const PATH_LANE_BY_OPERATION: Readonly<
   "verify.evaluate-admitted-modelica-observations@1": fixed("verdicts"),
   "decide.accept-admitted-modelica-evaluation@1": fixed("verdicts"),
   "decide.reject-admitted-modelica-evaluation@1": fixed("verdicts"),
+  "decide.accept-assembly-integrity-evaluation@1": fixed("verdicts"),
+  "decide.reject-assembly-integrity-evaluation@1": fixed("verdicts"),
   "simulate.run-admitted-spice@1": fixed("physics"),
   "verify.seal-electrical-observation-method-sheet@1": fixed("physics"),
   "verify.evaluate-admitted-spice-observations@1": fixed("verdicts"),

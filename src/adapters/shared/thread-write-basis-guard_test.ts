@@ -39,6 +39,7 @@ import {
   MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
 } from "../../domain/sensitivity/study/sensitivity-study-proposal.ts";
 import { VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION } from "../../domain/sensitivity/base-evaluation/sensitivity-base-evaluation.ts";
+import { DECIDE_ACCEPT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-evaluation-closeout-proposal.ts";
 
 const BASIS = {
   kind: "thread-snapshot" as const,
@@ -416,6 +417,28 @@ Deno.test("an uncertain technical-compilation Thread write remains quarantined a
   );
 });
 
+Deno.test("an uncertain assembly-integrity L5 write remains quarantined after failure", async () => {
+  const current = run("requirements", "queued");
+  const sibling = {
+    ...run("assembly-integrity-closeout", "failed"),
+    failure: {
+      code: "decide-accept-assembly-integrity-evaluation-not-published",
+      message: "The closeout successor publication outcome is unknown.",
+    },
+  };
+
+  await assertRejects(
+    () => assertThreadWriteBasisAvailable(project([current, sibling]), current),
+    EngineeringProjectCommandError,
+    "requires exact recovery attachment",
+  );
+  assertEquals(
+    TERMINAL_THREAD_WRITE_FAILURES.has(sibling.failure.code),
+    false,
+    "a provider-free L5 ThreadSnapshot outcome must not enter generic provider reconciliation",
+  );
+});
+
 Deno.test("a forged generic reconciliation cannot release an uncertain technical-compilation Thread write", async () => {
   const current = run("requirements", "queued");
   const sibling = {
@@ -671,7 +694,8 @@ type OperationName =
   | "build123d-execution"
   | "part-definitions"
   | "assembly-integrity"
-  | "assembly-integrity-evaluation";
+  | "assembly-integrity-evaluation"
+  | "assembly-integrity-closeout";
 
 function operation(name: OperationName): EngineeringOperationRef {
   const identity = name === "architecture"
@@ -688,6 +712,8 @@ function operation(name: OperationName): EngineeringOperationRef {
     ? VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION
     : name === "assembly-integrity-evaluation"
     ? VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION
+    : name === "assembly-integrity-closeout"
+    ? DECIDE_ACCEPT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION
     : DESIGN_EXECUTE_BUILD123D_OPERATION;
   return { ...identity, bindings: [] };
 }

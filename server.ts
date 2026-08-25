@@ -60,6 +60,10 @@ import {
   DECIDE_ACCEPT_EVALUATION_CLOSEOUT_OPERATION,
   DECIDE_REJECT_EVALUATION_CLOSEOUT_OPERATION,
 } from "./src/adapters/fea/evaluation-closeout/decide-static-mechanical-evaluation-closeout-run-executor.ts";
+import {
+  DECIDE_ACCEPT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION,
+  DECIDE_REJECT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION,
+} from "./src/adapters/cad/assembly-integrity/decide-assembly-integrity-evaluation-closeout-run-executor.ts";
 import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "./src/adapters/modelica/thermal-method-sheet/verify-seal-modelica-thermal-method-sheet-run-executor.ts";
 import { VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION } from "./src/domain/impact/cross-domain-impact-manifest-proposal.ts";
 import { ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION } from "./src/domain/impact/cross-domain-impact-evaluation-proposal.ts";
@@ -192,6 +196,7 @@ import {
   createBuild123dCapability,
   createCadProject,
 } from "./src/adapters/cad/server-composition.ts";
+import { createAssemblyIntegrityCloseoutProject } from "./src/adapters/cad/assembly-integrity/assembly-integrity-closeout-composition.ts";
 import { createCadPlacementComposition } from "./src/adapters/cad/placement/server-composition.ts";
 import {
   createGeometryModuleAssemblyComposition,
@@ -939,6 +944,21 @@ async function createProjectControl(
     geometryCaptureDirectory: DEFAULT_GEOMETRY_CAPTURE_DIRECTORY,
     moduleAssembly: geometryModuleAssembly?.execution?.publications,
   });
+  const assemblyIntegrityEvaluationCaptures =
+    new FileAssemblyIntegrityEvaluationCaptureStore(
+      new FileCaptureStore({
+        ...ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_DESCRIPTOR,
+        directory: options.assemblyIntegrityEvaluationCaptureDirectory ??
+          DEFAULT_ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_DIRECTORY,
+      }),
+    );
+  const assemblyIntegrityCloseoutProject = createAssemblyIntegrityCloseoutProject({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: activeThreadSnapshots,
+    lease,
+    evaluationCaptures: assemblyIntegrityEvaluationCaptures,
+  });
   const modelicaProject = createModelicaProject({
     projects: runtime.projects,
     commands: runtime.commands,
@@ -1248,13 +1268,6 @@ async function createProjectControl(
       ),
       lease,
     });
-    const evaluationCaptures = new FileAssemblyIntegrityEvaluationCaptureStore(
-      new FileCaptureStore({
-        ...ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_DESCRIPTOR,
-        directory: options.assemblyIntegrityEvaluationCaptureDirectory ??
-          DEFAULT_ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_DIRECTORY,
-      }),
-    );
     const evaluation = new PrepareAssemblyIntegrityEvaluation({
       projects: runtime.projects,
       snapshots: build123dThreadSnapshots,
@@ -1273,7 +1286,7 @@ async function createProjectControl(
       commands: runtime.commands,
       snapshots: build123dThreadSnapshots,
       evaluation,
-      captures: evaluationCaptures,
+      captures: assemblyIntegrityEvaluationCaptures,
       attempts: new FileAssemblyIntegrityEvaluationAttemptStore(
         options.assemblyIntegrityEvaluationAttemptDirectory ??
           DEFAULT_ASSEMBLY_INTEGRITY_EVALUATION_ATTEMPT_DIRECTORY,
@@ -1333,6 +1346,8 @@ async function createProjectControl(
       feaProofSealReview: feaProject.feaProofSealReview,
       feaIsolatedRunReview: feaProject.feaIsolatedRunReview,
       evaluationCloseoutReview: feaProject.staticMechanicalEvaluationCloseoutReview,
+      assemblyIntegrityEvaluationCloseoutReview:
+        assemblyIntegrityCloseoutProject.assemblyIntegrityEvaluationCloseoutReview,
       sensitivityStudySealReview: sensitivity.sensitivityStudySealReview,
       build123dExecutionReview: build123dCapability.build123dExecutionReview,
       isolatedGeometrySealReview: build123dCapability.isolatedGeometrySealReview,
@@ -1455,6 +1470,16 @@ async function createProjectControl(
           {
             operation: DECIDE_REJECT_EVALUATION_CLOSEOUT_OPERATION,
             executor: feaProject.decideStaticMechanicalEvaluationCloseout,
+          },
+          {
+            operation: DECIDE_ACCEPT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION,
+            executor: assemblyIntegrityCloseoutProject
+              .decideAssemblyIntegrityEvaluationCloseout,
+          },
+          {
+            operation: DECIDE_REJECT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION,
+            executor: assemblyIntegrityCloseoutProject
+              .decideAssemblyIntegrityEvaluationCloseout,
           },
           {
             operation: SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,

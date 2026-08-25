@@ -105,7 +105,14 @@ export interface AssemblyIntegrityEvaluationLimits {
   readonly fabricability: "not-evaluated";
 }
 
-const EVALUATION_LIMITS = deepFreeze<AssemblyIntegrityEvaluationLimits>({
+/**
+ * Literal L4 boundary copied into every later human closeout.  A closeout
+ * cannot silently broaden this method into a safety, clearance, motion,
+ * load, or fabrication conclusion.
+ */
+export const ASSEMBLY_INTEGRITY_EVALUATION_LIMITS = deepFreeze<
+  AssemblyIntegrityEvaluationLimits
+>({
   providerCalls: "none",
   genericSysmlRequirementEvaluation: "none",
   safety: "not-evaluated",
@@ -153,7 +160,7 @@ const EVALUATION_METHOD_BODY = deepFreeze<AssemblyIntegrityEvaluationMethodBody>
     epsilon: ASSEMBLY_INTEGRITY_RIGID_MATRIX_TOLERANCE,
   },
   measurementTolerance: "diagnostic-only",
-  limitations: EVALUATION_LIMITS,
+  limitations: ASSEMBLY_INTEGRITY_EVALUATION_LIMITS,
 });
 
 export interface AssemblyIntegrityEvaluationCriterion {

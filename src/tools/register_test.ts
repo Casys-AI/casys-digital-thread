@@ -722,6 +722,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_answer_record",
     "project_architecture_sysml_preview",
     "project_architecture_sysml_source_capture",
+    "project_assembly_integrity_evaluation_closeout_review",
     "project_brief_architecture_review",
     "project_brief_confirm",
     "project_brief_propose",
@@ -809,6 +810,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_answer_record",
       "project_architecture_sysml_preview",
       "project_architecture_sysml_source_capture",
+      "project_assembly_integrity_evaluation_closeout_review",
       "project_brief_architecture_review",
       "project_brief_confirm",
       "project_brief_propose",
@@ -1083,6 +1085,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_isolated_geometry_seal_review" ||
           tool.name === "project_led_driver_source_review" ||
           tool.name === "project_evaluation_closeout_review" ||
+          tool.name === "project_assembly_integrity_evaluation_closeout_review" ||
           tool.name === "project_fea_proof_seal_review" ||
           tool.name === "project_fea_isolated_run_review" ||
           tool.name === "project_vector_correction_review" ||
@@ -1143,6 +1146,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_isolated_geometry_seal_review" ||
           tool.name === "project_led_driver_source_review" ||
           tool.name === "project_evaluation_closeout_review" ||
+          tool.name === "project_assembly_integrity_evaluation_closeout_review" ||
           tool.name === "project_fea_proof_seal_review" ||
           tool.name === "project_fea_isolated_run_review" ||
           tool.name === "project_vector_correction_review" ||

@@ -452,6 +452,19 @@ export const ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_DESCRIPTOR: CaptureStoreDescr
   label: "Assembly-integrity evaluation",
 };
 
+/**
+ * Human L5 consequence over one exact L4 assembly-integrity capture. This
+ * documentary store has no observer, provider, SysON, tolerance, or generic
+ * RequirementEvaluation authority.
+ */
+export const ASSEMBLY_INTEGRITY_EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR:
+  CaptureStoreDescriptor<"assembly-integrity-evaluation-closeout"> = {
+    kind: "assembly-integrity-evaluation-closeout",
+    directory: "state/local/assembly-integrity-evaluation-closeout-captures",
+    uriNamespace: "assembly-integrity-evaluation-closeout",
+    label: "Assembly-integrity evaluation closeout",
+  };
+
 export const PRINT_ESTIMATE_CASE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   "print-estimate-case"
 > = {

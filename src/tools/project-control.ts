@@ -127,6 +127,10 @@ import {
   registerProjectAssemblyIntegrityEvaluationReviewTools,
 } from "./project-control/assembly-integrity-evaluation-review-tools.ts";
 import {
+  type ProjectAssemblyIntegrityCloseoutReviewToolDependencies,
+  registerProjectAssemblyIntegrityCloseoutReviewTools,
+} from "./project-control/assembly-integrity-closeout-review-tools.ts";
+import {
   autoConfirms,
   INTERACTIVE_PROJECT_APPROVAL_MODE,
   localYoloRationale,
@@ -160,7 +164,8 @@ export interface ProjectControlToolDependencies
     ProjectCadPlacementToolDependencies,
     ProjectGeometryModuleExportToolDependencies,
     ProjectAssemblyIntegrityReviewToolDependencies,
-    ProjectAssemblyIntegrityEvaluationReviewToolDependencies {
+    ProjectAssemblyIntegrityEvaluationReviewToolDependencies,
+    ProjectAssemblyIntegrityCloseoutReviewToolDependencies {
   projects: EngineeringProjectSnapshotReader;
   commands: EngineeringProjectCommandService;
   /** Optional so focused read-only tests need not construct a trusted executor. */
@@ -244,6 +249,7 @@ export function registerProjectControlTools(
   registerProjectGeometryModuleExportTools(app, dependencies);
   registerProjectAssemblyIntegrityReviewTools(app, dependencies);
   registerProjectAssemblyIntegrityEvaluationReviewTools(app, dependencies);
+  registerProjectAssemblyIntegrityCloseoutReviewTools(app, dependencies);
 
   app.registerTool(projectPlanPublishTool, async (args, context) => {
     const common = commonMutation(args);

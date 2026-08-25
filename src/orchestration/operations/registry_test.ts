@@ -48,6 +48,11 @@ import {
   DECIDE_REJECT_EVALUATION_CLOSEOUT_OPERATION,
 } from "../../domain/fea/evaluation-closeout/static-mechanical-evaluation-closeout-proposal.ts";
 import {
+  DECIDE_ACCEPT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION,
+  DECIDE_REJECT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION,
+} from "../../domain/cad/assembly-integrity/assembly-integrity-evaluation-closeout-proposal.ts";
+import { VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-evaluation-proposal.ts";
+import {
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
   MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
@@ -1476,6 +1481,59 @@ Deno.test(
                     snapshotRevision: 9,
                     kind: "artifact" as const,
                     id: "artifact.ngspice",
+                  },
+                },
+              }],
+            },
+            stage: "queue",
+            basisKind: "thread-snapshot",
+          }),
+        EngineeringOperationRegistryError,
+      );
+      assertEquals(extras.code, "invalid_bindings");
+    }
+  },
+);
+
+Deno.test(
+  "assembly-integrity L5 closeout is human-only, appended after the L4 dependency, and has no caller evidence binding",
+  () => {
+    for (
+      const operation of [
+        DECIDE_ACCEPT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION,
+        DECIDE_REJECT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION,
+      ]
+    ) {
+      const registered = getRegisteredEngineeringOperation(operation)!;
+      assertEquals(registered.allowedBasisKinds, ["thread-snapshot"]);
+      assertEquals(registered.workItemKind, "review");
+      assertEquals(registered.riskClass, "consequential");
+      assertEquals(registered.execution, "trusted");
+      assertEquals(registered.mustOrigin, "human");
+      assertEquals(registered.requiresAdditiveChange, true);
+      assertEquals(registered.requiresDependsOnOperation, {
+        id: VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION.id,
+        version: VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION.version,
+      });
+      assertEquals(registered.bindings, [{
+        name: "approvedBrief",
+        allowedSourceKinds: ["approved-brief"],
+      }]);
+
+      const extras = assertThrows(
+        () =>
+          validateRegisteredEngineeringOperationInput({
+            operation: {
+              ...operation,
+              bindings: [{
+                name: "providerOrGate",
+                source: {
+                  kind: "thread-entity" as const,
+                  reference: {
+                    snapshotId: "thread.snapshot.9",
+                    snapshotRevision: 9,
+                    kind: "artifact" as const,
+                    id: "artifact.provider-or-gate",
                   },
                 },
               }],
