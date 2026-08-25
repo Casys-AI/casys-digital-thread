@@ -231,6 +231,31 @@ Deno.test("module seal refuses isolated assembly output digest mismatch", async 
   }
 });
 
+Deno.test("module seal refuses signed children that are a subset of immediate PartUsage", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-module-d5-subset-" });
+  try {
+    const world = await prepareModuleWorld(tmpDir, { omitSignedChild: true });
+    await assertRejects(
+      () => world.executor.execute(AGENT, world.command),
+      EngineeringProjectCommandError,
+      "complete set of immediate PartUsage",
+    );
+    await assertQueued(world.fixture);
+    await assertRejects(() =>
+      Deno.stat(
+        `${world.fixture.canonicalAssetDirectory}/${world.assemblyStep.digest}.step`,
+      )
+    );
+    await assertRejects(() =>
+      Deno.stat(
+        `${world.fixture.canonicalAssetDirectory}/${world.assemblyGlb.digest}.glb`,
+      )
+    );
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
 Deno.test("module seal refuses a predecessor that names a different target", async () => {
   const tmpDir = await Deno.makeTempDir({ prefix: "geo-module-pred-" });
   try {
@@ -383,6 +408,7 @@ async function prepareModuleWorld(
     readonly outputDigestMismatch?: boolean;
     readonly wrongPredecessor?: boolean;
     readonly tamperSignedLabel?: boolean;
+    readonly omitSignedChild?: boolean;
   } = {},
 ): Promise<ModuleWorld> {
   const initial = await buildGeoFixture(directory, {
@@ -489,7 +515,7 @@ async function prepareModuleWorld(
   }
 
   const frameDigest = frame.child.authoritativeStep.fingerprint;
-  const children: GeometryModuleChild[] = [
+  const allChildren: GeometryModuleChild[] = [
     {
       usageElementId: "usage:frame",
       partDefinitionElementId: "part-definition:frame",
@@ -516,6 +542,7 @@ async function prepareModuleWorld(
       authoritativeStep: frame.child.authoritativeStep,
     },
   ];
+  const children = options.omitSignedChild ? allChildren.slice(0, 1) : allChildren;
   const bundle = await createGeometryModuleInputBundle(
     children.map((child) => ({
       usageElementId: child.usageElementId,
@@ -701,7 +728,7 @@ function moduleExecutorExtras(
   now = MODULE_NOW,
 ) {
   return {
-    isolatedPublications: world.publications,
+    moduleAssemblyPublications: world.publications,
     moduleAssemblyOutputValidator: world.validator,
     now: () => now,
   };

@@ -471,10 +471,12 @@ export interface DesignWriteGeometryRunExecutorDependencies {
    */
   readonly admissions: Pick<TechnicalCompilationAdmissionReader, "read">;
   /**
-   * Publication-gated isolated CAS. Required for the geometry-module family;
-   * assembly STEP/GLB are reopened by draft/receipt identity, never by filename.
+   * Publication-gated module-assembly CAS. Required for the geometry-module
+   * family; assembly STEP/GLB are reopened by draft/receipt identity, never
+   * by filename. Absent means module sealing fails closed. Leaf
+   * `design.write-geometry@1` does not read this port.
    */
-  readonly isolatedPublications?: IsolatedOutputPublicationReader;
+  readonly moduleAssemblyPublications?: IsolatedOutputPublicationReader;
   readonly moduleAssemblyOutputValidator?: GeometryModuleAssemblyOutputValidation;
   readonly lease: EngineeringProjectRunLease;
   readonly liveUpdates?: LiveThreadUpdateMilestoneJournal;
@@ -509,7 +511,7 @@ export class DesignWriteGeometryRunExecutor {
   readonly #sourceAnalysisCaptures: FileCaptureStore<"source-analysis">;
   readonly #geometryCaptures: GeometryCaptureStore;
   readonly #admissions: Pick<TechnicalCompilationAdmissionReader, "read">;
-  readonly #isolatedPublications: IsolatedOutputPublicationReader | undefined;
+  readonly #moduleAssemblyPublications: IsolatedOutputPublicationReader | undefined;
   readonly #moduleAssemblyOutputValidator:
     | GeometryModuleAssemblyOutputValidation
     | undefined;
@@ -530,7 +532,7 @@ export class DesignWriteGeometryRunExecutor {
     this.#sourceAnalysisCaptures = dependencies.sourceAnalysisCaptures;
     this.#geometryCaptures = dependencies.geometryCaptures;
     this.#admissions = dependencies.admissions;
-    this.#isolatedPublications = dependencies.isolatedPublications;
+    this.#moduleAssemblyPublications = dependencies.moduleAssemblyPublications;
     this.#moduleAssemblyOutputValidator = dependencies.moduleAssemblyOutputValidator;
     this.#lease = dependencies.lease;
     this.#liveUpdates = dependencies.liveUpdates;
@@ -673,7 +675,7 @@ export class DesignWriteGeometryRunExecutor {
           admissions: this.#admissions,
           baseSnapshot: preClaimBase,
           geometryCaptures: this.#geometryCaptures,
-          isolatedPublications: this.#isolatedPublications,
+          moduleAssemblyPublications: this.#moduleAssemblyPublications,
           moduleAssemblyOutputValidator: this.#moduleAssemblyOutputValidator,
           canonicalAssetDirectory: this.#canonicalAssetDirectory,
         },
@@ -743,7 +745,7 @@ export class DesignWriteGeometryRunExecutor {
           admissions: this.#admissions,
           baseSnapshot: base,
           geometryCaptures: this.#geometryCaptures,
-          isolatedPublications: this.#isolatedPublications,
+          moduleAssemblyPublications: this.#moduleAssemblyPublications,
           moduleAssemblyOutputValidator: this.#moduleAssemblyOutputValidator,
           canonicalAssetDirectory: this.#canonicalAssetDirectory,
         },
@@ -1230,7 +1232,7 @@ export class DesignWriteGeometryRunExecutor {
           admissions: this.#admissions,
           baseSnapshot: baseSnapshot,
           geometryCaptures: this.#geometryCaptures,
-          isolatedPublications: this.#isolatedPublications,
+          moduleAssemblyPublications: this.#moduleAssemblyPublications,
           moduleAssemblyOutputValidator: this.#moduleAssemblyOutputValidator,
           canonicalAssetDirectory: this.#canonicalAssetDirectory,
         },
@@ -1670,6 +1672,12 @@ async function assertComponentBindingsMatchArchitecture(
           `D5 violation: module child usage "${child.usageElementId}" is not an immediate usage of the signed composite PartDefinition.`,
         );
       }
+    }
+    if (moduleManifest.children.length !== targetUsages.size) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "D5 violation: signed geometry-module children do not equal the complete set of immediate PartUsage under the target PartDefinition.",
+      );
     }
     return;
   }
@@ -3290,7 +3298,7 @@ interface TargetPartAdmissionReopenContext {
   readonly admissions: Pick<TechnicalCompilationAdmissionReader, "read">;
   readonly baseSnapshot?: ThreadSnapshot;
   readonly geometryCaptures?: GeometryCaptureStore;
-  readonly isolatedPublications?: IsolatedOutputPublicationReader;
+  readonly moduleAssemblyPublications?: IsolatedOutputPublicationReader;
   readonly moduleAssemblyOutputValidator?: GeometryModuleAssemblyOutputValidation;
   readonly canonicalAssetDirectory?: string;
 }
@@ -3478,13 +3486,13 @@ async function loadReviewedGeometryDraft(
     if (
       !targetAdmissionContext?.baseSnapshot ||
       !targetAdmissionContext.geometryCaptures ||
-      !targetAdmissionContext.isolatedPublications ||
+      !targetAdmissionContext.moduleAssemblyPublications ||
       !targetAdmissionContext.moduleAssemblyOutputValidator ||
       !targetAdmissionContext.canonicalAssetDirectory
     ) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
-        "Geometry-module sealing requires the exact Thread basis, child capture store, isolated publication reader, and registered output validators.",
+        "Geometry-module sealing requires the exact Thread basis, child capture store, module-assembly publication reader, and registered output validators.",
       );
     }
     const moduleDraft = await loadReviewedGeometryModuleDraft(
@@ -3493,7 +3501,7 @@ async function loadReviewedGeometryDraft(
       {
         base: targetAdmissionContext.baseSnapshot,
         geometryCaptures: targetAdmissionContext.geometryCaptures,
-        publications: targetAdmissionContext.isolatedPublications,
+        publications: targetAdmissionContext.moduleAssemblyPublications,
         outputValidator: targetAdmissionContext.moduleAssemblyOutputValidator,
         canonicalDirectory: targetAdmissionContext.canonicalAssetDirectory,
       },

@@ -90,6 +90,12 @@ export interface CadProjectOptions {
   readonly writeSnapshots: ThreadSnapshotStore;
   readonly lease: EngineeringProjectRunLease;
   readonly capability: Build123dCapability;
+  /**
+   * Optional publication-gated reader for geometry-module assembly STEP/GLB.
+   * Never taken from Build123d `isolatedOutputPublications`. Absent means
+   * module sealing fails closed. Leaf `design.write-geometry@1` is unchanged.
+   */
+  readonly moduleAssembly?: IsolatedOutputPublicationReader;
   readonly admissions: CaptureBackedTechnicalCompilationAdmissionReader;
   readonly recordedAnalysisDirectory: string;
   readonly sourceAnalysisCaptures: FileCaptureStore<"source-analysis">;
@@ -211,7 +217,7 @@ export function createCadProject(options: CadProjectOptions): CadProject {
       directory: options.geometryCaptureDirectory,
     }),
     admissions: options.admissions,
-    isolatedPublications: options.capability.isolatedOutputPublications,
+    moduleAssemblyPublications: options.moduleAssembly,
     moduleAssemblyOutputValidator: new GeometryModuleAssemblyOutputValidator(),
     lease: options.lease,
     now: () => new Date().toISOString(),
