@@ -25,13 +25,13 @@ microVM:
 SysML-first reads share one application port. Workbench GET/SSE is a projection, not a
 command surface. Graphology is a disposable index, never domain or authority.
 
-| This                        | Is                                                                                                                                                         | Is not                                                                 |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `project_product_explore`   | Stateless walk from the unique root `PartDefinition` **element** or one exact `PartUsage` occurrence pinned to the published basis                         | A persisted focus, empty-path root occurrence, or `project_source_tree` |
-| `project_product_search`    | Exact-id or token discovery returning exact element refs. Labels never join                                                                                | Occurrence expansion, a join key, or SysON search                      |
-| `project_product_inspect`   | One exact element or occurrence: definition-scoped Thread evidence, element-level authoring heads, ready/blocked actions                                   | Reducing a usage to its typed definition, or merging attachment lists  |
-| `project_source_closure`    | Technical DAG of one versioned authoring attachment (`attachmentId` + `attachmentRevision` at an exact workspace revision). One `entries` stream of files and edges. `PartUsage` keeps its usage id | Product structure, a free `fileId`/`fileRevision` root, or admission   |
-| Graphology                  | Disposable algorithmic index reconstructed from exact `architecture-capture/4.0`                                                                           | Domain authority, persistence, or a second Workbench product browser   |
+| This                      | Is                                                                                                                                                                                                  | Is not                                                                  |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `project_product_explore` | Stateless walk from the unique root `PartDefinition` **element** or one exact `PartUsage` occurrence pinned to the published basis                                                                  | A persisted focus, empty-path root occurrence, or `project_source_tree` |
+| `project_product_search`  | Exact-id or token discovery returning exact element refs. Labels never join                                                                                                                         | Occurrence expansion, a join key, or SysON search                       |
+| `project_product_inspect` | One exact element or occurrence: definition-scoped Thread evidence, element-level authoring heads, ready/blocked actions                                                                            | Reducing a usage to its typed definition, or merging attachment lists   |
+| `project_source_closure`  | Technical DAG of one versioned authoring attachment (`attachmentId` + `attachmentRevision` at an exact workspace revision). One `entries` stream of files and edges. `PartUsage` keeps its usage id | Product structure, a free `fileId`/`fileRevision` root, or admission    |
+| Graphology                | Disposable algorithmic index reconstructed from exact `architecture-capture/4.0`                                                                                                                    | Domain authority, persistence, or a second Workbench product browser    |
 
 ## Engineering Case catalog
 
@@ -72,21 +72,24 @@ Domain contracts: [closed subset](../domains/cad/build123d-closed-subset-v1.md) 
 | `project_geometry_module_export`                          | Accepted public draft for a later one-level module build. Not implemented                                     | Placement capture or `design.write-geometry@1` |
 | Isolated Build123d worker (`/input/source.py`)            | Untrusted admitted CAD source executed in the existing image                                                  | The module assembler; it never execs agent Python            |
 | `geometry-module-input-bundle/1.0` assembler image        | Code-owned one-level STEP compound from a closed child-STEP bundle                                            | Concatenated CAD scripts, `design.execute-build123d@1`, or collision freedom |
+| `geometry-part-capture/1.0`                               | One exact PartDefinition; no assembly, occurrence, or placement claim                                         | `geometry-module-capture/1.0` or a v2 bundle                 |
+| `geometry-module-capture/1.0`                             | One composite PartDefinition and only its immediate child capture references                                  | A flat descendant manifest or `geometry-manifest/2.0`        |
+| `geometry-module-draft-capture/1.0`                       | Review-only module draft: lowerer identity, reopened admissions, assembly bytes                               | Child source text, a provider call, or Thread evidence       |
 
 ## Modelica
 
 Domain contracts: [language](../domains/modelica/language.md) and
 [execution](../domains/modelica/execution.md).
 
-| This                                                                                   | Is                                                                                | Is not                                                            |
-| -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `simulate.seal-simulation-case@1` / `@2` and `simulate.run-modelica-scenario@1` / `@2` | Retired recorded-provider route. Not registered                                   | Admitted `@1`, the pinned kit, L4, or L5                          |
-| Port 3016 `mcp-modelica` sidecar / `ModelicaRunObserver`                               | Retired fleet/Compose observed-run surface. Not required.                         | Local admitted/kit microVM Modelica                               |
-| `simulate.run-qualified-modelica-kit@1`                                                | Separate code-owned LinearThermalRamp qualified-kit V1 smoke in the local microVM | Admitted `.mo` execution or recorded `@2`                         |
-| `simulate.run-admitted-modelica@1`                                                     | Reopen `compile.seal-admission@3` Modelica bytes and run them in isolation        | The pinned kit, `@2`, or caller `modelicaText`                    |
+| This                                                                                   | Is                                                                                | Is not                                                             |
+| -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `simulate.seal-simulation-case@1` / `@2` and `simulate.run-modelica-scenario@1` / `@2` | Retired recorded-provider route. Not registered                                   | Admitted `@1`, the pinned kit, L4, or L5                           |
+| Port 3016 `mcp-modelica` sidecar / `ModelicaRunObserver`                               | Retired fleet/Compose observed-run surface. Not required.                         | Local admitted/kit microVM Modelica                                |
+| `simulate.run-qualified-modelica-kit@1`                                                | Separate code-owned LinearThermalRamp qualified-kit V1 smoke in the local microVM | Admitted `.mo` execution or recorded `@2`                          |
+| `simulate.run-admitted-modelica@1`                                                     | Reopen `compile.seal-admission@3` Modelica bytes and run them in isolation        | The pinned kit, `@2`, or caller `modelicaText`                     |
 | Historical `compile.seal-admission@3` creation snapshot                                | Artifact birth Thread revision                                                    | The `operation` returned by `project_admitted_modelica_run_review` |
-| `project_admitted_modelica_evaluation_review`                                          | Provider-free L4 MRTR prep from unique sheet + admitted evidence                  | L5 closeout, an L4 verdict, or OMC/SysON                          |
-| `project_admitted_modelica_evaluation_closeout_review`                                 | Provider-free L5 accept/reject of the unique current L4                           | L4 evaluation, implicit L5 from an L4 `pass`, or a provider grant |
+| `project_admitted_modelica_evaluation_review`                                          | Provider-free L4 MRTR prep from unique sheet + admitted evidence                  | L5 closeout, an L4 verdict, or OMC/SysON                           |
+| `project_admitted_modelica_evaluation_closeout_review`                                 | Provider-free L5 accept/reject of the unique current L4                           | L4 evaluation, implicit L5 from an L4 `pass`, or a provider grant  |
 
 Product Modelica: capture (`modelica-closed-subset-v2`) → compilation preview →
 `compile.seal-admission@3` → `project_admitted_modelica_run_review` →
@@ -100,16 +103,16 @@ kit `ENTRYPOINT` pins one `.mo`, admitted worker runs `/input/source.mo`.
 Domain contracts: [electrical index](../domains/electrical/README.md) and
 [circuit-only SPICE closed subset v1](../domains/electrical/spice-circuit-closed-subset-v1.md).
 
-| This                                                                                      | Is                                                                                | Is not                                                        |
-| ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| `project_led_driver_source_capture`                                                       | Draft CAS write of exact `led-driver-human-source/1.0` UTF-8                      | Circuit-only SPICE, D1, ngspice, or a Thread write            |
-| `project_led_driver_source_review`                                                        | Reference-only reopen of one `led-driver-source-capture/1.0` locator              | A capture command, `sourceText`, or the capture review object |
-| `simulate.run-admitted-spice@1`                                                           | Reopen `compile.seal-admission@3` circuit-only bytes and run ngspice in isolation | mcp-spice, the LED-driver fiche, L4, or L5                    |
+| This                                                                                      | Is                                                                                | Is not                                                          |
+| ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `project_led_driver_source_capture`                                                       | Draft CAS write of exact `led-driver-human-source/1.0` UTF-8                      | Circuit-only SPICE, D1, ngspice, or a Thread write              |
+| `project_led_driver_source_review`                                                        | Reference-only reopen of one `led-driver-source-capture/1.0` locator              | A capture command, `sourceText`, or the capture review object   |
+| `simulate.run-admitted-spice@1`                                                           | Reopen `compile.seal-admission@3` circuit-only bytes and run ngspice in isolation | mcp-spice, the LED-driver fiche, L4, or L5                      |
 | Historical `compile.seal-admission@3` creation snapshot                                   | Artifact birth Thread revision                                                    | The `operation` returned by `project_admitted_spice_run_review` |
-| `verify.seal-electrical-observation-method-sheet@1`                                       | Provider-free seal of the reviewed method sheet                                   | An admitted run, L4, or ngspice                               |
-| `verify.evaluate-admitted-spice-observations@1`                                           | Server-owned comparator of exact admitted observations against that sheet         | ngspice, SysON, or L5                                         |
-| `decide.accept-admitted-spice-evaluation@1` / `decide.reject-admitted-spice-evaluation@1` | Human closeout of that exact L4                                                   | Implicit L5 from an L4 `pass`, mcp-spice, or a safety claim   |
-| `mcp-spice` / `probe:spice-contract`                                                      | Maintainer-only preflight; integration `unresolved`                               | The product admitted run                                      |
+| `verify.seal-electrical-observation-method-sheet@1`                                       | Provider-free seal of the reviewed method sheet                                   | An admitted run, L4, or ngspice                                 |
+| `verify.evaluate-admitted-spice-observations@1`                                           | Server-owned comparator of exact admitted observations against that sheet         | ngspice, SysON, or L5                                           |
+| `decide.accept-admitted-spice-evaluation@1` / `decide.reject-admitted-spice-evaluation@1` | Human closeout of that exact L4                                                   | Implicit L5 from an L4 `pass`, mcp-spice, or a safety claim     |
+| `mcp-spice` / `probe:spice-contract`                                                      | Maintainer-only preflight; integration `unresolved`                               | The product admitted run                                        |
 
 How-to: [run admitted SPICE](../../how-to/run/run-admitted-spice.md).
 

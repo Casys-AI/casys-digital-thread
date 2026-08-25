@@ -127,6 +127,24 @@ without label joins. Older captures are rejected.
 Generic geometry manifest types, `encodeGeometryDecisionParameters`, and MRTR parameter
 encoding for `design.write-geometry@1`
 
+#### [`src/domain/cad/canonical/geometry-module-evidence.ts`](../../../src/domain/cad/canonical/geometry-module-evidence.ts)
+
+Bounded hierarchical module contracts: `geometry-module-manifest/1.0`,
+`geometry-module-draft-capture/1.0`, and `geometry-module-capture/1.0`. One exact
+composite PartDefinition and its immediate children; child rows are usage → definition →
+placement → canonical child capture references. No descendant dump, source text,
+exporter, or verdict.
+
+#### [`src/application/ports/out/cad/canonical/geometry-module-evidence-store.ts`](../../../src/application/ports/out/cad/canonical/geometry-module-evidence-store.ts)
+
+Typed draft/capture CAS ports for the later admitted exporter and
+`design.write-geometry@1` sealer. They do not select a provider.
+
+#### [`src/adapters/cad/canonical/file-geometry-module-evidence-store.ts`](../../../src/adapters/cad/canonical/file-geometry-module-evidence-store.ts)
+
+File adapters that persist those records through the existing
+`casys://geometry-draft-capture/` and `casys://geometry-capture/` stores.
+
 #### [`src/domain/cad/canonical/geometry-bundle.ts`](../../../src/domain/cad/canonical/geometry-bundle.ts)
 
 `geometry-manifest/2.0`: exhaustive PartUsage/PartDefinition identities, explicit

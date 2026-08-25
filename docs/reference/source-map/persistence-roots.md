@@ -178,9 +178,10 @@ only, never an approval or execution authority
 
 #### `state/local/geometry-draft-captures/`
 
-Current analysis-bearing `geometry-draft-capture/1.2` and `2.1`; records seal exact
-source-analysis references before preview and never enter a `ThreadSnapshot`. Older
-draft schemas are unsupported.
+Current analysis-bearing `geometry-draft-capture/1.2` and `2.1`, plus
+`geometry-module-draft-capture/1.0`; records seal exact source-analysis or module
+derivation references before preview and never enter a `ThreadSnapshot`. Older draft
+schemas are unsupported.
 
 #### `state/local/geometry-draft-assets/<sha256>`
 
@@ -189,6 +190,6 @@ read-only by `/api/draft-assets/<digest>`
 
 #### `state/local/geometry-captures/`
 
-Current `geometry-capture/1.2` and `2.1`; records seal verified passive source-analysis
-references while retaining editable sources, sandbox provenance, predecessor lineage and
-independent PartDefinition STEP assets. Older capture schemas are unsupported.
+Current `geometry-capture/1.2` and `2.1`, plus `geometry-module-capture/1.0`; records
+seal verified passive source-analysis or immediate-child capture references, predecessor
+lineage, and independent assembly STEP assets. Older capture schemas are unsupported.
