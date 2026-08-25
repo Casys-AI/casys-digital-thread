@@ -170,21 +170,29 @@ import {
 import type { LiveThreadUpdateMilestoneJournal } from "../../shared/stores/live-thread-update-store.ts";
 import type { IsolatedOutputPublicationReader } from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
 import {
+  GEOMETRY_MODULE_ASSET_DERIVATION_RATIONALE,
   GEOMETRY_MODULE_CAPTURE_SCHEMA,
+  GEOMETRY_MODULE_CHILD_DERIVATION_RATIONALE,
+  GEOMETRY_MODULE_CHILD_USE_RATIONALE,
+  GEOMETRY_MODULE_STRUCTURE_DERIVATION_RATIONALE,
+  GEOMETRY_MODULE_STRUCTURE_USE_RATIONALE,
   geometryModuleAssemblyArtifacts,
+  geometryModuleAssemblyGlbArtifactId,
   type GeometryModuleAssemblyOutputValidation,
+  geometryModuleAssemblyStepArtifactId,
+  geometryModuleBinaryProducer,
   geometryModuleCaptureRecord,
   geometryModulePrimaryInputIds,
   geometryModuleStructureAttestation,
   isGeometryModuleManifest,
   loadReviewedGeometryModuleDraft,
   promoteReopenedModuleAsset,
-  requireGeometryModulePredecessor,
   requireStructureCaptureArtifact,
   type ReviewedGeometryModuleDraft,
   rollbackPromotedCanonicalAssets,
 } from "./design-write-geometry-module-seal.ts";
 import {
+  type GeometryModuleCapture,
   type GeometryModuleManifest,
   geometryModuleManifestFromDraft,
   parseGeometryModuleCapture,
@@ -1157,6 +1165,9 @@ export class DesignWriteGeometryRunExecutor {
           ? geometryModulePrimaryInputIds({
             architectureId: "architecture",
             structureId: "structure",
+            childPrimaryIds: params.manifest.children.map((child) =>
+              child.childGeometry.artifactId
+            ),
             predecessorId: geometryManifestPredecessor(params.manifest)?.artifactId,
           }).length
           : (geometryManifestPredecessor(params.manifest) ? 2 : 1))
@@ -1310,12 +1321,26 @@ export class DesignWriteGeometryRunExecutor {
           sourceAnalysisCaptures: this.#sourceAnalysisCaptures,
         },
       );
-      const predecessorIndex = structureArtifact ? 2 : 1;
+      const expectedInputs = isGeometryModuleManifest(params.manifest)
+        ? geometryModulePrimaryInputIds({
+          architectureId: architectureArtifact.id,
+          structureId: structureArtifact!.id,
+          childPrimaryIds: params.manifest.children.map((child) =>
+            child.childGeometry.artifactId
+          ),
+          predecessorId: predecessor?.artifact.id,
+        })
+        : [
+          architectureArtifact.id,
+          ...(predecessor ? [predecessor.artifact.id] : []),
+        ];
       if (
-        predecessor &&
-        primary.inputArtifactIds[predecessorIndex] !== predecessor.artifact.id
+        deterministicJson(primary.inputArtifactIds) !==
+          deterministicJson(expectedInputs)
       ) {
-        throw new Error("primary artifact does not name the reviewed predecessor");
+        throw new Error(
+          "primary artifact does not name its exact reviewed inputs",
+        );
       }
     } catch (error) {
       throw completedGeometryIntegrityError(
@@ -1782,26 +1807,23 @@ async function requireGeometryPredecessor(
   geometryCaptures: GeometryCaptureStore,
   sourceAnalysisStores?: GeometrySourceAnalysisStores,
 ): Promise<GeometryPredecessorContext | undefined> {
-  if (isGeometryModuleManifest(params.manifest)) {
-    return await requireGeometryModulePredecessor(
+  if (
+    isGeometryModuleManifest(params.manifest) ||
+    params.manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA
+  ) {
+    return await requireGeometryTargetPredecessor(
       base,
       params.manifest,
-      geometryCaptures,
-    );
-  }
-  return params.manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA
-    ? await requireGeometryPartPredecessor(
-      base,
-      params.manifest,
-      geometryCaptures,
-      sourceAnalysisStores,
-    )
-    : await requireGeometryBundlePredecessor(
-      base,
-      params,
       geometryCaptures,
       sourceAnalysisStores,
     );
+  }
+  return await requireGeometryBundlePredecessor(
+    base,
+    params,
+    geometryCaptures,
+    sourceAnalysisStores,
+  );
 }
 
 /**
@@ -1922,9 +1944,9 @@ async function requireGeometryBundlePredecessor(
  * the target is a hard conflict rather than something a target seal may
  * partially retire.
  */
-async function requireGeometryPartPredecessor(
+async function requireGeometryTargetPredecessor(
   base: ThreadSnapshot,
-  manifest: GeometryPartManifest,
+  manifest: GeometryPartManifest | GeometryModuleManifest,
   geometryCaptures: GeometryCaptureStore,
   sourceAnalysisStores?: GeometrySourceAnalysisStores,
 ): Promise<GeometryPartPredecessorContext | undefined> {
@@ -1934,10 +1956,18 @@ async function requireGeometryPartPredecessor(
     artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX) &&
     !archived.has(`artifact:${artifact.id}`)
   );
-  const candidates: Array<{
-    readonly artifact: ThreadArtifact;
-    readonly capture: ExactGeometryPartPredecessorCapture;
-  }> = [];
+  const candidates: Array<
+    | {
+      readonly family: "part";
+      readonly artifact: ThreadArtifact;
+      readonly capture: ExactGeometryPartPredecessorCapture;
+    }
+    | {
+      readonly family: "module";
+      readonly artifact: ThreadArtifact;
+      readonly capture: GeometryModuleCapture;
+    }
+  > = [];
 
   for (const artifact of active) {
     assertCanonicalGeometryPrimaryIdentity(artifact);
@@ -1958,13 +1988,27 @@ async function requireGeometryPartPredecessor(
             "an active target capture has the same PartDefinition elementId but a different label",
           );
         }
-        candidates.push({ artifact, capture });
+        candidates.push({ family: "part", artifact, capture });
       }
       continue;
     }
     if (record.schemaVersion === GEOMETRY_MODULE_CAPTURE_SCHEMA) {
-      // Family-scoped succession: a module capture is never a part predecessor
-      // and must remain active when a different family is sealed.
+      const capture = await requireExactGeometryModulePredecessorCapture(
+        base,
+        artifact,
+        record,
+      );
+      if (
+        capture.manifest.target.partDefinitionElementId ===
+          manifest.target.partDefinitionElementId
+      ) {
+        if (capture.manifest.target.label !== manifest.target.label) {
+          invalidGeometryPredecessor(
+            "an active module capture has the same PartDefinition elementId but a different label",
+          );
+        }
+        candidates.push({ family: "module", artifact, capture });
+      }
       continue;
     }
     if (isGeometryCaptureSchema(record.schemaVersion)) {
@@ -2002,7 +2046,7 @@ async function requireGeometryPartPredecessor(
   if (candidates.length > 1) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
-      "geometry_part_tip_ambiguous: more than one active canonical target capture exists for the exact PartDefinition.",
+      "geometry_target_tip_ambiguous: more than one active canonical leaf/module capture exists for the exact PartDefinition.",
     );
   }
   const candidate = candidates[0];
@@ -2011,25 +2055,36 @@ async function requireGeometryPartPredecessor(
     if (declared) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
-        "geometry_part_predecessor_mismatch: the signed same-target predecessor is not active.",
+        "geometry_target_predecessor_mismatch: the signed same-target predecessor is not active.",
       );
     }
     return undefined;
   }
+  const candidateSchema = candidate.family === "part"
+    ? GEOMETRY_PART_CAPTURE_SCHEMA
+    : GEOMETRY_MODULE_CAPTURE_SCHEMA;
   if (
     !declared || declared.artifactId !== candidate.artifact.id ||
-    !fingerprintsEqual(declared.fingerprint, candidate.artifact.fingerprint)
+    !fingerprintsEqual(declared.fingerprint, candidate.artifact.fingerprint) ||
+    declared.schemaVersion !== candidateSchema ||
+    declared.partDefinitionElementId !== manifest.target.partDefinitionElementId
   ) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
-      `geometry_part_predecessor_mismatch: target ${manifest.target.partDefinitionElementId} must name its active canonical predecessor exactly.`,
+      `geometry_target_predecessor_mismatch: target ${manifest.target.partDefinitionElementId} must name its active canonical leaf/module predecessor exactly.`,
     );
   }
-  const family = requireExactGeometryPartPredecessorFamily(
-    base,
-    candidate.artifact,
-    candidate.capture,
-  );
+  const family = candidate.family === "part"
+    ? requireExactGeometryPartPredecessorFamily(
+      base,
+      candidate.artifact,
+      candidate.capture,
+    )
+    : requireExactGeometryModulePredecessorFamily(
+      base,
+      candidate.artifact,
+      candidate.capture,
+    );
   const archiveEntries = computeArchiveCascade(
     base,
     family.map((artifact) => ({ kind: "artifact" as const, id: artifact.id })),
@@ -2203,6 +2258,163 @@ async function requireExactGeometryPartPredecessorCapture(
   return { manifest, previewProducer, sealedAt };
 }
 
+/** Re-prove a module capture and every Thread basis it claims before succession. */
+async function requireExactGeometryModulePredecessorCapture(
+  base: ThreadSnapshot,
+  primary: ThreadArtifact,
+  record: Record<string, unknown>,
+): Promise<GeometryModuleCapture> {
+  let capture: GeometryModuleCapture;
+  try {
+    const parsed = await parseCanonicalGeometryCapture(record);
+    if (parsed.schemaVersion !== GEOMETRY_MODULE_CAPTURE_SCHEMA) {
+      invalidGeometryPredecessor("module target capture schema is unsupported");
+    }
+    capture = parsed;
+  } catch (error) {
+    if (error instanceof EngineeringProjectCommandError) throw error;
+    invalidGeometryPredecessor(
+      `module target capture is incomplete or invalid: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  if (capture.trustedRunId !== primary.producer.runId) {
+    invalidGeometryPredecessor(
+      "module target trusted run does not match the artifact producer",
+    );
+  }
+  const architecture = base.artifacts.filter((artifact) =>
+    artifact.id === capture.architectureBasis.artifactId &&
+    fingerprintsEqual(
+      artifact.fingerprint,
+      capture.architectureBasis.fingerprint,
+    ) &&
+    artifact.producer.runId === capture.architectureBasis.producerRunId
+  );
+  if (architecture.length !== 1) {
+    invalidGeometryPredecessor(
+      "module target architecture basis is absent or inexact",
+    );
+  }
+  const structure = requireStructureCaptureArtifact(
+    base,
+    capture.structureCapture,
+  );
+  const childPrimaryIds = [
+    ...new Set(
+      capture.children.map((child) => child.childGeometry.artifactId),
+    ),
+  ];
+  const archived = archivedRefKeys(base);
+  const childArtifacts: ThreadArtifact[] = [];
+  for (const childId of childPrimaryIds) {
+    const child = capture.children.find((candidate) =>
+      candidate.childGeometry.artifactId === childId
+    )!;
+    const matches = base.artifacts.filter((artifact) =>
+      artifact.id === child.childGeometry.artifactId &&
+      fingerprintsEqual(artifact.fingerprint, child.childGeometry.fingerprint)
+    );
+    if (
+      matches.length !== 1 ||
+      archived.has(`artifact:${child.childGeometry.artifactId}`)
+    ) {
+      invalidGeometryPredecessor(
+        `module target child ${child.childGeometry.artifactId} is absent, archived, or inexact`,
+      );
+    }
+    childArtifacts.push(matches[0]!);
+  }
+  const expectedInputs = geometryModulePrimaryInputIds({
+    architectureId: architecture[0]!.id,
+    structureId: structure.id,
+    childPrimaryIds,
+    predecessorId: capture.predecessor?.artifactId,
+  });
+  if (
+    deterministicJson(primary.inputArtifactIds) !== deterministicJson(expectedInputs)
+  ) {
+    invalidGeometryPredecessor(
+      "module target inputs do not match architecture, structure, children and predecessor",
+    );
+  }
+  let ownPredecessor: ThreadArtifact | undefined;
+  if (capture.predecessor) {
+    const matches = base.artifacts.filter((artifact) =>
+      artifact.id === capture.predecessor!.artifactId &&
+      fingerprintsEqual(artifact.fingerprint, capture.predecessor!.fingerprint)
+    );
+    if (
+      matches.length !== 1 ||
+      !archived.has(`artifact:${capture.predecessor.artifactId}`)
+    ) {
+      invalidGeometryPredecessor(
+        "module target own predecessor is absent, active, or inexact",
+      );
+    }
+    ownPredecessor = matches[0]!;
+  }
+  requireExactGeometryPredecessorArchitectureAttestation(
+    base,
+    primary,
+    architecture[0]!,
+    capture.sealedAt,
+  );
+  requireExactGeometryModuleStructureAttestation(
+    base,
+    primary,
+    structure,
+    capture.sealedAt,
+  );
+  for (const child of childArtifacts) {
+    const consumptionId = `consume-child-${child.id}-by-${primary.id}`;
+    const consumption = base.consumptions.filter((item) =>
+      item.id === consumptionId && item.artifactId === child.id &&
+      deterministicJson(item.consumer) === deterministicJson(primary.producer) &&
+      fingerprintsEqual(item.observedFingerprint, child.fingerprint) &&
+      item.status === "verified" && item.verifiedAt === capture.sealedAt
+    );
+    const derived = base.provenance.filter((link) =>
+      link.id ===
+        `derived-from-child-${primary.fingerprint.digest}-${child.fingerprint.digest}` &&
+      link.relation === "derived_from" && link.from.kind === "artifact" &&
+      link.from.id === primary.id && link.to.kind === "artifact" &&
+      link.to.id === child.id &&
+      link.rationale === GEOMETRY_MODULE_CHILD_DERIVATION_RATIONALE
+    );
+    const uses = base.provenance.filter((link) =>
+      link.id === `uses-${consumptionId}` && link.relation === "uses" &&
+      link.from.kind === "consumption" && link.from.id === consumptionId &&
+      link.to.kind === "artifact" && link.to.id === child.id &&
+      link.rationale === GEOMETRY_MODULE_CHILD_USE_RATIONALE
+    );
+    if (consumption.length !== 1 || derived.length !== 1 || uses.length !== 1) {
+      invalidGeometryPredecessor(
+        `module target child ${child.id} lineage is not exact`,
+      );
+    }
+  }
+  if (ownPredecessor) {
+    requireExactGeometryPredecessorLineage(
+      base,
+      primary,
+      ownPredecessor,
+      capture.sealedAt,
+    );
+  }
+  if (
+    primary.freshness.status !== "fresh" ||
+    primary.freshness.changedAt !== capture.sealedAt ||
+    primary.freshness.invalidatedByChangeIds.length !== 0
+  ) {
+    invalidGeometryPredecessor(
+      "module target freshness does not match sealedAt",
+    );
+  }
+  return capture;
+}
+
 /** The target family is exactly primary plus its indexed target files. */
 function requireExactGeometryPartPredecessorFamily(
   base: ThreadSnapshot,
@@ -2279,6 +2491,109 @@ function requireExactGeometryPartPredecessorFamily(
     if (!trace || !consumption || !uses) {
       invalidGeometryPredecessor(
         `target binary artifact ${descriptor.id} trace or consumption is not exact`,
+      );
+    }
+  }
+  return family;
+}
+
+/** A module family is indivisible: primary plus its exact STEP and GLB. */
+function requireExactGeometryModulePredecessorFamily(
+  base: ThreadSnapshot,
+  primary: ThreadArtifact,
+  capture: GeometryModuleCapture,
+): readonly ThreadArtifact[] {
+  const digest = primary.fingerprint.digest;
+  const archived = archivedRefKeys(base);
+  const producer = geometryModuleBinaryProducer(capture.receipt);
+  const descriptors: ReadonlyArray<{
+    readonly id: string;
+    readonly name: string;
+    readonly kind: ThreadArtifact["kind"];
+    readonly fingerprint: ContentFingerprint;
+    readonly uri: string;
+    readonly mediaType: string;
+  }> = [{
+    id: geometryModuleAssemblyStepArtifactId(
+      digest,
+      capture.assemblyStep.fingerprint.digest,
+    ),
+    name: `Authoritative STEP: ${capture.manifest.target.label}`,
+    kind: "step",
+    fingerprint: capture.assemblyStep.fingerprint,
+    uri: `/api/thread/assets/${capture.assemblyStep.fingerprint.digest}.step`,
+    mediaType: "model/step",
+  }, {
+    id: geometryModuleAssemblyGlbArtifactId(
+      digest,
+      capture.assemblyGlb.fingerprint.digest,
+    ),
+    name: `GLB: ${capture.manifest.target.label}`,
+    kind: "cad-model",
+    fingerprint: capture.assemblyGlb.fingerprint,
+    uri: `/api/thread/assets/${capture.assemblyGlb.fingerprint.digest}.glb`,
+    mediaType: "model/gltf-binary",
+  }];
+  const family = base.artifacts.filter((artifact) =>
+    !archived.has(`artifact:${artifact.id}`) &&
+    (artifact.id === primary.id ||
+      artifact.id.startsWith(`cad-asset-${digest}-module-`))
+  );
+  if (family.length !== descriptors.length + 1) {
+    invalidGeometryPredecessor(
+      "module target binary family is incomplete or contains extra assets",
+    );
+  }
+  for (const descriptor of descriptors) {
+    const artifact = family.find((candidate) => candidate.id === descriptor.id);
+    if (
+      !artifact || artifact.name !== descriptor.name ||
+      artifact.kind !== descriptor.kind ||
+      artifact.version !== descriptor.fingerprint.digest ||
+      !fingerprintsEqual(artifact.fingerprint, descriptor.fingerprint) ||
+      artifact.uri !== descriptor.uri ||
+      artifact.mediaType !== descriptor.mediaType ||
+      deterministicJson(artifact.producer) !== deterministicJson(producer) ||
+      deterministicJson(artifact.inputArtifactIds) !==
+        deterministicJson([primary.id]) ||
+      artifact.freshness.status !== "fresh" ||
+      artifact.freshness.changedAt !== capture.sealedAt ||
+      artifact.freshness.invalidatedByChangeIds.length !== 0
+    ) {
+      invalidGeometryPredecessor(
+        `module target binary artifact ${descriptor.id} metadata is not exact`,
+      );
+    }
+    const consumptionId = `consume-${primary.id}-by-${artifact.id}`;
+    const trace = base.provenance.find((link) =>
+      link.id === `traces-${artifact.id}-from-${primary.id}` &&
+      link.relation === "traces_to" && link.from.kind === "artifact" &&
+      link.from.id === artifact.id && link.to.kind === "artifact" &&
+      link.to.id === primary.id &&
+      link.rationale === GEOMETRY_BINARY_TRACE_RATIONALE
+    );
+    const consumption = base.consumptions.find((item) =>
+      item.id === consumptionId && item.artifactId === primary.id &&
+      deterministicJson(item.consumer) === deterministicJson(artifact.producer) &&
+      fingerprintsEqual(item.observedFingerprint, primary.fingerprint) &&
+      item.status === "verified" && item.verifiedAt === capture.sealedAt
+    );
+    const derived = base.provenance.find((link) =>
+      link.id === `derived-from-module-primary-${artifact.id}` &&
+      link.relation === "derived_from" && link.from.kind === "artifact" &&
+      link.from.id === artifact.id && link.to.kind === "artifact" &&
+      link.to.id === primary.id &&
+      link.rationale === GEOMETRY_MODULE_ASSET_DERIVATION_RATIONALE
+    );
+    const uses = base.provenance.find((link) =>
+      link.id === `uses-${consumptionId}` && link.relation === "uses" &&
+      link.from.kind === "consumption" && link.from.id === consumptionId &&
+      link.to.kind === "artifact" && link.to.id === primary.id &&
+      link.rationale === GEOMETRY_BINARY_CAPTURE_USE_RATIONALE
+    );
+    if (!trace || !consumption || !derived || !uses) {
+      invalidGeometryPredecessor(
+        `module target binary artifact ${descriptor.id} trace or consumption is not exact`,
       );
     }
   }
@@ -2614,6 +2929,50 @@ function requireExactGeometryPredecessorArchitectureAttestation(
     derived[0]!.rationale !== GEOMETRY_ARCHITECTURE_DERIVATION_RATIONALE
   ) {
     invalidGeometryPredecessor("architecture derivation is not exact");
+  }
+}
+
+function requireExactGeometryModuleStructureAttestation(
+  base: ThreadSnapshot,
+  primary: ThreadArtifact,
+  structure: ThreadArtifact,
+  sealedAt: string,
+): void {
+  const consumptionId = `consume-structure-${structure.id}-by-${primary.id}`;
+  const consumptions = base.consumptions.filter((consumption) =>
+    consumption.id === consumptionId && consumption.artifactId === structure.id &&
+    deterministicJson(consumption.consumer) === deterministicJson(primary.producer)
+  );
+  if (
+    consumptions.length !== 1 ||
+    !fingerprintsEqual(
+      consumptions[0]!.observedFingerprint,
+      structure.fingerprint,
+    ) ||
+    consumptions[0]!.status !== "verified" ||
+    consumptions[0]!.verifiedAt !== sealedAt
+  ) {
+    invalidGeometryPredecessor(
+      "module structure consumption metadata is not exact",
+    );
+  }
+  const derived = base.provenance.filter((link) =>
+    link.id === `derived-from-structure-${primary.fingerprint.digest}` &&
+    link.relation === "derived_from" && link.from.kind === "artifact" &&
+    link.from.id === primary.id && link.to.kind === "artifact" &&
+    link.to.id === structure.id &&
+    link.rationale === GEOMETRY_MODULE_STRUCTURE_DERIVATION_RATIONALE
+  );
+  const uses = base.provenance.filter((link) =>
+    link.id === `uses-${consumptionId}` && link.relation === "uses" &&
+    link.from.kind === "consumption" && link.from.id === consumptionId &&
+    link.to.kind === "artifact" && link.to.id === structure.id &&
+    link.rationale === GEOMETRY_MODULE_STRUCTURE_USE_RATIONALE
+  );
+  if (derived.length !== 1 || uses.length !== 1) {
+    invalidGeometryPredecessor(
+      "module structure derivation or use attestation is not exact",
+    );
   }
 }
 
@@ -4332,13 +4691,39 @@ function buildExtension(options: {
     uri: captureUri,
     mediaType: "application/json",
     producer: sealProducer,
-    inputArtifactIds: [
-      architectureArtifact.id,
-      ...(structureArtifact ? [structureArtifact.id] : []),
-      ...(predecessor ? [predecessor.artifact.id] : []),
-    ],
+    inputArtifactIds: isGeometryModuleManifest(params.manifest)
+      ? geometryModulePrimaryInputIds({
+        architectureId: architectureArtifact.id,
+        structureId: structureArtifact!.id,
+        childPrimaryIds: params.manifest.children.map((child) =>
+          child.childGeometry.artifactId
+        ),
+        predecessorId: predecessor?.artifact.id,
+      })
+      : [
+        architectureArtifact.id,
+        ...(predecessor ? [predecessor.artifact.id] : []),
+      ],
     freshness,
   };
+  const moduleChildArtifacts: ThreadArtifact[] = isGeometryModuleManifest(
+      params.manifest,
+    )
+    ? [
+      ...new Set(
+        params.manifest.children.map((child) => child.childGeometry.artifactId),
+      ),
+    ].map((childId) => {
+      const child = base.artifacts.find((artifact) => artifact.id === childId);
+      if (!child) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          `geometry_module_child_missing: child capture ${childId} disappeared before Thread publication.`,
+        );
+      }
+      return child;
+    })
+    : [];
 
   // Per-part-mesh artifacts: one "mesh" artifact per sealed part mesh.
   const partMeshArtifacts: ThreadArtifact[] =
@@ -4415,6 +4800,7 @@ function buildExtension(options: {
   const moduleAssemblyArtifacts = isGeometryModuleManifest(params.manifest)
     ? geometryModuleAssemblyArtifacts({
       captureDigest: captureFp.digest,
+      primaryId: artifactId,
       manifest: params.manifest,
       producer: previewProducer,
       freshness,
@@ -4458,6 +4844,16 @@ function buildExtension(options: {
       capturedAt,
     })
     : undefined;
+  const moduleChildConsumptions: ThreadArtifactConsumption[] = moduleChildArtifacts.map(
+    (child) => ({
+      id: `consume-child-${child.id}-by-${artifactId}`,
+      artifactId: child.id,
+      consumer: sealProducer,
+      observedFingerprint: child.fingerprint,
+      verifiedAt: capturedAt,
+      status: "verified" as const,
+    }),
+  );
   const predecessorConsumption: ThreadArtifactConsumption | undefined = predecessor
     ? {
       id: `consume-geometry-${predecessor.artifact.id}-by-${artifactId}`,
@@ -4479,7 +4875,9 @@ function buildExtension(options: {
     (artifact) => ({
       id: `consume-${artifactId}-by-${artifact.id}`,
       artifactId,
-      consumer: sealProducer,
+      consumer: artifact.inputArtifactIds.includes(artifactId)
+        ? artifact.producer
+        : sealProducer,
       observedFingerprint: captureFp,
       verifiedAt: capturedAt,
       status: "verified" as const,
@@ -4504,6 +4902,7 @@ function buildExtension(options: {
     consumptions: [
       consumption,
       ...(structureAttestation ? [structureAttestation.consumption] : []),
+      ...moduleChildConsumptions,
       ...(predecessorConsumption ? [predecessorConsumption] : []),
       ...binaryConsumptions,
     ],
@@ -4526,6 +4925,22 @@ function buildExtension(options: {
           to: { kind: link.to.kind, id: link.to.id },
         }))
         : []),
+      ...moduleChildArtifacts.flatMap((child, index) => {
+        const consumption = moduleChildConsumptions[index]!;
+        return [{
+          id: `derived-from-child-${captureFp.digest}-${child.fingerprint.digest}`,
+          relation: "derived_from" as const,
+          from: { kind: "artifact" as const, id: artifactId },
+          to: { kind: "artifact" as const, id: child.id },
+          rationale: GEOMETRY_MODULE_CHILD_DERIVATION_RATIONALE,
+        }, {
+          id: `uses-${consumption.id}`,
+          relation: "uses" as const,
+          from: { kind: "consumption" as const, id: consumption.id },
+          to: { kind: "artifact" as const, id: child.id },
+          rationale: GEOMETRY_MODULE_CHILD_USE_RATIONALE,
+        }];
+      }),
       ...(predecessor && predecessorConsumption
         ? [{
           id: `derived-from-geometry-${captureFp.digest}`,
@@ -4556,19 +4971,31 @@ function buildExtension(options: {
       },
       ...binaryArtifacts.flatMap((artifact, index) => {
         const binaryConsumption = binaryConsumptions[index]!;
-        return [{
-          id: `traces-${artifact.id}-from-${artifactId}`,
-          relation: "traces_to" as const,
-          from: { kind: "artifact" as const, id: artifact.id },
-          to: { kind: "artifact" as const, id: artifactId },
-          rationale: GEOMETRY_BINARY_TRACE_RATIONALE,
-        }, {
-          id: `uses-${binaryConsumption.id}`,
-          relation: "uses" as const,
-          from: { kind: "consumption" as const, id: binaryConsumption.id },
-          to: { kind: "artifact" as const, id: artifactId },
-          rationale: GEOMETRY_BINARY_CAPTURE_USE_RATIONALE,
-        }];
+        return [
+          {
+            id: `traces-${artifact.id}-from-${artifactId}`,
+            relation: "traces_to" as const,
+            from: { kind: "artifact" as const, id: artifact.id },
+            to: { kind: "artifact" as const, id: artifactId },
+            rationale: GEOMETRY_BINARY_TRACE_RATIONALE,
+          },
+          ...(artifact.inputArtifactIds.includes(artifactId)
+            ? [{
+              id: `derived-from-module-primary-${artifact.id}`,
+              relation: "derived_from" as const,
+              from: { kind: "artifact" as const, id: artifact.id },
+              to: { kind: "artifact" as const, id: artifactId },
+              rationale: GEOMETRY_MODULE_ASSET_DERIVATION_RATIONALE,
+            }]
+            : []),
+          {
+            id: `uses-${binaryConsumption.id}`,
+            relation: "uses" as const,
+            from: { kind: "consumption" as const, id: binaryConsumption.id },
+            to: { kind: "artifact" as const, id: artifactId },
+            rationale: GEOMETRY_BINARY_CAPTURE_USE_RATIONALE,
+          },
+        ];
       }),
     ],
     proposedActions: [],

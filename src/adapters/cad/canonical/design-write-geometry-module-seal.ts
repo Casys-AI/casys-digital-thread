@@ -55,7 +55,6 @@ import type {
   ThreadSnapshot,
 } from "../../../domain/thread/thread-snapshot.ts";
 import { archivedRefKeys } from "../../../domain/thread/thread-snapshot.ts";
-import { computeArchiveCascade } from "../../../domain/thread/thread-retirement.ts";
 import {
   GEOMETRY_CAPTURE_URI_PREFIX,
   PART_DEFINITIONS_CAPTURE_URI_PREFIX,
@@ -65,6 +64,12 @@ export const GEOMETRY_MODULE_STRUCTURE_DERIVATION_RATIONALE =
   "The sealed geometry-module capture is derived from the exact part-definitions structure basis.";
 export const GEOMETRY_MODULE_STRUCTURE_USE_RATIONALE =
   "The sealer consumed the exact part-definitions capture named by the signed module manifest.";
+export const GEOMETRY_MODULE_CHILD_DERIVATION_RATIONALE =
+  "The module assembly is derived from the exact active child geometry capture reopened by the sealer.";
+export const GEOMETRY_MODULE_CHILD_USE_RATIONALE =
+  "The module sealer consumed the exact child geometry capture and its authoritative STEP bytes.";
+export const GEOMETRY_MODULE_ASSET_DERIVATION_RATIONALE =
+  "The assembly asset is derived from the exact sealed module capture that names its content fingerprint.";
 
 export interface GeometryCaptureReader {
   read(fingerprint: ContentFingerprint): Promise<string | undefined>;
@@ -75,11 +80,6 @@ export interface GeometryModuleAssemblyOutputValidation {
     declaration: IsolatedCodeOutputDeclaration,
     observedBytes: Uint8Array,
   ): Promise<void>;
-}
-
-export interface GeometryModulePredecessorContext {
-  readonly artifact: ThreadArtifact;
-  readonly archiveEntries: ReturnType<typeof computeArchiveCascade>;
 }
 
 export interface ReviewedGeometryModuleDraft {
@@ -134,11 +134,14 @@ export function geometryModuleStructureConsumptionId(
 export function geometryModulePrimaryInputIds(options: {
   readonly architectureId: string;
   readonly structureId: string;
+  readonly childPrimaryIds: readonly string[];
   readonly predecessorId?: string;
 }): readonly string[] {
+  const childPrimaryIds = [...new Set(options.childPrimaryIds)];
   return [
     options.architectureId,
     options.structureId,
+    ...childPrimaryIds,
     ...(options.predecessorId === undefined ? [] : [options.predecessorId]),
   ];
 }
@@ -338,88 +341,6 @@ export async function reopenGeometryModuleAssemblyOutputs(
   return { step, glb };
 }
 
-export async function requireGeometryModulePredecessor(
-  base: ThreadSnapshot,
-  manifest: GeometryModuleManifest,
-  geometryCaptures: GeometryCaptureReader,
-): Promise<GeometryModulePredecessorContext | undefined> {
-  const archived = archivedRefKeys(base);
-  const active = base.artifacts.filter((artifact) =>
-    artifact.kind === "cad-model" &&
-    artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX) &&
-    !archived.has(`artifact:${artifact.id}`)
-  );
-  const candidates: ThreadArtifact[] = [];
-  for (const artifact of active) {
-    assertCanonicalGeometryPrimaryIdentity(artifact);
-    const record = await readExactGeometryCaptureRecord(artifact, geometryCaptures);
-    if (record.schemaVersion === GEOMETRY_MODULE_CAPTURE_SCHEMA) {
-      const capture = await parseExactCanonicalGeometryCapture(record);
-      if (capture.schemaVersion !== GEOMETRY_MODULE_CAPTURE_SCHEMA) {
-        throw moduleTransition(
-          "geometry_module_predecessor_mismatch: active module capture changed family during exact replay.",
-        );
-      }
-      if (
-        capture.manifest.target.partDefinitionElementId ===
-          manifest.target.partDefinitionElementId
-      ) {
-        if (capture.manifest.target.label !== manifest.target.label) {
-          throw moduleTransition(
-            "geometry_module_predecessor_mismatch: an active module capture has the same PartDefinition elementId but a different label.",
-          );
-        }
-        candidates.push(artifact);
-      }
-      continue;
-    }
-    if (record.schemaVersion === "geometry-capture/2.1") {
-      const partDefinitions = modulePartDefinitions(record);
-      const covered = partDefinitions.find((definition) =>
-        definition.elementId === manifest.target.partDefinitionElementId
-      );
-      if (covered) {
-        throw moduleTransition(
-          "geometry_part_v2_bundle_conflict: an active V2 canonical geometry bundle already covers this exact PartDefinition; it cannot be partially archived.",
-        );
-      }
-    }
-  }
-  if (candidates.length > 1) {
-    throw moduleTransition(
-      "geometry_module_tip_ambiguous: more than one active canonical module capture exists for the exact PartDefinition.",
-    );
-  }
-  const candidate = candidates[0];
-  const declared = manifest.predecessor;
-  if (!candidate) {
-    if (declared) {
-      throw moduleTransition(
-        "geometry_module_predecessor_mismatch: the signed same-target module predecessor is not active.",
-      );
-    }
-    return undefined;
-  }
-  if (
-    !declared || declared.schemaVersion !== GEOMETRY_MODULE_CAPTURE_SCHEMA ||
-    declared.artifactId !== candidate.id ||
-    !fingerprintsEqual(declared.fingerprint, candidate.fingerprint) ||
-    declared.partDefinitionElementId !== manifest.target.partDefinitionElementId
-  ) {
-    throw moduleTransition(
-      `geometry_module_predecessor_mismatch: target ${manifest.target.partDefinitionElementId} must name its active same-family module predecessor exactly.`,
-    );
-  }
-  const family = requireExactGeometryModulePredecessorFamily(base, candidate);
-  return {
-    artifact: candidate,
-    archiveEntries: computeArchiveCascade(
-      base,
-      family.map((artifact) => ({ kind: "artifact" as const, id: artifact.id })),
-    ),
-  };
-}
-
 export function geometryModuleCaptureRecord(options: {
   readonly runId: string;
   readonly draftDigest: string;
@@ -458,6 +379,7 @@ export function geometryModuleCaptureRecord(options: {
 
 export function geometryModuleAssemblyArtifacts(options: {
   readonly captureDigest: string;
+  readonly primaryId: string;
   readonly manifest: GeometryModuleManifest;
   readonly producer: ThreadOperationRef;
   readonly freshness: ThreadArtifact["freshness"];
@@ -478,7 +400,7 @@ export function geometryModuleAssemblyArtifacts(options: {
       uri: `/api/thread/assets/${stepDigest}.step`,
       mediaType: "model/step",
       producer: options.producer,
-      inputArtifactIds: [],
+      inputArtifactIds: [options.primaryId],
       freshness: options.freshness,
     },
     {
@@ -490,7 +412,7 @@ export function geometryModuleAssemblyArtifacts(options: {
       uri: `/api/thread/assets/${glbDigest}.glb`,
       mediaType: "model/gltf-binary",
       producer: options.producer,
-      inputArtifactIds: [],
+      inputArtifactIds: [options.primaryId],
       freshness: options.freshness,
     },
   ];
@@ -773,46 +695,6 @@ async function parseExactCanonicalGeometryCapture(
       }`,
     );
   }
-}
-
-function requireExactGeometryModulePredecessorFamily(
-  base: ThreadSnapshot,
-  primary: ThreadArtifact,
-): readonly ThreadArtifact[] {
-  const digest = primary.fingerprint.digest;
-  const archived = archivedRefKeys(base);
-  const family = base.artifacts.filter((artifact) =>
-    !archived.has(`artifact:${artifact.id}`) &&
-    (artifact.id === primary.id ||
-      artifact.id.startsWith(`cad-asset-${digest}-module-`))
-  );
-  if (family.length < 1) {
-    throw moduleTransition(
-      "geometry_module_predecessor_mismatch: active module family is empty.",
-    );
-  }
-  return family;
-}
-
-function modulePartDefinitions(
-  record: Record<string, unknown>,
-): ReadonlyArray<{ readonly elementId: string }> {
-  const manifest = record.manifest;
-  if (manifest === null || typeof manifest !== "object" || Array.isArray(manifest)) {
-    return [];
-  }
-  const definitions = (manifest as { partDefinitions?: unknown }).partDefinitions;
-  if (!Array.isArray(definitions)) return [];
-  return definitions.flatMap((definition) => {
-    if (
-      definition === null || typeof definition !== "object" ||
-      Array.isArray(definition)
-    ) {
-      return [];
-    }
-    const elementId = (definition as { elementId?: unknown }).elementId;
-    return typeof elementId === "string" ? [{ elementId }] : [];
-  });
 }
 
 function requireReceiptOutput(

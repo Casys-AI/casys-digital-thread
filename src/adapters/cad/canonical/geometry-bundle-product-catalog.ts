@@ -42,6 +42,7 @@ import {
   parseGeometryModuleDecisionParameters,
 } from "../../../domain/cad/canonical/geometry-module-evidence.ts";
 import {
+  GEOMETRY_MODULE_ASSET_DERIVATION_RATIONALE,
   GEOMETRY_MODULE_STRUCTURE_DERIVATION_RATIONALE,
   GEOMETRY_MODULE_STRUCTURE_USE_RATIONALE,
   geometryModuleAssemblyGlbArtifactId,
@@ -91,6 +92,7 @@ interface VerifiedGeometryBundle {
 }
 
 interface VerifiedTargetGeometry {
+  readonly coverage: "leaf" | "module";
   readonly primary: ThreadArtifact;
   readonly target: {
     readonly partDefinitionElementId: string;
@@ -516,6 +518,7 @@ async function verifyTargetGeometryCapture(
     fail("The targeted geometry has ambiguous GLB presentation assets.");
   }
   return {
+    coverage: "leaf",
     primary,
     target: {
       partDefinitionElementId: manifest.target.partDefinitionElementId,
@@ -566,6 +569,7 @@ async function verifyModuleGeometryCapture(
   const expectedInputs = geometryModulePrimaryInputIds({
     architectureId: architectureArtifact.id,
     structureId: structure.id,
+    childPrimaryIds: parsed.children.map((child) => child.childGeometry.artifactId),
     predecessorId: manifest.predecessor?.artifactId,
   });
   if (
@@ -626,7 +630,7 @@ async function verifyModuleGeometryCapture(
     `Authoritative STEP: ${manifest.target.label}`,
     producer,
     sealedAt,
-    "part-definition",
+    "module",
   );
   const glb = requireExactBinary(
     snapshot,
@@ -639,9 +643,10 @@ async function verifyModuleGeometryCapture(
     `GLB: ${manifest.target.label}`,
     producer,
     sealedAt,
-    "part-definition",
+    "module",
   );
   return {
+    coverage: "module",
     primary,
     target: {
       partDefinitionElementId: manifest.target.partDefinitionElementId,
@@ -1375,7 +1380,7 @@ function requireExactBinary(
   name: string,
   producer: ThreadOperationRef,
   sealedAt: string,
-  scope: "assembly" | "part-definition",
+  scope: "assembly" | "part-definition" | "module",
 ): ThreadArtifact {
   if (archivedRefKeys(snapshot).has(`artifact:${id}`)) {
     fail(`The sealed geometry binary ${id} is archived.`);
@@ -1404,7 +1409,8 @@ function requireExactBinary(
     artifact.uri !== `/api/thread/assets/${file.fingerprint.digest}.${extension}` ||
     artifact.mediaType !== mediaType ||
     deterministicJson(artifact.producer) !== deterministicJson(producer) ||
-    artifact.inputArtifactIds.length !== 0 ||
+    deterministicJson(artifact.inputArtifactIds) !==
+      deterministicJson(scope === "module" ? [primary.id] : []) ||
     artifact.freshness.status !== "fresh" ||
     artifact.freshness.changedAt !== sealedAt ||
     artifact.freshness.invalidatedByChangeIds.length !== 0
@@ -1426,7 +1432,8 @@ function requireExactBinary(
   const consumptionId = `consume-${primary.id}-by-${artifact.id}`;
   const consumptions = snapshot.consumptions.filter((consumption) =>
     consumption.id === consumptionId && consumption.artifactId === primary.id &&
-    deterministicJson(consumption.consumer) === deterministicJson(primary.producer) &&
+    deterministicJson(consumption.consumer) ===
+      deterministicJson(scope === "module" ? artifact.producer : primary.producer) &&
     fingerprintsEqual(consumption.observedFingerprint, primary.fingerprint) &&
     consumption.status === "verified" && consumption.verifiedAt === sealedAt
   );
@@ -1435,8 +1442,18 @@ function requireExactBinary(
     link.from.id === consumptionId && link.to.kind === "artifact" &&
     link.to.id === primary.id
   );
+  const derived = scope === "module"
+    ? snapshot.provenance.filter((link) =>
+      link.id === `derived-from-module-primary-${artifact.id}` &&
+      link.relation === "derived_from" && link.from.kind === "artifact" &&
+      link.from.id === artifact.id && link.to.kind === "artifact" &&
+      link.to.id === primary.id &&
+      link.rationale === GEOMETRY_MODULE_ASSET_DERIVATION_RATIONALE
+    )
+    : [];
   if (
     consumptions.length !== 1 || uses.length !== 1 ||
+    (scope === "module" && derived.length !== 1) ||
     uses[0]!.id !== `uses-${consumptionId}` ||
     uses[0]!.rationale !== GEOMETRY_BINARY_CAPTURE_USE_RATIONALE
   ) {
@@ -1549,13 +1566,25 @@ function attachExactTargetCadBindings(
   }
   return validateThreadComponentCatalog({
     ...catalog,
-    rationale:
-      "This Product Structure is derived from the exact architecture capture and " +
-      "the active targeted geometry capture set. Each signed PartDefinition identity " +
-      "maps to its authoritative STEP and reviewed GLB presentation when present; " +
-      "no assembly, occurrence, placement, or complete-product CAD coverage is claimed.",
+    rationale: targetGeometryCoverageRationale(targets),
     components,
   });
+}
+
+function targetGeometryCoverageRationale(
+  targets: readonly VerifiedTargetGeometry[],
+): string {
+  const hasLeaf = targets.some((target) => target.coverage === "leaf");
+  const hasModule = targets.some((target) => target.coverage === "module");
+  const coverage = hasLeaf && hasModule
+    ? "Leaf captures claim only their exact PartDefinition bodies; module captures claim the exact immediate child assembly and signed placements of their PartDefinition."
+    : hasModule
+    ? "Each module capture claims the exact immediate child assembly and signed placements of its PartDefinition."
+    : "Each leaf capture claims only the exact body of its PartDefinition; no assembly, occurrence, or placement coverage is claimed for leaf captures.";
+  return "This Product Structure is derived from the exact architecture capture and " +
+    "the active targeted geometry capture set. Each signed PartDefinition identity " +
+    "maps to its authoritative STEP and reviewed GLB presentation when present. " +
+    `${coverage} No module capture is extrapolated into complete-product CAD coverage.`;
 }
 
 function attachExactCadBindings(

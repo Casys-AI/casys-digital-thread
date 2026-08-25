@@ -5,7 +5,13 @@
  * draft/child/output reopen, target-scoped succession, and failure atomicity.
  */
 
-import { assertEquals, assertExists, assertRejects, assertThrows } from "@std/assert";
+import {
+  assertEquals,
+  assertExists,
+  assertRejects,
+  assertStringIncludes,
+  assertThrows,
+} from "@std/assert";
 import {
   EngineeringProjectCommandError,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
@@ -84,6 +90,7 @@ import {
 } from "../../shared/cas/file-capture-store.ts";
 import { GeometryModuleAssemblyOutputValidator } from "../module-assembly/geometry-module-assembly-output-validator.ts";
 import { GeometrySourceAnalysisCaptureService } from "../source/geometry-source-analysis-capture.ts";
+import { resolveGenericProductStructureCatalog } from "../../architecture/renderer/product-structure-catalog.ts";
 import {
   assertMrtrManifestMatchesDraft,
 } from "./design-write-geometry-run-executor.ts";
@@ -95,6 +102,7 @@ import {
   HUMAN,
   makeExecutor,
   PROJECT_ID,
+  queueGeometryPartSeal,
 } from "./design-write-geometry-run-executor_test.ts";
 
 const A = "a".repeat(64);
@@ -134,6 +142,24 @@ Deno.test("module seal reopens exact child STEP, promotes isolated outputs, and 
       world.bundle.fingerprint.digest,
     );
     assertEquals(capture.inputBundle.byteCount, world.bundle.bytes.byteLength);
+    const catalog = await resolveGenericProductStructureCatalog(
+      snapshot,
+      world.fixture.archCaptures,
+      world.fixture.geoCaptures,
+      world.fixture.sysmlSourceAnalysis,
+    );
+    assertExists(catalog);
+    assertStringIncludes(catalog.rationale, "exact immediate child assembly");
+    assertStringIncludes(
+      catalog.rationale,
+      "No module capture is extrapolated into complete-product CAD coverage",
+    );
+    assertEquals(
+      catalog.rationale.includes(
+        "no assembly, occurrence, placement, or complete-product CAD coverage is claimed",
+      ),
+      false,
+    );
     await Deno.stat(
       `${world.fixture.canonicalAssetDirectory}/${world.assemblyStep.digest}.step`,
     );
@@ -221,7 +247,7 @@ Deno.test("module seal refuses a missing, ambiguous, superseded, or shallow chil
           ? "geometry_module_child_ambiguous"
           : defect === "superseded"
           ? "geometry_module_child_superseded"
-          : "canonical capture failed exact replay",
+          : "target capture is incomplete or invalid",
       );
       await assertQueued(world.fixture);
     } finally {
@@ -277,7 +303,7 @@ Deno.test("module seal refuses a predecessor that names a different target", asy
     await assertRejects(
       () => world.executor.execute(AGENT, world.command),
       EngineeringProjectCommandError,
-      "geometry_module_predecessor_mismatch",
+      "geometry_target_predecessor_mismatch",
     );
     await assertQueued(world.fixture);
   } finally {
@@ -302,6 +328,13 @@ Deno.test("parent module seal preserves child captures; successor archives only 
       artifact.kind === "cad-model" && artifact.producer.runId === firstRun.id
     );
     assertExists(firstPrimary);
+    const firstFamilyIds = firstSnapshot.artifacts.filter((artifact) =>
+      artifact.id === firstPrimary.id ||
+      artifact.id.startsWith(
+        `cad-asset-${firstPrimary.fingerprint.digest}-module-`,
+      )
+    ).map((artifact) => artifact.id);
+    assertEquals(firstFamilyIds.length, 3);
     for (const child of first.children) {
       assertEquals(
         archivedRefKeys(firstSnapshot).has(
@@ -333,7 +366,9 @@ Deno.test("parent module seal preserves child captures; successor archives only 
     );
     assertExists(snapshot);
     const archived = archivedRefKeys(snapshot);
-    assertEquals(archived.has(`artifact:${firstPrimary.id}`), true);
+    for (const familyId of firstFamilyIds) {
+      assertEquals(archived.has(`artifact:${familyId}`), true);
+    }
     for (const child of first.children) {
       assertEquals(archived.has(`artifact:${child.childGeometry.artifactId}`), false);
     }
@@ -344,6 +379,161 @@ Deno.test("parent module seal preserves child captures; successor archives only 
     );
     assertExists(successorPrimary);
     assertEquals(archived.has(`artifact:${successorPrimary.id}`), false);
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("leaf to module succession archives the complete leaf family", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-leaf-to-module-" });
+  try {
+    const world = await prepareModuleWorld(tmpDir, { leafPredecessor: true });
+    assertExists(world.leafPredecessorId);
+    const before = await world.fixture.snapshots.get(
+      world.fixture.baselineRef.snapshotId,
+    );
+    assertExists(before);
+    const leaf = before.artifacts.find((artifact) =>
+      artifact.id === world.leafPredecessorId
+    );
+    assertExists(leaf);
+    const leafFamilyIds = before.artifacts.filter((artifact) =>
+      artifact.id === leaf.id ||
+      artifact.id.startsWith(`cad-asset-${leaf.fingerprint.digest}-target-`)
+    ).map((artifact) => artifact.id);
+    assertEquals(leafFamilyIds.length, 2);
+
+    const completed = await world.executor.execute(AGENT, world.command);
+    const run = completed.agentRuns.find((candidate) =>
+      candidate.id === world.fixture.queued.runId
+    );
+    assertExists(run?.resultSnapshot);
+    const snapshot = await world.fixture.snapshots.get(run.resultSnapshot.snapshotId);
+    assertExists(snapshot);
+    const archived = archivedRefKeys(snapshot);
+    for (const id of leafFamilyIds) {
+      assertEquals(archived.has(`artifact:${id}`), true);
+    }
+    const modulePrimary = snapshot.artifacts.find((artifact) =>
+      artifact.producer.runId === run.id && artifact.kind === "cad-model"
+    );
+    assertExists(modulePrimary);
+    assertEquals(archived.has(`artifact:${modulePrimary.id}`), false);
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("module to leaf succession archives the complete module family", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-module-to-leaf-" });
+  try {
+    const world = await prepareModuleWorld(tmpDir);
+    const moduleCompleted = await world.executor.execute(AGENT, world.command);
+    const moduleRun = moduleCompleted.agentRuns.find((candidate) =>
+      candidate.id === world.fixture.queued.runId
+    );
+    assertExists(moduleRun?.resultSnapshot);
+    const moduleSnapshot = await world.fixture.snapshots.get(
+      moduleRun.resultSnapshot.snapshotId,
+    );
+    assertExists(moduleSnapshot);
+    const modulePrimary = moduleSnapshot.artifacts.find((artifact) =>
+      artifact.producer.runId === moduleRun.id && artifact.kind === "cad-model"
+    );
+    assertExists(modulePrimary);
+    const moduleFamilyIds = moduleSnapshot.artifacts.filter((artifact) =>
+      artifact.id === modulePrimary.id ||
+      artifact.id.startsWith(
+        `cad-asset-${modulePrimary.fingerprint.digest}-module-`,
+      )
+    ).map((artifact) => artifact.id);
+    assertEquals(moduleFamilyIds.length, 3);
+
+    const leaf = await queueGeometryPartSeal(world.fixture, moduleCompleted, {
+      target: "system",
+      suffix: "system-after-module",
+    });
+    const leafCompleted = await makeExecutor(leaf.fixture, tmpDir).execute(
+      AGENT,
+      {
+        ...executionCommand(leaf.fixture),
+        commandId: "exec-system-leaf-after-module",
+      },
+    );
+    const leafRun = leafCompleted.agentRuns.find((candidate) =>
+      candidate.id === leaf.fixture.queued.runId
+    );
+    assertExists(leafRun?.resultSnapshot);
+    const snapshot = await leaf.fixture.snapshots.get(
+      leafRun.resultSnapshot.snapshotId,
+    );
+    assertExists(snapshot);
+    const archived = archivedRefKeys(snapshot);
+    for (const id of moduleFamilyIds) {
+      assertEquals(archived.has(`artifact:${id}`), true);
+    }
+    const leafPrimary = snapshot.artifacts.find((artifact) =>
+      artifact.producer.runId === leafRun.id && artifact.kind === "cad-model"
+    );
+    assertExists(leafPrimary);
+    assertEquals(archived.has(`artifact:${leafPrimary.id}`), false);
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("replacing a child leaf cascades retirement through parent module assets", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-child-module-cascade-" });
+  try {
+    const world = await prepareModuleWorld(tmpDir);
+    const moduleCompleted = await world.executor.execute(AGENT, world.command);
+    const moduleRun = moduleCompleted.agentRuns.find((candidate) =>
+      candidate.id === world.fixture.queued.runId
+    );
+    assertExists(moduleRun?.resultSnapshot);
+    const moduleSnapshot = await world.fixture.snapshots.get(
+      moduleRun.resultSnapshot.snapshotId,
+    );
+    assertExists(moduleSnapshot);
+    const modulePrimary = moduleSnapshot.artifacts.find((artifact) =>
+      artifact.producer.runId === moduleRun.id && artifact.kind === "cad-model"
+    );
+    assertExists(modulePrimary);
+    const moduleFamilyIds = moduleSnapshot.artifacts.filter((artifact) =>
+      artifact.id === modulePrimary.id ||
+      artifact.id.startsWith(
+        `cad-asset-${modulePrimary.fingerprint.digest}-module-`,
+      )
+    ).map((artifact) => artifact.id);
+
+    const replacement = await queueGeometryPartSeal(world.fixture, moduleCompleted, {
+      target: "frame",
+      suffix: "frame-replacement-cascade",
+    });
+    const replaced = await makeExecutor(replacement.fixture, tmpDir).execute(
+      AGENT,
+      {
+        ...executionCommand(replacement.fixture),
+        commandId: "exec-frame-replacement-cascade",
+      },
+    );
+    const replacementRun = replaced.agentRuns.find((candidate) =>
+      candidate.id === replacement.fixture.queued.runId
+    );
+    assertExists(replacementRun?.resultSnapshot);
+    const snapshot = await replacement.fixture.snapshots.get(
+      replacementRun.resultSnapshot.snapshotId,
+    );
+    assertExists(snapshot);
+    const archived = archivedRefKeys(snapshot);
+    for (const id of moduleFamilyIds) {
+      assertEquals(archived.has(`artifact:${id}`), true);
+    }
+    assertEquals(
+      archived.has(`artifact:${world.children[0]!.childGeometry.artifactId}`),
+      true,
+    );
+    assertEquals(archived.has(`artifact:${world.unrelatedChildId}`), false);
   } finally {
     await Deno.remove(tmpDir, { recursive: true });
   }
@@ -412,6 +602,7 @@ interface ModuleWorld {
   readonly assemblyGlb: { readonly digest: string; readonly bytes: Uint8Array };
   readonly v1PrimaryId: string;
   readonly unrelatedChildId: string;
+  readonly leafPredecessorId?: string;
 }
 
 async function prepareModuleWorld(
@@ -421,6 +612,7 @@ async function prepareModuleWorld(
     readonly childDefect?: "missing" | "ambiguous" | "superseded" | "shallow";
     readonly outputDigestMismatch?: boolean;
     readonly wrongPredecessor?: boolean;
+    readonly leafPredecessor?: boolean;
     readonly tamperSignedLabel?: boolean;
     readonly omitSignedChild?: boolean;
   } = {},
@@ -465,6 +657,16 @@ async function prepareModuleWorld(
     label: "BoltDefinition",
     stepBytes: boltStep,
   });
+  const systemLeaf = options.leafPredecessor
+    ? await materializeChildCapture(initial, {
+      basis,
+      architecture,
+      runId: "run:child-system-leaf",
+      partDefinitionElementId: "part-definition:system",
+      label: "GeometrySystem",
+      stepBytes: part21("SYSTEM-LEAF"),
+    })
+    : undefined;
   const extras = options.childDefect === "ambiguous"
     ? [
       await materializeChildCapture(initial, {
@@ -486,12 +688,14 @@ async function prepareModuleWorld(
     artifacts: [
       ...frame.artifacts,
       ...bolt.artifacts,
+      ...(systemLeaf?.artifacts ?? []),
       ...extras.flatMap((child) => child.artifacts),
       structure.artifact,
     ],
     consumptions: [
       ...frame.consumptions,
       ...bolt.consumptions,
+      ...(systemLeaf?.consumptions ?? []),
       ...extras.flatMap((child) => child.consumptions),
       ...structure.consumptions,
     ],
@@ -503,6 +707,7 @@ async function prepareModuleWorld(
     provenance: [
       ...frame.provenance,
       ...bolt.provenance,
+      ...(systemLeaf?.provenance ?? []),
       ...extras.flatMap((child) => child.provenance),
       ...structure.provenance,
     ],
@@ -596,6 +801,13 @@ async function prepareModuleWorld(
         fingerprint: frame.child.childGeometry.fingerprint,
         partDefinitionElementId: "part-definition:system",
       }
+      : systemLeaf
+      ? {
+        schemaVersion: GEOMETRY_PART_CAPTURE_SCHEMA,
+        artifactId: systemLeaf.child.childGeometry.artifactId,
+        fingerprint: systemLeaf.child.childGeometry.fingerprint,
+        partDefinitionElementId: "part-definition:system",
+      }
       : undefined,
   }));
   const reconstructed = geometryModuleManifestFromDraft(draft);
@@ -653,6 +865,9 @@ async function prepareModuleWorld(
     assemblyGlb: { digest: isolation.glbDigest, bytes: assemblyGlb },
     v1PrimaryId: v1Primary.id,
     unrelatedChildId: bolt.child.childGeometry.artifactId,
+    ...(systemLeaf
+      ? { leafPredecessorId: systemLeaf.child.childGeometry.artifactId }
+      : {}),
   };
 }
 

@@ -133,6 +133,7 @@ import {
   GEOMETRY_PART_CAPTURE_SCHEMA,
   type GeometryPartManifest,
 } from "../../../domain/cad/canonical/geometry-part-manifest.ts";
+import { GEOMETRY_MODULE_CAPTURE_SCHEMA } from "../../../domain/cad/geometry-capture-contract.ts";
 import {
   captureGeometryPartDraft,
   geometryPartManifestFromDraft,
@@ -2890,11 +2891,11 @@ async function queueGeometryBundleUpgrade(
 }
 
 /** Queue one P2a-reviewed target draft for the P2b sealer; never reruns it. */
-async function queueGeometryPartSeal(
+export async function queueGeometryPartSeal(
   fixture: GeoFixture,
   completed: Awaited<ReturnType<DesignWriteGeometryRunExecutor["execute"]>>,
   options: {
-    readonly target: "frame" | "bolt";
+    readonly target: "frame" | "bolt" | "system";
     readonly suffix: string;
     readonly predecessor?: "auto" | "omit";
     readonly tamperSource?: boolean;
@@ -2925,6 +2926,12 @@ async function queueGeometryPartSeal(
       label: "FrameDefinition",
       script: PARAMETERIZED_FRAME,
     }
+    : options.target === "system"
+    ? {
+      elementId: "part-definition:system",
+      label: "GeometrySystem",
+      script: PARAMETERIZED_ASSEMBLY,
+    }
     : {
       elementId: "part-definition:bolt",
       label: "BoltDefinition",
@@ -2932,6 +2939,10 @@ async function queueGeometryPartSeal(
     };
   const archived = archivedRefKeys(basis);
   let activeTarget: ThreadArtifact | undefined;
+  let activeTargetSchema:
+    | typeof GEOMETRY_PART_CAPTURE_SCHEMA
+    | typeof GEOMETRY_MODULE_CAPTURE_SCHEMA
+    | undefined;
   for (const artifact of basis.artifacts) {
     if (
       artifact.kind !== "cad-model" ||
@@ -2941,20 +2952,24 @@ async function queueGeometryPartSeal(
     const text = await fixture.geoCaptures.read(artifact.fingerprint);
     if (!text) continue;
     const parsed = JSON.parse(text) as {
-      schemaVersion?: string;
+      schemaVersion?:
+        | typeof GEOMETRY_PART_CAPTURE_SCHEMA
+        | typeof GEOMETRY_MODULE_CAPTURE_SCHEMA;
       manifest?: { target?: { partDefinitionElementId?: string } };
     };
     if (
-      parsed.schemaVersion === "geometry-part-capture/1.0" &&
+      (parsed.schemaVersion === GEOMETRY_PART_CAPTURE_SCHEMA ||
+        parsed.schemaVersion === GEOMETRY_MODULE_CAPTURE_SCHEMA) &&
       parsed.manifest?.target?.partDefinitionElementId === target.elementId
     ) {
       activeTarget = artifact;
+      activeTargetSchema = parsed.schemaVersion;
       break;
     }
   }
   const predecessor = options.predecessor === "omit" ? undefined : activeTarget
     ? {
-      schemaVersion: GEOMETRY_PART_CAPTURE_SCHEMA,
+      schemaVersion: activeTargetSchema!,
       artifactId: activeTarget.id,
       fingerprint: activeTarget.fingerprint,
       partDefinitionElementId: target.elementId,
