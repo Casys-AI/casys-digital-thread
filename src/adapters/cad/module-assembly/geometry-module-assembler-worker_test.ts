@@ -16,7 +16,7 @@ Deno.test("module-assembler worker contract keeps the untrusted Build123d source
   assertEquals(worker.expectedImageUser, "65532:65532");
 });
 
-Deno.test("module-assembler Python decoder rehashes a TypeScript-encoded bundle", async () => {
+Deno.test("module-assembler wrapper reaches the sibling decoder under isolated Python", async () => {
   const python = await findPython();
   if (python === undefined) return;
   const bundle = await createGeometryModuleInputBundle([{
@@ -46,18 +46,41 @@ Deno.test("module-assembler Python decoder rehashes a TypeScript-encoded bundle"
   try {
     const bundlePath = `${directory}/bundle.bin`;
     await Deno.writeFile(bundlePath, bundle.bytes.copy());
+    const env = { ...Deno.env.toObject() };
+    delete env.PYTHONPATH;
     const command = new Deno.Command(python, {
       args: [
         "-I",
         "-B",
         "-c",
-        "import json,sys; sys.path.insert(0, 'images/build123d-module-assembler-worker'); " +
-        "from geometry_module_bundle import parse_bundle; " +
-        "bundle=parse_bundle(open(sys.argv[1],'rb').read()); " +
-        "print(json.dumps({'sha256':bundle['sha256'],'usages':[item['usageElementId'] for item in bundle['occurrences']]}))",
+        [
+          "import importlib.util, json, sys, types",
+          "from pathlib import Path",
+          "build123d = types.ModuleType('build123d')",
+          "for name in ('Compound', 'Location', 'export_gltf', 'export_step', 'import_step'):",
+          "    setattr(build123d, name, object)",
+          "sys.modules['build123d'] = build123d",
+          "ocp = types.ModuleType('OCP')",
+          "gp = types.ModuleType('OCP.gp')",
+          "for name in ('gp_Ax1', 'gp_Dir', 'gp_Pnt', 'gp_Trsf', 'gp_Vec'):",
+          "    setattr(gp, name, object)",
+          "ocp.gp = gp",
+          "sys.modules['OCP'] = ocp",
+          "sys.modules['OCP.gp'] = gp",
+          "wrapper = Path('images/build123d-module-assembler-worker/run-module-assembler.py').resolve()",
+          "spec = importlib.util.spec_from_file_location('run_module_assembler', wrapper)",
+          "assert spec is not None and spec.loader is not None",
+          "module = importlib.util.module_from_spec(spec)",
+          "spec.loader.exec_module(module)",
+          "decoder = Path(module.parse_bundle.__code__.co_filename).resolve()",
+          "assert decoder == wrapper.with_name('geometry_module_bundle.py'), decoder",
+          "bundle = module.parse_bundle(open(sys.argv[1], 'rb').read())",
+          "print(json.dumps({'sha256': bundle['sha256'], 'usages': [item['usageElementId'] for item in bundle['occurrences']]}))",
+        ].join("\n"),
         bundlePath,
       ],
       cwd: Deno.cwd(),
+      env,
       stdout: "piped",
       stderr: "piped",
     });

@@ -8,20 +8,38 @@ The caller supplies no program. Success does not assert collision freedom.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import math
 import os
 from pathlib import Path
 import sys
 
+
+def load_image_owned_sibling(module_name: str):
+    """Load one code-owned sibling next to this wrapper.
+
+    Isolated `python -I` ignores PYTHONPATH and the script directory, so a
+    normal import of geometry_module_bundle would fail.
+    """
+    path = Path(__file__).resolve().with_name(f"{module_name}.py")
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(
+            f"casys-module-assembler:The image-owned sibling {module_name} is missing."
+        )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+geometry_module_bundle = load_image_owned_sibling("geometry_module_bundle")
+GeometryModuleBundleError = geometry_module_bundle.GeometryModuleBundleError
+parse_bundle = geometry_module_bundle.parse_bundle
+stage_child_steps = geometry_module_bundle.stage_child_steps
+
 from build123d import Compound, Location, export_gltf, export_step, import_step
 from OCP.gp import gp_Ax1, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
-
-from geometry_module_bundle import (
-    GeometryModuleBundleError,
-    parse_bundle,
-    stage_child_steps,
-)
 
 
 BUNDLE_PATH = Path("/input/geometry-module.bundle")
