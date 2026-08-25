@@ -31,7 +31,6 @@ export type ProjectTechnicalSourceCaptureErrorCode =
   | "file_revision_not_active"
   | "capture_request_missing"
   | "profile_not_registered"
-  | "role_mismatch"
   | "role_catalog_rejected"
   | "closure_unresolved"
   | "resource_reopen_failed"

@@ -70,7 +70,6 @@ export function recrossTechnicalAdmissionSourceFiles(input: {
         attachment: source.attachment,
         sourceClosure: source.sourceClosure,
         profileId: source.profileId,
-        role: source.role,
       });
       files.push({
         fileId: record.fileId,
@@ -85,7 +84,7 @@ export function recrossTechnicalAdmissionSourceFiles(input: {
         resourceName: record.resourceRef.name,
         mimeType: record.resourceRef.mimeType,
         moduleId: record.moduleId,
-        role: record.role,
+        role: source.role,
         admissionArtifactId: facts.admissionArtifactId,
         bindings: facts.bindings.flatMap((binding) => {
           if (

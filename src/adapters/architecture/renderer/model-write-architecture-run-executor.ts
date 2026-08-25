@@ -55,6 +55,7 @@ import {
   type ArchitectureProposal,
   architectureWriteSelector,
   type ExistingArchitectureStructure,
+  type InsertionItem,
   MODEL_WRITE_ARCHITECTURE_OPERATION,
   parseArchitectureProposalParameters,
   planArchitectureInsertion,
@@ -108,6 +109,7 @@ import {
   ArchitectureStructureExtractionError,
   extractArchitectureStructure,
 } from "./architecture-structure-extractor.ts";
+import { writeSysonTypedPartUsage } from "./syson-typed-part-usage-writer.ts";
 import {
   requireBasis,
   requiredStart,
@@ -577,10 +579,13 @@ export class ModelWriteArchitectureRunExecutor {
               "No insertion is needed; this transition would produce no new evidence.",
           );
         } else {
+          const sealedWriteItems = plan.mode === "initial"
+            ? initialSealedWriteItems(architectureProposal)
+            : plan.toInsert;
           sealedSources = await this.#captureAndReopenSysmlSources(
             architectureProposal,
             plan.mode,
-            plan.toInsert,
+            sealedWriteItems,
             run.id,
           );
           this.#assertSourcesMatchCurrentProposal(
@@ -589,7 +594,7 @@ export class ModelWriteArchitectureRunExecutor {
           );
           const sourceAnalyses = sealedSources.map((source) => source.reference);
           const planDigest = await architectureWritePlanDigest({
-            items: plan.toInsert,
+            items: sealedWriteItems,
             packageName: architectureProposal.packageName,
             sourceAnalyses,
           });
@@ -597,7 +602,7 @@ export class ModelWriteArchitectureRunExecutor {
             project.project.id,
             command.runId,
             architectureProposal.packageName,
-            plan.toInsert,
+            sealedWriteItems,
             planDigest,
             capturedAt,
             sourceAnalyses,
@@ -682,10 +687,62 @@ export class ModelWriteArchitectureRunExecutor {
                 );
               }
             } catch (error) {
-              if (!(error instanceof EngineeringProjectCommandError)) {
+              if (
+                !(error instanceof EngineeringProjectCommandError) &&
+                !providerAcknowledged
+              ) {
                 throw new ArchitectureWriteOutcomeUnknownError();
               }
               throw error;
+            }
+            if (plan.mode === "initial") {
+              // SysON can acknowledge a syntactically valid multi-statement
+              // insertion while retaining only a prefix of that source. The
+              // full-package source remains the canonical first write, but
+              // every possible recovery statement was rendered, analysed and
+              // sealed in the WAL before dispatch. Re-read the provider and
+              // issue only the exact missing statements from that sealed set.
+              // This read happens after the dispatch catch deliberately: an
+              // extraction failure after a valid ACK is a quarantined
+              // structural failure, not an unknown provider outcome.
+              const initialReadback = await extractArchitectureStructure(
+                this.#syson,
+                editingContextId,
+                rootPackageId,
+                architectureProposal.packageName,
+              );
+              if (!initialReadback) {
+                throw new EngineeringProjectCommandError(
+                  "invalid_transition",
+                  "The architecture package is absent from SysON immediately after the acknowledged initial insertion.",
+                );
+              }
+              const fallbackPlan = planArchitectureInsertion(
+                initialReadback,
+                architectureProposal,
+              );
+              if (fallbackPlan.conflicts.length > 0) {
+                throw new EngineeringProjectCommandError(
+                  "invalid_transition",
+                  "The acknowledged initial insertion left a conflicting partial architecture. " +
+                    `First: ${fallbackPlan.conflicts[0]!.message}`,
+                );
+              }
+              assertInitialFallbackWasSealed(
+                fallbackPlan.toInsert,
+                sealedWriteItems,
+              );
+              if (fallbackPlan.toInsert.length > 0) {
+                await this.#insertEnrichmentItems(
+                  editingContextId,
+                  initialReadback.packageId,
+                  fallbackPlan.toInsert,
+                  sealedSources,
+                  () => {
+                    providerAcknowledged = true;
+                  },
+                );
+              }
             }
             // Resolve and fully verify the exact provider graph before promoting
             // the WAL from dispatched to completed. An ACK alone proves only that
@@ -948,56 +1005,50 @@ export class ModelWriteArchitectureRunExecutor {
         );
       }
       if (providerAcknowledged) {
+        /**
+         * Any failure after a validated provider acknowledgement can follow a
+         * partial remote mutation: transport failures are no safer than known
+         * structural errors. Quarantine the runId independently of planDigest
+         * so no retry can derive a smaller plan and redispatch it.
+         */
+        try {
+          await this.#attempts.quarantine({
+            projectId: command.projectId,
+            runId: command.runId,
+            quarantinedAt: this.#now(),
+          });
+        } catch {
+          // If the sentinel itself cannot be persisted, the only remaining
+          // durable stop is the project lifecycle. Do not swallow that
+          // transition: a run which still looks running could be retried.
+          if (claimed) {
+            await this.#recordFailure(origin, command, {
+              code: "model-write-architecture-quarantine-write-failed",
+              message:
+                "SysON acknowledged an architecture insertion, but the durable quarantine could not be recorded. Automatic retry is forbidden.",
+            }, true);
+          }
+          throw new EngineeringProjectCommandError(
+            "invalid_transition",
+            "The acknowledged SysON insertion could not be durably quarantined. " +
+              "The run was failed; an operator must inspect SysON before any new run.",
+          );
+        }
+        if (claimed) {
+          await this.#recordFailure(origin, command, {
+            code: "model-write-architecture-post-acknowledgement-quarantined",
+            message:
+              "SysON acknowledged an architecture insertion, then provider readback or structural verification failed; the run is quarantined.",
+          });
+        }
         if (
           error instanceof EngineeringProjectCommandError ||
           error instanceof ArchitectureStructureExtractionError
-        ) {
-          /**
-           * A structural verification failure after the SysON insertion was
-           * acknowledged means the model is in an unknown partial state. A naive
-           * retry would re-preflight, produce a different enrichment planDigest
-           * (the model now has more elements), open a new WAL entry, and trigger
-           * a second insertion. We quarantine this runId at the WAL level —
-           * planDigest-agnostic — so any future dispatch is blocked regardless of
-           * what plan the next preflight produces. The run is also marked "failed"
-           * so the operator can queue a new run after correcting SysON manually.
-           */
-          try {
-            await this.#attempts.quarantine({
-              projectId: command.projectId,
-              runId: command.runId,
-              quarantinedAt: this.#now(),
-            });
-          } catch {
-            // If the sentinel itself cannot be persisted, the only remaining
-            // durable stop is the project lifecycle. Do not swallow that
-            // transition: a run which still looks running could be retried.
-            if (claimed) {
-              await this.#recordFailure(origin, command, {
-                code: "model-write-architecture-quarantine-write-failed",
-                message:
-                  "SysON acknowledged an architecture insertion, but the durable quarantine could not be recorded. Automatic retry is forbidden.",
-              }, true);
-            }
-            throw new EngineeringProjectCommandError(
-              "invalid_transition",
-              "The acknowledged SysON insertion could not be durably quarantined. " +
-                "The run was failed; an operator must inspect SysON before any new run.",
-            );
-          }
-          if (claimed) {
-            await this.#recordFailure(origin, command, {
-              code: "model-write-architecture-post-acknowledgement-quarantined",
-              message:
-                "SysON acknowledged an architecture insertion, then structural verification failed; the run is quarantined.",
-            });
-          }
-          throw error;
-        }
+        ) throw error;
         throw new EngineeringProjectCommandError(
           "invalid_transition",
-          "The SysON architecture insertion was acknowledged but evidence was not published. " +
-            "Retry this exact command to resume read-back without another insertion.",
+          "SysON acknowledged an architecture insertion, then a provider call or readback failed. " +
+            "The run is quarantined pending exact reconciliation.",
         );
       }
       if (claimed) await this.#recordFailure(origin, command);
@@ -1078,22 +1129,18 @@ export class ModelWriteArchitectureRunExecutor {
     items: ReturnType<typeof planArchitectureInsertion>["toInsert"],
     runId: string,
   ): Promise<readonly VerifiedSysmlSourceAnalysis[]> {
-    const selectors = mode === "initial"
-      ? [
-        architectureWriteSelector(
-          { kind: "full-package" },
-          proposal.packageName,
-        ),
-      ]
-      : items.map((item) => {
-        if (item.kind === "full-package") {
-          throw new EngineeringProjectCommandError(
-            "invalid_transition",
-            "An enrichment plan must not contain a full-package SysML write.",
-          );
-        }
-        return architectureWriteSelector(item, proposal.packageName);
-      });
+    if (
+      mode === "initial" && items[0]?.kind !== "full-package" ||
+      mode === "enrichment" && items.some((item) => item.kind === "full-package")
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "Architecture write selectors do not match their initial or enrichment mode.",
+      );
+    }
+    const selectors = items.map((item) =>
+      architectureWriteSelector(item, proposal.packageName)
+    );
     const references = await Promise.all(
       selectors.map((selector) =>
         this.#sysmlSourceAnalysis.capture({
@@ -1256,7 +1303,10 @@ export class ModelWriteArchitectureRunExecutor {
       partDefIdByLabel.set(partDef.label, partDef.id);
     }
 
-    // Phase C: insert usages.
+    // Phase C: lower reviewed usage statements through SysON's native model
+    // operations. The sealed SysML remains the immutable authoring evidence;
+    // this adapter owns the provider-specific PartUsage + FeatureTyping
+    // sequence because textual insertion can ACK while omitting the usage.
     for (const item of items) {
       if (item.kind !== "usage") continue;
       const parentId = partDefIdByLabel.get(item.parentName);
@@ -1267,23 +1317,33 @@ export class ModelWriteArchitectureRunExecutor {
             `"${item.parentName}" has no resolved ID after insertion.`,
         );
       }
-      const sysml = sourceTextForSelector(
+      const targetId = partDefIdByLabel.get(item.componentName);
+      if (!targetId) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          `Cannot type usage "${item.usageName}": target part-def ` +
+            `"${item.componentName}" has no resolved ID after insertion.`,
+        );
+      }
+      // Reopen the sealed source even though native lowering consumes its
+      // reviewed fields rather than sending its text to SysON. This proves the
+      // WAL selector still names the exact statement being implemented.
+      sourceTextForSelector(
         sources,
         architectureWriteSelector(
           item,
           sources[0]?.reference.selector.packageName ?? "",
         ),
       );
-      const result = await this.#syson.callTool({
-        name: "syson_element_insert_sysml",
-        arguments: {
-          editing_context_id: editingContextId,
-          parent_id: parentId,
-          sysml_text: sysml,
-        },
+      await writeSysonTypedPartUsage({
+        syson: this.#syson,
+        editingContextId,
+        parentPartDefinitionId: parentId,
+        targetPartDefinitionId: targetId,
+        targetPartDefinitionLabel: item.componentName,
+        usageName: item.usageName,
+        onAcknowledged,
       });
-      verifyInsertionAck(result.structuredContent, parentId);
-      onAcknowledged();
     }
 
     // Phase D: insert reviewed AttributeUsage under the owning PartDefinition.
@@ -2393,6 +2453,53 @@ function sameSourceAnalysisReferences(
 
 // ── Private: SysON response validation ───────────────────────────────────────
 
+/**
+ * Seal the canonical full-package write and every deterministic statement that
+ * may be needed if SysON retains only a prefix of that write. The synthetic
+ * empty package is planning input only: it makes the existing enrichment
+ * planner enumerate the system definition, component definitions, usages and
+ * attributes without inventing a second insertion grammar.
+ */
+function initialSealedWriteItems(
+  proposal: ArchitectureProposal,
+): readonly InsertionItem[] {
+  const fallback = planArchitectureInsertion(
+    {
+      packageId: "pre-dispatch-sealed-package",
+      packageLabel: proposal.packageName,
+      partDefs: [],
+    },
+    proposal,
+  );
+  if (fallback.mode !== "enrichment" || fallback.conflicts.length > 0) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "The initial architecture fallback plan is not deterministic.",
+    );
+  }
+  return Object.freeze([
+    { kind: "full-package" as const },
+    ...fallback.toInsert,
+  ]);
+}
+
+/** The post-ACK readback may select only statements sealed before dispatch. */
+function assertInitialFallbackWasSealed(
+  missing: readonly InsertionItem[],
+  sealed: readonly InsertionItem[],
+): void {
+  const allowed = new Set(
+    sealed.filter((item) => item.kind !== "full-package").map(deterministicJson),
+  );
+  const unsealed = missing.find((item) => !allowed.has(deterministicJson(item)));
+  if (unsealed) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "The initial SysON readback requires an architecture statement that was not sealed before dispatch.",
+    );
+  }
+}
+
 function verifyInsertionAck(value: unknown, expectedParentId: string): void {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("SysON insert response must be a non-null object.");
@@ -2554,10 +2661,17 @@ async function assertNoBlockedArchitectureSibling(
     if (
       sibling.status === "completed" ||
       sibling.status === "running" ||
-      sibling.status === "publishing" ||
-      (sibling.status === "failed" && isTerminalArchitectureFailure(sibling))
+      sibling.status === "publishing"
     ) {
       throw staleArchitectureBasisSibling();
+    }
+    if (sibling.status === "failed" && isTerminalArchitectureFailure(sibling)) {
+      // The shared Thread write-basis guard immediately above is the sole
+      // authority for terminal uncertain failures. Reaching this point means
+      // its exact human reconciliation (and, for an accepted effect, basis
+      // release) was revalidated. Do not let the executor's lower-level WAL
+      // sentinel silently override that governed release.
+      continue;
     }
     try {
       // A process can die after WAL reservation or acknowledgement but before

@@ -266,7 +266,7 @@ function matchingWorkspace(
         resourceRef: root.resourceRef,
         moduleId: "mod-mech",
         logicalName: "hook.py",
-        role: "cad-script",
+        role: "mechanical-source",
         captureRequest: { profileId: PROFILE },
         dependencies: [],
         fingerprint: root.fileFingerprint,

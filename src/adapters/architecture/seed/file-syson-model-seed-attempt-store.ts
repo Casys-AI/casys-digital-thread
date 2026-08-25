@@ -43,14 +43,18 @@ export interface CompleteSysonModelSeedWrite extends BeginSysonModelSeedWrite {
  * Raised instead of replaying a potentially durable SysON mutation. The
  * operator must inspect the provider before any future, separately reviewed
  * recovery path. This store deliberately offers no automatic clear/retry
- * method, and the current Workbench exposes no in-cockpit recovery action.
+ * method. Recovery is a project-level human reconciliation; the Workbench
+ * remains read-only.
  */
 export class SysonModelSeedWriteOutcomeUnknownError extends Error {
+  readonly step: SysonModelSeedWriteStep;
+
   constructor(step: SysonModelSeedWriteStep) {
     super(
       `The SysON ${step} outcome is unknown. It will not be retried automatically because it may already have created provider state.`,
     );
     this.name = "SysonModelSeedWriteOutcomeUnknownError";
+    this.step = step;
   }
 }
 
@@ -61,8 +65,8 @@ export class SysonModelSeedWriteOutcomeUnknownError extends Error {
  * makes a process interruption safe: it writes `dispatched` before the remote
  * call and refuses a future automatic replay until the exact normalized result
  * was recorded. An unknown result requires external provider inspection; the
- * current Workbench has no in-cockpit recovery action. This journal is recovery
- * control state, not thread evidence.
+ * paired agent may append the human reconciliation flow afterwards. This
+ * journal is recovery control state, not thread evidence.
  */
 export class FileSysonModelSeedAttemptStore {
   constructor(

@@ -399,12 +399,10 @@ function projectDocumentaryTechnicalStart(
     reconciliationSequence,
     ...visibleUpdates.map((update) => update.sequence),
   );
-  // A write-ahead record intentionally keeps the authoritative run running
-  // when a provider creation outcome is unknown: that state prevents an
-  // automatic retry. The latest public failed milestone must nevertheless
-  // win in the cockpit so a person sees `needs review`, not a falsely live
-  // operation. A later fresh milestone can supersede it only if an explicit
-  // reviewed recovery has produced one.
+  // The write-ahead record prevents an automatic provider retry. Current
+  // executors also seal the authoritative run as a terminal uncertain failure;
+  // the live failed milestone remains the presentation fallback for historical
+  // runs that predate that lifecycle transition.
   const latestMilestone = visibleUpdates.reduce<LiveThreadUpdate | undefined>(
     (latest, update) => !latest || update.sequence > latest.sequence ? update : latest,
     undefined,
@@ -442,7 +440,7 @@ function documentaryTechnicalStartMessage(
   if (state === "publishing") {
     return "The read-back container identity is being persisted as the next exact thread revision. The live sequence remains provisional until that publication completes.";
   }
-  return "The technical start did not publish a model-container record. It is not retried automatically; this early slice exposes no recovery action in the cockpit.";
+  return "The technical start did not publish a model-container record. It is not retried automatically; inspect SysON, then complete the uncertain-writer reconciliation through the paired agent before creating a successor.";
 }
 
 function documentaryTechnicalStartStepSummary(

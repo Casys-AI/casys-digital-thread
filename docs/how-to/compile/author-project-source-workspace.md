@@ -33,7 +33,9 @@ product, every part, or every analysis in one source file or one flat manifest.
 Call `project_source_file_put` with the current workspace revision, stable `fileId`,
 module, logical name, role, exact dependencies, and the full resource reference.
 Optional `captureRequest` is exactly `{profileId}`. `fileId` is the sole technical
-source id.
+source id. Choose `role` as a useful workspace classification such as
+`modelica-source` or `verification-plan`; do not copy an internal analyzer role. The
+registered capture profile owns analyzer language and role later.
 
 For a revision, keep the same `fileId`, supply the unique active
 `predecessorFileRevision`, and point to newly captured bytes. Sibling files are not

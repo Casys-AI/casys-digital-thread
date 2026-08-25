@@ -50,6 +50,14 @@ Deno.test("mcp-call defaults --url to the loopback Console MCP", () => {
   assertEquals(parseMcpCallCli(["--name=project_start"]).url, DEFAULT_MCP_URL);
 });
 
+Deno.test("mcp-call enables compact mutation receipts only when requested", () => {
+  assertEquals(
+    parseMcpCallCli(["--receipt", "--name=project_start"]).receipt,
+    true,
+  );
+  assertEquals(parseMcpCallCli(["--name=project_start"]).receipt, false);
+});
+
 Deno.test("mcp-call fills issuedAt with current UTC seconds only when omitted on a mutation", () => {
   const now = new Date("2026-08-16T12:34:56.789Z");
   const original = { commandId: "start-1", projectId: "project-v3" };
@@ -249,6 +257,37 @@ Deno.test("mcp-call prints structuredContent instead of the MCP envelope", async
   assertEquals(JSON.parse(io.written.stdout[0]!), {
     revision: 28,
     projectId: "desk-lamp-dl06",
+  });
+});
+
+Deno.test("mcp-call --receipt prints the completed server receipt without the snapshot", async () => {
+  const io = captureIo({
+    fetch: (() =>
+      Promise.resolve(Response.json({
+        jsonrpc: "2.0",
+        id: 1,
+        result: {
+          resultType: "complete",
+          isError: false,
+          content: [{
+            type: "text",
+            text: "Run run:architecture completed at project revision 42.",
+          }],
+          structuredContent: {
+            project: { id: "desktop-parts-sorter-ps01" },
+            revision: 42,
+            phases: Array.from({ length: 20 }, (_, index) => ({ index })),
+          },
+        },
+      }))) as typeof fetch,
+  });
+  const code = await runMcpCall([
+    "--receipt",
+    "--name=project_agent_run_execute",
+  ], io);
+  assertEquals(code, 0);
+  assertEquals(JSON.parse(io.written.stdout[0]!), {
+    receipt: "Run run:architecture completed at project revision 42.",
   });
 });
 

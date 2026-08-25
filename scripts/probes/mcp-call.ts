@@ -8,6 +8,7 @@
  *
  * Usage:
  *   deno task mcp:call --name=project_start --args='{...}'
+ *   deno task mcp:call --receipt --name=project_agent_run_execute --args='{...}'
  */
 
 import { parseArgs } from "../lib/cli.ts";
@@ -20,6 +21,8 @@ export interface McpCallRequest {
   readonly name: string;
   readonly args: Record<string, unknown>;
   readonly url: string;
+  /** Print the server's compact human receipt for a completed mutation. */
+  readonly receipt?: boolean;
 }
 
 export interface McpCallIo {
@@ -53,14 +56,20 @@ export function applyIssuedAt(
   return { ...args, issuedAt: utcIssuedAt(now) };
 }
 
-export function printableResult(result: unknown): unknown {
+export function printableResult(result: unknown, receipt = false): unknown {
   if (!isRecord(result)) {
     return result;
+  }
+  const text = firstContentText(result);
+  if (
+    receipt && result.resultType === "complete" && result.isError !== true &&
+    text !== undefined && !isJsonObjectText(text)
+  ) {
+    return { receipt: text };
   }
   if (isRecord(result.structuredContent)) {
     return result.structuredContent;
   }
-  const text = firstContentText(result);
   if (text !== undefined) {
     try {
       const parsed: unknown = JSON.parse(text);
@@ -94,6 +103,7 @@ export function parseMcpCallCli(argv: string[]): McpCallRequest {
     name,
     args: parsed,
     url: flags.url ?? DEFAULT_MCP_URL,
+    receipt: flags.receipt === "true",
   };
 }
 
@@ -159,7 +169,10 @@ export async function callMcpTool(
   }
   const result = envelope.result;
   const failed = isRecord(result) && result.isError === true;
-  return { payload: printableResult(result), exitCode: failed ? 1 : 0 };
+  return {
+    payload: printableResult(result, request.receipt === true),
+    exitCode: failed ? 1 : 0,
+  };
 }
 
 export async function runMcpCall(
@@ -203,6 +216,14 @@ function firstContentText(result: Record<string, unknown>): string | undefined {
     return undefined;
   }
   return first.text;
+}
+
+function isJsonObjectText(value: string): boolean {
+  try {
+    return isRecord(JSON.parse(value));
+  } catch {
+    return false;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -28,7 +28,9 @@ a mismatched cursor fails closed.
 `project_source_file_put` takes a full `AgentResourceReference` from
 `project_resource_capture`. It does not accept `sourceText`, a local path, or a
 caller-invented CAS URI. Optional `captureRequest` is caller-authored requested
-parser/source identity. Vertical 1 does not register or resolve it.
+parser/source identity. Vertical 1 does not register or resolve it. The file `role` is
+a workspace classification used for navigation; it need not repeat the internal
+analyzer role selected later by the registered profile.
 
 A content file read includes the `AgentResourceReference`; bytes go through
 `resources/read`. A tombstone read is still useful historical metadata and carries no

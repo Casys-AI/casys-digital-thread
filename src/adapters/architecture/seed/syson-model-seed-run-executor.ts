@@ -23,6 +23,7 @@ import {
   materializeSysonModelSeed,
   requireSysonModelSeedDocumentaryBaseline,
   SYSON_MODEL_SEED_OPERATION,
+  SYSON_MODEL_SEED_PROVIDER_OUTCOME_UNKNOWN_FAILURE,
   type SysonModelSeedLineage,
   type SysonModelSeedMaterialization,
 } from "../../../domain/architecture/seed/syson-model-seed.ts";
@@ -319,9 +320,16 @@ export class SysonModelSeedRunExecutor {
         error instanceof SysonModelSeedWriteOutcomeUnknownError ||
         error instanceof ProviderWriteOutcomeUnknownError
       ) {
+        const quarantined = await this.recordUncertainFailureIfOwned(
+          origin,
+          command,
+          error.step,
+        );
         throw new EngineeringProjectCommandError(
           "invalid_transition",
-          "A SysON creation outcome is unknown. The operation will not retry it automatically because provider state may already exist. Review the SysON project with an operator; this early slice exposes no recovery or requeue action for an uncertain write.",
+          quarantined
+            ? `The SysON ${error.step} outcome is unknown. Run ${command.runId} is now failed and quarantined with code ${SYSON_MODEL_SEED_PROVIDER_OUTCOME_UNKNOWN_FAILURE}; it will not retry automatically. Inspect SysON, then use record.reconcile-uncertain-writer@1 before appending a successor seed.`
+            : `The SysON ${error.step} outcome is unknown and will not retry automatically. Its terminal quarantine could not be persisted; retry this same execution command so the existing write-ahead marker can be converted into a recoverable failed run without redispatching SysON.`,
         );
       }
       if (providerStateRecorded) {
@@ -700,6 +708,48 @@ export class SysonModelSeedRunExecutor {
     }
   }
 
+  private async recordUncertainFailureIfOwned(
+    origin: EngineeringProjectCommandOrigin,
+    command: SysonModelSeedRunExecutorCommand,
+    step: SysonModelSeedWriteStep,
+  ): Promise<boolean> {
+    try {
+      const project = await this.requiredProject(command.projectId);
+      const run = project.agentRuns.find((candidate) => candidate.id === command.runId);
+      if (
+        run?.status === "failed" &&
+        run.failure?.code === SYSON_MODEL_SEED_PROVIDER_OUTCOME_UNKNOWN_FAILURE
+      ) return true;
+      if (
+        !run ||
+        !project.commandReceipts?.some((receipt) =>
+          receipt.commandId === stepCommandId(command.commandId, "claim")
+        ) ||
+        !["running", "waiting-for-decision", "publishing"].includes(run.status) ||
+        run.claimedBy?.origin !== origin.kind || run.claimedBy.id !== origin.actorId
+      ) return false;
+      const failed = await this.#commands.failRun(origin, {
+        ...command,
+        commandId: stepCommandId(command.commandId, "quarantine"),
+        expectedRevision: project.revision,
+        summary: `The SysON ${step} outcome is unknown and was quarantined.`,
+        code: SYSON_MODEL_SEED_PROVIDER_OUTCOME_UNKNOWN_FAILURE,
+        message:
+          `The ${step} attempt has a durable dispatched marker but no durable normalized provider response. Inspect SysON and complete record.reconcile-uncertain-writer@1 before any successor seed.`,
+      });
+      const recorded = failed.agentRuns.find((candidate) =>
+        candidate.id === command.runId
+      );
+      return recorded?.status === "failed" &&
+        recorded.failure?.code ===
+          SYSON_MODEL_SEED_PROVIDER_OUTCOME_UNKNOWN_FAILURE;
+    } catch {
+      // The WAL still prevents redispatch. A retry of the same execution
+      // command may safely retry only this local quarantine transition.
+      return false;
+    }
+  }
+
   private async completedProjectForThisExecution(
     command: SysonModelSeedRunExecutorCommand,
   ): Promise<EngineeringProjectSnapshot | undefined> {
@@ -732,9 +782,12 @@ type LiveRecorder = (
 ) => Promise<void>;
 
 class ProviderWriteOutcomeUnknownError extends Error {
+  readonly step: SysonModelSeedWriteStep;
+
   constructor(step: SysonModelSeedWriteStep) {
     super(`SysON ${step} may have changed provider state without a durable response.`);
     this.name = "ProviderWriteOutcomeUnknownError";
+    this.step = step;
   }
 }
 

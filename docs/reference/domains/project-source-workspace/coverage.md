@@ -29,7 +29,7 @@ bytes admitted product evidence.
 Vertical 2 is the only public technical-source authority for CAD, Modelica and SPICE:
 `project_technical_source_capture` names `projectId`, `workspaceRevision`, `attachmentId`
 and `attachmentRevision`. The server resolves the active attachment head, root file,
-`captureRequest.profileId` and role against the registered catalogues, persists a
+`captureRequest.profileId` against the registered technical-source catalogue, persists a
 private `project-source-closure/1.0` plus `technical-source-analysis-capture/3.0`
 document, and returns only `technical-source-analysis-capture-locator/3.0`. Preview,
 MRTR, `compile.seal-admission@3`, admission read and reopen recross the exact attachment
@@ -63,6 +63,14 @@ attachment successor r2 against the exact unchanged r20 architecture basis. Insp
 returned `exact-basis`, and `project_source_closure` returned `observed` for one exact CAD
 file, zero edges and closure fingerprint
 `ad9c55638cb0d4003011bc059269456ce3e6750629ed11acbdeeb223fb0e51c6`.
+
+PS-01 exercised the scalable path on 2026-08-25 at workspace r27: 8 modules, 6
+active files, 6 active attachments and one five-file/five-edge verification closure.
+Stable CAD, Modelica, SPICE and verification files advanced independently through
+successor revisions. Four technical captures at the same r27 event basis passed their
+registered parsers. The combined preview stayed explicitly `unresolved` for nine
+missing SysML parameter joins and one multi-file CAD lowering gap. See
+[PS-01 source workspace](../../../projects/desktop-parts-sorter-ps01/domains/source-workspace.md).
 
 ## Not implemented yet
 

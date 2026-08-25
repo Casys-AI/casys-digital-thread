@@ -123,8 +123,7 @@ export type TechnicalSourceWorkspaceRecrossErrorCode =
   | "file_fingerprint_mismatch"
   | "resource_ref_mismatch"
   | "capture_request_missing"
-  | "capture_request_profile_mismatch"
-  | "role_mismatch";
+  | "capture_request_profile_mismatch";
 
 export class TechnicalSourceWorkspaceRecrossError extends Error {
   constructor(
@@ -328,7 +327,6 @@ export function recrossTechnicalSourceAuthority(
     readonly attachment: TechnicalSourceAttachmentProvenance;
     readonly sourceClosure: TechnicalSourceClosureProvenance;
     readonly profileId: string;
-    readonly role: string;
   },
 ): ProjectSourceFileRevision {
   const { attachment, sourceClosure } = expected;
@@ -389,12 +387,6 @@ export function recrossTechnicalSourceAuthority(
     throw new TechnicalSourceWorkspaceRecrossError(
       "capture_request_profile_mismatch",
       "Workspace captureRequest.profileId does not match the captured profile.",
-    );
-  }
-  if (record.role !== expected.role) {
-    throw new TechnicalSourceWorkspaceRecrossError(
-      "role_mismatch",
-      "Workspace file role does not match the registered technical-source profile role.",
     );
   }
   return record;

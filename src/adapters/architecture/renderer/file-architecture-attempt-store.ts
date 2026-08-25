@@ -557,8 +557,13 @@ function exactInsertionItems(value: unknown): readonly InsertionItem[] {
     throw new Error(`Architecture write-attempt items[${index}] has unknown kind.`);
   });
   const fullPackageCount = items.filter((item) => item.kind === "full-package").length;
-  if (fullPackageCount > 0 && (fullPackageCount !== 1 || items.length !== 1)) {
-    throw new Error("Architecture write-attempt full-package plan is not exact.");
+  if (
+    fullPackageCount > 0 &&
+    (fullPackageCount !== 1 || items[0]?.kind !== "full-package")
+  ) {
+    throw new Error(
+      "Architecture write-attempt full-package plan must start with exactly one full-package item.",
+    );
   }
   return Object.freeze(items);
 }

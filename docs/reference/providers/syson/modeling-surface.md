@@ -44,8 +44,12 @@ must exist, self-parenting and cycles are rejected, and `(parent, usageName)` is
 Attribute names are currently unique across the whole proposal, not merely within one
 parent.
 
-Initial mode inserts the full package. Enrichment mode adopts exact existing
-parent→usage→target triples and adds missing definitions, usages and attributes.
+Initial mode inserts the package, definitions and attributes through bounded textual
+statements. Typed occurrences use a native lowering: the adapter creates `PartUsage`
+and `FeatureTyping`, resolves the reviewed target definition's semantic identity through
+code-owned AQL, sets `FeatureTyping.type`, then rereads the exact triple. Enrichment
+mode adopts exact existing parent→usage→target triples and adds missing definitions,
+usages or attributes.
 Mistyped or ambiguous usages fail closed. An old structural edge cannot disappear
 through this operation; removal or retyping requires another reviewed authority that is
 not currently generic.
@@ -58,6 +62,11 @@ After insertion the server reopens the package, definitions and features. `PartU
 typing is resolved through one code-owned AQL expression over `FeatureTyping.type`, not
 from labels. The resulting `architecture-capture/4.0` and Thread artifact record the
 provider identities and the reviewed graph.
+
+The native usage writer owns provider tool names, child types, semantic-id queries and
+AQL. A caller still supplies only the reviewed architecture parameters. Any failure
+after an acknowledged native write is quarantined in the architecture WAL; it is not
+blindly retried.
 
 ### AttributeUsage ratchet
 

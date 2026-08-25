@@ -262,9 +262,10 @@ ordered interaction:
    then attaches that exact r2 reference to the project before it completes the run.
    Until that attachment, the Workbench keeps showing documentary r1 plus provisional
    live activity; it does not promote the persisted-but-unattached record to an evidence
-   surface. Its durable write-ahead record means an uncertain SysON creation is held for
-   review, not blindly retried. r2 is only an editable container identity, not a system
-   architecture, requirements, CAD, simulation, measurement, or verdict.
+   surface. Its durable write-ahead record means an uncertain SysON creation becomes a
+   terminal failed run for operator inspection and human uncertain-writer
+   reconciliation, never a blind retry. r2 is only an editable container identity, not a
+   system architecture, requirements, CAD, simulation, measurement, or verdict.
 7. Through a new bounded change and an exact human MRTR decision, the agent may queue
    `model.write-architecture@1`. The server renders the reviewed package/system/usage
    grammar, journals the SysON insertion, re-reads the typed structure, and attaches

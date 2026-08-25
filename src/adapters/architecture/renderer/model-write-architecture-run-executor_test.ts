@@ -293,14 +293,12 @@ class InitialArchSyson implements McpToolClient {
             children: [
               {
                 id: "sys-def-001",
-                kind:
-                  "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
                 label: "DroneSystem",
               },
               {
                 id: "wing-def-001",
-                kind:
-                  "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
                 label: "Wing",
               },
             ],
@@ -347,8 +345,7 @@ class InitialArchSyson implements McpToolClient {
             type: "objects",
             results: [{
               id: "wing-def-001",
-              kind:
-                "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+              kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
               label: "Wing",
             }],
             count: 1,
@@ -359,6 +356,179 @@ class InitialArchSyson implements McpToolClient {
 
     return Promise.reject(
       new Error(`Unexpected tool call in InitialArchSyson: ${call.name}`),
+    );
+  }
+}
+
+/**
+ * Real-provider regression: the full package ACK retains only its Package and
+ * system PartDefinition. Subsequent exact per-item calls complete the graph.
+ */
+class PrefixOnlyInitialArchSyson implements McpToolClient {
+  readonly calls: McpToolCall[] = [];
+  #packageInserted = false;
+  #wingDefinitionInserted = false;
+  #wingUsageInserted = false;
+  #wingTypingLinked = false;
+
+  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
+    return Promise.reject(
+      new Error(
+        `callToolTextResult not implemented by PrefixOnlyInitialArchSyson (${call.name})`,
+      ),
+    );
+  }
+
+  callTool(call: McpToolCall): Promise<McpToolResult> {
+    this.calls.push(structuredClone(call));
+    if (call.name === "syson_element_insert_sysml") {
+      const parentId = call.arguments?.parent_id as string;
+      const source = call.arguments?.sysml_text as string;
+      if (parentId === "root-pkg-drone" && source.startsWith("package DroneV4")) {
+        this.#packageInserted = true;
+      } else if (parentId === "arch-pkg-001" && source === "part def Wing {}") {
+        this.#wingDefinitionInserted = true;
+      } else {
+        return Promise.reject(
+          new Error(`Unexpected prefix-recovery insertion: ${parentId} ${source}`),
+        );
+      }
+      return Promise.resolve({
+        text: "inserted",
+        structuredContent: { inserted: true, parentId },
+      });
+    }
+    if (call.name === "syson_element_create") {
+      const parentId = call.arguments?.parent_id as string;
+      if (
+        parentId === "sys-def-001" &&
+        call.arguments?.child_type === "SysMLv2EditService-PartUsage" &&
+        call.arguments?.name === "wing"
+      ) {
+        this.#wingUsageInserted = true;
+        return Promise.resolve({
+          text: "usage",
+          structuredContent: {
+            id: "wing-usage-001",
+            kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
+            label: "wing",
+          },
+        });
+      }
+      if (
+        parentId === "wing-usage-001" &&
+        call.arguments?.child_type === "SysMLv2EditService-FeatureTyping" &&
+        call.arguments?.name === "Wing"
+      ) {
+        return Promise.resolve({
+          text: "typing",
+          structuredContent: {
+            id: "wing-typing-001",
+            kind: "siriusComponents://semantic?domain=sysml&entity=FeatureTyping",
+            label: "Wing",
+          },
+        });
+      }
+    }
+    if (call.name === "syson_element_children") {
+      const parentId = call.arguments?.element_id as string;
+      if (parentId === "root-pkg-drone") {
+        const children = this.#packageInserted
+          ? [{
+            id: "arch-pkg-001",
+            kind: "siriusComponents://semantic?domain=sysml&entity=Package",
+            label: "DroneV4",
+          }]
+          : [];
+        return Promise.resolve({
+          text: "root",
+          structuredContent: { parentId, children, count: children.length },
+        });
+      }
+      if (parentId === "arch-pkg-001") {
+        const children = [{
+          id: "sys-def-001",
+          kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+          label: "DroneSystem",
+        }];
+        if (this.#wingDefinitionInserted) {
+          children.push({
+            id: "wing-def-001",
+            kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+            label: "Wing",
+          });
+        }
+        return Promise.resolve({
+          text: "package",
+          structuredContent: { parentId, children, count: children.length },
+        });
+      }
+      if (parentId === "sys-def-001") {
+        const children = this.#wingUsageInserted
+          ? [{
+            id: "wing-usage-001",
+            kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
+            label: "wing",
+          }]
+          : [];
+        return Promise.resolve({
+          text: "system",
+          structuredContent: { parentId, children, count: children.length },
+        });
+      }
+      return Promise.resolve({
+        text: "leaf",
+        structuredContent: { parentId, children: [], count: 0 },
+      });
+    }
+    if (call.name === "syson_query_aql") {
+      const objectId = call.arguments?.object_id;
+      const expression = call.arguments?.expression;
+      if (objectId === "wing-def-001" && expression === "aql:self.elementId") {
+        return Promise.resolve({
+          text: "semantic id",
+          structuredContent: {
+            objectId,
+            expression,
+            type: "string",
+            result: "wing-semantic-id",
+          },
+        });
+      }
+      if (
+        objectId === "wing-typing-001" &&
+        typeof expression === "string" &&
+        expression.includes("e.elementId = 'wing-semantic-id'")
+      ) {
+        this.#wingTypingLinked = true;
+        return Promise.resolve({
+          text: "linked",
+          structuredContent: { objectId, expression, type: "void", result: null },
+        });
+      }
+      if (
+        objectId === "wing-usage-001" &&
+        expression === ARCHITECTURE_FEATURE_TYPING_AQL &&
+        this.#wingTypingLinked
+      ) {
+        return Promise.resolve({
+          text: "typing",
+          structuredContent: {
+            objectId,
+            expression,
+            type: "objects",
+            results: [{
+              id: "wing-def-001",
+              kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+              label: "Wing",
+            }],
+            count: 1,
+          },
+        });
+      }
+    }
+    return Promise.reject(
+      new Error(`Unexpected prefix-recovery tool: ${call.name}`),
     );
   }
 }
@@ -379,8 +549,7 @@ class CrossKindSemanticIdCollisionInitialArchSyson extends InitialArchSyson {
           type: "objects",
           results: [{
             id: "wing-def-001",
-            kind:
-              "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+            kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
             label: "Wing",
           }],
           count: 1,
@@ -450,8 +619,7 @@ class ScopedHomonymInitialArchSyson extends InitialArchSyson {
         ];
         const children = labels.map(([id, label]) => ({
           id,
-          kind:
-            "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+          kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
           label,
         }));
         return Promise.resolve({
@@ -509,8 +677,7 @@ class ScopedHomonymInitialArchSyson extends InitialArchSyson {
             type: "objects",
             results: [{
               ...target,
-              kind:
-                "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+              kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
             }],
             count: 1,
           },
@@ -528,6 +695,7 @@ class EnrichmentArchSyson implements McpToolClient {
   readonly calls: McpToolCall[] = [];
   #motorDefinitionInserted = false;
   #motorUsageInserted = false;
+  #motorTypingLinked = false;
 
   callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
     return Promise.reject(new Error(`Unexpected text tool: ${call.name}`));
@@ -541,11 +709,42 @@ class EnrichmentArchSyson implements McpToolClient {
       if (text.startsWith("part def Motor")) {
         this.#motorDefinitionInserted = true;
       }
-      if (text.startsWith("part motor")) this.#motorUsageInserted = true;
       return Promise.resolve({
         text: "inserted",
         structuredContent: { inserted: true, parentId },
       });
+    }
+    if (call.name === "syson_element_create") {
+      const parentId = call.arguments?.parent_id;
+      if (
+        parentId === "sys-def-001" &&
+        call.arguments?.child_type === "SysMLv2EditService-PartUsage" &&
+        call.arguments?.name === "motor"
+      ) {
+        this.#motorUsageInserted = true;
+        return Promise.resolve({
+          text: "usage",
+          structuredContent: {
+            id: "motor-usage-001",
+            kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
+            label: "motor",
+          },
+        });
+      }
+      if (
+        parentId === "motor-usage-001" &&
+        call.arguments?.child_type === "SysMLv2EditService-FeatureTyping" &&
+        call.arguments?.name === "Motor"
+      ) {
+        return Promise.resolve({
+          text: "typing",
+          structuredContent: {
+            id: "motor-typing-001",
+            kind: "siriusComponents://semantic?domain=sysml&entity=FeatureTyping",
+            label: "Motor",
+          },
+        });
+      }
     }
     if (call.name === "syson_element_children") {
       const elementId = call.arguments?.element_id as string;
@@ -567,21 +766,18 @@ class EnrichmentArchSyson implements McpToolClient {
         const children = [
           {
             id: "sys-def-001",
-            kind:
-              "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+            kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
             label: "DroneSystem",
           },
           {
             id: "wing-def-001",
-            kind:
-              "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+            kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
             label: "Wing",
           },
           ...(this.#motorDefinitionInserted
             ? [{
               id: "motor-def-001",
-              kind:
-                "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+              kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
               label: "Motor",
             }]
             : []),
@@ -626,7 +822,38 @@ class EnrichmentArchSyson implements McpToolClient {
     }
     if (call.name === "syson_query_aql") {
       const usageId = call.arguments?.object_id as string;
+      const expression = call.arguments?.expression;
+      if (usageId === "motor-def-001" && expression === "aql:self.elementId") {
+        return Promise.resolve({
+          text: "semantic id",
+          structuredContent: {
+            objectId: usageId,
+            expression,
+            type: "string",
+            result: "motor-semantic-id",
+          },
+        });
+      }
+      if (
+        usageId === "motor-typing-001" &&
+        typeof expression === "string" &&
+        expression.includes("e.elementId = 'motor-semantic-id'")
+      ) {
+        this.#motorTypingLinked = true;
+        return Promise.resolve({
+          text: "linked",
+          structuredContent: {
+            objectId: usageId,
+            expression,
+            type: "void",
+            result: null,
+          },
+        });
+      }
       const motor = usageId === "motor-usage-001";
+      if (motor && !this.#motorTypingLinked) {
+        return Promise.reject(new Error("Motor typing is not linked."));
+      }
       const label = motor ? "Motor" : "Wing";
       return Promise.resolve({
         text: "feature-typing",
@@ -636,8 +863,7 @@ class EnrichmentArchSyson implements McpToolClient {
           type: "objects",
           results: [{
             id: motor ? "motor-def-001" : "wing-def-001",
-            kind:
-              "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+            kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
             label,
           }],
           count: 1,
@@ -665,8 +891,7 @@ class AttributeInitialArchSyson extends InitialArchSyson {
             label: "wing",
           }, {
             id: "attribute-thickness-001",
-            kind:
-              "siriusComponents://semantic?domain=sysml&entity=AttributeUsage",
+            kind: "siriusComponents://semantic?domain=sysml&entity=AttributeUsage",
             label: "thickness",
           }],
           count: 2,
@@ -694,8 +919,7 @@ class ForeignAttributeInitialArchSyson extends InitialArchSyson {
             label: "wing",
           }, {
             id: "attribute-foreign-001",
-            kind:
-              "siriusComponents://semantic?domain=sysml&entity=AttributeUsage",
+            kind: "siriusComponents://semantic?domain=sysml&entity=AttributeUsage",
             label: "foreignFlag",
           }],
           count: 2,
@@ -745,8 +969,7 @@ class LostInheritedAttributeEnrichmentSyson extends EnrichmentArchSyson {
   }
 }
 
-class DuplicateInheritedPartDefinitionEnrichmentSyson
-  extends EnrichmentArchSyson {
+class DuplicateInheritedPartDefinitionEnrichmentSyson extends EnrichmentArchSyson {
   #architecturePackageReads = 0;
 
   override async callTool(call: McpToolCall): Promise<McpToolResult> {
@@ -1091,8 +1314,7 @@ async function queuedArchitectureFixture(
       id: "decision:arch-params",
       phaseId: "arch",
       title: "Architecture component declaration",
-      question:
-        "Which components and package name should be authored into SysON?",
+      question: "Which components and package name should be authored into SysON?",
     }],
   });
 
@@ -1106,9 +1328,7 @@ async function queuedArchitectureFixture(
       parameters: proposalParams,
     },
   });
-  const decision = project.decisions.find((d) =>
-    d.id === "decision:arch-params"
-  )!;
+  const decision = project.decisions.find((d) => d.id === "decision:arch-params")!;
   const approval = project.approvals.find((a) =>
     a.decisionId === "decision:arch-params"
   )!;
@@ -1129,8 +1349,7 @@ async function queuedArchitectureFixture(
       phases: [{
         id: "arch-parallel",
         name: "Parallel architecture",
-        description:
-          "Reviewed sibling sealed to the original architecture basis.",
+        description: "Reviewed sibling sealed to the original architecture basis.",
       }],
       workItems: [{
         id: "wi:architecture-parallel",
@@ -1150,8 +1369,7 @@ async function queuedArchitectureFixture(
         id: "decision:arch-parallel",
         phaseId: "arch-parallel",
         title: "Parallel architecture declaration",
-        question:
-          "Which reviewed architecture is proposed from the original basis?",
+        question: "Which reviewed architecture is proposed from the original basis?",
       }],
     });
     project = await commands.proposeDecision(AGENT, {
@@ -1337,9 +1555,7 @@ async function queueArchitectureEnrichment(
   fixture: Pick<ArchFixture, "projects" | "commands" | "snapshots">,
   completed: Awaited<ReturnType<ModelWriteArchitectureRunExecutor["execute"]>>,
 ): Promise<{ readonly revision: number; readonly runId: string }> {
-  const firstRun = completed.agentRuns.find((run) =>
-    run.id === "run:architecture"
-  );
+  const firstRun = completed.agentRuns.find((run) => run.id === "run:architecture");
   assertExists(firstRun?.resultSnapshot);
   const base = await fixture.snapshots.get(firstRun.resultSnapshot.snapshotId);
   assertExists(base);
@@ -1420,9 +1636,7 @@ async function queueParallelArchitectureSibling(
 ): Promise<{ readonly revision: number; readonly runId: string }> {
   const project = await fixture.projects.get(PROJECT_ID);
   if (!project) throw new Error("Architecture fixture project is missing.");
-  const original = project.agentRuns.find((run) =>
-    run.id === "run:architecture"
-  );
+  const original = project.agentRuns.find((run) => run.id === "run:architecture");
   if (!original?.basis || original.basis.kind !== "thread-snapshot") {
     throw new Error("Architecture fixture run has no thread-snapshot basis.");
   }
@@ -1489,7 +1703,7 @@ Deno.test(
       assertEquals(typeof semanticRoot.id, "string");
       assertEquals(captureJson.package, undefined);
       const sourceAnalyses = captureJson.sourceAnalyses as unknown[];
-      assertEquals(sourceAnalyses.length, 1);
+      assertEquals(sourceAnalyses.length, 4);
       const reopened = await fixture.sysmlSourceAnalysis.reopen(
         sourceAnalyses[0],
       );
@@ -1517,6 +1731,51 @@ Deno.test(
         reopened.source.sourceText,
         "SysON receives only the exact SysML bytes reopened from CAS.",
       );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture completes an acknowledged prefix-only initial insertion from presealed statements",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-arch-prefix-" });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const syson = new PrefixOnlyInitialArchSyson();
+      const executor = makeExecutor(fixture, { syson, directory });
+
+      const result = await executor.execute(AGENT, executionCommand(fixture));
+
+      assertEquals(
+        result.agentRuns.find((run) => run.id === fixture.queued.runId)?.status,
+        "completed",
+      );
+      const insertSources = syson.calls.filter((call) =>
+        call.name === "syson_element_insert_sysml"
+      ).map((call) => call.arguments?.sysml_text);
+      assertEquals(insertSources.length, 2);
+      assertEquals(
+        (insertSources[0] as string).startsWith("package DroneV4"),
+        true,
+      );
+      assertEquals(insertSources[1], "part def Wing {}");
+      assertEquals(
+        syson.calls.some((call) =>
+          call.name === "syson_element_create" &&
+          call.arguments?.child_type === "SysMLv2EditService-PartUsage" &&
+          call.arguments?.name === "wing"
+        ),
+        true,
+      );
+      const attempt = await fixture.archAttempts.readRun(
+        PROJECT_ID,
+        fixture.queued.runId,
+      );
+      assertEquals(attempt?.status, "completed");
+      assertEquals(attempt?.items.length, 4);
+      assertEquals(attempt?.sourceAnalyses.length, 4);
     } finally {
       await Deno.remove(directory, { recursive: true });
     }
@@ -1782,9 +2041,7 @@ Deno.test(
         ...cmd,
         expectedRevision: first.revision,
       });
-      const secondRun = second.agentRuns.find((r) =>
-        r.id === "run:architecture"
-      );
+      const secondRun = second.agentRuns.find((r) => r.id === "run:architecture");
       assertEquals(secondRun?.status, "completed");
       assertEquals(secondRun?.resultSnapshot, firstRun.resultSnapshot);
       assertEquals(syson.calls.length, firstSysonCalls);
@@ -1805,8 +2062,7 @@ Deno.test(
 Deno.test(
   "model.write-architecture completed replay rejects artifact and capture mutations before provider access",
   async () => {
-    class MutatedCaptureReadStore
-      extends FileCaptureStore<"architecture-capture"> {
+    class MutatedCaptureReadStore extends FileCaptureStore<"architecture-capture"> {
       constructor(
         directory: string,
         private readonly source: FileCaptureStore<"architecture-capture">,
@@ -1977,8 +2233,7 @@ Deno.test(
 Deno.test(
   "model.write-architecture completed replay rejects coordinated capture and result rewrites with unchanged MRTR",
   async () => {
-    class CoordinatedCaptureReadStore
-      extends FileCaptureStore<"architecture-capture"> {
+    class CoordinatedCaptureReadStore extends FileCaptureStore<"architecture-capture"> {
       constructor(
         directory: string,
         private readonly fingerprint: ContentFingerprint,
@@ -2042,8 +2297,7 @@ Deno.test(
         name: "package",
         mutateCapture: (capture) => {
           capture.packageName = "ForgedDroneV4";
-          (capture.scopeRoot as Record<string, unknown>).label =
-            "ForgedDroneV4";
+          (capture.scopeRoot as Record<string, unknown>).label = "ForgedDroneV4";
         },
         mutateSnapshot: (snapshot) => ({
           ...snapshot,
@@ -2428,9 +2682,7 @@ Deno.test(
       };
       const executor = makeExecutor(fixture, { syson, directory });
       const completed = await executor.execute(AGENT, command);
-      const secondRun = completed.agentRuns.find((run) =>
-        run.id === queued.runId
-      );
+      const secondRun = completed.agentRuns.find((run) => run.id === queued.runId);
       assertExists(secondRun?.resultSnapshot);
       assertEquals(secondRun.evidenceRefs.length, 1);
       const resultSnapshot = await fixture.snapshots.get(
@@ -2456,15 +2708,28 @@ Deno.test(
       const insertCalls = syson.calls.filter((call) =>
         call.name === "syson_element_insert_sysml"
       );
-      assertEquals(insertCalls.length, capture.sourceAnalyses.length);
+      assertEquals(capture.sourceAnalyses.length, 2);
+      assertEquals(insertCalls.length, 1);
       for (const [index, reference] of capture.sourceAnalyses.entries()) {
         const reopened = await fixture.sysmlSourceAnalysis.reopen(reference);
-        assertEquals(
-          insertCalls[index]?.arguments?.sysml_text,
-          reopened.source.sourceText,
-          `enrichment write ${index} must use its exact reopened CAS bytes`,
-        );
+        if (index === 0) {
+          assertEquals(
+            insertCalls[0]?.arguments?.sysml_text,
+            reopened.source.sourceText,
+            "the PartDefinition insertion must use its exact reopened CAS bytes",
+          );
+        } else {
+          assertEquals(reopened.source.sourceText, "part motor : Motor;");
+        }
       }
+      assertEquals(
+        syson.calls.some((call) =>
+          call.name === "syson_element_create" &&
+          call.arguments?.child_type === "SysMLv2EditService-PartUsage" &&
+          call.arguments?.name === "motor"
+        ),
+        true,
+      );
 
       const insertsBeforeReplay = insertCalls.length;
       const replay = await executor.execute(AGENT, {
@@ -2622,9 +2887,7 @@ Deno.test(
         true,
       );
       const failed = await fixture.projects.get(PROJECT_ID);
-      const failedRun = failed?.agentRuns.find((run) =>
-        run.id === queued.runId
-      );
+      const failedRun = failed?.agentRuns.find((run) => run.id === queued.runId);
       assertEquals(failedRun?.status, "failed");
       assertEquals(failedRun?.resultSnapshot, undefined);
       assertEquals(failedRun?.evidenceRefs, []);
@@ -2709,17 +2972,15 @@ Deno.test(
         true,
       );
       const failed = await fixture.projects.get(PROJECT_ID);
-      const failedRun = failed?.agentRuns.find((run) =>
-        run.id === queued.runId
-      );
+      const failedRun = failed?.agentRuns.find((run) => run.id === queued.runId);
       assertEquals(failedRun?.status, "failed");
       assertEquals(failedRun?.resultSnapshot, undefined);
       assertEquals(failedRun?.evidenceRefs, []);
       assertEquals(
         syson.calls.filter((call) => call.name === "syson_element_insert_sysml")
           .length,
-        2,
-        "only the reviewed enrichment writes occur before the concurrent duplicate is detected",
+        1,
+        "only the reviewed PartDefinition text write occurs before the concurrent duplicate is detected",
       );
     } finally {
       await Deno.remove(directory, { recursive: true });
@@ -2770,9 +3031,7 @@ Deno.test(
         true,
       );
       const failed = await fixture.projects.get(PROJECT_ID);
-      const failedRun = failed?.agentRuns.find((run) =>
-        run.id === queued.runId
-      );
+      const failedRun = failed?.agentRuns.find((run) => run.id === queued.runId);
       assertEquals(failedRun?.status, "failed");
       assertEquals(
         failedRun?.failure?.code,
@@ -3725,8 +3984,7 @@ Deno.test(
                   parentId: id,
                   children: [{
                     id: "arch-pkg-001",
-                    kind:
-                      "siriusComponents://semantic?domain=sysml&entity=Package",
+                    kind: "siriusComponents://semantic?domain=sysml&entity=Package",
                     label: "DroneV4",
                   }],
                   count: 1,
@@ -3763,8 +4021,7 @@ Deno.test(
                   parentId: id,
                   children: [{
                     id: "wing-usage-001",
-                    kind:
-                      "siriusComponents://semantic?domain=sysml&entity=PartUsage",
+                    kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
                     label: "wing",
                   }],
                   count: 1,
@@ -4319,8 +4576,7 @@ Deno.test(
             id: `consume-${input.id}-by-${consumer.id}`,
           },
           to: { kind: "artifact" as const, id: input.id },
-          rationale:
-            "Synthetic verified consumption for the lineage guard test.",
+          rationale: "Synthetic verified consumption for the lineage guard test.",
         }],
       });
       const addedEvidence = [
@@ -4513,8 +4769,7 @@ Deno.test(
                 parentId: elementId,
                 children: [{
                   id: "arch-pkg-001",
-                  kind:
-                    "siriusComponents://semantic?domain=sysml&entity=Package",
+                  kind: "siriusComponents://semantic?domain=sysml&entity=Package",
                   label: "DroneV4",
                 }],
                 count: 1,
@@ -4551,8 +4806,7 @@ Deno.test(
                 parentId: elementId,
                 children: [{
                   id: "wing-usage-001",
-                  kind:
-                    "siriusComponents://semantic?domain=sysml&entity=PartUsage",
+                  kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
                   label: "wing",
                 }],
                 count: 1,
@@ -4737,8 +4991,7 @@ Deno.test(
                 parentId: elementId,
                 children: [{
                   id: "arch-pkg-001",
-                  kind:
-                    "siriusComponents://semantic?domain=sysml&entity=Package",
+                  kind: "siriusComponents://semantic?domain=sysml&entity=Package",
                   label: "DroneV4",
                 }],
                 count: 1,
@@ -4776,14 +5029,12 @@ Deno.test(
                 children: [
                   {
                     id: "wing-usage-conformant",
-                    kind:
-                      "siriusComponents://semantic?domain=sysml&entity=PartUsage",
+                    kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
                     label: "wing",
                   },
                   {
                     id: "wing-usage-mistyped",
-                    kind:
-                      "siriusComponents://semantic?domain=sysml&entity=PartUsage",
+                    kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
                     label: "wing",
                   },
                 ],
@@ -4798,9 +5049,7 @@ Deno.test(
         }
         if (call.name === "syson_query_aql") {
           const objectId = call.arguments?.object_id as string;
-          const target = objectId === "wing-usage-conformant"
-            ? "Wing"
-            : "Motor";
+          const target = objectId === "wing-usage-conformant" ? "Wing" : "Motor";
           return Promise.resolve({
             text: "feature-typing",
             structuredContent: {
@@ -4809,8 +5058,7 @@ Deno.test(
               type: "objects",
               results: [{
                 id: `${target.toLowerCase()}-def-001`,
-                kind:
-                  "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
                 label: target,
               }],
               count: 1,
@@ -4893,27 +5141,23 @@ Deno.test(
           const children = packageChildrenCalls === 1
             ? [{
               id: "sys-def-001",
-              kind:
-                "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+              kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
               label: "DroneSystem",
             }]
             : [
               {
                 id: "sys-def-001",
-                kind:
-                  "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
                 label: "DroneSystem",
               },
               {
                 id: "concurrent-sys-def-002",
-                kind:
-                  "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
                 label: "DroneSystem",
               },
               {
                 id: "wing-def-001",
-                kind:
-                  "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
                 label: "Wing",
               },
             ];

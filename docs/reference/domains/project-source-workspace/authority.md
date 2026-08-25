@@ -14,7 +14,9 @@ authority begins only when a later reviewed operation names and re-opens exact w
 file revisions.
 
 `captureRequest` is exactly `{profileId}`. Vertical 2 resolves it fail-closed against
-the registered technical-source catalogue and the file role. It is not a
+the registered technical-source catalogue. The registered profile owns the analyzer
+language and analyzer role; the workspace file `role` remains an authoring
+classification for navigation and is not a duplicate analyzer selector. It is not a
 compilation-profile, provider, tool, image, executable, endpoint, credentials, or
 runtime selection. Workspace records cannot represent those fields.
 

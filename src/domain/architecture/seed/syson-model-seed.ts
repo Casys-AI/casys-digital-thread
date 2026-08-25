@@ -31,6 +31,17 @@ export const SYSON_MODEL_SEED_OPERATION = {
   version: "2",
 } as const;
 
+/**
+ * Terminal failure recorded when a non-idempotent SysON seed write has a
+ * durable dispatched marker but no durable normalized provider response.
+ *
+ * The exact run may be released only through the human uncertain-writer
+ * reconciliation ceremony. Keeping the code beside the operation identity
+ * prevents the executor and reconciliation policy from inventing aliases.
+ */
+export const SYSON_MODEL_SEED_PROVIDER_OUTCOME_UNKNOWN_FAILURE =
+  "architecture-seed-syson-model-provider-outcome-unknown" as const;
+
 const CAPTURE_KIND = "syson-model-seed" as const;
 /** Capture and MRTR scope of the blank SysON container. Not a model name. */
 export const SYSON_MODEL_SEED_SCOPE = "sysml-container-identity" as const;

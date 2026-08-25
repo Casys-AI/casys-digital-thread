@@ -226,6 +226,34 @@ Deno.test("architecture WAL production begin rejects missing or foreign source e
   });
 });
 
+Deno.test(
+  "architecture WAL seals one leading full-package write with ordered fallback statements",
+  async () => {
+    await withStore(async (_directory, store) => {
+      const items = [
+        { kind: "full-package" },
+        { kind: "part-def", componentName: "DroneSystem" },
+        { kind: "part-def", componentName: "Wing" },
+        {
+          kind: "usage",
+          componentName: "Wing",
+          usageName: "wing",
+          parentName: "DroneSystem",
+        },
+      ] as const;
+      const exact = await input({ items });
+      assertEquals(await store.begin(exact), { action: "dispatch" });
+      const reopened = await store.readRun(ID.projectId, ID.runId);
+      assertEquals(reopened?.items, items);
+      assertEquals(reopened?.sourceAnalyses, exact.sourceAnalyses);
+      assertEquals(
+        reopened?.sourceAnalyses.map((reference) => reference.selector),
+        items.map((item) => architectureWriteSelector(item, PACKAGE_NAME)),
+      );
+    });
+  },
+);
+
 Deno.test("architecture WAL requires exact ordered selector coverage", async () => {
   await withStore(async (_directory, store) => {
     const items = [

@@ -12,7 +12,7 @@ general SysML v2 support, nor the full native feature set of SysON.
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Seed                   | `architecture.seed-syson-model@2` creates one SysON project, empty document and root package, then seals normalized identities in `syson-model-seed-capture/2.0`. This is a container, not architecture.                                                                                                                                                     |
 | Architecture proposal  | `model.write-architecture@1` accepts only human-approved flat string parameters: `architecture.package`, `system.name`, `component.<slug>.(name\|usage\|parent)` and `attribute.<slug>.(name\|parent)`. The server owns parsing and SysML text.                                                                                                              |
-| Architecture renderer  | One package; one root `PartDefinition`; zero or more target `PartDefinition`s; typed `PartUsage` occurrences `part usage : Target;`; and bare `AttributeUsage` declarations `attribute name;`. A component parent is the system or a declared definition; repeated occurrences may target one definition.                                                    |
+| Architecture renderer  | One package; one root `PartDefinition`; zero or more target `PartDefinition`s; typed `PartUsage` occurrences `part usage : Target;`; and bare `AttributeUsage` declarations `attribute name;`. Definitions and attributes use bounded textual insertion. Each usage is lowered natively as `PartUsage` plus `FeatureTyping`, then typed through code-owned AQL. |
 | Architecture readback  | The adapter rereads the exact package, its `PartDefinition`s and one-level owned `PartUsage`/`AttributeUsage` children. It resolves each usage target through the pinned `FeatureTyping.type` AQL expression, then saves `architecture-capture/4.0` with sealed `scopeRoot` and `semanticRoot` ids.                                                          |
 | PartDefinition capture | `model.capture-part-definitions@1` rereads only the identities sealed by the active generic architecture capture and publishes `part-definitions-capture/1.0`; it is not a live whole-model inventory.                                                                                                                                                       |
 | Scalar requirements    | `model.write-requirements@1` writes native per-metric typed attributes, `require constraint`, a subject relation and qualified SI imports against one exact captured `PartDefinition`. Current thresholds are safe integers with `<=` or `>=` and a qualified unit; extraction must round-trip every metric, operator, value, unit and identity.             |
@@ -42,6 +42,13 @@ product definitions, attach exact CAD/Modelica/SPICE sources to three of them, a
 system plus RailFrame scalar requirements. See
 [MCS-02 SysML](../../../projects/motorized-camera-slider-mcs02/domains/sysml.md). This
 does not add placements, ports, flows or behavioral SysML to the covered grammar.
+
+PS-01 added a second runtime proof on 2026-08-25. SysON accepted the package and six
+component definitions from textual insertion but omitted all six usage statements. The
+renderer created the six native `PartUsage`/`FeatureTyping` pairs, set their exact target
+definitions and reread them before publishing Thread r3. Product navigation and the
+Workbench then exposed one root plus six typed occurrences. This proves the bounded
+native lowerer; it does not widen the accepted proposal language.
 
 ## Two source authorities, not one
 

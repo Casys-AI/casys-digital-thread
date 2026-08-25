@@ -29,7 +29,11 @@ import type {
   McpToolClient,
   McpToolResult,
 } from "../../../application/ports/out/mcp-tool-client.ts";
-import { materializeSysonModelSeed } from "../../../domain/architecture/seed/syson-model-seed.ts";
+import {
+  materializeSysonModelSeed,
+  SYSON_MODEL_SEED_PROVIDER_OUTCOME_UNKNOWN_FAILURE,
+} from "../../../domain/architecture/seed/syson-model-seed.ts";
+import { TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES } from "../../../domain/record/reconcile-uncertain-writer-proposal.ts";
 import { SysonModelSeedRunExecutor } from "./syson-model-seed-run-executor.ts";
 
 const HUMAN = {
@@ -153,7 +157,7 @@ Deno.test("trusted SysON seed creates only the read-back model container and pub
   }
 });
 
-Deno.test("an uncertain SysON project creation is never replayed automatically", async () => {
+Deno.test("an uncertain SysON project creation becomes a recoverable terminal failure and is never replayed", async () => {
   const directory = await Deno.makeTempDir({ prefix: "casys-syson-seed-unknown-" });
   try {
     const fixture = await queuedSeed(directory);
@@ -164,7 +168,7 @@ Deno.test("an uncertain SysON project creation is never replayed automatically",
     await assertRejects(
       () => executor.execute(AGENT, execution),
       Error,
-      "will not retry it automatically",
+      "failed and quarantined",
     );
     assertEquals(syson.calls.map((call) => call.name), ["syson_project_create"]);
     const attempt = await fixture.attempts.read(
@@ -173,8 +177,21 @@ Deno.test("an uncertain SysON project creation is never replayed automatically",
       "project-create",
     );
     assertEquals(attempt?.status, "dispatched");
+    const quarantined = await fixture.projects.get(fixture.queued.project.id);
+    const failedRun = quarantined?.agentRuns.find((run) => run.id === execution.runId);
+    assertEquals(failedRun?.status, "failed");
     assertEquals(
-      JSON.stringify(await fixture.projects.get(fixture.queued.project.id)).includes(
+      failedRun?.failure?.code,
+      SYSON_MODEL_SEED_PROVIDER_OUTCOME_UNKNOWN_FAILURE,
+    );
+    assertEquals(
+      TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES.has(
+        failedRun?.failure?.code ?? "",
+      ),
+      true,
+    );
+    assertEquals(
+      JSON.stringify(quarantined).includes(
         "provider timeout",
       ),
       false,
@@ -183,7 +200,7 @@ Deno.test("an uncertain SysON project creation is never replayed automatically",
     await assertRejects(
       () => executor.execute(AGENT, execution),
       Error,
-      "will not retry it automatically",
+      "is failed; a human must review",
     );
     assertEquals(syson.calls.length, 1);
   } finally {

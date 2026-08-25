@@ -66,7 +66,6 @@ export type TechnicalCompilationSourceReadErrorCode =
   | "file_fingerprint_mismatch"
   | "resource_ref_mismatch"
   | "capture_request_profile_mismatch"
-  | "role_mismatch"
   | "bytes_mismatch"
   | "profile_identity_mismatch"
   | "catalog_alignment_mismatch"
@@ -218,7 +217,6 @@ export class CaptureBackedTechnicalCompilationSourceReader
         attachment: reopened.document.attachment,
         sourceClosure: reopened.document.sourceClosure,
         profileId: reopened.document.profile.id,
-        role: reopened.document.source.role,
       });
     } catch (cause) {
       throw mapRecrossError(cause);
@@ -451,7 +449,6 @@ function mapRecrossError(cause: unknown): TechnicalCompilationSourceReadError {
       resource_ref_mismatch: "resource_ref_mismatch",
       capture_request_missing: "capture_request_profile_mismatch",
       capture_request_profile_mismatch: "capture_request_profile_mismatch",
-      role_mismatch: "role_mismatch",
     };
     return readError(mapped[cause.code], cause.message, cause);
   }

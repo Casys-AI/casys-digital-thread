@@ -150,7 +150,7 @@ Deno.test("public capture refuses free-root file fields and missing attachments"
   });
 });
 
-Deno.test("capture refuses unknown profiles, role mismatch and source-removed attachments", async () => {
+Deno.test("capture refuses unknown profiles and source-removed attachments while profile owns the analyzer role", async () => {
   await withWorkspace(async (harness) => {
     const unknown = await harness.putAttachedFile({
       fileId: "file.unknown",
@@ -180,17 +180,13 @@ Deno.test("capture refuses unknown profiles, role mismatch and source-removed at
       mimeType: "text/x-python",
       text: CAD_SOURCE,
     });
-    const roleCapture = await assertRejects(
-      () =>
-        harness.capture.capture({
-          projectId: PROJECT,
-          workspaceRevision: harness.revision,
-          attachmentId: role.attachmentId,
-          attachmentRevision: role.attachmentRevision,
-        }),
-      ProjectTechnicalSourceCaptureError,
-    );
-    assertEquals(roleCapture.code, "role_mismatch");
+    const roleCapture = await harness.capture.capture({
+      projectId: PROJECT,
+      workspaceRevision: harness.revision,
+      attachmentId: role.attachmentId,
+      attachmentRevision: role.attachmentRevision,
+    });
+    assertEquals(roleCapture.parser.status, "passed");
 
     const seeded = await harness.captureFile({
       fileId: "file.tombstone",

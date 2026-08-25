@@ -705,10 +705,11 @@ any requirement or verdict.
 `FileSysonModelSeedAttemptStore` writes a durable `dispatched` record under
 `state/local/syson-model-seed-attempts/` before each non-idempotent SysON creation. A
 completed attempt retains only its normalized identity result. If a provider outcome is
-unknown, the executor does not retry it automatically: the operator must inspect SysON
-outside this early slice. The current MCP and cockpit intentionally expose no recovery
-or requeue action for an uncertain write, so the run remains stopped rather than risking
-a duplicate project or document. If revision 2 is already durable but the project
+unknown, the executor does not retry it automatically. It seals the run as a terminal
+uncertain failure, and the operator inspects SysON before using the generic
+`record.reconcile-uncertain-writer@1` ceremony. A `provider-did-not-write` judgement
+releases the exact basis so the agent can append a separately reviewed successor seed;
+the Workbench remains read-only. If revision 2 is already durable but the project
 attachment did not finish, retrying the same execution command may redo only the
 read-only readback, materialization, and idempotent persistence of the recorded result,
 then completes the attachment; it never repeats non-idempotent writes or recreates

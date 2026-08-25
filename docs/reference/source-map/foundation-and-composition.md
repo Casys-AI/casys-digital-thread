@@ -81,7 +81,8 @@ multiplicative transforms are named functions, not coefficients
 #### `deno task mcp:call --name=<tool> --args='{}'`
 
 Write-capable loopback `tools/call` client for `:3020/mcp`; fills omitted `issuedAt`
-only on mutations that already carry `commandId`; does not change server clock rules
+only on mutations that already carry `commandId`; `--receipt` prints the compact human
+receipt for a completed mutation; does not change server clock rules
 
 #### [`docs/reference/pipeline/analysis-authority-pipeline.md`](../pipeline/analysis-authority-pipeline.md)
 

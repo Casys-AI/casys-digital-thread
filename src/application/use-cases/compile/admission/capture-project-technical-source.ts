@@ -175,13 +175,6 @@ export class CaptureProjectTechnicalSource
         cause,
       );
     }
-    if (root.role !== profile.role) {
-      throw captureError(
-        "role_mismatch",
-        `Workspace file role ${root.role} does not equal registered profile role ${profile.role}.`,
-      );
-    }
-
     let sourceText: string;
     try {
       sourceText = (await this.#resources.reopenUtf8Text(root.resourceRef, {
