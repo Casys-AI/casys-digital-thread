@@ -6,7 +6,7 @@ This folder is one electrical vertical split into short execution briefs. It is 
 the articulated-lamp demo. Living product path is admitted circuit-only SPICE
 (`simulate.run-admitted-spice@1` plus later L4/L5), not `mcp-spice`. Exact AL01
 identities live on
-[runtime evidence](../../../projects/articulated-led-desk-lamp/runtime-evidence.md).
+[runtime evidence](../../../project-dossiers/articulated-led-desk-lamp/runtime-evidence.md).
 
 Read in order:
 

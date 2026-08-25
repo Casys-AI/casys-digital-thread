@@ -4,9 +4,9 @@ Audience: agent · Diátaxis: reference · Kind: contract
 
 This page is the working contract for coding agents and project-control agents in this
 repository. It is not a product tutorial. For the first human loop, see
-[Follow the engineering loop](../../tutorials/first-engineering-loop.md). For file
-locations and ports, see [the workspace map](../runtime/workspace-map.md) and
-[the source map](../runtime/workspace-source-map.md). Lookalikes:
+[Follow the engineering loop](../../how-to/verify-design/walk-through-an-engineering-project.md). For file
+locations and ports, see [the workspace map](../runtime/local-runtime-and-ports.md) and
+[the source map](../codebase/codebase-map.md). Lookalikes:
 [lookalike traps](lookalike-traps.md).
 
 The page is written so an agent can parse it: tables over prose, exact IDs, explicit
@@ -132,7 +132,7 @@ refuses. Product inspection is `preview:thread` / `preview:cockpit`.
 Successor closeout of a leftover ready work item is **not** an MCP tool. Inspect or
 apply with `deno task recover:work-item-successor`. Default is inspect. `--apply` writes
 through the same command service. See
-[sequence a SysON seed](../../how-to/behave/sequence-seed-work-item.md#rule-4--closing-an-orphan-with-direct-reconciliation).
+[sequence a SysON seed](../../how-to/agents/sequence-a-syson-seed.md#rule-4--closing-an-orphan-with-direct-reconciliation).
 
 ### Architecture SysML frontend (agent-authored)
 
@@ -334,10 +334,10 @@ seal / run tools stay.
 | `project_isolated_geometry_seal_review`                   | None               | Parameters for `design.seal-isolated-geometry@1`. No STEP bytes                                                                                                                                                                                                                                                                                               |
 | `project_vector_correction_review`                        | None               | Parameters for `design.apply-vector-correction@1`. No Thread write                                                                                                                                                                                                                                                                                            |
 | `project_sensitivity_base_evaluation_review`              | None               | Ready only if study metrics join Thread requirements exactly                                                                                                                                                                                                                                                                                                  |
-| `project_evaluation_closeout_review`                      | None               | `projectId` only. Server reopens one current static FEA `@3` branch and derives closed human L5 accept/reject parameters; no solver/SysON/CAD/correction grant. Accept is offered only when every L4 criterion is literal `pass`. How-to: [review static-mechanical closeout](../../how-to/behave/review-static-mechanical-closeout.md)                       |
+| `project_evaluation_closeout_review`                      | None               | `projectId` only. Server reopens one current static FEA `@3` branch and derives closed human L5 accept/reject parameters; no solver/SysON/CAD/correction grant. Accept is offered only when every L4 criterion is literal `pass`. How-to: [review static-mechanical closeout](../../how-to/verify-design/close-out-a-static-mechanical-proof.md)                       |
 | `project_cross_domain_impact_manifest_capture`            | Draft CAS only     | Full `resourceRef` from `project_resource_capture`. JSON body of `cross-domain-impact-manifest/2.0` without fingerprint (manifest-local branch list). Review: `captured` + opaque `{ fingerprint }` + ids/revision/basis/`changeKinds` + `grants: none`. Pass `result.reference` as `manifestRef`. No project, Thread, MRTR, provider, tool, args, or runtime |
 | `project_cross_domain_impact_manifest_seal_review`        | None               | `projectId` + opaque capture `manifestRef`. Canonical MRTR for `verify.seal-cross-domain-impact-manifest@2`. Recrosses project/subject/current Thread/Brief gates/evidence. No evaluation, claim mutation, or recapture of manifest bytes                                                                                                                     |
-| `project_cross_domain_impact_decision_review`             | None               | `projectId` only. Unique current X07/X08 capture → canonical MRTR for `decide.accept-cross-domain-impact@2`. No rerun. How-to: [walk cross-domain impact judgement](../../how-to/behave/walk-cross-domain-impact-judgement.md)                                                                                                                                |
+| `project_cross_domain_impact_decision_review`             | None               | `projectId` only. Unique current X07/X08 capture → canonical MRTR for `decide.accept-cross-domain-impact@2`. No rerun. How-to: [walk cross-domain impact judgement](../../how-to/verify-design/review-cross-domain-impact.md)                                                                                                                                |
 | `project_modelica_qualified_kit_run_review`               | None               | Parameters for the one local Modelica kit                                                                                                                                                                                                                                                                                                                     |
 | `project_admitted_modelica_run_review`                    | None               | `projectId` only. Server selects current tip + unique fresh sealed Modelica admission. Reuse returned `operation` verbatim; `compilationAdmission` is that artifact on the current review basis, never a historical creation snapshot. No `modelicaText`                                                                                                       |
 | `project_admitted_modelica_evaluation_review`             | None               | `projectId` only. Unique current tip + unique sealed thermal method sheet + unique admitted evidence for L4. No L4 verdict                                                                                                                                                                                                                                    |
@@ -459,7 +459,7 @@ project_change_append (work item + required decision together)
 
 `architecture.seed-syson-model@2` **must** arrive via `project_change_append`, never the
 initial `project_plan_publish`. See
-[sequence a SysON seed](../../how-to/behave/sequence-seed-work-item.md).
+[sequence a SysON seed](../../how-to/agents/sequence-a-syson-seed.md).
 
 ### Live-run lessons (`desk-lamp-dl05`)
 
@@ -470,7 +470,7 @@ Observed on the real agent path. Contract facts, not style.
 | Every SysON write names its predecessor work item                | Seed `dependsOnWorkItemIds` **must** include the unique `baseline.from-approved-brief@1` work item. Later SysON writes should name their predecessor the same way for sequencing.                                                              | Seed: `project_change_append` refuses with `invalid_input` (`Operation architecture.seed-syson-model@2 must depend on baseline.from-approved-brief@1 work item <id>`). The executor still refuses historical work items accepted before that guard. Architecture and requirements resolve the predecessor from the Thread (seed capture / architecture tip), not from `dependsOnWorkItemIds`. |
 | Requirement thresholds are integers                              | `requirement.<slug>.threshold` is a safe integer. SysON 0.5.1 cannot round-trip a decimal literal through `syson_constraint_extract` (`LiteralRational`).                                                                                      | Grammar rejects at `project_decision_propose`. Message: threshold must be a safe integer because SysON 0.5.1 cannot round-trip decimal literals through `syson_constraint_extract`.                                                                                                                                                                                                           |
 | Seed MRTR is closed                                              | Allowed keys: `seed.schemaVersion`, `seed.scope`, `seed.operation`, `model.name`. `model.name` is pinned to the server-owned role `system model`. `fingerprintSysonModelSeedProposal` is the envelope digest, not the MRTR `inputFingerprint`. | Grammar rejects a free-form key or any other `model.name` at `project_decision_propose`.                                                                                                                                                                                                                                                                                                      |
-| Study metric ids must Object.is-equal Thread requirement metrics | `analyze.run-fea-sensitivity@1` publishes `sensitivity-base-<metric>-<digest>`. `verify.evaluate-sensitivity-base@1` joins only when `metric` is the Thread requirement metric.                                                                | Historical dl05 r16: study `assembly_max_*` vs requirements `maxDisplacement` / `maxVonMises` → `UNLINKED`. A later isolated reseal on that atelier joined. Do not invent a mapping. Do not replay r16. New project: [run the behave loop from zero](../../how-to/behave/run-the-behave-loop-from-zero.md).                                                                                   |
+| Study metric ids must Object.is-equal Thread requirement metrics | `analyze.run-fea-sensitivity@1` publishes `sensitivity-base-<metric>-<digest>`. `verify.evaluate-sensitivity-base@1` joins only when `metric` is the Thread requirement metric.                                                                | Historical dl05 r16: study `assembly_max_*` vs requirements `maxDisplacement` / `maxVonMises` → `UNLINKED`. A later isolated reseal on that atelier joined. Do not invent a mapping. Do not replay r16. New project: [run the behave loop from zero](../../how-to/verify-design/verify-a-new-design-from-scratch.md).                                                                                   |
 | Proof-run evaluations do not authorize a correction              | `design.apply-vector-correction@1` accepts only a fail that cites `sensitivity-base-<metric>-<digest>`.                                                                                                                                        | A proof-run `@3` `pass` on `calculix-observation-*` is a different authority. A joined study-base `pass` also does not apply a correction.                                                                                                                                                                                                                                                    |
 
 Limit of the seed grammar: `assertProposalMatchesOperationGrammar` is project-agnostic.
@@ -576,7 +576,7 @@ brief) — not `domain/analysis/`. A new Modelica, CAD, FEA or compile module do
 land in a retired dump (`domain/analysis/`, `adapters/captures/`,
 `adapters/executors/`). Shared adapters go to `src/adapters/shared/`, never
 `src/infrastructure/`. File census:
-[workspace source map](../runtime/workspace-source-map.md).
+[workspace source map](../codebase/codebase-map.md).
 
 | Context         | Domain root                      | Do not merge                                                                                         |
 | --------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------- |

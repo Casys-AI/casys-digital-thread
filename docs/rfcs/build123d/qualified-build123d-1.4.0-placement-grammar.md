@@ -353,7 +353,7 @@ No new module. Do not edit `deno.json` `check`.
 | `src/adapters/analyzers/qualified-build123d-source-analyzer.ts`      | helper, `parsePlacementTimesShape`, version `1.4.0`, header lock, result sentence                                                                                                                                                                         |
 | `src/adapters/analyzers/qualified-build123d-source-analyzer_test.ts` | §6                                                                                                                                                                                                                                                        |
 | `docs/reference/agent/agent-workspace.md`                                  | table row `**1.4.0**`; qualify text adds left-associative `Pos`/`Rot` chains and `Rot *` sketch; paragraph after the table: 1.4.0 extends 1.3.0 with that grammar, bit-identical; **Next AST lock** drops `Rot *` sketch, adds named `Pos`/`Rot` bindings |
-| `docs/reference/runtime/workspace-map.md`                                    | analyzer row `1.4.0` and the same qualify clause                                                                                                                                                                                                          |
+| `docs/reference/runtime/local-runtime-and-ports.md`                                    | analyzer row `1.4.0` and the same qualify clause                                                                                                                                                                                                          |
 | `docs/reference/pipeline/analysis-authority-pipeline.md`                      | catalogue sentence: analyzer `1.4.0`, mention placement chains + `Rot *` sketch                                                                                                                                                                           |
 
 Catalogues (`fixed-technical-compilation-profile-catalog-provider.ts`,
@@ -387,7 +387,7 @@ deno task lint
 deno fmt src/adapters/analyzers/qualified-build123d-source-analyzer.ts \
   src/adapters/analyzers/qualified-build123d-source-analyzer_test.ts \
   docs/reference/agent/agent-workspace.md \
-  docs/reference/runtime/workspace-map.md \
+  docs/reference/runtime/local-runtime-and-ports.md \
   docs/reference/pipeline/analysis-authority-pipeline.md
 ```
 

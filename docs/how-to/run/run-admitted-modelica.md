@@ -91,7 +91,7 @@ evidence without dispatching OMC again.
 ## 5. L4 observation evaluation (generic capability)
 
 This section is the generic walk. Exact AL01 identities live on
-[AL01 runtime evidence](../../projects/articulated-led-desk-lamp/runtime-evidence.md);
+[AL01 runtime evidence](../../project-dossiers/articulated-led-desk-lamp/runtime-evidence.md);
 this page does not substitute for them. It still requires a human G4 method sheet and a
 real admitted `.mo` plus its published observations.
 

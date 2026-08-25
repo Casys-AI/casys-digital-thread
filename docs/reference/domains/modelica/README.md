@@ -17,7 +17,7 @@ Start with:
   documentary boundary.
 - [Coverage](coverage.md) inventories the current executable surface, the deliberately
   unsupported surface, and extension candidates.
-- [Extension runbook](../../../how-to/extend/modelica-surface.md) is the implementation
+- [Extension runbook](../../../how-to/extend/extend-admitted-modelica-coverage.md) is the implementation
   and proof checklist for a new language/profile version. A new model instance within
   the current grammar needs no code change.
 

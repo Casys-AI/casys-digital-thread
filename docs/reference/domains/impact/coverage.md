@@ -72,7 +72,7 @@ a byte-identical, `fresh`, unarchived artifact on the tip.
 Static-mechanical L5 is a sibling FEA surface, not an impact slice:
 `project_evaluation_closeout_review` then `decide.accept-evaluation-closeout@1` /
 `decide.reject-evaluation-closeout@1`. See
-[Review static-mechanical closeout](../../../how-to/behave/review-static-mechanical-closeout.md).
+[Review static-mechanical closeout](../../../how-to/verify-design/close-out-a-static-mechanical-proof.md).
 
 ## Outside the current surface
 

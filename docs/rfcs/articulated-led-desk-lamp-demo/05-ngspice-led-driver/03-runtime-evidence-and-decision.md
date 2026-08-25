@@ -180,7 +180,7 @@ Après les tests L3/L4/L5 réussis, mettre à jour dans un commit documentaire d
   nouveau contrat ajoute une précision durable sur engine/method/evaluator ;
 - `docs/reference/providers/oracle-units.md` : seulement si une unité a vraiment été
   admise par probe ; V/A/W/s ne demandent pas une nouvelle admission ;
-- `docs/reference/runtime/workspace-map.md` : port/adapters/runtimes réellement créés ;
+- `docs/reference/runtime/local-runtime-and-ports.md` : port/adapters/runtimes réellement créés ;
 - `docs/reference/agent/agent-workspace.md` et `lookalike-traps.md` : opération/review
   enregistrés et faux amis utiles ;
 - `docs/explanations/product/behave-decision-roadmap.md` : ne changer le statut/horizon

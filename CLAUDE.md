@@ -11,11 +11,11 @@ frontières, contrats — vit dans les pages ci-dessous, qui sont la vérité.
    appelables, opérations enregistrées, grants exacts
 3. [docs/reference/agent/lookalike-traps.md](docs/reference/agent/lookalike-traps.md) — paires qui
    ne sont pas des substituts
-4. [docs/reference/runtime/workspace-map.md](docs/reference/runtime/workspace-map.md) — ports, YOLO.
-   Census fichiers : [workspace source map](docs/reference/runtime/workspace-source-map.md)
+4. [docs/reference/runtime/local-runtime-and-ports.md](docs/reference/runtime/local-runtime-and-ports.md) — ports, YOLO.
+   Census fichiers : [codebase map](docs/reference/codebase/codebase-map.md)
 5. [docs/reference/pipeline/analysis-authority-pipeline.md](docs/reference/pipeline/analysis-authority-pipeline.md)
    — capture → analyse → MRTR → dispatch
-6. [docs/tutorials/first-engineering-loop.md](docs/tutorials/first-engineering-loop.md)
+6. [docs/how-to/verify-design/walk-through-an-engineering-project.md](docs/how-to/verify-design/walk-through-an-engineering-project.md)
    — la boucle de bout en bout
 
 Les serveurs MCP d'ingénierie vivent dans leurs propres repos et tournent depuis des
@@ -27,7 +27,8 @@ Runtime backend : **Deno** (tâches dans `deno.json`). Bundles UI : **npm + Vite
 `src/ui/`. Providers : **Docker Compose**.
 
 ```bash
-docker compose up -d              # topologie provider ; SysON UI sur :8180
+docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-calculix
+                                  # noyau provider ; SysON UI sur :8180
 npm --prefix src/ui ci
 npm --prefix src/ui run build:thread # bundle cockpit → src/ui/dist/thread/
 deno task start                   # serveur MCP Console + project control, :3020/mcp
@@ -46,6 +47,7 @@ deno task lint
 deno task fmt         # --check seulement ; pour écrire : deno fmt <chemin>
 deno task test        # suite Deno complète
 deno task check:ui    # tsc --noEmit sur src/ui
+deno task verify:docs # liens et ancres Markdown, sans accepter state/local
 deno task verify:thread:presentation   # gate de release : bundle natif sans handshake Apps
 deno task verify:evidence              # cohérence des fixtures console
 ```
@@ -102,6 +104,6 @@ Ni la CI ni le serveur MCP ne lisent ce dossier.
 - Tests `_test.ts` co-localisés ; les tests UI sont des tests **Deno** à la racine de
   `src/ui/`. `@std/assert` uniquement ; noms de tests en phrases décrivant l'invariant.
 - Documentation en Diátaxis sous `docs/`. Une nouvelle frontière ou un nouveau port se
-  documente dans `docs/reference/runtime/workspace-map.md`.
+  documente dans `docs/reference/runtime/local-runtime-and-ports.md`.
 - Pendant l'implémentation, préférer les checks ciblés et causaux ; réserver les suites
   globales aux vrais jalons d'intégration.

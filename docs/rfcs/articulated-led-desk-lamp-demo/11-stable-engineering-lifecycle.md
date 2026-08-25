@@ -1,7 +1,7 @@
 Audience: agent · Diátaxis: none · Kind: RFC Status: active Living pages:
 [Engineering project contract](../../reference/contracts/engineering-project.md),
-[Workbench preview](../../how-to/cockpit/preview-native-workbench.md),
-[Workspace map](../../reference/runtime/workspace-map.md)
+[Workbench preview](../../how-to/workbench/preview-native-workbench.md),
+[Workspace map](../../reference/runtime/local-runtime-and-ports.md)
 
 # RFC: 11 — stable engineering lifecycle
 
@@ -142,6 +142,6 @@ proposal. Preserve server/human/agent authority, literal statuses and exact prov
 Renames and breaking changes are authorized. Old local Project snapshots need not load.
 Remove the old aliases and inference paths rather than maintaining two models. Preserve
 the already-landed five-lane Overview behavior and empty-CAD navigation fix. Do not edit
-`deno.lock` or `docs/assets/Dashboard UI mockups (1)/`. Do not commit or push; leave one
+`deno.lock` or `docs/assets/workbench-dashboard-mockups/`. Do not commit or push; leave one
 auditable worktree for architecture review. Report the chosen ubiquitous language,
 invariants, exact files changed and focused validations actually run.

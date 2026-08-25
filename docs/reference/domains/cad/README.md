@@ -19,7 +19,7 @@ Read:
    documentary isolated microVM path.
 5. Immediate placement capture lives under `src/domain/cad/placement/`. It is not a CAD
    script, not technical-source admission, and not module export.
-6. [Extension runbook](../../../how-to/extend/cad-surface.md) — the required end-to-end
+6. [Extension runbook](../../../how-to/extend/extend-cad-closed-subset.md) — the required end-to-end
    work to add a construct without widening authority.
 
 Shared contracts:
@@ -28,7 +28,7 @@ Shared contracts:
   for capture → analysis → MRTR → dispatch.
 - [Admitted source isolated execution](../../pipeline/admitted-source-isolated-execution.md)
   for the reusable local-microVM pattern.
-- [Run the behave loop from zero](../../../how-to/behave/run-the-behave-loop-from-zero.md)
+- [Run the behave loop from zero](../../../how-to/verify-design/verify-a-new-design-from-scratch.md)
   for the product walk.
 
 The project may capture source inside the closed language; that does not grant the agent

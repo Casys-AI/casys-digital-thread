@@ -20,7 +20,7 @@ Read:
 - [Paths](paths.md) — renderer/SysON versus agent-authored seal; distinct identities.
 - [Coverage](coverage.md) — implemented surface, exclusions, extension candidates.
 - [Boundedness](boundedness.md) — proposal/live-graph cardinality inventory (H01).
-- [Extension runbook](../../../how-to/extend/sysml-surface.md) — required path for a new
+- [Extension runbook](../../../how-to/extend/extend-generic-sysml-surface.md) — required path for a new
   generic SysML concept.
 - [SysON provider reference](../../providers/syson/README.md) — configured provider-call
   subset, runtime, WAL and recovery.

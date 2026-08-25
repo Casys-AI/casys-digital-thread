@@ -24,7 +24,7 @@ The detailed grammar and the authority of each path remain in
 
 Named runtime proof: MCS-02 captured an attachment-rooted RailFrame source, sealed its
 v3 admission at Thread r4, and published one canonical target STEP at r7 before the
-downstream FEA branch. See [MCS-02 CAD](../../../projects/motorized-camera-slider-mcs02/domains/cad.md).
+downstream FEA branch. See [MCS-02 CAD](../../../project-dossiers/motorized-camera-slider-mcs02/domains/cad.md).
 That proof covers one `PartDefinition`, not an assembly.
 
 ## Not covered

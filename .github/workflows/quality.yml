@@ -40,6 +40,9 @@ jobs:
       - name: Check formatting
         run: deno task fmt
 
+      - name: Verify documentation links
+        run: deno task verify:docs
+
       - name: Lint
         run: deno task lint
 

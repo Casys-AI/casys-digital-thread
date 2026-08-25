@@ -72,7 +72,7 @@ Attachment-rooted, single-root SPICE and Modelica sources were admitted and exec
 Thread r5–r8; the single-root Frame CAD source was admitted at r9 and published canonical
 PartDefinition geometry at r10. The separate Diverter multi-file CAD closure stays
 explicitly `source.dependency-lowering-unavailable`. See
-[PS-01 source workspace](../../../projects/desktop-parts-sorter-ps01/domains/source-workspace.md).
+[PS-01 source workspace](../../../project-dossiers/desktop-parts-sorter-ps01/domains/source-workspace.md).
 
 ## Not implemented yet
 

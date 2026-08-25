@@ -23,10 +23,10 @@ one generic nonmechanical evaluation policy. Those two vocabularies
 - [Boundedness](boundedness.md) records authority, fail-closed recross, and the
   surfaces that grant no provider, solver, or Workbench write.
 - Operator closeout of one static FEA `@3` branch:
-  [Review static-mechanical closeout](../../../how-to/behave/review-static-mechanical-closeout.md).
+  [Review static-mechanical closeout](../../../how-to/verify-design/close-out-a-static-mechanical-proof.md).
 - Operator walk from public draft capture through seal, recross, human decision, and
   mechanical preservation:
-  [Walk cross-domain impact judgement](../../../how-to/behave/walk-cross-domain-impact-judgement.md).
+  [Walk cross-domain impact judgement](../../../how-to/verify-design/review-cross-domain-impact.md).
 
 Lookalikes: [lookalike traps § Cross-domain impact](../../agent/lookalike-traps.md#cross-domain-impact).
 Mechanical L4/L5 stays on [FEA coverage](../fea/coverage.md). Electrical product

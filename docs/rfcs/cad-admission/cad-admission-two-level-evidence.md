@@ -574,7 +574,7 @@ dire `unavailable` / pas d'autorité FEA — jamais « le STEP isolé _est_ un p
 | `src/ui/src/thread/geometry-decision-model.ts` (ou sibling compilation)           | 4      | parseur 1.1                                                 |
 | `docs/reference/pipeline/analysis-authority-pipeline.md`                                   | 2–3    | gradient, plus « only ready-for-review » (`:630`)           |
 | `docs/reference/agent/agent-workspace.md`                                               | 2      | lookalike : 1.0 ≠ 1.1                                       |
-| `docs/reference/runtime/workspace-map.md`                                                 | 1      | nouveau module                                              |
+| `docs/reference/runtime/local-runtime-and-ports.md`                                                 | 1      | nouveau module                                              |
 | `deno.json` `check`                                                               | 1      | **chaque** nouveau module non-test                          |
 
 `src/ui/dist/**` : rebuild + commit si palier 4.

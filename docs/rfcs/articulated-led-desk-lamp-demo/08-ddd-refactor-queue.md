@@ -1,6 +1,6 @@
 Audience: agent · Diátaxis: none · Kind: RFC Status: active Living pages:
 [Agent workspace](../../reference/agent/agent-workspace.md),
-[Workspace source map](../../reference/runtime/workspace-source-map.md)
+[Workspace source map](../../reference/codebase/codebase-map.md)
 
 # RFC: 08 — DDD and hexagonal cleanup queue
 

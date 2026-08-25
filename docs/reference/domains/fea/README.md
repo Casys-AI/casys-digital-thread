@@ -18,14 +18,14 @@ shared-schema and lowering change, not catalog data.
   sealed proof and exact STEP into the isolated CalculiX worker.
 - [Coverage](coverage.md) separates the product surface, exclusions, and future method
   candidates.
-- [Extension runbook](../../../how-to/extend/fea-surface.md) lists the required
+- [Extension runbook](../../../how-to/extend/extend-fea-product-surface.md) lists the required
   schema-to-proof path for a new FEA capability.
 
 The shared product sequence is `project_fea_proof_case_capture` →
 `project_fea_proof_seal_review` → `verify.seal-proof-case@1` →
 `project_fea_isolated_run_review` →
 `verify.run-fea-static-proof@3`, then human L5 closeout
-([review static-mechanical closeout](../../../how-to/behave/review-static-mechanical-closeout.md)).
+([review static-mechanical closeout](../../../how-to/verify-design/close-out-a-static-mechanical-proof.md)).
 Cross-domain `analyze.evaluate-mechanical-preservation@2` rereads that exact
 proof/closeout after an impact decision; it does not run CalculiX. Impact
 inventory: [impact coverage](../impact/coverage.md).

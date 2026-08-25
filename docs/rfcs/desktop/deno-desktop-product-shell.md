@@ -8,7 +8,7 @@ This page is the implementation brief and status record for the Desktop product 
 Deno Desktop is the decided first product distribution, not a spike to compare with a
 bridge-only product. Lots 1 through 4 are implemented in product `0.4.0`. The living
 Casys authority and runtime topology remain in the
-[workspace map](../../reference/runtime/workspace-map.md) and
+[workspace map](../../reference/runtime/local-runtime-and-ports.md) and
 [product direction](../../explanations/product/product-direction.md).
 
 The product architecture is OS-independent: the Preact/Vite Workbench, Deno BFF,

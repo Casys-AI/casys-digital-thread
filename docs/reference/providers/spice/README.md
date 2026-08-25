@@ -40,7 +40,7 @@ stable single semver from these conflicting fields.
 D1 (closed circuit representation) and D3 (method/evaluator) remain human decisions. No
 D2 probe turns an engine result into L4 or L5.
 
-See [the reproducible runbook](../../../how-to/behave/preflight-spice-provider.md).
+See [the reproducible runbook](../../../how-to/maintainers/preflight-spice-provider.md).
 Electrical product bounds are on
 [electrical boundedness](../../domains/electrical/boundedness.md). The product run is
 admitted `simulate.run-admitted-spice@1`, not this probe.

@@ -50,6 +50,7 @@
     "recover:work-item-successor": "deno run --allow-read=state/local,config/projects --allow-write=state/local scripts/runners/reconcile-work-item-successor.ts",
     "test": "deno test --no-prompt --frozen --node-modules-dir=auto --allow-ffi=node_modules --allow-read --allow-write --allow-net=127.0.0.1,localhost --allow-env src scripts/**/*_test.ts experiments/thread-workflow/*_test.ts",
     "check:ui": "npm --prefix src/ui run check",
+    "verify:docs": "deno run --no-prompt --frozen --allow-read --allow-run=git scripts/gates/verify-doc-links.ts",
     "verify:evidence": "deno run --allow-read scripts/gates/verify-console-evidence.ts",
     "verify:fea:contract": "deno run --allow-read=state/fixtures,config scripts/gates/verify-fea-provider-contract.ts",
     "verify:fea:live": "deno run --allow-net=127.0.0.1,localhost --allow-read=config scripts/gates/verify-fea-live-smoke.ts",

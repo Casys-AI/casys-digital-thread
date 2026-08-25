@@ -5,7 +5,7 @@ Audience: both · Diátaxis: explanation · Kind: contract
 _Written 2026-07-30, the day the chain shipped._
 
 This is explanatory context, not an operating guide. Start from the
-[documentation map](../../README.md) when you need a tutorial, a focused how-to, or an
+[documentation map](../../README.md) when you need a focused how-to, explanation, or an
 exact repository reference.
 
 ## Industry category: the executable digital thread

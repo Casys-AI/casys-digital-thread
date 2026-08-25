@@ -31,7 +31,7 @@ A separate local observation, not a replacement of that CA02 horizon, is
 distinct mechanical, thermal, and electrical L3–L5 records plus one reviewed impact
 recross. G6 is a proposed shared coupling input for a future re-run, not a thermal
 result. X10 stays `unavailable`. Tracking:
-[AL01 status](../../projects/articulated-led-desk-lamp/status.md). That walk is not
+[AL01 status](../../project-dossiers/articulated-led-desk-lamp/status.md). That walk is not
 physical safety, compliance, lifetime, brightness, manufacturing, or vendor validity.
 
 Before using CA02 as the reference, a human must confirm that this isolated-part scope,
@@ -124,7 +124,7 @@ candidates until that complete path exists.
 
 ## Resolving the old oracle-coverage claim
 
-The older [oracle coverage roadmap](../oracles/oracle-coverage-roadmap.md) is a dated
+The older [oracle coverage roadmap](../verification/verification-coverage-roadmap.md) is a dated
 market-demand hypothesis. Its `30 % → 55 % → 80 %` figures and claim of a “nearly-free”
 native CalculiX jump are not Behave maturity or present product coverage. The current FEA
 contract is linear-static only; any additional physics first follows the full

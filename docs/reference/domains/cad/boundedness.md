@@ -34,7 +34,7 @@ profile manifest is that one entry.
 
 Runtime authority: `LOCAL_BUILD123D_EXECUTION_LIMITS` in
 [`server.ts`](../../../../server.ts). CPU and process count remain unattested (see
-[workspace map](../../runtime/workspace-map.md)).
+[workspace map](../../runtime/local-runtime-and-ports.md)).
 
 | Limit | Code-owned value |
 | ----- | ---------------- |

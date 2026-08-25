@@ -59,7 +59,7 @@ isolated execution. It is not an architecture SysML seal and does not write SysO
 Not architecture-path substitutes:
 
 - Seed container:
-  [`architecture.seed-syson-model@2`](../../../how-to/behave/sequence-seed-work-item.md)
+  [`architecture.seed-syson-model@2`](../../../how-to/agents/sequence-a-syson-seed.md)
 - Scalar requirements:
   [`model.write-requirements@1`](coverage.md#surface-implemented-today)
 - Sensitivity edges:

@@ -7,7 +7,7 @@ source** that has already been sealed by `compile.seal-admission@3`. It is not a
 provider MCP path and not a kit.
 
 Lookalikes: [lookalike traps](../agent/lookalike-traps.md). File locations:
-[compile source map](../source-map/compile.md). Capture → admission:
+[compile source map](../codebase/compile.md). Capture → admission:
 [analysis authority pipeline](analysis-authority-pipeline.md). Isolation narrative:
 [compilation and isolation](compilation-and-isolation.md). Product walks:
 [run admitted Modelica](../../how-to/run/run-admitted-modelica.md),

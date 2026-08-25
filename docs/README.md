@@ -2,186 +2,92 @@
 
 Audience: both · Diátaxis: navigation · Kind: index
 
-Ce dépôt classe la doc avec [Diátaxis](https://diataxis.fr/) (`tutorials/`, `how-to/`,
-`reference/`, `explanations/`, `legacy/`), puis par thème. Les titres de pages restent
-en anglais. Les RFCs ont leur propre foyer : ce ne sont pas des pages Diátaxis.
+This is the human entry point to the Casys Digital Thread documentation. It routes by
+goal and document type; it is deliberately not an exhaustive file catalogue.
 
-## En 30 secondes
+The person states intent and makes consequential decisions in the paired conversation.
+The agent prepares and executes registered operations. The server owns provider, tool,
+argument, parser, lowering, runtime, and recovery selection. The Workbench is a
+read-only `GET` + SSE projection; it is not another command or approval surface.
 
-L’atelier commande dans le chat. Le cockpit observe. Les labels (`unavailable`,
-`unresolved`, `error`, `provisional`, `documentary`, `unverified`, `demo`, `TRACE GAP`,
-`UNLINKED`, `pass`) se lisent tels quels — ce ne sont pas des succès cachés.
+Status words remain literal: `unavailable`, `unresolved`, `error`, `provisional`,
+`documentary`, `unverified`, `demo`, `TRACE GAP`, and `UNLINKED` are not hidden
+successes. A bounded `pass` is not automatically a human closeout, whole-product
+verdict, release decision, conformity finding, or certification claim.
 
-## Si tu es un humain
+## Choose your path
 
-Ne commence pas par un RFC. Lis dans cet ordre :
+- **Understand the product:** read [Product direction](explanations/product/product-direction.md),
+  then [Proofs and verdicts](explanations/product/proofs-and-verdicts.md).
+- **See the engineering sequence:** use
+  [Walk through an engineering project](how-to/verify-design/walk-through-an-engineering-project.md).
+- **Verify a new design:** follow
+  [Verify a new design from scratch](how-to/verify-design/verify-a-new-design-from-scratch.md),
+  then [Review and correct after a proof](how-to/verify-design/review-and-correct-after-a-proof.md).
+- **Author or compile engineering source:** enter [compile how-tos](how-to/compile/).
+- **Run admitted Modelica or SPICE:** enter [run how-tos](how-to/run/).
+- **Preview the Workbench:** use
+  [Preview the native Workbench](how-to/workbench/preview-native-workbench.md).
+- **Inspect dated project evidence:** start at the
+  [project-dossier index](project-dossiers/README.md). These pages track observations;
+  they do not replace persisted project, Thread, CAS, provider, or human-decision state.
+- **Find an exact contract, operation, port, or code location:** enter
+  [reference](reference/README.md), especially the [engineering domains](reference/domains/README.md),
+  [local runtime and ports](reference/runtime/local-runtime-and-ports.md), and
+  [codebase map](reference/codebase/codebase-map.md).
+- **Understand why a boundary exists:** enter [explanations](explanations/README.md).
 
-1. [Product direction](explanations/product/product-direction.md) — ce que le produit
-   promet, et les trois branches de jugement (behave / make / buy).
-2. [Follow the engineering loop](tutorials/first-engineering-loop.md) — une fois la
-   boucle, cockpit en lecture seule.
-3. [Run the behave loop from zero](how-to/behave/run-the-behave-loop-from-zero.md) —
-   script vivant pour un **nouveau** projet, branche behave seulement.
-4. [Proofs and verdicts](explanations/product/proofs-and-verdicts.md) — pourquoi CAD,
-   FEA, simulation et évaluation restent des étapes séparées.
+Do not begin with an RFC when a living how-to, reference, or explanation exists.
 
-## Si tu es un agent
+## Agent entry
 
-Ne paraphrase pas. Lis dans cet ordre :
+Agents must start with [AGENTS.md](../AGENTS.md), then read the
+[agent workspace](reference/agent/agent-workspace.md) and
+[lookalike traps](reference/agent/lookalike-traps.md). After that, use the exact how-to
+for the task. This navigation page never substitutes for those authority contracts.
 
-1. [AGENTS.md](../AGENTS.md) — autorités, pièges, labels.
-2. [Agent workspace](reference/agent/agent-workspace.md) — tools, opérations, grants.
-3. [Lookalike traps](reference/agent/lookalike-traps.md) — paires qui ne sont pas des
-   substituts.
-4. Le how-to de la branche (souvent
-   [run the behave loop from zero](how-to/behave/run-the-behave-loop-from-zero.md) ou
-   [walk the post-proof loop](how-to/behave/walk-the-post-proof-loop.md)).
+## How Diátaxis is used here
 
-## Qu’est-ce qu’un RFC
+There is currently no `tutorials/` directory because no current page is a true Diátaxis
+tutorial. Guided walkthroughs and task recipes live under `how-to/`: they help a reader
+complete a concrete task against the current product contracts.
 
-Un RFC ici est un **brief de chantier** ou une **étude** — parfois rejetée. Ce n’est pas
-le how-to ni le contrat produit. Une fois le lot fusionné, la vérité est la page
-vivante. Index, statuts et « lire plutôt » : [docs/rfcs/README.md](rfcs/README.md).
+- **How-to** pages are action-oriented procedures for a known goal.
+- **Reference** pages state exact contracts, inventories, operations, identities,
+  limits, ports, and code locations.
+- **Explanations** describe why the product, authority, evidence, and UX boundaries
+  exist.
+- **Project dossiers, RFCs, and legacy pages are outside Diátaxis.** They preserve
+  dated observations, design history, or retired material; they are not live product
+  authority.
 
-## Catalogue Diátaxis
+## Directory map
 
-### Tutorials
+| Directory | Purpose |
+| --- | --- |
+| [`how-to/`](how-to/README.md) | Walkthroughs and task recipes, grouped by human goal |
+| [`reference/`](reference/README.md) | Exact contracts, domains, providers, runtime, pipeline, and codebase maps |
+| [`explanations/`](explanations/README.md) | Product rationale, verification doctrine, and Workbench design |
+| [`project-dossiers/`](project-dossiers/README.md) | Dated, non-authoritative project tracking and evidence pointers |
+| [`rfcs/`](rfcs/README.md) | Active briefs, implemented or rejected designs, and studies |
+| `legacy/` (reserved) | Retired, non-executable historical dossiers; never admission or live evidence |
+| [`assets/`](assets/) | Images and supporting visual artifacts used by documentation |
 
-- [Follow the engineering loop](tutorials/first-engineering-loop.md)
+Each deeper index routes its own scope, while domain-specific indexes own detailed
+inventories. This page stays short as the tree grows.
 
-### How-to — `behave/`
+## Naming rules
 
-- [Run the behave loop from zero](how-to/behave/run-the-behave-loop-from-zero.md)
-- [Walk the post-proof loop](how-to/behave/walk-the-post-proof-loop.md)
-- [Sequence a SysON seed work item](how-to/behave/sequence-seed-work-item.md)
-- [Review static-mechanical closeout](how-to/behave/review-static-mechanical-closeout.md)
-- [Walk cross-domain impact judgement](how-to/behave/walk-cross-domain-impact-judgement.md)
+- How-to filenames begin with an action and name the outcome, such as `run-`,
+  `compile-`, `review-`, `verify-`, or `preview-`.
+- Reference filenames name the contract, subsystem, domain, or inventory they define.
+- Explanation filenames name the concept or boundary they explain.
+- Project-dossier folders use stable product slugs; their status and runtime evidence
+  remain separate pages.
+- `README.md` is the entry page for a directory, not a second copy of its contents.
+- Dates belong in genuinely dated observations or studies. Temporary suffixes such as
+  `copy`, `final`, or `(1)` do not belong in canonical paths.
 
-### How-to — `compile/`
-
-- [Author architecture SysML](how-to/compile/author-architecture-sysml.md)
-- [Compile brief parameters](how-to/compile/compile-brief-parameters.md)
-- [Compile FEA parameters](how-to/compile/compile-fea-parameters.md)
-- [Compile sensitivity parameters](how-to/compile/compile-sensitivity-parameters.md)
-- [Capture an agent resource](how-to/compile/capture-an-agent-resource.md)
-
-### How-to — `run/`
-
-- [Run admitted Modelica](how-to/run/run-admitted-modelica.md)
-- [Run admitted SPICE](how-to/run/run-admitted-spice.md)
-- [Recover a quarantined provider run](how-to/run/recover-a-quarantined-provider-run.md)
-
-### How-to — `cockpit/`
-
-- [Preview the native Workbench](how-to/cockpit/preview-native-workbench.md)
-- [The Console browser preview is retired](how-to/cockpit/preview-console.md)
-- [Do not add an MCP App](how-to/cockpit/add-mcp-app.md)
-
-### How-to — `extend/`
-
-- [Extend the FEA product surface](how-to/extend/fea-surface.md)
-- [Extend admitted Modelica coverage](how-to/extend/modelica-surface.md)
-- [Extend the CAD closed subset](how-to/extend/cad-surface.md)
-- [Extend the generic SysML surface](how-to/extend/sysml-surface.md)
-
-### Reference — `agent/`
-
-- [Agent workspace](reference/agent/agent-workspace.md)
-- [Lookalike traps](reference/agent/lookalike-traps.md)
-
-### Reference — `runtime/`
-
-- [Workspace map](reference/runtime/workspace-map.md)
-- [Workspace source map](reference/runtime/workspace-source-map.md)
-- [Isolation, WAL, and Thread collection bounds](reference/runtime/isolation-and-thread-boundedness.md)
-- [MCP console](reference/runtime/console.md)
-
-### Reference — `source-map/`
-
-File census split from the workspace source-map index. Domain coverage stays on
-`domains/`.
-
-- [Foundation and composition](reference/source-map/foundation-and-composition.md)
-- [Project, Thread, and record](reference/source-map/project-thread-record.md)
-- [Resource ingress](reference/source-map/resource-ingress.md)
-- [Compile](reference/source-map/compile.md)
-- [SysML architecture and requirements](reference/source-map/sysml-architecture-requirements.md)
-- [CAD](reference/source-map/cad.md)
-- [Modelica](reference/source-map/modelica.md)
-- [FEA](reference/source-map/fea.md)
-- [Sensitivity](reference/source-map/sensitivity.md)
-- [Electrical and SPICE](reference/source-map/electrical-spice.md)
-- [Impact](reference/source-map/impact.md)
-- [Make and DFM](reference/source-map/make-dfm.md)
-- [Workbench, control plane, and desktop](reference/source-map/workbench-control-plane-desktop.md)
-- [Persistence roots](reference/source-map/persistence-roots.md)
-
-### Reference — `domains/`
-
-- [Engineering domains](reference/domains/README.md)
-- [CAD](reference/domains/cad/README.md)
-- [Modelica](reference/domains/modelica/README.md)
-- [FEA](reference/domains/fea/README.md)
-- [SysML](reference/domains/sysml/README.md)
-- [SysML language](reference/domains/sysml/language.md)
-- [SysML paths](reference/domains/sysml/paths.md)
-- [Sensitivity](reference/domains/sensitivity/README.md)
-- [Electrical](reference/domains/electrical/README.md)
-- [Impact](reference/domains/impact/README.md)
-
-### Reference — `pipeline/`
-
-- [Source analysis and authority pipeline](reference/pipeline/analysis-authority-pipeline.md)
-- [Compilation and isolation](reference/pipeline/compilation-and-isolation.md)
-- [Admitted source isolated execution](reference/pipeline/admitted-source-isolated-execution.md)
-
-### Reference — `contracts/`
-
-- [ThreadSnapshot](reference/contracts/thread-snapshot.md)
-- [EngineeringProjectSnapshot](reference/contracts/engineering-project.md)
-- [Living project brief](reference/contracts/project-brief.md)
-- [Mechanical proof case](reference/contracts/mechanical-proof-case.md)
-- [Cross-tool component identity](reference/contracts/thread-components.md)
-- [Native thread workflow YAML](reference/contracts/thread-workflows.md)
-- [Graph data model](reference/contracts/graph-data-model.md)
-
-### Reference — `providers/`
-
-- [Provider references](reference/providers/README.md)
-- [Building blocks](reference/providers/building-blocks.md)
-- [SysON surface](reference/providers/syson/README.md)
-- [Providers, analyses, evidence and oracles](reference/providers/provider-analysis-oracle-taxonomy.md)
-- [Oracle units](reference/providers/oracle-units.md)
-
-### Explanations — `runtime/`
-
-- [MCP resource ingress](explanations/runtime/mcp-resource-ingress.md)
-
-### Explanations — `product/`
-
-- [Product direction](explanations/product/product-direction.md)
-- [Proofs and verdicts](explanations/product/proofs-and-verdicts.md)
-- [Industry positioning](explanations/product/positioning.md)
-- [Closed-language compilation](explanations/product/closed-language-compilation.md)
-- [Behave decision roadmap](explanations/product/behave-decision-roadmap.md)
-
-### Explanations — `cockpit/`
-
-- [Native digital-thread Workbench](explanations/cockpit/native-digital-thread-workbench.md)
-- [Lineage-feed Workbench UX](explanations/cockpit/graph-workbench-ux.md)
-- [The cockpit component language](explanations/cockpit/mcp-view-component-language.md)
-
-### Explanations — `oracles/`
-
-- [Oracle coverage roadmap](explanations/oracles/oracle-coverage-roadmap.md)
-- [Oracle market study (2026-08-05)](explanations/oracles/oracle-market-study-2026-08-05.md)
-  — recherche datée, pas un contrat.
-- [Compliance evidence cases](explanations/oracles/compliance-evidence-cases.md)
-
-### Legacy
-
-- [CM-01 V3 archived golden dossier](legacy/cm01-v3.md) — audit, pas une opération.
-
-### RFCs
-
-- [RFC home](rfcs/README.md) — briefs de chantier et études ; pas la vérité produit.
+An RFC is a work brief or study, sometimes rejected. Once work is integrated, the living
+truth is the relevant how-to, reference, or explanation. See the
+[RFC status index](rfcs/README.md).

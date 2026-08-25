@@ -6,7 +6,7 @@ Product admission compiler, reusable isolation spine, and the CAD / Modelica / S
 CalculiX verticals. Capture → MRTR → dispatch spine stays on
 [the authority pipeline](analysis-authority-pipeline.md). Recurrent admitted-source
 pattern: [admitted source isolated execution](admitted-source-isolated-execution.md).
-File census: [compile source map](../source-map/compile.md). Isolated output counts, WAL
+File census: [compile source map](../codebase/compile.md). Isolated output counts, WAL
 generations, and Thread collection cardinality:
 [isolation and Thread boundedness](../runtime/isolation-and-thread-boundedness.md).
 

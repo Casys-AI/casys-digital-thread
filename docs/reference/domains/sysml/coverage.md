@@ -40,7 +40,7 @@ revision or deletion facility.
 Named runtime proof: MCS-02 used `architecture-capture/4.0` to navigate eight separate
 product definitions, attach exact CAD/Modelica/SPICE sources to three of them, and write
 system plus RailFrame scalar requirements. See
-[MCS-02 SysML](../../../projects/motorized-camera-slider-mcs02/domains/sysml.md). This
+[MCS-02 SysML](../../../project-dossiers/motorized-camera-slider-mcs02/domains/sysml.md). This
 does not add placements, ports, flows or behavioral SysML to the covered grammar.
 
 PS-01 added a second runtime proof on 2026-08-25. SysON accepted the package and six
@@ -119,5 +119,5 @@ native SysON capability, an extra JSON field or a successful experiment:
 | Richer agent-authored SysML                              | A new versioned closed profile with lexical/parser/analysis semantics and documentary limits; it must remain distinct from renderer authority unless a separate write operation is qualified. |
 | Controlled architecture correction                       | A dedicated reviewed operation with preconditions, mutation/recovery rules and proof that prior evidence is not silently rewritten.                                                           |
 
-Use the [extension runbook](../../../how-to/extend/sysml-surface.md) before treating any
+Use the [extension runbook](../../../how-to/extend/extend-generic-sysml-surface.md) before treating any
 candidate as a product surface.
