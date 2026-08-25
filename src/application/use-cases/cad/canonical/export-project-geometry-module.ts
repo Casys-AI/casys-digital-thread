@@ -30,7 +30,10 @@ import {
 import type { EngineeringProjectRevisionStore } from "../../../ports/out/engineering-project-revision-store.ts";
 import type { ProductStructureTraversal } from "../../../ports/out/product-navigation/product-structure-traversal.ts";
 import type { CadPlacementAnalysisCaptureLocator } from "../../../../domain/cad/placement/cad-placement-analysis-capture.ts";
-import { validateCadPlacementAnalysisCaptureLocator } from "../../../../domain/cad/placement/cad-placement-analysis-capture.ts";
+import {
+  assertCadPlacementAnalysisCaptureLocatorsEqual,
+  validateCadPlacementAnalysisCaptureLocator,
+} from "../../../../domain/cad/placement/cad-placement-analysis-capture.ts";
 import {
   encodeGeometryModuleDecisionParameters,
   GEOMETRY_MODULE_CAPTURE_SCHEMA,
@@ -104,7 +107,6 @@ export interface ExportProjectGeometryModuleDependencies {
   readonly runner: IsolatedCodeRunner;
   readonly draftStore: Pick<GeometryModuleDraftStore, "save" | "read">;
   readonly draftAssets: GeometryDraftAssetStore;
-  readonly now?: () => string;
 }
 
 export class ExportProjectGeometryModule implements ProjectGeometryModuleExportUseCase {
@@ -120,7 +122,6 @@ export class ExportProjectGeometryModule implements ProjectGeometryModuleExportU
   readonly #runner: IsolatedCodeRunner;
   readonly #draftStore: Pick<GeometryModuleDraftStore, "save" | "read">;
   readonly #draftAssets: GeometryDraftAssetStore;
-  readonly #now: () => string;
 
   constructor(dependencies: ExportProjectGeometryModuleDependencies) {
     this.#projects = dependencies.projects;
@@ -135,7 +136,6 @@ export class ExportProjectGeometryModule implements ProjectGeometryModuleExportU
     this.#runner = dependencies.runner;
     this.#draftStore = dependencies.draftStore;
     this.#draftAssets = dependencies.draftAssets;
-    this.#now = dependencies.now ?? (() => new Date().toISOString());
   }
 
   async execute(value: unknown): Promise<ProjectGeometryModuleExportResult> {
@@ -263,17 +263,20 @@ export class ExportProjectGeometryModule implements ProjectGeometryModuleExportU
         "The named placement analysis capture could not be recrossed.",
       );
     }
-    if (
-      !fingerprintsEqual(
-        placement.locator.fingerprint,
-        command.placementAnalysis.fingerprint,
-      ) ||
-      placement.locator.casUri !== command.placementAnalysis.casUri
-    ) {
-      throw exportError(
-        "unresolved",
-        "The reopened placement locator is not the named locator.",
+    try {
+      assertCadPlacementAnalysisCaptureLocatorsEqual(
+        command.placementAnalysis,
+        placement.locator,
+        "$geometryModuleExport.placementAnalysis",
       );
+    } catch (cause) {
+      if (cause instanceof TypeError) {
+        throw exportError(
+          "unresolved",
+          "The reopened placement locator is not the named locator.",
+        );
+      }
+      throw cause;
     }
     recrossPlacement(placement.document, {
       targetId: command.partDefinitionElementId,
@@ -353,7 +356,6 @@ export class ExportProjectGeometryModule implements ProjectGeometryModuleExportU
     const unsignedDraft = {
       schemaVersion: GEOMETRY_MODULE_DRAFT_CAPTURE_SCHEMA,
       kind: GEOMETRY_MODULE_DRAFT_KIND,
-      capturedAt: this.#now(),
       architectureBasis: {
         snapshotId: snapshot.id,
         revision: snapshot.revision,

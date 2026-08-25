@@ -335,7 +335,6 @@ function completeDraft(
   return {
     schemaVersion: GEOMETRY_MODULE_DRAFT_CAPTURE_SCHEMA,
     kind: GEOMETRY_MODULE_DRAFT_KIND,
-    capturedAt: "2026-08-25T10:00:00.000Z",
     architectureBasis: manifest.architectureBasis,
     structureCapture: manifest.structureCapture,
     target: manifest.target,

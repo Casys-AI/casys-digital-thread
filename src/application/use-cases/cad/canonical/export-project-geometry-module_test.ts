@@ -336,7 +336,6 @@ async function createHarness(): Promise<Harness> {
     runner,
     draftStore,
     draftAssets,
-    now: () => "2026-08-25T10:00:00.000Z",
   });
   return {
     service,

@@ -32,7 +32,6 @@ import {
   type GeometryModuleStructureCapture,
   type GeometryModuleTarget,
   invalid,
-  isoDateTime,
   parseArchitectureBasis,
   parseAssetIdentity,
   parseChildren,
@@ -54,7 +53,6 @@ import {
 export interface GeometryModuleDraftCapture {
   readonly schemaVersion: typeof GEOMETRY_MODULE_DRAFT_CAPTURE_SCHEMA;
   readonly kind: typeof GEOMETRY_MODULE_DRAFT_KIND;
-  readonly capturedAt: string;
   readonly architectureBasis: GeometryModuleArchitectureBasis;
   readonly structureCapture: GeometryModuleStructureCapture;
   readonly target: GeometryModuleTarget;
@@ -79,7 +77,6 @@ export async function parseGeometryModuleDraftCapture(
     [
       "schemaVersion",
       "kind",
-      "capturedAt",
       "architectureBasis",
       "structureCapture",
       "target",
@@ -97,7 +94,6 @@ export async function parseGeometryModuleDraftCapture(
     [
       "schemaVersion",
       "kind",
-      "capturedAt",
       "architectureBasis",
       "structureCapture",
       "target",
@@ -180,7 +176,6 @@ export async function parseGeometryModuleDraftCapture(
   return deepFreeze({
     schemaVersion: GEOMETRY_MODULE_DRAFT_CAPTURE_SCHEMA,
     kind: GEOMETRY_MODULE_DRAFT_KIND,
-    capturedAt: isoDateTime(root.capturedAt, "$geometryModuleDraft.capturedAt"),
     architectureBasis,
     structureCapture,
     target,
