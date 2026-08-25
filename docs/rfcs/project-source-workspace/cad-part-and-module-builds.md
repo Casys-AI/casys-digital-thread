@@ -1,6 +1,6 @@
 # CAD part and module builds
 
-Status: Phase D contract accepted · implementation and runtime proof pending
+Status: Phase D placement capture implemented · module export and runtime proof pending
 
 ## Definition geometry
 

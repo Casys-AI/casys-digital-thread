@@ -17,7 +17,9 @@ Read:
    ceilings and missing AST cardinality.
 4. [CAD execution paths](execution-paths.md) — canonical admitted export versus the
    documentary isolated microVM path.
-5. [Extension runbook](../../../how-to/extend/cad-surface.md) — the required end-to-end
+5. Immediate placement capture lives under `src/domain/cad/placement/`. It is not a CAD
+   script, not technical-source admission, and not module export.
+6. [Extension runbook](../../../how-to/extend/cad-surface.md) — the required end-to-end
    work to add a construct without widening authority.
 
 Shared contracts:

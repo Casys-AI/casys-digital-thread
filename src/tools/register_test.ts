@@ -581,6 +581,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_brief_confirm",
     "project_brief_propose",
     "project_brief_requirements_review",
+    "project_cad_placement_capture",
     "project_change_append",
     "project_cross_domain_impact_decision_review",
     "project_cross_domain_impact_manifest_capture",
@@ -667,6 +668,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_brief_confirm",
       "project_brief_propose",
       "project_brief_requirements_review",
+      "project_cad_placement_capture",
       "project_change_append",
       "project_cross_domain_impact_decision_review",
       "project_cross_domain_impact_manifest_capture",
@@ -989,6 +991,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_fea_proof_case_capture" ||
           tool.name === "project_technical_compilation_preview" ||
           tool.name === "project_technical_source_capture" ||
+          tool.name === "project_cad_placement_capture" ||
           tool.name === "project_work_item_abandon" ||
           tool.name === "project_decision_approve" ||
           tool.name === "project_decision_reject" ||

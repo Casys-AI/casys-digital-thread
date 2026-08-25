@@ -67,6 +67,9 @@ Domain contracts: [closed subset](../domains/cad/build123d-closed-subset-v1.md) 
 | `source.no-named-numeric-lever`                           | No reachable named literal (constructor photo or dead assignment)                                             | Missing `parameterizes` (`binding.missing`)                  |
 | `compile.seal-admission@3` + `design.execute-build123d@1` | Provider-free admission then local microVM draft execution                                                    | Canonical geometry promotion                                 |
 | `design.seal-isolated-geometry@1`                         | Provider-free Thread-document seal of isolated execution                                                      | Canonical STEP, cad-model, `write-geometry`, or FEA geometry |
+| `cad-immediate-placement-source/1.0`                      | Closed JSON of exact immediate `PartUsage` transforms. File role `cad-placement-source`; attachments stay `design-source@1` | A CAD script, compiler profile, assembly manifest, or new attachment role |
+| `project_cad_placement_capture`                           | Same-file coverage recross. Opaque `cad-placement-analysis-capture` locator only when fully resolved          | `project_technical_source_capture`, module export, or a verdict |
+| `project_geometry_module_export`                          | Accepted public draft for a later one-level module build. Not implemented                                     | Placement capture or `design.write-geometry@1` |
 
 ## Modelica
 

@@ -78,6 +78,8 @@ export interface ArchitectureCaptureNavigationIndex {
   ):
     | { readonly element: ProductStructureElementRef; readonly label: string }
     | undefined;
+  ownerDefinitionId(usageId: string): string | undefined;
+  immediateUsageIds(definitionId: string): readonly string[];
 }
 
 export function architectureCaptureNavigationIndex(
@@ -146,6 +148,8 @@ export function architectureCaptureNavigationIndex(
     },
     hasElement: (query) => hasElement(graph, query),
     typedDefinition: (usageId) => typedDefinitionOf(graph, usageId),
+    ownerDefinitionId: (usageId) => ownerDefinitionIdOf(graph, usageId),
+    immediateUsageIds: (definitionId) => immediateUsageIdsOf(graph, definitionId),
   };
 }
 
@@ -400,6 +404,29 @@ function hasElement(
     : kind === "part-usage";
 }
 
+function ownerDefinitionIdOf(
+  graph: MultiDirectedGraph<CaptureNavNodeAttrs, CaptureNavEdgeAttrs>,
+  usageId: string,
+): string | undefined {
+  const key = usageNodeKey(usageId);
+  if (!graph.hasNode(key)) return undefined;
+  return graph.getNodeAttribute(key, "ownerDefinitionId");
+}
+
+function immediateUsageIdsOf(
+  graph: MultiDirectedGraph<CaptureNavNodeAttrs, CaptureNavEdgeAttrs>,
+  definitionId: string,
+): readonly string[] {
+  const from = definitionKey(definitionId);
+  if (!graph.hasNode(from)) return [];
+  const ids: string[] = [];
+  graph.forEachOutEdge(from, (_edge, attrs, _source, target) => {
+    if (attrs.relation !== "contains") return;
+    ids.push(graph.getNodeAttributes(target).id);
+  });
+  return ids.sort((left, right) => left.localeCompare(right));
+}
+
 function typedDefinitionOf(
   graph: MultiDirectedGraph<CaptureNavNodeAttrs, CaptureNavEdgeAttrs>,
   usageId: string,
@@ -446,6 +473,8 @@ function emptyIndex(): ArchitectureCaptureNavigationIndex {
     definition: () => undefined,
     hasElement: () => false,
     typedDefinition: () => undefined,
+    ownerDefinitionId: () => undefined,
+    immediateUsageIds: () => [],
   };
 }
 

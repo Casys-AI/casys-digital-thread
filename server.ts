@@ -170,6 +170,7 @@ import {
   createBuild123dCapability,
   createCadProject,
 } from "./src/adapters/cad/server-composition.ts";
+import { createCadPlacementComposition } from "./src/adapters/cad/placement/server-composition.ts";
 import {
   createTechnicalCompilationFoundation,
   createTechnicalCompilationPreview,
@@ -949,6 +950,12 @@ async function createProjectControl(
     snapshots: threadSnapshots,
     traversal: productStructureTraversal,
   });
+  const cadPlacement = createCadPlacementComposition({
+    recordedAnalysisDirectory,
+    workspace: sourceWorkspaceStore,
+    resources: reopenAgentResource,
+    architectureCaptures: architectureFoundation.genericArchitectureCaptures,
+  });
   const agentResourceIngress = createAgentResourceIngress({
     store: agentResourceStore,
     thermalSheets: thermalJoin.thermalMethodSheets,
@@ -1108,6 +1115,7 @@ async function createProjectControl(
       // composed for execution or control-plane reads.
       runPlanReader: recordedPlans.recordedRunPlans,
       technicalSourceCapture: compilationFoundation.technicalSourceCapture,
+      cadPlacementCapture: cadPlacement.cadPlacementCapture,
       technicalCompilationPreview,
       architectureSysmlSourceCapture:
         architectureFoundation.architectureSysmlSourceCapture,

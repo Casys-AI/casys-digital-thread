@@ -55,6 +55,22 @@ Deno.test(
 );
 
 Deno.test(
+  "architecture capture navigation index exposes owner and immediate usage identities without labels",
+  () => {
+    const index = architectureCaptureNavigationIndex(capture());
+    assertEquals(index.ownerDefinitionId("usage-left"), "def-system");
+    assertEquals(index.ownerDefinitionId("usage-pad"), "def-rail");
+    assertEquals(index.immediateUsageIds("def-system"), [
+      "usage-left",
+      "usage-right",
+    ]);
+    assertEquals(index.immediateUsageIds("def-rail"), ["usage-pad"]);
+    assertEquals(index.typedDefinition("usage-left")?.element.elementId, "def-rail");
+    assertEquals(index.ownerDefinitionId("usage-missing"), undefined);
+  },
+);
+
+Deno.test(
   "architecture capture navigation index recrosses an exact occurrence path and rejects a foreign usage",
   () => {
     const index = architectureCaptureNavigationIndex(capture());

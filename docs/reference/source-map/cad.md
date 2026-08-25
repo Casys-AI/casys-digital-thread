@@ -142,6 +142,25 @@ assets in the draft stores; never writes a `ThreadSnapshot`
 Conservative, parser-backed Python CAD frontend: bounded syntax facts and unresolved
 constructs, no execution, provider call, source rewrite or authority
 
+#### [`src/domain/cad/placement/`](../../../src/domain/cad/placement)
+
+Closed `cad-immediate-placement-source/1.0`, same-file `design-source@1`
+`PartUsage` resolution, exact immediate-usage coverage plus `typed_by` recross, and
+the opaque `cad-placement-analysis-capture/1.0` locator. No provider, runtime, MRTR or
+verdict fields.
+
+#### [`src/application/use-cases/cad/placement/capture-project-cad-placement.ts`](../../../src/application/use-cases/cad/placement/capture-project-cad-placement.ts)
+
+`project_cad_placement_capture`: reopen one named attachment head, all active same-file
+placement attachments, and the exact architecture capture, then persist a locator only
+when coverage is exact.
+
+#### [`src/adapters/cad/placement/`](../../../src/adapters/cad/placement)
+
+Durable source and analysis FileByteStore codecs, architecture-navigation-index adapter,
+and placement composition. Not a workspace aggregate change and not a new attachment
+role.
+
 #### [`src/adapters/cad/source/geometry-source-analysis-capture.ts`](../../../src/adapters/cad/source/geometry-source-analysis-capture.ts)
 
 Pre-provider causal boundary: exact CAD source CAS readback, passive analysis, analysis

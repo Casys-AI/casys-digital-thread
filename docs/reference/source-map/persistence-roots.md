@@ -34,8 +34,15 @@ Closed analysis persistence root: technical-compilation source/analysis/draft/se
 Build123d `{outputs,attempts,drafts,captures}`; admitted Modelica
 `{outputs,attempts,captures}`; isolated CalculiX `{outputs,attempts,evidence,leases}`;
 resolved operation plans; agent-authored architecture SysML `{sources,analyses,seals}`
-under `architecture-sysml/`; and LED-driver human-source bytes under
-`electrical/led-driver-source/`. CAS children use fixed namespaces
+under `architecture-sysml/`; LED-driver human-source bytes under
+`electrical/led-driver-source/`; and CAD placement
+`cad/placement/{sources,analyses}`. CAS children use fixed namespaces
+
+#### `state/local/recorded-analysis/cad/placement/{sources,analyses}/`
+
+Canonical `cad-immediate-placement-source/1.0` bytes and opaque
+`cad-placement-analysis-capture/1.0` documents. Not a workspace aggregate, not Thread
+evidence, and not a module export
 
 #### `state/local/recorded-analysis/electrical/led-driver-source/`
 

@@ -44,7 +44,9 @@ from the real MCP and runtime path, not fixtures or UI copy.
 
 Architecture locked; implementation and real-runtime proof pending.
 
-- Admit one typed placement input for the exact immediate `PartUsage` set.
+- Implemented (capture only): admit one typed placement input for the exact immediate
+  `PartUsage` set via `project_cad_placement_capture`. Module export and seal remain
+  pending.
 - Build one modest composite definition from exact child-definition geometry.
 - Seal the first bounded module evidence with exact structure, source and asset bases.
 - Observe assembly integrity separately; do not infer it from successful STEP export.
