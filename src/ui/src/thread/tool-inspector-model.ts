@@ -19,15 +19,26 @@ import type {
 
 export const ARCHITECTURE_SYSML_SEAL_PRODUCER =
   "model.seal-architecture-sysml@1" as const;
+export const ADMITTED_MODELICA_PRODUCER =
+  "simulate.run-admitted-modelica@1" as const;
+export const ADMITTED_SPICE_PRODUCER = "simulate.run-admitted-spice@1" as const;
 
 export type WorkbenchToolId =
   | "syson"
   | "build123d"
   | "calculix"
   | "modelica"
+  | "spice"
   | "erpnext"
   | "digital-thread"
   | "other";
+
+const ENGINEERING_FACET_BY_PRODUCER: Readonly<
+  Record<string, WorkbenchToolId>
+> = {
+  [ADMITTED_MODELICA_PRODUCER]: "modelica",
+  [ADMITTED_SPICE_PRODUCER]: "spice",
+};
 
 export interface WorkbenchToolIdentity {
   id: WorkbenchToolId;
@@ -98,6 +109,11 @@ export const TOOL_FACETS: readonly WorkbenchToolIdentity[] = [
     fullViewLabel: "Open simulation view",
   },
   {
+    id: "spice",
+    label: "SPICE",
+    role: "Circuit simulation and operating-point evidence",
+  },
+  {
     id: "erpnext",
     label: "ERPNext",
     role: "Item, BOM and inventory context",
@@ -119,7 +135,8 @@ export const THREAD_OWNER: WorkbenchToolIdentity = {
  * because they deliberately have no canonical ThreadRef. Their optional
  * `selection` aliases are not counted as extra artifacts: the flow record and
  * the graph-only entity remain two distinct engineering items, while a shared
- * artifact is counted only once.
+ * artifact is counted only once. Facet membership uses the semantic resolver,
+ * so an admitted Modelica or SPICE producer is not inferred from `system`.
  */
 export function resolveToolFacetInventory(
   snapshot: ThreadWorkbenchSnapshot,
@@ -127,7 +144,9 @@ export function resolveToolFacetInventory(
 ): ToolFacetInventory {
   const recordsByRef = new Map<string, ThreadRef>();
   for (const stage of snapshot.flow) {
-    if (toolId(stage.system) !== provider) continue;
+    if (
+      resolveToolFacet(snapshot, stage.selection, stage.system) !== provider
+    ) continue;
     const key = graphRefKey(stage.selection);
     if (!recordsByRef.has(key)) recordsByRef.set(key, stage.selection);
   }
@@ -135,7 +154,7 @@ export function resolveToolFacetInventory(
   const graphOnlyByRef = new Map<string, ThreadGraphNode>();
   for (const node of snapshot.graph.nodes) {
     if (
-      toolId(node.system) !== provider ||
+      resolveToolFacet(snapshot, node.ref, node.system) !== provider ||
       (node.ref.kind !== "part-definition" &&
         node.ref.kind !== "part-usage" &&
         node.ref.kind !== "attribute-usage" &&
@@ -544,26 +563,87 @@ export function toolId(system: string): WorkbenchToolId {
   return "other";
 }
 
+/**
+ * Presentation-only facet for one graph or flow ref.
+ *
+ * Artifact refs read `producedBy`. Observation refs follow `sourceArtifactId`
+ * to that artifact. Only the exact admitted Modelica and SPICE producers
+ * become semantic facets; any other version or label falls back to `toolId`.
+ * The recorded `system` field is never rewritten.
+ */
+function resolveToolFacet(
+  snapshot: ThreadWorkbenchSnapshot,
+  ref: ThreadGraphRef | ThreadRef | undefined,
+  fallbackSystem: string,
+): WorkbenchToolId {
+  const producedBy = producedByForRef(snapshot, ref);
+  if (producedBy) {
+    const facet = ENGINEERING_FACET_BY_PRODUCER[producedBy];
+    if (facet) return facet;
+  }
+  return toolId(fallbackSystem);
+}
+
+function producedByForRef(
+  snapshot: ThreadWorkbenchSnapshot,
+  ref: ThreadGraphRef | ThreadRef | undefined,
+): string | undefined {
+  if (ref?.kind === "artifact") {
+    return snapshot.artifacts.find((item) => item.id === ref.id)?.producedBy;
+  }
+  if (ref?.kind === "observation") {
+    const observation = snapshot.observations.find((item) =>
+      item.id === ref.id
+    );
+    return snapshot.artifacts.find((item) =>
+      item.id === observation?.sourceArtifactId
+    )?.producedBy;
+  }
+  return undefined;
+}
+
+function ownerFromResolvedFacet(
+  snapshot: ThreadWorkbenchSnapshot,
+  ref: ThreadGraphRef | ThreadRef | undefined,
+  fallbackSystem: string,
+): WorkbenchToolIdentity {
+  const facet = resolveToolFacet(snapshot, ref, fallbackSystem);
+  const known = TOOL_FACETS.find((tool) => tool.id === facet);
+  return known ?? toolIdentity(fallbackSystem);
+}
+
 function ownerForTarget(
   snapshot: ThreadWorkbenchSnapshot,
   target: ToolInspectorTarget,
 ): WorkbenchToolIdentity {
-  if (target.node) return toolIdentity(target.node.system);
+  if (target.node) {
+    return ownerFromResolvedFacet(
+      snapshot,
+      target.node.ref,
+      target.node.system,
+    );
+  }
   const selection = target.record;
   if (!selection || selection.kind === "change") return THREAD_OWNER;
   const graphNode = snapshot.graph.nodes.find((node) =>
     node.selection && sameRef(node.selection, selection)
   );
-  if (graphNode) return toolIdentity(graphNode.system);
+  if (graphNode) {
+    return ownerFromResolvedFacet(snapshot, selection, graphNode.system);
+  }
   const stage = snapshot.flow.find((item) =>
     sameRef(item.selection, selection)
   );
-  if (stage) return toolIdentity(stage.system);
+  if (stage) {
+    return ownerFromResolvedFacet(snapshot, selection, stage.system);
+  }
   if (selection.kind === "artifact") {
     const artifact = snapshot.artifacts.find((item) =>
       item.id === selection.id
     );
-    if (artifact) return toolIdentity(artifact.system);
+    if (artifact) {
+      return ownerFromResolvedFacet(snapshot, selection, artifact.system);
+    }
   }
   if (selection.kind === "observation") {
     const observation = snapshot.observations.find((item) =>
@@ -572,7 +652,9 @@ function ownerForTarget(
     const artifact = snapshot.artifacts.find((item) =>
       item.id === observation?.sourceArtifactId
     );
-    if (artifact) return toolIdentity(artifact.system);
+    if (artifact) {
+      return ownerFromResolvedFacet(snapshot, selection, artifact.system);
+    }
   }
   return toolIdentity("other");
 }
@@ -588,8 +670,16 @@ function providerIsCrossLinked(
     const source = nodes.get(graphRefKey(edge.from));
     const target = nodes.get(graphRefKey(edge.to));
     if (!source || !target) return false;
-    const sourceProvider = toolId(source.system);
-    const targetProvider = toolId(target.system);
+    const sourceProvider = resolveToolFacet(
+      snapshot,
+      source.ref,
+      source.system,
+    );
+    const targetProvider = resolveToolFacet(
+      snapshot,
+      target.ref,
+      target.system,
+    );
     return sourceProvider !== targetProvider &&
       (sourceProvider === provider || targetProvider === provider);
   });

@@ -2,13 +2,16 @@
  * Agent-facing MCP tools/call client for the loopback Console MCP.
  *
  * Write-capable: a successful call can mutate project state. Fast-fails on
- * missing --name or invalid --args. Fills issuedAt only when the caller omitted
- * it and the arguments already include commandId (mutation shape). It does
- * not change server clock rules. Prints structuredContent when present.
+ * missing --name or invalid --args. `--args=-` reads the JSON object from
+ * stdin so the task line does not echo a large payload. Fills issuedAt only
+ * when the caller omitted it and the arguments already include commandId
+ * (mutation shape). It does not change server clock rules. Prints
+ * structuredContent when present.
  *
  * Usage:
  *   deno task mcp:call --name=project_start --args='{...}'
  *   deno task mcp:call --receipt --name=project_agent_run_execute --args='{...}'
+ *   deno task mcp:call --name=project_start --args=-
  */
 
 import { parseArgs } from "../lib/cli.ts";
@@ -30,6 +33,8 @@ export interface McpCallIo {
   readonly now?: () => Date;
   readonly stdout?: (text: string) => void;
   readonly stderr?: (text: string) => void;
+  /** Injected only when `--args=-`. Inline `--args` must never call this. */
+  readonly stdin?: () => string | Promise<string>;
 }
 
 export interface McpCallOutcome {
@@ -183,7 +188,7 @@ export async function runMcpCall(
   const writeErr = io.stderr ?? ((text) => console.error(text));
   let request: McpCallRequest;
   try {
-    request = parseMcpCallCli(argv);
+    request = parseMcpCallCli(await resolveStdinArgs(argv, io));
   } catch (error) {
     writeErr(error instanceof Error ? error.message : String(error));
     return 1;
@@ -191,6 +196,18 @@ export async function runMcpCall(
   const outcome = await callMcpTool(request, io);
   writeOut(JSON.stringify(outcome.payload, null, 2));
   return outcome.exitCode;
+}
+
+async function resolveStdinArgs(
+  argv: string[],
+  io: McpCallIo,
+): Promise<string[]> {
+  const stdinIndex = argv.indexOf("--args=-");
+  if (stdinIndex < 0) return argv;
+  const read = io.stdin ?? (() => new Response(Deno.stdin.readable).text());
+  const resolved = [...argv];
+  resolved[stdinIndex] = `--args=${await read()}`;
+  return resolved;
 }
 
 function transportFailure(error: unknown): McpCallOutcome {

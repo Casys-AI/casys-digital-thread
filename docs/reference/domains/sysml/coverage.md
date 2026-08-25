@@ -50,6 +50,12 @@ definitions and reread them before publishing Thread r3. Product navigation and 
 Workbench then exposed one root plus six typed occurrences. This proves the bounded
 native lowerer; it does not widen the accepted proposal language.
 
+Thread r4 then exercised monotone enrichment on those inherited identities: nine
+reviewed `AttributeUsage` handles were added without replacing a definition or usage.
+The compiler subsequently resolved the exact CAD, Modelica and SPICE `parameterizes`
+joins from those handles. This proves the existing enrichment and join surface; it does
+not add ports, flows, placements or behavioral SysML.
+
 ## Two source authorities, not one
 
 Comparison, distinct identities, and writer lookalikes: [paths](paths.md). Closed-subset

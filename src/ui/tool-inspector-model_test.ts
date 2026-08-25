@@ -545,6 +545,128 @@ Deno.test(
 );
 
 Deno.test(
+  "admitted Modelica and SPICE producers classify artifacts and observations",
+  () => {
+    const snapshot = structuredClone(GENERIC_THREAD_FIXTURE);
+    const modelica = appendAdmittedRun(
+      snapshot,
+      "modelica",
+      "simulate.run-admitted-modelica@1",
+    );
+    const spice = appendAdmittedRun(
+      snapshot,
+      "spice",
+      "simulate.run-admitted-spice@1",
+    );
+    snapshot.graph.edges.push(
+      {
+        id: "fixture:modelica-facet-cross-link",
+        from: { kind: "artifact", id: "ART-SYSML-018" },
+        to: modelica.artifactRef,
+        relation: "derived_from",
+        rationale: "The admitted model consumed the reviewed system model.",
+        origin: "provenance",
+      },
+      {
+        id: "fixture:spice-facet-cross-link",
+        from: { kind: "artifact", id: "ART-SYSML-018" },
+        to: spice.artifactRef,
+        relation: "derived_from",
+        rationale: "The admitted circuit consumed the reviewed system model.",
+        origin: "provenance",
+      },
+    );
+    const modelicaArtifact = resolveToolInspectorContext(snapshot, {
+      node: modelica.artifactNode,
+      record: modelica.artifactRef,
+    });
+    const spiceArtifact = resolveToolInspectorContext(snapshot, {
+      node: spice.artifactNode,
+      record: spice.artifactRef,
+    });
+
+    assertEquals(
+      resolveToolFacetInventory(snapshot, "modelica").records.filter((record) =>
+        record.id === modelica.artifactRef.id ||
+        record.id === modelica.observationRef.id
+      ),
+      [modelica.artifactRef, modelica.observationRef],
+    );
+    assertEquals(resolveToolFacetInventory(snapshot, "spice").records, [
+      spice.artifactRef,
+      spice.observationRef,
+    ]);
+    assertEquals(modelicaArtifact.owner.id, "modelica");
+    assertEquals(spiceArtifact.owner.id, "spice");
+    assertEquals(
+      resolveToolInspectorContext(snapshot, {
+        node: modelica.observationNode,
+        record: modelica.observationRef,
+      }).owner.id,
+      "modelica",
+    );
+    assertEquals(
+      resolveToolInspectorContext(snapshot, {
+        node: spice.observationNode,
+        record: spice.observationRef,
+      }).owner.id,
+      "spice",
+    );
+    assertEquals(modelicaArtifact.connection, "connected");
+    assertEquals(spiceArtifact.connection, "connected");
+    assertEquals(modelica.artifact.system, "digital-thread");
+    assertEquals(spice.artifactNode.system, "digital-thread");
+  },
+);
+
+Deno.test(
+  "unknown producers stay fail-closed and exact facet refs stay deduplicated",
+  () => {
+    const snapshot = structuredClone(GENERIC_THREAD_FIXTURE);
+    const current = appendAdmittedRun(
+      snapshot,
+      "spice-current",
+      "simulate.run-admitted-spice@1",
+    );
+    const future = appendAdmittedRun(
+      snapshot,
+      "spice-future",
+      "simulate.run-admitted-spice@2",
+    );
+    const labelOnly = appendAdmittedRun(
+      snapshot,
+      "spice-label",
+      "spice",
+      "SPICE",
+    );
+    const currentStage = snapshot.flow.find((stage) =>
+      stage.selection.kind === "artifact" &&
+      stage.selection.id === current.artifactRef.id
+    )!;
+    snapshot.flow.push({ ...currentStage, id: "flow:spice-current:duplicate" });
+
+    assertEquals(
+      resolveToolFacetInventory(snapshot, "spice").records,
+      [current.artifactRef, current.observationRef],
+    );
+    assertEquals(
+      resolveToolInspectorContext(snapshot, {
+        node: future.artifactNode,
+        record: future.artifactRef,
+      }).owner.id,
+      "digital-thread",
+    );
+    assertEquals(
+      resolveToolInspectorContext(snapshot, {
+        node: labelOnly.artifactNode,
+        record: labelOnly.artifactRef,
+      }).owner.id,
+      "other",
+    );
+  },
+);
+
+Deno.test(
   "architecture SysML inspector stays absent for an ordinary document",
   () => {
     const snapshot: ThreadWorkbenchSnapshot = structuredClone(
@@ -592,4 +714,83 @@ function graphNode(
   );
   if (!node) throw new Error(`fixture graph node ${kind}:${id} not found`);
   return node;
+}
+
+function appendAdmittedRun(
+  snapshot: ThreadWorkbenchSnapshot,
+  slug: string,
+  producedBy: string,
+  system = "digital-thread",
+) {
+  const artifactRef = { kind: "artifact" as const, id: `ART-${slug}` };
+  const observationRef = { kind: "observation" as const, id: `OBS-${slug}` };
+  const artifact = {
+    id: artifactRef.id,
+    label: artifactRef.id,
+    kind: "evidence",
+    system,
+    revision: "1",
+    freshness: "fresh" as const,
+    producedBy,
+    dependsOn: [],
+  };
+  const artifactNode: ThreadGraphNode = {
+    id: `graph:artifact:${artifactRef.id}`,
+    ref: artifactRef,
+    entityKind: "artifact",
+    label: artifactRef.id,
+    system,
+    freshness: "fresh",
+    summary: artifactRef.id,
+    selection: artifactRef,
+  };
+  const observationNode: ThreadGraphNode = {
+    id: `graph:observation:${observationRef.id}`,
+    ref: observationRef,
+    entityKind: "observation",
+    label: observationRef.id,
+    system,
+    freshness: "fresh",
+    summary: observationRef.id,
+    selection: observationRef,
+  };
+  snapshot.artifacts.push(artifact);
+  snapshot.observations.push({
+    id: observationRef.id,
+    label: observationRef.id,
+    value: 0,
+    unit: "1",
+    display: "0 1",
+    sourceArtifactId: artifactRef.id,
+    requirementIds: [],
+    freshness: "fresh",
+  });
+  snapshot.flow.push(
+    {
+      id: `flow:artifact:${artifactRef.id}`,
+      label: artifactRef.id,
+      system,
+      freshness: "fresh",
+      summary: artifactRef.id,
+      selection: artifactRef,
+      dependsOn: [],
+    },
+    {
+      id: `flow:observation:${observationRef.id}`,
+      label: observationRef.id,
+      system,
+      freshness: "fresh",
+      summary: observationRef.id,
+      selection: observationRef,
+      dependsOn: [],
+    },
+  );
+  snapshot.graph.nodes.push(artifactNode, observationNode);
+  return {
+    artifact,
+    artifactRef,
+    observationRef,
+    artifactNode,
+    observationNode,
+  };
 }

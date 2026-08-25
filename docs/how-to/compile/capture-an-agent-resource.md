@@ -25,21 +25,29 @@ CAS URI, provider, runtime, or MRTR.
 Keep the structured `reference` (`AgentResourceReference`) verbatim. `resources/read`
 projects those bytes; it is not a second upload. Roots carry no payload.
 
-## 2. Pass `resourceRef` to the domain capture
+## 2. Use the domain ingress
 
-| File                         | MIME guard                                          | Next public tool                               |
+| File                         | MIME guard                                          | Next public surface                            |
 | ---------------------------- | --------------------------------------------------- | ---------------------------------------------- |
-| Build123d `.py`              | `text/x-python`, `text/plain`                       | `project_technical_source_capture`             |
-| Modelica `.mo`               | `text/x-modelica`, `text/plain`                     | `project_technical_source_capture`             |
-| SPICE `.cir`                 | `text/x-spice`, `application/x-spice`, `text/plain` | `project_technical_source_capture`             |
+| Build123d `.py`              | `text/x-python`, `text/plain`                       | file + attachment → technical capture           |
+| Modelica `.mo`               | `text/x-modelica`, `text/plain`                     | file + attachment → technical capture           |
+| SPICE `.cir`                 | `text/x-spice`, `application/x-spice`, `text/plain` | file + attachment → technical capture           |
 | Architecture `.sysml`        | `text/x-sysml`, `text/plain`                        | `project_architecture_sysml_source_capture`    |
 | FEA proof-case JSON          | `application/json`, `text/plain`                    | `project_fea_proof_case_capture`               |
 | Impact manifest JSON         | `application/json`, `text/plain`                    | `project_cross_domain_impact_manifest_capture` |
 | LED-driver human-source JSON | `application/json`, `text/plain`                    | `project_led_driver_source_capture`            |
 
-Technical capture still names `profileId` and `sourceId`. Architecture SysML capture
-still names `profileId` (`sysml-architecture-closed-subset-v1`) and `sourceId`. The
-other captures take `resourceRef` only. None of them accept `sourceText`.
+For CAD, Modelica and SPICE, pass the `resourceRef` to `project_source_file_put`, with a
+registered `captureRequest.profileId`, then attach the stable file revision to one exact
+SysML `PartDefinition` or `PartUsage`. `project_technical_source_capture` names only
+`projectId`, `workspaceRevision`, `attachmentId` and `attachmentRevision`; the server
+resolves the file, resource bytes, profile and dependency closure. It refuses
+`resourceRef`, `profileId`, `sourceId`, `fileId`, paths and source text.
+
+Architecture SysML capture remains a separate direct resource path: it names
+`profileId` (`sysml-architecture-closed-subset-v1`), `sourceId` and `resourceRef`. The
+other JSON domain captures in the table take `resourceRef` only. None accepts
+`sourceText`.
 
 MIME does not choose the parser. `profileId` / the closed domain schema does.
 

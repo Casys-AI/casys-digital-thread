@@ -5,6 +5,7 @@ import {
   CLIENT_NAME,
   DEFAULT_MCP_URL,
   MCP_PROTOCOL_VERSION,
+  type McpCallIo,
   parseMcpCallCli,
   printableResult,
   runMcpCall,
@@ -312,8 +313,84 @@ Deno.test("mcp-call writes a TypeError to stderr and exits 1 for invalid flags",
   assertEquals(io.written.stderr, ["mcp-call requires --name."]);
 });
 
+Deno.test("mcp-call --args=- reads a JSON object from stdin and honors --receipt", async () => {
+  let observedArgs: Record<string, unknown> | undefined;
+  const io = captureIo({
+    stdin: () => JSON.stringify({ projectId: "desktop-parts-sorter-ps01" }),
+    fetch: ((_input, init) => {
+      const body = JSON.parse(String(init?.body)) as {
+        params: { arguments: Record<string, unknown> };
+      };
+      observedArgs = body.params.arguments;
+      return Promise.resolve(Response.json({
+        jsonrpc: "2.0",
+        id: 1,
+        result: {
+          resultType: "complete",
+          isError: false,
+          content: [{
+            type: "text",
+            text: "Run run:architecture completed at project revision 42.",
+          }],
+          structuredContent: { revision: 42 },
+        },
+      }));
+    }) as typeof fetch,
+  });
+  const code = await runMcpCall([
+    "--receipt",
+    "--name=project_agent_run_execute",
+    "--args=-",
+  ], io);
+  assertEquals(code, 0);
+  assertEquals(observedArgs, { projectId: "desktop-parts-sorter-ps01" });
+  assertEquals(JSON.parse(io.written.stdout[0]!), {
+    receipt: "Run run:architecture completed at project revision 42.",
+  });
+});
+
+Deno.test("mcp-call rejects invalid or non-object stdin --args before fetch", async () => {
+  for (const stdin of ["not-json", "[1]", "1"]) {
+    const io = captureIo({
+      stdin: () => stdin,
+      fetch: (() => {
+        throw new Error("fetch must not run after a stdin args error");
+      }) as typeof fetch,
+    });
+    const code = await runMcpCall(
+      ["--name=project_start", "--args=-"],
+      io,
+    );
+    assertEquals(code, 1);
+    assertEquals(io.written.stdout, []);
+    assertEquals(io.written.stderr, ["mcp-call --args must be a JSON object."]);
+  }
+});
+
+Deno.test("mcp-call never reads stdin when --args is inline JSON", async () => {
+  let stdinReads = 0;
+  const io = captureIo({
+    stdin: () => {
+      stdinReads += 1;
+      throw new Error("stdin must not be read for inline --args");
+    },
+    fetch: (() =>
+      Promise.resolve(Response.json({
+        jsonrpc: "2.0",
+        id: 1,
+        result: { resultType: "complete" },
+      }))) as typeof fetch,
+  });
+  const code = await runMcpCall([
+    "--name=project_list",
+    "--args={}",
+  ], io);
+  assertEquals(code, 0);
+  assertEquals(stdinReads, 0);
+});
+
 function captureIo(
-  extras: { fetch?: typeof fetch; now?: () => Date } = {},
+  extras: McpCallIo = {},
 ) {
   const written = { stdout: [] as string[], stderr: [] as string[] };
   return {

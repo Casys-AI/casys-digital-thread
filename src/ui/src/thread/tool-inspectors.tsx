@@ -93,12 +93,14 @@ export function ToolInspectorPanel({
               Select an element in the thread
             </CardTitle>
           </div>
-          <Badge variant="secondary">5 facets · 1 subject</Badge>
+          <Badge variant="secondary">
+            {TOOL_FACETS.length} facets · 1 subject
+          </Badge>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
-            Choose a node or an edge to inspect the owning tool and the evidence it
-            contributes to {snapshot.subject.label}.
+            Choose a node or an edge to inspect its engineering facet and the evidence
+            it contributes to {snapshot.subject.label}.
           </p>
           <ToolFacetRail
             snapshot={snapshot}
@@ -130,7 +132,7 @@ export function ToolInspectorPanel({
       <CardHeader className="flex-row items-start justify-between gap-4">
         <div className="min-w-0 space-y-1.5">
           <p className="text-xs font-medium text-muted-foreground">
-            Owning tool
+            Engineering facet
           </p>
           <CardTitle className="text-base">{context.owner.label}</CardTitle>
         </div>
@@ -488,22 +490,22 @@ function BranchState({ context, snapshot }: {
   if (context.connection === "thread") {
     return (
       <Notice title="One engineering subject" tone="info">
-        The five providers are facets of{" "}
-        {snapshot.subject.label}. Select a provider node to inspect its evidence branch.
+        These {TOOL_FACETS.length} engineering facets belong to{" "}
+        {snapshot.subject.label}. Select a facet to inspect its evidence branch.
       </Notice>
     );
   }
   if (context.connection === "independent") {
     return (
       <Notice title="No causal edge recorded" tone="warning">
-        This provider shares the declared subject identity, but the snapshot does not
-        prove a dependency to another tool. Its evidence remains an independent branch.
+        This facet shares the declared subject identity, but the snapshot does not prove
+        a dependency to another tool. Its evidence remains an independent branch.
       </Notice>
     );
   }
   return (
     <Notice title="Cross-tool link recorded" tone="success">
-      At least one explicit Workbench dependency connects this provider to another tool.
+      At least one explicit Workbench dependency connects this facet to another tool.
       Inspect the provenance below before treating it as causal.
     </Notice>
   );
@@ -924,6 +926,8 @@ function toolMonogram(tool: WorkbenchToolIdentity): string {
       return "CX";
     case "modelica":
       return "MO";
+    case "spice":
+      return "SP";
     case "erpnext":
       return "ER";
     case "digital-thread":

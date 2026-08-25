@@ -87,7 +87,8 @@ Full tables: [lookalike traps](lookalike-traps.md). Keep this heading so older
 The agent talks **only** to this repo’s MCP server (`http://127.0.0.1:3020/mcp`).
 Provider MCP ports are private backend dependencies. Loopback CLI:
 `deno task mcp:call --name=<tool> --args='{}'`. It fills omitted `issuedAt` only when
-the arguments already include `commandId`. Add `--receipt` for a completed mutation
+the arguments already include `commandId`. Pass `--args=-` to read the JSON object
+from stdin. Add `--receipt` for a completed mutation
 when the compact server receipt is useful and the full structured snapshot is not.
 Reads, failures and input-required results remain structured. `cockpit_focus_set` may omit
 `expectedRevision`. `deno task preview:thread` follows cockpit focus unless

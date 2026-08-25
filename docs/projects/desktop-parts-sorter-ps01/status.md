@@ -6,14 +6,17 @@ Local observation on 2026-08-25. `state/local/` is gitignored and may drift.
 
 | Surface | Current fact |
 | --- | --- |
-| Engineering Project | `desktop-parts-sorter-ps01` r52; approved brief; all six recorded work items completed |
-| Thread | r3 architecture capture `ff48e5d…8d28ab` |
-| Product structure | One `DesktopPartsSorter` root and six exact typed `PartUsage` occurrences |
-| Source workspace | r27; 8 modules, 6 active files, 6 active attachments |
-| Technical capture | Frame CAD, diverter CAD, Modelica behavior and SPICE circuit parsers passed at workspace r27 |
-| Compilation preview | `unresolved`: 9 missing SysML `parameterizes` joins and one multi-file CAD lowering gap |
-| Workbench | Product structure 7/7; no exact geometry; unavailable geometry buttons remain disabled |
-| Verdict | none recorded |
+| Engineering Project | `desktop-parts-sorter-ps01` r101; approved brief; all 13 recorded work items completed |
+| Thread | r10; current snapshot seals canonical Frame geometry |
+| Product structure | One `DesktopPartsSorter` root, six exact typed `PartUsage` occurrences and nine technical `AttributeUsage` handles |
+| Source workspace | r31; 8 modules, 6 active files, 6 active attachments |
+| Electrical | SPICE admitted at Thread r5 and executed through ngspice at r6 |
+| Behavior | Modelica admitted at Thread r7 and executed through OMC/DASSL at r8 |
+| Geometry | Frame CAD admitted at Thread r9; exact PartDefinition STEP and GLB sealed at r10 |
+| Remaining compile gap | Diverter multi-file CAD stays `source.dependency-lowering-unavailable` |
+| Workbench | Product structure 7/7; Frame geometry opens; unavailable component geometry buttons stay disabled |
+| Verdict | zero requirement, evaluation or verdict recorded |
 
-The project has proved the authoring/navigation objective. It has not sealed a technical
-compilation, executed CAD/Modelica/SPICE, published geometry, or evaluated routing.
+The project has proved incremental multi-file authoring, graph navigation and three
+single-root technical verticals. Its `Completed` activity status is not product
+completion: it has no assembly geometry, FEA, routing evaluation, L4 or L5 claim.

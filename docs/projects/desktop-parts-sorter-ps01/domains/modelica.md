@@ -6,5 +6,9 @@ Audience: both · Diátaxis: reference · Kind: project domain status
 normalized first-order command response used to prove incremental authoring and capture.
 Its constants are assumptions, not observed actuator performance.
 
-The combined preview requires exact SysML `AttributeUsage` joins for `targetCommand` and
-`responseRate`. No admission, microVM run, observation, method sheet or verdict exists.
+Architecture r4 provides exact `targetCommand` and `responseRate` joins. The workspace
+r29 capture reached admission at Thread r7 and an isolated OMC/DASSL execution at r8.
+The fresh documentary observations are `normalizedPosition.final` and
+`normalizedPosition.max_abs`, both `0.999954433048095 1`.
+
+No requirement, method sheet, L4 evaluation, L5 closeout or product verdict exists.

@@ -64,12 +64,14 @@ returned `exact-basis`, and `project_source_closure` returned `observed` for one
 file, zero edges and closure fingerprint
 `ad9c55638cb0d4003011bc059269456ce3e6750629ed11acbdeeb223fb0e51c6`.
 
-PS-01 exercised the scalable path on 2026-08-25 at workspace r27: 8 modules, 6
+PS-01 exercised the scalable path on 2026-08-25 through workspace r31: 8 modules, 6
 active files, 6 active attachments and one five-file/five-edge verification closure.
 Stable CAD, Modelica, SPICE and verification files advanced independently through
-successor revisions. Four technical captures at the same r27 event basis passed their
-registered parsers. The combined preview stayed explicitly `unresolved` for nine
-missing SysML parameter joins and one multi-file CAD lowering gap. See
+successor revisions. Architecture r4 resolved the nine exact SysML parameter joins.
+Attachment-rooted, single-root SPICE and Modelica sources were admitted and executed at
+Thread r5–r8; the single-root Frame CAD source was admitted at r9 and published canonical
+PartDefinition geometry at r10. The separate Diverter multi-file CAD closure stays
+explicitly `source.dependency-lowering-unavailable`. See
 [PS-01 source workspace](../../../projects/desktop-parts-sorter-ps01/domains/source-workspace.md).
 
 ## Not implemented yet
