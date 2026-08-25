@@ -312,27 +312,28 @@ function selectExistingWork(
   request: AssemblyIntegrityReviewResolutionRequest,
 ): AssemblyIntegrityReviewExistingWork | undefined {
   const expectedOperation = observationOperation(request);
-  const candidates = project.workItems.filter((work) =>
+  const matches = project.workItems.filter((work) =>
     work.operation !== undefined &&
     deterministicJson(work.operation) === deterministicJson(expectedOperation)
   );
-  if (candidates.length === 0) return undefined;
+  if (matches.length === 0) return undefined;
+
+  // A lifecycle leaf is a revision no later item names as predecessor. A
+  // successor revision is therefore eligible itself; only its historical
+  // predecessor is excluded. Filter first, then refuse competing current
+  // leaves rather than letting array order choose one.
+  const candidates = matches.filter((work) =>
+    work.status === "waiting-for-decision" &&
+    work.decisionIds.length === 1 &&
+    !project.workItems.some((candidate) => candidate.predecessorRevisionId === work.id)
+  );
   if (candidates.length !== 1) {
     throw new TypeError(
-      "Several current work items have the same reviewed observation identity.",
+      "The reviewed observation identity has no unique current lifecycle leaf.",
     );
   }
 
   const work = candidates[0]!;
-  if (
-    work.status !== "waiting-for-decision" || work.decisionIds.length !== 1 ||
-    work.predecessorRevisionId !== undefined ||
-    project.workItems.some((candidate) => candidate.predecessorRevisionId === work.id)
-  ) {
-    throw new TypeError(
-      "The matching work item is not awaiting one proposal decision.",
-    );
-  }
   const decisionId = work.decisionIds[0]!;
   const decisions = project.decisions.filter((candidate) =>
     candidate.id === decisionId

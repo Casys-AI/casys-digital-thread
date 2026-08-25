@@ -255,10 +255,36 @@ Deno.test("assembly-integrity review resolver fails closed on ambiguous, satisfi
   }
 });
 
+Deno.test("assembly-integrity review resolver accepts a successor leaf but refuses a reviewed revision with a successor", async () => {
+  const selected = await profile();
+  const current = await plannedProject({ successor: "exact" });
+  const accepted = await reviewResolver(
+    current.store,
+    new CapturingInputs(selected),
+    selected,
+  ).resolve(request());
+  if (accepted.status !== "resolved") {
+    throw new Error(`Expected current successor leaf: ${JSON.stringify(accepted)}`);
+  }
+  assertEquals(accepted.existingWork?.workItemId, "assembly-work-successor");
+
+  const superseded = await plannedProject({ successor: "nonmatching" });
+  const inputs = new CapturingInputs(selected);
+  const refused = await reviewResolver(superseded.store, inputs, selected)
+    .resolve(request());
+  assertEquals(refused.status, "unresolved");
+  if (refused.status !== "unresolved") {
+    throw new Error("Expected a superseded revision to be unresolved.");
+  }
+  assertEquals(refused.diagnostics[0]?.code, "planned-observation-invalid");
+  assertEquals(inputs.calls, []);
+});
+
 interface PlannedProjectOptions {
   readonly workCount?: number;
   readonly gateRole?: "contributes-to" | "satisfies";
   readonly reviseBrief?: boolean;
+  readonly successor?: "exact" | "nonmatching";
 }
 
 function reviewResolver(
@@ -408,6 +434,62 @@ async function plannedProject(
         question: "May the exact factual assembly observation run?",
       }],
     });
+  }
+
+  if (options.successor !== undefined) {
+    if ((options.workCount ?? 1) !== 1) {
+      throw new TypeError("Successor test fixtures require exactly one root revision.");
+    }
+    if (options.successor === "exact") {
+      project = await commands.appendChange(AGENT, {
+        ...command("append-assembly-observation-successor", project.revision),
+        baseSnapshot: basis,
+        phases: [{
+          id: "assembly-phase-successor",
+          name: "Factual assembly observation successor",
+          description: "Revise the exact factual assembly observation leaf.",
+        }],
+        workItems: [{
+          id: "assembly-work-successor",
+          phaseId: "assembly-phase-successor",
+          owner: "agent",
+          predecessorRevisionId: "assembly-work-1",
+          dependsOnWorkItemIds: ["baseline-work"],
+          decisionIds: ["assembly-decision-successor"],
+          operation: assemblyObservationOperation(),
+        }],
+        requiredDecisions: [{
+          id: "assembly-decision-successor",
+          phaseId: "assembly-phase-successor",
+          title: "Approve factual assembly observation successor",
+          question: "May the revised exact factual assembly observation run?",
+        }],
+      });
+    } else {
+      project = await commands.appendChange(AGENT, {
+        ...command("append-nonmatching-assembly-successor", project.revision),
+        baseSnapshot: basis,
+        phases: [{
+          id: "assembly-phase-nonmatching-successor",
+          name: "Nonmatching successor fixture",
+          description: "Make the prior factual observation revision historical.",
+        }],
+        workItems: [{
+          id: "assembly-work-nonmatching-successor",
+          phaseId: "assembly-phase-nonmatching-successor",
+          owner: "agent",
+          predecessorRevisionId: "assembly-work-1",
+          dependsOnWorkItemIds: ["baseline-work"],
+          decisionIds: [],
+          operation: {
+            id: "simulate.run-qualified-modelica-kit",
+            version: "1",
+            bindings: [],
+          },
+        }],
+        requiredDecisions: [],
+      });
+    }
   }
 
   if (options.reviseBrief === true) {
