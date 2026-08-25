@@ -41,9 +41,8 @@ import type {
   EngineeringWorkItem,
 } from "../../../domain/project/engineering-project.ts";
 import {
-  isProjectBriefGateKind,
-  projectBriefContractVersion,
-} from "../../../domain/project/project-brief.ts";
+  currentApprovedAssemblyIntegrityVerificationGateIds,
+} from "../../../domain/cad/assembly-integrity/assembly-integrity-verification-authority.ts";
 import { selectCurrentThreadTip } from "../../../domain/project/thread-tip.ts";
 import { validateEngineeringProjectSnapshot } from "../../../domain/project/engineering-project-validation.ts";
 import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
@@ -411,14 +410,9 @@ function parseCurrentContributesToClaims(
 ): AssemblyIntegrityReviewExistingWork["gateClaims"] {
   const claims = work.gateClaims ?? [];
   if (claims.length === 0) return deepFreeze([]);
-
-  const brief = project.framing?.currentBrief;
-  if (!brief || projectBriefContractVersion(brief) !== "2.0") {
-    throw new TypeError(
-      "Observation gate claims require the current approved V2 brief.",
-    );
-  }
-  const gates = new Map(brief.items.map((item) => [item.id, item]));
+  const gateIds = new Set(
+    currentApprovedAssemblyIntegrityVerificationGateIds(project),
+  );
   const seen = new Set<string>();
   const parsed = claims.map((claim) => {
     if (
@@ -430,10 +424,9 @@ function parseCurrentContributesToClaims(
       );
     }
     seen.add(claim.gateItemId);
-    const gate = gates.get(claim.gateItemId);
-    if (!gate || !isProjectBriefGateKind(gate.kind)) {
+    if (!gateIds.has(claim.gateItemId)) {
       throw new TypeError(
-        "Observation gate claims must name a current canonical brief gate.",
+        "Observation gate claims must name a current approved V2 assembly-integrity verification activity.",
       );
     }
     return {

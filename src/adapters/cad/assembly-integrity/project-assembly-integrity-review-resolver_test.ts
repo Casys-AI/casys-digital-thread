@@ -213,6 +213,26 @@ Deno.test("assembly-integrity review resolver uses one structurally exact planne
   assertEquals(inputs.calls.length, 2);
 });
 
+Deno.test("assembly-integrity review resolver permits multiple distinct matching authority claims", async () => {
+  const selected = await profile();
+  const planned = await plannedProject({
+    gateRole: "contributes-to",
+    gateItemIds: ["verify-assembly", "verify-assembly-alt"],
+  });
+  const resolution = await reviewResolver(
+    planned.store,
+    new CapturingInputs(selected),
+    selected,
+  ).resolve(request());
+
+  assertEquals(resolution.status, "resolved");
+  if (resolution.status !== "resolved") return;
+  assertEquals(resolution.existingWork?.gateClaims.map((claim) => claim.gateItemId), [
+    "verify-assembly",
+    "verify-assembly-alt",
+  ]);
+});
+
 Deno.test("assembly-integrity review resolver leaves zero matching planned leaves on the bounded append fallback", async () => {
   const selected = await profile();
   const planned = await plannedProject({ workCount: 0 });
@@ -255,6 +275,32 @@ Deno.test("assembly-integrity review resolver fails closed on ambiguous, satisfi
   }
 });
 
+Deno.test("assembly-integrity review resolver refuses unrelated, other-authority, or unqualified gate claims", async () => {
+  const selected = await profile();
+  for (
+    const gateItemId of [
+      "success",
+      "verify-other",
+      "verify-unqualified",
+    ] as const
+  ) {
+    const planned = await plannedProject({
+      gateRole: "contributes-to",
+      gateItemId,
+    });
+    const inputs = new CapturingInputs(selected);
+    const resolution = await reviewResolver(planned.store, inputs, selected)
+      .resolve(request());
+
+    assertEquals(resolution.status, "unresolved", gateItemId);
+    if (resolution.status !== "unresolved") {
+      throw new Error(`Expected unresolved ${gateItemId} review.`);
+    }
+    assertEquals(resolution.diagnostics[0]?.code, "planned-observation-invalid");
+    assertEquals(inputs.calls, [], gateItemId);
+  }
+});
+
 Deno.test("assembly-integrity review resolver accepts a successor leaf but refuses a reviewed revision with a successor", async () => {
   const selected = await profile();
   const current = await plannedProject({ successor: "exact" });
@@ -283,6 +329,18 @@ Deno.test("assembly-integrity review resolver accepts a successor leaf but refus
 interface PlannedProjectOptions {
   readonly workCount?: number;
   readonly gateRole?: "contributes-to" | "satisfies";
+  readonly gateItemId?:
+    | "success"
+    | "verify-assembly"
+    | "verify-other"
+    | "verify-unqualified";
+  readonly gateItemIds?: readonly (
+    | "success"
+    | "verify-assembly"
+    | "verify-assembly-alt"
+    | "verify-other"
+    | "verify-unqualified"
+  )[];
   readonly reviseBrief?: boolean;
   readonly successor?: "exact" | "nonmatching";
 }
@@ -400,6 +458,16 @@ async function plannedProject(
     }],
   });
 
+  const gateRole = options.gateRole;
+  const gateClaims = gateRole === undefined
+    ? undefined
+    : (options.gateItemIds ?? [options.gateItemId ?? "verify-assembly"])
+      .map((gateItemId) => ({
+        gateItemId,
+        role: gateRole,
+        status: "current" as const,
+      }));
+
   for (let index = 1; index <= (options.workCount ?? 1); index += 1) {
     const phaseId = `assembly-phase-${index}`;
     const workItemId = `assembly-work-${index}`;
@@ -419,13 +487,7 @@ async function plannedProject(
         dependsOnWorkItemIds: ["baseline-work"],
         decisionIds: [decisionId],
         operation: assemblyObservationOperation(),
-        ...(options.gateRole === undefined ? {} : {
-          gateClaims: [{
-            gateItemId: "verify-assembly",
-            role: options.gateRole,
-            status: "current",
-          }],
-        }),
+        ...(gateClaims === undefined ? {} : { gateClaims }),
       }],
       requiredDecisions: [{
         id: decisionId,
@@ -542,6 +604,27 @@ function briefItems(objective: string) {
     id: "verify-assembly",
     kind: "verification-activity" as const,
     statement: "Observe one exact current assembly module without deriving a verdict.",
+    sourceRefs: source,
+    dependsOnItemIds: ["success"],
+    verificationAuthority: { id: "assembly-integrity", version: "1.0" },
+  }, {
+    id: "verify-assembly-alt",
+    kind: "verification-activity" as const,
+    statement: "Observe the same bounded digital assembly method.",
+    sourceRefs: source,
+    dependsOnItemIds: ["success"],
+    verificationAuthority: { id: "assembly-integrity", version: "1.0" },
+  }, {
+    id: "verify-other",
+    kind: "verification-activity" as const,
+    statement: "Observe a different, deliberately incompatible method.",
+    sourceRefs: source,
+    dependsOnItemIds: ["success"],
+    verificationAuthority: { id: "other-method", version: "1.0" },
+  }, {
+    id: "verify-unqualified",
+    kind: "verification-activity" as const,
+    statement: "Observe an activity without a declared method authority.",
     sourceRefs: source,
     dependsOnItemIds: ["success"],
   }];

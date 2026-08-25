@@ -11,9 +11,8 @@ import type {
   EngineeringWorkItem,
 } from "../../project/engineering-project.ts";
 import {
-  isProjectBriefGateKind,
-  projectBriefContractVersion,
-} from "../../project/project-brief.ts";
+  currentApprovedAssemblyIntegrityVerificationGateIds,
+} from "./assembly-integrity-verification-authority.ts";
 
 export function assemblyIntegrityEvaluationGateClaimIssue(
   project: EngineeringProjectSnapshot,
@@ -21,26 +20,20 @@ export function assemblyIntegrityEvaluationGateClaimIssue(
 ): string | undefined {
   const claims = work.gateClaims;
   if (claims === undefined || claims.length === 0) return undefined;
-  const brief = project.framing?.currentBrief;
-  const approval = project.framing?.currentBriefApproval;
-  if (
-    !brief || approval?.status !== "approved" ||
-    projectBriefContractVersion(brief) !== "2.0"
-  ) {
-    return "An L4 gate claim requires the current human-approved Brief V2.";
-  }
+  const eligibleGateIds = new Set(
+    currentApprovedAssemblyIntegrityVerificationGateIds(project),
+  );
   const claimedGateIds = new Set<string>();
   for (const claim of claims) {
     if (claimedGateIds.has(claim.gateItemId)) {
       return "L4 may claim each current Brief V2 gate at most once.";
     }
     claimedGateIds.add(claim.gateItemId);
-    const gate = brief.items.find((item) => item.id === claim.gateItemId);
     if (
       claim.role !== "contributes-to" || claim.status !== "current" ||
-      !gate || !isProjectBriefGateKind(gate.kind)
+      !eligibleGateIds.has(claim.gateItemId)
     ) {
-      return "L4 may retain only current contributes-to claims targeting existing Brief V2 gates.";
+      return "L4 may retain only current contributes-to claims targeting current approved Brief V2 assembly-integrity verification activities.";
     }
   }
   return undefined;
