@@ -260,14 +260,17 @@ composite PartDefinition and placement locator only
 
 #### [`src/application/use-cases/cad/canonical/export-project-geometry-module.ts`](../../../src/application/use-cases/cad/canonical/export-project-geometry-module.ts)
 
-Server recross of architecture, part-definitions structure, exact immediate placement
-coverage, unique active child geometry and authoritative STEP, then isolated
-module-assembler execution and a review-only draft. No Thread write
+Server recross of the exact Thread architecture, part-definitions CAS URI/digest/byte
+count, immediate placement coverage, unique active child capture and authoritative STEP
+bytes. A published generation-zero receipt is reopened exactly on retry; outcome-unknown
+never redispatches and no artificial generation one exists. Produces a review-only
+draft. No Thread write
 
 #### [`src/adapters/cad/module-assembly/geometry-module-export-composition.ts`](../../../src/adapters/cad/module-assembly/geometry-module-export-composition.ts)
 
-Separate composition for the public export vertical. Wires the use case only when an
-`IsolatedCodeRunner` is supplied. Does not enter `createCadProject` or the sealer
+Separate composition for the public export vertical. Wires the use case only when the
+same runtime exposes both `IsolatedCodeRunner` and its publication-gated receipt reader.
+Does not enter `createCadProject` or the sealer
 
 #### [`src/tools/project-control/geometry-module-export-tools.ts`](../../../src/tools/project-control/geometry-module-export-tools.ts)
 
@@ -279,5 +282,6 @@ case. Description teaches the later `design.write-geometry@1` step from
 
 Code-owned Build123d assembler: decode/rehash the bundle, import staged child STEPs,
 apply right-handed mm extrinsic XYZ, export `assembly.step` and `assembly.glb`. Leaves
-the untrusted `build123d-microsandbox-worker` unchanged. Image digest is not yet
-qualified
+the untrusted `build123d-microsandbox-worker` unchanged. The production local entrypoint
+pins image digest `5aa833e19f1956a001013661e726c19c4566677a75f58493a6534456b99b6707` and
+wrapper digest `609eaf93f2564b88b9103d5e0d53d1dd3e93fcdf8e54c61cc313b957370bf581`

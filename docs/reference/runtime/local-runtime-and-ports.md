@@ -209,11 +209,10 @@ manufacturing decision, or certification verdict.
 
 Causal `changeKinds` on the sealed manifest are document-defined `safeId` tokens from
 the source anchors, not a code catalog and not free prose. They are canonicalized by
-lexicographic order. Branch IDs are likewise document-defined `safeId` tokens on
-that same V2 manifest: a nonempty unique lexicographically canonical list, not a
-global catalogue. Extra or missing branch data fails closed. The exact id
-`mechanical` keeps X11 preservation; every other declared branch uses one generic
-nonmechanical policy.
+lexicographic order. Branch IDs are likewise document-defined `safeId` tokens on that
+same V2 manifest: a nonempty unique lexicographically canonical list, not a global
+catalogue. Extra or missing branch data fails closed. The exact id `mechanical` keeps
+X11 preservation; every other declared branch uses one generic nonmechanical policy.
 
 `project_cross_domain_impact_manifest_seal_review` is likewise read-only: its caller
 names only a project and an opaque manifest fingerprint. The server rereads the closed
@@ -314,20 +313,20 @@ captures remain documentary evidence; they are not a live projector or executor 
 
 ## Runtime ownership
 
-| Data                         | Owner                             | Workspace access                                                                                                                            |
-| ---------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| SysML and requirements       | SysON                             | Private provider MCP plus operation WAL/readback; outside local microVM isolation                                                           |
-| Local Build123d execution    | Microsandbox microVM + DT broker  | Exact admitted bytes in; declared output handles out; no repository, secrets or canonical volumes                                           |
-| Local module-assembly run    | Dedicated assembler microVM       | Closed `geometry-module-input-bundle/1.0` in; `assembly.step` + `assembly.glb` out. Image `casys/build123d-module-assembler-worker` is defined and digest-unqualified. Not an MCP tool |
-| Local Build123d output       | Recorded-analysis output CAS      | Publication-gated private STEP plus byte-free receipt; noncanonical and absent from Thread artifacts                                        |
-| CAD exports                  | `exports` volume                  | Hash-attested build123d to CalculiX read-only exchange                                                                                      |
-| Generic FEA staging          | CalculiX `calculix-inputs` volume | Digital Thread writes content-addressed STEP bytes; provider-private, non-authoritative, not evidence                                       |
-| CalculiX recorded runs       | `calculix-runs` volume            | Identity-bound `calculix_run_get` plus exact `resources/read`; separate from CAD exchange                                                   |
-| Modelica execution           | Local Modelica microVM            | Admitted closed-subset and qualified kit via `casys/modelica-microsandbox-worker`. Port 3016 sidecar and `modelica-runs` volume are retired |
-| ERP data                     | External ERPNext database         | Provider-native MCP from backend only                                                                                                       |
-| Native `ThreadSnapshot`      | Immutable local file store        | Read-only projection in the native Workbench                                                                                                |
-| `EngineeringProjectSnapshot` | Immutable active file store       | Intent, living brief, exact reviews, bounded runs and evidence references; CAS revisions                                                    |
-| Live engineering activity    | Append-only local JSONL           | SSE projection; never canonical authority                                                                                                   |
+| Data                         | Owner                             | Workspace access                                                                                                                                         |
+| ---------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SysML and requirements       | SysON                             | Private provider MCP plus operation WAL/readback; outside local microVM isolation                                                                        |
+| Local Build123d execution    | Microsandbox microVM + DT broker  | Exact admitted bytes in; declared output handles out; no repository, secrets or canonical volumes                                                        |
+| Local module-assembly run    | Dedicated assembler microVM       | Closed bundle in; atomic STEP + GLB out through the pinned local image. `project_geometry_module_export` returns a review-only draft, never Thread state |
+| Local Build123d output       | Recorded-analysis output CAS      | Publication-gated private STEP plus byte-free receipt; noncanonical and absent from Thread artifacts                                                     |
+| CAD exports                  | `exports` volume                  | Hash-attested build123d to CalculiX read-only exchange                                                                                                   |
+| Generic FEA staging          | CalculiX `calculix-inputs` volume | Digital Thread writes content-addressed STEP bytes; provider-private, non-authoritative, not evidence                                                    |
+| CalculiX recorded runs       | `calculix-runs` volume            | Identity-bound `calculix_run_get` plus exact `resources/read`; separate from CAD exchange                                                                |
+| Modelica execution           | Local Modelica microVM            | Admitted closed-subset and qualified kit via `casys/modelica-microsandbox-worker`. Port 3016 sidecar and `modelica-runs` volume are retired              |
+| ERP data                     | External ERPNext database         | Provider-native MCP from backend only                                                                                                                    |
+| Native `ThreadSnapshot`      | Immutable local file store        | Read-only projection in the native Workbench                                                                                                             |
+| `EngineeringProjectSnapshot` | Immutable active file store       | Intent, living brief, exact reviews, bounded runs and evidence references; CAS revisions                                                                 |
+| Live engineering activity    | Append-only local JSONL           | SSE projection; never canonical authority                                                                                                                |
 
 The Console browser harness forwards only reviewed Console tools. It is not a generic
 MCP proxy. The native browser receives ordinary linked JSON and no MCP credentials.
