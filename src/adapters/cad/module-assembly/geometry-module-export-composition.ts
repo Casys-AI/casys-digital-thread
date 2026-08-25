@@ -30,6 +30,7 @@ import {
 } from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import { parseExactPartDefinitionsCapture } from "../../architecture/part-definitions/part-definitions-capture.ts";
+import type { SysmlSourceAnalysisReader } from "../../architecture/renderer/sysml-source-analysis-capture.ts";
 import { FileCanonicalAssetReader } from "../../assets/canonical-asset-reader.ts";
 import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
 import {
@@ -37,7 +38,7 @@ import {
   FileCaptureStore,
   GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
 } from "../../shared/cas/file-capture-store.ts";
-import { CaptureBackedCadPlacementArchitectureIndex } from "../placement/capture-backed-cad-placement-architecture-index.ts";
+import { DeclaredAgainstCadPlacementArchitectureIndex } from "../placement/declared-against-cad-placement-architecture-index.ts";
 import { FileCadPlacementAnalysisCaptureStore } from "../placement/file-cad-placement-analysis-capture-store.ts";
 import { FileGeometryDraftAssetStore } from "../canonical/file-geometry-draft-asset-store.ts";
 import { FileGeometryModuleDraftStore } from "../canonical/file-geometry-module-evidence-store.ts";
@@ -49,6 +50,7 @@ export interface GeometryModuleExportCompositionOptions {
   readonly architectureCaptures: {
     read(fingerprint: ContentFingerprint): Promise<string | undefined>;
   };
+  readonly sysmlSourceAnalysis: SysmlSourceAnalysisReader;
   readonly partDefinitionsCaptures: {
     read(fingerprint: ContentFingerprint): Promise<string | undefined>;
   };
@@ -78,8 +80,10 @@ export function createGeometryModuleExportComposition(
     projects: options.projects,
     snapshots: options.snapshots,
     traversal: options.traversal,
-    architectureIndex: new CaptureBackedCadPlacementArchitectureIndex(
+    architectureIndex: new DeclaredAgainstCadPlacementArchitectureIndex(
+      options.snapshots,
       options.architectureCaptures,
+      options.sysmlSourceAnalysis,
     ),
     partDefinitions: new CaptureBackedPartDefinitionsStructureReader(
       options.partDefinitionsCaptures,

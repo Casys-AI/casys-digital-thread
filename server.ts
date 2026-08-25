@@ -1162,6 +1162,7 @@ async function createProjectControl(
       snapshots: threadSnapshots,
       traversal: productStructureTraversal,
       architectureCaptures: architectureFoundation.genericArchitectureCaptures,
+      sysmlSourceAnalysis: architectureFoundation.sysmlSourceAnalysis,
       partDefinitionsCaptures,
       geometryCaptures: productNavigationGeometryCaptures,
       recordedAnalysisDirectory,

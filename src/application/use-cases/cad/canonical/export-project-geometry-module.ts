@@ -85,6 +85,7 @@ import {
   selectCurrentThreadTip,
 } from "../../../../domain/project/thread-tip.ts";
 import type { EngineeringThreadSnapshotBasis } from "../../../../domain/project/engineering-project.ts";
+import { PROJECT_SOURCE_ATTACHMENT_CAPTURE_SCHEMA } from "../../../../domain/project-source-workspace/types.ts";
 import {
   archivedRefKeys,
   type ThreadArtifact,
@@ -225,7 +226,18 @@ export class ExportProjectGeometryModule implements ProjectGeometryModuleExportU
       artifactId: structure.architectureArtifactId,
       fingerprint: structure.architectureFingerprint,
     };
-    const facts = await this.#architectureIndex.open(architecture);
+    const facts = await this.#architectureIndex.open({
+      thread: {
+        snapshotId: command.basis.snapshotId,
+        revision: command.basis.revision,
+        subjectId: command.basis.subjectId,
+      },
+      architecture: {
+        captureSchema: PROJECT_SOURCE_ATTACHMENT_CAPTURE_SCHEMA,
+        artifactId: architecture.artifactId,
+        fingerprint: architecture.fingerprint,
+      },
+    });
     if (!facts) {
       throw exportError(
         "unavailable",

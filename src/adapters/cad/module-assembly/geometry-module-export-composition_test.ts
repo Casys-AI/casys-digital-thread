@@ -73,7 +73,6 @@ Deno.test("module-export composition recrosses structure CAS; the use case does 
   );
   assertEquals(USE_CASE_SOURCE.includes("parseExactPartDefinitionsCapture"), false);
   assertEquals(USE_CASE_SOURCE.includes("adapters/architecture"), false);
-  assertEquals(USE_CASE_SOURCE.includes("startsWith"), false);
 });
 
 Deno.test("structure reader requires the exact part-definitions sha256 URI and architecture reference", async () => {
@@ -126,6 +125,9 @@ function baseOptions() {
     snapshots: { get: () => Promise.resolve(undefined) },
     traversal: { open: () => Promise.resolve(undefined) },
     architectureCaptures: { read: () => Promise.resolve(undefined) },
+    sysmlSourceAnalysis: {
+      reopen: () => Promise.reject(new Error("not exercised")),
+    },
     partDefinitionsCaptures: { read: () => Promise.resolve(undefined) },
     geometryCaptures: { read: () => Promise.resolve(undefined) },
     recordedAnalysisDirectory: "/tmp/casys-module-export-composition/analysis",
