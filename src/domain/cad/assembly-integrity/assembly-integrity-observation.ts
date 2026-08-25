@@ -133,6 +133,59 @@ export function parseAssemblyIntegrityObservation(
   value: unknown,
   inputBundle: AssemblyIntegrityInputBundle,
 ): AssemblyIntegrityObservation {
+  const observation = validateAssemblyIntegrityObservation(value);
+  assertBundleIdentity(observation.inputBundle, inputBundle);
+  if (!sameMethod(observation.method, inputBundle.manifest.method)) {
+    throw new TypeError(
+      "$assemblyIntegrityObservation.method must equal the exact bound method.",
+    );
+  }
+  if (
+    observation.importFacts.unitSystem.status === "observed" &&
+    observation.importFacts.unitSystem.value !== inputBundle.manifest.unitSystem
+  ) {
+    throw new TypeError(
+      "$assemblyIntegrityObservation.importFacts.unitSystem diverges from the exact STEP basis.",
+    );
+  }
+  if (observation.occurrences.length !== inputBundle.manifest.occurrences.length) {
+    throw new TypeError(
+      "$assemblyIntegrityObservation.occurrences must cover every immediate occurrence.",
+    );
+  }
+  for (const [index, occurrence] of observation.occurrences.entries()) {
+    assertOccurrenceMatches(
+      occurrence,
+      inputBundle.manifest.occurrences[index]!,
+      `$assemblyIntegrityObservation.occurrences[${index}]`,
+    );
+  }
+  const expectedPairs = expectedPairLabels(inputBundle);
+  if (observation.pairs.length !== expectedPairs.length) {
+    throw new TypeError(
+      "$assemblyIntegrityObservation.pairs must cover every immediate-occurrence pair.",
+    );
+  }
+  for (const [index, pair] of observation.pairs.entries()) {
+    assertPairMatches(
+      pair,
+      expectedPairs[index]!,
+      `$assemblyIntegrityObservation.pairs[${index}]`,
+    );
+  }
+  return observation;
+}
+
+/**
+ * Validate a persisted normalized observation without reopening its packed
+ * input bytes. It preserves every self-contained factual invariant; a caller
+ * that holds the exact bundle must additionally call
+ * `parseAssemblyIntegrityObservation` to recross its geometry basis.
+ */
+export function validateAssemblyIntegrityObservation(
+  value: unknown,
+  path = "$assemblyIntegrityObservation",
+): AssemblyIntegrityObservation {
   const root = exactRecord(
     value,
     [
@@ -146,43 +199,40 @@ export function parseAssemblyIntegrityObservation(
       "occurrences",
       "pairs",
     ],
-    "$assemblyIntegrityObservation",
+    path,
   );
   literalValue(
     root.schemaVersion,
     ASSEMBLY_INTEGRITY_OBSERVATION_SCHEMA,
-    "$assemblyIntegrityObservation.schemaVersion",
+    `${path}.schemaVersion`,
   );
   const operation = exactRecord(
     root.operation,
     ["id", "version"],
-    "$assemblyIntegrityObservation.operation",
+    `${path}.operation`,
   );
   literalValue(
     operation.id,
     VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION.id,
-    "$assemblyIntegrityObservation.operation.id",
+    `${path}.operation.id`,
   );
   literalValue(
     operation.version,
     VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION.version,
-    "$assemblyIntegrityObservation.operation.version",
+    `${path}.operation.version`,
   );
-  const bundleIdentity = parseInputBundleIdentity(root.inputBundle);
-  assertBundleIdentity(bundleIdentity, inputBundle);
+  const bundleIdentity = parseInputBundleIdentity(
+    root.inputBundle,
+    `${path}.inputBundle`,
+  );
   const method = validateAssemblyIntegrityMethodIdentity(
     root.method,
-    "$assemblyIntegrityObservation.method",
+    `${path}.method`,
   );
-  if (!sameMethod(method, inputBundle.manifest.method)) {
-    throw new TypeError(
-      "$assemblyIntegrityObservation.method must equal the exact bound method.",
-    );
-  }
 
   const importability = parseObservationFact(
     root.importability,
-    "$assemblyIntegrityObservation.importability",
+    `${path}.importability`,
     (candidate, path) => {
       if (candidate !== "imported" && candidate !== "failed") {
         throw new TypeError(`${path} must be imported or failed.`);
@@ -192,61 +242,42 @@ export function parseAssemblyIntegrityObservation(
   );
   const importFacts = parseImportFacts(
     root.importFacts,
-    "$assemblyIntegrityObservation.importFacts",
+    `${path}.importFacts`,
   );
-  if (
-    importFacts.unitSystem.status === "observed" &&
-    importFacts.unitSystem.value !== inputBundle.manifest.unitSystem
-  ) {
-    throw new TypeError(
-      "$assemblyIntegrityObservation.importFacts.unitSystem diverges from the exact STEP basis.",
-    );
-  }
-  const topology = parseTopology(root.topology);
+  const topology = parseTopology(root.topology, `${path}.topology`);
 
   if (!Array.isArray(root.occurrences)) {
-    throw new TypeError("$assemblyIntegrityObservation.occurrences must be an array.");
+    throw new TypeError(`${path}.occurrences must be an array.`);
   }
   if (root.occurrences.length > ASSEMBLY_INTEGRITY_MAXIMUM_OCCURRENCES) {
     throw new TypeError(
-      "$assemblyIntegrityObservation.occurrences exceeds the occurrence ceiling.",
-    );
-  }
-  if (root.occurrences.length !== inputBundle.manifest.occurrences.length) {
-    throw new TypeError(
-      "$assemblyIntegrityObservation.occurrences must cover every immediate occurrence.",
+      `${path}.occurrences exceeds the occurrence ceiling.`,
     );
   }
   const occurrences = root.occurrences.map((entry, index) =>
     parseOccurrenceFacts(
       entry,
-      inputBundle.manifest.occurrences[index]!,
-      `$assemblyIntegrityObservation.occurrences[${index}]`,
+      `${path}.occurrences[${index}]`,
     )
   );
+  assertCanonicalOccurrenceLabels(occurrences, `${path}.occurrences`);
 
   if (!Array.isArray(root.pairs)) {
-    throw new TypeError("$assemblyIntegrityObservation.pairs must be an array.");
+    throw new TypeError(`${path}.pairs must be an array.`);
   }
   if (root.pairs.length > ASSEMBLY_INTEGRITY_MAXIMUM_PAIRS) {
     throw new TypeError(
-      "$assemblyIntegrityObservation.pairs exceeds the pair ceiling.",
-    );
-  }
-  const expectedPairs = expectedPairLabels(inputBundle);
-  if (root.pairs.length !== expectedPairs.length) {
-    throw new TypeError(
-      "$assemblyIntegrityObservation.pairs must cover every immediate-occurrence pair.",
+      `${path}.pairs exceeds the pair ceiling.`,
     );
   }
   const pairs = root.pairs.map((entry, index) =>
     parsePairFacts(
       entry,
-      expectedPairs[index]!,
       method,
-      `$assemblyIntegrityObservation.pairs[${index}]`,
+      `${path}.pairs[${index}]`,
     )
   );
+  assertPairsCoverOccurrences(pairs, occurrences, `${path}.pairs`);
   assertImportFailureGapInvariant(
     importability,
     importFacts,
@@ -270,26 +301,27 @@ export function parseAssemblyIntegrityObservation(
 
 function parseInputBundleIdentity(
   value: unknown,
+  path: string,
 ): AssemblyIntegrityInputBundleIdentity {
   const root = exactRecord(
     value,
     ["schemaVersion", "fingerprint", "byteCount"],
-    "$assemblyIntegrityObservation.inputBundle",
+    path,
   );
   literalValue(
     root.schemaVersion,
     ASSEMBLY_INTEGRITY_INPUT_BUNDLE_SCHEMA,
-    "$assemblyIntegrityObservation.inputBundle.schemaVersion",
+    `${path}.schemaVersion`,
   );
   return deepFreeze({
     schemaVersion: ASSEMBLY_INTEGRITY_INPUT_BUNDLE_SCHEMA,
     fingerprint: validateContentFingerprint(
       root.fingerprint,
-      "$assemblyIntegrityObservation.inputBundle.fingerprint",
+      `${path}.fingerprint`,
     ),
     byteCount: positiveInteger(
       root.byteCount,
-      "$assemblyIntegrityObservation.inputBundle.byteCount",
+      `${path}.byteCount`,
     ),
   });
 }
@@ -327,16 +359,16 @@ function parseImportFacts(value: unknown, path: string): AssemblyIntegrityImport
   });
 }
 
-function parseTopology(value: unknown): AssemblyIntegrityTopologyFacts {
+function parseTopology(value: unknown, path: string): AssemblyIntegrityTopologyFacts {
   const root = exactRecord(
     value,
     ["brepValidity", "degenerateEdgeCount", "freeEdgeCount", "shellCount"],
-    "$assemblyIntegrityObservation.topology",
+    path,
   );
   return deepFreeze({
     brepValidity: parseObservationFact(
       root.brepValidity,
-      "$assemblyIntegrityObservation.topology.brepValidity",
+      `${path}.brepValidity`,
       (candidate, path) => {
         if (candidate !== "valid" && candidate !== "invalid") {
           throw new TypeError(`${path} must be valid or invalid.`);
@@ -346,17 +378,17 @@ function parseTopology(value: unknown): AssemblyIntegrityTopologyFacts {
     ),
     degenerateEdgeCount: parseObservationFact(
       root.degenerateEdgeCount,
-      "$assemblyIntegrityObservation.topology.degenerateEdgeCount",
+      `${path}.degenerateEdgeCount`,
       nonNegativeFiniteInteger,
     ),
     freeEdgeCount: parseObservationFact(
       root.freeEdgeCount,
-      "$assemblyIntegrityObservation.topology.freeEdgeCount",
+      `${path}.freeEdgeCount`,
       nonNegativeFiniteInteger,
     ),
     shellCount: parseObservationFact(
       root.shellCount,
-      "$assemblyIntegrityObservation.topology.shellCount",
+      `${path}.shellCount`,
       nonNegativeFiniteInteger,
     ),
   });
@@ -364,16 +396,10 @@ function parseTopology(value: unknown): AssemblyIntegrityTopologyFacts {
 
 function parseOccurrenceFacts(
   value: unknown,
-  expected: AssemblyIntegrityInputBundle["manifest"]["occurrences"][number],
   path: string,
 ): AssemblyIntegrityOccurrenceFacts {
   const root = exactRecord(value, ["usageElementId", "target", "transform"], path);
   const usageElementId = safeId(root.usageElementId, `${path}.usageElementId`);
-  if (usageElementId !== expected.usageElementId) {
-    throw new TypeError(
-      `${path}.usageElementId must preserve the exact occurrence label.`,
-    );
-  }
   const target = parseObservationFact(
     root.target,
     `${path}.target`,
@@ -387,14 +413,6 @@ function parseOccurrenceFacts(
       });
     },
   );
-  if (
-    target.status === "observed" &&
-    target.value.partDefinitionElementId !== expected.partDefinitionElementId
-  ) {
-    throw new TypeError(
-      `${path}.target must equal the exact occurrence target identity.`,
-    );
-  }
   const transform = parseObservationFact(
     root.transform,
     `${path}.transform`,
@@ -422,15 +440,9 @@ function parseOccurrenceFacts(
   );
   if (
     transform.status === "observed" &&
-    !samePlacement(transform.value.expectedPlacement, expected.expectedPlacement)
-  ) {
-    throw new TypeError(`${path}.transform.expectedPlacement must equal the bundle.`);
-  }
-  if (
-    transform.status === "observed" &&
     !sameTransformMatrix(
       transform.value.expectedMatrix,
-      assemblyIntegrityExpectedPlacementMatrix(expected.expectedPlacement),
+      assemblyIntegrityExpectedPlacementMatrix(transform.value.expectedPlacement),
     )
   ) {
     throw new TypeError(
@@ -442,10 +454,6 @@ function parseOccurrenceFacts(
 
 function parsePairFacts(
   value: unknown,
-  expected: {
-    readonly firstUsageElementId: string;
-    readonly secondUsageElementId: string;
-  },
   method: AssemblyIntegrityMethodIdentity,
   path: string,
 ): AssemblyIntegrityPairFacts {
@@ -469,10 +477,7 @@ function parsePairFacts(
     root.secondUsageElementId,
     `${path}.secondUsageElementId`,
   );
-  if (
-    firstUsageElementId !== expected.firstUsageElementId ||
-    secondUsageElementId !== expected.secondUsageElementId
-  ) {
+  if (firstUsageElementId >= secondUsageElementId) {
     throw new TypeError(`${path} must use the exact canonical pair order.`);
   }
   const linearToleranceMm = nonNegativeFinite(
@@ -509,6 +514,92 @@ function parsePairFacts(
       },
     ),
   });
+}
+
+function assertOccurrenceMatches(
+  actual: AssemblyIntegrityOccurrenceFacts,
+  expected: AssemblyIntegrityInputBundle["manifest"]["occurrences"][number],
+  path: string,
+): void {
+  if (actual.usageElementId !== expected.usageElementId) {
+    throw new TypeError(
+      `${path}.usageElementId must preserve the exact occurrence label.`,
+    );
+  }
+  if (
+    actual.target.status === "observed" &&
+    actual.target.value.partDefinitionElementId !== expected.partDefinitionElementId
+  ) {
+    throw new TypeError(
+      `${path}.target must equal the exact occurrence target identity.`,
+    );
+  }
+  if (
+    actual.transform.status === "observed" &&
+    !samePlacement(actual.transform.value.expectedPlacement, expected.expectedPlacement)
+  ) {
+    throw new TypeError(`${path}.transform.expectedPlacement must equal the bundle.`);
+  }
+  if (
+    actual.transform.status === "observed" &&
+    !sameTransformMatrix(
+      actual.transform.value.expectedMatrix,
+      assemblyIntegrityExpectedPlacementMatrix(expected.expectedPlacement),
+    )
+  ) {
+    throw new TypeError(
+      `${path}.transform.expectedMatrix must be derived from the exact bundle placement.`,
+    );
+  }
+}
+
+function assertPairMatches(
+  actual: AssemblyIntegrityPairFacts,
+  expected: {
+    readonly firstUsageElementId: string;
+    readonly secondUsageElementId: string;
+  },
+  path: string,
+): void {
+  if (
+    actual.firstUsageElementId !== expected.firstUsageElementId ||
+    actual.secondUsageElementId !== expected.secondUsageElementId
+  ) {
+    throw new TypeError(`${path} must use the exact canonical pair order.`);
+  }
+}
+
+function assertCanonicalOccurrenceLabels(
+  occurrences: readonly AssemblyIntegrityOccurrenceFacts[],
+  path: string,
+): void {
+  for (let index = 1; index < occurrences.length; index += 1) {
+    if (
+      occurrences[index - 1]!.usageElementId >=
+        occurrences[index]!.usageElementId
+    ) {
+      throw new TypeError(`${path} labels must be unique and canonically sorted.`);
+    }
+  }
+}
+
+function assertPairsCoverOccurrences(
+  pairs: readonly AssemblyIntegrityPairFacts[],
+  occurrences: readonly AssemblyIntegrityOccurrenceFacts[],
+  path: string,
+): void {
+  const expected = expectedPairLabelsForUsageElementIds(
+    occurrences.map((occurrence) => occurrence.usageElementId),
+  );
+  if (
+    pairs.length !== expected.length ||
+    pairs.some((pair, index) =>
+      pair.firstUsageElementId !== expected[index]!.firstUsageElementId ||
+      pair.secondUsageElementId !== expected[index]!.secondUsageElementId
+    )
+  ) {
+    throw new TypeError(`${path} must cover every canonical occurrence pair.`);
+  }
 }
 
 function parseObservationFact<T>(
@@ -561,13 +652,23 @@ function expectedPairLabels(
   readonly firstUsageElementId: string;
   readonly secondUsageElementId: string;
 }[] {
-  const occurrences = inputBundle.manifest.occurrences;
+  return expectedPairLabelsForUsageElementIds(
+    inputBundle.manifest.occurrences.map((occurrence) => occurrence.usageElementId),
+  );
+}
+
+function expectedPairLabelsForUsageElementIds(
+  occurrences: readonly string[],
+): readonly {
+  readonly firstUsageElementId: string;
+  readonly secondUsageElementId: string;
+}[] {
   const pairs: { firstUsageElementId: string; secondUsageElementId: string }[] = [];
   for (let first = 0; first < occurrences.length; first += 1) {
     for (let second = first + 1; second < occurrences.length; second += 1) {
       pairs.push({
-        firstUsageElementId: occurrences[first]!.usageElementId,
-        secondUsageElementId: occurrences[second]!.usageElementId,
+        firstUsageElementId: occurrences[first]!,
+        secondUsageElementId: occurrences[second]!,
       });
     }
   }

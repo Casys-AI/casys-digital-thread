@@ -67,18 +67,13 @@ export interface AssemblyIntegrityObserverProducerContract {
 
 /**
  * Deployment configuration selected by the server, not an attestation that a
- * call reached that deployment. A later dispatch/seal layer may add an opaque
- * execution receipt when the provider exposes one.
+ * call reached that deployment. The configured runtime is always one exact
+ * published image; no opaque generation or fallback can enter review/dispatch.
  */
-export type AssemblyIntegrityObserverConfiguredRuntime =
-  | {
-    readonly kind: "image-digest";
-    readonly imageDigest: ContentFingerprint;
-  }
-  | {
-    readonly kind: "opaque-generation";
-    readonly generation: string;
-  };
+export interface AssemblyIntegrityObserverConfiguredRuntime {
+  readonly kind: "image-digest";
+  readonly imageDigest: ContentFingerprint;
+}
 
 export interface AssemblyIntegrityObserverProfile {
   readonly schemaVersion: typeof ASSEMBLY_INTEGRITY_OBSERVER_PROFILE_SCHEMA;
@@ -268,28 +263,17 @@ function parseConfiguredRuntime(
   value: unknown,
   path: string,
 ): AssemblyIntegrityObserverConfiguredRuntime {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new TypeError(`${path} must be a configured runtime object.`);
+  const root = exactRecord(value, ["kind", "imageDigest"], path);
+  if (root.kind !== "image-digest") {
+    throw new TypeError(`${path}.kind must equal image-digest.`);
   }
-  const kind = (value as Record<string, unknown>).kind;
-  if (kind === "image-digest") {
-    const root = exactRecord(value, ["kind", "imageDigest"], path);
-    return deepFreeze({
-      kind: "image-digest" as const,
-      imageDigest: validateContentFingerprint(
-        root.imageDigest,
-        `${path}.imageDigest`,
-      ),
-    });
-  }
-  if (kind === "opaque-generation") {
-    const root = exactRecord(value, ["kind", "generation"], path);
-    return deepFreeze({
-      kind: "opaque-generation" as const,
-      generation: safeVersion(root.generation, `${path}.generation`),
-    });
-  }
-  throw new TypeError(`${path}.kind must name an image digest or opaque generation.`);
+  return deepFreeze({
+    kind: "image-digest" as const,
+    imageDigest: validateContentFingerprint(
+      root.imageDigest,
+      `${path}.imageDigest`,
+    ),
+  });
 }
 
 /** Useful when a profile has crossed a storage boundary and needs a stable text. */

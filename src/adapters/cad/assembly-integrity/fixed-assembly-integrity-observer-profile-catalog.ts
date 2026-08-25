@@ -2,8 +2,8 @@
  * Closed server-owned profile for the named assembly-integrity adapter.
  *
  * Concrete provider/native producer identities live here rather than in the
- * domain or application ports. The opaque configured generation is deployment
- * configuration only; it does not assert that an MCP call reached a runtime.
+ * domain or application ports. The configured image digest is deployment
+ * configuration only; it does not assert that an MCP call reached that runtime.
  */
 
 import type {
@@ -15,6 +15,9 @@ import {
   createAssemblyIntegrityObserverProfile,
   sameAssemblyIntegrityObserverProfileRef,
 } from "../../../domain/cad/assembly-integrity/assembly-integrity-observer-profile.ts";
+import { validateContentFingerprint } from "../../../domain/compile/isolation/isolated-code-execution.ts";
+import { exactRecord } from "../../../domain/kernel/case-validation.ts";
+import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import {
   ASSEMBLY_INTEGRITY_MAXIMUM_OCCURRENCES,
   ASSEMBLY_INTEGRITY_MAXIMUM_PAIRS,
@@ -45,34 +48,52 @@ export class AssemblyIntegrityObserverProfileNotRegisteredError extends Error {
 }
 
 /**
+ * Server-composition input only. It is an exact published image identity, not
+ * a project field, public-tool argument, or fallback runtime selector.
+ */
+export interface FixedAssemblyIntegrityObserverProfileCatalogOptions {
+  readonly imageDigest: ContentFingerprint;
+}
+
+/**
  * One exact registration and no mutation/listing surface. Future composition
  * may replace this fixed catalogue with a persisted reviewed profile reader
  * without changing the provider-neutral port.
  */
 export class FixedAssemblyIntegrityObserverProfileCatalog
   implements AssemblyIntegrityObserverProfileCatalog {
-  readonly #profile = createAssemblyIntegrityObserverProfile({
-    schemaVersion: "assembly-integrity-observer-profile/1.0",
-    profile: ASSEMBLY_INTEGRITY_OBSERVER_PROFILE,
-    capability: ASSEMBLY_INTEGRITY_OBSERVER_CAPABILITY,
-    method: {
-      id: "assembly-integrity-factual-v1",
-      version: "1.0.0",
-      linearToleranceMm: 0.000001,
-    },
-    producer: {
-      rawSchemaVersion: "build123d-assembly-integrity-observation/1.0",
-      engine: { id: "cadquery-ocp", version: "7.9.3.1" },
-      package: { id: "mcp-build123d", version: "0.5.0" },
-    },
-    configuredRuntime: {
-      kind: "opaque-generation",
-      generation: "mcp-build123d-service-v1",
-    },
-    maximumStepBytes: ASSEMBLY_INTEGRITY_MAXIMUM_STEP_BYTES,
-    maximumOccurrences: ASSEMBLY_INTEGRITY_MAXIMUM_OCCURRENCES,
-    maximumPairs: ASSEMBLY_INTEGRITY_MAXIMUM_PAIRS,
-  });
+  readonly #profile: Promise<AssemblyIntegrityObserverProfile>;
+
+  constructor(value: FixedAssemblyIntegrityObserverProfileCatalogOptions) {
+    const root = exactRecord(
+      value,
+      ["imageDigest"],
+      "$fixedAssemblyIntegrityObserverProfileCatalog",
+    );
+    const imageDigest = validateContentFingerprint(
+      root.imageDigest,
+      "$fixedAssemblyIntegrityObserverProfileCatalog.imageDigest",
+    );
+    this.#profile = createAssemblyIntegrityObserverProfile({
+      schemaVersion: "assembly-integrity-observer-profile/1.0",
+      profile: ASSEMBLY_INTEGRITY_OBSERVER_PROFILE,
+      capability: ASSEMBLY_INTEGRITY_OBSERVER_CAPABILITY,
+      method: {
+        id: "assembly-integrity-factual-v1",
+        version: "1.0.0",
+        linearToleranceMm: 0.000001,
+      },
+      producer: {
+        rawSchemaVersion: "build123d-assembly-integrity-observation/1.0",
+        engine: { id: "cadquery-ocp", version: "7.9.3.1" },
+        package: { id: "mcp-build123d", version: "0.5.0" },
+      },
+      configuredRuntime: { kind: "image-digest", imageDigest },
+      maximumStepBytes: ASSEMBLY_INTEGRITY_MAXIMUM_STEP_BYTES,
+      maximumOccurrences: ASSEMBLY_INTEGRITY_MAXIMUM_OCCURRENCES,
+      maximumPairs: ASSEMBLY_INTEGRITY_MAXIMUM_PAIRS,
+    });
+  }
 
   initial(): Promise<AssemblyIntegrityObserverProfile> {
     if (arguments.length !== 0) {

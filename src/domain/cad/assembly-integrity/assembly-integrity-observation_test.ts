@@ -411,7 +411,9 @@ Deno.test("assembly-integrity transforms recross the Build123d multi-axis placem
 
 Deno.test("mcp-build123d adapter sends only exact STEP and normalizes factual provenance", async () => {
   const { source } = await validSource();
-  const profiles = new FixedAssemblyIntegrityObserverProfileCatalog();
+  const profiles = new FixedAssemblyIntegrityObserverProfileCatalog({
+    imageDigest: fp(A),
+  });
   const profile = await profiles.initial();
   const bundle = await createAssemblyIntegrityInputBundle({
     ...source,
@@ -500,7 +502,9 @@ Deno.test("mcp-build123d adapter sends only exact STEP and normalizes factual pr
 
 Deno.test("mcp-build123d adapter refuses a divergent exact profile before dispatch", async () => {
   const { source } = await validSource();
-  const profiles = new FixedAssemblyIntegrityObserverProfileCatalog();
+  const profiles = new FixedAssemblyIntegrityObserverProfileCatalog({
+    imageDigest: fp(A),
+  });
   const profile = await profiles.initial();
   const bundle = await createAssemblyIntegrityInputBundle({
     ...source,
@@ -631,7 +635,9 @@ Deno.test("exact reopener recrosses geometry-module primary, sealed STEP graph, 
       `${directory}/${capture.assemblyStep.fingerprint.digest}.step`,
       stepBytes,
     );
-    const profiles = new FixedAssemblyIntegrityObserverProfileCatalog();
+    const profiles = new FixedAssemblyIntegrityObserverProfileCatalog({
+      imageDigest: fp(A),
+    });
     const profile = await profiles.initial();
     const reopener = new ExactAssemblyIntegrityInputReopener({
       geometryCaptures: {

@@ -432,6 +432,16 @@ export const PRINTABILITY_OBSERVATION_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor
   label: "Printability observation",
 };
 
+/** Canonical factual L3 assembly-integrity observation captures. */
+export const ASSEMBLY_INTEGRITY_OBSERVATION_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "assembly-integrity-observation"
+> = {
+  kind: "assembly-integrity-observation",
+  directory: "state/local/assembly-integrity-observation-captures",
+  uriNamespace: "assembly-integrity-observation-capture",
+  label: "Assembly-integrity observation",
+};
+
 export const PRINT_ESTIMATE_CASE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   "print-estimate-case"
 > = {
