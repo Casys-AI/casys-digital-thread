@@ -27,6 +27,7 @@ import {
   DFM_CHECK_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   GEOMETRY_CAPTURE_DESCRIPTOR,
+  PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
   PRINT_ESTIMATE_CASE_CAPTURE_DESCRIPTOR,
   PRINT_ESTIMATE_OBSERVATION_CAPTURE_DESCRIPTOR,
   PRINTABILITY_CASE_CAPTURE_DESCRIPTOR,
@@ -171,6 +172,12 @@ import {
   createCadProject,
 } from "./src/adapters/cad/server-composition.ts";
 import { createCadPlacementComposition } from "./src/adapters/cad/placement/server-composition.ts";
+import {
+  createGeometryModuleAssemblyComposition,
+  type GeometryModuleAssemblyServerOptions,
+} from "./src/adapters/cad/module-assembly/geometry-module-assembly-composition.ts";
+import { createGeometryModuleExportComposition } from "./src/adapters/cad/module-assembly/geometry-module-export-composition.ts";
+import { GEOMETRY_DRAFT_ASSETS_DIR } from "./src/adapters/cad/canonical/geometry-draft-capture.ts";
 import {
   createTechnicalCompilationFoundation,
   createTechnicalCompilationPreview,
@@ -480,6 +487,12 @@ export interface CreateConsoleServerOptions {
    * exposes provider-free review only; no environment variable enables it.
    */
   build123dExecution?: Build123dExecutionServerOptions;
+  /**
+   * Digest-pinned module-assembler profile and optional isolated runtime.
+   * Omitted means no project_geometry_module_export tool. A profile without
+   * a runtime still leaves the tool unregistered: export requires the runner.
+   */
+  geometryModuleAssembly?: GeometryModuleAssemblyServerOptions;
   /**
    * Explicit qualified Modelica profile and optional isolated runtime.
    * Omitted means no review tool and no executor. Runtime activation still
@@ -1102,6 +1115,35 @@ async function createProjectControl(
     ...GEOMETRY_CAPTURE_DESCRIPTOR,
     directory: DEFAULT_GEOMETRY_CAPTURE_DIRECTORY,
   });
+  const partDefinitionsCaptures = new FileCaptureStore({
+    ...PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
+    directory: options.partDefinitionsCaptureDirectory ??
+      DEFAULT_PART_DEFINITIONS_CAPTURE_DIRECTORY,
+  });
+  const geometryModuleAssembly = options.geometryModuleAssembly === undefined
+    ? undefined
+    : await createGeometryModuleAssemblyComposition(
+      options.geometryModuleAssembly,
+      {
+        outputCasDirectory: `${recordedAnalysisDirectory}/geometry-module/outputs`,
+      },
+    );
+  const geometryModuleExport = geometryModuleAssembly === undefined
+    ? undefined
+    : createGeometryModuleExportComposition({
+      projects: runtime.projects,
+      snapshots: threadSnapshots,
+      traversal: productStructureTraversal,
+      architectureCaptures: architectureFoundation.genericArchitectureCaptures,
+      partDefinitionsCaptures,
+      geometryCaptures: productNavigationGeometryCaptures,
+      recordedAnalysisDirectory,
+      canonicalAssetDirectory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
+      geometryDraftCaptureDirectory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
+      geometryDraftAssetDirectory: GEOMETRY_DRAFT_ASSETS_DIR,
+      profiles: geometryModuleAssembly.profiles,
+      runner: geometryModuleAssembly.execution?.runner,
+    }).geometryModuleExport;
   return {
     brief: {
       projects: runtime.projects,
@@ -1118,6 +1160,7 @@ async function createProjectControl(
       runPlanReader: recordedPlans.recordedRunPlans,
       technicalSourceCapture: compilationFoundation.technicalSourceCapture,
       cadPlacementCapture: cadPlacement.cadPlacementCapture,
+      geometryModuleExport,
       technicalCompilationPreview,
       architectureSysmlSourceCapture:
         architectureFoundation.architectureSysmlSourceCapture,

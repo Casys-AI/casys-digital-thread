@@ -115,6 +115,10 @@ import {
   registerProjectCadPlacementTools,
 } from "./project-control/cad-placement-tools.ts";
 import {
+  type ProjectGeometryModuleExportToolDependencies,
+  registerProjectGeometryModuleExportTools,
+} from "./project-control/geometry-module-export-tools.ts";
+import {
   autoConfirms,
   INTERACTIVE_PROJECT_APPROVAL_MODE,
   localYoloRationale,
@@ -145,7 +149,8 @@ export interface ProjectControlToolDependencies
     ProjectResourceCaptureToolDependencies,
     ProjectSourceWorkspaceToolDependencies,
     ProjectProductNavigationToolDependencies,
-    ProjectCadPlacementToolDependencies {
+    ProjectCadPlacementToolDependencies,
+    ProjectGeometryModuleExportToolDependencies {
   projects: EngineeringProjectSnapshotReader;
   commands: EngineeringProjectCommandService;
   /** Optional so focused read-only tests need not construct a trusted executor. */
@@ -226,6 +231,7 @@ export function registerProjectControlTools(
   registerProjectSourceWorkspaceTools(app, dependencies);
   registerProjectProductNavigationTools(app, dependencies);
   registerProjectCadPlacementTools(app, dependencies);
+  registerProjectGeometryModuleExportTools(app, dependencies);
 
   app.registerTool(projectPlanPublishTool, async (args, context) => {
     const common = commonMutation(args);
