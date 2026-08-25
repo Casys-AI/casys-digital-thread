@@ -76,12 +76,11 @@ compile.seal-admission@3
   → optional design.seal-isolated-geometry@1
 ```
 
-`project_build123d_execution_review` returns the registered
-`design.execute-build123d@1` operation with `compilationAdmission` bound to the
-selected admission artifact on the current review Thread basis. Reuse that
-operation verbatim; do not reconstruct the thread-entity reference from a
-historical `compile.seal-admission@3` creation snapshot. The returned admission,
-`decisionParameters` and `operation` are review material only.
+`project_build123d_execution_review` returns the registered `design.execute-build123d@1`
+operation with `compilationAdmission` bound to the selected admission artifact on the
+current review Thread basis. Reuse that operation verbatim; do not reconstruct the
+thread-entity reference from a historical `compile.seal-admission@3` creation snapshot.
+The returned admission, `decisionParameters` and `operation` are review material only.
 
 The shared reopen use case supplies the exact admitted bytes to a code-owned wrapper in
 a network-disabled microVM. A caller cannot select the runtime, image, command,
@@ -108,3 +107,20 @@ and
 
 The generic lifecycle and recovery rules live in
 [admitted source isolated execution](../../pipeline/admitted-source-isolated-execution.md).
+
+## Pending post-publication assembly observation
+
+This is accepted architecture, not a current CAD execution path or public tool. Once a
+qualified `mcp-build123d` profile and its real runtime proof exist, Digital Thread will
+reopen an exact `geometry-module-capture/1.0` and its authoritative assembly STEP, lower
+a server-owned request to the raw `build123d_observe_assembly_integrity` provider
+capability, and seal the resulting facts as `assembly-integrity-observation/1.0`.
+
+The observer has no local OCCT worker, no sandbox or local-execution fallback, and no
+verdict. It records import/topology, recross and pairwise geometry facts with their
+provenance; `unavailable` and `unresolved` remain literal. `mcp-build123d` does not
+receive a Casys project, Thread snapshot, MRTR or evaluation context.
+
+The observer consumes the canonical module artifact as it is sealed today. Migrating the
+module assembler itself to a provider is a separate bounded follow-up after this
+observer vertical, not an outcome claimed by it.

@@ -8,6 +8,8 @@ versioned implementation surface behind server-owned ports.
 
 Start with:
 
+- [Capability-oriented provider architecture](capability-oriented-provider-architecture.md)
+  — application ports, provider adapters and the Digital Thread evidence boundary.
 - [Building blocks and artifact ownership](building-blocks.md) — responsibility map
   across the provider fleet and Digital Thread.
 - [Engines, analyses, evidence and evaluations](provider-analysis-oracle-taxonomy.md) —

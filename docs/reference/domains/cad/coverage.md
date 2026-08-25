@@ -24,7 +24,8 @@ The detailed grammar and the authority of each path remain in
 
 Named runtime proof: MCS-02 captured an attachment-rooted RailFrame source, sealed its
 v3 admission at Thread r4, and published one canonical target STEP at r7 before the
-downstream FEA branch. See [MCS-02 CAD](../../../project-dossiers/motorized-camera-slider-mcs02/domains/cad.md).
+downstream FEA branch. See
+[MCS-02 CAD](../../../project-dossiers/motorized-camera-slider-mcs02/domains/cad.md).
 That proof covers one `PartDefinition`, not an assembly.
 
 ## Not covered
@@ -46,6 +47,12 @@ These states must remain literal: they are not degraded success.
   `attachmentId` + `attachmentRevision`). Public capture does not accept `sourceText`,
   `fileId`, `profileId` or `resourceRef`. Isolated execution still starts from
   `compile.seal-admission@3`.
+- Assembly-integrity observation is **pending**, not a current product tool or CAD
+  execution path. Its raw `build123d_observe_assembly_integrity` capability belongs to
+  `mcp-build123d`; after provider profile and runtime proof, Digital Thread will reopen
+  an exact module capture and canonical assembly STEP, then seal factual
+  `assembly-integrity-observation/1.0`. This vertical has no local OCCT worker or
+  verdict.
 
 ## Candidates and non-goals
 
@@ -60,6 +67,10 @@ CAD JSON/DSL parallel to the source language, caller-selected provider/runtime/t
 envelopes, automatic assembly mapping in V1, and promotion of private isolated output to
 canonical geometry. A new geometry inside this surface is **source text only**: there is
 no new agent, Workbench, or provider command for it.
+
+The pending observer consumes a canonical module artifact; it does not migrate or
+replace the module assembler. Moving that assembler to a provider is a separately
+bounded follow-up after the observer vertical, with its own profile and runtime proof.
 
 ## Targeted PartDefinition seal
 
