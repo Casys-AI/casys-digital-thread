@@ -56,6 +56,12 @@ export interface OverviewThreadHeroView {
   readonly height: number;
 }
 
+interface OverviewAssemblyIntegrityPromotion {
+  readonly recordId: string;
+  readonly lane: "physics" | "verdicts";
+  readonly summary: string;
+}
+
 const COLUMN_WIDTH = OVERVIEW_HERO_WIDTH / OVERVIEW_LANES.length;
 const TRACKS_PER_LANE = 2;
 const NODE_TOP = 56;
@@ -78,6 +84,12 @@ export function buildOverviewThreadHero(
     thread.graph.edges,
   );
   const placed: OverviewHeroNode[] = [];
+  const assemblyIntegrityPromotions = new Map(
+    overviewAssemblyIntegrityPromotions(thread).map((promotion) => [
+      refKey({ kind: "artifact", id: promotion.recordId }),
+      promotion,
+    ]),
+  );
   const counts: Record<OverviewLaneId, number> = {
     requirements: 0,
     "system-model": 0,
@@ -86,8 +98,20 @@ export function buildOverviewThreadHero(
     verdicts: 0,
   };
 
-  for (const node of essential.nodes) {
-    const lane = overviewLaneFor(node);
+  const visibleNodes = [...essential.nodes];
+  for (const node of thread.graph.nodes) {
+    const key = refKey(node.ref);
+    if (
+      assemblyIntegrityPromotions.has(key) &&
+      !visibleNodes.some((candidate) => refKey(candidate.ref) === key)
+    ) {
+      visibleNodes.push(node);
+    }
+  }
+
+  for (const node of visibleNodes) {
+    const promotion = assemblyIntegrityPromotions.get(refKey(node.ref));
+    const lane = promotion?.lane ?? overviewLaneFor(node);
     if (!lane) continue;
     const index = counts[lane];
     counts[lane] = index + 1;
@@ -95,7 +119,7 @@ export function buildOverviewThreadHero(
     placed.push({
       kind: "recorded",
       key: refKey(node.ref),
-      node,
+      node: promotion ? { ...node, summary: promotion.summary } : node,
       lane,
       x: wrappedNodeX(lane, index),
       y: NODE_TOP + Math.floor(index / TRACKS_PER_LANE) * NODE_GAP,
@@ -160,6 +184,41 @@ export function buildOverviewThreadHero(
     edges,
     height,
   };
+}
+
+/**
+ * The dedicated assembly-integrity index supplies the semantic level that its
+ * supporting graph artifacts deliberately do not carry. Overview promotes the
+ * exact recorded L3/L4 artifact nodes into their lanes; L5 remains a human gate
+ * closeout and is intentionally not projected as a verdict.
+ */
+function overviewAssemblyIntegrityPromotions(
+  thread: ThreadWorkbenchSnapshot,
+): readonly OverviewAssemblyIntegrityPromotion[] {
+  const chains = thread.assemblyIntegrity?.chains ?? [];
+  const observationChain = chains.find((chain) => chain.status === "current") ??
+    chains[0];
+  const evaluationChain =
+    chains.find((chain) =>
+      chain.status === "current" && chain.evaluation !== undefined
+    ) ?? chains.find((chain) => chain.evaluation !== undefined);
+  const promotions: OverviewAssemblyIntegrityPromotion[] = [];
+  if (observationChain) {
+    promotions.push({
+      recordId: observationChain.observation.record.id,
+      lane: "physics",
+      summary: `Recorded L3 observation · ${observationChain.status}`,
+    });
+  }
+  if (evaluationChain?.evaluation) {
+    promotions.push({
+      recordId: evaluationChain.evaluation.record.id,
+      lane: "verdicts",
+      summary:
+        `Recorded L4 ${evaluationChain.evaluation.aggregateVerdict} · ${evaluationChain.status}`,
+    });
+  }
+  return promotions;
 }
 
 export function isRecordedOverviewHeroNode(

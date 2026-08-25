@@ -8,7 +8,11 @@ import {
   overviewLaneFor,
 } from "./src/project/overview-thread-hero-model.ts";
 import type { ProjectPathActivityView } from "./src/project/model.ts";
-import type { ThreadGraphNode } from "./src/thread/types.ts";
+import type {
+  ThreadArtifact,
+  ThreadAssemblyIntegrityArtifactRef,
+  ThreadGraphNode,
+} from "./src/thread/types.ts";
 
 Deno.test("overview hero places recorded nodes in 2a lanes and never invents ids", () => {
   const hero = buildOverviewThreadHero(GENERIC_THREAD_FIXTURE);
@@ -65,6 +69,163 @@ Deno.test("assembly-integrity-observation/1.0 stays an observation in the physic
 
   assertEquals(overviewLaneFor(node), "physics");
   assertEquals(overviewLaneFor(node) === "verdicts", false);
+});
+
+Deno.test("overview promotes exact assembly-integrity L3 and L4 records without promoting L5", () => {
+  const thread = structuredClone(GENERIC_THREAD_FIXTURE);
+  const geometry = assemblyIntegrityRef("assembly-module", "a", []);
+  const step = assemblyIntegrityRef("assembly-step", "b", [geometry.id]);
+  const observation = assemblyIntegrityRef("assembly-observation", "c", [
+    geometry.id,
+    step.id,
+  ]);
+  const evaluation = assemblyIntegrityRef("assembly-evaluation", "d", [
+    geometry.id,
+    step.id,
+    observation.id,
+  ]);
+  const closeout = assemblyIntegrityRef("assembly-closeout", "e", [
+    evaluation.id,
+  ]);
+  thread.artifacts.push(
+    integrityArtifact(geometry, "Assembly module", "geometry"),
+    integrityArtifact(step, "Assembly STEP", "step"),
+    integrityArtifact(
+      observation,
+      "Assembly integrity observation",
+      "evidence",
+    ),
+    integrityArtifact(evaluation, "Assembly integrity evaluation", "evidence"),
+    integrityArtifact(closeout, "Assembly integrity closeout", "document"),
+  );
+  thread.graph.nodes.push(
+    integrityGraphNode(
+      observation,
+      "Assembly integrity observation",
+      "evidence",
+    ),
+    integrityGraphNode(evaluation, "Assembly integrity evaluation", "evidence"),
+    integrityGraphNode(closeout, "Assembly integrity closeout", "document"),
+  );
+  thread.assemblyIntegrity = {
+    schemaVersion: "thread-assembly-integrity/1.0",
+    family: "assembly-integrity",
+    status: "current",
+    chains: [{
+      id: "assembly-chain-current",
+      status: "current",
+      observation: {
+        record: observation,
+        basis: {
+          snapshotId: "thread-assembly-basis",
+          revision: 1,
+          subjectId: thread.subject.id,
+        },
+        inputBundle: {
+          fingerprint: `sha256:${"f".repeat(64)}`,
+          byteCount: 42,
+        },
+        evidence: { geometryModule: geometry, assemblyStep: step },
+        facts: {
+          importability: { status: "observed", value: "imported" },
+          importFacts: {
+            unitSystem: { status: "observed", value: "mm" },
+            solidCount: { status: "observed", value: 1 },
+          },
+          topology: {
+            brepValidity: { status: "observed", value: "valid" },
+            degenerateEdgeCount: { status: "observed", value: 0 },
+            freeEdgeCount: { status: "observed", value: 0 },
+            shellCount: { status: "observed", value: 1 },
+          },
+          occurrences: [{
+            usageElementId: "usage:part",
+            target: {
+              status: "observed",
+              value: { partDefinitionElementId: "part:definition" },
+            },
+            transformStatus: "observed",
+          }],
+          pairs: [],
+        },
+        limitations: {
+          verdict: "none",
+          fitness: "none",
+          safety: "none",
+          motion: "none",
+          strength: "none",
+        },
+      },
+      evaluation: {
+        record: evaluation,
+        basis: {
+          snapshotId: "thread-observation-basis",
+          revision: 2,
+          subjectId: thread.subject.id,
+        },
+        evidence: {
+          geometryModule: geometry,
+          assemblyStep: step,
+          observation,
+        },
+        method: {
+          id: "assembly-integrity-evaluation",
+          version: "1.0",
+          fingerprint: `sha256:${"1".repeat(64)}`,
+        },
+        criteria: [
+          { id: "assembly-import", verdict: "pass" },
+          { id: "occurrence-coverage", verdict: "pass" },
+          { id: "placement-recross", verdict: "pass" },
+          { id: "brep-validity", verdict: "pass" },
+          { id: "pairwise-intersection", verdict: "pass" },
+        ],
+        aggregateVerdict: "pass",
+        limitations: {
+          providerCalls: "none",
+          genericSysmlRequirementEvaluation: "none",
+          safety: "not-evaluated",
+          physicalJoints: "not-evaluated",
+          clearance: "not-evaluated",
+          motion: "not-evaluated",
+          load: "not-evaluated",
+          fabricability: "not-evaluated",
+        },
+      },
+    }],
+  };
+
+  const hero = buildOverviewThreadHero(thread);
+  const l3 = hero.nodes.find((item) => recordedId(item) === observation.id);
+  const l4 = hero.nodes.find((item) => recordedId(item) === evaluation.id);
+
+  assertEquals(l3?.lane, "physics");
+  assertEquals(l3?.kind === "recorded" ? l3.node.ref : undefined, {
+    kind: "artifact",
+    id: observation.id,
+  });
+  assertEquals(
+    l3?.kind === "recorded" ? l3.node.summary : undefined,
+    "Recorded L3 observation · current",
+  );
+  assertEquals(l4?.lane, "verdicts");
+  assertEquals(l4?.kind === "recorded" ? l4.node.ref : undefined, {
+    kind: "artifact",
+    id: evaluation.id,
+  });
+  assertEquals(
+    l4?.kind === "recorded" ? l4.node.summary : undefined,
+    "Recorded L4 pass · current",
+  );
+  assertEquals(
+    hero.lanes.find((column) => column.lane.id === "verdicts")?.systems
+      .includes("digital-thread"),
+    true,
+  );
+  assertEquals(
+    hero.nodes.some((item) => recordedId(item) === closeout.id),
+    false,
+  );
 });
 
 Deno.test("Overview sealed preview opens exact STEP and GLB as accessible GET links", async () => {
@@ -232,5 +393,58 @@ function activityView(
     approvedDecisions: 0,
     requiredDecisions: 0,
     evidenceCount: 0,
+  };
+}
+
+function assemblyIntegrityRef(
+  id: string,
+  digestCharacter: string,
+  dependsOn: string[],
+): ThreadAssemblyIntegrityArtifactRef {
+  const digest = digestCharacter.repeat(64);
+  return {
+    id,
+    uri: `casys://test/${id}/sha256/${digest}`,
+    fingerprint: `sha256:${digest}`,
+    producerRunId: `run:${id}`,
+    dependsOn,
+    freshness: "fresh",
+  };
+}
+
+function integrityArtifact(
+  reference: ThreadAssemblyIntegrityArtifactRef,
+  label: string,
+  kind: string,
+): ThreadArtifact {
+  return {
+    id: reference.id,
+    label,
+    kind,
+    system: "digital-thread",
+    revision: reference.fingerprint.slice("sha256:".length),
+    freshness: "fresh",
+    fingerprint: reference.fingerprint,
+    uri: reference.uri,
+    producerRunId: reference.producerRunId,
+    dependsOn: reference.dependsOn,
+  };
+}
+
+function integrityGraphNode(
+  reference: ThreadAssemblyIntegrityArtifactRef,
+  label: string,
+  artifactKind: string,
+): ThreadGraphNode {
+  return {
+    id: `graph:artifact:${reference.id}`,
+    ref: { kind: "artifact", id: reference.id },
+    entityKind: "artifact",
+    artifactKind,
+    label,
+    system: "digital-thread",
+    freshness: "fresh",
+    summary: `${artifactKind} · ${reference.fingerprint}`,
+    selection: { kind: "artifact", id: reference.id },
   };
 }
