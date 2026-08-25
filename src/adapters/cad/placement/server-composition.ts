@@ -6,9 +6,11 @@ import { CaptureProjectCadPlacement } from "../../../application/use-cases/cad/p
 import type { ProjectCadPlacementCaptureUseCase } from "../../../application/ports/in/cad/placement/project-cad-placement-capture.ts";
 import type { ProjectSourceWorkspaceEventStore } from "../../../application/ports/out/project-source-workspace/project-source-workspace-event-store.ts";
 import type { ReopenAgentResource } from "../../../application/use-cases/resource/reopen-agent-resource.ts";
-import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
+import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
+import type { GenericArchitectureCaptureReader } from "../../architecture/renderer/product-structure-catalog.ts";
+import type { SysmlSourceAnalysisReader } from "../../architecture/renderer/sysml-source-analysis-capture.ts";
 import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
-import { CaptureBackedCadPlacementArchitectureIndex } from "./capture-backed-cad-placement-architecture-index.ts";
+import { DeclaredAgainstCadPlacementArchitectureIndex } from "./declared-against-cad-placement-architecture-index.ts";
 import { FileCadImmediatePlacementSourceStore } from "./file-cad-immediate-placement-source-store.ts";
 import { FileCadPlacementAnalysisCaptureStore } from "./file-cad-placement-analysis-capture-store.ts";
 
@@ -16,9 +18,9 @@ export interface CadPlacementCompositionOptions {
   readonly recordedAnalysisDirectory: string;
   readonly workspace: ProjectSourceWorkspaceEventStore;
   readonly resources: ReopenAgentResource;
-  readonly architectureCaptures: {
-    read(fingerprint: ContentFingerprint): Promise<string | undefined>;
-  };
+  readonly snapshots: Pick<ThreadSnapshotStore, "get">;
+  readonly architectureCaptures: GenericArchitectureCaptureReader;
+  readonly sysmlSourceAnalysis: SysmlSourceAnalysisReader;
 }
 
 export interface CadPlacementComposition {
@@ -48,8 +50,10 @@ export function createCadPlacementComposition(
           label: "CAD placement analysis capture",
         }),
       ),
-      architecture: new CaptureBackedCadPlacementArchitectureIndex(
+      architecture: new DeclaredAgainstCadPlacementArchitectureIndex(
+        options.snapshots,
         options.architectureCaptures,
+        options.sysmlSourceAnalysis,
       ),
     }),
   };

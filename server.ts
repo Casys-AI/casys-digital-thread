@@ -954,7 +954,9 @@ async function createProjectControl(
     recordedAnalysisDirectory,
     workspace: sourceWorkspaceStore,
     resources: reopenAgentResource,
+    snapshots: threadSnapshots,
     architectureCaptures: architectureFoundation.genericArchitectureCaptures,
+    sysmlSourceAnalysis: architectureFoundation.sysmlSourceAnalysis,
   });
   const agentResourceIngress = createAgentResourceIngress({
     store: agentResourceStore,

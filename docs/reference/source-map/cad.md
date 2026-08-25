@@ -211,9 +211,9 @@ when coverage is exact.
 
 #### [`src/adapters/cad/placement/`](../../../src/adapters/cad/placement)
 
-Durable source and analysis FileByteStore codecs, architecture-navigation-index adapter,
-and placement composition. Not a workspace aggregate change and not a new attachment
-role.
+Durable source and analysis FileByteStore codecs, declaredAgainst Thread/architecture
+recross adapter, and placement composition. Not a workspace aggregate change and not a
+new attachment role.
 
 #### [`src/adapters/cad/source/geometry-source-analysis-capture.ts`](../../../src/adapters/cad/source/geometry-source-analysis-capture.ts)
 

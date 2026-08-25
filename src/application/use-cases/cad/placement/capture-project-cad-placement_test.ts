@@ -15,6 +15,10 @@ import type { ThreadSnapshot } from "../../../../domain/thread/thread-snapshot.t
 import { FixedProjectSourceAttachmentRoleCatalog } from "../../../../adapters/project-source-workspace/fixed-project-source-attachment-role-catalog.ts";
 import { CaptureProjectCadPlacement } from "./capture-project-cad-placement.ts";
 import { ProjectCadPlacementCaptureError } from "../../../ports/in/cad/placement/project-cad-placement-capture.ts";
+import type { ProjectSourceWorkspaceEventStore } from "../../../ports/out/project-source-workspace/project-source-workspace-event-store.ts";
+import { isCadPlacementAttachment } from "../../../../domain/cad/placement/cad-placement-attachments.ts";
+import { cloneProjectSourceWorkspaceState } from "../../../../domain/project-source-workspace/transitions.ts";
+import type { ProjectSourceWorkspaceState } from "../../../../domain/project-source-workspace/types.ts";
 
 const PROJECT = "project.placement";
 const SUBJECT = "subject.placement";
@@ -142,8 +146,34 @@ Deno.test("project_cad_placement_capture refuses a cad-script file role", async 
   });
 });
 
+Deno.test(
+  "project_cad_placement_capture stays unresolved for duplicate active same-file attachments",
+  async () => {
+    await withHarness(async (harness) => {
+      const put = await harness.putPlacement();
+      const review = await harness.capture.capture({
+        projectId: PROJECT,
+        workspaceRevision: put.workspaceRevision,
+        attachmentId: put.leftAttachmentId,
+        attachmentRevision: put.leftAttachmentRevision,
+      });
+      assertEquals(review.status, "unresolved");
+      if (review.status !== "unresolved") return;
+      assertEquals(review.grants, "none");
+      assertEquals("reference" in review, false);
+      assertEquals(
+        review.gaps.some((gap) =>
+          gap.name === "usage-left" && gap.relation === "attachment"
+        ),
+        true,
+      );
+    }, { duplicateSameFileAttachment: true });
+  },
+);
+
 async function withHarness(
   run: (harness: PlacementHarness) => Promise<void>,
+  options: { readonly duplicateSameFileAttachment?: boolean } = {},
 ): Promise<void> {
   const directory = await Deno.makeTempDir({ prefix: "cad-placement-" });
   try {
@@ -196,7 +226,9 @@ async function withHarness(
       },
     });
     const capture = new CaptureProjectCadPlacement({
-      workspace: store,
+      workspace: options.duplicateSameFileAttachment
+        ? wrapDuplicateSameFileAttachment(store)
+        : store,
       resources: reopen,
       sources: new FileCadImmediatePlacementSourceStore(
         new FileByteStore({
@@ -215,7 +247,17 @@ async function withHarness(
         }),
       ),
       architecture: {
-        open: () => Promise.resolve(architectureFacts()),
+        open: (declaredAgainst) => {
+          assertEquals(declaredAgainst.thread.snapshotId, SNAPSHOT_ID);
+          assertEquals(declaredAgainst.thread.revision, 1);
+          assertEquals(declaredAgainst.thread.subjectId, SUBJECT);
+          assertEquals(declaredAgainst.architecture.artifactId, ARCHITECTURE_ID);
+          assertEquals(
+            declaredAgainst.architecture.captureSchema,
+            "architecture-capture/4.0",
+          );
+          return Promise.resolve(architectureFacts());
+        },
       },
     });
     const harness: PlacementHarness = {
@@ -289,6 +331,48 @@ async function withHarness(
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
+}
+
+function wrapDuplicateSameFileAttachment(
+  store: ProjectSourceWorkspaceEventStore,
+): ProjectSourceWorkspaceEventStore {
+  return {
+    load: (projectId) => store.load(projectId),
+    loadAt: (projectId, revision) => store.loadAt(projectId, revision),
+    loadAtFresh: async (projectId, revision) =>
+      duplicateSameFilePlacementAttachment(
+        await store.loadAtFresh(projectId, revision),
+      ),
+    append: (event) => store.append(event),
+  };
+}
+
+function duplicateSameFilePlacementAttachment(
+  state: ProjectSourceWorkspaceState,
+): ProjectSourceWorkspaceState {
+  const cloned = cloneProjectSourceWorkspaceState(state);
+  const source = [...cloned.attachments.values()].find((item) => {
+    const head = item.revisions.get(item.headRevision);
+    return item.status === "active" &&
+      head !== undefined &&
+      head.kind === "content" &&
+      isCadPlacementAttachment(head);
+  });
+  const head = source?.revisions.get(source.headRevision);
+  if (!source || head === undefined || head.kind !== "content") return cloned;
+  const attachmentId = `${head.attachmentId}.duplicate`;
+  const attachments = new Map(cloned.attachments);
+  attachments.set(attachmentId, {
+    attachmentId,
+    fileId: head.fileId,
+    headRevision: head.attachmentRevision,
+    status: "active",
+    revisions: new Map([[head.attachmentRevision, {
+      ...head,
+      attachmentId,
+    }]]),
+  });
+  return { ...cloned, attachments };
 }
 
 function openedStructure(): OpenedProductStructure {

@@ -2,8 +2,8 @@
  * Capture one exact same-file CAD placement attachment set.
  *
  * Authority is the fresh hash-chained workspace snapshot plus the exact
- * architecture capture named on those attachments. Coverage is set equality
- * of immediate owner usages, attachment targets and JSON entries.
+ * declaredAgainst Thread/architecture recross. Coverage is set equality of
+ * immediate owner usages, attachment targets and JSON entries.
  */
 
 import {
@@ -168,10 +168,7 @@ export class CaptureProjectCadPlacement implements ProjectCadPlacementCaptureUse
     const declaredAgainst = resolved.attachments[0]!.declaredAgainst;
     let architecture;
     try {
-      architecture = await this.#architecture.open({
-        artifactId: declaredAgainst.architecture.artifactId,
-        fingerprint: declaredAgainst.architecture.fingerprint,
-      });
+      architecture = await this.#architecture.open(declaredAgainst);
     } catch (cause) {
       throw captureError(
         "architecture_reopen_failed",
