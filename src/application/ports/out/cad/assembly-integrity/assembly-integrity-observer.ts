@@ -39,8 +39,12 @@ export interface AssemblyIntegrityObserverProfileSelection {
 
 export interface AssemblyIntegrityObserverRequest {
   readonly inputBundle: AssemblyIntegrityInputBundle;
-  /** Internal only; a public tool never accepts this selection. */
-  readonly observerProfile: AssemblyIntegrityObserverProfileSelection;
+  /**
+   * Exact profile reopened and fingerprint-verified before dispatch. A public
+   * tool never accepts it, and an adapter must not replace it with a current
+   * catalogue entry.
+   */
+  readonly profile: AssemblyIntegrityObserverProfile;
 }
 
 /**

@@ -36,6 +36,7 @@ import {
   parseAssemblyIntegrityTransformMatrix,
   VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION,
 } from "./assembly-integrity-observation.ts";
+import { createAssemblyIntegrityObserverProfile } from "./assembly-integrity-observer-profile.ts";
 import {
   ExactAssemblyIntegrityInputReopener,
 } from "../../../adapters/cad/assembly-integrity/exact-assembly-integrity-input-reopener.ts";
@@ -355,13 +356,10 @@ Deno.test("mcp-build123d adapter sends only exact STEP and normalizes factual pr
       );
     },
   };
-  const observer = new McpBuild123dAssemblyIntegrityObserver({ client, profiles });
+  const observer = new McpBuild123dAssemblyIntegrityObserver({ client });
   const result = await observer.observe({
     inputBundle: bundle,
-    observerProfile: {
-      profile: profile.profile,
-      fingerprint: profile.profileFingerprint,
-    },
+    profile,
   });
 
   assertEquals(calls.length, 1);
@@ -406,13 +404,9 @@ Deno.test("mcp-build123d adapter sends only exact STEP and normalizes factual pr
   };
   const failed = await new McpBuild123dAssemblyIntegrityObserver({
     client: failedClient,
-    profiles,
   }).observe({
     inputBundle: bundle,
-    observerProfile: {
-      profile: profile.profile,
-      fingerprint: profile.profileFingerprint,
-    },
+    profile,
   });
   assertEquals(failed.observation.importability, {
     status: "observed",
@@ -426,6 +420,50 @@ Deno.test("mcp-build123d adapter sends only exact STEP and normalizes factual pr
     status: "unresolved",
     reason: "observability-missing",
   });
+});
+
+Deno.test("mcp-build123d adapter refuses a divergent exact profile before dispatch", async () => {
+  const { source } = await validSource();
+  const profiles = new FixedAssemblyIntegrityObserverProfileCatalog();
+  const profile = await profiles.initial();
+  const bundle = await createAssemblyIntegrityInputBundle({
+    ...source,
+    method: profile.method,
+  });
+  const divergentProfile = await createAssemblyIntegrityObserverProfile({
+    schemaVersion: profile.schemaVersion,
+    profile: profile.profile,
+    capability: profile.capability,
+    method: profile.method,
+    producer: {
+      rawSchemaVersion: profile.producer.rawSchemaVersion,
+      engine: profile.producer.engine,
+      package: { id: profile.producer.package.id, version: "0.5.1" },
+    },
+    configuredRuntime: profile.configuredRuntime,
+    maximumStepBytes: profile.maximumStepBytes,
+    maximumOccurrences: profile.maximumOccurrences,
+    maximumPairs: profile.maximumPairs,
+  });
+  let calls = 0;
+  const observer = new McpBuild123dAssemblyIntegrityObserver({
+    client: {
+      callTool() {
+        calls += 1;
+        return Promise.resolve({ structuredContent: {}, text: "unexpected" });
+      },
+      callToolTextResult() {
+        return Promise.reject(new Error("unexpected text result"));
+      },
+    },
+  });
+
+  await assertRejects(
+    () => observer.observe({ inputBundle: bundle, profile: divergentProfile }),
+    TypeError,
+    "does not match the fixed mcp-build123d adapter contract",
+  );
+  assertEquals(calls, 0);
 });
 
 Deno.test("exact reopener recrosses geometry-module primary, sealed STEP graph, and signed profile", async () => {

@@ -11,7 +11,6 @@ import type { McpToolClient } from "../../../application/ports/out/mcp-tool-clie
 import type {
   AssemblyIntegrityObserver,
   AssemblyIntegrityObserverExecution,
-  AssemblyIntegrityObserverProfileCatalog,
   AssemblyIntegrityObserverRequest,
   AssemblyIntegrityObserverResult,
 } from "../../../application/ports/out/cad/assembly-integrity/assembly-integrity-observer.ts";
@@ -38,7 +37,6 @@ import {
   safeVersion,
 } from "../../../domain/kernel/case-validation.ts";
 import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
-import { validateContentFingerprint } from "../../../domain/compile/isolation/isolated-code-execution.ts";
 
 export const MCP_BUILD123D_ASSEMBLY_INTEGRITY_TOOL =
   "build123d_observe_assembly_integrity" as const;
@@ -98,27 +96,23 @@ interface RawAssemblyIntegrityObservation {
 
 export interface McpBuild123dAssemblyIntegrityObserverOptions {
   readonly client: McpToolClient;
-  readonly profiles: AssemblyIntegrityObserverProfileCatalog;
 }
 
 /**
- * Calls one fixed provider tool. The profile catalogue is injected at the
- * server boundary: callers cannot select a provider, tool, arguments, profile
- * identity, package, engine, or runtime generation.
+ * Calls one fixed provider tool over an exact profile already reopened by the
+ * server. It cannot replace that profile with a newer catalogue entry.
  */
 export class McpBuild123dAssemblyIntegrityObserver
   implements AssemblyIntegrityObserver {
   readonly #client: McpToolClient;
-  readonly #profiles: AssemblyIntegrityObserverProfileCatalog;
 
   constructor(options: McpBuild123dAssemblyIntegrityObserverOptions) {
     const root = exactRecord(
       options,
-      ["client", "profiles"],
+      ["client"],
       "$mcpBuild123dAssemblyIntegrityObserver",
     );
     this.#client = root.client as McpToolClient;
-    this.#profiles = root.profiles as AssemblyIntegrityObserverProfileCatalog;
   }
 
   async observe(
@@ -126,23 +120,13 @@ export class McpBuild123dAssemblyIntegrityObserver
   ): Promise<AssemblyIntegrityObserverResult> {
     const requestValue = exactRecord(
       value,
-      ["inputBundle", "observerProfile"],
+      ["inputBundle", "profile"],
       "$mcpBuild123dAssemblyIntegrityObserver.request",
     );
     const input = requestValue.inputBundle as AssemblyIntegrityInputBundle;
-    const profileSelection = parseProfileSelection(requestValue.observerProfile);
     const profile = await validateAssemblyIntegrityObserverProfile(
-      await this.#profiles.resolve(profileSelection.profile),
+      requestValue.profile,
     );
-    if (
-      profile.profile.id !== profileSelection.profile.id ||
-      profile.profile.version !== profileSelection.profile.version ||
-      profile.profileFingerprint.digest !== profileSelection.fingerprint.digest
-    ) {
-      throw new TypeError(
-        "The reopened observer profile does not equal the exact server-selected profile identity.",
-      );
-    }
     assertFixedAdapterProfile(profile);
     assertBoundInput(input, profile);
     const request = requestFor(input);
@@ -178,48 +162,6 @@ export class McpBuild123dAssemblyIntegrityObserver
     });
     return deepFreeze({ observation, execution });
   }
-}
-
-function parseProfileSelection(value: unknown): {
-  readonly profile: { readonly id: string; readonly version: string };
-  readonly fingerprint: { readonly algorithm: "sha256"; readonly digest: string };
-} {
-  const root = exactRecord(
-    value,
-    ["profile", "fingerprint"],
-    "$mcpBuild123dAssemblyIntegrityObserver.request.observerProfile",
-  );
-  const profile = exactRecord(
-    root.profile,
-    ["id", "version"],
-    "$mcpBuild123dAssemblyIntegrityObserver.request.observerProfile.profile",
-  );
-  const fingerprint = exactRecord(
-    root.fingerprint,
-    ["algorithm", "digest"],
-    "$mcpBuild123dAssemblyIntegrityObserver.request.observerProfile.fingerprint",
-  );
-  literalValue(
-    fingerprint.algorithm,
-    "sha256",
-    "$mcpBuild123dAssemblyIntegrityObserver.request.observerProfile.fingerprint.algorithm",
-  );
-  return deepFreeze({
-    profile: {
-      id: safeId(
-        profile.id,
-        "$mcpBuild123dAssemblyIntegrityObserver.request.observerProfile.profile.id",
-      ),
-      version: safeVersion(
-        profile.version,
-        "$mcpBuild123dAssemblyIntegrityObserver.request.observerProfile.profile.version",
-      ),
-    },
-    fingerprint: validateContentFingerprint(
-      fingerprint,
-      "$mcpBuild123dAssemblyIntegrityObserver.request.observerProfile.fingerprint",
-    ),
-  });
 }
 
 function requestFor(input: AssemblyIntegrityInputBundle): {
