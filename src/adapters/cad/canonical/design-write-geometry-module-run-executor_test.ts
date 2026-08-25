@@ -78,6 +78,7 @@ import {
 import { applyThreadSnapshotExtensionIfNew } from "../../../domain/thread/thread-snapshot-extension.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import {
+  ARCHITECTURE_CAPTURE_URI_PREFIX,
   GEOMETRY_CAPTURE_URI_PREFIX,
   PART_DEFINITIONS_CAPTURE_URI_PREFIX,
 } from "../../shared/cas/file-capture-store.ts";
@@ -1238,17 +1239,15 @@ function unsignedDraft(options: {
   return {
     schemaVersion: GEOMETRY_MODULE_DRAFT_CAPTURE_SCHEMA,
     kind: GEOMETRY_MODULE_DRAFT_KIND,
-    capturedAt: "2026-08-25T10:00:00.000Z",
     architectureBasis: {
       snapshotId: options.snapshot.id,
       revision: options.snapshot.revision,
       artifactFingerprint: options.architecture.fingerprint,
     },
-    structureCapture: {
-      schemaVersion: GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA,
-      artifactId: options.structure.id,
-      fingerprint: options.structure.fingerprint,
-    },
+    structureCapture: fixtureStructureCaptureIdentity(
+      options.architecture,
+      options.structure,
+    ),
     target: {
       partDefinitionElementId: "part-definition:system",
       label: "GeometrySystem",
@@ -1272,6 +1271,30 @@ function unsignedDraft(options: {
     assemblyGlb: {
       fingerprint: fp(options.isolation.glbDigest),
       bytes: options.assemblyGlb.byteLength,
+    },
+  };
+}
+
+function fixtureStructureCaptureIdentity(
+  architecture: ThreadArtifact,
+  structure: ThreadArtifact,
+): GeometryModuleDraftCapture["structureCapture"] {
+  const record = {
+    schemaVersion: GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA,
+    kind: "part-definitions",
+    architectureId: architecture.id,
+  };
+  return {
+    schemaVersion: GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA,
+    artifactId: structure.id,
+    fingerprint: structure.fingerprint,
+    uri: `${PART_DEFINITIONS_CAPTURE_URI_PREFIX}sha256/${structure.fingerprint.digest}`,
+    byteCount: new TextEncoder().encode(deterministicJson(record)).byteLength,
+    architecture: {
+      artifactId: architecture.id,
+      fingerprint: architecture.fingerprint,
+      uri:
+        `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${architecture.fingerprint.digest}`,
     },
   };
 }
