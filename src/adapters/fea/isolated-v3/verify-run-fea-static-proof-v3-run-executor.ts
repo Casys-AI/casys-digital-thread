@@ -389,6 +389,9 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
     if (before.status === "completed") {
       return await this.#reopenCompleted(project, command);
     }
+    if (before.status === "failed") {
+      return await this.#reopenFailedOutputValidation(origin, command, project);
+    }
     let prepared = await this.#prepare(project, command.runId, [
       "queued",
       "running",
@@ -450,7 +453,12 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
         return await this.#failRejected(origin, command, error);
       }
       if (error instanceof IsolatedCalculixOutputValidationRejectedError) {
-        return await this.#failOutputValidationRejected(origin, command, error);
+        return await this.#failOutputValidationRejected(
+          origin,
+          command,
+          error,
+          prepared.executionRunId,
+        );
       }
       if (error instanceof IsolatedCalculixRedispatchExhaustedError) {
         return await this.#failExhausted(origin, command, error);
@@ -679,6 +687,7 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
         `Isolated CalculiX run ${run.id} is not executable.`,
       );
     }
+    const prepared = await this.#prepare(project, command.runId, ["failed"]);
     try {
       await this.d.executeIsolated.reopenOutputValidationRejection({
         projectId: command.projectId,
@@ -686,6 +695,10 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
       });
     } catch (error) {
       if (error instanceof IsolatedCalculixOutputValidationRejectedError) {
+        assertDerivedOutputValidationExecutionRunId(
+          error,
+          prepared.executionRunId,
+        );
         await this.#assertFailedOutputValidationReplay(
           origin,
           command,
@@ -697,14 +710,19 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
       }
       throw error;
     }
-    return project;
+    throw commandError(
+      "invalid_transition",
+      `Isolated CalculiX run ${run.id} has no exact output-validation-rejected WAL.`,
+    );
   }
 
   async #failOutputValidationRejected(
     origin: EngineeringProjectCommandOrigin,
     command: VerifyRunFeaStaticProofV3RunExecutorCommand,
     error: IsolatedCalculixOutputValidationRejectedError,
+    expectedExecutionRunId: string,
   ): Promise<EngineeringProjectSnapshot> {
+    assertDerivedOutputValidationExecutionRunId(error, expectedExecutionRunId);
     const project = await requiredProject(this.d.projects, command.projectId);
     const run = requireRun(project, command.runId);
     const failure = isolatedOutputValidationFailure(error.observation);
@@ -1185,6 +1203,18 @@ function failCommand(
     code: failure.code,
     message: failure.message,
   };
+}
+
+function assertDerivedOutputValidationExecutionRunId(
+  error: IsolatedCalculixOutputValidationRejectedError,
+  expectedExecutionRunId: string,
+): void {
+  if (error.executionRunId !== expectedExecutionRunId) {
+    throw commandError(
+      "invalid_transition",
+      "The isolated CalculiX output-validation rejection does not bind the exact derived execution run identity.",
+    );
+  }
 }
 
 function isolatedOutputValidationFailure(observation: {

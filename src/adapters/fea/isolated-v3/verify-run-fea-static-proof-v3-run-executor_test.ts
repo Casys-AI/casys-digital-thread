@@ -28,8 +28,10 @@ import {
   createIsolatedCalculixV3Fixture,
   ISOLATED_CALCULIX_FIXTURE_AGENT,
 } from "../../../testing/isolated-calculix-v3-fixture.ts";
+import { EngineeringProjectCommandError } from "../../../application/use-cases/project/engineering-project-command-service.ts";
 import {
   CalculixIsolatedProductOutcomeUnknownError,
+  deriveCalculixIsolatedExecutionRunId,
   VerifyRunFeaStaticProofV3RunExecutor,
   type VerifyRunFeaStaticProofV3RunExecutorDependencies,
 } from "./verify-run-fea-static-proof-v3-run-executor.ts";
@@ -145,14 +147,14 @@ Deno.test("isolated CalculiX @3 fails the claimed run on a known execution rejec
     assertEquals(runtime.counts.execute, 1);
     assertEquals(runtime.counts.syson, 0);
 
-    const replayed = await runtime.executor.execute(
-      ISOLATED_CALCULIX_FIXTURE_AGENT,
-      runtime.fixture.command,
-    );
-    assertEquals(replayed.revision, failed.revision);
-    assertEquals(
-      replayed.agentRuns.find((item) => item.id === runtime.fixture.runId)?.status,
-      "failed",
+    await assertRejects(
+      () =>
+        runtime.executor.execute(
+          ISOLATED_CALCULIX_FIXTURE_AGENT,
+          runtime.fixture.command,
+        ),
+      EngineeringProjectCommandError,
+      "no exact output-validation-rejected WAL",
     );
     assertEquals(runtime.counts.execute, 1);
     assertEquals(runtime.counts.syson, 0);
@@ -164,7 +166,10 @@ Deno.test("isolated CalculiX @3 fails the claimed run on output-validation rejec
     const before = await runtime.fixture.projects.get(runtime.fixture.projectId);
     const beforeSnapshots = before!.threadSnapshots;
     const failing = runtime.executorWith({
-      executeIsolated: outputValidationRejectedIsolated(runtime.counts),
+      executeIsolated: await outputValidationRejectedIsolated(
+        runtime.counts,
+        runtime.fixture,
+      ),
     });
     const failed = await failing.execute(
       ISOLATED_CALCULIX_FIXTURE_AGENT,
@@ -196,7 +201,10 @@ Deno.test("isolated CalculiX @3 fails the claimed run on output-validation rejec
 
 Deno.test("isolated CalculiX @3 refuses a divergent fail code on output-validation replay without redispatch", async () => {
   await withRuntime(async (runtime) => {
-    const isolated = outputValidationRejectedIsolated(runtime.counts);
+    const isolated = await outputValidationRejectedIsolated(
+      runtime.counts,
+      runtime.fixture,
+    );
     const failed = await runtime.executorWith({ executeIsolated: isolated }).execute(
       ISOLATED_CALCULIX_FIXTURE_AGENT,
       runtime.fixture.command,
@@ -239,9 +247,182 @@ Deno.test("isolated CalculiX @3 refuses a divergent fail code on output-validati
   });
 });
 
+Deno.test("isolated CalculiX @3 refuses a quiet output-validation reopen on an unrelated failed run", async () => {
+  await withRuntime(async (runtime) => {
+    const failed = await runtime.executorWith({
+      executeIsolated: {
+        execute: () => {
+          runtime.counts.execute++;
+          return Promise.reject(
+            new IsolatedCalculixRedispatchExhaustedError({
+              executionRunId: "run:diagnostic-fixture",
+              destruction: {
+                status: "proven",
+                runId: "run:diagnostic-fixture",
+                proofFingerprint: {
+                  algorithm: "sha256",
+                  digest: "f".repeat(64),
+                },
+              },
+            }),
+          );
+        },
+        reopenOutputValidationRejection: () => Promise.resolve(),
+      },
+    }).execute(
+      ISOLATED_CALCULIX_FIXTURE_AGENT,
+      runtime.fixture.command,
+    );
+    assertEquals(
+      failed.agentRuns.find((item) => item.id === runtime.fixture.runId)?.failure
+        ?.code,
+      "isolated_redispatch_exhausted",
+    );
+    const refused = await assertRejects(
+      () =>
+        runtime.executorWith({
+          executeIsolated: {
+            execute: () => {
+              runtime.counts.execute++;
+              return Promise.reject(new Error("must not redispatch"));
+            },
+            reopenOutputValidationRejection: () => Promise.resolve(),
+          },
+        }).execute(
+          ISOLATED_CALCULIX_FIXTURE_AGENT,
+          runtime.fixture.command,
+        ),
+      EngineeringProjectCommandError,
+      "no exact output-validation-rejected WAL",
+    );
+    assertEquals(refused.code, "invalid_transition");
+    assertEquals(
+      (await runtime.fixture.projects.get(runtime.fixture.projectId))!.revision,
+      failed.revision,
+    );
+    assertEquals(runtime.counts.execute, 1);
+    assertEquals(runtime.counts.syson, 0);
+  });
+});
+
+Deno.test("isolated CalculiX @3 refuses an output-validation replay whose executionRunId is not the derived identity", async () => {
+  await withRuntime(async (runtime) => {
+    const isolated = await outputValidationRejectedIsolated(
+      runtime.counts,
+      runtime.fixture,
+    );
+    const failed = await runtime.executorWith({ executeIsolated: isolated })
+      .execute(
+        ISOLATED_CALCULIX_FIXTURE_AGENT,
+        runtime.fixture.command,
+      );
+    assertEquals(
+      failed.agentRuns.find((item) => item.id === runtime.fixture.runId)?.failure
+        ?.code,
+      "isolated_output_validation_failed",
+    );
+    const mismatched = outputValidationRejection(
+      "run:diagnostic-fixture",
+    );
+    const refused = await assertRejects(
+      () =>
+        runtime.executorWith({
+          executeIsolated: {
+            execute: () => {
+              runtime.counts.execute++;
+              return Promise.reject(new Error("must not redispatch"));
+            },
+            reopenOutputValidationRejection: () => Promise.reject(mismatched),
+          },
+        }).execute(
+          ISOLATED_CALCULIX_FIXTURE_AGENT,
+          runtime.fixture.command,
+        ),
+      EngineeringProjectCommandError,
+      "exact derived execution run identity",
+    );
+    assertEquals(refused.code, "invalid_transition");
+    assertEquals(runtime.counts.execute, 1);
+    assertEquals(runtime.counts.syson, 0);
+  });
+});
+
+Deno.test("isolated CalculiX @3 reconstructs a failed output-validation run after the product lease without redispatch", async () => {
+  await withRuntime(async (runtime) => {
+    const isolated = await outputValidationRejectedIsolated(
+      runtime.counts,
+      runtime.fixture,
+    );
+    const failing = runtime.executorWith({ executeIsolated: isolated });
+    const [first, second] = await Promise.all([
+      failing.execute(
+        ISOLATED_CALCULIX_FIXTURE_AGENT,
+        runtime.fixture.command,
+      ),
+      failing.execute(
+        ISOLATED_CALCULIX_FIXTURE_AGENT,
+        runtime.fixture.command,
+      ),
+    ]);
+    assertEquals(first.id, second.id);
+    assertEquals(first.revision, second.revision);
+    assertEquals(
+      first.agentRuns.find((item) => item.id === runtime.fixture.runId)?.failure
+        ?.code,
+      "isolated_output_validation_failed",
+    );
+    assertEquals(
+      second.agentRuns.find((item) => item.id === runtime.fixture.runId)?.failure
+        ?.code,
+      "isolated_output_validation_failed",
+    );
+    assertEquals(runtime.counts.execute, 1);
+    assertEquals(runtime.counts.syson, 0);
+  });
+});
+
+Deno.test("isolated CalculiX @3 replays the exact derived output-validation failure without redispatch", async () => {
+  await withRuntime(async (runtime) => {
+    const isolated = await outputValidationRejectedIsolated(
+      runtime.counts,
+      runtime.fixture,
+    );
+    const failing = runtime.executorWith({ executeIsolated: isolated });
+    const failed = await failing.execute(
+      ISOLATED_CALCULIX_FIXTURE_AGENT,
+      runtime.fixture.command,
+    );
+    const expectedExecutionRunId = await deriveCalculixIsolatedExecutionRunId({
+      projectId: runtime.fixture.projectId,
+      agentRunId: runtime.fixture.runId,
+    });
+    assertEquals(isolated.rejection.executionRunId, expectedExecutionRunId);
+    const replayed = await failing.execute(
+      ISOLATED_CALCULIX_FIXTURE_AGENT,
+      runtime.fixture.command,
+    );
+    const failedRun = failed.agentRuns.find((item) =>
+      item.id === runtime.fixture.runId
+    )!;
+    const replayedRun = replayed.agentRuns.find((item) =>
+      item.id === runtime.fixture.runId
+    )!;
+    assertEquals(replayed.revision, failed.revision);
+    assertEquals(replayedRun.status, "failed");
+    assertEquals(replayedRun.failure, failedRun.failure);
+    assertEquals(replayedRun.resultSnapshot, undefined);
+    assertEquals(replayedRun.evidenceRefs, []);
+    assertEquals(runtime.counts.execute, 1);
+    assertEquals(runtime.counts.syson, 0);
+  });
+});
+
 Deno.test("isolated CalculiX @3 refuses a divergent fail receipt on output-validation replay without redispatch", async () => {
   await withRuntime(async (runtime) => {
-    const isolated = outputValidationRejectedIsolated(runtime.counts);
+    const isolated = await outputValidationRejectedIsolated(
+      runtime.counts,
+      runtime.fixture,
+    );
     await runtime.executorWith({ executeIsolated: isolated }).execute(
       ISOLATED_CALCULIX_FIXTURE_AGENT,
       runtime.fixture.command,
@@ -319,16 +500,17 @@ Deno.test("isolated CalculiX @3 fails the claimed run when redispatch is exhaust
     assertEquals(runtime.counts.execute, 1);
     assertEquals(runtime.counts.syson, 0);
 
-    const replayed = await runtime.executor.execute(
-      ISOLATED_CALCULIX_FIXTURE_AGENT,
-      runtime.fixture.command,
-    );
-    assertEquals(replayed.revision, failed.revision);
-    assertEquals(
-      replayed.agentRuns.find((item) => item.id === runtime.fixture.runId)?.status,
-      "failed",
+    await assertRejects(
+      () =>
+        runtime.executor.execute(
+          ISOLATED_CALCULIX_FIXTURE_AGENT,
+          runtime.fixture.command,
+        ),
+      EngineeringProjectCommandError,
+      "no exact output-validation-rejected WAL",
     );
     assertEquals(runtime.counts.execute, 1);
+    assertEquals(runtime.counts.syson, 0);
   });
 });
 
@@ -1008,9 +1190,28 @@ function profileCatalog(seed: string) {
   });
 }
 
-function outputValidationRejectedIsolated(counts: { execute: number }) {
-  const rejection = new IsolatedCalculixOutputValidationRejectedError({
-    executionRunId: "run:diagnostic-fixture",
+async function outputValidationRejectedIsolated(
+  counts: { execute: number },
+  identity: { readonly projectId: string; readonly runId: string },
+) {
+  const executionRunId = await deriveCalculixIsolatedExecutionRunId({
+    projectId: identity.projectId,
+    agentRunId: identity.runId,
+  });
+  const rejection = outputValidationRejection(executionRunId);
+  return {
+    rejection,
+    execute: () => {
+      counts.execute++;
+      return Promise.reject(rejection);
+    },
+    reopenOutputValidationRejection: () => Promise.reject(rejection),
+  };
+}
+
+function outputValidationRejection(executionRunId: string) {
+  return new IsolatedCalculixOutputValidationRejectedError({
+    executionRunId,
     observation: {
       role: "job.dat",
       byteCount: 32,
@@ -1018,20 +1219,13 @@ function outputValidationRejectedIsolated(counts: { execute: number }) {
     },
     destruction: {
       status: "proven",
-      runId: "run:diagnostic-fixture",
+      runId: executionRunId,
       proofFingerprint: {
         algorithm: "sha256",
         digest: "c".repeat(64),
       },
     },
   });
-  return {
-    execute: () => {
-      counts.execute++;
-      return Promise.reject(rejection);
-    },
-    reopenOutputValidationRejection: () => Promise.reject(rejection),
-  };
 }
 
 function monotonicNow() {
