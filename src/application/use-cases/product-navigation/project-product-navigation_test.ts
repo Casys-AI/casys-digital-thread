@@ -482,6 +482,15 @@ Deno.test("product inspect offers exact-basis capture and blocks different-basis
     blocked.every((action) => action.status === "blocked" && !("arguments" in action)),
     true,
   );
+  const differentBasisRecovery = blocked.filter((action) =>
+    action.status === "blocked" && action.code === "action.different-basis"
+  ).map((action) => action.recovery);
+  assertEquals(differentBasisRecovery, [
+    "Call project_source_attachment_recross with " +
+    '{"projectId":"project.slider","expectedWorkspaceRevision":2,"attachments":[{"attachmentId":"att-stale","activeAttachmentRevision":1}]} and a new mutationId. The server recrosses this existing attachment against the published current architecture basis before capture or closure.',
+    "Call project_source_attachment_recross with " +
+    '{"projectId":"project.slider","expectedWorkspaceRevision":2,"attachments":[{"attachmentId":"att-stale","activeAttachmentRevision":1}]} and a new mutationId. The server recrosses this existing attachment against the published current architecture basis before capture or closure.',
+  ]);
 });
 
 Deno.test("product navigation projection reuses the unique-root neighborhood", async () => {

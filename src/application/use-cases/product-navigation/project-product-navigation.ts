@@ -887,13 +887,23 @@ function inspectActions(input: {
         status: "blocked",
         kind: "capture-technical-source",
         code: captureBlocked,
-        recovery: blockedRecovery(captureBlocked),
+        recovery: blockedRecovery({
+          code: captureBlocked,
+          projectId: input.projectId,
+          workspaceRevision,
+          attachment,
+        }),
       });
       actions.push({
         status: "blocked",
         kind: "read-source-closure",
         code: captureBlocked,
-        recovery: blockedRecovery(captureBlocked),
+        recovery: blockedRecovery({
+          code: captureBlocked,
+          projectId: input.projectId,
+          workspaceRevision,
+          attachment,
+        }),
       });
       continue;
     }
@@ -935,12 +945,29 @@ function blockedCaptureOrClosure(
 }
 
 function blockedRecovery(
-  code: "action.source-removed" | "action.different-basis",
+  input: {
+    readonly code: "action.source-removed" | "action.different-basis";
+    readonly projectId: string;
+    readonly workspaceRevision?: number;
+    readonly attachment: ProductNavigationAuthoringAttachment;
+  },
 ): string {
-  if (code === "action.source-removed") {
+  if (input.code === "action.source-removed") {
     return "The source file is tombstoned. Restore or recapture a successor file revision before capture or closure.";
   }
-  return "Create an attachment successor against the published current architecture basis before capture or closure.";
+  const attachment = input.attachment;
+  const recrossArguments = {
+    projectId: input.projectId,
+    ...(input.workspaceRevision === undefined
+      ? {}
+      : { expectedWorkspaceRevision: input.workspaceRevision }),
+    attachments: [{
+      attachmentId: attachment.attachmentId,
+      activeAttachmentRevision: attachment.attachmentRevision,
+    }],
+  };
+  return "Call project_source_attachment_recross with " +
+    `${JSON.stringify(recrossArguments)} and a new mutationId. The server recrosses this existing attachment against the published current architecture basis before capture or closure.`;
 }
 
 function authoringBasisStatus(
