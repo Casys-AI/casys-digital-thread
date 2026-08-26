@@ -5,6 +5,9 @@ import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
+import {
+  PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
+} from "../../../domain/compile/admission/technical-compilation.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import {
   createSensitivityExperienceOriginBinding,
@@ -468,10 +471,12 @@ async function makeStudyCase(projectId: string): Promise<SensitivityStudyCaseV2>
 
 async function makeAdmission(): Promise<ReopenedTechnicalCompilationAdmission> {
   const sourceFingerprint = await sha256Fingerprint(SOURCE);
+  const closureFingerprint = fingerprint(ADMISSION_DIGEST);
+  const sourceId = `technical-unit:${closureFingerprint.digest}`;
   const analysis = {
     schemaVersion: "source-analysis/1.0" as const,
     source: {
-      id: "source-1",
+      id: sourceId,
       role: "cad-script" as const,
       language: "python" as const,
       fingerprint: sourceFingerprint,
@@ -495,18 +500,25 @@ async function makeAdmission(): Promise<ReopenedTechnicalCompilationAdmission> {
     sourceText: SOURCE,
     analysis,
     analysisFingerprint: await sha256Fingerprint(analysis),
+    effectiveUnit: {
+      kind: "authored-root" as const,
+      closureKind: "root-only" as const,
+      unitId: sourceId,
+      closureFingerprint,
+      scriptFingerprint: sourceFingerprint,
+    },
   };
   const binding = {
     id: "binding.size-z",
-    sourceId: "source-1",
+    sourceId,
     sourceSymbolId: "symbol.size-z",
     sysmlElementId: "attribute.size-z",
     sysmlElementKind: "AttributeUsage",
     relation: "parameterizes" as const,
   };
   const profile = {
-    id: "build123d-parameterized-v2",
-    version: "2.0.0",
+    id: "build123d-closed-subset-v1",
+    version: PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
     target: "build123d-source" as const,
     sourceRole: "cad-script" as const,
     language: "python" as const,
@@ -516,7 +528,7 @@ async function makeAdmission(): Promise<ReopenedTechnicalCompilationAdmission> {
   };
   return {
     document: {
-      schemaVersion: "technical-compilation/1.0",
+      schemaVersion: "technical-compilation/2.0",
       basis: {} as never,
       basisFingerprint: fingerprint(ADMISSION_DIGEST),
       inputManifest: {

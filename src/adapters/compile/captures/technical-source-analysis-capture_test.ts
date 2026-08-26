@@ -102,7 +102,7 @@ Deno.test("technical source capture persists exact Python bytes and replays the 
     const reopened = await service.reopenLocator(persisted.locator);
     assertEquals(frontendCalls, 4);
     assertEquals(reopened.sourceText, SOURCE_TEXT);
-    assertEquals(reopened.analysis.source.id, "source:cad:assembly");
+    assertEquals(reopened.analysis.source.id, persisted.document.source.id);
     assertEquals(reopened.locator, persisted.locator);
   });
 });
@@ -241,6 +241,46 @@ Deno.test("technical source profile cap is bounded and sealed into its fingerpri
         maxSourceBytes: 9,
       })).digest,
     false,
+  );
+  const loweringPolicy = {
+    schemaVersion: "build123d-workspace-closure-lowering/1.0" as const,
+    kind: "build123d-workspace-closure-lowering" as const,
+    maxClosureFiles: 2,
+    maxClosureSourceBytes: 16,
+    maxEffectiveScriptBytes: 24,
+  };
+  assertEquals(
+    validateTechnicalSourceAnalysisProfile({
+      ...PYTHON_PROFILE,
+      workspaceClosureLowering: loweringPolicy,
+    }).workspaceClosureLowering?.maxEffectiveScriptBytes,
+    24,
+  );
+  assertEquals(
+    (await fingerprintTechnicalSourceAnalysisProfile({
+      ...PYTHON_PROFILE,
+      workspaceClosureLowering: loweringPolicy,
+    })).digest ===
+      (await fingerprintTechnicalSourceAnalysisProfile({
+        ...PYTHON_PROFILE,
+        workspaceClosureLowering: {
+          ...loweringPolicy,
+          maxEffectiveScriptBytes: 25,
+        },
+      })).digest,
+    false,
+  );
+  assertThrows(
+    () =>
+      validateTechnicalSourceAnalysisProfile({
+        ...PYTHON_PROFILE,
+        workspaceClosureLowering: {
+          ...loweringPolicy,
+          maxEffectiveScriptBytes: MAX_TECHNICAL_SOURCE_PROFILE_BYTES + 1,
+        },
+      }),
+    TypeError,
+    "maxEffectiveScriptBytes",
   );
 });
 
@@ -391,7 +431,7 @@ Deno.test("technical source reference and capture input reject unknown fields", 
       sourceText: SOURCE_TEXT,
     }));
 
-    assertThrows(
+    await assertRejects(
       () =>
         validateTechnicalSourceAnalysisCaptureDocument({
           ...persisted.document,
@@ -400,7 +440,7 @@ Deno.test("technical source reference and capture input reject unknown fields", 
       TypeError,
       "unsupported field callerTool",
     );
-    assertThrows(
+    await assertRejects(
       () =>
         validateTechnicalSourceAnalysisCaptureDocument({
           ...persisted.document,

@@ -250,7 +250,7 @@ export class CaptureBackedTechnicalCompilationAdmissionReader
           `admitted source ${expected.id} is not exact against the sealed compilation basis`,
         );
       }
-      if (reopened.source.closedDependencyCount !== 0) {
+      if (reopened.source.effectiveUnit.closureKind === "unlowered-closure") {
         throw new TechnicalCompilationAdmissionReadError(
           `admitted source ${expected.id} has no language-specific dependency lowering`,
         );
@@ -268,6 +268,7 @@ export class CaptureBackedTechnicalCompilationAdmissionReader
             sourceFingerprint: expected.sourceFingerprint,
             captureFingerprint: expected.captureFingerprint,
             analysisFingerprint: expected.analysisFingerprint,
+            effectiveUnit: expected.effectiveUnit,
             attachment: expected.attachment,
             sourceClosure: expected.sourceClosure,
             locator: expected.locator,
@@ -283,6 +284,7 @@ export class CaptureBackedTechnicalCompilationAdmissionReader
             sourceFingerprint: reopened.provenance.sourceFingerprint,
             captureFingerprint: reopened.provenance.captureFingerprint,
             analysisFingerprint: reopened.provenance.analysisFingerprint,
+            effectiveUnit: reopened.provenance.effectiveUnit,
             attachment: reopened.provenance.attachment,
             sourceClosure: reopened.provenance.sourceClosure,
             locator: reopened.provenance.locator,

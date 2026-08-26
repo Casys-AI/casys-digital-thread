@@ -18,6 +18,10 @@ function fingerprint(character: string) {
   return { algorithm: "sha256", digest: character.repeat(64) } as const;
 }
 
+const MODELICA_UNIT_ID = `technical-unit:${"d".repeat(64)}`;
+const CAD_UNIT_ID = `technical-unit:${"e".repeat(64)}`;
+const SPICE_UNIT_ID = `technical-unit:${"f".repeat(64)}`;
+
 function admission(): Record<string, unknown> {
   const projectId = "project.drip-tray";
   const documentFingerprint = fingerprint("a");
@@ -50,7 +54,7 @@ function admission(): Record<string, unknown> {
     },
     sources: [
       {
-        id: "source.modelica",
+        id: MODELICA_UNIT_ID,
         role: "modelica-model",
         language: "modelica",
         profileId: "source-profile.modelica",
@@ -60,13 +64,20 @@ function admission(): Record<string, unknown> {
         sourceFingerprint: fingerprint("7"),
         captureFingerprint: fingerprint("8"),
         analysisFingerprint: fingerprint("9"),
+        effectiveUnit: {
+          kind: "authored-root",
+          closureKind: "root-only",
+          unitId: MODELICA_UNIT_ID,
+          closureFingerprint: fingerprint("d"),
+          scriptFingerprint: fingerprint("7"),
+        },
         ...sampleAdmissionSourceWorkspaceFields("source.modelica", {
           projectId,
           locatorDigest: "8".repeat(64),
         }),
       },
       {
-        id: "source.cad",
+        id: CAD_UNIT_ID,
         role: "cad-script",
         language: "python",
         profileId: "source-profile.python",
@@ -76,16 +87,27 @@ function admission(): Record<string, unknown> {
         sourceFingerprint: fingerprint("4"),
         captureFingerprint: fingerprint("5"),
         analysisFingerprint: fingerprint("6"),
+        effectiveUnit: {
+          kind: "authored-root",
+          closureKind: "root-only",
+          unitId: CAD_UNIT_ID,
+          closureFingerprint: fingerprint("e"),
+          scriptFingerprint: fingerprint("4"),
+        },
         ...sampleAdmissionSourceWorkspaceFields("source.cad", {
           projectId,
           locatorDigest: "5".repeat(64),
+        }),
+        sourceClosure: sampleTechnicalSourceClosureProvenance("source.cad", {
+          projectId,
+          fingerprint: fingerprint("e"),
         }),
       },
     ],
     bindings: [
       {
         id: "binding.modelica.power",
-        sourceId: "source.modelica",
+        sourceId: MODELICA_UNIT_ID,
         sourceSymbolId: "modelica.power",
         sysmlElementId: "sysml.power",
         sysmlElementKind: "AttributeUsage",
@@ -93,7 +115,7 @@ function admission(): Record<string, unknown> {
       },
       {
         id: "binding.cad.result",
-        sourceId: "source.cad",
+        sourceId: CAD_UNIT_ID,
         sourceSymbolId: "cad.result",
         sysmlElementId: "sysml.enclosure",
         sysmlElementKind: "PartUsage",
@@ -105,21 +127,21 @@ function admission(): Record<string, unknown> {
         profileId: "profile.modelica",
         profileVersion: "1.0.0",
         target: "modelica-source-qualification",
-        sourceIds: ["source.modelica"],
+        sourceIds: [MODELICA_UNIT_ID],
         profileFingerprint: fingerprint("1"),
       },
       {
         profileId: "profile.build123d",
         profileVersion: "1.0.0",
         target: "build123d-source",
-        sourceIds: ["source.cad"],
+        sourceIds: [CAD_UNIT_ID],
         profileFingerprint: fingerprint("2"),
       },
       {
         profileId: "profile.calculix",
         profileVersion: "1.0.0",
         target: "calculix-source-candidate",
-        sourceIds: ["source.cad"],
+        sourceIds: [CAD_UNIT_ID],
         profileFingerprint: fingerprint("3"),
       },
     ],
@@ -175,20 +197,20 @@ Deno.test("technical compilation admission round-trip is canonical and provider-
 
   assertEquals(
     parsed.sources.map((source) => source.id),
-    ["source.cad", "source.modelica"],
+    [MODELICA_UNIT_ID, CAD_UNIT_ID],
   );
   assertEquals(
     parsed.bindings.map((binding) => `${binding.sourceId}:${binding.sourceSymbolId}`),
-    ["source.cad:cad.result", "source.modelica:modelica.power"],
+    [`${CAD_UNIT_ID}:cad.result`, `${MODELICA_UNIT_ID}:modelica.power`],
   );
   assertEquals(
     parsed.compilationProfileRequests.map((request) =>
       `${request.profileId}@${request.profileVersion}:${request.sourceIds.join(",")}`
     ),
     [
-      "profile.build123d@1.0.0:source.cad",
-      "profile.calculix@1.0.0:source.cad",
-      "profile.modelica@1.0.0:source.modelica",
+      `profile.build123d@1.0.0:${CAD_UNIT_ID}`,
+      `profile.calculix@1.0.0:${CAD_UNIT_ID}`,
+      `profile.modelica@1.0.0:${MODELICA_UNIT_ID}`,
     ],
   );
   assertEquals(encodeTechnicalCompilationAdmissionParameters(parsed), encoded);
@@ -256,7 +278,7 @@ Deno.test("technical compilation admission rejects every malformed signed digest
   const digestKeys = mutableParameters()
     .filter((item) => item.key.endsWith("sha256") || item.key.endsWith("Sha256"))
     .map((item) => item.key);
-  assertEquals(digestKeys.length, 34);
+  assertEquals(digestKeys.length, 38);
 
   for (const key of digestKeys) {
     const parameters = mutableParameters();
@@ -391,19 +413,19 @@ Deno.test("technical compilation admission binds the exact draft reference to co
 Deno.test("technical compilation admission exposes exact profile analyzers and source scopes", () => {
   const encoded = encodeTechnicalCompilationAdmissionParameters(admission());
   assertEquals(
-    parameter(encoded, "compile.admission.sources.0.analyzerId").value,
+    parameter(encoded, "compile.admission.sources.1.analyzerId").value,
     "python-ast",
   );
   assertEquals(
-    parameter(encoded, "compile.admission.sources.0.role").value,
+    parameter(encoded, "compile.admission.sources.1.role").value,
     "cad-script",
   );
   assertEquals(
-    parameter(encoded, "compile.admission.sources.0.language").value,
+    parameter(encoded, "compile.admission.sources.1.language").value,
     "python",
   );
   assertEquals(
-    parameter(encoded, "compile.admission.sources.0.profileSha256").value,
+    parameter(encoded, "compile.admission.sources.1.profileSha256").value,
     "f".repeat(64),
   );
   assertEquals(
@@ -411,7 +433,7 @@ Deno.test("technical compilation admission exposes exact profile analyzers and s
       encoded,
       "compile.admission.compilationProfileRequests.0.sourceIds.0",
     ).value,
-    "source.cad",
+    CAD_UNIT_ID,
   );
   assertEquals(
     parameter(
@@ -545,22 +567,37 @@ Deno.test("technical compilation admission rejects value permutations hidden beh
   const multipleSourceIds = structuredClone(admission());
   const candidateSources = multipleSourceIds.sources as Array<Record<string, unknown>>;
   const cadSource = structuredClone(
-    candidateSources.find((source) => source.id === "source.cad")!,
+    candidateSources.find((source) => source.id === CAD_UNIT_ID)!,
   );
-  cadSource.id = "source.cad.second";
+  const secondCadUnitId = `technical-unit:${"f".repeat(64)}`;
+  cadSource.id = secondCadUnitId;
   Object.assign(
     cadSource,
     sampleAdmissionSourceWorkspaceFields("source.cad.second", {
       projectId: "project.drip-tray",
     }),
   );
+  cadSource.sourceClosure = sampleTechnicalSourceClosureProvenance(
+    "source.cad.second",
+    {
+      projectId: "project.drip-tray",
+      fingerprint: fingerprint("f"),
+    },
+  );
+  cadSource.effectiveUnit = {
+    kind: "authored-root",
+    closureKind: "root-only",
+    unitId: secondCadUnitId,
+    closureFingerprint: fingerprint("f"),
+    scriptFingerprint: fingerprint("4"),
+  };
   candidateSources.push(cadSource);
   const requests = multipleSourceIds.compilationProfileRequests as Array<
     { profileId: string; sourceIds: string[] }
   >;
   requests.find((request) => request.profileId === "profile.build123d")!.sourceIds = [
-    "source.cad.second",
-    "source.cad",
+    secondCadUnitId,
+    CAD_UNIT_ID,
   ];
   const sourceIdParameters = structuredClone(
     encodeTechnicalCompilationAdmissionParameters(multipleSourceIds),
@@ -699,7 +736,7 @@ Deno.test("technical compilation admission profile requests exactly cover all so
 Deno.test("technical compilation admission round-trips spice-circuit-source", () => {
   const candidate = structuredClone(admission());
   candidate.sources = [{
-    id: "source.spice",
+    id: SPICE_UNIT_ID,
     role: "spice-circuit",
     language: "spice",
     profileId: "spice-circuit-closed-subset-v1",
@@ -709,14 +746,25 @@ Deno.test("technical compilation admission round-trips spice-circuit-source", ()
     sourceFingerprint: fingerprint("7"),
     captureFingerprint: fingerprint("8"),
     analysisFingerprint: fingerprint("9"),
+    effectiveUnit: {
+      kind: "authored-root",
+      closureKind: "root-only",
+      unitId: SPICE_UNIT_ID,
+      closureFingerprint: fingerprint("f"),
+      scriptFingerprint: fingerprint("7"),
+    },
     ...sampleAdmissionSourceWorkspaceFields("source.spice", {
       projectId: "project.drip-tray",
       locatorDigest: "8".repeat(64),
     }),
+    sourceClosure: sampleTechnicalSourceClosureProvenance("source.spice", {
+      projectId: "project.drip-tray",
+      fingerprint: fingerprint("f"),
+    }),
   }];
   candidate.bindings = [{
     id: "binding.spice.rseries",
-    sourceId: "source.spice",
+    sourceId: SPICE_UNIT_ID,
     sourceSymbolId: "parameter.rseries",
     sysmlElementId: "sysml.rseries",
     sysmlElementKind: "AttributeUsage",
@@ -726,7 +774,7 @@ Deno.test("technical compilation admission round-trips spice-circuit-source", ()
     profileId: "spice-circuit-closed-subset-v1",
     profileVersion: "1.0.0",
     target: "spice-circuit-source",
-    sourceIds: ["source.spice"],
+    sourceIds: [SPICE_UNIT_ID],
     profileFingerprint: fingerprint("1"),
   }];
   const encoded = encodeTechnicalCompilationAdmissionParameters(candidate);
@@ -749,31 +797,49 @@ Deno.test("technical compilation admission treats colon-bearing binding tuples i
     id: string;
     attachment: ReturnType<typeof sampleTechnicalSourceAttachmentProvenance>;
     sourceClosure: ReturnType<typeof sampleTechnicalSourceClosureProvenance>;
+    sourceFingerprint: ReturnType<typeof fingerprint>;
+    effectiveUnit: unknown;
   }>;
-  sources[0].id = "a:b";
-  Object.assign(
-    sources[0],
-    sampleAdmissionSourceWorkspaceFields("a:b", { projectId: "project.drip-tray" }),
+  const firstUnitId = `technical-unit:${"a".repeat(64)}`;
+  const secondUnitId = `technical-unit:${"b".repeat(64)}`;
+  sources[0].id = firstUnitId;
+  sources[0].sourceClosure = sampleTechnicalSourceClosureProvenance(
+    sources[0].attachment.fileId,
+    { projectId: "project.drip-tray", fingerprint: fingerprint("a") },
   );
-  sources[1].id = "a";
-  Object.assign(
-    sources[1],
-    sampleAdmissionSourceWorkspaceFields("a", { projectId: "project.drip-tray" }),
+  sources[0].effectiveUnit = {
+    kind: "authored-root",
+    closureKind: "root-only",
+    unitId: firstUnitId,
+    closureFingerprint: fingerprint("a"),
+    scriptFingerprint: sources[0].sourceFingerprint,
+  };
+  sources[1].id = secondUnitId;
+  sources[1].sourceClosure = sampleTechnicalSourceClosureProvenance(
+    sources[1].attachment.fileId,
+    { projectId: "project.drip-tray", fingerprint: fingerprint("b") },
   );
+  sources[1].effectiveUnit = {
+    kind: "authored-root",
+    closureKind: "root-only",
+    unitId: secondUnitId,
+    closureFingerprint: fingerprint("b"),
+    scriptFingerprint: sources[1].sourceFingerprint,
+  };
   const bindings = candidate.bindings as Array<{
     sourceId: string;
     sourceSymbolId: string;
   }>;
-  bindings[0].sourceId = "a:b";
+  bindings[0].sourceId = firstUnitId;
   bindings[0].sourceSymbolId = "c";
-  bindings[1].sourceId = "a";
+  bindings[1].sourceId = secondUnitId;
   bindings[1].sourceSymbolId = "b:c";
   const requests = candidate.compilationProfileRequests as Array<{
     sourceIds: string[];
   }>;
-  requests[0].sourceIds = ["a:b"];
-  requests[1].sourceIds = ["a"];
-  requests[2].sourceIds = ["a"];
+  requests[0].sourceIds = [firstUnitId];
+  requests[1].sourceIds = [secondUnitId];
+  requests[2].sourceIds = [secondUnitId];
 
   const encoded = encodeTechnicalCompilationAdmissionParameters(candidate);
   assertEquals(
@@ -794,13 +860,10 @@ Deno.test("technical compilation admission supports the full project-id bound in
   thread.projectId = projectId;
   for (
     const source of candidate.sources as Array<{
-      id: string;
+      sourceClosure: { projectId: string };
     }>
   ) {
-    Object.assign(
-      source,
-      sampleAdmissionSourceWorkspaceFields(source.id, { projectId }),
-    );
+    source.sourceClosure.projectId = projectId;
   }
   draft.draftId = `technical-compilation:${projectId}:${
     (draft.documentFingerprint as { digest: string }).digest

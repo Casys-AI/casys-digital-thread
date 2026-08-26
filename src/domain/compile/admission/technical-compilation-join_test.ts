@@ -1,4 +1,5 @@
 import { assertEquals, assertThrows } from "@std/assert";
+import { createHash } from "node:crypto";
 import type { SourceAnalysisBundle } from "../source/source-analysis.ts";
 import {
   deriveTechnicalCompilationProfileRequests,
@@ -21,11 +22,11 @@ Deno.test("unique catalog role selects the one profile and covers every source",
     [{
       profileId: "profile.build123d",
       profileVersion: PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
-      sourceIds: ["source.cad"],
+      sourceIds: [technicalSourceId("source.cad")],
     }, {
       profileId: "profile.modelica",
       profileVersion: "1.0.0",
-      sourceIds: ["source.modelica"],
+      sourceIds: [technicalSourceId("source.modelica")],
     }],
   );
 });
@@ -40,7 +41,10 @@ Deno.test("two CAD sources share the unique Build123d profile request", () => {
     [{
       profileId: "profile.build123d",
       profileVersion: PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
-      sourceIds: ["source.arm", "source.base"],
+      sourceIds: [
+        technicalSourceId("source.arm"),
+        technicalSourceId("source.base"),
+      ].sort(),
     }],
   );
 });
@@ -54,7 +58,7 @@ Deno.test("unique catalog role selects the one SPICE profile among CAD and Model
     [{
       profileId: "profile.spice",
       profileVersion: "1.0.0",
-      sourceIds: ["source.spice"],
+      sourceIds: [technicalSourceId("source.spice")],
     }],
   );
 });
@@ -66,8 +70,8 @@ Deno.test("unique SPICE circuit and unique PartDefinition become represents", ()
       [part("sysml.clamp", "Clamp")],
     ),
     [{
-      id: "binding:source.spice:artifact.circuit:represents",
-      sourceId: "source.spice",
+      id: `binding:${technicalSourceId("source.spice")}:artifact.circuit:represents`,
+      sourceId: technicalSourceId("source.spice"),
       sourceSymbolId: "artifact.circuit",
       sysmlElementId: "sysml.clamp",
       sysmlElementKind: "PartDefinition",
@@ -86,15 +90,17 @@ Deno.test("unique SPICE .param joins unique AttributeUsage as parameterizes", ()
       ],
     ),
     [{
-      id: "binding:source.spice:artifact.circuit:represents",
-      sourceId: "source.spice",
+      id: `binding:${technicalSourceId("source.spice")}:artifact.circuit:represents`,
+      sourceId: technicalSourceId("source.spice"),
       sourceSymbolId: "artifact.circuit",
       sysmlElementId: "sysml.clamp",
       sysmlElementKind: "PartDefinition",
       relation: "represents",
     }, {
-      id: "binding:source.spice:parameter.rseries:parameterizes",
-      sourceId: "source.spice",
+      id: `binding:${
+        technicalSourceId("source.spice")
+      }:parameter.rseries:parameterizes`,
+      sourceId: technicalSourceId("source.spice"),
       sourceSymbolId: "parameter.rseries",
       sysmlElementId: "sysml.clamp.rseries",
       sysmlElementKind: "AttributeUsage",
@@ -129,8 +135,8 @@ Deno.test("absent or ambiguous compilation profiles fail closed", () => {
 
 Deno.test("selectUniqueRepresentedPartDefinition keeps only a unique PartDefinition represents", () => {
   const represented = {
-    id: "binding:source.cad:artifact.result:represents",
-    sourceId: "source.cad",
+    id: `binding:${technicalSourceId("source.cad")}:artifact.result:represents`,
+    sourceId: technicalSourceId("source.cad"),
     sourceSymbolId: "artifact.result",
     sysmlElementId: "sysml.arm",
     sysmlElementKind: "PartDefinition" as const,
@@ -163,8 +169,8 @@ Deno.test("unique result and unique PartDefinition become represents", () => {
       [part("sysml.arm", "Arm")],
     ),
     [{
-      id: "binding:source.cad:artifact.result:represents",
-      sourceId: "source.cad",
+      id: `binding:${technicalSourceId("source.cad")}:artifact.result:represents`,
+      sourceId: technicalSourceId("source.cad"),
       sourceSymbolId: "artifact.result",
       sysmlElementId: "sysml.arm",
       sysmlElementKind: "PartDefinition",
@@ -180,8 +186,8 @@ Deno.test("unique Modelica root model and unique PartDefinition become represent
       [part("sysml.ramp", "MyRamp")],
     ),
     [{
-      id: "binding:source.modelica:artifact.MyRamp:represents",
-      sourceId: "source.modelica",
+      id: `binding:${technicalSourceId("source.modelica")}:artifact.MyRamp:represents`,
+      sourceId: technicalSourceId("source.modelica"),
       sourceSymbolId: "artifact.MyRamp",
       sysmlElementId: "sysml.ramp",
       sysmlElementKind: "PartDefinition",
@@ -209,15 +215,19 @@ Deno.test(
         ],
       ),
       [{
-        id: "binding:source.modelica:parameter.power:parameterizes",
-        sourceId: "source.modelica",
+        id: `binding:${
+          technicalSourceId("source.modelica")
+        }:parameter.power:parameterizes`,
+        sourceId: technicalSourceId("source.modelica"),
         sourceSymbolId: "parameter.power",
         sysmlElementId: "sysml.driver.power",
         sysmlElementKind: "AttributeUsage",
         relation: "parameterizes",
       }, {
-        id: "binding:source.modelica:parameter.state:parameterizes",
-        sourceId: "source.modelica",
+        id: `binding:${
+          technicalSourceId("source.modelica")
+        }:parameter.state:parameterizes`,
+        sourceId: technicalSourceId("source.modelica"),
         sourceSymbolId: "parameter.state",
         sysmlElementId: "sysml.head.state",
         sysmlElementKind: "AttributeUsage",
@@ -261,8 +271,8 @@ Deno.test("exact PartUsage attachment binds represents to that usage, not a Part
       ],
     ),
     [{
-      id: "binding:source.cad:artifact.result:represents",
-      sourceId: "source.cad",
+      id: `binding:${technicalSourceId("source.cad")}:artifact.result:represents`,
+      sourceId: technicalSourceId("source.cad"),
       sourceSymbolId: "artifact.result",
       sysmlElementId: "usage.arm",
       sysmlElementKind: "PartUsage",
@@ -274,7 +284,12 @@ Deno.test("exact PartUsage attachment binds represents to that usage, not a Part
 Deno.test("several PartDefinitions do not invent a result join without an exact attachment", () => {
   assertEquals(
     deriveUniqueTechnicalCompilationBindings(
-      [attached(cadSource("source.cad"), "sysml.arm", "PartDefinition", "different-basis")],
+      [attached(
+        cadSource("source.cad"),
+        "sysml.arm",
+        "PartDefinition",
+        "different-basis",
+      )],
       [part("sysml.arm", "Arm"), part("sysml.base", "Base")],
     ),
     [],
@@ -294,15 +309,17 @@ Deno.test(
         ],
       ),
       [{
-        id: "binding:source.cad:artifact.result:represents",
-        sourceId: "source.cad",
+        id: `binding:${technicalSourceId("source.cad")}:artifact.result:represents`,
+        sourceId: technicalSourceId("source.cad"),
         sourceSymbolId: "artifact.result",
         sysmlElementId: "sysml.arm",
         sysmlElementKind: "PartDefinition",
         relation: "represents",
       }, {
-        id: "binding:source.cad:parameter.thickness:parameterizes",
-        sourceId: "source.cad",
+        id: `binding:${
+          technicalSourceId("source.cad")
+        }:parameter.thickness:parameterizes`,
+        sourceId: technicalSourceId("source.cad"),
         sourceSymbolId: "parameter.thickness",
         sysmlElementId: "sysml.arm.thickness",
         sysmlElementKind: "AttributeUsage",
@@ -317,7 +334,12 @@ Deno.test(
   () => {
     assertEquals(
       deriveUniqueTechnicalCompilationBindings(
-        [attached(cadSource("source.cad"), "sysml.arm", "PartDefinition", "different-basis")],
+        [attached(
+          cadSource("source.cad"),
+          "sysml.arm",
+          "PartDefinition",
+          "different-basis",
+        )],
         [
           part("sysml.arm", "Arm"),
           part("sysml.base", "Base"),
@@ -325,8 +347,10 @@ Deno.test(
         ],
       ),
       [{
-        id: "binding:source.cad:parameter.thickness:parameterizes",
-        sourceId: "source.cad",
+        id: `binding:${
+          technicalSourceId("source.cad")
+        }:parameter.thickness:parameterizes`,
+        sourceId: technicalSourceId("source.cad"),
         sourceSymbolId: "parameter.thickness",
         sysmlElementId: "sysml.thickness",
         sysmlElementKind: "AttributeUsage",
@@ -355,15 +379,17 @@ Deno.test(
         ],
       ),
       [{
-        id: "binding:source.cad:parameter.thickness:parameterizes",
-        sourceId: "source.cad",
+        id: `binding:${
+          technicalSourceId("source.cad")
+        }:parameter.thickness:parameterizes`,
+        sourceId: technicalSourceId("source.cad"),
         sourceSymbolId: "parameter.thickness",
         sysmlElementId: "sysml.arm.thickness",
         sysmlElementKind: "AttributeUsage",
         relation: "parameterizes",
       }, {
-        id: "binding:source.cad:parameter.width:parameterizes",
-        sourceId: "source.cad",
+        id: `binding:${technicalSourceId("source.cad")}:parameter.width:parameterizes`,
+        sourceId: technicalSourceId("source.cad"),
         sourceSymbolId: "parameter.width",
         sysmlElementId: "sysml.base.width",
         sysmlElementKind: "AttributeUsage",
@@ -378,7 +404,12 @@ Deno.test(
   () => {
     assertEquals(
       deriveUniqueTechnicalCompilationBindings(
-        [attached(cadSource("source.cad"), "sysml.arm", "PartDefinition", "different-basis")],
+        [attached(
+          cadSource("source.cad"),
+          "sysml.arm",
+          "PartDefinition",
+          "different-basis",
+        )],
         [part("sysml.arm", "Arm"), part("sysml.base", "Base")],
       ),
       [],
@@ -389,12 +420,19 @@ Deno.test(
 Deno.test("unique AttributeUsage name joins a parameter as parameterizes and does not infer the file attachment", () => {
   assertEquals(
     deriveUniqueTechnicalCompilationBindings(
-      [attached(cadSource("source.cad"), "sysml.arm", "PartDefinition", "different-basis")],
+      [attached(
+        cadSource("source.cad"),
+        "sysml.arm",
+        "PartDefinition",
+        "different-basis",
+      )],
       [attribute("sysml.thickness", "thickness")],
     ),
     [{
-      id: "binding:source.cad:parameter.thickness:parameterizes",
-      sourceId: "source.cad",
+      id: `binding:${
+        technicalSourceId("source.cad")
+      }:parameter.thickness:parameterizes`,
+      sourceId: technicalSourceId("source.cad"),
       sourceSymbolId: "parameter.thickness",
       sysmlElementId: "sysml.thickness",
       sysmlElementKind: "AttributeUsage",
@@ -423,8 +461,8 @@ Deno.test("missing, renamed, or duplicate AttributeUsage stays unbound", () => {
       part("sysml.arm", "Arm"),
     ]),
     [{
-      id: "binding:source.cad:artifact.result:represents",
-      sourceId: "source.cad",
+      id: `binding:${technicalSourceId("source.cad")}:artifact.result:represents`,
+      sourceId: technicalSourceId("source.cad"),
       sourceSymbolId: "artifact.result",
       sysmlElementId: "sysml.arm",
       sysmlElementKind: "PartDefinition",
@@ -433,8 +471,26 @@ Deno.test("missing, renamed, or duplicate AttributeUsage stays unbound", () => {
   );
 });
 
+interface FixtureSource {
+  readonly sourceText: string;
+  readonly analysis: SourceAnalysisBundle;
+  readonly effectiveUnit: {
+    readonly kind: "authored-root";
+    readonly closureKind: "root-only";
+    readonly unitId: string;
+    readonly closureFingerprint: {
+      readonly algorithm: "sha256";
+      readonly digest: string;
+    };
+    readonly scriptFingerprint: {
+      readonly algorithm: "sha256";
+      readonly digest: string;
+    };
+  };
+}
+
 function attached(
-  source: { sourceText: string; analysis: SourceAnalysisBundle },
+  source: FixtureSource,
   elementId: string,
   elementKind = "PartDefinition",
   alignment: "exact" | "different-basis" | "target-missing" = "exact",
@@ -443,198 +499,212 @@ function attached(
     ...source,
     attachmentTarget: { elementId, elementKind },
     attachmentAlignment: alignment,
-    closedDependencyCount: 0,
   };
 }
 
-function cadSource(id: string): { sourceText: string; analysis: SourceAnalysisBundle } {
-  return {
-    sourceText: "thickness = 2\nresult = Box(20, 10, thickness)\n",
-    analysis: {
-      schemaVersion: "source-analysis/1.0",
-      source: {
-        id,
-        role: "cad-script",
-        language: "python",
-        fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
-      },
-      analyzer: { id: "test.ast", version: "1.0.0" },
-      policy: { profile: "policy.python-safe", status: "passed", findings: [] },
-      symbols: [
-        {
-          id: "parameter.thickness",
-          kind: "parameter",
-          name: "thickness",
-          span: { start: { line: 1, column: 0 }, end: { line: 1, column: 9 } },
-        },
-        { id: "artifact.result", kind: "artifact", name: "result" },
-      ],
-      dependencies: [{
-        id: "dependency.thickness.result",
-        kind: "structural-incidence",
-        fromSymbolId: "parameter.thickness",
-        toSymbolId: "artifact.result",
-      }],
-      unresolvedConstructs: [],
+function cadSource(id: string): FixtureSource {
+  const sourceText = "thickness = 2\nresult = Box(20, 10, thickness)\n";
+  return fixtureSource(id, sourceText, {
+    schemaVersion: "source-analysis/1.0",
+    source: {
+      id,
+      role: "cad-script",
+      language: "python",
+      fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
     },
-  };
-}
-
-function cadSourceWithTwoReachableLevers(
-  id: string,
-): { sourceText: string; analysis: SourceAnalysisBundle } {
-  return {
-    sourceText: "width = 20\nthickness = 2\nresult = Box(width, 10, thickness)\n",
-    analysis: {
-      schemaVersion: "source-analysis/1.0",
-      source: {
-        id,
-        role: "cad-script",
-        language: "python",
-        fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
-      },
-      analyzer: { id: "test.ast", version: "1.0.0" },
-      policy: { profile: "policy.python-safe", status: "passed", findings: [] },
-      symbols: [{
-        id: "parameter.width",
-        kind: "parameter",
-        name: "width",
-        span: { start: { line: 1, column: 0 }, end: { line: 1, column: 5 } },
-      }, {
+    analyzer: { id: "test.ast", version: "1.0.0" },
+    policy: { profile: "policy.python-safe", status: "passed", findings: [] },
+    symbols: [
+      {
         id: "parameter.thickness",
         kind: "parameter",
         name: "thickness",
-        span: { start: { line: 2, column: 0 }, end: { line: 2, column: 9 } },
-      }, {
-        id: "artifact.result",
-        kind: "artifact",
-        name: "result",
-      }],
-      dependencies: [{
-        id: "dependency.width.result",
-        kind: "structural-incidence",
-        fromSymbolId: "parameter.width",
-        toSymbolId: "artifact.result",
-      }, {
-        id: "dependency.thickness.result",
-        kind: "structural-incidence",
-        fromSymbolId: "parameter.thickness",
-        toSymbolId: "artifact.result",
-      }],
-      unresolvedConstructs: [],
+        span: { start: { line: 1, column: 0 }, end: { line: 1, column: 9 } },
+      },
+      { id: "artifact.result", kind: "artifact", name: "result" },
+    ],
+    dependencies: [{
+      id: "dependency.thickness.result",
+      kind: "structural-incidence",
+      fromSymbolId: "parameter.thickness",
+      toSymbolId: "artifact.result",
+    }],
+    unresolvedConstructs: [],
+  });
+}
+
+function cadSourceWithTwoReachableLevers(id: string): FixtureSource {
+  const sourceText = "width = 20\nthickness = 2\nresult = Box(width, 10, thickness)\n";
+  return fixtureSource(id, sourceText, {
+    schemaVersion: "source-analysis/1.0",
+    source: {
+      id,
+      role: "cad-script",
+      language: "python",
+      fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
     },
-  };
+    analyzer: { id: "test.ast", version: "1.0.0" },
+    policy: { profile: "policy.python-safe", status: "passed", findings: [] },
+    symbols: [{
+      id: "parameter.width",
+      kind: "parameter",
+      name: "width",
+      span: { start: { line: 1, column: 0 }, end: { line: 1, column: 5 } },
+    }, {
+      id: "parameter.thickness",
+      kind: "parameter",
+      name: "thickness",
+      span: { start: { line: 2, column: 0 }, end: { line: 2, column: 9 } },
+    }, {
+      id: "artifact.result",
+      kind: "artifact",
+      name: "result",
+    }],
+    dependencies: [{
+      id: "dependency.width.result",
+      kind: "structural-incidence",
+      fromSymbolId: "parameter.width",
+      toSymbolId: "artifact.result",
+    }, {
+      id: "dependency.thickness.result",
+      kind: "structural-incidence",
+      fromSymbolId: "parameter.thickness",
+      toSymbolId: "artifact.result",
+    }],
+    unresolvedConstructs: [],
+  });
 }
 
 function modelicaSourceWithParameters(
   id: string,
   names: readonly string[],
-): {
-  sourceText: string;
-  analysis: SourceAnalysisBundle;
-} {
-  return {
-    sourceText: "model Root end Root;",
-    analysis: {
-      schemaVersion: "source-analysis/1.0",
-      source: {
-        id,
-        role: "modelica-model",
-        language: "modelica",
-        fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
-      },
-      analyzer: { id: "test.ast", version: "1.0.0" },
-      policy: { profile: "policy.modelica-safe", status: "passed", findings: [] },
-      symbols: [
-        { id: "artifact.Root", kind: "artifact", name: "Root" },
-        ...names.map((name) => ({
-          id: `parameter.${name}`,
-          kind: "parameter" as const,
-          name,
-        })),
-      ],
-      dependencies: names.map((name) => ({
-        id: `dependency.${name}.Root`,
-        kind: "structural-incidence" as const,
-        fromSymbolId: `parameter.${name}`,
-        toSymbolId: "artifact.Root",
+): FixtureSource {
+  const sourceText = "model Root end Root;";
+  return fixtureSource(id, sourceText, {
+    schemaVersion: "source-analysis/1.0",
+    source: {
+      id,
+      role: "modelica-model",
+      language: "modelica",
+      fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
+    },
+    analyzer: { id: "test.ast", version: "1.0.0" },
+    policy: { profile: "policy.modelica-safe", status: "passed", findings: [] },
+    symbols: [
+      { id: "artifact.Root", kind: "artifact", name: "Root" },
+      ...names.map((name) => ({
+        id: `parameter.${name}`,
+        kind: "parameter" as const,
+        name,
       })),
-      unresolvedConstructs: [],
-    },
-  };
+    ],
+    dependencies: names.map((name) => ({
+      id: `dependency.${name}.Root`,
+      kind: "structural-incidence" as const,
+      fromSymbolId: `parameter.${name}`,
+      toSymbolId: "artifact.Root",
+    })),
+    unresolvedConstructs: [],
+  });
 }
 
-function spiceSource(id: string): {
-  sourceText: string;
-  analysis: SourceAnalysisBundle;
-} {
-  return {
-    sourceText: "Vin in 0 5\nRload in 0 1k\n",
-    analysis: {
-      schemaVersion: "source-analysis/1.0",
-      source: {
-        id,
-        role: "spice-circuit",
-        language: "spice",
-        fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
-      },
-      analyzer: { id: "spice-circuit-closed-subset", version: "1.0.0" },
-      policy: {
-        profile: "spice-circuit-closed-subset-v1",
-        status: "passed",
-        findings: [],
-      },
-      symbols: [
-        { id: "artifact.circuit", kind: "artifact", name: "circuit" },
-      ],
-      dependencies: [],
-      unresolvedConstructs: [],
+function spiceSource(id: string): FixtureSource {
+  const sourceText = "Vin in 0 5\nRload in 0 1k\n";
+  return fixtureSource(id, sourceText, {
+    schemaVersion: "source-analysis/1.0",
+    source: {
+      id,
+      role: "spice-circuit",
+      language: "spice",
+      fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
     },
-  };
+    analyzer: { id: "spice-circuit-closed-subset", version: "1.0.0" },
+    policy: {
+      profile: "spice-circuit-closed-subset-v1",
+      status: "passed",
+      findings: [],
+    },
+    symbols: [
+      { id: "artifact.circuit", kind: "artifact", name: "circuit" },
+    ],
+    dependencies: [],
+    unresolvedConstructs: [],
+  });
 }
 
-function spiceSourceWithParameter(id: string, name: string): {
-  sourceText: string;
-  analysis: SourceAnalysisBundle;
-} {
+function spiceSourceWithParameter(id: string, name: string): FixtureSource {
   const source = spiceSource(id);
+  const sourceText = `Vin in 0 5\nRload in 0 {${name}}\n.param ${name}=1000\n`;
+  return fixtureSource(id, sourceText, {
+    ...source.analysis,
+    symbols: [
+      ...source.analysis.symbols,
+      { id: `parameter.${name}`, kind: "parameter", name },
+    ],
+  });
+}
+
+function modelicaSource(id: string): FixtureSource {
+  const cad = cadSource(id);
+  const sourceText = "model X end X;";
+  return fixtureSource(id, sourceText, {
+    ...cad.analysis,
+    source: {
+      ...cad.analysis.source,
+      role: "modelica-model",
+      language: "modelica",
+    },
+    symbols: cad.analysis.symbols.map((symbol) =>
+      symbol.kind === "artifact"
+        ? { ...symbol, id: "artifact.MyRamp", name: "MyRamp" }
+        : symbol
+    ),
+    dependencies: cad.analysis.dependencies.map((dependency) =>
+      dependency.toSymbolId === "artifact.result"
+        ? { ...dependency, toSymbolId: "artifact.MyRamp" }
+        : dependency
+    ),
+  });
+}
+
+function fixtureSource(
+  id: string,
+  sourceText: string,
+  analysis: SourceAnalysisBundle,
+): FixtureSource {
+  const sourceId = technicalSourceId(id);
+  const closureFingerprint = fingerprint(`closure:${id}`);
+  const scriptFingerprint = fingerprint(sourceText);
   return {
-    sourceText: `Vin in 0 5\nRload in 0 {${name}}\n.param ${name}=1000\n`,
+    sourceText,
     analysis: {
-      ...source.analysis,
-      symbols: [
-        ...source.analysis.symbols,
-        { id: `parameter.${name}`, kind: "parameter", name },
-      ],
+      ...analysis,
+      source: {
+        ...analysis.source,
+        id: sourceId,
+        fingerprint: scriptFingerprint,
+      },
+    },
+    effectiveUnit: {
+      kind: "authored-root",
+      closureKind: "root-only",
+      unitId: sourceId,
+      closureFingerprint,
+      scriptFingerprint,
     },
   };
 }
 
-function modelicaSource(id: string): {
-  sourceText: string;
-  analysis: SourceAnalysisBundle;
-} {
-  const cad = cadSource(id);
+function technicalSourceId(id: string): string {
+  return id.startsWith("technical-unit:")
+    ? id
+    : `technical-unit:${fingerprint(`closure:${id}`).digest}`;
+}
+
+function fingerprint(text: string) {
   return {
-    sourceText: "model X end X;",
-    analysis: {
-      ...cad.analysis,
-      source: {
-        ...cad.analysis.source,
-        role: "modelica-model",
-        language: "modelica",
-      },
-      symbols: cad.analysis.symbols.map((symbol) =>
-        symbol.kind === "artifact"
-          ? { ...symbol, id: "artifact.MyRamp", name: "MyRamp" }
-          : symbol
-      ),
-      dependencies: cad.analysis.dependencies.map((dependency) =>
-        dependency.toSymbolId === "artifact.result"
-          ? { ...dependency, toSymbolId: "artifact.MyRamp" }
-          : dependency
-      ),
-    },
+    algorithm: "sha256" as const,
+    digest: createHash("sha256").update(text, "utf8").digest("hex"),
   };
 }
 

@@ -37,7 +37,10 @@ import {
   exactRecord,
   safeId,
 } from "../../../../domain/kernel/case-validation.ts";
-import { fingerprintsEqual } from "../../../../domain/kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  fingerprintsEqual,
+} from "../../../../domain/kernel/deterministic-json.ts";
 import { parseExactThreadSnapshotBasis } from "../../../../domain/project/thread-tip.ts";
 
 export interface ReopenAdmittedCompilationSourceDependencies {
@@ -216,6 +219,12 @@ async function materializeReadySource(
   if (admissionSource.id !== source.analysis.source.id) {
     throw new TypeError("Admission source id does not match the compilation document.");
   }
+  if (
+    deterministicJson(admissionSource.effectiveUnit) !==
+      deterministicJson(source.effectiveUnit)
+  ) {
+    throw new TypeError("Admission effective unit does not match the compilation document.");
+  }
   return deepFreeze({
     reopened,
     document,
@@ -225,6 +234,7 @@ async function materializeReadySource(
     sourceText: source.sourceText,
     sourceFingerprint,
     analysisFingerprint: source.analysisFingerprint,
+    effectiveUnit: source.effectiveUnit,
     attachment: admissionSource.attachment,
     sourceClosure: admissionSource.sourceClosure,
     locator: admissionSource.locator,

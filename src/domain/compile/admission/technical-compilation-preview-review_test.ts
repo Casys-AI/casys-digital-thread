@@ -1,4 +1,5 @@
 import { assertEquals, assertThrows } from "@std/assert";
+import { createHash } from "node:crypto";
 import type { SourceAnalysisBundle } from "../source/source-analysis.ts";
 import { validateModelicaThermalMethodSheet } from "../../modelica/thermal-method-sheet.ts";
 import { validThermalMethodSheetPlaceholder } from "../../../testing/modelica-thermal-method-sheet-fixtures.ts";
@@ -9,19 +10,32 @@ import {
   TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY,
 } from "./technical-compilation-preview-review.ts";
 
+const CAD_SOURCE_TEXT = "thickness = 2\nresult = Box(20, 10, thickness)\n";
+const PHOTO_SOURCE_TEXT = "result = Box(20, 10, 2)\n";
+const MODELICA_SOURCE_TEXT = "model Placeholder\nend Placeholder;\n";
+const SPICE_SOURCE_TEXT = "Vin in 0 5\nRload in 0 1k\n";
+const CAD_SOURCE_FINGERPRINT = fingerprint(CAD_SOURCE_TEXT);
+const PHOTO_SOURCE_FINGERPRINT = fingerprint(PHOTO_SOURCE_TEXT);
+const MODELICA_SOURCE_FINGERPRINT = fingerprint(MODELICA_SOURCE_TEXT);
+const SPICE_SOURCE_FINGERPRINT = fingerprint(SPICE_SOURCE_TEXT);
+const CAD_SOURCE_ID = technicalUnitId(CAD_SOURCE_FINGERPRINT);
+const PHOTO_SOURCE_ID = technicalUnitId(PHOTO_SOURCE_FINGERPRINT);
+const MODELICA_SOURCE_ID = technicalUnitId(MODELICA_SOURCE_FINGERPRINT);
+const SPICE_SOURCE_ID = technicalUnitId(SPICE_SOURCE_FINGERPRINT);
+
 Deno.test("photo compile hoists the lever gap without inventing a bind", () => {
   const gaps = assembleTechnicalCompilationJoinGaps(
     [{
       code: "source.no-named-numeric-lever",
       profileRef: "profile.build123d@2.0.0",
-      subjectRef: "source.cad",
+      subjectRef: PHOTO_SOURCE_ID,
     }],
-    [photoSource("source.cad")],
+    [photoSource()],
     [part("sysml.arm", "Arm"), part("sysml.base", "Base")],
   );
   assertEquals(gaps, [{
     code: "source.no-named-numeric-lever",
-    sourceId: "source.cad",
+    sourceId: PHOTO_SOURCE_ID,
     recovery: TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.noNamedNumericLever,
   }]);
 });
@@ -31,13 +45,13 @@ Deno.test("photo plus unbound result keeps both facts", () => {
     [{
       code: "binding.missing",
       profileRef: "profile.build123d@2.0.0",
-      subjectRef: "source.cad:artifact.result",
+      subjectRef: `${PHOTO_SOURCE_ID}:artifact.result`,
     }, {
       code: "source.no-named-numeric-lever",
       profileRef: "profile.build123d@2.0.0",
-      subjectRef: "source.cad",
+      subjectRef: PHOTO_SOURCE_ID,
     }],
-    [photoSource("source.cad")],
+    [photoSource()],
     [part("sysml.arm", "Arm"), part("sysml.base", "Base")],
   );
   assertEquals(gaps.map((gap) => gap.code), [
@@ -47,7 +61,7 @@ Deno.test("photo plus unbound result keeps both facts", () => {
   assertEquals(gaps[0], {
     code: "binding.missing",
     relation: "represents",
-    sourceId: "source.cad",
+    sourceId: PHOTO_SOURCE_ID,
     symbolName: "result",
     symbolKind: "artifact",
     reason: "no-unique-PartDefinition",
@@ -61,15 +75,15 @@ Deno.test("unbound thickness names the parameter and AttributeUsage count", () =
     [{
       code: "binding.missing",
       profileRef: "profile.build123d@2.0.0",
-      subjectRef: "source.cad:parameter.thickness",
+      subjectRef: `${CAD_SOURCE_ID}:parameter.thickness`,
     }],
-    [cadSource("source.cad")],
+    [cadSource()],
     [part("sysml.arm", "Arm")],
   );
   assertEquals(gaps, [{
     code: "binding.missing",
     relation: "parameterizes",
-    sourceId: "source.cad",
+    sourceId: CAD_SOURCE_ID,
     symbolName: "thickness",
     symbolKind: "parameter",
     reason: "no-unique-AttributeUsage",
@@ -83,9 +97,9 @@ Deno.test("duplicate AttributeUsage is still no-unique, not a missing name", () 
     [{
       code: "binding.missing",
       profileRef: "profile.build123d@2.0.0",
-      subjectRef: "source.cad:parameter.thickness",
+      subjectRef: `${CAD_SOURCE_ID}:parameter.thickness`,
     }],
-    [cadSource("source.cad")],
+    [cadSource()],
     [
       attribute("sysml.thickness.a", "thickness"),
       attribute("sysml.thickness.b", "thickness"),
@@ -104,9 +118,9 @@ Deno.test("other document diagnostics are not hoisted as join gaps", () => {
       [{
         code: "source.analyzer-mismatch",
         profileRef: "profile.build123d@2.0.0",
-        subjectRef: "source.cad",
+        subjectRef: CAD_SOURCE_ID,
       }],
-      [cadSource("source.cad")],
+      [cadSource()],
       [],
     ),
     [],
@@ -120,9 +134,9 @@ Deno.test("unknown binding.missing subject fails closed", () => {
         [{
           code: "binding.missing",
           profileRef: "profile.build123d@2.0.0",
-          subjectRef: "source.cad:parameter.unknown",
+          subjectRef: `${CAD_SOURCE_ID}:parameter.unknown`,
         }],
-        [cadSource("source.cad")],
+        [cadSource()],
         [],
       ),
     TypeError,
@@ -136,7 +150,7 @@ Deno.test("preview content lists join recoveries on unresolved", () => {
     gaps: [{
       code: "binding.missing",
       relation: "parameterizes",
-      sourceId: "source.cad",
+      sourceId: CAD_SOURCE_ID,
       symbolName: "thickness",
       symbolKind: "parameter",
       reason: "no-unique-AttributeUsage",
@@ -163,19 +177,16 @@ Deno.test("ready preview content does not invent a next bind", () => {
   assertEquals(text.includes("binding.missing"), false);
 });
 
-function cadSource(id: string): {
-  sourceText: string;
-  analysis: SourceAnalysisBundle;
-} {
+function cadSource(): FixtureSource {
   return {
-    sourceText: "thickness = 2\nresult = Box(20, 10, thickness)\n",
+    sourceText: CAD_SOURCE_TEXT,
     analysis: {
       schemaVersion: "source-analysis/1.0",
       source: {
-        id,
+        id: CAD_SOURCE_ID,
         role: "cad-script",
         language: "python",
-        fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
+        fingerprint: CAD_SOURCE_FINGERPRINT,
       },
       analyzer: { id: "test.ast", version: "1.0.0" },
       policy: { profile: "policy.python-safe", status: "passed", findings: [] },
@@ -196,21 +207,31 @@ function cadSource(id: string): {
       }],
       unresolvedConstructs: [],
     },
+    effectiveUnit: authoredRootEffectiveUnit(
+      CAD_SOURCE_ID,
+      CAD_SOURCE_FINGERPRINT,
+    ),
   };
 }
 
-function photoSource(id: string): {
-  sourceText: string;
-  analysis: SourceAnalysisBundle;
-} {
-  const cad = cadSource(id);
+function photoSource(): FixtureSource {
+  const cad = cadSource();
   return {
-    sourceText: "result = Box(20, 10, 2)\n",
+    sourceText: PHOTO_SOURCE_TEXT,
     analysis: {
       ...cad.analysis,
+      source: {
+        ...cad.analysis.source,
+        id: PHOTO_SOURCE_ID,
+        fingerprint: PHOTO_SOURCE_FINGERPRINT,
+      },
       symbols: [{ id: "artifact.result", kind: "artifact", name: "result" }],
       dependencies: [],
     },
+    effectiveUnit: authoredRootEffectiveUnit(
+      PHOTO_SOURCE_ID,
+      PHOTO_SOURCE_FINGERPRINT,
+    ),
   };
 }
 
@@ -303,7 +324,7 @@ Deno.test(
     assertEquals(
       assembleThermalMethodSheetCompilationGaps(
         sheet,
-        [cadSource("source.cad")],
+        [cadSource()],
         [],
         elements,
         "build123d-source",
@@ -332,19 +353,16 @@ Deno.test(
   },
 );
 
-function modelicaSource(): {
-  sourceText: string;
-  analysis: SourceAnalysisBundle;
-} {
+function modelicaSource(): FixtureSource {
   return {
-    sourceText: "model Placeholder\nend Placeholder;\n",
+    sourceText: MODELICA_SOURCE_TEXT,
     analysis: {
       schemaVersion: "source-analysis/1.0",
       source: {
-        id: "placeholder-module",
+        id: MODELICA_SOURCE_ID,
         role: "modelica-model",
         language: "modelica",
-        fingerprint: { algorithm: "sha256", digest: "e".repeat(64) },
+        fingerprint: MODELICA_SOURCE_FINGERPRINT,
       },
       analyzer: { id: "modelica-closed-subset", version: "2.0.0" },
       policy: {
@@ -359,13 +377,17 @@ function modelicaSource(): {
       dependencies: [],
       unresolvedConstructs: [],
     },
+    effectiveUnit: authoredRootEffectiveUnit(
+      MODELICA_SOURCE_ID,
+      MODELICA_SOURCE_FINGERPRINT,
+    ),
   };
 }
 
 function parameterizesBinding() {
   return {
-    id: "binding:placeholder-module:placeholder-parameter:parameterizes",
-    sourceId: "placeholder-module",
+    id: `binding:${MODELICA_SOURCE_ID}:placeholder-parameter:parameterizes`,
+    sourceId: MODELICA_SOURCE_ID,
     sourceSymbolId: "placeholder-parameter",
     sysmlElementId: "placeholder-attribute-usage",
     sysmlElementKind: "AttributeUsage",
@@ -373,19 +395,16 @@ function parameterizesBinding() {
   };
 }
 
-function spiceSource(): {
-  sourceText: string;
-  analysis: SourceAnalysisBundle;
-} {
+function spiceSource(): FixtureSource {
   return {
-    sourceText: "Vin in 0 5\nRload in 0 1k\n",
+    sourceText: SPICE_SOURCE_TEXT,
     analysis: {
       schemaVersion: "source-analysis/1.0",
       source: {
-        id: "source.spice",
+        id: SPICE_SOURCE_ID,
         role: "spice-circuit",
         language: "spice",
-        fingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+        fingerprint: SPICE_SOURCE_FINGERPRINT,
       },
       analyzer: { id: "spice-circuit-closed-subset", version: "1.0.0" },
       policy: {
@@ -397,5 +416,53 @@ function spiceSource(): {
       dependencies: [],
       unresolvedConstructs: [],
     },
+    effectiveUnit: authoredRootEffectiveUnit(
+      SPICE_SOURCE_ID,
+      SPICE_SOURCE_FINGERPRINT,
+    ),
+  };
+}
+
+interface FixtureSource {
+  readonly sourceText: string;
+  readonly analysis: SourceAnalysisBundle;
+  readonly effectiveUnit: {
+    readonly kind: "authored-root";
+    readonly closureKind: "root-only";
+    readonly unitId: string;
+    readonly closureFingerprint: {
+      readonly algorithm: "sha256";
+      readonly digest: string;
+    };
+    readonly scriptFingerprint: {
+      readonly algorithm: "sha256";
+      readonly digest: string;
+    };
+  };
+}
+
+function authoredRootEffectiveUnit(
+  unitId: string,
+  fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
+) {
+  return {
+    kind: "authored-root" as const,
+    closureKind: "root-only" as const,
+    unitId,
+    closureFingerprint: fingerprint,
+    scriptFingerprint: fingerprint,
+  };
+}
+
+function technicalUnitId(
+  fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
+): string {
+  return `technical-unit:${fingerprint.digest}`;
+}
+
+function fingerprint(text: string) {
+  return {
+    algorithm: "sha256" as const,
+    digest: createHash("sha256").update(text, "utf8").digest("hex"),
   };
 }

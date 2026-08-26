@@ -4,6 +4,7 @@ import type {
   TechnicalSourceAttachmentAlignment,
   TechnicalSourceAttachmentProvenance,
   TechnicalSourceClosureProvenance,
+  TechnicalSourceEffectiveUnit,
 } from "../../../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
 import type { ContentFingerprint } from "../../../../../domain/kernel/primitives.ts";
 
@@ -40,6 +41,7 @@ export interface TechnicalCompilationSourceProvenance {
   /** Fingerprint of the complete opaque capture locator. */
   readonly captureFingerprint: ContentFingerprint;
   readonly analysisFingerprint: ContentFingerprint;
+  readonly effectiveUnit: TechnicalSourceEffectiveUnit;
   readonly attachment: TechnicalSourceAttachmentProvenance;
   readonly sourceClosure: TechnicalSourceClosureProvenance;
   readonly locator: TechnicalSourceAnalysisCaptureLocator;

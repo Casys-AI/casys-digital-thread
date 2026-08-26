@@ -277,7 +277,7 @@ Deno.test("Build123d execution admission fixes operation, schemas, target, profi
       `${PREFIX}.admissionArtifact.schemaVersion`,
       "technical-compilation-admission-capture/1.0",
     ],
-    [`${PREFIX}.compilation.document.schemaVersion`, "technical-compilation/2.0"],
+    [`${PREFIX}.compilation.document.schemaVersion`, "technical-compilation/1.0"],
     [`${PREFIX}.compilation.document.status`, "unresolved"],
     [`${PREFIX}.compilation.projection.target`, "calculix-source-candidate"],
     [`${PREFIX}.compilation.projection.status`, "rejected"],

@@ -207,10 +207,11 @@ async function admittedSource(): Promise<{
   readonly document: TechnicalCompilationDocument;
 }> {
   const sourceFingerprint = await sha256Fingerprint(SOURCE);
+  const unitId = `technical-unit:${sourceFingerprint.digest}`;
   const analysis = {
     schemaVersion: "source-analysis/1.0" as const,
     source: {
-      id: "source-1",
+      id: unitId,
       role: "cad-script" as const,
       language: "python" as const,
       fingerprint: sourceFingerprint,
@@ -234,7 +235,13 @@ async function admittedSource(): Promise<{
     sourceText: SOURCE,
     analysis,
     analysisFingerprint: await sha256Fingerprint(analysis),
-    closedDependencyCount: 0,
+    effectiveUnit: {
+      kind: "authored-root" as const,
+      closureKind: "root-only" as const,
+      unitId,
+      closureFingerprint: sourceFingerprint,
+      scriptFingerprint: sourceFingerprint,
+    },
   };
   const profileFingerprint = { algorithm: "sha256" as const, digest: DIGEST_A };
   const compilationProfile = {
@@ -249,7 +256,7 @@ async function admittedSource(): Promise<{
   };
   const binding = {
     id: "binding.size-z",
-    sourceId: "source-1",
+    sourceId: unitId,
     sourceSymbolId: "symbol.size-z",
     sysmlElementId: "attribute.size-z",
     sysmlElementKind: "AttributeUsage",
@@ -257,7 +264,7 @@ async function admittedSource(): Promise<{
   };
   return {
     document: {
-      schemaVersion: "technical-compilation/1.0",
+      schemaVersion: "technical-compilation/2.0",
       basis: {} as never,
       basisFingerprint: profileFingerprint,
       inputManifest: {

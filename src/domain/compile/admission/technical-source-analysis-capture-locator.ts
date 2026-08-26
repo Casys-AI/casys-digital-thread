@@ -40,11 +40,11 @@ import {
 import type { TechnicalCompilationBasis } from "./technical-compilation.ts";
 
 export const TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA =
-  "technical-source-analysis-capture/3.0" as const;
+  "technical-source-analysis-capture/4.0" as const;
 export const TECHNICAL_SOURCE_ANALYSIS_CAPTURE_KIND =
   "technical-source-analysis" as const;
 export const TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_SCHEMA =
-  "technical-source-analysis-capture-locator/3.0" as const;
+  "technical-source-analysis-capture-locator/4.0" as const;
 export const TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_KIND =
   "technical-source-analysis-capture-locator" as const;
 export const TECHNICAL_SOURCE_ANALYSIS_CAPTURE_URI_PREFIX =
@@ -90,6 +90,37 @@ export interface TechnicalSourceAnalysisCaptureLocator {
   readonly casUri: string;
 }
 
+/**
+ * The explicit relationship between the sealed author closure and the one
+ * script which the compiler is allowed to consume. `unlowered-closure` is a
+ * diagnostic state, never a disguised root-only executable unit.
+ */
+export type TechnicalSourceClosureKind =
+  | "root-only"
+  | "build123d-workspace-closure-lowered"
+  | "unlowered-closure";
+
+export type TechnicalSourceEffectiveUnit =
+  | {
+    readonly kind: "authored-root";
+    readonly closureKind: "root-only" | "unlowered-closure";
+    readonly unitId: string;
+    readonly closureFingerprint: ContentFingerprint;
+    readonly scriptFingerprint: ContentFingerprint;
+  }
+  | {
+    readonly kind: "build123d-workspace-closure-lowered";
+    readonly closureKind: "build123d-workspace-closure-lowered";
+    readonly unitId: string;
+    readonly closureFingerprint: ContentFingerprint;
+    readonly scriptFingerprint: ContentFingerprint;
+    readonly lowerer: {
+      readonly schemaVersion: "build123d-workspace-closure-lowering/1.0";
+      readonly kind: "build123d-workspace-closure-lowering";
+      readonly manifestFingerprint: ContentFingerprint;
+    };
+  };
+
 export interface TechnicalSourceProvenanceIdentity {
   readonly sourceId: string;
   readonly role: string;
@@ -104,9 +135,115 @@ export interface TechnicalSourceProvenanceIdentity {
   readonly sourceFingerprint: ContentFingerprint;
   readonly captureFingerprint: ContentFingerprint;
   readonly analysisFingerprint: ContentFingerprint;
+  readonly effectiveUnit: TechnicalSourceEffectiveUnit;
   readonly attachment: TechnicalSourceAttachmentProvenance;
   readonly sourceClosure: TechnicalSourceClosureProvenance;
   readonly locator: TechnicalSourceAnalysisCaptureLocator;
+}
+
+export function validateTechnicalSourceEffectiveUnit(
+  value: unknown,
+  sourceClosure: TechnicalSourceClosureProvenance | undefined,
+  sourceId: string,
+  sourceFingerprint: ContentFingerprint,
+  path = "$effectiveUnit",
+): TechnicalSourceEffectiveUnit {
+  const root = closedRecord(
+    value,
+    [
+      "kind",
+      "closureKind",
+      "unitId",
+      "closureFingerprint",
+      "scriptFingerprint",
+      "lowerer",
+    ],
+    ["kind", "closureKind", "unitId", "closureFingerprint", "scriptFingerprint"],
+    path,
+  );
+  const closureFingerprint = parseFingerprint(
+    root.closureFingerprint,
+    `${path}.closureFingerprint`,
+  );
+  const scriptFingerprint = parseFingerprint(
+    root.scriptFingerprint,
+    `${path}.scriptFingerprint`,
+  );
+  if (!fingerprintsEqual(scriptFingerprint, sourceFingerprint)) {
+    throw new TypeError(
+      `${path} must bind the exact effective script bytes.`,
+    );
+  }
+  if (
+    sourceClosure !== undefined &&
+    !fingerprintsEqual(closureFingerprint, sourceClosure.fingerprint)
+  ) {
+    throw new TypeError(`${path} must bind the exact sealed closure bytes.`);
+  }
+  const unitId = exactProjectId(root.unitId, `${path}.unitId`);
+  if (unitId !== `technical-unit:${closureFingerprint.digest}`) {
+    throw new TypeError(
+      `${path}.unitId must derive from the exact closure fingerprint.`,
+    );
+  }
+  if (root.kind === "authored-root") {
+    if (
+      (root.closureKind !== "root-only" && root.closureKind !== "unlowered-closure") ||
+      Object.hasOwn(root, "lowerer") ||
+      sourceId !== unitId
+    ) {
+      throw new TypeError(
+        `${path} authored-root must name the server-derived exact closure unit without a lowerer.`,
+      );
+    }
+    return deepFreeze({
+      kind: "authored-root",
+      closureKind: root.closureKind,
+      unitId,
+      closureFingerprint,
+      scriptFingerprint,
+    });
+  }
+  if (
+    root.kind !== "build123d-workspace-closure-lowered" ||
+    root.closureKind !== "build123d-workspace-closure-lowered" ||
+    !Object.hasOwn(root, "lowerer") ||
+    sourceId !== unitId
+  ) {
+    throw new TypeError(
+      `${path} must be one exact Build123d workspace-closure lowered unit.`,
+    );
+  }
+  const lowerer = exactRecord(root.lowerer, [
+    "schemaVersion",
+    "kind",
+    "manifestFingerprint",
+  ], `${path}.lowerer`);
+  literalValue(
+    lowerer.schemaVersion,
+    "build123d-workspace-closure-lowering/1.0",
+    `${path}.lowerer.schemaVersion`,
+  );
+  literalValue(
+    lowerer.kind,
+    "build123d-workspace-closure-lowering",
+    `${path}.lowerer.kind`,
+  );
+  return deepFreeze({
+    kind: "build123d-workspace-closure-lowered",
+    closureKind: "build123d-workspace-closure-lowered",
+    unitId,
+    closureFingerprint,
+    scriptFingerprint,
+    lowerer: {
+      schemaVersion: "build123d-workspace-closure-lowering/1.0",
+      kind: "build123d-workspace-closure-lowering",
+      manifestFingerprint: parseFingerprint(
+        lowerer.manifestFingerprint,
+        `${path}.lowerer.manifestFingerprint`,
+      ),
+    },
+  });
 }
 
 export type TechnicalSourceWorkspaceRecrossErrorCode =
@@ -493,9 +630,31 @@ export function technicalSourceProvenanceIdentitiesEqual(
     fingerprintsEqual(left.sourceFingerprint, right.sourceFingerprint) &&
     fingerprintsEqual(left.captureFingerprint, right.captureFingerprint) &&
     fingerprintsEqual(left.analysisFingerprint, right.analysisFingerprint) &&
+    technicalSourceEffectiveUnitsEqual(left.effectiveUnit, right.effectiveUnit) &&
     technicalSourceAttachmentProvenanceEqual(left.attachment, right.attachment) &&
     technicalSourceClosureProvenanceEqual(left.sourceClosure, right.sourceClosure) &&
     technicalSourceAnalysisCaptureLocatorsEqual(left.locator, right.locator);
+}
+
+export function technicalSourceEffectiveUnitsEqual(
+  left: TechnicalSourceEffectiveUnit,
+  right: TechnicalSourceEffectiveUnit,
+): boolean {
+  if (
+    left.kind !== right.kind || left.closureKind !== right.closureKind ||
+    left.unitId !== right.unitId ||
+    !fingerprintsEqual(left.closureFingerprint, right.closureFingerprint) ||
+    !fingerprintsEqual(left.scriptFingerprint, right.scriptFingerprint)
+  ) return false;
+  if (left.kind === "authored-root" && right.kind === "authored-root") return true;
+  return left.kind === "build123d-workspace-closure-lowered" &&
+    right.kind === "build123d-workspace-closure-lowered" &&
+    left.lowerer.schemaVersion === right.lowerer.schemaVersion &&
+    left.lowerer.kind === right.lowerer.kind &&
+    fingerprintsEqual(
+      left.lowerer.manifestFingerprint,
+      right.lowerer.manifestFingerprint,
+    );
 }
 
 export function assertTechnicalSourceAttachmentProvenanceEqual(

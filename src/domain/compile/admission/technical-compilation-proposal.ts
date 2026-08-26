@@ -36,9 +36,11 @@ import {
   type TechnicalSourceAnalysisCaptureLocator,
   type TechnicalSourceAttachmentProvenance,
   type TechnicalSourceClosureProvenance,
+  type TechnicalSourceEffectiveUnit,
   validateTechnicalSourceAnalysisCaptureLocator,
   validateTechnicalSourceAttachmentProvenance,
   validateTechnicalSourceClosureProvenance,
+  validateTechnicalSourceEffectiveUnit,
 } from "./technical-source-analysis-capture-locator.ts";
 
 /** Human-reviewed operation identity. It confers no execution authority. */
@@ -51,10 +53,10 @@ export const COMPILE_SEAL_ADMISSION_PRODUCER_TOOL =
   `${COMPILE_SEAL_ADMISSION_OPERATION.id}@${COMPILE_SEAL_ADMISSION_OPERATION.version}` as const;
 
 export const TECHNICAL_COMPILATION_ADMISSION_SCHEMA =
-  "technical-compilation-admission/3.0" as const;
+  "technical-compilation-admission/4.0" as const;
 
 export const TECHNICAL_COMPILATION_ADMISSION_CAPTURE_SCHEMA =
-  "technical-compilation-admission-capture/3.0" as const;
+  "technical-compilation-admission-capture/4.0" as const;
 
 export const TECHNICAL_COMPILATION_ADMISSION_LIMITS = {
   maxSources: 32,
@@ -78,6 +80,7 @@ export interface TechnicalCompilationAdmissionSource {
   readonly sourceFingerprint: ContentFingerprint;
   readonly captureFingerprint: ContentFingerprint;
   readonly analysisFingerprint: ContentFingerprint;
+  readonly effectiveUnit: TechnicalSourceEffectiveUnit;
   readonly attachment: TechnicalSourceAttachmentProvenance;
   readonly sourceClosure: TechnicalSourceClosureProvenance;
   readonly locator: TechnicalSourceAnalysisCaptureLocator;
@@ -178,7 +181,7 @@ const TARGET_SOURCE_CONTRACT: Readonly<
 };
 
 const FIXED_PARAMETER_COUNT = 24;
-const SOURCE_PARAMETER_COUNT = 49;
+const SOURCE_PARAMETER_COUNT = 57;
 const BINDING_PARAMETER_COUNT = 6;
 const PROFILE_REQUEST_FIXED_PARAMETER_COUNT = 5;
 const MAX_PARAMETER_COUNT = FIXED_PARAMETER_COUNT +
@@ -386,6 +389,13 @@ export function parseTechnicalCompilationAdmissionParameters(
       analysisFingerprint: requireFingerprint(
         values,
         `compile.admission.sources.${index}.analysisSha256`,
+      ),
+      effectiveUnit: parseAdmissionEffectiveUnit(
+        values,
+        index,
+        parseAdmissionSourceClosure(values, index),
+        requireId(values, `compile.admission.sources.${index}.id`),
+        requireFingerprint(values, `compile.admission.sources.${index}.sourceSha256`),
       ),
       attachment: parseAdmissionAttachment(values, index),
       sourceClosure: parseAdmissionSourceClosure(values, index),
@@ -604,6 +614,7 @@ function validateAdmission(
         "sourceFingerprint",
         "captureFingerprint",
         "analysisFingerprint",
+        "effectiveUnit",
         "attachment",
         "sourceClosure",
         "locator",
@@ -618,16 +629,27 @@ function validateAdmission(
       source.sourceClosure,
       `${path}.sources[${index}].sourceClosure`,
     );
+    if (attachment.fileId !== sourceClosure.root.fileId) {
+      throw new TypeError(
+        `${path}.sources[${index}].attachment.fileId must equal the authored source-closure root fileId.`,
+      );
+    }
     const locator = validateTechnicalSourceAnalysisCaptureLocator(
       source.locator,
       `${path}.sources[${index}].locator`,
     );
     const id = safeId(source.id, `${path}.sources[${index}].id`);
-    if (id !== sourceClosure.root.fileId || id !== attachment.fileId) {
-      throw new TypeError(
-        `${path}.sources[${index}].id must equal the captured attachment fileId and closure root.`,
-      );
-    }
+    const sourceFingerprint = parseFingerprint(
+      source.sourceFingerprint,
+      `${path}.sources[${index}].sourceFingerprint`,
+    );
+    const effectiveUnit = validateTechnicalSourceEffectiveUnit(
+      source.effectiveUnit,
+      sourceClosure,
+      id,
+      sourceFingerprint,
+      `${path}.sources[${index}].effectiveUnit`,
+    );
     return {
       id,
       role: technicalSourceRole(
@@ -654,10 +676,7 @@ function validateAdmission(
         source.analyzer,
         `${path}.sources[${index}].analyzer`,
       ),
-      sourceFingerprint: parseFingerprint(
-        source.sourceFingerprint,
-        `${path}.sources[${index}].sourceFingerprint`,
-      ),
+      sourceFingerprint,
       captureFingerprint: parseFingerprint(
         source.captureFingerprint,
         `${path}.sources[${index}].captureFingerprint`,
@@ -666,6 +685,7 @@ function validateAdmission(
         source.analysisFingerprint,
         `${path}.sources[${index}].analysisFingerprint`,
       ),
+      effectiveUnit,
       attachment,
       sourceClosure,
       locator,
@@ -1104,6 +1124,7 @@ function parameterSpecs(admission: TechnicalCompilationAdmission): ParameterSpec
       `Source ${index} analysis SHA-256`,
       source.analysisFingerprint.digest,
     );
+    encodeAdmissionEffectiveUnit(p, index, source.effectiveUnit);
     encodeAdmissionAttachment(p, index, source.attachment);
     encodeAdmissionSourceClosure(p, index, source.sourceClosure);
     p(
@@ -1353,6 +1374,95 @@ function encodeAdmissionAttachment(
     `compile.admission.sources.${index}.attachment.declaredAgainst.architecture.captureSchema`,
     `Source ${index} attachment architecture capture schema`,
     attachment.declaredAgainst.architecture.captureSchema,
+  );
+}
+
+function encodeAdmissionEffectiveUnit(
+  p: (key: string, label: string, value: ParameterValue) => void,
+  index: number,
+  effectiveUnit: TechnicalSourceEffectiveUnit,
+): void {
+  const prefix = `compile.admission.sources.${index}.effectiveUnit`;
+  p(`${prefix}.kind`, `Source ${index} effective unit kind`, effectiveUnit.kind);
+  p(
+    `${prefix}.closureKind`,
+    `Source ${index} closure kind`,
+    effectiveUnit.closureKind,
+  );
+  p(`${prefix}.unitId`, `Source ${index} effective unit ID`, effectiveUnit.unitId);
+  p(
+    `${prefix}.closureSha256`,
+    `Source ${index} effective closure SHA-256`,
+    effectiveUnit.closureFingerprint.digest,
+  );
+  p(
+    `${prefix}.scriptSha256`,
+    `Source ${index} effective script SHA-256`,
+    effectiveUnit.scriptFingerprint.digest,
+  );
+  if (effectiveUnit.kind === "build123d-workspace-closure-lowered") {
+    p(
+      `${prefix}.lowerer.schemaVersion`,
+      `Source ${index} lowerer schema version`,
+      effectiveUnit.lowerer.schemaVersion,
+    );
+    p(
+      `${prefix}.lowerer.kind`,
+      `Source ${index} lowerer kind`,
+      effectiveUnit.lowerer.kind,
+    );
+    p(
+      `${prefix}.lowerer.manifestSha256`,
+      `Source ${index} lowering manifest SHA-256`,
+      effectiveUnit.lowerer.manifestFingerprint.digest,
+    );
+  }
+}
+
+function parseAdmissionEffectiveUnit(
+  values: ReadonlyMap<string, ParameterValue>,
+  index: number,
+  sourceClosure: TechnicalSourceClosureProvenance,
+  sourceId: string,
+  sourceFingerprint: ContentFingerprint,
+): TechnicalSourceEffectiveUnit {
+  const prefix = `compile.admission.sources.${index}.effectiveUnit`;
+  const kind = requireValue(values, `${prefix}.kind`);
+  const closureKind = requireValue(values, `${prefix}.closureKind`);
+  const common = {
+    kind,
+    closureKind,
+    unitId: requireId(values, `${prefix}.unitId`),
+    closureFingerprint: requireFingerprint(values, `${prefix}.closureSha256`),
+    scriptFingerprint: requireFingerprint(values, `${prefix}.scriptSha256`),
+  };
+  const candidate = kind === "build123d-workspace-closure-lowered"
+    ? {
+      ...common,
+      lowerer: {
+        schemaVersion: requireLiteralString(
+          values,
+          `${prefix}.lowerer.schemaVersion`,
+          "build123d-workspace-closure-lowering/1.0",
+        ),
+        kind: requireLiteralString(
+          values,
+          `${prefix}.lowerer.kind`,
+          "build123d-workspace-closure-lowering",
+        ),
+        manifestFingerprint: requireFingerprint(
+          values,
+          `${prefix}.lowerer.manifestSha256`,
+        ),
+      },
+    }
+    : common;
+  return validateTechnicalSourceEffectiveUnit(
+    candidate,
+    sourceClosure,
+    sourceId,
+    sourceFingerprint,
+    `$parameters.${prefix}`,
   );
 }
 

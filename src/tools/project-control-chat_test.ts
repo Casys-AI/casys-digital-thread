@@ -44,7 +44,7 @@ const COMMON = {
 const TECHNICAL_SOURCE_REFERENCE = sampleTechnicalSourceAnalysisCaptureLocator();
 
 const TECHNICAL_SOURCE_CAPTURE_REVIEW = {
-  schemaVersion: "technical-source-capture-review/3.0",
+  schemaVersion: "technical-source-capture-review/4.0",
   reference: TECHNICAL_SOURCE_REFERENCE,
   parser: { status: "passed", profile: "profile.build123d" },
   levers: {
@@ -181,7 +181,7 @@ Deno.test("technical compilation preview forwards exact closed facts and passes 
   const readyResult = {
     status: "ready-for-review",
     document: {
-      schemaVersion: "technical-compilation/1.0",
+      schemaVersion: "technical-compilation/2.0",
       status: "ready-for-review",
       projections: [],
     },

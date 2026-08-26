@@ -14,13 +14,13 @@ import {
 } from "./execution-evidence.ts";
 import { parseAdmittedModelicaIsolatedEvidence } from "./isolated-output.ts";
 import {
-  MODELICA_ADMITTED_OUTPUT_MANIFEST,
-  parseModelicaAdmittedRunAdmissionParameters,
   encodeModelicaAdmittedRunAdmissionParameters,
   MODELICA_ADMITTED_COMPILATION_PROFILE_ID,
   MODELICA_ADMITTED_COMPILED_ADMISSION_SCHEMA,
   MODELICA_ADMITTED_EXECUTION_PROFILE,
+  MODELICA_ADMITTED_OUTPUT_MANIFEST,
   MODELICA_ADMITTED_RUN_ADMISSION_SCHEMA,
+  parseModelicaAdmittedRunAdmissionParameters,
 } from "./run-proposal.ts";
 import {
   MICROSANDBOX_LOCAL_ISOLATION_CLASS,
@@ -80,7 +80,7 @@ function admissionRecord() {
     },
     compilation: {
       document: {
-        schemaVersion: "technical-compilation/1.0",
+        schemaVersion: "technical-compilation/2.0",
         fingerprint: fingerprint("b"),
         status: "ready-for-review",
       },
@@ -113,8 +113,7 @@ function admissionRecord() {
       },
       runtimeBackend: {
         ...MICROSANDBOX_LOCAL_RUNTIME_REF,
-        imageReference:
-          `casys/modelica-microsandbox-worker@sha256:${"4".repeat(64)}`,
+        imageReference: `casys/modelica-microsandbox-worker@sha256:${"4".repeat(64)}`,
         imageDigest: fingerprint("4"),
       },
       runtime: {
@@ -150,9 +149,7 @@ async function publishedFixture(options: {
   const resultSha256 = await fingerprintResourceBytes(resultBytes);
   const evidenceBytes = new TextEncoder().encode(deterministicJson({
     schemaVersion: "modelica-isolated-evidence/2.0",
-    inputBundleSha256: options.evidenceInputBundleDrift
-      ? "a".repeat(64)
-      : sourceSha256,
+    inputBundleSha256: options.evidenceInputBundleDrift ? "a".repeat(64) : sourceSha256,
     status: "succeeded",
     method: {
       lowering: { id: "modelica-omc-lowering", version: "1.0.0" },
@@ -295,9 +292,7 @@ Deno.test("published output evidence rejects journaled hash mismatch and extra o
   const drifted = {
     ...fixture.receipt,
     outputs: fixture.receipt.outputs.map((output) =>
-      output.role === "result"
-        ? { ...output, sha256: "c".repeat(64) }
-        : output
+      output.role === "result" ? { ...output, sha256: "c".repeat(64) } : output
     ),
   } as IsolatedCodeExecutionReceipt;
   await assertRejects(

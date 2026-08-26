@@ -39,7 +39,10 @@ import {
   parseTechnicalCompilationAdmissionParameters,
   TECHNICAL_COMPILATION_ADMISSION_SCHEMA,
 } from "../../../../../domain/compile/admission/technical-compilation-proposal.ts";
-import { sampleAdmissionSourceWorkspaceFields } from "../../../../../testing/technical-source-capture-test-support.ts";
+import {
+  sampleAdmissionSourceWorkspaceFields,
+  technicalSourceCaptureInput,
+} from "../../../../../testing/technical-source-capture-test-support.ts";
 import { sha256Fingerprint } from "../../../../../domain/kernel/deterministic-json.ts";
 import { SpiceCircuitSourceAnalyzer } from "../../../../../adapters/electrical/spice/circuit-source-analyzer.ts";
 import { PrepareProjectAdmittedSpiceRunReview } from "./prepare-run-review.ts";
@@ -123,8 +126,20 @@ Deno.test(
 
 async function harness(): Promise<Harness> {
   const sourceText = SPICE_DIVIDER_SOURCE;
-  const analysis = await new SpiceCircuitSourceAnalyzer().analyze({
+  const sourceWorkspace = sampleAdmissionSourceWorkspaceFields(
+    "source.spice.divider",
+    { projectId: "project.ramp" },
+  );
+  const sourceCapture = technicalSourceCaptureInput({
+    profileId: "spice-circuit-closed-subset-v1",
     sourceId: "source.spice.divider",
+    sourceText,
+    projectId: "project.ramp",
+    attachment: sourceWorkspace.attachment,
+    sourceClosure: sourceWorkspace.sourceClosure,
+  });
+  const analysis = await new SpiceCircuitSourceAnalyzer().analyze({
+    sourceId: sourceCapture.sourceId,
     role: "spice-circuit",
     language: "spice",
     sourceText,
@@ -178,7 +193,7 @@ async function harness(): Promise<Harness> {
       sourceText,
       analysis,
       analysisFingerprint,
-      closedDependencyCount: 0,
+      effectiveUnit: sourceCapture.effectiveUnit,
     }],
     bindings: [],
     profileRequests: [{
@@ -237,9 +252,10 @@ async function harness(): Promise<Harness> {
         sourceFingerprint,
         captureFingerprint: { algorithm: "sha256", digest: "4".repeat(64) },
         analysisFingerprint,
-        ...sampleAdmissionSourceWorkspaceFields(analysis.source.id, {
-          projectId: "project.ramp",
-        }),
+        effectiveUnit: sourceCapture.effectiveUnit,
+        attachment: sourceCapture.attachment,
+        sourceClosure: sourceCapture.sourceClosure,
+        locator: sourceWorkspace.locator,
       }],
       bindings: compiled.document.inputManifest.bindings,
       compilationProfileRequests: [{
@@ -272,7 +288,7 @@ async function harness(): Promise<Harness> {
     artifactFingerprint,
   };
   const reopened: ReopenedTechnicalCompilationAdmission = {
-    schemaVersion: "technical-compilation-admission-capture/3.0",
+    schemaVersion: "technical-compilation-admission-capture/4.0",
     operation: COMPILE_SEAL_ADMISSION_OPERATION,
     trustedRunId: "run.compile.seal",
     decisionId: "decision.compile.seal",

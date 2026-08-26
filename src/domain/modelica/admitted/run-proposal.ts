@@ -36,7 +36,7 @@ export const SIMULATE_RUN_ADMITTED_MODELICA_OPERATION = Object.freeze(
 export const MODELICA_ADMITTED_RUN_ADMISSION_SCHEMA =
   "modelica-admitted-run-admission/3.0" as const;
 export const MODELICA_ADMITTED_COMPILATION_SCHEMA =
-  "technical-compilation/1.0" as const;
+  "technical-compilation/2.0" as const;
 export const MODELICA_ADMITTED_COMPILED_ADMISSION_SCHEMA =
   TECHNICAL_COMPILATION_ADMISSION_CAPTURE_SCHEMA;
 

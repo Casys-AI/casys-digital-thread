@@ -18,7 +18,7 @@ import {
 } from "./technical-source-analysis-capture-locator.ts";
 
 export const TECHNICAL_SOURCE_CAPTURE_REVIEW_SCHEMA =
-  "technical-source-capture-review/3.0" as const;
+  "technical-source-capture-review/4.0" as const;
 
 export interface TechnicalSourceCaptureReview {
   readonly schemaVersion: typeof TECHNICAL_SOURCE_CAPTURE_REVIEW_SCHEMA;

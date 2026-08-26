@@ -8,6 +8,7 @@
  */
 
 import {
+  closedRecord,
   deepFreeze,
   exactRecord,
   literalValue,
@@ -37,7 +38,10 @@ import {
   FileByteStore,
   type VerifiedStoredBytes,
 } from "../../shared/cas/file-byte-store.ts";
-import type { TechnicalSourceAnalysisCapture } from "../../../application/ports/out/compile/admission/technical-source-analysis-capture.ts";
+import type {
+  TechnicalSourceAnalysisCapture,
+  TechnicalSourceCapturedEffectiveUnit,
+} from "../../../application/ports/out/compile/admission/technical-source-analysis-capture.ts";
 import {
   TechnicalSourceAnalysisCaptureError,
   type TechnicalSourceAnalysisCaptureErrorCode,
@@ -52,10 +56,18 @@ import {
   type TechnicalSourceAnalysisCaptureLocator,
   type TechnicalSourceAttachmentProvenance,
   type TechnicalSourceClosureProvenance,
+  type TechnicalSourceEffectiveUnit,
+  validateTechnicalSourceEffectiveUnit,
   validateTechnicalSourceAnalysisCaptureLocator,
   validateTechnicalSourceAttachmentProvenance,
   validateTechnicalSourceClosureProvenance,
 } from "../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
+import {
+  BUILD123D_WORKSPACE_CLOSURE_LOWERING_KIND,
+  BUILD123D_WORKSPACE_CLOSURE_LOWERING_SCHEMA,
+  type Build123dWorkspaceClosureLoweringManifest,
+  validateBuild123dWorkspaceClosureLoweringManifest,
+} from "../../../domain/cad/source/build123d-workspace-closure-lowering.ts";
 
 export {
   TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
@@ -84,6 +96,14 @@ export interface TechnicalSourceAnalysisProfile {
   readonly analyzer: SourceAnalysisAnalyzer;
   /** UTF-8 byte ceiling applied before any source hashing, CAS write, or analysis. */
   readonly maxSourceBytes: number;
+  /** Server-owned policy for the only admitted multi-file executable unit. */
+  readonly workspaceClosureLowering?: {
+    readonly schemaVersion: typeof BUILD123D_WORKSPACE_CLOSURE_LOWERING_SCHEMA;
+    readonly kind: typeof BUILD123D_WORKSPACE_CLOSURE_LOWERING_KIND;
+    readonly maxClosureFiles: number;
+    readonly maxClosureSourceBytes: number;
+    readonly maxEffectiveScriptBytes: number;
+  };
 }
 
 export interface TechnicalSourceAnalysisProfileRegistration {
@@ -178,6 +198,7 @@ export interface TechnicalSourceAnalysisCaptureDocument {
   readonly kind: typeof TECHNICAL_SOURCE_ANALYSIS_CAPTURE_KIND;
   readonly attachment: TechnicalSourceAttachmentProvenance;
   readonly sourceClosure: TechnicalSourceClosureProvenance;
+  readonly effectiveUnit: TechnicalSourceCapturedEffectiveUnit;
   readonly profile: {
     readonly id: string;
     readonly version: string;
@@ -250,6 +271,7 @@ export class TechnicalSourceAnalysisCaptureService
     readonly profileId: string;
     readonly sourceId: string;
     readonly sourceText: string;
+    readonly effectiveUnit: TechnicalSourceCapturedEffectiveUnit;
     readonly attachment: TechnicalSourceAttachmentProvenance;
     readonly sourceClosure: TechnicalSourceClosureProvenance;
   }): Promise<{
@@ -273,12 +295,20 @@ export class TechnicalSourceAnalysisCaptureService
     /** Assigned by the server before this boundary; never derived from a label. */
     readonly sourceId: string;
     readonly sourceText: string;
+    readonly effectiveUnit: TechnicalSourceCapturedEffectiveUnit;
     readonly attachment: TechnicalSourceAttachmentProvenance;
     readonly sourceClosure: TechnicalSourceClosureProvenance;
   }): Promise<TechnicalSourceAnalysisCaptureLocator> {
     const input = exactRecord(
       inputValue,
-      ["profileId", "sourceId", "sourceText", "attachment", "sourceClosure"],
+      [
+        "profileId",
+        "sourceId",
+        "sourceText",
+        "effectiveUnit",
+        "attachment",
+        "sourceClosure",
+      ],
       "$technicalSourceCaptureInput",
     );
     const registration = this.#profiles.requireForCapture(
@@ -300,12 +330,9 @@ export class TechnicalSourceAnalysisCaptureService
       input.sourceClosure,
       "$technicalSourceCaptureInput.sourceClosure",
     );
-    if (
-      sourceId !== attachment.fileId ||
-      sourceId !== sourceClosure.root.fileId
-    ) {
+    if (attachment.fileId !== sourceClosure.root.fileId) {
       throw new TypeError(
-        "$technicalSourceCaptureInput.sourceId must equal the captured attachment fileId and closure root.",
+        "$technicalSourceCaptureInput.attachment.fileId must equal the authored sourceClosure root fileId.",
       );
     }
     const sourceText = requireSourceText(
@@ -313,13 +340,25 @@ export class TechnicalSourceAnalysisCaptureService
       "$technicalSourceCaptureInput.sourceText",
     );
     const sourceBytes = new TextEncoder().encode(sourceText);
-    if (sourceBytes.byteLength > profile.maxSourceBytes) {
+    const maximumEffectiveScriptBytes = effectiveScriptByteLimit(
+      profile,
+      input.effectiveUnit,
+    );
+    if (sourceBytes.byteLength > maximumEffectiveScriptBytes) {
       throw new TechnicalSourceAnalysisCaptureError(
         "source_size_limit_exceeded",
-        `Technical source is ${sourceBytes.byteLength} UTF-8 bytes; registered profile ${profile.id}@${profile.version} permits at most ${profile.maxSourceBytes}.`,
+        `Technical source is ${sourceBytes.byteLength} UTF-8 bytes; registered profile ${profile.id}@${profile.version} permits at most ${maximumEffectiveScriptBytes} effective-script bytes.`,
       );
     }
     const sourceFingerprint = await fingerprintBytes(sourceBytes);
+    const effectiveUnit = await validateCapturedEffectiveUnit(
+      input.effectiveUnit,
+      sourceClosure,
+      sourceId,
+      sourceFingerprint,
+      profile,
+      "$technicalSourceCaptureInput.effectiveUnit",
+    );
 
     let sourceStored: VerifiedStoredBytes<"technical-source">;
     try {
@@ -383,6 +422,7 @@ export class TechnicalSourceAnalysisCaptureService
       kind: TECHNICAL_SOURCE_ANALYSIS_CAPTURE_KIND,
       attachment,
       sourceClosure,
+      effectiveUnit,
       profile: {
         id: profile.id,
         version: profile.version,
@@ -569,6 +609,14 @@ export class TechnicalSourceAnalysisCaptureService
         reference,
       );
     }
+    await validateCapturedEffectiveUnit(
+      reference.effectiveUnit,
+      reference.sourceClosure,
+      reference.source.id,
+      fingerprintFromDigest(reference.source.sha256),
+      profile,
+      "$technicalSourceAnalysisCapture.effectiveUnit",
+    );
 
     const sourceFingerprint = fingerprintFromDigest(reference.source.sha256);
     if (this.#sourceCaptures.uriFor(sourceFingerprint) !== reference.source.casUri) {
@@ -591,7 +639,10 @@ export class TechnicalSourceAnalysisCaptureService
     if (
       sourceBytes === undefined ||
       sourceBytes.byteLength !== reference.source.byteCount ||
-      sourceBytes.byteLength > profile.maxSourceBytes
+      sourceBytes.byteLength > effectiveScriptByteLimit(
+        profile,
+        reference.effectiveUnit,
+      )
     ) {
       throw new TechnicalSourceAnalysisCaptureError(
         "source_capture_invalid",
@@ -697,10 +748,10 @@ export class TechnicalSourceAnalysisCaptureService
 }
 
 /** Strictly validate the closed replay reference, including its profile hash. */
-export function validateTechnicalSourceAnalysisCaptureDocument(
+export async function validateTechnicalSourceAnalysisCaptureDocument(
   value: unknown,
   path = "$technicalSourceAnalysisCapture",
-): TechnicalSourceAnalysisCaptureDocument {
+): Promise<TechnicalSourceAnalysisCaptureDocument> {
   const root = exactRecord(
     value,
     [
@@ -708,6 +759,7 @@ export function validateTechnicalSourceAnalysisCaptureDocument(
       "kind",
       "attachment",
       "sourceClosure",
+      "effectiveUnit",
       "profile",
       "source",
       "analysis",
@@ -732,6 +784,11 @@ export function validateTechnicalSourceAnalysisCaptureDocument(
     root.sourceClosure,
     `${path}.sourceClosure`,
   );
+  if (attachment.fileId !== sourceClosure.root.fileId) {
+    throw new TypeError(
+      `${path}.attachment.fileId must equal the authored sourceClosure root fileId.`,
+    );
+  }
 
   const profileInput = exactRecord(
     root.profile,
@@ -804,19 +861,21 @@ export function validateTechnicalSourceAnalysisCaptureDocument(
     `${path}.analysis.policy.status`,
   );
   const sourceId = safeId(sourceInput.id, `${path}.source.id`);
-  if (
-    sourceId !== attachment.fileId || sourceId !== sourceClosure.root.fileId
-  ) {
-    throw new TypeError(
-      `${path}.source.id must equal the captured attachment fileId and closure root.`,
-    );
-  }
+  const effectiveUnit = await validateCapturedEffectiveUnit(
+    root.effectiveUnit,
+    sourceClosure,
+    sourceId,
+    { algorithm: "sha256", digest: sourceSha256 },
+    undefined,
+    `${path}.effectiveUnit`,
+  );
 
   return deepFreeze({
     schemaVersion: TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA,
     kind: TECHNICAL_SOURCE_ANALYSIS_CAPTURE_KIND,
     attachment,
     sourceClosure,
+    effectiveUnit,
     profile: {
       id: profile.id,
       version: profile.version,
@@ -852,8 +911,17 @@ export function validateTechnicalSourceAnalysisProfile(
   value: unknown,
   path = "$technicalSourceAnalysisProfile",
 ): TechnicalSourceAnalysisProfile {
-  const input = exactRecord(
+  const input = closedRecord(
     value,
+    [
+      "id",
+      "version",
+      "role",
+      "language",
+      "analyzer",
+      "maxSourceBytes",
+      "workspaceClosureLowering",
+    ],
     ["id", "version", "role", "language", "analyzer", "maxSourceBytes"],
     path,
   );
@@ -875,6 +943,21 @@ export function validateTechnicalSourceAnalysisProfile(
       `${path} must select cad-script/python, modelica-model/modelica, or spice-circuit/spice; brief, plain-text, SysML, TypeScript, and CalculiX input are not executable technical-source profiles.`,
     );
   }
+  const workspaceClosureLowering = Object.hasOwn(
+    input,
+    "workspaceClosureLowering",
+  )
+    ? validateWorkspaceClosureLoweringPolicy(
+      input.workspaceClosureLowering,
+      `${path}.workspaceClosureLowering`,
+    )
+    : undefined;
+  if (workspaceClosureLowering !== undefined &&
+    !(role === "cad-script" && language === "python")) {
+    throw new TypeError(
+      `${path}.workspaceClosureLowering is Build123d/cad-script only.`,
+    );
+  }
   return deepFreeze({
     id: safeId(input.id, `${path}.id`),
     version: safeVersion(input.version, `${path}.version`),
@@ -888,7 +971,128 @@ export function validateTechnicalSourceAnalysisProfile(
       input.maxSourceBytes,
       `${path}.maxSourceBytes`,
     ),
+    ...(workspaceClosureLowering === undefined ? {} : { workspaceClosureLowering }),
   });
+}
+
+function validateWorkspaceClosureLoweringPolicy(
+  value: unknown,
+  path: string,
+): NonNullable<TechnicalSourceAnalysisProfile["workspaceClosureLowering"]> {
+  const policy = exactRecord(
+    value,
+    [
+      "schemaVersion",
+      "kind",
+      "maxClosureFiles",
+      "maxClosureSourceBytes",
+      "maxEffectiveScriptBytes",
+    ],
+    path,
+  );
+  literalValue(
+    policy.schemaVersion,
+    BUILD123D_WORKSPACE_CLOSURE_LOWERING_SCHEMA,
+    `${path}.schemaVersion`,
+  );
+  literalValue(
+    policy.kind,
+    BUILD123D_WORKSPACE_CLOSURE_LOWERING_KIND,
+    `${path}.kind`,
+  );
+  return deepFreeze({
+    schemaVersion: BUILD123D_WORKSPACE_CLOSURE_LOWERING_SCHEMA,
+    kind: BUILD123D_WORKSPACE_CLOSURE_LOWERING_KIND,
+    maxClosureFiles: positiveInteger(policy.maxClosureFiles, `${path}.maxClosureFiles`),
+    maxClosureSourceBytes: boundedSourceBytes(
+      policy.maxClosureSourceBytes,
+      `${path}.maxClosureSourceBytes`,
+    ),
+    maxEffectiveScriptBytes: boundedSourceBytes(
+      policy.maxEffectiveScriptBytes,
+      `${path}.maxEffectiveScriptBytes`,
+    ),
+  });
+}
+
+function effectiveScriptByteLimit(
+  profile: TechnicalSourceAnalysisProfile,
+  effectiveUnit: unknown,
+): number {
+  return (
+      effectiveUnit !== null && typeof effectiveUnit === "object" &&
+      (effectiveUnit as { kind?: unknown }).kind ===
+        "build123d-workspace-closure-lowered"
+    )
+    ? profile.workspaceClosureLowering?.maxEffectiveScriptBytes ??
+      profile.maxSourceBytes
+    : profile.maxSourceBytes;
+}
+
+async function validateCapturedEffectiveUnit(
+  value: unknown,
+  sourceClosure: TechnicalSourceClosureProvenance,
+  sourceId: string,
+  sourceFingerprint: ContentFingerprint,
+  profile: TechnicalSourceAnalysisProfile | undefined,
+  path: string,
+): Promise<TechnicalSourceCapturedEffectiveUnit> {
+  const root = closedRecord(
+    value,
+    [
+      "kind",
+      "closureKind",
+      "unitId",
+      "closureFingerprint",
+      "scriptFingerprint",
+      "lowerer",
+      "loweringManifest",
+    ],
+    ["kind", "closureKind", "unitId", "closureFingerprint", "scriptFingerprint"],
+    path,
+  );
+  const { loweringManifest: _loweringManifest, ...compactValue } = root;
+  const compact = validateTechnicalSourceEffectiveUnit(
+    compactValue,
+    sourceClosure,
+    sourceId,
+    sourceFingerprint,
+    path,
+  );
+  if (compact.kind !== "build123d-workspace-closure-lowered") {
+    if (Object.hasOwn(root, "loweringManifest")) {
+      throw new TypeError(`${path}.loweringManifest is only valid for a lowered unit.`);
+    }
+    return compact;
+  }
+  if (!Object.hasOwn(root, "loweringManifest")) {
+    throw new TypeError(`${path}.loweringManifest is required for a lowered unit.`);
+  }
+  if (profile !== undefined && profile.workspaceClosureLowering === undefined) {
+    throw new TypeError(
+      `${path} requests Build123d workspace lowering without the exact profile-owned policy.`,
+    );
+  }
+  const loweringManifest = await validateBuild123dWorkspaceClosureLoweringManifest(
+    root.loweringManifest,
+    `${path}.loweringManifest`,
+  );
+  if (
+    !sameFingerprint(loweringManifest.fingerprint, compact.lowerer.manifestFingerprint) ||
+    !sameFingerprint(loweringManifest.closure.fingerprint, sourceClosure.fingerprint) ||
+    loweringManifest.closure.root.fileId !== sourceClosure.root.fileId ||
+    loweringManifest.closure.root.fileRevision !== sourceClosure.root.fileRevision ||
+    !sameFingerprint(loweringManifest.script.fingerprint, sourceFingerprint)
+  ) {
+    throw new TypeError(`${path}.loweringManifest disagrees with the effective unit.`);
+  }
+  if (
+    profile !== undefined &&
+    loweringManifest.sources.length > profile.workspaceClosureLowering!.maxClosureFiles
+  ) {
+    throw new TypeError(`${path}.loweringManifest exceeds the profile closure-file limit.`);
+  }
+  return deepFreeze({ ...compact, loweringManifest });
 }
 
 type PersistedTechnicalSourceProfileDescriptor = Omit<

@@ -309,7 +309,7 @@ class FakeTargetPartAdmissionReader
       projectId: record.projectId,
     });
     return Promise.resolve({
-      schemaVersion: "technical-compilation-admission-capture/3.0",
+      schemaVersion: "technical-compilation-admission-capture/4.0",
       operation: { id: "compile.seal-admission", version: "3" },
       trustedRunId: "run:compile-target-admission",
       decisionId: "decision:compile-target-admission",

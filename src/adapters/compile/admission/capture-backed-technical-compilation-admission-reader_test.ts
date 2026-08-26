@@ -279,7 +279,16 @@ Deno.test("capture-backed admission reader refuses different-basis alignment and
             }
             return {
               ...exact,
-              source: { ...exact.source, closedDependencyCount: 1 },
+              source: {
+                ...exact.source,
+                effectiveUnit: unloweredAuthoredRoot(exact.source.effectiveUnit),
+              },
+              provenance: {
+                ...exact.provenance,
+                effectiveUnit: unloweredAuthoredRoot(
+                  exact.provenance.effectiveUnit,
+                ),
+              },
             };
           },
         },
@@ -379,7 +388,7 @@ function locatorBackedSourceReader(
           sourceText: reopened.sourceText,
           analysis: reopened.analysis,
           analysisFingerprint,
-          closedDependencyCount: 0,
+          effectiveUnit: reopened.document.effectiveUnit,
         },
         provenance: {
           profile: reopened.document.profile,
@@ -390,6 +399,7 @@ function locatorBackedSourceReader(
           },
           captureFingerprint: request.referenceFingerprint,
           analysisFingerprint,
+          effectiveUnit: reopened.document.effectiveUnit,
           attachment: reopened.document.attachment,
           sourceClosure: reopened.document.sourceClosure,
           locator: reopened.locator,
@@ -398,6 +408,15 @@ function locatorBackedSourceReader(
       };
     },
   };
+}
+
+function unloweredAuthoredRoot(
+  effectiveUnit: TechnicalCompilationSource["effectiveUnit"],
+) {
+  if (effectiveUnit.kind !== "authored-root") {
+    throw new Error("Fixture expected an authored-root effective unit.");
+  }
+  return { ...effectiveUnit, closureKind: "unlowered-closure" as const };
 }
 
 async function withFixture(run: (fixture: Fixture) => Promise<void>): Promise<void> {
@@ -429,7 +448,7 @@ async function buildFixture(directory: string): Promise<Fixture> {
     analysisFingerprint: await fingerprintSourceAnalysisBundle(
       reopenedSource.analysis,
     ),
-    closedDependencyCount: 0,
+    effectiveUnit: persistedSource.document.effectiveUnit,
   };
 
   const sysmlFingerprint = await sha256Fingerprint({ sysml: "reader.fixture" });
@@ -650,6 +669,7 @@ async function buildFixture(directory: string): Promise<Fixture> {
       sourceFingerprint: source.analysis.source.fingerprint,
       captureFingerprint: sourceReferenceFingerprint,
       analysisFingerprint: source.analysisFingerprint,
+      effectiveUnit: persistedSource.document.effectiveUnit,
       attachment: persistedSource.document.attachment,
       sourceClosure: persistedSource.document.sourceClosure,
       locator: persistedSource.locator,

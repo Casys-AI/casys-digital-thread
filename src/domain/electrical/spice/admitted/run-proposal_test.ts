@@ -33,7 +33,7 @@ function admission(): Record<string, unknown> {
     },
     compilation: {
       document: {
-        schemaVersion: "technical-compilation/1.0",
+        schemaVersion: "technical-compilation/2.0",
         fingerprint: fingerprint("b"),
         status: "ready-for-review",
       },

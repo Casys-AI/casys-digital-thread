@@ -21,6 +21,7 @@ import {
   validateTechnicalSourceAnalysisCaptureLocator,
   validateTechnicalSourceAttachmentProvenance,
   validateTechnicalSourceClosureProvenance,
+  validateTechnicalSourceEffectiveUnit,
 } from "../../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
 import {
   encodeTechnicalCompilationAdmissionParameters,
@@ -293,7 +294,7 @@ export class PreviewProjectTechnicalCompilation
       analysis: item.source.analysis,
       attachmentTarget: item.provenance.attachment.target,
       attachmentAlignment: item.provenance.attachmentAlignment,
-      closedDependencyCount: item.source.closedDependencyCount,
+      effectiveUnit: item.source.effectiveUnit,
     }));
     let profileRequests: ReturnType<typeof deriveTechnicalCompilationProfileRequests>;
     let bindings: ReturnType<typeof deriveUniqueTechnicalCompilationBindings>;
@@ -652,6 +653,7 @@ function validateReopenedSource(
     const provenance = parseSourceProvenance(
       reopened.provenance,
       "$reopenedSource.provenance",
+      source,
     );
     if (
       !fingerprintsEqual(
@@ -667,7 +669,9 @@ function validateReopenedSource(
         source.analysisFingerprint,
       ) ||
       provenance.analyzer.id !== source.analysis.analyzer.id ||
-      provenance.analyzer.version !== source.analysis.analyzer.version
+      provenance.analyzer.version !== source.analysis.analyzer.version ||
+      deterministicJson(provenance.effectiveUnit) !==
+        deterministicJson(source.effectiveUnit)
     ) {
       throw previewError(
         "source_integrity_failed",
@@ -692,6 +696,7 @@ function validateReopenedSource(
 function parseSourceProvenance(
   value: unknown,
   path: string,
+  source: ReopenedTechnicalCompilationSource["source"],
 ): TechnicalCompilationSourceProvenance {
   const provenance = exactRecord(
     value,
@@ -701,6 +706,7 @@ function parseSourceProvenance(
       "sourceFingerprint",
       "captureFingerprint",
       "analysisFingerprint",
+      "effectiveUnit",
       "attachment",
       "sourceClosure",
       "locator",
@@ -742,6 +748,16 @@ function parseSourceProvenance(
     analysisFingerprint: parseFingerprint(
       provenance.analysisFingerprint,
       `${path}.analysisFingerprint`,
+    ),
+    effectiveUnit: validateTechnicalSourceEffectiveUnit(
+      provenance.effectiveUnit,
+      validateTechnicalSourceClosureProvenance(
+        provenance.sourceClosure,
+        `${path}.sourceClosure`,
+      ),
+      source.analysis.source.id,
+      source.analysis.source.fingerprint,
+      `${path}.effectiveUnit`,
     ),
     attachment: validateTechnicalSourceAttachmentProvenance(
       provenance.attachment,
@@ -891,6 +907,7 @@ function deriveAdmissionParameters(
           sourceFingerprint: reopened.provenance.sourceFingerprint,
           captureFingerprint: reopened.provenance.captureFingerprint,
           analysisFingerprint: reopened.provenance.analysisFingerprint,
+          effectiveUnit: reopened.provenance.effectiveUnit,
           attachment: reopened.provenance.attachment,
           sourceClosure: reopened.provenance.sourceClosure,
           locator: reopened.provenance.locator,

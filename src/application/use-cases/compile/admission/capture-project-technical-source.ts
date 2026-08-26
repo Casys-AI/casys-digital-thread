@@ -55,6 +55,9 @@ import {
   AgentResourceReopenError,
   type ReopenAgentResource,
 } from "../../resource/reopen-agent-resource.ts";
+import {
+  lowerBuild123dWorkspaceClosure,
+} from "../../../../domain/cad/source/build123d-workspace-closure-lowering.ts";
 
 export interface CaptureProjectTechnicalSourceDependencies {
   readonly workspace: ProjectSourceWorkspaceEventStore;
@@ -176,10 +179,25 @@ export class CaptureProjectTechnicalSource
       );
     }
     let sourceText: string;
+    let sourceId: string;
+    let effectiveUnit;
+    if (
+      closure.files.length > 1 &&
+      profile.workspaceClosureLowering !== undefined &&
+      closure.files.length > profile.workspaceClosureLowering.maxClosureFiles
+    ) {
+      throw captureError(
+        "source_size_limit_exceeded",
+        "The exact workspace closure exceeds its server-owned Build123d lowering file limit.",
+      );
+    }
     try {
       sourceText = (await this.#resources.reopenUtf8Text(root.resourceRef, {
         acceptedMimeTypes: acceptedMimeTypesForTechnicalLanguage(profile.language),
-        maxBytes: profile.maxSourceBytes,
+        maxBytes: closure.files.length > 1 &&
+            profile.workspaceClosureLowering !== undefined
+          ? profile.workspaceClosureLowering.maxClosureSourceBytes
+          : profile.maxSourceBytes,
       })).text;
     } catch (cause) {
       if (
@@ -193,6 +211,100 @@ export class CaptureProjectTechnicalSource
         "The workspace AgentResourceReference could not be reopened as exact technical source bytes.",
         cause,
       );
+    }
+
+    if (closure.files.length === 1) {
+      sourceId = `technical-unit:${closure.fingerprint.digest}`;
+      effectiveUnit = {
+        kind: "authored-root" as const,
+        closureKind: "root-only" as const,
+        unitId: sourceId,
+        closureFingerprint: closure.fingerprint,
+        scriptFingerprint: root.resourceRef.fingerprint,
+      };
+    } else if (profile.workspaceClosureLowering !== undefined) {
+      const exactTexts = new Map<string, string>();
+      let closureSourceBytes = 0;
+      for (const file of closure.files) {
+        let text: string;
+        try {
+          text = (await this.#resources.reopenUtf8Text(file.resourceRef, {
+            acceptedMimeTypes: acceptedMimeTypesForTechnicalLanguage(profile.language),
+            maxBytes: profile.workspaceClosureLowering.maxClosureSourceBytes,
+          })).text;
+        } catch (cause) {
+          throw captureError(
+            "resource_reopen_failed",
+            `Workspace AgentResourceReference for ${file.fileId}@${file.fileRevision} could not be reopened as exact Build123d source text.`,
+            cause,
+          );
+        }
+        exactTexts.set(`${file.fileId}@${file.fileRevision}`, text);
+        closureSourceBytes += new TextEncoder().encode(text).byteLength;
+      }
+      if (closureSourceBytes > profile.workspaceClosureLowering.maxClosureSourceBytes) {
+        throw captureError(
+          "source_size_limit_exceeded",
+          "The exact workspace closure exceeds its server-owned Build123d lowering byte limit.",
+        );
+      }
+      let lowered;
+      try {
+        lowered = await lowerBuild123dWorkspaceClosure({
+          closure,
+          root: {
+            fileId: root.fileId,
+            fileRevision: root.fileRevision,
+            sourceText: exactTexts.get(`${root.fileId}@${root.fileRevision}`)!,
+          },
+          dependencies: closure.files.filter((file) =>
+            file.fileId !== root.fileId || file.fileRevision !== root.fileRevision
+          ).map((file) => ({
+            fileId: file.fileId,
+            fileRevision: file.fileRevision,
+            sourceText: exactTexts.get(`${file.fileId}@${file.fileRevision}`)!,
+          })),
+        });
+      } catch (cause) {
+        throw captureError(
+          "analysis_rejected",
+          "The exact Build123d workspace closure cannot be lowered by the registered profile.",
+          cause,
+        );
+      }
+      sourceText = lowered.script;
+      if (
+        new TextEncoder().encode(sourceText).byteLength >
+          profile.workspaceClosureLowering.maxEffectiveScriptBytes
+      ) {
+        throw captureError(
+          "source_size_limit_exceeded",
+          "The lowered Build123d executable script exceeds its server-owned effective-script byte limit.",
+        );
+      }
+      sourceId = `technical-unit:${closure.fingerprint.digest}`;
+      effectiveUnit = {
+        kind: "build123d-workspace-closure-lowered" as const,
+        closureKind: "build123d-workspace-closure-lowered" as const,
+        unitId: sourceId,
+        closureFingerprint: closure.fingerprint,
+        scriptFingerprint: lowered.scriptFingerprint,
+        lowerer: {
+          schemaVersion: lowered.schemaVersion,
+          kind: lowered.kind,
+          manifestFingerprint: lowered.manifest.fingerprint,
+        },
+        loweringManifest: lowered.manifest,
+      };
+    } else {
+      sourceId = `technical-unit:${closure.fingerprint.digest}`;
+      effectiveUnit = {
+        kind: "authored-root" as const,
+        closureKind: "unlowered-closure" as const,
+        unitId: sourceId,
+        closureFingerprint: closure.fingerprint,
+        scriptFingerprint: root.resourceRef.fingerprint,
+      };
     }
 
     let closureLocator;
@@ -221,8 +333,9 @@ export class CaptureProjectTechnicalSource
     try {
       persisted = await this.#captures.persist({
         profileId: profile.id,
-        sourceId: root.fileId,
+        sourceId,
         sourceText,
+        effectiveUnit,
         attachment,
         sourceClosure,
       });
@@ -250,8 +363,8 @@ export class CaptureProjectTechnicalSource
         reopened.document.sourceClosure,
         "$persistedTechnicalSource.sourceClosure",
       );
-      if (reopened.document.source.id !== root.fileId) {
-        throw new TypeError("Capture document source.id must equal the root fileId.");
+      if (reopened.document.source.id !== sourceId) {
+        throw new TypeError("Capture document source.id must equal the effective unit id.");
       }
       return assembleTechnicalSourceCaptureReview(
         locator,

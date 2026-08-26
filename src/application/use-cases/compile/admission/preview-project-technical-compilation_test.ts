@@ -47,6 +47,8 @@ const SPICE_LOCATOR = sampleTechnicalSourceAnalysisCaptureLocator("d".repeat(64)
 const MODELICA_LOCATOR = sampleTechnicalSourceAnalysisCaptureLocator(
   "e".repeat(64),
 );
+const SOURCE_CLOSURE_DIGEST = "d".repeat(64);
+const TECHNICAL_UNIT_ID = `technical-unit:${SOURCE_CLOSURE_DIGEST}`;
 
 interface Harness {
   readonly service: PreviewProjectTechnicalCompilation;
@@ -111,6 +113,7 @@ class FakeSourceReader implements TechnicalCompilationSourceReader {
         ? { algorithm: "sha256" as const, digest: "e".repeat(64) }
         : request.referenceFingerprint,
       analysisFingerprint: this.source.analysisFingerprint,
+      effectiveUnit: this.source.effectiveUnit,
       ...sampleAdmissionSourceWorkspaceFields(this.source.analysis.source.id, {
         projectId: request.projectId,
       }),
@@ -189,7 +192,7 @@ async function harness(
   options: {
     readonly photo?: boolean;
     readonly unmatchedAttribute?: boolean;
-    readonly closedDependencies?: number;
+    readonly unloweredClosure?: boolean;
   } = {},
 ): Promise<Harness> {
   const sourceText = options.photo
@@ -204,7 +207,7 @@ async function harness(
   const analysis: SourceAnalysisBundle = {
     schemaVersion: "source-analysis/1.0",
     source: {
-      id: "source.cad",
+      id: TECHNICAL_UNIT_ID,
       role: "cad-script",
       language: "python",
       fingerprint: sourceFingerprint,
@@ -242,7 +245,10 @@ async function harness(
     sourceText,
     analysis,
     analysisFingerprint: await fingerprintSourceAnalysisBundle(analysis),
-    closedDependencyCount: options.closedDependencies ?? 0,
+    effectiveUnit: authoredRootEffectiveUnit(
+      sourceFingerprint,
+      options.unloweredClosure ? "unlowered-closure" : "root-only",
+    ),
   };
   const sysmlArtifactFingerprint = {
     algorithm: "sha256" as const,
@@ -355,7 +361,7 @@ Deno.test("preview reopens server facts, saves and rereads a deterministic provi
   assertEquals(admission.basis.fingerprint, result.document.basisFingerprint);
   assertEquals(admission.basis.sysml.rootElementId, "sysml.package.main");
   assertEquals(admission.basis.sysml.rootElementKind, "Package");
-  assertEquals(admission.sources[0].id, "source.cad");
+  assertEquals(admission.sources[0].id, TECHNICAL_UNIT_ID);
   assertEquals(admission.sources[0].role, "cad-script");
   assertEquals(admission.sources[0].language, "python");
   assertEquals(admission.sources[0].profileId, "source-profile.python");
@@ -368,7 +374,7 @@ Deno.test("preview reopens server facts, saves and rereads a deterministic provi
     result.decisionParameters,
   );
   assertEquals(fixture.draftStore.saved?.sourceCaptures.length, 1);
-  assertEquals(fixture.draftStore.saved?.sourceCaptures[0].sourceId, "source.cad");
+  assertEquals(fixture.draftStore.saved?.sourceCaptures[0].sourceId, TECHNICAL_UNIT_ID);
   assertEquals(fixture.draftStore.saved?.sourceCaptures[0].reference, CAD_LOCATOR);
   assertEquals(
     fixture.draftStore.saved?.sourceCaptures[0].referenceFingerprint,
@@ -376,7 +382,7 @@ Deno.test("preview reopens server facts, saves and rereads a deterministic provi
   );
   assertEquals(
     result.document.projections[0].sources[0].analysis.source.id,
-    "source.cad",
+    TECHNICAL_UNIT_ID,
   );
   assert(!recursiveKeys(result).has("provider"));
   assert(Object.isFrozen(result));
@@ -624,7 +630,7 @@ Deno.test("unresolved and rejected previews expose no draft or sealing parameter
   assertEquals(unresolvedResult.gaps, [{
     code: "binding.missing",
     relation: "parameterizes",
-    sourceId: "source.cad",
+    sourceId: TECHNICAL_UNIT_ID,
     symbolName: "thickness",
     symbolKind: "parameter",
     reason: "no-unique-AttributeUsage",
@@ -681,7 +687,7 @@ Deno.test(
       leverGap?.code === "source.no-named-numeric-lever"
         ? leverGap.sourceId
         : undefined,
-      "source.cad",
+      TECHNICAL_UNIT_ID,
     );
     assert(!Object.hasOwn(result, "draft"));
     assert(!Object.hasOwn(result, "decisionParameters"));
@@ -692,7 +698,7 @@ Deno.test(
 Deno.test(
   "multi-file closure preview stays unresolved with a literal dependency-lowering gap",
   async () => {
-    const fixture = await harness({ closedDependencies: 1 });
+    const fixture = await harness({ unloweredClosure: true });
     const result = await fixture.service.execute(fixture.command);
     assertEquals(result.status, "unresolved");
     assert(
@@ -702,8 +708,8 @@ Deno.test(
     );
     assertEquals(result.gaps, [{
       code: "source.dependency-lowering-unavailable",
-      sourceId: "source.cad",
-      closedDependencyCount: 1,
+      sourceId: TECHNICAL_UNIT_ID,
+      closureKind: "unlowered-closure",
       recovery: TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.dependencyLowering,
     }]);
     assert(!Object.hasOwn(result, "draft"));
@@ -863,7 +869,7 @@ Deno.test("preview selects the unique SPICE catalogue profile and rejects caller
   const analysis: SourceAnalysisBundle = {
     schemaVersion: "source-analysis/1.0",
     source: {
-      id: "source.spice",
+      id: TECHNICAL_UNIT_ID,
       role: "spice-circuit",
       language: "spice",
       fingerprint: sourceFingerprint,
@@ -882,7 +888,7 @@ Deno.test("preview selects the unique SPICE catalogue profile and rejects caller
     sourceText,
     analysis,
     analysisFingerprint: await fingerprintSourceAnalysisBundle(analysis),
-    closedDependencyCount: 0,
+    effectiveUnit: authoredRootEffectiveUnit(sourceFingerprint),
   };
   const sysmlProvenance = {
     artifactId: "artifact.sysml",
@@ -1047,7 +1053,7 @@ async function crossDomainMethodSheetPreview(): Promise<{
   const cadAnalysis: SourceAnalysisBundle = {
     schemaVersion: "source-analysis/1.0",
     source: {
-      id: "source.cad",
+      id: TECHNICAL_UNIT_ID,
       role: "cad-script",
       language: "python",
       fingerprint: cadFingerprint,
@@ -1079,7 +1085,7 @@ async function crossDomainMethodSheetPreview(): Promise<{
   const spiceAnalysis: SourceAnalysisBundle = {
     schemaVersion: "source-analysis/1.0",
     source: {
-      id: "source.spice",
+      id: TECHNICAL_UNIT_ID,
       role: "spice-circuit",
       language: "spice",
       fingerprint: spiceFingerprint,
@@ -1097,7 +1103,7 @@ async function crossDomainMethodSheetPreview(): Promise<{
   const modelicaAnalysis: SourceAnalysisBundle = {
     schemaVersion: "source-analysis/1.0",
     source: {
-      id: "source.modelica",
+      id: TECHNICAL_UNIT_ID,
       role: "modelica-model",
       language: "modelica",
       fingerprint: modelicaFingerprint,
@@ -1120,13 +1126,13 @@ async function crossDomainMethodSheetPreview(): Promise<{
       sourceText: cadText,
       analysis: cadAnalysis,
       analysisFingerprint: await fingerprintSourceAnalysisBundle(cadAnalysis),
-      closedDependencyCount: 0,
+      effectiveUnit: authoredRootEffectiveUnit(cadFingerprint),
     },
     [SPICE_LOCATOR.fingerprint.digest]: {
       sourceText: spiceText,
       analysis: spiceAnalysis,
       analysisFingerprint: await fingerprintSourceAnalysisBundle(spiceAnalysis),
-      closedDependencyCount: 0,
+      effectiveUnit: authoredRootEffectiveUnit(spiceFingerprint),
     },
     [MODELICA_LOCATOR.fingerprint.digest]: {
       sourceText: modelicaText,
@@ -1134,7 +1140,7 @@ async function crossDomainMethodSheetPreview(): Promise<{
       analysisFingerprint: await fingerprintSourceAnalysisBundle(
         modelicaAnalysis,
       ),
-      closedDependencyCount: 0,
+      effectiveUnit: authoredRootEffectiveUnit(modelicaFingerprint),
     },
   };
 
@@ -1283,6 +1289,7 @@ class MappingSourceReader implements TechnicalCompilationSourceReader {
         sourceFingerprint: source.analysis.source.fingerprint,
         captureFingerprint: request.referenceFingerprint,
         analysisFingerprint: source.analysisFingerprint,
+        effectiveUnit: source.effectiveUnit,
         ...sampleAdmissionSourceWorkspaceFields(source.analysis.source.id, {
           projectId: request.projectId,
         }),
@@ -1291,6 +1298,22 @@ class MappingSourceReader implements TechnicalCompilationSourceReader {
       },
     });
   }
+}
+
+function authoredRootEffectiveUnit(
+  scriptFingerprint: { readonly algorithm: "sha256"; readonly digest: string },
+  closureKind: "root-only" | "unlowered-closure" = "root-only",
+) {
+  return {
+    kind: "authored-root" as const,
+    closureKind,
+    unitId: TECHNICAL_UNIT_ID,
+    closureFingerprint: {
+      algorithm: "sha256" as const,
+      digest: SOURCE_CLOSURE_DIGEST,
+    },
+    scriptFingerprint,
+  };
 }
 
 function recursiveKeys(value: unknown, into = new Set<string>()): Set<string> {

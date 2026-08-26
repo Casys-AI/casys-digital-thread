@@ -459,7 +459,7 @@ Deno.test("technical source capture accepts only attachmentId,attachmentRevision
   }).properties.reference.properties;
   assertEquals(
     reference.schemaVersion.const,
-    "technical-source-analysis-capture-locator/3.0",
+    "technical-source-analysis-capture-locator/4.0",
   );
   assertEquals(
     reference.kind.const,

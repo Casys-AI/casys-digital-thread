@@ -52,6 +52,8 @@ annotation(experiment(
   Tolerance = 1e-6));
 end ReopenedTemperatureTrial;
 `;
+const SOURCE_CLOSURE_DIGEST = "d".repeat(64);
+const SOURCE_ID = `technical-unit:${SOURCE_CLOSURE_DIGEST}`;
 
 Deno.test("admitted compilation reopen returns exact Modelica bytes for the microVM request", async () => {
   const fixture = await harness();
@@ -140,13 +142,20 @@ class FakeAdmissionReader implements TechnicalCompilationAdmissionReader {
 async function harness() {
   const sourceText = MODELICA_CLOSED_SUBSET_V2_SOURCE;
   const analysis = await new QualifiedModelicaSourceAnalyzer().analyze({
-    sourceId: "source.modelica.reopened-temperature-trial",
+    sourceId: SOURCE_ID,
     role: "modelica-model",
     language: "modelica",
     sourceText,
   });
   const sourceFingerprint = await fingerprintTechnicalSourceText(sourceText);
   const analysisFingerprint = await fingerprintSourceAnalysisBundle(analysis);
+  const effectiveUnit = {
+    kind: "authored-root" as const,
+    closureKind: "root-only" as const,
+    unitId: SOURCE_ID,
+    closureFingerprint: { algorithm: "sha256" as const, digest: SOURCE_CLOSURE_DIGEST },
+    scriptFingerprint: sourceFingerprint,
+  };
   const sysmlFingerprint = { algorithm: "sha256" as const, digest: "2".repeat(64) };
   const provenance = {
     artifactId: "artifact.sysml",
@@ -202,7 +211,7 @@ async function harness() {
       sourceText,
       analysis,
       analysisFingerprint,
-      closedDependencyCount: 0,
+      effectiveUnit,
     }],
     bindings: [
       {
@@ -289,6 +298,7 @@ async function harness() {
         sourceFingerprint,
         captureFingerprint: { algorithm: "sha256", digest: "4".repeat(64) },
         analysisFingerprint,
+        effectiveUnit,
         ...sampleAdmissionSourceWorkspaceFields(analysis.source.id, {
           projectId: "project.ramp",
           locatorDigest: "4".repeat(64),
@@ -309,12 +319,12 @@ async function harness() {
     }),
   );
   const artifactFingerprint = await sha256Fingerprint({
-    schemaVersion: "technical-compilation-admission-capture/3.0",
+    schemaVersion: "technical-compilation-admission-capture/4.0",
     projectId: "project.ramp",
     compilation: compiled.fingerprint,
   });
   const reopened: ReopenedTechnicalCompilationAdmission = {
-    schemaVersion: "technical-compilation-admission-capture/3.0",
+    schemaVersion: "technical-compilation-admission-capture/4.0",
     operation: COMPILE_SEAL_ADMISSION_OPERATION,
     trustedRunId: "run.compile.seal",
     decisionId: "decision.compile.seal",

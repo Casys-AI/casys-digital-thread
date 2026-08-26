@@ -10,6 +10,7 @@ import {
   PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
   TECHNICAL_COMPILATION_INPUT_SCHEMA,
   TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
+  TECHNICAL_COMPILATION_SCHEMA,
   type TechnicalCompilationTarget,
   uniqueCompilationAdmissionTarget,
   uniqueCompilationDocumentTarget,
@@ -30,6 +31,12 @@ const THREAD_FINGERPRINT = {
   algorithm: "sha256",
   digest: "1".repeat(64),
 } as const;
+const CAD_UNIT_ID = `technical-unit:${"c".repeat(64)}`;
+const MODELICA_UNIT_ID = `technical-unit:${"d".repeat(64)}`;
+const SPICE_UNIT_ID = `technical-unit:${"e".repeat(64)}`;
+const ORPHAN_UNIT_ID = `technical-unit:${"f".repeat(64)}`;
+const SECONDARY_CAD_UNIT_ID = `technical-unit:${"a".repeat(64)}`;
+const REAL_CAD_UNIT_ID = `technical-unit:${"b".repeat(64)}`;
 
 async function fixture(options: FixtureOptions = {}): Promise<Fixture> {
   const cadText = [
@@ -50,7 +57,7 @@ async function fixture(options: FixtureOptions = {}): Promise<Fixture> {
   ].join("\n");
 
   const cad = await sourceUnit({
-    sourceId: "source.cad",
+    sourceId: CAD_UNIT_ID,
     role: "cad-script",
     language: "python",
     sourceText: cadText,
@@ -108,7 +115,7 @@ async function fixture(options: FixtureOptions = {}): Promise<Fixture> {
       : [],
   });
   const modelica = await sourceUnit({
-    sourceId: "source.modelica",
+    sourceId: MODELICA_UNIT_ID,
     role: "modelica-model",
     language: "modelica",
     sourceText: modelicaText,
@@ -173,7 +180,7 @@ async function fixture(options: FixtureOptions = {}): Promise<Fixture> {
       bindings: [
         {
           id: "binding.cad.a",
-          sourceId: "source.cad",
+          sourceId: CAD_UNIT_ID,
           sourceSymbolId: "cad.param.a",
           sysmlElementId: "sysml.param.b",
           sysmlElementKind: "AttributeUsage",
@@ -181,7 +188,7 @@ async function fixture(options: FixtureOptions = {}): Promise<Fixture> {
         },
         {
           id: "binding.cad.b",
-          sourceId: "source.cad",
+          sourceId: CAD_UNIT_ID,
           sourceSymbolId: "cad.param.b",
           sysmlElementId: "sysml.param.a",
           sysmlElementKind: "AttributeUsage",
@@ -189,7 +196,7 @@ async function fixture(options: FixtureOptions = {}): Promise<Fixture> {
         },
         {
           id: "binding.modelica.power",
-          sourceId: "source.modelica",
+          sourceId: MODELICA_UNIT_ID,
           sourceSymbolId: "modelica.power",
           sysmlElementId: "sysml.param.power",
           sysmlElementKind: "AttributeUsage",
@@ -200,17 +207,17 @@ async function fixture(options: FixtureOptions = {}): Promise<Fixture> {
         {
           profileId: "profile.modelica",
           profileVersion: "1.0.0",
-          sourceIds: ["source.modelica"],
+          sourceIds: [MODELICA_UNIT_ID],
         },
         {
           profileId: "profile.calculix",
           profileVersion: "1.0.0",
-          sourceIds: ["source.cad"],
+          sourceIds: [CAD_UNIT_ID],
         },
         {
           profileId: "profile.build123d",
           profileVersion: PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
-          sourceIds: ["source.cad"],
+          sourceIds: [CAD_UNIT_ID],
         },
       ],
     },
@@ -265,6 +272,7 @@ async function sourceUnit(options: {
   readonly unresolvedConstructs: readonly unknown[];
 }): Promise<Record<string, unknown>> {
   const sourceFingerprint = await fingerprintTechnicalSourceText(options.sourceText);
+  const closureDigest = options.sourceId.slice("technical-unit:".length);
   const analysis = {
     schemaVersion: "source-analysis/1.0",
     source: {
@@ -287,7 +295,26 @@ async function sourceUnit(options: {
     sourceText: options.sourceText,
     analysis,
     analysisFingerprint: await fingerprintSourceAnalysisBundle(analysis),
-    closedDependencyCount: 0,
+    effectiveUnit: {
+      kind: "authored-root",
+      closureKind: "root-only",
+      unitId: options.sourceId,
+      closureFingerprint: { algorithm: "sha256", digest: closureDigest },
+      scriptFingerprint: sourceFingerprint,
+    },
+  };
+}
+
+function rootOnlyEffectiveUnit(unitId: string, scriptFingerprint: unknown) {
+  return {
+    kind: "authored-root" as const,
+    closureKind: "root-only" as const,
+    unitId,
+    closureFingerprint: {
+      algorithm: "sha256" as const,
+      digest: unitId.slice("technical-unit:".length),
+    },
+    scriptFingerprint,
   };
 }
 
@@ -322,6 +349,32 @@ Deno.test("technical compiler emits frozen review projections and an external fi
   ]);
   const observedKeys = recursiveKeys(result.document);
   for (const key of forbiddenAuthorityKeys) assert(!observedKeys.has(key));
+});
+
+Deno.test("technical compilation V2 is a clean breaking schema cut", async () => {
+  const { input, catalog } = await fixture();
+  assertEquals(TECHNICAL_COMPILATION_INPUT_SCHEMA, "technical-compilation-input/2.0");
+  assertEquals(TECHNICAL_COMPILATION_SCHEMA, "technical-compilation/2.0");
+
+  const compiled = await compileTechnicalSources(input, catalog);
+
+  const legacyInput = structuredClone(input);
+  legacyInput.schemaVersion = "technical-compilation-input/1.0";
+  await assertRejects(
+    () => compileTechnicalSources(legacyInput, catalog),
+    TypeError,
+    '"technical-compilation-input/2.0"',
+  );
+
+  const legacyDocument = {
+    ...compiled.document,
+    schemaVersion: "technical-compilation/1.0",
+  };
+  await assertRejects(
+    () => validateTechnicalCompilationDocument(legacyDocument),
+    TypeError,
+    '"technical-compilation/2.0"',
+  );
 });
 
 Deno.test("technical compiler rejects prose, solver input, and surplus execution authority", async () => {
@@ -504,7 +557,7 @@ Deno.test("technical compiler detects basis, anchor, source, and analysis finger
   const changedSource = structuredClone(input);
   const cad = values(changedSource.sources).map(record).find((source) =>
     record(source.analysis).source &&
-    record(record(source.analysis).source).id === "source.cad"
+    record(record(source.analysis).source).id === CAD_UNIT_ID
   );
   assert(cad);
   cad.sourceText = `${cad.sourceText as string}\n`;
@@ -516,7 +569,7 @@ Deno.test("technical compiler detects basis, anchor, source, and analysis finger
 
   const changedAnalysis = structuredClone(input);
   const modelica = values(changedAnalysis.sources).map(record).find((source) =>
-    record(record(source.analysis).source).id === "source.modelica"
+    record(record(source.analysis).source).id === MODELICA_UNIT_ID
   );
   assert(modelica);
   record(record(modelica.analysis).analyzer).version = "1.0.1";
@@ -685,7 +738,7 @@ Deno.test(
     const base = await fixture();
     const input = structuredClone(base.input);
     const cad = values(input.sources).map(record).find((source) =>
-      record(record(source.analysis).source).id === "source.cad"
+      record(record(source.analysis).source).id === CAD_UNIT_ID
     );
     assert(cad);
     const photo = "from build123d import Box\nresult = Box(20, 10, 5)\n";
@@ -693,6 +746,10 @@ Deno.test(
     const analysis = record(cad.analysis);
     record(analysis.source).fingerprint = await fingerprintTechnicalSourceText(
       photo,
+    );
+    cad.effectiveUnit = rootOnlyEffectiveUnit(
+      CAD_UNIT_ID,
+      record(analysis.source).fingerprint,
     );
     cad.analysisFingerprint = await fingerprintSourceAnalysisBundle(analysis);
 
@@ -703,7 +760,7 @@ Deno.test(
         diagnostic.code === "source.no-named-numeric-lever" &&
         diagnostic.profileRef ===
           `profile.build123d@${PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION}` &&
-        diagnostic.subjectRef === "source.cad"
+        diagnostic.subjectRef === CAD_UNIT_ID
       ),
     );
     const build123d = result.document.projections.find((item) =>
@@ -742,7 +799,7 @@ Deno.test(
     profile.version = "1.0.0";
 
     const cad = values(input.sources).map(record).find((source) =>
-      record(record(source.analysis).source).id === "source.cad"
+      record(record(source.analysis).source).id === CAD_UNIT_ID
     );
     assert(cad);
     const photo = "from build123d import Box\nresult = Box(20, 10, 5)\n";
@@ -751,11 +808,15 @@ Deno.test(
     record(analysis.source).fingerprint = await fingerprintTechnicalSourceText(
       photo,
     );
+    cad.effectiveUnit = rootOnlyEffectiveUnit(
+      CAD_UNIT_ID,
+      record(analysis.source).fingerprint,
+    );
     analysis.symbols = [{ id: "cad.result", kind: "artifact", name: "result" }];
     analysis.dependencies = [];
     cad.analysisFingerprint = await fingerprintSourceAnalysisBundle(analysis);
     input.bindings = values(input.bindings).filter((binding) =>
-      record(binding).sourceId !== "source.cad"
+      record(binding).sourceId !== CAD_UNIT_ID
     );
 
     const compiled = await compileTechnicalSources(input, catalog);
@@ -777,7 +838,7 @@ Deno.test(
     const base = await fixture();
     const input = structuredClone(base.input);
     const cad = values(input.sources).map(record).find((source) =>
-      record(record(source.analysis).source).id === "source.cad"
+      record(record(source.analysis).source).id === CAD_UNIT_ID
     );
     assert(cad);
     const sourceText = [
@@ -790,6 +851,10 @@ Deno.test(
     const analysis = record(cad.analysis);
     record(analysis.source).fingerprint = await fingerprintTechnicalSourceText(
       sourceText,
+    );
+    cad.effectiveUnit = rootOnlyEffectiveUnit(
+      CAD_UNIT_ID,
+      record(analysis.source).fingerprint,
     );
     analysis.symbols = [{
       id: "cad.param.a",
@@ -826,7 +891,7 @@ Deno.test(
     const base = await fixture();
     const input = structuredClone(base.input);
     const cad = values(input.sources).map(record).find((source) =>
-      record(record(source.analysis).source).id === "source.cad"
+      record(record(source.analysis).source).id === CAD_UNIT_ID
     );
     assert(cad);
     const sourceText = [
@@ -839,6 +904,10 @@ Deno.test(
     const analysis = record(cad.analysis);
     record(analysis.source).fingerprint = await fingerprintTechnicalSourceText(
       sourceText,
+    );
+    cad.effectiveUnit = rootOnlyEffectiveUnit(
+      CAD_UNIT_ID,
+      record(analysis.source).fingerprint,
     );
     analysis.symbols = [{
       id: "cad.param.a",
@@ -861,7 +930,7 @@ Deno.test(
     }];
     cad.analysisFingerprint = await fingerprintSourceAnalysisBundle(analysis);
     input.bindings = values(input.bindings).filter((binding) =>
-      record(binding).sourceId !== "source.cad" ||
+      record(binding).sourceId !== CAD_UNIT_ID ||
       record(binding).sourceSymbolId === "cad.result"
     );
 
@@ -883,11 +952,11 @@ Deno.test(
         code: "binding.missing",
         profileRef:
           `profile.build123d@${PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION}`,
-        subjectRef: "source.cad:cad.param.a",
+        subjectRef: `${CAD_UNIT_ID}:cad.param.a`,
       }, {
         code: "binding.missing",
         profileRef: "profile.calculix@1.0.0",
-        subjectRef: "source.cad:cad.param.a",
+        subjectRef: `${CAD_UNIT_ID}:cad.param.a`,
       }],
     );
   },
@@ -901,7 +970,7 @@ Deno.test(
     const analysis = {
       schemaVersion: "source-analysis/1.0",
       source: {
-        id: "source.modelica",
+        id: MODELICA_UNIT_ID,
         role: "modelica-model",
         language: "modelica",
         fingerprint: sourceFingerprint,
@@ -991,18 +1060,18 @@ Deno.test(
         sourceText,
         analysis,
         analysisFingerprint: await fingerprintSourceAnalysisBundle(analysis),
-        closedDependencyCount: 0,
+        effectiveUnit: rootOnlyEffectiveUnit(MODELICA_UNIT_ID, sourceFingerprint),
       }],
       bindings: [{
-        id: "binding:source.modelica:parameter.power:parameterizes",
-        sourceId: "source.modelica",
+        id: "binding:modelica:parameter.power:parameterizes",
+        sourceId: MODELICA_UNIT_ID,
         sourceSymbolId: "parameter.power",
         sysmlElementId: "sysml.driver.power",
         sysmlElementKind: "AttributeUsage",
         relation: "parameterizes",
       }, {
-        id: "binding:source.modelica:parameter.state:parameterizes",
-        sourceId: "source.modelica",
+        id: "binding:modelica:parameter.state:parameterizes",
+        sourceId: MODELICA_UNIT_ID,
         sourceSymbolId: "parameter.state",
         sysmlElementId: "sysml.head.state",
         sysmlElementKind: "AttributeUsage",
@@ -1011,7 +1080,7 @@ Deno.test(
       profileRequests: [{
         profileId: "profile.modelica",
         profileVersion: "2.0.0",
-        sourceIds: ["source.modelica"],
+        sourceIds: [MODELICA_UNIT_ID],
       }],
     }, {
       schemaVersion: TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
@@ -1049,7 +1118,7 @@ Deno.test("CAD admission stays unresolved when the result artifact is unbound", 
       diagnostic.code === "binding.missing" &&
       diagnostic.profileRef ===
         `profile.build123d@${PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION}` &&
-      diagnostic.subjectRef === "source.cad:cad.result"
+      diagnostic.subjectRef === `${CAD_UNIT_ID}:cad.result`
     ),
   );
 });
@@ -1107,7 +1176,7 @@ Deno.test("server-owned profile rejects an exact analyzer id or version mismatch
     const { input, catalog } = await fixture();
     const candidate = structuredClone(input);
     const cad = values(candidate.sources).map(record).find((source) =>
-      record(record(source.analysis).source).id === "source.cad"
+      record(record(source.analysis).source).id === CAD_UNIT_ID
     );
     assert(cad);
     const analysis = record(cad.analysis);
@@ -1119,7 +1188,7 @@ Deno.test("server-owned profile rejects an exact analyzer id or version mismatch
     assert(
       result.document.diagnostics.some((diagnostic) =>
         diagnostic.code === "source.analyzer-mismatch" &&
-        diagnostic.subjectRef === "source.cad"
+        diagnostic.subjectRef === CAD_UNIT_ID
       ),
     );
   }
@@ -1129,25 +1198,29 @@ Deno.test("orphan technical sources and their bindings are rejected", async () =
   const { input, catalog } = await fixture();
   const orphanSourceInput = structuredClone(input);
   const cad = values(orphanSourceInput.sources).map(record).find((source) =>
-    record(record(source.analysis).source).id === "source.cad"
+    record(record(source.analysis).source).id === CAD_UNIT_ID
   );
   assert(cad);
   const orphan = structuredClone(cad);
   const orphanAnalysis = record(orphan.analysis);
-  record(orphanAnalysis.source).id = "source.cad.orphan";
+  record(orphanAnalysis.source).id = ORPHAN_UNIT_ID;
+  orphan.effectiveUnit = rootOnlyEffectiveUnit(
+    ORPHAN_UNIT_ID,
+    record(orphanAnalysis.source).fingerprint,
+  );
   orphan.analysisFingerprint = await fingerprintSourceAnalysisBundle(orphanAnalysis);
   values(orphanSourceInput.sources).push(orphan);
 
   await assertRejects(
     () => compileTechnicalSources(orphanSourceInput, catalog),
     TypeError,
-    "source.cad.orphan must be referenced by at least one profile request",
+    `${ORPHAN_UNIT_ID} must be referenced by at least one profile request`,
   );
 
   const orphanBindingInput = structuredClone(orphanSourceInput);
   values(orphanBindingInput.bindings).push({
     id: "binding.cad.orphan",
-    sourceId: "source.cad.orphan",
+    sourceId: ORPHAN_UNIT_ID,
     sourceSymbolId: "cad.param.a",
     sysmlElementId: "sysml.param.a",
     sysmlElementKind: "AttributeUsage",
@@ -1166,13 +1239,13 @@ Deno.test("different unknown-profile requests remain different documents and fin
   values(cadRequest.profileRequests).push({
     profileId: "profile.unknown",
     profileVersion: "9.9.9",
-    sourceIds: ["source.cad"],
+    sourceIds: [CAD_UNIT_ID],
   });
   const modelicaRequest = structuredClone(input);
   values(modelicaRequest.profileRequests).push({
     profileId: "profile.unknown",
     profileVersion: "9.9.9",
-    sourceIds: ["source.modelica"],
+    sourceIds: [MODELICA_UNIT_ID],
   });
 
   const cadResult = await compileTechnicalSources(cadRequest, catalog);
@@ -1199,7 +1272,7 @@ Deno.test("unknown profile is a stable rejected result, not an execution fallbac
   values(candidate.profileRequests).push({
     profileId: "profile.unknown",
     profileVersion: "9.9.9",
-    sourceIds: ["source.cad"],
+    sourceIds: [CAD_UNIT_ID],
   });
   const result = await compileTechnicalSources(candidate, catalog);
 
@@ -1269,16 +1342,20 @@ Deno.test("projection source order is deterministic inside a multi-source profil
   const { input, catalog } = await fixture();
   const candidate = structuredClone(input);
   const cad = values(candidate.sources).map(record).find((source) =>
-    record(record(source.analysis).source).id === "source.cad"
+    record(record(source.analysis).source).id === CAD_UNIT_ID
   );
   assert(cad);
   const secondCad = structuredClone(cad);
   const secondAnalysis = record(secondCad.analysis);
   const secondSource = record(secondAnalysis.source);
-  secondSource.id = "source.cad.secondary";
+  secondSource.id = SECONDARY_CAD_UNIT_ID;
   const secondText = `${secondCad.sourceText as string}secondary = 1\n`;
   secondCad.sourceText = secondText;
   secondSource.fingerprint = await fingerprintTechnicalSourceText(secondText);
+  secondCad.effectiveUnit = rootOnlyEffectiveUnit(
+    SECONDARY_CAD_UNIT_ID,
+    secondSource.fingerprint,
+  );
   secondCad.analysisFingerprint = await fingerprintSourceAnalysisBundle(
     secondAnalysis,
   );
@@ -1288,7 +1365,7 @@ Deno.test("projection source order is deterministic inside a multi-source profil
     request.profileId === "profile.build123d"
   );
   assert(buildRequest);
-  buildRequest.sourceIds = ["source.cad.secondary", "source.cad"];
+  buildRequest.sourceIds = [SECONDARY_CAD_UNIT_ID, CAD_UNIT_ID];
 
   const reversed = structuredClone(candidate);
   reversed.sources = values(reversed.sources).reverse();
@@ -1319,7 +1396,7 @@ height = width * 2
 result = Box(width, height, 3)
 `;
     const analysis = await new PythonCadSourceAnalyzer().analyze({
-      sourceId: "source.cad.real",
+      sourceId: REAL_CAD_UNIT_ID,
       role: "cad-script",
       language: "python",
       sourceText,
@@ -1374,7 +1451,10 @@ result = Box(width, height, 3)
         sourceText,
         analysis,
         analysisFingerprint: await fingerprintSourceAnalysisBundle(analysis),
-        closedDependencyCount: 0,
+        effectiveUnit: rootOnlyEffectiveUnit(
+          REAL_CAD_UNIT_ID,
+          analysis.source.fingerprint,
+        ),
       }],
       bindings: variables.map((symbol, index) => ({
         id: `binding.real.${index + 1}`,
@@ -1639,7 +1719,7 @@ Deno.test(
     const analysis = {
       schemaVersion: "source-analysis/1.0",
       source: {
-        id: "source.spice",
+        id: SPICE_UNIT_ID,
         role: "spice-circuit",
         language: "spice",
         fingerprint: sourceFingerprint,
@@ -1692,13 +1772,13 @@ Deno.test(
         sourceText,
         analysis,
         analysisFingerprint: await fingerprintSourceAnalysisBundle(analysis),
-        closedDependencyCount: 0,
+        effectiveUnit: rootOnlyEffectiveUnit(SPICE_UNIT_ID, sourceFingerprint),
       }],
       bindings: [],
       profileRequests: [{
         profileId: "spice-circuit-closed-subset-v1",
         profileVersion: "1.0.0",
-        sourceIds: ["source.spice"],
+        sourceIds: [SPICE_UNIT_ID],
       }],
     }, {
       schemaVersion: TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
@@ -1725,7 +1805,7 @@ Deno.test("SPICE .param without unique parameterizes stays binding.missing", asy
   const analysis = {
     schemaVersion: "source-analysis/1.0",
     source: {
-      id: "source.spice",
+      id: SPICE_UNIT_ID,
       role: "spice-circuit",
       language: "spice",
       fingerprint: sourceFingerprint,
@@ -1778,13 +1858,13 @@ Deno.test("SPICE .param without unique parameterizes stays binding.missing", asy
       sourceText,
       analysis,
       analysisFingerprint: await fingerprintSourceAnalysisBundle(analysis),
-      closedDependencyCount: 0,
+      effectiveUnit: rootOnlyEffectiveUnit(SPICE_UNIT_ID, sourceFingerprint),
     }],
     bindings: [],
     profileRequests: [{
       profileId: "spice-circuit-closed-subset-v1",
       profileVersion: "1.0.0",
-      sourceIds: ["source.spice"],
+      sourceIds: [SPICE_UNIT_ID],
     }],
   }, {
     schemaVersion: TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
@@ -1803,7 +1883,7 @@ Deno.test("SPICE .param without unique parameterizes stays binding.missing", asy
   assertEquals(
     compiled.document.diagnostics.some((diagnostic) =>
       diagnostic.code === "binding.missing" &&
-      diagnostic.subjectRef === "source.spice:parameter.rload"
+      diagnostic.subjectRef === `${SPICE_UNIT_ID}:parameter.rload`
     ),
     true,
   );

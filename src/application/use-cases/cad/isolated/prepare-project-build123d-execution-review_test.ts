@@ -389,10 +389,21 @@ async function harness(): Promise<Harness> {
     "",
   ].join("\n");
   const sourceFingerprint = await fingerprintTechnicalSourceText(sourceText);
+  const sourceWorkspace = sampleAdmissionSourceWorkspaceFields("source.cad.box", {
+    projectId: "project.box",
+  });
+  const sourceId = `technical-unit:${sourceWorkspace.sourceClosure.fingerprint.digest}`;
+  const effectiveUnit = {
+    kind: "authored-root" as const,
+    closureKind: "root-only" as const,
+    unitId: sourceId,
+    closureFingerprint: sourceWorkspace.sourceClosure.fingerprint,
+    scriptFingerprint: sourceFingerprint,
+  };
   const analysis: SourceAnalysisBundle = {
     schemaVersion: "source-analysis/1.0",
     source: {
-      id: "source.cad.box",
+      id: sourceId,
       role: "cad-script",
       language: "python",
       fingerprint: sourceFingerprint,
@@ -489,7 +500,7 @@ async function harness(): Promise<Harness> {
       sourceText,
       analysis,
       analysisFingerprint,
-      closedDependencyCount: 0,
+      effectiveUnit,
     }],
     bindings: [
       {
@@ -572,9 +583,8 @@ async function harness(): Promise<Harness> {
           digest: "4".repeat(64),
         },
         analysisFingerprint,
-        ...sampleAdmissionSourceWorkspaceFields(analysis.source.id, {
-          projectId: "project.box",
-        }),
+        effectiveUnit,
+        ...sourceWorkspace,
       }],
       bindings: compiled.document.inputManifest.bindings,
       compilationProfileRequests: [{
@@ -591,7 +601,7 @@ async function harness(): Promise<Harness> {
     }),
   );
   const artifactFingerprint = await sha256Fingerprint({
-    schemaVersion: "technical-compilation-admission-capture/3.0",
+    schemaVersion: "technical-compilation-admission-capture/4.0",
     projectId: "project.box",
     compilation: compiled.fingerprint,
   });
@@ -607,7 +617,7 @@ async function harness(): Promise<Harness> {
     artifactFingerprint,
   };
   const reopened: ReopenedTechnicalCompilationAdmission = {
-    schemaVersion: "technical-compilation-admission-capture/3.0",
+    schemaVersion: "technical-compilation-admission-capture/4.0",
     operation: COMPILE_SEAL_ADMISSION_OPERATION,
     trustedRunId: "run.compile.seal",
     decisionId: "decision.compile.seal",

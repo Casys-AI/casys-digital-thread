@@ -42,7 +42,7 @@ export const SIMULATE_RUN_ADMITTED_SPICE_OPERATION = Object.freeze(
 
 export const SPICE_ADMITTED_RUN_ADMISSION_SCHEMA =
   "spice-admitted-run-admission/2.0" as const;
-export const SPICE_ADMITTED_COMPILATION_SCHEMA = "technical-compilation/1.0" as const;
+export const SPICE_ADMITTED_COMPILATION_SCHEMA = "technical-compilation/2.0" as const;
 export const SPICE_ADMITTED_COMPILED_ADMISSION_SCHEMA =
   TECHNICAL_COMPILATION_ADMISSION_CAPTURE_SCHEMA;
 

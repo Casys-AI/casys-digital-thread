@@ -10,7 +10,9 @@ import {
   type TechnicalSourceAnalysisCaptureLocator,
   type TechnicalSourceAttachmentProvenance,
   type TechnicalSourceClosureProvenance,
+  type TechnicalSourceEffectiveUnit,
 } from "../../../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
+import type { Build123dWorkspaceClosureLoweringManifest } from "../../../../../domain/cad/source/build123d-workspace-closure-lowering.ts";
 import type { SourceAnalysisBundle } from "../../../../../domain/compile/source/source-analysis.ts";
 
 export type TechnicalSourceAnalysisCaptureErrorCode =
@@ -41,6 +43,14 @@ export interface TechnicalSourceCaptureProfile {
   readonly role: "cad-script" | "modelica-model" | "spice-circuit";
   readonly language: "python" | "modelica" | "spice";
   readonly maxSourceBytes: number;
+  readonly workspaceClosureLowering?: {
+    readonly schemaVersion: "build123d-workspace-closure-lowering/1.0";
+    readonly kind: "build123d-workspace-closure-lowering";
+    readonly maxClosureFiles: number;
+    readonly maxClosureSourceBytes: number;
+    /** Exact lowered script ceiling; it is distinct from authored root bytes. */
+    readonly maxEffectiveScriptBytes: number;
+  };
 }
 
 export interface PersistedTechnicalSourceAnalysis {
@@ -51,6 +61,7 @@ export interface PersistedTechnicalSourceAnalysis {
     readonly attachment: TechnicalSourceAttachmentProvenance;
     readonly sourceClosure: TechnicalSourceClosureProvenance;
     readonly source: { readonly id: string };
+    readonly effectiveUnit: TechnicalSourceCapturedEffectiveUnit;
   };
 }
 
@@ -62,6 +73,7 @@ export interface ReopenedTechnicalSourceAnalysisLocator {
     readonly schemaVersion: typeof TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA;
     readonly attachment: TechnicalSourceAttachmentProvenance;
     readonly sourceClosure: TechnicalSourceClosureProvenance;
+    readonly effectiveUnit: TechnicalSourceCapturedEffectiveUnit;
     readonly source: {
       readonly id: string;
       readonly role: TechnicalSourceCaptureProfile["role"];
@@ -91,6 +103,22 @@ export interface ReopenedTechnicalSourceAnalysisLocator {
   };
 }
 
+/**
+ * Complete lowering receipt is durable capture evidence. Compilation and MRTR
+ * carry the compact `TechnicalSourceEffectiveUnit` projection instead.
+ */
+export type TechnicalSourceCapturedEffectiveUnit =
+  | Exclude<
+    TechnicalSourceEffectiveUnit,
+    { readonly kind: "build123d-workspace-closure-lowered" }
+  >
+  | (Extract<
+    TechnicalSourceEffectiveUnit,
+    { readonly kind: "build123d-workspace-closure-lowered" }
+  > & {
+    readonly loweringManifest: Build123dWorkspaceClosureLoweringManifest;
+  });
+
 export class TechnicalSourceCaptureProfileNotRegisteredError extends Error {
   constructor(
     readonly profileId: string,
@@ -111,6 +139,7 @@ export interface TechnicalSourceAnalysisCapture {
     readonly profileId: string;
     readonly sourceId: string;
     readonly sourceText: string;
+    readonly effectiveUnit: TechnicalSourceCapturedEffectiveUnit;
     readonly attachment: TechnicalSourceAttachmentProvenance;
     readonly sourceClosure: TechnicalSourceClosureProvenance;
   }): Promise<PersistedTechnicalSourceAnalysis>;

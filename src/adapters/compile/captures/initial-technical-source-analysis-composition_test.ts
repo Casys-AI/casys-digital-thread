@@ -49,15 +49,19 @@ Deno.test("initial source-analysis registration exactly matches compilation qual
     id: INITIAL_QUALIFIED_BUILD123D_TECHNICAL_SOURCE_PROFILE.id,
     version: INITIAL_QUALIFIED_BUILD123D_TECHNICAL_SOURCE_PROFILE.version,
   });
-  const compilation = INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG.profiles[0];
-  const modelicaCompilation = INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG.profiles
-    .find((profile) => profile.id === QUALIFIED_MODELICA_SOURCE_ANALYSIS_PROFILE);
+  const compilation = requiredCompilationProfile(
+    QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
+  );
+  const modelicaCompilation = requiredCompilationProfile(
+    QUALIFIED_MODELICA_SOURCE_ANALYSIS_PROFILE,
+  );
   const modelica = registry.requireExact({
     id: QUALIFIED_MODELICA_TECHNICAL_SOURCE_PROFILE.id,
     version: QUALIFIED_MODELICA_TECHNICAL_SOURCE_PROFILE.version,
   });
-  const spiceCompilation = INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG.profiles
-    .find((profile) => profile.id === SPICE_CIRCUIT_TECHNICAL_SOURCE_PROFILE.id);
+  const spiceCompilation = requiredCompilationProfile(
+    SPICE_CIRCUIT_TECHNICAL_SOURCE_PROFILE.id,
+  );
   const spice = registry.requireExact({
     id: SPICE_CIRCUIT_TECHNICAL_SOURCE_PROFILE.id,
     version: SPICE_CIRCUIT_TECHNICAL_SOURCE_PROFILE.version,
@@ -71,25 +75,27 @@ Deno.test("initial source-analysis registration exactly matches compilation qual
     language: compilation.language,
     analyzer: compilation.analyzer,
     maxSourceBytes: INITIAL_QUALIFIED_BUILD123D_MAX_SOURCE_BYTES,
+    workspaceClosureLowering:
+      INITIAL_QUALIFIED_BUILD123D_TECHNICAL_SOURCE_PROFILE.workspaceClosureLowering,
   });
   assertEquals(compilation.analysisPolicyProfile, registration.profile.id);
   assertInstanceOf(registration.frontend, QualifiedBuild123dSourceAnalyzer);
   assertEquals(Object.isFrozen(registration.profile), true);
   assertEquals(modelica.profile, {
-    id: modelicaCompilation?.id,
-    version: modelicaCompilation?.version,
-    role: modelicaCompilation?.sourceRole,
-    language: modelicaCompilation?.language,
-    analyzer: modelicaCompilation?.analyzer,
+    id: modelicaCompilation.id,
+    version: modelicaCompilation.version,
+    role: modelicaCompilation.sourceRole,
+    language: modelicaCompilation.language,
+    analyzer: modelicaCompilation.analyzer,
     maxSourceBytes: QUALIFIED_MODELICA_MAX_SOURCE_BYTES,
   });
   assertInstanceOf(modelica.frontend, QualifiedModelicaSourceAnalyzer);
   assertEquals(spice.profile, {
-    id: spiceCompilation?.id,
-    version: spiceCompilation?.version,
-    role: spiceCompilation?.sourceRole,
-    language: spiceCompilation?.language,
-    analyzer: spiceCompilation?.analyzer,
+    id: spiceCompilation.id,
+    version: spiceCompilation.version,
+    role: spiceCompilation.sourceRole,
+    language: spiceCompilation.language,
+    analyzer: spiceCompilation.analyzer,
     maxSourceBytes: SPICE_CIRCUIT_MAX_SOURCE_BYTES,
   });
   assertInstanceOf(spice.frontend, SpiceCircuitSourceAnalyzer);
@@ -99,6 +105,16 @@ Deno.test("initial source-analysis registration exactly matches compilation qual
     TechnicalSourceAnalysisProfileNotRegisteredError,
   );
 });
+
+function requiredCompilationProfile(id: string) {
+  const profile = INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG.profiles.find(
+    (candidate) => candidate.id === id,
+  );
+  if (profile === undefined) {
+    throw new Error(`Missing registered compilation profile ${id}.`);
+  }
+  return profile;
+}
 
 Deno.test("initial capture service persists and replays the exact qualified frontend", async () => {
   const directory = await Deno.makeTempDir({

@@ -49,6 +49,7 @@ import {
 import {
   assertTechnicalSourceAnalysisCaptureLocatorsEqual,
   assertTechnicalSourceProvenanceIdentitiesEqual,
+  technicalSourceEffectiveUnitsEqual,
   type TechnicalSourceProvenanceIdentity,
   validateTechnicalSourceAnalysisCaptureLocator,
 } from "../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
@@ -1336,8 +1337,12 @@ function assertCaptureSourceCoverage(
         capture.referenceFingerprint,
         expected.captureFingerprint,
       ) ||
-      expected.id !== expected.sourceClosure.root.fileId ||
-      expected.sourceClosure.root.fileId !== documentSource.analysis.source.id ||
+      expected.attachment.fileId !== expected.sourceClosure.root.fileId ||
+      expected.id !== documentSource.analysis.source.id ||
+      !technicalSourceEffectiveUnitsEqual(
+        expected.effectiveUnit,
+        documentSource.effectiveUnit,
+      ) ||
       documentSource.analysis.source.role !== expected.role ||
       documentSource.analysis.source.language !== expected.language ||
       !fingerprintsEqual(
@@ -1399,7 +1404,7 @@ async function verifySources(
         `Admission source ${expected.id} is not exact against the reviewed compilation basis.`,
       );
     }
-    if (reopened.source.closedDependencyCount !== 0) {
+    if (reopened.source.effectiveUnit.closureKind === "unlowered-closure") {
       throw invalidTransition(
         `Admission source ${expected.id} has no language-specific dependency lowering.`,
       );
@@ -1716,6 +1721,7 @@ function admissionSourceProvenance(
     sourceFingerprint: source.sourceFingerprint,
     captureFingerprint: source.captureFingerprint,
     analysisFingerprint: source.analysisFingerprint,
+    effectiveUnit: source.effectiveUnit,
     attachment: source.attachment,
     sourceClosure: source.sourceClosure,
     locator: source.locator,
@@ -1743,6 +1749,7 @@ function reopenedSourceProvenance(
       readonly sourceFingerprint: ContentFingerprint;
       readonly captureFingerprint: ContentFingerprint;
       readonly analysisFingerprint: ContentFingerprint;
+      readonly effectiveUnit: TechnicalSourceProvenanceIdentity["effectiveUnit"];
       readonly attachment: TechnicalSourceProvenanceIdentity["attachment"];
       readonly sourceClosure: TechnicalSourceProvenanceIdentity["sourceClosure"];
       readonly locator: TechnicalSourceProvenanceIdentity["locator"];
@@ -1760,6 +1767,7 @@ function reopenedSourceProvenance(
     sourceFingerprint: reopened.provenance.sourceFingerprint,
     captureFingerprint: reopened.provenance.captureFingerprint,
     analysisFingerprint: reopened.provenance.analysisFingerprint,
+    effectiveUnit: reopened.provenance.effectiveUnit,
     attachment: reopened.provenance.attachment,
     sourceClosure: reopened.provenance.sourceClosure,
     locator: reopened.provenance.locator,

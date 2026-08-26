@@ -41,7 +41,7 @@ export const BUILD123D_EXECUTION_OPERATION = DESIGN_EXECUTE_BUILD123D_OPERATION;
 export const BUILD123D_EXECUTION_ADMISSION_SCHEMA =
   "build123d-execution-admission/2.0" as const;
 export const BUILD123D_EXECUTION_COMPILATION_SCHEMA =
-  "technical-compilation/1.0" as const;
+  "technical-compilation/2.0" as const;
 export const BUILD123D_EXECUTION_COMPILED_ADMISSION_SCHEMA =
   TECHNICAL_COMPILATION_ADMISSION_CAPTURE_SCHEMA;
 

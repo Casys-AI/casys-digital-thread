@@ -1,11 +1,11 @@
 /**
  * Agent-facing join gaps for a technical-compilation preview.
  *
- * The `technical-compilation/1.0` document keeps its closed diagnostic
- * record (`code` / `profileRef` / `subjectRef`). Changing that shape would
- * break reread of sealed admissions. This review is assembled after compile
- * from the same sources and SysML elements; it is not stored in the document
- * and confers no admission authority.
+ * The `technical-compilation/2.0` document keeps its closed diagnostic
+ * record (`code` / `profileRef` / `subjectRef`). V4 is a clean breaking cut:
+ * no 1.0 replay or compatibility path exists. This review is assembled after
+ * compile from the same sources and SysML elements; it is not stored in the
+ * document and confers no admission authority.
  */
 
 import { deepFreeze } from "../../kernel/case-validation.ts";
@@ -89,7 +89,7 @@ export type TechnicalCompilationJoinGap =
   | {
     readonly code: "source.dependency-lowering-unavailable";
     readonly sourceId: string;
-    readonly closedDependencyCount: number;
+    readonly closureKind: "unlowered-closure";
     readonly recovery:
       typeof TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.dependencyLowering;
   }
@@ -128,7 +128,13 @@ export function assembleTechnicalCompilationJoinGaps(
       gaps.push({
         code: "source.dependency-lowering-unavailable",
         sourceId: source.analysis.source.id,
-        closedDependencyCount: source.closedDependencyCount ?? 0,
+        closureKind: source.effectiveUnit.closureKind === "unlowered-closure"
+          ? "unlowered-closure"
+          : (() => {
+            throw new TypeError(
+              "A dependency-lowering gap must name an explicitly unlowered closure.",
+            );
+          })(),
         recovery: TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.dependencyLowering,
       });
       continue;
@@ -354,7 +360,7 @@ function gapSentence(gap: TechnicalCompilationJoinGap): string {
   }
   if (gap.code === "source.dependency-lowering-unavailable") {
     return (
-      `${gap.code} on ${gap.sourceId} (${gap.closedDependencyCount} non-root file(s)): ${gap.recovery}`
+      `${gap.code} on ${gap.sourceId} (${gap.closureKind}): ${gap.recovery}`
     );
   }
   if (gap.code === "thermal-method-sheet.parameter.unresolved") {

@@ -267,7 +267,79 @@ Deno.test("a later workspace edit does not rewrite a historical capture reopen",
       original.fileRevision,
     );
     assertEquals(reopened.source.sourceText.includes("height = 8"), false);
-    assertEquals(reopened.source.closedDependencyCount, 0);
+    assertEquals(reopened.source.effectiveUnit.closureKind, "root-only");
+  });
+});
+
+Deno.test("a multi-file Build123d closure captures and reopens the exact lowered unit", async () => {
+  await withWorkspace(async (harness) => {
+    const dependency = await harness.putFile({
+      fileId: "dep-dimensions",
+      role: "cad-script",
+      profileId: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
+      name: "dimensions.py",
+      mimeType: "text/x-python",
+      text: "width = 20\n",
+    });
+    const root = await harness.captureFile({
+      fileId: "file.assembly",
+      role: "cad-script",
+      profileId: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
+      name: "assembly.py",
+      mimeType: "text/x-python",
+      text: [
+        "from casys_workspace.f_6465702d64696d656e73696f6e73 import width",
+        "from build123d import Box",
+        "result = Box(width, 10, 2)",
+        "",
+      ].join("\n"),
+      dependencies: [{
+        fileId: "dep-dimensions",
+        fileRevision: dependency.fileRevision,
+      }],
+    });
+    const captured = await harness.captures.reopenLocator(root.review.reference);
+    assertEquals(
+      captured.document.effectiveUnit.kind,
+      "build123d-workspace-closure-lowered",
+    );
+    assertEquals(
+      captured.document.effectiveUnit.closureKind,
+      "build123d-workspace-closure-lowered",
+    );
+    if (
+      captured.document.effectiveUnit.kind !==
+        "build123d-workspace-closure-lowered"
+    ) {
+      throw new Error("expected a lowered Build123d effective unit");
+    }
+    assertEquals(
+      captured.document.source.id,
+      `technical-unit:${captured.document.sourceClosure.fingerprint.digest}`,
+    );
+    assertEquals(
+      captured.sourceText.includes("casys_workspace"),
+      false,
+    );
+    assertEquals(captured.sourceText.includes("width = 20"), true);
+    assertEquals(
+      captured.document.effectiveUnit.loweringManifest.script.fingerprint.digest,
+      captured.document.source.sha256,
+    );
+
+    const reopened = await harness.reader.read({
+      projectId: PROJECT,
+      basis: COMPILATION_BASIS,
+      reference: root.review.reference,
+      referenceFingerprint: await sha256Fingerprint(root.review.reference),
+    });
+    assertEquals(reopened.source.sourceText, captured.sourceText);
+    const { loweringManifest: _loweringManifest, ...compactEffectiveUnit } =
+      captured.document.effectiveUnit;
+    assertEquals(
+      reopened.source.effectiveUnit,
+      compactEffectiveUnit,
+    );
   });
 });
 
@@ -489,7 +561,7 @@ async function withWorkspace(
             moduleId: "mod.root",
             logicalName: input.name,
             role: input.role,
-            dependencies: [],
+            dependencies: input.dependencies ?? [],
             resourceRef: stored.reference,
             captureRequest: { profileId: input.profileId },
             ...(input.predecessorFileRevision !== undefined
@@ -597,6 +669,7 @@ interface WorkspaceHarness {
     name: string;
     mimeType: string;
     text: string;
+    dependencies?: readonly { fileId: string; fileRevision: number }[];
     predecessorFileRevision?: number;
   }): Promise<{ workspaceRevision: number; fileRevision: number }>;
   putAttachedFile(input: {
@@ -606,6 +679,7 @@ interface WorkspaceHarness {
     name: string;
     mimeType: string;
     text: string;
+    dependencies?: readonly { fileId: string; fileRevision: number }[];
     predecessorFileRevision?: number;
   }): Promise<{
     workspaceRevision: number;
@@ -620,6 +694,7 @@ interface WorkspaceHarness {
     name: string;
     mimeType: string;
     text: string;
+    dependencies?: readonly { fileId: string; fileRevision: number }[];
     predecessorFileRevision?: number;
   }): Promise<{
     workspaceRevision: number;

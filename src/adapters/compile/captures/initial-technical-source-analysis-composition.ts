@@ -26,6 +26,11 @@ import { qualifiedModelicaSourceAnalysisRegistration } from "../../modelica/sour
 import { spiceCircuitSourceAnalysisRegistration } from "../../electrical/spice/source-analysis-composition.ts";
 
 export const INITIAL_QUALIFIED_BUILD123D_MAX_SOURCE_BYTES = 262_144;
+export const INITIAL_QUALIFIED_BUILD123D_MAX_CLOSURE_FILES = 32;
+export const INITIAL_QUALIFIED_BUILD123D_MAX_CLOSURE_SOURCE_BYTES = 524_288;
+/** The executable script is separately capped at the exact closure byte policy. */
+export const INITIAL_QUALIFIED_BUILD123D_MAX_EFFECTIVE_SCRIPT_BYTES =
+  INITIAL_QUALIFIED_BUILD123D_MAX_CLOSURE_SOURCE_BYTES;
 
 export const INITIAL_QUALIFIED_BUILD123D_TECHNICAL_SOURCE_PROFILE:
   TechnicalSourceAnalysisProfile = validateTechnicalSourceAnalysisProfile({
@@ -38,6 +43,15 @@ export const INITIAL_QUALIFIED_BUILD123D_TECHNICAL_SOURCE_PROFILE:
       version: QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION,
     },
     maxSourceBytes: INITIAL_QUALIFIED_BUILD123D_MAX_SOURCE_BYTES,
+    workspaceClosureLowering: {
+      schemaVersion: "build123d-workspace-closure-lowering/1.0",
+      kind: "build123d-workspace-closure-lowering",
+      maxClosureFiles: INITIAL_QUALIFIED_BUILD123D_MAX_CLOSURE_FILES,
+      maxClosureSourceBytes:
+        INITIAL_QUALIFIED_BUILD123D_MAX_CLOSURE_SOURCE_BYTES,
+      maxEffectiveScriptBytes:
+        INITIAL_QUALIFIED_BUILD123D_MAX_EFFECTIVE_SCRIPT_BYTES,
+    },
   });
 
 /** Closed registry: Build123d, Modelica, and circuit-only SPICE. CalculiX stays absent. */

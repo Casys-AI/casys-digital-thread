@@ -40,7 +40,10 @@ import {
   TECHNICAL_COMPILATION_ADMISSION_SCHEMA,
 } from "../../../../domain/compile/admission/technical-compilation-proposal.ts";
 import { sha256Fingerprint } from "../../../../domain/kernel/deterministic-json.ts";
-import { sampleAdmissionSourceWorkspaceFields } from "../../../../testing/technical-source-capture-test-support.ts";
+import {
+  sampleAdmissionSourceWorkspaceFields,
+  technicalSourceCaptureInput,
+} from "../../../../testing/technical-source-capture-test-support.ts";
 import type {
   EngineeringAgentRun,
   EngineeringProjectSnapshot,
@@ -285,8 +288,20 @@ async function reviewedProject(
 
 async function harness() {
   const sourceText = MODELICA_ADMITTED_GENERIC_SOURCE;
-  const analysis = await new QualifiedModelicaSourceAnalyzer().analyze({
+  const sourceWorkspace = sampleAdmissionSourceWorkspaceFields(
+    "source.modelica.generic-oscillator",
+    { projectId: "project.ramp" },
+  );
+  const sourceCapture = technicalSourceCaptureInput({
+    profileId: "modelica-closed-subset-v2",
     sourceId: "source.modelica.generic-oscillator",
+    sourceText,
+    projectId: "project.ramp",
+    attachment: sourceWorkspace.attachment,
+    sourceClosure: sourceWorkspace.sourceClosure,
+  });
+  const analysis = await new QualifiedModelicaSourceAnalyzer().analyze({
+    sourceId: sourceCapture.sourceId,
     role: "modelica-model",
     language: "modelica",
     sourceText,
@@ -344,7 +359,7 @@ async function harness() {
       sourceText,
       analysis,
       analysisFingerprint,
-      closedDependencyCount: 0,
+      effectiveUnit: sourceCapture.effectiveUnit,
     }],
     bindings: [
       {
@@ -429,9 +444,10 @@ async function harness() {
         sourceFingerprint,
         captureFingerprint: { algorithm: "sha256", digest: "4".repeat(64) },
         analysisFingerprint,
-        ...sampleAdmissionSourceWorkspaceFields(analysis.source.id, {
-          projectId: "project.ramp",
-        }),
+        effectiveUnit: sourceCapture.effectiveUnit,
+        attachment: sourceCapture.attachment,
+        sourceClosure: sourceCapture.sourceClosure,
+        locator: sourceWorkspace.locator,
       }],
       bindings: compiled.document.inputManifest.bindings,
       compilationProfileRequests: [{
@@ -464,7 +480,7 @@ async function harness() {
     artifactFingerprint,
   };
   const reopened: ReopenedTechnicalCompilationAdmission = {
-    schemaVersion: "technical-compilation-admission-capture/3.0",
+    schemaVersion: "technical-compilation-admission-capture/4.0",
     operation: COMPILE_SEAL_ADMISSION_OPERATION,
     trustedRunId: "run.compile.seal",
     decisionId: "decision.compile.seal",

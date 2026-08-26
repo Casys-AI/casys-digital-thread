@@ -28,6 +28,10 @@ import {
 } from "../../kernel/case-validation.ts";
 import { listAnalysisReachableNamedNumericLevers } from "../source/named-cad-levers.ts";
 import {
+  type TechnicalSourceEffectiveUnit,
+  validateTechnicalSourceEffectiveUnit,
+} from "./technical-source-analysis-capture-locator.ts";
+import {
   fingerprintSourceAnalysisBundle,
   type SourceAnalysisBundle,
   type SourceAnalysisSymbolKind,
@@ -35,16 +39,15 @@ import {
 } from "../source/source-analysis.ts";
 
 export const TECHNICAL_COMPILATION_INPUT_SCHEMA =
-  "technical-compilation-input/1.0" as const;
+  "technical-compilation-input/2.0" as const;
 export const TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA =
   "technical-compilation-profile-catalog/1.0" as const;
-export const TECHNICAL_COMPILATION_SCHEMA = "technical-compilation/1.0" as const;
+export const TECHNICAL_COMPILATION_SCHEMA = "technical-compilation/2.0" as const;
 /**
- * Profile semantics 2.0 add the causal named-lever admission gate.
- * Embedded 1.x profiles retain their original replay semantics so immutable,
- * already-sealed compilation documents remain readable.
+ * Profile semantics 3.0 add the exact Build123d workspace-closure lowering
+ * boundary alongside the causal named-lever admission gate.
  */
-export const PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION = "2.0.0" as const;
+export const PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION = "3.0.0" as const;
 
 export type TechnicalCompilationTarget =
   | "build123d-source"
@@ -135,12 +138,8 @@ export interface TechnicalCompilationSource {
   readonly sourceText: string;
   readonly analysis: SourceAnalysisBundle;
   readonly analysisFingerprint: ContentFingerprint;
-  /**
-   * Count of non-root files in the sealed project-source closure.
-   * Zero is the executable root-only path. A positive count is unresolved
-   * until a language-specific deterministic lowering exists.
-   */
-  readonly closedDependencyCount: number;
+  /** Closed source-proof / executable-unit relationship; never a file count. */
+  readonly effectiveUnit: TechnicalSourceEffectiveUnit;
 }
 
 export interface TechnicalSemanticBinding {
@@ -206,6 +205,7 @@ export interface TechnicalProjectionSource {
   readonly sourceText: string;
   readonly analysis: SourceAnalysisBundle;
   readonly analysisFingerprint: ContentFingerprint;
+  readonly effectiveUnit: TechnicalSourceEffectiveUnit;
   readonly bindings: readonly TechnicalSemanticBinding[];
 }
 
@@ -539,6 +539,7 @@ export async function compileTechnicalSources(
         sourceText: source.sourceText,
         analysis: source.analysis,
         analysisFingerprint: source.analysisFingerprint,
+        effectiveUnit: source.effectiveUnit,
         bindings: [...localBindings].sort(compareById),
       };
     }).sort((left, right) =>
@@ -790,6 +791,11 @@ async function parseCompilationProjection(
       canonicalSource.analysisFingerprint,
       `${path}.sources.${sourceId}.analysisFingerprint`,
     );
+    assertCanonicalEqual(
+      source.effectiveUnit,
+      canonicalSource.effectiveUnit,
+      `${path}.sources.${sourceId}.effectiveUnit`,
+    );
     const expectedBindings = input.bindings.filter((binding) =>
       binding.sourceId === sourceId
     );
@@ -838,14 +844,14 @@ async function parseProjectionSource(
 ): Promise<TechnicalProjectionSource> {
   const source = exactRecord(
     value,
-    ["sourceText", "analysis", "analysisFingerprint", "bindings"],
+    ["sourceText", "analysis", "analysisFingerprint", "effectiveUnit", "bindings"],
     path,
   );
   const parsed = await parseSource({
     sourceText: source.sourceText,
     analysis: source.analysis,
     analysisFingerprint: source.analysisFingerprint,
-    closedDependencyCount: 0,
+    effectiveUnit: source.effectiveUnit,
   }, path);
   const bindings = arrayOf(source.bindings, `${path}.bindings`)
     .map((binding, index) => parseBinding(binding, `${path}.bindings[${index}]`))
@@ -862,6 +868,7 @@ async function parseProjectionSource(
     sourceText: parsed.sourceText,
     analysis: parsed.analysis,
     analysisFingerprint: parsed.analysisFingerprint,
+    effectiveUnit: parsed.effectiveUnit,
     bindings,
   };
 }
@@ -1166,7 +1173,7 @@ async function parseSource(
 ): Promise<TechnicalCompilationSource> {
   const source = exactRecord(
     value,
-    ["sourceText", "analysis", "analysisFingerprint", "closedDependencyCount"],
+    ["sourceText", "analysis", "analysisFingerprint", "effectiveUnit"],
     path,
   );
   const sourceText = utf8SourceText(source.sourceText, `${path}.sourceText`);
@@ -1188,19 +1195,20 @@ async function parseSource(
     observedAnalysisFingerprint,
     `${path}.analysisFingerprint`,
   );
-  if (
-    !Number.isSafeInteger(source.closedDependencyCount) ||
-    Number(source.closedDependencyCount) < 0
-  ) {
-    throw new TypeError(
-      `${path}.closedDependencyCount must be a non-negative safe integer.`,
-    );
-  }
+  const effectiveUnit = validateTechnicalSourceEffectiveUnit(
+    source.effectiveUnit,
+    // The compiler has only the compact effective-unit receipt. The source
+    // reader recrosses the complete closure before this pure boundary.
+    undefined,
+    analysis.source.id,
+    observedSourceFingerprint,
+    `${path}.effectiveUnit`,
+  );
   return {
     sourceText,
     analysis,
     analysisFingerprint,
-    closedDependencyCount: Number(source.closedDependencyCount),
+    effectiveUnit,
   };
 }
 
@@ -1478,7 +1486,7 @@ function diagnoseSource(
       subjectRef: sourceFacts.id,
     });
   }
-  if (source.closedDependencyCount > 0) {
+  if (source.effectiveUnit.closureKind === "unlowered-closure") {
     diagnostics.push({
       code: "source.dependency-lowering-unavailable",
       profileRef: requestedProfileRef,

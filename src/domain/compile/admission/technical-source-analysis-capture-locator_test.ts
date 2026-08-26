@@ -22,17 +22,26 @@ function identity(
   const locator = sampleTechnicalSourceAnalysisCaptureLocator();
   const attachment = sampleTechnicalSourceAttachmentProvenance("source.cad");
   const sourceClosure = sampleTechnicalSourceClosureProvenance("source.cad");
+  const sourceId = `technical-unit:${sourceClosure.fingerprint.digest}`;
+  const sourceFingerprint = { algorithm: "sha256" as const, digest: "2".repeat(64) };
   return {
-    sourceId: "source.cad",
+    sourceId,
     role: "cad-script",
     language: "python",
     profileId: "build123d-closed-subset-v1",
     profileVersion: "1.0.0",
     profileFingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
     analyzer: { id: "build123d-qualified-lezer", version: "1.6.0" },
-    sourceFingerprint: { algorithm: "sha256", digest: "2".repeat(64) },
+    sourceFingerprint,
     captureFingerprint: { algorithm: "sha256", digest: "3".repeat(64) },
     analysisFingerprint: { algorithm: "sha256", digest: "4".repeat(64) },
+    effectiveUnit: {
+      kind: "authored-root",
+      closureKind: "root-only",
+      unitId: sourceId,
+      closureFingerprint: sourceClosure.fingerprint,
+      scriptFingerprint: sourceFingerprint,
+    },
     attachment,
     sourceClosure,
     locator,
@@ -40,7 +49,7 @@ function identity(
   };
 }
 
-Deno.test("opaque locator/3.0 is the only accepted technical-source replay handle", () => {
+Deno.test("opaque locator/4.0 is the only accepted technical-source replay handle", () => {
   const locator = sampleTechnicalSourceAnalysisCaptureLocator();
   assertEquals(
     validateTechnicalSourceAnalysisCaptureLocator(locator),
@@ -239,7 +248,7 @@ Deno.test("a preview or admission bundle rejects mixed projects, revisions, and 
   );
   assertEquals(
     TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
-    "technical-source-analysis-capture-locator/3.0",
+    "technical-source-analysis-capture-locator/4.0",
   );
   assertEquals(
     TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_KIND,

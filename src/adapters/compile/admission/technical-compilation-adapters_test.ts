@@ -50,6 +50,12 @@ const SOURCE_TEXT = [
   "",
 ].join("\n");
 
+const SPICE_SOURCE_FINGERPRINT = {
+  algorithm: "sha256" as const,
+  digest: "1".repeat(64),
+};
+const SPICE_SOURCE_ID = `technical-unit:${SPICE_SOURCE_FINGERPRINT.digest}`;
+
 const THREAD_BASIS = {
   kind: "thread-snapshot" as const,
   snapshotId: "snapshot.1",
@@ -100,10 +106,10 @@ Deno.test("fixed catalogue exposes only the registered build123d, Modelica v2 an
         analysis: {
           schemaVersion: "source-analysis/1.0",
           source: {
-            id: "source.spice",
+            id: SPICE_SOURCE_ID,
             role: "spice-circuit",
             language: "spice",
-            fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
+            fingerprint: SPICE_SOURCE_FINGERPRINT,
           },
           analyzer: {
             id: "spice-circuit-closed-subset",
@@ -118,13 +124,20 @@ Deno.test("fixed catalogue exposes only the registered build123d, Modelica v2 an
           dependencies: [],
           unresolvedConstructs: [],
         } satisfies SourceAnalysisBundle,
+        effectiveUnit: {
+          kind: "authored-root",
+          closureKind: "root-only",
+          unitId: SPICE_SOURCE_ID,
+          closureFingerprint: SPICE_SOURCE_FINGERPRINT,
+          scriptFingerprint: SPICE_SOURCE_FINGERPRINT,
+        },
       }],
       first,
     ),
     [{
       profileId: "spice-circuit-closed-subset-v1",
       profileVersion: "1.0.0",
-      sourceIds: ["source.spice"],
+      sourceIds: [SPICE_SOURCE_ID],
     }],
   );
 });
@@ -325,8 +338,10 @@ async function withDraftHarness(
 async function compileFixture(
   sourceText = SOURCE_TEXT,
 ): Promise<TechnicalCompilationResult> {
+  const sourceFingerprint = await sourceTextFingerprint(sourceText);
+  const sourceId = `technical-unit:${sourceFingerprint.digest}`;
   const analysis = await new QualifiedBuild123dSourceAnalyzer().analyze({
-    sourceId: "source.support",
+    sourceId,
     role: "cad-script",
     language: "python",
     sourceText,
@@ -378,6 +393,13 @@ async function compileFixture(
       sourceText,
       analysis,
       analysisFingerprint: await fingerprintSourceAnalysisBundle(analysis),
+      effectiveUnit: {
+        kind: "authored-root",
+        closureKind: "root-only",
+        unitId: sourceId,
+        closureFingerprint: sourceFingerprint,
+        scriptFingerprint: sourceFingerprint,
+      },
     }],
     bindings: analysis.symbols.map((symbol, index) => ({
       id: `binding.${index}`,
@@ -436,4 +458,18 @@ function recursiveKeys(value: unknown, seen = new Set<unknown>()): Set<string> {
     for (const child of recursiveKeys(nested, seen)) keys.add(child);
   }
   return keys;
+}
+
+async function sourceTextFingerprint(sourceText: string) {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(sourceText),
+  );
+  return {
+    algorithm: "sha256" as const,
+    digest: Array.from(
+      new Uint8Array(digest),
+      (byte) => byte.toString(16).padStart(2, "0"),
+    ).join(""),
+  };
 }

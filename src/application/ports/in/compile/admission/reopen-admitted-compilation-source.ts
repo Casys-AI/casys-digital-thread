@@ -14,6 +14,7 @@ import type {
   TechnicalSourceAnalysisCaptureLocator,
   TechnicalSourceAttachmentProvenance,
   TechnicalSourceClosureProvenance,
+  TechnicalSourceEffectiveUnit,
 } from "../../../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
 import type { ContentFingerprint } from "../../../../../domain/kernel/primitives.ts";
 import type { EngineeringThreadSnapshotBasis } from "../../../../../domain/project/engineering-project.ts";
@@ -36,6 +37,7 @@ export interface ReopenedAdmittedCompilationSource {
   readonly sourceText: string;
   readonly sourceFingerprint: ContentFingerprint;
   readonly analysisFingerprint: ContentFingerprint;
+  readonly effectiveUnit: TechnicalSourceEffectiveUnit;
   readonly attachment: TechnicalSourceAttachmentProvenance;
   readonly sourceClosure: TechnicalSourceClosureProvenance;
   readonly locator: TechnicalSourceAnalysisCaptureLocator;

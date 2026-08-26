@@ -28,9 +28,15 @@ import {
   sourceClosureProvenanceFrom,
   TechnicalSourceWorkspaceRecrossError,
   validateTechnicalSourceAnalysisCaptureLocator,
+  validateTechnicalSourceEffectiveUnit,
 } from "../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
 import {
+  assertBuild123dWorkspaceClosureLoweringManifestsEqual,
+  lowerBuild123dWorkspaceClosure,
+} from "../../../domain/cad/source/build123d-workspace-closure-lowering.ts";
+import {
   ProjectSourceClosureError,
+  type ProjectSourceClosure,
   recrossProjectSourceClosure,
 } from "../../../domain/project-source-workspace/closure.ts";
 import { fingerprintSourceAnalysisBundle } from "../../../domain/compile/source/source-analysis.ts";
@@ -126,7 +132,7 @@ export class CaptureBackedTechnicalCompilationSourceReader
     } catch (cause) {
       throw readError(
         "locator_invalid",
-        "Technical source capture reference is not an opaque locator/3.0.",
+        "Technical source capture reference is not an opaque locator/4.0.",
         cause,
       );
     }
@@ -234,6 +240,41 @@ export class CaptureBackedTechnicalCompilationSourceReader
       }
     }
 
+    const compactEffectiveUnit = reopened.document.effectiveUnit.kind ===
+        "build123d-workspace-closure-lowered"
+      ? (() => {
+        const { loweringManifest: _loweringManifest, ...compact } =
+          reopened.document.effectiveUnit;
+        return compact;
+      })()
+      : reopened.document.effectiveUnit;
+    const effectiveUnit = validateTechnicalSourceEffectiveUnit(
+      compactEffectiveUnit,
+      reopened.document.sourceClosure,
+      reopened.document.source.id,
+      { algorithm: "sha256", digest: reopened.document.source.sha256 },
+      "$technicalCompilationSourceRead.effectiveUnit",
+    );
+    const captureProfile = this.#captures.requireCaptureProfile(
+      reopened.document.profile.id,
+    );
+    if (captureProfile.version !== reopened.document.profile.version) {
+      throw readError(
+        "profile_identity_mismatch",
+        "The captured source no longer names the exact registered source-analysis profile.",
+      );
+    }
+    const rootReopenByteLimit = effectiveUnit.kind ===
+        "build123d-workspace-closure-lowered"
+      ? captureProfile.workspaceClosureLowering?.maxClosureSourceBytes
+      : reopened.document.source.byteCount;
+    if (rootReopenByteLimit === undefined) {
+      throw readError(
+        "closure_mismatch",
+        "A lowered technical source must name the exact profile-owned closure-lowering policy.",
+      );
+    }
+
     let resourceText: string;
     try {
       resourceText = (await this.#resources.reopenUtf8Text(
@@ -242,7 +283,7 @@ export class CaptureBackedTechnicalCompilationSourceReader
           acceptedMimeTypes: acceptedMimeTypesForTechnicalLanguage(
             reopened.document.source.language,
           ),
-          maxBytes: Math.max(reopened.document.source.byteCount, 1),
+          maxBytes: Math.max(rootReopenByteLimit, 1),
         },
       )).text;
     } catch (cause) {
@@ -255,7 +296,10 @@ export class CaptureBackedTechnicalCompilationSourceReader
       }
       throw cause;
     }
-    if (resourceText !== reopened.sourceText) {
+    if (
+      effectiveUnit.kind === "authored-root" &&
+      resourceText !== reopened.sourceText
+    ) {
       throw readError(
         "bytes_mismatch",
         "Workspace AgentResource bytes do not match the captured technical source CAS.",
@@ -292,17 +336,19 @@ export class CaptureBackedTechnicalCompilationSourceReader
         "Reopened technical source provenance does not match its captured analysis.",
       );
     }
-    const closedDependencyCount = Math.max(
-      0,
-      sealedClosure.document.files.length - 1,
-    );
+    await this.#recrossEffectiveUnit({
+      reopened,
+      closure: sealedClosure.document,
+      effectiveUnit,
+      rootText: resourceText,
+    });
     return deepFreeze({
       referenceFingerprint: observedReferenceFingerprint,
       source: {
         sourceText: reopened.sourceText,
         analysis: reopened.analysis,
         analysisFingerprint,
-        closedDependencyCount,
+        effectiveUnit,
       },
       provenance: {
         profile: {
@@ -314,6 +360,7 @@ export class CaptureBackedTechnicalCompilationSourceReader
         sourceFingerprint,
         captureFingerprint: observedReferenceFingerprint,
         analysisFingerprint,
+        effectiveUnit,
         attachment: reopened.document.attachment,
         sourceClosure: reopened.document.sourceClosure,
         locator: reopened.locator,
@@ -354,6 +401,135 @@ export class CaptureBackedTechnicalCompilationSourceReader
       throw readError(
         "catalog_alignment_mismatch",
         "Captured technical source does not match the exact compilation catalogue identity.",
+      );
+    }
+  }
+
+  async #recrossEffectiveUnit(input: {
+    readonly reopened: Awaited<
+      ReturnType<TechnicalSourceAnalysisCapture["reopenLocator"]>
+    >;
+    readonly closure: ProjectSourceClosure;
+    readonly effectiveUnit: ReturnType<typeof validateTechnicalSourceEffectiveUnit>;
+    readonly rootText: string;
+  }): Promise<void> {
+    const profile = this.#captures.requireCaptureProfile(
+      input.reopened.document.profile.id,
+    );
+    if (profile.version !== input.reopened.document.profile.version) {
+      throw readError(
+        "profile_identity_mismatch",
+        "The captured profile version is no longer the exact registered lowering profile.",
+      );
+    }
+    if (input.effectiveUnit.kind === "authored-root") {
+      if (
+        (input.effectiveUnit.closureKind === "root-only" &&
+          input.closure.files.length !== 1) ||
+        (input.effectiveUnit.closureKind === "unlowered-closure" &&
+          input.closure.files.length <= 1) ||
+        (input.effectiveUnit.closureKind === "unlowered-closure" &&
+          profile.workspaceClosureLowering !== undefined)
+      ) {
+        throw readError(
+          "closure_mismatch",
+          "The captured closure kind no longer agrees with its registered executable-unit policy.",
+        );
+      }
+      return;
+    }
+    if (
+      input.closure.files.length <= 1 ||
+      profile.workspaceClosureLowering === undefined ||
+      input.reopened.document.source.role !== "cad-script" ||
+      input.reopened.document.source.language !== "python" ||
+      input.reopened.document.effectiveUnit.kind !==
+        "build123d-workspace-closure-lowered"
+    ) {
+      throw readError(
+        "closure_mismatch",
+        "Only the exact Build123d lowering profile may replay a multi-file executable unit.",
+      );
+    }
+    const texts = new Map<string, string>();
+    let closureSourceBytes = 0;
+    for (const file of input.closure.files) {
+      let text: string;
+      try {
+        text = (await this.#resources.reopenUtf8Text(file.resourceRef, {
+          acceptedMimeTypes: acceptedMimeTypesForTechnicalLanguage("python"),
+          maxBytes: profile.workspaceClosureLowering.maxClosureSourceBytes,
+        })).text;
+      } catch (cause) {
+        throw readError(
+          "bytes_mismatch",
+          `Workspace source ${file.fileId}@${file.fileRevision} could not be reopened as exact UTF-8 Build123d input.`,
+          cause,
+        );
+      }
+      texts.set(`${file.fileId}@${file.fileRevision}`, text);
+      closureSourceBytes += new TextEncoder().encode(text).byteLength;
+    }
+    if (
+      closureSourceBytes > profile.workspaceClosureLowering.maxClosureSourceBytes ||
+      input.closure.files.length > profile.workspaceClosureLowering.maxClosureFiles
+    ) {
+      throw readError(
+        "closure_mismatch",
+        "The exact closure exceeds the persisted Build123d lowering profile limits.",
+      );
+    }
+    const root = input.closure.files.find((file) =>
+      file.fileId === input.closure.root.fileId &&
+      file.fileRevision === input.closure.root.fileRevision
+    );
+    if (!root || texts.get(`${root.fileId}@${root.fileRevision}`) !== input.rootText) {
+      throw readError("closure_mismatch", "The exact closure root could not be re-opened.");
+    }
+    let lowered;
+    try {
+      lowered = await lowerBuild123dWorkspaceClosure({
+        closure: input.closure,
+        root: {
+          fileId: root.fileId,
+          fileRevision: root.fileRevision,
+          sourceText: input.rootText,
+        },
+        dependencies: input.closure.files.filter((file) =>
+          file.fileId !== root.fileId || file.fileRevision !== root.fileRevision
+        ).map((file) => ({
+          fileId: file.fileId,
+          fileRevision: file.fileRevision,
+          sourceText: texts.get(`${file.fileId}@${file.fileRevision}`)!,
+        })),
+      });
+    } catch (cause) {
+      throw readError(
+        "closure_mismatch",
+        "The exact Build123d closure no longer reproduces its sealed lowered unit.",
+        cause,
+      );
+    }
+    try {
+      assertBuild123dWorkspaceClosureLoweringManifestsEqual(
+        input.reopened.document.effectiveUnit.loweringManifest,
+        lowered.manifest,
+        "$technicalCompilationSourceRead.effectiveUnit.loweringManifest",
+      );
+    } catch (cause) {
+      throw readError(
+        "closure_mismatch",
+        "The re-lowered Build123d manifest differs from the persisted complete manifest.",
+        cause,
+      );
+    }
+    if (
+      lowered.script !== input.reopened.sourceText ||
+      !fingerprintsEqual(lowered.scriptFingerprint, input.effectiveUnit.scriptFingerprint)
+    ) {
+      throw readError(
+        "bytes_mismatch",
+        "The re-lowered Build123d script differs from the captured executable bytes.",
       );
     }
   }

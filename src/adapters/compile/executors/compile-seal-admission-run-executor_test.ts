@@ -43,6 +43,7 @@ import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import { computeArchiveCascade } from "../../../domain/thread/thread-retirement.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import {
+  sampleTechnicalSourceClosureProvenance,
   technicalSourceAnalysisCaptureStores,
   technicalSourceCaptureInput,
 } from "../../../testing/technical-source-capture-test-support.ts";
@@ -135,11 +136,17 @@ Deno.test("sealed admission capture uses codepoint order and exact source covera
       technicalSourceAnalysisCaptureStores(directory),
     );
     const persisted = await Promise.all(
-      ["source.Z", "source.a"].map((sourceId) =>
+      ["source.Z", "source.a"].map((sourceId, index) =>
         captures.persist(technicalSourceCaptureInput({
           profileId: INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG.profiles[0].id,
           sourceId,
           sourceText: SOURCE_TEXT,
+          sourceClosure: sampleTechnicalSourceClosureProvenance(sourceId, {
+            fingerprint: {
+              algorithm: "sha256",
+              digest: (index === 0 ? "b" : "a").repeat(64),
+            },
+          }),
         }))
       ),
     );
@@ -209,7 +216,7 @@ Deno.test("sealed admission capture uses codepoint order and exact source covera
         sourceText: item.sourceText,
         analysis: item.analysis,
         analysisFingerprint: await fingerprintSourceAnalysisBundle(item.analysis),
-        closedDependencyCount: 0,
+        effectiveUnit: item.document.effectiveUnit,
       }))),
       bindings,
       profileRequests: [{
@@ -282,6 +289,7 @@ Deno.test("sealed admission capture uses codepoint order and exact source covera
           capture.sourceId === item.analysis.source.id
         )!.referenceFingerprint,
         analysisFingerprint: await fingerprintSourceAnalysisBundle(item.analysis),
+        effectiveUnit: item.document.effectiveUnit,
         attachment: item.document.attachment,
         sourceClosure: item.document.sourceClosure,
         locator: item.locator,
@@ -306,8 +314,7 @@ Deno.test("sealed admission capture uses codepoint order and exact source covera
       decisionId: "decision.seal",
       sealedAt: "2026-08-13T00:00:00.000Z",
       draftReference,
-      // Deliberately use the opposite of codepoint order. In this locale,
-      // localeCompare orders lower case before upper case.
+      // Deliberately use the opposite of codepoint order.
       sourceCaptures: [...sourceCaptures].reverse(),
       admission,
       document: compiled.document,
@@ -316,9 +323,97 @@ Deno.test("sealed admission capture uses codepoint order and exact source covera
     assertEquals(
       validated.sourceCaptures.map((item) => item.sourceId),
       [
-        "source.Z",
-        "source.a",
+        `technical-unit:${"a".repeat(64)}`,
+        `technical-unit:${"b".repeat(64)}`,
       ],
+    );
+    assertEquals(
+      validated.admission.sources.every((source) =>
+        source.id !== source.sourceClosure.root.fileId &&
+        source.attachment.fileId === source.sourceClosure.root.fileId
+      ),
+      true,
+    );
+
+    const loweredSources = await Promise.all(reopened.map(async (item) => ({
+      sourceText: item.sourceText,
+      analysis: item.analysis,
+      analysisFingerprint: await fingerprintSourceAnalysisBundle(item.analysis),
+      effectiveUnit: {
+        kind: "build123d-workspace-closure-lowered" as const,
+        closureKind: "build123d-workspace-closure-lowered" as const,
+        unitId: item.analysis.source.id,
+        closureFingerprint: item.document.effectiveUnit.closureFingerprint,
+        scriptFingerprint: item.analysis.source.fingerprint,
+        lowerer: {
+          schemaVersion: "build123d-workspace-closure-lowering/1.0" as const,
+          kind: "build123d-workspace-closure-lowering" as const,
+          manifestFingerprint: {
+            algorithm: "sha256" as const,
+            digest: "c".repeat(64),
+          },
+        },
+      },
+    })));
+    const lowered = await compileTechnicalSources({
+      schemaVersion: TECHNICAL_COMPILATION_INPUT_SCHEMA,
+      basis,
+      basisFingerprint: await fingerprintTechnicalCompilationBasis(basis),
+      sources: loweredSources,
+      bindings,
+      profileRequests: [{
+        profileId: profile.id,
+        profileVersion: profile.version,
+        sourceIds: reopened.map((item) => item.analysis.source.id),
+      }],
+    }, INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG);
+    if (lowered.document.status !== "ready-for-review") {
+      throw new Error(
+        `Lowered fixture unexpectedly compiled as ${lowered.document.status}.`,
+      );
+    }
+    const loweredDraft: TechnicalCompilationDraft = {
+      projectId: basis.thread.projectId,
+      document: lowered.document,
+      fingerprint: lowered.fingerprint,
+      sourceCaptures,
+    };
+    const loweredDraftReference = {
+      schemaVersion: TECHNICAL_COMPILATION_DRAFT_REFERENCE_SCHEMA,
+      draftId:
+        `technical-compilation:${loweredDraft.projectId}:${loweredDraft.fingerprint.digest}`,
+      projectId: loweredDraft.projectId,
+      documentFingerprint: loweredDraft.fingerprint,
+      envelopeFingerprint: await sha256Fingerprint(loweredDraft),
+    };
+    const loweredAdmission = {
+      ...admission,
+      draft: {
+        draftId: loweredDraftReference.draftId,
+        projectId: loweredDraftReference.projectId,
+        documentFingerprint: loweredDraftReference.documentFingerprint,
+        envelopeFingerprint: loweredDraftReference.envelopeFingerprint,
+      },
+      sources: admission.sources.map((source, index) => ({
+        ...source,
+        effectiveUnit: loweredSources[index]!.effectiveUnit,
+      })),
+      compilation: {
+        fingerprint: lowered.fingerprint,
+        status: "ready-for-review" as const,
+      },
+    };
+    const loweredValidated = await validateTechnicalCompilationAdmissionCapture({
+      ...capture,
+      draftReference: loweredDraftReference,
+      admission: loweredAdmission,
+      document: lowered.document,
+    });
+    assertEquals(
+      loweredValidated.document.inputManifest.sources.every((source) =>
+        source.effectiveUnit.kind === "build123d-workspace-closure-lowered"
+      ),
+      true,
     );
 
     await assertRejects(
@@ -329,6 +424,28 @@ Deno.test("sealed admission capture uses codepoint order and exact source covera
         }),
       TypeError,
       "exactly cover",
+    );
+    await assertRejects(
+      () =>
+        validateTechnicalCompilationAdmissionCapture({
+          ...capture,
+          admission: {
+            ...admission,
+            sources: admission.sources.map((source, index) =>
+              index === 0
+                ? {
+                  ...source,
+                  effectiveUnit: {
+                    ...source.effectiveUnit,
+                    closureKind: "unlowered-closure" as const,
+                  },
+                }
+                : source
+            ),
+          },
+        }),
+      TypeError,
+      "disagrees",
     );
     await assertRejects(
       () =>
@@ -787,7 +904,7 @@ async function buildExecuteFixture(
     sourceText: reopened.sourceText,
     analysis: reopened.analysis,
     analysisFingerprint: await fingerprintSourceAnalysisBundle(reopened.analysis),
-    closedDependencyCount: 0,
+    effectiveUnit: reopened.document.effectiveUnit,
   };
   const sysmlFingerprint = await sha256Fingerprint({ capture: "sysml.fixture" });
   const sysmlArtifact = {
@@ -1018,6 +1135,7 @@ async function buildExecuteFixture(
       sourceFingerprint: source.analysis.source.fingerprint,
       captureFingerprint: referenceFingerprint,
       analysisFingerprint: source.analysisFingerprint,
+      effectiveUnit: persisted.document.effectiveUnit,
       attachment: persisted.document.attachment,
       sourceClosure: persisted.document.sourceClosure,
       locator: persisted.locator,
@@ -1217,10 +1335,20 @@ async function buildExecuteFixture(
         return {
           ...exact,
           source: options.multiFileClosure
-            ? { ...exact.source, closedDependencyCount: 1 }
+            ? {
+              ...exact.source,
+              effectiveUnit: unloweredAuthoredRoot(exact.source.effectiveUnit),
+            }
             : exact.source,
           provenance: {
             ...exact.provenance,
+            ...(options.multiFileClosure
+              ? {
+                effectiveUnit: unloweredAuthoredRoot(
+                  exact.provenance.effectiveUnit,
+                ),
+              }
+              : {}),
             ...(options.sourceProvenanceDrift
               ? {
                 analyzer: {
@@ -1298,7 +1426,7 @@ function locatorBackedSourceReader(
           sourceText: reopened.sourceText,
           analysis: reopened.analysis,
           analysisFingerprint,
-          closedDependencyCount: 0,
+          effectiveUnit: reopened.document.effectiveUnit,
         },
         provenance: {
           profile: reopened.document.profile,
@@ -1309,6 +1437,7 @@ function locatorBackedSourceReader(
           },
           captureFingerprint: request.referenceFingerprint,
           analysisFingerprint,
+          effectiveUnit: reopened.document.effectiveUnit,
           attachment: reopened.document.attachment,
           sourceClosure: reopened.document.sourceClosure,
           locator: reopened.locator,
@@ -1317,6 +1446,15 @@ function locatorBackedSourceReader(
       };
     },
   };
+}
+
+function unloweredAuthoredRoot(
+  effectiveUnit: TechnicalCompilationSource["effectiveUnit"],
+) {
+  if (effectiveUnit.kind !== "authored-root") {
+    throw new Error("Fixture expected an authored-root effective unit.");
+  }
+  return { ...effectiveUnit, closureKind: "unlowered-closure" as const };
 }
 
 async function removeExecuteFixtureDirectory(directory: string): Promise<void> {

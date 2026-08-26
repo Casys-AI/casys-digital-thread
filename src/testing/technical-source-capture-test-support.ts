@@ -1,6 +1,6 @@
-/**
- * Shared fixtures for technical-source V3 locators, attachments and closures.
- */
+/** Shared fixtures for technical-source V4 locators, authored evidence and units. */
+
+import { createHash } from "node:crypto";
 
 import { FileByteStore } from "../adapters/shared/cas/file-byte-store.ts";
 import {
@@ -162,15 +162,28 @@ export function technicalSourceCaptureInput(input: {
   readonly attachment?: TechnicalSourceAttachmentProvenance;
   readonly sourceClosure?: TechnicalSourceClosureProvenance;
 }) {
+  const sourceClosure = input.sourceClosure ??
+    sampleTechnicalSourceClosureProvenance(input.sourceId, {
+      ...(input.projectId ? { projectId: input.projectId } : {}),
+    });
+  const scriptFingerprint = {
+    algorithm: "sha256" as const,
+    digest: createHash("sha256").update(input.sourceText, "utf8").digest("hex"),
+  };
+  const unitId = `technical-unit:${sourceClosure.fingerprint.digest}`;
   return {
     profileId: input.profileId,
-    sourceId: input.sourceId,
+    sourceId: unitId,
     sourceText: input.sourceText,
+    effectiveUnit: {
+      kind: "authored-root" as const,
+      closureKind: "root-only" as const,
+      unitId,
+      closureFingerprint: sourceClosure.fingerprint,
+      scriptFingerprint,
+    },
     attachment: input.attachment ??
       sampleTechnicalSourceAttachmentProvenance(input.sourceId),
-    sourceClosure: input.sourceClosure ??
-      sampleTechnicalSourceClosureProvenance(input.sourceId, {
-        ...(input.projectId ? { projectId: input.projectId } : {}),
-      }),
+    sourceClosure,
   };
 }

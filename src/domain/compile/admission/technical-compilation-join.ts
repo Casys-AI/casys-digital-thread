@@ -23,7 +23,7 @@ export interface TechnicalCompilationJoinSource {
     readonly elementKind: string;
   };
   readonly attachmentAlignment?: TechnicalSourceAttachmentAlignment;
-  readonly closedDependencyCount?: number;
+  readonly effectiveUnit: import("./technical-compilation.ts").TechnicalCompilationSource["effectiveUnit"];
 }
 
 export interface TechnicalCompilationJoinElement {
