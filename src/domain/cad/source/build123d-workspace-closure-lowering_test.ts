@@ -14,7 +14,7 @@ import {
 import { sha256Fingerprint, sha256Hex } from "../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
 
-const ROOT_IMPORT = workspaceModule("dep-dimensions", "dimensions.py");
+const ROOT_IMPORT = workspaceModule("dep-dimensions");
 
 Deno.test(
   "build123d workspace lowering v1 lowers exact direct static data dependencies with source map and digests",
@@ -45,6 +45,18 @@ Deno.test(
     ]);
     assertEquals(lowered.manifest.imports[0]?.module, ROOT_IMPORT);
     assertEquals(lowered.manifest.imports[0]?.names, ["width", "depth"]);
+    assertEquals(lowered.manifest.imports[0]?.dependency.fileId, "dep-dimensions");
+    assertEquals(lowered.manifest.imports[0]?.dependency.fileRevision, 1);
+    assertEquals(
+      lowered.manifest.sources.map((source) => source.virtualModule),
+      [workspaceModule("dep-dimensions"), workspaceModule("root-part")],
+    );
+    assertEquals(lowered.manifest.sources[0]?.fileRevision, 1);
+    assertEquals(
+      lowered.manifest.sources[0]?.sourceFingerprint,
+      input.closure.files.find((file) => file.fileId === "dep-dimensions")
+        ?.resourceRef.fingerprint,
+    );
     assertEquals(lowered.manifest.sourceMap.length, 3);
     assertEquals(
       lowered.manifest.sourceMap.map((segment) => segment.source.fileId),
@@ -63,8 +75,8 @@ Deno.test(
   async () => {
     const input = await fixture({
       rootText: [
-        `from ${workspaceModule("dep-zeta", "zeta.py")} import zeta`,
-        `from ${workspaceModule("dep-alpha", "alpha.py")} import alpha`,
+        `from ${workspaceModule("dep-zeta")} import zeta`,
+        `from ${workspaceModule("dep-alpha")} import alpha`,
         "from build123d import Box",
         "result = Box(alpha, zeta, 1)",
         "",
@@ -407,7 +419,7 @@ Deno.test(
   async () => {
     const unsealed = await fixture({
       rootText: [
-        "from casys_workspace.f_67686f7374_r1.ghost import width",
+        "from casys_workspace.f_67686f7374 import width",
         "from build123d import Box",
         "result = Box(width, 1, 1)",
         "",
@@ -470,6 +482,19 @@ Deno.test(
       ].join("\n"),
     });
     await assertLoweringCode(nested, "workspace_import_not_module_level");
+
+    const legacyRevisionIdentity = await fixture({
+      rootText: [
+        "from casys_workspace.f_6465702d64696d656e73696f6e73_r1.dimensions import width",
+        "from build123d import Box",
+        "result = Box(width, 1, 1)",
+        "",
+      ].join("\n"),
+    });
+    await assertLoweringCode(
+      legacyRevisionIdentity,
+      "workspace_import_unsealed_dependency",
+    );
   },
 );
 
@@ -596,21 +621,10 @@ Deno.test(
     } as unknown as Build123dWorkspaceClosureLoweringInput;
     await assertLoweringCode(fakeModulePath, "invalid_input");
 
-    const invalidVirtualName = await fixture({
-      dependencies: [
-        dependency(
-          "dep-dimensions",
-          "shared-dimensions.py",
-          "width = 20\ndepth = width * 2\n",
-        ),
-      ],
-    });
-    await assertLoweringCode(invalidVirtualName, "invalid_virtual_module");
-
     const collision = await fixture({
       rootText: [
-        `from ${workspaceModule("dep-one", "one.py")} import width`,
-        `from ${workspaceModule("dep-two", "two.py")} import width`,
+        `from ${workspaceModule("dep-one")} import width`,
+        `from ${workspaceModule("dep-two")} import width`,
         "from build123d import Box",
         "result = Box(width, 1, 1)",
         "",
@@ -625,11 +639,97 @@ Deno.test(
 );
 
 Deno.test(
+  "build123d workspace lowering v1 keeps the virtual module stable across dependency revision and logical name",
+  async () => {
+    const first = await fixture();
+    const hyphenatedLogicalName = await fixture({
+      dependencies: [
+        dependency(
+          "dep-dimensions",
+          "shared-dimensions.py",
+          "width = 20\ndepth = width * 2\n",
+        ),
+      ],
+    });
+    const hyphenated = await lowerBuild123dWorkspaceClosure(hyphenatedLogicalName);
+    assertEquals(hyphenated.manifest.sources[0]?.virtualModule, ROOT_IMPORT);
+
+    const successor = await fixture({
+      dependencies: [
+        {
+          fileId: "dep-dimensions",
+          fileRevision: 2,
+          logicalName: "renamed-dimensions.py",
+          sourceText: "width = 20\ndepth = width * 2\n",
+        },
+      ],
+    });
+    const firstLowered = await lowerBuild123dWorkspaceClosure(first);
+    const successorLowered = await lowerBuild123dWorkspaceClosure(successor);
+
+    assertEquals(firstLowered.manifest.imports[0]?.module, ROOT_IMPORT);
+    assertEquals(successorLowered.manifest.imports[0]?.module, ROOT_IMPORT);
+    assertEquals(firstLowered.manifest.sources[0]?.virtualModule, ROOT_IMPORT);
+    assertEquals(successorLowered.manifest.sources[0]?.virtualModule, ROOT_IMPORT);
+    assertEquals(firstLowered.manifest.sources[0]?.fileId, "dep-dimensions");
+    assertEquals(firstLowered.manifest.sources[0]?.fileRevision, 1);
+    assertEquals(successorLowered.manifest.sources[0]?.fileRevision, 2);
+    assertEquals(
+      firstLowered.manifest.imports[0]?.dependency.fileRevision,
+      1,
+    );
+    assertEquals(
+      successorLowered.manifest.imports[0]?.dependency.fileRevision,
+      2,
+    );
+    assertEquals(
+      firstLowered.manifest.sources[0]?.sourceFingerprint,
+      first.closure.files.find((file) => file.fileId === "dep-dimensions")
+        ?.resourceRef.fingerprint,
+    );
+    assertEquals(
+      successorLowered.manifest.sources[0]?.sourceFingerprint,
+      successor.closure.files.find((file) => file.fileId === "dep-dimensions")
+        ?.resourceRef.fingerprint,
+    );
+  },
+);
+
+Deno.test(
+  "build123d workspace lowering v1 refuses more than one revision of the same fileId",
+  async () => {
+    const input = await fixture({
+      rootText: [
+        `from ${workspaceModule("dep-same")} import width`,
+        "from build123d import Box",
+        "result = Box(width, 1, 1)",
+        "",
+      ].join("\n"),
+      dependencies: [
+        {
+          fileId: "dep-same",
+          fileRevision: 1,
+          logicalName: "one.py",
+          sourceText: "width = 20\n",
+        },
+        {
+          fileId: "dep-same",
+          fileRevision: 2,
+          logicalName: "two.py",
+          sourceText: "depth = 40\n",
+        },
+      ],
+    });
+    await assertLoweringCode(input, "ambiguous_virtual_module");
+  },
+);
+
+Deno.test(
   "build123d workspace lowering v1 refuses a transitive closure even with all exact texts supplied",
   async () => {
     const input = await fixture({
       rootText: [
-        `from ${workspaceModule("dep-one", "one.py")} import width`,
+        `from ${workspaceModule("dep-one")} import width`,
         "from build123d import Box",
         "result = Box(width, 1, 1)",
         "",
@@ -770,7 +870,10 @@ async function fixture(overrides: {
   const rootRecord = records.find((record) => record.source.fileId === root.fileId)!;
   const dependencyRecords = records
     .filter((record) => record.source.fileId !== root.fileId)
-    .sort((left, right) => left.source.fileId.localeCompare(right.source.fileId));
+    .sort((left, right) => {
+      const id = left.source.fileId.localeCompare(right.source.fileId);
+      return id !== 0 ? id : left.source.fileRevision - right.source.fileRevision;
+    });
   const rootDependencies = dependencyRecords.map((record) => ({
     fileId: record.file.fileId,
     fileRevision: record.file.fileRevision,
@@ -878,14 +981,9 @@ async function fingerprintUtf8(text: string): Promise<ContentFingerprint> {
   };
 }
 
-function workspaceModule(
-  fileId: string,
-  logicalName: string,
-  fileRevision = 1,
-): string {
-  const stem = logicalName.slice(0, -3);
+function workspaceModule(fileId: string): string {
   const encodedId = [...new TextEncoder().encode(fileId)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
-  return `casys_workspace.f_${encodedId}_r${fileRevision}.${stem}`;
+  return `casys_workspace.f_${encodedId}`;
 }

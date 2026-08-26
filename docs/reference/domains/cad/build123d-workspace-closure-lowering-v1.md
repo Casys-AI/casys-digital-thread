@@ -20,13 +20,15 @@ integration.
   are not part of this contract.
 - The closure is only root to direct dependency leaf; transitive dependencies are
   refused.
-- A virtual Python module is derived from the sealed closure identity, never from a
-  caller path: `casys_workspace.f_<UTF-8-file-id-hex>_r<revision>.<fileStem>`. The file
-  stem comes directly from `resourceRef.name`, which must be a simple
-  `python-identifier.py` name. These are virtual names, never local filesystem paths.
+- A virtual Python module is derived from the sealed file id only, never from revision,
+  logical name, caller path, or latest: `casys_workspace.f_<UTF-8-file-id-hex>`. These
+  are virtual names, never local filesystem paths. A closure that presents more than one
+  revision of the same fileId, or that otherwise makes this stable module ambiguous, is
+  refused. The exact `fileId@revision`, resource digest, and import-to-direct-edge
+  mapping remain pinned in the sealed closure and the lowering manifest.
 - The root may use one physical, module-level form per direct dependency:
 
-      from casys_workspace.f_6465702d64696d656e73696f6e73_r1.dimensions import width, depth
+      from casys_workspace.f_6465702d64696d656e73696f6e73 import width, depth
 
   Aliases, wildcard imports, relative imports, standalone imports, duplicate imports,
   undeclared modules, and absent dependency imports are refused. All workspace imports
@@ -71,7 +73,8 @@ The result is one deterministic Python script. It is passed through the existing
 validator, then returned with:
 
 - the exact closure fingerprint;
-- source identities and the resolved virtual modules;
+- source identities (exact `fileId@revision` and resource digest) and the resolved
+  stable virtual modules;
 - import-to-direct-edge mapping, including both the parsed statement span and the full
   removed physical line span (trailing comment plus CRLF/LF when present);
 - a source map from copied UTF-16 spans to exact input source spans;

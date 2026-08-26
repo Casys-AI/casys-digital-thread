@@ -126,9 +126,10 @@ export class Build123dWorkspaceClosureLoweringError extends Error {
  * Exact reopened bytes for one file already named by the sealed closure.
  *
  * V1 deliberately has no caller-supplied path or logical-name resolver. The
- * virtual Python module is derived only from the sealed file id/revision and
- * the closure resource name; this keeps import resolution inside the pure
- * contract rather than trusting mutable descriptor metadata.
+ * virtual Python module is derived only from the sealed file id. Revision,
+ * logical name, caller path, and latest are never part of that import
+ * identity. Exact fileId@revision and the resource digest stay pinned on the
+ * sealed closure and the lowering manifest.
  */
 export interface Build123dWorkspaceClosureLoweringSource {
   readonly fileId: string;
@@ -653,8 +654,19 @@ function assertDirectLeafClosure(
 function assertUnambiguousVirtualModules(
   sources: readonly ResolvedSource[],
 ): void {
+  const ownerByFileId = new Map<string, ResolvedSource>();
   const ownerByModule = new Map<string, ResolvedSource>();
   for (const source of sources) {
+    const existingFile = ownerByFileId.get(source.fileId);
+    if (existingFile !== undefined) {
+      fail(
+        "ambiguous_virtual_module",
+        `Virtual module ${source.virtualModule} is ambiguous because ${
+          sourceLabel(existingFile)
+        } and ${sourceLabel(source)} share the same fileId.`,
+      );
+    }
+    ownerByFileId.set(source.fileId, source);
     const existing = ownerByModule.get(source.virtualModule);
     if (existing !== undefined) {
       fail(
@@ -669,40 +681,27 @@ function assertUnambiguousVirtualModules(
 }
 
 function virtualModuleFor(file: ProjectSourceClosureFile): string {
-  const logicalName = file.resourceRef.name;
-  if (!logicalName.endsWith(".py")) {
-    fail(
-      "invalid_virtual_module",
-      `Closure resource name for ${
-        fileKey(file)
-      } must be a simple .py name in lowering v1.`,
-    );
-  }
-  const stem = logicalName.slice(0, -3);
-  if (
-    stem.length === 0 || stem.includes("/") || stem.includes("\\") ||
-    !isPythonIdentifier(stem)
-  ) {
-    fail(
-      "invalid_virtual_module",
-      `Closure resource name ${JSON.stringify(logicalName)} for ${
-        fileKey(file)
-      } does not resolve to one supported Python module name.`,
-    );
-  }
   return [
     BUILD123D_WORKSPACE_IMPORT_PREFIX,
-    sealedClosureModuleSegment(file.fileId, file.fileRevision),
-    stem,
+    sealedClosureModuleSegment(file.fileId),
   ].join(".");
 }
 
-/** A valid Python segment bijectively derived from a sealed closure file ref. */
-function sealedClosureModuleSegment(fileId: string, fileRevision: number): string {
+/** A valid Python segment bijectively derived from the sealed file id only. */
+function sealedClosureModuleSegment(fileId: string): string {
   const encodedId = [...new TextEncoder().encode(fileId)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
-  return `f_${encodedId}_r${fileRevision}`;
+  const segment = `f_${encodedId}`;
+  if (encodedId.length === 0 || !isPythonIdentifier(segment)) {
+    fail(
+      "invalid_virtual_module",
+      `Sealed file id ${
+        JSON.stringify(fileId)
+      } does not resolve to one supported Python module name.`,
+    );
+  }
+  return segment;
 }
 
 function isPythonIdentifier(value: string): boolean {
