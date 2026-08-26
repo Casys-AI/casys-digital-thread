@@ -36,6 +36,7 @@ export function ProductRequirementsMatrix({
   const [openId, setOpenId] = useState<string>();
   const rows = filterRequirementRows(matrix, filter);
   const openCount = matrix.counts.fail + matrix.counts.unresolved;
+  const noModelledRequirements = matrix.counts.all === 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -50,9 +51,11 @@ export function ProductRequirementsMatrix({
           )}
         >
           <CoverageCell
-            label="VERIFIED"
-            value={`${matrix.counts.pass}/${matrix.counts.all} PASS`}
-            tone="success"
+            label={noModelledRequirements ? "MODELLED" : "VERIFIED"}
+            value={noModelledRequirements
+              ? "0"
+              : `${matrix.counts.pass}/${matrix.counts.all} PASS`}
+            tone={noModelledRequirements ? "warning" : "success"}
           />
           <CoverageCell
             label="OPEN"
