@@ -70,6 +70,7 @@ Deno.test("a run reports how long it waited and how long it ran", () => {
 
   assertEquals(view.rows[0]?.waitSeconds, 8);
   assertEquals(view.rows[0]?.runSeconds, 2);
+  assertEquals(view.rows[0]?.currentAttemptId, "r1");
   assertEquals(view.scaleSeconds, 10);
   assertEquals(waitShare(view), 0.8);
 });
@@ -147,6 +148,7 @@ Deno.test(
     assertEquals(view.rows[0]?.status, "completed");
     assertEquals(view.rows[0]?.revisionCount, 2);
     assertEquals(view.rows[0]?.attemptCount, 2);
+    assertEquals(view.rows[0]?.currentAttemptId, "attempt-completed");
     assertEquals(
       view.rows[0]?.attempts.map((attempt) => attempt.status),
       ["failed", "completed"],
@@ -199,5 +201,56 @@ Deno.test(
     assertEquals(view.rows.map((row) => row.label), [title, title]);
     assertEquals(view.rows.map((row) => row.revisionCount), [1, 1]);
     assertEquals(view.rows.map((row) => row.attemptCount), [1, 1]);
+    assertEquals(view.rows.map((row) => row.currentAttemptId), ["a1", "b1"]);
+  },
+);
+
+Deno.test(
+  "branched leaves do not elect a current winner from array order",
+  () => {
+    const title = "Branched activity title";
+    const view = buildRunTimeline(
+      project(
+        [
+          run(
+            "attempt-left",
+            {
+              queuedAt: "2026-08-20T00:00:00.000Z",
+              startedAt: "2026-08-20T00:00:01.000Z",
+              completedAt: "2026-08-20T00:00:02.000Z",
+            },
+            "completed",
+            "rev-left",
+          ),
+          run(
+            "attempt-right",
+            {
+              queuedAt: "2026-08-20T00:00:10.000Z",
+              startedAt: "2026-08-20T00:00:11.000Z",
+              completedAt: "2026-08-20T00:00:12.000Z",
+            },
+            "cancelled",
+            "rev-right",
+          ),
+        ],
+        [
+          work("rev-root", "cancelled", title),
+          work("rev-left", "completed", title, "rev-root"),
+          work("rev-right", "cancelled", title, "rev-root"),
+        ],
+      ),
+      () => title,
+    );
+
+    assertEquals(view.rows.length, 1);
+    assertEquals(view.rows[0]?.revisionCount, 3);
+    assertEquals(view.rows[0]?.attemptCount, 2);
+    assertEquals(view.rows[0]?.status, "planned");
+    assertEquals(
+      view.rows[0]?.attempts.map((attempt) => attempt.id).includes(
+        view.rows[0]?.currentAttemptId ?? "",
+      ),
+      true,
+    );
   },
 );

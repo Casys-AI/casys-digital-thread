@@ -45,6 +45,8 @@ export interface RunTimelineRow {
     | EngineeringAgentRun["status"];
   readonly revisionCount: number;
   readonly attemptCount: number;
+  /** Attempt shown on the row; historical details exclude this id. */
+  readonly currentAttemptId: string;
   /** Secondes passées en file avant démarrage, ou undefined si jamais démarré. */
   readonly waitSeconds?: number;
   /** Secondes d'exécution, ou undefined si le run n'est pas terminé. */
@@ -108,17 +110,30 @@ function latestAttempt(
   return attempts.at(-1);
 }
 
+const LEAF_STATUS_PRIORITY = [
+  "in-progress",
+  "waiting-for-decision",
+  "ready",
+  "planned",
+] as const;
+
 function leafStatus(
   leaves: readonly EngineeringWorkItem[],
   leafAttempts: readonly RunTimelineAttempt[],
 ): RunTimelineRow["status"] {
-  if (leaves.length > 0) {
-    if (leaves.every((item) => item.status === "completed")) {
-      return "completed";
+  if (leaves.length === 0) {
+    if (leafAttempts.every((attempt) => attempt.status === "completed")) {
+      return latestAttempt(leafAttempts)?.status ?? "queued";
     }
-    return leaves[0]!.status;
+    return "planned";
   }
-  return latestAttempt(leafAttempts)?.status ?? "queued";
+  if (leaves.every((item) => item.status === "completed")) {
+    return "completed";
+  }
+  for (const status of LEAF_STATUS_PRIORITY) {
+    if (leaves.some((item) => item.status === status)) return status;
+  }
+  return "planned";
 }
 
 function rowFromAttempts(
@@ -127,16 +142,17 @@ function rowFromAttempts(
   status: RunTimelineRow["status"],
   revisionCount: number,
   attempts: readonly RunTimelineAttempt[],
+  current: RunTimelineAttempt,
 ): RunTimelineRow {
-  const current = latestAttempt(attempts);
   return {
     id,
     label,
     status,
     revisionCount,
     attemptCount: attempts.length,
-    waitSeconds: current?.waitSeconds,
-    runSeconds: current?.runSeconds,
+    currentAttemptId: current.id,
+    waitSeconds: current.waitSeconds,
+    runSeconds: current.runSeconds,
     attempts,
   };
 }
@@ -146,7 +162,14 @@ function rowFromRun(
   labelFor: (run: EngineeringAgentRun) => string,
 ): RunTimelineRow {
   const attempt = attemptFromRun(run);
-  return rowFromAttempts(run.id, labelFor(run), run.status, 1, [attempt]);
+  return rowFromAttempts(
+    run.id,
+    labelFor(run),
+    run.status,
+    1,
+    [attempt],
+    attempt,
+  );
 }
 
 export function buildRunTimeline(
@@ -218,15 +241,15 @@ function groupedActivityRows(
     const leafAttempts = attempts.filter((attempt) =>
       leafIds.includes(attempt.revisionId)
     );
-    const labelRun = leafAttempts.length > 0
-      ? runById.get(latestAttempt(leafAttempts)!.id)
-      : runById.get(attempts[0]!.id);
+    const current = latestAttempt(leafAttempts) ?? attempts[0]!;
+    const labelRun = runById.get(current.id);
     rows.push(rowFromAttempts(
       activity.id,
       labelRun ? labelFor(labelRun) : activity.id,
       leafStatus(leaves, leafAttempts),
       revisions.length,
       attempts,
+      current,
     ));
   }
 

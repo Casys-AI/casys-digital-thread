@@ -1162,9 +1162,9 @@ function RunTimelineActivityRow({
   const wait = row.waitSeconds ?? 0;
   const ran = row.runSeconds ?? 0;
   const historical = row.attempts.filter((attempt) =>
-    attempt.status === "failed" || attempt.status === "cancelled" ||
-    attempt.id !== row.attempts.at(-1)?.id
+    attempt.id !== row.currentAttemptId
   );
+  const showCounts = row.revisionCount > 1 || row.attemptCount > 1;
   return (
     <li className="flex flex-col gap-1.5">
       <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] items-center gap-3">
@@ -1180,13 +1180,15 @@ function RunTimelineActivityRow({
               {row.label}
             </span>
           </span>
-          <span className="mt-0.5 block font-mono text-[10px] text-muted-foreground">
-            {row.revisionCount}{" "}
-            {row.revisionCount === 1 ? "revision" : "revisions"}
-            {" · "}
-            {row.attemptCount}{" "}
-            {row.attemptCount === 1 ? "attempt" : "attempts"}
-          </span>
+          {showCounts && (
+            <span className="mt-0.5 block font-mono text-[10px] text-muted-foreground">
+              {row.revisionCount > 1
+                ? `${row.revisionCount} revisions`
+                : null}
+              {row.revisionCount > 1 && row.attemptCount > 1 ? " · " : null}
+              {row.attemptCount > 1 ? `${row.attemptCount} attempts` : null}
+            </span>
+          )}
         </span>
         <span
           className="flex h-2 items-stretch overflow-hidden rounded-full bg-muted"

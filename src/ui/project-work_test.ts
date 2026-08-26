@@ -189,11 +189,12 @@ Deno.test("run timeline keeps historical attempts behind details on one activity
 
   assertEquals(start >= 0 && end > start, true);
   assertStringIncludes(row, "recordStatusVariant(row.status)");
-  assertStringIncludes(row, "row.revisionCount");
-  assertStringIncludes(row, "row.attemptCount");
+  assertStringIncludes(row, "row.revisionCount > 1");
+  assertStringIncludes(row, "row.attemptCount > 1");
+  assertStringIncludes(row, "row.currentAttemptId");
   assertStringIncludes(row, "<details");
-  assertStringIncludes(row, 'attempt.status === "failed"');
-  assertStringIncludes(row, 'attempt.status === "cancelled"');
+  assertEquals(row.includes('attempt.status === "failed"'), false);
+  assertEquals(row.includes('attempt.status === "cancelled"'), false);
 });
 
 Deno.test("operations page heading describes recorded state rather than fleet health", async () => {
