@@ -11,7 +11,11 @@ import type {
 } from "../../../domain/project/engineering-project.ts";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
 import { cn } from "../lib/utils.ts";
-import { buildRunTimeline, waitShare } from "./run-timeline-model.ts";
+import {
+  buildRunTimeline,
+  type RunTimelineRow,
+  waitShare,
+} from "./run-timeline-model.ts";
 import { Badge, type BadgeProps } from "../ui/badge.tsx";
 import { Card, CardContent, CardHeader } from "../ui/card.tsx";
 import {
@@ -1135,42 +1139,109 @@ function RunTimelineCard(
           </span>
         )}
       </div>
-      <ol className="m-0 flex list-none flex-col gap-1 p-3">
-        {view.rows.map((row) => {
-          const wait = row.waitSeconds ?? 0;
-          const ran = row.runSeconds ?? 0;
-          return (
-            <li
-              key={row.id}
-              className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] items-center gap-3"
-            >
-              <span className="truncate text-[11.5px]" title={row.label}>
-                {row.label}
-              </span>
-              <span
-                className="flex h-2 items-stretch overflow-hidden rounded-full bg-muted"
-                aria-hidden="true"
-              >
-                <i
-                  className="bg-muted-foreground/35"
-                  style={{ width: percent(wait) }}
-                />
-                <i className="bg-brand" style={{ width: percent(ran) }} />
-              </span>
-              <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
-                {row.waitSeconds === undefined
-                  // Jamais démarré : pas de durée, et surtout pas un zéro qui
-                  // se lirait « instantané ».
-                  ? "not started"
-                  : `${wait.toFixed(1)}s + ${
-                    row.runSeconds === undefined ? "…" : `${ran.toFixed(1)}s`
-                  }`}
-              </span>
-            </li>
-          );
-        })}
+      <ol className="m-0 flex list-none flex-col gap-2 p-3">
+        {view.rows.map((row) => (
+          <RunTimelineActivityRow
+            key={row.id}
+            row={row}
+            percent={percent}
+          />
+        ))}
       </ol>
     </Card>
+  );
+}
+
+function RunTimelineActivityRow({
+  row,
+  percent,
+}: {
+  row: RunTimelineRow;
+  percent: (seconds: number) => string;
+}): JSX.Element {
+  const wait = row.waitSeconds ?? 0;
+  const ran = row.runSeconds ?? 0;
+  const historical = row.attempts.filter((attempt) =>
+    attempt.status === "failed" || attempt.status === "cancelled" ||
+    attempt.id !== row.attempts.at(-1)?.id
+  );
+  return (
+    <li className="flex flex-col gap-1.5">
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] items-center gap-3">
+        <span className="min-w-0">
+          <span className="flex items-center gap-1.5">
+            <Badge
+              aria-hidden="true"
+              variant={recordStatusVariant(row.status)}
+            >
+              {sentenceLabel(row.status)}
+            </Badge>
+            <span className="truncate text-[11.5px]" title={row.label}>
+              {row.label}
+            </span>
+          </span>
+          <span className="mt-0.5 block font-mono text-[10px] text-muted-foreground">
+            {row.revisionCount}{" "}
+            {row.revisionCount === 1 ? "revision" : "revisions"}
+            {" · "}
+            {row.attemptCount}{" "}
+            {row.attemptCount === 1 ? "attempt" : "attempts"}
+          </span>
+        </span>
+        <span
+          className="flex h-2 items-stretch overflow-hidden rounded-full bg-muted"
+          aria-hidden="true"
+        >
+          <i
+            className="bg-muted-foreground/35"
+            style={{ width: percent(wait) }}
+          />
+          <i className="bg-brand" style={{ width: percent(ran) }} />
+        </span>
+        <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+          {row.waitSeconds === undefined
+            // Jamais démarré : pas de durée, et surtout pas un zéro qui
+            // se lirait « instantané ».
+            ? "not started"
+            : `${wait.toFixed(1)}s + ${
+              row.runSeconds === undefined ? "…" : `${ran.toFixed(1)}s`
+            }`}
+        </span>
+      </div>
+      {historical.length > 0 && (
+        <details className="pl-0.5">
+          <summary className="cursor-pointer font-mono text-[10px] text-muted-foreground select-none">
+            {historical.length} earlier{" "}
+            {historical.length === 1 ? "attempt" : "attempts"}
+          </summary>
+          <ol className="mt-1 space-y-1">
+            {historical.map((attempt) => (
+              <li
+                key={attempt.id}
+                data-state={attempt.status}
+                className="flex items-center gap-2 font-mono text-[10px] text-muted-foreground"
+              >
+                <Badge
+                  aria-hidden="true"
+                  variant={recordStatusVariant(attempt.status)}
+                >
+                  {sentenceLabel(attempt.status)}
+                </Badge>
+                <span>
+                  {attempt.waitSeconds === undefined
+                    ? "not started"
+                    : `${attempt.waitSeconds.toFixed(1)}s + ${
+                      attempt.runSeconds === undefined
+                        ? "…"
+                        : `${attempt.runSeconds.toFixed(1)}s`
+                    }`}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
+    </li>
   );
 }
 

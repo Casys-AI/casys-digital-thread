@@ -179,6 +179,23 @@ Deno.test("assembly-integrity work card keeps L3 facts, L4 verdict and L5 formal
   assertEquals(card.includes("<button"), false);
 });
 
+Deno.test("run timeline keeps historical attempts behind details on one activity row", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./src/project/work.tsx", import.meta.url),
+  );
+  const start = source.indexOf("function RunTimelineActivityRow");
+  const end = source.indexOf("function workTitle", start);
+  const row = source.slice(start, end);
+
+  assertEquals(start >= 0 && end > start, true);
+  assertStringIncludes(row, "recordStatusVariant(row.status)");
+  assertStringIncludes(row, "row.revisionCount");
+  assertStringIncludes(row, "row.attemptCount");
+  assertStringIncludes(row, "<details");
+  assertStringIncludes(row, 'attempt.status === "failed"');
+  assertStringIncludes(row, 'attempt.status === "cancelled"');
+});
+
 Deno.test("operations page heading describes recorded state rather than fleet health", async () => {
   const source = await Deno.readTextFile(
     new URL("./src/thread/workbench.tsx", import.meta.url),
