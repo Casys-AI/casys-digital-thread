@@ -787,20 +787,10 @@ export function validateCalculixIsolatedStaticResult(
     displacement.nodeId,
     "$result.metrics.maximumDisplacement.nodeId",
   );
-  if (displacementNodeId > meshNodes) {
-    throw new TypeError(
-      "$result.metrics.maximumDisplacement.nodeId exceeds the mesh node count.",
-    );
-  }
   const stressElementId = positiveInteger(
     stress.elementId,
     "$result.metrics.maximumVonMises.elementId",
   );
-  if (stressElementId > meshElements) {
-    throw new TypeError(
-      "$result.metrics.maximumVonMises.elementId exceeds the mesh element count.",
-    );
-  }
   const displacementMagnitude = Math.hypot(...displacementVector);
   if (
     Math.abs(displacementValue - displacementMagnitude) >

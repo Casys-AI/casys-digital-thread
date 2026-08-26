@@ -7,6 +7,7 @@ import {
   createCalculixIsolatedInputBundle,
   parseCalculixIsolatedInputBundle,
   validateCalculixIsolatedOutput,
+  validateCalculixIsolatedOutputBatch,
   validateCalculixIsolatedStaticResult,
 } from "./calculix-isolated-execution.ts";
 import {
@@ -175,21 +176,6 @@ Deno.test("isolated CalculiX output validator closes nine roles and preserves ph
     () =>
       validateCalculixIsolatedStaticResult({
         ...result,
-        metrics: {
-          ...result.metrics,
-          maximumDisplacement: {
-            ...result.metrics.maximumDisplacement,
-            nodeId: result.mesh.nodes + 1,
-          },
-        },
-      }),
-    TypeError,
-    "exceeds the mesh node count",
-  );
-  assertThrows(
-    () =>
-      validateCalculixIsolatedStaticResult({
-        ...result,
         mesh: {
           ...result.mesh,
           nodesPerSelection: {
@@ -200,6 +186,90 @@ Deno.test("isolated CalculiX output validator closes nine roles and preserves ph
       }),
     TypeError,
     "cannot exceed the mesh node count",
+  );
+});
+
+Deno.test("isolated CalculiX static result accepts sparse Gmsh identifiers", async () => {
+  const proof = await proofFor(STEP);
+  const result = sparseResultFor(proof);
+  const validated = validateCalculixIsolatedStaticResult(result);
+  assertEquals(validated.metrics.maximumDisplacement.nodeId, 100);
+  assertEquals(validated.metrics.maximumVonMises.elementId, 50);
+  assertEquals(validated.mesh.nodes, 8);
+  assertEquals(validated.mesh.elements, 4);
+});
+
+Deno.test("isolated CalculiX static result rejects non-positive and non-integer identifiers", async () => {
+  const proof = await proofFor(STEP);
+  const result = resultFor(proof);
+  for (const nodeId of [0, -1, 1.5, Number.NaN]) {
+    assertThrows(
+      () =>
+        validateCalculixIsolatedStaticResult({
+          ...result,
+          metrics: {
+            ...result.metrics,
+            maximumDisplacement: {
+              ...result.metrics.maximumDisplacement,
+              nodeId,
+            },
+          },
+        }),
+      TypeError,
+      "must be a positive integer",
+    );
+  }
+  for (const elementId of [0, -1, 2.5, Number.NaN]) {
+    assertThrows(
+      () =>
+        validateCalculixIsolatedStaticResult({
+          ...result,
+          metrics: {
+            ...result.metrics,
+            maximumVonMises: {
+              ...result.metrics.maximumVonMises,
+              elementId,
+            },
+          },
+        }),
+      TypeError,
+      "must be a positive integer",
+    );
+  }
+});
+
+Deno.test("isolated CalculiX batch binds sparse identifiers to the exact job.dat", async () => {
+  const proof = await proofFor(STEP);
+  const bundle = await createCalculixIsolatedInputBundle({
+    requestId: "request:calculix-local-1",
+    proof,
+    stepBytes: STEP,
+    elementOrder: 2,
+    timeoutMs: 120_000,
+  });
+  const result = sparseResultFor(proof);
+  const outputs = new Map<string, Uint8Array>([
+    ["mesh.geo", textBytes("MESH_GEO")],
+    ["mesh.inp", textBytes("*NODE\n")],
+    ["job.inp", textBytes("JOB_INP")],
+    ["job.dat", textBytes("DAT")],
+  ]);
+  validateCalculixIsolatedOutputBatch(
+    bundle.manifest,
+    outputs,
+    result,
+    sparseBatchInspector({ nodeId: 100, elementId: 50 }),
+  );
+  assertThrows(
+    () =>
+      validateCalculixIsolatedOutputBatch(
+        bundle.manifest,
+        outputs,
+        result,
+        sparseBatchInspector({ nodeId: 101, elementId: 50 }),
+      ),
+    TypeError,
+    "metrics differ from the exact job.dat",
   );
 });
 
@@ -220,6 +290,54 @@ async function proofFor(step: Uint8Array): Promise<MechanicalProofCase> {
       bytes: step.byteLength,
     },
   });
+}
+
+function sparseResultFor(proof: MechanicalProofCase) {
+  const result = resultFor(proof);
+  return {
+    ...result,
+    metrics: {
+      maximumDisplacement: {
+        ...result.metrics.maximumDisplacement,
+        nodeId: 100,
+      },
+      maximumVonMises: {
+        ...result.metrics.maximumVonMises,
+        elementId: 50,
+      },
+    },
+  };
+}
+
+function sparseBatchInspector(metrics: {
+  readonly nodeId: number;
+  readonly elementId: number;
+}) {
+  return {
+    buildMeshScript: () => "MESH_GEO",
+    inspectMesh: () => ({
+      nodeCount: 8,
+      elementCount: 4,
+      maxNodeId: 100,
+      nodesPerSet: { FIXED: 4, LOADED: 4 },
+    }),
+    buildDeck: () => "JOB_INP",
+    parseResult: () => ({
+      maxDisplacement: {
+        magnitudeMm: 0.1,
+        nodeId: metrics.nodeId,
+        vectorMm: [0, 0, -0.1] as const,
+      },
+      maxVonMises: {
+        mpa: 2,
+        elementId: metrics.elementId,
+      },
+    }),
+  };
+}
+
+function textBytes(value: string): Uint8Array {
+  return new TextEncoder().encode(value);
 }
 
 function resultFor(proof: MechanicalProofCase) {
