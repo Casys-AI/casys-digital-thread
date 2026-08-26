@@ -545,7 +545,7 @@ Deno.test(
 );
 
 Deno.test(
-  "admitted Modelica and SPICE producers classify artifacts and observations",
+  "admitted Modelica and SPICE plus static CalculiX producers classify artifacts and observations",
   () => {
     const snapshot = structuredClone(GENERIC_THREAD_FIXTURE);
     const modelica = appendAdmittedRun(
@@ -557,6 +557,11 @@ Deno.test(
       snapshot,
       "spice",
       "simulate.run-admitted-spice@1",
+    );
+    const calculix = appendAdmittedRun(
+      snapshot,
+      "calculix",
+      "verify.run-fea-static-proof@3",
     );
     snapshot.graph.edges.push(
       {
@@ -575,6 +580,14 @@ Deno.test(
         rationale: "The admitted circuit consumed the reviewed system model.",
         origin: "provenance",
       },
+      {
+        id: "fixture:calculix-facet-cross-link",
+        from: { kind: "artifact", id: "ART-SYSML-018" },
+        to: calculix.artifactRef,
+        relation: "derived_from",
+        rationale: "The static proof consumed the reviewed system model.",
+        origin: "provenance",
+      },
     );
     const modelicaArtifact = resolveToolInspectorContext(snapshot, {
       node: modelica.artifactNode,
@@ -583,6 +596,10 @@ Deno.test(
     const spiceArtifact = resolveToolInspectorContext(snapshot, {
       node: spice.artifactNode,
       record: spice.artifactRef,
+    });
+    const calculixArtifact = resolveToolInspectorContext(snapshot, {
+      node: calculix.artifactNode,
+      record: calculix.artifactRef,
     });
 
     assertEquals(
@@ -596,8 +613,16 @@ Deno.test(
       spice.artifactRef,
       spice.observationRef,
     ]);
+    assertEquals(
+      resolveToolFacetInventory(snapshot, "calculix").records.filter((record) =>
+        record.id === calculix.artifactRef.id ||
+        record.id === calculix.observationRef.id
+      ),
+      [calculix.artifactRef, calculix.observationRef],
+    );
     assertEquals(modelicaArtifact.owner.id, "modelica");
     assertEquals(spiceArtifact.owner.id, "spice");
+    assertEquals(calculixArtifact.owner.id, "calculix");
     assertEquals(
       resolveToolInspectorContext(snapshot, {
         node: modelica.observationNode,
@@ -612,10 +637,20 @@ Deno.test(
       }).owner.id,
       "spice",
     );
+    assertEquals(
+      resolveToolInspectorContext(snapshot, {
+        node: calculix.observationNode,
+        record: calculix.observationRef,
+      }).owner.id,
+      "calculix",
+    );
     assertEquals(modelicaArtifact.connection, "connected");
     assertEquals(spiceArtifact.connection, "connected");
+    assertEquals(calculixArtifact.connection, "connected");
     assertEquals(modelica.artifact.system, "digital-thread");
     assertEquals(spice.artifactNode.system, "digital-thread");
+    assertEquals(calculix.artifact.system, "digital-thread");
+    assertEquals(calculix.observationNode.system, "digital-thread");
   },
 );
 
@@ -632,6 +667,11 @@ Deno.test(
       snapshot,
       "spice-future",
       "simulate.run-admitted-spice@2",
+    );
+    const futureCalculix = appendAdmittedRun(
+      snapshot,
+      "calculix-future",
+      "verify.run-fea-static-proof@4",
     );
     const labelOnly = appendAdmittedRun(
       snapshot,
@@ -653,6 +693,20 @@ Deno.test(
       resolveToolInspectorContext(snapshot, {
         node: future.artifactNode,
         record: future.artifactRef,
+      }).owner.id,
+      "digital-thread",
+    );
+    assertEquals(
+      resolveToolFacetInventory(snapshot, "calculix").records.some((record) =>
+        record.id === futureCalculix.artifactRef.id ||
+        record.id === futureCalculix.observationRef.id
+      ),
+      false,
+    );
+    assertEquals(
+      resolveToolInspectorContext(snapshot, {
+        node: futureCalculix.artifactNode,
+        record: futureCalculix.artifactRef,
       }).owner.id,
       "digital-thread",
     );

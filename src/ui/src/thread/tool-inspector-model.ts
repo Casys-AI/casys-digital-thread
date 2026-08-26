@@ -22,6 +22,8 @@ export const ARCHITECTURE_SYSML_SEAL_PRODUCER =
 export const ADMITTED_MODELICA_PRODUCER =
   "simulate.run-admitted-modelica@1" as const;
 export const ADMITTED_SPICE_PRODUCER = "simulate.run-admitted-spice@1" as const;
+export const FEA_STATIC_PROOF_PRODUCER =
+  "verify.run-fea-static-proof@3" as const;
 
 export type WorkbenchToolId =
   | "syson"
@@ -38,6 +40,7 @@ const ENGINEERING_FACET_BY_PRODUCER: Readonly<
 > = {
   [ADMITTED_MODELICA_PRODUCER]: "modelica",
   [ADMITTED_SPICE_PRODUCER]: "spice",
+  [FEA_STATIC_PROOF_PRODUCER]: "calculix",
 };
 
 export interface WorkbenchToolIdentity {
@@ -136,7 +139,8 @@ export const THREAD_OWNER: WorkbenchToolIdentity = {
  * `selection` aliases are not counted as extra artifacts: the flow record and
  * the graph-only entity remain two distinct engineering items, while a shared
  * artifact is counted only once. Facet membership uses the semantic resolver,
- * so an admitted Modelica or SPICE producer is not inferred from `system`.
+ * so admitted Modelica, SPICE, and static FEA producers are not inferred from
+ * `system`.
  */
 export function resolveToolFacetInventory(
   snapshot: ThreadWorkbenchSnapshot,
@@ -567,8 +571,8 @@ export function toolId(system: string): WorkbenchToolId {
  * Presentation-only facet for one graph or flow ref.
  *
  * Artifact refs read `producedBy`. Observation refs follow `sourceArtifactId`
- * to that artifact. Only the exact admitted Modelica and SPICE producers
- * become semantic facets; any other version or label falls back to `toolId`.
+ * to that artifact. Only exact registered engineering producers become
+ * semantic facets; any other version or label falls back to `toolId`.
  * The recorded `system` field is never rewritten.
  */
 function resolveToolFacet(
