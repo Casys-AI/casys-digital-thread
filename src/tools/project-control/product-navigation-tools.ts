@@ -422,30 +422,89 @@ const READY_ACTION = {
 } as const;
 
 const BLOCKED_ACTION = {
-  type: "object",
-  properties: {
-    status: { const: "blocked" },
-    kind: {
-      enum: [
-        "read-attachment",
-        "read-source-file",
-        "read-source-closure",
-        "capture-technical-source",
-        "explore-selection",
-        "inspect-selection",
-      ],
+  oneOf: [
+    {
+      type: "object",
+      properties: {
+        status: { const: "blocked" },
+        kind: {
+          enum: [
+            "read-attachment",
+            "read-source-file",
+            "read-source-closure",
+            "capture-technical-source",
+            "explore-selection",
+            "inspect-selection",
+          ],
+        },
+        code: { const: "action.different-basis" },
+        recovery: { type: "string", minLength: 1 },
+        recoveryAction: {
+          type: "object",
+          properties: {
+            tool: { const: "project_source_attachment_recross" },
+            arguments: {
+              type: "object",
+              properties: {
+                projectId: PROJECT_ID,
+                expectedWorkspaceRevision: { type: "integer", minimum: 0 },
+                attachments: {
+                  type: "array",
+                  minItems: 1,
+                  maxItems: 1,
+                  items: {
+                    type: "object",
+                    properties: {
+                      attachmentId: ELEMENT_ID,
+                      activeAttachmentRevision: { type: "integer", minimum: 1 },
+                    },
+                    required: ["attachmentId", "activeAttachmentRevision"],
+                    additionalProperties: false,
+                  },
+                },
+              },
+              required: [
+                "projectId",
+                "expectedWorkspaceRevision",
+                "attachments",
+              ],
+              additionalProperties: false,
+            },
+            callerSupplied: {
+              type: "array",
+              items: { const: "mutationId" },
+              minItems: 1,
+              maxItems: 1,
+            },
+          },
+          required: ["tool", "arguments", "callerSupplied"],
+          additionalProperties: false,
+        },
+      },
+      required: ["status", "kind", "code", "recovery", "recoveryAction"],
+      additionalProperties: false,
     },
-    code: {
-      enum: [
-        "action.source-removed",
-        "action.different-basis",
-        "action.file-head-missing",
-      ],
+    {
+      type: "object",
+      properties: {
+        status: { const: "blocked" },
+        kind: {
+          enum: [
+            "read-attachment",
+            "read-source-file",
+            "read-source-closure",
+            "capture-technical-source",
+            "explore-selection",
+            "inspect-selection",
+          ],
+        },
+        code: { enum: ["action.source-removed", "action.file-head-missing"] },
+        recovery: { type: "string", minLength: 1 },
+      },
+      required: ["status", "kind", "code", "recovery"],
+      additionalProperties: false,
     },
-    recovery: { type: "string", minLength: 1 },
-  },
-  required: ["status", "kind", "code", "recovery"],
-  additionalProperties: false,
+  ],
 } as const;
 
 const ACTION = { oneOf: [READY_ACTION, BLOCKED_ACTION] } as const;

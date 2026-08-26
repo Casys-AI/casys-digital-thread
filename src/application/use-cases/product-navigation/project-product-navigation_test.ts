@@ -482,6 +482,35 @@ Deno.test("product inspect offers exact-basis capture and blocks different-basis
     blocked.every((action) => action.status === "blocked" && !("arguments" in action)),
     true,
   );
+  const differentBasisRecoveryActions = blocked.flatMap((action) =>
+    action.code === "action.different-basis" ? [action.recoveryAction] : []
+  );
+  assertEquals(differentBasisRecoveryActions, [
+    {
+      tool: "project_source_attachment_recross",
+      arguments: {
+        projectId: "project.slider",
+        expectedWorkspaceRevision: 2,
+        attachments: [{ attachmentId: "att-stale", activeAttachmentRevision: 1 }],
+      },
+      callerSupplied: ["mutationId"],
+    },
+    {
+      tool: "project_source_attachment_recross",
+      arguments: {
+        projectId: "project.slider",
+        expectedWorkspaceRevision: 2,
+        attachments: [{ attachmentId: "att-stale", activeAttachmentRevision: 1 }],
+      },
+      callerSupplied: ["mutationId"],
+    },
+  ]);
+  assertEquals(
+    blocked.filter((action) => action.code !== "action.different-basis").every(
+      (action) => !("recoveryAction" in action),
+    ),
+    true,
+  );
   const differentBasisRecovery = blocked.filter((action) =>
     action.status === "blocked" && action.code === "action.different-basis"
   ).map((action) => action.recovery);

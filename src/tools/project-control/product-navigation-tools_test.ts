@@ -85,6 +85,62 @@ Deno.test("product navigation tools are the four closed AX reads and refuse late
     properties: Record<string, unknown>;
   };
   assertEquals("threadSubjectId" in basis.properties, true);
+  const inspectOutput = app.tool("project_product_inspect").outputSchema as {
+    properties: {
+      applicableActions: {
+        items: {
+          oneOf: Array<{
+            oneOf?: Array<{
+              required: string[];
+              properties: {
+                code?: { const?: string };
+                recoveryAction?: {
+                  properties: {
+                    tool: { const: string };
+                    arguments: { required: string[]; additionalProperties: boolean };
+                    callerSupplied: {
+                      items: { const: string };
+                      minItems: number;
+                      maxItems: number;
+                    };
+                  };
+                  additionalProperties: boolean;
+                };
+              };
+              additionalProperties: boolean;
+            }>;
+          }>;
+        };
+      };
+    };
+  };
+  const blockedSchemas = inspectOutput.properties.applicableActions.items.oneOf[1]
+    .oneOf!;
+  const differentBasis = blockedSchemas.find((schema) =>
+    schema.properties.code?.const === "action.different-basis"
+  )!;
+  assertEquals(differentBasis.required, [
+    "status",
+    "kind",
+    "code",
+    "recovery",
+    "recoveryAction",
+  ]);
+  const recoveryAction = differentBasis.properties.recoveryAction!;
+  assertEquals(
+    recoveryAction.properties.tool.const,
+    "project_source_attachment_recross",
+  );
+  assertEquals(recoveryAction.properties.arguments.required, [
+    "projectId",
+    "expectedWorkspaceRevision",
+    "attachments",
+  ]);
+  assertEquals(recoveryAction.properties.arguments.additionalProperties, false);
+  assertEquals(recoveryAction.properties.callerSupplied.items.const, "mutationId");
+  assertEquals(recoveryAction.properties.callerSupplied.minItems, 1);
+  assertEquals(recoveryAction.properties.callerSupplied.maxItems, 1);
+  assertEquals(recoveryAction.additionalProperties, false);
   const occurrencePath = (
     app.tool("project_product_explore").inputSchema as {
       properties: {

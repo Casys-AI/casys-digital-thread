@@ -53,6 +53,7 @@ import {
   PRODUCT_SEARCH_SCHEMA,
   PRODUCT_SOURCE_CLOSURE_SCHEMA,
   type ProductApplicableAction,
+  type ProductAttachmentRecrossRecoveryAction,
   type ProductDefinitionScopedEvidence,
   type ProductExploreResult,
   type ProductInspectResult,
@@ -844,23 +845,20 @@ function inspectActions(input: {
     });
   }
   const workspaceRevision = input.workspaceRevision;
+  if (workspaceRevision === undefined) return actions;
   for (const attachment of input.authoring) {
-    if (workspaceRevision !== undefined) {
-      actions.push({
-        status: "ready",
-        kind: "read-attachment",
-        tool: "project_source_attachment_read",
-        arguments: {
-          projectId: input.projectId,
-          workspaceRevision,
-          attachmentId: attachment.attachmentId,
-          attachmentRevision: attachment.attachmentRevision,
-        },
-      });
-    }
-    if (
-      workspaceRevision !== undefined && attachment.fileHeadRevision !== null
-    ) {
+    actions.push({
+      status: "ready",
+      kind: "read-attachment",
+      tool: "project_source_attachment_read",
+      arguments: {
+        projectId: input.projectId,
+        workspaceRevision,
+        attachmentId: attachment.attachmentId,
+        attachmentRevision: attachment.attachmentRevision,
+      },
+    });
+    if (attachment.fileHeadRevision !== null) {
       actions.push({
         status: "ready",
         kind: "read-source-file",
@@ -883,31 +881,41 @@ function inspectActions(input: {
     }
     const captureBlocked = blockedCaptureOrClosure(attachment);
     if (captureBlocked) {
-      actions.push({
-        status: "blocked",
-        kind: "capture-technical-source",
+      const recovery = blockedRecovery({
         code: captureBlocked,
-        recovery: blockedRecovery({
-          code: captureBlocked,
-          projectId: input.projectId,
-          workspaceRevision,
-          attachment,
-        }),
+        projectId: input.projectId,
+        workspaceRevision,
+        attachment,
       });
-      actions.push({
-        status: "blocked",
-        kind: "read-source-closure",
-        code: captureBlocked,
-        recovery: blockedRecovery({
+      for (
+        const kind of [
+          "capture-technical-source",
+          "read-source-closure",
+        ] as const
+      ) {
+        if (captureBlocked === "action.different-basis") {
+          actions.push({
+            status: "blocked",
+            kind,
+            code: captureBlocked,
+            recovery,
+            recoveryAction: blockedRecoveryAction({
+              projectId: input.projectId,
+              workspaceRevision,
+              attachment,
+            }),
+          });
+          continue;
+        }
+        actions.push({
+          status: "blocked",
+          kind,
           code: captureBlocked,
-          projectId: input.projectId,
-          workspaceRevision,
-          attachment,
-        }),
-      });
+          recovery,
+        });
+      }
       continue;
     }
-    if (workspaceRevision === undefined) continue;
     actions.push({
       status: "ready",
       kind: "capture-technical-source",
@@ -967,7 +975,30 @@ function blockedRecovery(
     }],
   };
   return "Call project_source_attachment_recross with " +
-    `${JSON.stringify(recrossArguments)} and a new mutationId. The server recrosses this existing attachment against the published current architecture basis before capture or closure.`;
+    `${
+      JSON.stringify(recrossArguments)
+    } and a new mutationId. The server recrosses this existing attachment against the published current architecture basis before capture or closure.`;
+}
+
+function blockedRecoveryAction(
+  input: {
+    readonly projectId: string;
+    readonly workspaceRevision: number;
+    readonly attachment: ProductNavigationAuthoringAttachment;
+  },
+): ProductAttachmentRecrossRecoveryAction {
+  return {
+    tool: "project_source_attachment_recross",
+    arguments: {
+      projectId: input.projectId,
+      expectedWorkspaceRevision: input.workspaceRevision,
+      attachments: [{
+        attachmentId: input.attachment.attachmentId,
+        activeAttachmentRevision: input.attachment.attachmentRevision,
+      }],
+    },
+    callerSupplied: ["mutationId"],
+  };
 }
 
 function authoringBasisStatus(

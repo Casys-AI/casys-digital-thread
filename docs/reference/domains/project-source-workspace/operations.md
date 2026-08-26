@@ -57,3 +57,11 @@ head, detached/non-head attachment, removed source, changed target or role, or s
 workspace. All selected successors publish in one event or none do. Its output returns
 the exact workspace event fingerprint, derived basis and successor revisions. Same
 `mutationId` plus same persisted public intent replays without external recross.
+
+When `project_product_inspect` finds a current attachment on a different architecture
+basis, capture and closure remain `blocked`. Alongside human recovery text, the blocked
+action exposes a structured `recoveryAction` naming
+`project_source_attachment_recross`, its exact server-safe arguments, and
+`callerSupplied: ["mutationId"]`. The caller must add a fresh mutation identity; the
+navigation read never invents one and never turns the blocked capture into a ready
+action.

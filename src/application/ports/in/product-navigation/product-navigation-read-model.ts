@@ -201,6 +201,23 @@ export type ProductApplicableActionCode =
   | "action.different-basis"
   | "action.file-head-missing";
 
+/**
+ * A bounded authoring recovery the caller can complete only by supplying a
+ * fresh mutation id. This is a Digital Thread operation, not provider input.
+ */
+export interface ProductAttachmentRecrossRecoveryAction {
+  readonly tool: "project_source_attachment_recross";
+  readonly arguments: {
+    readonly projectId: string;
+    readonly expectedWorkspaceRevision: number;
+    readonly attachments: readonly [{
+      readonly attachmentId: string;
+      readonly activeAttachmentRevision: number;
+    }];
+  };
+  readonly callerSupplied: readonly ["mutationId"];
+}
+
 export type ProductApplicableAction =
   | {
     status: "ready";
@@ -271,7 +288,14 @@ export type ProductApplicableAction =
   | {
     status: "blocked";
     kind: ProductApplicableActionKind;
-    code: ProductApplicableActionCode;
+    code: "action.different-basis";
+    recovery: string;
+    recoveryAction: ProductAttachmentRecrossRecoveryAction;
+  }
+  | {
+    status: "blocked";
+    kind: ProductApplicableActionKind;
+    code: Exclude<ProductApplicableActionCode, "action.different-basis">;
     recovery: string;
   };
 
