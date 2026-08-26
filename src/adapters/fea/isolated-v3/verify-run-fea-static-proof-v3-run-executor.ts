@@ -22,6 +22,11 @@ import {
 } from "../../../application/use-cases/fea/isolated-v3/execute-isolated-calculix-static-proof.ts";
 import { IsolatedCodeExecutionRejectedError } from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
 import {
+  assertFailedIsolatedOutputValidationReplay,
+  ISOLATED_OUTPUT_VALIDATION_FAILED_CODE,
+  isolatedOutputValidationFailedMessage,
+} from "../../../application/use-cases/compile/isolation/failed-isolated-output-validation-replay.ts";
+import {
   assertCompletedIsolatedStaticProofProjectBinding,
   assertCompletedIsolatedStaticProofProjectReference,
   assertCompletedIsolatedStaticProofSnapshot,
@@ -41,6 +46,8 @@ import {
 import {
   EngineeringProjectCommandError,
   type EngineeringProjectCommandService,
+  type FailRunCommand,
+  type RunCommand,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
 import {
   type CalculixIsolatedExecutionEvidence,
@@ -64,6 +71,7 @@ import {
 } from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import type {
+  EngineeringAgentRun,
   EngineeringAgentRunStatus,
   EngineeringProjectSnapshot,
 } from "../../../domain/project/engineering-project.ts";
@@ -139,7 +147,10 @@ export interface VerifyRunFeaStaticProofV3RunExecutorDependencies {
   };
   readonly canonicalAssets: CanonicalAssetReader;
   readonly profiles: CalculixIsolatedExecutionProfileCatalog;
-  readonly executeIsolated: Pick<ExecuteIsolatedCalculixStaticProof, "execute">;
+  readonly executeIsolated: Pick<
+    ExecuteIsolatedCalculixStaticProof,
+    "execute" | "reopenOutputValidationRejection"
+  >;
   readonly executionEvidence: CalculixIsolatedExecutionEvidenceStore;
   readonly sysonEvaluationCaptureStore: Pick<
     FileByteStore<"calculix-isolated-syson-evaluation">,
@@ -310,14 +321,11 @@ function describe(cause: unknown): string {
   return text.length > 240 ? `${text.slice(0, 240)}…` : text;
 }
 
-function isolatedOutputValidationRejectedMessage(
-  error: IsolatedCalculixOutputValidationRejectedError,
-): string {
-  return describe(
-    `Isolated output validation rejected registered role ${error.observation.role} ` +
-      `(${error.observation.byteCount} bytes, sha256 ${error.observation.sha256}).`,
-  );
-}
+const CALCULIX_ISOLATED_OUTPUT_VALIDATION_FAILED = {
+  summary:
+    "Isolated CalculiX output validation was rejected before Thread publication.",
+  code: ISOLATED_OUTPUT_VALIDATION_FAILED_CODE,
+} as const;
 
 function isolatedExecutionRejectionMessage(
   error: IsolatedCodeExecutionRejectedError,
@@ -357,7 +365,7 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
       return await this.#reopenCompleted(project, command);
     }
     if (run.status === "failed") {
-      return project;
+      return await this.#reopenFailedOutputValidation(origin, command, project);
     }
 
     const prepared = await this.#prepare(project, command.runId, [
@@ -405,7 +413,7 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
       return await this.#reopenCompleted(project, command);
     }
     if (claimedRun.status === "failed") {
-      return project;
+      return await this.#reopenFailedOutputValidation(origin, command, project);
     }
     if (claimedRun.status !== "running" && claimedRun.status !== "publishing") {
       throw commandError(
@@ -659,16 +667,110 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
     });
   }
 
+  async #reopenFailedOutputValidation(
+    origin: EngineeringProjectCommandOrigin,
+    command: VerifyRunFeaStaticProofV3RunExecutorCommand,
+    project: EngineeringProjectSnapshot,
+  ): Promise<EngineeringProjectSnapshot> {
+    const run = requireRun(project, command.runId);
+    if (run.status !== "failed") {
+      throw commandError(
+        "invalid_transition",
+        `Isolated CalculiX run ${run.id} is not executable.`,
+      );
+    }
+    try {
+      await this.d.executeIsolated.reopenOutputValidationRejection({
+        projectId: command.projectId,
+        agentRunId: command.runId,
+      });
+    } catch (error) {
+      if (error instanceof IsolatedCalculixOutputValidationRejectedError) {
+        await this.#assertFailedOutputValidationReplay(
+          origin,
+          command,
+          project,
+          run,
+          isolatedOutputValidationFailure(error.observation),
+        );
+        return project;
+      }
+      throw error;
+    }
+    return project;
+  }
+
   async #failOutputValidationRejected(
     origin: EngineeringProjectCommandOrigin,
     command: VerifyRunFeaStaticProofV3RunExecutorCommand,
     error: IsolatedCalculixOutputValidationRejectedError,
   ): Promise<EngineeringProjectSnapshot> {
-    return await this.#failClaimedRun(origin, command, {
-      summary:
-        "Isolated CalculiX output validation was rejected before Thread publication.",
-      code: "isolated_output_validation_failed",
-      message: isolatedOutputValidationRejectedMessage(error),
+    const project = await requiredProject(this.d.projects, command.projectId);
+    const run = requireRun(project, command.runId);
+    const failure = isolatedOutputValidationFailure(error.observation);
+    if (run.status === "failed") {
+      await this.#assertFailedOutputValidationReplay(
+        origin,
+        command,
+        project,
+        run,
+        failure,
+      );
+      return project;
+    }
+    if (run.status !== "running") {
+      throw commandError(
+        "invalid_transition",
+        `Isolated CalculiX run ${run.id} is not executable.`,
+      );
+    }
+    if (run.resultSnapshot || run.evidenceRefs.length !== 0) {
+      throw commandError(
+        "invalid_transition",
+        "The claimed isolated CalculiX run already carries Thread evidence and cannot take an evidence-free terminal failure.",
+      );
+    }
+    const startedAt = run.startedAt;
+    await this.d.commands.failRun(
+      origin,
+      failCommand(command, failure, project.revision),
+    );
+    const failed = await requiredProject(this.d.projects, command.projectId);
+    await this.#assertFailedOutputValidationReplay(
+      origin,
+      command,
+      failed,
+      requireRun(failed, command.runId),
+      failure,
+      startedAt,
+    );
+    return failed;
+  }
+
+  async #assertFailedOutputValidationReplay(
+    origin: EngineeringProjectCommandOrigin,
+    command: VerifyRunFeaStaticProofV3RunExecutorCommand,
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+    failure: {
+      readonly summary: string;
+      readonly code: string;
+      readonly message: string;
+    },
+    originalStartedAt = run.startedAt,
+  ): Promise<void> {
+    await assertFailedIsolatedOutputValidationReplay({
+      project,
+      run,
+      origin,
+      originalStartedAt,
+      failure,
+      claimCommandId: `${command.commandId}:claim`,
+      failCommandId: `${command.commandId}:fail`,
+      buildClaimCommand: (expectedRevision, issuedAt) =>
+        claimCommand(command, expectedRevision, issuedAt),
+      buildFailCommand: (expectedRevision, issuedAt) =>
+        failCommand(command, failure, expectedRevision, issuedAt),
     });
   }
 
@@ -1048,4 +1150,55 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
     project = await requiredProject(this.d.projects, command.projectId);
     return await this.#reopenCompleted(project, command);
   }
+}
+
+function claimCommand(
+  command: VerifyRunFeaStaticProofV3RunExecutorCommand,
+  expectedRevision = command.expectedRevision,
+  issuedAt = command.issuedAt,
+): RunCommand {
+  return {
+    ...command,
+    commandId: `${command.commandId}:claim`,
+    expectedRevision,
+    issuedAt,
+    summary: "Started the isolated local CalculiX static-structural run.",
+  };
+}
+
+function failCommand(
+  command: VerifyRunFeaStaticProofV3RunExecutorCommand,
+  failure: {
+    readonly summary: string;
+    readonly code: string;
+    readonly message: string;
+  },
+  expectedRevision = command.expectedRevision,
+  issuedAt = command.issuedAt,
+): FailRunCommand {
+  return {
+    ...command,
+    commandId: `${command.commandId}:fail`,
+    expectedRevision,
+    issuedAt,
+    summary: failure.summary,
+    code: failure.code,
+    message: failure.message,
+  };
+}
+
+function isolatedOutputValidationFailure(observation: {
+  readonly role: string;
+  readonly byteCount: number;
+  readonly sha256: string;
+}): {
+  readonly summary: string;
+  readonly code: string;
+  readonly message: string;
+} {
+  return {
+    summary: CALCULIX_ISOLATED_OUTPUT_VALIDATION_FAILED.summary,
+    code: CALCULIX_ISOLATED_OUTPUT_VALIDATION_FAILED.code,
+    message: isolatedOutputValidationFailedMessage(observation),
+  };
 }

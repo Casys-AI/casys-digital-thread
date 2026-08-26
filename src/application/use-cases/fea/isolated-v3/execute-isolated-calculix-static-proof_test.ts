@@ -323,6 +323,67 @@ Deno.test("isolated CalculiX persists an output-validation rejection and replays
   }
 });
 
+Deno.test("isolated CalculiX reconstructs a persisted output-validation rejection after a lost ACK and never redispatches", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const fixture = await executionFixture();
+    const observation = {
+      role: "job.dat",
+      byteCount: 32,
+      sha256: "7".repeat(64),
+    };
+    const destruction = {
+      status: "proven" as const,
+      runId: fixture.identity.executionRunId,
+      proofFingerprint: { algorithm: "sha256" as const, digest: "c".repeat(64) },
+    };
+    let runs = 0;
+    const attempts = new PersistThenLoseAckAttemptStore(`${root}/attempts`);
+    const useCase = new ExecuteIsolatedCalculixStaticProof({
+      runner: {
+        run: () => {
+          runs++;
+          return Promise.reject(
+            new IsolatedCodeOutputValidationRejectedError(observation, destruction),
+          );
+        },
+      },
+      recovery: {
+        destroyByRunId: () => Promise.reject(new Error("must not recover")),
+        advanceProducerGeneration: () => Promise.reject(new Error("must not advance")),
+      },
+      publications: publications("not-published"),
+      lease: immediateLease(),
+      attempts,
+      evidence: unreachableEvidence(),
+      inspector: CALCULIX_ISOLATED_OUTPUT_BATCH_INSPECTOR,
+    });
+    const first = await assertRejects(
+      () => useCase.execute(fixture),
+      IsolatedCalculixOutputValidationRejectedError,
+      "no redispatch occurs",
+    );
+    assertEquals(first.observation, observation);
+    assertEquals(first.destruction, destruction);
+    assertEquals(runs, 1);
+    const persisted = await attempts.read(
+      fixture.identity.projectId,
+      fixture.identity.agentRunId,
+    );
+    assertEquals(persisted?.phase, "output-validation-rejected");
+    const replay = await assertRejects(
+      () => useCase.execute(fixture),
+      IsolatedCalculixOutputValidationRejectedError,
+      "no redispatch occurs",
+    );
+    assertEquals(replay.observation, first.observation);
+    assertEquals(replay.destruction, first.destruction);
+    assertEquals(runs, 1);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
 Deno.test("isolated CalculiX recovery consumes one proven redispatch and never grants a third", async () => {
   await withPreparedDispatch(async ({ attempts, identity, bundle }) => {
     let runs = 0;
@@ -520,6 +581,24 @@ Deno.test("isolated CalculiX rejects metrics that are not derived from job.dat",
     await Deno.remove(root, { recursive: true });
   }
 });
+
+class PersistThenLoseAckAttemptStore extends FileCalculixIsolatedExecutionAttemptStore {
+  #fail = true;
+
+  override markOutputValidationRejected(
+    input: Parameters<
+      FileCalculixIsolatedExecutionAttemptStore["markOutputValidationRejected"]
+    >[0],
+  ) {
+    return super.markOutputValidationRejected(input).then((rejected) => {
+      if (this.#fail) {
+        this.#fail = false;
+        throw new Error("lost output-validation WAL acknowledgement");
+      }
+      return rejected;
+    });
+  }
+}
 
 function publications(status: "not-published" | "outcome-unknown") {
   return {

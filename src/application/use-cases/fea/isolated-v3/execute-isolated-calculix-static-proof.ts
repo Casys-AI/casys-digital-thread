@@ -160,6 +160,23 @@ export class ExecuteIsolatedCalculixStaticProof {
     );
   }
 
+  /**
+   * Replay-only terminal: if the WAL already recorded an output-validation
+   * rejection, throw the typed error without runner, recovery, CAS, or
+   * generation advance. Other phases return without effect.
+   */
+  async reopenOutputValidationRejection(input: {
+    readonly projectId: string;
+    readonly agentRunId: string;
+  }): Promise<void> {
+    const projectId = safeId(input.projectId, "$input.projectId");
+    const agentRunId = safeId(input.agentRunId, "$input.agentRunId");
+    const attempt = await this.dependencies.attempts.read(projectId, agentRunId);
+    if (attempt?.phase === "output-validation-rejected") {
+      throwOutputValidationRejected(attempt);
+    }
+  }
+
   async #executeLocked(
     identity: CalculixIsolatedExecutionAttemptIdentity,
     bundle: CalculixIsolatedInputBundle,
@@ -397,11 +414,26 @@ export class ExecuteIsolatedCalculixStaticProof {
             "Isolated CalculiX output-validation cleanup is not proven; no redispatch occurs.",
           );
         }
-        const rejected = await this.dependencies.attempts.markOutputValidationRejected({
-          ...key,
-          observation: error.observation,
-          destruction: error.destruction,
-        });
+        let rejected;
+        try {
+          rejected = await this.dependencies.attempts.markOutputValidationRejected({
+            ...key,
+            observation: error.observation,
+            destruction: error.destruction,
+          });
+        } catch (markError) {
+          const current = await this.dependencies.attempts.read(
+            key.projectId,
+            key.agentRunId,
+          );
+          if (
+            current?.phase === "output-validation-rejected" &&
+            current.executionRunId === key.executionRunId
+          ) {
+            return throwOutputValidationRejected(current);
+          }
+          throw markError;
+        }
         return throwOutputValidationRejected(rejected);
       }
       if (!(error instanceof IsolatedCodeExecutionRejectedError)) throw error;

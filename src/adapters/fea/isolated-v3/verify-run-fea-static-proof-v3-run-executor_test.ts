@@ -127,6 +127,7 @@ Deno.test("isolated CalculiX @3 fails the claimed run on a known execution rejec
             }),
           );
         },
+        reopenOutputValidationRejection: () => Promise.resolve(),
       },
     });
     const failed = await failing.execute(
@@ -163,29 +164,7 @@ Deno.test("isolated CalculiX @3 fails the claimed run on output-validation rejec
     const before = await runtime.fixture.projects.get(runtime.fixture.projectId);
     const beforeSnapshots = before!.threadSnapshots;
     const failing = runtime.executorWith({
-      executeIsolated: {
-        execute: () => {
-          runtime.counts.execute++;
-          return Promise.reject(
-            new IsolatedCalculixOutputValidationRejectedError({
-              executionRunId: "run:diagnostic-fixture",
-              observation: {
-                role: "job.dat",
-                byteCount: 32,
-                sha256: "7".repeat(64),
-              },
-              destruction: {
-                status: "proven",
-                runId: "run:diagnostic-fixture",
-                proofFingerprint: {
-                  algorithm: "sha256",
-                  digest: "c".repeat(64),
-                },
-              },
-            }),
-          );
-        },
-      },
+      executeIsolated: outputValidationRejectedIsolated(runtime.counts),
     });
     const failed = await failing.execute(
       ISOLATED_CALCULIX_FIXTURE_AGENT,
@@ -201,7 +180,7 @@ Deno.test("isolated CalculiX @3 fails the claimed run on output-validation rejec
     assertEquals(runtime.counts.execute, 1);
     assertEquals(runtime.counts.syson, 0);
 
-    const replayed = await runtime.executor.execute(
+    const replayed = await failing.execute(
       ISOLATED_CALCULIX_FIXTURE_AGENT,
       runtime.fixture.command,
     );
@@ -209,6 +188,91 @@ Deno.test("isolated CalculiX @3 fails the claimed run on output-validation rejec
     assertEquals(
       replayed.agentRuns.find((item) => item.id === runtime.fixture.runId)?.status,
       "failed",
+    );
+    assertEquals(runtime.counts.execute, 1);
+    assertEquals(runtime.counts.syson, 0);
+  });
+});
+
+Deno.test("isolated CalculiX @3 refuses a divergent fail code on output-validation replay without redispatch", async () => {
+  await withRuntime(async (runtime) => {
+    const isolated = outputValidationRejectedIsolated(runtime.counts);
+    const failed = await runtime.executorWith({ executeIsolated: isolated }).execute(
+      ISOLATED_CALCULIX_FIXTURE_AGENT,
+      runtime.fixture.command,
+    );
+    assertEquals(
+      failed.agentRuns.find((item) => item.id === runtime.fixture.runId)?.failure
+        ?.code,
+      "isolated_output_validation_failed",
+    );
+    await assertRejects(
+      () =>
+        runtime.executorWith({
+          executeIsolated: isolated,
+          projects: projectStoreWithMutation(
+            runtime.fixture.projects,
+            (project) => ({
+              ...project,
+              agentRuns: project.agentRuns.map((run) =>
+                run.id === runtime.fixture.runId
+                  ? {
+                    ...run,
+                    failure: {
+                      code: "isolated_execution_rejected",
+                      message: run.failure!.message,
+                    },
+                  }
+                  : run
+              ),
+            }),
+          ),
+        }).execute(
+          ISOLATED_CALCULIX_FIXTURE_AGENT,
+          runtime.fixture.command,
+        ),
+      Error,
+      "evidence-free terminal failure",
+    );
+    assertEquals(runtime.counts.execute, 1);
+    assertEquals(runtime.counts.syson, 0);
+  });
+});
+
+Deno.test("isolated CalculiX @3 refuses a divergent fail receipt on output-validation replay without redispatch", async () => {
+  await withRuntime(async (runtime) => {
+    const isolated = outputValidationRejectedIsolated(runtime.counts);
+    await runtime.executorWith({ executeIsolated: isolated }).execute(
+      ISOLATED_CALCULIX_FIXTURE_AGENT,
+      runtime.fixture.command,
+    );
+    await assertRejects(
+      () =>
+        runtime.executorWith({
+          executeIsolated: isolated,
+          projects: projectStoreWithMutation(
+            runtime.fixture.projects,
+            (project) => ({
+              ...project,
+              commandReceipts: project.commandReceipts?.map((receipt) =>
+                receipt.type === "agent-run.fail"
+                  ? {
+                    ...receipt,
+                    requestFingerprint: {
+                      algorithm: "sha256" as const,
+                      digest: "0".repeat(64),
+                    },
+                  }
+                  : receipt
+              ),
+            }),
+          ),
+        }).execute(
+          ISOLATED_CALCULIX_FIXTURE_AGENT,
+          runtime.fixture.command,
+        ),
+      Error,
+      "agent-run.fail receipt",
     );
     assertEquals(runtime.counts.execute, 1);
     assertEquals(runtime.counts.syson, 0);
@@ -237,6 +301,7 @@ Deno.test("isolated CalculiX @3 fails the claimed run when redispatch is exhaust
             }),
           );
         },
+        reopenOutputValidationRejection: () => Promise.resolve(),
       },
     });
     const failed = await failing.execute(
@@ -277,6 +342,7 @@ Deno.test("isolated CalculiX @3 keeps an unknown isolated failure quarantined wi
               Promise.reject(
                 new Error("The isolated execution backend did not return a report."),
               ),
+            reopenOutputValidationRejection: () => Promise.resolve(),
           },
         }).execute(
           ISOLATED_CALCULIX_FIXTURE_AGENT,
@@ -803,6 +869,7 @@ function executorDependencies(
           attempt: {} as never,
         };
       },
+      reopenOutputValidationRejection: () => Promise.resolve(),
     },
     executionEvidence: {
       save: () => Promise.reject(new Error("outer executor does not save evidence")),
@@ -939,6 +1006,32 @@ function profileCatalog(seed: string) {
       maxOutputTotalBytes: 268_435_456,
     },
   });
+}
+
+function outputValidationRejectedIsolated(counts: { execute: number }) {
+  const rejection = new IsolatedCalculixOutputValidationRejectedError({
+    executionRunId: "run:diagnostic-fixture",
+    observation: {
+      role: "job.dat",
+      byteCount: 32,
+      sha256: "7".repeat(64),
+    },
+    destruction: {
+      status: "proven",
+      runId: "run:diagnostic-fixture",
+      proofFingerprint: {
+        algorithm: "sha256",
+        digest: "c".repeat(64),
+      },
+    },
+  });
+  return {
+    execute: () => {
+      counts.execute++;
+      return Promise.reject(rejection);
+    },
+    reopenOutputValidationRejection: () => Promise.reject(rejection),
+  };
 }
 
 function monotonicNow() {
