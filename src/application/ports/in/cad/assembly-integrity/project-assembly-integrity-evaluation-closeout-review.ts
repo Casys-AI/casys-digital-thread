@@ -63,6 +63,11 @@ export interface ProjectAssemblyIntegrityEvaluationCloseoutReviewResolved {
  * Paste-ready append and proposal for one chosen L5 consequence. The leaf is
  * freshness-bound to the exact current L4 tip; a later head fails existing
  * append authority rather than client trust.
+ *
+ * Both argument envelopes are complete mutation payloads except `issuedAt`.
+ * `deno task mcp:call` fills omitted `issuedAt` when `commandId` is present.
+ * A direct client must add `issuedAt` itself. `propose.expectedRevision` is
+ * the project revision after one successful `project_change_append`.
  */
 export interface ProjectAssemblyIntegrityEvaluationCloseoutReviewNext {
   readonly append: {
@@ -97,6 +102,9 @@ export interface ProjectAssemblyIntegrityEvaluationCloseoutReviewNext {
   readonly propose: {
     readonly tool: "project_decision_propose";
     readonly arguments: {
+      readonly commandId: string;
+      readonly projectId: string;
+      readonly expectedRevision: number;
       readonly decisionId: string;
       readonly proposal: {
         readonly summary: string;

@@ -116,6 +116,16 @@ Deno.test("assembly-integrity L5 review exposes freshness-bound accept and rejec
     accept.next.append.arguments.baseSnapshot.revision,
     fixture.l4Snapshot.revision,
   );
+  assertEquals(accept.next.propose.arguments.projectId, PROJECT_ID);
+  assertEquals(
+    accept.next.propose.arguments.expectedRevision,
+    fixture.project.revision + 1,
+  );
+  assertEquals(
+    result.selected.reject.next.propose.arguments.expectedRevision,
+    fixture.project.revision + 1,
+  );
+  assertEquals("issuedAt" in accept.next.propose.arguments, false);
   assertEquals(fixture.snapshotSaves(), 0);
   assertEquals(fixture.project.revision, 2);
 });

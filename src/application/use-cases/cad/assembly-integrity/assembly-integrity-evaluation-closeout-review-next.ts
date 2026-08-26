@@ -1,6 +1,8 @@
 /**
- * Server-owned pasteable L5 closeout append. The caller does not choose the
- * predecessor, operation, owner, binding, decision, or gate claim.
+ * Server-owned pasteable L5 closeout append and proposal. The caller does not
+ * choose the predecessor, operation, owner, binding, decision, gate claim,
+ * command ids, or expected revisions. Propose omits issuedAt so mcp:call can
+ * fill it. One successful project.change-append lands at current + 1.
  */
 
 import type { ProjectAssemblyIntegrityEvaluationCloseoutReviewNext } from "../../../ports/in/cad/assembly-integrity/project-assembly-integrity-evaluation-closeout-review.ts";
@@ -34,6 +36,11 @@ export function assemblyIntegrityEvaluationCloseoutReviewNext(input: {
   const summary = admission.consequence === "accept"
     ? "Accept this exact assembly-integrity evaluation closeout."
     : "Reject this exact assembly-integrity evaluation closeout.";
+  // EngineeringProjectCommandService.apply persists current.revision + 1 after
+  // a successful (non-replay) mutation and refuses a mismatched head. Propose
+  // therefore targets the post-append revision; a stale or concurrent head
+  // fails closed instead of inventing a later revision.
+  const proposeExpectedRevision = input.expectedRevision + 1;
   return deepFreeze({
     append: {
       tool: "project_change_append" as const,
@@ -74,6 +81,9 @@ export function assemblyIntegrityEvaluationCloseoutReviewNext(input: {
     propose: {
       tool: "project_decision_propose" as const,
       arguments: {
+        commandId: `propose-assembly-integrity-${token}`,
+        projectId: input.projectId,
+        expectedRevision: proposeExpectedRevision,
         decisionId,
         proposal: {
           summary,

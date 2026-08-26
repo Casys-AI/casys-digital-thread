@@ -93,11 +93,18 @@ Present the returned consequences to the responsible person:
 | Reject | `decide.reject-assembly-integrity-evaluation@1` | Always available; it grants no remedy                    |
 
 After the person chooses, paste that branch's `next.append.arguments` into
-`project_change_append`, then `next.propose.arguments`. The server-derived leaf is a new
-human-origin item (`mustOrigin: "human"`) based on exact `T2`, dependent on the exact L4
-work-item id, with the sole `approvedBrief` binding. Obtain the human MRTR, queue, then
-use `project_agent_run_execute` with the required signed human confirmation. An accept
-claim may only `satisfies/current` an existing current Brief V2 gate; reject never does.
+`project_change_append`, then that same branch's `next.propose.arguments` into
+`project_decision_propose`. Both envelopes are complete except `issuedAt`.
+`deno task mcp:call` fills omitted `issuedAt` because each envelope already has
+`commandId`. A direct client must add `issuedAt` before calling either mutation.
+`next.propose.arguments.expectedRevision` is the project revision after that successful
+append — one successful `project_change_append` advances exactly one revision. A stale
+or concurrent head fails closed; do not invent a revision. The server-derived leaf is a
+new human-origin item (`mustOrigin: "human"`) based on exact `T2`, dependent on the
+exact L4 work-item id, with the sole `approvedBrief` binding. Obtain the human MRTR,
+queue, then use `project_agent_run_execute` with the required signed human confirmation.
+An accept claim may only `satisfies/current` an existing current Brief V2 gate; reject
+never does.
 
 ## 5. Recover without changing the evidence meaning
 

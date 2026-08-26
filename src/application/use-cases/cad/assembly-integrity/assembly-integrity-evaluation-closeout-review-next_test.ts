@@ -80,6 +80,11 @@ Deno.test("L5 closeout next.append is the exact human leaf bound to the current 
     next.propose.arguments.proposal.parameters,
     encodeAssemblyIntegrityEvaluationCloseoutAdmission(admission),
   );
+  assertCompleteProposeExceptIssuedAt(next, {
+    projectId: "project-assembly",
+    appendExpectedRevision: 11,
+    token: `accept-${admission.evaluationCapture.fingerprint.digest.slice(0, 16)}-r4`,
+  });
 });
 
 Deno.test("L5 closeout reject next.append retains the L4 predecessor and does not satisfy a gate", () => {
@@ -110,7 +115,90 @@ Deno.test("L5 closeout reject next.append retains the L4 predecessor and does no
     ),
     false,
   );
+  assertCompleteProposeExceptIssuedAt(next, {
+    projectId: "project-assembly",
+    appendExpectedRevision: 11,
+    token: `reject-${admission.evaluationCapture.fingerprint.digest.slice(0, 16)}-r4`,
+  });
 });
+
+Deno.test("L5 closeout next.propose is a complete project_decision_propose envelope except issuedAt", () => {
+  const accept = assemblyIntegrityEvaluationCloseoutReviewNext({
+    projectId: "project-assembly",
+    expectedRevision: 11,
+    l4WorkItemId: "work-l4-current",
+    baseSnapshot: {
+      snapshotId: "thread-assembly-r4",
+      revision: 4,
+      subjectId: "assembly-subject",
+    },
+    admission: validAdmission("accept"),
+  });
+  const reject = assemblyIntegrityEvaluationCloseoutReviewNext({
+    projectId: "project-assembly",
+    expectedRevision: 11,
+    l4WorkItemId: "work-l4-current",
+    baseSnapshot: {
+      snapshotId: "thread-assembly-r4",
+      revision: 4,
+      subjectId: "assembly-subject",
+    },
+    admission: validAdmission("reject"),
+  });
+
+  assertEquals(
+    Object.keys(accept.propose.arguments).sort(),
+    PROJECT_DECISION_PROPOSE_REQUIRED_EXCEPT_ISSUED_AT,
+  );
+  assertEquals(
+    Object.keys(reject.propose.arguments).sort(),
+    PROJECT_DECISION_PROPOSE_REQUIRED_EXCEPT_ISSUED_AT,
+  );
+  assertEquals(accept.propose.arguments.expectedRevision, 12);
+  assertEquals(reject.propose.arguments.expectedRevision, 12);
+  assertEquals(
+    accept.propose.arguments.expectedRevision,
+    accept.append.arguments.expectedRevision + 1,
+  );
+  assertEquals(
+    accept.propose.arguments.commandId === reject.propose.arguments.commandId,
+    false,
+  );
+  assertEquals("issuedAt" in accept.propose.arguments, false);
+  assertEquals("issuedAt" in reject.propose.arguments, false);
+});
+
+const PROJECT_DECISION_PROPOSE_REQUIRED_EXCEPT_ISSUED_AT = [
+  "commandId",
+  "decisionId",
+  "expectedRevision",
+  "projectId",
+  "proposal",
+];
+
+function assertCompleteProposeExceptIssuedAt(
+  next: ReturnType<typeof assemblyIntegrityEvaluationCloseoutReviewNext>,
+  input: {
+    readonly projectId: string;
+    readonly appendExpectedRevision: number;
+    readonly token: string;
+  },
+) {
+  assertEquals(
+    Object.keys(next.propose.arguments).sort(),
+    PROJECT_DECISION_PROPOSE_REQUIRED_EXCEPT_ISSUED_AT,
+  );
+  assertEquals(
+    next.propose.arguments.commandId,
+    `propose-assembly-integrity-${input.token}`,
+  );
+  assertEquals(next.propose.arguments.projectId, input.projectId);
+  assertEquals(
+    next.propose.arguments.expectedRevision,
+    input.appendExpectedRevision + 1,
+  );
+  assertEquals("issuedAt" in next.propose.arguments, false);
+}
 
 function validAdmission(consequence: "accept" | "reject") {
   return validateAssemblyIntegrityEvaluationCloseoutAdmission({
