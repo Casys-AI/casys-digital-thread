@@ -842,6 +842,48 @@ Deno.test("Evidence projects the exact SysML hierarchy and authoritative STEP id
   );
 });
 
+Deno.test("Evidence indexes a composite PartDefinition module GLB by exact asset identity", () => {
+  const { canonical, catalog } = componentStructureFixture();
+  const digest = "c".repeat(64);
+  canonical.artifacts.push({
+    id: "glb-assembly",
+    name: "GLTF: DeskLamp assembly",
+    kind: "cad-model",
+    version: digest,
+    fingerprint: fingerprint("c"),
+    uri: `/api/thread/assets/${digest}.glb`,
+    mediaType: "model/gltf-binary",
+    producer: operation(
+      "digital-thread",
+      "build123d-module-assembler-v1@1.0.0",
+      "module-assembly-run",
+    ),
+    inputArtifactIds: ["geometry-capture"],
+    freshness: fresh(),
+  });
+  catalog.components.find((component) => component.id === "component-system")!
+    .preview = {
+      provider: "build123d",
+      artifactId: "glb-assembly",
+      mediaType: "model/gltf-binary",
+      url: `/api/thread/assets/${digest}.glb`,
+      sha256: digest,
+    };
+
+  const projection = projectThreadWorkbenchSnapshot(canonical, catalog);
+  assertEquals(
+    projection.graph.edges
+      .filter((edge) =>
+        edge.relation === "represented_by" &&
+        edge.from.kind === "part-definition" &&
+        edge.from.id === "def-system"
+      )
+      .map((edge) => `${edge.to.kind}:${edge.to.id}`)
+      .sort(),
+    ["artifact:glb-assembly", "artifact:step-assembly"],
+  );
+});
+
 Deno.test("Evidence deduplicates one reused PartDefinition and refuses ambiguous reviewed bindings", () => {
   const { canonical, catalog } = componentStructureFixture();
   const reused = cloneCatalog(catalog);
@@ -1084,13 +1126,22 @@ Deno.test("Evidence fails closed when a GLB preview diverges from its canonical 
         .preview!.sha256 = "0".repeat(64);
     },
   }, {
-    name: "provider",
+    name: "uri",
     mutate: (canonical, catalog) => {
       const previewId = catalog.components.find((component) =>
         component.id === "component-base"
       )!.preview!.artifactId;
       canonical.artifacts.find((artifact) => artifact.id === previewId)!
-        .producer.serverId = "build123d";
+        .uri = `/api/thread/assets/${"0".repeat(64)}.glb`;
+    },
+  }, {
+    name: "media type",
+    mutate: (canonical, catalog) => {
+      const previewId = catalog.components.find((component) =>
+        component.id === "component-base"
+      )!.preview!.artifactId;
+      canonical.artifacts.find((artifact) => artifact.id === previewId)!
+        .mediaType = "application/octet-stream";
     },
   }];
 

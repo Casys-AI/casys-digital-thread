@@ -888,11 +888,9 @@ function projectComponentStructureGraph(
       preview = context.artifacts.get(component.preview.artifactId);
       const expectedUri = `/api/thread/assets/${component.preview.sha256}.glb`;
       if (
-        component.preview.provider !== "build123d" ||
         component.preview.mediaType !== "model/gltf-binary" ||
         !preview || preview.kind !== "cad-model" ||
         preview.mediaType !== "model/gltf-binary" ||
-        preview.producer.serverId !== "build123d-sandbox" ||
         preview.uri !== component.preview.url ||
         preview.uri !== expectedUri ||
         preview.fingerprint.algorithm !== "sha256" ||
