@@ -21,9 +21,14 @@ import type {
   PrepareProjectModelicaQualifiedKitRunReview,
 } from "../../../application/use-cases/modelica/qualified-kit/prepare-run-review.ts";
 import {
+  assertFailedIsolatedOutputValidationReplay,
+  isolatedOutputValidationFailedMessage,
+} from "../../../application/use-cases/compile/isolation/failed-isolated-output-validation-replay.ts";
+import {
   type CompleteRunCommand,
   EngineeringProjectCommandError,
   type EngineeringProjectCommandService,
+  type FailRunCommand,
   type RunCommand,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
 import {
@@ -192,6 +197,13 @@ export class SimulateRunQualifiedModelicaKitRunExecutor {
         });
       } catch (error) {
         if (error instanceof IsolatedQualifiedModelicaOutputValidationRejectedError) {
+          await this.#assertFailedOutputValidationReplay(
+            origin,
+            command,
+            project,
+            run,
+            isolatedOutputValidationFailure(error.observation),
+          );
           return project;
         }
         throw error;
@@ -569,16 +581,67 @@ export class SimulateRunQualifiedModelicaKitRunExecutor {
   ): Promise<EngineeringProjectSnapshot> {
     const project = await this.#requiredProject(command.projectId);
     const run = requireRun(project, command.runId);
-    if (run.status === "failed") return project;
-    await this.d.commands.failRun(origin, {
-      ...command,
-      commandId: commandStep(command.commandId, "fail"),
-      expectedRevision: project.revision,
-      summary: QUALIFIED_MODELICA_ISOLATED_OUTPUT_VALIDATION_FAILED.summary,
-      code: QUALIFIED_MODELICA_ISOLATED_OUTPUT_VALIDATION_FAILED.code,
-      message: isolatedOutputValidationRejectedMessage(error),
+    const failure = isolatedOutputValidationFailure(error.observation);
+    if (run.status === "failed") {
+      await this.#assertFailedOutputValidationReplay(
+        origin,
+        command,
+        project,
+        run,
+        failure,
+      );
+      return project;
+    }
+    if (run.status !== "running") {
+      throw unexpectedStatus(run, "running");
+    }
+    if (run.resultSnapshot || run.evidenceRefs.length !== 0) {
+      throw invalidTransition(
+        "The claimed qualified Modelica run already carries Thread evidence and cannot take an evidence-free terminal failure.",
+      );
+    }
+    const startedAt = run.startedAt;
+    await this.d.commands.failRun(
+      origin,
+      failCommand(command, failure, project.revision),
+    );
+    const failed = await this.#requiredProject(command.projectId);
+    await this.#assertFailedOutputValidationReplay(
+      origin,
+      command,
+      failed,
+      requireRun(failed, command.runId),
+      failure,
+      startedAt,
+    );
+    return failed;
+  }
+
+  async #assertFailedOutputValidationReplay(
+    origin: EngineeringProjectCommandOrigin,
+    command: RegisteredProjectRunExecutorCommand,
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+    failure: {
+      readonly summary: string;
+      readonly code: string;
+      readonly message: string;
+    },
+    originalStartedAt = run.startedAt,
+  ): Promise<void> {
+    await assertFailedIsolatedOutputValidationReplay({
+      project,
+      run,
+      origin,
+      originalStartedAt,
+      failure,
+      claimCommandId: commandStep(command.commandId, "claim"),
+      failCommandId: commandStep(command.commandId, "fail"),
+      buildClaimCommand: (expectedRevision, issuedAt) =>
+        claimCommand(command, expectedRevision, issuedAt),
+      buildFailCommand: (expectedRevision, issuedAt) =>
+        failCommand(command, failure, expectedRevision, issuedAt),
     });
-    return await this.#requiredProject(command.projectId);
   }
 }
 
@@ -969,6 +1032,27 @@ function claimCommand(
   };
 }
 
+function failCommand(
+  command: RegisteredProjectRunExecutorCommand,
+  failure: {
+    readonly summary: string;
+    readonly code: string;
+    readonly message: string;
+  },
+  expectedRevision = command.expectedRevision,
+  issuedAt = command.issuedAt,
+): FailRunCommand {
+  return {
+    ...command,
+    commandId: commandStep(command.commandId, "fail"),
+    expectedRevision,
+    issuedAt,
+    summary: failure.summary,
+    code: failure.code,
+    message: failure.message,
+  };
+}
+
 function publishCommand(
   command: RegisteredProjectRunExecutorCommand,
   expectedRevision: number,
@@ -1041,11 +1125,18 @@ function invalidTransition(message: string): EngineeringProjectCommandError {
   return new EngineeringProjectCommandError("invalid_transition", message);
 }
 
-function isolatedOutputValidationRejectedMessage(
-  error: IsolatedQualifiedModelicaOutputValidationRejectedError,
-): string {
-  const text =
-    `Isolated output validation rejected registered role ${error.observation.role} ` +
-    `(${error.observation.byteCount} bytes, sha256 ${error.observation.sha256}).`;
-  return text.length > 240 ? `${text.slice(0, 240)}…` : text;
+function isolatedOutputValidationFailure(observation: {
+  readonly role: string;
+  readonly byteCount: number;
+  readonly sha256: string;
+}): {
+  readonly summary: string;
+  readonly code: string;
+  readonly message: string;
+} {
+  return {
+    summary: QUALIFIED_MODELICA_ISOLATED_OUTPUT_VALIDATION_FAILED.summary,
+    code: QUALIFIED_MODELICA_ISOLATED_OUTPUT_VALIDATION_FAILED.code,
+    message: isolatedOutputValidationFailedMessage(observation),
+  };
 }

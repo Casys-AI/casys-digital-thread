@@ -315,6 +315,40 @@ Deno.test("qualified Modelica fails the claimed run on output-validation rejecti
   assertEquals(replayed.threadSnapshots, beforeSnapshots);
 });
 
+Deno.test("qualified Modelica refuses a divergent fail code on output-validation replay without redispatch", async () => {
+  const fixture = await createFixture({ rejectOutputValidation: true });
+  await fixture.executor.execute(AGENT, COMMAND);
+  const run = fixture.project.agentRuns[0] as MutableRun;
+  run.failure = {
+    code: "isolated_execution_rejected",
+    message: run.failure!.message,
+  };
+  await assertRejects(
+    () => fixture.executor.execute(AGENT, COMMAND),
+    Error,
+    "evidence-free terminal failure",
+  );
+  assertEquals(fixture.execution.executeCalls, 1);
+});
+
+Deno.test("qualified Modelica refuses a divergent fail receipt on output-validation replay without redispatch", async () => {
+  const fixture = await createFixture({ rejectOutputValidation: true });
+  await fixture.executor.execute(AGENT, COMMAND);
+  const receipts = fixture.project.commandReceipts;
+  const index = receipts.findIndex((item) => item.type === "agent-run.fail");
+  assertEquals(index >= 0, true);
+  receipts[index] = {
+    ...receipts[index]!,
+    requestFingerprint: { algorithm: "sha256", digest: "0".repeat(64) },
+  };
+  await assertRejects(
+    () => fixture.executor.execute(AGENT, COMMAND),
+    Error,
+    "agent-run.fail receipt",
+  );
+  assertEquals(fixture.execution.executeCalls, 1);
+});
+
 interface FixtureOptions {
   readonly publishAckLostOnce?: boolean;
   readonly blockExecution?: boolean;
@@ -731,6 +765,7 @@ class FakeCommands {
       run.startedAt = AT;
       run.claimedAt = AT;
       run.claimedBy = { id: origin.actorId, origin: origin.kind };
+      run.summary = command.summary;
       this.project.revision += 1;
       this.project.commandReceipts.push(
         await commandReceipt(
@@ -740,6 +775,13 @@ class FakeCommands {
           this.project.revision,
         ),
       );
+      run.statusHistory = [...(run.statusHistory ?? []), {
+        commandId: command.commandId,
+        status: "running",
+        at: AT,
+        actor: { id: origin.actorId, origin: origin.kind },
+        summary: command.summary,
+      }];
     }
     return this.project;
   }
@@ -791,11 +833,30 @@ class FakeCommands {
     }
     return this.project;
   }
-  failRun(_origin: EngineeringProjectCommandOrigin, command: FailRunCommand) {
+  async failRun(origin: EngineeringProjectCommandOrigin, command: FailRunCommand) {
     const run = this.project.agentRuns[0] as MutableRun;
+    if (run.status === "failed") return this.project;
     run.status = "failed";
+    run.completedAt = AT;
     run.failure = { code: command.code, message: command.message };
-    return Promise.resolve(this.project);
+    run.summary = command.summary;
+    this.project.revision += 1;
+    this.project.commandReceipts.push(
+      await commandReceipt(
+        "agent-run.fail",
+        origin,
+        command,
+        this.project.revision,
+      ),
+    );
+    run.statusHistory = [...(run.statusHistory ?? []), {
+      commandId: command.commandId,
+      status: "failed",
+      at: AT,
+      actor: { id: origin.actorId, origin: origin.kind },
+      summary: command.summary,
+    }];
+    return this.project;
   }
 }
 
@@ -972,9 +1033,13 @@ async function modelicaProfile(): Promise<ModelicaIsolatedExecutionProfile> {
 }
 
 async function commandReceipt(
-  type: "agent-run.claim" | "agent-run.publish" | "agent-run.complete",
+  type:
+    | "agent-run.claim"
+    | "agent-run.publish"
+    | "agent-run.complete"
+    | "agent-run.fail",
   origin: EngineeringProjectCommandOrigin,
-  command: RunCommand | CompleteRunCommand,
+  command: RunCommand | CompleteRunCommand | FailRunCommand,
   revision: number,
 ): Promise<EngineeringProjectCommandReceipt> {
   return {

@@ -432,6 +432,42 @@ Deno.test("Build123d executor fails the claimed run on output-validation rejecti
   assertEquals(replayed.threadSnapshots, beforeSnapshots);
 });
 
+Deno.test("Build123d refuses a divergent fail code on output-validation replay without redispatch", async () => {
+  const fixture = await createFixture({ rejectOutputValidation: true });
+  await fixture.executor.execute(AGENT, COMMAND);
+  const run = fixture.project.agentRuns[0] as MutableRun;
+  run.failure = {
+    code: "design-execute-build123d-not-dispatched",
+    message: run.failure!.message,
+  };
+  await assertRejects(
+    () => fixture.executor.execute(AGENT, COMMAND),
+    Error,
+    "evidence-free terminal failure",
+  );
+  assertEquals(fixture.runner.calls, 1);
+  assertEquals(fixture.recovery.calls, 0);
+});
+
+Deno.test("Build123d refuses a divergent fail receipt on output-validation replay without redispatch", async () => {
+  const fixture = await createFixture({ rejectOutputValidation: true });
+  await fixture.executor.execute(AGENT, COMMAND);
+  const receipts = fixture.project.commandReceipts;
+  const index = receipts.findIndex((item) => item.type === "agent-run.fail");
+  assertEquals(index >= 0, true);
+  receipts[index] = {
+    ...receipts[index]!,
+    requestFingerprint: { algorithm: "sha256", digest: "0".repeat(64) },
+  };
+  await assertRejects(
+    () => fixture.executor.execute(AGENT, COMMAND),
+    Error,
+    "agent-run.fail receipt",
+  );
+  assertEquals(fixture.runner.calls, 1);
+  assertEquals(fixture.recovery.calls, 0);
+});
+
 interface FixtureOptions {
   readonly resume?: "published" | "not-published" | "outcome-unknown";
   readonly profileDrift?: boolean;
@@ -1671,7 +1707,7 @@ class FakeCommands {
   ) {
     this.#publishAckLostOnce = options.publishAckLostOnce ?? false;
   }
-  claimRun(origin: EngineeringProjectCommandOrigin, command: RunCommand) {
+  async claimRun(origin: EngineeringProjectCommandOrigin, command: RunCommand) {
     const run = this.project.agentRuns[0] as MutableRun;
     const identity = deterministicJson({ origin, command });
     if (run.status === "queued") {
@@ -1680,13 +1716,37 @@ class FakeCommands {
       run.startedAt = AT;
       run.claimedAt = AT;
       run.claimedBy = { id: origin.actorId, origin: origin.kind };
+      run.summary = command.summary;
       this.project.revision += 1;
+      this.project.commandReceipts.push({
+        commandId: command.commandId,
+        type: "agent-run.claim",
+        actor: { id: origin.actorId, origin: origin.kind },
+        issuedAt: command.issuedAt,
+        appliedAt: AT,
+        requestFingerprint: await sha256Fingerprint({
+          type: "agent-run.claim",
+          origin,
+          command,
+        }),
+        resultingSnapshot: {
+          snapshotId: `project.claim.${this.project.revision}`,
+          revision: this.project.revision,
+        },
+      });
+      run.statusHistory = [...(run.statusHistory ?? []), {
+        commandId: command.commandId,
+        status: "running",
+        at: AT,
+        actor: { id: origin.actorId, origin: origin.kind },
+        summary: command.summary,
+      }];
     } else if (identity !== this.claimIdentity && !this.claimIdentity) {
       this.claimIdentity = identity;
     } else if (identity !== this.claimIdentity) {
       return Promise.reject(new Error("claim identity drift"));
     }
-    return Promise.resolve(this.project);
+    return this.project;
   }
   async publishRun(origin: EngineeringProjectCommandOrigin, command: RunCommand) {
     this.publishCalls += 1;
@@ -1765,11 +1825,38 @@ class FakeCommands {
     }
     return this.project;
   }
-  failRun(_origin: EngineeringProjectCommandOrigin, command: FailRunCommand) {
+  async failRun(origin: EngineeringProjectCommandOrigin, command: FailRunCommand) {
     const run = this.project.agentRuns[0] as MutableRun;
+    if (run.status === "failed") return this.project;
     run.status = "failed";
+    run.completedAt = AT;
     run.failure = { code: command.code, message: command.message };
-    return Promise.resolve(this.project);
+    run.summary = command.summary;
+    this.project.revision += 1;
+    this.project.commandReceipts.push({
+      commandId: command.commandId,
+      type: "agent-run.fail",
+      actor: { id: origin.actorId, origin: origin.kind },
+      issuedAt: command.issuedAt,
+      appliedAt: AT,
+      requestFingerprint: await sha256Fingerprint({
+        type: "agent-run.fail",
+        origin,
+        command,
+      }),
+      resultingSnapshot: {
+        snapshotId: `project.fail.${this.project.revision}`,
+        revision: this.project.revision,
+      },
+    });
+    run.statusHistory = [...(run.statusHistory ?? []), {
+      commandId: command.commandId,
+      status: "failed",
+      at: AT,
+      actor: { id: origin.actorId, origin: origin.kind },
+      summary: command.summary,
+    }];
+    return this.project;
   }
 }
 

@@ -42,9 +42,14 @@ import {
   ReopenAdmittedCompilationSource,
 } from "../../../application/use-cases/compile/admission/reopen-admitted-compilation-source.ts";
 import {
+  assertFailedIsolatedOutputValidationReplay,
+  isolatedOutputValidationFailedMessage,
+} from "../../../application/use-cases/compile/isolation/failed-isolated-output-validation-replay.ts";
+import {
   type CompleteRunCommand,
   EngineeringProjectCommandError,
   type EngineeringProjectCommandService,
+  type FailRunCommand,
   type RunCommand,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
 import {
@@ -536,11 +541,7 @@ export class DesignExecuteBuild123dRunExecutor {
         run.status === "publishing"
       ) {
         if (run.status !== "queued") requireClaimedShape(project, run, origin);
-        await this.#commands.claimRun(origin, {
-          ...command,
-          commandId: commandStep(command.commandId, "claim"),
-          summary: "Started the exact reviewed isolated Build123d execution.",
-        });
+        await this.#commands.claimRun(origin, claimCommand(command));
         claimed = true;
       } else {
         throw unexpectedStatus(run, "queued or this agent's running/publishing");
@@ -1056,11 +1057,7 @@ export class DesignExecuteBuild123dRunExecutor {
     const project = await this.#requiredProject(command.projectId);
     const run = requireRun(project, command.runId);
     if (run.status !== "completed") return undefined;
-    await this.#commands.claimRun(origin, {
-      ...command,
-      commandId: commandStep(command.commandId, "claim"),
-      summary: "Started the exact reviewed isolated Build123d execution.",
-    });
+    await this.#commands.claimRun(origin, claimCommand(command));
     const replayed = await this.#requiredProject(command.projectId);
     await this.#assertCompletedEvidence(
       origin,
@@ -1264,7 +1261,7 @@ export class DesignExecuteBuild123dRunExecutor {
   }
 
   async #reopenFailedOutputValidation(
-    _origin: EngineeringProjectCommandOrigin,
+    origin: EngineeringProjectCommandOrigin,
     command: RegisteredProjectRunExecutorCommand,
     _approvedDecision: EngineeringDecision,
     _admission: Build123dExecutionAdmission,
@@ -1275,8 +1272,17 @@ export class DesignExecuteBuild123dRunExecutor {
       throw unexpectedStatus(run, "failed");
     }
     const attempt = await this.#attempts.read(command.projectId, run.id);
-    if (attempt?.phase === "output-validation-rejected") return project;
-    throw unexpectedStatus(run, "queued or this agent's running/publishing");
+    if (attempt?.phase !== "output-validation-rejected") {
+      throw unexpectedStatus(run, "queued or this agent's running/publishing");
+    }
+    await this.#assertFailedOutputValidationReplay(
+      origin,
+      command,
+      project,
+      run,
+      isolatedOutputValidationFailure(attempt.outputValidationRejection.observation),
+    );
+    return project;
   }
 
   async #failOutputValidationRejected(
@@ -1286,16 +1292,67 @@ export class DesignExecuteBuild123dRunExecutor {
   ): Promise<EngineeringProjectSnapshot> {
     const project = await this.#requiredProject(command.projectId);
     const run = requireRun(project, command.runId);
-    if (run.status === "failed") return project;
-    await this.#commands.failRun(origin, {
-      ...command,
-      commandId: commandStep(command.commandId, "fail"),
-      expectedRevision: project.revision,
-      summary: BUILD123D_ISOLATED_OUTPUT_VALIDATION_FAILED.summary,
-      code: BUILD123D_ISOLATED_OUTPUT_VALIDATION_FAILED.code,
-      message: isolatedOutputValidationRejectedMessage(error),
+    const failure = isolatedOutputValidationFailure(error.observation);
+    if (run.status === "failed") {
+      await this.#assertFailedOutputValidationReplay(
+        origin,
+        command,
+        project,
+        run,
+        failure,
+      );
+      return project;
+    }
+    if (run.status !== "running") {
+      throw unexpectedStatus(run, "running");
+    }
+    if (run.resultSnapshot || run.evidenceRefs.length !== 0) {
+      throw invalidTransition(
+        "The claimed Build123d run already carries Thread evidence and cannot take an evidence-free terminal failure.",
+      );
+    }
+    const startedAt = run.startedAt;
+    await this.#commands.failRun(
+      origin,
+      failCommand(command, failure, project.revision),
+    );
+    const failed = await this.#requiredProject(command.projectId);
+    await this.#assertFailedOutputValidationReplay(
+      origin,
+      command,
+      failed,
+      requireRun(failed, command.runId),
+      failure,
+      startedAt,
+    );
+    return failed;
+  }
+
+  async #assertFailedOutputValidationReplay(
+    origin: EngineeringProjectCommandOrigin,
+    command: RegisteredProjectRunExecutorCommand,
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+    failure: {
+      readonly summary: string;
+      readonly code: string;
+      readonly message: string;
+    },
+    originalStartedAt = run.startedAt,
+  ): Promise<void> {
+    await assertFailedIsolatedOutputValidationReplay({
+      project,
+      run,
+      origin,
+      originalStartedAt,
+      failure,
+      claimCommandId: commandStep(command.commandId, "claim"),
+      failCommandId: commandStep(command.commandId, "fail"),
+      buildClaimCommand: (expectedRevision, issuedAt) =>
+        claimCommand(command, expectedRevision, issuedAt),
+      buildFailCommand: (expectedRevision, issuedAt) =>
+        failCommand(command, failure, expectedRevision, issuedAt),
     });
-    return await this.#requiredProject(command.projectId);
   }
 }
 
@@ -1729,6 +1786,41 @@ function artifactEvidence(
   };
 }
 
+function claimCommand(
+  command: RegisteredProjectRunExecutorCommand,
+  expectedRevision = command.expectedRevision,
+  issuedAt = command.issuedAt,
+): RunCommand {
+  return {
+    ...command,
+    commandId: commandStep(command.commandId, "claim"),
+    expectedRevision,
+    issuedAt,
+    summary: "Started the exact reviewed isolated Build123d execution.",
+  };
+}
+
+function failCommand(
+  command: RegisteredProjectRunExecutorCommand,
+  failure: {
+    readonly summary: string;
+    readonly code: string;
+    readonly message: string;
+  },
+  expectedRevision = command.expectedRevision,
+  issuedAt = command.issuedAt,
+): FailRunCommand {
+  return {
+    ...command,
+    commandId: commandStep(command.commandId, "fail"),
+    expectedRevision,
+    issuedAt,
+    summary: failure.summary,
+    code: failure.code,
+    message: failure.message,
+  };
+}
+
 function publishCommand(
   command: RegisteredProjectRunExecutorCommand,
   expectedRevision: number,
@@ -1738,6 +1830,22 @@ function publishCommand(
     commandId: commandStep(command.commandId, "publish"),
     expectedRevision,
     summary: "Publishing the documentary Build123d execution capture.",
+  };
+}
+
+function isolatedOutputValidationFailure(observation: {
+  readonly role: string;
+  readonly byteCount: number;
+  readonly sha256: string;
+}): {
+  readonly summary: string;
+  readonly code: string;
+  readonly message: string;
+} {
+  return {
+    summary: BUILD123D_ISOLATED_OUTPUT_VALIDATION_FAILED.summary,
+    code: BUILD123D_ISOLATED_OUTPUT_VALIDATION_FAILED.code,
+    message: isolatedOutputValidationFailedMessage(observation),
   };
 }
 
@@ -1875,22 +1983,6 @@ function commandStep(commandId: string, step: string): string {
 
 function invalidTransition(message: string): EngineeringProjectCommandError {
   return new EngineeringProjectCommandError("invalid_transition", message);
-}
-
-function describe(cause: unknown): string {
-  const text = cause instanceof Error
-    ? `${cause.name}: ${cause.message}`
-    : String(cause);
-  return text.length > 240 ? `${text.slice(0, 240)}…` : text;
-}
-
-function isolatedOutputValidationRejectedMessage(
-  error: IsolatedBuild123dOutputValidationRejectedError,
-): string {
-  return describe(
-    `Isolated output validation rejected registered role ${error.observation.role} ` +
-      `(${error.observation.byteCount} bytes, sha256 ${error.observation.sha256}).`,
-  );
 }
 
 function throwOutputValidationRejected(

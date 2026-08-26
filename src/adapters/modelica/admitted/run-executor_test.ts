@@ -1142,6 +1142,66 @@ Deno.test("admitted Modelica fails the claimed run on output-validation rejectio
   }
 });
 
+Deno.test("admitted Modelica refuses a divergent fail code on output-validation replay without redispatch", async () => {
+  const fixture = await executorHarness({ rejectOutputValidation: true });
+  try {
+    const failed = await fixture.executor.execute(
+      EXECUTION_AGENT,
+      EXECUTION_COMMAND,
+    );
+    const run = failed.agentRuns.find((item) =>
+      item.id === EXECUTION_COMMAND.runId
+    ) as MutableRun;
+    run.failure = {
+      code: "isolated_execution_rejected",
+      message: run.failure!.message,
+    };
+    await assertRejects(
+      () =>
+        fixture.executor.execute(EXECUTION_AGENT, {
+          ...EXECUTION_COMMAND,
+          expectedRevision: failed.revision,
+        }),
+      Error,
+      "evidence-free terminal failure",
+    );
+    assertEquals(fixture.runtime.runs, [0]);
+    assertEquals(fixture.runtime.recoveries, []);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("admitted Modelica refuses a divergent fail receipt on output-validation replay without redispatch", async () => {
+  const fixture = await executorHarness({ rejectOutputValidation: true });
+  try {
+    const failed = await fixture.executor.execute(
+      EXECUTION_AGENT,
+      EXECUTION_COMMAND,
+    );
+    const receipts = fixture.project.commandReceipts;
+    const index = receipts.findIndex((item) => item.type === "agent-run.fail");
+    assertEquals(index >= 0, true);
+    receipts[index] = {
+      ...receipts[index]!,
+      requestFingerprint: { algorithm: "sha256", digest: "0".repeat(64) },
+    };
+    await assertRejects(
+      () =>
+        fixture.executor.execute(EXECUTION_AGENT, {
+          ...EXECUTION_COMMAND,
+          expectedRevision: failed.revision,
+        }),
+      Error,
+      "agent-run.fail receipt",
+    );
+    assertEquals(fixture.runtime.runs, [0]);
+    assertEquals(fixture.runtime.recoveries, []);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 type ExecutorDrift =
   | "agent-approval"
   | "decision-fingerprint"

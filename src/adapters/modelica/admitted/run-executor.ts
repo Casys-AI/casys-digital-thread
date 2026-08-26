@@ -40,6 +40,10 @@ import {
   type ReviewedAdmittedModelicaAuthority,
 } from "../../../application/use-cases/modelica/admitted/reopen-reviewed-execution.ts";
 import {
+  assertFailedIsolatedOutputValidationReplay,
+  isolatedOutputValidationFailedMessage,
+} from "../../../application/use-cases/compile/isolation/failed-isolated-output-validation-replay.ts";
+import {
   ADMITTED_MODELICA_ISOLATED_OUTPUT_VALIDATION_FAILED,
   assertAdmittedModelicaCommandReceiptExact,
   assertCompletedAdmittedModelicaBinding,
@@ -234,7 +238,7 @@ export class SimulateRunAdmittedModelicaRunExecutor {
       return await this.#reopenCompleted(origin, command, authority);
     }
     if (run.status === "failed") {
-      return await this.#reopenFailedOutputValidation(command);
+      return await this.#reopenFailedOutputValidation(origin, command);
     }
     if (
       run.status !== "queued" && run.status !== "running" &&
@@ -1221,6 +1225,7 @@ export class SimulateRunAdmittedModelicaRunExecutor {
   }
 
   async #reopenFailedOutputValidation(
+    origin: EngineeringProjectCommandOrigin,
     command: RegisteredProjectRunExecutorCommand,
   ): Promise<EngineeringProjectSnapshot> {
     const project = await this.#requiredProject(command.projectId);
@@ -1229,8 +1234,17 @@ export class SimulateRunAdmittedModelicaRunExecutor {
       throw unexpectedStatus(run, "failed");
     }
     const attempt = await this.d.attempts.read(command.projectId, run.id);
-    if (attempt?.phase === "output-validation-rejected") return project;
-    throw unexpectedStatus(run, "queued or this agent's running/publishing");
+    if (attempt?.phase !== "output-validation-rejected") {
+      throw unexpectedStatus(run, "queued or this agent's running/publishing");
+    }
+    await this.#assertFailedOutputValidationReplay(
+      origin,
+      command,
+      project,
+      run,
+      isolatedOutputValidationFailure(attempt.outputValidationRejection.observation),
+    );
+    return project;
   }
 
   async #failOutputValidationRejected(
@@ -1240,16 +1254,67 @@ export class SimulateRunAdmittedModelicaRunExecutor {
   ): Promise<EngineeringProjectSnapshot> {
     const project = await this.#requiredProject(command.projectId);
     const run = requireRun(project, command.runId);
-    if (run.status === "failed") return project;
+    const failure = isolatedOutputValidationFailure(error.observation);
+    if (run.status === "failed") {
+      await this.#assertFailedOutputValidationReplay(
+        origin,
+        command,
+        project,
+        run,
+        failure,
+      );
+      return project;
+    }
+    if (run.status !== "running") {
+      throw unexpectedStatus(run, "running");
+    }
+    if (run.resultSnapshot || run.evidenceRefs.length !== 0) {
+      throw invalidTransition(
+        "The claimed admitted Modelica run already carries Thread evidence and cannot take an evidence-free terminal failure.",
+      );
+    }
+    const startedAt = run.startedAt;
     await this.d.commands.failRun(
       origin,
-      failCommand(command, {
-        summary: ADMITTED_MODELICA_ISOLATED_OUTPUT_VALIDATION_FAILED.summary,
-        code: ADMITTED_MODELICA_ISOLATED_OUTPUT_VALIDATION_FAILED.code,
-        message: isolatedOutputValidationRejectedMessage(error),
-      }, project.revision),
+      failCommand(command, failure, project.revision),
     );
-    return await this.#requiredProject(command.projectId);
+    const failed = await this.#requiredProject(command.projectId);
+    await this.#assertFailedOutputValidationReplay(
+      origin,
+      command,
+      failed,
+      requireRun(failed, command.runId),
+      failure,
+      startedAt,
+    );
+    return failed;
+  }
+
+  async #assertFailedOutputValidationReplay(
+    origin: EngineeringProjectCommandOrigin,
+    command: RegisteredProjectRunExecutorCommand,
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+    failure: {
+      readonly summary: string;
+      readonly code: string;
+      readonly message: string;
+    },
+    originalStartedAt = run.startedAt,
+  ): Promise<void> {
+    await assertFailedIsolatedOutputValidationReplay({
+      project,
+      run,
+      origin,
+      originalStartedAt,
+      failure,
+      claimCommandId: commandStep(command.commandId, "claim"),
+      failCommandId: commandStep(command.commandId, "fail"),
+      buildClaimCommand: (expectedRevision, issuedAt) =>
+        claimCommand(command, expectedRevision, issuedAt),
+      buildFailCommand: (expectedRevision, issuedAt) =>
+        failCommand(command, failure, expectedRevision, issuedAt),
+    });
   }
 }
 
@@ -1427,13 +1492,20 @@ function invalidTransition(message: string): EngineeringProjectCommandError {
   return new EngineeringProjectCommandError("invalid_transition", message);
 }
 
-function isolatedOutputValidationRejectedMessage(
-  error: IsolatedAdmittedModelicaOutputValidationRejectedError,
-): string {
-  const text =
-    `Isolated output validation rejected registered role ${error.observation.role} ` +
-    `(${error.observation.byteCount} bytes, sha256 ${error.observation.sha256}).`;
-  return text.length > 240 ? `${text.slice(0, 240)}…` : text;
+function isolatedOutputValidationFailure(observation: {
+  readonly role: string;
+  readonly byteCount: number;
+  readonly sha256: string;
+}): {
+  readonly summary: string;
+  readonly code: string;
+  readonly message: string;
+} {
+  return {
+    summary: ADMITTED_MODELICA_ISOLATED_OUTPUT_VALIDATION_FAILED.summary,
+    code: ADMITTED_MODELICA_ISOLATED_OUTPUT_VALIDATION_FAILED.code,
+    message: isolatedOutputValidationFailedMessage(observation),
+  };
 }
 
 function throwOutputValidationRejected(

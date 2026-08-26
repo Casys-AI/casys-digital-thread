@@ -20,8 +20,14 @@ import type { SensitivityStaticStructuralSolver } from "../../../application/por
 import type { SolverInputStager } from "../../../application/ports/out/solver-input-stager.ts";
 import type { TechnicalCompilationAdmissionReader } from "../../../application/ports/out/compile/admission/technical-compilation-admission-reader.ts";
 import {
+  assertFailedIsolatedOutputValidationReplay,
+  isolatedOutputValidationFailedMessage,
+} from "../../../application/use-cases/compile/isolation/failed-isolated-output-validation-replay.ts";
+import {
   EngineeringProjectCommandError,
   type EngineeringProjectCommandService,
+  type FailRunCommand,
+  type RunCommand,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
 import { buildSensitivityAnalysisGraph } from "../../../domain/sensitivity/live-fea/sensitivity-analysis-graph.ts";
 import {
@@ -128,6 +134,14 @@ import type { FileSensitivityExperienceReuseAttemptStore } from "../experience/f
 import type { SensitivityExperienceReuseAttempt } from "../experience/file-sensitivity-experience-reuse-attempt-store.ts";
 
 export { ANALYZE_RUN_FEA_SENSITIVITY_OPERATION };
+
+type SensitivityRunCommand = {
+  readonly commandId: string;
+  readonly projectId: string;
+  readonly expectedRevision: number;
+  readonly issuedAt: string;
+  readonly runId: string;
+};
 
 export const FEA_SENSITIVITY_CAD_ISOLATED_OUTPUT_VALIDATION_FAILED = {
   summary:
@@ -297,11 +311,17 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
     requireShape(preClaim, preRun);
     if (preRun.status === "completed") return preClaim;
     if (preRun.status === "failed") {
-      const attempt = await this.#attempts.read(command.projectId, command.runId);
-      if (
-        attempt?.cad.base.status === "output-validation-rejected" ||
-        attempt?.cad.stepped.status === "output-validation-rejected"
-      ) {
+      const reconstructed = await this.#reconstructKnownCadOutputValidationRejection(
+        command,
+      );
+      if (reconstructed) {
+        await this.#assertFailedOutputValidationReplay(
+          origin,
+          command,
+          preClaim,
+          preRun,
+          reconstructed,
+        );
         return preClaim;
       }
       throw unexpectedStatus(preRun, "queued or this agent's running/publishing");
@@ -756,6 +776,16 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
       if (error instanceof IsolatedFeaSensitivityCadOutputValidationRejectedError) {
         return await this.#failOutputValidationRejected(origin, command, error);
       }
+      const reconstructed = await this.#reconstructKnownCadOutputValidationRejection(
+        command,
+      );
+      if (reconstructed) {
+        return await this.#failOutputValidationRejected(
+          origin,
+          command,
+          reconstructed,
+        );
+      }
       if (!(error instanceof EngineeringProjectCommandError)) {
         await this.#recordFailure(origin, command, error);
       }
@@ -1109,25 +1139,19 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
         run.status !== "running" || run.claimedBy?.origin !== origin.kind ||
         run.claimedBy.id !== origin.actorId
       ) return;
-      const outputValidation = error instanceof
-        IsolatedFeaSensitivityCadOutputValidationRejectedError;
+      if (await this.#reconstructKnownCadOutputValidationRejection(command)) {
+        return;
+      }
       await this.#commands.failRun(origin, {
         projectId: command.projectId,
         runId: command.runId,
         issuedAt: command.issuedAt,
         commandId: `${command.commandId}:fail`,
         expectedRevision: project.revision,
-        summary: outputValidation
-          ? FEA_SENSITIVITY_CAD_ISOLATED_OUTPUT_VALIDATION_FAILED.summary
-          : "FEA sensitivity execution failed on a terminal provider or runtime error.",
-        code: outputValidation
-          ? FEA_SENSITIVITY_CAD_ISOLATED_OUTPUT_VALIDATION_FAILED.code
-          : "analyze-run-fea-sensitivity-terminal-error",
-        message: outputValidation
-          ? isolatedOutputValidationRejectedMessage(error)
-          : error instanceof Error
-          ? error.message
-          : String(error),
+        summary:
+          "FEA sensitivity execution failed on a terminal provider or runtime error.",
+        code: "analyze-run-fea-sensitivity-terminal-error",
+        message: error instanceof Error ? error.message : String(error),
       });
     } catch {
       // Preserve the original execution error.
@@ -1136,28 +1160,86 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
 
   async #failOutputValidationRejected(
     origin: EngineeringProjectCommandOrigin,
-    command: {
-      projectId: string;
-      runId: string;
-      commandId: string;
-      issuedAt: string;
-    },
+    command: SensitivityRunCommand,
     error: IsolatedFeaSensitivityCadOutputValidationRejectedError,
   ): Promise<EngineeringProjectSnapshot> {
     const project = await this.#requiredProject(command.projectId);
     const run = requireRun(project, command.runId);
-    if (run.status === "failed") return project;
-    await this.#commands.failRun(origin, {
-      projectId: command.projectId,
-      runId: command.runId,
-      issuedAt: command.issuedAt,
-      commandId: `${command.commandId}:fail`,
-      expectedRevision: project.revision,
-      summary: FEA_SENSITIVITY_CAD_ISOLATED_OUTPUT_VALIDATION_FAILED.summary,
-      code: FEA_SENSITIVITY_CAD_ISOLATED_OUTPUT_VALIDATION_FAILED.code,
-      message: isolatedOutputValidationRejectedMessage(error),
+    if (run.status === "failed") {
+      await this.#assertFailedOutputValidationReplay(
+        origin,
+        command,
+        project,
+        run,
+        error,
+      );
+      return project;
+    }
+    if (run.status !== "running") {
+      throw unexpectedStatus(run, "running");
+    }
+    if (run.resultSnapshot || run.evidenceRefs.length !== 0) {
+      throw invalidTransition(
+        "The claimed FEA sensitivity run already carries Thread evidence and cannot take an evidence-free terminal failure.",
+      );
+    }
+    const startedAt = run.startedAt;
+    await this.#commands.failRun(
+      origin,
+      failCommand(command, isolatedOutputValidationFailure(error), project.revision),
+    );
+    const failed = await this.#requiredProject(command.projectId);
+    await this.#assertFailedOutputValidationReplay(
+      origin,
+      command,
+      failed,
+      requireRun(failed, command.runId),
+      error,
+      startedAt,
+    );
+    return failed;
+  }
+
+  async #assertFailedOutputValidationReplay(
+    origin: EngineeringProjectCommandOrigin,
+    command: SensitivityRunCommand,
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+    error: IsolatedFeaSensitivityCadOutputValidationRejectedError,
+    originalStartedAt = run.startedAt,
+  ): Promise<void> {
+    const failure = isolatedOutputValidationFailure(error);
+    await assertFailedIsolatedOutputValidationReplay({
+      project,
+      run,
+      origin,
+      originalStartedAt,
+      failure,
+      claimCommandId: `${command.commandId}:claim`,
+      failCommandId: `${command.commandId}:fail`,
+      buildClaimCommand: (expectedRevision, issuedAt) =>
+        claimCommand(command, expectedRevision, issuedAt),
+      buildFailCommand: (expectedRevision, issuedAt) =>
+        failCommand(command, failure, expectedRevision, issuedAt),
     });
-    return await this.#requiredProject(command.projectId);
+  }
+
+  async #reconstructKnownCadOutputValidationRejection(command: {
+    readonly projectId: string;
+    readonly runId: string;
+  }): Promise<IsolatedFeaSensitivityCadOutputValidationRejectedError | undefined> {
+    const attempt = await this.#attempts.read(command.projectId, command.runId);
+    for (const phase of ["base", "stepped"] as const) {
+      const slot = attempt?.cad[phase];
+      if (slot?.status === "output-validation-rejected") {
+        return new IsolatedFeaSensitivityCadOutputValidationRejectedError({
+          executionRunId: slot.executionRunId,
+          observation: slot.observation,
+          destruction: slot.destruction,
+        });
+      }
+    }
+    return undefined;
   }
 
   async #executeCad(input: {
@@ -1252,14 +1334,30 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
             "Isolated FEA sensitivity CAD output-validation cleanup is not proven; no redispatch occurs.",
           );
         }
-        await this.#attempts.markCadOutputValidationRejected({
-          projectId: input.projectId,
-          runId: input.runId,
-          phase: input.phase,
-          observation: error.observation,
-          destruction: error.destruction,
-          registeredRoles: input.profile.outputManifest.map((output) => output.role),
-        });
+        try {
+          await this.#attempts.markCadOutputValidationRejected({
+            projectId: input.projectId,
+            runId: input.runId,
+            phase: input.phase,
+            observation: error.observation,
+            destruction: error.destruction,
+            registeredRoles: input.profile.outputManifest.map((output) => output.role),
+          });
+        } catch (markError) {
+          const current = await this.#attempts.read(input.projectId, input.runId);
+          const slot = current?.cad[input.phase];
+          if (
+            slot?.status === "output-validation-rejected" &&
+            slot.executionRunId === input.executionRunId
+          ) {
+            throw new IsolatedFeaSensitivityCadOutputValidationRejectedError({
+              executionRunId: slot.executionRunId,
+              observation: slot.observation,
+              destruction: slot.destruction,
+            });
+          }
+          throw markError;
+        }
         throw new IsolatedFeaSensitivityCadOutputValidationRejectedError({
           executionRunId: input.executionRunId,
           observation: error.observation,
@@ -1537,13 +1635,53 @@ async function measurementsFromRecordedSolve(
   return map;
 }
 
-function isolatedOutputValidationRejectedMessage(
+function isolatedOutputValidationFailure(
   error: IsolatedFeaSensitivityCadOutputValidationRejectedError,
-): string {
-  const text =
-    `Isolated output validation rejected registered role ${error.observation.role} ` +
-    `(${error.observation.byteCount} bytes, sha256 ${error.observation.sha256}).`;
-  return text.length > 240 ? `${text.slice(0, 240)}…` : text;
+): {
+  readonly summary: string;
+  readonly code: string;
+  readonly message: string;
+} {
+  return {
+    summary: FEA_SENSITIVITY_CAD_ISOLATED_OUTPUT_VALIDATION_FAILED.summary,
+    code: FEA_SENSITIVITY_CAD_ISOLATED_OUTPUT_VALIDATION_FAILED.code,
+    message: isolatedOutputValidationFailedMessage(error.observation),
+  };
+}
+
+function claimCommand(
+  command: SensitivityRunCommand,
+  expectedRevision = command.expectedRevision,
+  issuedAt = command.issuedAt,
+): RunCommand {
+  return {
+    ...command,
+    commandId: `${command.commandId}:claim`,
+    expectedRevision,
+    issuedAt,
+    summary: "Started the FEA sensitivity study run.",
+  };
+}
+
+function failCommand(
+  command: SensitivityRunCommand,
+  failure: {
+    readonly summary: string;
+    readonly code: string;
+    readonly message: string;
+  },
+  expectedRevision = command.expectedRevision,
+  issuedAt = command.issuedAt,
+): FailRunCommand {
+  return {
+    ...command,
+    commandId: `${command.commandId}:fail`,
+    expectedRevision,
+    issuedAt,
+    summary: failure.summary,
+    code: failure.code,
+    message: failure.message,
+  };
 }
 
 function unknownOutcome(error: unknown): EngineeringProjectCommandError {

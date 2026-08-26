@@ -44,7 +44,11 @@ import {
   FileFeaSensitivityAttemptStore,
 } from "./file-fea-sensitivity-attempt-store.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
-import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
+import type {
+  EngineeringProjectCommandReceipt,
+  EngineeringProjectSnapshot,
+} from "../../../domain/project/engineering-project.ts";
+import type { EngineeringProjectCommandOrigin } from "../../../application/ports/in/engineering-project-command-origin.ts";
 import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import {
@@ -384,11 +388,88 @@ Deno.test("sensitivity CAD output-validation rejection fails the claimed run wit
   }
 });
 
+Deno.test("sensitivity CAD output-validation rejection persists then loses ACK still fails with isolated_output_validation_failed", async () => {
+  const fixture = await createFixture({
+    rejectOutputValidation: true,
+    loseCadRejectionAckOnce: true,
+  });
+  try {
+    const failed = await fixture.executor.execute(AGENT, fixture.command);
+    assertEquals(failed.agentRuns[0]?.status, "failed");
+    assertEquals(
+      failed.agentRuns[0]?.failure?.code,
+      "isolated_output_validation_failed",
+    );
+    assertEquals(
+      failed.agentRuns[0]?.failure?.code ===
+        "analyze-run-fea-sensitivity-terminal-error",
+      false,
+    );
+    const attempt = await fixture.attempts.read(PROJECT_ID, RUN_ID);
+    assertEquals(attempt?.cad.base.status, "output-validation-rejected");
+    assertEquals(fixture.runner.sources.length, 1);
+
+    const replayed = await fixture.executor.execute(AGENT, fixture.command);
+    assertEquals(replayed.agentRuns[0]?.status, "failed");
+    assertEquals(
+      replayed.agentRuns[0]?.failure?.code,
+      "isolated_output_validation_failed",
+    );
+    assertEquals(fixture.runner.sources.length, 1);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("sensitivity refuses a divergent fail code on output-validation replay without redispatch", async () => {
+  const fixture = await createFixture({ rejectOutputValidation: true });
+  try {
+    const failed = await fixture.executor.execute(AGENT, fixture.command);
+    const run = fixture.project.agentRuns[0] as MutableRun;
+    run.failure = {
+      code: "analyze-run-fea-sensitivity-terminal-error",
+      message: failed.agentRuns[0]!.failure!.message,
+    };
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+      "evidence-free terminal failure",
+    );
+    assertEquals(fixture.runner.sources.length, 1);
+    assertEquals(run.status, "failed");
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("sensitivity refuses a divergent fail receipt on output-validation replay without redispatch", async () => {
+  const fixture = await createFixture({ rejectOutputValidation: true });
+  try {
+    await fixture.executor.execute(AGENT, fixture.command);
+    const receipts = fixture.project.commandReceipts;
+    const index = receipts.findIndex((item) => item.type === "agent-run.fail");
+    assertEquals(index >= 0, true);
+    receipts[index] = {
+      ...receipts[index]!,
+      requestFingerprint: { algorithm: "sha256", digest: "0".repeat(64) },
+    };
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+      "agent-run.fail receipt",
+    );
+    assertEquals(fixture.runner.sources.length, 1);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 async function createFixture(options: {
   readonly admissionDigest?: string;
   readonly experienceOutcome?: "miss" | "hit" | "hit-interrupt";
   readonly experienceAdmissionFails?: boolean;
   readonly rejectOutputValidation?: boolean;
+  readonly loseCadRejectionAckOnce?: boolean;
 } = {}) {
   const directory = await Deno.realPath(
     await Deno.makeTempDir({ prefix: "sensitivity-run-" }),
@@ -636,7 +717,9 @@ async function createFixture(options: {
   const runner = new FakeRunner(options.rejectOutputValidation === true);
   const solver = new FakeSolver();
   const stager = new FakeStager();
-  const attempts = new FileFeaSensitivityAttemptStore(`${directory}/wal`);
+  const attempts = options.loseCadRejectionAckOnce
+    ? new PersistThenLoseAckCadRejectionStore(`${directory}/wal`)
+    : new FileFeaSensitivityAttemptStore(`${directory}/wal`);
   const reuseAttempts = new FileSensitivityExperienceReuseAttemptStore(
     `${directory}/reuse-wal`,
   );
@@ -1023,35 +1106,53 @@ class MemoryCaptures {
   }
 }
 
-type MutableProject = EngineeringProjectSnapshot & { revision: number };
+type MutableProject = EngineeringProjectSnapshot & {
+  revision: number;
+  commandReceipts: EngineeringProjectCommandReceipt[];
+};
+type MutableRun = {
+  -readonly [K in keyof MutableProject["agentRuns"][number]]:
+    MutableProject["agentRuns"][number][K];
+};
+
+class PersistThenLoseAckCadRejectionStore extends FileFeaSensitivityAttemptStore {
+  #lost = false;
+  override async markCadOutputValidationRejected(
+    input: Parameters<
+      FileFeaSensitivityAttemptStore["markCadOutputValidationRejected"]
+    >[0],
+  ) {
+    const result = await super.markCadOutputValidationRejected(input);
+    if (!this.#lost) {
+      this.#lost = true;
+      throw new Error("CAD output-validation rejection acknowledgement lost");
+    }
+    return result;
+  }
+}
 
 class MemoryCommands {
   constructor(readonly project: MutableProject) {}
-  claimRun(origin: typeof AGENT, _command: RunCommand) {
-    const run = this.project.agentRuns[0] as unknown as {
-      status: string;
-      startedAt?: string;
-      claimedBy?: { id: string; origin: "agent" };
-    };
+  async claimRun(origin: EngineeringProjectCommandOrigin, command: RunCommand) {
+    const run = this.project.agentRuns[0] as MutableRun;
     if (run.status === "queued") {
       run.status = "running";
       run.startedAt = AT;
-      run.claimedBy = { id: origin.actorId, origin: "agent" };
+      run.claimedAt = AT;
+      run.claimedBy = { id: origin.actorId, origin: origin.kind };
+      run.summary = command.summary;
       this.project.revision += 1;
+      await this.#receipt("agent-run.claim", origin, command, "running");
     }
-    return Promise.resolve(this.project);
+    return this.project;
   }
   publishRun() {
-    (this.project.agentRuns[0] as { status: string }).status = "publishing";
+    (this.project.agentRuns[0] as MutableRun).status = "publishing";
     this.project.revision += 1;
     return Promise.resolve(this.project);
   }
   completeRun(_origin: typeof AGENT, command: CompleteRunCommand) {
-    const run = this.project.agentRuns[0] as unknown as {
-      status: string;
-      resultSnapshot?: CompleteRunCommand["resultSnapshot"];
-      evidenceRefs: unknown[];
-    };
+    const run = this.project.agentRuns[0] as MutableRun;
     run.status = "completed";
     run.resultSnapshot = command.resultSnapshot;
     run.evidenceRefs = [...command.evidenceRefs];
@@ -1068,14 +1169,42 @@ class MemoryCommands {
     this.project.revision += 1;
     return Promise.resolve(this.project);
   }
-  failRun(_origin: typeof AGENT, command: FailRunCommand) {
-    const run = this.project.agentRuns[0] as {
-      status: string;
-      failure?: { code: string; message: string };
-    };
+  async failRun(origin: EngineeringProjectCommandOrigin, command: FailRunCommand) {
+    const run = this.project.agentRuns[0] as MutableRun;
+    if (run.status === "failed") return this.project;
     run.status = "failed";
+    run.completedAt = AT;
     run.failure = { code: command.code, message: command.message };
+    run.summary = command.summary;
     this.project.revision += 1;
-    return Promise.resolve(this.project);
+    await this.#receipt("agent-run.fail", origin, command, "failed");
+    return this.project;
+  }
+  async #receipt(
+    type: "agent-run.claim" | "agent-run.fail",
+    origin: EngineeringProjectCommandOrigin,
+    command: RunCommand | FailRunCommand,
+    status: "running" | "failed",
+  ) {
+    const run = this.project.agentRuns[0] as MutableRun;
+    this.project.commandReceipts.push({
+      commandId: command.commandId,
+      type,
+      actor: { id: origin.actorId, origin: origin.kind },
+      issuedAt: command.issuedAt,
+      appliedAt: AT,
+      requestFingerprint: await sha256Fingerprint({ type, origin, command }),
+      resultingSnapshot: {
+        snapshotId: `project.sensitivity:r${this.project.revision}`,
+        revision: this.project.revision,
+      },
+    });
+    run.statusHistory = [...(run.statusHistory ?? []), {
+      commandId: command.commandId,
+      status,
+      at: AT,
+      actor: { id: origin.actorId, origin: origin.kind },
+      summary: command.summary,
+    }];
   }
 }
