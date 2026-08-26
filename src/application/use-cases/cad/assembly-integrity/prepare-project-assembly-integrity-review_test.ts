@@ -113,6 +113,11 @@ Deno.test("assembly-integrity review compiles one exact current primary geometry
   if (!("append" in result.next)) {
     throw new Error("Expected fallback review to append its bounded plan leaf.");
   }
+  assertEquals(
+    result.next.append.arguments.commandId,
+    "append-assembly-integrity-aaaaaaaaaaaaaaaa-r12",
+  );
+  assertEquals(result.next.append.arguments.projectId, input.projectId);
   assertEquals(result.next.append.arguments.expectedRevision, 24);
   assertEquals(result.next.append.arguments.workItems[0]?.operation, result.operation);
   assertEquals("queue" in result.next, false);

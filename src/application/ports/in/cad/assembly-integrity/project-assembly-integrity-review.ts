@@ -56,6 +56,10 @@ export type ProjectAssemblyIntegrityReviewNext =
     readonly append: {
       readonly tool: "project_change_append";
       readonly arguments: {
+        /** Stable mutation identity; the caller must preserve it on retry. */
+        readonly commandId: string;
+        /** Project aggregate selected by the exact read-only review. */
+        readonly projectId: string;
         readonly baseSnapshot: EngineeringThreadSnapshotRef;
         readonly expectedRevision: number;
         readonly phases: readonly {

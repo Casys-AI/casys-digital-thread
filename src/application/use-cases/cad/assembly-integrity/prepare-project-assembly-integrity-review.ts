@@ -220,6 +220,8 @@ function resolved(
     `work-assembly-integrity-${digestPrefix}-r${command.basis.revision}`;
   const decisionId =
     `decision-assembly-integrity-${digestPrefix}-r${command.basis.revision}`;
+  const appendCommandId =
+    `append-assembly-integrity-${digestPrefix}-r${command.basis.revision}`;
   const phase = {
     id: phaseId,
     name: "Assembly integrity observation",
@@ -237,6 +239,8 @@ function resolved(
     append: {
       tool: "project_change_append" as const,
       arguments: {
+        commandId: appendCommandId,
+        projectId: command.projectId,
         baseSnapshot: {
           snapshotId: command.basis.snapshotId,
           revision: command.basis.revision,
