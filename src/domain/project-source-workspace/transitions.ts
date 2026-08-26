@@ -12,8 +12,11 @@ import type { ContentFingerprint } from "../kernel/primitives.ts";
 import {
   PROJECT_SOURCE_WORKSPACE_BOUNDS as BOUNDS,
   PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA,
+  type ProjectSourceAttachmentDeclaredAgainst,
   type ProjectSourceAttachmentDetach,
   type ProjectSourceAttachmentPut,
+  type ProjectSourceAttachmentRecross,
+  type ProjectSourceAttachmentRecrossSuccessor,
   type ProjectSourceAttachmentRevision,
   type ProjectSourceAttachmentRevisionRecord,
   type ProjectSourceAttachmentTombstone,
@@ -26,6 +29,8 @@ import {
   type ProjectSourceMutationAck,
   type ProjectSourceWorkspaceCommand,
   type ProjectSourceWorkspaceEvent,
+  type ProjectSourceWorkspaceEventBodyV4,
+  type ProjectSourceWorkspaceEventV4,
   type ProjectSourceWorkspaceMutation,
   type ProjectSourceWorkspaceState,
   type ProjectSourceWorkspaceTransition,
@@ -67,7 +72,15 @@ export async function commandFingerprint(
 }
 
 export async function eventBodyFingerprint(
-  event: Omit<ProjectSourceWorkspaceEvent, "fingerprint">,
+  event: {
+    readonly schemaVersion: ProjectSourceWorkspaceEvent["schemaVersion"];
+    readonly projectId: string;
+    readonly workspaceRevision: number;
+    readonly previousWorkspaceRevision: number;
+    readonly previousEventFingerprint: ContentFingerprint | null;
+    readonly mutationId: string;
+    readonly mutation: ProjectSourceWorkspaceMutation;
+  },
 ): Promise<ContentFingerprint> {
   return await sha256Fingerprint({
     schemaVersion: event.schemaVersion,
@@ -122,7 +135,7 @@ export async function applyProjectSourceWorkspaceCommand(
   }
   const nextRevision = state.workspaceRevision + 1;
   const nextState = await applyMutation(state, command.mutation);
-  const eventBody = {
+  const eventBody: ProjectSourceWorkspaceEventBodyV4 = {
     schemaVersion: PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA,
     projectId: command.projectId,
     workspaceRevision: nextRevision,
@@ -132,7 +145,7 @@ export async function applyProjectSourceWorkspaceCommand(
     mutation: command.mutation,
   };
   const fingerprint = await eventBodyFingerprint(eventBody);
-  const event: ProjectSourceWorkspaceEvent = deepFreeze({
+  const event: ProjectSourceWorkspaceEventV4 = deepFreeze({
     ...eventBody,
     fingerprint,
   });
@@ -176,6 +189,16 @@ export async function applyProjectSourceWorkspaceEvent(
     workspaceError(
       "event_sequence_mismatch",
       `Event revision ${event.workspaceRevision} is not the next workspace revision.`,
+    );
+  }
+  if (
+    event.mutation.kind === "attachment_recross" &&
+    event.mutation.intent.expectedWorkspaceRevision !==
+      event.previousWorkspaceRevision
+  ) {
+    workspaceError(
+      "invalid_request",
+      "Attachment recross intent must retain the event's exact previous workspace revision.",
     );
   }
   assertEventChain(state, event);
@@ -255,7 +278,10 @@ async function applyMutation(
   if (mutation.kind === "attachment_put") {
     return await applyAttachmentPut(state, mutation);
   }
-  return await applyAttachmentDetach(state, mutation);
+  if (mutation.kind === "attachment_detach") {
+    return await applyAttachmentDetach(state, mutation);
+  }
+  return await applyAttachmentRecross(state, mutation);
 }
 
 function applyModulePut(
@@ -483,6 +509,117 @@ async function applyAttachmentPut(
     revisions,
   });
   return { ...state, attachments };
+}
+
+/**
+ * Replays a server-derived batch without opening Thread or architecture state.
+ * `next` is local until the enclosing transition builds its one event, so a
+ * later invalid successor leaves the persisted aggregate unchanged.
+ */
+async function applyAttachmentRecross(
+  state: ProjectSourceWorkspaceState,
+  mutation: ProjectSourceAttachmentRecross,
+): Promise<ProjectSourceWorkspaceState> {
+  let next = state;
+  for (const selected of mutation.intent.attachments) {
+    const successor = mutation.successors.find((candidate) =>
+      candidate.attachmentId === selected.attachmentId
+    );
+    if (!successor) {
+      workspaceError(
+        "invalid_request",
+        `Attachment recross is missing successor ${selected.attachmentId}.`,
+      );
+    }
+    assertAttachmentRecrossSuccessor(next, selected.attachmentId, successor, mutation);
+    next = await applyAttachmentPut(next, {
+      kind: "attachment_put",
+      attachmentId: successor.attachmentId,
+      predecessorAttachmentRevision: successor.predecessorAttachmentRevision,
+      fileId: successor.fileId,
+      role: successor.role,
+      target: successor.target,
+      declaredAgainst: mutation.declaredAgainst,
+    });
+  }
+  return next;
+}
+
+function assertAttachmentRecrossSuccessor(
+  state: ProjectSourceWorkspaceState,
+  attachmentId: string,
+  successor: ProjectSourceAttachmentRecrossSuccessor,
+  mutation: ProjectSourceAttachmentRecross,
+): void {
+  const attachment = state.attachments.get(attachmentId);
+  if (!attachment || attachment.status !== "active") {
+    workspaceError(
+      "attachment_not_found",
+      `Attachment ${attachmentId} is not active for recross.`,
+    );
+  }
+  if (attachment.headRevision !== successor.predecessorAttachmentRevision) {
+    workspaceError(
+      "predecessor_mismatch",
+      `Attachment ${attachmentId} recross must name its unique active revision ${attachment.headRevision}.`,
+    );
+  }
+  const head = attachment.revisions.get(attachment.headRevision);
+  if (!head || head.kind !== "content") {
+    workspaceError(
+      "revision_not_found",
+      `Attachment ${attachmentId} active head is not content.`,
+    );
+  }
+  const file = state.files.get(head.fileId);
+  if (!file || file.status !== "active") {
+    workspaceError(
+      "file_not_found",
+      `Attachment ${attachmentId} recross requires active file ${head.fileId}.`,
+    );
+  }
+  if (
+    successor.fileId !== head.fileId ||
+    !attachmentRolesEqual(successor.role, head.role) ||
+    !attachmentTargetsEqual(successor.target, head.target)
+  ) {
+    workspaceError(
+      "invalid_request",
+      `Attachment ${attachmentId} recross may not change fileId, role or target.`,
+    );
+  }
+  if (attachmentDeclaredAgainstEqual(head.declaredAgainst, mutation.declaredAgainst)) {
+    workspaceError(
+      "invalid_request",
+      `Attachment ${attachmentId} already names the requested basis.`,
+    );
+  }
+}
+
+function attachmentRolesEqual(
+  left: ProjectSourceAttachmentPut["role"],
+  right: ProjectSourceAttachmentPut["role"],
+): boolean {
+  return left.id === right.id && left.version === right.version;
+}
+
+function attachmentTargetsEqual(
+  left: ProjectSourceAttachmentPut["target"],
+  right: ProjectSourceAttachmentPut["target"],
+): boolean {
+  return left.elementId === right.elementId && left.elementKind === right.elementKind;
+}
+
+export function attachmentDeclaredAgainstEqual(
+  left: ProjectSourceAttachmentDeclaredAgainst,
+  right: ProjectSourceAttachmentDeclaredAgainst,
+): boolean {
+  return left.thread.snapshotId === right.thread.snapshotId &&
+    left.thread.revision === right.thread.revision &&
+    left.thread.subjectId === right.thread.subjectId &&
+    left.architecture.artifactId === right.architecture.artifactId &&
+    left.architecture.captureSchema === right.architecture.captureSchema &&
+    fingerprintsEqual(left.architecture.fingerprint, right.architecture.fingerprint);
 }
 
 async function applyAttachmentDetach(

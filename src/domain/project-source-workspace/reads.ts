@@ -536,16 +536,19 @@ function parseAttachmentListFilter(
 ): AttachmentListFilter {
   const hasFileId = query.fileId !== undefined;
   const hasTarget = query.target !== undefined;
-  if (hasFileId === hasTarget) {
+  if (hasFileId && hasTarget) {
     workspaceError(
       "invalid_request",
-      "$query must filter by exactly fileId or exactly target.",
+      "$query must filter by at most one of fileId or target.",
     );
   }
   if (hasFileId) {
     return { fileId: parseProjectId(query.fileId, "$query.fileId") };
   }
-  return { target: parseAttachmentTarget(query.target, "$query.target") };
+  if (hasTarget) {
+    return { target: parseAttachmentTarget(query.target, "$query.target") };
+  }
+  return {};
 }
 
 function decodeAttachmentListCursor(
@@ -635,7 +638,7 @@ function parseCursorAttachmentListFilter(
   );
   const hasFileId = Object.hasOwn(rec, "fileId");
   const hasTarget = Object.hasOwn(rec, "target");
-  if (hasFileId === hasTarget) {
+  if (hasFileId && hasTarget) {
     workspaceError(
       "cursor_mismatch",
       "Attachment list cursor filter is not exact.",
@@ -644,7 +647,10 @@ function parseCursorAttachmentListFilter(
   if (hasFileId) {
     return { fileId: parseProjectId(rec.fileId, "$cursor.filter.fileId") };
   }
-  return { target: parseAttachmentTarget(rec.target, "$cursor.filter.target") };
+  if (hasTarget) {
+    return { target: parseAttachmentTarget(rec.target, "$cursor.filter.target") };
+  }
+  return {};
 }
 
 function fileSourceAt(

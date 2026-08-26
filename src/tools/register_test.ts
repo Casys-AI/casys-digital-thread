@@ -756,6 +756,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_source_attachment_list",
     "project_source_attachment_put",
     "project_source_attachment_read",
+    "project_source_attachment_recross",
     "project_source_closure",
     "project_source_file_put",
     "project_source_file_read",
@@ -844,6 +845,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_source_attachment_list",
       "project_source_attachment_put",
       "project_source_attachment_read",
+      "project_source_attachment_recross",
       "project_source_closure",
       "project_source_file_put",
       "project_source_file_read",
@@ -1119,6 +1121,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_source_file_put" ||
           tool.name === "project_source_file_remove" ||
           tool.name === "project_source_attachment_put" ||
+          tool.name === "project_source_attachment_recross" ||
           tool.name === "project_source_attachment_detach" ||
           tool.name === "project_brief_requirements_review" ||
           tool.name === "project_brief_architecture_review" ||

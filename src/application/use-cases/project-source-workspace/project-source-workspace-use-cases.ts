@@ -20,9 +20,13 @@ import type {
 import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
 import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
 import { selectCurrentThreadTip } from "../../../domain/project/thread-tip.ts";
-import { fingerprintsEqual } from "../../../domain/kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  fingerprintsEqual,
+} from "../../../domain/kernel/deterministic-json.ts";
 import {
   applyProjectSourceWorkspaceCommand,
+  attachmentDeclaredAgainstEqual,
 } from "../../../domain/project-source-workspace/transitions.ts";
 import {
   projectSourceWorkspaceAttachmentList,
@@ -33,21 +37,28 @@ import {
   projectSourceWorkspaceTreePage,
 } from "../../../domain/project-source-workspace/reads.ts";
 import {
+  type ProjectSourceAttachmentDeclaredAgainst,
   type ProjectSourceAttachmentListEntry,
   type ProjectSourceAttachmentPut,
   type ProjectSourceAttachmentRead,
+  type ProjectSourceAttachmentRecross,
+  type ProjectSourceAttachmentRecrossRequest,
+  type ProjectSourceAttachmentRecrossResult,
+  type ProjectSourceAttachmentRecrossSuccessor,
   type ProjectSourceFileRead,
   type ProjectSourcePage,
   type ProjectSourceSearchHit,
   type ProjectSourceTreeEntry,
   type ProjectSourceWorkspaceCommand,
   ProjectSourceWorkspaceError,
+  type ProjectSourceWorkspaceEvent,
   type ProjectSourceWorkspaceSnapshot,
   type ProjectSourceWorkspaceState,
 } from "../../../domain/project-source-workspace/types.ts";
 import {
   parseAttachmentListQuery,
   parseAttachmentReadQuery,
+  parseAttachmentRecrossRequest,
   parseFileReadQuery,
   parseSearchQuery,
   parseSnapshotQuery,
@@ -116,6 +127,45 @@ export class ProjectSourceWorkspaceUseCases implements ProjectSourceWorkspaceUse
     await this.recrossAttachmentPut(command.projectId, command.mutation);
     const state = await this.#workspace.load(command.projectId);
     return await this.commit(state, command);
+  }
+
+  async recrossAttachments(
+    value: unknown,
+  ): Promise<ProjectSourceAttachmentRecrossResult> {
+    const request = parseAttachmentRecrossRequest(value);
+    await this.requireProject(request.projectId);
+    const current = await this.#workspace.load(request.projectId);
+    const accepted = this.acceptedAttachmentRecross(current, request);
+    if (accepted) {
+      return await this.recrossResultAt(request.projectId, accepted);
+    }
+    if (request.expectedWorkspaceRevision !== current.workspaceRevision) {
+      throw new ProjectSourceWorkspaceError(
+        "stale_revision",
+        `Workspace expected revision ${request.expectedWorkspaceRevision}, current is ${current.workspaceRevision}.`,
+      );
+    }
+    const plan = await this.planAttachmentRecross(request, current);
+    const state = await this.#workspace.load(request.projectId);
+    const acceptedAfterPlanning = this.acceptedAttachmentRecross(state, request);
+    if (acceptedAfterPlanning) {
+      return await this.recrossResultAt(request.projectId, acceptedAfterPlanning);
+    }
+    const command = {
+      projectId: request.projectId,
+      mutationId: request.mutationId,
+      expectedWorkspaceRevision: request.expectedWorkspaceRevision,
+      mutation: {
+        kind: "attachment_recross" as const,
+        intent: {
+          expectedWorkspaceRevision: request.expectedWorkspaceRevision,
+          attachments: request.attachments,
+        },
+        declaredAgainst: plan.declaredAgainst,
+        successors: plan.successors,
+      },
+    };
+    return await this.commitAttachmentRecross(state, command, request);
   }
 
   async detachAttachment(value: unknown): Promise<ProjectSourceWorkspaceSnapshot> {
@@ -305,6 +355,207 @@ export class ProjectSourceWorkspaceUseCases implements ProjectSourceWorkspaceUse
     }
   }
 
+  private async planAttachmentRecross(
+    request: ProjectSourceAttachmentRecrossRequest,
+    state: ProjectSourceWorkspaceState,
+  ): Promise<{
+    readonly declaredAgainst: ProjectSourceAttachmentDeclaredAgainst;
+    readonly successors: readonly ProjectSourceAttachmentRecrossSuccessor[];
+  }> {
+    const project = await this.requireExactProject(request.projectId);
+    const tip = selectCurrentThreadTip(project.threadSnapshots);
+    if (tip.status !== "ok") {
+      throw new ProjectSourceWorkspaceApplicationError(
+        "thread_tip_unresolved",
+        tip.diagnostic.message,
+      );
+    }
+    const snapshot = await this.#snapshots.get(tip.basis.snapshotId);
+    if (
+      !snapshot ||
+      snapshot.id !== tip.basis.snapshotId ||
+      snapshot.revision !== tip.basis.revision ||
+      snapshot.subject.id !== tip.basis.subjectId
+    ) {
+      throw new ProjectSourceWorkspaceApplicationError(
+        "thread_snapshot_mismatch",
+        "The unique current Thread tip could not be reopened exactly for attachment recross.",
+      );
+    }
+    const opened = await this.#traversal.open(snapshot);
+    if (!opened) {
+      throw new ProjectSourceWorkspaceApplicationError(
+        "architecture_mismatch",
+        "The unique current Thread tip has no reopenable architecture-capture/4.0 for attachment recross.",
+      );
+    }
+    const declaredAgainst: ProjectSourceAttachmentDeclaredAgainst = {
+      thread: {
+        snapshotId: tip.basis.snapshotId,
+        revision: tip.basis.revision,
+        subjectId: tip.basis.subjectId,
+      },
+      architecture: {
+        artifactId: opened.architectureArtifactId,
+        fingerprint: opened.architectureFingerprint,
+        captureSchema: "architecture-capture/4.0",
+      },
+    };
+    const successors: ProjectSourceAttachmentRecrossSuccessor[] = [];
+    for (const selected of request.attachments) {
+      const attachment = state.attachments.get(selected.attachmentId);
+      if (!attachment || attachment.status !== "active") {
+        throw new ProjectSourceWorkspaceApplicationError(
+          "attachment_not_active",
+          `Attachment ${selected.attachmentId} is not an active workspace head.`,
+        );
+      }
+      if (attachment.headRevision !== selected.activeAttachmentRevision) {
+        throw new ProjectSourceWorkspaceApplicationError(
+          "attachment_head_mismatch",
+          `Attachment ${selected.attachmentId} active revision is ${attachment.headRevision}.`,
+        );
+      }
+      const head = attachment.revisions.get(attachment.headRevision);
+      if (!head || head.kind !== "content") {
+        throw new ProjectSourceWorkspaceApplicationError(
+          "attachment_not_active",
+          `Attachment ${selected.attachmentId} active head is not content.`,
+        );
+      }
+      const file = state.files.get(head.fileId);
+      if (!file || file.status !== "active") {
+        throw new ProjectSourceWorkspaceApplicationError(
+          "source_removed",
+          `Attachment ${selected.attachmentId} names removed source ${head.fileId}.`,
+        );
+      }
+      if (attachmentDeclaredAgainstEqual(head.declaredAgainst, declaredAgainst)) {
+        throw new ProjectSourceWorkspaceApplicationError(
+          "attachment_already_exact",
+          `Attachment ${selected.attachmentId} already names the current exact basis.`,
+        );
+      }
+      if (!opened.hasElement(head.target)) {
+        throw new ProjectSourceWorkspaceApplicationError(
+          "target_not_found",
+          `Target ${head.target.elementKind} ${head.target.elementId} is not present on the current architecture capture.`,
+        );
+      }
+      if (!this.#roles.accept(head.role, head.target)) {
+        throw new ProjectSourceWorkspaceApplicationError(
+          "role_not_accepted",
+          `Attachment role ${head.role.id}@${head.role.version} is not accepted for ${head.target.elementKind}.`,
+        );
+      }
+      successors.push({
+        attachmentId: selected.attachmentId,
+        predecessorAttachmentRevision: selected.activeAttachmentRevision,
+        fileId: head.fileId,
+        role: head.role,
+        target: head.target,
+      });
+    }
+    return { declaredAgainst, successors };
+  }
+
+  private acceptedAttachmentRecross(
+    state: ProjectSourceWorkspaceState,
+    request: ProjectSourceAttachmentRecrossRequest,
+  ): ProjectSourceWorkspaceEvent | undefined {
+    const accepted = state.mutations.get(request.mutationId);
+    if (!accepted) return undefined;
+    const mutation = accepted.event.mutation;
+    if (
+      mutation.kind !== "attachment_recross" ||
+      !attachmentRecrossIntentMatches(mutation, request)
+    ) {
+      throw new ProjectSourceWorkspaceError(
+        "mutation_id_conflict",
+        `Mutation ${request.mutationId} was already accepted with a different public attachment recross intent.`,
+      );
+    }
+    return accepted.event;
+  }
+
+  private async commitAttachmentRecross(
+    state: ProjectSourceWorkspaceState,
+    command: ProjectSourceWorkspaceCommand,
+    request: ProjectSourceAttachmentRecrossRequest,
+  ): Promise<ProjectSourceAttachmentRecrossResult> {
+    const transition = await applyProjectSourceWorkspaceCommand(state, command);
+    if (transition.replayed) {
+      return await this.recrossResultAt(command.projectId, transition.event);
+    }
+    try {
+      await this.#workspace.append(transition.event);
+    } catch (cause) {
+      const concurrentPublication = cause instanceof ProjectSourceWorkspaceStoreError &&
+          cause.code === "cas_conflict" ||
+        cause instanceof ProjectSourceWorkspaceError &&
+          cause.code === "event_sequence_mismatch";
+      if (concurrentPublication) {
+        const latest = await this.#workspace.load(command.projectId);
+        const accepted = this.acceptedAttachmentRecross(latest, request);
+        if (accepted) {
+          return await this.recrossResultAt(command.projectId, accepted);
+        }
+        throw new ProjectSourceWorkspaceError(
+          "stale_revision",
+          `Workspace expected revision ${command.expectedWorkspaceRevision}, current is ${latest.workspaceRevision}.`,
+        );
+      }
+      throw cause;
+    }
+    return await this.recrossResultAt(command.projectId, transition.event);
+  }
+
+  private async recrossResultAt(
+    projectId: string,
+    event: ProjectSourceWorkspaceEvent,
+  ): Promise<ProjectSourceAttachmentRecrossResult> {
+    const state = await this.#workspace.loadAt(projectId, event.workspaceRevision);
+    const mutation = event.mutation;
+    if (mutation.kind !== "attachment_recross") {
+      throw new ProjectSourceWorkspaceError(
+        "invalid_request",
+        `Workspace event ${event.workspaceRevision} is not an attachment recross.`,
+      );
+    }
+    const attachments = mutation.successors.map((successor) => {
+      const attachment = state.attachments.get(successor.attachmentId);
+      const record = attachment?.revisions.get(
+        successor.predecessorAttachmentRevision + 1,
+      );
+      if (
+        !attachment || attachment.headRevision !== record?.attachmentRevision ||
+        !record || record.kind !== "content"
+      ) {
+        throw new ProjectSourceWorkspaceError(
+          "revision_not_found",
+          `Attachment recross successor ${successor.attachmentId} is unavailable at workspace revision ${event.workspaceRevision}.`,
+        );
+      }
+      return {
+        attachmentId: record.attachmentId,
+        predecessorAttachmentRevision: successor.predecessorAttachmentRevision,
+        attachmentRevision: record.attachmentRevision,
+        fileId: record.fileId,
+        role: record.role,
+        target: record.target,
+        fingerprint: record.fingerprint,
+      };
+    });
+    return {
+      projectId,
+      workspaceRevision: event.workspaceRevision,
+      workspaceEventFingerprint: event.fingerprint,
+      declaredAgainst: mutation.declaredAgainst,
+      attachments,
+      grants: "none",
+    };
+  }
+
   private async snapshotAt(
     projectId: string,
     workspaceRevision: number,
@@ -353,6 +604,16 @@ function isExactEngineeringProject(
   return rec.project?.id === projectId && Array.isArray(rec.threadSnapshots);
 }
 
+function attachmentRecrossIntentMatches(
+  mutation: ProjectSourceAttachmentRecross,
+  request: ProjectSourceAttachmentRecrossRequest,
+): boolean {
+  return mutation.intent.expectedWorkspaceRevision ===
+      request.expectedWorkspaceRevision &&
+    deterministicJson(mutation.intent.attachments) ===
+      deterministicJson(request.attachments);
+}
+
 export type ProjectSourceWorkspaceApplicationErrorCode =
   | "project_not_found"
   | "thread_tip_unresolved"
@@ -360,7 +621,11 @@ export type ProjectSourceWorkspaceApplicationErrorCode =
   | "thread_snapshot_mismatch"
   | "architecture_mismatch"
   | "target_not_found"
-  | "role_not_accepted";
+  | "role_not_accepted"
+  | "attachment_not_active"
+  | "attachment_head_mismatch"
+  | "source_removed"
+  | "attachment_already_exact";
 
 export class ProjectSourceWorkspaceApplicationError extends Error {
   constructor(

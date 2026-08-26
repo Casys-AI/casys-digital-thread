@@ -11,8 +11,11 @@ import {
 } from "../../domain/project-source-workspace/transitions.ts";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import {
+  PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA_V3,
   ProjectSourceWorkspaceError,
-  type ProjectSourceWorkspaceEvent,
+  type ProjectSourceWorkspaceEventBodyV3,
+  type ProjectSourceWorkspaceEventV3,
+  type ProjectSourceWorkspaceEventV4,
 } from "../../domain/project-source-workspace/types.ts";
 import { sampleAgentResourceReference } from "../../testing/agent-resource-test-support.ts";
 
@@ -48,6 +51,49 @@ Deno.test("append-only store writes one event per revision and rebuilds without 
     const historical = await rebuilt.loadAt(PROJECT, 1);
     assertEquals(historical.workspaceRevision, 1);
     assertEquals(historical.modules.has("mod-b"), false);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("V3 is replay-only history; the durable writer accepts V4 only", async () => {
+  const root = await Deno.makeTempDir({ prefix: "psw-store-v3-" });
+  try {
+    const legacy = await asV3Event(
+      await eventFor(
+        emptyProjectSourceWorkspace(PROJECT),
+        modulePut("m1", 0),
+      ),
+    );
+    await Deno.mkdir(`${root}/${PROJECT}`);
+    await Deno.writeTextFile(
+      `${root}/${PROJECT}/0000000001.claim`,
+      "m1\n",
+    );
+    await Deno.writeTextFile(
+      `${root}/${PROJECT}/0000000001.json`,
+      `${deterministicJson(legacy)}\n`,
+    );
+    const store = new FileProjectSourceWorkspaceStore(root);
+    const historical = await store.load(PROJECT);
+    assertEquals(historical.workspaceRevision, 1);
+    assertEquals(historical.modules.get("mod-a")?.slug, "rail");
+
+    const v4 = await eventFor(
+      historical,
+      modulePut("m2", 1, "mod-b", "drive"),
+    );
+    await store.append(v4);
+    const persisted = JSON.parse(
+      await Deno.readTextFile(`${root}/${PROJECT}/0000000002.json`),
+    );
+    assertEquals(persisted.schemaVersion, "project-source-workspace-event/4.0");
+
+    const error = await assertRejects(
+      () => store.append(legacy as unknown as ProjectSourceWorkspaceEventV4),
+      ProjectSourceWorkspaceError,
+    );
+    assertEquals(error.code, "invalid_request");
   } finally {
     await Deno.remove(root, { recursive: true });
   }
@@ -284,7 +330,7 @@ Deno.test("an invalid successor event is refused before a claim is created", asy
       previousWorkspaceRevision: 0,
       mutationId: "m-bad",
     };
-    const bogus: ProjectSourceWorkspaceEvent = {
+    const bogus: ProjectSourceWorkspaceEventV4 = {
       ...bogusBody,
       fingerprint: await eventBodyFingerprint(bogusBody),
     };
@@ -502,8 +548,31 @@ function modulePut(
 async function eventFor(
   state: Parameters<typeof applyProjectSourceWorkspaceCommand>[0],
   command: unknown,
-): Promise<ProjectSourceWorkspaceEvent> {
-  return (await applyProjectSourceWorkspaceCommand(state, command)).event;
+): Promise<ProjectSourceWorkspaceEventV4> {
+  const transition = await applyProjectSourceWorkspaceCommand(state, command);
+  if (transition.replayed) {
+    throw new Error("eventFor requires a new workspace event.");
+  }
+  return transition.event;
+}
+
+async function asV3Event(
+  event: ProjectSourceWorkspaceEventV4,
+): Promise<ProjectSourceWorkspaceEventV3> {
+  const mutation = event.mutation;
+  if (mutation.kind === "attachment_recross") {
+    throw new Error("attachment_recross cannot be represented by V3.");
+  }
+  const { fingerprint: _ignored, ...body } = event;
+  const legacyBody: ProjectSourceWorkspaceEventBodyV3 = {
+    ...body,
+    schemaVersion: PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA_V3,
+    mutation,
+  };
+  return {
+    ...legacyBody,
+    fingerprint: await eventBodyFingerprint(legacyBody),
+  };
 }
 
 function denoFileIo(

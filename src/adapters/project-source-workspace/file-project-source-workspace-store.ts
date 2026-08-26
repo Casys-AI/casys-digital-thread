@@ -18,8 +18,10 @@ import {
   replayProjectSourceWorkspaceEvents,
 } from "../../domain/project-source-workspace/transitions.ts";
 import {
+  PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA,
   ProjectSourceWorkspaceError,
   type ProjectSourceWorkspaceEvent,
+  type ProjectSourceWorkspaceEventV4,
   type ProjectSourceWorkspaceState,
 } from "../../domain/project-source-workspace/types.ts";
 import {
@@ -142,7 +144,18 @@ export class FileProjectSourceWorkspaceStore
     );
   }
 
-  async append(event: ProjectSourceWorkspaceEvent): Promise<void> {
+  async append(event: ProjectSourceWorkspaceEventV4): Promise<void> {
+    // TypeScript callers receive the V4-only writer signature; retain this
+    // runtime guard for untyped callers so V3 cannot become a new durable write.
+    if (
+      (event as ProjectSourceWorkspaceEvent).schemaVersion !==
+        PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA
+    ) {
+      throw new ProjectSourceWorkspaceError(
+        "invalid_request",
+        "Only project-source-workspace-event/4.0 events may be appended; V3 is replay-only.",
+      );
+    }
     const projectId = parseProjectId(event.projectId);
     await this.io.mkdir(this.projectDirectory(projectId));
     const census = await this.readCensus(projectId);

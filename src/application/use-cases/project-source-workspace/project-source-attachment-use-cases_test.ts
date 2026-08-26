@@ -1,6 +1,10 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { persistAgentResourceText } from "../../../testing/agent-resource-test-support.ts";
+import {
+  persistAgentResourceText,
+  sampleAgentResourceReference,
+} from "../../../testing/agent-resource-test-support.ts";
 import { FileProjectSourceWorkspaceStore } from "../../../adapters/project-source-workspace/file-project-source-workspace-store.ts";
+import type { ProjectSourceWorkspaceEventStore } from "../../ports/out/project-source-workspace/project-source-workspace-event-store.ts";
 import { FixedProjectSourceAttachmentRoleCatalog } from "../../../adapters/project-source-workspace/fixed-project-source-attachment-role-catalog.ts";
 import {
   ProjectSourceWorkspaceApplicationError,
@@ -11,6 +15,7 @@ import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import type { OpenedProductStructure } from "../../ports/out/product-navigation/product-structure-traversal.ts";
 import type { ProductStructureTraversal } from "../../ports/out/product-navigation/product-structure-traversal.ts";
 import type { AgentResourceReference } from "../../../domain/resource/agent-resource-capture.ts";
+import { ProjectSourceWorkspaceError } from "../../../domain/project-source-workspace/types.ts";
 
 const PROJECT = "generic-project";
 const SNAPSHOT_ID = "thread:p:r1";
@@ -19,6 +24,12 @@ const ARCHITECTURE_ID = "architecture-" + "a".repeat(64);
 const ARCHITECTURE_FP = {
   algorithm: "sha256" as const,
   digest: "a".repeat(64),
+};
+const LATER_SNAPSHOT_ID = "thread:p:r2";
+const LATER_ARCHITECTURE_ID = "architecture-" + "b".repeat(64);
+const LATER_ARCHITECTURE_FP = {
+  algorithm: "sha256" as const,
+  digest: "b".repeat(64),
 };
 
 Deno.test("attachment put recrosses tip, snapshot, V4 architecture, element and role", async () => {
@@ -61,6 +72,224 @@ Deno.test("accepted attachment mutationId replay skips every external recross", 
   } finally {
     await Deno.remove(root, { recursive: true });
   }
+});
+
+Deno.test("attachment recross atomically creates one batch event from persisted public intent and replays without external recross", async () => {
+  const root = await Deno.makeTempDir({ prefix: "psw-att-recross-" });
+  try {
+    const persisted = await persistAgentResourceText(`${root}/cas`, {
+      name: "rail.py",
+      mimeType: "text/plain",
+      text: "print(1)\n",
+    });
+    const workspace = new FileProjectSourceWorkspaceStore(`${root}/ws`);
+    await seedWorkspace(workspace, persisted.reference);
+    const original = attachmentCases(workspace, persisted.reference, counters());
+    await original.putAttachment(attachmentPut(2));
+    await original.putAttachment(attachmentPut(3, {
+      mutationId: "a2",
+      attachmentId: "att-usage",
+      target: { elementId: "usage-rail", elementKind: "PartUsage" },
+    }));
+    const contacts = counters();
+    const current = attachmentCases(workspace, persisted.reference, contacts, {
+      project: projectSnapshot({
+        threadSnapshots: [{
+          snapshotId: LATER_SNAPSHOT_ID,
+          revision: 2,
+          subjectId: SUBJECT,
+        }],
+      }),
+      snapshot: {
+        id: LATER_SNAPSHOT_ID,
+        revision: 2,
+        subject: { id: SUBJECT },
+      } as ThreadSnapshot,
+      opened: {
+        ...openedStructure(),
+        architectureArtifactId: LATER_ARCHITECTURE_ID,
+        architectureFingerprint: LATER_ARCHITECTURE_FP,
+      },
+    });
+    const request = {
+      projectId: PROJECT,
+      mutationId: "recross-1",
+      expectedWorkspaceRevision: 4,
+      attachments: [
+        { attachmentId: "att-usage", activeAttachmentRevision: 1 },
+        { attachmentId: "att-rail", activeAttachmentRevision: 1 },
+      ],
+    };
+    const recross = await current.recrossAttachments(request);
+    assertEquals(recross.workspaceRevision, 5);
+    assertEquals(recross.declaredAgainst.thread.snapshotId, LATER_SNAPSHOT_ID);
+    assertEquals(
+      recross.attachments.map((attachment) => attachment.attachmentId),
+      ["att-rail", "att-usage"],
+    );
+    assertEquals(
+      recross.attachments.map((attachment) => attachment.attachmentRevision),
+      [2, 2],
+    );
+    const state = await workspace.load(PROJECT);
+    assertEquals(state.workspaceRevision, 5);
+    assertEquals(state.attachments.get("att-rail")?.headRevision, 2);
+    assertEquals(state.attachments.get("att-usage")?.headRevision, 2);
+    const accepted = state.mutations.get("recross-1")?.event;
+    assertEquals(accepted?.mutation.kind, "attachment_recross");
+    if (accepted?.mutation.kind !== "attachment_recross") {
+      throw new Error("Expected the persisted recross event.");
+    }
+    assertEquals(accepted.mutation.intent, {
+      expectedWorkspaceRevision: 4,
+      attachments: [
+        { attachmentId: "att-rail", activeAttachmentRevision: 1 },
+        { attachmentId: "att-usage", activeAttachmentRevision: 1 },
+      ],
+    });
+    assertEquals(accepted.mutation.successors.length, 2);
+    assertEquals(contacts.snapshots, 1);
+    assertEquals(contacts.opens, 1);
+    assertEquals(contacts.roles, 2);
+    const replay = await current.recrossAttachments(request);
+    assertEquals(replay.workspaceRevision, 5);
+    assertEquals(contacts.snapshots, 1);
+    assertEquals(contacts.opens, 1);
+    assertEquals(contacts.roles, 2);
+    await assertApp(
+      current.recrossAttachments({
+        ...request,
+        mutationId: "recross-exact",
+        expectedWorkspaceRevision: 5,
+        attachments: [{ attachmentId: "att-rail", activeAttachmentRevision: 2 }],
+      }),
+      "attachment_already_exact",
+    );
+    assertEquals((await workspace.load(PROJECT)).workspaceRevision, 5);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("attachment recross batch validates every target before persisting any successor", async () => {
+  const root = await Deno.makeTempDir({ prefix: "psw-att-recross-atomic-" });
+  try {
+    const persisted = await persistAgentResourceText(`${root}/cas`, {
+      name: "rail.py",
+      mimeType: "text/plain",
+      text: "print(1)\n",
+    });
+    const workspace = new FileProjectSourceWorkspaceStore(`${root}/ws`);
+    await seedWorkspace(workspace, persisted.reference);
+    const original = attachmentCases(workspace, persisted.reference, counters());
+    await original.putAttachment(attachmentPut(2));
+    await original.putAttachment(attachmentPut(3, {
+      mutationId: "a2",
+      attachmentId: "att-usage",
+      target: { elementId: "usage-rail", elementKind: "PartUsage" },
+    }));
+    const current = attachmentCases(workspace, persisted.reference, counters(), {
+      project: projectSnapshot({
+        threadSnapshots: [{
+          snapshotId: LATER_SNAPSHOT_ID,
+          revision: 2,
+          subjectId: SUBJECT,
+        }],
+      }),
+      snapshot: {
+        id: LATER_SNAPSHOT_ID,
+        revision: 2,
+        subject: { id: SUBJECT },
+      } as ThreadSnapshot,
+      opened: {
+        ...openedStructure(),
+        architectureArtifactId: LATER_ARCHITECTURE_ID,
+        architectureFingerprint: LATER_ARCHITECTURE_FP,
+        hasElement: (target) => target.elementId === "def-rail",
+      },
+    });
+    await assertApp(
+      current.recrossAttachments({
+        projectId: PROJECT,
+        mutationId: "recross-atomic",
+        expectedWorkspaceRevision: 4,
+        attachments: [
+          { attachmentId: "att-rail", activeAttachmentRevision: 1 },
+          { attachmentId: "att-usage", activeAttachmentRevision: 1 },
+        ],
+      }),
+      "target_not_found",
+    );
+    const state = await workspace.load(PROJECT);
+    assertEquals(state.workspaceRevision, 4);
+    assertEquals(state.attachments.get("att-rail")?.headRevision, 1);
+    assertEquals(state.attachments.get("att-usage")?.headRevision, 1);
+    assertEquals(state.mutations.has("recross-atomic"), false);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("attachment recross public parser rejects 33 ids before any external read", async () => {
+  let projectReads = 0;
+  let workspaceReads = 0;
+  const workspace = rejectingWorkspace(() => workspaceReads += 1);
+  const useCases = attachmentCases(
+    workspace,
+    sampleAgentResourceReference({ name: "unused.py" }),
+    counters(),
+    {
+      projectReader: () => {
+        projectReads += 1;
+        return Promise.resolve(projectSnapshot());
+      },
+    },
+  );
+  const error = await assertRejects(
+    () =>
+      useCases.recrossAttachments({
+        projectId: PROJECT,
+        mutationId: "recross-too-many",
+        expectedWorkspaceRevision: 0,
+        attachments: Array.from({ length: 33 }, (_, index) => ({
+          attachmentId: `att-${String(index).padStart(2, "0")}`,
+          activeAttachmentRevision: 1,
+        })),
+      }),
+    ProjectSourceWorkspaceError,
+  );
+  assertEquals(error.code, "bound_exceeded");
+  assertEquals(projectReads, 0);
+  assertEquals(workspaceReads, 0);
+});
+
+Deno.test("attachment recross rejects an orphan project before loading its workspace", async () => {
+  let projectReads = 0;
+  let workspaceReads = 0;
+  const useCases = attachmentCases(
+    rejectingWorkspace(() => workspaceReads += 1),
+    sampleAgentResourceReference({ name: "unused.py" }),
+    counters(),
+    {
+      projectReader: () => {
+        projectReads += 1;
+        return Promise.resolve(undefined);
+      },
+    },
+  );
+  const error = await assertRejects(
+    () =>
+      useCases.recrossAttachments({
+        projectId: PROJECT,
+        mutationId: "recross-orphan",
+        expectedWorkspaceRevision: 0,
+        attachments: [{ attachmentId: "att-rail", activeAttachmentRevision: 1 }],
+      }),
+    ProjectSourceWorkspaceApplicationError,
+  );
+  assertEquals(error.code, "project_not_found");
+  assertEquals(projectReads, 1);
+  assertEquals(workspaceReads, 0);
 });
 
 Deno.test("attachment detach never opens traversal or the role catalog", async () => {
@@ -177,6 +406,14 @@ Deno.test("attachment list stays revision-anchored after a later mutation", asyn
     assertEquals(listed.workspaceRevision, 3);
     assertEquals(listed.entries.length, 1);
     assertEquals(listed.grants, "none");
+    const unfiltered = await useCases.listAttachments({
+      projectId: PROJECT,
+      workspaceRevision: 3,
+    });
+    assertEquals(unfiltered.workspaceRevision, 3);
+    assertEquals(unfiltered.entries.length, 1);
+    assertEquals(unfiltered.entries[0]?.attachmentId, "att-rail");
+    assertEquals(unfiltered.grants, "none");
   } finally {
     await Deno.remove(root, { recursive: true });
   }
@@ -233,11 +470,12 @@ async function seedWorkspace(
 }
 
 function attachmentCases(
-  workspace: FileProjectSourceWorkspaceStore,
+  workspace: ProjectSourceWorkspaceEventStore,
   resourceRef: AgentResourceReference,
   contacts: ReturnType<typeof counters>,
   overrides: {
     project?: EngineeringProjectSnapshot;
+    projectReader?: () => Promise<unknown>;
     snapshot?: ThreadSnapshot | undefined;
     opened?: OpenedProductStructure | undefined;
     hasElement?: boolean;
@@ -256,7 +494,9 @@ function attachmentCases(
   };
   return new ProjectSourceWorkspaceUseCases({
     projects: {
-      get: () => Promise.resolve(overrides.project ?? projectSnapshot()),
+      get: () =>
+        overrides.projectReader?.() ??
+          Promise.resolve(overrides.project ?? projectSnapshot()),
     },
     workspace,
     resources: { reopenExact: () => Promise.resolve({}) },
@@ -280,6 +520,26 @@ function attachmentCases(
       },
     },
   });
+}
+
+function rejectingWorkspace(
+  onRead: () => void,
+): ProjectSourceWorkspaceEventStore {
+  return {
+    load: () => {
+      onRead();
+      return Promise.reject(new Error("workspace must not be read"));
+    },
+    loadAt: () => {
+      onRead();
+      return Promise.reject(new Error("workspace must not be read"));
+    },
+    loadAtFresh: () => {
+      onRead();
+      return Promise.reject(new Error("workspace must not be read"));
+    },
+    append: () => Promise.reject(new Error("workspace must not be written")),
+  };
 }
 
 function projectSnapshot(
@@ -346,18 +606,24 @@ function attachmentPut(
   expectedWorkspaceRevision: number,
   overrides: {
     declaredAgainst?: ReturnType<typeof declaredAgainst>;
+    mutationId?: string;
+    attachmentId?: string;
+    target?: { elementId: string; elementKind: "PartDefinition" | "PartUsage" };
   } = {},
 ) {
   return {
     projectId: PROJECT,
-    mutationId: "a1",
+    mutationId: overrides.mutationId ?? "a1",
     expectedWorkspaceRevision,
     mutation: {
       kind: "attachment_put" as const,
-      attachmentId: "att-rail",
+      attachmentId: overrides.attachmentId ?? "att-rail",
       fileId: "file-rail",
       role: { id: "design-source", version: 1 },
-      target: { elementId: "def-rail", elementKind: "PartDefinition" as const },
+      target: overrides.target ?? {
+        elementId: "def-rail",
+        elementKind: "PartDefinition" as const,
+      },
       declaredAgainst: overrides.declaredAgainst ?? declaredAgainst(),
     },
   };

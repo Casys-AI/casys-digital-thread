@@ -33,9 +33,9 @@ product, every part, or every analysis in one source file or one flat manifest.
 Call `project_source_file_put` with the current workspace revision, stable `fileId`,
 module, logical name, role, exact dependencies, and the full resource reference.
 Optional `captureRequest` is exactly `{profileId}`. `fileId` is the sole technical
-source id. Choose `role` as a useful workspace classification such as
-`modelica-source` or `verification-plan`; do not copy an internal analyzer role. The
-registered capture profile owns analyzer language and role later.
+source id. Choose `role` as a useful workspace classification such as `modelica-source`
+or `verification-plan`; do not copy an internal analyzer role. The registered capture
+profile owns analyzer language and role later.
 
 For a revision, keep the same `fileId`, supply the unique active
 `predecessorFileRevision`, and point to newly captured bytes. Sibling files are not
@@ -53,6 +53,18 @@ When the same source must be recrossed on a later Thread tip, keep `attachmentId
 `fileId`, set `predecessorAttachmentRevision` to the active head, and create the exact
 successor edge. This revises authoring location evidence; it does not rewrite the file
 or invalidate a sealed historical admission.
+
+For a current `different-basis` head, prefer `project_source_attachment_recross`. Give
+it the exact workspace revision, a new mutation id, and one or more
+`{attachmentId, activeAttachmentRevision}` selections. Do not send `fileId`, role,
+target or `declaredAgainst`: the server recrosses the unique current Thread tip once,
+derives the current architecture basis, and copies those immutable edge fields. The
+whole selection becomes one workspace event or none of it does. It refuses an
+`exact-basis`, detached, source-removed, non-head or no-longer-valid target. Reuse the
+same request and mutation id after acknowledgement loss; do not retry with a later
+workspace revision unless the first request was not accepted. A batch names at most 32
+heads and a newly accepted result is persisted as one
+`project-source-workspace-event/4.0` record.
 
 ## 6. Navigate without loading the project at once
 
@@ -88,13 +100,13 @@ profile and `project-source-closure/1.0`; it refuses MIME, path, `sourceText`,
 from workspace membership, MIME, path or a successful isolated run. A later correction
 is a new `project_resource_capture` plus a successor file revision, then a new capture.
 
-Every admission seal advances the Thread. Before sealing another source whose
-attachment names an earlier tip, create an attachment successor against the current tip
-and recapture it. Seal all planned sources first when possible; this reduces attachment
-rebases between sequential admissions. Later executions may reopen those historical
-admissions from descendant Thread tips. A `different-basis` authoring read does not
-invalidate a sealed admission, but a current closure drill-down may stay
-`unavailable`.
+Every admission seal advances the Thread. Before sealing another source whose attachment
+names an earlier tip, use `project_source_attachment_recross` for that head or for the
+bounded set that must move together, then recapture it. Seal all planned sources first
+when possible; this reduces attachment rebases between sequential admissions. Later
+executions may reopen those historical admissions from descendant Thread tips. A
+`different-basis` authoring read does not invalidate a sealed admission, but a current
+closure drill-down may stay `unavailable`.
 
 ## Common workspace basis
 
@@ -103,3 +115,29 @@ area. A compilation preview may name several locators only when they share one p
 and one workspace snapshot (`workspaceRevision` plus `workspaceEventFingerprint`). After
 a sibling file is bumped, recapture every included file at the new common revision. Do
 not mix historical locators from different workspace heads.
+
+## Assemble immediate CAD occurrences
+
+For a bounded immediate module, keep one admitted CAD root per child `PartDefinition`.
+Each root is independently captured, admitted and sealed as canonical geometry; revising
+one child keeps its stable file identity and does not rewrite its siblings. A workspace
+dependency closure remains navigable and historically readable, but it is not an
+executable Build123d import environment: leave `source.dependency-lowering-unavailable`
+literal until a language-specific lowering capability exists.
+
+Before capturing placements or exporting the module, run the registered
+`model.capture-part-definitions@1` operation for the current architecture. The module
+export requires that exact structural capture; a missing or stale capture is
+`unavailable`, not an instruction to reconstruct the structure from labels.
+
+Capture one `cad-immediate-placement-source/1.0` resource, store it with role
+`cad-placement-source`, then attach the same file to every exact immediate `PartUsage`.
+Use the resulting exact placement-capture locator with `project_geometry_module_export`.
+The server, rather than the caller, reopens the child canonical STEP assets, immediate
+usages and placements. Seal a successful draft only through `design.write-geometry@1`.
+
+This produces a canonical static module, not a physical product verdict. If needed,
+assembly-integrity remains a later, separate evidence branch. Its current positive scope
+is limited to exact child import, occurrence coverage, placement, BRep reopening and
+static intersection observation; joints, clearance, motion, loads, fabricability and
+safety remain `not-evaluated` unless another bounded capability proves them.

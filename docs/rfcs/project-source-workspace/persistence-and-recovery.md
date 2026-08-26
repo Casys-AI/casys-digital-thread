@@ -2,13 +2,14 @@
 
 ## Authority
 
-The project-scoped event log is the recovery authority. Each event is
-`project-source-workspace-event/3.0` and contains the exact previous workspace revision,
+The project-scoped event log is the recovery authority. Each new event is
+`project-source-workspace-event/4.0` and contains the exact previous workspace revision,
 `previousEventFingerprint`, mutation identity, bounded mutation payload and canonical
 fingerprint. Revision 1 requires `previousEventFingerprint: null`. Later revisions
 require the exact prior event fingerprint. That link is included in the event body
-fingerprint, so the log is hash-chained. There is no `/2.0` or `/1.0` reader, writer or
-migration. Historical `/2.0` bytes are not reinterpreted.
+fingerprint, so the log is hash-chained. V3 is temporary replay-only input for its
+pre-recross event kinds; writers never append V3 and a V3 `attachment_recross` is
+refused. `/2.0` and `/1.0` are refused; no historical bytes are automatically migrated.
 
 Publication uses compare-and-swap semantics on the next workspace revision and fails
 closed on a claimed but incompletely published event. Append compares the durable

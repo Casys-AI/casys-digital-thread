@@ -352,6 +352,65 @@ const ATTACHMENT_DECLARED_AGAINST = {
   additionalProperties: false,
 } as const;
 
+const ATTACHMENT_RECROSS_REQUEST_ITEM = {
+  type: "object",
+  properties: {
+    attachmentId: ID_SCHEMA,
+    activeAttachmentRevision: { type: "integer", minimum: 1 },
+  },
+  required: ["attachmentId", "activeAttachmentRevision"],
+  additionalProperties: false,
+} as const;
+
+const ATTACHMENT_RECROSS_SUCCESSOR = {
+  type: "object",
+  properties: {
+    attachmentId: ID_SCHEMA,
+    predecessorAttachmentRevision: { type: "integer", minimum: 1 },
+    attachmentRevision: { type: "integer", minimum: 2 },
+    fileId: ID_SCHEMA,
+    role: ATTACHMENT_ROLE,
+    target: ATTACHMENT_TARGET,
+    fingerprint: FINGERPRINT_SCHEMA,
+  },
+  required: [
+    "attachmentId",
+    "predecessorAttachmentRevision",
+    "attachmentRevision",
+    "fileId",
+    "role",
+    "target",
+    "fingerprint",
+  ],
+  additionalProperties: false,
+} as const;
+
+const ATTACHMENT_RECROSS_OUTPUT = {
+  type: "object",
+  properties: {
+    projectId: PROJECT_ID,
+    workspaceRevision: WORKSPACE_REVISION,
+    workspaceEventFingerprint: FINGERPRINT_SCHEMA,
+    declaredAgainst: ATTACHMENT_DECLARED_AGAINST,
+    attachments: {
+      type: "array",
+      minItems: 1,
+      maxItems: PROJECT_SOURCE_WORKSPACE_BOUNDS.maxAttachmentRecrossItems,
+      items: ATTACHMENT_RECROSS_SUCCESSOR,
+    },
+    grants: { const: "none" },
+  },
+  required: [
+    "projectId",
+    "workspaceRevision",
+    "workspaceEventFingerprint",
+    "declaredAgainst",
+    "attachments",
+    "grants",
+  ],
+  additionalProperties: false,
+} as const;
+
 const ATTACHMENT_CONTENT_RECORD = {
   type: "object",
   properties: {
@@ -516,6 +575,17 @@ export function registerProjectSourceWorkspaceTools(
         String(args.attachmentId)
       } is recorded at workspace revision ${snapshot.workspaceRevision} against an exact SysML element. Authoring relation only; grants none. Not admission, compilation or execution.`,
       structuredContent: snapshot as unknown as Record<string, unknown>,
+    };
+  });
+
+  app.registerTool(projectSourceAttachmentRecrossTool, async (args) => {
+    const recross = await workspace.recrossAttachments(args);
+    return {
+      content:
+        `Source attachment recross recorded ${recross.attachments.length} active successor${
+          recross.attachments.length === 1 ? "" : "s"
+        } at workspace revision ${recross.workspaceRevision}. The server derived the exact current Thread and architecture basis; authoring relation only, grants none. Not admission, compilation or execution.`,
+      structuredContent: recross as unknown as Record<string, unknown>,
     };
   });
 
@@ -806,6 +876,35 @@ const projectSourceAttachmentPutTool: MCPTool = {
   annotations: WORKSPACE_MUTATION_ANNOTATIONS,
 };
 
+const projectSourceAttachmentRecrossTool: MCPTool = {
+  name: "project_source_attachment_recross",
+  description:
+    "Create one atomic single/batch successor event for active different-basis authoring attachments. Name only each attachmentId and its exact active head; the server derives current Thread/architecture basis and preserves fileId, role and target. Refuses exact-basis, detached, removed-source, stale or invalid targets. Replay the same mutationId and request after acknowledgement loss. Grants none. Not admission, compilation, provider, runtime or path authority.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: PROJECT_ID,
+      mutationId: MUTATION_ID,
+      expectedWorkspaceRevision: EXPECTED_WORKSPACE_REVISION,
+      attachments: {
+        type: "array",
+        minItems: 1,
+        maxItems: PROJECT_SOURCE_WORKSPACE_BOUNDS.maxAttachmentRecrossItems,
+        items: ATTACHMENT_RECROSS_REQUEST_ITEM,
+      },
+    },
+    required: [
+      "projectId",
+      "mutationId",
+      "expectedWorkspaceRevision",
+      "attachments",
+    ],
+    additionalProperties: false,
+  },
+  outputSchema: ATTACHMENT_RECROSS_OUTPUT,
+  annotations: WORKSPACE_MUTATION_ANNOTATIONS,
+};
+
 const projectSourceAttachmentDetachTool: MCPTool = {
   name: "project_source_attachment_detach",
   description:
@@ -859,7 +958,7 @@ const projectSourceAttachmentReadTool: MCPTool = {
 const projectSourceAttachmentListTool: MCPTool = {
   name: "project_source_attachment_list",
   description:
-    "List active attachment heads at one exact workspace revision, filtered by exactly fileId or exactly target. Includes source-removed heads. Bounded page. A mismatched cursor fails closed. Grants none.",
+    "List active attachment heads at one exact workspace revision. Zero or one filter: omit fileId and target for every active head, or name exactly fileId or exactly target. Both fail closed. Includes source-removed heads. Bounded page. A mismatched cursor fails closed. Grants none.",
   inputSchema: {
     type: "object",
     properties: {

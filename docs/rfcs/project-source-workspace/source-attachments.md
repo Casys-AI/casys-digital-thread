@@ -1,8 +1,10 @@
 # Versioned source attachments
 
-Status: implemented and runtime-proven on MCS-02 for attachment creation and successors,
-product-navigation authoring reads, attachment-rooted closure, technical capture and
-admission recross. Authoring attachments inside context evidence groups remain pending.
+Status: active · core runtime-proven on MCS-02; authoring attachments inside context
+evidence groups remain pending
+
+`project_source_attachment_recross` is implemented and targeted-test proven. It has no
+separate runtime proof claim yet.
 
 ## Purpose
 
@@ -61,6 +63,17 @@ revision; labels, paths, timestamps, or matching bytes can never retarget an edg
 captures, prior edge revisions, admissions, or Thread evidence. Detached identities are
 not revived as a new branch.
 
+`attachment_recross` is a server-generated internal successor mutation, not a free-form
+public edge writer. Its public MCP request names one bounded unique set of active
+`{attachmentId, activeAttachmentRevision}` heads at one exact workspace revision. The
+server derives the unique current Thread and `architecture-capture/4.0` basis once,
+checks every copied role and target, and persists the canonical public intent with the
+resolved successor fields. `fileId`, role and target cannot change. All selected
+successors become one V4 event and one workspace revision; any invalid member leaves no
+successor durable. The batch has at most 32 selected heads. A retry with the same
+`mutationId` and public intent returns the accepted event without reopening current
+architecture state.
+
 A file tombstone does not cascade into its attachments. The edge remains visible with
 `source-removed` status so history cannot disappear silently. A new file must use a new
 `fileId` and a new attachment edge.
@@ -79,8 +92,10 @@ The current read model derives only two target-basis states:
 
 It does not infer lineage, carry-forward, or orphan repair. A closure read on a
 `different-basis` attachment is `unavailable`; current recross requires an explicit
-reviewed successor attachment revision against the current basis. No label or occurrence
-path can repair or retarget the edge.
+reviewed successor attachment revision against the current basis. The agent may request
+that successor through `project_source_attachment_recross`, but may name only the
+attachment head: the server derives its new basis and cannot retarget the edge. No label
+or occurrence path can repair or retarget it.
 
 The initial implementation supports only element kinds sealed by the architecture
 capture contract. Adding another SysML kind first extends that capture and its exact
@@ -111,6 +126,7 @@ lookup of the mutable workspace head.
 The workspace MCP surface implemented now is:
 
 - `project_source_attachment_put`;
+- `project_source_attachment_recross` (single or bounded batch, one event);
 - `project_source_attachment_detach`;
 - `project_source_attachment_read` (exact `attachmentId` + `attachmentRevision`);
 - `project_source_attachment_list` filtered by exact `fileId` or exact element identity.

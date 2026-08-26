@@ -4,7 +4,7 @@
  */
 
 import type {
-  ProjectSourceWorkspaceEvent,
+  ProjectSourceWorkspaceEventV4,
   ProjectSourceWorkspaceState,
 } from "../../../../domain/project-source-workspace/types.ts";
 
@@ -32,11 +32,13 @@ export interface ProjectSourceWorkspaceEventStore {
   ): Promise<ProjectSourceWorkspaceState>;
   /**
    * Authority read: ignore the in-memory index and directory census, then
-   * fully replay the hash-chained V3 event files through the named revision.
+   * fully replay the hash-chained V3/V4 event files through the named revision.
+   * V3 is accepted here only as temporary historical input.
    */
   loadAtFresh(
     projectId: string,
     workspaceRevision: number,
   ): Promise<ProjectSourceWorkspaceState>;
-  append(event: ProjectSourceWorkspaceEvent): Promise<void>;
+  /** New workspace events are V4 only; V3 is replay-only. */
+  append(event: ProjectSourceWorkspaceEventV4): Promise<void>;
 }

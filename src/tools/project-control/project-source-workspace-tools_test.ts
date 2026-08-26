@@ -11,18 +11,33 @@ Deno.test("source workspace tools are absent until the use case is composed", ()
 
 Deno.test("source workspace tools register closed schemas without path, provider or runtime authority", async () => {
   const app = capturingApp();
+  let listedQuery: unknown;
   registerProjectSourceWorkspaceTools(app as unknown as McpApp, {
     sourceWorkspace: {
       putModule: () => Promise.resolve({ grants: "none" }),
       putFile: () => Promise.resolve({ grants: "none" }),
       removeFile: () => Promise.resolve({ grants: "none" }),
       putAttachment: () => Promise.resolve({ grants: "none" }),
+      recrossAttachments: () =>
+        Promise.resolve({
+          workspaceRevision: 4,
+          attachments: [{ attachmentId: "att-rail" }],
+          grants: "none",
+        }),
       detachAttachment: () => Promise.resolve({ grants: "none" }),
       snapshot: () => Promise.resolve({ grants: "none" }),
       tree: () => Promise.resolve({ grants: "none" }),
       search: () => Promise.resolve({ grants: "none" }),
       readAttachment: () => Promise.resolve({ grants: "none" }),
-      listAttachments: () => Promise.resolve({ grants: "none" }),
+      listAttachments: (value: unknown) => {
+        listedQuery = value;
+        return Promise.resolve({
+          workspaceRevision: 6,
+          entries: [],
+          nextCursor: null,
+          grants: "none",
+        });
+      },
       readFile: (value: unknown) => {
         const query = value as { fileRevision: number };
         if (query.fileRevision === 2) {
@@ -50,6 +65,7 @@ Deno.test("source workspace tools register closed schemas without path, provider
     "project_source_attachment_list",
     "project_source_attachment_put",
     "project_source_attachment_read",
+    "project_source_attachment_recross",
     "project_source_file_put",
     "project_source_file_read",
     "project_source_file_remove",
@@ -81,6 +97,7 @@ Deno.test("source workspace tools register closed schemas without path, provider
       "project_source_file_put",
       "project_source_file_remove",
       "project_source_attachment_put",
+      "project_source_attachment_recross",
       "project_source_attachment_detach",
     ]
   ) {
@@ -153,6 +170,49 @@ Deno.test("source workspace tools register closed schemas without path, provider
   assertEquals("runtime" in attachmentSchema.properties, false);
   assertEquals("latest" in attachmentSchema.properties, false);
   assertEquals(attachmentSchema.required.includes("declaredAgainst"), true);
+  const attachmentRecross = app.tool("project_source_attachment_recross");
+  const recrossSchema = attachmentRecross.inputSchema as {
+    additionalProperties: boolean;
+    required: string[];
+    properties: Record<string, unknown>;
+  };
+  assertEquals(recrossSchema.additionalProperties, false);
+  assertEquals(
+    recrossSchema.required,
+    ["projectId", "mutationId", "expectedWorkspaceRevision", "attachments"],
+  );
+  assertEquals("fileId" in recrossSchema.properties, false);
+  assertEquals("role" in recrossSchema.properties, false);
+  assertEquals("target" in recrossSchema.properties, false);
+  assertEquals("declaredAgainst" in recrossSchema.properties, false);
+  const recrossItems = recrossSchema.properties.attachments as {
+    minItems: number;
+    maxItems: number;
+    items: { additionalProperties: boolean; required: string[] };
+  };
+  assertEquals(recrossItems.minItems, 1);
+  assertEquals(
+    recrossItems.maxItems,
+    PROJECT_SOURCE_WORKSPACE_BOUNDS.maxAttachmentRecrossItems,
+  );
+  assertEquals(recrossItems.items.additionalProperties, false);
+  assertEquals(
+    recrossItems.items.required,
+    ["attachmentId", "activeAttachmentRevision"],
+  );
+  const recrossOutput = attachmentRecross.outputSchema as {
+    additionalProperties: boolean;
+    required: string[];
+  };
+  assertEquals(recrossOutput.additionalProperties, false);
+  assertEquals(recrossOutput.required.includes("workspaceEventFingerprint"), true);
+  const recrossed = await app.handler("project_source_attachment_recross")({
+    projectId: "p",
+    mutationId: "recross-1",
+    expectedWorkspaceRevision: 3,
+    attachments: [{ attachmentId: "att-rail", activeAttachmentRevision: 1 }],
+  }) as { content: string };
+  assertStringIncludes(recrossed.content, "server derived");
   const list = app.tool("project_source_attachment_list").inputSchema as {
     additionalProperties: boolean;
     required: string[];
@@ -162,6 +222,23 @@ Deno.test("source workspace tools register closed schemas without path, provider
   assertEquals(list.required, ["projectId", "workspaceRevision"]);
   assertEquals("fileId" in list.properties, true);
   assertEquals("target" in list.properties, true);
+  assertEquals(list.required.includes("fileId"), false);
+  assertEquals(list.required.includes("target"), false);
+  assertStringIncludes(
+    app.tool("project_source_attachment_list").description,
+    "Zero or one filter",
+  );
+  assertStringIncludes(
+    app.tool("project_source_attachment_list").description,
+    "Both fail closed",
+  );
+  const listed = await app.handler("project_source_attachment_list")({
+    projectId: "p",
+    workspaceRevision: 6,
+  }) as { content: string };
+  assertEquals(listedQuery, { projectId: "p", workspaceRevision: 6 });
+  assertStringIncludes(listed.content, "workspace revision 6");
+  assertStringIncludes(listed.content, "0 active heads");
   for (
     const name of [
       "project_source_tree",

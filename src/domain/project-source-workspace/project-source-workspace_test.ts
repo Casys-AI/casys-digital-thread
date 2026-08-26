@@ -755,7 +755,7 @@ Deno.test("revision 1 previousEventFingerprint is null; later events name the ex
   assertEquals(replayed.lastEventFingerprint, second.event.fingerprint);
 });
 
-Deno.test("wrong or null previousEventFingerprint is refused as event_chain_mismatch", async () => {
+Deno.test("wrong or null previousEventFingerprint and V1/V2 schemas are refused", async () => {
   const first = await apply(
     emptyProjectSourceWorkspace(PROJECT),
     modulePut("m1", 0, {
@@ -803,29 +803,19 @@ Deno.test("wrong or null previousEventFingerprint is refused as event_chain_mism
     ),
     "event_chain_mismatch",
   );
-  const { previousEventFingerprint: _dropped, ...legacy } = first.event;
-  assertEquals(
-    assertThrows(
-      () =>
-        parseWorkspaceEvent({
-          ...legacy,
-          schemaVersion: "project-source-workspace-event/1.0",
-        }),
+  for (
+    const schemaVersion of [
+      "project-source-workspace-event/1.0",
+      "project-source-workspace-event/2.0",
+    ]
+  ) {
+    const error = assertThrows(
+      () => parseWorkspaceEvent({ ...first.event, schemaVersion }),
       ProjectSourceWorkspaceError,
-    ).code,
-    "invalid_request",
-  );
-  assertEquals(
-    assertThrows(
-      () =>
-        parseWorkspaceEvent({
-          ...first.event,
-          schemaVersion: "project-source-workspace-event/2.0",
-        }),
-      ProjectSourceWorkspaceError,
-    ).code,
-    "invalid_request",
-  );
+    );
+    assertEquals(error.code, "invalid_request");
+    assertEquals(error.message.includes("schemaVersion"), true);
+  }
 });
 
 Deno.test("exact historical file read returns the predecessor resource after a later revision", async () => {
@@ -1204,15 +1194,15 @@ async function apply(
   return await applyProjectSourceWorkspaceCommand(state, command);
 }
 
-async function rehashedEvent(
-  event: ProjectSourceWorkspaceEvent,
-  patch: Partial<Omit<ProjectSourceWorkspaceEvent, "fingerprint">>,
-): Promise<ProjectSourceWorkspaceEvent> {
+async function rehashedEvent<Event extends ProjectSourceWorkspaceEvent>(
+  event: Event,
+  patch: Partial<Omit<Event, "fingerprint">>,
+): Promise<Event> {
   const { fingerprint: _ignored, ...body } = { ...event, ...patch };
   return {
     ...body,
     fingerprint: await eventBodyFingerprint(body),
-  };
+  } as Event;
 }
 
 async function seedFile(state: ProjectSourceWorkspaceState) {

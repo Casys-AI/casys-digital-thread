@@ -1,8 +1,7 @@
 # Server-resolved source dependency closure
 
-Status: implemented and runtime-proven on MCS-02 for attachment-rooted closure, CAS
-persistence, technical capture and admission recross. Language-specific lowering for
-non-trivial multi-file closures remains `unavailable`.
+Status: active · single-root closure runtime-proven on MCS-02; language-specific
+lowering for non-trivial multi-file closures remains `unavailable`
 
 ## Purpose
 

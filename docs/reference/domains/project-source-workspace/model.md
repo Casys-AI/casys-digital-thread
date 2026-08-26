@@ -4,11 +4,12 @@ Audience: agent · Diátaxis: reference · Kind: contract
 
 `ProjectSourceWorkspace` is the consistency boundary for one project source tree. Every
 mutation carries an exact `expectedWorkspaceRevision` and a stable `mutationId`. The log
-stores one bounded `project-source-workspace-event/3.0` record per accepted mutation.
-Events are hash-chained: revision 1 has `previousEventFingerprint: null`; later
-revisions name the exact prior event fingerprint, which is included in the event body
-fingerprint. `/2.0` and `/1.0` events are not accepted. There is no historical-byte
-migration.
+stores one bounded `project-source-workspace-event/4.0` record per newly accepted
+mutation. Events are hash-chained: revision 1 has `previousEventFingerprint: null`;
+later revisions name the exact prior event fingerprint, which is included in the event
+body fingerprint. `/3.0` is temporary replay-only history for the pre-recross mutation
+vocabulary: no V3 event is newly written and V3 explicitly refuses `attachment_recross`.
+`/2.0` and `/1.0` events are refused. There is no automatic historical-byte migration.
 
 ## Modules and files
 
@@ -35,6 +36,14 @@ Role or target change is an explicit successor. Detach writes a tombstone. File 
 does not cascade; reads publish `source-removed`. Snapshot schema is
 `project-source-workspace-snapshot/2.0` and includes `activeAttachmentCount`.
 
+`attachment_recross` is an internal, one-event successor batch generated only by
+`project_source_attachment_recross`. Its public intent is the exact workspace revision
+and a nonempty bounded set of `{attachmentId, activeAttachmentRevision}` selections; the
+enclosing event retains `projectId` and `mutationId`. The server derives and persists
+the current Thread/architecture basis plus each copied `fileId`, role and target. It can
+therefore recross one or many stale active heads without letting an agent retarget an
+edge.
+
 ## Invariants
 
 - Predecessor must be the unique active revision of the same `fileId`.
@@ -46,6 +55,13 @@ does not cascade; reads publish `source-removed`. Snapshot schema is
   node.
 - Resource URI, digest, size, representation, name and MIME are reopened exactly before
   a `file_put` is accepted.
+- An attachment recross selection is unique, bounded by `maxAttachmentRecrossItems`, and
+  names only active content heads with active source files. Every selected head must be
+  `different-basis`, still occur on the current architecture capture, and retain an
+  accepted role.
+- One attachment recross publishes exactly one workspace event and one workspace
+  revision. Its successors preserve `fileId`, role and target; failure of any selected
+  head publishes none of them.
 - Closed server-owned bounds constrain one operation, not the total file count.
 - Event revision 1 requires `previousEventFingerprint: null`. Later events require the
   Object.is-equivalent prior event fingerprint. A broken chain is
@@ -56,3 +72,10 @@ that mutation's accepted `event.workspaceRevision`, even if later events now exi
 Reusing it with different content fails closed. This is distinct from
 `expectedWorkspaceRevision`, which serialises concurrent mutations. AgentResource is
 reopened only for a new mutation, after determining it is not already accepted.
+
+For `project_source_attachment_recross`, retry comparison uses the persisted public
+intent before any current Thread, snapshot, traversal or role-catalog read. A concurrent
+winner with that same intent is returned at its accepted workspace revision; another
+workspace mutation remains `stale_revision`. A later Thread advance can make the new
+head `different-basis` again, but does not rewrite the exact basis retained by the
+accepted event.

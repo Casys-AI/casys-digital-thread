@@ -8,11 +8,13 @@ persisted log contains one small event per accepted mutation; it does not copy t
 tree on every revision.
 
 The aggregate exposes a materialised read model for navigation, but the event log is the
-recovery authority. Each accepted mutation publishes one
-`project-source-workspace-event/3.0` record. Revision 1 has
+recovery authority. Each newly accepted mutation publishes one
+`project-source-workspace-event/4.0` record. Revision 1 has
 `previousEventFingerprint: null`. Later revisions name the exact prior event
-fingerprint, which is part of the hashed event body. A broken chain is refused. `/2.0`
-and `/1.0` events are not accepted. There is no historical-byte migration.
+fingerprint, which is part of the hashed event body. A broken chain is refused. V3 is a
+temporary replay-only reader for pre-recross event kinds; it cannot write a new event or
+represent `attachment_recross`. `/2.0` and `/1.0` events are refused. There is no
+automatic historical-byte migration.
 
 ## Stable entities
 

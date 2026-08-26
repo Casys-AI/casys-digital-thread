@@ -22,11 +22,17 @@ import {
   PROJECT_SOURCE_ATTACHMENT_CAPTURE_SCHEMA,
   PROJECT_SOURCE_WORKSPACE_BOUNDS as BOUNDS,
   PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA,
+  PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA_V3,
   type ProjectSourceAttachmentDeclaredAgainst,
   type ProjectSourceAttachmentDetach,
   type ProjectSourceAttachmentListQuery,
   type ProjectSourceAttachmentPut,
   type ProjectSourceAttachmentReadQuery,
+  type ProjectSourceAttachmentRecross,
+  type ProjectSourceAttachmentRecrossIntent,
+  type ProjectSourceAttachmentRecrossItem,
+  type ProjectSourceAttachmentRecrossRequest,
+  type ProjectSourceAttachmentRecrossSuccessor,
   type ProjectSourceAttachmentRole,
   type ProjectSourceAttachmentTarget,
   type ProjectSourceCaptureRequest,
@@ -42,6 +48,9 @@ import {
   type ProjectSourceWorkspaceCommand,
   ProjectSourceWorkspaceError,
   type ProjectSourceWorkspaceEvent,
+  type ProjectSourceWorkspaceEventV3,
+  type ProjectSourceWorkspaceEventV4,
+  type ProjectSourceWorkspaceLegacyMutation,
   type ProjectSourceWorkspaceMutation,
   type ProjectSourceWorkspaceState,
 } from "./types.ts";
@@ -440,6 +449,202 @@ export function parseAttachmentDetach(
   });
 }
 
+function parseAttachmentRecrossItems(
+  value: unknown,
+  path: string,
+): readonly ProjectSourceAttachmentRecrossItem[] {
+  if (!Array.isArray(value)) {
+    workspaceError("invalid_request", `${path} must be an array.`);
+  }
+  if (value.length < 1) {
+    workspaceError("invalid_request", `${path} must name at least one attachment.`);
+  }
+  if (value.length > BOUNDS.maxAttachmentRecrossItems) {
+    workspaceError(
+      "bound_exceeded",
+      `${path} must contain at most ${BOUNDS.maxAttachmentRecrossItems} attachments.`,
+    );
+  }
+  const items = value.map((item, index) => {
+    const rec = exactClosed(
+      item,
+      ["attachmentId", "activeAttachmentRevision"],
+      ["attachmentId", "activeAttachmentRevision"],
+      `${path}[${index}]`,
+    );
+    return {
+      attachmentId: parseProjectId(
+        rec.attachmentId,
+        `${path}[${index}].attachmentId`,
+      ),
+      activeAttachmentRevision: positiveInteger(
+        rec.activeAttachmentRevision,
+        `${path}[${index}].activeAttachmentRevision`,
+      ),
+    } as const;
+  });
+  rejectDuplicates(
+    items.map((item) => item.attachmentId),
+    path,
+  );
+  return deepFreeze(
+    items.toSorted((left, right) =>
+      left.attachmentId.localeCompare(right.attachmentId)
+    ),
+  );
+}
+
+function parseAttachmentRecrossIntent(
+  value: unknown,
+  path: string,
+): ProjectSourceAttachmentRecrossIntent {
+  const rec = exactClosed(
+    value,
+    ["expectedWorkspaceRevision", "attachments"],
+    ["expectedWorkspaceRevision", "attachments"],
+    path,
+  );
+  return deepFreeze({
+    expectedWorkspaceRevision: parseWorkspaceRevision(
+      rec.expectedWorkspaceRevision,
+      `${path}.expectedWorkspaceRevision`,
+    ),
+    attachments: parseAttachmentRecrossItems(rec.attachments, `${path}.attachments`),
+  });
+}
+
+function parseAttachmentRecrossSuccessors(
+  value: unknown,
+  path: string,
+): readonly ProjectSourceAttachmentRecrossSuccessor[] {
+  if (!Array.isArray(value)) {
+    workspaceError("invalid_request", `${path} must be an array.`);
+  }
+  if (value.length < 1) {
+    workspaceError("invalid_request", `${path} must name at least one successor.`);
+  }
+  if (value.length > BOUNDS.maxAttachmentRecrossItems) {
+    workspaceError(
+      "bound_exceeded",
+      `${path} must contain at most ${BOUNDS.maxAttachmentRecrossItems} successors.`,
+    );
+  }
+  const successors = value.map((item, index) => {
+    const rec = exactClosed(
+      item,
+      [
+        "attachmentId",
+        "predecessorAttachmentRevision",
+        "fileId",
+        "role",
+        "target",
+      ],
+      [
+        "attachmentId",
+        "predecessorAttachmentRevision",
+        "fileId",
+        "role",
+        "target",
+      ],
+      `${path}[${index}]`,
+    );
+    return {
+      attachmentId: parseProjectId(
+        rec.attachmentId,
+        `${path}[${index}].attachmentId`,
+      ),
+      predecessorAttachmentRevision: positiveInteger(
+        rec.predecessorAttachmentRevision,
+        `${path}[${index}].predecessorAttachmentRevision`,
+      ),
+      fileId: parseProjectId(rec.fileId, `${path}[${index}].fileId`),
+      role: parseAttachmentRole(rec.role, `${path}[${index}].role`),
+      target: parseAttachmentTarget(rec.target, `${path}[${index}].target`),
+    } as const;
+  });
+  rejectDuplicates(
+    successors.map((successor) => successor.attachmentId),
+    path,
+  );
+  return deepFreeze(
+    successors.toSorted((left, right) =>
+      left.attachmentId.localeCompare(right.attachmentId)
+    ),
+  );
+}
+
+export function parseAttachmentRecross(
+  value: unknown,
+  path = "$mutation",
+): ProjectSourceAttachmentRecross {
+  const rec = exactClosed(
+    value,
+    ["kind", "intent", "declaredAgainst", "successors"],
+    ["kind", "intent", "declaredAgainst", "successors"],
+    path,
+  );
+  literalValue(rec.kind, "attachment_recross", `${path}.kind`);
+  const intent = parseAttachmentRecrossIntent(rec.intent, `${path}.intent`);
+  const successors = parseAttachmentRecrossSuccessors(
+    rec.successors,
+    `${path}.successors`,
+  );
+  if (intent.attachments.length !== successors.length) {
+    workspaceError(
+      "invalid_request",
+      `${path}.successors must exactly cover ${path}.intent.attachments.`,
+    );
+  }
+  for (const item of intent.attachments) {
+    const successor = successors.find((candidate) =>
+      candidate.attachmentId === item.attachmentId
+    );
+    if (
+      !successor ||
+      successor.predecessorAttachmentRevision !== item.activeAttachmentRevision
+    ) {
+      workspaceError(
+        "invalid_request",
+        `${path}.successors must retain the selected active attachment heads.`,
+      );
+    }
+  }
+  return deepFreeze({
+    kind: "attachment_recross" as const,
+    intent,
+    declaredAgainst: parseAttachmentDeclaredAgainst(
+      rec.declaredAgainst,
+      `${path}.declaredAgainst`,
+    ),
+    successors,
+  });
+}
+
+export function parseAttachmentRecrossRequest(
+  value: unknown,
+  path = "$request",
+): ProjectSourceAttachmentRecrossRequest {
+  try {
+    const rec = exactClosed(
+      value,
+      ["projectId", "mutationId", "expectedWorkspaceRevision", "attachments"],
+      ["projectId", "mutationId", "expectedWorkspaceRevision", "attachments"],
+      path,
+    );
+    return deepFreeze({
+      projectId: parseProjectId(rec.projectId, `${path}.projectId`),
+      mutationId: parseMutationId(rec.mutationId, `${path}.mutationId`),
+      expectedWorkspaceRevision: parseWorkspaceRevision(
+        rec.expectedWorkspaceRevision,
+        `${path}.expectedWorkspaceRevision`,
+      ),
+      attachments: parseAttachmentRecrossItems(rec.attachments, `${path}.attachments`),
+    });
+  } catch (cause) {
+    asWorkspaceError(cause, path);
+  }
+}
+
 export function parseFileRemove(
   value: unknown,
   path = "$mutation",
@@ -474,7 +679,27 @@ export function parseMutation(
   if (kind === "file_remove") return parseFileRemove(value, path);
   if (kind === "attachment_put") return parseAttachmentPut(value, path);
   if (kind === "attachment_detach") return parseAttachmentDetach(value, path);
+  if (kind === "attachment_recross") return parseAttachmentRecross(value, path);
   workspaceError("invalid_request", `${path}.kind must be a workspace mutation.`);
+}
+
+/**
+ * V3 is historical replay input only. Its closed mutation vocabulary ended
+ * before the persisted attachment_recross batch existed, so accepting that
+ * kind under V3 would rewrite the meaning of old event bytes.
+ */
+function parseLegacyWorkspaceMutation(
+  value: unknown,
+  path: string,
+): ProjectSourceWorkspaceLegacyMutation {
+  const mutation = parseMutation(value, path);
+  if (mutation.kind === "attachment_recross") {
+    workspaceError(
+      "invalid_request",
+      `${path}.kind attachment_recross requires project-source-workspace-event/4.0.`,
+    );
+  }
+  return mutation;
 }
 
 export function parseWorkspaceCommand(
@@ -488,7 +713,7 @@ export function parseWorkspaceCommand(
       ["projectId", "mutationId", "expectedWorkspaceRevision", "mutation"],
       path,
     );
-    return deepFreeze({
+    const command = {
       projectId: parseProjectId(rec.projectId, `${path}.projectId`),
       mutationId: parseMutationId(rec.mutationId, `${path}.mutationId`),
       expectedWorkspaceRevision: parseWorkspaceRevision(
@@ -496,7 +721,18 @@ export function parseWorkspaceCommand(
         `${path}.expectedWorkspaceRevision`,
       ),
       mutation: parseMutation(rec.mutation, `${path}.mutation`),
-    });
+    };
+    if (
+      command.mutation.kind === "attachment_recross" &&
+      command.mutation.intent.expectedWorkspaceRevision !==
+        command.expectedWorkspaceRevision
+    ) {
+      workspaceError(
+        "invalid_request",
+        `${path}.mutation.intent.expectedWorkspaceRevision must equal ${path}.expectedWorkspaceRevision.`,
+      );
+    }
+    return deepFreeze(command);
   } catch (cause) {
     asWorkspaceError(cause, path);
   }
@@ -671,10 +907,10 @@ export function parseAttachmentListQuery(
     );
     const hasFileId = Object.hasOwn(rec, "fileId");
     const hasTarget = Object.hasOwn(rec, "target");
-    if (hasFileId === hasTarget) {
+    if (hasFileId && hasTarget) {
       workspaceError(
         "invalid_request",
-        `${path} must filter by exactly fileId or exactly target.`,
+        `${path} must filter by at most one of fileId or target.`,
       );
     }
     return {
@@ -683,9 +919,10 @@ export function parseAttachmentListQuery(
         rec.workspaceRevision,
         `${path}.workspaceRevision`,
       ),
-      ...(hasFileId ? { fileId: parseProjectId(rec.fileId, `${path}.fileId`) } : {
-        target: parseAttachmentTarget(rec.target, `${path}.target`),
-      }),
+      ...(hasFileId ? { fileId: parseProjectId(rec.fileId, `${path}.fileId`) } : {}),
+      ...(hasTarget
+        ? { target: parseAttachmentTarget(rec.target, `${path}.target`) }
+        : {}),
       ...(Object.hasOwn(rec, "pageSize")
         ? { pageSize: parsePageSize(rec.pageSize, `${path}.pageSize`) }
         : {}),
@@ -758,11 +995,15 @@ export function parseWorkspaceEvent(
       ],
       path,
     );
-    literalValue(
-      rec.schemaVersion,
-      PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA,
-      `${path}.schemaVersion`,
-    );
+    if (
+      rec.schemaVersion !== PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA_V3 &&
+      rec.schemaVersion !== PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA
+    ) {
+      workspaceError(
+        "invalid_request",
+        `${path}.schemaVersion must be project-source-workspace-event/3.0 or project-source-workspace-event/4.0.`,
+      );
+    }
     const workspaceRevision = parseWorkspaceRevision(
       rec.workspaceRevision,
       `${path}.workspaceRevision`,
@@ -773,8 +1014,7 @@ export function parseWorkspaceEvent(
         `${path}.workspaceRevision must be a positive integer.`,
       );
     }
-    return deepFreeze({
-      schemaVersion: PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA,
+    const common = {
       projectId: parseProjectId(rec.projectId, `${path}.projectId`),
       workspaceRevision,
       previousWorkspaceRevision: parseWorkspaceRevision(
@@ -786,12 +1026,25 @@ export function parseWorkspaceEvent(
         `${path}.previousEventFingerprint`,
       ),
       mutationId: parseMutationId(rec.mutationId, `${path}.mutationId`),
-      mutation: parseMutation(rec.mutation, `${path}.mutation`),
       fingerprint: parseContentFingerprint(
         rec.fingerprint,
         `${path}.fingerprint`,
       ),
-    });
+    };
+    if (rec.schemaVersion === PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA_V3) {
+      const event: ProjectSourceWorkspaceEventV3 = {
+        schemaVersion: PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA_V3,
+        ...common,
+        mutation: parseLegacyWorkspaceMutation(rec.mutation, `${path}.mutation`),
+      };
+      return deepFreeze(event);
+    }
+    const event: ProjectSourceWorkspaceEventV4 = {
+      schemaVersion: PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA,
+      ...common,
+      mutation: parseMutation(rec.mutation, `${path}.mutation`),
+    };
+    return deepFreeze(event);
   } catch (cause) {
     asWorkspaceError(cause, path);
   }

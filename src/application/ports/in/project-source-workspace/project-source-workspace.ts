@@ -5,6 +5,7 @@
 import type {
   ProjectSourceAttachmentListEntry,
   ProjectSourceAttachmentRead,
+  ProjectSourceAttachmentRecrossResult,
   ProjectSourceFileRead,
   ProjectSourcePage,
   ProjectSourceSearchHit,
@@ -17,6 +18,9 @@ export interface ProjectSourceWorkspaceUseCase {
   putFile(value: unknown): Promise<ProjectSourceWorkspaceSnapshot>;
   removeFile(value: unknown): Promise<ProjectSourceWorkspaceSnapshot>;
   putAttachment(value: unknown): Promise<ProjectSourceWorkspaceSnapshot>;
+  recrossAttachments(
+    value: unknown,
+  ): Promise<ProjectSourceAttachmentRecrossResult>;
   detachAttachment(value: unknown): Promise<ProjectSourceWorkspaceSnapshot>;
   snapshot(value: unknown): Promise<ProjectSourceWorkspaceSnapshot>;
   tree(

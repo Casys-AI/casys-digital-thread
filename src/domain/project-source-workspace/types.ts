@@ -14,8 +14,14 @@ import {
   type ProductStructureElementRef,
 } from "../architecture/product-structure-ref.ts";
 
-export const PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA =
+/**
+ * V3 remains readable only so existing workspace histories can be replayed.
+ * New events are always V4: V3 has no representation for attachment_recross.
+ */
+export const PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA_V3 =
   "project-source-workspace-event/3.0" as const;
+export const PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA =
+  "project-source-workspace-event/4.0" as const;
 export const PROJECT_SOURCE_WORKSPACE_SNAPSHOT_SCHEMA =
   "project-source-workspace-snapshot/2.0" as const;
 export const PROJECT_SOURCE_ATTACHMENT_CAPTURE_SCHEMA =
@@ -30,6 +36,7 @@ export const PROJECT_SOURCE_WORKSPACE_BOUNDS = Object.freeze({
   maxModuleDepth: 16,
   maxDependencyFanout: 32,
   maxMutationJsonBytes: 65_536,
+  maxAttachmentRecrossItems: 32,
   maxPageSize: 50,
   defaultPageSize: 20,
   maxFilterLength: 256,
@@ -159,12 +166,67 @@ export interface ProjectSourceAttachmentDetach {
   readonly activeAttachmentRevision: number;
 }
 
+/**
+ * Publicly named active heads selected for a server-derived attachment recross.
+ * The server derives their file, role, target and current Thread/architecture
+ * basis; callers cannot retarget an edge through this shortcut.
+ */
+export interface ProjectSourceAttachmentRecrossItem {
+  readonly attachmentId: string;
+  readonly activeAttachmentRevision: number;
+}
+
+/**
+ * Persisted canonical public intent. `projectId` and `mutationId` remain on the
+ * enclosing event; keeping this subset lets retries compare the agent's request
+ * without reopening a newer Thread basis.
+ */
+export interface ProjectSourceAttachmentRecrossIntent {
+  readonly expectedWorkspaceRevision: number;
+  readonly attachments: readonly ProjectSourceAttachmentRecrossItem[];
+}
+
+/** Server-derived successor fields persisted with one atomic batch event. */
+export interface ProjectSourceAttachmentRecrossSuccessor {
+  readonly attachmentId: string;
+  readonly predecessorAttachmentRevision: number;
+  readonly fileId: string;
+  readonly role: ProjectSourceAttachmentRole;
+  readonly target: ProjectSourceAttachmentTarget;
+}
+
+/**
+ * Internal aggregate mutation only. It is emitted by the recross use case after
+ * it has reopened the exact current Thread basis. Event replay is pure.
+ */
+export interface ProjectSourceAttachmentRecross {
+  readonly kind: "attachment_recross";
+  readonly intent: ProjectSourceAttachmentRecrossIntent;
+  readonly declaredAgainst: ProjectSourceAttachmentDeclaredAgainst;
+  readonly successors: readonly ProjectSourceAttachmentRecrossSuccessor[];
+}
+
+/** Public MCP/use-case input for one or many active attachment heads. */
+export interface ProjectSourceAttachmentRecrossRequest {
+  readonly projectId: string;
+  readonly mutationId: string;
+  readonly expectedWorkspaceRevision: number;
+  readonly attachments: readonly ProjectSourceAttachmentRecrossItem[];
+}
+
 export type ProjectSourceWorkspaceMutation =
   | ProjectSourceModulePut
   | ProjectSourceFilePut
   | ProjectSourceFileRemove
   | ProjectSourceAttachmentPut
-  | ProjectSourceAttachmentDetach;
+  | ProjectSourceAttachmentDetach
+  | ProjectSourceAttachmentRecross;
+
+/** V3 pre-dates the persisted atomic attachment recross mutation. */
+export type ProjectSourceWorkspaceLegacyMutation = Exclude<
+  ProjectSourceWorkspaceMutation,
+  ProjectSourceAttachmentRecross
+>;
 
 export interface ProjectSourceWorkspaceCommand {
   readonly projectId: string;
@@ -246,16 +308,52 @@ export interface ProjectSourceMutationAck {
   readonly event: ProjectSourceWorkspaceEvent;
 }
 
-export interface ProjectSourceWorkspaceEvent {
-  readonly schemaVersion: typeof PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA;
+interface ProjectSourceWorkspaceEventFields<
+  SchemaVersion extends string,
+  Mutation extends ProjectSourceWorkspaceMutation,
+> {
+  readonly schemaVersion: SchemaVersion;
   readonly projectId: string;
   readonly workspaceRevision: number;
   readonly previousWorkspaceRevision: number;
   readonly previousEventFingerprint: ContentFingerprint | null;
   readonly mutationId: string;
-  readonly mutation: ProjectSourceWorkspaceMutation;
+  readonly mutation: Mutation;
   readonly fingerprint: ContentFingerprint;
 }
+
+/** Historical replay-only event schema. It must never be appended. */
+export interface ProjectSourceWorkspaceEventV3
+  extends
+    ProjectSourceWorkspaceEventFields<
+      typeof PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA_V3,
+      ProjectSourceWorkspaceLegacyMutation
+    > {}
+
+/** Current writable event schema. */
+export interface ProjectSourceWorkspaceEventV4
+  extends
+    ProjectSourceWorkspaceEventFields<
+      typeof PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA,
+      ProjectSourceWorkspaceMutation
+    > {}
+
+/** The event log may contain temporary V3 history followed by V4 events. */
+export type ProjectSourceWorkspaceEvent =
+  | ProjectSourceWorkspaceEventV3
+  | ProjectSourceWorkspaceEventV4;
+
+export type ProjectSourceWorkspaceEventBodyV3 = Omit<
+  ProjectSourceWorkspaceEventV3,
+  "fingerprint"
+>;
+export type ProjectSourceWorkspaceEventBodyV4 = Omit<
+  ProjectSourceWorkspaceEventV4,
+  "fingerprint"
+>;
+export type ProjectSourceWorkspaceEventBody =
+  | ProjectSourceWorkspaceEventBodyV3
+  | ProjectSourceWorkspaceEventBodyV4;
 
 export interface ProjectSourceWorkspaceState {
   readonly projectId: string;
@@ -267,11 +365,19 @@ export interface ProjectSourceWorkspaceState {
   readonly mutations: ReadonlyMap<string, ProjectSourceMutationAck>;
 }
 
-export interface ProjectSourceWorkspaceTransition {
-  readonly state: ProjectSourceWorkspaceState;
-  readonly event: ProjectSourceWorkspaceEvent;
-  readonly replayed: boolean;
-}
+export type ProjectSourceWorkspaceTransition =
+  | {
+    readonly state: ProjectSourceWorkspaceState;
+    /** Existing V3/V4 event; no new write occurs. */
+    readonly event: ProjectSourceWorkspaceEvent;
+    readonly replayed: true;
+  }
+  | {
+    readonly state: ProjectSourceWorkspaceState;
+    /** A newly derived event is always V4. */
+    readonly event: ProjectSourceWorkspaceEventV4;
+    readonly replayed: false;
+  };
 
 export interface ProjectSourceWorkspaceSnapshot {
   readonly schemaVersion: typeof PROJECT_SOURCE_WORKSPACE_SNAPSHOT_SCHEMA;
@@ -282,6 +388,26 @@ export interface ProjectSourceWorkspaceSnapshot {
   readonly moduleCount: number;
   readonly activeFileCount: number;
   readonly activeAttachmentCount: number;
+  readonly grants: "none";
+}
+
+export interface ProjectSourceAttachmentRecrossedAttachment {
+  readonly attachmentId: string;
+  readonly predecessorAttachmentRevision: number;
+  readonly attachmentRevision: number;
+  readonly fileId: string;
+  readonly role: ProjectSourceAttachmentRole;
+  readonly target: ProjectSourceAttachmentTarget;
+  readonly fingerprint: ContentFingerprint;
+}
+
+/** Result of the one-event single/batch attachment recross use case. */
+export interface ProjectSourceAttachmentRecrossResult {
+  readonly projectId: string;
+  readonly workspaceRevision: number;
+  readonly workspaceEventFingerprint: ContentFingerprint;
+  readonly declaredAgainst: ProjectSourceAttachmentDeclaredAgainst;
+  readonly attachments: readonly ProjectSourceAttachmentRecrossedAttachment[];
   readonly grants: "none";
 }
 
