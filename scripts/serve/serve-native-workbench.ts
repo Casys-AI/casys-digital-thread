@@ -559,10 +559,14 @@ async function snapshotEventStream(
             current.subjectId,
           );
           const liveVersion = liveUpdates.at(-1)?.sequence ?? 0;
+          const workspaceIdentity = await currentProjectSourceWorkspaceHeadIdentity(
+            current.projectId,
+            options,
+          );
           const focusPrefix = options.cockpitFocus ? `${current.projectId}:` : "";
           const eventId = snapshot
-            ? `${focusPrefix}${current.project.revision}:${snapshot.revision}:${liveVersion}`
-            : `planning:${focusPrefix}${current.project.revision}:${liveVersion}`;
+            ? `${focusPrefix}${current.project.revision}:${snapshot.revision}:${liveVersion}:${workspaceIdentity}`
+            : `planning:${focusPrefix}${current.project.revision}:${liveVersion}:${workspaceIdentity}`;
           if (eventId !== lastEventId) {
             const projection = await projectWorkbenchSnapshot(
               current.project,
@@ -613,6 +617,18 @@ async function snapshotEventStream(
       "X-Accel-Buffering": "no",
     }),
   });
+}
+
+async function currentProjectSourceWorkspaceHeadIdentity(
+  projectId: string,
+  options: NativeWorkbenchHandlerOptions,
+): Promise<string> {
+  if (!options.projectSourceWorkspace) return "workspace:none";
+  const workspace = await options.projectSourceWorkspace.load(projectId);
+  const fingerprint = workspace.lastEventFingerprint;
+  return fingerprint
+    ? `workspace:${workspace.workspaceRevision}:${fingerprint.algorithm}:${fingerprint.digest}`
+    : `workspace:${workspace.workspaceRevision}:empty`;
 }
 
 async function projectWorkbenchSnapshot(

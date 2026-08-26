@@ -1328,6 +1328,111 @@ Deno.test("native Workbench carries the assembly-integrity index through both GE
   assertStringIncludes(text, '"not-recorded"');
 });
 
+Deno.test("native Workbench SSE invalidates a fixed project and Thread tip when its authoring workspace advances", async () => {
+  const fixture = await verifiedArchitectureNavigationFixture();
+  const r2 = fixture.snapshot;
+  const r3: ThreadSnapshot = {
+    ...fixture.snapshot,
+    id: `${fixture.snapshot.id}:r2`,
+    revision: fixture.snapshot.revision + 1,
+    previous: {
+      snapshotId: fixture.snapshot.id,
+      revision: fixture.snapshot.revision,
+    },
+  };
+  const project = genericArchitectureProject("completed", r2, r3);
+  const projectId = project.project.id;
+  let workspace = await authoringWorkspaceAtRevision(projectId, fixture, 15);
+  const revisions = new Map<number, ProjectSourceWorkspaceState>([
+    [workspace.workspaceRevision, workspace],
+  ]);
+  const workspaceStore = {
+    load: () => Promise.resolve(workspace),
+    loadAtFresh: (_projectId: string, workspaceRevision: number) => {
+      const revision = revisions.get(workspaceRevision);
+      if (!revision) {
+        return Promise.reject(new Error(`missing revision ${workspaceRevision}`));
+      }
+      return Promise.resolve(revision);
+    },
+  };
+  const handler = createNativeWorkbenchHandler({
+    store: new ThreadStore([r2, r3]),
+    projectStore: new ProjectStore([project]),
+    projectId,
+    subjectId: r3.subject.id,
+    html: "unused",
+    productStructureCaptures: fixture.reader,
+    sysmlSourceAnalysis: fixture.sourceAnalysis,
+    projectSourceWorkspace: workspaceStore,
+    pollIntervalMs: 5,
+  });
+
+  const authoringR15 = await (await handler(
+    new Request(
+      "http://localhost/api/thread/product-navigation?view=authoring-attachments&kind=part-definition&id=sys-def-001",
+    ),
+  )).json();
+  assertEquals(authoringR15.authoringAttachments.workspaceRevision, 15);
+  assertEquals(authoringR15.authoringAttachments.attachments.length, 1);
+
+  const events = await handler(
+    new Request("http://localhost/api/thread/workbench/events"),
+  );
+  const reader = events.body!.getReader();
+  const first = await reader.read();
+  const firstEvent = workbenchSnapshotEvent(new TextDecoder().decode(first.value));
+  assertEquals(firstEvent.snapshot.project.revision, project.revision);
+  assertEquals(firstEvent.snapshot.thread.id, r3.id);
+  assertStringIncludes(
+    firstEvent.id,
+    `workspace:15:${workspace.lastEventFingerprint!.algorithm}:${
+      workspace.lastEventFingerprint!.digest
+    }`,
+  );
+
+  workspace = (await applyProjectSourceWorkspaceCommand(workspace, {
+    projectId,
+    mutationId: "detach-at-r16",
+    expectedWorkspaceRevision: 15,
+    mutation: {
+      kind: "attachment_detach",
+      attachmentId: "att-system",
+      activeAttachmentRevision: 1,
+    },
+  })).state;
+  revisions.set(workspace.workspaceRevision, workspace);
+  assertEquals(workspace.workspaceRevision, 16);
+
+  const authoringR16 = await (await handler(
+    new Request(
+      "http://localhost/api/thread/product-navigation?view=authoring-attachments&kind=part-definition&id=sys-def-001",
+    ),
+  )).json();
+  assertEquals(authoringR16.authoringAttachments.workspaceRevision, 16);
+  assertEquals(authoringR16.authoringAttachments.attachments, []);
+  assertEquals(
+    authoringR16.authoringAttachments.workspaceEventFingerprint ===
+      authoringR15.authoringAttachments.workspaceEventFingerprint,
+    false,
+  );
+
+  const second = await reader.read();
+  await reader.cancel();
+  const secondEvent = workbenchSnapshotEvent(
+    new TextDecoder().decode(second.value),
+  );
+  assertEquals(secondEvent.id === firstEvent.id, false);
+  assertEquals(secondEvent.snapshot.project.revision, project.revision);
+  assertEquals(secondEvent.snapshot.thread.id, r3.id);
+  assertStringIncludes(
+    secondEvent.id,
+    `workspace:16:${workspace.lastEventFingerprint!.algorithm}:${
+      workspace.lastEventFingerprint!.digest
+    }`,
+  );
+});
+
 Deno.test("native Workbench refuses mutated canonical content-addressed bytes", async () => {
   const digest = "a".repeat(64);
   const project = projectFixture("project-one", "subject-one");
@@ -1890,6 +1995,7 @@ async function authoringWorkspaceForFixture(
     [state.workspaceRevision, state],
   ]);
   return {
+    state,
     store: {
       load: () => Promise.resolve(state),
       loadAtFresh: (_projectId: string, workspaceRevision: number) => {
@@ -1900,6 +2006,48 @@ async function authoringWorkspaceForFixture(
         return Promise.resolve(named);
       },
     },
+  };
+}
+
+async function authoringWorkspaceAtRevision(
+  projectId: string,
+  fixture: Awaited<ReturnType<typeof verifiedArchitectureNavigationFixture>>,
+  workspaceRevision: number,
+): Promise<ProjectSourceWorkspaceState> {
+  let state = (await authoringWorkspaceForFixture(projectId, fixture)).state;
+  for (
+    let revision = state.workspaceRevision + 1;
+    revision <= workspaceRevision;
+    revision++
+  ) {
+    state = (await applyProjectSourceWorkspaceCommand(state, {
+      projectId,
+      mutationId: `padding-${revision}`,
+      expectedWorkspaceRevision: state.workspaceRevision,
+      mutation: {
+        kind: "module_put",
+        moduleId: `module-${revision}`,
+        slug: `module-${revision}`,
+        displayName: `Module ${revision}`,
+      },
+    })).state;
+  }
+  return state;
+}
+
+function workbenchSnapshotEvent(text: string): {
+  readonly id: string;
+  readonly snapshot: {
+    readonly project: { readonly revision: number };
+    readonly thread: { readonly id: string };
+  };
+} {
+  const id = /^id: (.+)$/m.exec(text)?.[1];
+  const data = /^data: (.+)$/m.exec(text)?.[1];
+  if (!id || !data) throw new Error("expected a workbench snapshot SSE event");
+  return {
+    id,
+    snapshot: JSON.parse(data),
   };
 }
 

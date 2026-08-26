@@ -207,9 +207,12 @@ curl -N http://127.0.0.1:5173/api/thread/workbench/events
 ```
 
 It emits a complete `engineering-workbench/0.6` replacement as
-`event: workbench-snapshot`. Event IDs include the relevant immutable revision and live
-activity version, but are opaque to clients: use `Last-Event-ID` only for reconnection,
-not as a technical lineage identifier.
+`event: workbench-snapshot`. Event IDs include the relevant Project and Thread
+revisions, live-activity version and, when source authoring is composed, the exact
+ProjectSourceWorkspace head identity. A workspace-only put, detach or recross therefore
+invalidates the read-only projection without requiring a browser reload. IDs remain
+opaque to clients: use `Last-Event-ID` only for reconnection, not as a technical lineage
+identifier.
 
 A persisted project revision, a redacted public milestone for the initial documentary
 run, a durable documentary record, or a canonical technical publication can each update
