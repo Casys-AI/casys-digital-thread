@@ -17,6 +17,7 @@ import type { EngineeringProjectRevisionStore } from "../../../application/ports
 import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
 import {
   type ExecuteIsolatedCalculixStaticProof,
+  IsolatedCalculixOutputValidationRejectedError,
   IsolatedCalculixRedispatchExhaustedError,
 } from "../../../application/use-cases/fea/isolated-v3/execute-isolated-calculix-static-proof.ts";
 import { IsolatedCodeExecutionRejectedError } from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
@@ -309,6 +310,15 @@ function describe(cause: unknown): string {
   return text.length > 240 ? `${text.slice(0, 240)}…` : text;
 }
 
+function isolatedOutputValidationRejectedMessage(
+  error: IsolatedCalculixOutputValidationRejectedError,
+): string {
+  return describe(
+    `Isolated output validation rejected registered role ${error.observation.role} ` +
+      `(${error.observation.byteCount} bytes, sha256 ${error.observation.sha256}).`,
+  );
+}
+
 function isolatedExecutionRejectionMessage(
   error: IsolatedCodeExecutionRejectedError,
 ): string {
@@ -430,6 +440,9 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
     } catch (error) {
       if (error instanceof IsolatedCodeExecutionRejectedError) {
         return await this.#failRejected(origin, command, error);
+      }
+      if (error instanceof IsolatedCalculixOutputValidationRejectedError) {
+        return await this.#failOutputValidationRejected(origin, command, error);
       }
       if (error instanceof IsolatedCalculixRedispatchExhaustedError) {
         return await this.#failExhausted(origin, command, error);
@@ -643,6 +656,19 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
       summary: "Isolated CalculiX execution was rejected before Thread publication.",
       code: "isolated_execution_rejected",
       message: isolatedExecutionRejectionMessage(error),
+    });
+  }
+
+  async #failOutputValidationRejected(
+    origin: EngineeringProjectCommandOrigin,
+    command: VerifyRunFeaStaticProofV3RunExecutorCommand,
+    error: IsolatedCalculixOutputValidationRejectedError,
+  ): Promise<EngineeringProjectSnapshot> {
+    return await this.#failClaimedRun(origin, command, {
+      summary:
+        "Isolated CalculiX output validation was rejected before Thread publication.",
+      code: "isolated_output_validation_failed",
+      message: isolatedOutputValidationRejectedMessage(error),
     });
   }
 

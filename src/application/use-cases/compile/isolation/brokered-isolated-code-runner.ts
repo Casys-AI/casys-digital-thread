@@ -14,12 +14,14 @@ import type {
 } from "../../../ports/out/compile/isolation/isolated-code-runner.ts";
 import {
   IsolatedCodeExecutionRejectedError,
+  IsolatedCodeOutputValidationRejectedError,
   type IsolatedCodeRunner,
 } from "../../../ports/out/compile/isolation/isolated-code-runner.ts";
 import {
   copyObservedUint8Array,
   createIsolatedCodeExecutionReceipt,
   createIsolatedCodeExecutionRejectionDiagnostic,
+  createIsolatedCodeOutputValidationRejection,
   createIsolatedOutputPublicationRef,
   fingerprintIsolatedOutputPublicationManifest,
   type IsolatedCodeExecutionReceipt,
@@ -28,6 +30,7 @@ import {
   type IsolatedCodeExecutionRequest,
   type IsolatedCodeOutputDeclaration,
   isolatedCodeOutputManifestsEqual,
+  type IsolatedCodeOutputValidationRejection,
   type IsolatedCodePolicyRef,
   type IsolatedCodeProfileRef,
   isolatedCodeRefsEqual,
@@ -45,6 +48,7 @@ import {
   validateIsolatedCodeExecutionRequest,
   validateIsolatedCodeOutputBasename,
   validateIsolatedCodeOutputManifest,
+  validateIsolatedCodeOutputValidationRejection,
   validateIsolatedCodePolicyRef,
   validateIsolatedCodeProfileRef,
   validateIsolatedCodeRuntimeAttestation,
@@ -78,7 +82,6 @@ export type BrokeredIsolatedCodeRunnerErrorCode =
   | "output_manifest_mismatch"
   | "output_integrity_failed"
   | "output_quota_exceeded"
-  | "output_validation_failed"
   | "cas_integrity_failed"
   | "cas_publication_outcome_unknown";
 
@@ -258,6 +261,7 @@ export class BrokeredIsolatedCodeRunner<
     let executionFailure:
       | BrokeredIsolatedCodeRunnerError
       | IsolatedExecutionRejectionInspection
+      | IsolatedOutputValidationRejectionInspection
       | undefined;
     try {
       prepared = await this.#executeAndInspect(lease, this.#outputManifest);
@@ -286,6 +290,12 @@ export class BrokeredIsolatedCodeRunner<
       destruction = recovered;
     }
 
+    if (executionFailure instanceof IsolatedOutputValidationRejectionInspection) {
+      throw new IsolatedCodeOutputValidationRejectedError(
+        executionFailure.observation,
+        destruction,
+      );
+    }
     if (executionFailure instanceof IsolatedExecutionRejectionInspection) {
       throw new IsolatedCodeExecutionRejectedError(
         executionFailure.diagnostic,
@@ -531,9 +541,12 @@ export class BrokeredIsolatedCodeRunner<
       try {
         await this.#validateOutput(declaration, Uint8Array.from(bytes));
       } catch {
-        throw new BrokeredIsolatedCodeRunnerError(
-          "output_validation_failed",
-          "A code-owned isolated output validator rejected the observed bytes.",
+        throw new IsolatedOutputValidationRejectionInspection(
+          createIsolatedCodeOutputValidationRejection({
+            role: declaration.role,
+            byteCount: bytes.byteLength,
+            sha256,
+          }),
         );
       }
       outputs.push(Object.freeze({
@@ -1177,10 +1190,24 @@ class IsolatedExecutionRejectionInspection {
   }
 }
 
+class IsolatedOutputValidationRejectionInspection {
+  readonly observation: IsolatedCodeOutputValidationRejection;
+
+  constructor(observation: IsolatedCodeOutputValidationRejection) {
+    this.observation = validateIsolatedCodeOutputValidationRejection(observation);
+  }
+}
+
 function normalizeBackendInspectionFailure(
   failure: unknown,
-): BrokeredIsolatedCodeRunnerError | IsolatedExecutionRejectionInspection {
+):
+  | BrokeredIsolatedCodeRunnerError
+  | IsolatedExecutionRejectionInspection
+  | IsolatedOutputValidationRejectionInspection {
   try {
+    if (failure instanceof IsolatedOutputValidationRejectionInspection) {
+      return new IsolatedOutputValidationRejectionInspection(failure.observation);
+    }
     if (failure instanceof IsolatedExecutionRejectionInspection) {
       return new IsolatedExecutionRejectionInspection(failure.diagnostic);
     }
@@ -1227,7 +1254,6 @@ const SAFE_BACKEND_INSPECTION_ERROR_KEYS = new Set<string>([
   "output_quota_exceeded\0An isolated output exceeds the per-file byte cap.",
   "output_quota_exceeded\0Isolated outputs exceed the total byte cap.",
   "output_integrity_failed\0Backend output size or digest claims do not match observed bytes.",
-  "output_validation_failed\0A code-owned isolated output validator rejected the observed bytes.",
 ]);
 
 function normalizeCasPublicationFailure(

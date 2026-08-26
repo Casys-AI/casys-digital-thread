@@ -5,6 +5,7 @@ import type {
   IsolatedCodeExecutionReceipt,
   IsolatedCodeExecutionReceiptRecord,
   IsolatedCodeExecutionRejectionDiagnostic,
+  IsolatedCodeOutputValidationRejection,
   IsolatedOutputProducerGenerationAdvance,
 } from "../../../../../domain/compile/isolation/isolated-code-execution.ts";
 import type { CalculixIsolatedExecutionEvidence } from "../../../../../domain/fea/isolated-v3/calculix-isolated-execution.ts";
@@ -95,6 +96,14 @@ export type CalculixIsolatedExecutionAttempt =
     };
   })
   | (AttemptBase & {
+    readonly phase: "output-validation-rejected";
+    readonly dispatch: CalculixIsolatedExecutionDispatch;
+    readonly outputValidationRejection: {
+      readonly observation: IsolatedCodeOutputValidationRejection;
+      readonly destruction: CalculixIsolatedProvenDestruction;
+    };
+  })
+  | (AttemptBase & {
     readonly phase: "redispatch-exhausted";
     readonly dispatch: Extract<
       CalculixIsolatedExecutionDispatch,
@@ -148,6 +157,12 @@ export interface CalculixIsolatedExecutionAttemptStore {
   markExecutionRejected(
     input: CalculixIsolatedExecutionAttemptKey & {
       readonly diagnostic: IsolatedCodeExecutionRejectionDiagnostic;
+      readonly destruction: CalculixIsolatedProvenDestruction;
+    },
+  ): Promise<CalculixIsolatedExecutionAttempt>;
+  markOutputValidationRejected(
+    input: CalculixIsolatedExecutionAttemptKey & {
+      readonly observation: IsolatedCodeOutputValidationRejection;
       readonly destruction: CalculixIsolatedProvenDestruction;
     },
   ): Promise<CalculixIsolatedExecutionAttempt>;

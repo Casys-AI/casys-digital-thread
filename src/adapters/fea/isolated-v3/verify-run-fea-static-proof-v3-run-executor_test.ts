@@ -1,6 +1,7 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import {
   type ExecuteIsolatedCalculixStaticProof,
+  IsolatedCalculixOutputValidationRejectedError,
   IsolatedCalculixRedispatchExhaustedError,
 } from "../../../application/use-cases/fea/isolated-v3/execute-isolated-calculix-static-proof.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
@@ -139,6 +140,63 @@ Deno.test("isolated CalculiX @3 fails the claimed run on a known execution rejec
       run?.failure?.message.includes("matched no surface"),
       true,
     );
+    assertEquals(failed.threadSnapshots, beforeSnapshots);
+    assertEquals(runtime.counts.execute, 1);
+    assertEquals(runtime.counts.syson, 0);
+
+    const replayed = await runtime.executor.execute(
+      ISOLATED_CALCULIX_FIXTURE_AGENT,
+      runtime.fixture.command,
+    );
+    assertEquals(replayed.revision, failed.revision);
+    assertEquals(
+      replayed.agentRuns.find((item) => item.id === runtime.fixture.runId)?.status,
+      "failed",
+    );
+    assertEquals(runtime.counts.execute, 1);
+    assertEquals(runtime.counts.syson, 0);
+  });
+});
+
+Deno.test("isolated CalculiX @3 fails the claimed run on output-validation rejection without Thread write", async () => {
+  await withRuntime(async (runtime) => {
+    const before = await runtime.fixture.projects.get(runtime.fixture.projectId);
+    const beforeSnapshots = before!.threadSnapshots;
+    const failing = runtime.executorWith({
+      executeIsolated: {
+        execute: () => {
+          runtime.counts.execute++;
+          return Promise.reject(
+            new IsolatedCalculixOutputValidationRejectedError({
+              executionRunId: "run:diagnostic-fixture",
+              observation: {
+                role: "job.dat",
+                byteCount: 32,
+                sha256: "7".repeat(64),
+              },
+              destruction: {
+                status: "proven",
+                runId: "run:diagnostic-fixture",
+                proofFingerprint: {
+                  algorithm: "sha256",
+                  digest: "c".repeat(64),
+                },
+              },
+            }),
+          );
+        },
+      },
+    });
+    const failed = await failing.execute(
+      ISOLATED_CALCULIX_FIXTURE_AGENT,
+      runtime.fixture.command,
+    );
+    const run = failed.agentRuns.find((item) => item.id === runtime.fixture.runId);
+    assertEquals(run?.status, "failed");
+    assertEquals(run?.failure?.code, "isolated_output_validation_failed");
+    assertEquals(run?.failure?.message.includes("job.dat"), true);
+    assertEquals(run?.failure?.message.includes("invalid STEP"), false);
+    assertEquals(run?.failure?.message.includes("/tmp/"), false);
     assertEquals(failed.threadSnapshots, beforeSnapshots);
     assertEquals(runtime.counts.execute, 1);
     assertEquals(runtime.counts.syson, 0);

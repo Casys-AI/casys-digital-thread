@@ -10,7 +10,10 @@ import {
 } from "../../../../domain/fea/isolated-v3/calculix-isolated-execution.ts";
 import { validateMechanicalProofCase } from "../../../../domain/fea/seal-case/mechanical-proof-case.ts";
 import { fingerprintResourceBytes } from "../../../../domain/compile/source/provider-resource-reader.ts";
-import { IsolatedCodeExecutionRejectedError } from "../../../ports/out/compile/isolation/isolated-code-runner.ts";
+import {
+  IsolatedCodeExecutionRejectedError,
+  IsolatedCodeOutputValidationRejectedError,
+} from "../../../ports/out/compile/isolation/isolated-code-runner.ts";
 import {
   createIsolatedCodeExecutionReceipt,
   createIsolatedCodeExecutionRejectionDiagnostic,
@@ -28,6 +31,7 @@ import { CALCULIX_ISOLATED_OUTPUT_BATCH_INSPECTOR } from "../../../../adapters/f
 import {
   ExecuteIsolatedCalculixStaticProof,
   ExecuteIsolatedCalculixStaticProofError,
+  IsolatedCalculixOutputValidationRejectedError,
   IsolatedCalculixRedispatchExhaustedError,
 } from "./execute-isolated-calculix-static-proof.ts";
 
@@ -76,6 +80,7 @@ Deno.test("isolated CalculiX rejects an oversized bundle before copy, WAL or dis
       markOutputPublished: () => Promise.reject(new Error("unreachable")),
       markEvidenceCaptured: () => Promise.reject(new Error("unreachable")),
       markExecutionRejected: () => Promise.reject(new Error("unreachable")),
+      markOutputValidationRejected: () => Promise.reject(new Error("unreachable")),
       markRedispatchExhausted: () => Promise.reject(new Error("unreachable")),
     },
     evidence: unreachableEvidence(),
@@ -121,6 +126,7 @@ Deno.test("isolated CalculiX rejects a proof from another project before WAL or 
       markOutputPublished: () => Promise.reject(new Error("unreachable")),
       markEvidenceCaptured: () => Promise.reject(new Error("unreachable")),
       markExecutionRejected: () => Promise.reject(new Error("unreachable")),
+      markOutputValidationRejected: () => Promise.reject(new Error("unreachable")),
       markRedispatchExhausted: () => Promise.reject(new Error("unreachable")),
     },
     evidence: unreachableEvidence(),
@@ -244,6 +250,73 @@ Deno.test("isolated CalculiX persists a known execution rejection and replays it
       "did not terminate successfully",
     );
     assertEquals(replay.diagnostic, first.diagnostic);
+    assertEquals(runs, 1);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("isolated CalculiX persists an output-validation rejection and replays it without redispatch", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const fixture = await executionFixture();
+    const observation = {
+      role: "job.dat",
+      byteCount: 32,
+      sha256: "7".repeat(64),
+    };
+    const destruction = {
+      status: "proven" as const,
+      runId: fixture.identity.executionRunId,
+      proofFingerprint: { algorithm: "sha256" as const, digest: "c".repeat(64) },
+    };
+    let runs = 0;
+    const attempts = new FileCalculixIsolatedExecutionAttemptStore(
+      `${root}/attempts`,
+    );
+    const useCase = new ExecuteIsolatedCalculixStaticProof({
+      runner: {
+        run: () => {
+          runs++;
+          return Promise.reject(
+            new IsolatedCodeOutputValidationRejectedError(observation, destruction),
+          );
+        },
+      },
+      recovery: {
+        destroyByRunId: () => Promise.reject(new Error("must not recover")),
+        advanceProducerGeneration: () => Promise.reject(new Error("must not advance")),
+      },
+      publications: publications("not-published"),
+      lease: immediateLease(),
+      attempts,
+      evidence: unreachableEvidence(),
+      inspector: CALCULIX_ISOLATED_OUTPUT_BATCH_INSPECTOR,
+    });
+    const first = await assertRejects(
+      () => useCase.execute(fixture),
+      IsolatedCalculixOutputValidationRejectedError,
+      "no redispatch occurs",
+    );
+    assertEquals(first instanceof IsolatedCodeExecutionRejectedError, false);
+    assertEquals(first instanceof IsolatedCodeOutputValidationRejectedError, false);
+    assertEquals(first.observation, observation);
+    assertEquals(first.destruction, destruction);
+    assertEquals("diagnostic" in first, false);
+    assertEquals("bytes" in first, false);
+    assertEquals(runs, 1);
+    const persisted = await attempts.read(
+      fixture.identity.projectId,
+      fixture.identity.agentRunId,
+    );
+    assertEquals(persisted?.phase, "output-validation-rejected");
+    const replay = await assertRejects(
+      () => useCase.execute(fixture),
+      IsolatedCalculixOutputValidationRejectedError,
+      "no redispatch occurs",
+    );
+    assertEquals(replay.observation, first.observation);
+    assertEquals(replay.destruction, first.destruction);
     assertEquals(runs, 1);
   } finally {
     await Deno.remove(root, { recursive: true });

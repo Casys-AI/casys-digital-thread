@@ -4,12 +4,14 @@ import {
   type IsolatedCodeExecutionRejectionDiagnostic,
   type IsolatedCodeExecutionRequest,
   type IsolatedCodeOutputReceiptRecord,
+  type IsolatedCodeOutputValidationRejection,
   type IsolatedOutputProducerGeneration,
   type IsolatedOutputProducerGenerationAdvance,
   type IsolatedOutputProducerGenerationAdvanceInput,
   type IsolatedOutputPublicationRef,
   validateIsolatedCodeExecutionDestruction,
   validateIsolatedCodeExecutionRejectionDiagnostic,
+  validateIsolatedCodeOutputValidationRejection,
 } from "../../../../../domain/compile/isolation/isolated-code-execution.ts";
 
 /**
@@ -18,7 +20,10 @@ import {
  * Neither side can observe a backend lease, filesystem path, container id, or
  * provider handle. A successful return is already closed and content-addressed.
  * A known unsuccessful termination throws IsolatedCodeExecutionRejectedError
- * after destruction is proven, without a receipt or outputs.
+ * after destruction is proven, without a receipt or outputs. A code-owned
+ * output validator rejection after a successful backend execution throws
+ * IsolatedCodeOutputValidationRejectedError after destruction, without a
+ * receipt or outputs.
  */
 export interface IsolatedCodeRunner {
   run(request: IsolatedCodeExecutionRequest): Promise<IsolatedCodeExecutionReceipt>;
@@ -41,6 +46,31 @@ export class IsolatedCodeExecutionRejectedError extends Error {
     super("The isolated program did not terminate successfully.");
     this.name = "IsolatedCodeExecutionRejectedError";
     this.diagnostic = validateIsolatedCodeExecutionRejectionDiagnostic(diagnostic);
+    this.destruction = validateIsolatedCodeExecutionDestruction(
+      destruction,
+      destructionRunId(destruction),
+    );
+  }
+}
+
+/**
+ * Distinct public terminal when a code-owned output validator rejects observed
+ * bytes after a successful isolated execution. It is not an unsuccessful
+ * program termination and never carries raw bytes, backend paths, handles,
+ * validator messages, cause, or a validator stack.
+ */
+export class IsolatedCodeOutputValidationRejectedError extends Error {
+  readonly code = "output_validation_rejected" as const;
+  readonly observation: IsolatedCodeOutputValidationRejection;
+  readonly destruction: IsolatedCodeExecutionReceipt["destruction"];
+
+  constructor(
+    observation: IsolatedCodeOutputValidationRejection,
+    destruction: IsolatedCodeExecutionReceipt["destruction"],
+  ) {
+    super("A code-owned isolated output validator rejected the observed bytes.");
+    this.name = "IsolatedCodeOutputValidationRejectedError";
+    this.observation = validateIsolatedCodeOutputValidationRejection(observation);
     this.destruction = validateIsolatedCodeExecutionDestruction(
       destruction,
       destructionRunId(destruction),

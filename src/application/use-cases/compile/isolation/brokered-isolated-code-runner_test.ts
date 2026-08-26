@@ -24,7 +24,10 @@ import {
   type IsolatedOutputPublicationRef,
 } from "../../../../domain/compile/isolation/isolated-code-execution.ts";
 import { fingerprintResourceBytes } from "../../../../domain/compile/source/provider-resource-reader.ts";
-import { IsolatedCodeExecutionRejectedError } from "../../../ports/out/compile/isolation/isolated-code-runner.ts";
+import {
+  IsolatedCodeExecutionRejectedError,
+  IsolatedCodeOutputValidationRejectedError,
+} from "../../../ports/out/compile/isolation/isolated-code-runner.ts";
 import {
   BrokeredIsolatedCodeRunner,
   BrokeredIsolatedCodeRunnerError,
@@ -787,17 +790,58 @@ Deno.test("broker enforces per-file and total output caps over observed bytes", 
   assertEquals(totalBackend.destroyCalls, 1);
 });
 
-Deno.test("broker cleans up exactly once when a code-owned output validator rejects", async () => {
+Deno.test("broker exposes a safe public terminal when a code-owned output validator rejects", async () => {
   const scenario = await happyScenario();
+  const capability = { handle: "PRIVATE_VALIDATOR_HANDLE_9c21" };
+  const validatorFailure = privateFailure(
+    "PRIVATE_VALIDATOR_PATH_/tmp/sandbox/result.step",
+    capability,
+  );
   const runner = runnerFor(scenario.backend, scenario.cas, {
     validateOutput: () => {
-      throw new Error("invalid STEP payload");
+      throw validatorFailure;
     },
   });
 
-  await expectCode(() => runner.run(scenario.request), "output_validation_failed");
+  let observed: unknown;
+  try {
+    await runner.run(scenario.request);
+  } catch (error) {
+    observed = error;
+  }
+  assertEquals(observed instanceof IsolatedCodeOutputValidationRejectedError, true);
+  assertEquals(observed instanceof IsolatedCodeExecutionRejectedError, false);
+  assertEquals(observed instanceof BrokeredIsolatedCodeRunnerError, false);
+  const error = observed as IsolatedCodeOutputValidationRejectedError;
+  const step = scenario.bytes.get("step-handle")!;
+  assertEquals(error.code, "output_validation_rejected");
+  assertEquals(error.observation, {
+    role: "geometry",
+    byteCount: step.byteLength,
+    sha256: await fingerprintResourceBytes(step),
+  });
+  assertEquals(error.destruction.status, "proven");
+  assertEquals(error.destruction.runId, scenario.request.runId);
+  assertEquals(error.cause, undefined);
+  assertEquals("bytes" in error, false);
+  assertEquals("bytes" in error.observation, false);
+  assertEquals("handle" in error, false);
+  assertEquals("path" in error, false);
+  assertEquals("lease" in error, false);
+  const publicText = [
+    error.message,
+    JSON.stringify(error.observation),
+    error.stack ?? "",
+  ].join("\n");
+  assertEquals(publicText.includes("invalid STEP"), false);
+  assertEquals(publicText.includes("PRIVATE_VALIDATOR_PATH_"), false);
+  assertEquals(publicText.includes("PRIVATE_VALIDATOR_HANDLE_"), false);
+  assertEquals(publicText.includes("step-handle"), false);
+  assertEquals(scenario.backend.executeCalls, 1);
   assertEquals(scenario.backend.destroyCalls, 1);
   assertEquals(scenario.cas.stageCalls, 0);
+  assertEquals(scenario.cas.commitCalls, 0);
+  assertEquals(scenario.cas.published.size, 0);
 });
 
 Deno.test("lost destroy acknowledgement recovers by run id before CAS publication", async () => {

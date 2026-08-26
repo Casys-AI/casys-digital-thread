@@ -111,6 +111,66 @@ Deno.test("isolated CalculiX WAL persists a terminal execution rejection and ref
   });
 });
 
+Deno.test("isolated CalculiX WAL persists a terminal output-validation rejection and refuses redispatch", async () => {
+  await withStore(async (store, directory) => {
+    const identity = await attemptIdentity();
+    const prepared = await store.prepare(identity);
+    const dispatching = await store.markDispatching({
+      ...key(prepared),
+      dispatchedAt: AT,
+    });
+    const observation = {
+      role: "job.dat",
+      byteCount: 32,
+      sha256: "7".repeat(64),
+    };
+    const destruction = {
+      status: "proven" as const,
+      runId: identity.executionRunId,
+      proofFingerprint: { algorithm: "sha256" as const, digest: "d".repeat(64) },
+    };
+    const rejected = await store.markOutputValidationRejected({
+      ...key(dispatching),
+      observation,
+      destruction,
+    });
+    assertEquals(rejected.phase, "output-validation-rejected");
+    assertEquals(
+      rejected.phase === "output-validation-rejected" &&
+        rejected.outputValidationRejection.observation,
+      observation,
+    );
+    const restarted = new FileCalculixIsolatedExecutionAttemptStore(directory);
+    const recovered = await restarted.read(identity.projectId, identity.agentRunId);
+    assertEquals(recovered, rejected);
+    const replayed = await restarted.markOutputValidationRejected({
+      ...key(dispatching),
+      observation,
+      destruction,
+    });
+    assertEquals(replayed, rejected);
+    const generationAdvance = await createIsolatedOutputProducerGenerationAdvance({
+      runId: identity.executionRunId,
+      closedGeneration: 0,
+      nextGeneration: 1,
+    });
+    await assertRejects(
+      () =>
+        restarted.authorizeRedispatch({
+          ...key(dispatching),
+          recoveryDestruction: {
+            status: "proven",
+            runId: identity.executionRunId,
+            proofFingerprint: { algorithm: "sha256", digest: "e".repeat(64) },
+          },
+          generationAdvance,
+        }),
+      CalculixIsolatedExecutionAttemptIntegrityError,
+      "Redispatch is possible only while dispatching",
+    );
+  });
+});
+
 Deno.test("isolated CalculiX WAL rejects a divergent proof or unproven cleanup", async () => {
   await withStore(async (store) => {
     const identity = await attemptIdentity();

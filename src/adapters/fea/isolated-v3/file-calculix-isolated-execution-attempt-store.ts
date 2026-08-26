@@ -24,6 +24,7 @@ import {
   validateContentFingerprint,
   validateIsolatedCodeExecutionReceiptRecord,
   validateIsolatedCodeExecutionRejectionDiagnostic,
+  validateIsolatedCodeOutputValidationRejection,
   validateIsolatedOutputProducerGenerationAdvance,
 } from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
@@ -333,6 +334,58 @@ export class FileCalculixIsolatedExecutionAttemptStore
     });
   }
 
+  markOutputValidationRejected(
+    input: CalculixIsolatedExecutionAttemptKey & {
+      readonly observation: {
+        readonly role: string;
+        readonly byteCount: number;
+        readonly sha256: string;
+      };
+      readonly destruction: Extract<
+        IsolatedCodeExecutionReceipt["destruction"],
+        { readonly status: "proven" }
+      >;
+    },
+  ) {
+    return this.#transition(input, (current) => {
+      const observation = validateIsolatedCodeOutputValidationRejection(
+        input.observation,
+      );
+      assertRegisteredOutputRole(observation.role, current.identity);
+      const destruction = validateDestruction(
+        input.destruction,
+        current.executionRunId,
+      );
+      const outputValidationRejection = deepFreeze({ observation, destruction });
+      if (current.phase === "output-validation-rejected") {
+        if (
+          deterministicJson(current.outputValidationRejection) ===
+            deterministicJson(outputValidationRejection)
+        ) {
+          return current;
+        }
+        throw integrity("Isolated CalculiX output-validation rejection diverges.");
+      }
+      if (current.phase !== "dispatching") {
+        throw integrity("Output-validation rejection is out of order.");
+      }
+      if (
+        current.dispatch.dispatchCount === 2 &&
+        current.dispatch.redispatch.status !== "consumed"
+      ) {
+        throw integrity(
+          "Rejected redispatch follows unconsumed redispatch authority.",
+        );
+      }
+      return deepFreeze({
+        ...base(current),
+        phase: "output-validation-rejected" as const,
+        dispatch: current.dispatch,
+        outputValidationRejection,
+      });
+    });
+  }
+
   markEvidenceCaptured(
     input: CalculixIsolatedExecutionAttemptKey & { readonly evidence: unknown },
   ) {
@@ -453,6 +506,8 @@ async function validateAttempt(
     ? ["dispatch", "receiptRecord", "evidence"]
     : phase === "execution-rejected"
     ? ["dispatch", "rejection"]
+    : phase === "output-validation-rejected"
+    ? ["dispatch", "outputValidationRejection"]
     : phase === "redispatch-exhausted"
     ? ["dispatch", "exhaustion"]
     : [];
@@ -499,6 +554,18 @@ async function validateAttempt(
       phase,
       dispatch,
       rejection: validateRejection(root.rejection, key.executionRunId),
+    });
+  }
+  if (phase === "output-validation-rejected") {
+    return deepFreeze({
+      ...common,
+      phase,
+      dispatch,
+      outputValidationRejection: validateOutputValidationRejection(
+        root.outputValidationRejection,
+        key.executionRunId,
+        identity,
+      ),
     });
   }
   if (phase === "redispatch-exhausted") {
@@ -671,6 +738,36 @@ function validateRejection(value: unknown, runId: string) {
     ),
     destruction: validateDestruction(root.destruction, runId),
   });
+}
+
+function validateOutputValidationRejection(
+  value: unknown,
+  runId: string,
+  identity: CalculixIsolatedExecutionAttemptIdentity,
+) {
+  const root = exactRecord(
+    value,
+    ["observation", "destruction"],
+    "$outputValidationRejection",
+  );
+  const observation = validateIsolatedCodeOutputValidationRejection(
+    root.observation,
+    "$outputValidationRejection.observation",
+  );
+  assertRegisteredOutputRole(observation.role, identity);
+  return deepFreeze({
+    observation,
+    destruction: validateDestruction(root.destruction, runId),
+  });
+}
+
+function assertRegisteredOutputRole(
+  role: string,
+  identity: CalculixIsolatedExecutionAttemptIdentity,
+): void {
+  if (!identity.profile.outputManifest.some((item) => item.role === role)) {
+    throw integrity("Output-validation rejection role is not registered.");
+  }
 }
 
 function validateExhaustion(value: unknown, runId: string) {

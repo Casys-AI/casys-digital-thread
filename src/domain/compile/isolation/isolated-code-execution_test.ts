@@ -15,6 +15,7 @@ import {
   restoreIsolatedCodeExecutionReceipt,
   validateIsolatedCodeExecutionRejectionDiagnostic,
   validateIsolatedCodeExecutionRequest,
+  validateIsolatedCodeOutputValidationRejection,
   validateIsolatedCodeRuntimeAttestation,
 } from "./isolated-code-execution.ts";
 
@@ -383,6 +384,28 @@ Deno.test("rejection diagnostic preserves log hashes and strips control sequence
       }),
     TypeError,
     "unsuccessful isolated execution",
+  );
+});
+
+Deno.test("output-validation rejection retains only role, byteCount and sha256", () => {
+  const observation = validateIsolatedCodeOutputValidationRejection({
+    role: "geometry",
+    byteCount: 4,
+    sha256: A,
+  });
+  assertEquals(observation, { role: "geometry", byteCount: 4, sha256: A });
+  assertThrows(
+    () =>
+      validateIsolatedCodeOutputValidationRejection({
+        role: "geometry",
+        byteCount: 4,
+        sha256: A,
+        bytes: new Uint8Array([1, 2, 3, 4]),
+        path: "/tmp/sandbox/result.step",
+        message: "invalid STEP payload",
+      }),
+    TypeError,
+    "unsupported field",
   );
 });
 

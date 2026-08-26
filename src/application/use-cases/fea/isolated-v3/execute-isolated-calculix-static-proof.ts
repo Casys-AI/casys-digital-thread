@@ -19,6 +19,7 @@ import type { CalculixIsolatedExecutionProfile } from "../../../ports/out/fea/is
 import type { CalculixIsolatedExecutionRunLease } from "../../../ports/out/fea/isolated-v3/calculix-isolated-execution-run-lease.ts";
 import {
   IsolatedCodeExecutionRejectedError,
+  IsolatedCodeOutputValidationRejectedError,
   type IsolatedCodeRunner,
   type IsolatedCodeRunRecovery,
   type IsolatedOutputPublicationReader,
@@ -37,11 +38,13 @@ import {
   type IsolatedCodeExecutionReceipt,
   isolatedCodeExecutionReceiptRecord,
   isolatedCodeOutputManifestsEqual,
+  type IsolatedCodeOutputValidationRejection,
   isolatedCodeRefsEqual,
   type IsolatedOutputProducerGeneration,
   runtimeAttestationsEqual,
   validateIsolatedCodeExecutionDestruction,
   validateIsolatedCodeExecutionReceiptRecord,
+  validateIsolatedCodeOutputValidationRejection,
 } from "../../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
   deterministicJson,
@@ -57,6 +60,41 @@ export class ExecuteIsolatedCalculixStaticProofError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ExecuteIsolatedCalculixStaticProofError";
+  }
+}
+
+/**
+ * Terminal CalculiX conversion of a public isolated output-validation
+ * rejection. It carries only the registered role, observed size/digest and
+ * proven destruction; no worker diagnostic, bytes, path or handle.
+ */
+export class IsolatedCalculixOutputValidationRejectedError extends Error {
+  readonly code = "output_validation_rejected" as const;
+  readonly executionRunId: string;
+  readonly observation: IsolatedCodeOutputValidationRejection;
+  readonly destruction: CalculixIsolatedProvenDestruction;
+
+  constructor(input: {
+    readonly executionRunId: string;
+    readonly observation: IsolatedCodeOutputValidationRejection;
+    readonly destruction: CalculixIsolatedProvenDestruction;
+  }) {
+    super(
+      "A code-owned isolated CalculiX output validator rejected the observed bytes; no redispatch occurs.",
+    );
+    this.name = "IsolatedCalculixOutputValidationRejectedError";
+    this.executionRunId = safeId(input.executionRunId, "$rejection.executionRunId");
+    this.observation = validateIsolatedCodeOutputValidationRejection(
+      input.observation,
+    );
+    const destruction = validateIsolatedCodeExecutionDestruction(
+      input.destruction,
+      this.executionRunId,
+    );
+    if (destruction.status !== "proven") {
+      throw new TypeError("Output-validation rejection requires proven destruction.");
+    }
+    this.destruction = destruction;
   }
 }
 
@@ -133,6 +171,9 @@ export class ExecuteIsolatedCalculixStaticProof {
     }
     if (attempt.phase === "execution-rejected") {
       throwRejected(attempt);
+    }
+    if (attempt.phase === "output-validation-rejected") {
+      throwOutputValidationRejected(attempt);
     }
     if (attempt.phase === "redispatch-exhausted") {
       throwExhausted(attempt);
@@ -347,6 +388,22 @@ export class ExecuteIsolatedCalculixStaticProof {
         request(identity.profile, bundle, key, producerGeneration),
       );
     } catch (error) {
+      if (error instanceof IsolatedCodeOutputValidationRejectedError) {
+        if (
+          error.destruction.status !== "proven" ||
+          error.destruction.runId !== key.executionRunId
+        ) {
+          throw blocked(
+            "Isolated CalculiX output-validation cleanup is not proven; no redispatch occurs.",
+          );
+        }
+        const rejected = await this.dependencies.attempts.markOutputValidationRejected({
+          ...key,
+          observation: error.observation,
+          destruction: error.destruction,
+        });
+        return throwOutputValidationRejected(rejected);
+      }
       if (!(error instanceof IsolatedCodeExecutionRejectedError)) throw error;
       if (
         error.destruction.status !== "proven" ||
@@ -521,6 +578,21 @@ function throwRejected(
     attempt.rejection.diagnostic,
     attempt.rejection.destruction,
   );
+}
+
+function throwOutputValidationRejected(
+  attempt: CalculixIsolatedExecutionAttempt,
+): never {
+  if (attempt.phase !== "output-validation-rejected") {
+    throw blocked(
+      "The CalculiX output-validation rejection WAL transition was not durable.",
+    );
+  }
+  throw new IsolatedCalculixOutputValidationRejectedError({
+    executionRunId: attempt.executionRunId,
+    observation: attempt.outputValidationRejection.observation,
+    destruction: attempt.outputValidationRejection.destruction,
+  });
 }
 
 function throwExhausted(

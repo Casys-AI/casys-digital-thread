@@ -286,6 +286,18 @@ export interface IsolatedCodeExecutionRejectionDiagnostic {
   };
 }
 
+/**
+ * Safe public observation when a code-owned isolated output validator rejects
+ * bytes after a successful backend execution. It retains only the registered
+ * role and the observed size/digest. Raw bytes, paths, handles, validator
+ * messages and stacks never enter this record.
+ */
+export interface IsolatedCodeOutputValidationRejection {
+  readonly role: string;
+  readonly byteCount: number;
+  readonly sha256: string;
+}
+
 export interface IsolatedCodeOutputReceipt extends IsolatedCodeOutputDeclaration {
   readonly byteCount: number;
   readonly sha256: string;
@@ -732,6 +744,34 @@ export async function createIsolatedCodeExecutionRejectionDiagnostic(input: {
         ),
       ),
     },
+  });
+}
+
+export function createIsolatedCodeOutputValidationRejection(input: {
+  readonly role: string;
+  readonly byteCount: number;
+  readonly sha256: string;
+}): IsolatedCodeOutputValidationRejection {
+  return validateIsolatedCodeOutputValidationRejection(
+    input,
+    "$outputValidationRejection",
+  );
+}
+
+export function validateIsolatedCodeOutputValidationRejection(
+  value: unknown,
+  path = "$outputValidationRejection",
+): IsolatedCodeOutputValidationRejection {
+  const record = exactRecord(value, ["role", "byteCount", "sha256"], path);
+  const byteCount = nonNegativeSafeInteger(record.byteCount, `${path}.byteCount`);
+  const sha256 = sha256Hex(record.sha256, `${path}.sha256`);
+  if (byteCount === 0 && sha256 !== EMPTY_SHA256) {
+    throw new TypeError(`${path}.sha256 does not match empty bytes.`);
+  }
+  return deepFreeze({
+    role: safeId(record.role, `${path}.role`),
+    byteCount,
+    sha256,
   });
 }
 
