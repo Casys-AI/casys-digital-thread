@@ -61,15 +61,20 @@ Follow the two shared how-tos using exact current revisions and full returned
 references:
 
 1. Capture the exact source bytes once.
-2. Put one bounded workspace file and attach it to the exact SysML element.
+2. Put one bounded workspace root and attach it to the exact SysML element. For the
+   active Build123d V1 direct closure, add only its exact direct scalar-leaf dependencies
+   using the documented virtual-import form; do not create a generated file or choose a
+   lowerer. Modelica and SPICE remain one executable root each.
 3. Capture the unique active attachment head with `project_technical_source_capture`.
 4. Preserve its opaque `result.reference`; do not reconstruct or reduce it.
 5. Preview compilation using only the accepted public inputs and server-selected joins.
 6. Continue only on literal `ready-for-review` with returned decision parameters.
 
 Keep parser state, CAD levers, SysML bindings, compilation readiness, and admission as
-separate facts. For a multi-file compilation, every locator must share the exact project
-and workspace snapshot.
+separate facts. A Build123d closure gets the separate
+`technical-unit:<closure sha256>` identity; its authored closure and attachment remain
+the evidence. For a preview combining distinct capture locators, every locator must
+share the exact project and workspace snapshot.
 
 For `compile.seal-admission@3`, reuse existing durable work only when it is still exact.
 Otherwise append the work item and required decision together. Pass returned decision

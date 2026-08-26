@@ -65,21 +65,24 @@ or persisted truth.
   `attachmentId` and `attachmentRevision`. The named attachment revision must be the
   unique active head at that exact workspace snapshot. The server resolves the root
   file, registered profile and deterministic `project-source-closure/1.0`. It returns
-  `technical-source-capture-review/3.0`: `parser`, `levers`, and an opaque
-  `technical-source-analysis-capture-locator/3.0`. `parser.status` is not admission.
+  `technical-source-capture-review/4.0`: `parser`, `levers`, and an opaque
+  `technical-source-analysis-capture-locator/4.0`. `parser.status` is not admission.
   Pass `result.reference` only. A constructor photo is `levers.unresolved`. A reachable
   literal without `parameterizes` is compile `binding.missing`, not
   `source.no-named-numeric-lever`. MIME, path, `sourceText`, `profileId`, `sourceId`,
-  `fileId`, `fileRevision` and `resourceRef` are refused. A multi-file closure may
-  capture; preview and admission stay `unresolved` /
-  `source.dependency-lowering-unavailable` until language-specific lowering exists.
+  `fileId`, `fileRevision` and `resourceRef` are refused. The Build123d 3.0 profile
+  lowers only the direct scalar-leaf closure defined in
+  [workspace-closure lowering v1](docs/reference/domains/cad/build123d-workspace-closure-lowering-v1.md).
+  Its `technical-unit:<closure sha256>` is not the workspace `fileId`; authored closure
+  and attachment remain the evidence. Modelica and SPICE multi-file closures stay
+  `unresolved` / `source.dependency-lowering-unavailable`.
 - `project_technical_compilation_preview` takes `projectId` + `result.reference`. The
   server selects the current Thread tip, the unique catalog profile, and unique SysML
-  joins. Do not pass bindings or profileRequests. Unresolved previews hoist `gaps`
-  (name, relation, recovery). The compilation document keeps its closed diagnostic
-  record. The server does not invent a named CAD lever or an AttributeUsage. Declare CAD
-  handles on `model.write-architecture@1` with `attribute.<slug>.name` and
-  `attribute.<slug>.parent`.
+  joins. Do not pass bindings or profileRequests. It returns a closed
+  `technical-compilation/2.0` document; unresolved previews hoist `gaps` (name,
+  relation, recovery). The server does not invent a named CAD lever or an
+  AttributeUsage. Declare CAD handles on `model.write-architecture@1` with
+  `attribute.<slug>.name` and `attribute.<slug>.parent`.
 - Product FEA run is `verify.run-fea-static-proof@3` (isolated microVM). Historical MCP
   `@1`/`@2` are not registered. Do not queue them.
 - `verify.evaluate-sensitivity-base@1` joins `sensitivity-base-<metric>-<digest>` only.

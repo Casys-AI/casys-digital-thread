@@ -33,14 +33,31 @@ product, every part, or every analysis in one source file or one flat manifest.
 Call `project_source_file_put` with the current workspace revision, stable `fileId`,
 module, logical name, role, exact dependencies, and the full resource reference.
 Optional `captureRequest` is exactly `{profileId}`. `fileId` is the sole technical
-source id. Choose `role` as a useful workspace classification such as `modelica-source`
-or `verification-plan`; do not copy an internal analyzer role. The registered capture
-profile owns analyzer language and role later.
+authoring-file id; a technical capture derives its separate
+`technical-unit:<closure sha256>` from the sealed closure. Choose `role` as a useful
+workspace classification such as `modelica-source` or `verification-plan`; do not copy
+an internal analyzer role. The registered capture profile owns analyzer language and
+role later.
 
 For a revision, keep the same `fileId`, supply the unique active
 `predecessorFileRevision`, and point to newly captured bytes. Sibling files are not
 rewritten. A deliberate removal uses `project_source_file_remove` and creates a
 tombstone; it does not erase history or CAS bytes.
+
+### Build123d direct closure V1
+
+For an executable multi-file Build123d source, put one attached root and zero or more
+direct scalar-leaf dependencies in the same exact workspace revision. Declare each
+root-to-leaf dependency by exact `fileId@revision`; the root imports it only through the
+fixed virtual-module form defined in
+[Build123d workspace-closure lowering v1](../../reference/domains/cad/build123d-workspace-closure-lowering-v1.md).
+Do not supply a path, module name, lowerer, provider, tool or runtime. The Build123d 3.0
+profile owns the 32-file, root, aggregate and effective-script limits.
+
+Attach the root, not a synthetic generated script. Its V4 capture preserves the authored
+closure and attachment, derives the effective technical unit and persists the full
+lowering manifest. Correct a rejected leaf or root by capturing new bytes and creating a
+successor file revision; do not edit the sealed closure or manifest.
 
 ## 5. Attach the source to an exact SysML element
 
@@ -96,9 +113,17 @@ Call `project_technical_source_capture` with `projectId`, `workspaceRevision`,
 unique active head at that snapshot. The server resolves the root file, registered
 profile and `project-source-closure/1.0`; it refuses MIME, path, `sourceText`,
 `fileId`/`fileRevision`, caller `profileId`/`sourceId`/`resourceRef`. Pass
-`result.reference` to `project_technical_compilation_preview`. Never infer admission
-from workspace membership, MIME, path or a successful isolated run. A later correction
-is a new `project_resource_capture` plus a successor file revision, then a new capture.
+`result.reference` from the V4 review to `project_technical_compilation_preview`. For a
+Build123d direct closure, capture reopens every exact closure byte, lowers and analyses
+the one effective script, and records its full manifest. Never infer admission from
+workspace membership, MIME, path or a successful isolated run. A later correction is a
+new `project_resource_capture` plus a successor file revision, then a new capture.
+
+Only stop for dependency lowering when the returned preview literally reports
+`source.dependency-lowering-unavailable`. That remains expected for Modelica and
+circuit-only SPICE multi-file closures. A Build123d direct closure uses the active V1
+path; other Build123d shapes fail at capture/analysis under their literal refusal rather
+than gaining an implicit alternative lowering route.
 
 Every admission seal advances the Thread. Before sealing another source whose attachment
 names an earlier tip, use `project_source_attachment_recross` for that head or for the
@@ -121,9 +146,11 @@ not mix historical locators from different workspace heads.
 For a bounded immediate module, keep one admitted CAD root per child `PartDefinition`.
 Each root is independently captured, admitted and sealed as canonical geometry; revising
 one child keeps its stable file identity and does not rewrite its siblings. A workspace
-dependency closure remains navigable and historically readable, but it is not an
-executable Build123d import environment: leave `source.dependency-lowering-unavailable`
-literal until a language-specific lowering capability exists.
+dependency closure remains navigable and historically readable. Only the Build123d V1
+direct scalar-leaf form is additionally executable through its profile-owned lowering;
+it is still not a Python import environment. Other closures, including Modelica and
+circuit-only SPICE multi-file closures, keep
+`source.dependency-lowering-unavailable` literal.
 
 Before capturing placements or exporting the module, run the registered
 `model.capture-part-definitions@1` operation for the current architecture. The module

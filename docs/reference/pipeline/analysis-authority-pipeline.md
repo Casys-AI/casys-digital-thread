@@ -148,9 +148,10 @@ The source, assertion, graph, admission and resolved-plan contracts live in
 storage, provider, UI, Graphology or SysML code. Language frontends and provider
 lowerings are adapters. The agent-facing project-control tools validate MCP input and
 call inward-facing use cases; they do not own provider clients or CAS stores. Capture
-returns `technical-source-capture-review/3.0` (`parser`, `levers`, opaque locator
-`reference`). Compilation preview accepts only `result.reference`. Unresolved previews
-hoist join `gaps` beside the closed compilation document. Exact operation dispatch lives
+returns `technical-source-capture-review/4.0` (`parser`, `levers`, opaque
+`technical-source-analysis-capture-locator/4.0` `reference`). Compilation preview
+accepts only `result.reference` and produces `technical-compilation/2.0`; unresolved
+previews hoist join `gaps` beside that closed document. Exact operation dispatch lives
 under `src/application/use-cases/` and depends only on the generic `ProjectRunExecutor`
 contract in `src/application/ports/in/project-run-executor.ts`. Canonical CAD drafts
 come from `project_admitted_geometry_export`. Concrete registered executors remain the
@@ -303,6 +304,16 @@ so older links still land. The sealed compilation is reviewed engineering input,
 transport envelope. Build123d, Modelica and CalculiX keep distinct method and evidence
 contracts even when they consume projections from the same compilation.
 
+The active Build123d 3.0 profile is the one exception to otherwise non-executable
+multi-file technical closures: it lowers the narrow direct scalar-leaf shape defined in
+[workspace-closure lowering v1](../domains/cad/build123d-workspace-closure-lowering-v1.md).
+Its V4 capture persists the full manifest and separates `technical-unit:<closure sha256>`
+from workspace file identity. Every subsequent reopen recrosses the closure, reopens all
+bytes, re-lowers, compares the full manifest and effective script, then reanalyses.
+Modelica and circuit-only SPICE multi-file closures remain literally
+`source.dependency-lowering-unavailable`. This compiler contract gives no caller a
+provider, tool, path or lowerer choice, and is not itself runtime proof.
+
 Admitted CAD/Modelica file → microVM:
 [admitted source isolated execution](admitted-source-isolated-execution.md).
 
@@ -444,8 +455,11 @@ not a hole in the current authority boundary.
 
 The capture → analysis → MRTR → dispatch spine on this page is live. Only
 `ready-for-review` compilation output is persisted as a content-addressed draft. After
-exact replay the sealer publishes a `technical-compilation-admission-capture/3.0`
-document artifact into the Thread. That artifact still grants no execution authority.
+exact replay the existing `compile.seal-admission@3` operation publishes a
+`technical-compilation-admission-capture/4.0` document artifact into the Thread. That
+artifact still grants no execution authority. The current contracts are V4 capture,
+review and locator; V2 compilation input/document; and V4 admission/capture, with no
+compatibility path implied by this reference.
 
 Isolated CAD / Modelica / CalculiX composition, bootstrap flags, worker gates, host
 limits and the closed-subset catalogue live on

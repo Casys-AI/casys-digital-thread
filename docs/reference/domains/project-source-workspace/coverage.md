@@ -32,8 +32,8 @@ Vertical 2 is the only public technical-source authority for CAD, Modelica and S
 `attachmentId` and `attachmentRevision`. The server resolves the active attachment head,
 root file, `captureRequest.profileId` against the registered technical-source catalogue,
 persists a private `project-source-closure/1.0` plus
-`technical-source-analysis-capture/3.0` document, and returns only
-`technical-source-analysis-capture-locator/3.0`. Preview, MRTR,
+`technical-source-analysis-capture/4.0` document, and returns only
+`technical-source-analysis-capture-locator/4.0`. Preview, MRTR,
 `compile.seal-admission@3`, admission read and reopen recross the exact attachment and
 closure at that historical workspace revision. Preview and admission bundles require one
 common workspace basis: the same `projectId`, `workspaceRevision` and

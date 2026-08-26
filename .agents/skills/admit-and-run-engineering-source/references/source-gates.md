@@ -19,7 +19,9 @@ Stop and preserve the literal state when:
 - compilation reports `gaps`, `binding.missing`, or another non-ready status;
 - the attachment is stale, inactive, or ambiguous;
 - included source locators do not share one exact workspace snapshot;
-- a multi-file closure reports `source.dependency-lowering-unavailable`;
+- a closure actually reports `source.dependency-lowering-unavailable` (expected for
+  Modelica and circuit-only SPICE multi-file closures; not an automatic Build123d V1
+  stop gate);
 - returned decision parameters are absent, altered, rejected, or not human-approved.
 
 A source correction is a new resource, successor file revision, new capture, and new

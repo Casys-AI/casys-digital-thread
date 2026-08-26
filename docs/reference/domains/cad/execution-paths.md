@@ -10,6 +10,21 @@ bytes but produce different authority. They are not substitutes.
 | Canonical admitted export | Published `mcp-build123d-sandbox` image  | Server-fixed STEP and GLTF draft, then sealed Thread geometry                          | Canonical STEP for proof and DFM |
 | Isolated execution        | Digest-pinned local Microsandbox microVM | One validated AP214 `geometry.step` in the private output CAS plus documentary capture | Noncanonical draft only          |
 
+## Admitted source identity
+
+The same paths accept either an authored root or the active Build123d 3.0 direct
+workspace closure. For a closure, capture derives one
+`technical-unit:<closure sha256>` from the exact `project-source-closure/1.0`; that unit
+is distinct from every workspace `fileId`. The V4 capture keeps the authored closure and
+attachment as evidence and persists the complete lowering manifest. Preview uses
+`technical-compilation/2.0`; admission and its Thread capture use V4, while the
+registered operation remains `compile.seal-admission@3`.
+
+No caller may choose a lowerer, provider, tool, path, image, runtime or output. A
+lowered closure has code-test evidence for capture, reopening and admission mechanics;
+a real private MCP execution of that multi-file form is still pending. This changes
+neither canonical nor isolated authority.
+
 ## Canonical admitted export
 
 ```text
@@ -25,6 +40,10 @@ project_technical_source_capture
 supply Python, provider, tool, path, image, or output formats. The exporter fixes STEP
 and GLTF and creates a draft stamped with the admission identity. It does not write
 Thread state.
+
+For a lowered closure, every reopen and replay recrosses the sealed closure, reopens all
+named file bytes, re-lowers them, compares the full manifest and effective script, and
+reanalyses before this exporter is reached. A mismatch fails before a provider call.
 
 `design.write-geometry@1` makes no provider call and does not execute Build123d again.
 It rereads the signed draft and exact assets, requires the admission stamp, and seals
@@ -87,6 +106,10 @@ a network-disabled microVM. A caller cannot select the runtime, image, command,
 arguments, paths, environment, policy, validator, or output manifest. The only declared
 output is `geometry.step`, media type `model/step`, format `step-ap214`; the broker
 validates it outside the microVM with the code-owned OCCT validator before publication.
+
+That reopen applies the same closure recross, byte reopen, lowering-manifest/script
+comparison and reanalysis before the microVM boundary. It does not stage workspace files
+or turn the virtual import names into a filesystem/module-loader interface.
 
 The fixed local ceilings are 30 s wall time, 25 s requested CPU time, 1 GiB memory, 32
 requested processes, 64 KiB for each log, and 128 MiB per output file and in total. CPU

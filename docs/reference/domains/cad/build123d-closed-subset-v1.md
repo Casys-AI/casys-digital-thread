@@ -3,7 +3,7 @@
 Audience: both · Diátaxis: reference · Kind: contract
 
 The current CAD language is not Python or build123d in general. It is the server-owned
-profile `build123d-closed-subset-v1`, compiled as profile `2.0.0` by analyzer
+profile `build123d-closed-subset-v1`, compiled as profile `3.0.0` by analyzer
 `build123d-qualified-lezer` `1.6.0`.
 
 Code authorities:
@@ -76,7 +76,7 @@ direction is documented in
 [closed-language compilation](../../../explanations/product/closed-language-compilation.md);
 future coverage does not change the current contract.
 
-## Compilation admission 2.0.0
+## Compilation admission 3.0.0
 
 Parser success is not admission. A new Build123d compilation is reviewable only when:
 
@@ -88,5 +88,5 @@ Parser success is not admission. A new Build123d compilation is reviewable only 
 
 A constructor literal with no named lever is `source.no-named-numeric-lever`. A
 reachable lever without its SysML join is `binding.missing`. The server does not invent
-a lever, AttributeUsage, unit, or value. Historical embedded 1.x documents remain
-readable for replay; they do not relax new 2.0.0 admissions.
+a lever, AttributeUsage, unit, or value. This is a clean cut: there is no legacy-profile
+reader or replay compatibility path for Build123d admissions.

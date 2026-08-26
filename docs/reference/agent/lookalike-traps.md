@@ -47,7 +47,7 @@ of that catalog.
 | `printability-check-case/1.0`                                                | Exact FDM printability-case identity (`industrialize.seal-printability-case@1`) | A DFM payload or a STEP                      |
 | `print-estimate-case/1.0`                                                    | Exact FFF print-estimate identity (`industrialize.seal-print-estimate-case@1`)  | A price, slicer log, or CAD admission        |
 | `dfm-check-case/1.0`                                                         | Exact measured DFM-case identity (`industrialize.seal-dfm-case@1`)              | Printability thresholds or mcp-dfm by itself |
-| `compile.seal-admission@3` / `technical-compilation-admission-capture/3.0`   | Closed-subset admission bytes                                                   | An Engineering Case                          |
+| `compile.seal-admission@3` / `technical-compilation-admission-capture/4.0`   | Closed-subset admission bytes                                                   | An Engineering Case                          |
 | `design.execute-build123d@1` / `design.seal-isolated-geometry@1`             | Isolated CAD execution / documentary seal of that execution                     | An Engineering Case or canonical STEP        |
 | `simulate.run-admitted-modelica@1` / `simulate.run-qualified-modelica-kit@1` | Admitted `.mo` run or pinned kit                                                | An Engineering Case                          |
 | `simulate.run-admitted-spice@1`                                              | Circuit-only admitted SPICE                                                     | An Engineering Case or mcp-spice             |

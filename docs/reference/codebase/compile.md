@@ -30,7 +30,7 @@ content or native override drift before loading Microsandbox
 #### [`src/domain/compile/`](../../../src/domain/compile)
 
 Compile kernel: `isolation/` (request/receipt + local runtime identity), `admission/`
-(`technical-compilation/1.0` + `compile.seal-admission@3`), `source/` (language-neutral
+(`technical-compilation/2.0` + `compile.seal-admission@3`), `source/` (language-neutral
 analysis + named CAD levers), `rop/` (`resolved-operation-plan`), `brief/`
 (approved-brief graph). Used by CAD and Modelica. Not a CAD tree
 
@@ -82,11 +82,13 @@ execution arguments
 
 #### [`src/domain/compile/admission/technical-compilation.ts`](../../../src/domain/compile/admission/technical-compilation.ts)
 
-Pure `technical-compilation/1.0`: exact Thread/SysML/source fingerprints, explicit
-symbol-to-element bindings and server-owned profiles produce deterministic target-local
-review projections. Current Build123d profile 2.0 requires a parser-reported finite
-module-level numeric parameter bound through `parameterizes` and causally reaching the
-unique `result`; embedded profile-1 documents retain historical replay semantics
+V2 `technical-compilation-input/2.0` and `technical-compilation/2.0`: exact
+Thread/SysML/source fingerprints, explicit symbol-to-element bindings and server-owned
+profiles produce deterministic target-local review projections. Current Build123d
+profile 3.0.0 adds exact direct scalar-leaf workspace-closure lowering and requires a
+parser-reported finite module-level numeric parameter bound through `parameterizes` and
+causally reaching the unique `result`; it has no legacy-profile reader or compatibility
+path
 
 #### [`src/domain/compile/source/named-cad-levers.ts`](../../../src/domain/compile/source/named-cad-levers.ts)
 
@@ -96,8 +98,8 @@ and geometry-affecting levers (reachable + unique `parameterizes`). Missing bind
 
 #### [`src/domain/compile/admission/technical-source-capture-review.ts`](../../../src/domain/compile/admission/technical-source-capture-review.ts)
 
-Agent-facing `technical-source-capture-review/3.0`: hoists `parser` and `levers` beside
-the opaque `technical-source-analysis-capture-locator/3.0`. Compilation accepts only
+Agent-facing `technical-source-capture-review/4.0`: hoists `parser` and `levers` beside
+the opaque `technical-source-analysis-capture-locator/4.0`. Compilation accepts only
 `result.reference`
 
 #### [`src/domain/compile/admission/technical-compilation-join.ts`](../../../src/domain/compile/admission/technical-compilation-join.ts)
@@ -117,7 +119,7 @@ those domains. Used by Build123d, admitted Modelica and admitted SPICE run revie
 #### [`src/domain/compile/admission/technical-compilation-preview-review.ts`](../../../src/domain/compile/admission/technical-compilation-preview-review.ts)
 
 Agent-facing compile `gaps`: names and recoveries for `binding.missing` /
-`source.no-named-numeric-lever`. Not part of `technical-compilation/1.0`; sealed
+`source.no-named-numeric-lever`. Not part of `technical-compilation/2.0`; sealed
 documents stay closed
 
 #### [`src/application/ports/in/compile/admission/project-technical-compilation-preview.ts`](../../../src/application/ports/in/compile/admission/project-technical-compilation-preview.ts)
@@ -146,8 +148,8 @@ and supplies verified bytes plus analysis to the inward compiler
 
 #### [fixed technical-compilation profile catalogue][technical-compilation-profile-catalogue]
 
-Immutable server-owned compiler-profile catalogue. Build123d is profile 2.0 over the
-qualified closed subset
+Immutable server-owned compiler-profile catalogue. Build123d is profile 3.0.0 over the
+qualified closed subset with direct scalar-leaf workspace-closure lowering
 (`Box`/`Cylinder`/`Cone`/`Sphere`/`Torus`/`Ellipsoid`/`Wedge`/`Rectangle`/`Circle`/`Ellipse`/`RegularPolygon`/`Pos`/`Rot`/`Compound`,
 named `Pos`/`Rot` bindings and `Plane.XY\|…\|ZY *` shape, `scale`, `fillet`, `chamfer`,
 `extrude`, `offset`, `revolve`, math `pi`/`e`/`tau`) plus the causal named-lever

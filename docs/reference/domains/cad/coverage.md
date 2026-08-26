@@ -7,7 +7,8 @@ import allowlist. A construct is covered only when the qualified analyzer can pr
 admission can seal it, and the fixed execution paths can reopen the same sealed bytes.
 The detailed grammar and the authority of each path remain in
 [Build123d closed subset v1](build123d-closed-subset-v1.md) and
-[CAD execution paths](execution-paths.md).
+[CAD execution paths](execution-paths.md). The direct workspace-closure form is defined
+separately in [Build123d workspace-closure lowering v1](build123d-workspace-closure-lowering-v1.md).
 
 ## Covered now
 
@@ -20,11 +21,18 @@ The detailed grammar and the authority of each path remain in
 | Shape algebra      | Same-kind `+` and `-`; `scale` on a solid; reviewed `fillet`/`chamfer`, including reviewed `solid.edges()` forms; `extrude`, `offset`, `revolve` about `Axis.X`, `Y`, or `Z`; `Compound(children=[...])` over prior solids.                                                                                                                                                                      |
 | Result             | One module-level `result`, resolving to a solid.                                                                                                                                                                                                                                                                                                                                                 |
 | Admission          | No unresolved construct; unique server-derived `represents` artifact binding and `parameterizes` bindings; at least one finite named numeric literal must causally reach `result`.                                                                                                                                                                                                               |
+| Direct workspace closure V1 | The Build123d 3.0 profile accepts the exact direct scalar-leaf form, lowers it to one D4-valid script, and carries its `technical-unit:<closure sha256>` plus full manifest through V4 capture/reopen, `technical-compilation/2.0`, and `technical-compilation-admission/4.0`. This is code-and-test coverage, not a claim that any caller can select a lowerer, path, provider or runtime. |
 | Geometry authority | A system/bundle admitted export produces canonical STEP/GLTF draft then `design.write-geometry@1` seals canonical STEP. A target admitted export can seal exactly one PartDefinition through `geometry-part-capture/1.0`. The bounded module path reopens exact immediate child geometries plus an exact placement capture, and the same sealer can publish one composite PartDefinition STEP/GLB. Neither path infers a physical product verdict. The local isolated path writes a validated AP214 STEP privately and only a documentary Thread capture. |
 
-Named runtime proof: MCS-02 captured an attachment-rooted RailFrame source, sealed its
-v3 admission at Thread r4, and published one canonical target STEP at r7 before the
-downstream FEA branch. See
+The active closure slice is proven by focused code tests for lowering, V4 capture and
+reopen, V2 preview, V4 admission/replay, and the canonical and isolated review
+boundaries. A real private `mcp-build123d` execution from a lowered multi-file closure
+is still pending. It must not be represented as runtime proof, canonical geometry or a
+relaxation of either path's existing authority.
+
+Named single-root runtime proof: MCS-02 captured an attachment-rooted RailFrame source,
+sealed its admission at Thread r4, and published one canonical target STEP at r7 before
+the downstream FEA branch. See
 [MCS-02 CAD](../../../project-dossiers/motorized-camera-slider-mcs02/domains/cad.md).
 That proof covers one `PartDefinition`, not an assembly.
 
@@ -58,6 +66,9 @@ These states must remain literal: they are not degraded success.
   `attachmentId` + `attachmentRevision`). Public capture does not accept `sourceText`,
   `fileId`, `profileId` or `resourceRef`. Isolated execution still starts from
   `compile.seal-admission@3`.
+- Modelica and circuit-only SPICE multi-file closures are not enabled by the Build123d
+  lowering. They remain `source.dependency-lowering-unavailable`; a capture or
+  navigable closure is not an executable language environment.
 - [Assembly integrity](assembly-integrity.md) is a separate post-publication evidence
   family, not a CAD language construct or an export path. L3 first reopens the
   [exact static assembly basis](static-assembly-basis.md), then the current
