@@ -28,6 +28,7 @@ import { ProjectSourceWorkspaceError } from "../../../domain/project-source-work
 import type { ProductNavigationAuthoringAttachmentReader } from "../../ports/out/product-navigation/product-navigation-authoring-attachment-reader.ts";
 import { productNavigationAuthoringCursorBinding } from "./product-navigation-authoring-cursor-binding.ts";
 import type { ProductNavigationEvidenceAttachmentReader } from "../../ports/out/product-navigation/product-navigation-evidence-attachment-reader.ts";
+import { threadRequirementsByCaptureScope } from "../../../domain/thread/requirement-definition-scope.ts";
 import { exactRecord } from "../../../domain/kernel/case-validation.ts";
 import { fingerprintsEqual } from "../../../domain/kernel/deterministic-json.ts";
 import {
@@ -626,10 +627,25 @@ export class ProjectProductNavigation implements ProductNavigationUseCase {
     relation: ProductDefinitionScopedEvidence["relation"],
   ): Promise<ProductDefinitionScopedEvidence> {
     const facts = this.#evidenceAttachments
-      ? await this.#evidenceAttachments.read(opened.snapshot, { projectId })
+      ? await this.#evidenceAttachments.read(opened.snapshot, {
+        projectId,
+        architectureArtifactId: opened.basis.architectureArtifactId,
+        architectureFingerprint: opened.basis.architectureFingerprint,
+      })
       : undefined;
+    const scoped = facts
+      ? threadRequirementsByCaptureScope(
+        opened.snapshot,
+        facts.requirementScopes ?? [],
+      )
+      : [];
     const attachments = facts
-      ? attachmentsForDefinition(facts, definition.elementId, facts.sourceFileIds)
+      ? attachmentsForDefinition(
+        facts,
+        definition.elementId,
+        facts.sourceFileIds,
+        scoped,
+      )
       : emptyAttachments();
     const empty = attachments.sources.length === 0 &&
       attachments.geometry.length === 0 &&

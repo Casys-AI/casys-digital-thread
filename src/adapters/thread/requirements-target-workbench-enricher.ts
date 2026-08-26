@@ -16,6 +16,7 @@ import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-proposal.ts";
 import {
+  listRequirementsCaptureContainers,
   REQUIREMENTS_CAPTURE_URI_PREFIX,
   selectRequirementsTip,
 } from "../../domain/thread/requirements-tip.ts";
@@ -41,7 +42,7 @@ export async function enrichThreadWorkbenchWithRequirementsTargets(
   const architecture = currentArchitectureArtifact(snapshot);
   const targets = new Map<string, string>();
   const conflicts = new Set<string>();
-  for (const container of requirementsContainers(thread)) {
+  for (const container of listRequirementsCaptureContainers(thread)) {
     const selected = selectRequirementsTip(thread, container);
     if (selected.kind !== "one") continue;
     const projected = snapshot.artifacts.find((item) =>
@@ -80,26 +81,6 @@ export async function enrichThreadWorkbenchWithRequirementsTargets(
     ].sort((left, right) => left.id.localeCompare(right.id)),
   };
   return { ...snapshot, requirements, graph };
-}
-
-function requirementsContainers(thread: ThreadSnapshot): string[] {
-  const containers = new Set<string>();
-  for (const artifact of thread.artifacts) {
-    if (
-      artifact.kind !== "sysml-model" ||
-      typeof artifact.uri !== "string" ||
-      !artifact.uri.startsWith(REQUIREMENTS_CAPTURE_URI_PREFIX)
-    ) {
-      continue;
-    }
-    const rest = artifact.uri.slice(REQUIREMENTS_CAPTURE_URI_PREFIX.length);
-    const slash = rest.indexOf("/");
-    const container = slash === -1 ? rest : rest.slice(0, slash);
-    if (container.length > 0 && container !== "sha256") {
-      containers.add(container);
-    }
-  }
-  return [...containers].sort((left, right) => left.localeCompare(right));
 }
 
 async function reopenRequirementsCapture(

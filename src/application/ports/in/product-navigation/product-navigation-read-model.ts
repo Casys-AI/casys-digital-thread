@@ -26,6 +26,7 @@ import type {
   ProjectSourceAttachmentSourceStatus,
   ProjectSourceAttachmentTarget,
 } from "../../../../domain/project-source-workspace/types.ts";
+import type { ThreadRequirementDefinitionAttachment } from "../../../../domain/thread/requirement-definition-scope.ts";
 import type { ThreadSnapshot } from "../../../../domain/thread/thread-snapshot.ts";
 
 export const PRODUCT_EXPLORE_SCHEMA = "product-explore/1.0" as const;
@@ -636,6 +637,7 @@ export function attachmentsForDefinition(
   graph: ProductNavigationAttachmentGraph,
   definitionId: string,
   sourceFileIds?: ReadonlySet<string> | readonly string[],
+  requirementScopes?: readonly ThreadRequirementDefinitionAttachment[],
 ): ProductNavigationAttachments {
   const allowed = sourceFileIds === undefined
     ? undefined
@@ -683,5 +685,18 @@ export function attachmentsForDefinition(
       });
     }
   }
+  const seen = new Set(attachments.requirements.map((item) => item.id));
+  for (const requirement of requirementScopes ?? []) {
+    if (requirement.targetElementId !== definitionId) continue;
+    if (seen.has(requirement.requirementId)) continue;
+    seen.add(requirement.requirementId);
+    attachments.requirements.push({
+      group: "requirements",
+      kind: "requirement",
+      id: requirement.requirementId,
+      label: requirement.name,
+    });
+  }
+  attachments.requirements.sort((left, right) => left.id.localeCompare(right.id));
   return attachments;
 }

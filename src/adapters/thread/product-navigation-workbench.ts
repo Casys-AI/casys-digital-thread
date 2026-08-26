@@ -25,6 +25,7 @@ import {
   type SealedCadLeverAdmissionReader,
   type TechnicalAdmissionWorkbenchEnricherDependencies,
 } from "./technical-admission-workbench-enricher.ts";
+import { readRecrossedRequirementsCaptureScopes } from "./requirements-definition-scope-reader.ts";
 import {
   enrichThreadWorkbenchWithRequirementsTargets,
   type RequirementsCaptureReader,
@@ -54,13 +55,29 @@ export class WorkbenchProductNavigationEvidenceAttachmentReader
 
   async read(
     snapshot: ThreadSnapshot,
-    context: { readonly projectId: string },
+    context: {
+      readonly projectId: string;
+      readonly architectureArtifactId?: string;
+      readonly architectureFingerprint?: string;
+    },
   ): Promise<ProductNavigationEvidenceAttachmentFacts | undefined> {
     const projected = await projectProductNavigationWorkbench(
       snapshot,
       context.projectId,
       this.#dependencies,
     );
+    const requirementScopes = this.#dependencies.requirementsCaptures &&
+        context.architectureArtifactId &&
+        context.architectureFingerprint
+      ? await readRecrossedRequirementsCaptureScopes(
+        snapshot,
+        this.#dependencies.requirementsCaptures,
+        {
+          artifactId: context.architectureArtifactId,
+          fingerprint: context.architectureFingerprint,
+        },
+      )
+      : undefined;
     return {
       nodes: projected.graph.nodes.map((node) => ({
         ref: node.ref,
@@ -81,6 +98,7 @@ export class WorkbenchProductNavigationEvidenceAttachmentReader
         fileRevision: file.fileRevision,
         workspaceRevision: file.workspaceRevision,
       })),
+      ...(requirementScopes ? { requirementScopes } : {}),
     };
   }
 }

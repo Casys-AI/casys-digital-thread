@@ -4,6 +4,35 @@ import { archivedRefKeys } from "./thread-snapshot.ts";
 export const REQUIREMENTS_CAPTURE_URI_PREFIX = "casys://requirements-capture/" as const;
 
 /**
+ * Exact requirements-capture container names from Thread artifact URIs.
+ *
+ * The container is the path segment after the URI prefix. Labels and
+ * PartDefinition names are not read. A bare `sha256` segment is not a
+ * container.
+ */
+export function listRequirementsCaptureContainers(
+  snapshot: ThreadSnapshot,
+): readonly string[] {
+  const containers = new Set<string>();
+  for (const artifact of snapshot.artifacts) {
+    if (
+      artifact.kind !== "sysml-model" ||
+      typeof artifact.uri !== "string" ||
+      !artifact.uri.startsWith(REQUIREMENTS_CAPTURE_URI_PREFIX)
+    ) {
+      continue;
+    }
+    const rest = artifact.uri.slice(REQUIREMENTS_CAPTURE_URI_PREFIX.length);
+    const slash = rest.indexOf("/");
+    const container = slash === -1 ? rest : rest.slice(0, slash);
+    if (container.length > 0 && container !== "sha256") {
+      containers.add(container);
+    }
+  }
+  return [...containers].sort((left, right) => left.localeCompare(right));
+}
+
+/**
  * Select the unique, non-archived tip for one exact requirements component.
  *
  * This pure selector is shared by the SysON writer, proof-seal executor and

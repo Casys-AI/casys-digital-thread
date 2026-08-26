@@ -1,6 +1,9 @@
 import { assertEquals } from "@std/assert";
 import type { ThreadArtifact, ThreadSnapshot } from "./thread-snapshot.ts";
-import { selectRequirementsTip } from "./requirements-tip.ts";
+import {
+  listRequirementsCaptureContainers,
+  selectRequirementsTip,
+} from "./requirements-tip.ts";
 
 Deno.test("requirements tip selects one exact component lineage", () => {
   const armOld = requirementArtifact("req-arm-r1", "Arm", "a");
@@ -16,6 +19,17 @@ Deno.test("requirements tip selects one exact component lineage", () => {
   assertEquals(selected.kind, "one");
   if (selected.kind === "one") assertEquals(selected.artifact.id, armTip.id);
   assertEquals(selectRequirementsTip(snapshot, "Bracket").kind, "absent");
+});
+
+Deno.test("requirements capture containers ignore a bare sha256 URI segment", () => {
+  const snapshot = thread([
+    requirementArtifact("req-arm-r1", "Arm", "a"),
+    {
+      ...requirementArtifact("req-bad", "sha256", "d"),
+      uri: "casys://requirements-capture/sha256/" + "d".repeat(64),
+    },
+  ]);
+  assertEquals(listRequirementsCaptureContainers(snapshot), ["Arm"]);
 });
 
 Deno.test("requirements tip reports an archived exact component as retired", () => {
