@@ -12,4 +12,12 @@ Deno.test("Product requirements keep compact exact identities in a scrollable ma
   assertStringIncludes(source, "hover:bg-muted/45");
   assertStringIncludes(source, "overflow-x-auto");
   assertStringIncludes(source, "min-w-[1120px]");
+  assertStringIncludes(
+    source,
+    "No requirements are recorded in this exact Thread snapshot.",
+  );
+  assertStringIncludes(
+    source,
+    "SysML parts and attributes are not inferred as requirements.",
+  );
 });

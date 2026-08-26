@@ -129,7 +129,14 @@ export function ProductRequirementsMatrix({
               EVIDENCE
             </span>
           </div>
-          {rows.length === 0
+          {matrix.counts.all === 0
+            ? (
+              <p className="px-3.5 py-6 text-sm text-muted-foreground">
+                No requirements are recorded in this exact Thread snapshot.
+                SysML parts and attributes are not inferred as requirements.
+              </p>
+            )
+            : rows.length === 0
             ? (
               <p className="px-3.5 py-6 text-sm text-muted-foreground">
                 No current modelled requirements match this filter.
