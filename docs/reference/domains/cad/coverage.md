@@ -50,8 +50,9 @@ These states must remain literal: they are not degraded success.
 - [Assembly integrity](assembly-integrity.md) is a separate post-publication evidence
   family, not a CAD language construct or an export path. Its L3 operation,
   `verify.observe-assembly-integrity@1`, reopens an exact canonical module and assembly
-  STEP only when a trusted normal-provider observer is composed; otherwise it remains
-  `unavailable`. L3 facts, the provider-free L4 evaluation, and human L5 closeout do not
+  STEP through the qualified, server-composed `mcp-build123d` observer. If that exact
+  profile, runtime, or input cannot be reopened, the result remains `unavailable` or
+  `unresolved`. L3 facts, the provider-free L4 evaluation, and human L5 closeout do not
   create geometry or a product verdict. There is no local OCCT, sandbox, or
   caller-selected-provider fallback.
 
@@ -69,9 +70,9 @@ envelopes, automatic assembly mapping in V1, and promotion of private isolated o
 canonical geometry. A new geometry inside this surface is **source text only**: there is
 no new agent, Workbench, or provider command for it.
 
-The pending observer consumes a canonical module artifact; it does not migrate or
-replace the module assembler. Moving that assembler to a provider is a separately
-bounded follow-up after the observer vertical, with its own profile and runtime proof.
+The qualified observer consumes a canonical module artifact; it does not migrate or
+replace the module assembler. Moving that assembler to a provider remains a separately
+bounded follow-up, with its own profile and runtime proof.
 
 ## Targeted PartDefinition seal
 

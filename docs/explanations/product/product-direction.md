@@ -160,7 +160,7 @@ canonical `design.write-geometry@1` STEP. They do not share verdicts.
 
 | Branch     | Question                            | What judges it today                                                                            | What a fail may do                                                                       |
 | ---------- | ----------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| **Behave** | Does this design behave?            | Isolated CalculiX proof `@3`, Modelica simulation, study-base join                              | Only a study-base `fail` may authorize `design.apply-vector-correction@1` then a new CAD |
+| **Behave** | Does this design behave?            | Isolated CalculiX proof `@3`, Modelica simulation, study-base join, and assembly-integrity L3 → L4 → L5 over one canonical assembly STEP | Only a study-base `fail` may authorize `design.apply-vector-correction@1` then a new CAD; assembly-integrity is limited to its named gate |
 | **Make**   | Can we fabricate this STEP?         | Measured DFM (`industrialize.run-dfm-checks@1`); printability / print-estimate stay documentary | Named violation only. Does not authorize a `z*` or a geometry write                      |
 | **Buy**    | What is the configuration and cost? | Intended ERPNext / BOM / cost evidence                                                          | No registered BOM seal yet. A missing binding is a missing binding                       |
 

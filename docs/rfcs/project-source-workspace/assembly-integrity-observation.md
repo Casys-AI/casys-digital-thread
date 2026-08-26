@@ -1,6 +1,6 @@
 # Assembly integrity observation
 
-Status: contract accepted · provider profile and runtime proof pending
+Status: implemented · qualified `mcp-build123d` profile and runtime evidence recorded
 
 ## Separate question from assembly build
 
@@ -19,12 +19,12 @@ The raw `build123d_observe_assembly_integrity` capability belongs to standalone
 own producer provenance; it knows no Casys project, Thread snapshot, MRTR, approval,
 requirement, evaluation or verdict.
 
-The pending Digital Thread vertical reopens the exact `geometry-module-capture/1.0` and
+The Digital Thread vertical reopens the exact `geometry-module-capture/1.0` and
 its canonical assembly STEP, selects a registered provider profile server-side, and
 seals normalized factual output as `assembly-integrity-observation/1.0` with provenance.
 No caller selects provider, tool, profile, tolerance, runtime or arguments. The provider
-profile and a real runtime proof remain required before any public review tool or
-registered operation is described as available.
+profile and real runtime evidence are required before the public review tool and
+registered operation are available.
 
 This observer has no local OCCT worker and no local fallback. It is facts only: overlap,
 contact, invalid topology or transform disagreement cannot become a product verdict by
@@ -42,7 +42,7 @@ being observed.
 For this module contract, `rotationDeg: [x, y, z]` is lowered with Build123d semantics
 as `Rx · Ry · Rz`; the historical `extrinsic-xyz` label alone is ambiguous.
 
-The first qualified method should report facts in three groups:
+The qualified method reports facts in three groups:
 
 1. STEP import and topology: unit, solid count, BRep validity, degenerate entities and
    free-edge or shell diagnostics supported by the engine;
@@ -56,7 +56,7 @@ metrics remain `unavailable`. A successful import must not be renamed “valid a
 
 ## Evaluation boundary
 
-L3 is the facts-only observation. L4 is a later, registered evaluation with an explicit
+L3 is the facts-only observation. L4 is the registered evaluation with an explicit
 `pass`, `fail` or `unresolved` result; L5 is a human closeout of the consequential
 decision. `design.write-geometry@1` seals geometry and never satisfies that gate.
 

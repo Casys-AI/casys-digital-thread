@@ -58,9 +58,9 @@ and Thread lineage, WAL/recovery, capture reread, approval and any later
 oracle/evaluation. A completed provider call is only a captured engineering fact. It is
 not a verdict, a human decision, or authority to rerun, correct or mutate the product.
 
-For the pending assembly-integrity vertical, the raw
+For the qualified assembly-integrity vertical, the raw
 `build123d_observe_assembly_integrity` capability belongs to `mcp-build123d`; its
-provider contract is not a Digital Thread public tool. The vertical becomes available
-only after the provider profile and real runtime have been proved. Its exact
-post-publication boundary is defined in
+provider contract is not a Digital Thread public tool. The registered profile and its
+runtime evidence make this vertical available without granting callers provider choice.
+Its exact post-publication boundary is defined in
 [Assembly integrity observation](../../rfcs/project-source-workspace/assembly-integrity-observation.md).

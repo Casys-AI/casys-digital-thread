@@ -108,13 +108,13 @@ and
 The generic lifecycle and recovery rules live in
 [admitted source isolated execution](../../pipeline/admitted-source-isolated-execution.md).
 
-## Pending post-publication assembly observation
+## Current post-publication assembly observation
 
-This is accepted architecture, not a current CAD execution path or public tool. Once a
-qualified `mcp-build123d` profile and its real runtime proof exist, Digital Thread will
-reopen an exact `geometry-module-capture/1.0` and its authoritative assembly STEP, lower
-a server-owned request to the raw `build123d_observe_assembly_integrity` provider
-capability, and seal the resulting facts as `assembly-integrity-observation/1.0`.
+Digital Thread reopens an exact `geometry-module-capture/1.0` and its authoritative
+assembly STEP, lowers a server-owned request to the raw
+`build123d_observe_assembly_integrity` provider capability through its qualified
+`mcp-build123d` profile, and seals the resulting facts as
+`assembly-integrity-observation/1.0`.
 
 The observer has no local OCCT worker, no sandbox or local-execution fallback, and no
 verdict. It records import/topology, recross and pairwise geometry facts with their
@@ -122,5 +122,5 @@ provenance; `unavailable` and `unresolved` remain literal. `mcp-build123d` does 
 receive a Casys project, Thread snapshot, MRTR or evaluation context.
 
 The observer consumes the canonical module artifact as it is sealed today. Migrating the
-module assembler itself to a provider is a separate bounded follow-up after this
-observer vertical, not an outcome claimed by it.
+module assembler itself to a provider is a separate bounded follow-up, not an outcome
+claimed by this vertical.
