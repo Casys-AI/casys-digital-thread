@@ -5,8 +5,8 @@ Audience: agent · Diátaxis: reference · Kind: contract
 Census of proof-case seal and isolated CalculiX `@3` files. Historical `@1`/`@2` stay
 unregistered. Not live-FEA sensitivity.
 
-Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays
-on [engineering domains](../domains/README.md).
+Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays on
+[engineering domains](../domains/README.md).
 
 ## Source map
 
@@ -160,7 +160,14 @@ producer, inputs, subject, lineage and MRTR history
 #### [`src/application/use-cases/fea/isolated-v3/prepare-project-fea-isolated-run-review.ts`](../../../src/application/use-cases/fea/isolated-v3/prepare-project-fea-isolated-run-review.ts)
 
 Reopens the sealed capture and emits `verify.run-fea-static-proof@3` bindings; never
-binds a cad-model as geometry
+binds a cad-model as geometry. When the compiled root activity already exists, a
+successor revision is derived only from its unique current leaf after one evidence-free
+`isolated_output_validation_failed` attempt; the failed work item and run stay immutable
+
+#### [`src/application/use-cases/fea/isolated-v3/fea-isolated-run-successor.ts`](../../../src/application/use-cases/fea/isolated-v3/fea-isolated-run-successor.ts)
+
+Deterministic isolated-run activity-successor identities and leaf qualification. Not a
+new operation, provider path, or physics surface
 
 #### [`src/tools/project-control/fea-review-tools.ts`](../../../src/tools/project-control/fea-review-tools.ts)
 

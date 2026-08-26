@@ -49,6 +49,57 @@ Deno.test("fea review next names the two MCP hops and strips kind from the appen
     tool: "project_agent_run_queue",
     workItemId: "wi-proof",
   });
+  assertEquals(
+    "predecessorRevisionId" in (next.append.arguments.workItems[0] ?? {}),
+    false,
+  );
+  assertEquals(next.append.arguments.phases.length, 1);
+});
+
+Deno.test("fea review next can reuse an existing phase and name a predecessor revision", () => {
+  const next = feaReviewNext({
+    basis: {
+      kind: "thread-snapshot",
+      snapshotId: "snap-r7",
+      revision: 7,
+      subjectId: "project:desk-lamp-dl06",
+    },
+    expectedRevision: 14,
+    phaseId: "phase-work-fea-isolated",
+    phaseName: "Isolated FEA verification",
+    phaseDescription: "Run the isolated CalculiX proof on the canonical part STEP.",
+    workItemId: "work-fea-isolated-r15-2",
+    decisionId: "decision-fea-isolated-r15-2",
+    decisionTitle: "Approve isolated FEA proof successor run",
+    decisionQuestion: "Approve the successor?",
+    operation: {
+      id: "verify.run-fea-static-proof",
+      version: "3",
+      bindings: [],
+    },
+    summary: "Queue a successor after an evidence-free output-validation failure.",
+    parameters: [{
+      key: "review.predecessorWorkItemId",
+      label: "Failed predecessor",
+      value: "work-fea-isolated-r15",
+    }],
+    dependsOnWorkItemIds: ["work-step"],
+    predecessorRevisionId: "work-fea-isolated-r15",
+    reuseExistingPhase: true,
+  });
+  assertEquals(next.append.arguments.phases, []);
+  assertEquals(
+    next.append.arguments.workItems[0]?.predecessorRevisionId,
+    "work-fea-isolated-r15",
+  );
+  assertEquals(next.append.arguments.workItems[0]?.phaseId, "phase-work-fea-isolated");
+  assertEquals(next.append.arguments.workItems[0]?.dependsOnWorkItemIds, [
+    "work-step",
+  ]);
+  assertEquals(
+    next.append.arguments.requiredDecisions[0]?.id,
+    "decision-fea-isolated-r15-2",
+  );
 });
 
 Deno.test("FEA review next-state guard rejects historical bases and conflicting catalog identities", () => {
@@ -115,5 +166,43 @@ Deno.test("FEA review next-state guard rejects historical bases and conflicting 
   assertEquals(
     conflicting.status === "unresolved" ? conflicting.diagnostic.code : null,
     "compiled-identities-conflict",
+  );
+
+  const reused = validateFeaReviewNextState({
+    projectId: "desk-lamp-dl06",
+    project: {
+      ...project,
+      threadSnapshots: [project.threadSnapshots[0]],
+      workItems: [],
+      decisions: [],
+    },
+    basis,
+    phaseId: "verification",
+    workItemId: "wi-proof-2",
+    decisionId: "dec-proof-2",
+    reuseExistingPhase: true,
+  });
+  assertEquals(reused.status, "ready");
+  assertEquals(reused.status === "ready" ? reused.expectedRevision : null, 9);
+
+  const missingPhase = validateFeaReviewNextState({
+    projectId: "desk-lamp-dl06",
+    project: {
+      ...project,
+      threadSnapshots: [project.threadSnapshots[0]],
+      phases: [],
+      workItems: [],
+      decisions: [],
+    },
+    basis,
+    phaseId: "verification",
+    workItemId: "wi-proof-2",
+    decisionId: "dec-proof-2",
+    reuseExistingPhase: true,
+  });
+  assertEquals(missingPhase.status, "unresolved");
+  assertEquals(
+    missingPhase.status === "unresolved" ? missingPhase.diagnostic.code : null,
+    "project-state-mismatch",
   );
 });

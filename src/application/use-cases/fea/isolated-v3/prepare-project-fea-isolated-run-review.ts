@@ -15,6 +15,7 @@ import type { FeaIsolatedRunAdmissionReviewer } from "../../../ports/out/fea/iso
 import {
   diagnoseIsolatedCalculixProofArtifact,
   type IsolatedCalculixBindingDiagnostic,
+  type IsolatedCalculixResolvedBindings,
   isolatedCalculixReviewProposal,
   resolveIsolatedCalculixRunBindings,
   selectSealedFeaProofArtifact,
@@ -24,7 +25,10 @@ import {
   deepFreeze,
   safeId,
 } from "../../../../domain/kernel/case-validation.ts";
-import type { EngineeringThreadSnapshotBasis } from "../../../../domain/project/engineering-project.ts";
+import type {
+  EngineeringProjectSnapshot,
+  EngineeringThreadSnapshotBasis,
+} from "../../../../domain/project/engineering-project.ts";
 import {
   type FeaReviewBasisDiagnostic,
   feaReviewNext,
@@ -35,6 +39,12 @@ import {
   parseOptionalThreadBasis,
   validateFeaReviewNextState,
 } from "../seal-case/fea-review-support.ts";
+import {
+  isolatedFeaRunDecisionId,
+  isolatedFeaRunWorkItemId,
+  isolatedFeaSuccessorProposal,
+  resolveFeaIsolatedRunSuccessor,
+} from "./fea-isolated-run-successor.ts";
 
 export type ProjectFeaIsolatedRunReviewErrorCode =
   | "invalid_request"
@@ -165,58 +175,138 @@ export class PrepareProjectFeaIsolatedRunReview
     if (resolved.status !== "resolved") {
       return unresolvedRun(resolved.diagnostics, basis);
     }
-    const selection = {
-      proofArtifactId: resolved.resolved.proofArtifact.id,
-      stepArtifactId: resolved.resolved.stepArtifact.id,
-      basis,
-      workItemId: isolatedWorkItemId(capture.proofDigest, basis.revision),
-      decisionId: isolatedDecisionId(capture.proofDigest, basis.revision),
-    };
-    const proposal = isolatedCalculixReviewProposal(
-      selection.proofArtifactId,
-      selection.stepArtifactId,
+    const rootWorkItemId = isolatedFeaRunWorkItemId(
+      capture.proofDigest,
+      basis.revision,
     );
-    const phaseId = `phase-${selection.workItemId}`;
-    const nextState = validateFeaReviewNextState({
+    const rootDecisionId = isolatedFeaRunDecisionId(
+      capture.proofDigest,
+      basis.revision,
+    );
+    const rootExists = project.workItems.some((item) => item.id === rootWorkItemId);
+    if (rootExists) {
+      const successor = resolveFeaIsolatedRunSuccessor({
+        project,
+        rootWorkItemId,
+        proofDigest: capture.proofDigest,
+        threadRevision: basis.revision,
+        operation: resolved.resolved.operation,
+      });
+      if (successor.status !== "ready") {
+        return notAppendable("unresolved", [successor.diagnostic], basis);
+      }
+      return compileAppendableRunReview({
+        project,
+        projectId: command.projectId,
+        basis,
+        resolved,
+        workItemId: successor.workItemId,
+        decisionId: successor.decisionId,
+        phaseId: successor.phaseId,
+        dependsOnWorkItemIds: successor.dependsOnWorkItemIds,
+        predecessorWorkItemId: successor.predecessorWorkItemId,
+        failedRunId: successor.failedRunId,
+      });
+    }
+    return compileAppendableRunReview({
       project,
       projectId: command.projectId,
       basis,
-      phaseId,
-      workItemId: selection.workItemId,
-      decisionId: selection.decisionId,
-    });
-    if (nextState.status !== "ready") {
-      return notAppendable(
-        nextState.status,
-        [toRunDiagnostic(nextState.diagnostic)],
-        basis,
-      );
-    }
-    return deepFreeze({
-      status: "resolved" as const,
-      diagnostics: [],
-      rejectedLookalikes: resolved.resolved.rejectedLookalikes,
-      basis,
-      selected: selection,
-      operation: resolved.resolved.operation,
-      bindings: resolved.resolved.bindings,
-      next: feaReviewNext({
-        basis,
-        operation: resolved.resolved.operation,
-        summary: proposal.summary,
-        parameters: proposal.parameters,
-        expectedRevision: nextState.expectedRevision,
-        phaseId,
-        phaseName: "Isolated FEA verification",
-        phaseDescription: "Run the isolated CalculiX proof on the canonical part STEP.",
-        workItemId: selection.workItemId,
-        decisionId: selection.decisionId,
-        decisionTitle: "Approve isolated FEA proof run",
-        decisionQuestion:
-          "Approve verify.run-fea-static-proof@3 for this exact sealed proof and canonical STEP?",
-      }),
+      resolved,
+      workItemId: rootWorkItemId,
+      decisionId: rootDecisionId,
+      phaseId: `phase-${rootWorkItemId}`,
+      dependsOnWorkItemIds: [],
     });
   }
+}
+
+function compileAppendableRunReview(input: {
+  readonly project: EngineeringProjectSnapshot;
+  readonly projectId: string;
+  readonly basis: EngineeringThreadSnapshotBasis;
+  readonly resolved: { readonly resolved: IsolatedCalculixResolvedBindings };
+  readonly workItemId: string;
+  readonly decisionId: string;
+  readonly phaseId: string;
+  readonly dependsOnWorkItemIds: readonly string[];
+  readonly predecessorWorkItemId?: string;
+  readonly failedRunId?: string;
+}): ProjectFeaIsolatedRunReviewResult {
+  const successor = input.predecessorWorkItemId && input.failedRunId
+    ? isolatedFeaSuccessorProposal({
+      proofArtifactId: input.resolved.resolved.proofArtifact.id,
+      stepArtifactId: input.resolved.resolved.stepArtifact.id,
+      predecessorWorkItemId: input.predecessorWorkItemId,
+      failedRunId: input.failedRunId,
+    })
+    : undefined;
+  const proposal = isolatedCalculixReviewProposal(
+    input.resolved.resolved.proofArtifact.id,
+    input.resolved.resolved.stepArtifact.id,
+  );
+  const nextState = validateFeaReviewNextState({
+    project: input.project,
+    projectId: input.projectId,
+    basis: input.basis,
+    phaseId: input.phaseId,
+    workItemId: input.workItemId,
+    decisionId: input.decisionId,
+    ...(successor ? { reuseExistingPhase: true } : {}),
+  });
+  if (nextState.status !== "ready") {
+    return notAppendable(
+      nextState.status,
+      [toRunDiagnostic(nextState.diagnostic)],
+      input.basis,
+    );
+  }
+  return deepFreeze({
+    status: "resolved" as const,
+    diagnostics: [],
+    rejectedLookalikes: input.resolved.resolved.rejectedLookalikes,
+    basis: input.basis,
+    selected: {
+      proofArtifactId: input.resolved.resolved.proofArtifact.id,
+      stepArtifactId: input.resolved.resolved.stepArtifact.id,
+      basis: input.basis,
+      workItemId: input.workItemId,
+      decisionId: input.decisionId,
+      ...(successor
+        ? {
+          predecessorWorkItemId: input.predecessorWorkItemId,
+          failedRunId: input.failedRunId,
+        }
+        : {}),
+    },
+    operation: input.resolved.resolved.operation,
+    bindings: input.resolved.resolved.bindings,
+    next: feaReviewNext({
+      basis: input.basis,
+      operation: input.resolved.resolved.operation,
+      summary: successor?.summary ?? proposal.summary,
+      parameters: [...proposal.parameters, ...(successor?.parameters ?? [])],
+      expectedRevision: nextState.expectedRevision,
+      phaseId: input.phaseId,
+      phaseName: "Isolated FEA verification",
+      phaseDescription: "Run the isolated CalculiX proof on the canonical part STEP.",
+      workItemId: input.workItemId,
+      decisionId: input.decisionId,
+      decisionTitle: successor
+        ? "Approve isolated FEA proof successor run"
+        : "Approve isolated FEA proof run",
+      decisionQuestion: successor
+        ? `Approve verify.run-fea-static-proof@3 as a successor revision of ${input.predecessorWorkItemId} after evidence-free isolated output-validation failure ${input.failedRunId} on this exact sealed proof and canonical STEP?`
+        : "Approve verify.run-fea-static-proof@3 for this exact sealed proof and canonical STEP?",
+      dependsOnWorkItemIds: input.dependsOnWorkItemIds,
+      ...(successor
+        ? {
+          predecessorRevisionId: input.predecessorWorkItemId,
+          reuseExistingPhase: true,
+        }
+        : {}),
+    }),
+  });
 }
 
 function parseCommand(value: unknown): ProjectFeaIsolatedRunReviewCommand {
@@ -278,12 +368,4 @@ function reviewError(
   message: string,
 ): ProjectFeaIsolatedRunReviewError {
   return new ProjectFeaIsolatedRunReviewError(code, message);
-}
-
-function isolatedWorkItemId(proofDigest: string, revision: number): string {
-  return `work-fea-isolated-${proofDigest.slice(0, 16)}-r${revision}`;
-}
-
-function isolatedDecisionId(proofDigest: string, revision: number): string {
-  return `decision-fea-isolated-${proofDigest.slice(0, 16)}-r${revision}`;
 }

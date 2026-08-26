@@ -202,6 +202,10 @@ export function feaReviewNext(input: {
   readonly decisionTitle: string;
   readonly decisionQuestion: string;
   readonly dependsOnWorkItemIds?: readonly string[];
+  /** Names the failed leaf so the project stamps the same activityId. */
+  readonly predecessorRevisionId?: string;
+  /** Reuse an already-declared phase; emit `phases: []`. */
+  readonly reuseExistingPhase?: boolean;
 }): {
   readonly append: {
     readonly tool: "project_change_append";
@@ -219,6 +223,7 @@ export function feaReviewNext(input: {
         readonly owner: "agent";
         readonly dependsOnWorkItemIds: readonly string[];
         readonly decisionIds: readonly string[];
+        readonly predecessorRevisionId?: string;
         readonly operation: EngineeringOperationRef;
       }[];
       readonly requiredDecisions: readonly {
@@ -250,7 +255,7 @@ export function feaReviewNext(input: {
       arguments: {
         baseSnapshot: threadSnapshotRefFromBasis(input.basis),
         expectedRevision: input.expectedRevision,
-        phases: [{
+        phases: input.reuseExistingPhase ? [] : [{
           id: input.phaseId,
           name: input.phaseName,
           description: input.phaseDescription,
@@ -261,6 +266,9 @@ export function feaReviewNext(input: {
           owner: "agent",
           dependsOnWorkItemIds: [...(input.dependsOnWorkItemIds ?? [])],
           decisionIds: [input.decisionId],
+          ...(input.predecessorRevisionId
+            ? { predecessorRevisionId: input.predecessorRevisionId }
+            : {}),
           operation: input.operation,
         }],
         requiredDecisions: [{
@@ -308,6 +316,8 @@ export function validateFeaReviewNextState(input: {
   readonly phaseId: string;
   readonly workItemId: string;
   readonly decisionId: string;
+  /** Existing phase is reused, not declared again. */
+  readonly reuseExistingPhase?: boolean;
 }):
   | { readonly status: "ready"; readonly expectedRevision: number }
   | {
@@ -348,8 +358,19 @@ export function validateFeaReviewNextState(input: {
       `The review basis is historical or the current project head is not unique. ${detail} No paste-ready append is emitted.`,
     );
   }
+  if (input.reuseExistingPhase) {
+    if (!project.phases.some((item) => item.id === input.phaseId)) {
+      return nextRefusal(
+        "unresolved",
+        "project-state-mismatch",
+        `The successor append reuses phase ${input.phaseId}, but that phase is absent from project state. No next hop is emitted.`,
+      );
+    }
+  }
   const conflicts = [
-    ...(project.phases.some((item) => item.id === input.phaseId)
+    ...(input.reuseExistingPhase
+      ? []
+      : project.phases.some((item) => item.id === input.phaseId)
       ? [`phase ${input.phaseId}`]
       : []),
     ...(project.workItems.some((item) => item.id === input.workItemId)

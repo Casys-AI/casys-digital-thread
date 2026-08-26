@@ -31,6 +31,10 @@ export interface FeaIsolatedRunReviewSelection {
   readonly basis: EngineeringThreadSnapshotBasis;
   readonly workItemId: string;
   readonly decisionId: string;
+  /** Failed leaf named as predecessor; absent on the first-run append. */
+  readonly predecessorWorkItemId?: string;
+  /** Evidence-free terminal run that authorized the successor; first-run omits it. */
+  readonly failedRunId?: string;
 }
 
 export interface FeaIsolatedRunReviewNext {
@@ -50,6 +54,7 @@ export interface FeaIsolatedRunReviewNext {
         readonly owner: "agent";
         readonly dependsOnWorkItemIds: readonly string[];
         readonly decisionIds: readonly string[];
+        readonly predecessorRevisionId?: string;
         readonly operation: EngineeringOperationRef;
       }[];
       readonly requiredDecisions: readonly {

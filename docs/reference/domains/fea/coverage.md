@@ -18,6 +18,13 @@ a product capability by itself.
 | Closeout    | `project_evaluation_closeout_review` then `decide.accept-evaluation-closeout@1` / `decide.reject-evaluation-closeout@1` record a human L5 over that exact `@3` branch. Accept is offered only when every L4 criterion is literal `pass`. An L4 `pass` is never L5. How-to: [review static-mechanical closeout](../../../how-to/verify-design/close-out-a-static-mechanical-proof.md). |
 | Preservation | After a cross-domain impact decision, `analyze.evaluate-mechanical-preservation@2` rereads that exact FEA proof, its consumptions, and the L5 closeout. `carried-forward` requires a current independence assertion covering those exact inputs; otherwise the result stays `impact-unresolved`. No CalculiX call. Impact inventory: [impact coverage](../impact/coverage.md). |
 
+After one evidence-free terminal `isolated_output_validation_failed` attempt on the
+unique current leaf of the compiled isolated-run activity,
+`project_fea_isolated_run_review` may compile a successor revision of that same
+activity. It does not retry the failed work item or run. Completed, cancelled,
+uncertain, evidenced, reconciled, forked, stale, foreign, or operation-mismatched
+leaves stay refused. This is lifecycle recovery, not new physics.
+
 ### Admitted V1 mechanics
 
 | Aspect   | Admitted inventory                                                                        |
@@ -52,6 +59,9 @@ advance assembly FEA coverage.
   calls supplied by an agent or a case file.
 - A `cad-model` used where the run requires the canonical part STEP.
 - A seal MRTR used as the separate `@3` run MRTR.
+- A second attempt of a failed isolated-run work item. Recovery is a successor revision
+  of that activity after one evidence-free `isolated_output_validation_failed` leaf, not
+  a retry of the failed work or run.
 - Modal, buckling, thermal, dynamic, creep, or coupled analysis.
 - Contact; nonlinear geometry or material; plastic or orthotropic material models.
 - Pressure, gravity/body-force, prescribed-displacement, moment, or temperature loads.

@@ -1,16 +1,29 @@
 import { assertEquals, assertExists } from "@std/assert";
+import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
 import { canonicalProofText } from "../../../../domain/fea/seal-case/fea-proof-proposal.ts";
 import { parseFeaProofCaseCapture } from "../../../../domain/fea/seal-case/fea-proof-case-capture.ts";
 import { validateMechanicalProofCase } from "../../../../domain/fea/seal-case/mechanical-proof-case.ts";
+import { engineeringActivityIdFromRootRevision } from "../../../../domain/project/engineering-activity.ts";
 import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
-import type { EngineeringProjectSnapshot } from "../../../../domain/project/engineering-project.ts";
+import type {
+  EngineeringAgentRun,
+  EngineeringOperationRef,
+  EngineeringProjectSnapshot,
+  EngineeringWorkItem,
+} from "../../../../domain/project/engineering-project.ts";
 import { validateThreadSnapshot } from "../../../../domain/thread/thread-snapshot-validation.ts";
 import type { ThreadSnapshot } from "../../../../domain/thread/thread-snapshot.ts";
+import type { EngineeringProjectCommandService } from "../../project/engineering-project-command-service.ts";
+import {
+  type ProjectControlToolDependencies,
+  registerProjectControlTools,
+} from "../../../../tools/project-control.ts";
 import { PrepareProjectFeaIsolatedRunReview } from "./prepare-project-fea-isolated-run-review.ts";
+import type { ProjectFeaIsolatedRunReviewResult } from "../../../ports/in/fea/isolated-v3/project-fea-isolated-run-review.ts";
 
 const AT = "2026-08-16T00:00:00.000Z";
 const PROJECT_ID = "desk-lamp-dl06";
@@ -82,6 +95,13 @@ Deno.test("isolated-run review selects the unique sealed proof when proofArtifac
     result.selected.decisionId,
   );
   assertEquals(result.next.queue.workItemId, result.selected.workItemId);
+  assertEquals("predecessorWorkItemId" in result.selected, false);
+  assertEquals("failedRunId" in result.selected, false);
+  assertEquals(
+    "predecessorRevisionId" in (result.next.append.arguments.workItems[0] ?? {}),
+    false,
+  );
+  assertEquals(result.next.append.arguments.phases.length, 1);
   assertEquals(
     result.next.propose.arguments.proposal.summary.includes("cad-model"),
     true,
@@ -188,15 +208,14 @@ Deno.test("isolated-run review emits no paste-ready hop from a historical projec
   );
 });
 
-Deno.test("isolated-run review is unresolved when compiled identities already exist", async () => {
+Deno.test("isolated-run review refuses first-run append when only the compiled decision already exists", async () => {
   const world = await harness();
   const ready = await world.review.execute(world.command);
   assertEquals(ready.status, "resolved");
   if (ready.status !== "resolved") return;
-  assertExists(ready.selected.workItemId);
   const project = {
     ...projectState(world.snapshot),
-    workItems: [{ id: ready.selected.workItemId }],
+    decisions: [{ id: ready.selected.decisionId, phaseId: "verification" }],
   } as unknown as EngineeringProjectSnapshot;
   const review = new PrepareProjectFeaIsolatedRunReview({
     snapshots: world.snapshots,
@@ -211,6 +230,201 @@ Deno.test("isolated-run review is unresolved when compiled identities already ex
     result.diagnostics.map((item) => item.code),
     ["compiled-identities-conflict"],
   );
+});
+
+Deno.test("isolated-run review refuses a compiled root that has no qualifying failed run", async () => {
+  const world = await harness();
+  const ready = await world.review.execute(world.command);
+  assertEquals(ready.status, "resolved");
+  if (ready.status !== "resolved") return;
+  const review = reviewAgainst(
+    world,
+    projectWithActivity(world, ready, {
+      runs: [],
+    }),
+  );
+  const result = await review.execute(world.command);
+  assertEquals(result.status, "unresolved");
+  assertEquals(result.next, undefined);
+  assertEquals(
+    result.diagnostics.map((item) => item.code),
+    ["activity-attempt-missing"],
+  );
+});
+
+Deno.test("isolated-run review compiles a successor after one evidence-free output-validation failure", async () => {
+  const world = await harness();
+  const first = await world.review.execute(world.command);
+  assertEquals(first.status, "resolved");
+  if (first.status !== "resolved") return;
+  const failedRunId = "run:fea-isolated-output-validation";
+  const review = reviewAgainst(
+    world,
+    projectWithActivity(world, first, {
+      runs: [failedIsolatedRun(first.selected.workItemId, failedRunId)],
+    }),
+  );
+  const result = await review.execute(world.command);
+  assertEquals(result.status, "resolved");
+  if (result.status !== "resolved") return;
+  assertEquals(result.operation, first.operation);
+  assertEquals(result.bindings, first.bindings);
+  assertEquals(result.selected.predecessorWorkItemId, first.selected.workItemId);
+  assertEquals(result.selected.failedRunId, failedRunId);
+  assertEquals(result.selected.workItemId, `${first.selected.workItemId}-2`);
+  assertEquals(result.selected.decisionId, `${first.selected.decisionId}-2`);
+  assertEquals(result.selected.workItemId === first.selected.workItemId, false);
+  assertEquals(result.next.append.arguments.phases, []);
+  assertEquals(
+    result.next.append.arguments.workItems[0]?.predecessorRevisionId,
+    first.selected.workItemId,
+  );
+  assertEquals(
+    result.next.append.arguments.workItems[0]?.phaseId,
+    first.next.append.arguments.workItems[0]?.phaseId,
+  );
+  assertEquals(
+    result.next.append.arguments.workItems[0]?.operation,
+    first.operation,
+  );
+  assertEquals(
+    result.next.append.arguments.workItems[0]?.dependsOnWorkItemIds,
+    ["work-step-export"],
+  );
+  assertEquals(
+    result.next.append.arguments.requiredDecisions[0]?.id,
+    result.selected.decisionId,
+  );
+  assertEquals(result.next.propose.arguments.decisionId, result.selected.decisionId);
+  assertEquals(
+    result.next.propose.arguments.proposal.parameters.some((parameter) =>
+      parameter.key === "review.predecessorWorkItemId" &&
+      parameter.value === first.selected.workItemId
+    ),
+    true,
+  );
+  assertEquals(
+    result.next.propose.arguments.proposal.parameters.some((parameter) =>
+      parameter.key === "review.failedRunId" && parameter.value === failedRunId
+    ),
+    true,
+  );
+  assertEquals(
+    result.next.propose.arguments.proposal.summary.includes(failedRunId),
+    true,
+  );
+});
+
+Deno.test("isolated-run successor review is deterministic on replay", async () => {
+  const world = await harness();
+  const first = await world.review.execute(world.command);
+  assertEquals(first.status, "resolved");
+  if (first.status !== "resolved") return;
+  const review = reviewAgainst(
+    world,
+    projectWithActivity(world, first, {
+      runs: [failedIsolatedRun(first.selected.workItemId, "run:fea-replay")],
+    }),
+  );
+  const left = await review.execute(world.command);
+  const right = await review.execute(world.command);
+  assertEquals(left, right);
+  assertEquals(left.status, "resolved");
+  if (left.status !== "resolved") return;
+  assertEquals(left.selected.workItemId, `${first.selected.workItemId}-2`);
+  assertEquals(left.selected.failedRunId, "run:fea-replay");
+});
+
+Deno.test("isolated-run review refuses a successor that itself has no qualifying failed run", async () => {
+  const world = await harness();
+  const first = await world.review.execute(world.command);
+  assertEquals(first.status, "resolved");
+  if (first.status !== "resolved") return;
+  const successorId = `${first.selected.workItemId}-2`;
+  const review = reviewAgainst(
+    world,
+    projectWithActivity(world, first, {
+      extraWork: [successorWork(first, successorId)],
+      runs: [failedIsolatedRun(first.selected.workItemId, "run:root-failed")],
+    }),
+  );
+  const result = await review.execute(world.command);
+  assertEquals(result.status, "unresolved");
+  assertEquals(
+    result.diagnostics.map((item) => item.code),
+    ["activity-attempt-missing"],
+  );
+});
+
+Deno.test("isolated-run review derives the next successor after a later qualifying failure", async () => {
+  const world = await harness();
+  const first = await world.review.execute(world.command);
+  assertEquals(first.status, "resolved");
+  if (first.status !== "resolved") return;
+  const successorId = `${first.selected.workItemId}-2`;
+  const review = reviewAgainst(
+    world,
+    projectWithActivity(world, first, {
+      extraWork: [successorWork(first, successorId)],
+      runs: [failedIsolatedRun(successorId, "run:successor-failed")],
+    }),
+  );
+  const result = await review.execute(world.command);
+  assertEquals(result.status, "resolved");
+  if (result.status !== "resolved") return;
+  assertEquals(result.selected.predecessorWorkItemId, successorId);
+  assertEquals(result.selected.failedRunId, "run:successor-failed");
+  assertEquals(result.selected.workItemId, `${first.selected.workItemId}-3`);
+  assertEquals(
+    result.next.append.arguments.workItems[0]?.predecessorRevisionId,
+    successorId,
+  );
+});
+
+Deno.test("isolated-run successor append matches the project_change_append grammar", async () => {
+  const world = await harness();
+  const first = await world.review.execute(world.command);
+  assertEquals(first.status, "resolved");
+  if (first.status !== "resolved") return;
+  const project = projectWithActivity(world, first, {
+    runs: [failedIsolatedRun(first.selected.workItemId, "run:fea-append-shape")],
+  });
+  const review = reviewAgainst(world, project);
+  const result = await review.execute(world.command);
+  assertEquals(result.status, "resolved");
+  if (result.status !== "resolved") return;
+
+  const decoded: Array<Record<string, unknown>> = [];
+  const app = new CapturingApp();
+  registerProjectControlTools(
+    app as unknown as McpApp,
+    {
+      projects: {
+        get: () => Promise.resolve(project),
+        getRevision: () => Promise.resolve(project),
+      },
+      commands: {
+        appendChange: (
+          _origin: unknown,
+          command: { readonly workItems: readonly unknown[] },
+        ) => {
+          decoded.push(command as unknown as Record<string, unknown>);
+          return Promise.resolve(project);
+        },
+      } as unknown as EngineeringProjectCommandService,
+    } as ProjectControlToolDependencies,
+  );
+  await app.handler("project_change_append")({
+    commandId: "fea-isolated-successor-append",
+    projectId: PROJECT_ID,
+    issuedAt: AT,
+    ...result.next.append.arguments,
+  }, { toolName: "project_change_append" });
+  assertEquals(decoded.length, 1);
+  const work = (decoded[0]!.workItems as Array<Record<string, unknown>>)[0];
+  assertEquals(work?.predecessorRevisionId, first.selected.workItemId);
+  assertEquals(decoded[0]!.phases, []);
+  assertEquals(work?.operation, result.operation);
 });
 
 async function harness(options: { readonly omitStep?: boolean } = {}) {
@@ -452,6 +666,120 @@ class MemoryProjects {
     return Promise.resolve(
       projectId === PROJECT_ID ? projectState(this.snapshot) : undefined,
     );
+  }
+}
+
+function reviewAgainst(
+  world: Awaited<ReturnType<typeof harness>>,
+  project: EngineeringProjectSnapshot,
+) {
+  return new PrepareProjectFeaIsolatedRunReview({
+    snapshots: world.snapshots,
+    admissionReviewer: world.admissionReviewer,
+    projects: { get: () => Promise.resolve(project) },
+  });
+}
+
+function projectWithActivity(
+  world: Awaited<ReturnType<typeof harness>>,
+  first: Extract<ProjectFeaIsolatedRunReviewResult, { status: "resolved" }>,
+  options: {
+    readonly runs: readonly EngineeringAgentRun[];
+    readonly extraWork?: readonly EngineeringWorkItem[];
+  },
+): EngineeringProjectSnapshot {
+  const root = isolatedWorkItem(first, first.selected.workItemId);
+  const workItems = [root, ...(options.extraWork ?? [])];
+  const phaseId = first.next.append.arguments.workItems[0]!.phaseId;
+  return {
+    ...projectState(world.snapshot),
+    phases: [{
+      id: phaseId,
+      name: "Isolated FEA verification",
+      order: 1,
+      description: "Run the isolated CalculiX proof on the canonical part STEP.",
+      workItemIds: workItems.map((item) => item.id),
+      requiredDecisionIds: [first.selected.decisionId],
+      evidenceRefs: [],
+    }],
+    workItems,
+    agentRuns: [...options.runs],
+    decisions: [{
+      id: first.selected.decisionId,
+      phaseId,
+      title: "Approve isolated FEA proof run",
+      question:
+        "Approve verify.run-fea-static-proof@3 for this exact sealed proof and canonical STEP?",
+      status: "approved",
+      requestedAt: AT,
+      inputEvidenceRefs: [],
+      approvalIds: [],
+    }],
+  } as EngineeringProjectSnapshot;
+}
+
+function isolatedWorkItem(
+  first: Extract<ProjectFeaIsolatedRunReviewResult, { status: "resolved" }>,
+  id: string,
+  predecessorRevisionId?: string,
+): EngineeringWorkItem {
+  return {
+    id,
+    activityId: engineeringActivityIdFromRootRevision(first.selected.workItemId),
+    ...(predecessorRevisionId ? { predecessorRevisionId } : {}),
+    phaseId: first.next.append.arguments.workItems[0]!.phaseId,
+    title: "Isolated FEA verification",
+    description: "Run the isolated CalculiX proof on the canonical part STEP.",
+    kind: "verify",
+    status: "ready",
+    owner: "agent",
+    dependsOnWorkItemIds: ["work-step-export"],
+    evidenceRefs: [],
+    decisionIds: predecessorRevisionId
+      ? [`${first.selected.decisionId}-2`]
+      : [first.selected.decisionId],
+    blockerIds: [],
+    operation: first.operation as EngineeringOperationRef,
+  };
+}
+
+function successorWork(
+  first: Extract<ProjectFeaIsolatedRunReviewResult, { status: "resolved" }>,
+  id: string,
+): EngineeringWorkItem {
+  return isolatedWorkItem(first, id, first.selected.workItemId);
+}
+
+function failedIsolatedRun(workItemId: string, runId: string): EngineeringAgentRun {
+  return {
+    id: runId,
+    workItemId,
+    status: "failed",
+    summary: "Isolated output validation rejected the worker bundle.",
+    queuedAt: AT,
+    startedAt: AT,
+    completedAt: AT,
+    evidenceRefs: [],
+    failure: {
+      code: "isolated_output_validation_failed",
+      message: "Isolated output validation rejected registered role result.json.",
+    },
+  };
+}
+
+class CapturingApp {
+  readonly #tools = new Map<string, MCPTool>();
+  readonly #handlers = new Map<string, ToolHandler>();
+
+  registerTool(tool: MCPTool, handler: ToolHandler): void {
+    this.#tools.set(tool.name, tool);
+    this.#handlers.set(tool.name, handler);
+  }
+
+  handler(name: string): ToolHandler {
+    const handler = this.#handlers.get(name);
+    if (!handler) throw new Error(`Expected ${name} handler to be registered.`);
+    return handler;
   }
 }
 

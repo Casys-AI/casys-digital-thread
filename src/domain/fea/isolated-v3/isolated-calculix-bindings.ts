@@ -51,7 +51,20 @@ export type IsolatedCalculixBindingDiagnosticCode =
   | "project-state-mismatch"
   | "basis-not-current"
   | "compiled-identities-conflict"
-  | "queue-admission-rejected";
+  | "queue-admission-rejected"
+  | "activity-foreign"
+  | "activity-leaf-ambiguous"
+  | "activity-leaf-not-ready"
+  | "activity-leaf-not-agent-owned"
+  | "activity-leaf-has-evidence"
+  | "activity-leaf-reconciled"
+  | "activity-attempt-missing"
+  | "activity-attempt-ambiguous"
+  | "activity-run-not-failed"
+  | "activity-run-uncertain"
+  | "activity-failure-code-mismatch"
+  | "activity-run-has-result"
+  | "activity-operation-mismatch";
 
 export interface IsolatedCalculixBindingDiagnostic {
   readonly code: IsolatedCalculixBindingDiagnosticCode;
