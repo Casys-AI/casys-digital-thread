@@ -26,10 +26,11 @@ import type {
   Build123dExecutionDraftStore,
 } from "../../../application/ports/out/cad/isolated/build123d-execution-evidence-store.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
-import type {
-  IsolatedCodeRunner,
-  IsolatedCodeRunRecovery,
-  IsolatedOutputPublicationReader,
+import {
+  IsolatedCodeOutputValidationRejectedError,
+  type IsolatedCodeRunner,
+  type IsolatedCodeRunRecovery,
+  type IsolatedOutputPublicationReader,
 } from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
 import type {
   ReopenedTechnicalCompilationAdmission,
@@ -63,11 +64,15 @@ import {
   isolatedCodeExecutionReceiptRecord,
   type IsolatedCodeExecutionRequest,
   isolatedCodeOutputManifestsEqual,
+  type IsolatedCodeOutputValidationRejection,
   isolatedCodeRefsEqual,
   runtimeAttestationsEqual,
+  validateIsolatedCodeExecutionDestruction,
   validateIsolatedCodeExecutionReceiptRecord,
+  validateIsolatedCodeOutputValidationRejection,
   validateIsolatedOutputProducerGenerationAdvance,
 } from "../../../domain/compile/isolation/isolated-code-execution.ts";
+import { safeId } from "../../../domain/kernel/case-validation.ts";
 import { COMPILATION_ADMISSION_BINDING_NAME } from "../../../domain/compile/admission/compilation-admission-run-operation.ts";
 import {
   validateTechnicalCompilationDocument,
@@ -114,6 +119,50 @@ import {
 } from "../../shared/thread-write-basis-guard.ts";
 
 export { DESIGN_EXECUTE_BUILD123D_OPERATION };
+
+export const BUILD123D_ISOLATED_OUTPUT_VALIDATION_FAILED = {
+  summary:
+    "Isolated Build123d output validation was rejected before Thread publication.",
+  code: "isolated_output_validation_failed",
+} as const;
+
+/**
+ * Terminal Build123d conversion of a public isolated output-validation
+ * rejection. It carries only the registered role, observed size/digest and
+ * proven destruction; no worker diagnostic, bytes, path or handle.
+ */
+export class IsolatedBuild123dOutputValidationRejectedError extends Error {
+  readonly code = "output_validation_rejected" as const;
+  readonly executionRunId: string;
+  readonly observation: IsolatedCodeOutputValidationRejection;
+  readonly destruction: Extract<
+    IsolatedCodeExecutionReceipt["destruction"],
+    { readonly status: "proven" }
+  >;
+
+  constructor(input: {
+    readonly executionRunId: string;
+    readonly observation: IsolatedCodeOutputValidationRejection;
+    readonly destruction: IsolatedCodeExecutionReceipt["destruction"];
+  }) {
+    super(
+      "A code-owned isolated Build123d output validator rejected the observed bytes; no redispatch occurs.",
+    );
+    this.name = "IsolatedBuild123dOutputValidationRejectedError";
+    this.executionRunId = safeId(input.executionRunId, "$rejection.executionRunId");
+    this.observation = validateIsolatedCodeOutputValidationRejection(
+      input.observation,
+    );
+    const destruction = validateIsolatedCodeExecutionDestruction(
+      input.destruction,
+      this.executionRunId,
+    );
+    if (destruction.status !== "proven") {
+      throw new TypeError("Output-validation rejection requires proven destruction.");
+    }
+    this.destruction = destruction;
+  }
+}
 
 export const BUILD123D_EXECUTION_CAPTURE_ARTIFACT_URI_PREFIX =
   "casys://build123d-execution-capture/sha256/" as const;
@@ -460,6 +509,14 @@ export class DesignExecuteBuild123dRunExecutor {
         admission,
       );
       if (completed) return completed;
+      if (run.status === "failed") {
+        return await this.#reopenFailedOutputValidation(
+          origin,
+          command,
+          approvedDecision,
+          admission,
+        );
+      }
 
       await assertThreadWriteBasisAvailable(project, run);
       const preClaimBasis = requireBasis(run);
@@ -559,6 +616,9 @@ export class DesignExecuteBuild123dRunExecutor {
         attempt = await this.#attempts.prepare(context.attemptIdentity);
       }
       assertAttemptIdentity(attempt, attemptKey);
+      if (attempt.phase === "output-validation-rejected") {
+        throwOutputValidationRejected(attempt);
+      }
 
       let receipt: IsolatedCodeExecutionReceipt;
       if (attempt.phase === "prepared") {
@@ -568,7 +628,7 @@ export class DesignExecuteBuild123dRunExecutor {
         });
         assertAttemptIdentity(attempt, attemptKey);
         dispatchMayHaveStarted = true;
-        receipt = await this.#runner.run(context.request);
+        receipt = await this.#runOrReject(context.request, attemptKey);
       } else {
         dispatchMayHaveStarted = true;
         receipt = await this.#recoverReceiptOrRedispatch(
@@ -712,6 +772,9 @@ export class DesignExecuteBuild123dRunExecutor {
       );
       return complete;
     } catch (error) {
+      if (error instanceof IsolatedBuild123dOutputValidationRejectedError) {
+        return await this.#failOutputValidationRejected(origin, command, error);
+      }
       if (dispatchMayHaveStarted || threadSaveMayHaveStarted) {
         const completed = await this.#completedFor(
           origin,
@@ -770,6 +833,9 @@ export class DesignExecuteBuild123dRunExecutor {
       readonly attemptFingerprint: ContentFingerprint;
     },
   ): Promise<IsolatedCodeExecutionReceipt> {
+    if (attempt.phase === "output-validation-rejected") {
+      throwOutputValidationRejected(attempt);
+    }
     if ("receiptRecord" in attempt) {
       const receipt = await this.#readReceiptFromRecord(attempt.receiptRecord);
       if (receipt.producerGeneration !== attempt.dispatch.producerGeneration) {
@@ -920,10 +986,42 @@ export class DesignExecuteBuild123dRunExecutor {
         "The second dispatch authorization was already consumed; manual recovery is required and no further isolated execution will be dispatched.",
       );
     }
-    return await this.#runner.run({
+    return await this.#runOrReject({
       ...context.request,
       producerGeneration: 1,
-    });
+    }, key);
+  }
+
+  async #runOrReject(
+    request: IsolatedCodeExecutionRequest,
+    key: {
+      readonly projectId: string;
+      readonly agentRunId: string;
+      readonly executionRunId: string;
+      readonly attemptFingerprint: ContentFingerprint;
+    },
+  ): Promise<IsolatedCodeExecutionReceipt> {
+    try {
+      return await this.#runner.run(request);
+    } catch (error) {
+      if (!(error instanceof IsolatedCodeOutputValidationRejectedError)) {
+        throw error;
+      }
+      if (
+        error.destruction.status !== "proven" ||
+        error.destruction.runId !== key.executionRunId
+      ) {
+        throw invalidTransition(
+          "Isolated Build123d output-validation cleanup is not proven; no redispatch occurs.",
+        );
+      }
+      const rejected = await this.#attempts.markOutputValidationRejected({
+        ...key,
+        observation: error.observation,
+        destruction: error.destruction,
+      });
+      return throwOutputValidationRejected(rejected);
+    }
   }
 
   async #readReceiptFromRecord(
@@ -1163,6 +1261,41 @@ export class DesignExecuteBuild123dRunExecutor {
     } catch {
       // Preserve the original pre-dispatch error.
     }
+  }
+
+  async #reopenFailedOutputValidation(
+    _origin: EngineeringProjectCommandOrigin,
+    command: RegisteredProjectRunExecutorCommand,
+    _approvedDecision: EngineeringDecision,
+    _admission: Build123dExecutionAdmission,
+  ): Promise<EngineeringProjectSnapshot> {
+    const project = await this.#requiredProject(command.projectId);
+    const run = requireRun(project, command.runId);
+    if (run.status !== "failed") {
+      throw unexpectedStatus(run, "failed");
+    }
+    const attempt = await this.#attempts.read(command.projectId, run.id);
+    if (attempt?.phase === "output-validation-rejected") return project;
+    throw unexpectedStatus(run, "queued or this agent's running/publishing");
+  }
+
+  async #failOutputValidationRejected(
+    origin: EngineeringProjectCommandOrigin,
+    command: RegisteredProjectRunExecutorCommand,
+    error: IsolatedBuild123dOutputValidationRejectedError,
+  ): Promise<EngineeringProjectSnapshot> {
+    const project = await this.#requiredProject(command.projectId);
+    const run = requireRun(project, command.runId);
+    if (run.status === "failed") return project;
+    await this.#commands.failRun(origin, {
+      ...command,
+      commandId: commandStep(command.commandId, "fail"),
+      expectedRevision: project.revision,
+      summary: BUILD123D_ISOLATED_OUTPUT_VALIDATION_FAILED.summary,
+      code: BUILD123D_ISOLATED_OUTPUT_VALIDATION_FAILED.code,
+      message: isolatedOutputValidationRejectedMessage(error),
+    });
+    return await this.#requiredProject(command.projectId);
   }
 }
 
@@ -1742,4 +1875,35 @@ function commandStep(commandId: string, step: string): string {
 
 function invalidTransition(message: string): EngineeringProjectCommandError {
   return new EngineeringProjectCommandError("invalid_transition", message);
+}
+
+function describe(cause: unknown): string {
+  const text = cause instanceof Error
+    ? `${cause.name}: ${cause.message}`
+    : String(cause);
+  return text.length > 240 ? `${text.slice(0, 240)}…` : text;
+}
+
+function isolatedOutputValidationRejectedMessage(
+  error: IsolatedBuild123dOutputValidationRejectedError,
+): string {
+  return describe(
+    `Isolated output validation rejected registered role ${error.observation.role} ` +
+      `(${error.observation.byteCount} bytes, sha256 ${error.observation.sha256}).`,
+  );
+}
+
+function throwOutputValidationRejected(
+  attempt: Build123dExecutionAttempt,
+): never {
+  if (attempt.phase !== "output-validation-rejected") {
+    throw invalidTransition(
+      "The Build123d output-validation rejection WAL transition was not durable.",
+    );
+  }
+  throw new IsolatedBuild123dOutputValidationRejectedError({
+    executionRunId: attempt.executionRunId,
+    observation: attempt.outputValidationRejection.observation,
+    destruction: attempt.outputValidationRejection.destruction,
+  });
 }

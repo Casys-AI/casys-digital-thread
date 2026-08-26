@@ -2,7 +2,10 @@ import { assert, assertEquals, assertRejects } from "@std/assert";
 import type { EngineeringProjectCommandOrigin } from "../../../../application/ports/in/engineering-project-command-origin.ts";
 import type { EngineeringProjectRevisionStore } from "../../../../application/ports/out/engineering-project-revision-store.ts";
 import type { AdmittedSpiceExecutionAttemptStore } from "../../../../application/ports/out/electrical/spice/admitted-execution-attempt-store.ts";
-import { IsolatedCodeExecutionRejectedError } from "../../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
+import {
+  IsolatedCodeExecutionRejectedError,
+  IsolatedCodeOutputValidationRejectedError,
+} from "../../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
 import type {
   CompleteRunCommand,
   FailRunCommand,
@@ -10,6 +13,7 @@ import type {
 } from "../../../../application/use-cases/project/engineering-project-command-service.ts";
 import {
   ADMITTED_SPICE_ISOLATED_EXECUTION_REJECTED,
+  ADMITTED_SPICE_ISOLATED_OUTPUT_VALIDATION_FAILED,
   ADMITTED_SPICE_RETRY_GENERATION_CLOSED,
 } from "../../../../application/use-cases/electrical/spice/admitted/completed-replay-verification.ts";
 import type {
@@ -252,6 +256,47 @@ Deno.test("first-dispatch isolated rejection fails the exact claimed run without
     assertEquals("image" in fixture.runtime.requests[0]!, false);
     assertEquals(fixture.captures.saveCalls, 0);
     assertEquals(fixture.snapshots.saveCalls, 0);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("first-dispatch output-validation rejection fails the exact claimed run without Thread evidence", async () => {
+  const fixture = await executorHarness({ rejectOutputValidation: true });
+  try {
+    const beforeSnapshots = [...fixture.project.threadSnapshots];
+    const failed = await fixture.executor.execute(
+      EXECUTION_AGENT,
+      EXECUTION_COMMAND,
+    );
+    const run = failed.agentRuns.find((item) => item.id === EXECUTION_COMMAND.runId);
+    assertEquals(run?.status, "failed");
+    assertEquals(
+      run?.failure?.code,
+      ADMITTED_SPICE_ISOLATED_OUTPUT_VALIDATION_FAILED.code,
+    );
+    assertEquals(run?.failure?.message.includes("evidence"), true);
+    assertEquals(run?.failure?.message.includes("/tmp/"), false);
+    assertEquals(run?.evidenceRefs ?? [], []);
+    assertEquals(failed.threadSnapshots, beforeSnapshots);
+    assertEquals(
+      (await fixture.attempts.read(
+        EXECUTION_COMMAND.projectId,
+        EXECUTION_COMMAND.runId,
+      ))?.phase,
+      "output-validation-rejected",
+    );
+    assertEquals(fixture.runtime.runs, [0]);
+    assertEquals(fixture.captures.saveCalls, 0);
+    assertEquals(fixture.snapshots.saveCalls, 0);
+
+    const replayed = await fixture.executor.execute(EXECUTION_AGENT, {
+      ...EXECUTION_COMMAND,
+      expectedRevision: failed.revision,
+    });
+    assertEquals(replayed.revision, failed.revision);
+    assertEquals(runStatus(replayed), "failed");
+    assertEquals(fixture.runtime.runs, [0]);
   } finally {
     await fixture.dispose();
   }
@@ -1029,6 +1074,7 @@ async function harness() {
 
 interface ExecutorHarnessOptions {
   readonly rejectExecution?: boolean;
+  readonly rejectOutputValidation?: boolean;
   readonly failGenerationZero?: boolean;
   readonly failGenerationOne?: boolean;
   readonly failGenerationOneDestroyOnce?: boolean;
@@ -1369,6 +1415,16 @@ class FakeAdmittedRuntime {
     }
     if (this.options.failGenerationOne && request.producerGeneration === 1) {
       throw new Error("generation-one acknowledgement lost before publication");
+    }
+    if (this.options.rejectOutputValidation) {
+      throw new IsolatedCodeOutputValidationRejectedError(
+        { role: "evidence", byteCount: 32, sha256: "7".repeat(64) },
+        {
+          status: "proven",
+          runId: request.runId,
+          proofFingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+        },
+      );
     }
     if (this.options.rejectExecution) {
       const diagnostic = await createIsolatedCodeExecutionRejectionDiagnostic({

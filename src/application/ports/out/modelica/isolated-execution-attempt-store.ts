@@ -4,6 +4,7 @@ import type { ModelicaIsolatedExecutionProfile } from "./isolated-execution-prof
 import type {
   IsolatedCodeExecutionReceiptRecord,
   IsolatedCodeOutputDeclaration,
+  IsolatedCodeOutputValidationRejection,
   IsolatedCodePolicyRef,
   IsolatedCodeProfileRef,
   IsolatedOutputProducerGenerationAdvance,
@@ -65,11 +66,13 @@ export interface ModelicaIsolatedExecutionDispatch {
   readonly dispatchedAt: string;
 }
 
+export type ModelicaIsolatedProvenDestruction = Extract<
+  IsolatedCodeExecutionReceiptRecord["destruction"],
+  { readonly status: "proven" }
+>;
+
 export interface ModelicaIsolatedExecutionGenerationRecovery {
-  readonly generationZeroDestruction: Extract<
-    IsolatedCodeExecutionReceiptRecord["destruction"],
-    { readonly status: "proven" }
-  >;
+  readonly generationZeroDestruction: ModelicaIsolatedProvenDestruction;
   readonly advance: IsolatedOutputProducerGenerationAdvance;
 }
 
@@ -92,10 +95,7 @@ export type ModelicaIsolatedExecutionAttempt =
       readonly dispatchCount: 1;
       readonly producerGeneration: 0;
     };
-    readonly generationZeroDestruction: Extract<
-      IsolatedCodeExecutionReceiptRecord["destruction"],
-      { readonly status: "proven" }
-    >;
+    readonly generationZeroDestruction: ModelicaIsolatedProvenDestruction;
   })
   | (AttemptBase & {
     readonly phase: "output-published";
@@ -118,6 +118,15 @@ export type ModelicaIsolatedExecutionAttempt =
     readonly receiptRecord: IsolatedCodeExecutionReceiptRecord;
     readonly evidence: ModelicaIsolatedEvidence;
     readonly capture: ModelicaIsolatedExecutionCaptureReference;
+  })
+  | (AttemptBase & {
+    readonly phase: "output-validation-rejected";
+    readonly dispatch: ModelicaIsolatedExecutionDispatch;
+    readonly generationRecovery: ModelicaIsolatedExecutionGenerationRecovery | null;
+    readonly outputValidationRejection: {
+      readonly observation: IsolatedCodeOutputValidationRejection;
+      readonly destruction: ModelicaIsolatedProvenDestruction;
+    };
   });
 
 export interface ModelicaIsolatedExecutionAttemptStore {
@@ -134,10 +143,7 @@ export interface ModelicaIsolatedExecutionAttemptStore {
   ): Promise<ModelicaIsolatedExecutionAttempt>;
   markGenerationZeroCleaned(
     input: ModelicaIsolatedExecutionAttemptKey & {
-      readonly destruction: Extract<
-        IsolatedCodeExecutionReceiptRecord["destruction"],
-        { readonly status: "proven" }
-      >;
+      readonly destruction: ModelicaIsolatedProvenDestruction;
     },
   ): Promise<ModelicaIsolatedExecutionAttempt>;
   markRedispatching(
@@ -159,6 +165,12 @@ export interface ModelicaIsolatedExecutionAttemptStore {
   ): Promise<ModelicaIsolatedExecutionAttempt>;
   markCompleted(
     input: ModelicaIsolatedExecutionAttemptKey,
+  ): Promise<ModelicaIsolatedExecutionAttempt>;
+  markOutputValidationRejected(
+    input: ModelicaIsolatedExecutionAttemptKey & {
+      readonly observation: IsolatedCodeOutputValidationRejection;
+      readonly destruction: ModelicaIsolatedProvenDestruction;
+    },
   ): Promise<ModelicaIsolatedExecutionAttempt>;
 }
 

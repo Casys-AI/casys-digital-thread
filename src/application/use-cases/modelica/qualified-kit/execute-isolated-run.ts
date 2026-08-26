@@ -11,10 +11,11 @@ import type { ModelicaIsolatedExecutionCaptureStore } from "../../../ports/out/m
 import type { ModelicaIsolatedExecutionProfileCatalog } from "../../../ports/out/modelica/isolated-execution-profile.ts";
 import type { ModelicaIsolatedExecutionQualificationAuthority } from "../../../ports/out/modelica/isolated-execution-qualification.ts";
 import type { ModelicaIsolatedExecutionRunLease } from "../../../ports/out/modelica/isolated-execution-run-lease.ts";
-import type {
-  IsolatedCodeRunner,
-  IsolatedCodeRunRecovery,
-  IsolatedOutputPublicationReader,
+import {
+  IsolatedCodeOutputValidationRejectedError,
+  type IsolatedCodeRunner,
+  type IsolatedCodeRunRecovery,
+  type IsolatedOutputPublicationReader,
 } from "../../../ports/out/compile/isolation/isolated-code-runner.ts";
 import {
   createModelicaIsolatedExecutionCapture,
@@ -24,9 +25,12 @@ import {
   type IsolatedCodeExecutionReceipt,
   isolatedCodeExecutionReceiptRecord,
   type IsolatedCodeExecutionRequest,
+  type IsolatedCodeOutputValidationRejection,
   type IsolatedOutputProducerGeneration,
   validateContentFingerprint,
+  validateIsolatedCodeExecutionDestruction,
   validateIsolatedCodeExecutionRequest,
+  validateIsolatedCodeOutputValidationRejection,
 } from "../../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
   assertModelicaBundleMethod,
@@ -49,6 +53,44 @@ export class ModelicaIsolatedExecutionOutcomeUnknownError extends Error {
   constructor(message = "The local Modelica execution outcome remains unknown.") {
     super(message);
     this.name = "ModelicaIsolatedExecutionOutcomeUnknownError";
+  }
+}
+
+/**
+ * Terminal qualified-kit conversion of a public isolated output-validation
+ * rejection. It carries only the registered role, observed size/digest and
+ * proven destruction; no worker diagnostic, bytes, path or handle.
+ */
+export class IsolatedQualifiedModelicaOutputValidationRejectedError extends Error {
+  readonly code = "output_validation_rejected" as const;
+  readonly executionRunId: string;
+  readonly observation: IsolatedCodeOutputValidationRejection;
+  readonly destruction: Extract<
+    IsolatedCodeExecutionReceipt["destruction"],
+    { readonly status: "proven" }
+  >;
+
+  constructor(input: {
+    readonly executionRunId: string;
+    readonly observation: IsolatedCodeOutputValidationRejection;
+    readonly destruction: IsolatedCodeExecutionReceipt["destruction"];
+  }) {
+    super(
+      "A code-owned isolated qualified Modelica output validator rejected the observed bytes; no redispatch occurs.",
+    );
+    this.name = "IsolatedQualifiedModelicaOutputValidationRejectedError";
+    this.executionRunId = safeId(input.executionRunId, "$rejection.executionRunId");
+    this.observation = validateIsolatedCodeOutputValidationRejection(
+      input.observation,
+    );
+    const destruction = validateIsolatedCodeExecutionDestruction(
+      input.destruction,
+      this.executionRunId,
+    );
+    if (destruction.status !== "proven") {
+      throw new TypeError("Output-validation rejection requires proven destruction.");
+    }
+    this.destruction = destruction;
   }
 }
 
@@ -180,6 +222,9 @@ export class ExecuteIsolatedModelicaRun {
       const key = keyFor(attempt);
       let receipt: IsolatedCodeExecutionReceipt | undefined;
       let dispatchNow = false;
+      if (attempt.phase === "output-validation-rejected") {
+        throwOutputValidationRejected(attempt);
+      }
 
       if (attempt.phase === "prepared") {
         attempt = await this.d.attempts.markDispatching({
@@ -360,6 +405,23 @@ export class ExecuteIsolatedModelicaRun {
     return await this.#reopenCompleted(attempt, bundle);
   }
 
+  /**
+   * Replay-only terminal: if the WAL already recorded an output-validation
+   * rejection, throw the provider-specific error without runner, recovery,
+   * CAS, or generation advance. Other phases return without effect.
+   */
+  async reopenOutputValidationRejection(input: {
+    readonly projectId: string;
+    readonly agentRunId: string;
+  }): Promise<void> {
+    const projectId = safeId(input.projectId, "$input.projectId");
+    const agentRunId = safeId(input.agentRunId, "$input.agentRunId");
+    const attempt = await this.d.attempts.read(projectId, agentRunId);
+    if (attempt?.phase === "output-validation-rejected") {
+      throwOutputValidationRejected(attempt);
+    }
+  }
+
   async #dispatchOrRecover(
     request: IsolatedCodeExecutionRequest,
     attempt: Extract<ModelicaIsolatedExecutionAttempt, { phase: "dispatching" }>,
@@ -375,7 +437,23 @@ export class ExecuteIsolatedModelicaRun {
   > {
     try {
       return { kind: "receipt", receipt: await this.d.runner.run(request) };
-    } catch {
+    } catch (error) {
+      if (error instanceof IsolatedCodeOutputValidationRejectedError) {
+        if (
+          error.destruction.status !== "proven" ||
+          error.destruction.runId !== attempt.executionRunId
+        ) {
+          throw new ModelicaIsolatedExecutionOutcomeUnknownError(
+            "Isolated Modelica output-validation cleanup is not proven; no redispatch occurs.",
+          );
+        }
+        const rejected = await this.d.attempts.markOutputValidationRejected({
+          ...keyFor(attempt),
+          observation: error.observation,
+          destruction: error.destruction,
+        });
+        return throwOutputValidationRejected(rejected);
+      }
       return await this.#recoverDispatch(attempt);
     }
   }
@@ -604,4 +682,19 @@ function keyFor(
     executionRunId: attempt.executionRunId,
     attemptFingerprint: attempt.attemptFingerprint,
   };
+}
+
+function throwOutputValidationRejected(
+  attempt: ModelicaIsolatedExecutionAttempt,
+): never {
+  if (attempt.phase !== "output-validation-rejected") {
+    throw new ModelicaIsolatedExecutionOutcomeUnknownError(
+      "The qualified Modelica output-validation rejection WAL transition was not durable.",
+    );
+  }
+  throw new IsolatedQualifiedModelicaOutputValidationRejectedError({
+    executionRunId: attempt.executionRunId,
+    observation: attempt.outputValidationRejection.observation,
+    destruction: attempt.outputValidationRejection.destruction,
+  });
 }

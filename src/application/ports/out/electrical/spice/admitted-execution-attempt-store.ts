@@ -16,6 +16,7 @@ import type {
   IsolatedCodeExecutionReceiptRecord,
   IsolatedCodeExecutionRejectionDiagnostic,
   IsolatedCodeOutputDeclaration,
+  IsolatedCodeOutputValidationRejection,
   IsolatedCodePolicyRef,
   IsolatedCodeProfileRef,
   IsolatedOutputProducerGenerationAdvance,
@@ -160,6 +161,17 @@ export type AdmittedSpiceExecutionAttempt =
     };
   })
   | (AttemptBase & {
+    readonly phase: "output-validation-rejected";
+    readonly dispatch: AdmittedSpiceExecutionDispatch;
+    readonly generationRecovery:
+      | AdmittedSpiceExecutionGenerationRecovery
+      | null;
+    readonly outputValidationRejection: {
+      readonly observation: IsolatedCodeOutputValidationRejection;
+      readonly destruction: AdmittedSpiceProvenDestruction;
+    };
+  })
+  | (AttemptBase & {
     readonly phase: "retry-generation-closed";
     readonly dispatch: AdmittedSpiceExecutionDispatch & {
       readonly dispatchCount: 2;
@@ -222,6 +234,12 @@ export interface AdmittedSpiceExecutionAttemptStore {
   markExecutionRejected(
     input: AdmittedSpiceExecutionAttemptKey & {
       readonly diagnostic: IsolatedCodeExecutionRejectionDiagnostic;
+      readonly destruction: AdmittedSpiceProvenDestruction;
+    },
+  ): Promise<AdmittedSpiceExecutionAttempt>;
+  markOutputValidationRejected(
+    input: AdmittedSpiceExecutionAttemptKey & {
+      readonly observation: IsolatedCodeOutputValidationRejection;
       readonly destruction: AdmittedSpiceProvenDestruction;
     },
   ): Promise<AdmittedSpiceExecutionAttempt>;

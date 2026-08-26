@@ -41,6 +41,12 @@ export const ADMITTED_SPICE_ISOLATED_EXECUTION_REJECTED = {
   code: "isolated_execution_rejected",
 } as const;
 
+export const ADMITTED_SPICE_ISOLATED_OUTPUT_VALIDATION_FAILED = {
+  summary:
+    "Isolated admitted SPICE output validation was rejected before Thread publication.",
+  code: "isolated_output_validation_failed",
+} as const;
+
 export const ADMITTED_SPICE_RETRY_GENERATION_CLOSED = {
   summary:
     "Isolated admitted SPICE retry generation was closed before Thread publication.",

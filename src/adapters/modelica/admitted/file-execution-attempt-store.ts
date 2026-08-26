@@ -11,6 +11,7 @@ import {
   type AdmittedModelicaExecutionThreadArtifactEvidence,
   type AdmittedModelicaExecutionThreadEvidence,
   type AdmittedModelicaExecutionThreadEvidenceInput,
+  type AdmittedModelicaProvenDestruction,
   fingerprintAdmittedModelicaExecutionAttemptIdentity,
 } from "../../../application/ports/out/modelica/admitted-execution-attempt-store.ts";
 import {
@@ -23,6 +24,7 @@ import {
   validateContentFingerprint,
   validateIsolatedCodeExecutionReceiptRecord,
   validateIsolatedCodeOutputManifest,
+  validateIsolatedCodeOutputValidationRejection,
   validateIsolatedCodePolicyRef,
   validateIsolatedCodeProfileRef,
   validateIsolatedOutputProducerGeneration,
@@ -341,6 +343,50 @@ export class FileAdmittedModelicaExecutionAttemptStore
     });
   }
 
+  markOutputValidationRejected(
+    input: AdmittedModelicaExecutionAttemptKey & {
+      readonly observation: {
+        readonly role: string;
+        readonly byteCount: number;
+        readonly sha256: string;
+      };
+      readonly destruction: AdmittedModelicaProvenDestruction;
+    },
+  ): Promise<AdmittedModelicaExecutionAttempt> {
+    return this.#transition(input, (current) => {
+      const observation = validateIsolatedCodeOutputValidationRejection(
+        input.observation,
+      );
+      assertRegisteredOutputRole(observation.role, current.identity);
+      const destruction = validateGenerationZeroDestruction(
+        input.destruction,
+        current.executionRunId,
+      );
+      const outputValidationRejection = deepFreeze({ observation, destruction });
+      if (current.phase === "output-validation-rejected") {
+        if (
+          deterministicJson(current.outputValidationRejection) ===
+            deterministicJson(outputValidationRejection)
+        ) return current;
+        throw integrity(
+          "Admitted Modelica output-validation rejection is divergent.",
+        );
+      }
+      if (current.phase !== "dispatching") {
+        throw integrity(
+          "Admitted Modelica output-validation rejection is out of order.",
+        );
+      }
+      return deepFreeze({
+        ...base(current),
+        phase: "output-validation-rejected" as const,
+        dispatch: current.dispatch,
+        generationRecovery: current.generationRecovery,
+        outputValidationRejection,
+      });
+    });
+  }
+
   async pathFor(projectIdValue: string, agentRunIdValue: string): Promise<string> {
     const projectId = safeId(projectIdValue, "$projectId");
     const agentRunId = safeId(agentRunIdValue, "$agentRunId");
@@ -554,6 +600,18 @@ export async function validateAdmittedModelicaExecutionAttempt(
       phase,
       dispatch,
       generationRecovery,
+    });
+  }
+  if (phase === "output-validation-rejected") {
+    return deepFreeze({
+      ...baseValue,
+      phase,
+      dispatch,
+      generationRecovery,
+      outputValidationRejection: validateOutputValidationRejection(
+        root.outputValidationRejection,
+        identity,
+      ),
     });
   }
   const receiptRecord = await validatePublishedReceipt(
@@ -875,6 +933,38 @@ async function validateGenerationRecovery(
   });
 }
 
+function validateOutputValidationRejection(
+  value: unknown,
+  identity: AdmittedModelicaExecutionAttemptIdentity,
+) {
+  const root = exactRecord(
+    value,
+    ["observation", "destruction"],
+    "$outputValidationRejection",
+  );
+  const observation = validateIsolatedCodeOutputValidationRejection(
+    root.observation,
+    "$outputValidationRejection.observation",
+  );
+  assertRegisteredOutputRole(observation.role, identity);
+  return deepFreeze({
+    observation,
+    destruction: validateGenerationZeroDestruction(
+      root.destruction,
+      identity.executionRunId,
+    ),
+  });
+}
+
+function assertRegisteredOutputRole(
+  role: string,
+  identity: AdmittedModelicaExecutionAttemptIdentity,
+): void {
+  if (!identity.isolatedRequest.outputs.some((item) => item.role === role)) {
+    throw integrity("Output-validation rejection role is not registered.");
+  }
+}
+
 function validateGenerationZeroDestruction(
   value: unknown,
   executionRunId: string,
@@ -1082,7 +1172,8 @@ function phaseOf(value: unknown): AdmittedModelicaExecutionAttempt["phase"] {
     root.phase !== "dispatching" &&
     root.phase !== "generation-zero-cleaned" &&
     root.phase !== "output-published" &&
-    root.phase !== "completed"
+    root.phase !== "completed" &&
+    root.phase !== "output-validation-rejected"
   ) {
     throw integrity("The admitted Modelica execution WAL phase is unsupported.");
   }
@@ -1097,6 +1188,7 @@ function optionalAttemptFields(value: unknown): string[] {
     "generationZeroDestruction",
     "receiptRecord",
     "threadEvidence",
+    "outputValidationRejection",
   ].filter((key) => Object.hasOwn(value, key));
 }
 
@@ -1121,6 +1213,10 @@ function keysForPhase(
   }
   keys.push("generationRecovery");
   if (phase === "dispatching") return keys;
+  if (phase === "output-validation-rejected") {
+    keys.push("outputValidationRejection");
+    return keys;
+  }
   keys.push("receiptRecord");
   if (phase === "completed") keys.push("threadEvidence");
   return keys;

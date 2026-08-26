@@ -25,6 +25,7 @@ import {
   validateIsolatedCodeExecutionReceiptRecord,
   validateIsolatedCodeExecutionRejectionDiagnostic,
   validateIsolatedCodeOutputManifest,
+  validateIsolatedCodeOutputValidationRejection,
   validateIsolatedCodePolicyRef,
   validateIsolatedCodeProfileRef,
   validateIsolatedOutputProducerGeneration,
@@ -381,6 +382,50 @@ export class FileAdmittedSpiceExecutionAttemptStore
     });
   }
 
+  markOutputValidationRejected(
+    input: AdmittedSpiceExecutionAttemptKey & {
+      readonly observation: {
+        readonly role: string;
+        readonly byteCount: number;
+        readonly sha256: string;
+      };
+      readonly destruction: AdmittedSpiceProvenDestruction;
+    },
+  ): Promise<AdmittedSpiceExecutionAttempt> {
+    return this.#transition(input, (current) => {
+      const observation = validateIsolatedCodeOutputValidationRejection(
+        input.observation,
+      );
+      assertRegisteredOutputRole(observation.role, current.identity);
+      const destruction = validateGenerationZeroDestruction(
+        input.destruction,
+        current.executionRunId,
+      );
+      const outputValidationRejection = deepFreeze({ observation, destruction });
+      if (current.phase === "output-validation-rejected") {
+        if (
+          deterministicJson(current.outputValidationRejection) ===
+            deterministicJson(outputValidationRejection)
+        ) return current;
+        throw integrity(
+          "Admitted SPICE output-validation rejection is divergent.",
+        );
+      }
+      if (current.phase !== "dispatching") {
+        throw integrity(
+          "Admitted SPICE output-validation rejection is out of order.",
+        );
+      }
+      return deepFreeze({
+        ...base(current),
+        phase: "output-validation-rejected" as const,
+        dispatch: current.dispatch,
+        generationRecovery: current.generationRecovery,
+        outputValidationRejection,
+      });
+    });
+  }
+
   markRetryGenerationClosed(
     input: AdmittedSpiceExecutionAttemptKey & {
       readonly destruction: AdmittedSpiceProvenDestruction;
@@ -660,6 +705,18 @@ export async function validateAdmittedSpiceExecutionAttempt(
           identity.executionRunId,
         ),
       },
+    });
+  }
+  if (phase === "output-validation-rejected") {
+    return deepFreeze({
+      ...baseValue,
+      phase,
+      dispatch,
+      generationRecovery,
+      outputValidationRejection: validateOutputValidationRejection(
+        root.outputValidationRejection,
+        identity,
+      ),
     });
   }
   if (phase === "retry-generation-closed") {
@@ -1015,6 +1072,38 @@ async function validateGenerationRecovery(
   });
 }
 
+function validateOutputValidationRejection(
+  value: unknown,
+  identity: AdmittedSpiceExecutionAttemptIdentity,
+) {
+  const root = exactRecord(
+    value,
+    ["observation", "destruction"],
+    "$outputValidationRejection",
+  );
+  const observation = validateIsolatedCodeOutputValidationRejection(
+    root.observation,
+    "$outputValidationRejection.observation",
+  );
+  assertRegisteredOutputRole(observation.role, identity);
+  return deepFreeze({
+    observation,
+    destruction: validateGenerationZeroDestruction(
+      root.destruction,
+      identity.executionRunId,
+    ),
+  });
+}
+
+function assertRegisteredOutputRole(
+  role: string,
+  identity: AdmittedSpiceExecutionAttemptIdentity,
+): void {
+  if (!identity.isolatedRequest.outputs.some((item) => item.role === role)) {
+    throw integrity("Output-validation rejection role is not registered.");
+  }
+}
+
 function validateGenerationZeroDestruction(
   value: unknown,
   executionRunId: string,
@@ -1225,6 +1314,7 @@ function phaseOf(value: unknown): AdmittedSpiceExecutionAttempt["phase"] {
     root.phase !== "output-published" &&
     root.phase !== "completed" &&
     root.phase !== "execution-rejected" &&
+    root.phase !== "output-validation-rejected" &&
     root.phase !== "retry-generation-closed"
   ) {
     throw integrity("The admitted SPICE execution WAL phase is unsupported.");
@@ -1241,6 +1331,7 @@ function optionalAttemptFields(value: unknown): string[] {
     "receiptRecord",
     "threadEvidence",
     "rejection",
+    "outputValidationRejection",
     "closedGeneration",
   ].filter((key) => Object.hasOwn(value, key));
 }
@@ -1268,6 +1359,10 @@ function keysForPhase(
   if (phase === "dispatching") return keys;
   if (phase === "execution-rejected") {
     keys.push("rejection");
+    return keys;
+  }
+  if (phase === "output-validation-rejected") {
+    keys.push("outputValidationRejection");
     return keys;
   }
   if (phase === "retry-generation-closed") {

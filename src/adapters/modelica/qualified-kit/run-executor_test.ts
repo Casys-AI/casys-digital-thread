@@ -3,9 +3,10 @@ import type { EngineeringProjectCommandOrigin } from "../../../application/ports
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
 import type { PersistedModelicaIsolatedExecutionCapture } from "../../../application/ports/out/modelica/isolated-execution-evidence-store.ts";
 import type { ModelicaIsolatedExecutionProfile } from "../../../application/ports/out/modelica/isolated-execution-profile.ts";
-import type {
-  ExecuteIsolatedModelicaRunInput,
-  ExecuteIsolatedModelicaRunResult,
+import {
+  type ExecuteIsolatedModelicaRunInput,
+  type ExecuteIsolatedModelicaRunResult,
+  IsolatedQualifiedModelicaOutputValidationRejectedError,
 } from "../../../application/use-cases/modelica/qualified-kit/execute-isolated-run.ts";
 import { deriveModelicaIsolatedExecutionRunId } from "../../../application/use-cases/modelica/qualified-kit/execute-isolated-run.ts";
 import { PrepareProjectModelicaQualifiedKitRunReview } from "../../../application/use-cases/modelica/qualified-kit/prepare-run-review.ts";
@@ -297,9 +298,27 @@ Deno.test("basis-scoped lease admits one concurrent qualified Modelica execution
   assertEquals(fixture.snapshots.saveCalls, 1);
 });
 
+Deno.test("qualified Modelica fails the claimed run on output-validation rejection without Thread write", async () => {
+  const fixture = await createFixture({ rejectOutputValidation: true });
+  const beforeSnapshots = [...fixture.project.threadSnapshots];
+  const failed = await fixture.executor.execute(AGENT, COMMAND);
+  assertEquals(runStatus(failed), "failed");
+  assertEquals(failed.agentRuns[0]?.failure?.code, "isolated_output_validation_failed");
+  assertEquals(failed.agentRuns[0]?.failure?.message.includes("evidence"), true);
+  assertEquals(failed.threadSnapshots, beforeSnapshots);
+  assertEquals(fixture.execution.executeCalls, 1);
+  assertEquals(fixture.snapshots.saveCalls, 0);
+
+  const replayed = await fixture.executor.execute(AGENT, COMMAND);
+  assertEquals(runStatus(replayed), "failed");
+  assertEquals(fixture.execution.executeCalls, 1);
+  assertEquals(replayed.threadSnapshots, beforeSnapshots);
+});
+
 interface FixtureOptions {
   readonly publishAckLostOnce?: boolean;
   readonly blockExecution?: boolean;
+  readonly rejectOutputValidation?: boolean;
 }
 
 interface Fixture {
@@ -514,7 +533,12 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
     reviewedRunFingerprint: runFingerprint,
     captures,
   });
-  const execution = new FakeExecution(executionResult, events, options.blockExecution);
+  const execution = new FakeExecution(
+    executionResult,
+    events,
+    options.blockExecution,
+    options.rejectOutputValidation,
+  );
   const snapshots = new FakeSnapshots(basis);
   const commands = new FakeCommands(project, options);
   const projects: EngineeringProjectRevisionStore = {
@@ -585,26 +609,49 @@ class FakeExecution {
   #announce!: () => void;
   #release!: () => void;
   #released: Promise<void>;
+  #rejected = false;
   constructor(
     readonly result: ExecuteIsolatedModelicaRunResult,
     readonly events: string[],
     readonly blocked = false,
+    readonly rejectOutputValidation = false,
   ) {
     this.started = new Promise((resolve) => this.#announce = resolve);
     this.#released = new Promise((resolve) => this.#release = resolve);
     if (!blocked) this.#release();
+  }
+  #rejection() {
+    return new IsolatedQualifiedModelicaOutputValidationRejectedError({
+      executionRunId: "run.modelica.qualified-exec",
+      observation: { role: "evidence", byteCount: 32, sha256: "7".repeat(64) },
+      destruction: {
+        status: "proven",
+        runId: "run.modelica.qualified-exec",
+        proofFingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+      },
+    });
   }
   async execute(_input: ExecuteIsolatedModelicaRunInput) {
     this.executeCalls += 1;
     this.events.push("execute");
     this.#announce();
     await this.#released;
+    if (this.rejectOutputValidation) {
+      this.#rejected = true;
+      throw this.#rejection();
+    }
     return this.result;
   }
   reopenCompleted(_input: ExecuteIsolatedModelicaRunInput) {
     this.reopenCalls += 1;
     this.events.push("reopen");
     return Promise.resolve(this.result);
+  }
+  reopenOutputValidationRejection() {
+    if (this.#rejected || this.rejectOutputValidation) {
+      throw this.#rejection();
+    }
+    return Promise.resolve();
   }
   release() {
     this.#release();

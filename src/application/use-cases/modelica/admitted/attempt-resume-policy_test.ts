@@ -191,10 +191,20 @@ Deno.test("completed journal on an active run quarantines; output-published is a
     }),
     { action: "already-published" },
   );
+  assertEquals(
+    decideAdmittedModelicaAttemptResume({
+      phase: "output-validation-rejected",
+      executionRunId: RUN,
+      producerGeneration: 0,
+    }),
+    { action: "already-output-validation-rejected" },
+  );
 });
 
 Deno.test("resume policy never names a runner, store, or generation two", async () => {
-  const source = await Deno.readTextFile(new URL("./attempt-resume-policy.ts", import.meta.url));
+  const source = await Deno.readTextFile(
+    new URL("./attempt-resume-policy.ts", import.meta.url),
+  );
   assertEquals(source.includes("IsolatedCodeRunner"), false);
   assertEquals(source.includes("markDispatching"), false);
   assertEquals(source.includes("generation 2"), false);

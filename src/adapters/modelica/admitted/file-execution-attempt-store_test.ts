@@ -823,6 +823,64 @@ Deno.test({
   },
 });
 
+Deno.test("admitted Modelica WAL persists a terminal output-validation rejection and refuses redispatch", async () => {
+  await withStore(async (store, directory) => {
+    const fixture = await walFixture();
+    const prepared = await store.prepare(fixture.identity, AT);
+    const key = keyFor(prepared);
+    await store.markDispatching({ ...key, dispatchedAt: AT });
+    const observation = {
+      role: "evidence",
+      byteCount: 32,
+      sha256: "7".repeat(64),
+    };
+    const destruction = {
+      status: "proven" as const,
+      runId: fixture.identity.executionRunId,
+      proofFingerprint: { algorithm: "sha256" as const, digest: "d".repeat(64) },
+    };
+    const rejected = await store.markOutputValidationRejected({
+      ...key,
+      observation,
+      destruction,
+    });
+    assertEquals(rejected.phase, "output-validation-rejected");
+    const restarted = new FileAdmittedModelicaExecutionAttemptStore(directory);
+    assertEquals(
+      await restarted.read(fixture.identity.projectId, fixture.identity.agentRunId),
+      rejected,
+    );
+    assertEquals(
+      await restarted.markOutputValidationRejected({
+        ...key,
+        observation,
+        destruction,
+      }),
+      rejected,
+    );
+    const advance = await createIsolatedOutputProducerGenerationAdvance({
+      runId: fixture.identity.executionRunId,
+      closedGeneration: 0,
+      nextGeneration: 1,
+    });
+    await assertRejects(
+      () => restarted.markRedispatching({ ...key, advance, dispatchedAt: AT }),
+      AdmittedModelicaExecutionAttemptIntegrityError,
+      "out of order",
+    );
+    await assertRejects(
+      () =>
+        restarted.markOutputValidationRejected({
+          ...key,
+          observation: { ...observation, role: "job.dat" },
+          destruction,
+        }),
+      AdmittedModelicaExecutionAttemptIntegrityError,
+      "role is not registered",
+    );
+  });
+});
+
 async function walFixture() {
   const source = new TextEncoder().encode(
     "model GenericState\n  Real position;\nequation\n  der(position) = 2;\nend GenericState;\n",

@@ -28,6 +28,7 @@ import {
   fingerprintIsolatedOutputPublicationManifest,
   validateIsolatedCodeExecutionRequest,
 } from "../../../../domain/compile/isolation/isolated-code-execution.ts";
+import { IsolatedCodeOutputValidationRejectedError } from "../../../ports/out/compile/isolation/isolated-code-runner.ts";
 import { fingerprintResourceBytes } from "../../../../domain/compile/source/provider-resource-reader.ts";
 import {
   deterministicJson,
@@ -35,6 +36,7 @@ import {
 } from "../../../../domain/kernel/deterministic-json.ts";
 import {
   ExecuteIsolatedModelicaRun,
+  IsolatedQualifiedModelicaOutputValidationRejectedError,
   ModelicaIsolatedExecutionOutcomeUnknownError,
   ModelicaIsolatedExecutionProfileUnqualifiedError,
 } from "./execute-isolated-run.ts";
@@ -518,6 +520,83 @@ Deno.test("Modelica generation one failure is cleaned but never creates generati
   }
 });
 
+Deno.test("qualified Modelica persists an output-validation rejection and replays it without redispatch", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "casys-modelica-isolated-execution-",
+  });
+  try {
+    const profile = await profileFixture();
+    const bundle = await preparedBundle(profile);
+    const observation = {
+      role: "evidence",
+      byteCount: 32,
+      sha256: "7".repeat(64),
+    };
+    let runs = 0;
+    const attempts = new FileModelicaIsolatedExecutionAttemptStore(
+      `${directory}/attempts`,
+    );
+    const execute = new ExecuteIsolatedModelicaRun({
+      profiles: catalog(profile),
+      qualifications: qualificationAuthority(profile),
+      lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
+      runner: {
+        run: (request) => {
+          runs += 1;
+          return Promise.reject(
+            new IsolatedCodeOutputValidationRejectedError(observation, {
+              status: "proven",
+              runId: request.runId,
+              proofFingerprint: {
+                algorithm: "sha256",
+                digest: "c".repeat(64),
+              },
+            }),
+          );
+        },
+      },
+      recovery: {
+        destroyByRunId: () => Promise.reject(new Error("must not recover")),
+        advanceProducerGeneration: () => Promise.reject(new Error("must not advance")),
+      },
+      publications: {
+        resolvePublicationByRunId: () => Promise.reject(new Error("must not resolve")),
+        readReceipt: () => Promise.reject(new Error("must not read receipt")),
+        readPublishedObject: () => Promise.reject(new Error("must not read object")),
+      },
+      attempts,
+      captures: new FileModelicaIsolatedExecutionCaptureStore(`${directory}/captures`),
+    });
+    const input = {
+      projectId: "project-1",
+      agentRunId: "agent-run-1",
+      reviewedRunFingerprint: { algorithm: "sha256" as const, digest: "9".repeat(64) },
+      bundle,
+      preparedAt: "2026-08-14T00:00:00.000Z",
+    };
+    const first = await assertRejects(
+      () => execute.execute(input),
+      IsolatedQualifiedModelicaOutputValidationRejectedError,
+      "no redispatch occurs",
+    );
+    assertEquals(first.observation, observation);
+    assertEquals(runs, 1);
+    assertEquals(
+      (await attempts.read(input.projectId, input.agentRunId))?.phase,
+      "output-validation-rejected",
+    );
+    const replay = await assertRejects(
+      () => execute.execute(input),
+      IsolatedQualifiedModelicaOutputValidationRejectedError,
+      "no redispatch occurs",
+    );
+    assertEquals(replay.observation, first.observation);
+    assertEquals(runs, 1);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 function inertAttemptStore(
   calls: { wal: number },
 ): ModelicaIsolatedExecutionAttemptStore {
@@ -534,6 +613,7 @@ function inertAttemptStore(
     markOutputPublished: inert,
     markEvidencePersisted: inert,
     markCompleted: inert,
+    markOutputValidationRejected: inert,
   };
 }
 

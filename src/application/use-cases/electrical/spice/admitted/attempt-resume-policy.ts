@@ -19,6 +19,7 @@ export type AdmittedSpiceAttemptPhase =
   | "output-published"
   | "completed"
   | "execution-rejected"
+  | "output-validation-rejected"
   | "retry-generation-closed";
 
 export interface AdmittedSpiceAttemptResumeInput {
@@ -43,6 +44,7 @@ export type AdmittedSpiceAttemptResumeAction =
   }
   | { readonly action: "already-published" }
   | { readonly action: "already-rejected" }
+  | { readonly action: "already-output-validation-rejected" }
   | {
     readonly action: "already-closed";
     readonly message: string;
@@ -51,6 +53,7 @@ export type AdmittedSpiceAttemptResumeAction =
 
 export type AdmittedSpiceTerminalJournalRecoveryAction =
   | { readonly action: "already-rejected" }
+  | { readonly action: "already-output-validation-rejected" }
   | {
     readonly action: "already-closed";
     readonly message: string;
@@ -73,6 +76,7 @@ export function isAdmittedSpiceTerminalJournalRecoveryEligible(input: {
   }
   if (
     input.phase === "execution-rejected" ||
+    input.phase === "output-validation-rejected" ||
     input.phase === "retry-generation-closed"
   ) {
     return true;
@@ -90,6 +94,8 @@ export function decideAdmittedSpiceAttemptResume(
       );
     case "execution-rejected":
       return { action: "already-rejected" };
+    case "output-validation-rejected":
+      return { action: "already-output-validation-rejected" };
     case "retry-generation-closed":
       return {
         action: "already-closed",
@@ -121,6 +127,8 @@ export function decideAdmittedSpiceTerminalJournalRecovery(
   switch (input.phase) {
     case "execution-rejected":
       return { action: "already-rejected" };
+    case "output-validation-rejected":
+      return { action: "already-output-validation-rejected" };
     case "retry-generation-closed":
       return {
         action: "already-closed",

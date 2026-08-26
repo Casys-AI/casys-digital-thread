@@ -7,10 +7,11 @@
 
 import type { EngineeringProjectCommandOrigin } from "../../../application/ports/in/engineering-project-command-origin.ts";
 import type { RegisteredProjectRunExecutorCommand } from "../../../application/ports/in/project-run-executor.ts";
-import type {
-  IsolatedCodeRunner,
-  IsolatedCodeRunRecovery,
-  IsolatedOutputPublicationReader,
+import {
+  IsolatedCodeOutputValidationRejectedError,
+  type IsolatedCodeRunner,
+  type IsolatedCodeRunRecovery,
+  type IsolatedOutputPublicationReader,
 } from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
 import type {
   AdmittedModelicaExecutionAttempt,
@@ -39,11 +40,13 @@ import {
   type ReviewedAdmittedModelicaAuthority,
 } from "../../../application/use-cases/modelica/admitted/reopen-reviewed-execution.ts";
 import {
+  ADMITTED_MODELICA_ISOLATED_OUTPUT_VALIDATION_FAILED,
   assertAdmittedModelicaCommandReceiptExact,
   assertCompletedAdmittedModelicaBinding,
   claimCommand,
   commandStep,
   completionCommand,
+  failCommand,
   publishCommand,
   requireAdmittedModelicaCommandReceipt,
   requireAdmittedModelicaCompletedReceipts,
@@ -69,7 +72,11 @@ import {
   type IsolatedCodeExecutionReceiptRecord,
   isolatedCodeExecutionReceiptRecord,
   type IsolatedCodeExecutionRequest,
+  type IsolatedCodeOutputValidationRejection,
+  validateIsolatedCodeExecutionDestruction,
+  validateIsolatedCodeOutputValidationRejection,
 } from "../../../domain/compile/isolation/isolated-code-execution.ts";
+import { safeId } from "../../../domain/kernel/case-validation.ts";
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../../domain/modelica/admitted/run-proposal.ts";
 
 import {
@@ -103,7 +110,45 @@ import {
   threadWriteBasisLeaseScope,
 } from "../../shared/thread-write-basis-guard.ts";
 
-export { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION, reopenAdmittedExecutionRequest };
+export { reopenAdmittedExecutionRequest, SIMULATE_RUN_ADMITTED_MODELICA_OPERATION };
+
+/**
+ * Terminal admitted-Modelica conversion of a public isolated output-validation
+ * rejection. It carries only the registered role, observed size/digest and
+ * proven destruction; no worker diagnostic, bytes, path or handle.
+ */
+export class IsolatedAdmittedModelicaOutputValidationRejectedError extends Error {
+  readonly code = "output_validation_rejected" as const;
+  readonly executionRunId: string;
+  readonly observation: IsolatedCodeOutputValidationRejection;
+  readonly destruction: Extract<
+    IsolatedCodeExecutionReceipt["destruction"],
+    { readonly status: "proven" }
+  >;
+
+  constructor(input: {
+    readonly executionRunId: string;
+    readonly observation: IsolatedCodeOutputValidationRejection;
+    readonly destruction: IsolatedCodeExecutionReceipt["destruction"];
+  }) {
+    super(
+      "A code-owned isolated admitted Modelica output validator rejected the observed bytes; no redispatch occurs.",
+    );
+    this.name = "IsolatedAdmittedModelicaOutputValidationRejectedError";
+    this.executionRunId = safeId(input.executionRunId, "$rejection.executionRunId");
+    this.observation = validateIsolatedCodeOutputValidationRejection(
+      input.observation,
+    );
+    const destruction = validateIsolatedCodeExecutionDestruction(
+      input.destruction,
+      this.executionRunId,
+    );
+    if (destruction.status !== "proven") {
+      throw new TypeError("Output-validation rejection requires proven destruction.");
+    }
+    this.destruction = destruction;
+  }
+}
 
 type ReviewedAuthority = ReviewedAdmittedModelicaAuthority;
 const requireReviewedAuthority = requireReviewedAdmittedModelicaAuthority;
@@ -128,7 +173,7 @@ export interface SimulateRunAdmittedModelicaRunExecutorDependencies {
   readonly projects: EngineeringProjectRevisionStore;
   readonly commands: Pick<
     EngineeringProjectCommandService,
-    "claimRun" | "publishRun" | "completeRun"
+    "claimRun" | "publishRun" | "completeRun" | "failRun"
   >;
   readonly snapshots: AdmittedModelicaThreadSnapshotStore;
   readonly admissions: TechnicalCompilationAdmissionReader;
@@ -187,6 +232,9 @@ export class SimulateRunAdmittedModelicaRunExecutor {
     assertAdmissionScope(project, run, authority.decision, authority.admission);
     if (run.status === "completed") {
       return await this.#reopenCompleted(origin, command, authority);
+    }
+    if (run.status === "failed") {
+      return await this.#reopenFailedOutputValidation(command);
     }
     if (
       run.status !== "queued" && run.status !== "running" &&
@@ -338,6 +386,9 @@ export class SimulateRunAdmittedModelicaRunExecutor {
       await this.#completeAttempt(attempt, key, expected);
       return completed;
     } catch (error) {
+      if (error instanceof IsolatedAdmittedModelicaOutputValidationRejectedError) {
+        return await this.#failOutputValidationRejected(origin, command, error);
+      }
       throw invalidTransition(
         "The admitted Modelica execution or documentary Thread publication has a durable or uncertain effect. " +
           "Retry this exact command. " +
@@ -361,6 +412,9 @@ export class SimulateRunAdmittedModelicaRunExecutor {
         : undefined,
     });
     if (decision.action === "already-published") return attempt;
+    if (decision.action === "already-output-validation-rejected") {
+      return throwOutputValidationRejected(attempt);
+    }
     if (decision.action === "transition-g0") {
       if (attempt.phase !== "prepared") {
         throw invalidTransition(
@@ -424,7 +478,10 @@ export class SimulateRunAdmittedModelicaRunExecutor {
         requestForGeneration(context.request, attempt.dispatch.producerGeneration),
       );
       return await this.#recordPublishedReceipt(attempt, key, receipt);
-    } catch {
+    } catch (error) {
+      if (error instanceof IsolatedCodeOutputValidationRejectedError) {
+        return await this.#recordOutputValidationRejected(attempt, key, error);
+      }
       return await this.#recoverDispatch(
         context,
         attempt,
@@ -432,6 +489,28 @@ export class SimulateRunAdmittedModelicaRunExecutor {
         attempt.dispatch.dispatchedAt,
       );
     }
+  }
+
+  async #recordOutputValidationRejected(
+    attempt: Extract<AdmittedModelicaExecutionAttempt, { phase: "dispatching" }>,
+    key: AdmittedModelicaExecutionAttemptKey,
+    error: IsolatedCodeOutputValidationRejectedError,
+  ): Promise<AdmittedModelicaExecutionAttempt> {
+    if (
+      error.destruction.status !== "proven" ||
+      error.destruction.runId !== key.executionRunId
+    ) {
+      throw invalidTransition(
+        "Isolated admitted Modelica output-validation cleanup is not proven; no redispatch occurs.",
+      );
+    }
+    const recorded = await this.d.attempts.markOutputValidationRejected({
+      ...key,
+      observation: error.observation,
+      destruction: error.destruction,
+    });
+    assertAttemptIdentity(recorded, key, attempt.identity);
+    return throwOutputValidationRejected(recorded);
   }
 
   async #recoverDispatch(
@@ -1140,6 +1219,38 @@ export class SimulateRunAdmittedModelicaRunExecutor {
     }
     assertThreadEvidenceExact(completed.threadEvidence, expected);
   }
+
+  async #reopenFailedOutputValidation(
+    command: RegisteredProjectRunExecutorCommand,
+  ): Promise<EngineeringProjectSnapshot> {
+    const project = await this.#requiredProject(command.projectId);
+    const run = requireRun(project, command.runId);
+    if (run.status !== "failed") {
+      throw unexpectedStatus(run, "failed");
+    }
+    const attempt = await this.d.attempts.read(command.projectId, run.id);
+    if (attempt?.phase === "output-validation-rejected") return project;
+    throw unexpectedStatus(run, "queued or this agent's running/publishing");
+  }
+
+  async #failOutputValidationRejected(
+    origin: EngineeringProjectCommandOrigin,
+    command: RegisteredProjectRunExecutorCommand,
+    error: IsolatedAdmittedModelicaOutputValidationRejectedError,
+  ): Promise<EngineeringProjectSnapshot> {
+    const project = await this.#requiredProject(command.projectId);
+    const run = requireRun(project, command.runId);
+    if (run.status === "failed") return project;
+    await this.d.commands.failRun(
+      origin,
+      failCommand(command, {
+        summary: ADMITTED_MODELICA_ISOLATED_OUTPUT_VALIDATION_FAILED.summary,
+        code: ADMITTED_MODELICA_ISOLATED_OUTPUT_VALIDATION_FAILED.code,
+        message: isolatedOutputValidationRejectedMessage(error),
+      }, project.revision),
+    );
+    return await this.#requiredProject(command.projectId);
+  }
 }
 
 function requireClaimedShape(
@@ -1314,6 +1425,30 @@ function boundedCause(error: unknown, maximum = 300): string {
 
 function invalidTransition(message: string): EngineeringProjectCommandError {
   return new EngineeringProjectCommandError("invalid_transition", message);
+}
+
+function isolatedOutputValidationRejectedMessage(
+  error: IsolatedAdmittedModelicaOutputValidationRejectedError,
+): string {
+  const text =
+    `Isolated output validation rejected registered role ${error.observation.role} ` +
+    `(${error.observation.byteCount} bytes, sha256 ${error.observation.sha256}).`;
+  return text.length > 240 ? `${text.slice(0, 240)}…` : text;
+}
+
+function throwOutputValidationRejected(
+  attempt: AdmittedModelicaExecutionAttempt,
+): never {
+  if (attempt.phase !== "output-validation-rejected") {
+    throw invalidTransition(
+      "The admitted Modelica output-validation rejection WAL transition was not durable.",
+    );
+  }
+  throw new IsolatedAdmittedModelicaOutputValidationRejectedError({
+    executionRunId: attempt.executionRunId,
+    observation: attempt.outputValidationRejection.observation,
+    destruction: attempt.outputValidationRejection.destruction,
+  });
 }
 
 function domainTransition(error: unknown): EngineeringProjectCommandError {

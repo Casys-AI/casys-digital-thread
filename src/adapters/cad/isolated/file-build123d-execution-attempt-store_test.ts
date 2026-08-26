@@ -578,6 +578,91 @@ Deno.test("Build123d WAL rejects a draft id that is not the derived template", a
   });
 });
 
+Deno.test("Build123d WAL persists a terminal output-validation rejection and refuses redispatch", async () => {
+  await withStore(async (store, directory) => {
+    const fixture = await walFixture();
+    const prepared = await store.prepare(fixture.identity);
+    const key = attemptKey(fixture.identity, prepared.attemptFingerprint);
+    await store.markDispatching({ ...key, dispatchedAt: AT });
+    const observation = {
+      role: BUILD123D_EXECUTION_OUTPUT.role,
+      byteCount: 32,
+      sha256: "7".repeat(64),
+    };
+    const destruction = {
+      status: "proven" as const,
+      runId: fixture.identity.executionRunId,
+      proofFingerprint: { algorithm: "sha256" as const, digest: "d".repeat(64) },
+    };
+    const rejected = await store.markOutputValidationRejected({
+      ...key,
+      observation,
+      destruction,
+    });
+    assertEquals(rejected.phase, "output-validation-rejected");
+    const restarted = new FileBuild123dExecutionAttemptStore(directory);
+    const recovered = await restarted.read(
+      fixture.identity.projectId,
+      fixture.identity.agentRunId,
+    );
+    assertEquals(recovered, rejected);
+    assertEquals(
+      await restarted.markOutputValidationRejected({
+        ...key,
+        observation,
+        destruction,
+      }),
+      rejected,
+    );
+    const generationAdvance = await createIsolatedOutputProducerGenerationAdvance({
+      runId: fixture.identity.executionRunId,
+      closedGeneration: 0,
+      nextGeneration: 1,
+    });
+    await assertRejects(
+      () =>
+        restarted.authorizeRedispatch({
+          ...key,
+          recoveryDestruction: {
+            status: "proven",
+            runId: fixture.identity.executionRunId,
+            proofFingerprint: { algorithm: "sha256", digest: "e".repeat(64) },
+          },
+          generationAdvance,
+        }),
+      Build123dExecutionAttemptIntegrityError,
+      "only while dispatching",
+    );
+    await assertRejects(
+      () =>
+        restarted.markOutputValidationRejected({
+          ...key,
+          observation: { ...observation, role: "job.dat" },
+          destruction,
+        }),
+      Build123dExecutionAttemptIntegrityError,
+      "role is not registered",
+    );
+    await assertRejects(
+      () =>
+        store.markOutputValidationRejected({
+          ...key,
+          observation,
+          destruction: {
+            status: "acknowledged-unattested",
+            runId: fixture.identity.executionRunId,
+            acknowledgementFingerprint: {
+              algorithm: "sha256",
+              digest: "f".repeat(64),
+            },
+          } as never,
+        }),
+      Build123dExecutionAttemptIntegrityError,
+      "requires proven cleanup",
+    );
+  });
+});
+
 async function walFixture() {
   const source = new TextEncoder().encode("result = Box(2, 3, 4)\n");
   const sourceSha256 = await fingerprintResourceBytes(source);

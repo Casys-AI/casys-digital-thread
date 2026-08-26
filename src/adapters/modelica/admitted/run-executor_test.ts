@@ -7,6 +7,7 @@ import type {
 } from "../../../application/ports/out/modelica/admitted-execution-attempt-store.ts";
 import type {
   CompleteRunCommand,
+  FailRunCommand,
   RunCommand,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
 import type {
@@ -77,6 +78,7 @@ import {
   type IsolatedCodeExecutionRequest,
   validateIsolatedCodeExecutionRequest,
 } from "../../../domain/compile/isolation/isolated-code-execution.ts";
+import { IsolatedCodeOutputValidationRejectedError } from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
 import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
 import { FileAdmittedModelicaExecutionAttemptStore } from "./file-execution-attempt-store.ts";
 import { FileEngineeringProjectRunLease } from "../../shared/stores/file-engineering-project-run-lease.ts";
@@ -1103,6 +1105,43 @@ Deno.test("two admitted executors sharing File leases and WAL dispatch exactly o
   }
 });
 
+Deno.test("admitted Modelica fails the claimed run on output-validation rejection without Thread write", async () => {
+  const fixture = await executorHarness({ rejectOutputValidation: true });
+  try {
+    const beforeSnapshots = [...fixture.project.threadSnapshots];
+    const failed = await fixture.executor.execute(
+      EXECUTION_AGENT,
+      EXECUTION_COMMAND,
+    );
+    const run = failed.agentRuns.find((item) => item.id === EXECUTION_COMMAND.runId);
+    assertEquals(run?.status, "failed");
+    assertEquals(run?.failure?.code, "isolated_output_validation_failed");
+    assertEquals(run?.failure?.message.includes("evidence"), true);
+    assertEquals(run?.failure?.message.includes("/tmp/"), false);
+    assertEquals(failed.threadSnapshots, beforeSnapshots);
+    assertEquals(
+      (await fixture.attempts.read(
+        EXECUTION_COMMAND.projectId,
+        EXECUTION_COMMAND.runId,
+      ))?.phase,
+      "output-validation-rejected",
+    );
+    assertEquals(fixture.runtime.runs, [0]);
+    assertEquals(fixture.runtime.recoveries, []);
+    assertEquals(fixture.runtime.advances, 0);
+
+    const replayed = await fixture.executor.execute(EXECUTION_AGENT, {
+      ...EXECUTION_COMMAND,
+      expectedRevision: failed.revision,
+    });
+    assertEquals(replayed.agentRuns[0]?.status, "failed");
+    assertEquals(fixture.runtime.runs, [0]);
+    assertEquals(replayed.threadSnapshots, beforeSnapshots);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 type ExecutorDrift =
   | "agent-approval"
   | "decision-fingerprint"
@@ -1120,6 +1159,7 @@ interface ExecutorHarnessOptions {
   readonly drift?: ExecutorDrift;
   readonly initialStatus?: "queued" | "running";
   readonly failGenerationZero?: boolean;
+  readonly rejectOutputValidation?: boolean;
   readonly losePrepareAck?: boolean;
   readonly loseDispatchAck?: boolean;
   readonly loseRedispatchAck?: boolean;
@@ -1690,6 +1730,14 @@ class FaultInjectingAttemptStore implements AdmittedModelicaExecutionAttemptStor
     }
     return this.inner.markCompleted(...args);
   }
+
+  markOutputValidationRejected(
+    ...args: Parameters<
+      AdmittedModelicaExecutionAttemptStore["markOutputValidationRejected"]
+    >
+  ) {
+    return this.inner.markOutputValidationRejected(...args);
+  }
 }
 
 class FakeAdmittedRuntime {
@@ -1723,6 +1771,16 @@ class FakeAdmittedRuntime {
       this.#receipts.set(request.producerGeneration, receipt);
       throw new Error(
         `generation-${request.producerGeneration} acknowledgement lost after CAS publication`,
+      );
+    }
+    if (this.options.rejectOutputValidation) {
+      throw new IsolatedCodeOutputValidationRejectedError(
+        { role: "evidence", byteCount: 32, sha256: "7".repeat(64) },
+        {
+          status: "proven",
+          runId: request.runId,
+          proofFingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+        },
       );
     }
     if (this.options.failGenerationZero && request.producerGeneration === 0) {
@@ -2123,10 +2181,28 @@ class FakeAdmittedCommands {
     return this.project;
   }
 
+  async failRun(origin: EngineeringProjectCommandOrigin, command: FailRunCommand) {
+    const run = this.project.agentRuns[0] as MutableRun;
+    if (run.status === "running" || run.status === "publishing") {
+      run.status = "failed";
+      run.completedAt = EXECUTION_AT;
+      run.failure = { code: command.code, message: command.message };
+      const work = this.project.workItems[0] as MutableWork;
+      work.status = "ready";
+      await this.#receipt("agent-run.fail", origin, command);
+      return this.project;
+    }
+    return this.project;
+  }
+
   async #receipt(
-    type: "agent-run.claim" | "agent-run.publish" | "agent-run.complete",
+    type:
+      | "agent-run.claim"
+      | "agent-run.publish"
+      | "agent-run.complete"
+      | "agent-run.fail",
     origin: EngineeringProjectCommandOrigin,
-    command: RunCommand | CompleteRunCommand,
+    command: RunCommand | CompleteRunCommand | FailRunCommand,
   ) {
     this.project.revision += 1;
     this.project.id = `project.ramp:r${this.project.revision}`;
@@ -2149,6 +2225,8 @@ class FakeAdmittedCommands {
       ? "running" as const
       : type === "agent-run.publish"
       ? "publishing" as const
+      : type === "agent-run.fail"
+      ? "failed" as const
       : "completed" as const;
     run.statusHistory = [...(run.statusHistory ?? []), {
       commandId: command.commandId,

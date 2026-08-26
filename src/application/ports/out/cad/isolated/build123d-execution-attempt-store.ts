@@ -7,6 +7,7 @@ import type {
   IsolatedCodeExecutionReceipt,
   IsolatedCodeExecutionReceiptRecord,
   IsolatedCodeOutputDeclaration,
+  IsolatedCodeOutputValidationRejection,
   IsolatedCodePolicyRef,
   IsolatedCodeProfileRef,
   IsolatedOutputProducerGenerationAdvance,
@@ -22,7 +23,13 @@ export type Build123dExecutionAttemptPhase =
   | "output-published"
   | "draft-persisted"
   | "thread-persisted"
-  | "completed";
+  | "completed"
+  | "output-validation-rejected";
+
+export type Build123dProvenDestruction = Extract<
+  IsolatedCodeExecutionReceipt["destruction"],
+  { readonly status: "proven" }
+>;
 
 /** Exact reviewed facts whose fingerprint grants one isolated dispatch. */
 export interface Build123dExecutionAttemptIdentity {
@@ -135,6 +142,14 @@ export type Build123dExecutionAttempt =
     readonly receiptRecord: IsolatedCodeExecutionReceiptRecord;
     readonly draftReference: Build123dExecutionDraftReference;
     readonly threadEvidence: Build123dExecutionThreadEvidence;
+  })
+  | (Build123dExecutionAttemptBase & {
+    readonly phase: "output-validation-rejected";
+    readonly dispatch: Build123dExecutionDispatch;
+    readonly outputValidationRejection: {
+      readonly observation: IsolatedCodeOutputValidationRejection;
+      readonly destruction: Build123dProvenDestruction;
+    };
   });
 
 /**
@@ -184,6 +199,12 @@ export interface Build123dExecutionAttemptStore {
   ): Promise<Build123dExecutionAttempt>;
   markCompleted(
     input: Build123dExecutionAttemptKey,
+  ): Promise<Build123dExecutionAttempt>;
+  markOutputValidationRejected(
+    input: Build123dExecutionAttemptKey & {
+      readonly observation: IsolatedCodeOutputValidationRejection;
+      readonly destruction: Build123dProvenDestruction;
+    },
   ): Promise<Build123dExecutionAttempt>;
 }
 

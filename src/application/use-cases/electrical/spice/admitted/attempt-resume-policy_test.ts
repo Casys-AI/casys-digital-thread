@@ -35,6 +35,14 @@ Deno.test("prepared transitions generation zero; rejected WAL never redispatches
       message: ADMITTED_SPICE_RETRY_GENERATION_CLOSED.message,
     },
   );
+  assertEquals(
+    decideAdmittedSpiceAttemptResume({
+      phase: "output-validation-rejected",
+      executionRunId: RUN,
+      producerGeneration: 0,
+    }),
+    { action: "already-output-validation-rejected" },
+  );
 });
 
 Deno.test("one g0 cleanup plus one g1 advance is the only retry; generation two does not exist", () => {
@@ -82,6 +90,13 @@ Deno.test("terminal journal recovery is only rejected, closed, or dispatching ge
     isAdmittedSpiceTerminalJournalRecoveryEligible({
       runStatus: "failed",
       phase: "execution-rejected",
+    }),
+    true,
+  );
+  assertEquals(
+    isAdmittedSpiceTerminalJournalRecoveryEligible({
+      runStatus: "failed",
+      phase: "output-validation-rejected",
     }),
     true,
   );

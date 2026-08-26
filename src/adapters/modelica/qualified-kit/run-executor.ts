@@ -11,9 +11,10 @@ import type { EngineeringProjectCommandOrigin } from "../../../application/ports
 import type { RegisteredProjectRunExecutorCommand } from "../../../application/ports/in/project-run-executor.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
 import type { ModelicaIsolatedExecutionCaptureStore } from "../../../application/ports/out/modelica/isolated-execution-evidence-store.ts";
-import type {
-  ExecuteIsolatedModelicaRun,
-  ExecuteIsolatedModelicaRunResult,
+import {
+  type ExecuteIsolatedModelicaRun,
+  type ExecuteIsolatedModelicaRunResult,
+  IsolatedQualifiedModelicaOutputValidationRejectedError,
 } from "../../../application/use-cases/modelica/qualified-kit/execute-isolated-run.ts";
 import type {
   PreparedQualifiedModelicaRunReview,
@@ -76,6 +77,12 @@ import {
 
 export { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION };
 
+export const QUALIFIED_MODELICA_ISOLATED_OUTPUT_VALIDATION_FAILED = {
+  summary:
+    "Isolated qualified Modelica output validation was rejected before Thread publication.",
+  code: "isolated_output_validation_failed",
+} as const;
+
 /** Result readback must bypass any in-process Thread snapshot cache. */
 export interface QualifiedModelicaKitThreadSnapshotStore extends ThreadSnapshotStore {
   getFresh(snapshotId: string): Promise<ThreadSnapshot | undefined>;
@@ -85,7 +92,7 @@ export interface SimulateRunQualifiedModelicaKitRunExecutorDependencies {
   readonly projects: EngineeringProjectRevisionStore;
   readonly commands: Pick<
     EngineeringProjectCommandService,
-    "claimRun" | "publishRun" | "completeRun"
+    "claimRun" | "publishRun" | "completeRun" | "failRun"
   >;
   readonly snapshots: QualifiedModelicaKitThreadSnapshotStore;
   readonly review: Pick<
@@ -94,7 +101,7 @@ export interface SimulateRunQualifiedModelicaKitRunExecutorDependencies {
   >;
   readonly execution: Pick<
     ExecuteIsolatedModelicaRun,
-    "execute" | "reopenCompleted"
+    "execute" | "reopenCompleted" | "reopenOutputValidationRejection"
   >;
   readonly captures: ModelicaIsolatedExecutionCaptureStore;
   readonly lease: EngineeringProjectRunLease;
@@ -176,6 +183,20 @@ export class SimulateRunQualifiedModelicaKitRunExecutor {
         command,
         initialAuthority.decision.id,
       );
+    }
+    if (run.status === "failed") {
+      try {
+        await this.d.execution.reopenOutputValidationRejection({
+          projectId: command.projectId,
+          agentRunId: run.id,
+        });
+      } catch (error) {
+        if (error instanceof IsolatedQualifiedModelicaOutputValidationRejectedError) {
+          return project;
+        }
+        throw error;
+      }
+      throw unexpectedStatus(run, "queued or this agent's running/publishing");
     }
     if (
       run.status !== "queued" && run.status !== "running" &&
@@ -292,6 +313,9 @@ export class SimulateRunQualifiedModelicaKitRunExecutor {
       );
       return project;
     } catch (error) {
+      if (error instanceof IsolatedQualifiedModelicaOutputValidationRejectedError) {
+        return await this.#failOutputValidationRejected(origin, command, error);
+      }
       throw invalidTransition(
         "The qualified Modelica execution or documentary Thread publication has a durable or uncertain effect. " +
           "Retry this exact command; recovery will reopen the inner WAL and deterministic successor without blindly redispatching. " +
@@ -536,6 +560,25 @@ export class SimulateRunQualifiedModelicaKitRunExecutor {
       origin,
       completionCommand(command, expectedRevision, expected, issuedAt),
     );
+  }
+
+  async #failOutputValidationRejected(
+    origin: EngineeringProjectCommandOrigin,
+    command: RegisteredProjectRunExecutorCommand,
+    error: IsolatedQualifiedModelicaOutputValidationRejectedError,
+  ): Promise<EngineeringProjectSnapshot> {
+    const project = await this.#requiredProject(command.projectId);
+    const run = requireRun(project, command.runId);
+    if (run.status === "failed") return project;
+    await this.d.commands.failRun(origin, {
+      ...command,
+      commandId: commandStep(command.commandId, "fail"),
+      expectedRevision: project.revision,
+      summary: QUALIFIED_MODELICA_ISOLATED_OUTPUT_VALIDATION_FAILED.summary,
+      code: QUALIFIED_MODELICA_ISOLATED_OUTPUT_VALIDATION_FAILED.code,
+      message: isolatedOutputValidationRejectedMessage(error),
+    });
+    return await this.#requiredProject(command.projectId);
   }
 }
 
@@ -996,4 +1039,13 @@ function boundedCause(error: unknown, maximum = 300): string {
 
 function invalidTransition(message: string): EngineeringProjectCommandError {
   return new EngineeringProjectCommandError("invalid_transition", message);
+}
+
+function isolatedOutputValidationRejectedMessage(
+  error: IsolatedQualifiedModelicaOutputValidationRejectedError,
+): string {
+  const text =
+    `Isolated output validation rejected registered role ${error.observation.role} ` +
+    `(${error.observation.byteCount} bytes, sha256 ${error.observation.sha256}).`;
+  return text.length > 240 ? `${text.slice(0, 240)}…` : text;
 }

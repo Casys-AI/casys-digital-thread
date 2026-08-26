@@ -16,7 +16,8 @@ export type AdmittedModelicaAttemptPhase =
   | "dispatching"
   | "generation-zero-cleaned"
   | "output-published"
-  | "completed";
+  | "completed"
+  | "output-validation-rejected";
 
 export interface AdmittedModelicaAttemptResumeInput {
   readonly phase: AdmittedModelicaAttemptPhase;
@@ -39,6 +40,7 @@ export type AdmittedModelicaAttemptResumeAction =
     readonly message: string;
   }
   | { readonly action: "already-published" }
+  | { readonly action: "already-output-validation-rejected" }
   | { readonly action: "quarantine"; readonly message: string };
 
 export function decideAdmittedModelicaAttemptResume(
@@ -51,6 +53,8 @@ export function decideAdmittedModelicaAttemptResume(
       );
     case "output-published":
       return { action: "already-published" };
+    case "output-validation-rejected":
+      return { action: "already-output-validation-rejected" };
     case "prepared":
       return { action: "transition-g0" };
     case "generation-zero-cleaned":

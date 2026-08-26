@@ -11,6 +11,7 @@
 import type {
   IsolatedCodeExecutionReceiptRecord,
   IsolatedCodeOutputDeclaration,
+  IsolatedCodeOutputValidationRejection,
   IsolatedCodePolicyRef,
   IsolatedCodeProfileRef,
   IsolatedOutputProducerGenerationAdvance,
@@ -67,11 +68,13 @@ export interface AdmittedModelicaExecutionDispatch {
   readonly dispatchedAt: string;
 }
 
+export type AdmittedModelicaProvenDestruction = Extract<
+  IsolatedCodeExecutionReceiptRecord["destruction"],
+  { readonly status: "proven" }
+>;
+
 export interface AdmittedModelicaExecutionGenerationRecovery {
-  readonly generationZeroDestruction: Extract<
-    IsolatedCodeExecutionReceiptRecord["destruction"],
-    { readonly status: "proven" }
-  >;
+  readonly generationZeroDestruction: AdmittedModelicaProvenDestruction;
   readonly advance: IsolatedOutputProducerGenerationAdvance;
 }
 
@@ -119,10 +122,7 @@ export type AdmittedModelicaExecutionAttempt =
       readonly dispatchCount: 1;
       readonly producerGeneration: 0;
     };
-    readonly generationZeroDestruction: Extract<
-      IsolatedCodeExecutionReceiptRecord["destruction"],
-      { readonly status: "proven" }
-    >;
+    readonly generationZeroDestruction: AdmittedModelicaProvenDestruction;
   })
   | (AttemptBase & {
     readonly phase: "output-published";
@@ -140,6 +140,17 @@ export type AdmittedModelicaExecutionAttempt =
       | null;
     readonly receiptRecord: IsolatedCodeExecutionReceiptRecord;
     readonly threadEvidence: AdmittedModelicaExecutionThreadEvidence;
+  })
+  | (AttemptBase & {
+    readonly phase: "output-validation-rejected";
+    readonly dispatch: AdmittedModelicaExecutionDispatch;
+    readonly generationRecovery:
+      | AdmittedModelicaExecutionGenerationRecovery
+      | null;
+    readonly outputValidationRejection: {
+      readonly observation: IsolatedCodeOutputValidationRejection;
+      readonly destruction: AdmittedModelicaProvenDestruction;
+    };
   });
 
 /**
@@ -170,10 +181,7 @@ export interface AdmittedModelicaExecutionAttemptStore {
   ): Promise<AdmittedModelicaExecutionDispatchTransition>;
   markGenerationZeroCleaned(
     input: AdmittedModelicaExecutionAttemptKey & {
-      readonly destruction: Extract<
-        IsolatedCodeExecutionReceiptRecord["destruction"],
-        { readonly status: "proven" }
-      >;
+      readonly destruction: AdmittedModelicaProvenDestruction;
     },
   ): Promise<AdmittedModelicaExecutionAttempt>;
   markRedispatching(
@@ -190,6 +198,12 @@ export interface AdmittedModelicaExecutionAttemptStore {
   markCompleted(
     input: AdmittedModelicaExecutionAttemptKey & {
       readonly threadEvidence: AdmittedModelicaExecutionThreadEvidenceInput;
+    },
+  ): Promise<AdmittedModelicaExecutionAttempt>;
+  markOutputValidationRejected(
+    input: AdmittedModelicaExecutionAttemptKey & {
+      readonly observation: IsolatedCodeOutputValidationRejection;
+      readonly destruction: AdmittedModelicaProvenDestruction;
     },
   ): Promise<AdmittedModelicaExecutionAttempt>;
 }

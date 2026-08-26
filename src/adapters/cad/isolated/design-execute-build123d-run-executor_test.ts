@@ -11,10 +11,11 @@ import type {
   Build123dExecutionDraftStore,
 } from "../../../application/ports/out/cad/isolated/build123d-execution-evidence-store.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
-import type {
-  IsolatedCodeRunner,
-  IsolatedCodeRunRecovery,
-  IsolatedOutputPublicationReader,
+import {
+  IsolatedCodeOutputValidationRejectedError,
+  type IsolatedCodeRunner,
+  type IsolatedCodeRunRecovery,
+  type IsolatedOutputPublicationReader,
 } from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
 import type { TechnicalCompilationAdmissionReader } from "../../../application/ports/out/compile/admission/technical-compilation-admission-reader.ts";
 import type {
@@ -411,6 +412,26 @@ Deno.test("human permission and profile drift stop before runner and WAL", async
   assertEquals(drift.attempts.prepareCalls, 0);
 });
 
+Deno.test("Build123d executor fails the claimed run on output-validation rejection without Thread write", async () => {
+  const fixture = await createFixture({ rejectOutputValidation: true });
+  const beforeSnapshots = [...fixture.project.threadSnapshots];
+  const failed = await fixture.executor.execute(AGENT, COMMAND);
+  assertEquals(failed.agentRuns[0]?.status, "failed");
+  assertEquals(failed.agentRuns[0]?.failure?.code, "isolated_output_validation_failed");
+  assertEquals(failed.agentRuns[0]?.failure?.message.includes("geometry"), true);
+  assertEquals(failed.agentRuns[0]?.failure?.message.includes("/tmp/"), false);
+  assertEquals(failed.threadSnapshots, beforeSnapshots);
+  assertEquals(fixture.attempts.current?.phase, "output-validation-rejected");
+  assertEquals(fixture.runner.calls, 1);
+  assertEquals(fixture.recovery.calls, 0);
+
+  const replayed = await fixture.executor.execute(AGENT, COMMAND);
+  assertEquals(replayed.agentRuns[0]?.status, "failed");
+  assertEquals(fixture.runner.calls, 1);
+  assertEquals(fixture.recovery.calls, 0);
+  assertEquals(replayed.threadSnapshots, beforeSnapshots);
+});
+
 interface FixtureOptions {
   readonly resume?: "published" | "not-published" | "outcome-unknown";
   readonly profileDrift?: boolean;
@@ -421,6 +442,7 @@ interface FixtureOptions {
   readonly redispatchConsumptionAckLostOnce?: boolean;
   readonly walCompletionFailsOnce?: boolean;
   readonly runnerFailsOnce?: boolean;
+  readonly rejectOutputValidation?: boolean;
 }
 
 interface Fixture {
@@ -1017,7 +1039,10 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
   const runner = new FakeRunner(
     profile.runtime,
     (receipt) => publications.receipt = receipt,
-    { failsOnce: options.runnerFailsOnce },
+    {
+      failsOnce: options.runnerFailsOnce,
+      rejectOutputValidation: options.rejectOutputValidation,
+    },
   );
   const recovery = new FakeRecovery({
     generationAdvanceAckLostOnce: options.generationAdvanceAckLostOnce,
@@ -1178,15 +1203,30 @@ class FakeRunner implements IsolatedCodeRunner {
     >[0]["runtime"],
     private readonly onReceipt: (receipt: IsolatedCodeExecutionReceipt) => void =
       () => {},
-    options: { readonly failsOnce?: boolean } = {},
+    options: {
+      readonly failsOnce?: boolean;
+      readonly rejectOutputValidation?: boolean;
+    } = {},
   ) {
     this.#failsOnce = options.failsOnce ?? false;
+    this.#rejectOutputValidation = options.rejectOutputValidation ?? false;
   }
+  #rejectOutputValidation: boolean;
   async run(
     request: IsolatedCodeExecutionRequest,
   ): Promise<IsolatedCodeExecutionReceipt> {
     this.calls += 1;
     this.producerGenerations.push(request.producerGeneration);
+    if (this.#rejectOutputValidation) {
+      throw new IsolatedCodeOutputValidationRejectedError(
+        { role: "geometry", byteCount: 32, sha256: "7".repeat(64) },
+        {
+          status: "proven",
+          runId: request.runId,
+          proofFingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+        },
+      );
+    }
     if (this.#failsOnce) {
       this.#failsOnce = false;
       throw new Error("runner crashed after accepting the second dispatch");
@@ -1520,6 +1560,25 @@ class FakeAttempts implements Build123dExecutionAttemptStore {
       return Promise.reject(new Error("WAL completion failed before commit"));
     }
     this.current = { ...this.current!, phase: "completed" };
+    return Promise.resolve(this.current);
+  }
+  markOutputValidationRejected(
+    input: Parameters<
+      Build123dExecutionAttemptStore["markOutputValidationRejected"]
+    >[0],
+  ) {
+    if (this.current!.phase === "output-validation-rejected") {
+      return Promise.resolve(this.current!);
+    }
+    if (this.current!.phase !== "dispatching") throw new Error("not dispatching");
+    this.current = {
+      ...this.current!,
+      phase: "output-validation-rejected",
+      outputValidationRejection: {
+        observation: input.observation,
+        destruction: input.destruction,
+      },
+    };
     return Promise.resolve(this.current);
   }
 }

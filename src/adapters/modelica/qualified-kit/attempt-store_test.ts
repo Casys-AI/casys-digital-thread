@@ -114,6 +114,72 @@ Deno.test("Modelica WAL persists the fenced generation-zero cleanup before one g
   }
 });
 
+Deno.test("qualified Modelica WAL persists a terminal output-validation rejection and refuses redispatch", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "casys-modelica-isolated-wal-" });
+  try {
+    const store = new FileModelicaIsolatedExecutionAttemptStore(directory);
+    const identity = await attemptIdentity();
+    const prepared = await store.prepare(identity, PREPARED_AT);
+    const key = keyFor(prepared);
+    await store.markDispatching({ ...key, dispatchedAt: PREPARED_AT });
+    const observation = {
+      role: "evidence",
+      byteCount: 32,
+      sha256: "7".repeat(64),
+    };
+    const destruction = {
+      status: "proven" as const,
+      runId: identity.executionRunId,
+      proofFingerprint: { algorithm: "sha256" as const, digest: "d".repeat(64) },
+    };
+    const rejected = await store.markOutputValidationRejected({
+      ...key,
+      observation,
+      destruction,
+    });
+    assertEquals(rejected.phase, "output-validation-rejected");
+    const restarted = new FileModelicaIsolatedExecutionAttemptStore(directory);
+    assertEquals(
+      await restarted.read(identity.projectId, identity.agentRunId),
+      rejected,
+    );
+    assertEquals(
+      await restarted.markOutputValidationRejected({
+        ...key,
+        observation,
+        destruction,
+      }),
+      rejected,
+    );
+    const advance = await createIsolatedOutputProducerGenerationAdvance({
+      runId: identity.executionRunId,
+      closedGeneration: 0,
+      nextGeneration: 1,
+    });
+    await assertRejects(
+      () =>
+        restarted.markRedispatching({
+          ...key,
+          advance,
+          dispatchedAt: PREPARED_AT,
+        }),
+      ModelicaIsolatedExecutionAttemptIntegrityError,
+    );
+    await assertRejects(
+      () =>
+        restarted.markOutputValidationRejected({
+          ...key,
+          observation: { ...observation, role: "job.dat" },
+          destruction,
+        }),
+      ModelicaIsolatedExecutionAttemptIntegrityError,
+      "role is not registered",
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 async function attemptIdentity(): Promise<ModelicaIsolatedExecutionAttemptIdentity> {
   const profile = await new FixedModelicaIsolatedExecutionProfileCatalog({
     imageReference: `ghcr.io/casys/modelica-runtime@sha256:${DIGEST}`,

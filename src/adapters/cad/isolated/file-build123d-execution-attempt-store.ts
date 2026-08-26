@@ -32,6 +32,7 @@ import {
   runtimeAttestationsEqual,
   validateContentFingerprint,
   validateIsolatedCodeExecutionReceiptRecord,
+  validateIsolatedCodeOutputValidationRejection,
   validateIsolatedOutputProducerGenerationAdvance,
 } from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import { validateMicrosandboxLocalRuntimeIdentity } from "../../../domain/compile/isolation/local-isolation-runtime.ts";
@@ -362,6 +363,63 @@ export class FileBuild123dExecutionAttemptStore
     });
   }
 
+  async markOutputValidationRejected(
+    input: Build123dExecutionAttemptKey & {
+      readonly observation: {
+        readonly role: string;
+        readonly byteCount: number;
+        readonly sha256: string;
+      };
+      readonly destruction: Extract<
+        IsolatedCodeExecutionReceipt["destruction"],
+        { readonly status: "proven" }
+      >;
+    },
+  ): Promise<Build123dExecutionAttempt> {
+    return await this.#transition(input, (current) => {
+      const observation = validateIsolatedCodeOutputValidationRejection(
+        input.observation,
+      );
+      assertRegisteredOutputRole(observation.role, current.identity);
+      const destruction = validateDestruction(
+        input.destruction,
+        current.executionRunId,
+      );
+      if (destruction.status !== "proven") {
+        throw integrity(
+          "Build123d output-validation rejection requires proven cleanup.",
+        );
+      }
+      const outputValidationRejection = deepFreeze({ observation, destruction });
+      if (current.phase === "output-validation-rejected") {
+        if (
+          deterministicJson(current.outputValidationRejection) ===
+            deterministicJson(outputValidationRejection)
+        ) return current;
+        throw integrity(
+          "Build123d output-validation rejection evidence diverges.",
+        );
+      }
+      if (current.phase !== "dispatching") {
+        throw integrity("Build123d output-validation rejection is out of order.");
+      }
+      if (
+        current.dispatch.dispatchCount === 2 &&
+        current.dispatch.redispatch.status !== "consumed"
+      ) {
+        throw integrity(
+          "Rejected redispatch follows unconsumed redispatch authority.",
+        );
+      }
+      return deepFreeze({
+        ...baseOf(current),
+        phase: "output-validation-rejected" as const,
+        dispatch: current.dispatch,
+        outputValidationRejection,
+      });
+    });
+  }
+
   async pathFor(projectIdValue: string, agentRunIdValue: string): Promise<string> {
     const projectId = safeId(projectIdValue, "$projectId");
     const agentRunId = safeId(agentRunIdValue, "$agentRunId");
@@ -494,6 +552,18 @@ export async function validateBuild123dExecutionAttempt(
   if (phase === "prepared") return deepFreeze({ ...base, phase });
   const dispatch = await validateDispatch(root.dispatch, executionRunId);
   if (phase === "dispatching") return deepFreeze({ ...base, phase, dispatch });
+  if (phase === "output-validation-rejected") {
+    return deepFreeze({
+      ...base,
+      phase,
+      dispatch,
+      outputValidationRejection: validateOutputValidationRejection(
+        root.outputValidationRejection,
+        executionRunId,
+        identity,
+      ),
+    });
+  }
   if (
     dispatch.dispatchCount === 2 &&
     dispatch.redispatch.status !== "consumed"
@@ -1164,6 +1234,39 @@ async function validateGenerationAdvance(
   }
 }
 
+function validateOutputValidationRejection(
+  value: unknown,
+  runId: string,
+  identity: Build123dExecutionAttemptIdentity,
+) {
+  const root = exactRecord(
+    value,
+    ["observation", "destruction"],
+    "$outputValidationRejection",
+  );
+  const observation = validateIsolatedCodeOutputValidationRejection(
+    root.observation,
+    "$outputValidationRejection.observation",
+  );
+  assertRegisteredOutputRole(observation.role, identity);
+  const destruction = validateDestruction(root.destruction, runId);
+  if (destruction.status !== "proven") {
+    throw integrity(
+      "Build123d output-validation rejection requires proven cleanup.",
+    );
+  }
+  return deepFreeze({ observation, destruction });
+}
+
+function assertRegisteredOutputRole(
+  role: string,
+  identity: Build123dExecutionAttemptIdentity,
+): void {
+  if (!identity.isolatedRequest.outputs.some((item) => item.role === role)) {
+    throw integrity("Output-validation rejection role is not registered.");
+  }
+}
+
 function validateDestruction(value: unknown, runId: string) {
   const root = value && typeof value === "object" &&
       (value as { status?: unknown }).status === "proven"
@@ -1288,14 +1391,21 @@ function phaseOf(value: unknown): Build123dExecutionAttempt["phase"] {
   if (
     root.phase !== "prepared" && root.phase !== "dispatching" &&
     root.phase !== "output-published" && root.phase !== "draft-persisted" &&
-    root.phase !== "thread-persisted" && root.phase !== "completed"
+    root.phase !== "thread-persisted" && root.phase !== "completed" &&
+    root.phase !== "output-validation-rejected"
   ) throw integrity("Build123d execution journal phase is unsupported.");
   return root.phase;
 }
 
 function optionalAttemptFields(value: unknown): string[] {
   if (!value || typeof value !== "object" || Array.isArray(value)) return [];
-  return ["dispatch", "receiptRecord", "draftReference", "threadEvidence"].filter(
+  return [
+    "dispatch",
+    "receiptRecord",
+    "draftReference",
+    "threadEvidence",
+    "outputValidationRejection",
+  ].filter(
     (key) => Object.hasOwn(value, key),
   );
 }
@@ -1314,6 +1424,10 @@ function keysForPhase(phase: Build123dExecutionAttempt["phase"]): string[] {
   if (phase === "prepared") return base;
   base.push("dispatch");
   if (phase === "dispatching") return base;
+  if (phase === "output-validation-rejected") {
+    base.push("outputValidationRejection");
+    return base;
+  }
   base.push("receiptRecord");
   if (phase === "output-published") return base;
   base.push("draftReference");

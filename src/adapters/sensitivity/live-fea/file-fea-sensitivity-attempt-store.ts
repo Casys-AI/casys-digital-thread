@@ -1,9 +1,10 @@
 /**
  * Composite WAL for analyze.run-fea-sensitivity@1.
  *
- * CAD slots: idle → dispatched → published.
- * Solve slots: idle → dispatched → solver-recorded (3-state CalculiX @1 analog).
- * A dispatched solve without solver-recorded is terminal: never re-dispatch.
+ * CAD slots: idle → dispatched → published, or dispatched →
+ * output-validation-rejected. Solve slots: idle → dispatched →
+ * solver-recorded (3-state CalculiX @1 analog). A dispatched solve without
+ * solver-recorded is terminal: never re-dispatch.
  */
 
 import {
@@ -11,7 +12,9 @@ import {
   literalValue,
   nonEmptyText,
 } from "../../../domain/kernel/case-validation.ts";
+import { validateIsolatedCodeOutputValidationRejection } from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
+import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import {
   replaceAttemptFileDurably,
   writeNewAttemptFileDurably,
@@ -50,6 +53,22 @@ export type SensitivityCadSlot =
     readonly sourceSha256: string;
     readonly stepSha256: string;
     readonly stepBytes: number;
+  }
+  | {
+    readonly status: "output-validation-rejected";
+    readonly executionRunId: string;
+    readonly dispatchedAt: string;
+    readonly sourceSha256: string;
+    readonly observation: {
+      readonly role: string;
+      readonly byteCount: number;
+      readonly sha256: string;
+    };
+    readonly destruction: {
+      readonly status: "proven";
+      readonly runId: string;
+      readonly proofFingerprint: ContentFingerprint;
+    };
   };
 
 export type SensitivitySolveSlot =
@@ -150,6 +169,12 @@ export class FileFeaSensitivityAttemptStore {
     const current = await this.#required(input.projectId, input.runId);
     const slot = current.cad[input.phase];
     if (slot.status === "published") return current;
+    if (slot.status === "output-validation-rejected") {
+      throw new FeaSensitivityIllegalTransitionError(
+        slot.status,
+        "dispatched",
+      );
+    }
     if (slot.status === "dispatched") {
       throw new FeaSensitivityOutcomeUnknownError(
         `cad.${input.phase} is dispatched without a published STEP`,
@@ -192,6 +217,67 @@ export class FileFeaSensitivityAttemptStore {
           stepSha256: input.stepSha256,
           stepBytes: input.stepBytes,
         },
+      },
+    });
+  }
+
+  async markCadOutputValidationRejected(input: {
+    readonly projectId: string;
+    readonly runId: string;
+    readonly phase: SensitivityPhase;
+    readonly observation: {
+      readonly role: string;
+      readonly byteCount: number;
+      readonly sha256: string;
+    };
+    readonly destruction: {
+      readonly status: "proven";
+      readonly runId: string;
+      readonly proofFingerprint: ContentFingerprint;
+    };
+    readonly registeredRoles: readonly string[];
+  }): Promise<FeaSensitivityAttempt> {
+    const current = await this.#required(input.projectId, input.runId);
+    const slot = current.cad[input.phase];
+    const observation = validateIsolatedCodeOutputValidationRejection(
+      input.observation,
+    );
+    if (!input.registeredRoles.includes(observation.role)) {
+      throw new FeaSensitivityIllegalTransitionError(
+        observation.role,
+        "registered-output-role",
+      );
+    }
+    if (slot.status === "idle" || slot.status === "published") {
+      throw new FeaSensitivityIllegalTransitionError(
+        slot.status,
+        "output-validation-rejected",
+      );
+    }
+    const destruction = validateProvenDestruction(
+      input.destruction,
+      slot.executionRunId,
+    );
+    const next: SensitivityCadSlot = {
+      status: "output-validation-rejected",
+      executionRunId: slot.executionRunId,
+      dispatchedAt: slot.dispatchedAt,
+      sourceSha256: slot.sourceSha256,
+      observation,
+      destruction,
+    };
+    if (slot.status === "output-validation-rejected") {
+      if (deterministicJson(slot) === deterministicJson(next)) return current;
+      throw new FeaSensitivityIllegalTransitionError(
+        slot.status,
+        "output-validation-rejected",
+      );
+    }
+    return await this.#replace(current, {
+      ...current,
+      cad: {
+        ...current.cad,
+        [input.phase]: next,
       },
     });
   }
@@ -421,7 +507,74 @@ function parseCadSlot(value: unknown, phase: string): SensitivityCadSlot {
       stepBytes: positiveByteCount(slot.stepBytes, `${path}.stepBytes`),
     };
   }
+  if (status === "output-validation-rejected") {
+    const slot = exactRecord(value, [
+      "status",
+      "executionRunId",
+      "dispatchedAt",
+      "sourceSha256",
+      "observation",
+      "destruction",
+    ], path);
+    const observation = validateIsolatedCodeOutputValidationRejection(
+      slot.observation,
+      `${path}.observation`,
+    );
+    const destruction = validateProvenDestruction(
+      slot.destruction,
+      nonEmptyText(slot.executionRunId, `${path}.executionRunId`),
+    );
+    return {
+      status: "output-validation-rejected",
+      executionRunId: destruction.runId,
+      dispatchedAt: nonEmptyText(slot.dispatchedAt, `${path}.dispatchedAt`),
+      sourceSha256: sha256Hex(slot.sourceSha256, `${path}.sourceSha256`),
+      observation,
+      destruction,
+    };
+  }
   throw new TypeError(`${path}.status is unknown.`);
+}
+
+function validateProvenDestruction(
+  value: unknown,
+  expectedRunId: string,
+): {
+  readonly status: "proven";
+  readonly runId: string;
+  readonly proofFingerprint: ContentFingerprint;
+} {
+  const root = exactRecord(
+    value,
+    ["status", "runId", "proofFingerprint"],
+    "$destruction",
+  );
+  literalValue(root.status, "proven", "$destruction.status");
+  const runId = nonEmptyText(root.runId, "$destruction.runId");
+  if (runId !== expectedRunId) {
+    throw new TypeError("$destruction.runId must match the CAD execution run.");
+  }
+  const fingerprint = exactRecord(
+    root.proofFingerprint,
+    ["algorithm", "digest"],
+    "$destruction.proofFingerprint",
+  );
+  literalValue(
+    fingerprint.algorithm,
+    "sha256",
+    "$destruction.proofFingerprint.algorithm",
+  );
+  return {
+    status: "proven",
+    runId,
+    proofFingerprint: {
+      algorithm: "sha256",
+      digest: sha256Hex(
+        fingerprint.digest,
+        "$destruction.proofFingerprint.digest",
+      ),
+    },
+  };
 }
 
 function parseSolveSlot(value: unknown, phase: string): SensitivitySolveSlot {

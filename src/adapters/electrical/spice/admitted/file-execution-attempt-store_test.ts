@@ -5,8 +5,8 @@ import { fingerprintResourceBytes } from "../../../../domain/compile/source/prov
 import { SPICE_ADMITTED_REQUESTED_LIMITS } from "../../../../domain/electrical/spice/admitted/contract.ts";
 import { deriveAdmittedSpiceExecutionRunId } from "../../../../domain/electrical/spice/admitted/execution-evidence.ts";
 import {
-  SPICE_ADMITTED_COMPILED_ADMISSION_SCHEMA,
   SPICE_ADMITTED_COMPILATION_SCHEMA,
+  SPICE_ADMITTED_COMPILED_ADMISSION_SCHEMA,
   SPICE_ADMITTED_RUN_ADMISSION_SCHEMA,
   validateSpiceAdmittedRunAdmission,
 } from "../../../../domain/electrical/spice/admitted/run-proposal.ts";
@@ -163,6 +163,64 @@ Deno.test(
     });
   },
 );
+
+Deno.test("admitted SPICE WAL persists a terminal output-validation rejection and refuses redispatch", async () => {
+  await withStore(async (store, directory) => {
+    const fixture = await walFixture();
+    const prepared = await store.prepare(fixture.identity, AT);
+    const key = keyFor(prepared);
+    await store.markDispatching({ ...key, dispatchedAt: AT });
+    const observation = {
+      role: "evidence",
+      byteCount: 32,
+      sha256: "7".repeat(64),
+    };
+    const destruction = {
+      status: "proven" as const,
+      runId: fixture.identity.executionRunId,
+      proofFingerprint: { algorithm: "sha256" as const, digest: "d".repeat(64) },
+    };
+    const rejected = await store.markOutputValidationRejected({
+      ...key,
+      observation,
+      destruction,
+    });
+    assertEquals(rejected.phase, "output-validation-rejected");
+    const restarted = new FileAdmittedSpiceExecutionAttemptStore(directory);
+    assertEquals(
+      await restarted.read(fixture.identity.projectId, fixture.identity.agentRunId),
+      rejected,
+    );
+    assertEquals(
+      await restarted.markOutputValidationRejected({
+        ...key,
+        observation,
+        destruction,
+      }),
+      rejected,
+    );
+    const advance = await createIsolatedOutputProducerGenerationAdvance({
+      runId: fixture.identity.executionRunId,
+      closedGeneration: 0,
+      nextGeneration: 1,
+    });
+    await assertRejects(
+      () => restarted.markRedispatching({ ...key, advance, dispatchedAt: AT }),
+      AdmittedSpiceExecutionAttemptIntegrityError,
+      "out of order",
+    );
+    await assertRejects(
+      () =>
+        restarted.markOutputValidationRejected({
+          ...key,
+          observation: { ...observation, role: "job.dat" },
+          destruction,
+        }),
+      AdmittedSpiceExecutionAttemptIntegrityError,
+      "role is not registered",
+    );
+  });
+});
 
 async function walFixture() {
   const source = new TextEncoder().encode(

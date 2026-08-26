@@ -4,8 +4,9 @@
  * Reopens one sealed SPICE compilation and runs those exact `.cir` bytes
  * in the server-owned isolated worker. Callers never supply SPICE text.
  * A claimed run whose WAL is already execution-rejected,
- * retry-generation-closed, or dispatching/g1 may terminate from journal
- * facts without reopening the current execution profile.
+ * output-validation-rejected, retry-generation-closed, or dispatching/g1
+ * may terminate from journal facts without reopening the current
+ * execution profile.
  */
 
 import type { EngineeringProjectCommandOrigin } from "../../../../application/ports/in/engineering-project-command-origin.ts";
@@ -15,7 +16,10 @@ import type {
   IsolatedCodeRunRecovery,
   IsolatedOutputPublicationReader,
 } from "../../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
-import { IsolatedCodeExecutionRejectedError } from "../../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
+import {
+  IsolatedCodeExecutionRejectedError,
+  IsolatedCodeOutputValidationRejectedError,
+} from "../../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
 import type {
   AdmittedSpiceExecutionAttempt,
   AdmittedSpiceExecutionAttemptIdentity,
@@ -46,6 +50,7 @@ import {
 } from "../../../../application/use-cases/electrical/spice/admitted/reopen-reviewed-execution.ts";
 import {
   ADMITTED_SPICE_ISOLATED_EXECUTION_REJECTED,
+  ADMITTED_SPICE_ISOLATED_OUTPUT_VALIDATION_FAILED,
   ADMITTED_SPICE_RETRY_GENERATION_CLOSED,
   assertAdmittedSpiceCommandReceiptExact,
   assertCompletedAdmittedSpiceBinding,
@@ -81,6 +86,7 @@ import {
   isolatedCodeExecutionReceiptRecord,
   type IsolatedCodeExecutionRejectionDiagnostic,
   type IsolatedCodeExecutionRequest,
+  type IsolatedCodeOutputValidationRejection,
 } from "../../../../domain/compile/isolation/isolated-code-execution.ts";
 import { SIMULATE_RUN_ADMITTED_SPICE_OPERATION } from "../../../../domain/electrical/spice/admitted/run-proposal.ts";
 
@@ -407,6 +413,16 @@ export class SimulateRunAdmittedSpiceRunExecutor {
         attempt.rejection.diagnostic,
       );
     }
+    if (decision.action === "already-output-validation-rejected") {
+      if (attempt.phase !== "output-validation-rejected") {
+        throw invalidTransition(
+          "The admitted SPICE journal phase is not recoverable.",
+        );
+      }
+      throw AdmittedSpiceTerminalExecutionOutcome.outputValidationRejected(
+        attempt.outputValidationRejection.observation,
+      );
+    }
     if (decision.action === "already-closed") {
       if (attempt.phase !== "retry-generation-closed") {
         throw invalidTransition(
@@ -479,6 +495,9 @@ export class SimulateRunAdmittedSpiceRunExecutor {
       );
       return await this.#recordPublishedReceipt(attempt, key, receipt);
     } catch (error) {
+      if (error instanceof IsolatedCodeOutputValidationRejectedError) {
+        return await this.#recordOutputValidationRejected(attempt, key, error);
+      }
       if (error instanceof IsolatedCodeExecutionRejectedError) {
         return await this.#recordRejectedExecution(attempt, key, error);
       }
@@ -489,6 +508,35 @@ export class SimulateRunAdmittedSpiceRunExecutor {
         attempt.dispatch.dispatchedAt,
       );
     }
+  }
+
+  async #recordOutputValidationRejected(
+    attempt: Extract<AdmittedSpiceExecutionAttempt, { phase: "dispatching" }>,
+    key: AdmittedSpiceExecutionAttemptKey,
+    error: IsolatedCodeOutputValidationRejectedError,
+  ): Promise<AdmittedSpiceExecutionAttempt> {
+    if (
+      error.destruction.status !== "proven" ||
+      error.destruction.runId !== key.executionRunId
+    ) {
+      throw invalidTransition(
+        "Isolated admitted SPICE output-validation cleanup is not proven; no redispatch occurs.",
+      );
+    }
+    const recorded = await this.d.attempts.markOutputValidationRejected({
+      ...key,
+      observation: error.observation,
+      destruction: error.destruction,
+    });
+    assertAttemptIdentity(recorded, key, attempt.identity);
+    if (recorded.phase !== "output-validation-rejected") {
+      throw invalidTransition(
+        "The admitted SPICE output-validation rejection was not durably recorded.",
+      );
+    }
+    throw AdmittedSpiceTerminalExecutionOutcome.outputValidationRejected(
+      recorded.outputValidationRejection.observation,
+    );
   }
 
   async #recordRejectedExecution(
@@ -1159,6 +1207,7 @@ export class SimulateRunAdmittedSpiceRunExecutor {
     });
     if (
       decision.action === "already-rejected" ||
+      decision.action === "already-output-validation-rejected" ||
       decision.action === "already-closed"
     ) {
       const outcome = this.#requireTerminalJournal(attempt, key);
@@ -1295,6 +1344,11 @@ export class SimulateRunAdmittedSpiceRunExecutor {
     if (attempt.phase === "execution-rejected") {
       return AdmittedSpiceTerminalExecutionOutcome.executionRejected(
         attempt.rejection.diagnostic,
+      );
+    }
+    if (attempt.phase === "output-validation-rejected") {
+      return AdmittedSpiceTerminalExecutionOutcome.outputValidationRejected(
+        attempt.outputValidationRejection.observation,
       );
     }
     if (attempt.phase !== "retry-generation-closed") {
@@ -1782,13 +1836,28 @@ function isolatedExecutionRejectionMessage(
   return text.length > 300 ? `${text.slice(0, 300)}…` : text;
 }
 
+function isolatedOutputValidationRejectedMessage(
+  observation: IsolatedCodeOutputValidationRejection,
+): string {
+  const text =
+    `Isolated output validation rejected registered role ${observation.role} ` +
+    `(${observation.byteCount} bytes, sha256 ${observation.sha256}).`;
+  return text.length > 240 ? `${text.slice(0, 240)}…` : text;
+}
+
 class AdmittedSpiceTerminalExecutionOutcome extends Error {
-  readonly kind: "execution-rejected" | "retry-generation-closed";
+  readonly kind:
+    | "execution-rejected"
+    | "output-validation-rejected"
+    | "retry-generation-closed";
   readonly summary: string;
   readonly code: string;
 
   private constructor(
-    kind: "execution-rejected" | "retry-generation-closed",
+    kind:
+      | "execution-rejected"
+      | "output-validation-rejected"
+      | "retry-generation-closed",
     summary: string,
     code: string,
     diagnostic: string,
@@ -1808,6 +1877,17 @@ class AdmittedSpiceTerminalExecutionOutcome extends Error {
       ADMITTED_SPICE_ISOLATED_EXECUTION_REJECTED.summary,
       ADMITTED_SPICE_ISOLATED_EXECUTION_REJECTED.code,
       isolatedExecutionRejectionMessage(diagnostic),
+    );
+  }
+
+  static outputValidationRejected(
+    observation: IsolatedCodeOutputValidationRejection,
+  ): AdmittedSpiceTerminalExecutionOutcome {
+    return new AdmittedSpiceTerminalExecutionOutcome(
+      "output-validation-rejected",
+      ADMITTED_SPICE_ISOLATED_OUTPUT_VALIDATION_FAILED.summary,
+      ADMITTED_SPICE_ISOLATED_OUTPUT_VALIDATION_FAILED.code,
+      isolatedOutputValidationRejectedMessage(observation),
     );
   }
 

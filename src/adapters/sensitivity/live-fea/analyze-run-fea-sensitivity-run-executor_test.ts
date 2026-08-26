@@ -1,7 +1,10 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import type { Build123dExecutionProfile } from "../../../application/ports/out/cad/isolated/build123d-execution-profile-catalog.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
-import type { IsolatedCodeRunner } from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
+import {
+  IsolatedCodeOutputValidationRejectedError,
+  type IsolatedCodeRunner,
+} from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
 import type { ReopenedTechnicalCompilationAdmission } from "../../../application/ports/out/compile/admission/technical-compilation-admission-reader.ts";
 import type {
   CompleteRunCommand,
@@ -355,10 +358,37 @@ Deno.test(
   },
 );
 
+Deno.test("sensitivity CAD output-validation rejection fails the claimed run without Thread write", async () => {
+  const fixture = await createFixture({ rejectOutputValidation: true });
+  try {
+    const beforeSnapshots = [...fixture.project.threadSnapshots];
+    const failed = await fixture.executor.execute(AGENT, fixture.command);
+    assertEquals(failed.agentRuns[0]?.status, "failed");
+    assertEquals(
+      failed.agentRuns[0]?.failure?.code,
+      "isolated_output_validation_failed",
+    );
+    assertEquals(failed.agentRuns[0]?.failure?.message.includes("geometry"), true);
+    assertEquals(failed.agentRuns[0]?.failure?.message.includes("/tmp/"), false);
+    assertEquals(failed.threadSnapshots, beforeSnapshots);
+    const attempt = await fixture.attempts.read(PROJECT_ID, RUN_ID);
+    assertEquals(attempt?.cad.base.status, "output-validation-rejected");
+    assertEquals(fixture.runner.sources.length, 1);
+
+    const replayed = await fixture.executor.execute(AGENT, fixture.command);
+    assertEquals(replayed.agentRuns[0]?.status, "failed");
+    assertEquals(fixture.runner.sources.length, 1);
+    assertEquals(replayed.threadSnapshots, beforeSnapshots);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 async function createFixture(options: {
   readonly admissionDigest?: string;
   readonly experienceOutcome?: "miss" | "hit" | "hit-interrupt";
   readonly experienceAdmissionFails?: boolean;
+  readonly rejectOutputValidation?: boolean;
 } = {}) {
   const directory = await Deno.realPath(
     await Deno.makeTempDir({ prefix: "sensitivity-run-" }),
@@ -603,7 +633,7 @@ async function createFixture(options: {
   const caseCaptures = new MemoryCaptures();
   await caseCaptures.save(caseFingerprint, deterministicJson(caseCapture));
   const studyCaptures = new MemoryCaptures();
-  const runner = new FakeRunner();
+  const runner = new FakeRunner(options.rejectOutputValidation === true);
   const solver = new FakeSolver();
   const stager = new FakeStager();
   const attempts = new FileFeaSensitivityAttemptStore(`${directory}/wal`);
@@ -761,6 +791,7 @@ async function createFixture(options: {
     commit: () => Promise.reject(new Error("unused")),
   };
   return {
+    project,
     runner,
     solver,
     attempts,
@@ -863,9 +894,23 @@ function fresh(changedAt: string) {
 
 class FakeRunner implements IsolatedCodeRunner {
   readonly sources: string[] = [];
-  async run(request: { readonly source: { readonly bytes: Uint8Array } }) {
+  constructor(readonly rejectOutputValidation = false) {}
+  async run(request: {
+    readonly runId: string;
+    readonly source: { readonly bytes: Uint8Array };
+  }) {
     const text = new TextDecoder().decode(request.source.bytes);
     this.sources.push(text);
+    if (this.rejectOutputValidation) {
+      throw new IsolatedCodeOutputValidationRejectedError(
+        { role: "geometry", byteCount: 32, sha256: "7".repeat(64) },
+        {
+          status: "proven",
+          runId: request.runId,
+          proofFingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+        },
+      );
+    }
     const step = new TextEncoder().encode(
       text.includes("= 51") ? "STEP-STEPPED" : "STEP-BASE",
     );
@@ -1023,8 +1068,13 @@ class MemoryCommands {
     this.project.revision += 1;
     return Promise.resolve(this.project);
   }
-  failRun(_origin: typeof AGENT, _command: FailRunCommand) {
-    (this.project.agentRuns[0] as { status: string }).status = "failed";
+  failRun(_origin: typeof AGENT, command: FailRunCommand) {
+    const run = this.project.agentRuns[0] as {
+      status: string;
+      failure?: { code: string; message: string };
+    };
+    run.status = "failed";
+    run.failure = { code: command.code, message: command.message };
     this.project.revision += 1;
     return Promise.resolve(this.project);
   }

@@ -31,8 +31,15 @@ import type { RegisteredProjectRunExecutorCommand } from "../../../ports/in/proj
 import {
   type CompleteRunCommand,
   EngineeringProjectCommandError,
+  type FailRunCommand,
   type RunCommand,
 } from "../../project/engineering-project-command-service.ts";
+
+export const ADMITTED_MODELICA_ISOLATED_OUTPUT_VALIDATION_FAILED = {
+  summary:
+    "Isolated admitted Modelica output validation was rejected before Thread publication.",
+  code: "isolated_output_validation_failed",
+} as const;
 
 export interface CompletedAdmittedModelicaBindingInput {
   readonly project: EngineeringProjectSnapshot;
@@ -213,6 +220,27 @@ export function publishCommand(
     expectedRevision,
     issuedAt,
     summary: "Publishing the admitted Modelica documentary evidence.",
+  };
+}
+
+export function failCommand(
+  command: RegisteredProjectRunExecutorCommand,
+  failure: {
+    readonly summary: string;
+    readonly code: string;
+    readonly message: string;
+  },
+  expectedRevision = command.expectedRevision,
+  issuedAt = command.issuedAt,
+): FailRunCommand {
+  return {
+    ...command,
+    commandId: commandStep(command.commandId, "fail"),
+    expectedRevision,
+    issuedAt,
+    summary: failure.summary,
+    code: failure.code,
+    message: failure.message,
   };
 }
 
