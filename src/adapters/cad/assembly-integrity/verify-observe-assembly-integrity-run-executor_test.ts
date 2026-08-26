@@ -688,6 +688,7 @@ function resolvedInput(
       mediaType: "model/step",
       producer: "design.write-geometry@1",
     }),
+    assemblyStepBytes: stepBytes,
     capture: {} as ResolvedAssemblyIntegrityInput["capture"],
     profile,
     observerProfile: {

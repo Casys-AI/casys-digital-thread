@@ -58,9 +58,13 @@ and Thread lineage, WAL/recovery, capture reread, approval and any later
 oracle/evaluation. A completed provider call is only a captured engineering fact. It is
 not a verdict, a human decision, or authority to rerun, correct or mutate the product.
 
-For the qualified assembly-integrity vertical, the raw
+For the qualified assembly-integrity vertical, the shared reopen is the profile-free
+[static assembly basis](../domains/cad/static-assembly-basis.md). The observer port and
+its profile begin only after that basis exists. The raw
 `build123d_observe_assembly_integrity` capability belongs to `mcp-build123d`; its
 provider contract is not a Digital Thread public tool. The registered profile and its
 runtime evidence make this vertical available without granting callers provider choice.
-Its exact post-publication boundary is defined in
-[Assembly integrity observation](../../rfcs/project-source-workspace/assembly-integrity-observation.md).
+Its exact post-publication boundary is defined in the living
+[assembly-integrity reference](../domains/cad/assembly-integrity.md). A later
+kinematics adapter would be a different capability port, not a second profile on this
+observer.

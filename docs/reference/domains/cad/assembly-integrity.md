@@ -23,9 +23,10 @@ then returns the closed append/proposal material for
 `verify.observe-assembly-integrity@1`. It does not call a provider, write a Thread
 successor, or produce a verdict.
 
-The registered L3 operation reopens the exact module, canonical assembly STEP,
-structure, and immediate placement inputs. `assembly-integrity-observation/1.0` then
-records these normalized facts and their provenance:
+The registered L3 operation first reopens the
+[exact static assembly basis](static-assembly-basis.md), then adds this family's method,
+bounds, and server-owned observer profile. `assembly-integrity-observation/1.0` records
+these normalized facts and their provenance:
 
 | Fact group            | L3 records                                                                                                                                           |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -61,10 +62,17 @@ capture, not a generic requirement evaluation. It has exactly these criteria:
 | `brep-validity`         | BRep validity is observed as valid                                                                                      | BRep validity is observed as invalid                          | BRep validity is unavailable or unresolved                          |
 | `pairwise-intersection` | The exact `n(n−1)/2` immediate-pair set is present and every observed intersection volume is exactly `0`                | Any observed intersection volume is strictly positive         | A pair, volume, or expected cardinality is missing or unknown       |
 
-The aggregate precedence is `fail`, then `unresolved`, then `pass`. The fixed matrix
-epsilon is representation equivalence, not a clearance allowance. Pairwise minimum
-distance and contact are L3 diagnostics; they are not an L4 clearance, joint, or
-assemblability criterion.
+The aggregate precedence is `fail`, then `unresolved`, then `pass`. The expected
+occurrence matrix is derived one-way from the bundle placement: millimetre translation
+after `Rx * Ry * Rz`. The label `right-handed-mm-extrinsic-xyz-degrees` is not enough
+by itself. The fixed matrix epsilon is representation equivalence, not a clearance
+allowance. Pairwise minimum distance and contact are L3 diagnostics; they are not an L4
+clearance, joint, or assemblability criterion.
+
+Every L4 capture also carries these method limits as literals: `providerCalls` and
+`genericSysmlRequirementEvaluation` are `none`; `safety`, `physicalJoints`, `clearance`,
+`motion`, `load`, and `fabricability` are `not-evaluated`. A later closeout cannot
+broaden those fields.
 
 An L4 work item is an exact zero-binding leaf with the L3 work item as its mandatory
 dependency. It must use the fresh current Thread tip and current human-approved Brief
@@ -125,3 +133,18 @@ This family does not prove or grant any of the following:
 
 Availability is a server-composition and evidence question. This contract alone does not
 mean that a particular project has an L3 capture, L4 evaluation, or L5 closeout.
+
+## Mechanism boundary
+
+The exact module and STEP are reopened through the profile-free
+[static assembly basis](static-assembly-basis.md). Static integrity then adds its own
+bundle, method, bounds, and provider profile.
+
+Kinematics is not a richer provider profile for this port. It needs explicit bodies,
+frames, joints, limits, and sampled scenarios, so it will use a separate capability,
+capture, evaluation, and Brief verification authority. The possible Project Chrono
+provider is a deliberately [deferred RFC](../../../rfcs/mechanism/README.md), not
+current authority.
+
+Until that vertical is implemented and runtime-proven, static assembly integrity is the
+only executable baseline and motion remains literally `not-evaluated` or `unavailable`.

@@ -110,11 +110,13 @@ The generic lifecycle and recovery rules live in
 
 ## Current post-publication assembly observation
 
-Digital Thread reopens an exact `geometry-module-capture/1.0` and its authoritative
-assembly STEP, lowers a server-owned request to the raw
-`build123d_observe_assembly_integrity` provider capability through its qualified
-`mcp-build123d` profile, and seals the resulting facts as
-`assembly-integrity-observation/1.0`.
+The shared reopen is the profile-free
+[exact static assembly basis](static-assembly-basis.md): one exact
+`geometry-module-capture/1.0` and its authoritative assembly STEP. The
+assembly-integrity consumer then adds its method, bounds, and server-owned profile. The
+current adapter lowers that request to the raw
+`build123d_observe_assembly_integrity` capability on `mcp-build123d` and seals the
+facts as `assembly-integrity-observation/1.0`. Callers do not choose that provider.
 
 The observer has no local OCCT worker, no sandbox or local-execution fallback, and no
 verdict. It records import/topology, recross and pairwise geometry facts with their
@@ -123,4 +125,5 @@ receive a Casys project, Thread snapshot, MRTR or evaluation context.
 
 The observer consumes the canonical module artifact as it is sealed today. Migrating the
 module assembler itself to a provider is a separate bounded follow-up, not an outcome
-claimed by this vertical.
+claimed by this vertical. Kinematics is a different capability, not a richer profile on
+this observer.

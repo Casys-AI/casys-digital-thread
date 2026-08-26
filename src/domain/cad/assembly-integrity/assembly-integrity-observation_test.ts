@@ -39,7 +39,11 @@ import {
 import { createAssemblyIntegrityObserverProfile } from "./assembly-integrity-observer-profile.ts";
 import {
   ExactAssemblyIntegrityInputReopener,
+  ExactAssemblyIntegrityInputResolutionError,
 } from "../../../adapters/cad/assembly-integrity/exact-assembly-integrity-input-reopener.ts";
+import {
+  ExactStaticAssemblyBasisReopener,
+} from "../../../adapters/cad/canonical/exact-static-assembly-basis-reopener.ts";
 import {
   FixedAssemblyIntegrityObserverProfileCatalog,
 } from "../../../adapters/cad/assembly-integrity/fixed-assembly-integrity-observer-profile-catalog.ts";
@@ -639,7 +643,7 @@ Deno.test("exact reopener recrosses geometry-module primary, sealed STEP graph, 
       imageDigest: fp(A),
     });
     const profile = await profiles.initial();
-    const reopener = new ExactAssemblyIntegrityInputReopener({
+    const staticBasis = new ExactStaticAssemblyBasisReopener({
       geometryCaptures: {
         read(fingerprint) {
           return Promise.resolve(
@@ -650,6 +654,24 @@ Deno.test("exact reopener recrosses geometry-module primary, sealed STEP graph, 
         },
       },
       stepAssets: new FileCanonicalAssetReader({ directory }),
+    });
+    const resolvedBasis = await staticBasis.resolve({
+      basis: {
+        snapshotId: snapshot.id,
+        revision: snapshot.revision,
+        subjectId: snapshot.subject.id,
+      },
+      snapshot,
+      geometryModule: source.geometryModule,
+    });
+    const mutatedStepCopy = resolvedBasis.assemblyStepBytes.copy();
+    mutatedStepCopy[0] = 0;
+    assertEquals(resolvedBasis.primary.id, primary.id);
+    assertEquals(resolvedBasis.assemblyStep.id, step.id);
+    assertEquals(resolvedBasis.assemblyStepBytes.copy(), stepBytes);
+
+    const reopener = new ExactAssemblyIntegrityInputReopener({
+      basis: staticBasis,
       profiles,
     });
     const resolved = await reopener.resolve({
@@ -672,6 +694,117 @@ Deno.test("exact reopener recrosses geometry-module primary, sealed STEP graph, 
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
+});
+
+Deno.test("exact assembly-integrity input validates the named basis before profile I/O", async () => {
+  let profileReads = 0;
+  const reopener = new ExactAssemblyIntegrityInputReopener({
+    basis: {
+      resolve() {
+        return Promise.reject(new Error("static basis must not run"));
+      },
+    },
+    profiles: {
+      initial() {
+        profileReads += 1;
+        return Promise.reject(new Error("profile.initial must not run"));
+      },
+      resolve() {
+        profileReads += 1;
+        return Promise.reject(new Error("profile.resolve must not run"));
+      },
+    },
+  });
+  await assertRejects(
+    () =>
+      reopener.resolve({
+        basis: { snapshotId: "snap-1", revision: 1, subjectId: "subject-1" },
+        snapshot: { id: "snap-1", revision: 1 } as unknown as ThreadSnapshot,
+        geometryModule: {
+          schemaVersion: GEOMETRY_MODULE_CAPTURE_SCHEMA,
+          artifactId: "geometry-module",
+          fingerprint: fp(A),
+        },
+        observerProfile: {
+          profile: { id: "assembly-integrity-observer", version: "1.0.0" },
+          fingerprint: fp(B),
+        },
+      }),
+    ExactAssemblyIntegrityInputResolutionError,
+    "persisted Thread snapshot",
+  );
+  await assertRejects(
+    () =>
+      reopener.resolve({
+        basis: { snapshotId: "snap-1", revision: 1, subjectId: "subject-1" },
+        snapshot: {
+          id: "snap-1",
+          revision: 1,
+          subject: { id: "subject-1" },
+        } as unknown as ThreadSnapshot,
+        geometryModule: {
+          schemaVersion: "geometry-part-capture/1.0",
+          artifactId: "geometry-module",
+          fingerprint: fp(A),
+        } as never,
+        observerProfile: {
+          profile: { id: "assembly-integrity-observer", version: "1.0.0" },
+          fingerprint: fp(B),
+        },
+      }),
+    TypeError,
+    'schemaVersion must equal "geometry-module-capture/1.0"',
+  );
+  assertEquals(profileReads, 0);
+});
+
+Deno.test("exact assembly-integrity input refuses a static basis that diverges from the named identity", async () => {
+  const profiles = new FixedAssemblyIntegrityObserverProfileCatalog({
+    imageDigest: fp(A),
+  });
+  const profile = await profiles.initial();
+  const geometryModule = {
+    schemaVersion: GEOMETRY_MODULE_CAPTURE_SCHEMA,
+    artifactId: "geometry-module",
+    fingerprint: fp(A),
+  };
+  const snapshot = {
+    id: "snap-1",
+    revision: 1,
+    subject: { id: "subject-1" },
+  } as unknown as ThreadSnapshot;
+  const reopener = new ExactAssemblyIntegrityInputReopener({
+    basis: {
+      resolve() {
+        return Promise.resolve({
+          basis: { snapshotId: "snap-other", revision: 1, subjectId: "subject-1" },
+          geometryModule,
+          primary: { id: "geometry-module" },
+          assemblyStep: { id: "step-1" },
+          capture: {},
+          assemblyStepBytes: {
+            byteLength: 1,
+            copy: () => new Uint8Array([1]),
+          },
+        } as never);
+      },
+    },
+    profiles,
+  });
+  await assertRejects(
+    () =>
+      reopener.resolve({
+        basis: { snapshotId: "snap-1", revision: 1, subjectId: "subject-1" },
+        snapshot,
+        geometryModule,
+        observerProfile: {
+          profile: profile.profile,
+          fingerprint: profile.profileFingerprint,
+        },
+      }),
+    ExactAssemblyIntegrityInputResolutionError,
+    "diverges from the requested canonical geometry identity",
+  );
 });
 
 async function validSource(

@@ -4,7 +4,9 @@ Audience: both · Diátaxis: how-to · Kind: how-to
 
 Use this runbook to take one **current canonical assembly module** through factual L3,
 provider-free L4, and a human L5 closeout. It never asks a person to select a provider,
-tool, tolerance, or CAD payload. For the contract and limits, see
+tool, tolerance, or CAD payload. L3 first reopens the
+[exact static assembly basis](../../reference/domains/cad/static-assembly-basis.md).
+For the contract and limits, see
 [Assembly integrity](../../reference/domains/cad/assembly-integrity.md).
 
 ## 1. Establish the exact current leaf

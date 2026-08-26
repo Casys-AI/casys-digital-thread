@@ -88,6 +88,7 @@ import {
 import { VERIFY_SEAL_PROOF_CASE_OPERATION } from "./src/adapters/fea/seal-case/verify-seal-proof-case-run-executor.ts";
 import { FileCanonicalAssetReader } from "./src/adapters/assets/canonical-asset-reader.ts";
 import { ExactAssemblyIntegrityInputReopener } from "./src/adapters/cad/assembly-integrity/exact-assembly-integrity-input-reopener.ts";
+import { ExactStaticAssemblyBasisReopener } from "./src/adapters/cad/canonical/exact-static-assembly-basis-reopener.ts";
 import { FileAssemblyIntegrityEvaluationAttemptStore } from "./src/adapters/cad/assembly-integrity/file-assembly-integrity-evaluation-attempt-store.ts";
 import { FileAssemblyIntegrityEvaluationCaptureStore } from "./src/adapters/cad/assembly-integrity/file-assembly-integrity-evaluation-capture-store.ts";
 import { FileAssemblyIntegrityObservationAttemptStore } from "./src/adapters/cad/assembly-integrity/file-assembly-integrity-observation-attempt-store.ts";
@@ -1229,9 +1230,11 @@ async function createProjectControl(
       imageDigest: assemblyIntegrityBuild123d.imageDigest,
     });
     const inputs = new ExactAssemblyIntegrityInputReopener({
-      geometryCaptures: productNavigationGeometryCaptures,
-      stepAssets: new FileCanonicalAssetReader({
-        directory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
+      basis: new ExactStaticAssemblyBasisReopener({
+        geometryCaptures: productNavigationGeometryCaptures,
+        stepAssets: new FileCanonicalAssetReader({
+          directory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
+        }),
       }),
       profiles,
     });

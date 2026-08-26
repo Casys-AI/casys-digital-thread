@@ -36,6 +36,10 @@ import {
   GEOMETRY_MODULE_UNIT_SYSTEM,
   type GeometryModuleChildCaptureSchema,
 } from "../geometry-module-contract.ts";
+import {
+  type GeometryModuleReference,
+  validateGeometryModuleReference as validateCanonicalGeometryModuleReference,
+} from "../canonical/geometry-module-reference.ts";
 import { validatePart21 } from "../module-assembly/geometry-module-input-bundle.ts";
 import type { GeometryModuleCapture } from "../canonical/geometry-module-capture.ts";
 import { parseCanonicalGeometryCapture } from "../canonical/geometry-part-capture.ts";
@@ -61,11 +65,11 @@ export interface AssemblyIntegrityMethodIdentity {
   readonly linearToleranceMm: number;
 }
 
-export interface AssemblyIntegrityGeometryModuleReference {
-  readonly schemaVersion: typeof GEOMETRY_MODULE_CAPTURE_SCHEMA;
-  readonly artifactId: string;
-  readonly fingerprint: ContentFingerprint;
-}
+/**
+ * Backward-compatible vertical name for the generic canonical geometry-module
+ * identity. The static-basis port owns the provider-free reopening contract.
+ */
+export type AssemblyIntegrityGeometryModuleReference = GeometryModuleReference;
 
 export interface AssemblyIntegrityExpectedPlacement {
   readonly translationMm: readonly [number, number, number];
@@ -459,17 +463,7 @@ function validateGeometryModuleReference(
   value: unknown,
   path: string,
 ): AssemblyIntegrityGeometryModuleReference {
-  const root = exactRecord(value, ["schemaVersion", "artifactId", "fingerprint"], path);
-  literalValue(
-    root.schemaVersion,
-    GEOMETRY_MODULE_CAPTURE_SCHEMA,
-    `${path}.schemaVersion`,
-  );
-  return deepFreeze({
-    schemaVersion: GEOMETRY_MODULE_CAPTURE_SCHEMA,
-    artifactId: safeId(root.artifactId, `${path}.artifactId`),
-    fingerprint: validateContentFingerprint(root.fingerprint, `${path}.fingerprint`),
-  });
+  return validateCanonicalGeometryModuleReference(value, path);
 }
 
 function validateAssemblyIntegrityOccurrenceIdentity(

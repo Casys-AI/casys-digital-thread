@@ -1,6 +1,7 @@
 # CAD part and module builds
 
-Status: Phase D placement capture implemented · module export and runtime proof pending
+Status: Implemented and runtime-proven for one immediate module (MSM01) · nested
+promotion, incremental ancestor rebuild and unbounded assemblies remain unavailable
 
 ## Definition geometry
 
@@ -115,4 +116,23 @@ accept the bounded module manifest rather than duplicating the operation.
 The implementation target is one level only. Nested promotion, incremental ancestor
 rebuild and unbounded assemblies stay `unavailable` until separately implemented and
 runtime-proven. Build success does not assert collision freedom or fitness; those facts
-belong to the separate assembly-integrity observation contract.
+belong to the separate
+[assembly-integrity](../../reference/domains/cad/assembly-integrity.md) contract.
+
+## Runtime proof and boundary
+
+MSM01 proved this path on 2026-08-26 with three independently admitted, canonical
+PartDefinition geometries (BasePlate, Riser and SensorCradle) and one shared
+`cad-placement-source` attached to the exact three immediate usages. The current
+architecture must first have a sealed `model.capture-part-definitions@1` result; without
+that exact structural capture, `project_geometry_module_export` remains unavailable.
+The export then reopened the three child STEP assets and the exact placement capture,
+and `design.write-geometry@1` sealed the resulting ModularSensorMount STEP and GLB.
+
+The following assembly-integrity evidence subsequently passed: L3 observation, L4
+evaluation and L5 closeout. Its positive result is deliberately narrow: it covers
+exact-basis child import, immediate occurrence coverage, captured placement, BRep
+reopening and the configured static intersection observation. It does not establish
+joints, clearance, motion, load response, fabricability or safety. Those facts need
+their own bounded capability and evidence family; this module export is not a mechanism
+solver or a manufacturing oracle.

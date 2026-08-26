@@ -4,8 +4,8 @@ Audience: both · Diátaxis: reference · Kind: contract
 
 This directory is the living reference for the CAD domain. It separates the source
 language the atelier can currently understand from the two ways admitted source can
-produce geometry. RFCs describe delivered work or future direction; they are not the
-runtime contract.
+produce geometry. RFCs are session briefs or studies; they are not the runtime
+contract.
 
 Read:
 
@@ -17,11 +17,13 @@ Read:
    ceilings and missing AST cardinality.
 4. [CAD execution paths](execution-paths.md) — canonical admitted export versus the
    documentary isolated microVM path.
-5. [Assembly integrity](assembly-integrity.md) — factual post-publication observation,
+5. [Exact static assembly basis](static-assembly-basis.md) — profile-free reopening of
+   one canonical module, assembly STEP, structure, occurrences, and placements.
+6. [Assembly integrity](assembly-integrity.md) — factual post-publication observation,
    five provider-free evaluation criteria, and human closeout; it is not CAD export.
-6. Immediate placement capture lives under `src/domain/cad/placement/`. It is not a CAD
+7. Immediate placement capture lives under `src/domain/cad/placement/`. It is not a CAD
    script, not technical-source admission, and not module export.
-7. [Extension runbook](../../../how-to/extend/extend-cad-closed-subset.md) — the
+8. [Extension runbook](../../../how-to/extend/extend-cad-closed-subset.md) — the
    required end-to-end work to add a construct without widening authority.
 
 Shared contracts:

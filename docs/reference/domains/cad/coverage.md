@@ -20,13 +20,24 @@ The detailed grammar and the authority of each path remain in
 | Shape algebra      | Same-kind `+` and `-`; `scale` on a solid; reviewed `fillet`/`chamfer`, including reviewed `solid.edges()` forms; `extrude`, `offset`, `revolve` about `Axis.X`, `Y`, or `Z`; `Compound(children=[...])` over prior solids.                                                                                                                                                                      |
 | Result             | One module-level `result`, resolving to a solid.                                                                                                                                                                                                                                                                                                                                                 |
 | Admission          | No unresolved construct; unique server-derived `represents` artifact binding and `parameterizes` bindings; at least one finite named numeric literal must causally reach `result`.                                                                                                                                                                                                               |
-| Geometry authority | A system/bundle admitted export produces canonical STEP/GLTF draft then `design.write-geometry@1` seals canonical STEP. A target admitted export can seal exactly one PartDefinition through `geometry-part-capture/1.0`; it makes no assembly, component, occurrence or placement claim. The local isolated path writes a validated AP214 STEP privately and only a documentary Thread capture. |
+| Geometry authority | A system/bundle admitted export produces canonical STEP/GLTF draft then `design.write-geometry@1` seals canonical STEP. A target admitted export can seal exactly one PartDefinition through `geometry-part-capture/1.0`. The bounded module path reopens exact immediate child geometries plus an exact placement capture, and the same sealer can publish one composite PartDefinition STEP/GLB. Neither path infers a physical product verdict. The local isolated path writes a validated AP214 STEP privately and only a documentary Thread capture. |
 
 Named runtime proof: MCS-02 captured an attachment-rooted RailFrame source, sealed its
 v3 admission at Thread r4, and published one canonical target STEP at r7 before the
 downstream FEA branch. See
 [MCS-02 CAD](../../../project-dossiers/motorized-camera-slider-mcs02/domains/cad.md).
 That proof covers one `PartDefinition`, not an assembly.
+
+MSM01 then proved the bounded immediate-module path: three independently admitted
+child roots were sealed as canonical PartDefinition geometries; after the required
+`model.capture-part-definitions@1` structural capture and an exact three-usage placement
+capture, `project_geometry_module_export` produced a ModularSensorMount STEP/GLB draft
+and `design.write-geometry@1` sealed it. The associated L3/L4/L5 assembly-integrity
+branch passed only the exact static checks it records: child import, occurrence
+coverage, captured placements, BRep reopening and intersection observation. It does
+not prove joints, clearance, motion, loads, fabricability or safety. Exact assets,
+placements and the L3/L4/L5 boundary are recorded in the
+[MSM01 CAD dossier](../../../project-dossiers/modular-sensor-mount-msm01/domains/cad.md).
 
 ## Not covered
 
@@ -48,13 +59,14 @@ These states must remain literal: they are not degraded success.
   `fileId`, `profileId` or `resourceRef`. Isolated execution still starts from
   `compile.seal-admission@3`.
 - [Assembly integrity](assembly-integrity.md) is a separate post-publication evidence
-  family, not a CAD language construct or an export path. Its L3 operation,
-  `verify.observe-assembly-integrity@1`, reopens an exact canonical module and assembly
-  STEP through the qualified, server-composed `mcp-build123d` observer. If that exact
-  profile, runtime, or input cannot be reopened, the result remains `unavailable` or
-  `unresolved`. L3 facts, the provider-free L4 evaluation, and human L5 closeout do not
-  create geometry or a product verdict. There is no local OCCT, sandbox, or
-  caller-selected-provider fallback.
+  family, not a CAD language construct or an export path. L3 first reopens the
+  [exact static assembly basis](static-assembly-basis.md), then the current
+  server-composed observer adapter (`mcp-build123d`) records facts. Callers do not
+  choose that provider. If the exact basis, profile, or runtime cannot be reopened, the
+  result remains `unavailable` or `unresolved`. L3 facts, the provider-free L4
+  evaluation, and human L5 closeout do not create geometry or a product verdict. L4
+  keeps motion and related limits as `not-evaluated`. There is no local OCCT, sandbox,
+  or caller-selected-provider fallback.
 
 ## Candidates and non-goals
 
