@@ -5,8 +5,8 @@ Audience: both · Diátaxis: how-to · Kind: how-to
 Use this runbook to take one **current canonical assembly module** through factual L3,
 provider-free L4, and a human L5 closeout. It never asks a person to select a provider,
 tool, tolerance, or CAD payload. L3 first reopens the
-[exact static assembly basis](../../reference/domains/cad/static-assembly-basis.md).
-For the contract and limits, see
+[exact static assembly basis](../../reference/domains/cad/static-assembly-basis.md). For
+the contract and limits, see
 [Assembly integrity](../../reference/domains/cad/assembly-integrity.md).
 
 ## 1. Establish the exact current leaf
@@ -92,12 +92,12 @@ Present the returned consequences to the responsible person:
 | Accept | `decide.accept-assembly-integrity-evaluation@1` | Available only when every L4 criterion is literal `pass` |
 | Reject | `decide.reject-assembly-integrity-evaluation@1` | Always available; it grants no remedy                    |
 
-After the person chooses, append the returned L5 work and its required decision
-together. It must be a new human-origin item (`mustOrigin: "human"`) based on exact
-`T2`, dependent on the exact L4 work-item id, with the sole `approvedBrief` binding.
-Paste the returned decision parameters, obtain the human MRTR, queue, then use
-`project_agent_run_execute` with the required signed human confirmation. An accept claim
-may only `satisfies/current` an existing current Brief V2 gate; reject never does.
+After the person chooses, paste that branch's `next.append.arguments` into
+`project_change_append`, then `next.propose.arguments`. The server-derived leaf is a new
+human-origin item (`mustOrigin: "human"`) based on exact `T2`, dependent on the exact L4
+work-item id, with the sole `approvedBrief` binding. Obtain the human MRTR, queue, then
+use `project_agent_run_execute` with the required signed human confirmation. An accept
+claim may only `satisfies/current` an existing current Brief V2 gate; reject never does.
 
 ## 5. Recover without changing the evidence meaning
 

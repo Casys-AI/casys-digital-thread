@@ -1,6 +1,7 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import {
   ASSEMBLY_INTEGRITY_EVALUATION_CLOSEOUT_SCHEMA,
+  assemblyIntegrityEvaluationCloseoutWorkItemOperation,
   encodeAssemblyIntegrityEvaluationCloseoutAdmission,
   parseAcceptAssemblyIntegrityEvaluationParameters,
   parseRejectAssemblyIntegrityEvaluationParameters,
@@ -41,6 +42,28 @@ Deno.test("assembly-integrity L5 accept grammar requires all five literal L4 pas
     TypeError,
     "must be reject",
   );
+});
+
+Deno.test("assembly-integrity L5 work-item contract is human-owned approvedBrief plus admission gateClaims", () => {
+  const accepted = validAdmission("accept", "pass");
+  const rejected = validAdmission("reject", "unresolved");
+  assertEquals(assemblyIntegrityEvaluationCloseoutWorkItemOperation("accept"), {
+    id: "decide.accept-assembly-integrity-evaluation",
+    version: "1",
+    bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+  });
+  assertEquals(assemblyIntegrityEvaluationCloseoutWorkItemOperation("reject"), {
+    id: "decide.reject-assembly-integrity-evaluation",
+    version: "1",
+    bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+  });
+  assertEquals(
+    accepted.gateClaims.every((claim) =>
+      claim.role === "satisfies" && claim.status === "current"
+    ),
+    true,
+  );
+  assertEquals(rejected.gateClaims, []);
 });
 
 Deno.test("assembly-integrity L5 seals canonical accepted authority gate claims and reject seals none", () => {

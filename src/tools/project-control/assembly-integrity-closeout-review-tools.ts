@@ -25,8 +25,8 @@ export function registerProjectAssemblyIntegrityCloseoutReviewTools(
       const result = await review.execute(args);
       const content = result.status === "resolved"
         ? result.selected.acceptanceEligibility
-          ? "Resolved one fresh exact assembly-integrity L4 branch. The server derived the two human L5 grammars; accept is present only because all five literal criteria are pass. The review selected no gate, provider, SysON request, tolerance, verdict, safety conclusion, certification, work item, or human disposition, and wrote no project or Thread state."
-          : "Resolved one fresh exact assembly-integrity L4 branch. At least one literal L4 criterion is not pass, so the review returns only the bounded human reject grammar. Reject grants no correction, CAD, FEA, provider, SysON, safety, or certification authority; no project or Thread state changed."
+          ? "Resolved one fresh exact assembly-integrity L4 branch. The server derived the two human L5 grammars; accept is present only because all five literal criteria are pass. Paste the chosen branch's next.append.arguments, then next.propose.arguments. The review selected no provider, SysON request, tolerance, verdict, safety conclusion, certification, or human disposition, and wrote no project or Thread state."
+          : "Resolved one fresh exact assembly-integrity L4 branch. At least one literal L4 criterion is not pass, so the review returns only the bounded human reject grammar. Paste reject.next.append.arguments, then next.propose.arguments. Reject grants no correction, CAD, FEA, provider, SysON, safety, or certification authority; no project or Thread state changed."
         : result.status === "unavailable"
         ? "Unavailable: the unique fresh current assembly-integrity L4 branch or exact persisted evidence cannot be reopened. No human closeout parameters were generated."
         : "Unresolved: assembly-integrity closeout evidence is ambiguous, noncanonical, stale, or has divergent provenance. No human closeout parameters were generated.";
@@ -41,7 +41,7 @@ export function registerProjectAssemblyIntegrityCloseoutReviewTools(
 const projectAssemblyIntegrityEvaluationCloseoutReviewTool: MCPTool = {
   name: "project_assembly_integrity_evaluation_closeout_review",
   description:
-    "Read-only review of one human L5 assembly-integrity closeout. The caller names only projectId. The server selects the unique current fresh L4 result, exact custom capture, ordered module/STEP/observation inputs, producer run, and literal limitations. Accept appears only when assembly-import, occurrence-coverage, placement-recross, brep-validity, and pairwise-intersection are each literal pass. Reject cannot satisfy a gate and grants no remediation. No provider, SysON, tolerance, caller verdict, safety conclusion, certification, project, or Thread write occurs.",
+    "Read-only review of one human L5 assembly-integrity closeout. The caller names only projectId. The server selects the unique current fresh L4 result, exact custom capture, ordered module/STEP/observation inputs, producer run, and literal limitations, then derives a freshness-bound next.append on each returned consequence. Accept appears only when assembly-import, occurrence-coverage, placement-recross, brep-validity, and pairwise-intersection are each literal pass. Reject cannot satisfy a gate and grants no remediation. No provider, SysON, tolerance, caller verdict, safety conclusion, certification, project, or Thread write occurs.",
   inputSchema: {
     type: "object",
     properties: { projectId: PROJECT_ID },

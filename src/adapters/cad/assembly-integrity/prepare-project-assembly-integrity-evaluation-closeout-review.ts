@@ -12,10 +12,13 @@ import type {
   ProjectAssemblyIntegrityEvaluationCloseoutReviewUseCase,
 } from "../../../application/ports/in/cad/assembly-integrity/project-assembly-integrity-evaluation-closeout-review.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
+import { assemblyIntegrityEvaluationCloseoutReviewNext } from "../../../application/use-cases/cad/assembly-integrity/assembly-integrity-evaluation-closeout-review-next.ts";
 import {
+  type AssemblyIntegrityEvaluationCloseoutAdmission,
   encodeAssemblyIntegrityEvaluationCloseoutAdmission,
 } from "../../../domain/cad/assembly-integrity/assembly-integrity-evaluation-closeout-proposal.ts";
 import { exactRecord, safeId } from "../../../domain/kernel/case-validation.ts";
+import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
 import { selectCurrentThreadTip } from "../../../domain/project/thread-tip.ts";
 import { validateEngineeringProjectSnapshot } from "../../../domain/project/engineering-project-validation.ts";
 import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
@@ -26,6 +29,7 @@ import {
   assemblyIntegrityCloseoutAuthorization,
   type AssemblyIntegrityCloseoutEvidenceResolverDependencies,
   AssemblyIntegrityCloseoutResolutionError,
+  type AssemblyIntegrityCloseoutResolvedEvidence,
   assemblyIntegrityEvaluationCloseoutAdmission,
   resolveAssemblyIntegrityCloseoutEvidence,
 } from "./assembly-integrity-closeout-evidence-resolver.ts";
@@ -143,19 +147,9 @@ export class PrepareProjectAssemblyIntegrityEvaluationCloseoutReview
             observation: evidenceRef(resolved.observation),
           },
           ...(accept === undefined ? {} : {
-            accept: {
-              admission: accept,
-              decisionParameters: encodeAssemblyIntegrityEvaluationCloseoutAdmission(
-                accept,
-              ),
-            },
+            accept: closeoutBranch(project, resolved, accept),
           }),
-          reject: {
-            admission: reject,
-            decisionParameters: encodeAssemblyIntegrityEvaluationCloseoutAdmission(
-              reject,
-            ),
-          },
+          reject: closeoutBranch(project, resolved, reject),
         },
       };
     } catch (error) {
@@ -196,6 +190,30 @@ async function readExactSnapshot(
     ? await snapshots.get(snapshotId)
     : await snapshots.getFresh(snapshotId);
   return snapshot === undefined ? undefined : validateThreadSnapshot(snapshot);
+}
+
+function closeoutBranch(
+  project: EngineeringProjectSnapshot,
+  resolved: AssemblyIntegrityCloseoutResolvedEvidence,
+  admission: AssemblyIntegrityEvaluationCloseoutAdmission,
+) {
+  return {
+    admission,
+    decisionParameters: encodeAssemblyIntegrityEvaluationCloseoutAdmission(
+      admission,
+    ),
+    next: assemblyIntegrityEvaluationCloseoutReviewNext({
+      projectId: project.project.id,
+      expectedRevision: project.revision,
+      l4WorkItemId: resolved.l4Run.workItemId,
+      baseSnapshot: {
+        snapshotId: resolved.basis.snapshotId,
+        revision: resolved.basis.revision,
+        subjectId: resolved.subjectId,
+      },
+      admission,
+    }),
+  };
 }
 
 function evidenceRef(artifact: {

@@ -78,6 +78,26 @@ Deno.test("assembly-integrity L5 accepts a zero-gate compatible Brief without ca
   );
 });
 
+Deno.test("TPS03: assembly-integrity L5 refuses an appended leaf that omitted the signed gate claims", async () => {
+  const fixture = await executableFixture();
+  fixture.mutate((project) =>
+    ({
+      ...project,
+      workItems: project.workItems.map((work) => {
+        if (work.id !== "work-l5") return work;
+        const { gateClaims: _omitted, ...leaf } = work;
+        return leaf;
+      }),
+    }) as EngineeringProjectSnapshot
+  );
+
+  await assertRejects(
+    () => fixture.executor.execute(HUMAN, fixture.command()),
+    Error,
+    "exactly equal the signed canonical admission claims",
+  );
+});
+
 Deno.test("assembly-integrity L5 refuses gate claims mutated after MRTR", async () => {
   const fixture = await executableFixture();
   fixture.mutate((project) =>
