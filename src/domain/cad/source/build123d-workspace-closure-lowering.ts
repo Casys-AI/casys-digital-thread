@@ -20,7 +20,16 @@
  */
 
 import { parser } from "@lezer/python";
-import { deepFreeze, exactRecord } from "../../kernel/case-validation.ts";
+import {
+  arrayOf,
+  deepFreeze,
+  exactRecord,
+  literalValue,
+  nonEmptyArray,
+  nonEmptyText,
+  positiveInteger,
+  safeId,
+} from "../../kernel/case-validation.ts";
 import {
   fingerprintsEqual,
   sha256Fingerprint,
@@ -196,10 +205,137 @@ export interface Build123dWorkspaceClosureLoweringManifest {
   /** Only copied source bytes appear here; generated separator newlines do not. */
   readonly sourceMap: readonly Build123dWorkspaceClosureLoweringSourceMapSegment[];
   readonly script: {
+    /** UTF-8 byte length for the content-addressed lowered script. */
     readonly byteCount: number;
+    /** UTF-16 code-unit length used by source-map output offsets. */
+    readonly utf16Length: number;
     readonly fingerprint: ContentFingerprint;
   };
   readonly fingerprint: ContentFingerprint;
+}
+
+type Build123dWorkspaceClosureLoweringManifestBody = Omit<
+  Build123dWorkspaceClosureLoweringManifest,
+  "fingerprint"
+>;
+
+const BUILD123D_WORKSPACE_CLOSURE_LOWERING_MANIFEST_BODY_KEYS = [
+  "schemaVersion",
+  "kind",
+  "closure",
+  "sources",
+  "imports",
+  "sourceMap",
+  "script",
+] as const;
+const BUILD123D_WORKSPACE_CLOSURE_LOWERING_MANIFEST_KEYS = [
+  ...BUILD123D_WORKSPACE_CLOSURE_LOWERING_MANIFEST_BODY_KEYS,
+  "fingerprint",
+] as const;
+const SHA256_HEX = /^[a-f0-9]{64}$/;
+
+/**
+ * Parse the unsigned manifest body into its one canonical v1 representation.
+ *
+ * This validates only the lowering receipt itself.  It does not reopen the
+ * project-source closure, source texts, or script bytes; those exact bytes are
+ * deliberately outside this compact manifest and remain a separate boundary.
+ */
+export function canonicalizeBuild123dWorkspaceClosureLoweringManifestBody(
+  value: unknown,
+  path = "$build123dWorkspaceClosureLoweringManifest",
+): Build123dWorkspaceClosureLoweringManifestBody {
+  const root = exactRecord(
+    value,
+    BUILD123D_WORKSPACE_CLOSURE_LOWERING_MANIFEST_BODY_KEYS,
+    path,
+  );
+  return deepFreeze(parseBuild123dWorkspaceClosureLoweringManifestBody(root, path));
+}
+
+/**
+ * Recompute the SHA-256 over an unsigned manifest body with the exact v1 root
+ * shape. Callers that seal a manifest must canonicalize it first; the
+ * persistence validator remains responsible for rejecting malformed nested
+ * facts even when they carry a correctly recomputed outer digest.
+ */
+export async function fingerprintBuild123dWorkspaceClosureLoweringManifestBody(
+  value: unknown,
+  path = "$build123dWorkspaceClosureLoweringManifest",
+): Promise<ContentFingerprint> {
+  return await sha256Fingerprint(
+    exactRecord(value, BUILD123D_WORKSPACE_CLOSURE_LOWERING_MANIFEST_BODY_KEYS, path),
+  );
+}
+
+/**
+ * Validate one persisted lowering manifest, including the SHA-256 fingerprint
+ * of its exact canonical unsigned body.
+ */
+export async function validateBuild123dWorkspaceClosureLoweringManifest(
+  value: unknown,
+  path = "$build123dWorkspaceClosureLoweringManifest",
+): Promise<Build123dWorkspaceClosureLoweringManifest> {
+  const root = exactRecord(
+    value,
+    BUILD123D_WORKSPACE_CLOSURE_LOWERING_MANIFEST_KEYS,
+    path,
+  );
+  const body = parseBuild123dWorkspaceClosureLoweringManifestBody(root, path);
+  const fingerprint = parseManifestFingerprint(
+    root.fingerprint,
+    `${path}.fingerprint`,
+  );
+  const observed = await sha256Fingerprint(body);
+  if (!fingerprintsEqual(fingerprint, observed)) {
+    throw new TypeError(
+      `${path}.fingerprint must equal the SHA-256 of the canonical manifest body.`,
+    );
+  }
+  return deepFreeze({ ...body, fingerprint: observed });
+}
+
+/**
+ * Compare every validated lowering-manifest fact.  The outer fingerprint is
+ * included but never used as a shortcut for its nested provenance.
+ */
+export function build123dWorkspaceClosureLoweringManifestsEqual(
+  left: Build123dWorkspaceClosureLoweringManifest,
+  right: Build123dWorkspaceClosureLoweringManifest,
+): boolean {
+  return left.schemaVersion === right.schemaVersion &&
+    left.kind === right.kind &&
+    fingerprintsEqual(left.closure.fingerprint, right.closure.fingerprint) &&
+    fileRevisionsEqual(left.closure.root, right.closure.root) &&
+    left.sources.length === right.sources.length &&
+    left.sources.every((source, index) =>
+      manifestSourcesEqual(source, right.sources[index]!)
+    ) &&
+    left.imports.length === right.imports.length &&
+    left.imports.every((entry, index) =>
+      manifestImportsEqual(entry, right.imports[index]!)
+    ) &&
+    left.sourceMap.length === right.sourceMap.length &&
+    left.sourceMap.every((segment, index) =>
+      manifestSourceMapSegmentsEqual(segment, right.sourceMap[index]!)
+    ) &&
+    left.script.byteCount === right.script.byteCount &&
+    left.script.utf16Length === right.script.utf16Length &&
+    fingerprintsEqual(left.script.fingerprint, right.script.fingerprint) &&
+    fingerprintsEqual(left.fingerprint, right.fingerprint);
+}
+
+/** Assert equality of every nested lowering-manifest fact. */
+export function assertBuild123dWorkspaceClosureLoweringManifestsEqual(
+  expected: Build123dWorkspaceClosureLoweringManifest,
+  observed: Build123dWorkspaceClosureLoweringManifest,
+  path: string,
+): void {
+  if (!build123dWorkspaceClosureLoweringManifestsEqual(expected, observed)) {
+    throw new TypeError(
+      `${path} does not match the complete Build123d workspace-closure lowering manifest.`,
+    );
+  }
 }
 
 export interface Build123dWorkspaceClosureLoweringResult {
@@ -324,7 +460,7 @@ export async function lowerBuild123dWorkspaceClosure(
       removal: item.removal,
     },
   }));
-  const manifestFacts = {
+  const manifestFacts = canonicalizeBuild123dWorkspaceClosureLoweringManifestBody({
     schemaVersion: BUILD123D_WORKSPACE_CLOSURE_LOWERING_SCHEMA,
     kind: BUILD123D_WORKSPACE_CLOSURE_LOWERING_KIND,
     closure: {
@@ -339,12 +475,15 @@ export async function lowerBuild123dWorkspaceClosure(
     sourceMap: builder.sourceMap,
     script: {
       byteCount: new TextEncoder().encode(script).byteLength,
+      utf16Length: script.length,
       fingerprint: scriptFingerprint,
     },
-  };
+  });
   const manifest = deepFreeze({
     ...manifestFacts,
-    fingerprint: await sha256Fingerprint(manifestFacts),
+    fingerprint: await fingerprintBuild123dWorkspaceClosureLoweringManifestBody(
+      manifestFacts,
+    ),
   }) as Build123dWorkspaceClosureLoweringManifest;
   return deepFreeze({
     schemaVersion: BUILD123D_WORKSPACE_CLOSURE_LOWERING_SCHEMA,
@@ -353,6 +492,449 @@ export async function lowerBuild123dWorkspaceClosure(
     scriptFingerprint,
     manifest,
   });
+}
+
+function parseBuild123dWorkspaceClosureLoweringManifestBody(
+  root: Record<string, unknown>,
+  path: string,
+): Build123dWorkspaceClosureLoweringManifestBody {
+  literalValue(
+    root.schemaVersion,
+    BUILD123D_WORKSPACE_CLOSURE_LOWERING_SCHEMA,
+    `${path}.schemaVersion`,
+  );
+  literalValue(root.kind, BUILD123D_WORKSPACE_CLOSURE_LOWERING_KIND, `${path}.kind`);
+  const closure = parseManifestClosure(root.closure, `${path}.closure`);
+  const sources = nonEmptyArray(root.sources, `${path}.sources`).map(
+    (source, index) => parseManifestSource(source, `${path}.sources[${index}]`),
+  );
+  assertCanonicalManifestSources(sources, closure, `${path}.sources`);
+  const script = parseManifestScript(root.script, `${path}.script`);
+  const imports = arrayOf(root.imports, `${path}.imports`).map((entry, index) =>
+    parseManifestImport(entry, `${path}.imports[${index}]`)
+  );
+  assertCanonicalManifestImports(
+    imports,
+    sources,
+    `${path}.imports`,
+  );
+  const sourceMap = nonEmptyArray(root.sourceMap, `${path}.sourceMap`).map(
+    (segment, index) =>
+      parseManifestSourceMapSegment(segment, `${path}.sourceMap[${index}]`),
+  );
+  assertCanonicalManifestSourceMap(
+    sourceMap,
+    sources,
+    script.utf16Length,
+    `${path}.sourceMap`,
+  );
+  return {
+    schemaVersion: BUILD123D_WORKSPACE_CLOSURE_LOWERING_SCHEMA,
+    kind: BUILD123D_WORKSPACE_CLOSURE_LOWERING_KIND,
+    closure,
+    sources,
+    imports,
+    sourceMap,
+    script,
+  };
+}
+
+function parseManifestClosure(
+  value: unknown,
+  path: string,
+): Build123dWorkspaceClosureLoweringManifest["closure"] {
+  const root = exactRecord(value, ["fingerprint", "root"], path);
+  return {
+    fingerprint: parseManifestFingerprint(root.fingerprint, `${path}.fingerprint`),
+    root: parseManifestFileRevision(root.root, `${path}.root`),
+  };
+}
+
+function parseManifestSource(
+  value: unknown,
+  path: string,
+): Build123dWorkspaceClosureLoweringManifest["sources"][number] {
+  const root = exactRecord(
+    value,
+    ["role", "virtualModule", "fileId", "fileRevision", "sourceFingerprint"],
+    path,
+  );
+  if (root.role !== "dependency" && root.role !== "root") {
+    throw new TypeError(`${path}.role must be dependency or root.`);
+  }
+  const identity = parseManifestFileIdentityRecord(root, path);
+  const virtualModule = nonEmptyText(root.virtualModule, `${path}.virtualModule`);
+  const expectedModule = virtualModuleFor(identity);
+  if (virtualModule !== expectedModule) {
+    throw new TypeError(
+      `${path}.virtualModule must be the stable fileId-only module ${expectedModule}.`,
+    );
+  }
+  return {
+    role: root.role,
+    virtualModule,
+    ...identity,
+  };
+}
+
+function parseManifestImport(
+  value: unknown,
+  path: string,
+): Build123dWorkspaceClosureLoweringImport {
+  const root = exactRecord(value, ["module", "dependency", "names", "source"], path);
+  const names = nonEmptyArray(root.names, `${path}.names`).map((name, index) => {
+    const parsed = nonEmptyText(name, `${path}.names[${index}]`);
+    if (!isPythonIdentifier(parsed)) {
+      throw new TypeError(`${path}.names[${index}] must be one Python identifier.`);
+    }
+    return parsed;
+  });
+  if (new Set(names).size !== names.length) {
+    throw new TypeError(`${path}.names must not contain duplicates.`);
+  }
+  const source = exactRecord(
+    root.source,
+    ["fileId", "fileRevision", "sourceFingerprint", "statement", "removal"],
+    `${path}.source`,
+  );
+  return {
+    module: nonEmptyText(root.module, `${path}.module`),
+    dependency: parseManifestFileIdentity(
+      root.dependency,
+      `${path}.dependency`,
+    ),
+    names,
+    source: {
+      ...parseManifestFileIdentityRecord(source, `${path}.source`),
+      statement: parseManifestOffsetRange(
+        source.statement,
+        `${path}.source.statement`,
+        true,
+      ),
+      removal: parseManifestOffsetRange(
+        source.removal,
+        `${path}.source.removal`,
+        true,
+      ),
+    },
+  };
+}
+
+function parseManifestSourceMapSegment(
+  value: unknown,
+  path: string,
+): Build123dWorkspaceClosureLoweringSourceMapSegment {
+  const root = exactRecord(value, ["output", "source"], path);
+  const source = exactRecord(
+    root.source,
+    ["fileId", "fileRevision", "sourceFingerprint", "span"],
+    `${path}.source`,
+  );
+  return {
+    output: parseManifestOffsetRange(root.output, `${path}.output`, true),
+    source: {
+      ...parseManifestFileIdentityRecord(source, `${path}.source`),
+      span: parseManifestOffsetRange(source.span, `${path}.source.span`, true),
+    },
+  };
+}
+
+function parseManifestScript(
+  value: unknown,
+  path: string,
+): Build123dWorkspaceClosureLoweringManifest["script"] {
+  const root = exactRecord(
+    value,
+    ["byteCount", "utf16Length", "fingerprint"],
+    path,
+  );
+  return {
+    byteCount: nonNegativeSafeInteger(root.byteCount, `${path}.byteCount`),
+    utf16Length: nonNegativeSafeInteger(
+      root.utf16Length,
+      `${path}.utf16Length`,
+    ),
+    fingerprint: parseManifestFingerprint(root.fingerprint, `${path}.fingerprint`),
+  };
+}
+
+function parseManifestFileRevision(
+  value: unknown,
+  path: string,
+): Build123dWorkspaceClosureLoweringManifest["closure"]["root"] {
+  const root = exactRecord(value, ["fileId", "fileRevision"], path);
+  return {
+    fileId: parseManifestFileId(root.fileId, `${path}.fileId`),
+    fileRevision: positiveInteger(root.fileRevision, `${path}.fileRevision`),
+  };
+}
+
+function parseManifestFileIdentity(
+  value: unknown,
+  path: string,
+): Build123dWorkspaceClosureLoweringFileIdentity {
+  const root = exactRecord(
+    value,
+    ["fileId", "fileRevision", "sourceFingerprint"],
+    path,
+  );
+  return parseManifestFileIdentityRecord(root, path);
+}
+
+function parseManifestFileIdentityRecord(
+  root: Record<string, unknown>,
+  path: string,
+): Build123dWorkspaceClosureLoweringFileIdentity {
+  return {
+    fileId: parseManifestFileId(root.fileId, `${path}.fileId`),
+    fileRevision: positiveInteger(root.fileRevision, `${path}.fileRevision`),
+    sourceFingerprint: parseManifestFingerprint(
+      root.sourceFingerprint,
+      `${path}.sourceFingerprint`,
+    ),
+  };
+}
+
+function parseManifestFileId(value: unknown, path: string): string {
+  const fileId = safeId(value, path);
+  if (fileId.toLowerCase() === "latest") {
+    throw new TypeError(`${path} must not use a latest alias.`);
+  }
+  return fileId;
+}
+
+function parseManifestFingerprint(value: unknown, path: string): ContentFingerprint {
+  const root = exactRecord(value, ["algorithm", "digest"], path);
+  literalValue(root.algorithm, "sha256", `${path}.algorithm`);
+  const digest = nonEmptyText(root.digest, `${path}.digest`);
+  if (!SHA256_HEX.test(digest)) {
+    throw new TypeError(`${path}.digest must be lowercase SHA-256 hex.`);
+  }
+  return { algorithm: "sha256", digest };
+}
+
+function parseManifestOffsetRange(
+  value: unknown,
+  path: string,
+  requireContent: boolean,
+): Build123dWorkspaceClosureLoweringOffsetRange {
+  const root = exactRecord(value, ["start", "end"], path);
+  const start = nonNegativeSafeInteger(root.start, `${path}.start`);
+  const end = nonNegativeSafeInteger(root.end, `${path}.end`);
+  if (end < start || (requireContent && end === start)) {
+    throw new TypeError(`${path} must be an ordered non-empty UTF-16 offset range.`);
+  }
+  return { start, end };
+}
+
+function assertCanonicalManifestSources(
+  sources: readonly Build123dWorkspaceClosureLoweringManifest["sources"][number][],
+  closure: Build123dWorkspaceClosureLoweringManifest["closure"],
+  path: string,
+): void {
+  const root = sources.at(-1)!;
+  if (
+    root.role !== "root" ||
+    sources.slice(0, -1).some((source) => source.role !== "dependency")
+  ) {
+    throw new TypeError(
+      `${path} must list canonical dependencies followed by one root.`,
+    );
+  }
+  if (!fileRevisionsEqual(root, closure.root)) {
+    throw new TypeError(
+      `${path} root must match $build123dWorkspaceClosureLoweringManifest.closure.root.`,
+    );
+  }
+  const identities = new Set<string>();
+  const fileIds = new Set<string>();
+  const modules = new Set<string>();
+  for (const source of sources) {
+    const identity = manifestIdentityKey(source);
+    if (
+      identities.has(identity) || fileIds.has(source.fileId) ||
+      modules.has(source.virtualModule)
+    ) {
+      throw new TypeError(
+        `${path} must have unique file identities and virtual modules.`,
+      );
+    }
+    identities.add(identity);
+    fileIds.add(source.fileId);
+    modules.add(source.virtualModule);
+  }
+  for (let index = 1; index < sources.length - 1; index++) {
+    if (
+      compareText(sources[index - 1]!.virtualModule, sources[index]!.virtualModule) >= 0
+    ) {
+      throw new TypeError(
+        `${path} dependencies must be sorted by stable virtual module.`,
+      );
+    }
+  }
+}
+
+function assertCanonicalManifestImports(
+  imports: readonly Build123dWorkspaceClosureLoweringImport[],
+  sources: readonly Build123dWorkspaceClosureLoweringManifest["sources"][number][],
+  path: string,
+): void {
+  const root = sources.at(-1)!;
+  const dependencies = sources.slice(0, -1);
+  if (imports.length !== dependencies.length) {
+    throw new TypeError(`${path} must cover every dependency exactly once.`);
+  }
+  const modules = new Set<string>();
+  const importedNames = new Set<string>();
+  for (const [index, entry] of imports.entries()) {
+    const dependency = dependencies[index]!;
+    if (
+      entry.module !== dependency.virtualModule ||
+      !fileIdentitiesEqual(entry.dependency, dependency)
+    ) {
+      throw new TypeError(
+        `${path}[${index}] must match the exact dependency at its canonical module order.`,
+      );
+    }
+    if (!fileIdentitiesEqual(entry.source, root)) {
+      throw new TypeError(
+        `${path}[${index}].source must be the exact listed root source.`,
+      );
+    }
+    if (modules.has(entry.module)) {
+      throw new TypeError(`${path} must not import one dependency more than once.`);
+    }
+    modules.add(entry.module);
+    for (const name of entry.names) {
+      if (importedNames.has(name)) {
+        throw new TypeError(`${path} must not repeat an imported name.`);
+      }
+      importedNames.add(name);
+    }
+    if (
+      entry.source.statement.start !== entry.source.removal.start ||
+      entry.source.statement.end > entry.source.removal.end
+    ) {
+      throw new TypeError(
+        `${path}[${index}] must retain its exact root import statement and removal span.`,
+      );
+    }
+  }
+  const removals = [...imports].sort((left, right) =>
+    left.source.removal.start - right.source.removal.start
+  );
+  for (let index = 1; index < removals.length; index++) {
+    if (
+      removals[index]!.source.removal.start < removals[index - 1]!.source.removal.end
+    ) {
+      throw new TypeError(`${path} must have non-overlapping root import removals.`);
+    }
+  }
+}
+
+function assertCanonicalManifestSourceMap(
+  sourceMap: readonly Build123dWorkspaceClosureLoweringSourceMapSegment[],
+  sources: readonly Build123dWorkspaceClosureLoweringManifest["sources"][number][],
+  scriptUtf16Length: number,
+  path: string,
+): void {
+  const sourceIndexes = new Map(
+    sources.map((source, index) => [manifestIdentityKey(source), index]),
+  );
+  const mapped = new Set<number>();
+  let previousOutputEnd = 0;
+  let previousSourceIndex = -1;
+  let previousSourceEnd = 0;
+  for (const [index, segment] of sourceMap.entries()) {
+    const sourceIndex = sourceIndexes.get(manifestIdentityKey(segment.source));
+    if (sourceIndex === undefined) {
+      throw new TypeError(
+        `${path}[${index}].source must name one exact listed source.`,
+      );
+    }
+    if (
+      segment.output.start < previousOutputEnd ||
+      segment.output.end > scriptUtf16Length ||
+      segment.output.end - segment.output.start !==
+        segment.source.span.end - segment.source.span.start ||
+      sourceIndex < previousSourceIndex ||
+      (sourceIndex === previousSourceIndex &&
+        segment.source.span.start < previousSourceEnd)
+    ) {
+      throw new TypeError(`${path} must be in canonical output and source order.`);
+    }
+    previousOutputEnd = segment.output.end;
+    previousSourceIndex = sourceIndex;
+    previousSourceEnd = segment.source.span.end;
+    mapped.add(sourceIndex);
+  }
+  if (mapped.size !== sources.length) {
+    throw new TypeError(`${path} must retain copied spans from every listed source.`);
+  }
+}
+
+function manifestSourcesEqual(
+  left: Build123dWorkspaceClosureLoweringManifest["sources"][number],
+  right: Build123dWorkspaceClosureLoweringManifest["sources"][number],
+): boolean {
+  return left.role === right.role && left.virtualModule === right.virtualModule &&
+    fileIdentitiesEqual(left, right);
+}
+
+function manifestImportsEqual(
+  left: Build123dWorkspaceClosureLoweringImport,
+  right: Build123dWorkspaceClosureLoweringImport,
+): boolean {
+  return left.module === right.module &&
+    fileIdentitiesEqual(left.dependency, right.dependency) &&
+    textArraysEqual(left.names, right.names) &&
+    fileIdentitiesEqual(left.source, right.source) &&
+    offsetRangesEqual(left.source.statement, right.source.statement) &&
+    offsetRangesEqual(left.source.removal, right.source.removal);
+}
+
+function manifestSourceMapSegmentsEqual(
+  left: Build123dWorkspaceClosureLoweringSourceMapSegment,
+  right: Build123dWorkspaceClosureLoweringSourceMapSegment,
+): boolean {
+  return offsetRangesEqual(left.output, right.output) &&
+    fileIdentitiesEqual(left.source, right.source) &&
+    offsetRangesEqual(left.source.span, right.source.span);
+}
+
+function fileRevisionsEqual(
+  left: { readonly fileId: string; readonly fileRevision: number },
+  right: { readonly fileId: string; readonly fileRevision: number },
+): boolean {
+  return left.fileId === right.fileId && left.fileRevision === right.fileRevision;
+}
+
+function fileIdentitiesEqual(
+  left: Build123dWorkspaceClosureLoweringFileIdentity,
+  right: Build123dWorkspaceClosureLoweringFileIdentity,
+): boolean {
+  return fileRevisionsEqual(left, right) &&
+    fingerprintsEqual(left.sourceFingerprint, right.sourceFingerprint);
+}
+
+function offsetRangesEqual(
+  left: Build123dWorkspaceClosureLoweringOffsetRange,
+  right: Build123dWorkspaceClosureLoweringOffsetRange,
+): boolean {
+  return left.start === right.start && left.end === right.end;
+}
+
+function textArraysEqual(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length &&
+    left.every((value, index) => value === right[index]);
+}
+
+function manifestIdentityKey(
+  value: Build123dWorkspaceClosureLoweringFileIdentity,
+): string {
+  return `${
+    fileKey(value)
+  }:${value.sourceFingerprint.algorithm}:${value.sourceFingerprint.digest}`;
 }
 
 async function validateAndPlan(
@@ -680,7 +1262,7 @@ function assertUnambiguousVirtualModules(
   }
 }
 
-function virtualModuleFor(file: ProjectSourceClosureFile): string {
+function virtualModuleFor(file: Pick<ProjectSourceClosureFile, "fileId">): string {
   return [
     BUILD123D_WORKSPACE_IMPORT_PREFIX,
     sealedClosureModuleSegment(file.fileId),
@@ -1529,6 +2111,13 @@ async function fingerprintUtf8(text: string): Promise<ContentFingerprint> {
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function nonNegativeSafeInteger(value: unknown, path: string): number {
+  if (!Number.isSafeInteger(value) || Number(value) < 0) {
+    throw new TypeError(`${path} must be a non-negative safe integer.`);
+  }
+  return Number(value);
 }
 
 function messageOf(cause: unknown): string {

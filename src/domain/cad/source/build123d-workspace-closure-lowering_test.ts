@@ -1,9 +1,14 @@
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import {
+  assertBuild123dWorkspaceClosureLoweringManifestsEqual,
   BUILD123D_WORKSPACE_CLOSURE_LOWERING_SCHEMA,
   Build123dWorkspaceClosureLoweringError,
   type Build123dWorkspaceClosureLoweringInput,
+  type Build123dWorkspaceClosureLoweringManifest,
+  build123dWorkspaceClosureLoweringManifestsEqual,
+  fingerprintBuild123dWorkspaceClosureLoweringManifestBody,
   lowerBuild123dWorkspaceClosure,
+  validateBuild123dWorkspaceClosureLoweringManifest,
 } from "./build123d-workspace-closure-lowering.ts";
 import {
   PROJECT_SOURCE_CLOSURE_KIND,
@@ -71,6 +76,167 @@ Deno.test(
 );
 
 Deno.test(
+  "build123d workspace lowering v1 validates its generated closed manifest",
+  async () => {
+    const manifest = (await lowerBuild123dWorkspaceClosure(await fixture())).manifest;
+    const reread = await validateBuild123dWorkspaceClosureLoweringManifest(manifest);
+
+    assertEquals(reread, manifest);
+    assertEquals(Object.isFrozen(reread), true);
+    assertEquals(Object.isFrozen(reread.sources), true);
+  },
+);
+
+Deno.test(
+  "build123d workspace lowering v1 rejects tampered or noncanonical manifests",
+  async () => {
+    const manifest = (await lowerBuild123dWorkspaceClosure(await fixture())).manifest;
+    const cases: readonly [string, unknown][] = [
+      [
+        "nested source revision",
+        mutateManifest(manifest, (copy) => {
+          manifestSources(copy)[0]!.fileRevision = 2;
+        }),
+      ],
+      [
+        "nested source fingerprint",
+        mutateManifest(manifest, (copy) => {
+          manifestSources(copy)[0]!.sourceFingerprint = sha256("b");
+        }),
+      ],
+      [
+        "import names",
+        mutateManifest(manifest, (copy) => {
+          manifestImports(copy)[0]!.names = ["width", "width"];
+        }),
+      ],
+      [
+        "import removal",
+        mutateManifest(manifest, (copy) => {
+          manifestImports(copy)[0]!.source.removal.start = 1;
+        }),
+      ],
+      [
+        "source map",
+        mutateManifest(manifest, (copy) => {
+          manifestSourceMap(copy)[1]!.output.start = 0;
+        }),
+      ],
+      [
+        "script byte count",
+        mutateManifest(manifest, (copy) => {
+          manifestScript(copy).byteCount = 0;
+        }),
+      ],
+      [
+        "script fingerprint",
+        mutateManifest(manifest, (copy) => {
+          manifestScript(copy).fingerprint = sha256("c");
+        }),
+      ],
+      [
+        "self fingerprint",
+        mutateManifest(manifest, (copy) => {
+          copy.fingerprint = sha256("d");
+        }),
+      ],
+      [
+        "schema",
+        mutateManifest(manifest, (copy) => {
+          copy.schemaVersion = "build123d-workspace-closure-lowering/0.9";
+        }),
+      ],
+      [
+        "kind",
+        mutateManifest(manifest, (copy) => {
+          copy.kind = "other-lowering";
+        }),
+      ],
+      [
+        "source order",
+        mutateManifest(manifest, (copy) => {
+          manifestSources(copy).reverse();
+        }),
+      ],
+      [
+        "extra field",
+        mutateManifest(manifest, (copy) => {
+          copy.unreviewed = true;
+        }),
+      ],
+      [
+        "missing field",
+        mutateManifest(manifest, (copy) => {
+          delete (copy as Record<string, unknown>).script;
+        }),
+      ],
+    ];
+
+    for (const [, value] of cases) {
+      await assertRejects(
+        () => validateBuild123dWorkspaceClosureLoweringManifest(value),
+        TypeError,
+      );
+    }
+  },
+);
+
+Deno.test(
+  "build123d workspace lowering v1 equality compares nested facts even when the outer digest is copied",
+  async () => {
+    const manifest = await validateBuild123dWorkspaceClosureLoweringManifest(
+      (await lowerBuild123dWorkspaceClosure(await fixture())).manifest,
+    );
+    const divergent = mutateManifest(manifest, (copy) => {
+      manifestImports(copy)[0]!.source.removal.end += 1;
+    }) as unknown as Build123dWorkspaceClosureLoweringManifest;
+
+    assertEquals(divergent.fingerprint, manifest.fingerprint);
+    assert(!build123dWorkspaceClosureLoweringManifestsEqual(manifest, divergent));
+    assertThrows(
+      () =>
+        assertBuild123dWorkspaceClosureLoweringManifestsEqual(
+          manifest,
+          divergent,
+          "$test.manifest",
+        ),
+      TypeError,
+    );
+  },
+);
+
+Deno.test(
+  "build123d workspace lowering v1 rejects a self-hashed source-map width divergence and accepts Unicode offsets",
+  async () => {
+    const manifest = (await lowerBuild123dWorkspaceClosure(await fixture())).manifest;
+    const malformed = mutateManifest(manifest, (copy) => {
+      manifestSourceMap(copy)[0]!.source.span.end += 1;
+    });
+    const selfHashed = await rehashManifest(malformed);
+    await assertRejects(
+      () => validateBuild123dWorkspaceClosureLoweringManifest(selfHashed),
+      TypeError,
+    );
+
+    const unicode = await lowerBuild123dWorkspaceClosure(
+      await fixture({
+        rootText: [
+          `from ${ROOT_IMPORT} import width, depth`,
+          "# μm values remain source-mapped",
+          "from build123d import Box",
+          "height = 5",
+          "result = Box(width, depth, height)",
+          "",
+        ].join("\n"),
+      }),
+    );
+    assert(unicode.manifest.script.byteCount !== unicode.manifest.script.utf16Length);
+    assertEquals(unicode.manifest.script.utf16Length, unicode.script.length);
+    await validateBuild123dWorkspaceClosureLoweringManifest(unicode.manifest);
+  },
+);
+
+Deno.test(
   "build123d workspace lowering v1 emits dependencies in canonical module order, not descriptor order",
   async () => {
     const input = await fixture({
@@ -94,6 +260,17 @@ Deno.test(
     const first = await lowerBuild123dWorkspaceClosure(input);
     const second = await lowerBuild123dWorkspaceClosure(reordered);
 
+    await validateBuild123dWorkspaceClosureLoweringManifest(first.manifest);
+    await validateBuild123dWorkspaceClosureLoweringManifest(second.manifest);
+    const permutedImports = await rehashManifest(
+      mutateManifest(first.manifest, (copy) => {
+        manifestImports(copy).reverse();
+      }),
+    );
+    await assertRejects(
+      () => validateBuild123dWorkspaceClosureLoweringManifest(permutedImports),
+      TypeError,
+    );
     assertEquals(first.script, second.script);
     assertEquals(first.manifest.fingerprint, second.manifest.fingerprint);
     assertEquals(
@@ -776,6 +953,71 @@ Deno.test(
     await assertLoweringCode({ ...input, closure }, "closure_not_direct");
   },
 );
+
+interface MutableManifestSource {
+  fileRevision: number;
+  sourceFingerprint: unknown;
+}
+
+interface MutableManifestImport {
+  names: string[];
+  source: { removal: { start: number; end: number } };
+}
+
+interface MutableManifestSourceMap {
+  output: { start: number; end: number };
+  source: { span: { start: number; end: number } };
+}
+
+interface MutableManifestScript {
+  byteCount: number;
+  fingerprint: unknown;
+}
+
+interface MutableManifestRecord extends Record<string, unknown> {
+  sources: MutableManifestSource[];
+  imports: MutableManifestImport[];
+  sourceMap: MutableManifestSourceMap[];
+  script: MutableManifestScript;
+  fingerprint: unknown;
+}
+
+function mutateManifest(
+  manifest: Build123dWorkspaceClosureLoweringManifest,
+  mutate: (copy: MutableManifestRecord) => void,
+): MutableManifestRecord {
+  const copy = structuredClone(manifest) as unknown as MutableManifestRecord;
+  mutate(copy);
+  return copy;
+}
+
+function manifestSources(copy: MutableManifestRecord): MutableManifestSource[] {
+  return copy.sources;
+}
+
+function manifestImports(copy: MutableManifestRecord): MutableManifestImport[] {
+  return copy.imports;
+}
+
+function manifestSourceMap(copy: MutableManifestRecord): MutableManifestSourceMap[] {
+  return copy.sourceMap;
+}
+
+function manifestScript(copy: MutableManifestRecord): MutableManifestScript {
+  return copy.script;
+}
+
+function sha256(digest: string): ContentFingerprint {
+  return { algorithm: "sha256", digest: digest.repeat(64) };
+}
+
+async function rehashManifest(copy: MutableManifestRecord): Promise<unknown> {
+  const { fingerprint: _ignored, ...body } = copy;
+  return {
+    ...body,
+    fingerprint: await fingerprintBuild123dWorkspaceClosureLoweringManifestBody(body),
+  };
+}
 
 async function assertLoweringCode(
   input: Build123dWorkspaceClosureLoweringInput,
