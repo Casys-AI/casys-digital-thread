@@ -12,8 +12,8 @@ The paired conversation commands. The Workbench is read-only. The person never t
 provider tool. The agent never invents a metric, a unit, a `z*`, or an operation id.
 
 This page is the live from-zero script. The dated five-space inspection is
-[Walk through a dated engineering project](walk-through-an-engineering-project.md). After
-a proof exists, join and fail-only correction are
+[Walk through a dated engineering project](walk-through-an-engineering-project.md).
+After a proof exists, join and fail-only correction are
 [Review and correct after a proof](review-and-correct-after-a-proof.md).
 
 ## Why this guarded sequence exists
@@ -25,7 +25,7 @@ below is a **typed refusal** or a lookalike. Surface it. Do not work around it.
 
 | Unharnessed move                          | Harness                                                                                                                           |
 | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Seed in `project_plan_publish`            | Seed only via `project_change_append` ([sequence the seed](../agents/sequence-a-syson-seed.md))                                  |
+| Seed in `project_plan_publish`            | Seed only via `project_change_append` ([sequence the seed](../agents/sequence-a-syson-seed.md))                                   |
 | Agent-authored SysML on the renderer path | `model.write-architecture@1` / `model.write-requirements@1`                                                                       |
 | Isolated seal as FEA geometry             | `design.seal-isolated-geometry@1` is a Thread **document**. Proof binds `design.write-geometry@1` STEP                            |
 | `@1` / `@2` / `@3` swapped                | Distinct authorities. Product FEA is isolated `@3`. Historical MCP `@1`/`@2` are rejected identities, not routes or prerequisites |
@@ -36,19 +36,27 @@ below is a **typed refusal** or a lookalike. Surface it. Do not work around it.
 
 ## 0. Prepare the required surfaces
 
-This path assumes that the published provider images are accessible and that the fixed
-local microVM worker images named in
-[`config/microsandbox-local.json`](../../../config/microsandbox-local.json) have already
-been prepared and qualified. Missing images remain `unavailable`. ERPNext is not part
-of this Behave path, so do not start the default all-services Compose topology.
+This path assumes that the published provider images are accessible and that the exact
+code-owned CalculiX microVM worker image has already been prepared and qualified. The
+local Microsandbox config file is deliberately empty; worker pins live in the
+server-owned profiles. Missing images remain `unavailable`. ERPNext is not part of this
+Behave path, so do not start the default all-services Compose topology.
 
 ```bash
-docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-calculix
+docker compose up -d syson-db syson-app mcp-syson mcp-build123d-sandbox
 npm --prefix src/ui ci
 npm --prefix src/ui run build:thread
 deno task start:local
 deno task preview:thread
 ```
+
+The private Build123d service prepares the admitted canonical draft before
+`design.write-geometry@1`; that operation only promotes verified bytes. The regular
+`mcp-build123d` observer is for optional assembly integrity, and the HTTP `mcp-calculix`
+service is for optional sensitivity. Product FEA `@3` uses the local CalculiX microVM
+instead. `start:local` currently makes all six local profiles available, but this
+mandatory walk dispatches only the CalculiX worker; selective composition is a
+capability-pack follow-up.
 
 Connect the agent to `http://127.0.0.1:3020/mcp`. Open `http://127.0.0.1:5173/`.
 `deno task preview:thread` already follows cockpit focus (`--workspace-id=primary`). Do
@@ -120,8 +128,8 @@ walk ([run admitted SPICE](../run/run-admitted-spice.md)). It is not mcp-spice a
 the LED-driver fiche.
 
 A local AL01 walk of those optional verticals is tracking evidence, not this from-zero
-script: [AL01 status](../../project-dossiers/articulated-led-desk-lamp/status.md). Do not clone
-AL01.
+script: [AL01 status](../../project-dossiers/articulated-led-desk-lamp/status.md). Do
+not clone AL01.
 
 If a later geometry **replaces** an earlier one, the writer emits `supersedes` (exact
 predecessor artifact). Evidence then photographs the tip. Activity keeps the old card
@@ -156,8 +164,8 @@ exported from a parameterized `compile.seal-admission@3`.
 
 Oracle `pass` or publishable `fail` stay literal. Human L5 over that exact `@3` branch
 is a separate walk:
-[Close out a static mechanical proof](close-out-a-static-mechanical-proof.md). An L4 `pass`
-is never L5.
+[Close out a static mechanical proof](close-out-a-static-mechanical-proof.md). An L4
+`pass` is never L5.
 
 Optional experience, not a second proof:
 
@@ -202,9 +210,8 @@ They must not be the same view.
 - Modelica. Other product family. Product Modelica is admitted `@1`, not a recorded
   scenario.
 - Cross-domain impact. After a closed manifest already exists:
-  [Review cross-domain impact](review-cross-domain-impact.md). Public
-  capture is `project_cross_domain_impact_manifest_capture`; there is no generic X10
-  rerun planner.
+  [Review cross-domain impact](review-cross-domain-impact.md). Public capture is
+  `project_cross_domain_impact_manifest_capture`; there is no generic X10 rerun planner.
 
 When two operations look similar, read
 [agent workspace](../../reference/agent/agent-workspace.md) before calling either.

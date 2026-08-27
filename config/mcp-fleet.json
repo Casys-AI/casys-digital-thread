@@ -113,7 +113,7 @@
     {
       "id": "build123d-sandbox",
       "displayName": "build123d (sandbox)",
-      "role": "Sandboxed CAD execution for agent-proposed geometry programs (preview only)",
+      "role": "Private admitted CAD execution and export staging; output is not evidence until canonical sealing",
       "serviceName": "mcp-build123d-sandbox",
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3024/mcp",
