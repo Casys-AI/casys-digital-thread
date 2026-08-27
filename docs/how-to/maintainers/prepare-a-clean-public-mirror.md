@@ -30,6 +30,9 @@ that exact commit, then complete the source inventory procedure:
 - [Validate a source checkout](../setup/validate-a-source-checkout.md)
 - [Generate a source-alpha SBOM](source-alpha-sbom.md)
 
+This private-stage inventory is a preflight repetition, not a publishable release asset.
+It catches preparation mistakes before a public root exists.
+
 Leave every provider or artifact gate not run as `unavailable` or `not run`.
 
 ## 2. Export tracked bytes only
@@ -58,6 +61,10 @@ Against the clean-root repository:
 3. run the full source-validation sequence;
 4. build and verify the source-alpha inventory twice from the same commit;
 5. confirm that validation creates only ignored outputs.
+
+Only source-alpha assets regenerated and verified twice from the public root commit may
+be published. Do not publish an inventory, checksum, notice bundle, or archive produced
+at the private preflight stage.
 
 Keep raw scanner findings private. A public release record may contain counts, tool
 identity, scope, and outcome, but never a suspected secret value.

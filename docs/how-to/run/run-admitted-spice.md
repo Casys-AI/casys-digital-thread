@@ -35,10 +35,13 @@ attested `manifestDigest`. Do not pin the Docker index digest as the runtime ima
 `pullPolicy` stays `never`. Server startup does not pull or import.
 
 ```bash
-docker compose up -d
+docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-calculix
 deno task prepare:ngspice:microsandbox   # once per host cache; idempotent
 deno task start:yolo    # or start:local; review/executor need --local-execution
 ```
+
+ERPNext is an optional sibling integration; start it separately only when its checkout
+and environment file are available.
 
 Connect the agent to `http://127.0.0.1:3020/mcp`. The Workbench is read-only. Restart is
 required after composing `--local-execution` so the review tool and executor are wired.

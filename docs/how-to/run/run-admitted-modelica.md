@@ -19,9 +19,12 @@ Lookalikes: [lookalike traps](../../reference/agent/lookalike-traps.md). Domain 
 ## 0. Surfaces
 
 ```bash
-docker compose up -d
+docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-calculix
 deno task start:yolo    # or start:local; review/executor need --local-execution
 ```
+
+ERPNext is an optional sibling integration; start it separately only when its checkout
+and environment file are available.
 
 Connect the agent to `http://127.0.0.1:3020/mcp`. The Workbench is read-only.
 

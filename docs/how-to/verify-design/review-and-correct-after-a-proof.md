@@ -7,10 +7,10 @@ constrained vehicle is `desk-lamp-dl05` (Heron arm). `desk-lamp-dl04` is the gen
 twin. Both live only under gitignored `state/local/`.
 
 This page is the A–Z continuation after
-[Walk through a dated engineering project](walk-through-an-engineering-project.md) §4. It
-does not start a second proof. It walks the **behave** branch: join → correction document
-→ corrected source → reseal. Measured DFM on canonical STEP is the separate **make**
-branch. Buy (BOM / cost) has no registered seal yet. See
+[Walk through a dated engineering project](walk-through-an-engineering-project.md) §4.
+It does not start a second proof. It walks the **behave** branch: join → correction
+document → corrected source → reseal. Measured DFM on canonical STEP is the separate
+**make** branch. Buy (BOM / cost) has no registered seal yet. See
 [Three judgement branches](../../explanations/product/product-direction.md#three-judgement-branches).
 
 The person never types a provider tool. The agent never invents a metric alias, a `z*`,
@@ -19,10 +19,13 @@ a unit, or a DFM limit.
 ## Preconditions
 
 ```bash
-docker compose up -d
+docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-calculix
 deno task start
 deno task preview:thread --project-id=desk-lamp-dl05
 ```
+
+ERPNext is an optional sibling integration; start it separately only when its checkout
+and environment file are available.
 
 Connect the agent to `http://127.0.0.1:3020/mcp`. The cockpit is read-only.
 
