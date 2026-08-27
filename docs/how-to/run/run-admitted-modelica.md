@@ -19,7 +19,7 @@ Lookalikes: [lookalike traps](../../reference/agent/lookalike-traps.md). Domain 
 ## 0. Surfaces
 
 ```bash
-docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-calculix
+docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-build123d-sandbox mcp-calculix
 deno task start:yolo    # or start:local; review/executor need --local-execution
 ```
 

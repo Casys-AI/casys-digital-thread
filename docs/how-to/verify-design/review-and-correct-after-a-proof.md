@@ -19,7 +19,7 @@ a unit, or a DFM limit.
 ## Preconditions
 
 ```bash
-docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-calculix
+docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-build123d-sandbox mcp-calculix
 deno task start
 deno task preview:thread --project-id=desk-lamp-dl05
 ```

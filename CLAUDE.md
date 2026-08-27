@@ -27,7 +27,7 @@ Runtime backend : **Deno** (tâches dans `deno.json`). Bundles UI : **npm + Vite
 `src/ui/`. Providers : **Docker Compose**.
 
 ```bash
-docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-calculix
+docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-build123d-sandbox mcp-calculix
                                   # noyau provider ; SysON UI sur :8180
 npm --prefix src/ui ci
 npm --prefix src/ui run build:thread # bundle cockpit → src/ui/dist/thread/

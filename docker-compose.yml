@@ -1,5 +1,5 @@
 # The core provider chain, one command:
-#   docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-calculix
+#   docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-build123d-sandbox mcp-calculix
 #
 # mcp-erpnext is an optional, separate sibling integration. Start it explicitly only
 # when its sibling checkout and environment file are available.
