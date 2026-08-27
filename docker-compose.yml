@@ -44,13 +44,12 @@ services:
     networks: [chain]
 
   syson-app:
-    # Upstream publishes amd64 only; docker/syson-native repacks the identical
+    # Upstream publishes amd64 only. The pinned Casys image repacks the identical
     # jar onto a multi-arch JRE so the app runs natively on Apple Silicon
-    # (startup measured 40.6 s emulated vs 14.4 s native). Set SYSON_IMAGE to
-    # the upstream image to bypass the local build and take emulation instead.
-    build:
-      context: docker/syson-native
-    image: "${SYSON_IMAGE:-casys-digital-thread/syson-native:v2026.7.0}"
+    # (startup measured 40.6 s emulated vs 14.4 s native). It is the SysON
+    # application, not mcp-syson. Set SYSON_IMAGE to use a reviewed alternative
+    # or a local rebuild from images/syson-runtime-repack/.
+    image: "${SYSON_IMAGE:-ghcr.io/casys-ai/syson@sha256:fc599abb95587913de11ff6de68060b5593956abc0c47bc753cd19e2987141a6}"
     ports:
       - "127.0.0.1:8180:8080"
     environment:
