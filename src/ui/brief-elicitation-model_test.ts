@@ -119,7 +119,7 @@ Deno.test("a provided answer appears on the left with its recorded value", () =>
         kind: "unknown",
         source: { kind: "human", reference: "conversation" },
         recordedAt: "2026-08-03T09:02:00.000Z",
-        recordedBy: { id: "erwan", origin: "human" },
+        recordedBy: { id: "human-reviewer", origin: "human" },
       },
       {
         id: "answer-first-proof-scope",
@@ -129,7 +129,7 @@ Deno.test("a provided answer appears on the left with its recorded value", () =>
         explanation: "A practical first proof scope.",
         source: { kind: "human", reference: "conversation" },
         recordedAt: "2026-08-03T09:02:30.000Z",
-        recordedBy: { id: "erwan", origin: "human" },
+        recordedBy: { id: "human-reviewer", origin: "human" },
       },
     ],
   }));
@@ -154,7 +154,7 @@ Deno.test("a rejected proposal stays proposed, never the approved record", () =>
       inputFingerprint: fingerprint(),
       requestedAt: "2026-08-03T10:00:00.000Z",
       decidedAt: "2026-08-03T10:05:00.000Z",
-      decidedBy: { id: "erwan", origin: "human" },
+      decidedBy: { id: "human-reviewer", origin: "human" },
       rationale: "Please correct the scope.",
     },
   }));
@@ -223,7 +223,7 @@ Deno.test("framing without a brief keeps the empty assembling column", () => {
       statement: "Create a reviewable engineering system concept.",
       source: { kind: "human", reference: "conversation" },
       capturedAt: "2026-08-03T09:00:00.000Z",
-      capturedBy: { id: "erwan", origin: "human" },
+      capturedBy: { id: "human-reviewer", origin: "human" },
     },
     questions: framing().questions,
     answers: framing().answers,
@@ -262,7 +262,7 @@ function framing(
       statement: "Create a reviewable engineering system concept.",
       source: { kind: "human", reference: "conversation" },
       capturedAt: "2026-08-03T09:00:00.000Z",
-      capturedBy: { id: "erwan", origin: "human" },
+      capturedBy: { id: "human-reviewer", origin: "human" },
     },
     questions: [{
       id: "operating-envelope",
@@ -290,7 +290,7 @@ function framing(
       kind: "unknown",
       source: { kind: "human", reference: "conversation" },
       recordedAt: "2026-08-03T09:02:00.000Z",
-      recordedBy: { id: "erwan", origin: "human" },
+      recordedBy: { id: "human-reviewer", origin: "human" },
     }],
     currentBrief: {
       briefId: "project-review:brief",
@@ -329,7 +329,7 @@ function framing(
       inputFingerprint: fingerprint(),
       requestedAt: "2026-08-03T09:04:00.000Z",
       decidedAt: "2026-08-03T09:05:00.000Z",
-      decidedBy: { id: "erwan", origin: "human" },
+      decidedBy: { id: "human-reviewer", origin: "human" },
       rationale: "Agreed in conversation.",
     },
     proposedBrief: {
