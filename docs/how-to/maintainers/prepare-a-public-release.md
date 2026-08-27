@@ -56,8 +56,8 @@ Leave an unchecked or failed item literal; do not turn it into a release claim.
 - For the deliberately narrower source-alpha inventory, follow
   [Generate a source-alpha SBOM](source-alpha-sbom.md). It does not clear the OCI or
   Desktop artifact obligations in this checklist.
-- Review direct and transitive licences. The repository's MIT licence is not an
-  aggregate licence for providers, solvers, native libraries, Node, or other bundled
+- Review direct and transitive licences. The repository's `AGPL-3.0-only` licence is not
+  an aggregate licence for providers, solvers, native libraries, Node, or other bundled
   runtimes.
 - Preserve the licence, notice, source-availability, and relinking material required by
   every redistributed component.

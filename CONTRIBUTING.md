@@ -97,6 +97,7 @@ Before requesting review, confirm that:
 
 ## License
 
-The repository is licensed under the [MIT License](LICENSE). By submitting a
+The repository is licensed under the
+[GNU Affero General Public License v3.0 only (AGPL-3.0-only)](LICENSE). By submitting a
 contribution, you confirm that you have the right to submit it and agree that it may be
-distributed under that license.
+distributed under that licence.

@@ -126,7 +126,8 @@ issue. Before changing repository visibility, complete the
 
 ## License
 
-This repository is licensed under the [MIT License](LICENSE). Provider images, external
-systems, bundled runtimes, and third-party dependencies retain their own licences and
-notice obligations; this repository's licence is not an aggregate licence claim for
-them.
+This repository is licensed under the
+[GNU Affero General Public License v3.0 only (AGPL-3.0-only)](LICENSE). Provider images,
+external systems, bundled runtimes, and third-party dependencies retain their own
+licences and notice obligations; this repository's licence is not an aggregate licence
+claim for them.

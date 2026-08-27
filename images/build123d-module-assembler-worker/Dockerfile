@@ -14,7 +14,6 @@ ARG FONTCONFIG_SHA256=71f58af72fc487fe6c434dde129fa13dffd1cdc84bb7d1744170f2bd03
 
 LABEL org.opencontainers.image.title="Casys Build123d module assembler worker" \
       org.opencontainers.image.description="Fixed local Microsandbox worker for one-level STEP compound assembly" \
-      org.opencontainers.image.licenses="Apache-2.0" \
       io.casys.execution-profile="build123d-module-assembler-v1" \
       io.casys.python.version="3.12.11" \
       io.casys.build123d.version="${BUILD123D_VERSION}" \

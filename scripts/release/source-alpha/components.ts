@@ -137,8 +137,12 @@ export function sourceLockComponents(
     .sort((left, right) => left["bom-ref"].localeCompare(right["bom-ref"]));
 }
 
+const CANONICAL_AGPL_V3_HEADER =
+  "                    GNU AFFERO GENERAL PUBLIC LICENSE\n" +
+  "                       Version 3, 19 November 2007";
+
 export function repositoryLicenseName(text: string): string {
-  return text.startsWith("MIT License") ? "MIT" : "NOASSERTION";
+  return text.startsWith(CANONICAL_AGPL_V3_HEADER) ? "AGPL-3.0-only" : "NOASSERTION";
 }
 
 export async function deterministicBomUuid(seed: string): Promise<string> {

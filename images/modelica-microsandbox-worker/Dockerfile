@@ -40,7 +40,6 @@ RUN apt-get update \
 
 LABEL org.opencontainers.image.title="Casys qualified Modelica worker" \
       org.opencontainers.image.description="Fixed local Microsandbox worker: pinned LinearThermalRamp kit (ENTRYPOINT) plus admitted closed-subset /input/source.mo" \
-      org.opencontainers.image.licenses="Apache-2.0" \
       io.casys.execution-profile="modelica-qualified-kit-v1" \
       io.casys.modelica.library="@casys/mcp-modelica@0.4.0" \
       io.casys.modelica.kit="linear-thermal-ramp-v1@0.1.0" \

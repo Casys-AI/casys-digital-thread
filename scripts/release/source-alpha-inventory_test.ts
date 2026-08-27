@@ -77,6 +77,10 @@ Deno.test("source-alpha inventory renders byte-identical source artifacts from o
     assertEquals(bom.bomFormat, "CycloneDX");
     assertEquals(bom.specVersion, "1.6");
     assertMatch(bom.serialNumber, /^urn:uuid:[0-9a-f-]{36}$/u);
+    assertEquals(
+      bom.metadata.component.licenses[0]?.license.name,
+      "AGPL-3.0-only",
+    );
     assert(
       bom.metadata.tools.components.every((tool: { name: string }) =>
         tool.name !== "syft"
