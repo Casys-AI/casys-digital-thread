@@ -31,12 +31,14 @@ import {
   type GeometryPartManifest,
   parseGeometryPartDecisionParameters,
 } from "./geometry-part-manifest.ts";
+// The proposal consumes only the signed module-manifest contract. The public
+// evidence facade also initializes capture parsers that consume this proposal.
 import {
   encodeGeometryModuleDecisionParameters,
-  GEOMETRY_MODULE_MANIFEST_SCHEMA,
   type GeometryModuleManifest,
   parseGeometryModuleDecisionParameters,
-} from "./geometry-module-evidence.ts";
+} from "./geometry-module-manifest.ts";
+import { GEOMETRY_MODULE_MANIFEST_SCHEMA } from "./geometry-module-identities.ts";
 
 /**
  * Reviewed operation identities live in the domain so the registry can import
