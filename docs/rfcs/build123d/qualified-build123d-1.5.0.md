@@ -835,7 +835,7 @@ Do not edit `src/domain/engineering/geometry-script-validation.ts`.
 
 ## 9. Verification
 
-Targeted (permissions as in CLAUDE.md; `deno task test` takes no path):
+Targeted (`deno task test` takes no path):
 
 ```bash
 deno test --allow-read --allow-write --allow-net=127.0.0.1,localhost --allow-env \

@@ -8,7 +8,8 @@ stay in [local runtime and ports](../runtime/local-runtime-and-ports.md). Isolat
 Compiler and isolation narrative:
 [compilation and isolation](../pipeline/compilation-and-isolation.md).
 
-Entry contracts: [AGENTS.md](../../../AGENTS.md), [CLAUDE.md](../../../CLAUDE.md),
+Entry contracts: [AGENTS.md](../../../AGENTS.md),
+[validate a source checkout](../../how-to/setup/validate-a-source-checkout.md), and
 [docs/README.md](../../README.md).
 
 Business coverage stays on [engineering domains](../domains/README.md). This index does

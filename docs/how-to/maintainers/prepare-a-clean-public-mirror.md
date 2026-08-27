@@ -13,9 +13,14 @@ actions that require explicit authorization.
 ## Boundary
 
 - The private development remote remains the authority for unpublished work.
-- The public mirror starts from one exact, clean, reviewed source tree.
+- The public mirror starts from one exact, clean, reviewed **export tree**.
 - No private branch, tag, reflog, unreachable object, or earlier commit is copied.
-- The root licence and every tracked notice remain in the exported tree.
+- The root licence and every notice required by the exported content remain in the
+  exported tree.
+- The private source may retain provider-specific development prompts that the committed
+  public-export attributes intentionally omit. Those omissions must be documented,
+  tested, and limited to the declared paths; they are not a way to hide product source
+  or licence material.
 - A clean mirror does not make OCI images, providers, microVM workers, Desktop bundles,
   or live engineering evidence part of the source release.
 
@@ -38,8 +43,21 @@ Leave every provider or artifact gate not run as `unavailable` or `not run`.
 ## 2. Export tracked bytes only
 
 Create the public seed from `git archive <candidate>`, not from the working directory.
-The archive excludes `.git`, ignored state, untracked files, local dependencies, and
-build output. Inspect its file list and hash before using it.
+The archive excludes `.git`, ignored state, untracked files, local dependencies, build
+output, and only the development-only paths marked `export-ignore` in the candidate's
+committed `.gitattributes`. Inspect its file list and hash before using it:
+
+```bash
+git archive --format=tar <candidate> | tar -tf -
+```
+
+The public boundary currently omits `.grok/**`, `.claude/**`, `.cursor/**`, `.codex/**`,
+and `CLAUDE.md`, which are provider-specific internal prompting, local configuration,
+and command pointers. It retains `AGENTS.md`, `.agents/skills/**`, and `.github/**` as
+the vendor-neutral authority, reusable agent workflows, and CI surface. A raw candidate
+Git tree can therefore differ from the exported tree only at the declared, tested
+`export-ignore` paths. Compare the public seed with the archive file list, not with an
+unchecked checkout listing.
 
 Initialize a new temporary Git repository from the extracted archive and create one root
 commit. Record both identities:
@@ -47,8 +65,8 @@ commit. Record both identities:
 - the private candidate commit and tree, as preparation provenance;
 - the public root commit, as the only history proposed for publication.
 
-The two commit ids are expected to differ. Equality of the exported file tree is the
-relevant check.
+The two commit ids are expected to differ. Equality of the reviewed exported file tree,
+not equality with the raw private candidate tree, is the relevant check.
 
 ## 3. Re-run public-scope gates
 

@@ -22,6 +22,9 @@ The scope intentionally excludes all of the following:
   code signing, and notarization;
 - `node_modules`, caches, build output, `state/local`, Docker volumes, and live
   engineering evidence.
+- provider-specific internal prompting retained by the private development checkout:
+  `.grok/**`, `.claude/**`, `.cursor/**`, `.codex/**`, and `CLAUDE.md`. The public archive
+  keeps `AGENTS.md`, `.agents/skills/**`, and `.github/**`.
 
 The source archive therefore proves neither that those artifacts exist nor that any
 provider, worker, microVM, Desktop shell, or engineering operation can run. They need

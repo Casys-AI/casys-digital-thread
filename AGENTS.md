@@ -30,7 +30,8 @@ or persisted truth.
 4. [Local runtime and ports](docs/reference/runtime/local-runtime-and-ports.md) — ports,
    YOLO, runtime ownership. File census:
    [codebase map](docs/reference/codebase/codebase-map.md).
-5. [CLAUDE.md](CLAUDE.md) — commands, hexagonal rules, CM-01 retirement
+5. [Validate a source checkout](docs/how-to/setup/validate-a-source-checkout.md) —
+   commands and source/UI gates; CM-01 retirement is below
 6. [Run the behave loop from zero](docs/how-to/verify-design/verify-a-new-design-from-scratch.md)
    — new project, behave only. Do not repair dl05. Do not open make/buy.
 7. [Walk the post-proof loop](docs/how-to/verify-design/review-and-correct-after-a-proof.md)

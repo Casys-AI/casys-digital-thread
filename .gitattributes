@@ -1,0 +1,7 @@
+# Private provider-specific prompting and local agent configuration stay available to
+# the internal atelier but are intentionally absent from every public git archive.
+.grok/** export-ignore
+.claude/** export-ignore
+.cursor/** export-ignore
+.codex/** export-ignore
+CLAUDE.md export-ignore

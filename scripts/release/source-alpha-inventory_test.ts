@@ -123,6 +123,21 @@ Deno.test("source-alpha inventory renders byte-identical source artifacts from o
         exclusion.id === "oci-and-provider-artifacts"
       ),
     );
+    const privateAgentOrchestration = manifest.scope.exclusions.find(
+      (exclusion: { id: string }) => exclusion.id === "private-agent-orchestration",
+    ) as { literal: string } | undefined;
+    assert(
+      privateAgentOrchestration !== undefined &&
+        privateAgentOrchestration.literal.includes(".grok/**") &&
+        privateAgentOrchestration.literal.includes(".claude/**") &&
+        privateAgentOrchestration.literal.includes(".cursor/**") &&
+        privateAgentOrchestration.literal.includes(".codex/**") &&
+        privateAgentOrchestration.literal.includes("CLAUDE.md") &&
+        privateAgentOrchestration.literal.includes("AGENTS.md") &&
+        privateAgentOrchestration.literal.includes(".agents/skills/**") &&
+        privateAgentOrchestration.literal.includes(".github/**"),
+      "The source-alpha scope must declare both private agent exclusions and the retained public agent and CI surfaces.",
+    );
     assert(
       manifest.scope.componentInventories.some(
         (inventory: { id: string; coverage: string }) =>

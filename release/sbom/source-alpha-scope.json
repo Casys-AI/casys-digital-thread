@@ -7,7 +7,7 @@
   },
   "archive": {
     "format": "tar.gz",
-    "content": "tracked Git content at the selected commit only",
+    "content": "publicly exportable tracked Git content at the selected commit only, applying committed export-ignore attributes",
     "outputDirectory": "dist/release/<tag>/"
   },
   "inputs": [
@@ -116,6 +116,10 @@
     {
       "id": "local-and-live-state",
       "literal": "No node_modules tree, cache, dist output, state/local content, Docker volume, persisted project, provider result, or live engineering evidence is covered."
+    },
+    {
+      "id": "private-agent-orchestration",
+      "literal": "Provider-specific internal prompting, local agent configuration, and command pointers retained by the private development checkout, including .grok/**, .claude/**, .cursor/**, .codex/**, and CLAUDE.md, are excluded from the public source archive. AGENTS.md, .agents/skills/**, and .github/** remain public."
     },
     {
       "id": "runtime-qualification",

@@ -12,7 +12,7 @@
  * - When no assembly files are present, primaryAssetPreviewPath is undefined.
  * - A parameter list with no geometry.draft.digest key is invalid.
  *
- * Tests are named as invariant phrases (not method names), per CLAUDE.md.
+ * Tests are named as invariant phrases, not method names.
  */
 
 import { assertEquals } from "@std/assert";

@@ -5,9 +5,9 @@
  * production lifecycle (no claim/lease, no WAL, no capture persistence, no
  * snapshot publication, no MRTR gate). A reviewed design decision (2026-08-09)
  * froze it as an authoring prototype in favour of server-fixed registered
- * executors. Documentation alone did not hold that line once before —
- * CLAUDE.md drifted into claiming the backend executes this DAG — so the
- * boundary is enforced here: no production module may import from
+ * executors. Contributor guidance alone did not hold that line once before — it
+ * drifted into claiming the backend executes this DAG — so the boundary is
+ * enforced here: no production module may import from
  * experiments/thread-workflow/. A documentary path reference (a string naming
  * a reviewed YAML fixture) is allowed; an import
  * would wire the engine into a lifecycle it does not implement.
