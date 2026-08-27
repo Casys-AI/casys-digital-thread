@@ -40,6 +40,8 @@ convention.
 
 The renderer is repository-native. It does not download or execute Syft; that fact is
 explicitly recorded in the tools lock and output manifest.
+The recorded generator SHA-256 is a deterministic digest of every source module named in
+`generator.sourceModules`, not merely the small public facade.
 
 ## Build and inspect one candidate
 
