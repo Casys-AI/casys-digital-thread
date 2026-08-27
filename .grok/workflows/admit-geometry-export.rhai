@@ -26,7 +26,7 @@ if args != () && args.mode != () {
 log("admit-geometry-export mode=" + mode);
 
 phase("Implement");
-let implement_prompt = "Implement admitted-geometry MCP export in /Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
+let implement_prompt = "Implement admitted-geometry MCP export in the current checkout (this repository). ";
 implement_prompt += "Read CLAUDE.md, docs/reference/agent/agent-workspace.md, ";
 implement_prompt += "src/tools/project-control/technical-compilation-tools.ts, and server.ts before writing. ";
 implement_prompt += "Goal: after compile.seal-admission@2, callers cannot pass Python. ";
@@ -54,7 +54,7 @@ if implemented == () || !implemented.success {
 }
 
 phase("Verify");
-let test_prompt = "In /Users/erwanpesle/Documents/GitHub/casys-digital-thread run targeted deno tests for ";
+let test_prompt = "In the current checkout (this repository), run targeted Deno tests for ";
 test_prompt += "src/application/use-cases/cad/canonical/export-admitted-project-geometry_test.ts, ";
 test_prompt += "src/tools/project-control/technical-compilation-tools_test.ts, ";
 test_prompt += "and src/adapters/compile/server-composition_test.ts. ";
@@ -62,7 +62,7 @@ test_prompt += "Use deno test --allow-read --allow-write --allow-net=127.0.0.1,l
 test_prompt += "If tests fail, fix the code and rerun. ";
 test_prompt += "Return ok=true only if those tests passed. Summarize failures if any.";
 
-let review_prompt = "Read-only authority review in /Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
+let review_prompt = "Read-only authority review in the current checkout (this repository). ";
 review_prompt += "Use read_file and grep on the admitted-geometry export files. ";
 review_prompt += "Confirm: no caller sourceText reaches MCP; no provider/tool/path selection; ";
 review_prompt += "capture names only the workspace quadruplet; design.execute-build123d@1 is untouched; ";
@@ -78,7 +78,7 @@ let tests_ok = verified[0] != () && verified[0].success && verified[0].output.ok
 let review_ok = verified[1] != () && verified[1].success && verified[1].output.ok == true;
 if !tests_ok || !review_ok {
     let fix_prompt = "Fix admitted-geometry export so targeted tests pass and authority holds. ";
-    fix_prompt += "Repo /Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
+    fix_prompt += "Repository: current checkout. ";
     fix_prompt += "Re-run the same targeted deno tests after the fix. Do not commit. Return ok=true only if tests passed.";
     let fixed = agent(fix_prompt, #{
         label: "fix-export",
@@ -101,7 +101,7 @@ if mode == "skip-yolo" {
 }
 
 phase("Yolo");
-let yolo_prompt = "Live-test admitted CAD compilation in /Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
+let yolo_prompt = "Live-test admitted CAD compilation in the current checkout (this repository). ";
 yolo_prompt += "Do not start servers. Do not auto-repair desk-lamp-dl04 or any historical project. ";
 yolo_prompt += "Caller must supply exact live coordinates: projectId, workspaceRevision, fileId, fileRevision. ";
 if args != () && args.projectId != () {

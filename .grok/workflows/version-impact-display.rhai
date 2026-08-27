@@ -32,8 +32,8 @@ let rec_schema = #{
 };
 
 phase("Perspectives");
-let root = "/Users/erwanpesle/Documents/GitHub/casys-digital-thread";
-let common_prompt = "Read with read_file/grep before answering: ";
+let root = ".";
+let common_prompt = "Read with read_file/grep in the current checkout (repository root: " + root + ") before answering: ";
 common_prompt += root + "/src/ui/src/thread/version-history.tsx, ";
 common_prompt += root + "/src/ui/src/thread/versioned-provenance-model.ts, ";
 common_prompt += root + "/src/adapters/thread/evidence-family-graph.ts, ";

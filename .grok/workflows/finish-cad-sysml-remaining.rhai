@@ -30,8 +30,7 @@ let verdict_schema = #{
 };
 
 phase("Implement");
-let cad = "Implement ONE reviewed fillet form in ";
-cad += "/Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
+let cad = "Implement ONE reviewed fillet form in the current checkout (this repository). ";
 cad += "Use read_file/grep. Form: fillet(<qualified-solid>.edges(), radius=<scalar>). ";
 cad += "Empty .edges() only. Keyword radius only. Keep analyzer 1.1.0 if Box-only ";
 cad += "bundles stay bit-identical. Do not open general MemberExpression. ";
@@ -39,8 +38,7 @@ cad += "Do not qualify chamfer, fillet(solid, r), filters, or solid.fillet. ";
 cad += "Do not change D4, execute, SysML, or registry. Tests + deno fmt. ";
 cad += "Return ok/summary/files.";
 
-let sysml = "Implement documentary source spans for sealed architecture SysML in ";
-sysml += "/Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
+let sysml = "Implement documentary source spans for sealed architecture SysML in the current checkout (this repository). ";
 sysml += "Use read_file/grep. Add sourceStatus, sourceText when reopen works, ";
 sysml += "span on symbols/incidences/unresolved, message on unresolved from ";
 sysml += "reopened analysis only. Artifact stays document. No SysON, no @2, ";
@@ -48,8 +46,7 @@ sysml += "no Product parts, no analysis-graph write, no subset expansion. ";
 sysml += "Update types.ts validators. Tests. If UI src changes, build:thread. ";
 sysml += "deno fmt. Return ok/summary/files.";
 
-let seal = "Implement design.seal-isolated-geometry@1 in ";
-seal += "/Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
+let seal = "Implement design.seal-isolated-geometry@1 in the current checkout (this repository). ";
 seal += "LOCKED: Thread document only. Schema isolated-geometry-seal-capture/1.0. ";
 seal += "URI casys://isolated-geometry-seal-capture/sha256/<digest>. ";
 seal += "Bytes stay behind IsolatedOutputPublicationReader. ";
@@ -97,15 +94,15 @@ for r in implemented {
 phase("Verify");
 let v1 = "Run deno test --allow-read --allow-write --allow-net=127.0.0.1,localhost --allow-env ";
 v1 += "src/adapters/analyzers/qualified-build123d-source-analyzer_test.ts ";
-v1 += "in /Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
+v1 += "in the current checkout (this repository). ";
 v1 += "ok true only if green. Do not edit unless a test you own is red.";
 
 let v2 = "Run Deno tests for architecture-sysml-seal enricher and UI models ";
-v2 += "in /Users/erwanpesle/Documents/GitHub/casys-digital-thread with explicit perms. ";
+v2 += "in the current checkout (this repository) with explicit permissions. ";
 v2 += "ok true only if green and artifact remains document.";
 
 let v3 = "Review isolated geometry seal authority in ";
-v3 += "/Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
+v3 += "the current checkout (this repository). ";
 v3 += "Run new seal tests if present. ok true only if document-only and ";
 v3 += "no thread-assets copy.";
 

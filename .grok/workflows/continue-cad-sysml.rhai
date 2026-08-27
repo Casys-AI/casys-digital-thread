@@ -41,8 +41,7 @@ phase("Fanout");
 let jobs = [];
 
 if (slice == "all" || slice == "cad") {
-    let cad = "Implement the next Build123d closed-subset solids in ";
-    cad += "/Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
+    let cad = "Implement the next Build123d closed-subset solids in the current checkout (this repository). ";
     cad += "Use read_file and grep before editing. ";
     cad += "Qualify Torus (2), Ellipsoid (3), Wedge (7) only in ";
     cad += "QUALIFIED_BUILD123D_CALLS and parsePositionalSolidCall. ";
@@ -64,7 +63,7 @@ if (slice == "all" || slice == "cad") {
 
 if (slice == "all" || slice == "sysml") {
     let sysml = "Implement Workbench presentation of a sealed architecture SysML ";
-    sysml += "document in /Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
+    sysml += "document in the current checkout (this repository). ";
     sysml += "Use read_file and grep. Slice is presentation only. ";
     sysml += "Artifact stays kind document, id architecture-sysml-seal-<digest>. ";
     sysml += "Do not insert SysON, do not add write-architecture@2, do not expand ";
@@ -84,8 +83,7 @@ if (slice == "all" || slice == "sysml") {
 }
 
 if (slice == "all" || slice == "promotion") {
-    let promo = "Design lock only for isolated Build123d geometry promotion in ";
-    promo += "/Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
+    let promo = "Design lock only for isolated Build123d geometry promotion in the current checkout (this repository). ";
     promo += "Read-only. Do not edit files. Read analysis-authority-pipeline.md, ";
     promo += "build123d-execution-evidence.ts, design-execute-build123d-run-executor.ts, ";
     promo += "design-write-geometry-run-executor.ts, registry.ts. ";
@@ -136,7 +134,7 @@ if (summaries.len() != 0) {
 phase("Verify");
 let vjobs = [];
 if (slice == "all" || slice == "cad") {
-    let cad_v = "In /Users/erwanpesle/Documents/GitHub/casys-digital-thread run only ";
+    let cad_v = "In the current checkout (this repository), run only ";
     cad_v += "deno test --allow-read --allow-write --allow-net=127.0.0.1,localhost --allow-env ";
     cad_v += "src/adapters/analyzers/qualified-build123d-source-analyzer_test.ts. ";
     cad_v += "Confirm Torus/Ellipsoid/Wedge qualify and fillet stays unresolved. ";
@@ -150,7 +148,7 @@ if (slice == "all" || slice == "cad") {
     });
 }
 if (slice == "all" || slice == "sysml") {
-    let sys_v = "In /Users/erwanpesle/Documents/GitHub/casys-digital-thread review ";
+    let sys_v = "In the current checkout (this repository), review ";
     sys_v += "the SysML workbench slice authority: artifact remains document, ";
     sys_v += "no SysON, no write-architecture@2, no compilation admission, ";
     sys_v += "no product-structure-catalog change. Run any new or touched Deno tests ";

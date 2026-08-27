@@ -19,8 +19,7 @@ let status_schema = #{
 };
 
 phase("Implement");
-let impl = "Implement FIRST SLICE ONLY of agent-authored SysML in ";
-impl += "/Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
+let impl = "Implement FIRST SLICE ONLY of agent-authored SysML in the current checkout (this repository). ";
 impl += "Read CLAUDE.md, src/domain/architecture/renderer/architecture-proposal.ts, ";
 impl += "src/adapters/analyzers/qualified-build123d-source-analyzer.ts, ";
 impl += "src/adapters/captures/technical-source-analysis-capture.ts, ";
@@ -47,7 +46,7 @@ if (implemented == () || !implemented.success || implemented.output.ok != true) 
 }
 
 phase("Verify");
-let ver = "In /Users/erwanpesle/Documents/GitHub/casys-digital-thread run the new SysML frontend tests ";
+let ver = "In the current checkout (this repository), run the new SysML frontend tests ";
 ver += "with explicit deno test permissions (no deno task test path args). ";
 ver += "Also confirm deno.json check lists every new non-test module. ";
 ver += "Review authority: caller cannot supply provider/tool/path/SysON ids; ";

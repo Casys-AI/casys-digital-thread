@@ -43,7 +43,7 @@ let verdict_schema = #{
 };
 
 phase("Design");
-let cad_d_p = "Read-only in /Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
+let cad_d_p = "Read-only in the current checkout (this repository). ";
 cad_d_p += "Use read_file and grep. Read qualified-build123d-source-analyzer.ts ";
 cad_d_p += "and geometry-script-validation.ts ALLOWED_BUILD123D_NAMES. ";
 cad_d_p += "Solids + Pos/Rot + Compound + solid +/− solid are already 1.1.0. ";
@@ -52,7 +52,7 @@ cad_d_p += "fillet/chamfer need MemberExpression+kwargs — say implementable fa
 cad_d_p += "unless you find a positional-only reviewed form. ";
 cad_d_p += "Do not edit files. Return ok, summary, slice, implementable, must_not.";
 
-let sys_d_p = "Read-only in /Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
+let sys_d_p = "Read-only in the current checkout (this repository). ";
 sys_d_p += "Use read_file and grep. Agent-authored SysML v1 and workbench ";
 sys_d_p += "symbols/unresolved/incidences already exist. ";
 sys_d_p += "Decide the NEXT documentary frontend slice. ";
@@ -94,8 +94,7 @@ if (sys_design.output.summary != ()) {
     sys_notes = json_encode(sys_design.output);
 }
 
-let cad_i = "Implement the next CAD closed-subset frontend slice in ";
-cad_i += "/Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
+let cad_i = "Implement the next CAD closed-subset frontend slice in the current checkout (this repository). ";
 cad_i += "Use read_file and grep first. Keep analyzer version 1.1.0 ";
 cad_i += "unless identity must change. Design notes: ";
 cad_i += cad_notes;
@@ -105,8 +104,7 @@ cad_i += "fillet stays unresolved, and document the next AST lock. ";
 cad_i += "If a positional-only form is already the same scheme as Box/+/-, implement it. ";
 cad_i += "Do not change D4, execute, SysML, or registry. deno fmt. Return ok/summary/files.";
 
-let sys_i = "Implement the next documentary SysML frontend slice in ";
-sys_i += "/Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
+let sys_i = "Implement the next documentary SysML frontend slice in the current checkout (this repository). ";
 sys_i += "Use read_file and grep first. Design notes: ";
 sys_i += sys_notes;
 sys_i += " Artifact stays kind document. Bindings are symbol ids. ";
@@ -145,25 +143,23 @@ if (sys_impl == () || !sys_impl.success || sys_impl.output.ok == false) {
 }
 
 phase("Verify");
-let cad_v = "In /Users/erwanpesle/Documents/GitHub/casys-digital-thread run ";
+let cad_v = "In the current checkout (this repository), run ";
 cad_v += "deno test --allow-read --allow-write --allow-net=127.0.0.1,localhost --allow-env ";
 cad_v += "src/adapters/analyzers/qualified-build123d-source-analyzer_test.ts. ";
 cad_v += "Confirm solids +/− still pass and fillet or other D4 extras stay unresolved. ";
 cad_v += "Return ok true only if green. Do not edit unless a test you own is red.";
 
-let sys_v = "In /Users/erwanpesle/Documents/GitHub/casys-digital-thread review ";
+let sys_v = "In the current checkout (this repository), review ";
 sys_v += "SysML frontend authority: document only, no SysON, no @2, no Product parts. ";
 sys_v += "Run touched Deno tests with explicit permissions. ";
 sys_v += "Return ok true only if tests are green and authorities hold.";
 
-let cad_s = "Adversarially check CAD authority in ";
-cad_s += "/Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
+let cad_s = "Adversarially check CAD authority in the current checkout (this repository). ";
 cad_s += "Read the analyzer. Set real=true only if a D4-unqualified call is now ";
 cad_s += "silently qualified or analyzer version bumped without identity change. ";
 cad_s += "Otherwise real=false. Use read_file. Do not edit.";
 
-let sys_s = "Adversarially check SysML authority in ";
-sys_s += "/Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
+let sys_s = "Adversarially check SysML authority in the current checkout (this repository). ";
 sys_s += "Set real=true only if the seal became sysml-model, Product parts, ";
 sys_s += "SysON insert, or compile.seal-admission. Else real=false. ";
 sys_s += "Use read_file. Do not edit.";

@@ -32,7 +32,7 @@ let design_schema = #{
 };
 
 phase("Read");
-let read_p = "Read-only survey in /Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
+let read_p = "Read-only survey in the current checkout (this repository). ";
 read_p += "Use read_file/grep. Read src/domain/architecture/renderer/architecture-proposal.ts, ";
 read_p += "src/adapters/analyzers/qualified-build123d-source-analyzer.ts, ";
     read_p += "docs/reference/pipeline/analysis-authority-pipeline.md architecture and compilation sections, ";
