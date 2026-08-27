@@ -1,0 +1,144 @@
+import { assert, assertEquals, assertMatch } from "@std/assert";
+import {
+  buildSourceAlphaRelease,
+  renderThirdPartyNotices,
+  sourceAlphaTagFromArgs,
+  verifySourceAlphaRelease,
+} from "./source-alpha-inventory.ts";
+
+const TAG = "source-alpha-test";
+
+function temporaryOutputRoot(path: string): URL {
+  return new URL(`file://${path}/`);
+}
+
+async function artifactBytes(root: URL, file: string): Promise<Uint8Array> {
+  return await Deno.readFile(new URL(`${TAG}/${file}`, root));
+}
+
+Deno.test("source-alpha inventory renders byte-identical source artifacts from one commit", async () => {
+  const first = await Deno.makeTempDir({ prefix: "casys-source-alpha-first-" });
+  const second = await Deno.makeTempDir({ prefix: "casys-source-alpha-second-" });
+  const firstRoot = temporaryOutputRoot(first);
+  const secondRoot = temporaryOutputRoot(second);
+
+  try {
+    await buildSourceAlphaRelease({
+      tag: TAG,
+      outputRoot: firstRoot,
+      allowUncommittedForTest: true,
+    });
+    await buildSourceAlphaRelease({
+      tag: TAG,
+      outputRoot: secondRoot,
+      allowUncommittedForTest: true,
+    });
+
+    for (
+      const file of [
+        "source.tar.gz",
+        "source.sbom.cdx.json",
+        "source-release-manifest.json",
+        "THIRD_PARTY_NOTICES.md",
+        "SHA256SUMS",
+      ]
+    ) {
+      assertEquals(
+        await artifactBytes(firstRoot, file),
+        await artifactBytes(secondRoot, file),
+        `${file} must be byte-identical across two renderings of the same commit.`,
+      );
+    }
+
+    const noticesBefore = await artifactBytes(firstRoot, "THIRD_PARTY_NOTICES.md");
+    await renderThirdPartyNotices({ tag: TAG, outputRoot: firstRoot });
+    assertEquals(
+      await artifactBytes(firstRoot, "THIRD_PARTY_NOTICES.md"),
+      noticesBefore,
+    );
+
+    const verification = await verifySourceAlphaRelease({
+      tag: TAG,
+      outputRoot: firstRoot,
+      allowUncommittedForTest: true,
+    });
+    assertEquals(verification.checkedFiles, [
+      "source-release-manifest.json",
+      "source.sbom.cdx.json",
+      "source.tar.gz",
+      "THIRD_PARTY_NOTICES.md",
+      "SHA256SUMS",
+    ]);
+
+    const bom = JSON.parse(
+      new TextDecoder().decode(await artifactBytes(firstRoot, "source.sbom.cdx.json")),
+    );
+    assertEquals(bom.bomFormat, "CycloneDX");
+    assertEquals(bom.specVersion, "1.6");
+    assertMatch(bom.serialNumber, /^urn:uuid:[0-9a-f-]{36}$/u);
+    assert(
+      bom.metadata.tools.components.every((tool: { name: string }) =>
+        tool.name !== "syft"
+      ),
+      "Syft is explicitly not executed and must not appear as an executed generator tool.",
+    );
+    assert(
+      bom.components.some((
+        component: { licenses: Array<{ license: { name: string } }> },
+      ) => component.licenses[0]?.license.name === "NOASSERTION"),
+      "A lockfile with no licence field must remain NOASSERTION rather than guessed.",
+    );
+    assert(
+      bom.components.every((component: { purl: string }) =>
+        !component.purl.includes("$")
+      ),
+      "Generated PURLs must not contain renderer syntax markers.",
+    );
+
+    const manifest = JSON.parse(
+      new TextDecoder().decode(
+        await artifactBytes(firstRoot, "source-release-manifest.json"),
+      ),
+    );
+    assertEquals(manifest.release.boundary, "source-alpha");
+    assert(
+      manifest.inputs.some((input: { path: string }) =>
+        input.path === "desktop/chat-runtime/pins.json"
+      ),
+      "Desktop source pins are hashes in the source manifest, not a Desktop artifact claim.",
+    );
+    assert(
+      manifest.inputs.some((input: { path: string }) =>
+        input.path === "images/build123d-microsandbox-worker/requirements.lock"
+      ),
+      "Worker lockfiles remain source provenance even though worker artifacts are excluded.",
+    );
+    assert(
+      manifest.scope.exclusions.some((exclusion: { id: string }) =>
+        exclusion.id === "oci-and-provider-artifacts"
+      ),
+    );
+    assert(
+      manifest.scope.componentInventories.some(
+        (inventory: { id: string; coverage: string }) =>
+          inventory.id === "desktop-source" && inventory.coverage === "provenance-only",
+      ),
+    );
+    assertEquals(manifest.tooling.notExecuted[0].status, "not-executed");
+  } finally {
+    await Deno.remove(first, { recursive: true });
+    await Deno.remove(second, { recursive: true });
+  }
+});
+
+Deno.test("source-alpha inventory accepts only an explicit safe tag", () => {
+  assertEquals(sourceAlphaTagFromArgs(["--tag", "v0.1.0-alpha.1"]), "v0.1.0-alpha.1");
+  assertEquals(sourceAlphaTagFromArgs(["--tag=v0_1"]), "v0_1");
+  let message = "";
+  try {
+    sourceAlphaTagFromArgs(["--tag", "../escape"]);
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  assertMatch(message, /tag/u);
+});

@@ -10,6 +10,7 @@ src/ui/.vite/
 # verify:thread:presentation) ; preview:thread sert depuis Vite. Ni la CI ni
 # le serveur MCP n'en dépendent.
 src/ui/dist/
+dist/release/
 state/local/
 
 # Réglages Claude Code et worktrees d'agents : purement locaux, et un worktree

@@ -59,13 +59,17 @@ async function collectEntryPoints(dir: string | URL): Promise<string[]> {
   return results.sort();
 }
 
-const SUB_ROLES = ["runners", "gates", "probes", "serve"] as const;
+const SUB_ROLES = ["runners", "gates", "probes", "release", "serve"] as const;
+// release/source-alpha-inventory.ts is a shared deterministic renderer invoked by
+// the three public release entry points. It is deliberately not directly runnable.
+const NON_ENTRY_POINT_FILES = new Set(["release/source-alpha-inventory.ts"]);
 
 const allEntryPoints: { role: string; file: string }[] = [];
 for (const role of SUB_ROLES) {
   const dir = new URL(`${role}/`, SCRIPTS_DIR);
   const files = await collectEntryPoints(dir);
   for (const f of files) {
+    if (NON_ENTRY_POINT_FILES.has(`${role}/${f}`)) continue;
     allEntryPoints.push({ role, file: `${role}/${f}` });
   }
 }

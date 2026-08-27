@@ -50,6 +50,9 @@ Leave an unchecked or failed item literal; do not turn it into a release claim.
 
 - Generate and retain an SBOM for the source checkout, each published OCI image, and
   each packaged Desktop artifact.
+- For the deliberately narrower source-alpha inventory, follow
+  [Generate a source-alpha SBOM](source-alpha-sbom.md). It does not clear the OCI or
+  Desktop artifact obligations in this checklist.
 - Review direct and transitive licences. The repository's MIT licence is not an
   aggregate licence for providers, solvers, native libraries, Node, or other bundled
   runtimes.
