@@ -8,7 +8,6 @@ import {
   parseSourceAlphaScope,
   parseSourceAlphaToolsLock,
   REPOSITORY_ROOT,
-  repositoryUrl,
   SCOPE_PATH,
   sha256,
   sha256Text,
@@ -45,6 +44,29 @@ async function gitText(
   return new TextDecoder().decode(await git(args, repositoryRoot)).trim();
 }
 
+/**
+ * Read a blob from the immutable commit selected for this release.  A release
+ * must not mix the archive from one revision with digests or inventory inputs
+ * observed from a later checkout.
+ */
+export async function readSourceAlphaCommitFile(
+  commit: string,
+  path: string,
+  repositoryRoot = REPOSITORY_ROOT,
+): Promise<Uint8Array> {
+  return await git(["show", `${commit}:${path}`], repositoryRoot);
+}
+
+async function readSourceAlphaCommitText(
+  commit: string,
+  path: string,
+  repositoryRoot: URL,
+): Promise<string> {
+  return new TextDecoder().decode(
+    await readSourceAlphaCommitFile(commit, path, repositoryRoot),
+  );
+}
+
 async function assertCleanCheckout(repositoryRoot: URL): Promise<void> {
   const status = await gitText(
     ["status", "--porcelain", "--untracked-files=normal"],
@@ -60,10 +82,11 @@ async function assertCleanCheckout(repositoryRoot: URL): Promise<void> {
 async function assertTrackedInputs(
   scope: SourceAlphaScope,
   toolsLock: SourceAlphaToolsLock,
+  commit: string,
   repositoryRoot: URL,
 ): Promise<void> {
   const tracked = new Set(
-    (await gitText(["ls-tree", "-r", "--name-only", "HEAD"], repositoryRoot))
+    (await gitText(["ls-tree", "-r", "--name-only", commit], repositoryRoot))
       .split("\n")
       .filter(Boolean),
   );
@@ -77,7 +100,7 @@ async function assertTrackedInputs(
   ) {
     if (!tracked.has(path)) {
       throw new Error(
-        `Source-alpha release input is not tracked at HEAD: ${path}. Generate only from a committed candidate.`,
+        `Source-alpha release input is not tracked at selected commit ${commit}: ${path}. Generate only from a committed candidate.`,
       );
     }
   }
@@ -94,10 +117,15 @@ async function gzip(bytes: Uint8Array): Promise<Uint8Array> {
 
 async function sourceInputDigests(
   scope: SourceAlphaScope,
+  commit: string,
   repositoryRoot: URL,
 ): Promise<readonly SourceAlphaInputDigest[]> {
   return await Promise.all(scope.inputs.map(async (input) => {
-    const bytes = await Deno.readFile(repositoryUrl(input.path, repositoryRoot));
+    const bytes = await readSourceAlphaCommitFile(
+      commit,
+      input.path,
+      repositoryRoot,
+    );
     return {
       path: input.path,
       role: input.role,
@@ -111,11 +139,12 @@ async function sourceInputDigests(
 
 async function generatorSourceDigest(
   sourceModules: readonly string[],
+  commit: string,
   repositoryRoot: URL,
 ): Promise<string> {
   const modules = await Promise.all(
     [...sourceModules].sort().map(async (path) => {
-      const bytes = await Deno.readFile(repositoryUrl(path, repositoryRoot));
+      const bytes = await readSourceAlphaCommitFile(commit, path, repositoryRoot);
       return { path, sha256: await sha256(bytes) };
     }),
   );
@@ -163,21 +192,29 @@ export async function resolveSourceAlphaReleaseContext(
   repositoryRoot = REPOSITORY_ROOT,
   allowUncommittedForTest = false,
 ): Promise<SourceAlphaReleaseContext> {
+  if (!allowUncommittedForTest) {
+    await assertCleanCheckout(repositoryRoot);
+  }
+
+  // Resolve HEAD once. Every Git lookup below addresses this immutable commit
+  // so a concurrent branch move cannot create a mixed release manifest.
+  const commit = await gitText(
+    ["rev-parse", "--verify", "HEAD^{commit}"],
+    repositoryRoot,
+  );
   const [scopeText, toolsLockText] = await Promise.all([
-    Deno.readTextFile(repositoryUrl(SCOPE_PATH, repositoryRoot)),
-    Deno.readTextFile(repositoryUrl(TOOLS_LOCK_PATH, repositoryRoot)),
+    readSourceAlphaCommitText(commit, SCOPE_PATH, repositoryRoot),
+    readSourceAlphaCommitText(commit, TOOLS_LOCK_PATH, repositoryRoot),
   ]);
   const scope = parseSourceAlphaScope(JSON.parse(scopeText));
   const toolsLock = parseSourceAlphaToolsLock(JSON.parse(toolsLockText));
   assertRendererCoverage(scope);
   assertTooling(toolsLock);
   if (!allowUncommittedForTest) {
-    await assertCleanCheckout(repositoryRoot);
-    await assertTrackedInputs(scope, toolsLock, repositoryRoot);
+    await assertTrackedInputs(scope, toolsLock, commit, repositoryRoot);
   }
 
   const [
-    commit,
     tree,
     commitTimestamp,
     gitVersion,
@@ -185,17 +222,16 @@ export async function resolveSourceAlphaReleaseContext(
     inputs,
     archiveTar,
   ] = await Promise.all([
-    gitText(["rev-parse", "HEAD"], repositoryRoot),
-    gitText(["rev-parse", "HEAD^{tree}"], repositoryRoot),
-    gitText(["show", "-s", "--format=%cI", "HEAD"], repositoryRoot),
+    gitText(["rev-parse", `${commit}^{tree}`], repositoryRoot),
+    gitText(["show", "-s", "--format=%cI", commit], repositoryRoot),
     gitText(["--version"], repositoryRoot),
-    generatorSourceDigest(toolsLock.generator.sourceModules, repositoryRoot),
-    sourceInputDigests(scope, repositoryRoot),
+    generatorSourceDigest(toolsLock.generator.sourceModules, commit, repositoryRoot),
+    sourceInputDigests(scope, commit, repositoryRoot),
     git([
       "archive",
       "--format=tar",
       `--prefix=casys-digital-thread-${tag}/`,
-      "HEAD",
+      commit,
     ], repositoryRoot),
   ]);
   const sourceArchive = await gzip(archiveTar);

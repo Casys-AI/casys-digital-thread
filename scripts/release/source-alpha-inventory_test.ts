@@ -5,6 +5,7 @@ import {
   sourceAlphaTagFromArgs,
   verifySourceAlphaRelease,
 } from "./source-alpha-inventory.ts";
+import { sourceLockComponents } from "./source-alpha/components.ts";
 
 const TAG = "source-alpha-test";
 
@@ -145,4 +146,29 @@ Deno.test("source-alpha inventory accepts only an explicit safe tag", () => {
     message = error instanceof Error ? error.message : String(error);
   }
   assertMatch(message, /tag/u);
+});
+
+Deno.test("source-alpha inventory preserves primary Deno npm identities before peer suffixes", () => {
+  const components = sourceLockComponents(
+    {
+      npm: {
+        "@modelcontextprotocol/sdk@1.30.0_zod@4.4.3": {},
+        "graphology@0.26.0_graphology-types@0.24.8": {},
+        "@modelcontextprotocol/ext-apps@1.7.5_@modelcontextprotocol+sdk@1.30.0__zod@4.4.3":
+          {},
+      },
+    },
+    { packages: {} },
+  );
+
+  assertEquals(
+    components.map(({ name, version }) => ({ name, version })).sort((left, right) =>
+      left.name.localeCompare(right.name)
+    ),
+    [
+      { name: "@modelcontextprotocol/ext-apps", version: "1.7.5" },
+      { name: "@modelcontextprotocol/sdk", version: "1.30.0" },
+      { name: "graphology", version: "0.26.0" },
+    ],
+  );
 });

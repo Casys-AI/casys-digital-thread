@@ -9,13 +9,15 @@ import {
 } from "./contract.ts";
 
 function parseNameAndVersion(identity: string): { name: string; version: string } {
-  const marker = identity.lastIndexOf("@");
-  if (marker <= 0 || marker === identity.length - 1) {
+  const match = identity.match(
+    /^(?<name>@[^/]+\/[^@]+|[^@]+)@(?<version>[^_]+)(?:_|$)/u,
+  );
+  if (!match?.groups) {
     return { name: identity, version: "NOASSERTION" };
   }
   return {
-    name: identity.slice(0, marker),
-    version: identity.slice(marker + 1).split("_")[0] || "NOASSERTION",
+    name: match.groups.name!,
+    version: match.groups.version!,
   };
 }
 

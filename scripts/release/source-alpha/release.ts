@@ -12,11 +12,9 @@ import {
   GENERATOR_PATH,
   isRecord,
   type JsonRecord,
-  readJson,
   RELEASE_FILE_NAMES,
   type RenderedRelease,
   REPOSITORY_ROOT,
-  repositoryUrl,
   SCOPE_PATH,
   sha256,
   sha256Text,
@@ -24,7 +22,10 @@ import {
   toHex,
   TOOLS_LOCK_PATH,
 } from "./contract.ts";
-import { resolveSourceAlphaReleaseContext } from "./source-archive.ts";
+import {
+  readSourceAlphaCommitFile,
+  resolveSourceAlphaReleaseContext,
+} from "./source-archive.ts";
 
 const DEFAULT_OUTPUT_ROOT = new URL("dist/release/", REPOSITORY_ROOT);
 
@@ -46,11 +47,15 @@ async function renderRelease(
     REPOSITORY_ROOT,
     allowUncommittedForTest,
   );
-  const [denoLock, uiPackageLock, licenseText] = await Promise.all([
-    readJson("deno.lock"),
-    readJson("src/ui/package-lock.json"),
-    Deno.readTextFile(repositoryUrl("LICENSE")),
+  const [denoLockBytes, uiPackageLockBytes, licenseBytes] = await Promise.all([
+    readSourceAlphaCommitFile(context.commit, "deno.lock"),
+    readSourceAlphaCommitFile(context.commit, "src/ui/package-lock.json"),
+    readSourceAlphaCommitFile(context.commit, "LICENSE"),
   ]);
+  const decoder = new TextDecoder();
+  const denoLock = JSON.parse(decoder.decode(denoLockBytes));
+  const uiPackageLock = JSON.parse(decoder.decode(uiPackageLockBytes));
+  const licenseText = decoder.decode(licenseBytes);
   const components = sourceLockComponents(denoLock, uiPackageLock);
   const bomUuid = await deterministicBomUuid([
     context.commit,

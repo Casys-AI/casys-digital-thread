@@ -27,7 +27,7 @@
     "release:source-alpha:build": "deno run --no-prompt --frozen --allow-read --allow-write=dist/release --allow-run=git scripts/release/build-source-alpha-inventory.ts",
     "release:source-alpha:render": "deno run --no-prompt --frozen --allow-read --allow-write=dist/release scripts/release/render-third-party-notices.ts",
     "release:source-alpha:verify": "deno run --no-prompt --frozen --allow-read --allow-run=git scripts/release/verify-source-alpha-inventory.ts",
-    "test:source-alpha-inventory": "deno test --no-prompt --frozen --allow-read --allow-write --allow-run=git scripts/release/source-alpha-inventory_test.ts",
+    "test:source-alpha-inventory": "deno test --no-prompt --frozen --allow-read --allow-write --allow-run=git scripts/release/source-alpha-inventory_test.ts scripts/release/source-alpha/source-archive_test.ts",
     "preview:thread": "deno run --allow-run --allow-read --allow-write=state/local --allow-net=127.0.0.1 --allow-env scripts/serve/preview-thread.ts",
     "preview:cockpit": "npm --prefix src/ui run build:thread && deno run --allow-read=state/local,src/ui/dist/thread,config/projects,config/thread-subjects,config/mcp-fleet.json --allow-write=state/local --allow-net=127.0.0.1 scripts/serve/serve-native-workbench.ts --workspace-id=primary --no-seed --port=5175",
     "verify:thread:presentation": "npm --prefix src/ui run build:thread && deno run --allow-read=src/ui scripts/gates/verify-native-workbench-presentation.ts",
