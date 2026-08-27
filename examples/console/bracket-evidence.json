@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "2.0",
   "bundleId": "bracket-demo-2026-07-30",
   "runId": "bracket-demo-2026-07-30",
   "subject": "Al 6061 mounting bracket",
@@ -7,10 +7,11 @@
     "mode": "fixture",
     "freshCadExecution": false,
     "freshFeaExecution": false,
-    "statement": "This bundle content-addresses the checked-in CAD inputs and normalizes the bracket measurements already verified or documented by the example. It is not a claim that the MCP fleet ran while this bundle was generated.",
+    "statement": "This checked-in documentary bundle records source files, values, and comparisons. No CAD, FEA, or SysON dispatch is attested by this checked-in demo.",
     "measurementSources": {
       "geometry": "checked-in bracket.py and bracket.step",
-      "fea": "documented example in examples/bracket/README.md"
+      "fea": "documented values in examples/bracket/README.md",
+      "comparisons": "recorded-comparison"
     }
   },
   "artifacts": [
@@ -39,8 +40,8 @@
       "id": "documented-result-source",
       "kind": "result-source",
       "path": "examples/bracket/README.md",
-      "bytes": 2498,
-      "sha256": "5f6bd7c863b26f9d58071c7716cee6b7a5b64635571e1855b08b662dd2e505f3"
+      "bytes": 3461,
+      "sha256": "5acacc5bd5249ac0a6f4a3423801153b884be9dfd75168dc3c07d4d02bf42f03"
     }
   ],
   "measurements": {
@@ -76,46 +77,38 @@
     "maxDisplacement": {
       "value": 0.043,
       "unit": "mm",
-      "source": "documented-example"
+      "source": "recorded-comparison"
     },
     "maxVonMises": {
       "value": 26.6,
       "unit": "MPa",
-      "source": "documented-example"
+      "source": "recorded-comparison"
     }
   },
-  "verdicts": [
+  "comparisons": [
     {
       "id": "massBudget",
-      "status": "pass",
-      "computed": {
+      "outcome": "within-recorded-limit",
+      "source": "recorded-comparison",
+      "recordedValue": {
         "value": 56.915761,
         "unit": "g"
       },
-      "operator": "<=",
-      "limit": {
+      "recordedLimit": {
         "value": 70,
-        "unit": "g"
-      },
-      "margin": {
-        "value": 13.084239,
         "unit": "g"
       }
     },
     {
       "id": "holdLoad",
-      "status": "pass",
-      "computed": {
+      "outcome": "within-recorded-limit",
+      "source": "recorded-comparison",
+      "recordedValue": {
         "value": 26.6,
         "unit": "MPa"
       },
-      "operator": "<=",
-      "limit": {
+      "recordedLimit": {
         "value": 160,
-        "unit": "MPa"
-      },
-      "margin": {
-        "value": 133.4,
         "unit": "MPa"
       }
     }

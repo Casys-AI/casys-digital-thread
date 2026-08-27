@@ -962,6 +962,15 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     assert("runs" in structured);
     assertEquals("workbench" in structured, false);
 
+    const runDetail = await client.call("tools/call", {
+      name: "console_run_detail",
+      arguments: { id: "run-1" },
+    });
+    assertEquals(
+      (runDetail.content as Array<Record<string, unknown>>)[0].text,
+      "Run: documentary record (no dispatch attested); comparison verdict not_evaluated. Source: demo.",
+    );
+
     const projectSnapshot = await client.call("tools/call", {
       name: "project_snapshot",
       arguments: { projectId },
@@ -1448,10 +1457,9 @@ function runFixture(): RunDetail {
     id: "run-1",
     name: "Run",
     subject: "Part",
-    status: "succeeded",
-    verdictStatus: "passed",
+    status: "documentary",
+    verdictStatus: "not_evaluated",
     source: "demo",
-    startedAt: "2026-07-30T00:00:00.000Z",
     passedRequirements: 0,
     failedRequirements: 0,
     unresolvedRequirements: 0,

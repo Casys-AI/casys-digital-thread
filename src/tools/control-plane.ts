@@ -57,8 +57,9 @@ export function registerControlPlaneTools(
     const id = requiredString(args.id, "id");
     const run = await controlPlane.runDetail(id);
     return {
-      content:
-        `${run.name}: execution ${run.status}; comparison verdict ${run.verdictStatus}. Source: ${run.source}.`,
+      content: `${run.name}: ${
+        runStatusSummary(run.status)
+      }; comparison verdict ${run.verdictStatus}. Source: ${run.source}.`,
       structuredContent: run,
     };
   });
@@ -157,4 +158,10 @@ function requiredString(value: unknown, name: string): string {
     throw new TypeError(`${name} must be a non-empty string`);
   }
   return value;
+}
+
+function runStatusSummary(status: string): string {
+  return status === "documentary"
+    ? "documentary record (no dispatch attested)"
+    : `execution ${status}`;
 }

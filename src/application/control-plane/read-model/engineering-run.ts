@@ -1,15 +1,17 @@
 import type { IsoDateTime } from "../../../domain/kernel/primitives.ts";
 
 /**
- * State of the computation itself. A successful computation is evidence, not
- * a requirement verdict.
+ * State of the computation or checked-in record. A successful computation is
+ * evidence, not a requirement verdict.
  */
 export type RunStatus =
   | "succeeded"
   | "failed"
   | "timed_out"
   | "running"
-  | "unavailable";
+  | "unavailable"
+  /** Checked-in or documented material for which no dispatch is attested. */
+  | "documentary";
 
 /**
  * State of the requirements evaluation, which may be intentionally absent
@@ -26,6 +28,9 @@ export type RunSource = "observed" | "demo";
 /** A lineage stage can be an execution or an explicit comparison outcome. */
 export type StageStatus = RunStatus | VerdictStatus;
 
+/** Why a lineage stage is present in the read model. */
+export type RunStageBasis = "execution" | "documentary" | "comparison";
+
 export interface EngineeringValue {
   value: number;
   unit: string;
@@ -37,6 +42,7 @@ export interface RunStage {
   title: string;
   serverId: string;
   tool: string;
+  basis: RunStageBasis;
   status: StageStatus;
   startedAt?: IsoDateTime;
   completedAt?: IsoDateTime;
