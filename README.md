@@ -126,6 +126,8 @@ issue. Before changing repository visibility, complete the
 
 ## License
 
+Copyright © 2026 Casys AI.
+
 This repository is licensed under the
 [GNU Affero General Public License v3.0 only (AGPL-3.0-only)](LICENSE). Provider images,
 external systems, bundled runtimes, and third-party dependencies retain their own
