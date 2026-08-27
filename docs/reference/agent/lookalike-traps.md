@@ -7,7 +7,7 @@ grants stay on [agent workspace](agent-workspace.md). Pattern for admitted sourc
 microVM:
 [admitted source isolated execution](../pipeline/admitted-source-isolated-execution.md).
 
-![Two SysML authorities: renderer path writes SysON; agent-authored path seals a Thread document only.](../../assets/sysml-two-paths.svg)
+![Two SysML authorities: renderer path writes SysON; agent-authored path seals a Thread document only.](../../media/sysml-two-paths.svg)
 
 ## SysML
 

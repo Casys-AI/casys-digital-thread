@@ -38,7 +38,7 @@ Workbench, Desktop shell, or local worker definitions.
 - Update living documentation when a public contract, command, or workflow changes.
 - Do not combine formatting, generated output, broad renames, and behavioral changes in
   one pull request.
-- Treat RFCs as design history or proposals, not as authority over current code and
+- Treat unexported internal planning history as non-authoritative over current code and
   reference documentation.
 
 For a substantial new capability or a change to an authority boundary, open a focused

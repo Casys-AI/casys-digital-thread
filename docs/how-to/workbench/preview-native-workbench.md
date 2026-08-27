@@ -345,17 +345,17 @@ flowchart LR
   project --- activity --- product --- evidence --- execution
 ```
 
-![Five Workbench spaces. The cockpit is GET and SSE only.](../../assets/workbench-five-spaces.svg)
+![Five Workbench spaces. The cockpit is GET and SSE only.](../../media/workbench-five-spaces.svg)
 
-![Project on desk-lamp-dl04: approved brief and phase-gate summary.](../../assets/workbench-project-dl04.png)
+![Project on desk-lamp-dl04: approved brief and phase-gate summary.](../../media/workbench-project-dl04.png)
 
-![Activity on desk-lamp-dl04: persisted lineage, not private reasoning.](../../assets/workbench-activity-dl04.png)
+![Activity on desk-lamp-dl04: persisted lineage, not private reasoning.](../../media/workbench-activity-dl04.png)
 
-![Product: exact SysON / CAD / ERP facets. Missing identities stay visible.](../../assets/workbench-product-dl04.png)
+![Product: exact SysON / CAD / ERP facets. Missing identities stay visible.](../../media/workbench-product-dl04.png)
 
-![Evidence: counts, requirements, violations. Unresolved stays unresolved.](../../assets/workbench-evidence-dl04.png)
+![Evidence: counts, requirements, violations. Unresolved stays unresolved.](../../media/workbench-evidence-dl04.png)
 
-![Execution: run journal and contributing systems. Queued is not published.](../../assets/workbench-execution-dl04.png)
+![Execution: run journal and contributing systems. Queued is not published.](../../media/workbench-execution-dl04.png)
 
 A first-time walkthrough of the same loop is
 [Follow the engineering loop](../../how-to/verify-design/walk-through-an-engineering-project.md). Agents that

@@ -4,8 +4,8 @@ Audience: both · Diátaxis: reference · Kind: contract
 
 This directory is the living reference for the CAD domain. It separates the source
 language the atelier can currently understand from the two ways admitted source can
-produce geometry. RFCs are session briefs or studies; they are not the runtime
-contract.
+produce geometry. Internal planning records are not exported and do not define the
+runtime contract.
 
 Read:
 

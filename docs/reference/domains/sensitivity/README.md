@@ -43,5 +43,5 @@ Review/receipt replay is WAL-backed. The WAL rejects symlinked directory ancesto
 records transplanted between project/run tuples before selecting any rewrite path. The
 installation-private index is reconstructible from append-only admission and
 invalidation journals; it is not an agent or Workbench surface. Nothing is shared with a
-team, another installation, a registry, or a marketplace. See the
-[implemented RFC](../../../rfcs/sensitivity/private-cross-project-experience-reuse.md).
+team, another installation, a registry, or a marketplace. The registered-operation and
+persistence contracts described on this page are the public source of truth.

@@ -6,7 +6,7 @@ Two authorities. They are not substitutes. Language tokens and resource ingress:
 [language](language.md). Implemented surface and exclusions: [coverage](coverage.md).
 Lookalike table: [lookalike traps](../../agent/lookalike-traps.md).
 
-![Renderer path writes SysON; agent-authored path seals a Thread document only.](../../../assets/sysml-two-paths.svg)
+![Renderer path writes SysON; agent-authored path seals a Thread document only.](../../../media/sysml-two-paths.svg)
 
 | Facet          | Server renderer                                                                                                                            | Agent-authored closed subset                                                                                                                                               |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

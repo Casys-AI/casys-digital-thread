@@ -46,7 +46,7 @@ CAD change
   -> creates a named violation with evidence and a next action
 ```
 
-![Five Workbench spaces. The shell is GET and SSE only.](../../assets/workbench-five-spaces.svg)
+![Five Workbench spaces. The shell is GET and SSE only.](../../media/workbench-five-spaces.svg)
 
 The Workbench renders that topology first as a live lineage feed and second as a
 complete graph. Feed cards are meaningful canonical facts; selecting or automatically

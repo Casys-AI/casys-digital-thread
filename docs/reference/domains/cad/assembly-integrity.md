@@ -142,9 +142,8 @@ bundle, method, bounds, and provider profile.
 
 Kinematics is not a richer provider profile for this port. It needs explicit bodies,
 frames, joints, limits, and sampled scenarios, so it will use a separate capability,
-capture, evaluation, and Brief verification authority. The possible Project Chrono
-provider is a deliberately [deferred RFC](../../../rfcs/mechanism/README.md), not
-current authority.
+capture, evaluation, and Brief verification authority. A possible Project Chrono
+provider remains deferred and is not current authority.
 
 Until that vertical is implemented and runtime-proven, static assembly integrity is the
 only executable baseline and motion remains literally `not-evaluated` or `unavailable`.

@@ -12,6 +12,10 @@
   },
   "inputs": [
     {
+      "path": ".gitattributes",
+      "role": "public-export-policy"
+    },
+    {
       "path": "LICENSE",
       "role": "repository-license"
     },
@@ -120,6 +124,10 @@
     {
       "id": "private-agent-orchestration",
       "literal": "Provider-specific internal prompting, local agent configuration, and command pointers retained by the private development checkout, including .grok/**, .claude/**, .cursor/**, .codex/**, and CLAUDE.md, are excluded from the public source archive. AGENTS.md, .agents/skills/**, and .github/** remain public."
+    },
+    {
+      "id": "private-design-history",
+      "literal": "Private design history under docs/assets/** and docs/rfcs/** is excluded from the public source archive. Living Diátaxis documentation and contributor-facing media under docs/media/** remain public."
     },
     {
       "id": "runtime-qualification",

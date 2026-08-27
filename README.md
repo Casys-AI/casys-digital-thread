@@ -50,8 +50,8 @@ or other reviewed integrations may still use the network.
 
 Agents must start with [AGENTS.md](AGENTS.md), then the
 [agent workspace reference](docs/reference/agent/agent-workspace.md). The registered
-catalogue and backend code are authoritative; UI copy, examples, and RFCs are not a
-second authority model.
+catalogue and backend code are authoritative; UI copy, examples, and internal planning
+records are not a second authority model.
 
 ## Choose a path
 
@@ -106,7 +106,6 @@ task-specific how-to guide state the exact boundary for each path.
 | `docs/reference/` | Exact contracts, runtime facts, providers, and code locations |
 | `docs/explanations/` | Product and architecture reasoning |
 | `docs/project-dossiers/` | Dated, non-authoritative observations from engineering projects |
-| `docs/rfcs/` | Proposals and studies; not the live product contract |
 
 Engineering provider servers are maintained in separate repositories and run here from
 reviewed images. Related public building blocks include

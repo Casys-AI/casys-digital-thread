@@ -84,8 +84,8 @@ The following are not extension shortcuts:
 
 Historical `simulate.seal-simulation-case@1`/`@2` and
 `simulate.run-modelica-scenario@1`/`@2` are not registered and are not fallbacks for
-admitted L3, the qualified kit, L4, or L5. RFC context:
-[04-modelica-thermal-vertical](../../../rfcs/articulated-led-desk-lamp-demo/04-modelica-thermal-vertical.md).
+admitted L3, the qualified kit, L4, or L5. Internal planning history for that retired
+route is intentionally not exported.
 
 For the shared authority boundary, see
 [admitted source isolated execution](../../pipeline/admitted-source-isolated-execution.md).

@@ -40,7 +40,8 @@ verdict, release decision, conformity finding, or certification claim.
   [codebase map](reference/codebase/codebase-map.md).
 - **Understand why a boundary exists:** enter [explanations](explanations/README.md).
 
-Do not begin with an RFC when a living how-to, reference, or explanation exists.
+Do not begin with an internal planning record when a living how-to, reference, or
+explanation exists.
 
 ## Agent entry
 
@@ -63,9 +64,9 @@ complete a concrete task against the current product contracts.
   limits, ports, and code locations.
 - **Explanations** describe why the product, authority, evidence, and UX boundaries
   exist.
-- **Project dossiers, RFCs, and legacy pages are outside Diátaxis.** They preserve dated
-  observations, design history, or retired material; they are not live product
-  authority.
+- **Project dossiers and legacy pages are outside Diátaxis.** They preserve dated
+  observations or retired material; they are not live product authority. Internal
+  planning history is intentionally excluded from public source exports.
 
 ## Directory map
 
@@ -75,9 +76,8 @@ complete a concrete task against the current product contracts.
 | [`reference/`](reference/README.md)               | Exact contracts, domains, providers, runtime, pipeline, and codebase maps     |
 | [`explanations/`](explanations/README.md)         | Product rationale, verification doctrine, and Workbench design                |
 | [`project-dossiers/`](project-dossiers/README.md) | Dated, non-authoritative project tracking and evidence pointers               |
-| [`rfcs/`](rfcs/README.md)                         | Active or deferred briefs, implemented or rejected designs, and studies       |
 | `legacy/` (reserved)                              | Retired, non-executable historical dossiers; never admission or live evidence |
-| [`assets/`](assets/)                              | Images and supporting visual artifacts used by documentation                  |
+| [`media/`](media/)                                 | Public images and supporting visual artifacts used by documentation           |
 
 Each deeper index routes its own scope, while domain-specific indexes own detailed
 inventories. This page stays short as the tree grows.
@@ -94,6 +94,5 @@ inventories. This page stays short as the tree grows.
 - Dates belong in genuinely dated observations or studies. Temporary suffixes such as
   `copy`, `final`, or `(1)` do not belong in canonical paths.
 
-An RFC is a work brief or study, sometimes rejected. Once work is integrated, the living
-truth is the relevant how-to, reference, or explanation. See the
-[RFC status index](rfcs/README.md).
+Internal planning records are work briefs or studies, sometimes rejected. Once work is
+integrated, the living truth is the relevant how-to, reference, or explanation.

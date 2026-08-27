@@ -28,14 +28,14 @@ One cockpit, five spaces, one conversation:
 | **Evidence**  | Full graph, requirements, verdicts, named violations      |
 | **Execution** | Runs, registered work items, contributing systems         |
 
-![The five Workbench spaces. Conversation owns commands; the cockpit owns inspection.](../../assets/workbench-five-spaces.svg)
+![The five Workbench spaces. Conversation owns commands; the cockpit owns inspection.](../../media/workbench-five-spaces.svg)
 
 Focused generic candidate `desk-lamp-dl04` (revision 142). Project is the mission and
 approved brief. Activity is the live lineage feed. Neither is a command surface.
 
-![Native Workbench Project space: approved brief and phase-gate summary.](../../assets/workbench-project-dl04.png)
+![Native Workbench Project space: approved brief and phase-gate summary.](../../media/workbench-project-dl04.png)
 
-![Native Workbench Activity space: persisted lineage, not private reasoning.](../../assets/workbench-activity-dl04.png)
+![Native Workbench Activity space: persisted lineage, not private reasoning.](../../media/workbench-activity-dl04.png)
 
 The person never types a provider tool name. The agent never confirms its own proposal.
 The page never starts a solver.
@@ -168,18 +168,18 @@ upstream evidence and downstream impact. The feed is not the agent’s private r
 On **Product**, a missing CAD or ERP identity is a missing reviewed binding. Do not
 invent a join from a part name.
 
-![Product on desk-lamp-dl04: SysON structure is present; assembly CAD and ERP identities stay explicit gaps.](../../assets/workbench-product-dl04.png)
+![Product on desk-lamp-dl04: SysON structure is present; assembly CAD and ERP identities stay explicit gaps.](../../media/workbench-product-dl04.png)
 
 On **Evidence**, a `fail` verdict with named violations is valid published truth. Do not
 hide it. `unresolved` requirements stay unresolved.
 
-![Evidence on desk-lamp-dl04: linked entities, requirement counts, and named violations.](../../assets/workbench-evidence-dl04.png)
+![Evidence on desk-lamp-dl04: linked entities, requirement counts, and named violations.](../../media/workbench-evidence-dl04.png)
 
 On **Execution**, inspect the run journal. A `queued` run can still be cancelled with
 signed human confirmation. A completed run is replayed from CAS, never blindly
 re-dispatched.
 
-![Execution on desk-lamp-dl04: agent run journal and contributing engineering surfaces.](../../assets/workbench-execution-dl04.png)
+![Execution on desk-lamp-dl04: agent run journal and contributing engineering surfaces.](../../media/workbench-execution-dl04.png)
 
 ## 6. What this inspection does not prove
 

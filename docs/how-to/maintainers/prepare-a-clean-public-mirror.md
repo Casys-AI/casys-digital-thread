@@ -53,11 +53,12 @@ git archive --format=tar <candidate> | tar -tf -
 
 The public boundary currently omits `.grok/**`, `.claude/**`, `.cursor/**`, `.codex/**`,
 and `CLAUDE.md`, which are provider-specific internal prompting, local configuration,
-and command pointers. It retains `AGENTS.md`, `.agents/skills/**`, and `.github/**` as
-the vendor-neutral authority, reusable agent workflows, and CI surface. A raw candidate
-Git tree can therefore differ from the exported tree only at the declared, tested
-`export-ignore` paths. Compare the public seed with the archive file list, not with an
-unchecked checkout listing.
+and command pointers. It also omits the private design history under `docs/assets/**`
+and `docs/rfcs/**`. It retains `AGENTS.md`, `.agents/skills/**`, `.github/**`, the
+living Diátaxis documentation, and contributor-facing media under `docs/media/**`.
+A raw candidate Git tree can therefore differ from the exported tree only at the
+declared, tested `export-ignore` paths. Compare the public seed with the archive file
+list, not with an unchecked checkout listing.
 
 Initialize a new temporary Git repository from the extracted archive and create one root
 commit. Record both identities:

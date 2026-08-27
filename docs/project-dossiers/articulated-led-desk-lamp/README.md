@@ -4,9 +4,10 @@ Audience: both · Diátaxis: none · Kind: tracking index
 
 Reference **demo** for Behave product work. This folder tracks; it does not authorize.
 
-The RFC queue is an implementation brief, not a live `EngineeringProject`. Historical
-`desk-lamp-dl0*` vehicles and `cantilever-arm-ca02` catalog rows are different
-identities. Do not repair dl05. Do not copy CA02 values.
+Internal planning records are implementation history, not a live `EngineeringProject`;
+they are deliberately excluded from the public source export. Historical `desk-lamp-dl0*`
+vehicles and `cantilever-arm-ca02` catalog rows are different identities. Do not repair
+dl05. Do not copy CA02 values.
 
 ## Pages
 
@@ -15,9 +16,7 @@ identities. Do not repair dl05. Do not copy CA02 values.
 | [status.md](status.md)                                                                 | Evidence-backed current status by truth column                  |
 | [runtime-evidence.md](runtime-evidence.md)                                             | Exact dated local project, Thread, run, and artifact identities |
 | [Input sheets](input-sheets/README.md)                                                 | Small human decision sheets, split by Behave domain             |
-| [RFC queue](../../rfcs/articulated-led-desk-lamp-demo/README.md)                       | Ordered code lots; not runtime project truth                    |
-| [Human input gates](../../rfcs/articulated-led-desk-lamp-demo/00-human-input-gates.md) | Questions that remain human-owned; not approvals                |
-| [Demo contract](../../rfcs/articulated-led-desk-lamp-demo/01-demo-product-contract.md) | Bounded story; no invented values                               |
+| Internal planning history (not exported)                                                | Implementation context; not runtime project truth               |
 
 ## Living pages (authoritative for capability)
 

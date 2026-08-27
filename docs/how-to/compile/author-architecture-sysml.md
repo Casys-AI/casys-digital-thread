@@ -8,7 +8,7 @@ subset, preview the analysis, and later seal it as a Thread document.
 This is **not** `model.write-architecture@1`. That operation renders SysML from flat
 MRTR parameters and inserts into SysON. This path never calls SysON.
 
-![Renderer path versus agent-authored seal. Different capture schemas, operations, and grants.](../../assets/sysml-two-paths.svg)
+![Renderer path versus agent-authored seal. Different capture schemas, operations, and grants.](../../media/sysml-two-paths.svg)
 
 ## Preconditions
 

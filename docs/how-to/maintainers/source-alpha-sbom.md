@@ -13,6 +13,8 @@ The machine-readable boundary is
 CycloneDX 1.6 document inventories the root Deno lock and the Workbench npm lock. Its
 release manifest SHA-256 hashes every declared input, including the Desktop manifests
 and worker locks that are retained as source provenance only.
+The committed `.gitattributes` file is itself a hashed `public-export-policy` input,
+because its `export-ignore` rules shape the archive bytes.
 
 The scope intentionally excludes all of the following:
 
@@ -25,6 +27,8 @@ The scope intentionally excludes all of the following:
 - provider-specific internal prompting retained by the private development checkout:
   `.grok/**`, `.claude/**`, `.cursor/**`, `.codex/**`, and `CLAUDE.md`. The public archive
   keeps `AGENTS.md`, `.agents/skills/**`, and `.github/**`.
+- private design history under `docs/assets/**` and `docs/rfcs/**`. Contributor-facing
+  media moved to `docs/media/**` remains included.
 
 The source archive therefore proves neither that those artifacts exist nor that any
 provider, worker, microVM, Desktop shell, or engineering operation can run. They need
@@ -61,7 +65,7 @@ The build creates these ignored, tag-bound files under `dist/release/v0.1.0-alph
 
 | File                           | Meaning                                                                                                                  |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `source.tar.gz`                | Git-tracked source at the exact recorded commit and tree.                                                                |
+| `source.tar.gz`                | Publicly exportable Git-tracked content at the exact recorded commit and tree, applying committed `export-ignore` rules. |
 | `source.sbom.cdx.json`         | Canonical CycloneDX 1.6 source inventory.                                                                                |
 | `THIRD_PARTY_NOTICES.md`       | Deterministic source-lock notice table; not an artifact notice bundle.                                                   |
 | `source-release-manifest.json` | Commit, tree, archive hash, input hashes, scope hash, tool-lock hash, generator hash, and actual executed tool versions. |

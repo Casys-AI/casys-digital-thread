@@ -33,7 +33,7 @@ Engineering providers live in other repos and run from published images. Do not 
 (local microVM). The retired port 3016 `mcp-modelica` sidecar is not a product path.
 Change a provider only in its own repo.
 
-![Authority split: human confirms, agent proposes registered operations, server owns sequences, Workbench is read-only.](../../assets/authority-and-surfaces.svg)
+![Authority split: human confirms, agent proposes registered operations, server owns sequences, Workbench is read-only.](../../media/authority-and-surfaces.svg)
 
 ```mermaid
 flowchart LR

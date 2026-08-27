@@ -92,6 +92,21 @@ Deno.test(
 );
 
 Deno.test(
+  "fresh lamp fixture keeps internal planning references opaque to the public source tree",
+  () => {
+    const references = articulatedLedDeskLampBriefItems().flatMap((item) =>
+      item.sourceRefs.map((source) => source.reference)
+    );
+
+    assertEquals(references.some((reference) => reference.includes("/rfcs/")), false);
+    assertEquals(
+      references.some((reference) => reference.startsWith("private-history:")),
+      true,
+    );
+  },
+);
+
+Deno.test(
   "fresh lamp brief keeps Make, Buy, certification, modal and assembly as exclusions",
   () => {
     const exclusions = projectBriefItems(

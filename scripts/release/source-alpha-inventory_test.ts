@@ -6,6 +6,7 @@ import {
   verifySourceAlphaRelease,
 } from "./source-alpha-inventory.ts";
 import { sourceLockComponents } from "./source-alpha/components.ts";
+import { parseSourceAlphaScope } from "./source-alpha/contract.ts";
 
 const TAG = "source-alpha-test";
 
@@ -113,6 +114,12 @@ Deno.test("source-alpha inventory renders byte-identical source artifacts from o
       "Desktop source pins are hashes in the source manifest, not a Desktop artifact claim.",
     );
     assert(
+      manifest.inputs.some((input: { path: string; role: string }) =>
+        input.path === ".gitattributes" && input.role === "public-export-policy"
+      ),
+      "The source manifest must hash the committed export policy that shapes its archive.",
+    );
+    assert(
       manifest.inputs.some((input: { path: string }) =>
         input.path === "images/build123d-microsandbox-worker/requirements.lock"
       ),
@@ -165,6 +172,26 @@ Deno.test("source-alpha inventory accepts only an explicit safe tag", () => {
     message = error instanceof Error ? error.message : String(error);
   }
   assertMatch(message, /tag/u);
+});
+
+Deno.test("source-alpha scope declares private design history while retaining public media", async () => {
+  const scope = parseSourceAlphaScope(
+    JSON.parse(
+      await Deno.readTextFile(
+        new URL("../../release/sbom/source-alpha-scope.json", import.meta.url),
+      ),
+    ),
+  );
+  const privateDesignHistory = scope.exclusions.find(
+    (exclusion) => exclusion.id === "private-design-history",
+  );
+  assert(
+    privateDesignHistory !== undefined &&
+      privateDesignHistory.literal.includes("docs/assets/**") &&
+      privateDesignHistory.literal.includes("docs/rfcs/**") &&
+      privateDesignHistory.literal.includes("docs/media/**"),
+    "The source-alpha scope must declare private design-history exclusions while retaining public contributor media.",
+  );
 });
 
 Deno.test("source-alpha inventory preserves primary Deno npm identities before peer suffixes", () => {

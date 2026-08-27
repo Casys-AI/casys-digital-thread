@@ -61,7 +61,7 @@ function tarEntryPaths(tar: Uint8Array): readonly string[] {
   return paths;
 }
 
-Deno.test("public archives omit private provider prompts while retaining portable agent guidance", async () => {
+Deno.test("public archives omit private development aides while retaining portable guidance", async () => {
   const temporaryRoot = await Deno.makeTempDir({
     prefix: "casys-public-export-boundary-",
   });
@@ -92,6 +92,18 @@ Deno.test("public archives omit private provider prompts while retaining portabl
         public: false,
       },
       {
+        path: "docs/assets/workbench-dashboard-mockups/dashboard.html",
+        public: false,
+      },
+      {
+        path: "docs/assets/calculix-component-surface.png",
+        public: false,
+      },
+      {
+        path: "docs/rfcs/private-session-brief.md",
+        public: false,
+      },
+      {
         path: "AGENTS.md",
         public: true,
       },
@@ -101,6 +113,10 @@ Deno.test("public archives omit private provider prompts while retaining portabl
       },
       {
         path: ".github/workflows/quality.yml",
+        public: true,
+      },
+      {
+        path: "docs/media/workbench-project-dl04.png",
         public: true,
       },
     ] as const;
@@ -125,6 +141,14 @@ Deno.test("public archives omit private provider prompts while retaining portabl
     );
 
     const archivePaths = tarEntryPaths(await gitArchive(temporaryRoot));
+    assert(
+      !archivePaths.includes("docs/assets/"),
+      "The private asset workspace directory must not enter the public archive.",
+    );
+    assert(
+      !archivePaths.includes("docs/rfcs/"),
+      "The private planning-history directory must not enter the public archive.",
+    );
     for (const fixture of fixtures) {
       if (fixture.public) {
         assert(

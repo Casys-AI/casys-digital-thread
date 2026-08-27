@@ -36,14 +36,14 @@ export const ARTICULATED_LED_DESK_LAMP_FIXTURE_HUMAN: EngineeringProjectCommandO
 export const ARTICULATED_LED_DESK_LAMP_INTENT =
   "Build a reviewable articulated LED desk lamp with separate mechanical, thermal and electrical questions.";
 
-const RFC_CONTRACT = {
+const INTERNAL_PRODUCT_CONTRACT = {
   kind: "document" as const,
-  reference: "docs/rfcs/articulated-led-desk-lamp-demo/01-demo-product-contract.md",
+  reference: "private-history:articulated-led-desk-lamp-demo/product-contract",
 };
 
-const RFC_GATES = {
+const INTERNAL_HUMAN_GATES = {
   kind: "document" as const,
-  reference: "docs/rfcs/articulated-led-desk-lamp-demo/00-human-input-gates.md",
+  reference: "private-history:articulated-led-desk-lamp-demo/human-input-gates",
 };
 
 const INTENT_SOURCE = {
@@ -56,7 +56,12 @@ const G0_ANSWER_SOURCE = {
   reference: "answer-g0-indoor-desk-use",
 };
 
-const FRAMING_SOURCES = [INTENT_SOURCE, RFC_CONTRACT, RFC_GATES, G0_ANSWER_SOURCE];
+const FRAMING_SOURCES = [
+  INTENT_SOURCE,
+  INTERNAL_PRODUCT_CONTRACT,
+  INTERNAL_HUMAN_GATES,
+  G0_ANSWER_SOURCE,
+];
 
 export const ARTICULATED_LED_DESK_LAMP_G0_QUESTION = {
   id: "g0-mission",
@@ -67,7 +72,7 @@ export const ARTICULATED_LED_DESK_LAMP_G0_QUESTION = {
   recommendation: {
     value: "indoor-desk-use",
     rationale:
-      "The RFC recommends one narrow indoor desk-use story and keeps certification, mains safety, EMC, optics, fatigue, stability, Make and Buy excluded.",
+      "The internal planning record proposes one narrow indoor desk-use story and keeps certification, mains safety, EMC, optics, fatigue, stability, Make and Buy excluded.",
     confidence: "high" as const,
   },
   options: [
@@ -98,10 +103,10 @@ export const ARTICULATED_LED_DESK_LAMP_G0_ANSWER = {
   kind: "provided" as const,
   value: "indoor-desk-use",
   explanation:
-    "Adopt the RFC G0 recommendation: indoor desk illumination under reviewed isolated-branch questions. No physical value, unit, material, load, circuit or thermal model is implied.",
+    "Adopt the internal G0 planning recommendation: indoor desk illumination under reviewed isolated-branch questions. No physical value, unit, material, load, circuit or thermal model is implied.",
   source: {
     kind: "document" as const,
-    reference: "docs/rfcs/articulated-led-desk-lamp-demo/00-human-input-gates.md",
+    reference: "private-history:articulated-led-desk-lamp-demo/human-input-gates",
   },
 };
 
@@ -157,7 +162,7 @@ export function articulatedLedDeskLampBriefItems(): readonly ProjectBriefItem[] 
       kind: "success-criterion",
       statement:
         "Under reviewed isolated-arm assumptions, the exact canonical isolated arm of this revision satisfies the declared static criteria. No threshold, unit, material, load or geometry is declared here.",
-      sourceRefs: [RFC_CONTRACT],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT],
       dependsOnItemIds: [],
     },
     {
@@ -165,7 +170,7 @@ export function articulatedLedDeskLampBriefItems(): readonly ProjectBriefItem[] 
       kind: "success-criterion",
       statement:
         "Under a separately reviewed isolated lamp-head thermal scenario, the named thermal criterion holds at its stated boundary. No equation, power, temperature, material or unit is declared here.",
-      sourceRefs: [RFC_CONTRACT],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT],
       dependsOnItemIds: [],
     },
     {
@@ -173,7 +178,7 @@ export function articulatedLedDeskLampBriefItems(): readonly ProjectBriefItem[] 
       kind: "success-criterion",
       statement:
         "Under a separately reviewed LED-driver circuit scenario, the named electrical criteria hold. No topology, component, supply, observation or unit is declared here.",
-      sourceRefs: [RFC_CONTRACT],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT],
       dependsOnItemIds: [],
     },
     {
@@ -181,7 +186,7 @@ export function articulatedLedDeskLampBriefItems(): readonly ProjectBriefItem[] 
       kind: "verification-activity",
       statement:
         "Verify the isolated-arm static question through the registered mechanical proof path on exact canonical geometry of that revision.",
-      sourceRefs: [RFC_CONTRACT],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT],
       dependsOnItemIds: [
         ARTICULATED_LED_DESK_LAMP_BEHAVE_GATES.mechanicalSuccess,
       ],
@@ -191,7 +196,7 @@ export function articulatedLedDeskLampBriefItems(): readonly ProjectBriefItem[] 
       kind: "verification-activity",
       statement:
         "Verify the isolated lamp-head thermal question through admitted Modelica observation and a separate qualified evaluation. Solver success is not a verdict.",
-      sourceRefs: [RFC_CONTRACT],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT],
       dependsOnItemIds: [ARTICULATED_LED_DESK_LAMP_BEHAVE_GATES.thermalSuccess],
     },
     {
@@ -199,7 +204,7 @@ export function articulatedLedDeskLampBriefItems(): readonly ProjectBriefItem[] 
       kind: "verification-activity",
       statement:
         "Verify the LED-driver electrical question through a closed circuit method and a separate qualified evaluation. The circuit engine is not an oracle.",
-      sourceRefs: [RFC_CONTRACT],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT],
       dependsOnItemIds: [
         ARTICULATED_LED_DESK_LAMP_BEHAVE_GATES.electricalSuccess,
       ],
@@ -209,90 +214,90 @@ export function articulatedLedDeskLampBriefItems(): readonly ProjectBriefItem[] 
       kind: "exclusion",
       statement:
         "Make is out of scope: DFM, printability, manufacturing route, tolerances and fabrication claims.",
-      sourceRefs: [RFC_CONTRACT],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT],
     },
     {
       id: "exclusion-buy",
       kind: "exclusion",
       statement:
         "Buy is out of scope: BOM, price, sourcing and make-or-buy recommendation.",
-      sourceRefs: [RFC_CONTRACT],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT],
     },
     {
       id: "exclusion-certification-safety",
       kind: "exclusion",
       statement:
         "Certification, safety compliance, mains safety, EMC, reliability and notified-body claims are out of scope.",
-      sourceRefs: [RFC_CONTRACT],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT],
     },
     {
       id: "exclusion-optics-fatigue-stability",
       kind: "exclusion",
       statement:
         "Optical performance, fatigue, stability, buckling, dynamics and full-assembly physics are out of scope.",
-      sourceRefs: [RFC_CONTRACT],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT],
     },
     {
       id: "exclusion-modal",
       kind: "exclusion",
       statement:
         "Modal analysis is out of scope. This demonstration makes no modal promise.",
-      sourceRefs: [RFC_CONTRACT],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT],
     },
     {
       id: "exclusion-full-assembly-joints",
       kind: "exclusion",
       statement:
         "Full CAD assembly, joints, contact, wiring, ports, value-flow semantics and circuit-netlist authoring are out of scope for this framing.",
-      sourceRefs: [RFC_CONTRACT],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT],
     },
     {
       id: "exclusion-historical-relabel",
       kind: "exclusion",
       statement:
         "This is not a repair, replay, clone or relabel of a historical desk-lamp vehicle. Similar geometry or a reused filename is never identity evidence.",
-      sourceRefs: [RFC_CONTRACT],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT],
     },
     {
       id: "open-question-structure",
       kind: "open-question",
       statement:
         "Which named components and parameter owners should the first architecture retain? Structure remains unresolved until that decision is sourced and approved.",
-      sourceRefs: [RFC_GATES],
+      sourceRefs: [INTERNAL_HUMAN_GATES],
     },
     {
       id: "open-question-mechanical-inputs",
       kind: "open-question",
       statement:
         "What sourced arm geometry, material, support, load and named static acceptance criteria should be reviewed? Physical mechanical inputs remain unresolved.",
-      sourceRefs: [RFC_GATES],
+      sourceRefs: [INTERNAL_HUMAN_GATES],
     },
     {
       id: "open-question-thermal-method",
       kind: "open-question",
       statement:
         "What isolated lamp-head thermal boundary, sourced scalar equations, parameters, initial state, power input, scenario and named criterion are intended? Thermal method inputs remain unresolved.",
-      sourceRefs: [RFC_GATES],
+      sourceRefs: [INTERNAL_HUMAN_GATES],
     },
     {
       id: "open-question-electrical-circuit",
       kind: "open-question",
       statement:
         "Which reviewed LED-driver circuit source, component models, supply and test condition, requested observations and criteria define the electrical question? Circuit inputs remain unresolved.",
-      sourceRefs: [RFC_GATES],
+      sourceRefs: [INTERNAL_HUMAN_GATES],
     },
     {
       id: "open-question-cross-domain-impact",
       kind: "open-question",
       statement:
         "What exact reviewed power or brightness change is proposed, which thermal and electrical inputs does it affect, and what sourced argument supports mechanical independence for that revision? Impact remains unresolved.",
-      sourceRefs: [RFC_GATES],
+      sourceRefs: [INTERNAL_HUMAN_GATES],
     },
   ];
 }
 
 /**
- * G1 structure as sourced constraints. Names follow the product-contract RFC.
+ * G1 structure as sourced constraints. Names follow the retained internal product brief.
  * No AttributeUsage, port, flow, value, unit or threshold is declared.
  */
 export const ARTICULATED_LED_DESK_LAMP_STRUCTURE = {
@@ -383,77 +388,77 @@ export function articulatedLedDeskLampStructureBriefItems(): readonly ProjectBri
       kind: "constraint",
       statement:
         "The product system is ArticulatedLedDeskLamp. It is a renderer-backed package and root only.",
-      sourceRefs: [RFC_CONTRACT, RFC_GATES],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT, INTERNAL_HUMAN_GATES],
     },
     {
       id: "constraint-base",
       kind: "constraint",
       statement:
         "Base is a retained structural component that grounds the product story. No stability, ballast or mounting proof is implied.",
-      sourceRefs: [RFC_CONTRACT, RFC_GATES],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT, INTERNAL_HUMAN_GATES],
     },
     {
       id: "constraint-arm",
       kind: "constraint",
       statement:
         "ArticulatedArm is the sole canonical CAD and mechanical-proof subject. It is a single isolated part, never an assembly mapping.",
-      sourceRefs: [RFC_CONTRACT, RFC_GATES],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT, INTERNAL_HUMAN_GATES],
     },
     {
       id: "constraint-lamp-head",
       kind: "constraint",
       statement:
         "LampHead carries the LED and light story. No mechanical, optical or thermal CAD authority is implied.",
-      sourceRefs: [RFC_CONTRACT, RFC_GATES],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT, INTERNAL_HUMAN_GATES],
     },
     {
       id: "constraint-led-driver",
       kind: "constraint",
       statement:
         "LedDriver is the electrical behaviour boundary. No circuit topology or component model is implied.",
-      sourceRefs: [RFC_CONTRACT, RFC_GATES],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT, INTERNAL_HUMAN_GATES],
     },
     {
       id: "constraint-power-supply",
       kind: "constraint",
       statement:
         "PowerSupply is the reviewed electrical source boundary. It is structural only: no connector or electrical-source semantics are implied.",
-      sourceRefs: [RFC_CONTRACT, RFC_GATES],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT, INTERNAL_HUMAN_GATES],
     },
     {
       id: "constraint-handle-arm-lever",
       kind: "constraint",
       statement:
         "ArticulatedArm owns a named geometric lever handle. No magnitude, unit or source value is declared.",
-      sourceRefs: [RFC_CONTRACT, RFC_GATES],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT, INTERNAL_HUMAN_GATES],
     },
     {
       id: "constraint-handle-arm-material",
       kind: "constraint",
       statement:
         "ArticulatedArm owns a named material and density handle. No material identity, density or unit is declared.",
-      sourceRefs: [RFC_CONTRACT, RFC_GATES],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT, INTERNAL_HUMAN_GATES],
     },
     {
       id: "constraint-handle-lamp-head-thermal",
       kind: "constraint",
       statement:
         "LampHead owns a named thermal initial-state handle. No temperature, coefficient, equation or unit is declared.",
-      sourceRefs: [RFC_CONTRACT, RFC_GATES],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT, INTERNAL_HUMAN_GATES],
     },
     {
       id: "constraint-handle-led-driver-electrical",
       kind: "constraint",
       statement:
         "LedDriver owns a named electrical source-parameter handle. No topology, component or unit is declared.",
-      sourceRefs: [RFC_CONTRACT, RFC_GATES],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT, INTERNAL_HUMAN_GATES],
     },
     {
       id: "constraint-handle-electrical-power",
       kind: "constraint",
       statement:
         "LedDriver owns the unique reviewed electrical-power handle consumed by electrical and thermal branches. No wattage or unit is declared.",
-      sourceRefs: [RFC_CONTRACT, RFC_GATES],
+      sourceRefs: [INTERNAL_PRODUCT_CONTRACT, INTERNAL_HUMAN_GATES],
     },
   ];
   return [...framing, ...structure];

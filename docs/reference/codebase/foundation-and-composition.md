@@ -17,11 +17,7 @@ links to the parseable catalogues
 
 #### [`docs/README.md`](../../README.md)
 
-Dual reading plan (human / agent / RFC) and Diátaxis catalogue
-
-#### [`docs/rfcs/README.md`](../../rfcs/README.md)
-
-RFC home: session briefs and studies, status legend, not the product contract
+Dual reading plan (human / agent / living documentation) and Diátaxis catalogue
 
 #### [`docs/reference/agent/agent-workspace.md`](../agent/agent-workspace.md)
 

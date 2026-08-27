@@ -36,6 +36,20 @@ Deno.test(
 );
 
 Deno.test(
+  "thermal method-sheet fixture keeps its planning source opaque to the public tree",
+  () => {
+    const sources = validThermalMethodSheetPlaceholder().sources as Array<{
+      reference: string;
+    }>;
+    assertEquals(sources[0].reference.includes("/rfcs/"), false);
+    assertEquals(
+      sources[0].reference.startsWith("private-history:"),
+      true,
+    );
+  },
+);
+
+Deno.test(
   "thermal method-sheet fixtures cover duplicate, missing-source, missing-binding and forbidden source text",
   () => {
     const duplicate = duplicateSourceThermalMethodSheet();
