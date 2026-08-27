@@ -261,7 +261,12 @@ Deno.test("admitted geometry export reopens one sealed source and never accepts 
       : undefined,
     [],
   );
-  assertEquals(replay.manifest.exportFormats, ["step", "gltf"]);
+  assertEquals(
+    replay.manifest.schemaVersion === GEOMETRY_BUNDLE_MANIFEST_SCHEMA
+      ? replay.manifest.exportFormats
+      : undefined,
+    ["step", "gltf"],
+  );
   assertEquals(
     replay.manifest.schemaVersion === GEOMETRY_BUNDLE_MANIFEST_SCHEMA
       ? replay.manifest.partDefinitions[0]?.elementId
