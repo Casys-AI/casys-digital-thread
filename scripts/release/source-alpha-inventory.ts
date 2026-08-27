@@ -990,6 +990,7 @@ export function sourceAlphaTagFromArgs(args: readonly string[]): string {
   let tag: string | undefined;
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index]!;
+    if (argument === "--") continue;
     if (argument === "--tag") {
       tag = args[index + 1];
       index += 1;

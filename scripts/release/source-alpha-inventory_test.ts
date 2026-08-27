@@ -133,6 +133,10 @@ Deno.test("source-alpha inventory renders byte-identical source artifacts from o
 
 Deno.test("source-alpha inventory accepts only an explicit safe tag", () => {
   assertEquals(sourceAlphaTagFromArgs(["--tag", "v0.1.0-alpha.1"]), "v0.1.0-alpha.1");
+  assertEquals(
+    sourceAlphaTagFromArgs(["--", "--tag", "v0.1.0-alpha.1"]),
+    "v0.1.0-alpha.1",
+  );
   assertEquals(sourceAlphaTagFromArgs(["--tag=v0_1"]), "v0_1");
   let message = "";
   try {
