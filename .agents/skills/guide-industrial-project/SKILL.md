@@ -109,7 +109,7 @@ For each approved objective, derive the smallest useful loop:
 Stop on a joined `pass`. Do not open make (DFM / printability) or buy (BOM /
 cost) to complete the behave loop. Those are later branches on the same
 canonical STEP. Script:
-[run the behave loop from zero](../../../docs/how-to/behave/run-the-behave-loop-from-zero.md).
+[run the behave loop from zero](../../../docs/how-to/verify-design/verify-a-new-design-from-scratch.md).
 
 For the currently registered generic physical chain, the reviewed vocabulary is
 `model.write-architecture@1`, `model.write-requirements@1`, `design.write-geometry@1`,

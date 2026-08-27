@@ -75,7 +75,7 @@ complete a concrete task against the current product contracts.
 | [`reference/`](reference/README.md)               | Exact contracts, domains, providers, runtime, pipeline, and codebase maps     |
 | [`explanations/`](explanations/README.md)         | Product rationale, verification doctrine, and Workbench design                |
 | [`project-dossiers/`](project-dossiers/README.md) | Dated, non-authoritative project tracking and evidence pointers               |
-| [`rfcs/`](rfcs/README.md)                         | Active briefs, implemented or rejected designs, and studies                   |
+| [`rfcs/`](rfcs/README.md)                         | Active or deferred briefs, implemented or rejected designs, and studies       |
 | `legacy/` (reserved)                              | Retired, non-executable historical dossiers; never admission or live evidence |
 | [`assets/`](assets/)                              | Images and supporting visual artifacts used by documentation                  |
 
