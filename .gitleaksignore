@@ -1,0 +1,20 @@
+# Reviewed historical false positives only. Each entry is pinned to the exact
+# commit, path, rule, and line where a domain identifier or synthetic fixture
+# was introduced. New findings and current snapshot content remain unignored.
+091c0104d4e219da1ee02387a63543a27ab1f833:src/domain/cm01/cm01-drip-tray-analysis-scripts_test.ts:generic-api-key:26
+0e316d97c9528dd64db57080c03b5d855c1365a3:experiments/oracle/harness_test.ts:generic-api-key:36
+18ea4f72698a0577a93ffc1cf3b98b2a2464628b:src/domain/analysis/sensitivity-study_test.ts:generic-api-key:25
+38df6e1d07c7562c4beacca578441fdde948b2f2:src/domain/print-estimate-case.ts:generic-api-key:93
+ad06923e16b2c2c8b1e107b5405eb62d3a31c72b:src/application/use-cases/brokered-isolated-code-runner_test.ts:generic-api-key:1269
+af7e7f2d756d8a1891a1453bd92292a8ca931d98:config/product-recipes/coffee-machine-cm01-v2-drip-tray-30.json:generic-api-key:3
+af7e7f2d756d8a1891a1453bd92292a8ca931d98:src/adapters/cm01-semantic-cad-capture-r2_test.ts:generic-api-key:28
+af7e7f2d756d8a1891a1453bd92292a8ca931d98:src/domain/cm01-drip-tray-height-correction_test.ts:generic-api-key:306
+af7e7f2d756d8a1891a1453bd92292a8ca931d98:src/domain/coffee-machine-cm01-semantic-cad-plan_test.ts:generic-api-key:118
+af7e7f2d756d8a1891a1453bd92292a8ca931d98:src/domain/coffee-machine-cm01-semantic-cad-plan_test.ts:generic-api-key:128
+af7e7f2d756d8a1891a1453bd92292a8ca931d98:src/domain/coffee-machine-cm01-semantic-recipe.ts:generic-api-key:21
+af7e7f2d756d8a1891a1453bd92292a8ca931d98:src/domain/coffee-machine-cm01-semantic-recipe_test.ts:generic-api-key:190
+af7e7f2d756d8a1891a1453bd92292a8ca931d98:src/domain/coffee-machine-cm01-semantic-recipe_test.ts:generic-api-key:195
+b7c932c720ef068576461d3796f09dfd1df5d44d:config/sensitivity-cases/coffee-machine-cm01-v3-drip-tray-size-z.json:generic-api-key:17
+b7c932c720ef068576461d3796f09dfd1df5d44d:src/adapters/coffee-machine-cm01-v3-sensitivity-run-executor_test.ts:generic-api-key:280
+b7c932c720ef068576461d3796f09dfd1df5d44d:src/adapters/coffee-machine-cm01-v3-sensitivity-run-executor_test.ts:generic-api-key:340
+b7c932c720ef068576461d3796f09dfd1df5d44d:src/domain/sensitivity-study_test.ts:generic-api-key:33
