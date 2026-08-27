@@ -14,12 +14,12 @@ import {
 } from "../../../domain/kernel/case-validation.ts";
 import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
 import {
-  type StaticMechanicalEvaluationCloseoutAdmission,
-  type StaticMechanicalEvaluationCloseoutOperation,
   DECIDE_ACCEPT_EVALUATION_CLOSEOUT_OPERATION,
   DECIDE_REJECT_EVALUATION_CLOSEOUT_OPERATION,
   EVALUATION_CLOSEOUT_ADMISSION_SCHEMA,
   STATIC_MECHANICAL_CLOSEOUT_LIMITS,
+  type StaticMechanicalEvaluationCloseoutAdmission,
+  type StaticMechanicalEvaluationCloseoutOperation,
   validateStaticMechanicalEvaluationCloseoutAdmission,
 } from "../../../domain/fea/evaluation-closeout/static-mechanical-evaluation-closeout-proposal.ts";
 import {
@@ -44,13 +44,17 @@ export interface StaticMechanicalEvaluationCloseoutCapture {
   readonly admission: StaticMechanicalEvaluationCloseoutAdmission;
   /** Exact repeated identities make a standalone CAS record inspectable. */
   readonly inputs: {
-    readonly canonicalStep: StaticMechanicalEvaluationCloseoutAdmission["canonicalStep"];
+    readonly canonicalStep:
+      StaticMechanicalEvaluationCloseoutAdmission["canonicalStep"];
     readonly sealedProof: StaticMechanicalEvaluationCloseoutAdmission["sealedProof"];
-    readonly executionEvidence: StaticMechanicalEvaluationCloseoutAdmission["executionEvidence"];
-    readonly evaluationCapture: StaticMechanicalEvaluationCloseoutAdmission["evaluationCapture"];
+    readonly executionEvidence:
+      StaticMechanicalEvaluationCloseoutAdmission["executionEvidence"];
+    readonly evaluationCapture:
+      StaticMechanicalEvaluationCloseoutAdmission["evaluationCapture"];
   };
   /** Server-derived proof limits, copied literally from the sealed proof. */
-  readonly proofLimitations: StaticMechanicalEvaluationCloseoutAdmission["proofLimitations"];
+  readonly proofLimitations:
+    StaticMechanicalEvaluationCloseoutAdmission["proofLimitations"];
   readonly limits: typeof STATIC_MECHANICAL_CLOSEOUT_LIMITS;
 }
 
@@ -70,14 +74,20 @@ export function validateStaticMechanicalEvaluationCloseoutCapture(
     "proofLimitations",
     "limits",
   ], path);
-  literalValue(root.schemaVersion, EVALUATION_CLOSEOUT_CAPTURE_SCHEMA, `${path}.schemaVersion`);
+  literalValue(
+    root.schemaVersion,
+    EVALUATION_CLOSEOUT_CAPTURE_SCHEMA,
+    `${path}.schemaVersion`,
+  );
   literalValue(root.kind, "static-mechanical-evaluation-closeout", `${path}.kind`);
   const operation = exactRecord(root.operation, ["id", "version"], `${path}.operation`);
   if (
     operation.id !== DECIDE_ACCEPT_EVALUATION_CLOSEOUT_OPERATION.id &&
     operation.id !== DECIDE_REJECT_EVALUATION_CLOSEOUT_OPERATION.id
   ) {
-    throw new TypeError(`${path}.operation.id must name a registered static-mechanical closeout.`);
+    throw new TypeError(
+      `${path}.operation.id must name a registered static-mechanical closeout.`,
+    );
   }
   literalValue(operation.version, "1", `${path}.operation.version`);
   const admission = validateStaticMechanicalEvaluationCloseoutAdmission(root.admission);
@@ -88,7 +98,9 @@ export function validateStaticMechanicalEvaluationCloseoutCapture(
     ? "accept"
     : "reject";
   if (admission.consequence !== consequence) {
-    throw new TypeError(`${path}.operation must match the signed admission consequence.`);
+    throw new TypeError(
+      `${path}.operation must match the signed admission consequence.`,
+    );
   }
   const inputs = exactRecord(root.inputs, [
     "canonicalStep",
@@ -96,16 +108,37 @@ export function validateStaticMechanicalEvaluationCloseoutCapture(
     "executionEvidence",
     "evaluationCapture",
   ], `${path}.inputs`);
-  assertIdentity(inputs.canonicalStep, admission.canonicalStep, `${path}.inputs.canonicalStep`);
-  assertIdentity(inputs.sealedProof, admission.sealedProof, `${path}.inputs.sealedProof`);
-  assertIdentity(inputs.executionEvidence, admission.executionEvidence, `${path}.inputs.executionEvidence`);
-  assertIdentity(inputs.evaluationCapture, admission.evaluationCapture, `${path}.inputs.evaluationCapture`);
+  assertIdentity(
+    inputs.canonicalStep,
+    admission.canonicalStep,
+    `${path}.inputs.canonicalStep`,
+  );
+  assertIdentity(
+    inputs.sealedProof,
+    admission.sealedProof,
+    `${path}.inputs.sealedProof`,
+  );
+  assertIdentity(
+    inputs.executionEvidence,
+    admission.executionEvidence,
+    `${path}.inputs.executionEvidence`,
+  );
+  assertIdentity(
+    inputs.evaluationCapture,
+    admission.evaluationCapture,
+    `${path}.inputs.evaluationCapture`,
+  );
   const proofLimitations = validateStaticMechanicalEvaluationCloseoutAdmission({
     ...admission,
     proofLimitations: root.proofLimitations,
   }).proofLimitations;
-  if (deterministicJson(proofLimitations) !== deterministicJson(admission.proofLimitations)) {
-    throw new TypeError(`${path}.proofLimitations must equal the signed sealed-proof boundary.`);
+  if (
+    deterministicJson(proofLimitations) !==
+      deterministicJson(admission.proofLimitations)
+  ) {
+    throw new TypeError(
+      `${path}.proofLimitations must equal the signed sealed-proof boundary.`,
+    );
   }
   const limits = exactRecord(root.limits, [
     "engineCalls",
@@ -148,11 +181,23 @@ function assertIdentity(
   path: string,
 ): void {
   const identity = exactRecord(value, ["id", "fingerprint", "producerRunId"], path);
-  const fingerprint = exactRecord(identity.fingerprint, ["algorithm", "digest"], `${path}.fingerprint`);
+  const fingerprint = exactRecord(
+    identity.fingerprint,
+    ["algorithm", "digest"],
+    `${path}.fingerprint`,
+  );
   literalValue(identity.id, expected.id, `${path}.id`);
   literalValue(identity.producerRunId, expected.producerRunId, `${path}.producerRunId`);
-  literalValue(fingerprint.algorithm, expected.fingerprint.algorithm, `${path}.fingerprint.algorithm`);
-  literalValue(fingerprint.digest, expected.fingerprint.digest, `${path}.fingerprint.digest`);
+  literalValue(
+    fingerprint.algorithm,
+    expected.fingerprint.algorithm,
+    `${path}.fingerprint.algorithm`,
+  );
+  literalValue(
+    fingerprint.digest,
+    expected.fingerprint.digest,
+    `${path}.fingerprint.digest`,
+  );
 }
 
 function isoDateTime(value: unknown, path: string): string {

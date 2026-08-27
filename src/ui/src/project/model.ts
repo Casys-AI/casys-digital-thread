@@ -195,7 +195,9 @@ export function groupProjectPathGatesByLane(
     return {
       id,
       gates: laneGates,
-      satisfiedGates: laneGates.filter((gate) => gate.status === "completed").length,
+      satisfiedGates: laneGates.filter((gate) =>
+        gate.status === "completed"
+      ).length,
       totalGates: laneGates.length,
     };
   });
@@ -236,11 +238,15 @@ export function buildProjectBrief(
     .sort((left, right) => left.order - right.order)
     .map((phase): ProjectPhaseView => {
       const workItems = phase.workItemIds.flatMap((id) => {
-        const item = snapshot.workItems.find((candidate) => candidate.id === id);
+        const item = snapshot.workItems.find((candidate) =>
+          candidate.id === id
+        );
         return item ? [item] : [];
       });
       const decisions = phase.requiredDecisionIds.flatMap((id) => {
-        const decision = snapshot.decisions.find((candidate) => candidate.id === id);
+        const decision = snapshot.decisions.find((candidate) =>
+          candidate.id === id
+        );
         return decision ? [decision] : [];
       });
       return {
@@ -280,7 +286,9 @@ export function buildProjectBrief(
       decision.status === "required" || decision.status === "proposed" ||
       decision.status === "rejected"
     ),
-    openBlockers: snapshot.blockers.filter((blocker) => blocker.status === "open"),
+    openBlockers: snapshot.blockers.filter((blocker) =>
+      blocker.status === "open"
+    ),
   };
 }
 
@@ -393,7 +401,9 @@ export function buildCurrentProjectWork(
   }
 
   return {
-    nextWork: brief.nextWork.filter((item) => !historicalWorkItemIds.has(item.id)),
+    nextWork: brief.nextWork.filter((item) =>
+      !historicalWorkItemIds.has(item.id)
+    ),
     historicalWorkItemIds: [...historicalWorkItemIds].toSorted(),
     closedActionTargetIds: [...closedActionTargetIds].toSorted(),
   };
@@ -487,7 +497,9 @@ export function buildProjectPath(
       0,
     );
     const decisionIds = new Set(
-      revisions.flatMap((revision) => workById.get(revision.id)?.decisionIds ?? []),
+      revisions.flatMap((revision) =>
+        workById.get(revision.id)?.decisionIds ?? []
+      ),
     );
     const decisions = snapshot.decisions.filter((decision) =>
       decisionIds.has(decision.id)
@@ -642,8 +654,12 @@ function deriveProjectPathStatus(
     return "completed";
   }
   if (pendingDecisions.length > 0) return "attention-required";
-  if (activities.some((activity) => activity.status === "blocked")) return "blocked";
-  if (activities.some((activity) => activity.status === "active")) return "active";
+  if (activities.some((activity) => activity.status === "blocked")) {
+    return "blocked";
+  }
+  if (activities.some((activity) => activity.status === "active")) {
+    return "active";
+  }
   return "planned";
 }
 
@@ -822,7 +838,9 @@ export function agentRunSummary(
   const summary = run.summary.trim();
   if (isReadableRunSummary(summary)) return summary;
 
-  const workItem = snapshot.workItems.find((item) => item.id === run.workItemId);
+  const workItem = snapshot.workItems.find((item) =>
+    item.id === run.workItemId
+  );
   return workItem
     ? `Working on: ${workItem.title}`
     : "The agent is working on a recorded engineering task.";

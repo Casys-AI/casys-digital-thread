@@ -508,13 +508,14 @@ function AssemblyIntegrityCard({
                   <Badge variant="secondary">No verdict</Badge>
                 </div>
                 <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
-                  Import {assemblyFactLabel(chain.observation.facts.importability)} ·
+                  Import{" "}
+                  {assemblyFactLabel(chain.observation.facts.importability)} ·
                   {" "}
-                  solid count{" "}
-                  {assemblyFactLabel(chain.observation.facts.importFacts.solidCount)} ·
-                  {" "}
-                  {chain.observation.facts.occurrences.length} occurrence facts ·{" "}
-                  {chain.observation.facts.pairs.length} pair facts.
+                  solid count {assemblyFactLabel(
+                    chain.observation.facts.importFacts.solidCount,
+                  )} · {chain.observation.facts.occurrences.length}{" "}
+                  occurrence facts · {chain.observation.facts.pairs.length}{" "}
+                  pair facts.
                 </p>
                 <p className="m-0 text-[10px] text-muted-foreground">
                   Limits · no fitness, safety, motion or strength conclusion.
@@ -523,10 +524,14 @@ function AssemblyIntegrityCard({
 
               <section className="rounded-md border border-border px-3 py-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="m-0 text-xs font-medium">L4 · recorded evaluation</p>
+                  <p className="m-0 text-xs font-medium">
+                    L4 · recorded evaluation
+                  </p>
                   {l4
                     ? (
-                      <Badge variant={assemblyVerdictVariant(l4.aggregateVerdict)}>
+                      <Badge
+                        variant={assemblyVerdictVariant(l4.aggregateVerdict)}
+                      >
                         {l4.aggregateVerdict}
                       </Badge>
                     )
@@ -542,16 +547,20 @@ function AssemblyIntegrityCard({
                             className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground"
                           >
                             <span>{sentenceLabel(criterion.id)}</span>
-                            <Badge variant={assemblyVerdictVariant(criterion.verdict)}>
+                            <Badge
+                              variant={assemblyVerdictVariant(
+                                criterion.verdict,
+                              )}
+                            >
                               {criterion.verdict}
                             </Badge>
                           </li>
                         ))}
                       </ul>
                       <p className="mb-0 mt-2 text-[10px] leading-snug text-muted-foreground">
-                        Scope only: import, occurrence coverage, placement recross, BRep
-                        validity and pairwise intersection. Not safety, joints,
-                        clearance, motion, load or fabrication.
+                        Scope only: import, occurrence coverage, placement
+                        recross, BRep validity and pairwise intersection. Not
+                        safety, joints, clearance, motion, load or fabrication.
                       </p>
                     </>
                   )
@@ -564,7 +573,9 @@ function AssemblyIntegrityCard({
 
               <section className="rounded-md border border-border px-3 py-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="m-0 text-xs font-medium">L5 · human disposition</p>
+                  <p className="m-0 text-xs font-medium">
+                    L5 · human disposition
+                  </p>
                   {l5
                     ? (
                       <Badge
@@ -582,15 +593,16 @@ function AssemblyIntegrityCard({
                     <>
                       <p className="mb-0 mt-1.5 text-[11px] text-muted-foreground">
                         Authority · {l5.verificationAuthority.id}@
-                        {l5.verificationAuthority.version}. A recorded L4 pass is not
-                        the human L5 decision.
+                        {l5.verificationAuthority.version}. A recorded L4 pass
+                        is not the human L5 decision.
                       </p>
                       <div
                         className="mt-2 rounded border border-border bg-muted/20 px-2.5 py-2"
                         data-formal-gate="assembly-integrity"
                       >
                         <p className="m-0 text-[10px] font-medium text-muted-foreground">
-                          Formal gate claims · separate from the activity stage band
+                          Formal gate claims · separate from the activity stage
+                          band
                         </p>
                         {l5.gateClaims.length
                           ? (
@@ -600,7 +612,8 @@ function AssemblyIntegrityCard({
                                   key={claim.gateItemId}
                                   className="font-mono text-[10px] text-muted-foreground"
                                 >
-                                  {claim.gateItemId} · {claim.role} · {claim.status}
+                                  {claim.gateItemId} · {claim.role} ·{" "}
+                                  {claim.status}
                                 </li>
                               ))}
                             </ul>
@@ -1182,9 +1195,7 @@ function RunTimelineActivityRow({
           </span>
           {showCounts && (
             <span className="mt-0.5 block font-mono text-[10px] text-muted-foreground">
-              {row.revisionCount > 1
-                ? `${row.revisionCount} revisions`
-                : null}
+              {row.revisionCount > 1 ? `${row.revisionCount} revisions` : null}
               {row.revisionCount > 1 && row.attemptCount > 1 ? " · " : null}
               {row.attemptCount > 1 ? `${row.attemptCount} attempts` : null}
             </span>

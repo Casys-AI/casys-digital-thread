@@ -47,10 +47,8 @@ export const INITIAL_QUALIFIED_BUILD123D_TECHNICAL_SOURCE_PROFILE:
       schemaVersion: "build123d-workspace-closure-lowering/1.0",
       kind: "build123d-workspace-closure-lowering",
       maxClosureFiles: INITIAL_QUALIFIED_BUILD123D_MAX_CLOSURE_FILES,
-      maxClosureSourceBytes:
-        INITIAL_QUALIFIED_BUILD123D_MAX_CLOSURE_SOURCE_BYTES,
-      maxEffectiveScriptBytes:
-        INITIAL_QUALIFIED_BUILD123D_MAX_EFFECTIVE_SCRIPT_BYTES,
+      maxClosureSourceBytes: INITIAL_QUALIFIED_BUILD123D_MAX_CLOSURE_SOURCE_BYTES,
+      maxEffectiveScriptBytes: INITIAL_QUALIFIED_BUILD123D_MAX_EFFECTIVE_SCRIPT_BYTES,
     },
   });
 

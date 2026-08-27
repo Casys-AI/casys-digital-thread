@@ -57,7 +57,9 @@ export function buildProjectBriefRecord(
   });
   const sourceLabels = uniqueSourceLabels(
     [
-      ...brief.items.flatMap((item) => item.sourceRefs.map((source) => source.kind)),
+      ...brief.items.flatMap((item) =>
+        item.sourceRefs.map((source) => source.kind)
+      ),
       framing.intent.source.kind === "document" ? "document" : "intent",
     ],
   );
@@ -108,7 +110,8 @@ const BRIEF_SECTIONS: readonly {
 ];
 
 function uniqueSourceLabels(
-  sourceKinds: readonly ("intent" | "answer" | "tool" | "document" | "expert")[],
+  sourceKinds:
+    readonly ("intent" | "answer" | "tool" | "document" | "expert")[],
 ): readonly string[] {
   const labels = new Set<string>();
   for (const source of sourceKinds) {

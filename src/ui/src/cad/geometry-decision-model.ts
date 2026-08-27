@@ -492,7 +492,11 @@ function parseTargetPartDecision(
       expectedKeys.add(`${prefix}.${field}`);
     }
   }
-  assertFormatOrder(files, base.exportFormats, "geometry.manifest.target.files");
+  assertFormatOrder(
+    files,
+    base.exportFormats,
+    "geometry.manifest.target.files",
+  );
   for (const key of map.keys()) {
     if (!expectedKeys.has(key)) throw new Error(`Unexpected parameter: ${key}`);
   }
@@ -603,7 +607,10 @@ function oneOfFormat(
 function oneOfSchema(
   map: ReadonlyMap<string, string | number | boolean>,
   key: string,
-): "geometry-manifest/1.0" | "geometry-manifest/2.0" | "geometry-part-manifest/1.0" {
+):
+  | "geometry-manifest/1.0"
+  | "geometry-manifest/2.0"
+  | "geometry-part-manifest/1.0" {
   const value = nonEmpty(map, key);
   if (
     value !== "geometry-manifest/1.0" && value !== "geometry-manifest/2.0" &&

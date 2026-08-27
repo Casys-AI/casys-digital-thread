@@ -54,7 +54,7 @@ Deno.test("admitted SPICE evaluation MRTR round-trips identities without values 
   for (const parameter of parameters) {
     const encoded = JSON.stringify(parameter);
     assertEquals(encoded.includes("syson"), false);
-    assertEquals(encoded.includes("\"args\""), false);
+    assertEquals(encoded.includes('"args"'), false);
     assertEquals(encoded.includes("provider"), false);
   }
   const parsed = parseSpiceAdmittedObservationEvaluationParameters(parameters);
@@ -66,9 +66,7 @@ Deno.test("admitted SPICE evaluation MRTR round-trips identities without values 
 Deno.test("admitted SPICE evaluation MRTR refuses a capture id that does not derive from its digest", () => {
   const value = admission();
   value.capture.artifactId = "spice-admitted-capture-other";
-  const error = throws(() =>
-    encodeSpiceAdmittedObservationEvaluationAdmission(value)
-  );
+  const error = throws(() => encodeSpiceAdmittedObservationEvaluationAdmission(value));
   assertEquals(error.message.includes("derive from its digest"), true);
 });
 

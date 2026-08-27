@@ -48,8 +48,7 @@ export interface LedDriverSourceCaptureDependencies {
 }
 
 /** Persist exact UTF-8 fiche bytes, then parse only the reread object. */
-export class LedDriverSourceCaptureService
-  implements LedDriverSourceCaptureReader {
+export class LedDriverSourceCaptureService implements LedDriverSourceCaptureReader {
   readonly #sourceCaptures: FileByteStore<"led-driver-source">;
 
   constructor(dependencies: LedDriverSourceCaptureDependencies) {

@@ -635,8 +635,8 @@ function AssemblyIntegrityVerdictTile({
           Recorded L4 evaluation · {value.chainStatus}
         </span>
         <p className="m-0 mt-1 text-[11px] leading-snug text-muted-foreground">
-          Assembly import, occurrences, placement, BRep and pairwise intersection only.
-          Not safety, clearance, motion, load or fabrication.
+          Assembly import, occurrences, placement, BRep and pairwise
+          intersection only. Not safety, clearance, motion, load or fabrication.
         </p>
       </CardContent>
     </Card>

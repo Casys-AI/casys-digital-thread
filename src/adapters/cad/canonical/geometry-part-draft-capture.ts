@@ -306,7 +306,9 @@ export async function captureGeometryPartDraft(
     kind: "geometry-part-draft" as const,
     capturedAt: now(),
     architectureBasis: manifest.architectureBasis,
-    ...(manifest.predecessor === undefined ? {} : { predecessor: manifest.predecessor }),
+    ...(manifest.predecessor === undefined
+      ? {}
+      : { predecessor: manifest.predecessor }),
     producer: {
       serverId: "build123d-sandbox" as const,
       tool: "build123d_export" as const,
@@ -353,7 +355,9 @@ function normalizeTargetExport(
   if (root.schemaVersion !== "1.0" || root.kind !== "export") {
     throw new Error("build123d_export target returned an unsupported contract.");
   }
-  if (!root.metrics || typeof root.metrics !== "object" || Array.isArray(root.metrics)) {
+  if (
+    !root.metrics || typeof root.metrics !== "object" || Array.isArray(root.metrics)
+  ) {
     throw new Error("build123d_export target metrics must be an object.");
   }
   if (!Array.isArray(root.files) || root.files.length !== formats.length) {
@@ -365,7 +369,12 @@ function normalizeTargetExport(
     const format = formats[index]!;
     const file = parseProviderFile(candidate, format, `target file ${index}`);
     const containerPath = nonEmpty(file.path, `target file ${index} path`);
-    assertFixedExportBasename(containerPath, format, exportName, `target file ${index}`);
+    assertFixedExportBasename(
+      containerPath,
+      format,
+      exportName,
+      `target file ${index}`,
+    );
     return {
       format,
       name: exportName,
@@ -482,7 +491,9 @@ async function materializeToDraftAssets(
     await sha256Hex(copied) !== digest
   ) {
     await removeFileSafe(tmpPath);
-    throw new Error("Target geometry draft asset did not match its provider attestation.");
+    throw new Error(
+      "Target geometry draft asset did not match its provider attestation.",
+    );
   }
   await Deno.rename(tmpPath, localPath);
 }

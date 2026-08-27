@@ -281,8 +281,7 @@ function snapshotWithoutArch(): ReturnType<typeof validateThreadSnapshot> {
 Deno.test(
   "resolveSnapshotComponentCatalog returns a generic catalog for an architecture artifact",
   async () => {
-    const { snapshot, captureFp, captureRecord } =
-      await snapshotWithGenericArch();
+    const { snapshot, captureFp, captureRecord } = await snapshotWithGenericArch();
     const captureText = deterministicJson(captureRecord);
 
     // Generic reader returns the capture text for this exact fingerprint.
@@ -341,8 +340,7 @@ Deno.test(
 Deno.test(
   "resolveSnapshotComponentCatalog forwards the canonical geometry reader to the generic Product projector",
   async () => {
-    const { snapshot, captureFp, captureRecord } =
-      await snapshotWithGenericArch();
+    const { snapshot, captureFp, captureRecord } = await snapshotWithGenericArch();
     const withGeometry = mutableClone(snapshot);
     const geometryFp = fingerprint("c");
     withGeometry.artifacts.push({

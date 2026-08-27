@@ -1,4 +1,7 @@
-import type { TechnicalCompilationBasis, TechnicalCompilationSource } from "../../../../../domain/compile/admission/technical-compilation.ts";
+import type {
+  TechnicalCompilationBasis,
+  TechnicalCompilationSource,
+} from "../../../../../domain/compile/admission/technical-compilation.ts";
 import type {
   TechnicalSourceAnalysisCaptureLocator,
   TechnicalSourceAttachmentAlignment,

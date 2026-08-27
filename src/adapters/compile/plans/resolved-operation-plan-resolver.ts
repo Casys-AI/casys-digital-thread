@@ -495,19 +495,21 @@ export class ResolvedOperationPlanResolver implements FeaIsolatedRunAdmissionRev
   }
 }
 
-type PlanCommon = Omit<
-  ResolvedOperationPlanV2,
-  | "authorization"
-  | "sources"
-  | "action"
-  | "expectedProviderResources"
-  | "recovery"
-> & {
-  readonly authorization: Omit<
-    ResolvedOperationPlanV2["authorization"],
-    "methodQualification"
-  >;
-};
+type PlanCommon =
+  & Omit<
+    ResolvedOperationPlanV2,
+    | "authorization"
+    | "sources"
+    | "action"
+    | "expectedProviderResources"
+    | "recovery"
+  >
+  & {
+    readonly authorization: Omit<
+      ResolvedOperationPlanV2["authorization"],
+      "methodQualification"
+    >;
+  };
 interface ProofCapture {
   readonly case: MechanicalProofCase;
   readonly trustedRunId: string;

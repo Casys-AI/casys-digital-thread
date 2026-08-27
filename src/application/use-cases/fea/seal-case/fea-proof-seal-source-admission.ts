@@ -432,7 +432,8 @@ function inspectTargetGeometryCapture(
       sourceHash?.algorithm !== "sha256" ||
       sourceHash.digest !== manifest.target.scriptHash!.digest ||
       !fingerprintsEqual(admission.sourceFingerprint, manifest.target.scriptHash!) ||
-      admission.target.partDefinitionElementId !== manifest.target.partDefinitionElementId ||
+      admission.target.partDefinitionElementId !==
+        manifest.target.partDefinitionElementId ||
       admission.target.label !== manifest.target.label
     ) {
       return refused(
@@ -488,7 +489,9 @@ function inspectTargetGeometryCapture(
       "unresolved",
       "geometry-capture-invalid",
       geometryArtifactId,
-      `Target geometry capture is not an exact canonical PartDefinition record: ${errorMessage(error)}.`,
+      `Target geometry capture is not an exact canonical PartDefinition record: ${
+        errorMessage(error)
+      }.`,
     );
   }
 }
@@ -497,8 +500,17 @@ function admitStepArtifactIdentity(
   snapshot: ThreadSnapshot,
   decisionParams: FeaProofDecisionParameters,
   inspected:
-    | { readonly status: "ok"; readonly family: "bundle"; readonly matchingDefIndex: number; readonly stepFileIndex: number }
-    | { readonly status: "ok"; readonly family: "target"; readonly stepFileIndex: number },
+    | {
+      readonly status: "ok";
+      readonly family: "bundle";
+      readonly matchingDefIndex: number;
+      readonly stepFileIndex: number;
+    }
+    | {
+      readonly status: "ok";
+      readonly family: "target";
+      readonly stepFileIndex: number;
+    },
 ):
   | { readonly status: "admitted"; readonly stepArtifact: ThreadArtifact }
   | {

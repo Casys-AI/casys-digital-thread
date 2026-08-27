@@ -18,8 +18,7 @@ import {
 } from "../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
 
-export const SEALED_STATIC_PROOF_CAPTURE_SCHEMA =
-  "fea-proof-case-capture/1.0" as const;
+export const SEALED_STATIC_PROOF_CAPTURE_SCHEMA = "fea-proof-case-capture/1.0" as const;
 
 export interface SealedStaticProofArtifactIdentity {
   readonly id: string;

@@ -26,8 +26,8 @@ import type { ThreadSnapshotStore } from "../../../../domain/thread/thread-snaps
 import { validateThreadSnapshot } from "../../../../domain/thread/thread-snapshot-validation.ts";
 import { assertThreadSnapshotLineageIntact } from "../../../shared/stores/thread-snapshot-lineage.ts";
 import {
-  type AdmittedSpiceEvaluationCloseoutEvidenceResolverDependencies,
   admittedSpiceEvaluationCloseoutAdmission,
+  type AdmittedSpiceEvaluationCloseoutEvidenceResolverDependencies,
   AdmittedSpiceEvaluationCloseoutResolutionError,
   resolveAdmittedSpiceEvaluationCloseoutEvidence,
 } from "./admitted-spice-observation-evaluation-closeout-evidence-resolver.ts";

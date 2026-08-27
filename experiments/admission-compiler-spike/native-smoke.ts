@@ -10,7 +10,6 @@
  *   -> build123d sandbox export of one fixed 20 mm SupportBlock
  *   -> exact STEP handoff through an injected NativeAssetBridge
  *   -> one recorded CalculiX solve and request-id readback
- *
  */
 
 import type { McpToolClient } from "../../src/application/ports/out/mcp-tool-client.ts";

@@ -13,8 +13,8 @@ import {
   buildProjectBrief,
   buildProjectPath,
   groupProjectPathGatesByLane,
-  phaseStatusLabel,
   pendingHumanConfirmationDecisions,
+  phaseStatusLabel,
   PROJECT_PATH_PRESENTATION_POLICY,
   projectBriefStatusLabel,
   projectPathLaneStageStatus,
@@ -683,8 +683,7 @@ Deno.test("AL01 leftover SPICE work without an explicit predecessor is not backf
 });
 
 Deno.test("Overview attaches an Engineering Case under the existing activity revision and attempt", () => {
-  const activities =
-    GENERIC_ENGINEERING_WORKBENCH_FIXTURE.projectPath.activities;
+  const activities = GENERIC_ENGINEERING_WORKBENCH_FIXTURE.projectPath.activities;
   const joined = {
     caseKey: `mechanical-proof:${"a".repeat(64)}`,
     caseId: "arm-cantilever",
@@ -708,9 +707,7 @@ Deno.test("Overview attaches an Engineering Case under the existing activity rev
     [joined, orphan],
   );
 
-  const activity = path.activities.find((item) =>
-    item.id === "activity:work-simulate"
-  );
+  const activity = path.activities.find((item) => item.id === "activity:work-simulate");
   assertEquals(activity?.revisions.map((revision) => revision.id), [
     "work-simulate",
   ]);
@@ -1840,9 +1837,7 @@ function spiceProjectFixture(spec: {
   const second = {
     ...first,
     id: spec.secondId,
-    activityId: spec.linked
-      ? `activity:${spec.firstId}`
-      : `activity:${spec.secondId}`,
+    activityId: spec.linked ? `activity:${spec.firstId}` : `activity:${spec.secondId}`,
     ...(spec.linked ? { predecessorRevisionId: spec.firstId } : {}),
     title,
     description: title,

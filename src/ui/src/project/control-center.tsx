@@ -17,9 +17,9 @@ import { Badge } from "../ui/badge.tsx";
 import { Button } from "../ui/button.tsx";
 import { Card, CardContent, CardHeader } from "../ui/card.tsx";
 import {
+  type ActivityReviewStatus,
   activityReviewStatus,
   activityReviewStatusLabel,
-  type ActivityReviewStatus,
   buildProjectReviewRecords,
   currentProjectReview,
   type ProjectReviewKind,
@@ -582,10 +582,13 @@ function GeometryDraftPreview(
     return (
       <div className="divide-y divide-border" data-geometry-review-mode={mode}>
         <p className="rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
-          No previewable {mode === "sealed" ? "sealed" : "reviewed"}{" "}
-          {targetPart
-            ? `${targetPartSealStatus(mode, targetPart.partDefinitionElementId)} No assembly preview is claimed.`
-            : `assembly is available (${view.assemblyFiles.length} file${view.assemblyFiles.length === 1 ? "" : "s"} present).`}
+          No previewable {mode === "sealed" ? "sealed" : "reviewed"} {targetPart
+            ? `${
+              targetPartSealStatus(mode, targetPart.partDefinitionElementId)
+            } No assembly preview is claimed.`
+            : `assembly is available (${view.assemblyFiles.length} file${
+              view.assemblyFiles.length === 1 ? "" : "s"
+            } present).`}
         </p>
         <GeometryDecisionDetails
           view={view}
@@ -751,7 +754,10 @@ function GeometryDecisionDetails(
               Target PartDefinition CAD
             </p>
             <strong className="text-sm font-semibold">
-              {targetPartSealStatus(mode, view.targetPart.partDefinitionElementId)}
+              {targetPartSealStatus(
+                mode,
+                view.targetPart.partDefinitionElementId,
+              )}
             </strong>
             <small className="mt-0.5 block text-xs text-muted-foreground">
               {view.targetPart.label}
@@ -761,7 +767,9 @@ function GeometryDecisionDetails(
             <dt className="text-xs text-muted-foreground">Target files</dt>
             <dd className="font-mono text-xs text-muted-foreground">
               {view.targetPart.files.map((file) =>
-                `${file.format.toUpperCase()} ${file.name} ${shortDigest(file.digest)}`
+                `${file.format.toUpperCase()} ${file.name} ${
+                  shortDigest(file.digest)
+                }`
               ).join(" · ")}
             </dd>
           </dl>
@@ -989,10 +997,10 @@ function GeometryDecisionDetails(
             {view.targetPart
               ? "None — target-only PartDefinition capture"
               : view.assemblyFiles.map((file) =>
-              `${file.format.toUpperCase()} ${file.name} ${
-                shortDigest(file.digest)
-              }`
-            ).join(" · ") || "None recorded"}
+                `${file.format.toUpperCase()} ${file.name} ${
+                  shortDigest(file.digest)
+                }`
+              ).join(" · ") || "None recorded"}
           </dd>
           {view.partDefinitions.length > 0 && (
             <>

@@ -22,13 +22,16 @@ import {
   safeId,
 } from "../../../../domain/kernel/case-validation.ts";
 import type { EngineeringThreadSnapshotBasis } from "../../../../domain/project/engineering-project.ts";
-import { selectCurrentThreadTip, parseExactThreadSnapshotBasis } from "../../../../domain/project/thread-tip.ts";
+import {
+  parseExactThreadSnapshotBasis,
+  selectCurrentThreadTip,
+} from "../../../../domain/project/thread-tip.ts";
 import { validateEngineeringProjectSnapshot } from "../../../../domain/project/engineering-project-validation.ts";
 import { validateThreadSnapshot } from "../../../../domain/thread/thread-snapshot-validation.ts";
 import {
-  recrossAssemblyIntegrityEvaluation,
   type AssemblyIntegrityEvaluationRecrossDependencies,
   type AssemblyIntegrityEvaluationRecrossSnapshotStore,
+  recrossAssemblyIntegrityEvaluation,
 } from "./recross-assembly-integrity-evaluation.ts";
 
 export interface PrepareAssemblyIntegrityEvaluationDependencies
@@ -161,8 +164,7 @@ export class PrepareAssemblyIntegrityEvaluation
           schemaVersion: recrossed.observationCapture.schemaVersion,
           artifactId: recrossed.artifactInputs[2]!.id,
           fingerprint: recrossed.artifactInputs[2]!.fingerprint,
-          observationFingerprint:
-            recrossed.observationCapture.observationFingerprint,
+          observationFingerprint: recrossed.observationCapture.observationFingerprint,
         },
         inputBundle: recrossed.observationCapture.inputBundle,
         method: recrossed.method,
@@ -219,7 +221,11 @@ function sameBasis(
 }
 
 function sameSnapshotBasis(
-  value: { readonly id: string; readonly revision: number; readonly subject: { readonly id: string } },
+  value: {
+    readonly id: string;
+    readonly revision: number;
+    readonly subject: { readonly id: string };
+  },
   basis: EngineeringThreadSnapshotBasis,
 ): boolean {
   return value.id === basis.snapshotId &&

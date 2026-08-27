@@ -1,7 +1,13 @@
 import type { JSX } from "react";
 import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
 import { Badge } from "../ui/badge.tsx";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "../ui/card.tsx";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "../ui/card.tsx";
 import { Separator } from "../ui/separator.tsx";
 import { buildProjectBriefRecord } from "./brief-record-model.ts";
 
@@ -179,7 +185,8 @@ export function ProjectBriefRecord({
             <span>Built from {record.sourceLabels.join(" · ")}</span>
           )}
           <span>
-            Discuss a correction with the agent; this Cockpit follows the saved record.
+            Discuss a correction with the agent; this Cockpit follows the saved
+            record.
           </span>
         </CardFooter>
       </details>

@@ -18,8 +18,7 @@ import type { ResolvedOperationPlanRef } from "../compile/rop/resolved-operation
  * lifecycle. Older local snapshots are not a creation or load route.
  */
 export const ENGINEERING_PROJECT_SCHEMA_VERSION = "4.0" as const;
-export type EngineeringProjectSchemaVersion =
-  typeof ENGINEERING_PROJECT_SCHEMA_VERSION;
+export type EngineeringProjectSchemaVersion = typeof ENGINEERING_PROJECT_SCHEMA_VERSION;
 
 export interface EngineeringProjectPreviousSnapshot {
   readonly snapshotId: string;

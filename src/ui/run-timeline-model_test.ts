@@ -1,8 +1,5 @@
 import { assertEquals } from "@std/assert";
-import {
-  buildRunTimeline,
-  waitShare,
-} from "./src/project/run-timeline-model.ts";
+import { buildRunTimeline, waitShare } from "./src/project/run-timeline-model.ts";
 import type {
   EngineeringAgentRun,
   EngineeringProjectSnapshot,

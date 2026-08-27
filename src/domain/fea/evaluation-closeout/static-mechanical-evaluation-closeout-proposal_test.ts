@@ -71,7 +71,9 @@ function identity(id: string, digest: string, producerRunId: string) {
 Deno.test(
   "static-mechanical closeout grammar is closed, ordered, and carries sealed proof limitations",
   () => {
-    const value = validateStaticMechanicalEvaluationCloseoutAdmission(admission("accept"));
+    const value = validateStaticMechanicalEvaluationCloseoutAdmission(
+      admission("accept"),
+    );
     const parameters = encodeStaticMechanicalEvaluationCloseoutAdmission(value);
     assertEquals(
       `${DECIDE_ACCEPT_EVALUATION_CLOSEOUT_OPERATION.id}@${DECIDE_ACCEPT_EVALUATION_CLOSEOUT_OPERATION.version}`,
@@ -113,11 +115,14 @@ Deno.test(
 
 Deno.test("static-mechanical accept is rejected unless every declared L4 criterion is literal pass", () => {
   assertThrows(
-    () => validateStaticMechanicalEvaluationCloseoutAdmission(admission("accept", "fail")),
+    () =>
+      validateStaticMechanicalEvaluationCloseoutAdmission(admission("accept", "fail")),
     TypeError,
     "literal pass",
   );
-  const reject = validateStaticMechanicalEvaluationCloseoutAdmission(admission("reject", "unresolved"));
+  const reject = validateStaticMechanicalEvaluationCloseoutAdmission(
+    admission("reject", "unresolved"),
+  );
   assertEquals(reject.rejectionDisposition, "mechanical-review-required");
   assertEquals(
     parseStaticMechanicalEvaluationCloseoutParameters(
@@ -134,10 +139,11 @@ Deno.test("static-mechanical closeout grammar rejects caller additions and malfo
     { key: "evaluation.closeout.criteria.0.threshold", label: "Threshold", value: 1 },
   ];
   assertThrows(
-    () => parseStaticMechanicalEvaluationCloseoutParameters(
-      parameters,
-      DECIDE_ACCEPT_EVALUATION_CLOSEOUT_OPERATION,
-    ),
+    () =>
+      parseStaticMechanicalEvaluationCloseoutParameters(
+        parameters,
+        DECIDE_ACCEPT_EVALUATION_CLOSEOUT_OPERATION,
+      ),
     TypeError,
     "exactly",
   );

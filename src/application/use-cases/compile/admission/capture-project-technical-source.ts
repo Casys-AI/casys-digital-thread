@@ -364,7 +364,9 @@ export class CaptureProjectTechnicalSource
         "$persistedTechnicalSource.sourceClosure",
       );
       if (reopened.document.source.id !== sourceId) {
-        throw new TypeError("Capture document source.id must equal the effective unit id.");
+        throw new TypeError(
+          "Capture document source.id must equal the effective unit id.",
+        );
       }
       return assembleTechnicalSourceCaptureReview(
         locator,

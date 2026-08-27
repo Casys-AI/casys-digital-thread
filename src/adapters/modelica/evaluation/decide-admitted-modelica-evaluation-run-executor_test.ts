@@ -337,9 +337,10 @@ Deno.test(
       "publish acknowledgement lost",
     );
     assertEquals(publishing.project.agentRuns[0]?.status, "publishing");
-    const publishCount = publishing.project.commandReceipts.filter((item) =>
-      item.type === "agent-run.publish"
-    ).length;
+    const publishCount =
+      publishing.project.commandReceipts.filter((item) =>
+        item.type === "agent-run.publish"
+      ).length;
     assertEquals(publishCount, 1);
     const saveCalls = publishing.snapshots.saveCalls;
     const closeoutSaves = publishing.closeoutCaptures.saves;
@@ -363,9 +364,7 @@ Deno.test(
       1,
     );
     assertEquals(
-      (completed.commandReceipts ?? []).every((item) =>
-        item.actor.origin === "human"
-      ),
+      (completed.commandReceipts ?? []).every((item) => item.actor.origin === "human"),
       true,
     );
   },
@@ -427,8 +426,7 @@ async function executeFixture(options: {
       },
       sheet: { id: evidence.sheet.id, fingerprint: evidence.sheetFingerprint },
       capture: {
-        id:
-          `modelica-admitted-observation-evaluation-${evidence.l4Fingerprint.digest}`,
+        id: `modelica-admitted-observation-evaluation-${evidence.l4Fingerprint.digest}`,
         fingerprint: evidence.l4Fingerprint,
       },
     });

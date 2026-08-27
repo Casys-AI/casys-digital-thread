@@ -1,9 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { deterministicJson } from "../../kernel/deterministic-json.ts";
-import type {
-  ThreadArtifact,
-  ThreadSnapshot,
-} from "../../thread/thread-snapshot.ts";
+import type { ThreadArtifact, ThreadSnapshot } from "../../thread/thread-snapshot.ts";
 import { buildArchitectureThreadExtension } from "./architecture-thread-extension.ts";
 
 const CAPTURED_AT = "2026-08-08T12:15:00.000Z";

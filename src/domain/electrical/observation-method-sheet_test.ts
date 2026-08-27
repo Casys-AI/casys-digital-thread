@@ -106,8 +106,7 @@ Deno.test("electrical observation method sheet rejects unit mismatches", () => {
 
 Deno.test("electrical observation method sheet rejects unknown native names", () => {
   assertThrows(
-    () =>
-      validateElectricalObservationMethodSheet(methodSheetWithUnknownNative()),
+    () => validateElectricalObservationMethodSheet(methodSheetWithUnknownNative()),
     TypeError,
     "admitted ngspice native name",
   );

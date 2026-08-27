@@ -21,10 +21,10 @@ import {
   encodeStaticMechanicalEvaluationCloseoutAdmission,
 } from "../../../domain/fea/evaluation-closeout/static-mechanical-evaluation-closeout-proposal.ts";
 import {
-  type StaticMechanicalCloseoutEvidenceResolverDependencies,
-  StaticMechanicalCloseoutResolutionError,
   resolveStaticMechanicalCloseoutEvidence,
   staticMechanicalCloseoutAdmission,
+  type StaticMechanicalCloseoutEvidenceResolverDependencies,
+  StaticMechanicalCloseoutResolutionError,
 } from "./static-mechanical-closeout-evidence-resolver.ts";
 
 export interface EvaluationCloseoutReviewSnapshotStore extends ThreadSnapshotStore {
@@ -53,39 +53,68 @@ export class PrepareProjectEvaluationCloseoutReview
     try {
       request = parseRequest(value);
     } catch {
-      return unavailable("invalid_request", "The evaluation-closeout review request must name exactly one project.");
+      return unavailable(
+        "invalid_request",
+        "The evaluation-closeout review request must name exactly one project.",
+      );
     }
     const rawProject = await this.dependencies.projects.get(request.projectId);
-    if (!rawProject) return unavailable("project_not_found", "The exact engineering project is unavailable.");
+    if (!rawProject) {
+      return unavailable(
+        "project_not_found",
+        "The exact engineering project is unavailable.",
+      );
+    }
     let project;
     try {
       project = validateEngineeringProjectSnapshot(rawProject);
     } catch {
-      return unresolved("project_invalid", "The engineering project failed closed validation.");
+      return unresolved(
+        "project_invalid",
+        "The engineering project failed closed validation.",
+      );
     }
     if (project.project.id !== request.projectId) {
-      return unresolved("project_mismatch", "The project reader did not return the requested project identity.");
+      return unresolved(
+        "project_mismatch",
+        "The project reader did not return the requested project identity.",
+      );
     }
     const tip = selectCurrentThreadTip(project.threadSnapshots);
-    if (tip.status !== "ok") return unavailable(tip.diagnostic.code, tip.diagnostic.message);
+    if (tip.status !== "ok") {
+      return unavailable(tip.diagnostic.code, tip.diagnostic.message);
+    }
     const basis = tip.basis;
     if (basis.subjectId !== project.project.subjectId) {
-      return unresolved("subject_mismatch", "The unique current Thread tip is foreign to the project subject.");
+      return unresolved(
+        "subject_mismatch",
+        "The unique current Thread tip is foreign to the project subject.",
+      );
     }
-    const snapshot = await readExactSnapshot(this.dependencies.snapshots, basis.snapshotId);
+    const snapshot = await readExactSnapshot(
+      this.dependencies.snapshots,
+      basis.snapshotId,
+    );
     if (
-      !snapshot || snapshot.id !== basis.snapshotId || snapshot.revision !== basis.revision ||
+      !snapshot || snapshot.id !== basis.snapshotId ||
+      snapshot.revision !== basis.revision ||
       snapshot.subject.id !== basis.subjectId
     ) {
-      return unavailable("snapshot_not_found", "The exact current Thread tip cannot be reopened.");
+      return unavailable(
+        "snapshot_not_found",
+        "The exact current Thread tip cannot be reopened.",
+      );
     }
     try {
       await assertThreadSnapshotLineageIntact(snapshot, this.dependencies.snapshots);
-      const resolved = await resolveStaticMechanicalCloseoutEvidence(this.dependencies, {
-        project,
-        basis,
-        snapshot,
-      });
+      const resolved = await resolveStaticMechanicalCloseoutEvidence(
+        this.dependencies,
+        {
+          project,
+          basis,
+          snapshot,
+        },
+      );
       const reject = staticMechanicalCloseoutAdmission(resolved, "reject");
       const accept = resolved.acceptanceEligible
         ? staticMechanicalCloseoutAdmission(resolved, "accept")
@@ -107,12 +136,16 @@ export class PrepareProjectEvaluationCloseoutReview
           ...(accept === undefined ? {} : {
             accept: {
               admission: accept,
-              decisionParameters: encodeStaticMechanicalEvaluationCloseoutAdmission(accept),
+              decisionParameters: encodeStaticMechanicalEvaluationCloseoutAdmission(
+                accept,
+              ),
             },
           }),
           reject: {
             admission: reject,
-            decisionParameters: encodeStaticMechanicalEvaluationCloseoutAdmission(reject),
+            decisionParameters: encodeStaticMechanicalEvaluationCloseoutAdmission(
+              reject,
+            ),
           },
         },
       });
@@ -158,7 +191,10 @@ function viewEvidence(artifact: {
   };
 }
 
-function unavailable(code: string, message: string): ProjectEvaluationCloseoutReviewResult {
+function unavailable(
+  code: string,
+  message: string,
+): ProjectEvaluationCloseoutReviewResult {
   return {
     status: "unavailable",
     family: "static-mechanical",
@@ -166,7 +202,10 @@ function unavailable(code: string, message: string): ProjectEvaluationCloseoutRe
   };
 }
 
-function unresolved(code: string, message: string): ProjectEvaluationCloseoutReviewResult {
+function unresolved(
+  code: string,
+  message: string,
+): ProjectEvaluationCloseoutReviewResult {
   return {
     status: "unresolved",
     family: "static-mechanical",

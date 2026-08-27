@@ -152,20 +152,31 @@ const FIXED_LABELS: Record<(typeof FIXED_PARAMETER_KEYS)[number], string> = {
   "evaluation.closeout.canonicalStep.fingerprint.digest": "Canonical STEP fingerprint",
   "evaluation.closeout.canonicalStep.producerRunId": "Canonical STEP producer run",
   "evaluation.closeout.sealedProof.id": "Sealed mechanical proof artifact",
-  "evaluation.closeout.sealedProof.fingerprint.digest": "Sealed mechanical proof fingerprint",
-  "evaluation.closeout.sealedProof.producerRunId": "Sealed mechanical proof producer run",
+  "evaluation.closeout.sealedProof.fingerprint.digest":
+    "Sealed mechanical proof fingerprint",
+  "evaluation.closeout.sealedProof.producerRunId":
+    "Sealed mechanical proof producer run",
   "evaluation.closeout.executionEvidence.id": "Isolated execution evidence artifact",
-  "evaluation.closeout.executionEvidence.fingerprint.digest": "Isolated execution evidence fingerprint",
-  "evaluation.closeout.executionEvidence.producerRunId": "Isolated execution evidence producer run",
+  "evaluation.closeout.executionEvidence.fingerprint.digest":
+    "Isolated execution evidence fingerprint",
+  "evaluation.closeout.executionEvidence.producerRunId":
+    "Isolated execution evidence producer run",
   "evaluation.closeout.evaluationCapture.id": "L4 evaluation capture artifact",
-  "evaluation.closeout.evaluationCapture.fingerprint.digest": "L4 evaluation capture fingerprint",
-  "evaluation.closeout.evaluationCapture.producerRunId": "L4 evaluation capture producer run",
+  "evaluation.closeout.evaluationCapture.fingerprint.digest":
+    "L4 evaluation capture fingerprint",
+  "evaluation.closeout.evaluationCapture.producerRunId":
+    "L4 evaluation capture producer run",
   "evaluation.closeout.proofLimitations.proofScope": "Sealed proof scope",
-  "evaluation.closeout.proofLimitations.evidenceBoundary": "Sealed proof evidence boundary",
-  "evaluation.closeout.proofLimitations.cadEngineeringBoundary.designIntent": "CAD design-intent boundary",
-  "evaluation.closeout.proofLimitations.cadEngineeringBoundary.editableCad": "CAD editability boundary",
-  "evaluation.closeout.proofLimitations.cadEngineeringBoundary.manufacturability": "CAD manufacturability boundary",
-  "evaluation.closeout.proofLimitations.cadEngineeringBoundary.limitations.count": "CAD limitation count",
+  "evaluation.closeout.proofLimitations.evidenceBoundary":
+    "Sealed proof evidence boundary",
+  "evaluation.closeout.proofLimitations.cadEngineeringBoundary.designIntent":
+    "CAD design-intent boundary",
+  "evaluation.closeout.proofLimitations.cadEngineeringBoundary.editableCad":
+    "CAD editability boundary",
+  "evaluation.closeout.proofLimitations.cadEngineeringBoundary.manufacturability":
+    "CAD manufacturability boundary",
+  "evaluation.closeout.proofLimitations.cadEngineeringBoundary.limitations.count":
+    "CAD limitation count",
   "evaluation.closeout.limits.engineCalls": "Engine-call limit",
   "evaluation.closeout.limits.sysonCalls": "SysON-call limit",
   "evaluation.closeout.limits.l4PassIsNotL5": "L4 is not L5 limit",
@@ -252,11 +263,15 @@ export function parseStaticMechanicalEvaluationCloseoutParameters(
     throw new TypeError("Evaluation closeout must declare at least one criterion.");
   }
   const limitationCount = integerValue(
-    values.get("evaluation.closeout.proofLimitations.cadEngineeringBoundary.limitations.count"),
+    values.get(
+      "evaluation.closeout.proofLimitations.cadEngineeringBoundary.limitations.count",
+    ),
     "evaluation.closeout.proofLimitations.cadEngineeringBoundary.limitations.count",
   );
   if (limitationCount < 1) {
-    throw new TypeError("Evaluation closeout must carry at least one sealed CAD limitation.");
+    throw new TypeError(
+      "Evaluation closeout must carry at least one sealed CAD limitation.",
+    );
   }
   const expectedLength = FIXED_PARAMETER_KEYS.length + limitationCount + count * 4;
   if (parameters.length !== expectedLength) {
@@ -270,7 +285,9 @@ export function parseStaticMechanicalEvaluationCloseoutParameters(
     const key = limitationKey(index);
     const parameter = parameters[offset++];
     if (!parameter || parameter.key !== key) {
-      throw new TypeError(`Evaluation closeout CAD limitation ${index} must be ordered exactly.`);
+      throw new TypeError(
+        `Evaluation closeout CAD limitation ${index} must be ordered exactly.`,
+      );
     }
     limitations.push(parameter.value as string);
   }
@@ -285,7 +302,9 @@ export function parseStaticMechanicalEvaluationCloseoutParameters(
     for (const key of expected) {
       const parameter = parameters[offset++];
       if (!parameter || parameter.key !== key) {
-        throw new TypeError(`Evaluation closeout criterion ${index} must be ordered exactly.`);
+        throw new TypeError(
+          `Evaluation closeout criterion ${index} must be ordered exactly.`,
+        );
       }
       values.set(key, parameter.value);
     }
@@ -318,11 +337,19 @@ export function parseStaticMechanicalEvaluationCloseoutParameters(
     criteria,
     proofLimitations: {
       proofScope: values.get("evaluation.closeout.proofLimitations.proofScope"),
-      evidenceBoundary: values.get("evaluation.closeout.proofLimitations.evidenceBoundary"),
+      evidenceBoundary: values.get(
+        "evaluation.closeout.proofLimitations.evidenceBoundary",
+      ),
       cadEngineeringBoundary: {
-        designIntent: values.get("evaluation.closeout.proofLimitations.cadEngineeringBoundary.designIntent"),
-        editableCad: values.get("evaluation.closeout.proofLimitations.cadEngineeringBoundary.editableCad"),
-        manufacturability: values.get("evaluation.closeout.proofLimitations.cadEngineeringBoundary.manufacturability"),
+        designIntent: values.get(
+          "evaluation.closeout.proofLimitations.cadEngineeringBoundary.designIntent",
+        ),
+        editableCad: values.get(
+          "evaluation.closeout.proofLimitations.cadEngineeringBoundary.editableCad",
+        ),
+        manufacturability: values.get(
+          "evaluation.closeout.proofLimitations.cadEngineeringBoundary.manufacturability",
+        ),
         limitations,
       },
     },
@@ -393,24 +420,35 @@ export function validateStaticMechanicalEvaluationCloseoutAdmission(
   if (root.consequence === "accept" && root.rejectionDisposition !== "none") {
     throw new TypeError("An accepted closeout cannot grant a rejection disposition.");
   }
-  const basis = exactRecord(root.basis, ["snapshotId", "revision", "fingerprint"],
-    "$staticMechanicalEvaluationCloseout.basis");
+  const basis = exactRecord(
+    root.basis,
+    ["snapshotId", "revision", "fingerprint"],
+    "$staticMechanicalEvaluationCloseout.basis",
+  );
   const criteriaValue = Array.isArray(root.criteria) ? root.criteria : undefined;
   if (!criteriaValue || criteriaValue.length === 0) {
-    throw new TypeError("Evaluation closeout criteria must be a non-empty ordered array.");
+    throw new TypeError(
+      "Evaluation closeout criteria must be a non-empty ordered array.",
+    );
   }
   const criteria = criteriaValue.map((item, index) => criterion(item, index));
   const proofIds = new Set<string>();
   const evaluationIds = new Set<string>();
   for (const entry of criteria) {
     if (proofIds.has(entry.proofCriterionId) || evaluationIds.has(entry.evaluationId)) {
-      throw new TypeError("Evaluation closeout criteria must not duplicate proof or evaluation ids.");
+      throw new TypeError(
+        "Evaluation closeout criteria must not duplicate proof or evaluation ids.",
+      );
     }
     proofIds.add(entry.proofCriterionId);
     evaluationIds.add(entry.evaluationId);
   }
-  if (root.consequence === "accept" && criteria.some((item) => item.status !== "pass")) {
-    throw new TypeError("An accepted closeout requires literal pass for every criterion.");
+  if (
+    root.consequence === "accept" && criteria.some((item) => item.status !== "pass")
+  ) {
+    throw new TypeError(
+      "An accepted closeout requires literal pass for every criterion.",
+    );
   }
   const proofLimitations = mechanicalProofLimitations(root.proofLimitations);
   const limits = exactRecord(root.limits, [
@@ -419,10 +457,26 @@ export function validateStaticMechanicalEvaluationCloseoutAdmission(
     "l4PassIsNotL5",
     "rejectionGrants",
   ], "$staticMechanicalEvaluationCloseout.limits");
-  literalValue(limits.engineCalls, "none", "$staticMechanicalEvaluationCloseout.limits.engineCalls");
-  literalValue(limits.sysonCalls, "none", "$staticMechanicalEvaluationCloseout.limits.sysonCalls");
-  literalValue(limits.l4PassIsNotL5, true, "$staticMechanicalEvaluationCloseout.limits.l4PassIsNotL5");
-  literalValue(limits.rejectionGrants, "none", "$staticMechanicalEvaluationCloseout.limits.rejectionGrants");
+  literalValue(
+    limits.engineCalls,
+    "none",
+    "$staticMechanicalEvaluationCloseout.limits.engineCalls",
+  );
+  literalValue(
+    limits.sysonCalls,
+    "none",
+    "$staticMechanicalEvaluationCloseout.limits.sysonCalls",
+  );
+  literalValue(
+    limits.l4PassIsNotL5,
+    true,
+    "$staticMechanicalEvaluationCloseout.limits.l4PassIsNotL5",
+  );
+  literalValue(
+    limits.rejectionGrants,
+    "none",
+    "$staticMechanicalEvaluationCloseout.limits.rejectionGrants",
+  );
   return deepFreeze({
     schemaVersion: EVALUATION_CLOSEOUT_ADMISSION_SCHEMA,
     family: STATIC_MECHANICAL_EVALUATION_FAMILY,
@@ -431,9 +485,18 @@ export function validateStaticMechanicalEvaluationCloseoutAdmission(
     projectId: safeId(root.projectId, "$staticMechanicalEvaluationCloseout.projectId"),
     subjectId: safeId(root.subjectId, "$staticMechanicalEvaluationCloseout.subjectId"),
     basis: {
-      snapshotId: safeId(basis.snapshotId, "$staticMechanicalEvaluationCloseout.basis.snapshotId"),
-      revision: positiveInteger(basis.revision, "$staticMechanicalEvaluationCloseout.basis.revision"),
-      fingerprint: fingerprint(basis.fingerprint, "$staticMechanicalEvaluationCloseout.basis.fingerprint"),
+      snapshotId: safeId(
+        basis.snapshotId,
+        "$staticMechanicalEvaluationCloseout.basis.snapshotId",
+      ),
+      revision: positiveInteger(
+        basis.revision,
+        "$staticMechanicalEvaluationCloseout.basis.revision",
+      ),
+      fingerprint: fingerprint(
+        basis.fingerprint,
+        "$staticMechanicalEvaluationCloseout.basis.fingerprint",
+      ),
     },
     canonicalStep: evidence(root.canonicalStep, "canonicalStep"),
     sealedProof: evidence(root.sealedProof, "sealedProof"),
@@ -477,38 +540,70 @@ function fixedParameterValue(
   key: (typeof FIXED_PARAMETER_KEYS)[number],
 ): EngineeringDecisionProposalParameter["value"] {
   switch (key) {
-    case "evaluation.closeout.schemaVersion": return admission.schemaVersion;
-    case "evaluation.closeout.family": return admission.family;
-    case "evaluation.closeout.consequence": return admission.consequence;
-    case "evaluation.closeout.rejectionDisposition": return admission.rejectionDisposition;
-    case "evaluation.closeout.project.id": return admission.projectId;
-    case "evaluation.closeout.subject.id": return admission.subjectId;
-    case "evaluation.closeout.basis.snapshotId": return admission.basis.snapshotId;
-    case "evaluation.closeout.basis.revision": return admission.basis.revision;
-    case "evaluation.closeout.basis.fingerprint.digest": return admission.basis.fingerprint.digest;
-    case "evaluation.closeout.canonicalStep.id": return admission.canonicalStep.id;
-    case "evaluation.closeout.canonicalStep.fingerprint.digest": return admission.canonicalStep.fingerprint.digest;
-    case "evaluation.closeout.canonicalStep.producerRunId": return admission.canonicalStep.producerRunId;
-    case "evaluation.closeout.sealedProof.id": return admission.sealedProof.id;
-    case "evaluation.closeout.sealedProof.fingerprint.digest": return admission.sealedProof.fingerprint.digest;
-    case "evaluation.closeout.sealedProof.producerRunId": return admission.sealedProof.producerRunId;
-    case "evaluation.closeout.executionEvidence.id": return admission.executionEvidence.id;
-    case "evaluation.closeout.executionEvidence.fingerprint.digest": return admission.executionEvidence.fingerprint.digest;
-    case "evaluation.closeout.executionEvidence.producerRunId": return admission.executionEvidence.producerRunId;
-    case "evaluation.closeout.evaluationCapture.id": return admission.evaluationCapture.id;
-    case "evaluation.closeout.evaluationCapture.fingerprint.digest": return admission.evaluationCapture.fingerprint.digest;
-    case "evaluation.closeout.evaluationCapture.producerRunId": return admission.evaluationCapture.producerRunId;
-    case "evaluation.closeout.proofLimitations.proofScope": return admission.proofLimitations.proofScope;
-    case "evaluation.closeout.proofLimitations.evidenceBoundary": return admission.proofLimitations.evidenceBoundary;
-    case "evaluation.closeout.proofLimitations.cadEngineeringBoundary.designIntent": return admission.proofLimitations.cadEngineeringBoundary.designIntent;
-    case "evaluation.closeout.proofLimitations.cadEngineeringBoundary.editableCad": return admission.proofLimitations.cadEngineeringBoundary.editableCad;
-    case "evaluation.closeout.proofLimitations.cadEngineeringBoundary.manufacturability": return admission.proofLimitations.cadEngineeringBoundary.manufacturability;
-    case "evaluation.closeout.proofLimitations.cadEngineeringBoundary.limitations.count": return admission.proofLimitations.cadEngineeringBoundary.limitations.length;
-    case "evaluation.closeout.limits.engineCalls": return admission.limits.engineCalls;
-    case "evaluation.closeout.limits.sysonCalls": return admission.limits.sysonCalls;
-    case "evaluation.closeout.limits.l4PassIsNotL5": return admission.limits.l4PassIsNotL5;
-    case "evaluation.closeout.limits.rejectionGrants": return admission.limits.rejectionGrants;
-    case "evaluation.closeout.criteria.count": return admission.criteria.length;
+    case "evaluation.closeout.schemaVersion":
+      return admission.schemaVersion;
+    case "evaluation.closeout.family":
+      return admission.family;
+    case "evaluation.closeout.consequence":
+      return admission.consequence;
+    case "evaluation.closeout.rejectionDisposition":
+      return admission.rejectionDisposition;
+    case "evaluation.closeout.project.id":
+      return admission.projectId;
+    case "evaluation.closeout.subject.id":
+      return admission.subjectId;
+    case "evaluation.closeout.basis.snapshotId":
+      return admission.basis.snapshotId;
+    case "evaluation.closeout.basis.revision":
+      return admission.basis.revision;
+    case "evaluation.closeout.basis.fingerprint.digest":
+      return admission.basis.fingerprint.digest;
+    case "evaluation.closeout.canonicalStep.id":
+      return admission.canonicalStep.id;
+    case "evaluation.closeout.canonicalStep.fingerprint.digest":
+      return admission.canonicalStep.fingerprint.digest;
+    case "evaluation.closeout.canonicalStep.producerRunId":
+      return admission.canonicalStep.producerRunId;
+    case "evaluation.closeout.sealedProof.id":
+      return admission.sealedProof.id;
+    case "evaluation.closeout.sealedProof.fingerprint.digest":
+      return admission.sealedProof.fingerprint.digest;
+    case "evaluation.closeout.sealedProof.producerRunId":
+      return admission.sealedProof.producerRunId;
+    case "evaluation.closeout.executionEvidence.id":
+      return admission.executionEvidence.id;
+    case "evaluation.closeout.executionEvidence.fingerprint.digest":
+      return admission.executionEvidence.fingerprint.digest;
+    case "evaluation.closeout.executionEvidence.producerRunId":
+      return admission.executionEvidence.producerRunId;
+    case "evaluation.closeout.evaluationCapture.id":
+      return admission.evaluationCapture.id;
+    case "evaluation.closeout.evaluationCapture.fingerprint.digest":
+      return admission.evaluationCapture.fingerprint.digest;
+    case "evaluation.closeout.evaluationCapture.producerRunId":
+      return admission.evaluationCapture.producerRunId;
+    case "evaluation.closeout.proofLimitations.proofScope":
+      return admission.proofLimitations.proofScope;
+    case "evaluation.closeout.proofLimitations.evidenceBoundary":
+      return admission.proofLimitations.evidenceBoundary;
+    case "evaluation.closeout.proofLimitations.cadEngineeringBoundary.designIntent":
+      return admission.proofLimitations.cadEngineeringBoundary.designIntent;
+    case "evaluation.closeout.proofLimitations.cadEngineeringBoundary.editableCad":
+      return admission.proofLimitations.cadEngineeringBoundary.editableCad;
+    case "evaluation.closeout.proofLimitations.cadEngineeringBoundary.manufacturability":
+      return admission.proofLimitations.cadEngineeringBoundary.manufacturability;
+    case "evaluation.closeout.proofLimitations.cadEngineeringBoundary.limitations.count":
+      return admission.proofLimitations.cadEngineeringBoundary.limitations.length;
+    case "evaluation.closeout.limits.engineCalls":
+      return admission.limits.engineCalls;
+    case "evaluation.closeout.limits.sysonCalls":
+      return admission.limits.sysonCalls;
+    case "evaluation.closeout.limits.l4PassIsNotL5":
+      return admission.limits.l4PassIsNotL5;
+    case "evaluation.closeout.limits.rejectionGrants":
+      return admission.limits.rejectionGrants;
+    case "evaluation.closeout.criteria.count":
+      return admission.criteria.length;
   }
 }
 
@@ -519,35 +614,62 @@ function evidenceFrom(
   const prefix = `evaluation.closeout.${name}`;
   return {
     id: values.get(`${prefix}.id`) as string,
-    fingerprint: { algorithm: "sha256", digest: values.get(`${prefix}.fingerprint.digest`) as string },
+    fingerprint: {
+      algorithm: "sha256",
+      digest: values.get(`${prefix}.fingerprint.digest`) as string,
+    },
     producerRunId: values.get(`${prefix}.producerRunId`) as string,
   };
 }
 
-function evidence(value: unknown, name: string): StaticMechanicalCloseoutEvidenceIdentity {
-  const record = exactRecord(value, ["id", "fingerprint", "producerRunId"],
-    `$staticMechanicalEvaluationCloseout.${name}`);
+function evidence(
+  value: unknown,
+  name: string,
+): StaticMechanicalCloseoutEvidenceIdentity {
+  const record = exactRecord(
+    value,
+    ["id", "fingerprint", "producerRunId"],
+    `$staticMechanicalEvaluationCloseout.${name}`,
+  );
   return {
     id: safeId(record.id, `$staticMechanicalEvaluationCloseout.${name}.id`),
-    fingerprint: fingerprint(record.fingerprint, `$staticMechanicalEvaluationCloseout.${name}.fingerprint`),
-    producerRunId: safeId(record.producerRunId, `$staticMechanicalEvaluationCloseout.${name}.producerRunId`),
+    fingerprint: fingerprint(
+      record.fingerprint,
+      `$staticMechanicalEvaluationCloseout.${name}.fingerprint`,
+    ),
+    producerRunId: safeId(
+      record.producerRunId,
+      `$staticMechanicalEvaluationCloseout.${name}.producerRunId`,
+    ),
   };
 }
 
 function criterion(value: unknown, index: number): StaticMechanicalCloseoutCriterion {
-  const record = exactRecord(value, ["proofCriterionId", "evaluationId", "status", "evidenceArtifactId"],
-    `$staticMechanicalEvaluationCloseout.criteria[${index}]`);
+  const record = exactRecord(value, [
+    "proofCriterionId",
+    "evaluationId",
+    "status",
+    "evidenceArtifactId",
+  ], `$staticMechanicalEvaluationCloseout.criteria[${index}]`);
   if (!STATUSES.includes(record.status as RequirementEvaluationStatus)) {
-    throw new TypeError(`Evaluation closeout criterion ${index} has an unsupported L4 status.`);
+    throw new TypeError(
+      `Evaluation closeout criterion ${index} has an unsupported L4 status.`,
+    );
   }
   return {
-    proofCriterionId: safeId(record.proofCriterionId,
-      `$staticMechanicalEvaluationCloseout.criteria[${index}].proofCriterionId`),
-    evaluationId: safeId(record.evaluationId,
-      `$staticMechanicalEvaluationCloseout.criteria[${index}].evaluationId`),
+    proofCriterionId: safeId(
+      record.proofCriterionId,
+      `$staticMechanicalEvaluationCloseout.criteria[${index}].proofCriterionId`,
+    ),
+    evaluationId: safeId(
+      record.evaluationId,
+      `$staticMechanicalEvaluationCloseout.criteria[${index}].evaluationId`,
+    ),
     status: record.status as RequirementEvaluationStatus,
-    evidenceArtifactId: safeId(record.evidenceArtifactId,
-      `$staticMechanicalEvaluationCloseout.criteria[${index}].evidenceArtifactId`),
+    evidenceArtifactId: safeId(
+      record.evidenceArtifactId,
+      `$staticMechanicalEvaluationCloseout.criteria[${index}].evidenceArtifactId`,
+    ),
   };
 }
 
@@ -580,24 +702,38 @@ function mechanicalProofLimitations(value: unknown): StaticMechanicalProofLimita
     "not-established",
     "$staticMechanicalEvaluationCloseout.proofLimitations.cadEngineeringBoundary.manufacturability",
   );
-  const limitations = Array.isArray(boundary.limitations) ? boundary.limitations : undefined;
+  const limitations = Array.isArray(boundary.limitations)
+    ? boundary.limitations
+    : undefined;
   if (!limitations || limitations.length === 0) {
-    throw new TypeError("Evaluation closeout CAD limitations must be a non-empty ordered array.");
+    throw new TypeError(
+      "Evaluation closeout CAD limitations must be a non-empty ordered array.",
+    );
   }
   const normalized = limitations.map((item, index) => {
     if (typeof item !== "string" || item.length === 0 || item !== item.trim()) {
-      throw new TypeError(`Evaluation closeout CAD limitation ${index} must be non-empty text.`);
+      throw new TypeError(
+        `Evaluation closeout CAD limitation ${index} must be non-empty text.`,
+      );
     }
     return item;
   });
   if (new Set(normalized).size !== normalized.length) {
-    throw new TypeError("Evaluation closeout CAD limitations must not duplicate values.");
+    throw new TypeError(
+      "Evaluation closeout CAD limitations must not duplicate values.",
+    );
   }
   if (boundary.designIntent === "preserved" && boundary.editableCad !== "native") {
     throw new TypeError("A preserved CAD design intent requires native editability.");
   }
-  const proofScope = text(root.proofScope, "$staticMechanicalEvaluationCloseout.proofLimitations.proofScope");
-  const evidenceBoundary = text(root.evidenceBoundary, "$staticMechanicalEvaluationCloseout.proofLimitations.evidenceBoundary");
+  const proofScope = text(
+    root.proofScope,
+    "$staticMechanicalEvaluationCloseout.proofLimitations.proofScope",
+  );
+  const evidenceBoundary = text(
+    root.evidenceBoundary,
+    "$staticMechanicalEvaluationCloseout.proofLimitations.evidenceBoundary",
+  );
   return deepFreeze({
     proofScope,
     evidenceBoundary,

@@ -49,7 +49,8 @@ export interface ProjectAdmittedModelicaEvaluationCloseoutReviewResolved {
   readonly basis: AdmittedObservationEvaluationCloseoutAdmission["basis"];
   readonly capture: ProjectAdmittedModelicaEvaluationCloseoutReviewEvidenceRef;
   readonly sheet: AdmittedObservationEvaluationCloseoutAdmission["sheet"];
-  readonly evaluations: readonly ProjectAdmittedModelicaEvaluationCloseoutReviewEvaluation[];
+  readonly evaluations:
+    readonly ProjectAdmittedModelicaEvaluationCloseoutReviewEvaluation[];
   readonly limitations: {
     readonly engineCalls: "none";
     readonly l4PassIsNotL5: true;

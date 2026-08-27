@@ -348,9 +348,7 @@ Deno.test("superseded versions are folded before analyze instrument folding", ()
   assertEquals(visibleIds.includes("I"), false);
 
   // Stub from Proof-R2 to R.
-  const stub = model.stubs.find((s) =>
-    s.from.id === "proof-r2" && s.to.id === "R"
-  );
+  const stub = model.stubs.find((s) => s.from.id === "proof-r2" && s.to.id === "R");
   assertNotEquals(stub, undefined, "stub proof-r2→R must exist");
   assertEquals(
     model.stubs.some((s) => s.from.id === "R" && s.to.id === "proof-r2"),

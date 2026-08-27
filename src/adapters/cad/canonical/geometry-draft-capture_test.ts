@@ -957,11 +957,13 @@ Deno.test("current generic draft schemas are 1.2 and 2.1; older identities are r
     currentGenericGeometryDraftCaptureSchema("geometry-draft-capture/2.1"),
     GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA,
   );
-  for (const schema of [
-    "geometry-draft-capture/1.0",
-    "geometry-draft-capture/1.1",
-    "geometry-draft-capture/2.0",
-  ]) {
+  for (
+    const schema of [
+      "geometry-draft-capture/1.0",
+      "geometry-draft-capture/1.1",
+      "geometry-draft-capture/2.0",
+    ]
+  ) {
     try {
       currentGenericGeometryDraftCaptureSchema(schema);
       throw new Error(`expected ${schema} to be rejected`);

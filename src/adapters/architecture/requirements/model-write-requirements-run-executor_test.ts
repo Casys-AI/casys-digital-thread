@@ -3532,7 +3532,11 @@ Deno.test(
       );
 
       assertEquals(captureReads, 1, "the old capture is read once then rejected");
-      assertEquals(syson.calls, [], "an old schema cannot authorize any provider operation");
+      assertEquals(
+        syson.calls,
+        [],
+        "an old schema cannot authorize any provider operation",
+      );
       assertEquals(await attempts.readRun(PROJECT_ID, queued.runId), undefined);
       assertEquals(captureWrites, 0);
       assertEquals(snapshotWrites, 0);

@@ -9,7 +9,10 @@ import {
   compactSysmlPartPairs,
   graphRefKey,
 } from "../architecture/sysml-composite-projection.ts";
-import type { PartAnchorageResolution, PartTarget } from "./part-anchorage-model.ts";
+import type {
+  PartAnchorageResolution,
+  PartTarget,
+} from "./part-anchorage-model.ts";
 import type {
   ThreadComponentCatalog,
   ThreadEvidenceFamilyGraph,
@@ -287,7 +290,8 @@ function recordedCorrectionNodes(
 }
 
 /** Server-fixed id prefix of `model.seal-architecture-sysml@1` documents. */
-export const ARCHITECTURE_SYSML_SEAL_ARTIFACT_ID_PREFIX = "architecture-sysml-seal-";
+export const ARCHITECTURE_SYSML_SEAL_ARTIFACT_ID_PREFIX =
+  "architecture-sysml-seal-";
 
 /** Server-fixed id prefix of `industrialize.run-dfm-checks@1` captures. */
 export const DFM_CHECK_ARTIFACT_ID_PREFIX = "dfm-check-";
@@ -576,7 +580,9 @@ export function filterFeedNodesByScope(
   scope: FeedScope | undefined,
 ): ThreadGraphNode[] {
   if (scope === undefined) return [...feedNodes];
-  return feedNodes.filter((node) => feedScopeForNode(node, anchorage) === scope);
+  return feedNodes.filter((node) =>
+    feedScopeForNode(node, anchorage) === scope
+  );
 }
 
 /**

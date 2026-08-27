@@ -5,9 +5,9 @@ import type {
   CrossDomainImpactEvaluationCaptureStore,
 } from "../../application/ports/out/impact/cross-domain-impact-capture-store.ts";
 import {
+  type CrossDomainImpactEvaluationCapture,
   crossDomainImpactEvaluationCaptureUri,
   validateCrossDomainImpactEvaluationCapture,
-  type CrossDomainImpactEvaluationCapture,
 } from "../../domain/impact/cross-domain-impact-evaluation-capture.ts";
 import {
   deterministicJson,
@@ -33,7 +33,9 @@ export class FileCrossDomainImpactEvaluationCaptureStore
     const stored = await this.#captures.save(fingerprint, deterministicJson(capture));
     const reopened = await this.read(fingerprint);
     if (!reopened || deterministicJson(reopened) !== deterministicJson(capture)) {
-      throw new Error("Cross-domain impact evaluation capture was not exactly readable after save.");
+      throw new Error(
+        "Cross-domain impact evaluation capture was not exactly readable after save.",
+      );
     }
     return { fingerprint, uri: stored.uri };
   }
@@ -46,11 +48,15 @@ export class FileCrossDomainImpactEvaluationCaptureStore
     const capture = await validateCrossDomainImpactEvaluationCapture(JSON.parse(text));
     const actual = await sha256Fingerprint(capture);
     if (!fingerprintsEqual(actual, fingerprint)) {
-      throw new TypeError("Reopened impact-evaluation capture does not match its content address.");
+      throw new TypeError(
+        "Reopened impact-evaluation capture does not match its content address.",
+      );
     }
     const uri = this.#captures.uriFor(actual);
     if (uri !== crossDomainImpactEvaluationCaptureUri(actual.digest)) {
-      throw new TypeError("Impact-evaluation capture store uses an unexpected CAS URI namespace.");
+      throw new TypeError(
+        "Impact-evaluation capture store uses an unexpected CAS URI namespace.",
+      );
     }
     return capture;
   }

@@ -99,7 +99,9 @@ export function buildRequirementMatrix(
   const unresolved = rows.length - pass - fail;
   const failMargins = rows.flatMap((row) => {
     if (row.status !== "fail") return [];
-    const violation = thread.violations.find((item) => item.id === row.violationId);
+    const violation = thread.violations.find((item) =>
+      item.id === row.violationId
+    );
     return violation?.margin ? [violation.margin] : [];
   });
   return {
@@ -283,7 +285,9 @@ function orderedFamilyRefs(family: ThreadEvidenceFamily): ThreadGraphRef[] {
   }
 
   const remaining = new Map(
-    familyRefs(family).map((reference) => [refKey(reference), reference] as const),
+    familyRefs(family).map((reference) =>
+      [refKey(reference), reference] as const
+    ),
   );
   const successorKeys = new Set(
     family.transitions.map((transition) => refKey(transition.successor)),

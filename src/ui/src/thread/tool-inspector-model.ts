@@ -601,7 +601,8 @@ function producedByForRef(
     );
     return snapshot.artifacts.find((item) =>
       item.id === observation?.sourceArtifactId
-    )?.producedBy;
+    )
+      ?.producedBy;
   }
   return undefined;
 }

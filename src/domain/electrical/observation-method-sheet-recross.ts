@@ -82,9 +82,7 @@ export function recrossElectricalObservationMethodSheet(
   }
   const briefItemIds: string[] = [];
   for (const criterion of sheet.criteria) {
-    const matches = briefGates.filter((gate) =>
-      gate.id === criterion.briefItem.id
-    );
+    const matches = briefGates.filter((gate) => gate.id === criterion.briefItem.id);
     if (matches.length !== 1) {
       throw recrossError(
         "brief_unresolved",

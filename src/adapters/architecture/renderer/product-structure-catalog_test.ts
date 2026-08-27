@@ -232,8 +232,7 @@ function snapshotWithArchArtifact(captureFp: ContentFingerprint) {
       relation: "changes",
       from: { kind: "change", id: "change-r1" },
       to: { kind: "artifact", id: archId },
-      rationale:
-        "The architecture fixture change records the initial evidence.",
+      rationale: "The architecture fixture change records the initial evidence.",
     }, {
       id: "uses-seed",
       relation: "uses",
@@ -375,8 +374,7 @@ function resolveCatalog(
   geometryCaptures?: Parameters<
     typeof resolveGenericProductStructureCatalog
   >[2],
-  sourceAnalysis: SysmlSourceAnalysisReader | undefined =
-    passingSourceAnalysis(),
+  sourceAnalysis: SysmlSourceAnalysisReader | undefined = passingSourceAnalysis(),
 ) {
   return resolveGenericProductStructureCatalog(
     snapshot,
@@ -399,8 +397,7 @@ function readerFor(
     ]),
   );
   return {
-    read: (fingerprint) =>
-      Promise.resolve(textByDigest.get(fingerprint.digest)),
+    read: (fingerprint) => Promise.resolve(textByDigest.get(fingerprint.digest)),
   };
 }
 
@@ -465,8 +462,7 @@ Deno.test(
         relation: "changes",
         from: { kind: "change", id: "change-other" },
         to: { kind: "artifact", id: "other-model-artifact" },
-        rationale:
-          "The fixture change records a non-generic architecture artifact.",
+        rationale: "The fixture change records a non-generic architecture artifact.",
       }],
       proposedActions: [],
     });
@@ -959,8 +955,7 @@ Deno.test(
     const captureRecord = makeCaptureRecord({
       declarations: [{ id: "sys-def-001", label: "SystemUnit" }],
     });
-    const part =
-      (captureRecord.partDefinitions as Array<Record<string, unknown>>)[0]!;
+    const part = (captureRecord.partDefinitions as Array<Record<string, unknown>>)[0]!;
     part.attributes = [{
       id: "attr-thickness",
       kind: "AttributeUsage",

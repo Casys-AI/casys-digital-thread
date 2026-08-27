@@ -2,8 +2,8 @@ import { assertEquals } from "@std/assert";
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import type { ThreadWorkbenchSnapshot } from "../../presentation/workbench/thread/snapshot.ts";
 import {
-  EVALUATION_CLOSEOUT_CAPTURE_URI_PREFIX,
   canonicalStaticMechanicalEvaluationCloseoutCaptureText,
+  EVALUATION_CLOSEOUT_CAPTURE_URI_PREFIX,
   validateStaticMechanicalEvaluationCloseoutCapture,
 } from "../fea/evaluation-closeout/static-mechanical-evaluation-closeout-capture.ts";
 import { enrichThreadWorkbenchWithEvaluationCloseouts } from "./evaluation-closeout-workbench-enricher.ts";
@@ -14,7 +14,12 @@ Deno.test("Workbench projects an exact, read-only current static-mechanical L5 c
   const fixture = await workbenchFixture();
   const enriched = await enrichThreadWorkbenchWithEvaluationCloseouts(
     fixture.snapshot,
-    { read: (fingerprint) => Promise.resolve(fingerprint.digest === fixture.digest ? fixture.text : undefined) },
+    {
+      read: (fingerprint) =>
+        Promise.resolve(
+          fingerprint.digest === fixture.digest ? fixture.text : undefined,
+        ),
+    },
   );
   const index = enriched.evaluationCloseouts!;
   const card = index.cards[0]!;
@@ -51,7 +56,12 @@ Deno.test("Workbench keeps a prior closeout historical after a later Thread succ
   } as ThreadWorkbenchSnapshot;
   const enriched = await enrichThreadWorkbenchWithEvaluationCloseouts(
     later,
-    { read: (fingerprint) => Promise.resolve(fingerprint.digest === fixture.digest ? fixture.text : undefined) },
+    {
+      read: (fingerprint) =>
+        Promise.resolve(
+          fingerprint.digest === fixture.digest ? fixture.text : undefined,
+        ),
+    },
   );
   assertEquals(enriched.evaluationCloseouts?.status, "historical");
   assertEquals(enriched.evaluationCloseouts?.cards[0]?.status, "historical");
@@ -135,9 +145,27 @@ async function workbenchFixture() {
     previous: { snapshotId: "fea-result-thread", revision: 7 },
     artifacts: [
       artifact("canonical-step", step!, "run-cad", "design.write-geometry@1", "step"),
-      artifact("sealed-proof", proof!, "run-proof", "verify.seal-proof-case@1", "document"),
-      artifact("execution-evidence", execution!, "run-fea", "verify.run-fea-static-proof@3", "evidence"),
-      artifact("evaluation-capture", evaluation!, "run-fea", "verify.run-fea-static-proof@3", "evidence"),
+      artifact(
+        "sealed-proof",
+        proof!,
+        "run-proof",
+        "verify.seal-proof-case@1",
+        "document",
+      ),
+      artifact(
+        "execution-evidence",
+        execution!,
+        "run-fea",
+        "verify.run-fea-static-proof@3",
+        "evidence",
+      ),
+      artifact(
+        "evaluation-capture",
+        evaluation!,
+        "run-fea",
+        "verify.run-fea-static-proof@3",
+        "evidence",
+      ),
       {
         ...artifact(
           `evaluation-closeout-${digest}`,

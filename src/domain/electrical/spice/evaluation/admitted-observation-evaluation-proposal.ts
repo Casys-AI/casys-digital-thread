@@ -30,8 +30,7 @@ export const SPICE_ADMITTED_OBSERVATION_EVALUATION_ADMISSION_SCHEMA =
   "spice-admitted-observation-evaluation-admission/1.0" as const;
 
 export interface SpiceAdmittedObservationEvaluationAdmission {
-  readonly schemaVersion:
-    typeof SPICE_ADMITTED_OBSERVATION_EVALUATION_ADMISSION_SCHEMA;
+  readonly schemaVersion: typeof SPICE_ADMITTED_OBSERVATION_EVALUATION_ADMISSION_SCHEMA;
   readonly methodSchemaVersion:
     typeof SPICE_ADMITTED_OBSERVATION_EVALUATION_METHOD_SCHEMA;
   readonly projectId: string;
@@ -89,8 +88,7 @@ const PARAMETER_KEYS = [
 ] as const;
 
 const PARAMETER_LABELS: Record<(typeof PARAMETER_KEYS)[number], string> = {
-  "electrical.evaluation.schemaVersion":
-    "Admitted SPICE observation evaluation schema",
+  "electrical.evaluation.schemaVersion": "Admitted SPICE observation evaluation schema",
   "electrical.evaluation.project.id": "Project",
   "electrical.evaluation.subject.id": "Subject",
   "electrical.evaluation.basis.snapshotId": "Thread snapshot",
@@ -112,8 +110,7 @@ const PARAMETER_LABELS: Record<(typeof PARAMETER_KEYS)[number], string> = {
     "Observation evaluation method fingerprint",
   "electrical.evaluation.profile.id": "Evaluation profile",
   "electrical.evaluation.unitAlgebra.id": "Unit algebra",
-  "electrical.evaluation.unitAlgebra.fingerprint.digest":
-    "Unit algebra fingerprint",
+  "electrical.evaluation.unitAlgebra.fingerprint.digest": "Unit algebra fingerprint",
 };
 
 export function encodeSpiceAdmittedObservationEvaluationAdmission(

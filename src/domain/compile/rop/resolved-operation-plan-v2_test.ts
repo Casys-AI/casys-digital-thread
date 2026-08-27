@@ -400,7 +400,6 @@ Deno.test("ResolvedOperationPlan 2.0 closes each action to its exact registered 
     TypeError,
     "case fingerprint",
   );
-
 });
 
 Deno.test("ResolvedOperationPlan 2.0 keeps CalculiX proof case and geometry on distinct evidence", () => {

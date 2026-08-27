@@ -46,9 +46,7 @@ export function recordedPlanCalculixBinding(
     readonly localProfile: CalculixIsolatedExecutionProfile;
   };
 } {
-  return localProfile === undefined
-    ? {}
-    : { calculix: { localProfile } };
+  return localProfile === undefined ? {} : { calculix: { localProfile } };
 }
 
 export function createRecordedOperationPlanComposition(
@@ -85,8 +83,7 @@ export function createRecordedOperationPlanComposition(
   const recordedRunPlans = new CaptureBackedRunPlanSealer({
     store: new FileByteStore({
       ...RESOLVED_OPERATION_PLAN_STORE_DESCRIPTOR,
-      directory:
-        `${options.recordedAnalysisDirectory}/resolved-operation-plans`,
+      directory: `${options.recordedAnalysisDirectory}/resolved-operation-plans`,
     }),
     resolver: recordedPlanResolver,
   });

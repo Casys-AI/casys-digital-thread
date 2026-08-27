@@ -23,15 +23,15 @@ import {
   type RunCommand,
 } from "../../../../application/use-cases/project/engineering-project-command-service.ts";
 import {
-  type SpiceAdmittedObservationEvaluationCloseoutAdmission,
-  type SpiceAdmittedObservationEvaluationCloseoutOperation,
   DECIDE_ACCEPT_ADMITTED_SPICE_EVALUATION_OPERATION,
   DECIDE_REJECT_ADMITTED_SPICE_EVALUATION_OPERATION,
   parseSpiceAdmittedObservationEvaluationCloseoutParameters,
+  type SpiceAdmittedObservationEvaluationCloseoutAdmission,
+  type SpiceAdmittedObservationEvaluationCloseoutOperation,
 } from "../../../../domain/electrical/spice/evaluation/admitted-observation-evaluation-closeout-proposal.ts";
 import {
-  type AdmittedSpiceEvaluationCloseoutEvidenceResolverDependencies,
   admittedSpiceEvaluationCloseoutAdmission,
+  type AdmittedSpiceEvaluationCloseoutEvidenceResolverDependencies,
   AdmittedSpiceEvaluationCloseoutResolutionError,
   resolveAdmittedSpiceEvaluationCloseoutEvidence,
 } from "./admitted-spice-observation-evaluation-closeout-evidence-resolver.ts";
@@ -74,10 +74,10 @@ import {
 } from "../../../shared/thread-write-basis-guard.ts";
 import { SPICE_ADMITTED_OBSERVATION_EVALUATION_CAPTURE_URI_PREFIX } from "./admitted-spice-observation-evaluation-capture.ts";
 import {
+  canonicalSpiceAdmittedObservationEvaluationCloseoutCaptureText,
   SPICE_ADMITTED_OBSERVATION_EVALUATION_CLOSEOUT_CAPTURE_URI_PREFIX,
   SPICE_ADMITTED_OBSERVATION_EVALUATION_CLOSEOUT_LIMITS,
   type SpiceAdmittedObservationEvaluationCloseoutCapture,
-  canonicalSpiceAdmittedObservationEvaluationCloseoutCaptureText,
   validateSpiceAdmittedObservationEvaluationCloseoutCapture,
 } from "./admitted-spice-observation-evaluation-closeout-capture.ts";
 
@@ -120,8 +120,7 @@ export interface DecideAdmittedSpiceEvaluationRunExecutorDependencies
 
 export class DecideAdmittedSpiceEvaluationRunExecutor {
   constructor(
-    private readonly dependencies:
-      DecideAdmittedSpiceEvaluationRunExecutorDependencies,
+    private readonly dependencies: DecideAdmittedSpiceEvaluationRunExecutorDependencies,
   ) {}
 
   async execute(

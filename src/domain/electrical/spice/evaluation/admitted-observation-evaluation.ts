@@ -40,16 +40,18 @@ export const ELECTRICAL_OBSERVATION_UNIT_ALGEBRA_ID =
   "electrical-observation-unit-algebra" as const;
 export const ELECTRICAL_OBSERVATION_UNIT_ALGEBRA_VERSION = "1.0.0" as const;
 
-export const SPICE_ADMITTED_OBSERVATION_EVALUATION_LIMITATIONS = deepFreeze([
-  "bounded-digital-thread-comparator",
-  "not-physical-proof",
-  "not-vendor-proof",
-  "not-safety-claim",
-  "not-certification",
-  "ngspice-is-not-oracle",
-  "syson-decimal-requirements-unavailable",
-  "brief-and-method-sheet-authority",
-] as const);
+export const SPICE_ADMITTED_OBSERVATION_EVALUATION_LIMITATIONS = deepFreeze(
+  [
+    "bounded-digital-thread-comparator",
+    "not-physical-proof",
+    "not-vendor-proof",
+    "not-safety-claim",
+    "not-certification",
+    "ngspice-is-not-oracle",
+    "syson-decimal-requirements-unavailable",
+    "brief-and-method-sheet-authority",
+  ] as const,
+);
 
 export const ELECTRICAL_OBSERVATION_UNIT_ALGEBRA_DOCUMENT = deepFreeze({
   schemaVersion: ELECTRICAL_OBSERVATION_UNIT_ALGEBRA_SCHEMA,
@@ -61,8 +63,7 @@ export const ELECTRICAL_OBSERVATION_UNIT_ALGEBRA_DOCUMENT = deepFreeze({
 });
 
 export interface SpiceAdmittedObservationEvaluationMethod {
-  readonly schemaVersion:
-    typeof SPICE_ADMITTED_OBSERVATION_EVALUATION_METHOD_SCHEMA;
+  readonly schemaVersion: typeof SPICE_ADMITTED_OBSERVATION_EVALUATION_METHOD_SCHEMA;
   readonly profile: {
     readonly id: typeof SPICE_ADMITTED_OBSERVATION_EVALUATION_PROFILE_ID;
     readonly version: "1.0.0";
@@ -288,8 +289,7 @@ function evaluateCriterion(
         status: "unresolved",
         comparator: criterion.comparator,
         natives: used,
-        message:
-          `Native observation "${name}" is absent from exact L3 evidence.`,
+        message: `Native observation "${name}" is absent from exact L3 evidence.`,
       };
     }
     if (gap === "native-not-unique") {
@@ -298,8 +298,7 @@ function evaluateCriterion(
         status: "unresolved",
         comparator: criterion.comparator,
         natives: used,
-        message:
-          `Native observation "${name}" is not unique on exact L3 evidence.`,
+        message: `Native observation "${name}" is not unique on exact L3 evidence.`,
       };
     }
   }

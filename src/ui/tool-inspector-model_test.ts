@@ -9,10 +9,7 @@ import {
   resolveToolInspectorContext,
   resolveToolInspectorTarget,
 } from "./src/thread/tool-inspector-model.ts";
-import type {
-  ThreadGraphNode,
-  ThreadWorkbenchSnapshot,
-} from "./src/thread/types.ts";
+import type { ThreadGraphNode, ThreadWorkbenchSnapshot } from "./src/thread/types.ts";
 
 Deno.test("graph action keeps its own provider while exposing its richer record", () => {
   const node = graphNode("action", "ACT-INSPECT");
