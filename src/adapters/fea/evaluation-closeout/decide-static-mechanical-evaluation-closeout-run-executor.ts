@@ -73,7 +73,6 @@ import {
 import {
   canonicalStaticMechanicalEvaluationCloseoutCaptureText,
   EVALUATION_CLOSEOUT_CAPTURE_SCHEMA,
-  EVALUATION_CLOSEOUT_CAPTURE_URI_PREFIX,
   type StaticMechanicalEvaluationCloseoutCapture,
   validateStaticMechanicalEvaluationCloseoutCapture,
 } from "./static-mechanical-evaluation-closeout-capture.ts";

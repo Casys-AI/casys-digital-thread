@@ -1201,14 +1201,6 @@ function threadArtifact(
   };
 }
 
-function casReference(artifact: ThreadArtifact, bytes: Uint8Array) {
-  return {
-    uri: artifact.uri!,
-    byteCount: bytes.byteLength,
-    sha256: artifact.fingerprint.digest,
-  };
-}
-
 function fresh() {
   return {
     status: "fresh" as const,
@@ -1275,14 +1267,6 @@ function requireProjectEntry<T extends { id: string }>(
   const entry = entries.find((candidate) => candidate.id === id);
   if (!entry) throw new Error(`Fixture ${label} ${id} is absent.`);
   return entry;
-}
-
-function recordedSealRun(input: RegisteredRunPlanSealInput): MutableSealRun {
-  const run = input.project.agentRuns.find((candidate) =>
-    candidate.id === "seal-run"
-  ) as unknown as MutableSealRun | undefined;
-  if (!run) throw new Error("Missing test seal run.");
-  return run;
 }
 
 function snapshotReference(snapshot: ThreadSnapshot) {

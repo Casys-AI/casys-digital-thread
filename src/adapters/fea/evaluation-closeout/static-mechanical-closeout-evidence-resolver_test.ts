@@ -128,13 +128,14 @@ Deno.test(
       const tamperedCas = {
         ...passed.dependencies,
         artifacts: {
-          readArtifact: async (artifact: typeof passed.snapshot.artifacts[number]) => ({
-            uri: artifact.uri!,
-            mediaType: artifact.mediaType!,
-            byteCount: 3,
-            sha256: artifact.fingerprint.digest,
-            bytes: new TextEncoder().encode("bad"),
-          }),
+          readArtifact: (artifact: typeof passed.snapshot.artifacts[number]) =>
+            Promise.resolve({
+              uri: artifact.uri!,
+              mediaType: artifact.mediaType!,
+              byteCount: 3,
+              sha256: artifact.fingerprint.digest,
+              bytes: new TextEncoder().encode("bad"),
+            }),
         },
       };
       await assertRejects(

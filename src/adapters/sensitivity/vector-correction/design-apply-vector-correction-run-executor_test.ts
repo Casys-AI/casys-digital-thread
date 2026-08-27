@@ -452,7 +452,7 @@ async function buildWorld(reuseResult = false) {
   const requirementId = "req:disp";
   const briefId = "artifact.brief";
   const snapshot = validateThreadSnapshot({
-    schemaVersion: "4.0",
+    schemaVersion: "1.0",
     id: "snapshot.vector.r1",
     revision: 1,
     generatedAt: AT,

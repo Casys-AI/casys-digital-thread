@@ -100,9 +100,9 @@ Deno.test("toolchain Compose defaults remain in parity with fleet desired images
 });
 
 Deno.test("CalculiX keeps durable evidence, read-only CAD, and private FEA staging distinct", async () => {
-  const [composeSource, serverSource] = await Promise.all([
+  const [composeSource, sensitivityCompositionSource] = await Promise.all([
     Deno.readTextFile("docker-compose.yml"),
-    Deno.readTextFile("server.ts"),
+    Deno.readTextFile("src/adapters/sensitivity/server-composition.ts"),
   ]);
   const compose = record(parseYaml(composeSource), "docker-compose.yml");
   const services = record(compose.services, "docker-compose.yml.services");
@@ -136,9 +136,9 @@ Deno.test("CalculiX keeps durable evidence, read-only CAD, and private FEA stagi
     runs.name,
     "${CALCULIX_RUNS_VOLUME:-casys-digital-thread-calculix-runs}",
   );
-  assertStringIncludes(
-    serverSource,
-    'containerDirectory: "/inputs"',
+  assert(
+    /new DockerVolumeAssetStager\(\{\s+service: "mcp-calculix",\s+containerDirectory: "\/inputs",\s+\}\)/
+      .test(sensitivityCompositionSource),
   );
 });
 

@@ -276,33 +276,33 @@ export async function createCompletedStaticMechanicalCloseoutFixture(options: {
     };
     const dependencies: StaticMechanicalCloseoutEvidenceResolverDependencies = {
       artifacts: {
-        readArtifact: async (artifact) => {
+        readArtifact: (artifact) => {
           counts.artifactReads++;
-          if (artifact.id !== fea.proofArtifact.id) return undefined;
-          return {
+          if (artifact.id !== fea.proofArtifact.id) return Promise.resolve(undefined);
+          return Promise.resolve({
             uri: fea.proofArtifact.uri!,
             mediaType: fea.proofArtifact.mediaType!,
             byteCount: fea.proofBytes.byteLength,
             sha256: fea.proofArtifact.fingerprint.digest,
             bytes: Uint8Array.from(fea.proofBytes),
-          };
+          });
         },
       },
       canonicalAssets: {
-        read: async (digest) => {
+        read: (digest) => {
           counts.canonicalStepReads++;
           if (digest !== fea.proofCase.expectedCadArtifact.sha256) {
             throw new Error("The fixture has no other canonical asset.");
           }
-          return Uint8Array.from(fea.stepBytes);
+          return Promise.resolve(Uint8Array.from(fea.stepBytes));
         },
       },
       executionEvidence: {
-        read: async (fingerprint) => {
+        read: (fingerprint) => {
           counts.executionEvidenceReads++;
-          return fingerprint.digest === executionFingerprint.digest
-            ? execution
-            : undefined;
+          return Promise.resolve(
+            fingerprint.digest === executionFingerprint.digest ? execution : undefined,
+          );
         },
         uriFor: (fingerprint) =>
           `casys://calculix-isolated-execution-evidence/sha256/${fingerprint.digest}`,

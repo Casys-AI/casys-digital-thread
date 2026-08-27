@@ -25,7 +25,6 @@ import {
   collectNativeObservationNames,
   deriveExpressionUnit,
   type ElectricalObservationExpression,
-  type ElectricalObservationUnit,
   validateElectricalObservationExpression,
 } from "./spice/evaluation/expression.ts";
 

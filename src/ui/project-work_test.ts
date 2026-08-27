@@ -171,7 +171,7 @@ Deno.test("assembly-integrity work card keeps L3 facts, L4 verdict and L5 formal
   assertStringIncludes(card, "L5 · human disposition");
   assertStringIncludes(card, 'data-formal-gate="assembly-integrity"');
   assertStringIncludes(
-    card,
+    card.replace(/\s+/g, " "),
     "separate from the activity stage band",
   );
   assertStringIncludes(card, "Exact lineage and evidence identities");

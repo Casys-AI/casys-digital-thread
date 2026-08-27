@@ -380,7 +380,7 @@ async function buildWorld(options: {
     ? requirements.slice(0, 1)
     : requirements;
   const snapshot = validateThreadSnapshot({
-    schemaVersion: "4.0",
+    schemaVersion: "1.0",
     id: "snapshot.evaluate.r1",
     revision: 1,
     generatedAt: AT,

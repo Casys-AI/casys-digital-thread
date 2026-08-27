@@ -56,7 +56,6 @@ import {
   type TechnicalSourceAnalysisCaptureLocator,
   type TechnicalSourceAttachmentProvenance,
   type TechnicalSourceClosureProvenance,
-  type TechnicalSourceEffectiveUnit,
   validateTechnicalSourceAnalysisCaptureLocator,
   validateTechnicalSourceAttachmentProvenance,
   validateTechnicalSourceClosureProvenance,
@@ -65,7 +64,6 @@ import {
 import {
   BUILD123D_WORKSPACE_CLOSURE_LOWERING_KIND,
   BUILD123D_WORKSPACE_CLOSURE_LOWERING_SCHEMA,
-  type Build123dWorkspaceClosureLoweringManifest,
   validateBuild123dWorkspaceClosureLoweringManifest,
 } from "../../../domain/cad/source/build123d-workspace-closure-lowering.ts";
 

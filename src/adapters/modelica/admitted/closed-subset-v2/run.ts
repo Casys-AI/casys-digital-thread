@@ -188,6 +188,7 @@ async function runOpenModelica(
   }
   if (!command.success) {
     const diagnostic = new TextDecoder().decode(command.stderr).replaceAll(
+      // deno-lint-ignore no-control-regex -- Worker diagnostics are normalized before evidence handling.
       /[\x00-\x1f\x7f]/g,
       " ",
     ).trim().slice(-1_000);

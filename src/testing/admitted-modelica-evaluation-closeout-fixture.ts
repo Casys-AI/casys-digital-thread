@@ -35,7 +35,6 @@ import type { EngineeringProjectSnapshot } from "../domain/project/engineering-p
 import type {
   RequirementEvaluationStatus,
   ThreadArtifact,
-  ThreadSnapshot,
 } from "../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../domain/thread/thread-snapshot-validation.ts";
 import { validThermalMethodSheetPlaceholder } from "./modelica-thermal-method-sheet-fixtures.ts";

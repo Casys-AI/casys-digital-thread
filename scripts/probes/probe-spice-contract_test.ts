@@ -122,12 +122,12 @@ class FakeSpiceFetch {
     this.#failHealth = options.failHealth ?? false;
   }
 
-  readonly fetch: typeof fetch = async (input, init) => {
+  readonly fetch: typeof fetch = (input, init) => {
     const url = String(input);
     if ((init?.method ?? "GET") === "GET") {
       this.requests.push({ method: "GET", url });
-      if (this.#failHealth) throw new TypeError("connection refused");
-      return jsonResponse(HEALTH);
+      if (this.#failHealth) return Promise.reject(new TypeError("connection refused"));
+      return Promise.resolve(jsonResponse(HEALTH));
     }
 
     const body = JSON.parse(String(init?.body)) as { method?: string };
@@ -135,19 +135,23 @@ class FakeSpiceFetch {
       init?.method !== "POST" || url !== SPICE_ENDPOINT.mcpUrl ||
       (body.method !== "server/discover" && body.method !== "tools/list")
     ) {
-      throw new Error(`unexpected request ${init?.method} ${url} ${body.method}`);
+      return Promise.reject(
+        new Error(`unexpected request ${init?.method} ${url} ${body.method}`),
+      );
     }
     this.requests.push({ method: body.method, url });
-    return body.method === "server/discover"
-      ? jsonResponse({ jsonrpc: "2.0", id: 1, result: DISCOVERY })
-      : jsonResponse({
-        jsonrpc: "2.0",
-        id: 2,
-        result: {
-          resultType: this.#toolsResultType,
-          tools: this.#tools,
-        },
-      });
+    return Promise.resolve(
+      body.method === "server/discover"
+        ? jsonResponse({ jsonrpc: "2.0", id: 1, result: DISCOVERY })
+        : jsonResponse({
+          jsonrpc: "2.0",
+          id: 2,
+          result: {
+            resultType: this.#toolsResultType,
+            tools: this.#tools,
+          },
+        }),
+    );
   };
 }
 

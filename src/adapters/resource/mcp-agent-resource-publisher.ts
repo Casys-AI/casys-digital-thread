@@ -23,8 +23,8 @@ export class McpAgentResourcePublisher implements AgentResourceExposure {
     this.#store = store;
   }
 
-  async expose(reference: AgentResourceReference): Promise<void> {
-    if (this.#app.hasResource(reference.uri)) return;
+  expose(reference: AgentResourceReference): Promise<void> {
+    if (this.#app.hasResource(reference.uri)) return Promise.resolve();
     this.#app.registerResource(
       {
         uri: reference.uri,
@@ -35,6 +35,7 @@ export class McpAgentResourcePublisher implements AgentResourceExposure {
       },
       (uri) => this.#read(uri.toString()),
     );
+    return Promise.resolve();
   }
 
   async restore(): Promise<void> {

@@ -617,7 +617,7 @@ function exactSnapshotFor(kind: RecordedKind): ThreadSnapshot {
   });
 }
 
-function sourcesFor(kind: RecordedKind, snapshot: ThreadSnapshot) {
+function sourcesFor(_kind: RecordedKind, snapshot: ThreadSnapshot) {
   const source = (bindingName: string, role: string, value: ThreadArtifact) => ({
     bindingName,
     role,

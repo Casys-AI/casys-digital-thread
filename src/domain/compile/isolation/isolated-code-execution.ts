@@ -1522,10 +1522,14 @@ function capExcerpt(value: string): string {
 
 function stripTerminalControlSequences(value: string): string {
   return value
+    // deno-lint-ignore no-control-regex -- ANSI CSI escape bytes are intentionally stripped.
     .replaceAll(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "")
+    // deno-lint-ignore no-control-regex -- OSC escape bytes are intentionally stripped.
     .replaceAll(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
     .replaceAll(/\x9b[0-9;?]*[ -/]*[@-~]/g, "")
+    // deno-lint-ignore no-control-regex -- Single-character ESC sequences are intentionally stripped.
     .replaceAll(/\x1b[@-Z\\-_]/g, "")
+    // deno-lint-ignore no-control-regex -- Remaining C0 and DEL bytes are intentionally stripped.
     .replaceAll(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
 }
 

@@ -165,7 +165,7 @@ function recrossMechanicalEvidence(
   };
 }
 
-async function recrossArtifact(snapshot: ThreadSnapshot, id: string) {
+function recrossArtifact(snapshot: ThreadSnapshot, id: string) {
   const items = snapshot.artifacts.filter((artifact) => artifact.id === id);
   if (items.length !== 1) {
     throw unresolved("A declared source artifact is unavailable or ambiguous.");

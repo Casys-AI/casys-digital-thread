@@ -408,8 +408,10 @@ async function executableFixture(options: {
     }],
   } as unknown as EngineeringProjectSnapshot;
   const evaluationCaptures = {
-    read: async (fingerprint: { readonly digest: string }) =>
-      fingerprint.digest === l4Fingerprint.digest ? l4Capture : undefined,
+    read: (fingerprint: { readonly digest: string }) =>
+      Promise.resolve(
+        fingerprint.digest === l4Fingerprint.digest ? l4Capture : undefined,
+      ),
   };
   const resolved = await resolveAssemblyIntegrityCloseoutEvidence(
     { evaluationCaptures },
@@ -498,11 +500,12 @@ async function executableFixture(options: {
     [l4Snapshot.id, l4Snapshot],
   ]);
   const snapshots = {
-    get: async (id: string) => snapshotsById.get(id),
-    getFresh: async (id: string) => snapshotsById.get(id),
-    latest: async () => l4Snapshot,
-    save: async (snapshot: ThreadSnapshot) => {
+    get: (id: string) => Promise.resolve(snapshotsById.get(id)),
+    getFresh: (id: string) => Promise.resolve(snapshotsById.get(id)),
+    latest: () => Promise.resolve(l4Snapshot),
+    save: (snapshot: ThreadSnapshot) => {
       snapshotsById.set(snapshot.id, snapshot);
+      return Promise.resolve();
     },
   };
   const closeoutCaptures = new Map<string, string>();
@@ -510,7 +513,7 @@ async function executableFixture(options: {
     EngineeringProjectCommandService,
     "claimRun" | "publishRun" | "completeRun" | "failRun"
   > = {
-    claimRun: async (
+    claimRun: (
       origin: EngineeringProjectCommandOrigin,
       command: RunCommand,
     ) => {
@@ -520,22 +523,22 @@ async function executableFixture(options: {
         claimedAt: AT,
         claimedBy: { origin: origin.kind, id: origin.actorId },
       });
-      return project;
+      return Promise.resolve(project);
     },
-    publishRun: async (_origin, command: RunCommand) => {
+    publishRun: (_origin, command: RunCommand) => {
       project = replaceRun(project, command.runId, { status: "publishing" });
-      return project;
+      return Promise.resolve(project);
     },
-    completeRun: async (_origin, command: CompleteRunCommand) => {
+    completeRun: (_origin, command: CompleteRunCommand) => {
       project = replaceRun(project, command.runId, {
         status: "completed",
         completedAt: AT,
         resultSnapshot: command.resultSnapshot,
         evidenceRefs: command.evidenceRefs,
       }, command.resultSnapshot);
-      return project;
+      return Promise.resolve(project);
     },
-    failRun: async (
+    failRun: (
       _origin,
       command: RunCommand & { readonly code: string; readonly message: string },
     ) => {
@@ -543,21 +546,22 @@ async function executableFixture(options: {
         status: "failed",
         failure: { code: command.code, message: command.message },
       });
-      return project;
+      return Promise.resolve(project);
     },
   };
   const executor = new DecideAssemblyIntegrityEvaluationCloseoutRunExecutor({
     projects: {
-      get: async () => project,
+      get: () => Promise.resolve(project),
     } as unknown as EngineeringProjectRevisionStore,
     commands,
     snapshots,
     evaluationCaptures,
     closeoutCaptures: {
-      save: async (fingerprint, text) => {
+      save: (fingerprint, text) => {
         closeoutCaptures.set(fingerprint.digest, text);
+        return Promise.resolve();
       },
-      read: async (fingerprint) => closeoutCaptures.get(fingerprint.digest),
+      read: (fingerprint) => Promise.resolve(closeoutCaptures.get(fingerprint.digest)),
       uriFor: (fingerprint) =>
         `casys://assembly-integrity-evaluation-closeout/sha256/${fingerprint.digest}`,
     },

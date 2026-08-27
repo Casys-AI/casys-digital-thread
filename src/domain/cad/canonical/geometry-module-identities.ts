@@ -23,7 +23,6 @@ import {
 } from "../placement/cad-placement-analysis-capture.ts";
 import {
   arrayOf,
-  deepFreeze,
   exactRecord,
   finite,
   literalValue,

@@ -1232,14 +1232,6 @@ function decodeUtf8(bytes: Uint8Array, label: string): string {
   }
 }
 
-function parseJson(text: string, label: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new TypeError(`${label} is not valid JSON.`);
-  }
-}
-
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

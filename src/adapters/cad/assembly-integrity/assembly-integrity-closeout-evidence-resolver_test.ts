@@ -178,8 +178,10 @@ async function closeoutFixture(options: {
     captureFingerprint,
     dependencies: {
       evaluationCaptures: {
-        read: async (fingerprint: { readonly digest: string }) =>
-          fingerprint.digest === captureFingerprint.digest ? capture : undefined,
+        read: (fingerprint: { readonly digest: string }) =>
+          Promise.resolve(
+            fingerprint.digest === captureFingerprint.digest ? capture : undefined,
+          ),
       },
     },
     input: {

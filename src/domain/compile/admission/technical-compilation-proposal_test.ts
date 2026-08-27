@@ -2,7 +2,6 @@ import { assert, assertEquals, assertThrows } from "@std/assert";
 import type { EngineeringDecisionProposalParameter } from "../../project/engineering-project.ts";
 import {
   sampleAdmissionSourceWorkspaceFields,
-  sampleTechnicalSourceAnalysisCaptureLocator,
   sampleTechnicalSourceAttachmentProvenance,
   sampleTechnicalSourceClosureProvenance,
 } from "../../../testing/technical-source-capture-test-support.ts";

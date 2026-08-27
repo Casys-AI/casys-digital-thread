@@ -342,7 +342,7 @@ Deno.test("module-assembler image pins a closed Fontconfig default at the compil
     "install -d -o root -g root -m 0555 /etc/fonts /opt/casys/fonts",
   );
   const fontFileCopy = dockerfile.search(
-    /COPY --chmod=0444 \\\n  images\/build123d-module-assembler-worker\/fonts\.conf \\\n  \/etc\/fonts\/fonts\.conf/,
+    /COPY --chmod=0444 \\\n[ ]{2}images\/build123d-module-assembler-worker\/fonts\.conf \\\n[ ]{2}\/etc\/fonts\/fonts\.conf/,
   );
   assertEquals(fontDirInstall >= 0, true);
   assertEquals(fontFileCopy > fontDirInstall, true);

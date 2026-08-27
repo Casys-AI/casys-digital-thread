@@ -40,9 +40,6 @@ const APPROVAL_ID = "approval.closeout-evaluation";
 const COMMAND_ID = "command.closeout-evaluation";
 const AGENT = { kind: "agent" as const, actorId: "agent:test" };
 const HUMAN = { kind: "human" as const, actorId: "human:test" };
-const CLAIM_SUMMARY =
-  "Started the human accept closeout of the admitted SPICE evaluation.";
-
 Deno.test(
   "accept closeout binds the exact L4 capture and sheet without calling an engine",
   async () => {

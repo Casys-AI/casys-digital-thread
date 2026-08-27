@@ -4,7 +4,6 @@ import type { AgentResourceExposure } from "../../application/ports/out/resource
 import type { AgentResourceCaptureReview } from "../../domain/resource/agent-resource-capture.ts";
 import {
   AGENT_RESOURCE_CAPTURE_REVIEW_SCHEMA,
-  AGENT_RESOURCE_CAPTURE_SCHEMA,
   AGENT_RESOURCE_MAX_BYTES,
 } from "../../domain/resource/agent-resource-envelope.ts";
 import { AGENT_RESOURCE_REFERENCE_SCHEMA } from "../../domain/resource/agent-resource-reference.ts";

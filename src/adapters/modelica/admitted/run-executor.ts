@@ -24,7 +24,6 @@ import { fingerprintAdmittedModelicaExecutionAttemptIdentity } from "../../../ap
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
 import type { TechnicalCompilationAdmissionReader } from "../../../application/ports/out/compile/admission/technical-compilation-admission-reader.ts";
 import type {
-  AdmittedModelicaExecutionProfile,
   AdmittedModelicaExecutionProfileCatalog,
 } from "../../../application/ports/out/modelica/admitted-execution-profile-catalog.ts";
 import {
