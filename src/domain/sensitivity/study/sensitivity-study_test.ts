@@ -22,7 +22,7 @@ function minimalCaseJson(): Record<string, unknown> {
     target: { componentKey: "cantilever", semanticKey: "length" },
     recipeSource: {
       schemaVersion: "parametric-geometry-recipe/1.0",
-      key: "test-cantilever-length-30",
+      key: "test-recipe",
     },
     baseValue: { value: 30, unit: "mm" },
     step: { value: 1, unit: "mm" },

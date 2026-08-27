@@ -1311,7 +1311,9 @@ Deno.test("persistent unknown CAS publication stays terminal and preserves stagi
 
 Deno.test("a forged CAS contract error is rebuilt without its private capability", async () => {
   const scenario = await happyScenario();
-  const token = "PRIVATE_FORGED_CAS_CAPABILITY_8b4d";
+  // Deliberately fake sentinel: the assertion proves no capability-bearing
+  // value, even one supplied by a hostile backend, crosses the public error.
+  const token = "fixture-batch-handle-sentinel";
   const path = "PRIVATE_FORGED_CAS_PATH_619c";
   const capability = { batchHandle: token, path };
   const privateError = new BrokeredIsolatedCodeRunnerError(
