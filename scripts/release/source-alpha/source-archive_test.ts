@@ -4,10 +4,13 @@ import { resolveSourceAlphaReleaseContext } from "./source-archive.ts";
 
 const TAG = "source-alpha-commit-snapshot";
 
-async function runGit(args: readonly string[]): Promise<void> {
+async function runGit(
+  args: readonly string[],
+  cwd = fileUrlPath(REPOSITORY_ROOT),
+): Promise<void> {
   const output = await new Deno.Command("git", {
     args: [...args],
-    cwd: fileUrlPath(REPOSITORY_ROOT),
+    cwd,
     stdout: "piped",
     stderr: "piped",
   }).output();
@@ -22,21 +25,26 @@ Deno.test("source-alpha release context stays pinned to one commit snapshot", as
   const temporaryRoot = await Deno.makeTempDir({
     prefix: "casys-source-alpha-commit-snapshot-",
   });
-  const worktreePath = `${temporaryRoot}/checkout`;
-  const worktreeRoot = new URL(`file://${worktreePath}/`);
-  let worktreeAdded = false;
+  const clonePath = `${temporaryRoot}/checkout`;
+  const cloneRoot = new URL(`file://${clonePath}/`);
 
   try {
-    await runGit(["worktree", "add", "--detach", worktreePath, "HEAD"]);
-    worktreeAdded = true;
+    await runGit([
+      "clone",
+      "--no-local",
+      "--no-hardlinks",
+      fileUrlPath(REPOSITORY_ROOT),
+      clonePath,
+    ]);
+    await runGit(["checkout", "--detach", "HEAD"], clonePath);
 
-    const first = await resolveSourceAlphaReleaseContext(TAG, worktreeRoot, true);
+    const first = await resolveSourceAlphaReleaseContext(TAG, cloneRoot, true);
     await Deno.writeTextFile(
-      new URL("LICENSE", worktreeRoot),
+      new URL("LICENSE", cloneRoot),
       "\nuncommitted test mutation must not enter the selected source snapshot\n",
       { append: true },
     );
-    const second = await resolveSourceAlphaReleaseContext(TAG, worktreeRoot, true);
+    const second = await resolveSourceAlphaReleaseContext(TAG, cloneRoot, true);
 
     assertEquals(second.commit, first.commit);
     assertEquals(second.tree, first.tree);
@@ -48,9 +56,6 @@ Deno.test("source-alpha release context stays pinned to one commit snapshot", as
     assertEquals(second.sourceArchive, first.sourceArchive);
     assertEquals(second.sourceArchiveSha256, first.sourceArchiveSha256);
   } finally {
-    if (worktreeAdded) {
-      await runGit(["worktree", "remove", "--force", worktreePath]);
-    }
     await Deno.remove(temporaryRoot, { recursive: true });
   }
 });
