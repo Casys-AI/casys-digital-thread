@@ -47,6 +47,7 @@ function fingerprint(character: string) {
 function validTechnicalCompilationAdmissionParameters() {
   const projectId = "project.technical-compilation";
   const documentFingerprint = fingerprint("a");
+  const sourceId = `technical-unit:${"d".repeat(64)}`;
   return encodeTechnicalCompilationAdmissionParameters({
     schemaVersion: TECHNICAL_COMPILATION_ADMISSION_SCHEMA,
     draft: {
@@ -75,7 +76,7 @@ function validTechnicalCompilationAdmissionParameters() {
       },
     },
     sources: [{
-      id: "source.cad",
+      id: sourceId,
       role: "cad-script",
       language: "python",
       profileId: "source-profile.build123d",
@@ -85,11 +86,18 @@ function validTechnicalCompilationAdmissionParameters() {
       sourceFingerprint: fingerprint("2"),
       captureFingerprint: fingerprint("3"),
       analysisFingerprint: fingerprint("4"),
+      effectiveUnit: {
+        kind: "authored-root",
+        closureKind: "root-only",
+        unitId: sourceId,
+        closureFingerprint: fingerprint("d"),
+        scriptFingerprint: fingerprint("2"),
+      },
       ...sampleAdmissionSourceWorkspaceFields("source.cad", { projectId }),
     }],
     bindings: [{
       id: "binding.cad-result-to-sysml-part",
-      sourceId: "source.cad",
+      sourceId,
       sourceSymbolId: "cad.result",
       sysmlElementId: "sysml.part-definition.4",
       sysmlElementKind: "PartDefinition",
@@ -99,7 +107,7 @@ function validTechnicalCompilationAdmissionParameters() {
       profileId: "compilation-profile.build123d",
       profileVersion: "1.0.0",
       target: "build123d-source",
-      sourceIds: ["source.cad"],
+      sourceIds: [sourceId],
       profileFingerprint: fingerprint("5"),
     }],
     compilation: {
