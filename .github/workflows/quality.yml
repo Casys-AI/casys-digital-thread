@@ -1,0 +1,65 @@
+name: Quality
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/ui/package-lock.json
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.2
+
+      - name: Install UI dependencies
+        run: npm ci --prefix src/ui
+
+      - name: Check formatting
+        run: deno task fmt
+
+      - name: Verify documentation links
+        run: deno task verify:docs
+
+      - name: Lint
+        run: deno task lint
+
+      - name: Type-check backend
+        run: deno task check
+
+      - name: Type-check UI
+        run: deno task check:ui
+
+      - name: Run tests
+        run: deno task test
+
+      - name: Verify evidence fixtures
+        run: deno task verify:evidence
+
+      - name: Verify committed FEA provider contract
+        run: deno task verify:fea:contract
+
+      - name: Build and verify the native Workbench
+        run: deno task verify:thread:presentation

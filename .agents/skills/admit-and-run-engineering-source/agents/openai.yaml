@@ -1,0 +1,4 @@
+interface:
+  display_name: "Admit and Run Engineering Source"
+  short_description: "Capture, admit, and run bounded engineering source"
+  default_prompt: "Use $admit-and-run-engineering-source to admit and run this existing Build123d, Modelica, or circuit-only SPICE source in the current project."

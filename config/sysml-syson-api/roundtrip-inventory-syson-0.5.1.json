@@ -1,0 +1,1845 @@
+{
+  "schemaVersion": "sysml-syson-roundtrip-inventory/1.0",
+  "authority": "documentary-ground-truth",
+  "consumedByCompiler": false,
+  "note": "No analyzer imports this file. The agent frontend remains package / part def / part usage. Counts.kindsAgentFrontend is an annotation, not a generated table.",
+  "language": "SysML v2",
+  "inventoryId": "sysml-syson-roundtrip-inventory-0.5.1",
+  "doctrine": "Closed language = OMG SysML v2 textual grammar intersected with what the pinned SysON round-trips. Introspect, never invent. See docs/explanations/product/closed-language-compilation.md.",
+  "specification": {
+    "name": "OMG Systems Modeling Language (SysML) v2 textual notation",
+    "concreteSyntax": "org.omg.sysml.xtext InternalSysML.g (Systems-Modeling/SysML-v2-Pilot-Implementation)",
+    "sourceOfTruth": "specification",
+    "scope": "DefinitionElement, UsageElement, AnnotatingElement, Package, LibraryPackage, Import, Alias, filter, Dependency, and KerML literals / operator / feature-reference expressions. KerML membership internals (OwningMembership, FeatureMembership, FeatureTyping, FeatureValue, VariantMembership, …) are not kinds an author writes and are omitted."
+  },
+  "syson": {
+    "pinnedVersion": "0.5.1",
+    "observedMcp": {
+      "name": "mcp-syson",
+      "version": "0.5.2",
+      "health": "ok",
+      "endpoint": "http://127.0.0.1:3009/mcp",
+      "checkedAt": "2026-08-15T08:59:00Z"
+    },
+    "note": "The atelier doctrine and this file name pin SysON 0.5.1. The live provider on 127.0.0.1:3009 reported mcp-syson 0.5.2 on /health and in tools/list _meta.serverInfo."
+  },
+  "coverageSources": {
+    "agentFrontend": {
+      "module": "src/domain/architecture/agent-seal/architecture-sysml-parse.ts",
+      "profile": "sysml-architecture-closed-subset-v1",
+      "forms": [
+        "package",
+        "part-definition",
+        "part-usage"
+      ],
+      "lexicalGuard": "src/domain/architecture/agent-seal/architecture-sysml-lexical.ts admits only keywords package/part/def, identifiers, { } : ;. Comments, strings, numbers, and attributes are rejected."
+    },
+    "serverGenerated": {
+      "operations": [
+        "model.write-architecture@1",
+        "model.write-requirements@1"
+      ],
+      "renderers": [
+        "src/domain/architecture/renderer/architecture-proposal.ts renderArchitectureSysml (package / part def / part usage)",
+        "src/domain/analysis/proof-case.ts renderTargetedOracleRequirementsSysml (requirement, private import SI::*, subject, attribute, require constraint, integer literal, [unit])",
+        "src/domain/analysis/proof-case.ts renderOracleRequirementsSysml (legacy part def + constraint + integer literal)"
+      ],
+      "notCounted": "model.write-sensitivity-edges@1 also emits part def / attribute / constraint; it is outside this mission's write-architecture + write-requirements annotation."
+    }
+  },
+  "probe": {
+    "date": "2026-08-15",
+    "projectName": "probe-sysml-roundtrip-inventory",
+    "projectId": "99816989-c75a-4371-8021-f0189b0a9ec1",
+    "editingContextId": "25d3f2e5-a77f-483b-aa2b-24a19453ca46",
+    "rootPackageId": "b2cd87da-ab25-482c-bcee-449744c1f1cd",
+    "rootPackageLabelObserved": "Package2",
+    "protocol": {
+      "mcpProtocolVersion": "2026-07-28",
+      "headers": [
+        "mcp-protocol-version",
+        "mcp-method",
+        "mcp-name (tools/call only)"
+      ],
+      "paramsMeta": [
+        "io.modelcontextprotocol/protocolVersion",
+        "io.modelcontextprotocol/clientCapabilities",
+        "io.modelcontextprotocol/clientInfo"
+      ]
+    },
+    "toolCallBudget": 15,
+    "toolCallCount": 14,
+    "toolsUsed": [
+      "syson_project_create",
+      "syson_model_create",
+      "syson_element_insert_sysml × 7",
+      "syson_element_children × 2",
+      "syson_constraint_extract × 1",
+      "syson_search × 1",
+      "syson_project_delete"
+    ],
+    "sandboxDeleted": true,
+    "cleanup": {
+      "ok": true,
+      "deleted": true,
+      "projectId": "99816989-c75a-4371-8021-f0189b0a9ec1"
+    },
+    "priorityConstructs": [
+      {
+        "id": "attribute-real",
+        "kindId": "attribute-usage",
+        "sysml": "attribute realAttr : Real;",
+        "status": "passed",
+        "message": "Present after reread as AttributeUsage realAttr (id f04c0d50-c077-465d-800c-7dfa9f58dc7b) with FeatureTyping."
+      },
+      {
+        "id": "attribute-integer",
+        "kindId": "attribute-usage",
+        "sysml": "attribute intAttr : Integer;",
+        "status": "passed",
+        "message": "Present after reread as AttributeUsage intAttr (id 0aa87a04-8303-4d03-bdc5-1cade97b93c5) with FeatureTyping."
+      },
+      {
+        "id": "attribute-string",
+        "kindId": "attribute-usage",
+        "sysml": "attribute strAttr : String;",
+        "status": "passed",
+        "message": "Present after reread as AttributeUsage strAttr (id 83b1608d-9795-4f5b-91c1-11a5332e9b62) with FeatureTyping."
+      },
+      {
+        "id": "literal-decimal",
+        "kindId": "literal-real",
+        "sysml": "attribute mass : Real = 2.86;",
+        "status": "passed",
+        "message": "Insert acknowledged; reread as LiteralRational (id 441b1ddb-bc9b-4e9e-b262-668495adacd4) under AttributeUsage mass. syson_constraint_extract(DecimalProbe) exact message: No ConstraintUsage found under this element. A decimal threshold inside a constraint was not inserted (budget). Value 2.86 was not reopened via syson_value_read.",
+        "knownExtractGap": "SysON 0.5.1 cannot round-trip a decimal literal through syson_constraint_extract (LiteralRational)."
+      },
+      {
+        "id": "requirement-with-doc",
+        "kindId": "requirement-usage",
+        "sysml": "requirement ProbeReq { doc /* Must stay integer */ }",
+        "status": "passed",
+        "message": "Reread as RequirementUsage ProbeReq plus Documentation child."
+      },
+      {
+        "id": "constraint",
+        "kindId": "constraint-usage",
+        "sysml": "constraint intNonNeg { intAttr >= 0 }",
+        "status": "passed",
+        "message": "Reread as ConstraintUsage intNonNeg with OperatorExpression and LiteralInteger."
+      },
+      {
+        "id": "port",
+        "kindId": "port-definition",
+        "sysml": "port def ProbePort { attribute voltage : Real; }",
+        "status": "passed",
+        "message": "Reread as PortDefinition ProbePort; SysON also synthesized ConjugatedPortDefinition ~ProbePort."
+      },
+      {
+        "id": "connection",
+        "kindId": "connection-usage",
+        "sysml": "connection probeLink connect probeEndA to probeEndB;",
+        "status": "passed",
+        "message": "Reread as ConnectionUsage probeLink with two reference ends."
+      },
+      {
+        "id": "item",
+        "kindId": "item-definition",
+        "sysml": "item def ProbeItem {}",
+        "status": "passed",
+        "message": "Reread as ItemDefinition ProbeItem."
+      },
+      {
+        "id": "enum-def",
+        "kindId": "enumeration-definition",
+        "sysml": "enum def ProbeColor { enum red; enum green; }",
+        "status": "passed",
+        "message": "Reread as EnumerationDefinition ProbeColor with EnumerationUsage red, green."
+      },
+      {
+        "id": "comment",
+        "kindId": "comment",
+        "sysml": "comment /* probe comment body */",
+        "status": "passed",
+        "message": "Reread as Comment (label Comment). Body text not reopened."
+      }
+    ],
+    "untestedInBudget": "interface, action, state, allocation, view, requirement def, constraint def, item usage, port usage, connection def, subject, assume/require, literal boolean/string/infinity, and every other specification kind not listed in priorityConstructs."
+  },
+  "counts": {
+    "kindsSpecification": 101,
+    "kindsAgentFrontend": 3,
+    "kindsServerGenerated": 12,
+    "kindsAgentFrontendAndServerGenerated": 3,
+    "kindsUncovered": 89,
+    "kindsProbed": 17,
+    "kindsRoundTripPassed": 17,
+    "kindsRoundTripFailed": 0,
+    "kindsRoundTripMangled": 0,
+    "kindsUntested": 84,
+    "agentFrontendPercent": 2.97,
+    "serverGeneratedPercent": 11.88,
+    "uncoveredPercent": 88.12,
+    "probedPercent": 16.83
+  },
+  "kinds": [
+    {
+      "id": "package",
+      "metaclass": "Package",
+      "textualKeyword": "package",
+      "family": "namespace",
+      "sourceOfTruth": "specification",
+      "note": "Named namespace block.",
+      "coverage": "agentFrontend+serverGenerated",
+      "agentFrontend": true,
+      "serverGenerated": true,
+      "serverGeneratedBy": [
+        "model.write-architecture@1"
+      ],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "library-package",
+      "metaclass": "LibraryPackage",
+      "textualKeyword": "library package",
+      "family": "namespace",
+      "sourceOfTruth": "specification",
+      "note": "Library namespace; optional `standard` prefix.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "import",
+      "metaclass": "NamespaceImport",
+      "textualKeyword": "import / private import / public import",
+      "family": "namespace",
+      "sourceOfTruth": "specification",
+      "note": "Membership or namespace import, including `import SI::*;`.",
+      "coverage": "serverGenerated",
+      "agentFrontend": false,
+      "serverGenerated": true,
+      "serverGeneratedBy": [
+        "model.write-requirements@1"
+      ],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "alias",
+      "metaclass": "AliasMember",
+      "textualKeyword": "alias … for",
+      "family": "namespace",
+      "sourceOfTruth": "specification",
+      "note": "Alias membership.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "filter",
+      "metaclass": "ElementFilterMember",
+      "textualKeyword": "filter",
+      "family": "namespace",
+      "sourceOfTruth": "specification",
+      "note": "Package element filter.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "dependency",
+      "metaclass": "Dependency",
+      "textualKeyword": "dependency … from … to",
+      "family": "namespace",
+      "sourceOfTruth": "specification",
+      "note": "Named dependency relationship.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "comment",
+      "metaclass": "Comment",
+      "textualKeyword": "comment /* … */  or  /* … */",
+      "family": "annotating",
+      "sourceOfTruth": "specification",
+      "note": "Regular comment, optional `about` and `locale`.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "passed",
+        "probeId": "comment",
+        "message": "Inserted `comment /* probe comment body */` inside ProbeHost; reread as Comment (label Comment, id a2e6d43e-b4e5-4708-a1cc-fb163ab63d18). Comment body text was not reopened."
+      }
+    },
+    {
+      "id": "documentation",
+      "metaclass": "Documentation",
+      "textualKeyword": "doc /* … */",
+      "family": "annotating",
+      "sourceOfTruth": "specification",
+      "note": "Documentation annotation.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "passed",
+        "probeId": "requirement-with-doc",
+        "message": "Inserted `doc /* Must stay integer */` inside ProbeReq; reread as Documentation (id 7f5603e5-1e10-44e4-8711-c8dee69ad7d3). Documentation body text was not reopened."
+      }
+    },
+    {
+      "id": "textual-representation",
+      "metaclass": "TextualRepresentation",
+      "textualKeyword": "rep language \"…\" /* … */",
+      "family": "annotating",
+      "sourceOfTruth": "specification",
+      "note": "Language-tagged textual representation.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "metadata-definition",
+      "metaclass": "MetadataDefinition",
+      "textualKeyword": "metadata def",
+      "family": "metadata",
+      "sourceOfTruth": "specification",
+      "note": "Metadata definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "metadata-usage",
+      "metaclass": "MetadataUsage",
+      "textualKeyword": "metadata / @",
+      "family": "metadata",
+      "sourceOfTruth": "specification",
+      "note": "Metadata usage or `@` prefix.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "attribute-definition",
+      "metaclass": "AttributeDefinition",
+      "textualKeyword": "attribute def",
+      "family": "attribute",
+      "sourceOfTruth": "specification",
+      "note": "Attribute definition (data type).",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "attribute-usage",
+      "metaclass": "AttributeUsage",
+      "textualKeyword": "attribute",
+      "family": "attribute",
+      "sourceOfTruth": "specification",
+      "note": "Attribute usage; may be typed and valued.",
+      "coverage": "serverGenerated",
+      "agentFrontend": false,
+      "serverGenerated": true,
+      "serverGeneratedBy": [
+        "model.write-requirements@1"
+      ],
+      "roundTrip": {
+        "status": "passed",
+        "probeId": "attribute-typed",
+        "message": "Inserted `attribute realAttr : Real;`, `attribute intAttr : Integer;`, `attribute strAttr : String;` inside ProbeHost; reread as AttributeUsage labels realAttr, intAttr, strAttr, each with a FeatureTyping child. Type names themselves were not reopened via syson_element_get (budget)."
+      }
+    },
+    {
+      "id": "enumeration-definition",
+      "metaclass": "EnumerationDefinition",
+      "textualKeyword": "enum def",
+      "family": "enumeration",
+      "sourceOfTruth": "specification",
+      "note": "Enumeration definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "passed",
+        "probeId": "enum-def",
+        "message": "Inserted `enum def ProbeColor { enum red; enum green; }`; reread as EnumerationDefinition label ProbeColor (id 4f49febc-933f-41ae-a9b8-d594675ef8b0)."
+      }
+    },
+    {
+      "id": "enumeration-usage",
+      "metaclass": "EnumerationUsage",
+      "textualKeyword": "enum",
+      "family": "enumeration",
+      "sourceOfTruth": "specification",
+      "note": "Enumeration usage / enumerated value.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "passed",
+        "probeId": "enum-def",
+        "message": "Enum members reread as EnumerationUsage labels red and green (ids 1801802e-2db4-443c-9b8a-1741458ab3f8, 9bb9c666-d652-4257-aaa1-7a8d96a94b3e) under VariantMembership."
+      }
+    },
+    {
+      "id": "occurrence-definition",
+      "metaclass": "OccurrenceDefinition",
+      "textualKeyword": "occurrence def",
+      "family": "occurrence",
+      "sourceOfTruth": "specification",
+      "note": "Occurrence definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "occurrence-usage",
+      "metaclass": "OccurrenceUsage",
+      "textualKeyword": "occurrence",
+      "family": "occurrence",
+      "sourceOfTruth": "specification",
+      "note": "Occurrence usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "individual-definition",
+      "metaclass": "IndividualDefinition",
+      "textualKeyword": "individual def",
+      "family": "occurrence",
+      "sourceOfTruth": "specification",
+      "note": "Individual definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "individual-usage",
+      "metaclass": "IndividualUsage",
+      "textualKeyword": "individual",
+      "family": "occurrence",
+      "sourceOfTruth": "specification",
+      "note": "Individual usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "portion-usage",
+      "metaclass": "PortionUsage",
+      "textualKeyword": "snapshot / timeslice",
+      "family": "occurrence",
+      "sourceOfTruth": "specification",
+      "note": "Portion usage (`snapshot` or `timeslice`).",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "event-occurrence-usage",
+      "metaclass": "EventOccurrenceUsage",
+      "textualKeyword": "event",
+      "family": "occurrence",
+      "sourceOfTruth": "specification",
+      "note": "Event occurrence usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "item-definition",
+      "metaclass": "ItemDefinition",
+      "textualKeyword": "item def",
+      "family": "item",
+      "sourceOfTruth": "specification",
+      "note": "Item definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "passed",
+        "probeId": "item",
+        "message": "Inserted `item def ProbeItem {}`; reread as ItemDefinition label ProbeItem (id 80b656fd-46c2-408d-9208-1a075ed4b8d4)."
+      }
+    },
+    {
+      "id": "item-usage",
+      "metaclass": "ItemUsage",
+      "textualKeyword": "item",
+      "family": "item",
+      "sourceOfTruth": "specification",
+      "note": "Item usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "part-definition",
+      "metaclass": "PartDefinition",
+      "textualKeyword": "part def",
+      "family": "part",
+      "sourceOfTruth": "specification",
+      "note": "Part definition.",
+      "coverage": "agentFrontend+serverGenerated",
+      "agentFrontend": true,
+      "serverGenerated": true,
+      "serverGeneratedBy": [
+        "model.write-architecture@1"
+      ],
+      "roundTrip": {
+        "status": "passed",
+        "probeId": "part-def-host",
+        "message": "Inserted `part def ProbeHost { ... }` via syson_element_insert_sysml; reread as PartDefinition label ProbeHost (id 73d5a130-7993-4128-bb34-e345507894b9)."
+      }
+    },
+    {
+      "id": "part-usage",
+      "metaclass": "PartUsage",
+      "textualKeyword": "part",
+      "family": "part",
+      "sourceOfTruth": "specification",
+      "note": "Part usage; closed-subset form is `part name : Type;`.",
+      "coverage": "agentFrontend+serverGenerated",
+      "agentFrontend": true,
+      "serverGenerated": true,
+      "serverGeneratedBy": [
+        "model.write-architecture@1"
+      ],
+      "roundTrip": {
+        "status": "passed",
+        "probeId": "connection",
+        "message": "Inserted `part probeEndA : ProbeEndA;` / `part probeEndB : ProbeEndB;`; reread as PartUsage labels probeEndA, probeEndB."
+      }
+    },
+    {
+      "id": "port-definition",
+      "metaclass": "PortDefinition",
+      "textualKeyword": "port def",
+      "family": "port",
+      "sourceOfTruth": "specification",
+      "note": "Port definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "passed",
+        "probeId": "port",
+        "message": "Inserted `port def ProbePort { attribute voltage : Real; }`; reread as PortDefinition label ProbePort (id c2d0b482-5711-4e13-a72b-1915d71c660a) owning AttributeUsage voltage."
+      }
+    },
+    {
+      "id": "port-usage",
+      "metaclass": "PortUsage",
+      "textualKeyword": "port",
+      "family": "port",
+      "sourceOfTruth": "specification",
+      "note": "Port usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "conjugated-port-definition",
+      "metaclass": "ConjugatedPortDefinition",
+      "textualKeyword": "~ (implicit)",
+      "family": "port",
+      "sourceOfTruth": "specification",
+      "note": "Conjugate of a port definition; SysON synthesizes `~Name`.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "passed",
+        "probeId": "port",
+        "message": "Not authored. SysON synthesized ConjugatedPortDefinition label ~ProbePort (id 3305db8e-0420-49d3-8bbd-14f94ae14c53) plus PortConjugation when the port def was inserted."
+      }
+    },
+    {
+      "id": "connection-definition",
+      "metaclass": "ConnectionDefinition",
+      "textualKeyword": "connection def",
+      "family": "connection",
+      "sourceOfTruth": "specification",
+      "note": "Connection definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "connection-usage",
+      "metaclass": "ConnectionUsage",
+      "textualKeyword": "connection / connect",
+      "family": "connection",
+      "sourceOfTruth": "specification",
+      "note": "Connection usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "passed",
+        "probeId": "connection",
+        "message": "Inserted `connection probeLink connect probeEndA to probeEndB;`; reread as ConnectionUsage label probeLink (id dd298fc4-24b6-4fa5-99c2-92975d785949) with two EndFeatureMembership / ReferenceUsage ends."
+      }
+    },
+    {
+      "id": "binding-connector-as-usage",
+      "metaclass": "BindingConnectorAsUsage",
+      "textualKeyword": "bind",
+      "family": "connection",
+      "sourceOfTruth": "specification",
+      "note": "Binding connector as usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "succession-as-usage",
+      "metaclass": "SuccessionAsUsage",
+      "textualKeyword": "succession / first / then",
+      "family": "connection",
+      "sourceOfTruth": "specification",
+      "note": "Succession as usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "interface-definition",
+      "metaclass": "InterfaceDefinition",
+      "textualKeyword": "interface def",
+      "family": "connection",
+      "sourceOfTruth": "specification",
+      "note": "Interface definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "interface-usage",
+      "metaclass": "InterfaceUsage",
+      "textualKeyword": "interface",
+      "family": "connection",
+      "sourceOfTruth": "specification",
+      "note": "Interface usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "allocation-definition",
+      "metaclass": "AllocationDefinition",
+      "textualKeyword": "allocation def",
+      "family": "connection",
+      "sourceOfTruth": "specification",
+      "note": "Allocation definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "allocation-usage",
+      "metaclass": "AllocationUsage",
+      "textualKeyword": "allocation / allocate",
+      "family": "connection",
+      "sourceOfTruth": "specification",
+      "note": "Allocation usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "flow-definition",
+      "metaclass": "FlowDefinition",
+      "textualKeyword": "flow def",
+      "family": "connection",
+      "sourceOfTruth": "specification",
+      "note": "Flow definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "flow-usage",
+      "metaclass": "FlowUsage",
+      "textualKeyword": "flow",
+      "family": "connection",
+      "sourceOfTruth": "specification",
+      "note": "Flow usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "succession-flow-usage",
+      "metaclass": "SuccessionFlowUsage",
+      "textualKeyword": "succession flow",
+      "family": "connection",
+      "sourceOfTruth": "specification",
+      "note": "Succession flow usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "reference-usage",
+      "metaclass": "ReferenceUsage",
+      "textualKeyword": "ref",
+      "family": "connection",
+      "sourceOfTruth": "specification",
+      "note": "Reference usage; also appears as connection ends.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "action-definition",
+      "metaclass": "ActionDefinition",
+      "textualKeyword": "action def",
+      "family": "behavior",
+      "sourceOfTruth": "specification",
+      "note": "Action definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "action-usage",
+      "metaclass": "ActionUsage",
+      "textualKeyword": "action",
+      "family": "behavior",
+      "sourceOfTruth": "specification",
+      "note": "Action usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "perform-action-usage",
+      "metaclass": "PerformActionUsage",
+      "textualKeyword": "perform",
+      "family": "behavior",
+      "sourceOfTruth": "specification",
+      "note": "Perform action usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "if-action-usage",
+      "metaclass": "IfActionUsage",
+      "textualKeyword": "if / else",
+      "family": "behavior",
+      "sourceOfTruth": "specification",
+      "note": "Conditional action.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "for-loop-action-usage",
+      "metaclass": "ForLoopActionUsage",
+      "textualKeyword": "for",
+      "family": "behavior",
+      "sourceOfTruth": "specification",
+      "note": "For-loop action.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "while-loop-action-usage",
+      "metaclass": "WhileLoopActionUsage",
+      "textualKeyword": "while / until / loop",
+      "family": "behavior",
+      "sourceOfTruth": "specification",
+      "note": "While / until loop action.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "send-action-usage",
+      "metaclass": "SendActionUsage",
+      "textualKeyword": "send",
+      "family": "behavior",
+      "sourceOfTruth": "specification",
+      "note": "Send action.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "accept-action-usage",
+      "metaclass": "AcceptActionUsage",
+      "textualKeyword": "accept",
+      "family": "behavior",
+      "sourceOfTruth": "specification",
+      "note": "Accept action.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "assignment-action-usage",
+      "metaclass": "AssignmentActionUsage",
+      "textualKeyword": "assign",
+      "family": "behavior",
+      "sourceOfTruth": "specification",
+      "note": "Assignment action.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "terminate-action-usage",
+      "metaclass": "TerminateActionUsage",
+      "textualKeyword": "terminate",
+      "family": "behavior",
+      "sourceOfTruth": "specification",
+      "note": "Terminate action.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "decision-node",
+      "metaclass": "DecisionNode",
+      "textualKeyword": "decide",
+      "family": "behavior",
+      "sourceOfTruth": "specification",
+      "note": "Decision node.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "merge-node",
+      "metaclass": "MergeNode",
+      "textualKeyword": "merge",
+      "family": "behavior",
+      "sourceOfTruth": "specification",
+      "note": "Merge node.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "join-node",
+      "metaclass": "JoinNode",
+      "textualKeyword": "join",
+      "family": "behavior",
+      "sourceOfTruth": "specification",
+      "note": "Join node.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "fork-node",
+      "metaclass": "ForkNode",
+      "textualKeyword": "fork",
+      "family": "behavior",
+      "sourceOfTruth": "specification",
+      "note": "Fork node.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "state-definition",
+      "metaclass": "StateDefinition",
+      "textualKeyword": "state def",
+      "family": "behavior",
+      "sourceOfTruth": "specification",
+      "note": "State definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "state-usage",
+      "metaclass": "StateUsage",
+      "textualKeyword": "state",
+      "family": "behavior",
+      "sourceOfTruth": "specification",
+      "note": "State usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "exhibit-state-usage",
+      "metaclass": "ExhibitStateUsage",
+      "textualKeyword": "exhibit",
+      "family": "behavior",
+      "sourceOfTruth": "specification",
+      "note": "Exhibit state usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "transition-usage",
+      "metaclass": "TransitionUsage",
+      "textualKeyword": "transition",
+      "family": "behavior",
+      "sourceOfTruth": "specification",
+      "note": "Transition usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "calculation-definition",
+      "metaclass": "CalculationDefinition",
+      "textualKeyword": "calc def",
+      "family": "behavior",
+      "sourceOfTruth": "specification",
+      "note": "Calculation definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "calculation-usage",
+      "metaclass": "CalculationUsage",
+      "textualKeyword": "calc",
+      "family": "behavior",
+      "sourceOfTruth": "specification",
+      "note": "Calculation usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "constraint-definition",
+      "metaclass": "ConstraintDefinition",
+      "textualKeyword": "constraint def",
+      "family": "constraint",
+      "sourceOfTruth": "specification",
+      "note": "Constraint definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "constraint-usage",
+      "metaclass": "ConstraintUsage",
+      "textualKeyword": "constraint",
+      "family": "constraint",
+      "sourceOfTruth": "specification",
+      "note": "Constraint usage.",
+      "coverage": "serverGenerated",
+      "agentFrontend": false,
+      "serverGenerated": true,
+      "serverGeneratedBy": [
+        "model.write-requirements@1 (legacy renderOracleRequirementsSysml)"
+      ],
+      "roundTrip": {
+        "status": "passed",
+        "probeId": "constraint",
+        "message": "Inserted `constraint intNonNeg { intAttr >= 0 }`; reread as ConstraintUsage label intNonNeg with OperatorExpression and LiteralInteger."
+      }
+    },
+    {
+      "id": "assert-constraint-usage",
+      "metaclass": "AssertConstraintUsage",
+      "textualKeyword": "assert",
+      "family": "constraint",
+      "sourceOfTruth": "specification",
+      "note": "Assert constraint usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "requirement-definition",
+      "metaclass": "RequirementDefinition",
+      "textualKeyword": "requirement def",
+      "family": "requirement",
+      "sourceOfTruth": "specification",
+      "note": "Requirement definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "requirement-usage",
+      "metaclass": "RequirementUsage",
+      "textualKeyword": "requirement",
+      "family": "requirement",
+      "sourceOfTruth": "specification",
+      "note": "Requirement usage.",
+      "coverage": "serverGenerated",
+      "agentFrontend": false,
+      "serverGenerated": true,
+      "serverGeneratedBy": [
+        "model.write-requirements@1"
+      ],
+      "roundTrip": {
+        "status": "passed",
+        "probeId": "requirement-with-doc",
+        "message": "Inserted `requirement ProbeReq { doc /* Must stay integer */ }`; reread as RequirementUsage label ProbeReq (id 9f9755ae-6cf4-41d6-b54d-a4b773dfa81c)."
+      }
+    },
+    {
+      "id": "satisfy-requirement-usage",
+      "metaclass": "SatisfyRequirementUsage",
+      "textualKeyword": "satisfy",
+      "family": "requirement",
+      "sourceOfTruth": "specification",
+      "note": "Satisfy requirement usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "requirement-constraint-usage",
+      "metaclass": "RequirementConstraintUsage",
+      "textualKeyword": "assume / require constraint",
+      "family": "requirement",
+      "sourceOfTruth": "specification",
+      "note": "Assumed or required constraint owned by a requirement.",
+      "coverage": "serverGenerated",
+      "agentFrontend": false,
+      "serverGenerated": true,
+      "serverGeneratedBy": [
+        "model.write-requirements@1"
+      ],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "subject-usage",
+      "metaclass": "SubjectUsage",
+      "textualKeyword": "subject",
+      "family": "requirement",
+      "sourceOfTruth": "specification",
+      "note": "Subject usage of a requirement or case.",
+      "coverage": "serverGenerated",
+      "agentFrontend": false,
+      "serverGenerated": true,
+      "serverGeneratedBy": [
+        "model.write-requirements@1"
+      ],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "actor-usage",
+      "metaclass": "ActorUsage",
+      "textualKeyword": "actor",
+      "family": "requirement",
+      "sourceOfTruth": "specification",
+      "note": "Actor usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "stakeholder-usage",
+      "metaclass": "StakeholderUsage",
+      "textualKeyword": "stakeholder",
+      "family": "requirement",
+      "sourceOfTruth": "specification",
+      "note": "Stakeholder usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "concern-definition",
+      "metaclass": "ConcernDefinition",
+      "textualKeyword": "concern def",
+      "family": "requirement",
+      "sourceOfTruth": "specification",
+      "note": "Concern definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "concern-usage",
+      "metaclass": "ConcernUsage",
+      "textualKeyword": "concern",
+      "family": "requirement",
+      "sourceOfTruth": "specification",
+      "note": "Concern usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "framed-concern-usage",
+      "metaclass": "FramedConcernUsage",
+      "textualKeyword": "frame / framed by",
+      "family": "requirement",
+      "sourceOfTruth": "specification",
+      "note": "Framed concern usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "case-definition",
+      "metaclass": "CaseDefinition",
+      "textualKeyword": "case def",
+      "family": "case",
+      "sourceOfTruth": "specification",
+      "note": "Case definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "case-usage",
+      "metaclass": "CaseUsage",
+      "textualKeyword": "case",
+      "family": "case",
+      "sourceOfTruth": "specification",
+      "note": "Case usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "objective-requirement-usage",
+      "metaclass": "ObjectiveRequirementUsage",
+      "textualKeyword": "objective",
+      "family": "case",
+      "sourceOfTruth": "specification",
+      "note": "Objective requirement usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "analysis-case-definition",
+      "metaclass": "AnalysisCaseDefinition",
+      "textualKeyword": "analysis def",
+      "family": "case",
+      "sourceOfTruth": "specification",
+      "note": "Analysis case definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "analysis-case-usage",
+      "metaclass": "AnalysisCaseUsage",
+      "textualKeyword": "analysis",
+      "family": "case",
+      "sourceOfTruth": "specification",
+      "note": "Analysis case usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "verification-case-definition",
+      "metaclass": "VerificationCaseDefinition",
+      "textualKeyword": "verification def",
+      "family": "case",
+      "sourceOfTruth": "specification",
+      "note": "Verification case definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "verification-case-usage",
+      "metaclass": "VerificationCaseUsage",
+      "textualKeyword": "verification",
+      "family": "case",
+      "sourceOfTruth": "specification",
+      "note": "Verification case usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "requirement-verification-usage",
+      "metaclass": "RequirementVerificationUsage",
+      "textualKeyword": "verify",
+      "family": "case",
+      "sourceOfTruth": "specification",
+      "note": "Requirement verification usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "use-case-definition",
+      "metaclass": "UseCaseDefinition",
+      "textualKeyword": "use case def",
+      "family": "case",
+      "sourceOfTruth": "specification",
+      "note": "Use case definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "use-case-usage",
+      "metaclass": "UseCaseUsage",
+      "textualKeyword": "use case",
+      "family": "case",
+      "sourceOfTruth": "specification",
+      "note": "Use case usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "include-use-case-usage",
+      "metaclass": "IncludeUseCaseUsage",
+      "textualKeyword": "include",
+      "family": "case",
+      "sourceOfTruth": "specification",
+      "note": "Include use case usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "view-definition",
+      "metaclass": "ViewDefinition",
+      "textualKeyword": "view def",
+      "family": "view",
+      "sourceOfTruth": "specification",
+      "note": "View definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "view-usage",
+      "metaclass": "ViewUsage",
+      "textualKeyword": "view",
+      "family": "view",
+      "sourceOfTruth": "specification",
+      "note": "View usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "view-rendering-usage",
+      "metaclass": "ViewRenderingUsage",
+      "textualKeyword": "render",
+      "family": "view",
+      "sourceOfTruth": "specification",
+      "note": "View rendering usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "viewpoint-definition",
+      "metaclass": "ViewpointDefinition",
+      "textualKeyword": "viewpoint def",
+      "family": "view",
+      "sourceOfTruth": "specification",
+      "note": "Viewpoint definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "viewpoint-usage",
+      "metaclass": "ViewpointUsage",
+      "textualKeyword": "viewpoint",
+      "family": "view",
+      "sourceOfTruth": "specification",
+      "note": "Viewpoint usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "rendering-definition",
+      "metaclass": "RenderingDefinition",
+      "textualKeyword": "rendering def",
+      "family": "view",
+      "sourceOfTruth": "specification",
+      "note": "Rendering definition.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "rendering-usage",
+      "metaclass": "RenderingUsage",
+      "textualKeyword": "rendering",
+      "family": "view",
+      "sourceOfTruth": "specification",
+      "note": "Rendering usage.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "extended-definition",
+      "metaclass": "ExtendedDefinition",
+      "textualKeyword": "#… def",
+      "family": "metadata",
+      "sourceOfTruth": "specification",
+      "note": "Definition extended by prefix metadata.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "extended-usage",
+      "metaclass": "ExtendedUsage",
+      "textualKeyword": "#… usage",
+      "family": "metadata",
+      "sourceOfTruth": "specification",
+      "note": "Usage extended by prefix metadata.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "literal-boolean",
+      "metaclass": "LiteralBoolean",
+      "textualKeyword": "true / false",
+      "family": "literal",
+      "sourceOfTruth": "specification",
+      "note": "Boolean literal.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "literal-string",
+      "metaclass": "LiteralString",
+      "textualKeyword": "\"…\"",
+      "family": "literal",
+      "sourceOfTruth": "specification",
+      "note": "String literal.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "literal-integer",
+      "metaclass": "LiteralInteger",
+      "textualKeyword": "0, 1, 42, …",
+      "family": "literal",
+      "sourceOfTruth": "specification",
+      "note": "Integer literal.",
+      "coverage": "serverGenerated",
+      "agentFrontend": false,
+      "serverGenerated": true,
+      "serverGeneratedBy": [
+        "model.write-requirements@1"
+      ],
+      "roundTrip": {
+        "status": "passed",
+        "probeId": "constraint",
+        "message": "Constraint body `intAttr >= 0` reread as OperatorExpression whose right operand is LiteralInteger."
+      }
+    },
+    {
+      "id": "literal-real",
+      "metaclass": "LiteralRational",
+      "textualKeyword": "2.86 (decimal)",
+      "family": "literal",
+      "sourceOfTruth": "specification",
+      "note": "Real / rational decimal literal. Spec Xtext rule is LiteralReal; SysON 0.5.x materializes KerML LiteralRational.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "passed",
+        "probeId": "literal-decimal",
+        "message": "Inserted `attribute mass : Real = 2.86;` inside DecimalProbe; reread as AttributeUsage mass + FeatureValue + LiteralRational (id 441b1ddb-bc9b-4e9e-b262-668495adacd4). syson_constraint_extract(DecimalProbe) returned exact message 'No ConstraintUsage found under this element' (no constraint wrapped the decimal; extract of a decimal threshold was not in budget). Numeric value 2.86 was not reopened via syson_value_read.",
+        "knownExtractGap": "Contract of this atelier: SysON 0.5.1 cannot round-trip a decimal literal through syson_constraint_extract (LiteralRational). model.write-requirements@1 therefore admits only safe integers."
+      }
+    },
+    {
+      "id": "literal-infinity",
+      "metaclass": "LiteralInfinity",
+      "textualKeyword": "*",
+      "family": "literal",
+      "sourceOfTruth": "specification",
+      "note": "Infinity literal (unbounded multiplicity).",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "null-expression",
+      "metaclass": "NullExpression",
+      "textualKeyword": "null",
+      "family": "literal",
+      "sourceOfTruth": "specification",
+      "note": "Null expression.",
+      "coverage": "uncovered",
+      "agentFrontend": false,
+      "serverGenerated": false,
+      "serverGeneratedBy": [],
+      "roundTrip": {
+        "status": "untested",
+        "message": "Not among the priority constructs inserted in the 14-call probe of 2026-08-15."
+      }
+    },
+    {
+      "id": "operator-expression",
+      "metaclass": "OperatorExpression",
+      "textualKeyword": "+ - * / <= >= == …",
+      "family": "expression",
+      "sourceOfTruth": "specification",
+      "note": "Operator expression.",
+      "coverage": "serverGenerated",
+      "agentFrontend": false,
+      "serverGenerated": true,
+      "serverGeneratedBy": [
+        "model.write-requirements@1"
+      ],
+      "roundTrip": {
+        "status": "passed",
+        "probeId": "constraint",
+        "message": "Constraint body `intAttr >= 0` reread as OperatorExpression (id 34b0dcf7-30c5-4f01-bc31-e6b2159d7e8f)."
+      }
+    },
+    {
+      "id": "feature-reference-expression",
+      "metaclass": "FeatureReferenceExpression",
+      "textualKeyword": "name",
+      "family": "expression",
+      "sourceOfTruth": "specification",
+      "note": "Feature reference expression.",
+      "coverage": "serverGenerated",
+      "agentFrontend": false,
+      "serverGenerated": true,
+      "serverGeneratedBy": [
+        "model.write-requirements@1"
+      ],
+      "roundTrip": {
+        "status": "passed",
+        "probeId": "constraint",
+        "message": "Left operand of `intAttr >= 0` reread as FeatureReferenceExpression."
+      }
+    }
+  ]
+}

@@ -1,0 +1,188 @@
+/* -------------------------------------------------------------------------
+   Light atelier palette
+
+   Semantic colours for recorded states. Element colour leaks that used to
+   paint every `p` / `button` inside the workbench were removed so Tailwind
+   screens (overview, brief, requirements, navigation) keep their utilities.
+   ------------------------------------------------------------------------- */
+
+.native-preview-body {
+  color: var(--text);
+  background: var(--bg);
+}
+
+.native-preview-shell {
+  border-color: var(--line);
+  background: var(--surface-0);
+  box-shadow: none;
+}
+
+.thread-workbench {
+  --thread-canvas: #f7f8fa;
+  --thread-paper: #fbfcfd;
+  --thread-panel: #ffffff;
+  --thread-panel-muted: #f2f4f6;
+  --thread-ink: #1c2126;
+  --thread-text: #3a424b;
+  --thread-muted: #5f6773;
+  --thread-faint: #868e99;
+  --thread-border: #e2e5e9;
+  --thread-border-strong: #c6cbd2;
+  --thread-focus: #0e7490;
+  --thread-info: #3f68c4;
+  --thread-green: #1a7f4e;
+  --thread-warning: #9a5b12;
+  --thread-red: #c03e38;
+  --cockpit-text: var(--thread-text);
+  --cockpit-muted: var(--thread-muted);
+  --cockpit-border: var(--thread-border);
+  --cockpit-panel: var(--thread-panel);
+  --cockpit-subtle: var(--thread-panel-muted);
+  --cockpit-accent: var(--thread-focus);
+  --cockpit-success: var(--thread-green);
+  --cockpit-warning: var(--thread-warning);
+  --cockpit-danger: var(--thread-red);
+  --thread-orange: var(--thread-warning);
+  --thread-blue: var(--thread-info);
+  border-color: var(--thread-border);
+  color: var(--thread-text);
+  background: var(--thread-canvas);
+}
+
+.thread-workbench :is(.thread-graph-workspace, .thread-feed-lineage, .thread-feed-lineage > header, .thread-graph-density, .thread-tool-drawer) {
+  border-color: var(--thread-border);
+  background: var(--thread-panel);
+  box-shadow: none;
+}
+
+.thread-workbench :is(.thread-graph-density) {
+  color: var(--thread-muted);
+}
+
+.thread-workbench :is(.thread-feed-lineage header small, .thread-graph-node-system) {
+  color: var(--thread-muted);
+}
+
+.thread-workbench .thread-graph-edge[data-selected="true"] .thread-graph-edge-label {
+  color: var(--thread-blue);
+}
+
+.thread-graph-density-toggle {
+  border-color: var(--thread-border-strong);
+  color: var(--thread-ink);
+  background: var(--thread-panel);
+}
+
+.thread-graph-density-toggle:hover {
+  border-color: var(--thread-border-strong);
+  color: var(--thread-ink);
+  background: var(--thread-panel-muted);
+}
+
+.thread-graph-workspace {
+  overflow: hidden;
+}
+
+.thread-graph-stage {
+  background: transparent;
+}
+
+.thread-graph-stage-verification {
+  background:
+    linear-gradient(rgba(28, 33, 38, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(28, 33, 38, 0.045) 1px, transparent 1px),
+    var(--thread-panel-muted);
+  background-size: 22px 22px, 22px 22px, auto;
+}
+
+.thread-feed-rail::before {
+  background: var(--thread-border-strong);
+}
+
+.thread-feed-rail i {
+  border-color: var(--thread-panel);
+  background: var(--thread-border-strong);
+  box-shadow: none;
+  animation: none;
+}
+
+.thread-feed-lineage {
+  background: var(--thread-panel);
+}
+
+.thread-feed-lineage > header {
+  background: var(--thread-panel-muted);
+}
+
+.thread-graph-component-boundary,
+.thread-feed-lineage .thread-graph-component-boundary {
+  fill: transparent;
+  stroke: var(--thread-border-strong);
+}
+
+.thread-graph-component-label,
+.thread-feed-lineage .thread-graph-component-label {
+  fill: var(--thread-muted);
+}
+
+.thread-graph-edge-line {
+  fill: none;
+  stroke: var(--thread-border-strong);
+}
+
+.thread-graph-arrow path {
+  fill: context-stroke;
+  stroke: none;
+}
+
+.thread-graph-edge-label {
+  fill: var(--thread-muted);
+  stroke: var(--surface-0);
+}
+
+.thread-graph-node-body {
+  fill: var(--surface-1);
+  stroke: var(--thread-border-strong);
+}
+
+.thread-graph-node:hover .thread-graph-node-body,
+.thread-graph-node:focus-visible .thread-graph-node-body {
+  fill: var(--thread-panel-muted);
+  stroke: var(--thread-focus);
+}
+
+.thread-graph-node[data-selected="true"] .thread-graph-node-body {
+  fill: var(--thread-panel-muted);
+}
+
+.thread-graph-node[data-kind="consumption"] .thread-graph-node-body,
+.thread-graph-node[data-kind="action"] .thread-graph-node-body,
+.thread-graph-node[data-kind="requirement"] .thread-graph-node-body {
+  fill: var(--thread-panel-muted);
+}
+
+.thread-graph-node-system,
+.thread-graph-node-kind,
+.thread-graph-node-summary {
+  fill: var(--thread-muted);
+}
+
+.thread-graph-node-label {
+  fill: var(--thread-ink);
+}
+
+.thread-graph-density {
+  color: var(--thread-muted);
+}
+
+.compact-identifier-copy {
+  border-color: var(--thread-border-strong);
+  color: var(--thread-ink);
+  background: var(--thread-panel);
+}
+
+.compact-identifier-copy:hover {
+  border-color: var(--thread-border-strong);
+  color: var(--thread-ink);
+  background: var(--thread-panel-muted);
+}

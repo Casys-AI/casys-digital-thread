@@ -1,0 +1,21 @@
+.env
+.env.*
+!.env.example
+!.env.erpnext.example
+cad-exports/
+node_modules/
+src/ui/.vite/
+# Bundle du cockpit : c'est une SORTIE de build, pas une source. Les surfaces
+# qui le servent le construisent d'abord (preview:cockpit, start:agent,
+# verify:thread:presentation) ; preview:thread sert depuis Vite. Ni la CI ni
+# le serveur MCP n'en dépendent.
+src/ui/dist/
+dist/release/
+state/local/
+
+# Réglages locaux des agents et worktrees : purement locaux, et un worktree est
+# une copie complète du dépôt avec son propre .git. Les workflows Grok internes
+# restent suivis dans le dépôt privé et sont exclus uniquement à l'export public.
+.claude/
+.cursor/
+.codex/

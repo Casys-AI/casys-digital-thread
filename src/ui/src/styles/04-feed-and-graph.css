@@ -1,0 +1,568 @@
+.thread-graph-workspace {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(330px, 0.38fr);
+  align-items: start;
+  border: 1px solid var(--line);
+  background: var(--thread-panel);
+}
+.thread-graph-workspace.is-verification {
+  grid-template-columns: minmax(0, 1fr) 312px;
+  align-items: stretch;
+}
+.thread-graph-workspace.is-wide {
+  grid-template-columns: minmax(0, 1fr);
+}
+.thread-graph-workspace.is-verification > .thread-tool-drawer {
+  border: 0;
+  border-left: 1px solid var(--thread-border);
+  border-radius: 0;
+  box-shadow: none;
+}
+.thread-graph-stage {
+  min-width: 0;
+  min-height: max(480px, calc(100vh - 350px));
+  padding: clamp(0.7rem, 1.6vw, 1.2rem);
+}
+.thread-graph-stage-verification {
+  min-height: max(540px, calc(100vh - 280px));
+}
+.thread-feed {
+  min-width: 0;
+}
+/* Gabarit du journal : un rail continu en gouttière, les faits en colonne.
+   Chaque carte porte sa pastille en absolu, alignée sur le rail. */
+.thread-feed-rail-grid {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  column-gap: 0.875rem;
+}
+.thread-feed-rail-line {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  border-right: 2px solid var(--thread-border);
+}
+.thread-feed-list {
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.thread-feed-entry {
+  position: relative;
+  min-width: 0;
+  opacity: 0;
+  animation: thread-feed-arrive 320ms ease forwards;
+}
+.thread-feed-dot {
+  position: absolute;
+  top: 1rem;
+  left: -21px;
+  z-index: 1;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--thread-panel);
+  border-radius: 50%;
+  background: var(--thread-border);
+}
+.thread-feed-entry[data-active="true"] .thread-feed-dot {
+  background: var(--thread-focus);
+}
+.thread-feed-entry[data-freshness="stale"] .thread-feed-dot,
+.thread-feed-entry[data-freshness="running"] .thread-feed-dot {
+  background: var(--thread-warning);
+}
+.thread-feed-entry[data-freshness="failed"] .thread-feed-dot {
+  background: var(--thread-red);
+}
+.thread-feed-event {
+  min-width: 0;
+  padding: 0 0 var(--space-8);
+}
+.thread-feed-lineage {
+  margin-top: -1px;
+  border: 1px solid var(--thread-border);
+  border-top-color: var(--thread-border);
+  animation: thread-lineage-open 260ms ease both;
+  transform-origin: top;
+}
+.thread-feed-lineage > header {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-16);
+  padding: var(--space-10) var(--space-12);
+  border-bottom: 1px solid var(--thread-border);
+}
+.thread-feed-lineage > header > div {
+  display: grid;
+  gap: var(--space-4);
+}
+.thread-feed-lineage .thread-graph {
+  padding: var(--space-10);
+}
+.thread-feed-lineage .thread-graph-canvas {
+  min-height: 300px;
+  max-height: 540px;
+} /* Sigma local view inside an expanded feed card.
+Même vocabulaire visuel que le mode Exploration (même composant, même
+position:relative, même containment) mais hauteur réduite pour s'intégrer
+au flux du feed sans prendre toute la page. */
+.thread-feed-lineage-sigma {
+  padding: var(--space-10);
+}
+.thread-feed-lineage-sigma .evidence-exploration {
+  min-height: 300px;
+  max-height: 480px;
+  /* Pas de border redondante : la section .thread-feed-lineage apporte déjà
+     une bordure ; on garde celle du stage pour la profondeur visuelle. */
+}
+.thread-graph[data-animate="true"] .thread-graph-edge,
+.thread-graph[data-animate="true"] .thread-graph-node {
+  opacity: 0;
+  animation: thread-graph-compose 360ms ease forwards;
+}
+
+@keyframes thread-feed-arrive {
+  from {
+    opacity: 0;
+    translate: 0 -5px;
+  }
+  to {
+    opacity: 1;
+    translate: 0;
+  }
+}
+
+@keyframes thread-lineage-open {
+  from {
+    opacity: 0;
+    scale: 1 0.97;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@keyframes thread-graph-compose {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.thread-graph {
+  min-width: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--space-12);
+}
+.thread-graph-density {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-16);
+  margin-bottom: var(--space-12);
+  padding: var(--space-8) var(--space-8) var(--space-8) var(--space-12);
+  border-left: 2px solid var(--thread-border-strong);
+  background: var(--thread-panel);
+  font: var(--text-3xs)/1.4 var(--sans);
+}
+.thread-graph-density-toggle {
+  flex: 0 0 auto;
+  min-height: 26px;
+  padding: 0 var(--space-10);
+  border: 1px solid var(--thread-border);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.thread-graph-viewport {
+  min-width: 0;
+}
+.thread-graph-canvas {
+  width: 100%;
+  height: auto;
+  min-height: 480px;
+  overflow: visible;
+}
+.thread-graph-component-boundary {
+  stroke-width: 1;
+  stroke-dasharray: 5 5;
+}
+.thread-graph-component-label {
+  font: 700 9px/1 var(--sans);
+  letter-spacing: 1.2px;
+} /* Aretes et noeuds sont des <g role="button"> atteignables au clavier. Le
+`outline: none` les rendait muets au focus ; l'anneau global les rend a
+nouveau reperables sur le canevas. */
+.thread-graph-edge {
+  cursor: pointer;
+}
+.thread-graph-edge-line {
+  stroke-width: 1.4;
+  transition: opacity 140ms ease, stroke 140ms ease, stroke-width 140ms ease;
+}
+.thread-graph-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+}
+.thread-graph-edge-label {
+  paint-order: stroke;
+  stroke-width: 5px;
+  stroke-linejoin: round;
+  font: 700 8px/1 var(--sans);
+  letter-spacing: 0.35px;
+  pointer-events: none;
+}
+.thread-graph-edge[data-impact="upstream"] .thread-graph-edge-line {
+  stroke: var(--thread-blue);
+}
+.thread-graph-edge[data-impact="downstream"] .thread-graph-edge-line,
+.thread-graph-edge[data-impact="related"] .thread-graph-edge-line {
+  stroke: var(--thread-green);
+}
+.thread-graph-edge[data-impact="unrelated"] {
+  opacity: 0.19;
+}
+.thread-graph-edge[data-selected="true"] .thread-graph-edge-line,
+.thread-graph-edge:focus-visible .thread-graph-edge-line {
+  stroke: var(--thread-focus);
+  stroke-width: 3;
+}
+.thread-graph-edge[data-selected="true"] .thread-graph-edge-label {
+  fill: var(--thread-focus);
+}
+.thread-graph-edge[data-attestation="verified"] .thread-graph-edge-line {
+  stroke-dasharray: 5 3;
+}
+.thread-graph-edge[data-attestation="mismatch"]:not([data-selected="true"]) .thread-graph-edge-line {
+  stroke: var(--thread-red);
+  stroke-dasharray: 2 3;
+  stroke-width: 2.4;
+}
+.thread-graph-edge[data-attestation="mismatch"]:not([data-selected="true"]) .thread-graph-edge-label {
+  fill: var(--thread-red);
+}
+.thread-graph-node {
+  cursor: pointer;
+  transition: opacity 140ms ease;
+}
+.thread-graph-node-body {
+  stroke-width: 1;
+  transition: fill 140ms ease, stroke 140ms ease, stroke-width 140ms ease;
+}
+.thread-graph-node[data-selected="true"] .thread-graph-node-body {
+  stroke: var(--thread-focus);
+  stroke-width: 2.3;
+}
+.thread-graph-node[data-impact="upstream"] .thread-graph-node-body {
+  stroke: var(--thread-blue);
+}
+.thread-graph-node[data-impact="downstream"] .thread-graph-node-body,
+.thread-graph-node[data-impact="related"] .thread-graph-node-body {
+  stroke: var(--thread-green);
+}
+.thread-graph-node[data-impact="unrelated"] {
+  opacity: 0.22;
+}
+.thread-graph-node-state {
+  fill: var(--thread-green);
+}
+.thread-graph-node[data-freshness="stale"] .thread-graph-node-state,
+.thread-graph-node[data-freshness="running"] .thread-graph-node-state {
+  fill: var(--thread-warning);
+}
+.thread-graph-node[data-freshness="failed"] .thread-graph-node-state {
+  fill: var(--thread-red);
+}
+.thread-graph-node[data-kind="consumption"] .thread-graph-node-body,
+.thread-graph-node[data-kind="action"] .thread-graph-node-body {
+  stroke-dasharray: 4 3;
+}
+.thread-graph-node-system,
+.thread-graph-node-kind,
+.thread-graph-node-summary {
+  font-family: var(--mono);
+}
+.thread-graph-node-system {
+  font-size: var(--text-3xs);
+  font-weight: 800;
+  letter-spacing: 0.7px;
+}
+.thread-graph-node-kind {
+  font-size: var(--text-3xs);
+}
+.thread-graph-node-label {
+  font-family: var(--sans);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+.thread-graph-node-summary {
+  font-size: var(--text-3xs);
+}
+.thread-graph-caption,
+.thread-graph-notice {
+  margin: var(--space-12) 0 0;
+  padding-left: var(--space-10);
+  border-left: 2px solid var(--thread-warning);
+  color: var(--thread-muted);
+  font: var(--text-3xs)/1.45 var(--sans);
+}
+.thread-graph-empty {
+  min-height: 26rem;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: var(--text-xs);
+} /* --------------------------------------------------------------------------
+Versioned provenance
+
+Evidence has one graph. Explicit supersession families share one current
+node; their canonical records and internal relations live in the inspector.
+----------------------------------------------------------------------- */
+
+.thread-versioned-provenance {
+  /* Anchor for the absolutely-positioned local-graph burger menu. */
+  position: relative;
+  min-width: 0;
+  border: 1px solid var(--thread-border, var(--line));
+  background: var(--thread-panel, var(--surface-1));
+}
+.thread-versioned-provenance > .thread-graph {
+  padding: var(--space-12);
+}
+.thread-versioned-provenance .thread-graph[data-presentation="canvas"] .thread-graph-viewport,
+.thread-versioned-provenance .thread-graph[data-presentation="canvas"] .thread-graph-canvas {
+  height: clamp(560px, 67vh, 820px);
+  min-height: 560px;
+  max-height: none;
+}
+
+@media (width <= 720px) {
+  .thread-versioned-provenance > header {
+    flex-direction: column;
+  }
+  .thread-versioned-provenance > header > span {
+    text-align: left;
+  }
+}
+/* Sigma needs an absolute containing block. Do not use height:100% on the
+   exploration root: an auto-height verification stage would collapse to 0,
+   Sigma would throw, and React would unmount the cockpit. */
+.evidence-exploration-stage-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 540px;
+}
+.thread-feed-lineage-sigma .evidence-exploration-stage-wrap {
+  min-height: 280px;
+}
+.evidence-exploration-stage {
+  position: absolute;
+  inset: 0;
+  min-width: 0;
+}
+.evidence-exploration-stage > canvas,
+.evidence-exploration-stage > div {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.verification-depth-range {
+  accent-color: var(--thread-focus);
+}
+
+@media (max-width: 1120px) {
+  .thread-graph-workspace.is-verification {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .thread-graph-workspace.is-verification > .thread-tool-drawer {
+    border-top: 1px solid var(--thread-border);
+    border-left: 0;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+Filtre par pièce du feed Activity (sélecteur de composant en tête du feed).
+Déplacé de 16-part-lane.css lors du retrait de la vue Par pièce : le filtre
+du feed est la lecture par pièce qui survit.
+--------------------------------------------------------------------------- */
+
+.thread-feed-component-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  padding: var(--space-8) var(--space-12);
+  border-bottom: 1px solid var(--thread-border);
+  background: var(--thread-panel-muted);
+}
+.thread-feed-component-filter > label {
+  flex-shrink: 0;
+  color: var(--muted);
+  font: 600 var(--text-2xs)/1 var(--sans);
+  letter-spacing: 0.02em;
+}
+.thread-feed-component-filter > select {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-4) var(--space-8);
+  border: 1px solid var(--thread-border-strong);
+  border-radius: 4px;
+  color: var(--thread-ink);
+  font: var(--text-sm)/1 var(--sans);
+  background: var(--thread-panel);
+  cursor: pointer;
+  appearance: auto;
+} /* ---------------------------------------------------------------------------
+Menu burger des réglages du graphe local (vue Evidence).
+Posé en haut à gauche du canvas,
+replié par défaut — façon Obsidian.
+--------------------------------------------------------------------------- */
+
+/* Zero-height in-flow anchor placed between the section header and the
+   canvas: the toggle and panel float over the canvas' top-left corner
+   without depending on the header height. */
+.evidence-graph-menu {
+  position: relative;
+  height: 0;
+  z-index: 5;
+}
+
+.thread-graph-controls {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-10);
+  padding: var(--space-6) var(--space-6) var(--space-6) var(--space-12);
+  border: 1px solid var(--thread-border);
+  color: var(--thread-muted);
+  background: var(--thread-panel);
+  font: 600 var(--text-3xs) / 1 var(--sans);
+  letter-spacing: 0.02em;
+}
+.thread-graph-controls > div {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.thread-graph-controls button {
+  min-height: 28px;
+  padding: 0 var(--space-10);
+  border: 1px solid var(--thread-border-strong);
+  color: var(--thread-ink);
+  background: var(--thread-panel);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.thread-graph-controls button:first-child,
+.thread-graph-controls button:last-child {
+  width: 28px;
+  padding: 0;
+  font-size: var(--text-base);
+}
+.thread-graph-controls button:hover:not(:disabled),
+.thread-graph-controls button:focus-visible {
+  border-color: var(--thread-border-strong);
+  color: var(--thread-ink);
+  background: var(--thread-panel-muted);
+}
+.thread-graph-controls button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+.thread-graph[data-presentation="canvas"] .thread-graph-viewport {
+  min-height: clamp(430px, 56vh, 690px);
+  overflow: hidden;
+  border: 1px solid var(--thread-border);
+  background:
+    linear-gradient(rgba(28, 33, 38, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(28, 33, 38, 0.035) 1px, transparent 1px),
+    var(--thread-panel-muted);
+  background-size: 24px 24px;
+}
+.thread-graph[data-presentation="canvas"] .thread-graph-canvas {
+  height: clamp(430px, 56vh, 690px);
+  min-height: 0;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.thread-graph[data-panning="true"] .thread-graph-canvas {
+  cursor: grabbing;
+}
+.thread-feed-lineage .thread-graph-viewport {
+  overflow: hidden;
+}
+
+@media (max-width: 720px) {
+  .thread-graph-controls {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .thread-graph-controls > div {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 540px) {
+  .thread-graph-controls button:nth-child(3) {
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+Feed 7a : en-tête de jour et eyebrow de kind.
+
+L'eyebrow porte la couleur du kind enregistré — les mêmes rôles que le graphe
+(--thread-*), jamais un hex local. Un kind sans règle garde --thread-muted :
+le feed n'invente pas de famille de couleur pour un kind inconnu.
+--------------------------------------------------------------------------- */
+.thread-feed-dayhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-10);
+  padding: var(--space-12) 0 var(--space-6);
+  color: var(--thread-muted);
+  font: 500 var(--text-3xs) / 1.2 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.thread-feed-eyebrow {
+  color: var(--thread-muted);
+  font: 500 var(--text-3xs) / 1.2 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.thread-feed-entry[data-kind="requirement"] .thread-feed-eyebrow {
+  color: var(--thread-focus);
+}
+.thread-feed-entry[data-kind="artifact"] .thread-feed-eyebrow {
+  color: var(--thread-info);
+}
+.thread-feed-entry[data-kind="observation"] .thread-feed-eyebrow {
+  color: var(--thread-info);
+}
+.thread-feed-entry[data-kind="evaluation"] .thread-feed-eyebrow,
+.thread-feed-entry[data-kind="verdict"] .thread-feed-eyebrow {
+  color: var(--thread-green);
+}
+.thread-feed-entry[data-kind="violation"] .thread-feed-eyebrow {
+  color: var(--thread-red);
+}
+.thread-feed-entry[data-review-status="to-review"] .thread-feed-eyebrow,
+.thread-feed-entry[data-review-status="revision-requested"] .thread-feed-eyebrow {
+  color: var(--thread-warning);
+}

@@ -1,0 +1,135 @@
+{
+  "schemaVersion": "cm01-v3-golden-reference/1.0",
+  "id": "coffee-machine-cm01-v3",
+  "title": "CoffeeMachine CM-01 completed evidence reference",
+  "status": "non-executable-reference",
+  "sourceFixture": {
+    "projectId": "coffee-machine-cm01",
+    "projectSnapshotId": "coffee-machine-cm01:project:r10:f2cd6a15cf0e0c72",
+    "projectRevision": 10
+  },
+  "candidateProject": {
+    "projectId": "coffee-machine-cm01-v3",
+    "subjectId": "project:coffee-machine-cm01-v3"
+  },
+  "evidenceBoundary": "A static comparison reference for the completed CM-01 demonstration. It does not authorize a runtime, provider call, product release, certification, or manufacturing claim.",
+  "expected": {
+    "architecture": {
+      "artifact": {
+        "role": "architecture-model",
+        "kind": "sysml-model",
+        "producer": { "serverId": "syson", "tool": "syson_element_insert_sysml" }
+      }
+    },
+    "cad": {
+      "artifacts": [
+        {
+          "role": "cad-plan",
+          "kind": "document",
+          "producer": {
+            "serverId": "digital-thread",
+            "tool": "compile_coffee_machine_cm01_semantic_cad_plan"
+          }
+        },
+        {
+          "role": "cad-script",
+          "kind": "script",
+          "producer": {
+            "serverId": "digital-thread",
+            "tool": "compile_coffee_machine_cm01_semantic_cad_plan"
+          }
+        },
+        {
+          "role": "cad-step",
+          "kind": "step",
+          "producer": { "serverId": "build123d", "tool": "build123d_export" }
+        }
+      ]
+    },
+    "modelica": {
+      "artifact": {
+        "role": "modelica-result",
+        "kind": "solver-result",
+        "producer": { "serverId": "modelica", "tool": "modelica_simulate" }
+      },
+      "measurements": [
+        {
+          "metric": "heater_energy",
+          "value": 493914.2758438271,
+          "unit": "J",
+          "absoluteTolerance": 4939.142758438271
+        },
+        {
+          "metric": "heater_power_peak",
+          "value": 1500,
+          "unit": "W",
+          "absoluteTolerance": 1
+        },
+        {
+          "metric": "time_to_target_temperature",
+          "value": 138,
+          "unit": "s",
+          "absoluteTolerance": 1
+        },
+        {
+          "metric": "water_temperature_max",
+          "value": 94.00000007343664,
+          "unit": "degC",
+          "absoluteTolerance": 0.1
+        }
+      ]
+    },
+    "erp": {
+      "artifact": {
+        "role": "erp-bom",
+        "kind": "bom",
+        "producer": { "serverId": "erpnext", "tool": "erpnext_bom_get" }
+      },
+      "measurements": [
+        {
+          "metric": "bom_quantity_per_finished_good",
+          "value": 1,
+          "unit": "Nos",
+          "absoluteTolerance": 0
+        }
+      ]
+    },
+    "mechanical": {
+      "evidenceBoundary": "Concept verification only for the isolated CM-01 drip tray; no certification or fabrication-release claim.",
+      "proof": {
+        "artifactRole": "mechanical-proof",
+        "sha256": "500579c225561a873636952a990b80a33411b7bc87424f396e8963ae342f8dc2"
+      },
+      "step": {
+        "artifactRole": "mechanical-step",
+        "fingerprint": {
+          "algorithm": "sha256",
+          "scope": "producer-consumer-handoff"
+        }
+      },
+      "consumption": {
+        "artifactRole": "mechanical-step",
+        "consumer": { "serverId": "calculix", "tool": "calculix_solve_static" },
+        "status": "verified"
+      },
+      "measurements": [
+        {
+          "metric": "assembly_max_displacement",
+          "value": 0.10363294359363535,
+          "unit": "mm",
+          "absoluteTolerance": 0.0010363294359363535
+        },
+        {
+          "metric": "assembly_max_von_mises",
+          "value": 0.5309183805726515,
+          "unit": "MPa",
+          "absoluteTolerance": 0.005309183805726515
+        }
+      ],
+      "evaluations": [
+        { "metric": "assembly_max_displacement", "status": "pass" },
+        { "metric": "assembly_max_von_mises", "status": "pass" }
+      ]
+    }
+  }
+}

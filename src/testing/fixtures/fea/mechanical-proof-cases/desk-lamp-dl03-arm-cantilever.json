@@ -1,0 +1,159 @@
+{
+  "schemaVersion": "mechanical-proof-case/1.0",
+  "id": "desk-lamp-dl03-arm-cantilever",
+  "revision": 1,
+  "scope": "DL-03 articulated arm taken in isolation: a fused single-solid bracket, 28 x 28 mm section, 340 mm column and 360 mm horizontal cantilever.",
+  "evidenceBoundary": "Concept verification only. Not a certification, a material release, a joint qualification, a fatigue or stability assessment, or a fabrication claim. Head mass, material and safety factor are assumptions declared in the approved brief.",
+  "project": {
+    "id": "desk-lamp-dl03",
+    "subjectId": "project:desk-lamp-dl03",
+    "baseThreadSnapshot": {
+      "id": "project:desk-lamp-dl03:r7:design-write-geometry-fd10a31336bdb4ee0362204472547f25c9cac2775d436f75a2f10b30fcc8d6ef",
+      "revision": 7,
+      "subjectId": "project:desk-lamp-dl03"
+    }
+  },
+  "target": {
+    "id": "dl03-articulated-arm",
+    "modelElementId": "416203f6-56af-4bea-8e36-4d21a97a998f"
+  },
+  "authorization": {
+    "workItemId": "work-seal",
+    "decisionId": "decision-seal"
+  },
+  "requirementsSource": {
+    "provider": "syson",
+    "editingContextId": "d6789dc0-ce2c-4132-bf77-df832ea9f049",
+    "elementId": "1a02545d-0e19-4994-a5c5-36fa9313e021"
+  },
+  "solver": {
+    "provider": "calculix",
+    "tool": "calculix_solve_static",
+    "resultSchemaVersion": "2.0"
+  },
+  "cadSource": {
+    "kind": "parametric",
+    "generator": {
+      "provider": "build123d",
+      "tool": "build123d_export",
+      "definition": {
+        "mediaType": "text/x-python",
+        "sha256": "f6bd0a6b3423622cdc8c9ded61732990303f2817f33c7f6fc8ff438f2c0f3a19",
+        "bytes": 347
+      }
+    },
+    "engineeringBoundary": {
+      "designIntent": "partial",
+      "editableCad": "absent",
+      "manufacturability": "not-established",
+      "limitations": [
+        "The proof geometry is the isolated ArticulatedArm PartDefinition, not the assembled lamp.",
+        "The joint between the arm root and the weighted base is not modelled; the root is treated as fully fixed.",
+        "The declaration carries no tolerances, interfaces, manufacturing features or process evidence."
+      ]
+    }
+  },
+  "expectedCadArtifact": {
+    "format": "step",
+    "sha256": "36413ed21183dc7b850a9b9f384fa2002be002d6edd6fad3030f4432d03b1b25",
+    "bytes": 22319
+  },
+  "analysis": {
+    "kind": "linear-static",
+    "material": {
+      "model": "isotropic-linear-elastic",
+      "basis": "Aluminium 6061-T6 from a generic datasheet; assumption declared in the approved brief and pending a selected material and its certificate.",
+      "youngModulus": {
+        "value": 69000,
+        "unit": "MPa"
+      },
+      "poissonRatio": {
+        "value": 0.33,
+        "unit": "1"
+      }
+    },
+    "mesh": {
+      "kind": "tetrahedral-volume",
+      "targetSize": {
+        "value": 5,
+        "unit": "mm"
+      }
+    },
+    "supports": [
+      {
+        "id": "arm-root-fixed",
+        "kind": "fixed",
+        "selection": {
+          "name": "FIXED",
+          "box": {
+            "min": [
+              -15,
+              -15,
+              19
+            ],
+            "max": [
+              15,
+              15,
+              22
+            ],
+            "unit": "mm"
+          }
+        }
+      }
+    ],
+    "loads": [
+      {
+        "id": "head-mass-at-tip",
+        "kind": "force",
+        "selection": {
+          "name": "LOADED",
+          "box": {
+            "min": [
+              345,
+              -15,
+              331
+            ],
+            "max": [
+              361,
+              15,
+              361
+            ],
+            "unit": "mm"
+          }
+        },
+        "force": {
+          "value": [
+            0,
+            0,
+            -4.903325
+          ],
+          "unit": "N"
+        }
+      }
+    ]
+  },
+  "requirements": [
+    {
+      "id": "dl03-arm-displacement",
+      "name": "maximumDisplacement",
+      "metric": "maximum-displacement",
+      "feature": "maximumDisplacement",
+      "operator": "<=",
+      "limit": {
+        "value": 5,
+        "unit": "mm"
+      }
+    },
+    {
+      "id": "dl03-arm-von-mises",
+      "name": "maximumVonMisesStress",
+      "metric": "maximum-von-mises-stress",
+      "feature": "maximumVonMisesStress",
+      "operator": "<=",
+      "limit": {
+        "value": 90000000,
+        "unit": "Pa"
+      }
+    }
+  ]
+}

@@ -1,0 +1,304 @@
+# The core provider chain, one command:
+#   docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-build123d-sandbox mcp-calculix
+#
+# mcp-erpnext is an optional, separate sibling integration. Start it explicitly only
+# when its sibling checkout and environment file are available.
+#
+# Services:
+#   syson-db / syson-app   SysON (SysML v2 modeler) on http://localhost:8180
+#   mcp-syson              MCP over HTTP on http://localhost:3009
+#   mcp-build123d          MCP over HTTP on http://localhost:3014
+#   mcp-calculix           MCP over HTTP on http://localhost:3015
+#   mcp-erpnext            MCP over HTTP on http://localhost:3012
+#
+# The historical mcp-modelica sidecar on port 3016 is retired. Product
+# Modelica runs in the server-owned local microVM.
+#
+# The MCP servers bind 0.0.0.0 INSIDE their containers (required to be
+# reachable through the port mapping); the mapping itself is loopback-only,
+# so nothing is exposed beyond this machine.
+#
+# build123d and CalculiX share the /exports volume: a STEP exported by
+# build123d_export is immediately readable by CalculiX at /exports/<name>.step;
+# CalculiX mounts that CAD exchange read-only.
+# The Digital Thread stages its generic content-addressed FEA input in the
+# provider-private calculix-inputs volume at /inputs. It is neither an exchange
+# nor evidence: CalculiX snapshots and hashes the file into its private workdir.
+# CalculiX keeps its own bounded, durable run ledger in calculix-runs; it never
+# treats the shared CAD exchange as its evidence store.
+#
+services:
+  syson-db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: syson
+      POSTGRES_USER: syson
+      POSTGRES_PASSWORD: syson
+    volumes:
+      - syson-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U syson -d syson"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [chain]
+
+  syson-app:
+    # Upstream publishes amd64 only; docker/syson-native repacks the identical
+    # jar onto a multi-arch JRE so the app runs natively on Apple Silicon
+    # (startup measured 40.6 s emulated vs 14.4 s native). Set SYSON_IMAGE to
+    # the upstream image to bypass the local build and take emulation instead.
+    build:
+      context: docker/syson-native
+    image: "${SYSON_IMAGE:-casys-digital-thread/syson-native:v2026.7.0}"
+    ports:
+      - "127.0.0.1:8180:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://syson-db/syson
+      SPRING_DATASOURCE_USERNAME: syson
+      SPRING_DATASOURCE_PASSWORD: syson
+      SIRIUS_COMPONENTS_CORS_ALLOWEDORIGINPATTERNS: "*"
+      SERVER_PORT: 8080
+      # Elasticsearch is an experimental, opt-in SysON integration. It is not
+      # part of this topology, so do not let its default localhost probe turn
+      # the otherwise ready SysON service into a false-negative health state.
+      MANAGEMENT_HEALTH_ELASTICSEARCH_ENABLED: "false"
+    depends_on:
+      syson-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      # SysON loads its standard libraries at boot; under amd64 emulation this
+      # took 217 seconds in the integration check.
+      start_period: 240s
+    networks: [chain]
+
+  mcp-syson:
+    # Keep the SysON sidecar independently selectable for a locally verified
+    # protocol fix. This avoids replacing it with the shared toolchain image
+    # when Compose is started for build123d or CalculiX.
+    image: "${MCP_SYSON_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:c04922cc2c0f503c34277c5a1dc81ab28b141945acad90345e2d16882535b4bc}"
+    command: ["syson", "--port=3009", "--hostname=0.0.0.0"]
+    environment:
+      SYSON_URL: http://syson-app:8080
+    ports:
+      - "127.0.0.1:3009:3009"
+    depends_on:
+      syson-app:
+        condition: service_healthy
+    networks: [chain]
+
+  mcp-build123d:
+    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:7a255f24448ddb6de496c4e47c2d1634c63daea67e9082b558257287215b23b5}"
+    command: ["build123d", "--port=3014", "--hostname=0.0.0.0"]
+    ports:
+      - "127.0.0.1:3014:3014"
+    volumes:
+      - exports:/exports
+    networks: [chain]
+    # WHY QUOTAS HERE AND NOT IN THE SCRIPT VALIDATOR — this is the only
+    # provider that executes a geometry program proposed by an agent and signed
+    # by a human.  Resource exhaustion is a quantitative bound: a token-level
+    # validator cannot express it (a single expression with no loop can still
+    # exhaust memory), and enforcing it in the language would cripple the
+    # geometry vocabulary.  The container bounds consumption whatever the
+    # script does; the validator bounds *reach* (filesystem, imports, I/O).
+    # Values are deliberately generous: a real STEP/GLTF export of an assembly
+    # is memory-hungry, and a false OOM would look like a product defect.
+    mem_limit: 2g
+    cpus: 2.0
+    pids_limit: 128
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  # WHY A SECOND build123d — this instance executes GEOMETRY PROGRAMS PROPOSED BY
+  # AN AGENT (the preview path), while mcp-build123d only ever runs server-fixed
+  # recipes rendered from reviewed code. A SHA-256 fingerprint proves the identity
+  # of bytes AFTER sealing, not their causal provenance: a write landing in the
+  # shared evidence volume before the producer computes its hash would make the
+  # wrong hash the expected one, and every downstream consumer would then
+  # authenticate the wrong bytes perfectly. So the container that runs proposed
+  # programs gets a PRIVATE volume and never touches `exports`. The server lifts
+  # its bytes out with `docker compose cp` + fail-closed SHA-256 verification,
+  # exactly as it already does for attested assets.
+  mcp-build123d-sandbox:
+    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:7a255f24448ddb6de496c4e47c2d1634c63daea67e9082b558257287215b23b5}"
+    command: ["build123d", "--port=3014", "--hostname=0.0.0.0"]
+    ports:
+      - "127.0.0.1:3024:3014"
+    volumes:
+      - build123d-sandbox-exports:/exports
+    networks: [chain]
+    mem_limit: 2g
+    cpus: 2.0
+    pids_limit: 128
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  mcp-calculix:
+    # CalculiX has its own release and durable-record contract. In particular,
+    # its published entrypoint already owns HTTP startup; do not pass the
+    # legacy engineering-toolchain subcommand here.
+    image: "${MCP_CALCULIX_IMAGE:-ghcr.io/casys-ai/mcp-calculix@sha256:76c9630eeecfe164c6b3c4d8b845c51fa7f8b48528773cb149b6c7a0ae2799a8}"
+    ports:
+      - "127.0.0.1:3015:3015"
+    environment:
+      CALCULIX_RUNS_DIRECTORY: /var/lib/mcp-calculix-runs
+      CALCULIX_MAX_RECORDED_RUNS: "24"
+    volumes:
+      - exports:/exports:ro
+      - calculix-inputs:/inputs
+      - calculix-runs:/var/lib/mcp-calculix-runs
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3015/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks: [chain]
+
+  # Until the mcp-server 0.24 base is reviewed and released by mcp-erpnext, the
+  # local tag combines base 17ca098 with viewer/UOM fix 1d99467. Build only from
+  # that exact clean commit (MCP_ERPNEXT_CONTEXT can select another worktree).
+  # The ERP API remains on its own network; only this MCP bridge joins both.
+  mcp-erpnext:
+    build:
+      context: "${MCP_ERPNEXT_CONTEXT:-../mcp-erpnext}"
+    image: "${MCP_ERPNEXT_IMAGE:-casys-digital-thread/mcp-erpnext:3.0.0-17ca098-1d99467}"
+    command:
+      [
+        "run",
+        "--allow-all",
+        "server.ts",
+        "--http",
+        "--port=3012",
+        "--hostname=0.0.0.0",
+        "--categories=manufacturing,inventory,operations",
+      ]
+    env_file:
+      - path: "${ERPNEXT_ENV_FILE:-../mcp-erpnext/.env}"
+        required: false
+    environment:
+      # Container DNS is preferable to routing API credentials through a host
+      # port. Override only when the ERPNext stack uses another service name.
+      ERPNEXT_URL: "${ERPNEXT_UPSTREAM_URL:-http://frontend:8080}"
+    ports:
+      - "127.0.0.1:3012:3012"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "deno",
+          "eval",
+          "const response = await fetch('http://127.0.0.1:3012/health'); if (!response.ok) Deno.exit(1);",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks: [chain, erpnext]
+
+  # The four standalone engineering-capability servers, each pinned to its published ghcr
+  # image. Their entrypoints default to HTTP mode binding 0.0.0.0 inside the
+  # container on their park port; the mappings stay loopback-only. dfm,
+  # prusaslicer and spice mount /exports read-only: they verify artifacts the
+  # chain produced (or dropped) there — they never write into it.
+  mcp-dfm:
+    image: "${MCP_DFM_IMAGE:-ghcr.io/casys-ai/mcp-dfm@sha256:a31aa702e45e4445c67454f807832b60455211664fa98ff36f54948aedec4fb9}"
+    ports:
+      - "127.0.0.1:3018:3018"
+    volumes:
+      - exports:/exports:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "deno",
+          "eval",
+          "const response = await fetch('http://127.0.0.1:3018/health'); if (!response.ok) Deno.exit(1);",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks: [chain]
+
+  mcp-tolerance:
+    image: "${MCP_TOLERANCE_IMAGE:-ghcr.io/casys-ai/mcp-tolerance@sha256:fb84ac18847561c9003d0ca19111fa8ab2afe7e99dfcd325129de279dff01aea}"
+    ports:
+      - "127.0.0.1:3019:3019"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "deno",
+          "eval",
+          "const response = await fetch('http://127.0.0.1:3019/health'); if (!response.ok) Deno.exit(1);",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks: [chain]
+
+  mcp-prusaslicer:
+    image: "${MCP_PRUSASLICER_IMAGE:-ghcr.io/casys-ai/mcp-prusaslicer@sha256:52bb17da9db8fa59e62ce49d5695cd9982ea91fb0150f720e029ef9612f0a342}"
+    ports:
+      - "127.0.0.1:3022:3022"
+    volumes:
+      - exports:/exports:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "deno",
+          "eval",
+          "const response = await fetch('http://127.0.0.1:3022/health'); if (!response.ok) Deno.exit(1);",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks: [chain]
+
+  mcp-spice:
+    image: "${MCP_SPICE_IMAGE:-ghcr.io/casys-ai/mcp-spice@sha256:cabf9a87e2006811484625f833859b96724faaf5dab6d60f1a10dc7cc6777a69}"
+    ports:
+      - "127.0.0.1:3023:3023"
+    volumes:
+      - exports:/exports:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "deno",
+          "eval",
+          "const response = await fetch('http://127.0.0.1:3023/health'); if (!response.ok) Deno.exit(1);",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks: [chain]
+
+networks:
+  chain:
+  erpnext:
+    external: true
+    name: "${ERPNEXT_DOCKER_NETWORK:-erpnext-docker_frappe_network}"
+
+volumes:
+  build123d-sandbox-exports:
+  syson-db-data:
+  exports:
+  # Generic FEA staging is content-addressed and non-authoritative. It may be
+  # removed only as the explicit, known input volume of a stopped topology;
+  # it is never a run ledger or evidence store.
+  calculix-inputs:
+    name: "${CALCULIX_INPUTS_VOLUME:-casys-digital-thread-calculix-inputs}"
+  # Retained CalculiX ledgers support calculix_run_get recovery across a
+  # container restart. A local integration run can select a fresh volume
+  # instead of deleting the default evidence history.
+  calculix-runs:
+    name: "${CALCULIX_RUNS_VOLUME:-casys-digital-thread-calculix-runs}"

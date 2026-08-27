@@ -1,0 +1,77 @@
+{
+  "imports": {
+    "@casys/mcp-server": "jsr:@casys/mcp-server@0.26.1",
+    "@std/assert": "jsr:@std/assert@1.0.14",
+    "@std/cli": "jsr:@std/cli@1",
+    "@std/yaml": "jsr:@std/yaml@1",
+    "@dagrejs/dagre": "npm:@dagrejs/dagre@^3.1.0",
+    "@lezer/python": "npm:@lezer/python@1.1.19",
+    "graphology": "npm:graphology@^0.26.0",
+    "microsandbox": "npm:microsandbox@0.6.8",
+    "occt-import-js": "npm:occt-import-js@0.0.23"
+  },
+  "minimumDependencyAge": {
+    "age": "P1D",
+    "exclude": [
+      "jsr:@casys/mcp-server"
+    ]
+  },
+  "tasks": {
+    "start": "deno run --allow-read=config,state,src/ui,mcp-server.yaml --allow-write=state/local --allow-net --allow-run=docker --allow-env server.ts",
+    "start:local": "deno run --no-prompt --frozen --node-modules-dir=auto --allow-read=config,state,src/ui,mcp-server.yaml,node_modules --allow-write=state/local --allow-net --allow-run=docker --allow-env=LOG,MCP_AUTH_PROVIDER,MCP_AUTH_AUDIENCE,MCP_AUTH_RESOURCE,MCP_AUTH_DOMAIN,MCP_AUTH_ISSUER,MCP_AUTH_JWKS_URI,MCP_AUTH_SCOPES,MCP_AUTH_RESOURCE_METADATA_URL,MCP_FLEET_MANIFEST,MCP_RUN_FIXTURE,MCP_MRTR_SIGNING_KEY,MCP_PORT,MCP_HOSTNAME,NAPI_RS_ENFORCE_VERSION_CHECK,NAPI_RS_NATIVE_LIBRARY_PATH,NAPI_RS_FORCE_WASI,NAPI_RS_WASI_FLAVOR,MSB_PATH,MSB_LIBKRUNFW_PATH,MSB_CONFIG_PATH,MSB_HOME,MSB_BACKEND,MSB_API_URL,MSB_API_KEY,MSB_PROFILE --allow-ffi=node_modules server.ts --local-execution",
+    "start:yolo": "deno run --no-prompt --frozen --node-modules-dir=auto --allow-read=config,state,src/ui,mcp-server.yaml,node_modules --allow-write=state/local --allow-net --allow-run=docker --allow-env=LOG,MCP_AUTH_PROVIDER,MCP_AUTH_AUDIENCE,MCP_AUTH_RESOURCE,MCP_AUTH_DOMAIN,MCP_AUTH_ISSUER,MCP_AUTH_JWKS_URI,MCP_AUTH_SCOPES,MCP_AUTH_RESOURCE_METADATA_URL,MCP_FLEET_MANIFEST,MCP_RUN_FIXTURE,MCP_MRTR_SIGNING_KEY,MCP_PORT,MCP_HOSTNAME,NAPI_RS_ENFORCE_VERSION_CHECK,NAPI_RS_NATIVE_LIBRARY_PATH,NAPI_RS_FORCE_WASI,NAPI_RS_WASI_FLAVOR,MSB_PATH,MSB_LIBKRUNFW_PATH,MSB_CONFIG_PATH,MSB_HOME,MSB_BACKEND,MSB_API_URL,MSB_API_KEY,MSB_PROFILE --allow-ffi=node_modules server.ts --yolo --local-execution",
+    "start:agent": "npm --prefix src/ui run build:thread && deno run --allow-run=deno --allow-net=127.0.0.1:5175 scripts/serve/supervise-agent-stack.ts",
+    "dev": "deno run --watch=server.ts,src,config --allow-read=config,state,src/ui,mcp-server.yaml --allow-write=state/local --allow-net --allow-run=docker --allow-env server.ts",
+    "preview:browser": "deno run scripts/serve/console-browser-harness.ts",
+    "thread:capture-syson-inventory": "deno run --allow-net=127.0.0.1:3009 --allow-write=state/local scripts/probes/capture-build123d-api-inventory.ts scripts/probes/capture-syson-model-inventory.ts",
+    "release:source-alpha:build": "deno run --no-prompt --frozen --allow-read --allow-write=dist/release --allow-run=git scripts/release/build-source-alpha-inventory.ts",
+    "release:source-alpha:render": "deno run --no-prompt --frozen --allow-read --allow-write=dist/release scripts/release/render-third-party-notices.ts",
+    "release:source-alpha:verify": "deno run --no-prompt --frozen --allow-read --allow-run=git scripts/release/verify-source-alpha-inventory.ts",
+    "test:source-alpha-inventory": "deno test --no-prompt --frozen --allow-read --allow-write --allow-run=git scripts/release/source-alpha-inventory_test.ts scripts/release/source-alpha/source-archive_test.ts",
+    "preview:thread": "deno run --allow-run --allow-read --allow-write=state/local --allow-net=127.0.0.1 --allow-env scripts/serve/preview-thread.ts",
+    "preview:cockpit": "npm --prefix src/ui run build:thread && deno run --allow-read=state/local,src/ui/dist/thread,config/projects,config/thread-subjects,config/mcp-fleet.json --allow-write=state/local --allow-net=127.0.0.1 scripts/serve/serve-native-workbench.ts --workspace-id=primary --no-seed --port=5175",
+    "verify:thread:presentation": "npm --prefix src/ui run build:thread && deno run --allow-read=src/ui scripts/gates/verify-native-workbench-presentation.ts",
+    "verify:generic:core": "deno test --allow-read --allow-write --allow-env=LOG src/domain/compile/admission/technical-compilation_test.ts src/domain/compile/admission/technical-compilation-proposal_test.ts src/domain/compile/isolation/isolated-code-execution_test.ts src/application/use-cases/compile/isolation/brokered-isolated-code-runner_test.ts src/adapters/shared/cas/file-isolated-output-cas_test.ts src/testing/architecture-boundaries_test.ts",
+    "verify:yolo:local": "deno test --allow-read --allow-write --allow-net=127.0.0.1,localhost --allow-env=LOG,MCP_AUTH_PROVIDER,MCP_AUTH_AUDIENCE,MCP_AUTH_RESOURCE,MCP_AUTH_DOMAIN,MCP_AUTH_ISSUER,MCP_AUTH_JWKS_URI,MCP_AUTH_SCOPES,MCP_AUTH_RESOURCE_METADATA_URL scripts/gates/verify-local-yolo-flow_test.ts",
+    "verify:build123d:microsandbox:vertical": "deno run --no-prompt --frozen --node-modules-dir=auto --allow-read=config/microsandbox-local.json,node_modules,/tmp,/private/tmp --allow-write=/tmp,/private/tmp --allow-env=LOG,NAPI_RS_ENFORCE_VERSION_CHECK,NAPI_RS_NATIVE_LIBRARY_PATH,NAPI_RS_FORCE_WASI,NAPI_RS_WASI_FLAVOR,MSB_PATH,MSB_LIBKRUNFW_PATH,MSB_CONFIG_PATH,MSB_HOME,MSB_BACKEND,MSB_API_URL,MSB_API_KEY,MSB_PROFILE --allow-ffi=node_modules scripts/gates/verify-build123d-microsandbox-vertical.ts --run",
+    "verify:modelica:microsandbox:vertical": "deno run --no-prompt --frozen --node-modules-dir=auto --allow-read=config,state,src,node_modules,/tmp,/private/tmp --allow-write=state/local/modelica-microsandbox-qualification,/tmp,/private/tmp --allow-env=LOG,NAPI_RS_ENFORCE_VERSION_CHECK,NAPI_RS_NATIVE_LIBRARY_PATH,NAPI_RS_FORCE_WASI,NAPI_RS_WASI_FLAVOR,MSB_PATH,MSB_LIBKRUNFW_PATH,MSB_CONFIG_PATH,MSB_HOME,MSB_BACKEND,MSB_API_URL,MSB_API_KEY,MSB_PROFILE --allow-ffi=node_modules scripts/gates/verify-modelica-microsandbox-vertical.ts --run",
+    "verify:calculix:microsandbox:vertical": "deno run --no-prompt --frozen --node-modules-dir=auto --allow-read=config,state,src,node_modules,/tmp,/private/tmp --allow-write=/tmp,/private/tmp --allow-env=NAPI_RS_ENFORCE_VERSION_CHECK,NAPI_RS_NATIVE_LIBRARY_PATH,NAPI_RS_FORCE_WASI,NAPI_RS_WASI_FLAVOR,MSB_PATH,MSB_LIBKRUNFW_PATH,MSB_CONFIG_PATH,MSB_HOME,MSB_BACKEND,MSB_API_URL,MSB_API_KEY,MSB_PROFILE --allow-ffi=node_modules scripts/gates/verify-calculix-microsandbox-vertical.ts --run",
+    "prepare:ngspice:microsandbox": "deno run --no-prompt --frozen --node-modules-dir=auto --allow-read=config/microsandbox-local.json,node_modules,/tmp,/private/tmp --allow-write=/tmp,/private/tmp --allow-run=docker --allow-env=LOG,NAPI_RS_ENFORCE_VERSION_CHECK,NAPI_RS_NATIVE_LIBRARY_PATH,NAPI_RS_FORCE_WASI,NAPI_RS_WASI_FLAVOR,MSB_PATH,MSB_LIBKRUNFW_PATH,MSB_CONFIG_PATH,MSB_HOME,MSB_BACKEND,MSB_API_URL,MSB_API_KEY,MSB_PROFILE --allow-ffi=node_modules scripts/gates/prepare-ngspice-microsandbox.ts",
+    "check:geometry-bundle-v2": "deno check src/domain/cad/canonical/geometry-bundle.ts src/adapters/cad/canonical/geometry-draft-capture.ts src/adapters/cad/canonical/design-write-geometry-run-executor.ts src/adapters/cad/canonical/geometry-bundle-product-catalog.ts src/adapters/architecture/renderer/product-structure-catalog.ts src/tools/project-control.ts scripts/serve/serve-native-workbench.ts",
+    "check:technical-compilation-admission-reader": "deno check src/application/ports/out/compile/admission/technical-compilation-admission-reader.ts src/adapters/compile/admission/capture-backed-technical-compilation-admission-reader.ts",
+    "check:build123d-execution-profile": "deno check src/domain/compile/isolation/local-isolation-runtime.ts src/application/ports/out/cad/isolated/build123d-execution-profile-catalog.ts src/adapters/cad/isolated/fixed-build123d-execution-profile-catalog.ts",
+    "check:build123d-execution": "deno check src/domain/cad/isolated/build123d-execution-evidence.ts src/application/ports/out/cad/isolated/build123d-execution-evidence-store.ts src/application/ports/out/cad/isolated/build123d-execution-attempt-store.ts src/adapters/cad/isolated/build123d-execution-evidence.ts src/adapters/cad/isolated/file-build123d-execution-attempt-store.ts src/adapters/cad/isolated/design-execute-build123d-run-executor.ts src/adapters/shared/execution/microsandbox-ephemeral-execution-backend.ts src/adapters/cad/isolated/build123d-execution-composition.ts",
+    "check:modelica-isolated-execution": "deno check src/domain/modelica/qualified-kit/isolated-execution.ts src/domain/modelica/qualified-kit/isolated-execution-evidence.ts src/domain/modelica/qualified-kit/microsandbox-qualification.ts src/domain/modelica/qualified-kit/run-proposal.ts src/application/ports/in/modelica/qualified-kit-run-review.ts src/application/ports/out/modelica/isolated-execution-profile.ts src/application/ports/out/modelica/isolated-execution-qualification.ts src/application/ports/out/modelica/isolated-execution-run-lease.ts src/application/ports/out/modelica/isolated-execution-attempt-store.ts src/application/ports/out/modelica/isolated-execution-evidence-store.ts src/application/ports/out/modelica/qualified-kit-bundle-factory.ts src/application/ports/out/modelica/qualified-kit-review-basis-authority.ts src/application/use-cases/modelica/qualified-kit/execute-isolated-run.ts src/application/use-cases/modelica/qualified-kit/prepare-run-review.ts src/adapters/modelica/qualified-kit/execution-profile.ts src/adapters/modelica/qualified-kit/execution-composition.ts src/adapters/modelica/qualified-kit/bundle-factory.ts src/adapters/modelica/qualified-kit/kit-v1/qualification-kit.ts src/adapters/modelica/qualified-kit/kit-v1/worker-contract.ts src/adapters/modelica/qualified-kit/kit-v1/run.ts src/adapters/modelica/qualified-kit/attempt-store.ts src/adapters/modelica/qualified-kit/isolated-execution-evidence.ts src/adapters/modelica/qualified-kit/microsandbox-qualification.ts src/adapters/modelica/qualified-kit/review-basis-authority.ts src/adapters/modelica/qualified-kit/run-executor.ts scripts/gates/verify-modelica-microsandbox-worker.ts scripts/gates/verify-modelica-microsandbox-vertical.ts",
+    "check:calculix-isolated-execution": "deno check src/domain/fea/isolated-v3/calculix-isolated-execution.ts src/application/ports/out/fea/isolated-v3/calculix-isolated-execution-profile.ts src/application/ports/out/fea/isolated-v3/calculix-isolated-execution-run-lease.ts src/application/ports/out/fea/isolated-v3/calculix-isolated-execution-attempt-store.ts src/application/ports/out/fea/isolated-v3/calculix-isolated-execution-evidence-store.ts src/application/use-cases/fea/isolated-v3/execute-isolated-calculix-static-proof.ts src/adapters/fea/isolated-v3/calculix-isolated-execution-composition.ts src/adapters/fea/isolated-v3/fixed-calculix-isolated-execution-profile.ts src/adapters/fea/isolated-v3/calculix-static-proof-v1/worker-contract.ts src/adapters/fea/isolated-v3/calculix-static-proof-v1/run.ts src/adapters/fea/isolated-v3/calculix-isolated-output-batch-inspector.ts src/adapters/fea/isolated-v3/file-calculix-isolated-execution-attempt-store.ts src/adapters/fea/isolated-v3/file-calculix-isolated-product-attempt-store.ts src/adapters/fea/isolated-v3/calculix-isolated-execution-evidence.ts src/adapters/sensitivity/base-evaluation/verify-evaluate-sensitivity-base-run-executor.ts src/adapters/fea/isolated-v3/verify-run-fea-static-proof-v3-run-executor.ts scripts/gates/build-calculix-worker-candidate.ts scripts/gates/verify-calculix-microsandbox-worker.ts scripts/gates/verify-calculix-microsandbox-vertical.ts",
+    "check": "deno check server.ts src/adapters/**/*.ts src/application/**/*.ts src/domain/**/*.ts src/orchestration/**/*.ts src/presentation/**/*.ts src/testing/**/*.ts src/tools/**/*.ts src/ui/*_test.ts src/ui/src/project/record-status.ts scripts/**/*.ts experiments/**/*.ts",
+    "check:resolved-operation-plan": "deno check src/domain/compile/rop/resolved-operation-plan-v2.ts src/domain/project/resolved-run-plan-sealer.ts src/adapters/compile/plans/capture-backed-run-plan-sealer.ts src/adapters/compile/plans/resolved-run-plan-execution-guard.ts src/adapters/shared/cas/provider-resource-capture-service.ts src/adapters/compile/plans/recorded-analysis-cas-reader.ts src/adapters/fea/isolated-v3/fea-syson-evaluation-capture.ts src/adapters/fea/isolated-v3/verify-run-fea-static-proof-v3-run-executor.ts src/domain/fea/isolated-v3/calculix-step-asset-uri.ts src/adapters/compile/plans/resolved-operation-plan-resolver.ts src/orchestration/operations/fea-isolated-static-proof.ts",
+    "probe:constraint-solver": "deno run --allow-net=127.0.0.1:3009 scripts/probes/probe-constraint-solver.ts",
+    "probe:spice-contract": "deno run --no-prompt --frozen --allow-read=config/mcp-fleet.json --allow-net=127.0.0.1:3023 scripts/probes/probe-spice-contract.ts",
+    "probe:archive-cascade": "deno run --allow-read=state/local scripts/probes/probe-archive-cascade.ts",
+    "mcp:call": "deno run --allow-net=127.0.0.1,localhost scripts/probes/mcp-call.ts",
+    "probe:requirement-units": "deno run --allow-net=127.0.0.1,localhost scripts/probes/probe-requirement-units.ts",
+    "probe:architecture-attribute-value": "deno run --allow-net=127.0.0.1,localhost scripts/probes/probe-architecture-attribute-value.ts",
+    "recover:work-item-successor": "deno run --allow-read=state/local,config/projects --allow-write=state/local scripts/runners/reconcile-work-item-successor.ts",
+    "test": "deno test --no-prompt --frozen --node-modules-dir=auto --allow-ffi=node_modules --allow-read --allow-write --allow-net=127.0.0.1,localhost --allow-env src experiments/thread-workflow && deno test --no-prompt --frozen --node-modules-dir=auto --allow-ffi=node_modules --allow-read --allow-write --allow-net=127.0.0.1,localhost --allow-env --ignore=./scripts/release/source-alpha-inventory_test.ts --ignore=./scripts/release/source-alpha/source-archive_test.ts scripts && deno task test:source-alpha-inventory",
+    "check:ui": "npm --prefix src/ui run check",
+    "verify:docs": "deno run --no-prompt --frozen --allow-read --allow-run=git scripts/gates/verify-doc-links.ts",
+    "verify:evidence": "deno run --allow-read scripts/gates/verify-console-evidence.ts",
+    "verify:fea:contract": "deno run --allow-read=state/fixtures,config scripts/gates/verify-fea-provider-contract.ts",
+    "verify:fea:live": "deno run --allow-net=127.0.0.1,localhost --allow-read=config scripts/gates/verify-fea-live-smoke.ts",
+    "capture:fea:contract-golden": "deno run --allow-net=127.0.0.1,localhost --allow-read=config,examples --allow-write=state/fixtures scripts/gates/capture-fea-contract-golden.ts",
+    "fmt": "deno fmt --check deno.json server.ts scripts src/adapters src/application src/domain src/orchestration src/presentation src/testing src/tools experiments/thread-workflow experiments/admission-compiler-spike src/ui/*_test.ts && deno fmt --check src/ui/src",
+    "lint": "deno lint server.ts scripts src experiments/admission-compiler-spike"
+  },
+  "fmt": {
+    "lineWidth": 88,
+    "semiColons": true,
+    "singleQuote": false
+  },
+  "lint": {
+    "rules": {
+      "tags": [
+        "recommended"
+      ]
+    }
+  }
+}

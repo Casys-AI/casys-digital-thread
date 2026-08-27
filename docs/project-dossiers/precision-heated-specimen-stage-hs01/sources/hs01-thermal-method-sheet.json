@@ -1,0 +1,112 @@
+{
+  "schemaVersion": "modelica-thermal-method-sheet/1.0",
+  "id": "hs01-heated-stage-thermal-method-r2",
+  "project": {
+    "id": "precision-heated-specimen-stage-hs01",
+    "subjectId": "project:precision-heated-specimen-stage-hs01"
+  },
+  "subject": {
+    "id": "project:precision-heated-specimen-stage-hs01"
+  },
+  "basis": {
+    "snapshotId": "project:precision-heated-specimen-stage-hs01:r23:archive-lineage-run:hs01-queue-lineage-retirement-r161",
+    "revision": 23,
+    "fingerprint": {
+      "algorithm": "sha256",
+      "digest": "71fb933ccea7ff4c125ec3805dbbdcfa556e1d9d9ca2d885b0dfa5881071d857"
+    }
+  },
+  "scope": "HS01 isolated HeatedStagePlate lumped scalar thermal scenario from 0 s to 120 s. Evaluate only the final temperature observation against the exact HeatedStagePlate SysML requirement.",
+  "limitations": "Concept demonstration only. Constant 5 W input, 0.5 W/K conductance, 50 J/K capacitance and 298.15 K initial state. No spatial gradient, heater contact, convection calibration, radiation, temperature-dependent property, controller, safety, lifetime, certification or whole-stage thermal claim.",
+  "sources": [
+    {
+      "id": "hs01-thermal-domain-sheet",
+      "kind": "document",
+      "reference": "docs/projects/precision-heated-specimen-stage-hs01/domains/modelica.md",
+      "justification": "Records the exact admitted lumped model, 313 K criterion, scalar observation role and explicit exclusions."
+    },
+    {
+      "id": "hs01-yolo-method-delegation",
+      "kind": "human",
+      "reference": "conversation:2026-08-23:yolo-delegation",
+      "justification": "Records delegated human authority for the bounded reversible HS01 thermal method and closeout choices."
+    }
+  ],
+  "model": {
+    "moduleName": "HeatedStagePlate",
+    "sourceCaptureFingerprint": {
+      "algorithm": "sha256",
+      "digest": "e1b419d7d5299c14e1da7055ca3ef908ae48a0d1224b34527adf7368b9fbd013"
+    }
+  },
+  "parameters": [
+    {
+      "modelSymbolId": "c5bfd1a27447aab4024783649b19db4175546b7c5572d42db9d01f8eca490429",
+      "role": "initial-lumped-temperature",
+      "attributeUsageId": "bf2f9de6-e5a2-4630-acdf-5748f0db2408",
+      "sourceId": "hs01-thermal-domain-sheet"
+    },
+    {
+      "modelSymbolId": "132629304dc0eefd24d7f4ecc0e5ea755e54d4ca477babbfafa5afcc1e781abe",
+      "role": "constant-electrical-heat-input",
+      "attributeUsageId": "b4fcb7c2-7fd7-45bd-aa44-acc1b607176f",
+      "sourceId": "hs01-thermal-domain-sheet"
+    },
+    {
+      "modelSymbolId": "4cbd846ee4ef0f27db1d1a44562b951a57d52ad09c434060d2d8b649c30115e7",
+      "role": "lumped-thermal-conductance",
+      "attributeUsageId": "e3c250f0-2d63-4f41-8963-37cedfe45d8c",
+      "sourceId": "hs01-thermal-domain-sheet"
+    },
+    {
+      "modelSymbolId": "f7a59de7a37514a0a1da76c3450ac1c5b958b2e36303854bfefe4ff158f15b43",
+      "role": "lumped-thermal-capacity",
+      "attributeUsageId": "1bacfb22-519e-410a-8754-bc9fca87b41c",
+      "sourceId": "hs01-thermal-domain-sheet"
+    }
+  ],
+  "outputs": [
+    {
+      "modelSymbolId": "c8180bb8c24fccb7e89a7b64c115eb194d716f6d7a1d4f15365d18bfdeb4c9ef",
+      "role": "final",
+      "quantityMeaning": "Final lumped HeatedStagePlate scalar temperature at 120 s",
+      "declaredUnit": "K",
+      "requirementElementId": "c1f7534f-cca7-4909-bf0f-42a0b09701bc",
+      "requirementMetric": "temperature",
+      "limitation": "One scalar final observation only; spatial temperature, hot spot, uniformity and safety margin are outside this method."
+    }
+  ],
+  "bindings": {
+    "parameterizes": [
+      {
+        "modelSymbolId": "c5bfd1a27447aab4024783649b19db4175546b7c5572d42db9d01f8eca490429",
+        "attributeUsageId": "bf2f9de6-e5a2-4630-acdf-5748f0db2408"
+      },
+      {
+        "modelSymbolId": "132629304dc0eefd24d7f4ecc0e5ea755e54d4ca477babbfafa5afcc1e781abe",
+        "attributeUsageId": "b4fcb7c2-7fd7-45bd-aa44-acc1b607176f"
+      },
+      {
+        "modelSymbolId": "4cbd846ee4ef0f27db1d1a44562b951a57d52ad09c434060d2d8b649c30115e7",
+        "attributeUsageId": "e3c250f0-2d63-4f41-8963-37cedfe45d8c"
+      },
+      {
+        "modelSymbolId": "f7a59de7a37514a0a1da76c3450ac1c5b958b2e36303854bfefe4ff158f15b43",
+        "attributeUsageId": "1bacfb22-519e-410a-8754-bc9fca87b41c"
+      }
+    ],
+    "outputRequirements": [
+      {
+        "modelSymbolId": "c8180bb8c24fccb7e89a7b64c115eb194d716f6d7a1d4f15365d18bfdeb4c9ef",
+        "role": "final",
+        "requirementElementId": "c1f7534f-cca7-4909-bf0f-42a0b09701bc",
+        "requirementMetric": "temperature"
+      }
+    ]
+  },
+  "review": {
+    "authorId": "local-yolo-startup-opt-in",
+    "reviewedAt": "2026-08-24T04:40:16.000Z",
+    "sealDecisionId": "decision-hs01-thermal-method-sheet-r23-r2"
+  }
+}

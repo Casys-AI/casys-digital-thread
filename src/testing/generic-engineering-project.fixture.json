@@ -1,0 +1,438 @@
+{
+  "schemaVersion": "4.0",
+  "id": "engineering-project-generic-test-system-r1",
+  "revision": 2,
+  "generatedAt": "2026-08-01T10:36:58.345Z",
+  "project": {
+    "id": "generic-test-system",
+    "name": "Generic Test System",
+    "subjectId": "generic-test-system",
+    "objective": {
+      "title": "Manage the generic test system from its system architecture through design, simulation, verification, and industrialization evidence without treating unreviewed assumptions as requirements.",
+      "statement": "Manage the generic test system from its system architecture through design, simulation, verification, and industrialization evidence without treating unreviewed assumptions as requirements."
+    }
+  },
+  "threadSnapshots": [
+    {
+      "snapshotId": "generic-test-system:r5:generic-baseline",
+      "revision": 5,
+      "subjectId": "generic-test-system"
+    }
+  ],
+  "phases": [
+    {
+      "id": "definition",
+      "name": "Definition",
+      "order": 1,
+      "description": "Capture the authoritative system model and its stable identity.",
+      "workItemIds": [
+        "capture-system-model"
+      ],
+      "requiredDecisionIds": [],
+      "evidenceRefs": [
+        {
+          "snapshotId": "generic-test-system:r5:generic-baseline",
+          "snapshotRevision": 5,
+          "kind": "artifact",
+          "id": "syson-inventory-ca7f3bda7bfa"
+        }
+      ]
+    },
+    {
+      "id": "architecture",
+      "name": "Architecture",
+      "order": 2,
+      "description": "Establish the observed SysML product architecture used by downstream tools.",
+      "workItemIds": [
+        "establish-product-architecture"
+      ],
+      "requiredDecisionIds": [],
+      "evidenceRefs": [
+        {
+          "snapshotId": "generic-test-system:r5:generic-baseline",
+          "snapshotRevision": 5,
+          "kind": "artifact",
+          "id": "syson-inventory-ca7f3bda7bfa"
+        }
+      ]
+    },
+    {
+      "id": "design",
+      "name": "Design",
+      "order": 3,
+      "description": "Materialize the current the generic test system geometry from the bound system definition.",
+      "workItemIds": [
+        "build-current-cad"
+      ],
+      "requiredDecisionIds": [],
+      "evidenceRefs": [
+        {
+          "snapshotId": "generic-test-system:r5:generic-baseline",
+          "snapshotRevision": 5,
+          "kind": "artifact",
+          "id": "generic-test-system-step"
+        }
+      ]
+    },
+    {
+      "id": "simulation",
+      "name": "Simulation",
+      "order": 4,
+      "description": "Retain the observed Modelica behavior run as simulation evidence, not as an invented product requirement.",
+      "workItemIds": [
+        "observe-modelica-run"
+      ],
+      "requiredDecisionIds": [],
+      "evidenceRefs": [
+        {
+          "snapshotId": "generic-test-system:r5:generic-baseline",
+          "snapshotRevision": 5,
+          "kind": "artifact",
+          "id": "generic-system-simulation-result"
+        }
+      ]
+    },
+    {
+      "id": "verification",
+      "name": "Verification",
+      "order": 5,
+      "description": "Produce reviewed mechanical evidence and evaluate it against a traced SysON criterion.",
+      "workItemIds": [
+        "verify-current-mechanical-design"
+      ],
+      "requiredDecisionIds": [
+        "review-mechanical-proof-case"
+      ],
+      "evidenceRefs": []
+    },
+    {
+      "id": "industrialization",
+      "name": "Industrialization",
+      "order": 6,
+      "description": "Observe the ERPNext item and bill-of-material definition linked to the generic test system.",
+      "workItemIds": [
+        "observe-erp-definition"
+      ],
+      "requiredDecisionIds": [],
+      "evidenceRefs": [
+        {
+          "snapshotId": "generic-test-system:r5:generic-baseline",
+          "snapshotRevision": 5,
+          "kind": "artifact",
+          "id": "generic-production-definition"
+        }
+      ]
+    }
+  ],
+  "workItems": [
+    {
+      "id": "capture-system-model",
+      "phaseId": "definition",
+      "title": "Capture the the generic test system system model",
+      "description": "Record the exact SysON project inventory used as the system definition.",
+      "kind": "define",
+      "status": "completed",
+      "owner": "shared",
+      "dependsOnWorkItemIds": [],
+      "evidenceRefs": [
+        {
+          "snapshotId": "generic-test-system:r5:generic-baseline",
+          "snapshotRevision": 5,
+          "kind": "artifact",
+          "id": "syson-inventory-ca7f3bda7bfa"
+        }
+      ],
+      "decisionIds": [],
+      "blockerIds": [],
+      "activityId": "activity:capture-system-model"
+    },
+    {
+      "id": "establish-product-architecture",
+      "phaseId": "architecture",
+      "title": "Establish the observed product architecture",
+      "description": "Use the exact SysON inventory as the architecture authority for component bindings.",
+      "kind": "architect",
+      "status": "completed",
+      "owner": "shared",
+      "dependsOnWorkItemIds": [
+        "capture-system-model"
+      ],
+      "evidenceRefs": [
+        {
+          "snapshotId": "generic-test-system:r5:generic-baseline",
+          "snapshotRevision": 5,
+          "kind": "artifact",
+          "id": "syson-inventory-ca7f3bda7bfa"
+        }
+      ],
+      "decisionIds": [],
+      "blockerIds": [],
+      "activityId": "activity:establish-product-architecture"
+    },
+    {
+      "id": "build-current-cad",
+      "phaseId": "design",
+      "title": "Build the current the generic test system CAD",
+      "description": "Materialize the whole-system STEP artifact from the bound architecture inputs.",
+      "kind": "design",
+      "status": "completed",
+      "owner": "agent",
+      "dependsOnWorkItemIds": [
+        "establish-product-architecture"
+      ],
+      "evidenceRefs": [
+        {
+          "snapshotId": "generic-test-system:r5:generic-baseline",
+          "snapshotRevision": 5,
+          "kind": "artifact",
+          "id": "generic-test-system-step"
+        }
+      ],
+      "decisionIds": [],
+      "blockerIds": [],
+      "activityId": "activity:build-current-cad"
+    },
+    {
+      "id": "observe-modelica-run",
+      "phaseId": "simulation",
+      "title": "Observe the bound Modelica scenario",
+      "description": "Attach the existing scenario-bound run as behavior evidence without promoting its scenario target into a SysON requirement.",
+      "kind": "simulate",
+      "status": "completed",
+      "owner": "agent",
+      "dependsOnWorkItemIds": [
+        "establish-product-architecture"
+      ],
+      "evidenceRefs": [
+        {
+          "snapshotId": "generic-test-system:r5:generic-baseline",
+          "snapshotRevision": 5,
+          "kind": "artifact",
+          "id": "generic-system-simulation-result"
+        }
+      ],
+      "decisionIds": [],
+      "blockerIds": [],
+      "activityId": "activity:observe-modelica-run"
+    },
+    {
+      "id": "verify-current-mechanical-design",
+      "phaseId": "verification",
+      "title": "Verify the current mechanical design",
+      "description": "Run the first component-level CalculiX proof only after its scope, provisional material, supports, load, and acceptance limits are reviewed together.",
+      "kind": "verify",
+      "status": "waiting-for-decision",
+      "owner": "shared",
+      "dependsOnWorkItemIds": [
+        "build-current-cad"
+      ],
+      "evidenceRefs": [],
+      "decisionIds": [
+        "review-mechanical-proof-case"
+      ],
+      "blockerIds": [
+        "missing-reviewed-mechanical-proof-case"
+      ],
+      "activityId": "activity:verify-current-mechanical-design"
+    },
+    {
+      "id": "observe-erp-definition",
+      "phaseId": "industrialization",
+      "title": "Observe the production definition",
+      "description": "Attach the exact production definition already observed for the generic test system.",
+      "kind": "industrialize",
+      "status": "completed",
+      "owner": "agent",
+      "dependsOnWorkItemIds": [
+        "build-current-cad"
+      ],
+      "evidenceRefs": [
+        {
+          "snapshotId": "generic-test-system:r5:generic-baseline",
+          "snapshotRevision": 5,
+          "kind": "artifact",
+          "id": "generic-production-definition"
+        }
+      ],
+      "decisionIds": [],
+      "blockerIds": [],
+      "activityId": "activity:observe-erp-definition"
+    }
+  ],
+  "agentRuns": [],
+  "decisions": [
+    {
+      "id": "review-mechanical-proof-case",
+      "phaseId": "verification",
+      "title": "Review the first mechanical proof case",
+      "question": "May the agent run this bounded preliminary proof case with the proposed part, material, supports, load, and acceptance limits?",
+      "status": "required",
+      "requestedAt": "2026-08-01T10:36:58.345Z",
+      "inputEvidenceRefs": [
+        {
+          "snapshotId": "generic-test-system:r5:generic-baseline",
+          "snapshotRevision": 5,
+          "kind": "artifact",
+          "id": "syson-inventory-ca7f3bda7bfa"
+        },
+        {
+          "snapshotId": "generic-test-system:r5:generic-baseline",
+          "snapshotRevision": 5,
+          "kind": "artifact",
+          "id": "generic-test-system-step"
+        }
+      ],
+      "approvalIds": []
+    }
+  ],
+  "approvals": [],
+  "blockers": [
+    {
+      "id": "missing-reviewed-mechanical-proof-case",
+      "phaseId": "verification",
+      "title": "The first mechanical proof case needs review",
+      "description": "The agent still owes one evidence-bound proposal covering the component scope, provisional material, supports, load, and model-owned acceptance limits.",
+      "kind": "required-input",
+      "status": "open",
+      "openedAt": "2026-08-01T10:36:58.345Z",
+      "workItemIds": [
+        "verify-current-mechanical-design"
+      ],
+      "decisionIds": [
+        "review-mechanical-proof-case"
+      ]
+    }
+  ],
+  "previous": {
+    "snapshotId": "engineering-project-generic-test-system-r0-start",
+    "revision": 1
+  },
+  "framing": {
+    "intent": {
+      "statement": "Manage the generic test system from its system architecture through design, simulation, verification, and industrialization evidence without treating unreviewed assumptions as requirements.",
+      "source": {
+        "kind": "human",
+        "reference": "paired-conversation"
+      },
+      "capturedAt": "2026-08-01T10:36:58.345Z",
+      "capturedBy": {
+        "id": "human:owner",
+        "origin": "human"
+      }
+    },
+    "questions": [],
+    "answers": [],
+    "currentBrief": {
+      "briefId": "generic-test-system:brief",
+      "id": "generic-test-system:brief:r1:fixture",
+      "revision": 1,
+      "items": [
+        {
+          "id": "objective",
+          "kind": "objective",
+          "statement": "Manage the generic test system from its system architecture through design, simulation, verification, and industrialization evidence without treating unreviewed assumptions as requirements.",
+          "sourceRefs": [
+            {
+              "kind": "intent",
+              "reference": "paired-conversation"
+            }
+          ]
+        },
+        {
+          "id": "mission",
+          "kind": "mission-scenario",
+          "statement": "Review the generic test system against recorded evidence.",
+          "sourceRefs": [
+            {
+              "kind": "intent",
+              "reference": "paired-conversation"
+            }
+          ]
+        },
+        {
+          "id": "success",
+          "kind": "success-criterion",
+          "statement": "Every declared work item is bound to exact evidence or an explicit open decision.",
+          "sourceRefs": [
+            {
+              "kind": "intent",
+              "reference": "paired-conversation"
+            }
+          ]
+        }
+      ],
+      "proposedAt": "2026-08-01T10:36:58.345Z",
+      "proposedBy": {
+        "id": "agent:planner",
+        "origin": "agent"
+      }
+    },
+    "currentBriefApproval": {
+      "briefSnapshotId": "generic-test-system:brief:r1:fixture",
+      "briefRevision": 1,
+      "status": "approved",
+      "inputFingerprint": {
+        "algorithm": "sha256",
+        "digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "requestedAt": "2026-08-01T10:36:58.345Z",
+      "decidedAt": "2026-08-01T10:36:58.345Z",
+      "decidedBy": {
+        "id": "human:owner",
+        "origin": "human"
+      },
+      "rationale": "Confirmed in the paired conversation."
+    }
+  },
+  "commandReceipts": [
+    {
+      "commandId": "start-generic-test-system",
+      "type": "project.start",
+      "actor": {
+        "id": "human:owner",
+        "origin": "human"
+      },
+      "issuedAt": "2026-08-01T10:36:58.345Z",
+      "appliedAt": "2026-08-01T10:36:58.345Z",
+      "requestFingerprint": {
+        "algorithm": "sha256",
+        "digest": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "resultingSnapshot": {
+        "snapshotId": "engineering-project-generic-test-system-r0-start",
+        "revision": 1
+      }
+    },
+    {
+      "commandId": "approve-generic-brief",
+      "type": "project.brief-approve",
+      "actor": {
+        "id": "human:owner",
+        "origin": "human"
+      },
+      "issuedAt": "2026-08-01T10:36:58.345Z",
+      "appliedAt": "2026-08-01T10:36:58.345Z",
+      "requestFingerprint": {
+        "algorithm": "sha256",
+        "digest": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "resultingSnapshot": {
+        "snapshotId": "engineering-project-generic-test-system-r1",
+        "revision": 2
+      },
+      "approvedBriefBasis": {
+        "kind": "approved-brief",
+        "projectId": "generic-test-system",
+        "projectSnapshotId": "engineering-project-generic-test-system-r1",
+        "projectRevision": 2,
+        "briefId": "generic-test-system:brief",
+        "briefSnapshotId": "generic-test-system:brief:r1:fixture",
+        "briefRevision": 1,
+        "approvedBriefFingerprint": {
+          "algorithm": "sha256",
+          "digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+      }
+    }
+  ]
+}

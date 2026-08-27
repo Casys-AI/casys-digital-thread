@@ -1,0 +1,1528 @@
+{
+  "schemaVersion": "calculix-card-inventory/1.0",
+  "authority": "documentary-ground-truth",
+  "consumedByCompiler": false,
+  "note": "The agent never writes .inp. Coverage annotations here are not a generated lowering table. Linear-static + two-solve sensitivity remain the declared families.",
+  "library": "calculix-ccx",
+  "version": "2.21",
+  "package": "calculix-ccx 2.21-1",
+  "extractedFrom": "casys/calculix-microsandbox-worker:gate (digest sha256:96f55e3b1918f70f407147161f6163196e9ba643831a288a94bfc43ebe981d68, linux/arm64), /usr/bin/ccx strings + CalculiX CrunchiX USER'S MANUAL version 2.21 chapter 7 TOC (http://www.dhondt.de/ccx_2.21.pdf)",
+  "binary": {
+    "path": "/usr/bin/ccx",
+    "sha256": "271f8411371b978d7a8d31a7a13d0765e6e1f872e8a8b1d6aac6d0856c71ec6c",
+    "versionString": "This is Version 2.21",
+    "copyright": "CalculiX Version 2.21, Copyright(C) 1998-2023 Guido Dhondt"
+  },
+  "probe": {
+    "specified": "strings /usr/bin/ccx | grep -E '^\\*[A-Z][A-Z ]+$' | sort -u",
+    "specifiedHitCount": 136,
+    "note": "The specified regex matches the space-free compact keyword table (trailing padding stripped; the one-letter fragment *B was discarded). Official spaced names are stored as *KEYWORD% Fortran table entries and as 'reading *KEYWORD' parser messages. *END STEP is attested by a calinput error string and an embedded example deck, not by the compact table."
+  },
+  "declarativeCoverage": {
+    "schemas": [
+      "mechanical-proof-case/1.0",
+      "sensitivity-study-case/1.0",
+      "sensitivity-study-case/2.0"
+    ],
+    "surface": {
+      "procedure": "linear-static",
+      "material": "isotropic-linear-elastic",
+      "support": "fixed",
+      "load": "force",
+      "mesh": "tetrahedral-volume",
+      "metrics": [
+        "maximum-displacement",
+        "maximum-von-mises-stress"
+      ]
+    },
+    "lowering": "calculix.static.abaqus-deck@1.0 via @casys/mcp-calculix@0.7.0 buildDeck — *NODE PRINT U and *EL PRINT S, not *NODE FILE / *EL FILE",
+    "notCovered": [
+      "modal/buckling/thermal/dynamic/visco/cfd procedure families",
+      "any material model other than isotropic *ELASTIC",
+      "distributed / thermal / contact / pressure loads",
+      "supports other than fully fixed translations",
+      "CCX-native *SENSITIVITY (topology / design variables) — sensitivity-study-case reruns the linear-static deck twice"
+    ]
+  },
+  "counts": {
+    "total": 147,
+    "inManualToc": 141,
+    "binaryOnly": 6,
+    "byFamily": {
+      "procedure-steps": 20,
+      "materials": 25,
+      "conditions": 40,
+      "outputs": 14,
+      "mesh": 32,
+      "optimization": 12,
+      "model-definition": 4
+    },
+    "bySourceOfTruth": {
+      "binary-strings": 147,
+      "manual-only": 0
+    },
+    "coveredByDeclarativeSchemas": 14,
+    "coveragePercent": 9.5
+  },
+  "families": [
+    {
+      "id": "procedure-steps",
+      "description": "Analysis procedures and the *STEP / *END STEP wrappers.",
+      "count": 20,
+      "coveredCount": 3
+    },
+    {
+      "id": "materials",
+      "description": "Material container and constitutive / transport property cards.",
+      "count": 25,
+      "coveredCount": 2
+    },
+    {
+      "id": "conditions",
+      "description": "Boundary conditions, loads, contact, couplings, amplitudes, initial state.",
+      "count": 40,
+      "coveredCount": 2
+    },
+    {
+      "id": "outputs",
+      "description": "Print, file, output, restart and view-factor request cards.",
+      "count": 14,
+      "coveredCount": 2
+    },
+    {
+      "id": "mesh",
+      "description": "Nodes, elements, sets, sections, surfaces, connectors, mesh controls.",
+      "count": 32,
+      "coveredCount": 5
+    },
+    {
+      "id": "optimization",
+      "description": "CCX-native design variables, objectives, filters, robust-design fields.",
+      "count": 12,
+      "coveredCount": 0
+    },
+    {
+      "id": "model-definition",
+      "description": "Deck header, include, solver controls, physical constants.",
+      "count": 4,
+      "coveredCount": 0
+    }
+  ],
+  "cards": {
+    "*AMPLITUDE": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*AMPLITUDE",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*BASE MOTION": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*BASEMOTION",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*BEAM GENERAL SECTION": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*BEAMGENERALSECTION",
+      "inManualToc": false,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": [],
+      "notes": "Present in the compact keyword table; binary message states it is obsolete in 2.21."
+    },
+    "*BEAM SECTION": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*BEAMSECTION",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*BOUNDARY": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*BOUNDARY",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": true,
+      "coveredBy": [
+        "mechanical-proof-case/1.0",
+        "sensitivity-study-case/1.0",
+        "sensitivity-study-case/2.0"
+      ],
+      "schemaField": "supports[].kind=fixed (dofs 1-3)"
+    },
+    "*BOUNDARYF": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*BOUNDARYF",
+      "inManualToc": false,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": [],
+      "notes": "Fluid-network counterpart of *BOUNDARY; recognized by the binary, no dedicated 2.21 manual chapter title."
+    },
+    "*BUCKLE": {
+      "family": "procedure-steps",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*BUCKLE",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*CFD": {
+      "family": "procedure-steps",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CFD",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": false,
+      "covered": false,
+      "coveredBy": [],
+      "notes": "Official name is in the *CFD% Fortran table and parser messages, not in the compact ^*[A-Z][A-Z ]+$ table."
+    },
+    "*CFLUX": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CFLUX",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*CHANGE CONTACT TYPE": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CHANGECONTACTTYPE",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*CHANGE FRICTION": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CHANGEFRICTION",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*CHANGE MATERIAL": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CHANGEMATERIAL",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*CHANGE PLASTIC": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CHANGEPLASTIC",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*CHANGE SOLID SECTION": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CHANGESOLIDSECTION",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*CHANGE SURFACE BEHAVIOR": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CHANGESURFACEBEHAVIOR",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*CLEARANCE": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CLEARANCE",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*CLOAD": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CLOAD",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": true,
+      "coveredBy": [
+        "mechanical-proof-case/1.0",
+        "sensitivity-study-case/1.0",
+        "sensitivity-study-case/2.0"
+      ],
+      "schemaField": "loads[].kind=force (total N, split per node by the lowering)"
+    },
+    "*COMPLEX FREQUENCY": {
+      "family": "procedure-steps",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*COMPLEXFREQUENCY",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*CONDUCTIVITY": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CONDUCTIVITY",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*CONSTRAINT": {
+      "family": "optimization",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CONSTRAINT",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*CONTACT DAMPING": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CONTACTDAMPING",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*CONTACT FILE": {
+      "family": "outputs",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CONTACTFILE",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*CONTACT OUTPUT": {
+      "family": "outputs",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CONTACTOUTPUT",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*CONTACT PAIR": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CONTACTPAIR",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*CONTACT PRINT": {
+      "family": "outputs",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CONTACTPRINT",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*CONTROLS": {
+      "family": "model-definition",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CONTROLS",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*CORRELATION LENGTH": {
+      "family": "optimization",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CORRELATIONLENGTH",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*COUPLED TEMPERATURE-DISPLACEMENT": {
+      "family": "procedure-steps",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*COUPLED TEMPERATURE-DISPLACEMENT",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": false,
+      "covered": false,
+      "coveredBy": [],
+      "notes": "Hyphenated official name; attested by parser messages, not by the compact letter/space table."
+    },
+    "*COUPLING": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*COUPLING",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*CRACK PROPAGATION": {
+      "family": "optimization",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CRACKPROPAGATION",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*CREEP": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CREEP",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*CYCLIC HARDENING": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CYCLICHARDENING",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*CYCLIC SYMMETRY MODEL": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*CYCLICSYMMETRYMODEL",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*DAMPING": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*DAMPING",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*DASHPOT": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*DASHPOT",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": false,
+      "covered": false,
+      "coveredBy": [],
+      "notes": "Official name is in the *DASHPOT% Fortran table and parser messages, not in the compact table."
+    },
+    "*DEFORMATION PLASTICITY": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*DEFORMATIONPLASTICITY",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*DENSITY": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*DENSITY",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*DEPVAR": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*DEPVAR",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*DESIGN RESPONSE": {
+      "family": "optimization",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*DESIGNRESPONSE",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*DESIGN VARIABLES": {
+      "family": "optimization",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*DESIGNVARIABLES",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*DFLUX": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*DFLUX",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*DISTRIBUTING": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*DISTRIBUTING",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*DISTRIBUTING COUPLING": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*DISTRIBUTINGCOUPLING",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*DISTRIBUTION": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*DISTRIBUTION",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*DISTRIBUTION TABLE": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*DISTRIBUTIONTABLE",
+      "inManualToc": false,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": [],
+      "notes": "Recognized by the compact keyword table; no dedicated 2.21 manual chapter title (companion of *DISTRIBUTION)."
+    },
+    "*DLOAD": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*DLOAD",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*DSLOAD": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*DSLOAD",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*DYNAMIC": {
+      "family": "procedure-steps",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*DYNAMIC",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*EL FILE": {
+      "family": "outputs",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*ELFILE",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": [],
+      "notes": "Our lowering requests stresses via *EL PRINT, not *EL FILE."
+    },
+    "*EL PRINT": {
+      "family": "outputs",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*EL PRINT",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": false,
+      "covered": true,
+      "coveredBy": [
+        "mechanical-proof-case/1.0",
+        "sensitivity-study-case/1.0",
+        "sensitivity-study-case/2.0"
+      ],
+      "schemaField": "requirements metric maximum-von-mises-stress (S on ELSET=PART)",
+      "notes": "Official spaced name is in the *EL PRINT% Fortran table; compact table has *ELFILE / *ELEMENTOUTPUT, not *ELPRINT."
+    },
+    "*ELASTIC": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*ELASTIC",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": true,
+      "coveredBy": [
+        "mechanical-proof-case/1.0",
+        "sensitivity-study-case/1.0",
+        "sensitivity-study-case/2.0"
+      ],
+      "schemaField": "material.model=isotropic-linear-elastic (E, nu)"
+    },
+    "*ELECTRICAL CONDUCTIVITY": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*ELECTRICALCONDUCTIVITY",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*ELECTROMAGNETICS": {
+      "family": "procedure-steps",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*ELECTROMAGNETICS",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*ELEMENT": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*ELEMENT",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": true,
+      "coveredBy": [
+        "mechanical-proof-case/1.0",
+        "sensitivity-study-case/1.0",
+        "sensitivity-study-case/2.0"
+      ],
+      "schemaField": "mesh.kind=tetrahedral-volume (C3D4 / C3D10 from Gmsh)"
+    },
+    "*ELEMENT OUTPUT": {
+      "family": "outputs",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*ELEMENTOUTPUT",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*ELSET": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*ELSET",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": true,
+      "coveredBy": [
+        "mechanical-proof-case/1.0",
+        "sensitivity-study-case/1.0",
+        "sensitivity-study-case/2.0"
+      ],
+      "schemaField": "volume part set PART used by *SOLID SECTION and *EL PRINT"
+    },
+    "*END STEP": {
+      "family": "procedure-steps",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*END STEP",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": false,
+      "covered": true,
+      "coveredBy": [
+        "mechanical-proof-case/1.0",
+        "sensitivity-study-case/1.0",
+        "sensitivity-study-case/2.0"
+      ],
+      "schemaField": "lowering wrapper around the single linear-static step",
+      "notes": "Absent from the compact table and the *KEYWORD% table; attested by '*ERROR in calinput: *END STEP card in step' and an embedded example deck, plus the 2.21 manual TOC."
+    },
+    "*EQUATION": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*EQUATION",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*EQUATIONF": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*EQUATIONF",
+      "inManualToc": false,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": [],
+      "notes": "Fluid-network counterpart of *EQUATION; recognized by the binary, no dedicated 2.21 manual chapter title."
+    },
+    "*EXPANSION": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*EXPANSION",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*FEASIBLE DIRECTION": {
+      "family": "optimization",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*FEASIBLEDIRECTION",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*FILM": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*FILM",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*FILTER": {
+      "family": "optimization",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*FILTER",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*FLUID CONSTANTS": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*FLUIDCONSTANTS",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*FLUID SECTION": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*FLUIDSECTION",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*FREQUENCY": {
+      "family": "procedure-steps",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*FREQUENCY",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": false,
+      "covered": false,
+      "coveredBy": [],
+      "notes": "Stored as *FREQUENCY% in the Fortran keyword table; the specified compact-table regex therefore misses it."
+    },
+    "*FRICTION": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*FRICTION",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*GAP": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*GAP",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*GAP CONDUCTANCE": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*GAPCONDUCTANCE",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*GAP HEAT GENERATION": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*GAPHEATGENERATION",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*GEOMETRIC CONSTRAINT": {
+      "family": "optimization",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*GEOMETRICCONSTRAINT",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*GEOMETRIC TOLERANCES": {
+      "family": "optimization",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*GEOMETRICTOLERANCE",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": [],
+      "notes": "Manual 2.21 TOC title is plural; binary table stores *GEOMETRICTOLERANCE."
+    },
+    "*GREEN": {
+      "family": "procedure-steps",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*GREEN",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*HCF": {
+      "family": "procedure-steps",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*HCF",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": false,
+      "covered": false,
+      "coveredBy": [],
+      "notes": "Official name is in the *HCF% Fortran table and parser messages, not in the compact table."
+    },
+    "*HEADING": {
+      "family": "model-definition",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*HEADING",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": [],
+      "notes": "Present in the spike CalculiX subset; the qualified buildDeck path does not emit it."
+    },
+    "*HEAT TRANSFER": {
+      "family": "procedure-steps",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*HEATTRANSFER",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*HYPERELASTIC": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*HYPERELASTIC",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*HYPERFOAM": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*HYPERFOAM",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*INCLUDE": {
+      "family": "model-definition",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*INCLUDE",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*INITIAL CONDITIONS": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*INITIALCONDITIONS",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*INITIAL MESH": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*INITIALMESH",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*INITIAL STRAIN INCREASE": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*INITIALSTRAININCREASE",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*KINEMATIC": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*KINEMATIC",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*MAGNETIC PERMEABILITY": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*MAGNETICPERMEABILITY",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*MASS": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*MASS",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*MASS FLOW": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*MASSFLOW",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*MATERIAL": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*MATERIAL",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": true,
+      "coveredBy": [
+        "mechanical-proof-case/1.0",
+        "sensitivity-study-case/1.0",
+        "sensitivity-study-case/2.0"
+      ],
+      "schemaField": "analysis.material / solver.material container"
+    },
+    "*MATRIX ASSEMBLE": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*MATRIXASSEMBLE",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*MEMBRANE SECTION": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*MEMBRANESECTION",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*MODAL DAMPING": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*MODALDAMPING",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*MODAL DYNAMIC": {
+      "family": "procedure-steps",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*MODALDYNAMIC",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*MODEL CHANGE": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*MODELCHANGE",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*MOHR COULOMB": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*MOHRCOULOMB",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*MOHR COULOMB HARDENING": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*MOHRCOULOMBHARDENING",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*MPC": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*MPC",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": false,
+      "covered": false,
+      "coveredBy": [],
+      "notes": "Official name is in the *MPC% Fortran table and parser messages, not in the compact table."
+    },
+    "*NETWORK MPC": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*NETWORKMPC",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*NO ANALYSIS": {
+      "family": "procedure-steps",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*NOANALYSIS",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*NODAL THICKNESS": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*NODALTHICKNESS",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*NODE": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*NODE",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": true,
+      "coveredBy": [
+        "mechanical-proof-case/1.0",
+        "sensitivity-study-case/1.0",
+        "sensitivity-study-case/2.0"
+      ],
+      "schemaField": "mesh.kind=tetrahedral-volume (Gmsh *NODE block)"
+    },
+    "*NODE FILE": {
+      "family": "outputs",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*NODEFILE",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": [],
+      "notes": "Our lowering requests displacements via *NODE PRINT, not *NODE FILE."
+    },
+    "*NODE OUTPUT": {
+      "family": "outputs",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*NODEOUTPUT",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*NODE PRINT": {
+      "family": "outputs",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*NODEPRINT",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": true,
+      "coveredBy": [
+        "mechanical-proof-case/1.0",
+        "sensitivity-study-case/1.0",
+        "sensitivity-study-case/2.0"
+      ],
+      "schemaField": "requirements metric maximum-displacement (U on NSET=NALL)"
+    },
+    "*NORMAL": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*NORMAL",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*NSET": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*NSET",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": true,
+      "coveredBy": [
+        "mechanical-proof-case/1.0",
+        "sensitivity-study-case/1.0",
+        "sensitivity-study-case/2.0"
+      ],
+      "schemaField": "supports/loads selection names + generated NALL"
+    },
+    "*OBJECTIVE": {
+      "family": "optimization",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*OBJECTIVE",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*ORIENTATION": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*ORIENTATION",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*OUTPUT": {
+      "family": "outputs",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*OUTPUT",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*PHYSICAL CONSTANTS": {
+      "family": "model-definition",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*PHYSICALCONSTANTS",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*PLASTIC": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*PLASTIC",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*PRE-TENSION SECTION": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*PRE-TENSION SECTION",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": false,
+      "covered": false,
+      "coveredBy": [],
+      "notes": "Hyphen keeps it out of the specified letter/space regex; attested by *PRE-TENSION SECTION% and parser messages."
+    },
+    "*RADIATE": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*RADIATE",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": false,
+      "covered": false,
+      "coveredBy": [],
+      "notes": "Official name is in the *RADIATE% Fortran table and parser messages, not in the compact table."
+    },
+    "*RANDOM FIELD": {
+      "family": "optimization",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*RANDOMFIELD",
+      "inManualToc": false,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": [],
+      "notes": "Recognized by the compact keyword table and parser messages; no dedicated 2.21 manual chapter title."
+    },
+    "*RATE DEPENDENT": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*RATEDEPENDENT",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*REFINE MESH": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*REFINEMESH",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*RESTART": {
+      "family": "outputs",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*RESTART",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*RETAINED NODAL DOFS": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*RETAINEDNODALDOFS",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*RIGID BODY": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*RIGIDBODY",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*ROBUST DESIGN": {
+      "family": "optimization",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*ROBUSTDESIGN",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*SECTION PRINT": {
+      "family": "outputs",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*SECTIONPRINT",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*SELECT CYCLIC SYMMETRY MODES": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*SELECTCYCLICSYMMETRYMODES",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*SENSITIVITY": {
+      "family": "procedure-steps",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*SENSITIVITY",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": [],
+      "notes": "CCX-native design-sensitivity / topology procedure. Distinct from sensitivity-study-case, which reruns the linear-static deck twice and never emits this card."
+    },
+    "*SHELL SECTION": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*SHELLSECTION",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*SOLID SECTION": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*SOLIDSECTION",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": true,
+      "coveredBy": [
+        "mechanical-proof-case/1.0",
+        "sensitivity-study-case/1.0",
+        "sensitivity-study-case/2.0"
+      ],
+      "schemaField": "tetrahedral-volume section, ELSET=PART, MATERIAL=MAT"
+    },
+    "*SPECIFIC GAS CONSTANT": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*SPECIFICGASCONSTANT",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*SPECIFIC HEAT": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*SPECIFICHEAT",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*SPRING": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*SPRING",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*STATIC": {
+      "family": "procedure-steps",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*STATIC",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": true,
+      "coveredBy": [
+        "mechanical-proof-case/1.0",
+        "sensitivity-study-case/1.0",
+        "sensitivity-study-case/2.0"
+      ],
+      "schemaField": "analysis.kind=linear-static"
+    },
+    "*STEADY STATE DYNAMICS": {
+      "family": "procedure-steps",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*STEADYSTATEDYNAMICS",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*STEP": {
+      "family": "procedure-steps",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*STEP",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": true,
+      "coveredBy": [
+        "mechanical-proof-case/1.0",
+        "sensitivity-study-case/1.0",
+        "sensitivity-study-case/2.0"
+      ],
+      "schemaField": "lowering wrapper around the single linear-static step"
+    },
+    "*SUBMODEL": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*SUBMODEL",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*SUBSTRUCTURE GENERATE": {
+      "family": "procedure-steps",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*SUBSTRUCTUREGENERATE",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*SUBSTRUCTURE MATRIX OUTPUT": {
+      "family": "outputs",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*SUBSTRUCTUREMATRIXOUTPUT",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*SURFACE": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*SURFACE",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*SURFACE BEHAVIOR": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*SURFACEBEHAVIOR",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*SURFACE INTERACTION": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*SURFACEINTERACTION",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*TEMPERATURE": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*TEMPERATURE",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*TIE": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*TIE",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*TIME POINTS": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*TIMEPOINTS",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*TRANSFORM": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*TRANSFORM",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*TRANSFORMF": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*TRANSFORMF",
+      "inManualToc": false,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": [],
+      "notes": "Fluid-network counterpart of *TRANSFORM; recognized by the binary, no dedicated 2.21 manual chapter title."
+    },
+    "*UNCOUPLED TEMPERATURE-DISPLACEMENT": {
+      "family": "procedure-steps",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*UNCOUPLED TEMPERATURE-DISPLACEMENT",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": false,
+      "covered": false,
+      "coveredBy": [],
+      "notes": "Hyphenated official name; attested by parser messages, not by the compact letter/space table."
+    },
+    "*USER ELEMENT": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*USERELEMENT",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*USER MATERIAL": {
+      "family": "materials",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*USERMATERIAL",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*USER SECTION": {
+      "family": "mesh",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*USERSECTION",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*VALUES AT INFINITY": {
+      "family": "conditions",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*VALUESATINFINITY",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*VIEWFACTOR": {
+      "family": "outputs",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*VIEWFACTOR",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    },
+    "*VISCO": {
+      "family": "procedure-steps",
+      "sourceOfTruth": "binary-strings",
+      "binaryForm": "*VISCO",
+      "inManualToc": true,
+      "matchedSpecifiedProbe": true,
+      "covered": false,
+      "coveredBy": []
+    }
+  }
+}

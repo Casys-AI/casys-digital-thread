@@ -1,0 +1,137 @@
+{
+  "schemaVersion": "casys-source-alpha-sbom-scope/1.0",
+  "scopeId": "source-alpha",
+  "package": {
+    "name": "casys-digital-thread",
+    "type": "source-checkout"
+  },
+  "archive": {
+    "format": "tar.gz",
+    "content": "publicly exportable tracked Git content at the selected commit only, applying committed export-ignore attributes",
+    "outputDirectory": "dist/release/<tag>/"
+  },
+  "inputs": [
+    {
+      "path": ".gitattributes",
+      "role": "public-export-policy"
+    },
+    {
+      "path": "LICENSE",
+      "role": "repository-license"
+    },
+    {
+      "path": "deno.json",
+      "role": "control-plane-manifest"
+    },
+    {
+      "path": "deno.lock",
+      "role": "control-plane-lock"
+    },
+    {
+      "path": "src/ui/package.json",
+      "role": "workbench-manifest"
+    },
+    {
+      "path": "src/ui/package-lock.json",
+      "role": "workbench-lock"
+    },
+    {
+      "path": "desktop/deno.json",
+      "role": "desktop-source-manifest-only"
+    },
+    {
+      "path": "desktop/chat-runtime/package.json",
+      "role": "desktop-runtime-manifest-only"
+    },
+    {
+      "path": "desktop/chat-runtime/package-lock.json",
+      "role": "desktop-runtime-lock-only"
+    },
+    {
+      "path": "desktop/chat-runtime/pins.json",
+      "role": "desktop-runtime-pins-only"
+    },
+    {
+      "path": "images/calculix-microsandbox-worker/deno.lock",
+      "role": "worker-lock-only"
+    },
+    {
+      "path": "images/modelica-microsandbox-worker/deno.lock",
+      "role": "worker-lock-only"
+    },
+    {
+      "path": "images/ngspice-microsandbox-worker/deno.lock",
+      "role": "worker-lock-only"
+    },
+    {
+      "path": "images/build123d-microsandbox-worker/requirements.lock",
+      "role": "worker-lock-only"
+    }
+  ],
+  "componentInventories": [
+    {
+      "id": "control-plane-deno",
+      "inputPaths": [
+        "deno.json",
+        "deno.lock"
+      ],
+      "coverage": "included"
+    },
+    {
+      "id": "workbench-npm",
+      "inputPaths": [
+        "src/ui/package.json",
+        "src/ui/package-lock.json"
+      ],
+      "coverage": "included"
+    },
+    {
+      "id": "desktop-source",
+      "inputPaths": [
+        "desktop/deno.json",
+        "desktop/chat-runtime/package.json",
+        "desktop/chat-runtime/package-lock.json",
+        "desktop/chat-runtime/pins.json"
+      ],
+      "coverage": "provenance-only",
+      "reason": "The source checkout contains these manifests, but no Desktop bundle is an asset of this source-alpha release."
+    },
+    {
+      "id": "local-worker-sources",
+      "inputPaths": [
+        "images/calculix-microsandbox-worker/deno.lock",
+        "images/modelica-microsandbox-worker/deno.lock",
+        "images/ngspice-microsandbox-worker/deno.lock",
+        "images/build123d-microsandbox-worker/requirements.lock"
+      ],
+      "coverage": "provenance-only",
+      "reason": "Worker lockfiles are source evidence only. No worker image, layer, package installation, or microVM artifact is covered."
+    }
+  ],
+  "exclusions": [
+    {
+      "id": "oci-and-provider-artifacts",
+      "literal": "No OCI image, image layer, base image, provider image, container runtime, operating-system package, apt package, apk package, Python wheel, or registry artifact is covered."
+    },
+    {
+      "id": "desktop-artifacts",
+      "literal": "No Desktop .app, helper binary, downloaded Node runtime, Codex runtime, ACPX runtime, code-signature, notarized package, or platform bundle is covered."
+    },
+    {
+      "id": "local-and-live-state",
+      "literal": "No node_modules tree, cache, dist output, state/local content, Docker volume, persisted project, provider result, or live engineering evidence is covered."
+    },
+    {
+      "id": "private-agent-orchestration",
+      "literal": "Provider-specific internal prompting, local agent configuration, and command pointers retained by the private development checkout, including .grok/**, .claude/**, .cursor/**, .codex/**, and CLAUDE.md, are excluded from the public source archive. AGENTS.md, .agents/skills/**, and .github/** remain public."
+    },
+    {
+      "id": "private-design-history",
+      "literal": "Private design history under docs/assets/** and docs/rfcs/** is excluded from the public source archive. Living Diátaxis documentation and contributor-facing media under docs/media/** remain public."
+    },
+    {
+      "id": "runtime-qualification",
+      "literal": "This inventory does not prove that any provider, local worker, microVM, Docker topology, Desktop shell, or engineering operation is installed, runnable, qualified, or available."
+    }
+  ]
+}

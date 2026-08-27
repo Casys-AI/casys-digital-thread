@@ -1,0 +1,139 @@
+{
+  "schemaVersion": "mechanical-proof-case/1.0",
+  "id": "cantilever-arm-ca02-arm-cantilever",
+  "revision": 1,
+  "scope": "CA02 cantilever arm taken in isolation: one rectangular-section beam, 80 x 20 x 4 mm, verified as a single solid in its local frame before sealing. Geometry is the admitted parameterized Box already sealed on this atelier. The 10 N tip-load, Aluminium 6061 values, 2 mm tetrahedral target, and selection boxes are the reviewed CA01 isolated-arm assumptions reused for this same CAD definition.",
+  "evidenceBoundary": "Concept verification only. Not a certification, a material release, a joint qualification, a fatigue or stability assessment, or a fabrication claim. Material and the 10 N tip load are reused reviewed assumptions; the root face is treated as fully fixed.",
+  "project": {
+    "id": "cantilever-arm-ca02",
+    "subjectId": "project:cantilever-arm-ca02",
+    "baseThreadSnapshot": {
+      "id": "project:cantilever-arm-ca02:r6:design-write-geometry-d2df5e156342390dfab4af290a953d439ff5ac0c35944899ec5761c5f5e8aa2f",
+      "revision": 6,
+      "subjectId": "project:cantilever-arm-ca02"
+    }
+  },
+  "target": {
+    "id": "ca02-cantilever-arm",
+    "modelElementId": "66ff6cff-c78d-450a-9aa4-dfa041d96e88"
+  },
+  "authorization": {
+    "workItemId": "wi-proof-seal",
+    "decisionId": "dec-proof-seal"
+  },
+  "requirementsSource": {
+    "provider": "syson",
+    "editingContextId": "0fbaa177-0e3d-4fe3-8529-e95a4473fa66",
+    "elementId": "679f6713-53f5-4b33-a715-0d9114adc69f"
+  },
+  "solver": {
+    "provider": "calculix",
+    "tool": "calculix_solve_static",
+    "resultSchemaVersion": "2.0"
+  },
+  "cadSource": {
+    "kind": "parametric",
+    "generator": {
+      "provider": "build123d",
+      "tool": "build123d_export",
+      "definition": {
+        "mediaType": "text/x-python",
+        "sha256": "28ce23e61952d1ac7628b9ff53944c2746d1cd3e956804c1d44896331a023bc8",
+        "bytes": 72
+      }
+    },
+    "engineeringBoundary": {
+      "designIntent": "partial",
+      "editableCad": "absent",
+      "manufacturability": "not-established",
+      "limitations": [
+        "The proof geometry is the isolated CantileverArm PartDefinition in its local frame.",
+        "The root face is treated as fully fixed; no joint or support hardware is modelled.",
+        "The declaration carries no tolerances, interfaces, manufacturing features or process evidence."
+      ]
+    }
+  },
+  "expectedCadArtifact": {
+    "format": "step",
+    "sha256": "7ddbe4792b299b48ea8de5e41db504d655bd88e7fbc5c86b1fd05000199d5e7c",
+    "bytes": 15426
+  },
+  "analysis": {
+    "kind": "linear-static",
+    "material": {
+      "model": "isotropic-linear-elastic",
+      "basis": "Aluminium 6061 as a declared assumption for this behave vehicle; pending a selected material certificate. Same datasheet values as the reviewed CA01 isolated-arm case.",
+      "youngModulus": {
+        "value": 69000,
+        "unit": "MPa"
+      },
+      "poissonRatio": {
+        "value": 0.33,
+        "unit": "1"
+      }
+    },
+    "mesh": {
+      "kind": "tetrahedral-volume",
+      "targetSize": {
+        "value": 2,
+        "unit": "mm"
+      }
+    },
+    "supports": [
+      {
+        "id": "arm-root-fixed",
+        "kind": "fixed",
+        "selection": {
+          "name": "FIXED",
+          "box": {
+            "min": [-41, -11, -3],
+            "max": [-39, 11, 3],
+            "unit": "mm"
+          }
+        }
+      }
+    ],
+    "loads": [
+      {
+        "id": "tip-load-10n",
+        "kind": "force",
+        "selection": {
+          "name": "LOADED",
+          "box": {
+            "min": [39, -11, -3],
+            "max": [41, 11, 3],
+            "unit": "mm"
+          }
+        },
+        "force": {
+          "value": [0, 0, -10],
+          "unit": "N"
+        }
+      }
+    ]
+  },
+  "requirements": [
+    {
+      "id": "ca02-arm-deflection",
+      "name": "maxDisplacement",
+      "metric": "maximum-displacement",
+      "feature": "maxDisplacement",
+      "operator": "<=",
+      "limit": {
+        "value": 2,
+        "unit": "mm"
+      }
+    },
+    {
+      "id": "ca02-arm-stress",
+      "name": "maxVonMises",
+      "metric": "maximum-von-mises-stress",
+      "feature": "maxVonMises",
+      "operator": "<=",
+      "limit": {
+        "value": 60000000,
+        "unit": "Pa"
+      }
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+/* Tiroir d'inspection : placement que les utilities du drawer ne couvrent pas. */
+
+.thread-tool-drawer {
+  min-width: 0;
+  border-left: 1px solid var(--line);
+  background: var(--thread-panel);
+  box-shadow: none;
+}

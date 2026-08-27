@@ -1,0 +1,117 @@
+{
+  "schemaVersion": "electrical-observation-method-sheet/1.0",
+  "id": "hs01-heater-electrical-method-r1",
+  "project": {
+    "id": "precision-heated-specimen-stage-hs01",
+    "subjectId": "project:precision-heated-specimen-stage-hs01"
+  },
+  "subject": {
+    "id": "project:precision-heated-specimen-stage-hs01"
+  },
+  "basis": {
+    "snapshotId": "project:precision-heated-specimen-stage-hs01:r17:verify-evaluate-admitted-modelica-observations-run:hs01-queue-modelica-evaluation-r119",
+    "revision": 17,
+    "fingerprint": {
+      "algorithm": "sha256",
+      "digest": "84a242d62e75d9476aaee0e75eb1539de5eea63b3deb193bb284185d2d2627c9"
+    }
+  },
+  "spice": {
+    "producer": {
+      "serverId": "digital-thread",
+      "tool": "simulate.run-admitted-spice@1",
+      "runId": "run:hs01-queue-spice-run-r76"
+    },
+    "capture": {
+      "id": "spice-admitted-capture-6cc166fac181a02d88de2f8b901a3865439cae6673730b4e6bc76028d403a98d",
+      "fingerprint": {
+        "algorithm": "sha256",
+        "digest": "6cc166fac181a02d88de2f8b901a3865439cae6673730b4e6bc76028d403a98d"
+      }
+    },
+    "evidence": {
+      "id": "spice-admitted-evidence-17cba4539a7e08a86ad558265ed86b7e79c15274bfa158ab560636b68783bdd9",
+      "fingerprint": {
+        "algorithm": "sha256",
+        "digest": "17cba4539a7e08a86ad558265ed86b7e79c15274bfa158ab560636b68783bdd9"
+      }
+    },
+    "result": {
+      "id": "spice-admitted-result-ef18e9af91822440cb5e2b4c3b8ae30e32913ed30979e1bed3d972d82c03519e",
+      "fingerprint": {
+        "algorithm": "sha256",
+        "digest": "ef18e9af91822440cb5e2b4c3b8ae30e32913ed30979e1bed3d972d82c03519e"
+      }
+    }
+  },
+  "scope": "HS01 idealized 5 V source and 5 ohm heater operating point. Evaluate only delivered source current and derived source power against the approved concept boundary.",
+  "limitations": "Concept demonstration only. Ideal DC source and resistor, no measured heater resistance or tolerance, wiring, switching, transient, protection, temperature coefficient, electrical safety, EMC, reliability, certification or whole-stage claim.",
+  "sources": [
+    {
+      "id": "hs01-approved-electrical-brief",
+      "kind": "document",
+      "reference": "approved-brief:precision-heated-specimen-stage-hs01:success-electrical-heater",
+      "justification": "The approved brief owns the reversible 1 A and 5 W concept criteria and the idealized 5 V / 5 ohm method boundary."
+    },
+    {
+      "id": "hs01-yolo-method-delegation",
+      "kind": "human",
+      "reference": "conversation:2026-08-23:yolo-delegation",
+      "justification": "Records delegated human authority for the bounded reversible HS01 electrical method and closeout choices."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "hs01-delivered-source-current",
+      "sourceId": "hs01-approved-electrical-brief",
+      "briefItem": {
+        "id": "success-electrical-heater",
+        "kind": "success-criterion"
+      },
+      "comparator": "<=",
+      "threshold": {
+        "value": 1,
+        "unit": "A"
+      },
+      "expression": {
+        "kind": "negate",
+        "operand": {
+          "kind": "native-observation",
+          "name": "i(v1)"
+        }
+      }
+    },
+    {
+      "id": "hs01-derived-source-power",
+      "sourceId": "hs01-approved-electrical-brief",
+      "briefItem": {
+        "id": "success-electrical-heater",
+        "kind": "success-criterion"
+      },
+      "comparator": "<=",
+      "threshold": {
+        "value": 5,
+        "unit": "W"
+      },
+      "expression": {
+        "kind": "multiply",
+        "left": {
+          "kind": "native-observation",
+          "name": "v(supply)"
+        },
+        "right": {
+          "kind": "negate",
+          "operand": {
+            "kind": "native-observation",
+            "name": "i(v1)"
+          }
+        }
+      }
+    }
+  ],
+  "review": {
+    "authorId": "local-yolo-startup-opt-in",
+    "reviewedAt": "2026-08-23T14:30:00.000Z",
+    "sealDecisionId": "decision-hs01-electrical-method-sheet-r17"
+  }
+}

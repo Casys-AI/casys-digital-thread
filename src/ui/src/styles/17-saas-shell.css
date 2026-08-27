@@ -1,0 +1,165 @@
+/* Shell applicatif --------------------------------------------------------
+
+   Le chrome (topbar, liens de nav) est en utilities dans `navigation.tsx`.
+   Cette feuille porte ce que les utilities ne couvrent pas : la grille
+   topbar/sidebar/contenu, le punch-out Overview, et la politique
+   transversale (focus, reduced-motion) héritée de 16.
+   -------------------------------------------------------------------------- */
+
+.native-preview-body {
+  padding: 0;
+}
+
+.native-preview-shell {
+  --desktop-chat-width: clamp(22rem, 28vw, 27rem);
+  width: 100%;
+  min-height: 100dvh;
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(100dvh, auto);
+  border: 0;
+}
+
+.native-preview-content,
+#thread-workbench-root {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+}
+
+.native-preview-content {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.thread-workbench {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 12.25rem minmax(0, 1fr);
+  grid-auto-rows: max-content;
+  border: 0;
+  background: var(--thread-canvas);
+  color: var(--thread-text);
+}
+
+.thread-workbench > * {
+  min-width: 0;
+  grid-column: 2;
+}
+
+.thread-workbench > .thread-cockpit-header {
+  grid-column: 1 / -1;
+}
+
+.thread-workbench > .project-navigation {
+  position: sticky;
+  top: 48px;
+  grid-column: 1;
+  grid-row: 2 / span 14;
+  align-self: start;
+  height: calc(100dvh - 48px);
+  overflow-y: auto;
+  border-right: 1px solid var(--ui-border);
+  background: var(--ui-background);
+}
+
+.planning-workbench {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.planning-workbench > * {
+  grid-column: 1;
+}
+
+.thread-workbench > :not(.thread-cockpit-header):not(.project-navigation) {
+  width: auto;
+  max-width: 1280px;
+  margin: var(--space-20) clamp(1rem, 2.5vw, 2rem) 0;
+}
+
+.thread-workbench > :last-child:not(.project-navigation) {
+  margin-bottom: var(--space-40);
+}
+
+.thread-workbench > #project-workspace-panel.overview-2a {
+  max-width: none;
+  margin: 0;
+  padding: 18px 24px 28px;
+  background: #f7f8fa;
+  min-height: calc(100dvh - 48px);
+  overflow-y: auto;
+}
+
+.thread-flow-section {
+  padding: clamp(1rem, 1.8vw, 1.5rem);
+  border-bottom: 1px solid var(--line);
+}
+
+.project-workspace-page.is-work {
+  padding-top: clamp(0.85rem, 1.5vw, 1.2rem);
+}
+
+.thread-workbench :is(.thread-flow-section, .thread-tool-drawer) {
+  border: 1px solid var(--thread-border);
+  border-radius: var(--radius-lg);
+  background: var(--thread-panel);
+  box-shadow: var(--shadow-card);
+}
+
+.thread-workbench :is(a, button, [role="button"], [role="tab"], summary, select):focus-visible {
+  outline: 2px solid var(--thread-focus);
+  outline-offset: 2px;
+}
+
+.thread-workbench :is(button, a, [role="button"], [role="tab"]):hover {
+  background-image: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thread-workbench *,
+  .thread-workbench *::before,
+  .thread-workbench *::after {
+    scroll-behavior: auto;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+  }
+}
+
+@media (min-width: 1200px) {
+  .native-preview-shell[data-chat-open="true"] {
+    grid-template-columns: minmax(0, 1fr) var(--desktop-chat-width);
+  }
+}
+
+@media (max-width: 900px) {
+  .thread-workbench {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .thread-workbench > * {
+    grid-column: 1;
+  }
+
+  .thread-workbench > .thread-cockpit-header {
+    grid-column: 1;
+  }
+
+  .thread-workbench > .project-navigation {
+    position: static;
+    grid-column: 1;
+    grid-row: auto;
+    height: auto;
+    flex-direction: row;
+    overflow-x: auto;
+    padding: var(--space-6) var(--space-10);
+    border-right: 0;
+    border-bottom: 1px solid var(--ui-border);
+  }
+
+  .thread-workbench > :not(.thread-cockpit-header):not(.project-navigation) {
+    margin: var(--space-12) var(--space-12) 0;
+  }
+}

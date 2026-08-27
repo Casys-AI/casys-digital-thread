@@ -1,0 +1,754 @@
+{
+  "schemaVersion": "2.0",
+  "generatedAt": "2026-07-30T08:00:04.000Z",
+  "mode": "demo",
+  "fleet": {
+    "status": "healthy",
+    "counts": {
+      "total": 4,
+      "healthy": 4,
+      "degraded": 0,
+      "unavailable": 0,
+      "unknown": 0,
+      "drift": 0
+    },
+    "servers": [
+      {
+        "id": "syson",
+        "desired": {
+          "id": "syson",
+          "displayName": "SysON",
+          "role": "System model, requirements and units-aware verdicts",
+          "serviceName": "mcp-syson",
+          "transport": "streamable-http",
+          "mcpUrl": "http://127.0.0.1:3009/mcp",
+          "healthUrl": "http://127.0.0.1:3009/health",
+          "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
+          "required": true,
+          "expectedTools": [
+            "syson_project_list",
+            "syson_project_get",
+            "syson_project_create",
+            "syson_project_delete",
+            "syson_project_templates",
+            "syson_model_stereotypes",
+            "syson_model_child_types",
+            "syson_model_create",
+            "syson_model_domains",
+            "syson_element_create",
+            "syson_element_get",
+            "syson_element_children",
+            "syson_element_rename",
+            "syson_element_delete",
+            "syson_element_insert_sysml",
+            "syson_query_aql",
+            "syson_search",
+            "syson_query_eval",
+            "syson_query_requirements_trace",
+            "syson_part_structure",
+            "syson_diagram_list",
+            "syson_diagram_create",
+            "syson_diagram_drop",
+            "syson_diagram_arrange",
+            "syson_diagram_snapshot",
+            "syson_constraint_extract",
+            "syson_constraint_evaluate",
+            "syson_constraint_validate",
+            "syson_constraint_solve",
+            "syson_value_read",
+            "syson_value_set"
+          ],
+          "expectedViews": [
+            "ui://mcp-syson/query-results-viewer",
+            "ui://mcp-syson/requirements-trace-viewer",
+            "ui://mcp-syson/diagram-viewer",
+            "ui://mcp-syson/validation-viewer",
+            "ui://mcp-syson/value-change-viewer",
+            "ui://mcp-syson/model-explorer-viewer"
+          ],
+          "network": {
+            "exposure": "loopback-only",
+            "composeNetwork": "chain",
+            "sharedVolumes": [],
+            "upstreams": [
+              "http://syson-app:8080"
+            ]
+          },
+          "trust": {
+            "level": "first-party-local",
+            "executesArbitraryCode": false,
+            "notes": [
+              "The MCP exposes model mutations; the console MVP never invokes them.",
+              "AQL is evaluated by the connected SysON instance and must be treated as privileged model access."
+            ]
+          }
+        },
+        "observed": {
+          "checkedAt": "2026-07-30T08:00:03.500Z",
+          "status": "healthy",
+          "latencyMs": 24,
+          "httpStatus": 200,
+          "mcp": {
+            "reachable": true,
+            "serverName": "@casys/mcp-syson",
+            "tools": [
+              {
+                "name": "syson_project_list"
+              },
+              {
+                "name": "syson_project_get"
+              },
+              {
+                "name": "syson_project_create"
+              },
+              {
+                "name": "syson_project_delete"
+              },
+              {
+                "name": "syson_project_templates"
+              },
+              {
+                "name": "syson_model_stereotypes"
+              },
+              {
+                "name": "syson_model_child_types"
+              },
+              {
+                "name": "syson_model_create"
+              },
+              {
+                "name": "syson_model_domains"
+              },
+              {
+                "name": "syson_element_create"
+              },
+              {
+                "name": "syson_element_get"
+              },
+              {
+                "name": "syson_element_children"
+              },
+              {
+                "name": "syson_element_rename"
+              },
+              {
+                "name": "syson_element_delete"
+              },
+              {
+                "name": "syson_element_insert_sysml"
+              },
+              {
+                "name": "syson_query_aql"
+              },
+              {
+                "name": "syson_search",
+                "resourceUri": "ui://mcp-syson/query-results-viewer"
+              },
+              {
+                "name": "syson_query_eval",
+                "resourceUri": "ui://mcp-syson/query-results-viewer"
+              },
+              {
+                "name": "syson_query_requirements_trace",
+                "resourceUri": "ui://mcp-syson/requirements-trace-viewer"
+              },
+              {
+                "name": "syson_part_structure"
+              },
+              {
+                "name": "syson_diagram_list"
+              },
+              {
+                "name": "syson_diagram_create"
+              },
+              {
+                "name": "syson_diagram_drop"
+              },
+              {
+                "name": "syson_diagram_arrange"
+              },
+              {
+                "name": "syson_diagram_snapshot",
+                "resourceUri": "ui://mcp-syson/diagram-viewer"
+              },
+              {
+                "name": "syson_constraint_extract"
+              },
+              {
+                "name": "syson_constraint_evaluate"
+              },
+              {
+                "name": "syson_constraint_validate",
+                "resourceUri": "ui://mcp-syson/validation-viewer"
+              },
+              {
+                "name": "syson_constraint_solve"
+              },
+              {
+                "name": "syson_value_read",
+                "resourceUri": "ui://mcp-syson/value-change-viewer"
+              },
+              {
+                "name": "syson_value_set",
+                "resourceUri": "ui://mcp-syson/value-change-viewer"
+              }
+            ],
+            "resourceUris": [
+              "ui://mcp-syson/query-results-viewer",
+              "ui://mcp-syson/requirements-trace-viewer",
+              "ui://mcp-syson/diagram-viewer",
+              "ui://mcp-syson/validation-viewer",
+              "ui://mcp-syson/value-change-viewer",
+              "ui://mcp-syson/model-explorer-viewer"
+            ],
+            "viewerUris": [
+              "ui://mcp-syson/query-results-viewer",
+              "ui://mcp-syson/requirements-trace-viewer",
+              "ui://mcp-syson/diagram-viewer",
+              "ui://mcp-syson/validation-viewer",
+              "ui://mcp-syson/value-change-viewer",
+              "ui://mcp-syson/model-explorer-viewer"
+            ]
+          },
+          "container": {
+            "runtimeAvailable": true,
+            "present": true,
+            "name": "casys-digital-thread-mcp-syson-1",
+            "state": "running",
+            "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3"
+          }
+        },
+        "drift": {
+          "status": "in_sync",
+          "fields": [
+            {
+              "field": "endpoint",
+              "status": "in_sync",
+              "desired": "http://127.0.0.1:3009/mcp",
+              "observed": "http://127.0.0.1:3009/mcp",
+              "message": "MCP endpoint matches the manifest."
+            },
+            {
+              "field": "health",
+              "status": "in_sync",
+              "desired": "healthy",
+              "observed": "healthy",
+              "message": "Health probe succeeded."
+            },
+            {
+              "field": "image",
+              "status": "in_sync",
+              "desired": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
+              "observed": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
+              "message": "Observed image matches desired state."
+            },
+            {
+              "field": "tools",
+              "status": "in_sync",
+              "desired": 31,
+              "observed": 31,
+              "message": "All expected tools are present."
+            },
+            {
+              "field": "resources",
+              "status": "in_sync",
+              "desired": 6,
+              "observed": 6,
+              "message": "All expected UI resources are present."
+            }
+          ]
+        },
+        "demo": true
+      },
+      {
+        "id": "build123d",
+        "desired": {
+          "id": "build123d",
+          "displayName": "build123d",
+          "role": "Parametric CAD execution, exact geometry metrics and export",
+          "serviceName": "mcp-build123d",
+          "transport": "streamable-http",
+          "mcpUrl": "http://127.0.0.1:3014/mcp",
+          "healthUrl": "http://127.0.0.1:3014/health",
+          "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
+          "required": true,
+          "expectedTools": [
+            "build123d_execute",
+            "build123d_export"
+          ],
+          "expectedViews": [
+            "ui://mcp-build123d/results-viewer"
+          ],
+          "network": {
+            "exposure": "loopback-only",
+            "composeNetwork": "chain",
+            "sharedVolumes": [
+              "exports:/exports"
+            ],
+            "upstreams": []
+          },
+          "trust": {
+            "level": "first-party-local-privileged",
+            "executesArbitraryCode": true,
+            "notes": [
+              "build123d_execute runs supplied Python in the toolchain container.",
+              "The current Compose topology shares the chain network; do not accept untrusted scripts."
+            ]
+          }
+        },
+        "observed": {
+          "checkedAt": "2026-07-30T08:00:03.600Z",
+          "status": "healthy",
+          "latencyMs": 17,
+          "httpStatus": 200,
+          "mcp": {
+            "reachable": true,
+            "serverName": "@casys/mcp-build123d",
+            "tools": [
+              {
+                "name": "build123d_execute",
+                "resourceUri": "ui://mcp-build123d/results-viewer"
+              },
+              {
+                "name": "build123d_export",
+                "resourceUri": "ui://mcp-build123d/results-viewer"
+              }
+            ],
+            "resourceUris": [
+              "ui://mcp-build123d/results-viewer"
+            ],
+            "viewerUris": [
+              "ui://mcp-build123d/results-viewer"
+            ]
+          },
+          "container": {
+            "runtimeAvailable": true,
+            "present": true,
+            "name": "casys-digital-thread-mcp-build123d-1",
+            "state": "running",
+            "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3"
+          }
+        },
+        "drift": {
+          "status": "in_sync",
+          "fields": [
+            {
+              "field": "endpoint",
+              "status": "in_sync",
+              "desired": "http://127.0.0.1:3014/mcp",
+              "observed": "http://127.0.0.1:3014/mcp",
+              "message": "MCP endpoint matches the manifest."
+            },
+            {
+              "field": "health",
+              "status": "in_sync",
+              "desired": "healthy",
+              "observed": "healthy",
+              "message": "Health probe succeeded."
+            },
+            {
+              "field": "image",
+              "status": "in_sync",
+              "desired": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
+              "observed": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
+              "message": "Observed image matches desired state."
+            },
+            {
+              "field": "tools",
+              "status": "in_sync",
+              "desired": 2,
+              "observed": 2,
+              "message": "All expected tools are present."
+            },
+            {
+              "field": "resources",
+              "status": "in_sync",
+              "desired": [
+                "ui://mcp-build123d/results-viewer"
+              ],
+              "observed": [
+                "ui://mcp-build123d/results-viewer"
+              ],
+              "message": "1 viewer resources match desired state."
+            }
+          ]
+        },
+        "demo": true
+      },
+      {
+        "id": "calculix",
+        "desired": {
+          "id": "calculix",
+          "displayName": "CalculiX",
+          "role": "STEP meshing and linear static finite-element solve",
+          "serviceName": "mcp-calculix",
+          "transport": "streamable-http",
+          "mcpUrl": "http://127.0.0.1:3015/mcp",
+          "healthUrl": "http://127.0.0.1:3015/health",
+          "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
+          "required": true,
+          "expectedTools": [
+            "calculix_solve_static"
+          ],
+          "expectedViews": [
+            "ui://mcp-calculix/results-viewer"
+          ],
+          "network": {
+            "exposure": "loopback-only",
+            "composeNetwork": "chain",
+            "sharedVolumes": [
+              "exports:/exports"
+            ],
+            "upstreams": []
+          },
+          "trust": {
+            "level": "first-party-local",
+            "executesArbitraryCode": false,
+            "notes": [
+              "The solver consumes files from the shared exports volume.",
+              "Native meshing and solver processes still require untrusted-input hardening."
+            ]
+          }
+        },
+        "observed": {
+          "checkedAt": "2026-07-30T08:00:03.700Z",
+          "status": "healthy",
+          "latencyMs": 19,
+          "httpStatus": 200,
+          "mcp": {
+            "reachable": true,
+            "serverName": "@casys/mcp-calculix",
+            "tools": [
+              {
+                "name": "calculix_solve_static",
+                "resourceUri": "ui://mcp-calculix/results-viewer"
+              }
+            ],
+            "resourceUris": [
+              "ui://mcp-calculix/results-viewer"
+            ],
+            "viewerUris": [
+              "ui://mcp-calculix/results-viewer"
+            ]
+          },
+          "container": {
+            "runtimeAvailable": true,
+            "present": true,
+            "name": "casys-digital-thread-mcp-calculix-1",
+            "state": "running",
+            "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3"
+          }
+        },
+        "drift": {
+          "status": "in_sync",
+          "fields": [
+            {
+              "field": "endpoint",
+              "status": "in_sync",
+              "desired": "http://127.0.0.1:3015/mcp",
+              "observed": "http://127.0.0.1:3015/mcp",
+              "message": "MCP endpoint matches the manifest."
+            },
+            {
+              "field": "health",
+              "status": "in_sync",
+              "desired": "healthy",
+              "observed": "healthy",
+              "message": "Health probe succeeded."
+            },
+            {
+              "field": "image",
+              "status": "in_sync",
+              "desired": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
+              "observed": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
+              "message": "Observed image matches desired state."
+            },
+            {
+              "field": "tools",
+              "status": "in_sync",
+              "desired": 1,
+              "observed": 1,
+              "message": "The expected solve tool is present."
+            },
+            {
+              "field": "resources",
+              "status": "in_sync",
+              "desired": [
+                "ui://mcp-calculix/results-viewer"
+              ],
+              "observed": [
+                "ui://mcp-calculix/results-viewer"
+              ],
+              "message": "1 viewer resources match desired state."
+            }
+          ]
+        },
+        "demo": true
+      },
+      {
+        "id": "erpnext",
+        "desired": {
+          "id": "erpnext",
+          "displayName": "ERPNext",
+          "role": "Manufacturing BOM, materials, operations and cost detail",
+          "serviceName": "mcp-erpnext",
+          "transport": "streamable-http",
+          "mcpUrl": "http://127.0.0.1:3012/mcp",
+          "healthUrl": "http://127.0.0.1:3012/health",
+          "image": "casys-digital-thread/mcp-erpnext:3.0.0-17ca098-1d99467",
+          "required": true,
+          "expectedTools": [
+            "erpnext_bom_list",
+            "erpnext_bom_get",
+            "erpnext_work_order_list",
+            "erpnext_work_order_get",
+            "erpnext_work_order_create",
+            "erpnext_job_card_list",
+            "erpnext_job_card_get",
+            "erpnext_item_list",
+            "erpnext_item_get",
+            "erpnext_item_create",
+            "erpnext_item_update",
+            "erpnext_stock_balance",
+            "erpnext_warehouse_list",
+            "erpnext_stock_entry_list",
+            "erpnext_stock_entry_get",
+            "erpnext_stock_entry_create",
+            "erpnext_file_upload",
+            "erpnext_doc_create",
+            "erpnext_doc_update",
+            "erpnext_doc_delete",
+            "erpnext_doc_submit",
+            "erpnext_doc_cancel",
+            "erpnext_doc_get",
+            "erpnext_doc_list",
+            "erpnext_doc_assign",
+            "erpnext_doc_unassign"
+          ],
+          "expectedViews": [
+            "ui://mcp-erpnext/doclist-viewer",
+            "ui://mcp-erpnext/invoice-viewer",
+            "ui://mcp-erpnext/stock-viewer",
+            "ui://mcp-erpnext/chart-viewer",
+            "ui://mcp-erpnext/kanban-viewer",
+            "ui://mcp-erpnext/kpi-viewer",
+            "ui://mcp-erpnext/funnel-viewer"
+          ],
+          "network": {
+            "exposure": "loopback-only",
+            "composeNetwork": "chain",
+            "sharedVolumes": [],
+            "upstreams": [
+              "http://frontend:8080"
+            ]
+          },
+          "trust": {
+            "level": "first-party-local-privileged",
+            "executesArbitraryCode": false,
+            "notes": [
+              "The local container combines the reviewed viewer/UOM fix 1d99467 with the pending mcp-server 0.24 base 17ca098; the fix itself is merged on main as 50d4a538, while the 0.24 base remains explicit until its own review is complete.",
+              "The server exposes manufacturing, inventory and generic operations so an agent can create Items and BOM documents from zero; these categories include create, update, submit, cancel, delete, upload and assignment mutations.",
+              "The native Workbench backend selects reviewed read tools and never exposes ERP credentials or generic MCP authority to the browser.",
+              "ERPNext API credentials are supplied at runtime and never stored in this manifest."
+            ]
+          }
+        },
+        "observed": {
+          "checkedAt": "2026-07-30T12:11:15.000Z",
+          "status": "healthy",
+          "latencyMs": 19,
+          "httpStatus": 200,
+          "mcp": {
+            "reachable": true,
+            "serverName": "mcp-erpnext",
+            "tools": [
+              {
+                "name": "erpnext_bom_list",
+                "resourceUri": "ui://mcp-erpnext/doclist-viewer"
+              },
+              {
+                "name": "erpnext_bom_get"
+              },
+              {
+                "name": "erpnext_work_order_list",
+                "resourceUri": "ui://mcp-erpnext/doclist-viewer"
+              },
+              {
+                "name": "erpnext_work_order_get"
+              },
+              {
+                "name": "erpnext_work_order_create"
+              },
+              {
+                "name": "erpnext_job_card_list",
+                "resourceUri": "ui://mcp-erpnext/doclist-viewer"
+              },
+              {
+                "name": "erpnext_job_card_get"
+              },
+              {
+                "name": "erpnext_item_list",
+                "resourceUri": "ui://mcp-erpnext/doclist-viewer"
+              },
+              {
+                "name": "erpnext_item_get"
+              },
+              {
+                "name": "erpnext_item_create"
+              },
+              {
+                "name": "erpnext_item_update"
+              },
+              {
+                "name": "erpnext_stock_balance",
+                "resourceUri": "ui://mcp-erpnext/stock-viewer"
+              },
+              {
+                "name": "erpnext_warehouse_list",
+                "resourceUri": "ui://mcp-erpnext/doclist-viewer"
+              },
+              {
+                "name": "erpnext_stock_entry_list",
+                "resourceUri": "ui://mcp-erpnext/doclist-viewer"
+              },
+              {
+                "name": "erpnext_stock_entry_get"
+              },
+              {
+                "name": "erpnext_stock_entry_create"
+              },
+              {
+                "name": "erpnext_file_upload"
+              },
+              {
+                "name": "erpnext_doc_create"
+              },
+              {
+                "name": "erpnext_doc_update"
+              },
+              {
+                "name": "erpnext_doc_delete"
+              },
+              {
+                "name": "erpnext_doc_submit"
+              },
+              {
+                "name": "erpnext_doc_cancel"
+              },
+              {
+                "name": "erpnext_doc_get"
+              },
+              {
+                "name": "erpnext_doc_list",
+                "resourceUri": "ui://mcp-erpnext/doclist-viewer"
+              },
+              {
+                "name": "erpnext_doc_assign"
+              },
+              {
+                "name": "erpnext_doc_unassign"
+              }
+            ],
+            "resourceUris": [
+              "ui://mcp-erpnext/doclist-viewer",
+              "ui://mcp-erpnext/invoice-viewer",
+              "ui://mcp-erpnext/stock-viewer",
+              "ui://mcp-erpnext/chart-viewer",
+              "ui://mcp-erpnext/kanban-viewer",
+              "ui://mcp-erpnext/kpi-viewer",
+              "ui://mcp-erpnext/funnel-viewer"
+            ],
+            "viewerUris": [
+              "ui://mcp-erpnext/doclist-viewer",
+              "ui://mcp-erpnext/invoice-viewer",
+              "ui://mcp-erpnext/stock-viewer",
+              "ui://mcp-erpnext/chart-viewer",
+              "ui://mcp-erpnext/kanban-viewer",
+              "ui://mcp-erpnext/kpi-viewer",
+              "ui://mcp-erpnext/funnel-viewer"
+            ]
+          },
+          "container": {
+            "runtimeAvailable": true,
+            "present": true,
+            "name": "casys-digital-thread-mcp-erpnext-1",
+            "state": "running",
+            "image": "casys-digital-thread/mcp-erpnext:3.0.0-17ca098-1d99467"
+          }
+        },
+        "drift": {
+          "status": "in_sync",
+          "fields": [
+            {
+              "field": "endpoint",
+              "status": "in_sync",
+              "desired": "http://127.0.0.1:3012/mcp",
+              "observed": "http://127.0.0.1:3012/mcp",
+              "message": "MCP endpoint matches the manifest."
+            },
+            {
+              "field": "health",
+              "status": "in_sync",
+              "desired": "healthy",
+              "observed": "healthy",
+              "message": "Health probe succeeded."
+            },
+            {
+              "field": "image",
+              "status": "in_sync",
+              "desired": "casys-digital-thread/mcp-erpnext:3.0.0-17ca098-1d99467",
+              "observed": "casys-digital-thread/mcp-erpnext:3.0.0-17ca098-1d99467",
+              "message": "Observed image matches desired state."
+            },
+            {
+              "field": "tools",
+              "status": "in_sync",
+              "desired": 26,
+              "observed": 26,
+              "message": "All expected manufacturing, inventory and operations tools are present."
+            },
+            {
+              "field": "resources",
+              "status": "in_sync",
+              "desired": [
+                "ui://mcp-erpnext/doclist-viewer",
+                "ui://mcp-erpnext/invoice-viewer",
+                "ui://mcp-erpnext/stock-viewer",
+                "ui://mcp-erpnext/chart-viewer",
+                "ui://mcp-erpnext/kanban-viewer",
+                "ui://mcp-erpnext/kpi-viewer",
+                "ui://mcp-erpnext/funnel-viewer"
+              ],
+              "observed": [
+                "ui://mcp-erpnext/doclist-viewer",
+                "ui://mcp-erpnext/invoice-viewer",
+                "ui://mcp-erpnext/stock-viewer",
+                "ui://mcp-erpnext/chart-viewer",
+                "ui://mcp-erpnext/kanban-viewer",
+                "ui://mcp-erpnext/kpi-viewer",
+                "ui://mcp-erpnext/funnel-viewer"
+              ],
+              "message": "7 viewer resources match desired state."
+            }
+          ]
+        },
+        "demo": true
+      }
+    ]
+  },
+  "runs": {
+    "items": [
+      {
+        "id": "bracket-demo-2026-07-30",
+        "name": "Bracket verification",
+        "subject": "Al 6061 mounting bracket",
+        "status": "documentary",
+        "verdictStatus": "not_evaluated",
+        "source": "demo",
+        "passedRequirements": 0,
+        "failedRequirements": 0,
+        "unresolvedRequirements": 2
+      }
+    ]
+  }
+}

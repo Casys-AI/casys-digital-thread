@@ -1,0 +1,188 @@
+{
+  "id": "bracket-demo-2026-07-30",
+  "name": "Bracket verification",
+  "subject": "Al 6061 mounting bracket",
+  "status": "documentary",
+  "verdictStatus": "not_evaluated",
+  "source": "demo",
+  "passedRequirements": 0,
+  "failedRequirements": 0,
+  "unresolvedRequirements": 2,
+  "description": "Documentary record of checked-in bracket material and recorded comparisons. No CAD, FEA, or SysON dispatch is attested by this checked-in demo.",
+  "stages": [
+    {
+      "id": "requirements",
+      "title": "Documented requirements",
+      "serverId": "fixture",
+      "tool": "documentary-record",
+      "basis": "documentary",
+      "status": "documentary",
+      "summary": "The checked-in example documents two target limits; it does not attest SysON extraction or evaluation.",
+      "inputs": {
+        "documentedSource": "examples/bracket/README.md"
+      },
+      "outputs": {
+        "recordedRequirementIds": [
+          "massBudget",
+          "holdLoad"
+        ]
+      }
+    },
+    {
+      "id": "geometry",
+      "title": "Checked-in geometry",
+      "serverId": "fixture",
+      "tool": "documentary-record",
+      "basis": "documentary",
+      "status": "documentary",
+      "summary": "The checked-in materials record 56.915761 g and a 60 × 40 × 52.5 mm bounding box; no fresh CAD execution is attested.",
+      "inputs": {
+        "scriptPath": "examples/bracket/bracket.py",
+        "densityKgM3": 2700
+      },
+      "outputs": {
+        "volumeMm3": 21079.911,
+        "massG": 56.915761,
+        "centerOfMassMm": [
+          -12.43,
+          0,
+          11.51
+        ],
+        "boundingBoxMm": {
+          "x": 60,
+          "y": 40,
+          "z": 52.5
+        }
+      }
+    },
+    {
+      "id": "step",
+      "title": "Checked-in STEP",
+      "serverId": "fixture",
+      "tool": "documentary-record",
+      "basis": "documentary",
+      "status": "documentary",
+      "summary": "The STEP file is present in the checkout and content-addressed here; no CAD export dispatch is attested.",
+      "inputs": {
+        "path": "examples/bracket/bracket.step"
+      },
+      "outputs": {
+        "path": "examples/bracket/bracket.step",
+        "sha256": "7e8bcb45b8ad081b701f7f5e15fd79b8e75db27bb09fba2d821fafc6c4c585ac",
+        "producedBy": "checkout"
+      }
+    },
+    {
+      "id": "fea",
+      "title": "Documented FEA values",
+      "serverId": "fixture",
+      "tool": "documentary-record",
+      "basis": "documentary",
+      "status": "documentary",
+      "summary": "The recorded example lists 26.6 MPa maximum von Mises stress and 0.043 mm displacement; no fresh FEA dispatch is attested.",
+      "inputs": {
+        "documentedSource": "examples/bracket/README.md",
+        "solveCasePath": "examples/bracket/solve-case.json"
+      },
+      "outputs": {
+        "maxDisplacementMm": 0.043,
+        "maxVonMisesMpa": 26.6,
+        "provenance": "recorded-comparison"
+      }
+    },
+    {
+      "id": "comparison",
+      "title": "Recorded comparisons",
+      "serverId": "fixture",
+      "tool": "recorded-comparison",
+      "basis": "comparison",
+      "status": "not_evaluated",
+      "summary": "Recorded values are within documented limits, but no requirement verdict or SysON comparison dispatch is attested.",
+      "inputs": {
+        "evidencePath": "examples/console/bracket-evidence.json"
+      },
+      "outputs": {
+        "comparisons": [
+          {
+            "id": "massBudget",
+            "outcome": "within-recorded-limit",
+            "source": "recorded-comparison"
+          },
+          {
+            "id": "holdLoad",
+            "outcome": "within-recorded-limit",
+            "source": "recorded-comparison"
+          }
+        ]
+      }
+    }
+  ],
+  "measurements": [],
+  "provenance": [
+    {
+      "label": "record status",
+      "value": "documentary record (no dispatch attested)"
+    },
+    {
+      "label": "dispatch attestation",
+      "value": "No CAD, FEA, or SysON dispatch is attested by this checked-in demo."
+    }
+  ],
+  "warnings": [
+    "No CAD, FEA, or SysON dispatch is attested by this checked-in demo."
+  ],
+  "requirements": [
+    {
+      "id": "massBudget",
+      "title": "Recorded total mass limit",
+      "status": "unresolved",
+      "message": "The 70 g target is documented in the checked-in demo, but no SysON requirement extraction or evaluation dispatch is attested."
+    },
+    {
+      "id": "holdLoad",
+      "title": "Recorded maximum stress limit",
+      "status": "unresolved",
+      "message": "The 160 MPa target is documented in the checked-in demo, but no SysON requirement extraction or evaluation dispatch is attested."
+    }
+  ],
+  "evidence": [
+    {
+      "id": "cad-script",
+      "kind": "script",
+      "label": "Checked-in parametric bracket source",
+      "path": "examples/bracket/bracket.py",
+      "sha256": "4030fbfd2a3607d75524d343aa5a6b819ba6bba6f9349b183d0bb0894c6e2f76",
+      "producedBy": "checkout"
+    },
+    {
+      "id": "step",
+      "kind": "cad",
+      "label": "Checked-in bracket STEP geometry",
+      "path": "examples/bracket/bracket.step",
+      "sha256": "7e8bcb45b8ad081b701f7f5e15fd79b8e75db27bb09fba2d821fafc6c4c585ac",
+      "producedBy": "checkout"
+    },
+    {
+      "id": "solve-case",
+      "kind": "solve-case",
+      "label": "Checked-in load and boundary-condition case",
+      "path": "examples/bracket/solve-case.json",
+      "sha256": "41982d66ad8fa4e612e319116f2bd66fcf45c3d49e5644593c6b13881b47aaa2",
+      "producedBy": "checkout"
+    },
+    {
+      "id": "documented-result",
+      "kind": "result",
+      "label": "Documented 26.6 MPa FEA value",
+      "path": "examples/bracket/README.md",
+      "sha256": "5acacc5bd5249ac0a6f4a3423801153b884be9dfd75168dc3c07d4d02bf42f03",
+      "producedBy": "checkout"
+    },
+    {
+      "id": "recorded-comparison",
+      "kind": "evidence",
+      "label": "Recorded comparisons against documented limits (not requirement verdicts)",
+      "producedBy": "recorded-comparison"
+    }
+  ]
+}

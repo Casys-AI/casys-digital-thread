@@ -1,0 +1,102 @@
+/* -----------------------------------------------------------------------------
+   Feuille unique du cockpit natif (React + Vite).
+
+   Tailwind charge en premier : ses layers (theme/base/utilities) perdent
+   toujours face aux feuilles historiques non-layered ci-dessous, donc le
+   leftover graphe / feed / tiroir / canvas garde la main. Les vues refondues
+   (overview, brief, requirements, navigation, work, evidence) sont stylées
+   en utilities + primitives `ui/` ; leurs règles historiques ont été
+   purgées (UI.4).
+
+   L'ORDRE DES IMPORTS HISTORIQUES EST LA CASCADE. Déplacer un import
+   change le rendu. Ajouter une règle : la poser dans le partiel qui porte
+   déjà sa famille, pas en fin de fichier.
+   -------------------------------------------------------------------------- */
+
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@import "./styles/01-tokens-and-console.css";
+@import "./styles/04-feed-and-graph.css";
+@import "./styles/05-tool-drawer.css";
+@import "./styles/06-component-workspace.css";
+@import "./styles/10-light-atelier.css";
+@import "./styles/11-review-notifications.css";
+@import "./styles/17-saas-shell.css";
+@import "./styles/18-desktop-chat.css";
+
+/* --- Design system shadcn (palette zinc, claire) ---------------------------
+   Prefixe `--ui-` : les jetons historiques (`--muted`, `--accent`) designent
+   du TEXTE et une COULEUR DE MARQUE ; ceux de shadcn designent des FONDS.
+   Le prefixe evite la collision, `@theme inline` retablit les noms standard
+   cote utilities (`bg-muted`, `text-muted-foreground`, ...). */
+:root {
+  --ui-background: oklch(1 0 0);
+  --ui-foreground: oklch(0.141 0.005 285.823);
+  --ui-card: oklch(1 0 0);
+  --ui-card-foreground: oklch(0.141 0.005 285.823);
+  --ui-popover: oklch(1 0 0);
+  --ui-popover-foreground: oklch(0.141 0.005 285.823);
+  --ui-primary: oklch(0.21 0.006 285.885);
+  --ui-primary-foreground: oklch(0.985 0 0);
+  --ui-secondary: oklch(0.967 0.001 286.375);
+  --ui-secondary-foreground: oklch(0.21 0.006 285.885);
+  --ui-muted: oklch(0.967 0.001 286.375);
+  --ui-muted-foreground: oklch(0.552 0.016 285.938);
+  --ui-accent: oklch(0.967 0.001 286.375);
+  --ui-accent-foreground: oklch(0.21 0.006 285.885);
+  --ui-destructive: oklch(0.577 0.245 27.325);
+  --ui-success: oklch(0.527 0.117 155.7);
+  --ui-warning: oklch(0.554 0.117 66.4);
+  --ui-border: oklch(0.92 0.004 286.32);
+  --ui-input: oklch(0.92 0.004 286.32);
+  --ui-ring: oklch(0.705 0.015 286.067);
+  --ui-brand: #0e7490;
+  --ui-brand-strong: #155e75;
+  /* Couleurs de voie du fil exécutable. Ce sont des identités de discipline,
+     pas des états : elles ne varient jamais avec un statut. */
+  --ui-lane-req: #7c3aed;
+  --ui-lane-model: #2563eb;
+  --ui-lane-geom: #0e7490;
+  --ui-lane-phys: #a16207;
+  --ui-lane-verdict: #15803d;
+  --ui-radius: 0.625rem;
+}
+
+@theme inline {
+  --color-background: var(--ui-background);
+  --color-foreground: var(--ui-foreground);
+  --color-card: var(--ui-card);
+  --color-card-foreground: var(--ui-card-foreground);
+  --color-popover: var(--ui-popover);
+  --color-popover-foreground: var(--ui-popover-foreground);
+  --color-primary: var(--ui-primary);
+  --color-primary-foreground: var(--ui-primary-foreground);
+  --color-secondary: var(--ui-secondary);
+  --color-secondary-foreground: var(--ui-secondary-foreground);
+  --color-muted: var(--ui-muted);
+  --color-muted-foreground: var(--ui-muted-foreground);
+  --color-accent: var(--ui-accent);
+  --color-accent-foreground: var(--ui-accent-foreground);
+  --color-destructive: var(--ui-destructive);
+  --color-success: var(--ui-success);
+  --color-warning: var(--ui-warning);
+  --color-border: var(--ui-border);
+  --color-input: var(--ui-input);
+  --color-ring: var(--ui-ring);
+  --color-brand: var(--ui-brand);
+  --color-brand-strong: var(--ui-brand-strong);
+  --color-lane-req: var(--ui-lane-req);
+  --color-lane-model: var(--ui-lane-model);
+  --color-lane-geom: var(--ui-lane-geom);
+  --color-lane-phys: var(--ui-lane-phys);
+  --color-lane-verdict: var(--ui-lane-verdict);
+  --radius-sm: calc(var(--ui-radius) - 4px);
+  --radius-md: calc(var(--ui-radius) - 2px);
+  --radius-lg: var(--ui-radius);
+  --radius-xl: calc(var(--ui-radius) + 4px);
+  --font-sans: "Inter", ui-sans-serif, -apple-system, "SF Pro Text",
+    "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, "Roboto Mono",
+    "Cascadia Mono", Consolas, monospace;
+}

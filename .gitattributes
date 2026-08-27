@@ -1,0 +1,14 @@
+# Private provider-specific prompting and local agent configuration stay available to
+# the internal atelier but are intentionally absent from every public git archive.
+.grok/** export-ignore
+.claude/** export-ignore
+.cursor/** export-ignore
+.codex/** export-ignore
+CLAUDE.md export-ignore
+
+# Session RFCs and the mixed design-asset workspace remain private design history.
+# Contributor-facing media lives under docs/media and remains exportable.
+docs/rfcs/** export-ignore
+docs/assets/** export-ignore
+docs/rfcs export-ignore
+docs/assets export-ignore

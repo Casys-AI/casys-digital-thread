@@ -1,0 +1,9 @@
+*
+!src/adapters/electrical/spice/admitted/run.ts
+!src/adapters/electrical/spice/admitted/worker-contract.ts
+!src/domain/electrical/spice/closed-subset-v1.ts
+!src/domain/electrical/spice/lexical.ts
+!src/domain/electrical/spice/parse.ts
+!src/domain/electrical/spice/admitted/contract.ts
+!images/ngspice-microsandbox-worker/Dockerfile
+!images/ngspice-microsandbox-worker/deno.lock

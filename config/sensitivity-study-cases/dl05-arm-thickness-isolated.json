@@ -1,0 +1,89 @@
+{
+  "schemaVersion": "sensitivity-study-case-template/2.0",
+  "id": "dl05-arm-thickness-isolated",
+  "revision": 1,
+  "scope": "mechanical-structural",
+  "evidenceBoundary": "fea-static",
+  "project": {
+    "id": "desk-lamp-dl05",
+    "subjectId": "project:desk-lamp-dl05"
+  },
+  "target": {
+    "componentKey": "arm",
+    "semanticKey": "arm_thickness"
+  },
+  "baseValue": {
+    "value": 10,
+    "unit": "mm"
+  },
+  "step": {
+    "value": 1,
+    "unit": "mm"
+  },
+  "metrics": [
+    {
+      "id": "maxDisplacement",
+      "unit": "mm"
+    },
+    {
+      "id": "maxVonMises",
+      "unit": "MPa"
+    }
+  ],
+  "solver": {
+    "provider": "calculix",
+    "tool": "calculix_solve_static",
+    "resultSchemaVersion": "2.0",
+    "mesh": {
+      "kind": "tetrahedral-volume",
+      "targetSizeMm": 3
+    },
+    "material": {
+      "model": "isotropic-linear-elastic",
+      "eMpa": 69000,
+      "nu": 0.33,
+      "basis": "Aluminium 6061 as declared in the approved dl05 brief (assume-material); assumption pending a selected material certificate."
+    },
+    "supports": [
+      {
+        "id": "arm-root-fixed",
+        "kind": "fixed",
+        "selection": {
+          "name": "FIXED",
+          "box": {
+            "min": [-111, -11, -6],
+            "max": [-109, 11, 6],
+            "unit": "mm"
+          }
+        }
+      }
+    ],
+    "loads": [
+      {
+        "id": "tip-load-10n",
+        "kind": "force",
+        "selection": {
+          "name": "LOADED",
+          "box": {
+            "min": [104, -11, -6],
+            "max": [111, 11, 6],
+            "unit": "mm"
+          }
+        },
+        "force": {
+          "value": [0, 0, -10],
+          "unit": "N"
+        }
+      }
+    ]
+  },
+  "domain": {
+    "approximationOrder": "first-order-forward",
+    "remeshingVariationIncluded": true,
+    "localValidityNote": "Valid for arm_thickness in [10, 11] mm on the isolated Heron arm in its local frame.",
+    "limitations": [
+      "Remeshing variation is included because each CalculiX solve remeshes independently.",
+      "The study perimeter is the isolated arm cantilever, matching the sealed proof case desk-lamp-dl05-arm-cantilever. Metric ids are the Thread requirement metrics maxDisplacement and maxVonMises — the join does not invent aliases."
+    ]
+  }
+}

@@ -1,0 +1,5 @@
+*
+!src/adapters/fea/isolated-v3/calculix-static-proof-v1/run.ts
+!src/adapters/fea/isolated-v3/calculix-static-proof-v1/worker-contract.ts
+!images/calculix-microsandbox-worker/Dockerfile
+!images/calculix-microsandbox-worker/deno.lock

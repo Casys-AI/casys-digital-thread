@@ -1,0 +1,355 @@
+{
+  "schemaVersion": "1.0",
+  "version": 1,
+  "console": {
+    "snapshotTool": "console_snapshot",
+    "readOnly": true
+  },
+  "servers": [
+    {
+      "id": "syson",
+      "displayName": "SysON",
+      "role": "System model, requirements and units-aware verdicts",
+      "serviceName": "mcp-syson",
+      "transport": "streamable-http",
+      "mcpUrl": "http://127.0.0.1:3009/mcp",
+      "healthUrl": "http://127.0.0.1:3009/health",
+      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:c04922cc2c0f503c34277c5a1dc81ab28b141945acad90345e2d16882535b4bc",
+      "required": true,
+      "expectedTools": [
+        "syson_project_list",
+        "syson_project_get",
+        "syson_project_create",
+        "syson_project_delete",
+        "syson_project_templates",
+        "syson_model_stereotypes",
+        "syson_model_child_types",
+        "syson_model_create",
+        "syson_model_domains",
+        "syson_element_create",
+        "syson_element_get",
+        "syson_element_children",
+        "syson_element_rename",
+        "syson_element_delete",
+        "syson_element_insert_sysml",
+        "syson_query_aql",
+        "syson_search",
+        "syson_query_eval",
+        "syson_query_requirements_trace",
+        "syson_part_structure",
+        "syson_diagram_list",
+        "syson_diagram_create",
+        "syson_diagram_drop",
+        "syson_diagram_arrange",
+        "syson_diagram_snapshot",
+        "syson_constraint_extract",
+        "syson_constraint_evaluate",
+        "syson_constraint_validate",
+        "syson_constraint_solve",
+        "syson_value_read",
+        "syson_value_set"
+      ],
+      "expectedViews": [
+        "ui://mcp-syson/query-results-viewer",
+        "ui://mcp-syson/requirements-trace-viewer",
+        "ui://mcp-syson/diagram-viewer",
+        "ui://mcp-syson/validation-viewer",
+        "ui://mcp-syson/value-change-viewer",
+        "ui://mcp-syson/model-explorer-viewer"
+      ],
+      "network": {
+        "exposure": "loopback-only",
+        "composeNetwork": "chain",
+        "sharedVolumes": [],
+        "upstreams": [
+          "http://syson-app:8080"
+        ]
+      },
+      "trust": {
+        "level": "first-party-local-privileged",
+        "executesArbitraryCode": false,
+        "notes": [
+          "The MCP exposes model mutations; the console MVP never invokes them.",
+          "AQL is evaluated by the connected SysON instance and must be treated as privileged model access."
+        ]
+      }
+    },
+    {
+      "id": "build123d",
+      "displayName": "build123d",
+      "role": "Parametric CAD execution, exact geometry metrics and export",
+      "serviceName": "mcp-build123d",
+      "transport": "streamable-http",
+      "mcpUrl": "http://127.0.0.1:3014/mcp",
+      "healthUrl": "http://127.0.0.1:3014/health",
+      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:7a255f24448ddb6de496c4e47c2d1634c63daea67e9082b558257287215b23b5",
+      "required": true,
+      "expectedTools": [
+        "build123d_execute",
+        "build123d_export",
+        "build123d_observe_assembly_integrity"
+      ],
+      "expectedViews": [
+        "ui://mcp-build123d/results-viewer",
+        "ui://mcp-build123d/artifact-helper-viewer"
+      ],
+      "network": {
+        "exposure": "loopback-only",
+        "composeNetwork": "chain",
+        "sharedVolumes": [
+          "exports:/exports"
+        ],
+        "upstreams": []
+      },
+      "trust": {
+        "level": "first-party-local-privileged",
+        "executesArbitraryCode": true,
+        "notes": [
+          "build123d_execute runs supplied Python in the toolchain container.",
+          "The current Compose topology shares the chain network; do not accept untrusted scripts."
+        ]
+      }
+    },
+    {
+      "id": "build123d-sandbox",
+      "displayName": "build123d (sandbox)",
+      "role": "Private admitted CAD execution and export staging; output is not evidence until canonical sealing",
+      "serviceName": "mcp-build123d-sandbox",
+      "transport": "streamable-http",
+      "mcpUrl": "http://127.0.0.1:3024/mcp",
+      "healthUrl": "http://127.0.0.1:3024/health",
+      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:7a255f24448ddb6de496c4e47c2d1634c63daea67e9082b558257287215b23b5",
+      "required": false,
+      "expectedTools": [
+        "build123d_execute",
+        "build123d_export",
+        "build123d_observe_assembly_integrity"
+      ],
+      "expectedViews": [
+        "ui://mcp-build123d/results-viewer",
+        "ui://mcp-build123d/artifact-helper-viewer"
+      ],
+      "network": {
+        "exposure": "loopback-only",
+        "composeNetwork": "chain",
+        "sharedVolumes": [
+          "build123d-sandbox-exports:/exports"
+        ],
+        "upstreams": []
+      },
+      "trust": {
+        "level": "first-party-local-privileged",
+        "executesArbitraryCode": true,
+        "notes": [
+          "Runs geometry programs proposed by an agent and signed by a human after visual review.",
+          "Private export volume: its output never reaches the shared evidence volume.",
+          "The server lifts bytes out with docker compose cp and fail-closed SHA-256 verification."
+        ]
+      }
+    },
+    {
+      "id": "calculix",
+      "displayName": "CalculiX",
+      "role": "Finite-element analysis: static, modal, buckling, creep and coupled thermal",
+      "serviceName": "mcp-calculix",
+      "transport": "streamable-http",
+      "mcpUrl": "http://127.0.0.1:3015/mcp",
+      "healthUrl": "http://127.0.0.1:3015/health",
+      "image": "ghcr.io/casys-ai/mcp-calculix@sha256:76c9630eeecfe164c6b3c4d8b845c51fa7f8b48528773cb149b6c7a0ae2799a8",
+      "required": true,
+      "expectedTools": [
+        "calculix_solve_static",
+        "calculix_solve_modal",
+        "calculix_solve_buckling",
+        "calculix_solve_creep",
+        "calculix_solve_coupled_thermal",
+        "calculix_solve_static_recorded",
+        "calculix_run_get"
+      ],
+      "expectedViews": [
+        "ui://mcp-calculix/results-viewer"
+      ],
+      "network": {
+        "exposure": "loopback-only",
+        "composeNetwork": "chain",
+        "sharedVolumes": [
+          "exports:/exports:ro",
+          "casys-digital-thread-calculix-inputs:/inputs",
+          "casys-digital-thread-calculix-runs:/var/lib/mcp-calculix-runs"
+        ],
+        "upstreams": []
+      },
+      "trust": {
+        "level": "first-party-local",
+        "executesArbitraryCode": false,
+        "notes": [
+          "The solver mounts /exports read-only. Generic content-addressed FEA inputs are staged by the Digital Thread into provider-private /inputs on a dedicated volume; it is neither a shared exchange nor evidence. Every solve snapshots its input privately, while only recorded static runs retain evidence in the separate run ledger.",
+          "Native meshing and solver processes still require untrusted-input hardening."
+        ]
+      }
+    },
+    {
+      "id": "erpnext",
+      "displayName": "ERPNext",
+      "role": "Provider-native manufacturing, inventory, operations and costing data",
+      "serviceName": "mcp-erpnext",
+      "transport": "streamable-http",
+      "mcpUrl": "http://127.0.0.1:3012/mcp",
+      "healthUrl": "http://127.0.0.1:3012/health",
+      "image": "casys-digital-thread/mcp-erpnext:3.0.0-17ca098-1d99467",
+      "required": true,
+      "expectedTools": [
+        "erpnext_bom_list",
+        "erpnext_bom_get",
+        "erpnext_item_get",
+        "erpnext_work_order_list",
+        "erpnext_job_card_list"
+      ],
+      "expectedViews": [
+        "ui://mcp-erpnext/doclist-viewer"
+      ],
+      "network": {
+        "exposure": "loopback-only",
+        "composeNetwork": "chain",
+        "sharedVolumes": [],
+        "upstreams": [
+          "http://frontend:8080"
+        ]
+      },
+      "trust": {
+        "level": "first-party-local-privileged",
+        "executesArbitraryCode": false,
+        "notes": [
+          "The native Workbench backend calls only the reviewed read tools required by a workflow; the browser receives linked product data, never ERP credentials.",
+          "Mutation tools remain available to authorized agents but are never invoked by opening the Workbench.",
+          "ERPNext API credentials are supplied at runtime and never stored in this manifest."
+        ]
+      }
+    },
+    {
+      "id": "dfm",
+      "displayName": "DFM checks",
+      "role": "FDM printability verification on produced STL geometry",
+      "serviceName": "mcp-dfm",
+      "transport": "streamable-http",
+      "mcpUrl": "http://127.0.0.1:3018/mcp",
+      "healthUrl": "http://127.0.0.1:3018/health",
+      "image": "ghcr.io/casys-ai/mcp-dfm@sha256:a31aa702e45e4445c67454f807832b60455211664fa98ff36f54948aedec4fb9",
+      "required": false,
+      "expectedTools": [
+        "dfm_check_envelope",
+        "dfm_check_min_thickness",
+        "dfm_check_overhangs"
+      ],
+      "network": {
+        "exposure": "loopback-only",
+        "composeNetwork": "chain",
+        "sharedVolumes": [
+          "casys-digital-thread_exports:/exports:ro"
+        ],
+        "upstreams": []
+      },
+      "trust": {
+        "level": "first-party-local",
+        "executesArbitraryCode": false,
+        "notes": [
+          "Every threshold is caller-supplied; the server embeds no printer defaults.",
+          "Each report names what was NOT checked; absence of a warning is never a guarantee."
+        ]
+      }
+    },
+    {
+      "id": "tolerance",
+      "displayName": "ISO 286 tolerances",
+      "role": "Fit limits and 1D stack-ups from the ISO 286-1 normative formulas",
+      "serviceName": "mcp-tolerance",
+      "transport": "streamable-http",
+      "mcpUrl": "http://127.0.0.1:3019/mcp",
+      "healthUrl": "http://127.0.0.1:3019/health",
+      "image": "ghcr.io/casys-ai/mcp-tolerance@sha256:fb84ac18847561c9003d0ca19111fa8ab2afe7e99dfcd325129de279dff01aea",
+      "required": false,
+      "expectedTools": [
+        "tolerance_fit",
+        "tolerance_fit_analyze",
+        "tolerance_it",
+        "tolerance_limits",
+        "tolerance_stackup"
+      ],
+      "network": {
+        "exposure": "loopback-only",
+        "composeNetwork": "chain",
+        "sharedVolumes": [],
+        "upstreams": []
+      },
+      "trust": {
+        "level": "first-party-local",
+        "executesArbitraryCode": false,
+        "notes": [
+          "Pure normative computation; unsupported tolerance classes are refused, never interpolated.",
+          "The tools report limits with provenance; fit suitability stays with the caller."
+        ]
+      }
+    },
+    {
+      "id": "prusaslicer",
+      "displayName": "PrusaSlicer estimation",
+      "role": "Print time and material measured from real G-code, never heuristics",
+      "serviceName": "mcp-prusaslicer",
+      "transport": "streamable-http",
+      "mcpUrl": "http://127.0.0.1:3022/mcp",
+      "healthUrl": "http://127.0.0.1:3022/health",
+      "image": "ghcr.io/casys-ai/mcp-prusaslicer@sha256:52bb17da9db8fa59e62ce49d5695cd9982ea91fb0150f720e029ef9612f0a342",
+      "required": false,
+      "expectedTools": [
+        "prusaslicer_estimate_fff"
+      ],
+      "network": {
+        "exposure": "loopback-only",
+        "composeNetwork": "chain",
+        "sharedVolumes": [
+          "casys-digital-thread_exports:/exports:ro"
+        ],
+        "upstreams": []
+      },
+      "trust": {
+        "level": "first-party-local",
+        "executesArbitraryCode": false,
+        "notes": [
+          "Profiles are caller-owned attested inputs; no speed or temperature lives in the server.",
+          "Mass is reported only when a filament density is supplied."
+        ]
+      }
+    },
+    {
+      "id": "spice",
+      "displayName": "ngspice verification",
+      "role": "DC operating points and reduced transients from attested netlists",
+      "serviceName": "mcp-spice",
+      "transport": "streamable-http",
+      "mcpUrl": "http://127.0.0.1:3023/mcp",
+      "healthUrl": "http://127.0.0.1:3023/health",
+      "image": "ghcr.io/casys-ai/mcp-spice@sha256:cabf9a87e2006811484625f833859b96724faaf5dab6d60f1a10dc7cc6777a69",
+      "required": false,
+      "expectedTools": [
+        "spice_simulate_op",
+        "spice_simulate_tran"
+      ],
+      "network": {
+        "exposure": "loopback-only",
+        "composeNetwork": "chain",
+        "sharedVolumes": [
+          "casys-digital-thread_exports:/exports:ro"
+        ],
+        "upstreams": []
+      },
+      "trust": {
+        "level": "first-party-local",
+        "executesArbitraryCode": false,
+        "notes": [
+          "The server owns the .control block; caller netlists are circuit-only and .control/.include/.lib/shell are refused with typed errors.",
+          "Reduced statistics only; the full time series never crosses the boundary."
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+*
+!images/build123d-module-assembler-worker/run-module-assembler.py
+!images/build123d-module-assembler-worker/geometry_module_bundle.py
+!images/build123d-module-assembler-worker/fonts.conf
+!images/build123d-microsandbox-worker/requirements.lock

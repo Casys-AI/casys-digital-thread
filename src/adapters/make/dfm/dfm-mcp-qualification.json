@@ -1,0 +1,169 @@
+{
+  "source": "Archived live mcp-dfm 0.1.0 probes. structuredContent copied verbatim from qualif-dfm-calls.json; mismatch from dfm-mismatch-test.json.",
+  "expected_step_sha256": "9273149a5203a13ef3b14f7e70062e76ee106eaaf5ba474e98e1cd9116cdc270",
+  "dfm_check_envelope": {
+    "violations": [],
+    "measured": {
+      "x_mm": 190,
+      "y_mm": 135,
+      "z_mm": 18,
+      "volume_mm3": 211499.99999999555,
+      "mass_kg": 0.571049999999988
+    },
+    "limits_declared": {
+      "build_volume_mm": {
+        "x": 250,
+        "y": 210,
+        "z": 200
+      },
+      "density_kg_m3": 2700
+    },
+    "not_checked": [
+      "Part orientation is not optimised — the bounding box is axis-aligned with the STEP coordinate system; the tightest-fitting orientation is not computed.",
+      "Support structure volume is not included in the envelope.",
+      "Mass is not reported when density_kg_m3 is omitted.",
+      "The volume computation assumes a closed (watertight) surface mesh; open shells yield an inaccurate result."
+    ],
+    "input_artifact": {
+      "sha256": "9273149a5203a13ef3b14f7e70062e76ee106eaaf5ba474e98e1cd9116cdc270",
+      "bytes": 86130,
+      "source_path": "/exports/B-T01-s1.step"
+    }
+  },
+  "dfm_check_min_thickness": {
+    "violations": [],
+    "measured": {
+      "min_thickness_mm": 5.999999999999998,
+      "min_position_mm": [
+        51.00002457547976,
+        -22.561103908022428,
+        -3
+      ],
+      "sample_count": 500,
+      "valid_ray_count": 500
+    },
+    "limits_declared": {
+      "min_thickness_mm": 2
+    },
+    "not_checked": [
+      "Sampling may miss a wall thinner than the mesh triangle edge length — tighten mesh_size_mm to reduce this risk.",
+      "Only works on closed (watertight) surface meshes; open shells return an error.",
+      "Internal features (blind holes, pockets) are measured if their surface is captured by the tessellation.",
+      "Material-specific minimum feature rules (e.g. SLS vs FDM vs SLA) are not applied — only the caller-declared threshold is used.",
+      "The algorithm reports thickness along the inward face normal direction, not the true minimum wall thickness in all directions; a very thin diagonal wall may be undersampled."
+    ],
+    "input_artifact": {
+      "sha256": "9273149a5203a13ef3b14f7e70062e76ee106eaaf5ba474e98e1cd9116cdc270",
+      "bytes": 86130,
+      "source_path": "/exports/B-T01-s1.step"
+    }
+  },
+  "dfm_check_overhangs": {
+    "violations": [
+      {
+        "area_mm2": 20849.999999999225,
+        "centroid_mm": [
+          -0.03837144008855162,
+          0.008605671595452903,
+          -3
+        ],
+        "bbox": {
+          "min": [-95, -67.5, -3],
+          "max": [95, 67.5, -3],
+          "size": [190, 135, 0]
+        }
+      },
+      {
+        "area_mm2": 959.9999999999995,
+        "centroid_mm": [
+          -60.06554509145262,
+          0.5276039591380303,
+          -15
+        ],
+        "bbox": {
+          "min": [-64, -60, -15],
+          "max": [-56, 60, -15],
+          "size": [8, 120, 0]
+        }
+      },
+      {
+        "area_mm2": 960.0000000000011,
+        "centroid_mm": [
+          -30.08684139289863,
+          0.39506884825609334,
+          -15
+        ],
+        "bbox": {
+          "min": [-34, -60, -15],
+          "max": [-26, 60, -15],
+          "size": [8, 120, 0]
+        }
+      },
+      {
+        "area_mm2": 960,
+        "centroid_mm": [
+          -0.011395083637985807,
+          0.3748991084792701,
+          -15
+        ],
+        "bbox": {
+          "min": [-4, -60, -15],
+          "max": [4, 60, -15],
+          "size": [8, 120, 0]
+        }
+      },
+      {
+        "area_mm2": 959.9999999999993,
+        "centroid_mm": [
+          29.952818066405477,
+          0.10921998475374492,
+          -15
+        ],
+        "bbox": {
+          "min": [26, -60, -15],
+          "max": [34, 60, -15],
+          "size": [8, 120, 0]
+        }
+      },
+      {
+        "area_mm2": 959.9999999999995,
+        "centroid_mm": [
+          59.934454908547394,
+          0.5276039591380303,
+          -15
+        ],
+        "bbox": {
+          "min": [56, -60, -15],
+          "max": [64, 60, -15],
+          "size": [8, 120, 0]
+        }
+      }
+    ],
+    "measured": {
+      "total_surface_area_mm2": 70560.0000000056,
+      "overhang_area_mm2": 25649.999999999145,
+      "overhang_triangle_count": 15528,
+      "total_triangle_count": 42216
+    },
+    "limits_declared": {
+      "max_overhang_deg": 45,
+      "build_direction": [0, 0, 1]
+    },
+    "not_checked": [
+      "The print-bed contact face is not excluded — the bottommost face of the part always appears as a violation (angle = 0°). Callers should filter by the Z position of the part's minimum Z face.",
+      "Support structure feasibility, cost, or optimal placement is not modelled.",
+      "Curved surfaces are approximated by the tessellation; tighter mesh_size_mm improves accuracy at the cost of runtime.",
+      "Material-specific bridging distance limits are not considered.",
+      "Self-supporting geometry rules (bridges, overhangs supported by walls) are not modelled."
+    ],
+    "input_artifact": {
+      "sha256": "9273149a5203a13ef3b14f7e70062e76ee106eaaf5ba474e98e1cd9116cdc270",
+      "bytes": 86130,
+      "source_path": "/exports/B-T01-s1.step"
+    }
+  },
+  "dfm_mismatch_test": {
+    "code": -32603,
+    "message": "[dfm_check_envelope] STEP SHA-256 mismatch: expected 0000000000000000000000000000000000000000000000000000000000000000, computed 9273149a5203a13ef3b14f7e70062e76ee106eaaf5ba474e98e1cd9116cdc270 from the private input snapshot."
+  }
+}

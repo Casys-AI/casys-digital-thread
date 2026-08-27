@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" role="img" aria-labelledby="t d">
+  <title id="t">Two architecture SysML authorities</title>
+  <desc id="d">model.write-architecture@1 renders SysML into SysON. model.seal-architecture-sysml@1 seals agent-authored closed-subset analysis as a Thread document and never calls SysON.</desc>
+  <rect width="960" height="520" fill="#f6f1e8"/>
+  <text x="32" y="40" font-family="Georgia, serif" font-size="22" fill="#1c1914">Two SysML paths — do not merge</text>
+  <text x="32" y="64" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#5c564c">Same three write forms. Different capture schemas, operations, and grants.</text>
+
+  <g font-family="ui-sans-serif, system-ui, sans-serif">
+    <rect x="32" y="92" width="436" height="392" rx="10" fill="#fff" stroke="#c9bfae"/>
+    <text x="52" y="122" font-size="15" font-weight="700" fill="#1c3558">A · Renderer → SysON</text>
+    <text x="52" y="146" font-size="12" fill="#5c564c">model.write-architecture@1</text>
+    <text x="52" y="180" font-size="13" fill="#1c1914">1. Flat MRTR architecture.* / component.*</text>
+    <text x="52" y="206" font-size="13" fill="#1c1914">2. Server renders SysML + typed manifest</text>
+    <text x="52" y="232" font-size="13" fill="#1c1914">3. sysml-source-capture/1.0 save + readback</text>
+    <text x="52" y="258" font-size="13" fill="#1c1914">4. Manifest-attested analysis</text>
+    <text x="52" y="284" font-size="13" fill="#1c1914">5. WAL + private SysON insert + readback</text>
+    <text x="52" y="310" font-size="13" fill="#1c1914">6. architecture-capture/4.0 in Thread</text>
+    <text x="52" y="352" font-size="12" fill="#1c4d3a">Grant: architecture inside SysON</text>
+    <text x="52" y="376" font-size="12" fill="#8a3b12">Agent must not supply SysML text</text>
+    <text x="52" y="408" font-size="12" fill="#5c564c">CAS: state/local/sysml-source-captures/</text>
+    <text x="52" y="428" font-size="12" fill="#5c564c">     state/local/architecture-captures/</text>
+    <text x="52" y="456" font-size="12" fill="#5c564c">Parser: renderer companion, not arbitrary SysML</text>
+
+    <rect x="492" y="92" width="436" height="392" rx="10" fill="#fff" stroke="#c9bfae"/>
+    <text x="512" y="122" font-size="15" font-weight="700" fill="#1c4d3a">B · Agent-authored seal</text>
+    <text x="512" y="146" font-size="12" fill="#5c564c">model.seal-architecture-sysml@1</text>
+    <text x="512" y="180" font-size="13" fill="#1c1914">1. project_architecture_sysml_source_capture</text>
+    <text x="512" y="206" font-size="13" fill="#1c1914">2. Lexical guard + closed-subset parse</text>
+    <text x="512" y="232" font-size="13" fill="#1c1914">3. architecture-sysml-source-analysis-capture/1.0</text>
+    <text x="512" y="258" font-size="13" fill="#1c1914">4. project_architecture_sysml_preview</text>
+    <text x="512" y="284" font-size="13" fill="#1c1914">5. Human MRTR over decisionParameters</text>
+    <text x="512" y="310" font-size="13" fill="#1c1914">6. Thread document only</text>
+    <text x="512" y="352" font-size="12" fill="#1c4d3a">Grant: sealed analysis document</text>
+    <text x="512" y="376" font-size="12" fill="#8a3b12">Never calls SysON · not compile.seal-admission@1</text>
+    <text x="512" y="408" font-size="12" fill="#5c564c">CAS: recorded-analysis/architecture-sysml/</text>
+    <text x="512" y="428" font-size="12" fill="#5c564c">     sources · analyses · seals</text>
+    <text x="512" y="456" font-size="12" fill="#5c564c">Bindings: symbol ids, never labels</text>
+  </g>
+</svg>

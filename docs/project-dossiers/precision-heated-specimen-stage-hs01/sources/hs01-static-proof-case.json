@@ -1,0 +1,117 @@
+{
+  "analysis": {
+    "kind": "linear-static",
+    "loads": [
+      {
+        "force": {
+          "unit": "N",
+          "value": [
+            0,
+            0,
+            -0.024808
+          ]
+        },
+        "id": "stage-positive-x-mass-load",
+        "kind": "force",
+        "selection": {
+          "box": {
+            "max": [
+              56,
+              36,
+              1
+            ],
+            "min": [
+              55,
+              -36,
+              -1
+            ],
+            "unit": "mm"
+          },
+          "name": "LOADED_END"
+        }
+      }
+    ],
+    "material": {
+      "basis": "6061-T6 aluminium concept properties from NASA NTRS 20120014854 and 19860001085: 68300 MPa elastic modulus, 0.33 Poisson ratio.",
+      "model": "isotropic-linear-elastic",
+      "poissonRatio": {
+        "unit": "1",
+        "value": 0.33
+      },
+      "youngModulus": {
+        "unit": "MPa",
+        "value": 68300
+      }
+    },
+    "mesh": {
+      "kind": "tetrahedral-volume",
+      "targetSize": {
+        "unit": "mm",
+        "value": 2
+      }
+    },
+    "supports": [
+      {
+        "id": "stage-negative-x-fixed",
+        "kind": "fixed",
+        "selection": {
+          "box": {
+            "max": [
+              -55,
+              36,
+              1
+            ],
+            "min": [
+              -56,
+              -36,
+              -1
+            ],
+            "unit": "mm"
+          },
+          "name": "FIXED_END"
+        }
+      }
+    ]
+  },
+  "evidenceBoundary": "Reversible concept verification only: small-displacement linear-static isotropic single-part question. It excludes the microscope slide, heater contact, fixtures, self-weight, buckling, fatigue, thermal stress, safety, certification, manufacturing and whole-product claims.",
+  "id": "hs01-heated-stage-plate-static",
+  "project": {
+    "id": "precision-heated-specimen-stage-hs01",
+    "subjectId": "project:precision-heated-specimen-stage-hs01"
+  },
+  "requirements": [
+    {
+      "feature": "maxDisplacement",
+      "id": "hs01-stage-displacement",
+      "limit": {
+        "unit": "mm",
+        "value": 1
+      },
+      "metric": "maximum-displacement",
+      "name": "maxDisplacement",
+      "operator": "<="
+    },
+    {
+      "feature": "maxVonMises",
+      "id": "hs01-stage-stress",
+      "limit": {
+        "unit": "Pa",
+        "value": 276000000
+      },
+      "metric": "maximum-von-mises-stress",
+      "name": "maxVonMises",
+      "operator": "<="
+    }
+  ],
+  "requirementsSource": {
+    "editingContextId": "31d1567c-db69-422d-aa5a-e84b8309c60e",
+    "elementId": "c1f7534f-cca7-4909-bf0f-42a0b09701bc"
+  },
+  "revision": 1,
+  "schemaVersion": "mechanical-proof-case-source/1.0",
+  "scope": "HS01 HeatedStagePlate in isolation as the exact canonical centred 110.65 x 70.45 x 1.54 mm rectangular Build123d solid, with its negative-X end fully fixed and a downward 0.024808 N force on its positive-X end.",
+  "target": {
+    "id": "hs01-heated-stage-plate",
+    "modelElementId": "a8c7f3e5-dfb3-4219-94d7-e7ec21770a2f"
+  }
+}

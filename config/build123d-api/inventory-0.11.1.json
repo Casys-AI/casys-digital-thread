@@ -1,0 +1,2210 @@
+{
+  "schemaVersion": "build123d-api-inventory/1.0",
+  "authority": "documentary-ground-truth",
+  "consumedByCompiler": false,
+  "note": "No analyzer imports this file. F1 generates QUALIFIED_* tables from it. Do not hand-edit the 1.6.0 Map from these names.",
+  "library": "build123d",
+  "version": "0.11.1",
+  "extractedFrom": "mcp-build123d-sandbox container (pinned compose image), python3 inspect introspection",
+  "counts": {
+    "total": 473,
+    "classes": 224,
+    "functions": 100,
+    "enums": 43,
+    "values": 106
+  },
+  "names": {
+    "ABC": {
+      "kind": "class",
+      "sig": "()"
+    },
+    "APIHeaderSection_MakeHeader": {
+      "kind": "class",
+      "sig": null
+    },
+    "AddType": {
+      "kind": "value",
+      "type": "UnionType"
+    },
+    "Airfoil": {
+      "kind": "class",
+      "sig": "(airfoil_code: 'str', n_points: 'int' = 50, finite_te: 'bool' = False, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "Align": {
+      "kind": "enum",
+      "members": [
+        "MIN",
+        "CENTER",
+        "MAX",
+        "NONE"
+      ]
+    },
+    "Align2D": {
+      "kind": "value",
+      "type": "UnionType"
+    },
+    "Align3D": {
+      "kind": "value",
+      "type": "UnionType"
+    },
+    "AngularDirection": {
+      "kind": "enum",
+      "members": [
+        "CLOCKWISE",
+        "COUNTER_CLOCKWISE"
+      ]
+    },
+    "Any": {
+      "kind": "class",
+      "sig": "(*args, **kwargs)"
+    },
+    "ApproxOption": {
+      "kind": "enum",
+      "members": [
+        "ARC",
+        "NONE",
+        "SPLINE"
+      ]
+    },
+    "ArcArcTangentArc": {
+      "kind": "class",
+      "sig": "(*args, **kwargs)"
+    },
+    "ArcArcTangentLine": {
+      "kind": "class",
+      "sig": "(*args, **kwargs)"
+    },
+    "Arrow": {
+      "kind": "class",
+      "sig": "(arrow_size: float, shaft_path: build123d.topology.one_d.Edge | build123d.topology.one_d.Wire, shaft_width: float, head_at_start: bool = True, head_type: build123d.build_enums.HeadType = <HeadType.CURVED>, mode: build123d.build_enums.Mode = <Mode.ADD>)"
+    },
+    "ArrowHead": {
+      "kind": "class",
+      "sig": "(size: float, head_type: build123d.build_enums.HeadType = <HeadType.CURVED>, rotation: float = 0, mode: build123d.build_enums.Mode = <Mode.ADD>)"
+    },
+    "AutoNameEnum": {
+      "kind": "enum",
+      "members": []
+    },
+    "Axis": {
+      "kind": "class",
+      "sig": "(*args: 'Any', **kwargs: 'Any') -> 'None'"
+    },
+    "AxisMeta": {
+      "kind": "class",
+      "sig": null
+    },
+    "B": {
+      "kind": "value",
+      "type": "TypeVar"
+    },
+    "BRepBndLib": {
+      "kind": "class",
+      "sig": null
+    },
+    "BRepBuilderAPI_MakeFace": {
+      "kind": "class",
+      "sig": null
+    },
+    "BRepBuilderAPI_MakePolygon": {
+      "kind": "class",
+      "sig": null
+    },
+    "BRepBuilderAPI_MakeSolid": {
+      "kind": "class",
+      "sig": null
+    },
+    "BRepBuilderAPI_Sewing": {
+      "kind": "class",
+      "sig": null
+    },
+    "BRepBuilderAPI_Transform": {
+      "kind": "class",
+      "sig": null
+    },
+    "BRepGProp": {
+      "kind": "class",
+      "sig": null
+    },
+    "BRepGProp_Face": {
+      "kind": "class",
+      "sig": null
+    },
+    "BRepLib": {
+      "kind": "class",
+      "sig": null
+    },
+    "BRepMesh_IncrementalMesh": {
+      "kind": "class",
+      "sig": null
+    },
+    "BRepTools": {
+      "kind": "class",
+      "sig": null
+    },
+    "BRepTools_WireExplorer": {
+      "kind": "class",
+      "sig": null
+    },
+    "BRep_Builder": {
+      "kind": "class",
+      "sig": null
+    },
+    "BRep_Tool": {
+      "kind": "class",
+      "sig": null
+    },
+    "BSpline": {
+      "kind": "class",
+      "sig": "(control_points: 'Iterable[VectorLike]', knots: 'Iterable[float]', degree: 'int', weights: 'Iterable[float] | None' = None, periodic: 'bool' = False, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "BallJoint": {
+      "kind": "class",
+      "sig": "(label: 'str', to_part: 'Solid | Compound | None' = None, joint_location: 'Location | None' = None, angular_range: 'tuple[tuple[float, float], tuple[float, float], tuple[float, float]]' = ((0, 360), (0, 360), (0, 360)), angle_reference: 'Plane' = Plane((0, 0, 0), (1, 0, 0), (0, 0, 1)))"
+    },
+    "BaseCurveObject": {
+      "kind": "class",
+      "sig": "(curve: 'Curve', mode: 'Mode' = <Mode.ADD>)"
+    },
+    "BaseEdgeObject": {
+      "kind": "class",
+      "sig": "(curve: 'Edge', mode: 'Mode' = <Mode.ADD>)"
+    },
+    "BaseLineObject": {
+      "kind": "class",
+      "sig": "(curve: 'Wire', mode: 'Mode' = <Mode.ADD>)"
+    },
+    "BasePartObject": {
+      "kind": "class",
+      "sig": "(part: 'Part | Solid', rotation: 'RotationLike' = (0, 0, 0), align: 'Align | tuple[Align, Align, Align] | None' = None, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "BaseSketchObject": {
+      "kind": "class",
+      "sig": "(obj: 'Compound | Face', rotation: 'float' = 0, align: 'Align | tuple[Align, Align] | None' = None, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "Bezier": {
+      "kind": "class",
+      "sig": "(*cntl_pnts: 'VectorLike', weights: 'list[float] | None' = None, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "BinaryIO": {
+      "kind": "class",
+      "sig": "()"
+    },
+    "BlendCurve": {
+      "kind": "class",
+      "sig": "(curve0: 'Edge', curve1: 'Edge', continuity: 'ContinuityLevel' = <ContinuityLevel.C2: 2>, end_points: 'tuple[VectorLike, VectorLike] | None' = None, tangent_scalars: 'tuple[float, float] | None' = None, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "Bnd_Box": {
+      "kind": "class",
+      "sig": null
+    },
+    "Bnd_OBB": {
+      "kind": "class",
+      "sig": null
+    },
+    "BoundBox": {
+      "kind": "class",
+      "sig": "(*args, **kwargs)"
+    },
+    "Box": {
+      "kind": "class",
+      "sig": "(length: 'float', width: 'float', height: 'float', rotation: 'RotationLike' = (0, 0, 0), align: 'Align | tuple[Align, Align, Align]' = (<Align.CENTER>, <Align.CENTER>, <Align.CENTER>), mode: 'Mode' = <Mode.ADD>)"
+    },
+    "BuildLine": {
+      "kind": "class",
+      "sig": "(workplane: 'Face | Plane | Location' = Plane((0, 0, 0), (1, 0, 0), (0, 0, 1)), mode: 'Mode' = <Mode.ADD>)"
+    },
+    "BuildPart": {
+      "kind": "class",
+      "sig": "(*workplanes: 'Face | Plane | Location', mode: 'Mode' = <Mode.ADD>)"
+    },
+    "BuildSketch": {
+      "kind": "class",
+      "sig": "(*workplanes: 'Face | Plane | Location', mode: 'Mode' = <Mode.ADD>)"
+    },
+    "Builder": {
+      "kind": "class",
+      "sig": "(*workplanes: 'Face | Plane | Location', mode: 'Mode' = <Mode.ADD>)"
+    },
+    "BytesIO": {
+      "kind": "class",
+      "sig": "(initial_bytes=b'')"
+    },
+    "CLASS_REGISTRY": {
+      "kind": "value",
+      "type": "dict"
+    },
+    "CM": {
+      "kind": "value",
+      "type": "int"
+    },
+    "Callable": {
+      "kind": "class",
+      "sig": "()"
+    },
+    "CenterArc": {
+      "kind": "class",
+      "sig": "(center: 'VectorLike', radius: 'float', start_angle: 'float', arc_size: 'float | Shape | Axis | Location | Plane | VectorLike', mode: 'Mode' = <Mode.ADD>) -> 'None'"
+    },
+    "CenterOf": {
+      "kind": "enum",
+      "members": [
+        "GEOMETRY",
+        "MASS",
+        "BOUNDING_BOX"
+      ]
+    },
+    "ChamferFilletType": {
+      "kind": "value",
+      "type": "UnionType"
+    },
+    "Circle": {
+      "kind": "class",
+      "sig": "(radius: 'float', arc_size: 'float' = 360.0, align: 'Align | tuple[Align, Align] | None' = (<Align.CENTER>, <Align.CENTER>), mode: 'Mode' = <Mode.ADD>)"
+    },
+    "ClassVar": {
+      "kind": "function",
+      "sig": "(*args, **kwds)"
+    },
+    "Collection": {
+      "kind": "class",
+      "sig": "()"
+    },
+    "Color": {
+      "kind": "class",
+      "sig": "(*args, **kwargs)"
+    },
+    "ColorAndLabel": {
+      "kind": "class",
+      "sig": "(element: svgelements.svgelements.Shape, parents: Sequence[Union[svgelements.svgelements.Group, svgelements.svgelements.Use]], label_by: str = 'id') -> None"
+    },
+    "ColorIndex": {
+      "kind": "enum",
+      "members": [
+        "RED",
+        "YELLOW",
+        "GREEN",
+        "CYAN",
+        "BLUE",
+        "MAGENTA",
+        "BLACK",
+        "GRAY",
+        "LIGHT_GRAY"
+      ]
+    },
+    "ColorLike": {
+      "kind": "value",
+      "type": "UnionType"
+    },
+    "Comparable": {
+      "kind": "class",
+      "sig": "()"
+    },
+    "Compound": {
+      "kind": "class",
+      "sig": "(obj: 'TopoDS_Compound | Iterable[Shape] | None' = None, label: 'str' = '', color: 'Color | None' = None, material: 'str' = '', joints: 'dict[str, Joint] | None' = None, parent: 'Compound | None' = None, children: 'Sequence[Shape] | None' = None)"
+    },
+    "Cone": {
+      "kind": "class",
+      "sig": "(bottom_radius: 'float', top_radius: 'float', height: 'float', arc_size: 'float' = 360, rotation: 'RotationLike' = (0, 0, 0), align: 'Align | tuple[Align, Align, Align]' = (<Align.CENTER>, <Align.CENTER>, <Align.CENTER>), mode: 'Mode' = <Mode.ADD>)"
+    },
+    "ConstrainedArcs": {
+      "kind": "class",
+      "sig": "(*args, **kwargs)"
+    },
+    "ConstrainedLines": {
+      "kind": "class",
+      "sig": "(*args, **kwargs) -> 'None'"
+    },
+    "ContinuityLevel": {
+      "kind": "enum",
+      "members": [
+        "C0",
+        "C1",
+        "C2"
+      ]
+    },
+    "ConvexHull": {
+      "kind": "class",
+      "sig": "(points, incremental=False, qhull_options=None)"
+    },
+    "ConvexPolyhedron": {
+      "kind": "class",
+      "sig": "(points: 'Iterable[VectorLike]', rotation: 'RotationLike' = (0, 0, 0), align: 'Align | tuple[Align, Align, Align] | None' = <Align.NONE>, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "CounterBoreHole": {
+      "kind": "class",
+      "sig": "(radius: 'float', counter_bore_radius: 'float', counter_bore_depth: 'float', depth: 'float | None' = None, mode: 'Mode' = <Mode.SUBTRACT>)"
+    },
+    "CounterSinkHole": {
+      "kind": "class",
+      "sig": "(radius: 'float', counter_sink_radius: 'float', depth: 'float | None' = None, counter_sink_angle: 'float' = 82, mode: 'Mode' = <Mode.SUBTRACT>)"
+    },
+    "Curve": {
+      "kind": "class",
+      "sig": "(obj: 'TopoDS_Compound | Iterable[Shape] | None' = None, label: 'str' = '', color: 'Color | None' = None, material: 'str' = '', joints: 'dict[str, Joint] | None' = None, parent: 'Compound | None' = None, children: 'Sequence[Shape] | None' = None)"
+    },
+    "Cylinder": {
+      "kind": "class",
+      "sig": "(radius: 'float', height: 'float', arc_size: 'float' = 360, rotation: 'RotationLike' = (0, 0, 0), align: 'Align | tuple[Align, Align, Align]' = (<Align.CENTER>, <Align.CENTER>, <Align.CENTER>), mode: 'Mode' = <Mode.ADD>)"
+    },
+    "CylindricalJoint": {
+      "kind": "class",
+      "sig": "(label: 'str', to_part: 'Solid | Compound | None' = None, axis: 'Axis' = Axis((0, 0, 0), (0, 0, 1)), angle_reference: 'VectorLike | None' = None, linear_range: 'tuple[float, float]' = (0, inf), angular_range: 'tuple[float, float]' = (0, 360))"
+    },
+    "DEG2RAD": {
+      "kind": "value",
+      "type": "float"
+    },
+    "DimensionLine": {
+      "kind": "class",
+      "sig": "(path: build123d.topology.one_d.Wire | build123d.topology.one_d.Edge | list[build123d.geometry.Vector | build123d.topology.zero_d.Vertex | tuple[float, float, float]], draft: build123d.drafting.Draft, sketch: build123d.topology.composite.Sketch | None = None, label: str | None = None, arrows: tuple[bool, bool] = (True, True), tolerance: float | tuple[float, float] | None = None, label_angle: bool = False, mode: build123d.build_enums.Mode = <Mode.ADD>)"
+    },
+    "DotLength": {
+      "kind": "enum",
+      "members": [
+        "TRUE_DOT",
+        "INKSCAPE_COMPAT",
+        "QCAD_IMPERIAL"
+      ]
+    },
+    "DoubleTangentArc": {
+      "kind": "class",
+      "sig": "(pnt: 'VectorLike', tangent: 'VectorLike', other: 'Curve | Edge | Wire', keep: 'Keep' = <Keep.TOP>, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "Draft": {
+      "kind": "class",
+      "sig": "(font_size: float = 5.0, font: str = 'Arial', font_style: build123d.build_enums.FontStyle = <FontStyle.REGULAR>, head_type: build123d.build_enums.HeadType = <HeadType.CURVED>, arrow_length: float = 3.0, line_width: float = 0.5, pad_around_text: float = 2.0, unit: build123d.build_enums.Unit = <Unit.MM>, number_display: build123d.build_enums.NumberDisplay = <NumberDisplay.DECIMAL>, display_units: bool = True, decimal_precision: int = 2, fractional_precision: int = 64, extension_gap: float = 2.0) -> None"
+    },
+    "DraftAngleError": {
+      "kind": "class",
+      "sig": "(message, face=None, problematic_shape=None)"
+    },
+    "Drawing": {
+      "kind": "class",
+      "sig": "(shape: build123d.topology.shape_core.Shape, *, look_at: build123d.geometry.Vector | tuple[float, float] | tuple[float, float, float] | collections.abc.Sequence[float] | None = None, look_from: build123d.geometry.Vector | tuple[float, float] | tuple[float, float, float] | collections.abc.Sequence[float] = (1, -1, 1), look_up: build123d.geometry.Vector | tuple[float, float] | tuple[float, float, float] | collections.abc.Sequence[float] = (0, 0, 1), with_hidden: bool = True, focus: float | None = None)"
+    },
+    "ET": {
+      "kind": "value",
+      "type": "module"
+    },
+    "Edge": {
+      "kind": "class",
+      "sig": "(obj: 'TopoDS_Edge | Axis | None | None' = None, label: 'str' = '', color: 'Color | None' = None, parent: 'Compound | None' = None)"
+    },
+    "Ellipse": {
+      "kind": "class",
+      "sig": "(x_radius: 'float', y_radius: 'float', rotation: 'float' = 0, align: 'Align | tuple[Align, Align] | None' = (<Align.CENTER>, <Align.CENTER>), mode: 'Mode' = <Mode.ADD>)"
+    },
+    "EllipticalCenterArc": {
+      "kind": "class",
+      "sig": "(center: 'VectorLike', x_radius: 'float', y_radius: 'float', start_angle: 'float' = 0.0, end_angle: 'float | None' = None, *, arc_size: 'float | Shape | Axis | Location | Plane | VectorLike' = 90.0, rotation: 'float' = 0.0, angular_direction: 'AngularDirection | None' = None, mode: 'Mode' = <Mode.ADD>) -> 'None'"
+    },
+    "EllipticalStartArc": {
+      "kind": "class",
+      "sig": "(start_pnt: 'VectorLike', start_tangent: 'VectorLike', x_radius: 'float', y_radius: 'float', arc_size: 'float', *, start_angle: 'float | None' = None, major_axis_dir: 'VectorLike | None' = None, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "Enum": {
+      "kind": "enum",
+      "members": []
+    },
+    "Export2D": {
+      "kind": "class",
+      "sig": "()"
+    },
+    "ExportDXF": {
+      "kind": "class",
+      "sig": "(version: str = 'AC1027', unit: build123d.build_enums.Unit = <Unit.MM>, color: build123d.exporters.ColorIndex | None = None, line_weight: float | None = None, line_type: build123d.exporters.LineType | None = None)"
+    },
+    "ExportSVG": {
+      "kind": "class",
+      "sig": "(unit: build123d.build_enums.Unit = <Unit.MM>, scale: float = 1, margin: float = 0, fit_to_stroke: bool = True, precision: int = 6, fill_color: build123d.exporters.ColorIndex | ezdxf.colors.RGB | build123d.geometry.Color | None = None, line_color: build123d.exporters.ColorIndex | ezdxf.colors.RGB | build123d.geometry.Color | None = <ColorIndex.BLACK: 7>, line_weight: float = 0.09, line_type: build123d.exporters.LineType = <LineType.CONTINUOUS: 'CONTINUOUS'>, dot_length: build123d.exporters.DotLength | float = <DotLength.INKSCAPE_COMPAT: 0.01>)"
+    },
+    "ExtensionLine": {
+      "kind": "class",
+      "sig": "(border: build123d.topology.one_d.Wire | build123d.topology.one_d.Edge | list[build123d.geometry.Vector | build123d.topology.zero_d.Vertex | tuple[float, float, float]], offset: float, draft: build123d.drafting.Draft, sketch: build123d.topology.composite.Sketch | None = None, label: str | None = None, arrows: tuple[bool, bool] = (True, True), tolerance: float | tuple[float, float] | None = None, label_angle: bool = False, measurement_direction: build123d.geometry.Vector | tuple[float, float] | tuple[float, float, float] | collections.abc.Sequence[float] | None = None, mode: build123d.build_enums.Mode = <Mode.ADD>)"
+    },
+    "Extrinsic": {
+      "kind": "enum",
+      "members": [
+        "XYZ",
+        "XZY",
+        "YZX",
+        "YXZ",
+        "ZXY",
+        "ZYX",
+        "XYX",
+        "XZX",
+        "YZY",
+        "YXY",
+        "ZXZ",
+        "ZYZ"
+      ]
+    },
+    "FT": {
+      "kind": "value",
+      "type": "float"
+    },
+    "Face": {
+      "kind": "class",
+      "sig": "(*args: 'Any', **kwargs: 'Any')"
+    },
+    "FilletPolyline": {
+      "kind": "class",
+      "sig": "(*pts: 'VectorLike | Iterable[VectorLike]', radius: 'float | Iterable[float]', close: 'bool' = False, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "FontManager": {
+      "kind": "class",
+      "sig": "()"
+    },
+    "FontStyle": {
+      "kind": "enum",
+      "members": [
+        "REGULAR",
+        "BOLD",
+        "ITALIC",
+        "BOLDITALIC"
+      ]
+    },
+    "FrameMethod": {
+      "kind": "enum",
+      "members": [
+        "FRENET",
+        "CORRECTED"
+      ]
+    },
+    "G": {
+      "kind": "value",
+      "type": "int"
+    },
+    "GEOM_KEY_DIGITS": {
+      "kind": "value",
+      "type": "int"
+    },
+    "GProp_GProps": {
+      "kind": "class",
+      "sig": null
+    },
+    "GccEnt_enclosed": {
+      "kind": "value",
+      "type": "GccEnt_Position"
+    },
+    "GccEnt_enclosing": {
+      "kind": "value",
+      "type": "GccEnt_Position"
+    },
+    "GccEnt_outside": {
+      "kind": "value",
+      "type": "GccEnt_Position"
+    },
+    "GccEnt_unqualified": {
+      "kind": "value",
+      "type": "GccEnt_Position"
+    },
+    "Generic": {
+      "kind": "class",
+      "sig": "()"
+    },
+    "GeomAPI_IntCS": {
+      "kind": "class",
+      "sig": null
+    },
+    "GeomAPI_IntSS": {
+      "kind": "class",
+      "sig": null
+    },
+    "GeomAPI_ProjectPointOnSurf": {
+      "kind": "class",
+      "sig": null
+    },
+    "GeomConvert": {
+      "kind": "class",
+      "sig": null
+    },
+    "GeomConvert_BSplineCurveToBezierCurve": {
+      "kind": "class",
+      "sig": null
+    },
+    "GeomEncoder": {
+      "kind": "class",
+      "sig": "(*, skipkeys=False, ensure_ascii=True, check_circular=True, allow_nan=True, sort_keys=False, indent=None, separators=None, default=None)"
+    },
+    "GeomType": {
+      "kind": "enum",
+      "members": [
+        "PLANE",
+        "CYLINDER",
+        "CONE",
+        "SPHERE",
+        "TORUS",
+        "BEZIER",
+        "BSPLINE",
+        "REVOLUTION",
+        "EXTRUSION",
+        "OFFSET",
+        "LINE",
+        "CIRCLE",
+        "ELLIPSE",
+        "HYPERBOLA",
+        "PARABOLA",
+        "OTHER"
+      ]
+    },
+    "Geom_BSplineCurve": {
+      "kind": "class",
+      "sig": null
+    },
+    "Geom_BezierCurve": {
+      "kind": "class",
+      "sig": null
+    },
+    "Geom_BoundedSurface": {
+      "kind": "class",
+      "sig": null
+    },
+    "Geom_ElementarySurface": {
+      "kind": "class",
+      "sig": null
+    },
+    "Geom_Line": {
+      "kind": "class",
+      "sig": null
+    },
+    "Geom_Plane": {
+      "kind": "class",
+      "sig": null
+    },
+    "GridLocations": {
+      "kind": "class",
+      "sig": "(x_spacing: 'float', y_spacing: 'float', x_count: 'int', y_count: 'int', align: 'Align | tuple[Align, Align]' = (<Align.CENTER>, <Align.CENTER>))"
+    },
+    "GroupBy": {
+      "kind": "class",
+      "sig": "(key_f: 'Callable[[T], K]', shapelist: 'Iterable[T]', *, reverse: 'bool' = False)"
+    },
+    "HLRAlgo_Projector": {
+      "kind": "class",
+      "sig": null
+    },
+    "HLRBRep_Algo": {
+      "kind": "class",
+      "sig": null
+    },
+    "HLRBRep_HLRToShape": {
+      "kind": "class",
+      "sig": null
+    },
+    "HeadType": {
+      "kind": "enum",
+      "members": [
+        "STRAIGHT",
+        "CURVED",
+        "FILLETED"
+      ]
+    },
+    "Helix": {
+      "kind": "class",
+      "sig": "(pitch: 'float', height: 'float', radius: 'float', center: 'VectorLike' = (0, 0, 0), direction: 'VectorLike' = (0, 0, 1), cone_angle: 'float' = 0, lefthand: 'bool' = False, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "HexLocations": {
+      "kind": "class",
+      "sig": "(radius: 'float', x_count: 'int', y_count: 'int', major_radius: 'bool' = False, align: 'Align | tuple[Align, Align]' = (<Align.CENTER>, <Align.CENTER>))"
+    },
+    "Hole": {
+      "kind": "class",
+      "sig": "(radius: 'float', depth: 'float | None' = None, mode: 'Mode' = <Mode.SUBTRACT>)"
+    },
+    "HyperbolicCenterArc": {
+      "kind": "class",
+      "sig": "(center: 'VectorLike', x_radius: 'float', y_radius: 'float', start_angle: 'float' = 0.0, end_angle: 'float | None' = None, *, arc_size: 'float | Shape | Axis | Location | Plane | VectorLike' = 90.0, rotation: 'float' = 0.0, angular_direction: 'AngularDirection | None' = None, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "IFSelect_ReturnStatus": {
+      "kind": "enum",
+      "members": [
+        "IFSelect_RetVoid",
+        "IFSelect_RetDone",
+        "IFSelect_RetError",
+        "IFSelect_RetFail",
+        "IFSelect_RetStop"
+      ]
+    },
+    "IGESControl_Controller": {
+      "kind": "class",
+      "sig": null
+    },
+    "IN": {
+      "kind": "value",
+      "type": "float"
+    },
+    "IntEnum": {
+      "kind": "enum",
+      "members": []
+    },
+    "Interface_Static": {
+      "kind": "class",
+      "sig": null
+    },
+    "IntersectingLine": {
+      "kind": "class",
+      "sig": "(start: 'VectorLike', direction: 'VectorLike', other: 'Curve | Edge | Wire', mode: 'Mode' = <Mode.ADD>)"
+    },
+    "Intrinsic": {
+      "kind": "enum",
+      "members": [
+        "XYZ",
+        "XZY",
+        "YZX",
+        "YXZ",
+        "ZXY",
+        "ZYX",
+        "XYX",
+        "XZX",
+        "YZY",
+        "YXY",
+        "ZXZ",
+        "ZYZ"
+      ]
+    },
+    "Iterable": {
+      "kind": "class",
+      "sig": "()"
+    },
+    "JernArc": {
+      "kind": "class",
+      "sig": "(start: 'VectorLike', tangent: 'VectorLike', radius: 'float', arc_size: 'float | Shape | Axis | Location | Plane | VectorLike', mode: 'Mode' = <Mode.ADD>)"
+    },
+    "Joint": {
+      "kind": "class",
+      "sig": "(label: 'str', parent: 'BuildPart | Solid | Compound')"
+    },
+    "KG": {
+      "kind": "value",
+      "type": "int"
+    },
+    "Keep": {
+      "kind": "enum",
+      "members": [
+        "ALL",
+        "BOTTOM",
+        "BOTH",
+        "INSIDE",
+        "OUTSIDE",
+        "TOP"
+      ]
+    },
+    "Kind": {
+      "kind": "enum",
+      "members": [
+        "ARC",
+        "INTERSECTION",
+        "TANGENT"
+      ]
+    },
+    "LB": {
+      "kind": "value",
+      "type": "float"
+    },
+    "LengthMode": {
+      "kind": "enum",
+      "members": [
+        "DIAGONAL",
+        "HORIZONTAL",
+        "VERTICAL"
+      ]
+    },
+    "Lib3MF": {
+      "kind": "value",
+      "type": "module"
+    },
+    "Line": {
+      "kind": "class",
+      "sig": "(*pts: 'VectorLike | Iterable[VectorLike]', mode: 'Mode' = <Mode.ADD>)"
+    },
+    "LineType": {
+      "kind": "enum",
+      "members": [
+        "CONTINUOUS",
+        "BORDER",
+        "BORDER2",
+        "BORDERX2",
+        "CENTER",
+        "CENTER2",
+        "CENTERX2",
+        "DASHDOT",
+        "DASHDOT2",
+        "DASHDOTX2",
+        "DASHED",
+        "DASHED2",
+        "DASHEDX2",
+        "DIVIDE",
+        "DIVIDE2",
+        "DIVIDEX2",
+        "DOT",
+        "DOT2",
+        "DOTX2",
+        "HIDDEN",
+        "HIDDEN2",
+        "HIDDENX2",
+        "PHANTOM",
+        "PHANTOM2",
+        "PHANTOMX2",
+        "ISO_DASH",
+        "ISO_DASH_SPACE",
+        "ISO_LONG_DASH_DOT",
+        "ISO_LONG_DASH_DOUBLE_DOT",
+        "ISO_LONG_DASH_TRIPLE_DOT",
+        "ISO_DOT",
+        "ISO_LONG_DASH_SHORT_DASH",
+        "ISO_LONG_DASH_DOUBLE_SHORT_DASH",
+        "ISO_DASH_DOT",
+        "ISO_DOUBLE_DASH_DOT",
+        "ISO_DASH_DOUBLE_DOT",
+        "ISO_DOUBLE_DASH_DOUBLE_DOT",
+        "ISO_DASH_TRIPLE_DOT",
+        "ISO_DOUBLE_DASH_TRIPLE_DOT"
+      ]
+    },
+    "LinearJoint": {
+      "kind": "class",
+      "sig": "(label: 'str', to_part: 'Solid | Compound | None' = None, axis: 'Axis' = Axis((0, 0, 0), (0, 0, 1)), linear_range: 'tuple[float, float]' = (0, inf))"
+    },
+    "Literal": {
+      "kind": "function",
+      "sig": "(*args, **kwds)"
+    },
+    "Location": {
+      "kind": "class",
+      "sig": "(*args: 'Any', **kwargs: 'Any') -> 'None'"
+    },
+    "LocationEncoder": {
+      "kind": "class",
+      "sig": "(*, skipkeys=False, ensure_ascii=True, check_circular=True, allow_nan=True, sort_keys=False, indent=None, separators=None, default=None)"
+    },
+    "LocationList": {
+      "kind": "class",
+      "sig": "(locations: 'list[Location]')"
+    },
+    "Locations": {
+      "kind": "class",
+      "sig": "(*pts: 'VectorLike | Vertex | Location | Face | Plane | Axis | Iterable[VectorLike | Vertex | Location | Face | Plane | Axis]')"
+    },
+    "M": {
+      "kind": "value",
+      "type": "int"
+    },
+    "MC": {
+      "kind": "value",
+      "type": "float"
+    },
+    "MM": {
+      "kind": "value",
+      "type": "int"
+    },
+    "Matrix": {
+      "kind": "class",
+      "sig": "(*args, **kwargs)"
+    },
+    "MeshType": {
+      "kind": "enum",
+      "members": [
+        "OTHER",
+        "MODEL",
+        "SUPPORT",
+        "SOLIDSUPPORT"
+      ]
+    },
+    "Mesher": {
+      "kind": "class",
+      "sig": "(unit: build123d.build_enums.Unit = <Unit.MM>)"
+    },
+    "Message": {
+      "kind": "class",
+      "sig": null
+    },
+    "Message_Gravity": {
+      "kind": "enum",
+      "members": [
+        "Message_Trace",
+        "Message_Info",
+        "Message_Warning",
+        "Message_Alarm",
+        "Message_Fail"
+      ]
+    },
+    "Message_ProgressRange": {
+      "kind": "class",
+      "sig": null
+    },
+    "MirrorType": {
+      "kind": "value",
+      "type": "UnionType"
+    },
+    "Mode": {
+      "kind": "enum",
+      "members": [
+        "ADD",
+        "SUBTRACT",
+        "INTERSECT",
+        "REPLACE",
+        "PRIVATE"
+      ]
+    },
+    "NotAllLocationLikeError": {
+      "kind": "class",
+      "sig": "(wrong_types: 'Iterable[Type[Any]]') -> 'None'"
+    },
+    "NumberDisplay": {
+      "kind": "enum",
+      "members": [
+        "DECIMAL",
+        "FRACTION"
+      ]
+    },
+    "OffsetType": {
+      "kind": "value",
+      "type": "UnionType"
+    },
+    "OrientedBoundBox": {
+      "kind": "class",
+      "sig": "(shape: 'Bnd_OBB | Shape')"
+    },
+    "PT": {
+      "kind": "value",
+      "type": "module"
+    },
+    "PageSize": {
+      "kind": "enum",
+      "members": [
+        "A0",
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "A5",
+        "A6",
+        "A7",
+        "A8",
+        "A9",
+        "A10",
+        "LETTER",
+        "LEGAL",
+        "LEDGER"
+      ]
+    },
+    "ParabolicCenterArc": {
+      "kind": "class",
+      "sig": "(vertex: 'VectorLike', focal_length: 'float', start_angle: 'float' = 0.0, end_angle: 'float | None' = None, *, arc_size: 'float | Shape | Axis | Location | Plane | VectorLike' = 90.0, rotation: 'float' = 0.0, angular_direction: 'AngularDirection | None' = None, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "Part": {
+      "kind": "class",
+      "sig": "(obj: 'TopoDS_Compound | Iterable[Shape] | None' = None, label: 'str' = '', color: 'Color | None' = None, material: 'str' = '', joints: 'dict[str, Joint] | None' = None, parent: 'Compound | None' = None, children: 'Sequence[Shape] | None' = None)"
+    },
+    "Path": {
+      "kind": "class",
+      "sig": "(*args, **kwargs)"
+    },
+    "PathDescriptor": {
+      "kind": "value",
+      "type": "UnionType"
+    },
+    "PathLike": {
+      "kind": "class",
+      "sig": "()"
+    },
+    "PathSegment": {
+      "kind": "value",
+      "type": "UnionType"
+    },
+    "Plane": {
+      "kind": "class",
+      "sig": "(*args: 'Any', **kwargs: 'Any') -> 'None'"
+    },
+    "PlaneMeta": {
+      "kind": "class",
+      "sig": null
+    },
+    "PointArcTangentArc": {
+      "kind": "class",
+      "sig": "(*args, **kwargs)"
+    },
+    "PointArcTangentLine": {
+      "kind": "class",
+      "sig": "(*args, **kwargs)"
+    },
+    "PointLike": {
+      "kind": "value",
+      "type": "UnionType"
+    },
+    "PolarLine": {
+      "kind": "class",
+      "sig": "(start: 'VectorLike', length: 'float | Shape | Axis | Location | Plane | VectorLike', angle: 'float | None' = None, direction: 'VectorLike | None' = None, length_mode: 'LengthMode' = <LengthMode.DIAGONAL>, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "PolarLocations": {
+      "kind": "class",
+      "sig": "(radius: 'float', count: 'int', start_angle: 'float' = 0.0, angular_range: 'float' = 360.0, rotate: 'bool' = True, endpoint: 'bool' = False)"
+    },
+    "Polygon": {
+      "kind": "class",
+      "sig": "(*pts: 'VectorLike | Iterable[VectorLike]', rotation: 'float' = 0, align: 'Align | tuple[Align, Align] | None' = (<Align.NONE>, <Align.NONE>), mode: 'Mode' = <Mode.ADD>)"
+    },
+    "Polyline": {
+      "kind": "class",
+      "sig": "(*pts: 'VectorLike | Iterable[VectorLike]', close: 'bool' = False, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "Pos": {
+      "kind": "class",
+      "sig": "(*args, **kwargs)"
+    },
+    "PositionMode": {
+      "kind": "enum",
+      "members": [
+        "LENGTH",
+        "PARAMETER"
+      ]
+    },
+    "PreOrderIter": {
+      "kind": "class",
+      "sig": "(node, filter_=None, stop=None, maxlevel=None)"
+    },
+    "PrecisionMode": {
+      "kind": "enum",
+      "members": [
+        "SESSION",
+        "GREATEST",
+        "AVERAGE",
+        "LEAST"
+      ]
+    },
+    "ProjectType": {
+      "kind": "value",
+      "type": "UnionType"
+    },
+    "Quantity_Color": {
+      "kind": "class",
+      "sig": null
+    },
+    "Quantity_ColorRGBA": {
+      "kind": "class",
+      "sig": null
+    },
+    "Quantity_TypeOfColor": {
+      "kind": "enum",
+      "members": [
+        "Quantity_TOC_RGB",
+        "Quantity_TOC_sRGB",
+        "Quantity_TOC_HLS",
+        "Quantity_TOC_CIELab",
+        "Quantity_TOC_CIELch"
+      ]
+    },
+    "RAD2DEG": {
+      "kind": "value",
+      "type": "float"
+    },
+    "RGB": {
+      "kind": "class",
+      "sig": "(r: ForwardRef('int'), g: ForwardRef('int'), b: ForwardRef('int'))"
+    },
+    "RWGltf_CafWriter": {
+      "kind": "class",
+      "sig": null
+    },
+    "RWStl": {
+      "kind": "class",
+      "sig": null
+    },
+    "RadiusArc": {
+      "kind": "class",
+      "sig": "(start_point: 'VectorLike', end_point: 'VectorLike', radius: 'float', short_sagitta: 'bool' = True, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "Rectangle": {
+      "kind": "class",
+      "sig": "(width: 'float', height: 'float', rotation: 'float' = 0, align: 'Align | tuple[Align, Align] | None' = (<Align.CENTER>, <Align.CENTER>), mode: 'Mode' = <Mode.ADD>)"
+    },
+    "RectangleRounded": {
+      "kind": "class",
+      "sig": "(width: 'float', height: 'float', radius: 'float', rotation: 'float' = 0, align: 'Align | tuple[Align, Align] | None' = (<Align.CENTER>, <Align.CENTER>), mode: 'Mode' = <Mode.ADD>)"
+    },
+    "RegularPolygon": {
+      "kind": "class",
+      "sig": "(radius: 'float', side_count: 'int', major_radius: 'bool' = True, rotation: 'float' = 0, align: 'tuple[Align, Align]' = (<Align.CENTER>, <Align.CENTER>), mode: 'Mode' = <Mode.ADD>)"
+    },
+    "RevoluteJoint": {
+      "kind": "class",
+      "sig": "(label: 'str', to_part: 'Solid | Compound | None' = None, axis: 'Axis' = Axis((0, 0, 0), (0, 0, 1)), angle_reference: 'VectorLike | None' = None, angular_range: 'tuple[float, float]' = (0, 360))"
+    },
+    "RigidJoint": {
+      "kind": "class",
+      "sig": "(label: 'str', to_part: 'Solid | Compound | None' = None, joint_location: 'Location | None' = None)"
+    },
+    "Rot": {
+      "kind": "class",
+      "sig": "(*args, **kwargs)"
+    },
+    "Rotation": {
+      "kind": "class",
+      "sig": "(*args, **kwargs)"
+    },
+    "RotationLike": {
+      "kind": "value",
+      "type": "UnionType"
+    },
+    "STEPCAFControl_Controller": {
+      "kind": "class",
+      "sig": null
+    },
+    "STEPCAFControl_Reader": {
+      "kind": "class",
+      "sig": null
+    },
+    "STEPCAFControl_Writer": {
+      "kind": "class",
+      "sig": null
+    },
+    "STEPControl_Controller": {
+      "kind": "class",
+      "sig": null
+    },
+    "STEPControl_StepModelType": {
+      "kind": "enum",
+      "members": [
+        "STEPControl_AsIs",
+        "STEPControl_ManifoldSolidBrep",
+        "STEPControl_BrepWithVoids",
+        "STEPControl_FacetedBrep",
+        "STEPControl_FacetedBrepAndBrepWithVoids",
+        "STEPControl_ShellBasedSurfaceModel",
+        "STEPControl_GeometricCurveSet",
+        "STEPControl_Hybrid"
+      ]
+    },
+    "Sagitta": {
+      "kind": "enum",
+      "members": [
+        "SHORT",
+        "LONG",
+        "BOTH"
+      ]
+    },
+    "SagittaArc": {
+      "kind": "class",
+      "sig": "(start_point: 'VectorLike', end_point: 'VectorLike', sagitta: 'float', mode: 'Mode' = <Mode.ADD>)"
+    },
+    "Select": {
+      "kind": "enum",
+      "members": [
+        "ALL",
+        "LAST",
+        "NEW"
+      ]
+    },
+    "Self": {
+      "kind": "function",
+      "sig": "(*args, **kwds)"
+    },
+    "Sequence": {
+      "kind": "class",
+      "sig": "()"
+    },
+    "Shape": {
+      "kind": "class",
+      "sig": "(obj: 'TopoDS_Shape | None' = None, label: 'str' = '', color: 'ColorLike | None' = None, parent: 'Compound | None' = None)"
+    },
+    "ShapeList": {
+      "kind": "class",
+      "sig": "(iterable=(), /)"
+    },
+    "ShapeT": {
+      "kind": "value",
+      "type": "TypeVar"
+    },
+    "Shell": {
+      "kind": "class",
+      "sig": "(obj: 'TopoDS_Shell | Face | Iterable[Face] | None' = None, label: 'str' = '', color: 'Color | None' = None, parent: 'Compound | None' = None)"
+    },
+    "Side": {
+      "kind": "enum",
+      "members": [
+        "LEFT",
+        "RIGHT",
+        "BOTH"
+      ]
+    },
+    "Sketch": {
+      "kind": "class",
+      "sig": "(obj: 'TopoDS_Compound | Iterable[Shape] | None' = None, label: 'str' = '', color: 'Color | None' = None, material: 'str' = '', joints: 'dict[str, Joint] | None' = None, parent: 'Compound | None' = None, children: 'Sequence[Shape] | None' = None)"
+    },
+    "SkipClean": {
+      "kind": "class",
+      "sig": "()"
+    },
+    "SlotArc": {
+      "kind": "class",
+      "sig": "(arc: 'Edge | Wire', height: 'float', rotation: 'float' = 0, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "SlotCenterPoint": {
+      "kind": "class",
+      "sig": "(center: 'VectorLike', point: 'VectorLike', height: 'float', rotation: 'float' = 0, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "SlotCenterToCenter": {
+      "kind": "class",
+      "sig": "(center_separation: 'float', height: 'float', rotation: 'float' = 0, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "SlotOverall": {
+      "kind": "class",
+      "sig": "(width: 'float', height: 'float', rotation: 'float' = 0, align: 'Align | tuple[Align, Align] | None' = (<Align.CENTER>, <Align.CENTER>), mode: 'Mode' = <Mode.ADD>)"
+    },
+    "Solid": {
+      "kind": "class",
+      "sig": "(obj: 'TopoDS_Solid | Shell | None' = None, label: 'str' = '', color: 'Color | None' = None, material: 'str' = '', joints: 'dict[str, Joint] | None' = None, parent: 'Compound | None' = None)"
+    },
+    "SortBy": {
+      "kind": "enum",
+      "members": [
+        "LENGTH",
+        "RADIUS",
+        "AREA",
+        "VOLUME",
+        "DISTANCE"
+      ]
+    },
+    "Sphere": {
+      "kind": "class",
+      "sig": "(radius: 'float', arc_size1: 'float' = -90, arc_size2: 'float' = 90, arc_size3: 'float' = 360, rotation: 'RotationLike' = (0, 0, 0), align: 'Align | tuple[Align, Align, Align]' = (<Align.CENTER>, <Align.CENTER>, <Align.CENTER>), mode: 'Mode' = <Mode.ADD>)"
+    },
+    "Spline": {
+      "kind": "class",
+      "sig": "(*pts: 'VectorLike | Iterable[VectorLike]', tangents: 'Iterable[VectorLike] | None' = None, tangent_scalars: 'Iterable[float] | None' = None, periodic: 'bool' = False, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "SplitType": {
+      "kind": "value",
+      "type": "UnionType"
+    },
+    "Standard_ConstructionError": {
+      "kind": "class",
+      "sig": null
+    },
+    "Standard_Failure": {
+      "kind": "class",
+      "sig": null
+    },
+    "StdFail_NotDone": {
+      "kind": "class",
+      "sig": null
+    },
+    "StlAPI_Writer": {
+      "kind": "class",
+      "sig": null
+    },
+    "SweepType": {
+      "kind": "value",
+      "type": "UnionType"
+    },
+    "T": {
+      "kind": "value",
+      "type": "TypeVar"
+    },
+    "T2": {
+      "kind": "value",
+      "type": "TypeVar"
+    },
+    "TColStd_IndexedDataMapOfStringString": {
+      "kind": "class",
+      "sig": null
+    },
+    "TCollection_AsciiString": {
+      "kind": "class",
+      "sig": null
+    },
+    "TCollection_ExtendedString": {
+      "kind": "class",
+      "sig": null
+    },
+    "TCollection_HAsciiString": {
+      "kind": "class",
+      "sig": null
+    },
+    "TDF_Label": {
+      "kind": "class",
+      "sig": null
+    },
+    "TDF_LabelSequence": {
+      "kind": "class",
+      "sig": null
+    },
+    "TDataStd_Name": {
+      "kind": "class",
+      "sig": null
+    },
+    "TDocStd_Document": {
+      "kind": "class",
+      "sig": null
+    },
+    "THOU": {
+      "kind": "value",
+      "type": "float"
+    },
+    "TOL": {
+      "kind": "value",
+      "type": "float"
+    },
+    "TOLERANCE": {
+      "kind": "value",
+      "type": "float"
+    },
+    "TOL_DIGITS": {
+      "kind": "value",
+      "type": "int"
+    },
+    "TYPE_CHECKING": {
+      "kind": "value",
+      "type": "bool"
+    },
+    "Tangency": {
+      "kind": "enum",
+      "members": [
+        "UNQUALIFIED",
+        "ENCLOSING",
+        "ENCLOSED",
+        "OUTSIDE"
+      ]
+    },
+    "TangentArc": {
+      "kind": "class",
+      "sig": "(*pts: 'VectorLike | Iterable[VectorLike]', tangent: 'VectorLike', tangent_from_first: 'bool' = True, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "TechnicalDrawing": {
+      "kind": "class",
+      "sig": "(designed_by: str = 'build123d', design_date: datetime.date | None = None, page_size: build123d.build_enums.PageSize = <PageSize.A4>, title: str = 'Title', sub_title: str = 'Sub Title', drawing_number: str = 'B3D-1', sheet_number: int | None = None, drawing_scale: float = 1.0, nominal_text_size: float = 10.0, line_width: float = 0.5, mode: build123d.build_enums.Mode = <Mode.ADD>)"
+    },
+    "Text": {
+      "kind": "class",
+      "sig": "(txt: 'str', font_size: 'float', font: 'str' = 'Arial', font_path: 'PathLike[str] | str | None' = None, font_style: 'FontStyle' = <FontStyle.REGULAR>, text_align: 'tuple[TextAlign, TextAlign]' = (<TextAlign.CENTER>, <TextAlign.CENTER>), align: 'Align | tuple[Align, Align] | None' = None, path: 'Edge | Wire | None' = None, position_on_path: 'float' = 0.0, single_line_width: 'float | None' = None, rotation: 'float' = 0.0, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "TextAlign": {
+      "kind": "enum",
+      "members": [
+        "BOTTOM",
+        "CENTER",
+        "LEFT",
+        "RIGHT",
+        "TOP",
+        "TOPFIRSTLINE"
+      ]
+    },
+    "TextIO": {
+      "kind": "class",
+      "sig": "()"
+    },
+    "ThreePointArc": {
+      "kind": "class",
+      "sig": "(*pts: 'VectorLike | Iterable[VectorLike]', mode: 'Mode' = <Mode.ADD>)"
+    },
+    "TopAbs_FACE": {
+      "kind": "value",
+      "type": "TopAbs_ShapeEnum"
+    },
+    "TopAbs_Orientation": {
+      "kind": "enum",
+      "members": [
+        "TopAbs_FORWARD",
+        "TopAbs_REVERSED",
+        "TopAbs_INTERNAL",
+        "TopAbs_EXTERNAL"
+      ]
+    },
+    "TopAbs_ShapeEnum": {
+      "kind": "enum",
+      "members": [
+        "TopAbs_COMPOUND",
+        "TopAbs_COMPSOLID",
+        "TopAbs_SOLID",
+        "TopAbs_SHELL",
+        "TopAbs_FACE",
+        "TopAbs_WIRE",
+        "TopAbs_EDGE",
+        "TopAbs_VERTEX",
+        "TopAbs_SHAPE"
+      ]
+    },
+    "TopExp_Explorer": {
+      "kind": "class",
+      "sig": null
+    },
+    "TopLoc_Location": {
+      "kind": "class",
+      "sig": null
+    },
+    "TopoDS": {
+      "kind": "value",
+      "type": "module"
+    },
+    "TopoDS_Compound": {
+      "kind": "class",
+      "sig": null
+    },
+    "TopoDS_Edge": {
+      "kind": "class",
+      "sig": null
+    },
+    "TopoDS_Face": {
+      "kind": "class",
+      "sig": null
+    },
+    "TopoDS_Shape": {
+      "kind": "class",
+      "sig": null
+    },
+    "TopoDS_Shell": {
+      "kind": "class",
+      "sig": null
+    },
+    "TopoDS_Solid": {
+      "kind": "class",
+      "sig": null
+    },
+    "TopoDS_Vertex": {
+      "kind": "class",
+      "sig": null
+    },
+    "TopoDS_Wire": {
+      "kind": "class",
+      "sig": null
+    },
+    "Torus": {
+      "kind": "class",
+      "sig": "(major_radius: 'float', minor_radius: 'float', minor_start_angle: 'float' = 0, minor_end_angle: 'float' = 360, major_angle: 'float' = 360, rotation: 'RotationLike' = (0, 0, 0), align: 'Align | tuple[Align, Align, Align]' = (<Align.CENTER>, <Align.CENTER>, <Align.CENTER>), mode: 'Mode' = <Mode.ADD>)"
+    },
+    "Transition": {
+      "kind": "enum",
+      "members": [
+        "RIGHT",
+        "ROUND",
+        "TRANSFORMED"
+      ]
+    },
+    "Trapezoid": {
+      "kind": "class",
+      "sig": "(width: 'float', height: 'float', left_side_angle: 'float', right_side_angle: 'float | None' = None, rotation: 'float' = 0, align: 'Align | tuple[Align, Align] | None' = (<Align.CENTER>, <Align.CENTER>), mode: 'Mode' = <Mode.ADD>)"
+    },
+    "Triangle": {
+      "kind": "class",
+      "sig": "(*, a: 'float | None' = None, b: 'float | None' = None, c: 'float | None' = None, A: 'float | None' = None, B: 'float | None' = None, C: 'float | None' = None, align: 'Align | tuple[Align, Align] | None' = None, rotation: 'float' = 0, mode: 'Mode' = <Mode.ADD>)"
+    },
+    "Type": {
+      "kind": "function",
+      "sig": "(*args, **kwargs)"
+    },
+    "TypeAlias": {
+      "kind": "function",
+      "sig": "(*args, **kwds)"
+    },
+    "TypeVar": {
+      "kind": "class",
+      "sig": null
+    },
+    "UNITS_PER_METER": {
+      "kind": "value",
+      "type": "dict"
+    },
+    "UUID": {
+      "kind": "class",
+      "sig": "(hex=None, bytes=None, bytes_le=None, fields=None, int=None, version=None, *, is_safe=<SafeUUID.unknown: None>)"
+    },
+    "Unit": {
+      "kind": "enum",
+      "members": [
+        "MC",
+        "MM",
+        "CM",
+        "M",
+        "IN",
+        "FT"
+      ]
+    },
+    "Until": {
+      "kind": "enum",
+      "members": [
+        "NEXT",
+        "LAST",
+        "PREVIOUS",
+        "FIRST"
+      ]
+    },
+    "Vec2": {
+      "kind": "class",
+      "sig": null
+    },
+    "Vector": {
+      "kind": "class",
+      "sig": "(*args, **kwargs)"
+    },
+    "VectorLike": {
+      "kind": "value",
+      "type": "UnionType"
+    },
+    "Vertex": {
+      "kind": "class",
+      "sig": "(*args, **kwargs)"
+    },
+    "Voronoi": {
+      "kind": "class",
+      "sig": "(points, furthest_site=False, incremental=False, qhull_options=None)"
+    },
+    "Wedge": {
+      "kind": "class",
+      "sig": "(xsize: 'float', ysize: 'float', zsize: 'float', xmin: 'float', zmin: 'float', xmax: 'float', zmax: 'float', rotation: 'RotationLike' = (0, 0, 0), align: 'Align | tuple[Align, Align, Align]' = (<Align.CENTER>, <Align.CENTER>, <Align.CENTER>), mode: 'Mode' = <Mode.ADD>)"
+    },
+    "Wire": {
+      "kind": "class",
+      "sig": "(*args, **kwargs)"
+    },
+    "WorkplaneList": {
+      "kind": "class",
+      "sig": "(*workplanes: 'Face | Plane | Location')"
+    },
+    "XCAFApp_Application": {
+      "kind": "class",
+      "sig": null
+    },
+    "XCAFDoc_ColorCurv": {
+      "kind": "value",
+      "type": "XCAFDoc_ColorType"
+    },
+    "XCAFDoc_ColorGen": {
+      "kind": "value",
+      "type": "XCAFDoc_ColorType"
+    },
+    "XCAFDoc_ColorSurf": {
+      "kind": "value",
+      "type": "XCAFDoc_ColorType"
+    },
+    "XCAFDoc_ColorTool": {
+      "kind": "class",
+      "sig": null
+    },
+    "XCAFDoc_ColorType": {
+      "kind": "enum",
+      "members": [
+        "XCAFDoc_ColorGen",
+        "XCAFDoc_ColorSurf",
+        "XCAFDoc_ColorCurv"
+      ]
+    },
+    "XCAFDoc_DocumentTool": {
+      "kind": "class",
+      "sig": null
+    },
+    "XCAFDoc_ShapeTool": {
+      "kind": "class",
+      "sig": null
+    },
+    "XSControl_WorkSession": {
+      "kind": "class",
+      "sig": null
+    },
+    "abstractmethod": {
+      "kind": "function",
+      "sig": "(funcobj)"
+    },
+    "aci2rgb": {
+      "kind": "function",
+      "sig": "(index: 'int') -> 'RGB'"
+    },
+    "add": {
+      "kind": "function",
+      "sig": "(objects: build123d.topology.one_d.Edge | build123d.topology.one_d.Wire | build123d.topology.two_d.Face | build123d.topology.three_d.Solid | build123d.topology.composite.Compound | build123d.build_common.Builder | collections.abc.Iterable[build123d.topology.one_d.Edge | build123d.topology.one_d.Wire | build123d.topology.two_d.Face | build123d.topology.three_d.Solid | build123d.topology.composite.Compound | build123d.build_common.Builder], rotation: float | build123d.geometry.Rotation | tuple[float, float, float] | None = None, clean: bool = True, mode: build123d.build_enums.Mode = <Mode.ADD>) -> build123d.topology.composite.Compound"
+    },
+    "all_location_like": {
+      "kind": "function",
+      "sig": "(items: 'Iterable[Any]') -> 'list[Location | Plane]'"
+    },
+    "annotations": {
+      "kind": "value",
+      "type": "_Feature"
+    },
+    "ansi_pattern": {
+      "kind": "function",
+      "sig": "(*args)"
+    },
+    "atan2": {
+      "kind": "function",
+      "sig": "(y, x, /)"
+    },
+    "auto": {
+      "kind": "class",
+      "sig": "(value=_auto_null)"
+    },
+    "available_fonts": {
+      "kind": "function",
+      "sig": "() -> list[build123d.text.FontInfo]"
+    },
+    "bounding_box": {
+      "kind": "function",
+      "sig": "(objects: build123d.topology.shape_core.Shape | collections.abc.Iterable[build123d.topology.shape_core.Shape] | None = None, mode: build123d.build_enums.Mode = <Mode.PRIVATE>) -> build123d.topology.composite.Sketch | build123d.topology.composite.Part"
+    },
+    "brep_from_stl": {
+      "kind": "value",
+      "type": "module"
+    },
+    "build_common": {
+      "kind": "value",
+      "type": "module"
+    },
+    "build_enums": {
+      "kind": "value",
+      "type": "module"
+    },
+    "build_line": {
+      "kind": "value",
+      "type": "module"
+    },
+    "build_part": {
+      "kind": "value",
+      "type": "module"
+    },
+    "build_sketch": {
+      "kind": "value",
+      "type": "module"
+    },
+    "cast": {
+      "kind": "function",
+      "sig": "(typ, val)"
+    },
+    "chamfer": {
+      "kind": "function",
+      "sig": "(objects: build123d.topology.one_d.Edge | build123d.topology.zero_d.Vertex | collections.abc.Iterable[build123d.topology.one_d.Edge | build123d.topology.zero_d.Vertex], length: float, length2: float | None = None, angle: float | None = None, reference: build123d.topology.one_d.Edge | build123d.topology.two_d.Face | None = None) -> build123d.topology.composite.Sketch | build123d.topology.composite.Part"
+    },
+    "colorsys": {
+      "kind": "value",
+      "type": "module"
+    },
+    "contextvars": {
+      "kind": "value",
+      "type": "module"
+    },
+    "copy": {
+      "kind": "function",
+      "sig": "(x)"
+    },
+    "copy_module": {
+      "kind": "value",
+      "type": "module"
+    },
+    "copysign": {
+      "kind": "function",
+      "sig": "(x, y, /)"
+    },
+    "cos": {
+      "kind": "function",
+      "sig": "(x, /)"
+    },
+    "ctypes": {
+      "kind": "value",
+      "type": "module"
+    },
+    "dataclass": {
+      "kind": "function",
+      "sig": "(cls=None, /, *, init=True, repr=True, eq=True, order=False, unsafe_hash=False, frozen=False, match_args=True, kw_only=False, slots=False, weakref_slot=False)"
+    },
+    "date": {
+      "kind": "class",
+      "sig": null
+    },
+    "datetime": {
+      "kind": "class",
+      "sig": null
+    },
+    "degrees": {
+      "kind": "function",
+      "sig": "(x, /)"
+    },
+    "delta": {
+      "kind": "function",
+      "sig": "(shapes_one: 'Iterable[Shape]', shapes_two: 'Iterable[Shape]') -> 'list[Shape]'"
+    },
+    "deprecated": {
+      "kind": "class",
+      "sig": "(message: str, /, *, category: Optional[Type[Warning]] = <class 'DeprecationWarning'>, stacklevel: int = 1) -> None"
+    },
+    "detect_primitives": {
+      "kind": "function",
+      "sig": "(mesh: 'Shape') -> 'tuple[ShapeList[Face], ShapeList[Face], list[str]]'"
+    },
+    "downcast": {
+      "kind": "function",
+      "sig": "(obj: 'TopoDS_Shape') -> 'TopoDS_Shape'"
+    },
+    "draft": {
+      "kind": "function",
+      "sig": "(faces: 'Face | Iterable[Face]', neutral_plane: 'Plane', angle: 'float') -> 'Part'"
+    },
+    "drafting": {
+      "kind": "value",
+      "type": "module"
+    },
+    "edge": {
+      "kind": "function",
+      "sig": "(self, select: 'Select' = <Select.ALL>) -> 'Edge'"
+    },
+    "edges": {
+      "kind": "function",
+      "sig": "(self, select: 'Select' = <Select.ALL>) -> 'ShapeList[Edge]'"
+    },
+    "edges_to_wires": {
+      "kind": "function",
+      "sig": "(edges: 'Iterable[Edge]', tol: 'float' = 1e-06) -> 'ShapeList[Wire]'"
+    },
+    "export_brep": {
+      "kind": "function",
+      "sig": "(to_export: build123d.topology.shape_core.Shape, file_path: os.PathLike | str | bytes | _io.BytesIO | typing.BinaryIO) -> bool"
+    },
+    "export_gltf": {
+      "kind": "function",
+      "sig": "(to_export: build123d.topology.shape_core.Shape, file_path: os.PathLike | str | bytes, unit: build123d.build_enums.Unit = <Unit.MM>, binary: bool = False, linear_deflection: float = 0.001, angular_deflection: float = 0.1) -> bool"
+    },
+    "export_step": {
+      "kind": "function",
+      "sig": "(to_export: build123d.topology.shape_core.Shape, file_path: os.PathLike | str | bytes | _io.BytesIO | typing.BinaryIO, unit: build123d.build_enums.Unit = <Unit.MM>, write_pcurves: bool = True, precision_mode: build123d.build_enums.PrecisionMode = <PrecisionMode.AVERAGE>, *, timestamp: str | datetime.datetime | None = None) -> bool"
+    },
+    "export_stl": {
+      "kind": "function",
+      "sig": "(to_export: build123d.topology.shape_core.Shape, file_path: os.PathLike | str | bytes, tolerance: float = 0.001, angular_tolerance: float = 0.1, ascii_format: bool = False) -> bool"
+    },
+    "export_to_pcbway": {
+      "kind": "function",
+      "sig": "(to_export: build123d.topology.shape_core.Shape, unit: build123d.build_enums.Unit = <Unit.MM>, write_pcurves: bool = True, precision_mode: build123d.build_enums.PrecisionMode = <PrecisionMode.AVERAGE>) -> str"
+    },
+    "exporters": {
+      "kind": "value",
+      "type": "module"
+    },
+    "exporters3d": {
+      "kind": "value",
+      "type": "module"
+    },
+    "extrude": {
+      "kind": "function",
+      "sig": "(to_extrude: 'Face | Sketch | None' = None, amount: 'float | None' = None, dir: 'VectorLike | None' = None, until: 'Until | None' = None, target: 'Compound | Solid | None' = None, both: 'bool' = False, taper: 'float' = 0.0, clean: 'bool' = True, mode: 'Mode' = <Mode.ADD>) -> 'Part'"
+    },
+    "ezdxf": {
+      "kind": "value",
+      "type": "module"
+    },
+    "face": {
+      "kind": "function",
+      "sig": "(self, select: 'Select' = <Select.ALL>) -> 'Face'"
+    },
+    "faces": {
+      "kind": "function",
+      "sig": "(self, select: 'Select' = <Select.ALL>) -> 'ShapeList[Face]'"
+    },
+    "fillet": {
+      "kind": "function",
+      "sig": "(objects: build123d.topology.one_d.Edge | build123d.topology.zero_d.Vertex | collections.abc.Iterable[build123d.topology.one_d.Edge | build123d.topology.zero_d.Vertex], radius: float) -> build123d.topology.composite.Sketch | build123d.topology.composite.Part | build123d.topology.composite.Curve"
+    },
+    "find_max_dimension": {
+      "kind": "function",
+      "sig": "(shapes: 'Shape | Iterable[Shape]') -> 'float'"
+    },
+    "fix": {
+      "kind": "function",
+      "sig": "(obj: 'TopoDS_Shape') -> 'TopoDS_Shape'"
+    },
+    "flatten_sequence": {
+      "kind": "function",
+      "sig": "(*obj: 'T') -> 'ShapeList[Any]'"
+    },
+    "floor": {
+      "kind": "function",
+      "sig": "(x, /)"
+    },
+    "fsdecode": {
+      "kind": "function",
+      "sig": "(filename)"
+    },
+    "full_round": {
+      "kind": "function",
+      "sig": "(edge: 'Edge', invert: 'bool' = False, voronoi_point_count: 'int' = 100, mode: 'Mode' = <Mode.REPLACE>) -> 'tuple[Sketch, Vector, float]'"
+    },
+    "functools": {
+      "kind": "value",
+      "type": "module"
+    },
+    "gcd": {
+      "kind": "function",
+      "sig": "(*integers)"
+    },
+    "geometry": {
+      "kind": "value",
+      "type": "module"
+    },
+    "gp_Ax1": {
+      "kind": "class",
+      "sig": null
+    },
+    "gp_Ax2": {
+      "kind": "class",
+      "sig": null
+    },
+    "gp_Ax3": {
+      "kind": "class",
+      "sig": null
+    },
+    "gp_Dir": {
+      "kind": "class",
+      "sig": null
+    },
+    "gp_EulerSequence": {
+      "kind": "enum",
+      "members": [
+        "gp_EulerAngles",
+        "gp_YawPitchRoll",
+        "gp_Extrinsic_XYZ",
+        "gp_Extrinsic_XZY",
+        "gp_Extrinsic_YZX",
+        "gp_Extrinsic_YXZ",
+        "gp_Extrinsic_ZXY",
+        "gp_Extrinsic_ZYX",
+        "gp_Intrinsic_XYZ",
+        "gp_Intrinsic_XZY",
+        "gp_Intrinsic_YZX",
+        "gp_Intrinsic_YXZ",
+        "gp_Intrinsic_ZXY",
+        "gp_Intrinsic_ZYX",
+        "gp_Extrinsic_XYX",
+        "gp_Extrinsic_XZX",
+        "gp_Extrinsic_YZY",
+        "gp_Extrinsic_YXY",
+        "gp_Extrinsic_ZYZ",
+        "gp_Extrinsic_ZXZ",
+        "gp_Intrinsic_XYX",
+        "gp_Intrinsic_XZX",
+        "gp_Intrinsic_YZY",
+        "gp_Intrinsic_YXY",
+        "gp_Intrinsic_ZXZ",
+        "gp_Intrinsic_ZYZ"
+      ]
+    },
+    "gp_GTrsf": {
+      "kind": "class",
+      "sig": null
+    },
+    "gp_Lin": {
+      "kind": "class",
+      "sig": null
+    },
+    "gp_Pln": {
+      "kind": "class",
+      "sig": null
+    },
+    "gp_Pnt": {
+      "kind": "class",
+      "sig": null
+    },
+    "gp_Quaternion": {
+      "kind": "class",
+      "sig": null
+    },
+    "gp_Trsf": {
+      "kind": "class",
+      "sig": null
+    },
+    "gp_Vec": {
+      "kind": "class",
+      "sig": null
+    },
+    "gp_XYZ": {
+      "kind": "class",
+      "sig": null
+    },
+    "import_brep": {
+      "kind": "function",
+      "sig": "(file_name: os.PathLike | str | bytes) -> build123d.topology.shape_core.Shape"
+    },
+    "import_dxf": {
+      "kind": "function",
+      "sig": "(dxf_file: str | os.PathLike | typing.TextIO | typing.BinaryIO) -> build123d.topology.shape_core.ShapeList"
+    },
+    "import_step": {
+      "kind": "function",
+      "sig": "(filename: os.PathLike | str | bytes) -> build123d.topology.composite.Compound"
+    },
+    "import_stl": {
+      "kind": "function",
+      "sig": "(file_name: os.PathLike | str | bytes, model_unit: build123d.build_enums.Unit = <Unit.MM>) -> build123d.topology.two_d.Face"
+    },
+    "import_svg": {
+      "kind": "function",
+      "sig": "(svg_file: str | pathlib.Path | typing.TextIO, *, flip_y: bool = True, align: build123d.build_enums.Align | tuple[build123d.build_enums.Align, build123d.build_enums.Align] | None = <Align.MIN>, ignore_visibility: bool = False, label_by: Union[Literal['id', 'class', 'inkscape:label'], str] = 'id', is_inkscape_label: bool | None = None) -> build123d.topology.shape_core.ShapeList[build123d.topology.one_d.Wire | build123d.topology.two_d.Face]"
+    },
+    "import_svg_as_buildline_code": {
+      "kind": "function",
+      "sig": "(file_name: os.PathLike | str | bytes, precision: int = 6) -> tuple[str, str]"
+    },
+    "import_svg_document": {
+      "kind": "function",
+      "sig": "(svg_file: Union[str, pathlib.Path, TextIO], *, flip_y: bool = True, ignore_visibility: bool = False, metadata: Optional[Callable[[svgelements.svgelements.Shape, Sequence[Union[svgelements.svgelements.Group, svgelements.svgelements.Use]]], ~M]] = None) -> Union[ocpsvg.svg.ItemsFromDocument[tuple[Union[OCP.OCP.TopoDS.TopoDS_Wire, OCP.OCP.TopoDS.TopoDS_Face], ~M]], ocpsvg.svg.ItemsFromDocument[Union[OCP.OCP.TopoDS.TopoDS_Wire, OCP.OCP.TopoDS.TopoDS_Face]]]"
+    },
+    "importers": {
+      "kind": "value",
+      "type": "module"
+    },
+    "inf": {
+      "kind": "value",
+      "type": "float"
+    },
+    "inspect": {
+      "kind": "value",
+      "type": "module"
+    },
+    "io": {
+      "kind": "value",
+      "type": "module"
+    },
+    "isclose_b": {
+      "kind": "function",
+      "sig": "(x: 'float', y: 'float', rel_tol=1e-09, abs_tol=1e-14) -> 'bool'"
+    },
+    "iso_pattern": {
+      "kind": "function",
+      "sig": "(*args)"
+    },
+    "itertools": {
+      "kind": "value",
+      "type": "module"
+    },
+    "joints": {
+      "kind": "value",
+      "type": "module"
+    },
+    "json": {
+      "kind": "value",
+      "type": "module"
+    },
+    "loft": {
+      "kind": "function",
+      "sig": "(sections: 'Face | Sketch | Iterable[Vertex | Face | Sketch] | None' = None, ruled: 'bool' = False, clean: 'bool' = True, mode: 'Mode' = <Mode.ADD>) -> 'Part'"
+    },
+    "log10": {
+      "kind": "function",
+      "sig": "(x, /)"
+    },
+    "log2": {
+      "kind": "function",
+      "sig": "(x, /)"
+    },
+    "logger": {
+      "kind": "value",
+      "type": "Logger"
+    },
+    "logging": {
+      "kind": "value",
+      "type": "module"
+    },
+    "make_brake_formed": {
+      "kind": "function",
+      "sig": "(thickness: 'float', station_widths: 'float | Iterable[float]', line: 'Edge | Wire | Curve | None' = None, side: 'Side' = <Side.LEFT>, kind: 'Kind' = <Kind.ARC>, clean: 'bool' = True, mode: 'Mode' = <Mode.ADD>) -> 'Part'"
+    },
+    "make_face": {
+      "kind": "function",
+      "sig": "(edges: 'Edge | Wire | Curve | Iterable[Edge | Wire | Curve] | None' = None, mode: 'Mode' = <Mode.ADD>) -> 'Sketch'"
+    },
+    "make_hull": {
+      "kind": "function",
+      "sig": "(edges: 'Edge | Iterable[Edge] | None' = None, mode: 'Mode' = <Mode.ADD>) -> 'Sketch'"
+    },
+    "math": {
+      "kind": "value",
+      "type": "module"
+    },
+    "mesher": {
+      "kind": "value",
+      "type": "module"
+    },
+    "minimize": {
+      "kind": "function",
+      "sig": "(fun, x0, args=(), method=None, jac=None, hess=None, hessp=None, bounds=None, constraints=(), tol=None, callback=None, options=None)"
+    },
+    "mirror": {
+      "kind": "function",
+      "sig": "(objects: build123d.topology.one_d.Edge | build123d.topology.one_d.Wire | build123d.topology.two_d.Face | build123d.topology.composite.Compound | build123d.topology.composite.Curve | build123d.topology.composite.Sketch | build123d.topology.composite.Part | collections.abc.Iterable[build123d.topology.one_d.Edge | build123d.topology.one_d.Wire | build123d.topology.two_d.Face | build123d.topology.composite.Compound | build123d.topology.composite.Curve | build123d.topology.composite.Sketch | build123d.topology.composite.Part] | None = None, about: build123d.geometry.Plane = Plane((0, 0, 0), (1, 0, 0), (0, -1, 0)), mode: build123d.build_enums.Mode = <Mode.ADD>) -> build123d.topology.composite.Curve | build123d.topology.composite.Sketch | build123d.topology.composite.Part | build123d.topology.composite.Compound"
+    },
+    "modify_copyreg": {
+      "kind": "function",
+      "sig": "()"
+    },
+    "new_edges": {
+      "kind": "function",
+      "sig": "(*objects: 'Shape', combined: 'Shape') -> 'ShapeList[Edge]'"
+    },
+    "np": {
+      "kind": "value",
+      "type": "module"
+    },
+    "objects_curve": {
+      "kind": "value",
+      "type": "module"
+    },
+    "objects_part": {
+      "kind": "value",
+      "type": "module"
+    },
+    "objects_sketch": {
+      "kind": "value",
+      "type": "module"
+    },
+    "offset": {
+      "kind": "function",
+      "sig": "(objects: build123d.topology.one_d.Edge | build123d.topology.two_d.Face | build123d.topology.three_d.Solid | build123d.topology.composite.Compound | collections.abc.Iterable[build123d.topology.one_d.Edge | build123d.topology.two_d.Face | build123d.topology.three_d.Solid | build123d.topology.composite.Compound] | None = None, amount: float = 0, openings: build123d.topology.two_d.Face | list[build123d.topology.two_d.Face] | None = None, kind: build123d.build_enums.Kind = <Kind.ARC>, side: build123d.build_enums.Side = <Side.BOTH>, closed: bool = True, min_edge_length: float | None = None, mode: build123d.build_enums.Mode = <Mode.REPLACE>) -> build123d.topology.composite.Curve | build123d.topology.composite.Sketch | build123d.topology.composite.Part | build123d.topology.composite.Compound"
+    },
+    "offset_topods_face": {
+      "kind": "function",
+      "sig": "(face: 'TopoDS_Face', amount: 'float') -> 'TopoDS_Shape'"
+    },
+    "operations_apply_to": {
+      "kind": "value",
+      "type": "dict"
+    },
+    "operations_generic": {
+      "kind": "value",
+      "type": "module"
+    },
+    "operations_part": {
+      "kind": "value",
+      "type": "module"
+    },
+    "operations_sketch": {
+      "kind": "value",
+      "type": "module"
+    },
+    "os": {
+      "kind": "value",
+      "type": "module"
+    },
+    "overload": {
+      "kind": "function",
+      "sig": "(func)"
+    },
+    "pack": {
+      "kind": "function",
+      "sig": "(objects: 'Collection[Shape]', padding: 'float', align_z: 'bool' = False) -> 'Collection[Shape]'"
+    },
+    "persistence": {
+      "kind": "value",
+      "type": "module"
+    },
+    "pi": {
+      "kind": "value",
+      "type": "float"
+    },
+    "polar": {
+      "kind": "function",
+      "sig": "(length: 'float', angle: 'float') -> 'tuple[float, float]'"
+    },
+    "prod": {
+      "kind": "function",
+      "sig": "(iterable, /, *, start=1)"
+    },
+    "product": {
+      "kind": "class",
+      "sig": null
+    },
+    "project": {
+      "kind": "function",
+      "sig": "(objects: build123d.topology.one_d.Edge | build123d.topology.two_d.Face | build123d.topology.one_d.Wire | build123d.geometry.Vector | build123d.topology.zero_d.Vertex | collections.abc.Iterable[build123d.topology.one_d.Edge | build123d.topology.two_d.Face | build123d.topology.one_d.Wire | build123d.geometry.Vector | build123d.topology.zero_d.Vertex] | None = None, workplane: build123d.geometry.Plane | None = None, target: build123d.topology.three_d.Solid | build123d.topology.composite.Compound | build123d.topology.composite.Part | None = None, mode: build123d.build_enums.Mode = <Mode.ADD>) -> build123d.topology.composite.Curve | build123d.topology.composite.Sketch | build123d.topology.composite.Compound | build123d.topology.shape_core.ShapeList[build123d.geometry.Vector]"
+    },
+    "project_workplane": {
+      "kind": "function",
+      "sig": "(origin: 'VectorLike | Vertex', x_dir: 'VectorLike | Vertex', projection_dir: 'VectorLike', distance: 'float') -> 'Plane'"
+    },
+    "radians": {
+      "kind": "function",
+      "sig": "(x, /)"
+    },
+    "re": {
+      "kind": "value",
+      "type": "module"
+    },
+    "requests": {
+      "kind": "value",
+      "type": "module"
+    },
+    "revolve": {
+      "kind": "function",
+      "sig": "(profiles: 'Face | Iterable[Face] | None' = None, axis: 'Axis' = Axis((0, 0, 0), (0, 0, 1)), revolution_arc: 'float' = 360.0, clean: 'bool' = True, mode: 'Mode' = <Mode.ADD>) -> 'Part'"
+    },
+    "scale": {
+      "kind": "function",
+      "sig": "(objects: build123d.topology.shape_core.Shape | collections.abc.Iterable[build123d.topology.shape_core.Shape] | None = None, by: float | tuple[float, float, float] = 1, about: build123d.geometry.Vector | tuple[float, float] | tuple[float, float, float] | collections.abc.Sequence[float] | None = None, mode: build123d.build_enums.Mode = <Mode.REPLACE>) -> build123d.topology.composite.Curve | build123d.topology.composite.Sketch | build123d.topology.composite.Part | build123d.topology.composite.Compound"
+    },
+    "section": {
+      "kind": "function",
+      "sig": "(obj: 'Part | None' = None, section_by: 'Plane | Iterable[Plane]' = Plane((0, 0, 0), (1, 0, 0), (0, -1, 0)), height: 'float' = 0.0, clean: 'bool' = True, mode: 'Mode' = <Mode.PRIVATE>) -> 'Sketch'"
+    },
+    "sin": {
+      "kind": "function",
+      "sig": "(x, /)"
+    },
+    "solid": {
+      "kind": "function",
+      "sig": "(self, select: 'Select' = <Select.ALL>) -> 'Solid'"
+    },
+    "solids": {
+      "kind": "function",
+      "sig": "(self, select: 'Select' = <Select.ALL>) -> 'ShapeList[Solid]'"
+    },
+    "sort_wires_by_build_order": {
+      "kind": "function",
+      "sig": "(wire_list: 'list[Wire]') -> 'list[list[Wire]]'"
+    },
+    "split": {
+      "kind": "function",
+      "sig": "(objects: build123d.topology.one_d.Edge | build123d.topology.one_d.Wire | build123d.topology.two_d.Face | build123d.topology.three_d.Solid | collections.abc.Iterable[build123d.topology.one_d.Edge | build123d.topology.one_d.Wire | build123d.topology.two_d.Face | build123d.topology.three_d.Solid] | None = None, bisect_by: build123d.geometry.Plane | build123d.topology.two_d.Face | build123d.topology.two_d.Shell = Plane((0, 0, 0), (1, 0, 0), (0, -1, 0)), keep: build123d.build_enums.Keep = <Keep.TOP>, mode: build123d.build_enums.Mode = <Mode.REPLACE>)"
+    },
+    "sqrt": {
+      "kind": "function",
+      "sig": "(x, /)"
+    },
+    "svgpathtools": {
+      "kind": "value",
+      "type": "module"
+    },
+    "sweep": {
+      "kind": "function",
+      "sig": "(sections: build123d.topology.composite.Compound | build123d.topology.one_d.Edge | build123d.topology.one_d.Wire | build123d.topology.two_d.Face | build123d.topology.three_d.Solid | collections.abc.Iterable[build123d.topology.composite.Compound | build123d.topology.one_d.Edge | build123d.topology.one_d.Wire | build123d.topology.two_d.Face | build123d.topology.three_d.Solid] | None = None, path: build123d.topology.composite.Curve | build123d.topology.one_d.Edge | build123d.topology.one_d.Wire | collections.abc.Iterable[build123d.topology.one_d.Edge] | None = None, multisection: bool = False, is_frenet: bool = False, transition: build123d.build_enums.Transition = <Transition.TRANSFORMED>, normal: build123d.geometry.Vector | tuple[float, float] | tuple[float, float, float] | collections.abc.Sequence[float] | None = None, binormal: build123d.topology.one_d.Edge | build123d.topology.one_d.Wire | None = None, clean: bool = True, mode: build123d.build_enums.Mode = <Mode.ADD>) -> build123d.topology.composite.Part | build123d.topology.composite.Sketch"
+    },
+    "sympy": {
+      "kind": "value",
+      "type": "module"
+    },
+    "sys": {
+      "kind": "value",
+      "type": "module"
+    },
+    "ta": {
+      "kind": "value",
+      "type": "module"
+    },
+    "tan": {
+      "kind": "function",
+      "sig": "(x, /)"
+    },
+    "tcast": {
+      "kind": "function",
+      "sig": "(typ, val)"
+    },
+    "tempfile": {
+      "kind": "value",
+      "type": "module"
+    },
+    "text": {
+      "kind": "value",
+      "type": "module"
+    },
+    "thicken": {
+      "kind": "function",
+      "sig": "(to_thicken: 'Face | Sketch | None' = None, amount: 'float | None' = None, normal_override: 'VectorLike | None' = None, both: 'bool' = False, clean: 'bool' = True, mode: 'Mode' = <Mode.ADD>) -> 'Part'"
+    },
+    "to_align_offset": {
+      "kind": "function",
+      "sig": "(min_point: 'VectorLike', max_point: 'VectorLike', align: 'Align2D | Align3D', center: 'VectorLike | None' = None) -> 'Vector'"
+    },
+    "topo_distance_to": {
+      "kind": "function",
+      "sig": "(other: 'Shape | Iterable[Shape]') -> 'Callable[[Shape], int | float]'"
+    },
+    "topo_explore_common_vertex": {
+      "kind": "function",
+      "sig": "(edge1: 'Edge | TopoDS_Edge', edge2: 'Edge | TopoDS_Edge') -> 'Vertex | None'"
+    },
+    "topo_explore_connected_edges": {
+      "kind": "function",
+      "sig": "(edge: 'Edge', parent: 'Shape | None' = None, continuity: 'ContinuityLevel' = <ContinuityLevel.C0: 0>) -> 'ShapeList[Edge]'"
+    },
+    "topo_explore_connected_faces": {
+      "kind": "function",
+      "sig": "(edge: 'Edge', parent: 'Shape | None' = None) -> 'list[TopoDS_Face]'"
+    },
+    "topods_lut": {
+      "kind": "value",
+      "type": "dict"
+    },
+    "topology": {
+      "kind": "value",
+      "type": "module"
+    },
+    "trace": {
+      "kind": "function",
+      "sig": "(lines: 'Curve | Edge | Wire | Iterable[Curve | Edge | Wire] | None' = None, line_width: 'float' = 1, mode: 'Mode' = <Mode.ADD>) -> 'Sketch'"
+    },
+    "trianglesolver": {
+      "kind": "value",
+      "type": "module"
+    },
+    "tuplify": {
+      "kind": "function",
+      "sig": "(obj: 'Any', dim: 'int') -> 'tuple | None'"
+    },
+    "unicodedata": {
+      "kind": "value",
+      "type": "module"
+    },
+    "unique": {
+      "kind": "function",
+      "sig": "(enumeration)"
+    },
+    "unit_conversion_scale": {
+      "kind": "function",
+      "sig": "(from_unit: build123d.build_enums.Unit, to_unit: build123d.build_enums.Unit) -> float"
+    },
+    "unwrap_topods_compound": {
+      "kind": "function",
+      "sig": "(compound: 'TopoDS_Compound', fully: 'bool' = True) -> 'TopoDS_Compound | TopoDS_Shape'"
+    },
+    "validate_inputs": {
+      "kind": "function",
+      "sig": "(context: 'Builder | None', validating_class, objects: 'Iterable[Shape] | None' = None)"
+    },
+    "version": {
+      "kind": "value",
+      "type": "module"
+    },
+    "vertex": {
+      "kind": "function",
+      "sig": "(self, select: 'Select' = <Select.ALL>) -> 'Vertex'"
+    },
+    "vertices": {
+      "kind": "function",
+      "sig": "(self, select: 'Select' = <Select.ALL>) -> 'ShapeList[Vertex]'"
+    },
+    "warn": {
+      "kind": "function",
+      "sig": null
+    },
+    "warnings": {
+      "kind": "value",
+      "type": "module"
+    },
+    "webbrowser": {
+      "kind": "value",
+      "type": "module"
+    },
+    "webcolors": {
+      "kind": "value",
+      "type": "module"
+    },
+    "wire": {
+      "kind": "function",
+      "sig": "(self, select: 'Select' = <Select.ALL>) -> 'Wire'"
+    },
+    "wires": {
+      "kind": "function",
+      "sig": "(self, select: 'Select' = <Select.ALL>) -> 'ShapeList[Wire]'"
+    },
+    "zoom": {
+      "kind": "value",
+      "type": "module"
+    }
+  }
+}

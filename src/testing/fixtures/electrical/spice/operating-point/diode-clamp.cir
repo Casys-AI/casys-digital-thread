@@ -1,0 +1,4 @@
+Vin in 0 DC 5
+R1 in n1 1k
+D1 n1 0 dmod
+.model dmod D(Is=1e-14 N=1.8)

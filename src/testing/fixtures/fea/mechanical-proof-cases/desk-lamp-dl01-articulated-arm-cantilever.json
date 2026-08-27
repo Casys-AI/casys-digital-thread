@@ -1,0 +1,139 @@
+{
+  "schemaVersion": "mechanical-proof-case/1.0",
+  "id": "desk-lamp-dl01-articulated-arm-cantilever-v1",
+  "revision": 1,
+  "scope": "DL-01 ArticulatedArm local-frame cantilever under the approved-brief-r2 concept head-assembly gravity load",
+  "evidenceBoundary": "Concept verification only under approved brief r2. It evaluates the exact attested ArticulatedArm BREP STEP with a bounded linear-static model; tessellated exports are never a measurement source. It is not certification, a product or fabrication release, material qualification, joint or fastener qualification, fatigue, impact, base-stability, thermal or electrical-safety, manufacturability, or mesh-convergence evidence.",
+  "project": {
+    "id": "desk-lamp-dl01-golden",
+    "subjectId": "project:desk-lamp-dl01-golden",
+    "baseThreadSnapshot": {
+      "id": "project:desk-lamp-dl01-golden:r7:model-write-requirements-ArticulatedArm-ebcb122ec467a4d74832b2a9a9bdf0c4f641426f15f14c75d9d2b0b02e42504c",
+      "revision": 7,
+      "subjectId": "project:desk-lamp-dl01-golden"
+    }
+  },
+  "target": {
+    "id": "articulated-arm",
+    "modelElementId": "9e7fbe9f-7e06-4cc0-80b4-4f87c3cc4cb0"
+  },
+  "authorization": {
+    "workItemId": "verify-articulated-arm-cantilever-concept",
+    "decisionId": "review-articulated-arm-cantilever-proof"
+  },
+  "requirementsSource": {
+    "provider": "syson",
+    "editingContextId": "98546261-48da-4f48-bf6a-d669bdc13e6c",
+    "elementId": "fc64a1d9-a31e-46c0-a87e-dd320cb4cc79"
+  },
+  "solver": {
+    "provider": "calculix",
+    "tool": "calculix_solve_static",
+    "resultSchemaVersion": "2.0"
+  },
+  "cadSource": {
+    "kind": "parametric",
+    "generator": {
+      "provider": "build123d",
+      "tool": "build123d_export",
+      "definition": {
+        "mediaType": "text/x-python",
+        "sha256": "c6183171a0d107472647168d97c77e563d8fb807185a776d7943eb36808a4a73",
+        "bytes": 316
+      }
+    },
+    "engineeringBoundary": {
+      "designIntent": "partial",
+      "editableCad": "native",
+      "manufacturability": "not-established",
+      "limitations": [
+        "The arm is a simplified solid L-shape with no resolved fastener, bearing, contact or joint model; the fixed support is an idealized base-joint boundary.",
+        "Approved-brief-r2 assumptions provide the 0.500 kg head mass, 6061-T6 elastic model and factor-of-three stress criterion; none is a supplier datum, material certificate or product-release claim.",
+        "The 5 mm tetrahedral target has no convergence proof; approved brief r2 records mesh convergence as an open question."
+      ]
+    }
+  },
+  "expectedCadArtifact": {
+    "format": "step",
+    "sha256": "55b5a91926edf6607baa7d1b01d060af240d4b71bad174a803173d8a79bd92a4",
+    "bytes": 32669
+  },
+  "analysis": {
+    "kind": "linear-static",
+    "material": {
+      "model": "isotropic-linear-elastic",
+      "basis": "Approved brief r2 assumption-arm-material: 6061-T6 concept input, E=69000 MPa and nu=0.33; not a selected-material certificate.",
+      "youngModulus": {
+        "value": 69000,
+        "unit": "MPa"
+      },
+      "poissonRatio": {
+        "value": 0.33,
+        "unit": "1"
+      }
+    },
+    "mesh": {
+      "kind": "tetrahedral-volume",
+      "targetSize": {
+        "value": 5,
+        "unit": "mm"
+      }
+    },
+    "supports": [
+      {
+        "id": "arm-base-face-fixed",
+        "kind": "fixed",
+        "selection": {
+          "name": "ARM_BASE_FIXED",
+          "box": {
+            "min": [-15, -15, -1],
+            "max": [15, 15, 1],
+            "unit": "mm"
+          }
+        }
+      }
+    ],
+    "loads": [
+      {
+        "id": "arm-free-end-head-gravity",
+        "kind": "force",
+        "selection": {
+          "name": "ARM_FREE_END_LOAD",
+          "box": {
+            "min": [339, -15, 325],
+            "max": [341, 15, 355],
+            "unit": "mm"
+          }
+        },
+        "force": {
+          "value": [0, 0, -4.903325],
+          "unit": "N"
+        }
+      }
+    ]
+  },
+  "requirements": [
+    {
+      "id": "408d5d99-78bf-4497-bbb4-ec65e9a3e285",
+      "name": "maximum_displacement_limit",
+      "metric": "maximum-displacement",
+      "feature": "maximumDisplacement",
+      "operator": "<=",
+      "limit": {
+        "value": 5,
+        "unit": "mm"
+      }
+    },
+    {
+      "id": "8d2b09d1-d81e-4e0d-9846-2fe07c0e0a3d",
+      "name": "maximum_von_mises_stress_limit",
+      "metric": "maximum-von-mises-stress",
+      "feature": "maximumVonMisesStress",
+      "operator": "<=",
+      "limit": {
+        "value": 90000000,
+        "unit": "Pa"
+      }
+    }
+  ]
+}

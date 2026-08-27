@@ -1,0 +1,139 @@
+{
+  "schemaVersion": "mechanical-proof-case/1.0",
+  "id": "desk-lamp-dl06-arm-cantilever",
+  "revision": 1,
+  "scope": "DL-06 Heron arm taken in isolation: one rectangular-section cantilever beam, 220 x 20 x 10 mm, verified as a single solid in its local frame before sealing. Geometry, thresholds and the 10 N tip-load / Aluminium 6061 assumption are the Heron vehicle already captured on this atelier and sourced on the approved dl06 brief.",
+  "evidenceBoundary": "Concept verification only. Not a certification, a material release, a joint qualification, a fatigue or stability assessment, or a fabrication claim. Material and the 10 N tip load are assumptions declared in the approved brief; the arm-to-column joint is treated as fully fixed.",
+  "project": {
+    "id": "desk-lamp-dl06",
+    "subjectId": "project:desk-lamp-dl06",
+    "baseThreadSnapshot": {
+      "id": "project:desk-lamp-dl06:r5:design-write-geometry-1e330d9ac50806e7ff2d5c13725c082f9d67568ab514a5d6df4fd1717a366edb",
+      "revision": 5,
+      "subjectId": "project:desk-lamp-dl06"
+    }
+  },
+  "target": {
+    "id": "dl06-heron-arm",
+    "modelElementId": "7dda85d1-764e-4329-95ea-09052355cc47"
+  },
+  "authorization": {
+    "workItemId": "wi-proof-seal",
+    "decisionId": "dec-proof-seal"
+  },
+  "requirementsSource": {
+    "provider": "syson",
+    "editingContextId": "3ff2ec86-436f-432c-b279-4c4b78d87ebe",
+    "elementId": "120b79be-d9c5-4248-8d63-f1745824e57d"
+  },
+  "solver": {
+    "provider": "calculix",
+    "tool": "calculix_solve_static",
+    "resultSchemaVersion": "2.0"
+  },
+  "cadSource": {
+    "kind": "parametric",
+    "generator": {
+      "provider": "build123d",
+      "tool": "build123d_export",
+      "definition": {
+        "mediaType": "text/x-python",
+        "sha256": "c3220c38a7a1fe9dd2940c9569e82ffbd2c5226a790ac4d59e094f77d50949b0",
+        "bytes": 51
+      }
+    },
+    "engineeringBoundary": {
+      "designIntent": "partial",
+      "editableCad": "absent",
+      "manufacturability": "not-established",
+      "limitations": [
+        "The proof geometry is the isolated Arm PartDefinition in its local frame, not the assembled lamp.",
+        "The joint between the arm root and the column is not modelled; the root face is treated as fully fixed.",
+        "The declaration carries no tolerances, interfaces, manufacturing features or process evidence."
+      ]
+    }
+  },
+  "expectedCadArtifact": {
+    "format": "step",
+    "sha256": "eec1fd0f1526161d9957b4693ab7d3ae67945870dcd75a5a91d21fd11f63140d",
+    "bytes": 15460
+  },
+  "analysis": {
+    "kind": "linear-static",
+    "material": {
+      "model": "isotropic-linear-elastic",
+      "basis": "Aluminium 6061 as declared in the approved dl06 brief (assume-material); assumption pending a selected material certificate. Same datasheet values as the committed Heron cantilever case.",
+      "youngModulus": {
+        "value": 69000,
+        "unit": "MPa"
+      },
+      "poissonRatio": {
+        "value": 0.33,
+        "unit": "1"
+      }
+    },
+    "mesh": {
+      "kind": "tetrahedral-volume",
+      "targetSize": {
+        "value": 3,
+        "unit": "mm"
+      }
+    },
+    "supports": [
+      {
+        "id": "arm-root-fixed",
+        "kind": "fixed",
+        "selection": {
+          "name": "FIXED",
+          "box": {
+            "min": [-111, -11, -6],
+            "max": [-109, 11, 6],
+            "unit": "mm"
+          }
+        }
+      }
+    ],
+    "loads": [
+      {
+        "id": "tip-load-10n",
+        "kind": "force",
+        "selection": {
+          "name": "LOADED",
+          "box": {
+            "min": [104, -11, -6],
+            "max": [111, 11, 6],
+            "unit": "mm"
+          }
+        },
+        "force": {
+          "value": [0, 0, -10],
+          "unit": "N"
+        }
+      }
+    ]
+  },
+  "requirements": [
+    {
+      "id": "dl06-arm-deflection",
+      "name": "maxDisplacement",
+      "metric": "maximum-displacement",
+      "feature": "maxDisplacement",
+      "operator": "<=",
+      "limit": {
+        "value": 1,
+        "unit": "mm"
+      }
+    },
+    {
+      "id": "dl06-arm-stress",
+      "name": "maxVonMises",
+      "metric": "maximum-von-mises-stress",
+      "feature": "maxVonMises",
+      "operator": "<=",
+      "limit": {
+        "value": 60000000,
+        "unit": "Pa"
+      }
+    }
+  ]
+}

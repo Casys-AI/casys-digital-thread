@@ -1,0 +1,2860 @@
+{
+  "schemaVersion": "modelica-language-inventory/1.0",
+  "authority": "documentary-ground-truth",
+  "consumedByCompiler": false,
+  "note": "No analyzer imports this file. The product frontend is the generic modelica-closed-subset-v2; the qualified LinearThermalRamp kit V1 is separate image smoke. Coverage percents below are annotations, not generated tables.",
+  "compiler": {
+    "name": "OpenModelica",
+    "version": "1.27.0",
+    "versionLine": "OpenModelica 1.27.0",
+    "executable": "/usr/bin/omc"
+  },
+  "languageSpecification": {
+    "version": "3.6",
+    "sourceOfTruth": "specification",
+    "url": "https://specification.modelica.org/maint/3.6/MLS.html",
+    "reason": "MSL 4.1.0 (getVersion(Modelica) on the gate image) is specified against Modelica Language Specification 3.6 (Modelica.UsersGuide.ReleaseNotes.Version_4_1_0; https://modelica.org/news/2025-05-23-release-msl-4_1_0/)."
+  },
+  "msl": {
+    "version": "4.1.0",
+    "sourceOfTruth": "image",
+    "modelicaPath": "/opt/modelica-libraries",
+    "getInstalledLibraries": "unavailable",
+    "getAvailableLibraries": [
+      "Complex",
+      "Modelica",
+      "ModelicaReference",
+      "ModelicaServices",
+      "ModelicaTest",
+      "ModelicaTestConversion4",
+      "ModelicaTestOverdetermined",
+      "ObsoleteModelica4"
+    ]
+  },
+  "extractedFrom": "casys/modelica-microsandbox-worker:gate (local image sha256:6b870c3f676cc6811a1872b65b6ef22e30efadec169e07cf65f4a231075cb2e1); 4 docker run --rm probes: omc --version; getAvailableLibraries + loadModel(Modelica) + getVersion(Modelica) + getClassNames(Modelica, recursive=false); getClassNames on each Modelica L1 class; getVersion + getClassNames L1 on the seven companion libraries. getInstalledLibraries and getAvailableLanguageStandards are absent (OpenModelica scripting package is not on MODELICAPATH). Grammar forms enumerated from MLS 3.6 Appendix A.2 and sections 4.6, 8.3, 11.2. Coverage annotated from src/domain/modelica/source/parse.ts (generic modelica-closed-subset-v2); the LinearThermalRamp qualified kit V1 is separate image smoke.",
+  "grammarForms": [
+    {
+      "id": "stored-definition-within",
+      "kind": "stored-definition",
+      "spec": "A.2.1",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "class",
+      "kind": "specialized-class",
+      "spec": "4.6 / A.2.2 class-prefixes",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "detected-unresolved",
+      "note": "modelica-unsupported-top-level-form"
+    },
+    {
+      "id": "model",
+      "kind": "specialized-class",
+      "spec": "4.6 / A.2.2 class-prefixes",
+      "sourceOfTruth": "specification",
+      "covered": true,
+      "coverageKind": "qualified",
+      "note": "Generic v2 root model form; the qualified LinearThermalRamp kit V1 is separate."
+    },
+    {
+      "id": "record",
+      "kind": "specialized-class",
+      "spec": "4.6 / A.2.2 class-prefixes",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "detected-unresolved",
+      "note": "modelica-unsupported-top-level-form"
+    },
+    {
+      "id": "operator-record",
+      "kind": "specialized-class",
+      "spec": "4.6 / A.2.2 class-prefixes",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "block",
+      "kind": "specialized-class",
+      "spec": "4.6 / A.2.2 class-prefixes",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "detected-unresolved",
+      "note": "modelica-unsupported-top-level-form"
+    },
+    {
+      "id": "connector",
+      "kind": "specialized-class",
+      "spec": "4.6 / A.2.2 class-prefixes",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered",
+      "note": "Not in the parser unsupported-top-level set; not a dedicated form."
+    },
+    {
+      "id": "expandable-connector",
+      "kind": "specialized-class",
+      "spec": "4.6 / A.2.2 class-prefixes",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "type",
+      "kind": "specialized-class",
+      "spec": "4.6 / A.2.2 class-prefixes",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "detected-unresolved",
+      "note": "modelica-unsupported-top-level-form"
+    },
+    {
+      "id": "package",
+      "kind": "specialized-class",
+      "spec": "4.6 / A.2.2 class-prefixes",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "detected-unresolved",
+      "note": "modelica-unsupported-top-level-form"
+    },
+    {
+      "id": "function",
+      "kind": "specialized-class",
+      "spec": "4.6 / A.2.2 class-prefixes",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "detected-unresolved",
+      "note": "modelica-unsupported-top-level-form"
+    },
+    {
+      "id": "pure-function",
+      "kind": "specialized-class",
+      "spec": "4.6 / A.2.2 class-prefixes",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "impure-function",
+      "kind": "specialized-class",
+      "spec": "4.6 / A.2.2 class-prefixes",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "operator-function",
+      "kind": "specialized-class",
+      "spec": "4.6 / A.2.2 class-prefixes",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "operator",
+      "kind": "specialized-class",
+      "spec": "4.6 / A.2.2 class-prefixes",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "long-class-specifier",
+      "kind": "class-specifier",
+      "spec": "A.2.2 / 4.5",
+      "sourceOfTruth": "specification",
+      "covered": true,
+      "coverageKind": "qualified",
+      "note": "IDENT description-string composition end IDENT; only for the single root model."
+    },
+    {
+      "id": "long-class-specifier-extends",
+      "kind": "class-specifier",
+      "spec": "A.2.2 / 4.5",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "short-class-specifier",
+      "kind": "class-specifier",
+      "spec": "A.2.2 / 4.5.1",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "short-class-specifier-enumeration",
+      "kind": "class-specifier",
+      "spec": "A.2.2 / 4.8.5",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "der-class-specifier",
+      "kind": "class-specifier",
+      "spec": "A.2.2",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "import-clause",
+      "kind": "element",
+      "spec": "A.2.2 / 13.2",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "detected-unresolved",
+      "note": "modelica-unsupported-top-level-form"
+    },
+    {
+      "id": "extends-clause",
+      "kind": "element",
+      "spec": "A.2.3 / 7.1",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "detected-unresolved",
+      "note": "modelica-unsupported-top-level-form"
+    },
+    {
+      "id": "constraining-clause",
+      "kind": "element",
+      "spec": "A.2.3 / 7.3",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "component-declaration",
+      "kind": "declaration",
+      "spec": "A.2.4 / 4.4",
+      "sourceOfTruth": "specification",
+      "covered": "partial",
+      "coverageKind": "partial",
+      "qualifiedSlice": "parameter Real name(attrs) = scalar; output Real name(attrs);",
+      "note": "Only scalar parameter Real and output Real."
+    },
+    {
+      "id": "type-prefix",
+      "kind": "declaration",
+      "spec": "A.2.4 type-prefix / 4.4.2.2",
+      "sourceOfTruth": "specification",
+      "covered": "partial",
+      "coverageKind": "partial",
+      "qualifiedSlice": "parameter | output",
+      "note": "Only parameter and output. flow, stream, discrete, constant, input are not qualified."
+    },
+    {
+      "id": "condition-attribute",
+      "kind": "declaration",
+      "spec": "A.2.4 / 4.4.5",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "class-modification",
+      "kind": "modification",
+      "spec": "A.2.5 / 7.2 / 4.8.1",
+      "sourceOfTruth": "specification",
+      "covered": "partial",
+      "coverageKind": "partial",
+      "qualifiedSlice": "unit | start | fixed | displayUnit | min | max",
+      "note": "Only Real attributes unit, start, fixed, displayUnit, min, max."
+    },
+    {
+      "id": "redeclaration",
+      "kind": "modification",
+      "spec": "A.2.5 / 7.3",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "public-section",
+      "kind": "composition",
+      "spec": "A.2.2 composition / 4.1",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "detected-unresolved",
+      "note": "modelica-unsupported-section"
+    },
+    {
+      "id": "protected-section",
+      "kind": "composition",
+      "spec": "A.2.2 composition / 4.1",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "detected-unresolved",
+      "note": "modelica-unsupported-section"
+    },
+    {
+      "id": "description-string",
+      "kind": "composition",
+      "spec": "A.2.7 description-string",
+      "sourceOfTruth": "specification",
+      "covered": true,
+      "coverageKind": "qualified",
+      "note": "Optional STRING after the model name; generic v2 permits it."
+    },
+    {
+      "id": "annotation-clause",
+      "kind": "composition",
+      "spec": "A.2.7 / 18",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "equation-section",
+      "kind": "equation",
+      "spec": "A.2.6 / 8.3",
+      "sourceOfTruth": "specification",
+      "covered": true,
+      "coverageKind": "qualified",
+      "note": "Exactly one equation section is qualified."
+    },
+    {
+      "id": "initial-equation-section",
+      "kind": "equation",
+      "spec": "A.2.6 / 8.6",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "detected-unresolved",
+      "note": "modelica-unsupported-section"
+    },
+    {
+      "id": "simple-equation",
+      "kind": "equation",
+      "spec": "A.2.6 / 8.3.1",
+      "sourceOfTruth": "specification",
+      "covered": "partial",
+      "coverageKind": "partial",
+      "qualifiedSlice": "der(IDENT) = expr | IDENT = expr",
+      "note": "Only der(name) = qualified-expr and name = qualified-expr."
+    },
+    {
+      "id": "if-equation",
+      "kind": "equation",
+      "spec": "A.2.6 / 8.3.4",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "detected-unresolved",
+      "note": "modelica-unsupported-equation-form"
+    },
+    {
+      "id": "for-equation",
+      "kind": "equation",
+      "spec": "A.2.6 / 8.3.2",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "detected-unresolved",
+      "note": "modelica-unsupported-equation-form"
+    },
+    {
+      "id": "connect-equation",
+      "kind": "equation",
+      "spec": "A.2.6 / 8.3.3 / 9.1",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "detected-unresolved",
+      "note": "modelica-unsupported-equation-form"
+    },
+    {
+      "id": "when-equation",
+      "kind": "equation",
+      "spec": "A.2.6 / 8.3.5",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "detected-unresolved",
+      "note": "modelica-unsupported-equation-form"
+    },
+    {
+      "id": "function-call-equation",
+      "kind": "equation",
+      "spec": "A.2.6 / 8.3.6-8.3.8",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "detected-unresolved",
+      "note": "assert, terminate, reinit fall through as unsupported equation or unqualified expression."
+    },
+    {
+      "id": "algorithm-section",
+      "kind": "algorithm",
+      "spec": "A.2.6 / 11.1",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "detected-unresolved",
+      "note": "modelica-unsupported-section"
+    },
+    {
+      "id": "initial-algorithm-section",
+      "kind": "algorithm",
+      "spec": "A.2.6 / 8.6 / 11.1",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "detected-unresolved",
+      "note": "modelica-unsupported-section"
+    },
+    {
+      "id": "assignment-statement",
+      "kind": "algorithm",
+      "spec": "A.2.6 / 11.2.1",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "function-call-statement",
+      "kind": "algorithm",
+      "spec": "A.2.6 / 11.2",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "multiple-output-assignment",
+      "kind": "algorithm",
+      "spec": "A.2.6 / 11.2.1.1",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "break-statement",
+      "kind": "algorithm",
+      "spec": "A.2.6 / 11.2",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "return-statement",
+      "kind": "algorithm",
+      "spec": "A.2.6 / 11.2",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "if-statement",
+      "kind": "algorithm",
+      "spec": "A.2.6 / 11.2.6",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "for-statement",
+      "kind": "algorithm",
+      "spec": "A.2.6 / 11.2.2",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "while-statement",
+      "kind": "algorithm",
+      "spec": "A.2.6 / 11.2.3",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "detected-unresolved",
+      "note": "Detected inside an equation section as modelica-unsupported-equation-form."
+    },
+    {
+      "id": "when-statement",
+      "kind": "algorithm",
+      "spec": "A.2.6 / 11.2.7",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "external-clause",
+      "kind": "function",
+      "spec": "A.2.2 composition / 12.9",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "if-expression",
+      "kind": "expression",
+      "spec": "A.2.7 / 3.6.5",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "uncovered"
+    },
+    {
+      "id": "der-operator",
+      "kind": "expression",
+      "spec": "A.2.7 primary / 3.7.4 Operator 3.10",
+      "sourceOfTruth": "specification",
+      "covered": true,
+      "coverageKind": "qualified",
+      "note": "der(IDENT) on the left-hand side of a simple equation; der(IDENT) also admitted as a factor."
+    },
+    {
+      "id": "array-declaration",
+      "kind": "declaration",
+      "spec": "A.2.4 array-subscripts / 10.1",
+      "sourceOfTruth": "specification",
+      "covered": false,
+      "coverageKind": "detected-unresolved",
+      "note": "modelica-array-declaration"
+    }
+  ],
+  "mslPackages": [
+    {
+      "name": "Modelica",
+      "level": 0,
+      "parent": null,
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false,
+      "version": "4.1.0"
+    },
+    {
+      "name": "Modelica.Blocks",
+      "level": 1,
+      "parent": "Modelica",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Blocks.Continuous",
+      "level": 2,
+      "parent": "Modelica.Blocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Blocks.Discrete",
+      "level": 2,
+      "parent": "Modelica.Blocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Blocks.Examples",
+      "level": 2,
+      "parent": "Modelica.Blocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Blocks.Icons",
+      "level": 2,
+      "parent": "Modelica.Blocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Blocks.Interaction",
+      "level": 2,
+      "parent": "Modelica.Blocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Blocks.Interfaces",
+      "level": 2,
+      "parent": "Modelica.Blocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Blocks.Logical",
+      "level": 2,
+      "parent": "Modelica.Blocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Blocks.Math",
+      "level": 2,
+      "parent": "Modelica.Blocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Blocks.MathBoolean",
+      "level": 2,
+      "parent": "Modelica.Blocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Blocks.MathInteger",
+      "level": 2,
+      "parent": "Modelica.Blocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Blocks.Noise",
+      "level": 2,
+      "parent": "Modelica.Blocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Blocks.Nonlinear",
+      "level": 2,
+      "parent": "Modelica.Blocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Blocks.Routing",
+      "level": 2,
+      "parent": "Modelica.Blocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Blocks.Sources",
+      "level": 2,
+      "parent": "Modelica.Blocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Blocks.Tables",
+      "level": 2,
+      "parent": "Modelica.Blocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Blocks.Types",
+      "level": 2,
+      "parent": "Modelica.Blocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Clocked",
+      "level": 1,
+      "parent": "Modelica",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Clocked.BooleanSignals",
+      "level": 2,
+      "parent": "Modelica.Clocked",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Clocked.ClockSignals",
+      "level": 2,
+      "parent": "Modelica.Clocked",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Clocked.Examples",
+      "level": 2,
+      "parent": "Modelica.Clocked",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Clocked.IntegerSignals",
+      "level": 2,
+      "parent": "Modelica.Clocked",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Clocked.RealSignals",
+      "level": 2,
+      "parent": "Modelica.Clocked",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Clocked.Types",
+      "level": 2,
+      "parent": "Modelica.Clocked",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Clocked.UsersGuide",
+      "level": 2,
+      "parent": "Modelica.Clocked",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexBlocks",
+      "level": 1,
+      "parent": "Modelica",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexBlocks.ComplexMath",
+      "level": 2,
+      "parent": "Modelica.ComplexBlocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexBlocks.Examples",
+      "level": 2,
+      "parent": "Modelica.ComplexBlocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexBlocks.Icons",
+      "level": 2,
+      "parent": "Modelica.ComplexBlocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexBlocks.Interfaces",
+      "level": 2,
+      "parent": "Modelica.ComplexBlocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexBlocks.Routing",
+      "level": 2,
+      "parent": "Modelica.ComplexBlocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexBlocks.Sources",
+      "level": 2,
+      "parent": "Modelica.ComplexBlocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexBlocks.UsersGuide",
+      "level": 2,
+      "parent": "Modelica.ComplexBlocks",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath",
+      "level": 1,
+      "parent": "Modelica",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.Vectors",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.abs",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.acos",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.acosh",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.arg",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.asin",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.asinh",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.atan",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.atanh",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.conj",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.cos",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.cosh",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.exp",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.fromPolar",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.imag",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.log",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.max",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.min",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.product",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.real",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.sin",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.sinh",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.sqrt",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.sum",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.tan",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.ComplexMath.tanh",
+      "level": 2,
+      "parent": "Modelica.ComplexMath",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Constants",
+      "level": 1,
+      "parent": "Modelica",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Electrical",
+      "level": 1,
+      "parent": "Modelica",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Electrical.Analog",
+      "level": 2,
+      "parent": "Modelica.Electrical",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Electrical.Batteries",
+      "level": 2,
+      "parent": "Modelica.Electrical",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Electrical.Digital",
+      "level": 2,
+      "parent": "Modelica.Electrical",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Electrical.Machines",
+      "level": 2,
+      "parent": "Modelica.Electrical",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Electrical.Polyphase",
+      "level": 2,
+      "parent": "Modelica.Electrical",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Electrical.PowerConverters",
+      "level": 2,
+      "parent": "Modelica.Electrical",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Electrical.QuasiStatic",
+      "level": 2,
+      "parent": "Modelica.Electrical",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Electrical.Spice3",
+      "level": 2,
+      "parent": "Modelica.Electrical",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Fluid",
+      "level": 1,
+      "parent": "Modelica",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Fluid.Dissipation",
+      "level": 2,
+      "parent": "Modelica.Fluid",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Fluid.Examples",
+      "level": 2,
+      "parent": "Modelica.Fluid",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Fluid.Fittings",
+      "level": 2,
+      "parent": "Modelica.Fluid",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Fluid.Interfaces",
+      "level": 2,
+      "parent": "Modelica.Fluid",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Fluid.Machines",
+      "level": 2,
+      "parent": "Modelica.Fluid",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Fluid.Pipes",
+      "level": 2,
+      "parent": "Modelica.Fluid",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Fluid.Sensors",
+      "level": 2,
+      "parent": "Modelica.Fluid",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Fluid.Sources",
+      "level": 2,
+      "parent": "Modelica.Fluid",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Fluid.System",
+      "level": 2,
+      "parent": "Modelica.Fluid",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Fluid.Types",
+      "level": 2,
+      "parent": "Modelica.Fluid",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Fluid.UsersGuide",
+      "level": 2,
+      "parent": "Modelica.Fluid",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Fluid.Utilities",
+      "level": 2,
+      "parent": "Modelica.Fluid",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Fluid.Valves",
+      "level": 2,
+      "parent": "Modelica.Fluid",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Fluid.Vessels",
+      "level": 2,
+      "parent": "Modelica.Fluid",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons",
+      "level": 1,
+      "parent": "Modelica",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.BasesPackage",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.Contact",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.Example",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.ExamplesPackage",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.Function",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.FunctionsPackage",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.IconsPackage",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.Information",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.InterfacesPackage",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.InternalPackage",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.MaterialPropertiesPackage",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.MaterialProperty",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.ObsoleteModel",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.Package",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.Record",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.RecordsPackage",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.RectangularSensor",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.References",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.ReleaseNotes",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.RoundSensor",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.SensorsPackage",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.SignalBus",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.SignalSubBus",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.SourcesPackage",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.TypeBoolean",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.TypeInteger",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.TypeReal",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.TypeString",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.TypesPackage",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.UnderConstruction",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.UtilitiesPackage",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Icons.VariantsPackage",
+      "level": 2,
+      "parent": "Modelica.Icons",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Magnetic",
+      "level": 1,
+      "parent": "Modelica",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Magnetic.FluxTubes",
+      "level": 2,
+      "parent": "Modelica.Magnetic",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Magnetic.FundamentalWave",
+      "level": 2,
+      "parent": "Modelica.Magnetic",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Magnetic.QuasiStatic",
+      "level": 2,
+      "parent": "Modelica.Magnetic",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math",
+      "level": 1,
+      "parent": "Modelica",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.BooleanVectors",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.Distributions",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.FastFourierTransform",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.Icons",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.Matrices",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.Nonlinear",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.Polynomials",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.Random",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.Special",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.Vectors",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.acos",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.acosh",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.asin",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.asinh",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.atan",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.atan2",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.atan3",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.cos",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.cosh",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.exp",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.isEqual",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.isPowerOf2",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.log",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.log10",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.sin",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.sinh",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.tan",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.tanh",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Math.wrapAngle",
+      "level": 2,
+      "parent": "Modelica.Math",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Mechanics",
+      "level": 1,
+      "parent": "Modelica",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Mechanics.MultiBody",
+      "level": 2,
+      "parent": "Modelica.Mechanics",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Mechanics.Rotational",
+      "level": 2,
+      "parent": "Modelica.Mechanics",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Mechanics.Translational",
+      "level": 2,
+      "parent": "Modelica.Mechanics",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Media",
+      "level": 1,
+      "parent": "Modelica",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Media.Air",
+      "level": 2,
+      "parent": "Modelica.Media",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Media.Common",
+      "level": 2,
+      "parent": "Modelica.Media",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Media.CompressibleLiquids",
+      "level": 2,
+      "parent": "Modelica.Media",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Media.Examples",
+      "level": 2,
+      "parent": "Modelica.Media",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Media.IdealGases",
+      "level": 2,
+      "parent": "Modelica.Media",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Media.Incompressible",
+      "level": 2,
+      "parent": "Modelica.Media",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Media.Interfaces",
+      "level": 2,
+      "parent": "Modelica.Media",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Media.R134a",
+      "level": 2,
+      "parent": "Modelica.Media",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Media.UsersGuide",
+      "level": 2,
+      "parent": "Modelica.Media",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Media.Water",
+      "level": 2,
+      "parent": "Modelica.Media",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.StateGraph",
+      "level": 1,
+      "parent": "Modelica",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.StateGraph.Alternative",
+      "level": 2,
+      "parent": "Modelica.StateGraph",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.StateGraph.Examples",
+      "level": 2,
+      "parent": "Modelica.StateGraph",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.StateGraph.InitialStep",
+      "level": 2,
+      "parent": "Modelica.StateGraph",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.StateGraph.InitialStepWithSignal",
+      "level": 2,
+      "parent": "Modelica.StateGraph",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.StateGraph.Interfaces",
+      "level": 2,
+      "parent": "Modelica.StateGraph",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.StateGraph.Parallel",
+      "level": 2,
+      "parent": "Modelica.StateGraph",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.StateGraph.PartialCompositeStep",
+      "level": 2,
+      "parent": "Modelica.StateGraph",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.StateGraph.StateGraphRoot",
+      "level": 2,
+      "parent": "Modelica.StateGraph",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.StateGraph.Step",
+      "level": 2,
+      "parent": "Modelica.StateGraph",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.StateGraph.StepWithSignal",
+      "level": 2,
+      "parent": "Modelica.StateGraph",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.StateGraph.Transition",
+      "level": 2,
+      "parent": "Modelica.StateGraph",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.StateGraph.TransitionWithSignal",
+      "level": 2,
+      "parent": "Modelica.StateGraph",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.StateGraph.UsersGuide",
+      "level": 2,
+      "parent": "Modelica.StateGraph",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Thermal",
+      "level": 1,
+      "parent": "Modelica",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Thermal.FluidHeatFlow",
+      "level": 2,
+      "parent": "Modelica.Thermal",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Thermal.HeatTransfer",
+      "level": 2,
+      "parent": "Modelica.Thermal",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Units",
+      "level": 1,
+      "parent": "Modelica",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Units.Conversions",
+      "level": 2,
+      "parent": "Modelica.Units",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Units.Icons",
+      "level": 2,
+      "parent": "Modelica.Units",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Units.NonSI",
+      "level": 2,
+      "parent": "Modelica.Units",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Units.SI",
+      "level": 2,
+      "parent": "Modelica.Units",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Units.UsersGuide",
+      "level": 2,
+      "parent": "Modelica.Units",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.UsersGuide",
+      "level": 1,
+      "parent": "Modelica",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.UsersGuide.Connectors",
+      "level": 2,
+      "parent": "Modelica.UsersGuide",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.UsersGuide.Contact",
+      "level": 2,
+      "parent": "Modelica.UsersGuide",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.UsersGuide.Conventions",
+      "level": 2,
+      "parent": "Modelica.UsersGuide",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.UsersGuide.Overview",
+      "level": 2,
+      "parent": "Modelica.UsersGuide",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.UsersGuide.ReleaseNotes",
+      "level": 2,
+      "parent": "Modelica.UsersGuide",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Utilities",
+      "level": 1,
+      "parent": "Modelica",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Utilities.Examples",
+      "level": 2,
+      "parent": "Modelica.Utilities",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Utilities.Files",
+      "level": 2,
+      "parent": "Modelica.Utilities",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Utilities.Internal",
+      "level": 2,
+      "parent": "Modelica.Utilities",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Utilities.Streams",
+      "level": 2,
+      "parent": "Modelica.Utilities",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Utilities.Strings",
+      "level": 2,
+      "parent": "Modelica.Utilities",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Utilities.System",
+      "level": 2,
+      "parent": "Modelica.Utilities",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Utilities.Types",
+      "level": 2,
+      "parent": "Modelica.Utilities",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Modelica.Utilities.UsersGuide",
+      "level": 2,
+      "parent": "Modelica.Utilities",
+      "library": "Modelica",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Complex",
+      "level": 0,
+      "parent": null,
+      "library": "Complex",
+      "sourceOfTruth": "image",
+      "covered": false,
+      "version": "4.1.0"
+    },
+    {
+      "name": "Complex.'*'",
+      "level": 1,
+      "parent": "Complex",
+      "library": "Complex",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Complex.'+'",
+      "level": 1,
+      "parent": "Complex",
+      "library": "Complex",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Complex.'-'",
+      "level": 1,
+      "parent": "Complex",
+      "library": "Complex",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Complex.'/'",
+      "level": 1,
+      "parent": "Complex",
+      "library": "Complex",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Complex.'0'",
+      "level": 1,
+      "parent": "Complex",
+      "library": "Complex",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Complex.'<>'",
+      "level": 1,
+      "parent": "Complex",
+      "library": "Complex",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Complex.'=='",
+      "level": 1,
+      "parent": "Complex",
+      "library": "Complex",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Complex.'String'",
+      "level": 1,
+      "parent": "Complex",
+      "library": "Complex",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Complex.'^'",
+      "level": 1,
+      "parent": "Complex",
+      "library": "Complex",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "Complex.'constructor'",
+      "level": 1,
+      "parent": "Complex",
+      "library": "Complex",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaServices",
+      "level": 0,
+      "parent": null,
+      "library": "ModelicaServices",
+      "sourceOfTruth": "image",
+      "covered": false,
+      "version": "4.1.0"
+    },
+    {
+      "name": "ModelicaServices.Animation",
+      "level": 1,
+      "parent": "ModelicaServices",
+      "library": "ModelicaServices",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaServices.ExternalReferences",
+      "level": 1,
+      "parent": "ModelicaServices",
+      "library": "ModelicaServices",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaServices.Machine",
+      "level": 1,
+      "parent": "ModelicaServices",
+      "library": "ModelicaServices",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaServices.System",
+      "level": 1,
+      "parent": "ModelicaServices",
+      "library": "ModelicaServices",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaServices.Types",
+      "level": 1,
+      "parent": "ModelicaServices",
+      "library": "ModelicaServices",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaServices.UsersGuide",
+      "level": 1,
+      "parent": "ModelicaServices",
+      "library": "ModelicaServices",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaReference",
+      "level": 0,
+      "parent": null,
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false,
+      "version": "4.1.0"
+    },
+    {
+      "name": "ModelicaReference.'encapsulated'",
+      "level": 1,
+      "parent": "ModelicaReference",
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaReference.'extends'",
+      "level": 1,
+      "parent": "ModelicaReference",
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaReference.'flow'",
+      "level": 1,
+      "parent": "ModelicaReference",
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaReference.'for'",
+      "level": 1,
+      "parent": "ModelicaReference",
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaReference.'if'",
+      "level": 1,
+      "parent": "ModelicaReference",
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaReference.'import'",
+      "level": 1,
+      "parent": "ModelicaReference",
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaReference.'input'",
+      "level": 1,
+      "parent": "ModelicaReference",
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaReference.'output'",
+      "level": 1,
+      "parent": "ModelicaReference",
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaReference.'partial'",
+      "level": 1,
+      "parent": "ModelicaReference",
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaReference.'stream'",
+      "level": 1,
+      "parent": "ModelicaReference",
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaReference.'time'",
+      "level": 1,
+      "parent": "ModelicaReference",
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaReference.'when'",
+      "level": 1,
+      "parent": "ModelicaReference",
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaReference.'while'",
+      "level": 1,
+      "parent": "ModelicaReference",
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaReference.Annotations",
+      "level": 1,
+      "parent": "ModelicaReference",
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaReference.BalancedModel",
+      "level": 1,
+      "parent": "ModelicaReference",
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaReference.Classes",
+      "level": 1,
+      "parent": "ModelicaReference",
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaReference.Contact",
+      "level": 1,
+      "parent": "ModelicaReference",
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaReference.Icons",
+      "level": 1,
+      "parent": "ModelicaReference",
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaReference.ModelicaGrammar",
+      "level": 1,
+      "parent": "ModelicaReference",
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaReference.Operators",
+      "level": 1,
+      "parent": "ModelicaReference",
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaReference.StateMachines",
+      "level": 1,
+      "parent": "ModelicaReference",
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaReference.Synchronous",
+      "level": 1,
+      "parent": "ModelicaReference",
+      "library": "ModelicaReference",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ObsoleteModelica4",
+      "level": 0,
+      "parent": null,
+      "library": "ObsoleteModelica4",
+      "sourceOfTruth": "image",
+      "covered": false,
+      "version": "4.1.0"
+    },
+    {
+      "name": "ObsoleteModelica4.Blocks",
+      "level": 1,
+      "parent": "ObsoleteModelica4",
+      "library": "ObsoleteModelica4",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ObsoleteModelica4.Electrical",
+      "level": 1,
+      "parent": "ObsoleteModelica4",
+      "library": "ObsoleteModelica4",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ObsoleteModelica4.Magnetic",
+      "level": 1,
+      "parent": "ObsoleteModelica4",
+      "library": "ObsoleteModelica4",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ObsoleteModelica4.Math",
+      "level": 1,
+      "parent": "ObsoleteModelica4",
+      "library": "ObsoleteModelica4",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ObsoleteModelica4.Mechanics",
+      "level": 1,
+      "parent": "ObsoleteModelica4",
+      "library": "ObsoleteModelica4",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ObsoleteModelica4.Media",
+      "level": 1,
+      "parent": "ObsoleteModelica4",
+      "library": "ObsoleteModelica4",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTest",
+      "level": 0,
+      "parent": null,
+      "library": "ModelicaTest",
+      "sourceOfTruth": "image",
+      "covered": false,
+      "version": "4.1.0"
+    },
+    {
+      "name": "ModelicaTest.Blocks",
+      "level": 1,
+      "parent": "ModelicaTest",
+      "library": "ModelicaTest",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTest.ComplexMath",
+      "level": 1,
+      "parent": "ModelicaTest",
+      "library": "ModelicaTest",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTest.Electrical",
+      "level": 1,
+      "parent": "ModelicaTest",
+      "library": "ModelicaTest",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTest.Fluid",
+      "level": 1,
+      "parent": "ModelicaTest",
+      "library": "ModelicaTest",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTest.Magnetic",
+      "level": 1,
+      "parent": "ModelicaTest",
+      "library": "ModelicaTest",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTest.Math",
+      "level": 1,
+      "parent": "ModelicaTest",
+      "library": "ModelicaTest",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTest.Media",
+      "level": 1,
+      "parent": "ModelicaTest",
+      "library": "ModelicaTest",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTest.MultiBody",
+      "level": 1,
+      "parent": "ModelicaTest",
+      "library": "ModelicaTest",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTest.Rotational",
+      "level": 1,
+      "parent": "ModelicaTest",
+      "library": "ModelicaTest",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTest.Tables",
+      "level": 1,
+      "parent": "ModelicaTest",
+      "library": "ModelicaTest",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTest.Translational",
+      "level": 1,
+      "parent": "ModelicaTest",
+      "library": "ModelicaTest",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTest.Utilities",
+      "level": 1,
+      "parent": "ModelicaTest",
+      "library": "ModelicaTest",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTest.testAllFunctions",
+      "level": 1,
+      "parent": "ModelicaTest",
+      "library": "ModelicaTest",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTestConversion4",
+      "level": 0,
+      "parent": null,
+      "library": "ModelicaTestConversion4",
+      "sourceOfTruth": "image",
+      "covered": false,
+      "version": ""
+    },
+    {
+      "name": "ModelicaTestConversion4.Blocks",
+      "level": 1,
+      "parent": "ModelicaTestConversion4",
+      "library": "ModelicaTestConversion4",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTestConversion4.ComplexBlocks",
+      "level": 1,
+      "parent": "ModelicaTestConversion4",
+      "library": "ModelicaTestConversion4",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTestConversion4.ComplexMath",
+      "level": 1,
+      "parent": "ModelicaTestConversion4",
+      "library": "ModelicaTestConversion4",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTestConversion4.Constants",
+      "level": 1,
+      "parent": "ModelicaTestConversion4",
+      "library": "ModelicaTestConversion4",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTestConversion4.Electrical",
+      "level": 1,
+      "parent": "ModelicaTestConversion4",
+      "library": "ModelicaTestConversion4",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTestConversion4.Fluid",
+      "level": 1,
+      "parent": "ModelicaTestConversion4",
+      "library": "ModelicaTestConversion4",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTestConversion4.Icons",
+      "level": 1,
+      "parent": "ModelicaTestConversion4",
+      "library": "ModelicaTestConversion4",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTestConversion4.Magnetic",
+      "level": 1,
+      "parent": "ModelicaTestConversion4",
+      "library": "ModelicaTestConversion4",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTestConversion4.Math",
+      "level": 1,
+      "parent": "ModelicaTestConversion4",
+      "library": "ModelicaTestConversion4",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTestConversion4.Mechanics",
+      "level": 1,
+      "parent": "ModelicaTestConversion4",
+      "library": "ModelicaTestConversion4",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTestConversion4.Media",
+      "level": 1,
+      "parent": "ModelicaTestConversion4",
+      "library": "ModelicaTestConversion4",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTestConversion4.SIunits",
+      "level": 1,
+      "parent": "ModelicaTestConversion4",
+      "library": "ModelicaTestConversion4",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTestConversion4.StateGraph",
+      "level": 1,
+      "parent": "ModelicaTestConversion4",
+      "library": "ModelicaTestConversion4",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTestConversion4.Thermal",
+      "level": 1,
+      "parent": "ModelicaTestConversion4",
+      "library": "ModelicaTestConversion4",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTestOverdetermined",
+      "level": 0,
+      "parent": null,
+      "library": "ModelicaTestOverdetermined",
+      "sourceOfTruth": "image",
+      "covered": false,
+      "version": "4.1.0"
+    },
+    {
+      "name": "ModelicaTestOverdetermined.ConsistentInitialization",
+      "level": 1,
+      "parent": "ModelicaTestOverdetermined",
+      "library": "ModelicaTestOverdetermined",
+      "sourceOfTruth": "image",
+      "covered": false
+    },
+    {
+      "name": "ModelicaTestOverdetermined.InconsistentInitialization",
+      "level": 1,
+      "parent": "ModelicaTestOverdetermined",
+      "library": "ModelicaTestOverdetermined",
+      "sourceOfTruth": "image",
+      "covered": false
+    }
+  ],
+  "counts": {
+    "grammarForms": 55,
+    "grammarFormsQualified": 5,
+    "grammarFormsPartial": 4,
+    "installedLibraries": 8,
+    "mslPackagesLevel1": 17,
+    "mslPackagesLevel2": 188,
+    "mslPackagesModelicaTree": 206,
+    "mslPackages": 286
+  },
+  "coverage": {
+    "frontend": "modelica-closed-subset-v2",
+    "analyzer": "modelica-qualified-mo-subset@2.0.0",
+    "source": "src/domain/modelica/source/parse.ts",
+    "kit": "qualified-kit-v1:linear-thermal-ramp-v1@0.1.0",
+    "kitForms": [
+      {
+        "id": "model",
+        "form": "model Name ... end Name;",
+        "spec": "4.6 / A.2.2 long-class-specifier"
+      },
+      {
+        "id": "description-string",
+        "form": "optional STRING after the model name",
+        "spec": "A.2.7 description-string"
+      },
+      {
+        "id": "parameter-Real",
+        "form": "parameter Real name(attrs) = scalar;",
+        "spec": "A.2.4 / 4.4"
+      },
+      {
+        "id": "output-Real",
+        "form": "output Real name(attrs);",
+        "spec": "A.2.4 / 4.4"
+      },
+      {
+        "id": "der-equation",
+        "form": "der(name) = expr;",
+        "spec": "A.2.6 / 8.3.1 + 3.7.4"
+      }
+    ],
+    "grammarFormsQualified": 5,
+    "grammarFormsPartial": 4,
+    "grammarFormsTotal": 55,
+    "grammarPercent": 9.09,
+    "mslPackagesQualified": 0,
+    "mslPackagesTotal": 286,
+    "mslPercent": 0.0,
+    "note": "The product frontend is the generic v2 bounded subset: scalar Real parameters and outputs, closed equations, and an exact experiment annotation, with no MSL imports or extensions. The separate qualified-kit V1 LinearThermalRamp remains an image smoke. The listed inventory percentages are unchanged documentary coverage figures."
+  }
+}

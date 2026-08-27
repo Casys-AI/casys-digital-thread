@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" role="img" aria-labelledby="t d">
+  <title id="t">Workbench five spaces</title>
+  <desc id="d">Project, Activity, Product, Evidence, and Execution. The cockpit is GET and SSE only. Conversation is the command surface.</desc>
+  <rect width="960" height="420" fill="#f6f1e8"/>
+  <text x="32" y="40" font-family="Georgia, serif" font-size="22" fill="#1c1914">Native Workbench — five spaces, no commands</text>
+  <text x="32" y="64" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#5c564c">http://127.0.0.1:5173/ · focus-only · opening the page never starts a solver</text>
+
+  <g font-family="ui-sans-serif, system-ui, sans-serif">
+    <rect x="32" y="92" width="168" height="220" rx="8" fill="#fff" stroke="#c9bfae"/>
+    <text x="48" y="120" font-size="14" font-weight="700" fill="#1c1914">Project</text>
+    <text x="48" y="142" font-size="11" fill="#8a3b12">MISSION AND RECORD</text>
+    <text x="48" y="172" font-size="12" fill="#5c564c">brief</text>
+    <text x="48" y="192" font-size="12" fill="#5c564c">phase gates</text>
+    <text x="48" y="212" font-size="12" fill="#5c564c">review now</text>
+    <text x="48" y="232" font-size="12" fill="#5c564c">current work</text>
+    <text x="48" y="280" font-size="11" fill="#5c564c">#overview</text>
+
+    <rect x="216" y="92" width="168" height="220" rx="8" fill="#fff" stroke="#1c1914"/>
+    <text x="232" y="120" font-size="14" font-weight="700" fill="#1c1914">Activity</text>
+    <text x="232" y="142" font-size="11" fill="#8a3b12">WHAT THE AGENT CHANGES</text>
+    <text x="232" y="172" font-size="12" fill="#5c564c">live lineage feed</text>
+    <text x="232" y="192" font-size="12" fill="#5c564c">persisted facts only</text>
+    <text x="232" y="212" font-size="12" fill="#5c564c">not private reasoning</text>
+    <text x="232" y="232" font-size="12" fill="#5c564c">Follow live</text>
+    <text x="232" y="280" font-size="11" fill="#5c564c">#work</text>
+
+    <rect x="400" y="92" width="168" height="220" rx="8" fill="#fff" stroke="#c9bfae"/>
+    <text x="416" y="120" font-size="14" font-weight="700" fill="#1c1914">Product</text>
+    <text x="416" y="142" font-size="11" fill="#8a3b12">THE SYSTEM AND ITS PARTS</text>
+    <text x="416" y="172" font-size="12" fill="#5c564c">SysON · CAD · ERP</text>
+    <text x="416" y="192" font-size="12" fill="#5c564c">exact identities</text>
+    <text x="416" y="212" font-size="12" fill="#5c564c">TRACE GAP is literal</text>
+    <text x="416" y="232" font-size="12" fill="#5c564c">no label joins</text>
+    <text x="416" y="280" font-size="11" fill="#5c564c">#product</text>
+
+    <rect x="584" y="92" width="168" height="220" rx="8" fill="#fff" stroke="#c9bfae"/>
+    <text x="600" y="120" font-size="14" font-weight="700" fill="#1c1914">Evidence</text>
+    <text x="600" y="142" font-size="11" fill="#8a3b12">WHY A RESULT CAN BE TRUSTED</text>
+    <text x="600" y="172" font-size="12" fill="#5c564c">full graph</text>
+    <text x="600" y="192" font-size="12" fill="#5c564c">requirements</text>
+    <text x="600" y="212" font-size="12" fill="#5c564c">verdicts</text>
+    <text x="600" y="232" font-size="12" fill="#5c564c">named violations</text>
+    <text x="600" y="280" font-size="11" fill="#5c564c">#verification</text>
+
+    <rect x="768" y="92" width="160" height="220" rx="8" fill="#fff" stroke="#c9bfae"/>
+    <text x="784" y="120" font-size="14" font-weight="700" fill="#1c1914">Execution</text>
+    <text x="784" y="142" font-size="11" fill="#8a3b12">RUNS, PLANS AND TOOLS</text>
+    <text x="784" y="172" font-size="12" fill="#5c564c">run journal</text>
+    <text x="784" y="192" font-size="12" fill="#5c564c">work items</text>
+    <text x="784" y="212" font-size="12" fill="#5c564c">systems used</text>
+    <text x="784" y="232" font-size="12" fill="#5c564c">queued ≠ published</text>
+    <text x="784" y="280" font-size="11" fill="#5c564c">#operations</text>
+  </g>
+
+  <text x="32" y="350" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#1c1914">Conversation owns commands. Cockpit owns inspection.</text>
+  <text x="32" y="374" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#5c564c">Gate satisfied = that work item completed. It is not a product, certification, or release claim.</text>
+  <text x="32" y="398" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#5c564c">Focus candidate desk-lamp-dl04 is useful to learn the spaces. It is not automatically live CalculiX @2 proof.</text>
+</svg>

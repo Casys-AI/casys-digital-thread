@@ -1,0 +1,81 @@
+{
+  "meta": {
+    "capturedFromImageDigest": "76c9630eeecfe164c6b3c4d8b845c51fa7f8b48528773cb149b6c7a0ae2799a8",
+    "capturedAt": "2026-08-11T18:01:30.291Z",
+    "note": "Captured from live CalculiX provider. Refresh with `deno task capture:fea:contract-golden` after each image update.",
+    "stepSource": "build123d_export ephemeral box"
+  },
+  "request": {
+    "exportAttestation": {
+      "path": "/exports/fea-contract-golden-e3425134fb17457c90546e132ad45a24.step",
+      "sha256": "70d97ab60c18f8ad5b329a461255786b470558bde82978154c4dc4558b361367",
+      "bytes": 23640
+    },
+    "solver": {
+      "fixedSelections": [
+        "FIXED"
+      ],
+      "loads": [
+        {
+          "selection": "LOADED",
+          "forceN": [
+            0,
+            0,
+            -500
+          ]
+        }
+      ]
+    }
+  },
+  "response": {
+    "schemaVersion": "2.0",
+    "kind": "static-solve",
+    "inputArtifact": {
+      "path": "/tmp/calculix-input-4a2d827eea3e5789/input.step",
+      "sourcePath": "/exports/fea-contract-golden-e3425134fb17457c90546e132ad45a24.step",
+      "sha256": "70d97ab60c18f8ad5b329a461255786b470558bde82978154c4dc4558b361367",
+      "bytes": 23640
+    },
+    "mesh": {
+      "nodes": 2258,
+      "elements": 1216,
+      "nodesPerSelection": {
+        "FIXED": 260,
+        "LOADED": 260,
+        "PART": 2258
+      }
+    },
+    "constraints": {
+      "fixedSelections": [
+        "FIXED"
+      ],
+      "loads": [
+        {
+          "selection": "LOADED",
+          "forceN": [
+            0,
+            0,
+            -500
+          ]
+        }
+      ]
+    },
+    "metrics": {
+      "maxDisplacement": {
+        "value": 0.00027008073431057975,
+        "unit": "mm",
+        "nodeId": 84,
+        "vectorMm": [
+          0.00008934466,
+          -0.00006719542,
+          -0.0002458575
+        ]
+      },
+      "maxVonMises": {
+        "value": 1.4160407046642518,
+        "unit": "MPa",
+        "elementId": 1335
+      }
+    }
+  }
+}

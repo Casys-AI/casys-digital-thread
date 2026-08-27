@@ -1,0 +1,391 @@
+{
+  "schemaVersion": "cross-domain-impact-manifest/1.0",
+  "id": "hs01-thermal-closeout-impact-r2",
+  "revision": 2,
+  "project": {
+    "id": "precision-heated-specimen-stage-hs01",
+    "fingerprint": {
+      "algorithm": "sha256",
+      "digest": "d7aff2f1b35cd058fa21af3a43ad6e4418958cb33a8df9eaf2700c20a6307c00"
+    }
+  },
+  "subject": {
+    "id": "project:precision-heated-specimen-stage-hs01",
+    "fingerprint": {
+      "algorithm": "sha256",
+      "digest": "598d681646931a3fa37ce7b12aaa2d04b6769105c0d84409f63e663f56935bc4"
+    }
+  },
+  "basis": {
+    "projectId": "precision-heated-specimen-stage-hs01",
+    "subjectId": "project:precision-heated-specimen-stage-hs01",
+    "snapshotId": "project:precision-heated-specimen-stage-hs01:r26:decide-accept-admitted-modelica-evaluation-run:hs01-queue-modelica-closeout-r2-r182",
+    "revision": 26,
+    "fingerprint": {
+      "algorithm": "sha256",
+      "digest": "86d037e5ddbc3b14567721f7045b387dd383ed47f5b080857d843b014d01c006"
+    }
+  },
+  "changeKinds": [
+    "thermal-evaluation-closeout"
+  ],
+  "sourceAnchors": [
+    {
+      "id": "anchor-thermal-closeout",
+      "changeKind": "thermal-evaluation-closeout",
+      "role": "reviewed-change-source",
+      "threadChange": {
+        "id": "decide-accept-admitted-modelica-evaluation-run:hs01-queue-modelica-closeout-r2-r182:created:modelica-admitted-observation-evaluation-closeout-c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c",
+        "kind": "created",
+        "fingerprint": {
+          "algorithm": "sha256",
+          "digest": "99f613d0d4f376337f06361cc1f05fcdc87a13f9b5c2af8c3eb7221cb6e19721"
+        }
+      },
+      "source": {
+        "kind": "artifact",
+        "id": "modelica-admitted-observation-evaluation-closeout-c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c",
+        "fingerprint": {
+          "algorithm": "sha256",
+          "digest": "c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c"
+        }
+      }
+    }
+  ],
+  "branches": [
+    {
+      "id": "electrical",
+      "version": "1.0",
+      "inputs": [
+        {
+          "id": "spice-admitted-observation-evaluation-closeout-0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb",
+          "fingerprint": {
+            "algorithm": "sha256",
+            "digest": "0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb"
+          }
+        }
+      ],
+      "method": {
+        "id": "electrical-observation-method-sheet-seal-32fcc530442a8e9139b1410a260204f0c9df9c1c8a55e764b62051edc92ad8e5",
+        "fingerprint": {
+          "algorithm": "sha256",
+          "digest": "32fcc530442a8e9139b1410a260204f0c9df9c1c8a55e764b62051edc92ad8e5"
+        }
+      },
+      "joins": [
+        {
+          "id": "spice-admitted-observation-evaluation-b16c87b276e594b73b6e59b7f72142546f60e6e3711156c620481c9de07c71f7",
+          "fingerprint": {
+            "algorithm": "sha256",
+            "digest": "b16c87b276e594b73b6e59b7f72142546f60e6e3711156c620481c9de07c71f7"
+          }
+        }
+      ]
+    },
+    {
+      "id": "thermal",
+      "version": "1.0",
+      "inputs": [
+        {
+          "id": "modelica-admitted-observation-evaluation-closeout-c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c",
+          "fingerprint": {
+            "algorithm": "sha256",
+            "digest": "c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c"
+          }
+        }
+      ],
+      "method": {
+        "id": "modelica-thermal-method-sheet-seal-8a15f3ab64c4adff11ad7084fc8470fa1d0ba5b80f1a17844f92f1ef51bc51b0",
+        "fingerprint": {
+          "algorithm": "sha256",
+          "digest": "8a15f3ab64c4adff11ad7084fc8470fa1d0ba5b80f1a17844f92f1ef51bc51b0"
+        }
+      },
+      "joins": [
+        {
+          "id": "modelica-admitted-observation-evaluation-f61032db00f542eea29da441fc708c7eafd7898c2fc44aa5878328f82a746887",
+          "fingerprint": {
+            "algorithm": "sha256",
+            "digest": "f61032db00f542eea29da441fc708c7eafd7898c2fc44aa5878328f82a746887"
+          }
+        }
+      ]
+    },
+    {
+      "id": "mechanical",
+      "version": "1.0",
+      "inputs": [
+        {
+          "id": "cad-asset-e92f9ee5b9d0da2571536d0a1ca9d6cecbcb4207dc9e0e6ea5132bf9d81357e9-target-0-5aa7179c52bda583467c227e4a32e50001f080b25836cdc60b3728e51a9a1d74",
+          "fingerprint": {
+            "algorithm": "sha256",
+            "digest": "5aa7179c52bda583467c227e4a32e50001f080b25836cdc60b3728e51a9a1d74"
+          }
+        }
+      ],
+      "method": {
+        "id": "fea-proof-557b19fbd2417e7e835d19b06af3da67453a6348eca2e331f0aa3c43cf8c36f8",
+        "fingerprint": {
+          "algorithm": "sha256",
+          "digest": "557b19fbd2417e7e835d19b06af3da67453a6348eca2e331f0aa3c43cf8c36f8"
+        }
+      },
+      "joins": [
+        {
+          "id": "calculix-isolated-evidence-da3c9dcd319057c289a4e58118b4324725e55a93a7910deed83317d37293feea",
+          "fingerprint": {
+            "algorithm": "sha256",
+            "digest": "da3c9dcd319057c289a4e58118b4324725e55a93a7910deed83317d37293feea"
+          }
+        },
+        {
+          "id": "evaluation-closeout-716ad51db8a3963e08ab96542037a85813c2b49d61abe59d8b99df7d28ad4f32",
+          "fingerprint": {
+            "algorithm": "sha256",
+            "digest": "716ad51db8a3963e08ab96542037a85813c2b49d61abe59d8b99df7d28ad4f32"
+          }
+        }
+      ]
+    }
+  ],
+  "causalEdges": [
+    {
+      "id": "edge-thermal-closeout-to-thermal-branch",
+      "fromAnchorId": "anchor-thermal-closeout",
+      "to": {
+        "branchId": "thermal",
+        "inputId": "modelica-admitted-observation-evaluation-closeout-c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c",
+        "inputFingerprint": {
+          "algorithm": "sha256",
+          "digest": "c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c"
+        }
+      },
+      "relation": "positive-input",
+      "assertion": {
+        "source": {
+          "id": "modelica-admitted-observation-evaluation-closeout-c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c",
+          "fingerprint": {
+            "algorithm": "sha256",
+            "digest": "c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c"
+          }
+        },
+        "justification": "The newly accepted thermal closeout is the exact thermal branch input under review."
+      },
+      "scope": "Only the evidence-status closeout; no physical value, source, CAD or solver input changed.",
+      "evidence": [
+        {
+          "id": "modelica-admitted-observation-evaluation-closeout-c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c",
+          "fingerprint": {
+            "algorithm": "sha256",
+            "digest": "c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c"
+          }
+        }
+      ]
+    }
+  ],
+  "independenceAssertions": [
+    {
+      "id": "hs01-mechanical-independent-of-thermal-closeout-r26",
+      "branchId": "mechanical",
+      "assertion": "independent",
+      "author": {
+        "kind": "human",
+        "id": "local-yolo-startup-opt-in"
+      },
+      "source": {
+        "id": "modelica-admitted-observation-evaluation-closeout-c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c",
+        "fingerprint": {
+          "algorithm": "sha256",
+          "digest": "c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c"
+        }
+      },
+      "justification": "The thermal L5 closeout changes documentary accepted evidence status only and does not alter exact CAD/FEA inputs.",
+      "inspectedSourceAnchors": [
+        {
+          "sourceAnchorId": "anchor-thermal-closeout",
+          "threadChangeFingerprint": {
+            "algorithm": "sha256",
+            "digest": "99f613d0d4f376337f06361cc1f05fcdc87a13f9b5c2af8c3eb7221cb6e19721"
+          },
+          "sourceFingerprint": {
+            "algorithm": "sha256",
+            "digest": "c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c"
+          }
+        }
+      ],
+      "evidence": {
+        "id": "calculix-isolated-evidence-da3c9dcd319057c289a4e58118b4324725e55a93a7910deed83317d37293feea",
+        "fingerprint": {
+          "algorithm": "sha256",
+          "digest": "da3c9dcd319057c289a4e58118b4324725e55a93a7910deed83317d37293feea"
+        }
+      },
+      "inspectedConsumptions": [
+        {
+          "id": "calculix-isolated-input-fea-proof-557b19fbd2417e7e835d19b06af3da67453a6348eca2e331f0aa3c43cf8c36f8",
+          "input": {
+            "id": "fea-proof-557b19fbd2417e7e835d19b06af3da67453a6348eca2e331f0aa3c43cf8c36f8",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "557b19fbd2417e7e835d19b06af3da67453a6348eca2e331f0aa3c43cf8c36f8"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-input-cad-asset-e92f9ee5b9d0da2571536d0a1ca9d6cecbcb4207dc9e0e6ea5132bf9d81357e9-target-0-5aa7179c52bda583467c227e4a32e50001f080b25836cdc60b3728e51a9a1d74",
+          "input": {
+            "id": "cad-asset-e92f9ee5b9d0da2571536d0a1ca9d6cecbcb4207dc9e0e6ea5132bf9d81357e9-target-0-5aa7179c52bda583467c227e4a32e50001f080b25836cdc60b3728e51a9a1d74",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "5aa7179c52bda583467c227e4a32e50001f080b25836cdc60b3728e51a9a1d74"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-input-requirements-HeatedStagePlate-332f7d5a721a0d3c7e041cfe3838b273b17f0344b48f453359e59ea1440d89f3",
+          "input": {
+            "id": "requirements-HeatedStagePlate-332f7d5a721a0d3c7e041cfe3838b273b17f0344b48f453359e59ea1440d89f3",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "332f7d5a721a0d3c7e041cfe3838b273b17f0344b48f453359e59ea1440d89f3"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-cas-reread-calculix-isolated-ccx-log-3d7ec7cac5ff6abd49a5f585e6413f928507fb09be72f7a9eaa3da655ea6bf76",
+          "input": {
+            "id": "calculix-isolated-ccx-log-3d7ec7cac5ff6abd49a5f585e6413f928507fb09be72f7a9eaa3da655ea6bf76",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "3d7ec7cac5ff6abd49a5f585e6413f928507fb09be72f7a9eaa3da655ea6bf76"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-cas-reread-calculix-isolated-gmsh-log-d429b256ed1bf678e39580923befb41ef1d768db276451b06e3a923df4bd26c3",
+          "input": {
+            "id": "calculix-isolated-gmsh-log-d429b256ed1bf678e39580923befb41ef1d768db276451b06e3a923df4bd26c3",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "d429b256ed1bf678e39580923befb41ef1d768db276451b06e3a923df4bd26c3"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-cas-reread-calculix-isolated-input-step-5aa7179c52bda583467c227e4a32e50001f080b25836cdc60b3728e51a9a1d74",
+          "input": {
+            "id": "calculix-isolated-input-step-5aa7179c52bda583467c227e4a32e50001f080b25836cdc60b3728e51a9a1d74",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "5aa7179c52bda583467c227e4a32e50001f080b25836cdc60b3728e51a9a1d74"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-cas-reread-calculix-isolated-job-dat-f0e60069a2f4ed39ed45da370fd58761317027eebab43dadf2bc2e40f35366dd",
+          "input": {
+            "id": "calculix-isolated-job-dat-f0e60069a2f4ed39ed45da370fd58761317027eebab43dadf2bc2e40f35366dd",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "f0e60069a2f4ed39ed45da370fd58761317027eebab43dadf2bc2e40f35366dd"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-cas-reread-calculix-isolated-job-inp-1ff61f7c690fb2371c58034cd0268ad090ab9fc88066052e51159b7fcd71519a",
+          "input": {
+            "id": "calculix-isolated-job-inp-1ff61f7c690fb2371c58034cd0268ad090ab9fc88066052e51159b7fcd71519a",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "1ff61f7c690fb2371c58034cd0268ad090ab9fc88066052e51159b7fcd71519a"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-cas-reread-calculix-isolated-mesh-geo-69eda7ce93993558fc80b826953f1e9e5e8fcc00d5a8b4ffc4c39f206eb3bfee",
+          "input": {
+            "id": "calculix-isolated-mesh-geo-69eda7ce93993558fc80b826953f1e9e5e8fcc00d5a8b4ffc4c39f206eb3bfee",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "69eda7ce93993558fc80b826953f1e9e5e8fcc00d5a8b4ffc4c39f206eb3bfee"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-cas-reread-calculix-isolated-mesh-inp-fe15e65285ff3b90dea0860eec1fe9d08658da5fc4684c00eeac8e3bc35edc07",
+          "input": {
+            "id": "calculix-isolated-mesh-inp-fe15e65285ff3b90dea0860eec1fe9d08658da5fc4684c00eeac8e3bc35edc07",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "fe15e65285ff3b90dea0860eec1fe9d08658da5fc4684c00eeac8e3bc35edc07"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-cas-reread-calculix-isolated-request-json-084925d20eb6ffc068025e5c45ad2de2e865e18782f5c3be3fe54220a5d8247f",
+          "input": {
+            "id": "calculix-isolated-request-json-084925d20eb6ffc068025e5c45ad2de2e865e18782f5c3be3fe54220a5d8247f",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "084925d20eb6ffc068025e5c45ad2de2e865e18782f5c3be3fe54220a5d8247f"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-cas-reread-calculix-isolated-result-json-003a7f7e1431e0c2d6d0b9f6b7d8f02c79ca6036ccb75c8ab636893a00fcc8eb",
+          "input": {
+            "id": "calculix-isolated-result-json-003a7f7e1431e0c2d6d0b9f6b7d8f02c79ca6036ccb75c8ab636893a00fcc8eb",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "003a7f7e1431e0c2d6d0b9f6b7d8f02c79ca6036ccb75c8ab636893a00fcc8eb"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-cas-reread-calculix-isolated-evidence-da3c9dcd319057c289a4e58118b4324725e55a93a7910deed83317d37293feea",
+          "input": {
+            "id": "calculix-isolated-evidence-da3c9dcd319057c289a4e58118b4324725e55a93a7910deed83317d37293feea",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "da3c9dcd319057c289a4e58118b4324725e55a93a7910deed83317d37293feea"
+            }
+          }
+        }
+      ],
+      "review": {
+        "trigger": {
+          "id": "modelica-admitted-observation-evaluation-closeout-c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c",
+          "fingerprint": {
+            "algorithm": "sha256",
+            "digest": "c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c"
+          }
+        },
+        "reviewedAt": "2026-08-24T05:20:00.000Z",
+        "expiresAt": "2026-09-23T05:20:00.000Z"
+      }
+    }
+  ],
+  "gateMap": [
+    {
+      "gateItemId": "verify-electrical-heater",
+      "branchId": "electrical",
+      "role": "satisfies"
+    },
+    {
+      "gateItemId": "verify-thermal-stage",
+      "branchId": "thermal",
+      "role": "contributes-to"
+    },
+    {
+      "gateItemId": "verify-mechanical-stage",
+      "branchId": "mechanical",
+      "role": "satisfies"
+    }
+  ],
+  "limitations": [
+    "Electrical is impact-unresolved because no positive edge is declared from this exact thermal closeout.",
+    "Thermal is invalidated because it is the positive affected input.",
+    "Mechanical can be carried-forward only through the exact human assertion and current FEA evidence; absence of an edge never proves independence.",
+    "X10 remains unavailable and this manifest grants no provider, solver, correction, rerun or Workbench command."
+  ]
+}

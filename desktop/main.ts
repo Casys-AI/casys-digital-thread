@@ -1,0 +1,202 @@
+import rawManifest from "./component-manifest.json" with { type: "json" };
+import { createDesktopShellHandler } from "./src/application/shell-handler.ts";
+import {
+  drainAndExitDesktop,
+  drainDesktopForWindowClose,
+  installDesktopShutdownSignals,
+  installDesktopWindowClose,
+} from "./src/application/shutdown.ts";
+import { startDesktopApplication } from "./src/application/startup.ts";
+import { createWorkbenchProjectFocusAuthority } from "./src/application/workbench-project-focus.ts";
+import { registerDesktopChatBindings } from "./src/chat/bindings.ts";
+import { createExternalUrlOpener } from "./src/chat/external-url.ts";
+import { startPackagedChatHost } from "./src/chat-host/startup.ts";
+import {
+  CONTROL_PLANE_PRODUCT_IDENTIFIER,
+  CONTROL_PLANE_SERVER_NAME,
+  ControlPlaneHost,
+  createDenoControlPlanePorts,
+} from "./src/control-plane/mod.ts";
+import type { DesktopPlatform, EnvironmentReader } from "./src/host/mod.ts";
+import { createDenoWorkbenchHost } from "./src/workbench/host.ts";
+
+function desktopPlatform(os: typeof Deno.build.os): DesktopPlatform {
+  switch (os) {
+    case "darwin":
+      return "macOS";
+    case "windows":
+      return "Windows";
+    case "linux":
+      return "Linux";
+    default:
+      throw new Error(`Deno Desktop does not support ${os}.`);
+  }
+}
+
+const readEnvironment: EnvironmentReader = (name) => {
+  try {
+    return Deno.env.get(name);
+  } catch (error) {
+    // Missing named permission is represented in the recovery-required view.
+    if (error instanceof Deno.errors.PermissionDenied) return undefined;
+    throw error;
+  }
+};
+
+const platform = desktopPlatform(Deno.build.os);
+const application = await startDesktopApplication({
+  manifest: rawManifest,
+  actualDenoVersion: Deno.version.deno,
+  // Deno Desktop ships in the same pinned runtime binary as Deno itself.
+  actualDesktopRuntimeVersion: Deno.version.deno,
+  actualProductVersion: Deno.desktopVersion,
+  platform,
+  env: readEnvironment,
+  executablePath: Deno.execPath(),
+}, {
+  createControlPlane(launch) {
+    const host = new ControlPlaneHost({
+      helperPath: launch.helperPath,
+      cwd: launch.launchCwd,
+      platform: launch.platform,
+      layoutProfile: launch.layoutProfile,
+      relativeWorkspace: launch.relativeWorkspace,
+      expected: {
+        productIdentifier: CONTROL_PLANE_PRODUCT_IDENTIFIER,
+        productVersion: launch.productVersion,
+        serverName: CONTROL_PLANE_SERVER_NAME,
+        serverVersion: launch.controlPlaneVersion,
+      },
+      ports: createDenoControlPlanePorts(launch.platform),
+    });
+    return {
+      async start() {
+        return (await host.startResult()).projection;
+      },
+      stop: () => host.stop(),
+    };
+  },
+  createWorkbench(launch) {
+    const host = createDenoWorkbenchHost(
+      launch.helperPath,
+      launch.launchCwd,
+      launch.layoutProfile,
+    );
+    return {
+      start: () => host.start(),
+      stop: () => host.stop(),
+    };
+  },
+});
+
+const browserWindow = new Deno.BrowserWindow();
+const chatHost = await startPackagedChatHost({
+  launchable: application.chatHostLaunchable,
+  executablePath: Deno.execPath(),
+  platform,
+  arch: Deno.build.arch,
+  env: readEnvironment,
+  childEnv: chatHostEnvironment,
+});
+registerDesktopChatBindings(
+  browserWindow,
+  chatHost,
+  createExternalUrlOpener(platform),
+  application.workbenchSession === undefined
+    ? undefined
+    : createWorkbenchProjectFocusAuthority(application.workbenchSession),
+);
+
+let server: Deno.HttpServer;
+try {
+  server = Deno.serve(
+    createDesktopShellHandler(
+      application.model,
+      application.workbenchSession,
+    ),
+  );
+} catch (error) {
+  await application.stop().catch(() => undefined);
+  throw error;
+}
+const signalShutdown = Promise.withResolvers<void>();
+let windowShutdown = Promise.withResolvers<void>();
+const windowClose = installDesktopWindowClose(browserWindow, () => {
+  windowShutdown.resolve();
+});
+const cleanupSignals = installDesktopShutdownSignals(() => {
+  signalShutdown.resolve();
+}, {
+  add: (signal, listener) => Deno.addSignalListener(signal, listener),
+  remove: (signal, listener) => Deno.removeSignalListener(signal, listener),
+});
+
+let resourcesDrained = false;
+try {
+  while (true) {
+    const outcome = await Promise.race([
+      server.finished.then(() => "server" as const),
+      signalShutdown.promise.then(() => "signal" as const),
+      windowShutdown.promise.then(() => "window" as const),
+    ]);
+    if (outcome === "server") break;
+    if (outcome === "signal") {
+      await drainAndExitDesktop({
+        stopApplication: stopDesktopResources,
+        shutdownServer: () => server.shutdown(),
+        exitProcess: (code) => Deno.exit(code),
+      });
+      resourcesDrained = true;
+      break;
+    }
+    const drained = await drainDesktopForWindowClose({
+      stopApplication: stopDesktopResources,
+      shutdownServer: () => server.shutdown(),
+    });
+    if (drained.status === "drained") {
+      resourcesDrained = true;
+      windowClose.complete();
+      break;
+    }
+    console.error(
+      `Desktop close deferred: ${drained.stage} drain is unresolved; close again to retry.`,
+    );
+    windowClose.retry();
+    windowShutdown = Promise.withResolvers<void>();
+  }
+} finally {
+  cleanupSignals();
+  windowClose.cleanup();
+  if (!resourcesDrained) await stopDesktopResources();
+}
+
+async function stopDesktopResources(): Promise<void> {
+  const stopped = await Promise.allSettled([
+    (async () => {
+      const result = await chatHost?.stop();
+      if (result?.status === "unresolved") {
+        throw new Error(result.reason ?? "Chat Host process exit is unresolved");
+      }
+    })(),
+    application.stop(),
+  ]);
+  const errors = stopped.flatMap((result) =>
+    result.status === "rejected" ? [result.reason] : []
+  );
+  if (errors.length > 0) {
+    throw new AggregateError(errors, "Desktop owned-resource shutdown failed");
+  }
+}
+
+function chatHostEnvironment(): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const name of ["HOME", "CODEX_HOME", "OPENAI_API_KEY"] as const) {
+    try {
+      const value = Deno.env.get(name);
+      if (value !== undefined) env[name] = value;
+    } catch (error) {
+      if (!(error instanceof Deno.errors.PermissionDenied)) throw error;
+    }
+  }
+  return env;
+}
