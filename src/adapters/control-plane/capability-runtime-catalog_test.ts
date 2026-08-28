@@ -49,7 +49,7 @@ Deno.test("atomic first-party runtime catalogue separates sources with distinct 
     calculix?.materials[0]?.imageReference,
     "ghcr.io/casys-ai/mcp-calculix@sha256:ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8",
   );
-  assertEquals(calculix?.materials[0]?.launchProfile, null);
+  assertEquals(calculix?.materials[0]?.launchGroup, null);
   assertEquals(calculix?.materials[0]?.effects, {
     downloadBytes: null,
     storageBytes: null,

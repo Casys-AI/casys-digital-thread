@@ -74,7 +74,7 @@ persistent materials remain literal `null`: an image alone never enrolls a topol
 The semantic capability `mechanics.observe-static-structural-sensitivity@1` names only
 two static-structural sensitivity observations, never a verdict. Its concrete
 `calculix-http-static-sensitivity@1` binding points to `casys.mcp-calculix@0.8.2`, but
-is deliberately `unqualified` with `launchProfile: null`. S1 therefore makes the
+is deliberately `unqualified` with `launchGroup: null`. S1 therefore makes the
 catalogue and project planner report it as `unavailable`; it cannot pull, start or call
 the HTTP service. A later recorded solve/readback and launch-group lot must qualify it.
 `mechanics.solve-static-structural@1` remains separately bound to
