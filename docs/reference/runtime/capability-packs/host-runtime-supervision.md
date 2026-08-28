@@ -6,6 +6,8 @@ H1 governs server-owned local runtime state. It does not select a provider, admi
 engineering method, or interpret an engineering result. The initial enrolled topology is
 the exact `casys-syson@1.0.0` group: Postgres, SysON and `mcp-syson`, with only
 `127.0.0.1:3009` published. The historical SysON UI port 8180 is not part of this group.
+`casys-chrono@1.0.0` is a separate one-service group enrolled as an unqualified
+candidate, not as an active or qualified engine.
 
 ## Durable local read model
 
@@ -73,6 +75,16 @@ Secrets never appear in a group, project, journal, descriptor argv or Workbench 
 a closed Deno loopback `/health` check because it has no baked image healthcheck. The
 fixed database values are existing internal development topology values, not secret-slot
 authority and not caller input.
+
+`casys-chrono` contains exactly the pinned mcp-chrono image on loopback port 3025 and
+the retained `chrono-data` named volume. Its descriptor carries only the fixed
+`chrono-mcp-bearer-token` slot; the host resolves the bearer value into a short-lived
+in-memory Compose overlay and the matching fixed client credential. The descriptor,
+group fingerprint, journal, argv, Thread, CAS, WAL, Workbench and error output never
+receive the value. A group with a secret slot always performs the sealed `compose up`
+reconciliation when a session begins, even if it is already active. A non-secret active
+group remains a no-op. The resolver keeps one snapshot generation for a server process,
+so parallel leases cannot rotate one client away from its container.
 
 ## Lease, journal and JIT lifecycle
 

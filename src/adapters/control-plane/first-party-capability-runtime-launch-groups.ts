@@ -8,6 +8,7 @@ import {
 } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import { FixedCapabilityRuntimeLaunchGroupRegistry } from "../../application/control-plane/capability-runtime-launch-group-registry.ts";
+import { MCP_CHRONO_031_IMAGE_REFERENCE } from "./first-party-capability-runtime-identities.ts";
 
 export const POSTGRES_IMAGE_REFERENCE =
   "docker.io/library/postgres@sha256:926f8799aef36e00001cfe15fba7abbd37d3c5224ea57e4c858e4bb670f10561" as const;
@@ -27,7 +28,7 @@ export const MCP_BUILD123D_061_IMAGE_REFERENCE =
 export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
   readonly CapabilityRuntimeLaunchGroup[]
 > {
-  const composeContent = deterministicJson({
+  const sysonComposeContent = deterministicJson({
     services: {
       "syson-db": {
         image: POSTGRES_IMAGE_REFERENCE,
@@ -94,8 +95,8 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
   });
   const compose = {
     schemaVersion: "capability-runtime-compose-descriptor/1.0" as const,
-    content: composeContent,
-    fingerprint: await fingerprintCapabilityRuntimeComposeContent(composeContent),
+    content: sysonComposeContent,
+    fingerprint: await fingerprintCapabilityRuntimeComposeContent(sysonComposeContent),
   };
   const body = {
     schemaVersion: "capability-runtime-launch-group/1.0" as const,
@@ -109,18 +110,21 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
         "syson-db-image",
         POSTGRES_IMAGE_REFERENCE,
         "syson-db",
+        "casys-syson",
       ),
       material(
         "casys.syson-stack",
         "syson-app-image",
         SYSON_IMAGE_REFERENCE,
         "syson-app",
+        "casys-syson",
       ),
       material(
         "casys.syson-stack",
         "mcp-syson-image",
         MCP_SYSON_IMAGE_REFERENCE,
         "mcp-syson",
+        "casys-syson",
       ),
     ],
     compose,
@@ -155,7 +159,70 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
     port: 3014,
     volume: "exports",
   });
-  return [syson, build123dSandbox, build123dObservation];
+  const chronoComposeContent = deterministicJson({
+    services: {
+      "mcp-chrono": {
+        image: MCP_CHRONO_031_IMAGE_REFERENCE,
+        platform: "linux/amd64",
+        volumes: ["chrono-data:/data"],
+        ports: ["127.0.0.1:3025:3025"],
+        cap_drop: ["ALL"],
+        security_opt: ["no-new-privileges:true"],
+        // The token is read only inside the container from the closed runtime
+        // overlay. It is neither a Compose interpolation nor sealed content.
+        healthcheck: {
+          test: [
+            "CMD",
+            "python",
+            "-c",
+            "import os, urllib.request; token = os.environ.get('MCP_BEARER_TOKEN'); assert token; request = urllib.request.Request('http://127.0.0.1:3025/healthz', headers={'Authorization': 'Bearer ' + token}); urllib.request.urlopen(request, timeout=3).read()",
+          ],
+          interval: "30s",
+          timeout: "5s",
+          retries: 3,
+          start_period: "20s",
+        },
+      },
+    },
+    volumes: { "chrono-data": {} },
+  });
+  const chronoCompose = {
+    schemaVersion: "capability-runtime-compose-descriptor/1.0" as const,
+    content: chronoComposeContent,
+    fingerprint: await fingerprintCapabilityRuntimeComposeContent(chronoComposeContent),
+  };
+  const chronoBody = {
+    schemaVersion: "capability-runtime-launch-group/1.0" as const,
+    id: "casys-chrono",
+    version: "1.0.0",
+    activationPolicy: "persistent" as const,
+    acquisition: { kind: "compose" as const, projectName: "casys-chrono" },
+    materials: [
+      material(
+        "casys.mcp-chrono",
+        "mcp-chrono-image",
+        MCP_CHRONO_031_IMAGE_REFERENCE,
+        "mcp-chrono",
+        "casys-chrono",
+      ),
+    ],
+    compose: chronoCompose,
+    retention: {
+      containers: "stop-only" as const,
+      images: "preserve" as const,
+      volumes: "preserve" as const,
+    },
+    secretSlots: ["chrono-mcp-bearer-token"],
+    security: "reviewed" as const,
+    // The exact linux/amd64 material is not qualified on this ARM64 host
+    // until a separate live emulation probe records that fact.
+    qualification: "unqualified" as const,
+  };
+  const chrono = {
+    ...chronoBody,
+    fingerprint: await fingerprintCapabilityRuntimeLaunchGroup(chronoBody),
+  } as const;
+  return [syson, build123dSandbox, build123dObservation, chrono];
 }
 
 export async function createFirstPartyCapabilityRuntimeLaunchGroupRegistry(): Promise<
@@ -261,6 +328,13 @@ function requireGroup(
     throw new TypeError(`First-party launch group ${id} is not unique.`);
   }
   return matches[0]!;
+}
+
+export async function firstPartyChronoLaunchGroupReference() {
+  const groups = await createFirstPartyCapabilityRuntimeLaunchGroups();
+  const chrono = groups.find((group) => group.id === "casys-chrono");
+  if (!chrono) throw new Error("The first-party Chrono launch group is absent.");
+  return capabilityRuntimeLaunchGroupReference(chrono);
 }
 
 function material(

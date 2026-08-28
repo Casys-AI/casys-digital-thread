@@ -36,6 +36,12 @@ import {
 export interface LocalCapabilityRuntimeReadCompositionOptions {
   readonly ledgerDirectory?: string;
   /**
+   * Optional process-local secret availability observer. The MCP server passes
+   * its sealed resolver; read-only compositions default to unavailable and
+   * never read host secrets merely to render the Workbench.
+   */
+  readonly secrets?: CapabilityRuntimeSecretSlotObserver;
+  /**
    * The server's code-owned CalculiX execution profile. Omit in a read-only
    * BFF process: it may observe the exact cache but cannot use it to execute.
    */
@@ -81,7 +87,7 @@ export async function createLocalCapabilityRuntimeReadComposition(
     createFirstPartyCapabilityRuntimeLaunchGroupRegistry(),
   ]);
   const journal = new FileCapabilityRuntimeJournal();
-  const secrets: CapabilityRuntimeSecretSlotObserver = {
+  const secrets: CapabilityRuntimeSecretSlotObserver = options.secrets ?? {
     observe: (slots) =>
       Promise.resolve(
         new Map(slots.map((slot) => [slot, "unavailable" as const])),

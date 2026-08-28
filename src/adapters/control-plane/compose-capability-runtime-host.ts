@@ -19,7 +19,9 @@ import type {
   CapabilityRuntimeHostPlatformObserver,
   CapabilityRuntimeJournal,
   CapabilityRuntimeLaunchGroupRegistry,
+  CapabilityRuntimeLaunchSecretInjector,
   CapabilityRuntimeSecretSlotObserver,
+  CapabilityRuntimeSecretSnapshot,
   CapabilityRuntimeStateObserver,
 } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import type { CapabilityRuntimePlatform } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
@@ -37,6 +39,8 @@ export interface CapabilityRuntimeHostAdapterOptions {
   readonly registry: CapabilityRuntimeLaunchGroupRegistry;
   readonly journal: CapabilityRuntimeJournal;
   readonly secrets: CapabilityRuntimeSecretSlotObserver;
+  /** Closed, in-memory overlay for an exact server-minted secret snapshot. */
+  readonly secretInjector?: CapabilityRuntimeLaunchSecretInjector;
   readonly runner?: CommandRunner;
   readonly dockerEnvironment?: Readonly<Record<string, string>>;
   readonly composeRoot?: string;
@@ -134,6 +138,7 @@ class ComposeCapabilityRuntimeHost
 
   async mutate(input: {
     readonly authorization: AuthorizedCapabilityRuntimeHostMutation;
+    readonly secretSnapshot?: CapabilityRuntimeSecretSnapshot;
   }): Promise<CapabilityRuntimeJournalOutcome> {
     const entry = consumeAuthorizedCapabilityRuntimeHostMutation(input.authorization);
     if (!entry) {
@@ -163,7 +168,10 @@ class ComposeCapabilityRuntimeHost
         "Launch group identity or exact material membership drifted.",
       );
     }
-    if (group.security !== "reviewed" || group.qualification === "revoked") {
+    if (
+      group.security !== "reviewed" ||
+      (group.qualification !== "compatible" && group.qualification !== "qualified")
+    ) {
       return this.#outcome(
         entry,
         "failed",
@@ -178,6 +186,17 @@ class ComposeCapabilityRuntimeHost
         "failed",
         [],
         "Launch group secret availability is unknown or unavailable.",
+      );
+    }
+    if (
+      entry.action === "runtime-start" && group.secretSlots.length > 0 &&
+      (input.secretSnapshot === undefined || this.options.secretInjector === undefined)
+    ) {
+      return this.#outcome(
+        entry,
+        "failed",
+        [],
+        "Launch group requires its exact server-minted secret snapshot.",
       );
     }
     if (entry.action === "material-remove") {
@@ -217,7 +236,11 @@ class ComposeCapabilityRuntimeHost
     }
     const execution = entry.action === "runtime-stop"
       ? await this.#stopOwnedReverse(launch, before)
-      : await this.#compose(launch, command);
+      : await this.#compose(
+        launch,
+        command,
+        entry.action === "runtime-start" ? input.secretSnapshot : undefined,
+      );
     const after = await this.#inspect(group, launch);
     const satisfied = satisfies(entry.action, after);
     const status = execution.success && satisfied
@@ -229,7 +252,14 @@ class ComposeCapabilityRuntimeHost
       entry,
       status,
       after.values,
-      status === "succeeded" ? null : compactFailure(execution),
+      status === "succeeded"
+        ? null
+        // Docker may echo parts of a dynamic Compose input in an error. A
+        // secret-bearing `up` therefore records only a fixed diagnosis, never
+        // provider stderr, argv or an overlay fragment.
+        : entry.action === "runtime-start" && group.secretSlots.length > 0
+        ? "Sealed secret-bearing launch group did not reach its required active state."
+        : compactFailure(execution),
     );
   }
 
@@ -351,7 +381,20 @@ class ComposeCapabilityRuntimeHost
     return { success: true, code: 0, stdout: "", stderr: "" };
   }
 
-  async #compose(launch: Launch, operation: readonly string[]): Promise<CommandResult> {
+  async #compose(
+    launch: Launch,
+    operation: readonly string[],
+    secretSnapshot?: CapabilityRuntimeSecretSnapshot,
+  ): Promise<CommandResult> {
+    // The sealed descriptor is used for every observation/acquisition/stop.
+    // Only the one `up` carries an in-memory overlay, built from the exact
+    // opaque generation that the fixed Chrono client also receives.
+    const stdin = secretSnapshot === undefined
+      ? launch.stdin
+      : await this.options.secretInjector!.composeOverlay({
+        group: launch.group,
+        snapshot: secretSnapshot,
+      });
     return await this.#runner.run(
       "docker",
       [
@@ -367,7 +410,7 @@ class ComposeCapabilityRuntimeHost
         ...operation,
       ],
       launch.root,
-      { stdin: launch.stdin, clearEnv: true, env: this.#environment },
+      { stdin, clearEnv: true, env: this.#environment },
     );
   }
 

@@ -191,6 +191,28 @@ Deno.test("capability ledger grammar permits one prepared initial authority only
   );
 });
 
+Deno.test("adding prescribed kinematics later is a Chrono-only semantic amendment", async () => {
+  const initial = await proposal("brief-intent", []);
+  const chronoRequirement = {
+    id: "mechanics.observe-prescribed-kinematics",
+    version: "1",
+    minimumQualification: "qualified" as const,
+    use: "execution" as const,
+  };
+  const successor = await proposal("published-plan", [chronoRequirement]);
+  const delta = projectCapabilityEnvelopeDelta(initial, successor);
+  assertEquals(delta.addedRequirementKeys, [
+    "mechanics.observe-prescribed-kinematics\u00001\u0000execution",
+  ]);
+  assertEquals(delta.removedRequirementKeys, []);
+  assertEquals(delta.bindingReplacements.map((entry) => entry.requirementKey), [
+    "mechanics.observe-prescribed-kinematics\u00001\u0000execution",
+  ]);
+  // An amendment compares only the changed operational envelope. It neither
+  // rewrites the Brief nor invents provider input for an agent.
+  assertEquals(initial.brief, successor.brief);
+});
+
 Deno.test("capability coverage keeps the exact candidate ceiling while local qualification mode may change", async () => {
   const requirement = {
     id: "geometry.observe-assembly-integrity",

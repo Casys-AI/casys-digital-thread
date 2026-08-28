@@ -10,14 +10,44 @@ import type {
   PrescribedKinematicsPreDispatchRejectionCode,
 } from "../../../out/mechanics/prescribed-kinematics-observer.ts";
 import type { PrescribedKinematicsLoweredCase } from "../../../out/mechanics/prescribed-kinematics-case-lowerer.ts";
+import type {
+  CapabilityRuntimeLaunchGroupReference,
+} from "../../../../../domain/capability/runtime/capability-runtime-launch-group.ts";
+
+/**
+ * Fact-only runtime identity stamped from the exact sealed ROP.  It is not a
+ * provider request and contains no endpoint, tool arguments or secret value.
+ */
+export interface PrescribedKinematicsRuntimeProvenance {
+  readonly resolvedOperationPlanFingerprint: ContentFingerprint;
+  readonly operationalCapabilityFingerprint: ContentFingerprint;
+  readonly binding: { readonly id: string; readonly version: string };
+  readonly adapter: {
+    readonly id: string;
+    readonly version: string;
+    readonly source: string;
+  };
+  /** Null is a sealed fact: this binding has no separately versioned profile. */
+  readonly profile: {
+    readonly id: string;
+    readonly version: string;
+    readonly fingerprint: ContentFingerprint | null;
+  } | null;
+  readonly material: {
+    readonly unitId: string;
+    readonly materialId: string;
+    readonly imageDigest: string;
+  };
+  readonly launchGroup: CapabilityRuntimeLaunchGroupReference;
+  readonly platformMode: "native" | "emulated" | "unavailable";
+}
 
 export interface RunPrescribedKinematicsObservationCommand {
   readonly projectId: string;
   readonly agentRunId: string;
   readonly requestId: string;
   readonly startedAt: string;
-  readonly planFingerprint: ContentFingerprint;
-  readonly bindingFingerprint: ContentFingerprint;
+  readonly runtime: PrescribedKinematicsRuntimeProvenance;
   readonly sealedCase: PrescribedKinematicsCase;
 }
 
@@ -32,7 +62,9 @@ export type RunPrescribedKinematicsObservationResult =
     >;
     /** Factual provider provenance, retained without becoming a verdict. */
     readonly receipt: PrescribedKinematicsObservationRecord["receipt"];
-    readonly notEvaluated: PrescribedKinematicsObservationRecord["notEvaluated"];
+    /** Exact nine-item provider wire boundary, preserved verbatim. */
+    readonly providerNotEvaluated:
+      PrescribedKinematicsObservationRecord["notEvaluated"];
     /** Source-to-request provenance; the request body itself is never captured. */
     readonly lowering: Pick<
       PrescribedKinematicsLoweredCase,

@@ -110,7 +110,7 @@ Deno.test("atomic first-party runtime catalogue separates sources with distinct 
       status: "unknown",
       reference: "docs/reference/runtime/capability-packs/atomic-runtime-boundaries.md",
     },
-    security: "unknown",
+    security: "reviewed",
   });
   assertEquals(
     catalog.bindings.find((binding) => binding.id === "chrono-prescribed-kinematics")

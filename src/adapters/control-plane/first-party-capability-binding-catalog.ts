@@ -53,6 +53,7 @@ import { validateCapabilityRuntimeCatalog } from "./capability-runtime-catalog.t
 import {
   firstPartyBuild123dObservationLaunchGroupReference,
   firstPartyBuild123dSandboxLaunchGroupReference,
+  firstPartyChronoLaunchGroupReference,
   firstPartySysonLaunchGroupReference,
   MCP_BUILD123D_061_IMAGE_REFERENCE,
   MCP_SYSON_IMAGE_REFERENCE,
@@ -79,10 +80,12 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
     sysonLaunchGroup,
     build123dSandboxLaunchGroup,
     build123dObservationLaunchGroup,
+    chronoLaunchGroup,
   ] = await Promise.all([
     firstPartySysonLaunchGroupReference(),
     firstPartyBuild123dSandboxLaunchGroupReference(),
     firstPartyBuild123dObservationLaunchGroupReference(),
+    firstPartyChronoLaunchGroupReference(),
   ]);
   const units = await Promise.all([
     unit("casys.syson-stack", [
@@ -221,7 +224,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "reviewed",
       ),
     ]),
-    unit("casys.mcp-chrono", [chronoMaterial()], "0.3.1"),
+    unit("casys.mcp-chrono", [chronoMaterial(chronoLaunchGroup)], "0.3.1"),
   ]);
   return await validateCapabilityRuntimeCatalog({
     schemaVersion: CAPABILITY_RUNTIME_CATALOG_SCHEMA_VERSION,
@@ -537,14 +540,16 @@ function ociImageMaterial(
  * local microVM workers. Its runtime security and ARM emulation qualification
  * remain literal unknown/unqualified until a dedicated probe records them.
  */
-function chronoMaterial(): AtomicCapabilityRuntimeMaterial {
+function chronoMaterial(
+  launchGroup: CapabilityRuntimeLaunchGroupReference,
+): AtomicCapabilityRuntimeMaterial {
   return {
     id: "mcp-chrono-image",
     kind: "compose-service",
     imageReference: MCP_CHRONO_031_IMAGE_REFERENCE,
     platforms: ["linux/amd64"],
     lifecycle: "persistent",
-    launchGroup: null,
+    launchGroup,
     effects: {
       downloadBytes: null,
       storageBytes: null,
@@ -558,7 +563,7 @@ function chronoMaterial(): AtomicCapabilityRuntimeMaterial {
       devices: [],
       secretSlots: ["chrono-mcp-bearer-token"],
       licence: { status: "unknown", reference: REVIEWED_LICENCE_DOC },
-      security: "unknown",
+      security: "reviewed",
     },
   };
 }

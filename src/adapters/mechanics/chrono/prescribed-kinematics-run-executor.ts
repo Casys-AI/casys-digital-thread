@@ -4,8 +4,8 @@
  * The public MCP surface queues only an operation/run id. This executor
  * reopens the exact basis and MRTR decision, then reads and writes only the
  * vertical's immutable capture lanes. It deliberately has no provider/tool/
- * image/argument selection surface. L3 is absent unless composition supplies
- * the one qualified, server-owned observation runner.
+ * image/argument selection surface. L3 remains unavailable unless the fixed
+ * server-owned observation binding has reached its required qualification.
  */
 
 import type { EngineeringProjectCommandOrigin } from "../../../application/ports/in/engineering-project-command-origin.ts";
@@ -13,6 +13,8 @@ import type {
   ProjectPrescribedKinematicsCaseCaptureUseCase,
 } from "../../../application/ports/in/mechanics/prescribed-kinematics/project-prescribed-kinematics-case-capture.ts";
 import type {
+  PrescribedKinematicsRuntimeProvenance,
+  RunPrescribedKinematicsObservationCommand,
   RunPrescribedKinematicsObservationUseCase,
 } from "../../../application/ports/in/mechanics/prescribed-kinematics/run-prescribed-kinematics-observation.ts";
 import type {
@@ -47,6 +49,18 @@ import {
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
+import {
+  fingerprintResolvedOperationPlanV2,
+  type ResolvedOperationPlanV2,
+  type ResolvedPrescribedKinematicsObservationAction,
+} from "../../../domain/compile/rop/resolved-operation-plan-v2.ts";
+import {
+  fingerprintResolvedCapabilityRuntimeOperation,
+  type ResolvedCapabilityRuntimeOperation,
+} from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import {
+  sameCapabilityRuntimeLaunchGroupReference,
+} from "../../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import type {
   EngineeringAgentRun,
@@ -63,6 +77,20 @@ import {
   applyThreadSnapshotExtensionIfNew,
 } from "../../../domain/thread/thread-snapshot-extension.ts";
 import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
+import type { ResolvedRunPlanReader } from "../../../domain/project/resolved-run-plan-sealer.ts";
+import type {
+  CapabilityRuntimeExecutionEligibility,
+  CapabilityRuntimeSecretSnapshot,
+  CapabilityRuntimeSecretSnapshotResolver,
+} from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import type {
+  CapabilityRuntimeExecutionSession,
+  CapabilityRuntimeExecutionSessionCoordinator,
+} from "../../../application/control-plane/capability-runtime-execution-session.ts";
+import {
+  requireResolvedRunPlanExecution,
+  type ResolvedRunPlanExecutionAuthorization,
+} from "../../compile/plans/resolved-run-plan-execution-guard.ts";
 import type { EngineeringProjectRunLease } from "../../shared/stores/file-engineering-project-run-lease.ts";
 import {
   requireBasis,
@@ -72,6 +100,12 @@ import {
   unexpectedStatus,
 } from "../../shared/executor-run-helpers.ts";
 import { threadWriteBasisLeaseScope } from "../../shared/thread-write-basis-guard.ts";
+import {
+  MCP_CHRONO_031_IMAGE_REFERENCE,
+} from "../../control-plane/first-party-capability-runtime-identities.ts";
+import {
+  firstPartyChronoLaunchGroupReference,
+} from "../../control-plane/first-party-capability-runtime-launch-groups.ts";
 
 type ExactOperation =
   | typeof VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION
@@ -87,7 +121,7 @@ export interface PrescribedKinematicsRunThreadSnapshotStore
 }
 
 export interface PrescribedKinematicsRunExecutorDependencies {
-  readonly projects: Pick<EngineeringProjectRevisionStore, "get">;
+  readonly projects: Pick<EngineeringProjectRevisionStore, "get" | "getRevision">;
   readonly commands: Pick<
     EngineeringProjectCommandService,
     "claimRun" | "publishRun" | "completeRun" | "failRun"
@@ -96,11 +130,57 @@ export interface PrescribedKinematicsRunExecutorDependencies {
   readonly lease: EngineeringProjectRunLease;
   readonly caseReview: ProjectPrescribedKinematicsCaseCaptureUseCase;
   readonly captures: PrescribedKinematicsCaptureStore;
-  /** Omit unless the fixed qualified Chrono execution composition exists. */
-  readonly observe?: RunPrescribedKinematicsObservationUseCase;
+  /** Exact recorded plan reader. Required only by fixed L3 execution. */
+  readonly plans?: ResolvedRunPlanReader;
+  /** Cold operational envelope recheck before L3 can claim its run/WAL. */
+  readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
+  /** Exact JIT session coordinator; it owns persistent group leases. */
+  readonly capabilityRuntimeSession?: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin"
+  >;
+  /**
+   * Fixed trusted Chrono runtime composition. It mints a closed secret
+   * snapshot and creates the fixed local observer; it exposes no provider
+   * URL, image, tool or caller-selected arguments.
+   */
+  readonly chronoRuntime?: {
+    readonly secrets: Pick<CapabilityRuntimeSecretSnapshotResolver, "beginSnapshot">;
+    createObservation(
+      snapshot: CapabilityRuntimeSecretSnapshot,
+    ): RunPrescribedKinematicsObservationUseCase;
+  };
   readonly sealMethod: SealPrescribedKinematicsMethodUseCase;
   readonly evaluate: EvaluatePrescribedKinematicsUseCase;
   readonly decideCloseout: DecidePrescribedKinematicsCloseoutUseCase;
+}
+
+interface PreparedPrescribedKinematicsL3 {
+  readonly authorization: ResolvedRunPlanExecutionAuthorization;
+  readonly action: ResolvedPrescribedKinematicsObservationAction;
+  readonly runtime: PrescribedKinematicsRuntimeProvenance;
+  readonly secretSnapshot: CapabilityRuntimeSecretSnapshot;
+  readonly observe: RunPrescribedKinematicsObservationUseCase;
+}
+
+class PrescribedKinematicsUncertainOutcomeError extends EngineeringProjectCommandError {
+  constructor(reason: "uncertain" | "absent" | "malformed") {
+    super(
+      "invalid_transition",
+      `Chrono outcome remains recoverable/quarantined: ${reason}.`,
+    );
+    this.name = "PrescribedKinematicsUncertainOutcomeError";
+  }
+}
+
+class PrescribedKinematicsKnownRejectionError extends EngineeringProjectCommandError {
+  constructor(code: string) {
+    super(
+      "invalid_transition",
+      `Chrono rejected the request before dispatch: ${code}.`,
+    );
+    this.name = "PrescribedKinematicsKnownRejectionError";
+  }
 }
 
 export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
@@ -110,7 +190,14 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
   readonly #lease: EngineeringProjectRunLease;
   readonly #caseReview: ProjectPrescribedKinematicsCaseCaptureUseCase;
   readonly #captures: PrescribedKinematicsCaptureStore;
-  readonly #observe?: RunPrescribedKinematicsObservationUseCase;
+  readonly #plans?: ResolvedRunPlanReader;
+  readonly #capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
+  readonly #capabilityRuntimeSession?: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin"
+  >;
+  readonly #chronoRuntime?:
+    PrescribedKinematicsRunExecutorDependencies["chronoRuntime"];
   readonly #sealMethod: SealPrescribedKinematicsMethodUseCase;
   readonly #evaluate: EvaluatePrescribedKinematicsUseCase;
   readonly #decideCloseout: DecidePrescribedKinematicsCloseoutUseCase;
@@ -122,7 +209,10 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
     this.#lease = dependencies.lease;
     this.#caseReview = dependencies.caseReview;
     this.#captures = dependencies.captures;
-    this.#observe = dependencies.observe;
+    this.#plans = dependencies.plans;
+    this.#capabilityRuntime = dependencies.capabilityRuntime;
+    this.#capabilityRuntimeSession = dependencies.capabilityRuntimeSession;
+    this.#chronoRuntime = dependencies.chronoRuntime;
     this.#sealMethod = dependencies.sealMethod;
     this.#evaluate = dependencies.evaluate;
     this.#decideCloseout = dependencies.decideCloseout;
@@ -143,10 +233,14 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
           : "Prescribed-kinematics L1-L4 can execute only with an agent origin.",
       );
     }
-    if (operation === VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION && !this.#observe) {
+    if (
+      operation === VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION &&
+      (!this.#plans || !this.#capabilityRuntime || !this.#capabilityRuntimeSession ||
+        !this.#chronoRuntime)
+    ) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
-        "The registered prescribed-kinematics L3 operation requires the server's qualified mechanics observation runtime.",
+        "The registered prescribed-kinematics L3 operation requires the server's sealed runtime, plan, and host-session composition.",
       );
     }
     if (run.status === "completed") return project;
@@ -162,10 +256,47 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
     command: RegisteredProjectRunExecutorCommand,
   ): Promise<EngineeringProjectSnapshot> {
     let claimed = false;
+    let capabilitySession: CapabilityRuntimeExecutionSession | undefined;
+    let retainCapabilitySession = false;
     try {
       let project = await requiredProject(this.#projects, command.projectId);
       let run = requireRun(project, command.runId);
       const operation = exactOperation(project, run);
+      const l3 = operation === VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION
+        ? await this.#prepareL3(project, run)
+        : undefined;
+      if (l3) {
+        // The session performs a second cold ROP/runtime recheck itself before
+        // it may journal or start the trusted group.  This is deliberately
+        // before `claimRun`, the Chrono WAL, case submission or provider call.
+        capabilitySession = await this.#capabilityRuntimeSession!.begin({
+          project,
+          runId: run.id,
+          operationalCapability: l3.authorization.capabilityRuntime!,
+          microsandboxExecutionProfiles: [],
+          secretSnapshot: l3.secretSnapshot,
+          recheck: async () => {
+            const fresh = await requiredProject(this.#projects, command.projectId);
+            const authorization = await requireResolvedRunPlanExecution({
+              project: fresh,
+              runId: command.runId,
+              expectedOperation: VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+              expectedRunStatuses: ["queued", "running", "publishing"],
+              projects: this.#projects,
+              snapshots: this.#snapshots,
+              plans: this.#plans!,
+              capabilityRuntime: this.#capabilityRuntime,
+            });
+            if (!authorization.capabilityRuntime) {
+              throw new EngineeringProjectCommandError(
+                "invalid_transition",
+                "The sealed prescribed-kinematics run has no operational capability.",
+              );
+            }
+            return authorization.capabilityRuntime;
+          },
+        });
+      }
       if (run.status === "queued") {
         await this.#commands.claimRun(origin, {
           ...command,
@@ -189,6 +320,7 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
         basis,
         base,
         decision,
+        l3,
       });
       const successor = applyThreadSnapshotExtensionIfNew(base, {
         id: `prescribed-kinematics-${run.id}`,
@@ -236,8 +368,13 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
           completion(command, project.revision, successor, materialized.artifact),
         );
       }
-      return await requiredProject(this.#projects, command.projectId);
+      const completed = await requiredProject(this.#projects, command.projectId);
+      await capabilitySession?.releaseTerminal();
+      return completed;
     } catch (error) {
+      if (error instanceof PrescribedKinematicsUncertainOutcomeError) {
+        retainCapabilitySession = true;
+      }
       if (claimed) {
         try {
           const project = await requiredProject(this.#projects, command.projectId);
@@ -253,13 +390,66 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
                 ? error.message.slice(0, 400)
                 : "Unknown prescribed-kinematics execution error.",
             });
+            if (!(error instanceof PrescribedKinematicsUncertainOutcomeError)) {
+              await capabilitySession?.releaseTerminal();
+            }
           }
         } catch {
           // Preserve the original evidence/authority error.
+          retainCapabilitySession = true;
         }
+      }
+      if (capabilitySession && (retainCapabilitySession || !claimed)) {
+        // No claimed terminal project outcome means the provider/WAL boundary
+        // cannot be inferred safe. Preserve the durable lease for recovery.
+        capabilitySession.retainForRecovery();
       }
       throw error;
     }
+  }
+
+  async #prepareL3(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+  ): Promise<PreparedPrescribedKinematicsL3> {
+    const authorization = await requireResolvedRunPlanExecution({
+      project,
+      runId: run.id,
+      expectedOperation: VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+      expectedRunStatuses: ["queued", "running", "publishing"],
+      projects: this.#projects,
+      snapshots: this.#snapshots,
+      plans: this.#plans!,
+      capabilityRuntime: this.#capabilityRuntime,
+    });
+    if (authorization.plan.action.kind !== "prescribed-kinematics-observation") {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "The sealed prescribed-kinematics ROP has no exact observation action.",
+      );
+    }
+    const operationalCapability = authorization.capabilityRuntime;
+    if (!operationalCapability) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "The sealed prescribed-kinematics ROP has no operational capability.",
+      );
+    }
+    const runtime = await runtimeProvenance(
+      authorization.plan,
+      operationalCapability,
+    );
+    const secretSnapshot = await this.#chronoRuntime!.secrets.beginSnapshot({
+      group: runtime.launchGroup,
+      slots: ["chrono-mcp-bearer-token"],
+    });
+    return {
+      authorization,
+      action: authorization.plan.action,
+      runtime,
+      secretSnapshot,
+      observe: this.#chronoRuntime!.createObservation(secretSnapshot),
+    };
   }
 
   async #materialize(input: {
@@ -269,6 +459,7 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
     basis: EngineeringThreadSnapshotBasis;
     base: ThreadSnapshot;
     decision: EngineeringDecision;
+    l3?: PreparedPrescribedKinematicsL3;
   }): Promise<
     {
       readonly name: string;
@@ -309,37 +500,53 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
       "The exact prescribed-kinematics case capture is absent.",
     );
     if (input.operation === VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION) {
-      const result = await this.#observe!.execute({
-        projectId: input.project.project.id,
-        agentRunId: input.run.id,
-        requestId: `prescribed-kinematics-${input.run.id}`,
-        startedAt: requiredStart(input.run),
-        planFingerprint: await sha256Fingerprint({
-          runId: input.run.id,
-          operation: input.operation,
-          basis: input.basis,
-        }),
-        bindingFingerprint: await sha256Fingerprint({
-          operation: input.operation,
-          case: sealedCase.fingerprint,
-        }),
-        sealedCase,
-      });
-      if (result.status !== "recorded") {
+      const l3 = input.l3;
+      if (!l3) {
         throw new EngineeringProjectCommandError(
           "invalid_transition",
-          result.status === "rejected"
-            ? `Chrono rejected the request before dispatch: ${result.code}.`
-            : `Chrono outcome remains recoverable/quarantined: ${result.reason}.`,
+          "The prescribed-kinematics L3 runtime preparation is absent.",
         );
       }
+      // The run-to-request identity is already sealed by the exact ROP and
+      // reread by `requireResolvedRunPlanExecution`.  Do not derive a second
+      // local spelling from the run id: that would create a parallel request
+      // identity convention and could reject a valid sealed plan.
+      if (
+        !fingerprintsEqual(
+          l3.action.input.prescribedKinematicsCase.fingerprint,
+          sealedCase.fingerprint,
+        )
+      ) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          "The sealed prescribed-kinematics ROP does not bind the reopened exact case.",
+        );
+      }
+      const result = await l3.observe.execute(
+        prescribedKinematicsObservationCommandFromResolvedAction({
+          action: l3.action,
+          projectId: input.project.project.id,
+          agentRunId: input.run.id,
+          startedAt: requiredStart(input.run),
+          runtime: l3.runtime,
+          sealedCase,
+        }),
+      );
+      if (result.status !== "recorded") {
+        if (result.status === "rejected") {
+          throw new PrescribedKinematicsKnownRejectionError(result.code);
+        }
+        throw new PrescribedKinematicsUncertainOutcomeError(result.reason);
+      }
       const ref = await this.#captures.saveObservation({
-        schemaVersion: "prescribed-kinematics-observation-capture/2.0",
+        schemaVersion: "prescribed-kinematics-observation-capture/4.0",
         observation: result.observation,
         request: result.request,
         receipt: result.receipt,
-        notEvaluated: result.notEvaluated,
+        providerNotEvaluated: result.providerNotEvaluated,
+        digitalThreadLimits: result.observation.limits,
         lowering: result.lowering,
+        runtime: l3.runtime,
       }, sealedCase);
       return output(
         input,
@@ -444,6 +651,115 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
       [caseArtifact, observationArtifact, methodArtifact, evaluationArtifact],
     );
   }
+}
+
+/**
+ * Preserve the unique request identity already sealed on the ROP action.
+ * This internal adapter deliberately does not derive a run-id based fallback.
+ */
+export function prescribedKinematicsObservationCommandFromResolvedAction(input: {
+  readonly action: ResolvedPrescribedKinematicsObservationAction;
+  readonly projectId: string;
+  readonly agentRunId: string;
+  readonly startedAt: string;
+  readonly runtime: PrescribedKinematicsRuntimeProvenance;
+  readonly sealedCase:
+    import("../../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-source-closure.ts").PrescribedKinematicsCase;
+}): RunPrescribedKinematicsObservationCommand {
+  return Object.freeze({
+    projectId: input.projectId,
+    agentRunId: input.agentRunId,
+    requestId: input.action.requestId,
+    startedAt: input.startedAt,
+    runtime: input.runtime,
+    sealedCase: input.sealedCase,
+  });
+}
+
+async function runtimeProvenance(
+  plan: ResolvedOperationPlanV2,
+  operationalCapability: ResolvedCapabilityRuntimeOperation,
+): Promise<PrescribedKinematicsRuntimeProvenance> {
+  const bindings = operationalCapability.bindings.filter((binding) =>
+    binding.capability.id === "mechanics.observe-prescribed-kinematics" &&
+    binding.capability.version === "1" && binding.capability.use === "execution"
+  );
+  if (bindings.length !== 1) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "The sealed prescribed-kinematics operational capability has no unique mechanics binding.",
+    );
+  }
+  const binding = bindings[0]!;
+  if (binding.materials.length !== 1 || binding.hostLifecycles.length !== 1) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "The sealed prescribed-kinematics binding must have one exact runtime material and lifecycle.",
+    );
+  }
+  const material = binding.materials[0]!;
+  const lifecycle = binding.hostLifecycles[0]!;
+  const expectedLaunchGroup = await firstPartyChronoLaunchGroupReference();
+  const expectedImageDigest = MCP_CHRONO_031_IMAGE_REFERENCE.slice(
+    MCP_CHRONO_031_IMAGE_REFERENCE.lastIndexOf("@sha256:") + "@sha256:".length,
+  );
+  if (
+    binding.binding.id !== "chrono-prescribed-kinematics" ||
+    binding.binding.version !== "1" ||
+    binding.adapter.id !== "chrono-prescribed-kinematics-adapter" ||
+    binding.adapter.version !== "0.3.1" ||
+    binding.adapter.source !==
+      "src/adapters/mechanics/chrono/chrono-prescribed-kinematics-client.ts" ||
+    binding.profile !== null ||
+    material.unitId !== "casys.mcp-chrono" ||
+    material.materialId !== "mcp-chrono-image" ||
+    material.imageDigest !== expectedImageDigest ||
+    !sameRuntimeMaterial(material, lifecycle.material) ||
+    lifecycle.kind !== "persistent-compose" || lifecycle.launchGroup === null ||
+    !sameCapabilityRuntimeLaunchGroupReference(
+      lifecycle.launchGroup,
+      expectedLaunchGroup,
+    )
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "The sealed prescribed-kinematics binding does not reference the exact enrolled Chrono runtime identity.",
+    );
+  }
+  return Object.freeze({
+    resolvedOperationPlanFingerprint: await fingerprintResolvedOperationPlanV2(plan),
+    operationalCapabilityFingerprint:
+      await fingerprintResolvedCapabilityRuntimeOperation(
+        operationalCapability,
+      ),
+    binding: { ...binding.binding },
+    adapter: { ...binding.adapter },
+    // The enrolled Chrono binding deliberately has no separate profile.  The
+    // guard above keeps that literal null fact tied to the sealed binding.
+    profile: null,
+    material: { ...material },
+    launchGroup: structuredClone(lifecycle.launchGroup),
+    // This baseline has no sealed qualified deployment mode. Do not infer one
+    // from the process architecture: Rosetta/Docker emulation can disagree.
+    // A later qualified binding must supply a sealed native/emulated mode.
+    platformMode: "unavailable",
+  });
+}
+
+function sameRuntimeMaterial(
+  left: {
+    readonly unitId: string;
+    readonly materialId: string;
+    readonly imageDigest: string;
+  },
+  right: {
+    readonly unitId: string;
+    readonly materialId: string;
+    readonly imageDigest: string;
+  },
+): boolean {
+  return left.unitId === right.unitId && left.materialId === right.materialId &&
+    left.imageDigest === right.imageDigest;
 }
 
 function exactOperation(

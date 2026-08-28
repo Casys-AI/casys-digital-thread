@@ -10,7 +10,11 @@ import type {
   PrescribedKinematicsObservationCapture,
 } from "../../../application/ports/out/mechanics/prescribed-kinematics-capture-store.ts";
 import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
-import { exactRecord } from "../../../domain/kernel/case-validation.ts";
+import {
+  exactRecord,
+  exactVersionToken,
+  safeId,
+} from "../../../domain/kernel/case-validation.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
@@ -41,6 +45,12 @@ import {
   parseChronoPrescribedKinematicsReceipt,
   parseChronoPrescribedKinematicsRequestReference,
 } from "./chrono-prescribed-kinematics-receipt.ts";
+import {
+  validateCapabilityRuntimeLaunchGroupReference,
+} from "../../../domain/capability/runtime/capability-runtime-launch-group.ts";
+import type {
+  PrescribedKinematicsRuntimeProvenance,
+} from "../../../application/ports/in/mechanics/prescribed-kinematics/run-prescribed-kinematics-observation.ts";
 
 type Kind =
   | "prescribed-kinematics-case"
@@ -249,12 +259,14 @@ async function validateObservationCapture(
     "observation",
     "request",
     "receipt",
-    "notEvaluated",
+    "providerNotEvaluated",
+    "digitalThreadLimits",
     "lowering",
+    "runtime",
   ], "$prescribedKinematicsObservationCapture");
   if (
-    root.schemaVersion !== "prescribed-kinematics-observation-capture/2.0" ||
-    !Array.isArray(root.notEvaluated)
+    root.schemaVersion !== "prescribed-kinematics-observation-capture/4.0" ||
+    !Array.isArray(root.providerNotEvaluated)
   ) throw new TypeError("The prescribed-kinematics L3 capture is malformed.");
   const observation = await parsePrescribedKinematicsObservation(
     root.observation,
@@ -271,9 +283,17 @@ async function validateObservationCapture(
     "safety",
     "product fitness",
   ] as const;
-  if (JSON.stringify(root.notEvaluated) !== JSON.stringify(literal)) {
+  if (JSON.stringify(root.providerNotEvaluated) !== JSON.stringify(literal)) {
     throw new TypeError(
-      "The prescribed-kinematics L3 capture lost a literal not_evaluated boundary.",
+      "The prescribed-kinematics L3 capture lost the literal provider not_evaluated boundary.",
+    );
+  }
+  if (
+    deterministicJson(root.digitalThreadLimits) !==
+      deterministicJson(observation.limits)
+  ) {
+    throw new TypeError(
+      "The prescribed-kinematics L3 capture lost its code-owned Digital Thread coverage limit.",
     );
   }
   const loweringRecord = exactRecord(
@@ -313,6 +333,7 @@ async function validateObservationCapture(
     root.request,
     "$prescribedKinematicsObservationCapture.request",
   );
+  const runtime = parseRuntime(root.runtime);
   if (
     request.caseSha256 !== lowering.requestFingerprint.digest ||
     receipt.caseSha256 !== request.caseSha256 ||
@@ -323,12 +344,122 @@ async function validateObservationCapture(
     );
   }
   return Object.freeze({
-    schemaVersion: "prescribed-kinematics-observation-capture/2.0",
+    schemaVersion: "prescribed-kinematics-observation-capture/4.0",
     observation,
     request,
     receipt,
-    notEvaluated: literal,
+    providerNotEvaluated: literal,
+    digitalThreadLimits: observation.limits,
     lowering,
+    runtime,
+  });
+}
+
+function parseRuntime(value: unknown): PrescribedKinematicsRuntimeProvenance {
+  const root = exactRecord(value, [
+    "resolvedOperationPlanFingerprint",
+    "operationalCapabilityFingerprint",
+    "binding",
+    "adapter",
+    "profile",
+    "material",
+    "launchGroup",
+    "platformMode",
+  ], "$prescribedKinematicsObservationCapture.runtime");
+  const binding = exactRecord(
+    root.binding,
+    ["id", "version"],
+    "$prescribedKinematicsObservationCapture.runtime.binding",
+  );
+  const adapter = exactRecord(
+    root.adapter,
+    ["id", "version", "source"],
+    "$prescribedKinematicsObservationCapture.runtime.adapter",
+  );
+  const profile = root.profile === null ? null : exactRecord(
+    root.profile,
+    ["id", "version", "fingerprint"],
+    "$prescribedKinematicsObservationCapture.runtime.profile",
+  );
+  const material = exactRecord(
+    root.material,
+    ["unitId", "materialId", "imageDigest"],
+    "$prescribedKinematicsObservationCapture.runtime.material",
+  );
+  if (
+    root.platformMode !== "native" && root.platformMode !== "emulated" &&
+    root.platformMode !== "unavailable"
+  ) {
+    throw new TypeError(
+      "The prescribed-kinematics L3 runtime platform mode is invalid.",
+    );
+  }
+  return Object.freeze({
+    resolvedOperationPlanFingerprint: fingerprint(
+      root.resolvedOperationPlanFingerprint,
+      "$prescribedKinematicsObservationCapture.runtime.resolvedOperationPlanFingerprint",
+    ),
+    operationalCapabilityFingerprint: fingerprint(
+      root.operationalCapabilityFingerprint,
+      "$prescribedKinematicsObservationCapture.runtime.operationalCapabilityFingerprint",
+    ),
+    binding: {
+      id: safeId(
+        binding.id,
+        "$prescribedKinematicsObservationCapture.runtime.binding.id",
+      ),
+      version: exactVersionToken(
+        binding.version,
+        "$prescribedKinematicsObservationCapture.runtime.binding.version",
+      ),
+    },
+    adapter: {
+      id: safeId(
+        adapter.id,
+        "$prescribedKinematicsObservationCapture.runtime.adapter.id",
+      ),
+      version: exactVersionToken(
+        adapter.version,
+        "$prescribedKinematicsObservationCapture.runtime.adapter.version",
+      ),
+      source: sourceText(
+        adapter.source,
+        "$prescribedKinematicsObservationCapture.runtime.adapter.source",
+      ),
+    },
+    profile: profile === null ? null : {
+      id: safeId(
+        profile.id,
+        "$prescribedKinematicsObservationCapture.runtime.profile.id",
+      ),
+      version: exactVersionToken(
+        profile.version,
+        "$prescribedKinematicsObservationCapture.runtime.profile.version",
+      ),
+      fingerprint: profile.fingerprint === null ? null : fingerprint(
+        profile.fingerprint,
+        "$prescribedKinematicsObservationCapture.runtime.profile.fingerprint",
+      ),
+    },
+    material: {
+      unitId: safeId(
+        material.unitId,
+        "$prescribedKinematicsObservationCapture.runtime.material.unitId",
+      ),
+      materialId: safeId(
+        material.materialId,
+        "$prescribedKinematicsObservationCapture.runtime.material.materialId",
+      ),
+      imageDigest: digest(
+        material.imageDigest,
+        "$prescribedKinematicsObservationCapture.runtime.material.imageDigest",
+      ),
+    },
+    launchGroup: validateCapabilityRuntimeLaunchGroupReference(
+      root.launchGroup,
+      "$prescribedKinematicsObservationCapture.runtime.launchGroup",
+    ),
+    platformMode: root.platformMode,
   });
 }
 
@@ -341,4 +472,18 @@ function fingerprint(value: unknown, path: string): ContentFingerprint {
     throw new TypeError(`${path} must be a lower-case SHA-256 fingerprint.`);
   }
   return Object.freeze({ algorithm: "sha256", digest: root.digest });
+}
+
+function digest(value: unknown, path: string): string {
+  if (typeof value !== "string" || !/^[a-f0-9]{64}$/.test(value)) {
+    throw new TypeError(`${path} must be a lower-case SHA-256 digest.`);
+  }
+  return value;
+}
+
+function sourceText(value: unknown, path: string): string {
+  if (typeof value !== "string" || value.length === 0 || value.includes("\0")) {
+    throw new TypeError(`${path} must be non-empty text.`);
+  }
+  return value;
 }
