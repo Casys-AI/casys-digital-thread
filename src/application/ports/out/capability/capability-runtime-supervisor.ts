@@ -34,6 +34,7 @@ import type {
   EngineeringWorkItem,
 } from "../../../../domain/project/engineering-project.ts";
 import type {
+  CapabilityRuntimeAdminLock,
   CapabilityRuntimeCatalog,
   ProjectCapabilityPlan,
 } from "../../../control-plane/read-model/capability-runtime-catalog.ts";
@@ -88,6 +89,8 @@ export interface ProjectCapabilityRuntimeContext {
   readonly demand: ProjectCapabilityDemand;
   readonly plan: ProjectCapabilityPlan;
   readonly catalog: CapabilityRuntimeCatalog;
+  /** Exact local desired-state authority read with this context. */
+  readonly lock: CapabilityRuntimeAdminLock;
   readonly authorization: ProjectCapabilityRuntimeAuthorization | undefined;
 }
 

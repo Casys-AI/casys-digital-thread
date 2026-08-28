@@ -119,7 +119,9 @@ dispatch time, or that any engineering result has passed.
 
 `capability-runtime-admin-policy/1.0` can only disable or rank trusted binding ids.
 `capability-runtime-admin-lock/1.0` records exact unit id/version/manifest fingerprint
-and desired `inactive` or `active` state. Neither belongs in project or Thread state.
+and desired `inactive` or `active` state. It is append-only history with a durable head;
+`active` permits JIT but does not keep a service running. Neither belongs in project or
+Thread state. See [local runtime administration](local-runtime-administration.md).
 
 The next supervisor lot may consume this plan. It must journal before host mutation,
 observe recovery after interruption, use leases for JIT activation, preserve Thread/CAS/

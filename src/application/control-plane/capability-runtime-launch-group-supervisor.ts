@@ -76,8 +76,15 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
     readonly group: CapabilityRuntimeLaunchGroupReference;
     readonly projectId: string | null;
     readonly at: string;
+    /** Rechecks local authority under this exact host mutation mutex. */
+    readonly guard?: () => Promise<boolean>;
   }): Promise<CapabilityRuntimeLaunchGroupEnsureResult> {
     return await this.options.lock.withLock(async () => {
+      if (input.guard && !(await input.guard())) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime material preload is no longer authorized by the exact local envelope and lock.",
+        );
+      }
       const group = await this.#requireUsableGroup(input.group);
       await this.#assertNoPending(group);
       const before = await this.#observe(group);

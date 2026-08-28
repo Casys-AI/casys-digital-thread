@@ -399,7 +399,7 @@ async function input(
     lock: await validateCapabilityRuntimeAdminLock({
       schemaVersion: CAPABILITY_RUNTIME_ADMIN_LOCK_SCHEMA_VERSION,
       revision: 1,
-      previous: null,
+      previous: { algorithm: "sha256", digest: "a".repeat(64) },
       units: catalog.units.map((unit) => ({
         id: unit.id,
         version: unit.version,
