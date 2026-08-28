@@ -252,6 +252,12 @@ Deno.test("lifecycle coordinator journals before host mutation and recovery keep
     id: "lease:static",
     projectId: "project:capability-supervisor",
     bindingIds: ["calculix-static-structural"],
+    materialKeys: ["casys.calculix-worker\u0000calculix-worker"],
+    launchProfiles: [{
+      id: "test-runtime-profile",
+      version: "1",
+      fingerprint: FINGERPRINT,
+    }],
     acquiredAt: "2026-08-29T00:00:00.000Z",
     expiresAt: "2026-08-29T01:00:00.000Z",
   });
@@ -259,6 +265,11 @@ Deno.test("lifecycle coordinator journals before host mutation and recovery keep
     id: "journal:start",
     action: "runtime-start",
     material,
+    launchProfile: {
+      id: "test-runtime-profile",
+      version: "1",
+      fingerprint: FINGERPRINT,
+    },
     projectId: "project:capability-supervisor",
     plannedAt: "2026-08-29T00:00:00.000Z",
     previousObservation: null,

@@ -276,7 +276,15 @@ function parseUnit(value: unknown, path: string): AtomicCapabilityRuntimeUnit {
 function parseMaterial(value: unknown, path: string): AtomicCapabilityRuntimeMaterial {
   const root = exactRecord(
     value,
-    ["id", "kind", "imageReference", "platforms", "lifecycle", "effects"],
+    [
+      "id",
+      "kind",
+      "imageReference",
+      "platforms",
+      "lifecycle",
+      "launchProfile",
+      "effects",
+    ],
     path,
   );
   const kind = oneOf(
@@ -313,7 +321,22 @@ function parseMaterial(value: unknown, path: string): AtomicCapabilityRuntimeMat
     ),
     platforms,
     lifecycle,
+    launchProfile: root.launchProfile === null
+      ? null
+      : parseLaunchProfileReference(root.launchProfile, `${path}.launchProfile`),
     effects: parseEffects(root.effects, `${path}.effects`),
+  });
+}
+
+function parseLaunchProfileReference(
+  value: unknown,
+  path: string,
+): NonNullable<AtomicCapabilityRuntimeMaterial["launchProfile"]> {
+  const root = exactRecord(value, ["id", "version", "fingerprint"], path);
+  return deepFreeze({
+    id: safeId(root.id, `${path}.id`),
+    version: exactVersionToken(root.version, `${path}.version`),
+    fingerprint: fingerprint(root.fingerprint, `${path}.fingerprint`),
   });
 }
 

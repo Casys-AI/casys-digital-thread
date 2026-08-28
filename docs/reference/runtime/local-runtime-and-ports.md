@@ -6,7 +6,7 @@ Where things run, and which page owns the file census.
 
 | Need                                             | Page                                                                                    |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| File census, CAS roots, isolation spine          | [codebase map](../codebase/codebase-map.md)                                         |
+| File census, CAS roots, isolation spine          | [codebase map](../codebase/codebase-map.md)                                             |
 | Admitted CAD/Modelica microVM pattern            | [admitted source isolated execution](../pipeline/admitted-source-isolated-execution.md) |
 | H01 isolation, WAL, and Thread collection bounds | [isolation and Thread boundedness](isolation-and-thread-boundedness.md)                 |
 | Capability demand and packs                      | [capability packs](capability-packs/README.md)                                          |
@@ -18,9 +18,10 @@ Where things run, and which page owns the file census.
 
 The ordinary `deno task start` composes no local Build123d, Modelica, SPICE or CalculiX
 review/executor. `--local-execution` is no longer a console capability; it is rejected
-as an unknown argument, including through the supervised MCP passthrough. Until the
-separate capability-runtime supervisor exists, the corresponding registered operations
-remain literally `unavailable`.
+as an unknown argument, including through the supervised MCP passthrough. The generic H1
+capability-runtime supervisor now exists only as uncomposed local host mechanics. No
+first-party launch profile is enrolled and `server.ts` does not compose it, so the
+corresponding registered operations remain literally `unavailable`.
 
 The loopback automation task controls only the separate local-YOLO approval opt-in:
 
@@ -30,9 +31,10 @@ deno task start:yolo
 
 `start:yolo` expands to `server.ts --yolo`; it does not activate a runtime. Its task
 retains the existing explicit environment allowlist and
-`--no-prompt --frozen --node-modules-dir=auto` startup discipline. The future
-capability-runtime supervisor will select reviewed bindings and exact material through
-the atomic catalogue; provider/image/profile/argument selection remains server-owned.
+`--no-prompt --frozen --node-modules-dir=auto` startup discipline. When it is separately
+composed, the H1 capability-runtime supervisor selects reviewed bindings and exact
+material through the atomic catalogue; provider/image/profile/argument selection remains
+server-owned.
 
 The focused local gate exercises the same stateless HTTP surface against a temporary
 durable project store:
@@ -302,20 +304,20 @@ captures remain documentary evidence; they are not a live projector or executor 
 
 ## Runtime ownership
 
-| Data                         | Owner                             | Workspace access                                                                                                                                         |
-| ---------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| SysML and requirements       | SysON                             | Private provider MCP plus operation WAL/readback; outside local microVM isolation                                                                        |
-| Local Build123d execution    | Microsandbox microVM + DT broker  | Exact admitted bytes in; declared output handles out; no repository, secrets or canonical volumes                                                        |
+| Data                         | Owner                                       | Workspace access                                                                                                                                                                                                 |
+| ---------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SysML and requirements       | SysON                                       | Private provider MCP plus operation WAL/readback; outside local microVM isolation                                                                                                                                |
+| Local Build123d execution    | Microsandbox microVM + DT broker            | Exact admitted bytes in; declared output handles out; no repository, secrets or canonical volumes                                                                                                                |
 | Local module-assembly run    | Fixed-worker adapter in a dedicated microVM | Closed bundle in; atomic STEP + GLB out through the pinned local image. The microVM packages code-owned native dependencies; it is not caller-authored code and is replaceable behind the neutral assembler port |
-| Local Build123d output       | Recorded-analysis output CAS      | Publication-gated private STEP plus byte-free receipt; noncanonical and absent from Thread artifacts                                                     |
-| CAD exports                  | `exports` volume                  | Hash-attested build123d to CalculiX read-only exchange                                                                                                   |
-| Generic FEA staging          | CalculiX `calculix-inputs` volume | Digital Thread writes content-addressed STEP bytes; provider-private, non-authoritative, not evidence                                                    |
-| CalculiX recorded runs       | `calculix-runs` volume            | Identity-bound `calculix_run_get` plus exact `resources/read`; separate from CAD exchange                                                                |
-| Modelica execution           | Local Modelica microVM            | Admitted closed-subset and qualified kit via `casys/modelica-microsandbox-worker`. Port 3016 sidecar and `modelica-runs` volume are retired              |
-| ERP data                     | External ERPNext database         | Provider-native MCP from backend only                                                                                                                    |
-| Native `ThreadSnapshot`      | Immutable local file store        | Read-only projection in the native Workbench                                                                                                             |
-| `EngineeringProjectSnapshot` | Immutable active file store       | Intent, living brief, exact reviews, bounded runs and evidence references; CAS revisions                                                                 |
-| Live engineering activity    | Append-only local JSONL           | SSE projection; never canonical authority                                                                                                                |
+| Local Build123d output       | Recorded-analysis output CAS                | Publication-gated private STEP plus byte-free receipt; noncanonical and absent from Thread artifacts                                                                                                             |
+| CAD exports                  | `exports` volume                            | Hash-attested build123d to CalculiX read-only exchange                                                                                                                                                           |
+| Generic FEA staging          | CalculiX `calculix-inputs` volume           | Digital Thread writes content-addressed STEP bytes; provider-private, non-authoritative, not evidence                                                                                                            |
+| CalculiX recorded runs       | `calculix-runs` volume                      | Identity-bound `calculix_run_get` plus exact `resources/read`; separate from CAD exchange                                                                                                                        |
+| Modelica execution           | Local Modelica microVM                      | Admitted closed-subset and qualified kit via `casys/modelica-microsandbox-worker`. Port 3016 sidecar and `modelica-runs` volume are retired                                                                      |
+| ERP data                     | External ERPNext database                   | Provider-native MCP from backend only                                                                                                                                                                            |
+| Native `ThreadSnapshot`      | Immutable local file store                  | Read-only projection in the native Workbench                                                                                                                                                                     |
+| `EngineeringProjectSnapshot` | Immutable active file store                 | Intent, living brief, exact reviews, bounded runs and evidence references; CAS revisions                                                                                                                         |
+| Live engineering activity    | Append-only local JSONL                     | SSE projection; never canonical authority                                                                                                                                                                        |
 
 The Console browser harness forwards only reviewed Console tools. It is not a generic
 MCP proxy. The native browser receives ordinary linked JSON and no MCP credentials.

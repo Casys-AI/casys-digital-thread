@@ -393,6 +393,9 @@ function composeMaterial(
     imageReference,
     platforms,
     lifecycle: "persistent",
+    // H1 intentionally enrolls no real profile while provider publication is
+    // separate. A null reference is literal: this catalogue cannot launch it.
+    launchProfile: null,
     effects: {
       downloadBytes: null,
       storageBytes: null,
@@ -423,6 +426,7 @@ function microvmMaterial(
     imageReference,
     platforms,
     lifecycle: "ephemeral",
+    launchProfile: null,
     effects: {
       downloadBytes: null,
       storageBytes: null,
@@ -457,6 +461,7 @@ function ociImageMaterial(
     imageReference,
     platforms,
     lifecycle: "cache",
+    launchProfile: null,
     effects: {
       downloadBytes: null,
       storageBytes: null,

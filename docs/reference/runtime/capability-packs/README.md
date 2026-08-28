@@ -5,12 +5,13 @@ Audience: both · Diátaxis: reference · Kind: index
 Capability-pack pages separate project engineering demand from host runtime state. They
 do not add an agent-facing provider selector or give the Workbench runtime authority.
 
-| Page                                                       | Scope                                                                       |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------- |
-| [Project capability demand](project-capability-demand.md) | Exact provider-neutral ceiling from registered operation runtime demands |
-| [Atomic runtime catalogue](atomic-runtime-catalog.md) | Trusted bindings, concrete units and pure project host planning |
-| [Atomic runtime boundaries](atomic-runtime-boundaries.md) | Platform, licence, security, and retained-data limits for those units |
-| [Project capability authorization](project-capability-authorization.md) | Brief-bound operational ceiling, append-only amendments and read-only inspection |
+| Page                                                                           | Scope                                                                                       |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| [Project capability demand](project-capability-demand.md)                     | Exact provider-neutral ceiling from registered operation runtime demands                    |
+| [Atomic runtime catalogue](atomic-runtime-catalog.md)                         | Trusted bindings, concrete units and pure project host planning                             |
+| [Atomic runtime boundaries](atomic-runtime-boundaries.md)                     | Platform, licence, security, and retained-data limits for those units                       |
+| [Project capability authorization](project-capability-authorization.md)       | Brief-bound operational ceiling, append-only amendments and read-only inspection            |
+| [Host runtime supervision](host-runtime-supervision.md)                       | Generic immutable launch profiles, local leases, journaling and closed Compose host control |
 
 `Behave Foundation` remains a derived recipe name only: it is neither an installable
 pack nor a separate capability authority. The executable surface records a separate,
@@ -18,3 +19,5 @@ brief-bound operational authorization ledger. Runtime acquisition, JIT activatio
 leases remain a later supervisor concern; authorization itself never starts Docker or a
 worker. The proposed evolution is recorded separately in the
 [Project capability envelope RFC](../../../rfcs/capability-packs/project-capability-envelope.md).
+H1 now supplies the generic local mechanics, but no real launch profile is enrolled or
+composed into the server yet; it is still not an executable engineering surface.

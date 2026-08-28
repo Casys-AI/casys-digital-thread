@@ -11,6 +11,7 @@ import {
   type CapabilityRuntimeAdministrativeRemovalPlan,
   capabilityRuntimeBindingKey,
   type CapabilityRuntimeJournalEntry,
+  type CapabilityRuntimeJournalOutcome,
   type CapabilityRuntimeLease,
   type CapabilityRuntimeMaterialIdentity,
   capabilityRuntimeMaterialKey,
@@ -53,6 +54,7 @@ import type {
   ProjectCapabilityRuntimeContext,
   ProjectCapabilityRuntimeContextReader,
 } from "../ports/out/capability/capability-runtime-supervisor.ts";
+import { authorizeDurableCapabilityRuntimeHostMutation } from "./capability-runtime-host-authorization.ts";
 
 /** Narrow registry port: server composition owns exact operation descriptors. */
 export interface CapabilityRuntimeOperationRegistry {
@@ -361,7 +363,7 @@ function assertAuthorizationAllowsBinding(
   );
   if (allowedMatches.length !== 1) {
     throw new CapabilityRuntimeAuthorizationError(
-        `Project capability authorization does not admit binding ${resolved.binding.id}@${resolved.binding.version} exactly once.`,
+      `Project capability authorization does not admit binding ${resolved.binding.id}@${resolved.binding.version} exactly once.`,
     );
   }
   const allowed = allowedMatches[0]!;
@@ -527,21 +529,47 @@ export class CapabilityRuntimeLifecycleCoordinator {
   async mutate(
     entry: CapabilityRuntimeJournalEntry,
     removalPlan?: CapabilityRuntimeAdministrativeRemovalPlan,
-  ): Promise<void> {
+  ): Promise<CapabilityRuntimeJournalOutcome> {
     assertMutationContract(entry, removalPlan);
     await this.journal.appendBeforeMutation(entry);
-    await this.host.mutate({
-      entry,
-      ...(removalPlan ? { removalPlan } : {}),
-    });
+    let outcome: CapabilityRuntimeJournalOutcome;
+    try {
+      const authorization = await authorizeDurableCapabilityRuntimeHostMutation(
+        entry,
+        this.journal,
+      );
+      outcome = await this.host.mutate({
+        authorization,
+        ...(removalPlan ? { removalPlan } : {}),
+      });
+    } catch (error) {
+      outcome = {
+        schemaVersion: "capability-runtime-host-mutation-outcome/1.0",
+        journalEntryId: entry.id,
+        // This is recorded only after the mutator has thrown.  A planned
+        // timestamp is intent metadata, never evidence that a command ended.
+        recordedAt: new Date().toISOString(),
+        status: "uncertain",
+        observation: null,
+        detail: compactHostError(error),
+      };
+    }
+    if (outcome.journalEntryId !== entry.id) {
+      throw new CapabilityRuntimeAuthorizationError(
+        "Capability runtime host returned an outcome for another journal entry.",
+      );
+    }
+    await this.journal.appendOutcome(outcome);
+    return outcome;
   }
 
   async recover(
     materials: readonly CapabilityRuntimeMaterialIdentity[],
   ): Promise<CapabilityRuntimeRecovery> {
-    const [states, journal] = await Promise.all([
+    const [states, journal, outcomes] = await Promise.all([
       this.states.observe(materials),
       this.journal.list(),
+      this.journal.listOutcomes(),
     ]);
     return recoverCapabilityRuntime(
       materials.flatMap((material) => {
@@ -549,8 +577,16 @@ export class CapabilityRuntimeLifecycleCoordinator {
         return state ? [{ material, state }] : [];
       }),
       journal,
+      outcomes,
     );
   }
+}
+
+function compactHostError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.length > 512
+    ? `${message.slice(0, 509)}...`
+    : message || "Host mutation threw.";
 }
 
 function assertMutationContract(

@@ -2,6 +2,7 @@
 
 import {
   type CapabilityRuntimeJournalEntry,
+  type CapabilityRuntimeJournalOutcome,
   type CapabilityRuntimeLease,
   type CapabilityRuntimeMaterialIdentity,
   capabilityRuntimeMaterialKey,
@@ -12,6 +13,7 @@ import type {
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import type {
+  AuthorizedCapabilityRuntimeHostMutation,
   CapabilityRuntimeHostMutator,
   CapabilityRuntimeJournal,
   CapabilityRuntimeLeaseStore,
@@ -66,6 +68,7 @@ export class InMemoryCapabilityRuntimeStateObserver
 
 export class InMemoryCapabilityRuntimeJournal implements CapabilityRuntimeJournal {
   #entries: CapabilityRuntimeJournalEntry[] = [];
+  #outcomes: CapabilityRuntimeJournalOutcome[] = [];
 
   async appendBeforeMutation(entry: CapabilityRuntimeJournalEntry): Promise<void> {
     if (this.#entries.some((candidate) => candidate.id === entry.id)) {
@@ -76,6 +79,23 @@ export class InMemoryCapabilityRuntimeJournal implements CapabilityRuntimeJourna
 
   async list(): Promise<readonly CapabilityRuntimeJournalEntry[]> {
     return structuredClone(this.#entries);
+  }
+
+  async appendOutcome(outcome: CapabilityRuntimeJournalOutcome): Promise<void> {
+    if (
+      this.#outcomes.some((candidate) =>
+        candidate.journalEntryId === outcome.journalEntryId
+      )
+    ) {
+      throw new Error(
+        `Capability runtime journal outcome ${outcome.journalEntryId} already exists.`,
+      );
+    }
+    this.#outcomes.push(structuredClone(outcome));
+  }
+
+  async listOutcomes(): Promise<readonly CapabilityRuntimeJournalOutcome[]> {
+    return structuredClone(this.#outcomes);
   }
 }
 
@@ -88,6 +108,11 @@ export class InMemoryCapabilityRuntimeLeaseStore
       throw new Error(`Capability runtime lease ${lease.id} already exists.`);
     }
     this.#leases.set(lease.id, structuredClone(lease));
+  }
+
+  async read(leaseId: string): Promise<CapabilityRuntimeLease | undefined> {
+    const lease = this.#leases.get(leaseId);
+    return lease ? structuredClone(lease) : undefined;
   }
 
   async release(leaseId: string): Promise<void> {
@@ -111,9 +136,21 @@ export class InMemoryCapabilityRuntimeHostMutator
   }[] = [];
 
   async mutate(input: {
-    readonly entry: CapabilityRuntimeJournalEntry;
+    readonly authorization: AuthorizedCapabilityRuntimeHostMutation;
     readonly removalPlan?: CapabilityRuntimeAdministrativeRemovalPlan;
-  }): Promise<void> {
-    this.calls.push(structuredClone(input));
+  }): Promise<CapabilityRuntimeJournalOutcome> {
+    const entry = input.authorization.entry;
+    this.calls.push(structuredClone({
+      entry,
+      ...(input.removalPlan ? { removalPlan: input.removalPlan } : {}),
+    }));
+    return {
+      schemaVersion: "capability-runtime-host-mutation-outcome/1.0",
+      journalEntryId: entry.id,
+      recordedAt: entry.plannedAt,
+      status: "succeeded",
+      observation: null,
+      detail: null,
+    };
   }
 }

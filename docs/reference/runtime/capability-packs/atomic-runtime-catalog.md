@@ -63,6 +63,12 @@ retained by future runtime removal; this contract does not permit
 later reviewed material can declare them explicitly; this first-party catalogue simply
 declares none.
 
+Each material also carries either a literal `null` launch profile or only an exact
+launch-profile id/version/fingerprint reference. The immutable body remains in the
+server-only H1 profile registry; catalogue/project data cannot carry Compose commands,
+provider endpoints, tools, arguments or secret values. Current first-party materials are
+all literal `null`: no profile is enrolled merely because an image exists locally.
+
 ## Closed planning states
 
 Binding selection is deterministic only when policy identifies one qualified active

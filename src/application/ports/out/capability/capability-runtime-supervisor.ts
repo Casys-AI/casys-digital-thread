@@ -15,11 +15,16 @@ import type {
 import type {
   CapabilityRuntimeAdministrativeRemovalPlan,
   CapabilityRuntimeJournalEntry,
+  CapabilityRuntimeJournalOutcome,
   CapabilityRuntimeLease,
   CapabilityRuntimeMaterialIdentity,
   CapabilityRuntimeObservedState,
   ResolvedCapabilityRuntimeOperation,
 } from "../../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type {
+  CapabilityRuntimeLaunchProfile,
+  CapabilityRuntimeLaunchProfileReference,
+} from "../../../../domain/capability/runtime/capability-runtime-host.ts";
 import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
 import type {
   EngineeringAgentRun,
@@ -94,12 +99,16 @@ export interface CapabilityRuntimeStateObserver {
 /** Append-only durable intent log. Entries are written before host mutation. */
 export interface CapabilityRuntimeJournal {
   appendBeforeMutation(entry: CapabilityRuntimeJournalEntry): Promise<void>;
+  appendOutcome(outcome: CapabilityRuntimeJournalOutcome): Promise<void>;
   list(): Promise<readonly CapabilityRuntimeJournalEntry[]>;
+  listOutcomes(): Promise<readonly CapabilityRuntimeJournalOutcome[]>;
 }
 
 /** Shared leases make JIT activation reference-countable without project writes. */
 export interface CapabilityRuntimeLeaseStore {
   acquire(lease: CapabilityRuntimeLease): Promise<void>;
+  /** Reads the exact durable claim before an operation may release it. */
+  read(leaseId: string): Promise<CapabilityRuntimeLease | undefined>;
   release(leaseId: string): Promise<void>;
   listActive(at: string): Promise<readonly CapabilityRuntimeLease[]>;
 }
@@ -110,9 +119,37 @@ export interface CapabilityRuntimeLeaseStore {
  */
 export interface CapabilityRuntimeHostMutator {
   mutate(input: {
-    readonly entry: CapabilityRuntimeJournalEntry;
+    readonly authorization: AuthorizedCapabilityRuntimeHostMutation;
     readonly removalPlan?: CapabilityRuntimeAdministrativeRemovalPlan;
-  }): Promise<void>;
+  }): Promise<CapabilityRuntimeJournalOutcome>;
+}
+
+/**
+ * Opaque application capability minted only after an exact journal intent is
+ * durable and has no terminal outcome.  Adapters consume it at most once.
+ */
+export interface AuthorizedCapabilityRuntimeHostMutation {
+  readonly entry: CapabilityRuntimeJournalEntry;
+}
+
+/** Exact server-owned registry for immutable profiles; agents never see a body. */
+export interface CapabilityRuntimeLaunchProfileRegistry {
+  require(
+    reference: CapabilityRuntimeLaunchProfileReference,
+  ): Promise<CapabilityRuntimeLaunchProfile>;
+  list(): Promise<readonly CapabilityRuntimeLaunchProfile[]>;
+}
+
+/** Secret availability only. Secret values never cross this port. */
+export interface CapabilityRuntimeSecretSlotObserver {
+  observe(
+    slots: readonly string[],
+  ): Promise<ReadonlyMap<string, "available" | "unavailable" | "unknown">>;
+}
+
+/** Cross-process host mutation serialization, separate from project leases. */
+export interface CapabilityRuntimeHostMutationLock {
+  withLock<T>(operation: () => Promise<T>): Promise<T>;
 }
 
 /**

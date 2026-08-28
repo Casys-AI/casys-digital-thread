@@ -6,6 +6,9 @@ import type {
   RequiredEngineeringCapability,
 } from "../../../domain/capability/engineering-capability.ts";
 import type { ProjectCapabilityDemand } from "../../../domain/capability/project-capability-demand.ts";
+import type {
+  CapabilityRuntimeLaunchProfileReference,
+} from "../../../domain/capability/runtime/capability-runtime-host.ts";
 
 export const CAPABILITY_RUNTIME_CATALOG_SCHEMA_VERSION =
   "capability-runtime-catalog/1.0" as const;
@@ -36,6 +39,12 @@ export interface AtomicCapabilityRuntimeMaterial {
   /** Empty only when no reviewed platform claim exists. */
   readonly platforms: readonly CapabilityRuntimePlatform[];
   readonly lifecycle: "persistent" | "ephemeral" | "cache";
+  /**
+   * Host catalogue carries only this exact reference.  The immutable launch
+   * body remains in the server-side profile registry and is never project data.
+   * `null` is literal until a separately reviewed profile is enrolled.
+   */
+  readonly launchProfile: CapabilityRuntimeLaunchProfileReference | null;
   readonly effects: CapabilityRuntimeHostEffects;
 }
 
