@@ -1,5 +1,5 @@
 /**
- * Maintainer-only preflight for the pinned HTTP mcp-calculix 0.8.1 contract.
+ * Maintainer-only preflight for the pinned HTTP mcp-calculix 0.8.2 contract.
  *
  * This is deliberately not a generic MCP client. It can issue only GET
  * /health, server/discover and tools/list against the code-owned loopback
@@ -14,11 +14,12 @@ import type { ContentFingerprint } from "../../src/domain/kernel/primitives.ts";
 
 const MANIFEST_PATH = new URL("../../config/mcp-fleet.json", import.meta.url);
 const MCP_PROTOCOL_VERSION = "2026-07-28";
-const IMAGE_DIGEST = "c38fe50eadcca77180c2bc060c073035af62924fa2b927d3f8005b6060be76d4";
+const IMAGE_DIGEST = "ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8";
 const IMAGE = `ghcr.io/casys-ai/mcp-calculix@sha256:${IMAGE_DIGEST}`;
-const VERSION = "0.8.1";
-const REVISION = "e4c3b8284c3ac17c71bfd1b53dfdcb0f2f4262da";
+const VERSION = "0.8.2";
+const REVISION = "6fb30a75c4876ad469cc472ffa8ca691e0a6b58b";
 const RESULTS_VIEWER = "ui://mcp-calculix/results-viewer";
+export const MAX_ORDINARY_SOLVE_TIMEOUT_MS = 120_000;
 
 export const CALCULIX_ENDPOINT = {
   mcpUrl: "http://127.0.0.1:3015/mcp",
@@ -36,9 +37,9 @@ export const CALCULIX_EXPECTED_TOOLS = [
   "calculix_solve_static_recorded",
 ] as const;
 
-/** SHA-256 over the 0.8.1 discovery identity and all listed tool schemas. */
+/** SHA-256 over the 0.8.2 discovery identity and all listed tool schemas. */
 export const CALCULIX_EXPECTED_CONTRACT_SHA256 =
-  "b4e02d82f30aa1275c29716d4e8e1bd680bf1959485cb4eb388bfa8e937c79d4";
+  "8e8b5c007299818908d424413483addf7fdde5928175c80d2817232b85839ed4";
 
 export interface ProbeCalculixContractOptions {
   /** Test seam only. Production reads config/mcp-fleet.json. */
@@ -69,6 +70,7 @@ export interface CalculixContractPreflight {
     readonly version?: string;
     readonly revision?: string;
     readonly imageIndexDigest?: string;
+    readonly ordinarySolveTimeoutMaxMs?: number;
     readonly expectedTools: readonly string[];
     readonly expectedViews: readonly string[];
     readonly contractFingerprint?: string;
@@ -132,7 +134,7 @@ export async function probeCalculixContract(
       baseline,
       "contract-divergent",
       {},
-      "The desired manifest no longer matches the reviewed mcp-calculix 0.8.1 contract; no alternate endpoint was probed.",
+      "The desired manifest no longer matches the reviewed mcp-calculix 0.8.2 contract; no alternate endpoint was probed.",
     );
   }
 
@@ -192,7 +194,7 @@ export async function calculixContractFingerprint(
     serverInfo.version !== VERSION
   ) {
     throw new ContractDivergenceError(
-      "Health and discovery do not expose one concordant mcp-calculix 0.8.1 identity.",
+      "Health and discovery do not expose one concordant mcp-calculix 0.8.2 identity.",
     );
   }
   const supportedVersions = strings(
@@ -218,6 +220,20 @@ export async function calculixContractFingerprint(
     throw new ContractDivergenceError(
       "tools/list does not expose exactly the reviewed mcp-calculix tool surface.",
     );
+  }
+
+  for (const name of ordinarySolveNames()) {
+    const inputSchema = record(byName.get(name)?.inputSchema, `${name} inputSchema`);
+    const properties = record(inputSchema.properties, `${name} inputSchema properties`);
+    const timeout = record(properties.timeout_ms, `${name} timeout_ms schema`);
+    if (
+      timeout.type !== "integer" || timeout.minimum !== 1 ||
+      timeout.maximum !== MAX_ORDINARY_SOLVE_TIMEOUT_MS
+    ) {
+      throw new ContractDivergenceError(
+        `${name} timeout_ms must be an integer in [1, ${MAX_ORDINARY_SOLVE_TIMEOUT_MS}].`,
+      );
+    }
   }
 
   const viewerTools = CALCULIX_EXPECTED_TOOLS.filter((name) =>
@@ -269,6 +285,9 @@ function parseDesiredIdentity(
   const version = string(identity.version);
   const revision = string(identity.revision);
   const imageIndexDigest = string(identity.imageIndexDigest);
+  const ordinarySolveTimeoutMaxMs = positiveInteger(
+    identity.ordinarySolveTimeoutMaxMs,
+  );
   const contractFingerprint = string(identity.contractFingerprint);
   return {
     id: string(calculix.id),
@@ -279,6 +298,7 @@ function parseDesiredIdentity(
     version,
     revision,
     imageIndexDigest,
+    ordinarySolveTimeoutMaxMs,
     expectedTools,
     expectedViews,
     contractFingerprint,
@@ -289,6 +309,7 @@ function parseDesiredIdentity(
       image === IMAGE &&
       version === VERSION && revision === REVISION &&
       imageIndexDigest === IMAGE_DIGEST &&
+      ordinarySolveTimeoutMaxMs === MAX_ORDINARY_SOLVE_TIMEOUT_MS &&
       contractFingerprint === CALCULIX_EXPECTED_CONTRACT_SHA256 &&
       labels["org.opencontainers.image.source"] ===
         "https://github.com/Casys-AI/mcp-calculix" &&
@@ -471,6 +492,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function string(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function positiveInteger(value: unknown): number | undefined {
+  return Number.isSafeInteger(value) && (value as number) > 0
+    ? value as number
+    : undefined;
+}
+
+function ordinarySolveNames(): readonly string[] {
+  return [
+    "calculix_solve_static",
+    "calculix_solve_modal",
+    "calculix_solve_buckling",
+    "calculix_solve_creep",
+    "calculix_solve_coupled_thermal",
+  ];
 }
 
 if (import.meta.main) {

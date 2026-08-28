@@ -145,7 +145,7 @@ services:
     # CalculiX has its own release and durable-record contract. In particular,
     # its published entrypoint already owns HTTP startup; do not pass the
     # legacy engineering-toolchain subcommand here.
-    image: "${MCP_CALCULIX_IMAGE:-ghcr.io/casys-ai/mcp-calculix@sha256:c38fe50eadcca77180c2bc060c073035af62924fa2b927d3f8005b6060be76d4}"
+    image: "${MCP_CALCULIX_IMAGE:-ghcr.io/casys-ai/mcp-calculix@sha256:ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8}"
     ports:
       - "127.0.0.1:3015:3015"
     environment:

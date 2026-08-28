@@ -45,15 +45,6 @@ exercise that complete local microVM path end to end.
 | `gates/verify-ngspice-microsandbox-worker.ts`     | Direct invocation (`--run`)                                                  | temp/image | Docker deny-all ngspice worker preflight; not Microsandbox cache prep and not the product run.                                     |
 | `gates/prepare-ngspice-microsandbox.ts`           | `prepare:ngspice:microsandbox`                                               | cache      | Idempotent import of the Docker source digest into the Microsandbox cache under the runtime manifest pin. No pull, no product run. |
 
-## probes/ — read-only provider discovery
-
-| Script                                     | Task                        | Effect | Scope                                                                                                                                       |
-| ------------------------------------------ | --------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `probes/inspect-behave-capability-pack.ts` | `capability:behave:inspect` | read   | Print the reviewed Behave capability census, including the separate fixed local CalculiX microVM profile; it does not execute that runtime. |
-| `probes/doctor-behave-foundation.ts`       | `capability:behave:doctor`  | read   | Inspect the Behave foundation and host prerequisites without starting or changing a provider or local microVM.                              |
-| `probes/probe-calculix-contract.ts`        | `probe:calculix-contract`   | read   | Pinned HTTP `mcp-calculix` 0.8.1 health, discovery and tool-schema preflight. It never sends `tools/call`; it is not product static `@3`.   |
-| `probes/probe-spice-contract.ts`           | `probe:spice-contract`      | read   | Pinned HTTP `mcp-spice` health, discovery and tool-schema preflight.                                                                        |
-
 ## release/ — source-only public-release inventory
 
 These scripts generate and verify an ignored, tag-labelled source archive inventory.
@@ -75,8 +66,11 @@ entry point.
 | ---------------------------------------------- | ------------------------------------ | ----- |
 | `probes/capture-build123d-api-inventory.ts`    | (direct `deno run`)                  | write |
 | `probes/capture-syson-model-inventory.ts`      | `thread:capture-syson-inventory`     | write |
+| `probes/doctor-behave-foundation.ts`           | `capability:behave:doctor`           | read  |
+| `probes/inspect-behave-capability-pack.ts`     | `capability:behave:inspect`          | read  |
 | `probes/mcp-call.ts`                           | `mcp:call`                           | write |
 | `probes/probe-constraint-solver.ts`            | `probe:constraint-solver`            | read  |
+| `probes/probe-calculix-contract.ts`            | `probe:calculix-contract`            | read  |
 | `probes/probe-spice-contract.ts`               | `probe:spice-contract`               | read  |
 | `probes/probe-architecture-attribute-value.ts` | `probe:architecture-attribute-value` | write |
 | `probes/probe-archive-cascade.ts`              | `probe:archive-cascade`              | read  |

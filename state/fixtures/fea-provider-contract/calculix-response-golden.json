@@ -1,13 +1,13 @@
 {
   "meta": {
-    "capturedFromImageDigest": "c38fe50eadcca77180c2bc060c073035af62924fa2b927d3f8005b6060be76d4",
-    "capturedAt": "2026-08-28T15:19:47.326Z",
+    "capturedFromImageDigest": "ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8",
+    "capturedAt": "2026-08-28T16:12:47.570Z",
     "note": "Captured from live CalculiX provider. Refresh with `deno task capture:fea:contract-golden` after each image update.",
     "stepSource": "build123d_export ephemeral box"
   },
   "request": {
     "exportAttestation": {
-      "path": "/exports/fea-contract-golden-6bfda01ecfda4898af529ef91805e27f.step",
+      "path": "/exports/fea-contract-golden-fd74b856a50243b8bec72e4ddb9005f8.step",
       "sha256": "a911df0e1ed08b5567a23c67c5d18571673a5af7eb6f75f7165f6558de89980c",
       "bytes": 23641
     },
@@ -31,8 +31,8 @@
     "schemaVersion": "2.0",
     "kind": "static-solve",
     "inputArtifact": {
-      "path": "/tmp/calculix-input-8ccd019d1d4f8f59/input.step",
-      "sourcePath": "/exports/fea-contract-golden-6bfda01ecfda4898af529ef91805e27f.step",
+      "path": "/tmp/calculix-input-a695bcdd7cd0ad75/input.step",
+      "sourcePath": "/exports/fea-contract-golden-fd74b856a50243b8bec72e4ddb9005f8.step",
       "sha256": "a911df0e1ed08b5567a23c67c5d18571673a5af7eb6f75f7165f6558de89980c",
       "bytes": 23641
     },
