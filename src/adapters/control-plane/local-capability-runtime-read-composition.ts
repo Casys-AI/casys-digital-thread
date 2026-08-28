@@ -136,6 +136,7 @@ export async function createLocalCapabilityRuntimeReadComposition(
     catalog,
     states,
     hostIdentity,
+    composeObserver,
   );
   const contexts = new ProjectCapabilityRuntimeContextCompiler({
     registry: { list: listRegisteredEngineeringOperations },

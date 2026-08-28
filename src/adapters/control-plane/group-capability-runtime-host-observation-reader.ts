@@ -8,7 +8,10 @@
  * host claim.
  */
 
-import type { CapabilityRuntimeStateObserver } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import type {
+  CapabilityRuntimeHostPlatformObserver,
+  CapabilityRuntimeStateObserver,
+} from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import type { CapabilityRuntimeHostObservationReader } from "../../application/control-plane/project-capability-runtime-context-compiler.ts";
 import {
   CAPABILITY_RUNTIME_HOST_OBSERVATION_SCHEMA_VERSION,
@@ -24,6 +27,7 @@ export class GroupCapabilityRuntimeHostObservationReader
     private readonly catalog: CapabilityRuntimeCatalog,
     private readonly states: CapabilityRuntimeStateObserver,
     private readonly identity: CapabilityRuntimeHostIdentityReader,
+    private readonly platform: CapabilityRuntimeHostPlatformObserver,
   ) {}
 
   async read(): Promise<CapabilityRuntimeHostObservation> {
@@ -43,7 +47,7 @@ export class GroupCapabilityRuntimeHostObservationReader
     return {
       schemaVersion: CAPABILITY_RUNTIME_HOST_OBSERVATION_SCHEMA_VERSION,
       identityFingerprint: await this.identity.read(),
-      platform: Deno.build.arch === "aarch64" ? "linux/arm64" : "linux/amd64",
+      platform: await this.platform.observePlatform(),
       images: materials.filter((material) =>
         observed.get(capabilityRuntimeMaterialKey(material.identity))?.material ===
           "installed"

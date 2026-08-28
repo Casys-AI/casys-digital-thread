@@ -147,6 +147,18 @@ Deno.test("the local qualification store is canonical, append-only, and rejects 
     await store.append(value);
     assertEquals(await store.read(value.fingerprint), value);
     assertEquals(await store.list(), [value]);
+
+    // `list` may overlap the private durable-write window; only the exact
+    // helper basename is ignorable, never arbitrary local clutter.
+    await Deno.writeTextFile(
+      `${directory}/.00000000-0000-4000-8000-000000000000.tmp`,
+      "partial private write",
+    );
+    assertEquals(await store.list(), [value]);
+    await Deno.writeTextFile(`${directory}/foreign.tmp`, "foreign");
+    await assertRejects(() => store.list(), Error, "unsupported entry foreign.tmp");
+    await Deno.remove(`${directory}/foreign.tmp`);
+
     assertEquals(JSON.stringify(value).includes("headers"), false);
     assertEquals(JSON.stringify(value).includes("payload"), false);
     assertEquals(JSON.stringify(value).includes("token"), false);

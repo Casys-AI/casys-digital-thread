@@ -24,10 +24,12 @@ material response, or missing response for an owned material is rejected. A mate
 which no local observer owns remains literally `unavailable` in the Workbench rather
 than being guessed present or absent.
 
-The factual observation contains only the local platform, installed exact images and an
-opaque stable local-host identity fingerprint. It does not declare global emulation. The
-same local read composition overlays the immutable catalogue with the append-only
-qualification-attestation store at
+The factual observation contains only the Docker daemon's exact reported platform,
+installed exact images and an opaque stable local-host identity fingerprint. It does
+not infer a platform from the Deno controller process and it does not declare global
+emulation. An unreadable or unsupported daemon platform fails closed: it is not guessed
+from the Mac architecture. The same local read composition overlays the immutable
+catalogue with the append-only qualification-attestation store at
 `state/local/capability-runtime-host/qualification-attestations/`. Queue, session and
 Workbench contexts therefore see the same effective per-material modes. An attestation
 must match the current binding, unit manifest, digest, profile, contract, launch group

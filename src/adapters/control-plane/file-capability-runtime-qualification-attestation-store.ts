@@ -9,7 +9,10 @@ import {
   validateCapabilityRuntimeBindingQualificationAttestation,
 } from "../../domain/capability/runtime/capability-runtime-binding-qualification-attestation.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
-import { writeNewAttemptFileDurably } from "../shared/wal/durable-attempt-file-writes.ts";
+import {
+  isDurableAttemptTemporaryFileName,
+  writeNewAttemptFileDurably,
+} from "../shared/wal/durable-attempt-file-writes.ts";
 
 const DEFAULT_DIRECTORY =
   "state/local/capability-runtime-host/qualification-attestations";
@@ -94,6 +97,10 @@ export class FileCapabilityRuntimeQualificationAttestationStore
         left.name.localeCompare(right.name)
       )
     ) {
+      // A list may overlap the short private-write window before `link` makes
+      // the canonical immutable name visible. Ignore only this writer's exact
+      // UUID temporary pattern; every other foreign entry remains corruption.
+      if (entry.isFile && isDurableAttemptTemporaryFileName(entry.name)) continue;
       if (!entry.isFile || !entry.name.endsWith(".json")) {
         throw new Error(
           `Capability runtime qualification store contains unsupported entry ${entry.name}.`,

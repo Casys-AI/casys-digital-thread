@@ -100,6 +100,10 @@ revocation is monotone: it makes that material unavailable rather than being sor
 by timestamps or hashes. A Chrono Linux/amd64 emulation attestation therefore does not
 qualify any other AMD64 image, binding, profile or host.
 
+The local attestation ledger is append-only. A concurrent reader ignores only the
+private UUID `.tmp` basename emitted by the durable write primitive before its atomic
+link; any other unexpected entry remains a literal store-integrity failure.
+
 Before selection, the planner recalculates every atomic unit manifest from its id,
 version, and complete material body. A stale fingerprint is refused. A lock applies only
 when its id, version and manifest fingerprint all match; an unmatched lock is a literal
