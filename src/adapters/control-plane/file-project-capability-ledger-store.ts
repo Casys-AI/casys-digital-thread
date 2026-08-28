@@ -214,9 +214,15 @@ export class FileProjectCapabilityLedgerStore implements ProjectCapabilityLedger
     }
     let pending: ProjectCapabilityLedger;
     try {
-      pending = await validateLedger(JSON.parse(
-        await Deno.readTextFile(this.pendingPath(projectId, expectedRevision)),
-      ));
+      const bytes = await Deno.readTextFile(
+        this.pendingPath(projectId, expectedRevision),
+      );
+      pending = await validateLedger(JSON.parse(bytes));
+      if (bytes !== `${deterministicJson(pending)}\n`) {
+        throw new ProjectCapabilityLedgerConflictError(
+          `Capability ledger ${projectId} pending revision is not canonical exact bytes.`,
+        );
+      }
     } catch (error) {
       if (error instanceof Deno.errors.NotFound) {
         const refreshed = await this.get(projectId);
@@ -354,9 +360,13 @@ export class FileProjectCapabilityLedgerStore implements ProjectCapabilityLedger
     const pendingPath = this.pendingPath(projectId, revision);
     let recovered: ProjectCapabilityLedger;
     try {
-      recovered = await validateLedger(
-        JSON.parse(await Deno.readTextFile(pendingPath)),
-      );
+      const bytes = await Deno.readTextFile(pendingPath);
+      recovered = await validateLedger(JSON.parse(bytes));
+      if (bytes !== `${deterministicJson(recovered)}\n`) {
+        throw new ProjectCapabilityLedgerConflictError(
+          `Capability ledger ${projectId} revision ${revision} pending bytes are not canonical.`,
+        );
+      }
     } catch (error) {
       if (error instanceof Deno.errors.NotFound) {
         const published = await this.attestPublishedClaim(projectId, claim);

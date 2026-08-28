@@ -140,6 +140,15 @@ Deno.test("capability ledger enumerates an exact first pending revision without 
       (await store.listPending()).map((ledger) => ledger.ledgerFingerprint),
       [pending.ledgerFingerprint],
     );
+    await Deno.writeTextFile(
+      `${directory}/orphan-pending/0000000001.json.pending`,
+      `${JSON.stringify(pending, null, 2)}\n`,
+    );
+    await assertRejects(
+      () => store.listPending(),
+      Error,
+      "not canonical exact bytes",
+    );
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
