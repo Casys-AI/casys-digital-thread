@@ -10,9 +10,9 @@ that the server has selected from its trusted catalogue and local policy.
 The caller never sends a capability, provider, image, endpoint, tool or argument. The
 proposal contains the semantic needs derived from the pending brief, one policy-selected
 binding candidate per resolved need, atomic unit versions/manifest identities, OCI
-digests, platform mode, storage estimates and declared host effects. Secret slot names
-may be shown; secret values never are. A qualification or platform blocker remains
-literal while its exact candidate stays visible for one approval decision.
+digests, current runtime availability, storage estimates and declared host effects.
+Secret slot names may be shown; secret values never are. A qualification or platform
+blocker remains literal while its exact candidate stays visible for one approval decision.
 
 ## Brief confirmation
 
@@ -25,13 +25,16 @@ proposal and receipt match exactly. A prepared record alone is not authority.
 
 The full proposal fingerprint also binds the exact brief basis, so it is the value used
 to confirm that particular brief revision. Separately, the server derives an internal
-ceiling equivalence fingerprint. It excludes only the brief basis and editorial proposal
-provenance, while retaining the intent fingerprint, requirements, selected
-bindings/profiles, unit manifests/digests, material platform modes, effects, licences,
-byte estimates, status, activation and blockers. An editorial brief revision can reuse
-an already-authorized ceiling only when that exact equivalence holds and the new brief
-has its own exact approval receipt. Cache presence and the runtime administration lock
-are excluded from both fingerprints.
+ceiling equivalence fingerprint. It retains the intent fingerprint, requirements, exact
+candidate binding/adapter/profile, unit manifests/digests, effects, licences and byte
+estimates. It deliberately excludes current availability, candidate qualification,
+runtime mode, activation and blockers: those are local observations, not a new human
+choice. Thus an approved unqualified candidate may later become exactly qualified on the
+same host without another amendment; changing its binding, profile, manifest, digest or
+host effect still requires one. An editorial brief revision can reuse an
+already-authorized ceiling only when that exact equivalence holds and the new brief has
+its own exact approval receipt. Cache presence and the runtime administration lock are
+excluded from both fingerprints.
 
 ## Ledger and later change
 

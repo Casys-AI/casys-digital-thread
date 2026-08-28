@@ -37,6 +37,8 @@ import type { CapabilityRuntimeHostMutationLock } from "../ports/out/capability/
 import type { EngineeringOperationRegistry } from "../../orchestration/operations/operation-contract.ts";
 import type { BriefCapabilityIntentRouteTable } from "../../orchestration/operations/brief-capability-intent-routes.ts";
 import type { CapabilityRuntimePreloadScheduler } from "./capability-runtime-preload-scheduler.ts";
+import type { CapabilityRuntimeQualificationAttestationStore } from "../ports/out/capability/capability-runtime-qualification-attestation-store.ts";
+import { evaluateCapabilityRuntimeQualifications } from "./evaluate-capability-runtime-qualifications.ts";
 import type {
   CapabilityRuntimeAdminLockReader,
   CapabilityRuntimeAdminPolicyReader,
@@ -64,9 +66,14 @@ export interface ProjectCapabilityAuthorizationServiceDependencies {
    * Present only in the local control-plane composition. It advances the
    * host desired-state history under the exact same mutex used by runtime
    * acquisition. Fixed fixtures remain read-only in focused unit tests.
-   */
+  */
   readonly lockWriter?: CapabilityRuntimeAdminLockWriter;
   readonly hostMutationLock?: CapabilityRuntimeHostMutationLock;
+  /** Same exact local overlay consulted by MCP and Workbench runtime contexts. */
+  readonly qualifications?: Pick<
+    CapabilityRuntimeQualificationAttestationStore,
+    "list"
+  >;
   /** Non-blocking host-material preload after durable authorization only. */
   readonly preloadScheduler?: Pick<CapabilityRuntimePreloadScheduler, "schedule">;
   readonly now?: () => string;
@@ -371,6 +378,7 @@ export class ProjectCapabilityAuthorizationService {
       .map((group) =>
         `Operation ${group.operation.id}@${group.operation.version} is unresolved: ${group.reason}.`
       );
+    const host = await this.#host();
     const proposal = await planProjectCapabilityRequirementsProposal({
       projectId: project.project.id,
       source: "published-plan",
@@ -382,9 +390,9 @@ export class ProjectCapabilityAuthorizationService {
       intent: null,
       requirements: demand.plannedCeiling.capabilityRequirements,
       unresolvedBlockers,
-      catalog: this.dependencies.catalog,
+      catalog: await this.#effectiveCatalog(host),
       policy: await this.#policy(),
-      host: await this.#host(),
+      host,
       lock: await this.#lock(),
     });
     if (!ledger || !envelope) {
@@ -695,6 +703,7 @@ export class ProjectCapabilityAuthorizationService {
       this.dependencies.registry,
       this.dependencies.routes,
     );
+    const host = await this.#host();
     return await planProjectCapabilityIntent({
       projectId: project.project.id,
       brief: {
@@ -703,10 +712,20 @@ export class ProjectCapabilityAuthorizationService {
         briefReviewFingerprint,
       },
       intent,
-      catalog: this.dependencies.catalog,
+      catalog: await this.#effectiveCatalog(host),
       policy: await this.#policy(),
-      host: await this.#host(),
+      host,
       lock: await this.#lock(),
+    });
+  }
+
+  async #effectiveCatalog(
+    host: CapabilityRuntimeHostObservation,
+  ): Promise<CapabilityRuntimeCatalog> {
+    return evaluateCapabilityRuntimeQualifications({
+      catalog: this.dependencies.catalog,
+      host,
+      attestations: (await this.dependencies.qualifications?.list()) ?? [],
     });
   }
 }

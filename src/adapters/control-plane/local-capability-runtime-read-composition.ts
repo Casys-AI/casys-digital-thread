@@ -23,10 +23,12 @@ import {
   FileCapabilityRuntimeAdminPolicyStore,
   FileCapabilityRuntimeJournal,
 } from "./file-capability-runtime-host-stores.ts";
+import { FileCapabilityRuntimeQualificationAttestationStore } from "./file-capability-runtime-qualification-attestation-store.ts";
 import { FileProjectCapabilityLedgerStore } from "./file-project-capability-ledger-store.ts";
 import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capability-binding-catalog.ts";
 import { createFirstPartyCapabilityRuntimeLaunchGroupRegistry } from "./first-party-capability-runtime-launch-groups.ts";
 import { GroupCapabilityRuntimeHostObservationReader } from "./group-capability-runtime-host-observation-reader.ts";
+import { FileCapabilityRuntimeHostIdentityStore } from "./file-capability-runtime-host-identity-store.ts";
 import { LocalMicrosandboxCapabilityRuntimeCache } from "./microsandbox-capability-runtime-cache.ts";
 
 export interface LocalCapabilityRuntimeReadCompositionOptions {
@@ -57,6 +59,8 @@ export interface LocalCapabilityRuntimeReadComposition {
   readonly host: GroupCapabilityRuntimeHostObservationReader;
   readonly policy: FileCapabilityRuntimeAdminPolicyStore;
   readonly lock: FileCapabilityRuntimeAdminLockStore;
+  readonly hostIdentity: FileCapabilityRuntimeHostIdentityStore;
+  readonly qualifications: FileCapabilityRuntimeQualificationAttestationStore;
   readonly ledgers: FileProjectCapabilityLedgerStore;
   readonly contexts: ProjectCapabilityRuntimeContextCompiler;
   readonly workbench: ProjectCapabilityWorkbenchProjector;
@@ -125,14 +129,22 @@ export async function createLocalCapabilityRuntimeReadComposition(
   ]);
   const policy = new FileCapabilityRuntimeAdminPolicyStore(undefined, catalog);
   const lock = new FileCapabilityRuntimeAdminLockStore(undefined, catalog);
+  const hostIdentity = new FileCapabilityRuntimeHostIdentityStore();
+  const qualifications = new FileCapabilityRuntimeQualificationAttestationStore();
   const ledgers = new FileProjectCapabilityLedgerStore(options.ledgerDirectory);
-  const host = new GroupCapabilityRuntimeHostObservationReader(catalog, states);
+  const host = new GroupCapabilityRuntimeHostObservationReader(
+    catalog,
+    states,
+    hostIdentity,
+    composeObserver,
+  );
   const contexts = new ProjectCapabilityRuntimeContextCompiler({
     registry: { list: listRegisteredEngineeringOperations },
     catalog,
     policy,
     host,
     lock,
+    qualifications,
     ledgers,
   });
   return {
@@ -146,6 +158,8 @@ export async function createLocalCapabilityRuntimeReadComposition(
     host,
     policy,
     lock,
+    hostIdentity,
+    qualifications,
     ledgers,
     contexts,
     workbench: new ProjectCapabilityWorkbenchProjector({ contexts, states }),

@@ -598,6 +598,9 @@ function binding(
       source,
       fingerprint: null,
     },
+    // Runtime mode is host-local and therefore never claimed by this
+    // code-owned catalogue baseline. The attestation evaluator fills it.
+    runtimeModes: [],
     limitations,
   } as const;
 }

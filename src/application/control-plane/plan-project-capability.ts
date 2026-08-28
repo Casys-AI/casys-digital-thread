@@ -68,7 +68,7 @@ export async function planCapabilityRuntimeRequirements(
   );
   const materials = selectedUnits
     .flatMap((unit) =>
-      unit.materials.map((material) => planMaterial(unit, material, input))
+      unit.materials.map((material) => planMaterial(unit, material, bindings, input))
     )
     .toSorted(compareMaterial);
   const effects = aggregateEffects(selectedUnits);
@@ -190,9 +190,7 @@ function planRequirement(
       const units = selected.unitIds.map((id) =>
         input.catalog.units.find((unit) => unit.id === id)!
       );
-      const platformResult = units.flatMap((unit) =>
-        unit.materials.map((material) => materialMode(material, input))
-      );
+      const platformResult = materialModesForBinding(selected, units, input);
       const reasons: string[] = [];
       let status:
         | Exclude<PlannedProjectCapabilityBinding["status"], "selected">
@@ -212,7 +210,7 @@ function planRequirement(
           ? "unavailable"
           : "incompatible";
         reasons.push(
-          `Host ${input.host.platform} cannot run every material required by ${selected.id}, natively or through its observed emulation.`,
+          `Host ${input.host.platform} has no exact qualified runtime mode for every material required by ${selected.id}.`,
         );
       }
       if (status !== undefined) {
@@ -254,9 +252,7 @@ function planRequirement(
   const units = selected.unitIds.map((id) =>
     input.catalog.units.find((unit) => unit.id === id)!
   );
-  const platformResult = units.flatMap((unit) =>
-    unit.materials.map((material) => materialMode(material, input))
-  );
+  const platformResult = materialModesForBinding(selected, units, input);
   if (
     platformResult.some((result) =>
       result.mode === "unavailable" && result.reason === "unknown-platform"
@@ -268,7 +264,7 @@ function planRequirement(
   }
   if (platformResult.some((result) => result.mode === "unavailable")) {
     return unresolved(requirement, "incompatible", [
-      `Host ${input.host.platform} cannot run every material required by ${selected.id}, natively or through its observed emulation.`,
+      `Host ${input.host.platform} has no exact qualified runtime mode for every material required by ${selected.id}.`,
     ]);
   }
   return selectedBinding(requirement, selected);
@@ -373,6 +369,7 @@ function uniqueSelectedUnits(
 function planMaterial(
   unit: AtomicCapabilityRuntimeUnit,
   material: AtomicCapabilityRuntimeMaterial,
+  bindings: readonly PlannedProjectCapabilityBinding[],
   input: CapabilityRuntimeRequirementsPlanningInput,
 ): PlannedCapabilityRuntimeMaterial {
   const locked = exactLockFor(unit, input);
@@ -385,7 +382,7 @@ function planMaterial(
     unitId: unit.id,
     materialId: material.id,
     imageReference: material.imageReference,
-    mode: materialMode(material, input).mode,
+    mode: materialModeForPlannedMaterial(unit, material, bindings, input).mode,
     imageState,
     desired,
     downloadBytes: material.effects.downloadBytes,
@@ -419,7 +416,56 @@ function exactLockFor(
     : null;
 }
 
-function materialMode(
+function materialModesForBinding(
+  binding: QualifiedCapabilityRuntimeBinding,
+  units: readonly AtomicCapabilityRuntimeUnit[],
+  input: CapabilityRuntimeRequirementsPlanningInput,
+): readonly ReturnType<typeof materialModeForBinding>[] {
+  return units.flatMap((unit) =>
+    unit.materials.map((material) =>
+      materialModeForBinding(binding, unit, material, input)
+    )
+  );
+}
+
+function materialModeForPlannedMaterial(
+  unit: AtomicCapabilityRuntimeUnit,
+  material: AtomicCapabilityRuntimeMaterial,
+  bindings: readonly PlannedProjectCapabilityBinding[],
+  input: CapabilityRuntimeRequirementsPlanningInput,
+): ReturnType<typeof materialModeForBinding> {
+  const candidates = bindings.flatMap((planned) => {
+    if (planned.status !== "selected" && planned.candidate === undefined) return [];
+    if (!planned.unitIds.includes(unit.id)) return [];
+    const bindingId = planned.binding?.id ?? planned.candidate!.id;
+    const bindingVersion = planned.binding?.version ?? planned.candidate!.version;
+    const binding = input.catalog.bindings.find((candidate) =>
+      candidate.id === bindingId && candidate.version === bindingVersion
+    );
+    if (!binding) {
+      throw new TypeError(
+        `Planned capability material references unknown binding ${bindingId}.`,
+      );
+    }
+    return [materialModeForBinding(binding, unit, material, input)];
+  });
+  if (candidates.length === 0) {
+    return { mode: "unavailable", reason: "mismatch" };
+  }
+  const tokens = new Set(
+    candidates.map((candidate) => `${candidate.mode}\u0000${candidate.reason}`),
+  );
+  if (tokens.size !== 1) {
+    throw new TypeError(
+      `Atomic material ${unit.id}/${material.id} has contradictory exact runtime modes.`,
+    );
+  }
+  return candidates[0]!;
+}
+
+function materialModeForBinding(
+  binding: QualifiedCapabilityRuntimeBinding,
+  unit: AtomicCapabilityRuntimeUnit,
   material: AtomicCapabilityRuntimeMaterial,
   input: CapabilityRuntimeRequirementsPlanningInput,
 ): {
@@ -429,15 +475,31 @@ function materialMode(
   if (material.platforms.length === 0) {
     return { mode: "unavailable", reason: "unknown-platform" };
   }
-  if (material.platforms.includes(input.host.platform)) {
-    return { mode: "native", reason: "native" };
+  const digest = ociDigest(material.imageReference);
+  const exact = binding.runtimeModes.find((candidate) =>
+    candidate.material.unitId === unit.id &&
+    candidate.material.materialId === material.id &&
+    candidate.material.imageDigest === digest
+  );
+  if (exact) {
+    if (!material.platforms.includes(exact.targetPlatform)) {
+      return { mode: "unavailable", reason: "mismatch" };
+    }
+    if (exact.mode === "native" && exact.targetPlatform === input.host.platform) {
+      return { mode: "native", reason: "native" };
+    }
+    if (exact.mode === "emulated" && exact.targetPlatform !== input.host.platform) {
+      return { mode: "emulated", reason: "emulated" };
+    }
+    return { mode: "unavailable", reason: "mismatch" };
   }
+  // Compatibility bridge for pre-attestation, code-owned qualifications. It
+  // deliberately permits native only; emulation never follows a host-wide flag.
   if (
-    material.platforms.some((platform) =>
-      input.host.emulatedPlatforms.includes(platform)
-    )
+    (binding.qualification === "compatible" || binding.qualification === "qualified") &&
+    material.platforms.includes(input.host.platform)
   ) {
-    return { mode: "emulated", reason: "emulated" };
+    return { mode: "native", reason: "native" };
   }
   return { mode: "unavailable", reason: "mismatch" };
 }

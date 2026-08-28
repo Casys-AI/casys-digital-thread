@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import {
   type CapabilityRuntimeLaunchGroup,
   capabilityRuntimeLaunchGroupReference,
@@ -117,6 +117,39 @@ Deno.test("Build123d group without a declared healthcheck is active only when it
   assertEquals([...states.values()][0]?.runtime, "active");
 });
 
+Deno.test("Compose host translates only the observed Docker daemon platform, never the controller architecture", async () => {
+  const group = await sysonGroup();
+  const runner = new FakeGroupRunner(group, {
+    images: false,
+    state: "absent",
+    hostPlatform: "linux/aarch64",
+  });
+  const fixture = host(group, runner);
+
+  assertEquals(await fixture.host.observePlatform(), "linux/arm64");
+  assertEquals(
+    runner.calls.some((call) =>
+      call[0] === "docker" && call[1] === "version" &&
+      call[2] === "--format" && call[3] === "{{.Server.Os}}/{{.Server.Arch}}"
+    ),
+    true,
+  );
+
+  const mismatch = host(
+    group,
+    new FakeGroupRunner(group, {
+      images: false,
+      state: "absent",
+      hostPlatform: "linux/ppc64le",
+    }),
+  );
+  await assertRejects(
+    () => mismatch.host.observePlatform(),
+    Error,
+    "unsupported or malformed",
+  );
+});
+
 async function sysonGroup(): Promise<CapabilityRuntimeLaunchGroup> {
   return (await createFirstPartyCapabilityRuntimeLaunchGroups())[0]!;
 }
@@ -177,6 +210,7 @@ class FakeGroupRunner implements CommandRunner {
       readonly images: boolean;
       readonly state: "absent" | "running";
       readonly foreignService?: string;
+      readonly hostPlatform?: string;
     },
   ) {
     this.#images = options.images;
@@ -186,9 +220,11 @@ class FakeGroupRunner implements CommandRunner {
         : group.materials.map((member) => [member.serviceName, "running"] as const),
     );
     this.foreignService = options.foreignService;
+    this.hostPlatform = options.hostPlatform ?? "linux/arm64";
   }
 
   readonly foreignService: string | undefined;
+  readonly hostPlatform: string;
 
   async run(
     command: string,
@@ -199,6 +235,7 @@ class FakeGroupRunner implements CommandRunner {
     await Promise.resolve();
     this.calls.push([command, ...args]);
     if (options.stdin) this.stdin.push(new TextDecoder().decode(options.stdin));
+    if (args[0] === "version") return success(this.hostPlatform);
     if (args[0] === "image" && args[1] === "inspect") {
       const requested = args[2]!;
       const member = this.group.materials.find((candidate) =>

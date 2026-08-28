@@ -90,7 +90,24 @@ the HTTP service. A later recorded solve/readback and launch-group lot must qual
 Binding selection is deterministic only when policy identifies one qualified active
 binding. The plan preserves literal outcomes: `unavailable`, `ambiguous`, `disabled`,
 `revoked`, and `incompatible`. A material mode is independently `native`, `emulated`, or
-`unavailable`; no platform claim is rendered as `unavailable`, never guessed.
+`unavailable`; no platform claim is rendered as `unavailable`, never guessed. The
+code-owned catalogue baseline never declares a host runtime mode. An effective mode is
+derived only from a matching local qualification attestation for the exact binding,
+adapter contract, profile, unit manifest, material digest, target platform, launch-group
+reference and opaque host identity. A native historical code-owned qualification may
+produce a native mode on the observed matching platform; it can never imply emulation.
+
+The append-only attestation schema is
+`capability-runtime-binding-qualification-attestation/1.0`. Its only terminal facts are
+`qualified` and `revoked`; it contains fixture/outcome references and closed identities,
+never a probe payload, request headers, credential or provider response. An exact
+revocation is monotone: it makes that material unavailable rather than being sorted away
+by timestamps or hashes. A Chrono Linux/amd64 emulation attestation therefore does not
+qualify any other AMD64 image, binding, profile or host.
+
+The local attestation ledger is append-only. A concurrent reader ignores only the
+private UUID `.tmp` basename emitted by the durable write primitive before its atomic
+link; any other unexpected entry remains a literal store-integrity failure.
 
 Before selection, the planner recalculates every atomic unit manifest from its id,
 version, and complete material body. A stale fingerprint is refused. A lock applies only

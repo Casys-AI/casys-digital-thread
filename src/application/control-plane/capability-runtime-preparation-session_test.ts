@@ -206,6 +206,16 @@ function preparation(): ResolvedCapabilityRuntimeOperation {
         materialId: "mcp-build123d-sandbox-image",
         imageDigest: "b".repeat(64),
       }],
+      runtimeModes: [{
+        material: {
+          unitId: "casys.mcp-build123d-sandbox",
+          materialId: "mcp-build123d-sandbox-image",
+          imageDigest: "b".repeat(64),
+        },
+        targetPlatform: "linux/arm64",
+        mode: "native",
+        qualificationAttestationFingerprint: null,
+      }],
       hostLifecycles: [{
         material: {
           unitId: "casys.mcp-build123d-sandbox",

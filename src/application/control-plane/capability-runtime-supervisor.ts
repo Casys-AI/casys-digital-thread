@@ -41,6 +41,7 @@ import type {
 } from "../../domain/project/engineering-project.ts";
 import type {
   CapabilityRuntimeCatalog,
+  ProjectCapabilityPlan,
   QualifiedCapabilityRuntimeBinding,
 } from "./read-model/capability-runtime-catalog.ts";
 import type {
@@ -434,6 +435,11 @@ function selectResolvedBinding(
   const hostLifecycles = uniqueHostLifecycles(
     materialLifecyclePairs.map((pair) => pair.lifecycle),
   );
+  const runtimeModes = exactResolvedRuntimeModes(
+    binding,
+    materials,
+    context.plan,
+  );
   const result: ResolvedCapabilityRuntimeBinding = {
     capability: {
       id: requirement.id,
@@ -445,10 +451,54 @@ function selectResolvedBinding(
     adapter: { ...binding.adapter },
     profile: binding.profile === null ? null : structuredClone(binding.profile),
     materials,
+    runtimeModes,
     hostLifecycles,
   };
   assertAuthorizationAllowsBinding(context.authorization!, result, planned.unitIds);
   return result;
+}
+
+function exactResolvedRuntimeModes(
+  binding: QualifiedCapabilityRuntimeBinding,
+  materials: readonly CapabilityRuntimeMaterialIdentity[],
+  plan: ProjectCapabilityPlan,
+): ResolvedCapabilityRuntimeBinding["runtimeModes"] {
+  const modes = materials.map((material) => {
+    const matches = binding.runtimeModes.filter((candidate) =>
+      candidate.material.unitId === material.unitId &&
+      candidate.material.materialId === material.materialId &&
+      candidate.material.imageDigest === material.imageDigest
+    );
+    if (matches.length !== 1) {
+      throw new CapabilityRuntimeAuthorizationError(
+        `Selected capability binding ${binding.id} has no one exact runtime mode for ${material.unitId}/${material.materialId}.`,
+      );
+    }
+    const mode = matches[0]!;
+    const planned = plan.materials.filter((candidate) =>
+      candidate.unitId === material.unitId &&
+      candidate.materialId === material.materialId
+    );
+    if (
+      planned.length !== 1 || planned[0]!.mode === "unavailable" ||
+      planned[0]!.mode !== mode.mode
+    ) {
+      throw new CapabilityRuntimeAuthorizationError(
+        `Project capability plan does not retain the exact runnable mode for ${material.unitId}/${material.materialId}.`,
+      );
+    }
+    return structuredClone(mode);
+  });
+  if (modes.length !== binding.runtimeModes.length) {
+    throw new CapabilityRuntimeAuthorizationError(
+      `Selected capability binding ${binding.id} has an extraneous runtime mode.`,
+    );
+  }
+  return modes.toSorted((left, right) =>
+    capabilityRuntimeMaterialKey(left.material).localeCompare(
+      capabilityRuntimeMaterialKey(right.material),
+    )
+  );
 }
 
 function assertAuthorizationAllowsBinding(

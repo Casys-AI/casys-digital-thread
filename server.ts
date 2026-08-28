@@ -983,6 +983,7 @@ async function createProjectControl(
     catalog: capabilityRead.catalog,
     policy: capabilityRead.policy,
     host: capabilityRead.host,
+    qualifications: capabilityRead.qualifications,
     lock: capabilityRead.lock,
     lockWriter: capabilityRead.lock,
     hostMutationLock: capabilityRuntimeMutationLock,

@@ -166,8 +166,8 @@ async function localCapabilityAuthorization(
     },
     host: {
       schemaVersion: "capability-runtime-host-observation/1.0",
+      identityFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
       platform: "linux/arm64",
-      emulatedPlatforms: [],
       images: [],
     },
     lock: {

@@ -36,6 +36,7 @@ import type {
 import type {
   CapabilityRuntimeAdminLock,
   CapabilityRuntimeCatalog,
+  CapabilityRuntimePlatform,
   ProjectCapabilityPlan,
 } from "../../../control-plane/read-model/capability-runtime-catalog.ts";
 
@@ -103,6 +104,15 @@ export interface CapabilityRuntimeStateObserver {
   observe(
     materials: readonly CapabilityRuntimeMaterialIdentity[],
   ): Promise<ReadonlyMap<string, CapabilityRuntimeObservedState>>;
+}
+
+/**
+ * Read-only observation of the runtime daemon platform. This is deliberately
+ * separate from the Deno process architecture: a runtime can be remote,
+ * virtualized, or emulated while the control process is not.
+ */
+export interface CapabilityRuntimeHostPlatformObserver {
+  observePlatform(): Promise<CapabilityRuntimePlatform>;
 }
 
 /** Append-only durable intent log. Entries are written before host mutation. */

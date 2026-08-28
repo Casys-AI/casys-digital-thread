@@ -16,11 +16,13 @@ import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import type {
   AuthorizedCapabilityRuntimeHostMutation,
   CapabilityRuntimeHostMutator,
+  CapabilityRuntimeHostPlatformObserver,
   CapabilityRuntimeJournal,
   CapabilityRuntimeLaunchGroupRegistry,
   CapabilityRuntimeSecretSlotObserver,
   CapabilityRuntimeStateObserver,
 } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import type { CapabilityRuntimePlatform } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
 import {
   consumeAuthorizedCapabilityRuntimeHostMutation,
 } from "../../application/control-plane/capability-runtime-host-authorization.ts";
@@ -44,7 +46,8 @@ export interface CapabilityRuntimeHostAdapterOptions {
 
 export type CapabilityRuntimeHostAdapter =
   & CapabilityRuntimeHostMutator
-  & CapabilityRuntimeStateObserver;
+  & CapabilityRuntimeStateObserver
+  & CapabilityRuntimeHostPlatformObserver;
 
 /**
  * Read-only facade for consumers such as the native Workbench. It deliberately
@@ -53,10 +56,11 @@ export type CapabilityRuntimeHostAdapter =
  */
 export function createCapabilityRuntimeHostObserver(
   options: CapabilityRuntimeHostAdapterOptions,
-): CapabilityRuntimeStateObserver {
+): CapabilityRuntimeStateObserver & CapabilityRuntimeHostPlatformObserver {
   const host = new ComposeCapabilityRuntimeHost(options);
   return {
     observe: (materials) => host.observe(materials),
+    observePlatform: () => host.observePlatform(),
   };
 }
 
@@ -67,7 +71,10 @@ export function createCapabilityRuntimeHostAdapter(
 }
 
 class ComposeCapabilityRuntimeHost
-  implements CapabilityRuntimeHostMutator, CapabilityRuntimeStateObserver {
+  implements
+    CapabilityRuntimeHostMutator,
+    CapabilityRuntimeStateObserver,
+    CapabilityRuntimeHostPlatformObserver {
   readonly #runner: CommandRunner;
   readonly #root: string;
   readonly #paths: { realPath(path: string): Promise<string> };
@@ -105,6 +112,24 @@ class ComposeCapabilityRuntimeHost
       }
     }
     return result;
+  }
+
+  /**
+   * Docker itself is the runtime authority. The controller process architecture
+   * must never be used as a substitute for this observation.
+   */
+  async observePlatform(): Promise<CapabilityRuntimePlatform> {
+    const result = await this.#docker(this.#root, [
+      "version",
+      "--format",
+      "{{.Server.Os}}/{{.Server.Arch}}",
+    ]);
+    if (!result.success) {
+      throw new Error(
+        "Capability runtime host platform is unavailable from the Docker daemon.",
+      );
+    }
+    return parseDockerDaemonPlatform(result.stdout);
   }
 
   async mutate(input: {
@@ -596,6 +621,21 @@ function compactFailure(result: CommandResult): string {
   const text = result.stderr.trim() || `docker exited ${result.code}`;
   return text.length > 512 ? `${text.slice(0, 509)}...` : text;
 }
+
+/** Docker reports `aarch64` on some ARM daemon releases; normalize only it. */
+function parseDockerDaemonPlatform(value: string): CapabilityRuntimePlatform {
+  const observed = value.trim();
+  if (observed === "linux/amd64") return observed;
+  if (observed === "linux/arm64" || observed === "linux/aarch64") {
+    return "linux/arm64";
+  }
+  throw new Error(
+    `Capability runtime host platform is unsupported or malformed: ${
+      JSON.stringify(observed)
+    }.`,
+  );
+}
+
 function nonBlank(value: string): string {
   if (!value.trim()) {
     throw new TypeError("Capability runtime Compose root must not be blank.");
