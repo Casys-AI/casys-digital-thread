@@ -97,6 +97,13 @@ Deno.test("toolchain Compose defaults remain in parity with fleet desired images
       `${server.serviceName} Compose default must match ${serverId} fleet image`,
     );
   }
+
+  const syson = record(services["mcp-syson"], "docker-compose.yml.services.mcp-syson");
+  assertEquals(syson.command, ["--port=3009", "--hostname=0.0.0.0"]);
+  assertEquals(
+    composeImageDefault(syson.image, "mcp-syson", "MCP_SYSON_IMAGE").defaultImage,
+    "ghcr.io/casys-ai/mcp-syson@sha256:87eee6e35a636124d5ba6911492a245d69edcdf1ba67575676c22a0e9d7ce65e",
+  );
 });
 
 Deno.test("CalculiX keeps durable evidence, read-only CAD, and private FEA staging distinct", async () => {

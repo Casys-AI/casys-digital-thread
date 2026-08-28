@@ -1,8 +1,5 @@
 import { assertEquals, assertMatch } from "@std/assert";
-import {
-  attestReadOnlyMcpContract,
-  READ_ONLY_MCP_CONTRACT_METHODS,
-} from "./read-only-mcp-contract-attestation.ts";
+import { attestReadOnlyMcpContract } from "./read-only-mcp-contract-attestation.ts";
 
 Deno.test("read-only MCP contract attestor records schemas without invoking a tool", async () => {
   const methods: string[] = [];
@@ -22,7 +19,44 @@ Deno.test("read-only MCP contract attestor records schemas without invoking a to
   assertEquals(attestation.views, ["ui://fake/view"]);
   assertMatch(attestation.schemaFingerprint?.digest ?? "", /^[a-f0-9]{64}$/);
   assertEquals(attestation.schemaFingerprintStatus, "observed-not-verified");
-  assertEquals(methods, ["GET", ...READ_ONLY_MCP_CONTRACT_METHODS]);
+  assertEquals(attestation.runtimeContractMatchesExpected, null);
+  assertEquals(methods, ["GET", "server/discover", "tools/list", "resources/list"]);
+});
+
+Deno.test("read-only MCP contract attestor verifies a pinned packaged runtime contract", async () => {
+  const methods: string[] = [];
+  const attestation = await attestReadOnlyMcpContract({
+    ...target(),
+    expectedRuntimeContract: {
+      resourceUri: "ui://fake/view",
+      fingerprints: {
+        serverDiscover: fingerprint("1"),
+        toolContracts: fingerprint("2"),
+        uiResources: fingerprint("3"),
+      },
+    },
+  }, {
+    fetch: fakeFetch(methods),
+    fingerprint: fakeRuntimeFingerprint,
+  });
+
+  assertEquals(attestation.evidenceLevel, "contract-attested");
+  assertEquals(attestation.runtimeContractMatchesExpected, true);
+  assertEquals(
+    attestation.runtimeContractFingerprints,
+    {
+      serverDiscover: fingerprint("1"),
+      toolContracts: fingerprint("2"),
+      uiResources: fingerprint("3"),
+    },
+  );
+  assertEquals(methods, [
+    "GET",
+    "server/discover",
+    "tools/list",
+    "resources/list",
+    "resources/read",
+  ]);
 });
 
 Deno.test("read-only MCP contract attestor leaves an incomplete surface declared", async () => {
@@ -180,6 +214,11 @@ function fakeFetch(
     if (body.method === "resources/list") {
       return Promise.resolve(rpc({ resources: [] }, body.id));
     }
+    if (body.method === "resources/read") {
+      return Promise.resolve(rpc({
+        contents: [{ uri: "ui://fake/view", text: "viewer" }],
+      }, body.id));
+    }
     throw new Error(`Unexpected method ${body.method}`);
   }) as typeof fetch;
 }
@@ -221,4 +260,17 @@ function rpc(result: Record<string, unknown>, id: number): Response {
     id,
     result: { resultType: "complete", ...result },
   });
+}
+
+function fingerprint(character: string) {
+  return { algorithm: "sha256" as const, digest: character.repeat(64) };
+}
+
+function fakeRuntimeFingerprint(value: unknown) {
+  if (Array.isArray(value)) return Promise.resolve(fingerprint("2"));
+  if (value !== null && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (Array.isArray(record.contents)) return Promise.resolve(fingerprint("3"));
+  }
+  return Promise.resolve(fingerprint("1"));
 }

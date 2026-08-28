@@ -10,6 +10,8 @@ build123d, CalculiX, Gmsh or their transitive operating-system packages.
 The review therefore establishes only this boundary:
 
 - the pack manifest may identify and reuse the exact runtime images;
+- the dedicated `mcp-syson@0.8.3` image publishes an SPDX SBOM and SLSA provenance for
+  its exact OCI index; those supply-chain records do not replace licence review;
 - source publication does not imply image redistribution clearance;
 - production or bundled distribution still requires image-level SBOM, notices and
   licence review for the exact digests;

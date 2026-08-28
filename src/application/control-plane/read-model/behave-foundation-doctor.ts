@@ -25,6 +25,8 @@ export interface BehaveFoundationCachedMaterialObservation {
   /** The Docker RepoDigest matched after repository-alias normalization, if any. */
   readonly matchedRepoDigest: string | null;
   readonly observedReference: string | null;
+  /** OCI labels read from an exact local Docker image, never caller input. */
+  readonly labels: Readonly<Record<string, string>> | null;
   readonly detail: string;
 }
 

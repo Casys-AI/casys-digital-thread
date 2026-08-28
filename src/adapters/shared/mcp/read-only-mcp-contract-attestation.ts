@@ -1,5 +1,8 @@
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
-import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
+import {
+  fingerprintsEqual,
+  sha256Fingerprint,
+} from "../../../domain/kernel/deterministic-json.ts";
 import { deepFreeze } from "../../../domain/kernel/case-validation.ts";
 
 /** The wire methods used by this attestor. It never invokes a provider tool. */
@@ -7,7 +10,18 @@ export const READ_ONLY_MCP_CONTRACT_METHODS = [
   "server/discover",
   "tools/list",
   "resources/list",
+  "resources/read",
 ] as const;
+
+export interface ReadOnlyMcpRuntimeContractExpectation {
+  /** A fixed packaged UI resource; it is never a provider model resource. */
+  readonly resourceUri: string;
+  readonly fingerprints: {
+    readonly serverDiscover: ContentFingerprint;
+    readonly toolContracts: ContentFingerprint;
+    readonly uiResources: ContentFingerprint;
+  };
+}
 
 export interface ReadOnlyMcpContractTarget {
   readonly id: string;
@@ -20,6 +34,8 @@ export interface ReadOnlyMcpContractTarget {
     readonly name: string;
     readonly version: string;
   };
+  /** Optional published release vectors for a provider's read-only surface. */
+  readonly expectedRuntimeContract?: ReadOnlyMcpRuntimeContractExpectation;
   readonly expectedTools: readonly string[];
   readonly expectedViews: readonly string[];
 }
@@ -47,6 +63,7 @@ export interface ReadOnlyMcpContractAttestation {
       readonly name: string;
       readonly version: string;
     };
+    readonly runtimeContract?: ReadOnlyMcpRuntimeContractExpectation;
   };
   readonly health: "healthy" | "unexpected" | "unavailable";
   readonly healthStatus: string | null;
@@ -64,6 +81,14 @@ export interface ReadOnlyMcpContractAttestation {
   readonly schemaFingerprint: ContentFingerprint | null;
   /** This probe records the live identity; golden-contract approval is separate. */
   readonly schemaFingerprintStatus: "observed-not-verified" | "unavailable";
+  /** Fingerprints in the provider's published runtime-contract shape. */
+  readonly runtimeContractFingerprints: {
+    readonly serverDiscover: ContentFingerprint | null;
+    readonly toolContracts: ContentFingerprint | null;
+    readonly uiResources: ContentFingerprint | null;
+  };
+  /** `null` means this target has no separately pinned runtime-contract. */
+  readonly runtimeContractMatchesExpected: boolean | null;
   readonly missingExpectedTools: readonly string[];
   readonly missingExpectedViews: readonly string[];
   readonly detail: string | null;
@@ -73,6 +98,8 @@ export interface ReadOnlyMcpContractAttestorOptions {
   readonly fetch?: typeof fetch;
   readonly timeoutMs?: number;
   readonly protocolVersion?: string;
+  /** Test seam; production uses the deterministic kernel SHA-256 primitive. */
+  readonly fingerprint?: (value: unknown) => Promise<ContentFingerprint>;
 }
 
 interface RpcEnvelope {
@@ -85,8 +112,9 @@ interface RpcEnvelope {
 const DEFAULT_PROTOCOL_VERSION = "2026-07-28";
 
 /**
- * Fetch the declared HTTP/MCP surface without stateful initialization, SSE,
- * resources/read, or any tool invocation. The target and expected surface are
+ * Fetch the declared HTTP/MCP surface without stateful initialization, SSE, or
+ * any tool invocation. A target with a published runtime contract additionally
+ * reads only its fixed packaged UI resource. The target and expected surface are
  * supplied by server-owned fleet configuration, not an agent.
  */
 export async function attestReadOnlyMcpContract(
@@ -117,8 +145,12 @@ export async function attestReadOnlyMcpContract(
     const server = serverIdentity(discoverResult);
     const serverMatchesExpected = server.name === target.expectedServer.name &&
       server.version === target.expectedServer.version;
+    const serverDiscoverFingerprint = await request.fingerprint(discoverResult);
     const listedTools = await request.rpc(target.mcpUrl, "tools/list", 2);
-    const tools = parseTools(completeResult(listedTools, "tools/list", 2));
+    const listedToolsResult = completeResult(listedTools, "tools/list", 2);
+    const tools = parseTools(listedToolsResult);
+    const rawTools = rawToolsFrom(listedToolsResult);
+    const toolContractsFingerprint = await request.fingerprint(rawTools);
     const listedResources = await request.rpc(target.mcpUrl, "resources/list", 3);
     const resources = parseResourceUris(
       completeResult(listedResources, "resources/list", 3),
@@ -139,9 +171,31 @@ export async function attestReadOnlyMcpContract(
       tools.map((tool) => tool.name),
     );
     const missingExpectedViews = missing(target.expectedViews, views);
+    const uiResourcesFingerprint = target.expectedRuntimeContract === undefined
+      ? null
+      : await runtimeResourceFingerprint(
+        request,
+        target,
+      );
+    const runtimeContractMatchesExpected = target.expectedRuntimeContract === undefined
+      ? null
+      : fingerprintsEqual(
+        serverDiscoverFingerprint,
+        target.expectedRuntimeContract.fingerprints.serverDiscover,
+      ) &&
+        fingerprintsEqual(
+          toolContractsFingerprint,
+          target.expectedRuntimeContract.fingerprints.toolContracts,
+        ) &&
+        uiResourcesFingerprint !== null &&
+        fingerprintsEqual(
+          uiResourcesFingerprint,
+          target.expectedRuntimeContract.fingerprints.uiResources,
+        );
     const complete = healthMatchesExpected && protocolMatchesExpected &&
       serverMatchesExpected && missingExpectedTools.length === 0 &&
-      missingExpectedViews.length === 0;
+      missingExpectedViews.length === 0 &&
+      runtimeContractMatchesExpected !== false;
     return deepFreeze({
       mutatesRuntime: false,
       evidenceLevel: complete ? "contract-attested" as const : "declared" as const,
@@ -158,6 +212,12 @@ export async function attestReadOnlyMcpContract(
       views,
       schemaFingerprint,
       schemaFingerprintStatus: "observed-not-verified" as const,
+      runtimeContractFingerprints: {
+        serverDiscover: serverDiscoverFingerprint,
+        toolContracts: toolContractsFingerprint,
+        uiResources: uiResourcesFingerprint,
+      },
+      runtimeContractMatchesExpected,
       missingExpectedTools,
       missingExpectedViews,
       detail: complete
@@ -172,12 +232,18 @@ export async function attestReadOnlyMcpContract(
 class ReadOnlyMcpContractAttestor {
   readonly #fetch: typeof fetch;
   readonly #timeoutMs: number;
+  readonly #fingerprint: (value: unknown) => Promise<ContentFingerprint>;
   readonly protocolVersion: string;
 
   constructor(options: ReadOnlyMcpContractAttestorOptions) {
     this.#fetch = options.fetch ?? fetch;
     this.#timeoutMs = options.timeoutMs ?? 2_000;
     this.protocolVersion = options.protocolVersion ?? DEFAULT_PROTOCOL_VERSION;
+    this.#fingerprint = options.fingerprint ?? sha256Fingerprint;
+  }
+
+  fingerprint(value: unknown): Promise<ContentFingerprint> {
+    return this.#fingerprint(value);
   }
 
   async health(url: string): Promise<Response> {
@@ -188,6 +254,7 @@ class ReadOnlyMcpContractAttestor {
     url: string,
     method: typeof READ_ONLY_MCP_CONTRACT_METHODS[number],
     id: number,
+    params: Record<string, unknown> = {},
   ): Promise<RpcEnvelope> {
     const response = await this.#request(url, {
       method: "POST",
@@ -196,12 +263,14 @@ class ReadOnlyMcpContractAttestor {
         "content-type": "application/json",
         "mcp-protocol-version": this.protocolVersion,
         "mcp-method": method,
+        ...(typeof params.uri === "string" ? { "mcp-name": params.uri } : {}),
       },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id,
         method,
         params: {
+          ...params,
           _meta: {
             "io.modelcontextprotocol/protocolVersion": this.protocolVersion,
             "io.modelcontextprotocol/clientCapabilities": {},
@@ -268,6 +337,12 @@ function unavailable(
     views: [],
     schemaFingerprint: null,
     schemaFingerprintStatus: "unavailable" as const,
+    runtimeContractFingerprints: {
+      serverDiscover: null,
+      toolContracts: null,
+      uiResources: null,
+    },
+    runtimeContractMatchesExpected: null,
     missingExpectedTools: unique([...target.expectedTools]),
     missingExpectedViews: unique([...target.expectedViews]),
     detail,
@@ -282,7 +357,29 @@ function expectedIdentity(
     healthStatus: target.expectedHealthStatus,
     protocolVersion,
     server: target.expectedServer,
+    ...(target.expectedRuntimeContract === undefined
+      ? {}
+      : { runtimeContract: target.expectedRuntimeContract }),
   });
+}
+
+async function runtimeResourceFingerprint(
+  request: ReadOnlyMcpContractAttestor,
+  target: ReadOnlyMcpContractTarget,
+): Promise<ContentFingerprint> {
+  const contract = target.expectedRuntimeContract;
+  if (contract === undefined) {
+    throw new Error("No runtime-contract expectation is configured.");
+  }
+  const resource = await request.rpc(
+    target.mcpUrl,
+    "resources/read",
+    4,
+    { uri: contract.resourceUri },
+  );
+  return await request.fingerprint(
+    completeResult(resource, "resources/read", 4),
+  );
 }
 
 async function parseHealthStatus(response: Response): Promise<string | null> {
@@ -380,6 +477,13 @@ function parseTools(
     })];
   });
   return deepFreeze(tools.sort((left, right) => left.name.localeCompare(right.name)));
+}
+
+function rawToolsFrom(result: Record<string, unknown>): readonly unknown[] {
+  if (!Array.isArray(result.tools)) {
+    throw new Error("tools/list returned no tools array");
+  }
+  return result.tools;
 }
 
 function parseResourceUris(result: Record<string, unknown>): readonly string[] {

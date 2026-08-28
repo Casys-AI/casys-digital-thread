@@ -76,11 +76,12 @@ services:
     networks: [chain]
 
   mcp-syson:
-    # Keep the SysON sidecar independently selectable for a locally verified
-    # protocol fix. This avoids replacing it with the shared toolchain image
-    # when Compose is started for build123d or CalculiX.
-    image: "${MCP_SYSON_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:c04922cc2c0f503c34277c5a1dc81ab28b141945acad90345e2d16882535b4bc}"
-    command: ["syson", "--port=3009", "--hostname=0.0.0.0"]
+    # The dedicated provider owns its own server entrypoint. Keep this distinct
+    # from the shared engineering toolchain used by the CAD services.
+    image: "${MCP_SYSON_IMAGE:-ghcr.io/casys-ai/mcp-syson@sha256:87eee6e35a636124d5ba6911492a245d69edcdf1ba67575676c22a0e9d7ce65e}"
+    # Do not reintroduce the legacy `syson` command token: the dedicated image
+    # already starts server.ts, so only valid server arguments belong here.
+    command: ["--port=3009", "--hostname=0.0.0.0"]
     environment:
       SYSON_URL: http://syson-app:8080
     ports:

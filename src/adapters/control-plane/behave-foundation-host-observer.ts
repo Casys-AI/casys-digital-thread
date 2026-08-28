@@ -36,6 +36,7 @@ interface DockerImageInspection {
   readonly os: string;
   readonly architecture: string;
   readonly sizeBytes: number | undefined;
+  readonly labels: Readonly<Record<string, string>>;
 }
 
 interface ExactDockerImageInspection extends DockerImageInspection {
@@ -97,6 +98,7 @@ export async function observeBehaveFoundationHost(
           status: "cached-exact" as const,
           matchedRepoDigest: cached.matchedRepoDigest,
           observedReference: cached.matchedRepoDigest,
+          labels: cached.labels,
           detail: "The local OCI cache matches the reviewed digest and platform.",
         }));
       } catch (error) {
@@ -106,6 +108,7 @@ export async function observeBehaveFoundationHost(
           status: "mismatch" as const,
           matchedRepoDigest: null,
           observedReference: null,
+          labels: null,
           detail: `Local OCI cache does not match the reviewed identity: ${
             errorMessage(error)
           }`,
@@ -121,6 +124,7 @@ export async function observeBehaveFoundationHost(
           status: "unavailable" as const,
           matchedRepoDigest: null,
           observedReference: null,
+          labels: null,
           detail:
             "Docker Compose is unavailable; the local OCI cache was not observed.",
         }));
@@ -152,6 +156,7 @@ export async function observeBehaveFoundationHost(
         status: "cached-exact" as const,
         matchedRepoDigest: null,
         observedReference: inspection.reference,
+        labels: null,
         detail:
           "The local Microsandbox cache matches the reviewed digest and platform.",
       }));
@@ -162,6 +167,7 @@ export async function observeBehaveFoundationHost(
         status: "unavailable" as const,
         matchedRepoDigest: null,
         observedReference: null,
+        labels: null,
         detail: "The reviewed Microsandbox image is not cached locally.",
       }));
     }
@@ -180,6 +186,7 @@ export async function observeBehaveFoundationHost(
         status: "unavailable" as const,
         matchedRepoDigest: null,
         observedReference: null,
+        labels: null,
         detail: microsandbox.detail,
       }));
     }
@@ -210,6 +217,7 @@ function materialUnavailable(
     status: "unavailable" as const,
     matchedRepoDigest: null,
     observedReference: null,
+    labels: null,
     detail: `The reviewed OCI image is not locally inspectable: ${
       detail.slice(0, 300)
     }`,
@@ -329,12 +337,36 @@ function parseDockerImageInspection(source: string): DockerImageInspection {
       Number.isSafeInteger(record.Size) && record.Size >= 0
     ? record.Size
     : undefined;
+  const labels = dockerLabels(record.Config);
   return deepFreeze({
     repoDigests: [...record.RepoDigests] as string[],
     os: record.Os,
     architecture: record.Architecture,
     sizeBytes,
+    labels,
   });
+}
+
+function dockerLabels(value: unknown): Readonly<Record<string, string>> {
+  if (value === undefined || value === null) return deepFreeze({});
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("docker image inspect has an invalid Config record");
+  }
+  const config = value as Record<string, unknown>;
+  if (config.Labels === undefined || config.Labels === null) return deepFreeze({});
+  if (typeof config.Labels !== "object" || Array.isArray(config.Labels)) {
+    throw new TypeError("docker image inspect has invalid Config.Labels");
+  }
+  const labels = config.Labels as Record<string, unknown>;
+  const entries = Object.entries(labels).map(([key, label]) => {
+    if (typeof label !== "string") {
+      throw new TypeError(`docker image inspect label ${key} must be a string`);
+    }
+    return [key, label] as const;
+  });
+  return deepFreeze(
+    Object.fromEntries(entries.sort(([left], [right]) => left.localeCompare(right))),
+  );
 }
 
 function assertExactDockerImage(

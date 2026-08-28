@@ -94,6 +94,52 @@ Deno.test("host observer reports the RepoDigest actually matched among aliases",
   );
 });
 
+Deno.test("host observer retains labels from an exact dedicated SysON image", async () => {
+  const calculix = await createLocalCalculixIsolatedExecutionServerOptions();
+  const census = await loadWorkspaceBehaveFoundationCensus({
+    calculix: {
+      imageReference: calculix.profile.imageReference,
+      policyFingerprint: calculix.profile.policy.fingerprint,
+    },
+  });
+  const observed = await observeBehaveFoundationHost(census, {
+    platform: "linux/arm64",
+    runDocker: (args) =>
+      Promise.resolve({
+        ...dockerResult(args),
+        stdout: args[0] === "image"
+          ? JSON.stringify({
+            RepoDigests: [args.at(-1)!],
+            Os: "linux",
+            Architecture: "arm64",
+            Config: {
+              Labels: String(args.at(-1)).startsWith("ghcr.io/casys-ai/mcp-syson")
+                ? {
+                  "org.opencontainers.image.source":
+                    "https://github.com/Casys-AI/mcp-syson",
+                  "org.opencontainers.image.revision":
+                    "cf22348d1f91ba7329e0dbc04db814bca32ff17e",
+                  "org.opencontainers.image.version": "0.8.3",
+                }
+                : {},
+            },
+          })
+          : dockerResult(args).stdout,
+      }),
+    inspectMicrosandboxImage: () => Promise.resolve(undefined),
+  });
+
+  assertEquals(
+    observed.materialObservations.find((entry) => entry.materialId === "mcp-syson")
+      ?.labels,
+    {
+      "org.opencontainers.image.revision": "cf22348d1f91ba7329e0dbc04db814bca32ff17e",
+      "org.opencontainers.image.source": "https://github.com/Casys-AI/mcp-syson",
+      "org.opencontainers.image.version": "0.8.3",
+    },
+  );
+});
+
 Deno.test("doctor reports cached-exact without promoting it to a vertical qualification", async () => {
   const calculix = await createLocalCalculixIsolatedExecutionServerOptions();
   const census = await loadWorkspaceBehaveFoundationCensus({
