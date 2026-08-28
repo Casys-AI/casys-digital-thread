@@ -14,6 +14,10 @@ import {
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { CapabilityRuntimeHostMutationLock } from "../ports/out/capability/capability-runtime-supervisor.ts";
 import type { ProjectCapabilityLedgerStore } from "../ports/out/project-capability-ledger-store.ts";
+import {
+  type ProjectCapabilityLedger,
+  reconstructProjectCapabilityEffectiveEnvelope,
+} from "./project-capability-authorization.ts";
 import type {
   CapabilityRuntimeAdminLockWriter,
   ProjectCapabilityAuthorizationService,
@@ -107,7 +111,7 @@ export class LocalCapabilityRuntimeAdminService {
     return await lockReview(
       "rollback-apply",
       current,
-      await nextLock(current, source.units),
+      await rollbackSuccessor(current, source.units),
     );
   }
 
@@ -137,18 +141,19 @@ export class LocalCapabilityRuntimeAdminService {
       throw new Error("Local capability revocation requires a reason.");
     }
     const ledger = await this.options.ledgers.get(projectId);
-    const envelope = ledger?.effectiveEnvelope;
-    if (!ledger || !envelope || envelope.status !== "authorized") {
+    if (!ledger) {
       throw new Error(
         "Local capability revocation requires one authorized project envelope.",
       );
     }
+    const reviewBasis = await revocationReviewBasis(ledger, reason.trim());
     const body = {
       kind: "revoke-apply" as const,
       projectId,
-      expectedEffectiveEnvelopeFingerprint: envelope.effectiveEnvelopeFingerprint,
-      reason: reason.trim(),
-      ledgerFingerprint: ledger.ledgerFingerprint,
+      expectedEffectiveEnvelopeFingerprint:
+        reviewBasis.expectedEffectiveEnvelopeFingerprint,
+      reason: reviewBasis.reason,
+      ledgerFingerprint: reviewBasis.ledgerFingerprint,
     };
     return { ...body, reviewFingerprint: await sha256Fingerprint(body) };
   }
@@ -217,6 +222,56 @@ async function nextLock(
     revision: current.revision + 1,
     previous: await sha256Fingerprint(current),
     units: structuredClone(units),
+  };
+}
+
+/** A rollback is an auditable successor even when its desired body is identical. */
+async function rollbackSuccessor(
+  current: CapabilityRuntimeAdminLock,
+  units: readonly CapabilityRuntimeAdminLock["units"][number][],
+): Promise<CapabilityRuntimeAdminLock> {
+  return {
+    schemaVersion: current.schemaVersion,
+    revision: current.revision + 1,
+    previous: await sha256Fingerprint(current),
+    units: structuredClone(units),
+  };
+}
+
+async function revocationReviewBasis(
+  ledger: ProjectCapabilityLedger,
+  reason: string,
+): Promise<{
+  readonly expectedEffectiveEnvelopeFingerprint: ContentFingerprint;
+  readonly reason: string;
+  readonly ledgerFingerprint: ContentFingerprint;
+}> {
+  const envelope = ledger.effectiveEnvelope;
+  if (envelope?.status === "authorized") {
+    return {
+      expectedEffectiveEnvelopeFingerprint: envelope.effectiveEnvelopeFingerprint,
+      reason,
+      ledgerFingerprint: ledger.ledgerFingerprint,
+    };
+  }
+  const event = ledger.events.at(-1);
+  const predecessor = event?.kind === "revocation-recorded"
+    ? await reconstructProjectCapabilityEffectiveEnvelope(ledger.events.slice(0, -1))
+    : null;
+  if (
+    event?.kind !== "revocation-recorded" || event.reason !== reason ||
+    predecessor?.status !== "authorized" || !ledger.previous
+  ) {
+    throw new Error(
+      "Local capability revocation requires one authorized project envelope.",
+    );
+  }
+  // Recreate the exact original review after a crash between ledger append and
+  // host-lock convergence. A different reason or predecessor is fail-closed.
+  return {
+    expectedEffectiveEnvelopeFingerprint: predecessor.effectiveEnvelopeFingerprint,
+    reason,
+    ledgerFingerprint: ledger.previous,
   };
 }
 

@@ -38,6 +38,17 @@ Deno.test("local admin lock review requires exact fingerprint and explicit confi
       Error,
       "stale",
     );
+    // Returning to an equivalent desired state is still a distinct,
+    // append-only administrative decision.
+    const rollback = await service.rollbackReview(applied.revision);
+    assertEquals(rollback.nextLock.revision, 2);
+    const rolledBack = await service.rollbackApply(
+      applied.revision,
+      rollback.reviewFingerprint,
+      true,
+    );
+    assertEquals(rolledBack.revision, 2);
+    assertEquals(rolledBack.units, applied.units);
   } finally {
     await Deno.remove(directory, { recursive: true });
   }

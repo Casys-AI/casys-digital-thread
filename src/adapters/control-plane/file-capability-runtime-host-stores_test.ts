@@ -204,3 +204,49 @@ Deno.test("admin lock retains immutable history and rollback writes a successor"
     await Deno.remove(directory, { recursive: true });
   }
 });
+
+Deno.test("admin lock rejects a head whose earlier immutable predecessor is absent", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "casys-capability-lock-chain-",
+  });
+  try {
+    const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+    const store = new FileCapabilityRuntimeAdminLockStore(
+      `${directory}/admin-lock.json`,
+      catalog,
+    );
+    const empty = await store.read();
+    const first = {
+      schemaVersion: empty.schemaVersion,
+      revision: 1,
+      previous: await sha256Fingerprint(empty),
+      units: catalog.units.map((unit) => ({
+        id: unit.id,
+        version: unit.version,
+        manifestFingerprint: unit.manifestFingerprint,
+        desired: "inactive" as const,
+      })),
+    };
+    await store.save(first);
+    const second = {
+      ...first,
+      revision: 2,
+      previous: await sha256Fingerprint(first),
+    };
+    await store.save(second);
+    await Deno.remove(`${directory}/admin-lock-revisions/0000000001.json`);
+    await assertRejects(() => store.read(), Error, "revision 1 is absent");
+    const third = {
+      ...second,
+      revision: 3,
+      previous: await sha256Fingerprint(second),
+    };
+    await assertRejects(
+      () => store.save(third),
+      Error,
+      "revision 1 is absent",
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});

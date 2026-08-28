@@ -348,7 +348,8 @@ export class FileCapabilityRuntimeAdminLockStore {
       await this.#assertNoOrphanedHistory();
       return await this.#empty();
     }
-    const lock = await this.readRevision(head.revision);
+    const history = await this.#readHistoryToHead(head);
+    const lock = history.at(-1)!;
     const fingerprint = await sha256Fingerprint(lock);
     if (
       fingerprint.algorithm !== head.lockFingerprint.algorithm ||
@@ -396,6 +397,21 @@ export class FileCapabilityRuntimeAdminLockStore {
       await this.#assertNoOrphanedHistory();
       return [await this.#empty()];
     }
+    return await this.#readHistoryToHead(head);
+  }
+
+  /**
+   * `read()` and `list()` share this non-recursive chain validation. A valid
+   * head is insufficient: deleting or corrupting a predecessor must revoke
+   * the local activation authority rather than leaving a truncated history.
+   */
+  async #readHistoryToHead(
+    head: {
+      readonly schemaVersion: "capability-runtime-admin-lock-head/1.0";
+      readonly revision: number;
+      readonly lockFingerprint: Awaited<ReturnType<typeof sha256Fingerprint>>;
+    },
+  ): Promise<readonly CapabilityRuntimeAdminLock[]> {
     const result: CapabilityRuntimeAdminLock[] = [await this.#empty()];
     for (let revision = 1; revision <= head.revision; revision++) {
       const lock = await this.readRevision(revision);
@@ -411,6 +427,16 @@ export class FileCapabilityRuntimeAdminLockStore {
         );
       }
       result.push(lock);
+    }
+    const tip = result.at(-1)!;
+    const fingerprint = await sha256Fingerprint(tip);
+    if (
+      fingerprint.algorithm !== head.lockFingerprint.algorithm ||
+      fingerprint.digest !== head.lockFingerprint.digest
+    ) {
+      throw new Error(
+        "Capability runtime admin lock head does not name its exact revision.",
+      );
     }
     return result;
   }

@@ -57,6 +57,12 @@ export interface EnsureCapabilityRuntimeLaunchGroupRequest {
   readonly at: string;
   /** Fresh queues reject an extant claim; only the same session may reuse it. */
   readonly reuseExistingLease: "allow" | "reject";
+  /**
+   * Revalidates the exact project authorization while the host mutation mutex
+   * is held. It runs before a lease claim or journalled host action so a
+   * concurrent revocation cannot leave a disposable session behind.
+   */
+  readonly guard?: () => Promise<boolean>;
 }
 
 export interface CapabilityRuntimeLaunchGroupEnsureResult {
@@ -125,6 +131,11 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
     request: EnsureCapabilityRuntimeLaunchGroupRequest,
   ): Promise<CapabilityRuntimeLaunchGroupEnsureResult> {
     return await this.options.lock.withLock(async () => {
+      if (request.guard && !(await request.guard())) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime activation is no longer authorized by the exact local envelope and lock.",
+        );
+      }
       const group = await this.#requireUsableGroup(request.group);
       const lease = validateCapabilityRuntimeLease(request.lease);
       this.#assertLeaseCovers(group, lease, request.projectId, request.at);

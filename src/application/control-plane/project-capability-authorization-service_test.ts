@@ -16,6 +16,7 @@ import {
   ProjectCapabilityAuthorizationError,
   ProjectCapabilityAuthorizationService,
 } from "./project-capability-authorization-service.ts";
+import { LocalCapabilityRuntimeAdminService } from "./local-capability-runtime-admin-service.ts";
 import {
   fingerprintProjectCapabilityProposal,
   validateProjectCapabilityProposal,
@@ -37,9 +38,26 @@ Deno.test("brief capability authorization retains resolved candidates beside an 
       `${directory}/host/admin-lock.json`,
       catalog,
     );
+    const ledgers = new InMemoryProjectCapabilityLedgerStore();
+    const hostMutationLock = new FileCapabilityRuntimeHostMutationLock(
+      `${directory}/host/mutation.lock`,
+    );
+    let interruptNextLockSave = false;
+    const lockWriter = {
+      read: () => lock.read(),
+      readRevision: (revision: number) => lock.readRevision(revision),
+      list: () => lock.list(),
+      save: async (value: Awaited<ReturnType<typeof lock.read>>) => {
+        if (interruptNextLockSave) {
+          interruptNextLockSave = false;
+          throw new Error("simulated ledger-to-lock interruption");
+        }
+        await lock.save(value);
+      },
+    };
     const preloads: unknown[] = [];
     const authorization = new ProjectCapabilityAuthorizationService({
-      ledgers: new InMemoryProjectCapabilityLedgerStore(),
+      ledgers,
       registry: { list: listRegisteredEngineeringOperations },
       catalog,
       policy: new FileCapabilityRuntimeAdminPolicyStore(
@@ -53,10 +71,8 @@ Deno.test("brief capability authorization retains resolved candidates beside an 
         images: [],
       },
       lock,
-      lockWriter: lock,
-      hostMutationLock: new FileCapabilityRuntimeHostMutationLock(
-        `${directory}/host/mutation.lock`,
-      ),
+      lockWriter,
+      hostMutationLock,
       preloadScheduler: {
         schedule: (proposal) => preloads.push(proposal),
       },
@@ -269,27 +285,71 @@ Deno.test("brief capability authorization retains resolved candidates beside an 
       ProjectCapabilityAuthorizationError,
       "different or revoked ceiling",
     );
-    const revoked = await authorization.revoke(
+    const localAdmin = new LocalCapabilityRuntimeAdminService({
+      catalog,
+      ledgers,
+      lock,
+      hostMutationLock,
+      authorization,
+    });
+    const revocationReason =
+      "The local operator no longer permits this project capability envelope.";
+    const revocationReview = await localAdmin.revokeReview(
       approved.project.id,
-      finalized.effectiveEnvelope!.effectiveEnvelopeFingerprint,
-      "The local operator no longer permits this project capability envelope.",
+      revocationReason,
     );
-    assertEquals(revoked.effectiveEnvelope?.status, "revoked");
+    // Simulate a process loss after durable ledger append but before lock
+    // convergence. The original review must remain exactly replayable without
+    // asking for another human decision.
+    interruptNextLockSave = true;
+    await assertRejects(
+      () =>
+        authorization.revoke(
+          approved.project.id,
+          finalized.effectiveEnvelope!.effectiveEnvelopeFingerprint,
+          revocationReason,
+        ),
+      Error,
+      "ledger-to-lock interruption",
+    );
+    const revoked = await ledgers.get(approved.project.id);
+    assertEquals(revoked?.effectiveEnvelope?.status, "revoked");
+    assertEquals(
+      (await lock.read()).units.find((unit) =>
+        unit.id === "casys.mcp-build123d-observation"
+      )?.desired,
+      "active",
+    );
+    // A retry after ledger persistence but before lock convergence is exact
+    // and never needs a second human decision.
+    await assertRejects(
+      () =>
+        localAdmin.revokeApply(
+          approved.project.id,
+          revocationReason,
+          { algorithm: "sha256", digest: "b".repeat(64) },
+          true,
+        ),
+      Error,
+      "stale",
+    );
+    await localAdmin.revokeApply(
+      approved.project.id,
+      revocationReason,
+      revocationReview.reviewFingerprint,
+      true,
+    );
+    assertEquals((await ledgers.get(approved.project.id))?.revision, revoked?.revision);
     assertEquals(
       (await lock.read()).units.find((unit) =>
         unit.id === "casys.mcp-build123d-observation"
       )?.desired,
       "inactive",
     );
-    // A retry after ledger persistence but before lock convergence is exact
-    // and never needs a second human decision.
-    assertEquals(
-      (await authorization.revoke(
-        approved.project.id,
-        finalized.effectiveEnvelope!.effectiveEnvelopeFingerprint,
-        "The local operator no longer permits this project capability envelope.",
-      )).revision,
-      revoked.revision,
+    await assertRejects(
+      () => localAdmin.revokeReview(approved.project.id, "A different reason."),
+      Error,
+      "authorized project envelope",
     );
   } finally {
     await Deno.remove(directory, { recursive: true });
