@@ -97,6 +97,22 @@ export interface PrescribedKinematicsObservationRecord {
   readonly samplePage: PrescribedKinematicsSamplePage;
 }
 
+/**
+ * Published mcp-chrono 0.3.1 failures proved to occur before a run intent is
+ * recorded. They are a definite rejection, never an uncertain dispatch.
+ */
+export type PrescribedKinematicsPreDispatchRejectionCode =
+  | "case_invalid"
+  | "case_not_found"
+  | "case_sha256_mismatch"
+  | "case_uri_mismatch"
+  | "invalid_case_json"
+  | "invalid_request_id"
+  | "invalid_sample_limit"
+  | "invalid_sample_offset"
+  | "invalid_timeout"
+  | "request_conflict";
+
 export type PrescribedKinematicsRunReadback =
   | {
     readonly state: "recorded";
@@ -107,6 +123,10 @@ export type PrescribedKinematicsRunReadback =
     readonly requestId: string;
     readonly caseSha256: string;
     readonly caseUri: string;
+  }
+  | {
+    readonly state: "rejected";
+    readonly code: PrescribedKinematicsPreDispatchRejectionCode;
   }
   | { readonly state: "absent" };
 

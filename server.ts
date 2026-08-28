@@ -234,6 +234,24 @@ import {
 } from "./src/adapters/cad/server-composition.ts";
 import { createAssemblyIntegrityCloseoutProject } from "./src/adapters/cad/assembly-integrity/assembly-integrity-closeout-composition.ts";
 import { createCadPlacementComposition } from "./src/adapters/cad/placement/server-composition.ts";
+import { DeclaredAgainstPrescribedKinematicsArchitectureIndex } from "./src/adapters/mechanics/chrono/declared-against-prescribed-kinematics-architecture-index.ts";
+import { FilePrescribedKinematicsCaptureStore } from "./src/adapters/mechanics/chrono/file-prescribed-kinematics-capture-store.ts";
+import { FilePrescribedKinematicsObservationAttemptStore } from "./src/adapters/mechanics/chrono/file-prescribed-kinematics-observation-attempt-store.ts";
+import { PrescribedKinematicsRunExecutor } from "./src/adapters/mechanics/chrono/prescribed-kinematics-run-executor.ts";
+import { CaptureProjectPrescribedKinematicsCase } from "./src/application/use-cases/mechanics/prescribed-kinematics/capture-project-prescribed-kinematics-case.ts";
+import { DecidePrescribedKinematicsCloseout } from "./src/application/use-cases/mechanics/prescribed-kinematics/decide-prescribed-kinematics-closeout.ts";
+import { EvaluatePrescribedKinematics } from "./src/application/use-cases/mechanics/prescribed-kinematics/evaluate-prescribed-kinematics.ts";
+import { SealPrescribedKinematicsMethod } from "./src/application/use-cases/mechanics/prescribed-kinematics/seal-prescribed-kinematics-method.ts";
+import { RunPrescribedKinematicsObservation } from "./src/application/use-cases/mechanics/prescribed-kinematics/run-prescribed-kinematics-observation.ts";
+import type { PrescribedKinematicsObserver } from "./src/application/ports/out/mechanics/prescribed-kinematics-observer.ts";
+import {
+  DECIDE_ACCEPT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION,
+  DECIDE_REJECT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION,
+  VERIFY_EVALUATE_PRESCRIBED_KINEMATICS_OPERATION,
+  VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+  VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION,
+  VERIFY_SEAL_PRESCRIBED_KINEMATICS_METHOD_OPERATION,
+} from "./src/domain/mechanism/prescribed-kinematics/operations.ts";
 import {
   createGeometryModuleAssemblyComposition,
   type GeometryModuleAssemblyServerOptions,
@@ -545,6 +563,19 @@ export interface CreateConsoleServerOptions {
   assemblyIntegrityEvaluationCaptureDirectory?: string;
   /** Durable L4 assembly-integrity evaluation publication journal. */
   assemblyIntegrityEvaluationAttemptDirectory?: string;
+  /** Immutable prescribed-kinematics L1/L3/L4/L5 capture lanes. */
+  prescribedKinematicsCaptureDirectory?: string;
+  /** Durable prescribed-kinematics L3 dispatch-intent WAL. */
+  prescribedKinematicsObservationAttemptDirectory?: string;
+  /**
+   * Explicit server-owned L3 composition seam. Supplying this fixed observer
+   * means its Chrono capability/runtime has already been qualified elsewhere; no
+   * MCP caller can select or inspect that binding.
+   */
+  prescribedKinematicsObservation?: {
+    /** Fixed client for an already-qualified server-owned Chrono runtime. */
+    readonly observer: PrescribedKinematicsObserver;
+  };
   engineeringProjectRunLeaseDirectory?: string;
   projectBaselineDirectory?: string;
   /** Root of the closed CAS/WAL layout used by isolated-analysis operations. */
@@ -1114,6 +1145,52 @@ async function createProjectControl(
     architectureCaptures: architectureFoundation.genericArchitectureCaptures,
     sysmlSourceAnalysis: architectureFoundation.sysmlSourceAnalysis,
   });
+  // This provider-free review is always composable: it only recrosses the
+  // workspace and architecture evidence. Chrono remains absent until a later
+  // server-owned qualified runtime composition supplies the L3 executor.
+  const prescribedKinematicsCaseReview = new CaptureProjectPrescribedKinematicsCase({
+    workspace: sourceWorkspaceStore,
+    resources: reopenAgentResource,
+    architecture: new DeclaredAgainstPrescribedKinematicsArchitectureIndex(
+      threadSnapshots,
+      architectureFoundation.genericArchitectureCaptures,
+      architectureFoundation.sysmlSourceAnalysis,
+    ),
+  });
+  // Provider-free parts of the vertical are present independently from
+  // Chrono. An L3 observer is deliberately absent until an explicit qualified
+  // server-owned runtime binding composes it; no endpoint or provider can be
+  // inferred from a caller, environment variable, or review request.
+  const prescribedKinematicsExecution = Object.freeze({
+    captures: new FilePrescribedKinematicsCaptureStore(
+      options.prescribedKinematicsCaptureDirectory ??
+        "state/local/mechanics/prescribed-kinematics/captures",
+    ),
+    observationAttempts: new FilePrescribedKinematicsObservationAttemptStore(
+      options.prescribedKinematicsObservationAttemptDirectory ??
+        "state/local/mechanics/prescribed-kinematics/observation-attempts",
+    ),
+    sealMethod: new SealPrescribedKinematicsMethod(reopenAgentResource),
+    evaluate: new EvaluatePrescribedKinematics(),
+    decideCloseout: new DecidePrescribedKinematicsCloseout(),
+  });
+  const prescribedKinematicsRunExecutor = new PrescribedKinematicsRunExecutor({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: build123dThreadSnapshots,
+    lease,
+    caseReview: prescribedKinematicsCaseReview,
+    captures: prescribedKinematicsExecution.captures,
+    ...(options.prescribedKinematicsObservation === undefined ? {} : {
+      observe: new RunPrescribedKinematicsObservation({
+        attempts: prescribedKinematicsExecution.observationAttempts,
+        observer: options.prescribedKinematicsObservation.observer,
+      }),
+    }),
+    sealMethod: prescribedKinematicsExecution.sealMethod,
+    evaluate: prescribedKinematicsExecution.evaluate,
+    decideCloseout: prescribedKinematicsExecution.decideCloseout,
+  });
   const agentResourceIngress = createAgentResourceIngress({
     store: agentResourceStore,
     thermalSheets: thermalJoin.thermalMethodSheets,
@@ -1385,6 +1462,7 @@ async function createProjectControl(
       runPlanReader: recordedPlans.recordedRunPlans,
       technicalSourceCapture: compilationFoundation.technicalSourceCapture,
       cadPlacementCapture: cadPlacement.cadPlacementCapture,
+      prescribedKinematicsCaseReview,
       geometryModuleExport,
       assemblyIntegrityReview,
       assemblyIntegrityEvaluationReview,
@@ -1681,6 +1759,41 @@ async function createProjectControl(
             unavailableMessage:
               "The server has no trusted verify.evaluate-assembly-integrity@1 executor " +
               "configured for this run (exact L3 observation evidence and its closed recross are required).",
+          },
+          // Provider-free L1/L4/L5 handlers are fully composed below. L3 is
+          // the sole conditional registration: it appears only with the
+          // explicit server-owned qualified observation runner, never from an
+          // agent choice of provider, image, tool, arguments, or runtime.
+          {
+            operation: VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION,
+            executor: prescribedKinematicsRunExecutor,
+          },
+          {
+            operation: VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+            ...(options.prescribedKinematicsObservation === undefined
+              ? {
+                unavailableMessage:
+                  "The server has no trusted qualified prescribed-kinematics observation runtime configured for this run.",
+              }
+              : { executor: prescribedKinematicsRunExecutor }),
+          },
+          {
+            operation: VERIFY_SEAL_PRESCRIBED_KINEMATICS_METHOD_OPERATION,
+            executor: prescribedKinematicsRunExecutor,
+          },
+          {
+            operation: VERIFY_EVALUATE_PRESCRIBED_KINEMATICS_OPERATION,
+            executor: prescribedKinematicsRunExecutor,
+          },
+          // L5 remains an explicit pair. Do not derive these registrations by
+          // iterating the operation family: both require a human origin.
+          {
+            operation: DECIDE_ACCEPT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION,
+            executor: prescribedKinematicsRunExecutor,
+          },
+          {
+            operation: DECIDE_REJECT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION,
+            executor: prescribedKinematicsRunExecutor,
           },
           {
             operation: DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,

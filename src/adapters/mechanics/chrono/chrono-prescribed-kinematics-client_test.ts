@@ -119,6 +119,51 @@ Deno.test("Chrono adapter retains literal provider uncertainty and never retries
   assertEquals(calls, 1);
 });
 
+Deno.test("Chrono adapter keeps published pre-intent rejections definite", async () => {
+  for (
+    const code of [
+      "case_not_found",
+      "case_uri_mismatch",
+      "invalid_timeout",
+      "invalid_request_id",
+      "request_conflict",
+    ] as const
+  ) {
+    const client = clientWith(() =>
+      complete(
+        { ok: false, error: { code, message: "definite pre-intent rejection" } },
+        true,
+      )
+    );
+    assertEquals(await client.run(runRequest()), { state: "rejected", code });
+  }
+});
+
+Deno.test("Chrono adapter forces readback after post-intent runner and store outcomes", async () => {
+  for (
+    const code of [
+      "runner_timeout",
+      "worker_failed",
+      "worker_invalid_output",
+      "store_corrupt",
+      "persisted_ledger_invalid",
+    ] as const
+  ) {
+    const client = clientWith(() =>
+      complete({
+        ok: false,
+        error: { code, message: "post-intent state requires readback" },
+      }, true)
+    );
+    assertEquals(await client.run(runRequest()), {
+      state: "uncertain",
+      requestId: REQUEST_ID,
+      caseSha256: CASE_SHA,
+      caseUri: CASE_URI,
+    });
+  }
+});
+
 Deno.test("Chrono adapter exposes failed dispatch as uncertain without an automatic retry", async () => {
   let calls = 0;
   const client = new ChronoPrescribedKinematicsClient({
@@ -295,15 +340,9 @@ Deno.test("Chrono adapter never reflects structured provider error messages", as
     )
   );
 
-  let thrown: unknown;
-  try {
-    await client.run(runRequest());
-  } catch (error) {
-    thrown = error;
-  }
-  assert(thrown instanceof ChronoPrescribedKinematicsProviderError);
-  assertEquals(thrown.message.includes(TOKEN), false);
-  assertEquals(thrown.code, "case_invalid");
+  const result = await client.run(runRequest());
+  assertEquals(result, { state: "rejected", code: "case_invalid" });
+  assertEquals(JSON.stringify(result).includes(TOKEN), false);
 });
 
 Deno.test("Chrono adapter rejects stale provider records and malformed page metadata", async () => {

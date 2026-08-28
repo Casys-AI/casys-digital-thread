@@ -8,6 +8,7 @@ import {
   MANUFACTURING_ESTIMATE_FFF_CAPABILITY,
   MANUFACTURING_OBSERVE_PRINTABILITY_CAPABILITY,
   MANUFACTURING_RUN_DFM_CHECKS_CAPABILITY,
+  MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY,
   MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY,
   MODEL_AUTHOR_SYSTEM_CAPABILITY,
   MODEL_EVALUATE_REQUIREMENT_CAPABILITY,
@@ -36,6 +37,9 @@ const DEMANDING_OPERATIONS = new Map<string, readonly ReturnType<typeof qualifie
   ]],
   ["verify.observe-assembly-integrity@1", [
     qualified(GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY),
+  ]],
+  ["verify.run-prescribed-kinematics@1", [
+    qualified(MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY),
   ]],
   ["simulate.run-qualified-modelica-kit@1", [
     qualified(SIMULATION_RUN_QUALIFIED_MODELICA_CAPABILITY),
@@ -82,7 +86,7 @@ const DEMANDING_OPERATIONS = new Map<string, readonly ReturnType<typeof qualifie
 
 Deno.test("runtime demand is an exhaustive provider-neutral registry projection", async () => {
   const operations = engineeringOperationRegistry.list();
-  assertEquals(operations.length, 46);
+  assertEquals(operations.length, 52);
   assertEquals(Object.isFrozen(operations), true);
   assertEquals(operations.every((operation) => Object.isFrozen(operation)), true);
   assertEquals(
@@ -117,7 +121,7 @@ Deno.test("runtime demand is an exhaustive provider-neutral registry projection"
     [...seenDemanding].toSorted(),
     [...DEMANDING_OPERATIONS.keys()].toSorted(),
   );
-  assertEquals(noneCount, 28);
+  assertEquals(noneCount, 33);
 
   const first = await fingerprintRegisteredEngineeringOperationRegistry();
   const second = await engineeringOperationRegistry.fingerprint();

@@ -14,6 +14,7 @@ import {
   MANUFACTURING_ESTIMATE_FFF_CAPABILITY,
   MANUFACTURING_OBSERVE_PRINTABILITY_CAPABILITY,
   MANUFACTURING_RUN_DFM_CHECKS_CAPABILITY,
+  MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY,
   MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY,
   MODEL_AUTHOR_SYSTEM_CAPABILITY,
   MODEL_EVALUATE_REQUIREMENT_CAPABILITY,
@@ -40,6 +41,14 @@ import {
   DECIDE_ACCEPT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION,
   DECIDE_REJECT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION,
 } from "../../domain/cad/assembly-integrity/assembly-integrity-evaluation-closeout-proposal.ts";
+import {
+  DECIDE_ACCEPT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION,
+  DECIDE_REJECT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION,
+  VERIFY_EVALUATE_PRESCRIBED_KINEMATICS_OPERATION,
+  VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+  VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION,
+  VERIFY_SEAL_PRESCRIBED_KINEMATICS_METHOD_OPERATION,
+} from "../../domain/mechanism/prescribed-kinematics/operations.ts";
 import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "../../domain/sensitivity/vector-correction/vector-correction-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/modelica/qualified-kit/run-proposal.ts";
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
@@ -466,6 +475,127 @@ const OPERATIONS = [
     requiresDependsOnOperation: {
       id: VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION.id,
       version: VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION.version,
+    },
+    bindings: [],
+  },
+  /**
+   * Provider-free L1 source closure seal.  The executor recrosses the exact
+   * mechanism-source@1 workspace heads and declared-against architecture; no
+   * STEP label, CAD inference, runtime, or provider surface is accepted.
+   */
+  {
+    id: VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION.id,
+    version: VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Seal the prescribed-kinematics case",
+    description:
+      "Recross one exact mechanism-source@1 workspace closure against its declared architecture capture, then seal the bounded prescribed-kinematics case. No provider, runtime, tool, CAD label, STEP inference, or dynamics claim is accepted.",
+    workItemKind: "verify",
+    riskClass: "consequential",
+    execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
+    bindings: [],
+  },
+  /** The sole runtime-demanding operation in this vertical. */
+  {
+    id: VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION.id,
+    version: VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Run the prescribed-kinematics observation",
+    description:
+      "Reopen one exact sealed prescribed-kinematics case, record a durable request identity before dispatch, and capture factual kinematic observations. The server owns the qualified runtime and all lowering; collision, clearance, contact, forces, torques, dynamics, strength, safety, and manufacturability remain not_evaluated.",
+    workItemKind: "verify",
+    riskClass: "consequential",
+    execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY),
+    ),
+    requiresAdditiveChange: true,
+    requiresDependsOnOperation: {
+      id: VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION.id,
+      version: VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION.version,
+    },
+    bindings: [],
+  },
+  {
+    id: VERIFY_SEAL_PRESCRIBED_KINEMATICS_METHOD_OPERATION.id,
+    version: VERIFY_SEAL_PRESCRIBED_KINEMATICS_METHOD_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Seal the prescribed-kinematics method",
+    description:
+      "Reopen the exact human-signed method resource, sealed case, and factual L3 observation, then seal the bounded method sheet. No provider call, runtime choice, result value, or verdict is accepted.",
+    workItemKind: "review",
+    riskClass: "consequential",
+    execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
+    requiresAdditiveChange: true,
+    requiresDependsOnOperation: {
+      id: VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION.id,
+      version: VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION.version,
+    },
+    bindings: [],
+  },
+  {
+    id: VERIFY_EVALUATE_PRESCRIBED_KINEMATICS_OPERATION.id,
+    version: VERIFY_EVALUATE_PRESCRIBED_KINEMATICS_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Evaluate prescribed kinematics",
+    description:
+      "Recross exact sealed case, factual L3 observation, and sealed method, then record the deterministic L4 kinematic evaluation. No provider, tool, tolerance, fact, or requested verdict is caller-selected.",
+    workItemKind: "verify",
+    riskClass: "consequential",
+    execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
+    requiresAdditiveChange: true,
+    requiresDependsOnOperation: {
+      id: VERIFY_SEAL_PRESCRIBED_KINEMATICS_METHOD_OPERATION.id,
+      version: VERIFY_SEAL_PRESCRIBED_KINEMATICS_METHOD_OPERATION.version,
+    },
+    bindings: [],
+  },
+  // L5 identities are registered deliberately and individually: never expand
+  // PRESCRIBED_KINEMATICS_OPERATIONS here, because only these two are human-only.
+  {
+    id: DECIDE_ACCEPT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION.id,
+    version: DECIDE_ACCEPT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Accept the prescribed-kinematics evaluation closeout",
+    description:
+      "Reopen one exact current prescribed-kinematics L4 result and record a human accept closeout only when its literal verdict is pass. It is neither a dynamics, safety, manufacturing, nor certification conclusion.",
+    workItemKind: "review",
+    riskClass: "consequential",
+    execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
+    mustOrigin: "human",
+    requiresAdditiveChange: true,
+    requiresDependsOnOperation: {
+      id: VERIFY_EVALUATE_PRESCRIBED_KINEMATICS_OPERATION.id,
+      version: VERIFY_EVALUATE_PRESCRIBED_KINEMATICS_OPERATION.version,
+    },
+    bindings: [],
+  },
+  {
+    id: DECIDE_REJECT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION.id,
+    version: DECIDE_REJECT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Reject the prescribed-kinematics evaluation closeout",
+    description:
+      "Reopen one exact current prescribed-kinematics L4 result and record a human reject closeout. Reject grants no correction, provider, CAD, FEA, safety, manufacturing, or certification authority.",
+    workItemKind: "review",
+    riskClass: "consequential",
+    execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
+    mustOrigin: "human",
+    requiresAdditiveChange: true,
+    requiresDependsOnOperation: {
+      id: VERIFY_EVALUATE_PRESCRIBED_KINEMATICS_OPERATION.id,
+      version: VERIFY_EVALUATE_PRESCRIBED_KINEMATICS_OPERATION.version,
     },
     bindings: [],
   },

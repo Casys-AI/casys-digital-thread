@@ -4,6 +4,7 @@ import type {
   PrescribedKinematicsJointObservation,
   PrescribedKinematicsObservationRecord,
   PrescribedKinematicsObserver,
+  PrescribedKinematicsPreDispatchRejectionCode,
   PrescribedKinematicsReceipt,
   PrescribedKinematicsRunReadback,
   PrescribedKinematicsRunRequest,
@@ -28,13 +29,38 @@ const SHA256 = /^[a-f0-9]{64}$/;
 const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const CHRONO_PROVIDER_ERROR_CODES = new Set([
   "case_invalid",
+  "case_not_found",
   "case_sha256_mismatch",
+  "case_uri_mismatch",
+  "invalid_case_json",
+  "invalid_request_id",
   "invalid_sample_offset",
   "invalid_sample_limit",
+  "invalid_timeout",
+  "persisted_ledger_invalid",
+  "receipt_invalid",
+  "receipt_not_found",
   "request_conflict",
   "run_uncertain",
   "runner_timeout",
+  "store_corrupt",
   "worker_failed",
+  "worker_invalid_output",
+  "internal_error",
+]);
+const PRE_DISPATCH_RUN_REJECTIONS = new Set<
+  PrescribedKinematicsPreDispatchRejectionCode
+>([
+  "case_invalid",
+  "case_not_found",
+  "case_sha256_mismatch",
+  "case_uri_mismatch",
+  "invalid_case_json",
+  "invalid_request_id",
+  "invalid_sample_limit",
+  "invalid_sample_offset",
+  "invalid_timeout",
+  "request_conflict",
 ]);
 const NOT_EVALUATED = [
   "collision",
@@ -192,9 +218,20 @@ export class ChronoPrescribedKinematicsClient implements PrescribedKinematicsObs
     } catch (error) {
       if (
         error instanceof ChronoPrescribedKinematicsProviderError &&
-        error.code === "run_uncertain"
+        isPostIntentRunError(error.code)
       ) {
         return uncertain(valid);
+      }
+      if (
+        error instanceof ChronoPrescribedKinematicsProviderError &&
+        PRE_DISPATCH_RUN_REJECTIONS.has(
+          error.code as PrescribedKinematicsPreDispatchRejectionCode,
+        )
+      ) {
+        return {
+          state: "rejected",
+          code: error.code as PrescribedKinematicsPreDispatchRejectionCode,
+        };
       }
       if (
         error instanceof ChronoPrescribedKinematicsRequestError &&
@@ -818,6 +855,18 @@ function providerErrorCode(value: unknown, path: string): string {
     throw protocol(`${path} is not a published mcp-chrono 0.3.1 error code`);
   }
   return code;
+}
+
+/**
+ * These codes arise only after mcp-chrono has either written a run intent or
+ * begun the provider-side execution/persistence path.  The caller must read
+ * the same request identity before assigning any outcome, never retry `run`.
+ */
+function isPostIntentRunError(code: string): boolean {
+  return code === "run_uncertain" || code === "runner_timeout" ||
+    code === "worker_failed" || code === "worker_invalid_output" ||
+    code === "store_corrupt" || code === "persisted_ledger_invalid" ||
+    code === "receipt_invalid" || code === "internal_error";
 }
 
 /**

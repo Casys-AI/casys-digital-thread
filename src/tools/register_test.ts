@@ -735,6 +735,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_led_driver_source_capture",
     "project_led_driver_source_review",
     "project_plan_publish",
+    "project_prescribed_kinematics_case_review",
     "project_product_explore",
     "project_product_inspect",
     "project_product_search",
@@ -824,6 +825,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_led_driver_source_capture",
       "project_led_driver_source_review",
       "project_plan_publish",
+      "project_prescribed_kinematics_case_review",
       "project_product_explore",
       "project_product_inspect",
       "project_product_search",
@@ -1084,6 +1086,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_product_search" ||
           tool.name === "project_source_closure" ||
           tool.name === "project_agent_run_plan_get" ||
+          tool.name === "project_prescribed_kinematics_case_review" ||
           tool.name === "project_isolated_geometry_seal_review" ||
           tool.name === "project_led_driver_source_review" ||
           tool.name === "project_evaluation_closeout_review" ||
@@ -1135,6 +1138,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_agent_run_execute" ||
           tool.name === "project_agent_run_plan_get" ||
           tool.name === "project_agent_run_queue" ||
+          tool.name === "project_prescribed_kinematics_case_review" ||
           tool.name === "project_architecture_sysml_preview" ||
           tool.name === "project_architecture_sysml_source_capture" ||
           tool.name === "project_cross_domain_impact_manifest_capture" ||
