@@ -82,6 +82,17 @@ export interface SensitivityRecordedSolveCapture {
     readonly manifestFingerprint: ContentFingerprint;
     readonly manifestUri: string;
     readonly artifactSequenceFingerprint: ContentFingerprint;
+    /**
+     * The provider's `request.json` resource independently rehashed into CAS.
+     * It must equal the recorded-run ledger requestSha256.
+     */
+    readonly requestBinding: {
+      readonly requestResourceFingerprint: ContentFingerprint;
+      /** Exact server-lowered request before provider-observed engine identity. */
+      readonly loweredRequestFingerprint: ContentFingerprint;
+      /** Parsed provider-observed engine/lowering identity from sealed request.json. */
+      readonly executionIdentityFingerprint: ContentFingerprint;
+    };
   };
   readonly canonicalText: string;
   readonly fingerprint: ContentFingerprint;

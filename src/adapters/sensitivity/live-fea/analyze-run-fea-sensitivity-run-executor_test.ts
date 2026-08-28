@@ -1253,6 +1253,20 @@ class FakeSolver {
         algorithm: "sha256" as const,
         digest: "9".repeat(64),
       },
+      requestBinding: {
+        requestResourceFingerprint: {
+          algorithm: "sha256" as const,
+          digest: "a".repeat(64),
+        },
+        loweredRequestFingerprint: {
+          algorithm: "sha256" as const,
+          digest: "b".repeat(64),
+        },
+        executionIdentityFingerprint: {
+          algorithm: "sha256" as const,
+          digest: "c".repeat(64),
+        },
+      },
     };
     const body = {
       schemaVersion: "mcp-calculix-sensitivity-capture/1.0",

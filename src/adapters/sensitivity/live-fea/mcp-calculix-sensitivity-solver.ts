@@ -87,6 +87,22 @@ const READBACK_SCHEMA = "mcp-calculix-sensitivity-readback/1.0" as const;
 const CAPTURE_SCHEMA = "mcp-calculix-sensitivity-capture/1.0" as const;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 const RUN_ID = /^r-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const RECORDED_VERSION = /^[A-Za-z0-9][A-Za-z0-9._+ -]{0,127}$/;
+const RECORDED_ELEMENT_ORDER = 2 as const;
+const RECORDED_TIMEOUT_MS = 120_000 as const;
+const RECORDED_REQUEST_FIELDS = [
+  "execution_identity",
+  "element_order",
+  "expected_step_sha256",
+  "fixed",
+  "loads",
+  "material",
+  "mesh_size_mm",
+  "request_id",
+  "selections",
+  "step_path",
+  "timeout_ms",
+] as const;
 
 /** Fixed adapter protocol seam used by contract tests; it is not agent-facing. */
 export interface RecordedCalculixSensitivityProvider {
@@ -128,29 +144,12 @@ export class McpCalculixSensitivitySolver implements SensitivityStaticStructural
       ...input.execution,
       stepSha256,
     });
-    const method = input.method;
-    const exactRequest: Readonly<Record<string, JsonValue>> = {
-      request_id: requestId,
-      step_path: stagedPath,
-      expected_step_sha256: stepSha256,
-      mesh_size_mm: method.mesh.targetSizeMm,
-      material: { e_mpa: method.material.eMpa, nu: method.material.nu },
-      selections: [
-        ...method.supports.map((support) => ({
-          name: support.selection.name,
-          box: { min: support.selection.box.min, max: support.selection.box.max },
-        })),
-        ...method.loads.map((load) => ({
-          name: load.selection.name,
-          box: { min: load.selection.box.min, max: load.selection.box.max },
-        })),
-      ],
-      fixed: method.supports.map((support) => support.selection.name),
-      loads: method.loads.map((load) => ({
-        selection: load.selection.name,
-        force_n: load.force.value,
-      })),
-    };
+    const exactRequest = lowerRecordedStaticRequest({
+      requestId,
+      stepSha256,
+      stagedPath,
+      method: input.method,
+    });
     return {
       requestId,
       phase: input.execution.phase,
@@ -279,7 +278,17 @@ export class McpCalculixSensitivitySolver implements SensitivityStaticStructural
       root.requestSha256,
       "$calculixSensitivityReadback.requestSha256",
     );
-    const resources = parseRecordedResources(parsedRunId, root.resources);
+    const resources = parseReadbackResources(parsedRunId, root.resources);
+    const input = resources[0]!;
+    const request = resources[1]!;
+    if (
+      input.sha256 !== stepSha256 || input.byteCount !== stepBytes ||
+      request.role !== "request.json" || request.sha256 !== requestSha256
+    ) {
+      throw new TypeError(
+        "Recorded CalculiX readback resource identities do not match its STEP or request ledger fields.",
+      );
+    }
     const body = {
       schemaVersion: READBACK_SCHEMA,
       phase: parsedPhase,
@@ -331,21 +340,19 @@ export class McpCalculixSensitivitySolver implements SensitivityStaticStructural
         `CalculiX recorded resources could not be captured into CAS: ${message(error)}`,
       );
     }
-    const resultResource = readback.resources.at(-1)!;
-    const stored = await this.dependencies.artifacts.read({
-      algorithm: "sha256",
-      digest: resultResource.sha256,
-    });
-    if (!stored) {
-      throw unknown("CalculiX result.json disappeared after verified CAS capture.");
+    const requestBytes = await this.#readCapturedResource(readback, "request.json");
+    let requestBinding:
+      SensitivityRecordedSolveCapture["providerCapture"]["requestBinding"];
+    try {
+      requestBinding = await verifyCapturedRecordedRequest({
+        bytes: requestBytes,
+        readback,
+        method,
+      });
+    } catch (error) {
+      throw providerError(error, "request.json");
     }
-    const bytes = stored.copy();
-    if (
-      bytes.byteLength !== resultResource.byteCount ||
-      await fingerprintResourceBytes(bytes) !== resultResource.sha256
-    ) {
-      throw unknown("CalculiX result.json CAS bytes diverge from the provider ledger.");
-    }
+    const bytes = await this.#readCapturedResource(readback, "result.json");
     let result: StaticStructuralSolveResult;
     try {
       result = parseRecordedResult(bytes, readback, method);
@@ -356,6 +363,7 @@ export class McpCalculixSensitivitySolver implements SensitivityStaticStructural
       manifestFingerprint: captured.storedManifest.fingerprint,
       manifestUri: captured.storedManifest.uri,
       artifactSequenceFingerprint: await sha256Fingerprint(readback.resources),
+      requestBinding,
     };
     const body = {
       schemaVersion: CAPTURE_SCHEMA,
@@ -392,7 +400,7 @@ export class McpCalculixSensitivitySolver implements SensitivityStaticStructural
     );
     const readback = await this.reopenReadback(deterministicJson(root.readback));
     const providerCapture = parseProviderCapture(root.providerCapture);
-    const result = parseStaticStructuralResult(root.result, readback, undefined);
+    const result = parseCapturedStaticStructuralResult(root.result, readback);
     const body = {
       schemaVersion: CAPTURE_SCHEMA,
       readback: JSON.parse(readback.canonicalText),
@@ -409,6 +417,31 @@ export class McpCalculixSensitivitySolver implements SensitivityStaticStructural
       canonicalText: text,
       fingerprint: await sha256Fingerprint(body),
     };
+  }
+
+  async #readCapturedResource(
+    readback: SensitivityRecordedSolveReadback,
+    role: (typeof CALCULIX_RECORDED_RESOURCE_ORDER)[number],
+  ): Promise<Uint8Array> {
+    const resource = readback.resources.find((candidate) => candidate.role === role);
+    if (!resource) {
+      throw unknown(`Recorded CalculiX readback lacks ${role}.`);
+    }
+    const stored = await this.dependencies.artifacts.read({
+      algorithm: "sha256",
+      digest: resource.sha256,
+    });
+    if (!stored) {
+      throw unknown(`CalculiX ${role} disappeared after verified CAS capture.`);
+    }
+    const bytes = stored.copy();
+    if (
+      bytes.byteLength !== resource.byteCount ||
+      await fingerprintResourceBytes(bytes) !== resource.sha256
+    ) {
+      throw unknown(`CalculiX ${role} CAS bytes diverge from the provider ledger.`);
+    }
+    return bytes;
   }
 }
 
@@ -643,10 +676,17 @@ function parseCompletedRun(value: unknown, path: string): ParsedCompletedRun {
   ) {
     throw unknown("Recorded CalculiX inputArtifact does not match input.step.");
   }
+  const requestSha256 = sha256(root.requestSha256, `${path}.requestSha256`);
+  const request = artifacts[1]!;
+  if (request.role !== "request.json" || request.sha256 !== requestSha256) {
+    throw unknown(
+      "Recorded CalculiX requestSha256 does not match the request.json artifact ledger tuple.",
+    );
+  }
   return {
     requestId: parseRequestId(root.requestId, `${path}.requestId`),
     runId: parsedRunId,
-    requestSha256: sha256(root.requestSha256, `${path}.requestSha256`),
+    requestSha256,
     artifacts,
   };
 }
@@ -708,6 +748,67 @@ function parseRecordedResources(
   });
 }
 
+/** Parse the normalized provider ledger persisted in this adapter's WAL. */
+function parseReadbackResources(
+  recordedRunId: string,
+  value: unknown,
+): readonly SensitivityRecordedProviderResource[] {
+  if (
+    !Array.isArray(value) || value.length !== CALCULIX_RECORDED_RESOURCE_ORDER.length
+  ) {
+    throw new TypeError(
+      "Recorded CalculiX readback must contain exactly nine ordered resources.",
+    );
+  }
+  return value.map((entry, index) => {
+    const role = CALCULIX_RECORDED_RESOURCE_ORDER[index]!;
+    const root = exactRecord(
+      entry,
+      ["role", "uri", "mediaType", "byteCount", "sha256"],
+      `$calculixSensitivityReadback.resources[${index}]`,
+    );
+    literalValue(
+      root.role,
+      role,
+      `$calculixSensitivityReadback.resources[${index}].role`,
+    );
+    const uri = nonEmptyText(
+      root.uri,
+      `$calculixSensitivityReadback.resources[${index}].uri`,
+    );
+    if (uri !== `casys://calculix/runs/${recordedRunId}/${role}`) {
+      throw new TypeError(`Recorded CalculiX resource ${role} has a noncanonical URI.`);
+    }
+    const mediaType = nonEmptyText(
+      root.mediaType,
+      `$calculixSensitivityReadback.resources[${index}].mediaType`,
+    );
+    if (mediaType !== RESOURCE_MEDIA_TYPES[role]) {
+      throw new TypeError(
+        `Recorded CalculiX resource ${role} has an unexpected media type.`,
+      );
+    }
+    return {
+      role,
+      uri,
+      mediaType,
+      byteCount: role === "input.step"
+        ? positiveInteger(
+          root.byteCount,
+          `$calculixSensitivityReadback.resources[${index}].byteCount`,
+        )
+        : nonNegativeInteger(
+          root.byteCount,
+          `$calculixSensitivityReadback.resources[${index}].byteCount`,
+        ),
+      sha256: sha256(
+        root.sha256,
+        `$calculixSensitivityReadback.resources[${index}].sha256`,
+      ),
+    };
+  });
+}
+
 function validateListedResourceBijection(
   value: unknown,
   readback: SensitivityRecordedSolveReadback,
@@ -738,6 +839,238 @@ function validateListedResourceBijection(
       );
     }
   }
+}
+
+/**
+ * The provider seals execution identity only after its durable request claim.
+ * We therefore bind it after independent CAS capture, while re-lowering every
+ * server-owned physical input from the sealed sensitivity method. Provider
+ * completion remains an observation source, never a qualification or verdict.
+ */
+async function verifyCapturedRecordedRequest(input: {
+  readonly bytes: Uint8Array;
+  readonly readback: SensitivityRecordedSolveReadback;
+  readonly method: SensitivityStaticStructuralMethod;
+}): Promise<SensitivityRecordedSolveCapture["providerCapture"]["requestBinding"]> {
+  const requestResource = input.readback.resources.find((resource) =>
+    resource.role === "request.json"
+  );
+  if (!requestResource) {
+    throw unknown("Recorded CalculiX readback lacks request.json.");
+  }
+  if (requestResource.sha256 !== input.readback.requestSha256) {
+    throw unknown(
+      "Recorded CalculiX request.json resource digest does not match ledger requestSha256.",
+    );
+  }
+  if (await fingerprintResourceBytes(input.bytes) !== input.readback.requestSha256) {
+    throw unknown(
+      "Captured CalculiX request.json bytes do not match ledger requestSha256.",
+    );
+  }
+  const request = parseCapturedRecordedRequest(input.bytes);
+  const expected = lowerRecordedStaticRequest({
+    requestId: input.readback.requestId,
+    stepSha256: input.readback.stepSha256,
+    stagedPath: exactStagedPath(input.readback.stepSha256),
+    method: input.method,
+  });
+  const actualLowered = Object.fromEntries(
+    Object.entries(expected).map(([key]) => [key, request[key]!]),
+  ) as Readonly<Record<string, JsonValue>>;
+  if (deterministicJson(actualLowered) !== deterministicJson(expected)) {
+    throw unknown(
+      "Captured CalculiX request.json differs from the server-lowered request.",
+    );
+  }
+  const executionIdentity = parseRecordedExecutionIdentity(
+    request.execution_identity,
+  );
+  const expectedBytes = new TextEncoder().encode(
+    `${deterministicJson({ ...expected, execution_identity: executionIdentity })}\n`,
+  );
+  if (!sameBytes(input.bytes, expectedBytes)) {
+    throw unknown(
+      "Captured CalculiX request.json is not the canonical sealed effective request.",
+    );
+  }
+  return {
+    requestResourceFingerprint: {
+      algorithm: "sha256",
+      digest: input.readback.requestSha256,
+    },
+    loweredRequestFingerprint: await sha256Fingerprint(expected),
+    executionIdentityFingerprint: await sha256Fingerprint(executionIdentity),
+  };
+}
+
+function parseCapturedRecordedRequest(
+  bytes: Uint8Array,
+): Record<string, unknown> {
+  let value: unknown;
+  try {
+    value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch {
+    throw unknown("Captured CalculiX request.json is not valid UTF-8 JSON.");
+  }
+  return exactRecord(value, RECORDED_REQUEST_FIELDS, "$calculixCapturedRequest");
+}
+
+function parseRecordedExecutionIdentity(
+  value: unknown,
+): Readonly<Record<string, JsonValue>> {
+  const identity = exactRecord(value, [
+    "schema_version",
+    "server",
+    "method",
+    "lowering",
+    "engines",
+    "image",
+  ], "$calculixCapturedRequest.execution_identity");
+  literalValue(
+    identity.schema_version,
+    "1.0",
+    "$calculixCapturedRequest.execution_identity.schema_version",
+  );
+  const server = exactRecord(
+    identity.server,
+    ["package", "version"],
+    "$calculixCapturedRequest.execution_identity.server",
+  );
+  literalValue(
+    server.package,
+    "@casys/mcp-calculix",
+    "$calculixCapturedRequest.execution_identity.server.package",
+  );
+  literalValue(
+    server.version,
+    "0.8.2",
+    "$calculixCapturedRequest.execution_identity.server.version",
+  );
+  const method = exactRecord(
+    identity.method,
+    ["id", "version"],
+    "$calculixCapturedRequest.execution_identity.method",
+  );
+  literalValue(
+    method.id,
+    MCP_CALCULIX_RECORDED_STATIC_TOOL,
+    "$calculixCapturedRequest.execution_identity.method.id",
+  );
+  literalValue(
+    method.version,
+    "1.0",
+    "$calculixCapturedRequest.execution_identity.method.version",
+  );
+  const lowering = exactRecord(
+    identity.lowering,
+    ["id", "version"],
+    "$calculixCapturedRequest.execution_identity.lowering",
+  );
+  literalValue(
+    lowering.id,
+    "calculix.static.abaqus-deck",
+    "$calculixCapturedRequest.execution_identity.lowering.id",
+  );
+  literalValue(
+    lowering.version,
+    "1.0",
+    "$calculixCapturedRequest.execution_identity.lowering.version",
+  );
+  const engines = exactRecord(
+    identity.engines,
+    ["gmsh", "ccx"],
+    "$calculixCapturedRequest.execution_identity.engines",
+  );
+  const gmsh = parseRecordedEngineIdentity(
+    engines.gmsh,
+    "gmsh",
+    "$calculixCapturedRequest.execution_identity.engines.gmsh",
+  );
+  const ccx = parseRecordedEngineIdentity(
+    engines.ccx,
+    "ccx",
+    "$calculixCapturedRequest.execution_identity.engines.ccx",
+  );
+  const image = exactRecord(
+    identity.image,
+    ["status"],
+    "$calculixCapturedRequest.execution_identity.image",
+  );
+  literalValue(
+    image.status,
+    "unattested",
+    "$calculixCapturedRequest.execution_identity.image.status",
+  );
+  return {
+    schema_version: "1.0",
+    server: { package: "@casys/mcp-calculix", version: "0.8.2" },
+    method: { id: MCP_CALCULIX_RECORDED_STATIC_TOOL, version: "1.0" },
+    lowering: { id: "calculix.static.abaqus-deck", version: "1.0" },
+    engines: { gmsh, ccx },
+    image: { status: "unattested" },
+  };
+}
+
+function parseRecordedEngineIdentity(
+  value: unknown,
+  command: "gmsh" | "ccx",
+  path: string,
+): { readonly command: "gmsh" | "ccx"; readonly version: string } {
+  const engine = exactRecord(value, ["command", "version"], path);
+  literalValue(engine.command, command, `${path}.command`);
+  const version = nonEmptyText(engine.version, `${path}.version`);
+  if (!RECORDED_VERSION.test(version)) {
+    throw new TypeError(`${path}.version is not a published recorded version token.`);
+  }
+  return { command, version };
+}
+
+function lowerRecordedStaticRequest(input: {
+  readonly requestId: string;
+  readonly stepSha256: string;
+  readonly stagedPath: string;
+  readonly method: SensitivityStaticStructuralMethod;
+}): Readonly<Record<string, JsonValue>> {
+  return {
+    request_id: input.requestId,
+    step_path: input.stagedPath,
+    expected_step_sha256: input.stepSha256,
+    mesh_size_mm: input.method.mesh.targetSizeMm,
+    element_order: RECORDED_ELEMENT_ORDER,
+    material: {
+      e_mpa: input.method.material.eMpa,
+      nu: input.method.material.nu,
+    },
+    selections: [
+      ...input.method.supports.map((support) => ({
+        name: support.selection.name,
+        box: { min: support.selection.box.min, max: support.selection.box.max },
+      })),
+      ...input.method.loads.map((load) => ({
+        name: load.selection.name,
+        box: { min: load.selection.box.min, max: load.selection.box.max },
+      })),
+    ],
+    fixed: input.method.supports.map((support) => support.selection.name),
+    loads: input.method.loads.map((load) => ({
+      selection: load.selection.name,
+      force_n: load.force.value,
+    })),
+    timeout_ms: RECORDED_TIMEOUT_MS,
+  };
+}
+
+function exactStagedPath(digest: string): string {
+  return `/inputs/fea-${digest}.step`;
+}
+
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.byteLength !== right.byteLength) return false;
+  for (let index = 0; index < left.byteLength; index++) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
 }
 
 function parseRecordedResult(
@@ -891,6 +1224,194 @@ function parseStaticStructuralResult(
   };
 }
 
+/** Reopen the normalized result that this adapter, not the provider, persisted. */
+function parseCapturedStaticStructuralResult(
+  value: unknown,
+  readback: SensitivityRecordedSolveReadback,
+): StaticStructuralSolveResult {
+  const root = exactRecord(value, [
+    "inputAttestation",
+    "boundaryConditions",
+    "mesh",
+    "observations",
+  ], "$calculixSensitivityCapture.result");
+  const input = exactRecord(
+    root.inputAttestation,
+    ["fingerprint", "byteCount"],
+    "$calculixSensitivityCapture.result.inputAttestation",
+  );
+  const inputFingerprint = fingerprint(
+    input.fingerprint,
+    "$calculixSensitivityCapture.result.inputAttestation.fingerprint",
+  );
+  const inputByteCount = positiveInteger(
+    input.byteCount,
+    "$calculixSensitivityCapture.result.inputAttestation.byteCount",
+  );
+  if (
+    inputFingerprint.digest !== readback.stepSha256 ||
+    inputByteCount !== readback.stepBytes
+  ) {
+    throw new TypeError(
+      "Recorded CalculiX captured result input differs from its readback STEP identity.",
+    );
+  }
+  const boundaryConditions = exactRecord(
+    root.boundaryConditions,
+    ["supports", "loads"],
+    "$calculixSensitivityCapture.result.boundaryConditions",
+  );
+  if (
+    !Array.isArray(boundaryConditions.supports) ||
+    !Array.isArray(boundaryConditions.loads)
+  ) {
+    throw new TypeError(
+      "Recorded CalculiX captured result boundary conditions must be arrays.",
+    );
+  }
+  const supports: readonly StaticStructuralSupport[] = boundaryConditions.supports.map(
+    (value, index) => {
+      const support = exactRecord(
+        value,
+        ["selectionId"],
+        `$calculixSensitivityCapture.result.boundaryConditions.supports[${index}]`,
+      );
+      return {
+        selectionId: safeId(
+          support.selectionId,
+          `$calculixSensitivityCapture.result.boundaryConditions.supports[${index}].selectionId`,
+        ),
+      };
+    },
+  );
+  const loads: readonly StaticStructuralLoad[] = boundaryConditions.loads.map(
+    (value, index) => {
+      const load = exactRecord(
+        value,
+        ["selectionId", "force"],
+        `$calculixSensitivityCapture.result.boundaryConditions.loads[${index}]`,
+      );
+      const force = exactRecord(
+        load.force,
+        ["value", "unit"],
+        `$calculixSensitivityCapture.result.boundaryConditions.loads[${index}].force`,
+      );
+      literalValue(
+        force.unit,
+        "N",
+        `$calculixSensitivityCapture.result.boundaryConditions.loads[${index}].force.unit`,
+      );
+      return {
+        selectionId: safeId(
+          load.selectionId,
+          `$calculixSensitivityCapture.result.boundaryConditions.loads[${index}].selectionId`,
+        ),
+        force: {
+          value: vector3(
+            force.value,
+            `$calculixSensitivityCapture.result.boundaryConditions.loads[${index}].force.value`,
+          ),
+          unit: "N",
+        },
+      };
+    },
+  );
+  const mesh = exactRecord(
+    root.mesh,
+    ["nodeCount", "elementCount"],
+    "$calculixSensitivityCapture.result.mesh",
+  );
+  const observations = exactRecord(
+    root.observations,
+    ["maximumDisplacement", "maximumVonMisesStress"],
+    "$calculixSensitivityCapture.result.observations",
+  );
+  const displacement = exactRecord(
+    observations.maximumDisplacement,
+    ["magnitude", "vector"],
+    "$calculixSensitivityCapture.result.observations.maximumDisplacement",
+  );
+  const displacementMagnitude = exactRecord(
+    displacement.magnitude,
+    ["value", "unit"],
+    "$calculixSensitivityCapture.result.observations.maximumDisplacement.magnitude",
+  );
+  literalValue(
+    displacementMagnitude.unit,
+    "mm",
+    "$calculixSensitivityCapture.result.observations.maximumDisplacement.magnitude.unit",
+  );
+  const displacementVector = exactRecord(
+    displacement.vector,
+    ["value", "unit"],
+    "$calculixSensitivityCapture.result.observations.maximumDisplacement.vector",
+  );
+  literalValue(
+    displacementVector.unit,
+    "mm",
+    "$calculixSensitivityCapture.result.observations.maximumDisplacement.vector.unit",
+  );
+  const stress = exactRecord(
+    observations.maximumVonMisesStress,
+    ["magnitude"],
+    "$calculixSensitivityCapture.result.observations.maximumVonMisesStress",
+  );
+  const stressMagnitude = exactRecord(
+    stress.magnitude,
+    ["value", "unit"],
+    "$calculixSensitivityCapture.result.observations.maximumVonMisesStress.magnitude",
+  );
+  literalValue(
+    stressMagnitude.unit,
+    "MPa",
+    "$calculixSensitivityCapture.result.observations.maximumVonMisesStress.magnitude.unit",
+  );
+  return {
+    inputAttestation: {
+      fingerprint: inputFingerprint,
+      byteCount: inputByteCount,
+    },
+    boundaryConditions: { supports, loads },
+    mesh: {
+      nodeCount: positiveInteger(
+        mesh.nodeCount,
+        "$calculixSensitivityCapture.result.mesh.nodeCount",
+      ),
+      elementCount: positiveInteger(
+        mesh.elementCount,
+        "$calculixSensitivityCapture.result.mesh.elementCount",
+      ),
+    },
+    observations: {
+      maximumDisplacement: {
+        magnitude: {
+          value: nonNegativeFinite(
+            displacementMagnitude.value,
+            "$calculixSensitivityCapture.result.observations.maximumDisplacement.magnitude.value",
+          ),
+          unit: "mm",
+        },
+        vector: {
+          value: vector3(
+            displacementVector.value,
+            "$calculixSensitivityCapture.result.observations.maximumDisplacement.vector.value",
+          ),
+          unit: "mm",
+        },
+      },
+      maximumVonMisesStress: {
+        magnitude: {
+          value: nonNegativeFinite(
+            stressMagnitude.value,
+            "$calculixSensitivityCapture.result.observations.maximumVonMisesStress.magnitude.value",
+          ),
+          unit: "MPa",
+        },
+      },
+    },
+  };
+}
+
 function parseProviderCapture(
   value: unknown,
 ): SensitivityRecordedSolveCapture["providerCapture"] {
@@ -898,7 +1419,17 @@ function parseProviderCapture(
     "manifestFingerprint",
     "manifestUri",
     "artifactSequenceFingerprint",
+    "requestBinding",
   ], "$calculixSensitivityCapture.providerCapture");
+  const requestBinding = exactRecord(
+    root.requestBinding,
+    [
+      "requestResourceFingerprint",
+      "loweredRequestFingerprint",
+      "executionIdentityFingerprint",
+    ],
+    "$calculixSensitivityCapture.providerCapture.requestBinding",
+  );
   return {
     manifestFingerprint: fingerprint(
       root.manifestFingerprint,
@@ -912,6 +1443,20 @@ function parseProviderCapture(
       root.artifactSequenceFingerprint,
       "$calculixSensitivityCapture.providerCapture.artifactSequenceFingerprint",
     ),
+    requestBinding: {
+      requestResourceFingerprint: fingerprint(
+        requestBinding.requestResourceFingerprint,
+        "$calculixSensitivityCapture.providerCapture.requestBinding.requestResourceFingerprint",
+      ),
+      loweredRequestFingerprint: fingerprint(
+        requestBinding.loweredRequestFingerprint,
+        "$calculixSensitivityCapture.providerCapture.requestBinding.loweredRequestFingerprint",
+      ),
+      executionIdentityFingerprint: fingerprint(
+        requestBinding.executionIdentityFingerprint,
+        "$calculixSensitivityCapture.providerCapture.requestBinding.executionIdentityFingerprint",
+      ),
+    },
   };
 }
 
@@ -947,21 +1492,13 @@ function parseRequestLookup(value: unknown, expected: string, path: string): voi
 }
 
 function requireStagedLocation(location: string, digest: string): string {
-  const expectedFilename = `fea-${digest}.step`;
-  const segments = location.split("/");
-  if (
-    !location.startsWith("/") || segments.length < 3 ||
-    segments.at(-1) !== expectedFilename ||
-    segments.slice(1).some((segment) =>
-      segment === "" || segment === "." ||
-      segment === ".." || !/^[A-Za-z0-9._-]+$/.test(segment)
-    )
-  ) {
+  const expected = exactStagedPath(digest);
+  if (location !== expected) {
     throw new TypeError(
-      "Sensitivity staged STEP location is not the code-owned fea-<digest>.step path.",
+      `Sensitivity staged STEP location must equal the code-owned ${expected} path.`,
     );
   }
-  return location;
+  return expected;
 }
 
 function parsePhase(value: unknown, path: string): "base" | "stepped" {

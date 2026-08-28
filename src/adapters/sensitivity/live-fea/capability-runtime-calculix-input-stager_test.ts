@@ -126,6 +126,88 @@ Deno.test("CalculiX sensitivity staging refuses an owned-name container whose im
   }
 });
 
+Deno.test("CalculiX sensitivity staging rejects bind, mismatched, or ambiguous live mounts before docker cp", async () => {
+  const { group, material } = await calculixGroup();
+  const bytes = new TextEncoder().encode("STEP");
+  const digest = await fingerprintResourceBytes(bytes);
+  const expected = ownedMounts(group);
+  const variants: readonly {
+    readonly name: string;
+    readonly mounts: readonly Record<string, unknown>[];
+  }[] = [
+    {
+      name: "bind",
+      mounts: [
+        { ...expected[0]!, Type: "bind", Name: "", Source: "/tmp/inputs" },
+        expected[1]!,
+      ],
+    },
+    {
+      name: "wrong-volume",
+      mounts: [
+        { ...expected[0]!, Name: "casys-mcp-calculix_other-inputs" },
+        expected[1]!,
+      ],
+    },
+    {
+      name: "extra-volume",
+      mounts: [
+        ...expected,
+        {
+          Type: "volume",
+          Name: "casys-mcp-calculix_ambiguous",
+          Destination: "/unexpected",
+          RW: true,
+        },
+      ],
+    },
+  ];
+  for (const variant of variants) {
+    const calls: string[][] = [];
+    let copied = false;
+    const directory = await Deno.makeTempDir({ prefix: "calculix-group-staging-" });
+    try {
+      const factory = new CapabilityRuntimeCalculixInputStagerFactory({
+        groups: new FixedCapabilityRuntimeLaunchGroupRegistry([group]),
+        hostCacheDirectory: directory,
+        commandRunner: ownedRunner({
+          group,
+          copied: () => copied,
+          copy: () => {
+            copied = true;
+          },
+          bytes,
+          calls,
+          mounts: variant.mounts,
+        }),
+      });
+      const stager = await factory.forActiveCapabilitySession({
+        lease: leaseFor(group, material),
+        launchGroup: capabilityRuntimeLaunchGroupReference(group),
+        material,
+      });
+
+      await assertRejects(
+        () =>
+          stager.stage({
+            bytes,
+            fingerprint: { algorithm: "sha256", digest },
+            byteCount: bytes.byteLength,
+          }),
+        Error,
+        "mount",
+      );
+      assertEquals(
+        calls.some((args) => args[0] === "docker" && args[1] === "cp"),
+        false,
+        variant.name,
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  }
+});
+
 async function calculixGroup() {
   const group = (await createFirstPartyCapabilityRuntimeLaunchGroups()).find(
     (candidate) => candidate.id === "casys-mcp-calculix",
@@ -158,6 +240,7 @@ function ownedRunner(input: {
   readonly bytes: Uint8Array;
   readonly calls: string[][];
   readonly imageDigestMatches?: boolean;
+  readonly mounts?: readonly Record<string, unknown>[];
 }): ContainerCommandRunner {
   const member = input.group.materials[0]!;
   return async (exe, args) => {
@@ -178,6 +261,7 @@ function ownedRunner(input: {
             ),
           },
           State: { Status: "running" },
+          Mounts: input.mounts ?? ownedMounts(input.group),
         }]),
       );
     }
@@ -202,6 +286,26 @@ function ownedRunner(input: {
     }
     throw new Error(`unexpected docker argv ${args.join(" ")}`);
   };
+}
+
+function ownedMounts(
+  group: Awaited<ReturnType<typeof calculixGroup>>["group"],
+): readonly Record<string, unknown>[] {
+  const prefix = group.acquisition.projectName;
+  return [
+    {
+      Type: "volume",
+      Name: `${prefix}_calculix-inputs`,
+      Destination: "/inputs",
+      RW: true,
+    },
+    {
+      Type: "volume",
+      Name: `${prefix}_calculix-runs`,
+      Destination: "/var/lib/mcp-calculix-runs",
+      RW: true,
+    },
+  ];
 }
 
 function result(

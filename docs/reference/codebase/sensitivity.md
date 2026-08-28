@@ -118,8 +118,11 @@ opens the JSON; otherwise the unique signed offer is reopened.
 Server-owned exact private lookup and reuse WAL before dispatch. A miss starts the
 capability session before claim/WAL/CAD, stages each exact STEP only through the owned
 CalculiX group, and uses one durable request id per phase. Each request is recovered by
-`calculix_run_get`, then proves the ordered nine-resource bundle before CAS capture.
-Observations only, never a verdict or provider qualification.
+`calculix_run_get`, then proves the ordered nine-resource bundle before CAS capture. It
+independently rehashes `request.json`, requires its ledger digest to equal
+`requestSha256`, reconstructs the server-lowered material/mesh/selection/load/default
+tuple, and records the observed execution-identity fingerprint. Observations only, never
+a verdict or provider qualification.
 
 #### [`src/domain/sensitivity/experience/sensitivity-experience.ts`](../../../src/domain/sensitivity/experience/sensitivity-experience.ts)
 

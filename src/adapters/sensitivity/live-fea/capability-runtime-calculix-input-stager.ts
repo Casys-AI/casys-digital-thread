@@ -39,8 +39,11 @@ import { IsolatedStepSolverStager } from "../../assets/isolated-step-solver-stag
 const CALCULIX_GROUP_ID = "casys-mcp-calculix";
 const CALCULIX_SERVICE_NAME = "mcp-calculix";
 const INPUT_DIRECTORY = "/inputs";
+const RUNS_DIRECTORY = "/var/lib/mcp-calculix-runs";
+const INPUT_VOLUME = "calculix-inputs";
+const RUNS_VOLUME = "calculix-runs";
 const CONTAINER_ID = /^[a-f0-9]{12,64}$/;
-const FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const STAGED_STEP_FILE = /^fea-([a-f0-9]{64})\.step$/;
 
 export interface CapabilityRuntimeCalculixInputStagerFactoryOptions {
   readonly groups: CapabilityRuntimeLaunchGroupRegistry;
@@ -123,7 +126,7 @@ class OwnedLaunchGroupContainerAssetStager implements ContainerAssetStager {
   constructor(private readonly options: OwnedLaunchGroupContainerAssetStagerOptions) {}
 
   resolveTarget(input: { readonly containerFileName: string }): StagedContainerAsset {
-    requireFileName(input.containerFileName);
+    requireStagedStepFileName(input.containerFileName);
     return Object.freeze({
       containerPath: `${INPUT_DIRECTORY}/${input.containerFileName}`,
     });
@@ -135,8 +138,8 @@ class OwnedLaunchGroupContainerAssetStager implements ContainerAssetStager {
     readonly expectedBytes: number;
     readonly containerFileName: string;
   }): Promise<StagedContainerAsset> {
-    requireFileName(input.containerFileName);
     requireDigest(input.expectedDigest);
+    requireStagedStepFileName(input.containerFileName, input.expectedDigest);
     if (!Number.isSafeInteger(input.expectedBytes) || input.expectedBytes <= 0) {
       throw new TypeError(
         "CalculiX staged input byte count must be a positive safe integer.",
@@ -225,12 +228,17 @@ class OwnedLaunchGroupContainerAssetStager implements ContainerAssetStager {
     }
     const id = ids[0]!;
     const inspected = await this.options.run("docker", ["inspect", id]);
-    const actual = parseOwnedContainer(inspected.stdout, id, this.options.member);
+    const actual = parseOwnedContainer(
+      inspected.stdout,
+      id,
+      this.options.member,
+      this.options.group,
+    );
     if (!inspected.success || !actual || actual.status !== "running") {
       throw new ContainerAssetStagingError(
         "post_read_failed",
         { service: this.options.member.serviceName, containerId: id },
-        "Exact CalculiX launch-group container is not a running owned digest-pinned service.",
+        "Exact CalculiX launch-group container is not a running owned digest-pinned service with its two sealed volume mounts.",
       );
     }
     const image = await this.options.run("docker", ["image", "inspect", actual.image]);
@@ -269,6 +277,7 @@ function parseOwnedContainer(
   value: Uint8Array,
   requestedId: string,
   member: CapabilityRuntimeLaunchGroupMaterial,
+  group: CapabilityRuntimeLaunchGroup,
 ): { readonly image: string; readonly status: string } | undefined {
   try {
     const parsed = JSON.parse(new TextDecoder().decode(value));
@@ -292,11 +301,43 @@ function parseOwnedContainer(
         (labels as Record<string, unknown>)[label.key] === label.value
       )
     ) return undefined;
+    if (!hasExactCalculixVolumeMounts(record.Mounts, group)) return undefined;
     const status = (state as Record<string, unknown>).Status;
     return typeof status === "string" ? { image: record.Image, status } : undefined;
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Docker ownership is not established by labels alone: a same-name service
+ * could otherwise stage input into a bind or unrelated volume. The sealed
+ * single-service group has exactly these retained named volumes and nothing
+ * else; reject before any `docker cp` mutation when inspection differs.
+ */
+function hasExactCalculixVolumeMounts(
+  value: unknown,
+  group: CapabilityRuntimeLaunchGroup,
+): boolean {
+  if (!Array.isArray(value) || value.length !== 2) return false;
+  const expected = new Map([
+    [INPUT_DIRECTORY, `${group.acquisition.projectName}_${INPUT_VOLUME}`],
+    [RUNS_DIRECTORY, `${group.acquisition.projectName}_${RUNS_VOLUME}`],
+  ]);
+  const seen = new Set<string>();
+  for (const mount of value) {
+    if (!mount || typeof mount !== "object" || Array.isArray(mount)) return false;
+    const record = mount as Record<string, unknown>;
+    if (
+      record.Type !== "volume" || record.RW !== true ||
+      typeof record.Name !== "string" || typeof record.Destination !== "string" ||
+      expected.get(record.Destination) !== record.Name || seen.has(record.Destination)
+    ) {
+      return false;
+    }
+    seen.add(record.Destination);
+  }
+  return seen.size === expected.size;
 }
 
 function hasExactImage(value: Uint8Array, reference: string): boolean {
@@ -323,9 +364,12 @@ function stagingError(
   );
 }
 
-function requireFileName(value: string): void {
-  if (!FILE_NAME.test(value) || value.includes("..")) {
-    throw new TypeError("CalculiX staging filename is not a safe code-owned basename.");
+function requireStagedStepFileName(value: string, expectedDigest?: string): void {
+  const match = STAGED_STEP_FILE.exec(value);
+  if (!match || (expectedDigest !== undefined && match[1] !== expectedDigest)) {
+    throw new TypeError(
+      "CalculiX staging filename must be the exact code-owned fea-<sha256>.step basename.",
+    );
   }
 }
 

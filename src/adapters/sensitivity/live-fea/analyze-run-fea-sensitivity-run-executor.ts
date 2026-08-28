@@ -2282,6 +2282,12 @@ function recordedRuntimeProvenance(input: {
       providerManifestUri: capture.providerCapture.manifestUri,
       orderedResourceSequenceFingerprint:
         capture.providerCapture.artifactSequenceFingerprint,
+      requestResourceFingerprint:
+        capture.providerCapture.requestBinding.requestResourceFingerprint,
+      loweredRequestFingerprint:
+        capture.providerCapture.requestBinding.loweredRequestFingerprint,
+      executionIdentityFingerprint:
+        capture.providerCapture.requestBinding.executionIdentityFingerprint,
       solveCaptureFingerprint: capture.fingerprint,
     })),
   };
