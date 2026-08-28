@@ -26,7 +26,7 @@
 #
 services:
   syson-db:
-    image: postgres:15
+    image: "postgres@sha256:926f8799aef36e00001cfe15fba7abbd37d3c5224ea57e4c858e4bb670f10561"
     environment:
       POSTGRES_DB: syson
       POSTGRES_USER: syson
