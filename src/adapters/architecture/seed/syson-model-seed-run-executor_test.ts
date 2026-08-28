@@ -52,6 +52,15 @@ const V3_SEED_OPERATION: RegisteredEngineeringOperation = {
   workItemKind: "architect",
   riskClass: "consequential",
   execution: "trusted",
+  runtimeDemand: {
+    kind: "required",
+    capabilities: [{
+      id: "model.author-system",
+      version: "1",
+      minimumQualification: "qualified",
+      use: "execution",
+    }],
+  },
   requiresDependsOnOperation: {
     id: "baseline.from-approved-brief",
     version: "1",

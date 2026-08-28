@@ -142,6 +142,14 @@ Deno.test("passthrough arguments cannot override supervised ports or focus", () 
   );
 });
 
+Deno.test("MCP passthrough cannot enable local execution", () => {
+  assertThrows(
+    () => parseAgentStackArgs(["--mcp-arg=--local-execution"]),
+    TypeError,
+    "cannot override supervised argument",
+  );
+});
+
 Deno.test("cockpit readiness gates MCP spawning", async () => {
   const runtime = new FakeRuntime();
   const specs = serviceSpecs("cockpit", "mcp");

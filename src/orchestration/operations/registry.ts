@@ -5,6 +5,25 @@ import type {
   EngineeringThreadEntityRef,
 } from "../../domain/project/engineering-project.ts";
 import type { ThreadEntityKind } from "../../domain/thread/thread-snapshot.ts";
+import {
+  type CapabilityReference,
+  ELECTRONICS_RUN_ADMITTED_SPICE_CAPABILITY,
+  GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY,
+  GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY,
+  GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY,
+  MANUFACTURING_ESTIMATE_FFF_CAPABILITY,
+  MANUFACTURING_OBSERVE_PRINTABILITY_CAPABILITY,
+  MANUFACTURING_RUN_DFM_CHECKS_CAPABILITY,
+  MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY,
+  MODEL_AUTHOR_SYSTEM_CAPABILITY,
+  MODEL_EVALUATE_REQUIREMENT_CAPABILITY,
+  MODEL_INSPECT_SYSTEM_CAPABILITY,
+  type RequiredEngineeringCapability,
+  SIMULATION_RUN_ADMITTED_MODELICA_CAPABILITY,
+  SIMULATION_RUN_QUALIFIED_MODELICA_CAPABILITY,
+} from "../../domain/capability/engineering-capability.ts";
+import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
+import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/architecture/seed/syson-model-seed.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/architecture/renderer/architecture-proposal.ts";
 import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../domain/architecture/part-definitions/part-definitions-capture.ts";
@@ -69,6 +88,7 @@ import {
   type EngineeringOperationBasisKind,
   type EngineeringOperationRegistry,
   EngineeringOperationRegistryError,
+  type EngineeringOperationRuntimeDemand,
   type EngineeringOperationValidationStage,
   type RegisteredEngineeringOperation,
   type RegisteredEngineeringOperationInput,
@@ -76,6 +96,33 @@ import {
 } from "./operation-contract.ts";
 
 export * from "./operation-contract.ts";
+
+const NO_RUNTIME_DEMAND = Object.freeze({ kind: "none" } as const);
+
+function qualifiedCapability(
+  capability: CapabilityReference,
+  use: RequiredEngineeringCapability["use"] = "execution",
+): RequiredEngineeringCapability {
+  return Object.freeze({
+    ...capability,
+    minimumQualification: "qualified" as const,
+    use,
+  });
+}
+
+function requiredRuntimeDemand(
+  ...capabilities: readonly RequiredEngineeringCapability[]
+): EngineeringOperationRuntimeDemand {
+  if (capabilities.length === 0) {
+    throw new TypeError("A required runtime demand must name one capability.");
+  }
+  return Object.freeze({
+    kind: "required" as const,
+    capabilities: Object.freeze(
+      capabilities.map((capability) => Object.freeze({ ...capability })),
+    ),
+  });
+}
 
 /**
  * Reviewed, code-owned engineering operations.
@@ -107,6 +154,7 @@ const OPERATIONS = [
     workItemKind: "define",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -123,6 +171,9 @@ const OPERATIONS = [
     workItemKind: "architect",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MODEL_AUTHOR_SYSTEM_CAPABILITY),
+    ),
     // The executor verifies that this work item arrived via exactly one
     // planChange (assertChangeCanAppend requires a completed baseline first).
     // Publishing it in the initial plan silently passes planning but fails at
@@ -161,6 +212,9 @@ const OPERATIONS = [
     workItemKind: "architect",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MODEL_AUTHOR_SYSTEM_CAPABILITY),
+    ),
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -180,6 +234,9 @@ const OPERATIONS = [
     workItemKind: "define",
     riskClass: "low",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MODEL_INSPECT_SYSTEM_CAPABILITY),
+    ),
     requiresAdditiveChange: true,
     bindings: [{
       name: "architecture",
@@ -206,6 +263,7 @@ const OPERATIONS = [
     workItemKind: "architect",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [],
   },
   /**
@@ -241,6 +299,9 @@ const OPERATIONS = [
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MODEL_AUTHOR_SYSTEM_CAPABILITY),
+    ),
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -270,6 +331,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: "sysmlModel",
@@ -302,6 +364,9 @@ const OPERATIONS = [
     workItemKind: "design",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY),
+    ),
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: COMPILATION_ADMISSION_BINDING_NAME,
@@ -335,6 +400,7 @@ const OPERATIONS = [
     workItemKind: "design",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: "executionCapture",
@@ -362,6 +428,9 @@ const OPERATIONS = [
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY),
+    ),
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: "geometryModule",
@@ -392,6 +461,7 @@ const OPERATIONS = [
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     requiresAdditiveChange: true,
     requiresDependsOnOperation: {
       id: VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION.id,
@@ -419,6 +489,9 @@ const OPERATIONS = [
     workItemKind: "simulate",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(SIMULATION_RUN_QUALIFIED_MODELICA_CAPABILITY),
+    ),
     bindings: [],
   },
   /**
@@ -443,6 +516,9 @@ const OPERATIONS = [
     workItemKind: "simulate",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(SIMULATION_RUN_ADMITTED_MODELICA_CAPABILITY),
+    ),
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: COMPILATION_ADMISSION_BINDING_NAME,
@@ -474,6 +550,9 @@ const OPERATIONS = [
     workItemKind: "simulate",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(ELECTRONICS_RUN_ADMITTED_SPICE_CAPABILITY),
+    ),
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: COMPILATION_ADMISSION_BINDING_NAME,
@@ -501,6 +580,7 @@ const OPERATIONS = [
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -525,6 +605,7 @@ const OPERATIONS = [
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -549,6 +630,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     mustOrigin: "human",
     bindings: [{
       name: "approvedBrief",
@@ -568,6 +650,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     mustOrigin: "human",
     bindings: [{
       name: "approvedBrief",
@@ -593,6 +676,7 @@ const OPERATIONS = [
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -618,6 +702,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -642,6 +727,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "low",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     requiresAdditiveChange: true,
     requiresDependsOnOperation: {
       id: VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.id,
@@ -676,6 +762,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     mustOrigin: "human",
     requiresAdditiveChange: true,
     requiresDependsOnOperation: {
@@ -711,6 +798,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "low",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     requiresAdditiveChange: true,
     requiresDependsOnOperation: {
       id: DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.id,
@@ -739,6 +827,9 @@ const OPERATIONS = [
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MODEL_EVALUATE_REQUIREMENT_CAPABILITY),
+    ),
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -762,6 +853,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     mustOrigin: "human",
     bindings: [{
       name: "approvedBrief",
@@ -781,6 +873,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     mustOrigin: "human",
     bindings: [{
       name: "approvedBrief",
@@ -805,6 +898,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     mustOrigin: "human",
     requiresAdditiveChange: true,
     requiresDependsOnOperation: {
@@ -827,6 +921,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     mustOrigin: "human",
     requiresAdditiveChange: true,
     requiresDependsOnOperation: {
@@ -856,6 +951,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -872,6 +968,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -898,6 +995,7 @@ const OPERATIONS = [
     workItemKind: "design",
     riskClass: "low",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [
       {
@@ -935,6 +1033,9 @@ const OPERATIONS = [
     workItemKind: "design",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY, "preparation"),
+    ),
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -962,6 +1063,7 @@ const OPERATIONS = [
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -986,6 +1088,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -1010,6 +1113,10 @@ const OPERATIONS = [
     workItemKind: "simulate",
     riskClass: "low",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY, "preparation"),
+      qualifiedCapability(MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY),
+    ),
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: "studyCase",
@@ -1036,6 +1143,9 @@ const OPERATIONS = [
     workItemKind: "architect",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MODEL_AUTHOR_SYSTEM_CAPABILITY),
+    ),
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: "studyCapture",
@@ -1062,6 +1172,9 @@ const OPERATIONS = [
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MODEL_EVALUATE_REQUIREMENT_CAPABILITY),
+    ),
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: "studyCapture",
@@ -1088,6 +1201,7 @@ const OPERATIONS = [
     workItemKind: "industrialize",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -1111,6 +1225,9 @@ const OPERATIONS = [
     workItemKind: "industrialize",
     riskClass: "low",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MANUFACTURING_OBSERVE_PRINTABILITY_CAPABILITY),
+    ),
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [
       {
@@ -1145,6 +1262,7 @@ const OPERATIONS = [
     workItemKind: "industrialize",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -1168,6 +1286,9 @@ const OPERATIONS = [
     workItemKind: "industrialize",
     riskClass: "low",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MANUFACTURING_ESTIMATE_FFF_CAPABILITY),
+    ),
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [
       {
@@ -1202,6 +1323,7 @@ const OPERATIONS = [
     workItemKind: "industrialize",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -1227,6 +1349,9 @@ const OPERATIONS = [
     workItemKind: "industrialize",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MANUFACTURING_RUN_DFM_CHECKS_CAPABILITY),
+    ),
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [
       {
@@ -1276,6 +1401,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     mustOrigin: "human",
     bindings: [
       {
@@ -1309,6 +1435,7 @@ const OPERATIONS = [
     workItemKind: "architect",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [
       {
@@ -1379,6 +1506,37 @@ export function listRegisteredEngineeringOperationKeys(): readonly string[] {
   return OPERATIONS.map((operation) => operationKey(operation));
 }
 
+/**
+ * Enumerate immutable descriptor copies. The registry remains the only
+ * authority for operation demand: callers receive no mutable backdoor into
+ * its code-owned entries.
+ */
+export function listRegisteredEngineeringOperations(): readonly RegisteredEngineeringOperation[] {
+  return Object.freeze(
+    OPERATIONS.map(immutableOperationCopy).toSorted(
+      compareRegisteredEngineeringOperations,
+    ),
+  );
+}
+
+/**
+ * Stable identity of the complete semantic demand registry. `none` entries
+ * deliberately participate, so adding a newly registered provider-free
+ * operation changes the trusted demand basis too.
+ */
+export function fingerprintRegisteredEngineeringOperationRegistry(): Promise<
+  ContentFingerprint
+> {
+  return sha256Fingerprint({
+    schemaVersion: "engineering-operation-runtime-demand-registry/1.0",
+    operations: listRegisteredEngineeringOperations().map((operation) => ({
+      id: operation.id,
+      version: operation.version,
+      runtimeDemand: operation.runtimeDemand,
+    })),
+  });
+}
+
 /** Return the one bounded V1 intake operation for a product starting point. */
 export function getRegisteredIntakeOperation(
   startingPoint: EngineeringProjectStartingPoint,
@@ -1444,6 +1602,8 @@ export const engineeringOperationRegistry: EngineeringOperationRegistry = Object
     get: getRegisteredEngineeringOperation,
     require: requireRegisteredEngineeringOperation,
     getIntake: getRegisteredIntakeOperation,
+    list: listRegisteredEngineeringOperations,
+    fingerprint: fingerprintRegisteredEngineeringOperationRegistry,
     validate: validateRegisteredEngineeringOperationInput,
   },
 );
@@ -1640,6 +1800,31 @@ function operationKey(
   return `${reference.id}@${reference.version}`;
 }
 
+/**
+ * Exact code-unit identity used to order the registry fingerprint. This is
+ * deliberately shared in shape with the demand compiler's registry identity:
+ * `id` and `version` are distinct fields, never a locale-dependent label.
+ */
+function registryFingerprintOperationKey(
+  reference: Pick<EngineeringOperationRef, "id" | "version">,
+): string {
+  return `${reference.id}\u0000${reference.version}`;
+}
+
+function compareRegisteredEngineeringOperations(
+  left: Pick<EngineeringOperationRef, "id" | "version">,
+  right: Pick<EngineeringOperationRef, "id" | "version">,
+): number {
+  return compareCodeUnitText(
+    registryFingerprintOperationKey(left),
+    registryFingerprintOperationKey(right),
+  );
+}
+
+function compareCodeUnitText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 function operationLabel(
   reference: Pick<EngineeringOperationRef, "id" | "version">,
 ): string {
@@ -1656,6 +1841,10 @@ function copyOperation(
   return {
     ...operation,
     allowedBasisKinds: [...operation.allowedBasisKinds],
+    runtimeDemand: copyRuntimeDemand(operation.runtimeDemand),
+    ...(operation.requiresDependsOnOperation
+      ? { requiresDependsOnOperation: { ...operation.requiresDependsOnOperation } }
+      : {}),
     bindings: operation.bindings.map((binding) => ({
       ...binding,
       allowedSourceKinds: [...binding.allowedSourceKinds],
@@ -1664,6 +1853,54 @@ function copyOperation(
         : {}),
     })),
   };
+}
+
+function immutableOperationCopy(
+  operation: RegisteredEngineeringOperation,
+): RegisteredEngineeringOperation {
+  const copy = copyOperation(operation);
+  return Object.freeze({
+    ...copy,
+    allowedBasisKinds: Object.freeze([...copy.allowedBasisKinds]),
+    runtimeDemand: immutableRuntimeDemand(copy.runtimeDemand),
+    ...(copy.requiresDependsOnOperation
+      ? {
+        requiresDependsOnOperation: Object.freeze({
+          ...copy.requiresDependsOnOperation,
+        }),
+      }
+      : {}),
+    bindings: Object.freeze(copy.bindings.map((binding) =>
+      Object.freeze({
+        ...binding,
+        allowedSourceKinds: Object.freeze([...binding.allowedSourceKinds]),
+        ...(binding.allowedThreadEntityKinds
+          ? {
+            allowedThreadEntityKinds: Object.freeze([
+              ...binding.allowedThreadEntityKinds,
+            ]),
+          }
+          : {}),
+      })
+    )),
+  });
+}
+
+function copyRuntimeDemand(
+  runtimeDemand: EngineeringOperationRuntimeDemand,
+): EngineeringOperationRuntimeDemand {
+  if (runtimeDemand.kind === "none") return { kind: "none" };
+  return {
+    kind: "required",
+    capabilities: runtimeDemand.capabilities.map((capability) => ({ ...capability })),
+  };
+}
+
+function immutableRuntimeDemand(
+  runtimeDemand: EngineeringOperationRuntimeDemand,
+): EngineeringOperationRuntimeDemand {
+  if (runtimeDemand.kind === "none") return NO_RUNTIME_DEMAND;
+  return requiredRuntimeDemand(...runtimeDemand.capabilities);
 }
 
 function copyInputBinding(

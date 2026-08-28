@@ -6,7 +6,7 @@ import {
   MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY,
   MODEL_AUTHOR_SYSTEM_CAPABILITY,
   MODEL_EVALUATE_REQUIREMENT_CAPABILITY,
-} from "../application/control-plane/read-model/capability-demand.ts";
+} from "../domain/capability/engineering-capability.ts";
 
 const sha = (character: string) => character.repeat(64);
 

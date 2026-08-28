@@ -23,7 +23,8 @@ import {
   MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY,
   MODEL_AUTHOR_SYSTEM_CAPABILITY,
   MODEL_EVALUATE_REQUIREMENT_CAPABILITY,
-} from "../../application/control-plane/read-model/capability-demand.ts";
+  type RequiredEngineeringCapability,
+} from "../../domain/capability/engineering-capability.ts";
 import {
   CAPABILITY_PACK_SCHEMA_VERSION,
   type CapabilityBindingClaim,
@@ -34,7 +35,10 @@ import type {
   DesiredServer,
   FleetManifest,
 } from "../../application/control-plane/read-model/fleet-manifest.ts";
-import { BEHAVE_FOUNDATION_CAPABILITY_REQUIREMENTS } from "../../orchestration/operations/behave-capability-requirements.ts";
+import {
+  behaveFoundationCapabilityRequirements,
+} from "../../orchestration/operations/behave-foundation-routes.ts";
+import { engineeringOperationRegistry } from "../../orchestration/operations/registry.ts";
 import { loadFleetManifest } from "./manifest.ts";
 import { validateCapabilityPackManifest } from "./capability-pack-manifest.ts";
 import { loadBehaveFoundationCandidateReview } from "./behave-foundation-review.ts";
@@ -147,7 +151,10 @@ export function inspectBehaveFoundationCensus(
   const compose = record(options.compose, "$compose");
   const services = record(compose.services, "$compose.services");
   const fleetRoots = FLEET_ROOT_IDS.map((id) => requireFleetServer(options.fleet, id));
-  assertCapabilityBindingsCoverDemand();
+  const capabilityRequirements = behaveFoundationCapabilityRequirements(
+    engineeringOperationRegistry.list(),
+  );
+  assertCapabilityBindingsCoverDemand(capabilityRequirements);
 
   const rootServiceNames = fleetRoots.map((server) => server.serviceName);
   const orderedServiceNames = composeServiceClosure(services, rootServiceNames);
@@ -295,7 +302,7 @@ export function inspectBehaveFoundationCensus(
     evidenceLevel: "declared" as const,
     verticalQualification: "not-observed" as const,
     productionEligible: false,
-    capabilityRequirements: BEHAVE_FOUNDATION_CAPABILITY_REQUIREMENTS,
+    capabilityRequirements,
     materials,
     hostPrerequisites: [
       {
@@ -337,10 +344,12 @@ function packRole(
   });
 }
 
-function assertCapabilityBindingsCoverDemand(): void {
+function assertCapabilityBindingsCoverDemand(
+  capabilityRequirements: readonly RequiredEngineeringCapability[],
+): void {
   const required = new Set(
-    BEHAVE_FOUNDATION_CAPABILITY_REQUIREMENTS.entries.flatMap((entry) =>
-      entry.capabilities.map((capability) => `${capability.id}@${capability.version}`)
+    capabilityRequirements.map((capability) =>
+      `${capability.id}@${capability.version}`
     ),
   );
   const claims = new Map<string, number>();

@@ -906,7 +906,7 @@ function healthPath(value: string, flag: string): string {
 
 function rejectReservedExtraArgument(flag: string, argument: string): void {
   const reserved = flag === "--mcp-arg"
-    ? ["--hostname", "--port"]
+    ? ["--hostname", "--port", "--local-execution"]
     : flag === "--cockpit-arg"
     ? [
       "--host",

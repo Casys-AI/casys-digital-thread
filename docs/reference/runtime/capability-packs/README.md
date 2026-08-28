@@ -7,7 +7,7 @@ do not add an agent-facing provider selector or give the Workbench runtime autho
 
 | Page                                                       | Scope                                                                       |
 | ---------------------------------------------------------- | --------------------------------------------------------------------------- |
-| [Project capability demand](project-capability-demand.md)  | Exact provider-neutral demand that can be compiled from planned operations |
+| [Project capability demand](project-capability-demand.md)  | Exact provider-neutral ceiling from registered operation runtime demands    |
 | [Behave Foundation candidate](behave-foundation/README.md) | Reviewed local developer candidate, installation plan, and read-only doctor |
 
 The future host approval and lazy-activation lifecycle is recorded separately in the

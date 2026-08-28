@@ -73,6 +73,8 @@ entry point.
 | `probes/probe-build123d-contract.ts`           | `probe:build123d-contract`           | read  |
 | `probes/probe-calculix-contract.ts`            | `probe:calculix-contract`            | read  |
 | `probes/probe-spice-contract.ts`               | `probe:spice-contract`               | read  |
+| `probes/inspect-behave-capability-pack.ts`     | `capability:behave:inspect`          | read  |
+| `probes/doctor-behave-foundation.ts`           | `capability:behave:doctor`           | read  |
 | `probes/probe-architecture-attribute-value.ts` | `probe:architecture-attribute-value` | write |
 | `probes/probe-archive-cascade.ts`              | `probe:archive-cascade`              | read  |
 | `probes/probe-requirement-units.ts`            | `probe:requirement-units`            | write |

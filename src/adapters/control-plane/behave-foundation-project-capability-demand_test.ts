@@ -4,25 +4,24 @@ import {
   MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY,
   MODEL_AUTHOR_SYSTEM_CAPABILITY,
   MODEL_EVALUATE_REQUIREMENT_CAPABILITY,
-} from "../../application/control-plane/read-model/capability-demand.ts";
+} from "../../domain/capability/engineering-capability.ts";
 import { validateEngineeringProjectSnapshot } from "../../domain/project/engineering-project-validation.ts";
-import { BEHAVE_FOUNDATION_CAPABILITY_REQUIREMENTS } from "../../orchestration/operations/behave-capability-requirements.ts";
+import { BEHAVE_FOUNDATION_OPERATION_ROUTES } from "../../orchestration/operations/behave-foundation-routes.ts";
 import { compileBehaveFoundationProjectCapabilityDemand } from "./behave-foundation-project-capability-demand.ts";
 
 Deno.test(
-  "Behave composition compiles a valid published project against the pinned server catalogue",
+  "Behave composition compiles a valid published project against the full registry",
   async () => {
     const project = validBehaveProject();
     const demand = await compileBehaveFoundationProjectCapabilityDemand(project);
 
     assertEquals(demand.status, "resolved");
     assertEquals(
-      demand.operationGroups.map((group) => group.operation),
-      [...BEHAVE_FOUNDATION_CAPABILITY_REQUIREMENTS.entries]
-        .map((entry) => entry.operation)
+      demand.plannedCeiling.operationGroups.map((group) => group.operation),
+      [...BEHAVE_FOUNDATION_OPERATION_ROUTES]
         .sort(compareOperation),
     );
-    assertEquals(demand.capabilityRequirements, [
+    assertEquals(demand.plannedCeiling.capabilityRequirements, [
       {
         ...GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY,
         minimumQualification: "qualified",
@@ -47,6 +46,42 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "Behave demand resolves a registered none operation outside its route census",
+  async () => {
+    const source = validBehaveProject();
+    const baseline = {
+      ...source.workItems[0],
+      id: "baseline-work",
+      activityId: "activity:baseline-work",
+      title: "Create baseline",
+      description: "Create the registered provider-free baseline.",
+      operation: {
+        id: "baseline.from-approved-brief",
+        version: "1",
+        bindings: [],
+      },
+      status: "ready" as const,
+    };
+    const demand = await compileBehaveFoundationProjectCapabilityDemand({
+      ...source,
+      workItems: [...source.workItems, baseline],
+    });
+
+    assertEquals(
+      demand.plannedCeiling.operationGroups.find((group) =>
+        group.operation.id === "baseline.from-approved-brief"
+      ),
+      {
+        operation: { id: "baseline.from-approved-brief", version: "1" },
+        workItemIds: ["baseline-work"],
+        resolution: "resolved",
+        capabilities: [],
+      },
+    );
+  },
+);
+
 function validBehaveProject() {
   const generatedAt = "2026-08-28T12:00:00.000Z";
   const approvedBriefFingerprint = {
@@ -63,15 +98,15 @@ function validBehaveProject() {
     briefRevision: 1,
     approvedBriefFingerprint,
   };
-  const workItems = BEHAVE_FOUNDATION_CAPABILITY_REQUIREMENTS.entries.map(
-    (entry, index) => ({
+  const workItems = BEHAVE_FOUNDATION_OPERATION_ROUTES.map(
+    (operation, index) => ({
       id: `behave-work-${index + 1}`,
       activityId: `activity:behave-work-${index + 1}`,
       phaseId: "behave",
       title: `Behave work ${index + 1}`,
-      description: `Execute registered Behave operation ${entry.operation.id}.`,
+      description: `Execute registered Behave operation ${operation.id}.`,
       kind: "verify" as const,
-      operation: { ...entry.operation, bindings: [] },
+      operation: { ...operation, bindings: [] },
       status: "planned" as const,
       owner: "agent" as const,
       dependsOnWorkItemIds: [],

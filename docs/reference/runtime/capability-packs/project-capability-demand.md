@@ -2,115 +2,73 @@
 
 Audience: both · Diátaxis: reference · Kind: contract
 
-`project-capability-demand/1.0` is the exact, provider-neutral operational demand that
-can be compiled from one validated immutable engineering-project snapshot. Stable
-capability identity, catalogue vocabulary, and the demand document are separate domain
-objects:
+`project-capability-demand/2.0` is the read-only, provider-neutral semantic runtime
+ceiling compiled from one immutable engineering-project snapshot and the code-owned
+registered-operation registry. It is not a runtime plan.
 
-- [`engineering-capability.ts`](../../../../src/domain/capability/engineering-capability.ts);
-- [`capability-requirement-catalog.ts`](../../../../src/domain/capability/capability-requirement-catalog.ts);
-- [`project-capability-demand.ts`](../../../../src/domain/capability/project-capability-demand.ts).
+The registry declares exactly one `runtimeDemand` for every registered operation:
 
-The effect-free generic compiler accepts a trusted server-composition dependency in
+- `{ kind: "none" }` means the operation is resolved and requires no runtime capability;
+- `{ kind: "required", capabilities: [...] }` names one or more versioned semantic
+  capabilities, each with a minimum qualification and use (`preparation` or
+  `execution`).
+
+Neither form may select a provider, package, image, endpoint, tool, argument, port,
+profile, or secret. The registry is the single demand authority; a second
+operation-to-capability authority is not valid.
+
+## Exact bases
+
+The compiler takes a validated immutable project snapshot and the complete trusted
+registry view selected by server composition. It never accepts a caller-provided
+alternate demand authority. The result records these exact bases:
+
+- project snapshot;
+- approved brief basis;
+- plan publication;
+- complete registry fingerprint, including `none` operations.
+
+The normal compiler lives in
 [`compile-project-capability-demand.ts`](../../../../src/application/control-plane/compile-project-capability-demand.ts).
-The current product path pins the frozen Behave catalogue in
-[`behave-foundation-project-capability-demand.ts`](../../../../src/adapters/control-plane/behave-foundation-project-capability-demand.ts).
+Behave Foundation routes are only a code-owned census projection over that same
+registry. The Behave demand compiler resolves every project work item against the
+complete registry; routes never filter its authorization ceiling.
 
-It answers **which semantic capabilities the registered project work requires**. It does
-not answer which pack, provider, image, endpoint, tool, profile, command, or argument
-should satisfy them.
+## History, ceiling, and JIT demand
 
-## When demand becomes exact
+Every work-item revision is recorded in `workItemHistory`, sorted by id, with its id,
+activity, optional predecessor, status, operation identity without bindings, and literal
+`resolved` or `unresolved` resolution. A historical operation unknown to the selected
+registry remains `unresolved`; it is never silently treated as `none`.
 
-A living brief may mention intended analyses, but that text is not an operation
-catalogue. Any capability forecast made from the brief alone is `provisional` and grants
-no installation, activation, provider-selection, or execution authority.
+`plannedCeiling` contains the current leaf revisions of every activity, computed with
+`leafRevisionIdsForActivity`. Cancelled and abandoned leaves are excluded; completed
+leaves remain. `jitDemand` is the subset of those same ceiling leaves whose status is
+`ready` or `in-progress`.
 
-Exact demand can exist only after `project_plan_publish` has produced an immutable
-project revision whose planned work names server-registered operation identities.
-Without `project.plan`, compilation fails closed. When the server calls the current
-Behave composition, it rereads that project revision and joins each work-item operation
-to the code-owned, adapter-pinned capability-requirement catalogue. The agent never
-supplies capability ids or a catalogue.
+Both slices contain canonical operation groups sorted by exact id/version and sorted
+flattened requirements. A known `none` operation is a resolved group with an empty
+capability list. A current unknown operation is an explicit
+`unresolved / operation-unregistered` group. Malformed, cross-activity, disconnected,
+cyclic, or root-ambiguous histories fail closed.
 
-```text
-approved brief
-  -> project_plan_publish
-  -> planned work with registered operation ids
-  -> explicit server read using its pinned capability-requirement catalogue
-  -> exact ProjectCapabilityDemand
-```
+Subset coverage is evaluated against `plannedCeiling`, never `jitDemand`. An unresolved
+ceiling group fails coverage. An allowed capability must match id, version, and use
+exactly; `qualified` covers `compatible`, never the reverse.
 
-The demand is read-only. Compiling it does not pull an image, start or stop a service,
-write a local installation lock, dispatch an operation, approve an MRTR, or publish
-Engineering Thread evidence. The compiler and pinned Behave composition exist today; no
-MCP read model, persistence path, or supervisor invokes them yet.
+## Fingerprints
 
-## Exactness and refusal
+The four deterministic SHA-256 fingerprints have separate meanings:
 
-The compiler treats the immutable project revision and capability-requirement catalogue
-as authority:
+| Fingerprint                 | Binds                                                                        |
+| --------------------------- | ---------------------------------------------------------------------------- |
+| `registryFingerprint`       | Every registered operation id/version/runtime demand, including `none`       |
+| `historyPathFingerprint`    | Project snapshot, brief, plan, registry and full canonical work-item history |
+| `plannedCeilingFingerprint` | Only the exact current authorization ceiling                                 |
+| `jitDemandFingerprint`      | Only the ready/in-progress demand slice                                      |
 
-- operations are identified by exact id and version, never aliases;
-- repeated use of one operation by several work items becomes one canonical operation
-  group with sorted work-item ids;
-- a published-plan work item with no operation is refused rather than silently omitted;
-- the same semantic capability version may support several planned operations;
-- capability and operation order do not create a different identity;
-- duplicate work-item ids, duplicate catalogue operations, and duplicate or conflicting
-  requirements inside one catalogue entry are refused;
-- an operation missing from the capability-requirement catalogue remains a first-class
-  `unresolved / catalog-entry-missing` group and makes the whole demand `unresolved`;
-- provider bindings and runtime materials cannot enter the demand record.
-
-Requirements shared across operation groups are flattened by exact capability id,
-version, and use (`preparation` or `execution`). When two groups need that same
-identity, the stronger minimum qualification wins: `qualified` covers `compatible`,
-never the reverse.
-
-Demand compilation does not claim that a runtime is installed, active, healthy, or
-qualified. Those are host observations and catalogue judgements joined later by a
-read-only administrative plan.
-
-## Identity and subset policy
-
-The compiler produces two deterministic fingerprints:
-
-- `pathFingerprint` binds the exact project snapshot, approved-brief basis, canonical
-  operation identities, and their work-item membership;
-- `capabilitySetFingerprint` binds the flattened canonical requirements plus every
-  unresolved operation group.
-
-These are equality and approval-basis identities, not freshness claims. A new project
-revision is reread and compiled again; callers must not relabel an older demand as
-current.
-
-Subset comparison is semantic and version-exact:
-
-- an allowed capability must match capability id, version, and use exactly;
-- a `qualified` allowance covers a `compatible` requirement, but a `compatible`
-  allowance does not cover a `qualified` requirement;
-- any unresolved operation group makes coverage fail;
-- removing demand does not widen authority;
-- host effects are not implied by semantic subset and must be checked independently.
-
-This subset policy is the foundation for a future one-time host-operational approval. It
-does **not** exist to bypass engineering MRTR. Every consequential engineering run
-retains its own exact inputs, method qualification, decision, dispatch, and evidence
-boundary.
-
-## Boundaries with the other records
-
-| Record                           | Owns                                                        | Does not prove                     |
-| -------------------------------- | ----------------------------------------------------------- | ---------------------------------- |
-| Project brief                    | Stakeholder intent and sourced framing                      | Exact capability demand            |
-| `ProjectCapabilityDemand`        | Semantic capability set required by registered planned work | Host availability or permission    |
-| Capability-pack plan             | Candidate runtime materials and observable host effects     | Activation or engineering validity |
-| Local installation lock          | Human-owned desired host state                              | Project intent or method evidence  |
-| Resolved operation plan and MRTR | Exact method and consequential run authority                | General host administration        |
-| Thread evidence                  | What exact execution and evaluation occurred                | Current pack availability          |
-
-The future `ProjectCapabilityEnvelope` is deliberately separate from
-`ProjectBriefRevision`. Its lifecycle and still-unimplemented host-effect fields are
-defined in the
-[Project capability envelope RFC](../../../rfcs/capability-packs/project-capability-envelope.md).
+The latter two fingerprints are independently canonical: neither nests history nor the
+other demand slice. They are equality and approval-basis identities, not claims that a
+runtime is installed, active, healthy, or qualified. Compiling a demand does not mutate
+a runtime, authorize a brief, supervise a process, dispatch an operation, or publish
+Thread evidence.

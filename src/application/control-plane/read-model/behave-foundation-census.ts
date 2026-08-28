@@ -1,6 +1,6 @@
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import type { MicrosandboxLocalRuntimeRef } from "../../../domain/compile/isolation/local-isolation-runtime.ts";
-import type { CapabilityRequirementCatalog } from "./capability-demand.ts";
+import type { RequiredEngineeringCapability } from "../../../domain/capability/engineering-capability.ts";
 import type { CapabilityPackManifest, RuntimePlatform } from "./capability-pack.ts";
 
 export const BEHAVE_FOUNDATION_CENSUS_SCHEMA_VERSION =
@@ -109,7 +109,7 @@ export interface BehaveFoundationCapabilityCensus {
   /** Never asserted by a repository census. */
   readonly verticalQualification: "not-observed";
   readonly productionEligible: false;
-  readonly capabilityRequirements: CapabilityRequirementCatalog;
+  readonly capabilityRequirements: readonly RequiredEngineeringCapability[];
   readonly materials: readonly BehaveFoundationCensusMaterial[];
   readonly hostPrerequisites: readonly BehaveFoundationHostPrerequisite[];
   readonly excludedRuntimes: readonly BehaveFoundationExcludedRuntime[];

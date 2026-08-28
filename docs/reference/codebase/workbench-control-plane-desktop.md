@@ -5,8 +5,8 @@ Audience: agent · Diátaxis: reference · Kind: contract
 Census of read-only Workbench projections, Console control-plane files, and Desktop
 packaging. The Workbench receives no commands.
 
-Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays
-on [engineering domains](../domains/README.md).
+Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays on
+[engineering domains](../domains/README.md).
 
 ## Source map
 
@@ -42,8 +42,9 @@ refuses. HTTP probe lives in `adapters/shared/mcp/`; Docker observer is
 #### [`src/adapters/control-plane/`](../../../src/adapters/control-plane)
 
 Control-plane adapters: fleet-manifest loader, checked-in run-fixture catalog, and the
-Behave capability-demand composition that pins its code-owned catalogue. Not Thread
-projectors. Shared MCP/CAS/WAL helpers live under `adapters/shared/`.
+Behave capability-demand composition that projects code-owned operation routes from the
+main registry. Not Thread projectors. Shared MCP/CAS/WAL helpers live under
+`adapters/shared/`.
 
 #### [`src/tools/control-plane.ts`](../../../src/tools/control-plane.ts)
 

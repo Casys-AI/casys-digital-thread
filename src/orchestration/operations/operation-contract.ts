@@ -5,6 +5,10 @@ import type {
   EngineeringWorkItemKind,
 } from "../../domain/project/engineering-project.ts";
 import type { ThreadEntityKind } from "../../domain/thread/thread-snapshot.ts";
+import type {
+  RequiredEngineeringCapability,
+} from "../../domain/capability/engineering-capability.ts";
+import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 
 /** Provider-free contract shared by operation descriptors and the registry. */
 export type EngineeringOperationBasisKind =
@@ -17,6 +21,14 @@ export type EngineeringOperationValidationStage = "planning" | "queue";
 export type EngineeringOperationRiskClass = "low" | "consequential";
 
 export type EngineeringOperationExecution = "trusted" | "planning-only";
+
+/** Explicit semantic runtime ceiling of one registered operation. */
+export type EngineeringOperationRuntimeDemand =
+  | { readonly kind: "none" }
+  | {
+    readonly kind: "required";
+    readonly capabilities: readonly RequiredEngineeringCapability[];
+  };
 
 export type EngineeringOperationBindingSourceKind =
   EngineeringOperationInputBinding["source"]["kind"];
@@ -41,6 +53,11 @@ export interface RegisteredEngineeringOperation {
   readonly workItemKind: EngineeringWorkItemKind;
   readonly riskClass: EngineeringOperationRiskClass;
   readonly execution: EngineeringOperationExecution;
+  /**
+   * Provider-neutral, code-owned semantic ceiling. It cannot choose a
+   * provider, package, image, endpoint, tool, argument, port, or secret.
+   */
+  readonly runtimeDemand: EngineeringOperationRuntimeDemand;
   readonly resolvedOperationPlan?: "2.0";
   readonly decisionEvidenceScope?: "thread-entity-bindings";
   readonly requiresAdditiveChange?: true;
@@ -88,6 +105,10 @@ export interface EngineeringOperationRegistry {
   getIntake(
     startingPoint: EngineeringProjectStartingPoint,
   ): RegisteredEngineeringOperation | undefined;
+  /** Immutable copies of every exact registered operation. */
+  list(): readonly RegisteredEngineeringOperation[];
+  /** Deterministic fingerprint of exact id/version/runtime-demand entries. */
+  fingerprint(): Promise<ContentFingerprint>;
   validate(input: unknown): ValidatedRegisteredEngineeringOperationInput;
 }
 

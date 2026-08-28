@@ -48,7 +48,7 @@ runtime, or argument.
 
 The server still owns:
 
-- the operation-to-capability requirement catalogue;
+- the registered-operation runtime-demand registry;
 - provider binding and profile selection;
 - exact input reopening and provider lowering;
 - WAL, uncertain-outcome recovery, capture and Thread publication;
@@ -245,7 +245,7 @@ The durable resolution order is:
 
 ```text
 approved registered project work
-  -> core capability requirement catalogue
+  -> registered-operation runtime-demand registry
   + trusted pack catalogue
   + human local installation lock
   + local runtime policy
@@ -481,7 +481,8 @@ lowering exists, even when every related runtime material is installed and healt
 - first add strict `capability-pack-candidate/0.1`, installation-lock candidate and
   effect-free installation-plan contracts; promote them to `capability-pack/1.0` only
   after the real Behave census plus licence, volume and security review;
-- add a core capability requirement catalogue with no dynamic registration;
+- add explicit `runtimeDemand` to every registered operation, with no dynamic
+  registration;
 - add a strict local-lock parser and atomic writer abstraction;
 - model the three independent state axes;
 - implement `list`, `plan` and `doctor` without runtime mutation;

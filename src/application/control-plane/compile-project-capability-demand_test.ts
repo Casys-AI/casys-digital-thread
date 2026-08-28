@@ -10,11 +10,13 @@ import type {
   EngineeringWorkItem,
 } from "../../domain/project/engineering-project.ts";
 import {
-  CAPABILITY_REQUIREMENT_CATALOG_SCHEMA_VERSION,
-  type CapabilityRequirementCatalog,
-  type OperationCapabilityRequirement,
-} from "./read-model/capability-demand.ts";
-import { compileProjectCapabilityDemandFromServerCatalog } from "./compile-project-capability-demand.ts";
+  compileProjectCapabilityDemand,
+  type EngineeringOperationRuntimeDemandRegistryView,
+} from "./compile-project-capability-demand.ts";
+import {
+  engineeringOperationRegistry,
+  fingerprintRegisteredEngineeringOperationRegistry,
+} from "../../orchestration/operations/registry.ts";
 
 const APPROVED_BRIEF_BASIS: EngineeringApprovedBriefBasis = {
   kind: "approved-brief",
@@ -24,357 +26,357 @@ const APPROVED_BRIEF_BASIS: EngineeringApprovedBriefBasis = {
   briefId: "brief-lamp",
   briefSnapshotId: "brief-lamp:r2",
   briefRevision: 2,
-  approvedBriefFingerprint: {
-    algorithm: "sha256",
-    digest: "a".repeat(64),
-  },
+  approvedBriefFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
 };
 
-const COMMON_COMPATIBLE = capability(
-  "model.author-system",
-  "compatible",
-);
-const COMMON_QUALIFIED = capability("model.author-system", "qualified");
-const STATIC_QUALIFIED = capability(
-  "mechanics.solve-static-structural",
-  "qualified",
-);
+const AUTHOR = capability("model.author-system", "qualified");
+const STATIC = capability("mechanics.solve-static-structural", "qualified");
 
-Deno.test(
-  "project capability demand canonically groups the exact path and keeps the strongest flattened requirement",
-  async () => {
-    const first = await compileProjectCapabilityDemandFromServerCatalog(
-      project([
-        workItem("work-z", "verify.static", "3"),
-        workItem("work-a", "model.author", "1"),
-        workItem("work-b", "verify.static", "3"),
-      ]),
-      catalog([
-        requirement("verify.static", "3", [
-          STATIC_QUALIFIED,
-          COMMON_QUALIFIED,
-        ]),
-        requirement("model.author", "1", [COMMON_COMPATIBLE]),
-      ]),
-    );
-    const reordered = await compileProjectCapabilityDemandFromServerCatalog(
-      project([
-        workItem("work-b", "verify.static", "3"),
-        workItem("work-a", "model.author", "1"),
-        workItem("work-z", "verify.static", "3"),
-      ]),
-      catalog([
-        requirement("model.author", "1", [COMMON_COMPATIBLE]),
-        requirement("verify.static", "3", [
-          COMMON_QUALIFIED,
-          STATIC_QUALIFIED,
-        ]),
-      ]),
-    );
+Deno.test("V2 demand retains every revision while ceiling and JIT use exact current leaves", async () => {
+  const demand = await compileProjectCapabilityDemand(
+    project([
+      workItem("author-r1", "activity:author", "completed", "model.author", "1"),
+      workItem(
+        "author-r2",
+        "activity:author",
+        "ready",
+        "model.author",
+        "1",
+        "author-r1",
+      ),
+      workItem("static-r1", "activity:static", "completed", "verify.static", "3"),
+      workItem("none-r1", "activity:none", "ready", "record.note", "1"),
+      workItem("old-r1", "activity:old", "cancelled", "retired.unknown", "1"),
+    ]),
+    registry([
+      required("model.author", "1", [AUTHOR]),
+      required("verify.static", "3", [STATIC]),
+      none("record.note", "1"),
+    ]),
+  );
 
-    assertEquals(first.mutatesRuntime, false);
-    assertEquals(first.status, "resolved");
-    assertEquals(first.projectSnapshot, {
-      projectId: "project-lamp",
-      snapshotId: "project-lamp:r7",
-      revision: 7,
-    });
-    assertEquals(first.approvedBriefBasis, APPROVED_BRIEF_BASIS);
-    assertEquals(
-      first.operationGroups.map((group) => ({
-        operation: group.operation,
-        workItemIds: group.workItemIds,
-        resolution: group.resolution,
-      })),
-      [
-        {
-          operation: { id: "model.author", version: "1" },
-          workItemIds: ["work-a"],
-          resolution: "resolved",
-        },
-        {
-          operation: { id: "verify.static", version: "3" },
-          workItemIds: ["work-b", "work-z"],
-          resolution: "resolved",
-        },
-      ],
-    );
-    assertEquals(first.capabilityRequirements, [
-      STATIC_QUALIFIED,
-      COMMON_QUALIFIED,
-    ]);
-    assertEquals(first.pathFingerprint, reordered.pathFingerprint);
-    assertEquals(
-      first.capabilitySetFingerprint,
-      reordered.capabilitySetFingerprint,
-    );
-    assertEquals(first.pathFingerprint.algorithm, "sha256");
-    assertEquals(first.pathFingerprint.digest.length, 64);
-
-    const nextRevisionInput = project([
-      workItem("work-a", "model.author", "1"),
-      workItem("work-b", "verify.static", "3"),
-      workItem("work-z", "verify.static", "3"),
-    ]);
-    const nextRevision = await compileProjectCapabilityDemandFromServerCatalog(
-      { ...nextRevisionInput, id: "project-lamp:r8", revision: 8 },
-      catalog([
-        requirement("model.author", "1", [COMMON_COMPATIBLE]),
-        requirement("verify.static", "3", [
-          COMMON_QUALIFIED,
-          STATIC_QUALIFIED,
-        ]),
-      ]),
-    );
-    assertEquals(
-      first.pathFingerprint.digest === nextRevision.pathFingerprint.digest,
-      false,
-    );
-    assertEquals(
-      first.capabilitySetFingerprint,
-      nextRevision.capabilitySetFingerprint,
-    );
-
-    const serialized = JSON.stringify(first);
-    for (const forbidden of ["bindings", "provider", "tool", "image", "args"]) {
-      assertEquals(serialized.includes(`\"${forbidden}\"`), false);
-    }
-  },
-);
-
-Deno.test(
-  "unknown catalogue operation remains explicit and makes coverage fail closed",
-  async () => {
-    const input = project([workItem("work-a", "model.author", "1")]);
-    const unresolved = await compileProjectCapabilityDemandFromServerCatalog(
-      input,
-      catalog([]),
-    );
-    const resolved = await compileProjectCapabilityDemandFromServerCatalog(
-      input,
-      catalog([
-        requirement("model.author", "1", [COMMON_COMPATIBLE]),
-      ]),
-    );
-
-    assertEquals(unresolved.status, "unresolved");
-    assertEquals(unresolved.operationGroups, [{
-      operation: { id: "model.author", version: "1" },
-      workItemIds: ["work-a"],
+  assertEquals(demand.schemaVersion, "project-capability-demand/2.0");
+  assertEquals(demand.status, "resolved");
+  assertEquals(demand.plannedCeiling.operationGroups, [
+    resolved("model.author", "1", ["author-r2"], [AUTHOR]),
+    resolved("record.note", "1", ["none-r1"], []),
+    resolved("verify.static", "3", ["static-r1"], [STATIC]),
+  ]);
+  assertEquals(demand.jitDemand.operationGroups, [
+    resolved("model.author", "1", ["author-r2"], [AUTHOR]),
+    resolved("record.note", "1", ["none-r1"], []),
+  ]);
+  assertEquals(demand.plannedCeiling.capabilityRequirements, [STATIC, AUTHOR]);
+  assertEquals(demand.jitDemand.capabilityRequirements, [AUTHOR]);
+  assertEquals(
+    demand.workItemHistory.find((item) => item.id === "old-r1"),
+    {
+      id: "old-r1",
+      activityId: "activity:old",
+      status: "cancelled",
+      operation: { id: "retired.unknown", version: "1" },
       resolution: "unresolved",
-      reason: "catalog-entry-missing",
-    }]);
-    assertEquals(unresolved.capabilityRequirements, []);
-    assertEquals(unresolved.pathFingerprint, resolved.pathFingerprint);
-    assertEquals(
-      unresolved.capabilitySetFingerprint === resolved.capabilitySetFingerprint,
-      false,
-    );
-    assertEquals(
-      evaluateProjectCapabilityDemandCoverage(unresolved, [
-        allowed(COMMON_QUALIFIED),
-      ]),
-      {
-        fits: false,
-        unresolvedOperationGroups: [{
-          operation: { id: "model.author", version: "1" },
-          workItemIds: ["work-a"],
-          resolution: "unresolved",
-          reason: "catalog-entry-missing",
-        }],
-        missingRequirements: [],
-      },
-    );
-  },
-);
+      reason: "operation-unregistered",
+    },
+  );
+  const serialized = JSON.stringify(demand);
+  for (const forbidden of ["bindings", "provider", "tool", "image", "args"]) {
+    assertEquals(serialized.includes(`\"${forbidden}\"`), false);
+  }
+  assertEquals(demand.historyPathFingerprint.algorithm, "sha256");
+  assertEquals(demand.plannedCeilingFingerprint.algorithm, "sha256");
+  assertEquals(demand.jitDemandFingerprint.algorithm, "sha256");
+  assertEquals(demand.registryFingerprint.algorithm, "sha256");
+});
 
-Deno.test(
-  "coverage requires exact capability version and use with equal-or-stronger qualification",
-  async () => {
-    const demand = await compileProjectCapabilityDemandFromServerCatalog(
-      project([
-        workItem("work-a", "model.author", "1"),
-        workItem("work-b", "verify.static", "3"),
-      ]),
-      catalog([
-        requirement("model.author", "1", [COMMON_COMPATIBLE]),
-        requirement("verify.static", "3", [STATIC_QUALIFIED]),
-      ]),
-    );
+Deno.test("unknown current operation stays literally unresolved and coverage uses the ceiling, never JIT", async () => {
+  const demand = await compileProjectCapabilityDemand(
+    project([
+      workItem("unknown-r1", "activity:unknown", "planned", "unknown.operation", "1"),
+      workItem("ready-r1", "activity:ready", "ready", "model.author", "1"),
+    ]),
+    registry([required("model.author", "1", [AUTHOR])]),
+  );
 
-    assertEquals(
-      evaluateProjectCapabilityDemandCoverage(demand, [
-        allowed(COMMON_QUALIFIED),
-        allowed(STATIC_QUALIFIED),
-      ]),
-      {
-        fits: true,
-        unresolvedOperationGroups: [],
-        missingRequirements: [],
-      },
-    );
-    const weakerStatic = allowed(STATIC_QUALIFIED, "compatible");
-    const wrongUse = {
-      ...allowed(COMMON_QUALIFIED),
-      use: "preparation" as const,
-    };
-    assertEquals(
-      evaluateProjectCapabilityDemandCoverage(demand, [
-        wrongUse,
-        weakerStatic,
-      ]),
-      {
-        fits: false,
-        unresolvedOperationGroups: [],
-        missingRequirements: [STATIC_QUALIFIED, COMMON_COMPATIBLE],
-      },
-    );
-    const wrongVersion = {
-      ...allowed(STATIC_QUALIFIED),
-      version: "2",
-    };
-    assertEquals(
-      evaluateProjectCapabilityDemandCoverage(demand, [
-        allowed(COMMON_QUALIFIED),
-        wrongVersion,
-      ]),
-      {
-        fits: false,
-        unresolvedOperationGroups: [],
-        missingRequirements: [STATIC_QUALIFIED],
-      },
-    );
-  },
-);
+  assertEquals(demand.status, "unresolved");
+  const unresolved = {
+    operation: { id: "unknown.operation", version: "1" },
+    workItemIds: ["unknown-r1"],
+    resolution: "unresolved" as const,
+    reason: "operation-unregistered" as const,
+  };
+  assertEquals(demand.plannedCeiling.operationGroups[1], unresolved);
+  assertEquals(demand.jitDemand.status, "resolved");
+  assertEquals(
+    evaluateProjectCapabilityDemandCoverage(demand, [allowed(AUTHOR)]),
+    { fits: false, unresolvedOperationGroups: [unresolved], missingRequirements: [] },
+  );
+});
 
-Deno.test(
-  "compiler fails closed on absent plan and duplicate or conflicting catalogue declarations",
-  async () => {
-    const input = project([workItem("work-a", "model.author", "1")]);
-    await assertRejects(
-      () =>
-        compileProjectCapabilityDemandFromServerCatalog(
-          { ...input, plan: undefined },
-          catalog([]),
-        ),
-      TypeError,
-      "project.plan-publish",
-    );
-    await assertRejects(
-      () =>
-        compileProjectCapabilityDemandFromServerCatalog(
-          input,
-          catalog([
-            requirement("model.author", "1", [COMMON_COMPATIBLE]),
-            requirement("model.author", "1", [COMMON_QUALIFIED]),
-          ]),
-        ),
-      TypeError,
-      "duplicate operation model.author@1",
-    );
-    await assertRejects(
-      () =>
-        compileProjectCapabilityDemandFromServerCatalog(
-          input,
-          catalog([
-            requirement("model.author", "1", [
-              COMMON_COMPATIBLE,
-              COMMON_QUALIFIED,
-            ]),
-          ]),
-        ),
-      TypeError,
-      "duplicate or conflicting model.author-system@1 execution demand",
-    );
-    await assertRejects(
-      () =>
-        compileProjectCapabilityDemandFromServerCatalog(
-          project([workItem("work-a", "model.author", "latest")]),
-          catalog([]),
-        ),
-      TypeError,
-      "mutable version alias",
-    );
-    await assertRejects(
-      () =>
-        compileProjectCapabilityDemandFromServerCatalog(
-          project([workItem("work-a", " model.author", "1")]),
-          catalog([]),
-        ),
-      TypeError,
-      "edge whitespace",
-    );
-    await assertRejects(
-      () =>
-        compileProjectCapabilityDemandFromServerCatalog(
-          project([workItem("human-note")]),
-          catalog([]),
-        ),
-      TypeError,
-      "has no registered operation",
-    );
-    await assertRejects(
-      () =>
-        compileProjectCapabilityDemandFromServerCatalog(
-          input,
-          catalog([requirement("model.author", "1", [])]),
-        ),
-      TypeError,
-      "must declare at least one capability",
-    );
-    await assertRejects(
-      () =>
-        compileProjectCapabilityDemandFromServerCatalog(
-          {
-            ...input,
-            plan: {
-              ...input.plan!,
-              basis: { ...input.plan!.basis, projectId: "other-project" },
-            },
-          },
-          catalog([]),
-        ),
-      TypeError,
-      "same project",
-    );
-  },
-);
+Deno.test("V2 fingerprints sort explicitly and bind their distinct bases", async () => {
+  const entries = [
+    none("record.note", "1"),
+    required("model.author", "1", [AUTHOR]),
+  ];
+  const first = await compileProjectCapabilityDemand(
+    project([
+      workItem("author-r1", "activity:author", "ready", "model.author", "1"),
+      workItem("none-r1", "activity:none", "ready", "record.note", "1"),
+    ]),
+    registry(entries),
+  );
+  const reordered = await compileProjectCapabilityDemand(
+    project([
+      workItem("none-r1", "activity:none", "ready", "record.note", "1"),
+      workItem("author-r1", "activity:author", "ready", "model.author", "1"),
+    ]),
+    registry([...entries].reverse()),
+  );
+  assertEquals(first.historyPathFingerprint, reordered.historyPathFingerprint);
+  assertEquals(first.plannedCeilingFingerprint, reordered.plannedCeilingFingerprint);
+  assertEquals(first.jitDemandFingerprint, reordered.jitDemandFingerprint);
+  assertEquals(first.registryFingerprint, reordered.registryFingerprint);
+
+  const changedRegistry = await compileProjectCapabilityDemand(
+    project([
+      workItem("author-r1", "activity:author", "ready", "model.author", "1"),
+      workItem("none-r1", "activity:none", "ready", "record.note", "1"),
+    ]),
+    registry([required("model.author", "1", [AUTHOR]), none("record.note", "2")]),
+  );
+  assertEquals(
+    first.registryFingerprint.digest === changedRegistry.registryFingerprint.digest,
+    false,
+  );
+  assertEquals(
+    first.historyPathFingerprint.digest ===
+      changedRegistry.historyPathFingerprint.digest,
+    false,
+  );
+});
+
+Deno.test("V2 slice fingerprints are independent canonical identities", async () => {
+  const entries = [
+    required("model.author", "1", [AUTHOR]),
+    none("record.note", "1"),
+  ];
+  const initial = await compileProjectCapabilityDemand(
+    project([
+      workItem("author-r1", "activity:author", "ready", "model.author", "1"),
+      workItem("note-r1", "activity:note", "completed", "record.note", "1"),
+    ]),
+    registry(entries),
+  );
+  const changedHistoryAndCeiling = await compileProjectCapabilityDemand(
+    project([
+      workItem("author-r1", "activity:author", "ready", "model.author", "1"),
+      workItem("note-r1", "activity:note", "cancelled", "record.note", "1"),
+    ]),
+    registry(entries),
+  );
+  assertEquals(
+    initial.jitDemandFingerprint,
+    changedHistoryAndCeiling.jitDemandFingerprint,
+  );
+  assertEquals(
+    initial.plannedCeilingFingerprint.digest ===
+      changedHistoryAndCeiling.plannedCeilingFingerprint.digest,
+    false,
+  );
+  assertEquals(
+    initial.historyPathFingerprint.digest ===
+      changedHistoryAndCeiling.historyPathFingerprint.digest,
+    false,
+  );
+
+  const changedJitOnly = await compileProjectCapabilityDemand(
+    project([
+      workItem("author-r1", "activity:author", "planned", "model.author", "1"),
+      workItem("note-r1", "activity:note", "completed", "record.note", "1"),
+    ]),
+    registry(entries),
+  );
+  assertEquals(
+    initial.plannedCeilingFingerprint,
+    changedJitOnly.plannedCeilingFingerprint,
+  );
+  assertEquals(
+    initial.jitDemandFingerprint.digest === changedJitOnly.jitDemandFingerprint.digest,
+    false,
+  );
+  assertEquals(
+    initial.historyPathFingerprint.digest ===
+      changedJitOnly.historyPathFingerprint.digest,
+    false,
+  );
+});
+
+Deno.test("compiler registry fingerprint is identical to the full registry identity", async () => {
+  const demand = await compileProjectCapabilityDemand(
+    project([
+      workItem(
+        "architecture-r1",
+        "activity:architecture",
+        "ready",
+        "model.write-architecture",
+        "1",
+      ),
+    ]),
+    engineeringOperationRegistry,
+  );
+  assertEquals(
+    demand.registryFingerprint,
+    await fingerprintRegisteredEngineeringOperationRegistry(),
+  );
+});
+
+Deno.test("V2 fails closed on malformed lifecycle histories and registry demand", async () => {
+  await assertRejects(
+    () =>
+      compileProjectCapabilityDemand(
+        project([
+          workItem("a", "activity:one", "ready", "model.author", "1", "b"),
+          workItem("b", "activity:two", "ready", "model.author", "1"),
+        ]),
+        registry([required("model.author", "1", [AUTHOR])]),
+      ),
+    TypeError,
+    "invalid predecessor",
+  );
+  await assertRejects(
+    () =>
+      compileProjectCapabilityDemand(
+        project([
+          workItem("a", "activity:cycle", "ready", "model.author", "1", "b"),
+          workItem("b", "activity:cycle", "ready", "model.author", "1", "a"),
+        ]),
+        registry([required("model.author", "1", [AUTHOR])]),
+      ),
+    TypeError,
+    "predecessor cycle",
+  );
+  await assertRejects(
+    () =>
+      compileProjectCapabilityDemand(
+        project([
+          workItem("a", "activity:roots", "ready", "model.author", "1"),
+          workItem("b", "activity:roots", "ready", "model.author", "1"),
+        ]),
+        registry([required("model.author", "1", [AUTHOR])]),
+      ),
+    TypeError,
+    "exactly one root revision",
+  );
+  await assertRejects(
+    () =>
+      compileProjectCapabilityDemand(
+        project([{
+          ...workItem("a", "activity:status", "ready", "model.author", "1"),
+          status: "queued",
+        } as unknown as EngineeringWorkItem]),
+        registry([required("model.author", "1", [AUTHOR])]),
+      ),
+    TypeError,
+    "known EngineeringWorkItem status",
+  );
+  await assertRejects(
+    () =>
+      compileProjectCapabilityDemand(
+        project([{
+          ...workItem("a", "activity:operation", "ready", "model.author", "1"),
+          operation: undefined,
+        }]),
+        registry([required("model.author", "1", [AUTHOR])]),
+      ),
+    TypeError,
+    "has no operation",
+  );
+  await assertRejects(
+    () =>
+      compileProjectCapabilityDemand(
+        project([
+          workItem("same", "activity:a", "ready", "model.author", "1"),
+          workItem("same", "activity:b", "ready", "model.author", "1"),
+        ]),
+        registry([required("model.author", "1", [AUTHOR])]),
+      ),
+    TypeError,
+    "is duplicated",
+  );
+  await assertRejects(
+    () =>
+      compileProjectCapabilityDemand(
+        project([workItem("a", "activity:a", "ready", "model.author", "1")]),
+        registry([
+          required("model.author", "1", [AUTHOR]),
+          required("model.author", "1", [AUTHOR]),
+        ]),
+      ),
+    TypeError,
+    "duplicate operation",
+  );
+  await assertRejects(
+    () =>
+      compileProjectCapabilityDemand(
+        project([workItem("a", "activity:a", "ready", "model.author", "1")]),
+        registry([{
+          id: "model.author",
+          version: "1",
+          runtimeDemand: { kind: "required", capabilities: [] },
+        }]),
+      ),
+    TypeError,
+    "nonempty capabilities",
+  );
+});
 
 function capability(
   id: string,
   minimumQualification: RequiredEngineeringCapability["minimumQualification"],
-  use: RequiredEngineeringCapability["use"] = "execution",
 ): RequiredEngineeringCapability {
-  return { id, version: "1", minimumQualification, use };
+  return { id, version: "1", minimumQualification, use: "execution" };
 }
 
 function allowed(
   required: RequiredEngineeringCapability,
-  qualification = required.minimumQualification,
 ): AllowedEngineeringCapability {
   return {
     id: required.id,
     version: required.version,
     use: required.use,
-    qualification,
+    qualification: required.minimumQualification,
   };
 }
 
-function requirement(
+function required(
   id: string,
   version: string,
   capabilities: readonly RequiredEngineeringCapability[],
-): OperationCapabilityRequirement {
-  return { operation: { id, version }, capabilities };
+) {
+  return { id, version, runtimeDemand: { kind: "required" as const, capabilities } };
 }
 
-function catalog(
-  entries: readonly OperationCapabilityRequirement[],
-): CapabilityRequirementCatalog {
+function none(id: string, version: string) {
+  return { id, version, runtimeDemand: { kind: "none" as const } };
+}
+
+function registry(
+  entries: readonly (ReturnType<typeof required> | ReturnType<typeof none>)[],
+): EngineeringOperationRuntimeDemandRegistryView {
+  return { list: () => entries };
+}
+
+function resolved(
+  id: string,
+  version: string,
+  workItemIds: readonly string[],
+  capabilities: readonly RequiredEngineeringCapability[],
+) {
   return {
-    schemaVersion: CAPABILITY_REQUIREMENT_CATALOG_SCHEMA_VERSION,
-    scope: "behave-foundation",
-    entries,
+    operation: { id, version },
+    workItemIds,
+    resolution: "resolved" as const,
+    capabilities,
   };
 }
 
@@ -411,29 +413,22 @@ function project(
 
 function workItem(
   id: string,
-  operationId?: string,
-  operationVersion?: string,
+  activityId: string,
+  status: EngineeringWorkItem["status"],
+  operationId: string,
+  operationVersion: string,
+  predecessorRevisionId?: string,
 ): EngineeringWorkItem {
   return {
     id,
-    activityId: `activity:${id}`,
+    activityId,
+    ...(predecessorRevisionId ? { predecessorRevisionId } : {}),
     phaseId: "phase-1",
     title: id,
     description: id,
     kind: "verify",
-    ...(operationId && operationVersion
-      ? {
-        operation: {
-          id: operationId,
-          version: operationVersion,
-          bindings: [{
-            name: "approvedBrief",
-            source: { kind: "approved-brief" as const },
-          }],
-        },
-      }
-      : {}),
-    status: "planned",
+    operation: { id: operationId, version: operationVersion, bindings: [] },
+    status,
     owner: "agent",
     dependsOnWorkItemIds: [],
     evidenceRefs: [],
