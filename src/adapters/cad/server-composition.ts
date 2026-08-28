@@ -239,7 +239,7 @@ export function createCadProject(options: CadProjectOptions): CadProject {
  * reopens sealed CAD bytes. A fingerprint proves identity after sealing,
  * never causal provenance. The sandbox owns a private export volume, so
  * those bytes never touch evidence. No sandbox entry ⇒ no admitted-export
- * tool. It is not gated on --local-execution.
+ * tool. Its private sandbox binding is independent from local microVM activation.
  */
 export function composePrivateBuild123dGeometrySurfaces(
   build123dSandboxMcpUrl: string | undefined,

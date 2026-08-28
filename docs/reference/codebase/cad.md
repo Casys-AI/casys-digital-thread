@@ -53,8 +53,8 @@ construction-time dispatch or legacy MCP fallback
 #### [`src/adapters/cad/server-composition.ts`](../../../src/adapters/cad/server-composition.ts)
 
 Build123d capability and CAD project contributions. Profile-only exposes review;
-isolated execution needs the empty runtime marker. Private sandbox admitted export is
-composed independently of `--local-execution`.
+isolated execution requires an approved capability-runtime supervisor to compose the
+exact worker. Private sandbox admitted export has its own atomic runtime unit.
 
 #### [`scripts/gates/verify-build123d-microsandbox-vertical.ts`](../../../scripts/gates/verify-build123d-microsandbox-vertical.ts)
 

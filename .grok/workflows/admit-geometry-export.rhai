@@ -37,7 +37,7 @@ implement_prompt += "The server reopens the sealed admission and sends exact adm
 implement_prompt += "Output is a geometry DRAFT, not Thread. design.write-geometry@1 remains the sealer. ";
 implement_prompt += "Do NOT change design.execute-build123d@1. Do NOT let callers select provider, tool, path, image, or source text. ";
 implement_prompt += "Do NOT inline Python into MCP capture. ";
-implement_prompt += "Register the tool only when the use case is composed. Do not require --local-execution. ";
+implement_prompt += "Register the tool only when the use case is composed. Do not add a global local-runtime flag. ";
 implement_prompt += "Hexagonal, exactRecord, fail-closed, colocated tests with @std/assert. ";
 implement_prompt += "Run targeted deno tests and fix them. Do not commit. ";
 implement_prompt += "Return ok=true only if the new tests passed. List files you created or edited.";

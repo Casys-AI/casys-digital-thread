@@ -1675,31 +1675,9 @@ if (import.meta.main) {
   const hostname = cli.hostname ?? env("MCP_HOSTNAME") ?? DEFAULT_HOSTNAME;
   const projectToolsEnabled = isExplicitLoopbackHostname(hostname);
   const approvalMode = approvalModeForBinding(cli.yolo === true, hostname);
-  const localExecution = localExecutionForBinding(
-    cli.localExecution === true,
-    hostname,
-  );
   const { app } = await createConsoleServer({
     projectControl: projectToolsEnabled ? undefined : false,
     approvalMode,
-    build123dExecution: localExecution
-      ? await createLocalBuild123dExecutionServerOptions()
-      : undefined,
-    geometryModuleAssembly: localExecution
-      ? await createLocalGeometryModuleAssemblyServerOptions()
-      : undefined,
-    modelicaIsolatedExecution: localExecution
-      ? await createLocalModelicaIsolatedExecutionServerOptions()
-      : undefined,
-    admittedModelicaExecution: localExecution
-      ? await createLocalAdmittedModelicaExecutionServerOptions()
-      : undefined,
-    admittedSpiceExecution: localExecution
-      ? await createLocalAdmittedSpiceExecutionServerOptions()
-      : undefined,
-    calculixIsolatedExecution: localExecution
-      ? await createLocalCalculixIsolatedExecutionServerOptions()
-      : undefined,
   });
   const http = await app.startHttp({
     port,
@@ -1712,11 +1690,6 @@ if (import.meta.main) {
       if (approvalMode.kind === "local-yolo") {
         console.error(
           "YOLO ACTIVE: documented positive human confirmation gates use human/local-yolo:startup-opt-in; rejection remains interactive.",
-        );
-      }
-      if (localExecution) {
-        console.error(
-          `LOCAL EXECUTION ACTIVE: qualified Build123d, geometry-module assembly, Modelica kit, admitted Modelica, admitted SPICE, and CalculiX runs use ${LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE}, ${LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE}, ${LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE}, ${LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE}, ${LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE}, and ${LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE} through the attached local Microsandbox backend; CalculiX publication still requires the SysON oracle.`,
         );
       }
       if (!projectToolsEnabled) {
@@ -1742,7 +1715,6 @@ export interface ConsoleCliOptions {
   port?: number;
   hostname?: string;
   yolo?: true;
-  localExecution?: true;
 }
 
 export function parseConsoleCli(args: string[]): ConsoleCliOptions {
@@ -1753,8 +1725,6 @@ export function parseConsoleCli(args: string[]): ConsoleCliOptions {
       throw new TypeError("--stdio is not supported; use stateless HTTP on /mcp.");
     } else if (argument === "--yolo") {
       result.yolo = true;
-    } else if (argument === "--local-execution") {
-      result.localExecution = true;
     } else if (argument.startsWith("--port=")) {
       result.port = positiveInteger(argument.slice("--port=".length), "--port");
     } else if (argument === "--port") {
@@ -1907,19 +1877,6 @@ export function approvalModeForBinding(
     );
   }
   return yolo ? LOCAL_YOLO_PROJECT_APPROVAL_MODE : INTERACTIVE_PROJECT_APPROVAL_MODE;
-}
-
-/** Native local execution is never composed on a remotely reachable bind. */
-export function localExecutionForBinding(
-  requested: boolean,
-  hostname: string,
-): boolean {
-  if (requested && !isExplicitLoopbackHostname(hostname)) {
-    throw new TypeError(
-      "--local-execution is restricted to an explicit loopback MCP hostname.",
-    );
-  }
-  return requested;
 }
 
 function integerEnv(name: string): number | undefined {

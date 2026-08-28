@@ -11,7 +11,9 @@ Optional product Modelica is a separate capture → admission → admitted micro
 The paired conversation commands. The Workbench is read-only. The person never types a
 provider tool. The agent never invents a metric, a unit, a `z*`, or an operation id.
 
-This page is the live from-zero script. The dated five-space inspection is
+This page is the from-zero authority sequence. The current post-retirement console can
+walk the project through canonical geometry, but it deliberately stops before product
+FEA until the capability-runtime supervisor exists. The dated five-space inspection is
 [Walk through a dated engineering project](walk-through-an-engineering-project.md).
 After a proof exists, join and fail-only correction are
 [Review and correct after a proof](review-and-correct-after-a-proof.md).
@@ -46,7 +48,7 @@ Behave path, so do not start the default all-services Compose topology.
 docker compose up -d syson-db syson-app mcp-syson mcp-build123d-sandbox
 npm --prefix src/ui ci
 npm --prefix src/ui run build:thread
-deno task start:local
+deno task start
 deno task preview:thread
 ```
 
@@ -54,9 +56,10 @@ The private Build123d service prepares the admitted canonical draft before
 `design.write-geometry@1`; that operation only promotes verified bytes. The regular
 `mcp-build123d` observer is for optional assembly integrity, and the HTTP `mcp-calculix`
 service is for optional sensitivity. Product FEA `@3` uses the local CalculiX microVM
-instead. `start:local` currently makes all six local profiles available, but this
-mandatory walk dispatches only the CalculiX worker; selective composition is a
-capability-pack follow-up.
+instead. The console no longer composes local worker profiles globally. Until the
+capability-runtime supervisor activates an approved CalculiX unit, the registered
+product FEA executor remains literal `unavailable`; this how-to must not present an
+unavailable local run as a completed proof.
 
 Connect the agent to `http://127.0.0.1:3020/mcp`. Open `http://127.0.0.1:5173/`.
 `deno task preview:thread` already follows cockpit focus (`--workspace-id=primary`). Do

@@ -75,10 +75,11 @@ deletion.
 
 ## Current stopping point
 
-This lot stops at a deterministic, effect-free project-demand compiler and its
-fingerprint/subset policy. The existing Behave Foundation `inspect`, `plan`, and
-`doctor` surfaces remain host read models. No current component performs project-bound
-install, activation, just-in-time lifecycle, rollback, or removal.
+This lot stops at a deterministic, effect-free project-demand compiler plus an atomic
+catalogue/host-plan projection. The retired Behave Foundation `inspect`, `plan`, and
+`doctor` candidate surfaces are not compatibility interfaces. No current component
+performs project-bound install, activation, just-in-time lifecycle, rollback, or
+removal.
 
 Implementing those mutations requires the separately authorized local-supervisor lot,
 atomic installation locks, interrupted-job recovery, qualification probes, and exact

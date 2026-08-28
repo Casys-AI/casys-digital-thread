@@ -20,7 +20,7 @@ Lookalikes: [lookalike traps](../../reference/agent/lookalike-traps.md). Domain 
 
 ```bash
 docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-build123d-sandbox mcp-calculix
-deno task start:yolo    # or start:local; review/executor need --local-execution
+deno task start:yolo    # YOLO approval only; it does not activate Modelica
 ```
 
 ERPNext is an optional sibling integration; start it separately only when its checkout
@@ -62,6 +62,12 @@ the compiler request.
 Obtain human MRTR, queue, then execute `compile.seal-admission@3`.
 
 ## 3. Review and run
+
+This is the post-supervisor path. The current console deliberately does not compose the
+admitted-Modelica review/executor: until an approved capability-runtime supervisor
+activates the exact atomic unit, the registered operation is `unavailable`. The
+remaining steps specify the closed path that becomes available then; they do not turn a
+standalone worker qualification into a product run.
 
 Call `project_admitted_modelica_run_review` with `projectId` only. Do not derive or pass
 a Thread basis, admission id, fingerprint, provider, solver or runtime. The server

@@ -16,35 +16,23 @@ Where things run, and which page owns the file census.
 
 ## Local YOLO approval mode
 
-The ordinary `deno task start` composes no local Build123d, Modelica or CalculiX review
-or runtime. Local execution is an explicit CLI capability: `server.ts` accepts the
-valueless `--local-execution` flag and rejects lookalikes such as
-`--local-execution=true`. The flag is effective only on the loopback project surface.
-The permission-bearing task for all three fixed local runtimes keeps interactive MRTR:
+The ordinary `deno task start` composes no local Build123d, Modelica, SPICE or CalculiX
+review/executor. `--local-execution` is no longer a console capability; it is rejected
+as an unknown argument, including through the supervised MCP passthrough. Until the
+separate capability-runtime supervisor exists, the corresponding registered operations
+remain literally `unavailable`.
 
-```bash
-deno task start:local
-```
-
-For supervised loopback automation, the dedicated task combines the same local runtime
-opt-in with the separate local-YOLO approval opt-in:
+The loopback automation task controls only the separate local-YOLO approval opt-in:
 
 ```bash
 deno task start:yolo
 ```
 
-`start:local` expands to `server.ts --local-execution`; `start:yolo` expands to
-`server.ts --yolo --local-execution`. Both tasks provide the native Microsandbox package
-read/FFI permissions, an explicit environment allowlist and
-`--no-prompt --frozen --node-modules-dir=auto`. The flags select no image, policy,
-limit, command, path, network rule or backend; those remain fixed in code. The Build123d
-profile fixes the 0:0 supervisor and 65532:65532 child, 30 s wall/25 s requested CPU, 1
-GiB memory, 32 requested processes, 64 KiB per log and 128 MiB per-file/total output
-ceilings. CPU and process count remain unattested. The Console process retains host
-network/Docker permissions for its existing private MCP provider fleet and CalculiX's
-separate SysON oracle, but those permissions are not inherited as guest capabilities:
-each local microVM is reread as network-disabled and exposes neither the Docker socket
-nor provider volumes.
+`start:yolo` expands to `server.ts --yolo`; it does not activate a runtime. Its task
+retains the existing explicit environment allowlist and
+`--no-prompt --frozen --node-modules-dir=auto` startup discipline. The future
+capability-runtime supervisor will select reviewed bindings and exact material through
+the atomic catalogue; provider/image/profile/argument selection remains server-owned.
 
 The focused local gate exercises the same stateless HTTP surface against a temporary
 durable project store:

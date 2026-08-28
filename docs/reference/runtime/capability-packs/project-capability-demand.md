@@ -30,9 +30,8 @@ alternate demand authority. The result records these exact bases:
 
 The normal compiler lives in
 [`compile-project-capability-demand.ts`](../../../../src/application/control-plane/compile-project-capability-demand.ts).
-Behave Foundation routes are only a code-owned census projection over that same
-registry. The Behave demand compiler resolves every project work item against the
-complete registry; routes never filter its authorization ceiling.
+The atomic runtime catalogue consumes this same complete registry-derived demand; no
+recipe name, package, or route can filter its authorization ceiling.
 
 ## History, ceiling, and JIT demand
 

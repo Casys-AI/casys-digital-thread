@@ -31,7 +31,6 @@ import {
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_WRAPPER_SHA256,
   LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
-  localExecutionForBinding,
   parseConsoleCli,
 } from "../../server.ts";
 import { CONSOLE_RESOURCE_URI } from "./control-plane.ts";
@@ -47,13 +46,11 @@ Deno.test("console CLI parses loopback bind options without a review-intent outb
       "--port",
       "6202",
       "--yolo",
-      "--local-execution",
     ]),
     {
       hostname: "localhost",
       port: 6202,
       yolo: true,
-      localExecution: true,
     },
   );
   assertThrows(
@@ -65,17 +62,6 @@ Deno.test("console CLI parses loopback bind options without a review-intent outb
 
 Deno.test("YOLO CLI activation is explicit and restricted to loopback", () => {
   assertEquals(parseConsoleCli([]).yolo, undefined);
-  assertEquals(parseConsoleCli([]).localExecution, undefined);
-  assertEquals(parseConsoleCli(["--local-execution"]), {
-    localExecution: true,
-  });
-  assertEquals(localExecutionForBinding(false, "0.0.0.0"), false);
-  assertEquals(localExecutionForBinding(true, "127.0.0.1"), true);
-  assertThrows(
-    () => localExecutionForBinding(true, "0.0.0.0"),
-    TypeError,
-    "--local-execution is restricted to an explicit loopback",
-  );
   assertEquals(approvalModeForBinding(false, "0.0.0.0"), {
     kind: "interactive",
   });
@@ -92,6 +78,7 @@ Deno.test("YOLO CLI activation is explicit and restricted to loopback", () => {
     const unknown of [
       "--yoloo",
       "--yolo=true",
+      "--local-execution",
       "--local-execution=true",
       "serve",
     ]
@@ -109,7 +96,7 @@ Deno.test("YOLO CLI activation is explicit and restricted to loopback", () => {
   );
 });
 
-Deno.test("local execution startup binding is code-owned and digest pinned", async () => {
+Deno.test("future Build123d runtime binding factory is code-owned and digest pinned", async () => {
   const first = await createLocalBuild123dExecutionServerOptions();
   const second = await createLocalBuild123dExecutionServerOptions();
 
@@ -140,7 +127,7 @@ Deno.test("local execution startup binding is code-owned and digest pinned", asy
   ]);
 });
 
-Deno.test("local geometry-module assembly binding is code-owned and digest pinned", async () => {
+Deno.test("future geometry-module runtime binding factory is code-owned and digest pinned", async () => {
   const first = await createLocalGeometryModuleAssemblyServerOptions();
   const second = await createLocalGeometryModuleAssemblyServerOptions();
 
@@ -208,7 +195,7 @@ Deno.test("server hides native module assembly behind the neutral export and dra
   assertEquals((source.match(/const geometryModuleAssembly =/g) ?? []).length, 1);
 });
 
-Deno.test("local Modelica startup binding is code-owned, digest pinned, and qualification-gated", async () => {
+Deno.test("future Modelica runtime binding factory is code-owned, digest pinned, and qualification-gated", async () => {
   const first = await createLocalModelicaIsolatedExecutionServerOptions();
   const second = await createLocalModelicaIsolatedExecutionServerOptions();
 
@@ -234,7 +221,7 @@ Deno.test("local Modelica startup binding is code-owned, digest pinned, and qual
   assertEquals(first.runtime, {});
 });
 
-Deno.test("local CalculiX startup binding is code-owned, digest pinned, and SysON-gated", async () => {
+Deno.test("future CalculiX runtime binding factory is code-owned, digest pinned, and SysON-gated", async () => {
   const first = await createLocalCalculixIsolatedExecutionServerOptions();
   const second = await createLocalCalculixIsolatedExecutionServerOptions();
 
@@ -259,7 +246,7 @@ Deno.test("local CalculiX startup binding is code-owned, digest pinned, and SysO
   assertEquals(first.runtime, {});
 });
 
-Deno.test("local execution tasks are explicit, frozen, and capability-bounded", async () => {
+Deno.test("startup tasks cannot globally compose local engineering runtimes", async () => {
   const config = JSON.parse(await Deno.readTextFile("deno.json")) as {
     imports: Record<string, string>;
     tasks: Record<string, string>;
@@ -269,21 +256,21 @@ Deno.test("local execution tasks are explicit, frozen, and capability-bounded", 
   assertEquals(config.tasks.start.includes("--local-execution"), false);
   assertEquals(config.tasks.start.includes("--node-modules-dir"), false);
 
-  const local = config.tasks["start:local"];
   const yolo = config.tasks["start:yolo"];
-  for (const task of [local, yolo]) {
-    assertStringIncludes(task, "--no-prompt --frozen --node-modules-dir=auto");
-    assertStringIncludes(
-      task,
-      "--allow-read=config,state,src/ui,mcp-server.yaml,node_modules",
-    );
-    assertStringIncludes(task, "--allow-write=state/local");
-    assertStringIncludes(task, "--allow-ffi=node_modules");
-    assertEquals(task.includes("--allow-ffi "), false);
-    assertEquals(task.includes("--allow-env "), false);
-  }
-  assertEquals(local.endsWith("server.ts --local-execution"), true);
-  assertEquals(yolo.endsWith("server.ts --yolo --local-execution"), true);
+  assertEquals(config.tasks["start:local"], undefined);
+  assertEquals(config.tasks["capability:behave:inspect"], undefined);
+  assertEquals(config.tasks["capability:behave:doctor"], undefined);
+  assertEquals(yolo, `${config.tasks.start} --yolo`);
+  assertStringIncludes(yolo, "--allow-read=config,state,src/ui,mcp-server.yaml");
+  assertStringIncludes(yolo, "--allow-write=state/local");
+  assertEquals(yolo.includes("--allow-ffi"), false);
+  assertEquals(yolo.includes("--node-modules-dir"), false);
+  assertEquals(yolo.endsWith("server.ts --yolo"), true);
+  assertEquals(yolo.includes("--local-execution"), false);
+  const source = await Deno.readTextFile("server.ts");
+  assertEquals(source.includes("localExecutionForBinding"), false);
+  assertEquals(source.includes("cli.localExecution"), false);
+  assertEquals(source.includes("build123dExecution: localExecution"), false);
 });
 
 Deno.test("server orchestrates one historical proof and requirements CAS into ROP2", async () => {

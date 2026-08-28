@@ -57,7 +57,7 @@ const MCP_BUILD123D_IMAGE =
   "ghcr.io/casys-ai/engineering-toolchain@sha256:7a255f24448ddb6de496c4e47c2d1634c63daea67e9082b558257287215b23b5";
 
 const REVIEWED_LICENCE_DOC =
-  "docs/reference/runtime/capability-packs/behave-foundation/licences.md";
+  "docs/reference/runtime/capability-packs/atomic-runtime-boundaries.md";
 
 /**
  * Builds the trusted first-party catalogue from exact current composition
