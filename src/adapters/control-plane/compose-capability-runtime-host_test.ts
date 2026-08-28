@@ -79,6 +79,65 @@ Deno.test("Compose host refuses a foreign same-name service without stopping its
   );
 });
 
+Deno.test("Compose host refuses named-volume topology drift before treating CalculiX as owned", async () => {
+  const group = await calculixGroup();
+  const expected = descriptorMounts(group, "mcp-calculix");
+  const variants: readonly {
+    readonly name: string;
+    readonly mounts: readonly Record<string, unknown>[];
+  }[] = [
+    {
+      name: "bind",
+      mounts: [
+        { ...expected[0]!, Type: "bind", Name: "", Source: "/tmp/inputs" },
+        expected[1]!,
+      ],
+    },
+    { name: "missing", mounts: [] },
+    {
+      name: "mismatched-volume",
+      mounts: [
+        { ...expected[0]!, Name: "casys-mcp-calculix_other-inputs" },
+        expected[1]!,
+      ],
+    },
+    {
+      name: "extra-volume",
+      mounts: [
+        ...expected,
+        {
+          Type: "volume",
+          Name: "casys-mcp-calculix_extra",
+          Destination: "/unexpected",
+          RW: true,
+        },
+      ],
+    },
+  ];
+  for (const variant of variants) {
+    const runner = new FakeGroupRunner(group, {
+      images: true,
+      state: "running",
+      mountsByService: { "mcp-calculix": variant.mounts },
+    });
+    const fixture = host(group, runner);
+
+    const observed = await fixture.host.observe([group.materials[0]!.material]);
+    assertEquals(
+      observed.get(materialKey(group.materials[0]!.material))?.runtime,
+      "degraded",
+      variant.name,
+    );
+    const result = await mutate(fixture, group, "runtime-stop");
+    assertEquals(result.status, "failed", variant.name);
+    assertEquals(
+      runner.calls.some((call) => call[1] === "container" && call[2] === "stop"),
+      false,
+      variant.name,
+    );
+  }
+});
+
 Deno.test("sealed SysON group has the one approved loopback publication and no historical 8180 exposure", async () => {
   const group = await sysonGroup();
   const descriptor = JSON.parse(group.compose.content) as {
@@ -105,6 +164,14 @@ Deno.test("sealed SysON group pins Postgres with its canonical Docker Hub reposi
 
 async function sysonGroup(): Promise<CapabilityRuntimeLaunchGroup> {
   return (await createFirstPartyCapabilityRuntimeLaunchGroups())[0]!;
+}
+
+async function calculixGroup(): Promise<CapabilityRuntimeLaunchGroup> {
+  const group = (await createFirstPartyCapabilityRuntimeLaunchGroups()).find(
+    (candidate) => candidate.id === "casys-mcp-calculix",
+  );
+  if (!group) throw new Error("CalculiX launch group is absent.");
+  return group;
 }
 
 function host(group: CapabilityRuntimeLaunchGroup, runner: FakeGroupRunner) {
@@ -163,6 +230,9 @@ class FakeGroupRunner implements CommandRunner {
       readonly images: boolean;
       readonly state: "absent" | "running";
       readonly foreignService?: string;
+      readonly mountsByService?: Readonly<
+        Record<string, readonly Record<string, unknown>[]>
+      >;
     },
   ) {
     this.#images = options.images;
@@ -172,9 +242,13 @@ class FakeGroupRunner implements CommandRunner {
         : group.materials.map((member) => [member.serviceName, "running"] as const),
     );
     this.foreignService = options.foreignService;
+    this.mountsByService = options.mountsByService ?? {};
   }
 
   readonly foreignService: string | undefined;
+  readonly mountsByService: Readonly<
+    Record<string, readonly Record<string, unknown>[]>
+  >;
 
   async run(
     command: string,
@@ -209,7 +283,7 @@ class FakeGroupRunner implements CommandRunner {
           Labels: {
             "com.docker.compose.project": service === this.foreignService
               ? "foreign-project"
-              : "casys-syson",
+              : this.group.acquisition.projectName,
             "com.docker.compose.service": service,
             ...(service === this.foreignService ? { foreign: "true" } : {}),
           },
@@ -220,6 +294,7 @@ class FakeGroupRunner implements CommandRunner {
             Status: this.#states.get(service) === "running" ? "healthy" : "unhealthy",
           },
         },
+        Mounts: this.mountsByService[service] ?? descriptorMounts(this.group, service),
       }]));
     }
     if (args.includes("ps")) {
@@ -240,6 +315,34 @@ class FakeGroupRunner implements CommandRunner {
     }
     return success("");
   }
+}
+
+function materialKey(input: {
+  readonly unitId: string;
+  readonly materialId: string;
+}): string {
+  return `${input.unitId}\u0000${input.materialId}`;
+}
+
+function descriptorMounts(
+  group: CapabilityRuntimeLaunchGroup,
+  serviceName: string,
+): readonly Record<string, unknown>[] {
+  const descriptor = JSON.parse(group.compose.content) as {
+    readonly services: Record<
+      string,
+      { readonly volumes?: readonly string[] }
+    >;
+  };
+  return (descriptor.services[serviceName]?.volumes ?? []).map((mount) => {
+    const [volume, destination, mode] = mount.split(":");
+    return {
+      Type: "volume",
+      Name: `${group.acquisition.projectName}_${volume}`,
+      Destination: destination,
+      RW: mode !== "ro",
+    };
+  });
 }
 
 function assertNoDestructiveComposeCommand(runner: FakeGroupRunner): void {

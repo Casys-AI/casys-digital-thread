@@ -156,7 +156,7 @@ class ComposeCapabilityRuntimeHost
         entry,
         "failed",
         before.values,
-        "A group container is foreign or has a mismatched image/ownership label.",
+        "A group container is foreign or has a mismatched image, ownership label, or sealed mount topology.",
       );
     }
     if (before.ownership === "unknown") {
@@ -204,7 +204,12 @@ class ComposeCapabilityRuntimeHost
         "Capability runtime sealed group Compose descriptor fingerprint mismatch.",
       );
     }
-    return { group, root, stdin: new TextEncoder().encode(group.compose.content) };
+    return {
+      group,
+      root,
+      stdin: new TextEncoder().encode(group.compose.content),
+      expectedMounts: expectedNamedVolumeMounts(group),
+    };
   }
 
   async #inspect(
@@ -258,6 +263,14 @@ class ComposeCapabilityRuntimeHost
           ownership = preferOwnership(ownership, "unknown");
           state = { ...state, runtime: "degraded" };
         } else if (!hasOwnership(member, actual.labels)) {
+          ownership = "mismatch";
+          state = { ...state, runtime: "degraded" };
+        } else if (
+          !hasExactNamedVolumeMounts(
+            actual.mounts,
+            launch.expectedMounts.get(member.serviceName)!,
+          )
+        ) {
           ownership = "mismatch";
           state = { ...state, runtime: "degraded" };
         } else {
@@ -384,6 +397,11 @@ interface Launch {
   readonly group: CapabilityRuntimeLaunchGroup;
   readonly root: string;
   readonly stdin: Uint8Array;
+  /** Derived only from the sealed canonical Compose descriptor. */
+  readonly expectedMounts: ReadonlyMap<
+    string,
+    readonly ExpectedNamedVolumeMount[]
+  >;
 }
 type Ownership = "owned" | "absent" | "mismatch" | "unknown";
 interface GroupInspection {
@@ -512,6 +530,7 @@ function parseContainer(
   status: string;
   health: string | null;
   image: string;
+  mounts: readonly InspectedContainerMount[];
 } | undefined {
   try {
     const root = Array.isArray(JSON.parse(value))
@@ -521,10 +540,11 @@ function parseContainer(
     const config = record.Config as Record<string, unknown> | undefined;
     const state = record.State as Record<string, unknown> | undefined;
     const labels = config?.Labels;
+    const mounts = parseContainerMounts(record.Mounts);
     if (
       !config || !state || !labels || typeof labels !== "object" ||
       Array.isArray(labels) || typeof record.Id !== "string" ||
-      typeof record.Image !== "string" || typeof state.Status !== "string"
+      typeof record.Image !== "string" || typeof state.Status !== "string" || !mounts
     ) return undefined;
     return {
       id: record.Id,
@@ -539,10 +559,144 @@ function parseContainer(
         ? (state.Health as Record<string, string>).Status
         : null,
       image: record.Image,
+      mounts,
     };
   } catch {
     return undefined;
   }
+}
+
+interface ExpectedNamedVolumeMount {
+  readonly name: string;
+  readonly destination: string;
+  readonly readWrite: boolean;
+}
+
+interface InspectedContainerMount {
+  readonly type: string;
+  readonly name: string;
+  readonly destination: string;
+  readonly readWrite: boolean;
+}
+
+/**
+ * Docker's Compose labels prove a service identity, not its mounted topology.
+ * Build the required named-volume set from the immutable Compose descriptor
+ * already fingerprinted by #launch. The descriptor admits named volumes only;
+ * external names, bind mounts, interpolation and arbitrary configs are
+ * rejected while the launch group is constructed.
+ */
+function expectedNamedVolumeMounts(
+  group: CapabilityRuntimeLaunchGroup,
+): ReadonlyMap<string, readonly ExpectedNamedVolumeMount[]> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(group.compose.content);
+  } catch {
+    throw new TypeError("Sealed capability runtime Compose content is not JSON.");
+  }
+  const document = plainRecord(parsed);
+  const services = document && plainRecord(document.services);
+  if (!services) {
+    throw new TypeError(
+      "Sealed capability runtime Compose content has no services map.",
+    );
+  }
+  const result = new Map<string, readonly ExpectedNamedVolumeMount[]>();
+  for (const member of group.materials) {
+    const service = plainRecord(services[member.serviceName]);
+    if (!service) {
+      throw new TypeError(
+        "Sealed capability runtime Compose content lacks a group service.",
+      );
+    }
+    const mounts = service.volumes === undefined ? [] : sealedNamedVolumeMounts(
+      service.volumes,
+      group.acquisition.projectName,
+    );
+    result.set(member.serviceName, mounts);
+  }
+  return result;
+}
+
+function sealedNamedVolumeMounts(
+  value: unknown,
+  projectName: string,
+): readonly ExpectedNamedVolumeMount[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError("Sealed capability runtime service volumes must be an array.");
+  }
+  const seen = new Set<string>();
+  return value.map((mount) => {
+    if (typeof mount !== "string") {
+      throw new TypeError("Sealed capability runtime volume mount must be literal.");
+    }
+    const match = /^([a-z0-9][a-z0-9_-]{0,62}):(\/[^:\0]+)(?::(ro))?$/.exec(
+      mount,
+    );
+    if (!match || seen.has(match[2]!)) {
+      throw new TypeError(
+        "Sealed capability runtime volume mount is invalid or ambiguous.",
+      );
+    }
+    seen.add(match[2]!);
+    return {
+      name: `${projectName}_${match[1]!}`,
+      destination: match[2]!,
+      readWrite: match[3] !== "ro",
+    };
+  });
+}
+
+function parseContainerMounts(
+  value: unknown,
+): readonly InspectedContainerMount[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const result: InspectedContainerMount[] = [];
+  for (const mount of value) {
+    const record = plainRecord(mount);
+    if (
+      !record || typeof record.Type !== "string" ||
+      typeof record.Name !== "string" || typeof record.Destination !== "string" ||
+      typeof record.RW !== "boolean"
+    ) {
+      return undefined;
+    }
+    result.push({
+      type: record.Type,
+      name: record.Name,
+      destination: record.Destination,
+      readWrite: record.RW,
+    });
+  }
+  return result;
+}
+
+function hasExactNamedVolumeMounts(
+  actual: readonly InspectedContainerMount[],
+  expected: readonly ExpectedNamedVolumeMount[],
+): boolean {
+  if (actual.length !== expected.length) return false;
+  const expectedByDestination = new Map(
+    expected.map((mount) => [mount.destination, mount]),
+  );
+  const seen = new Set<string>();
+  for (const mount of actual) {
+    const expectedMount = expectedByDestination.get(mount.destination);
+    if (
+      !expectedMount || seen.has(mount.destination) || mount.type !== "volume" ||
+      mount.name !== expectedMount.name ||
+      mount.readWrite !== expectedMount.readWrite
+    ) return false;
+    seen.add(mount.destination);
+  }
+  return seen.size === expectedByDestination.size;
+}
+
+function plainRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
 }
 
 function hasExactImage(value: string, reference: string): boolean {
