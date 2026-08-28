@@ -42,10 +42,16 @@ snapshot, reopens `architecture-capture/4.0`, and requires exact `hasElement`. A
 already accepted `mutationId` skips that recross. Detach never contacts SysON or the
 traversal. List accepts zero or one of `fileId` or `target`; both together fail closed.
 The cursor binds workspace revision, that exact filter — including the empty unfiltered
-filter — and last sort key. Filtered and unfiltered cursors cannot cross. The five
+filter — and last sort key. Filtered and unfiltered cursors cannot cross. The six
 generic v1 roles are `architecture-source`, `design-source`, `behavior-source`,
-`verification-source`, and `supporting-document`; each is accepted against
-`PartDefinition` and `PartUsage`. No per-project or per-provider role exists.
+`mechanism-source`, `verification-source`, and `supporting-document`; each is accepted
+against `PartDefinition` and `PartUsage`. No per-project or per-provider role exists.
+
+`mechanism-source@1` is draft authoring classification only. A later
+prescribed-kinematics case review requires one exact same-file attachment set for the
+assembly and every body `PartUsage`, then recrosses their declared architecture basis.
+It does not select or start Chrono: the optional Chrono runtime remains
+`unqualified`/`unavailable` until a separate live qualification record exists.
 
 `project_source_attachment_recross` takes only `projectId`, `mutationId`, exact
 `expectedWorkspaceRevision`, and one to `maxAttachmentRecrossItems` unique
@@ -60,8 +66,7 @@ the exact workspace event fingerprint, derived basis and successor revisions. Sa
 
 When `project_product_inspect` finds a current attachment on a different architecture
 basis, capture and closure remain `blocked`. Alongside human recovery text, the blocked
-action exposes a structured `recoveryAction` naming
-`project_source_attachment_recross`, its exact server-safe arguments, and
-`callerSupplied: ["mutationId"]`. The caller must add a fresh mutation identity; the
-navigation read never invents one and never turns the blocked capture into a ready
-action.
+action exposes a structured `recoveryAction` naming `project_source_attachment_recross`,
+its exact server-safe arguments, and `callerSupplied: ["mutationId"]`. The caller must
+add a fresh mutation identity; the navigation read never invents one and never turns the
+blocked capture into a ready action.

@@ -8,6 +8,9 @@ import type { PrescribedKinematicsEvaluation } from "../../../../domain/mechanis
 import type { PrescribedKinematicsEvaluationCloseoutCandidate } from "../../../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-evaluation-closeout.ts";
 import type { PrescribedKinematicsObservationRecord } from "./prescribed-kinematics-observer.ts";
 import type { PrescribedKinematicsLoweredCase } from "./prescribed-kinematics-case-lowerer.ts";
+import type {
+  PrescribedKinematicsRuntimeProvenance,
+} from "../../in/mechanics/prescribed-kinematics/run-prescribed-kinematics-observation.ts";
 
 export interface PrescribedKinematicsCaptureRef {
   readonly fingerprint: ContentFingerprint;
@@ -15,7 +18,7 @@ export interface PrescribedKinematicsCaptureRef {
 }
 
 export interface PrescribedKinematicsObservationCapture {
-  readonly schemaVersion: "prescribed-kinematics-observation-capture/2.0";
+  readonly schemaVersion: "prescribed-kinematics-observation-capture/4.0";
   readonly observation: PrescribedKinematicsObservation;
   /** Reread dispatch identity; both values are bound to receipt and lowering. */
   readonly request: Pick<
@@ -24,12 +27,20 @@ export interface PrescribedKinematicsObservationCapture {
   >;
   /** Fact-only provider provenance; it never becomes an L4 or L5 verdict. */
   readonly receipt: PrescribedKinematicsObservationRecord["receipt"];
-  readonly notEvaluated: PrescribedKinematicsObservationRecord["notEvaluated"];
+  /** Exact nine-item mcp-chrono wire boundary, preserved verbatim. */
+  readonly providerNotEvaluated: PrescribedKinematicsObservationRecord["notEvaluated"];
+  /**
+   * Code-owned Digital Thread coverage limit. It includes manufacture even
+   * though mcp-chrono itself has no such wire field.
+   */
+  readonly digitalThreadLimits: PrescribedKinematicsObservation["limits"];
   /** Provenance of the exact server lowering; its request bytes are not stored. */
   readonly lowering: Pick<
     PrescribedKinematicsLoweredCase,
     "sourceFingerprint" | "loweringFingerprint" | "requestFingerprint"
   >;
+  /** Exact sealed ROP/runtime identity for this factual L3 evidence. */
+  readonly runtime: PrescribedKinematicsRuntimeProvenance;
 }
 
 export interface PrescribedKinematicsCaptureStore {

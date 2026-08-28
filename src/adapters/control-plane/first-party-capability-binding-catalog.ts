@@ -53,6 +53,8 @@ import { validateCapabilityRuntimeCatalog } from "./capability-runtime-catalog.t
 import {
   firstPartyBuild123dObservationLaunchGroupReference,
   firstPartyBuild123dSandboxLaunchGroupReference,
+  firstPartyCalculixLaunchGroupReference,
+  firstPartyChronoLaunchGroupReference,
   firstPartySysonLaunchGroupReference,
   MCP_BUILD123D_061_IMAGE_REFERENCE,
   MCP_SYSON_IMAGE_REFERENCE,
@@ -79,10 +81,14 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
     sysonLaunchGroup,
     build123dSandboxLaunchGroup,
     build123dObservationLaunchGroup,
+    chronoLaunchGroup,
+    calculixLaunchGroup,
   ] = await Promise.all([
     firstPartySysonLaunchGroupReference(),
     firstPartyBuild123dSandboxLaunchGroupReference(),
     firstPartyBuild123dObservationLaunchGroupReference(),
+    firstPartyChronoLaunchGroupReference(),
+    firstPartyCalculixLaunchGroupReference(),
   ]);
   const units = await Promise.all([
     unit("casys.syson-stack", [
@@ -189,6 +195,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
           volume("calculix-runs", "read-write", "preserve"),
         ],
         "reviewed",
+        calculixLaunchGroup,
       ),
     ], "0.8.2"),
     unit("casys.modelica-qualified-worker", [
@@ -221,7 +228,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "reviewed",
       ),
     ]),
-    unit("casys.mcp-chrono", [chronoMaterial()], "0.3.1"),
+    unit("casys.mcp-chrono", [chronoMaterial(chronoLaunchGroup)], "0.3.1"),
   ]);
   return await validateCapabilityRuntimeCatalog({
     schemaVersion: CAPABILITY_RUNTIME_CATALOG_SCHEMA_VERSION,
@@ -341,7 +348,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "src/adapters/sensitivity/live-fea/mcp-calculix-sensitivity-solver.ts",
         [
           "The HTTP sensitivity binding is distinct from the isolated product static-proof worker.",
-          "It remains unqualified and non-activable in S1: no launch group, recorded solve/readback path, or runtime execution session is enrolled yet.",
+          "The exact casys-mcp-calculix launch group is declared but this binding remains unqualified and non-activable until its live contract qualification is recorded.",
           "The binding can emit only static-structural sensitivity observations; no provider health or completed call is an engineering verdict.",
         ],
       ),
@@ -537,14 +544,16 @@ function ociImageMaterial(
  * local microVM workers. Its runtime security and ARM emulation qualification
  * remain literal unknown/unqualified until a dedicated probe records them.
  */
-function chronoMaterial(): AtomicCapabilityRuntimeMaterial {
+function chronoMaterial(
+  launchGroup: CapabilityRuntimeLaunchGroupReference,
+): AtomicCapabilityRuntimeMaterial {
   return {
     id: "mcp-chrono-image",
     kind: "compose-service",
     imageReference: MCP_CHRONO_031_IMAGE_REFERENCE,
     platforms: ["linux/amd64"],
     lifecycle: "persistent",
-    launchGroup: null,
+    launchGroup,
     effects: {
       downloadBytes: null,
       storageBytes: null,
@@ -558,7 +567,7 @@ function chronoMaterial(): AtomicCapabilityRuntimeMaterial {
       devices: [],
       secretSlots: ["chrono-mcp-bearer-token"],
       licence: { status: "unknown", reference: REVIEWED_LICENCE_DOC },
-      security: "unknown",
+      security: "reviewed",
     },
   };
 }
@@ -598,6 +607,9 @@ function binding(
       source,
       fingerprint: null,
     },
+    // Runtime mode is host-local and therefore never claimed by this
+    // code-owned catalogue baseline. The attestation evaluator fills it.
+    runtimeModes: [],
     limitations,
   } as const;
 }

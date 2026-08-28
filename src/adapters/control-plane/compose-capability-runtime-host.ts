@@ -23,11 +23,15 @@ import type {
   AuthorizedCapabilityRuntimeHostMutation,
   CapabilityRuntimeAdministrativeRemovalInspector,
   CapabilityRuntimeHostMutator,
+  CapabilityRuntimeHostPlatformObserver,
   CapabilityRuntimeJournal,
   CapabilityRuntimeLaunchGroupRegistry,
+  CapabilityRuntimeLaunchSecretInjector,
   CapabilityRuntimeSecretSlotObserver,
+  CapabilityRuntimeSecretSnapshot,
   CapabilityRuntimeStateObserver,
 } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import type { CapabilityRuntimePlatform } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
 import {
   consumeAuthorizedCapabilityRuntimeHostMutation,
 } from "../../application/control-plane/capability-runtime-host-authorization.ts";
@@ -42,6 +46,8 @@ export interface CapabilityRuntimeHostAdapterOptions {
   readonly registry: CapabilityRuntimeLaunchGroupRegistry;
   readonly journal: CapabilityRuntimeJournal;
   readonly secrets: CapabilityRuntimeSecretSlotObserver;
+  /** Closed, in-memory overlay for an exact server-minted secret snapshot. */
+  readonly secretInjector?: CapabilityRuntimeLaunchSecretInjector;
   readonly runner?: CommandRunner;
   readonly dockerEnvironment?: Readonly<Record<string, string>>;
   readonly composeRoot?: string;
@@ -52,7 +58,8 @@ export interface CapabilityRuntimeHostAdapterOptions {
 export type CapabilityRuntimeHostAdapter =
   & CapabilityRuntimeHostMutator
   & CapabilityRuntimeStateObserver
-  & CapabilityRuntimeAdministrativeRemovalInspector;
+  & CapabilityRuntimeAdministrativeRemovalInspector
+  & CapabilityRuntimeHostPlatformObserver;
 
 /**
  * Read-only facade for consumers such as the native Workbench. It deliberately
@@ -61,10 +68,11 @@ export type CapabilityRuntimeHostAdapter =
  */
 export function createCapabilityRuntimeHostObserver(
   options: CapabilityRuntimeHostAdapterOptions,
-): CapabilityRuntimeStateObserver {
+): CapabilityRuntimeStateObserver & CapabilityRuntimeHostPlatformObserver {
   const host = new ComposeCapabilityRuntimeHost(options);
   return {
     observe: (materials) => host.observe(materials),
+    observePlatform: () => host.observePlatform(),
   };
 }
 
@@ -78,7 +86,8 @@ class ComposeCapabilityRuntimeHost
   implements
     CapabilityRuntimeHostMutator,
     CapabilityRuntimeStateObserver,
-    CapabilityRuntimeAdministrativeRemovalInspector {
+    CapabilityRuntimeAdministrativeRemovalInspector,
+    CapabilityRuntimeHostPlatformObserver {
   readonly #runner: CommandRunner;
   readonly #root: string;
   readonly #paths: { realPath(path: string): Promise<string> };
@@ -134,9 +143,28 @@ class ComposeCapabilityRuntimeHost
     return await this.#inspectRemoval(group, launch);
   }
 
+  /**
+   * Docker itself is the runtime authority. The controller process architecture
+   * must never be used as a substitute for this observation.
+   */
+  async observePlatform(): Promise<CapabilityRuntimePlatform> {
+    const result = await this.#docker(this.#root, [
+      "version",
+      "--format",
+      "{{.Server.Os}}/{{.Server.Arch}}",
+    ]);
+    if (!result.success) {
+      throw new Error(
+        "Capability runtime host platform is unavailable from the Docker daemon.",
+      );
+    }
+    return parseDockerDaemonPlatform(result.stdout);
+  }
+
   async mutate(input: {
     readonly authorization: AuthorizedCapabilityRuntimeHostMutation;
     readonly removalPlan?: CapabilityRuntimeAdministrativeRemovalPlan;
+    readonly secretSnapshot?: CapabilityRuntimeSecretSnapshot;
   }): Promise<CapabilityRuntimeJournalOutcome> {
     const entry = consumeAuthorizedCapabilityRuntimeHostMutation(input.authorization);
     if (!entry) {
@@ -169,7 +197,10 @@ class ComposeCapabilityRuntimeHost
     if (entry.action === "material-remove") {
       return await this.#remove(entry, input.removalPlan);
     }
-    if (group.security !== "reviewed" || group.qualification === "revoked") {
+    if (
+      group.security !== "reviewed" ||
+      (group.qualification !== "compatible" && group.qualification !== "qualified")
+    ) {
       return this.#outcome(
         entry,
         "failed",
@@ -186,6 +217,17 @@ class ComposeCapabilityRuntimeHost
         "Launch group secret availability is unknown or unavailable.",
       );
     }
+    if (
+      entry.action === "runtime-start" && group.secretSlots.length > 0 &&
+      (input.secretSnapshot === undefined || this.options.secretInjector === undefined)
+    ) {
+      return this.#outcome(
+        entry,
+        "failed",
+        [],
+        "Launch group requires its exact server-minted secret snapshot.",
+      );
+    }
     const launch = await this.#launch(group);
     const before = await this.#inspect(group, launch);
     if (before.ownership === "mismatch") {
@@ -193,7 +235,7 @@ class ComposeCapabilityRuntimeHost
         entry,
         "failed",
         before.values,
-        "A group container is foreign or has a mismatched image/ownership label.",
+        "A group container is foreign or has a mismatched image, ownership label, or sealed mount topology.",
       );
     }
     if (before.ownership === "unknown") {
@@ -215,7 +257,11 @@ class ComposeCapabilityRuntimeHost
     }
     const execution = entry.action === "runtime-stop"
       ? await this.#stopOwnedReverse(launch, before)
-      : await this.#compose(launch, command);
+      : await this.#compose(
+        launch,
+        command,
+        entry.action === "runtime-start" ? input.secretSnapshot : undefined,
+      );
     const after = await this.#inspect(group, launch);
     const satisfied = satisfies(entry.action, after);
     const status = execution.success && satisfied
@@ -227,7 +273,14 @@ class ComposeCapabilityRuntimeHost
       entry,
       status,
       after.values,
-      status === "succeeded" ? null : compactFailure(execution),
+      status === "succeeded"
+        ? null
+        // Docker may echo parts of a dynamic Compose input in an error. A
+        // secret-bearing `up` therefore records only a fixed diagnosis, never
+        // provider stderr, argv or an overlay fragment.
+        : entry.action === "runtime-start" && group.secretSlots.length > 0
+        ? "Sealed secret-bearing launch group did not reach its required active state."
+        : compactFailure(execution),
     );
   }
 
@@ -396,7 +449,13 @@ class ComposeCapabilityRuntimeHost
         const actual = inspected.success ? parseContainer(inspected.stdout) : undefined;
         if (!actual) {
           safety = preferRemovalSafety(safety, "unknown");
-        } else if (!hasOwnership(member, actual.labels)) {
+        } else if (
+          !hasOwnership(member, actual.labels) ||
+          !hasExactNamedVolumeMounts(
+            actual.mounts,
+            launch.expectedMounts.get(member.serviceName)!,
+          )
+        ) {
           safety = "foreign";
         } else {
           const actualImage = await this.#docker(launch.root, [
@@ -549,7 +608,12 @@ class ComposeCapabilityRuntimeHost
         "Capability runtime sealed group Compose descriptor fingerprint mismatch.",
       );
     }
-    return { group, root, stdin: new TextEncoder().encode(group.compose.content) };
+    return {
+      group,
+      root,
+      stdin: new TextEncoder().encode(group.compose.content),
+      expectedMounts: expectedNamedVolumeMounts(group),
+    };
   }
 
   async #inspect(
@@ -605,6 +669,14 @@ class ComposeCapabilityRuntimeHost
         } else if (!hasOwnership(member, actual.labels)) {
           ownership = "mismatch";
           state = { ...state, runtime: "degraded" };
+        } else if (
+          !hasExactNamedVolumeMounts(
+            actual.mounts,
+            launch.expectedMounts.get(member.serviceName)!,
+          )
+        ) {
+          ownership = "mismatch";
+          state = { ...state, runtime: "degraded" };
         } else {
           const actualImage = await this.#docker(launch.root, [
             "image",
@@ -622,6 +694,11 @@ class ComposeCapabilityRuntimeHost
             owned[member.serviceName] = actual.id;
             state = {
               material: installed,
+              // A sealed group without a Docker healthcheck proves only that
+              // its owned process is running. Do not invent an HTTP readiness
+              // probe for it; this remains operational state, never provider
+              // qualification or an engineering verdict. A service that does
+              // declare a healthcheck must report it healthy.
               runtime: actual.status === "running" &&
                   (actual.health === "healthy" ||
                     (actual.health === null &&
@@ -657,7 +734,20 @@ class ComposeCapabilityRuntimeHost
     return { success: true, code: 0, stdout: "", stderr: "" };
   }
 
-  async #compose(launch: Launch, operation: readonly string[]): Promise<CommandResult> {
+  async #compose(
+    launch: Launch,
+    operation: readonly string[],
+    secretSnapshot?: CapabilityRuntimeSecretSnapshot,
+  ): Promise<CommandResult> {
+    // The sealed descriptor is used for every observation/acquisition/stop.
+    // Only the one `up` carries an in-memory overlay, built from the exact
+    // opaque generation that the fixed Chrono client also receives.
+    const stdin = secretSnapshot === undefined
+      ? launch.stdin
+      : await this.options.secretInjector!.composeOverlay({
+        group: launch.group,
+        snapshot: secretSnapshot,
+      });
     return await this.#runner.run(
       "docker",
       [
@@ -673,7 +763,7 @@ class ComposeCapabilityRuntimeHost
         ...operation,
       ],
       launch.root,
-      { stdin: launch.stdin, clearEnv: true, env: this.#environment },
+      { stdin, clearEnv: true, env: this.#environment },
     );
   }
 
@@ -744,6 +834,11 @@ interface Launch {
   readonly group: CapabilityRuntimeLaunchGroup;
   readonly root: string;
   readonly stdin: Uint8Array;
+  /** Derived only from the sealed canonical Compose descriptor. */
+  readonly expectedMounts: ReadonlyMap<
+    string,
+    readonly ExpectedNamedVolumeMount[]
+  >;
 }
 type Ownership = "owned" | "absent" | "mismatch" | "unknown";
 interface GroupInspection {
@@ -994,6 +1089,7 @@ function parseContainer(
   status: string;
   health: string | null;
   image: string;
+  mounts: readonly InspectedContainerMount[];
 } | undefined {
   try {
     const root = Array.isArray(JSON.parse(value))
@@ -1003,10 +1099,11 @@ function parseContainer(
     const config = record.Config as Record<string, unknown> | undefined;
     const state = record.State as Record<string, unknown> | undefined;
     const labels = config?.Labels;
+    const mounts = parseContainerMounts(record.Mounts);
     if (
       !config || !state || !labels || typeof labels !== "object" ||
       Array.isArray(labels) || typeof record.Id !== "string" ||
-      typeof record.Image !== "string" || typeof state.Status !== "string"
+      typeof record.Image !== "string" || typeof state.Status !== "string" || !mounts
     ) return undefined;
     return {
       id: record.Id,
@@ -1021,10 +1118,144 @@ function parseContainer(
         ? (state.Health as Record<string, string>).Status
         : null,
       image: record.Image,
+      mounts,
     };
   } catch {
     return undefined;
   }
+}
+
+interface ExpectedNamedVolumeMount {
+  readonly name: string;
+  readonly destination: string;
+  readonly readWrite: boolean;
+}
+
+interface InspectedContainerMount {
+  readonly type: string;
+  readonly name: string;
+  readonly destination: string;
+  readonly readWrite: boolean;
+}
+
+/**
+ * Docker's Compose labels prove a service identity, not its mounted topology.
+ * Build the required named-volume set from the immutable Compose descriptor
+ * already fingerprinted by #launch. The descriptor admits named volumes only;
+ * external names, bind mounts, interpolation and arbitrary configs are
+ * rejected while the launch group is constructed.
+ */
+function expectedNamedVolumeMounts(
+  group: CapabilityRuntimeLaunchGroup,
+): ReadonlyMap<string, readonly ExpectedNamedVolumeMount[]> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(group.compose.content);
+  } catch {
+    throw new TypeError("Sealed capability runtime Compose content is not JSON.");
+  }
+  const document = plainRecord(parsed);
+  const services = document && plainRecord(document.services);
+  if (!services) {
+    throw new TypeError(
+      "Sealed capability runtime Compose content has no services map.",
+    );
+  }
+  const result = new Map<string, readonly ExpectedNamedVolumeMount[]>();
+  for (const member of group.materials) {
+    const service = plainRecord(services[member.serviceName]);
+    if (!service) {
+      throw new TypeError(
+        "Sealed capability runtime Compose content lacks a group service.",
+      );
+    }
+    const mounts = service.volumes === undefined ? [] : sealedNamedVolumeMounts(
+      service.volumes,
+      group.acquisition.projectName,
+    );
+    result.set(member.serviceName, mounts);
+  }
+  return result;
+}
+
+function sealedNamedVolumeMounts(
+  value: unknown,
+  projectName: string,
+): readonly ExpectedNamedVolumeMount[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError("Sealed capability runtime service volumes must be an array.");
+  }
+  const seen = new Set<string>();
+  return value.map((mount) => {
+    if (typeof mount !== "string") {
+      throw new TypeError("Sealed capability runtime volume mount must be literal.");
+    }
+    const match = /^([a-z0-9][a-z0-9_-]{0,62}):(\/[^:\0]+)(?::(ro))?$/.exec(
+      mount,
+    );
+    if (!match || seen.has(match[2]!)) {
+      throw new TypeError(
+        "Sealed capability runtime volume mount is invalid or ambiguous.",
+      );
+    }
+    seen.add(match[2]!);
+    return {
+      name: `${projectName}_${match[1]!}`,
+      destination: match[2]!,
+      readWrite: match[3] !== "ro",
+    };
+  });
+}
+
+function parseContainerMounts(
+  value: unknown,
+): readonly InspectedContainerMount[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const result: InspectedContainerMount[] = [];
+  for (const mount of value) {
+    const record = plainRecord(mount);
+    if (
+      !record || typeof record.Type !== "string" ||
+      typeof record.Name !== "string" || typeof record.Destination !== "string" ||
+      typeof record.RW !== "boolean"
+    ) {
+      return undefined;
+    }
+    result.push({
+      type: record.Type,
+      name: record.Name,
+      destination: record.Destination,
+      readWrite: record.RW,
+    });
+  }
+  return result;
+}
+
+function hasExactNamedVolumeMounts(
+  actual: readonly InspectedContainerMount[],
+  expected: readonly ExpectedNamedVolumeMount[],
+): boolean {
+  if (actual.length !== expected.length) return false;
+  const expectedByDestination = new Map(
+    expected.map((mount) => [mount.destination, mount]),
+  );
+  const seen = new Set<string>();
+  for (const mount of actual) {
+    const expectedMount = expectedByDestination.get(mount.destination);
+    if (
+      !expectedMount || seen.has(mount.destination) || mount.type !== "volume" ||
+      mount.name !== expectedMount.name ||
+      mount.readWrite !== expectedMount.readWrite
+    ) return false;
+    seen.add(mount.destination);
+  }
+  return seen.size === expectedByDestination.size;
+}
+
+function plainRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
 }
 
 function hasExactImage(value: string, reference: string): boolean {
@@ -1053,6 +1284,21 @@ function compact(error: unknown): string {
   const text = error instanceof Error ? error.message : String(error);
   return text.length > 512 ? `${text.slice(0, 509)}...` : text || "unknown error";
 }
+
+/** Docker reports `aarch64` on some ARM daemon releases; normalize only it. */
+function parseDockerDaemonPlatform(value: string): CapabilityRuntimePlatform {
+  const observed = value.trim();
+  if (observed === "linux/amd64") return observed;
+  if (observed === "linux/arm64" || observed === "linux/aarch64") {
+    return "linux/arm64";
+  }
+  throw new Error(
+    `Capability runtime host platform is unsupported or malformed: ${
+      JSON.stringify(observed)
+    }.`,
+  );
+}
+
 function nonBlank(value: string): string {
   if (!value.trim()) {
     throw new TypeError("Capability runtime Compose root must not be blank.");

@@ -2,11 +2,11 @@
  * Provider-neutral operation identities for the prescribed-kinematics family.
  *
  * An operation identity is not an MCP tool, a runtime selection, or an
- * admission of a scientific method. Server composition will later bind the
- * registered run operation to a qualified capability and exact runtime. The
- * two L5 decision identities below are deliberately not registered or callable
- * in this pure-domain lot: application integration must first bind an exact
- * project, subject, Thread basis, and signed human origin.
+ * admission of a scientific method. Server composition binds each registered
+ * run operation to its exact capability/runtime envelope at queue time. The
+ * L5 identities are registered but require an exact project, subject, Thread
+ * basis, and signed human origin; neither a provider nor an agent can create
+ * that decision evidence.
  */
 
 export const VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION = Object.freeze(

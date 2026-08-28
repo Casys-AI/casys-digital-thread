@@ -388,11 +388,11 @@ function assertExactProjectContext(
   if (
     !fingerprintsEqual(
       context.plan.demandFingerprint,
-      context.demand.jitDemandFingerprint,
+      context.demand.plannedCeilingFingerprint,
     )
   ) {
     throw new TypeError(
-      "Capability workbench plan does not bind the exact JIT demand fingerprint.",
+      "Capability workbench plan does not bind the exact planned-ceiling demand fingerprint.",
     );
   }
   if (

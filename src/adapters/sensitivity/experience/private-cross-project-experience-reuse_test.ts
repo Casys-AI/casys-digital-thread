@@ -383,55 +383,105 @@ async function createHarness() {
         step: studyCase.step,
         scientificKey: target.scientificKey,
       });
-      const solverEnvelope = (phase: "base" | "stepped") => ({
-        schemaVersion: "sensitivity-solver-result/1.0",
-        phase,
-        stepSha256: capture.cad[phase].stepSha256,
-        stepBytes: capture.cad[phase].stepBytes,
-        measurements: capture.measurements[phase],
-      });
-      const baseEnvelope = solverEnvelope("base");
-      const steppedEnvelope = solverEnvelope("stepped");
-      attempts.set(`${projectId}:${runId}`, {
-        schemaVersion: "fea-sensitivity-attempt/1.0",
-        projectId,
-        runId,
-        planDigest,
-        cad: {
-          base: {
-            status: "published",
-            dispatchedAt: AT,
-            ...capture.cad.base,
-          },
-          stepped: {
-            status: "published",
-            dispatchedAt: AT,
-            ...capture.cad.stepped,
-          },
+      const runtime = {
+        operationalCapabilityFingerprint: fingerprint("1".repeat(64)),
+        binding: { id: "calculix-http-static-sensitivity", version: "1" },
+        material: {
+          unitId: "casys.mcp-calculix",
+          materialId: "mcp-calculix-image",
+          imageDigest: SOLVER_RUNTIME_DIGEST,
         },
-        solves: {
-          base: {
-            status: "solver-recorded",
-            dispatchedAt: AT,
-            stepSha256: capture.cad.base.stepSha256,
-            captureFp: (await sha256Fingerprint(baseEnvelope)).digest,
-            canonicalSolverCaptureText: deterministicJson(baseEnvelope),
-          },
-          stepped: {
-            status: "solver-recorded",
-            dispatchedAt: AT,
-            stepSha256: capture.cad.stepped.stepSha256,
-            captureFp: (await sha256Fingerprint(steppedEnvelope)).digest,
-            canonicalSolverCaptureText: deterministicJson(steppedEnvelope),
-          },
+        launchGroup: {
+          id: "casys-mcp-calculix",
+          version: "0.8.2",
+          fingerprint: fingerprint("2".repeat(64)),
         },
-        status: "completed",
-        snapshot: {
-          snapshotId: snapshot.id,
-          revision: snapshot.revision,
-          subjectId: snapshot.subject.id,
-        },
-      } as FeaSensitivityAttempt);
+      };
+      const recorded = async (phase: "base" | "stepped") => {
+        const cad = capture.cad[phase];
+        const measurements = capture.measurements[phase];
+        const displacement = measurements.find((item) =>
+          item.metric === "assembly_max_displacement"
+        )!;
+        const vonMises = measurements.find((item) =>
+          item.metric === "assembly_max_von_mises"
+        )!;
+        const requestId = `${phase}-request-${"1".repeat(48)}`;
+        const readback = {
+          schemaVersion: "mcp-calculix-sensitivity-readback/1.0",
+          phase,
+          stepSha256: cad.stepSha256,
+          stepBytes: cad.stepBytes,
+          requestId,
+          runId: `r-${phase}-${"2".repeat(56)}`,
+          requestSha256: "3".repeat(64),
+          resources: [],
+        };
+        const envelope = {
+          schemaVersion: "mcp-calculix-sensitivity-capture/1.0",
+          readback,
+          providerCapture: {},
+          result: {
+            observations: {
+              maximumDisplacement: {
+                magnitude: { value: displacement.value, unit: displacement.unit },
+                vector: { value: [0, 0, -displacement.value], unit: "mm" },
+              },
+              maximumVonMisesStress: {
+                magnitude: { value: vonMises.value, unit: vonMises.unit },
+              },
+            },
+          },
+        };
+        return {
+          status: "captured" as const,
+          preparedAt: AT,
+          stepSha256: cad.stepSha256,
+          stepBytes: cad.stepBytes,
+          requestId,
+          dispatchedAt: AT,
+          providerRunId: readback.runId,
+          requestSha256: readback.requestSha256,
+          readbackFp: (await sha256Fingerprint(readback)).digest,
+          canonicalReadbackText: deterministicJson(readback),
+          captureFp: (await sha256Fingerprint(envelope)).digest,
+          canonicalSolveCaptureText: deterministicJson(envelope),
+        };
+      };
+      const baseRecorded = await recorded("base");
+      const steppedRecorded = await recorded("stepped");
+      attempts.set(
+        `${projectId}:${runId}`,
+        {
+          schemaVersion: "fea-sensitivity-attempt/2.0",
+          projectId,
+          runId,
+          planDigest,
+          runtime,
+          cad: {
+            base: {
+              status: "published",
+              dispatchedAt: AT,
+              ...capture.cad.base,
+            },
+            stepped: {
+              status: "published",
+              dispatchedAt: AT,
+              ...capture.cad.stepped,
+            },
+          },
+          solves: {
+            base: baseRecorded,
+            stepped: steppedRecorded,
+          },
+          status: "completed",
+          snapshot: {
+            snapshotId: snapshot.id,
+            revision: snapshot.revision,
+            subjectId: snapshot.subject.id,
+          },
+        } satisfies FeaSensitivityAttempt,
+      );
       projects.set(projectId, { threadSnapshots: [basis] });
       const origin = await createSensitivityExperienceOriginBinding({
         recordFingerprint,

@@ -137,7 +137,17 @@ export async function validateCapabilityRuntimeLaunchGroup(
   );
   const acquisition = parseAcquisition(root.acquisition);
   const materials = parseMaterials(root.materials, acquisition.projectName);
-  const compose = await parseCompose(root.compose, acquisition.projectName, materials);
+  const qualification = oneOf(
+    root.qualification,
+    ["unqualified", "compatible", "qualified", "revoked"] as const,
+    "$launchGroup.qualification",
+  );
+  const compose = await parseCompose(
+    root.compose,
+    acquisition.projectName,
+    materials,
+    qualification,
+  );
   const group = deepFreeze({
     schemaVersion: CAPABILITY_RUNTIME_LAUNCH_GROUP_SCHEMA_VERSION,
     id: safeId(root.id, "$launchGroup.id"),
@@ -154,11 +164,7 @@ export async function validateCapabilityRuntimeLaunchGroup(
       ["reviewed", "unknown"] as const,
       "$launchGroup.security",
     ),
-    qualification: oneOf(
-      root.qualification,
-      ["unqualified", "compatible", "qualified", "revoked"] as const,
-      "$launchGroup.qualification",
-    ),
+    qualification,
   });
   const expected = await fingerprintCapabilityRuntimeLaunchGroup(
     capabilityRuntimeLaunchGroupManifest(group),
@@ -284,6 +290,7 @@ async function parseCompose(
   value: unknown,
   projectName: string,
   materials: readonly CapabilityRuntimeLaunchGroupMaterial[],
+  qualification: CapabilityRuntimeLaunchGroup["qualification"],
 ): Promise<CapabilityRuntimeLaunchGroup["compose"]> {
   const root = exactRecord(
     value,
@@ -308,7 +315,7 @@ async function parseCompose(
   if (content !== deterministicJson(parsed)) {
     throw new TypeError("$launchGroup.compose.content must be canonical JSON.");
   }
-  validateStrictCompose(parsed, projectName, materials);
+  validateStrictCompose(parsed, projectName, materials, qualification);
   const supplied = fingerprint(root.fingerprint, "$launchGroup.compose.fingerprint");
   const expected = await fingerprintCapabilityRuntimeComposeContent(content);
   if (!sameFingerprint(supplied, expected)) {
@@ -326,6 +333,7 @@ function validateStrictCompose(
   value: unknown,
   projectName: string,
   materials: readonly CapabilityRuntimeLaunchGroupMaterial[],
+  qualification: CapabilityRuntimeLaunchGroup["qualification"],
 ): void {
   const document = exactRecord(
     value,
@@ -356,7 +364,15 @@ function validateStrictCompose(
         }
       }
     }
-    validateComposeService(service, path, name, materials, projectName, volumes);
+    validateComposeService(
+      service,
+      path,
+      name,
+      materials,
+      projectName,
+      volumes,
+      qualification,
+    );
   }
   const declaredVolumes = new Set(Object.keys(volumes));
   const referencedVolumes = new Set<string>();
@@ -450,6 +466,7 @@ function validateComposeService(
   materials: readonly CapabilityRuntimeLaunchGroupMaterial[],
   projectName: string,
   declaredVolumes: Readonly<Record<string, unknown>>,
+  qualification: CapabilityRuntimeLaunchGroup["qualification"],
 ): void {
   if (service.environment !== undefined) {
     for (

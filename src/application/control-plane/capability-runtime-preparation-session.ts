@@ -100,10 +100,25 @@ export class CapabilityRuntimePreparationSessionCoordinator {
     // records are retained instead of deleted or silently overwritten.
     const activated = await this.options.groups.ensureActive({
       group: scope.groups[0]!,
+      expectedMaterials: scope.lifecycles.map((lifecycle) => lifecycle.material),
       projectId: input.project.project.id,
       lease: reservation.lease,
       at,
       reuseExistingLease: reservation.reuseExistingLease,
+      // Recheck the same sealed preparation authority while H1 is held. A
+      // concurrent revoke or lock change therefore wins before a lease claim,
+      // journal intent, pull, or Compose start.
+      guard: async () => {
+        try {
+          const current = validateResolvedCapabilityRuntimeOperation(
+            await this.options.authorization.requirePreparation(input),
+          );
+          return (await fingerprintResolvedCapabilityRuntimeOperation(current))
+            .digest === scope.fingerprint.digest;
+        } catch {
+          return false;
+        }
+      },
     });
     assertActiveExactMaterials(activated.states, scope.lifecycles);
     const stored = await this.options.leases.read(reservation.lease.id);

@@ -6,6 +6,8 @@ H1 governs server-owned local runtime state. It does not select a provider, admi
 engineering method, or interpret an engineering result. The initial enrolled topology is
 the exact `casys-syson@1.0.0` group: Postgres, SysON and `mcp-syson`, with only
 `127.0.0.1:3009` published. The historical SysON UI port 8180 is not part of this group.
+`casys-chrono@1.0.0` is a separate one-service group enrolled as an unqualified
+candidate, not as an active or qualified engine.
 
 ## Durable local read model
 
@@ -23,6 +25,18 @@ exact CalculiX microVM cache contract. A duplicate coverage declaration, unexpec
 material response, or missing response for an owned material is rejected. A material
 which no local observer owns remains literally `unavailable` in the Workbench rather
 than being guessed present or absent.
+
+The factual observation contains only the Docker daemon's exact reported platform,
+installed exact images and an opaque stable local-host identity fingerprint. It does
+not infer a platform from the Deno controller process and it does not declare global
+emulation. An unreadable or unsupported daemon platform fails closed: it is not guessed
+from the Mac architecture. The same local read composition overlays the immutable
+catalogue with the append-only qualification-attestation store at
+`state/local/capability-runtime-host/qualification-attestations/`. Queue, session and
+Workbench contexts therefore see the same effective per-material modes. An attestation
+must match the current binding, unit manifest, digest, profile, contract, launch group
+and host identity exactly; an absent or mismatched mode blocks resolution before any
+host mutation.
 
 `GET /api/project/capabilities` exposes the existing redacted
 `project-capability-workbench/1.0` projection through the native Workbench BFF. It has
@@ -45,11 +59,15 @@ one group intent (all materials) -> closed Compose argv -> terminal outcome -> r
 An immutable `capability-runtime-launch-group/1.0` names an ordered set of exact
 materials and services. It fingerprints a canonical JSON Compose descriptor and records
 its project-scoped default network, ownership labels, retained volumes, secret-slot
-names, security and qualification. One group is usable only when every exact image is
-installed and every expected owned service is healthy at the required qualification.
+names, security and qualification. At qualified or compatible state, one group is usable
+only when every exact image is installed and every expected owned service satisfies its
+declared readiness check. An unqualified group may intentionally omit a healthcheck when
+the published provider has no sealed readiness route; it remains non-activable, and an
+observed running container is only an operational fact, never a substitute for
+qualification.
 
 The descriptor admits only pinned images, literal labels/environment, named retained
-volumes, loopback ports, ordered `depends_on` health edges, health checks, command,
+volumes, loopback ports, ordered `depends_on` health edges, conditional health checks, command,
 `cap_drop`, `security_opt` and platform. It rejects interpolation, `build`, `env_file`,
 `include`, `extends`, configs, Compose secrets, bind mounts/sockets, privileged mode,
 devices and public ports. Top-level named volumes must be empty declarations and match
@@ -61,6 +79,16 @@ Secrets never appear in a group, project, journal, descriptor argv or Workbench 
 a closed Deno loopback `/health` check because it has no baked image healthcheck. The
 fixed database values are existing internal development topology values, not secret-slot
 authority and not caller input.
+
+`casys-chrono` contains exactly the pinned mcp-chrono image on loopback port 3025 and
+the retained `chrono-data` named volume. Its descriptor carries only the fixed
+`chrono-mcp-bearer-token` slot; the host resolves the bearer value into a short-lived
+in-memory Compose overlay and the matching fixed client credential. The descriptor,
+group fingerprint, journal, argv, Thread, CAS, WAL, Workbench and error output never
+receive the value. A group with a secret slot always performs the sealed `compose up`
+reconciliation when a session begins, even if it is already active. A non-secret active
+group remains a no-op. The resolver keeps one snapshot generation for a server process,
+so parallel leases cannot rotate one client away from its container.
 
 ## Lease, journal and JIT lifecycle
 

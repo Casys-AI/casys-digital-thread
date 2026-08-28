@@ -396,6 +396,20 @@ export const SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   label: "Sensitivity study",
 };
 
+/**
+ * Immutable L3 provenance for the server-selected recorded CalculiX runtime.
+ * It is intentionally separate from the scientific study capture: a runtime
+ * identity is evidence provenance, not a solver fact or verdict.
+ */
+export const SENSITIVITY_RUNTIME_PROVENANCE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "sensitivity-runtime-provenance"
+> = {
+  kind: "sensitivity-runtime-provenance",
+  directory: "state/local/sensitivity-runtime-provenance-captures",
+  uriNamespace: "sensitivity-runtime-provenance-capture",
+  label: "Sensitivity recorded runtime provenance",
+};
+
 export const SENSITIVITY_EDGES_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   "sensitivity-edges"
 > = {

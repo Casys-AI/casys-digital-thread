@@ -1,16 +1,19 @@
 /**
- * Composite WAL for analyze.run-fea-sensitivity@1.
+ * Durable WAL for analyze.run-fea-sensitivity@1.
  *
- * CAD slots: idle → dispatched → published, or dispatched →
- * output-validation-rejected. Solve slots: idle → dispatched →
- * solver-recorded (3-state CalculiX @1 analog). A dispatched solve without
- * solver-recorded is terminal: never re-dispatch.
+ * CAD slots remain a separate isolated-code lifecycle. Recorded CalculiX
+ * slots are intentionally monotone: idle → prepared → dispatched →
+ * readback-recorded → captured, or a known terminal rejected state. A
+ * prepared/dispatched slot is never reset to idle: the same request id is
+ * recovered through provider readback, never by dispatching a second solve.
  */
 
 import {
   exactRecord,
   literalValue,
   nonEmptyText,
+  positiveInteger,
+  safeId,
 } from "../../../domain/kernel/case-validation.ts";
 import { validateIsolatedCodeOutputValidationRejection } from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
@@ -20,7 +23,7 @@ import {
   writeNewAttemptFileDurably,
 } from "../../shared/wal/durable-attempt-file-writes.ts";
 
-export const FEA_SENSITIVITY_ATTEMPT_SCHEMA = "fea-sensitivity-attempt/1.0" as const;
+export const FEA_SENSITIVITY_ATTEMPT_SCHEMA = "fea-sensitivity-attempt/2.0" as const;
 
 export class FeaSensitivityOutcomeUnknownError extends Error {
   constructor(detail: string) {
@@ -36,6 +39,23 @@ export class FeaSensitivityIllegalTransitionError extends Error {
     super(`Illegal FEA sensitivity WAL transition: ${from} → ${to}.`);
     this.name = "FeaSensitivityIllegalTransitionError";
   }
+}
+
+export type SensitivityPhase = "base" | "stepped";
+
+export interface FeaSensitivityRuntimeAttestation {
+  readonly operationalCapabilityFingerprint: ContentFingerprint;
+  readonly binding: { readonly id: string; readonly version: string };
+  readonly material: {
+    readonly unitId: string;
+    readonly materialId: string;
+    readonly imageDigest: string;
+  };
+  readonly launchGroup: {
+    readonly id: string;
+    readonly version: string;
+    readonly fingerprint: ContentFingerprint;
+  };
 }
 
 export type SensitivityCadSlot =
@@ -71,28 +91,51 @@ export type SensitivityCadSlot =
     };
   };
 
+interface SensitivityPreparedSolve {
+  readonly preparedAt: string;
+  readonly stepSha256: string;
+  readonly stepBytes: number;
+  readonly requestId: string;
+}
+
+interface SensitivityDispatchedSolve extends SensitivityPreparedSolve {
+  readonly dispatchedAt: string;
+  readonly providerRunId: string;
+  readonly requestSha256: string;
+}
+
 export type SensitivitySolveSlot =
   | { readonly status: "idle" }
-  | {
-    readonly status: "dispatched";
-    readonly dispatchedAt: string;
-    readonly stepSha256: string;
-  }
-  | {
-    readonly status: "solver-recorded";
-    readonly dispatchedAt: string;
-    readonly stepSha256: string;
+  | ({ readonly status: "prepared" } & SensitivityPreparedSolve)
+  | ({ readonly status: "dispatched" } & SensitivityDispatchedSolve)
+  | ({
+    readonly status: "readback-recorded";
+    readonly readbackFp: string;
+    readonly canonicalReadbackText: string;
+  } & SensitivityDispatchedSolve)
+  | ({
+    readonly status: "captured";
+    readonly readbackFp: string;
+    readonly canonicalReadbackText: string;
     readonly captureFp: string;
-    readonly canonicalSolverCaptureText: string;
-  };
-
-export type SensitivityPhase = "base" | "stepped";
+    readonly canonicalSolveCaptureText: string;
+  } & SensitivityDispatchedSolve)
+  | ({
+    readonly status: "rejected";
+    readonly rejectedAt: string;
+    readonly reason: string;
+    readonly dispatchedAt: string | null;
+    readonly providerRunId: string | null;
+    readonly requestSha256: string | null;
+  } & SensitivityPreparedSolve);
 
 export interface FeaSensitivityAttempt {
   readonly schemaVersion: typeof FEA_SENSITIVITY_ATTEMPT_SCHEMA;
   readonly projectId: string;
   readonly runId: string;
   readonly planDigest: string;
+  /** Actual server-resolved capability identity, never a provider assertion. */
+  readonly runtime: FeaSensitivityRuntimeAttestation;
   readonly cad: {
     readonly base: SensitivityCadSlot;
     readonly stepped: SensitivityCadSlot;
@@ -119,8 +162,9 @@ export class FileFeaSensitivityAttemptStore {
     runId: string,
   ): Promise<FeaSensitivityAttempt | undefined> {
     try {
-      const text = await Deno.readTextFile(this.#path(projectId, runId));
-      return parseAttempt(JSON.parse(text));
+      return parseAttempt(
+        JSON.parse(await Deno.readTextFile(this.#path(projectId, runId))),
+      );
     } catch (error) {
       if (error instanceof Deno.errors.NotFound) return undefined;
       throw error;
@@ -131,19 +175,27 @@ export class FileFeaSensitivityAttemptStore {
     readonly projectId: string;
     readonly runId: string;
     readonly planDigest: string;
+    readonly runtime: FeaSensitivityRuntimeAttestation;
   }): Promise<FeaSensitivityAttempt> {
+    const runtime = parseRuntime(input.runtime);
     const existing = await this.read(input.projectId, input.runId);
     if (existing) {
-      if (existing.planDigest !== input.planDigest) {
-        throw new FeaSensitivityOutcomeUnknownError("planDigest mismatch");
+      if (
+        existing.planDigest !== sha256(input.planDigest, "$prepare.planDigest") ||
+        deterministicJson(existing.runtime) !== deterministicJson(runtime)
+      ) {
+        throw new FeaSensitivityOutcomeUnknownError(
+          "planDigest or resolved capability runtime differs from the existing WAL",
+        );
       }
       return existing;
     }
     const attempt: FeaSensitivityAttempt = {
       schemaVersion: FEA_SENSITIVITY_ATTEMPT_SCHEMA,
-      projectId: input.projectId,
-      runId: input.runId,
-      planDigest: input.planDigest,
+      projectId: safeId(input.projectId, "$prepare.projectId"),
+      runId: safeId(input.runId, "$prepare.runId"),
+      planDigest: sha256(input.planDigest, "$prepare.planDigest"),
+      runtime,
       cad: { base: { status: "idle" }, stepped: { status: "idle" } },
       solves: { base: { status: "idle" }, stepped: { status: "idle" } },
       status: "in-progress",
@@ -170,10 +222,7 @@ export class FileFeaSensitivityAttemptStore {
     const slot = current.cad[input.phase];
     if (slot.status === "published") return current;
     if (slot.status === "output-validation-rejected") {
-      throw new FeaSensitivityIllegalTransitionError(
-        slot.status,
-        "dispatched",
-      );
+      throw new FeaSensitivityIllegalTransitionError(slot.status, "dispatched");
     }
     if (slot.status === "dispatched") {
       throw new FeaSensitivityOutcomeUnknownError(
@@ -186,9 +235,9 @@ export class FileFeaSensitivityAttemptStore {
         ...current.cad,
         [input.phase]: {
           status: "dispatched",
-          executionRunId: input.executionRunId,
-          dispatchedAt: input.dispatchedAt,
-          sourceSha256: input.sourceSha256,
+          executionRunId: safeId(input.executionRunId, "$cad.executionRunId"),
+          dispatchedAt: nonEmptyText(input.dispatchedAt, "$cad.dispatchedAt"),
+          sourceSha256: sha256(input.sourceSha256, "$cad.sourceSha256"),
         },
       },
     });
@@ -214,8 +263,8 @@ export class FileFeaSensitivityAttemptStore {
         [input.phase]: {
           ...slot,
           status: "published",
-          stepSha256: input.stepSha256,
-          stepBytes: input.stepBytes,
+          stepSha256: sha256(input.stepSha256, "$cad.stepSha256"),
+          stepBytes: positiveInteger(input.stepBytes, "$cad.stepBytes"),
         },
       },
     });
@@ -275,11 +324,33 @@ export class FileFeaSensitivityAttemptStore {
     }
     return await this.#replace(current, {
       ...current,
-      cad: {
-        ...current.cad,
-        [input.phase]: next,
-      },
+      cad: { ...current.cad, [input.phase]: next },
     });
+  }
+
+  async markSolvePrepared(input: {
+    readonly projectId: string;
+    readonly runId: string;
+    readonly phase: SensitivityPhase;
+    readonly preparedAt: string;
+    readonly stepSha256: string;
+    readonly stepBytes: number;
+    readonly requestId: string;
+  }): Promise<FeaSensitivityAttempt> {
+    const current = await this.#required(input.projectId, input.runId);
+    const prepared = solvePrepared(input);
+    const slot = current.solves[input.phase];
+    if (slot.status === "idle") {
+      return await this.#replace(current, {
+        ...current,
+        solves: {
+          ...current.solves,
+          [input.phase]: { status: "prepared", ...prepared },
+        },
+      });
+    }
+    assertSamePrepared(slot, prepared, `solve.${input.phase}`);
+    return current;
   }
 
   async markSolveDispatched(input: {
@@ -287,67 +358,59 @@ export class FileFeaSensitivityAttemptStore {
     readonly runId: string;
     readonly phase: SensitivityPhase;
     readonly dispatchedAt: string;
-    readonly stepSha256: string;
+    readonly providerRunId: string;
+    readonly requestSha256: string;
   }): Promise<FeaSensitivityAttempt> {
     const current = await this.#required(input.projectId, input.runId);
     const slot = current.solves[input.phase];
-    if (slot.status === "solver-recorded") return current;
-    if (slot.status === "dispatched") {
-      throw new FeaSensitivityOutcomeUnknownError(
-        `solve.${input.phase} is dispatched without a recorded capture`,
-      );
-    }
-    return await this.#replace(current, {
-      ...current,
-      solves: {
-        ...current.solves,
-        [input.phase]: {
-          status: "dispatched",
-          dispatchedAt: input.dispatchedAt,
-          stepSha256: input.stepSha256,
+    if (slot.status === "prepared") {
+      return await this.#replace(current, {
+        ...current,
+        solves: {
+          ...current.solves,
+          [input.phase]: {
+            ...slot,
+            status: "dispatched",
+            dispatchedAt: nonEmptyText(input.dispatchedAt, "$solve.dispatchedAt"),
+            providerRunId: safeId(input.providerRunId, "$solve.providerRunId"),
+            requestSha256: sha256(input.requestSha256, "$solve.requestSha256"),
+          },
         },
-      },
-    });
-  }
-
-  /**
-   * A synchronous solver failure is a KNOWN outcome: the provider answered
-   * with an error, no capture will ever arrive. Return the slot to idle so a
-   * later resume may re-dispatch, instead of leaving a dispatched slot that
-   * dead-ends every retry as unknown-outcome.
-   */
-  async markSolveFailed(input: {
-    readonly projectId: string;
-    readonly runId: string;
-    readonly phase: SensitivityPhase;
-  }): Promise<FeaSensitivityAttempt> {
-    const current = await this.#required(input.projectId, input.runId);
-    const slot = current.solves[input.phase];
-    if (slot.status === "idle") return current;
-    if (slot.status !== "dispatched") {
-      throw new FeaSensitivityIllegalTransitionError(slot.status, "idle");
+      });
     }
-    return await this.#replace(current, {
-      ...current,
-      solves: {
-        ...current.solves,
-        [input.phase]: { status: "idle" },
-      },
-    });
+    if (slot.status === "dispatched") {
+      if (
+        slot.dispatchedAt === input.dispatchedAt &&
+        slot.providerRunId === input.providerRunId &&
+        slot.requestSha256 === input.requestSha256
+      ) return current;
+    }
+    throw new FeaSensitivityIllegalTransitionError(slot.status, "dispatched");
   }
 
-  async markSolveRecorded(input: {
+  async markSolveReadbackRecorded(input: {
     readonly projectId: string;
     readonly runId: string;
     readonly phase: SensitivityPhase;
-    readonly captureFp: string;
-    readonly canonicalSolverCaptureText: string;
+    readonly readbackFp: string;
+    readonly canonicalReadbackText: string;
   }): Promise<FeaSensitivityAttempt> {
     const current = await this.#required(input.projectId, input.runId);
     const slot = current.solves[input.phase];
-    if (slot.status === "solver-recorded") return current;
+    const readbackFp = sha256(input.readbackFp, "$solve.readbackFp");
+    const canonicalReadbackText = nonEmptyText(
+      input.canonicalReadbackText,
+      "$solve.canonicalReadbackText",
+    );
+    if (slot.status === "readback-recorded") {
+      if (
+        slot.readbackFp === readbackFp &&
+        slot.canonicalReadbackText === canonicalReadbackText
+      ) return current;
+      throw new FeaSensitivityIllegalTransitionError(slot.status, "readback-recorded");
+    }
     if (slot.status !== "dispatched") {
-      throw new FeaSensitivityIllegalTransitionError(slot.status, "solver-recorded");
+      throw new FeaSensitivityIllegalTransitionError(slot.status, "readback-recorded");
     }
     return await this.#replace(current, {
       ...current,
@@ -355,9 +418,80 @@ export class FileFeaSensitivityAttemptStore {
         ...current.solves,
         [input.phase]: {
           ...slot,
-          status: "solver-recorded",
-          captureFp: input.captureFp,
-          canonicalSolverCaptureText: input.canonicalSolverCaptureText,
+          status: "readback-recorded",
+          readbackFp,
+          canonicalReadbackText,
+        },
+      },
+    });
+  }
+
+  async markSolveCaptured(input: {
+    readonly projectId: string;
+    readonly runId: string;
+    readonly phase: SensitivityPhase;
+    readonly captureFp: string;
+    readonly canonicalSolveCaptureText: string;
+  }): Promise<FeaSensitivityAttempt> {
+    const current = await this.#required(input.projectId, input.runId);
+    const slot = current.solves[input.phase];
+    const captureFp = sha256(input.captureFp, "$solve.captureFp");
+    const canonicalSolveCaptureText = nonEmptyText(
+      input.canonicalSolveCaptureText,
+      "$solve.canonicalSolveCaptureText",
+    );
+    if (slot.status === "captured") {
+      if (
+        slot.captureFp === captureFp &&
+        slot.canonicalSolveCaptureText === canonicalSolveCaptureText
+      ) return current;
+      throw new FeaSensitivityIllegalTransitionError(slot.status, "captured");
+    }
+    if (slot.status !== "readback-recorded") {
+      throw new FeaSensitivityIllegalTransitionError(slot.status, "captured");
+    }
+    return await this.#replace(current, {
+      ...current,
+      solves: {
+        ...current.solves,
+        [input.phase]: {
+          ...slot,
+          status: "captured",
+          captureFp,
+          canonicalSolveCaptureText,
+        },
+      },
+    });
+  }
+
+  async markSolveRejected(input: {
+    readonly projectId: string;
+    readonly runId: string;
+    readonly phase: SensitivityPhase;
+    readonly rejectedAt: string;
+    readonly reason: string;
+  }): Promise<FeaSensitivityAttempt> {
+    const current = await this.#required(input.projectId, input.runId);
+    const slot = current.solves[input.phase];
+    if (slot.status !== "prepared" && slot.status !== "dispatched") {
+      if (slot.status === "rejected") return current;
+      throw new FeaSensitivityIllegalTransitionError(slot.status, "rejected");
+    }
+    return await this.#replace(current, {
+      ...current,
+      solves: {
+        ...current.solves,
+        [input.phase]: {
+          status: "rejected",
+          preparedAt: slot.preparedAt,
+          stepSha256: slot.stepSha256,
+          stepBytes: slot.stepBytes,
+          requestId: slot.requestId,
+          rejectedAt: nonEmptyText(input.rejectedAt, "$solve.rejectedAt"),
+          reason: nonEmptyText(input.reason, "$solve.reason"),
+          dispatchedAt: slot.status === "dispatched" ? slot.dispatchedAt : null,
+          providerRunId: slot.status === "dispatched" ? slot.providerRunId : null,
+          requestSha256: slot.status === "dispatched" ? slot.requestSha256 : null,
         },
       },
     });
@@ -371,13 +505,10 @@ export class FileFeaSensitivityAttemptStore {
     const current = await this.#required(input.projectId, input.runId);
     if (current.status === "completed") return current;
     if (
-      current.solves.base.status !== "solver-recorded" ||
-      current.solves.stepped.status !== "solver-recorded"
+      current.solves.base.status !== "captured" ||
+      current.solves.stepped.status !== "captured"
     ) {
-      throw new FeaSensitivityIllegalTransitionError(
-        "in-progress",
-        "completed",
-      );
+      throw new FeaSensitivityIllegalTransitionError("in-progress", "completed");
     }
     return await this.#replace(current, {
       ...current,
@@ -388,9 +519,7 @@ export class FileFeaSensitivityAttemptStore {
 
   async #required(projectId: string, runId: string): Promise<FeaSensitivityAttempt> {
     const attempt = await this.read(projectId, runId);
-    if (!attempt) {
-      throw new FeaSensitivityIllegalTransitionError("absent", "update");
-    }
+    if (!attempt) throw new FeaSensitivityIllegalTransitionError("absent", "update");
     return attempt;
   }
 
@@ -413,39 +542,124 @@ export class FileFeaSensitivityAttemptStore {
   }
 }
 
+function solvePrepared(input: {
+  readonly preparedAt: string;
+  readonly stepSha256: string;
+  readonly stepBytes: number;
+  readonly requestId: string;
+}): SensitivityPreparedSolve {
+  return {
+    preparedAt: nonEmptyText(input.preparedAt, "$solve.preparedAt"),
+    stepSha256: sha256(input.stepSha256, "$solve.stepSha256"),
+    stepBytes: positiveInteger(input.stepBytes, "$solve.stepBytes"),
+    requestId: safeId(input.requestId, "$solve.requestId"),
+  };
+}
+
+function assertSamePrepared(
+  slot: Exclude<SensitivitySolveSlot, { readonly status: "idle" }>,
+  prepared: SensitivityPreparedSolve,
+  path: string,
+): void {
+  if (
+    slot.stepSha256 !== prepared.stepSha256 ||
+    slot.stepBytes !== prepared.stepBytes || slot.requestId !== prepared.requestId
+  ) {
+    throw new FeaSensitivityOutcomeUnknownError(
+      `${path} has a different prepared request identity.`,
+    );
+  }
+}
+
 function parseAttempt(value: unknown): FeaSensitivityAttempt {
   const root = exactRecord(value, [
     "schemaVersion",
     "projectId",
     "runId",
     "planDigest",
+    "runtime",
     "cad",
     "solves",
     "status",
-    ...(value && typeof value === "object" && "snapshot" in value
-      ? ["snapshot"] as const
-      : []),
+    ...(value && typeof value === "object" && "snapshot" in value ? ["snapshot"] : []),
   ], "$feaSensitivityAttempt");
   literalValue(
     root.schemaVersion,
     FEA_SENSITIVITY_ATTEMPT_SCHEMA,
     "$feaSensitivityAttempt.schemaVersion",
   );
-  const status = root.status;
-  if (status !== "in-progress" && status !== "completed") {
+  if (root.status !== "in-progress" && root.status !== "completed") {
     throw new TypeError("$feaSensitivityAttempt.status is not a known state.");
   }
   return {
     schemaVersion: FEA_SENSITIVITY_ATTEMPT_SCHEMA,
-    projectId: nonEmptyText(root.projectId, "$feaSensitivityAttempt.projectId"),
-    runId: nonEmptyText(root.runId, "$feaSensitivityAttempt.runId"),
-    planDigest: nonEmptyText(root.planDigest, "$feaSensitivityAttempt.planDigest"),
+    projectId: safeId(root.projectId, "$feaSensitivityAttempt.projectId"),
+    runId: safeId(root.runId, "$feaSensitivityAttempt.runId"),
+    planDigest: sha256(root.planDigest, "$feaSensitivityAttempt.planDigest"),
+    runtime: parseRuntime(root.runtime),
     cad: parseCadPair(root.cad),
     solves: parseSolvePair(root.solves),
-    status,
-    ...(root.snapshot === undefined ? {} : {
-      snapshot: parseSnapshot(root.snapshot),
-    }),
+    status: root.status,
+    ...(root.snapshot === undefined ? {} : { snapshot: parseSnapshot(root.snapshot) }),
+  };
+}
+
+function parseRuntime(value: unknown): FeaSensitivityRuntimeAttestation {
+  const root = exactRecord(value, [
+    "operationalCapabilityFingerprint",
+    "binding",
+    "material",
+    "launchGroup",
+  ], "$feaSensitivityAttempt.runtime");
+  const binding = exactRecord(
+    root.binding,
+    ["id", "version"],
+    "$feaSensitivityAttempt.runtime.binding",
+  );
+  const material = exactRecord(
+    root.material,
+    ["unitId", "materialId", "imageDigest"],
+    "$feaSensitivityAttempt.runtime.material",
+  );
+  const group = exactRecord(
+    root.launchGroup,
+    ["id", "version", "fingerprint"],
+    "$feaSensitivityAttempt.runtime.launchGroup",
+  );
+  return {
+    operationalCapabilityFingerprint: parseFingerprint(
+      root.operationalCapabilityFingerprint,
+      "$feaSensitivityAttempt.runtime.operationalCapabilityFingerprint",
+    ),
+    binding: {
+      id: safeId(binding.id, "$feaSensitivityAttempt.runtime.binding.id"),
+      version: nonEmptyText(
+        binding.version,
+        "$feaSensitivityAttempt.runtime.binding.version",
+      ),
+    },
+    material: {
+      unitId: safeId(material.unitId, "$feaSensitivityAttempt.runtime.material.unitId"),
+      materialId: safeId(
+        material.materialId,
+        "$feaSensitivityAttempt.runtime.material.materialId",
+      ),
+      imageDigest: sha256(
+        material.imageDigest,
+        "$feaSensitivityAttempt.runtime.material.imageDigest",
+      ),
+    },
+    launchGroup: {
+      id: safeId(group.id, "$feaSensitivityAttempt.runtime.launchGroup.id"),
+      version: nonEmptyText(
+        group.version,
+        "$feaSensitivityAttempt.runtime.launchGroup.version",
+      ),
+      fingerprint: parseFingerprint(
+        group.fingerprint,
+        "$feaSensitivityAttempt.runtime.launchGroup.fingerprint",
+      ),
+    },
   };
 }
 
@@ -457,26 +671,15 @@ function parseCadPair(value: unknown): FeaSensitivityAttempt["cad"] {
   };
 }
 
-function parseSolvePair(value: unknown): FeaSensitivityAttempt["solves"] {
-  const pair = exactRecord(value, ["base", "stepped"], "$feaSensitivityAttempt.solves");
-  return {
-    base: parseSolveSlot(pair.base, "base"),
-    stepped: parseSolveSlot(pair.stepped, "stepped"),
-  };
-}
-
 function parseCadSlot(value: unknown, phase: string): SensitivityCadSlot {
   const path = `$feaSensitivityAttempt.cad.${phase}`;
-  if (!value || typeof value !== "object") {
-    throw new TypeError(`${path} must be an object.`);
-  }
-  const status = (value as { status?: unknown }).status;
-  if (status === "idle") {
-    exactRecord(value, ["status"], path);
+  const root = record(value, path);
+  if (root.status === "idle") {
+    exactRecord(root, ["status"], path);
     return { status: "idle" };
   }
-  if (status === "dispatched") {
-    const slot = exactRecord(value, [
+  if (root.status === "dispatched") {
+    const slot = exactRecord(root, [
       "status",
       "executionRunId",
       "dispatchedAt",
@@ -484,13 +687,13 @@ function parseCadSlot(value: unknown, phase: string): SensitivityCadSlot {
     ], path);
     return {
       status: "dispatched",
-      executionRunId: nonEmptyText(slot.executionRunId, `${path}.executionRunId`),
+      executionRunId: safeId(slot.executionRunId, `${path}.executionRunId`),
       dispatchedAt: nonEmptyText(slot.dispatchedAt, `${path}.dispatchedAt`),
-      sourceSha256: sha256Hex(slot.sourceSha256, `${path}.sourceSha256`),
+      sourceSha256: sha256(slot.sourceSha256, `${path}.sourceSha256`),
     };
   }
-  if (status === "published") {
-    const slot = exactRecord(value, [
+  if (root.status === "published") {
+    const slot = exactRecord(root, [
       "status",
       "executionRunId",
       "dispatchedAt",
@@ -500,15 +703,15 @@ function parseCadSlot(value: unknown, phase: string): SensitivityCadSlot {
     ], path);
     return {
       status: "published",
-      executionRunId: nonEmptyText(slot.executionRunId, `${path}.executionRunId`),
+      executionRunId: safeId(slot.executionRunId, `${path}.executionRunId`),
       dispatchedAt: nonEmptyText(slot.dispatchedAt, `${path}.dispatchedAt`),
-      sourceSha256: sha256Hex(slot.sourceSha256, `${path}.sourceSha256`),
-      stepSha256: sha256Hex(slot.stepSha256, `${path}.stepSha256`),
-      stepBytes: positiveByteCount(slot.stepBytes, `${path}.stepBytes`),
+      sourceSha256: sha256(slot.sourceSha256, `${path}.sourceSha256`),
+      stepSha256: sha256(slot.stepSha256, `${path}.stepSha256`),
+      stepBytes: positiveInteger(slot.stepBytes, `${path}.stepBytes`),
     };
   }
-  if (status === "output-validation-rejected") {
-    const slot = exactRecord(value, [
+  if (root.status === "output-validation-rejected") {
+    const slot = exactRecord(root, [
       "status",
       "executionRunId",
       "dispatchedAt",
@@ -516,114 +719,190 @@ function parseCadSlot(value: unknown, phase: string): SensitivityCadSlot {
       "observation",
       "destruction",
     ], path);
-    const observation = validateIsolatedCodeOutputValidationRejection(
-      slot.observation,
-      `${path}.observation`,
-    );
-    const destruction = validateProvenDestruction(
-      slot.destruction,
-      nonEmptyText(slot.executionRunId, `${path}.executionRunId`),
-    );
+    const executionRunId = safeId(slot.executionRunId, `${path}.executionRunId`);
     return {
       status: "output-validation-rejected",
-      executionRunId: destruction.runId,
+      executionRunId,
       dispatchedAt: nonEmptyText(slot.dispatchedAt, `${path}.dispatchedAt`),
-      sourceSha256: sha256Hex(slot.sourceSha256, `${path}.sourceSha256`),
-      observation,
-      destruction,
+      sourceSha256: sha256(slot.sourceSha256, `${path}.sourceSha256`),
+      observation: validateIsolatedCodeOutputValidationRejection(
+        slot.observation,
+        `${path}.observation`,
+      ),
+      destruction: validateProvenDestruction(slot.destruction, executionRunId),
     };
   }
   throw new TypeError(`${path}.status is unknown.`);
 }
 
+function parseSolvePair(value: unknown): FeaSensitivityAttempt["solves"] {
+  const pair = exactRecord(value, ["base", "stepped"], "$feaSensitivityAttempt.solves");
+  return {
+    base: parseSolveSlot(pair.base, "base"),
+    stepped: parseSolveSlot(pair.stepped, "stepped"),
+  };
+}
+
+function parseSolveSlot(value: unknown, phase: string): SensitivitySolveSlot {
+  const path = `$feaSensitivityAttempt.solves.${phase}`;
+  const root = record(value, path);
+  if (root.status === "idle") {
+    exactRecord(root, ["status"], path);
+    return { status: "idle" };
+  }
+  const prepared = parsePrepared(root, path);
+  if (root.status === "prepared") {
+    exactRecord(
+      root,
+      ["status", "preparedAt", "stepSha256", "stepBytes", "requestId"],
+      path,
+    );
+    return { status: "prepared", ...prepared };
+  }
+  if (root.status === "dispatched") {
+    const dispatched = parseDispatched(root, path, prepared);
+    return { status: "dispatched", ...dispatched };
+  }
+  if (root.status === "readback-recorded") {
+    const dispatched = parseDispatched(root, path, prepared);
+    const slot = exactRecord(root, [
+      "status",
+      "preparedAt",
+      "stepSha256",
+      "stepBytes",
+      "requestId",
+      "dispatchedAt",
+      "providerRunId",
+      "requestSha256",
+      "readbackFp",
+      "canonicalReadbackText",
+    ], path);
+    return {
+      status: "readback-recorded",
+      ...dispatched,
+      readbackFp: sha256(slot.readbackFp, `${path}.readbackFp`),
+      canonicalReadbackText: nonEmptyText(
+        slot.canonicalReadbackText,
+        `${path}.canonicalReadbackText`,
+      ),
+    };
+  }
+  if (root.status === "captured") {
+    const dispatched = parseDispatched(root, path, prepared);
+    const slot = exactRecord(root, [
+      "status",
+      "preparedAt",
+      "stepSha256",
+      "stepBytes",
+      "requestId",
+      "dispatchedAt",
+      "providerRunId",
+      "requestSha256",
+      "readbackFp",
+      "canonicalReadbackText",
+      "captureFp",
+      "canonicalSolveCaptureText",
+    ], path);
+    return {
+      status: "captured",
+      ...dispatched,
+      readbackFp: sha256(slot.readbackFp, `${path}.readbackFp`),
+      canonicalReadbackText: nonEmptyText(
+        slot.canonicalReadbackText,
+        `${path}.canonicalReadbackText`,
+      ),
+      captureFp: sha256(slot.captureFp, `${path}.captureFp`),
+      canonicalSolveCaptureText: nonEmptyText(
+        slot.canonicalSolveCaptureText,
+        `${path}.canonicalSolveCaptureText`,
+      ),
+    };
+  }
+  if (root.status === "rejected") {
+    const slot = exactRecord(root, [
+      "status",
+      "preparedAt",
+      "stepSha256",
+      "stepBytes",
+      "requestId",
+      "rejectedAt",
+      "reason",
+      "dispatchedAt",
+      "providerRunId",
+      "requestSha256",
+    ], path);
+    return {
+      status: "rejected",
+      ...prepared,
+      rejectedAt: nonEmptyText(slot.rejectedAt, `${path}.rejectedAt`),
+      reason: nonEmptyText(slot.reason, `${path}.reason`),
+      dispatchedAt: nullableText(slot.dispatchedAt, `${path}.dispatchedAt`),
+      providerRunId: nullableSafeId(slot.providerRunId, `${path}.providerRunId`),
+      requestSha256: nullableSha256(slot.requestSha256, `${path}.requestSha256`),
+    };
+  }
+  throw new TypeError(`${path}.status is unknown.`);
+}
+
+function parsePrepared(
+  value: Record<string, unknown>,
+  path: string,
+): SensitivityPreparedSolve {
+  return {
+    preparedAt: nonEmptyText(value.preparedAt, `${path}.preparedAt`),
+    stepSha256: sha256(value.stepSha256, `${path}.stepSha256`),
+    stepBytes: positiveInteger(value.stepBytes, `${path}.stepBytes`),
+    requestId: safeId(value.requestId, `${path}.requestId`),
+  };
+}
+
+function parseDispatched(
+  value: Record<string, unknown>,
+  path: string,
+  prepared: SensitivityPreparedSolve,
+): SensitivityDispatchedSolve {
+  return {
+    ...prepared,
+    dispatchedAt: nonEmptyText(value.dispatchedAt, `${path}.dispatchedAt`),
+    providerRunId: safeId(value.providerRunId, `${path}.providerRunId`),
+    requestSha256: sha256(value.requestSha256, `${path}.requestSha256`),
+  };
+}
+
 function validateProvenDestruction(
   value: unknown,
   expectedRunId: string,
-): {
-  readonly status: "proven";
-  readonly runId: string;
-  readonly proofFingerprint: ContentFingerprint;
-} {
+): Extract<
+  SensitivityCadSlot,
+  { readonly status: "output-validation-rejected" }
+>["destruction"] {
   const root = exactRecord(
     value,
     ["status", "runId", "proofFingerprint"],
     "$destruction",
   );
   literalValue(root.status, "proven", "$destruction.status");
-  const runId = nonEmptyText(root.runId, "$destruction.runId");
+  const runId = safeId(root.runId, "$destruction.runId");
   if (runId !== expectedRunId) {
     throw new TypeError("$destruction.runId must match the CAD execution run.");
   }
-  const fingerprint = exactRecord(
-    root.proofFingerprint,
-    ["algorithm", "digest"],
-    "$destruction.proofFingerprint",
-  );
-  literalValue(
-    fingerprint.algorithm,
-    "sha256",
-    "$destruction.proofFingerprint.algorithm",
-  );
   return {
     status: "proven",
     runId,
-    proofFingerprint: {
-      algorithm: "sha256",
-      digest: sha256Hex(
-        fingerprint.digest,
-        "$destruction.proofFingerprint.digest",
-      ),
-    },
+    proofFingerprint: parseFingerprint(
+      root.proofFingerprint,
+      "$destruction.proofFingerprint",
+    ),
   };
 }
 
-function parseSolveSlot(value: unknown, phase: string): SensitivitySolveSlot {
-  const path = `$feaSensitivityAttempt.solves.${phase}`;
-  if (!value || typeof value !== "object") {
-    throw new TypeError(`${path} must be an object.`);
-  }
-  const status = (value as { status?: unknown }).status;
-  if (status === "idle") {
-    exactRecord(value, ["status"], path);
-    return { status: "idle" };
-  }
-  if (status === "dispatched") {
-    const slot = exactRecord(value, [
-      "status",
-      "dispatchedAt",
-      "stepSha256",
-    ], path);
-    return {
-      status: "dispatched",
-      dispatchedAt: nonEmptyText(slot.dispatchedAt, `${path}.dispatchedAt`),
-      stepSha256: sha256Hex(slot.stepSha256, `${path}.stepSha256`),
-    };
-  }
-  if (status === "solver-recorded") {
-    const slot = exactRecord(value, [
-      "status",
-      "dispatchedAt",
-      "stepSha256",
-      "captureFp",
-      "canonicalSolverCaptureText",
-    ], path);
-    return {
-      status: "solver-recorded",
-      dispatchedAt: nonEmptyText(slot.dispatchedAt, `${path}.dispatchedAt`),
-      stepSha256: sha256Hex(slot.stepSha256, `${path}.stepSha256`),
-      captureFp: sha256Hex(slot.captureFp, `${path}.captureFp`),
-      canonicalSolverCaptureText: nonEmptyText(
-        slot.canonicalSolverCaptureText,
-        `${path}.canonicalSolverCaptureText`,
-      ),
-    };
-  }
-  throw new TypeError(`${path}.status is unknown.`);
+function parseFingerprint(value: unknown, path: string): ContentFingerprint {
+  const root = exactRecord(value, ["algorithm", "digest"], path);
+  literalValue(root.algorithm, "sha256", `${path}.algorithm`);
+  return { algorithm: "sha256", digest: sha256(root.digest, `${path}.digest`) };
 }
 
-const SHA256_HEX = /^[0-9a-f]{64}$/;
-
-function sha256Hex(value: unknown, path: string): string {
+function sha256(value: unknown, path: string): string {
   const digest = nonEmptyText(value, path);
   if (!SHA256_HEX.test(digest)) {
     throw new TypeError(`${path} must be a lowercase 64-character hex string.`);
@@ -631,33 +910,42 @@ function sha256Hex(value: unknown, path: string): string {
   return digest;
 }
 
-function positiveByteCount(value: unknown, path: string): number {
-  if (!Number.isSafeInteger(value) || Number(value) < 1) {
-    throw new TypeError(`${path} must be a positive integer.`);
-  }
-  return Number(value);
+function nullableText(value: unknown, path: string): string | null {
+  return value === null ? null : nonEmptyText(value, path);
+}
+
+function nullableSafeId(value: unknown, path: string): string | null {
+  return value === null ? null : safeId(value, path);
+}
+
+function nullableSha256(value: unknown, path: string): string | null {
+  return value === null ? null : sha256(value, path);
 }
 
 function parseSnapshot(value: unknown): NonNullable<FeaSensitivityAttempt["snapshot"]> {
-  const snapshot = exactRecord(
+  const root = exactRecord(
     value,
     ["snapshotId", "revision", "subjectId"],
     "$feaSensitivityAttempt.snapshot",
   );
-  if (
-    typeof snapshot.revision !== "number" || !Number.isSafeInteger(snapshot.revision)
-  ) {
+  if (!Number.isSafeInteger(root.revision)) {
     throw new TypeError("$feaSensitivityAttempt.snapshot.revision must be an integer.");
   }
   return {
     snapshotId: nonEmptyText(
-      snapshot.snapshotId,
+      root.snapshotId,
       "$feaSensitivityAttempt.snapshot.snapshotId",
     ),
-    revision: snapshot.revision,
-    subjectId: nonEmptyText(
-      snapshot.subjectId,
-      "$feaSensitivityAttempt.snapshot.subjectId",
-    ),
+    revision: Number(root.revision),
+    subjectId: safeId(root.subjectId, "$feaSensitivityAttempt.snapshot.subjectId"),
   };
 }
+
+function record(value: unknown, path: string): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new TypeError(`${path} must be an object.`);
+  }
+  return value as Record<string, unknown>;
+}
+
+const SHA256_HEX = /^[0-9a-f]{64}$/;

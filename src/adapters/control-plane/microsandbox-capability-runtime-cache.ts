@@ -4,6 +4,7 @@ import type { CapabilityRuntimeMicrosandboxCache } from "../../application/contr
 import type {
   CapabilityRuntimeStateObserver,
 } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import type { CapabilityRuntimePlatform } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
 import {
   assertExactMicrosandboxImageInspection,
   type ExactMicrosandboxImageExpectation,
@@ -24,6 +25,27 @@ export interface MicrosandboxCapabilityRuntimeImageExpectation {
   readonly executionProfileFingerprint?: ContentFingerprint;
   /** Qualification remains code-owned even when this object is used read-only. */
   readonly qualification?: CapabilityRuntimeQualificationState;
+}
+
+/**
+ * Converts one code-owned material platform into the exact Microsandbox image
+ * architecture. The controller process architecture is deliberately absent:
+ * a cache contract may only come from its registered material profile.
+ */
+export function exactMicrosandboxMaterialArchitecture(
+  platforms: readonly CapabilityRuntimePlatform[],
+): "amd64" | "arm64" {
+  if (platforms.length !== 1) {
+    throw new TypeError(
+      "Microsandbox cache material must declare exactly one code-owned platform.",
+    );
+  }
+  switch (platforms[0]) {
+    case "linux/amd64":
+      return "amd64";
+    case "linux/arm64":
+      return "arm64";
+  }
 }
 
 export class LocalMicrosandboxCapabilityRuntimeCache

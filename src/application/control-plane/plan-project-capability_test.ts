@@ -38,8 +38,8 @@ Deno.test("project capability planner selects exact trusted bindings and dedupli
     ]),
   );
 
-  assertEquals(plan.status, "blocked");
-  assertEquals(plan.activation, "blocked");
+  assertEquals(plan.status, "ready");
+  assertEquals(plan.activation, "allowed");
   assertEquals(plan.bindings.map((binding) => binding.binding?.id), [
     "build123d-export-admitted-source",
     "build123d-observe-assembly-integrity",
@@ -53,7 +53,7 @@ Deno.test("project capability planner selects exact trusted bindings and dedupli
   );
   assertEquals(plan.effects.downloadBytes, null);
   assertEquals(plan.effects.storageBytes, null);
-  assertEquals(plan.effects.security, "unknown");
+  assertEquals(plan.effects.security, "reviewed");
   assertEquals(plan.effects.loopbackPorts, [3014, 3024]);
   assertEquals(plan.effects.privileged, false);
   assertEquals(plan.effects.dockerSocket, false);
@@ -107,13 +107,12 @@ Deno.test("project capability planner makes policy, revocation, ambiguity and av
   assertEquals(unavailable.activation, "blocked");
 });
 
-Deno.test("unqualified Chrono stays unavailable even when the host reports AMD64 emulation", async () => {
+Deno.test("unqualified Chrono stays unavailable without an exact local attestation", async () => {
   const catalog = await createFirstPartyCapabilityRuntimeCatalog();
   const plan = await planProjectCapability(
     await input(
       catalog,
       [requirement(MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY)],
-      { emulatedPlatforms: ["linux/amd64"] },
     ),
   );
 
@@ -164,13 +163,32 @@ Deno.test("project capability planner reports native, emulated, mismatch, and un
   )!.materials[0]!;
   (material as unknown as { platforms: string[] }).platforms = ["linux/amd64"];
   await refreshCatalogUnitFingerprint(amd64Catalog, "casys.calculix-worker");
+  const binding = amd64Catalog.bindings.find((candidate) =>
+    candidate.id === "calculix-static-structural"
+  )!;
+  (binding as unknown as {
+    runtimeModes: unknown[];
+  }).runtimeModes = [{
+    material: {
+      unitId: "casys.calculix-worker",
+      materialId: material.id,
+      imageDigest: material.imageReference.slice(
+        material.imageReference.lastIndexOf("@sha256:") + 8,
+      ),
+    },
+    targetPlatform: "linux/amd64",
+    mode: "emulated",
+    qualificationAttestationFingerprint: {
+      algorithm: "sha256",
+      digest: "e".repeat(64),
+    },
+  }];
   const emulated = await planProjectCapability(
-    await input(amd64Catalog, [required], {
-      emulatedPlatforms: ["linux/amd64"],
-    }),
+    await input(amd64Catalog, [required]),
   );
   assertEquals(emulated.materials[0]?.mode, "emulated");
 
+  (binding as unknown as { runtimeModes: unknown[] }).runtimeModes = [];
   const mismatched = await planProjectCapability(await input(amd64Catalog, [required]));
   assertEquals(mismatched.bindings[0]?.status, "incompatible");
 
@@ -372,7 +390,6 @@ async function input(
   requirements: readonly RequiredEngineeringCapability[],
   options: {
     readonly disabledBindingIds?: readonly string[];
-    readonly emulatedPlatforms?: readonly ("linux/amd64" | "linux/arm64")[];
   } = {},
 ): Promise<ProjectCapabilityPlanningInput> {
   const references = [
@@ -392,8 +409,8 @@ async function input(
     }, catalog),
     host: validateCapabilityRuntimeHostObservation({
       schemaVersion: CAPABILITY_RUNTIME_HOST_OBSERVATION_SCHEMA_VERSION,
+      identityFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
       platform: "linux/arm64",
-      emulatedPlatforms: options.emulatedPlatforms ?? [],
       images: references.map((reference) => ({ reference, sizeBytes: null })),
     }),
     lock: await validateCapabilityRuntimeAdminLock({

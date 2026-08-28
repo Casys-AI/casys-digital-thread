@@ -6,16 +6,17 @@
 
 import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
 import type { PrescribedKinematicsPreDispatchRejectionCode } from "./prescribed-kinematics-observer.ts";
+import type {
+  PrescribedKinematicsRuntimeProvenance,
+} from "../../in/mechanics/prescribed-kinematics/run-prescribed-kinematics-observation.ts";
 
 export interface PrescribedKinematicsObservationAttemptIdentity {
   readonly projectId: string;
   readonly agentRunId: string;
   readonly requestId: string;
-  /** Server-stamped resolved operation plan identity. */
-  readonly planFingerprint: ContentFingerprint;
   readonly caseFingerprint: ContentFingerprint;
-  /** Exact registered-operation binding identity, never provider arguments. */
-  readonly bindingFingerprint: ContentFingerprint;
+  /** Exact sealed ROP/runtime identity, never provider arguments. */
+  readonly runtime: PrescribedKinematicsRuntimeProvenance;
   /** Exact fingerprint of the source bytes reopened from the sealed case. */
   readonly sourceFingerprint: ContentFingerprint;
   /** Exact server-owned source-to-request lowering identity. */
@@ -33,37 +34,37 @@ export interface PrescribedKinematicsObservationAttemptKey {
 
 export type PrescribedKinematicsObservationAttempt =
   | (PrescribedKinematicsObservationAttemptIdentity & {
-    readonly schemaVersion: "prescribed-kinematics-observation-attempt/3.0";
+    readonly schemaVersion: "prescribed-kinematics-observation-attempt/4.0";
     readonly phase: "prepared";
   })
   | (PrescribedKinematicsObservationAttemptIdentity & {
-    readonly schemaVersion: "prescribed-kinematics-observation-attempt/3.0";
+    readonly schemaVersion: "prescribed-kinematics-observation-attempt/4.0";
     readonly phase: "case-submitted";
     readonly caseSha256: string;
     readonly caseUri: string;
   })
   | (PrescribedKinematicsObservationAttemptIdentity & {
-    readonly schemaVersion: "prescribed-kinematics-observation-attempt/3.0";
+    readonly schemaVersion: "prescribed-kinematics-observation-attempt/4.0";
     readonly phase: "dispatching";
     readonly caseSha256: string;
     readonly caseUri: string;
   })
   | (PrescribedKinematicsObservationAttemptIdentity & {
-    readonly schemaVersion: "prescribed-kinematics-observation-attempt/3.0";
+    readonly schemaVersion: "prescribed-kinematics-observation-attempt/4.0";
     readonly phase: "recorded";
     readonly caseSha256: string;
     readonly caseUri: string;
     readonly receiptSha256: string;
   })
   | (PrescribedKinematicsObservationAttemptIdentity & {
-    readonly schemaVersion: "prescribed-kinematics-observation-attempt/3.0";
+    readonly schemaVersion: "prescribed-kinematics-observation-attempt/4.0";
     readonly phase: "quarantined";
     readonly caseSha256: string;
     readonly caseUri: string;
     readonly quarantineReason: "uncertain" | "absent" | "malformed";
   })
   | (PrescribedKinematicsObservationAttemptIdentity & {
-    readonly schemaVersion: "prescribed-kinematics-observation-attempt/3.0";
+    readonly schemaVersion: "prescribed-kinematics-observation-attempt/4.0";
     readonly phase: "rejected";
     readonly caseSha256: string;
     readonly caseUri: string;
@@ -73,7 +74,7 @@ export type PrescribedKinematicsObservationAttempt =
 export type PrescribedKinematicsDispatchingAttempt =
   & PrescribedKinematicsObservationAttemptIdentity
   & {
-    readonly schemaVersion: "prescribed-kinematics-observation-attempt/3.0";
+    readonly schemaVersion: "prescribed-kinematics-observation-attempt/4.0";
     readonly phase: "dispatching";
     readonly caseSha256: string;
     readonly caseUri: string;

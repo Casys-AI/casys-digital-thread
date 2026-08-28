@@ -69,9 +69,8 @@ export class RunPrescribedKinematicsObservation
       projectId: command.projectId,
       agentRunId: command.agentRunId,
       requestId: command.requestId,
-      planFingerprint: command.planFingerprint,
       caseFingerprint: sealedCase.fingerprint,
-      bindingFingerprint: command.bindingFingerprint,
+      runtime: command.runtime,
       sourceFingerprint,
       loweringFingerprint: lowered.loweringFingerprint,
       requestFingerprint: lowered.requestFingerprint,
@@ -155,10 +154,17 @@ export class RunPrescribedKinematicsObservation
       return { status: "rejected", code: attempt.rejectionCode };
     }
     try {
-      const result = await this.#observer.readRun(identity.requestId, {
-        sampleOffset: 0,
-        sampleLimit: PAGE_LIMIT,
-      });
+      const result = await this.#observer.readRun(
+        {
+          requestId: identity.requestId,
+          caseSha256: identity.requestFingerprint.digest,
+          caseUri: `chrono-case:sha256:${identity.requestFingerprint.digest}`,
+        },
+        {
+          sampleOffset: 0,
+          sampleLimit: PAGE_LIMIT,
+        },
+      );
       if (result.state === "absent") {
         return await this.#retainQuarantine(identity, attempt, "absent");
       }
@@ -359,7 +365,7 @@ async function recordToResult(
       caseSha256: record.request.caseSha256,
     },
     receipt: record.receipt,
-    notEvaluated: record.notEvaluated,
+    providerNotEvaluated: record.notEvaluated,
     lowering: {
       sourceFingerprint: lowered.sourceFingerprint,
       loweringFingerprint: lowered.loweringFingerprint,

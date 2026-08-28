@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capability-binding-catalog.ts";
 import {
   validateCapabilityRuntimeAdminLock,
@@ -49,7 +49,18 @@ Deno.test("atomic first-party runtime catalogue separates sources with distinct 
     calculix?.materials[0]?.imageReference,
     "ghcr.io/casys-ai/mcp-calculix@sha256:ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8",
   );
-  assertEquals(calculix?.materials[0]?.launchGroup, null);
+  assertEquals(calculix?.materials[0]?.platforms, ["linux/amd64", "linux/arm64"]);
+  assertEquals(calculix?.materials[0]?.launchGroup?.id, "casys-mcp-calculix");
+  assertEquals(calculix?.materials[0]?.launchGroup?.version, "0.8.2");
+  assertEquals(
+    calculix?.materials[0]?.launchGroup?.fingerprint.algorithm,
+    "sha256",
+  );
+  assert(
+    /^[a-f0-9]{64}$/.test(
+      calculix?.materials[0]?.launchGroup?.fingerprint.digest ?? "",
+    ),
+  );
   assertEquals(calculix?.materials[0]?.effects, {
     downloadBytes: null,
     storageBytes: null,
@@ -110,7 +121,7 @@ Deno.test("atomic first-party runtime catalogue separates sources with distinct 
       status: "unknown",
       reference: "docs/reference/runtime/capability-packs/atomic-runtime-boundaries.md",
     },
-    security: "unknown",
+    security: "reviewed",
   });
   assertEquals(
     catalog.bindings.find((binding) => binding.id === "chrono-prescribed-kinematics")
@@ -152,16 +163,42 @@ Deno.test("runtime catalogue parsers fail closed on unsafe fields and lock/polic
     "does not match the canonical unit body",
   );
 
+  const runtimeModeClaim = structuredClone(catalog) as unknown as Record<
+    string,
+    unknown
+  >;
+  const claimedBinding = (runtimeModeClaim.bindings as Record<string, unknown>[])[0]!;
+  const claimedUnit = (runtimeModeClaim.units as Record<string, unknown>[])[0]!;
+  const claimedMaterial = (claimedUnit.materials as Record<string, unknown>[])[0]!;
+  claimedBinding.runtimeModes = [{
+    material: {
+      unitId: claimedUnit.id,
+      materialId: claimedMaterial.id,
+      imageDigest: String(claimedMaterial.imageReference).slice(
+        String(claimedMaterial.imageReference).lastIndexOf("@sha256:") + 8,
+      ),
+    },
+    targetPlatform: "linux/arm64",
+    mode: "native",
+    qualificationAttestationFingerprint: null,
+  }];
+  await assertRejects(
+    () => validateCapabilityRuntimeCatalog(runtimeModeClaim),
+    TypeError,
+    "runtimeModes must be empty",
+  );
+
   assertThrows(
     () =>
       validateCapabilityRuntimeHostObservation({
         schemaVersion: CAPABILITY_RUNTIME_HOST_OBSERVATION_SCHEMA_VERSION,
+        identityFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
         platform: "linux/arm64",
         emulatedPlatforms: ["linux/arm64"],
         images: [],
       }),
     TypeError,
-    "exclude the native platform",
+    "emulatedPlatforms",
   );
   assertThrows(
     () =>

@@ -14,6 +14,7 @@ import { RecordedAnalysisCasReader } from "./recorded-analysis-cas-reader.ts";
 import type { FileCaptureStore } from "../../shared/cas/file-capture-store.ts";
 import type { CaptureBackedTechnicalCompilationAdmissionReader } from "../admission/capture-backed-technical-compilation-admission-reader.ts";
 import type { ExactThreadSnapshotReader } from "../../shared/stores/engineering-thread-snapshot-resolver.ts";
+import type { PrescribedKinematicsCaptureStore } from "../../../application/ports/out/mechanics/prescribed-kinematics-capture-store.ts";
 import {
   CaptureBackedRunPlanSealer,
   RESOLVED_OPERATION_PLAN_STORE_DESCRIPTOR,
@@ -29,6 +30,11 @@ export interface RecordedOperationPlanCompositionOptions {
   readonly requirementsCaptures: FileCaptureStore<"requirements-capture">;
   readonly admissions: CaptureBackedTechnicalCompilationAdmissionReader;
   readonly calculixLocalProfile?: CalculixIsolatedExecutionProfile;
+  /** Exact capture lane consumed only by the closed prescribed-kinematics ROP. */
+  readonly prescribedKinematicsCaptures?: Pick<
+    PrescribedKinematicsCaptureStore,
+    "readCase"
+  >;
   readonly recordedAnalysisDirectory: string;
   readonly canonicalAssetDirectory: string;
 }
@@ -77,6 +83,9 @@ export function createRecordedOperationPlanComposition(
     admissions: options.admissions,
     stepAssets: new FileCanonicalAssetReader({
       directory: options.canonicalAssetDirectory,
+    }),
+    ...(options.prescribedKinematicsCaptures === undefined ? {} : {
+      prescribedKinematics: { captures: options.prescribedKinematicsCaptures },
     }),
     ...recordedPlanCalculixBinding(options.calculixLocalProfile),
   });

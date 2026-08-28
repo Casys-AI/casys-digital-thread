@@ -14,7 +14,6 @@ import { CALCULIX_MICROSANDBOX_WORKER_CONTRACT } from "../fea/isolated-v3/calcul
 import { LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE } from "../fea/isolated-v3/local-calculix-isolated-execution-options.ts";
 import {
   createLocalMicrosandboxSdk,
-  microsandboxHostArchitecture,
 } from "../shared/execution/microsandbox-ephemeral-execution-backend.ts";
 import { CompositeCapabilityRuntimeStateObserver } from "./composite-capability-runtime-state-observer.ts";
 import { createCapabilityRuntimeHostObserver } from "./compose-capability-runtime-host.ts";
@@ -23,14 +22,25 @@ import {
   FileCapabilityRuntimeAdminPolicyStore,
   FileCapabilityRuntimeJournal,
 } from "./file-capability-runtime-host-stores.ts";
+import { FileCapabilityRuntimeQualificationAttestationStore } from "./file-capability-runtime-qualification-attestation-store.ts";
 import { FileProjectCapabilityLedgerStore } from "./file-project-capability-ledger-store.ts";
 import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capability-binding-catalog.ts";
 import { createFirstPartyCapabilityRuntimeLaunchGroupRegistry } from "./first-party-capability-runtime-launch-groups.ts";
 import { GroupCapabilityRuntimeHostObservationReader } from "./group-capability-runtime-host-observation-reader.ts";
-import { LocalMicrosandboxCapabilityRuntimeCache } from "./microsandbox-capability-runtime-cache.ts";
+import { FileCapabilityRuntimeHostIdentityStore } from "./file-capability-runtime-host-identity-store.ts";
+import {
+  exactMicrosandboxMaterialArchitecture,
+  LocalMicrosandboxCapabilityRuntimeCache,
+} from "./microsandbox-capability-runtime-cache.ts";
 
 export interface LocalCapabilityRuntimeReadCompositionOptions {
   readonly ledgerDirectory?: string;
+  /**
+   * Optional process-local secret availability observer. The MCP server passes
+   * its sealed resolver; read-only compositions default to unavailable and
+   * never read host secrets merely to render the Workbench.
+   */
+  readonly secrets?: CapabilityRuntimeSecretSlotObserver;
   /**
    * The server's code-owned CalculiX execution profile. Omit in a read-only
    * BFF process: it may observe the exact cache but cannot use it to execute.
@@ -57,6 +67,8 @@ export interface LocalCapabilityRuntimeReadComposition {
   readonly host: GroupCapabilityRuntimeHostObservationReader;
   readonly policy: FileCapabilityRuntimeAdminPolicyStore;
   readonly lock: FileCapabilityRuntimeAdminLockStore;
+  readonly hostIdentity: FileCapabilityRuntimeHostIdentityStore;
+  readonly qualifications: FileCapabilityRuntimeQualificationAttestationStore;
   readonly ledgers: FileProjectCapabilityLedgerStore;
   readonly contexts: ProjectCapabilityRuntimeContextCompiler;
   readonly workbench: ProjectCapabilityWorkbenchProjector;
@@ -75,7 +87,7 @@ export async function createLocalCapabilityRuntimeReadComposition(
     createFirstPartyCapabilityRuntimeLaunchGroupRegistry(),
   ]);
   const journal = new FileCapabilityRuntimeJournal();
-  const secrets: CapabilityRuntimeSecretSlotObserver = {
+  const secrets: CapabilityRuntimeSecretSlotObserver = options.secrets ?? {
     observe: (slots) =>
       Promise.resolve(
         new Map(slots.map((slot) => [slot, "unavailable" as const])),
@@ -86,6 +98,14 @@ export async function createLocalCapabilityRuntimeReadComposition(
     journal,
     secrets,
   });
+  const calculixWorker = catalog.units.find((unit) =>
+    unit.id === "casys.calculix-worker"
+  )?.materials.find((material) => material.id === "calculix-worker-image");
+  if (!calculixWorker) {
+    throw new Error(
+      "The code-owned catalog is missing casys.calculix-worker/calculix-worker-image.",
+    );
+  }
   const microsandbox = new LocalMicrosandboxCapabilityRuntimeCache(
     createLocalMicrosandboxSdk,
     [{
@@ -102,7 +122,9 @@ export async function createLocalCapabilityRuntimeReadComposition(
             LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE.lastIndexOf("@") + 1,
           ),
         os: "linux",
-        architecture: microsandboxHostArchitecture(),
+        architecture: exactMicrosandboxMaterialArchitecture(
+          calculixWorker.platforms,
+        ),
         user: CALCULIX_MICROSANDBOX_WORKER_CONTRACT.expectedImageUser,
         entrypoint: [
           CALCULIX_MICROSANDBOX_WORKER_CONTRACT.executable,
@@ -125,14 +147,22 @@ export async function createLocalCapabilityRuntimeReadComposition(
   ]);
   const policy = new FileCapabilityRuntimeAdminPolicyStore(undefined, catalog);
   const lock = new FileCapabilityRuntimeAdminLockStore(undefined, catalog);
+  const hostIdentity = new FileCapabilityRuntimeHostIdentityStore();
+  const qualifications = new FileCapabilityRuntimeQualificationAttestationStore();
   const ledgers = new FileProjectCapabilityLedgerStore(options.ledgerDirectory);
-  const host = new GroupCapabilityRuntimeHostObservationReader(catalog, states);
+  const host = new GroupCapabilityRuntimeHostObservationReader(
+    catalog,
+    states,
+    hostIdentity,
+    composeObserver,
+  );
   const contexts = new ProjectCapabilityRuntimeContextCompiler({
     registry: { list: listRegisteredEngineeringOperations },
     catalog,
     policy,
     host,
     lock,
+    qualifications,
     ledgers,
   });
   return {
@@ -146,6 +176,8 @@ export async function createLocalCapabilityRuntimeReadComposition(
     host,
     policy,
     lock,
+    hostIdentity,
+    qualifications,
     ledgers,
     contexts,
     workbench: new ProjectCapabilityWorkbenchProjector({ contexts, states }),

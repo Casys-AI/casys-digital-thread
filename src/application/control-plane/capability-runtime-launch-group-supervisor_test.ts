@@ -23,7 +23,10 @@ import {
   InMemoryCapabilityRuntimeLeaseStore,
   InMemoryCapabilityRuntimeStateObserver,
 } from "../../adapters/control-plane/in-memory-capability-runtime-supervisor.ts";
-import type { CapabilityRuntimeHostMutator } from "../ports/out/capability/capability-runtime-supervisor.ts";
+import type {
+  CapabilityRuntimeHostMutator,
+  CapabilityRuntimeSecretSnapshot,
+} from "../ports/out/capability/capability-runtime-supervisor.ts";
 
 const AT = "2026-08-29T00:00:00.000Z";
 const EXPIRES = "2026-08-29T01:00:00.000Z";
@@ -38,6 +41,7 @@ Deno.test("group supervisor shares one lease across N groups and stops eligible 
 
   const firstResult = await fixture.supervisor.ensureActive({
     group: capabilityRuntimeLaunchGroupReference(first),
+    expectedMaterials: exactMaterials(first),
     projectId: "project-test",
     lease,
     at: AT,
@@ -45,6 +49,7 @@ Deno.test("group supervisor shares one lease across N groups and stops eligible 
   });
   const secondResult = await fixture.supervisor.ensureActive({
     group: capabilityRuntimeLaunchGroupReference(second),
+    expectedMaterials: exactMaterials(second),
     projectId: "project-test",
     lease,
     at: AT,
@@ -94,6 +99,7 @@ Deno.test("a pending start that already reached a fully active group converges w
 
   const result = await fixture.supervisor.ensureActive({
     group: capabilityRuntimeLaunchGroupReference(first),
+    expectedMaterials: exactMaterials(first),
     projectId: "project-test",
     lease,
     at: AT,
@@ -102,6 +108,99 @@ Deno.test("a pending start that already reached a fully active group converges w
 
   assertEquals(result.mutation, undefined);
   assertEquals(fixture.host.calls, []);
+});
+
+Deno.test("an active secret-bearing group reconciles its exact snapshot while an active non-secret group remains a no-op", async () => {
+  const secret = await group(
+    "casys-secret",
+    "secret",
+    ["secret"],
+    ["chrono-mcp-bearer-token"],
+  );
+  const plain = await group("casys-plain", "plain");
+  const fixture = supervisor([secret, plain], undefined, "available");
+  const lease = sessionLease([secret, plain]);
+  const snapshot = {} as CapabilityRuntimeSecretSnapshot;
+  setStates(fixture, secret, "active");
+  setStates(fixture, plain, "active");
+
+  await fixture.supervisor.ensureActive({
+    group: capabilityRuntimeLaunchGroupReference(secret),
+    expectedMaterials: exactMaterials(secret),
+    projectId: lease.projectId,
+    lease,
+    at: AT,
+    reuseExistingLease: "reject",
+    secretSnapshot: snapshot,
+  });
+  await fixture.supervisor.ensureActive({
+    group: capabilityRuntimeLaunchGroupReference(plain),
+    expectedMaterials: exactMaterials(plain),
+    projectId: lease.projectId,
+    lease,
+    at: AT,
+    reuseExistingLease: "allow",
+  });
+
+  assertEquals(
+    fixture.host.calls.filter((call) => call.action === "runtime-start").map((call) =>
+      call.groupId
+    ),
+    ["casys-secret"],
+  );
+  assertEquals(fixture.host.secretSnapshots, [snapshot]);
+});
+
+Deno.test("a launch-group activation rejects an expected material with the same key but another digest before lease or host mutation", async () => {
+  const first = await group("casys-first", "first");
+  const fixture = supervisor([first]);
+  const lease = sessionLease([first]);
+  const [material] = exactMaterials(first);
+  if (!material) throw new Error("Expected one test material.");
+
+  await assertRejects(
+    () =>
+      fixture.supervisor.ensureActive({
+        group: capabilityRuntimeLaunchGroupReference(first),
+        expectedMaterials: [{ ...material, imageDigest: "f".repeat(64) }],
+        projectId: lease.projectId,
+        lease,
+        at: AT,
+        reuseExistingLease: "reject",
+      }),
+    CapabilityRuntimeLaunchGroupSafetyError,
+    "exact launch-group material digests",
+  );
+  assertEquals(fixture.host.calls, []);
+  assertEquals(await fixture.leases.listActive(AT), []);
+});
+
+Deno.test("an unqualified launch group is unavailable before a lease or host mutation", async () => {
+  const first = await group(
+    "casys-unqualified",
+    "unqualified",
+    undefined,
+    undefined,
+    "unqualified",
+  );
+  const fixture = supervisor([first]);
+  const lease = sessionLease([first]);
+
+  await assertRejects(
+    () =>
+      fixture.supervisor.ensureActive({
+        group: capabilityRuntimeLaunchGroupReference(first),
+        expectedMaterials: exactMaterials(first),
+        projectId: lease.projectId,
+        lease,
+        at: AT,
+        reuseExistingLease: "reject",
+      }),
+    CapabilityRuntimeLaunchGroupSafetyError,
+    "not operationally admissible",
+  );
+  assertEquals(fixture.host.calls, []);
+  assertEquals(await fixture.leases.listActive(AT), []);
 });
 
 Deno.test("a pending start that left every member unchanged is safe to retry", async () => {
@@ -114,6 +213,7 @@ Deno.test("a pending start that left every member unchanged is safe to retry", a
 
   await fixture.supervisor.ensureActive({
     group: capabilityRuntimeLaunchGroupReference(first),
+    expectedMaterials: exactMaterials(first),
     projectId: "project-test",
     lease,
     at: AT,
@@ -145,6 +245,7 @@ Deno.test("a pending start with a partial group observation remains a recovery b
     () =>
       fixture.supervisor.ensureActive({
         group: capabilityRuntimeLaunchGroupReference(first),
+        expectedMaterials: exactMaterials(first),
         projectId: "project-test",
         lease,
         at: AT,
@@ -163,6 +264,7 @@ Deno.test("releasing one lease cannot stop a group still protected by another ex
   const lease = sessionLease([first]);
   await fixture.supervisor.ensureActive({
     group: capabilityRuntimeLaunchGroupReference(first),
+    expectedMaterials: exactMaterials(first),
     projectId: lease.projectId,
     lease,
     at: AT,
@@ -227,6 +329,7 @@ Deno.test("an older failed intent is superseded by a later succeeded group tip",
 
   await fixture.supervisor.ensureActive({
     group: capabilityRuntimeLaunchGroupReference(first),
+    expectedMaterials: exactMaterials(first),
     projectId: lease.projectId,
     lease,
     at: AT,
@@ -255,6 +358,7 @@ Deno.test("a succeeded group tip that later returns to its previous state is an 
     () =>
       fixture.supervisor.ensureActive({
         group: capabilityRuntimeLaunchGroupReference(first),
+        expectedMaterials: exactMaterials(first),
         projectId: lease.projectId,
         lease,
         at: AT,
@@ -269,6 +373,7 @@ Deno.test("a succeeded group tip that later returns to its previous state is an 
 function supervisor(
   groups: readonly CapabilityRuntimeLaunchGroup[],
   failAction?: CapabilityRuntimeJournalEntry["action"],
+  secretAvailability: "available" | "unavailable" = "unavailable",
 ) {
   const states = new InMemoryCapabilityRuntimeStateObserver();
   for (const group of groups) {
@@ -291,7 +396,7 @@ function supervisor(
     host,
     secrets: {
       observe: (slots) =>
-        Promise.resolve(new Map(slots.map((slot) => [slot, "unavailable" as const]))),
+        Promise.resolve(new Map(slots.map((slot) => [slot, secretAvailability]))),
     },
     lock: { withLock: (operation) => operation() },
   });
@@ -322,6 +427,7 @@ class StateTransitionHost implements CapabilityRuntimeHostMutator {
     readonly action: CapabilityRuntimeJournalEntry["action"];
     readonly groupId: string;
   }[] = [];
+  readonly secretSnapshots: CapabilityRuntimeSecretSnapshot[] = [];
 
   constructor(
     private readonly states: InMemoryCapabilityRuntimeStateObserver,
@@ -331,11 +437,15 @@ class StateTransitionHost implements CapabilityRuntimeHostMutator {
   async mutate(
     input: {
       readonly authorization: { readonly entry: CapabilityRuntimeJournalEntry };
+      readonly secretSnapshot?: CapabilityRuntimeSecretSnapshot;
     },
   ): Promise<CapabilityRuntimeJournalOutcome> {
     await Promise.resolve();
     const entry = input.authorization.entry;
     this.calls.push({ action: entry.action, groupId: entry.launchGroup.id });
+    if (input.secretSnapshot !== undefined) {
+      this.secretSnapshots.push(input.secretSnapshot);
+    }
     const uncertain = entry.action === this.failAction;
     for (const material of entry.materials) {
       const prior = entry.previousObservations.find((observation) =>
@@ -379,6 +489,8 @@ async function group(
   id: string,
   materialId: string,
   memberIds: readonly string[] = [materialId],
+  secretSlots: readonly string[] = [],
+  qualification: CapabilityRuntimeLaunchGroup["qualification"] = "qualified",
 ): Promise<CapabilityRuntimeLaunchGroup> {
   const projectName = id;
   const composeContent = deterministicJson({
@@ -433,9 +545,9 @@ async function group(
       images: "preserve" as const,
       volumes: "preserve" as const,
     },
-    secretSlots: [],
+    secretSlots,
     security: "reviewed" as const,
-    qualification: "qualified" as const,
+    qualification,
   };
   return { ...body, fingerprint: await fingerprintCapabilityRuntimeLaunchGroup(body) };
 }
@@ -454,6 +566,12 @@ function inactive(
       qualification: "qualified",
     },
   }));
+}
+
+function exactMaterials(
+  group: CapabilityRuntimeLaunchGroup,
+): readonly CapabilityRuntimeLaunchGroup["materials"][number]["material"][] {
+  return group.materials.map((member) => member.material);
 }
 
 function setStates(

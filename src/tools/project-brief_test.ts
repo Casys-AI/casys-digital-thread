@@ -156,6 +156,35 @@ Deno.test("project MCP framing uses one project identity from intent through app
       "project_brief_confirm",
       confirmArgs,
     );
+    const confirmation = (
+      inputRequired.inputRequests as Record<string, {
+        params: Record<string, unknown>;
+      }>
+    ).brief_confirmation;
+    const confirmationProposal = confirmation.params.capabilityProposal as Record<
+      string,
+      unknown
+    >;
+    assertEquals(
+      confirmation.params.capabilityProposalFingerprint,
+      confirmArgs.capabilityProposalFingerprint,
+    );
+    assertEquals(
+      confirmationProposal.capabilityProposalFingerprint,
+      confirmArgs.capabilityProposalFingerprint,
+    );
+    assertEquals(
+      confirmation.params.capabilityEnvelopeDelta,
+      null,
+    );
+    assertEquals(
+      Object.keys(
+        (confirmation.params.requestedSchema as {
+          properties: Record<string, unknown>;
+        }).properties,
+      ),
+      ["confirmed"],
+    );
     result = await client.toolRetry(
       "project_brief_confirm",
       confirmArgs,
@@ -599,8 +628,8 @@ async function briefDependencies(
       },
       host: {
         schemaVersion: "capability-runtime-host-observation/1.0",
+        identityFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
         platform: "linux/arm64",
-        emulatedPlatforms: [],
         images: [],
       },
       lock: {

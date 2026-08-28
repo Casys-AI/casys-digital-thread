@@ -1,6 +1,11 @@
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
 import type {
+  CapabilityRuntimeMaterialRuntimeMode,
+  CapabilityRuntimePlatform,
+} from "../../../domain/capability/runtime/capability-runtime-binding-qualification-attestation.ts";
+export type { CapabilityRuntimePlatform } from "../../../domain/capability/runtime/capability-runtime-binding-qualification-attestation.ts";
+import type {
   CapabilityQualification,
   CapabilityReference,
   RequiredEngineeringCapability,
@@ -21,7 +26,6 @@ export const CAPABILITY_RUNTIME_ADMIN_LOCK_SCHEMA_VERSION =
 export const PROJECT_CAPABILITY_PLAN_SCHEMA_VERSION =
   "project-capability-plan/1.0" as const;
 
-export type CapabilityRuntimePlatform = "linux/amd64" | "linux/arm64";
 export type CapabilityRuntimeMode = "native" | "emulated" | "unavailable";
 export type CapabilityRuntimeMaterialKind =
   | "compose-service"
@@ -132,6 +136,12 @@ export interface QualifiedCapabilityRuntimeBinding {
   readonly profile: CapabilityRuntimeProfileReference | null;
   readonly unitIds: readonly string[];
   readonly qualificationEvidence: CapabilityRuntimeQualificationEvidence;
+  /**
+   * Effective per-material runtime modes. The repository catalogue has an
+   * empty baseline; a local attestation evaluator populates this only for the
+   * exact host/binding/material identity it can prove.
+   */
+  readonly runtimeModes: readonly CapabilityRuntimeMaterialRuntimeMode[];
   readonly limitations: readonly string[];
 }
 
@@ -180,8 +190,9 @@ export interface CapabilityRuntimeBindingPreference {
 /** A fresh local observation; it does not assert health or engineering success. */
 export interface CapabilityRuntimeHostObservation {
   readonly schemaVersion: typeof CAPABILITY_RUNTIME_HOST_OBSERVATION_SCHEMA_VERSION;
+  /** Opaque, stable local-host identity; never a credential or provider value. */
+  readonly identityFingerprint: ContentFingerprint;
   readonly platform: CapabilityRuntimePlatform;
-  readonly emulatedPlatforms: readonly CapabilityRuntimePlatform[];
   readonly images: readonly CapabilityRuntimeObservedImage[];
 }
 

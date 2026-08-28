@@ -7,6 +7,9 @@ import {
 } from "@std/assert";
 import { parse as parseYaml } from "@std/yaml";
 import { loadFleetManifest, ManifestError, validateFleetManifest } from "./manifest.ts";
+import {
+  createFirstPartyCapabilityRuntimeLaunchGroups,
+} from "./first-party-capability-runtime-launch-groups.ts";
 
 Deno.test("loadFleetManifest accepts the workspace manifest and preserves posture", async () => {
   const manifest = await loadFleetManifest("config/mcp-fleet.json");
@@ -65,10 +68,12 @@ Deno.test("loadFleetManifest accepts the workspace manifest and preserves postur
     "calculix_run_get",
   ]);
   assertEquals(calculix?.network?.sharedVolumes, [
-    "exports:/exports:ro",
-    "casys-digital-thread-calculix-inputs:/inputs",
-    "casys-digital-thread-calculix-runs:/var/lib/mcp-calculix-runs",
+    "calculix-inputs:/inputs",
+    "calculix-runs:/var/lib/mcp-calculix-runs",
   ]);
+  assertEquals(calculix?.network?.composeNetwork, undefined);
+  assertEquals(calculix?.healthUrl, undefined);
+  assertEquals(calculix?.required, false);
 });
 
 Deno.test("CalculiX desired identity pins the published 0.8.2 index, labels, and timeout ceiling", async () => {
@@ -148,7 +153,6 @@ Deno.test("toolchain Compose defaults remain in parity with fleet desired images
       ["syson", "MCP_SYSON_IMAGE"],
       ["build123d", "MCP_BUILD123D_IMAGE"],
       ["build123d-sandbox", "MCP_BUILD123D_IMAGE"],
-      ["calculix", "MCP_CALCULIX_IMAGE"],
       ["spice", "MCP_SPICE_IMAGE"],
     ] as const
   ) {
@@ -180,47 +184,31 @@ Deno.test("toolchain Compose defaults remain in parity with fleet desired images
   }
 });
 
-Deno.test("CalculiX keeps durable evidence, read-only CAD, and private FEA staging distinct", async () => {
+Deno.test("CalculiX sensitivity is absent from root Compose and has one sealed private capability group", async () => {
   const [composeSource, sensitivityCompositionSource] = await Promise.all([
     Deno.readTextFile("docker-compose.yml"),
     Deno.readTextFile("src/adapters/sensitivity/server-composition.ts"),
   ]);
   const compose = record(parseYaml(composeSource), "docker-compose.yml");
   const services = record(compose.services, "docker-compose.yml.services");
-  const calculix = record(services["mcp-calculix"], "mcp-calculix");
-  const environment = record(calculix.environment, "mcp-calculix.environment");
-
-  assertEquals(calculix.command, undefined);
-  assertEquals(environment.CALCULIX_RUNS_DIRECTORY, "/var/lib/mcp-calculix-runs");
-  assertEquals(environment.CALCULIX_MAX_RECORDED_RUNS, "24");
+  assertEquals("mcp-calculix" in services, false);
+  const group = (await createFirstPartyCapabilityRuntimeLaunchGroups()).find(
+    (candidate) => candidate.id === "casys-mcp-calculix",
+  );
+  assert(group, "CalculiX launch group is absent");
+  const descriptor = JSON.parse(group.compose.content) as {
+    services: { "mcp-calculix": Record<string, unknown> };
+  };
+  const calculix = descriptor.services["mcp-calculix"];
+  assertEquals(calculix.command, ["http"]);
+  assertEquals(calculix.healthcheck, undefined);
   assertEquals(calculix.volumes, [
-    "exports:/exports:ro",
     "calculix-inputs:/inputs",
     "calculix-runs:/var/lib/mcp-calculix-runs",
   ]);
-  assertEquals(calculix.tmpfs, undefined);
-  assertEquals(calculix.healthcheck, {
-    test: ["CMD", "curl", "-fsS", "http://localhost:3015/health"],
-    interval: "10s",
-    timeout: "5s",
-    retries: 6,
-  });
-
-  const volumes = record(compose.volumes, "docker-compose.yml.volumes");
-  const inputs = record(volumes["calculix-inputs"], "calculix-inputs");
-  assertEquals(
-    inputs.name,
-    "${CALCULIX_INPUTS_VOLUME:-casys-digital-thread-calculix-inputs}",
-  );
-  const runs = record(volumes["calculix-runs"], "calculix-runs");
-  assertEquals(
-    runs.name,
-    "${CALCULIX_RUNS_VOLUME:-casys-digital-thread-calculix-runs}",
-  );
-  assert(
-    /new DockerVolumeAssetStager\(\{\s+service: "mcp-calculix",\s+containerDirectory: "\/inputs",\s+\}\)/
-      .test(sensitivityCompositionSource),
-  );
+  assertEquals(calculix.ports, ["127.0.0.1:3015:3015"]);
+  assertEquals(group.qualification, "unqualified");
+  assertEquals(/DockerVolumeAssetStager/.test(sensitivityCompositionSource), false);
 });
 
 Deno.test("validateFleetManifest ignores documentation extensions", () => {
@@ -231,6 +219,16 @@ Deno.test("validateFleetManifest ignores documentation extensions", () => {
   });
   assertEquals(manifest.servers.length, 1);
   assertEquals(manifest.servers[0].id, "test");
+});
+
+Deno.test("validateFleetManifest accepts a provider without a published health endpoint", () => {
+  const { healthUrl: _healthUrl, ...server } = serverFixture();
+  const manifest = validateFleetManifest({
+    version: 1,
+    servers: [server],
+  });
+
+  assertEquals(manifest.servers[0]?.healthUrl, undefined);
 });
 
 Deno.test("loadFleetManifest reports path and JSON errors", async () => {

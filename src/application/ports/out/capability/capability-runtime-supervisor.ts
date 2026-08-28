@@ -37,6 +37,7 @@ import type {
 import type {
   CapabilityRuntimeAdminLock,
   CapabilityRuntimeCatalog,
+  CapabilityRuntimePlatform,
   ProjectCapabilityPlan,
 } from "../../../control-plane/read-model/capability-runtime-catalog.ts";
 
@@ -106,6 +107,15 @@ export interface CapabilityRuntimeStateObserver {
   ): Promise<ReadonlyMap<string, CapabilityRuntimeObservedState>>;
 }
 
+/**
+ * Read-only observation of the runtime daemon platform. This is deliberately
+ * separate from the Deno process architecture: a runtime can be remote,
+ * virtualized, or emulated while the control process is not.
+ */
+export interface CapabilityRuntimeHostPlatformObserver {
+  observePlatform(): Promise<CapabilityRuntimePlatform>;
+}
+
 /** Append-only durable intent log. Entries are written before host mutation. */
 export interface CapabilityRuntimeJournal {
   appendBeforeMutation(entry: CapabilityRuntimeJournalEntry): Promise<void>;
@@ -141,6 +151,13 @@ export interface CapabilityRuntimeHostMutator {
   mutate(input: {
     readonly authorization: AuthorizedCapabilityRuntimeHostMutation;
     readonly removalPlan?: CapabilityRuntimeAdministrativeRemovalPlan;
+    /**
+     * Ephemeral launch-secret generation for this one runtime start.  It is an
+     * opaque capability, not a serializable secret or an environment map.
+     * A host adapter may consume it only while constructing its in-memory
+     * launch overlay.
+     */
+    readonly secretSnapshot?: CapabilityRuntimeSecretSnapshot;
   }): Promise<CapabilityRuntimeJournalOutcome>;
 }
 
@@ -180,6 +197,41 @@ export interface CapabilityRuntimeSecretSlotObserver {
   observe(
     slots: readonly string[],
   ): Promise<ReadonlyMap<string, "available" | "unavailable" | "unknown">>;
+}
+
+declare const capabilityRuntimeSecretSnapshotBrand: unique symbol;
+
+/**
+ * Opaque, process-local secret generation.  It carries neither a value nor a
+ * slot name so it cannot become part of Thread, CAS, WAL, argv or logs.
+ */
+export interface CapabilityRuntimeSecretSnapshot {
+  readonly [capabilityRuntimeSecretSnapshotBrand]: true;
+}
+
+/**
+ * Closed server-only secret snapshot minting.  The caller can ask only for
+ * the exact slots sealed on an exact launch group; it cannot provide values,
+ * environment names or arbitrary bindings.
+ */
+export interface CapabilityRuntimeSecretSnapshotResolver
+  extends CapabilityRuntimeSecretSlotObserver {
+  beginSnapshot(input: {
+    readonly group: CapabilityRuntimeLaunchGroupReference;
+    readonly slots: readonly string[];
+  }): Promise<CapabilityRuntimeSecretSnapshot>;
+}
+
+/**
+ * Closed launch-overlay channel.  The returned bytes are passed directly to
+ * Compose stdin for the one start mutation and are never fingerprinted or
+ * persisted.  There is intentionally no caller-provided environment map.
+ */
+export interface CapabilityRuntimeLaunchSecretInjector {
+  composeOverlay(input: {
+    readonly group: CapabilityRuntimeLaunchGroup;
+    readonly snapshot: CapabilityRuntimeSecretSnapshot;
+  }): Promise<Uint8Array>;
 }
 
 /** Cross-process host mutation serialization, separate from project leases. */

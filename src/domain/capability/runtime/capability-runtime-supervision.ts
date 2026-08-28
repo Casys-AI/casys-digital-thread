@@ -28,6 +28,9 @@ import type {
 import {
   validateCapabilityRuntimeLaunchGroupReference,
 } from "./capability-runtime-launch-group.ts";
+import type {
+  CapabilityRuntimeMaterialRuntimeMode,
+} from "./capability-runtime-binding-qualification-attestation.ts";
 
 export type CapabilityRuntimeMaterialState =
   | "absent"
@@ -114,6 +117,8 @@ export interface ResolvedCapabilityRuntimeBinding {
     readonly fingerprint: ContentFingerprint | null;
   } | null;
   readonly materials: readonly CapabilityRuntimeMaterialIdentity[];
+  /** Exact host mode for every material, resolved before the ROP is sealed. */
+  readonly runtimeModes: readonly CapabilityRuntimeMaterialRuntimeMode[];
   /** Exactly one lifecycle for every sealed material, keyed by exact digest. */
   readonly hostLifecycles: readonly CapabilityRuntimeHostLifecycle[];
 }
@@ -214,6 +219,7 @@ function parseResolvedBinding(
     "adapter",
     "profile",
     "materials",
+    "runtimeModes",
     "hostLifecycles",
   ], path);
   const capability = exactRecord(
@@ -238,6 +244,22 @@ function parseResolvedBinding(
     throw new TypeError(`${path}.materials must not be empty for a runtime binding.`);
   }
   rejectDuplicates(materials.map(capabilityRuntimeMaterialKey), `${path}.materials`);
+  const runtimeModes = arrayOf(root.runtimeModes, `${path}.runtimeModes`).map((
+    mode,
+    index,
+  ) => parseRuntimeMode(mode, `${path}.runtimeModes[${index}]`));
+  rejectDuplicates(
+    runtimeModes.map((mode) => capabilityRuntimeMaterialKey(mode.material)),
+    `${path}.runtimeModes`,
+  );
+  if (
+    runtimeModes.length !== materials.length ||
+    runtimeModes.some((mode) =>
+      !materials.some((material) => sameMaterial(material, mode.material))
+    )
+  ) {
+    throw new TypeError(`${path}.runtimeModes must cover exactly its materials.`);
+  }
   const hostLifecycles = arrayOf(
     root.hostLifecycles,
     `${path}.hostLifecycles`,
@@ -277,7 +299,45 @@ function parseResolvedBinding(
     },
     profile,
     materials,
+    runtimeModes,
     hostLifecycles,
+  };
+}
+
+function parseRuntimeMode(
+  value: unknown,
+  path: string,
+): CapabilityRuntimeMaterialRuntimeMode {
+  const root = exactRecord(value, [
+    "material",
+    "targetPlatform",
+    "mode",
+    "qualificationAttestationFingerprint",
+  ], path);
+  const targetPlatform = root.targetPlatform === "linux/amd64" ||
+      root.targetPlatform === "linux/arm64"
+    ? root.targetPlatform
+    : (() => {
+      throw new TypeError(`${path}.targetPlatform is unsupported.`);
+    })();
+  const mode = root.mode === "native" || root.mode === "emulated" ? root.mode : (() => {
+    throw new TypeError(`${path}.mode is unsupported.`);
+  })();
+  const qualificationAttestationFingerprint =
+    root.qualificationAttestationFingerprint === null ? null : contentFingerprint(
+      root.qualificationAttestationFingerprint,
+      `${path}.qualificationAttestationFingerprint`,
+    );
+  if (mode === "emulated" && qualificationAttestationFingerprint === null) {
+    throw new TypeError(
+      `${path}.emulated mode requires its exact qualification attestation.`,
+    );
+  }
+  return {
+    material: parseMaterial(root.material, `${path}.material`),
+    targetPlatform,
+    mode,
+    qualificationAttestationFingerprint,
   };
 }
 

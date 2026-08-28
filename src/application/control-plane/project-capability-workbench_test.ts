@@ -213,7 +213,7 @@ Deno.test("capability workbench refuses a context from another project revision"
   );
 });
 
-Deno.test("capability workbench refuses a plan with another JIT demand fingerprint", async () => {
+Deno.test("capability workbench refuses a plan with another planned-ceiling demand fingerprint", async () => {
   const context = fixtureContext();
   (context.plan as { demandFingerprint: typeof FINGERPRINT }).demandFingerprint = {
     algorithm: "sha256",
@@ -223,8 +223,25 @@ Deno.test("capability workbench refuses a plan with another JIT demand fingerpri
   await assertRejects(
     () => projector(context).read(PROJECT),
     TypeError,
-    "exact JIT demand fingerprint",
+    "exact planned-ceiling demand fingerprint",
   );
+});
+
+Deno.test("capability workbench does not substitute the JIT demand for its planned-ceiling plan binding", async () => {
+  const context = fixtureContext();
+  (context.demand as { jitDemandFingerprint: typeof FINGERPRINT })
+    .jitDemandFingerprint = {
+      algorithm: "sha256",
+      digest: "a".repeat(64),
+    };
+
+  const projection = await projector(context).read(PROJECT);
+
+  assertEquals(projection.demand.plannedCeiling.fingerprint, FINGERPRINT);
+  assertEquals(projection.demand.jit.fingerprint, {
+    algorithm: "sha256",
+    digest: "a".repeat(64),
+  });
 });
 
 Deno.test("capability workbench refuses a plan with another registry fingerprint", async () => {

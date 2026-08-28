@@ -36,8 +36,10 @@ const CLIENT_META = {
 };
 
 /**
- * Read-only stateless HTTP probe. It verifies the health route, discovers the
- * server, then lists its tools and resources without a session or SSE stream.
+ * Read-only stateless HTTP probe. When a published provider declares a health
+ * route, it verifies that route, discovers the server, then lists its tools
+ * and resources without a session or SSE stream. A provider with no health
+ * route stays literally unavailable to this fleet projection.
  */
 export class HttpMcpProbe implements McpProbe {
   readonly #fetch: typeof fetch;
@@ -61,6 +63,20 @@ export class HttpMcpProbe implements McpProbe {
       resourceUris: [],
       viewerUris: [],
     });
+
+    if (!server.healthUrl) {
+      return {
+        checkedAt,
+        status: "unavailable",
+        latencyMs: elapsed(this.#monotonicNow(), startedAt),
+        mcp: {
+          ...emptyMcp(),
+          error: "No provider health endpoint is declared.",
+        },
+        error:
+          "No provider health endpoint is declared; fleet discovery is intentionally unavailable.",
+      };
+    }
 
     let healthResponse: Response;
     try {

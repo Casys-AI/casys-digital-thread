@@ -27,6 +27,15 @@ Audience: both · Diátaxis: reference · Kind: coverage
 This surface gives an agent a scalable project source tree. It does **not** make draft
 bytes admitted product evidence.
 
+The fixed `mechanism-source@1` attachment role is the bounded draft bridge to the
+provider-neutral prescribed-kinematics case review. It records exact authoring edges for
+one source file, assembly `PartUsage`, and body `PartUsage`s; that later review
+recrosses the workspace and architecture before any L1 case can be sealed. This is not a
+runtime claim: the server-owned Chrono binding stays `unqualified` and its runtime mode
+`unavailable` until the separate live qualification proves it. No workspace mutation or
+attachment can promote that state, call a provider, approve MRTR, or create L3/L4/L5
+evidence.
+
 Vertical 2 is the only public technical-source authority for CAD, Modelica and SPICE:
 `project_technical_source_capture` names `projectId`, `workspaceRevision`,
 `attachmentId` and `attachmentRevision`. The server resolves the active attachment head,

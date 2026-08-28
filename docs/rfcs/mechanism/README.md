@@ -2,19 +2,20 @@
 
 Audience: both · Diátaxis: none · Kind: RFC index
 
-This folder keeps one deliberately parked provider decision. It does not widen the
-current assembly-integrity contract and does not authorize a Chrono implementation.
+This folder preserves the historical provider decision that led to the current bounded
+mechanism vertical. It is not the living contract and does not widen assembly integrity.
 
 | RFC | Status | Purpose |
 | --- | --- | --- |
-| [Parked Chrono preference](mcp-chrono-provider.md) | `deferred` | Record a future provider candidate; this folder is not a work brief |
+| [Chrono provider decision](mcp-chrono-provider.md) | `implemented` | Historical decision; read the living prescribed-kinematics reference |
 
-The capability available today remains the provider-neutral **static** assembly
-integrity vertical: canonical STEP import, topology, immediate-occurrence placement
-recross, and pairwise intersection. Its living contracts are the
+Static assembly integrity remains a distinct provider-neutral vertical: canonical STEP
+import, topology, immediate-occurrence placement recross, and pairwise intersection.
+Its living contracts are the
 [static assembly basis](../../reference/domains/cad/static-assembly-basis.md) and
 [assembly integrity](../../reference/domains/cad/assembly-integrity.md).
 
-Motion, joint constraints, trajectory clearance, contact dynamics, and multibody
-dynamics remain unavailable until a separately registered and runtime-proven vertical
-exists.
+The separate prescribed-kinematics vertical is registered, but its Chrono runtime is
+still `unqualified`/`unavailable` pending a live emulation probe. Motion, trajectory
+clearance, contact dynamics, forces, strength, safety, and manufacturing remain outside
+both verticals.

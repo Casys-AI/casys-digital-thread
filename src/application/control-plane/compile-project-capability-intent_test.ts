@@ -11,6 +11,8 @@ import {
   ELECTRONICS_RUN_ADMITTED_SPICE_CAPABILITY,
   GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY,
   GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY,
+  MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY,
+  MECHANICS_OBSERVE_STATIC_STRUCTURAL_SENSITIVITY_CAPABILITY,
   MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY,
   MODEL_EVALUATE_REQUIREMENT_CAPABILITY,
   SIMULATION_RUN_ADMITTED_MODELICA_CAPABILITY,
@@ -27,6 +29,8 @@ import type {
 import {
   ADMITTED_MODELICA_THERMAL_VERIFICATION_AUTHORITY,
   ADMITTED_SPICE_ELECTRICAL_VERIFICATION_AUTHORITY,
+  PRESCRIBED_KINEMATICS_VERIFICATION_AUTHORITY,
+  STATIC_STRUCTURAL_FEA_SENSITIVITY_VERIFICATION_AUTHORITY,
   STATIC_STRUCTURAL_FEA_VERIFICATION_AUTHORITY,
 } from "../../orchestration/operations/brief-capability-intent-routes.ts";
 import { engineeringOperationRegistry } from "../../orchestration/operations/registry.ts";
@@ -174,6 +178,51 @@ Deno.test("the real route table and registry forecast the complete admitted lamp
       ],
     },
   ]);
+});
+
+Deno.test("sensitivity is an explicit brief authority and static FEA does not imply it", async () => {
+  const ordinaryStatic = await compileProjectCapabilityIntent(
+    briefOf([
+      verification(
+        "verify-static-fea",
+        "Check the static mechanical proof.",
+        STATIC_STRUCTURAL_FEA_VERIFICATION_AUTHORITY,
+      ),
+    ]),
+    engineeringOperationRegistry,
+  );
+  assertEquals(
+    ordinaryStatic.capabilityRequirements.some((requirement) =>
+      requirement.id === MECHANICS_OBSERVE_STATIC_STRUCTURAL_SENSITIVITY_CAPABILITY.id
+    ),
+    false,
+  );
+
+  const sensitivity = await compileProjectCapabilityIntent(
+    briefOf([
+      verification(
+        "observe-static-sensitivity",
+        "Observe the admitted finite-difference structural sensitivity.",
+        STATIC_STRUCTURAL_FEA_SENSITIVITY_VERIFICATION_AUTHORITY,
+      ),
+    ]),
+    engineeringOperationRegistry,
+  );
+  assertEquals(sensitivity.status, "resolved");
+  assertEquals(
+    sensitivity.capabilityRequirements.some((requirement) =>
+      requirement.id ===
+        MECHANICS_OBSERVE_STATIC_STRUCTURAL_SENSITIVITY_CAPABILITY.id &&
+      requirement.version ===
+        MECHANICS_OBSERVE_STATIC_STRUCTURAL_SENSITIVITY_CAPABILITY.version
+    ),
+    true,
+  );
+  assertEquals(sensitivity.authorities, [{
+    authority: STATIC_STRUCTURAL_FEA_SENSITIVITY_VERIFICATION_AUTHORITY,
+    resolution: "resolved",
+    operations: [{ id: "analyze.run-fea-sensitivity", version: "1" }],
+  }]);
 });
 
 Deno.test("brief capability intent changes for an authority or routed capability change", async () => {
@@ -352,6 +401,33 @@ Deno.test("a SysML-only brief forecasts no CAD, FEA, Modelica, SPICE, or Chrono 
   assertEquals(intent.status, "resolved");
   assertEquals(intent.authorities, []);
   assertEquals(intent.capabilityRequirements, []);
+});
+
+Deno.test("a prescribed-kinematics brief authority proposes only the provider-neutral mechanics capability", async () => {
+  const intent = await compileProjectCapabilityIntent(
+    briefOf([
+      verification(
+        "verify-prescribed-kinematics",
+        "Observe prescribed mechanism poses.",
+        PRESCRIBED_KINEMATICS_VERIFICATION_AUTHORITY,
+      ),
+    ]),
+    engineeringOperationRegistry,
+  );
+
+  assertEquals(intent.status, "resolved");
+  assertEquals(intent.capabilityRequirements, [
+    qualified(MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY),
+  ]);
+  assertEquals(intent.authorities, [{
+    authority: PRESCRIBED_KINEMATICS_VERIFICATION_AUTHORITY,
+    resolution: "resolved",
+    operations: [{ id: "verify.run-prescribed-kinematics", version: "1" }],
+  }]);
+  const serialised = JSON.stringify(intent);
+  for (const forbidden of ["chrono", "image", "endpoint", "tool", "args"]) {
+    assertEquals(serialised.includes(forbidden), false, forbidden);
+  }
 });
 
 function briefOf(items: readonly ProjectBriefItem[]): ProjectBriefRevision {
