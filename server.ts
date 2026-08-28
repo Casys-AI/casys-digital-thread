@@ -176,36 +176,17 @@ import { ControlPlane } from "./src/application/control-plane/control-plane.ts";
 import { EngineeringProjectCommandError } from "./src/application/use-cases/project/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "./src/application/use-cases/project/project-brief-command-service.ts";
 import { ProjectCapabilityAuthorizationService } from "./src/application/control-plane/project-capability-authorization-service.ts";
-import {
-  FixedCapabilityRuntimeAdminLockReader,
-  FixedCapabilityRuntimeAdminPolicyReader,
-  ProjectCapabilityRuntimeContextCompiler,
-} from "./src/application/control-plane/project-capability-runtime-context-compiler.ts";
 import { CapabilityRuntimeSupervisor } from "./src/application/control-plane/capability-runtime-supervisor.ts";
 import { CapabilityRuntimeExecutionSessionCoordinator } from "./src/application/control-plane/capability-runtime-execution-session.ts";
+import { ProjectCapabilityJitDemandReader } from "./src/application/control-plane/project-capability-jit-demand-reader.ts";
 import {
   FileCapabilityRuntimeHostMutationLock,
-  FileCapabilityRuntimeJournal,
   FileCapabilityRuntimeLeaseStore,
 } from "./src/adapters/control-plane/file-capability-runtime-host-stores.ts";
 import { createCapabilityRuntimeHostAdapter } from "./src/adapters/control-plane/compose-capability-runtime-host.ts";
-import { GroupCapabilityRuntimeHostObservationReader } from "./src/adapters/control-plane/group-capability-runtime-host-observation-reader.ts";
-import { createFirstPartyCapabilityRuntimeLaunchGroupRegistry } from "./src/adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
 import { CapabilityRuntimeLaunchGroupSupervisor } from "./src/application/control-plane/capability-runtime-launch-group-supervisor.ts";
 import { CapabilityRuntimePreloadScheduler } from "./src/application/control-plane/capability-runtime-preload-scheduler.ts";
-import type { CapabilityRuntimeSecretSlotObserver } from "./src/application/ports/out/capability/capability-runtime-supervisor.ts";
-import { LocalMicrosandboxCapabilityRuntimeCache } from "./src/adapters/control-plane/microsandbox-capability-runtime-cache.ts";
-import {
-  createLocalMicrosandboxSdk,
-  microsandboxHostArchitecture,
-} from "./src/adapters/shared/execution/microsandbox-ephemeral-execution-backend.ts";
-import { CALCULIX_MICROSANDBOX_WORKER_CONTRACT } from "./src/adapters/fea/isolated-v3/calculix-static-proof-v1/worker-contract.ts";
-import { FileProjectCapabilityLedgerStore } from "./src/adapters/control-plane/file-project-capability-ledger-store.ts";
-import { createFirstPartyCapabilityRuntimeCatalog } from "./src/adapters/control-plane/first-party-capability-binding-catalog.ts";
-import {
-  type CapabilityRuntimeAdminLock,
-  type CapabilityRuntimeAdminPolicy,
-} from "./src/application/control-plane/read-model/capability-runtime-catalog.ts";
+import { createLocalCapabilityRuntimeReadComposition } from "./src/adapters/control-plane/local-capability-runtime-read-composition.ts";
 import {
   listRegisteredEngineeringOperations,
   REGISTERED_ENGINEERING_OPERATION_REGISTRY,
@@ -929,96 +910,38 @@ async function createProjectControl(
 
   const activeProjectDirectory = options.activeProjectDirectory ??
     DEFAULT_ACTIVE_PROJECT_DIRECTORY;
-  const capabilityCatalog = await createFirstPartyCapabilityRuntimeCatalog();
-  const capabilityLaunchGroups =
-    await createFirstPartyCapabilityRuntimeLaunchGroupRegistry();
-  const capabilityRuntimeJournal = new FileCapabilityRuntimeJournal();
+  const capabilityRead = await createLocalCapabilityRuntimeReadComposition({
+    ledgerDirectory: options.projectCapabilityLedgerDirectory ??
+      DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY,
+    calculixExecutionProfile: calculixCapability.localProfile === undefined
+      ? undefined
+      : {
+        imageReference: calculixCapability.localProfile.runtimeBackend.imageReference,
+        imageDigest: calculixCapability.localProfile.runtimeBackend.imageDigest,
+        profileFingerprint: calculixCapability.localProfile.profileFingerprint,
+      },
+  });
   const capabilityRuntimeLeases = new FileCapabilityRuntimeLeaseStore(
     DEFAULT_CAPABILITY_RUNTIME_LEASE_DIRECTORY,
   );
   const capabilityRuntimeMutationLock = new FileCapabilityRuntimeHostMutationLock();
-  // This H1 group has no secret slots. A future nonempty slot is unavailable
-  // by default; no value crosses this server composition boundary.
-  const capabilityRuntimeSecrets: CapabilityRuntimeSecretSlotObserver = {
-    observe(slots) {
-      return Promise.resolve(
-        new Map(slots.map((slot) => [slot, "unavailable" as const])),
-      );
-    },
-  };
   const capabilityRuntimeHost = createCapabilityRuntimeHostAdapter({
-    registry: capabilityLaunchGroups,
-    journal: capabilityRuntimeJournal,
-    secrets: capabilityRuntimeSecrets,
+    registry: capabilityRead.launchGroups,
+    journal: capabilityRead.journal,
+    secrets: capabilityRead.secrets,
   });
   const capabilityRuntimeGroups = new CapabilityRuntimeLaunchGroupSupervisor({
-    groups: capabilityLaunchGroups,
-    journal: capabilityRuntimeJournal,
+    groups: capabilityRead.launchGroups,
+    journal: capabilityRead.journal,
     leases: capabilityRuntimeLeases,
-    states: capabilityRuntimeHost,
+    states: capabilityRead.composeObserver,
     host: capabilityRuntimeHost,
-    secrets: capabilityRuntimeSecrets,
+    secrets: capabilityRead.secrets,
     lock: capabilityRuntimeMutationLock,
   });
-  const capabilityHost = new GroupCapabilityRuntimeHostObservationReader(
-    capabilityCatalog,
-    capabilityRuntimeHost,
-  );
-  const capabilityPolicy: CapabilityRuntimeAdminPolicy = {
-    schemaVersion: "capability-runtime-admin-policy/1.0",
-    disabledBindingIds: [],
-    preferences: [],
-  };
-  const capabilityLock: CapabilityRuntimeAdminLock = {
-    schemaVersion: "capability-runtime-admin-lock/1.0",
-    revision: 0,
-    previous: null,
-    units: [],
-  };
-  const capabilityLedgers = new FileProjectCapabilityLedgerStore(
-    options.projectCapabilityLedgerDirectory ??
-      DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY,
-  );
-  const capabilityContexts = new ProjectCapabilityRuntimeContextCompiler({
-    registry: { list: listRegisteredEngineeringOperations },
-    catalog: capabilityCatalog,
-    policy: new FixedCapabilityRuntimeAdminPolicyReader(capabilityPolicy),
-    host: capabilityHost,
-    lock: new FixedCapabilityRuntimeAdminLockReader(capabilityLock),
-    ledgers: capabilityLedgers,
-  });
   const capabilityRuntime = new CapabilityRuntimeSupervisor({
-    contexts: capabilityContexts,
+    contexts: capabilityRead.contexts,
     operations: { require: requireRegisteredEngineeringOperation },
-  });
-  const capabilityRuntimeSession = new CapabilityRuntimeExecutionSessionCoordinator({
-    contexts: capabilityContexts,
-    leases: capabilityRuntimeLeases,
-    groups: capabilityRuntimeGroups,
-    // Lazy exact inspection only: no image load, pull, sandbox create or
-    // Compose start occurs during server construction or queueing.
-    microsandbox: new LocalMicrosandboxCapabilityRuntimeCache(
-      createLocalMicrosandboxSdk,
-      calculixCapability.localProfile === undefined ? [] : [{
-        material: {
-          unitId: "casys.calculix-worker",
-          materialId: "calculix-worker-image",
-        },
-        image: {
-          reference: calculixCapability.localProfile.runtimeBackend.imageReference,
-          manifestDigest:
-            `sha256:${calculixCapability.localProfile.runtimeBackend.imageDigest.digest}`,
-          os: "linux",
-          architecture: microsandboxHostArchitecture(),
-          user: CALCULIX_MICROSANDBOX_WORKER_CONTRACT.expectedImageUser,
-          entrypoint: [
-            CALCULIX_MICROSANDBOX_WORKER_CONTRACT.executable,
-            ...CALCULIX_MICROSANDBOX_WORKER_CONTRACT.args,
-          ],
-        },
-        executionProfileFingerprint: calculixCapability.localProfile.profileFingerprint,
-      }],
-    ),
   });
   const runtime = await createEngineeringProjectCommandRuntime({
     projectId: options.projectId,
@@ -1040,13 +963,26 @@ async function createProjectControl(
       },
     ),
   });
+  const capabilityJitDemand = new ProjectCapabilityJitDemandReader({
+    projects: runtime.projects,
+    contexts: capabilityRead.contexts,
+  });
+  const capabilityRuntimeSession = new CapabilityRuntimeExecutionSessionCoordinator({
+    contexts: capabilityRead.contexts,
+    leases: capabilityRuntimeLeases,
+    groups: capabilityRuntimeGroups,
+    // Lazy exact inspection only: no image load, pull, sandbox create or
+    // Compose start occurs during server construction or queueing.
+    microsandbox: capabilityRead.microsandbox,
+    hasRemainingJitDemand: (input) => capabilityJitDemand.hasRemainingDemand(input),
+  });
   const capabilityAuthorization = new ProjectCapabilityAuthorizationService({
-    ledgers: capabilityLedgers,
+    ledgers: capabilityRead.ledgers,
     registry: { list: listRegisteredEngineeringOperations },
-    catalog: capabilityCatalog,
-    policy: capabilityPolicy,
-    host: capabilityHost,
-    lock: capabilityLock,
+    catalog: capabilityRead.catalog,
+    policy: capabilityRead.policy,
+    host: capabilityRead.host,
+    lock: capabilityRead.lock,
     preloadScheduler: new CapabilityRuntimePreloadScheduler({
       host: capabilityRuntimeGroups,
     }),

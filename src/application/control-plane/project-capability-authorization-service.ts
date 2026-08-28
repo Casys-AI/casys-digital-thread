@@ -36,7 +36,11 @@ import type { ProjectCapabilityLedgerStore } from "../ports/out/project-capabili
 import type { EngineeringOperationRegistry } from "../../orchestration/operations/operation-contract.ts";
 import type { BriefCapabilityIntentRouteTable } from "../../orchestration/operations/brief-capability-intent-routes.ts";
 import type { CapabilityRuntimePreloadScheduler } from "./capability-runtime-preload-scheduler.ts";
-import type { CapabilityRuntimeHostObservationReader } from "./project-capability-runtime-context-compiler.ts";
+import type {
+  CapabilityRuntimeAdminLockReader,
+  CapabilityRuntimeAdminPolicyReader,
+  CapabilityRuntimeHostObservationReader,
+} from "./project-capability-runtime-context-compiler.ts";
 
 export class ProjectCapabilityAuthorizationError extends Error {}
 
@@ -45,12 +49,16 @@ export interface ProjectCapabilityAuthorizationServiceDependencies {
   readonly registry: Pick<EngineeringOperationRegistry, "list">;
   readonly routes?: BriefCapabilityIntentRouteTable;
   readonly catalog: CapabilityRuntimeCatalog;
-  readonly policy: CapabilityRuntimeAdminPolicy;
+  /** Durable local administrator policy or a fixed test fixture. */
+  readonly policy:
+    | CapabilityRuntimeAdminPolicy
+    | CapabilityRuntimeAdminPolicyReader;
   /** Static fixture or fresh, read-only host observation at review time. */
   readonly host:
     | CapabilityRuntimeHostObservation
     | CapabilityRuntimeHostObservationReader;
-  readonly lock: CapabilityRuntimeAdminLock;
+  /** Durable local desired-state lock or a fixed test fixture. */
+  readonly lock: CapabilityRuntimeAdminLock | CapabilityRuntimeAdminLockReader;
   /** Non-blocking host-material preload after durable authorization only. */
   readonly preloadScheduler?: Pick<CapabilityRuntimePreloadScheduler, "schedule">;
   readonly now?: () => string;
@@ -357,9 +365,9 @@ export class ProjectCapabilityAuthorizationService {
       requirements: demand.plannedCeiling.capabilityRequirements,
       unresolvedBlockers,
       catalog: this.dependencies.catalog,
-      policy: this.dependencies.policy,
+      policy: await this.#policy(),
       host: await this.#host(),
-      lock: this.dependencies.lock,
+      lock: await this.#lock(),
     });
     if (!ledger || !envelope) {
       return { status: "not-authorized", ledger: null, proposal };
@@ -479,6 +487,16 @@ export class ProjectCapabilityAuthorizationService {
     return "read" in host ? await host.read() : structuredClone(host);
   }
 
+  async #policy(): Promise<CapabilityRuntimeAdminPolicy> {
+    const policy = this.dependencies.policy;
+    return "read" in policy ? await policy.read() : structuredClone(policy);
+  }
+
+  async #lock(): Promise<CapabilityRuntimeAdminLock> {
+    const lock = this.dependencies.lock;
+    return "read" in lock ? await lock.read() : structuredClone(lock);
+  }
+
   private async proposeForBrief(
     project: EngineeringProjectSnapshot,
     brief: ProjectBriefRevision,
@@ -499,9 +517,9 @@ export class ProjectCapabilityAuthorizationService {
       },
       intent,
       catalog: this.dependencies.catalog,
-      policy: this.dependencies.policy,
+      policy: await this.#policy(),
       host: await this.#host(),
-      lock: this.dependencies.lock,
+      lock: await this.#lock(),
     });
   }
 }

@@ -20,8 +20,17 @@ import {
 } from "../../domain/kernel/deterministic-json.ts";
 import type {
   CapabilityRuntimeAdminLock,
+  CapabilityRuntimeAdminPolicy,
+  CapabilityRuntimeCatalog,
 } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
-import { validateCapabilityRuntimeAdminLock } from "./capability-runtime-catalog.ts";
+import {
+  validateCapabilityRuntimeAdminLock,
+  validateCapabilityRuntimeAdminPolicy,
+} from "./capability-runtime-catalog.ts";
+import {
+  CAPABILITY_RUNTIME_ADMIN_LOCK_SCHEMA_VERSION,
+  CAPABILITY_RUNTIME_ADMIN_POLICY_SCHEMA_VERSION,
+} from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
 import type {
   CapabilityRuntimeHostMutationLock,
   CapabilityRuntimeJournal,
@@ -34,6 +43,53 @@ import {
 } from "../shared/wal/durable-attempt-file-writes.ts";
 
 const DEFAULT_DIRECTORY = "state/local/capability-runtime-host";
+
+/**
+ * Local administrator policy. It is deliberately absent-by-default: absence
+ * means the reviewed catalogue order is used, not that a caller may nominate a
+ * binding. A malformed or stale file is an operational configuration error,
+ * never a reason to fall back silently.
+ */
+export class FileCapabilityRuntimeAdminPolicyStore {
+  readonly #path: string;
+
+  constructor(
+    path = `${DEFAULT_DIRECTORY}/admin-policy.json`,
+    private readonly catalog?: CapabilityRuntimeCatalog,
+  ) {
+    this.#path = requiredPath(path);
+  }
+
+  async read(): Promise<CapabilityRuntimeAdminPolicy> {
+    try {
+      return await readCanonical(
+        this.#path,
+        (value) => validateCapabilityRuntimeAdminPolicy(value, this.catalog),
+        "Capability runtime admin policy",
+      );
+    } catch (error) {
+      if (!isNotFound(error)) throw error;
+      return validateCapabilityRuntimeAdminPolicy({
+        schemaVersion: CAPABILITY_RUNTIME_ADMIN_POLICY_SCHEMA_VERSION,
+        disabledBindingIds: [],
+        preferences: [],
+      }, this.catalog);
+    }
+  }
+
+  /** Administrative writes are local-only and never exposed through MCP/UI. */
+  async save(value: CapabilityRuntimeAdminPolicy): Promise<void> {
+    const next = validateCapabilityRuntimeAdminPolicy(value, this.catalog);
+    const directory = parent(this.#path);
+    await Deno.mkdir(directory, { recursive: true });
+    await replaceAttemptFileDurably(
+      this.#path,
+      `${deterministicJson(next)}\n`,
+      directory,
+      "Capability runtime admin policy made no write progress.",
+    );
+  }
+}
 
 /**
  * Every intent and terminal outcome is a create-new durable document.  No
@@ -274,15 +330,26 @@ export class FileCapabilityRuntimeLeaseStore implements CapabilityRuntimeLeaseSt
 export class FileCapabilityRuntimeAdminLockStore {
   readonly #path: string;
 
-  constructor(path = `${DEFAULT_DIRECTORY}/admin-lock.json`) {
+  constructor(
+    path = `${DEFAULT_DIRECTORY}/admin-lock.json`,
+    private readonly catalog?: CapabilityRuntimeCatalog,
+  ) {
     this.#path = requiredPath(path);
   }
 
-  async read(): Promise<CapabilityRuntimeAdminLock | undefined> {
+  /**
+   * The empty local lock is a safe desired-state baseline: it authorizes no
+   * activation by itself and keeps every selected material desired `absent`.
+   */
+  async read(): Promise<CapabilityRuntimeAdminLock> {
+    return await this.#readStored() ?? await this.#empty();
+  }
+
+  async #readStored(): Promise<CapabilityRuntimeAdminLock | undefined> {
     try {
       return await readCanonical(
         this.#path,
-        (value) => validateCapabilityRuntimeAdminLock(value),
+        (value) => validateCapabilityRuntimeAdminLock(value, this.catalog),
         "Capability runtime admin lock",
       );
     } catch (error) {
@@ -310,11 +377,11 @@ export class FileCapabilityRuntimeAdminLockStore {
   }
 
   async #saveLocked(value: CapabilityRuntimeAdminLock): Promise<void> {
-    const next = await validateCapabilityRuntimeAdminLock(value);
+    const next = await validateCapabilityRuntimeAdminLock(value, this.catalog);
     const directory = parent(this.#path);
     await Deno.mkdir(directory, { recursive: true });
     const text = `${deterministicJson(next)}\n`;
-    const current = await this.read();
+    const current = await this.#readStored();
     if (!current) {
       try {
         await writeNewAttemptFileDurably(
@@ -346,6 +413,15 @@ export class FileCapabilityRuntimeAdminLockStore {
       directory,
       "Capability runtime admin lock made no write progress.",
     );
+  }
+
+  async #empty(): Promise<CapabilityRuntimeAdminLock> {
+    return await validateCapabilityRuntimeAdminLock({
+      schemaVersion: CAPABILITY_RUNTIME_ADMIN_LOCK_SCHEMA_VERSION,
+      revision: 0,
+      previous: null,
+      units: [],
+    }, this.catalog);
   }
 }
 

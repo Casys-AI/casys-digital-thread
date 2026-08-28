@@ -1,22 +1,33 @@
 /** Exact local Microsandbox cache observation for an already catalogued image. */
 
 import type { CapabilityRuntimeMicrosandboxCache } from "../../application/control-plane/capability-runtime-execution-session.ts";
+import type {
+  CapabilityRuntimeStateObserver,
+} from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import {
   assertExactMicrosandboxImageInspection,
   type ExactMicrosandboxImageExpectation,
   type MicrosandboxSdk,
 } from "../shared/execution/microsandbox-ephemeral-execution-backend.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
+import {
+  type CapabilityRuntimeMaterialIdentity,
+  capabilityRuntimeMaterialKey,
+  type CapabilityRuntimeObservedState,
+  type CapabilityRuntimeQualificationState,
+} from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 
 export interface MicrosandboxCapabilityRuntimeImageExpectation {
   readonly material: { readonly unitId: string; readonly materialId: string };
   readonly image: ExactMicrosandboxImageExpectation;
   /** Server-selected execution profile which owns image invocation semantics. */
-  readonly executionProfileFingerprint: ContentFingerprint;
+  readonly executionProfileFingerprint?: ContentFingerprint;
+  /** Qualification remains code-owned even when this object is used read-only. */
+  readonly qualification?: CapabilityRuntimeQualificationState;
 }
 
 export class LocalMicrosandboxCapabilityRuntimeCache
-  implements CapabilityRuntimeMicrosandboxCache {
+  implements CapabilityRuntimeMicrosandboxCache, CapabilityRuntimeStateObserver {
   readonly #expectations: ReadonlyMap<
     string,
     MicrosandboxCapabilityRuntimeImageExpectation
@@ -64,7 +75,7 @@ export class LocalMicrosandboxCapabilityRuntimeCache
       );
     }
     if (
-      !sameFingerprint(
+      !expected.executionProfileFingerprint || !sameFingerprint(
         input.executionProfileFingerprint,
         expected.executionProfileFingerprint,
       )
@@ -84,6 +95,59 @@ export class LocalMicrosandboxCapabilityRuntimeCache
       );
     }
   }
+
+  /**
+   * Read-only local cache observation. It does not import an OCI archive,
+   * create a sandbox, or lend execution-profile authority to this read. A
+   * missing or non-exact cache remains literally absent/unqualified.
+   */
+  async observe(
+    materials: readonly CapabilityRuntimeMaterialIdentity[],
+  ): Promise<ReadonlyMap<string, CapabilityRuntimeObservedState>> {
+    const requested = materials.flatMap((material) => {
+      const expected = this.#expectations.get(materialKey(material));
+      return expected ? [{ material, expected }] : [];
+    });
+    if (requested.length === 0) return new Map();
+    let sdk: MicrosandboxSdk | undefined;
+    try {
+      sdk = await this.sdk();
+      sdk.assertLocalBackend();
+    } catch {
+      return new Map(requested.map(({ material }) => [
+        capabilityRuntimeMaterialKey(material),
+        absentState(),
+      ]));
+    }
+    const observed = await Promise.all(requested.map(async ({ material, expected }) => {
+      if (
+        expected.image.manifestDigest !== `sha256:${material.imageDigest}` ||
+        !expected.image.reference.endsWith(`@sha256:${material.imageDigest}`)
+      ) {
+        return [capabilityRuntimeMaterialKey(material), absentState()] as const;
+      }
+      try {
+        const inspection = await sdk!.inspectImage(expected.image.reference);
+        assertExactMicrosandboxImageInspection(inspection, expected.image);
+        return [capabilityRuntimeMaterialKey(material), {
+          material: "installed" as const,
+          runtime: "inactive" as const,
+          qualification: expected.qualification ?? "unqualified",
+        }] as const;
+      } catch {
+        return [capabilityRuntimeMaterialKey(material), absentState()] as const;
+      }
+    }));
+    return new Map(observed);
+  }
+}
+
+function absentState(): CapabilityRuntimeObservedState {
+  return {
+    material: "absent",
+    runtime: "inactive",
+    qualification: "unqualified",
+  };
 }
 
 function sameFingerprint(

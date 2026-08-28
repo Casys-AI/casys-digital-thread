@@ -7,6 +7,29 @@ engineering method, or interpret an engineering result. The initial enrolled top
 the exact `casys-syson@1.0.0` group: Postgres, SysON and `mcp-syson`, with only
 `127.0.0.1:3009` published. The historical SysON UI port 8180 is not part of this group.
 
+## Durable local read model
+
+The server rebuilds its runtime context for every review/queue decision from the trusted
+catalogue, actual local read-only observation, the append-only authorization ledger, and
+two strict local administrative files. An absent `admin-policy.json` is the neutral
+trusted-catalogue order. An absent `admin-lock.json` is revision 0 with no units: it
+requests no desired activation, but does not prevent a brief-approved acquisition. A
+malformed, non-canonical, unknown-field, stale-unit or otherwise unreadable file fails
+closed; it never silently becomes the neutral default.
+
+Observation is partitioned by code-owned material coverage. The Compose observer owns
+only enrolled exact launch-group materials and the Microsandbox observer owns only the
+exact CalculiX microVM cache contract. A duplicate coverage declaration, unexpected
+material response, or missing response for an owned material is rejected. A material
+which no local observer owns remains literally `unavailable` in the Workbench rather
+than being guessed present or absent.
+
+`GET /api/project/capabilities` exposes the existing redacted
+`project-capability-workbench/1.0` projection through the native Workbench BFF. It has
+no POST/SSE counterpart in this lot and contains no Docker argv, image repository,
+ports, mounts, credentials, secret-slot names, or mutation control. The visual card is
+deliberately deferred; the endpoint is the read-only integration surface.
+
 ```text
 catalogue material -> exact launch-group reference + fingerprint
                              |
@@ -72,6 +95,11 @@ brief confirmation or a later bounded amendment. Only then may the preload sched
 acquire exact persistent material in the background; preload never starts Compose.
 Activation happens immediately before the covered run, after a fresh operational-plan
 recheck, and leaves the run/WAL unchanged if it cannot prove the group active.
+
+Terminal release rereads the exact current `EngineeringProject` demand before stopping a
+group. A missing project, unreadable runtime context, unresolved JIT demand or stale
+catalogue link blocks cleanup rather than releasing the final lease or stopping a shared
+runtime. An active sibling lease also retains the group.
 
 This is operational authorization only. MRTR still admits the engineering method, inputs
 and criteria. L3 observations, L4 evaluation and any L5 human decision remain

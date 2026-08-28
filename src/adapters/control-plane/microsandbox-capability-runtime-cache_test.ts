@@ -1,4 +1,4 @@
-import { assertRejects } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import { LocalMicrosandboxCapabilityRuntimeCache } from "./microsandbox-capability-runtime-cache.ts";
 
 const DIGEST = "a".repeat(64);
@@ -18,6 +18,17 @@ Deno.test("Microsandbox capability cache observes an exact pinned image without 
     imageReference: REFERENCE,
     executionProfileFingerprint: PROFILE_FINGERPRINT,
   });
+  assertEquals(
+    await cache.observe([{
+      unitId: "casys.worker",
+      materialId: "worker",
+      imageDigest: DIGEST,
+    }]),
+    new Map([[
+      "casys.worker\u0000worker",
+      { material: "installed", runtime: "inactive", qualification: "unqualified" },
+    ]]),
+  );
 });
 
 Deno.test("Microsandbox capability cache fails closed on a mismatched inspected digest", async () => {

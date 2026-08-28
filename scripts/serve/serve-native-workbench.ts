@@ -144,6 +144,8 @@ import type {
 } from "../../src/adapters/architecture/renderer/product-structure-catalog.ts";
 import { resolveGenericProductStructureCatalog } from "../../src/adapters/architecture/renderer/product-structure-catalog.ts";
 import type { GenericGeometryCaptureReader } from "../../src/adapters/cad/canonical/geometry-bundle-product-catalog.ts";
+import type { ProjectCapabilityWorkbenchReader } from "../../src/application/control-plane/project-capability-workbench.ts";
+import { createLocalCapabilityRuntimeReadComposition } from "../../src/adapters/control-plane/local-capability-runtime-read-composition.ts";
 
 // ── Catalog resolution: generic active-project projection ────────────────────
 
@@ -252,6 +254,11 @@ export interface NativeWorkbenchHandlerOptions {
    * This is a read-only navigation projection, never a focus mutation.
    */
   projectCatalog?: () => Promise<NativeWorkbenchProjectCatalog>;
+  /**
+   * Redacted operational-capability projection. The native Workbench may
+   * observe it but never creates a runtime plan or host mutation.
+   */
+  capabilityWorkbench?: ProjectCapabilityWorkbenchReader;
 }
 
 export interface NativeWorkbenchProjectCatalogItem {
@@ -429,6 +436,10 @@ export function createNativeWorkbenchHandler(
     if (url.pathname === "/api/projects") {
       if (request.method !== "GET") return methodNotAllowed();
       return await serveProjectCatalog(options);
+    }
+    if (url.pathname === "/api/project/capabilities") {
+      if (request.method !== "GET") return methodNotAllowed();
+      return await serveProjectCapabilityWorkbench(options);
     }
     if (url.pathname === "/api/thread/product-navigation") {
       if (request.method !== "GET") return methodNotAllowed();
@@ -1524,6 +1535,8 @@ if (import.meta.main) {
   // reads existing immutable revisions and never seeds a fallback.
   const projectStore: EngineeringProjectRevisionStore =
     new FileEngineeringProjectRevisionStore(activeProjectDirectory);
+  const capabilityWorkbench = (await createLocalCapabilityRuntimeReadComposition())
+    .workbench;
   const subjectId = projectId === undefined
     ? undefined
     : await resolveNativeWorkbenchSubjectId(
@@ -1582,6 +1595,7 @@ if (import.meta.main) {
       readDeclaredCockpitFleet(
         cliArgs["fleet-manifest"] ?? "config/mcp-fleet.json",
       ),
+    capabilityWorkbench,
   });
   const workspaceHandler = workspaceId === undefined || !cockpitFocus
     ? handler
@@ -1690,6 +1704,27 @@ async function serveCockpitFleet(
     return json({ error: "fleet_unavailable" }, 404);
   }
   return json(projection, 200);
+}
+
+async function serveProjectCapabilityWorkbench(
+  options: NativeWorkbenchHandlerOptions,
+): Promise<Response> {
+  if (!options.capabilityWorkbench) {
+    return json({
+      error: "project_capability_workbench_unavailable",
+      message: "Operational capability projection is not configured.",
+    }, 503);
+  }
+  let context: ActiveTargetResolution;
+  try {
+    context = await resolveActiveProject(options);
+  } catch (error) {
+    if (error instanceof NativeWorkbenchProjectNotFoundError) {
+      return projectNotFound(error.projectId);
+    }
+    throw error;
+  }
+  return json(await options.capabilityWorkbench.read(context.project), 200);
 }
 
 async function serveProjectCatalog(

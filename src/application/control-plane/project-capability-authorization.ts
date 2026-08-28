@@ -13,6 +13,9 @@ import {
   engineeringCapabilityRequirementKey,
   type RequiredEngineeringCapability,
 } from "../../domain/capability/engineering-capability.ts";
+import {
+  validateCapabilityRuntimeLaunchGroupReference,
+} from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import type {
   AtomicCapabilityRuntimeUnit,
   CapabilityRuntimeBindingCandidate,
@@ -1092,6 +1095,7 @@ function validateAtomicMaterial(value: unknown): void {
     "imageReference",
     "platforms",
     "lifecycle",
+    "launchGroup",
     "effects",
   ], "Capability runtime material");
   if (
@@ -1106,6 +1110,12 @@ function validateAtomicMaterial(value: unknown): void {
     )
   ) {
     throw new TypeError("Capability runtime material is invalid.");
+  }
+  if (material.launchGroup !== null) {
+    validateCapabilityRuntimeLaunchGroupReference(
+      material.launchGroup,
+      "Capability runtime material launchGroup",
+    );
   }
   validateAtomicEffects(material.effects);
 }

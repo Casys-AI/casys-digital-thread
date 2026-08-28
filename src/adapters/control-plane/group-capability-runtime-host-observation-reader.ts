@@ -1,10 +1,11 @@
 /**
  * Read-only host view for sealed persistent Compose groups.
  *
- * It deliberately observes only materials owned by a registered group. Other
- * local images are neither claimed nor inspected; their own provider-specific
- * cache authorities remain separate. This keeps project planning honest while
- * avoiding a startup pull, service start, or speculative host claim.
+ * It observes only exact catalogue materials through their own read-only
+ * runtime authority (enrolled Compose group or exact Microsandbox cache).
+ * Other local images are neither claimed nor inspected. This keeps project
+ * planning honest while avoiding a startup pull, service start, or speculative
+ * host claim.
  */
 
 import type { CapabilityRuntimeStateObserver } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
@@ -25,16 +26,14 @@ export class GroupCapabilityRuntimeHostObservationReader
 
   async read(): Promise<CapabilityRuntimeHostObservation> {
     const materials = this.catalog.units.flatMap((unit) =>
-      unit.materials
-        .filter((material) => material.launchGroup !== null)
-        .map((material) => ({
-          identity: {
-            unitId: unit.id,
-            materialId: material.id,
-            imageDigest: digestFromReference(material.imageReference),
-          },
-          imageReference: material.imageReference,
-        }))
+      unit.materials.map((material) => ({
+        identity: {
+          unitId: unit.id,
+          materialId: material.id,
+          imageDigest: digestFromReference(material.imageReference),
+        },
+        imageReference: material.imageReference,
+      }))
     );
     const observed = await this.states.observe(
       materials.map((material) => material.identity),

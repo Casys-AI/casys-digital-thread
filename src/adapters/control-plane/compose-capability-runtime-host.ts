@@ -46,6 +46,20 @@ export type CapabilityRuntimeHostAdapter =
   & CapabilityRuntimeHostMutator
   & CapabilityRuntimeStateObserver;
 
+/**
+ * Read-only facade for consumers such as the native Workbench. It deliberately
+ * exposes no host-mutation method even though both facades share the same
+ * sealed Compose inspection implementation.
+ */
+export function createCapabilityRuntimeHostObserver(
+  options: CapabilityRuntimeHostAdapterOptions,
+): CapabilityRuntimeStateObserver {
+  const host = new ComposeCapabilityRuntimeHost(options);
+  return {
+    observe: (materials) => host.observe(materials),
+  };
+}
+
 export function createCapabilityRuntimeHostAdapter(
   options: CapabilityRuntimeHostAdapterOptions,
 ): CapabilityRuntimeHostAdapter {

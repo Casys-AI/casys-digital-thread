@@ -3,6 +3,10 @@ import {
   FileProjectCapabilityLedgerStore,
   InMemoryProjectCapabilityLedgerStore,
 } from "../../adapters/control-plane/file-project-capability-ledger-store.ts";
+import {
+  FileCapabilityRuntimeAdminLockStore,
+  FileCapabilityRuntimeAdminPolicyStore,
+} from "../../adapters/control-plane/file-capability-runtime-host-stores.ts";
 import { createFirstPartyCapabilityRuntimeCatalog } from "../../adapters/control-plane/first-party-capability-binding-catalog.ts";
 import { FileEngineeringProjectRevisionStore } from "../../adapters/shared/stores/engineering-project-store.ts";
 import { ProjectBriefCommandService } from "../use-cases/project/project-brief-command-service.ts";
@@ -27,26 +31,28 @@ Deno.test("brief capability authorization retains resolved candidates beside an 
       new Date(Date.parse("2026-08-29T00:00:00.000Z") + ++tick * 1_000).toISOString();
     const projects = new FileEngineeringProjectRevisionStore(directory);
     const briefs = new ProjectBriefCommandService(projects, now);
+    const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+    const preloads: unknown[] = [];
     const authorization = new ProjectCapabilityAuthorizationService({
       ledgers: new InMemoryProjectCapabilityLedgerStore(),
       registry: { list: listRegisteredEngineeringOperations },
-      catalog: await createFirstPartyCapabilityRuntimeCatalog(),
-      policy: {
-        schemaVersion: "capability-runtime-admin-policy/1.0",
-        disabledBindingIds: [],
-        preferences: [],
-      },
+      catalog,
+      policy: new FileCapabilityRuntimeAdminPolicyStore(
+        `${directory}/host/admin-policy.json`,
+        catalog,
+      ),
       host: {
         schemaVersion: "capability-runtime-host-observation/1.0",
         platform: "linux/arm64",
         emulatedPlatforms: [],
         images: [],
       },
-      lock: {
-        schemaVersion: "capability-runtime-admin-lock/1.0",
-        revision: 0,
-        previous: null,
-        units: [],
+      lock: new FileCapabilityRuntimeAdminLockStore(
+        `${directory}/host/admin-lock.json`,
+        catalog,
+      ),
+      preloadScheduler: {
+        schedule: (proposal) => preloads.push(proposal),
       },
       now,
     });
@@ -153,6 +159,16 @@ Deno.test("brief capability authorization retains resolved candidates beside an 
     );
     const finalized = await authorization.finalizeInitial(approved, proposal);
     assertEquals(finalized.effectiveEnvelope?.status, "authorized");
+    assertEquals(preloads.length, 1);
+    assertEquals(
+      (preloads[0] as { capabilityProposalFingerprint: unknown })
+        .capabilityProposalFingerprint,
+      proposal.capabilityProposalFingerprint,
+    );
+    await assertRejects(
+      () => Deno.stat(`${directory}/host/admin-lock.json`),
+      Deno.errors.NotFound,
+    );
     assertEquals(
       (await authorization.inspect(approved.project.id)).authorization,
       "authorized",

@@ -241,14 +241,28 @@ export async function validateCapabilityRuntimeAdminLock(
       }
     }
   }
+  const revision = nonNegativeInteger(root.revision, "$adminLock.revision");
+  const previous = root.previous === null
+    ? null
+    : fingerprint(root.previous, "$adminLock.previous");
+  if (revision === 0 && previous !== null) {
+    throw new TypeError(
+      "$adminLock revision 0 must not name a previous administrative lock.",
+    );
+  }
   return deepFreeze({
     schemaVersion: CAPABILITY_RUNTIME_ADMIN_LOCK_SCHEMA_VERSION,
-    revision: positiveInteger(root.revision, "$adminLock.revision"),
-    previous: root.previous === null
-      ? null
-      : fingerprint(root.previous, "$adminLock.previous"),
+    revision,
+    previous,
     units,
   });
+}
+
+function nonNegativeInteger(value: unknown, path: string): number {
+  if (!Number.isSafeInteger(value) || Number(value) < 0) {
+    throw new TypeError(`${path} must be a non-negative integer.`);
+  }
+  return Number(value);
 }
 
 function parseUnit(value: unknown, path: string): AtomicCapabilityRuntimeUnit {

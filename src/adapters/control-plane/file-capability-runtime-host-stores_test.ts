@@ -3,9 +3,14 @@ import {
   capabilityRuntimeLaunchGroupReference,
 } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import {
+  FileCapabilityRuntimeAdminLockStore,
+  FileCapabilityRuntimeAdminPolicyStore,
   FileCapabilityRuntimeJournal,
   FileCapabilityRuntimeLeaseStore,
 } from "./file-capability-runtime-host-stores.ts";
+import {
+  createFirstPartyCapabilityRuntimeCatalog,
+} from "./first-party-capability-binding-catalog.ts";
 import {
   createFirstPartyCapabilityRuntimeLaunchGroups,
 } from "./first-party-capability-runtime-launch-groups.ts";
@@ -87,6 +92,58 @@ Deno.test("file group journal is append-only and refuses an incomplete group out
       Error,
       "already exists with different content",
     );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("local capability admin readers default safely only when their files are absent", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "casys-capability-admin-" });
+  try {
+    const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+    const policyPath = `${directory}/admin-policy.json`;
+    const lockPath = `${directory}/admin-lock.json`;
+    const policy = new FileCapabilityRuntimeAdminPolicyStore(policyPath, catalog);
+    const lock = new FileCapabilityRuntimeAdminLockStore(lockPath, catalog);
+
+    assertEquals(await policy.read(), {
+      schemaVersion: "capability-runtime-admin-policy/1.0",
+      disabledBindingIds: [],
+      preferences: [],
+    });
+    assertEquals(await lock.read(), {
+      schemaVersion: "capability-runtime-admin-lock/1.0",
+      revision: 0,
+      previous: null,
+      units: [],
+    });
+
+    await Deno.writeTextFile(
+      policyPath,
+      JSON.stringify({
+        schemaVersion: "capability-runtime-admin-policy/1.0",
+        disabledBindingIds: [],
+        preferences: [],
+        invented: true,
+      }) + "\n",
+    );
+    await assertRejects(() => policy.read(), TypeError, "unsupported field");
+
+    await Deno.writeTextFile(
+      lockPath,
+      JSON.stringify({
+        schemaVersion: "capability-runtime-admin-lock/1.0",
+        revision: 0,
+        previous: null,
+        units: [{
+          id: "casys.unknown",
+          version: "1.0.0",
+          manifestFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+          desired: "active",
+        }],
+      }) + "\n",
+    );
+    await assertRejects(() => lock.read(), TypeError, "unknown unit");
   } finally {
     await Deno.remove(directory, { recursive: true });
   }

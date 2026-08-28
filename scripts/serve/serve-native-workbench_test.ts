@@ -167,6 +167,77 @@ Deno.test("native Workbench health is independent of focus and project state", a
   assertEquals(focusReads, 1);
 });
 
+Deno.test("native Workbench exposes the redacted capability projection by GET only", async () => {
+  const project = projectFixture("project-capabilities", "subject-capabilities");
+  let reads = 0;
+  const projection = {
+    schemaVersion: "project-capability-workbench/1.0",
+    project: {
+      id: "project-capabilities",
+      snapshotId: project.id,
+      revision: project.revision,
+    },
+    authorization: { status: "not-authorized", fingerprint: null },
+    demand: {
+      plannedCeiling: {
+        status: "resolved",
+        requirements: [],
+        fingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+      },
+      jit: {
+        status: "resolved",
+        requirements: [],
+        fingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
+      },
+    },
+    plan: { status: "ready", activation: "allowed", blockers: [] },
+    bindings: [],
+    units: [],
+    materials: [],
+    footprint: null,
+    effects: {
+      serviceCount: 0,
+      volumeCount: 0,
+      networkModes: [],
+      bindMountCount: 0,
+      deviceCount: 0,
+      licences: { reviewed: 0, unknown: 0 },
+      security: "reviewed",
+    },
+    projectionFingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+  } as never;
+  const handler = createNativeWorkbenchHandler({
+    store: new EmptyThreadStore(),
+    projectStore: new ProjectStore([project]),
+    projectId: project.project.id,
+    html: "unused",
+    capabilityWorkbench: {
+      read: (requested) => {
+        reads += 1;
+        assertEquals(requested.id, project.id);
+        return Promise.resolve(projection);
+      },
+    },
+  });
+
+  const response = await handler(
+    new Request("http://localhost/api/project/capabilities"),
+  );
+  assertEquals(response.status, 200);
+  const serialized = await response.text();
+  assertStringIncludes(serialized, "project-capability-workbench/1.0");
+  assertEquals(serialized.includes("docker"), false);
+  assertEquals(serialized.includes("credential"), false);
+  assertEquals(reads, 1);
+
+  const rejected = await handler(
+    new Request("http://localhost/api/project/capabilities", { method: "POST" }),
+  );
+  assertEquals(rejected.status, 405);
+  assertEquals(rejected.headers.get("Allow"), "GET");
+  assertEquals(reads, 1);
+});
+
 Deno.test("native Workbench exposes persisted projects without inventing a default focus", async () => {
   const focus = new MutableFocus(undefined);
   const catalog = {
