@@ -24,7 +24,7 @@ export function diagnoseBehaveFoundation(
     : installationPlan.status;
   const evidenceLevel = census.status === "candidate-ready" &&
       installationPlan?.status === "ready" &&
-      host.cachedExactMaterialIds.length === census.materials.length
+      hasExactCachedMaterialSet(census, host)
     ? "cached-exact" as const
     : "declared" as const;
   return deepFreeze({
@@ -37,4 +37,16 @@ export function diagnoseBehaveFoundation(
     host,
     installationPlan,
   });
+}
+
+function hasExactCachedMaterialSet(
+  census: BehaveFoundationCapabilityCensus,
+  host: BehaveFoundationHostObservation,
+): boolean {
+  const expected = new Set(census.materials.map((material) => material.id));
+  const observed = new Set(host.cachedExactMaterialIds);
+  return expected.size === census.materials.length &&
+    observed.size === host.cachedExactMaterialIds.length &&
+    observed.size === expected.size &&
+    [...observed].every((materialId) => expected.has(materialId));
 }

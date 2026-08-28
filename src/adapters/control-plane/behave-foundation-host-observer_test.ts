@@ -125,6 +125,48 @@ Deno.test("doctor reports cached-exact without promoting it to a vertical qualif
   assertEquals(report.verticalQualification, "not-observed");
 });
 
+Deno.test("doctor rejects a same-length cache list with a duplicate and missing material", async () => {
+  const calculix = await createLocalCalculixIsolatedExecutionServerOptions();
+  const census = await loadWorkspaceBehaveFoundationCensus({
+    calculix: {
+      imageReference: calculix.profile.imageReference,
+      policyFingerprint: calculix.profile.policy.fingerprint,
+    },
+  });
+  const fullHost = await observeBehaveFoundationHost(census, {
+    platform: "linux/arm64",
+    runDocker: (args) => Promise.resolve(dockerResult(args)),
+    inspectMicrosandboxImage: (reference) =>
+      Promise.resolve({
+        reference,
+        manifestDigest: reference.slice(reference.lastIndexOf("@sha256:") + 1),
+        architecture: "arm64",
+        os: "linux",
+        user: null,
+        entrypoint: null,
+        command: null,
+        environment: {},
+        labels: {},
+      }),
+  });
+  const malformedHost = {
+    ...fullHost,
+    cachedExactMaterialIds: [
+      fullHost.cachedExactMaterialIds[0]!,
+      ...fullHost.cachedExactMaterialIds.slice(1, -1),
+      fullHost.cachedExactMaterialIds[0]!,
+    ],
+  };
+  const report = diagnoseBehaveFoundation(census, malformedHost);
+
+  assertEquals(
+    malformedHost.cachedExactMaterialIds.length,
+    census.materials.length,
+  );
+  assertEquals(report.status, "ready");
+  assertEquals(report.evidenceLevel, "declared");
+});
+
 Deno.test("host observer excludes an OCI cache entry with another digest", async () => {
   const calculix = await createLocalCalculixIsolatedExecutionServerOptions();
   const census = await loadWorkspaceBehaveFoundationCensus({
