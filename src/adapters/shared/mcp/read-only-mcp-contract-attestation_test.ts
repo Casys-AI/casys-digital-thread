@@ -12,8 +12,12 @@ Deno.test("read-only MCP contract attestor records schemas without invoking a to
 
   assertEquals(attestation.mutatesRuntime, false);
   assertEquals(attestation.evidenceLevel, "contract-attested");
+  assertEquals(attestation.health, "healthy");
+  assertEquals(attestation.healthMatchesExpected, true);
   assertEquals(attestation.protocolVersion, "2026-07-28");
+  assertEquals(attestation.protocolMatchesExpected, true);
   assertEquals(attestation.server, { name: "fake", version: "1.2.3" });
+  assertEquals(attestation.serverMatchesExpected, true);
   assertEquals(attestation.tools.map((tool) => tool.name), ["read", "write"]);
   assertEquals(attestation.views, ["ui://fake/view"]);
   assertMatch(attestation.schemaFingerprint?.digest ?? "", /^[a-f0-9]{64}$/);
@@ -33,29 +37,58 @@ Deno.test("read-only MCP contract attestor leaves an incomplete surface declared
   assertEquals(attestation.schemaFingerprintStatus, "observed-not-verified");
 });
 
+Deno.test("read-only MCP contract attestor does not attest a healthy lookalike endpoint", async () => {
+  const attestation = await attestReadOnlyMcpContract(target(), {
+    fetch: fakeFetch([], { name: "lookalike", version: "1.2.3" }),
+  });
+
+  assertEquals(attestation.health, "healthy");
+  assertEquals(attestation.server, { name: "lookalike", version: "1.2.3" });
+  assertEquals(attestation.serverMatchesExpected, false);
+  assertEquals(attestation.evidenceLevel, "declared");
+});
+
+Deno.test("read-only MCP contract attestor compares the health declaration", async () => {
+  const attestation = await attestReadOnlyMcpContract(target(), {
+    fetch: fakeFetch([], undefined, "degraded"),
+  });
+
+  assertEquals(attestation.health, "unexpected");
+  assertEquals(attestation.healthStatus, "degraded");
+  assertEquals(attestation.healthMatchesExpected, false);
+  assertEquals(attestation.serverMatchesExpected, true);
+  assertEquals(attestation.evidenceLevel, "declared");
+});
+
 function target() {
   return {
     id: "fake",
     healthUrl: "http://127.0.0.1:3999/health",
     mcpUrl: "http://127.0.0.1:3999/mcp",
+    expectedHealthStatus: "ok",
+    expectedServer: { name: "fake", version: "1.2.3" },
     expectedTools: ["read", "write"],
     expectedViews: ["ui://fake/view"],
   } as const;
 }
 
-function fakeFetch(methods: string[]): typeof fetch {
+function fakeFetch(
+  methods: string[],
+  serverInfo = { name: "fake", version: "1.2.3" },
+  healthStatus = "ok",
+): typeof fetch {
   return ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     if (url.endsWith("/health")) {
       methods.push("GET");
-      return Promise.resolve(Response.json({ status: "ok" }));
+      return Promise.resolve(Response.json({ status: healthStatus }));
     }
     const body = JSON.parse(String(init?.body)) as { method: string };
     methods.push(body.method);
     if (body.method === "server/discover") {
       return Promise.resolve(rpc({
         supportedVersions: ["2026-07-28"],
-        serverInfo: { name: "fake", version: "1.2.3" },
+        serverInfo,
       }));
     }
     if (body.method === "tools/list") {

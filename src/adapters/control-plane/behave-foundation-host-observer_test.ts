@@ -55,6 +55,43 @@ Deno.test("host observer distinguishes Docker images from an absent microVM cach
     ),
     false,
   );
+  assertEquals(
+    observed.materialObservations[0]?.matchedRepoDigest,
+    census.materials[0]?.image,
+  );
+});
+
+Deno.test("host observer reports the RepoDigest actually matched among aliases", async () => {
+  const calculix = await createLocalCalculixIsolatedExecutionServerOptions();
+  const census = await loadWorkspaceBehaveFoundationCensus({
+    calculix: {
+      imageReference: calculix.profile.imageReference,
+      policyFingerprint: calculix.profile.policy.fingerprint,
+    },
+  });
+  const observed = await observeBehaveFoundationHost(census, {
+    platform: "linux/arm64",
+    runDocker: (args) =>
+      Promise.resolve({
+        ...dockerResult(args),
+        stdout: args[0] === "image"
+          ? JSON.stringify({
+            RepoDigests: [
+              "docker.io/library/alias@sha256:" + "a".repeat(64),
+              args.at(-1)!,
+            ],
+            Os: "linux",
+            Architecture: "arm64",
+          })
+          : dockerResult(args).stdout,
+      }),
+    inspectMicrosandboxImage: () => Promise.resolve(undefined),
+  });
+
+  assertEquals(
+    observed.materialObservations[0]?.matchedRepoDigest,
+    census.materials[0]?.image,
+  );
 });
 
 Deno.test("doctor reports cached-exact without promoting it to a vertical qualification", async () => {

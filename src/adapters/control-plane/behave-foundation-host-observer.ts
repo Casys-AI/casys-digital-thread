@@ -38,6 +38,11 @@ interface DockerImageInspection {
   readonly sizeBytes: number | undefined;
 }
 
+interface ExactDockerImageInspection extends DockerImageInspection {
+  /** The exact RepoDigest whose normalized repository and digest matched. */
+  readonly matchedRepoDigest: string;
+}
+
 /** Observe exact local material only. Never pull, import, start or dispatch. */
 export async function observeBehaveFoundationHost(
   census: BehaveFoundationCapabilityCensus,
@@ -90,7 +95,8 @@ export async function observeBehaveFoundationHost(
           materialId: material.id,
           expectedReference: material.image,
           status: "cached-exact" as const,
-          observedReference: cached.repoDigests[0] ?? null,
+          matchedRepoDigest: cached.matchedRepoDigest,
+          observedReference: cached.matchedRepoDigest,
           detail: "The local OCI cache matches the reviewed digest and platform.",
         }));
       } catch (error) {
@@ -98,6 +104,7 @@ export async function observeBehaveFoundationHost(
           materialId: material.id,
           expectedReference: material.image,
           status: "mismatch" as const,
+          matchedRepoDigest: null,
           observedReference: null,
           detail: `Local OCI cache does not match the reviewed identity: ${
             errorMessage(error)
@@ -112,6 +119,7 @@ export async function observeBehaveFoundationHost(
           materialId: material.id,
           expectedReference: material.image,
           status: "unavailable" as const,
+          matchedRepoDigest: null,
           observedReference: null,
           detail:
             "Docker Compose is unavailable; the local OCI cache was not observed.",
@@ -142,6 +150,7 @@ export async function observeBehaveFoundationHost(
         materialId: microvm.id,
         expectedReference: microvm.image,
         status: "cached-exact" as const,
+        matchedRepoDigest: null,
         observedReference: inspection.reference,
         detail:
           "The local Microsandbox cache matches the reviewed digest and platform.",
@@ -151,6 +160,7 @@ export async function observeBehaveFoundationHost(
         materialId: microvm.id,
         expectedReference: microvm.image,
         status: "unavailable" as const,
+        matchedRepoDigest: null,
         observedReference: null,
         detail: "The reviewed Microsandbox image is not cached locally.",
       }));
@@ -168,6 +178,7 @@ export async function observeBehaveFoundationHost(
         materialId: microvm.id,
         expectedReference: microvm.image,
         status: "unavailable" as const,
+        matchedRepoDigest: null,
         observedReference: null,
         detail: microsandbox.detail,
       }));
@@ -197,6 +208,7 @@ function materialUnavailable(
     materialId,
     expectedReference,
     status: "unavailable" as const,
+    matchedRepoDigest: null,
     observedReference: null,
     detail: `The reviewed OCI image is not locally inspectable: ${
       detail.slice(0, 300)
@@ -329,16 +341,19 @@ function assertExactDockerImage(
   inspection: DockerImageInspection,
   reference: string,
   platform: RuntimePlatform | null,
-): DockerImageInspection {
+): ExactDockerImageInspection {
   const architecture = platform?.split("/")[1] ?? null;
+  const matchedRepoDigest = inspection.repoDigests.find((digest) =>
+    sameOciRepositoryDigest(digest, reference)
+  );
   if (
     architecture === null || inspection.os !== "linux" ||
     inspection.architecture !== architecture ||
-    !inspection.repoDigests.some((digest) => sameOciRepositoryDigest(digest, reference))
+    matchedRepoDigest === undefined
   ) {
     throw new Error("the cached OCI image does not match the reviewed identity");
   }
-  return inspection;
+  return deepFreeze({ ...inspection, matchedRepoDigest });
 }
 
 function sameOciRepositoryDigest(left: string, right: string): boolean {

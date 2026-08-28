@@ -76,8 +76,9 @@ entry point.
 | `probes/doctor-behave-foundation.ts`           | `capability:behave:doctor`           | read  |
 | `probes/attest-behave-foundation-contract.ts`  | `capability:behave:attest`           | read  |
 
-`capability:behave:attest` has fixed loopback endpoints and only reads OCI/microVM
-identity plus `/health`, `server/discover`, `tools/list`, and `resources/list`. It never
+`capability:behave:attest` has fixed loopback endpoints and only reads the exact
+OCI/microVM material set; expected `/health.status`, protocol and
+`server/discover.serverInfo` identity; then `tools/list` and `resources/list`. It never
 issues `tools/call`; `contract-attested` remains below a separately recorded vertical
 qualification.
 

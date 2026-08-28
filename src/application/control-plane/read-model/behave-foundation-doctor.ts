@@ -7,9 +7,9 @@ import type {
 } from "./capability-pack.ts";
 
 export const BEHAVE_FOUNDATION_HOST_OBSERVATION_SCHEMA_VERSION =
-  "behave-foundation-host-observation/0.2" as const;
+  "behave-foundation-host-observation/0.3" as const;
 export const BEHAVE_FOUNDATION_DOCTOR_SCHEMA_VERSION =
-  "behave-foundation-doctor/0.2" as const;
+  "behave-foundation-doctor/0.3" as const;
 
 export interface BehaveFoundationHostPrerequisiteObservation {
   readonly id: "docker-compose-local" | "microsandbox-local";
@@ -22,6 +22,8 @@ export interface BehaveFoundationCachedMaterialObservation {
   readonly materialId: string;
   readonly expectedReference: string;
   readonly status: "cached-exact" | "unavailable" | "mismatch";
+  /** The Docker RepoDigest matched after repository-alias normalization, if any. */
+  readonly matchedRepoDigest: string | null;
   readonly observedReference: string | null;
   readonly detail: string;
 }

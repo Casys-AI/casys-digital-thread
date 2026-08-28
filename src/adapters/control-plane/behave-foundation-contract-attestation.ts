@@ -13,9 +13,25 @@ import {
 } from "../shared/mcp/read-only-mcp-contract-attestation.ts";
 
 export const BEHAVE_FOUNDATION_CONTRACT_ATTESTATION_SCHEMA_VERSION =
-  "behave-foundation-contract-attestation/0.1" as const;
+  "behave-foundation-contract-attestation/0.2" as const;
 
 const MANDATORY_MCP_FLEET_IDS = ["syson", "build123d-sandbox"] as const;
+
+/**
+ * Fixed endpoint identities, reviewed with the pinned Behave material. Fleet
+ * service names describe Compose endpoints; they are not a substitute for
+ * `server/discover.serverInfo` (the sandbox runs mcp-build123d).
+ */
+const MANDATORY_MCP_ENDPOINT_IDENTITIES = {
+  syson: {
+    healthStatus: "ok",
+    server: { name: "mcp-syson", version: "0.6.0" },
+  },
+  "build123d-sandbox": {
+    healthStatus: "ok",
+    server: { name: "mcp-build123d", version: "0.5.0" },
+  },
+} as const;
 
 export interface BehaveFoundationContractAttestation {
   readonly schemaVersion: typeof BEHAVE_FOUNDATION_CONTRACT_ATTESTATION_SCHEMA_VERSION;
@@ -48,7 +64,7 @@ export async function attestBehaveFoundationContracts(
     targets.map((target) => attestReadOnlyMcpContract(target, options.attestor)),
   );
   const everyMaterialCached = options.census.status === "candidate-ready" &&
-    options.host.cachedExactMaterialIds.length === options.census.materials.length;
+    hasExactCachedMaterialSet(options.census, options.host);
   const everyMcpAttested = requiredMcpContracts.every((contract) =>
     contract.evidenceLevel === "contract-attested"
   );
@@ -81,11 +97,26 @@ function targetFor(
     );
   }
   const server = matches[0]!;
+  const identity = MANDATORY_MCP_ENDPOINT_IDENTITIES[id];
   return deepFreeze({
     id: server.serviceName,
     healthUrl: server.healthUrl,
     mcpUrl: server.mcpUrl,
+    expectedHealthStatus: identity.healthStatus,
+    expectedServer: identity.server,
     expectedTools: [...server.expectedTools],
     expectedViews: [...(server.expectedViews ?? [])],
   });
+}
+
+function hasExactCachedMaterialSet(
+  census: BehaveFoundationCapabilityCensus,
+  host: BehaveFoundationHostObservation,
+): boolean {
+  const expected = new Set(census.materials.map((material) => material.id));
+  const observed = new Set(host.cachedExactMaterialIds);
+  return expected.size === census.materials.length &&
+    observed.size === host.cachedExactMaterialIds.length &&
+    observed.size === expected.size &&
+    [...observed].every((materialId) => expected.has(materialId));
 }

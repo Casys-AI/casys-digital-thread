@@ -36,9 +36,12 @@ deno task capability:behave:attest
 ```
 
 This read-only command has a fixed loopback allowlist for the mandatory `mcp-syson` and
-`mcp-build123d-sandbox` endpoints. It checks local OCI/microVM identities, `GET
-/health`, `server/discover`, `tools/list` and `resources/list`, and fingerprints the
-listed input/output schemas. It does not issue `tools/call`, does not read a resource,
+`mcp-build123d-sandbox` endpoints. It checks the exact local material set and OCI/microVM
+identities; the expected `GET /health.status`, protocol and exact
+`server/discover.serverInfo` identity; then `tools/list` and `resources/list`, and
+fingerprints the listed input/output schemas. The sandbox endpoint is expected to declare
+the `mcp-build123d` server identity, not its Compose service name. It does not issue
+`tools/call`, does not read a resource,
 does not select a provider tool or arguments, and does not qualify a Behave vertical.
 `contract-attested` therefore remains below `vertical-qualified`.
 

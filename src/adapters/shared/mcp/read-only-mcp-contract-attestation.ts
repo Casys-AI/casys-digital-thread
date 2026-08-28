@@ -13,6 +13,13 @@ export interface ReadOnlyMcpContractTarget {
   readonly id: string;
   readonly healthUrl: string;
   readonly mcpUrl: string;
+  /** Repository-owned health declaration expected from this exact endpoint. */
+  readonly expectedHealthStatus: string;
+  /** Repository-owned `server/discover.serverInfo` identity for this endpoint. */
+  readonly expectedServer: {
+    readonly name: string;
+    readonly version: string;
+  };
   readonly expectedTools: readonly string[];
   readonly expectedViews: readonly string[];
 }
@@ -33,12 +40,24 @@ export interface ReadOnlyMcpContractAttestation {
   readonly mutatesRuntime: false;
   readonly evidenceLevel: "declared" | "contract-attested";
   readonly target: string;
-  readonly health: "healthy" | "unavailable";
+  readonly expected: {
+    readonly healthStatus: string;
+    readonly protocolVersion: string;
+    readonly server: {
+      readonly name: string;
+      readonly version: string;
+    };
+  };
+  readonly health: "healthy" | "unexpected" | "unavailable";
+  readonly healthStatus: string | null;
+  readonly healthMatchesExpected: boolean;
   readonly protocolVersion: string | null;
+  readonly protocolMatchesExpected: boolean;
   readonly server: {
     readonly name: string | null;
     readonly version: string | null;
   };
+  readonly serverMatchesExpected: boolean;
   readonly tools: readonly ReadOnlyMcpContractTool[];
   readonly views: readonly string[];
   /** SHA-256 of the canonical `tools/list` input/output schemas only. */
@@ -74,17 +93,26 @@ export async function attestReadOnlyMcpContract(
 ): Promise<ReadOnlyMcpContractAttestation> {
   const request = new ReadOnlyMcpContractAttestor(options);
   try {
-    const health = await request.health(target.healthUrl);
-    if (!health.ok) {
-      return unavailable(target, `Health endpoint returned HTTP ${health.status}.`);
+    const healthResponse = await request.health(target.healthUrl);
+    if (!healthResponse.ok) {
+      return unavailable(
+        target,
+        request.protocolVersion,
+        `Health endpoint returned HTTP ${healthResponse.status}.`,
+      );
     }
+    const healthStatus = await parseHealthStatus(healthResponse);
+    const healthMatchesExpected = healthStatus === target.expectedHealthStatus;
     const discover = await request.rpc(target.mcpUrl, "server/discover", 1);
     const discoverResult = completeResult(discover, "server/discover");
     const protocolVersion = negotiatedProtocolVersion(
       discoverResult,
       request.protocolVersion,
     );
+    const protocolMatchesExpected = protocolVersion === request.protocolVersion;
     const server = serverIdentity(discoverResult);
+    const serverMatchesExpected = server.name === target.expectedServer.name &&
+      server.version === target.expectedServer.version;
     const listedTools = await request.rpc(target.mcpUrl, "tools/list", 2);
     const tools = parseTools(completeResult(listedTools, "tools/list"));
     const listedResources = await request.rpc(target.mcpUrl, "resources/list", 3);
@@ -107,16 +135,21 @@ export async function attestReadOnlyMcpContract(
       tools.map((tool) => tool.name),
     );
     const missingExpectedViews = missing(target.expectedViews, views);
-    const complete = protocolVersion !== null && server.name !== null &&
-      server.version !== null && missingExpectedTools.length === 0 &&
+    const complete = healthMatchesExpected && protocolMatchesExpected &&
+      serverMatchesExpected && missingExpectedTools.length === 0 &&
       missingExpectedViews.length === 0;
     return deepFreeze({
       mutatesRuntime: false,
       evidenceLevel: complete ? "contract-attested" as const : "declared" as const,
       target: target.id,
-      health: "healthy" as const,
+      expected: expectedIdentity(target, request.protocolVersion),
+      health: healthMatchesExpected ? "healthy" as const : "unexpected" as const,
+      healthStatus,
+      healthMatchesExpected,
       protocolVersion,
+      protocolMatchesExpected,
       server,
+      serverMatchesExpected,
       tools,
       views,
       schemaFingerprint,
@@ -125,10 +158,10 @@ export async function attestReadOnlyMcpContract(
       missingExpectedViews,
       detail: complete
         ? null
-        : "Discovery did not attest the expected protocol, server identity, tools, or views.",
+        : "Health or discovery did not attest the expected endpoint identity, protocol, tools, or views.",
     });
   } catch (error) {
-    return unavailable(target, errorMessage(error));
+    return unavailable(target, request.protocolVersion, errorMessage(error));
   }
 }
 
@@ -200,15 +233,21 @@ class ReadOnlyMcpContractAttestor {
 
 function unavailable(
   target: ReadOnlyMcpContractTarget,
+  protocolVersion: string,
   detail: string,
 ): ReadOnlyMcpContractAttestation {
   return deepFreeze({
     mutatesRuntime: false,
     evidenceLevel: "declared" as const,
     target: target.id,
+    expected: expectedIdentity(target, protocolVersion),
     health: "unavailable" as const,
+    healthStatus: null,
+    healthMatchesExpected: false,
     protocolVersion: null,
+    protocolMatchesExpected: false,
     server: { name: null, version: null },
+    serverMatchesExpected: false,
     tools: [],
     views: [],
     schemaFingerprint: null,
@@ -217,6 +256,27 @@ function unavailable(
     missingExpectedViews: unique([...target.expectedViews]),
     detail,
   });
+}
+
+function expectedIdentity(
+  target: ReadOnlyMcpContractTarget,
+  protocolVersion: string,
+): ReadOnlyMcpContractAttestation["expected"] {
+  return deepFreeze({
+    healthStatus: target.expectedHealthStatus,
+    protocolVersion,
+    server: target.expectedServer,
+  });
+}
+
+async function parseHealthStatus(response: Response): Promise<string | null> {
+  let value: unknown;
+  try {
+    value = JSON.parse(await response.text());
+  } catch {
+    return null;
+  }
+  return isRecord(value) ? stringValue(value.status) : null;
 }
 
 function completeResult(
