@@ -54,9 +54,9 @@ const POSTGRES_IMAGE =
 const SYSON_IMAGE =
   "ghcr.io/casys-ai/syson@sha256:fc599abb95587913de11ff6de68060b5593956abc0c47bc753cd19e2987141a6";
 const MCP_SYSON_IMAGE =
-  "ghcr.io/casys-ai/engineering-toolchain@sha256:c04922cc2c0f503c34277c5a1dc81ab28b141945acad90345e2d16882535b4bc";
+  "ghcr.io/casys-ai/mcp-syson@sha256:87eee6e35a636124d5ba6911492a245d69edcdf1ba67575676c22a0e9d7ce65e";
 const MCP_BUILD123D_IMAGE =
-  "ghcr.io/casys-ai/engineering-toolchain@sha256:7a255f24448ddb6de496c4e47c2d1634c63daea67e9082b558257287215b23b5";
+  "ghcr.io/casys-ai/mcp-build123d@sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d";
 
 const REVIEWED_LICENCE_DOC =
   "docs/reference/runtime/capability-packs/atomic-runtime-boundaries.md";
@@ -97,7 +97,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
       composeMaterial(
         "mcp-syson-image",
         MCP_SYSON_IMAGE,
-        ["linux/arm64"],
+        ["linux/amd64", "linux/arm64"],
         "mcp-syson",
         "loopback-only",
         [3009],
@@ -109,7 +109,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
       composeMaterial(
         "mcp-build123d-sandbox-image",
         MCP_BUILD123D_IMAGE,
-        ["linux/arm64"],
+        ["linux/amd64", "linux/arm64"],
         "mcp-build123d-sandbox",
         "loopback-only",
         [3024],
@@ -118,12 +118,12 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         ],
         "reviewed",
       ),
-    ]),
+    ], "0.6.1"),
     unit("casys.mcp-build123d-observation", [
       composeMaterial(
         "mcp-build123d-observation-image",
         MCP_BUILD123D_IMAGE,
-        ["linux/arm64"],
+        ["linux/amd64", "linux/arm64"],
         "mcp-build123d",
         "loopback-only",
         [3014],
@@ -132,7 +132,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         ],
         "unknown",
       ),
-    ]),
+    ], "0.6.1"),
     unit("casys.build123d-isolated-worker", [
       microvmMaterial(
         "build123d-isolated-worker-image",
