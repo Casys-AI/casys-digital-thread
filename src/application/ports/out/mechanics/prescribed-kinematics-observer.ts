@@ -6,10 +6,13 @@
  */
 
 export interface PrescribedKinematicsCaseSubmissionRequest {
-  /** Exact UTF-8 JSON supplied by the server-owned mechanism lowering. */
-  readonly caseJson: string;
-  /** Optional expected content identity for the exact case bytes. */
-  readonly expectedCaseSha256?: string;
+  /** Exact UTF-8 text supplied by the server-owned mechanism lowering. */
+  readonly exactCaseText: string;
+  /** Required content identity of those exact ephemeral submission bytes. */
+  readonly requestFingerprint: {
+    readonly algorithm: "sha256";
+    readonly digest: string;
+  };
 }
 
 export interface SubmittedPrescribedKinematicsCase {

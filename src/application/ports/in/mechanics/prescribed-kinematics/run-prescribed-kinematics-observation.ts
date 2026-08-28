@@ -9,6 +9,7 @@ import type {
   PrescribedKinematicsObservationRecord,
   PrescribedKinematicsPreDispatchRejectionCode,
 } from "../../../out/mechanics/prescribed-kinematics-observer.ts";
+import type { PrescribedKinematicsLoweredCase } from "../../../out/mechanics/prescribed-kinematics-case-lowerer.ts";
 
 export interface RunPrescribedKinematicsObservationCommand {
   readonly projectId: string;
@@ -18,17 +19,25 @@ export interface RunPrescribedKinematicsObservationCommand {
   readonly planFingerprint: ContentFingerprint;
   readonly bindingFingerprint: ContentFingerprint;
   readonly sealedCase: PrescribedKinematicsCase;
-  /** Server-owned lowering of the exact sealed case; never an MCP argument. */
-  readonly loweredCaseJson: string;
 }
 
 export type RunPrescribedKinematicsObservationResult =
   | {
     readonly status: "recorded";
     readonly observation: PrescribedKinematicsObservation;
+    /** Exact dispatch identity factually reread with the provider receipt. */
+    readonly request: Pick<
+      PrescribedKinematicsObservationRecord["request"],
+      "requestId" | "caseSha256"
+    >;
     /** Factual provider provenance, retained without becoming a verdict. */
     readonly receipt: PrescribedKinematicsObservationRecord["receipt"];
     readonly notEvaluated: PrescribedKinematicsObservationRecord["notEvaluated"];
+    /** Source-to-request provenance; the request body itself is never captured. */
+    readonly lowering: Pick<
+      PrescribedKinematicsLoweredCase,
+      "sourceFingerprint" | "loweringFingerprint" | "requestFingerprint"
+    >;
   }
   | {
     readonly status: "quarantined";

@@ -16,7 +16,12 @@ export interface PrescribedKinematicsObservationAttemptIdentity {
   readonly caseFingerprint: ContentFingerprint;
   /** Exact registered-operation binding identity, never provider arguments. */
   readonly bindingFingerprint: ContentFingerprint;
-  readonly caseJsonFingerprint: ContentFingerprint;
+  /** Exact fingerprint of the source bytes reopened from the sealed case. */
+  readonly sourceFingerprint: ContentFingerprint;
+  /** Exact server-owned source-to-request lowering identity. */
+  readonly loweringFingerprint: ContentFingerprint;
+  /** SHA-256 of the exact ephemeral provider request bytes. */
+  readonly requestFingerprint: ContentFingerprint;
   readonly startedAt: string;
 }
 
@@ -28,31 +33,37 @@ export interface PrescribedKinematicsObservationAttemptKey {
 
 export type PrescribedKinematicsObservationAttempt =
   | (PrescribedKinematicsObservationAttemptIdentity & {
-    readonly schemaVersion: "prescribed-kinematics-observation-attempt/1.0";
+    readonly schemaVersion: "prescribed-kinematics-observation-attempt/3.0";
     readonly phase: "prepared";
   })
   | (PrescribedKinematicsObservationAttemptIdentity & {
-    readonly schemaVersion: "prescribed-kinematics-observation-attempt/1.0";
-    readonly phase: "case-submitted" | "dispatching";
+    readonly schemaVersion: "prescribed-kinematics-observation-attempt/3.0";
+    readonly phase: "case-submitted";
     readonly caseSha256: string;
     readonly caseUri: string;
   })
   | (PrescribedKinematicsObservationAttemptIdentity & {
-    readonly schemaVersion: "prescribed-kinematics-observation-attempt/1.0";
+    readonly schemaVersion: "prescribed-kinematics-observation-attempt/3.0";
+    readonly phase: "dispatching";
+    readonly caseSha256: string;
+    readonly caseUri: string;
+  })
+  | (PrescribedKinematicsObservationAttemptIdentity & {
+    readonly schemaVersion: "prescribed-kinematics-observation-attempt/3.0";
     readonly phase: "recorded";
     readonly caseSha256: string;
     readonly caseUri: string;
     readonly receiptSha256: string;
   })
   | (PrescribedKinematicsObservationAttemptIdentity & {
-    readonly schemaVersion: "prescribed-kinematics-observation-attempt/1.0";
+    readonly schemaVersion: "prescribed-kinematics-observation-attempt/3.0";
     readonly phase: "quarantined";
     readonly caseSha256: string;
     readonly caseUri: string;
     readonly quarantineReason: "uncertain" | "absent" | "malformed";
   })
   | (PrescribedKinematicsObservationAttemptIdentity & {
-    readonly schemaVersion: "prescribed-kinematics-observation-attempt/1.0";
+    readonly schemaVersion: "prescribed-kinematics-observation-attempt/3.0";
     readonly phase: "rejected";
     readonly caseSha256: string;
     readonly caseUri: string;
@@ -62,7 +73,7 @@ export type PrescribedKinematicsObservationAttempt =
 export type PrescribedKinematicsDispatchingAttempt =
   & PrescribedKinematicsObservationAttemptIdentity
   & {
-    readonly schemaVersion: "prescribed-kinematics-observation-attempt/1.0";
+    readonly schemaVersion: "prescribed-kinematics-observation-attempt/3.0";
     readonly phase: "dispatching";
     readonly caseSha256: string;
     readonly caseUri: string;

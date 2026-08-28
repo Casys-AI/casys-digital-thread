@@ -237,6 +237,7 @@ import { createCadPlacementComposition } from "./src/adapters/cad/placement/serv
 import { DeclaredAgainstPrescribedKinematicsArchitectureIndex } from "./src/adapters/mechanics/chrono/declared-against-prescribed-kinematics-architecture-index.ts";
 import { FilePrescribedKinematicsCaptureStore } from "./src/adapters/mechanics/chrono/file-prescribed-kinematics-capture-store.ts";
 import { FilePrescribedKinematicsObservationAttemptStore } from "./src/adapters/mechanics/chrono/file-prescribed-kinematics-observation-attempt-store.ts";
+import { ChronoPrescribedKinematicsCaseLowerer } from "./src/adapters/mechanics/chrono/chrono-prescribed-kinematics-case-lowerer.ts";
 import { PrescribedKinematicsRunExecutor } from "./src/adapters/mechanics/chrono/prescribed-kinematics-run-executor.ts";
 import { CaptureProjectPrescribedKinematicsCase } from "./src/application/use-cases/mechanics/prescribed-kinematics/capture-project-prescribed-kinematics-case.ts";
 import { DecidePrescribedKinematicsCloseout } from "./src/application/use-cases/mechanics/prescribed-kinematics/decide-prescribed-kinematics-closeout.ts";
@@ -1185,6 +1186,7 @@ async function createProjectControl(
       observe: new RunPrescribedKinematicsObservation({
         attempts: prescribedKinematicsExecution.observationAttempts,
         observer: options.prescribedKinematicsObservation.observer,
+        lowerer: new ChronoPrescribedKinematicsCaseLowerer(),
       }),
     }),
     sealMethod: prescribedKinematicsExecution.sealMethod,

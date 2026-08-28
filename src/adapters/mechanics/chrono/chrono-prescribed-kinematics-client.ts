@@ -13,6 +13,8 @@ import type {
   PrescribedKinematicsSamplePageRequest,
   SubmittedPrescribedKinematicsCase,
 } from "../../../application/ports/out/mechanics/prescribed-kinematics-observer.ts";
+import { sha256Hex } from "../../../domain/kernel/deterministic-json.ts";
+import { parseChronoPrescribedKinematicsReceipt } from "./chrono-prescribed-kinematics-receipt.ts";
 import {
   createInternalMcpBearerCredential,
   type InternalMcpBearerCredential,
@@ -162,27 +164,34 @@ export class ChronoPrescribedKinematicsClient implements PrescribedKinematicsObs
   async submitCase(
     request: PrescribedKinematicsCaseSubmissionRequest,
   ): Promise<SubmittedPrescribedKinematicsCase> {
-    if (typeof request.caseJson !== "string" || request.caseJson.length === 0) {
-      throw new TypeError("Chrono caseJson must be a non-empty exact JSON string");
+    if (
+      typeof request.exactCaseText !== "string" || request.exactCaseText.length === 0
+    ) {
+      throw new TypeError("Chrono exactCaseText must be a non-empty exact JSON string");
     }
     if (
-      request.expectedCaseSha256 !== undefined &&
-      !SHA256.test(request.expectedCaseSha256)
+      request.requestFingerprint.algorithm !== "sha256" ||
+      !SHA256.test(request.requestFingerprint.digest)
     ) {
-      throw new TypeError("Chrono expectedCaseSha256 must be lower-case SHA-256");
+      throw new TypeError("Chrono requestFingerprint must be lower-case SHA-256");
+    }
+    if (
+      (await sha256Hex(new TextEncoder().encode(request.exactCaseText))) !==
+        request.requestFingerprint.digest
+    ) {
+      throw new TypeError(
+        "Chrono requestFingerprint does not bind the exact case submission bytes.",
+      );
     }
     const content = await this.#call(CHRONO_CASE_SUBMIT, {
-      case_json: request.caseJson,
-      ...(request.expectedCaseSha256 === undefined
-        ? {}
-        : { case_sha256: request.expectedCaseSha256 }),
+      case_json: request.exactCaseText,
+      case_sha256: request.requestFingerprint.digest,
     });
     const root = exact(content, ["ok", "case_sha256", "case_uri"], CHRONO_CASE_SUBMIT);
     literal(root.ok, true, `${CHRONO_CASE_SUBMIT}.ok`);
     const caseSha256 = sha256(root.case_sha256, `${CHRONO_CASE_SUBMIT}.case_sha256`);
     if (
-      request.expectedCaseSha256 !== undefined &&
-      caseSha256 !== request.expectedCaseSha256
+      caseSha256 !== request.requestFingerprint.digest
     ) {
       throw protocol(
         `${CHRONO_CASE_SUBMIT}.case_sha256 does not match the expected exact case SHA-256`,
@@ -636,7 +645,7 @@ function parseReceipt(
       `${path} does not bind the returned observation to its exact request`,
     );
   }
-  return {
+  return parseChronoPrescribedKinematicsReceipt({
     receiptSha256,
     caseSha256,
     outcomeSha256,
@@ -654,7 +663,7 @@ function parseReceipt(
     workerSourceSha256: sha256(worker.source_sha256, `${path}.worker.source_sha256`),
     executionState: receiptExecutionState,
     kinematicsExit: observation.kinematicsExit,
-  };
+  }, path);
 }
 
 function parseSamplePage(
@@ -943,8 +952,14 @@ function version(value: unknown, path: string): string {
 
 function isoTimestamp(value: unknown, path: string): string {
   const result = text(value, path);
-  if (Number.isNaN(Date.parse(result))) {
+  let canonical: string;
+  try {
+    canonical = new Date(result).toISOString();
+  } catch {
     throw protocol(`${path} must be an ISO timestamp`);
+  }
+  if (canonical !== result) {
+    throw protocol(`${path} must be an exact canonical ISO timestamp`);
   }
   return result;
 }

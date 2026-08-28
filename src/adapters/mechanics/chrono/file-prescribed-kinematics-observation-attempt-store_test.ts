@@ -10,7 +10,9 @@ const identity = {
   planFingerprint: fingerprint("a"),
   caseFingerprint: fingerprint("b"),
   bindingFingerprint: fingerprint("c"),
-  caseJsonFingerprint: fingerprint("d"),
+  sourceFingerprint: fingerprint("d"),
+  loweringFingerprint: fingerprint("e"),
+  requestFingerprint: fingerprint("f"),
   startedAt: "2026-08-29T00:00:00.000Z",
 } as const;
 
@@ -120,6 +122,38 @@ Deno.test("prescribed-kinematics L3 treats a torn visible claim as no-redispatch
       .markDispatching(identity);
     assertEquals(resumed.dispatchNow, false);
     assertEquals(resumed.attempt.phase, "dispatching");
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("prescribed-kinematics L3 event WAL never regresses a concurrent recorded receipt to quarantine", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "prescribed-kinematics-wal-" });
+  try {
+    const first = new FilePrescribedKinematicsObservationAttemptStore(directory);
+    const second = new FilePrescribedKinematicsObservationAttemptStore(directory);
+    await first.prepare(identity);
+    await first.markCaseSubmitted(identity, {
+      caseSha256: "e".repeat(64),
+      caseUri: `chrono-case:sha256:${"e".repeat(64)}`,
+    });
+    assertEquals((await first.markDispatching(identity)).dispatchNow, true);
+
+    const [recorded, quarantined] = await Promise.all([
+      first.markRecorded(identity, "a".repeat(64)),
+      second.markQuarantined(identity, "uncertain"),
+    ]);
+    assertEquals(recorded.phase, "recorded");
+    assertEquals(
+      quarantined.phase === "quarantined" || quarantined.phase === "recorded",
+      true,
+    );
+    const resumed = await new FilePrescribedKinematicsObservationAttemptStore(directory)
+      .read(identity);
+    assertEquals(resumed?.phase, "recorded");
+    if (resumed?.phase === "recorded") {
+      assertEquals(resumed.receiptSha256, "a".repeat(64));
+    }
   } finally {
     await Deno.remove(directory, { recursive: true });
   }

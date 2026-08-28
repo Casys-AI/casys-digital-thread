@@ -11,7 +11,10 @@ import type {
 } from "../../../application/ports/out/mechanics/prescribed-kinematics-capture-store.ts";
 import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
 import { exactRecord } from "../../../domain/kernel/case-validation.ts";
-import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  fingerprintsEqual,
+} from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import {
   type PrescribedKinematicsEvaluationCloseoutCandidate,
@@ -34,6 +37,10 @@ import {
   validatePrescribedKinematicsCase,
 } from "../../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-source-closure.ts";
 import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
+import {
+  parseChronoPrescribedKinematicsReceipt,
+  parseChronoPrescribedKinematicsRequestReference,
+} from "./chrono-prescribed-kinematics-receipt.ts";
 
 type Kind =
   | "prescribed-kinematics-case"
@@ -109,7 +116,7 @@ export class FilePrescribedKinematicsCaptureStore
     const capture = await this.#read(
       "prescribed-kinematics-observation",
       fingerprint,
-      async (raw) => raw as PrescribedKinematicsObservationCapture,
+      async (raw) => raw,
     );
     if (!capture) return undefined;
     return await validateObservationCapture(capture, sealedCase);
@@ -240,12 +247,13 @@ async function validateObservationCapture(
   const root = exactRecord(value, [
     "schemaVersion",
     "observation",
+    "request",
     "receipt",
     "notEvaluated",
+    "lowering",
   ], "$prescribedKinematicsObservationCapture");
   if (
-    root.schemaVersion !== "prescribed-kinematics-observation-capture/1.0" ||
-    root.receipt === null || typeof root.receipt !== "object" ||
+    root.schemaVersion !== "prescribed-kinematics-observation-capture/2.0" ||
     !Array.isArray(root.notEvaluated)
   ) throw new TypeError("The prescribed-kinematics L3 capture is malformed.");
   const observation = await parsePrescribedKinematicsObservation(
@@ -268,10 +276,69 @@ async function validateObservationCapture(
       "The prescribed-kinematics L3 capture lost a literal not_evaluated boundary.",
     );
   }
-  return Object.freeze({
-    schemaVersion: "prescribed-kinematics-observation-capture/1.0",
-    observation,
-    receipt: root.receipt as PrescribedKinematicsObservationCapture["receipt"],
-    notEvaluated: literal,
+  const loweringRecord = exactRecord(
+    root.lowering,
+    ["sourceFingerprint", "loweringFingerprint", "requestFingerprint"],
+    "$prescribedKinematicsObservationCapture.lowering",
+  );
+  const lowering = Object.freeze({
+    sourceFingerprint: fingerprint(
+      loweringRecord.sourceFingerprint,
+      "$prescribedKinematicsObservationCapture.lowering.sourceFingerprint",
+    ),
+    loweringFingerprint: fingerprint(
+      loweringRecord.loweringFingerprint,
+      "$prescribedKinematicsObservationCapture.lowering.loweringFingerprint",
+    ),
+    requestFingerprint: fingerprint(
+      loweringRecord.requestFingerprint,
+      "$prescribedKinematicsObservationCapture.lowering.requestFingerprint",
+    ),
   });
+  if (
+    !fingerprintsEqual(
+      lowering.sourceFingerprint,
+      sealedCase.sourceClosure.workspace.root.resourceFingerprint,
+    )
+  ) {
+    throw new TypeError(
+      "The prescribed-kinematics L3 capture lowering does not bind the sealed source resource.",
+    );
+  }
+  const receipt = parseChronoPrescribedKinematicsReceipt(
+    root.receipt,
+    "$prescribedKinematicsObservationCapture.receipt",
+  );
+  const request = parseChronoPrescribedKinematicsRequestReference(
+    root.request,
+    "$prescribedKinematicsObservationCapture.request",
+  );
+  if (
+    request.caseSha256 !== lowering.requestFingerprint.digest ||
+    receipt.caseSha256 !== request.caseSha256 ||
+    receipt.requestId !== request.requestId
+  ) {
+    throw new TypeError(
+      "The prescribed-kinematics L3 receipt does not bind its exact request and lowered request fingerprint.",
+    );
+  }
+  return Object.freeze({
+    schemaVersion: "prescribed-kinematics-observation-capture/2.0",
+    observation,
+    request,
+    receipt,
+    notEvaluated: literal,
+    lowering,
+  });
+}
+
+function fingerprint(value: unknown, path: string): ContentFingerprint {
+  const root = exactRecord(value, ["algorithm", "digest"], path);
+  if (
+    root.algorithm !== "sha256" || typeof root.digest !== "string" ||
+    !/^[a-f0-9]{64}$/.test(root.digest)
+  ) {
+    throw new TypeError(`${path} must be a lower-case SHA-256 fingerprint.`);
+  }
+  return Object.freeze({ algorithm: "sha256", digest: root.digest });
 }

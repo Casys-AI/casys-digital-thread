@@ -8,7 +8,11 @@ import type {
   PrescribedKinematicsObservationAttemptStore,
 } from "../../../application/ports/out/mechanics/prescribed-kinematics-observation-attempt-store.ts";
 import type { PrescribedKinematicsPreDispatchRejectionCode } from "../../../application/ports/out/mechanics/prescribed-kinematics-observer.ts";
-import { exactRecord, safeId } from "../../../domain/kernel/case-validation.ts";
+import {
+  closedRecord,
+  exactRecord,
+  safeId,
+} from "../../../domain/kernel/case-validation.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
@@ -16,9 +20,9 @@ import {
 } from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 
-const SCHEMA = "prescribed-kinematics-observation-attempt/1.0" as const;
+const SCHEMA = "prescribed-kinematics-observation-attempt/3.0" as const;
 const DISPATCH_CLAIM_SCHEMA =
-  "prescribed-kinematics-observation-dispatch-claim/1.0" as const;
+  "prescribed-kinematics-observation-dispatch-claim/3.0" as const;
 type SubmittedAttempt = PrescribedKinematicsObservationAttemptIdentity & {
   readonly schemaVersion: typeof SCHEMA;
   readonly phase: "case-submitted";
@@ -50,30 +54,41 @@ export class FilePrescribedKinematicsObservationAttemptStore
     key: PrescribedKinematicsObservationAttemptKey,
   ): Promise<PrescribedKinematicsObservationAttempt | undefined> {
     const parsed = keyOf(key);
-    const path = await this.#path(parsed);
-    let text: string;
+    const base = await this.#basePath(parsed);
+    const basename = base.slice(base.lastIndexOf("/") + 1);
+    const prefix = `${basename}.event-`;
+    const attempts: PrescribedKinematicsObservationAttempt[] = [];
     try {
-      text = await Deno.readTextFile(path);
+      for await (const entry of Deno.readDir(this.#directory)) {
+        if (
+          !entry.isFile || !entry.name.startsWith(prefix) ||
+          !entry.name.endsWith(".json")
+        ) {
+          continue;
+        }
+        const text = await Deno.readTextFile(`${this.#directory}/${entry.name}`);
+        let value: unknown;
+        try {
+          value = JSON.parse(text);
+        } catch {
+          throw new PrescribedKinematicsObservationAttemptIntegrityError(
+            "The prescribed-kinematics observation WAL event is not JSON.",
+          );
+        }
+        const attempt = parseAttempt(value);
+        assertKey(attempt, parsed);
+        if (`${deterministicJson(attempt)}\n` !== text) {
+          throw new PrescribedKinematicsObservationAttemptIntegrityError(
+            "The prescribed-kinematics observation WAL event is not canonical.",
+          );
+        }
+        attempts.push(attempt);
+      }
     } catch (error) {
       if (error instanceof Deno.errors.NotFound) return undefined;
       throw error;
     }
-    let value: unknown;
-    try {
-      value = JSON.parse(text);
-    } catch {
-      throw new PrescribedKinematicsObservationAttemptIntegrityError(
-        "The prescribed-kinematics observation WAL is not JSON.",
-      );
-    }
-    const attempt = parseAttempt(value);
-    assertKey(attempt, parsed);
-    if (`${deterministicJson(attempt)}\n` !== text) {
-      throw new PrescribedKinematicsObservationAttemptIntegrityError(
-        "The prescribed-kinematics observation WAL is not canonical.",
-      );
-    }
-    return attempt;
+    return resolveMonotoneAttempts(attempts);
   }
 
   async prepare(
@@ -90,7 +105,7 @@ export class FilePrescribedKinematicsObservationAttemptStore
       ...identity,
       phase: "prepared",
     });
-    return await this.#writeIfCurrent(identity, undefined, fresh);
+    return await this.#append(identity, fresh);
   }
 
   async markCaseSubmitted(
@@ -156,13 +171,13 @@ export class FilePrescribedKinematicsObservationAttemptStore
     const submitted = submittedAttempt(current);
     const ownsClaim = await this.#claimDispatch(identity, submitted);
     const next = dispatching(submitted);
-    const written = await this.#writeIfCurrent(identity, current, next);
+    const written = await this.#append(identity, next);
     if (written.phase !== "dispatching") {
       return { attempt: written, dispatchNow: false };
     }
     if (!ownsClaim) return { attempt: written, dispatchNow: false };
     return {
-      attempt: written as PrescribedKinematicsDispatchingAttempt,
+      attempt: written,
       dispatchNow: true,
     };
   }
@@ -271,39 +286,54 @@ export class FilePrescribedKinematicsObservationAttemptStore
     assertSameIdentity(current, parsed);
     const next = transition(current);
     if (next === current) return current;
-    return await this.#writeIfCurrent(parsed, current, next);
+    return await this.#append(parsed, next);
   }
 
-  async #writeIfCurrent(
+  async #append(
     identity: PrescribedKinematicsObservationAttemptIdentity,
-    expected: PrescribedKinematicsObservationAttempt | undefined,
     next: PrescribedKinematicsObservationAttempt,
   ): Promise<PrescribedKinematicsObservationAttempt> {
     await Deno.mkdir(this.#directory, { recursive: true });
-    const path = await this.#path(identity);
-    const observed = await this.read(identity);
-    if (
-      expected === undefined
-        ? observed !== undefined
-        : deterministicJson(observed) !== deterministicJson(expected)
-    ) {
-      if (observed) return observed;
-      throw integrity(
-        "The prescribed-kinematics L3 WAL changed before its transition could be recorded.",
-      );
-    }
+    const path = await this.#eventPath(identity, next);
+    // Each state is published under a different, content-addressed event name.
+    // Unlike read-compare-rename of one mutable file, concurrent terminal
+    // transitions cannot overwrite each other. `read` resolves the monotone
+    // event set with recorded taking precedence over quarantine.
     const temporary = `${path}.${crypto.randomUUID()}.tmp`;
     await Deno.writeTextFile(temporary, `${deterministicJson(next)}\n`, {
       createNew: true,
     });
-    await Deno.rename(temporary, path);
-    return next;
+    try {
+      await Deno.rename(temporary, path);
+    } catch (error) {
+      try {
+        await Deno.remove(temporary);
+      } catch {
+        // A dead temp file is deliberately ignored: it is never an event.
+      }
+      throw error;
+    }
+    const observed = await this.read(identity);
+    if (!observed) throw integrity("The newly appended L3 WAL event is absent.");
+    return observed;
   }
 
-  async #path(identity: PrescribedKinematicsObservationAttemptKey): Promise<string> {
+  async #basePath(
+    identity: PrescribedKinematicsObservationAttemptKey,
+  ): Promise<string> {
     const key =
       `${identity.projectId}\u0000${identity.agentRunId}\u0000${identity.requestId}`;
-    return `${this.#directory}/${await sha256Hex(new TextEncoder().encode(key))}.json`;
+    return `${this.#directory}/${await sha256Hex(new TextEncoder().encode(key))}`;
+  }
+
+  async #eventPath(
+    identity: PrescribedKinematicsObservationAttemptIdentity,
+    attempt: PrescribedKinematicsObservationAttempt,
+  ): Promise<string> {
+    const digest = await sha256Hex(
+      new TextEncoder().encode(deterministicJson(attempt)),
+    );
+    return `${await this.#basePath(identity)}.event-${attempt.phase}-${digest}.json`;
   }
 
   async #claimDispatch(
@@ -335,39 +365,111 @@ export class FilePrescribedKinematicsObservationAttemptStore
       caseUri: submitted.caseUri,
     });
     const digest = await sha256Hex(new TextEncoder().encode(attestation));
-    return `${await this.#path(identity)}.${digest}.dispatch-claim`;
+    return `${await this.#basePath(identity)}.${digest}.dispatch-claim`;
   }
 }
 
+/**
+ * Resolve immutable transition events. A recorded receipt is a factual
+ * promotion over a prior recoverable quarantine; no event can make it appear
+ * quarantined again. Any competing non-promotable terminal state is integrity
+ * failure, rather than an arbitrary last-writer-wins choice.
+ */
+function resolveMonotoneAttempts(
+  attempts: readonly PrescribedKinematicsObservationAttempt[],
+): PrescribedKinematicsObservationAttempt | undefined {
+  if (attempts.length === 0) return undefined;
+  const byPhase = new Map<
+    PrescribedKinematicsObservationAttempt["phase"],
+    PrescribedKinematicsObservationAttempt
+  >();
+  for (const attempt of attempts) {
+    const prior = byPhase.get(attempt.phase);
+    if (
+      prior !== undefined && deterministicJson(prior) !== deterministicJson(attempt)
+    ) {
+      throw integrity(
+        "The L3 WAL contains conflicting immutable events for one phase.",
+      );
+    }
+    byPhase.set(attempt.phase, attempt);
+  }
+  const prepared = byPhase.get("prepared");
+  if (!prepared) {
+    throw integrity("The L3 WAL has transitions without a prepared event.");
+  }
+  const submitted = byPhase.get("case-submitted");
+  const dispatching = byPhase.get("dispatching");
+  const quarantined = byPhase.get("quarantined");
+  const rejected = byPhase.get("rejected");
+  const recorded = byPhase.get("recorded");
+  if (!submitted && (dispatching || quarantined || rejected || recorded)) {
+    throw integrity("The L3 WAL has a transition before case submission.");
+  }
+  if (!dispatching && (quarantined || rejected || recorded)) {
+    throw integrity("The L3 WAL has a terminal transition before dispatch intent.");
+  }
+  if (recorded) {
+    if (rejected) {
+      throw integrity("The L3 WAL cannot be both recorded and definitely rejected.");
+    }
+    return recorded;
+  }
+  if (rejected) {
+    if (quarantined) {
+      throw integrity("The L3 WAL cannot be both quarantined and definitely rejected.");
+    }
+    return rejected;
+  }
+  return quarantined ?? dispatching ?? submitted ?? prepared;
+}
+
 function parseAttempt(value: unknown): PrescribedKinematicsObservationAttempt {
-  const root = exactRecord(
+  const root = closedRecord(
     value,
-    Object.keys(value as object),
+    ATTEMPT_FIELDS,
+    [...identityKeys, "schemaVersion", "phase"],
     "$prescribedKinematicsAttempt",
   );
-  const identity = parseIdentity(root);
   if (root.schemaVersion !== SCHEMA) {
     throw integrity("The prescribed-kinematics WAL schema is unsupported.");
   }
   if (root.phase === "prepared") {
-    exactRecord(
+    const basic = exactRecord(
       value,
       [...identityKeys, "schemaVersion", "phase"],
       "$prescribedKinematicsAttempt",
     );
+    const identity = parseIdentityFields(basic);
     return freeze({ schemaVersion: SCHEMA, ...identity, phase: "prepared" });
   }
-  if (root.phase === "case-submitted" || root.phase === "dispatching") {
+  if (root.phase === "case-submitted") {
     const basic = exactRecord(
       value,
       [...identityKeys, "schemaVersion", "phase", "caseSha256", "caseUri"],
       "$prescribedKinematicsAttempt",
     );
-    const submitted = parseSubmitted(basic);
+    const identity = parseIdentityFields(basic);
+    const submitted = parseSubmittedFields(basic);
     return freeze({
       schemaVersion: SCHEMA,
       ...identity,
-      phase: basic.phase as "case-submitted" | "dispatching",
+      phase: "case-submitted",
+      ...submitted,
+    });
+  }
+  if (root.phase === "dispatching") {
+    const basic = exactRecord(
+      value,
+      [...identityKeys, "schemaVersion", "phase", "caseSha256", "caseUri"],
+      "$prescribedKinematicsAttempt",
+    );
+    const identity = parseIdentityFields(basic);
+    const submitted = parseSubmittedFields(basic);
+    return freeze({
+      schemaVersion: SCHEMA,
+      ...identity,
+      phase: "dispatching",
       ...submitted,
     });
   }
@@ -384,7 +486,8 @@ function parseAttempt(value: unknown): PrescribedKinematicsObservationAttempt {
       ],
       "$prescribedKinematicsAttempt",
     );
-    const submitted = parseSubmitted(basic);
+    const identity = parseIdentityFields(basic);
+    const submitted = parseSubmittedFields(basic);
     return freeze({
       schemaVersion: SCHEMA,
       ...identity,
@@ -406,7 +509,8 @@ function parseAttempt(value: unknown): PrescribedKinematicsObservationAttempt {
       ],
       "$prescribedKinematicsAttempt",
     );
-    const submitted = parseSubmitted(basic);
+    const identity = parseIdentityFields(basic);
+    const submitted = parseSubmittedFields(basic);
     if (
       basic.quarantineReason !== "uncertain" && basic.quarantineReason !== "absent" &&
       basic.quarantineReason !== "malformed"
@@ -432,7 +536,8 @@ function parseAttempt(value: unknown): PrescribedKinematicsObservationAttempt {
       ],
       "$prescribedKinematicsAttempt",
     );
-    const submitted = parseSubmitted(basic);
+    const identity = parseIdentityFields(basic);
+    const submitted = parseSubmittedFields(basic);
     return freeze({
       schemaVersion: SCHEMA,
       ...identity,
@@ -451,16 +556,35 @@ const identityKeys = [
   "planFingerprint",
   "caseFingerprint",
   "bindingFingerprint",
-  "caseJsonFingerprint",
+  "sourceFingerprint",
+  "loweringFingerprint",
+  "requestFingerprint",
   "startedAt",
+] as const;
+
+const ATTEMPT_FIELDS = [
+  ...identityKeys,
+  "schemaVersion",
+  "phase",
+  "caseSha256",
+  "caseUri",
+  "receiptSha256",
+  "quarantineReason",
+  "rejectionCode",
 ] as const;
 
 function parseIdentity(value: unknown): PrescribedKinematicsObservationAttemptIdentity {
   const root = exactRecord(
     value,
-    Object.keys(value as object),
+    identityKeys,
     "$prescribedKinematicsAttemptIdentity",
   );
+  return parseIdentityFields(root);
+}
+
+function parseIdentityFields(
+  root: Record<string, unknown>,
+): PrescribedKinematicsObservationAttemptIdentity {
   const startedAt =
     typeof root.startedAt === "string" && !Number.isNaN(Date.parse(root.startedAt))
       ? root.startedAt
@@ -477,7 +601,9 @@ function parseIdentity(value: unknown): PrescribedKinematicsObservationAttemptId
     planFingerprint: fingerprint(root.planFingerprint, "planFingerprint"),
     caseFingerprint: fingerprint(root.caseFingerprint, "caseFingerprint"),
     bindingFingerprint: fingerprint(root.bindingFingerprint, "bindingFingerprint"),
-    caseJsonFingerprint: fingerprint(root.caseJsonFingerprint, "caseJsonFingerprint"),
+    sourceFingerprint: fingerprint(root.sourceFingerprint, "sourceFingerprint"),
+    loweringFingerprint: fingerprint(root.loweringFingerprint, "loweringFingerprint"),
+    requestFingerprint: fingerprint(root.requestFingerprint, "requestFingerprint"),
     startedAt,
   });
 }
@@ -501,7 +627,13 @@ function fingerprint(value: unknown, name: string): ContentFingerprint {
 function parseSubmitted(
   value: unknown,
 ): { readonly caseSha256: string; readonly caseUri: string } {
-  const root = exactRecord(value, Object.keys(value as object), "$submittedCase");
+  const root = exactRecord(value, ["caseSha256", "caseUri"], "$submittedCase");
+  return parseSubmittedFields(root);
+}
+
+function parseSubmittedFields(
+  root: Record<string, unknown>,
+): { readonly caseSha256: string; readonly caseUri: string } {
   const caseSha256 = sha(root.caseSha256);
   const caseUri = typeof root.caseUri === "string" &&
       root.caseUri === `chrono-case:sha256:${caseSha256}`
@@ -527,14 +659,25 @@ function assertSameIdentity(
   current: PrescribedKinematicsObservationAttemptIdentity,
   identity: PrescribedKinematicsObservationAttemptIdentity,
 ): void {
-  for (const key of identityKeys) {
-    const a = current[key];
-    const b = identity[key];
-    if (typeof a === "object" && a !== null && typeof b === "object" && b !== null) {
-      if (!fingerprintsEqual(a as ContentFingerprint, b as ContentFingerprint)) {
-        throw integrity("The L3 WAL identity conflicts with the resumed run.");
-      }
-    } else if (a !== b) {
+  if (
+    current.projectId !== identity.projectId ||
+    current.agentRunId !== identity.agentRunId ||
+    current.requestId !== identity.requestId ||
+    current.startedAt !== identity.startedAt
+  ) {
+    throw integrity("The L3 WAL identity conflicts with the resumed run.");
+  }
+  for (
+    const [recorded, resumed] of [
+      [current.planFingerprint, identity.planFingerprint],
+      [current.caseFingerprint, identity.caseFingerprint],
+      [current.bindingFingerprint, identity.bindingFingerprint],
+      [current.sourceFingerprint, identity.sourceFingerprint],
+      [current.loweringFingerprint, identity.loweringFingerprint],
+      [current.requestFingerprint, identity.requestFingerprint],
+    ] as const
+  ) {
+    if (!fingerprintsEqual(recorded, resumed)) {
       throw integrity("The L3 WAL identity conflicts with the resumed run.");
     }
   }
@@ -561,7 +704,9 @@ function base(
     planFingerprint: current.planFingerprint,
     caseFingerprint: current.caseFingerprint,
     bindingFingerprint: current.bindingFingerprint,
-    caseJsonFingerprint: current.caseJsonFingerprint,
+    sourceFingerprint: current.sourceFingerprint,
+    loweringFingerprint: current.loweringFingerprint,
+    requestFingerprint: current.requestFingerprint,
     startedAt: current.startedAt,
   };
 }
@@ -581,7 +726,7 @@ function submittedAttempt(
   if (current.phase !== "case-submitted") {
     throw integrity("The L3 WAL has no submitted case for this dispatch claim.");
   }
-  return current as SubmittedAttempt;
+  return current;
 }
 function sha(value: unknown): string {
   if (typeof value !== "string" || !/^[a-f0-9]{64}$/.test(value)) {
@@ -593,27 +738,23 @@ function sha(value: unknown): string {
 function parseRejectionCode(
   value: unknown,
 ): PrescribedKinematicsPreDispatchRejectionCode {
-  const codes = new Set<PrescribedKinematicsPreDispatchRejectionCode>([
-    "case_invalid",
-    "case_not_found",
-    "case_sha256_mismatch",
-    "case_uri_mismatch",
-    "invalid_case_json",
-    "invalid_request_id",
-    "invalid_sample_limit",
-    "invalid_sample_offset",
-    "invalid_timeout",
-    "request_conflict",
-  ]);
-  if (
-    typeof value !== "string" ||
-    !codes.has(value as PrescribedKinematicsPreDispatchRejectionCode)
-  ) {
-    throw integrity(
-      "The L3 rejection code is not a published definite pre-dispatch Chrono error.",
-    );
+  switch (value) {
+    case "case_invalid":
+    case "case_not_found":
+    case "case_sha256_mismatch":
+    case "case_uri_mismatch":
+    case "invalid_case_json":
+    case "invalid_request_id":
+    case "invalid_sample_limit":
+    case "invalid_sample_offset":
+    case "invalid_timeout":
+    case "request_conflict":
+      return value;
+    default:
+      throw integrity(
+        "The L3 rejection code is not a published definite pre-dispatch Chrono error.",
+      );
   }
-  return value as PrescribedKinematicsPreDispatchRejectionCode;
 }
 function freeze<T>(value: T): T {
   return Object.freeze(value);

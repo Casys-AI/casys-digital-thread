@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
+import { ChronoPrescribedKinematicsCaseLowerer } from "../../../../adapters/mechanics/chrono/chrono-prescribed-kinematics-case-lowerer.ts";
 import { FilePrescribedKinematicsObservationAttemptStore } from "../../../../adapters/mechanics/chrono/file-prescribed-kinematics-observation-attempt-store.ts";
 import { sampleAgentResourceReference } from "../../../../testing/agent-resource-test-support.ts";
 import { sha256Hex } from "../../../../domain/kernel/deterministic-json.ts";
@@ -10,6 +11,7 @@ import { resolveProjectSourceClosure } from "../../../../domain/project-source-w
 import type { ProjectSourceWorkspaceState } from "../../../../domain/project-source-workspace/types.ts";
 import {
   canonicalizePrescribedKinematicsCaseSource,
+  canonicalPrescribedKinematicsCaseSourceText,
 } from "../../../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-case-source.ts";
 import {
   PRESCRIBED_KINEMATICS_SOURCE_ATTACHMENT_ROLE,
@@ -20,9 +22,24 @@ import type {
   PrescribedKinematicsObservationRecord,
   PrescribedKinematicsObserver,
 } from "../../../ports/out/mechanics/prescribed-kinematics-observer.ts";
+import type { PrescribedKinematicsCaseLowerer } from "../../../ports/out/mechanics/prescribed-kinematics-case-lowerer.ts";
 import { RunPrescribedKinematicsObservation } from "./run-prescribed-kinematics-observation.ts";
 
 const PROJECT = "project-kinematics";
+const testLowerer: PrescribedKinematicsCaseLowerer = {
+  async lower({ source, sourceFingerprint }) {
+    const exactRequestText = canonicalPrescribedKinematicsCaseSourceText(source);
+    return {
+      sourceFingerprint,
+      loweringFingerprint: { algorithm: "sha256" as const, digest: "b".repeat(64) },
+      requestFingerprint: {
+        algorithm: "sha256" as const,
+        digest: await sha256Hex(new TextEncoder().encode(exactRequestText)),
+      },
+      exactRequestText,
+    };
+  },
+};
 Deno.test("prescribed-kinematics L3 restart reads an uncertain request and never redispatches", async () => {
   const { sealedCase, text } = await sealedFixture();
   const directory = await Deno.makeTempDir({ prefix: "prescribed-kinematics-run-" });
@@ -30,8 +47,8 @@ Deno.test("prescribed-kinematics L3 restart reads an uncertain request and never
   let reads = 0;
   const observer: PrescribedKinematicsObserver = {
     submitCase: async (request) => ({
-      caseSha256: request.expectedCaseSha256!,
-      caseUri: `chrono-case:sha256:${request.expectedCaseSha256!}`,
+      caseSha256: request.requestFingerprint.digest,
+      caseUri: `chrono-case:sha256:${request.requestFingerprint.digest}`,
     }),
     run: async () => {
       runs++;
@@ -49,6 +66,7 @@ Deno.test("prescribed-kinematics L3 restart reads an uncertain request and never
     const first = new RunPrescribedKinematicsObservation({
       attempts: new FilePrescribedKinematicsObservationAttemptStore(directory),
       observer,
+      lowerer: testLowerer,
     });
     assertEquals(
       (await first.execute(command(sealedCase, text))).status,
@@ -57,11 +75,100 @@ Deno.test("prescribed-kinematics L3 restart reads an uncertain request and never
     const restarted = new RunPrescribedKinematicsObservation({
       attempts: new FilePrescribedKinematicsObservationAttemptStore(directory),
       observer,
+      lowerer: testLowerer,
     });
     const resumed = await restarted.execute(command(sealedCase, text));
     assertEquals(resumed, { status: "quarantined", reason: "uncertain" });
     assertEquals(runs, 1);
     assertEquals(reads, 1);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("prescribed-kinematics L3 reopens the sealed source and submits only the server-owned lowered request", async () => {
+  const { sealedCase, text } = await sealedFixture();
+  const directory = await Deno.makeTempDir({ prefix: "prescribed-kinematics-run-" });
+  let submittedText: string | undefined;
+  try {
+    const runner = new RunPrescribedKinematicsObservation({
+      attempts: new FilePrescribedKinematicsObservationAttemptStore(directory),
+      lowerer: new ChronoPrescribedKinematicsCaseLowerer(),
+      observer: {
+        submitCase: async (submission) => {
+          submittedText = submission.exactCaseText;
+          return {
+            caseSha256: submission.requestFingerprint.digest,
+            caseUri: `chrono-case:sha256:${submission.requestFingerprint.digest}`,
+          };
+        },
+        run: async () => ({ state: "rejected", code: "case_invalid" }),
+        readRun: async () => {
+          throw new Error("a definite pre-dispatch rejection must not read a run");
+        },
+        readReceipt: async () => {
+          throw new Error("a definite pre-dispatch rejection has no receipt");
+        },
+      },
+    });
+    const internalCommand = command(sealedCase, text);
+    assertEquals("loweredCaseJson" in internalCommand, false);
+    assertEquals("exactCaseText" in internalCommand, false);
+    assertEquals(await runner.execute(internalCommand), {
+      status: "rejected",
+      code: "case_invalid",
+    });
+    assertEquals(
+      submittedText,
+      '{"bodies":[{"absolute_com_pose":{"position_m":[0,0,0],"rotation_wxyz":[1,0,0,0]},"fixed":true,"id":"base"},{"absolute_com_pose":{"position_m":[0,0,0],"rotation_wxyz":[1,0,0,0]},"fixed":false,"id":"head"}],"duration_s":1,"frame":{"handedness":"right"},"joints":[{"absolute_joint_frame":{"position_m":[0,0,0],"rotation_wxyz":[1,0,0,0]},"angle_ramp":{"angular_speed_rad_s":0.5,"initial_angle_rad":0},"child_body":"head","id":"joint","limits_rad":[-1,1],"parent_body":"base"}],"sample_every_steps":1,"schema_id":"chrono-prescribed-kinematics-case/1.0","step_s":0.5,"units":{"angle":"rad","length":"m","time":"s"}}',
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("prescribed-kinematics L3 refuses a lowerer whose source fingerprint differs from the reopened seal", async () => {
+  const { sealedCase, text } = await sealedFixture();
+  const directory = await Deno.makeTempDir({ prefix: "prescribed-kinematics-run-" });
+  let submitted = false;
+  try {
+    const runner = new RunPrescribedKinematicsObservation({
+      attempts: new FilePrescribedKinematicsObservationAttemptStore(directory),
+      lowerer: {
+        async lower({ source }) {
+          const exactRequestText = canonicalPrescribedKinematicsCaseSourceText(source);
+          return {
+            sourceFingerprint: { algorithm: "sha256" as const, digest: "f".repeat(64) },
+            loweringFingerprint: {
+              algorithm: "sha256" as const,
+              digest: "b".repeat(64),
+            },
+            requestFingerprint: {
+              algorithm: "sha256" as const,
+              digest: await sha256Hex(new TextEncoder().encode(exactRequestText)),
+            },
+            exactRequestText,
+          };
+        },
+      },
+      observer: {
+        submitCase: async () => {
+          submitted = true;
+          throw new Error("mismatched lowering must fail before provider submission");
+        },
+        run: async () => ({ state: "absent" }),
+        readRun: async () => ({ state: "absent" }),
+        readReceipt: async () => {
+          throw new Error("unreachable");
+        },
+      },
+    });
+    await assertRejects(
+      () => runner.execute(command(sealedCase, text)),
+      TypeError,
+      "server-owned prescribed-kinematics lowering is absent, unbound",
+    );
+    assertEquals(submitted, false);
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
@@ -111,13 +218,14 @@ Deno.test("prescribed-kinematics L3 quarantines a receipt whose bounded fact pag
       attempts: new FilePrescribedKinematicsObservationAttemptStore(directory),
       observer: {
         submitCase: async (submission) => ({
-          caseSha256: submission.expectedCaseSha256!,
-          caseUri: `chrono-case:sha256:${submission.expectedCaseSha256!}`,
+          caseSha256: submission.requestFingerprint.digest,
+          caseUri: `chrono-case:sha256:${submission.requestFingerprint.digest}`,
         }),
         run: async () => ({ state: "recorded", record: malformed }),
         readRun: async () => ({ state: "recorded", record: malformed }),
         readReceipt: async () => malformed,
       },
+      lowerer: testLowerer,
     });
     assertEquals(await runner.execute(command(sealedCase, text)), {
       status: "quarantined",
@@ -138,8 +246,8 @@ Deno.test("prescribed-kinematics L3 reads the same request after a post-intent o
       attempts: new FilePrescribedKinematicsObservationAttemptStore(directory),
       observer: {
         submitCase: async (submission) => ({
-          caseSha256: submission.expectedCaseSha256!,
-          caseUri: `chrono-case:sha256:${submission.expectedCaseSha256!}`,
+          caseSha256: submission.requestFingerprint.digest,
+          caseUri: `chrono-case:sha256:${submission.requestFingerprint.digest}`,
         }),
         run: async (request) => {
           runs++;
@@ -160,6 +268,7 @@ Deno.test("prescribed-kinematics L3 reads the same request after a post-intent o
           throw new Error("not recorded");
         },
       },
+      lowerer: testLowerer,
     });
     assertEquals(await runner.execute(command(sealedCase, text)), {
       status: "quarantined",
@@ -180,8 +289,8 @@ Deno.test("prescribed-kinematics L3 records a definite pre-dispatch rejection wi
       attempts: new FilePrescribedKinematicsObservationAttemptStore(directory),
       observer: {
         submitCase: async (submission) => ({
-          caseSha256: submission.expectedCaseSha256!,
-          caseUri: `chrono-case:sha256:${submission.expectedCaseSha256!}`,
+          caseSha256: submission.requestFingerprint.digest,
+          caseUri: `chrono-case:sha256:${submission.requestFingerprint.digest}`,
         }),
         run: async () => ({ state: "rejected", code: "case_not_found" }),
         readRun: async () => {
@@ -191,6 +300,7 @@ Deno.test("prescribed-kinematics L3 records a definite pre-dispatch rejection wi
           throw new Error("definite rejection has no receipt");
         },
       },
+      lowerer: testLowerer,
     });
     assertEquals(await runner.execute(command(sealedCase, text)), {
       status: "rejected",
@@ -212,8 +322,8 @@ Deno.test("prescribed-kinematics L3 reads every 64-sample receipt page before se
       attempts: new FilePrescribedKinematicsObservationAttemptStore(directory),
       observer: {
         submitCase: async (submission) => ({
-          caseSha256: submission.expectedCaseSha256!,
-          caseUri: `chrono-case:sha256:${submission.expectedCaseSha256!}`,
+          caseSha256: submission.requestFingerprint.digest,
+          caseUri: `chrono-case:sha256:${submission.requestFingerprint.digest}`,
         }),
         run: async () => ({ state: "recorded", record: page(0) }),
         readRun: async () => ({ state: "recorded", record: page(0) }),
@@ -222,8 +332,20 @@ Deno.test("prescribed-kinematics L3 reads every 64-sample receipt page before se
           return page(request?.sampleOffset ?? 0);
         },
       },
+      lowerer: testLowerer,
     });
-    assertEquals((await runner.execute(command(sealedCase, text))).status, "recorded");
+    const result = await runner.execute(command(sealedCase, text));
+    assertEquals(result.status, "recorded");
+    if (result.status !== "recorded") throw new Error("The fixture must record L3.");
+    assertEquals(
+      result.lowering.sourceFingerprint,
+      sealedCase.sourceClosure.workspace.root.resourceFingerprint,
+    );
+    assertEquals(result.lowering.requestFingerprint.digest, caseSha);
+    assertEquals(result.request, {
+      requestId: "request-1",
+      caseSha256: caseSha,
+    });
     assertEquals(offsets, [0, 64]);
   } finally {
     await Deno.remove(directory, { recursive: true });
@@ -238,10 +360,18 @@ Deno.test("prescribed-kinematics L3 recovery reads every receipt page without an
   let runs = 0;
   try {
     const attempts = new FilePrescribedKinematicsObservationAttemptStore(directory);
+    const runCommand = command(sealedCase, text);
     const identity = {
-      ...command(sealedCase, text),
+      projectId: runCommand.projectId,
+      agentRunId: runCommand.agentRunId,
+      requestId: runCommand.requestId,
+      planFingerprint: runCommand.planFingerprint,
+      bindingFingerprint: runCommand.bindingFingerprint,
+      startedAt: runCommand.startedAt,
       caseFingerprint: sealedCase.fingerprint,
-      caseJsonFingerprint: { algorithm: "sha256" as const, digest: caseSha },
+      sourceFingerprint: sealedCase.sourceClosure.workspace.root.resourceFingerprint,
+      loweringFingerprint: { algorithm: "sha256" as const, digest: "b".repeat(64) },
+      requestFingerprint: { algorithm: "sha256" as const, digest: caseSha },
     };
     await attempts.prepare(identity);
     await attempts.markCaseSubmitted(identity, {
@@ -268,6 +398,7 @@ Deno.test("prescribed-kinematics L3 recovery reads every receipt page without an
           return completeRecord(caseSha, request?.sampleOffset ?? 0, 65);
         },
       },
+      lowerer: testLowerer,
     });
     assertEquals((await runner.execute(command(sealedCase, text))).status, "recorded");
     assertEquals(runs, 0);
@@ -287,8 +418,8 @@ Deno.test("prescribed-kinematics L3 quarantines missing, overlapping, duplicate,
         attempts: new FilePrescribedKinematicsObservationAttemptStore(directory),
         observer: {
           submitCase: async (submission) => ({
-            caseSha256: submission.expectedCaseSha256!,
-            caseUri: `chrono-case:sha256:${submission.expectedCaseSha256!}`,
+            caseSha256: submission.requestFingerprint.digest,
+            caseUri: `chrono-case:sha256:${submission.requestFingerprint.digest}`,
           }),
           run: async () => ({
             state: "recorded",
@@ -304,6 +435,7 @@ Deno.test("prescribed-kinematics L3 quarantines missing, overlapping, duplicate,
               fault,
             ),
         },
+        lowerer: testLowerer,
       });
       assertEquals(await runner.execute(command(sealedCase, text)), {
         status: "quarantined",
@@ -317,7 +449,7 @@ Deno.test("prescribed-kinematics L3 quarantines missing, overlapping, duplicate,
 
 function command(
   sealedCase: Awaited<ReturnType<typeof sealedFixture>>["sealedCase"],
-  text: string,
+  _text: string,
 ) {
   return {
     projectId: PROJECT,
@@ -327,7 +459,6 @@ function command(
     planFingerprint: { algorithm: "sha256" as const, digest: "d".repeat(64) },
     bindingFingerprint: { algorithm: "sha256" as const, digest: "e".repeat(64) },
     sealedCase,
-    loweredCaseJson: text,
   };
 }
 

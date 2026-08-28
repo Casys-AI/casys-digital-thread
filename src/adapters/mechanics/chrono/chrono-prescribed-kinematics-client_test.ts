@@ -8,7 +8,8 @@ import {
   ChronoPrescribedKinematicsRequestError,
 } from "./chrono-prescribed-kinematics-client.ts";
 
-const CASE_SHA = "a".repeat(64);
+const CASE_TEXT = '{"schema_id":"chrono-prescribed-kinematics-case/1.0"}';
+const CASE_SHA = "727daf35c32fd826cb4adcb79b9792437aca4afe5ff76396f2c73a3588a1947c";
 const OTHER_CASE_SHA = "e".repeat(64);
 const RECEIPT_SHA = "b".repeat(64);
 const OUTCOME_SHA = "c".repeat(64);
@@ -44,8 +45,8 @@ Deno.test("Chrono adapter sends fixed tool sequence with bearer at fetch only", 
   });
 
   const submitted = await client.submitCase({
-    caseJson: '{"schema_id":"chrono-prescribed-kinematics-case/1.0"}',
-    expectedCaseSha256: CASE_SHA,
+    exactCaseText: CASE_TEXT,
+    requestFingerprint: { algorithm: "sha256", digest: CASE_SHA },
   });
   const run = await client.run({
     requestId: REQUEST_ID,
@@ -71,7 +72,7 @@ Deno.test("Chrono adapter sends fixed tool sequence with bearer at fetch only", 
     "chrono_run_receipt_get",
   ]);
   assertEquals(calls[0]?.arguments, {
-    case_json: '{"schema_id":"chrono-prescribed-kinematics-case/1.0"}',
+    case_json: CASE_TEXT,
     case_sha256: CASE_SHA,
   });
   assertEquals(calls[1]?.arguments, {
@@ -260,7 +261,11 @@ Deno.test("Chrono adapter fails closed when a case submit SHA differs from its r
   });
 
   await assertRejects(
-    () => client.submitCase({ caseJson: "{}", expectedCaseSha256: CASE_SHA }),
+    () =>
+      client.submitCase({
+        exactCaseText: CASE_TEXT,
+        requestFingerprint: { algorithm: "sha256", digest: CASE_SHA },
+      }),
     ChronoPrescribedKinematicsProtocolError,
     "does not match the expected exact case SHA-256",
   );
@@ -297,6 +302,21 @@ Deno.test("Chrono adapter still rejects a stored request URI that is present but
     () => client.readRun(REQUEST_ID),
     ChronoPrescribedKinematicsProtocolError,
     "case_uri",
+  );
+});
+
+Deno.test("Chrono adapter rejects a non-canonical provider timestamp", async () => {
+  const client = clientWith(() => {
+    const record = recordView();
+    record.recorded_at = "2026-08-29T00:00:00Z";
+    (record.receipt as Record<string, unknown>).recorded_at = "2026-08-29T00:00:00Z";
+    return complete({ ok: true, state: "recorded", record });
+  });
+
+  await assertRejects(
+    () => client.readRun(REQUEST_ID),
+    ChronoPrescribedKinematicsProtocolError,
+    "exact canonical ISO timestamp",
   );
 });
 

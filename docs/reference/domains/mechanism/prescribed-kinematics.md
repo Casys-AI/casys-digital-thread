@@ -27,6 +27,34 @@ resource in `ProjectSourceWorkspace`. It declares only the engineering scenario:
 - a connected immediate tree of at least two bodies;
 - a bijective `bodyId → PartUsage` mapping.
 
+### V1 coordinate convention and Chrono lowering boundary
+
+`zeroPose`, `parentFrame`, and `childFrame` are all absolute poses in the same
+right-handed world frame at zero joint angle. Positions are metres and orientations are
+Hamilton quaternions in `WXYZ` order. The source contains no alternate local-frame
+interpretation, no pose-composition rule, and no geometry-derived reference frame. A
+body's `zeroPose` is the exact body centre-of-mass/reference pose passed to a binding
+that needs `absolute_com_pose`; V1 does not separately assert a mass property.
+
+The Chrono 0.3.1 binding is deliberately narrower than the source vocabulary: it accepts
+a revolute joint only when `parentFrame` and `childFrame` are the exact same world pose
+and their axis fields are both the literal local `[0, 0, 1]`. It then passes that pose
+unchanged as Chrono's `absolute_joint_frame`. It passes each body `zeroPose` unchanged
+as `absolute_com_pose`, makes **only** `groundBodyId` fixed, and uses the exact source
+IDs, limits, units and time step. A source using relative frames, distinct mating
+frames, a non-Z axis, another topology, or a ramp that is not explicit from `0` through
+the whole duration is literally `unavailable` for this binding. The server must not
+average frames, compose an undocumented transform, infer a joint from a STEP/label, or
+synthesize geometry to make it runnable.
+
+Before submission, the binding also repeats the qualified mcp-chrono 0.3.1 numeric
+boundary: every emitted numeric value, including poses, quaternions, limits, angles and
+derived angular speed, must be finite and within `±1,000,000`. It fixes
+`sample_every_steps` to `1` and rejects the source if
+`floor(durationS / timeStepS) / sample_every_steps + 2 > 512`, even where the broader V1
+source contract is otherwise valid. These are lowering rejections, not a derived
+engineering verdict.
+
 V1 deliberately bounds one source to 16 bodies, 15 joints, a duration of at most 10 s,
 and 512 stored sample instants. This in turn bounds normalized L3 to 23,552 fact rows
 (poses, angles, and residual rows). Larger products scale as several bounded
@@ -64,6 +92,13 @@ L3 values are literal facts only. Missing observations use `unresolved` and unsu
 observations use `unavailable`; they are never guessed. Collision, contact, clearance,
 forces, strength, safety, and manufacturability are copied as literal `not_evaluated`
 boundaries.
+
+The immutable L3 capture records only the exact dispatch identity (`requestId` and case
+SHA-256), the source/lowering/request fingerprints, and a strictly normalized factual
+Chrono receipt. The receipt must repeat the same request and case identities, qualified
+engine/runtime identity, exact execution exit and the fixed `not_evaluated` boundary. It
+never stores the provider case JSON; that transient request is recoverable only by
+re-lowering the sealed source under the recorded binding.
 
 Time identity is a case-derived integer sample tick. The normalizer accepts decimal JSON
 spellings such as `0.3` for the `0.1 s` third tick within the fixed numeric tolerance,

@@ -33,7 +33,6 @@ import {
   EngineeringProjectCommandError,
   type EngineeringProjectCommandService,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
-import { canonicalPrescribedKinematicsCaseSourceText } from "../../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-case-source.ts";
 import { prescribedKinematicsEvaluationCloseoutCandidates } from "../../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-evaluation-closeout.ts";
 import {
   DECIDE_ACCEPT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION,
@@ -325,9 +324,6 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
           case: sealedCase.fingerprint,
         }),
         sealedCase,
-        loweredCaseJson: canonicalPrescribedKinematicsCaseSourceText(
-          sealedCase.sourceClosure.source,
-        ),
       });
       if (result.status !== "recorded") {
         throw new EngineeringProjectCommandError(
@@ -338,10 +334,12 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
         );
       }
       const ref = await this.#captures.saveObservation({
-        schemaVersion: "prescribed-kinematics-observation-capture/1.0",
+        schemaVersion: "prescribed-kinematics-observation-capture/2.0",
         observation: result.observation,
+        request: result.request,
         receipt: result.receipt,
         notEvaluated: result.notEvaluated,
+        lowering: result.lowering,
       }, sealedCase);
       return output(
         input,

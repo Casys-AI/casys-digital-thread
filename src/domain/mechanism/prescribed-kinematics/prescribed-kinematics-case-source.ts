@@ -49,12 +49,14 @@ export const PRESCRIBED_KINEMATICS_QUATERNION_NORM_EPSILON = 1e-12;
 export const PRESCRIBED_KINEMATICS_AXIS_NORM_EPSILON = 1e-12;
 
 export interface PrescribedKinematicsPose {
+  /** Absolute pose in the one right-handed world frame at time zero. */
   readonly positionM: readonly [number, number, number];
   /** Unit quaternion in W, X, Y, Z order. */
   readonly orientationWxyz: readonly [number, number, number, number];
 }
 
 export interface PrescribedKinematicsFrame extends PrescribedKinematicsPose {
+  /** Axis in this frame's local coordinates; V1 Chrono lowering retains only +Z. */
   readonly axis: readonly [number, number, number];
 }
 
@@ -62,6 +64,7 @@ export interface PrescribedKinematicsBody {
   readonly bodyId: string;
   /** Exact SysML PartUsage element identity; never a label or a STEP name. */
   readonly partUsageElementId: string;
+  /** Absolute centre-of-mass/reference pose at time zero; no mass is asserted. */
   readonly zeroPose: PrescribedKinematicsPose;
 }
 

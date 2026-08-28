@@ -11,43 +11,60 @@ import type {
 } from "../../../ports/in/mechanics/prescribed-kinematics/run-prescribed-kinematics-observation.ts";
 import type { PrescribedKinematicsObservationAttemptStore } from "../../../ports/out/mechanics/prescribed-kinematics-observation-attempt-store.ts";
 import type {
+  PrescribedKinematicsCaseLowerer,
+  PrescribedKinematicsLoweredCase,
+} from "../../../ports/out/mechanics/prescribed-kinematics-case-lowerer.ts";
+import type {
   PrescribedKinematicsObservationRecord,
   PrescribedKinematicsObserver,
 } from "../../../ports/out/mechanics/prescribed-kinematics-observer.ts";
-import { sha256Hex } from "../../../../domain/kernel/deterministic-json.ts";
+import {
+  fingerprintsEqual,
+  sha256Hex,
+} from "../../../../domain/kernel/deterministic-json.ts";
 import {
   parsePrescribedKinematicsObservation,
   prescribedKinematicsObservationMethod,
 } from "../../../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-observation.ts";
-import {
-  canonicalPrescribedKinematicsCaseSourceText,
-} from "../../../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-case-source.ts";
+import { fingerprintPrescribedKinematicsCaseSource } from "../../../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-case-source.ts";
 import { validatePrescribedKinematicsCase } from "../../../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-source-closure.ts";
 
 export interface RunPrescribedKinematicsObservationDependencies {
   readonly attempts: PrescribedKinematicsObservationAttemptStore;
   readonly observer: PrescribedKinematicsObserver;
+  readonly lowerer: PrescribedKinematicsCaseLowerer;
 }
 
 export class RunPrescribedKinematicsObservation
   implements RunPrescribedKinematicsObservationUseCase {
   readonly #attempts: PrescribedKinematicsObservationAttemptStore;
   readonly #observer: PrescribedKinematicsObserver;
+  readonly #lowerer: PrescribedKinematicsCaseLowerer;
 
   constructor(dependencies: RunPrescribedKinematicsObservationDependencies) {
     this.#attempts = dependencies.attempts;
     this.#observer = dependencies.observer;
+    this.#lowerer = dependencies.lowerer;
   }
 
   async execute(
     command: RunPrescribedKinematicsObservationCommand,
   ): Promise<RunPrescribedKinematicsObservationResult> {
     const sealedCase = await validatePrescribedKinematicsCase(command.sealedCase);
-    const caseJson = exactLoweredCaseJson(command.loweredCaseJson, sealedCase);
-    const caseJsonFingerprint = {
-      algorithm: "sha256" as const,
-      digest: await sha256Hex(new TextEncoder().encode(caseJson)),
-    };
+    const source = sealedCase.sourceClosure.source;
+    const sourceFingerprint = await fingerprintPrescribedKinematicsCaseSource(source);
+    if (
+      !fingerprintsEqual(
+        sourceFingerprint,
+        sealedCase.sourceClosure.workspace.root.resourceFingerprint,
+      )
+    ) {
+      throw new TypeError(
+        "The reopened prescribed-kinematics source does not match its sealed workspace resource fingerprint.",
+      );
+    }
+    const lowered = await this.#lowerer.lower({ source, sourceFingerprint });
+    await assertLoweredCase(lowered, sourceFingerprint);
     const identity = {
       projectId: command.projectId,
       agentRunId: command.agentRunId,
@@ -55,28 +72,35 @@ export class RunPrescribedKinematicsObservation
       planFingerprint: command.planFingerprint,
       caseFingerprint: sealedCase.fingerprint,
       bindingFingerprint: command.bindingFingerprint,
-      caseJsonFingerprint,
+      sourceFingerprint,
+      loweringFingerprint: lowered.loweringFingerprint,
+      requestFingerprint: lowered.requestFingerprint,
       startedAt: command.startedAt,
     };
     let attempt = await this.#attempts.prepare(identity);
     if (attempt.phase === "recorded") {
-      return await this.#readRecordedOnly(identity, sealedCase, attempt.receiptSha256!);
+      return await this.#readRecordedOnly(
+        identity,
+        sealedCase,
+        lowered,
+        attempt.receiptSha256!,
+      );
     }
     if (attempt.phase === "rejected") {
       return { status: "rejected", code: attempt.rejectionCode };
     }
     if (attempt.phase === "quarantined" || attempt.phase === "dispatching") {
-      return await this.#recoverOnly(identity, sealedCase, attempt);
+      return await this.#recoverOnly(identity, sealedCase, lowered, attempt);
     }
     if (attempt.phase === "prepared") {
       // Submission is idempotent by case SHA and does not carry a run request.
       const submitted = await this.#observer.submitCase({
-        caseJson,
-        expectedCaseSha256: caseJsonFingerprint.digest,
+        exactCaseText: lowered.exactRequestText,
+        requestFingerprint: lowered.requestFingerprint,
       });
       if (
-        submitted.caseSha256 !== caseJsonFingerprint.digest ||
-        submitted.caseUri !== `chrono-case:sha256:${caseJsonFingerprint.digest}`
+        submitted.caseSha256 !== lowered.requestFingerprint.digest ||
+        submitted.caseUri !== `chrono-case:sha256:${lowered.requestFingerprint.digest}`
       ) {
         throw new TypeError(
           "The provider case-submission readback does not bind the exact server-owned case bytes.",
@@ -86,7 +110,7 @@ export class RunPrescribedKinematicsObservation
     }
     const dispatch = await this.#attempts.markDispatching(identity);
     if (!dispatch.dispatchNow) {
-      return await this.#recoverOnly(identity, sealedCase, dispatch.attempt);
+      return await this.#recoverOnly(identity, sealedCase, lowered, dispatch.attempt);
     }
     try {
       const result = await this.#observer.run({
@@ -102,9 +126,9 @@ export class RunPrescribedKinematicsObservation
       // a runner/store incident until readback has had this one chance to
       // recover a factual receipt, and never call run again.
       if (result.state !== "recorded") {
-        return await this.#recoverOnly(identity, sealedCase, dispatch.attempt);
+        return await this.#recoverOnly(identity, sealedCase, lowered, dispatch.attempt);
       }
-      return await this.#recordReadback(identity, sealedCase, result.record);
+      return await this.#recordReadback(identity, sealedCase, lowered, result.record);
     } catch {
       // The request may have crossed the network; next invocation is read-only.
       return await this.#quarantine(identity, "uncertain");
@@ -114,12 +138,18 @@ export class RunPrescribedKinematicsObservation
   async #recoverOnly(
     identity: Parameters<PrescribedKinematicsObservationAttemptStore["prepare"]>[0],
     sealedCase: Awaited<ReturnType<typeof validatePrescribedKinematicsCase>>,
+    lowered: PrescribedKinematicsLoweredCase,
     attempt: Awaited<
       ReturnType<PrescribedKinematicsObservationAttemptStore["prepare"]>
     >,
   ): Promise<RunPrescribedKinematicsObservationResult> {
     if (attempt.phase === "recorded") {
-      return await this.#readRecordedOnly(identity, sealedCase, attempt.receiptSha256!);
+      return await this.#readRecordedOnly(
+        identity,
+        sealedCase,
+        lowered,
+        attempt.receiptSha256!,
+      );
     }
     if (attempt.phase === "rejected") {
       return { status: "rejected", code: attempt.rejectionCode };
@@ -140,7 +170,7 @@ export class RunPrescribedKinematicsObservation
         // a pre-dispatch rejection. Preserve quarantine/recovery instead.
         return await this.#retainQuarantine(identity, attempt, "malformed");
       }
-      return await this.#recordReadback(identity, sealedCase, result.record);
+      return await this.#recordReadback(identity, sealedCase, lowered, result.record);
     } catch {
       return await this.#retainQuarantine(identity, attempt, "malformed");
     }
@@ -165,11 +195,13 @@ export class RunPrescribedKinematicsObservation
   async #readRecordedOnly(
     identity: Parameters<PrescribedKinematicsObservationAttemptStore["prepare"]>[0],
     sealedCase: Awaited<ReturnType<typeof validatePrescribedKinematicsCase>>,
+    lowered: PrescribedKinematicsLoweredCase,
     receiptSha256: string,
   ): Promise<RunPrescribedKinematicsObservationResult> {
     try {
       const record = await this.#readCompleteReceipt(receiptSha256);
-      return await recordToResult(record, sealedCase);
+      assertRecordBoundToIdentity(record, identity);
+      return await recordToResult(record, sealedCase, lowered);
     } catch {
       return await this.#quarantine(identity, "malformed");
     }
@@ -178,26 +210,18 @@ export class RunPrescribedKinematicsObservation
   async #recordReadback(
     identity: Parameters<PrescribedKinematicsObservationAttemptStore["prepare"]>[0],
     sealedCase: Awaited<ReturnType<typeof validatePrescribedKinematicsCase>>,
+    lowered: PrescribedKinematicsLoweredCase,
     record: PrescribedKinematicsObservationRecord,
   ): Promise<RunPrescribedKinematicsObservationResult> {
     try {
       // A receipt reread is mandatory even after a direct acknowledgement: the
       // persisted receipt, not an acknowledgement, is the factual provenance.
       const reread = await this.#readCompleteReceipt(record.receipt.receiptSha256);
-      if (
-        reread.request.requestId !== identity.requestId ||
-        reread.request.caseSha256 !== identity.caseJsonFingerprint.digest ||
-        reread.request.caseUri !==
-          `chrono-case:sha256:${identity.caseJsonFingerprint.digest}` ||
-        reread.receipt.caseSha256 !== identity.caseJsonFingerprint.digest ||
-        reread.receipt.requestId !== identity.requestId
-      ) {
-        return await this.#quarantine(identity, "malformed");
-      }
+      assertRecordBoundToIdentity(reread, identity);
       // Validate every fact and its literal boundary before advancing the WAL
       // to recorded. A malformed receipt is recoverable quarantine, never a
       // durable L3 observation merely because a provider named a receipt.
-      const result = await recordToResult(reread, sealedCase);
+      const result = await recordToResult(reread, sealedCase, lowered);
       await this.#attempts.markRecorded(identity, reread.receipt.receiptSha256);
       return result;
     } catch {
@@ -276,6 +300,7 @@ export class RunPrescribedKinematicsObservation
 async function recordToResult(
   record: PrescribedKinematicsObservationRecord,
   sealedCase: Awaited<ReturnType<typeof validatePrescribedKinematicsCase>>,
+  lowered: PrescribedKinematicsLoweredCase,
 ): Promise<RunPrescribedKinematicsObservationResult> {
   if (
     record.samplePage.hasMore || record.samplePage.returned !== record.samplePage.total
@@ -329,9 +354,36 @@ async function recordToResult(
   return {
     status: "recorded",
     observation,
+    request: {
+      requestId: record.request.requestId,
+      caseSha256: record.request.caseSha256,
+    },
     receipt: record.receipt,
     notEvaluated: record.notEvaluated,
+    lowering: {
+      sourceFingerprint: lowered.sourceFingerprint,
+      loweringFingerprint: lowered.loweringFingerprint,
+      requestFingerprint: lowered.requestFingerprint,
+    },
   };
+}
+
+function assertRecordBoundToIdentity(
+  record: PrescribedKinematicsObservationRecord,
+  identity: Parameters<PrescribedKinematicsObservationAttemptStore["prepare"]>[0],
+): void {
+  if (
+    record.request.requestId !== identity.requestId ||
+    record.request.caseSha256 !== identity.requestFingerprint.digest ||
+    record.request.caseUri !==
+      `chrono-case:sha256:${identity.requestFingerprint.digest}` ||
+    record.receipt.caseSha256 !== identity.requestFingerprint.digest ||
+    record.receipt.requestId !== identity.requestId
+  ) {
+    throw new TypeError(
+      "The prescribed-kinematics receipt does not bind the exact dispatched request identity.",
+    );
+  }
 }
 
 const PAGE_LIMIT = 64;
@@ -385,22 +437,30 @@ function assertReceiptPage(
   }
 }
 
-function exactLoweredCaseJson(
-  value: string,
-  sealedCase: Awaited<ReturnType<typeof validatePrescribedKinematicsCase>>,
-): string {
-  if (typeof value !== "string" || value.length === 0 || value.length > 262_144) {
+async function assertLoweredCase(
+  lowered: PrescribedKinematicsLoweredCase,
+  sourceFingerprint: PrescribedKinematicsLoweredCase["sourceFingerprint"],
+): Promise<void> {
+  if (
+    !fingerprintsEqual(lowered.sourceFingerprint, sourceFingerprint) ||
+    lowered.requestFingerprint.algorithm !== "sha256" ||
+    lowered.loweringFingerprint.algorithm !== "sha256" ||
+    !/^[a-f0-9]{64}$/.test(lowered.requestFingerprint.digest) ||
+    !/^[a-f0-9]{64}$/.test(lowered.loweringFingerprint.digest) ||
+    typeof lowered.exactRequestText !== "string" ||
+    lowered.exactRequestText.length === 0 ||
+    lowered.exactRequestText.length > 524_288
+  ) {
     throw new TypeError(
-      "The server-owned prescribed-kinematics lowering is absent or exceeds its fixed bound.",
+      "The server-owned prescribed-kinematics lowering is absent, unbound, or exceeds its fixed bound.",
     );
   }
-  const exact = canonicalPrescribedKinematicsCaseSourceText(
-    sealedCase.sourceClosure.source,
-  );
-  if (value !== exact) {
+  if (
+    (await sha256Hex(new TextEncoder().encode(lowered.exactRequestText))) !==
+      lowered.requestFingerprint.digest
+  ) {
     throw new TypeError(
-      "The server-owned prescribed-kinematics lowering is not the exact canonical bytes of the sealed case source.",
+      "The server-owned prescribed-kinematics lowering request fingerprint does not bind its exact bytes.",
     );
   }
-  return value;
 }
