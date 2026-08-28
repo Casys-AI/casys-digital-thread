@@ -46,7 +46,6 @@ import {
   safeId,
 } from "../../../domain/kernel/case-validation.ts";
 import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 
 const MEBIBYTE = 1_048_576;
 const RUN_LABEL = "io.casys.execution-run";
@@ -149,9 +148,9 @@ export interface MicrosandboxImageInspection {
 }
 
 /**
- * Server-owned image contract reused before a JIT lease and by the execution
- * backend itself. `configurationProvenance` is the exact registered execution
- * profile that selected user/entrypoint; it is never supplied by an agent.
+ * Server-owned OCI image contract reused before a JIT lease and by the
+ * execution backend itself. It attests only fields observable from an OCI
+ * inspection; execution-profile provenance is a separate cache attestation.
  */
 export interface ExactMicrosandboxImageExpectation {
   readonly reference: string;
@@ -160,7 +159,6 @@ export interface ExactMicrosandboxImageExpectation {
   readonly architecture: string;
   readonly user: string;
   readonly entrypoint: readonly string[];
-  readonly configurationProvenance: ContentFingerprint;
 }
 
 export function assertExactMicrosandboxImageInspection(
@@ -977,10 +975,6 @@ export class MicrosandboxEphemeralExecutionBackend
       architecture: microsandboxHostArchitecture(),
       user: this.#options.expectedImageUser,
       entrypoint: this.#options.expectedImageEntrypoint,
-      // The backend was constructed only from its registered profile/policy.
-      // The registered isolation-policy fingerprint is configuration provenance for this
-      // execution path; it does not come from the OCI inspection response.
-      configurationProvenance: this.#options.policy.fingerprint,
     });
   }
 

@@ -989,9 +989,8 @@ async function createProjectControl(
             CALCULIX_MICROSANDBOX_WORKER_CONTRACT.executable,
             ...CALCULIX_MICROSANDBOX_WORKER_CONTRACT.args,
           ],
-          configurationProvenance:
-            calculixCapability.localProfile.isolationPolicy.fingerprint,
         },
+        executionProfileFingerprint: calculixCapability.localProfile.profileFingerprint,
       }],
     ),
   });

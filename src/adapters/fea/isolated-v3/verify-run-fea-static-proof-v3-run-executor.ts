@@ -461,6 +461,7 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
       project,
       runId: command.runId,
       operationalCapability,
+      executionProfileFingerprint: prepared.profile.profileFingerprint,
       recheck: async () => {
         const rechecked = await this.d.capabilityRuntime!.requireExecution({
           project,

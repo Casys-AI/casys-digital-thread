@@ -156,6 +156,7 @@ export class CapabilityRuntimeHostSupervisor {
       const leaseDisposition = await this.#acquireOrReuseExactScope(
         lease,
         request.reuseExistingLease ?? "allow",
+        request.at,
       );
       let material: CapabilityRuntimeHostEnsureResult;
       try {
@@ -193,6 +194,11 @@ export class CapabilityRuntimeHostSupervisor {
           material.state,
         ),
       );
+      if (mutation.status !== "succeeded") {
+        throw new CapabilityRuntimeHostSafetyError(
+          `Capability runtime start outcome is ${mutation.status}; recovery must reconcile it before a session can use the host.`,
+        );
+      }
       return {
         profile: capabilityRuntimeLaunchProfileReference(profile),
         state: await this.#observe(profile),
@@ -287,6 +293,10 @@ export class CapabilityRuntimeHostSupervisor {
     exactProfile?: CapabilityRuntimeLaunchProfile,
   ): Promise<CapabilityRuntimeHostEnsureResult> {
     const profile = exactProfile ?? await this.#safeProfile(request.profile);
+    // Recovery precedes even the installed fast-path. A fresh active/installed
+    // observation cannot turn a failed or uncertain current mutation into a
+    // usable capability session.
+    await this.#assertNoPendingRecovery(profile);
     const observed = await this.#observe(profile);
     if (observed?.material === "installed") {
       return {
@@ -300,7 +310,6 @@ export class CapabilityRuntimeHostSupervisor {
         `Capability material is ${observed.material}; recovery must observe it before another acquisition.`,
       );
     }
-    await this.#assertNoPendingRecovery(profile);
     const mutation = await this.#coordinator.mutate(
       journalEntry(
         profile,
@@ -310,6 +319,11 @@ export class CapabilityRuntimeHostSupervisor {
         observed,
       ),
     );
+    if (mutation.status !== "succeeded") {
+      throw new CapabilityRuntimeHostSafetyError(
+        `Capability runtime material acquisition outcome is ${mutation.status}; recovery must reconcile it before a session can use the material.`,
+      );
+    }
     return {
       profile: capabilityRuntimeLaunchProfileReference(profile),
       state: await this.#observe(profile),
@@ -379,6 +393,7 @@ export class CapabilityRuntimeHostSupervisor {
   async #acquireOrReuseExactScope(
     lease: CapabilityRuntimeLease,
     reuse: "allow" | "reject",
+    at: string,
   ): Promise<"created" | "reused"> {
     const claim = await this.options.leases.claim(lease);
     if (claim.status === "created") {
@@ -390,7 +405,7 @@ export class CapabilityRuntimeHostSupervisor {
         "A deterministic capability lease already belongs to another operational scope; recovery must resolve it.",
       );
     }
-    if (existing.expiresAt <= lease.acquiredAt) {
+    if (existing.expiresAt <= at) {
       throw new CapabilityRuntimeHostSafetyError(
         "A deterministic capability lease is expired; recovery must reconcile it before host activation.",
       );

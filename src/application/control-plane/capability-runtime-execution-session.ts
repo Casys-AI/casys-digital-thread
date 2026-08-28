@@ -20,6 +20,7 @@ import {
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import type { CapabilityRuntimeLaunchProfileReference } from "../../domain/capability/runtime/capability-runtime-host.ts";
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
+import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import type {
   CapabilityRuntimeLeaseStore,
@@ -43,6 +44,7 @@ export interface CapabilityRuntimeMicrosandboxCache {
   ensureExactCached(input: {
     readonly material: CapabilityRuntimeMaterialIdentity;
     readonly imageReference: string;
+    readonly executionProfileFingerprint: ContentFingerprint;
   }): Promise<void>;
 }
 
@@ -109,6 +111,8 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
     readonly project: EngineeringProjectSnapshot;
     readonly runId: string;
     readonly operationalCapability: ResolvedCapabilityRuntimeOperation;
+    /** The fixed domain executor's sealed execution profile, never agent input. */
+    readonly executionProfileFingerprint?: ContentFingerprint;
     readonly recheck: CapabilityRuntimeSessionRecheck;
   }): Promise<CapabilityRuntimeExecutionSession> {
     const operationalCapability = validateResolvedCapabilityRuntimeOperation(
@@ -140,10 +144,17 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
         "Operational capability changed after its sealed ROP recheck; requeue through a reviewed authorization amendment.",
       );
     }
-
     const lifecycles = uniqueLifecycles(
       operationalCapability.bindings.flatMap((binding) => binding.hostLifecycles),
     );
+    if (
+      lifecycles.some((lifecycle) => lifecycle.kind === "ephemeral-microsandbox") &&
+      input.executionProfileFingerprint === undefined
+    ) {
+      throw new CapabilityRuntimeSessionUnavailableError(
+        "An ephemeral Microsandbox capability requires the fixed executor's sealed execution-profile fingerprint.",
+      );
+    }
     const persistent = lifecycles.filter((lifecycle) =>
       lifecycle.kind === "persistent-compose"
     );
@@ -209,21 +220,16 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
     let directLeaseAcquired = false;
     let hostMutationAttempted = false;
     try {
-      if (!compose) {
-        const acquired = await acquireOrReuseExactScope(
-          this.options.leases,
-          lease,
-          this.#now(),
-          canReuseLease,
-        );
-        directLeaseAcquired = acquired.created;
-      }
+      // Exact local image/profile attestation is a read-only prerequisite. It
+      // deliberately happens before a direct microVM/cache lease claim, so a
+      // cache miss cannot create a misleading JIT recovery record.
       const context = await this.options.contexts.read(input.project);
       for (const lifecycle of lifecycles) {
         if (lifecycle.kind === "ephemeral-microsandbox") {
           await this.options.microsandbox!.ensureExactCached({
             material: lifecycle.material,
             imageReference: exactCatalogImageReference(context, lifecycle.material),
+            executionProfileFingerprint: input.executionProfileFingerprint!,
           });
         }
         if (lifecycle.kind === "cache-only") {
@@ -232,6 +238,15 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
             imageReference: exactCatalogImageReference(context, lifecycle.material),
           });
         }
+      }
+      if (!compose) {
+        const acquired = await acquireOrReuseExactScope(
+          this.options.leases,
+          lease,
+          this.#now(),
+          canReuseLease,
+        );
+        directLeaseAcquired = acquired.created;
       }
       if (compose) {
         // No independent ensureMaterial/acquire: H1 performs the journalled

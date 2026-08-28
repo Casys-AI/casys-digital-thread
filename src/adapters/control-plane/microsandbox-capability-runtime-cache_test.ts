@@ -3,6 +3,10 @@ import { LocalMicrosandboxCapabilityRuntimeCache } from "./microsandbox-capabili
 
 const DIGEST = "a".repeat(64);
 const REFERENCE = `example.test/worker@sha256:${DIGEST}`;
+const PROFILE_FINGERPRINT = {
+  algorithm: "sha256" as const,
+  digest: "c".repeat(64),
+};
 
 Deno.test("Microsandbox capability cache observes an exact pinned image without pull or start", async () => {
   const cache = new LocalMicrosandboxCapabilityRuntimeCache(
@@ -12,6 +16,7 @@ Deno.test("Microsandbox capability cache observes an exact pinned image without 
   await cache.ensureExactCached({
     material: { unitId: "casys.worker", materialId: "worker", imageDigest: DIGEST },
     imageReference: REFERENCE,
+    executionProfileFingerprint: PROFILE_FINGERPRINT,
   });
 });
 
@@ -25,6 +30,7 @@ Deno.test("Microsandbox capability cache fails closed on a mismatched inspected 
       cache.ensureExactCached({
         material: { unitId: "casys.worker", materialId: "worker", imageDigest: DIGEST },
         imageReference: REFERENCE,
+        executionProfileFingerprint: PROFILE_FINGERPRINT,
       }),
     Error,
     "does not attest",
@@ -41,9 +47,30 @@ Deno.test("Microsandbox capability cache refuses an image whose guest configurat
       cache.ensureExactCached({
         material: { unitId: "casys.worker", materialId: "worker", imageDigest: DIGEST },
         imageReference: REFERENCE,
+        executionProfileFingerprint: PROFILE_FINGERPRINT,
       }),
     Error,
     "sealed image contract",
+  );
+});
+
+Deno.test("Microsandbox capability cache refuses an execution-profile drift before a claim", async () => {
+  const cache = new LocalMicrosandboxCapabilityRuntimeCache(
+    () => Promise.resolve(sdk(inspection())),
+    [expectation()],
+  );
+  await assertRejects(
+    () =>
+      cache.ensureExactCached({
+        material: { unitId: "casys.worker", materialId: "worker", imageDigest: DIGEST },
+        imageReference: REFERENCE,
+        executionProfileFingerprint: {
+          algorithm: "sha256",
+          digest: "d".repeat(64),
+        },
+      }),
+    Error,
+    "execution profile does not attest",
   );
 });
 
@@ -57,8 +84,8 @@ function expectation() {
       architecture: "arm64",
       user: "65532:65532",
       entrypoint: ["/usr/local/bin/deno", "run"],
-      configurationProvenance: { algorithm: "sha256" as const, digest: "c".repeat(64) },
     },
+    executionProfileFingerprint: PROFILE_FINGERPRINT,
   };
 }
 

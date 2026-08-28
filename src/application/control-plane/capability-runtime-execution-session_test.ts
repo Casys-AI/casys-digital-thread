@@ -35,6 +35,7 @@ Deno.test("JIT cache-only session keeps the material cached, never active, and r
     project: projectFor("run:cache", "queued"),
     runId: "run:cache",
     operationalCapability: capability,
+    executionProfileFingerprint: FINGERPRINT,
     recheck: () => Promise.resolve(capability),
   });
 
@@ -44,7 +45,7 @@ Deno.test("JIT cache-only session keeps the material cached, never active, and r
   assertEquals((await leases.listActive(AT)).length, 0);
 });
 
-Deno.test("JIT cache session rejects a concurrent queued claimant before a second cache acquire", async () => {
+Deno.test("JIT observes cache before a direct lease claim and rejects a concurrent queued claimant", async () => {
   const leases = new InMemoryCapabilityRuntimeLeaseStore();
   const capability = operation("ephemeral-microsandbox");
   let cacheCalls = 0;
@@ -63,6 +64,7 @@ Deno.test("JIT cache session rejects a concurrent queued claimant before a secon
     project: projectFor("run:micro", "queued"),
     runId: "run:micro",
     operationalCapability: capability,
+    executionProfileFingerprint: FINGERPRINT,
     recheck: () => Promise.resolve(capability),
   };
   const first = await coordinator.begin(input);
@@ -72,8 +74,35 @@ Deno.test("JIT cache session rejects a concurrent queued claimant before a secon
     "queued",
   );
   assertEquals((await leases.listActive(AT)).length, 1);
-  assertEquals(cacheCalls, 1);
+  assertEquals(cacheCalls, 2);
   await first.releaseTerminal();
+  assertEquals((await leases.listActive(AT)).length, 0);
+});
+
+Deno.test("JIT cache attestation failure creates no direct lease", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  const capability = operation("ephemeral-microsandbox");
+  const coordinator = new CapabilityRuntimeExecutionSessionCoordinator({
+    contexts: contextFor("ephemeral"),
+    leases,
+    microsandbox: {
+      ensureExactCached: () => Promise.reject(new Error("cache not attested")),
+    },
+    now: () => AT,
+  });
+
+  await assertRejects(
+    () =>
+      coordinator.begin({
+        project: projectFor("run:cache-miss", "queued"),
+        runId: "run:cache-miss",
+        operationalCapability: capability,
+        executionProfileFingerprint: FINGERPRINT,
+        recheck: () => Promise.resolve(capability),
+      }),
+    Error,
+    "cache not attested",
+  );
   assertEquals((await leases.listActive(AT)).length, 0);
 });
 
@@ -99,6 +128,7 @@ Deno.test("JIT recheck mismatch blocks before lease, cache observation, WAL or p
         project: projectFor("run:changed", "queued"),
         runId: "run:changed",
         operationalCapability: capability,
+        executionProfileFingerprint: FINGERPRINT,
         recheck: () =>
           Promise.resolve({
             ...capability,
@@ -133,6 +163,7 @@ Deno.test("JIT rejects a sealed lifecycle or digest mismatch before cache observ
         project: projectFor("run:digest", "queued"),
         runId: "run:digest",
         operationalCapability: capability,
+        executionProfileFingerprint: FINGERPRINT,
         recheck: () => Promise.resolve(capability),
       }),
     CapabilityRuntimeSessionUnavailableError,
@@ -156,6 +187,7 @@ Deno.test("JIT recovery refuses an expired deterministic lease instead of silent
     project: projectFor("run:expired", "queued"),
     runId: "run:expired",
     operationalCapability: capability,
+    executionProfileFingerprint: FINGERPRINT,
     recheck: () => Promise.resolve(capability),
   });
   now = "2026-08-29T07:00:00.000Z";
@@ -165,6 +197,7 @@ Deno.test("JIT recovery refuses an expired deterministic lease instead of silent
         project: projectFor("run:expired", "running"),
         runId: "run:expired",
         operationalCapability: capability,
+        executionProfileFingerprint: FINGERPRINT,
         recheck: () => Promise.resolve(capability),
       }),
     CapabilityRuntimeSessionUnavailableError,
@@ -204,6 +237,7 @@ Deno.test("JIT Compose delegates the only lease acquire/start to H1 and rejects 
     project: projectFor("run:compose", "queued"),
     runId: "run:compose",
     operationalCapability: capability,
+    executionProfileFingerprint: FINGERPRINT,
     recheck: () => Promise.resolve(capability),
   });
 
@@ -243,6 +277,7 @@ Deno.test("terminal host cleanup is idempotent and keeps reconciliation out of a
     project: projectFor("run:cleanup", "queued"),
     runId: "run:cleanup",
     operationalCapability: capability,
+    executionProfileFingerprint: FINGERPRINT,
     recheck: () => Promise.resolve(capability),
   });
 

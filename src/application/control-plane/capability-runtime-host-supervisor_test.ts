@@ -123,16 +123,21 @@ Deno.test("ensureActive refuses an atomically returned expired lease before reus
     runtime: "active",
     qualification: "qualified",
   });
-  const candidate = lease("lease:expired-existing", profile);
+  const candidate = {
+    ...lease("lease:expired-existing", profile),
+    acquiredAt: "2026-08-29T00:00:00.000Z",
+    expiresAt: "2026-08-29T02:00:00.000Z",
+  };
   await fixture.leases.claim({
     ...candidate,
     acquiredAt: "2026-08-28T22:00:00.000Z",
-    expiresAt: "2026-08-29T00:00:00.000Z",
+    expiresAt: "2026-08-29T00:30:00.000Z",
   });
   await assertRejects(
     () =>
       fixture.supervisor.ensureActive({
         ...request(profile),
+        at: "2026-08-29T01:00:00.000Z",
         lease: candidate,
         reuseExistingLease: "allow",
       }),
@@ -178,6 +183,66 @@ Deno.test("ensureActive never trusts an active observation while a failed or unc
     "unreconciled pending host intent",
   );
   assertEquals(fixture.host.calls, []);
+});
+
+Deno.test("ensureMaterial refuses a current uncertain mutation even after an installed re-observation", async () => {
+  const profile = await fakeCapabilityRuntimeLaunchProfile();
+  const fixture = await supervisorFixture(
+    profile,
+    {
+      material: "absent",
+      runtime: "inactive",
+      qualification: "qualified",
+    },
+    new SecretSlots(["available"]),
+    "uncertain",
+  );
+  fixture.host.afterMutate = () => {
+    fixture.states.set(FAKE_CAPABILITY_RUNTIME_MATERIAL, {
+      material: "installed",
+      runtime: "active",
+      qualification: "qualified",
+    });
+  };
+
+  await assertRejects(
+    () => fixture.supervisor.ensureMaterial(request(profile)),
+    CapabilityRuntimeHostSafetyError,
+    "outcome is uncertain",
+  );
+  assertEquals(fixture.host.calls.length, 1);
+});
+
+Deno.test("ensureActive refuses a current failed start even after an active re-observation", async () => {
+  const profile = await fakeCapabilityRuntimeLaunchProfile();
+  const fixture = await supervisorFixture(
+    profile,
+    {
+      material: "installed",
+      runtime: "inactive",
+      qualification: "qualified",
+    },
+    new SecretSlots(["available"]),
+    "failed",
+  );
+  fixture.host.afterMutate = () => {
+    fixture.states.set(FAKE_CAPABILITY_RUNTIME_MATERIAL, {
+      material: "installed",
+      runtime: "active",
+      qualification: "qualified",
+    });
+  };
+
+  await assertRejects(
+    () =>
+      fixture.supervisor.ensureActive({
+        ...request(profile),
+        lease: lease("lease:failed-start", profile),
+      }),
+    CapabilityRuntimeHostSafetyError,
+    "outcome is failed",
+  );
+  assertEquals(fixture.host.calls.length, 1);
 });
 
 Deno.test("releaseLease attests the durable lease project, material and profile before deletion", async () => {
@@ -314,9 +379,11 @@ Deno.test("an uncertain host command changes no project proof and remains a host
   };
   const before = structuredClone(projectProof);
 
-  const result = await fixture.supervisor.ensureMaterial(request(profile));
-
-  assertEquals(result.mutation?.status, "uncertain");
+  await assertRejects(
+    () => fixture.supervisor.ensureMaterial(request(profile)),
+    CapabilityRuntimeHostSafetyError,
+    "outcome is uncertain",
+  );
   assertEquals(projectProof, before);
   assertEquals(
     (await fixture.journal.listOutcomes()).map((outcome) => outcome.status),
@@ -442,7 +509,7 @@ async function supervisorFixture(
     secrets,
     lock: new ImmediateLock(),
   });
-  return { supervisor, journal, host, leases };
+  return { supervisor, journal, host, leases, states };
 }
 
 function request(profile: CapabilityRuntimeLaunchProfile) {
@@ -485,6 +552,7 @@ class SecretSlots implements CapabilityRuntimeSecretSlotObserver {
 
 class RecordingHost implements CapabilityRuntimeHostMutator {
   readonly calls: CapabilityRuntimeJournalEntry[] = [];
+  afterMutate: ((entry: CapabilityRuntimeJournalEntry) => void) | undefined;
 
   constructor(private readonly status: CapabilityRuntimeJournalOutcome["status"]) {}
 
@@ -493,6 +561,7 @@ class RecordingHost implements CapabilityRuntimeHostMutator {
   }): Promise<CapabilityRuntimeJournalOutcome> {
     const entry = input.authorization.entry;
     this.calls.push(structuredClone(entry));
+    this.afterMutate?.(entry);
     return {
       schemaVersion: "capability-runtime-host-mutation-outcome/1.0",
       journalEntryId: entry.id,
