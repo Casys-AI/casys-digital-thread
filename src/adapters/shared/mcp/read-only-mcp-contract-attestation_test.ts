@@ -60,6 +60,75 @@ Deno.test("read-only MCP contract attestor compares the health declaration", asy
   assertEquals(attestation.evidenceLevel, "declared");
 });
 
+Deno.test("read-only MCP contract attestor refuses a non-loopback target before fetching", async () => {
+  const methods: string[] = [];
+  const attestation = await attestReadOnlyMcpContract({
+    ...target(),
+    healthUrl: "http://example.com/health",
+  }, { fetch: fakeFetch(methods) });
+
+  assertEquals(attestation.evidenceLevel, "declared");
+  assertEquals(attestation.health, "unavailable");
+  assertEquals(methods, []);
+  assertMatch(attestation.detail ?? "", /loopback HTTP URL/);
+});
+
+Deno.test("read-only MCP contract attestor refuses redirected responses", async () => {
+  const response = Response.json({ status: "ok" });
+  Object.defineProperty(response, "redirected", { value: true });
+  const attestation = await attestReadOnlyMcpContract(target(), {
+    fetch: (() => Promise.resolve(response)) as typeof fetch,
+  });
+
+  assertEquals(attestation.evidenceLevel, "declared");
+  assertEquals(attestation.health, "unavailable");
+  assertMatch(attestation.detail ?? "", /redirected/);
+});
+
+for (
+  const testCase of [
+    {
+      name: "mismatched response id",
+      mutate: (envelope: Record<string, unknown>) => ({ ...envelope, id: 99 }),
+      detail: /response identity/,
+    },
+    {
+      name: "missing JSON-RPC version",
+      mutate: (envelope: Record<string, unknown>) => {
+        const { jsonrpc: _jsonrpc, ...rest } = envelope;
+        return rest;
+      },
+      detail: /response identity/,
+    },
+    {
+      name: "both result and error",
+      mutate: (envelope: Record<string, unknown>) => ({
+        ...envelope,
+        error: { message: "ambiguous" },
+      }),
+      detail: /exactly one JSON-RPC result or error/,
+    },
+    {
+      name: "neither result nor error",
+      mutate: (envelope: Record<string, unknown>) => {
+        const { result: _result, ...rest } = envelope;
+        return rest;
+      },
+      detail: /exactly one JSON-RPC result or error/,
+    },
+  ] as const
+) {
+  Deno.test(`read-only MCP contract attestor refuses ${testCase.name}`, async () => {
+    const attestation = await attestReadOnlyMcpContract(target(), {
+      fetch: fakeFetchWithRpcMutation(testCase.mutate),
+    });
+
+    assertEquals(attestation.evidenceLevel, "declared");
+    assertEquals(attestation.health, "unavailable");
+    assertMatch(attestation.detail ?? "", testCase.detail);
+  });
+}
+
 function target() {
   return {
     id: "fake",
@@ -83,13 +152,13 @@ function fakeFetch(
       methods.push("GET");
       return Promise.resolve(Response.json({ status: healthStatus }));
     }
-    const body = JSON.parse(String(init?.body)) as { method: string };
+    const body = JSON.parse(String(init?.body)) as { method: string; id: number };
     methods.push(body.method);
     if (body.method === "server/discover") {
       return Promise.resolve(rpc({
         supportedVersions: ["2026-07-28"],
         serverInfo,
-      }));
+      }, body.id));
     }
     if (body.method === "tools/list") {
       return Promise.resolve(rpc({
@@ -106,19 +175,50 @@ function fakeFetch(
             _meta: { ui: { resourceUri: "ui://fake/view" } },
           },
         ],
-      }));
+      }, body.id));
     }
     if (body.method === "resources/list") {
-      return Promise.resolve(rpc({ resources: [] }));
+      return Promise.resolve(rpc({ resources: [] }, body.id));
     }
     throw new Error(`Unexpected method ${body.method}`);
   }) as typeof fetch;
 }
 
-function rpc(result: Record<string, unknown>): Response {
+function fakeFetchWithRpcMutation(
+  mutate: (envelope: Record<string, unknown>) => Record<string, unknown>,
+): typeof fetch {
+  return ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith("/health")) {
+      return Promise.resolve(Response.json({ status: "ok" }));
+    }
+    const body = JSON.parse(String(init?.body)) as { method: string; id: number };
+    let result: Record<string, unknown>;
+    if (body.method === "server/discover") {
+      result = {
+        supportedVersions: ["2026-07-28"],
+        serverInfo: { name: "fake", version: "1.2.3" },
+      };
+    } else if (body.method === "tools/list") {
+      result = { tools: [] };
+    } else if (body.method === "resources/list") {
+      result = { resources: [] };
+    } else {
+      throw new Error(`Unexpected method ${body.method}`);
+    }
+    const envelope = {
+      jsonrpc: "2.0",
+      id: body.id,
+      result: { resultType: "complete", ...result },
+    };
+    return Promise.resolve(Response.json(mutate(envelope)));
+  }) as typeof fetch;
+}
+
+function rpc(result: Record<string, unknown>, id: number): Response {
   return Response.json({
     jsonrpc: "2.0",
-    id: 1,
+    id,
     result: { resultType: "complete", ...result },
   });
 }

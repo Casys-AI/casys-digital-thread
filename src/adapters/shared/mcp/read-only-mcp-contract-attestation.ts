@@ -76,8 +76,10 @@ export interface ReadOnlyMcpContractAttestorOptions {
 }
 
 interface RpcEnvelope {
-  readonly result?: Record<string, unknown>;
-  readonly error?: { readonly message?: unknown };
+  readonly jsonrpc?: unknown;
+  readonly id?: unknown;
+  readonly result?: unknown;
+  readonly error?: unknown;
 }
 
 const DEFAULT_PROTOCOL_VERSION = "2026-07-28";
@@ -93,6 +95,8 @@ export async function attestReadOnlyMcpContract(
 ): Promise<ReadOnlyMcpContractAttestation> {
   const request = new ReadOnlyMcpContractAttestor(options);
   try {
+    assertLoopbackEndpoint(target.healthUrl, "healthUrl");
+    assertLoopbackEndpoint(target.mcpUrl, "mcpUrl");
     const healthResponse = await request.health(target.healthUrl);
     if (!healthResponse.ok) {
       return unavailable(
@@ -104,7 +108,7 @@ export async function attestReadOnlyMcpContract(
     const healthStatus = await parseHealthStatus(healthResponse);
     const healthMatchesExpected = healthStatus === target.expectedHealthStatus;
     const discover = await request.rpc(target.mcpUrl, "server/discover", 1);
-    const discoverResult = completeResult(discover, "server/discover");
+    const discoverResult = completeResult(discover, "server/discover", 1);
     const protocolVersion = negotiatedProtocolVersion(
       discoverResult,
       request.protocolVersion,
@@ -114,10 +118,10 @@ export async function attestReadOnlyMcpContract(
     const serverMatchesExpected = server.name === target.expectedServer.name &&
       server.version === target.expectedServer.version;
     const listedTools = await request.rpc(target.mcpUrl, "tools/list", 2);
-    const tools = parseTools(completeResult(listedTools, "tools/list"));
+    const tools = parseTools(completeResult(listedTools, "tools/list", 2));
     const listedResources = await request.rpc(target.mcpUrl, "resources/list", 3);
     const resources = parseResourceUris(
-      completeResult(listedResources, "resources/list"),
+      completeResult(listedResources, "resources/list", 3),
     );
     const views = unique([
       ...tools.flatMap((tool) => tool.resourceUri === null ? [] : [tool.resourceUri]),
@@ -214,7 +218,11 @@ class ReadOnlyMcpContractAttestor {
     }
     const source = await response.text();
     try {
-      return JSON.parse(source) as RpcEnvelope;
+      const value: unknown = JSON.parse(source);
+      if (!isRecord(value)) {
+        throw new Error(`${method} returned a non-object JSON-RPC envelope`);
+      }
+      return value;
     } catch {
       throw new Error(`${method} returned invalid JSON`);
     }
@@ -224,7 +232,15 @@ class ReadOnlyMcpContractAttestor {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.#timeoutMs);
     try {
-      return await this.#fetch(url, { ...init, signal: controller.signal });
+      const response = await this.#fetch(url, {
+        ...init,
+        redirect: "error",
+        signal: controller.signal,
+      });
+      if (response.redirected) {
+        throw new Error("Read-only MCP endpoint redirected the request");
+      }
+      return response;
     } finally {
       clearTimeout(timer);
     }
@@ -282,10 +298,20 @@ async function parseHealthStatus(response: Response): Promise<string | null> {
 function completeResult(
   envelope: RpcEnvelope,
   method: string,
+  expectedId: number,
 ): Record<string, unknown> {
-  if (envelope.error !== undefined) {
-    const message = typeof envelope.error.message === "string"
-      ? envelope.error.message
+  if (envelope.jsonrpc !== "2.0" || envelope.id !== expectedId) {
+    throw new Error(`${method}: invalid JSON-RPC response identity`);
+  }
+  const hasResult = Object.hasOwn(envelope, "result");
+  const hasError = Object.hasOwn(envelope, "error");
+  if (hasResult === hasError) {
+    throw new Error(`${method}: expected exactly one JSON-RPC result or error`);
+  }
+  if (hasError) {
+    const error = isRecord(envelope.error) ? envelope.error : {};
+    const message = typeof error.message === "string"
+      ? error.message
       : "JSON-RPC error";
     throw new Error(`${method}: ${message}`);
   }
@@ -293,6 +319,25 @@ function completeResult(
     throw new Error(`${method}: expected a complete result`);
   }
   return envelope.result;
+}
+
+function assertLoopbackEndpoint(value: string, label: string): void {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new TypeError(`${label} must be an absolute loopback HTTP URL`);
+  }
+  if (
+    url.protocol !== "http:" ||
+    url.hostname !== "127.0.0.1" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.hash !== "" ||
+    url.search !== ""
+  ) {
+    throw new TypeError(`${label} must be an absolute loopback HTTP URL`);
+  }
 }
 
 function negotiatedProtocolVersion(
