@@ -453,6 +453,17 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
         "Isolated CalculiX execution requires the configured JIT capability runtime session before a run can be claimed.",
       );
     }
+    const microsandboxLifecycles = operationalCapability.bindings.flatMap((binding) =>
+      binding.hostLifecycles.filter((lifecycle) =>
+        lifecycle.kind === "ephemeral-microsandbox"
+      )
+    );
+    if (microsandboxLifecycles.length !== 1) {
+      throw commandError(
+        "invalid_transition",
+        "Isolated CalculiX execution requires exactly one sealed Microsandbox material before host activation.",
+      );
+    }
     // The session performs one more cold supervisor comparison immediately
     // before any host observation/mutation. This is deliberately after the
     // final #prepare and before claimRun, so a failed host leaves no WAL,
@@ -461,7 +472,10 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
       project,
       runId: command.runId,
       operationalCapability,
-      executionProfileFingerprint: prepared.profile.profileFingerprint,
+      microsandboxExecutionProfiles: [{
+        material: microsandboxLifecycles[0]!.material,
+        executionProfileFingerprint: prepared.profile.profileFingerprint,
+      }],
       recheck: async () => {
         const rechecked = await this.d.capabilityRuntime!.requireExecution({
           project,

@@ -35,7 +35,7 @@ Deno.test("JIT cache-only session keeps the material cached, never active, and r
     project: projectFor("run:cache", "queued"),
     runId: "run:cache",
     operationalCapability: capability,
-    executionProfileFingerprint: FINGERPRINT,
+    microsandboxExecutionProfiles: [],
     recheck: () => Promise.resolve(capability),
   });
 
@@ -64,7 +64,7 @@ Deno.test("JIT observes cache before a direct lease claim and rejects a concurre
     project: projectFor("run:micro", "queued"),
     runId: "run:micro",
     operationalCapability: capability,
-    executionProfileFingerprint: FINGERPRINT,
+    microsandboxExecutionProfiles: [microProfile()],
     recheck: () => Promise.resolve(capability),
   };
   const first = await coordinator.begin(input);
@@ -97,13 +97,64 @@ Deno.test("JIT cache attestation failure creates no direct lease", async () => {
         project: projectFor("run:cache-miss", "queued"),
         runId: "run:cache-miss",
         operationalCapability: capability,
-        executionProfileFingerprint: FINGERPRINT,
+        microsandboxExecutionProfiles: [microProfile()],
         recheck: () => Promise.resolve(capability),
       }),
     Error,
     "cache not attested",
   );
   assertEquals((await leases.listActive(AT)).length, 0);
+});
+
+Deno.test("JIT exact microVM profile attestations reject absent, duplicate, extra and digest-drift entries", async () => {
+  const capability = operation("ephemeral-microsandbox");
+  const coordinator = new CapabilityRuntimeExecutionSessionCoordinator({
+    contexts: contextFor("ephemeral"),
+    leases: new InMemoryCapabilityRuntimeLeaseStore(),
+    now: () => AT,
+  });
+  const input = {
+    project: projectFor("run:attestation", "queued"),
+    runId: "run:attestation",
+    operationalCapability: capability,
+    recheck: () => Promise.resolve(capability),
+  };
+
+  await assertRejects(
+    () => coordinator.begin({ ...input, microsandboxExecutionProfiles: [] }),
+    CapabilityRuntimeSessionUnavailableError,
+    "absent",
+  );
+  await assertRejects(
+    () =>
+      coordinator.begin({
+        ...input,
+        microsandboxExecutionProfiles: [microProfile(), microProfile()],
+      }),
+    CapabilityRuntimeSessionUnavailableError,
+    "duplicated",
+  );
+  await assertRejects(
+    () =>
+      coordinator.begin({
+        ...input,
+        microsandboxExecutionProfiles: [
+          microProfile(),
+          microProfile(DIGEST, "other-worker"),
+        ],
+      }),
+    CapabilityRuntimeSessionUnavailableError,
+    "extra",
+  );
+  await assertRejects(
+    () =>
+      coordinator.begin({
+        ...input,
+        microsandboxExecutionProfiles: [microProfile("d".repeat(64))],
+      }),
+    CapabilityRuntimeSessionUnavailableError,
+    "digest does not match",
+  );
 });
 
 Deno.test("JIT recheck mismatch blocks before lease, cache observation, WAL or provider seams", async () => {
@@ -128,7 +179,7 @@ Deno.test("JIT recheck mismatch blocks before lease, cache observation, WAL or p
         project: projectFor("run:changed", "queued"),
         runId: "run:changed",
         operationalCapability: capability,
-        executionProfileFingerprint: FINGERPRINT,
+        microsandboxExecutionProfiles: [microProfile()],
         recheck: () =>
           Promise.resolve({
             ...capability,
@@ -163,7 +214,7 @@ Deno.test("JIT rejects a sealed lifecycle or digest mismatch before cache observ
         project: projectFor("run:digest", "queued"),
         runId: "run:digest",
         operationalCapability: capability,
-        executionProfileFingerprint: FINGERPRINT,
+        microsandboxExecutionProfiles: [microProfile()],
         recheck: () => Promise.resolve(capability),
       }),
     CapabilityRuntimeSessionUnavailableError,
@@ -187,7 +238,7 @@ Deno.test("JIT recovery refuses an expired deterministic lease instead of silent
     project: projectFor("run:expired", "queued"),
     runId: "run:expired",
     operationalCapability: capability,
-    executionProfileFingerprint: FINGERPRINT,
+    microsandboxExecutionProfiles: [microProfile()],
     recheck: () => Promise.resolve(capability),
   });
   now = "2026-08-29T07:00:00.000Z";
@@ -197,7 +248,7 @@ Deno.test("JIT recovery refuses an expired deterministic lease instead of silent
         project: projectFor("run:expired", "running"),
         runId: "run:expired",
         operationalCapability: capability,
-        executionProfileFingerprint: FINGERPRINT,
+        microsandboxExecutionProfiles: [microProfile()],
         recheck: () => Promise.resolve(capability),
       }),
     CapabilityRuntimeSessionUnavailableError,
@@ -237,7 +288,7 @@ Deno.test("JIT Compose delegates the only lease acquire/start to H1 and rejects 
     project: projectFor("run:compose", "queued"),
     runId: "run:compose",
     operationalCapability: capability,
-    executionProfileFingerprint: FINGERPRINT,
+    microsandboxExecutionProfiles: [],
     recheck: () => Promise.resolve(capability),
   });
 
@@ -277,7 +328,7 @@ Deno.test("terminal host cleanup is idempotent and keeps reconciliation out of a
     project: projectFor("run:cleanup", "queued"),
     runId: "run:cleanup",
     operationalCapability: capability,
-    executionProfileFingerprint: FINGERPRINT,
+    microsandboxExecutionProfiles: [],
     recheck: () => Promise.resolve(capability),
   });
 
@@ -333,6 +384,20 @@ function hostLifecycle(
     };
   }
   return { material, kind: lifecycle, launchProfile: null } as const;
+}
+
+function microProfile(
+  imageDigest = DIGEST,
+  materialId = "worker",
+) {
+  return {
+    material: {
+      unitId: "casys.worker",
+      materialId,
+      imageDigest,
+    },
+    executionProfileFingerprint: FINGERPRINT,
+  };
 }
 
 function contextFor(

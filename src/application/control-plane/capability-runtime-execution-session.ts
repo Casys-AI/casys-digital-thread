@@ -48,6 +48,16 @@ export interface CapabilityRuntimeMicrosandboxCache {
   }): Promise<void>;
 }
 
+/**
+ * Exact fixed-executor invocation profile for one sealed microVM material.
+ * It is intentionally keyed by the complete material identity so a future
+ * multi-worker operation cannot lend one profile's authority to another.
+ */
+export interface CapabilityRuntimeMicrosandboxExecutionProfile {
+  readonly material: CapabilityRuntimeMaterialIdentity;
+  readonly executionProfileFingerprint: ContentFingerprint;
+}
+
 export interface CapabilityRuntimeExecutionSession {
   readonly lease: CapabilityRuntimeLease;
   /** Only a terminal run outcome may release the shared lease. */
@@ -111,8 +121,9 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
     readonly project: EngineeringProjectSnapshot;
     readonly runId: string;
     readonly operationalCapability: ResolvedCapabilityRuntimeOperation;
-    /** The fixed domain executor's sealed execution profile, never agent input. */
-    readonly executionProfileFingerprint?: ContentFingerprint;
+    /** Fixed-executor profile attestations, never supplied by an agent. */
+    readonly microsandboxExecutionProfiles:
+      readonly CapabilityRuntimeMicrosandboxExecutionProfile[];
     readonly recheck: CapabilityRuntimeSessionRecheck;
   }): Promise<CapabilityRuntimeExecutionSession> {
     const operationalCapability = validateResolvedCapabilityRuntimeOperation(
@@ -147,14 +158,10 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
     const lifecycles = uniqueLifecycles(
       operationalCapability.bindings.flatMap((binding) => binding.hostLifecycles),
     );
-    if (
-      lifecycles.some((lifecycle) => lifecycle.kind === "ephemeral-microsandbox") &&
-      input.executionProfileFingerprint === undefined
-    ) {
-      throw new CapabilityRuntimeSessionUnavailableError(
-        "An ephemeral Microsandbox capability requires the fixed executor's sealed execution-profile fingerprint.",
-      );
-    }
+    const microsandboxExecutionProfiles = exactMicrosandboxExecutionProfiles(
+      lifecycles,
+      input.microsandboxExecutionProfiles,
+    );
     const persistent = lifecycles.filter((lifecycle) =>
       lifecycle.kind === "persistent-compose"
     );
@@ -229,7 +236,9 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
           await this.options.microsandbox!.ensureExactCached({
             material: lifecycle.material,
             imageReference: exactCatalogImageReference(context, lifecycle.material),
-            executionProfileFingerprint: input.executionProfileFingerprint!,
+            executionProfileFingerprint: microsandboxExecutionProfiles.get(
+              capabilityRuntimeMaterialKey(lifecycle.material),
+            )!,
           });
         }
         if (lifecycle.kind === "cache-only") {
@@ -497,6 +506,47 @@ function uniqueLifecycles(
       capabilityRuntimeMaterialKey(right.material),
     )
   );
+}
+
+function exactMicrosandboxExecutionProfiles(
+  lifecycles: readonly CapabilityRuntimeHostLifecycle[],
+  supplied: readonly CapabilityRuntimeMicrosandboxExecutionProfile[],
+): ReadonlyMap<string, ContentFingerprint> {
+  const expected = lifecycles.filter((lifecycle) =>
+    lifecycle.kind === "ephemeral-microsandbox"
+  );
+  const values = new Map<string, ContentFingerprint>();
+  for (const profile of supplied) {
+    const key = capabilityRuntimeMaterialKey(profile.material);
+    if (values.has(key)) {
+      throw new CapabilityRuntimeSessionUnavailableError(
+        `Microsandbox execution-profile attestation is duplicated for ${key}.`,
+      );
+    }
+    const lifecycle = expected.find((candidate) =>
+      capabilityRuntimeMaterialKey(candidate.material) === key
+    );
+    if (!lifecycle) {
+      throw new CapabilityRuntimeSessionUnavailableError(
+        `Microsandbox execution-profile attestation is extra for ${key}.`,
+      );
+    }
+    if (lifecycle.material.imageDigest !== profile.material.imageDigest) {
+      throw new CapabilityRuntimeSessionUnavailableError(
+        `Microsandbox execution-profile attestation digest does not match ${key}.`,
+      );
+    }
+    values.set(key, profile.executionProfileFingerprint);
+  }
+  for (const lifecycle of expected) {
+    const key = capabilityRuntimeMaterialKey(lifecycle.material);
+    if (!values.has(key)) {
+      throw new CapabilityRuntimeSessionUnavailableError(
+        `Microsandbox execution-profile attestation is absent for ${key}.`,
+      );
+    }
+  }
+  return values;
 }
 
 function exactCatalogImageReference(
