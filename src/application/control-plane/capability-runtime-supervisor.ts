@@ -48,6 +48,7 @@ import type {
   CapabilityRuntimeHostMutator,
   CapabilityRuntimeJournal,
   CapabilityRuntimeLeaseStore,
+  CapabilityRuntimePreparationEligibility,
   CapabilityRuntimeQueueEligibility,
   CapabilityRuntimeStateObserver,
   ProjectCapabilityRuntimeAuthorizedBinding,
@@ -92,7 +93,10 @@ export interface CapabilityRuntimeSupervisorOptions {
  * executor recheck and before its WAL/provider boundary.
  */
 export class CapabilityRuntimeSupervisor
-  implements CapabilityRuntimeQueueEligibility, CapabilityRuntimeExecutionEligibility {
+  implements
+    CapabilityRuntimeQueueEligibility,
+    CapabilityRuntimeExecutionEligibility,
+    CapabilityRuntimePreparationEligibility {
   constructor(private readonly options: CapabilityRuntimeSupervisorOptions) {}
 
   async validate(input: {
@@ -122,6 +126,43 @@ export class CapabilityRuntimeSupervisor
     return await this.#authorize(input);
   }
 
+  /**
+   * Preparation never invents a work item or a run merely to start a private
+   * server-owned prerequisite.  The registered operation must have exactly
+   * one preparation demand; any execution, mixed, or no-runtime operation is
+   * refused before the host is observed or mutated.
+   */
+  async requirePreparation(input: {
+    readonly project: EngineeringProjectSnapshot;
+    readonly operation: EngineeringOperationRef;
+  }): Promise<ResolvedCapabilityRuntimeOperation> {
+    const registered = this.options.operations.require(input.operation);
+    assertRegisteredOperation(registered, input.operation);
+    if (
+      registered.runtimeDemand.kind !== "required" ||
+      registered.runtimeDemand.capabilities.length !== 1 ||
+      registered.runtimeDemand.capabilities[0]?.use !== "preparation"
+    ) {
+      throw new CapabilityRuntimeAuthorizationError(
+        "Capability runtime preparation requires one exact registered preparation demand.",
+      );
+    }
+    const resolved = await this.#authorizeRegistered({
+      project: input.project,
+      operation: input.operation,
+      registered,
+    });
+    if (
+      resolved.bindings.length !== 1 ||
+      resolved.bindings[0]?.capability.use !== "preparation"
+    ) {
+      throw new CapabilityRuntimeAuthorizationError(
+        "Capability runtime preparation did not resolve one exact preparation binding.",
+      );
+    }
+    return resolved;
+  }
+
   async #authorize(input: {
     readonly project: EngineeringProjectSnapshot;
     readonly workItem: EngineeringWorkItem;
@@ -133,11 +174,33 @@ export class CapabilityRuntimeSupervisor
     if (registered.runtimeDemand.kind === "none") {
       return undefined;
     }
+    return await this.#authorizeRegistered({ ...input, registered });
+  }
+
+  async #authorizeRegistered(input: {
+    readonly project: EngineeringProjectSnapshot;
+    readonly operation: EngineeringOperationRef;
+    readonly registered: {
+      readonly id: string;
+      readonly version: string;
+      readonly runtimeDemand:
+        | { readonly kind: "none" }
+        | {
+          readonly kind: "required";
+          readonly capabilities: readonly RequiredEngineeringCapability[];
+        };
+    };
+  }): Promise<ResolvedCapabilityRuntimeOperation> {
+    if (input.registered.runtimeDemand.kind !== "required") {
+      throw new CapabilityRuntimeAuthorizationError(
+        "Capability runtime authorization requires a registered runtime demand.",
+      );
+    }
     const context = await this.options.contexts.read(input.project);
     assertExactProjectContext(context, input.project);
     assertAuthorizedEnvelope(context);
     const requirements = flattenEngineeringCapabilityRequirements(
-      registered.runtimeDemand.capabilities,
+      input.registered.runtimeDemand.capabilities,
     );
     const bindings = resolveRuntimeBindings(requirements, context);
     return deepFreeze({
@@ -669,13 +732,15 @@ function assertMutationContract(
       "Material removal journal entry does not bind the supplied administrative plan.",
     );
   }
-  if (!entry.materials.every((entryMaterial) =>
-    removalPlan.ownedMaterials.some((material) =>
-      capabilityRuntimeMaterialKey(material) ===
-        capabilityRuntimeMaterialKey(entryMaterial) &&
-      material.imageDigest === entryMaterial.imageDigest
+  if (
+    !entry.materials.every((entryMaterial) =>
+      removalPlan.ownedMaterials.some((material) =>
+        capabilityRuntimeMaterialKey(material) ===
+          capabilityRuntimeMaterialKey(entryMaterial) &&
+        material.imageDigest === entryMaterial.imageDigest
+      )
     )
-  )) {
+  ) {
     throw new CapabilityRuntimeAuthorizationError(
       "Administrative removal plan does not own the selected material.",
     );

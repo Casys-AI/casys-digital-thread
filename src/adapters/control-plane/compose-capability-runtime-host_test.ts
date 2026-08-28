@@ -103,6 +103,20 @@ Deno.test("sealed SysON group pins Postgres with its canonical Docker Hub reposi
   );
 });
 
+Deno.test("Build123d group without a declared healthcheck is active only when its exact owned service is running", async () => {
+  const group = (await createFirstPartyCapabilityRuntimeLaunchGroups()).find((
+    candidate,
+  ) => candidate.id === "casys-build123d-sandbox")!;
+  const runner = new FakeGroupRunner(group, { images: true, state: "running" });
+  const fixture = host(group, runner);
+
+  const states = await fixture.host.observe(
+    group.materials.map((member) => member.material),
+  );
+
+  assertEquals([...states.values()][0]?.runtime, "active");
+});
+
 async function sysonGroup(): Promise<CapabilityRuntimeLaunchGroup> {
   return (await createFirstPartyCapabilityRuntimeLaunchGroups())[0]!;
 }
@@ -209,16 +223,18 @@ class FakeGroupRunner implements CommandRunner {
           Labels: {
             "com.docker.compose.project": service === this.foreignService
               ? "foreign-project"
-              : "casys-syson",
+              : this.group.acquisition.projectName,
             "com.docker.compose.service": service,
             ...(service === this.foreignService ? { foreign: "true" } : {}),
           },
         },
         State: {
           Status: this.#states.get(service) ?? "exited",
-          Health: {
-            Status: this.#states.get(service) === "running" ? "healthy" : "unhealthy",
-          },
+          Health: serviceDeclaresHealthcheck(this.group, service)
+            ? {
+              Status: this.#states.get(service) === "running" ? "healthy" : "unhealthy",
+            }
+            : null,
         },
       }]));
     }
@@ -240,6 +256,16 @@ class FakeGroupRunner implements CommandRunner {
     }
     return success("");
   }
+}
+
+function serviceDeclaresHealthcheck(
+  group: CapabilityRuntimeLaunchGroup,
+  service: string,
+): boolean {
+  const descriptor = JSON.parse(group.compose.content) as {
+    services: Record<string, { healthcheck?: unknown }>;
+  };
+  return descriptor.services[service]?.healthcheck !== undefined;
 }
 
 function assertNoDestructiveComposeCommand(runner: FakeGroupRunner): void {

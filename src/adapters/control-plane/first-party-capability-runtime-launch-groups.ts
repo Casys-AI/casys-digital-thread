@@ -15,6 +15,8 @@ export const SYSON_IMAGE_REFERENCE =
   "ghcr.io/casys-ai/syson@sha256:fc599abb95587913de11ff6de68060b5593956abc0c47bc753cd19e2987141a6" as const;
 export const MCP_SYSON_IMAGE_REFERENCE =
   "ghcr.io/casys-ai/mcp-syson@sha256:87eee6e35a636124d5ba6911492a245d69edcdf1ba67575676c22a0e9d7ce65e" as const;
+export const MCP_BUILD123D_061_IMAGE_REFERENCE =
+  "ghcr.io/casys-ai/mcp-build123d@sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d" as const;
 
 /**
  * SysON is only exposed through mcp-syson on 3009. The UI's historical 8180
@@ -131,10 +133,29 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
     security: "reviewed" as const,
     qualification: "qualified" as const,
   };
-  return [{
+  const syson = {
     ...body,
     fingerprint: await fingerprintCapabilityRuntimeLaunchGroup(body),
-  }];
+  } as const;
+  const build123dSandbox = await build123dLaunchGroup({
+    id: "casys-build123d-sandbox",
+    projectName: "casys-build123d-sandbox",
+    unitId: "casys.mcp-build123d-sandbox",
+    materialId: "mcp-build123d-sandbox-image",
+    serviceName: "mcp-build123d-sandbox",
+    port: 3024,
+    volume: "build123d-sandbox-exports",
+  });
+  const build123dObservation = await build123dLaunchGroup({
+    id: "casys-build123d-observation",
+    projectName: "casys-build123d-observation",
+    unitId: "casys.mcp-build123d-observation",
+    materialId: "mcp-build123d-observation-image",
+    serviceName: "mcp-build123d",
+    port: 3014,
+    volume: "exports",
+  });
+  return [syson, build123dSandbox, build123dObservation];
 }
 
 export async function createFirstPartyCapabilityRuntimeLaunchGroupRegistry(): Promise<
@@ -147,7 +168,99 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroupRegistry(): Pr
 
 export async function firstPartySysonLaunchGroupReference() {
   const groups = await createFirstPartyCapabilityRuntimeLaunchGroups();
-  return capabilityRuntimeLaunchGroupReference(groups[0]!);
+  return capabilityRuntimeLaunchGroupReference(requireGroup(groups, "casys-syson"));
+}
+
+export async function firstPartyBuild123dSandboxLaunchGroupReference() {
+  const groups = await createFirstPartyCapabilityRuntimeLaunchGroups();
+  return capabilityRuntimeLaunchGroupReference(
+    requireGroup(groups, "casys-build123d-sandbox"),
+  );
+}
+
+export async function firstPartyBuild123dObservationLaunchGroupReference() {
+  const groups = await createFirstPartyCapabilityRuntimeLaunchGroups();
+  return capabilityRuntimeLaunchGroupReference(
+    requireGroup(groups, "casys-build123d-observation"),
+  );
+}
+
+async function build123dLaunchGroup(input: {
+  readonly id: "casys-build123d-sandbox" | "casys-build123d-observation";
+  readonly projectName: "casys-build123d-sandbox" | "casys-build123d-observation";
+  readonly unitId:
+    | "casys.mcp-build123d-sandbox"
+    | "casys.mcp-build123d-observation";
+  readonly materialId:
+    | "mcp-build123d-sandbox-image"
+    | "mcp-build123d-observation-image";
+  readonly serviceName: "mcp-build123d-sandbox" | "mcp-build123d";
+  readonly port: 3024 | 3014;
+  readonly volume: "build123d-sandbox-exports" | "exports";
+}): Promise<CapabilityRuntimeLaunchGroup> {
+  const composeContent = deterministicJson({
+    services: {
+      [input.serviceName]: {
+        image: MCP_BUILD123D_061_IMAGE_REFERENCE,
+        ports: [`127.0.0.1:${input.port}:3014`],
+        volumes: [`${input.volume}:/exports`],
+        // Exact limits from the reviewed provider Compose contract. The image
+        // does not declare a healthcheck, so this group intentionally does not
+        // add one; `running` is the bounded operational readiness signal.
+        mem_limit: "2g",
+        cpus: 2,
+        pids_limit: 128,
+        security_opt: ["no-new-privileges:true"],
+        cap_drop: ["ALL"],
+      },
+    },
+    volumes: { [input.volume]: {} },
+  });
+  const compose = {
+    schemaVersion: "capability-runtime-compose-descriptor/1.0" as const,
+    content: composeContent,
+    fingerprint: await fingerprintCapabilityRuntimeComposeContent(composeContent),
+  };
+  const body = {
+    schemaVersion: "capability-runtime-launch-group/1.0" as const,
+    id: input.id,
+    version: "1.0.0",
+    activationPolicy: "persistent" as const,
+    acquisition: { kind: "compose" as const, projectName: input.projectName },
+    materials: [
+      material(
+        input.unitId,
+        input.materialId,
+        MCP_BUILD123D_061_IMAGE_REFERENCE,
+        input.serviceName,
+        input.projectName,
+      ),
+    ],
+    compose,
+    retention: {
+      containers: "stop-only" as const,
+      images: "preserve" as const,
+      volumes: "preserve" as const,
+    },
+    secretSlots: [],
+    security: "reviewed" as const,
+    qualification: "qualified" as const,
+  };
+  return {
+    ...body,
+    fingerprint: await fingerprintCapabilityRuntimeLaunchGroup(body),
+  };
+}
+
+function requireGroup(
+  groups: readonly CapabilityRuntimeLaunchGroup[],
+  id: string,
+): CapabilityRuntimeLaunchGroup {
+  const matches = groups.filter((group) => group.id === id);
+  if (matches.length !== 1) {
+    throw new TypeError(`First-party launch group ${id} is not unique.`);
+  }
+  return matches[0]!;
 }
 
 function material(
@@ -155,6 +268,7 @@ function material(
   materialId: string,
   imageReference: string,
   serviceName: string,
+  projectName = "casys-syson",
 ) {
   const digest = imageReference.slice(
     imageReference.lastIndexOf("@sha256:") + "@sha256:".length,
@@ -164,7 +278,7 @@ function material(
     serviceName,
     imageReference,
     ownership: [
-      { key: "com.docker.compose.project", value: "casys-syson" },
+      { key: "com.docker.compose.project", value: projectName },
       { key: "com.docker.compose.service", value: serviceName },
     ],
   } as const;
