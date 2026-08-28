@@ -9,6 +9,7 @@ Where things run, and which page owns the file census.
 | File census, CAS roots, isolation spine          | [codebase map](../codebase/codebase-map.md)                                         |
 | Admitted CAD/Modelica microVM pattern            | [admitted source isolated execution](../pipeline/admitted-source-isolated-execution.md) |
 | H01 isolation, WAL, and Thread collection bounds | [isolation and Thread boundedness](isolation-and-thread-boundedness.md)                 |
+| Capability demand and packs                      | [capability packs](capability-packs/README.md)                                          |
 | Agent tools, operations, grants                  | [agent workspace](../agent/agent-workspace.md)                                          |
 | Lookalike pairs                                  | [lookalike traps](../agent/lookalike-traps.md)                                          |
 | Loopback ports, YOLO, runtime ownership          | this page                                                                               |

@@ -33,15 +33,17 @@ Workbench presentation contract.
 
 #### [`src/application/control-plane/`](../../../src/application/control-plane)
 
-Console application service (`console_*`) and probe / container-observation ports. Not a
-human page; `preview:browser` refuses. HTTP probe lives in `adapters/shared/mcp/`;
-Docker observer is `adapters/shared/docker-observer.ts`. The retired
-`ObservedRunCatalog` / `ModelicaRunObserver` merge is gone.
+Console application service (`console_*`), probe / container-observation ports, and the
+effect-free project capability-demand compiler. Not a human page; `preview:browser`
+refuses. HTTP probe lives in `adapters/shared/mcp/`; Docker observer is
+`adapters/shared/docker-observer.ts`. The retired `ObservedRunCatalog` /
+`ModelicaRunObserver` merge is gone.
 
 #### [`src/adapters/control-plane/`](../../../src/adapters/control-plane)
 
-Control-plane adapters: fleet-manifest loader and checked-in run-fixture catalog. Not
-Thread projectors. Shared MCP/CAS/WAL helpers live under `adapters/shared/`
+Control-plane adapters: fleet-manifest loader, checked-in run-fixture catalog, and the
+Behave capability-demand composition that pins its code-owned catalogue. Not Thread
+projectors. Shared MCP/CAS/WAL helpers live under `adapters/shared/`.
 
 #### [`src/tools/control-plane.ts`](../../../src/tools/control-plane.ts)
 

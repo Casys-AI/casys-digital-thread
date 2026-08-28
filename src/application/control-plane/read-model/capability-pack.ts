@@ -1,5 +1,11 @@
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import type { MicrosandboxLocalRuntimeRef } from "../../../domain/compile/isolation/local-isolation-runtime.ts";
+import type {
+  CapabilityQualification,
+  CapabilityReference,
+} from "../../../domain/capability/engineering-capability.ts";
+
+export type { CapabilityReference } from "../../../domain/capability/engineering-capability.ts";
 
 export const CAPABILITY_PACK_SCHEMA_VERSION = "capability-pack-candidate/0.1" as const;
 export const CAPABILITY_INSTALLATION_LOCK_SCHEMA_VERSION =
@@ -8,11 +14,6 @@ export const CAPABILITY_PACK_INSTALLATION_PLAN_SCHEMA_VERSION =
   "capability-pack-installation-plan-candidate/0.1" as const;
 
 export type RuntimePlatform = "linux/amd64" | "linux/arm64";
-
-export interface CapabilityReference {
-  readonly id: string;
-  readonly version: string;
-}
 
 /** Publisher claim only. Trusted catalogue qualification remains separate. */
 export interface CapabilityBindingClaim {
@@ -60,7 +61,7 @@ export type CapabilityPackActivation = "inactive" | "active";
 export type CapabilityPackTrustPolicy =
   | "first-party-only"
   | "reviewed-community";
-export type CapabilityPackMinimumQualification = "compatible" | "qualified";
+export type CapabilityPackMinimumQualification = CapabilityQualification;
 
 export interface CapabilityPackInstallationPolicy {
   readonly trust: CapabilityPackTrustPolicy;

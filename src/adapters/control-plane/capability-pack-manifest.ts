@@ -4,6 +4,7 @@ import {
   closedRecord,
   deepFreeze,
   exactRecord,
+  exactVersionToken,
   literalValue,
   nonEmptyArray,
   positiveInteger,
@@ -498,14 +499,6 @@ function validateSemverIdentifiers(
   ) {
     throw new TypeError(`${path} contains an invalid semantic-version identifier.`);
   }
-}
-
-function exactVersionToken(value: unknown, path: string): string {
-  const version = safeVersion(value, path);
-  if (["latest", "current", "stable", "default"].includes(version.toLowerCase())) {
-    throw new TypeError(`${path} must not be a mutable version alias.`);
-  }
-  return version;
 }
 
 function fingerprint(value: unknown, path: string): ContentFingerprint {

@@ -4,6 +4,9 @@ This folder records the narrow, fingerprinted review inputs used to render the
 `casys.behave-foundation@0.1.0` **local developer candidate**. It does not qualify a
 production deployment and it never activates a runtime.
 
+Project-level semantic demand is a separate record. See the
+[project capability demand contract](../project-capability-demand.md).
+
 The review is deliberately split by concern:
 
 - [platform coverage](platforms.md);

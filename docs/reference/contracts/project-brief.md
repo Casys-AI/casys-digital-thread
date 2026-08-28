@@ -2,10 +2,10 @@
 
 Audience: both · Diátaxis: reference · Kind: contract
 
-> **Diátaxis category: reference.** This page describes the schema-`3.0` framing
+> **Diátaxis category: reference.** This page describes the schema-`4.0` framing
 > contract implemented by
-> [`src/domain/project/project-brief.ts`](../../../src/domain/project/project-brief.ts) and
-> stored inside each immutable `EngineeringProjectSnapshot` revision.
+> [`src/domain/project/project-brief.ts`](../../../src/domain/project/project-brief.ts)
+> and stored inside each immutable `EngineeringProjectSnapshot` revision.
 
 A project exists from the first reported intent. There is no pre-project aggregate,
 Discovery page, or handoff in the current product contract. The paired conversation is
@@ -116,6 +116,13 @@ After approval, `project_plan_publish` binds the first reviewed path to the exac
 approved brief. `baseline.from-approved-brief@1` then materializes a content-addressed
 documentary baseline. That record proves which brief and plan were used; it is not
 technical evidence by itself.
+
+Exact runtime capability demand can be compiled separately from the registered
+operations on that published project path. It is never stored as packs, providers,
+images, or host effects inside `ProjectBriefRevision`; a brief-only forecast remains
+provisional. The compiler is not yet invoked by `project_plan_publish` or exposed as a
+read model. See
+[project capability demand](../runtime/capability-packs/project-capability-demand.md).
 
 The generic V3 bootstrap is deliberately additive and exact:
 

@@ -75,9 +75,17 @@ Three identities must not be collapsed:
 
 During briefing, the agent may propose verification activities and explain the likely
 capability stack in product language. A brief-only forecast is `provisional`: it grants
-no install, provider or execution authority. The exact demand is compiled when planned
+no install, provider or execution authority. Exact demand can be compiled once planned
 work names registered operations. The agent never supplies capability ids, pack ids,
 providers or runtime choices as operation arguments.
+
+The implemented read-only contract is documented in
+[Project capability demand](../../reference/runtime/capability-packs/project-capability-demand.md).
+The accepted boundary for a future, separate host-operational approval and just-in-time
+activation is recorded in
+[Project capability envelope and lazy activation](project-capability-envelope.md).
+Neither record belongs inside `ProjectBriefRevision`, and neither replaces engineering
+MRTR.
 
 A read-only project capability plan should let the agent ask with a project identity
 only. The server derives:
@@ -406,9 +414,9 @@ server-owned CalculiX profile. It never calls Docker, a registry or a provider a
 reports `mutatesRuntime: false`.
 
 The current result selects exactly `syson-db`, `syson-app`, `mcp-syson`,
-`mcp-build123d-sandbox` and the CalculiX microVM worker. Exact image identities,
-ARM64 platform claims and fingerprinted licence, volume and security review inputs now
-render a strict local-developer candidate on current `main`. The report remains
+`mcp-build123d-sandbox` and the CalculiX microVM worker. Exact image identities, ARM64
+platform claims and fingerprinted licence, volume and security review inputs now render
+a strict local-developer candidate on current `main`. The report remains
 `productionEligible: false`: source publication is not runtime redistribution clearance
 or production qualification.
 
@@ -483,6 +491,12 @@ lowering exists, even when every related runtime material is installed and healt
 - census the actual from-zero composition and add parity checks against server options,
   fleet, Compose and fixed local-runner profiles;
 - add rejection tests for aliases, `latest`, unknown fields and unsafe privileges.
+
+The exact `ProjectCapabilityDemand` compiler, deterministic fingerprint, and
+version-exact semantic subset policy are the current project-bound stopping point. They
+mutate no runtime. CPU, memory, volume, secret-slot, and licence effects remain
+unstructured or review-document facts in the candidate manifest and therefore must be
+reported as explicit unknowns/references by a future project envelope, never inferred.
 
 ### Lot B — selective Behave composition
 
