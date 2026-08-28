@@ -27,6 +27,9 @@ import type {
   ThreadArtifact,
   ThreadSnapshot,
 } from "../../../domain/thread/thread-snapshot.ts";
+import type {
+  CapabilityRuntimeExecutionEligibility,
+} from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import { requireResolvedRunPlanExecution } from "./resolved-run-plan-execution-guard.ts";
 
@@ -83,6 +86,50 @@ Deno.test("resolved run-plan execution guard admits one fully reread CalculiX au
     admitted.plan.sources.find((source) => source.bindingName === "geometry")
       ?.artifact.casUri,
     `casys://thread-asset/sha256/${"9".repeat(64)}`,
+  );
+});
+
+Deno.test("resolved run-plan execution guard rechecks the capability runtime before an executor boundary", async () => {
+  const fixture = await createFixture("isolated");
+  const calls: string[] = [];
+  const capabilityRuntime: CapabilityRuntimeExecutionEligibility = {
+    async requireExecution(input) {
+      calls.push(`${input.project.id}:${input.run.id}:${input.operation.id}`);
+      return undefined;
+    },
+  };
+
+  await assertRejects(
+    () => admit(fixture, undefined, ["queued"], capabilityRuntime),
+    TypeError,
+    "resolved none",
+  );
+
+  assertEquals(calls, [
+    `${fixture.project.id}:${fixture.plan.run.runId}:verify.run-fea-static-proof`,
+  ]);
+});
+
+Deno.test("resolved run-plan execution guard rejects a runtime binding drift after queueing", async () => {
+  const fixture = await createFixture("isolated");
+  const capabilityRuntime: CapabilityRuntimeExecutionEligibility = {
+    requireExecution: () =>
+      Promise.resolve({
+        ...fixture.plan.operationalCapability,
+        bindings: fixture.plan.operationalCapability.bindings.map((binding) => ({
+          ...binding,
+          profile: binding.profile && {
+            ...binding.profile,
+            fingerprint: fingerprint("f"),
+          },
+        })),
+      }),
+  };
+
+  await assertRejects(
+    () => admit(fixture, undefined, ["queued"], capabilityRuntime),
+    TypeError,
+    "binding changed after queueing",
   );
 });
 
@@ -386,6 +433,7 @@ async function admit(
     "queued" | "running" | "publishing",
     ...("queued" | "running" | "publishing")[],
   ] = ["queued"],
+  capabilityRuntime?: CapabilityRuntimeExecutionEligibility,
 ) {
   return await requireResolvedRunPlanExecution({
     project: fixture.project,
@@ -401,6 +449,9 @@ async function admit(
         }
         return Promise.resolve(fixture.plan);
       },
+    },
+    capabilityRuntime: capabilityRuntime ?? {
+      requireExecution: () => Promise.resolve(fixture.plan.operationalCapability),
     },
   });
 }
@@ -472,6 +523,10 @@ async function createFixture(kind: RecordedKind): Promise<Fixture> {
     | undefined;
   const planning: EngineeringProjectPlanningDependencies = {
     operations: recordedOperationRegistry(kind),
+    queueEligibility: {
+      validate: ({ project, operation }) =>
+        Promise.resolve(operationalCapabilityFor(project.project.id, operation)),
+    },
     runPlanSealer: {
       seal: async (input) => {
         const plan = await planFor(kind, input, snapshot);
@@ -690,6 +745,7 @@ async function planFor(
       },
       operationFingerprint: await sha256Fingerprint(input.workItem.operation!),
     },
+    operationalCapability: input.operationalCapability!,
     authorization: {
       kind: "human-mrtr-and-qualified-method" as const,
       mrtr: {
@@ -853,6 +909,39 @@ function operationFor(kind: RecordedKind) {
   return kind === "isolated"
     ? { id: "verify.run-fea-static-proof", version: "3" }
     : { id: "verify.run-fea-static-proof", version: "2" };
+}
+
+function operationalCapabilityFor(
+  projectId: string,
+  operation: { readonly id: string; readonly version: string },
+): NonNullable<RegisteredRunPlanSealInput["operationalCapability"]> {
+  return {
+    schemaVersion: "resolved-capability-runtime-operation/1.0",
+    projectId,
+    operation: { id: operation.id, version: operation.version },
+    authorizationFingerprint: fingerprint("a"),
+    demandFingerprint: fingerprint("b"),
+    registryFingerprint: fingerprint("c"),
+    bindings: [{
+      capability: {
+        id: "mechanics.solve-static-structural",
+        version: "1",
+        use: "execution",
+      },
+      binding: { id: "calculix-static-structural", version: "1" },
+      adapter: { id: "casys.calculix-worker", version: "1", source: "test" },
+      profile: {
+        id: "calculix-static",
+        version: "1",
+        fingerprint: fingerprint("d"),
+      },
+      materials: [{
+        unitId: "casys.calculix-worker",
+        materialId: "calculix-worker",
+        imageDigest: "e".repeat(64),
+      }],
+    }],
+  };
 }
 
 function recordedOperationRegistry(

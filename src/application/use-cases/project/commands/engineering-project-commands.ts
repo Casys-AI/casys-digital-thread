@@ -13,6 +13,7 @@ import type {
   EngineeringWorkOwner,
 } from "../../../../domain/project/engineering-project.ts";
 import type { RegisteredRunPlanSealer } from "../../../../domain/project/resolved-run-plan-sealer.ts";
+import type { ResolvedCapabilityRuntimeOperation } from "../../../../domain/capability/runtime/capability-runtime-supervision.ts";
 import type { ContentFingerprint } from "../../../../domain/thread/thread-snapshot.ts";
 import type { ReconcileUncertainWriterOutcome } from "../../../../domain/record/reconcile-uncertain-writer-proposal.ts";
 import type { CrossDomainImpactWorkItemClaimTransition } from "../../../../domain/impact/cross-domain-impact-decision.ts";
@@ -291,7 +292,7 @@ export interface EngineeringProjectQueueEligibility {
     readonly workItem: EngineeringWorkItem;
     readonly operation: EngineeringOperationRef;
     readonly basis: EngineeringBasisRef;
-  }): Promise<void>;
+  }): Promise<ResolvedCapabilityRuntimeOperation | undefined>;
 }
 
 export interface EngineeringProjectPlanningDependencies {

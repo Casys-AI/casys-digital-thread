@@ -1151,12 +1151,55 @@ async function planInput(options: {
       basis: runBasis,
       evidenceRefs: [],
     } as unknown as RegisteredRunPlanSealInput["run"],
+    operationalCapability: operationalCapabilityFor(
+      options.projectId,
+      options.operationId,
+      options.operationVersion ?? "2",
+    ),
     queueBasisProject: {
       snapshotId: project.id,
       revision: project.revision,
       fingerprint: await sha256Fingerprint(project),
     },
   };
+}
+
+function operationalCapabilityFor(
+  projectId: string,
+  operationId: string,
+  operationVersion: string,
+): NonNullable<RegisteredRunPlanSealInput["operationalCapability"]> {
+  return {
+    schemaVersion: "resolved-capability-runtime-operation/1.0",
+    projectId,
+    operation: { id: operationId, version: operationVersion },
+    authorizationFingerprint: testFingerprint("a"),
+    demandFingerprint: testFingerprint("b"),
+    registryFingerprint: testFingerprint("c"),
+    bindings: [{
+      capability: {
+        id: "mechanics.solve-static-structural",
+        version: "1",
+        use: "execution",
+      },
+      binding: { id: "calculix-static-structural", version: "1" },
+      adapter: { id: "casys.calculix-worker", version: "1", source: "test" },
+      profile: {
+        id: "calculix-static",
+        version: "1",
+        fingerprint: testFingerprint("d"),
+      },
+      materials: [{
+        unitId: "casys.calculix-worker",
+        materialId: "calculix-worker",
+        imageDigest: "e".repeat(64),
+      }],
+    }],
+  };
+}
+
+function testFingerprint(character: string): ContentFingerprint {
+  return { algorithm: "sha256", digest: character.repeat(64) };
 }
 
 function binding(name: string, basis: ThreadSnapshot, id: string) {

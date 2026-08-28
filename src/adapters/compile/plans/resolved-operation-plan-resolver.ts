@@ -47,6 +47,9 @@ import type {
   EngineeringWorkItem,
 } from "../../../domain/project/engineering-project.ts";
 import type { RegisteredRunPlanSealInput } from "../../../domain/project/resolved-run-plan-sealer.ts";
+import {
+  validateResolvedCapabilityRuntimeOperation,
+} from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
 import type {
   ThreadArtifact,
   ThreadSnapshot,
@@ -130,6 +133,7 @@ export class ResolvedOperationPlanResolver implements FeaIsolatedRunAdmissionRev
     }
     const snapshot = validateThreadSnapshot(resolved);
     const authorization = await authorizationFor(input);
+    const operationalCapability = requireOperationalCapability(input, operation);
     const common: PlanCommon = {
       schemaVersion: RESOLVED_OPERATION_PLAN_V2_SCHEMA,
       id: resolvedOperationPlanIdForRun(input.run.id),
@@ -152,6 +156,7 @@ export class ResolvedOperationPlanResolver implements FeaIsolatedRunAdmissionRev
         operation: { id: operation.id, version: operation.version },
         operationFingerprint: await sha256Fingerprint(operation),
       },
+      operationalCapability,
       authorization,
       basis: {
         kind: "thread-snapshot",
@@ -493,6 +498,31 @@ export class ResolvedOperationPlanResolver implements FeaIsolatedRunAdmissionRev
     const fullText = decodeUtf8(bytes, "FEA proof capture");
     return await parseFeaProofCaseCapture(fullText);
   }
+}
+
+function requireOperationalCapability(
+  input: RegisteredRunPlanSealInput,
+  operation: NonNullable<EngineeringWorkItem["operation"]>,
+) {
+  if (!input.operationalCapability) {
+    throw new TypeError(
+      "A runtime-demanding resolved-operation-plan/2.0 run requires an exact operational capability binding at queue time.",
+    );
+  }
+  const capability = validateResolvedCapabilityRuntimeOperation(
+    input.operationalCapability,
+  );
+  if (
+    capability.projectId !== input.project.project.id ||
+    capability.operation.id !== operation.id ||
+    capability.operation.version !== operation.version ||
+    capability.bindings.length === 0
+  ) {
+    throw new TypeError(
+      "Operational capability binding does not belong to the exact queued run operation.",
+    );
+  }
+  return capability;
 }
 
 type PlanCommon =

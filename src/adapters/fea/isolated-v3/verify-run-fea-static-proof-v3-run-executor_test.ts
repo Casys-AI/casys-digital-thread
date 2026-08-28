@@ -1059,6 +1059,15 @@ function executorDependencies(
       uriFor: (fingerprint) =>
         `casys://calculix-isolated-execution-evidence/sha256/${fingerprint.digest}`,
     },
+    capabilityRuntime: {
+      async requireExecution({ run }) {
+        if (!run.resolvedOperationPlan) {
+          throw new Error("Fixture run is missing its resolved operation plan.");
+        }
+        return (await fixture.plans.read(run.resolvedOperationPlan))
+          .operationalCapability;
+      },
+    },
     sysonEvaluationCaptureStore: evaluations,
     attempts: new FileCalculixIsolatedProductAttemptStore(`${directory}/attempts`),
     syson: {

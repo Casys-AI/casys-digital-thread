@@ -53,6 +53,7 @@ import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../orchestration/oper
 import { FEA_ISOLATED_STATIC_PROOF_OPERATION_DESCRIPTORS } from "../orchestration/operations/fea-isolated-static-proof.ts";
 import { approvedBriefSourceAnalysisFixture } from "./approved-brief-source-analysis-fixture.ts";
 import type { CalculixIsolatedExecutionProfile } from "../application/ports/out/fea/isolated-v3/calculix-isolated-execution-profile.ts";
+import type { ResolvedCapabilityRuntimeOperation } from "../domain/capability/runtime/capability-runtime-supervision.ts";
 
 export const ISOLATED_CALCULIX_FIXTURE_AGENT = {
   kind: "agent" as const,
@@ -155,7 +156,18 @@ async function createIsolatedCalculixFixture(
     projects,
     new ExactThreadCompletionEvidenceValidator(snapshots),
     now,
-    { operations: fixtureOperationRegistry, runPlanSealer: plans },
+    {
+      operations: fixtureOperationRegistry,
+      runPlanSealer: plans,
+      queueEligibility: {
+        validate: ({ project, operation }) =>
+          Promise.resolve(
+            operation.id === "verify.run-fea-static-proof"
+              ? operationalCapabilityFor(project.project.id, operation)
+              : undefined,
+          ),
+      },
+    },
     new ExactInitialBaselineEvidenceValidator(
       snapshots,
       baselineCaptures,
@@ -844,6 +856,39 @@ async function fingerprint(value: string | Uint8Array): Promise<ContentFingerpri
     digest: await fingerprintResourceBytes(
       typeof value === "string" ? new TextEncoder().encode(value) : value,
     ),
+  };
+}
+
+function operationalCapabilityFor(
+  projectId: string,
+  operation: { readonly id: string; readonly version: string },
+): ResolvedCapabilityRuntimeOperation {
+  return {
+    schemaVersion: "resolved-capability-runtime-operation/1.0",
+    projectId,
+    operation: { id: operation.id, version: operation.version },
+    authorizationFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+    demandFingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
+    registryFingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+    bindings: [{
+      capability: {
+        id: "mechanics.solve-static-structural",
+        version: "1",
+        use: "execution",
+      },
+      binding: { id: "calculix-static-structural", version: "1" },
+      adapter: { id: "casys.calculix-worker", version: "1", source: "fixture" },
+      profile: {
+        id: "calculix-static",
+        version: "1",
+        fingerprint: { algorithm: "sha256", digest: "d".repeat(64) },
+      },
+      materials: [{
+        unitId: "casys.calculix-worker",
+        materialId: "calculix-worker",
+        imageDigest: "e".repeat(64),
+      }],
+    }],
   };
 }
 

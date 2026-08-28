@@ -23,6 +23,15 @@ import {
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
 import type {
+  CapabilityRuntimeExecutionEligibility,
+} from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import type {
+  ResolvedCapabilityRuntimeOperation,
+} from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import {
+  canonicalResolvedCapabilityRuntimeOperationText,
+} from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type {
   EngineeringAgentRun,
   EngineeringAgentRunStatus,
   EngineeringApproval,
@@ -73,6 +82,12 @@ export interface RequireResolvedRunPlanExecutionInput {
   readonly projects: ResolvedRunPlanExecutionProjectReader;
   readonly snapshots: ResolvedRunPlanExecutionSnapshotReader;
   readonly plans: ResolvedRunPlanReader;
+  /**
+   * Optional until server composition installs the capability-runtime
+   * supervisor. When configured it rechecks operational authorization after
+   * all ROP provenance checks and before an executor can claim WAL/provider.
+   */
+  readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
 }
 
 export interface ResolvedRunPlanExecutionAuthorization {
@@ -84,6 +99,8 @@ export interface ResolvedRunPlanExecutionAuthorization {
   readonly basis: ThreadSnapshot;
   /** One exact Thread artifact per closed-plan source binding. */
   readonly artifactsByBinding: ReadonlyMap<string, ThreadArtifact>;
+  /** Server-resolved operational binding; never an agent/provider input. */
+  readonly capabilityRuntime?: ResolvedCapabilityRuntimeOperation;
 }
 
 /**
@@ -172,6 +189,30 @@ export async function requireResolvedRunPlanExecution(
 
   const basis = await requireExactBasis(plan, run, input.snapshots);
   const artifactsByBinding = requireExactSourceArtifacts(plan, basis);
+  if (!input.capabilityRuntime) {
+    throw new TypeError(
+      "Resolved operation plan execution requires the configured capability runtime supervisor before WAL or provider dispatch.",
+    );
+  }
+  const freshOperationalCapability = await input.capabilityRuntime.requireExecution({
+    project,
+    run,
+    workItem,
+    operation: workItem.operation!,
+  });
+  if (!freshOperationalCapability) {
+    throw new TypeError(
+      "Resolved operation plan requires an active operational capability binding, but the runtime supervisor resolved none.",
+    );
+  }
+  if (
+    canonicalResolvedCapabilityRuntimeOperationText(freshOperationalCapability) !==
+      canonicalResolvedCapabilityRuntimeOperationText(plan.operationalCapability)
+  ) {
+    throw new TypeError(
+      "Capability runtime binding changed after queueing; requeue through a reviewed authorization amendment.",
+    );
+  }
 
   return {
     plan,
@@ -181,6 +222,7 @@ export async function requireResolvedRunPlanExecution(
     approval,
     basis,
     artifactsByBinding,
+    capabilityRuntime: plan.operationalCapability,
   };
 }
 

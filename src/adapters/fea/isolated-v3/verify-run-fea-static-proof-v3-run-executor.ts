@@ -95,6 +95,7 @@ import {
 } from "./fea-syson-evaluation-capture.ts";
 import type { FileByteStore } from "../../shared/cas/file-byte-store.ts";
 import type { CanonicalAssetReader } from "../../../application/ports/out/canonical-asset-reader.ts";
+import type { CapabilityRuntimeExecutionEligibility } from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import {
   requireResolvedRunPlanExecution,
   type ResolvedRunPlanExecutionAuthorization,
@@ -159,6 +160,12 @@ export interface VerifyRunFeaStaticProofV3RunExecutorDependencies {
   readonly attempts: FileCalculixIsolatedProductAttemptStore;
   readonly syson: McpToolClient;
   readonly lease: EngineeringProjectRunLease;
+  /**
+   * Server-owned operational envelope recheck. An absent implementation is
+   * fail-closed by the ROP guard; the executor never contacts the microVM
+   * before this seam has admitted the exact queued binding.
+   */
+  readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
   readonly now?: () => string;
 }
 
@@ -501,6 +508,7 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
       projects: this.d.projects,
       snapshots: this.d.snapshots,
       plans: this.d.plans,
+      capabilityRuntime: this.d.capabilityRuntime,
     });
     const action = requireIsolatedStaticStructuralAction(
       authorization.plan.action,

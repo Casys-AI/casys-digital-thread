@@ -40,6 +40,7 @@ function validCalculixPlan(): Record<string, unknown> {
       operation: { id: "verify.run-fea-static-proof", version: "2" },
       operationFingerprint: fingerprint("3"),
     },
+    operationalCapability: operationalCapabilityFor("2"),
     authorization: {
       kind: "human-mrtr-and-qualified-method",
       mrtr: {
@@ -135,6 +136,7 @@ function validCalculixPlan(): Record<string, unknown> {
 function validLocalCalculixPlan(): Record<string, unknown> {
   const plan = validCalculixPlan();
   (plan.workItem as Record<string, Record<string, unknown>>).operation.version = "3";
+  plan.operationalCapability = operationalCapabilityFor("3");
   (plan.authorization as Record<string, Record<string, unknown>>)
     .methodQualification = {
       id: "qualified-calculix-isolated-static-proof",
@@ -177,6 +179,48 @@ function validLocalCalculixPlan(): Record<string, unknown> {
     capturedOutcome: "cas-only-recovery",
   };
   return plan;
+}
+
+function operationalCapabilityFor(
+  operationVersion: "2" | "3",
+): Record<string, unknown> {
+  return {
+    schemaVersion: "resolved-capability-runtime-operation/1.0",
+    projectId: "project.cm01",
+    operation: {
+      id: "verify.run-fea-static-proof",
+      version: operationVersion,
+    },
+    authorizationFingerprint: fingerprint("a"),
+    demandFingerprint: fingerprint("b"),
+    registryFingerprint: fingerprint("c"),
+    bindings: [{
+      capability: {
+        id: "mechanics.solve-static-structural",
+        version: "1",
+        use: "execution",
+      },
+      binding: {
+        id: "calculix-static-structural",
+        version: "1",
+      },
+      adapter: {
+        id: "casys.calculix-worker",
+        version: "1",
+        source: "test",
+      },
+      profile: {
+        id: "calculix-static",
+        version: "1",
+        fingerprint: fingerprint("d"),
+      },
+      materials: [{
+        unitId: "casys.calculix-worker",
+        materialId: "calculix-worker",
+        imageDigest: "e".repeat(64),
+      }],
+    }],
+  };
 }
 
 Deno.test("ResolvedOperationPlan keeps MCP @2 and local @3 CalculiX identities disjoint", async () => {
@@ -363,6 +407,10 @@ Deno.test("ResolvedOperationPlan 2.0 closes each action to its exact registered 
     id: "verify.run-fea-static-proof",
     version: "2",
   };
+  (wrongOperation.operationalCapability as Record<string, unknown>).operation = {
+    id: "verify.run-fea-static-proof",
+    version: "2",
+  };
   assertThrows(
     () => validateResolvedOperationPlanV2(wrongOperation),
     TypeError,
@@ -371,6 +419,10 @@ Deno.test("ResolvedOperationPlan 2.0 closes each action to its exact registered 
 
   const historicalOperation = validPlan();
   (historicalOperation.workItem as Record<string, unknown>).operation = {
+    id: "verify.run-fea-static-proof",
+    version: "1",
+  };
+  (historicalOperation.operationalCapability as Record<string, unknown>).operation = {
     id: "verify.run-fea-static-proof",
     version: "1",
   };

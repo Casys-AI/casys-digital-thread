@@ -22,6 +22,10 @@ import {
 } from "../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
 import { canonicalCalculixStepPlanCasUri } from "../../fea/isolated-v3/calculix-step-asset-uri.ts";
+import {
+  type ResolvedCapabilityRuntimeOperation,
+  validateResolvedCapabilityRuntimeOperation,
+} from "../../capability/runtime/capability-runtime-supervision.ts";
 
 export const RESOLVED_OPERATION_PLAN_V2_SCHEMA = "resolved-operation-plan/2.0" as const;
 export const RESOLVED_OPERATION_PLAN_REF_SCHEMA =
@@ -85,6 +89,12 @@ export interface ResolvedOperationPlanV2 {
     /** Canonical fingerprint of the complete server-reviewed operation binding. */
     readonly operationFingerprint: ContentFingerprint;
   };
+  /**
+   * Exact operational binding selected by the server at queue time. It is
+   * independent of MRTR and results, yet seals the binding/profile/digests
+   * that execution must recheck before WAL or provider contact.
+   */
+  readonly operationalCapability: ResolvedCapabilityRuntimeOperation;
   /** Exact human decision/approval and the qualified execution method. */
   readonly authorization: {
     readonly kind: "human-mrtr-and-qualified-method";
@@ -229,6 +239,7 @@ const ROOT_KEYS = [
   "id",
   "run",
   "workItem",
+  "operationalCapability",
   "authorization",
   "basis",
   "sources",
@@ -258,6 +269,19 @@ export function validateResolvedOperationPlanV2(
   const workItem = parseWorkItem(root.workItem, "$plan.workItem");
   if (workItem.id !== run.workItemId) {
     throw new TypeError("$plan.workItem.id must equal $plan.run.workItemId.");
+  }
+  const operationalCapability = validateResolvedCapabilityRuntimeOperation(
+    root.operationalCapability,
+  );
+  if (
+    operationalCapability.projectId !== run.projectId ||
+    operationalCapability.operation.id !== workItem.operation.id ||
+    operationalCapability.operation.version !== workItem.operation.version ||
+    operationalCapability.bindings.length === 0
+  ) {
+    throw new TypeError(
+      "$plan.operationalCapability does not bind the exact runtime-demanding plan operation.",
+    );
   }
   const authorization = parseAuthorization(root.authorization, "$plan.authorization");
   const basis = parseBasis(root.basis, "$plan.basis");
@@ -311,6 +335,7 @@ export function validateResolvedOperationPlanV2(
     id,
     run,
     workItem,
+    operationalCapability,
     authorization,
     basis,
     sources,

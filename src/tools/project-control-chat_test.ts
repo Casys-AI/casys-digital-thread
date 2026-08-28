@@ -1809,6 +1809,33 @@ async function resolvedPlanInspectionFixture(): Promise<{
       operation: { id: workItem.operation.id, version: workItem.operation.version },
       operationFingerprint: await sha256Fingerprint(workItem.operation),
     },
+    operationalCapability: {
+      schemaVersion: "resolved-capability-runtime-operation/1.0",
+      projectId: queueBasis.project.id,
+      operation: { id: workItem.operation.id, version: workItem.operation.version },
+      authorizationFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+      demandFingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
+      registryFingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+      bindings: [{
+        capability: {
+          id: "mechanics.solve-static-structural",
+          version: "1",
+          use: "execution",
+        },
+        binding: { id: "calculix-static-structural", version: "1" },
+        adapter: { id: "casys.calculix-worker", version: "1", source: "test" },
+        profile: {
+          id: "calculix-static",
+          version: "1",
+          fingerprint: { algorithm: "sha256", digest: "d".repeat(64) },
+        },
+        materials: [{
+          unitId: "casys.calculix-worker",
+          materialId: "calculix-worker",
+          imageDigest: "e".repeat(64),
+        }],
+      }],
+    },
     authorization: {
       kind: "human-mrtr-and-qualified-method",
       mrtr: {

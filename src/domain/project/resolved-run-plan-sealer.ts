@@ -5,6 +5,7 @@
  */
 
 import type { ContentFingerprint } from "../kernel/primitives.ts";
+import type { ResolvedCapabilityRuntimeOperation } from "../capability/runtime/capability-runtime-supervision.ts";
 import type {
   ResolvedOperationPlanRef,
   ResolvedOperationPlanV2,
@@ -26,6 +27,11 @@ export interface RegisteredRunPlanSealInput {
   readonly queueBasisProject: EngineeringProjectPreviousSnapshot & {
     readonly fingerprint: ContentFingerprint;
   };
+  /**
+   * Exact server-resolved operational binding captured with the ROP. It is
+   * absent only for a registered `runtimeDemand:none` operation.
+   */
+  readonly operationalCapability?: ResolvedCapabilityRuntimeOperation;
 }
 
 /**
