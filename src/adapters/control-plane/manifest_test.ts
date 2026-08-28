@@ -52,6 +52,7 @@ Deno.test("loadFleetManifest accepts the workspace manifest and preserves postur
 
   const calculix = manifest.servers.find((server) => server.id === "calculix");
   assertEquals(calculix?.expectedTools, [
+    "calculix_mesh_preflight",
     "calculix_solve_static",
     "calculix_solve_modal",
     "calculix_solve_buckling",
@@ -65,6 +66,33 @@ Deno.test("loadFleetManifest accepts the workspace manifest and preserves postur
     "casys-digital-thread-calculix-inputs:/inputs",
     "casys-digital-thread-calculix-runs:/var/lib/mcp-calculix-runs",
   ]);
+});
+
+Deno.test("CalculiX desired identity pins the published 0.8.2 index, labels, and timeout ceiling", async () => {
+  const raw = JSON.parse(await Deno.readTextFile("config/mcp-fleet.json")) as {
+    servers: Array<Record<string, unknown>>;
+  };
+  const calculix = raw.servers.find((server) => server.id === "calculix");
+  assert(calculix, "fleet manifest is missing CalculiX");
+  assertEquals(
+    calculix.image,
+    "ghcr.io/casys-ai/mcp-calculix@sha256:ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8",
+  );
+  assertEquals(calculix.providerIdentity, {
+    version: "0.8.2",
+    revision: "6fb30a75c4876ad469cc472ffa8ca691e0a6b58b",
+    imageIndexDigest:
+      "ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8",
+    ociLabels: {
+      "org.opencontainers.image.source": "https://github.com/Casys-AI/mcp-calculix",
+      "org.opencontainers.image.title": "mcp-calculix",
+      "org.opencontainers.image.version": "0.8.2",
+      "org.opencontainers.image.revision": "6fb30a75c4876ad469cc472ffa8ca691e0a6b58b",
+    },
+    contractFingerprint:
+      "8e8b5c007299818908d424413483addf7fdde5928175c80d2817232b85839ed4",
+    ordinarySolveTimeoutMaxMs: 120000,
+  });
 });
 
 Deno.test("toolchain Compose defaults remain in parity with fleet desired images", async () => {

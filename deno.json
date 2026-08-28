@@ -51,6 +51,7 @@
     "capability:behave:attest": "deno run --no-prompt --frozen --node-modules-dir=auto --allow-read=config/mcp-fleet.json,config/capability-packs/behave-foundation.review.json,config/microsandbox-local.json,docker-compose.yml,docs/reference/runtime/capability-packs/behave-foundation,node_modules --allow-run=docker --allow-net=127.0.0.1:3009,127.0.0.1:3024 --allow-env=LOG,NAPI_RS_ENFORCE_VERSION_CHECK,NAPI_RS_NATIVE_LIBRARY_PATH,NAPI_RS_FORCE_WASI,NAPI_RS_WASI_FLAVOR,MSB_PATH,MSB_LIBKRUNFW_PATH,MSB_CONFIG_PATH,MSB_HOME,MSB_BACKEND,MSB_API_URL,MSB_API_KEY,MSB_PROFILE --allow-ffi=node_modules scripts/probes/attest-behave-foundation-contract.ts",
     "inspect:behave-capabilities": "deno task capability:behave:inspect",
     "probe:spice-contract": "deno run --no-prompt --frozen --allow-read=config/mcp-fleet.json --allow-net=127.0.0.1:3023 scripts/probes/probe-spice-contract.ts",
+    "probe:calculix-contract": "deno run --no-prompt --frozen --allow-read=config/mcp-fleet.json --allow-net=127.0.0.1:3015 scripts/probes/probe-calculix-contract.ts",
     "probe:archive-cascade": "deno run --allow-read=state/local scripts/probes/probe-archive-cascade.ts",
     "mcp:call": "deno run --allow-net=127.0.0.1,localhost scripts/probes/mcp-call.ts",
     "probe:requirement-units": "deno run --allow-net=127.0.0.1,localhost scripts/probes/probe-requirement-units.ts",
