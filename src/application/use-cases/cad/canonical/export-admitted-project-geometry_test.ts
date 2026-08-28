@@ -504,6 +504,37 @@ Deno.test("a durable dispatching record quarantines a non-idempotent Build123d r
   }
 });
 
+Deno.test("concurrent dispatch claims permit exactly one Build123d provider call", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const cache = new FileAdmittedGeometryExportReplayCache(`${root}/replay`);
+    const key = { algorithm: "sha256" as const, digest: "7".repeat(64) };
+    await cache.prepare(key);
+
+    const claims = await Promise.allSettled([
+      cache.dispatch(key),
+      cache.dispatch(key),
+    ]);
+    let providerCalls = 0;
+    for (const claim of claims) {
+      if (claim.status === "fulfilled") providerCalls++;
+    }
+
+    assertEquals(providerCalls, 1);
+    assertEquals(
+      claims.filter((claim) => claim.status === "rejected").length,
+      1,
+    );
+    await assertRejects(
+      () => cache.read(key),
+      Error,
+      "may have dispatched",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
 Deno.test("unknown caller fields and non-derived artifact ids perform no outward I/O", async () => {
   const fixture = await harness();
   await assertExportError(

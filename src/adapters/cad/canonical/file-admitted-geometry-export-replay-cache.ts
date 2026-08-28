@@ -99,6 +99,14 @@ export class FileAdmittedGeometryExportReplayCache
       );
     } catch (error) {
       if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
+      // `dispatching` is the one non-idempotent provider claim. A matching
+      // file proves another process won it; accepting equal bytes here would
+      // authorize both callers to run build123d_export.
+      if (state === "dispatching") {
+        throw new AdmittedGeometryExportReplayUnavailableError(
+          "The durable export dispatch claim belongs to another recovery owner.",
+        );
+      }
       const existing = await this.#read(key, state);
       if (
         !existing || deterministicJson(existing.result) !== deterministicJson(result)
