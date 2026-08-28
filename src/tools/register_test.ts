@@ -719,6 +719,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_brief_propose",
     "project_brief_requirements_review",
     "project_cad_placement_capture",
+    "project_capability_change_review",
+    "project_capability_inspect",
     "project_change_append",
     "project_cross_domain_impact_decision_review",
     "project_cross_domain_impact_manifest_capture",
@@ -809,6 +811,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_brief_propose",
       "project_brief_requirements_review",
       "project_cad_placement_capture",
+      "project_capability_change_review",
+      "project_capability_inspect",
       "project_change_append",
       "project_cross_domain_impact_decision_review",
       "project_cross_domain_impact_manifest_capture",
@@ -1086,6 +1090,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_product_search" ||
           tool.name === "project_source_closure" ||
           tool.name === "project_agent_run_plan_get" ||
+          tool.name === "project_capability_inspect" ||
           tool.name === "project_prescribed_kinematics_case_review" ||
           tool.name === "project_isolated_geometry_seal_review" ||
           tool.name === "project_led_driver_source_review" ||
@@ -1138,6 +1143,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_agent_run_execute" ||
           tool.name === "project_agent_run_plan_get" ||
           tool.name === "project_agent_run_queue" ||
+          tool.name === "project_capability_change_review" ||
+          tool.name === "project_capability_inspect" ||
           tool.name === "project_prescribed_kinematics_case_review" ||
           tool.name === "project_architecture_sysml_preview" ||
           tool.name === "project_architecture_sysml_source_capture" ||
