@@ -1,13 +1,19 @@
 /** Closed-argv Docker Compose adapter for immutable launch groups. */
 
 import type {
+  CapabilityRuntimeAdministrativeRemovalObservation,
+  CapabilityRuntimeAdministrativeRemovalPlan,
   CapabilityRuntimeJournalEntry,
   CapabilityRuntimeJournalOutcome,
   CapabilityRuntimeMaterialIdentity,
   CapabilityRuntimeObservedState,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import {
+  validateCapabilityRuntimeAdministrativeRemovalPlan,
+} from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import {
   type CapabilityRuntimeLaunchGroup,
+  type CapabilityRuntimeLaunchGroupReference,
   capabilityRuntimeLaunchGroupReference,
   fingerprintCapabilityRuntimeComposeContent,
   sameCapabilityRuntimeLaunchGroupReference,
@@ -15,6 +21,7 @@ import {
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import type {
   AuthorizedCapabilityRuntimeHostMutation,
+  CapabilityRuntimeAdministrativeRemovalInspector,
   CapabilityRuntimeHostMutator,
   CapabilityRuntimeJournal,
   CapabilityRuntimeLaunchGroupRegistry,
@@ -44,7 +51,8 @@ export interface CapabilityRuntimeHostAdapterOptions {
 
 export type CapabilityRuntimeHostAdapter =
   & CapabilityRuntimeHostMutator
-  & CapabilityRuntimeStateObserver;
+  & CapabilityRuntimeStateObserver
+  & CapabilityRuntimeAdministrativeRemovalInspector;
 
 /**
  * Read-only facade for consumers such as the native Workbench. It deliberately
@@ -67,7 +75,10 @@ export function createCapabilityRuntimeHostAdapter(
 }
 
 class ComposeCapabilityRuntimeHost
-  implements CapabilityRuntimeHostMutator, CapabilityRuntimeStateObserver {
+  implements
+    CapabilityRuntimeHostMutator,
+    CapabilityRuntimeStateObserver,
+    CapabilityRuntimeAdministrativeRemovalInspector {
   readonly #runner: CommandRunner;
   readonly #root: string;
   readonly #paths: { realPath(path: string): Promise<string> };
@@ -107,8 +118,25 @@ class ComposeCapabilityRuntimeHost
     return result;
   }
 
+  async inspectAdministrativeRemoval(input: {
+    readonly launchGroup: CapabilityRuntimeLaunchGroupReference;
+  }): Promise<CapabilityRuntimeAdministrativeRemovalObservation> {
+    const group = await this.options.registry.require(input.launchGroup);
+    if (
+      !sameCapabilityRuntimeLaunchGroupReference(
+        capabilityRuntimeLaunchGroupReference(group),
+        input.launchGroup,
+      )
+    ) {
+      throw new TypeError("Capability runtime removal group identity drifted.");
+    }
+    const launch = await this.#launch(group);
+    return await this.#inspectRemoval(group, launch);
+  }
+
   async mutate(input: {
     readonly authorization: AuthorizedCapabilityRuntimeHostMutation;
+    readonly removalPlan?: CapabilityRuntimeAdministrativeRemovalPlan;
   }): Promise<CapabilityRuntimeJournalOutcome> {
     const entry = consumeAuthorizedCapabilityRuntimeHostMutation(input.authorization);
     if (!entry) {
@@ -138,6 +166,9 @@ class ComposeCapabilityRuntimeHost
         "Launch group identity or exact material membership drifted.",
       );
     }
+    if (entry.action === "material-remove") {
+      return await this.#remove(entry, input.removalPlan);
+    }
     if (group.security !== "reviewed" || group.qualification === "revoked") {
       return this.#outcome(
         entry,
@@ -153,14 +184,6 @@ class ComposeCapabilityRuntimeHost
         "failed",
         [],
         "Launch group secret availability is unknown or unavailable.",
-      );
-    }
-    if (entry.action === "material-remove") {
-      return this.#outcome(
-        entry,
-        "failed",
-        [],
-        "Launch-group retention forbids material removal.",
       );
     }
     const launch = await this.#launch(group);
@@ -205,6 +228,314 @@ class ComposeCapabilityRuntimeHost
       status,
       after.values,
       status === "succeeded" ? null : compactFailure(execution),
+    );
+  }
+
+  async #remove(
+    entry: CapabilityRuntimeJournalEntry,
+    planValue: CapabilityRuntimeAdministrativeRemovalPlan | undefined,
+  ): Promise<CapabilityRuntimeJournalOutcome> {
+    if (!planValue || entry.administrativeRemovalPlanFingerprint === null) {
+      return this.#outcome(
+        entry,
+        "failed",
+        [],
+        "Administrative material removal requires one exact reviewed plan.",
+      );
+    }
+    let plan: CapabilityRuntimeAdministrativeRemovalPlan;
+    try {
+      plan = await validateCapabilityRuntimeAdministrativeRemovalPlan(planValue);
+    } catch (error) {
+      return this.#outcome(entry, "failed", [], compact(error));
+    }
+    if (
+      plan.fingerprint.algorithm !==
+        entry.administrativeRemovalPlanFingerprint.algorithm ||
+      plan.fingerprint.digest !== entry.administrativeRemovalPlanFingerprint.digest ||
+      !sameCapabilityRuntimeLaunchGroupReference(plan.launchGroup, entry.launchGroup)
+    ) {
+      return this.#outcome(
+        entry,
+        "failed",
+        [],
+        "Administrative removal plan does not attest this exact journal intent.",
+      );
+    }
+    const group = await this.options.registry.require(entry.launchGroup);
+    if (!sameGroupMaterials(group, plan.ownedMaterials)) {
+      return this.#outcome(
+        entry,
+        "failed",
+        [],
+        "Administrative removal plan does not cover the complete exact launch group.",
+      );
+    }
+    if (await this.#sharedDigestOutsideGroup(group)) {
+      return this.#outcome(
+        entry,
+        "failed",
+        [],
+        "An exact removal image digest is retained by another catalogue launch group.",
+      );
+    }
+    const launch = await this.#launch(group);
+    const before = await this.#inspectRemoval(group, launch);
+    if (before.safety !== "exact") {
+      return this.#outcome(
+        entry,
+        before.safety === "unknown" ? "uncertain" : "failed",
+        removalObservationValues(before),
+        before.safety === "unknown"
+          ? "Administrative removal ownership cannot be observed exactly."
+          : "Administrative removal found a foreign container or image reference.",
+      );
+    }
+    if (!matchesRemovalPlan(plan, before)) {
+      return this.#outcome(
+        entry,
+        "failed",
+        removalObservationValues(before),
+        "Administrative removal review drifted before host mutation.",
+      );
+    }
+    const stop = await this.#stopOwnedRemovalContainers(launch, before);
+    if (!stop.success) {
+      const afterStop = await this.#inspectRemoval(group, launch);
+      return this.#outcome(
+        entry,
+        afterStop.safety === "foreign" ? "failed" : "uncertain",
+        removalObservationValues(afterStop),
+        compactFailure(stop),
+      );
+    }
+    const removeContainers = await this.#removeOwnedContainers(launch, before);
+    if (!removeContainers.success) {
+      const afterContainers = await this.#inspectRemoval(group, launch);
+      return this.#outcome(
+        entry,
+        afterContainers.safety === "foreign" ? "failed" : "uncertain",
+        removalObservationValues(afterContainers),
+        compactFailure(removeContainers),
+      );
+    }
+    const beforeImages = await this.#inspectRemoval(group, launch);
+    if (
+      beforeImages.safety !== "exact" || beforeImages.ownedContainerIds.length !== 0
+    ) {
+      return this.#outcome(
+        entry,
+        beforeImages.safety === "foreign" ? "failed" : "uncertain",
+        removalObservationValues(beforeImages),
+        "Administrative removal cannot prove that exact owned containers are gone.",
+      );
+    }
+    const removeImages = await this.#removeExactImages(launch, group, beforeImages);
+    if (!removeImages.success) {
+      const afterImages = await this.#inspectRemoval(group, launch);
+      return this.#outcome(
+        entry,
+        afterImages.safety === "foreign" ? "failed" : "uncertain",
+        removalObservationValues(afterImages),
+        compactFailure(removeImages),
+      );
+    }
+    const after = await this.#inspectRemoval(group, launch);
+    const absent = after.safety === "exact" && after.ownedContainerIds.length === 0 &&
+      after.materials.every((material) => material.state === "absent");
+    return this.#outcome(
+      entry,
+      absent ? "succeeded" : after.safety === "foreign" ? "failed" : "uncertain",
+      removalObservationValues(after),
+      absent ? null : "Administrative removal did not yield an exact absent group.",
+    );
+  }
+
+  async #inspectRemoval(
+    group: CapabilityRuntimeLaunchGroup,
+    launch: Launch,
+  ): Promise<CapabilityRuntimeAdministrativeRemovalObservation> {
+    const ps = await this.#compose(launch, ["ps", "--all", "--format", "json"]);
+    if (!ps.success) return unknownRemovalObservation(group);
+    let listed: ReturnType<typeof parseComposePs>;
+    try {
+      listed = parseComposePs(ps.stdout);
+    } catch {
+      return unknownRemovalObservation(group);
+    }
+    const materials: {
+      material: CapabilityRuntimeMaterialIdentity;
+      state: "owned" | "absent";
+    }[] = [];
+    const ownedContainerIds: {
+      material: CapabilityRuntimeMaterialIdentity;
+      containerId: string;
+    }[] = [];
+    let safety: CapabilityRuntimeAdministrativeRemovalObservation["safety"] = "exact";
+    for (const member of group.materials) {
+      const image = await this.#docker(launch.root, [
+        "image",
+        "inspect",
+        member.imageReference,
+      ]);
+      const imageState = exactImageState(image, member.imageReference);
+      if (imageState === "unknown") safety = preferRemovalSafety(safety, "unknown");
+      if (imageState === "foreign") safety = "foreign";
+      const containers = listed.filter((container) =>
+        container.service === member.serviceName
+      );
+      if (containers.length > 1 || (containers.length === 1 && !containers[0]!.id)) {
+        safety = "foreign";
+      }
+      let ownedId: string | undefined;
+      if (containers.length === 1 && containers[0]!.id) {
+        const inspected = await this.#docker(launch.root, [
+          "inspect",
+          containers[0]!.id!,
+        ]);
+        const actual = inspected.success ? parseContainer(inspected.stdout) : undefined;
+        if (!actual) {
+          safety = preferRemovalSafety(safety, "unknown");
+        } else if (!hasOwnership(member, actual.labels)) {
+          safety = "foreign";
+        } else {
+          const actualImage = await this.#docker(launch.root, [
+            "image",
+            "inspect",
+            actual.image,
+          ]);
+          if (exactImageState(actualImage, member.imageReference) !== "exact") {
+            safety = actualImage.success
+              ? "foreign"
+              : preferRemovalSafety(safety, "unknown");
+          } else {
+            ownedId = actual.id;
+          }
+        }
+      }
+      const ancestry = await this.#docker(launch.root, [
+        "container",
+        "ls",
+        "--all",
+        "--filter",
+        `ancestor=${member.imageReference}`,
+        "--format",
+        "{{json .}}",
+      ]);
+      const ancestors = ancestry.success ? containerIds(ancestry.stdout) : undefined;
+      if (!ancestors) {
+        safety = preferRemovalSafety(safety, "unknown");
+      } else if (
+        (ownedId === undefined && ancestors.length !== 0) ||
+        (ownedId !== undefined &&
+          (ancestors.length !== 1 || ancestors[0] !== ownedId))
+      ) {
+        safety = "foreign";
+      }
+      if (imageState === "absent" && ownedId !== undefined) {
+        safety = preferRemovalSafety(safety, "unknown");
+      }
+      materials.push({
+        material: { ...member.material },
+        state: imageState === "exact" ? "owned" : "absent",
+      });
+      if (ownedId !== undefined) {
+        ownedContainerIds.push({
+          material: { ...member.material },
+          containerId: ownedId,
+        });
+      }
+    }
+    return {
+      schemaVersion: "capability-runtime-removal-observation/1.0",
+      launchGroup: capabilityRuntimeLaunchGroupReference(group),
+      materials,
+      ownedContainerIds,
+      safety,
+    };
+  }
+
+  async #stopOwnedRemovalContainers(
+    launch: Launch,
+    observation: CapabilityRuntimeAdministrativeRemovalObservation,
+  ): Promise<CommandResult> {
+    const ids = new Map(
+      observation.ownedContainerIds.map((container) => [
+        materialKey(container.material),
+        container.containerId,
+      ]),
+    );
+    for (const member of [...launch.group.materials].reverse()) {
+      const id = ids.get(materialKey(member.material));
+      if (!id) continue;
+      const result = await this.#docker(launch.root, ["container", "stop", id]);
+      if (!result.success) return result;
+    }
+    return successfulCommand();
+  }
+
+  async #removeOwnedContainers(
+    launch: Launch,
+    observation: CapabilityRuntimeAdministrativeRemovalObservation,
+  ): Promise<CommandResult> {
+    const ids = new Map(
+      observation.ownedContainerIds.map((container) => [
+        materialKey(container.material),
+        container.containerId,
+      ]),
+    );
+    for (const member of [...launch.group.materials].reverse()) {
+      const id = ids.get(materialKey(member.material));
+      if (!id) continue;
+      // Deliberately no `--volumes`/`-v`: retained runtime volumes are never
+      // deletion targets of administrative material removal.
+      const result = await this.#docker(launch.root, ["container", "rm", id]);
+      if (!result.success) return result;
+    }
+    return successfulCommand();
+  }
+
+  async #removeExactImages(
+    launch: Launch,
+    group: CapabilityRuntimeLaunchGroup,
+    observation: CapabilityRuntimeAdministrativeRemovalObservation,
+  ): Promise<CommandResult> {
+    const states = new Map(
+      observation.materials.map((material) => [
+        materialKey(material.material),
+        material.state,
+      ]),
+    );
+    const references = new Map<string, string>();
+    for (const member of group.materials) {
+      if (states.get(materialKey(member.material)) !== "owned") continue;
+      references.set(member.material.imageDigest, member.imageReference);
+    }
+    for (const reference of references.values()) {
+      // This is the immutable repository digest from the sealed group, not a
+      // mutable tag/alias. There is intentionally no force, prune or rmi argv.
+      const result = await this.#docker(launch.root, ["image", "rm", reference]);
+      if (!result.success) return result;
+    }
+    return successfulCommand();
+  }
+
+  async #sharedDigestOutsideGroup(
+    group: CapabilityRuntimeLaunchGroup,
+  ): Promise<boolean> {
+    const selected = new Set(
+      group.materials.map((member) =>
+        `${member.material.unitId}\u0000${member.material.materialId}`
+      ),
+    );
+    const selectedDigests = new Set(
+      group.materials.map((member) => member.material.imageDigest),
+    );
+    return (await this.options.registry.list()).some((candidate) =>
+      candidate.materials.some((member) =>
+        selectedDigests.has(member.material.imageDigest) &&
+        !selected.has(`${member.material.unitId}\u0000${member.material.materialId}`)
+      )
     );
   }
 
@@ -533,6 +864,128 @@ function unknownInspection(group: CapabilityRuntimeLaunchGroup): GroupInspection
   };
 }
 
+function unknownRemovalObservation(
+  group: CapabilityRuntimeLaunchGroup,
+): CapabilityRuntimeAdministrativeRemovalObservation {
+  return {
+    schemaVersion: "capability-runtime-removal-observation/1.0",
+    launchGroup: capabilityRuntimeLaunchGroupReference(group),
+    materials: group.materials.map((member) => ({
+      material: { ...member.material },
+      state: "absent" as const,
+    })),
+    ownedContainerIds: [],
+    safety: "unknown",
+  };
+}
+
+function exactImageState(
+  result: CommandResult,
+  reference: string,
+): "exact" | "absent" | "foreign" | "unknown" {
+  if (!result.success) {
+    return /no such (image|object)|not found/i.test(result.stderr)
+      ? "absent"
+      : "unknown";
+  }
+  try {
+    const root = Array.isArray(JSON.parse(result.stdout))
+      ? JSON.parse(result.stdout)[0]
+      : JSON.parse(result.stdout);
+    const record = root as Record<string, unknown>;
+    const digests = record.RepoDigests;
+    const tags = record.RepoTags;
+    if (
+      !Array.isArray(digests) || !digests.every((digest) => typeof digest === "string")
+    ) {
+      return "unknown";
+    }
+    if (
+      !digests.includes(reference) || digests.some((digest) => digest !== reference)
+    ) {
+      return "foreign";
+    }
+    if (
+      tags !== undefined && tags !== null &&
+      (!Array.isArray(tags) || tags.length !== 0)
+    ) {
+      return "foreign";
+    }
+    return "exact";
+  } catch {
+    return "unknown";
+  }
+}
+
+function containerIds(value: string): readonly string[] | undefined {
+  if (!value.trim()) return [];
+  try {
+    const parsed = value.trim().startsWith("[")
+      ? JSON.parse(value)
+      : value.trim().split("\n").map((line) => JSON.parse(line));
+    if (!Array.isArray(parsed)) return undefined;
+    const ids = parsed.map((entry) => {
+      const record = entry as Record<string, unknown>;
+      const id = record.ID ?? record.Id;
+      return typeof id === "string" && id ? id : undefined;
+    });
+    return ids.some((id) => id === undefined) ? undefined : ids as string[];
+  } catch {
+    return undefined;
+  }
+}
+
+function preferRemovalSafety(
+  current: CapabilityRuntimeAdministrativeRemovalObservation["safety"],
+  next: CapabilityRuntimeAdministrativeRemovalObservation["safety"],
+): CapabilityRuntimeAdministrativeRemovalObservation["safety"] {
+  const rank: Record<
+    CapabilityRuntimeAdministrativeRemovalObservation["safety"],
+    number
+  > = {
+    exact: 0,
+    unknown: 1,
+    foreign: 2,
+  };
+  return rank[next] > rank[current] ? next : current;
+}
+
+function matchesRemovalPlan(
+  plan: CapabilityRuntimeAdministrativeRemovalPlan,
+  observation: CapabilityRuntimeAdministrativeRemovalObservation,
+): boolean {
+  return plan.observedMaterials.length === observation.materials.length &&
+    plan.observedMaterials.every((material, index) =>
+      sameMaterial(material.material, observation.materials[index]!.material) &&
+      material.state === observation.materials[index]!.state
+    ) && plan.ownedContainerIds.length === observation.ownedContainerIds.length &&
+    plan.ownedContainerIds.every((container, index) =>
+      sameMaterial(
+        container.material,
+        observation.ownedContainerIds[index]!.material,
+      ) &&
+      container.containerId === observation.ownedContainerIds[index]!.containerId
+    );
+}
+
+function removalObservationValues(
+  observation: CapabilityRuntimeAdministrativeRemovalObservation,
+): readonly {
+  material: CapabilityRuntimeMaterialIdentity;
+  state: CapabilityRuntimeObservedState | null;
+}[] {
+  return observation.materials.map((entry) => ({
+    material: entry.material,
+    state: entry.state === "owned"
+      ? { material: "installed", runtime: "inactive", qualification: "unqualified" }
+      : { material: "absent", runtime: "inactive", qualification: "unqualified" },
+  }));
+}
+
+function successfulCommand(): CommandResult {
+  return { success: true, code: 0, stdout: "", stderr: "" };
+}
+
 function parseContainer(
   value: string,
 ): {
@@ -595,6 +1048,10 @@ function hasOwnership(
 function compactFailure(result: CommandResult): string {
   const text = result.stderr.trim() || `docker exited ${result.code}`;
   return text.length > 512 ? `${text.slice(0, 509)}...` : text;
+}
+function compact(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  return text.length > 512 ? `${text.slice(0, 509)}...` : text || "unknown error";
 }
 function nonBlank(value: string): string {
   if (!value.trim()) {

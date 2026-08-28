@@ -79,9 +79,13 @@ docker compose … up --detach --wait --wait-timeout 300 --pull never --no-build
 ```
 
 There is no `--no-deps`, implicit pull, `down`, `down -v`, image removal, volume removal
-or orphan removal. The adapter fresh-inspects image digests, exact Compose ownership and
-health after every action. Stop revalidates the exact owned container IDs and stops them
-in reverse group order; a same-name foreign or ambiguous container is never touched.
+or orphan removal in ordinary preload/JIT lifecycle. The separate private administrative
+removal review may remove one complete inactive group only after its exact plan,
+inactive lock, lease/JIT/ledger/journal checks and ownership reread. It never removes
+retained volumes, runs prune, accepts a tag/alias, or touches a foreign container. The
+adapter fresh-inspects image digests, exact Compose ownership and health after every
+action. Stop revalidates the exact owned container IDs and stops them in reverse group
+order; a same-name foreign or ambiguous container is never touched.
 
 Terminal release evaluates remaining JIT demand per group, stops eligible groups in
 reverse canonical order while retaining the shared lease, and removes the lease only

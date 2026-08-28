@@ -4,36 +4,36 @@
  */
 
 import {
-  FileCapabilityRuntimeAdminLockStore,
   FileCapabilityRuntimeHostMutationLock,
+  FileCapabilityRuntimeLeaseStore,
 } from "../../src/adapters/control-plane/file-capability-runtime-host-stores.ts";
-import { FileProjectCapabilityLedgerStore } from "../../src/adapters/control-plane/file-project-capability-ledger-store.ts";
-import { createFirstPartyCapabilityRuntimeCatalog } from "../../src/adapters/control-plane/first-party-capability-binding-catalog.ts";
+import { createCapabilityRuntimeHostAdapter } from "../../src/adapters/control-plane/compose-capability-runtime-host.ts";
+import { createLocalCapabilityRuntimeReadComposition } from "../../src/adapters/control-plane/local-capability-runtime-read-composition.ts";
+import { FileEngineeringProjectRevisionStore } from "../../src/adapters/shared/stores/engineering-project-store.ts";
 import { LocalCapabilityRuntimeAdminService } from "../../src/application/control-plane/local-capability-runtime-admin-service.ts";
 import { ProjectCapabilityAuthorizationService } from "../../src/application/control-plane/project-capability-authorization-service.ts";
+import { ProjectCapabilityJitDemandReader } from "../../src/application/control-plane/project-capability-jit-demand-reader.ts";
 
 const [command, ...argumentsList] = Deno.args;
 const flags = parseFlags(argumentsList);
 assertAllowedFlags(command, flags);
-const catalog = await createFirstPartyCapabilityRuntimeCatalog();
-const lock = new FileCapabilityRuntimeAdminLockStore(undefined, catalog);
-const ledgers = new FileProjectCapabilityLedgerStore();
+const capability = await createLocalCapabilityRuntimeReadComposition();
+const catalog = capability.catalog;
+const lock = capability.lock;
+const ledgers = capability.ledgers;
 const hostMutationLock = new FileCapabilityRuntimeHostMutationLock();
+const leases = new FileCapabilityRuntimeLeaseStore();
+const host = createCapabilityRuntimeHostAdapter({
+  registry: capability.launchGroups,
+  journal: capability.journal,
+  secrets: capability.secrets,
+});
 const authorization = new ProjectCapabilityAuthorizationService({
   ledgers,
   registry: { list: () => [] },
   catalog,
-  policy: {
-    schemaVersion: "capability-runtime-admin-policy/1.0",
-    disabledBindingIds: [],
-    preferences: [],
-  },
-  host: {
-    schemaVersion: "capability-runtime-host-observation/1.0",
-    platform: "linux/arm64",
-    emulatedPlatforms: [],
-    images: [],
-  },
+  policy: await capability.policy.read(),
+  host: capability.host,
   lock,
   lockWriter: lock,
   hostMutationLock,
@@ -44,6 +44,16 @@ const admin = new LocalCapabilityRuntimeAdminService({
   lock,
   hostMutationLock,
   authorization,
+  removal: {
+    groups: capability.launchGroups,
+    journal: capability.journal,
+    leases,
+    host,
+    jitDemand: new ProjectCapabilityJitDemandReader({
+      projects: new FileEngineeringProjectRevisionStore(),
+      contexts: capability.contexts,
+    }),
+  },
 });
 
 switch (command) {
@@ -87,9 +97,21 @@ switch (command) {
     );
     print({ status: "revoked" });
     break;
+  case "remove-review":
+    print(await admin.removeReview(removalTarget(flags)));
+    break;
+  case "remove-apply":
+    print(
+      await admin.removeApply(
+        removalTarget(flags),
+        fingerprint(flags, "review-fingerprint"),
+        confirmed(flags),
+      ),
+    );
+    break;
   default:
     throw new Error(
-      "Usage: capability-runtime-admin <status|lock-review|lock-apply|rollback-review|rollback-apply|revoke-review|revoke-apply> [--review-fingerprint=<sha256>] [--confirm]",
+      "Usage: capability-runtime-admin <status|lock-review|lock-apply|rollback-review|rollback-apply|revoke-review|revoke-apply|remove-review|remove-apply> [--unit-id=<id>|--launch-group-id=<id>] [--review-fingerprint=<sha256>] [--confirm]",
     );
 }
 
@@ -125,6 +147,10 @@ function assertAllowedFlags(
       ? ["project-id", "reason"]
       : command === "revoke-apply"
       ? ["project-id", "reason", "review-fingerprint", "confirm"]
+      : command === "remove-review"
+      ? ["unit-id", "launch-group-id"]
+      : command === "remove-apply"
+      ? ["unit-id", "launch-group-id", "review-fingerprint", "confirm"]
       : [],
   );
   for (const name of flags.keys()) {
@@ -161,6 +187,23 @@ function fingerprint(flags: ReadonlyMap<string, string | true>, name: string) {
 function confirmed(flags: ReadonlyMap<string, string | true>): boolean {
   if (flags.size === 0 || flags.get("confirm") !== true) return false;
   return true;
+}
+
+function removalTarget(flags: ReadonlyMap<string, string | true>) {
+  const unitId = flags.get("unit-id");
+  const launchGroupId = flags.get("launch-group-id");
+  if (typeof unitId === "string" && !launchGroupId) {
+    return { kind: "unit" as const, id: required(flags, "unit-id") };
+  }
+  if (typeof launchGroupId === "string" && !unitId) {
+    return {
+      kind: "launch-group" as const,
+      id: required(flags, "launch-group-id"),
+    };
+  }
+  throw new Error(
+    "Administrative removal requires exactly one --unit-id or --launch-group-id.",
+  );
 }
 
 function print(value: unknown): void {

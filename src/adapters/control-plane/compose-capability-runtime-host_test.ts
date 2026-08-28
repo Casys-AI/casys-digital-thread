@@ -4,6 +4,9 @@ import {
   capabilityRuntimeLaunchGroupReference,
 } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import type { CapabilityRuntimeJournalEntry } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import {
+  createCapabilityRuntimeAdministrativeRemovalPlan,
+} from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import { FixedCapabilityRuntimeLaunchGroupRegistry } from "../../application/control-plane/capability-runtime-launch-group-registry.ts";
 import { authorizeDurableCapabilityRuntimeHostMutation } from "../../application/control-plane/capability-runtime-host-authorization.ts";
 import { InMemoryCapabilityRuntimeJournal } from "./in-memory-capability-runtime-supervisor.ts";
@@ -75,6 +78,110 @@ Deno.test("Compose host refuses a foreign same-name service without stopping its
   assertEquals(result.status, "failed");
   assertEquals(
     runner.calls.some((call) => call[1] === "container" && call[2] === "stop"),
+    false,
+  );
+});
+
+Deno.test("Compose host removes only the exact reviewed containers and digest references, never volumes or prune", async () => {
+  const group = await sysonGroup();
+  const runner = new FakeGroupRunner(group, { images: true, state: "running" });
+  const fixture = host(group, runner);
+  const plan = await removalPlan(group, "owned");
+  const entry = removalEntry(group, plan);
+  await fixture.journal.appendBeforeMutation(entry);
+
+  const result = await fixture.host.mutate({
+    authorization: await authorizeDurableCapabilityRuntimeHostMutation(
+      entry,
+      fixture.journal,
+    ),
+    removalPlan: plan,
+  });
+
+  assertEquals(result.status, "succeeded");
+  assertEquals(
+    runner.calls.filter((call) => call[1] === "container" && call[2] === "stop").map(
+      (call) => call[3],
+    ),
+    ["container-mcp-syson", "container-syson-app", "container-syson-db"],
+  );
+  assertEquals(
+    runner.calls.filter((call) => call[1] === "container" && call[2] === "rm").map(
+      (call) => call[3],
+    ),
+    ["container-mcp-syson", "container-syson-app", "container-syson-db"],
+  );
+  assertEquals(
+    runner.calls.filter((call) => call[1] === "image" && call[2] === "rm").map(
+      (call) => call[3],
+    ),
+    group.materials.map((member) => member.imageReference),
+  );
+  assertEquals(
+    runner.calls.some((call) =>
+      call.includes("-v") || call.includes("--volumes") || call.includes("prune") ||
+      call.includes("rmi") || call.includes("--force")
+    ),
+    false,
+  );
+  assertNoDestructiveComposeCommand(runner);
+});
+
+Deno.test("Compose host treats an exact already-absent group as a removal no-op", async () => {
+  const group = await sysonGroup();
+  const runner = new FakeGroupRunner(group, { images: false, state: "absent" });
+  const fixture = host(group, runner);
+  const plan = await removalPlan(group, "absent");
+  const entry = removalEntry(group, plan);
+  await fixture.journal.appendBeforeMutation(entry);
+
+  const result = await fixture.host.mutate({
+    authorization: await authorizeDurableCapabilityRuntimeHostMutation(
+      entry,
+      fixture.journal,
+    ),
+    removalPlan: plan,
+  });
+
+  assertEquals(result.status, "succeeded");
+  assertEquals(
+    runner.calls.some((call) =>
+      call[1] === "container" && (call[2] === "stop" || call[2] === "rm")
+    ) || runner.calls.some((call) => call[1] === "image" && call[2] === "rm"),
+    false,
+  );
+});
+
+Deno.test("Compose host refuses removal when another catalogue group retains the digest", async () => {
+  const groups = await createFirstPartyCapabilityRuntimeLaunchGroups();
+  const group = groups.find((candidate) => candidate.id === "casys-build123d-sandbox")!;
+  const runner = new FakeGroupRunner(group, { images: true, state: "running" });
+  const journal = new InMemoryCapabilityRuntimeJournal();
+  const runtime = createCapabilityRuntimeHostAdapter({
+    registry: new FixedCapabilityRuntimeLaunchGroupRegistry(groups),
+    journal,
+    secrets: {
+      observe: (slots) =>
+        Promise.resolve(new Map(slots.map((slot) => [slot, "available" as const]))),
+    },
+    runner,
+    composeRoot: "/workspace",
+    paths: { realPath: () => Promise.resolve("/canonical") },
+  });
+  const plan = await removalPlan(group, "owned");
+  const entry = removalEntry(group, plan);
+  await journal.appendBeforeMutation(entry);
+
+  const result = await runtime.mutate({
+    authorization: await authorizeDurableCapabilityRuntimeHostMutation(entry, journal),
+    removalPlan: plan,
+  });
+
+  assertEquals(result.status, "failed");
+  assertEquals(
+    runner.calls.some((call) =>
+      call[1] === "container" || call[1] === "image" && call[2] === "rm"
+    ),
     false,
   );
 });
@@ -207,7 +314,20 @@ class FakeGroupRunner implements CommandRunner {
       );
       return this.#images && member
         ? success(JSON.stringify([{ RepoDigests: [member.imageReference] }]))
-        : failure("image missing");
+        : failure("No such image");
+    }
+    if (args[0] === "container" && args[1] === "ls") {
+      const reference = args.find((value) => value.startsWith("ancestor="))?.slice(
+        "ancestor=".length,
+      );
+      const member = this.group.materials.find((candidate) =>
+        candidate.imageReference === reference
+      );
+      return success(
+        member && this.#states.has(member.serviceName)
+          ? JSON.stringify({ ID: `container-${member.serviceName}` })
+          : "",
+      );
     }
     if (args[0] === "inspect") {
       const service = args[1]!.replace("container-", "");
@@ -254,8 +374,53 @@ class FakeGroupRunner implements CommandRunner {
     if (args[0] === "container" && args[1] === "stop") {
       this.#states.set(args[2]!.replace("container-", ""), "exited");
     }
+    if (args[0] === "container" && args[1] === "rm") {
+      this.#states.delete(args[2]!.replace("container-", ""));
+    }
+    if (args[0] === "image" && args[1] === "rm") this.#images = false;
     return success("");
   }
+}
+
+async function removalPlan(
+  group: CapabilityRuntimeLaunchGroup,
+  state: "owned" | "absent",
+) {
+  return await createCapabilityRuntimeAdministrativeRemovalPlan({
+    launchGroup: capabilityRuntimeLaunchGroupReference(group),
+    ownedMaterials: group.materials.map((member) => member.material),
+    observedMaterials: group.materials.map((member) => ({
+      material: member.material,
+      state,
+    })),
+    ownedContainerIds: state === "owned"
+      ? group.materials.map((member) => ({
+        material: member.material,
+        containerId: `container-${member.serviceName}`,
+      }))
+      : [],
+  });
+}
+
+function removalEntry(
+  group: CapabilityRuntimeLaunchGroup,
+  plan: Awaited<ReturnType<typeof removalPlan>>,
+): CapabilityRuntimeJournalEntry {
+  return {
+    id: `removal-${plan.fingerprint.digest}`,
+    action: "material-remove",
+    materials: group.materials.map((member) => member.material),
+    launchGroup: capabilityRuntimeLaunchGroupReference(group),
+    projectId: null,
+    plannedAt: "2026-08-29T00:00:00.000Z",
+    previousObservations: plan.observedMaterials.map((entry) => ({
+      material: entry.material,
+      state: entry.state === "owned"
+        ? { material: "installed", runtime: "inactive", qualification: "unqualified" }
+        : { material: "absent", runtime: "inactive", qualification: "unqualified" },
+    })),
+    administrativeRemovalPlanFingerprint: plan.fingerprint,
+  };
 }
 
 function serviceDeclaresHealthcheck(

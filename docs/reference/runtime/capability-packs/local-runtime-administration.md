@@ -8,8 +8,8 @@ Workbench mutation, Docker shortcut, provider selector, or engineering verdict.
 ## Desired-state history
 
 The human brief authorization remains the normal authority for a project. The local
-admin lock only answers whether an exact already-authorized atomic unit may activate
-JIT on this Mac. `desired: active` permits JIT; it never means the service must remain
+admin lock only answers whether an exact already-authorized atomic unit may activate JIT
+on this Mac. `desired: active` permits JIT; it never means the service must remain
 running.
 
 Lock revisions are immutable under `state/local/capability-runtime-host/`:
@@ -34,6 +34,35 @@ preload is scheduled.
 
 No Thread/CAS/WAL/project/retained volume is removed by this boundary.
 
+## Bounded material removal
+
+Removal is an exceptional local operator action for one complete, code-owned persistent
+launch group. The caller may name only `--unit-id` or `--launch-group-id`; neither form
+accepts an image, provider, endpoint, tool, Compose service, Docker argument or volume.
+Cache-only and microVM material without an enrolled launch group remain literally
+`unavailable` for this action.
+
+The review constructs a closed `capability-runtime-removal-plan/1.0`: its fingerprint
+binds the exact group reference, complete ordered materials and image digests, exact
+owned container IDs observed at review time, and the five literal preservation flags for
+Thread, CAS, WAL, project state and retained volumes. A review is refused if any current
+project authorization retains a target unit, its project ledger is pending, an active
+lease or fresh JIT demand intersects a target material, the administrative lock cannot
+be made exact/inactive, a group journal mutation is pending or uncertain, the image
+digest is catalogued by another group, or Docker observation is unknown/foreign.
+
+Apply holds the same host-mutation lock, recomputes the exact review, writes the needed
+inactive lock successor before its durable `material-remove` intent, then rereads the
+host. Recovery observes first and may resume only one exact pending removal intent for
+the same plan; it never replays an ambiguous action. An all-absent exact group is a
+successful no-op.
+
+The host adapter stops and removes only plan-bound owned container IDs (without `-v` or
+`--volumes`) and removes only sealed `repository@sha256:…` image references. It refuses
+foreign containers/references and shared catalogue digests. `down`, `down -v`, volume
+removal, image prune, tag/alias removal and foreign Docker objects are outside this
+surface.
+
 ## Private operator CLI
 
 The local-only CLI has no provider, image, endpoint, tool, or argument options:
@@ -46,6 +75,10 @@ deno task capability:admin rollback-review --revision=<n>
 deno task capability:admin rollback-apply --revision=<n> --review-fingerprint=<sha256> --confirm
 deno task capability:admin revoke-review --project-id=<id> --reason=<text>
 deno task capability:admin revoke-apply --project-id=<id> --reason=<text> --review-fingerprint=<sha256> --confirm
+deno task capability:admin remove-review --unit-id=<code-owned-id>
+deno task capability:admin remove-apply --unit-id=<code-owned-id> --review-fingerprint=<sha256> --confirm
+# Or name one code-owned group, never a Docker service:
+deno task capability:admin remove-review --launch-group-id=<code-owned-id>
 ```
 
 Every apply recomputes the review under the local host mutation lock and refuses a stale

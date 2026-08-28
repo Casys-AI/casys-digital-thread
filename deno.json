@@ -50,7 +50,7 @@
     "probe:calculix-contract": "deno run --no-prompt --frozen --allow-read=config/mcp-fleet.json --allow-net=127.0.0.1:3015 scripts/probes/probe-calculix-contract.ts",
     "probe:archive-cascade": "deno run --allow-read=state/local scripts/probes/probe-archive-cascade.ts",
     "mcp:call": "deno run --allow-net=127.0.0.1,localhost scripts/probes/mcp-call.ts",
-    "capability:admin": "deno run --allow-read=state/local --allow-write=state/local scripts/runners/capability-runtime-admin.ts",
+    "capability:admin": "deno run --allow-read=state/local --allow-write=state/local --allow-run=docker --allow-env scripts/runners/capability-runtime-admin.ts",
     "probe:requirement-units": "deno run --allow-net=127.0.0.1,localhost scripts/probes/probe-requirement-units.ts",
     "probe:architecture-attribute-value": "deno run --allow-net=127.0.0.1,localhost scripts/probes/probe-architecture-attribute-value.ts",
     "recover:work-item-successor": "deno run --allow-read=state/local,config/projects --allow-write=state/local scripts/runners/reconcile-work-item-successor.ts",

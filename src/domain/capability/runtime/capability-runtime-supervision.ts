@@ -434,12 +434,144 @@ export interface CapabilityRuntimeJournalOutcome {
 export interface CapabilityRuntimeAdministrativeRemovalPlan {
   readonly schemaVersion: "capability-runtime-removal-plan/1.0";
   readonly fingerprint: ContentFingerprint;
+  /** The one sealed persistent topology this plan may remove as a whole. */
+  readonly launchGroup: CapabilityRuntimeLaunchGroupReference;
   readonly ownedMaterials: readonly CapabilityRuntimeMaterialIdentity[];
+  /** Exact pre-mutation image observation for every owned material. */
+  readonly observedMaterials: readonly {
+    readonly material: CapabilityRuntimeMaterialIdentity;
+    readonly state: "owned" | "absent";
+  }[];
+  /**
+   * Exact owned container identities observed for this review. They are not
+   * service names: an apply refuses a changed or foreign container rather
+   * than resolving a name again during deletion.
+   */
+  readonly ownedContainerIds: readonly {
+    readonly material: CapabilityRuntimeMaterialIdentity;
+    readonly containerId: string;
+  }[];
   readonly preserveThread: true;
   readonly preserveCas: true;
   readonly preserveWal: true;
   readonly preserveProjectState: true;
   readonly preserveRetainedVolumes: true;
+}
+
+/**
+ * A redacted, exact Docker observation used only to construct an
+ * administrative removal plan. Repository references, argv, ports, mounts,
+ * secret names and provider details deliberately do not cross this boundary.
+ */
+export interface CapabilityRuntimeAdministrativeRemovalObservation {
+  readonly schemaVersion: "capability-runtime-removal-observation/1.0";
+  readonly launchGroup: CapabilityRuntimeLaunchGroupReference;
+  readonly materials: readonly {
+    readonly material: CapabilityRuntimeMaterialIdentity;
+    readonly state: "owned" | "absent";
+  }[];
+  readonly ownedContainerIds: readonly {
+    readonly material: CapabilityRuntimeMaterialIdentity;
+    readonly containerId: string;
+  }[];
+  /** Any non-exact observation is a literal blocker, never a removal hint. */
+  readonly safety: "exact" | "foreign" | "unknown";
+}
+
+/** Creates the exact, closed administrative plan from a trusted observation. */
+export async function createCapabilityRuntimeAdministrativeRemovalPlan(input: {
+  readonly launchGroup: CapabilityRuntimeLaunchGroupReference;
+  readonly ownedMaterials: readonly CapabilityRuntimeMaterialIdentity[];
+  readonly observedMaterials: readonly {
+    readonly material: CapabilityRuntimeMaterialIdentity;
+    readonly state: "owned" | "absent";
+  }[];
+  readonly ownedContainerIds: readonly {
+    readonly material: CapabilityRuntimeMaterialIdentity;
+    readonly containerId: string;
+  }[];
+}): Promise<CapabilityRuntimeAdministrativeRemovalPlan> {
+  const body = {
+    schemaVersion: "capability-runtime-removal-plan/1.0" as const,
+    launchGroup: validateCapabilityRuntimeLaunchGroupReference(input.launchGroup),
+    ownedMaterials: parseRemovalMaterials(input.ownedMaterials),
+    observedMaterials: parseRemovalObservation(input.observedMaterials),
+    ownedContainerIds: parseRemovalContainers(input.ownedContainerIds),
+    preserveThread: true as const,
+    preserveCas: true as const,
+    preserveWal: true as const,
+    preserveProjectState: true as const,
+    preserveRetainedVolumes: true as const,
+  };
+  assertRemovalPlanCoverage(body);
+  return deepFreeze({ ...body, fingerprint: await sha256Fingerprint(body) });
+}
+
+/** Strict parser for persisted plans and host-mutator inputs. */
+export async function validateCapabilityRuntimeAdministrativeRemovalPlan(
+  value: unknown,
+): Promise<CapabilityRuntimeAdministrativeRemovalPlan> {
+  const root = exactRecord(value, [
+    "schemaVersion",
+    "fingerprint",
+    "launchGroup",
+    "ownedMaterials",
+    "observedMaterials",
+    "ownedContainerIds",
+    "preserveThread",
+    "preserveCas",
+    "preserveWal",
+    "preserveProjectState",
+    "preserveRetainedVolumes",
+  ], "$administrativeRemovalPlan");
+  literalValue(
+    root.schemaVersion,
+    "capability-runtime-removal-plan/1.0",
+    "$administrativeRemovalPlan.schemaVersion",
+  );
+  literalValue(root.preserveThread, true, "$administrativeRemovalPlan.preserveThread");
+  literalValue(root.preserveCas, true, "$administrativeRemovalPlan.preserveCas");
+  literalValue(root.preserveWal, true, "$administrativeRemovalPlan.preserveWal");
+  literalValue(
+    root.preserveProjectState,
+    true,
+    "$administrativeRemovalPlan.preserveProjectState",
+  );
+  literalValue(
+    root.preserveRetainedVolumes,
+    true,
+    "$administrativeRemovalPlan.preserveRetainedVolumes",
+  );
+  const body = {
+    schemaVersion: "capability-runtime-removal-plan/1.0" as const,
+    launchGroup: validateCapabilityRuntimeLaunchGroupReference(
+      root.launchGroup,
+      "$administrativeRemovalPlan.launchGroup",
+    ),
+    ownedMaterials: parseRemovalMaterials(root.ownedMaterials),
+    observedMaterials: parseRemovalObservation(root.observedMaterials),
+    ownedContainerIds: parseRemovalContainers(root.ownedContainerIds),
+    preserveThread: true as const,
+    preserveCas: true as const,
+    preserveWal: true as const,
+    preserveProjectState: true as const,
+    preserveRetainedVolumes: true as const,
+  };
+  assertRemovalPlanCoverage(body);
+  const fingerprint = contentFingerprint(
+    root.fingerprint,
+    "$administrativeRemovalPlan.fingerprint",
+  );
+  const expected = await sha256Fingerprint(body);
+  if (
+    expected.algorithm !== fingerprint.algorithm ||
+    expected.digest !== fingerprint.digest
+  ) {
+    throw new TypeError(
+      "$administrativeRemovalPlan.fingerprint does not match the exact plan body.",
+    );
+  }
+  return deepFreeze({ ...body, fingerprint });
 }
 
 export interface CapabilityRuntimeRecovery {
@@ -763,6 +895,103 @@ function observedState(value: unknown, path: string): CapabilityRuntimeObservedS
       `${path}.qualification`,
     ),
   });
+}
+
+function parseRemovalMaterials(
+  value: unknown,
+): readonly CapabilityRuntimeMaterialIdentity[] {
+  const materials = arrayOf(value, "$administrativeRemovalPlan.ownedMaterials").map(
+    (material, index) =>
+      parseMaterial(material, `$administrativeRemovalPlan.ownedMaterials[${index}]`),
+  );
+  if (materials.length === 0) {
+    throw new TypeError(
+      "$administrativeRemovalPlan.ownedMaterials must not be empty.",
+    );
+  }
+  rejectDuplicates(
+    materials.map(capabilityRuntimeMaterialKey),
+    "$administrativeRemovalPlan.ownedMaterials",
+  );
+  return deepFreeze(materials);
+}
+
+function parseRemovalContainers(
+  value: unknown,
+): CapabilityRuntimeAdministrativeRemovalPlan["ownedContainerIds"] {
+  const containers = arrayOf(
+    value,
+    "$administrativeRemovalPlan.ownedContainerIds",
+  ).map((container, index) => {
+    const path = `$administrativeRemovalPlan.ownedContainerIds[${index}]`;
+    const root = exactRecord(container, ["material", "containerId"], path);
+    return deepFreeze({
+      material: parseMaterial(root.material, `${path}.material`),
+      containerId: nonEmptyText(root.containerId, `${path}.containerId`),
+    });
+  });
+  rejectDuplicates(
+    containers.map((container) => capabilityRuntimeMaterialKey(container.material)),
+    "$administrativeRemovalPlan.ownedContainerIds",
+  );
+  return deepFreeze(containers);
+}
+
+function parseRemovalObservation(
+  value: unknown,
+): CapabilityRuntimeAdministrativeRemovalPlan["observedMaterials"] {
+  const observations = arrayOf(
+    value,
+    "$administrativeRemovalPlan.observedMaterials",
+  ).map((observation, index) => {
+    const path = `$administrativeRemovalPlan.observedMaterials[${index}]`;
+    const root = exactRecord(observation, ["material", "state"], path);
+    return deepFreeze({
+      material: parseMaterial(root.material, `${path}.material`),
+      state: oneOf(root.state, ["owned", "absent"] as const, `${path}.state`),
+    });
+  });
+  if (observations.length === 0) {
+    throw new TypeError(
+      "$administrativeRemovalPlan.observedMaterials must not be empty.",
+    );
+  }
+  rejectDuplicates(
+    observations.map((observation) =>
+      capabilityRuntimeMaterialKey(observation.material)
+    ),
+    "$administrativeRemovalPlan.observedMaterials",
+  );
+  return deepFreeze(observations);
+}
+
+function assertRemovalPlanCoverage(
+  plan: Pick<
+    CapabilityRuntimeAdministrativeRemovalPlan,
+    "ownedMaterials" | "observedMaterials" | "ownedContainerIds"
+  >,
+): void {
+  if (
+    plan.ownedMaterials.length !== plan.observedMaterials.length ||
+    plan.ownedMaterials.some((material, index) =>
+      !sameMaterial(material, plan.observedMaterials[index]!.material)
+    )
+  ) {
+    throw new TypeError(
+      "$administrativeRemovalPlan.observedMaterials must cover ordered owned materials exactly.",
+    );
+  }
+  if (
+    plan.ownedContainerIds.some((container) =>
+      !plan.ownedMaterials.some((material) =>
+        sameMaterial(material, container.material)
+      )
+    )
+  ) {
+    throw new TypeError(
+      "$administrativeRemovalPlan.ownedContainerIds must name owned materials only.",
+    );
+  }
 }
 
 function journalAction(value: unknown, path: string): CapabilityRuntimeJournalAction {

@@ -13,6 +13,7 @@ import type {
   AllowedEngineeringCapability,
 } from "../../../../domain/capability/engineering-capability.ts";
 import type {
+  CapabilityRuntimeAdministrativeRemovalObservation,
   CapabilityRuntimeAdministrativeRemovalPlan,
   CapabilityRuntimeJournalEntry,
   CapabilityRuntimeJournalOutcome,
@@ -141,6 +142,17 @@ export interface CapabilityRuntimeHostMutator {
     readonly authorization: AuthorizedCapabilityRuntimeHostMutation;
     readonly removalPlan?: CapabilityRuntimeAdministrativeRemovalPlan;
   }): Promise<CapabilityRuntimeJournalOutcome>;
+}
+
+/**
+ * Local-only inspection for an administrative material-removal review. This
+ * keeps Docker ownership proof beside the existing host mutator instead of
+ * creating a project, MCP or Workbench authority.
+ */
+export interface CapabilityRuntimeAdministrativeRemovalInspector {
+  inspectAdministrativeRemoval(input: {
+    readonly launchGroup: CapabilityRuntimeLaunchGroupReference;
+  }): Promise<CapabilityRuntimeAdministrativeRemovalObservation>;
 }
 
 /**
