@@ -43,8 +43,8 @@ export class FixedCapabilityRuntimeHostObservationReader
   implements CapabilityRuntimeHostObservationReader {
   constructor(private readonly value: CapabilityRuntimeHostObservation) {}
 
-  async read(): Promise<CapabilityRuntimeHostObservation> {
-    return structuredClone(this.value);
+  read(): Promise<CapabilityRuntimeHostObservation> {
+    return Promise.resolve(structuredClone(this.value));
   }
 }
 
@@ -52,8 +52,8 @@ export class FixedCapabilityRuntimeAdminPolicyReader
   implements CapabilityRuntimeAdminPolicyReader {
   constructor(private readonly value: CapabilityRuntimeAdminPolicy) {}
 
-  async read(): Promise<CapabilityRuntimeAdminPolicy> {
-    return structuredClone(this.value);
+  read(): Promise<CapabilityRuntimeAdminPolicy> {
+    return Promise.resolve(structuredClone(this.value));
   }
 }
 
@@ -61,8 +61,8 @@ export class FixedCapabilityRuntimeAdminLockReader
   implements CapabilityRuntimeAdminLockReader {
   constructor(private readonly value: CapabilityRuntimeAdminLock) {}
 
-  async read(): Promise<CapabilityRuntimeAdminLock> {
-    return structuredClone(this.value);
+  read(): Promise<CapabilityRuntimeAdminLock> {
+    return Promise.resolve(structuredClone(this.value));
   }
 }
 
@@ -103,6 +103,7 @@ export class ProjectCapabilityRuntimeContextCompiler
       demand,
       plan,
       catalog: structuredClone(this.options.catalog),
+      lock: structuredClone(lock),
       authorization: ledger?.effectiveEnvelope
         ? authorizationFromEnvelope(ledger.effectiveEnvelope)
         : undefined,

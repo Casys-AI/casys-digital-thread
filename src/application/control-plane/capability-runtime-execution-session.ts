@@ -146,15 +146,10 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
 
     // This is intentionally inside the session seam, not merely the caller's
     // earlier prepare. It closes the TOCTOU window before the first host action.
-    const current = validateResolvedCapabilityRuntimeOperation(await input.recheck());
-    if (
-      canonicalResolvedCapabilityRuntimeOperationText(current) !==
-        canonicalResolvedCapabilityRuntimeOperationText(operationalCapability)
-    ) {
-      throw new CapabilityRuntimeSessionUnavailableError(
-        "Operational capability changed after its sealed ROP recheck; requeue through a reviewed authorization amendment.",
-      );
-    }
+    await assertExactOperationalCapabilityRecheck(
+      input.recheck,
+      operationalCapability,
+    );
     const lifecycles = uniqueLifecycles(
       operationalCapability.bindings.flatMap((binding) => binding.hostLifecycles),
     );
@@ -259,6 +254,23 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
           at: this.#now(),
           lease,
           reuseExistingLease: groupLeaseCreated || canReuseLease ? "allow" : "reject",
+          // The outer recheck above protects cache observation. This second
+          // recheck runs *inside* H1 immediately before a lease or host
+          // mutation, closing the revocation/deactivation race.
+          guard: async () => {
+            try {
+              await assertExactOperationalCapabilityRecheck(
+                input.recheck,
+                operationalCapability,
+              );
+              return true;
+            } catch (error) {
+              if (error instanceof CapabilityRuntimeSessionUnavailableError) {
+                return false;
+              }
+              throw error;
+            }
+          },
         });
         groupLeaseCreated ||= result.leaseDisposition === "created";
         assertGroupQualification(
@@ -364,6 +376,21 @@ function candidateLease(input: {
     acquiredAt: input.at,
     expiresAt: new Date(Date.parse(input.at) + LEASE_TTL_MS).toISOString(),
   });
+}
+
+async function assertExactOperationalCapabilityRecheck(
+  recheck: CapabilityRuntimeSessionRecheck,
+  expected: ResolvedCapabilityRuntimeOperation,
+): Promise<void> {
+  const current = validateResolvedCapabilityRuntimeOperation(await recheck());
+  if (
+    canonicalResolvedCapabilityRuntimeOperationText(current) !==
+      canonicalResolvedCapabilityRuntimeOperationText(expected)
+  ) {
+    throw new CapabilityRuntimeSessionUnavailableError(
+      "Operational capability changed after its sealed ROP recheck; requeue through a reviewed authorization amendment.",
+    );
+  }
 }
 
 function assertEquivalentLease(

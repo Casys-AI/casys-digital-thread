@@ -91,6 +91,25 @@ Deno.test("capability supervisor queues a demanded binding cold without a host o
   }]);
 });
 
+Deno.test("capability supervisor refuses JIT when the exact local unit lock is inactive", async () => {
+  const fixture = await readyFixture();
+  fixture.contexts.set(PROJECT.id, {
+    ...fixture.context,
+    lock: {
+      ...fixture.context.lock,
+      units: fixture.context.lock.units.map((unit) => ({
+        ...unit,
+        desired: "inactive" as const,
+      })),
+    },
+  });
+  await assertRejects(
+    () => fixture.supervisor.validate(queueInput()),
+    CapabilityRuntimeAuthorizationError,
+    "local administrative lock does not permit",
+  );
+});
+
 Deno.test("capability supervisor refuses a selected binding whose qualified profile changed after authorization", async () => {
   const fixture = await readyFixture();
   const authorization = fixture.context.authorization!;
@@ -425,6 +444,17 @@ function runtimeContext(
     demand,
     plan,
     catalog,
+    lock: {
+      schemaVersion: "capability-runtime-admin-lock/1.0",
+      revision: 1,
+      previous: FINGERPRINT,
+      units: [{
+        id: material.unitId,
+        version: "1",
+        manifestFingerprint: FINGERPRINT,
+        desired: "active",
+      }],
+    },
     authorization: {
       projectId: PROJECT.project.id,
       status: "authorized",

@@ -203,6 +203,7 @@ export class CapabilityRuntimeSupervisor
       input.registered.runtimeDemand.capabilities,
     );
     const bindings = resolveRuntimeBindings(requirements, context);
+    assertResolvedMaterialsHaveActiveAdminLock(context, bindings);
     return deepFreeze({
       schemaVersion: "resolved-capability-runtime-operation/1.0" as const,
       projectId: input.project.project.id,
@@ -212,6 +213,35 @@ export class CapabilityRuntimeSupervisor
       registryFingerprint: context.demand.registryFingerprint,
       bindings,
     });
+  }
+}
+
+/**
+ * The brief envelope grants project scope; the local lock grants JIT on this
+ * host. Both identities must agree at the atomic-unit manifest boundary.
+ */
+function assertResolvedMaterialsHaveActiveAdminLock(
+  context: ProjectCapabilityRuntimeContext,
+  bindings: readonly ResolvedCapabilityRuntimeBinding[],
+): void {
+  const approved = new Map(
+    context.authorization!.allowedUnits.map((unit) => [unit.id, unit]),
+  );
+  const requiredUnitIds = new Set(
+    bindings.flatMap((binding) => binding.materials.map((material) => material.unitId)),
+  );
+  for (const unitId of requiredUnitIds) {
+    const authorization = approved.get(unitId);
+    const lock = context.lock.units.find((candidate) => candidate.id === unitId);
+    if (
+      !authorization || !lock || lock.desired !== "active" ||
+      lock.version !== authorization.version ||
+      !sameFingerprint(lock.manifestFingerprint, authorization.manifestFingerprint)
+    ) {
+      throw new CapabilityRuntimeAuthorizationError(
+        `Capability runtime local administrative lock does not permit exact unit ${unitId}.`,
+      );
+    }
   }
 }
 

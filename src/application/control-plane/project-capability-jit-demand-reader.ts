@@ -9,7 +9,11 @@ import {
   capabilityRuntimeMaterialKey,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import type { EngineeringProjectRevisionStore } from "../ports/out/engineering-project-revision-store.ts";
-import type { ProjectCapabilityRuntimeContextReader } from "../ports/out/capability/capability-runtime-supervisor.ts";
+import type {
+  ProjectCapabilityRuntimeAuthorization,
+  ProjectCapabilityRuntimeContextReader,
+} from "../ports/out/capability/capability-runtime-supervisor.ts";
+import type { CapabilityRuntimeAdminLock } from "./read-model/capability-runtime-catalog.ts";
 
 export interface ProjectCapabilityJitDemandReaderOptions {
   readonly projects: Pick<EngineeringProjectRevisionStore, "get">;
@@ -82,6 +86,14 @@ export class ProjectCapabilityJitDemandReader {
       }
       assertAuthorizedMaterialsMatchCatalog(binding.materials, context.catalog.units);
       if (
+        !materialsHaveActiveAdminLock(binding.materials, authorization, context.lock)
+      ) {
+        // An inactive/missing local lock is literal negative JIT authority.
+        // It is not an unreadable project state, so terminal cleanup may stop
+        // the group once all leases drain.
+        continue;
+      }
+      if (
         requirements.has(key) &&
         binding.materials.some((material) =>
           requested.has(capabilityRuntimeMaterialKey(material))
@@ -90,6 +102,30 @@ export class ProjectCapabilityJitDemandReader {
     }
     return false;
   }
+}
+
+function materialsHaveActiveAdminLock(
+  materials: readonly {
+    readonly unitId: string;
+    readonly materialId: string;
+    readonly imageDigest: string;
+  }[],
+  authorization: ProjectCapabilityRuntimeAuthorization,
+  lock: CapabilityRuntimeAdminLock,
+): boolean {
+  const units = new Map(
+    (authorization.allowedUnits ?? []).map((unit) => [unit.id, unit]),
+  );
+  return materials.every((material) => {
+    const unit = units.get(material.unitId);
+    const locked = (lock?.units ?? []).find((candidate) =>
+      candidate.id === material.unitId
+    );
+    return !!unit && !!locked && locked.desired === "active" &&
+      locked.version === unit.version &&
+      locked.manifestFingerprint.algorithm === unit.manifestFingerprint.algorithm &&
+      locked.manifestFingerprint.digest === unit.manifestFingerprint.digest;
+  });
 }
 
 function capabilityKey(value: {

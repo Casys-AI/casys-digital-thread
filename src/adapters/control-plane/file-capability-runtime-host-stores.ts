@@ -323,18 +323,19 @@ export class FileCapabilityRuntimeLeaseStore implements CapabilityRuntimeLeaseSt
 }
 
 /**
- * Durable local administration lock desired-state.  It is neither a project
- * ledger entry nor a host-process mutex.  Revisions are compare-and-swap-like:
- * a new lock must explicitly chain to the fingerprint of its predecessor.
+ * Immutable local administration-lock history. It is deliberately separate
+ * from project ledgers and host mutation leases. `admin-lock.json` from the
+ * retired overwrite model is not read or migrated: an ambiguous old desired
+ * state must never regain authority after this breaking boundary.
  */
 export class FileCapabilityRuntimeAdminLockStore {
-  readonly #path: string;
+  readonly #legacyPath: string;
 
   constructor(
     path = `${DEFAULT_DIRECTORY}/admin-lock.json`,
     private readonly catalog?: CapabilityRuntimeCatalog,
   ) {
-    this.#path = requiredPath(path);
+    this.#legacyPath = requiredPath(path);
   }
 
   /**
@@ -342,24 +343,106 @@ export class FileCapabilityRuntimeAdminLockStore {
    * activation by itself and keeps every selected material desired `absent`.
    */
   async read(): Promise<CapabilityRuntimeAdminLock> {
-    return await this.#readStored() ?? await this.#empty();
+    const head = await this.#readHead();
+    if (!head) {
+      await this.#assertNoOrphanedHistory();
+      return await this.#empty();
+    }
+    const history = await this.#readHistoryToHead(head);
+    const lock = history.at(-1)!;
+    const fingerprint = await sha256Fingerprint(lock);
+    if (
+      fingerprint.algorithm !== head.lockFingerprint.algorithm ||
+      fingerprint.digest !== head.lockFingerprint.digest
+    ) {
+      throw new Error(
+        "Capability runtime admin lock head does not name its exact revision.",
+      );
+    }
+    return lock;
   }
 
-  async #readStored(): Promise<CapabilityRuntimeAdminLock | undefined> {
-    try {
-      return await readCanonical(
-        this.#path,
-        (value) => validateCapabilityRuntimeAdminLock(value, this.catalog),
-        "Capability runtime admin lock",
+  async readRevision(revision: number): Promise<CapabilityRuntimeAdminLock> {
+    if (!Number.isSafeInteger(revision) || revision < 0) {
+      throw new TypeError(
+        "Capability runtime admin lock revision must be non-negative.",
       );
+    }
+    if (revision === 0) return await this.#empty();
+    try {
+      const lock = await readCanonical(
+        this.#revisionPath(revision),
+        (value) => validateCapabilityRuntimeAdminLock(value, this.catalog),
+        `Capability runtime admin lock revision ${revision}`,
+      );
+      if (lock.revision !== revision) {
+        throw new Error(
+          `Capability runtime admin lock path ${revision} contains another revision.`,
+        );
+      }
+      return lock;
     } catch (error) {
-      if (isNotFound(error)) return undefined;
+      if (isNotFound(error)) {
+        throw new Error(
+          `Capability runtime admin lock revision ${revision} is absent.`,
+        );
+      }
       throw error;
     }
   }
 
+  async list(): Promise<readonly CapabilityRuntimeAdminLock[]> {
+    const head = await this.#readHead();
+    if (!head) {
+      await this.#assertNoOrphanedHistory();
+      return [await this.#empty()];
+    }
+    return await this.#readHistoryToHead(head);
+  }
+
+  /**
+   * `read()` and `list()` share this non-recursive chain validation. A valid
+   * head is insufficient: deleting or corrupting a predecessor must revoke
+   * the local activation authority rather than leaving a truncated history.
+   */
+  async #readHistoryToHead(
+    head: {
+      readonly schemaVersion: "capability-runtime-admin-lock-head/1.0";
+      readonly revision: number;
+      readonly lockFingerprint: Awaited<ReturnType<typeof sha256Fingerprint>>;
+    },
+  ): Promise<readonly CapabilityRuntimeAdminLock[]> {
+    const result: CapabilityRuntimeAdminLock[] = [await this.#empty()];
+    for (let revision = 1; revision <= head.revision; revision++) {
+      const lock = await this.readRevision(revision);
+      const previous = result.at(-1)!;
+      const previousFingerprint = await sha256Fingerprint(previous);
+      if (
+        lock.revision !== revision || !lock.previous ||
+        lock.previous.algorithm !== previousFingerprint.algorithm ||
+        lock.previous.digest !== previousFingerprint.digest
+      ) {
+        throw new Error(
+          `Capability runtime admin lock revision ${revision} does not retain its exact predecessor.`,
+        );
+      }
+      result.push(lock);
+    }
+    const tip = result.at(-1)!;
+    const fingerprint = await sha256Fingerprint(tip);
+    if (
+      fingerprint.algorithm !== head.lockFingerprint.algorithm ||
+      fingerprint.digest !== head.lockFingerprint.digest
+    ) {
+      throw new Error(
+        "Capability runtime admin lock head does not name its exact revision.",
+      );
+    }
+    return result;
+  }
+
   async save(value: CapabilityRuntimeAdminLock): Promise<void> {
-    const lockPath = `${this.#path}.lock`;
+    const lockPath = `${this.#historyDirectory()}/.write.lock`;
     await Deno.mkdir(parent(lockPath), { recursive: true });
     const lock = await Deno.open(lockPath, { create: true, read: true, write: true });
     let locked = false;
@@ -378,24 +461,20 @@ export class FileCapabilityRuntimeAdminLockStore {
 
   async #saveLocked(value: CapabilityRuntimeAdminLock): Promise<void> {
     const next = await validateCapabilityRuntimeAdminLock(value, this.catalog);
-    const directory = parent(this.#path);
+    const directory = this.#historyDirectory();
     await Deno.mkdir(directory, { recursive: true });
-    const text = `${deterministicJson(next)}\n`;
-    const current = await this.#readStored();
-    if (!current) {
-      try {
-        await writeNewAttemptFileDurably(
-          this.#path,
-          text,
-          directory,
-          "Capability runtime admin lock made no write progress.",
-        );
+    // The only headless recoverable state is a first revision whose immutable
+    // body was synced just before the process died. Adopt precisely the same
+    // candidate; any other headless artifact fails closed.
+    if (!await this.#readHead()) {
+      const orphan = await this.#readOrphanedFirstRevision(next);
+      if (orphan) {
+        await this.#writeHead(next);
         return;
-      } catch (error) {
-        if (!isAlreadyExists(error)) throw error;
-        return await this.#saveLocked(next);
       }
+      await this.#assertNoOrphanedHistory();
     }
+    const current = await this.read();
     if (deterministicJson(current) === deterministicJson(next)) return;
     const previous = await sha256Fingerprint(current);
     if (
@@ -407,12 +486,162 @@ export class FileCapabilityRuntimeAdminLockStore {
         "Capability runtime admin lock must advance one revision and bind the exact previous lock.",
       );
     }
+    const revisionPath = this.#revisionPath(next.revision);
+    const text = `${deterministicJson(next)}\n`;
+    try {
+      await writeNewAttemptFileDurably(
+        revisionPath,
+        text,
+        directory,
+        "Capability runtime admin lock revision made no write progress.",
+      );
+    } catch (error) {
+      if (!isAlreadyExists(error)) throw error;
+      const existing = await Deno.readTextFile(revisionPath);
+      if (existing !== text) {
+        throw new Error(
+          "Capability runtime admin lock revision already exists with different exact content.",
+        );
+      }
+    }
+    await this.#writeHead(next);
+  }
+
+  async #writeHead(next: CapabilityRuntimeAdminLock): Promise<void> {
+    const head = {
+      schemaVersion: "capability-runtime-admin-lock-head/1.0" as const,
+      revision: next.revision,
+      lockFingerprint: await sha256Fingerprint(next),
+    };
     await replaceAttemptFileDurably(
-      this.#path,
-      text,
-      directory,
-      "Capability runtime admin lock made no write progress.",
+      this.#headPath(),
+      `${deterministicJson(head)}\n`,
+      parent(this.#headPath()),
+      "Capability runtime admin lock head made no write progress.",
     );
+  }
+
+  async #readOrphanedFirstRevision(
+    next: CapabilityRuntimeAdminLock,
+  ): Promise<boolean> {
+    if (next.revision !== 1) return false;
+    try {
+      const stored = await readCanonical(
+        this.#revisionPath(1),
+        (value) => validateCapabilityRuntimeAdminLock(value, this.catalog),
+        "Capability runtime orphaned first revision",
+      );
+      if (
+        stored.revision !== 1 || deterministicJson(stored) !== deterministicJson(next)
+      ) {
+        throw new Error(
+          "Capability runtime orphaned first revision differs from the exact save retry.",
+        );
+      }
+      const baseline = await this.#empty();
+      const baselineFingerprint = await sha256Fingerprint(baseline);
+      if (
+        !stored.previous ||
+        stored.previous.algorithm !== baselineFingerprint.algorithm ||
+        stored.previous.digest !== baselineFingerprint.digest
+      ) {
+        throw new Error(
+          "Capability runtime orphaned first revision does not bind the empty baseline.",
+        );
+      }
+      return true;
+    } catch (error) {
+      if (isNotFound(error)) return false;
+      throw error;
+    }
+  }
+
+  async rollback(revision: number): Promise<CapabilityRuntimeAdminLock> {
+    const source = await this.readRevision(revision);
+    const current = await this.read();
+    const previous = await sha256Fingerprint(current);
+    const successor = await validateCapabilityRuntimeAdminLock({
+      schemaVersion: CAPABILITY_RUNTIME_ADMIN_LOCK_SCHEMA_VERSION,
+      revision: current.revision + 1,
+      previous,
+      units: structuredClone(source.units),
+    }, this.catalog);
+    await this.save(successor);
+    return await this.read();
+  }
+
+  #historyDirectory(): string {
+    return `${parent(this.#legacyPath)}/admin-lock-revisions`;
+  }
+
+  #headPath(): string {
+    return `${parent(this.#legacyPath)}/admin-lock-head.json`;
+  }
+
+  #revisionPath(revision: number): string {
+    return `${this.#historyDirectory()}/${String(revision).padStart(10, "0")}.json`;
+  }
+
+  async #readHead(): Promise<
+    {
+      readonly schemaVersion: "capability-runtime-admin-lock-head/1.0";
+      readonly revision: number;
+      readonly lockFingerprint: Awaited<ReturnType<typeof sha256Fingerprint>>;
+    } | undefined
+  > {
+    try {
+      return await readCanonical(this.#headPath(), (value) => {
+        if (!value || typeof value !== "object" || Array.isArray(value)) {
+          throw new TypeError("Capability runtime admin lock head is not an object.");
+        }
+        const record = value as Record<string, unknown>;
+        const keys = Object.keys(record).toSorted();
+        if (
+          deterministicJson(keys) !== deterministicJson([
+              "lockFingerprint",
+              "revision",
+              "schemaVersion",
+            ]) ||
+          record.schemaVersion !== "capability-runtime-admin-lock-head/1.0" ||
+          !Number.isSafeInteger(record.revision) || Number(record.revision) < 1 ||
+          !record.lockFingerprint || typeof record.lockFingerprint !== "object"
+        ) {
+          throw new TypeError("Capability runtime admin lock head is invalid.");
+        }
+        const fingerprint = record.lockFingerprint as Record<string, unknown>;
+        if (
+          fingerprint.algorithm !== "sha256" ||
+          typeof fingerprint.digest !== "string" ||
+          !/^[a-f0-9]{64}$/.test(fingerprint.digest)
+        ) {
+          throw new TypeError(
+            "Capability runtime admin lock head fingerprint is invalid.",
+          );
+        }
+        return {
+          schemaVersion: "capability-runtime-admin-lock-head/1.0" as const,
+          revision: Number(record.revision),
+          lockFingerprint: { algorithm: "sha256" as const, digest: fingerprint.digest },
+        };
+      }, "Capability runtime admin lock head");
+    } catch (error) {
+      if (isNotFound(error)) return undefined;
+      throw error;
+    }
+  }
+
+  async #assertNoOrphanedHistory(): Promise<void> {
+    try {
+      for await (const entry of Deno.readDir(this.#historyDirectory())) {
+        if (entry.name === ".write.lock") continue;
+        throw new Error(
+          "Capability runtime admin lock history exists without one durable head.",
+        );
+      }
+    } catch (error) {
+      if (isNotFound(error)) return;
+      throw error;
+    }
   }
 
   async #empty(): Promise<CapabilityRuntimeAdminLock> {

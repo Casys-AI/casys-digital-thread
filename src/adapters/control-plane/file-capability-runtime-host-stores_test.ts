@@ -1,4 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
+import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import {
   capabilityRuntimeLaunchGroupReference,
 } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
@@ -143,7 +144,108 @@ Deno.test("local capability admin readers default safely only when their files a
         }],
       }) + "\n",
     );
-    await assertRejects(() => lock.read(), TypeError, "unknown unit");
+    // The overwrite-era file is deliberately ignored by the append-only
+    // history store; it must not silently regain runtime authority.
+    assertEquals(await lock.read(), {
+      schemaVersion: "capability-runtime-admin-lock/1.0",
+      revision: 0,
+      previous: null,
+      units: [],
+    });
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("admin lock retains immutable history and rollback writes a successor", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "casys-capability-lock-history-",
+  });
+  try {
+    const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+    const store = new FileCapabilityRuntimeAdminLockStore(
+      `${directory}/admin-lock.json`,
+      catalog,
+    );
+    const empty = await store.read();
+    const firstUnit = catalog.units[0]!;
+    const first = {
+      schemaVersion: empty.schemaVersion,
+      revision: 1,
+      previous: await sha256Fingerprint(empty),
+      units: catalog.units.map((unit) => ({
+        id: unit.id,
+        version: unit.version,
+        manifestFingerprint: unit.manifestFingerprint,
+        desired: unit.id === firstUnit.id ? "active" as const : "inactive" as const,
+      })),
+    };
+    await store.save(first);
+    const second = {
+      ...first,
+      revision: 2,
+      previous: await sha256Fingerprint(first),
+      units: first.units.map((unit) => ({ ...unit, desired: "inactive" as const })),
+    };
+    await store.save(second);
+    assertEquals((await store.list()).map((lock) => lock.revision), [0, 1, 2]);
+    assertEquals(
+      (await new FileCapabilityRuntimeAdminLockStore(
+        `${directory}/admin-lock.json`,
+        catalog,
+      ).read()).revision,
+      2,
+    );
+    const rolledBack = await store.rollback(1);
+    assertEquals(rolledBack.revision, 3);
+    assertEquals(rolledBack.units, first.units);
+    assertEquals((await store.readRevision(2)).units, second.units);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("admin lock rejects a head whose earlier immutable predecessor is absent", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "casys-capability-lock-chain-",
+  });
+  try {
+    const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+    const store = new FileCapabilityRuntimeAdminLockStore(
+      `${directory}/admin-lock.json`,
+      catalog,
+    );
+    const empty = await store.read();
+    const first = {
+      schemaVersion: empty.schemaVersion,
+      revision: 1,
+      previous: await sha256Fingerprint(empty),
+      units: catalog.units.map((unit) => ({
+        id: unit.id,
+        version: unit.version,
+        manifestFingerprint: unit.manifestFingerprint,
+        desired: "inactive" as const,
+      })),
+    };
+    await store.save(first);
+    const second = {
+      ...first,
+      revision: 2,
+      previous: await sha256Fingerprint(first),
+    };
+    await store.save(second);
+    await Deno.remove(`${directory}/admin-lock-revisions/0000000001.json`);
+    await assertRejects(() => store.read(), Error, "revision 1 is absent");
+    const third = {
+      ...second,
+      revision: 3,
+      previous: await sha256Fingerprint(second),
+    };
+    await assertRejects(
+      () => store.save(third),
+      Error,
+      "revision 1 is absent",
+    );
   } finally {
     await Deno.remove(directory, { recursive: true });
   }

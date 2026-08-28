@@ -106,6 +106,60 @@ export class FileProjectCapabilityLedgerStore implements ProjectCapabilityLedger
   }
 
   /**
+   * Enumerates only the local durable ledger root. Unknown entries are a
+   * configuration error: silently skipping one could incorrectly deactivate
+   * a unit still authorized by another project.
+   */
+  async list(): Promise<readonly ProjectCapabilityLedger[]> {
+    let entries: Deno.DirEntry[];
+    try {
+      entries = await Array.fromAsync(Deno.readDir(this.directory));
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) return [];
+      throw error;
+    }
+    const projectIds: string[] = [];
+    for (
+      const entry of entries.toSorted((left, right) =>
+        left.name.localeCompare(right.name)
+      )
+    ) {
+      if (!entry.isDirectory || entry.isSymlink) {
+        throw new ProjectCapabilityLedgerConflictError(
+          `Capability ledger root contains unsupported entry ${entry.name}.`,
+        );
+      }
+      let projectId: string;
+      try {
+        projectId = decodeURIComponent(entry.name);
+      } catch {
+        throw new ProjectCapabilityLedgerConflictError(
+          `Capability ledger root contains an invalid project directory ${entry.name}.`,
+        );
+      }
+      try {
+        assertProjectId(projectId);
+      } catch (error) {
+        throw new ProjectCapabilityLedgerConflictError(
+          error instanceof Error
+            ? error.message
+            : `Capability ledger root contains an invalid project directory ${entry.name}.`,
+        );
+      }
+      if (encodeURIComponent(projectId) !== entry.name) {
+        throw new ProjectCapabilityLedgerConflictError(
+          `Capability ledger root contains a non-canonical project directory ${entry.name}.`,
+        );
+      }
+      projectIds.push(projectId);
+    }
+    const ledgers = await Promise.all(
+      projectIds.map((projectId) => this.get(projectId)),
+    );
+    return ledgers.flatMap((ledger) => ledger === undefined ? [] : [ledger]);
+  }
+
+  /**
    * A pending body is not authority and never becomes visible through `get`.
    * It is nevertheless recoverable by the same logical command, so a crash
    * between pending persistence and claim creation does not depend on a fresh
@@ -537,8 +591,16 @@ export class InMemoryProjectCapabilityLedgerStore
       : structuredClone(await validateLedger(ledger));
   }
 
-  async getPending(_projectId: string): Promise<ProjectCapabilityLedger | undefined> {
-    return undefined;
+  list(): Promise<readonly ProjectCapabilityLedger[]> {
+    return Promise.resolve(
+      [...this.#ledgers.values()]
+        .map((ledger) => structuredClone(ledger))
+        .toSorted((left, right) => left.projectId.localeCompare(right.projectId)),
+    );
+  }
+
+  getPending(_projectId: string): Promise<ProjectCapabilityLedger | undefined> {
+    return Promise.resolve(undefined);
   }
 
   async append(

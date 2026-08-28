@@ -52,6 +52,21 @@ Deno.test("terminal group release proceeds when the exact current authorization 
   );
 });
 
+Deno.test("terminal group release sees no remaining JIT demand after the local unit lock is inactive", async () => {
+  const context = contextWithAuthorization("successor-kinematics") as {
+    lock: { units: Array<{ desired: "active" | "inactive" }> };
+  };
+  context.lock.units.forEach((unit) => unit.desired = "inactive");
+  const reader = readerForContext(context);
+  assertEquals(
+    await reader.hasRemainingDemand({
+      projectId: "project:jit",
+      materialKeys: [key(SUCCESSOR)],
+    }),
+    false,
+  );
+});
+
 Deno.test("terminal group release fails closed when selected and authorized bindings differ", async () => {
   const reader = readerForContext(contextWithAuthorization("legacy-kinematics"));
   await assertRejects(
@@ -109,8 +124,24 @@ function contextWithAuthorization(
         unitIds: [SUCCESSOR.unitId],
       }],
     },
+    lock: {
+      schemaVersion: "capability-runtime-admin-lock/1.0",
+      revision: 1,
+      previous: { algorithm: "sha256", digest: "a".repeat(64) },
+      units: [OLD, SUCCESSOR].map((material) => ({
+        id: material.unitId,
+        version: "1",
+        manifestFingerprint: { algorithm: "sha256" as const, digest: "a".repeat(64) },
+        desired: "active" as const,
+      })),
+    },
     authorization: {
       status: authorizationStatus,
+      allowedUnits: [OLD, SUCCESSOR].map((material) => ({
+        id: material.unitId,
+        version: "1",
+        manifestFingerprint: { algorithm: "sha256" as const, digest: "a".repeat(64) },
+      })),
       allowedBindings: [{
         capability: {
           id: REQUIREMENT.id,

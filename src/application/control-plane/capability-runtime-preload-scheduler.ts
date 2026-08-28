@@ -29,7 +29,10 @@ export class CapabilityRuntimePreloadScheduler {
   }
 
   /** Fire-and-forget by design: capability approval is already durable. */
-  schedule(proposal: ProjectCapabilityProposal): void {
+  schedule(
+    proposal: ProjectCapabilityProposal,
+    recheck?: () => Promise<boolean>,
+  ): void {
     if (proposal.status === "unresolved" || proposal.activation === "blocked") return;
     const groups = new Map<
       string,
@@ -51,11 +54,13 @@ export class CapabilityRuntimePreloadScheduler {
       }
     }
     for (const group of groups.values()) {
-      void this.options.host.ensureMaterial({
+      const request = {
         group,
         projectId: proposal.projectId,
         at: this.#now(),
-      }).catch((error) => {
+      };
+      const guarded = recheck === undefined ? request : { ...request, guard: recheck };
+      void this.options.host.ensureMaterial(guarded).catch((error) => {
         this.options.onHostError?.({
           projectId: proposal.projectId,
           launchGroupId: group.id,
