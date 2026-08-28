@@ -104,6 +104,10 @@ The local attestation ledger is append-only. A concurrent reader ignores only th
 private UUID `.tmp` basename emitted by the durable write primitive before its atomic
 link; any other unexpected entry remains a literal store-integrity failure.
 
+A MicroVM cache likewise derives its expected guest architecture only from the one
+registered code-owned material platform. The controller process architecture is never a
+fallback for cache inspection or for a planned runtime mode.
+
 Before selection, the planner recalculates every atomic unit manifest from its id,
 version, and complete material body. A stale fingerprint is refused. A lock applies only
 when its id, version and manifest fingerprint all match; an unmatched lock is a literal
