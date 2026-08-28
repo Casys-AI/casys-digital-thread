@@ -22,10 +22,17 @@ export function diagnoseBehaveFoundation(
       installationPlan === null
     ? "blocked" as const
     : installationPlan.status;
+  const evidenceLevel = census.status === "candidate-ready" &&
+      installationPlan?.status === "ready" &&
+      host.cachedExactMaterialIds.length === census.materials.length
+    ? "cached-exact" as const
+    : "declared" as const;
   return deepFreeze({
     schemaVersion: BEHAVE_FOUNDATION_DOCTOR_SCHEMA_VERSION,
     mutatesRuntime: false,
     status,
+    evidenceLevel,
+    verticalQualification: "not-observed" as const,
     census,
     host,
     installationPlan,

@@ -4,7 +4,21 @@ import type { CapabilityRequirementCatalog } from "./capability-demand.ts";
 import type { CapabilityPackManifest, RuntimePlatform } from "./capability-pack.ts";
 
 export const BEHAVE_FOUNDATION_CENSUS_SCHEMA_VERSION =
-  "behave-foundation-capability-census-candidate/0.1" as const;
+  "behave-foundation-capability-census-candidate/0.2" as const;
+
+/**
+ * Evidence is deliberately monotonic. A later level does not imply any of the
+ * engineering outcomes guarded by the next level.
+ */
+export const BEHAVE_FOUNDATION_EVIDENCE_LEVELS = [
+  "declared",
+  "cached-exact",
+  "contract-attested",
+  "vertical-qualified",
+] as const;
+
+export type BehaveFoundationEvidenceLevel =
+  typeof BEHAVE_FOUNDATION_EVIDENCE_LEVELS[number];
 
 export type BehaveFoundationCensusBlockerCode =
   | "runtime.image-not-digest-pinned"
@@ -29,6 +43,19 @@ interface BehaveFoundationCensusMaterialBase {
   readonly platforms: readonly RuntimePlatform[];
   readonly dependsOn: readonly string[];
   readonly source: string;
+  /**
+   * These labels apply only to this reviewed Behave candidate. In particular,
+   * a non-required fleet member can still be required by the pack, and none of
+   * these facts is a provider or vertical qualification.
+   */
+  readonly packRole: {
+    /** `null` means that this material is not represented by mcp-fleet. */
+    readonly fleetRequired: boolean | null;
+    readonly memberOfPack: true;
+    /** Direct candidate binding claim, not a transitive Compose dependency. */
+    readonly requiredForOperation: boolean;
+    readonly qualifiedForPack: false;
+  };
 }
 
 export interface BehaveFoundationComposeMaterial
@@ -77,6 +104,10 @@ export interface BehaveFoundationCapabilityCensus {
     readonly version: "0.1.0";
   };
   readonly status: "blocked" | "candidate-ready";
+  /** Repository declarations and reviewed source inputs only. */
+  readonly evidenceLevel: "declared";
+  /** Never asserted by a repository census. */
+  readonly verticalQualification: "not-observed";
   readonly productionEligible: false;
   readonly capabilityRequirements: CapabilityRequirementCatalog;
   readonly materials: readonly BehaveFoundationCensusMaterial[];

@@ -14,6 +14,8 @@ Deno.test("workspace Behave census selects the exact mandatory graph and attache
   });
 
   assertEquals(census.mutatesRuntime, false);
+  assertEquals(census.evidenceLevel, "declared");
+  assertEquals(census.verticalQualification, "not-observed");
   assertEquals(census.productionEligible, false);
   assertEquals(
     census.status,
@@ -56,6 +58,22 @@ Deno.test("workspace Behave census selects the exact mandatory graph and attache
   assertEquals(
     census.excludedRuntimes.some((runtime) => runtime.id === "mcp-calculix"),
     true,
+  );
+  assertEquals(
+    census.materials.map((material) => [
+      material.id,
+      material.packRole.fleetRequired,
+      material.packRole.memberOfPack,
+      material.packRole.requiredForOperation,
+      material.packRole.qualifiedForPack,
+    ]),
+    [
+      ["syson-db", null, true, false, false],
+      ["syson-app", null, true, false, false],
+      ["mcp-syson", true, true, true, false],
+      ["mcp-build123d-sandbox", false, true, true, false],
+      ["calculix-worker", null, true, true, false],
+    ],
   );
 });
 

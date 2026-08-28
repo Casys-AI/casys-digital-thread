@@ -219,6 +219,7 @@ export function inspectBehaveFoundationCensus(
       platforms,
       dependsOn: composeDependencies(service, serviceName),
       source: `docker-compose.yml#services.${serviceName}`,
+      packRole: packRole(fleetServer, serviceName),
       serviceName,
       exposure,
     });
@@ -245,6 +246,7 @@ export function inspectBehaveFoundationCensus(
     ),
     dependsOn: [],
     source: "src/adapters/fea/isolated-v3/local-calculix-isolated-execution-options.ts",
+    packRole: packRole(undefined, CALCULIX_WORKER_ID),
     runner: MICROSANDBOX_LOCAL_RUNTIME_REF,
     policyFingerprint: fingerprint(
       options.calculix.policyFingerprint,
@@ -290,6 +292,8 @@ export function inspectBehaveFoundationCensus(
     mutatesRuntime: false,
     pack: { id: PACK_ID, version: PACK_VERSION },
     status: candidateManifest ? "candidate-ready" : "blocked",
+    evidenceLevel: "declared" as const,
+    verticalQualification: "not-observed" as const,
     productionEligible: false,
     capabilityRequirements: BEHAVE_FOUNDATION_CAPABILITY_REQUIREMENTS,
     materials,
@@ -311,6 +315,25 @@ export function inspectBehaveFoundationCensus(
     reviewEvidence,
     blockers,
     candidateManifest,
+  });
+}
+
+function packRole(
+  fleetServer: DesiredServer | undefined,
+  materialId: string,
+): {
+  readonly fleetRequired: boolean | null;
+  readonly memberOfPack: true;
+  readonly requiredForOperation: boolean;
+  readonly qualifiedForPack: false;
+} {
+  return deepFreeze({
+    fleetRequired: fleetServer?.required ?? null,
+    memberOfPack: true,
+    requiredForOperation: BINDING_CLAIMS.some((claim) =>
+      claim.materialIds.some((claimedMaterialId) => claimedMaterialId === materialId)
+    ),
+    qualifiedForPack: false,
   });
 }
 
