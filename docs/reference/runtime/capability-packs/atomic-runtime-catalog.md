@@ -37,22 +37,23 @@ unit, image, endpoint, provider tool, profile, or arguments.
 
 ## First-party units in this lot
 
-The catalogue defines the reviewed local units below. Download and storage estimates are
-all literal `null` until a source establishes them; the planner must never estimate
-bytes. Equal OCI digests are reused exactly once for byte accounting, but retain
-separate services and lifecycle records.
+The catalogue declares the known local units below. Their qualification remains literal;
+download and storage estimates are all literal `null` until a source establishes them,
+and the planner must never estimate bytes. Equal OCI digests are reused exactly once for
+byte accounting, but retain separate services and lifecycle records.
 
-| Unit                                     | Concrete scope                                 | Loopback port | Notes                                                 |
-| ---------------------------------------- | ---------------------------------------------- | ------------- | ----------------------------------------------------- |
-| `casys.syson-stack`                      | Postgres, SysON app, SysON MCP                 | 8180, 3009    | Technically indivisible local stack                   |
-| `casys.mcp-build123d-sandbox`            | Private Build123d Compose service              | 3024          | Separate private export volume                        |
-| `casys.mcp-build123d-observation`        | Regular Build123d/OCCT observer service        | 3014          | Optional assembly-integrity path                      |
-| `casys.build123d-isolated-worker`        | Admitted source microVM                        | —             | Different lifecycle from either HTTP service          |
-| `casys.geometry-module-assembler-worker` | One-level STEP compound microVM                | —             | Platform/qualification remains literal unknown        |
-| `casys.calculix-worker`                  | Product isolated static-proof worker           | —             | Not HTTP `mcp-calculix`                               |
-| `casys.modelica-qualified-worker`        | Narrow qualified-kit microVM                   | —             | Not arbitrary admitted Modelica                       |
-| `casys.modelica-worker`                  | Admitted Modelica microVM                      | —             | Currently unqualified/unavailable in this catalogue   |
-| `casys.spice-worker`                     | OCI source cache plus distinct microVM runtime | —             | The source image is not a microVM or HTTP `mcp-spice` |
+| Unit                                     | Concrete scope                                 | Loopback port | Notes                                                                |
+| ---------------------------------------- | ---------------------------------------------- | ------------- | -------------------------------------------------------------------- |
+| `casys.syson-stack`                      | Postgres, SysON app, SysON MCP                 | 8180, 3009    | Technically indivisible local stack                                  |
+| `casys.mcp-build123d-sandbox`            | Private Build123d Compose service              | 3024          | Separate private export volume                                       |
+| `casys.mcp-build123d-observation`        | Regular Build123d/OCCT observer service        | 3014          | Optional assembly-integrity path                                     |
+| `casys.build123d-isolated-worker`        | Admitted source microVM                        | —             | Different lifecycle from either HTTP service                         |
+| `casys.geometry-module-assembler-worker` | One-level STEP compound microVM                | —             | Platform/qualification remains literal unknown                       |
+| `casys.calculix-worker`                  | Product isolated static-proof worker           | —             | Not HTTP `mcp-calculix`                                              |
+| `casys.modelica-qualified-worker`        | Narrow qualified-kit microVM                   | —             | Not arbitrary admitted Modelica                                      |
+| `casys.modelica-worker`                  | Admitted Modelica microVM                      | —             | Currently unqualified/unavailable in this catalogue                  |
+| `casys.spice-worker`                     | OCI source cache plus distinct microVM runtime | —             | The source image is not a microVM or HTTP `mcp-spice`                |
+| `casys.mcp-chrono`                       | mcp-chrono 0.3.1 persistent MCP service        | 3025          | Linux/amd64 only; unqualified until explicit emulation qualification |
 
 Every material records persistence, service/volume, network, bind-mount, privileged
 container, socket, device, secret-slot, licence and security effects. No material has a

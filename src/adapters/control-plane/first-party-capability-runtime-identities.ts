@@ -15,3 +15,7 @@ export const LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE =
 
 export const LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE =
   "casys/modelica-microsandbox-worker@sha256:d25f220287cd8d1713e9e7d773afb8bb867fc5404a112e5e50ffa2e862fd6fdf" as const;
+
+/** Published mcp-chrono 0.3.1 Linux/amd64 OCI index, pinned without a tag. */
+export const MCP_CHRONO_031_IMAGE_REFERENCE =
+  "ghcr.io/casys-ai/mcp-chrono@sha256:b6302001725df4722d84096a51eeff7e7ffeee843690a2ba0cc417191c67683c" as const;

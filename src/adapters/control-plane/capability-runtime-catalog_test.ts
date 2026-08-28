@@ -25,6 +25,7 @@ Deno.test("atomic first-party runtime catalogue separates sources with distinct 
     "casys.modelica-qualified-worker",
     "casys.modelica-worker",
     "casys.spice-worker",
+    "casys.mcp-chrono",
   ]);
   assertEquals(
     catalog.bindings.find((binding) => binding.id === "calculix-static-structural")
@@ -46,6 +47,41 @@ Deno.test("atomic first-party runtime catalogue separates sources with distinct 
     catalog.units.find((unit) => unit.id === "casys.spice-worker")?.materials[0]
       ?.kind,
     "oci-image",
+  );
+  const chrono = catalog.units.find((unit) => unit.id === "casys.mcp-chrono");
+  assertEquals(chrono?.version, "0.3.1");
+  assertEquals(
+    chrono?.materials[0]?.imageReference,
+    "ghcr.io/casys-ai/mcp-chrono@sha256:b6302001725df4722d84096a51eeff7e7ffeee843690a2ba0cc417191c67683c",
+  );
+  assertEquals(chrono?.materials[0]?.platforms, ["linux/amd64"]);
+  assertEquals(chrono?.materials[0]?.effects, {
+    downloadBytes: null,
+    storageBytes: null,
+    services: [{ id: "mcp-chrono", lifecycle: "persistent" }],
+    volumes: [{ id: "chrono-data", access: "read-write", preservation: "preserve" }],
+    network: "loopback-only",
+    loopbackPorts: [3025],
+    bindMounts: [],
+    privileged: false,
+    dockerSocket: false,
+    devices: [],
+    secretSlots: ["chrono-mcp-bearer-token"],
+    licence: {
+      status: "unknown",
+      reference: "docs/reference/runtime/capability-packs/atomic-runtime-boundaries.md",
+    },
+    security: "unknown",
+  });
+  assertEquals(
+    catalog.bindings.find((binding) => binding.id === "chrono-prescribed-kinematics")
+      ?.qualification,
+    "unqualified",
+  );
+  assertEquals(
+    catalog.bindings.find((binding) => binding.id === "chrono-prescribed-kinematics")
+      ?.version,
+    "1",
   );
 });
 

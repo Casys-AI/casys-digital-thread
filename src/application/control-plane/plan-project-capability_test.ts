@@ -2,6 +2,7 @@ import { assertEquals, assertRejects } from "@std/assert";
 import {
   GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY,
   GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY,
+  MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY,
   MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY,
   type RequiredEngineeringCapability,
 } from "../../domain/capability/engineering-capability.ts";
@@ -103,6 +104,29 @@ Deno.test("project capability planner makes policy, revocation, ambiguity and av
   );
   assertEquals(unavailable.bindings[0]?.status, "unavailable");
   assertEquals(unavailable.activation, "blocked");
+});
+
+Deno.test("unqualified Chrono stays unavailable even when the host reports AMD64 emulation", async () => {
+  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+  const plan = await planProjectCapability(
+    await input(
+      catalog,
+      [requirement(MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY)],
+      { emulatedPlatforms: ["linux/amd64"] },
+    ),
+  );
+
+  assertEquals(plan.bindings, [{
+    requirement: requirement(MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY),
+    status: "unavailable",
+    binding: null,
+    unitIds: [],
+    reasons: [
+      "No enabled, non-revoked binding meets qualified qualification for mechanics.observe-prescribed-kinematics@1/execution.",
+    ],
+  }]);
+  assertEquals(plan.materials, []);
+  assertEquals(plan.activation, "blocked");
 });
 
 Deno.test("project capability planner reports native, emulated, mismatch, and unknown platform states without inventing a provider", async () => {

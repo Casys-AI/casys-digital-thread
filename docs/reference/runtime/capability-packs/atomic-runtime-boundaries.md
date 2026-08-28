@@ -22,6 +22,15 @@ those licences nor grants image redistribution. Bundled or production distributi
 requires an image-level SBOM, notices and licence review for the exact digest. A digest
 change requires a new review.
 
+`casys.mcp-chrono@0.3.1` is a separate, digest-pinned Linux/amd64 material:
+`ghcr.io/casys-ai/mcp-chrono@sha256:b6302001725df4722d84096a51eeff7e7ffeee843690a2ba0cc417191c67683c`.
+It is a loopback-only service on port 3025, has a preserved `chrono-data` volume and
+requires only the local `chrono-mcp-bearer-token` secret slot. It declares no privileged
+mode, Docker socket, device or bind mount. Its source is MIT, but its aggregate OCI
+distribution is `NOASSERTION`, so the exact retained notices remain part of the image
+review. Until an explicit emulation probe is recorded, the Chrono binding is
+`unqualified`; on ARM64 it may become only `emulated`, never `native`.
+
 ## Host and data boundary
 
 The selected Compose materials expose only declared loopback ports. The SysON services

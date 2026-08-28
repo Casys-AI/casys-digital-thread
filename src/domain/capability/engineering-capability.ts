@@ -34,6 +34,13 @@ export const MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY = Object.freeze(
   } as const satisfies CapabilityReference,
 );
 
+export const MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY = Object.freeze(
+  {
+    id: "mechanics.observe-prescribed-kinematics",
+    version: "1",
+  } as const satisfies CapabilityReference,
+);
+
 export const MODEL_INSPECT_SYSTEM_CAPABILITY = Object.freeze(
   { id: "model.inspect-system", version: "1" } as const satisfies CapabilityReference,
 );

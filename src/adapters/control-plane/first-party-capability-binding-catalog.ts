@@ -3,6 +3,7 @@ import {
   GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY,
   GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY,
   GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY,
+  MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY,
   MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY,
   MODEL_AUTHOR_SYSTEM_CAPABILITY,
   MODEL_EVALUATE_REQUIREMENT_CAPABILITY,
@@ -37,6 +38,7 @@ import {
   LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
   LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
+  MCP_CHRONO_031_IMAGE_REFERENCE,
 } from "./first-party-capability-runtime-identities.ts";
 import {
   type AtomicCapabilityRuntimeMaterial,
@@ -185,6 +187,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "reviewed",
       ),
     ]),
+    unit("casys.mcp-chrono", [chronoMaterial()], "0.3.1"),
   ]);
   return await validateCapabilityRuntimeCatalog({
     schemaVersion: CAPABILITY_RUNTIME_CATALOG_SCHEMA_VERSION,
@@ -331,6 +334,23 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
           "The Docker distribution image and Microsandbox runtime digest are distinct identities.",
         ],
       ),
+      binding(
+        "chrono-prescribed-kinematics",
+        MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY,
+        "execution",
+        "unqualified",
+        "chrono-prescribed-kinematics-adapter",
+        "0.3.1",
+        null,
+        ["casys.mcp-chrono"],
+        "src/adapters/mechanics/chrono/chrono-prescribed-kinematics-client.ts",
+        [
+          "Only mcp-chrono 0.3.1 at its immutable Linux/amd64 digest is catalogued.",
+          "On an ARM64 host the material can be emulated only after an explicit qualification probe; it is never claimed native.",
+          "The binding exposes factual prescribed-kinematics observations, not collision, contact, clearance, force, strength, safety, or product verdicts.",
+        ],
+        "1",
+      ),
     ],
   });
 }
@@ -338,8 +358,8 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
 async function unit(
   id: string,
   materials: readonly AtomicCapabilityRuntimeMaterial[],
+  version = "1.0.0",
 ): Promise<AtomicCapabilityRuntimeUnit> {
-  const version = "1.0.0";
   const manifestFingerprint = await fingerprintAtomicCapabilityRuntimeUnit({
     id,
     version,
@@ -455,6 +475,36 @@ function ociImageMaterial(
   };
 }
 
+/**
+ * Chrono is a persistent authenticated local service, unlike the ephemeral
+ * local microVM workers. Its runtime security and ARM emulation qualification
+ * remain literal unknown/unqualified until a dedicated probe records them.
+ */
+function chronoMaterial(): AtomicCapabilityRuntimeMaterial {
+  return {
+    id: "mcp-chrono-image",
+    kind: "compose-service",
+    imageReference: MCP_CHRONO_031_IMAGE_REFERENCE,
+    platforms: ["linux/amd64"],
+    lifecycle: "persistent",
+    effects: {
+      downloadBytes: null,
+      storageBytes: null,
+      services: [{ id: "mcp-chrono", lifecycle: "persistent" }],
+      volumes: [volume("chrono-data", "read-write", "preserve")],
+      network: "loopback-only",
+      loopbackPorts: [3025],
+      bindMounts: [],
+      privileged: false,
+      dockerSocket: false,
+      devices: [],
+      secretSlots: ["chrono-mcp-bearer-token"],
+      licence: { status: "unknown", reference: REVIEWED_LICENCE_DOC },
+      security: "unknown",
+    },
+  };
+}
+
 function volume(
   id: string,
   access: "read-only" | "read-write",
@@ -474,10 +524,11 @@ function binding(
   unitIds: readonly string[],
   source: string,
   limitations: readonly string[],
+  version = "1.0.0",
 ) {
   return {
     id,
-    version: "1.0.0",
+    version,
     capability,
     use,
     qualification,
