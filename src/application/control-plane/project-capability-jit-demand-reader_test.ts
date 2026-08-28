@@ -1,45 +1,50 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { createFirstPartyCapabilityRuntimeCatalog } from "../../adapters/control-plane/first-party-capability-binding-catalog.ts";
 import { ProjectCapabilityJitDemandReader } from "./project-capability-jit-demand-reader.ts";
 
 const PROJECT = { id: "project:jit:r9", project: { id: "project:jit" } } as never;
+const REQUIREMENT = {
+  id: "mechanics.observe-prescribed-kinematics",
+  version: "1",
+  use: "execution" as const,
+  minimumQualification: "qualified" as const,
+};
+const OLD = {
+  unitId: "casys.legacy-kinematics",
+  materialId: "worker-image",
+  imageDigest: "a".repeat(64),
+};
+const SUCCESSOR = {
+  unitId: "casys.successor-kinematics",
+  materialId: "worker-image",
+  imageDigest: "b".repeat(64),
+};
 
-Deno.test("terminal group release retains a group while a sibling ready operation still demands its material", async () => {
-  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
-  const reader = new ProjectCapabilityJitDemandReader({
-    projects: { get: () => Promise.resolve(PROJECT) },
-    contexts: {
-      read: () =>
-        Promise.resolve({
-          catalog,
-          demand: {
-            jitDemand: {
-              status: "resolved",
-              capabilityRequirements: [{
-                id: "model.author-system",
-                version: "1",
-                use: "execution",
-                minimumQualification: "qualified",
-              }],
-            },
-          },
-        } as never),
-    },
-  });
+Deno.test("terminal group release follows the exact selected authorized successor, not an older catalogue binding", async () => {
+  const reader = readerForContext(contextWithAuthorization("successor-kinematics"));
 
   assertEquals(
     await reader.hasRemainingDemand({
       projectId: "project:jit",
-      materialKeys: ["casys.syson-stack\u0000mcp-syson-image"],
+      materialKeys: [key(OLD)],
     }),
-    true,
+    false,
   );
   assertEquals(
     await reader.hasRemainingDemand({
       projectId: "project:jit",
-      materialKeys: ["casys.calculix-worker\u0000calculix-worker-image"],
+      materialKeys: [key(SUCCESSOR)],
     }),
-    false,
+    true,
+  );
+});
+
+Deno.test("terminal group release fails closed when selected and authorized bindings differ", async () => {
+  const reader = readerForContext(contextWithAuthorization("legacy-kinematics"));
+  await assertRejects(
+    () =>
+      reader.hasRemainingDemand({ projectId: "project:jit", materialKeys: [key(OLD)] }),
+    Error,
+    "does not match one exact authorized binding",
   );
 });
 
@@ -54,3 +59,86 @@ Deno.test("terminal group release fails closed when the exact current JIT demand
     "cannot read project",
   );
 });
+
+function readerForContext(context: unknown): ProjectCapabilityJitDemandReader {
+  return new ProjectCapabilityJitDemandReader({
+    projects: { get: () => Promise.resolve(PROJECT) },
+    contexts: { read: () => Promise.resolve(context as never) },
+  });
+}
+
+function contextWithAuthorization(authorizedBindingId: string) {
+  const bindings = [
+    catalogueBinding("legacy-kinematics", OLD),
+    catalogueBinding("successor-kinematics", SUCCESSOR),
+  ];
+  return {
+    catalog: {
+      units: [unit(OLD), unit(SUCCESSOR)],
+      bindings,
+    },
+    demand: {
+      jitDemand: { status: "resolved", capabilityRequirements: [REQUIREMENT] },
+    },
+    plan: {
+      bindings: [{
+        requirement: REQUIREMENT,
+        status: "selected",
+        binding: {
+          id: "successor-kinematics",
+          version: "1",
+          qualification: "qualified",
+        },
+        unitIds: [SUCCESSOR.unitId],
+      }],
+    },
+    authorization: {
+      status: "authorized",
+      allowedBindings: [{
+        capability: {
+          id: REQUIREMENT.id,
+          version: REQUIREMENT.version,
+          use: REQUIREMENT.use,
+        },
+        binding: { id: authorizedBindingId, version: "1" },
+        adapter: { id: "test", version: "1", source: "test" },
+        profile: null,
+        unitIds: [
+          authorizedBindingId === "successor-kinematics"
+            ? SUCCESSOR.unitId
+            : OLD.unitId,
+        ],
+        materials: [
+          authorizedBindingId === "successor-kinematics" ? SUCCESSOR : OLD,
+        ],
+      }],
+    },
+  } as never;
+}
+
+function catalogueBinding(
+  id: string,
+  material: typeof OLD,
+) {
+  return {
+    id,
+    version: "1",
+    capability: { id: REQUIREMENT.id, version: REQUIREMENT.version },
+    use: REQUIREMENT.use,
+    unitIds: [material.unitId],
+  };
+}
+
+function unit(material: typeof OLD) {
+  return {
+    id: material.unitId,
+    materials: [{
+      id: material.materialId,
+      imageReference: `example.test/${material.unitId}@sha256:${material.imageDigest}`,
+    }],
+  };
+}
+
+function key(material: typeof OLD): string {
+  return `${material.unitId}\u0000${material.materialId}`;
+}

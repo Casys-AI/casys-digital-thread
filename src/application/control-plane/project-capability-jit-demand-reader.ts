@@ -41,34 +41,44 @@ export class ProjectCapabilityJitDemandReader {
         "Capability runtime JIT demand is unresolved; terminal host cleanup is blocked.",
       );
     }
+    const authorization = context.authorization;
+    if (!authorization || authorization.status !== "authorized") {
+      throw new Error(
+        "Capability runtime authorization is absent or not authorized; terminal host cleanup is blocked.",
+      );
+    }
     const requested = new Set(input.materialKeys);
-    const requirements = new Set(
-      jit.capabilityRequirements.map(capabilityKey),
-    );
-    for (const binding of context.catalog.bindings) {
-      if (
-        !requirements.has(capabilityKey({
-          id: binding.capability.id,
-          version: binding.capability.version,
-          use: binding.use,
-        }))
-      ) continue;
-      for (const unitId of binding.unitIds) {
-        const unit = context.catalog.units.find((candidate) => candidate.id === unitId);
-        if (!unit) {
-          throw new Error(
-            `Capability runtime catalogue binding ${binding.id} references missing unit ${unitId}.`,
-          );
-        }
-        if (
-          unit.materials.some((material) =>
-            requested.has(capabilityRuntimeMaterialKey({
-              unitId: unit.id,
-              materialId: material.id,
-            }))
-          )
-        ) return true;
+    const requirements = new Set(jit.capabilityRequirements.map(capabilityKey));
+    for (const planned of context.plan.bindings) {
+      if (planned.status !== "selected" || planned.binding === null) continue;
+      const key = capabilityKey({
+        id: planned.requirement.id,
+        version: planned.requirement.version,
+        use: planned.requirement.use,
+      });
+      const authorized = authorization.allowedBindings.filter((candidate) =>
+        capabilityKey(candidate.capability) === key &&
+        candidate.binding.id === planned.binding!.id &&
+        candidate.binding.version === planned.binding!.version
+      );
+      if (authorized.length !== 1) {
+        throw new Error(
+          `Capability runtime selected binding ${planned.binding.id}@${planned.binding.version} does not match one exact authorized binding.`,
+        );
       }
+      const binding = authorized[0]!;
+      if (!sameIds(binding.unitIds, planned.unitIds)) {
+        throw new Error(
+          `Capability runtime selected binding ${planned.binding.id}@${planned.binding.version} has an authorization unit mismatch.`,
+        );
+      }
+      assertAuthorizedMaterialsMatchCatalog(binding.materials, context.catalog.units);
+      if (
+        requirements.has(key) &&
+        binding.materials.some((material) =>
+          requested.has(capabilityRuntimeMaterialKey(material))
+        )
+      ) return true;
     }
     return false;
   }
@@ -80,4 +90,49 @@ function capabilityKey(value: {
   readonly use: "preparation" | "execution";
 }): string {
   return `${value.id}\u0000${value.version}\u0000${value.use}`;
+}
+
+function sameIds(left: readonly string[], right: readonly string[]): boolean {
+  const orderedLeft = [...left].toSorted();
+  const orderedRight = [...right].toSorted();
+  return orderedLeft.length === orderedRight.length &&
+    orderedLeft.every((id, index) => id === orderedRight[index]);
+}
+
+function assertAuthorizedMaterialsMatchCatalog(
+  materials: readonly {
+    readonly unitId: string;
+    readonly materialId: string;
+    readonly imageDigest: string;
+  }[],
+  units: readonly {
+    readonly id: string;
+    readonly materials: readonly {
+      readonly id: string;
+      readonly imageReference: string;
+    }[];
+  }[],
+): void {
+  for (const authorized of materials) {
+    const unit = units.find((candidate) => candidate.id === authorized.unitId);
+    const material = unit?.materials.find((candidate) =>
+      candidate.id === authorized.materialId
+    );
+    const currentDigest = material === undefined
+      ? undefined
+      : digestFromReference(material.imageReference);
+    if (currentDigest !== authorized.imageDigest) {
+      throw new Error(
+        `Capability runtime authorized material ${authorized.unitId}/${authorized.materialId} does not match the current catalogue.`,
+      );
+    }
+  }
+}
+
+function digestFromReference(reference: string): string {
+  const digest = reference.slice(reference.lastIndexOf("@sha256:") + "@sha256:".length);
+  if (!/^[a-f0-9]{64}$/.test(digest)) {
+    throw new Error("Capability runtime catalogue material lacks an exact OCI digest.");
+  }
+  return digest;
 }

@@ -189,4 +189,15 @@ Deno.test("runtime catalogue parsers fail closed on unsafe fields and lock/polic
     TypeError,
     "does not match",
   );
+  await assertRejects(
+    () =>
+      validateCapabilityRuntimeAdminLock({
+        schemaVersion: CAPABILITY_RUNTIME_ADMIN_LOCK_SCHEMA_VERSION,
+        revision: 1,
+        previous: null,
+        units: [],
+      }, catalog),
+    TypeError,
+    "greater than 0 must name the exact previous",
+  );
 });

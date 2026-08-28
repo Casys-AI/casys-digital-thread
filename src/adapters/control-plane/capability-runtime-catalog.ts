@@ -250,6 +250,11 @@ export async function validateCapabilityRuntimeAdminLock(
       "$adminLock revision 0 must not name a previous administrative lock.",
     );
   }
+  if (revision > 0 && previous === null) {
+    throw new TypeError(
+      "$adminLock revision greater than 0 must name the exact previous administrative lock.",
+    );
+  }
   return deepFreeze({
     schemaVersion: CAPABILITY_RUNTIME_ADMIN_LOCK_SCHEMA_VERSION,
     revision,
