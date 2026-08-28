@@ -244,6 +244,7 @@ import { FilePrescribedKinematicsObservationAttemptStore } from "./src/adapters/
 import { ChronoPrescribedKinematicsCaseLowerer } from "./src/adapters/mechanics/chrono/chrono-prescribed-kinematics-case-lowerer.ts";
 import { ChronoPrescribedKinematicsClient } from "./src/adapters/mechanics/chrono/chrono-prescribed-kinematics-client.ts";
 import { PrescribedKinematicsRunExecutor } from "./src/adapters/mechanics/chrono/prescribed-kinematics-run-executor.ts";
+import { PrepareProjectPrescribedKinematicsNextHopReview } from "./src/adapters/mechanics/prepare-project-prescribed-kinematics-next-hop-review.ts";
 import { CaptureProjectPrescribedKinematicsCase } from "./src/application/use-cases/mechanics/prescribed-kinematics/capture-project-prescribed-kinematics-case.ts";
 import { DecidePrescribedKinematicsCloseout } from "./src/application/use-cases/mechanics/prescribed-kinematics/decide-prescribed-kinematics-closeout.ts";
 import { EvaluatePrescribedKinematics } from "./src/application/use-cases/mechanics/prescribed-kinematics/evaluate-prescribed-kinematics.ts";
@@ -1209,6 +1210,16 @@ async function createProjectControl(
       architectureFoundation.sysmlSourceAnalysis,
     ),
   });
+  // Discovery of the already registered method/L4/L5 route is provider-free
+  // too: it recrosses only durable project and Thread evidence. In particular,
+  // it has no Chrono runtime, secret, or dispatch dependency, so unqualified
+  // Chrono remains literally unavailable for any future L3 execution.
+  const prescribedKinematicsNextHopReview =
+    new PrepareProjectPrescribedKinematicsNextHopReview({
+      projects: runtime.projects,
+      snapshots: build123dThreadSnapshots,
+      captures: prescribedKinematicsExecution.captures,
+    });
   // L1/L4/L5 remain provider-free. L3 is a fixed internal Chrono binding but
   // its queue/execution path remains fail-closed until the capability catalog
   // carries a live qualified (or compatible) binding; no caller can choose an
@@ -1511,6 +1522,7 @@ async function createProjectControl(
       technicalSourceCapture: compilationFoundation.technicalSourceCapture,
       cadPlacementCapture: cadPlacement.cadPlacementCapture,
       prescribedKinematicsCaseReview,
+      prescribedKinematicsNextHopReview,
       geometryModuleExport,
       assemblyIntegrityReview,
       assemblyIntegrityEvaluationReview,

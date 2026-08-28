@@ -812,7 +812,13 @@ function briefConfirmationRequest(
         params: {
           mode: "form",
           message:
-            `The agent consolidated this project brief: “${objective}”. This confirmation also authorizes the exact server-selected operational capability proposal (${proposal.bindings.length} semantic requirement(s), ${proposal.units.length} installable unit(s)); runtime activation remains separately blocked wherever qualification/platform/security says so. Confirm this exact framing and operational ceiling, or decline and continue the conversation.`,
+            `The agent consolidated this project brief: “${objective}”. This confirmation also authorizes the exact server-derived operational capability proposal ${proposal.capabilityProposalFingerprint.digest} (${proposal.bindings.length} semantic requirement(s), ${proposal.units.length} installable unit(s)). The structured proposal and initial-envelope delta below are display-only server facts; this form offers no capability, provider, image, tool, or argument selection. Runtime activation remains separately blocked wherever qualification/platform/security says so. Confirm this exact framing and operational ceiling, or decline and continue the conversation.`,
+          capabilityProposalFingerprint: structuredClone(
+            proposal.capabilityProposalFingerprint,
+          ),
+          capabilityProposal: structuredClone(proposal),
+          /** The first envelope has no predecessor, so its exact delta is literal. */
+          capabilityEnvelopeDelta: null,
           requestedSchema: {
             type: "object",
             properties: {
