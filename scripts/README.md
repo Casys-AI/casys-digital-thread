@@ -66,6 +66,8 @@ entry point.
 | ---------------------------------------------- | ------------------------------------ | ----- |
 | `probes/capture-build123d-api-inventory.ts`    | (direct `deno run`)                  | write |
 | `probes/capture-syson-model-inventory.ts`      | `thread:capture-syson-inventory`     | write |
+| `probes/doctor-behave-foundation.ts`           | `capability:behave:doctor`           | read  |
+| `probes/inspect-behave-capability-pack.ts`     | `capability:behave:inspect`          | read  |
 | `probes/mcp-call.ts`                           | `mcp:call`                           | write |
 | `probes/probe-constraint-solver.ts`            | `probe:constraint-solver`            | read  |
 | `probes/probe-spice-contract.ts`               | `probe:spice-contract`               | read  |

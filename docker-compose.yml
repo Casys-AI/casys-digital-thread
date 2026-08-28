@@ -264,7 +264,7 @@ services:
     networks: [chain]
 
   mcp-spice:
-    image: "${MCP_SPICE_IMAGE:-ghcr.io/casys-ai/mcp-spice@sha256:124fb54f2dd19d26126c7825b85cdcb6b0a352f21cbd8c39d06835e5987dc458}"
+    image: "${MCP_SPICE_IMAGE:-ghcr.io/casys-ai/mcp-spice@sha256:80f8d6b34dc55e623daf936faea5ff9ee75871331aa88d7339191ea17584991b}"
     ports:
       - "127.0.0.1:3023:3023"
     volumes:

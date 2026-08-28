@@ -24,10 +24,10 @@ const MANIFEST = JSON.stringify({
   }],
 });
 
-const HEALTH = { status: "ok", server: "mcp-spice", version: "0.5.1" };
+const HEALTH = { status: "ok", server: "mcp-spice", version: "0.5.2" };
 const DISCOVERY = {
   supportedVersions: ["2026-07-28"],
-  serverInfo: { name: "mcp-spice", version: "0.5.1" },
+  serverInfo: { name: "mcp-spice", version: "0.5.2" },
   instructions:
     "Both submitted and legacy-path netlists are limited to 1 MiB; each observable kind is limited to 32 names. Transient wrdata is bounded to 8 MiB and 50,000 samples before reduction.",
   resultType: "complete",
@@ -80,6 +80,13 @@ Deno.test("spice preflight uses discovery only and accepts the reviewed fingerpr
     status: "reviewed-contract",
     ...SPICE_EXECUTION_BUDGETS,
   });
+  if (result.executionBudgets.status !== "reviewed-contract") {
+    throw new Error("expected reviewed execution budgets");
+  }
+  assertEquals(result.executionBudgets.dcWrdataPreReadBytes, 8_388_608);
+  assertEquals(result.executionBudgets.dcRequestPoints, 512);
+  assertEquals(result.executionBudgets.dcParsePoints, 512);
+  assertEquals(result.executionBudgets.ngspiceLogBytesPerStream, 1_048_576);
   assertEquals(result.conclusion.integration, "unresolved");
 });
 

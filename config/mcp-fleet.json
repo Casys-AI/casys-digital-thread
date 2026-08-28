@@ -328,19 +328,19 @@
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3023/mcp",
       "healthUrl": "http://127.0.0.1:3023/health",
-      "image": "ghcr.io/casys-ai/mcp-spice@sha256:124fb54f2dd19d26126c7825b85cdcb6b0a352f21cbd8c39d06835e5987dc458",
+      "image": "ghcr.io/casys-ai/mcp-spice@sha256:80f8d6b34dc55e623daf936faea5ff9ee75871331aa88d7339191ea17584991b",
       "release": {
-        "version": "0.5.1",
-        "revision": "ecd03281069373a14b2fbf6eea1fe4b0a3c781c6",
+        "version": "0.5.2",
+        "revision": "0575f2d0efdca30965c5b155187b78d9412fb1d1",
         "ociLabels": {
-          "org.opencontainers.image.created": "2026-08-28T14:59:50.017Z",
+          "org.opencontainers.image.created": "2026-08-28T15:49:55.406Z",
           "org.opencontainers.image.description": "MCP oracle for circuit verification — ngspice batch operating point and reduced transients. The server owns the .control block.",
           "org.opencontainers.image.licenses": "MIT",
-          "org.opencontainers.image.revision": "ecd03281069373a14b2fbf6eea1fe4b0a3c781c6",
+          "org.opencontainers.image.revision": "0575f2d0efdca30965c5b155187b78d9412fb1d1",
           "org.opencontainers.image.source": "https://github.com/Casys-AI/mcp-spice",
           "org.opencontainers.image.title": "mcp-spice",
           "org.opencontainers.image.url": "https://github.com/Casys-AI/mcp-spice",
-          "org.opencontainers.image.version": "0.5.1"
+          "org.opencontainers.image.version": "0.5.2"
         }
       },
       "required": false,
@@ -364,7 +364,8 @@
         "notes": [
           "The server owns the .control block; caller netlists are circuit-only and .control/.include/.lib/shell are refused with typed errors.",
           "Submitted and legacy-path netlists share a 1 MiB ceiling; each observable kind is capped at 32 names.",
-          "Reduced statistics only; transient wrdata is capped at 8 MiB and 50,000 samples before the full series is discarded."
+          "Reduced statistics only; transient and DC private wrdata are capped at 8 MiB before decoding; transient reduction stops at 50,000 samples, while DC request and parsing each stop at 512 points.",
+          "ngspice stdout and stderr are each capped at 1 MiB before diagnostic parsing."
         ]
       }
     }

@@ -21,35 +21,43 @@ export const SPICE_EXPECTED_TOOLS = [
 /** Reviewed desired OCI identity. It is not a runtime-image observation. */
 export const SPICE_RELEASE = {
   image:
-    "ghcr.io/casys-ai/mcp-spice@sha256:124fb54f2dd19d26126c7825b85cdcb6b0a352f21cbd8c39d06835e5987dc458",
-  version: "0.5.1",
-  revision: "ecd03281069373a14b2fbf6eea1fe4b0a3c781c6",
+    "ghcr.io/casys-ai/mcp-spice@sha256:80f8d6b34dc55e623daf936faea5ff9ee75871331aa88d7339191ea17584991b",
+  version: "0.5.2",
+  revision: "0575f2d0efdca30965c5b155187b78d9412fb1d1",
   ociLabels: {
-    "org.opencontainers.image.created": "2026-08-28T14:59:50.017Z",
+    "org.opencontainers.image.created": "2026-08-28T15:49:55.406Z",
     "org.opencontainers.image.description":
       "MCP oracle for circuit verification — ngspice batch operating point and reduced transients. The server owns the .control block.",
     "org.opencontainers.image.licenses": "MIT",
-    "org.opencontainers.image.revision": "ecd03281069373a14b2fbf6eea1fe4b0a3c781c6",
+    "org.opencontainers.image.revision": "0575f2d0efdca30965c5b155187b78d9412fb1d1",
     "org.opencontainers.image.source": "https://github.com/Casys-AI/mcp-spice",
     "org.opencontainers.image.title": "mcp-spice",
     "org.opencontainers.image.url": "https://github.com/Casys-AI/mcp-spice",
-    "org.opencontainers.image.version": "0.5.1",
+    "org.opencontainers.image.version": "0.5.2",
   },
 } as const;
 
-/** Values checked from discovery/schema contract; never a simulation execution. */
+/**
+ * Reviewed provider execution limits. Discovery/schema exposes the input bounds,
+ * timeout, transient ceiling, and DC request cap. The DC pre-read and per-stream
+ * log ceilings are release-qualified runtime limits, included here without making
+ * this read-only probe an image inspection or execution test.
+ */
 export const SPICE_EXECUTION_BUDGETS = {
   netlistBytes: 1_048_576,
   observablesPerKind: 32,
   transientWrdataBytes: 8_388_608,
   transientPoints: 50_000,
+  dcWrdataPreReadBytes: 8_388_608,
+  dcRequestPoints: 512,
+  dcParsePoints: 512,
+  ngspiceLogBytesPerStream: 1_048_576,
   timeoutSeconds: { default: 30, min: 1, max: 300 },
-  dcSweepPoints: 512,
 } as const;
 
-/** Reviewed 2026-08-28 identity, tool schemas, and execution-budget projection. */
+/** Reviewed 2026-08-29 identity, tool schemas, and execution-budget projection. */
 export const SPICE_CONTRACT_SHA256 =
-  "9471f4a95bb3e3793526367356043237a0ab3c44b278654540c75ea384547476";
+  "5873f79d571a67aeafd74f1749ae4a4172a692cfdf9fbab2c8032df95d0d2e8a";
 
 export const SPICE_ENDPOINT = {
   mcpUrl: "http://127.0.0.1:3023/mcp",
@@ -191,7 +199,7 @@ export async function probeSpiceContract(
     baseline,
     "current-surface",
     observed,
-    "The reviewed discovery surface exposes content-addressed netlist admission, voltage and voltage-source-current summaries, transient extrema times, a bounded DC sweep, and declared execution budgets. This read-only preflight still does not execute a simulation, inspect an image, observe a tools/call error, or establish product authority.",
+    "The reviewed discovery surface exposes content-addressed netlist admission, voltage and voltage-source-current summaries, transient extrema times, and a bounded DC sweep. This preflight also reports the code-owned reviewed execution-budget projection. It still does not execute a simulation, inspect an image, observe a tools/call error, or establish product authority.",
   );
 }
 
@@ -411,7 +419,7 @@ const GAPS = [
   ["provider-readback", "No run id or provider readback method is listed."],
   [
     "runtime-budget-enforcement",
-    "This read-only probe sees declared schema/discovery bounds but never submits or runs a circuit to test their enforcement.",
+    "This read-only probe verifies discovery/schema bounds and reports release-qualified private limits, but never submits or runs a circuit to test runtime enforcement.",
   ],
   [
     "error-envelope",
@@ -493,10 +501,10 @@ function assertExecutionBudgets(
     !requiredString(
       record(dcProperties.step_v, "spice_simulate_dc step_v schema").description,
       "spice_simulate_dc step_v description",
-    ).includes("512 internal points")
+    ).includes(`${SPICE_EXECUTION_BUDGETS.dcRequestPoints} internal points`)
   ) {
     throw new ContractDivergenceError(
-      "spice_simulate_dc does not declare the reviewed 512-point sweep ceiling.",
+      "spice_simulate_dc does not declare the reviewed 512-point request ceiling.",
     );
   }
 }
