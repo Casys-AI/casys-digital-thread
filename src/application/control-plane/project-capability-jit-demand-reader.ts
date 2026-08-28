@@ -42,9 +42,17 @@ export class ProjectCapabilityJitDemandReader {
       );
     }
     const authorization = context.authorization;
-    if (!authorization || authorization.status !== "authorized") {
+    if (!authorization) {
       throw new Error(
-        "Capability runtime authorization is absent or not authorized; terminal host cleanup is blocked.",
+        "Capability runtime authorization is absent; terminal host cleanup is blocked.",
+      );
+    }
+    // A durable revocation is an exact, terminal negative authority: its
+    // group must be releasable. It is not an unreadable or unresolved state.
+    if (authorization.status === "revoked") return false;
+    if (authorization.status !== "authorized") {
+      throw new Error(
+        "Capability runtime authorization is unreadable; terminal host cleanup is blocked.",
       );
     }
     const requested = new Set(input.materialKeys);

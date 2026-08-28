@@ -38,6 +38,20 @@ Deno.test("terminal group release follows the exact selected authorized successo
   );
 });
 
+Deno.test("terminal group release proceeds when the exact current authorization is revoked", async () => {
+  const reader = readerForContext(
+    contextWithAuthorization("successor-kinematics", "revoked"),
+  );
+
+  assertEquals(
+    await reader.hasRemainingDemand({
+      projectId: "project:jit",
+      materialKeys: [key(SUCCESSOR)],
+    }),
+    false,
+  );
+});
+
 Deno.test("terminal group release fails closed when selected and authorized bindings differ", async () => {
   const reader = readerForContext(contextWithAuthorization("legacy-kinematics"));
   await assertRejects(
@@ -67,7 +81,10 @@ function readerForContext(context: unknown): ProjectCapabilityJitDemandReader {
   });
 }
 
-function contextWithAuthorization(authorizedBindingId: string) {
+function contextWithAuthorization(
+  authorizedBindingId: string,
+  authorizationStatus: "authorized" | "revoked" = "authorized",
+) {
   const bindings = [
     catalogueBinding("legacy-kinematics", OLD),
     catalogueBinding("successor-kinematics", SUCCESSOR),
@@ -93,7 +110,7 @@ function contextWithAuthorization(authorizedBindingId: string) {
       }],
     },
     authorization: {
-      status: "authorized",
+      status: authorizationStatus,
       allowedBindings: [{
         capability: {
           id: REQUIREMENT.id,
