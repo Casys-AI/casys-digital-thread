@@ -205,8 +205,9 @@ services:
   # The four standalone engineering-capability servers, each pinned to its published ghcr
   # image. Their entrypoints default to HTTP mode binding 0.0.0.0 inside the
   # container on their park port; the mappings stay loopback-only. dfm,
-  # prusaslicer and spice mount /exports read-only: they verify artifacts the
-  # chain produced (or dropped) there — they never write into it.
+  # prusaslicer and spice mount /exports read-only. mcp-spice normally consumes a
+  # content-addressed submitted netlist; its legacy-path compatibility input may only
+  # snapshot an artifact already present here — it never writes into this volume.
   mcp-dfm:
     image: "${MCP_DFM_IMAGE:-ghcr.io/casys-ai/mcp-dfm@sha256:a31aa702e45e4445c67454f807832b60455211664fa98ff36f54948aedec4fb9}"
     ports:
@@ -263,7 +264,7 @@ services:
     networks: [chain]
 
   mcp-spice:
-    image: "${MCP_SPICE_IMAGE:-ghcr.io/casys-ai/mcp-spice@sha256:cabf9a87e2006811484625f833859b96724faaf5dab6d60f1a10dc7cc6777a69}"
+    image: "${MCP_SPICE_IMAGE:-ghcr.io/casys-ai/mcp-spice@sha256:124fb54f2dd19d26126c7825b85cdcb6b0a352f21cbd8c39d06835e5987dc458}"
     ports:
       - "127.0.0.1:3023:3023"
     volumes:

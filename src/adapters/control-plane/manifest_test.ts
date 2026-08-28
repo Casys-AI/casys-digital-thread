@@ -81,6 +81,7 @@ Deno.test("toolchain Compose defaults remain in parity with fleet desired images
       ["build123d", "TOOLCHAIN_IMAGE"],
       ["build123d-sandbox", "TOOLCHAIN_IMAGE"],
       ["calculix", "MCP_CALCULIX_IMAGE"],
+      ["spice", "MCP_SPICE_IMAGE"],
     ] as const
   ) {
     const server = manifest.servers.find((candidate) => candidate.id === serverId);

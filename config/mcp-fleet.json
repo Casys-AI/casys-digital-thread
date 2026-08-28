@@ -323,16 +323,32 @@
     {
       "id": "spice",
       "displayName": "ngspice verification",
-      "role": "DC operating points and reduced transients from attested netlists",
+      "role": "Content-addressed netlist admission, DC operating points, reduced transients, and bounded DC source sweeps",
       "serviceName": "mcp-spice",
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3023/mcp",
       "healthUrl": "http://127.0.0.1:3023/health",
-      "image": "ghcr.io/casys-ai/mcp-spice@sha256:cabf9a87e2006811484625f833859b96724faaf5dab6d60f1a10dc7cc6777a69",
+      "image": "ghcr.io/casys-ai/mcp-spice@sha256:124fb54f2dd19d26126c7825b85cdcb6b0a352f21cbd8c39d06835e5987dc458",
+      "release": {
+        "version": "0.5.1",
+        "revision": "ecd03281069373a14b2fbf6eea1fe4b0a3c781c6",
+        "ociLabels": {
+          "org.opencontainers.image.created": "2026-08-28T14:59:50.017Z",
+          "org.opencontainers.image.description": "MCP oracle for circuit verification — ngspice batch operating point and reduced transients. The server owns the .control block.",
+          "org.opencontainers.image.licenses": "MIT",
+          "org.opencontainers.image.revision": "ecd03281069373a14b2fbf6eea1fe4b0a3c781c6",
+          "org.opencontainers.image.source": "https://github.com/Casys-AI/mcp-spice",
+          "org.opencontainers.image.title": "mcp-spice",
+          "org.opencontainers.image.url": "https://github.com/Casys-AI/mcp-spice",
+          "org.opencontainers.image.version": "0.5.1"
+        }
+      },
       "required": false,
       "expectedTools": [
+        "ngspice_netlist_submit",
         "spice_simulate_op",
-        "spice_simulate_tran"
+        "spice_simulate_tran",
+        "spice_simulate_dc"
       ],
       "network": {
         "exposure": "loopback-only",
@@ -347,7 +363,8 @@
         "executesArbitraryCode": false,
         "notes": [
           "The server owns the .control block; caller netlists are circuit-only and .control/.include/.lib/shell are refused with typed errors.",
-          "Reduced statistics only; the full time series never crosses the boundary."
+          "Submitted and legacy-path netlists share a 1 MiB ceiling; each observable kind is capped at 32 names.",
+          "Reduced statistics only; transient wrdata is capped at 8 MiB and 50,000 samples before the full series is discarded."
         ]
       }
     }
