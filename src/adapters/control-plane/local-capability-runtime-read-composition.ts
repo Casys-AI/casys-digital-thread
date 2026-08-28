@@ -14,7 +14,6 @@ import { CALCULIX_MICROSANDBOX_WORKER_CONTRACT } from "../fea/isolated-v3/calcul
 import { LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE } from "../fea/isolated-v3/local-calculix-isolated-execution-options.ts";
 import {
   createLocalMicrosandboxSdk,
-  microsandboxHostArchitecture,
 } from "../shared/execution/microsandbox-ephemeral-execution-backend.ts";
 import { CompositeCapabilityRuntimeStateObserver } from "./composite-capability-runtime-state-observer.ts";
 import { createCapabilityRuntimeHostObserver } from "./compose-capability-runtime-host.ts";
@@ -29,7 +28,10 @@ import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capabili
 import { createFirstPartyCapabilityRuntimeLaunchGroupRegistry } from "./first-party-capability-runtime-launch-groups.ts";
 import { GroupCapabilityRuntimeHostObservationReader } from "./group-capability-runtime-host-observation-reader.ts";
 import { FileCapabilityRuntimeHostIdentityStore } from "./file-capability-runtime-host-identity-store.ts";
-import { LocalMicrosandboxCapabilityRuntimeCache } from "./microsandbox-capability-runtime-cache.ts";
+import {
+  exactMicrosandboxMaterialArchitecture,
+  LocalMicrosandboxCapabilityRuntimeCache,
+} from "./microsandbox-capability-runtime-cache.ts";
 
 export interface LocalCapabilityRuntimeReadCompositionOptions {
   readonly ledgerDirectory?: string;
@@ -90,6 +92,14 @@ export async function createLocalCapabilityRuntimeReadComposition(
     journal,
     secrets,
   });
+  const calculixWorker = catalog.units.find((unit) =>
+    unit.id === "casys.calculix-worker"
+  )?.materials.find((material) => material.id === "calculix-worker-image");
+  if (!calculixWorker) {
+    throw new Error(
+      "The code-owned catalog is missing casys.calculix-worker/calculix-worker-image.",
+    );
+  }
   const microsandbox = new LocalMicrosandboxCapabilityRuntimeCache(
     createLocalMicrosandboxSdk,
     [{
@@ -106,7 +116,9 @@ export async function createLocalCapabilityRuntimeReadComposition(
             LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE.lastIndexOf("@") + 1,
           ),
         os: "linux",
-        architecture: microsandboxHostArchitecture(),
+        architecture: exactMicrosandboxMaterialArchitecture(
+          calculixWorker.platforms,
+        ),
         user: CALCULIX_MICROSANDBOX_WORKER_CONTRACT.expectedImageUser,
         entrypoint: [
           CALCULIX_MICROSANDBOX_WORKER_CONTRACT.executable,
