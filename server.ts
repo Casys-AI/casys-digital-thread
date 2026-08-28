@@ -51,6 +51,14 @@ import { LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE } from "./src/adapters/e
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "./src/adapters/cad/sealed-isolated/design-seal-isolated-geometry-run-executor.ts";
 import type { ModelicaIsolatedExecutionServerOptions } from "./src/adapters/modelica/qualified-kit/execution-composition.ts";
 import type { CalculixIsolatedExecutionServerOptions } from "./src/adapters/fea/isolated-v3/calculix-isolated-execution-composition.ts";
+import {
+  createLocalCalculixIsolatedExecutionServerOptions,
+  LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
+} from "./src/adapters/fea/isolated-v3/local-calculix-isolated-execution-options.ts";
+export {
+  createLocalCalculixIsolatedExecutionServerOptions,
+  LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
+} from "./src/adapters/fea/isolated-v3/local-calculix-isolated-execution-options.ts";
 import { VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION } from "./src/adapters/modelica/evaluation/verify-evaluate-admitted-modelica-observations-run-executor.ts";
 import {
   DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
@@ -329,11 +337,7 @@ export const LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE =
   "casys/modelica-microsandbox-worker@sha256:7d3fdeabe794b0ded5360921b16724c7904487e9d11bc24fa37c72f9b92a1894" as const;
 export const LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE =
   "casys/modelica-microsandbox-worker@sha256:d25f220287cd8d1713e9e7d773afb8bb867fc5404a112e5e50ffa2e862fd6fdf" as const;
-export const LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE =
-  "casys/calculix-microsandbox-worker@sha256:9b3a7468bfbc3f0fe27f7a9ac17c0eb72f1925968173e5a01d985cfa19cbc0a2" as const;
 export { LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE };
-const LOCAL_CALCULIX_WRAPPER_SHA256 =
-  "507c29da72e346aa87465ce96572b19b42e96105c64b2854be73d6894592e4e2";
 const LOCAL_MODELICA_QUALIFICATION_CAPTURE_FINGERPRINT = Object.freeze({
   algorithm: "sha256" as const,
   digest: "d6aee5fe375daa55cec29a32acf27181dd4bb8ea8e5c3f90f848cc718c149428",
@@ -444,29 +448,6 @@ const LOCAL_ADMITTED_SPICE_EXECUTION_POLICY_BODY = Object.freeze({
   workerUser: "65532:65532",
   fixedExecutables: ["ngspice"],
   limits: LOCAL_ADMITTED_SPICE_EXECUTION_LIMITS,
-});
-
-const LOCAL_CALCULIX_EXECUTION_LIMITS = Object.freeze({
-  maxWallTimeMs: 180_000,
-  maxCpuTimeMs: 160_000,
-  maxMemoryBytes: 3 * 1_073_741_824,
-  maxProcesses: 64,
-  maxStdoutBytes: 1_048_576,
-  maxStderrBytes: 1_048_576,
-  maxOutputFileBytes: 128 * 1_048_576,
-  maxOutputTotalBytes: 256 * 1_048_576,
-});
-
-const LOCAL_CALCULIX_EXECUTION_POLICY_BODY = Object.freeze({
-  schemaVersion: "calculix-microsandbox-policy/1.0",
-  backend: "microsandbox-local@0.6.8",
-  imageReference: LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
-  network: "deny-all",
-  pullPolicy: "never",
-  securityProfile: "restricted",
-  workerUser: "65532:65532",
-  fixedExecutables: ["gmsh", "ccx"],
-  limits: LOCAL_CALCULIX_EXECUTION_LIMITS,
 });
 
 export interface CreateConsoleServerOptions {
@@ -1906,28 +1887,6 @@ export async function createLocalAdmittedSpiceExecutionServerOptions(): Promise<
       imageReference: LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
       policy,
       limits: LOCAL_ADMITTED_SPICE_EXECUTION_LIMITS,
-    }),
-    runtime: Object.freeze({}),
-  });
-}
-
-/** Code-owned binding for the qualified local CalculiX microVM profile. */
-export async function createLocalCalculixIsolatedExecutionServerOptions(): Promise<
-  CalculixIsolatedExecutionServerOptions
-> {
-  const policy = Object.freeze({
-    id: "calculix-microsandbox-deny-all-v1",
-    version: "1.0.0",
-    fingerprint: await sha256Fingerprint(
-      LOCAL_CALCULIX_EXECUTION_POLICY_BODY,
-    ),
-  });
-  return Object.freeze({
-    profile: Object.freeze({
-      imageReference: LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
-      wrapperSha256: LOCAL_CALCULIX_WRAPPER_SHA256,
-      policy,
-      limits: LOCAL_CALCULIX_EXECUTION_LIMITS,
     }),
     runtime: Object.freeze({}),
   });
