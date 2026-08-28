@@ -1,0 +1,494 @@
+import {
+  ELECTRONICS_RUN_ADMITTED_SPICE_CAPABILITY,
+  GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY,
+  GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY,
+  GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY,
+  MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY,
+  MODEL_AUTHOR_SYSTEM_CAPABILITY,
+  MODEL_EVALUATE_REQUIREMENT_CAPABILITY,
+  MODEL_INSPECT_SYSTEM_CAPABILITY,
+  SIMULATION_RUN_ADMITTED_MODELICA_CAPABILITY,
+  SIMULATION_RUN_QUALIFIED_MODELICA_CAPABILITY,
+} from "../../domain/capability/engineering-capability.ts";
+import {
+  BUILD123D_EXECUTION_PROFILE,
+} from "../../domain/cad/isolated/build123d-execution-proposal.ts";
+import {
+  CALCULIX_ISOLATED_EXECUTION_PROFILE,
+} from "../../domain/fea/isolated-v3/calculix-isolated-execution.ts";
+import {
+  MODELICA_ADMITTED_EXECUTION_PROFILE,
+} from "../../domain/modelica/admitted/run-proposal.ts";
+import {
+  MODELICA_ISOLATED_EXECUTION_PROFILE,
+} from "../../domain/modelica/qualified-kit/isolated-execution.ts";
+import {
+  SPICE_ADMITTED_EXECUTION_PROFILE,
+} from "../../domain/electrical/spice/admitted/run-proposal.ts";
+import {
+  LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
+} from "../fea/isolated-v3/local-calculix-isolated-execution-options.ts";
+import {
+  LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE,
+  LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
+} from "../electrical/spice/admitted/local-image-references.ts";
+import {
+  LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE,
+  LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
+  LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
+  LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
+} from "./first-party-capability-runtime-identities.ts";
+import {
+  type AtomicCapabilityRuntimeMaterial,
+  type AtomicCapabilityRuntimeUnit,
+  CAPABILITY_RUNTIME_CATALOG_SCHEMA_VERSION,
+  type CapabilityRuntimeCatalog,
+  fingerprintAtomicCapabilityRuntimeUnit,
+} from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
+import { validateCapabilityRuntimeCatalog } from "./capability-runtime-catalog.ts";
+
+const POSTGRES_IMAGE =
+  "postgres@sha256:926f8799aef36e00001cfe15fba7abbd37d3c5224ea57e4c858e4bb670f10561";
+const SYSON_IMAGE =
+  "ghcr.io/casys-ai/syson@sha256:fc599abb95587913de11ff6de68060b5593956abc0c47bc753cd19e2987141a6";
+const MCP_SYSON_IMAGE =
+  "ghcr.io/casys-ai/engineering-toolchain@sha256:c04922cc2c0f503c34277c5a1dc81ab28b141945acad90345e2d16882535b4bc";
+const MCP_BUILD123D_IMAGE =
+  "ghcr.io/casys-ai/engineering-toolchain@sha256:7a255f24448ddb6de496c4e47c2d1634c63daea67e9082b558257287215b23b5";
+
+const REVIEWED_LICENCE_DOC =
+  "docs/reference/runtime/capability-packs/behave-foundation/licences.md";
+
+/**
+ * Builds the trusted first-party catalogue from exact current composition
+ * identities. Manifest fingerprints are derived from the closed unit body;
+ * no publisher claim, agent request, provider endpoint, tool, or argument is
+ * accepted here.
+ */
+export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
+  CapabilityRuntimeCatalog
+> {
+  const units = await Promise.all([
+    unit("casys.syson-stack", [
+      composeMaterial(
+        "syson-db-image",
+        POSTGRES_IMAGE,
+        ["linux/arm64"],
+        "syson-db",
+        "internal",
+        [],
+        [
+          volume("syson-db-data", "read-write", "preserve"),
+        ],
+        "reviewed",
+      ),
+      composeMaterial(
+        "syson-app-image",
+        SYSON_IMAGE,
+        ["linux/arm64"],
+        "syson-app",
+        "loopback-only",
+        [8180],
+        [],
+        "reviewed",
+      ),
+      composeMaterial(
+        "mcp-syson-image",
+        MCP_SYSON_IMAGE,
+        ["linux/arm64"],
+        "mcp-syson",
+        "loopback-only",
+        [3009],
+        [],
+        "reviewed",
+      ),
+    ]),
+    unit("casys.mcp-build123d-sandbox", [
+      composeMaterial(
+        "mcp-build123d-sandbox-image",
+        MCP_BUILD123D_IMAGE,
+        ["linux/arm64"],
+        "mcp-build123d-sandbox",
+        "loopback-only",
+        [3024],
+        [
+          volume("build123d-sandbox-exports", "read-write", "preserve"),
+        ],
+        "reviewed",
+      ),
+    ]),
+    unit("casys.mcp-build123d-observation", [
+      composeMaterial(
+        "mcp-build123d-observation-image",
+        MCP_BUILD123D_IMAGE,
+        ["linux/arm64"],
+        "mcp-build123d",
+        "loopback-only",
+        [3014],
+        [
+          volume("exports", "read-write", "preserve"),
+        ],
+        "unknown",
+      ),
+    ]),
+    unit("casys.build123d-isolated-worker", [
+      microvmMaterial(
+        "build123d-isolated-worker-image",
+        LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
+        ["linux/arm64"],
+        "reviewed",
+      ),
+    ]),
+    unit("casys.geometry-module-assembler-worker", [
+      microvmMaterial(
+        "geometry-module-assembler-worker-image",
+        LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
+        [],
+        "unknown",
+      ),
+    ]),
+    unit("casys.calculix-worker", [
+      microvmMaterial(
+        "calculix-worker-image",
+        LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
+        ["linux/arm64"],
+        "reviewed",
+      ),
+    ]),
+    unit("casys.modelica-qualified-worker", [
+      microvmMaterial(
+        "modelica-qualified-worker-image",
+        LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
+        ["linux/arm64"],
+        "reviewed",
+      ),
+    ]),
+    unit("casys.modelica-worker", [
+      microvmMaterial(
+        "modelica-admitted-worker-image",
+        LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE,
+        [],
+        "unknown",
+      ),
+    ]),
+    unit("casys.spice-worker", [
+      ociImageMaterial(
+        "ngspice-docker-source-image",
+        LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE,
+        ["linux/arm64"],
+        "reviewed",
+      ),
+      microvmMaterial(
+        "ngspice-runtime-image",
+        LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
+        ["linux/arm64"],
+        "reviewed",
+      ),
+    ]),
+  ]);
+  return await validateCapabilityRuntimeCatalog({
+    schemaVersion: CAPABILITY_RUNTIME_CATALOG_SCHEMA_VERSION,
+    productionEligible: false,
+    units,
+    bindings: [
+      binding(
+        "syson-author-system",
+        MODEL_AUTHOR_SYSTEM_CAPABILITY,
+        "execution",
+        "qualified",
+        "syson-architecture-adapter",
+        "1.0.0",
+        null,
+        ["casys.syson-stack"],
+        "src/adapters/architecture/renderer/model-write-architecture-run-executor.ts",
+        [
+          "SysON authoring is a concrete runtime binding; it does not validate any engineering result.",
+        ],
+      ),
+      binding(
+        "syson-evaluate-requirement",
+        MODEL_EVALUATE_REQUIREMENT_CAPABILITY,
+        "execution",
+        "qualified",
+        "syson-requirement-evaluation-adapter",
+        "1.0.0",
+        null,
+        ["casys.syson-stack"],
+        "src/adapters/architecture/requirements/model-write-requirements-run-executor.ts",
+        [
+          "A provider response is not an L4 or L5 verdict without the registered evaluation path.",
+        ],
+      ),
+      binding(
+        "syson-inspect-system",
+        MODEL_INSPECT_SYSTEM_CAPABILITY,
+        "execution",
+        "qualified",
+        "syson-system-inspection-adapter",
+        "1.0.0",
+        null,
+        ["casys.syson-stack"],
+        "src/adapters/architecture/part-definitions/part-definitions-capture.ts",
+        [
+          "Inspection is a bounded SysML read, not a product navigation authority.",
+        ],
+      ),
+      binding(
+        "build123d-export-admitted-source",
+        GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY,
+        "preparation",
+        "qualified",
+        "build123d-admitted-geometry-export-adapter",
+        "1.0.0",
+        null,
+        ["casys.mcp-build123d-sandbox"],
+        "src/adapters/cad/canonical/design-write-geometry-run-executor.ts",
+        [
+          "The binding exports exact admitted geometry; it does not execute arbitrary agent CAD source.",
+        ],
+      ),
+      binding(
+        "build123d-execute-admitted-source",
+        GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY,
+        "execution",
+        "qualified",
+        "build123d-isolated-execution-adapter",
+        "1.0.0",
+        BUILD123D_EXECUTION_PROFILE,
+        ["casys.build123d-isolated-worker"],
+        "src/adapters/cad/isolated/fixed-build123d-execution-profile-catalog.ts",
+        [
+          "Isolated output is documentary until a separate canonical or proof path admits it.",
+        ],
+      ),
+      binding(
+        "build123d-observe-assembly-integrity",
+        GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY,
+        "execution",
+        "qualified",
+        "build123d-assembly-integrity-observer",
+        "1.0.0",
+        { id: "assembly-integrity-observer", version: "1.0.0" },
+        ["casys.mcp-build123d-observation"],
+        "src/adapters/cad/assembly-integrity/fixed-assembly-integrity-observer-profile-catalog.ts",
+        [
+          "This observer covers exact imported assembly facts only, not collision, motion, force, clearance, safety, or manufacturability.",
+        ],
+      ),
+      binding(
+        "calculix-static-structural",
+        MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY,
+        "execution",
+        "qualified",
+        "calculix-isolated-static-proof-adapter",
+        "1.0.0",
+        CALCULIX_ISOLATED_EXECUTION_PROFILE,
+        ["casys.calculix-worker"],
+        "src/adapters/fea/isolated-v3/fixed-calculix-isolated-execution-profile.ts",
+        [
+          "The local product worker is distinct from HTTP mcp-calculix and from sensitivity reuse.",
+        ],
+      ),
+      binding(
+        "openmodelica-qualified-kit",
+        SIMULATION_RUN_QUALIFIED_MODELICA_CAPABILITY,
+        "execution",
+        "qualified",
+        "modelica-qualified-kit-adapter",
+        "1.0.0",
+        MODELICA_ISOLATED_EXECUTION_PROFILE,
+        ["casys.modelica-qualified-worker"],
+        "src/adapters/modelica/qualified-kit/execution-profile.ts",
+        [
+          "Qualification covers only the pinned LinearThermalRamp kit, not arbitrary admitted Modelica source.",
+        ],
+      ),
+      binding(
+        "openmodelica-admitted-modelica",
+        SIMULATION_RUN_ADMITTED_MODELICA_CAPABILITY,
+        "execution",
+        "unqualified",
+        "modelica-admitted-execution-adapter",
+        "1.0.0",
+        MODELICA_ADMITTED_EXECUTION_PROFILE,
+        ["casys.modelica-worker"],
+        "src/adapters/modelica/admitted/execution-profile-catalog.ts",
+        [
+          "The exact admitted worker platform and qualification capture are not yet catalogued here.",
+        ],
+      ),
+      binding(
+        "ngspice-admitted-circuit",
+        ELECTRONICS_RUN_ADMITTED_SPICE_CAPABILITY,
+        "execution",
+        "qualified",
+        "ngspice-admitted-execution-adapter",
+        "1.0.0",
+        SPICE_ADMITTED_EXECUTION_PROFILE,
+        ["casys.spice-worker"],
+        "src/adapters/electrical/spice/admitted/execution-profile-catalog.ts",
+        [
+          "The Docker distribution image and Microsandbox runtime digest are distinct identities.",
+        ],
+      ),
+    ],
+  });
+}
+
+async function unit(
+  id: string,
+  materials: readonly AtomicCapabilityRuntimeMaterial[],
+): Promise<AtomicCapabilityRuntimeUnit> {
+  const version = "1.0.0";
+  const manifestFingerprint = await fingerprintAtomicCapabilityRuntimeUnit({
+    id,
+    version,
+    materials,
+  });
+  return {
+    id,
+    version,
+    manifestFingerprint,
+    materials,
+  };
+}
+
+function composeMaterial(
+  id: string,
+  imageReference: string,
+  platforms: readonly ("linux/arm64" | "linux/amd64")[],
+  serviceId: string,
+  network: "internal" | "loopback-only",
+  loopbackPorts: readonly number[],
+  volumes: readonly {
+    readonly id: string;
+    readonly access: "read-only" | "read-write";
+    readonly preservation: "preserve" | "ephemeral";
+  }[],
+  security: "reviewed" | "unknown",
+): AtomicCapabilityRuntimeMaterial {
+  return {
+    id,
+    kind: "compose-service",
+    imageReference,
+    platforms,
+    lifecycle: "persistent",
+    effects: {
+      downloadBytes: null,
+      storageBytes: null,
+      services: [{ id: serviceId, lifecycle: "persistent" }],
+      volumes,
+      network,
+      loopbackPorts,
+      bindMounts: [],
+      privileged: false,
+      dockerSocket: false,
+      devices: [],
+      secretSlots: [],
+      licence: { status: "reviewed", reference: REVIEWED_LICENCE_DOC },
+      security,
+    },
+  };
+}
+
+function microvmMaterial(
+  id: string,
+  imageReference: string,
+  platforms: readonly ("linux/arm64" | "linux/amd64")[],
+  security: "reviewed" | "unknown",
+): AtomicCapabilityRuntimeMaterial {
+  return {
+    id,
+    kind: "microvm-image",
+    imageReference,
+    platforms,
+    lifecycle: "ephemeral",
+    effects: {
+      downloadBytes: null,
+      storageBytes: null,
+      services: [{ id, lifecycle: "ephemeral" }],
+      volumes: [],
+      network: "deny-all",
+      loopbackPorts: [],
+      bindMounts: [],
+      privileged: false,
+      dockerSocket: false,
+      devices: [],
+      secretSlots: [],
+      licence: { status: "reviewed", reference: REVIEWED_LICENCE_DOC },
+      security,
+    },
+  };
+}
+
+/**
+ * A digest-pinned OCI distribution source used to prepare the SPICE cache. It
+ * is deliberately not modelled as the distinct Microsandbox execution image.
+ */
+function ociImageMaterial(
+  id: string,
+  imageReference: string,
+  platforms: readonly ("linux/arm64" | "linux/amd64")[],
+  security: "reviewed" | "unknown",
+): AtomicCapabilityRuntimeMaterial {
+  return {
+    id,
+    kind: "oci-image",
+    imageReference,
+    platforms,
+    lifecycle: "cache",
+    effects: {
+      downloadBytes: null,
+      storageBytes: null,
+      services: [],
+      volumes: [],
+      network: "deny-all",
+      loopbackPorts: [],
+      bindMounts: [],
+      privileged: false,
+      dockerSocket: false,
+      devices: [],
+      secretSlots: [],
+      licence: { status: "reviewed", reference: REVIEWED_LICENCE_DOC },
+      security,
+    },
+  };
+}
+
+function volume(
+  id: string,
+  access: "read-only" | "read-write",
+  preservation: "preserve" | "ephemeral",
+) {
+  return { id, access, preservation } as const;
+}
+
+function binding(
+  id: string,
+  capability: { readonly id: string; readonly version: string },
+  use: "preparation" | "execution",
+  qualification: "compatible" | "qualified" | "unqualified" | "revoked",
+  adapterId: string,
+  adapterVersion: string,
+  profile: { readonly id: string; readonly version: string } | null,
+  unitIds: readonly string[],
+  source: string,
+  limitations: readonly string[],
+) {
+  return {
+    id,
+    version: "1.0.0",
+    capability,
+    use,
+    qualification,
+    adapter: { id: adapterId, version: adapterVersion, source },
+    profile: profile === null ? null : { ...profile, fingerprint: null },
+    unitIds,
+    qualificationEvidence: {
+      id: `${id}-qualification`,
+      source,
+      fingerprint: null,
+    },
+    limitations,
+  } as const;
+}

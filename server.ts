@@ -48,6 +48,18 @@ import type { Build123dExecutionServerOptions } from "./src/adapters/cad/isolate
 import type { AdmittedModelicaExecutionServerOptions } from "./src/adapters/modelica/admitted/execution-composition.ts";
 import type { AdmittedSpiceExecutionServerOptions } from "./src/adapters/electrical/spice/admitted/execution-composition.ts";
 import { LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE } from "./src/adapters/electrical/spice/admitted/local-image-references.ts";
+import {
+  LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE,
+  LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
+  LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
+  LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
+} from "./src/adapters/control-plane/first-party-capability-runtime-identities.ts";
+export {
+  LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE,
+  LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
+  LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
+  LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
+} from "./src/adapters/control-plane/first-party-capability-runtime-identities.ts";
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "./src/adapters/cad/sealed-isolated/design-seal-isolated-geometry-run-executor.ts";
 import type { ModelicaIsolatedExecutionServerOptions } from "./src/adapters/modelica/qualified-kit/execution-composition.ts";
 import type { CalculixIsolatedExecutionServerOptions } from "./src/adapters/fea/isolated-v3/calculix-isolated-execution-composition.ts";
@@ -326,17 +338,9 @@ const DEFAULT_PROJECT_BASELINE_DIRECTORY = "config/projects/baselines";
  */
 const DEFAULT_RECORDED_ANALYSIS_DIRECTORY = "state/local/recorded-analysis";
 
-export const LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE =
-  "casys/build123d-microsandbox-worker@sha256:0e19aee61aaab326ec29e50753a0ef56432d255fb44fd21c40988e90ff7601f8" as const;
-export const LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE =
-  "casys/build123d-module-assembler-worker@sha256:5aa833e19f1956a001013661e726c19c4566677a75f58493a6534456b99b6707" as const;
 export const LOCAL_GEOMETRY_MODULE_ASSEMBLY_WRAPPER_SHA256 =
   "609eaf93f2564b88b9103d5e0d53d1dd3e93fcdf8e54c61cc313b957370bf581" as const;
 
-export const LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE =
-  "casys/modelica-microsandbox-worker@sha256:7d3fdeabe794b0ded5360921b16724c7904487e9d11bc24fa37c72f9b92a1894" as const;
-export const LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE =
-  "casys/modelica-microsandbox-worker@sha256:d25f220287cd8d1713e9e7d773afb8bb867fc5404a112e5e50ffa2e862fd6fdf" as const;
 export { LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE };
 const LOCAL_MODELICA_QUALIFICATION_CAPTURE_FINGERPRINT = Object.freeze({
   algorithm: "sha256" as const,
