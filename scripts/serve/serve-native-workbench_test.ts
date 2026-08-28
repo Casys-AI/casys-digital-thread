@@ -29,6 +29,7 @@ import type { ThreadSnapshot } from "../../src/domain/thread/thread-snapshot.ts"
 import type { ThreadSnapshotStore } from "../../src/domain/thread/thread-snapshot-store.ts";
 import {
   createFocusedWorkspaceHandler,
+  createNativeWorkbenchCapabilityWorkbench,
   createNativeWorkbenchHandler,
   hasUnattachedDurableProjectOperationForTest,
   resolveNativeWorkbenchProjectId,
@@ -236,6 +237,52 @@ Deno.test("native Workbench exposes the redacted capability projection by GET on
   assertEquals(rejected.status, 405);
   assertEquals(rejected.headers.get("Allow"), "GET");
   assertEquals(reads, 1);
+});
+
+Deno.test("native Workbench projects capabilities through a non-default ledger directory", async () => {
+  const project = projectFixture("project-custom-ledger", "subject-custom-ledger");
+  const ledgerDirectory = "/tmp/casys-custom-capability-ledgers";
+  let configuredLedgerDirectory: string | undefined;
+  const projection = {
+    schemaVersion: "project-capability-workbench/1.0",
+    project: {
+      id: project.project.id,
+      snapshotId: project.id,
+      revision: project.revision,
+    },
+    authorization: {
+      status: "authorized",
+      fingerprint: { algorithm: "sha256", digest: "d".repeat(64) },
+    },
+  } as never;
+  const capabilityWorkbench = await createNativeWorkbenchCapabilityWorkbench(
+    { "project-capability-ledger-dir": ledgerDirectory },
+    async (options) => {
+      configuredLedgerDirectory = options.ledgerDirectory;
+      return {
+        workbench: {
+          read: (requested) => {
+            assertEquals(requested.id, project.id);
+            return Promise.resolve(projection);
+          },
+        },
+      };
+    },
+  );
+  const handler = createNativeWorkbenchHandler({
+    store: new EmptyThreadStore(),
+    projectStore: new ProjectStore([project]),
+    projectId: project.project.id,
+    html: "unused",
+    capabilityWorkbench,
+  });
+
+  const response = await handler(
+    new Request("http://localhost/api/project/capabilities"),
+  );
+  assertEquals(response.status, 200);
+  assertEquals(configuredLedgerDirectory, ledgerDirectory);
+  assertEquals((await response.json()).authorization.status, "authorized");
 });
 
 Deno.test("native Workbench exposes persisted projects without inventing a default focus", async () => {

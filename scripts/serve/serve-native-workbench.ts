@@ -145,7 +145,11 @@ import type {
 import { resolveGenericProductStructureCatalog } from "../../src/adapters/architecture/renderer/product-structure-catalog.ts";
 import type { GenericGeometryCaptureReader } from "../../src/adapters/cad/canonical/geometry-bundle-product-catalog.ts";
 import type { ProjectCapabilityWorkbenchReader } from "../../src/application/control-plane/project-capability-workbench.ts";
-import { createLocalCapabilityRuntimeReadComposition } from "../../src/adapters/control-plane/local-capability-runtime-read-composition.ts";
+import {
+  createLocalCapabilityRuntimeReadComposition,
+  type LocalCapabilityRuntimeReadCompositionOptions,
+} from "../../src/adapters/control-plane/local-capability-runtime-read-composition.ts";
+import { DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY } from "../../src/adapters/control-plane/file-project-capability-ledger-store.ts";
 
 // ── Catalog resolution: generic active-project projection ────────────────────
 
@@ -300,6 +304,27 @@ export interface NativeWorkbenchStartupTarget {
   readonly workspaceId?: string;
   readonly projectId?: string;
   readonly explicitSubjectId?: string;
+}
+
+/** Read-only factory boundary: it exposes only the BFF projection, never a mutator. */
+export type NativeWorkbenchCapabilityReadCompositionFactory = (
+  options: Pick<LocalCapabilityRuntimeReadCompositionOptions, "ledgerDirectory">,
+) => Promise<{ readonly workbench: ProjectCapabilityWorkbenchReader }>;
+
+/**
+ * The BFF must read the same local authorization ledger as its paired MCP.
+ * This path changes where immutable operational authority is read, never which
+ * binding or provider is selected.
+ */
+export async function createNativeWorkbenchCapabilityWorkbench(
+  cliArgs: Readonly<Record<string, string | undefined>>,
+  createComposition: NativeWorkbenchCapabilityReadCompositionFactory =
+    createLocalCapabilityRuntimeReadComposition,
+): Promise<ProjectCapabilityWorkbenchReader> {
+  return (await createComposition({
+    ledgerDirectory: cliArgs["project-capability-ledger-dir"] ??
+      DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY,
+  })).workbench;
 }
 
 /**
@@ -1535,8 +1560,7 @@ if (import.meta.main) {
   // reads existing immutable revisions and never seeds a fallback.
   const projectStore: EngineeringProjectRevisionStore =
     new FileEngineeringProjectRevisionStore(activeProjectDirectory);
-  const capabilityWorkbench = (await createLocalCapabilityRuntimeReadComposition())
-    .workbench;
+  const capabilityWorkbench = await createNativeWorkbenchCapabilityWorkbench(cliArgs);
   const subjectId = projectId === undefined
     ? undefined
     : await resolveNativeWorkbenchSubjectId(

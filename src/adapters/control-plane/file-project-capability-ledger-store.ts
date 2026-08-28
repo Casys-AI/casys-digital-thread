@@ -15,6 +15,10 @@ import {
   type ProjectCapabilityLedgerStore,
 } from "../../application/ports/out/project-capability-ledger-store.ts";
 
+/** Shared local default for the MCP server and read-only native Workbench. */
+export const DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY =
+  "state/local/project-capability-ledgers";
+
 interface ProjectCapabilityClaim {
   readonly revision: number;
   readonly digest: string;
@@ -60,7 +64,7 @@ class DenoProjectCapabilityLedgerDurability
  */
 export class FileProjectCapabilityLedgerStore implements ProjectCapabilityLedgerStore {
   constructor(
-    private readonly directory = "state/local/project-capability-ledgers",
+    private readonly directory = DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY,
     private readonly durability: ProjectCapabilityLedgerDurability =
       new DenoProjectCapabilityLedgerDurability(),
   ) {}

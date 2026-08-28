@@ -183,6 +183,7 @@ import {
   FileCapabilityRuntimeHostMutationLock,
   FileCapabilityRuntimeLeaseStore,
 } from "./src/adapters/control-plane/file-capability-runtime-host-stores.ts";
+import { DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY } from "./src/adapters/control-plane/file-project-capability-ledger-store.ts";
 import { createCapabilityRuntimeHostAdapter } from "./src/adapters/control-plane/compose-capability-runtime-host.ts";
 import { CapabilityRuntimeLaunchGroupSupervisor } from "./src/application/control-plane/capability-runtime-launch-group-supervisor.ts";
 import { CapabilityRuntimePreloadScheduler } from "./src/application/control-plane/capability-runtime-preload-scheduler.ts";
@@ -366,8 +367,6 @@ const DEFAULT_ASSEMBLY_INTEGRITY_EVALUATION_ATTEMPT_DIRECTORY =
   "state/local/assembly-integrity-evaluation-attempts";
 const DEFAULT_ENGINEERING_PROJECT_RUN_LEASE_DIRECTORY =
   "state/local/engineering-project-run-leases";
-const DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY =
-  "state/local/project-capability-ledgers";
 const DEFAULT_CAPABILITY_RUNTIME_LEASE_DIRECTORY =
   "state/local/capability-runtime-host/leases";
 const DEFAULT_PROJECT_BASELINE_DIRECTORY = "config/projects/baselines";

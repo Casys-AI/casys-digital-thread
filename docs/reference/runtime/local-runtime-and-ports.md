@@ -158,6 +158,11 @@ The Workbench has no POST or command surface. Every command and signed decision 
 the paired MCP conversation, so the cockpit exposes no project mutation or provider-call
 surface.
 
+When the paired MCP is composed with a non-default local capability-ledger directory,
+start the native Workbench with the same `--project-capability-ledger-dir=<path>`. This
+only locates the append-only operational authorization ledger for its read-only
+projection; it never grants the Workbench a command, provider, or host-mutation path.
+
 The Desktop Chat Host is not another loopback API. The Deno host exposes only two
 closed, versioned in-process WebView bindings for sanitized chat snapshot/command DTOs,
 then delegates over private stdio to a separately packaged Chat Host. That host alone
