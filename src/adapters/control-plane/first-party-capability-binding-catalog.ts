@@ -51,6 +51,7 @@ import {
 } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
 import { validateCapabilityRuntimeCatalog } from "./capability-runtime-catalog.ts";
 import {
+  firstPartyCalculixLaunchGroupReference,
   firstPartySysonLaunchGroupReference,
   MCP_SYSON_IMAGE_REFERENCE,
   POSTGRES_IMAGE_REFERENCE,
@@ -75,6 +76,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
   CapabilityRuntimeCatalog
 > {
   const sysonLaunchGroup = await firstPartySysonLaunchGroupReference();
+  const calculixLaunchGroup = await firstPartyCalculixLaunchGroupReference();
   const units = await Promise.all([
     unit("casys.syson-stack", [
       composeMaterial(
@@ -178,6 +180,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
           volume("calculix-runs", "read-write", "preserve"),
         ],
         "reviewed",
+        calculixLaunchGroup,
       ),
     ], "0.8.2"),
     unit("casys.modelica-qualified-worker", [
@@ -330,7 +333,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "src/adapters/sensitivity/live-fea/mcp-calculix-sensitivity-solver.ts",
         [
           "The HTTP sensitivity binding is distinct from the isolated product static-proof worker.",
-          "It remains unqualified and non-activable in S1: no launch group, recorded solve/readback path, or runtime execution session is enrolled yet.",
+          "The exact casys-mcp-calculix launch group is declared but this binding remains unqualified and non-activable until its live contract qualification is recorded.",
           "The binding can emit only static-structural sensitivity observations; no provider health or completed call is an engineering verdict.",
         ],
       ),

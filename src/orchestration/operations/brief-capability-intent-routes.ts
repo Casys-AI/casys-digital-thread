@@ -27,6 +27,19 @@ export const STATIC_STRUCTURAL_FEA_VERIFICATION_AUTHORITY = deepFreeze(
   } satisfies ProjectBriefVerificationAuthority,
 );
 
+/**
+ * Semantic authority for factual finite-difference static-structural
+ * sensitivity observations. It is intentionally separate from a static proof:
+ * a brief must opt in explicitly before the operational ceiling can include
+ * the recorded CalculiX sensitivity binding.
+ */
+export const STATIC_STRUCTURAL_FEA_SENSITIVITY_VERIFICATION_AUTHORITY = deepFreeze(
+  {
+    id: "static-structural-fea-sensitivity",
+    version: "1.0",
+  } satisfies ProjectBriefVerificationAuthority,
+);
+
 /** Semantic authority for admitted Modelica thermal evidence and L4 evaluation. */
 export const ADMITTED_MODELICA_THERMAL_VERIFICATION_AUTHORITY = deepFreeze(
   {
@@ -56,6 +69,10 @@ export const BRIEF_CAPABILITY_INTENT_ROUTES = deepFreeze(
         { id: "design.write-geometry", version: "1" },
         { id: "verify.run-fea-static-proof", version: "3" },
       ],
+    },
+    {
+      authority: STATIC_STRUCTURAL_FEA_SENSITIVITY_VERIFICATION_AUTHORITY,
+      operations: [{ id: "analyze.run-fea-sensitivity", version: "1" }],
     },
     {
       authority: ADMITTED_MODELICA_THERMAL_VERIFICATION_AUTHORITY,

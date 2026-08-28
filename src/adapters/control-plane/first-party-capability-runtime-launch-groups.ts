@@ -8,6 +8,7 @@ import {
 } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import { FixedCapabilityRuntimeLaunchGroupRegistry } from "../../application/control-plane/capability-runtime-launch-group-registry.ts";
+import { MCP_CALCULIX_082_IMAGE_REFERENCE } from "./first-party-capability-runtime-identities.ts";
 
 export const POSTGRES_IMAGE_REFERENCE =
   "docker.io/library/postgres@sha256:926f8799aef36e00001cfe15fba7abbd37d3c5224ea57e4c858e4bb670f10561" as const;
@@ -25,7 +26,7 @@ export const MCP_SYSON_IMAGE_REFERENCE =
 export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
   readonly CapabilityRuntimeLaunchGroup[]
 > {
-  const composeContent = deterministicJson({
+  const sysonComposeContent = deterministicJson({
     services: {
       "syson-db": {
         image: POSTGRES_IMAGE_REFERENCE,
@@ -92,8 +93,8 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
   });
   const compose = {
     schemaVersion: "capability-runtime-compose-descriptor/1.0" as const,
-    content: composeContent,
-    fingerprint: await fingerprintCapabilityRuntimeComposeContent(composeContent),
+    content: sysonComposeContent,
+    fingerprint: await fingerprintCapabilityRuntimeComposeContent(sysonComposeContent),
   };
   const body = {
     schemaVersion: "capability-runtime-launch-group/1.0" as const,
@@ -131,10 +132,77 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
     security: "reviewed" as const,
     qualification: "qualified" as const,
   };
-  return [{
+  const syson = {
     ...body,
     fingerprint: await fingerprintCapabilityRuntimeLaunchGroup(body),
-  }];
+  };
+
+  // CalculiX sensitivity is a deliberately independent, single-service
+  // topology. It has no CAD exchange mount: the server-owned staging adapter
+  // writes only the exact input bytes into its private retained volume, while
+  // recorded provider resources are reread through MCP and captured into CAS.
+  // This descriptor is a sealed launch recipe, not a qualification claim.
+  const calculixComposeContent = deterministicJson({
+    services: {
+      "mcp-calculix": {
+        image: MCP_CALCULIX_082_IMAGE_REFERENCE,
+        // mcp-calculix 0.8.2 owns HTTP startup through its published `http`
+        // mode. It exposes no /health endpoint, so the sealed group makes no
+        // invented readiness claim; process state remains operational only.
+        command: ["http"],
+        environment: {
+          CALCULIX_MAX_RECORDED_RUNS: "24",
+          CALCULIX_RUNS_DIRECTORY: "/var/lib/mcp-calculix-runs",
+        },
+        ports: ["127.0.0.1:3015:3015"],
+        volumes: [
+          "calculix-inputs:/inputs",
+          "calculix-runs:/var/lib/mcp-calculix-runs",
+        ],
+      },
+    },
+    volumes: {
+      "calculix-inputs": {},
+      "calculix-runs": {},
+    },
+  });
+  const calculixCompose = {
+    schemaVersion: "capability-runtime-compose-descriptor/1.0" as const,
+    content: calculixComposeContent,
+    fingerprint: await fingerprintCapabilityRuntimeComposeContent(
+      calculixComposeContent,
+    ),
+  };
+  const calculixBody = {
+    schemaVersion: "capability-runtime-launch-group/1.0" as const,
+    id: "casys-mcp-calculix",
+    version: "0.8.2",
+    activationPolicy: "persistent" as const,
+    acquisition: { kind: "compose" as const, projectName: "casys-mcp-calculix" },
+    materials: [
+      material(
+        "casys.mcp-calculix",
+        "mcp-calculix-image",
+        MCP_CALCULIX_082_IMAGE_REFERENCE,
+        "mcp-calculix",
+        "casys-mcp-calculix",
+      ),
+    ],
+    compose: calculixCompose,
+    retention: {
+      containers: "stop-only" as const,
+      images: "preserve" as const,
+      volumes: "preserve" as const,
+    },
+    secretSlots: [],
+    security: "reviewed" as const,
+    qualification: "unqualified" as const,
+  };
+  const calculix = {
+    ...calculixBody,
+    fingerprint: await fingerprintCapabilityRuntimeLaunchGroup(calculixBody),
+  };
+  return [syson, calculix];
 }
 
 export async function createFirstPartyCapabilityRuntimeLaunchGroupRegistry(): Promise<
@@ -147,7 +215,16 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroupRegistry(): Pr
 
 export async function firstPartySysonLaunchGroupReference() {
   const groups = await createFirstPartyCapabilityRuntimeLaunchGroups();
-  return capabilityRuntimeLaunchGroupReference(groups[0]!);
+  const group = groups.find((candidate) => candidate.id === "casys-syson");
+  if (!group) throw new Error("The first-party SysON launch group is absent.");
+  return capabilityRuntimeLaunchGroupReference(group);
+}
+
+export async function firstPartyCalculixLaunchGroupReference() {
+  const groups = await createFirstPartyCapabilityRuntimeLaunchGroups();
+  const group = groups.find((candidate) => candidate.id === "casys-mcp-calculix");
+  if (!group) throw new Error("The first-party CalculiX launch group is absent.");
+  return capabilityRuntimeLaunchGroupReference(group);
 }
 
 function material(
@@ -155,6 +232,7 @@ function material(
   materialId: string,
   imageReference: string,
   serviceName: string,
+  projectName = "casys-syson",
 ) {
   const digest = imageReference.slice(
     imageReference.lastIndexOf("@sha256:") + "@sha256:".length,
@@ -164,7 +242,7 @@ function material(
     serviceName,
     imageReference,
     ownership: [
-      { key: "com.docker.compose.project", value: "casys-syson" },
+      { key: "com.docker.compose.project", value: projectName },
       { key: "com.docker.compose.service", value: serviceName },
     ],
   } as const;

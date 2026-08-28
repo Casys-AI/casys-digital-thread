@@ -22,11 +22,15 @@ one group intent (all materials) -> closed Compose argv -> terminal outcome -> r
 An immutable `capability-runtime-launch-group/1.0` names an ordered set of exact
 materials and services. It fingerprints a canonical JSON Compose descriptor and records
 its project-scoped default network, ownership labels, retained volumes, secret-slot
-names, security and qualification. One group is usable only when every exact image is
-installed and every expected owned service is healthy at the required qualification.
+names, security and qualification. At qualified or compatible state, one group is usable
+only when every exact image is installed and every expected owned service satisfies its
+declared readiness check. An unqualified group may intentionally omit a healthcheck when
+the published provider has no sealed readiness route; it remains non-activable, and an
+observed running container is only an operational fact, never a substitute for
+qualification.
 
 The descriptor admits only pinned images, literal labels/environment, named retained
-volumes, loopback ports, ordered `depends_on` health edges, health checks, command,
+volumes, loopback ports, ordered `depends_on` health edges, conditional health checks, command,
 `cap_drop`, `security_opt` and platform. It rejects interpolation, `build`, `env_file`,
 `include`, `extends`, configs, Compose secrets, bind mounts/sockets, privileged mode,
 devices and public ports. Top-level named volumes must be empty declarations and match

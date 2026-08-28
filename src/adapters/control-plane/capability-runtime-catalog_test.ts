@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capability-binding-catalog.ts";
 import {
   validateCapabilityRuntimeAdminLock,
@@ -49,7 +49,18 @@ Deno.test("atomic first-party runtime catalogue separates sources with distinct 
     calculix?.materials[0]?.imageReference,
     "ghcr.io/casys-ai/mcp-calculix@sha256:ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8",
   );
-  assertEquals(calculix?.materials[0]?.launchGroup, null);
+  assertEquals(calculix?.materials[0]?.platforms, ["linux/amd64", "linux/arm64"]);
+  assertEquals(calculix?.materials[0]?.launchGroup?.id, "casys-mcp-calculix");
+  assertEquals(calculix?.materials[0]?.launchGroup?.version, "0.8.2");
+  assertEquals(
+    calculix?.materials[0]?.launchGroup?.fingerprint.algorithm,
+    "sha256",
+  );
+  assert(
+    /^[a-f0-9]{64}$/.test(
+      calculix?.materials[0]?.launchGroup?.fingerprint.digest ?? "",
+    ),
+  );
   assertEquals(calculix?.materials[0]?.effects, {
     downloadBytes: null,
     storageBytes: null,

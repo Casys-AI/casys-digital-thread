@@ -58,8 +58,11 @@ request and remains the evaluator; its immutable request/structured-response cap
 a Digital Thread artefact. This is a qualified static proof, not support for arbitrary
 agent-authored `.inp` decks.
 
-Live-FEA sensitivity (`analyze.run-fea-sensitivity@1`) uses fleet `mcp-calculix`. That
-capability is not the provenance of product static `@3`.
+Live-FEA sensitivity (`analyze.run-fea-sensitivity@1`) has a fixed, provider-neutral
+capability binding to the sealed `mcp-calculix` recorded-run group. It can use that group
+only after separate runtime qualification and an active capability session. That
+capability is not the provenance of product static `@3`, and a completed provider run is
+only an L3 observation source.
 
 ## Ports and folders
 

@@ -325,7 +325,6 @@ import {
   createQualifiedModelicaCapability,
 } from "./src/adapters/modelica/server-composition.ts";
 import { createSensitivityComposition } from "./src/adapters/sensitivity/server-composition.ts";
-import { DockerSensitivitySolverRuntimeAuthority } from "./src/adapters/sensitivity/experience/docker-sensitivity-solver-runtime-authority.ts";
 import { createCrossDomainImpactProject } from "./src/adapters/impact/server-composition.ts";
 
 const DEFAULT_PORT = 3020;
@@ -358,7 +357,6 @@ const DEFAULT_REQUIREMENTS_ATTEMPT_DIRECTORY = "state/local/requirements-attempt
  */
 const DEFAULT_CANONICAL_ASSET_DIRECTORY = "state/local/thread-assets";
 const DEFAULT_SENSITIVITY_STEP_CACHE_DIRECTORY = "state/local/sensitivity-step-cache";
-const DEFAULT_SENSITIVITY_EXPERIENCE_DIRECTORY = "state/local/sensitivity-experience";
 const DEFAULT_PRINTABILITY_CASE_CAPTURE_DIRECTORY =
   "state/local/printability-case-captures";
 const DEFAULT_PRINTABILITY_ATTEMPT_DIRECTORY = "state/local/printability-attempts";
@@ -660,7 +658,6 @@ export async function createConsoleServer(
   const build123dSandbox = manifest.servers.find((server) =>
     server.id === "build123d-sandbox"
   );
-  const calculix = manifest.servers.find((server) => server.id === "calculix");
   const dfm = manifest.servers.find((server) => server.id === "dfm");
   const prusaslicer = manifest.servers.find((server) => server.id === "prusaslicer");
   const docker = options.docker ?? new DockerComposeObserver();
@@ -680,10 +677,6 @@ export async function createConsoleServer(
       syson?.mcpUrl,
       build123dSandbox?.mcpUrl,
       build123d,
-      calculix?.mcpUrl,
-      calculix?.image,
-      calculix,
-      docker,
       dfm?.mcpUrl,
       prusaslicer?.mcpUrl,
     )
@@ -782,10 +775,6 @@ async function createProjectControl(
   sysonMcpUrl?: string,
   build123dSandboxMcpUrl?: string,
   assemblyIntegrityBuild123dServer?: DesiredServer,
-  calculixMcpUrl?: string,
-  calculixRuntimeImage?: string,
-  calculixServer?: DesiredServer,
-  docker?: DockerObserver,
   dfmMcpUrl?: string,
   prusaslicerMcpUrl?: string,
 ): Promise<{
@@ -1187,14 +1176,11 @@ async function createProjectControl(
     sensitivityCatalogOfferCaptures: feaFoundation.sensitivityCatalogOfferCaptures,
     sysonModelSeedCaptures: architectureFoundation.sysonModelSeedCaptures,
     build123dExecution: build123dCapability.build123dExecution,
-    calculixMcpUrl,
-    calculixRuntimeImage,
-    sensitivitySolverRuntimeAuthority: calculixServer && docker
-      ? new DockerSensitivitySolverRuntimeAuthority(docker, calculixServer)
-      : undefined,
+    capabilityRuntime,
+    capabilityRuntimeSession,
+    capabilityRuntimeLaunchGroups: capabilityLaunchGroups,
     sysonMcpUrl,
     sensitivityStepCacheDirectory: DEFAULT_SENSITIVITY_STEP_CACHE_DIRECTORY,
-    sensitivityExperienceDirectory: DEFAULT_SENSITIVITY_EXPERIENCE_DIRECTORY,
   });
   const electrical = createLedDriverSourceComposition({
     recordedAnalysisDirectory,

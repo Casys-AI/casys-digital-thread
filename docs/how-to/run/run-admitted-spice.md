@@ -35,7 +35,7 @@ attested `manifestDigest`. Do not pin the Docker index digest as the runtime ima
 `pullPolicy` stays `never`. Server startup does not pull or import.
 
 ```bash
-docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-build123d-sandbox mcp-calculix
+docker compose up -d syson-db syson-app mcp-build123d mcp-build123d-sandbox mcp-syson
 deno task prepare:ngspice:microsandbox   # once per host cache; idempotent
 deno task start:yolo    # YOLO approval only; it does not activate SPICE
 ```

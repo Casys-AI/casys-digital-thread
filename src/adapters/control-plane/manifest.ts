@@ -80,7 +80,9 @@ function validateServer(value: unknown, path: string): DesiredServer {
     `${path}.transport`,
   );
   const mcpUrl = url(input.mcpUrl, `${path}.mcpUrl`);
-  const healthUrl = url(input.healthUrl, `${path}.healthUrl`);
+  const healthUrl = input.healthUrl === undefined
+    ? undefined
+    : url(input.healthUrl, `${path}.healthUrl`);
   const expectedTools = stringArray(input.expectedTools, `${path}.expectedTools`);
 
   const expectedViews = input.expectedViews === undefined

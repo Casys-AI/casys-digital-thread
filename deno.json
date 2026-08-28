@@ -57,9 +57,6 @@
     "check:ui": "npm --prefix src/ui run check",
     "verify:docs": "deno run --no-prompt --frozen --allow-read --allow-run=git scripts/gates/verify-doc-links.ts",
     "verify:evidence": "deno run --allow-read scripts/gates/verify-console-evidence.ts",
-    "verify:fea:contract": "deno run --allow-read=state/fixtures,config scripts/gates/verify-fea-provider-contract.ts",
-    "verify:fea:live": "deno run --allow-net=127.0.0.1,localhost --allow-read=config scripts/gates/verify-fea-live-smoke.ts",
-    "capture:fea:contract-golden": "deno run --allow-net=127.0.0.1,localhost --allow-read=config,examples --allow-write=state/fixtures scripts/gates/capture-fea-contract-golden.ts",
     "fmt": "deno fmt --check deno.json server.ts scripts src/adapters src/application src/domain src/orchestration src/presentation src/testing src/tools experiments/thread-workflow experiments/admission-compiler-spike src/ui/*_test.ts && deno fmt --check src/ui/src",
     "lint": "deno lint server.ts scripts src experiments/admission-compiler-spike"
   },

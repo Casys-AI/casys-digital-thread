@@ -12,9 +12,12 @@ an agent any runtime selection authority.
 
 The currently reviewed first-party material is limited to the platforms literally
 declared by each atomic material. The SysON stack, private Build123d sandbox and
-CalculiX worker each have a `linux/arm64` claim. The catalogue makes no general AMD64
-claim for the CalculiX worker. A missing platform claim stays `unavailable`; it is not
-derived from a registry label or a successful Docker pull.
+CalculiX worker each have a `linux/arm64` claim. The separate
+`casys.mcp-calculix@0.8.2` material declares both `linux/arm64` and `linux/amd64`; on
+this ARM64 host its future live qualification must attest the native ARM64 manifest, not
+an emulated AMD64 fallback. The catalogue makes no general AMD64 claim for the isolated
+CalculiX worker. A missing platform claim stays `unavailable`; it is not derived from a
+registry label or a successful Docker pull.
 
 Exact PostgreSQL, SysON, Build123d, CalculiX, Modelica, SPICE and operating-system
 licences remain properties of their exact images. Source publication neither replaces

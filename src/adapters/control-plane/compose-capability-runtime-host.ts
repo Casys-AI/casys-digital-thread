@@ -277,7 +277,12 @@ class ComposeCapabilityRuntimeHost
             owned[member.serviceName] = actual.id;
             state = {
               material: installed,
-              runtime: actual.status === "running" && actual.health === "healthy"
+              // A sealed group without a Docker healthcheck proves only that
+              // its owned process is running. Do not invent an HTTP readiness
+              // probe for it; this remains operational state, never provider
+              // qualification or an engineering verdict.
+              runtime: actual.status === "running" &&
+                  (actual.health === null || actual.health === "healthy")
                 ? "active"
                 : actual.status === "running"
                 ? "degraded"

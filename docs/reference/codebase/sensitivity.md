@@ -43,12 +43,13 @@ Sensitivity adapters by authority: `study/`, `edges/`, `base-evaluation/`,
 
 #### [`src/adapters/sensitivity/server-composition.ts`](../../../src/adapters/sensitivity/server-composition.ts)
 
-Sensitivity composition. Its legacy direct HTTP adapter remains in code, but S1 marks
-the exact HTTP CalculiX sensitivity binding unqualified and non-activable until the
-recorded solve/readback and launch-group lot. Product static proof remains separate on
-the isolated CalculiX worker; base evaluation and edges require SysON. Vector correction
-is not authorized by a proof-run evaluation. Corrections return through `AgentResource`
-plus a successor workspace file revision, not an admission seal.
+Sensitivity composition binds the fixed recorded CalculiX adapter and exact-group input
+stager behind server-owned ports. The HTTP CalculiX sensitivity binding is deliberately
+unqualified and non-activable until a separate live qualification; its sealed launch
+group and recorded protocol do not alter that state. Product static proof remains
+separate on the isolated CalculiX worker; base evaluation and edges require SysON. Vector
+correction is not authorized by a proof-run evaluation. Corrections return through
+`AgentResource` plus a successor workspace file revision, not an admission seal.
 
 #### [`src/domain/sensitivity/study/sensitivity-study.ts`](../../../src/domain/sensitivity/study/sensitivity-study.ts)
 
@@ -114,9 +115,11 @@ opens the JSON; otherwise the unique signed offer is reopened.
 
 #### [`src/adapters/sensitivity/live-fea/analyze-run-fea-sensitivity-run-executor.ts`](../../../src/adapters/sensitivity/live-fea/analyze-run-fea-sensitivity-run-executor.ts)
 
-Server-owned exact private lookup and reuse WAL before dispatch; exact hits publish
-target facts without CAD/solver, misses run two isolated CAD executions plus two
-attested CalculiX solves; observations only, never a verdict
+Server-owned exact private lookup and reuse WAL before dispatch. A miss starts the
+capability session before claim/WAL/CAD, stages each exact STEP only through the owned
+CalculiX group, and uses one durable request id per phase. Each request is recovered by
+`calculix_run_get`, then proves the ordered nine-resource bundle before CAS capture.
+Observations only, never a verdict or provider qualification.
 
 #### [`src/domain/sensitivity/experience/sensitivity-experience.ts`](../../../src/domain/sensitivity/experience/sensitivity-experience.ts)
 
@@ -205,8 +208,9 @@ published by `verify.seal-proof-case@1`
 Compiles a `sensitivity-study-case-template/3.0` from a ready signed offer: copies
 mesh/loads/metrics and sets `step` to the sealed proof mesh target size
 
-#### [`src/adapters/sensitivity/live-fea/fea-solver-capture.ts`](../../../src/adapters/sensitivity/live-fea/fea-solver-capture.ts)
+#### Retired direct provider smoke
 
-Proof-agnostic strict FEA wire parser used by sensitivity CalculiX and FEA
-provider-contract gates; maps validated output to the domain through an opaque capture
-token
+The former root-Compose synchronous CalculiX parser and smoke gates were retired with
+the shared `/exports` topology. Recorded sensitivity owns the fixed
+`calculix_solve_static_recorded` + readback protocol in
+`mcp-calculix-sensitivity-solver.ts`; it is never a result verdict.
