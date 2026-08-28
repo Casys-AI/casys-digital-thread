@@ -81,9 +81,15 @@ Deno.test("capability supervisor permits a later demand subset without reapprovi
   await fixture.supervisor.validate(queueInput());
 });
 
-Deno.test("capability supervisor queues a demanded binding cold without a host observer", async () => {
+Deno.test("capability supervisor seals the planned exact mode without consulting the Deno process architecture", async () => {
   const fixture = await readyFixture();
   const resolved = await fixture.supervisor.validate(queueInput());
+  assertEquals(resolved?.bindings[0]?.runtimeModes, [{
+    material: fixture.material,
+    targetPlatform: "linux/amd64",
+    mode: "emulated",
+    qualificationAttestationFingerprint: FINGERPRINT,
+  }]);
   assertEquals(resolved?.bindings[0]?.hostLifecycles, [{
     material: fixture.material,
     kind: "ephemeral-microsandbox",
@@ -189,6 +195,16 @@ Deno.test("capability supervisor resolves exact approved binding, profile, mater
       unitId: "casys.calculix-worker",
       materialId: "calculix-worker",
       imageDigest: IMAGE_DIGEST,
+    }],
+    runtimeModes: [{
+      material: {
+        unitId: "casys.calculix-worker",
+        materialId: "calculix-worker",
+        imageDigest: IMAGE_DIGEST,
+      },
+      targetPlatform: "linux/amd64",
+      mode: "emulated",
+      qualificationAttestationFingerprint: FINGERPRINT,
     }],
     hostLifecycles: [{
       material: {
@@ -373,7 +389,7 @@ function runtimeContext(
         id: material.materialId,
         kind: "microvm-image",
         imageReference: `example.test/calculix@sha256:${material.imageDigest}`,
-        platforms: ["linux/arm64"],
+        platforms: ["linux/amd64"],
         lifecycle: "ephemeral",
         launchGroup: null,
         effects: {},
@@ -392,6 +408,12 @@ function runtimeContext(
       profile: { id: "calculix-static", version: "1", fingerprint: FINGERPRINT },
       unitIds: [material.unitId],
       qualificationEvidence: { id: "qualification", source: "test", fingerprint: null },
+      runtimeModes: [{
+        material,
+        targetPlatform: "linux/amd64",
+        mode: "emulated",
+        qualificationAttestationFingerprint: FINGERPRINT,
+      }],
       limitations: [],
     }],
   } as unknown as CapabilityRuntimeCatalog;
@@ -409,6 +431,16 @@ function runtimeContext(
       },
       unitIds: [material.unitId],
       reasons: [],
+    }],
+    materials: [{
+      unitId: material.unitId,
+      materialId: material.materialId,
+      imageReference: `example.test/calculix@sha256:${material.imageDigest}`,
+      mode: "emulated",
+      imageState: "present",
+      desired: "active",
+      downloadBytes: null,
+      storageBytes: null,
     }],
   } as unknown as ProjectCapabilityPlan;
   return {

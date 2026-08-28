@@ -147,6 +147,7 @@ function operationFor(
         adapter: { id: "calculix-worker", version: "1", source: "server" },
         profile: null,
         materials: [micro],
+        runtimeModes: [runtimeMode(micro)],
         hostLifecycles: [{
           material: micro,
           kind: "ephemeral-microsandbox",
@@ -173,7 +174,17 @@ function persistentBinding(
     adapter: { id, version: "1", source: "server" },
     profile: null,
     materials: [material],
+    runtimeModes: [runtimeMode(material)],
     hostLifecycles: [{ material, kind: "persistent-compose" as const, launchGroup }],
+  };
+}
+
+function runtimeMode(material: CapabilityRuntimeMaterialIdentity) {
+  return {
+    material,
+    targetPlatform: "linux/arm64" as const,
+    mode: "native" as const,
+    qualificationAttestationFingerprint: null,
   };
 }
 

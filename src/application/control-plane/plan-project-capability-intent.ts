@@ -171,7 +171,7 @@ export function projectCapabilityEnvelopeDelta(
     .flatMap((key) => {
       const before = previousBindings.get(key) ?? null;
       const after = nextBindings.get(key) ?? null;
-      return deterministicJson(before) === deterministicJson(after)
+      return sameAuthorizationBinding(before, after)
         ? []
         : [{ requirementKey: key, previous: before, next: after }];
     })
@@ -209,7 +209,7 @@ export function projectCapabilityEnvelopeDelta(
     .flatMap((key) => {
       const before = previousMaterials.get(key);
       const after = nextMaterials.get(key)!;
-      return before && deterministicJson(before) !== deterministicJson(after)
+      return before && !sameAuthorizedMaterial(before, after)
         ? [{ key, previous: before, next: after }]
         : [];
     })
@@ -277,10 +277,9 @@ export function projectCapabilityProposalCovers(
   );
   for (const material of proposal.materials) {
     const authorized = envelopeMaterials.get(materialKey(material));
-    // This includes image identity, platform mode and exact byte estimates for
-    // every retained material. A plan may omit material, but it may never turn
-    // native into emulated (or silently alter a digest-pinned material).
-    if (!authorized || deterministicJson(authorized) !== deterministicJson(material)) {
+    // Runtime mode is observed locally after authorization. Image identity and
+    // exact byte estimates remain part of the human-approved ceiling.
+    if (!authorized || !sameAuthorizedMaterial(authorized, material)) {
       return false;
     }
   }
@@ -431,9 +430,49 @@ function bindingKeyByRequirement(
   return new Map(proposal.bindings.map((binding) => {
     return [
       engineeringCapabilityRequirementKey(binding.requirement),
-      deterministicJson(binding),
+      deterministicJson(authorizationBinding(binding)),
     ];
   }));
+}
+
+/** Runtime availability is intentionally not part of the approved ceiling. */
+function authorizationBinding(
+  binding: ProjectCapabilityProposal["bindings"][number] | null,
+): unknown {
+  if (binding === null) return null;
+  const candidate = binding.candidate;
+  return {
+    requirement: binding.requirement,
+    // Qualification is a current local observation.  The human ceiling keeps
+    // the exact selectable binding, adapter/profile and units, so an exact
+    // `unqualified -> qualified` transition cannot manufacture an amendment.
+    candidate: candidate === undefined ? null : {
+      id: candidate.id,
+      version: candidate.version,
+      adapter: candidate.adapter,
+      profile: candidate.profile,
+      unitIds: candidate.unitIds,
+    },
+  };
+}
+
+function sameAuthorizationBinding(
+  left: ProjectCapabilityProposal["bindings"][number] | null,
+  right: ProjectCapabilityProposal["bindings"][number] | null,
+): boolean {
+  return deterministicJson(authorizationBinding(left)) ===
+    deterministicJson(authorizationBinding(right));
+}
+
+/** `unavailable → emulated/native` is a local qualification change, not an amendment. */
+function sameAuthorizedMaterial(
+  left: ProjectCapabilityProposal["materials"][number],
+  right: ProjectCapabilityProposal["materials"][number],
+): boolean {
+  return left.unitId === right.unitId && left.materialId === right.materialId &&
+    left.imageReference === right.imageReference &&
+    left.downloadBytes === right.downloadBytes &&
+    left.storageBytes === right.storageBytes;
 }
 
 function materialKey(value: ProjectCapabilityProposal["materials"][number]): string {

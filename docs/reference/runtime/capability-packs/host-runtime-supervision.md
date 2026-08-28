@@ -24,6 +24,16 @@ material response, or missing response for an owned material is rejected. A mate
 which no local observer owns remains literally `unavailable` in the Workbench rather
 than being guessed present or absent.
 
+The factual observation contains only the local platform, installed exact images and an
+opaque stable local-host identity fingerprint. It does not declare global emulation. The
+same local read composition overlays the immutable catalogue with the append-only
+qualification-attestation store at
+`state/local/capability-runtime-host/qualification-attestations/`. Queue, session and
+Workbench contexts therefore see the same effective per-material modes. An attestation
+must match the current binding, unit manifest, digest, profile, contract, launch group
+and host identity exactly; an absent or mismatched mode blocks resolution before any
+host mutation.
+
 `GET /api/project/capabilities` exposes the existing redacted
 `project-capability-workbench/1.0` projection through the native Workbench BFF. It has
 no POST/SSE counterpart in this lot and contains no Docker argv, image repository,

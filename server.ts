@@ -981,6 +981,7 @@ async function createProjectControl(
     catalog: capabilityRead.catalog,
     policy: capabilityRead.policy,
     host: capabilityRead.host,
+    qualifications: capabilityRead.qualifications,
     lock: capabilityRead.lock,
     preloadScheduler: new CapabilityRuntimePreloadScheduler({
       host: capabilityRuntimeGroups,

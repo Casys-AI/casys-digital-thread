@@ -43,8 +43,8 @@ Deno.test("brief capability authorization retains resolved candidates beside an 
       ),
       host: {
         schemaVersion: "capability-runtime-host-observation/1.0",
+        identityFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
         platform: "linux/arm64",
-        emulatedPlatforms: [],
         images: [],
       },
       lock: new FileCapabilityRuntimeAdminLockStore(
@@ -334,8 +334,8 @@ async function authorizationService(
     },
     host: {
       schemaVersion: "capability-runtime-host-observation/1.0",
+      identityFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
       platform: "linux/arm64",
-      emulatedPlatforms: [],
       images: [],
     },
     lock: {
