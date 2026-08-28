@@ -10,9 +10,11 @@ do not add an agent-facing provider selector or give the Workbench runtime autho
 | [Project capability demand](project-capability-demand.md) | Exact provider-neutral ceiling from registered operation runtime demands |
 | [Atomic runtime catalogue](atomic-runtime-catalog.md) | Trusted bindings, concrete units and pure project host planning |
 | [Atomic runtime boundaries](atomic-runtime-boundaries.md) | Platform, licence, security, and retained-data limits for those units |
+| [Project capability authorization](project-capability-authorization.md) | Brief-bound operational ceiling, append-only amendments and read-only inspection |
 
 `Behave Foundation` remains a derived recipe name only: it is neither an installable
-pack nor a separate capability authority. The future host approval and lazy-activation
-lifecycle is recorded separately in the
+pack nor a separate capability authority. The executable surface records a separate,
+brief-bound operational authorization ledger. Runtime acquisition, JIT activation and
+leases remain a later supervisor concern; authorization itself never starts Docker or a
+worker. The proposed evolution is recorded separately in the
 [Project capability envelope RFC](../../../rfcs/capability-packs/project-capability-envelope.md).
-It is not part of the current executable surface.

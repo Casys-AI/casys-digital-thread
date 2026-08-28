@@ -179,7 +179,18 @@ import { loadRunFixtures } from "./src/adapters/control-plane/run-fixtures.ts";
 import { ControlPlane } from "./src/application/control-plane/control-plane.ts";
 import { EngineeringProjectCommandError } from "./src/application/use-cases/project/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "./src/application/use-cases/project/project-brief-command-service.ts";
-import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "./src/orchestration/operations/registry.ts";
+import { ProjectCapabilityAuthorizationService } from "./src/application/control-plane/project-capability-authorization-service.ts";
+import { FileProjectCapabilityLedgerStore } from "./src/adapters/control-plane/file-project-capability-ledger-store.ts";
+import { createFirstPartyCapabilityRuntimeCatalog } from "./src/adapters/control-plane/first-party-capability-binding-catalog.ts";
+import {
+  type CapabilityRuntimeAdminLock,
+  type CapabilityRuntimeAdminPolicy,
+  type CapabilityRuntimeHostObservation,
+} from "./src/application/control-plane/read-model/capability-runtime-catalog.ts";
+import {
+  listRegisteredEngineeringOperations,
+  REGISTERED_ENGINEERING_OPERATION_REGISTRY,
+} from "./src/orchestration/operations/registry.ts";
 import {
   VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
 } from "./src/orchestration/operations/fea-isolated-static-proof.ts";
@@ -201,6 +212,10 @@ import {
   type ProjectBriefToolDependencies,
   registerProjectBriefTools,
 } from "./src/tools/project-brief.ts";
+import {
+  type ProjectCapabilityToolDependencies,
+  registerProjectCapabilityTools,
+} from "./src/tools/project-capabilities.ts";
 import {
   type CockpitFocusToolDependencies,
   registerCockpitFocusTools,
@@ -331,6 +346,8 @@ const DEFAULT_ASSEMBLY_INTEGRITY_EVALUATION_ATTEMPT_DIRECTORY =
   "state/local/assembly-integrity-evaluation-attempts";
 const DEFAULT_ENGINEERING_PROJECT_RUN_LEASE_DIRECTORY =
   "state/local/engineering-project-run-leases";
+const DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY =
+  "state/local/project-capability-ledgers";
 const DEFAULT_PROJECT_BASELINE_DIRECTORY = "config/projects/baselines";
 /**
  * One closed local root for the recorded-analysis vertical. Every child store
@@ -536,6 +553,8 @@ export interface CreateConsoleServerOptions {
   agentResourceDirectory?: string;
   /** Append-only project source workspace event log. */
   projectSourceWorkspaceDirectory?: string;
+  /** Separate local host-operational authorization ledger; never Thread state. */
+  projectCapabilityLedgerDirectory?: string;
   /**
    * Explicit qualified Build123d profile and optional isolated runtime.
    * Omitted means no review tool and no executor. A profile without a runtime
@@ -621,6 +640,12 @@ export async function createConsoleServer(
   const projectBrief = options.projectBrief === false
     ? undefined
     : options.projectBrief ?? defaultProjectTools?.brief;
+  const projectCapabilities = projectBrief === undefined
+    ? undefined
+    : defaultProjectTools?.capabilities ?? {
+      projects: projectBrief.projects,
+      authorization: projectBrief.capabilityAuthorization,
+    };
   const cockpitFocus = options.cockpitFocus === false || !projectControl
     ? undefined
     : options.cockpitFocus ?? createCockpitFocus(options);
@@ -691,6 +716,9 @@ export async function createConsoleServer(
   if (projectBrief) {
     registerProjectBriefTools(app, { ...projectBrief, approvalMode });
   }
+  if (projectCapabilities) {
+    registerProjectCapabilityTools(app, { ...projectCapabilities, approvalMode });
+  }
   if (cockpitFocus) registerCockpitFocusTools(app, cockpitFocus);
   return { app, controlPlane };
 }
@@ -709,6 +737,7 @@ async function createProjectControl(
 ): Promise<{
   readonly control: ProjectControlToolDependencies;
   readonly brief: ProjectBriefToolDependencies;
+  readonly capabilities: ProjectCapabilityToolDependencies;
   readonly bindAgentResources: ReturnType<
     typeof createAgentResourceIngress
   >["bind"];
@@ -864,6 +893,38 @@ async function createProjectControl(
         frontends: briefSourceAnalysisFrontends,
       },
     ),
+  });
+  const capabilityCatalog = await createFirstPartyCapabilityRuntimeCatalog();
+  const capabilityPolicy: CapabilityRuntimeAdminPolicy = {
+    schemaVersion: "capability-runtime-admin-policy/1.0",
+    disabledBindingIds: [],
+    preferences: [],
+  };
+  const capabilityHost: CapabilityRuntimeHostObservation = {
+    schemaVersion: "capability-runtime-host-observation/1.0",
+    platform: Deno.build.arch === "aarch64" ? "linux/arm64" : "linux/amd64",
+    emulatedPlatforms: [],
+    // Runtime supervisor ownership is a later lot. Cache presence is not part
+    // of a capability authorization fingerprint, so the initial authority
+    // remains deterministic while that supervisor is absent.
+    images: [],
+  };
+  const capabilityLock: CapabilityRuntimeAdminLock = {
+    schemaVersion: "capability-runtime-admin-lock/1.0",
+    revision: 0,
+    previous: null,
+    units: [],
+  };
+  const capabilityAuthorization = new ProjectCapabilityAuthorizationService({
+    ledgers: new FileProjectCapabilityLedgerStore(
+      options.projectCapabilityLedgerDirectory ??
+        DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY,
+    ),
+    registry: { list: listRegisteredEngineeringOperations },
+    catalog: capabilityCatalog,
+    policy: capabilityPolicy,
+    host: capabilityHost,
+    lock: capabilityLock,
   });
 
   const architectureProject = createArchitectureProject({
@@ -1307,6 +1368,11 @@ async function createProjectControl(
     brief: {
       projects: runtime.projects,
       commands: new ProjectBriefCommandService(runtime.projects),
+      capabilityAuthorization,
+    },
+    capabilities: {
+      projects: runtime.projects,
+      authorization: capabilityAuthorization,
     },
     bindAgentResources: (app) => agentResourceIngress.bind(app),
     control: {

@@ -1,0 +1,80 @@
+# Reference: project capability authorization
+
+Audience: both · Diátaxis: reference · Kind: contract
+
+`project-capability-proposal/1.0` is the server-derived, host-operational ceiling
+reviewed with a project brief. It is separate from the project Thread, an engineering
+MRTR and every L3/L4/L5 result. It authorizes only the exact concrete runtime material
+that the server has selected from its trusted catalogue and local policy.
+
+The caller never sends a capability, provider, image, endpoint, tool or argument. The
+proposal contains the semantic needs derived from the pending brief, one policy-selected
+binding candidate per resolved need, atomic unit versions/manifest identities, OCI
+digests, platform mode, storage estimates and declared host effects. Secret slot names
+may be shown; secret values never are. A qualification or platform blocker remains
+literal while its exact candidate stays visible for one approval decision.
+
+## Brief confirmation
+
+`project_brief_propose` returns a `capabilityProposal` beside the pending framing. Its
+`capabilityProposalFingerprint` is the only capability value that
+`project_brief_confirm` may echo. The server prepares a local ledger event before it
+approves the brief, then finalizes the authorization only against the exact approved
+brief receipt. A retry after an interruption is idempotent only when that prepared
+proposal and receipt match exactly. A prepared record alone is not authority.
+
+The full proposal fingerprint also binds the exact brief basis, so it is the value used
+to confirm that particular brief revision. Separately, the server derives an internal
+ceiling equivalence fingerprint. It excludes only the brief basis and editorial proposal
+provenance, while retaining the intent fingerprint, requirements, selected
+bindings/profiles, unit manifests/digests, material platform modes, effects, licences,
+byte estimates, status, activation and blockers. An editorial brief revision can reuse
+an already-authorized ceiling only when that exact equivalence holds and the new brief
+has its own exact approval receipt. Cache presence and the runtime administration lock
+are excluded from both fingerprints.
+
+## Ledger and later change
+
+The local `project-capability-ledger/1.0` is append-only. Every revision carries the
+complete prior event prefix, a previous-revision fingerprint and individual event
+fingerprints. On read, the effective envelope is reconstructed from that history and
+must match the stored projection. The write protocol publishes one synced,
+same-directory temporary pending body through an exclusive hard link before an empty
+`createNew` claim whose filename carries the exact ledger digest. Temporary files are
+inert after interruption; a visible pending or claim is therefore never a partial
+authority artifact. A matching claim plus pending revision is recovered idempotently; an
+unclaimed pending revision may be completed only by the exact logical preparation that
+created it. A foreign or mismatched pending/claim fails closed.
+
+On supported local macOS and Linux filesystems, the server also synchronizes the parent
+directory after every authority-visible metadata transition: temporary creation and
+cleanup, pending publication, claim creation, pending-to-revision publication, and
+stale-pending cleanup. It does not silently downgrade this guarantee: unavailable or
+failing directory synchronization leaves the append failed and grants no runtime
+authority. Other host platforms require an explicit durable-filesystem implementation
+before they can use this local ledger.
+
+`project_capability_inspect` is read-only. After a plan is published,
+`project_capability_change_review` derives its exact demand again. A strict subset of
+the approved envelope needs no prompt. A widening, binding/profile/digest change or new
+host effect produces an amendment review with a structured delta: requirements,
+bindings, units, materials, host effects and known-or-unknown byte change. An amendment
+stores that delta rather than a duplicate successor envelope and must reconstruct its
+exact server-derived successor fingerprint.
+
+The review returns an explicit `revoked` state when the effective envelope was revoked;
+such an envelope can neither cover a plan nor be amended. The amendment elicitation
+returns the exact opaque proposal fingerprint in structured content, and a signed retry
+must echo it unchanged.
+
+V1 revocation is deliberately `full-envelope` only. It records no destructive host
+action and never removes Thread, CAS, WAL or retained volumes. Partial revocation and
+runtime install/activation/remove semantics require the later supervisor contract.
+
+## Authority boundary
+
+Operational authorization says that a named local runtime may be acquired or used on
+this host. An MRTR separately admits a method, inputs and criteria. L3 observations, L4
+deterministic evaluation and L5 human judgement remain domain results. Neither a
+candidate, health status, installation nor completed runtime operation is a scientific
+or product verdict.

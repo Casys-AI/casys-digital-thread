@@ -214,6 +214,24 @@ export interface PlannedProjectCapabilityBinding {
   } | null;
   readonly unitIds: readonly string[];
   readonly reasons: readonly string[];
+  /**
+   * A policy-selected concrete candidate retained for an operational review
+   * even when it cannot be activated yet (for example it is unqualified or
+   * only available on an unobserved platform). This is deliberately separate
+   * from `binding`: `binding` remains non-null only when the normal runtime
+   * plan may select it for activation.
+   */
+  readonly candidate?: CapabilityRuntimeBindingCandidate;
+}
+
+/** Exact server-selected binding identity shown in a capability review. */
+export interface CapabilityRuntimeBindingCandidate {
+  readonly id: string;
+  readonly version: string;
+  readonly qualification: QualifiedCapabilityRuntimeBinding["qualification"];
+  readonly adapter: CapabilityRuntimeAdapterReference;
+  readonly profile: CapabilityRuntimeProfileReference | null;
+  readonly unitIds: readonly string[];
 }
 
 export interface PlannedCapabilityRuntimeMaterial {
@@ -266,4 +284,31 @@ export interface ProjectCapabilityPlanningInput {
   readonly policy: CapabilityRuntimeAdminPolicy;
   readonly host: CapabilityRuntimeHostObservation;
   readonly lock: CapabilityRuntimeAdminLock;
+}
+
+/**
+ * Shared, pure planning input for an already server-derived semantic ceiling.
+ * It intentionally has no project, brief, provider endpoint, tool, or caller
+ * supplied runtime fields. The two callers are the published-plan demand and
+ * the pending-brief capability intent.
+ */
+export interface CapabilityRuntimeRequirementsPlanningInput {
+  readonly requirements: readonly RequiredEngineeringCapability[];
+  readonly unresolvedBlockers: readonly string[];
+  readonly catalog: CapabilityRuntimeCatalog;
+  readonly policy: CapabilityRuntimeAdminPolicy;
+  readonly host: CapabilityRuntimeHostObservation;
+  readonly lock: CapabilityRuntimeAdminLock;
+  /** Keep the one policy-selected candidate visible despite activation blockers. */
+  readonly preserveBlockedCandidates?: boolean;
+}
+
+/** Pure planner output without an engineering-project demand identity. */
+export interface CapabilityRuntimeRequirementsPlan {
+  readonly bindings: readonly PlannedProjectCapabilityBinding[];
+  readonly materials: readonly PlannedCapabilityRuntimeMaterial[];
+  readonly effects: ProjectCapabilityPlanEffects;
+  readonly status: "ready" | "changes-required" | "blocked" | "unresolved";
+  readonly activation: "allowed" | "blocked";
+  readonly blockers: readonly string[];
 }

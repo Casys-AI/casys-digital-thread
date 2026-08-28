@@ -6,9 +6,12 @@ import type {
 import type {
   AtomicCapabilityRuntimeMaterial,
   AtomicCapabilityRuntimeUnit,
+  CapabilityRuntimeBindingCandidate,
   CapabilityRuntimeBindingPreference,
   CapabilityRuntimeHostEffects,
   CapabilityRuntimeMode,
+  CapabilityRuntimeRequirementsPlan,
+  CapabilityRuntimeRequirementsPlanningInput,
   PlannedCapabilityRuntimeMaterial,
   PlannedProjectCapabilityBinding,
   ProjectCapabilityPlan,
@@ -30,26 +33,39 @@ import {
 export async function planProjectCapability(
   input: ProjectCapabilityPlanningInput,
 ): Promise<ProjectCapabilityPlan> {
+  const requirementsPlan = await planCapabilityRuntimeRequirements({
+    requirements: input.demand.plannedCeiling.capabilityRequirements,
+    unresolvedBlockers: unresolvedDemandBlockersFor(input),
+    catalog: input.catalog,
+    policy: input.policy,
+    host: input.host,
+    lock: input.lock,
+  });
+  return deepFreeze({
+    schemaVersion: PROJECT_CAPABILITY_PLAN_SCHEMA_VERSION,
+    mutatesRuntime: false,
+    demandFingerprint: input.demand.plannedCeilingFingerprint,
+    registryFingerprint: input.demand.registryFingerprint,
+    ...requirementsPlan,
+  });
+}
+
+/**
+ * Pure planner shared by a published project demand and a pending brief
+ * intent. Neither entry point can perform a runtime action.
+ */
+export async function planCapabilityRuntimeRequirements(
+  input: CapabilityRuntimeRequirementsPlanningInput,
+): Promise<CapabilityRuntimeRequirementsPlan> {
   await assertCanonicalCatalogManifestFingerprints(input.catalog.units);
-  const unresolvedDemandBlockers = unresolvedDemandBlockersFor(input);
-  if (unresolvedDemandBlockers.length > 0) {
-    return deepFreeze({
-      schemaVersion: PROJECT_CAPABILITY_PLAN_SCHEMA_VERSION,
-      mutatesRuntime: false,
-      demandFingerprint: input.demand.plannedCeilingFingerprint,
-      registryFingerprint: input.demand.registryFingerprint,
-      bindings: [],
-      materials: [],
-      effects: aggregateEffects([]),
-      status: "unresolved" as const,
-      activation: "blocked" as const,
-      blockers: unresolvedDemandBlockers,
-    });
-  }
-  const bindings = input.demand.plannedCeiling.capabilityRequirements
+  const bindings = input.requirements
     .map((requirement) => planRequirement(requirement, input))
     .toSorted((left, right) => compareRequirement(left.requirement, right.requirement));
-  const selectedUnits = uniqueSelectedUnits(bindings, input);
+  const selectedUnits = uniqueSelectedUnits(
+    bindings,
+    input,
+    input.preserveBlockedCandidates === true,
+  );
   const materials = selectedUnits
     .flatMap((unit) =>
       unit.materials.map((material) => planMaterial(unit, material, input))
@@ -59,6 +75,7 @@ export async function planProjectCapability(
   const unresolved = bindings.filter((binding) => binding.status !== "selected");
   const lockBlockers = lockBlockersFor(selectedUnits, input);
   const blockers = [
+    ...input.unresolvedBlockers,
     ...unresolved.flatMap((binding) => binding.reasons),
     ...lockBlockers,
     ...(effects.security === "unknown"
@@ -67,11 +84,11 @@ export async function planProjectCapability(
       ]
       : []),
   ].toSorted(compareText);
-  const activation = unresolved.length > 0 ||
+  const activation = input.unresolvedBlockers.length > 0 || unresolved.length > 0 ||
       effects.security === "unknown" || lockBlockers.length > 0
     ? "blocked" as const
     : "allowed" as const;
-  const status = unresolved.length > 0
+  const status = input.unresolvedBlockers.length > 0 || unresolved.length > 0
     ? "unresolved" as const
     : activation === "blocked"
     ? "blocked" as const
@@ -82,10 +99,6 @@ export async function planProjectCapability(
     : "ready" as const;
 
   return deepFreeze({
-    schemaVersion: PROJECT_CAPABILITY_PLAN_SCHEMA_VERSION,
-    mutatesRuntime: false,
-    demandFingerprint: input.demand.plannedCeilingFingerprint,
-    registryFingerprint: input.demand.registryFingerprint,
     bindings,
     materials,
     effects,
@@ -134,7 +147,7 @@ async function assertCanonicalCatalogManifestFingerprints(
 
 function planRequirement(
   requirement: RequiredEngineeringCapability,
-  input: ProjectCapabilityPlanningInput,
+  input: CapabilityRuntimeRequirementsPlanningInput,
 ): PlannedProjectCapabilityBinding {
   const matching = input.catalog.bindings.filter((binding) =>
     sameRequirement(binding, requirement)
@@ -166,6 +179,61 @@ function planRequirement(
   const qualified = nonRevoked.filter((binding) =>
     qualificationCovers(binding.qualification, requirement.minimumQualification)
   );
+  if (input.preserveBlockedCandidates) {
+    const selected = selectBinding(
+      nonRevoked,
+      requirement,
+      input.policy.preferences,
+    );
+    if (selected !== null) {
+      const candidate = bindingCandidate(selected);
+      const units = selected.unitIds.map((id) =>
+        input.catalog.units.find((unit) => unit.id === id)!
+      );
+      const platformResult = units.flatMap((unit) =>
+        unit.materials.map((material) => materialMode(material, input))
+      );
+      const reasons: string[] = [];
+      let status:
+        | Exclude<PlannedProjectCapabilityBinding["status"], "selected">
+        | undefined;
+      if (
+        !qualificationCovers(selected.qualification, requirement.minimumQualification)
+      ) {
+        status = "unavailable";
+        reasons.push(
+          `Selected binding ${selected.id} does not meet ${requirement.minimumQualification} qualification for ${
+            capabilityLabel(requirement)
+          }.`,
+        );
+      }
+      if (platformResult.some((result) => result.mode === "unavailable")) {
+        status = platformResult.some((result) => result.reason === "unknown-platform")
+          ? "unavailable"
+          : "incompatible";
+        reasons.push(
+          `Host ${input.host.platform} cannot run every material required by ${selected.id}, natively or through its observed emulation.`,
+        );
+      }
+      if (status !== undefined) {
+        return unresolved(
+          requirement,
+          status,
+          reasons,
+          candidate,
+          selected.unitIds,
+        );
+      }
+      return selectedBinding(requirement, selected);
+    }
+    if (nonRevoked.length > 1) {
+      return unresolved(requirement, "ambiguous", [
+        `Local policy does not choose one of ${
+          nonRevoked.map((binding) => binding.id).toSorted(compareText).join(", ")
+        } for ${capabilityLabel(requirement)}.`,
+      ]);
+    }
+  }
   if (qualified.length === 0) {
     return unresolved(requirement, "unavailable", [
       `No enabled, non-revoked binding meets ${requirement.minimumQualification} qualification for ${
@@ -203,30 +271,61 @@ function planRequirement(
       `Host ${input.host.platform} cannot run every material required by ${selected.id}, natively or through its observed emulation.`,
     ]);
   }
-  return deepFreeze({
-    requirement: structuredClone(requirement),
-    status: "selected" as const,
-    binding: {
-      id: selected.id,
-      version: selected.version,
-      qualification: selected.qualification as CapabilityQualification,
-    },
-    unitIds: [...selected.unitIds].toSorted(compareText),
-    reasons: [],
-  });
+  return selectedBinding(requirement, selected);
 }
 
 function unresolved(
   requirement: RequiredEngineeringCapability,
   status: Exclude<PlannedProjectCapabilityBinding["status"], "selected">,
   reasons: readonly string[],
+  candidate?: CapabilityRuntimeBindingCandidate,
+  candidateUnitIds?: readonly string[],
 ): PlannedProjectCapabilityBinding {
   return deepFreeze({
     requirement: structuredClone(requirement),
     status,
     binding: null,
-    unitIds: [],
+    unitIds: candidateUnitIds === undefined
+      ? []
+      : [...candidateUnitIds].toSorted(compareText),
     reasons: [...reasons].toSorted(compareText),
+    ...(candidate === undefined ? {} : { candidate }),
+  });
+}
+
+function selectedBinding(
+  requirement: RequiredEngineeringCapability,
+  selected: QualifiedCapabilityRuntimeBinding,
+): PlannedProjectCapabilityBinding {
+  if (
+    selected.qualification !== "compatible" && selected.qualification !== "qualified"
+  ) {
+    throw new TypeError(`Selected binding ${selected.id} is not activation-qualified.`);
+  }
+  return deepFreeze({
+    requirement: structuredClone(requirement),
+    status: "selected" as const,
+    binding: {
+      id: selected.id,
+      version: selected.version,
+      qualification: selected.qualification,
+    },
+    unitIds: [...selected.unitIds].toSorted(compareText),
+    reasons: [],
+    candidate: bindingCandidate(selected),
+  });
+}
+
+function bindingCandidate(
+  selected: QualifiedCapabilityRuntimeBinding,
+): CapabilityRuntimeBindingCandidate {
+  return deepFreeze({
+    id: selected.id,
+    version: selected.version,
+    qualification: selected.qualification,
+    adapter: structuredClone(selected.adapter),
+    profile: selected.profile === null ? null : structuredClone(selected.profile),
+    unitIds: [...selected.unitIds].toSorted(compareText),
   });
 }
 
@@ -251,11 +350,13 @@ function selectBinding(
 
 function uniqueSelectedUnits(
   bindings: readonly PlannedProjectCapabilityBinding[],
-  input: ProjectCapabilityPlanningInput,
+  input: CapabilityRuntimeRequirementsPlanningInput,
+  includeBlockedCandidates: boolean,
 ): readonly AtomicCapabilityRuntimeUnit[] {
   const byId = new Map<string, AtomicCapabilityRuntimeUnit>();
   for (const binding of bindings) {
-    if (binding.status !== "selected") continue;
+    if (binding.status !== "selected" && !includeBlockedCandidates) continue;
+    if (binding.status !== "selected" && binding.candidate === undefined) continue;
     for (const unitId of binding.unitIds) {
       const unit = input.catalog.units.find((candidate) => candidate.id === unitId);
       if (!unit) {
@@ -272,7 +373,7 @@ function uniqueSelectedUnits(
 function planMaterial(
   unit: AtomicCapabilityRuntimeUnit,
   material: AtomicCapabilityRuntimeMaterial,
-  input: ProjectCapabilityPlanningInput,
+  input: CapabilityRuntimeRequirementsPlanningInput,
 ): PlannedCapabilityRuntimeMaterial {
   const locked = exactLockFor(unit, input);
   const desired = locked?.desired ?? "absent";
@@ -294,7 +395,7 @@ function planMaterial(
 
 function lockBlockersFor(
   units: readonly AtomicCapabilityRuntimeUnit[],
-  input: ProjectCapabilityPlanningInput,
+  input: CapabilityRuntimeRequirementsPlanningInput,
 ): readonly string[] {
   return units.flatMap((unit) => {
     const locked = input.lock.units.find((candidate) => candidate.id === unit.id);
@@ -307,7 +408,7 @@ function lockBlockersFor(
 
 function exactLockFor(
   unit: AtomicCapabilityRuntimeUnit,
-  input: ProjectCapabilityPlanningInput,
+  input: CapabilityRuntimeRequirementsPlanningInput,
 ) {
   const locked = input.lock.units.find((candidate) => candidate.id === unit.id);
   return locked &&
@@ -320,7 +421,7 @@ function exactLockFor(
 
 function materialMode(
   material: AtomicCapabilityRuntimeMaterial,
-  input: ProjectCapabilityPlanningInput,
+  input: CapabilityRuntimeRequirementsPlanningInput,
 ): {
   readonly mode: CapabilityRuntimeMode;
   readonly reason: "native" | "emulated" | "unknown-platform" | "mismatch";
