@@ -75,7 +75,13 @@ export class FileProjectCapabilityLedgerStore implements ProjectCapabilityLedger
     try {
       names = [];
       for await (const entry of Deno.readDir(this.projectDirectory(projectId))) {
-        if (entry.isFile) names.push(entry.name);
+        if (entry.isFile) {
+          names.push(entry.name);
+        } else if (entry.name.endsWith(".json.pending")) {
+          throw new ProjectCapabilityLedgerConflictError(
+            `Capability ledger ${projectId} has a non-file pending revision ${entry.name}.`,
+          );
+        }
       }
     } catch (error) {
       if (error instanceof Deno.errors.NotFound) return undefined;
@@ -111,6 +117,27 @@ export class FileProjectCapabilityLedgerStore implements ProjectCapabilityLedger
    * a unit still authorized by another project.
    */
   async list(): Promise<readonly ProjectCapabilityLedger[]> {
+    const projectIds = await this.listProjectIds();
+    const ledgers = await Promise.all(
+      projectIds.map((projectId) => this.get(projectId)),
+    );
+    return ledgers.flatMap((ledger) => ledger === undefined ? [] : [ledger]);
+  }
+
+  /**
+   * Pending publication is not authorization, but it is still a removal
+   * blocker. In particular, a first revision can exist only as a visible
+   * `.pending` file, so deriving this from `list()` would omit that project.
+   */
+  async listPending(): Promise<readonly ProjectCapabilityLedger[]> {
+    const projectIds = await this.listProjectIds();
+    const pending = await Promise.all(
+      projectIds.map((projectId) => this.getPending(projectId)),
+    );
+    return pending.flatMap((ledger) => ledger === undefined ? [] : [ledger]);
+  }
+
+  private async listProjectIds(): Promise<readonly string[]> {
     let entries: Deno.DirEntry[];
     try {
       entries = await Array.fromAsync(Deno.readDir(this.directory));
@@ -153,10 +180,7 @@ export class FileProjectCapabilityLedgerStore implements ProjectCapabilityLedger
       }
       projectIds.push(projectId);
     }
-    const ledgers = await Promise.all(
-      projectIds.map((projectId) => this.get(projectId)),
-    );
-    return ledgers.flatMap((ledger) => ledger === undefined ? [] : [ledger]);
+    return projectIds;
   }
 
   /**
@@ -597,6 +621,10 @@ export class InMemoryProjectCapabilityLedgerStore
         .map((ledger) => structuredClone(ledger))
         .toSorted((left, right) => left.projectId.localeCompare(right.projectId)),
     );
+  }
+
+  listPending(): Promise<readonly ProjectCapabilityLedger[]> {
+    return Promise.resolve([]);
   }
 
   getPending(_projectId: string): Promise<ProjectCapabilityLedger | undefined> {
@@ -1177,10 +1205,20 @@ function claimDescriptorsFrom(
 }
 
 function pendingRevisionsFrom(names: readonly string[]): readonly number[] {
-  return names.flatMap((name) => {
+  const revisions: number[] = [];
+  for (const name of names) {
     const match = /^(\d{10})\.json\.pending$/.exec(name);
-    return match ? [Number(match[1])] : [];
-  }).toSorted((left, right) => left - right);
+    if (match) {
+      revisions.push(Number(match[1]));
+      continue;
+    }
+    if (name.endsWith(".json.pending")) {
+      throw new ProjectCapabilityLedgerConflictError(
+        `Capability ledger has a malformed visible pending revision ${name}.`,
+      );
+    }
+  }
+  return revisions.toSorted((left, right) => left - right);
 }
 
 function revisionName(revision: number): string {

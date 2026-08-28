@@ -10,6 +10,12 @@ export interface ProjectCapabilityLedgerStore {
    */
   list(): Promise<readonly ProjectCapabilityLedger[]>;
   /**
+   * Strictly enumerate every validated pending next revision, including a
+   * project directory that has no published ledger yet. A store must reject
+   * an unreadable or non-exact pending record rather than omit it.
+   */
+  listPending(): Promise<readonly ProjectCapabilityLedger[]>;
+  /**
    * Read one validated, not-yet-claimed next revision. This is only a crash
    * recovery seam: callers must still append it through the same CAS boundary.
    */

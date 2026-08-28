@@ -495,17 +495,21 @@ export class LocalCapabilityRuntimeAdminService {
 
   async #assertNoProjectRetention(group: CapabilityRuntimeLaunchGroup): Promise<void> {
     const unitIds = new Set(group.materials.map((member) => member.material.unitId));
-    for (const ledger of await this.options.ledgers.list()) {
-      const pending = await this.options.ledgers.getPending(ledger.projectId);
-      if (pending) {
+    const [ledgers, pendingLedgers] = await Promise.all([
+      this.options.ledgers.list(),
+      this.options.ledgers.listPending(),
+    ]);
+    for (const pending of pendingLedgers) {
+      if (retainsAnyUnit(pending, unitIds)) {
         throw new Error(
           "Administrative material removal is blocked by a pending project capability ledger.",
         );
       }
-      const envelope = ledger.effectiveEnvelope;
+    }
+    for (const ledger of ledgers) {
       if (
-        envelope?.status === "authorized" &&
-        envelope.proposal.units.some((unit) => unitIds.has(unit.id))
+        ledger.effectiveEnvelope?.status === "authorized" &&
+        retainsAnyUnit(ledger, unitIds)
       ) {
         throw new Error(
           "Administrative material removal is retained by an authorized project ledger.",
@@ -860,6 +864,19 @@ function materialIdentityKey(value: {
   readonly materialId: string;
 }): string {
   return `${value.unitId}\u0000${value.materialId}`;
+}
+
+function retainsAnyUnit(
+  ledger: ProjectCapabilityLedger,
+  unitIds: ReadonlySet<string>,
+): boolean {
+  return ledger.effectiveEnvelope?.proposal.units.some((unit) =>
+    unitIds.has(unit.id)
+  ) ??
+    ledger.events.some((event) =>
+      event.kind === "initial-prepared" &&
+      event.proposal.units.some((unit) => unitIds.has(unit.id))
+    );
 }
 
 function sameJournalGroup(

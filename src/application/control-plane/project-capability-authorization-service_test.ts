@@ -478,6 +478,10 @@ class CrashAfterPendingLedgerStore implements ProjectCapabilityLedgerStore {
     return this.#delegate.list();
   }
 
+  listPending() {
+    return this.#delegate.listPending();
+  }
+
   getPending(projectId: string) {
     return this.#delegate.getPending(projectId);
   }

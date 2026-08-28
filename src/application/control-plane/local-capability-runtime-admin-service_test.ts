@@ -87,6 +87,21 @@ Deno.test("administrative removal blocks retention from every project ledger", a
   }
 });
 
+Deno.test("administrative removal blocks an orphan pending ledger that retains its target unit", async () => {
+  const runtime = await removalRuntime({
+    pendingLedgers: [pendingPreparedLedger("project-pending", "casys.syson-stack")],
+  });
+  try {
+    await assertRejects(
+      () => runtime.service.removeReview({ kind: "launch-group", id: "casys-syson" }),
+      Error,
+      "pending project capability ledger",
+    );
+  } finally {
+    await runtime.close();
+  }
+});
+
 Deno.test("administrative removal blocks active lease, JIT demand and unresolved group intent", async () => {
   const leaseRuntime = await removalRuntime({
     leases: "active",
@@ -229,6 +244,7 @@ async function removalRuntime(input: {
   readonly state?: "owned" | "absent";
   readonly safety?: CapabilityRuntimeAdministrativeRemovalObservation["safety"];
   readonly ledgers?: readonly ProjectCapabilityLedger[];
+  readonly pendingLedgers?: readonly ProjectCapabilityLedger[];
   readonly jit?: boolean;
   readonly leases?: "active";
 }) {
@@ -260,7 +276,10 @@ async function removalRuntime(input: {
   const host = new FakeRemovalHost(
     observation(group, input.state ?? "absent", input.safety ?? "exact"),
   );
-  const ledgers = new FakeLedgers(input.ledgers ?? []);
+  const ledgers = new FakeLedgers(
+    input.ledgers ?? [],
+    input.pendingLedgers ?? [],
+  );
   const service = new LocalCapabilityRuntimeAdminService({
     catalog,
     ledgers,
@@ -335,7 +354,10 @@ class FakeRemovalHost {
 }
 
 class FakeLedgers {
-  constructor(private readonly values: readonly ProjectCapabilityLedger[]) {}
+  constructor(
+    private readonly values: readonly ProjectCapabilityLedger[],
+    private readonly pending: readonly ProjectCapabilityLedger[] = [],
+  ) {}
 
   list(): Promise<readonly ProjectCapabilityLedger[]> {
     return Promise.resolve(structuredClone(this.values));
@@ -349,6 +371,10 @@ class FakeLedgers {
 
   getPending(): Promise<ProjectCapabilityLedger | undefined> {
     return Promise.resolve(undefined);
+  }
+
+  listPending(): Promise<readonly ProjectCapabilityLedger[]> {
+    return Promise.resolve(structuredClone(this.pending));
   }
 
   append(): Promise<ProjectCapabilityLedger> {
@@ -415,5 +441,16 @@ function revokedLedger(projectId: string): ProjectCapabilityLedger {
   return {
     projectId,
     effectiveEnvelope: { status: "revoked", proposal: { units: [] } },
+  } as unknown as ProjectCapabilityLedger;
+}
+
+function pendingPreparedLedger(
+  projectId: string,
+  unitId: string,
+): ProjectCapabilityLedger {
+  return {
+    projectId,
+    effectiveEnvelope: null,
+    events: [{ kind: "initial-prepared", proposal: { units: [{ id: unitId }] } }],
   } as unknown as ProjectCapabilityLedger;
 }

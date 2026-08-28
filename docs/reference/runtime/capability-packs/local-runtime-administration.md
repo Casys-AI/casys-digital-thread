@@ -49,7 +49,10 @@ Thread, CAS, WAL, project state and retained volumes. A review is refused if any
 project authorization retains a target unit, its project ledger is pending, an active
 lease or fresh JIT demand intersects a target material, the administrative lock cannot
 be made exact/inactive, a group journal mutation is pending or uncertain, the image
-digest is catalogued by another group, or Docker observation is unknown/foreign.
+digest is catalogued by another group, or Docker observation is unknown/foreign. The
+ledger scan is authoritative for this check: even a project whose first visible revision
+exists only as an exact `.pending` file blocks relevant removal; a malformed or
+indeterminable pending record blocks rather than being skipped.
 
 Apply holds the same host-mutation lock, recomputes the exact review, writes the needed
 inactive lock successor before its durable `material-remove` intent, then rereads the

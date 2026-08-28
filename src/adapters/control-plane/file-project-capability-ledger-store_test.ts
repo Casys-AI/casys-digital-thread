@@ -120,6 +120,31 @@ Deno.test("capability ledger rejects a competing pending revision rather than cl
   }
 });
 
+Deno.test("capability ledger enumerates an exact first pending revision without a published ledger", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "capability-ledger-orphan-pending-",
+  });
+  try {
+    const store = new FileProjectCapabilityLedgerStore(directory);
+    const proposal = await proposalFor("orphan-pending");
+    const pending = await ledger("orphan-pending", null, [await prepared(proposal)]);
+    await Deno.mkdir(`${directory}/orphan-pending`, { recursive: true });
+    await Deno.writeTextFile(
+      `${directory}/orphan-pending/0000000001.json.pending`,
+      `${deterministicJson(pending)}\n`,
+      { createNew: true },
+    );
+
+    assertEquals(await store.list(), []);
+    assertEquals(
+      (await store.listPending()).map((ledger) => ledger.ledgerFingerprint),
+      [pending.ledgerFingerprint],
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 Deno.test("capability ledger attests concurrent identical appends and rejects divergent ones", async () => {
   const directory = await Deno.makeTempDir({ prefix: "capability-ledger-concurrent-" });
   try {
@@ -216,6 +241,11 @@ Deno.test("capability ledger ignores torn temps and fails closed on visible lega
     );
     await assertRejects(
       () => store.getPending("partial-pending"),
+      Error,
+      "pending revision is not valid",
+    );
+    await assertRejects(
+      () => store.listPending(),
       Error,
       "pending revision is not valid",
     );
@@ -485,10 +515,11 @@ async function ledger(
 class RecordingDurability implements ProjectCapabilityLedgerDurability {
   readonly transitions: ProjectCapabilityLedgerDurabilityTransition[] = [];
 
-  async syncDirectory(
+  syncDirectory(
     _directory: string,
     transition: ProjectCapabilityLedgerDurabilityTransition,
   ): Promise<void> {
     this.transitions.push(transition);
+    return Promise.resolve();
   }
 }
