@@ -19,7 +19,7 @@ import {
 } from "../../../domain/compile/source/provider-resource-reader.ts";
 import type { IsolatedCodeExecutionReceipt } from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
-  assembleSensitivityStudyCaseV2,
+  assembleSensitivityStudyCaseV3,
   validateSensitivityStudyCaseTemplate,
 } from "../../../domain/sensitivity/study/sensitivity-study-template.ts";
 import {
@@ -481,7 +481,7 @@ async function createFixture(options: {
       ),
     ),
   );
-  const studyCase = assembleSensitivityStudyCaseV2(template, {
+  const studyCase = assembleSensitivityStudyCaseV3(template, {
     artifactUri: `thread-artifact://${PROJECT_ID}/${ADMISSION_ID}`,
     sha256: ADMISSION_DIGEST,
   });

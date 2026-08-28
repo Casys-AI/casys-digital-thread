@@ -50,6 +50,7 @@ byte accounting, but retain separate services and lifecycle records.
 | `casys.build123d-isolated-worker`        | Admitted source microVM                        | —             | Different lifecycle from either HTTP service                         |
 | `casys.geometry-module-assembler-worker` | One-level STEP compound microVM                | —             | Platform/qualification remains literal unknown                       |
 | `casys.calculix-worker`                  | Product isolated static-proof worker           | —             | Not HTTP `mcp-calculix`                                              |
+| `casys.mcp-calculix`                     | CalculiX HTTP sensitivity service              | 3015          | Separate unqualified S1 binding                                      |
 | `casys.modelica-qualified-worker`        | Narrow qualified-kit microVM                   | —             | Not arbitrary admitted Modelica                                      |
 | `casys.modelica-worker`                  | Admitted Modelica microVM                      | —             | Currently unqualified/unavailable in this catalogue                  |
 | `casys.spice-worker`                     | OCI source cache plus distinct microVM runtime | —             | The source image is not a microVM or HTTP `mcp-spice`                |
@@ -69,6 +70,15 @@ same `casys-syson@1.0.0` group reference; the immutable ordered Compose body rem
 the server-only H1 registry. Catalogue/project data cannot carry Compose commands,
 provider endpoints, tools, arguments or secret values. All other current first-party
 persistent materials remain literal `null`: an image alone never enrolls a topology.
+
+The semantic capability `mechanics.observe-static-structural-sensitivity@1` names only
+two static-structural sensitivity observations, never a verdict. Its concrete
+`calculix-http-static-sensitivity@1` binding points to `casys.mcp-calculix@0.8.2`, but
+is deliberately `unqualified` with `launchProfile: null`. S1 therefore makes the
+catalogue and project planner report it as `unavailable`; it cannot pull, start or call
+the HTTP service. A later recorded solve/readback and launch-group lot must qualify it.
+`mechanics.solve-static-structural@1` remains separately bound to
+`casys.calculix-worker` for isolated product static proof.
 
 ## Closed planning states
 

@@ -1,13 +1,13 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import { computeSensitivities } from "./sensitivity-study.ts";
 import {
-  SENSITIVITY_STUDY_CASE_V2_SCHEMA,
-  validateSensitivityStudyCaseV2,
-} from "./sensitivity-study-v2.ts";
+  SENSITIVITY_STUDY_CASE_V3_SCHEMA,
+  validateSensitivityStudyCaseV3,
+} from "./sensitivity-study-v3.ts";
 
-// Minimal valid 2.0 case used as a baseline across tests.
+// Minimal valid 3.0 case used as a baseline across tests.
 const VALID_CASE = {
-  schemaVersion: "sensitivity-study-case/2.0",
+  schemaVersion: "sensitivity-study-case/3.0",
   id: "dl04-size-z-sensitivity",
   revision: 1,
   scope: "mechanical-structural",
@@ -21,10 +21,7 @@ const VALID_CASE = {
   baseValue: { value: 50.0, unit: "mm" },
   step: { value: 1.0, unit: "mm" },
   metrics: [{ id: "assembly_max_displacement", unit: "mm" }],
-  solver: {
-    provider: "calculix",
-    tool: "calculix_solve_static",
-    resultSchemaVersion: "2.0",
+  method: {
     mesh: { kind: "tetrahedral-volume", targetSizeMm: 3.0 },
     material: {
       model: "isotropic-linear-elastic",
@@ -62,46 +59,33 @@ const VALID_CASE = {
   },
 };
 
-Deno.test("sensitivity-study-case/2.0 accepts a fully valid case", () => {
-  const result = validateSensitivityStudyCaseV2(VALID_CASE);
-  assertEquals(result.schemaVersion, SENSITIVITY_STUDY_CASE_V2_SCHEMA);
+Deno.test("sensitivity-study-case/3.0 accepts a fully valid case", () => {
+  const result = validateSensitivityStudyCaseV3(VALID_CASE);
+  assertEquals(result.schemaVersion, SENSITIVITY_STUDY_CASE_V3_SCHEMA);
   assertEquals(result.cadSource.artifactUri, VALID_CASE.cadSource.artifactUri);
   assertEquals(result.cadSource.sha256, VALID_CASE.cadSource.sha256);
 });
 
 Deno.test(
-  "sensitivity-study-case/2.0 rejects a value with the 1.0 schema version",
+  "sensitivity-study-case/3.0 rejects a prior schema version",
   () => {
     assertThrows(
       () =>
-        validateSensitivityStudyCaseV2({
+        validateSensitivityStudyCaseV3({
           ...VALID_CASE,
-          schemaVersion: "sensitivity-study-case/1.0",
+          schemaVersion: "sensitivity-study-case/2.0",
         }),
       TypeError,
     );
   },
 );
 
-Deno.test("sensitivity-study-case/2.0 rejects a legacy recipeSource key", () => {
-  // A 1.0 case converted to 2.0 with recipeSource still present should fail.
-  const withRecipe = {
-    ...VALID_CASE,
-    recipeSource: { schemaVersion: "build123d-recipe/1.0", key: "arm-v1" },
-  };
-  assertThrows(
-    () => validateSensitivityStudyCaseV2(withRecipe),
-    TypeError,
-    // exactRecord rejects the unknown key
-  );
-});
-
 Deno.test(
-  "sensitivity-study-case/2.0 rejects a cadSource with a non-thread-artifact URI",
+  "sensitivity-study-case/3.0 rejects a cadSource with a non-thread-artifact URI",
   () => {
     assertThrows(
       () =>
-        validateSensitivityStudyCaseV2({
+        validateSensitivityStudyCaseV3({
           ...VALID_CASE,
           cadSource: {
             ...VALID_CASE.cadSource,
@@ -115,11 +99,11 @@ Deno.test(
 );
 
 Deno.test(
-  "sensitivity-study-case/2.0 rejects a cadSource sha256 that is not 64 hex chars",
+  "sensitivity-study-case/3.0 rejects a cadSource sha256 that is not 64 hex chars",
   () => {
     assertThrows(
       () =>
-        validateSensitivityStudyCaseV2({
+        validateSensitivityStudyCaseV3({
           ...VALID_CASE,
           cadSource: { ...VALID_CASE.cadSource, sha256: "short" },
         }),
@@ -130,11 +114,11 @@ Deno.test(
 );
 
 Deno.test(
-  "sensitivity-study-case/2.0 rejects a cadSource sha256 with uppercase hex",
+  "sensitivity-study-case/3.0 rejects a cadSource sha256 with uppercase hex",
   () => {
     assertThrows(
       () =>
-        validateSensitivityStudyCaseV2({
+        validateSensitivityStudyCaseV3({
           ...VALID_CASE,
           cadSource: { ...VALID_CASE.cadSource, sha256: "A".repeat(64) },
         }),
@@ -144,11 +128,11 @@ Deno.test(
 );
 
 Deno.test(
-  "sensitivity-study-case/2.0 rejects a zero step value",
+  "sensitivity-study-case/3.0 rejects a zero step value",
   () => {
     assertThrows(
       () =>
-        validateSensitivityStudyCaseV2({
+        validateSensitivityStudyCaseV3({
           ...VALID_CASE,
           step: { value: 0, unit: "mm" },
         }),
@@ -159,11 +143,11 @@ Deno.test(
 );
 
 Deno.test(
-  "sensitivity-study-case/2.0 rejects duplicate metric ids",
+  "sensitivity-study-case/3.0 rejects duplicate metric ids",
   () => {
     assertThrows(
       () =>
-        validateSensitivityStudyCaseV2({
+        validateSensitivityStudyCaseV3({
           ...VALID_CASE,
           metrics: [
             { id: "assembly_max_displacement", unit: "mm" },
@@ -176,9 +160,9 @@ Deno.test(
 );
 
 Deno.test(
-  "sensitivity-study-case/2.0 produces a frozen result that cannot be mutated",
+  "sensitivity-study-case/3.0 produces a frozen result that cannot be mutated",
   () => {
-    const result = validateSensitivityStudyCaseV2(VALID_CASE);
+    const result = validateSensitivityStudyCaseV3(VALID_CASE);
     // Object.isFrozen walks top-level only; deepFreeze covers nested objects.
     assertEquals(Object.isFrozen(result), true);
     assertEquals(Object.isFrozen(result.cadSource), true);
@@ -187,9 +171,9 @@ Deno.test(
 );
 
 Deno.test(
-  "computeSensitivities accepts a sensitivity-study-case/2.0 without a recipeSource",
+  "computeSensitivities accepts a sensitivity-study-case/3.0 without runtime identity",
   () => {
-    const studyCase = validateSensitivityStudyCaseV2(VALID_CASE);
+    const studyCase = validateSensitivityStudyCaseV3(VALID_CASE);
     const result = computeSensitivities(
       studyCase,
       new Map([["assembly_max_displacement", { value: 0.5, unit: "mm" }]]),
@@ -203,3 +187,15 @@ Deno.test(
     assertEquals(result.domain, { base: 50, step: 1, parameterUnit: "mm" });
   },
 );
+
+Deno.test("sensitivity-study-case/3.0 rejects provider and tool wire fields", () => {
+  const legacyWireFields = {
+    ...VALID_CASE,
+    solver: {
+      provider: "calculix",
+      tool: "calculix_solve_static",
+      resultSchemaVersion: "2.0",
+    },
+  };
+  assertThrows(() => validateSensitivityStudyCaseV3(legacyWireFields), TypeError);
+});

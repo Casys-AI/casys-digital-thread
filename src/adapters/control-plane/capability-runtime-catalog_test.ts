@@ -22,6 +22,7 @@ Deno.test("atomic first-party runtime catalogue separates sources with distinct 
     "casys.build123d-isolated-worker",
     "casys.geometry-module-assembler-worker",
     "casys.calculix-worker",
+    "casys.mcp-calculix",
     "casys.modelica-qualified-worker",
     "casys.modelica-worker",
     "casys.spice-worker",
@@ -32,6 +33,44 @@ Deno.test("atomic first-party runtime catalogue separates sources with distinct 
       ?.unitIds,
     ["casys.calculix-worker"],
   );
+  const sensitivity = catalog.bindings.find((binding) =>
+    binding.id === "calculix-http-static-sensitivity"
+  );
+  assertEquals(sensitivity?.capability, {
+    id: "mechanics.observe-static-structural-sensitivity",
+    version: "1",
+  });
+  assertEquals(sensitivity?.qualification, "unqualified");
+  assertEquals(sensitivity?.profile, null);
+  assertEquals(sensitivity?.unitIds, ["casys.mcp-calculix"]);
+  const calculix = catalog.units.find((unit) => unit.id === "casys.mcp-calculix");
+  assertEquals(calculix?.version, "0.8.2");
+  assertEquals(
+    calculix?.materials[0]?.imageReference,
+    "ghcr.io/casys-ai/mcp-calculix@sha256:ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8",
+  );
+  assertEquals(calculix?.materials[0]?.launchProfile, null);
+  assertEquals(calculix?.materials[0]?.effects, {
+    downloadBytes: null,
+    storageBytes: null,
+    services: [{ id: "mcp-calculix", lifecycle: "persistent" }],
+    volumes: [
+      { id: "calculix-inputs", access: "read-write", preservation: "preserve" },
+      { id: "calculix-runs", access: "read-write", preservation: "preserve" },
+    ],
+    network: "loopback-only",
+    loopbackPorts: [3015],
+    bindMounts: [],
+    privileged: false,
+    dockerSocket: false,
+    devices: [],
+    secretSlots: [],
+    licence: {
+      status: "reviewed",
+      reference: "docs/reference/runtime/capability-packs/atomic-runtime-boundaries.md",
+    },
+    security: "reviewed",
+  });
   assertEquals(
     catalog.bindings.find((binding) => binding.id === "openmodelica-admitted-modelica")
       ?.qualification,

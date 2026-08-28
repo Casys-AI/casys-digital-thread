@@ -42,8 +42,8 @@ import {
   type SensitivityMetricMeasurement,
 } from "../../../domain/sensitivity/study/sensitivity-study.ts";
 import { substituteModuleLevelNumericLiteral } from "../../../domain/sensitivity/study/sensitivity-source-substitution.ts";
-import type { SensitivityStudyCaseV2 } from "../../../domain/sensitivity/study/sensitivity-study-v2.ts";
-import { parseSensitivityCadSourceUri } from "../../../domain/sensitivity/study/sensitivity-study-v2.ts";
+import type { SensitivityStudyCaseV3 } from "../../../domain/sensitivity/study/sensitivity-study-v3.ts";
+import { parseSensitivityCadSourceUri } from "../../../domain/sensitivity/study/sensitivity-study-v3.ts";
 import { BUILD123D_EXECUTION_PROFILE } from "../../../domain/cad/isolated/build123d-execution-proposal.ts";
 import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
 import {
@@ -870,7 +870,7 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
     readonly basis: EngineeringThreadSnapshotBasis;
     readonly basisSnapshot: ThreadSnapshot;
     readonly caseArtifact: ThreadArtifact;
-    readonly studyCase: SensitivityStudyCaseV2;
+    readonly studyCase: SensitivityStudyCaseV3;
     readonly target: SensitivityExperienceTarget;
     readonly lookup: SensitivityExperienceLookupResult;
     readonly attempt: SensitivityExperienceReuseAttempt;
@@ -1395,7 +1395,7 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
     readonly projectId: string;
     readonly runId: string;
     readonly phase: SensitivityPhase;
-    readonly studyCase: SensitivityStudyCaseV2;
+    readonly studyCase: SensitivityStudyCaseV3;
     readonly cad: CadPublicationWithBytes;
     readonly dispatchedAt: string;
   }): Promise<Map<string, SensitivityMetricMeasurement>> {
@@ -1447,7 +1447,7 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
       throw unknownOutcome(error);
     }
     const plan = this.#solver.resolve({
-      declaration: input.studyCase.solver,
+      method: input.studyCase.method,
       inputArtifact: {
         fingerprint,
         byteCount: input.cad.stepBytes,
@@ -1524,7 +1524,7 @@ function publicationOf(cad: CadPublicationWithBytes): SensitivityCadPublication 
 
 function findAdmissionArtifact(
   snapshot: ThreadSnapshot,
-  studyCase: SensitivityStudyCaseV2,
+  studyCase: SensitivityStudyCaseV3,
   sealedAdmission: {
     readonly id: string;
     readonly fingerprint: ContentFingerprint;
@@ -1572,7 +1572,7 @@ async function measurementsFromRecordedSolve(
   captureFp: string,
   phase: SensitivityPhase,
   stepSha256: string,
-  studyCase: SensitivityStudyCaseV2,
+  studyCase: SensitivityStudyCaseV3,
 ): Promise<Map<string, SensitivityMetricMeasurement>> {
   let parsed: unknown;
   try {
@@ -1693,7 +1693,7 @@ function unknownOutcome(error: unknown): EngineeringProjectCommandError {
 }
 
 function measurementsFromSolve(
-  studyCase: SensitivityStudyCaseV2,
+  studyCase: SensitivityStudyCaseV3,
   result: {
     readonly observations: {
       readonly maximumDisplacement: {
@@ -2004,7 +2004,7 @@ function buildReuseSuccessor(input: {
   readonly basis: EngineeringThreadSnapshotBasis;
   readonly run: EngineeringAgentRun;
   readonly caseArtifact: ThreadArtifact;
-  readonly studyCase: SensitivityStudyCaseV2;
+  readonly studyCase: SensitivityStudyCaseV3;
   readonly caseDigest: string;
   readonly record: SensitivityExperienceRecord;
   readonly review: SensitivityExperienceReuseReview;

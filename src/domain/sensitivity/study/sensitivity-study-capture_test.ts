@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import {
-  assembleSensitivityStudyCaseV2,
+  assembleSensitivityStudyCaseV3,
   validateSensitivityStudyCaseTemplate,
 } from "./sensitivity-study-template.ts";
 import { computeSensitivities } from "./sensitivity-study.ts";
@@ -62,7 +62,7 @@ async function validCapture() {
       ),
     ),
   );
-  const studyCase = assembleSensitivityStudyCaseV2(template, {
+  const studyCase = assembleSensitivityStudyCaseV3(template, {
     artifactUri: "thread-artifact://desk-lamp-dl04/admission",
     sha256: "a".repeat(64),
   });

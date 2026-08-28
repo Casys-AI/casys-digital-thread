@@ -1,4 +1,4 @@
-import type { SensitivitySolverDeclaration } from "../../../../../domain/sensitivity/study/sensitivity-study.ts";
+import type { SensitivityStaticStructuralMethod } from "../../../../../domain/sensitivity/study/sensitivity-study.ts";
 import type {
   StaticStructuralSolveExecution,
   StaticStructuralSolvePlan,
@@ -6,14 +6,14 @@ import type {
 import type { ContentFingerprint } from "../../../../../domain/kernel/primitives.ts";
 
 /**
- * CalculiX static solve from a sealed sensitivity solver declaration.
+ * Server-owned static solve from a sealed sensitivity physical method.
  *
  * This is not StaticStructuralSolver: that port requires a MechanicalProofCase.
- * The adapter lowers the declaration; it never treats solver.tool as a
- * dispatch key supplied by the agent.
+ * The adapter lowers the physical method; its concrete provider tool stays a
+ * server-owned binding detail and cannot be supplied by an agent.
  */
 export interface SensitivitySolveInput {
-  readonly declaration: SensitivitySolverDeclaration;
+  readonly method: SensitivityStaticStructuralMethod;
   readonly inputArtifact: {
     readonly fingerprint: ContentFingerprint;
     readonly byteCount: number;

@@ -3,11 +3,11 @@ import {
   assertSensitivityLiveMethod,
   liveSolverObservationForMetric,
 } from "./sensitivity-live-method.ts";
-import { validateSensitivityStudyCaseV2 } from "./sensitivity-study-v2.ts";
+import { validateSensitivityStudyCaseV3 } from "./sensitivity-study-v3.ts";
 
 function validCase(overrides: Record<string, unknown> = {}) {
-  return validateSensitivityStudyCaseV2({
-    schemaVersion: "sensitivity-study-case/2.0",
+  return validateSensitivityStudyCaseV3({
+    schemaVersion: "sensitivity-study-case/3.0",
     id: "dl04-size-z-sensitivity",
     revision: 1,
     scope: "mechanical-structural",
@@ -21,10 +21,7 @@ function validCase(overrides: Record<string, unknown> = {}) {
     baseValue: { value: 50, unit: "mm" },
     step: { value: 1, unit: "mm" },
     metrics: [{ id: "assembly_max_displacement", unit: "mm" }],
-    solver: {
-      provider: "calculix",
-      tool: "calculix_solve_static",
-      resultSchemaVersion: "2.0",
+    method: {
       mesh: { kind: "tetrahedral-volume", targetSizeMm: 3 },
       material: {
         model: "isotropic-linear-elastic",

@@ -6,8 +6,8 @@ Census of study, edges, base evaluation, vector correction, and live-FEA observa
 files. Those authorities are not interchangeable. Corrections return through
 `AgentResource` plus a successor workspace file revision.
 
-Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays
-on [engineering domains](../domains/README.md).
+Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays on
+[engineering domains](../domains/README.md).
 
 ## Source map
 
@@ -43,18 +43,21 @@ Sensitivity adapters by authority: `study/`, `edges/`, `base-evaluation/`,
 
 #### [`src/adapters/sensitivity/server-composition.ts`](../../../src/adapters/sensitivity/server-composition.ts)
 
-Sensitivity composition. Live FEA requires isolated Build123d plus CalculiX; base
-evaluation and edges require SysON. Vector correction is not authorized by a proof-run
-evaluation. Corrections return through `AgentResource` plus a successor workspace file
-revision, not an admission seal.
+Sensitivity composition. Its legacy direct HTTP adapter remains in code, but S1 marks
+the exact HTTP CalculiX sensitivity binding unqualified and non-activable until the
+recorded solve/readback and launch-group lot. Product static proof remains separate on
+the isolated CalculiX worker; base evaluation and edges require SysON. Vector correction
+is not authorized by a proof-run evaluation. Corrections return through `AgentResource`
+plus a successor workspace file revision, not an admission seal.
 
 #### [`src/domain/sensitivity/study/sensitivity-study.ts`](../../../src/domain/sensitivity/study/sensitivity-study.ts)
 
 Reviewed sensitivity case and pure finite-difference derivatives
 
-#### [`src/domain/sensitivity/study/sensitivity-study-v2.ts`](../../../src/domain/sensitivity/study/sensitivity-study-v2.ts)
+#### [`src/domain/sensitivity/study/sensitivity-study-v3.ts`](../../../src/domain/sensitivity/study/sensitivity-study-v3.ts)
 
-`sensitivity-study-case/2.0` with `cadSource` naming a sealed compilation admission
+`sensitivity-study-case/3.0` with a provider-neutral `method` and `cadSource` naming a
+sealed compilation admission
 
 #### [`src/domain/sensitivity/study/sensitivity-study-proposal.ts`](../../../src/domain/sensitivity/study/sensitivity-study-proposal.ts)
 
@@ -189,8 +192,8 @@ paths, provider echoes or CalculiX response vocabulary
 
 Pure false-by-default catalog-offer compiler: requires one exact causal admission lever,
 source equality with the proof CAD definition and `result` equality with the proof
-target; copies sealed solver facts, uses live metric units and leaves `step` explicitly
-not compiled
+target; copies sealed provider-neutral method facts, uses live metric units and leaves
+`step` explicitly not compiled
 
 #### [`src/domain/sensitivity/study/sensitivity-catalog-offer-capture.ts`](../../../src/domain/sensitivity/study/sensitivity-catalog-offer-capture.ts)
 
@@ -199,7 +202,7 @@ published by `verify.seal-proof-case@1`
 
 #### [`src/domain/sensitivity/study/sensitivity-study-from-offer.ts`](../../../src/domain/sensitivity/study/sensitivity-study-from-offer.ts)
 
-Compiles a `sensitivity-study-case-template/2.0` from a ready signed offer: copies
+Compiles a `sensitivity-study-case-template/3.0` from a ready signed offer: copies
 mesh/loads/metrics and sets `step` to the sealed proof mesh target size
 
 #### [`src/adapters/sensitivity/live-fea/fea-solver-capture.ts`](../../../src/adapters/sensitivity/live-fea/fea-solver-capture.ts)

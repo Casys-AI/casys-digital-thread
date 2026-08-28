@@ -2,20 +2,20 @@
  * Server-owned catalog shape for a sensitivity study before cadSource is bound.
  *
  * The live case is project-specific because cadSource names a Thread admission.
- * Catalog files therefore cannot be valid sensitivity-study-case/2.0 documents.
+ * Catalog files therefore cannot be valid sensitivity-study-case/3.0 documents.
  * This template carries every scientific field; the sealer binds cadSource
  * from the signed MRTR and the current Thread head.
  */
 
 import { exactRecord, literalValue } from "../../kernel/case-validation.ts";
 import {
-  SENSITIVITY_STUDY_CASE_V2_SCHEMA,
-  type SensitivityStudyCaseV2,
-  validateSensitivityStudyCaseV2,
-} from "./sensitivity-study-v2.ts";
+  SENSITIVITY_STUDY_CASE_V3_SCHEMA,
+  type SensitivityStudyCaseV3,
+  validateSensitivityStudyCaseV3,
+} from "./sensitivity-study-v3.ts";
 
 export const SENSITIVITY_STUDY_CASE_TEMPLATE_SCHEMA =
-  "sensitivity-study-case-template/2.0" as const;
+  "sensitivity-study-case-template/3.0" as const;
 
 const TEMPLATE_KEYS = [
   "schemaVersion",
@@ -28,7 +28,7 @@ const TEMPLATE_KEYS = [
   "baseValue",
   "step",
   "metrics",
-  "solver",
+  "method",
   "domain",
 ] as const;
 
@@ -43,17 +43,17 @@ export interface SensitivityStudyCaseTemplate {
   readonly revision: number;
   readonly scope: string;
   readonly evidenceBoundary: string;
-  readonly project: SensitivityStudyCaseV2["project"];
-  readonly target: SensitivityStudyCaseV2["target"];
-  readonly baseValue: SensitivityStudyCaseV2["baseValue"];
-  readonly step: SensitivityStudyCaseV2["step"];
-  readonly metrics: SensitivityStudyCaseV2["metrics"];
-  readonly solver: SensitivityStudyCaseV2["solver"];
-  readonly domain: SensitivityStudyCaseV2["domain"];
+  readonly project: SensitivityStudyCaseV3["project"];
+  readonly target: SensitivityStudyCaseV3["target"];
+  readonly baseValue: SensitivityStudyCaseV3["baseValue"];
+  readonly step: SensitivityStudyCaseV3["step"];
+  readonly metrics: SensitivityStudyCaseV3["metrics"];
+  readonly method: SensitivityStudyCaseV3["method"];
+  readonly domain: SensitivityStudyCaseV3["domain"];
 }
 
 /**
- * Validate a catalog template, then reuse the 2.0 case parsers for every
+ * Validate a catalog template, then reuse the 3.0 case parsers for every
  * nested scientific field. The placeholder cadSource never leaves this
  * function.
  */
@@ -66,8 +66,8 @@ export function validateSensitivityStudyCaseTemplate(
     SENSITIVITY_STUDY_CASE_TEMPLATE_SCHEMA,
     "$template.schemaVersion",
   );
-  const assembled = validateSensitivityStudyCaseV2({
-    schemaVersion: SENSITIVITY_STUDY_CASE_V2_SCHEMA,
+  const assembled = validateSensitivityStudyCaseV3({
+    schemaVersion: SENSITIVITY_STUDY_CASE_V3_SCHEMA,
     id: root.id,
     revision: root.revision,
     scope: root.scope,
@@ -78,7 +78,7 @@ export function validateSensitivityStudyCaseTemplate(
     baseValue: root.baseValue,
     step: root.step,
     metrics: root.metrics,
-    solver: root.solver,
+    method: root.method,
     domain: root.domain,
   });
   return {
@@ -92,17 +92,17 @@ export function validateSensitivityStudyCaseTemplate(
     baseValue: assembled.baseValue,
     step: assembled.step,
     metrics: assembled.metrics,
-    solver: assembled.solver,
+    method: assembled.method,
     domain: assembled.domain,
   };
 }
 
-export function assembleSensitivityStudyCaseV2(
+export function assembleSensitivityStudyCaseV3(
   template: SensitivityStudyCaseTemplate,
-  cadSource: SensitivityStudyCaseV2["cadSource"],
-): SensitivityStudyCaseV2 {
-  return validateSensitivityStudyCaseV2({
-    schemaVersion: SENSITIVITY_STUDY_CASE_V2_SCHEMA,
+  cadSource: SensitivityStudyCaseV3["cadSource"],
+): SensitivityStudyCaseV3 {
+  return validateSensitivityStudyCaseV3({
+    schemaVersion: SENSITIVITY_STUDY_CASE_V3_SCHEMA,
     id: template.id,
     revision: template.revision,
     scope: template.scope,
@@ -113,7 +113,7 @@ export function assembleSensitivityStudyCaseV2(
     baseValue: template.baseValue,
     step: template.step,
     metrics: template.metrics,
-    solver: template.solver,
+    method: template.method,
     domain: template.domain,
   });
 }

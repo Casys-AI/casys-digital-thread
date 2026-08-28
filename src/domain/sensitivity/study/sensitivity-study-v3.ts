@@ -1,19 +1,22 @@
 /**
- * Schema 2.0 for first-order forward finite-difference sensitivity studies.
+ * Schema 3.0 for first-order forward finite-difference sensitivity studies.
  *
- * Why 2.0 differs from 1.0 — the 1.0 schema used a `recipeSource` field that
- * referenced a server-owned Build123d recipe by opaque key. That coupling forced
- * the server to maintain a static catalog and prevented any study from referencing
- * a geometry that was not pre-registered. Version 2.0 replaces `recipeSource` with
- * `cadSource`, which names an exact content-addressed Thread artifact (the sealed
- * compilation admission). The artifact URI is provided by the agent from the Thread;
- * the executor re-reads and re-validates it before staging the perturbed Build123d
- * run.
+ * Why 3.0 differs from 2.0 — 2.0 carried CalculiX provider/tool/response
+ * literals in the sealed project case while claiming the executor selected
+ * them. That mixed physical method facts with server-owned runtime binding.
+ * Version 3.0 replaces the `solver` declaration with a provider-neutral
+ * `method` declaration. The registered server operation selects its exact
+ * binding, client, tool and response parser independently.
  *
- * All other invariants inherited from 1.0 are unchanged:
+ * The versioned case names an exact content-addressed Thread artifact (the sealed
+ * compilation admission) as `cadSource`. The artifact URI is provided by the agent
+ * from the Thread; the executor re-reads and re-validates it before staging the
+ * perturbed Build123d run.
+ *
+ * The remaining invariants are unchanged:
  *   - The step value comes from the reviewed case; executors never choose it.
  *   - The study produces data (derivatives), never a verdict.
- *   - No provider name, tool name, or argument appears here.
+ *   - No provider name, tool name, response schema or argument appears here.
  */
 
 import {
@@ -32,11 +35,11 @@ import type {
   SensitivityLoad,
   SensitivityMetricDeclaration,
   SensitivitySelection,
-  SensitivitySolverDeclaration,
+  SensitivityStaticStructuralMethod,
   SensitivitySupport,
 } from "./sensitivity-study.ts";
 
-export const SENSITIVITY_STUDY_CASE_V2_SCHEMA = "sensitivity-study-case/2.0" as const;
+export const SENSITIVITY_STUDY_CASE_V3_SCHEMA = "sensitivity-study-case/3.0" as const;
 
 // Re-export unchanged sub-types from 1.0 so consumers only import from here.
 export type {
@@ -44,7 +47,7 @@ export type {
   SensitivityLoad,
   SensitivityMetricDeclaration,
   SensitivitySelection,
-  SensitivitySolverDeclaration,
+  SensitivityStaticStructuralMethod,
   SensitivitySupport,
 } from "./sensitivity-study.ts";
 
@@ -69,8 +72,8 @@ export interface SensitivityCadSource {
   readonly sha256: string;
 }
 
-export interface SensitivityStudyCaseV2 {
-  readonly schemaVersion: typeof SENSITIVITY_STUDY_CASE_V2_SCHEMA;
+export interface SensitivityStudyCaseV3 {
+  readonly schemaVersion: typeof SENSITIVITY_STUDY_CASE_V3_SCHEMA;
   readonly id: string;
   readonly revision: number;
   readonly scope: string;
@@ -84,8 +87,8 @@ export interface SensitivityStudyCaseV2 {
     readonly semanticKey: string;
   };
   /**
-   * Replaces 1.0 `recipeSource`. Points to the exact content-addressed
-   * Thread artifact (sealed compilation admission) from which the executor
+   * Points to the exact content-addressed Thread artifact (sealed compilation
+   * admission) from which the executor
    * will derive the parametric Build123d source. The agent names the URI
    * from the Thread; the server re-reads and re-validates.
    */
@@ -93,7 +96,7 @@ export interface SensitivityStudyCaseV2 {
   readonly baseValue: { readonly value: number; readonly unit: string };
   readonly step: { readonly value: number; readonly unit: string };
   readonly metrics: readonly SensitivityMetricDeclaration[];
-  readonly solver: SensitivitySolverDeclaration;
+  readonly method: SensitivityStaticStructuralMethod;
   readonly domain: SensitivityDomain;
 }
 
@@ -113,7 +116,7 @@ const ROOT_KEYS = [
   "baseValue",
   "step",
   "metrics",
-  "solver",
+  "method",
   "domain",
 ] as const;
 
@@ -143,16 +146,16 @@ export function parseSensitivityCadSourceUri(
 }
 
 /**
- * Parse and validate an untrusted value as a sensitivity-study-case/2.0 case.
+ * Parse and validate an untrusted value as a sensitivity-study-case/3.0 case.
  * Fail-closed: any unknown key, missing key, or invalid value throws.
  */
-export function validateSensitivityStudyCaseV2(
+export function validateSensitivityStudyCaseV3(
   value: unknown,
-): SensitivityStudyCaseV2 {
+): SensitivityStudyCaseV3 {
   const root = exactRecord(value, ROOT_KEYS, "$case");
   literalValue(
     root.schemaVersion,
-    SENSITIVITY_STUDY_CASE_V2_SCHEMA,
+    SENSITIVITY_STUDY_CASE_V3_SCHEMA,
     "$case.schemaVersion",
   );
 
@@ -176,11 +179,11 @@ export function validateSensitivityStudyCaseV2(
   );
   rejectDuplicates(metrics.map((m) => m.id), "$case.metrics ids");
 
-  const solver = parseSolver(root.solver);
+  const method = parseMethod(root.method);
   const domain = parseDomain(root.domain);
 
   return deepFreeze({
-    schemaVersion: SENSITIVITY_STUDY_CASE_V2_SCHEMA,
+    schemaVersion: SENSITIVITY_STUDY_CASE_V3_SCHEMA,
     id,
     revision,
     scope,
@@ -191,7 +194,7 @@ export function validateSensitivityStudyCaseV2(
     baseValue,
     step,
     metrics,
-    solver,
+    method,
     domain,
   });
 }
@@ -200,7 +203,7 @@ export function validateSensitivityStudyCaseV2(
 // Internal parsers
 // ---------------------------------------------------------------------------
 
-function parseProject(value: unknown): SensitivityStudyCaseV2["project"] {
+function parseProject(value: unknown): SensitivityStudyCaseV3["project"] {
   const input = exactRecord(value, ["id", "subjectId"], "$case.project");
   return {
     id: safeId(input.id, "$case.project.id"),
@@ -208,7 +211,7 @@ function parseProject(value: unknown): SensitivityStudyCaseV2["project"] {
   };
 }
 
-function parseTarget(value: unknown): SensitivityStudyCaseV2["target"] {
+function parseTarget(value: unknown): SensitivityStudyCaseV3["target"] {
   const input = exactRecord(
     value,
     ["componentKey", "semanticKey"],
@@ -252,7 +255,7 @@ function parseQuantity(
   };
 }
 
-function parseStep(value: unknown): SensitivityStudyCaseV2["step"] {
+function parseStep(value: unknown): SensitivityStudyCaseV3["step"] {
   const input = exactRecord(value, ["value", "unit"], "$case.step");
   const v = finite(input.value, "$case.step.value");
   if (v === 0) {
@@ -275,54 +278,41 @@ function parseMetricDeclaration(
   };
 }
 
-function parseSolver(value: unknown): SensitivitySolverDeclaration {
+function parseMethod(value: unknown): SensitivityStaticStructuralMethod {
   const input = exactRecord(
     value,
     [
-      "provider",
-      "tool",
-      "resultSchemaVersion",
       "mesh",
       "material",
       "supports",
       "loads",
     ],
-    "$case.solver",
-  );
-  literalValue(input.provider, "calculix", "$case.solver.provider");
-  literalValue(input.tool, "calculix_solve_static", "$case.solver.tool");
-  literalValue(
-    input.resultSchemaVersion,
-    "2.0",
-    "$case.solver.resultSchemaVersion",
+    "$case.method",
   );
 
-  const mesh = parseSolverMesh(input.mesh);
-  const material = parseSolverMaterial(input.material);
+  const mesh = parseMethodMesh(input.mesh);
+  const material = parseMethodMaterial(input.material);
 
-  const rawSupports = nonEmptyArray(input.supports, "$case.solver.supports");
+  const rawSupports = nonEmptyArray(input.supports, "$case.method.supports");
   const supports = rawSupports.map((item, i) =>
-    parseSolverSupport(item, `$case.solver.supports[${i}]`)
+    parseMethodSupport(item, `$case.method.supports[${i}]`)
   );
-  const rawLoads = nonEmptyArray(input.loads, "$case.solver.loads");
+  const rawLoads = nonEmptyArray(input.loads, "$case.method.loads");
   const loads = rawLoads.map((item, i) =>
-    parseSolverLoad(item, `$case.solver.loads[${i}]`)
+    parseMethodLoad(item, `$case.method.loads[${i}]`)
   );
 
-  rejectDuplicates(supports.map((s) => s.id), "$case.solver.supports ids");
-  rejectDuplicates(loads.map((l) => l.id), "$case.solver.loads ids");
+  rejectDuplicates(supports.map((s) => s.id), "$case.method.supports ids");
+  rejectDuplicates(loads.map((l) => l.id), "$case.method.loads ids");
   rejectDuplicates(
     [
       ...supports.map((s) => s.selection.name),
       ...loads.map((l) => l.selection.name),
     ],
-    "$case.solver selection names",
+    "$case.method selection names",
   );
 
   return {
-    provider: "calculix",
-    tool: "calculix_solve_static",
-    resultSchemaVersion: "2.0",
     mesh,
     material,
     supports,
@@ -330,54 +320,54 @@ function parseSolver(value: unknown): SensitivitySolverDeclaration {
   };
 }
 
-function parseSolverMesh(
+function parseMethodMesh(
   value: unknown,
-): SensitivitySolverDeclaration["mesh"] {
+): SensitivityStaticStructuralMethod["mesh"] {
   const input = exactRecord(
     value,
     ["kind", "targetSizeMm"],
-    "$case.solver.mesh",
+    "$case.method.mesh",
   );
-  literalValue(input.kind, "tetrahedral-volume", "$case.solver.mesh.kind");
-  const size = finite(input.targetSizeMm, "$case.solver.mesh.targetSizeMm");
+  literalValue(input.kind, "tetrahedral-volume", "$case.method.mesh.kind");
+  const size = finite(input.targetSizeMm, "$case.method.mesh.targetSizeMm");
   if (size <= 0) {
-    throw new TypeError("$case.solver.mesh.targetSizeMm must be positive.");
+    throw new TypeError("$case.method.mesh.targetSizeMm must be positive.");
   }
   return { kind: "tetrahedral-volume", targetSizeMm: size };
 }
 
-function parseSolverMaterial(
+function parseMethodMaterial(
   value: unknown,
-): SensitivitySolverDeclaration["material"] {
+): SensitivityStaticStructuralMethod["material"] {
   const input = exactRecord(
     value,
     ["model", "eMpa", "nu", "basis"],
-    "$case.solver.material",
+    "$case.method.material",
   );
   literalValue(
     input.model,
     "isotropic-linear-elastic",
-    "$case.solver.material.model",
+    "$case.method.material.model",
   );
-  const eMpa = finite(input.eMpa, "$case.solver.material.eMpa");
+  const eMpa = finite(input.eMpa, "$case.method.material.eMpa");
   if (eMpa <= 0) {
-    throw new TypeError("$case.solver.material.eMpa must be positive.");
+    throw new TypeError("$case.method.material.eMpa must be positive.");
   }
-  const nu = finite(input.nu, "$case.solver.material.nu");
+  const nu = finite(input.nu, "$case.method.material.nu");
   if (nu <= 0 || nu >= 0.5) {
     throw new TypeError(
-      "$case.solver.material.nu must be in the open interval (0, 0.5).",
+      "$case.method.material.nu must be in the open interval (0, 0.5).",
     );
   }
   return {
     model: "isotropic-linear-elastic",
     eMpa,
     nu,
-    basis: nonEmptyText(input.basis, "$case.solver.material.basis"),
+    basis: nonEmptyText(input.basis, "$case.method.material.basis"),
   };
 }
 
-function parseSolverSupport(value: unknown, path: string): SensitivitySupport {
+function parseMethodSupport(value: unknown, path: string): SensitivitySupport {
   const input = exactRecord(value, ["id", "kind", "selection"], path);
   literalValue(input.kind, "fixed", `${path}.kind`);
   return {
@@ -387,7 +377,7 @@ function parseSolverSupport(value: unknown, path: string): SensitivitySupport {
   };
 }
 
-function parseSolverLoad(value: unknown, path: string): SensitivityLoad {
+function parseMethodLoad(value: unknown, path: string): SensitivityLoad {
   const input = exactRecord(value, ["id", "kind", "selection", "force"], path);
   literalValue(input.kind, "force", `${path}.kind`);
   return {

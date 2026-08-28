@@ -34,6 +34,14 @@ export const MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY = Object.freeze(
   } as const satisfies CapabilityReference,
 );
 
+/** Factual finite-difference observations; it carries no engineering verdict. */
+export const MECHANICS_OBSERVE_STATIC_STRUCTURAL_SENSITIVITY_CAPABILITY = Object.freeze(
+  {
+    id: "mechanics.observe-static-structural-sensitivity",
+    version: "1",
+  } as const satisfies CapabilityReference,
+);
+
 export const MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY = Object.freeze(
   {
     id: "mechanics.observe-prescribed-kinematics",

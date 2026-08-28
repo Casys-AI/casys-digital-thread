@@ -3,6 +3,7 @@ import {
   GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY,
   GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY,
   MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY,
+  MECHANICS_OBSERVE_STATIC_STRUCTURAL_SENSITIVITY_CAPABILITY,
   MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY,
   type RequiredEngineeringCapability,
 } from "../../domain/capability/engineering-capability.ts";
@@ -123,6 +124,28 @@ Deno.test("unqualified Chrono stays unavailable even when the host reports AMD64
     unitIds: [],
     reasons: [
       "No enabled, non-revoked binding meets qualified qualification for mechanics.observe-prescribed-kinematics@1/execution.",
+    ],
+  }]);
+  assertEquals(plan.materials, []);
+  assertEquals(plan.activation, "blocked");
+});
+
+Deno.test("unqualified HTTP CalculiX sensitivity remains unavailable and selects no material", async () => {
+  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+  const sensitivityRequirement = requirement(
+    MECHANICS_OBSERVE_STATIC_STRUCTURAL_SENSITIVITY_CAPABILITY,
+  );
+  const plan = await planProjectCapability(
+    await input(catalog, [sensitivityRequirement]),
+  );
+
+  assertEquals(plan.bindings, [{
+    requirement: sensitivityRequirement,
+    status: "unavailable",
+    binding: null,
+    unitIds: [],
+    reasons: [
+      "No enabled, non-revoked binding meets qualified qualification for mechanics.observe-static-structural-sensitivity@1/execution.",
     ],
   }]);
   assertEquals(plan.materials, []);

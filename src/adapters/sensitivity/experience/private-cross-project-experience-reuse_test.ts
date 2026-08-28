@@ -15,11 +15,11 @@ import {
   sensitivityExperienceExecutionPlanDigest,
 } from "../../../domain/sensitivity/experience/sensitivity-experience.ts";
 import {
-  assembleSensitivityStudyCaseV2,
+  assembleSensitivityStudyCaseV3,
   validateSensitivityStudyCaseTemplate,
 } from "../../../domain/sensitivity/study/sensitivity-study-template.ts";
 import { computeSensitivities } from "../../../domain/sensitivity/study/sensitivity-study.ts";
-import type { SensitivityStudyCaseV2 } from "../../../domain/sensitivity/study/sensitivity-study-v2.ts";
+import type { SensitivityStudyCaseV3 } from "../../../domain/sensitivity/study/sensitivity-study-v3.ts";
 import type {
   ThreadArtifact,
   ThreadSnapshot,
@@ -451,7 +451,7 @@ async function createHarness() {
   };
 }
 
-async function makeStudyCase(projectId: string): Promise<SensitivityStudyCaseV2> {
+async function makeStudyCase(projectId: string): Promise<SensitivityStudyCaseV3> {
   const template = validateSensitivityStudyCaseTemplate(
     JSON.parse(
       await Deno.readTextFile(
@@ -459,7 +459,7 @@ async function makeStudyCase(projectId: string): Promise<SensitivityStudyCaseV2>
       ),
     ),
   );
-  return assembleSensitivityStudyCaseV2({
+  return assembleSensitivityStudyCaseV3({
     ...template,
     id: `case-${projectId}`,
     project: { id: projectId, subjectId: `subject-${projectId}` },
@@ -573,7 +573,7 @@ function solverRuntime(digest: string) {
 }
 
 async function makeStudyCapture(
-  studyCase: SensitivityStudyCaseV2,
+  studyCase: SensitivityStudyCaseV3,
   projectId: string,
   offset: number,
 ) {

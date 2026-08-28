@@ -19,3 +19,7 @@ export const LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE =
 /** Published mcp-chrono 0.3.1 Linux/amd64 OCI index, pinned without a tag. */
 export const MCP_CHRONO_031_IMAGE_REFERENCE =
   "ghcr.io/casys-ai/mcp-chrono@sha256:b6302001725df4722d84096a51eeff7e7ffeee843690a2ba0cc417191c67683c" as const;
+
+/** Published mcp-calculix 0.8.2 OCI index, pinned without a tag. */
+export const MCP_CALCULIX_082_IMAGE_REFERENCE =
+  "ghcr.io/casys-ai/mcp-calculix@sha256:ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8" as const;

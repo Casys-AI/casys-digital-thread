@@ -20,7 +20,7 @@ import type {
 } from "../../../../../domain/project/engineering-project.ts";
 import type { SensitivityStudySealAuthorityKind } from "../../../../../domain/sensitivity/study/sensitivity-catalog-offer-join.ts";
 import type { SensitivityStudySealDiagnostic } from "../../../../../domain/sensitivity/study/sensitivity-study-seal-bindings.ts";
-import type { SensitivityCadSource } from "../../../../../domain/sensitivity/study/sensitivity-study-v2.ts";
+import type { SensitivityCadSource } from "../../../../../domain/sensitivity/study/sensitivity-study-v3.ts";
 
 export interface ProjectSensitivityStudySealReviewCommand {
   readonly projectId: string;

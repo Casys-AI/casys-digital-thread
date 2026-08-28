@@ -15,7 +15,7 @@ import {
   MANUFACTURING_OBSERVE_PRINTABILITY_CAPABILITY,
   MANUFACTURING_RUN_DFM_CHECKS_CAPABILITY,
   MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY,
-  MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY,
+  MECHANICS_OBSERVE_STATIC_STRUCTURAL_SENSITIVITY_CAPABILITY,
   MODEL_AUTHOR_SYSTEM_CAPABILITY,
   MODEL_EVALUATE_REQUIREMENT_CAPABILITY,
   MODEL_INSPECT_SYSTEM_CAPABILITY,
@@ -1200,7 +1200,7 @@ const OPERATIONS = [
     }],
   },
   /**
-   * Provider-free seal of one reviewed sensitivity-study-case/2.0. The catalog
+   * Provider-free seal of one reviewed sensitivity-study-case/3.0. The catalog
    * holds the scientific template; the signed MRTR binds the exact Thread
    * compilation admission. No provider is called and no derivative is computed.
    */
@@ -1213,7 +1213,7 @@ const OPERATIONS = [
     description:
       "Resolve the reviewed sensitivity-study template through the server-owned catalog, " +
       "bind the exact compilation-admission cadSource from the current Thread, verify the " +
-      "operator-signed digest against the assembled sensitivity-study-case/2.0 bytes, and " +
+      "operator-signed digest against the assembled sensitivity-study-case/3.0 bytes, and " +
       "publish the content-addressed case artifact. No provider is called.",
     workItemKind: "review",
     riskClass: "consequential",
@@ -1236,7 +1236,7 @@ const OPERATIONS = [
     allowedBasisKinds: ["thread-snapshot"],
     title: "Run the sealed FEA sensitivity study and publish observations",
     description:
-      "Re-read the sealed sensitivity-study-case/2.0, execute the exact admitted " +
+      "Re-read the sealed sensitivity-study-case/3.0, execute the exact admitted " +
       "Build123d source and one server-owned stepped substitution, dispatch two " +
       "attested CalculiX static solves, compute finite-difference derivatives from " +
       "the sealed step, and publish unit-carrying observations. No verdict is derived.",
@@ -1245,7 +1245,7 @@ const OPERATIONS = [
     execution: "trusted",
     runtimeDemand: requiredRuntimeDemand(
       qualifiedCapability(GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY, "preparation"),
-      qualifiedCapability(MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY),
+      qualifiedCapability(MECHANICS_OBSERVE_STATIC_STRUCTURAL_SENSITIVITY_CAPABILITY),
     ),
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{

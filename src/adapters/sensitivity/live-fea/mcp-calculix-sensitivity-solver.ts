@@ -1,7 +1,7 @@
 /**
- * Code-owned lowering from a sealed SensitivitySolverDeclaration to
- * calculix_solve_static. The declaration's provider/tool literals are
- * verified, then ignored as dispatch selectors.
+ * Code-owned lowering from a sealed provider-neutral physical method to the
+ * fixed `calculix_solve_static` binding. The project case never carries the
+ * provider tool or its argument envelope.
  */
 
 import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
@@ -103,12 +103,7 @@ export function resolveSensitivitySolve(input: SensitivitySolveInput): {
   readonly plan: StaticStructuralSolvePlan;
   readonly context: CalculixStaticSolveContext;
 } {
-  const declaration = input.declaration;
-  if (declaration.provider !== "calculix" || declaration.tool !== STATIC_SOLVE_TOOL) {
-    throw new TypeError(
-      "Sensitivity solver declaration must be calculix / calculix_solve_static.",
-    );
-  }
+  const method = input.method;
   const stepDigest = input.inputArtifact.fingerprint.digest;
   const stepBytes = input.inputArtifact.byteCount;
   if (input.inputArtifact.fingerprint.algorithm !== "sha256") {
@@ -118,25 +113,25 @@ export function resolveSensitivitySolve(input: SensitivitySolveInput): {
     input.inputArtifact.stagedAsset.location,
     stepDigest,
   );
-  const fixedSelections = declaration.supports.map((support) => support.selection.name);
-  const loads = declaration.loads.map((load) => ({
+  const fixedSelections = method.supports.map((support) => support.selection.name);
+  const loads = method.loads.map((load) => ({
     selection: load.selection.name,
     forceN: load.force.value,
   }));
   const request: CalculixStaticSolveRequest = {
     step_path: stagedPath,
     expected_step_sha256: stepDigest,
-    mesh_size_mm: declaration.mesh.targetSizeMm,
+    mesh_size_mm: method.mesh.targetSizeMm,
     material: {
-      e_mpa: declaration.material.eMpa,
-      nu: declaration.material.nu,
+      e_mpa: method.material.eMpa,
+      nu: method.material.nu,
     },
     selections: [
-      ...declaration.supports.map((support) => ({
+      ...method.supports.map((support) => ({
         name: support.selection.name,
         box: { min: support.selection.box.min, max: support.selection.box.max },
       })),
-      ...declaration.loads.map((load) => ({
+      ...method.loads.map((load) => ({
         name: load.selection.name,
         box: { min: load.selection.box.min, max: load.selection.box.max },
       })),
@@ -147,10 +142,10 @@ export function resolveSensitivitySolve(input: SensitivitySolveInput): {
       force_n: load.forceN,
     })),
   };
-  const supports: readonly StaticStructuralSupport[] = declaration.supports.map(
+  const supports: readonly StaticStructuralSupport[] = method.supports.map(
     (support) => ({ selectionId: support.selection.name }),
   );
-  const semanticLoads: readonly StaticStructuralLoad[] = declaration.loads.map(
+  const semanticLoads: readonly StaticStructuralLoad[] = method.loads.map(
     (load) => ({
       selectionId: load.selection.name,
       force: { value: load.force.value, unit: "N" },

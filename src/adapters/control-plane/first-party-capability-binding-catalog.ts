@@ -4,6 +4,7 @@ import {
   GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY,
   GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY,
   MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY,
+  MECHANICS_OBSERVE_STATIC_STRUCTURAL_SENSITIVITY_CAPABILITY,
   MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY,
   MODEL_AUTHOR_SYSTEM_CAPABILITY,
   MODEL_EVALUATE_REQUIREMENT_CAPABILITY,
@@ -38,6 +39,7 @@ import {
   LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
   LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
+  MCP_CALCULIX_082_IMAGE_REFERENCE,
   MCP_CHRONO_031_IMAGE_REFERENCE,
 } from "./first-party-capability-runtime-identities.ts";
 import {
@@ -163,6 +165,21 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "reviewed",
       ),
     ]),
+    unit("casys.mcp-calculix", [
+      composeMaterial(
+        "mcp-calculix-image",
+        MCP_CALCULIX_082_IMAGE_REFERENCE,
+        ["linux/amd64", "linux/arm64"],
+        "mcp-calculix",
+        "loopback-only",
+        [3015],
+        [
+          volume("calculix-inputs", "read-write", "preserve"),
+          volume("calculix-runs", "read-write", "preserve"),
+        ],
+        "reviewed",
+      ),
+    ], "0.8.2"),
     unit("casys.modelica-qualified-worker", [
       microvmMaterial(
         "modelica-qualified-worker-image",
@@ -299,6 +316,22 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "src/adapters/fea/isolated-v3/fixed-calculix-isolated-execution-profile.ts",
         [
           "The local product worker is distinct from HTTP mcp-calculix and from sensitivity reuse.",
+        ],
+      ),
+      binding(
+        "calculix-http-static-sensitivity",
+        MECHANICS_OBSERVE_STATIC_STRUCTURAL_SENSITIVITY_CAPABILITY,
+        "execution",
+        "unqualified",
+        "calculix-http-static-sensitivity-adapter",
+        "1.0.0",
+        null,
+        ["casys.mcp-calculix"],
+        "src/adapters/sensitivity/live-fea/mcp-calculix-sensitivity-solver.ts",
+        [
+          "The HTTP sensitivity binding is distinct from the isolated product static-proof worker.",
+          "It remains unqualified and non-activable in S1: no launch group, recorded solve/readback path, or runtime execution session is enrolled yet.",
+          "The binding can emit only static-structural sensitivity observations; no provider health or completed call is an engineering verdict.",
         ],
       ),
       binding(

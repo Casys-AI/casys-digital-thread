@@ -6,7 +6,7 @@
  * project, still wins. When the catalog does not uniquely select (absent or
  * ambiguous), a unique signed `sensitivity-catalog-offer` on the current tip
  * is reopened, recompiled, and lowered into a
- * `sensitivity-study-case-template/2.0` — including the code-owned mesh-sized
+ * `sensitivity-study-case-template/3.0` — including the code-owned mesh-sized
  * step. cadSource is that offer's signed `compile.seal-admission@3`
  * admission, or the unique readable admission that binds a catalogued
  * semanticKey. The caller never supplies case bytes, hashes or solver
@@ -45,11 +45,11 @@ import {
   verifySensitivityStudyParametersMatchCase,
 } from "../../../../domain/sensitivity/study/sensitivity-study-proposal.ts";
 import {
-  assembleSensitivityStudyCaseV2,
+  assembleSensitivityStudyCaseV3,
   type SensitivityStudyCaseTemplate,
   validateSensitivityStudyCaseTemplate,
 } from "../../../../domain/sensitivity/study/sensitivity-study-template.ts";
-import type { SensitivityCadSource } from "../../../../domain/sensitivity/study/sensitivity-study-v2.ts";
+import type { SensitivityCadSource } from "../../../../domain/sensitivity/study/sensitivity-study-v3.ts";
 import {
   closedRecord,
   deepFreeze,
@@ -269,8 +269,8 @@ export class PrepareProjectSensitivityStudySealReview
           phaseId,
           phaseName: "Seal sensitivity study declaration",
           phaseDescription: fromOffer
-            ? "Seal the sensitivity-study-case/2.0 compiled from the signed catalog offer without calling a provider."
-            : "Seal the catalogued sensitivity-study-case/2.0 without calling a provider.",
+            ? "Seal the provider-neutral sensitivity-study-case/3.0 compiled from the signed catalog offer without calling a provider."
+            : "Seal the provider-neutral catalogued sensitivity-study-case/3.0 without calling a provider.",
           workItemId: selected.workItemId,
           decisionId: selected.decisionId,
           decisionTitle: "Approve sensitivity-study seal",
@@ -561,7 +561,7 @@ async function compileSealParameters(
     { status: "resolved" }
   >["decisionParameters"];
 }> {
-  const studyCase = assembleSensitivityStudyCaseV2(template, cadSource);
+  const studyCase = assembleSensitivityStudyCaseV3(template, cadSource);
   assertSensitivityLiveMethod(studyCase);
   const caseDigest = (await sha256Fingerprint(studyCase)).digest;
   const decisionParameters = encodeSensitivityStudyDecisionParameters(

@@ -995,7 +995,7 @@ Deno.test("the Workbench accepts only exact verification cases and known node me
 
   const mismatchedSchema = structuredClone(observed);
   mismatchedSchema.engineeringCases!.cases[0]!.caseSchemaVersion =
-    "sensitivity-study-case/2.0" as never;
+    "sensitivity-study-case/3.0" as never;
   assertEquals(isThreadWorkbenchSnapshot(mismatchedSchema), false);
 
   const wrongAuthority = structuredClone(observed);
