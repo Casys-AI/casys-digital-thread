@@ -32,7 +32,7 @@
     "path": "docs/reference/runtime/capability-packs/behave-foundation/platforms.md",
     "fingerprint": {
       "algorithm": "sha256",
-      "digest": "e7aa83933bf6bdf8a7e1f116b025f914208537bf1292ff85755c39ddc77bf1a6"
+      "digest": "0b4657deeac00fc5d51169d212572addf6eec304a0616303e6aa5d2640f615a5"
     }
   },
   "reviews": {
@@ -40,7 +40,7 @@
       "path": "docs/reference/runtime/capability-packs/behave-foundation/licences.md",
       "fingerprint": {
         "algorithm": "sha256",
-        "digest": "b4c5d98ee77c1c1f6af7f6b0f2a7df1d876af09b00e1f934812cfda685b26c96"
+        "digest": "cc6ec6887f6f1b8bdab4186a72b3ddb3117e3cb9cab9156aa6a853136137b0a7"
       }
     },
     "volumes": {
@@ -54,7 +54,7 @@
       "path": "docs/reference/runtime/capability-packs/behave-foundation/security.md",
       "fingerprint": {
         "algorithm": "sha256",
-        "digest": "754680cd9cffaad8e92f90e797e6063ff9967c830c70e838ee166d0037b900c9"
+        "digest": "9d797755fa7a1ce6e1e0c6346a099651043f36863e144aace6078dcc073ea64c"
       }
     }
   }

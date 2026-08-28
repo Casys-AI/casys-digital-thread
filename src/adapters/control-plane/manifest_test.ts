@@ -35,6 +35,9 @@ Deno.test("loadFleetManifest accepts the workspace manifest and preserves postur
       "build123d_export",
       "build123d_observe_assembly_integrity",
     ]);
+    assertEquals(build123d?.expectedViews, [
+      "ui://mcp-build123d/results-viewer",
+    ]);
   }
   const erpnext = manifest.servers.find((server) => server.id === "erpnext");
   assertEquals(erpnext?.expectedTools, [
@@ -95,6 +98,43 @@ Deno.test("CalculiX desired identity pins the published 0.8.2 index, labels, and
   });
 });
 
+Deno.test("Build123d desired identities pin the dedicated 0.6.1 multi-arch provider contract", async () => {
+  const raw = JSON.parse(await Deno.readTextFile("config/mcp-fleet.json")) as {
+    servers: Array<Record<string, unknown>>;
+  };
+  const expectedImage =
+    "ghcr.io/casys-ai/mcp-build123d@sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d";
+  const expectedIdentity = {
+    releaseTag: "v0.6.1",
+    version: "0.6.1",
+    revision: "beaeb648a979437cce8676da103a39d9eb312290",
+    imageIndexDigest:
+      "765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d",
+    platformManifests: {
+      "linux/amd64": "e040ee6385df909d481ac58ec290a1b13f50ca40b0e48eec58949fb5efde8309",
+      "linux/arm64": "420d9ba94b71605443ee59cc1160f94e17ead0c5b6a3f5e7a80f76dffa1ea84b",
+    },
+    ociLabels: {
+      "org.opencontainers.image.created": "2026-08-28T16:59:19Z",
+      "org.opencontainers.image.description": "Qualified Build123d MCP provider",
+      "org.opencontainers.image.licenses": "MIT",
+      "org.opencontainers.image.revision": "beaeb648a979437cce8676da103a39d9eb312290",
+      "org.opencontainers.image.source": "https://github.com/Casys-AI/mcp-build123d",
+      "org.opencontainers.image.title": "mcp-build123d",
+      "org.opencontainers.image.url": "https://github.com/denoland/deno_docker",
+      "org.opencontainers.image.version": "0.6.1",
+    },
+    contractFingerprint:
+      "43801a71a10eb91959b616947b6ca028fa2ca05e8bf010159180fbf1067f68fa",
+  };
+  for (const id of ["build123d", "build123d-sandbox"]) {
+    const build123d = raw.servers.find((server) => server.id === id);
+    assert(build123d, `fleet manifest is missing ${id}`);
+    assertEquals(build123d.image, expectedImage);
+    assertEquals(build123d.providerIdentity, expectedIdentity);
+  }
+});
+
 Deno.test("toolchain Compose defaults remain in parity with fleet desired images", async () => {
   const [manifest, composeSource] = await Promise.all([
     loadFleetManifest("config/mcp-fleet.json"),
@@ -106,8 +146,8 @@ Deno.test("toolchain Compose defaults remain in parity with fleet desired images
   for (
     const [serverId, imageVariable] of [
       ["syson", "MCP_SYSON_IMAGE"],
-      ["build123d", "TOOLCHAIN_IMAGE"],
-      ["build123d-sandbox", "TOOLCHAIN_IMAGE"],
+      ["build123d", "MCP_BUILD123D_IMAGE"],
+      ["build123d-sandbox", "MCP_BUILD123D_IMAGE"],
       ["calculix", "MCP_CALCULIX_IMAGE"],
       ["spice", "MCP_SPICE_IMAGE"],
     ] as const
@@ -133,6 +173,11 @@ Deno.test("toolchain Compose defaults remain in parity with fleet desired images
     composeImageDefault(syson.image, "mcp-syson", "MCP_SYSON_IMAGE").defaultImage,
     "ghcr.io/casys-ai/mcp-syson@sha256:87eee6e35a636124d5ba6911492a245d69edcdf1ba67575676c22a0e9d7ce65e",
   );
+
+  for (const serviceName of ["mcp-build123d", "mcp-build123d-sandbox"]) {
+    const build123d = record(services[serviceName], serviceName);
+    assertEquals(build123d.command, undefined);
+  }
 });
 
 Deno.test("CalculiX keeps durable evidence, read-only CAD, and private FEA staging distinct", async () => {

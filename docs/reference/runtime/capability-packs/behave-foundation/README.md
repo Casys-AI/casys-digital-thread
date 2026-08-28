@@ -37,15 +37,16 @@ The current census and doctor never claim `vertical-qualified`. The contract
 attestor never sends `tools/call`, selects a provider tool or passes provider
 arguments. Its fixed targets are the repository-owned mandatory MCP boundaries
 only: `mcp-syson@0.8.3` and the `mcp-build123d-sandbox` endpoint declaring
-`mcp-build123d@0.5.0`. The latter service-name/identity distinction is deliberate;
+`mcp-build123d@0.6.1`. The latter service-name/identity distinction is deliberate;
 a healthy lookalike endpoint is `declared`, never `contract-attested`. Each OCI
 observation also reports the exact Docker `RepoDigest` which matched after standard
 repository-alias normalization, rather than an arbitrary digest from the local image.
 A schema fingerprint is an `observed-not-verified` identity of a live declaration.
 For the dedicated SysON provider, the attestor additionally compares the published
-0.8.3 runtime-contract's discovery, tools and model-explorer viewer fingerprints, and
-the local exact image labels (`source`, `revision`, `version`). It still never invokes
-a provider tool. The `packRole` fields are equally narrow: `fleetRequired` is the
+0.8.3 runtime-contract's discovery, tools and model-explorer viewer fingerprints. For
+the dedicated Build123d 0.6.1 provider, it additionally requires the exact locally
+observed OCI labels. It still never invokes a provider tool. The `packRole` fields are
+equally narrow: `fleetRequired` is the
 `mcp-fleet` flag (or `null` for a non-fleet material); `memberOfPack` records
 the reviewed Behave closure; `requiredForOperation` is a direct candidate
 binding claim, not a transitive Compose dependency; `qualifiedForPack` remains

@@ -70,6 +70,7 @@ entry point.
 | `probes/inspect-behave-capability-pack.ts`     | `capability:behave:inspect`          | read  |
 | `probes/mcp-call.ts`                           | `mcp:call`                           | write |
 | `probes/probe-constraint-solver.ts`            | `probe:constraint-solver`            | read  |
+| `probes/probe-build123d-contract.ts`           | `probe:build123d-contract`           | read  |
 | `probes/probe-calculix-contract.ts`            | `probe:calculix-contract`            | read  |
 | `probes/probe-spice-contract.ts`               | `probe:spice-contract`               | read  |
 | `probes/probe-architecture-attribute-value.ts` | `probe:architecture-attribute-value` | write |

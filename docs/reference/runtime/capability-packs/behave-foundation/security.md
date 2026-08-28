@@ -1,6 +1,6 @@
 # Behave Foundation security boundary
 
-Review date: 2026-08-28.
+Review date: 2026-08-29.
 
 This is a local developer candidate, not an internet-facing production topology.
 
@@ -11,9 +11,10 @@ This is a local developer candidate, not an internet-facing production topology.
 - The provider's external Kroki renderer is disabled by default. It can be enabled only
   with an explicit `SYSON_KROKI_URL`; absence never becomes an implicit outbound
   renderer request or a guessed fallback.
-- `mcp-build123d-sandbox` executes admitted CAD source in a bounded container with a
-  private export volume, dropped capabilities and `no-new-privileges`; it is not a
-  general remote code-execution service.
+- `mcp-build123d-sandbox` uses the dedicated `mcp-build123d@0.6.1` provider image to
+  execute admitted CAD source in a bounded container with a private export volume,
+  dropped capabilities and `no-new-privileges`; it is not a general remote
+  code-execution service.
 - The CalculiX worker runs through the fixed Microsandbox profile with deny-all network,
   `pullPolicy: never`, fixed executables and server-owned limits.
 - The pack and its diagnostic expose no provider, endpoint, image, tool or argument

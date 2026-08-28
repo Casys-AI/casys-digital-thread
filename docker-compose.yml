@@ -92,8 +92,9 @@ services:
     networks: [chain]
 
   mcp-build123d:
-    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:7a255f24448ddb6de496c4e47c2d1634c63daea67e9082b558257287215b23b5}"
-    command: ["build123d", "--port=3014", "--hostname=0.0.0.0"]
+    # The dedicated provider image owns its ENTRYPOINT and default HTTP CMD.
+    # Do not restore the legacy engineering-toolchain `build123d` subcommand.
+    image: "${MCP_BUILD123D_IMAGE:-ghcr.io/casys-ai/mcp-build123d@sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d}"
     ports:
       - "127.0.0.1:3014:3014"
     volumes:
@@ -127,8 +128,9 @@ services:
   # its bytes out with `docker compose cp` + fail-closed SHA-256 verification,
   # exactly as it already does for attested assets.
   mcp-build123d-sandbox:
-    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:7a255f24448ddb6de496c4e47c2d1634c63daea67e9082b558257287215b23b5}"
-    command: ["build123d", "--port=3014", "--hostname=0.0.0.0"]
+    # Same dedicated provider release, but the private volume and server-owned
+    # admission boundary below remain distinct from the canonical service.
+    image: "${MCP_BUILD123D_IMAGE:-ghcr.io/casys-ai/mcp-build123d@sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d}"
     ports:
       - "127.0.0.1:3024:3014"
     volumes:

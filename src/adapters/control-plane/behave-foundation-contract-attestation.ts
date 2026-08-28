@@ -66,6 +66,23 @@ const SYSON_RELEASE = {
   },
 } as const;
 
+const BUILD123D_RELEASE = {
+  image:
+    "ghcr.io/casys-ai/mcp-build123d@sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d",
+  version: "0.6.1",
+  revision: "beaeb648a979437cce8676da103a39d9eb312290",
+  labels: {
+    "org.opencontainers.image.created": "2026-08-28T16:59:19Z",
+    "org.opencontainers.image.description": "Qualified Build123d MCP provider",
+    "org.opencontainers.image.licenses": "MIT",
+    "org.opencontainers.image.revision": "beaeb648a979437cce8676da103a39d9eb312290",
+    "org.opencontainers.image.source": "https://github.com/Casys-AI/mcp-build123d",
+    "org.opencontainers.image.title": "mcp-build123d",
+    "org.opencontainers.image.url": "https://github.com/denoland/deno_docker",
+    "org.opencontainers.image.version": "0.6.1",
+  },
+} as const;
+
 /**
  * Fixed endpoint identities, reviewed with the pinned Behave material. Fleet
  * service names describe Compose endpoints; they are not a substitute for
@@ -87,7 +104,7 @@ const MANDATORY_MCP_ENDPOINT_IDENTITIES: Readonly<
   },
   "build123d-sandbox": {
     healthStatus: "ok",
-    server: { name: "mcp-build123d", version: "0.5.0" },
+    server: { name: "mcp-build123d", version: BUILD123D_RELEASE.version },
   },
 } as const;
 
@@ -106,6 +123,14 @@ export interface BehaveFoundationContractAttestation {
     readonly observedLabels: Readonly<Record<string, string>> | null;
     readonly labelsMatchExpected: boolean;
     readonly runtimeContract: typeof SYSON_RELEASE.runtimeContract;
+  };
+  readonly build123dRelease: {
+    readonly image: string;
+    readonly revision: string;
+    readonly version: string;
+    readonly labels: Readonly<Record<string, string>>;
+    readonly observedLabels: Readonly<Record<string, string>> | null;
+    readonly labelsMatchExpected: boolean;
   };
   readonly requiredMcpContracts: readonly ReadOnlyMcpContractAttestation[];
   readonly detail: string;
@@ -140,10 +165,18 @@ export async function attestBehaveFoundationContracts(
     observedSysonLabels,
     SYSON_RELEASE.labels,
   );
+  const observedBuild123dLabels =
+    options.host.materialObservations.find((observation) =>
+      observation.materialId === "mcp-build123d-sandbox"
+    )?.labels ?? null;
+  const build123dLabelsMatchExpected = labelsMatch(
+    observedBuild123dLabels,
+    BUILD123D_RELEASE.labels,
+  );
   const everyMcpAttested =
     requiredMcpContracts.every((contract) =>
       contract.evidenceLevel === "contract-attested"
-    ) && sysonLabelsMatchExpected;
+    ) && sysonLabelsMatchExpected && build123dLabelsMatchExpected;
   const evidenceLevel = everyMaterialCached && everyMcpAttested
     ? "contract-attested" as const
     : everyMaterialCached
@@ -164,10 +197,18 @@ export async function attestBehaveFoundationContracts(
       labelsMatchExpected: sysonLabelsMatchExpected,
       runtimeContract: SYSON_RELEASE.runtimeContract,
     },
+    build123dRelease: {
+      image: BUILD123D_RELEASE.image,
+      revision: BUILD123D_RELEASE.revision,
+      version: BUILD123D_RELEASE.version,
+      labels: BUILD123D_RELEASE.labels,
+      observedLabels: observedBuild123dLabels,
+      labelsMatchExpected: build123dLabelsMatchExpected,
+    },
     requiredMcpContracts,
     detail: evidenceLevel === "contract-attested"
-      ? "Exact local material, SysON release labels, and the mandatory MCP discovery contracts were observed. No provider tool or product vertical was run."
-      : "The pack remains below contract-attested until every mandatory material is cached exactly, the SysON release labels match, and every mandatory MCP discovery contract is attested.",
+      ? "Exact local material, the released SysON and Build123d labels, and the mandatory MCP discovery contracts were observed. No provider tool or product vertical was run."
+      : "The pack remains below contract-attested until every mandatory material is cached exactly, the released SysON and Build123d labels match, and every mandatory MCP discovery contract is attested.",
   });
 }
 

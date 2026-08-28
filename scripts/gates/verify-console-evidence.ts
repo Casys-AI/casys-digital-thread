@@ -258,7 +258,6 @@ expectedEngineeringViewers(
   "build123d",
   [
     "ui://mcp-build123d/results-viewer",
-    "ui://mcp-build123d/artifact-helper-viewer",
   ],
 );
 expectedEngineeringViewers(

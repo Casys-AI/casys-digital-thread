@@ -26,10 +26,11 @@ Deno.test("Behave attestation reaches contract-attested only after exact cache a
     report.requiredMcpContracts.map((contract) => contract.expected.server),
     [
       { name: "mcp-syson", version: "0.8.3" },
-      { name: "mcp-build123d", version: "0.5.0" },
+      { name: "mcp-build123d", version: "0.6.1" },
     ],
   );
   assertEquals(report.sysonRelease.labelsMatchExpected, true);
+  assertEquals(report.build123dRelease.labelsMatchExpected, true);
   assertEquals(report.requiredMcpContracts[0]?.runtimeContractMatchesExpected, true);
   assertEquals(calls.some((method) => method === "tools/call"), false);
 });
@@ -60,7 +61,7 @@ Deno.test("Behave attestation refuses a healthy lookalike service", async () => 
     fleet,
     attestor: {
       fetch: fleetFetch(fleet, [], {
-        "mcp-syson": { name: "mcp-build123d", version: "0.5.0" },
+        "mcp-syson": { name: "mcp-build123d", version: "0.6.1" },
       }),
       fingerprint: releaseFingerprint,
     },
@@ -120,6 +121,21 @@ Deno.test("Behave attestation rejects an exact image without the released SysON 
   assertEquals(report.sysonRelease.labelsMatchExpected, false);
 });
 
+Deno.test("Behave attestation rejects an exact Build123d image without the released labels", async () => {
+  const [census, fleet] = await fixtures();
+  const report = await attestBehaveFoundationContracts({
+    census,
+    host: host(census, true, undefined, {}, {
+      "org.opencontainers.image.revision": "not-the-release-revision",
+    }),
+    fleet,
+    attestor: { fetch: fleetFetch(fleet, []), fingerprint: releaseFingerprint },
+  });
+
+  assertEquals(report.evidenceLevel, "cached-exact");
+  assertEquals(report.build123dRelease.labelsMatchExpected, false);
+});
+
 async function fixtures() {
   const calculix = await createLocalCalculixIsolatedExecutionServerOptions();
   return await Promise.all([
@@ -138,6 +154,7 @@ function host(
   cached: boolean,
   cachedExactMaterialIds?: readonly string[],
   sysonLabelOverrides: Readonly<Record<string, string>> = {},
+  build123dLabelOverrides: Readonly<Record<string, string>> = {},
 ): BehaveFoundationHostObservation {
   const ids = cached
     ? cachedExactMaterialIds ?? census.materials.map((material) => material.id)
@@ -165,6 +182,29 @@ function host(
             "cf22348d1f91ba7329e0dbc04db814bca32ff17e",
           "org.opencontainers.image.version": "0.8.3",
           ...sysonLabelOverrides,
+        },
+        detail: "fixture",
+      }, {
+        materialId: "mcp-build123d-sandbox",
+        expectedReference:
+          "ghcr.io/casys-ai/mcp-build123d@sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d",
+        status: "cached-exact",
+        matchedRepoDigest:
+          "ghcr.io/casys-ai/mcp-build123d@sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d",
+        observedReference:
+          "ghcr.io/casys-ai/mcp-build123d@sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d",
+        labels: {
+          "org.opencontainers.image.created": "2026-08-28T16:59:19Z",
+          "org.opencontainers.image.description": "Qualified Build123d MCP provider",
+          "org.opencontainers.image.licenses": "MIT",
+          "org.opencontainers.image.revision":
+            "beaeb648a979437cce8676da103a39d9eb312290",
+          "org.opencontainers.image.source":
+            "https://github.com/Casys-AI/mcp-build123d",
+          "org.opencontainers.image.title": "mcp-build123d",
+          "org.opencontainers.image.url": "https://github.com/denoland/deno_docker",
+          "org.opencontainers.image.version": "0.6.1",
+          ...build123dLabelOverrides,
         },
         detail: "fixture",
       }]
@@ -226,7 +266,7 @@ function fleetFetch(
 function expectedServerInfo(id: string): { name: string; version: string } {
   if (id === "syson") return { name: "mcp-syson", version: "0.8.3" };
   if (id === "build123d-sandbox") {
-    return { name: "mcp-build123d", version: "0.5.0" };
+    return { name: "mcp-build123d", version: "0.6.1" };
   }
   throw new Error(`No Behave endpoint identity for ${id}`);
 }

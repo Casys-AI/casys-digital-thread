@@ -44,7 +44,7 @@ export const MCP_BUILD123D_ASSEMBLY_INTEGRITY_TOOL =
 const MCP_BUILD123D_RAW_SCHEMA =
   "build123d-assembly-integrity-observation/1.0" as const;
 const MCP_BUILD123D_SERVICE = "mcp-build123d" as const;
-const MCP_BUILD123D_PACKAGE_VERSION = "0.5.0" as const;
+const MCP_BUILD123D_PACKAGE_VERSION = "0.6.1" as const;
 const MCP_BUILD123D_ENGINE = Object.freeze(
   {
     name: "cadquery-ocp",
