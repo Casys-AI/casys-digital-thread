@@ -199,6 +199,7 @@ function operationalCapabilityFor(
         id: "mechanics.solve-static-structural",
         version: "1",
         use: "execution",
+        minimumQualification: "qualified",
       },
       binding: {
         id: "calculix-static-structural",
@@ -218,6 +219,15 @@ function operationalCapabilityFor(
         unitId: "casys.calculix-worker",
         materialId: "calculix-worker",
         imageDigest: "e".repeat(64),
+      }],
+      hostLifecycles: [{
+        material: {
+          unitId: "casys.calculix-worker",
+          materialId: "calculix-worker",
+          imageDigest: "e".repeat(64),
+        },
+        kind: "ephemeral-microsandbox",
+        launchProfile: null,
       }],
     }],
   };
@@ -245,6 +255,19 @@ Deno.test("ResolvedOperationPlan keeps MCP @2 and local @3 CalculiX identities d
   const transplanted = validLocalCalculixPlan();
   (transplanted.action as Record<string, unknown>).kind = "static-structural-analysis";
   assertThrows(() => validateResolvedOperationPlanV2(transplanted), TypeError);
+});
+
+Deno.test("ResolvedOperationPlan rejects a lifecycle record with an unknown field", () => {
+  const plan = validLocalCalculixPlan();
+  const operational = plan.operationalCapability as {
+    bindings: Array<{ hostLifecycles: Array<Record<string, unknown>> }>;
+  };
+  operational.bindings[0]!.hostLifecycles[0]!.unexpected = true;
+  assertThrows(
+    () => validateResolvedOperationPlanV2(plan),
+    TypeError,
+    "unexpected",
+  );
 });
 
 Deno.test("ResolvedOperationPlan 2.0 canonicalizes unordered evidence and freezes the closed local CalculiX action", async () => {

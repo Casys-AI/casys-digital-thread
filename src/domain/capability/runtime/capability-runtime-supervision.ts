@@ -61,6 +61,29 @@ export interface CapabilityRuntimeMaterialIdentity {
 }
 
 /**
+ * The sealed host behaviour of one exact material.  This is operational
+ * lifecycle information, not a provider envelope.  Only a persistent Compose
+ * service can carry a launch-profile reference; an ephemeral microVM and an
+ * OCI cache are deliberately never represented as an "active" service.
+ */
+export type CapabilityRuntimeHostLifecycle =
+  | {
+    readonly material: CapabilityRuntimeMaterialIdentity;
+    readonly kind: "persistent-compose";
+    readonly launchProfile: CapabilityRuntimeLaunchProfileReference | null;
+  }
+  | {
+    readonly material: CapabilityRuntimeMaterialIdentity;
+    readonly kind: "ephemeral-microsandbox";
+    readonly launchProfile: null;
+  }
+  | {
+    readonly material: CapabilityRuntimeMaterialIdentity;
+    readonly kind: "cache-only";
+    readonly launchProfile: null;
+  };
+
+/**
  * A server-selected binding captured for a queued/executing operation. Agents
  * never create this object, choose its contents, or supply an image digest.
  */
@@ -69,6 +92,8 @@ export interface ResolvedCapabilityRuntimeBinding {
     readonly id: string;
     readonly version: string;
     readonly use: "preparation" | "execution";
+    /** Exact operation demand sealed into the ROP for host-state admission. */
+    readonly minimumQualification: "compatible" | "qualified";
   };
   readonly binding: {
     readonly id: string;
@@ -85,6 +110,8 @@ export interface ResolvedCapabilityRuntimeBinding {
     readonly fingerprint: ContentFingerprint | null;
   } | null;
   readonly materials: readonly CapabilityRuntimeMaterialIdentity[];
+  /** Exactly one lifecycle for every sealed material, keyed by exact digest. */
+  readonly hostLifecycles: readonly CapabilityRuntimeHostLifecycle[];
 }
 
 /**
@@ -183,10 +210,11 @@ function parseResolvedBinding(
     "adapter",
     "profile",
     "materials",
+    "hostLifecycles",
   ], path);
   const capability = exactRecord(
     root.capability,
-    ["id", "version", "use"],
+    ["id", "version", "use", "minimumQualification"],
     `${path}.capability`,
   );
   const binding = exactRecord(root.binding, ["id", "version"], `${path}.binding`);
@@ -206,11 +234,33 @@ function parseResolvedBinding(
     throw new TypeError(`${path}.materials must not be empty for a runtime binding.`);
   }
   rejectDuplicates(materials.map(capabilityRuntimeMaterialKey), `${path}.materials`);
+  const hostLifecycles = arrayOf(
+    root.hostLifecycles,
+    `${path}.hostLifecycles`,
+  ).map((lifecycle, index) =>
+    parseHostLifecycle(lifecycle, `${path}.hostLifecycles[${index}]`)
+  );
+  rejectDuplicates(
+    hostLifecycles.map((lifecycle) => capabilityRuntimeMaterialKey(lifecycle.material)),
+    `${path}.hostLifecycles`,
+  );
+  if (
+    hostLifecycles.length !== materials.length ||
+    hostLifecycles.some((lifecycle) =>
+      !materials.some((material) => sameMaterial(material, lifecycle.material))
+    )
+  ) {
+    throw new TypeError(`${path}.hostLifecycles must cover exactly its materials.`);
+  }
   return {
     capability: {
       id: safeId(capability.id, `${path}.capability.id`),
       version: exactVersionToken(capability.version, `${path}.capability.version`),
       use: capabilityUse(capability.use, `${path}.capability.use`),
+      minimumQualification: capabilityQualification(
+        capability.minimumQualification,
+        `${path}.capability.minimumQualification`,
+      ),
     },
     binding: {
       id: safeId(binding.id, `${path}.binding.id`),
@@ -223,7 +273,35 @@ function parseResolvedBinding(
     },
     profile,
     materials,
+    hostLifecycles,
   };
+}
+
+function parseHostLifecycle(
+  value: unknown,
+  path: string,
+): CapabilityRuntimeHostLifecycle {
+  const root = exactRecord(value, ["material", "kind", "launchProfile"], path);
+  const material = parseMaterial(root.material, `${path}.material`);
+  if (root.kind === "persistent-compose") {
+    return {
+      material,
+      kind: "persistent-compose",
+      launchProfile: root.launchProfile === null
+        ? null
+        : validateCapabilityRuntimeLaunchProfileReference(
+          root.launchProfile,
+          `${path}.launchProfile`,
+        ),
+    };
+  }
+  if (root.kind === "ephemeral-microsandbox" || root.kind === "cache-only") {
+    if (root.launchProfile !== null) {
+      throw new TypeError(`${path}.launchProfile must be null for ${root.kind}.`);
+    }
+    return { material, kind: root.kind, launchProfile: null };
+  }
+  throw new TypeError(`${path}.kind is unsupported.`);
 }
 
 function parseProfile(
@@ -256,9 +334,25 @@ function parseMaterial(
   };
 }
 
+function sameMaterial(
+  left: CapabilityRuntimeMaterialIdentity,
+  right: CapabilityRuntimeMaterialIdentity,
+): boolean {
+  return left.unitId === right.unitId && left.materialId === right.materialId &&
+    left.imageDigest === right.imageDigest;
+}
+
 function capabilityUse(value: unknown, path: string): "preparation" | "execution" {
   if (value === "preparation" || value === "execution") return value;
   throw new TypeError(`${path} must equal preparation or execution.`);
+}
+
+function capabilityQualification(
+  value: unknown,
+  path: string,
+): "compatible" | "qualified" {
+  if (value === "compatible" || value === "qualified") return value;
+  throw new TypeError(`${path} must equal compatible or qualified.`);
 }
 
 function contentFingerprint(value: unknown, path: string): ContentFingerprint {
@@ -554,11 +648,9 @@ export function validateCapabilityRuntimeLease(value: unknown): CapabilityRuntim
         `$runtimeLease.launchProfiles[${index}]`,
       )
     );
-  if (
-    bindingIds.length === 0 || materialKeys.length === 0 || launchProfiles.length === 0
-  ) {
+  if (bindingIds.length === 0 || materialKeys.length === 0) {
     throw new TypeError(
-      "$runtimeLease.bindingIds, materialKeys and launchProfiles must not be empty.",
+      "$runtimeLease.bindingIds and materialKeys must not be empty.",
     );
   }
   rejectDuplicates(bindingIds, "$runtimeLease.bindingIds");

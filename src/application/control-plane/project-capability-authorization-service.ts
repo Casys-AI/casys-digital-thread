@@ -35,6 +35,7 @@ import type {
 import type { ProjectCapabilityLedgerStore } from "../ports/out/project-capability-ledger-store.ts";
 import type { EngineeringOperationRegistry } from "../../orchestration/operations/operation-contract.ts";
 import type { BriefCapabilityIntentRouteTable } from "../../orchestration/operations/brief-capability-intent-routes.ts";
+import type { CapabilityRuntimePreloadScheduler } from "./capability-runtime-preload-scheduler.ts";
 
 export class ProjectCapabilityAuthorizationError extends Error {}
 
@@ -46,6 +47,8 @@ export interface ProjectCapabilityAuthorizationServiceDependencies {
   readonly policy: CapabilityRuntimeAdminPolicy;
   readonly host: CapabilityRuntimeHostObservation;
   readonly lock: CapabilityRuntimeAdminLock;
+  /** Non-blocking host-material preload after durable authorization only. */
+  readonly preloadScheduler?: Pick<CapabilityRuntimePreloadScheduler, "schedule">;
   readonly now?: () => string;
 }
 
@@ -255,7 +258,10 @@ export class ProjectCapabilityAuthorizationService {
         proposal.capabilityProposalFingerprint,
       )
     );
-    if (alreadyAuthorized) return current;
+    if (alreadyAuthorized) {
+      this.#schedulePreload(current);
+      return current;
+    }
     if (current.effectiveEnvelope) {
       if (
         current.effectiveEnvelope.status === "authorized" &&
@@ -267,6 +273,7 @@ export class ProjectCapabilityAuthorizationService {
         // The new approved brief is independently persisted by the project
         // service. Its exact receipt was recrossed above; the host ceiling is
         // unchanged, so adding a second ledger event would be misleading.
+        this.#schedulePreload(current);
         return current;
       }
       throw new ProjectCapabilityAuthorizationError(
@@ -291,10 +298,12 @@ export class ProjectCapabilityAuthorizationService {
       proposalFingerprint: structuredClone(proposal.capabilityProposalFingerprint),
       approval: receipt,
     });
-    return await this.append(proposal.projectId, current.revision, [
+    const finalized = await this.append(proposal.projectId, current.revision, [
       ...current.events,
       event,
     ]);
+    this.#schedulePreload(finalized);
+    return finalized;
   }
 
   async inspect(projectId: string): Promise<{
@@ -416,10 +425,12 @@ export class ProjectCapabilityAuthorizationService {
       ),
       delta: review.delta,
     });
-    return await this.append(project.project.id, review.ledger.revision, [
+    const amended = await this.append(project.project.id, review.ledger.revision, [
       ...review.ledger.events,
       event,
     ]);
+    this.#schedulePreload(amended);
+    return amended;
   }
 
   private async append(
@@ -451,6 +462,12 @@ export class ProjectCapabilityAuthorizationService {
       ...body,
       ledgerFingerprint,
     }, expectedRevision);
+  }
+
+  #schedulePreload(ledger: ProjectCapabilityLedger): void {
+    const envelope = ledger.effectiveEnvelope;
+    if (envelope?.status !== "authorized") return;
+    this.dependencies.preloadScheduler?.schedule(envelope.proposal);
   }
 
   private async proposeForBrief(

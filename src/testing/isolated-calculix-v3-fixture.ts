@@ -875,6 +875,7 @@ function operationalCapabilityFor(
         id: "mechanics.solve-static-structural",
         version: "1",
         use: "execution",
+        minimumQualification: "qualified",
       },
       binding: { id: "calculix-static-structural", version: "1" },
       adapter: { id: "casys.calculix-worker", version: "1", source: "fixture" },
@@ -887,6 +888,15 @@ function operationalCapabilityFor(
         unitId: "casys.calculix-worker",
         materialId: "calculix-worker",
         imageDigest: "e".repeat(64),
+      }],
+      hostLifecycles: [{
+        material: {
+          unitId: "casys.calculix-worker",
+          materialId: "calculix-worker",
+          imageDigest: "e".repeat(64),
+        },
+        kind: "ephemeral-microsandbox",
+        launchProfile: null,
       }],
     }],
   };

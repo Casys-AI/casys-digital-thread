@@ -116,6 +116,70 @@ Deno.test("ensureActive refuses a lease expired at the requested activation inst
   assertEquals(fixture.host.calls, []);
 });
 
+Deno.test("ensureActive refuses an atomically returned expired lease before reuse or host observation", async () => {
+  const profile = await fakeCapabilityRuntimeLaunchProfile();
+  const fixture = await supervisorFixture(profile, {
+    material: "installed",
+    runtime: "active",
+    qualification: "qualified",
+  });
+  const candidate = lease("lease:expired-existing", profile);
+  await fixture.leases.claim({
+    ...candidate,
+    acquiredAt: "2026-08-28T22:00:00.000Z",
+    expiresAt: "2026-08-29T00:00:00.000Z",
+  });
+  await assertRejects(
+    () =>
+      fixture.supervisor.ensureActive({
+        ...request(profile),
+        lease: candidate,
+        reuseExistingLease: "allow",
+      }),
+    CapabilityRuntimeHostSafetyError,
+    "expired",
+  );
+  assertEquals(fixture.host.calls, []);
+});
+
+Deno.test("ensureActive never trusts an active observation while a failed or uncertain host intent remains", async () => {
+  const profile = await fakeCapabilityRuntimeLaunchProfile();
+  const fixture = await supervisorFixture(profile, {
+    material: "installed",
+    runtime: "active",
+    qualification: "qualified",
+  });
+  const entry = {
+    id: "host-runtime:uncertain-active",
+    action: "runtime-start" as const,
+    material: FAKE_CAPABILITY_RUNTIME_MATERIAL,
+    launchProfile: capabilityRuntimeLaunchProfileReference(profile),
+    projectId: "project:host-runtime",
+    plannedAt: "2026-08-29T00:00:00.000Z",
+    previousObservation: null,
+    administrativeRemovalPlanFingerprint: null,
+  };
+  await fixture.journal.appendBeforeMutation(entry);
+  await fixture.journal.appendOutcome({
+    schemaVersion: "capability-runtime-host-mutation-outcome/1.0",
+    journalEntryId: entry.id,
+    recordedAt: entry.plannedAt,
+    status: "uncertain",
+    observation: null,
+    detail: "host acknowledgement is absent",
+  });
+  await assertRejects(
+    () =>
+      fixture.supervisor.ensureActive({
+        ...request(profile),
+        lease: lease("lease:active-recovery", profile),
+      }),
+    CapabilityRuntimeHostSafetyError,
+    "unreconciled pending host intent",
+  );
+  assertEquals(fixture.host.calls, []);
+});
+
 Deno.test("releaseLease attests the durable lease project, material and profile before deletion", async () => {
   const profile = await fakeCapabilityRuntimeLaunchProfile();
   const fixture = await supervisorFixture(profile, {
@@ -124,7 +188,7 @@ Deno.test("releaseLease attests the durable lease project, material and profile 
     qualification: "qualified",
   });
   const durable = lease("lease:attested", profile);
-  await fixture.leases.acquire(durable);
+  await fixture.leases.claim(durable);
 
   await assertRejects(
     () =>
@@ -141,7 +205,7 @@ Deno.test("releaseLease attests the durable lease project, material and profile 
   assertEquals((await fixture.leases.read(durable.id))?.id, durable.id);
 
   await fixture.leases.release(durable.id);
-  await fixture.leases.acquire({
+  await fixture.leases.claim({
     ...durable,
     id: "lease:wrong-material",
     materialKeys: ["test.host-runtime-unit\u0000another-material"],
@@ -164,7 +228,7 @@ Deno.test("releaseLease attests the durable lease project, material and profile 
   );
 
   await fixture.leases.release("lease:wrong-material");
-  await fixture.leases.acquire({
+  await fixture.leases.claim({
     ...durable,
     id: "lease:wrong-profile",
     launchProfiles: [{
@@ -326,7 +390,7 @@ Deno.test("a pending activation blocks stop for the same material/profile before
     qualification: "qualified",
   });
   const durable = lease("lease:blocked-stop", profile);
-  await fixture.leases.acquire(durable);
+  await fixture.leases.claim(durable);
   await fixture.journal.appendBeforeMutation({
     id: "host-runtime:crash-start",
     action: "runtime-start",

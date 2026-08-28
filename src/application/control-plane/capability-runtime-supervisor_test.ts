@@ -81,19 +81,14 @@ Deno.test("capability supervisor permits a later demand subset without reapprovi
   await fixture.supervisor.validate(queueInput());
 });
 
-Deno.test("capability supervisor rejects an authorized binding until all independent runtime axes meet the operation minimum", async () => {
+Deno.test("capability supervisor queues a demanded binding cold without a host observer", async () => {
   const fixture = await readyFixture();
-  fixture.states.set(fixture.material, {
-    material: "installed",
-    runtime: "inactive",
-    qualification: "qualified",
-  });
-
-  await assertRejects(
-    () => fixture.supervisor.validate(queueInput()),
-    CapabilityRuntimeAuthorizationError,
-    "installed/inactive",
-  );
+  const resolved = await fixture.supervisor.validate(queueInput());
+  assertEquals(resolved?.bindings[0]?.hostLifecycles, [{
+    material: fixture.material,
+    kind: "ephemeral-microsandbox",
+    launchProfile: null,
+  }]);
 });
 
 Deno.test("capability supervisor refuses a selected binding whose qualified profile changed after authorization", async () => {
@@ -166,7 +161,7 @@ Deno.test("capability supervisor refuses an authorization that leaves a semantic
   );
 });
 
-Deno.test("capability supervisor resolves exact approved binding, profile and material digest only after active observation", async () => {
+Deno.test("capability supervisor resolves exact approved binding, profile, material digest and lifecycle", async () => {
   const fixture = await readyFixture();
   const resolved = await fixture.supervisor.requireExecution({
     project: PROJECT,
@@ -181,6 +176,7 @@ Deno.test("capability supervisor resolves exact approved binding, profile and ma
       id: "mechanics.solve-static-structural",
       version: "1",
       use: "execution",
+      minimumQualification: "qualified",
     },
     binding: { id: "calculix-static-structural", version: "1" },
     adapter: { id: "isolated-calculix", version: "1", source: "server" },
@@ -194,6 +190,15 @@ Deno.test("capability supervisor resolves exact approved binding, profile and ma
       materialId: "calculix-worker",
       imageDigest: IMAGE_DIGEST,
     }],
+    hostLifecycles: [{
+      material: {
+        unitId: "casys.calculix-worker",
+        materialId: "calculix-worker",
+        imageDigest: IMAGE_DIGEST,
+      },
+      kind: "ephemeral-microsandbox",
+      launchProfile: null,
+    }],
   }]);
 });
 
@@ -201,7 +206,6 @@ Deno.test("runtimeDemand none does not require a capability ledger or host obser
   const contexts = new InMemoryProjectCapabilityRuntimeContextReader();
   const supervisor = new CapabilityRuntimeSupervisor({
     contexts,
-    states: new InMemoryCapabilityRuntimeStateObserver(),
     operations: registry({ kind: "none" }),
   });
   const noRuntimeOperation = { id: "record.note", version: "1", bindings: [] };
@@ -296,20 +300,12 @@ async function readyFixture() {
   const context = runtimeContext(material);
   const contexts = new InMemoryProjectCapabilityRuntimeContextReader();
   contexts.set(PROJECT.id, context);
-  const states = new InMemoryCapabilityRuntimeStateObserver();
-  states.set(material, {
-    material: "installed",
-    runtime: "active",
-    qualification: "qualified",
-  });
   return {
     material,
     context,
     contexts,
-    states,
     supervisor: new CapabilityRuntimeSupervisor({
       contexts,
-      states,
       operations: registry(requiredDemand()),
     }),
   };
@@ -379,6 +375,7 @@ function runtimeContext(
         imageReference: `example.test/calculix@sha256:${material.imageDigest}`,
         platforms: ["linux/arm64"],
         lifecycle: "ephemeral",
+        launchProfile: null,
         effects: {},
       }],
     }],
@@ -427,6 +424,11 @@ function runtimeContext(
         version: "1",
         use: "execution",
         qualification: "qualified",
+      }],
+      allowedUnits: [{
+        id: material.unitId,
+        version: "1",
+        manifestFingerprint: FINGERPRINT,
       }],
       allowedBindings: [{
         capability: {

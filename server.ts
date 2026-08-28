@@ -180,6 +180,21 @@ import { ControlPlane } from "./src/application/control-plane/control-plane.ts";
 import { EngineeringProjectCommandError } from "./src/application/use-cases/project/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "./src/application/use-cases/project/project-brief-command-service.ts";
 import { ProjectCapabilityAuthorizationService } from "./src/application/control-plane/project-capability-authorization-service.ts";
+import {
+  FixedCapabilityRuntimeAdminLockReader,
+  FixedCapabilityRuntimeAdminPolicyReader,
+  FixedCapabilityRuntimeHostObservationReader,
+  ProjectCapabilityRuntimeContextCompiler,
+} from "./src/application/control-plane/project-capability-runtime-context-compiler.ts";
+import { CapabilityRuntimeSupervisor } from "./src/application/control-plane/capability-runtime-supervisor.ts";
+import { CapabilityRuntimeExecutionSessionCoordinator } from "./src/application/control-plane/capability-runtime-execution-session.ts";
+import { FileCapabilityRuntimeLeaseStore } from "./src/adapters/control-plane/file-capability-runtime-host-stores.ts";
+import { LocalMicrosandboxCapabilityRuntimeCache } from "./src/adapters/control-plane/microsandbox-capability-runtime-cache.ts";
+import {
+  createLocalMicrosandboxSdk,
+  microsandboxHostArchitecture,
+} from "./src/adapters/shared/execution/microsandbox-ephemeral-execution-backend.ts";
+import { CALCULIX_MICROSANDBOX_WORKER_CONTRACT } from "./src/adapters/fea/isolated-v3/calculix-static-proof-v1/worker-contract.ts";
 import { FileProjectCapabilityLedgerStore } from "./src/adapters/control-plane/file-project-capability-ledger-store.ts";
 import { createFirstPartyCapabilityRuntimeCatalog } from "./src/adapters/control-plane/first-party-capability-binding-catalog.ts";
 import {
@@ -190,6 +205,7 @@ import {
 import {
   listRegisteredEngineeringOperations,
   REGISTERED_ENGINEERING_OPERATION_REGISTRY,
+  requireRegisteredEngineeringOperation,
 } from "./src/orchestration/operations/registry.ts";
 import {
   VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
@@ -367,6 +383,8 @@ const DEFAULT_ENGINEERING_PROJECT_RUN_LEASE_DIRECTORY =
   "state/local/engineering-project-run-leases";
 const DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY =
   "state/local/project-capability-ledgers";
+const DEFAULT_CAPABILITY_RUNTIME_LEASE_DIRECTORY =
+  "state/local/capability-runtime-host/leases";
 const DEFAULT_PROJECT_BASELINE_DIRECTORY = "config/projects/baselines";
 /**
  * One closed local root for the recorded-analysis vertical. Every child store
@@ -907,6 +925,76 @@ async function createProjectControl(
 
   const activeProjectDirectory = options.activeProjectDirectory ??
     DEFAULT_ACTIVE_PROJECT_DIRECTORY;
+  const capabilityCatalog = await createFirstPartyCapabilityRuntimeCatalog();
+  const capabilityPolicy: CapabilityRuntimeAdminPolicy = {
+    schemaVersion: "capability-runtime-admin-policy/1.0",
+    disabledBindingIds: [],
+    preferences: [],
+  };
+  const capabilityHost: CapabilityRuntimeHostObservation = {
+    schemaVersion: "capability-runtime-host-observation/1.0",
+    platform: Deno.build.arch === "aarch64" ? "linux/arm64" : "linux/amd64",
+    emulatedPlatforms: [],
+    // This startup snapshot deliberately does not claim cache presence. JIT
+    // cache observation is a separate, exact host boundary.
+    images: [],
+  };
+  const capabilityLock: CapabilityRuntimeAdminLock = {
+    schemaVersion: "capability-runtime-admin-lock/1.0",
+    revision: 0,
+    previous: null,
+    units: [],
+  };
+  const capabilityLedgers = new FileProjectCapabilityLedgerStore(
+    options.projectCapabilityLedgerDirectory ??
+      DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY,
+  );
+  const capabilityContexts = new ProjectCapabilityRuntimeContextCompiler({
+    registry: { list: listRegisteredEngineeringOperations },
+    catalog: capabilityCatalog,
+    policy: new FixedCapabilityRuntimeAdminPolicyReader(capabilityPolicy),
+    host: new FixedCapabilityRuntimeHostObservationReader(capabilityHost),
+    lock: new FixedCapabilityRuntimeAdminLockReader(capabilityLock),
+    ledgers: capabilityLedgers,
+  });
+  const capabilityRuntime = new CapabilityRuntimeSupervisor({
+    contexts: capabilityContexts,
+    operations: { require: requireRegisteredEngineeringOperation },
+  });
+  // The initial catalogue deliberately has no enrolled persistent SysON
+  // profile. The session is nevertheless composed at the FEA seam so it
+  // fails closed before claim/WAL until the exact lifecycle is registered.
+  const capabilityRuntimeSession = new CapabilityRuntimeExecutionSessionCoordinator({
+    contexts: capabilityContexts,
+    leases: new FileCapabilityRuntimeLeaseStore(
+      DEFAULT_CAPABILITY_RUNTIME_LEASE_DIRECTORY,
+    ),
+    // Lazy exact inspection only: no image load, pull, sandbox create or
+    // Compose start occurs during server construction or queueing.
+    microsandbox: new LocalMicrosandboxCapabilityRuntimeCache(
+      createLocalMicrosandboxSdk,
+      calculixCapability.localProfile === undefined ? [] : [{
+        material: {
+          unitId: "casys.calculix-worker",
+          materialId: "calculix-worker-image",
+        },
+        image: {
+          reference: calculixCapability.localProfile.runtimeBackend.imageReference,
+          manifestDigest:
+            `sha256:${calculixCapability.localProfile.runtimeBackend.imageDigest.digest}`,
+          os: "linux",
+          architecture: microsandboxHostArchitecture(),
+          user: CALCULIX_MICROSANDBOX_WORKER_CONTRACT.expectedImageUser,
+          entrypoint: [
+            CALCULIX_MICROSANDBOX_WORKER_CONTRACT.executable,
+            ...CALCULIX_MICROSANDBOX_WORKER_CONTRACT.args,
+          ],
+          configurationProvenance:
+            calculixCapability.localProfile.isolationPolicy.fingerprint,
+        },
+      }],
+    ),
+  });
   const runtime = await createEngineeringProjectCommandRuntime({
     projectId: options.projectId,
     trackedManifestPath: options.projectPath,
@@ -915,6 +1003,7 @@ async function createProjectControl(
     planning: {
       operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY,
       runPlanSealer: recordedPlans.recordedRunPlans,
+      queueEligibility: capabilityRuntime,
     },
     initialEvidenceValidator: new ExactInitialBaselineEvidenceValidator(
       activeThreadSnapshots,
@@ -926,32 +1015,8 @@ async function createProjectControl(
       },
     ),
   });
-  const capabilityCatalog = await createFirstPartyCapabilityRuntimeCatalog();
-  const capabilityPolicy: CapabilityRuntimeAdminPolicy = {
-    schemaVersion: "capability-runtime-admin-policy/1.0",
-    disabledBindingIds: [],
-    preferences: [],
-  };
-  const capabilityHost: CapabilityRuntimeHostObservation = {
-    schemaVersion: "capability-runtime-host-observation/1.0",
-    platform: Deno.build.arch === "aarch64" ? "linux/arm64" : "linux/amd64",
-    emulatedPlatforms: [],
-    // Runtime supervisor ownership is a later lot. Cache presence is not part
-    // of a capability authorization fingerprint, so the initial authority
-    // remains deterministic while that supervisor is absent.
-    images: [],
-  };
-  const capabilityLock: CapabilityRuntimeAdminLock = {
-    schemaVersion: "capability-runtime-admin-lock/1.0",
-    revision: 0,
-    previous: null,
-    units: [],
-  };
   const capabilityAuthorization = new ProjectCapabilityAuthorizationService({
-    ledgers: new FileProjectCapabilityLedgerStore(
-      options.projectCapabilityLedgerDirectory ??
-        DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY,
-    ),
+    ledgers: capabilityLedgers,
     registry: { list: listRegisteredEngineeringOperations },
     catalog: capabilityCatalog,
     policy: capabilityPolicy,
@@ -1080,6 +1145,8 @@ async function createProjectControl(
     recordedAnalysisDirectory,
     canonicalAssetDirectory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
     resources: reopenAgentResource,
+    capabilityRuntime,
+    capabilityRuntimeSession,
   });
   const sensitivity = createSensitivityComposition({
     projects: runtime.projects,

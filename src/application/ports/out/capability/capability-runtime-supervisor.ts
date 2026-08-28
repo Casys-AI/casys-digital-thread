@@ -25,6 +25,10 @@ import type {
   CapabilityRuntimeLaunchProfile,
   CapabilityRuntimeLaunchProfileReference,
 } from "../../../../domain/capability/runtime/capability-runtime-host.ts";
+import type {
+  CapabilityRuntimeLaunchGroup,
+  CapabilityRuntimeLaunchGroupReference,
+} from "../../../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
 import type {
   EngineeringAgentRun,
@@ -48,6 +52,12 @@ export interface ProjectCapabilityRuntimeAuthorization {
   readonly status: "authorized" | "revoked";
   readonly fingerprint: ContentFingerprint;
   readonly allowedCapabilities: readonly AllowedEngineeringCapability[];
+  /** Exact atomic unit manifests approved with the envelope. */
+  readonly allowedUnits: readonly {
+    readonly id: string;
+    readonly version: string;
+    readonly manifestFingerprint: ContentFingerprint;
+  }[];
   /** Exact selected operational material approved with the brief/amendment. */
   readonly allowedBindings: readonly ProjectCapabilityRuntimeAuthorizedBinding[];
 }
@@ -106,11 +116,21 @@ export interface CapabilityRuntimeJournal {
 
 /** Shared leases make JIT activation reference-countable without project writes. */
 export interface CapabilityRuntimeLeaseStore {
-  acquire(lease: CapabilityRuntimeLease): Promise<void>;
+  /**
+   * Atomically creates the immutable claim or returns the durable claim that
+   * won the race.  Callers must validate scope, expiry and ownership from the
+   * returned value; an existing id is never silently treated as success.
+   */
+  claim(lease: CapabilityRuntimeLease): Promise<CapabilityRuntimeLeaseClaim>;
   /** Reads the exact durable claim before an operation may release it. */
   read(leaseId: string): Promise<CapabilityRuntimeLease | undefined>;
   release(leaseId: string): Promise<void>;
   listActive(at: string): Promise<readonly CapabilityRuntimeLease[]>;
+}
+
+export interface CapabilityRuntimeLeaseClaim {
+  readonly status: "created" | "existing";
+  readonly lease: CapabilityRuntimeLease;
 }
 
 /**
@@ -138,6 +158,18 @@ export interface CapabilityRuntimeLaunchProfileRegistry {
     reference: CapabilityRuntimeLaunchProfileReference,
   ): Promise<CapabilityRuntimeLaunchProfile>;
   list(): Promise<readonly CapabilityRuntimeLaunchProfile[]>;
+}
+
+/**
+ * Server-owned registry for an exact Compose topology spanning one or more
+ * atomic materials. It is intentionally a separate authority from atomic
+ * unit selection: callers can only resolve a sealed group reference.
+ */
+export interface CapabilityRuntimeLaunchGroupRegistry {
+  require(
+    reference: CapabilityRuntimeLaunchGroupReference,
+  ): Promise<CapabilityRuntimeLaunchGroup>;
+  list(): Promise<readonly CapabilityRuntimeLaunchGroup[]>;
 }
 
 /** Secret availability only. Secret values never cross this port. */

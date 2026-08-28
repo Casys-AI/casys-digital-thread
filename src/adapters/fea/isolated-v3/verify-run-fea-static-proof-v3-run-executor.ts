@@ -96,6 +96,9 @@ import {
 import type { FileByteStore } from "../../shared/cas/file-byte-store.ts";
 import type { CanonicalAssetReader } from "../../../application/ports/out/canonical-asset-reader.ts";
 import type { CapabilityRuntimeExecutionEligibility } from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import type {
+  CapabilityRuntimeExecutionSessionCoordinator,
+} from "../../../application/control-plane/capability-runtime-execution-session.ts";
 import {
   requireResolvedRunPlanExecution,
   type ResolvedRunPlanExecutionAuthorization,
@@ -166,6 +169,12 @@ export interface VerifyRunFeaStaticProofV3RunExecutorDependencies {
    * before this seam has admitted the exact queued binding.
    */
   readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
+  /** JIT host session. It is entered only after the final cold ROP recheck and
+   * before this executor can claim its run/WAL boundary. */
+  readonly capabilityRuntimeSession?: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin"
+  >;
   readonly now?: () => string;
 }
 
@@ -410,20 +419,94 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
       this.d.snapshots,
     );
 
+    // A terminal replay is always cold. The outer check protects the common
+    // path; this second check closes the race while the project lease waited.
+    project = await requiredProject(this.d.projects, command.projectId);
+    const beforeSession = requireRun(project, command.runId);
+    if (beforeSession.status === "completed") {
+      return await this.#reopenCompleted(project, command);
+    }
+    if (beforeSession.status === "failed") {
+      return await this.#reopenFailedOutputValidation(origin, command, project);
+    }
+    // The project lease can wait behind a writer. Re-open the exact current
+    // snapshot and recompute every sealed source immediately before JIT so a
+    // stale prepare cannot observe/acquire a host for superseded work.
+    prepared = await this.#prepare(project, command.runId, [
+      "queued",
+      "running",
+      "publishing",
+    ]);
+    await assertThreadWriteBasisAvailable(project, prepared.authorization.run);
+    await assertThreadSnapshotLineageIntact(
+      prepared.authorization.basis,
+      this.d.snapshots,
+    );
+
+    const operationalCapability = prepared.authorization.capabilityRuntime;
+    if (
+      !operationalCapability || !this.d.capabilityRuntimeSession ||
+      !this.d.capabilityRuntime
+    ) {
+      throw commandError(
+        "invalid_transition",
+        "Isolated CalculiX execution requires the configured JIT capability runtime session before a run can be claimed.",
+      );
+    }
+    // The session performs one more cold supervisor comparison immediately
+    // before any host observation/mutation. This is deliberately after the
+    // final #prepare and before claimRun, so a failed host leaves no WAL,
+    // SysON or provider dispatch and no project lifecycle mutation.
+    const capabilitySession = await this.d.capabilityRuntimeSession.begin({
+      project,
+      runId: command.runId,
+      operationalCapability,
+      recheck: async () => {
+        const rechecked = await this.d.capabilityRuntime!.requireExecution({
+          project,
+          run: prepared.authorization.run,
+          workItem: prepared.authorization.workItem,
+          operation: prepared.authorization.workItem.operation!,
+        });
+        if (!rechecked) {
+          throw commandError(
+            "invalid_transition",
+            "Isolated CalculiX execution lost its required operational capability binding before host activation.",
+          );
+        }
+        return rechecked;
+      },
+    });
+    const terminal = async (result: EngineeringProjectSnapshot) => {
+      await capabilitySession.releaseTerminal();
+      return result;
+    };
+
     if (prepared.authorization.run.status === "queued") {
-      await this.d.commands.claimRun(origin, {
-        ...command,
-        commandId: `${command.commandId}:claim`,
-        summary: "Started the isolated local CalculiX static-structural run.",
-      });
+      try {
+        await this.d.commands.claimRun(origin, {
+          ...command,
+          commandId: `${command.commandId}:claim`,
+          summary: "Started the isolated local CalculiX static-structural run.",
+        });
+      } catch (error) {
+        if (error instanceof EngineeringProjectCommandError) {
+          await capabilitySession.releaseTerminal();
+        } else {
+          capabilitySession.retainForRecovery();
+        }
+        throw error;
+      }
     }
     project = await requiredProject(this.d.projects, command.projectId);
     const claimedRun = requireRun(project, command.runId);
     if (claimedRun.status === "completed") {
-      return await this.#reopenCompleted(project, command);
+      return await terminal(await this.#reopenCompleted(project, command));
     }
     if (claimedRun.status === "failed") {
-      return await this.#reopenFailedOutputValidation(origin, command, project);
+      return await terminal(
+        await this.#reopenFailedOutputValidation(origin, command, project),
+      );
     }
     if (claimedRun.status !== "running" && claimedRun.status !== "publishing") {
       throw commandError(
@@ -447,7 +530,9 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
       preparedAt: this.#now(),
     });
     if (attempt.status === "completed") {
-      return await this.#finishSnapshot(origin, command, prepared, attempt);
+      return await terminal(
+        await this.#finishSnapshot(origin, command, prepared, attempt),
+      );
     }
 
     let evidence: CalculixIsolatedExecutionEvidence;
@@ -457,19 +542,22 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
         : await this.#readEvidence(prepared, attempt);
     } catch (error) {
       if (error instanceof IsolatedCodeExecutionRejectedError) {
-        return await this.#failRejected(origin, command, error);
+        return await terminal(await this.#failRejected(origin, command, error));
       }
       if (error instanceof IsolatedCalculixOutputValidationRejectedError) {
-        return await this.#failOutputValidationRejected(
-          origin,
-          command,
-          error,
-          prepared.executionRunId,
+        return await terminal(
+          await this.#failOutputValidationRejected(
+            origin,
+            command,
+            error,
+            prepared.executionRunId,
+          ),
         );
       }
       if (error instanceof IsolatedCalculixRedispatchExhaustedError) {
-        return await this.#failExhausted(origin, command, error);
+        return await terminal(await this.#failExhausted(origin, command, error));
       }
+      capabilitySession.retainForRecovery();
       throw error;
     }
     attempt = await this.d.attempts.recordEvidence({
@@ -489,7 +577,9 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
     });
     const completed = await this.d.attempts.read(command.projectId, command.runId);
     if (!completed) throw new Error("The isolated CalculiX product WAL disappeared.");
-    return await this.#finishSnapshot(origin, command, prepared, completed);
+    return await terminal(
+      await this.#finishSnapshot(origin, command, prepared, completed),
+    );
   }
 
   async #prepare(

@@ -60,6 +60,8 @@ const MCP_BUILD123D_IMAGE =
 
 const REVIEWED_LICENCE_DOC =
   "docs/reference/runtime/capability-packs/atomic-runtime-boundaries.md";
+const SYSON_LAUNCH_GROUP_BLOCKER =
+  "SysON activation is unavailable: its current multi-service Compose topology has unsealed substitution, secret, dependency, health and retained-volume effects; no exact launch group is enrolled.";
 
 /**
  * Builds the trusted first-party catalogue from exact current composition
@@ -206,6 +208,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "src/adapters/architecture/renderer/model-write-architecture-run-executor.ts",
         [
           "SysON authoring is a concrete runtime binding; it does not validate any engineering result.",
+          SYSON_LAUNCH_GROUP_BLOCKER,
         ],
       ),
       binding(
@@ -220,6 +223,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "src/adapters/architecture/requirements/model-write-requirements-run-executor.ts",
         [
           "A provider response is not an L4 or L5 verdict without the registered evaluation path.",
+          SYSON_LAUNCH_GROUP_BLOCKER,
         ],
       ),
       binding(
@@ -234,6 +238,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "src/adapters/architecture/part-definitions/part-definitions-capture.ts",
         [
           "Inspection is a bounded SysML read, not a product navigation authority.",
+          SYSON_LAUNCH_GROUP_BLOCKER,
         ],
       ),
       binding(

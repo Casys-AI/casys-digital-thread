@@ -10,6 +10,7 @@
 import type { CalculixIsolatedExecutionProfile } from "../../application/ports/out/fea/isolated-v3/calculix-isolated-execution-profile.ts";
 import type { EngineeringProjectRevisionStore } from "../../application/ports/out/engineering-project-revision-store.ts";
 import type { CapabilityRuntimeExecutionEligibility } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import type { CapabilityRuntimeExecutionSessionCoordinator } from "../../application/control-plane/capability-runtime-execution-session.ts";
 import type { EngineeringProjectCommandService } from "../../application/use-cases/project/engineering-project-command-service.ts";
 import { PrepareProjectFeaIsolatedRunReview } from "../../application/use-cases/fea/isolated-v3/prepare-project-fea-isolated-run-review.ts";
 import { PrepareProjectFeaProofSealReview } from "../../application/use-cases/fea/seal-case/prepare-project-fea-proof-seal-review.ts";
@@ -83,6 +84,10 @@ export interface FeaProjectOptions {
   readonly resources: ReopenAgentResource;
   /** Optional until the local capability supervisor is composed in Lot 4B. */
   readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
+  readonly capabilityRuntimeSession?: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin"
+  >;
 }
 
 export interface FeaProject {
@@ -259,6 +264,7 @@ export function createFeaProject(options: FeaProjectOptions): FeaProject {
       }),
       lease: options.lease,
       capabilityRuntime: options.capabilityRuntime,
+      capabilityRuntimeSession: options.capabilityRuntimeSession,
     })
     : undefined;
   return {

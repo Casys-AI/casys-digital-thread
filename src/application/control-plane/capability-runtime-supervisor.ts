@@ -10,12 +10,12 @@
 import {
   type CapabilityRuntimeAdministrativeRemovalPlan,
   capabilityRuntimeBindingKey,
+  type CapabilityRuntimeHostLifecycle,
   type CapabilityRuntimeJournalEntry,
   type CapabilityRuntimeJournalOutcome,
   type CapabilityRuntimeLease,
   type CapabilityRuntimeMaterialIdentity,
   capabilityRuntimeMaterialKey,
-  type CapabilityRuntimeObservedState,
   type CapabilityRuntimeRecovery,
   recoverCapabilityRuntime,
   type ResolvedCapabilityRuntimeBinding,
@@ -82,13 +82,14 @@ export class CapabilityRuntimeAuthorizationError extends Error {
 export interface CapabilityRuntimeSupervisorOptions {
   readonly contexts: ProjectCapabilityRuntimeContextReader;
   readonly operations: CapabilityRuntimeOperationRegistry;
-  readonly states: CapabilityRuntimeStateObserver;
 }
 
 /**
  * The same server-owned authority is evaluated at queue and execution time.
- * Queue calls it before the project draft changes; executor integration calls
- * it again before a WAL lease or provider dispatch.
+ * Both checks are deliberately cold: they seal/recheck exact project,
+ * authorization, registry, binding, material digest and lifecycle identity;
+ * neither observes nor mutates a host. JIT acquisition belongs after the final
+ * executor recheck and before its WAL/provider boundary.
  */
 export class CapabilityRuntimeSupervisor
   implements CapabilityRuntimeQueueEligibility, CapabilityRuntimeExecutionEligibility {
@@ -138,11 +139,7 @@ export class CapabilityRuntimeSupervisor
     const requirements = flattenEngineeringCapabilityRequirements(
       registered.runtimeDemand.capabilities,
     );
-    const bindings = await resolveRuntimeBindings(
-      requirements,
-      context,
-      this.options.states,
-    );
+    const bindings = resolveRuntimeBindings(requirements, context);
     return deepFreeze({
       schemaVersion: "resolved-capability-runtime-operation/1.0" as const,
       projectId: input.project.project.id,
@@ -235,6 +232,7 @@ function assertAuthorizedEnvelope(context: ProjectCapabilityRuntimeContext): voi
     );
   }
   assertUnambiguousAuthorizedBindings(authorization.allowedBindings);
+  assertExactAuthorizedUnits(context.catalog, authorization);
   const coverage = evaluateProjectCapabilityDemandCoverage(
     context.demand,
     authorization.allowedCapabilities,
@@ -246,41 +244,34 @@ function assertAuthorizedEnvelope(context: ProjectCapabilityRuntimeContext): voi
   }
 }
 
-async function resolveRuntimeBindings(
-  requirements: readonly RequiredEngineeringCapability[],
-  context: ProjectCapabilityRuntimeContext,
-  states: CapabilityRuntimeStateObserver,
-): Promise<readonly ResolvedCapabilityRuntimeBinding[]> {
-  const selected = requirements.map((requirement) =>
-    selectResolvedBinding(requirement, context.catalog, context)
-  );
-  const materials = uniqueMaterials(selected.flatMap((binding) => binding.materials));
-  const observations = await states.observe(materials);
-  for (const binding of selected) {
-    const required = requirements.find((candidate) =>
-      candidate.id === binding.capability.id &&
-      candidate.version === binding.capability.version &&
-      candidate.use === binding.capability.use
-    )!;
-    for (const material of binding.materials) {
-      const state = observations.get(capabilityRuntimeMaterialKey(material));
-      if (!state) {
+function assertExactAuthorizedUnits(
+  catalog: CapabilityRuntimeCatalog,
+  authorization: NonNullable<ProjectCapabilityRuntimeContext["authorization"]>,
+): void {
+  const authorized = new Map(authorization.allowedUnits.map((unit) => [unit.id, unit]));
+  for (const binding of authorization.allowedBindings) {
+    for (const unitId of binding.unitIds) {
+      const approved = authorized.get(unitId);
+      const current = catalog.units.find((unit) => unit.id === unitId);
+      if (
+        !approved || !current || approved.version !== current.version ||
+        !sameFingerprint(approved.manifestFingerprint, current.manifestFingerprint)
+      ) {
         throw new CapabilityRuntimeAuthorizationError(
-          `Capability runtime has no fresh observation for ${material.unitId}/${material.materialId}.`,
-        );
-      }
-      if (state.material !== "installed" || state.runtime !== "active") {
-        throw new CapabilityRuntimeAuthorizationError(
-          `Capability runtime material ${material.unitId}/${material.materialId} is ${state.material}/${state.runtime}, not installed/active.`,
-        );
-      }
-      if (!qualificationCovers(state.qualification, required.minimumQualification)) {
-        throw new CapabilityRuntimeAuthorizationError(
-          `Capability runtime material ${material.unitId}/${material.materialId} is ${state.qualification}, below ${required.minimumQualification} qualification.`,
+          `Project capability authorization does not admit the exact current atomic unit ${unitId}.`,
         );
       }
     }
   }
+}
+
+function resolveRuntimeBindings(
+  requirements: readonly RequiredEngineeringCapability[],
+  context: ProjectCapabilityRuntimeContext,
+): readonly ResolvedCapabilityRuntimeBinding[] {
+  const selected = requirements.map((requirement) =>
+    selectResolvedBinding(requirement, context.catalog, context)
+  );
   return selected.toSorted(compareResolvedBinding);
 }
 
@@ -325,29 +316,43 @@ function selectResolvedBinding(
       `Selected capability binding ${binding.id} does not meet ${requirement.minimumQualification} qualification.`,
     );
   }
-  const materials = planned.unitIds.flatMap((unitId) => {
+  const materialLifecyclePairs = planned.unitIds.flatMap((unitId) => {
     const unit = catalog.units.find((candidate) => candidate.id === unitId);
     if (!unit || !binding.unitIds.includes(unitId)) {
       throw new CapabilityRuntimeAuthorizationError(
         `Selected capability binding ${binding.id} names an invalid atomic unit ${unitId}.`,
       );
     }
-    return unit.materials.map((material) => ({
-      unitId: unit.id,
-      materialId: material.id,
-      imageDigest: imageDigest(material.imageReference),
-    }));
+    return unit.materials.map((material) => {
+      const identity = {
+        unitId: unit.id,
+        materialId: material.id,
+        imageDigest: imageDigest(material.imageReference),
+      };
+      return {
+        material: identity,
+        lifecycle: lifecycleForCatalogMaterial(identity, material),
+      };
+    });
   });
+  const materials = uniqueMaterials(
+    materialLifecyclePairs.map((pair) => pair.material),
+  );
+  const hostLifecycles = uniqueHostLifecycles(
+    materialLifecyclePairs.map((pair) => pair.lifecycle),
+  );
   const result: ResolvedCapabilityRuntimeBinding = {
     capability: {
       id: requirement.id,
       version: requirement.version,
       use: requirement.use,
+      minimumQualification: requirement.minimumQualification,
     },
     binding: { id: binding.id, version: binding.version },
     adapter: { ...binding.adapter },
     profile: binding.profile === null ? null : structuredClone(binding.profile),
-    materials: uniqueMaterials(materials),
+    materials,
+    hostLifecycles,
   };
   assertAuthorizationAllowsBinding(context.authorization!, result, planned.unitIds);
   return result;
@@ -476,11 +481,54 @@ function imageDigest(reference: string): string {
 }
 
 function qualificationCovers(
-  observed: CapabilityRuntimeObservedState["qualification"] | CapabilityQualification,
+  observed: CapabilityQualification | "unqualified" | "revoked",
   required: CapabilityQualification,
 ): boolean {
   return observed === "qualified" ||
     (observed === "compatible" && required === "compatible");
+}
+
+function lifecycleForCatalogMaterial(
+  material: CapabilityRuntimeMaterialIdentity,
+  catalogMaterial: CapabilityRuntimeCatalog["units"][number]["materials"][number],
+): CapabilityRuntimeHostLifecycle {
+  switch (catalogMaterial.lifecycle) {
+    case "persistent":
+      return {
+        material,
+        kind: "persistent-compose",
+        launchProfile: catalogMaterial.launchProfile === null
+          ? null
+          : structuredClone(catalogMaterial.launchProfile),
+      };
+    case "ephemeral":
+      return { material, kind: "ephemeral-microsandbox", launchProfile: null };
+    case "cache":
+      return { material, kind: "cache-only", launchProfile: null };
+  }
+}
+
+function uniqueHostLifecycles(
+  lifecycles: readonly CapabilityRuntimeHostLifecycle[],
+): readonly CapabilityRuntimeHostLifecycle[] {
+  const unique = new Map<string, CapabilityRuntimeHostLifecycle>();
+  for (const lifecycle of lifecycles) {
+    const key = capabilityRuntimeMaterialKey(lifecycle.material);
+    const previous = unique.get(key);
+    if (
+      previous && JSON.stringify(previous) !== JSON.stringify(lifecycle)
+    ) {
+      throw new CapabilityRuntimeAuthorizationError(
+        `Atomic material ${lifecycle.material.unitId}/${lifecycle.material.materialId} has inconsistent host lifecycles.`,
+      );
+    }
+    unique.set(key, structuredClone(lifecycle));
+  }
+  return [...unique.values()].toSorted((left, right) =>
+    capabilityRuntimeMaterialKey(left.material).localeCompare(
+      capabilityRuntimeMaterialKey(right.material),
+    )
+  );
 }
 
 function compareResolvedBinding(
@@ -519,7 +567,12 @@ export class CapabilityRuntimeLifecycleCoordinator {
   ) {}
 
   async acquireLease(lease: CapabilityRuntimeLease): Promise<void> {
-    await this.leases.acquire(lease);
+    const claim = await this.leases.claim(lease);
+    if (claim.status === "existing") {
+      throw new CapabilityRuntimeAuthorizationError(
+        "Capability runtime lease already exists; lifecycle coordination requires an explicit recovery path.",
+      );
+    }
   }
 
   async releaseLease(leaseId: string): Promise<void> {

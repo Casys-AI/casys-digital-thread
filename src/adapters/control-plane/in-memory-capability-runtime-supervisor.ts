@@ -16,6 +16,7 @@ import type {
   AuthorizedCapabilityRuntimeHostMutation,
   CapabilityRuntimeHostMutator,
   CapabilityRuntimeJournal,
+  CapabilityRuntimeLeaseClaim,
   CapabilityRuntimeLeaseStore,
   CapabilityRuntimeStateObserver,
   ProjectCapabilityRuntimeContext,
@@ -103,11 +104,13 @@ export class InMemoryCapabilityRuntimeLeaseStore
   implements CapabilityRuntimeLeaseStore {
   #leases = new Map<string, CapabilityRuntimeLease>();
 
-  async acquire(lease: CapabilityRuntimeLease): Promise<void> {
-    if (this.#leases.has(lease.id)) {
-      throw new Error(`Capability runtime lease ${lease.id} already exists.`);
+  async claim(lease: CapabilityRuntimeLease): Promise<CapabilityRuntimeLeaseClaim> {
+    const existing = this.#leases.get(lease.id);
+    if (existing) {
+      return { status: "existing", lease: structuredClone(existing) };
     }
     this.#leases.set(lease.id, structuredClone(lease));
+    return { status: "created", lease: structuredClone(lease) };
   }
 
   async read(leaseId: string): Promise<CapabilityRuntimeLease | undefined> {

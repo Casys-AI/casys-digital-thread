@@ -32,7 +32,15 @@ Deno.test("file capability leases are shared atomically and expire without delet
       acquiredAt: "2026-08-29T00:00:00.000Z",
       expiresAt: "2026-08-29T00:01:00.000Z",
     };
-    await Promise.all([first.acquire(lease), second.acquire(lease)]);
+    const claims = await Promise.all([first.claim(lease), second.claim(lease)]);
+    assertEquals(claims.map((claim) => claim.status).toSorted(), [
+      "created",
+      "existing",
+    ]);
+    assertEquals(
+      claims.find((claim) => claim.status === "existing")?.lease,
+      lease,
+    );
     assertEquals(
       (await first.listActive("2026-08-29T00:00:30.000Z")).map((item) => item.id),
       [

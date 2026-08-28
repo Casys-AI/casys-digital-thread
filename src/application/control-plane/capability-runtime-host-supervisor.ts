@@ -58,6 +58,8 @@ export interface CapabilityRuntimeMaterialEnsureRequest {
 export interface CapabilityRuntimeActiveEnsureRequest
   extends CapabilityRuntimeMaterialEnsureRequest {
   readonly lease: CapabilityRuntimeLease;
+  /** A fresh queued run is exclusive. Recovery may reuse its exact lease. */
+  readonly reuseExistingLease?: "allow" | "reject";
 }
 
 export interface CapabilityRuntimeLeaseReleaseRequest {
@@ -74,6 +76,8 @@ export interface CapabilityRuntimeHostEnsureResult {
   readonly profile: CapabilityRuntimeLaunchProfileReference;
   readonly state: CapabilityRuntimeObservedState | undefined;
   readonly mutation: CapabilityRuntimeJournalOutcome | undefined;
+  /** Present only for ensureActive, never interpreted as engineering success. */
+  readonly leaseDisposition?: "created" | "reused";
 }
 
 export interface CapabilityRuntimeLeaseReleaseResult {
@@ -141,20 +145,40 @@ export class CapabilityRuntimeHostSupervisor {
           "Capability runtime lease does not attest the exact launch profile.",
         );
       }
-      const material = await this.#ensureMaterial({
-        profile: request.profile,
-        projectId: request.projectId,
-        at: request.at,
-      }, profile);
-      if (
-        material.state && material.state.runtime === "inactive"
-      ) {
-        await this.#assertNoPendingRecovery(profile);
+      // A fresh observation which happens to be active is not a recovery
+      // decision. Any pending, uncertain or failed intent for this exact
+      // material/profile stays a literal operator barrier before a caller can
+      // reuse that observation or take another host action.
+      await this.#assertNoPendingRecovery(profile);
+      // H1 is the single Compose lease owner. Reserving under its mutation
+      // lock before material/start work prevents two queued callers from both
+      // believing they own one deterministic lease.
+      const leaseDisposition = await this.#acquireOrReuseExactScope(
+        lease,
+        request.reuseExistingLease ?? "allow",
+      );
+      let material: CapabilityRuntimeHostEnsureResult;
+      try {
+        material = await this.#ensureMaterial({
+          profile: request.profile,
+          projectId: request.projectId,
+          at: request.at,
+        }, profile);
+      } catch (error) {
+        // These two preconditions prove that no new host intent was written by
+        // this call. An existing recovery marker remains visible, but a fresh
+        // reservation must not be leaked. Any other failure may follow a
+        // journalled mutation and deliberately retains the lease.
+        if (leaseDisposition === "created" && isKnownPreMaterialRefusal(error)) {
+          await this.options.leases.release(lease.id);
+        }
+        throw error;
       }
       // The expiring claim is retained even if start becomes uncertain.  It
       // prevents a competing cleanup while an operator recovers the host.
-      await this.options.leases.acquire(lease);
-      if (!material.state || material.state.runtime === "active") return material;
+      if (!material.state || material.state.runtime === "active") {
+        return { ...material, leaseDisposition };
+      }
       if (material.state.runtime !== "inactive") {
         throw new CapabilityRuntimeHostSafetyError(
           `Capability runtime is ${material.state.runtime}; recovery must observe it before another start.`,
@@ -173,6 +197,7 @@ export class CapabilityRuntimeHostSupervisor {
         profile: capabilityRuntimeLaunchProfileReference(profile),
         state: await this.#observe(profile),
         mutation,
+        leaseDisposition,
       };
     });
   }
@@ -243,10 +268,16 @@ export class CapabilityRuntimeHostSupervisor {
         );
       }
       await this.#assertNoPendingRecovery(profile);
-      await this.options.leases.release(request.leaseId);
       const deactivation = await this.#coordinator.mutate(
         journalEntry(profile, "runtime-stop", null, request.at, observed),
       );
+      // Keep the durable lease whenever stop is failed/uncertain, including
+      // an interrupted journal write. It is the reconciliation handle for a
+      // proof which has already reached its terminal project state.
+      if (deactivation.status !== "succeeded") {
+        return { remainingLeaseCount: 0, deactivation };
+      }
+      await this.options.leases.release(request.leaseId);
       return { remainingLeaseCount: 0, deactivation };
     });
   }
@@ -338,6 +369,69 @@ export class CapabilityRuntimeHostSupervisor {
       );
     }
   }
+
+  /**
+   * Concurrent callers can derive the same deterministic JIT lease id a few
+   * milliseconds apart. The first immutable claim wins; the second may reuse
+   * it only when its operational scope is identical. Timestamps are not part
+   * of that scope and must not manufacture a duplicate host start.
+   */
+  async #acquireOrReuseExactScope(
+    lease: CapabilityRuntimeLease,
+    reuse: "allow" | "reject",
+  ): Promise<"created" | "reused"> {
+    const claim = await this.options.leases.claim(lease);
+    if (claim.status === "created") {
+      return "created";
+    }
+    const existing = validateCapabilityRuntimeLease(claim.lease);
+    if (!sameLeaseScope(existing, lease)) {
+      throw new CapabilityRuntimeHostSafetyError(
+        "A deterministic capability lease already belongs to another operational scope; recovery must resolve it.",
+      );
+    }
+    if (existing.expiresAt <= lease.acquiredAt) {
+      throw new CapabilityRuntimeHostSafetyError(
+        "A deterministic capability lease is expired; recovery must reconcile it before host activation.",
+      );
+    }
+    if (reuse === "reject") {
+      throw new CapabilityRuntimeHostSafetyError(
+        "A deterministic capability lease already belongs to an in-progress queued session; recovery must not duplicate host activation.",
+      );
+    }
+    return "reused";
+  }
+}
+
+function sameLeaseScope(
+  left: CapabilityRuntimeLease,
+  right: CapabilityRuntimeLease,
+): boolean {
+  return left.id === right.id && left.projectId === right.projectId &&
+    sameTokens(left.bindingIds, right.bindingIds) &&
+    sameTokens(left.materialKeys, right.materialKeys) &&
+    sameTokens(
+      left.launchProfiles.map((profile) =>
+        `${profile.id}\u0000${profile.version}\u0000${profile.fingerprint.digest}`
+      ),
+      right.launchProfiles.map((profile) =>
+        `${profile.id}\u0000${profile.version}\u0000${profile.fingerprint.digest}`
+      ),
+    );
+}
+
+function sameTokens(left: readonly string[], right: readonly string[]): boolean {
+  const orderedLeft = [...left].toSorted();
+  const orderedRight = [...right].toSorted();
+  return orderedLeft.length === orderedRight.length &&
+    orderedLeft.every((value, index) => value === orderedRight[index]);
+}
+
+function isKnownPreMaterialRefusal(error: unknown): boolean {
+  return error instanceof CapabilityRuntimeHostSafetyError &&
+    (error.message.includes("recovery must observe it before another acquisition") ||
+      error.message.includes("unreconciled pending host intent"));
 }
 
 function journalEntry(

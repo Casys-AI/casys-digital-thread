@@ -25,6 +25,7 @@ import { validateCapabilityRuntimeAdminLock } from "./capability-runtime-catalog
 import type {
   CapabilityRuntimeHostMutationLock,
   CapabilityRuntimeJournal,
+  CapabilityRuntimeLeaseClaim,
   CapabilityRuntimeLeaseStore,
 } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import {
@@ -172,7 +173,9 @@ export class FileCapabilityRuntimeLeaseStore implements CapabilityRuntimeLeaseSt
     this.#directory = requiredDirectory(directory);
   }
 
-  async acquire(leaseValue: CapabilityRuntimeLease): Promise<void> {
+  async claim(
+    leaseValue: CapabilityRuntimeLease,
+  ): Promise<CapabilityRuntimeLeaseClaim> {
     const lease = validateCapabilityRuntimeLease(leaseValue);
     await Deno.mkdir(this.#directory, { recursive: true });
     const path = await this.#path(lease.id);
@@ -184,13 +187,17 @@ export class FileCapabilityRuntimeLeaseStore implements CapabilityRuntimeLeaseSt
         this.#directory,
         "Capability runtime lease made no write progress.",
       );
+      return { status: "created", lease };
     } catch (error) {
       if (!isAlreadyExists(error)) throw error;
-      const existing = await Deno.readTextFile(path);
-      if (existing === text) return;
-      throw new Error(
-        `Capability runtime lease ${lease.id} already exists with different content.`,
-      );
+      return {
+        status: "existing",
+        lease: await readCanonical(
+          path,
+          validateCapabilityRuntimeLease,
+          "Capability runtime lease",
+        ),
+      };
     }
   }
 
