@@ -497,14 +497,14 @@ function lifecycleForCatalogMaterial(
       return {
         material,
         kind: "persistent-compose",
-        launchProfile: catalogMaterial.launchProfile === null
+        launchGroup: catalogMaterial.launchGroup === null
           ? null
-          : structuredClone(catalogMaterial.launchProfile),
+          : structuredClone(catalogMaterial.launchGroup),
       };
     case "ephemeral":
-      return { material, kind: "ephemeral-microsandbox", launchProfile: null };
+      return { material, kind: "ephemeral-microsandbox", launchGroup: null };
     case "cache":
-      return { material, kind: "cache-only", launchProfile: null };
+      return { material, kind: "cache-only", launchGroup: null };
   }
 }
 
@@ -603,7 +603,7 @@ export class CapabilityRuntimeLifecycleCoordinator {
         // timestamp is intent metadata, never evidence that a command ended.
         recordedAt: new Date().toISOString(),
         status: "uncertain",
-        observation: null,
+        observations: entry.materials.map((material) => ({ material, state: null })),
         detail: compactHostError(error),
       };
     }
@@ -669,13 +669,13 @@ function assertMutationContract(
       "Material removal journal entry does not bind the supplied administrative plan.",
     );
   }
-  if (
-    !removalPlan.ownedMaterials.some((material) =>
+  if (!entry.materials.every((entryMaterial) =>
+    removalPlan.ownedMaterials.some((material) =>
       capabilityRuntimeMaterialKey(material) ===
-        capabilityRuntimeMaterialKey(entry.material) &&
-      material.imageDigest === entry.material.imageDigest
+        capabilityRuntimeMaterialKey(entryMaterial) &&
+      material.imageDigest === entryMaterial.imageDigest
     )
-  ) {
+  )) {
     throw new CapabilityRuntimeAuthorizationError(
       "Administrative removal plan does not own the selected material.",
     );

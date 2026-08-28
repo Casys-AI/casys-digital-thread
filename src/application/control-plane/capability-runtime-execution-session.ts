@@ -18,7 +18,7 @@ import {
   validateCapabilityRuntimeLease,
   validateResolvedCapabilityRuntimeOperation,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
-import type { CapabilityRuntimeLaunchProfileReference } from "../../domain/capability/runtime/capability-runtime-host.ts";
+import type { CapabilityRuntimeLaunchGroupReference } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
@@ -26,7 +26,7 @@ import type {
   CapabilityRuntimeLeaseStore,
   ProjectCapabilityRuntimeContextReader,
 } from "../ports/out/capability/capability-runtime-supervisor.ts";
-import type { CapabilityRuntimeHostSupervisor } from "./capability-runtime-host-supervisor.ts";
+import type { CapabilityRuntimeLaunchGroupSupervisor } from "./capability-runtime-launch-group-supervisor.ts";
 
 // The isolated FEA profile is bounded in minutes. Six hours leaves recovery
 // room without treating an old queue claim as a permanent host reservation.
@@ -69,8 +69,8 @@ export interface CapabilityRuntimeExecutionSession {
 export interface CapabilityRuntimeExecutionSessionCoordinatorOptions {
   readonly contexts: ProjectCapabilityRuntimeContextReader;
   readonly leases: CapabilityRuntimeLeaseStore;
-  /** H1 Compose-only authority, deliberately absent when no profile is enrolled. */
-  readonly compose?: CapabilityRuntimeHostSupervisor;
+  /** Closed server-owned multi-service Compose group authority. */
+  readonly groups?: CapabilityRuntimeLaunchGroupSupervisor;
   /** Exact local cache observation for disposable Microsandbox workers. */
   readonly microsandbox?: CapabilityRuntimeMicrosandboxCache;
   /** Other cache materials (for example a source OCI cache) must opt in to a
@@ -165,22 +165,17 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
     const persistent = lifecycles.filter((lifecycle) =>
       lifecycle.kind === "persistent-compose"
     );
-    if (persistent.some((lifecycle) => lifecycle.launchProfile === null)) {
+    if (persistent.some((lifecycle) => lifecycle.launchGroup === null)) {
       throw new CapabilityRuntimeSessionUnavailableError(
-        "A required persistent capability has no enrolled exact launch profile; activation is unavailable.",
+        "A required persistent capability has no enrolled exact launch group; activation is unavailable.",
       );
     }
-    // H1's durable stop protocol is deliberately one exact profile per lease.
-    // Refusing a broader topology is safer than silently stopping only part of
-    // an execution session until profile-group ownership exists.
-    if (persistent.length > 1) {
+    const groups = uniqueLaunchGroups(
+      persistent.map((lifecycle) => lifecycle.launchGroup!),
+    );
+    if (groups.length > 0 && !this.options.groups) {
       throw new CapabilityRuntimeSessionUnavailableError(
-        "A JIT run requires multiple persistent profiles, but this host supervisor admits one exact profile per session.",
-      );
-    }
-    if (persistent.length > 0 && !this.options.compose) {
-      throw new CapabilityRuntimeSessionUnavailableError(
-        "A required persistent capability has no configured host supervisor.",
+        "A required persistent capability has no configured launch-group supervisor.",
       );
     }
     if (
@@ -220,12 +215,11 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
     });
     const lease = candidate;
 
-    const compose = persistent[0];
-    // H1 owns acquisition for a persistent Compose service. A microVM/cache
-    // only session owns its own harmless local claim. This prevents a second
-    // acquire for the same Compose lease.
+    // One deterministic lease covers all persistent launch groups. The first
+    // group can create it; later groups may reuse only that just-created claim.
     let directLeaseAcquired = false;
     let hostMutationAttempted = false;
+    let groupLeaseCreated = false;
     try {
       // Exact local image/profile attestation is a read-only prerequisite. It
       // deliberately happens before a direct microVM/cache lease claim, so a
@@ -248,7 +242,7 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
           });
         }
       }
-      if (!compose) {
+      if (groups.length === 0) {
         const acquired = await acquireOrReuseExactScope(
           this.options.leases,
           lease,
@@ -257,20 +251,19 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
         );
         directLeaseAcquired = acquired.created;
       }
-      if (compose) {
-        // No independent ensureMaterial/acquire: H1 performs the journalled
-        // material check, exact profile validation and single lease acquire.
+      for (const group of groups) {
         hostMutationAttempted = true;
-        const result = await this.options.compose!.ensureActive({
-          profile: compose.launchProfile!,
+        const result = await this.options.groups!.ensureActive({
+          group,
           projectId: input.project.project.id,
           at: this.#now(),
           lease,
-          reuseExistingLease: canReuseLease ? "allow" : "reject",
+          reuseExistingLease: groupLeaseCreated || canReuseLease ? "allow" : "reject",
         });
-        assertComposeActive(
-          result.state,
-          requiredQualification(operationalCapability, compose),
+        groupLeaseCreated ||= result.leaseDisposition === "created";
+        assertGroupQualification(
+          result.states,
+          requiredQualificationForGroup(operationalCapability, persistent, group),
         );
       }
     } catch (error) {
@@ -283,9 +276,14 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
       throw error;
     }
     const acquired = await this.options.leases.read(lease.id);
+    if (!acquired) {
+      throw new CapabilityRuntimeSessionUnavailableError(
+        "Capability runtime session completed activation without its durable lease; recovery must not infer an unpersisted claim.",
+      );
+    }
     return new ActiveCapabilityRuntimeExecutionSession(
-      acquired === undefined ? lease : assertEquivalentLease(acquired, lease),
-      compose?.launchProfile ?? null,
+      assertEquivalentLease(acquired, lease),
+      groups,
       operationalCapability.bindings.flatMap((binding) => binding.materials).map(
         capabilityRuntimeMaterialKey,
       ).toSorted(),
@@ -301,7 +299,7 @@ class ActiveCapabilityRuntimeExecutionSession
 
   constructor(
     readonly lease: CapabilityRuntimeLease,
-    private readonly launchProfile: CapabilityRuntimeLaunchProfileReference | null,
+    private readonly launchGroups: readonly CapabilityRuntimeLaunchGroupReference[],
     private readonly materialKeys: readonly string[],
     private readonly options: CapabilityRuntimeExecutionSessionCoordinatorOptions,
   ) {}
@@ -315,25 +313,20 @@ class ActiveCapabilityRuntimeExecutionSession
     this.#releaseAttempted = true;
     const at = this.options.now?.() ?? new Date().toISOString();
     try {
-      if (this.launchProfile && this.options.compose) {
-        const released = await this.options.compose.releaseLease({
-          profile: this.launchProfile,
+      if (this.launchGroups.length > 0 && this.options.groups) {
+        await this.options.groups.releaseTerminal({
+          groups: this.launchGroups,
           leaseId: this.lease.id,
           projectId: this.lease.projectId,
           at,
-          jitDemand: this.options.hasRemainingJitDemand === undefined
-            ? true
-            : await this.options.hasRemainingJitDemand({
-              projectId: this.lease.projectId,
-              materialKeys: this.materialKeys,
-            }),
+          hasRemainingJitDemand: async (materialKeys) =>
+            this.options.hasRemainingJitDemand === undefined
+              ? true
+              : await this.options.hasRemainingJitDemand({
+                projectId: this.lease.projectId,
+                materialKeys,
+              }),
         });
-        if (
-          released.deactivation?.status !== undefined &&
-          released.deactivation.status !== "succeeded"
-        ) {
-          this.#retained = true;
-        }
         return;
       }
       await this.options.leases.release(this.lease.id);
@@ -363,9 +356,11 @@ function candidateLease(input: {
     materialKeys: input.lifecycles.map((lifecycle) =>
       capabilityRuntimeMaterialKey(lifecycle.material)
     ).toSorted(),
-    launchProfiles: input.lifecycles
-      .filter((lifecycle) => lifecycle.kind === "persistent-compose")
-      .map((lifecycle) => lifecycle.launchProfile!),
+    launchGroups: uniqueLaunchGroups(
+      input.lifecycles
+        .filter((lifecycle) => lifecycle.kind === "persistent-compose")
+        .map((lifecycle) => lifecycle.launchGroup!),
+    ),
     acquiredAt: input.at,
     expiresAt: new Date(Date.parse(input.at) + LEASE_TTL_MS).toISOString(),
   });
@@ -381,8 +376,8 @@ function assertEquivalentLease(
     sameTokens(existing.bindingIds, candidate.bindingIds) &&
     sameTokens(existing.materialKeys, candidate.materialKeys) &&
     sameTokens(
-      existing.launchProfiles.map(profileToken),
-      candidate.launchProfiles.map(profileToken),
+      existing.launchGroups.map(groupToken),
+      candidate.launchGroups.map(groupToken),
     );
   if (!sameScope) {
     throw new CapabilityRuntimeSessionUnavailableError(
@@ -427,8 +422,8 @@ async function acquireOrReuseExactScope(
   };
 }
 
-function profileToken(profile: CapabilityRuntimeLaunchProfileReference): string {
-  return `${profile.id}\u0000${profile.version}\u0000${profile.fingerprint.digest}`;
+function groupToken(group: CapabilityRuntimeLaunchGroupReference): string {
+  return `${group.id}\u0000${group.version}\u0000${group.fingerprint.digest}`;
 }
 
 function sameTokens(left: readonly string[], right: readonly string[]): boolean {
@@ -438,17 +433,22 @@ function sameTokens(left: readonly string[], right: readonly string[]): boolean 
     orderedLeft.every((token, index) => token === orderedRight[index]);
 }
 
-function assertComposeActive(
-  state: {
-    readonly material: string;
-    readonly runtime: string;
-    readonly qualification: string;
-  } | undefined,
+function assertGroupQualification(
+  states: ReadonlyMap<
+    string,
+    {
+      readonly material: string;
+      readonly runtime: string;
+      readonly qualification: string;
+    }
+  >,
   required: "compatible" | "qualified",
 ): void {
   if (
-    !state || state.material !== "installed" || state.runtime !== "active" ||
-    state.qualification !== required && state.qualification !== "qualified"
+    [...states.values()].some((state) =>
+      state.material !== "installed" || state.runtime !== "active" ||
+      (state.qualification !== required && state.qualification !== "qualified")
+    )
   ) {
     throw new CapabilityRuntimeSessionUnavailableError(
       "Persistent capability host did not reach an installed, active and sufficiently qualified observed state.",
@@ -456,18 +456,23 @@ function assertComposeActive(
   }
 }
 
-function requiredQualification(
+function requiredQualificationForGroup(
   operation: ResolvedCapabilityRuntimeOperation,
-  lifecycle: Extract<CapabilityRuntimeHostLifecycle, {
+  lifecycles: readonly Extract<CapabilityRuntimeHostLifecycle, {
     readonly kind: "persistent-compose";
-  }>,
+  }>[],
+  group: CapabilityRuntimeLaunchGroupReference,
 ): "compatible" | "qualified" {
+  const groupMaterialKeys = new Set(
+    lifecycles.filter((lifecycle) =>
+      lifecycle.launchGroup !== null &&
+      groupToken(lifecycle.launchGroup) === groupToken(group)
+    ).map((lifecycle) => capabilityRuntimeMaterialKey(lifecycle.material)),
+  );
   const candidates = operation.bindings.filter((binding) =>
     binding.hostLifecycles.some((candidate) =>
       candidate.kind === "persistent-compose" &&
-      capabilityRuntimeMaterialKey(candidate.material) ===
-        capabilityRuntimeMaterialKey(lifecycle.material) &&
-      candidate.material.imageDigest === lifecycle.material.imageDigest
+      groupMaterialKeys.has(capabilityRuntimeMaterialKey(candidate.material))
     )
   );
   if (candidates.length === 0) {
@@ -480,6 +485,16 @@ function requiredQualification(
     )
     ? "qualified"
     : "compatible";
+}
+
+function uniqueLaunchGroups(
+  groups: readonly CapabilityRuntimeLaunchGroupReference[],
+): readonly CapabilityRuntimeLaunchGroupReference[] {
+  const result = new Map<string, CapabilityRuntimeLaunchGroupReference>();
+  for (const group of groups) result.set(groupToken(group), group);
+  return [...result.values()].toSorted((left, right) =>
+    groupToken(left).localeCompare(groupToken(right))
+  );
 }
 
 function uniqueLifecycles(

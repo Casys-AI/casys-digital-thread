@@ -327,9 +327,13 @@ function validateStrictCompose(
   projectName: string,
   materials: readonly CapabilityRuntimeLaunchGroupMaterial[],
 ): void {
-  rejectForbiddenCompose(value);
-  const document = exactRecord(value, ["services"], "$launchGroup.compose.content");
+  const document = exactRecord(
+    value,
+    ["services", "volumes"],
+    "$launchGroup.compose.content",
+  );
   const services = record(document.services, "$launchGroup.compose.content.services");
+  const volumes = record(document.volumes, "$launchGroup.compose.content.volumes");
   const expected = new Map(
     materials.map((material) => [material.serviceName, material]),
   );
@@ -337,65 +341,248 @@ function validateStrictCompose(
     throw new TypeError("Compose services must exactly equal launch-group services.");
   }
   for (const [name, material] of expected) {
-    const service = exactRecord(
-      services[name],
-      ["image", "labels"],
-      `$launchGroup.compose.content.services.${name}`,
-    );
+    const path = `$launchGroup.compose.content.services.${name}`;
+    const service = composeService(services[name], path);
     if (service.image !== material.imageReference) {
       throw new TypeError("Compose service image is not the pinned group material.");
     }
-    const labels = record(
-      service.labels,
-      `$launchGroup.compose.content.services.${name}.labels`,
-    );
-    if (Object.keys(labels).length !== material.ownership.length) {
-      throw new TypeError("Compose service labels differ from group ownership.");
-    }
-    for (const label of material.ownership) {
-      if (labels[label.key] !== label.value) {
-        throw new TypeError("Compose service labels differ from group ownership.");
+    // Docker Compose creates these reserved ownership labels itself. The
+    // descriptor must not try to spoof them; runtime inspection proves them.
+    if (service.labels !== undefined) {
+      const labels = stringRecord(service.labels, `${path}.labels`);
+      for (const label of material.ownership) {
+        if (labels[label.key] !== undefined && labels[label.key] !== label.value) {
+          throw new TypeError("Compose service labels conflict with group ownership.");
+        }
       }
     }
-    if (labels["com.docker.compose.project"] !== projectName) {
-      throw new TypeError("Compose ownership project drifted.");
+    validateComposeService(service, path, name, materials, projectName, volumes);
+  }
+  const declaredVolumes = new Set(Object.keys(volumes));
+  const referencedVolumes = new Set<string>();
+  const loopbackPorts = new Set<number>();
+  for (const [volume, config] of Object.entries(volumes)) {
+    if (
+      !/^[a-z0-9][a-z0-9_-]{0,62}$/.test(volume) ||
+      Object.keys(record(config, `$launchGroup.compose.content.volumes.${volume}`))
+          .length !== 0
+    ) {
+      throw new TypeError(
+        "Compose launch-group volumes must be empty named-volume declarations.",
+      );
     }
+  }
+  for (const service of Object.values(services)) {
+    const parsedService = record(service, "$launchGroup.compose.content.services.*");
+    const values = parsedService.volumes;
+    if (values !== undefined) {
+      for (
+        const mount of arrayOf(
+          values,
+          "$launchGroup.compose.content.services.*.volumes",
+        )
+      ) {
+        if (typeof mount === "string") referencedVolumes.add(mount.split(":", 1)[0]!);
+      }
+    }
+    if (parsedService.ports !== undefined) {
+      for (
+        const port of arrayOf(
+          parsedService.ports,
+          "$launchGroup.compose.content.services.*.ports",
+        )
+      ) {
+        if (typeof port !== "string") continue;
+        const host = Number(port.split(":")[1]);
+        if (loopbackPorts.has(host)) {
+          throw new TypeError("Compose launch-group loopback ports must be unique.");
+        }
+        loopbackPorts.add(host);
+      }
+    }
+  }
+  if (
+    declaredVolumes.size !== referencedVolumes.size ||
+    [...declaredVolumes].some((volume) => !referencedVolumes.has(volume))
+  ) {
+    throw new TypeError(
+      "Compose launch-group volumes must be exactly declared and referenced.",
+    );
   }
 }
 
-function rejectForbiddenCompose(value: unknown): void {
-  if (Array.isArray(value)) {
-    value.forEach(rejectForbiddenCompose);
-    return;
-  }
-  if (!value || typeof value !== "object") return;
-  const forbidden = new Set([
-    "build",
-    "env_file",
-    "include",
-    "extends",
-    "configs",
-    "secrets",
-    "file",
-    "context",
-    "dockerfile",
-    "label_file",
-    "privileged",
-    "dockerSocket",
+function composeService(
+  value: unknown,
+  path: string,
+): Readonly<Record<string, unknown>> {
+  const service = record(value, path);
+  const allowed = new Set([
+    "image",
+    "labels",
+    "environment",
     "volumes",
+    "ports",
+    "depends_on",
+    "healthcheck",
+    "command",
+    "cap_drop",
+    "security_opt",
+    "platform",
   ]);
-  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    if (forbidden.has(key)) {
-      throw new TypeError(
-        `Compose directive ${key} is not admitted for a launch group.`,
+  for (const key of Object.keys(service)) {
+    if (!allowed.has(key)) {
+      throw new TypeError(`${path}.${key} is not admitted in a launch group.`);
+    }
+  }
+  if (typeof service.image !== "string" || service.image.length === 0) {
+    throw new TypeError(`${path}.image must be an exact pinned image.`);
+  }
+  return service;
+}
+
+function validateComposeService(
+  service: Readonly<Record<string, unknown>>,
+  path: string,
+  name: string,
+  materials: readonly CapabilityRuntimeLaunchGroupMaterial[],
+  projectName: string,
+  declaredVolumes: Readonly<Record<string, unknown>>,
+): void {
+  if (service.environment !== undefined) {
+    for (
+      const [key, value] of Object.entries(
+        stringRecord(service.environment, `${path}.environment`),
+      )
+    ) {
+      if (!/^[A-Z][A-Z0-9_]*$/.test(key) || value.includes("$")) {
+        throw new TypeError(`${path}.environment is not a closed literal map.`);
+      }
+    }
+  }
+  if (service.volumes !== undefined) {
+    const seenTargets = new Set<string>();
+    for (
+      const [index, mount] of arrayOf(service.volumes, `${path}.volumes`).entries()
+    ) {
+      if (
+        typeof mount !== "string" ||
+        !/^[a-z0-9][a-z0-9_-]{0,62}:[/][^:\0]+(?::ro)?$/.test(mount)
+      ) {
+        throw new TypeError(
+          `${path}.volumes[${index}] must be a named retained volume, never a bind mount.`,
+        );
+      }
+      const [name, target] = mount.split(":", 2) as [string, string];
+      if (!(name in declaredVolumes) || seenTargets.has(target)) {
+        throw new TypeError(
+          `${path}.volumes must name declared unique volume targets.`,
+        );
+      }
+      seenTargets.add(target);
+    }
+  }
+  if (service.ports !== undefined) {
+    const seen = new Set<number>();
+    for (const [index, port] of arrayOf(service.ports, `${path}.ports`).entries()) {
+      const parts = typeof port === "string" ? port.split(":") : [];
+      const host = Number(parts[1]);
+      const container = Number(parts[2]);
+      if (
+        parts.length !== 3 || parts[0] !== "127.0.0.1" || !Number.isInteger(host) ||
+        !Number.isInteger(container) || host < 1 || host > 65535 || container < 1 ||
+        container > 65535 || seen.has(host)
+      ) {
+        throw new TypeError(
+          `${path}.ports[${index}] must be a loopback-only literal mapping.`,
+        );
+      }
+      seen.add(host);
+    }
+  }
+  if (service.depends_on !== undefined) {
+    const dependencies = record(service.depends_on, `${path}.depends_on`);
+    const index = materials.findIndex((material) => material.serviceName === name);
+    for (const [dependency, condition] of Object.entries(dependencies)) {
+      const dependencyIndex = materials.findIndex((material) =>
+        material.serviceName === dependency
+      );
+      if (dependencyIndex < 0 || dependencyIndex >= index) {
+        throw new TypeError(
+          `${path}.depends_on must point to an earlier group service.`,
+        );
+      }
+      const detail = exactRecord(
+        condition,
+        ["condition"],
+        `${path}.depends_on.${dependency}`,
+      );
+      literalValue(
+        detail.condition,
+        "service_healthy",
+        `${path}.depends_on.${dependency}.condition`,
       );
     }
-    if (key === "ports") {
+  }
+  if (service.healthcheck === undefined) {
+    throw new TypeError(
+      `${path}.healthcheck is required to prove an active launch group.`,
+    );
+  }
+  if (service.healthcheck !== undefined) {
+    const health = record(service.healthcheck, `${path}.healthcheck`);
+    const allowed = new Set(["test", "interval", "timeout", "retries", "start_period"]);
+    for (const key of Object.keys(health)) {
+      if (!allowed.has(key)) {
+        throw new TypeError(`${path}.healthcheck.${key} is not admitted.`);
+      }
+    }
+    const test = arrayOf(health.test, `${path}.healthcheck.test`);
+    if (
+      test.length === 0 ||
+      test.some((part) => typeof part !== "string" || part.includes("$"))
+    ) {
       throw new TypeError(
-        "Launch groups forbid host port publication until an explicit loopback profile is admitted.",
+        `${path}.healthcheck.test must be a closed nonempty command array.`,
       );
     }
-    rejectForbiddenCompose(child);
+    for (const key of ["interval", "timeout", "start_period"] as const) {
+      if (
+        health[key] !== undefined &&
+        (typeof health[key] !== "string" ||
+          !/^[1-9][0-9]*(?:ms|s|m|h)$/.test(health[key] as string))
+      ) {
+        throw new TypeError(`${path}.healthcheck.${key} must be a closed literal.`);
+      }
+    }
+    if (
+      health.retries !== undefined &&
+      (!Number.isInteger(health.retries) || (health.retries as number) < 1 ||
+        (health.retries as number) > 60)
+    ) {
+      throw new TypeError(`${path}.healthcheck.retries must be a positive integer.`);
+    }
+  }
+  for (const key of ["command", "cap_drop", "security_opt"] as const) {
+    if (service[key] !== undefined) {
+      const values = arrayOf(service[key], `${path}.${key}`);
+      if (
+        values.length === 0 ||
+        values.some((value) => typeof value !== "string" || value.includes("$"))
+      ) {
+        throw new TypeError(`${path}.${key} must be a closed nonempty string array.`);
+      }
+    }
+  }
+  if (
+    service.platform !== undefined && service.platform !== "linux/arm64" &&
+    service.platform !== "linux/amd64"
+  ) {
+    throw new TypeError(`${path}.platform is not admitted.`);
+  }
+  // A descriptor declares no explicit network, so Compose derives one private
+  // network from this immutable group project name. No shared `chain` network.
+  if (!/^[a-z0-9][a-z0-9_-]{0,62}$/.test(projectName)) {
+    throw new TypeError(`${path} has an invalid group Compose project.`);
   }
 }
 
@@ -455,6 +642,16 @@ function record(value: unknown, path: string): Readonly<Record<string, unknown>>
     throw new TypeError(`${path} must be an object.`);
   }
   return value as Readonly<Record<string, unknown>>;
+}
+
+function stringRecord(value: unknown, path: string): Readonly<Record<string, string>> {
+  const values = record(value, path);
+  for (const [key, candidate] of Object.entries(values)) {
+    if (typeof candidate !== "string") {
+      throw new TypeError(`${path}.${key} must be a string.`);
+    }
+  }
+  return values as Readonly<Record<string, string>>;
 }
 
 function oneOf<const T extends readonly string[]>(

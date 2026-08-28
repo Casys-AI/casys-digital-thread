@@ -44,7 +44,7 @@ byte accounting, but retain separate services and lifecycle records.
 
 | Unit                                     | Concrete scope                                 | Loopback port | Notes                                                                |
 | ---------------------------------------- | ---------------------------------------------- | ------------- | -------------------------------------------------------------------- |
-| `casys.syson-stack`                      | Postgres, SysON app, SysON MCP                 | 8180, 3009    | Technically indivisible local stack                                  |
+| `casys.syson-stack`                      | Postgres, SysON app, SysON MCP                 | 3009          | `casys-syson@1.0.0` technically indivisible local stack              |
 | `casys.mcp-build123d-sandbox`            | Private Build123d Compose service              | 3024          | Separate private export volume                                       |
 | `casys.mcp-build123d-observation`        | Regular Build123d/OCCT observer service        | 3014          | Optional assembly-integrity path                                     |
 | `casys.build123d-isolated-worker`        | Admitted source microVM                        | —             | Different lifecycle from either HTTP service                         |
@@ -63,11 +63,12 @@ retained by future runtime removal; this contract does not permit
 later reviewed material can declare them explicitly; this first-party catalogue simply
 declares none.
 
-Each material also carries either a literal `null` launch profile or only an exact
-launch-profile id/version/fingerprint reference. The immutable body remains in the
-server-only H1 profile registry; catalogue/project data cannot carry Compose commands,
-provider endpoints, tools, arguments or secret values. Current first-party materials are
-all literal `null`: no profile is enrolled merely because an image exists locally.
+Each material carries either a literal `null` launch group or an exact launch-group
+id/version/fingerprint reference. The three `casys.syson-stack` materials share the
+same `casys-syson@1.0.0` group reference; the immutable ordered Compose body remains in
+the server-only H1 registry. Catalogue/project data cannot carry Compose commands,
+provider endpoints, tools, arguments or secret values. All other current first-party
+persistent materials remain literal `null`: an image alone never enrolls a topology.
 
 ## Closed planning states
 

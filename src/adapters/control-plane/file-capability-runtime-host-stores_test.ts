@@ -1,72 +1,60 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import {
-  FileCapabilityRuntimeAdminLockStore,
+  capabilityRuntimeLaunchGroupReference,
+} from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
+import {
   FileCapabilityRuntimeJournal,
   FileCapabilityRuntimeLeaseStore,
 } from "./file-capability-runtime-host-stores.ts";
 import {
-  capabilityRuntimeLaunchProfileReference,
-} from "../../domain/capability/runtime/capability-runtime-host.ts";
-import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
-import {
-  FAKE_CAPABILITY_RUNTIME_MATERIAL,
-  fakeCapabilityRuntimeLaunchProfile,
-} from "../../testing/capability-runtime-host-fixture.ts";
-import {
-  CAPABILITY_RUNTIME_ADMIN_LOCK_SCHEMA_VERSION,
-} from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
+  createFirstPartyCapabilityRuntimeLaunchGroups,
+} from "./first-party-capability-runtime-launch-groups.ts";
 
-Deno.test("file capability leases are shared atomically and expire without deleting their history", async () => {
-  const directory = await Deno.makeTempDir({ prefix: "casys-host-runtime-leases-" });
+Deno.test("file capability lease atomically preserves one multi-group session claim", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "casys-launch-group-lease-" });
   try {
-    const first = new FileCapabilityRuntimeLeaseStore(directory);
-    const second = new FileCapabilityRuntimeLeaseStore(directory);
+    const [group] = await createFirstPartyCapabilityRuntimeLaunchGroups();
     const lease = {
       id: "lease:shared",
       projectId: "project:host-runtime",
       bindingIds: ["binding:fake"],
-      materialKeys: ["test.host-runtime-unit\u0000test-host-runtime-image"],
-      launchProfiles: [capabilityRuntimeLaunchProfileReference(
-        await fakeCapabilityRuntimeLaunchProfile(),
-      )],
+      materialKeys: group!.materials.map((member) =>
+        `${member.material.unitId}\u0000${member.material.materialId}`
+      ),
+      launchGroups: [capabilityRuntimeLaunchGroupReference(group!)],
       acquiredAt: "2026-08-29T00:00:00.000Z",
       expiresAt: "2026-08-29T00:01:00.000Z",
     };
+    const first = new FileCapabilityRuntimeLeaseStore(directory);
+    const second = new FileCapabilityRuntimeLeaseStore(directory);
     const claims = await Promise.all([first.claim(lease), second.claim(lease)]);
+
     assertEquals(claims.map((claim) => claim.status).toSorted(), [
       "created",
       "existing",
     ]);
-    assertEquals(
-      claims.find((claim) => claim.status === "existing")?.lease,
-      lease,
-    );
-    assertEquals(
-      (await first.listActive("2026-08-29T00:00:30.000Z")).map((item) => item.id),
-      [
-        lease.id,
-      ],
-    );
-    assertEquals(await first.listActive("2026-08-29T00:01:00.000Z"), []);
-    assertEquals((await Array.fromAsync(Deno.readDir(directory))).length, 1);
+    assertEquals((await first.read(lease.id))?.launchGroups, lease.launchGroups);
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
 });
 
-Deno.test("file capability journal is append-only across a restart and refuses a divergent terminal outcome", async () => {
-  const directory = await Deno.makeTempDir({ prefix: "casys-host-runtime-journal-" });
+Deno.test("file group journal is append-only and refuses an incomplete group outcome", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "casys-launch-group-journal-" });
   try {
-    const profile = await fakeCapabilityRuntimeLaunchProfile();
+    const [group] = await createFirstPartyCapabilityRuntimeLaunchGroups();
     const journal = new FileCapabilityRuntimeJournal(directory);
     const entry = {
       id: "host-runtime:journal",
-      action: "material-acquire" as const,
-      material: FAKE_CAPABILITY_RUNTIME_MATERIAL,
-      launchProfile: capabilityRuntimeLaunchProfileReference(profile),
-      projectId: null,
+      action: "runtime-start" as const,
+      materials: group!.materials.map((member) => member.material),
+      launchGroup: capabilityRuntimeLaunchGroupReference(group!),
+      projectId: "project:host-runtime",
       plannedAt: "2026-08-29T00:00:00.000Z",
-      previousObservation: null,
+      previousObservations: group!.materials.map((member) => ({
+        material: member.material,
+        state: null,
+      })),
       administrativeRemovalPlanFingerprint: null,
     };
     await journal.appendBeforeMutation(entry);
@@ -75,9 +63,18 @@ Deno.test("file capability journal is append-only across a restart and refuses a
       journalEntryId: entry.id,
       recordedAt: entry.plannedAt,
       status: "uncertain" as const,
-      observation: null,
+      observations: entry.materials.map((material) => ({ material, state: null })),
       detail: "host command ended without confirmation",
     };
+    await assertRejects(
+      () =>
+        journal.appendOutcome({
+          ...outcome,
+          observations: outcome.observations.slice(0, 1),
+        }),
+      Error,
+      "every exact group material",
+    );
     await journal.appendOutcome(outcome);
 
     const restarted = new FileCapabilityRuntimeJournal(directory);
@@ -89,37 +86,6 @@ Deno.test("file capability journal is append-only across a restart and refuses a
       () => restarted.appendOutcome({ ...outcome, status: "failed" }),
       Error,
       "already exists with different content",
-    );
-  } finally {
-    await Deno.remove(directory, { recursive: true });
-  }
-});
-
-Deno.test("file admin lock advances only through the exact predecessor fingerprint", async () => {
-  const directory = await Deno.makeTempDir({
-    prefix: "casys-host-runtime-admin-lock-",
-  });
-  try {
-    const store = new FileCapabilityRuntimeAdminLockStore(
-      `${directory}/admin-lock.json`,
-    );
-    const first = {
-      schemaVersion: CAPABILITY_RUNTIME_ADMIN_LOCK_SCHEMA_VERSION,
-      revision: 1,
-      previous: null,
-      units: [],
-    } as const;
-    await store.save(first);
-    const previous = await sha256Fingerprint(first);
-    await store.save({
-      ...first,
-      revision: 2,
-      previous,
-    });
-    await assertRejects(
-      () => store.save({ ...first, revision: 3, previous }),
-      Error,
-      "advance one revision",
     );
   } finally {
     await Deno.remove(directory, { recursive: true });

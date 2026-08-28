@@ -2,76 +2,77 @@
 
 Audience: both · Diátaxis: reference · Kind: boundary
 
-H1 supplies generic, local host-runtime mechanics. It does not enroll a real provider,
-publish an OCI image, compose the MCP server, or make a registered engineering operation
-available. The first-party capability catalogue therefore keeps each current
-`launchProfile` literally `null` until a separately reviewed profile and server
-composition exist.
+H1 governs server-owned local runtime state. It does not select a provider, admit an
+engineering method, or interpret an engineering result. The initial enrolled topology is
+the exact `casys-syson@1.0.0` group: Postgres, SysON and `mcp-syson`, with only
+`127.0.0.1:3009` published. The historical SysON UI port 8180 is not part of this group.
 
 ```text
-catalogue material -> exact profile reference + fingerprint
-                         |
-                         v
-                  server-only exact registry
-                         |
-                         v
-       journal intent -> closed Compose argv -> terminal outcome -> reread
+catalogue material -> exact launch-group reference + fingerprint
+                             |
+                             v
+                  server-only group registry
+                             |
+                             v
+one group intent (all materials) -> closed Compose argv -> terminal outcome -> reread
 ```
 
-The immutable `capability-runtime-launch-profile/1.0` body names one exact material, its
-pinned image digest, closed Compose project/service coordinates, exact ownership labels,
-retention, secret-slot names, activation policy and a sealed Compose descriptor. The
-descriptor is fingerprinted over its exact UTF-8 bytes and included in the profile
-fingerprint. Its H1 form is canonical JSON (a YAML subset) with exactly one service, its
-pinned image and its exact ownership labels; interpolation, `env_file`, `include`,
-`extends`, build contexts, configs, secrets and every other file indirection are
-refused. The catalogue carries only the reference/fingerprint; it never becomes a
-provider/tool/argument envelope. Secret values are absent from profiles, journals and
-argv.
+## Closed launch-group contract
 
-`persistent` profiles can be materialized, started and later stopped. `cache-only`
-profiles can be materialized and observed but are rejected by activation in both the
-supervisor and public host adapter. Unknown profile security, revoked qualification, or
-a missing/unavailable/unknown declared secret slot blocks host mutation. Material,
-runtime and qualification remain three independent observed axes.
+An immutable `capability-runtime-launch-group/1.0` names an ordered set of exact
+materials and services. It fingerprints a canonical JSON Compose descriptor and records
+its project-scoped default network, ownership labels, retained volumes, secret-slot
+names, security and qualification. One group is usable only when every exact image is
+installed and every expected owned service is healthy at the required qualification.
 
-The Compose adapter has a fixed verb set: image inspect, Compose ps, container inspect,
-pull, `up --detach --no-deps --no-build --no-recreate`, and ID-bound container stop. It
-never invokes shell parsing, `down`, `rm`, image removal, volume removal or `down -v`.
-Compose receives the sealed descriptor directly on stdin as `--file -`; it never opens a
-mutable profile YAML path. Its canonical root is only a process root, not a
-configuration source. Compose is invoked with `COMPOSE_DISABLE_ENV_FILE=1`,
-`--env-file
-/dev/null` and a cleared environment except a server-owned Docker connection
-allowlist, so host `.env` or process interpolation cannot alter the descriptor. Under
-the adapter mutation lock, stop rereads exact ownership and invokes
-`docker container stop` with that exact revalidated ID — never `compose stop service`. A
-start/stop binds the container's image inspect `RepoDigests` to the exact pinned image
-reference. Only an owned inactive container may be restarted JIT; an unowned or
-ambiguous container is not touched. Exit status zero becomes `succeeded` only after the
-fresh observation satisfies the action's intended state. All profiles require
-`stop-only` containers and preserved images/volumes.
+The descriptor admits only pinned images, literal labels/environment, named retained
+volumes, loopback ports, ordered `depends_on` health edges, health checks, command,
+`cap_drop`, `security_opt` and platform. It rejects interpolation, `build`, `env_file`,
+`include`, `extends`, configs, Compose secrets, bind mounts/sockets, privileged mode,
+devices and public ports. Top-level named volumes must be empty declarations and match
+the service mounts exactly. Health durations use a bounded literal duration grammar.
+Secrets never appear in a group, project, journal, descriptor argv or Workbench view.
 
-The host journal writes a create-new intent before a mutation and one create-new
-terminal outcome afterwards. The terminal timestamp is taken after the
-command/observation, never reused from the planned intent. After a crash, missing,
-failed or uncertain outcomes are surfaced as `degraded` from a fresh observation;
-recovery never replays a command. Leases are shared, expiring local claims and bind the
-exact project, material and immutable profile reference. Release rereads and attests
-that claim before deletion or a possible stop; activation rejects a lease expired at
-request time. A persistent runtime can stop only when no active lease protects its
-material and the server-derived JIT demand is false. These stores are outside
-EngineeringProject, Thread, CAS and engineering WAL and cannot create project evidence.
-The raw Docker implementation is private to its module; the exported adapter checks that
-the exact intent already exists in the durable journal and that every declared secret
-slot is available, even if invoked outside the supervisor. After an intent is durable,
-the lifecycle coordinator mints a one-use authorization only if it is the unique pending
-entry with no outcome. The adapter consumes that authorization before Docker. Before any
-new action for the same material and profile, the host supervisor reconstructs recovery
-and blocks an unreconciled pending/failed/uncertain intent rather than allocating
-another journal ID.
+`casys-syson` uses pinned DB, application and MCP images in dependency order
+`syson-db -> syson-app -> mcp-syson`; it retains `syson-db-data`. The MCP image receives
+a closed Deno loopback `/health` check because it has no baked image healthcheck. The
+fixed database values are existing internal development topology values, not secret-slot
+authority and not caller input.
 
-The mutation lock serializes only cooperative callers of this adapter. A separate actor
-with direct Docker-daemon authority can still race it; the adapter therefore never
-claims absolute isolation and uses exact labels, image digest and container-ID rechecks
-to fail closed on what it observes.
+## Lease, journal and JIT lifecycle
+
+One execution session derives unique groups from its sealed runtime plan, starts them in
+canonical order, and protects all of them with one deterministic lease. The first fresh
+group may create that lease; later groups in the same session may reuse only that exact
+claim. An external queued claim is rejected. A partial, failed or uncertain group action
+retains the lease and blocks a blind retry until recovery observes the group.
+
+Every group action writes one append-only intent covering the complete ordered material
+set and its per-material prior observations. The terminal outcome likewise covers every
+member. Runtime start performs journalled image acquisition, then executes:
+
+```text
+docker compose … up --detach --wait --wait-timeout 300 --pull never --no-build
+```
+
+There is no `--no-deps`, implicit pull, `down`, `down -v`, image removal, volume removal
+or orphan removal. The adapter fresh-inspects image digests, exact Compose ownership and
+health after every action. Stop revalidates the exact owned container IDs and stops them
+in reverse group order; a same-name foreign or ambiguous container is never touched.
+
+Terminal release evaluates remaining JIT demand per group, stops eligible groups in
+reverse canonical order while retaining the shared lease, and removes the lease only
+after all release decisions and required stops succeed. Thread, CAS, WAL, project state
+and retained volumes are never removed by this boundary.
+
+## Authorization and result boundaries
+
+The capability proposal is derived at brief review and becomes durable only with the
+brief confirmation or a later bounded amendment. Only then may the preload scheduler
+acquire exact persistent material in the background; preload never starts Compose.
+Activation happens immediately before the covered run, after a fresh operational-plan
+recheck, and leaves the run/WAL unchanged if it cannot prove the group active.
+
+This is operational authorization only. MRTR still admits the engineering method, inputs
+and criteria. L3 observations, L4 evaluation and any L5 human decision remain
+domain-specific; a healthy container or successful Docker command is never a verdict.

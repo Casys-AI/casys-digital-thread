@@ -432,7 +432,7 @@ function fixtureContext(): ProjectCapabilityRuntimeContext {
             `registry.private.example/casys/calculix-worker@sha256:${DIGEST}`,
           platforms: ["linux/arm64"],
           lifecycle: "ephemeral",
-          launchProfile: {
+          launchGroup: {
             id: "private-compose-profile",
             version: "1",
             fingerprint: FINGERPRINT,

@@ -282,7 +282,7 @@ function parseMaterial(value: unknown, path: string): AtomicCapabilityRuntimeMat
       "imageReference",
       "platforms",
       "lifecycle",
-      "launchProfile",
+      "launchGroup",
       "effects",
     ],
     path,
@@ -321,17 +321,17 @@ function parseMaterial(value: unknown, path: string): AtomicCapabilityRuntimeMat
     ),
     platforms,
     lifecycle,
-    launchProfile: root.launchProfile === null
+    launchGroup: root.launchGroup === null
       ? null
-      : parseLaunchProfileReference(root.launchProfile, `${path}.launchProfile`),
+      : parseLaunchGroupReference(root.launchGroup, `${path}.launchGroup`),
     effects: parseEffects(root.effects, `${path}.effects`),
   });
 }
 
-function parseLaunchProfileReference(
+function parseLaunchGroupReference(
   value: unknown,
   path: string,
-): NonNullable<AtomicCapabilityRuntimeMaterial["launchProfile"]> {
+): NonNullable<AtomicCapabilityRuntimeMaterial["launchGroup"]> {
   const root = exactRecord(value, ["id", "version", "fingerprint"], path);
   return deepFreeze({
     id: safeId(root.id, `${path}.id`),

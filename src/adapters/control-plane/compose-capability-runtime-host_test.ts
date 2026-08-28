@@ -1,448 +1,262 @@
-import { assertEquals, assertRejects } from "@std/assert";
-import { createCapabilityRuntimeHostAdapter } from "./compose-capability-runtime-host.ts";
-import { FixedCapabilityRuntimeLaunchProfileRegistry } from "../../application/control-plane/capability-runtime-launch-profile-registry.ts";
+import { assertEquals } from "@std/assert";
 import {
-  type CapabilityRuntimeLaunchProfile,
-  capabilityRuntimeLaunchProfileReference,
-} from "../../domain/capability/runtime/capability-runtime-host.ts";
+  type CapabilityRuntimeLaunchGroup,
+  capabilityRuntimeLaunchGroupReference,
+} from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import type { CapabilityRuntimeJournalEntry } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
-import {
-  InMemoryCapabilityRuntimeJournal,
-} from "./in-memory-capability-runtime-supervisor.ts";
+import { FixedCapabilityRuntimeLaunchGroupRegistry } from "../../application/control-plane/capability-runtime-launch-group-registry.ts";
 import { authorizeDurableCapabilityRuntimeHostMutation } from "../../application/control-plane/capability-runtime-host-authorization.ts";
-import type { CommandResult, CommandRunner } from "../shared/docker-observer.ts";
-import type {
-  AuthorizedCapabilityRuntimeHostMutation,
-  CapabilityRuntimeHostMutationLock,
-  CapabilityRuntimeHostMutator,
-  CapabilityRuntimeSecretSlotObserver,
-} from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import { InMemoryCapabilityRuntimeJournal } from "./in-memory-capability-runtime-supervisor.ts";
 import {
-  FAKE_CAPABILITY_RUNTIME_MATERIAL,
-  fakeCapabilityRuntimeLaunchProfile,
-} from "../../testing/capability-runtime-host-fixture.ts";
+  createFirstPartyCapabilityRuntimeLaunchGroups,
+} from "./first-party-capability-runtime-launch-groups.ts";
+import { createCapabilityRuntimeHostAdapter } from "./compose-capability-runtime-host.ts";
+import type { CommandResult, CommandRunner } from "../shared/docker-observer.ts";
 
-const EXPECTED_IMAGE =
-  `example.invalid/capability-host@sha256:${FAKE_CAPABILITY_RUNTIME_MATERIAL.imageDigest}`;
+Deno.test("Compose host pulls the whole exact group then starts it with health wait and no dependency suppression", async () => {
+  const group = await sysonGroup();
+  const runner = new FakeGroupRunner(group, { images: false, state: "absent" });
+  const fixture = host(group, runner);
 
-Deno.test("Compose host refuses an ownership-label mismatch without issuing an ID stop or removal command", async () => {
-  const profile = await fakeCapabilityRuntimeLaunchProfile();
-  const fixture = composeHost(
-    profile,
-    new FakeComposeRunner({ ownership: "mismatch" }),
-  );
+  const acquired = await mutate(fixture, group, "material-acquire");
+  const started = await mutate(fixture, group, "runtime-start");
 
-  const result = await mutate(fixture, entry(profile, "runtime-stop"));
-
-  assertEquals(result.status, "failed");
-  assertEquals(fixture.runner.calls.some((call) => call.includes("stop")), false);
-  assertNoDestructiveCommand(fixture.runner);
-});
-
-Deno.test("Compose receives the exact sealed descriptor on stdin, not mutable source YAML", async () => {
-  const profile = await fakeCapabilityRuntimeLaunchProfile();
-  const composeRoot = await Deno.makeTempDir({
-    prefix: "casys-host-runtime-mutable-source-",
-  });
-  const canonicalRoot = await Deno.realPath(composeRoot);
-  const source = `${composeRoot}/compose.yaml`;
-  const dotenv = `${composeRoot}/.env`;
-  const previousImage = Deno.env.get("IMAGE");
-  try {
-    await Deno.writeTextFile(source, "services: { original: {} }\n");
-    Deno.env.set("IMAGE", "example.invalid/attacker:mutable");
-    const fixture = composeHost(
-      profile,
-      new FakeComposeRunner({
-        ownership: "absent",
-        onFirstComposePs: async () => {
-          await Deno.writeTextFile(source, "services: { attacker: {} }\n");
-          await Deno.writeTextFile(dotenv, "IMAGE=example.invalid/attacker:mutable\n");
-        },
-      }),
-      new SecretSlots(["available"]),
-      canonicalRoot,
-    );
-    const result = await mutate(fixture, entry(profile, "material-acquire"));
-
-    assertEquals(result.status, "succeeded");
-    assertEquals(fixture.runner.calls.find((call) => call.includes("pull")), [
-      "docker",
-      "compose",
-      "--env-file",
-      "/dev/null",
-      "--project-name",
-      "test_host_runtime",
-      "--project-directory",
-      canonicalRoot,
-      "--file",
-      "-",
-      "pull",
-      "host-runtime",
-    ]);
-    assertEquals(fixture.runner.composeStdin.at(-1), profile.compose.content);
-    assertEquals(fixture.runner.composeOptions.at(-1), {
-      clearEnv: true,
-      env: { COMPOSE_DISABLE_ENV_FILE: "1" },
-    });
-    assertEquals(await Deno.readTextFile(source), "services: { attacker: {} }\n");
-    assertEquals(
-      await Deno.readTextFile(dotenv),
-      "IMAGE=example.invalid/attacker:mutable\n",
-    );
-    assertEquals(
-      fixture.runner.calls
-        .filter((call) => call[1] === "image")
-        .every((call) => !call.some((argument) => argument.includes("attacker"))),
-      true,
-    );
-  } finally {
-    if (previousImage === undefined) Deno.env.delete("IMAGE");
-    else Deno.env.set("IMAGE", previousImage);
-    await Deno.remove(composeRoot, { recursive: true });
-  }
-});
-
-Deno.test("an owned inactive container may restart JIT with no dependencies, but a foreign one may not", async () => {
-  const profile = await fakeCapabilityRuntimeLaunchProfile();
-  const owned = composeHost(
-    profile,
-    new FakeComposeRunner({ ownership: "owned", status: "exited" }),
-  );
-  const started = await mutate(owned, entry(profile, "runtime-start"));
+  assertEquals(acquired.status, "succeeded");
   assertEquals(started.status, "succeeded");
+  const pull = runner.calls.find((call) => call.includes("pull"))!;
+  assertEquals(pull.includes("--no-deps"), false);
+  const up = runner.calls.find((call) => call.includes("up"))!;
+  assertEquals(up.includes("--wait"), true);
+  assertEquals(up.includes("--pull"), true);
+  assertEquals(up.includes("never"), true);
+  assertEquals(up.includes("--no-deps"), false);
+  assertEquals(up.includes("--no-recreate"), false);
+  assertEquals(up.includes("--remove-orphans"), false);
   assertEquals(
-    owned.runner.calls.find((call) => call.includes("up"))?.includes("--no-deps"),
+    runner.stdin.every((content) => content === group.compose.content),
     true,
   );
-
-  const foreign = composeHost(
-    profile,
-    new FakeComposeRunner({ ownership: "mismatch", status: "exited" }),
-  );
-  const refused = await mutate(foreign, entry(profile, "runtime-start"));
-  assertEquals(refused.status, "failed");
-  assertEquals(foreign.runner.calls.some((call) => call.includes("up")), false);
+  assertNoDestructiveComposeCommand(runner);
 });
 
-Deno.test("Compose host binds the running container image to the exact profile digest", async () => {
-  const profile = await fakeCapabilityRuntimeLaunchProfile();
-  const fixture = composeHost(
-    profile,
-    new FakeComposeRunner({
-      ownership: "owned",
-      containerImageReference: `example.invalid/capability-host@sha256:${
-        "a".repeat(64)
-      }`,
-    }),
-  );
-  const result = await mutate(fixture, entry(profile, "runtime-start"));
+Deno.test("Compose host stops only exact owned IDs in reverse group order and preserves all material", async () => {
+  const group = await sysonGroup();
+  const runner = new FakeGroupRunner(group, { images: true, state: "running" });
+  const fixture = host(group, runner);
 
-  assertEquals(result.status, "failed");
-  assertEquals(fixture.runner.calls.some((call) => call.includes("up")), false);
-  assertNoDestructiveCommand(fixture.runner);
-});
+  const result = await mutate(fixture, group, "runtime-stop");
 
-Deno.test("stop is revalidated under the mutation lock and targets only the inspected container ID", async () => {
-  const profile = await fakeCapabilityRuntimeLaunchProfile();
-  const fixture = composeHost(
-    profile,
-    new FakeComposeRunner({ ownership: "owned", replaceWithForeignAfterStop: true }),
-  );
-  const result = await mutate(fixture, entry(profile, "runtime-stop"));
-
-  assertEquals(result.status, "failed");
-  assertEquals(fixture.runner.calls.find((call) => call[1] === "container"), [
-    "docker",
-    "container",
-    "stop",
-    "container-1",
-  ]);
+  assertEquals(result.status, "succeeded");
   assertEquals(
-    fixture.runner.calls.some((call) => call[1] === "compose" && call.includes("stop")),
+    runner.calls.filter((call) => call[1] === "container" && call[2] === "stop").map((
+      call,
+    ) => call[3]),
+    ["container-mcp-syson", "container-syson-app", "container-syson-db"],
+  );
+  assertNoDestructiveComposeCommand(runner);
+  assertEquals(
+    runner.calls.some((call) => call[1] === "image" && call[2] === "rm"),
+    false,
+  );
+  assertEquals(runner.calls.some((call) => call[1] === "volume"), false);
+});
+
+Deno.test("Compose host refuses a foreign same-name service without stopping its container", async () => {
+  const group = await sysonGroup();
+  const runner = new FakeGroupRunner(group, {
+    images: true,
+    state: "running",
+    foreignService: "mcp-syson",
+  });
+  const fixture = host(group, runner);
+
+  const result = await mutate(fixture, group, "runtime-stop");
+
+  assertEquals(result.status, "failed");
+  assertEquals(
+    runner.calls.some((call) => call[1] === "container" && call[2] === "stop"),
     false,
   );
 });
 
-Deno.test("exit zero is uncertain until a fresh observation proves the requested state", async () => {
-  const profile = await fakeCapabilityRuntimeLaunchProfile();
-  const fixture = composeHost(
-    profile,
-    new FakeComposeRunner({
-      ownership: "absent",
-      status: "exited",
-      staleAfterStart: true,
-    }),
-  );
-  const result = await mutate(fixture, entry(profile, "runtime-start"));
+Deno.test("sealed SysON group has the one approved loopback publication and no historical 8180 exposure", async () => {
+  const group = await sysonGroup();
+  const descriptor = JSON.parse(group.compose.content) as {
+    services: {
+      "mcp-syson": { ports: string[] };
+      "syson-app": Record<string, unknown>;
+    };
+  };
 
-  assertEquals(result.status, "uncertain");
-  assertEquals(result.recordedAt, "2026-08-29T00:00:01.000Z");
+  assertEquals(descriptor.services["mcp-syson"].ports, ["127.0.0.1:3009:3009"]);
+  assertEquals("ports" in descriptor.services["syson-app"], false);
+  assertEquals(group.secretSlots, []);
 });
 
-Deno.test("public host mutation requires its durable journal intent and available secret slots", async () => {
-  const profile = await fakeCapabilityRuntimeLaunchProfile({
-    secretSlots: ["host-token"],
-  });
-  const noJournal = composeHost(
-    profile,
-    new FakeComposeRunner({ ownership: "absent" }),
-    new SecretSlots(["available"]),
-  );
-  const entryValue = entry(profile, "material-acquire");
-  await assertRejects(
-    () =>
-      noJournal.host.mutate({
-        authorization: { entry: entryValue } as AuthorizedCapabilityRuntimeHostMutation,
-      }),
-    Error,
-    "authorization is absent or consumed",
-  );
-  assertEquals(noJournal.runner.calls, []);
+Deno.test("sealed SysON group pins Postgres with its canonical Docker Hub repository", async () => {
+  const group = await sysonGroup();
+  const postgres = group.materials.find((member) => member.serviceName === "syson-db");
 
-  const unavailable = composeHost(
-    profile,
-    new FakeComposeRunner({ ownership: "absent" }),
-    new SecretSlots(["unavailable"]),
+  assertEquals(
+    postgres?.imageReference,
+    "docker.io/library/postgres@sha256:926f8799aef36e00001cfe15fba7abbd37d3c5224ea57e4c858e4bb670f10561",
   );
-  const result = await mutate(unavailable, entryValue);
-  assertEquals(result.status, "failed");
-  assertEquals(unavailable.runner.calls, []);
 });
 
-Deno.test("a one-use authorization cannot replay the same pending intent", async () => {
-  const profile = await fakeCapabilityRuntimeLaunchProfile();
-  const fixture = composeHost(profile, new FakeComposeRunner({ ownership: "absent" }));
-  const entryValue = entry(profile, "material-acquire");
-  await fixture.journal.appendBeforeMutation(entryValue);
-  const authorization = await authorizeDurableCapabilityRuntimeHostMutation(
-    entryValue,
-    fixture.journal,
-  );
-  const first = await fixture.host.mutate({ authorization });
-  const calls = fixture.runner.calls.length;
-  await assertRejects(
-    () => fixture.host.mutate({ authorization }),
-    Error,
-    "absent or consumed",
-  );
-  await fixture.journal.appendOutcome(first);
-  await assertRejects(
-    () =>
-      authorizeDurableCapabilityRuntimeHostMutation(
-        entryValue,
-        fixture.journal,
-      ),
-    Error,
-    "terminal outcome",
-  );
-  assertEquals(first.status, "succeeded");
-  assertEquals(fixture.runner.calls.length, calls);
-});
+async function sysonGroup(): Promise<CapabilityRuntimeLaunchGroup> {
+  return (await createFirstPartyCapabilityRuntimeLaunchGroups())[0]!;
+}
 
-Deno.test("Compose host blocks revoked and cache-only profiles after durable authorization but before Docker", async () => {
-  for (
-    const profile of [
-      await fakeCapabilityRuntimeLaunchProfile({ qualification: "revoked" }),
-      await fakeCapabilityRuntimeLaunchProfile({ activationPolicy: "cache-only" }),
-    ]
-  ) {
-    const fixture = composeHost(
-      profile,
-      new FakeComposeRunner({ ownership: "absent" }),
-    );
-    const result = await mutate(fixture, entry(profile, "runtime-start"));
-    assertEquals(result.status, "failed");
-    assertEquals(fixture.runner.calls, []);
-  }
-});
-
-function composeHost(
-  profile: CapabilityRuntimeLaunchProfile,
-  runner: FakeComposeRunner,
-  secrets: CapabilityRuntimeSecretSlotObserver = new SecretSlots(["available"]),
-  composeRoot = "/workspace",
-) {
+function host(group: CapabilityRuntimeLaunchGroup, runner: FakeGroupRunner) {
   const journal = new InMemoryCapabilityRuntimeJournal();
   const host = createCapabilityRuntimeHostAdapter({
-    registry: new FixedCapabilityRuntimeLaunchProfileRegistry([profile]),
+    registry: new FixedCapabilityRuntimeLaunchGroupRegistry([group]),
     journal,
-    secrets,
-    mutationLock: new ImmediateLock(),
-    runner,
-    composeRoot,
-    paths: {
-      realPath: (path) =>
-        path === "/workspace" ? Promise.resolve("/canonical") : Deno.realPath(path),
+    secrets: {
+      observe: (slots) =>
+        Promise.resolve(new Map(slots.map((slot) => [slot, "unavailable" as const]))),
     },
+    runner,
+    composeRoot: "/workspace",
+    paths: { realPath: () => Promise.resolve("/canonical") },
     clock: () => "2026-08-29T00:00:01.000Z",
   });
-  return { host, journal, runner };
+  return { host, journal };
 }
 
 async function mutate(
-  fixture: {
-    readonly host: CapabilityRuntimeHostMutator;
-    readonly journal: InMemoryCapabilityRuntimeJournal;
-  },
-  value: CapabilityRuntimeJournalEntry,
-) {
-  await fixture.journal.appendBeforeMutation(value);
-  const authorization = await authorizeDurableCapabilityRuntimeHostMutation(
-    value,
-    fixture.journal,
-  );
-  return await fixture.host.mutate({ authorization });
-}
-
-function entry(
-  profile: CapabilityRuntimeLaunchProfile,
+  fixture: ReturnType<typeof host>,
+  group: CapabilityRuntimeLaunchGroup,
   action: CapabilityRuntimeJournalEntry["action"],
-): CapabilityRuntimeJournalEntry {
-  return {
-    id: `host-runtime:${action}`,
+) {
+  const entry: CapabilityRuntimeJournalEntry = {
+    id: `group-${action}`,
     action,
-    material: FAKE_CAPABILITY_RUNTIME_MATERIAL,
-    launchProfile: capabilityRuntimeLaunchProfileReference(profile),
-    projectId: null,
+    materials: group.materials.map((member) => member.material),
+    launchGroup: capabilityRuntimeLaunchGroupReference(group),
+    projectId: "project-test",
     plannedAt: "2026-08-29T00:00:00.000Z",
-    previousObservation: null,
+    previousObservations: group.materials.map((member) => ({
+      material: member.material,
+      state: null,
+    })),
     administrativeRemovalPlanFingerprint: null,
   };
+  await fixture.journal.appendBeforeMutation(entry);
+  return await fixture.host.mutate({
+    authorization: await authorizeDurableCapabilityRuntimeHostMutation(
+      entry,
+      fixture.journal,
+    ),
+  });
 }
 
-class FakeComposeRunner implements CommandRunner {
+class FakeGroupRunner implements CommandRunner {
   readonly calls: string[][] = [];
-  readonly composeStdin: string[] = [];
-  readonly composeOptions: {
-    readonly clearEnv: boolean | undefined;
-    readonly env: Readonly<Record<string, string>> | undefined;
-  }[] = [];
-  #exists: boolean;
-  #status: string;
-  #containerId = "container-1";
-  #ownership: "owned" | "mismatch" | "absent";
+  readonly stdin: string[] = [];
+  #images: boolean;
+  #states: Map<string, "running" | "exited">;
 
   constructor(
-    private readonly options: {
-      readonly ownership: "owned" | "mismatch" | "absent";
-      readonly status?: string;
-      readonly imageReference?: string;
-      readonly containerImageReference?: string;
-      readonly staleAfterStart?: boolean;
-      readonly replaceWithForeignAfterStop?: boolean;
-      readonly onFirstComposePs?: () => Promise<void>;
+    private readonly group: CapabilityRuntimeLaunchGroup,
+    options: {
+      readonly images: boolean;
+      readonly state: "absent" | "running";
+      readonly foreignService?: string;
     },
   ) {
-    this.#ownership = options.ownership;
-    this.#exists = options.ownership !== "absent";
-    this.#status = options.status ?? "running";
+    this.#images = options.images;
+    this.#states = new Map(
+      options.state === "absent"
+        ? []
+        : group.materials.map((member) => [member.serviceName, "running"] as const),
+    );
+    this.foreignService = options.foreignService;
   }
+
+  readonly foreignService: string | undefined;
 
   async run(
     command: string,
     args: string[],
     _cwd: string,
-    options: {
-      readonly stdin?: Uint8Array;
-      readonly env?: Readonly<Record<string, string>>;
-      readonly clearEnv?: boolean;
-    } = {},
+    options: { readonly stdin?: Uint8Array } = {},
   ): Promise<CommandResult> {
+    await Promise.resolve();
     this.calls.push([command, ...args]);
-    if (args[0] === "compose" && options.stdin) {
-      this.composeStdin.push(new TextDecoder().decode(options.stdin));
-      this.composeOptions.push({
-        clearEnv: options.clearEnv,
-        env: options.env,
-      });
-    }
-    if (args[0] === "image") {
-      return successful(
-        imageInspect(
-          args[2] === "sha256:container-image"
-            ? this.options.containerImageReference
-            : this.options.imageReference,
-        ),
+    if (options.stdin) this.stdin.push(new TextDecoder().decode(options.stdin));
+    if (args[0] === "image" && args[1] === "inspect") {
+      const requested = args[2]!;
+      const member = this.group.materials.find((candidate) =>
+        candidate.imageReference === requested ||
+        `sha256:${candidate.serviceName}` === requested
       );
+      return this.#images && member
+        ? success(JSON.stringify([{ RepoDigests: [member.imageReference] }]))
+        : failure("image missing");
     }
     if (args[0] === "inspect") {
-      return successful(JSON.stringify([{
-        Id: this.#containerId,
-        Image: "sha256:container-image",
+      const service = args[1]!.replace("container-", "");
+      if (
+        !this.group.materials.some((candidate) => candidate.serviceName === service)
+      ) {
+        return failure("unknown container");
+      }
+      return success(JSON.stringify([{
+        Id: `container-${service}`,
+        Image: `sha256:${service}`,
         Config: {
           Labels: {
-            "com.docker.compose.project": "test_host_runtime",
-            "com.docker.compose.service": "host-runtime",
-            "com.casys.capability-runtime.owned": this.#ownership === "mismatch"
-              ? "false"
-              : "true",
+            "com.docker.compose.project": service === this.foreignService
+              ? "foreign-project"
+              : "casys-syson",
+            "com.docker.compose.service": service,
+            ...(service === this.foreignService ? { foreign: "true" } : {}),
           },
         },
-        State: { Status: this.#status },
+        State: {
+          Status: this.#states.get(service) ?? "exited",
+          Health: {
+            Status: this.#states.get(service) === "running" ? "healthy" : "unhealthy",
+          },
+        },
       }]));
     }
     if (args.includes("ps")) {
-      if (this.options.onFirstComposePs && this.composeStdin.length === 1) {
-        await this.options.onFirstComposePs();
-      }
-      return successful(
-        this.#exists
-          ? JSON.stringify([{
-            Service: "host-runtime",
-            ID: this.#containerId,
-            State: this.#status,
-          }])
-          : "",
-      );
+      return success(JSON.stringify([...this.#states].map(([service, state]) => ({
+        Service: service,
+        ID: `container-${service}`,
+        State: state,
+      }))));
     }
+    if (args.includes("pull")) this.#images = true;
     if (args.includes("up")) {
-      this.#exists = true;
-      if (!this.options.staleAfterStart) this.#status = "running";
+      for (const member of this.group.materials) {
+        this.#states.set(member.serviceName, "running");
+      }
     }
     if (args[0] === "container" && args[1] === "stop") {
-      if (this.options.replaceWithForeignAfterStop) {
-        this.#containerId = "container-foreign";
-        this.#ownership = "mismatch";
-      } else {
-        this.#status = "exited";
-      }
+      this.#states.set(args[2]!.replace("container-", ""), "exited");
     }
-    return successful("");
+    return success("");
   }
 }
 
-class ImmediateLock implements CapabilityRuntimeHostMutationLock {
-  withLock<T>(operation: () => Promise<T>): Promise<T> {
-    return operation();
-  }
+function assertNoDestructiveComposeCommand(runner: FakeGroupRunner): void {
+  assertEquals(
+    runner.calls.some((call) =>
+      call[1] === "compose" &&
+      (call.includes("down") || call.includes("--remove-orphans") ||
+        call.includes("-v"))
+    ),
+    false,
+  );
 }
 
-class SecretSlots implements CapabilityRuntimeSecretSlotObserver {
-  constructor(
-    private readonly states: readonly ("available" | "unavailable" | "unknown")[],
-  ) {}
-
-  async observe(
-    slots: readonly string[],
-  ): Promise<ReadonlyMap<string, "available" | "unavailable" | "unknown">> {
-    return new Map(slots.map((slot, index) => [slot, this.states[index] ?? "unknown"]));
-  }
-}
-
-function imageInspect(reference = EXPECTED_IMAGE): string {
-  return JSON.stringify([{ RepoDigests: [reference] }]);
-}
-
-function successful(stdout: string): CommandResult {
+function success(stdout: string): CommandResult {
   return { success: true, code: 0, stdout, stderr: "" };
 }
 
-function assertNoDestructiveCommand(runner: FakeComposeRunner): void {
-  for (const call of runner.calls) {
-    assertEquals(
-      call.some((arg) => ["down", "rm", "rmi", "volume"].includes(arg)),
-      false,
-    );
-  }
+function failure(stderr: string): CommandResult {
+  return { success: false, code: 1, stdout: "", stderr };
 }

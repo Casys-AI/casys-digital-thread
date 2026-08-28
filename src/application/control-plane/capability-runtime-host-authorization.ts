@@ -10,7 +10,7 @@ import type {
 
 const pending = new WeakSet<AuthorizedCapabilityRuntimeHostMutation>();
 
-/** @internal Only CapabilityRuntimeLifecycleCoordinator imports this mint. */
+/** @internal Runtime supervisors mint this only after a durable exact intent. */
 export async function authorizeDurableCapabilityRuntimeHostMutation(
   entry: CapabilityRuntimeJournalEntry,
   journal: CapabilityRuntimeJournal,

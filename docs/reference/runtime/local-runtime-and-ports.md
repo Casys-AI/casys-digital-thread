@@ -19,9 +19,12 @@ Where things run, and which page owns the file census.
 The ordinary `deno task start` composes no local Build123d, Modelica, SPICE or CalculiX
 review/executor. `--local-execution` is no longer a console capability; it is rejected
 as an unknown argument, including through the supervised MCP passthrough. The generic H1
-capability-runtime supervisor now exists only as uncomposed local host mechanics. No
-first-party launch profile is enrolled and `server.ts` does not compose it, so the
-corresponding registered operations remain literally `unavailable`.
+capability-runtime supervisor has one enrolled local persistent topology:
+`casys-syson@1.0.0`. It is not started at server boot or merely because YOLO is enabled.
+After a durable operational-capability authorization, the server may preload its exact
+images; immediately before a covered run it acquires one lease, starts the whole group,
+and fresh-inspects every service. Other persistent catalogue materials remain literally
+unenrolled and unavailable for JIT activation.
 
 The loopback automation task controls only the separate local-YOLO approval opt-in:
 
@@ -67,7 +70,7 @@ environment variable enables it implicitly.
 
 | Endpoint                     | Owner                       | Purpose                                                                                                                                                                                                      |
 | ---------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `http://127.0.0.1:8180`      | SysON                       | SysML web modeler                                                                                                                                                                                            |
+| `http://127.0.0.1:8180`      | separate developer SysON compose | Historical SysML web-modeler convenience. It is deliberately **not** exposed or authorized by the `casys-syson` capability group. |
 | `http://127.0.0.1:3009/mcp`  | `mcp-syson`                 | Model, constraints and evaluations                                                                                                                                                                           |
 | `http://127.0.0.1:3012/mcp`  | `mcp-erpnext`               | Provider-native ERP data                                                                                                                                                                                     |
 | `http://127.0.0.1:3014/mcp`  | `mcp-build123d`             | Dedicated HTTP `0.6.1` provider for server-fixed CAD recipes and shared exports. `deno task probe:build123d-contract` reads health, discovery, schemas and viewer declarations only; it never calls a provider tool and is not canonical geometry. |

@@ -11,9 +11,8 @@ import {
 const DIGEST_A = "a".repeat(64);
 const DIGEST_B = "b".repeat(64);
 
-Deno.test("launch group seals one ordered multi-service Compose topology", async () => {
-  const group = await validGroup();
-  const parsed = await validateCapabilityRuntimeLaunchGroup(group);
+Deno.test("launch group seals an ordered multi-service topology with exact retained volume", async () => {
+  const parsed = await validateCapabilityRuntimeLaunchGroup(await validGroup());
 
   assertEquals(parsed.materials.map((material) => material.serviceName), [
     "database",
@@ -26,49 +25,76 @@ Deno.test("launch group seals one ordered multi-service Compose topology", async
   });
 });
 
-Deno.test("launch group rejects public port publication before a profile is enrolled", async () => {
-  const group = await validGroup();
-  const mutated = structuredClone(group) as {
+Deno.test("launch group rejects a non-loopback port before it can publish a service", async () => {
+  const group = structuredClone(await validGroup()) as { compose: { content: string } };
+  const compose = JSON.parse(group.compose.content) as {
+    services: { worker: Record<string, unknown> };
+  };
+  compose.services.worker.ports = ["0.0.0.0:3000:3000"];
+  group.compose.content = deterministicJson(compose);
+
+  await assertRejects(
+    () => validateCapabilityRuntimeLaunchGroup(group),
+    TypeError,
+    "loopback-only",
+  );
+});
+
+Deno.test("launch group rejects duplicate loopback ports even when neither service mounts a volume", async () => {
+  const group = structuredClone(await validGroup({ volume: false })) as {
     compose: { content: string };
   };
-  const compose = JSON.parse(mutated.compose.content) as {
-    services: { database: Record<string, unknown> };
+  const compose = JSON.parse(group.compose.content) as {
+    services: { database: Record<string, unknown>; worker: Record<string, unknown> };
   };
-  compose.services.database.ports = ["127.0.0.1:8180:8180"];
-  mutated.compose.content = deterministicJson(compose);
+  compose.services.database.ports = ["127.0.0.1:3000:3000"];
+  compose.services.worker.ports = ["127.0.0.1:3000:3001"];
+  group.compose.content = deterministicJson(compose);
 
   await assertRejects(
-    () => validateCapabilityRuntimeLaunchGroup(mutated),
+    () => validateCapabilityRuntimeLaunchGroup(group),
     TypeError,
-    "host port publication",
+    "ports must be unique",
   );
 });
 
-Deno.test("launch group rejects unknown fields rather than widening a host contract", async () => {
-  const group = await validGroup() as Record<string, unknown>;
+Deno.test("launch group rejects interpolation and undeclared Compose topology", async () => {
+  const group = structuredClone(await validGroup()) as { compose: { content: string } };
+  const compose = JSON.parse(group.compose.content) as {
+    services: { worker: Record<string, unknown> };
+  };
+  compose.services.worker.environment = { VALUE: "${NOT_ALLOWED}" };
+  group.compose.content = deterministicJson(compose);
+
   await assertRejects(
-    () => validateCapabilityRuntimeLaunchGroup({ ...group, extra: true }),
+    () => validateCapabilityRuntimeLaunchGroup(group),
     TypeError,
-    "unsupported field",
+    "must not interpolate",
   );
 });
 
-async function validGroup(): Promise<unknown> {
+async function validGroup(
+  options: { readonly volume?: boolean } = {},
+): Promise<unknown> {
   const projectName = "casys-test";
   const materials = [
     material("casys.test-stack", "database-image", DIGEST_A, "database", projectName),
     material("casys.test-stack", "worker-image", DIGEST_B, "worker", projectName),
   ];
   const content = deterministicJson({
-    services: Object.fromEntries(materials.map((material) => [
-      material.serviceName,
-      {
-        image: material.imageReference,
-        labels: Object.fromEntries(
-          material.ownership.map((label) => [label.key, label.value]),
-        ),
+    services: {
+      database: {
+        image: materials[0]!.imageReference,
+        ...(options.volume === false ? {} : { volumes: ["test-data:/var/lib/test"] }),
+        healthcheck: health(),
       },
-    ])),
+      worker: {
+        image: materials[1]!.imageReference,
+        depends_on: { database: { condition: "service_healthy" } },
+        healthcheck: health(),
+      },
+    },
+    volumes: options.volume === false ? {} : { "test-data": {} },
   });
   const body = {
     schemaVersion: CAPABILITY_RUNTIME_LAUNCH_GROUP_SCHEMA_VERSION,
@@ -92,6 +118,15 @@ async function validGroup(): Promise<unknown> {
     qualification: "qualified" as const,
   };
   return { ...body, fingerprint: await fingerprintCapabilityRuntimeLaunchGroup(body) };
+}
+
+function health() {
+  return {
+    test: ["CMD", "health"],
+    interval: "1s",
+    timeout: "1s",
+    retries: 1,
+  };
 }
 
 function material(

@@ -63,10 +63,6 @@ export {
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "./src/adapters/cad/sealed-isolated/design-seal-isolated-geometry-run-executor.ts";
 import type { ModelicaIsolatedExecutionServerOptions } from "./src/adapters/modelica/qualified-kit/execution-composition.ts";
 import type { CalculixIsolatedExecutionServerOptions } from "./src/adapters/fea/isolated-v3/calculix-isolated-execution-composition.ts";
-import {
-  createLocalCalculixIsolatedExecutionServerOptions,
-  LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
-} from "./src/adapters/fea/isolated-v3/local-calculix-isolated-execution-options.ts";
 export {
   createLocalCalculixIsolatedExecutionServerOptions,
   LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
@@ -183,12 +179,21 @@ import { ProjectCapabilityAuthorizationService } from "./src/application/control
 import {
   FixedCapabilityRuntimeAdminLockReader,
   FixedCapabilityRuntimeAdminPolicyReader,
-  FixedCapabilityRuntimeHostObservationReader,
   ProjectCapabilityRuntimeContextCompiler,
 } from "./src/application/control-plane/project-capability-runtime-context-compiler.ts";
 import { CapabilityRuntimeSupervisor } from "./src/application/control-plane/capability-runtime-supervisor.ts";
 import { CapabilityRuntimeExecutionSessionCoordinator } from "./src/application/control-plane/capability-runtime-execution-session.ts";
-import { FileCapabilityRuntimeLeaseStore } from "./src/adapters/control-plane/file-capability-runtime-host-stores.ts";
+import {
+  FileCapabilityRuntimeHostMutationLock,
+  FileCapabilityRuntimeJournal,
+  FileCapabilityRuntimeLeaseStore,
+} from "./src/adapters/control-plane/file-capability-runtime-host-stores.ts";
+import { createCapabilityRuntimeHostAdapter } from "./src/adapters/control-plane/compose-capability-runtime-host.ts";
+import { GroupCapabilityRuntimeHostObservationReader } from "./src/adapters/control-plane/group-capability-runtime-host-observation-reader.ts";
+import { createFirstPartyCapabilityRuntimeLaunchGroupRegistry } from "./src/adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
+import { CapabilityRuntimeLaunchGroupSupervisor } from "./src/application/control-plane/capability-runtime-launch-group-supervisor.ts";
+import { CapabilityRuntimePreloadScheduler } from "./src/application/control-plane/capability-runtime-preload-scheduler.ts";
+import type { CapabilityRuntimeSecretSlotObserver } from "./src/application/ports/out/capability/capability-runtime-supervisor.ts";
 import { LocalMicrosandboxCapabilityRuntimeCache } from "./src/adapters/control-plane/microsandbox-capability-runtime-cache.ts";
 import {
   createLocalMicrosandboxSdk,
@@ -200,7 +205,6 @@ import { createFirstPartyCapabilityRuntimeCatalog } from "./src/adapters/control
 import {
   type CapabilityRuntimeAdminLock,
   type CapabilityRuntimeAdminPolicy,
-  type CapabilityRuntimeHostObservation,
 } from "./src/application/control-plane/read-model/capability-runtime-catalog.ts";
 import {
   listRegisteredEngineeringOperations,
@@ -926,18 +930,44 @@ async function createProjectControl(
   const activeProjectDirectory = options.activeProjectDirectory ??
     DEFAULT_ACTIVE_PROJECT_DIRECTORY;
   const capabilityCatalog = await createFirstPartyCapabilityRuntimeCatalog();
+  const capabilityLaunchGroups =
+    await createFirstPartyCapabilityRuntimeLaunchGroupRegistry();
+  const capabilityRuntimeJournal = new FileCapabilityRuntimeJournal();
+  const capabilityRuntimeLeases = new FileCapabilityRuntimeLeaseStore(
+    DEFAULT_CAPABILITY_RUNTIME_LEASE_DIRECTORY,
+  );
+  const capabilityRuntimeMutationLock = new FileCapabilityRuntimeHostMutationLock();
+  // This H1 group has no secret slots. A future nonempty slot is unavailable
+  // by default; no value crosses this server composition boundary.
+  const capabilityRuntimeSecrets: CapabilityRuntimeSecretSlotObserver = {
+    observe(slots) {
+      return Promise.resolve(
+        new Map(slots.map((slot) => [slot, "unavailable" as const])),
+      );
+    },
+  };
+  const capabilityRuntimeHost = createCapabilityRuntimeHostAdapter({
+    registry: capabilityLaunchGroups,
+    journal: capabilityRuntimeJournal,
+    secrets: capabilityRuntimeSecrets,
+  });
+  const capabilityRuntimeGroups = new CapabilityRuntimeLaunchGroupSupervisor({
+    groups: capabilityLaunchGroups,
+    journal: capabilityRuntimeJournal,
+    leases: capabilityRuntimeLeases,
+    states: capabilityRuntimeHost,
+    host: capabilityRuntimeHost,
+    secrets: capabilityRuntimeSecrets,
+    lock: capabilityRuntimeMutationLock,
+  });
+  const capabilityHost = new GroupCapabilityRuntimeHostObservationReader(
+    capabilityCatalog,
+    capabilityRuntimeHost,
+  );
   const capabilityPolicy: CapabilityRuntimeAdminPolicy = {
     schemaVersion: "capability-runtime-admin-policy/1.0",
     disabledBindingIds: [],
     preferences: [],
-  };
-  const capabilityHost: CapabilityRuntimeHostObservation = {
-    schemaVersion: "capability-runtime-host-observation/1.0",
-    platform: Deno.build.arch === "aarch64" ? "linux/arm64" : "linux/amd64",
-    emulatedPlatforms: [],
-    // This startup snapshot deliberately does not claim cache presence. JIT
-    // cache observation is a separate, exact host boundary.
-    images: [],
   };
   const capabilityLock: CapabilityRuntimeAdminLock = {
     schemaVersion: "capability-runtime-admin-lock/1.0",
@@ -953,7 +983,7 @@ async function createProjectControl(
     registry: { list: listRegisteredEngineeringOperations },
     catalog: capabilityCatalog,
     policy: new FixedCapabilityRuntimeAdminPolicyReader(capabilityPolicy),
-    host: new FixedCapabilityRuntimeHostObservationReader(capabilityHost),
+    host: capabilityHost,
     lock: new FixedCapabilityRuntimeAdminLockReader(capabilityLock),
     ledgers: capabilityLedgers,
   });
@@ -961,14 +991,10 @@ async function createProjectControl(
     contexts: capabilityContexts,
     operations: { require: requireRegisteredEngineeringOperation },
   });
-  // The initial catalogue deliberately has no enrolled persistent SysON
-  // profile. The session is nevertheless composed at the FEA seam so it
-  // fails closed before claim/WAL until the exact lifecycle is registered.
   const capabilityRuntimeSession = new CapabilityRuntimeExecutionSessionCoordinator({
     contexts: capabilityContexts,
-    leases: new FileCapabilityRuntimeLeaseStore(
-      DEFAULT_CAPABILITY_RUNTIME_LEASE_DIRECTORY,
-    ),
+    leases: capabilityRuntimeLeases,
+    groups: capabilityRuntimeGroups,
     // Lazy exact inspection only: no image load, pull, sandbox create or
     // Compose start occurs during server construction or queueing.
     microsandbox: new LocalMicrosandboxCapabilityRuntimeCache(
@@ -1021,6 +1047,9 @@ async function createProjectControl(
     policy: capabilityPolicy,
     host: capabilityHost,
     lock: capabilityLock,
+    preloadScheduler: new CapabilityRuntimePreloadScheduler({
+      host: capabilityRuntimeGroups,
+    }),
   });
 
   const architectureProject = createArchitectureProject({

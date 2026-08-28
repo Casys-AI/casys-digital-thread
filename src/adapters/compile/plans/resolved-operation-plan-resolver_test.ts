@@ -1202,7 +1202,7 @@ function operationalCapabilityFor(
           imageDigest: "e".repeat(64),
         },
         kind: "ephemeral-microsandbox",
-        launchProfile: null,
+        launchGroup: null,
       }],
     }],
   };

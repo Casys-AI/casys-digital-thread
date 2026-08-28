@@ -87,7 +87,7 @@ Deno.test("capability supervisor queues a demanded binding cold without a host o
   assertEquals(resolved?.bindings[0]?.hostLifecycles, [{
     material: fixture.material,
     kind: "ephemeral-microsandbox",
-    launchProfile: null,
+    launchGroup: null,
   }]);
 });
 
@@ -197,7 +197,7 @@ Deno.test("capability supervisor resolves exact approved binding, profile, mater
         imageDigest: IMAGE_DIGEST,
       },
       kind: "ephemeral-microsandbox",
-      launchProfile: null,
+      launchGroup: null,
     }],
   }]);
 });
@@ -257,8 +257,8 @@ Deno.test("lifecycle coordinator journals before host mutation and recovery keep
     projectId: "project:capability-supervisor",
     bindingIds: ["calculix-static-structural"],
     materialKeys: ["casys.calculix-worker\u0000calculix-worker"],
-    launchProfiles: [{
-      id: "test-runtime-profile",
+    launchGroups: [{
+      id: "test-runtime-group",
       version: "1",
       fingerprint: FINGERPRINT,
     }],
@@ -268,15 +268,15 @@ Deno.test("lifecycle coordinator journals before host mutation and recovery keep
   await coordinator.mutate({
     id: "journal:start",
     action: "runtime-start",
-    material,
-    launchProfile: {
-      id: "test-runtime-profile",
+    materials: [material],
+    launchGroup: {
+      id: "test-runtime-group",
       version: "1",
       fingerprint: FINGERPRINT,
     },
     projectId: "project:capability-supervisor",
     plannedAt: "2026-08-29T00:00:00.000Z",
-    previousObservation: null,
+    previousObservations: [{ material, state: null }],
     administrativeRemovalPlanFingerprint: null,
   });
 
@@ -375,7 +375,7 @@ function runtimeContext(
         imageReference: `example.test/calculix@sha256:${material.imageDigest}`,
         platforms: ["linux/arm64"],
         lifecycle: "ephemeral",
-        launchProfile: null,
+        launchGroup: null,
         effects: {},
       }],
     }],

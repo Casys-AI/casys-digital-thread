@@ -152,7 +152,7 @@ export class InMemoryCapabilityRuntimeHostMutator
       journalEntryId: entry.id,
       recordedAt: entry.plannedAt,
       status: "succeeded",
-      observation: null,
+      observations: entry.materials.map((material) => ({ material, state: null })),
       detail: null,
     };
   }

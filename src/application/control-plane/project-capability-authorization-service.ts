@@ -36,6 +36,7 @@ import type { ProjectCapabilityLedgerStore } from "../ports/out/project-capabili
 import type { EngineeringOperationRegistry } from "../../orchestration/operations/operation-contract.ts";
 import type { BriefCapabilityIntentRouteTable } from "../../orchestration/operations/brief-capability-intent-routes.ts";
 import type { CapabilityRuntimePreloadScheduler } from "./capability-runtime-preload-scheduler.ts";
+import type { CapabilityRuntimeHostObservationReader } from "./project-capability-runtime-context-compiler.ts";
 
 export class ProjectCapabilityAuthorizationError extends Error {}
 
@@ -45,7 +46,10 @@ export interface ProjectCapabilityAuthorizationServiceDependencies {
   readonly routes?: BriefCapabilityIntentRouteTable;
   readonly catalog: CapabilityRuntimeCatalog;
   readonly policy: CapabilityRuntimeAdminPolicy;
-  readonly host: CapabilityRuntimeHostObservation;
+  /** Static fixture or fresh, read-only host observation at review time. */
+  readonly host:
+    | CapabilityRuntimeHostObservation
+    | CapabilityRuntimeHostObservationReader;
   readonly lock: CapabilityRuntimeAdminLock;
   /** Non-blocking host-material preload after durable authorization only. */
   readonly preloadScheduler?: Pick<CapabilityRuntimePreloadScheduler, "schedule">;
@@ -354,7 +358,7 @@ export class ProjectCapabilityAuthorizationService {
       unresolvedBlockers,
       catalog: this.dependencies.catalog,
       policy: this.dependencies.policy,
-      host: this.dependencies.host,
+      host: await this.#host(),
       lock: this.dependencies.lock,
     });
     if (!ledger || !envelope) {
@@ -470,6 +474,11 @@ export class ProjectCapabilityAuthorizationService {
     this.dependencies.preloadScheduler?.schedule(envelope.proposal);
   }
 
+  async #host(): Promise<CapabilityRuntimeHostObservation> {
+    const host = this.dependencies.host;
+    return "read" in host ? await host.read() : structuredClone(host);
+  }
+
   private async proposeForBrief(
     project: EngineeringProjectSnapshot,
     brief: ProjectBriefRevision,
@@ -491,7 +500,7 @@ export class ProjectCapabilityAuthorizationService {
       intent,
       catalog: this.dependencies.catalog,
       policy: this.dependencies.policy,
-      host: this.dependencies.host,
+      host: await this.#host(),
       lock: this.dependencies.lock,
     });
   }

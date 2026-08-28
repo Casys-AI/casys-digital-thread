@@ -22,10 +22,6 @@ import type {
   ResolvedCapabilityRuntimeOperation,
 } from "../../../../domain/capability/runtime/capability-runtime-supervision.ts";
 import type {
-  CapabilityRuntimeLaunchProfile,
-  CapabilityRuntimeLaunchProfileReference,
-} from "../../../../domain/capability/runtime/capability-runtime-host.ts";
-import type {
   CapabilityRuntimeLaunchGroup,
   CapabilityRuntimeLaunchGroupReference,
 } from "../../../../domain/capability/runtime/capability-runtime-launch-group.ts";
@@ -150,14 +146,6 @@ export interface CapabilityRuntimeHostMutator {
  */
 export interface AuthorizedCapabilityRuntimeHostMutation {
   readonly entry: CapabilityRuntimeJournalEntry;
-}
-
-/** Exact server-owned registry for immutable profiles; agents never see a body. */
-export interface CapabilityRuntimeLaunchProfileRegistry {
-  require(
-    reference: CapabilityRuntimeLaunchProfileReference,
-  ): Promise<CapabilityRuntimeLaunchProfile>;
-  list(): Promise<readonly CapabilityRuntimeLaunchProfile[]>;
 }
 
 /**

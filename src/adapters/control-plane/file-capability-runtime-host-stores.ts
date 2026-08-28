@@ -63,6 +63,16 @@ export class FileCapabilityRuntimeJournal implements CapabilityRuntimeJournal {
         `Capability runtime outcome ${outcome.journalEntryId} predates its durable intent.`,
       );
     }
+    if (
+      !sameOrderedMaterials(
+        outcome.observations.map((observation) => observation.material),
+        intent.materials,
+      )
+    ) {
+      throw new Error(
+        `Capability runtime outcome ${outcome.journalEntryId} must observe every exact group material in order.`,
+      );
+    }
     await this.#append(
       this.#outcomePath(outcome.journalEntryId),
       outcome,
@@ -400,6 +410,26 @@ function requiredPath(value: string): string {
 function parent(path: string): string {
   const index = path.lastIndexOf("/");
   return index < 0 ? "." : index === 0 ? "/" : path.slice(0, index);
+}
+
+function sameOrderedMaterials(
+  left: readonly {
+    readonly unitId: string;
+    readonly materialId: string;
+    readonly imageDigest: string;
+  }[],
+  right: readonly {
+    readonly unitId: string;
+    readonly materialId: string;
+    readonly imageDigest: string;
+  }[],
+): boolean {
+  return left.length === right.length &&
+    left.every((material, index) =>
+      material.unitId === right[index]!.unitId &&
+      material.materialId === right[index]!.materialId &&
+      material.imageDigest === right[index]!.imageDigest
+    );
 }
 
 function nonBlank(value: string, label: string): string {

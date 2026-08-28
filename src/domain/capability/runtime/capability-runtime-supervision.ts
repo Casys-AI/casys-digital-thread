@@ -23,9 +23,11 @@ import {
   sha256Fingerprint,
 } from "../../kernel/deterministic-json.ts";
 import type {
-  CapabilityRuntimeLaunchProfileReference,
-} from "./capability-runtime-host.ts";
-import { validateCapabilityRuntimeLaunchProfileReference } from "./capability-runtime-host.ts";
+  CapabilityRuntimeLaunchGroupReference,
+} from "./capability-runtime-launch-group.ts";
+import {
+  validateCapabilityRuntimeLaunchGroupReference,
+} from "./capability-runtime-launch-group.ts";
 
 export type CapabilityRuntimeMaterialState =
   | "absent"
@@ -63,24 +65,26 @@ export interface CapabilityRuntimeMaterialIdentity {
 /**
  * The sealed host behaviour of one exact material.  This is operational
  * lifecycle information, not a provider envelope.  Only a persistent Compose
- * service can carry a launch-profile reference; an ephemeral microVM and an
- * OCI cache are deliberately never represented as an "active" service.
+ * service can carry a launch-group reference; an ephemeral microVM and an
+ * OCI cache are deliberately never represented as an "active" service. A
+ * persistent material points to its whole indivisible launch group: no member
+ * may be started, stopped or recovered separately.
  */
 export type CapabilityRuntimeHostLifecycle =
   | {
     readonly material: CapabilityRuntimeMaterialIdentity;
     readonly kind: "persistent-compose";
-    readonly launchProfile: CapabilityRuntimeLaunchProfileReference | null;
+    readonly launchGroup: CapabilityRuntimeLaunchGroupReference | null;
   }
   | {
     readonly material: CapabilityRuntimeMaterialIdentity;
     readonly kind: "ephemeral-microsandbox";
-    readonly launchProfile: null;
+    readonly launchGroup: null;
   }
   | {
     readonly material: CapabilityRuntimeMaterialIdentity;
     readonly kind: "cache-only";
-    readonly launchProfile: null;
+    readonly launchGroup: null;
   };
 
 /**
@@ -281,25 +285,25 @@ function parseHostLifecycle(
   value: unknown,
   path: string,
 ): CapabilityRuntimeHostLifecycle {
-  const root = exactRecord(value, ["material", "kind", "launchProfile"], path);
+  const root = exactRecord(value, ["material", "kind", "launchGroup"], path);
   const material = parseMaterial(root.material, `${path}.material`);
   if (root.kind === "persistent-compose") {
     return {
       material,
       kind: "persistent-compose",
-      launchProfile: root.launchProfile === null
+      launchGroup: root.launchGroup === null
         ? null
-        : validateCapabilityRuntimeLaunchProfileReference(
-          root.launchProfile,
-          `${path}.launchProfile`,
+        : validateCapabilityRuntimeLaunchGroupReference(
+          root.launchGroup,
+          `${path}.launchGroup`,
         ),
     };
   }
   if (root.kind === "ephemeral-microsandbox" || root.kind === "cache-only") {
-    if (root.launchProfile !== null) {
-      throw new TypeError(`${path}.launchProfile must be null for ${root.kind}.`);
+    if (root.launchGroup !== null) {
+      throw new TypeError(`${path}.launchGroup must be null for ${root.kind}.`);
     }
-    return { material, kind: root.kind, launchProfile: null };
+    return { material, kind: root.kind, launchGroup: null };
   }
   throw new TypeError(`${path}.kind is unsupported.`);
 }
@@ -372,8 +376,8 @@ export interface CapabilityRuntimeLease {
   readonly bindingIds: readonly string[];
   /** Exact host materials protected by this lease; never a provider request. */
   readonly materialKeys: readonly string[];
-  /** Immutable profiles authorized to use the protected host materials. */
-  readonly launchProfiles: readonly CapabilityRuntimeLaunchProfileReference[];
+  /** Immutable group plans authorized to use the protected host materials. */
+  readonly launchGroups: readonly CapabilityRuntimeLaunchGroupReference[];
   readonly acquiredAt: string;
   readonly expiresAt: string;
 }
@@ -391,12 +395,19 @@ export type CapabilityRuntimeJournalAction =
 export interface CapabilityRuntimeJournalEntry {
   readonly id: string;
   readonly action: CapabilityRuntimeJournalAction;
-  readonly material: CapabilityRuntimeMaterialIdentity;
-  /** Exact registry profile used by the host mutator. */
-  readonly launchProfile: CapabilityRuntimeLaunchProfileReference;
+  /**
+   * The complete, ordered group membership. A journal intent is atomic at the
+   * group boundary even though Docker executes several service transitions.
+   */
+  readonly materials: readonly CapabilityRuntimeMaterialIdentity[];
+  /** Exact registry group used by the host mutator. */
+  readonly launchGroup: CapabilityRuntimeLaunchGroupReference;
   readonly projectId: string | null;
   readonly plannedAt: string;
-  readonly previousObservation: CapabilityRuntimeObservedState | null;
+  readonly previousObservations: readonly {
+    readonly material: CapabilityRuntimeMaterialIdentity;
+    readonly state: CapabilityRuntimeObservedState | null;
+  }[];
   readonly administrativeRemovalPlanFingerprint: ContentFingerprint | null;
 }
 
@@ -406,8 +417,11 @@ export interface CapabilityRuntimeJournalOutcome {
   readonly journalEntryId: string;
   readonly recordedAt: string;
   readonly status: "succeeded" | "failed" | "uncertain";
-  /** Fresh host observation when available. `null` remains literal uncertainty. */
-  readonly observation: CapabilityRuntimeObservedState | null;
+  /** Fresh observations when available. `null` remains literal uncertainty. */
+  readonly observations: readonly {
+    readonly material: CapabilityRuntimeMaterialIdentity;
+    readonly state: CapabilityRuntimeObservedState | null;
+  }[];
   /** Bounded diagnostic, with no command, secret or provider envelope. */
   readonly detail: string | null;
 }
@@ -496,15 +510,24 @@ export function recoverCapabilityRuntime(
     outcome,
   ]));
   const pendingJournalEntries = journal.filter((entry) => {
-    const observed = observationsByMaterial.get(
-      capabilityRuntimeMaterialKey(entry.material),
-    );
     const outcome = outcomesByEntry.get(entry.id);
-    return !outcome || outcome.status !== "succeeded" || !observed ||
-      !observationSatisfiesJournalIntent(entry, observed);
+    return !outcome || outcome.status !== "succeeded" ||
+      !entry.materials.every((material) => {
+        const observed = observationsByMaterial.get(
+          capabilityRuntimeMaterialKey(material),
+        );
+        const recorded = outcome.observations.find((value) =>
+          sameMaterial(value.material, material)
+        );
+        return observed !== undefined && recorded !== undefined &&
+          recorded.state !== null &&
+          observationSatisfiesJournalIntent(entry.action, observed);
+      });
   }).toSorted((left, right) => left.id.localeCompare(right.id));
   const pendingMaterialKeys = new Set(
-    pendingJournalEntries.map((entry) => capabilityRuntimeMaterialKey(entry.material)),
+    pendingJournalEntries.flatMap((entry) =>
+      entry.materials.map(capabilityRuntimeMaterialKey)
+    ),
   );
   return {
     schemaVersion: "capability-runtime-recovery/1.0",
@@ -531,41 +554,60 @@ export function validateCapabilityRuntimeJournalEntry(
   const root = exactRecord(value, [
     "id",
     "action",
-    "material",
-    "launchProfile",
+    "materials",
+    "launchGroup",
     "projectId",
     "plannedAt",
-    "previousObservation",
+    "previousObservations",
     "administrativeRemovalPlanFingerprint",
   ], "$runtimeJournalEntry");
-  const launchProfile = exactRecord(
-    root.launchProfile,
-    ["id", "version", "fingerprint"],
-    "$runtimeJournalEntry.launchProfile",
+  const materials = arrayOf(root.materials, "$runtimeJournalEntry.materials").map(
+    (material, index) =>
+      parseMaterial(material, `$runtimeJournalEntry.materials[${index}]`),
   );
+  if (materials.length === 0) {
+    throw new TypeError("$runtimeJournalEntry.materials must not be empty.");
+  }
+  rejectDuplicates(
+    materials.map(capabilityRuntimeMaterialKey),
+    "$runtimeJournalEntry.materials",
+  );
+  const previousObservations = arrayOf(
+    root.previousObservations,
+    "$runtimeJournalEntry.previousObservations",
+  ).map((value, index) => {
+    const path = `$runtimeJournalEntry.previousObservations[${index}]`;
+    const observation = exactRecord(value, ["material", "state"], path);
+    return deepFreeze({
+      material: parseMaterial(observation.material, `${path}.material`),
+      state: observation.state === null
+        ? null
+        : observedState(observation.state, `${path}.state`),
+    });
+  });
+  if (
+    previousObservations.length !== materials.length ||
+    previousObservations.some((value) =>
+      !materials.some((material) => sameMaterial(material, value.material))
+    )
+  ) {
+    throw new TypeError(
+      "$runtimeJournalEntry.previousObservations must cover exactly its group materials.",
+    );
+  }
   return deepFreeze({
     id: safeId(root.id, "$runtimeJournalEntry.id"),
     action: journalAction(root.action, "$runtimeJournalEntry.action"),
-    material: parseMaterial(root.material, "$runtimeJournalEntry.material"),
-    launchProfile: {
-      id: safeId(launchProfile.id, "$runtimeJournalEntry.launchProfile.id"),
-      version: exactVersionToken(
-        launchProfile.version,
-        "$runtimeJournalEntry.launchProfile.version",
-      ),
-      fingerprint: contentFingerprint(
-        launchProfile.fingerprint,
-        "$runtimeJournalEntry.launchProfile.fingerprint",
-      ),
-    },
+    materials,
+    launchGroup: validateCapabilityRuntimeLaunchGroupReference(
+      root.launchGroup,
+      "$runtimeJournalEntry.launchGroup",
+    ),
     projectId: root.projectId === null
       ? null
       : safeId(root.projectId, "$runtimeJournalEntry.projectId"),
     plannedAt: isoDateTime(root.plannedAt, "$runtimeJournalEntry.plannedAt"),
-    previousObservation: root.previousObservation === null ? null : observedState(
-      root.previousObservation,
-      "$runtimeJournalEntry.previousObservation",
-    ),
+    previousObservations,
     administrativeRemovalPlanFingerprint:
       root.administrativeRemovalPlanFingerprint === null ? null : contentFingerprint(
         root.administrativeRemovalPlanFingerprint,
@@ -582,7 +624,7 @@ export function validateCapabilityRuntimeJournalOutcome(
     "journalEntryId",
     "recordedAt",
     "status",
-    "observation",
+    "observations",
     "detail",
   ], "$runtimeJournalOutcome");
   literalValue(
@@ -613,9 +655,17 @@ export function validateCapabilityRuntimeJournalOutcome(
       ["succeeded", "failed", "uncertain"] as const,
       "$runtimeJournalOutcome.status",
     ),
-    observation: root.observation === null
-      ? null
-      : observedState(root.observation, "$runtimeJournalOutcome.observation"),
+    observations: arrayOf(root.observations, "$runtimeJournalOutcome.observations")
+      .map((value, index) => {
+        const path = `$runtimeJournalOutcome.observations[${index}]`;
+        const observation = exactRecord(value, ["material", "state"], path);
+        return deepFreeze({
+          material: parseMaterial(observation.material, `${path}.material`),
+          state: observation.state === null
+            ? null
+            : observedState(observation.state, `${path}.state`),
+        });
+      }),
     detail: root.detail,
   });
 }
@@ -626,7 +676,7 @@ export function validateCapabilityRuntimeLease(value: unknown): CapabilityRuntim
     "projectId",
     "bindingIds",
     "materialKeys",
-    "launchProfiles",
+    "launchGroups",
     "acquiredAt",
     "expiresAt",
   ], "$runtimeLease");
@@ -638,14 +688,14 @@ export function validateCapabilityRuntimeLease(value: unknown): CapabilityRuntim
     key,
     index,
   ) => nonEmptyText(key, `$runtimeLease.materialKeys[${index}]`));
-  const launchProfiles = arrayOf(root.launchProfiles, "$runtimeLease.launchProfiles")
+  const launchGroups = arrayOf(root.launchGroups, "$runtimeLease.launchGroups")
     .map((
-      profile,
+      group,
       index,
     ) =>
-      validateCapabilityRuntimeLaunchProfileReference(
-        profile,
-        `$runtimeLease.launchProfiles[${index}]`,
+      validateCapabilityRuntimeLaunchGroupReference(
+        group,
+        `$runtimeLease.launchGroups[${index}]`,
       )
     );
   if (bindingIds.length === 0 || materialKeys.length === 0) {
@@ -656,10 +706,10 @@ export function validateCapabilityRuntimeLease(value: unknown): CapabilityRuntim
   rejectDuplicates(bindingIds, "$runtimeLease.bindingIds");
   rejectDuplicates(materialKeys, "$runtimeLease.materialKeys");
   rejectDuplicates(
-    launchProfiles.map((profile) =>
-      `${profile.id}\u0000${profile.version}\u0000${profile.fingerprint.digest}`
+    launchGroups.map((group) =>
+      `${group.id}\u0000${group.version}\u0000${group.fingerprint.digest}`
     ),
-    "$runtimeLease.launchProfiles",
+    "$runtimeLease.launchGroups",
   );
   const acquiredAt = isoDateTime(root.acquiredAt, "$runtimeLease.acquiredAt");
   const expiresAt = isoDateTime(root.expiresAt, "$runtimeLease.expiresAt");
@@ -671,7 +721,7 @@ export function validateCapabilityRuntimeLease(value: unknown): CapabilityRuntim
     projectId: safeId(root.projectId, "$runtimeLease.projectId"),
     bindingIds,
     materialKeys,
-    launchProfiles,
+    launchGroups,
     acquiredAt,
     expiresAt,
   });
@@ -679,10 +729,10 @@ export function validateCapabilityRuntimeLease(value: unknown): CapabilityRuntim
 
 /** A matching material identity alone never reconciles a mutation intent. */
 function observationSatisfiesJournalIntent(
-  entry: CapabilityRuntimeJournalEntry,
+  action: CapabilityRuntimeJournalAction,
   observed: CapabilityRuntimeObservedState,
 ): boolean {
-  switch (entry.action) {
+  switch (action) {
     case "material-acquire":
       return observed.material === "installed";
     case "runtime-start":

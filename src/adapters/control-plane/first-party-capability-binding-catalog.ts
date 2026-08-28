@@ -48,20 +48,20 @@ import {
   fingerprintAtomicCapabilityRuntimeUnit,
 } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
 import { validateCapabilityRuntimeCatalog } from "./capability-runtime-catalog.ts";
-
-const POSTGRES_IMAGE =
-  "postgres@sha256:926f8799aef36e00001cfe15fba7abbd37d3c5224ea57e4c858e4bb670f10561";
-const SYSON_IMAGE =
-  "ghcr.io/casys-ai/syson@sha256:fc599abb95587913de11ff6de68060b5593956abc0c47bc753cd19e2987141a6";
-const MCP_SYSON_IMAGE =
-  "ghcr.io/casys-ai/mcp-syson@sha256:87eee6e35a636124d5ba6911492a245d69edcdf1ba67575676c22a0e9d7ce65e";
+import {
+  firstPartySysonLaunchGroupReference,
+  MCP_SYSON_IMAGE_REFERENCE,
+  POSTGRES_IMAGE_REFERENCE,
+  SYSON_IMAGE_REFERENCE,
+} from "./first-party-capability-runtime-launch-groups.ts";
+import type { CapabilityRuntimeLaunchGroupReference } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 const MCP_BUILD123D_IMAGE =
   "ghcr.io/casys-ai/mcp-build123d@sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d";
 
 const REVIEWED_LICENCE_DOC =
   "docs/reference/runtime/capability-packs/atomic-runtime-boundaries.md";
-const SYSON_LAUNCH_GROUP_BLOCKER =
-  "SysON activation is unavailable: its current multi-service Compose topology has unsealed substitution, secret, dependency, health and retained-volume effects; no exact launch group is enrolled.";
+const SYSON_LAUNCH_GROUP_NOTE =
+  "SysON runs only through the exact casys-syson launch group: all three pinned services must be installed, owned and healthy; only mcp-syson loopback port 3009 is exposed.";
 
 /**
  * Builds the trusted first-party catalogue from exact current composition
@@ -72,11 +72,12 @@ const SYSON_LAUNCH_GROUP_BLOCKER =
 export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
   CapabilityRuntimeCatalog
 > {
+  const sysonLaunchGroup = await firstPartySysonLaunchGroupReference();
   const units = await Promise.all([
     unit("casys.syson-stack", [
       composeMaterial(
         "syson-db-image",
-        POSTGRES_IMAGE,
+        POSTGRES_IMAGE_REFERENCE,
         ["linux/arm64"],
         "syson-db",
         "internal",
@@ -85,26 +86,29 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
           volume("syson-db-data", "read-write", "preserve"),
         ],
         "reviewed",
+        sysonLaunchGroup,
       ),
       composeMaterial(
         "syson-app-image",
-        SYSON_IMAGE,
+        SYSON_IMAGE_REFERENCE,
         ["linux/arm64"],
         "syson-app",
-        "loopback-only",
-        [8180],
+        "internal",
+        [],
         [],
         "reviewed",
+        sysonLaunchGroup,
       ),
       composeMaterial(
         "mcp-syson-image",
-        MCP_SYSON_IMAGE,
+        MCP_SYSON_IMAGE_REFERENCE,
         ["linux/amd64", "linux/arm64"],
         "mcp-syson",
         "loopback-only",
         [3009],
         [],
         "reviewed",
+        sysonLaunchGroup,
       ),
     ]),
     unit("casys.mcp-build123d-sandbox", [
@@ -208,7 +212,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "src/adapters/architecture/renderer/model-write-architecture-run-executor.ts",
         [
           "SysON authoring is a concrete runtime binding; it does not validate any engineering result.",
-          SYSON_LAUNCH_GROUP_BLOCKER,
+          SYSON_LAUNCH_GROUP_NOTE,
         ],
       ),
       binding(
@@ -223,7 +227,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "src/adapters/architecture/requirements/model-write-requirements-run-executor.ts",
         [
           "A provider response is not an L4 or L5 verdict without the registered evaluation path.",
-          SYSON_LAUNCH_GROUP_BLOCKER,
+          SYSON_LAUNCH_GROUP_NOTE,
         ],
       ),
       binding(
@@ -238,7 +242,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "src/adapters/architecture/part-definitions/part-definitions-capture.ts",
         [
           "Inspection is a bounded SysML read, not a product navigation authority.",
-          SYSON_LAUNCH_GROUP_BLOCKER,
+          SYSON_LAUNCH_GROUP_NOTE,
         ],
       ),
       binding(
@@ -391,6 +395,7 @@ function composeMaterial(
     readonly preservation: "preserve" | "ephemeral";
   }[],
   security: "reviewed" | "unknown",
+  launchGroup: CapabilityRuntimeLaunchGroupReference | null = null,
 ): AtomicCapabilityRuntimeMaterial {
   return {
     id,
@@ -398,9 +403,7 @@ function composeMaterial(
     imageReference,
     platforms,
     lifecycle: "persistent",
-    // H1 intentionally enrolls no real profile while provider publication is
-    // separate. A null reference is literal: this catalogue cannot launch it.
-    launchProfile: null,
+    launchGroup,
     effects: {
       downloadBytes: null,
       storageBytes: null,
@@ -431,7 +434,7 @@ function microvmMaterial(
     imageReference,
     platforms,
     lifecycle: "ephemeral",
-    launchProfile: null,
+    launchGroup: null,
     effects: {
       downloadBytes: null,
       storageBytes: null,
@@ -466,7 +469,7 @@ function ociImageMaterial(
     imageReference,
     platforms,
     lifecycle: "cache",
-    launchProfile: null,
+    launchGroup: null,
     effects: {
       downloadBytes: null,
       storageBytes: null,
@@ -497,7 +500,7 @@ function chronoMaterial(): AtomicCapabilityRuntimeMaterial {
     imageReference: MCP_CHRONO_031_IMAGE_REFERENCE,
     platforms: ["linux/amd64"],
     lifecycle: "persistent",
-    launchProfile: null,
+    launchGroup: null,
     effects: {
       downloadBytes: null,
       storageBytes: null,
