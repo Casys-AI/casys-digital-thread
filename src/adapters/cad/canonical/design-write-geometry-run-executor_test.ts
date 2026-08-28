@@ -2394,9 +2394,9 @@ export function makeExecutor(
   geometryCaptures: GeometryCaptureStore = fixture.geoCaptures,
   snapshots: ThreadSnapshotStore = fixture.snapshots,
   extras: {
-    readonly moduleAssemblyPublications?: ConstructorParameters<
+    readonly moduleAssemblyDraftAssets?: ConstructorParameters<
       typeof DesignWriteGeometryRunExecutor
-    >[0]["moduleAssemblyPublications"];
+    >[0]["moduleAssemblyDraftAssets"];
     readonly moduleAssemblyOutputValidator?: ConstructorParameters<
       typeof DesignWriteGeometryRunExecutor
     >[0]["moduleAssemblyOutputValidator"];
@@ -2414,7 +2414,7 @@ export function makeExecutor(
     sourceAnalysisCaptures: fixture.sourceAnalysis.analysisCaptures,
     geometryCaptures,
     admissions: fixture.admissions,
-    moduleAssemblyPublications: extras.moduleAssemblyPublications,
+    moduleAssemblyDraftAssets: extras.moduleAssemblyDraftAssets,
     moduleAssemblyOutputValidator: extras.moduleAssemblyOutputValidator,
     lease: new FileEngineeringProjectRunLease(`${directory}/geo-leases`),
     draftAssetDirectory: fixture.draftAssetDirectory,

@@ -180,7 +180,7 @@ only, never an approval or execution authority
 
 Current analysis-bearing `geometry-draft-capture/1.2` and `2.1`, plus
 `geometry-module-draft-capture/1.0`. The module draft binds the exact
-`geometry-module-input-bundle/1.0` identity, isolated receipt, reopened child
+`geometry-module-input-bundle/1.0` identity, provider-neutral assembly receipt, reopened child
 capture/STEP identities, and produced assembly STEP plus binary GLB. These records never
 enter a `ThreadSnapshot`. Older draft schemas are unsupported.
 
@@ -193,5 +193,5 @@ read-only by `/api/draft-assets/<digest>`
 
 Current `geometry-capture/1.2` and `2.1`, plus `geometry-module-capture/1.0`; records
 seal verified immediate-child capture plus authoritative STEP identities, predecessor
-lineage, input-bundle identity, isolated receipt, and independent assembly STEP plus
+lineage, input-bundle identity, provider-neutral assembly receipt, and independent assembly STEP plus
 binary GLB assets. Older capture schemas are unsupported.

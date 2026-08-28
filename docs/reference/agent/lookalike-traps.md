@@ -74,7 +74,7 @@ Domain contracts: [closed subset](../domains/cad/build123d-closed-subset-v1.md) 
 | `geometry-module-input-bundle/1.0` assembler image        | Code-owned one-level STEP compound from a closed child-STEP bundle                                                            | Concatenated CAD scripts, `design.execute-build123d@1`, or collision freedom |
 | `geometry-part-capture/1.0`                               | One exact PartDefinition; no assembly, occurrence, or placement claim                                                         | `geometry-module-capture/1.0` or a v2 bundle                                 |
 | `geometry-module-capture/1.0`                             | One composite PartDefinition and only its immediate child capture references                                                  | A flat descendant manifest or `geometry-manifest/2.0`                        |
-| `geometry-module-draft-capture/1.0`                       | Review-only module draft: complete input-bundle identity, isolated receipt, reopened child STEP identities, produced STEP+GLB | Child source text, a generated program, a provider call, or Thread evidence  |
+| `geometry-module-draft-capture/1.0`                       | Review-only module draft: complete input-bundle identity, neutral assembly receipt, reopened child STEP identities, produced STEP+GLB | Child source text, a generated program, a provider call, or Thread evidence  |
 
 ## Modelica
 

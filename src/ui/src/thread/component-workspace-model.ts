@@ -917,7 +917,7 @@ function classifyGeometryBinary(
  * Exact projector identity for module binaries. The browser copies the
  * profile `id@version` string; it does not import the assembler manifest.
  */
-const MODULE_GEOMETRY_BINARY_PRODUCER = "build123d-module-assembler-v1@1.0.0";
+const MODULE_GEOMETRY_BINARY_PRODUCER = "geometry.module.immediate-compound@1.0";
 
 /**
  * Module STEP/GLB identities are digital-thread assembler products. This

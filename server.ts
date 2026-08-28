@@ -942,8 +942,8 @@ async function createProjectControl(
     architectureCaptures: architectureFoundation.genericArchitectureCaptures,
     sysmlSourceAnalysis: architectureFoundation.sysmlSourceAnalysis,
     geometryDraftCaptureDirectory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
+    geometryDraftAssetDirectory: GEOMETRY_DRAFT_ASSETS_DIR,
     geometryCaptureDirectory: DEFAULT_GEOMETRY_CAPTURE_DIRECTORY,
-    moduleAssembly: geometryModuleAssembly?.execution?.publications,
   });
   const assemblyIntegrityEvaluationCaptures =
     new FileAssemblyIntegrityEvaluationCaptureStore(
@@ -1316,9 +1316,7 @@ async function createProjectControl(
       canonicalAssetDirectory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
       geometryDraftCaptureDirectory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
       geometryDraftAssetDirectory: GEOMETRY_DRAFT_ASSETS_DIR,
-      profiles: geometryModuleAssembly.profiles,
-      runner: geometryModuleAssembly.execution?.runner,
-      publications: geometryModuleAssembly.execution?.publications,
+      assembler: geometryModuleAssembly.assembler,
     }).geometryModuleExport;
   return {
     brief: {

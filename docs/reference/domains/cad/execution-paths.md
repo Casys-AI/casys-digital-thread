@@ -146,7 +146,8 @@ verdict. It records import/topology, recross and pairwise geometry facts with th
 provenance; `unavailable` and `unresolved` remain literal. `mcp-build123d` does not
 receive a Casys project, Thread snapshot, MRTR or evaluation context.
 
-The observer consumes the canonical module artifact as it is sealed today. Migrating the
-module assembler itself to a provider is a separate bounded follow-up, not an outcome
-claimed by this vertical. Kinematics is a different capability, not a richer profile on
-this observer.
+The observer consumes the canonical module artifact produced through the
+[provider-neutral module-assembly boundary](module-assembly.md). The current assembly
+adapter uses a fixed Build123d worker, while the application and sealed receipt stay
+provider-neutral. Kinematics is a different capability, not a richer profile on this
+observer.

@@ -44,7 +44,7 @@ export type ProjectGeometryModuleExportErrorCode =
   | "unavailable"
   | "unresolved"
   | "asset_digest_mismatch"
-  | "isolated_failure";
+  | "assembly_failure";
 
 export class ProjectGeometryModuleExportError extends Error {
   constructor(

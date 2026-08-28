@@ -1,17 +1,11 @@
-/**
- * Code-owned identities for the Build123d module-assembler isolated run.
- *
- * This is not the untrusted Build123d closed-subset profile. The caller
- * supplies one closed input bundle; the image-owned worker supplies the
- * assembly algorithm. Success is not collision freedom or canonical geometry.
- */
+/** Adapter-private identities for the current Build123d module-assembly worker. */
 
 import type {
   IsolatedCodeOutputDeclaration,
   IsolatedCodePolicyRef,
   IsolatedCodeProfileRef,
-} from "../../compile/isolation/isolated-code-execution.ts";
-import { validateIsolatedCodeOutputManifest } from "../../compile/isolation/isolated-code-execution.ts";
+} from "../../../domain/compile/isolation/isolated-code-execution.ts";
+import { validateIsolatedCodeOutputManifest } from "../../../domain/compile/isolation/isolated-code-execution.ts";
 
 export const GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE = Object.freeze(
   {

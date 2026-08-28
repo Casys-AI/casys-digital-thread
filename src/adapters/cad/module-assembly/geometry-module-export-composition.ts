@@ -2,8 +2,8 @@
  * Provider-free composition for project_geometry_module_export.
  *
  * Kept separate from createCadProject so the sealer branch can integrate
- * later. The use case is wired only when an IsolatedCodeRunner is supplied.
- * Caller-selected programs, profiles and child assets stay refused.
+ * later. The use case is wired only when a registered neutral assembler is
+ * supplied. Caller-selected providers, programs and child assets stay refused.
  */
 
 import {
@@ -13,11 +13,7 @@ import {
   type StructureCaptureReader,
 } from "../../../application/use-cases/cad/canonical/export-project-geometry-module.ts";
 import type { ProjectGeometryModuleExportUseCase } from "../../../application/ports/in/cad/canonical/project-geometry-module-export.ts";
-import type {
-  IsolatedCodeRunner,
-  IsolatedOutputPublicationReader,
-} from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
-import type { GeometryModuleAssemblyExecutionProfileCatalog } from "../../../application/ports/out/cad/module-assembly/geometry-module-assembly-profile.ts";
+import type { GeometryModuleAssembler } from "../../../application/ports/out/cad/module-assembly/geometry-module-assembler.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
 import type { ProductStructureTraversal } from "../../../application/ports/out/product-navigation/product-structure-traversal.ts";
 import type { GeometryModuleStructureCapture } from "../../../domain/cad/canonical/geometry-module-evidence.ts";
@@ -61,9 +57,7 @@ export interface GeometryModuleExportCompositionOptions {
   readonly canonicalAssetDirectory: string;
   readonly geometryDraftCaptureDirectory: string;
   readonly geometryDraftAssetDirectory: string;
-  readonly profiles: GeometryModuleAssemblyExecutionProfileCatalog;
-  readonly runner?: IsolatedCodeRunner;
-  readonly publications?: IsolatedOutputPublicationReader;
+  readonly assembler?: GeometryModuleAssembler;
 }
 
 export interface GeometryModuleExportComposition {
@@ -73,7 +67,7 @@ export interface GeometryModuleExportComposition {
 export function createGeometryModuleExportComposition(
   options: GeometryModuleExportCompositionOptions,
 ): GeometryModuleExportComposition {
-  if (options.runner === undefined || options.publications === undefined) {
+  if (options.assembler === undefined) {
     return Object.freeze({ geometryModuleExport: undefined });
   }
   const geometryModuleExport = new ExportProjectGeometryModule({
@@ -100,9 +94,7 @@ export function createGeometryModuleExportComposition(
     stepAssets: new FileCanonicalAssetReader({
       directory: options.canonicalAssetDirectory,
     }),
-    profiles: options.profiles,
-    runner: options.runner,
-    publications: options.publications,
+    assembler: options.assembler,
     draftStore: new FileGeometryModuleDraftStore(
       new FileCaptureStore({
         ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,

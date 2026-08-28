@@ -855,7 +855,7 @@ Deno.test("Evidence indexes a composite PartDefinition module GLB by exact asset
     mediaType: "model/gltf-binary",
     producer: operation(
       "digital-thread",
-      "build123d-module-assembler-v1@1.0.0",
+      "geometry.module.immediate-compound@1.0",
       "module-assembly-run",
     ),
     inputArtifactIds: ["geometry-capture"],

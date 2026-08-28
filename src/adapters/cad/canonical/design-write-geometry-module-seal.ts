@@ -3,21 +3,14 @@
  *
  * The public operation identity stays `design.write-geometry@1`. This module
  * reopens the signed draft, every named child capture plus its STEP bytes,
- * rebuilds the input bundle, and reopens isolated assembly outputs. A
+ * rebuilds the input bundle, and reopens provider-neutral assembly outputs. A
  * persisted bundle identity is never treated as proof of those bytes. It does
  * not export, dispatch CAD, or register a second sealer.
  */
 
 import { EngineeringProjectCommandError } from "../../../application/use-cases/project/engineering-project-command-service.ts";
-import type { IsolatedOutputPublicationReader } from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
-import type {
-  IsolatedCodeOutputDeclaration,
-  IsolatedCodeOutputReceiptRecord,
-} from "../../../domain/compile/isolation/isolated-code-execution.ts";
-import {
-  GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
-  GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
-} from "../../../domain/cad/module-assembly/geometry-module-assembly-execution.ts";
+import type { GeometryDraftAssetStore } from "../../../application/ports/out/cad/canonical/geometry-draft-asset-store.ts";
+import type { GeometryModuleAssemblyReceiptAsset } from "../../../domain/cad/module-assembly/geometry-module-assembly-receipt.ts";
 import { createGeometryModuleInputBundle } from "../../../domain/cad/module-assembly/geometry-module-input-bundle.ts";
 import {
   assertGeometryModuleInputBundleMatchesIdentity,
@@ -33,7 +26,7 @@ import {
   type GeometryModuleManifest,
   geometryModuleManifestFromDraft,
   parseGeometryModuleDraftCapture,
-  recrossGeometryModuleIsolation,
+  recrossGeometryModuleAssembly,
 } from "../../../domain/cad/canonical/geometry-module-evidence.ts";
 import {
   type CanonicalGeometryCapture,
@@ -77,7 +70,10 @@ export interface GeometryCaptureReader {
 
 export interface GeometryModuleAssemblyOutputValidation {
   validateOutput(
-    declaration: IsolatedCodeOutputDeclaration,
+    declaration: Pick<
+      GeometryModuleAssemblyReceiptAsset,
+      "role" | "basename" | "mediaType" | "format"
+    >,
     observedBytes: Uint8Array,
   ): Promise<void>;
 }
@@ -104,8 +100,7 @@ export function geometryModuleBinaryProducer(
 ): ThreadOperationRef {
   return {
     serverId: "digital-thread",
-    tool:
-      `${GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE.id}@${GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE.version}`,
+    tool: `${receipt.capability.id}@${receipt.capability.version}`,
     runId: receipt.runId,
   };
 }
@@ -188,7 +183,7 @@ export async function loadReviewedGeometryModuleDraft(
   options: {
     readonly base: ThreadSnapshot;
     readonly geometryCaptures: GeometryCaptureReader;
-    readonly publications: IsolatedOutputPublicationReader;
+    readonly draftAssets: GeometryDraftAssetStore;
     readonly outputValidator: GeometryModuleAssemblyOutputValidation;
     readonly canonicalDirectory: string;
   },
@@ -219,7 +214,7 @@ export async function loadReviewedGeometryModuleDraft(
     options.canonicalDirectory,
     manifest.assembly.inputBundle,
   );
-  await recrossGeometryModuleIsolation(
+  recrossGeometryModuleAssembly(
     rebuiltInputBundle,
     unsigned.receipt,
     unsigned.assemblyStep,
@@ -228,7 +223,7 @@ export async function loadReviewedGeometryModuleDraft(
   );
   const outputs = await reopenGeometryModuleAssemblyOutputs(
     unsigned,
-    options.publications,
+    options.draftAssets,
     options.outputValidator,
   );
   return {
@@ -308,37 +303,48 @@ export async function reopenGeometryModuleChildrenAndBundle(
 
 export async function reopenGeometryModuleAssemblyOutputs(
   draft: Omit<GeometryModuleDraftCapture, "fingerprint">,
-  publications: IsolatedOutputPublicationReader,
+  draftAssets: GeometryDraftAssetStore,
   outputValidator: GeometryModuleAssemblyOutputValidation,
 ): Promise<{ readonly step: Uint8Array; readonly glb: Uint8Array }> {
-  const ref = draft.receipt.publication.ref;
-  const stepMember = requireReceiptOutput(draft, "assembly.step");
-  const glbMember = requireReceiptOutput(draft, "assembly.glb");
-  const step = await readPublishedAssemblyOutput(
-    publications,
-    ref,
+  const stepMember = draft.receipt.assembly.step;
+  const glbMember = draft.receipt.assembly.glb;
+  const step = await readDraftAssemblyOutput(
+    draftAssets,
     stepMember,
     draft.assemblyStep,
     "assembly STEP",
   );
-  const glb = await readPublishedAssemblyOutput(
-    publications,
-    ref,
+  const glb = await readDraftAssemblyOutput(
+    draftAssets,
     glbMember,
     draft.assemblyGlb,
     "assembly GLB",
   );
   try {
-    await outputValidator.validateOutput(declarationOf(stepMember), step);
-    await outputValidator.validateOutput(declarationOf(glbMember), glb);
+    await outputValidator.validateOutput(outputDeclaration(stepMember), step);
+    await outputValidator.validateOutput(outputDeclaration(glbMember), glb);
   } catch (error) {
     throw moduleTransition(
-      `geometry_module_output_invalid: isolated assembly outputs failed the registered format validators: ${
+      `geometry_module_output_invalid: assembly outputs failed the registered format validators: ${
         detail(error)
       }`,
     );
   }
   return { step, glb };
+}
+
+function outputDeclaration(
+  asset: GeometryModuleAssemblyReceiptAsset,
+): Pick<
+  GeometryModuleAssemblyReceiptAsset,
+  "role" | "basename" | "mediaType" | "format"
+> {
+  return {
+    role: asset.role,
+    basename: asset.basename,
+    mediaType: asset.mediaType,
+    format: asset.format,
+  };
 }
 
 export function geometryModuleCaptureRecord(options: {
@@ -697,65 +703,40 @@ async function parseExactCanonicalGeometryCapture(
   }
 }
 
-function requireReceiptOutput(
-  draft: Omit<GeometryModuleDraftCapture, "fingerprint">,
-  role: "assembly.step" | "assembly.glb",
-): IsolatedCodeOutputReceiptRecord {
-  const expected = GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST.find((item) =>
-    item.role === role
-  );
-  const member = draft.receipt.outputs.find((item) => item.role === role);
-  if (!expected || !member) {
-    throw moduleTransition(
-      `geometry_module_output_digest_mismatch: receipt is missing ${role}.`,
-    );
-  }
-  return member;
-}
-
-async function readPublishedAssemblyOutput(
-  publications: IsolatedOutputPublicationReader,
-  ref: GeometryModuleDraftCapture["receipt"]["publication"]["ref"],
-  member: IsolatedCodeOutputReceiptRecord,
+async function readDraftAssemblyOutput(
+  draftAssets: GeometryDraftAssetStore,
+  member: GeometryModuleAssemblyReceiptAsset,
   asset: GeometryModuleDraftCapture["assemblyStep"],
   name: string,
 ): Promise<Uint8Array> {
-  let published: Uint8Array | undefined;
+  let reopened;
   try {
-    published = await publications.readPublishedObject(ref, member);
+    reopened = await draftAssets.read(asset.fingerprint);
   } catch (error) {
     throw moduleTransition(
-      `geometry_module_output_digest_mismatch: ${name} could not be reopened behind its publication gate: ${
+      `geometry_module_output_digest_mismatch: ${name} could not be reopened from the draft asset store: ${
         detail(error)
       }`,
     );
   }
-  if (!published) {
+  if (!reopened) {
     throw moduleTransition(
-      `geometry_module_output_digest_mismatch: ${name} is not available behind its publication gate.`,
+      `geometry_module_output_digest_mismatch: ${name} is not available in the draft asset store.`,
     );
   }
-  const digest = await fingerprintResourceBytes(published);
+  const bytes = reopened.copy();
+  const digest = await fingerprintResourceBytes(bytes);
   if (
-    digest !== member.sha256 || published.byteLength !== member.byteCount ||
-    digest !== asset.fingerprint.digest || published.byteLength !== asset.bytes
+    !fingerprintsEqual(member.fingerprint, asset.fingerprint) ||
+    member.byteCount !== asset.bytes ||
+    digest !== member.fingerprint.digest || bytes.byteLength !== member.byteCount ||
+    digest !== asset.fingerprint.digest || bytes.byteLength !== asset.bytes
   ) {
     throw moduleTransition(
       `geometry_module_output_digest_mismatch: reopened ${name} bytes do not match the draft/receipt identity.`,
     );
   }
-  return published;
-}
-
-function declarationOf(
-  member: IsolatedCodeOutputReceiptRecord,
-): IsolatedCodeOutputDeclaration {
-  return {
-    role: member.role,
-    basename: member.basename,
-    mediaType: member.mediaType,
-    format: member.format,
-  };
+  return bytes;
 }
 
 function assertCanonicalGeometryPrimaryIdentity(artifact: ThreadArtifact): void {
