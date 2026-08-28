@@ -1,5 +1,6 @@
 import {
   BEHAVE_FOUNDATION_HOST_OBSERVATION_SCHEMA_VERSION,
+  type BehaveFoundationCachedMaterialObservation,
   type BehaveFoundationHostObservation,
   type BehaveFoundationHostPrerequisiteObservation,
 } from "../../application/control-plane/read-model/behave-foundation-doctor.ts";
@@ -9,6 +10,7 @@ import type {
   RuntimePlatform,
 } from "../../application/control-plane/read-model/capability-pack.ts";
 import { deepFreeze } from "../../domain/kernel/case-validation.ts";
+import { pinnedOciImageReference } from "../../domain/compile/isolation/local-isolation-runtime.ts";
 import {
   createLocalMicrosandboxSdk,
   type MicrosandboxImageInspection,
@@ -29,6 +31,19 @@ export interface BehaveFoundationHostObservationPorts {
   ): Promise<MicrosandboxImageInspection | undefined>;
 }
 
+interface DockerImageInspection {
+  readonly repoDigests: readonly string[];
+  readonly os: string;
+  readonly architecture: string;
+  readonly sizeBytes: number | undefined;
+  readonly labels: Readonly<Record<string, string>>;
+}
+
+interface ExactDockerImageInspection extends DockerImageInspection {
+  /** The exact RepoDigest whose normalized repository and digest matched. */
+  readonly matchedRepoDigest: string;
+}
+
 /** Observe exact local material only. Never pull, import, start or dispatch. */
 export async function observeBehaveFoundationHost(
   census: BehaveFoundationCapabilityCensus,
@@ -36,6 +51,8 @@ export async function observeBehaveFoundationHost(
 ): Promise<BehaveFoundationHostObservation> {
   const blockers = ports.platformBlocker === undefined ? [] : [ports.platformBlocker];
   const images: ObservedCapabilityImage[] = [];
+  const cachedExactMaterialIds: string[] = [];
+  const materialObservations: BehaveFoundationCachedMaterialObservation[] = [];
   const composeVersion = await safeDocker(ports, ["compose", "version", "--short"]);
   const engineVersion = composeVersion.success
     ? await safeDocker(ports, ["version", "--format", "{{.Server.Version}}"])
@@ -58,17 +75,60 @@ export async function observeBehaveFoundationHost(
         "image",
         "inspect",
         "--format",
-        "{{.Size}}",
+        "{{json .}}",
         material.image,
       ]);
-      if (!inspection.success) continue;
-      const sizeBytes = Number(inspection.stdout.trim());
-      images.push({
-        reference: material.image,
-        sizeBytes: Number.isSafeInteger(sizeBytes) && sizeBytes >= 0
-          ? sizeBytes
-          : undefined,
-      });
+      if (!inspection.success) {
+        materialObservations.push(
+          materialUnavailable(material.id, material.image, inspection),
+        );
+        continue;
+      }
+      try {
+        const cached = assertExactDockerImage(
+          parseDockerImageInspection(inspection.stdout),
+          material.image,
+          ports.platform,
+        );
+        images.push({ reference: material.image, sizeBytes: cached.sizeBytes });
+        cachedExactMaterialIds.push(material.id);
+        materialObservations.push(deepFreeze({
+          materialId: material.id,
+          expectedReference: material.image,
+          status: "cached-exact" as const,
+          matchedRepoDigest: cached.matchedRepoDigest,
+          observedReference: cached.matchedRepoDigest,
+          labels: cached.labels,
+          detail: "The local OCI cache matches the reviewed digest and platform.",
+        }));
+      } catch (error) {
+        materialObservations.push(deepFreeze({
+          materialId: material.id,
+          expectedReference: material.image,
+          status: "mismatch" as const,
+          matchedRepoDigest: null,
+          observedReference: null,
+          labels: null,
+          detail: `Local OCI cache does not match the reviewed identity: ${
+            errorMessage(error)
+          }`,
+        }));
+      }
+    }
+  } else {
+    for (const material of census.materials) {
+      if (material.kind === "compose-service") {
+        materialObservations.push(deepFreeze({
+          materialId: material.id,
+          expectedReference: material.image,
+          status: "unavailable" as const,
+          matchedRepoDigest: null,
+          observedReference: null,
+          labels: null,
+          detail:
+            "Docker Compose is unavailable; the local OCI cache was not observed.",
+        }));
+      }
     }
   }
 
@@ -89,6 +149,27 @@ export async function observeBehaveFoundationHost(
     if (inspection !== undefined && microvm !== undefined) {
       assertExactMicrosandboxImage(inspection, microvm.image, ports.platform);
       images.push({ reference: microvm.image });
+      cachedExactMaterialIds.push(microvm.id);
+      materialObservations.push(deepFreeze({
+        materialId: microvm.id,
+        expectedReference: microvm.image,
+        status: "cached-exact" as const,
+        matchedRepoDigest: null,
+        observedReference: inspection.reference,
+        labels: null,
+        detail:
+          "The local Microsandbox cache matches the reviewed digest and platform.",
+      }));
+    } else if (microvm !== undefined) {
+      materialObservations.push(deepFreeze({
+        materialId: microvm.id,
+        expectedReference: microvm.image,
+        status: "unavailable" as const,
+        matchedRepoDigest: null,
+        observedReference: null,
+        labels: null,
+        detail: "The reviewed Microsandbox image is not cached locally.",
+      }));
     }
   } catch (error) {
     microsandbox = prerequisite(
@@ -98,6 +179,17 @@ export async function observeBehaveFoundationHost(
       `Microsandbox is unavailable: ${errorMessage(error)}`,
     );
     blockers.push(microsandbox.detail);
+    if (microvm !== undefined) {
+      materialObservations.push(deepFreeze({
+        materialId: microvm.id,
+        expectedReference: microvm.image,
+        status: "unavailable" as const,
+        matchedRepoDigest: null,
+        observedReference: null,
+        labels: null,
+        detail: microsandbox.detail,
+      }));
+    }
   }
 
   return deepFreeze({
@@ -106,7 +198,29 @@ export async function observeBehaveFoundationHost(
     platform: ports.platform,
     prerequisites: [docker, microsandbox],
     images,
+    cachedExactMaterialIds,
+    materialObservations,
     blockers,
+  });
+}
+
+function materialUnavailable(
+  materialId: string,
+  expectedReference: string,
+  inspection: BehaveFoundationCommandResult,
+): BehaveFoundationCachedMaterialObservation {
+  const detail = inspection.stderr.trim() || inspection.stdout.trim() ||
+    "docker image inspect failed";
+  return deepFreeze({
+    materialId,
+    expectedReference,
+    status: "unavailable" as const,
+    matchedRepoDigest: null,
+    observedReference: null,
+    labels: null,
+    detail: `The reviewed OCI image is not locally inspectable: ${
+      detail.slice(0, 300)
+    }`,
   });
 }
 
@@ -197,6 +311,110 @@ function assertExactMicrosandboxImage(
   ) {
     throw new Error("the cached CalculiX image does not match the reviewed identity");
   }
+}
+
+function parseDockerImageInspection(source: string): DockerImageInspection {
+  let value: unknown;
+  try {
+    value = JSON.parse(source);
+  } catch {
+    throw new TypeError("docker image inspect did not return JSON");
+  }
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("docker image inspect did not return one image object");
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    !Array.isArray(record.RepoDigests) ||
+    record.RepoDigests.some((item) => typeof item !== "string" || item === "")
+  ) {
+    throw new TypeError("docker image inspect is missing RepoDigests");
+  }
+  if (typeof record.Os !== "string" || typeof record.Architecture !== "string") {
+    throw new TypeError("docker image inspect is missing platform identity");
+  }
+  const sizeBytes = typeof record.Size === "number" &&
+      Number.isSafeInteger(record.Size) && record.Size >= 0
+    ? record.Size
+    : undefined;
+  const labels = dockerLabels(record.Config);
+  return deepFreeze({
+    repoDigests: [...record.RepoDigests] as string[],
+    os: record.Os,
+    architecture: record.Architecture,
+    sizeBytes,
+    labels,
+  });
+}
+
+function dockerLabels(value: unknown): Readonly<Record<string, string>> {
+  if (value === undefined || value === null) return deepFreeze({});
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("docker image inspect has an invalid Config record");
+  }
+  const config = value as Record<string, unknown>;
+  if (config.Labels === undefined || config.Labels === null) return deepFreeze({});
+  if (typeof config.Labels !== "object" || Array.isArray(config.Labels)) {
+    throw new TypeError("docker image inspect has invalid Config.Labels");
+  }
+  const labels = config.Labels as Record<string, unknown>;
+  const entries = Object.entries(labels).map(([key, label]) => {
+    if (typeof label !== "string") {
+      throw new TypeError(`docker image inspect label ${key} must be a string`);
+    }
+    return [key, label] as const;
+  });
+  return deepFreeze(
+    Object.fromEntries(entries.sort(([left], [right]) => left.localeCompare(right))),
+  );
+}
+
+function assertExactDockerImage(
+  inspection: DockerImageInspection,
+  reference: string,
+  platform: RuntimePlatform | null,
+): ExactDockerImageInspection {
+  const architecture = platform?.split("/")[1] ?? null;
+  const matchedRepoDigest = inspection.repoDigests.find((digest) =>
+    sameOciRepositoryDigest(digest, reference)
+  );
+  if (
+    architecture === null || inspection.os !== "linux" ||
+    inspection.architecture !== architecture ||
+    matchedRepoDigest === undefined
+  ) {
+    throw new Error("the cached OCI image does not match the reviewed identity");
+  }
+  return deepFreeze({ ...inspection, matchedRepoDigest });
+}
+
+function sameOciRepositoryDigest(left: string, right: string): boolean {
+  const normalizedLeft = normalizeOciRepositoryDigest(left);
+  const normalizedRight = normalizeOciRepositoryDigest(right);
+  return normalizedLeft !== null && normalizedLeft === normalizedRight;
+}
+
+function normalizeOciRepositoryDigest(reference: string): string | null {
+  let validated: string;
+  try {
+    validated = pinnedOciImageReference(reference, "$docker.image.inspect.RepoDigests");
+  } catch {
+    return null;
+  }
+  const at = validated.lastIndexOf("@sha256:");
+  if (at <= 0) return null;
+  const digest = validated.slice(at + 1);
+  const nameWithTag = validated.slice(0, at);
+  const slash = nameWithTag.lastIndexOf("/");
+  const colon = nameWithTag.lastIndexOf(":");
+  const name = colon > slash ? nameWithTag.slice(0, colon) : nameWithTag;
+  const parts = name.split("/");
+  const normalizedName = parts.length === 1
+    ? `docker.io/library/${name}`
+    : !parts[0]!.includes(".") && !parts[0]!.includes(":") && parts[0] !== "localhost"
+    ? `docker.io/${name}`
+    : name;
+  return `${normalizedName}@${digest}`;
 }
 
 function prerequisite(

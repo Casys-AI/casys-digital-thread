@@ -17,7 +17,7 @@
     },
     {
       "materialId": "mcp-syson",
-      "platforms": ["linux/arm64"]
+      "platforms": ["linux/amd64", "linux/arm64"]
     },
     {
       "materialId": "mcp-build123d-sandbox",
@@ -32,7 +32,7 @@
     "path": "docs/reference/runtime/capability-packs/behave-foundation/platforms.md",
     "fingerprint": {
       "algorithm": "sha256",
-      "digest": "450be460c2cae08ba793aba12aa9c220cb4624d60879a98d336afbff47554d52"
+      "digest": "e7aa83933bf6bdf8a7e1f116b025f914208537bf1292ff85755c39ddc77bf1a6"
     }
   },
   "reviews": {
@@ -40,21 +40,21 @@
       "path": "docs/reference/runtime/capability-packs/behave-foundation/licences.md",
       "fingerprint": {
         "algorithm": "sha256",
-        "digest": "d466a4901bc4f1c6d064ee59f2fcd12a0344436412a6633ce843c12d5123f923"
+        "digest": "b4c5d98ee77c1c1f6af7f6b0f2a7df1d876af09b00e1f934812cfda685b26c96"
       }
     },
     "volumes": {
       "path": "docs/reference/runtime/capability-packs/behave-foundation/volumes.md",
       "fingerprint": {
         "algorithm": "sha256",
-        "digest": "63f9a347a5616d9dbe92ddb77b8cd1d209e7716640469f6c309c1d3147328c01"
+        "digest": "6e7617104786b510bd69821c6e82794be2129d8168ccf99be3a7bc6fdb9252b5"
       }
     },
     "security": {
       "path": "docs/reference/runtime/capability-packs/behave-foundation/security.md",
       "fingerprint": {
         "algorithm": "sha256",
-        "digest": "e4f92d27dd0a38f4890974233f8b205b08c6984259266f5f64de0ce670d0ba9f"
+        "digest": "754680cd9cffaad8e92f90e797e6063ff9967c830c70e838ee166d0037b900c9"
       }
     }
   }

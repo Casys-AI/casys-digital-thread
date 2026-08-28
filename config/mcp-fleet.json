@@ -14,7 +14,7 @@
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3009/mcp",
       "healthUrl": "http://127.0.0.1:3009/health",
-      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:c04922cc2c0f503c34277c5a1dc81ab28b141945acad90345e2d16882535b4bc",
+      "image": "ghcr.io/casys-ai/mcp-syson@sha256:87eee6e35a636124d5ba6911492a245d69edcdf1ba67575676c22a0e9d7ce65e",
       "required": true,
       "expectedTools": [
         "syson_project_list",

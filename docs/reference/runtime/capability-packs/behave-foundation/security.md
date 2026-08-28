@@ -5,7 +5,12 @@ Review date: 2026-08-28.
 This is a local developer candidate, not an internet-facing production topology.
 
 - Compose ports selected by the pack are explicitly loopback-only.
-- SysON and `mcp-syson` can mutate a system model and remain privileged local services.
+- SysON and the dedicated `mcp-syson@0.8.3` image can mutate a system model and remain
+  privileged local services. The provider binds only loopback externally; it receives
+  `SYSON_URL` on the private Compose network.
+- The provider's external Kroki renderer is disabled by default. It can be enabled only
+  with an explicit `SYSON_KROKI_URL`; absence never becomes an implicit outbound
+  renderer request or a guessed fallback.
 - `mcp-build123d-sandbox` executes admitted CAD source in a bounded container with a
   private export volume, dropped capabilities and `no-new-privileges`; it is not a
   general remote code-execution service.

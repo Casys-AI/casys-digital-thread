@@ -72,6 +72,15 @@ entry point.
 | `probes/probe-architecture-attribute-value.ts` | `probe:architecture-attribute-value` | write |
 | `probes/probe-archive-cascade.ts`              | `probe:archive-cascade`              | read  |
 | `probes/probe-requirement-units.ts`            | `probe:requirement-units`            | write |
+| `probes/inspect-behave-capability-pack.ts`     | `capability:behave:inspect`          | read  |
+| `probes/doctor-behave-foundation.ts`           | `capability:behave:doctor`           | read  |
+| `probes/attest-behave-foundation-contract.ts`  | `capability:behave:attest`           | read  |
+
+`capability:behave:attest` has fixed loopback endpoints and only reads the exact
+OCI/microVM material set; expected `/health.status`, protocol and
+`server/discover.serverInfo` identity; then `tools/list` and `resources/list`. It never
+issues `tools/call`; `contract-attested` remains below a separately recorded vertical
+qualification.
 
 ## serve/ — serve local preview; preview:thread and preview:cockpit start focus-first
 

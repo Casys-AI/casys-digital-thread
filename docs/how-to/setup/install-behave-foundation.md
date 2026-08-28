@@ -23,7 +23,27 @@ deno task capability:behave:doctor
 The command is read-only. It prints the repository census, host prerequisites and the
 exact images that are reusable or missing. `blocked` means the procedure must stop;
 `changes-required` means exact runtime material is absent; `ready` means all observed
-material is already present. None of those states is an engineering verdict.
+material is already present. Its evidence level is `declared` until every material has
+the exact reviewed cache identity, then `cached-exact`. `candidate-ready` is still only
+`declared`; none of those states is an engineering verdict.
+
+## Attest the declared MCP surface without executing it
+
+After the providers have been started by the explicit operator procedure, run:
+
+```sh
+deno task capability:behave:attest
+```
+
+This read-only command has a fixed loopback allowlist for the mandatory `mcp-syson` and
+`mcp-build123d-sandbox` endpoints. It checks the exact local material set and OCI/microVM
+identities; the expected `GET /health.status`, protocol and exact
+`server/discover.serverInfo` identity; then `tools/list` and `resources/list`, and
+fingerprints the listed input/output schemas. The sandbox endpoint is expected to declare
+the `mcp-build123d` server identity, not its Compose service name. It does not issue
+`tools/call`, does not read a resource,
+does not select a provider tool or arguments, and does not qualify a Behave vertical.
+`contract-attested` therefore remains below `vertical-qualified`.
 
 ## Prepare the Compose closure
 
