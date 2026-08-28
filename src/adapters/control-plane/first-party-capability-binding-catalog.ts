@@ -492,6 +492,7 @@ function chronoMaterial(): AtomicCapabilityRuntimeMaterial {
     imageReference: MCP_CHRONO_031_IMAGE_REFERENCE,
     platforms: ["linux/amd64"],
     lifecycle: "persistent",
+    launchProfile: null,
     effects: {
       downloadBytes: null,
       storageBytes: null,
