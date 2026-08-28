@@ -140,10 +140,24 @@ retain the exact project, subject, Thread basis, and human-origin signed decisio
 they can create L5 evidence. They preserve the method limitations and never make an L5
 decision from a provider success, runtime health check, or L4 result alone.
 
-The current MCP AX intentionally exposes only the provider-neutral L1 case review. A
-small follow-up tooling lot must add read-only review/next-hop discovery for the already
-registered method, L4, and L5 stages; it must not add a new approval authority or let an
-agent self-approve a decision.
+The MCP AX exposes the provider-neutral L1 case review plus three read-only next-hop
+reviews for the already registered later stages:
+
+- `project_prescribed_kinematics_method_review` rereads the exact current L1/L3 branch
+  and a closed method resource reference, then presents the existing method-seal append
+  and proposal envelopes;
+- `project_prescribed_kinematics_evaluation_review` rereads the exact current L1/L3 and
+  sealed-method branch, then presents the existing L4 append and proposal envelopes;
+- `project_prescribed_kinematics_evaluation_closeout_review` rereads the exact current
+  L1/L3/method/L4 branch, then presents reject and, only for literal L4 `pass`, accept
+  envelopes for the existing L5 operations.
+
+All three reviews are `GET`-like discovery only: they do not create a project change,
+MRTR proposal or approval, queue a run, call Chrono, write Thread evidence, evaluate L4,
+or decide L5. Returned envelopes remain display-only preparation for the existing
+generic project commands. In particular, the L5 work item remains human-owned and
+requires the existing human-origin signed decision; no review gives an agent approval or
+verdict authority.
 
 ## Explicit exclusions
 
