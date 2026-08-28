@@ -155,9 +155,22 @@
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3015/mcp",
       "healthUrl": "http://127.0.0.1:3015/health",
-      "image": "ghcr.io/casys-ai/mcp-calculix@sha256:76c9630eeecfe164c6b3c4d8b845c51fa7f8b48528773cb149b6c7a0ae2799a8",
+      "image": "ghcr.io/casys-ai/mcp-calculix@sha256:c38fe50eadcca77180c2bc060c073035af62924fa2b927d3f8005b6060be76d4",
+      "providerIdentity": {
+        "version": "0.8.1",
+        "revision": "e4c3b8284c3ac17c71bfd1b53dfdcb0f2f4262da",
+        "imageIndexDigest": "c38fe50eadcca77180c2bc060c073035af62924fa2b927d3f8005b6060be76d4",
+        "ociLabels": {
+          "org.opencontainers.image.source": "https://github.com/Casys-AI/mcp-calculix",
+          "org.opencontainers.image.title": "mcp-calculix",
+          "org.opencontainers.image.version": "0.8.1",
+          "org.opencontainers.image.revision": "e4c3b8284c3ac17c71bfd1b53dfdcb0f2f4262da"
+        },
+        "contractFingerprint": "b4e02d82f30aa1275c29716d4e8e1bd680bf1959485cb4eb388bfa8e937c79d4"
+      },
       "required": true,
       "expectedTools": [
+        "calculix_mesh_preflight",
         "calculix_solve_static",
         "calculix_solve_modal",
         "calculix_solve_buckling",
