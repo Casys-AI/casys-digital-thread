@@ -145,7 +145,11 @@ export interface PrescribedKinematicsObserver {
     request: PrescribedKinematicsRunRequest,
   ): Promise<PrescribedKinematicsRunReadback>;
   readRun(
-    requestId: string,
+    /** Exact request/case identity expected by recovery; never a free lookup. */
+    request: Pick<
+      PrescribedKinematicsRunRequest,
+      "requestId" | "caseSha256" | "caseUri"
+    >,
     page?: PrescribedKinematicsSamplePageRequest,
   ): Promise<PrescribedKinematicsRunReadback>;
   readReceipt(

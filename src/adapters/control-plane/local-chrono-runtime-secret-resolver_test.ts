@@ -62,3 +62,27 @@ Deno.test("Chrono secret resolver refuses a same-name launch-group substitution"
     "exact Chrono launch group",
   );
 });
+
+Deno.test("Chrono secret resolver treats a Compose-interpolable bearer token as unavailable", async () => {
+  const resolver = new LocalChronoRuntimeSecretResolver({
+    readToken: () => "test$chrono-bearer",
+  });
+  const group = (await createFirstPartyCapabilityRuntimeLaunchGroups()).find((
+    candidate,
+  ) => candidate.id === "casys-chrono");
+  if (!group) throw new Error("Expected exact Chrono group.");
+  const request = {
+    group: capabilityRuntimeLaunchGroupReference(group),
+    slots: [CHRONO_MCP_BEARER_TOKEN_SLOT],
+  } as const;
+
+  assertEquals(
+    (await resolver.observe(request.slots)).get(CHRONO_MCP_BEARER_TOKEN_SLOT),
+    "unavailable",
+  );
+  await assertRejects(
+    () => resolver.beginSnapshot(request),
+    Error,
+    "bearer credential is unavailable",
+  );
+});

@@ -59,7 +59,7 @@ export class LocalChronoRuntimeSecretResolver
       (() => Deno.env.get(CHRONO_MCP_BEARER_TOKEN_ENV));
   }
 
-  async observe(
+  observe(
     slots: readonly string[],
   ): Promise<ReadonlyMap<string, "available" | "unavailable" | "unknown">> {
     const value = new Map<string, "available" | "unavailable" | "unknown">();
@@ -72,7 +72,7 @@ export class LocalChronoRuntimeSecretResolver
           : "unknown",
       );
     }
-    return value;
+    return Promise.resolve(value);
   }
 
   async beginSnapshot(input: {
@@ -135,7 +135,11 @@ export class LocalChronoRuntimeSecretResolver
     // and forces the secret-bearing group reconciliation above.
     if (!this.#tokenRead) {
       const token = this.#readToken();
-      this.#processToken = typeof token === "string" && /^[\x21-\x7e]+$/.test(token)
+      // Compose performs `$` interpolation even when a descriptor is supplied
+      // on stdin. Reject it rather than letting the launch overlay and the
+      // fixed local client observe different bearer material.
+      this.#processToken = typeof token === "string" && /^[\x21-\x7e]+$/.test(token) &&
+          !token.includes("$")
         ? token
         : undefined;
       this.#tokenRead = true;

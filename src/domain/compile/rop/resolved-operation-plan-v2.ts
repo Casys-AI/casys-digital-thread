@@ -270,6 +270,10 @@ export interface ResolvedPrescribedKinematicsObservationAction {
 
 const SHA256_HEX = /^[a-f0-9]{64}$/;
 const CALCULIX_REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+// Chrono publishes a narrower request-id wire contract than CalculiX. In
+// particular a colon is not permitted, so a plan must fail before it can
+// reach the L3 WAL or any provider readback/dispatch path.
+const CHRONO_REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MEDIA_TYPE =
   /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*(?:; [a-z0-9!#$&^_.+-]+=(?:[a-z0-9!#$&^_.+-]+|"[^"\r\n]*"))*$/;
 const ROOT_KEYS = [
@@ -638,7 +642,7 @@ function parseAction(value: unknown, path: string): ResolvedOperationPlanV2["act
       lowering: { id: "prescribed-kinematics.case-json", version: "1.0" },
       requestId: providerRequestId(
         input.requestId,
-        CALCULIX_REQUEST_ID,
+        CHRONO_REQUEST_ID,
         `${path}.requestId`,
         "prescribed kinematics",
       ),

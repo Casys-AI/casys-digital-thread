@@ -129,7 +129,10 @@ class ComposeCapabilityRuntimeHost
         "Launch group identity or exact material membership drifted.",
       );
     }
-    if (group.security !== "reviewed" || group.qualification === "revoked") {
+    if (
+      group.security !== "reviewed" ||
+      (group.qualification !== "compatible" && group.qualification !== "qualified")
+    ) {
       return this.#outcome(
         entry,
         "failed",

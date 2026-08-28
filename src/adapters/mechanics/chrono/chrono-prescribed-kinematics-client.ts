@@ -299,12 +299,18 @@ export class ChronoPrescribedKinematicsClient implements PrescribedKinematicsObs
   }
 
   async readRun(
-    requestId: string,
+    expected: Pick<
+      PrescribedKinematicsRunRequest,
+      "requestId" | "caseSha256" | "caseUri"
+    >,
     page: PrescribedKinematicsSamplePageRequest = {},
   ): Promise<PrescribedKinematicsRunReadback> {
-    assertRequestId(requestId, "chrono run requestId");
+    const expectedRequest = validateRunRequest(
+      expected,
+      "chrono run readback expected request",
+    );
     const content = await this.#call(CHRONO_RUN_GET, {
-      request_id: requestId,
+      request_id: expectedRequest.requestId,
       ...pageArguments(page),
     });
     const root = closed(
@@ -336,6 +342,11 @@ export class ChronoPrescribedKinematicsClient implements PrescribedKinematicsObs
         intent.intent_recorded_at,
         `${CHRONO_RUN_GET}.intent.intent_recorded_at`,
       );
+      assertReadbackRequestMatches(
+        request,
+        expectedRequest,
+        `${CHRONO_RUN_GET}.intent.request`,
+      );
       return {
         state: "uncertain",
         requestId: request.requestId,
@@ -345,11 +356,11 @@ export class ChronoPrescribedKinematicsClient implements PrescribedKinematicsObs
     }
     if (root.state === "recorded") {
       const parsed = parseRecord(root.record, CHRONO_RUN_GET);
-      if (parsed.request.requestId !== requestId) {
-        throw protocol(
-          `${CHRONO_RUN_GET}.record request identity does not match readback`,
-        );
-      }
+      assertReadbackRequestMatches(
+        parsed.request,
+        expectedRequest,
+        `${CHRONO_RUN_GET}.record request`,
+      );
       return { state: "recorded", record: parsed };
     }
     throw protocol(`${CHRONO_RUN_GET}.state must be recorded, uncertain, or absent`);
@@ -515,6 +526,28 @@ function canonicalizeProviderRequest(
     throw protocol(`${path} does not match the stored request case URI`);
   }
   return { ...request, caseUri };
+}
+
+function assertReadbackRequestMatches(
+  observed: Pick<
+    PrescribedKinematicsRunRequest,
+    "requestId" | "caseSha256" | "caseUri"
+  >,
+  expected: Pick<
+    PrescribedKinematicsRunRequest,
+    "requestId" | "caseSha256" | "caseUri"
+  >,
+  path: string,
+): void {
+  if (
+    observed.requestId !== expected.requestId ||
+    observed.caseSha256 !== expected.caseSha256 ||
+    observed.caseUri !== expected.caseUri
+  ) {
+    throw protocol(
+      `${path} does not match the exact request and case identity expected by readback`,
+    );
+  }
 }
 
 function parseObservation(value: unknown, path: string): {

@@ -3,7 +3,6 @@ import {
   ChronoPrescribedKinematicsClient,
   ChronoPrescribedKinematicsDispatchUncertainError,
   ChronoPrescribedKinematicsProtocolError,
-  ChronoPrescribedKinematicsProviderError,
   ChronoPrescribedKinematicsRequestError,
 } from "./chrono-prescribed-kinematics-client.ts";
 import type {
@@ -62,7 +61,7 @@ Deno.test("Chrono adapter sends fixed tool sequence with bearer at fetch only", 
     caseSha256: submitted.caseSha256,
     caseUri: submitted.caseUri,
   });
-  const readback = await client.readRun(REQUEST_ID, {
+  const readback = await client.readRun(runRequest(), {
     sampleOffset: 1,
     sampleLimit: 2,
   });
@@ -305,7 +304,7 @@ Deno.test("Chrono adapter canonicalizes a missing stored request URI from the re
     });
   });
 
-  const result = await client.readRun(REQUEST_ID);
+  const result = await client.readRun(runRequest());
 
   assertEquals(result.state, "recorded");
   if (result.state === "recorded") {
@@ -322,7 +321,7 @@ Deno.test("Chrono adapter still rejects a stored request URI that is present but
   });
 
   await assertRejects(
-    () => client.readRun(REQUEST_ID),
+    () => client.readRun(runRequest()),
     ChronoPrescribedKinematicsProtocolError,
     "case_uri",
   );
@@ -337,7 +336,7 @@ Deno.test("Chrono adapter rejects a non-canonical provider timestamp", async () 
   });
 
   await assertRejects(
-    () => client.readRun(REQUEST_ID),
+    () => client.readRun(runRequest()),
     ChronoPrescribedKinematicsProtocolError,
     "exact canonical ISO timestamp",
   );
@@ -400,7 +399,7 @@ Deno.test("Chrono adapter rejects stale provider records and malformed page meta
     return complete({ ok: true, state: "recorded", record });
   });
   await assertRejects(
-    () => stale.readRun(REQUEST_ID),
+    () => stale.readRun(runRequest()),
     ChronoPrescribedKinematicsProtocolError,
     "package.version",
   );
@@ -411,7 +410,7 @@ Deno.test("Chrono adapter rejects stale provider records and malformed page meta
     return complete({ ok: true, state: "recorded", record });
   });
   await assertRejects(
-    () => malformedPage.readRun(REQUEST_ID),
+    () => malformedPage.readRun(runRequest()),
     ChronoPrescribedKinematicsProtocolError,
     "inconsistent bounded-page metadata",
   );
@@ -423,10 +422,42 @@ Deno.test("Chrono adapter rejects stale provider records and malformed page meta
     return complete({ ok: true, state: "recorded", record });
   });
   await assertRejects(
-    () => inventedManufacturability.readRun(REQUEST_ID),
+    () => inventedManufacturability.readRun(runRequest()),
     ChronoPrescribedKinematicsProtocolError,
     "fixed literal boundary",
   );
+});
+
+Deno.test("Chrono adapter rejects uncertain readback for another request or case", async () => {
+  for (
+    const [requestId, caseSha256] of [
+      ["chrono-run-other", CASE_SHA],
+      [REQUEST_ID, OTHER_CASE_SHA],
+    ] as const
+  ) {
+    const caseUri = `chrono-case:sha256:${caseSha256}`;
+    const client = clientWith(() =>
+      complete({
+        ok: true,
+        state: "uncertain",
+        intent: {
+          request: {
+            request_id: requestId,
+            case_sha256: caseSha256,
+            case_uri: caseUri,
+          },
+          case_uri: caseUri,
+          intent_recorded_at: "2026-08-29T00:00:00.000Z",
+        },
+      })
+    );
+
+    await assertRejects(
+      () => client.readRun(runRequest()),
+      ChronoPrescribedKinematicsProtocolError,
+      "exact request and case identity expected by readback",
+    );
+  }
 });
 
 function clientWith(

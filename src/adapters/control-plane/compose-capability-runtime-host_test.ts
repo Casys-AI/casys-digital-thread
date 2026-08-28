@@ -2,8 +2,10 @@ import { assertEquals } from "@std/assert";
 import {
   type CapabilityRuntimeLaunchGroup,
   capabilityRuntimeLaunchGroupReference,
+  fingerprintCapabilityRuntimeLaunchGroup,
 } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import type { CapabilityRuntimeJournalEntry } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import { FixedCapabilityRuntimeLaunchGroupRegistry } from "../../application/control-plane/capability-runtime-launch-group-registry.ts";
 import { authorizeDurableCapabilityRuntimeHostMutation } from "../../application/control-plane/capability-runtime-host-authorization.ts";
 import { InMemoryCapabilityRuntimeJournal } from "./in-memory-capability-runtime-supervisor.ts";
@@ -13,7 +15,6 @@ import {
 import { createCapabilityRuntimeHostAdapter } from "./compose-capability-runtime-host.ts";
 import {
   CHRONO_MCP_BEARER_TOKEN_SLOT,
-  LocalChronoRuntimeSecretResolver,
 } from "./local-chrono-runtime-secret-resolver.ts";
 import type {
   CapabilityRuntimeLaunchSecretInjector,
@@ -146,25 +147,57 @@ Deno.test("sealed Chrono group has one exact unqualified AMD64 service with no h
   assertEquals(group.compose.content.includes("$"), false);
 });
 
-Deno.test("Compose host reconciles a Chrono secret snapshot through stdin without journalling it or placing it in argv", async () => {
+Deno.test("Compose host refuses an unqualified Chrono group before inspecting or mutating Docker", async () => {
   const group = await chronoGroup();
-  const token = "test-chrono-bearer-value";
-  const secrets = new LocalChronoRuntimeSecretResolver({
-    readToken: () => token,
-  });
-  const snapshot = await secrets.beginSnapshot({
-    group: capabilityRuntimeLaunchGroupReference(group),
-    slots: [CHRONO_MCP_BEARER_TOKEN_SLOT],
-  });
   const runner = new FakeGroupRunner(group, { images: true, state: "running" });
-  const fixture = host(group, runner, { secrets, secretInjector: secrets });
+  const fixture = host(group, runner);
+
+  const outcome = await mutate(fixture, group, "runtime-start");
+
+  assertEquals(outcome.status, "failed");
+  assertEquals(outcome.detail, "Launch group is not operationally admissible.");
+  assertEquals(runner.calls, []);
+});
+
+Deno.test("Compose host reconciles a qualified secret-bearing group through stdin without journalling it or placing it in argv", async () => {
+  const group = await qualifiedChronoGroup();
+  const token = "test-chrono-bearer-value";
+  const snapshot = Object.freeze({}) as CapabilityRuntimeSecretSnapshot;
+  const secrets: CapabilityRuntimeSecretSlotObserver = {
+    observe: (slots) =>
+      Promise.resolve(new Map(slots.map((slot) => [slot, "available" as const]))),
+  };
+  const secretInjector: CapabilityRuntimeLaunchSecretInjector = {
+    composeOverlay: ({ group: overlayGroup, snapshot: suppliedSnapshot }) => {
+      assertEquals(overlayGroup.id, "casys-chrono");
+      assertEquals(suppliedSnapshot, snapshot);
+      const descriptor = JSON.parse(overlayGroup.compose.content) as {
+        services: Record<string, Record<string, unknown>>;
+        volumes: Record<string, unknown>;
+      };
+      return Promise.resolve(
+        new TextEncoder().encode(
+          deterministicJson({
+            ...descriptor,
+            services: {
+              ...descriptor.services,
+              "mcp-chrono": {
+                ...descriptor.services["mcp-chrono"],
+                environment: { MCP_BEARER_TOKEN: token },
+              },
+            },
+          }),
+        ),
+      );
+    },
+  };
+  const runner = new FakeGroupRunner(group, { images: true, state: "running" });
+  const fixture = host(group, runner, { secrets, secretInjector });
 
   const outcome = await mutate(fixture, group, "runtime-start", snapshot);
 
-  // The binding has intentionally not passed a live qualification probe, so
-  // a healthy container observation never becomes operational approval.
-  assertEquals(outcome.status, "uncertain");
-  assertEquals(outcome.detail?.includes(token), false);
+  assertEquals(outcome.status, "succeeded");
+  assertEquals(outcome.detail?.includes(token) ?? false, false);
   assertEquals(
     runner.calls.some((call) => call.some((argument) => argument.includes(token))),
     false,
@@ -192,6 +225,15 @@ async function chronoGroup(): Promise<CapabilityRuntimeLaunchGroup> {
   ) => candidate.id === "casys-chrono");
   if (!group) throw new Error("Expected the exact Chrono launch group.");
   return group;
+}
+
+async function qualifiedChronoGroup(): Promise<CapabilityRuntimeLaunchGroup> {
+  const { fingerprint: _ignored, ...body } = await chronoGroup();
+  const qualified = { ...body, qualification: "qualified" as const };
+  return {
+    ...qualified,
+    fingerprint: await fingerprintCapabilityRuntimeLaunchGroup(qualified),
+  };
 }
 
 function host(

@@ -253,11 +253,11 @@ Deno.test("prescribed-kinematics L3 reads the same request after a post-intent o
           runs++;
           return { state: "uncertain", ...request };
         },
-        readRun: async (requestId) => {
+        readRun: async (request) => {
           reads++;
           return {
             state: "uncertain",
-            requestId,
+            requestId: request.requestId,
             caseSha256: await sha256Hex(new TextEncoder().encode(text)),
             caseUri: `chrono-case:sha256:${await sha256Hex(
               new TextEncoder().encode(text),
