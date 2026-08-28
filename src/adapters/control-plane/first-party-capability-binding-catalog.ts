@@ -51,14 +51,15 @@ import {
 } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
 import { validateCapabilityRuntimeCatalog } from "./capability-runtime-catalog.ts";
 import {
+  firstPartyBuild123dObservationLaunchGroupReference,
+  firstPartyBuild123dSandboxLaunchGroupReference,
   firstPartySysonLaunchGroupReference,
+  MCP_BUILD123D_061_IMAGE_REFERENCE,
   MCP_SYSON_IMAGE_REFERENCE,
   POSTGRES_IMAGE_REFERENCE,
   SYSON_IMAGE_REFERENCE,
 } from "./first-party-capability-runtime-launch-groups.ts";
 import type { CapabilityRuntimeLaunchGroupReference } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
-const MCP_BUILD123D_IMAGE =
-  "ghcr.io/casys-ai/mcp-build123d@sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d";
 
 const REVIEWED_LICENCE_DOC =
   "docs/reference/runtime/capability-packs/atomic-runtime-boundaries.md";
@@ -74,7 +75,15 @@ const SYSON_LAUNCH_GROUP_NOTE =
 export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
   CapabilityRuntimeCatalog
 > {
-  const sysonLaunchGroup = await firstPartySysonLaunchGroupReference();
+  const [
+    sysonLaunchGroup,
+    build123dSandboxLaunchGroup,
+    build123dObservationLaunchGroup,
+  ] = await Promise.all([
+    firstPartySysonLaunchGroupReference(),
+    firstPartyBuild123dSandboxLaunchGroupReference(),
+    firstPartyBuild123dObservationLaunchGroupReference(),
+  ]);
   const units = await Promise.all([
     unit("casys.syson-stack", [
       composeMaterial(
@@ -116,7 +125,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
     unit("casys.mcp-build123d-sandbox", [
       composeMaterial(
         "mcp-build123d-sandbox-image",
-        MCP_BUILD123D_IMAGE,
+        MCP_BUILD123D_061_IMAGE_REFERENCE,
         ["linux/amd64", "linux/arm64"],
         "mcp-build123d-sandbox",
         "loopback-only",
@@ -125,12 +134,13 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
           volume("build123d-sandbox-exports", "read-write", "preserve"),
         ],
         "reviewed",
+        build123dSandboxLaunchGroup,
       ),
     ], "0.6.1"),
     unit("casys.mcp-build123d-observation", [
       composeMaterial(
         "mcp-build123d-observation-image",
-        MCP_BUILD123D_IMAGE,
+        MCP_BUILD123D_061_IMAGE_REFERENCE,
         ["linux/amd64", "linux/arm64"],
         "mcp-build123d",
         "loopback-only",
@@ -138,7 +148,8 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         [
           volume("exports", "read-write", "preserve"),
         ],
-        "unknown",
+        "reviewed",
+        build123dObservationLaunchGroup,
       ),
     ], "0.6.1"),
     unit("casys.build123d-isolated-worker", [

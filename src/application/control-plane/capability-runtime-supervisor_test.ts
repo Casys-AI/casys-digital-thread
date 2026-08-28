@@ -231,6 +231,16 @@ Deno.test("runtimeDemand none does not require a capability ledger or host obser
   );
 });
 
+Deno.test("preparation entry refuses a registered execution operation before reading or mutating a host", async () => {
+  const fixture = await readyFixture();
+  await assertRejects(
+    () =>
+      fixture.supervisor.requirePreparation({ project: PROJECT, operation: OPERATION }),
+    CapabilityRuntimeAuthorizationError,
+    "one exact registered preparation demand",
+  );
+});
+
 Deno.test("lifecycle coordinator journals before host mutation and recovery keeps an unmet intent pending", async () => {
   const journal = new InMemoryCapabilityRuntimeJournal();
   const leases = new InMemoryCapabilityRuntimeLeaseStore();

@@ -41,6 +41,14 @@ supply Python, provider, tool, path, image, or output formats. The exporter fixe
 and GLTF and creates a draft stamped with the admission identity. It does not write
 Thread state.
 
+Before the fixed export call, the server completes cold validation, obtains the exact
+short Build123d preparation lease, repeats that full cold validation, then creates the
+private loopback client. A local monotone record advances `prepared -> dispatching`
+before this non-idempotent provider call, then to `recorded` only after capture+reread
+and an exact durable result. Replay hits never activate a runtime; `dispatching` without
+`recorded`, an unreadable record, or a collision is `unavailable` for recovery rather
+than a fresh provider dispatch.
+
 For a lowered closure, every reopen and replay recrosses the sealed closure, reopens all
 named file bytes, re-lowers them, compares the full manifest and effective script, and
 reanalyses before this exporter is reached. A mismatch fails before a provider call.

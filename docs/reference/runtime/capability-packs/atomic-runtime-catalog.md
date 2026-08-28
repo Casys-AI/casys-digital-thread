@@ -66,10 +66,15 @@ declares none.
 
 Each material carries either a literal `null` launch group or an exact launch-group
 id/version/fingerprint reference. The three `casys.syson-stack` materials share the
-same `casys-syson@1.0.0` group reference; the immutable ordered Compose body remains in
-the server-only H1 registry. Catalogue/project data cannot carry Compose commands,
-provider endpoints, tools, arguments or secret values. All other current first-party
-persistent materials remain literal `null`: an image alone never enrolls a topology.
+same `casys-syson@1.0.0` group reference. Build123d has two separate immutable one-service
+groups: `casys-build123d-sandbox@1.0.0` (`mcp-build123d-sandbox`, 3024 → 3014,
+`build123d-sandbox-exports:/exports`) and `casys-build123d-observation@1.0.0`
+(`mcp-build123d`, 3014 → 3014, `exports:/exports`). Both pin Build123d 0.6.1 digest
+`sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d`, have no
+shared named network or invented healthcheck, and retain their volumes. Catalogue/project
+data cannot carry Compose commands, provider endpoints, tools, arguments or secret values.
+All other current first-party persistent materials remain literal `null`: an image alone
+never enrolls a topology.
 
 The semantic capability `mechanics.observe-static-structural-sensitivity@1` names only
 two static-structural sensitivity observations, never a verdict. Its concrete

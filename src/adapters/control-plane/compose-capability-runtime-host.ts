@@ -277,7 +277,10 @@ class ComposeCapabilityRuntimeHost
             owned[member.serviceName] = actual.id;
             state = {
               material: installed,
-              runtime: actual.status === "running" && actual.health === "healthy"
+              runtime: actual.status === "running" &&
+                  (actual.health === "healthy" ||
+                    (actual.health === null &&
+                      !serviceDeclaresHealthcheck(group, member.serviceName)))
                 ? "active"
                 : actual.status === "running"
                 ? "degraded"
@@ -372,6 +375,23 @@ class ComposeCapabilityRuntimeHost
       observations: exactObservations,
       detail,
     };
+  }
+}
+
+function serviceDeclaresHealthcheck(
+  group: CapabilityRuntimeLaunchGroup,
+  serviceName: string,
+): boolean {
+  try {
+    const descriptor = JSON.parse(group.compose.content) as {
+      services?: Record<string, { healthcheck?: unknown }>;
+    };
+    return descriptor.services?.[serviceName]?.healthcheck !== undefined;
+  } catch {
+    // The launch-group registry already validates this body before the host
+    // can reach it. A defensive true keeps an unexpected malformed body from
+    // relaxing the health observation requirement.
+    return true;
   }
 }
 

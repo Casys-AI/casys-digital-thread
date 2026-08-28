@@ -183,6 +183,7 @@ import {
 } from "./src/application/control-plane/project-capability-runtime-context-compiler.ts";
 import { CapabilityRuntimeSupervisor } from "./src/application/control-plane/capability-runtime-supervisor.ts";
 import { CapabilityRuntimeExecutionSessionCoordinator } from "./src/application/control-plane/capability-runtime-execution-session.ts";
+import { CapabilityRuntimePreparationSessionCoordinator } from "./src/application/control-plane/capability-runtime-preparation-session.ts";
 import {
   FileCapabilityRuntimeHostMutationLock,
   FileCapabilityRuntimeJournal,
@@ -657,9 +658,6 @@ export async function createConsoleServer(
     );
   const syson = manifest.servers.find((server) => server.id === "syson");
   const build123d = manifest.servers.find((server) => server.id === "build123d");
-  const build123dSandbox = manifest.servers.find((server) =>
-    server.id === "build123d-sandbox"
-  );
   const calculix = manifest.servers.find((server) => server.id === "calculix");
   const dfm = manifest.servers.find((server) => server.id === "dfm");
   const prusaslicer = manifest.servers.find((server) => server.id === "prusaslicer");
@@ -678,7 +676,6 @@ export async function createConsoleServer(
     ? await createProjectControl(
       options,
       syson?.mcpUrl,
-      build123dSandbox?.mcpUrl,
       build123d,
       calculix?.mcpUrl,
       calculix?.image,
@@ -780,7 +777,6 @@ export async function createConsoleServer(
 async function createProjectControl(
   options: CreateConsoleServerOptions,
   sysonMcpUrl?: string,
-  build123dSandboxMcpUrl?: string,
   assemblyIntegrityBuild123dServer?: DesiredServer,
   calculixMcpUrl?: string,
   calculixRuntimeImage?: string,
@@ -1020,6 +1016,12 @@ async function createProjectControl(
       }],
     ),
   });
+  const capabilityRuntimePreparation =
+    new CapabilityRuntimePreparationSessionCoordinator({
+      authorization: capabilityRuntime,
+      leases: capabilityRuntimeLeases,
+      groups: capabilityRuntimeGroups,
+    });
   const runtime = await createEngineeringProjectCommandRuntime({
     projectId: options.projectId,
     trackedManifestPath: options.projectPath,
@@ -1624,15 +1626,16 @@ async function createProjectControl(
       admittedSpiceEvaluationReview: electricalProject.admittedSpiceEvaluationReview,
       admittedSpiceEvaluationCloseoutReview:
         electricalProject.admittedSpiceEvaluationCloseoutReview,
-      ...composePrivateBuild123dGeometrySurfaces(
-        build123dSandboxMcpUrl,
-        cadProject.geometrySourceAnalysis,
-        compilationFoundation.technicalCompilationAdmissions,
-        threadSnapshots,
-        architectureFoundation.genericArchitectureCaptures,
-        DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
-        DEFAULT_GEOMETRY_CAPTURE_DIRECTORY,
-      ),
+      ...composePrivateBuild123dGeometrySurfaces({
+        projects: runtime.projects,
+        preparation: capabilityRuntimePreparation,
+        geometrySourceAnalysis: cadProject.geometrySourceAnalysis,
+        admissions: compilationFoundation.technicalCompilationAdmissions,
+        snapshots: threadSnapshots,
+        architectureCaptures: architectureFoundation.genericArchitectureCaptures,
+        geometryDraftCaptureDirectory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
+        geometryCaptureDirectory: DEFAULT_GEOMETRY_CAPTURE_DIRECTORY,
+      }),
       runExecutor: new RegisteredProjectRunExecutor({
         projects: runtime.projects,
         baseline,

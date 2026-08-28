@@ -198,3 +198,16 @@ export interface CapabilityRuntimeExecutionEligibility {
     readonly operation: EngineeringOperationRef;
   }): Promise<ResolvedCapabilityRuntimeOperation | undefined>;
 }
+
+/**
+ * Cold authority for a server-owned preparation step which has no agent run,
+ * work item, WAL, or provider envelope.  It is deliberately narrower than
+ * execution eligibility: exactly one registered preparation requirement must
+ * be selected by the server before a short host lease may be considered.
+ */
+export interface CapabilityRuntimePreparationEligibility {
+  requirePreparation(input: {
+    readonly project: EngineeringProjectSnapshot;
+    readonly operation: EngineeringOperationRef;
+  }): Promise<ResolvedCapabilityRuntimeOperation>;
+}
