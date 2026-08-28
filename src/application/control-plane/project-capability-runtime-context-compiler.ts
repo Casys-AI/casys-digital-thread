@@ -11,6 +11,7 @@ import type { EngineeringProjectSnapshot } from "../../domain/project/engineerin
 import type { EngineeringOperationRegistry } from "../../orchestration/operations/operation-contract.ts";
 import { compileProjectCapabilityDemand } from "./compile-project-capability-demand.ts";
 import { planProjectCapability } from "./plan-project-capability.ts";
+import { evaluateCapabilityRuntimeQualifications } from "./evaluate-capability-runtime-qualifications.ts";
 import type { ProjectCapabilityEffectiveEnvelope } from "./project-capability-authorization.ts";
 import type {
   CapabilityRuntimeAdminLock,
@@ -19,6 +20,7 @@ import type {
   CapabilityRuntimeHostObservation,
 } from "./read-model/capability-runtime-catalog.ts";
 import type { ProjectCapabilityLedgerStore } from "../ports/out/project-capability-ledger-store.ts";
+import type { CapabilityRuntimeQualificationAttestationStore } from "../ports/out/capability/capability-runtime-qualification-attestation-store.ts";
 import type {
   ProjectCapabilityRuntimeAuthorization,
   ProjectCapabilityRuntimeAuthorizedBinding,
@@ -43,8 +45,8 @@ export class FixedCapabilityRuntimeHostObservationReader
   implements CapabilityRuntimeHostObservationReader {
   constructor(private readonly value: CapabilityRuntimeHostObservation) {}
 
-  async read(): Promise<CapabilityRuntimeHostObservation> {
-    return structuredClone(this.value);
+  read(): Promise<CapabilityRuntimeHostObservation> {
+    return Promise.resolve(structuredClone(this.value));
   }
 }
 
@@ -52,8 +54,8 @@ export class FixedCapabilityRuntimeAdminPolicyReader
   implements CapabilityRuntimeAdminPolicyReader {
   constructor(private readonly value: CapabilityRuntimeAdminPolicy) {}
 
-  async read(): Promise<CapabilityRuntimeAdminPolicy> {
-    return structuredClone(this.value);
+  read(): Promise<CapabilityRuntimeAdminPolicy> {
+    return Promise.resolve(structuredClone(this.value));
   }
 }
 
@@ -61,8 +63,8 @@ export class FixedCapabilityRuntimeAdminLockReader
   implements CapabilityRuntimeAdminLockReader {
   constructor(private readonly value: CapabilityRuntimeAdminLock) {}
 
-  async read(): Promise<CapabilityRuntimeAdminLock> {
-    return structuredClone(this.value);
+  read(): Promise<CapabilityRuntimeAdminLock> {
+    return Promise.resolve(structuredClone(this.value));
   }
 }
 
@@ -72,6 +74,11 @@ export interface ProjectCapabilityRuntimeContextCompilerOptions {
   readonly policy: CapabilityRuntimeAdminPolicyReader;
   readonly host: CapabilityRuntimeHostObservationReader;
   readonly lock: CapabilityRuntimeAdminLockReader;
+  /** Same host-local source used by the MCP and the Workbench BFF. */
+  readonly qualifications?: Pick<
+    CapabilityRuntimeQualificationAttestationStore,
+    "list"
+  >;
   readonly ledgers: ProjectCapabilityLedgerStore;
 }
 
@@ -85,16 +92,22 @@ export class ProjectCapabilityRuntimeContextCompiler
   async read(
     project: EngineeringProjectSnapshot,
   ): Promise<ProjectCapabilityRuntimeContext> {
-    const [host, policy, lock, ledger] = await Promise.all([
+    const [host, policy, lock, ledger, attestations] = await Promise.all([
       this.options.host.read(),
       this.options.policy.read(),
       this.options.lock.read(),
       this.options.ledgers.get(project.project.id),
+      this.options.qualifications?.list() ?? Promise.resolve([]),
     ]);
+    const catalog = evaluateCapabilityRuntimeQualifications({
+      catalog: this.options.catalog,
+      host,
+      attestations,
+    });
     const demand = await compileProjectCapabilityDemand(project, this.options.registry);
     const plan = await planProjectCapability({
       demand,
-      catalog: this.options.catalog,
+      catalog,
       policy,
       host,
       lock,
@@ -102,7 +115,8 @@ export class ProjectCapabilityRuntimeContextCompiler
     return deepFreeze({
       demand,
       plan,
-      catalog: structuredClone(this.options.catalog),
+      catalog: structuredClone(catalog),
+      lock: structuredClone(lock),
       authorization: ledger?.effectiveEnvelope
         ? authorizationFromEnvelope(ledger.effectiveEnvelope)
         : undefined,
@@ -113,11 +127,13 @@ export class ProjectCapabilityRuntimeContextCompiler
 function authorizationFromEnvelope(
   envelope: ProjectCapabilityEffectiveEnvelope,
 ): ProjectCapabilityRuntimeAuthorization {
-  const selected = envelope.proposal.bindings.filter((binding) =>
-    binding.status === "selected" && binding.binding !== null &&
+  // The brief authorizes the exact candidate ceiling even while its runtime is
+  // unavailable. Qualification later changes execution eligibility, not the
+  // binding/digest/profile scope that the human already approved.
+  const authorized = envelope.proposal.bindings.filter((binding) =>
     binding.candidate !== undefined
   );
-  const allowedBindings = selected.map((binding) => {
+  const allowedBindings = authorized.map((binding) => {
     const candidate = binding.candidate!;
     const materials = binding.unitIds.flatMap((unitId) => {
       const unit = envelope.proposal.units.find((value) => value.id === unitId);
@@ -166,21 +182,16 @@ function authorizationFromEnvelope(
       manifestFingerprint: structuredClone(unit.manifestFingerprint),
     })).toSorted((left, right) => left.id.localeCompare(right.id)),
     allowedCapabilities: allowedBindings.map((binding) => {
-      const requirement = selected.find((candidate) =>
+      const requirement = authorized.find((candidate) =>
         candidate.requirement.id === binding.capability.id &&
         candidate.requirement.version === binding.capability.version &&
         candidate.requirement.use === binding.capability.use
       )!.requirement;
-      const planned = selected.find((candidate) =>
-        candidate.requirement.id === binding.capability.id &&
-        candidate.requirement.version === binding.capability.version &&
-        candidate.requirement.use === binding.capability.use
-      )!;
       return {
         id: requirement.id,
         version: requirement.version,
         use: requirement.use,
-        qualification: planned.binding!.qualification,
+        qualification: requirement.minimumQualification,
       };
     }),
     allowedBindings,

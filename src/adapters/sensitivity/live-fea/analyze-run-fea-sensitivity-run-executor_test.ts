@@ -1057,6 +1057,12 @@ function sensitivityRuntimeOperation() {
       adapter: { id: "casys.mcp-calculix", version: "0.8.2", source: "fixture" },
       profile: null,
       materials: [material],
+      runtimeModes: [{
+        material,
+        targetPlatform: "linux/arm64" as const,
+        mode: "native" as const,
+        qualificationAttestationFingerprint: null,
+      }],
       hostLifecycles: [{
         material,
         kind: "persistent-compose" as const,

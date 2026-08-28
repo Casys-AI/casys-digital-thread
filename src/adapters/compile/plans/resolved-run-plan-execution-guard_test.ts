@@ -941,6 +941,16 @@ function operationalCapabilityFor(
         materialId: "calculix-worker",
         imageDigest: "e".repeat(64),
       }],
+      runtimeModes: [{
+        material: {
+          unitId: "casys.calculix-worker",
+          materialId: "calculix-worker",
+          imageDigest: "e".repeat(64),
+        },
+        targetPlatform: "linux/arm64",
+        mode: "native",
+        qualificationAttestationFingerprint: null,
+      }],
       hostLifecycles: [{
         material: {
           unitId: "casys.calculix-worker",

@@ -48,5 +48,20 @@ runtime removal must preserve them by default and must never remove Thread, CAS,
 project state. This catalogue and its planner are read-only: they never pull, start,
 stop, bind, dispatch, qualify or delete material.
 
+Canonical admitted geometry export has a separate short preparation lease for exactly
+`design.write-geometry@1`'s registered preparation demand. It activates only the
+server-owned sandbox group, then repeats cold admission/project/source/SysML/artifact
+validation before constructing the fixed private client at `127.0.0.1:3024`. It creates
+no agent run or work item. The canonical export lane records a tiny monotone replay WAL
+`prepared -> dispatching -> recorded`: the non-idempotent provider is called only after
+the synced `dispatching` marker, and restart with that marker but no `recorded` result is
+recoverable `unavailable`, never permission to redispatch. A post-dispatch ambiguity
+retains the lease for recovery; a known pre-provider validation failure releases it.
+An interrupted `prepared` reservation can resume its exact still-live lease after fresh
+observation, or use an immutable successor linked to an expired claim; it cannot reuse a
+different scope. Conversely, replaying `recorded` performs exact lease cleanup without
+activation or provider call, while the group supervisor preserves other live leases/JIT
+demands before any stop.
+
 Public MCP exposure, remote Docker access, production secrets and an unreviewed host
 effect remain blockers for future activation.

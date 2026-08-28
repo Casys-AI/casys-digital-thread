@@ -13,6 +13,9 @@ import {
   engineeringCapabilityRequirementKey,
   type RequiredEngineeringCapability,
 } from "../../domain/capability/engineering-capability.ts";
+import {
+  validateCapabilityRuntimeLaunchGroupReference,
+} from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import type {
   AtomicCapabilityRuntimeUnit,
   CapabilityRuntimeBindingCandidate,
@@ -235,8 +238,9 @@ export async function fingerprintProjectCapabilityProposal(
 /**
  * The reusable operational ceiling, deliberately independent from the brief
  * snapshot/review basis and from editorial proposal provenance. It still binds
- * every semantic, selected-binding, unit/material, platform-mode and host
- * effect fact that a human authorized.
+ * every semantic, exact candidate binding, unit/material and host-effect fact
+ * that a human authorized. Current availability/mode and blockers are local
+ * runtime observations, not an amendment-worthy human choice.
  */
 export async function fingerprintProjectCapabilityCeiling(
   proposal:
@@ -617,7 +621,7 @@ function projectCapabilityProposalFingerprintBody(
 /**
  * Keep this body narrower than the full proposal fingerprint only in the two
  * editorial dimensions above. In particular, do not omit an unavailable
- * candidate: its unit/mode/digest facts are still part of the ceiling.
+ * candidate: its binding/unit/digest facts are still part of the ceiling.
  */
 function projectCapabilityProposalCeilingFingerprintBody(
   proposal:
@@ -636,18 +640,30 @@ function projectCapabilityProposalCeilingFingerprintBody(
       ),
     }),
     semanticRequirements: proposal.semanticRequirements,
-    bindings: proposal.bindings,
+    bindings: proposal.bindings.map((binding) => ({
+      requirement: binding.requirement,
+      candidate: binding.candidate === undefined ? null : {
+        id: binding.candidate.id,
+        version: binding.candidate.version,
+        adapter: binding.candidate.adapter,
+        profile: binding.candidate.profile,
+        unitIds: binding.candidate.unitIds,
+      },
+    })),
     units: proposal.units.map((unit) => ({
       id: unit.id,
       version: unit.version,
       manifestFingerprint: unit.manifestFingerprint,
       materials: unit.materials,
     })),
-    materials: proposal.materials,
+    materials: proposal.materials.map((material) => ({
+      unitId: material.unitId,
+      materialId: material.materialId,
+      imageReference: material.imageReference,
+      downloadBytes: material.downloadBytes,
+      storageBytes: material.storageBytes,
+    })),
     effects: proposal.effects,
-    status: proposal.status,
-    activation: proposal.activation,
-    blockers: proposal.blockers,
   };
 }
 
@@ -1092,6 +1108,7 @@ function validateAtomicMaterial(value: unknown): void {
     "imageReference",
     "platforms",
     "lifecycle",
+    "launchGroup",
     "effects",
   ], "Capability runtime material");
   if (
@@ -1106,6 +1123,12 @@ function validateAtomicMaterial(value: unknown): void {
     )
   ) {
     throw new TypeError("Capability runtime material is invalid.");
+  }
+  if (material.launchGroup !== null) {
+    validateCapabilityRuntimeLaunchGroupReference(
+      material.launchGroup,
+      "Capability runtime material launchGroup",
+    );
   }
   validateAtomicEffects(material.effects);
 }

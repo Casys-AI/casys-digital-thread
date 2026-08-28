@@ -13,10 +13,12 @@ import type {
   PrescribedKinematicsSamplePageRequest,
   SubmittedPrescribedKinematicsCase,
 } from "../../../application/ports/out/mechanics/prescribed-kinematics-observer.ts";
+import type {
+  CapabilityRuntimeSecretSnapshot,
+} from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import { sha256Hex } from "../../../domain/kernel/deterministic-json.ts";
 import { parseChronoPrescribedKinematicsReceipt } from "./chrono-prescribed-kinematics-receipt.ts";
 import {
-  createInternalMcpBearerCredential,
   type InternalMcpBearerCredential,
   StatelessMcpHttpTransport,
   StatelessMcpTransportError,
@@ -27,6 +29,9 @@ const CHRONO_CASE_SUBMIT = "chrono_case_submit";
 const CHRONO_RUN = "chrono_run_prescribed_kinematics";
 const CHRONO_RUN_GET = "chrono_run_get";
 const CHRONO_RECEIPT_GET = "chrono_run_receipt_get";
+// This adapter is a fixed, host-local binding.  Provider routing is never a
+// caller input: a capability launch group exposes this one loopback endpoint.
+const CHRONO_MCP_URL = "http://127.0.0.1:3025/mcp";
 const SHA256 = /^[a-f0-9]{64}$/;
 const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const CHRONO_PROVIDER_ERROR_CODES = new Set([
@@ -77,11 +82,22 @@ const NOT_EVALUATED = [
 ] as const;
 
 export interface ChronoPrescribedKinematicsClientOptions {
-  readonly mcpUrl: string;
-  /** Opaque local secret-slot value; never a project or provider argument. */
-  readonly bearerCredential: InternalMcpBearerCredential;
+  /** Closed host-only credential resolver; never an MCP/agent parameter. */
+  readonly secretResolver: ChronoMcpBearerCredentialResolver;
+  /** Same opaque generation used by the matching Compose launch overlay. */
+  readonly secretSnapshot: CapabilityRuntimeSecretSnapshot;
   readonly fetch?: typeof fetch;
   readonly timeoutMs?: number;
+}
+
+/**
+ * Fixed Chrono binding credential seam.  The implementation owns the token
+ * value in a private WeakMap; this adapter receives only an opaque snapshot.
+ */
+export interface ChronoMcpBearerCredentialResolver {
+  bearerCredentialFor(
+    snapshot: CapabilityRuntimeSecretSnapshot,
+  ): InternalMcpBearerCredential;
 }
 
 export class ChronoPrescribedKinematicsProtocolError extends Error {
@@ -152,10 +168,31 @@ export class ChronoPrescribedKinematicsRequestError extends Error {
 export class ChronoPrescribedKinematicsClient implements PrescribedKinematicsObserver {
   readonly #http: StatelessMcpHttpTransport;
 
-  constructor(options: ChronoPrescribedKinematicsClientOptions) {
+  private constructor(options: {
+    readonly bearerCredential: InternalMcpBearerCredential;
+    readonly fetch?: typeof fetch;
+    readonly timeoutMs?: number;
+  }) {
     this.#http = new StatelessMcpHttpTransport({
-      mcpUrl: options.mcpUrl,
+      mcpUrl: CHRONO_MCP_URL,
       bearerCredential: options.bearerCredential,
+      fetch: options.fetch,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Builds the fixed local client from the exact runtime session snapshot.
+   * Neither URL, token, provider, MCP tool nor arbitrary headers are caller
+   * configurable through this factory.
+   */
+  static fromTrustedRuntime(
+    options: ChronoPrescribedKinematicsClientOptions,
+  ): ChronoPrescribedKinematicsClient {
+    return new ChronoPrescribedKinematicsClient({
+      bearerCredential: options.secretResolver.bearerCredentialFor(
+        options.secretSnapshot,
+      ),
       fetch: options.fetch,
       timeoutMs: options.timeoutMs,
     });
@@ -262,12 +299,18 @@ export class ChronoPrescribedKinematicsClient implements PrescribedKinematicsObs
   }
 
   async readRun(
-    requestId: string,
+    expected: Pick<
+      PrescribedKinematicsRunRequest,
+      "requestId" | "caseSha256" | "caseUri"
+    >,
     page: PrescribedKinematicsSamplePageRequest = {},
   ): Promise<PrescribedKinematicsRunReadback> {
-    assertRequestId(requestId, "chrono run requestId");
+    const expectedRequest = validateRunRequest(
+      expected,
+      "chrono run readback expected request",
+    );
     const content = await this.#call(CHRONO_RUN_GET, {
-      request_id: requestId,
+      request_id: expectedRequest.requestId,
       ...pageArguments(page),
     });
     const root = closed(
@@ -299,6 +342,11 @@ export class ChronoPrescribedKinematicsClient implements PrescribedKinematicsObs
         intent.intent_recorded_at,
         `${CHRONO_RUN_GET}.intent.intent_recorded_at`,
       );
+      assertReadbackRequestMatches(
+        request,
+        expectedRequest,
+        `${CHRONO_RUN_GET}.intent.request`,
+      );
       return {
         state: "uncertain",
         requestId: request.requestId,
@@ -308,11 +356,11 @@ export class ChronoPrescribedKinematicsClient implements PrescribedKinematicsObs
     }
     if (root.state === "recorded") {
       const parsed = parseRecord(root.record, CHRONO_RUN_GET);
-      if (parsed.request.requestId !== requestId) {
-        throw protocol(
-          `${CHRONO_RUN_GET}.record request identity does not match readback`,
-        );
-      }
+      assertReadbackRequestMatches(
+        parsed.request,
+        expectedRequest,
+        `${CHRONO_RUN_GET}.record request`,
+      );
       return { state: "recorded", record: parsed };
     }
     throw protocol(`${CHRONO_RUN_GET}.state must be recorded, uncertain, or absent`);
@@ -385,10 +433,6 @@ export class ChronoPrescribedKinematicsClient implements PrescribedKinematicsObs
 }
 
 /** Convenience only for local composition; it creates the opaque credential. */
-export function chronoBearerCredential(value: string): InternalMcpBearerCredential {
-  return createInternalMcpBearerCredential(value);
-}
-
 function parseRecord(
   value: unknown,
   path: string,
@@ -482,6 +526,28 @@ function canonicalizeProviderRequest(
     throw protocol(`${path} does not match the stored request case URI`);
   }
   return { ...request, caseUri };
+}
+
+function assertReadbackRequestMatches(
+  observed: Pick<
+    PrescribedKinematicsRunRequest,
+    "requestId" | "caseSha256" | "caseUri"
+  >,
+  expected: Pick<
+    PrescribedKinematicsRunRequest,
+    "requestId" | "caseSha256" | "caseUri"
+  >,
+  path: string,
+): void {
+  if (
+    observed.requestId !== expected.requestId ||
+    observed.caseSha256 !== expected.caseSha256 ||
+    observed.caseUri !== expected.caseUri
+  ) {
+    throw protocol(
+      `${path} does not match the exact request and case identity expected by readback`,
+    );
+  }
 }
 
 function parseObservation(value: unknown, path: string): {

@@ -37,6 +37,9 @@ import {
   type QualifiedCapabilityRuntimeBinding,
 } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
 import type {
+  CapabilityRuntimeMaterialRuntimeMode,
+} from "../../domain/capability/runtime/capability-runtime-binding-qualification-attestation.ts";
+import type {
   CapabilityReference,
   RequiredEngineeringCapability,
 } from "../../domain/capability/engineering-capability.ts";
@@ -165,7 +168,7 @@ export function validateCapabilityRuntimeHostObservation(
 ): CapabilityRuntimeHostObservation {
   const root = exactRecord(
     value,
-    ["schemaVersion", "platform", "emulatedPlatforms", "images"],
+    ["schemaVersion", "identityFingerprint", "platform", "images"],
     "$hostObservation",
   );
   literalValue(
@@ -174,18 +177,6 @@ export function validateCapabilityRuntimeHostObservation(
     "$hostObservation.schemaVersion",
   );
   const platform = parsePlatform(root.platform, "$hostObservation.platform");
-  const emulatedPlatforms = arrayOf(
-    root.emulatedPlatforms,
-    "$hostObservation.emulatedPlatforms",
-  ).map((candidate, index) =>
-    parsePlatform(candidate, `$hostObservation.emulatedPlatforms[${index}]`)
-  );
-  rejectDuplicates(emulatedPlatforms, "$hostObservation.emulatedPlatforms");
-  if (emulatedPlatforms.includes(platform)) {
-    throw new TypeError(
-      "$hostObservation.emulatedPlatforms must exclude the native platform.",
-    );
-  }
   const images = arrayOf(root.images, "$hostObservation.images").map((image, index) =>
     parseObservedImage(image, `$hostObservation.images[${index}]`)
   );
@@ -195,8 +186,11 @@ export function validateCapabilityRuntimeHostObservation(
   );
   return deepFreeze({
     schemaVersion: CAPABILITY_RUNTIME_HOST_OBSERVATION_SCHEMA_VERSION,
+    identityFingerprint: fingerprint(
+      root.identityFingerprint,
+      "$hostObservation.identityFingerprint",
+    ),
     platform,
-    emulatedPlatforms,
     images,
   });
 }
@@ -241,14 +235,33 @@ export async function validateCapabilityRuntimeAdminLock(
       }
     }
   }
+  const revision = nonNegativeInteger(root.revision, "$adminLock.revision");
+  const previous = root.previous === null
+    ? null
+    : fingerprint(root.previous, "$adminLock.previous");
+  if (revision === 0 && previous !== null) {
+    throw new TypeError(
+      "$adminLock revision 0 must not name a previous administrative lock.",
+    );
+  }
+  if (revision > 0 && previous === null) {
+    throw new TypeError(
+      "$adminLock revision greater than 0 must name the exact previous administrative lock.",
+    );
+  }
   return deepFreeze({
     schemaVersion: CAPABILITY_RUNTIME_ADMIN_LOCK_SCHEMA_VERSION,
-    revision: positiveInteger(root.revision, "$adminLock.revision"),
-    previous: root.previous === null
-      ? null
-      : fingerprint(root.previous, "$adminLock.previous"),
+    revision,
+    previous,
     units,
   });
+}
+
+function nonNegativeInteger(value: unknown, path: string): number {
+  if (!Number.isSafeInteger(value) || Number(value) < 0) {
+    throw new TypeError(`${path} must be a non-negative integer.`);
+  }
+  return Number(value);
 }
 
 function parseUnit(value: unknown, path: string): AtomicCapabilityRuntimeUnit {
@@ -514,6 +527,7 @@ function parseBinding(value: unknown, path: string): QualifiedCapabilityRuntimeB
       "profile",
       "unitIds",
       "qualificationEvidence",
+      "runtimeModes",
       "limitations",
     ],
     path,
@@ -527,6 +541,12 @@ function parseBinding(value: unknown, path: string): QualifiedCapabilityRuntimeB
     index,
   ) => nonEmptyText(limitation, `${path}.limitations[${index}]`));
   rejectDuplicates(limitations, `${path}.limitations`);
+  const runtimeModes = parseRuntimeModes(root.runtimeModes, `${path}.runtimeModes`);
+  if (runtimeModes.length > 0) {
+    throw new TypeError(
+      `${path}.runtimeModes must be empty in the code-owned catalogue baseline.`,
+    );
+  }
   return deepFreeze({
     id: safeId(root.id, `${path}.id`),
     version: exactVersionToken(root.version, `${path}.version`),
@@ -546,7 +566,62 @@ function parseBinding(value: unknown, path: string): QualifiedCapabilityRuntimeB
       root.qualificationEvidence,
       `${path}.qualificationEvidence`,
     ),
+    runtimeModes,
     limitations,
+  });
+}
+
+function parseRuntimeModes(
+  value: unknown,
+  path: string,
+): readonly CapabilityRuntimeMaterialRuntimeMode[] {
+  const modes = arrayOf(value, path).map((entry, index) => {
+    const entryPath = `${path}[${index}]`;
+    const root = exactRecord(entry, [
+      "material",
+      "targetPlatform",
+      "mode",
+      "qualificationAttestationFingerprint",
+    ], entryPath);
+    const material = parseRuntimeModeMaterial(root.material, `${entryPath}.material`);
+    const targetPlatform = parsePlatform(
+      root.targetPlatform,
+      `${entryPath}.targetPlatform`,
+    );
+    const mode = oneOf(root.mode, ["native", "emulated"] as const, `${entryPath}.mode`);
+    return deepFreeze({
+      material,
+      targetPlatform,
+      mode,
+      qualificationAttestationFingerprint:
+        root.qualificationAttestationFingerprint === null ? null : fingerprint(
+          root.qualificationAttestationFingerprint,
+          `${entryPath}.qualificationAttestationFingerprint`,
+        ),
+    });
+  });
+  rejectDuplicates(
+    modes.map((mode) =>
+      `${mode.material.unitId}\u0000${mode.material.materialId}\u0000${mode.material.imageDigest}`
+    ),
+    path,
+  );
+  return modes;
+}
+
+function parseRuntimeModeMaterial(
+  value: unknown,
+  path: string,
+): CapabilityRuntimeMaterialRuntimeMode["material"] {
+  const root = exactRecord(value, ["unitId", "materialId", "imageDigest"], path);
+  const imageDigest = nonEmptyText(root.imageDigest, `${path}.imageDigest`);
+  if (!SHA256_HEX.test(imageDigest)) {
+    throw new TypeError(`${path}.imageDigest must be a lowercase SHA-256 digest.`);
+  }
+  return deepFreeze({
+    unitId: safeId(root.unitId, `${path}.unitId`),
+    materialId: safeId(root.materialId, `${path}.materialId`),
+    imageDigest,
   });
 }
 

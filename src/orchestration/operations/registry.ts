@@ -512,6 +512,9 @@ const OPERATIONS = [
     runtimeDemand: requiredRuntimeDemand(
       qualifiedCapability(MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY),
     ),
+    // The exact runtime binding is captured with the queued run. It is not a
+    // provider request and cannot be reconstructed from a later project tip.
+    resolvedOperationPlan: "2.0",
     requiresAdditiveChange: true,
     requiresDependsOnOperation: {
       id: VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION.id,

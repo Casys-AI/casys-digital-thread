@@ -1,12 +1,16 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import {
-  chronoBearerCredential,
   ChronoPrescribedKinematicsClient,
   ChronoPrescribedKinematicsDispatchUncertainError,
   ChronoPrescribedKinematicsProtocolError,
-  ChronoPrescribedKinematicsProviderError,
   ChronoPrescribedKinematicsRequestError,
 } from "./chrono-prescribed-kinematics-client.ts";
+import type {
+  CapabilityRuntimeSecretSnapshot,
+} from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import {
+  createInternalMcpBearerCredential,
+} from "../../shared/mcp/stateless-mcp-http-transport.ts";
 
 const CASE_TEXT = '{"schema_id":"chrono-prescribed-kinematics-case/1.0"}';
 const CASE_SHA = "727daf35c32fd826cb4adcb79b9792437aca4afe5ff76396f2c73a3588a1947c";
@@ -17,6 +21,10 @@ const WORKER_SHA = "d".repeat(64);
 const REQUEST_ID = "chrono-run-1";
 const TOKEN = "chrono-bearer-secret";
 const CASE_URI = `chrono-case:sha256:${CASE_SHA}`;
+const TEST_SECRET_SNAPSHOT = Object.freeze({}) as CapabilityRuntimeSecretSnapshot;
+const testSecretResolver = {
+  bearerCredentialFor: () => createInternalMcpBearerCredential(TOKEN),
+};
 
 Deno.test("Chrono adapter sends fixed tool sequence with bearer at fetch only", async () => {
   const calls: Array<
@@ -53,7 +61,7 @@ Deno.test("Chrono adapter sends fixed tool sequence with bearer at fetch only", 
     caseSha256: submitted.caseSha256,
     caseUri: submitted.caseUri,
   });
-  const readback = await client.readRun(REQUEST_ID, {
+  const readback = await client.readRun(runRequest(), {
     sampleOffset: 1,
     sampleLimit: 2,
   });
@@ -63,6 +71,20 @@ Deno.test("Chrono adapter sends fixed tool sequence with bearer at fetch only", 
   });
 
   assertEquals(run.state, "recorded");
+  if (run.state !== "recorded") throw new Error("The fixture must record a run.");
+  // mcp-chrono 0.3.1 publishes exactly these nine provider-owned limits. It
+  // deliberately does not know the Digital Thread manufacturability limit.
+  assertEquals(run.record.notEvaluated, [
+    "collision",
+    "clearance",
+    "contact",
+    "forces",
+    "torques",
+    "dynamics",
+    "strength",
+    "safety",
+    "product fitness",
+  ]);
   assertEquals(readback.state, "recorded");
   assertEquals(receipt.receipt.receiptSha256, RECEIPT_SHA);
   assertEquals(calls.map((call) => call.name), [
@@ -167,9 +189,9 @@ Deno.test("Chrono adapter forces readback after post-intent runner and store out
 
 Deno.test("Chrono adapter exposes failed dispatch as uncertain without an automatic retry", async () => {
   let calls = 0;
-  const client = new ChronoPrescribedKinematicsClient({
-    mcpUrl: "http://127.0.0.1:3025/mcp",
-    bearerCredential: chronoBearerCredential(TOKEN),
+  const client = ChronoPrescribedKinematicsClient.fromTrustedRuntime({
+    secretResolver: testSecretResolver,
+    secretSnapshot: TEST_SECRET_SNAPSHOT,
     fetch: (() => {
       calls += 1;
       return Promise.reject(new Error("socket reset after send"));
@@ -186,9 +208,9 @@ Deno.test("Chrono adapter exposes failed dispatch as uncertain without an automa
 
 Deno.test("Chrono adapter treats malformed HTTP 200 run acknowledgement as uncertain", async () => {
   let calls = 0;
-  const client = new ChronoPrescribedKinematicsClient({
-    mcpUrl: "http://127.0.0.1:3025/mcp",
-    bearerCredential: chronoBearerCredential(TOKEN),
+  const client = ChronoPrescribedKinematicsClient.fromTrustedRuntime({
+    secretResolver: testSecretResolver,
+    secretSnapshot: TEST_SECRET_SNAPSHOT,
     fetch: (() => {
       calls += 1;
       return Promise.resolve(Response.json({
@@ -227,9 +249,9 @@ Deno.test("Chrono adapter treats malformed tool results and run records as uncer
 
 Deno.test("Chrono adapter keeps a definite proxy auth rejection out of uncertainty", async () => {
   let calls = 0;
-  const client = new ChronoPrescribedKinematicsClient({
-    mcpUrl: "http://127.0.0.1:3025/mcp",
-    bearerCredential: chronoBearerCredential(TOKEN),
+  const client = ChronoPrescribedKinematicsClient.fromTrustedRuntime({
+    secretResolver: testSecretResolver,
+    secretSnapshot: TEST_SECRET_SNAPSHOT,
     fetch: (() => {
       calls += 1;
       return Promise.resolve(new Response(`proxy reflected ${TOKEN}`, { status: 401 }));
@@ -282,7 +304,7 @@ Deno.test("Chrono adapter canonicalizes a missing stored request URI from the re
     });
   });
 
-  const result = await client.readRun(REQUEST_ID);
+  const result = await client.readRun(runRequest());
 
   assertEquals(result.state, "recorded");
   if (result.state === "recorded") {
@@ -299,7 +321,7 @@ Deno.test("Chrono adapter still rejects a stored request URI that is present but
   });
 
   await assertRejects(
-    () => client.readRun(REQUEST_ID),
+    () => client.readRun(runRequest()),
     ChronoPrescribedKinematicsProtocolError,
     "case_uri",
   );
@@ -314,7 +336,7 @@ Deno.test("Chrono adapter rejects a non-canonical provider timestamp", async () 
   });
 
   await assertRejects(
-    () => client.readRun(REQUEST_ID),
+    () => client.readRun(runRequest()),
     ChronoPrescribedKinematicsProtocolError,
     "exact canonical ISO timestamp",
   );
@@ -377,7 +399,7 @@ Deno.test("Chrono adapter rejects stale provider records and malformed page meta
     return complete({ ok: true, state: "recorded", record });
   });
   await assertRejects(
-    () => stale.readRun(REQUEST_ID),
+    () => stale.readRun(runRequest()),
     ChronoPrescribedKinematicsProtocolError,
     "package.version",
   );
@@ -388,10 +410,54 @@ Deno.test("Chrono adapter rejects stale provider records and malformed page meta
     return complete({ ok: true, state: "recorded", record });
   });
   await assertRejects(
-    () => malformedPage.readRun(REQUEST_ID),
+    () => malformedPage.readRun(runRequest()),
     ChronoPrescribedKinematicsProtocolError,
     "inconsistent bounded-page metadata",
   );
+
+  const inventedManufacturability = clientWith(() => {
+    const record = recordView();
+    ((record.observation as Record<string, unknown>).not_evaluated as string[])
+      .push("manufacturability");
+    return complete({ ok: true, state: "recorded", record });
+  });
+  await assertRejects(
+    () => inventedManufacturability.readRun(runRequest()),
+    ChronoPrescribedKinematicsProtocolError,
+    "fixed literal boundary",
+  );
+});
+
+Deno.test("Chrono adapter rejects uncertain readback for another request or case", async () => {
+  for (
+    const [requestId, caseSha256] of [
+      ["chrono-run-other", CASE_SHA],
+      [REQUEST_ID, OTHER_CASE_SHA],
+    ] as const
+  ) {
+    const caseUri = `chrono-case:sha256:${caseSha256}`;
+    const client = clientWith(() =>
+      complete({
+        ok: true,
+        state: "uncertain",
+        intent: {
+          request: {
+            request_id: requestId,
+            case_sha256: caseSha256,
+            case_uri: caseUri,
+          },
+          case_uri: caseUri,
+          intent_recorded_at: "2026-08-29T00:00:00.000Z",
+        },
+      })
+    );
+
+    await assertRejects(
+      () => client.readRun(runRequest()),
+      ChronoPrescribedKinematicsProtocolError,
+      "exact request and case identity expected by readback",
+    );
+  }
 });
 
 function clientWith(
@@ -400,9 +466,9 @@ function clientWith(
     headers: Headers,
   ) => Record<string, unknown>,
 ): ChronoPrescribedKinematicsClient {
-  return new ChronoPrescribedKinematicsClient({
-    mcpUrl: "http://127.0.0.1:3025/mcp",
-    bearerCredential: chronoBearerCredential(TOKEN),
+  return ChronoPrescribedKinematicsClient.fromTrustedRuntime({
+    secretResolver: testSecretResolver,
+    secretSnapshot: TEST_SECRET_SNAPSHOT,
     fetch: ((_input, init) => {
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
       const headers = new Headers(init?.headers);

@@ -81,14 +81,39 @@ Deno.test("capability supervisor permits a later demand subset without reapprovi
   await fixture.supervisor.validate(queueInput());
 });
 
-Deno.test("capability supervisor queues a demanded binding cold without a host observer", async () => {
+Deno.test("capability supervisor seals the planned exact mode without consulting the Deno process architecture", async () => {
   const fixture = await readyFixture();
   const resolved = await fixture.supervisor.validate(queueInput());
+  assertEquals(resolved?.bindings[0]?.runtimeModes, [{
+    material: fixture.material,
+    targetPlatform: "linux/amd64",
+    mode: "emulated",
+    qualificationAttestationFingerprint: FINGERPRINT,
+  }]);
   assertEquals(resolved?.bindings[0]?.hostLifecycles, [{
     material: fixture.material,
     kind: "ephemeral-microsandbox",
     launchGroup: null,
   }]);
+});
+
+Deno.test("capability supervisor refuses JIT when the exact local unit lock is inactive", async () => {
+  const fixture = await readyFixture();
+  fixture.contexts.set(PROJECT.id, {
+    ...fixture.context,
+    lock: {
+      ...fixture.context.lock,
+      units: fixture.context.lock.units.map((unit) => ({
+        ...unit,
+        desired: "inactive" as const,
+      })),
+    },
+  });
+  await assertRejects(
+    () => fixture.supervisor.validate(queueInput()),
+    CapabilityRuntimeAuthorizationError,
+    "local administrative lock does not permit",
+  );
 });
 
 Deno.test("capability supervisor refuses a selected binding whose qualified profile changed after authorization", async () => {
@@ -190,6 +215,16 @@ Deno.test("capability supervisor resolves exact approved binding, profile, mater
       materialId: "calculix-worker",
       imageDigest: IMAGE_DIGEST,
     }],
+    runtimeModes: [{
+      material: {
+        unitId: "casys.calculix-worker",
+        materialId: "calculix-worker",
+        imageDigest: IMAGE_DIGEST,
+      },
+      targetPlatform: "linux/amd64",
+      mode: "emulated",
+      qualificationAttestationFingerprint: FINGERPRINT,
+    }],
     hostLifecycles: [{
       material: {
         unitId: "casys.calculix-worker",
@@ -228,6 +263,16 @@ Deno.test("runtimeDemand none does not require a capability ledger or host obser
       operation: noRuntimeOperation,
     }),
     undefined,
+  );
+});
+
+Deno.test("preparation entry refuses a registered execution operation before reading or mutating a host", async () => {
+  const fixture = await readyFixture();
+  await assertRejects(
+    () =>
+      fixture.supervisor.requirePreparation({ project: PROJECT, operation: OPERATION }),
+    CapabilityRuntimeAuthorizationError,
+    "one exact registered preparation demand",
   );
 });
 
@@ -373,7 +418,7 @@ function runtimeContext(
         id: material.materialId,
         kind: "microvm-image",
         imageReference: `example.test/calculix@sha256:${material.imageDigest}`,
-        platforms: ["linux/arm64"],
+        platforms: ["linux/amd64"],
         lifecycle: "ephemeral",
         launchGroup: null,
         effects: {},
@@ -392,6 +437,12 @@ function runtimeContext(
       profile: { id: "calculix-static", version: "1", fingerprint: FINGERPRINT },
       unitIds: [material.unitId],
       qualificationEvidence: { id: "qualification", source: "test", fingerprint: null },
+      runtimeModes: [{
+        material,
+        targetPlatform: "linux/amd64",
+        mode: "emulated",
+        qualificationAttestationFingerprint: FINGERPRINT,
+      }],
       limitations: [],
     }],
   } as unknown as CapabilityRuntimeCatalog;
@@ -410,11 +461,32 @@ function runtimeContext(
       unitIds: [material.unitId],
       reasons: [],
     }],
+    materials: [{
+      unitId: material.unitId,
+      materialId: material.materialId,
+      imageReference: `example.test/calculix@sha256:${material.imageDigest}`,
+      mode: "emulated",
+      imageState: "present",
+      desired: "active",
+      downloadBytes: null,
+      storageBytes: null,
+    }],
   } as unknown as ProjectCapabilityPlan;
   return {
     demand,
     plan,
     catalog,
+    lock: {
+      schemaVersion: "capability-runtime-admin-lock/1.0",
+      revision: 1,
+      previous: FINGERPRINT,
+      units: [{
+        id: material.unitId,
+        version: "1",
+        manifestFingerprint: FINGERPRINT,
+        desired: "active",
+      }],
+    },
     authorization: {
       projectId: PROJECT.project.id,
       status: "authorized",

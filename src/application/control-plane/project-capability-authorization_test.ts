@@ -191,7 +191,29 @@ Deno.test("capability ledger grammar permits one prepared initial authority only
   );
 });
 
-Deno.test("capability coverage preserves exact retained material mode, bytes, licences and bindings", async () => {
+Deno.test("adding prescribed kinematics later is a Chrono-only semantic amendment", async () => {
+  const initial = await proposal("brief-intent", []);
+  const chronoRequirement = {
+    id: "mechanics.observe-prescribed-kinematics",
+    version: "1",
+    minimumQualification: "qualified" as const,
+    use: "execution" as const,
+  };
+  const successor = await proposal("published-plan", [chronoRequirement]);
+  const delta = projectCapabilityEnvelopeDelta(initial, successor);
+  assertEquals(delta.addedRequirementKeys, [
+    "mechanics.observe-prescribed-kinematics\u00001\u0000execution",
+  ]);
+  assertEquals(delta.removedRequirementKeys, []);
+  assertEquals(delta.bindingReplacements.map((entry) => entry.requirementKey), [
+    "mechanics.observe-prescribed-kinematics\u00001\u0000execution",
+  ]);
+  // An amendment compares only the changed operational envelope. It neither
+  // rewrites the Brief nor invents provider input for an agent.
+  assertEquals(initial.brief, successor.brief);
+});
+
+Deno.test("capability coverage keeps the exact candidate ceiling while local qualification mode may change", async () => {
   const requirement = {
     id: "geometry.observe-assembly-integrity",
     version: "1",
@@ -209,7 +231,7 @@ Deno.test("capability coverage preserves exact retained material mode, bytes, li
     downloadBytes: 12,
     storageBytes: 20,
   });
-  assertEquals(projectCapabilityProposalCovers(envelope, emulated), false);
+  assertEquals(projectCapabilityProposalCovers(envelope, emulated), true);
 
   const revisedBytes = await withOperationalMaterial(envelope, {
     mode: "native",
@@ -227,6 +249,41 @@ Deno.test("capability coverage preserves exact retained material mode, bytes, li
 
   const profileChanged = await withBindingProfile(envelope);
   assertEquals(projectCapabilityProposalCovers(envelope, profileChanged), false);
+});
+
+Deno.test("an approved unqualified candidate becomes executable after its exact local qualification without an amendment", async () => {
+  const requirement = {
+    id: "geometry.observe-assembly-integrity",
+    version: "1",
+    minimumQualification: "qualified" as const,
+    use: "execution" as const,
+  };
+  const initial = await withOperationalMaterial(
+    await proposal("brief-intent", [requirement]),
+    { mode: "unavailable", downloadBytes: 12, storageBytes: 20 },
+  );
+  const authorizedUnqualified = await withCandidateQualification(
+    initial,
+    "unqualified",
+  );
+  const exactQualified = await withCandidateQualification(
+    await withOperationalMaterial(authorizedUnqualified, {
+      mode: "emulated",
+      downloadBytes: 12,
+      storageBytes: 20,
+    }),
+    "qualified",
+  );
+
+  assertEquals(
+    projectCapabilityProposalCovers(authorizedUnqualified, exactQualified),
+    true,
+  );
+  assertEquals(
+    projectCapabilityEnvelopeDelta(authorizedUnqualified, exactQualified)
+      .bindingReplacements,
+    [],
+  );
 });
 
 async function proposal(
@@ -345,6 +402,45 @@ async function withBindingProfile(
         },
       },
     })),
+  };
+  return {
+    ...next,
+    capabilityProposalFingerprint: await fingerprintProjectCapabilityProposal(next),
+  };
+}
+
+async function withCandidateQualification(
+  proposal: ProjectCapabilityProposal,
+  qualification: "unqualified" | "qualified",
+): Promise<ProjectCapabilityProposal> {
+  const { capabilityProposalFingerprint: _fingerprint, ...body } = proposal;
+  const next = {
+    ...body,
+    bindings: body.bindings.map((binding) => ({
+      ...binding,
+      status: qualification === "qualified"
+        ? "selected" as const
+        : "unavailable" as const,
+      binding: qualification === "qualified"
+        ? {
+          id: binding.candidate!.id,
+          version: binding.candidate!.version,
+          qualification,
+        }
+        : null,
+      candidate: binding.candidate === undefined ? undefined : {
+        ...binding.candidate,
+        qualification,
+      },
+      reasons: qualification === "qualified"
+        ? []
+        : ["Runtime qualification is pending."],
+    })),
+    status: qualification === "qualified" ? "ready" as const : "blocked" as const,
+    activation: qualification === "qualified" ? "allowed" as const : "blocked" as const,
+    blockers: qualification === "qualified"
+      ? []
+      : ["Runtime qualification is pending."],
   };
   return {
     ...next,

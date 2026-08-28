@@ -3,6 +3,11 @@ import {
   FileProjectCapabilityLedgerStore,
   InMemoryProjectCapabilityLedgerStore,
 } from "../../adapters/control-plane/file-project-capability-ledger-store.ts";
+import {
+  FileCapabilityRuntimeAdminLockStore,
+  FileCapabilityRuntimeAdminPolicyStore,
+  FileCapabilityRuntimeHostMutationLock,
+} from "../../adapters/control-plane/file-capability-runtime-host-stores.ts";
 import { createFirstPartyCapabilityRuntimeCatalog } from "../../adapters/control-plane/first-party-capability-binding-catalog.ts";
 import { FileEngineeringProjectRevisionStore } from "../../adapters/shared/stores/engineering-project-store.ts";
 import { ProjectBriefCommandService } from "../use-cases/project/project-brief-command-service.ts";
@@ -11,6 +16,7 @@ import {
   ProjectCapabilityAuthorizationError,
   ProjectCapabilityAuthorizationService,
 } from "./project-capability-authorization-service.ts";
+import { LocalCapabilityRuntimeAdminService } from "./local-capability-runtime-admin-service.ts";
 import {
   fingerprintProjectCapabilityProposal,
   validateProjectCapabilityProposal,
@@ -27,26 +33,48 @@ Deno.test("brief capability authorization retains resolved candidates beside an 
       new Date(Date.parse("2026-08-29T00:00:00.000Z") + ++tick * 1_000).toISOString();
     const projects = new FileEngineeringProjectRevisionStore(directory);
     const briefs = new ProjectBriefCommandService(projects, now);
-    const authorization = new ProjectCapabilityAuthorizationService({
-      ledgers: new InMemoryProjectCapabilityLedgerStore(),
-      registry: { list: listRegisteredEngineeringOperations },
-      catalog: await createFirstPartyCapabilityRuntimeCatalog(),
-      policy: {
-        schemaVersion: "capability-runtime-admin-policy/1.0",
-        disabledBindingIds: [],
-        preferences: [],
+    const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+    const lock = new FileCapabilityRuntimeAdminLockStore(
+      `${directory}/host/admin-lock.json`,
+      catalog,
+    );
+    const ledgers = new InMemoryProjectCapabilityLedgerStore();
+    const hostMutationLock = new FileCapabilityRuntimeHostMutationLock(
+      `${directory}/host/mutation.lock`,
+    );
+    let interruptNextLockSave = false;
+    const lockWriter = {
+      read: () => lock.read(),
+      readRevision: (revision: number) => lock.readRevision(revision),
+      list: () => lock.list(),
+      save: async (value: Awaited<ReturnType<typeof lock.read>>) => {
+        if (interruptNextLockSave) {
+          interruptNextLockSave = false;
+          throw new Error("simulated ledger-to-lock interruption");
+        }
+        await lock.save(value);
       },
+    };
+    const preloads: unknown[] = [];
+    const authorization = new ProjectCapabilityAuthorizationService({
+      ledgers,
+      registry: { list: listRegisteredEngineeringOperations },
+      catalog,
+      policy: new FileCapabilityRuntimeAdminPolicyStore(
+        `${directory}/host/admin-policy.json`,
+        catalog,
+      ),
       host: {
         schemaVersion: "capability-runtime-host-observation/1.0",
+        identityFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
         platform: "linux/arm64",
-        emulatedPlatforms: [],
         images: [],
       },
-      lock: {
-        schemaVersion: "capability-runtime-admin-lock/1.0",
-        revision: 0,
-        previous: null,
-        units: [],
+      lock,
+      lockWriter,
+      hostMutationLock,
+      preloadScheduler: {
+        schedule: (proposal) => preloads.push(proposal),
       },
       now,
     });
@@ -154,6 +182,22 @@ Deno.test("brief capability authorization retains resolved candidates beside an 
     const finalized = await authorization.finalizeInitial(approved, proposal);
     assertEquals(finalized.effectiveEnvelope?.status, "authorized");
     assertEquals(
+      (await lock.read()).units.find((unit) =>
+        unit.id === "casys.mcp-build123d-observation"
+      )?.desired,
+      "active",
+    );
+    assertEquals(preloads.length, 1);
+    assertEquals(
+      (preloads[0] as { capabilityProposalFingerprint: unknown })
+        .capabilityProposalFingerprint,
+      proposal.capabilityProposalFingerprint,
+    );
+    await assertRejects(
+      () => Deno.stat(`${directory}/host/admin-lock.json`),
+      Deno.errors.NotFound,
+    );
+    assertEquals(
       (await authorization.inspect(approved.project.id)).authorization,
       "authorized",
     );
@@ -241,6 +285,72 @@ Deno.test("brief capability authorization retains resolved candidates beside an 
       ProjectCapabilityAuthorizationError,
       "different or revoked ceiling",
     );
+    const localAdmin = new LocalCapabilityRuntimeAdminService({
+      catalog,
+      ledgers,
+      lock,
+      hostMutationLock,
+      authorization,
+    });
+    const revocationReason =
+      "The local operator no longer permits this project capability envelope.";
+    const revocationReview = await localAdmin.revokeReview(
+      approved.project.id,
+      revocationReason,
+    );
+    // Simulate a process loss after durable ledger append but before lock
+    // convergence. The original review must remain exactly replayable without
+    // asking for another human decision.
+    interruptNextLockSave = true;
+    await assertRejects(
+      () =>
+        authorization.revoke(
+          approved.project.id,
+          finalized.effectiveEnvelope!.effectiveEnvelopeFingerprint,
+          revocationReason,
+        ),
+      Error,
+      "ledger-to-lock interruption",
+    );
+    const revoked = await ledgers.get(approved.project.id);
+    assertEquals(revoked?.effectiveEnvelope?.status, "revoked");
+    assertEquals(
+      (await lock.read()).units.find((unit) =>
+        unit.id === "casys.mcp-build123d-observation"
+      )?.desired,
+      "active",
+    );
+    // A retry after ledger persistence but before lock convergence is exact
+    // and never needs a second human decision.
+    await assertRejects(
+      () =>
+        localAdmin.revokeApply(
+          approved.project.id,
+          revocationReason,
+          { algorithm: "sha256", digest: "b".repeat(64) },
+          true,
+        ),
+      Error,
+      "stale",
+    );
+    await localAdmin.revokeApply(
+      approved.project.id,
+      revocationReason,
+      revocationReview.reviewFingerprint,
+      true,
+    );
+    assertEquals((await ledgers.get(approved.project.id))?.revision, revoked?.revision);
+    assertEquals(
+      (await lock.read()).units.find((unit) =>
+        unit.id === "casys.mcp-build123d-observation"
+      )?.desired,
+      "inactive",
+    );
+    await assertRejects(
+      () => localAdmin.revokeReview(approved.project.id, "A different reason."),
+      Error,
+      "authorized project envelope",
+    );
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
@@ -318,8 +428,8 @@ async function authorizationService(
     },
     host: {
       schemaVersion: "capability-runtime-host-observation/1.0",
+      identityFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
       platform: "linux/arm64",
-      emulatedPlatforms: [],
       images: [],
     },
     lock: {
@@ -362,6 +472,10 @@ class CrashAfterPendingLedgerStore implements ProjectCapabilityLedgerStore {
 
   get(projectId: string) {
     return this.#delegate.get(projectId);
+  }
+
+  list() {
+    return this.#delegate.list();
   }
 
   getPending(projectId: string) {

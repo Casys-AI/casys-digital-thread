@@ -181,6 +181,105 @@ function validLocalCalculixPlan(): Record<string, unknown> {
   return plan;
 }
 
+function validPrescribedKinematicsPlan(): Record<string, unknown> {
+  const plan = validCalculixPlan();
+  plan.id = "run-kinematics";
+  const run = plan.run as Record<string, unknown>;
+  run.runId = "run-kinematics";
+  run.workItemId = "verify-kinematics";
+  const workItem = plan.workItem as Record<string, unknown>;
+  workItem.id = "verify-kinematics";
+  workItem.operation = {
+    id: "verify.run-prescribed-kinematics",
+    version: "1",
+  };
+
+  const operational = plan.operationalCapability as {
+    operation: Record<string, unknown>;
+    bindings: Array<Record<string, unknown>>;
+  };
+  operational.operation = {
+    id: "verify.run-prescribed-kinematics",
+    version: "1",
+  };
+  const material = {
+    unitId: "casys.mcp-chrono",
+    materialId: "mcp-chrono-image",
+    imageDigest: "e".repeat(64),
+  };
+  operational.bindings[0] = {
+    capability: {
+      id: "mechanics.observe-prescribed-kinematics",
+      version: "1",
+      use: "execution",
+      minimumQualification: "qualified",
+    },
+    binding: { id: "chrono-prescribed-kinematics", version: "1" },
+    adapter: {
+      id: "chrono-prescribed-kinematics-adapter",
+      version: "0.3.1",
+      source: "test",
+    },
+    profile: null,
+    materials: [material],
+    runtimeModes: [{
+      material,
+      targetPlatform: "linux/amd64",
+      mode: "emulated",
+      qualificationAttestationFingerprint: fingerprint("f"),
+    }],
+    hostLifecycles: [{
+      material,
+      kind: "persistent-compose",
+      launchGroup: null,
+    }],
+  };
+
+  (plan.authorization as Record<string, unknown>).methodQualification = {
+    id: "prescribed-kinematics-observation",
+    version: "1.0",
+    fingerprint: fingerprint("c"),
+  };
+  const caseSource = (plan.sources as Record<string, unknown>[]).find((source) =>
+    source.bindingName === "proofCase"
+  )!;
+  caseSource.bindingName = "case";
+  caseSource.role = "prescribed-kinematics-case";
+  ((caseSource.artifact as Record<string, unknown>).casUri) =
+    `casys://prescribed-kinematics-case/sha256/${"c".repeat(64)}`;
+  plan.sources = [caseSource];
+
+  const requestId = "rop2-prescribed-kinematics-0123456789abcdef0123456789abcdef";
+  plan.action = {
+    kind: "prescribed-kinematics-observation",
+    lowering: { id: "prescribed-kinematics.case-json", version: "1.0" },
+    requestId,
+    input: {
+      prescribedKinematicsCase: {
+        id: "case-capture",
+        fingerprint: fingerprint("c"),
+        sourceBinding: "case",
+      },
+    },
+  };
+  plan.expectedProviderResources = {
+    receiptSchema: "chrono-prescribed-kinematics-receipt/1.0",
+    evidenceSchema: "prescribed-kinematics-observation/1.0",
+    resourceProfile: {
+      id: "prescribed-kinematics.observation-artifacts",
+      version: "1.0",
+    },
+  };
+  plan.recovery = {
+    policy: "prescribed-kinematics.observation-recovery@1.0",
+    requestId,
+    mode: "same-request-readback-no-blind-redispatch",
+    ambiguousOutcome: "quarantine-for-human-review",
+    capturedOutcome: "cas-only-recovery",
+  };
+  return plan;
+}
+
 function operationalCapabilityFor(
   operationVersion: "2" | "3",
 ): Record<string, unknown> {
@@ -219,6 +318,16 @@ function operationalCapabilityFor(
         unitId: "casys.calculix-worker",
         materialId: "calculix-worker",
         imageDigest: "e".repeat(64),
+      }],
+      runtimeModes: [{
+        material: {
+          unitId: "casys.calculix-worker",
+          materialId: "calculix-worker",
+          imageDigest: "e".repeat(64),
+        },
+        targetPlatform: "linux/arm64",
+        mode: "native",
+        qualificationAttestationFingerprint: null,
       }],
       hostLifecycles: [{
         material: {
@@ -550,6 +659,24 @@ Deno.test("ResolvedOperationPlan 2.0 enforces exact provider request ids and tim
       "positive integer",
     );
   }
+});
+
+Deno.test("ResolvedOperationPlan rejects a colon-bearing Chrono request before the L3 WAL", () => {
+  const plan = validPrescribedKinematicsPlan();
+  const exact = validateResolvedOperationPlanV2(plan);
+  assertEquals(
+    exact.action.kind === "prescribed-kinematics-observation" && exact.action.requestId,
+    "rop2-prescribed-kinematics-0123456789abcdef0123456789abcdef",
+  );
+
+  const colon = validPrescribedKinematicsPlan();
+  (colon.action as Record<string, unknown>).requestId = "rop2:prescribed-kinematics";
+  (colon.recovery as Record<string, unknown>).requestId = "rop2:prescribed-kinematics";
+  assertThrows(
+    () => validateResolvedOperationPlanV2(colon),
+    TypeError,
+    "exact prescribed kinematics request_id contract",
+  );
 });
 
 Deno.test("ResolvedOperationPlan 2.0 validates a closed CalculiX action and its exact geometry source", () => {

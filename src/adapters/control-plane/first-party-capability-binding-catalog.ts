@@ -51,15 +51,17 @@ import {
 } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
 import { validateCapabilityRuntimeCatalog } from "./capability-runtime-catalog.ts";
 import {
+  firstPartyBuild123dObservationLaunchGroupReference,
+  firstPartyBuild123dSandboxLaunchGroupReference,
   firstPartyCalculixLaunchGroupReference,
+  firstPartyChronoLaunchGroupReference,
   firstPartySysonLaunchGroupReference,
+  MCP_BUILD123D_061_IMAGE_REFERENCE,
   MCP_SYSON_IMAGE_REFERENCE,
   POSTGRES_IMAGE_REFERENCE,
   SYSON_IMAGE_REFERENCE,
 } from "./first-party-capability-runtime-launch-groups.ts";
 import type { CapabilityRuntimeLaunchGroupReference } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
-const MCP_BUILD123D_IMAGE =
-  "ghcr.io/casys-ai/mcp-build123d@sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d";
 
 const REVIEWED_LICENCE_DOC =
   "docs/reference/runtime/capability-packs/atomic-runtime-boundaries.md";
@@ -75,8 +77,19 @@ const SYSON_LAUNCH_GROUP_NOTE =
 export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
   CapabilityRuntimeCatalog
 > {
-  const sysonLaunchGroup = await firstPartySysonLaunchGroupReference();
-  const calculixLaunchGroup = await firstPartyCalculixLaunchGroupReference();
+  const [
+    sysonLaunchGroup,
+    build123dSandboxLaunchGroup,
+    build123dObservationLaunchGroup,
+    chronoLaunchGroup,
+    calculixLaunchGroup,
+  ] = await Promise.all([
+    firstPartySysonLaunchGroupReference(),
+    firstPartyBuild123dSandboxLaunchGroupReference(),
+    firstPartyBuild123dObservationLaunchGroupReference(),
+    firstPartyChronoLaunchGroupReference(),
+    firstPartyCalculixLaunchGroupReference(),
+  ]);
   const units = await Promise.all([
     unit("casys.syson-stack", [
       composeMaterial(
@@ -118,7 +131,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
     unit("casys.mcp-build123d-sandbox", [
       composeMaterial(
         "mcp-build123d-sandbox-image",
-        MCP_BUILD123D_IMAGE,
+        MCP_BUILD123D_061_IMAGE_REFERENCE,
         ["linux/amd64", "linux/arm64"],
         "mcp-build123d-sandbox",
         "loopback-only",
@@ -127,12 +140,13 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
           volume("build123d-sandbox-exports", "read-write", "preserve"),
         ],
         "reviewed",
+        build123dSandboxLaunchGroup,
       ),
     ], "0.6.1"),
     unit("casys.mcp-build123d-observation", [
       composeMaterial(
         "mcp-build123d-observation-image",
-        MCP_BUILD123D_IMAGE,
+        MCP_BUILD123D_061_IMAGE_REFERENCE,
         ["linux/amd64", "linux/arm64"],
         "mcp-build123d",
         "loopback-only",
@@ -140,7 +154,8 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         [
           volume("exports", "read-write", "preserve"),
         ],
-        "unknown",
+        "reviewed",
+        build123dObservationLaunchGroup,
       ),
     ], "0.6.1"),
     unit("casys.build123d-isolated-worker", [
@@ -213,7 +228,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "reviewed",
       ),
     ]),
-    unit("casys.mcp-chrono", [chronoMaterial()], "0.3.1"),
+    unit("casys.mcp-chrono", [chronoMaterial(chronoLaunchGroup)], "0.3.1"),
   ]);
   return await validateCapabilityRuntimeCatalog({
     schemaVersion: CAPABILITY_RUNTIME_CATALOG_SCHEMA_VERSION,
@@ -529,14 +544,16 @@ function ociImageMaterial(
  * local microVM workers. Its runtime security and ARM emulation qualification
  * remain literal unknown/unqualified until a dedicated probe records them.
  */
-function chronoMaterial(): AtomicCapabilityRuntimeMaterial {
+function chronoMaterial(
+  launchGroup: CapabilityRuntimeLaunchGroupReference,
+): AtomicCapabilityRuntimeMaterial {
   return {
     id: "mcp-chrono-image",
     kind: "compose-service",
     imageReference: MCP_CHRONO_031_IMAGE_REFERENCE,
     platforms: ["linux/amd64"],
     lifecycle: "persistent",
-    launchGroup: null,
+    launchGroup,
     effects: {
       downloadBytes: null,
       storageBytes: null,
@@ -550,7 +567,7 @@ function chronoMaterial(): AtomicCapabilityRuntimeMaterial {
       devices: [],
       secretSlots: ["chrono-mcp-bearer-token"],
       licence: { status: "unknown", reference: REVIEWED_LICENCE_DOC },
-      security: "unknown",
+      security: "reviewed",
     },
   };
 }
@@ -590,6 +607,9 @@ function binding(
       source,
       fingerprint: null,
     },
+    // Runtime mode is host-local and therefore never claimed by this
+    // code-owned catalogue baseline. The attestation evaluator fills it.
+    runtimeModes: [],
     limitations,
   } as const;
 }

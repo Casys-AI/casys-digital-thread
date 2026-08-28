@@ -121,7 +121,7 @@ Deno.test("atomic first-party runtime catalogue separates sources with distinct 
       status: "unknown",
       reference: "docs/reference/runtime/capability-packs/atomic-runtime-boundaries.md",
     },
-    security: "unknown",
+    security: "reviewed",
   });
   assertEquals(
     catalog.bindings.find((binding) => binding.id === "chrono-prescribed-kinematics")
@@ -163,16 +163,42 @@ Deno.test("runtime catalogue parsers fail closed on unsafe fields and lock/polic
     "does not match the canonical unit body",
   );
 
+  const runtimeModeClaim = structuredClone(catalog) as unknown as Record<
+    string,
+    unknown
+  >;
+  const claimedBinding = (runtimeModeClaim.bindings as Record<string, unknown>[])[0]!;
+  const claimedUnit = (runtimeModeClaim.units as Record<string, unknown>[])[0]!;
+  const claimedMaterial = (claimedUnit.materials as Record<string, unknown>[])[0]!;
+  claimedBinding.runtimeModes = [{
+    material: {
+      unitId: claimedUnit.id,
+      materialId: claimedMaterial.id,
+      imageDigest: String(claimedMaterial.imageReference).slice(
+        String(claimedMaterial.imageReference).lastIndexOf("@sha256:") + 8,
+      ),
+    },
+    targetPlatform: "linux/arm64",
+    mode: "native",
+    qualificationAttestationFingerprint: null,
+  }];
+  await assertRejects(
+    () => validateCapabilityRuntimeCatalog(runtimeModeClaim),
+    TypeError,
+    "runtimeModes must be empty",
+  );
+
   assertThrows(
     () =>
       validateCapabilityRuntimeHostObservation({
         schemaVersion: CAPABILITY_RUNTIME_HOST_OBSERVATION_SCHEMA_VERSION,
+        identityFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
         platform: "linux/arm64",
         emulatedPlatforms: ["linux/arm64"],
         images: [],
       }),
     TypeError,
-    "exclude the native platform",
+    "emulatedPlatforms",
   );
   assertThrows(
     () =>
@@ -199,5 +225,16 @@ Deno.test("runtime catalogue parsers fail closed on unsafe fields and lock/polic
       }, catalog),
     TypeError,
     "does not match",
+  );
+  await assertRejects(
+    () =>
+      validateCapabilityRuntimeAdminLock({
+        schemaVersion: CAPABILITY_RUNTIME_ADMIN_LOCK_SCHEMA_VERSION,
+        revision: 1,
+        previous: null,
+        units: [],
+      }, catalog),
+    TypeError,
+    "greater than 0 must name the exact previous",
   );
 });

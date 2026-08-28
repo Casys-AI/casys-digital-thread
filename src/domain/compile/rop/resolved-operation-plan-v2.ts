@@ -59,6 +59,14 @@ export const CALCULIX_ISOLATED_STATIC_RESOURCE_PROFILE = deepFreeze(
   } as const,
 );
 
+/** Closed factual-capture profile for prescribed kinematics L3. */
+export const PRESCRIBED_KINEMATICS_OBSERVATION_RESOURCE_PROFILE = deepFreeze(
+  {
+    id: "prescribed-kinematics.observation-artifacts",
+    version: "1.0",
+  } as const,
+);
+
 export interface ResolvedOperationPlanRef {
   readonly schemaVersion: typeof RESOLVED_OPERATION_PLAN_REF_SCHEMA;
   readonly planId: string;
@@ -124,7 +132,8 @@ export interface ResolvedOperationPlanV2 {
   readonly sources: readonly ResolvedOperationPlanSource[];
   readonly action:
     | ResolvedCalculixStaticStructuralAction
-    | ResolvedCalculixIsolatedStaticStructuralAction;
+    | ResolvedCalculixIsolatedStaticStructuralAction
+    | ResolvedPrescribedKinematicsObservationAction;
   /** Resource roles expected from the provider ledger/capture boundary. */
   readonly expectedProviderResources: ResolvedOperationPlanExpectedResources;
   /** Names a code-owned recovery policy; it does not define a state machine. */
@@ -164,6 +173,14 @@ export type ResolvedOperationPlanExpectedResources =
       readonly id: "calculix-isolated.static-artifacts";
       readonly version: "1.0";
     };
+  }
+  | {
+    readonly receiptSchema: "chrono-prescribed-kinematics-receipt/1.0";
+    readonly evidenceSchema: "prescribed-kinematics-observation/1.0";
+    readonly resourceProfile: {
+      readonly id: "prescribed-kinematics.observation-artifacts";
+      readonly version: "1.0";
+    };
   };
 
 export type ResolvedOperationPlanRecovery =
@@ -176,6 +193,7 @@ export type ResolvedOperationPlanRecovery =
   & (
     | { readonly policy: "mcp-calculix.recorded-static-recovery@1.0" }
     | { readonly policy: "calculix-isolated-generation-recovery@1.0" }
+    | { readonly policy: "prescribed-kinematics.observation-recovery@1.0" }
   );
 
 export interface ResolvedCalculixStaticStructuralAction {
@@ -230,8 +248,32 @@ export interface ResolvedCalculixIsolatedStaticStructuralAction {
   readonly input: ResolvedCalculixStaticStructuralAction["input"];
 }
 
+/**
+ * Semantic L3 action only. Its concrete selected binding/image/launch group
+ * lives in `operationalCapability`, never in agent-visible action input.
+ */
+export interface ResolvedPrescribedKinematicsObservationAction {
+  readonly kind: "prescribed-kinematics-observation";
+  readonly lowering: {
+    readonly id: "prescribed-kinematics.case-json";
+    readonly version: "1.0";
+  };
+  readonly requestId: string;
+  readonly input: {
+    readonly prescribedKinematicsCase: {
+      readonly id: string;
+      readonly fingerprint: ContentFingerprint;
+      readonly sourceBinding: string;
+    };
+  };
+}
+
 const SHA256_HEX = /^[a-f0-9]{64}$/;
 const CALCULIX_REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+// Chrono publishes a narrower request-id wire contract than CalculiX. In
+// particular a colon is not permitted, so a plan must fail before it can
+// reach the L3 WAL or any provider readback/dispatch path.
+const CHRONO_REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MEDIA_TYPE =
   /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*(?:; [a-z0-9!#$&^_.+-]+=(?:[a-z0-9!#$&^_.+-]+|"[^"\r\n]*"))*$/;
 const ROOT_KEYS = [
@@ -573,6 +615,45 @@ function parseSource(value: unknown, path: string): ResolvedOperationPlanSource 
 
 function parseAction(value: unknown, path: string): ResolvedOperationPlanV2["action"] {
   const root = dataRecord(value, path);
+  if (root.kind === "prescribed-kinematics-observation") {
+    const input = strictRecord(
+      value,
+      ["kind", "lowering", "requestId", "input"],
+      path,
+    );
+    const lowering = strictRecord(
+      input.lowering,
+      ["id", "version"],
+      `${path}.lowering`,
+    );
+    literal(
+      lowering.id,
+      "prescribed-kinematics.case-json",
+      `${path}.lowering.id`,
+    );
+    literal(lowering.version, "1.0", `${path}.lowering.version`);
+    const actionInput = strictRecord(
+      input.input,
+      ["prescribedKinematicsCase"],
+      `${path}.input`,
+    );
+    return {
+      kind: "prescribed-kinematics-observation",
+      lowering: { id: "prescribed-kinematics.case-json", version: "1.0" },
+      requestId: providerRequestId(
+        input.requestId,
+        CHRONO_REQUEST_ID,
+        `${path}.requestId`,
+        "prescribed kinematics",
+      ),
+      input: {
+        prescribedKinematicsCase: sourceBoundCaseIdentity(
+          actionInput.prescribedKinematicsCase,
+          `${path}.input.prescribedKinematicsCase`,
+        ),
+      },
+    };
+  }
   if (
     root.kind === "static-structural-analysis" ||
     root.kind === "isolated-static-structural-analysis"
@@ -784,6 +865,36 @@ function parseExpectedResources(
       },
     };
   }
+  if (profile.id === PRESCRIBED_KINEMATICS_OBSERVATION_RESOURCE_PROFILE.id) {
+    const input = strictRecord(
+      value,
+      ["receiptSchema", "evidenceSchema", "resourceProfile"],
+      path,
+    );
+    literal(
+      input.receiptSchema,
+      "chrono-prescribed-kinematics-receipt/1.0",
+      `${path}.receiptSchema`,
+    );
+    literal(
+      input.evidenceSchema,
+      "prescribed-kinematics-observation/1.0",
+      `${path}.evidenceSchema`,
+    );
+    literal(
+      profile.version,
+      PRESCRIBED_KINEMATICS_OBSERVATION_RESOURCE_PROFILE.version,
+      `${path}.resourceProfile.version`,
+    );
+    return {
+      receiptSchema: "chrono-prescribed-kinematics-receipt/1.0",
+      evidenceSchema: "prescribed-kinematics-observation/1.0",
+      resourceProfile: {
+        id: "prescribed-kinematics.observation-artifacts",
+        version: "1.0",
+      },
+    };
+  }
   throw new TypeError(`${path}.resourceProfile.id is not a code-owned profile.`);
 }
 
@@ -814,7 +925,8 @@ function parseRecovery(
   );
   if (
     input.policy !== "mcp-calculix.recorded-static-recovery@1.0" &&
-    input.policy !== "calculix-isolated-generation-recovery@1.0"
+    input.policy !== "calculix-isolated-generation-recovery@1.0" &&
+    input.policy !== "prescribed-kinematics.observation-recovery@1.0"
   ) {
     throw new TypeError(`${path}.policy is not a code-owned recovery policy.`);
   }
@@ -872,6 +984,14 @@ function assertActionMatchesOperation(
       `${path}.kind isolated-static-structural-analysis requires verify.run-fea-static-proof@3.`,
     );
   }
+  if (
+    action.kind === "prescribed-kinematics-observation" &&
+    (operation.id !== "verify.run-prescribed-kinematics" || operation.version !== "1")
+  ) {
+    throw new TypeError(
+      `${path}.kind prescribed-kinematics-observation requires verify.run-prescribed-kinematics@1.`,
+    );
+  }
 }
 
 function assertActionCaseMatchesSource(
@@ -879,6 +999,29 @@ function assertActionCaseMatchesSource(
   sources: readonly ResolvedOperationPlanSource[],
   path: string,
 ): void {
+  if (action.kind === "prescribed-kinematics-observation") {
+    const caseIdentity = action.input.prescribedKinematicsCase;
+    const source = sources.find((candidate) =>
+      candidate.bindingName === caseIdentity.sourceBinding
+    );
+    if (!source) {
+      throw new TypeError(
+        `${path} prescribed kinematics sourceBinding must name an exact $plan.sources binding.`,
+      );
+    }
+    if (!fingerprintsEqual(source.artifact.fingerprint, caseIdentity.fingerprint)) {
+      throw new TypeError(
+        `${path} prescribed kinematics case fingerprint must equal its exact source artifact fingerprint.`,
+      );
+    }
+    assertSourceRoleAndMedia(
+      source,
+      "prescribed-kinematics-case",
+      "application/json",
+      `${path}.input.prescribedKinematicsCase.sourceBinding`,
+    );
+    return;
+  }
   const caseIdentity = action.input.proofCase;
   const source = sources.find((candidate) =>
     candidate.bindingName === caseIdentity.sourceBinding
@@ -962,6 +1105,34 @@ function assertProviderEvidenceMatchesAction(
   recovery: ResolvedOperationPlanRecovery,
   path: string,
 ): void {
+  if (action.kind === "prescribed-kinematics-observation") {
+    if (
+      expected.resourceProfile.id !==
+        PRESCRIBED_KINEMATICS_OBSERVATION_RESOURCE_PROFILE.id ||
+      !("receiptSchema" in expected) ||
+      expected.receiptSchema !== "chrono-prescribed-kinematics-receipt/1.0" ||
+      expected.evidenceSchema !== "prescribed-kinematics-observation/1.0" ||
+      recovery.policy !== "prescribed-kinematics.observation-recovery@1.0"
+    ) {
+      throw new TypeError(
+        `${path} prescribed kinematics action requires its exact factual receipt and recovery profiles.`,
+      );
+    }
+    if (
+      authorization.methodQualification.id !== "prescribed-kinematics-observation" ||
+      authorization.methodQualification.version !== "1.0"
+    ) {
+      throw new TypeError(
+        `${path} prescribed kinematics action requires the exact code-owned observation method.`,
+      );
+    }
+    assertClosedSourceProfile(
+      sources,
+      [["case", "prescribed-kinematics-case", "application/json"]],
+      `${path}.sources`,
+    );
+    return;
+  }
   if (action.kind === "isolated-static-structural-analysis") {
     if (
       expected.resourceProfile.id !== CALCULIX_ISOLATED_STATIC_RESOURCE_PROFILE.id ||

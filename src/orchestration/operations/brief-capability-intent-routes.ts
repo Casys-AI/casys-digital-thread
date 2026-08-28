@@ -57,6 +57,20 @@ export const ADMITTED_SPICE_ELECTRICAL_VERIFICATION_AUTHORITY = deepFreeze(
 );
 
 /**
+ * Semantic authority for one prescribed rigid-body kinematics observation.
+ *
+ * This names the engineering intent only.  The capability planner later
+ * selects (or marks unavailable) an exact server-owned binding; a Brief never
+ * accepts a Chrono image, endpoint, provider tool, or argument from a caller.
+ */
+export const PRESCRIBED_KINEMATICS_VERIFICATION_AUTHORITY = deepFreeze(
+  {
+    id: "prescribed-kinematics",
+    version: "1.0",
+  } satisfies ProjectBriefVerificationAuthority,
+);
+
+/**
  * The route table forecasts only the registered operations which may carry a
  * runtime demand. The compiler resolves those demands from the real registry;
  * this table never restates a capability or selects a provider/runtime.
@@ -84,6 +98,10 @@ export const BRIEF_CAPABILITY_INTENT_ROUTES = deepFreeze(
     {
       authority: ADMITTED_SPICE_ELECTRICAL_VERIFICATION_AUTHORITY,
       operations: [{ id: "simulate.run-admitted-spice", version: "1" }],
+    },
+    {
+      authority: PRESCRIBED_KINEMATICS_VERIFICATION_AUTHORITY,
+      operations: [{ id: "verify.run-prescribed-kinematics", version: "1" }],
     },
     {
       authority: ASSEMBLY_INTEGRITY_VERIFICATION_AUTHORITY,

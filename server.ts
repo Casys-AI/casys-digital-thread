@@ -176,36 +176,20 @@ import { ControlPlane } from "./src/application/control-plane/control-plane.ts";
 import { EngineeringProjectCommandError } from "./src/application/use-cases/project/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "./src/application/use-cases/project/project-brief-command-service.ts";
 import { ProjectCapabilityAuthorizationService } from "./src/application/control-plane/project-capability-authorization-service.ts";
-import {
-  FixedCapabilityRuntimeAdminLockReader,
-  FixedCapabilityRuntimeAdminPolicyReader,
-  ProjectCapabilityRuntimeContextCompiler,
-} from "./src/application/control-plane/project-capability-runtime-context-compiler.ts";
 import { CapabilityRuntimeSupervisor } from "./src/application/control-plane/capability-runtime-supervisor.ts";
 import { CapabilityRuntimeExecutionSessionCoordinator } from "./src/application/control-plane/capability-runtime-execution-session.ts";
+import { ProjectCapabilityJitDemandReader } from "./src/application/control-plane/project-capability-jit-demand-reader.ts";
+import { CapabilityRuntimePreparationSessionCoordinator } from "./src/application/control-plane/capability-runtime-preparation-session.ts";
 import {
   FileCapabilityRuntimeHostMutationLock,
-  FileCapabilityRuntimeJournal,
   FileCapabilityRuntimeLeaseStore,
 } from "./src/adapters/control-plane/file-capability-runtime-host-stores.ts";
+import { DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY } from "./src/adapters/control-plane/file-project-capability-ledger-store.ts";
 import { createCapabilityRuntimeHostAdapter } from "./src/adapters/control-plane/compose-capability-runtime-host.ts";
-import { GroupCapabilityRuntimeHostObservationReader } from "./src/adapters/control-plane/group-capability-runtime-host-observation-reader.ts";
-import { createFirstPartyCapabilityRuntimeLaunchGroupRegistry } from "./src/adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
 import { CapabilityRuntimeLaunchGroupSupervisor } from "./src/application/control-plane/capability-runtime-launch-group-supervisor.ts";
 import { CapabilityRuntimePreloadScheduler } from "./src/application/control-plane/capability-runtime-preload-scheduler.ts";
-import type { CapabilityRuntimeSecretSlotObserver } from "./src/application/ports/out/capability/capability-runtime-supervisor.ts";
-import { LocalMicrosandboxCapabilityRuntimeCache } from "./src/adapters/control-plane/microsandbox-capability-runtime-cache.ts";
-import {
-  createLocalMicrosandboxSdk,
-  microsandboxHostArchitecture,
-} from "./src/adapters/shared/execution/microsandbox-ephemeral-execution-backend.ts";
-import { CALCULIX_MICROSANDBOX_WORKER_CONTRACT } from "./src/adapters/fea/isolated-v3/calculix-static-proof-v1/worker-contract.ts";
-import { FileProjectCapabilityLedgerStore } from "./src/adapters/control-plane/file-project-capability-ledger-store.ts";
-import { createFirstPartyCapabilityRuntimeCatalog } from "./src/adapters/control-plane/first-party-capability-binding-catalog.ts";
-import {
-  type CapabilityRuntimeAdminLock,
-  type CapabilityRuntimeAdminPolicy,
-} from "./src/application/control-plane/read-model/capability-runtime-catalog.ts";
+import { createLocalCapabilityRuntimeReadComposition } from "./src/adapters/control-plane/local-capability-runtime-read-composition.ts";
+import { LocalChronoRuntimeSecretResolver } from "./src/adapters/control-plane/local-chrono-runtime-secret-resolver.ts";
 import {
   listRegisteredEngineeringOperations,
   REGISTERED_ENGINEERING_OPERATION_REGISTRY,
@@ -258,13 +242,14 @@ import { DeclaredAgainstPrescribedKinematicsArchitectureIndex } from "./src/adap
 import { FilePrescribedKinematicsCaptureStore } from "./src/adapters/mechanics/chrono/file-prescribed-kinematics-capture-store.ts";
 import { FilePrescribedKinematicsObservationAttemptStore } from "./src/adapters/mechanics/chrono/file-prescribed-kinematics-observation-attempt-store.ts";
 import { ChronoPrescribedKinematicsCaseLowerer } from "./src/adapters/mechanics/chrono/chrono-prescribed-kinematics-case-lowerer.ts";
+import { ChronoPrescribedKinematicsClient } from "./src/adapters/mechanics/chrono/chrono-prescribed-kinematics-client.ts";
 import { PrescribedKinematicsRunExecutor } from "./src/adapters/mechanics/chrono/prescribed-kinematics-run-executor.ts";
+import { PrepareProjectPrescribedKinematicsNextHopReview } from "./src/adapters/mechanics/prepare-project-prescribed-kinematics-next-hop-review.ts";
 import { CaptureProjectPrescribedKinematicsCase } from "./src/application/use-cases/mechanics/prescribed-kinematics/capture-project-prescribed-kinematics-case.ts";
 import { DecidePrescribedKinematicsCloseout } from "./src/application/use-cases/mechanics/prescribed-kinematics/decide-prescribed-kinematics-closeout.ts";
 import { EvaluatePrescribedKinematics } from "./src/application/use-cases/mechanics/prescribed-kinematics/evaluate-prescribed-kinematics.ts";
 import { SealPrescribedKinematicsMethod } from "./src/application/use-cases/mechanics/prescribed-kinematics/seal-prescribed-kinematics-method.ts";
 import { RunPrescribedKinematicsObservation } from "./src/application/use-cases/mechanics/prescribed-kinematics/run-prescribed-kinematics-observation.ts";
-import type { PrescribedKinematicsObserver } from "./src/application/ports/out/mechanics/prescribed-kinematics-observer.ts";
 import {
   DECIDE_ACCEPT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION,
   DECIDE_REJECT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION,
@@ -383,8 +368,6 @@ const DEFAULT_ASSEMBLY_INTEGRITY_EVALUATION_ATTEMPT_DIRECTORY =
   "state/local/assembly-integrity-evaluation-attempts";
 const DEFAULT_ENGINEERING_PROJECT_RUN_LEASE_DIRECTORY =
   "state/local/engineering-project-run-leases";
-const DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY =
-  "state/local/project-capability-ledgers";
 const DEFAULT_CAPABILITY_RUNTIME_LEASE_DIRECTORY =
   "state/local/capability-runtime-host/leases";
 const DEFAULT_PROJECT_BASELINE_DIRECTORY = "config/projects/baselines";
@@ -588,15 +571,6 @@ export interface CreateConsoleServerOptions {
   prescribedKinematicsCaptureDirectory?: string;
   /** Durable prescribed-kinematics L3 dispatch-intent WAL. */
   prescribedKinematicsObservationAttemptDirectory?: string;
-  /**
-   * Explicit server-owned L3 composition seam. Supplying this fixed observer
-   * means its Chrono capability/runtime has already been qualified elsewhere; no
-   * MCP caller can select or inspect that binding.
-   */
-  prescribedKinematicsObservation?: {
-    /** Fixed client for an already-qualified server-owned Chrono runtime. */
-    readonly observer: PrescribedKinematicsObserver;
-  };
   engineeringProjectRunLeaseDirectory?: string;
   projectBaselineDirectory?: string;
   /** Root of the closed CAS/WAL layout used by isolated-analysis operations. */
@@ -655,9 +629,6 @@ export async function createConsoleServer(
     );
   const syson = manifest.servers.find((server) => server.id === "syson");
   const build123d = manifest.servers.find((server) => server.id === "build123d");
-  const build123dSandbox = manifest.servers.find((server) =>
-    server.id === "build123d-sandbox"
-  );
   const dfm = manifest.servers.find((server) => server.id === "dfm");
   const prusaslicer = manifest.servers.find((server) => server.id === "prusaslicer");
   const docker = options.docker ?? new DockerComposeObserver();
@@ -675,7 +646,6 @@ export async function createConsoleServer(
     ? await createProjectControl(
       options,
       syson?.mcpUrl,
-      build123dSandbox?.mcpUrl,
       build123d,
       dfm?.mcpUrl,
       prusaslicer?.mcpUrl,
@@ -773,7 +743,6 @@ export async function createConsoleServer(
 async function createProjectControl(
   options: CreateConsoleServerOptions,
   sysonMcpUrl?: string,
-  build123dSandboxMcpUrl?: string,
   assemblyIntegrityBuild123dServer?: DesiredServer,
   dfmMcpUrl?: string,
   prusaslicerMcpUrl?: string,
@@ -904,6 +873,23 @@ async function createProjectControl(
     recordedAnalysisDirectory,
   });
 
+  // The immutable mechanism capture lanes are created before ROP composition
+  // so queue-time sealing can reopen the exact L1 case bytes. This is inert:
+  // it neither starts Chrono nor resolves a secret.
+  const prescribedKinematicsExecution = Object.freeze({
+    captures: new FilePrescribedKinematicsCaptureStore(
+      options.prescribedKinematicsCaptureDirectory ??
+        "state/local/mechanics/prescribed-kinematics/captures",
+    ),
+    observationAttempts: new FilePrescribedKinematicsObservationAttemptStore(
+      options.prescribedKinematicsObservationAttemptDirectory ??
+        "state/local/mechanics/prescribed-kinematics/observation-attempts",
+    ),
+    sealMethod: new SealPrescribedKinematicsMethod(reopenAgentResource),
+    evaluate: new EvaluatePrescribedKinematics(),
+    decideCloseout: new DecidePrescribedKinematicsCloseout(),
+  });
+
   const feaFoundation = createFeaFoundation();
   const recordedPlans = createRecordedOperationPlanComposition({
     snapshots: threadSnapshots,
@@ -912,103 +898,58 @@ async function createProjectControl(
     requirementsCaptures: architectureFoundation.requirementsCaptures,
     admissions: compilationFoundation.technicalCompilationAdmissions,
     calculixLocalProfile: calculixCapability.localProfile,
+    prescribedKinematicsCaptures: prescribedKinematicsExecution.captures,
     recordedAnalysisDirectory,
     canonicalAssetDirectory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
   });
 
   const activeProjectDirectory = options.activeProjectDirectory ??
     DEFAULT_ACTIVE_PROJECT_DIRECTORY;
-  const capabilityCatalog = await createFirstPartyCapabilityRuntimeCatalog();
-  const capabilityLaunchGroups =
-    await createFirstPartyCapabilityRuntimeLaunchGroupRegistry();
-  const capabilityRuntimeJournal = new FileCapabilityRuntimeJournal();
+  // The resolver is the only component that may read the host-local Chrono
+  // bearer token. It returns opaque snapshots only; neither values nor a
+  // generic environment map cross server composition.
+  const capabilityRuntimeSecrets = new LocalChronoRuntimeSecretResolver();
+  const capabilityRead = await createLocalCapabilityRuntimeReadComposition({
+    ledgerDirectory: options.projectCapabilityLedgerDirectory ??
+      DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY,
+    secrets: capabilityRuntimeSecrets,
+    calculixExecutionProfile: calculixCapability.localProfile === undefined
+      ? undefined
+      : {
+        imageReference: calculixCapability.localProfile.runtimeBackend.imageReference,
+        imageDigest: calculixCapability.localProfile.runtimeBackend.imageDigest,
+        profileFingerprint: calculixCapability.localProfile.profileFingerprint,
+      },
+  });
   const capabilityRuntimeLeases = new FileCapabilityRuntimeLeaseStore(
     DEFAULT_CAPABILITY_RUNTIME_LEASE_DIRECTORY,
   );
   const capabilityRuntimeMutationLock = new FileCapabilityRuntimeHostMutationLock();
-  // This H1 group has no secret slots. A future nonempty slot is unavailable
-  // by default; no value crosses this server composition boundary.
-  const capabilityRuntimeSecrets: CapabilityRuntimeSecretSlotObserver = {
-    observe(slots) {
-      return Promise.resolve(
-        new Map(slots.map((slot) => [slot, "unavailable" as const])),
-      );
-    },
-  };
   const capabilityRuntimeHost = createCapabilityRuntimeHostAdapter({
-    registry: capabilityLaunchGroups,
-    journal: capabilityRuntimeJournal,
+    registry: capabilityRead.launchGroups,
+    journal: capabilityRead.journal,
     secrets: capabilityRuntimeSecrets,
+    secretInjector: capabilityRuntimeSecrets,
   });
   const capabilityRuntimeGroups = new CapabilityRuntimeLaunchGroupSupervisor({
-    groups: capabilityLaunchGroups,
-    journal: capabilityRuntimeJournal,
+    groups: capabilityRead.launchGroups,
+    journal: capabilityRead.journal,
     leases: capabilityRuntimeLeases,
-    states: capabilityRuntimeHost,
+    states: capabilityRead.composeObserver,
     host: capabilityRuntimeHost,
     secrets: capabilityRuntimeSecrets,
     lock: capabilityRuntimeMutationLock,
   });
-  const capabilityHost = new GroupCapabilityRuntimeHostObservationReader(
-    capabilityCatalog,
-    capabilityRuntimeHost,
-  );
-  const capabilityPolicy: CapabilityRuntimeAdminPolicy = {
-    schemaVersion: "capability-runtime-admin-policy/1.0",
-    disabledBindingIds: [],
-    preferences: [],
-  };
-  const capabilityLock: CapabilityRuntimeAdminLock = {
-    schemaVersion: "capability-runtime-admin-lock/1.0",
-    revision: 0,
-    previous: null,
-    units: [],
-  };
-  const capabilityLedgers = new FileProjectCapabilityLedgerStore(
-    options.projectCapabilityLedgerDirectory ??
-      DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY,
-  );
-  const capabilityContexts = new ProjectCapabilityRuntimeContextCompiler({
-    registry: { list: listRegisteredEngineeringOperations },
-    catalog: capabilityCatalog,
-    policy: new FixedCapabilityRuntimeAdminPolicyReader(capabilityPolicy),
-    host: capabilityHost,
-    lock: new FixedCapabilityRuntimeAdminLockReader(capabilityLock),
-    ledgers: capabilityLedgers,
-  });
   const capabilityRuntime = new CapabilityRuntimeSupervisor({
-    contexts: capabilityContexts,
+    contexts: capabilityRead.contexts,
     operations: { require: requireRegisteredEngineeringOperation },
   });
-  const capabilityRuntimeSession = new CapabilityRuntimeExecutionSessionCoordinator({
-    contexts: capabilityContexts,
-    leases: capabilityRuntimeLeases,
-    groups: capabilityRuntimeGroups,
-    // Lazy exact inspection only: no image load, pull, sandbox create or
-    // Compose start occurs during server construction or queueing.
-    microsandbox: new LocalMicrosandboxCapabilityRuntimeCache(
-      createLocalMicrosandboxSdk,
-      calculixCapability.localProfile === undefined ? [] : [{
-        material: {
-          unitId: "casys.calculix-worker",
-          materialId: "calculix-worker-image",
-        },
-        image: {
-          reference: calculixCapability.localProfile.runtimeBackend.imageReference,
-          manifestDigest:
-            `sha256:${calculixCapability.localProfile.runtimeBackend.imageDigest.digest}`,
-          os: "linux",
-          architecture: microsandboxHostArchitecture(),
-          user: CALCULIX_MICROSANDBOX_WORKER_CONTRACT.expectedImageUser,
-          entrypoint: [
-            CALCULIX_MICROSANDBOX_WORKER_CONTRACT.executable,
-            ...CALCULIX_MICROSANDBOX_WORKER_CONTRACT.args,
-          ],
-        },
-        executionProfileFingerprint: calculixCapability.localProfile.profileFingerprint,
-      }],
-    ),
-  });
+  const capabilityRuntimePreparation =
+    new CapabilityRuntimePreparationSessionCoordinator({
+      authorization: capabilityRuntime,
+      leases: capabilityRuntimeLeases,
+      groups: capabilityRuntimeGroups,
+    });
   const runtime = await createEngineeringProjectCommandRuntime({
     projectId: options.projectId,
     trackedManifestPath: options.projectPath,
@@ -1029,13 +970,29 @@ async function createProjectControl(
       },
     ),
   });
+  const capabilityJitDemand = new ProjectCapabilityJitDemandReader({
+    projects: runtime.projects,
+    contexts: capabilityRead.contexts,
+  });
+  const capabilityRuntimeSession = new CapabilityRuntimeExecutionSessionCoordinator({
+    contexts: capabilityRead.contexts,
+    leases: capabilityRuntimeLeases,
+    groups: capabilityRuntimeGroups,
+    // Lazy exact inspection only: no image load, pull, sandbox create or
+    // Compose start occurs during server construction or queueing.
+    microsandbox: capabilityRead.microsandbox,
+    hasRemainingJitDemand: (input) => capabilityJitDemand.hasRemainingDemand(input),
+  });
   const capabilityAuthorization = new ProjectCapabilityAuthorizationService({
-    ledgers: capabilityLedgers,
+    ledgers: capabilityRead.ledgers,
     registry: { list: listRegisteredEngineeringOperations },
-    catalog: capabilityCatalog,
-    policy: capabilityPolicy,
-    host: capabilityHost,
-    lock: capabilityLock,
+    catalog: capabilityRead.catalog,
+    policy: capabilityRead.policy,
+    host: capabilityRead.host,
+    qualifications: capabilityRead.qualifications,
+    lock: capabilityRead.lock,
+    lockWriter: capabilityRead.lock,
+    hostMutationLock: capabilityRuntimeMutationLock,
     preloadScheduler: new CapabilityRuntimePreloadScheduler({
       host: capabilityRuntimeGroups,
     }),
@@ -1178,7 +1135,7 @@ async function createProjectControl(
     build123dExecution: build123dCapability.build123dExecution,
     capabilityRuntime,
     capabilityRuntimeSession,
-    capabilityRuntimeLaunchGroups: capabilityLaunchGroups,
+    capabilityRuntimeLaunchGroups: capabilityRead.launchGroups,
     sysonMcpUrl,
     sensitivityStepCacheDirectory: DEFAULT_SENSITIVITY_STEP_CACHE_DIRECTORY,
   });
@@ -1228,8 +1185,8 @@ async function createProjectControl(
     sysmlSourceAnalysis: architectureFoundation.sysmlSourceAnalysis,
   });
   // This provider-free review is always composable: it only recrosses the
-  // workspace and architecture evidence. Chrono remains absent until a later
-  // server-owned qualified runtime composition supplies the L3 executor.
+  // workspace and architecture evidence. The L3 executor below remains
+  // fail-closed until the fixed server-owned Chrono binding is qualified.
   const prescribedKinematicsCaseReview = new CaptureProjectPrescribedKinematicsCase({
     workspace: sourceWorkspaceStore,
     resources: reopenAgentResource,
@@ -1239,23 +1196,20 @@ async function createProjectControl(
       architectureFoundation.sysmlSourceAnalysis,
     ),
   });
-  // Provider-free parts of the vertical are present independently from
-  // Chrono. An L3 observer is deliberately absent until an explicit qualified
-  // server-owned runtime binding composes it; no endpoint or provider can be
-  // inferred from a caller, environment variable, or review request.
-  const prescribedKinematicsExecution = Object.freeze({
-    captures: new FilePrescribedKinematicsCaptureStore(
-      options.prescribedKinematicsCaptureDirectory ??
-        "state/local/mechanics/prescribed-kinematics/captures",
-    ),
-    observationAttempts: new FilePrescribedKinematicsObservationAttemptStore(
-      options.prescribedKinematicsObservationAttemptDirectory ??
-        "state/local/mechanics/prescribed-kinematics/observation-attempts",
-    ),
-    sealMethod: new SealPrescribedKinematicsMethod(reopenAgentResource),
-    evaluate: new EvaluatePrescribedKinematics(),
-    decideCloseout: new DecidePrescribedKinematicsCloseout(),
-  });
+  // Discovery of the already registered method/L4/L5 route is provider-free
+  // too: it recrosses only durable project and Thread evidence. In particular,
+  // it has no Chrono runtime, secret, or dispatch dependency, so unqualified
+  // Chrono remains literally unavailable for any future L3 execution.
+  const prescribedKinematicsNextHopReview =
+    new PrepareProjectPrescribedKinematicsNextHopReview({
+      projects: runtime.projects,
+      snapshots: build123dThreadSnapshots,
+      captures: prescribedKinematicsExecution.captures,
+    });
+  // L1/L4/L5 remain provider-free. L3 is a fixed internal Chrono binding but
+  // its queue/execution path remains fail-closed until the capability catalog
+  // carries a live qualified (or compatible) binding; no caller can choose an
+  // endpoint, image, tool, argument envelope, or bearer token.
   const prescribedKinematicsRunExecutor = new PrescribedKinematicsRunExecutor({
     projects: runtime.projects,
     commands: runtime.commands,
@@ -1263,13 +1217,21 @@ async function createProjectControl(
     lease,
     caseReview: prescribedKinematicsCaseReview,
     captures: prescribedKinematicsExecution.captures,
-    ...(options.prescribedKinematicsObservation === undefined ? {} : {
-      observe: new RunPrescribedKinematicsObservation({
-        attempts: prescribedKinematicsExecution.observationAttempts,
-        observer: options.prescribedKinematicsObservation.observer,
-        lowerer: new ChronoPrescribedKinematicsCaseLowerer(),
-      }),
-    }),
+    plans: recordedPlans.recordedRunPlans,
+    capabilityRuntime,
+    capabilityRuntimeSession,
+    chronoRuntime: {
+      secrets: capabilityRuntimeSecrets,
+      createObservation: (secretSnapshot) =>
+        new RunPrescribedKinematicsObservation({
+          attempts: prescribedKinematicsExecution.observationAttempts,
+          observer: ChronoPrescribedKinematicsClient.fromTrustedRuntime({
+            secretResolver: capabilityRuntimeSecrets,
+            secretSnapshot,
+          }),
+          lowerer: new ChronoPrescribedKinematicsCaseLowerer(),
+        }),
+    },
     sealMethod: prescribedKinematicsExecution.sealMethod,
     evaluate: prescribedKinematicsExecution.evaluate,
     decideCloseout: prescribedKinematicsExecution.decideCloseout,
@@ -1546,6 +1508,7 @@ async function createProjectControl(
       technicalSourceCapture: compilationFoundation.technicalSourceCapture,
       cadPlacementCapture: cadPlacement.cadPlacementCapture,
       prescribedKinematicsCaseReview,
+      prescribedKinematicsNextHopReview,
       geometryModuleExport,
       assemblyIntegrityReview,
       assemblyIntegrityEvaluationReview,
@@ -1610,15 +1573,16 @@ async function createProjectControl(
       admittedSpiceEvaluationReview: electricalProject.admittedSpiceEvaluationReview,
       admittedSpiceEvaluationCloseoutReview:
         electricalProject.admittedSpiceEvaluationCloseoutReview,
-      ...composePrivateBuild123dGeometrySurfaces(
-        build123dSandboxMcpUrl,
-        cadProject.geometrySourceAnalysis,
-        compilationFoundation.technicalCompilationAdmissions,
-        threadSnapshots,
-        architectureFoundation.genericArchitectureCaptures,
-        DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
-        DEFAULT_GEOMETRY_CAPTURE_DIRECTORY,
-      ),
+      ...composePrivateBuild123dGeometrySurfaces({
+        projects: runtime.projects,
+        preparation: capabilityRuntimePreparation,
+        geometrySourceAnalysis: cadProject.geometrySourceAnalysis,
+        admissions: compilationFoundation.technicalCompilationAdmissions,
+        snapshots: threadSnapshots,
+        architectureCaptures: architectureFoundation.genericArchitectureCaptures,
+        geometryDraftCaptureDirectory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
+        geometryCaptureDirectory: DEFAULT_GEOMETRY_CAPTURE_DIRECTORY,
+      }),
       runExecutor: new RegisteredProjectRunExecutor({
         projects: runtime.projects,
         baseline,
@@ -1853,12 +1817,7 @@ async function createProjectControl(
           },
           {
             operation: VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
-            ...(options.prescribedKinematicsObservation === undefined
-              ? {
-                unavailableMessage:
-                  "The server has no trusted qualified prescribed-kinematics observation runtime configured for this run.",
-              }
-              : { executor: prescribedKinematicsRunExecutor }),
+            executor: prescribedKinematicsRunExecutor,
           },
           {
             operation: VERIFY_SEAL_PRESCRIBED_KINEMATICS_METHOD_OPERATION,

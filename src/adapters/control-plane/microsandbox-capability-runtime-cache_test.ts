@@ -1,5 +1,8 @@
-import { assertRejects } from "@std/assert";
-import { LocalMicrosandboxCapabilityRuntimeCache } from "./microsandbox-capability-runtime-cache.ts";
+import { assertEquals, assertRejects, assertThrows } from "@std/assert";
+import {
+  exactMicrosandboxMaterialArchitecture,
+  LocalMicrosandboxCapabilityRuntimeCache,
+} from "./microsandbox-capability-runtime-cache.ts";
 
 const DIGEST = "a".repeat(64);
 const REFERENCE = `example.test/worker@sha256:${DIGEST}`;
@@ -7,6 +10,20 @@ const PROFILE_FINGERPRINT = {
   algorithm: "sha256" as const,
   digest: "c".repeat(64),
 };
+
+Deno.test("Microsandbox cache architecture is translated from its exact code-owned material platform", () => {
+  assertEquals(exactMicrosandboxMaterialArchitecture(["linux/arm64"]), "arm64");
+  assertEquals(exactMicrosandboxMaterialArchitecture(["linux/amd64"]), "amd64");
+  assertThrows(
+    () =>
+      exactMicrosandboxMaterialArchitecture([
+        "linux/arm64",
+        "linux/amd64",
+      ]),
+    TypeError,
+    "exactly one code-owned platform",
+  );
+});
 
 Deno.test("Microsandbox capability cache observes an exact pinned image without pull or start", async () => {
   const cache = new LocalMicrosandboxCapabilityRuntimeCache(
@@ -18,6 +35,17 @@ Deno.test("Microsandbox capability cache observes an exact pinned image without 
     imageReference: REFERENCE,
     executionProfileFingerprint: PROFILE_FINGERPRINT,
   });
+  assertEquals(
+    await cache.observe([{
+      unitId: "casys.worker",
+      materialId: "worker",
+      imageDigest: DIGEST,
+    }]),
+    new Map([[
+      "casys.worker\u0000worker",
+      { material: "installed", runtime: "inactive", qualification: "unqualified" },
+    ]]),
+  );
 });
 
 Deno.test("Microsandbox capability cache fails closed on a mismatched inspected digest", async () => {

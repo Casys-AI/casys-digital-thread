@@ -15,6 +15,10 @@ import {
   type ProjectCapabilityLedgerStore,
 } from "../../application/ports/out/project-capability-ledger-store.ts";
 
+/** Shared local default for the MCP server and read-only native Workbench. */
+export const DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY =
+  "state/local/project-capability-ledgers";
+
 interface ProjectCapabilityClaim {
   readonly revision: number;
   readonly digest: string;
@@ -60,7 +64,7 @@ class DenoProjectCapabilityLedgerDurability
  */
 export class FileProjectCapabilityLedgerStore implements ProjectCapabilityLedgerStore {
   constructor(
-    private readonly directory = "state/local/project-capability-ledgers",
+    private readonly directory = DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY,
     private readonly durability: ProjectCapabilityLedgerDurability =
       new DenoProjectCapabilityLedgerDurability(),
   ) {}
@@ -99,6 +103,60 @@ export class FileProjectCapabilityLedgerStore implements ProjectCapabilityLedger
     }
     if (highestJson === undefined) return undefined;
     return await this.readCompleteHistory(projectId, highestJson);
+  }
+
+  /**
+   * Enumerates only the local durable ledger root. Unknown entries are a
+   * configuration error: silently skipping one could incorrectly deactivate
+   * a unit still authorized by another project.
+   */
+  async list(): Promise<readonly ProjectCapabilityLedger[]> {
+    let entries: Deno.DirEntry[];
+    try {
+      entries = await Array.fromAsync(Deno.readDir(this.directory));
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) return [];
+      throw error;
+    }
+    const projectIds: string[] = [];
+    for (
+      const entry of entries.toSorted((left, right) =>
+        left.name.localeCompare(right.name)
+      )
+    ) {
+      if (!entry.isDirectory || entry.isSymlink) {
+        throw new ProjectCapabilityLedgerConflictError(
+          `Capability ledger root contains unsupported entry ${entry.name}.`,
+        );
+      }
+      let projectId: string;
+      try {
+        projectId = decodeURIComponent(entry.name);
+      } catch {
+        throw new ProjectCapabilityLedgerConflictError(
+          `Capability ledger root contains an invalid project directory ${entry.name}.`,
+        );
+      }
+      try {
+        assertProjectId(projectId);
+      } catch (error) {
+        throw new ProjectCapabilityLedgerConflictError(
+          error instanceof Error
+            ? error.message
+            : `Capability ledger root contains an invalid project directory ${entry.name}.`,
+        );
+      }
+      if (encodeURIComponent(projectId) !== entry.name) {
+        throw new ProjectCapabilityLedgerConflictError(
+          `Capability ledger root contains a non-canonical project directory ${entry.name}.`,
+        );
+      }
+      projectIds.push(projectId);
+    }
+    const ledgers = await Promise.all(
+      projectIds.map((projectId) => this.get(projectId)),
+    );
+    return ledgers.flatMap((ledger) => ledger === undefined ? [] : [ledger]);
   }
 
   /**
@@ -533,8 +591,16 @@ export class InMemoryProjectCapabilityLedgerStore
       : structuredClone(await validateLedger(ledger));
   }
 
-  async getPending(_projectId: string): Promise<ProjectCapabilityLedger | undefined> {
-    return undefined;
+  list(): Promise<readonly ProjectCapabilityLedger[]> {
+    return Promise.resolve(
+      [...this.#ledgers.values()]
+        .map((ledger) => structuredClone(ledger))
+        .toSorted((left, right) => left.projectId.localeCompare(right.projectId)),
+    );
+  }
+
+  getPending(_projectId: string): Promise<ProjectCapabilityLedger | undefined> {
+    return Promise.resolve(undefined);
   }
 
   async append(

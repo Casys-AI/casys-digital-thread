@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import {
   CapabilityRuntimeExecutionSessionCoordinator,
 } from "./capability-runtime-execution-session.ts";
@@ -101,6 +101,70 @@ Deno.test("JIT session deduplicates persistent group activation, preserves one l
   assertEquals(await leases.listActive(AT), []);
 });
 
+Deno.test("JIT session rechecks inside group activation before a revoked capability can claim a lease", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  const alpha = launchGroup("casys-alpha");
+  const bravo = launchGroup("casys-bravo");
+  const operation = operationFor(alpha, bravo);
+  const changed = {
+    ...operation,
+    authorizationFingerprint: { algorithm: "sha256" as const, digest: "a".repeat(64) },
+  };
+  let rechecks = 0;
+  let hostMutations = 0;
+  const coordinator = new CapabilityRuntimeExecutionSessionCoordinator({
+    contexts: contextFor(),
+    leases,
+    groups: {
+      ensureActive: async (input: {
+        readonly lease: CapabilityRuntimeLease;
+        readonly guard?: () => Promise<boolean>;
+      }) => {
+        if (input.guard && !(await input.guard())) {
+          throw new Error("activation is no longer authorized");
+        }
+        hostMutations++;
+        const claim = await leases.claim(input.lease);
+        return {
+          group: alpha,
+          states: new Map([[alpha.id, {
+            material: "installed" as const,
+            runtime: "active" as const,
+            qualification: "qualified" as const,
+          }]]),
+          leaseDisposition: claim.status === "created"
+            ? "created" as const
+            : "reused" as const,
+          mutation: undefined,
+        };
+      },
+      releaseTerminal: () => Promise.resolve(),
+    } as never,
+    microsandbox: { ensureExactCached: () => Promise.resolve() },
+    now: () => AT,
+  });
+
+  await assertRejects(
+    () =>
+      coordinator.begin({
+        project: projectFor(),
+        runId: "run:session",
+        operationalCapability: operation,
+        microsandboxExecutionProfiles: [{
+          material: microMaterial(),
+          executionProfileFingerprint: FINGERPRINT,
+        }],
+        // The first recheck is the outer cold gate. The revoke happens before
+        // H1 invokes the guarded activation callback.
+        recheck: () => Promise.resolve(++rechecks === 1 ? operation : changed),
+      }),
+    Error,
+    "authorized",
+  );
+  assertEquals(hostMutations, 0);
+  assertEquals(await leases.listActive(AT), []);
+});
+
 function launchGroup(id: string): CapabilityRuntimeLaunchGroupReference {
   return { id, version: "1.0.0", fingerprint: FINGERPRINT };
 }
@@ -147,6 +211,7 @@ function operationFor(
         adapter: { id: "calculix-worker", version: "1", source: "server" },
         profile: null,
         materials: [micro],
+        runtimeModes: [runtimeMode(micro)],
         hostLifecycles: [{
           material: micro,
           kind: "ephemeral-microsandbox",
@@ -173,7 +238,17 @@ function persistentBinding(
     adapter: { id, version: "1", source: "server" },
     profile: null,
     materials: [material],
+    runtimeModes: [runtimeMode(material)],
     hostLifecycles: [{ material, kind: "persistent-compose" as const, launchGroup }],
+  };
+}
+
+function runtimeMode(material: CapabilityRuntimeMaterialIdentity) {
+  return {
+    material,
+    targetPlatform: "linux/arm64" as const,
+    mode: "native" as const,
+    qualificationAttestationFingerprint: null,
   };
 }
 

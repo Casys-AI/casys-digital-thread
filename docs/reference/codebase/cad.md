@@ -56,6 +56,18 @@ Build123d capability and CAD project contributions. Profile-only exposes review;
 isolated execution requires an approved capability-runtime supervisor to compose the
 exact worker. Private sandbox admitted export has its own atomic runtime unit.
 
+#### [`src/application/control-plane/capability-runtime-preparation-session.ts`](../../../src/application/control-plane/capability-runtime-preparation-session.ts)
+
+Sibling, short-lived exact preparation lease coordinator for canonical admitted geometry:
+one registered preparation demand, one authorised binding/material/group, no run/work-item
+or provider-WAL fabrication; successful durable capture releases, ambiguous dispatch retains.
+
+#### [`src/adapters/cad/canonical/file-admitted-geometry-export-replay-cache.ts`](../../../src/adapters/cad/canonical/file-admitted-geometry-export-replay-cache.ts)
+
+Create-new, append-only local replay/WAL keyed by the exact public export identity.
+It records `prepared -> dispatching -> recorded`; malformed/colliding records or a
+dispatch without a recorded result fail closed before runtime activation.
+
 #### [`scripts/gates/verify-build123d-microsandbox-vertical.ts`](../../../scripts/gates/verify-build123d-microsandbox-vertical.ts)
 
 Explicit generation-0 real-runtime gate for the exact Build123d worker digest: local

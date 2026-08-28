@@ -16,6 +16,7 @@ import {
   type CapabilityRuntimeJournalEntry,
   type CapabilityRuntimeJournalOutcome,
   type CapabilityRuntimeLease,
+  type CapabilityRuntimeMaterialIdentity,
   capabilityRuntimeMaterialKey,
   type CapabilityRuntimeObservedState,
   validateCapabilityRuntimeLease,
@@ -27,6 +28,7 @@ import type {
   CapabilityRuntimeLaunchGroupRegistry,
   CapabilityRuntimeLeaseStore,
   CapabilityRuntimeSecretSlotObserver,
+  CapabilityRuntimeSecretSnapshot,
   CapabilityRuntimeStateObserver,
 } from "../ports/out/capability/capability-runtime-supervisor.ts";
 import {
@@ -52,11 +54,25 @@ export interface CapabilityRuntimeLaunchGroupSupervisorOptions {
 
 export interface EnsureCapabilityRuntimeLaunchGroupRequest {
   readonly group: CapabilityRuntimeLaunchGroupReference;
+  /** Exact ROP lifecycle materials expected to use this group, including digest. */
+  readonly expectedMaterials: readonly CapabilityRuntimeMaterialIdentity[];
   readonly projectId: string;
   readonly lease: CapabilityRuntimeLease;
   readonly at: string;
   /** Fresh queues reject an extant claim; only the same session may reuse it. */
   readonly reuseExistingLease: "allow" | "reject";
+  /**
+   * Revalidates the exact project authorization while the host mutation mutex
+   * is held. It runs before a lease claim or journalled host action so a
+   * concurrent revocation cannot leave a disposable session behind.
+   */
+  readonly guard?: () => Promise<boolean>;
+  /**
+   * One server-minted secret generation shared with the provider client. It
+   * is needed only by groups declaring secret slots and never reaches the
+   * journal entry or a persisted launch descriptor.
+   */
+  readonly secretSnapshot?: CapabilityRuntimeSecretSnapshot;
 }
 
 export interface CapabilityRuntimeLaunchGroupEnsureResult {
@@ -76,8 +92,15 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
     readonly group: CapabilityRuntimeLaunchGroupReference;
     readonly projectId: string | null;
     readonly at: string;
+    /** Rechecks local authority under this exact host mutation mutex. */
+    readonly guard?: () => Promise<boolean>;
   }): Promise<CapabilityRuntimeLaunchGroupEnsureResult> {
     return await this.options.lock.withLock(async () => {
+      if (input.guard && !(await input.guard())) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime material preload is no longer authorized by the exact local envelope and lock.",
+        );
+      }
       const group = await this.#requireUsableGroup(input.group);
       await this.#assertNoPending(group);
       const before = await this.#observe(group);
@@ -118,8 +141,19 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
     request: EnsureCapabilityRuntimeLaunchGroupRequest,
   ): Promise<CapabilityRuntimeLaunchGroupEnsureResult> {
     return await this.options.lock.withLock(async () => {
+      if (request.guard && !(await request.guard())) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime activation is no longer authorized by the exact local envelope and lock.",
+        );
+      }
       const group = await this.#requireUsableGroup(request.group);
+      if (group.secretSlots.length > 0 && request.secretSnapshot === undefined) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime group requires a server-minted launch secret snapshot.",
+        );
+      }
       const lease = validateCapabilityRuntimeLease(request.lease);
+      this.#assertExpectedMaterials(group, request.expectedMaterials);
       this.#assertLeaseCovers(group, lease, request.projectId, request.at);
       await this.#assertNoPending(group);
       const disposition = await this.#claim(
@@ -146,7 +180,12 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
           }
         }
         const installed = await this.#observe(group);
-        if (allActive(group, installed)) {
+        // A non-secret group is already exactly usable. A secret-bearing
+        // group must still run the fixed `up --wait` reconciliation using the
+        // same opaque snapshot that will construct the provider client: after
+        // a process restart or token rotation, observation alone cannot prove
+        // that the existing container uses that generation.
+        if (allActive(group, installed) && group.secretSlots.length === 0) {
           return {
             group: capabilityRuntimeLaunchGroupReference(group),
             states: installed,
@@ -161,6 +200,7 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
           request.projectId,
           request.at,
           installed,
+          request.secretSnapshot,
         );
         if (mutation.status !== "succeeded") {
           throw new CapabilityRuntimeLaunchGroupSafetyError(
@@ -265,7 +305,10 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
     reference: CapabilityRuntimeLaunchGroupReference,
   ): Promise<CapabilityRuntimeLaunchGroup> {
     const group = await this.options.groups.require(reference);
-    if (group.security !== "reviewed" || group.qualification === "revoked") {
+    if (
+      group.security !== "reviewed" || group.qualification === "revoked" ||
+      group.qualification === "unqualified"
+    ) {
       throw new CapabilityRuntimeLaunchGroupSafetyError(
         "Capability runtime group is not operationally admissible.",
       );
@@ -307,6 +350,22 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
           "Capability runtime lease does not protect each exact group material.",
         );
       }
+    }
+  }
+
+  #assertExpectedMaterials(
+    group: CapabilityRuntimeLaunchGroup,
+    expected: readonly CapabilityRuntimeMaterialIdentity[],
+  ): void {
+    if (
+      expected.length !== group.materials.length ||
+      !group.materials.every((member) =>
+        expected.some((material) => sameMaterial(material, member.material))
+      )
+    ) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime activation does not bind the exact launch-group material digests.",
+      );
     }
   }
 
@@ -398,6 +457,7 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
     projectId: string | null,
     at: string,
     states: ReadonlyMap<string, CapabilityRuntimeObservedState>,
+    secretSnapshot?: CapabilityRuntimeSecretSnapshot,
   ): Promise<CapabilityRuntimeJournalOutcome> {
     const entry: CapabilityRuntimeJournalEntry = {
       id: `capability-group-${await shortId(group, action, at, projectId)}`,
@@ -419,7 +479,7 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
         entry,
         this.options.journal,
       );
-      outcome = await this.options.host.mutate({ authorization });
+      outcome = await this.options.host.mutate({ authorization, secretSnapshot });
     } catch (error) {
       outcome = {
         schemaVersion: "capability-runtime-host-mutation-outcome/1.0",
@@ -427,7 +487,12 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
         recordedAt: new Date().toISOString(),
         status: "uncertain",
         observations: entry.materials.map((material) => ({ material, state: null })),
-        detail: compact(error),
+        // An injector/Compose implementation must never leak bearer material
+        // into a durable journal, even if its own error message is defective.
+        // Secret-bearing groups therefore receive only a fixed diagnostic.
+        detail: group.secretSlots.length > 0
+          ? "Sealed secret-bearing launch group mutation did not return an outcome."
+          : compact(error),
       };
     }
     if (outcome.journalEntryId !== entry.id) {
@@ -563,8 +628,8 @@ function matchesPreviousObservation(
 }
 
 function sameMaterial(
-  left: CapabilityRuntimeJournalEntry["materials"][number],
-  right: CapabilityRuntimeJournalEntry["materials"][number],
+  left: CapabilityRuntimeMaterialIdentity,
+  right: CapabilityRuntimeMaterialIdentity,
 ): boolean {
   return left.unitId === right.unitId && left.materialId === right.materialId &&
     left.imageDigest === right.imageDigest;

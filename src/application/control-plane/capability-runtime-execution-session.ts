@@ -24,6 +24,7 @@ import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import type {
   CapabilityRuntimeLeaseStore,
+  CapabilityRuntimeSecretSnapshot,
   ProjectCapabilityRuntimeContextReader,
 } from "../ports/out/capability/capability-runtime-supervisor.ts";
 import type { CapabilityRuntimeLaunchGroupSupervisor } from "./capability-runtime-launch-group-supervisor.ts";
@@ -124,6 +125,11 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
     /** Fixed-executor profile attestations, never supplied by an agent. */
     readonly microsandboxExecutionProfiles:
       readonly CapabilityRuntimeMicrosandboxExecutionProfile[];
+    /**
+     * The exact process-local secret generation shared by the sealed Compose
+     * start and the provider client for this session. It is never persisted.
+     */
+    readonly secretSnapshot?: CapabilityRuntimeSecretSnapshot;
     readonly recheck: CapabilityRuntimeSessionRecheck;
   }): Promise<CapabilityRuntimeExecutionSession> {
     const operationalCapability = validateResolvedCapabilityRuntimeOperation(
@@ -146,15 +152,10 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
 
     // This is intentionally inside the session seam, not merely the caller's
     // earlier prepare. It closes the TOCTOU window before the first host action.
-    const current = validateResolvedCapabilityRuntimeOperation(await input.recheck());
-    if (
-      canonicalResolvedCapabilityRuntimeOperationText(current) !==
-        canonicalResolvedCapabilityRuntimeOperationText(operationalCapability)
-    ) {
-      throw new CapabilityRuntimeSessionUnavailableError(
-        "Operational capability changed after its sealed ROP recheck; requeue through a reviewed authorization amendment.",
-      );
-    }
+    await assertExactOperationalCapabilityRecheck(
+      input.recheck,
+      operationalCapability,
+    );
     const lifecycles = uniqueLifecycles(
       operationalCapability.bindings.flatMap((binding) => binding.hostLifecycles),
     );
@@ -252,13 +253,36 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
         directLeaseAcquired = acquired.created;
       }
       for (const group of groups) {
+        const expectedMaterials = persistent.filter((lifecycle) =>
+          lifecycle.launchGroup !== null &&
+          groupToken(lifecycle.launchGroup) === groupToken(group)
+        ).map((lifecycle) => lifecycle.material);
         hostMutationAttempted = true;
         const result = await this.options.groups!.ensureActive({
           group,
+          expectedMaterials,
           projectId: input.project.project.id,
           at: this.#now(),
           lease,
           reuseExistingLease: groupLeaseCreated || canReuseLease ? "allow" : "reject",
+          // The outer recheck above protects cache observation. This second
+          // recheck runs *inside* H1 immediately before a lease or host
+          // mutation, closing the revocation/deactivation race.
+          guard: async () => {
+            try {
+              await assertExactOperationalCapabilityRecheck(
+                input.recheck,
+                operationalCapability,
+              );
+              return true;
+            } catch (error) {
+              if (error instanceof CapabilityRuntimeSessionUnavailableError) {
+                return false;
+              }
+              throw error;
+            }
+          },
+          secretSnapshot: input.secretSnapshot,
         });
         groupLeaseCreated ||= result.leaseDisposition === "created";
         assertGroupQualification(
@@ -364,6 +388,21 @@ function candidateLease(input: {
     acquiredAt: input.at,
     expiresAt: new Date(Date.parse(input.at) + LEASE_TTL_MS).toISOString(),
   });
+}
+
+async function assertExactOperationalCapabilityRecheck(
+  recheck: CapabilityRuntimeSessionRecheck,
+  expected: ResolvedCapabilityRuntimeOperation,
+): Promise<void> {
+  const current = validateResolvedCapabilityRuntimeOperation(await recheck());
+  if (
+    canonicalResolvedCapabilityRuntimeOperationText(current) !==
+      canonicalResolvedCapabilityRuntimeOperationText(expected)
+  ) {
+    throw new CapabilityRuntimeSessionUnavailableError(
+      "Operational capability changed after its sealed ROP recheck; requeue through a reviewed authorization amendment.",
+    );
+  }
 }
 
 function assertEquivalentLease(

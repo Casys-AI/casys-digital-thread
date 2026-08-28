@@ -6,7 +6,10 @@
  * admitted export is composed separately from local isolated execution.
  */
 
-import { ExportAdmittedProjectGeometry } from "../../application/use-cases/cad/canonical/export-admitted-project-geometry.ts";
+import {
+  ExportAdmittedProjectGeometry,
+} from "../../application/use-cases/cad/canonical/export-admitted-project-geometry.ts";
+import type { CapabilityRuntimePreparationSessionCoordinator } from "../../application/control-plane/capability-runtime-preparation-session.ts";
 import { PrepareProjectBuild123dExecutionReview } from "../../application/use-cases/cad/isolated/prepare-project-build123d-execution-review.ts";
 import { PrepareProjectIsolatedGeometrySealReview } from "../../application/use-cases/cad/sealed-isolated/prepare-project-isolated-geometry-seal-review.ts";
 import type { EngineeringProjectRevisionStore } from "../../application/ports/out/engineering-project-revision-store.ts";
@@ -29,6 +32,7 @@ import { FileIsolatedOutputCas } from "../shared/cas/file-isolated-output-cas.ts
 import { HttpMcpToolClient } from "../shared/mcp/http-mcp-tool-client.ts";
 import type { EngineeringProjectRunLease } from "../shared/stores/file-engineering-project-run-lease.ts";
 import { AdmissionBackedGeometryExportAdapter } from "./canonical/admission-backed-geometry-export-adapter.ts";
+import { FileAdmittedGeometryExportReplayCache } from "./canonical/file-admitted-geometry-export-replay-cache.ts";
 import {
   DESIGN_WRITE_GEOMETRY_OPERATION,
   DesignWriteGeometryRunExecutor,
@@ -113,6 +117,8 @@ export interface PrivateBuild123dGeometrySurfaces {
     | ExportAdmittedProjectGeometry
     | undefined;
 }
+
+const PRIVATE_BUILD123D_SANDBOX_MCP_URL = "http://127.0.0.1:3024/mcp";
 
 export async function createBuild123dCapability(
   options: Build123dCapabilityOptions,
@@ -241,38 +247,38 @@ export function createCadProject(options: CadProjectOptions): CadProject {
  * those bytes never touch evidence. No sandbox entry ⇒ no admitted-export
  * tool. Its private sandbox binding is independent from local microVM activation.
  */
-export function composePrivateBuild123dGeometrySurfaces(
-  build123dSandboxMcpUrl: string | undefined,
-  geometrySourceAnalysis: GeometrySourceAnalysisCaptureDependencies,
-  admissions: CaptureBackedTechnicalCompilationAdmissionReader,
-  snapshots: Pick<ThreadSnapshotStore, "get">,
-  architectureCaptures: FileCaptureStore<"architecture-capture">,
-  geometryDraftCaptureDirectory: string,
-  geometryCaptureDirectory: string,
-): PrivateBuild123dGeometrySurfaces {
-  if (!build123dSandboxMcpUrl) {
-    return { admittedGeometryExport: undefined };
-  }
-  const client = new HttpMcpToolClient({
-    mcpUrl: build123dSandboxMcpUrl,
-    timeoutMs: 120_000,
-  });
+export function composePrivateBuild123dGeometrySurfaces(input: {
+  readonly projects: EngineeringProjectRevisionStore;
+  readonly preparation: CapabilityRuntimePreparationSessionCoordinator;
+  readonly geometrySourceAnalysis: GeometrySourceAnalysisCaptureDependencies;
+  readonly admissions: CaptureBackedTechnicalCompilationAdmissionReader;
+  readonly snapshots: Pick<ThreadSnapshotStore, "get">;
+  readonly architectureCaptures: FileCaptureStore<"architecture-capture">;
+  readonly geometryDraftCaptureDirectory: string;
+  readonly geometryCaptureDirectory: string;
+}): PrivateBuild123dGeometrySurfaces {
   const draftCaptures = new FileCaptureStore({
     ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
-    directory: geometryDraftCaptureDirectory,
+    directory: input.geometryDraftCaptureDirectory,
   });
   const geometryCaptures = new FileCaptureStore({
     ...GEOMETRY_CAPTURE_DESCRIPTOR,
-    directory: geometryCaptureDirectory,
+    directory: input.geometryCaptureDirectory,
   });
+  const replayCache = new FileAdmittedGeometryExportReplayCache(
+    `${input.geometryDraftCaptureDirectory}/replay`,
+  );
   return {
     admittedGeometryExport: new ExportAdmittedProjectGeometry({
-      admissions,
-      snapshots,
+      admissions: input.admissions,
+      snapshots: input.snapshots,
+      projects: input.projects,
+      preparation: input.preparation,
+      replayCache,
       geometryCaptures,
       architecture: {
         async read(fingerprint) {
-          const text = await architectureCaptures.read(fingerprint);
+          const text = await input.architectureCaptures.read(fingerprint);
           if (!text) return undefined;
           let parsed: unknown;
           try {
@@ -298,12 +304,26 @@ export function composePrivateBuild123dGeometrySurfaces(
           }
         },
       },
-      exporter: new AdmissionBackedGeometryExportAdapter({
-        client,
-        draftCaptures,
-        sourceAnalysis: geometrySourceAnalysis,
-        build123dService: "mcp-build123d-sandbox",
-      }),
+      // No private MCP client exists while cold validation is running. The
+      // use case invokes this factory only after the exact preparation lease
+      // has reached active state, then repeats cold validation before calling
+      // the fixed server-owned tool.
+      exporter: unavailableAdmittedGeometryExporter(),
+      exporterFactory: () =>
+        new AdmissionBackedGeometryExportAdapter({
+          client: new HttpMcpToolClient({
+            mcpUrl: PRIVATE_BUILD123D_SANDBOX_MCP_URL,
+            timeoutMs: 120_000,
+          }),
+          draftCaptures,
+          sourceAnalysis: input.geometrySourceAnalysis,
+          build123dService: "mcp-build123d-sandbox",
+        }),
     }),
   };
+}
+
+function unavailableAdmittedGeometryExporter() {
+  const unavailable = () => Promise.reject(new Error("Preparation required."));
+  return { export: unavailable, exportTargetedPart: unavailable };
 }

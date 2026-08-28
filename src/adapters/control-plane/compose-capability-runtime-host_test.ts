@@ -1,9 +1,11 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import {
   type CapabilityRuntimeLaunchGroup,
   capabilityRuntimeLaunchGroupReference,
+  fingerprintCapabilityRuntimeLaunchGroup,
 } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import type { CapabilityRuntimeJournalEntry } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import { FixedCapabilityRuntimeLaunchGroupRegistry } from "../../application/control-plane/capability-runtime-launch-group-registry.ts";
 import { authorizeDurableCapabilityRuntimeHostMutation } from "../../application/control-plane/capability-runtime-host-authorization.ts";
 import { InMemoryCapabilityRuntimeJournal } from "./in-memory-capability-runtime-supervisor.ts";
@@ -11,6 +13,14 @@ import {
   createFirstPartyCapabilityRuntimeLaunchGroups,
 } from "./first-party-capability-runtime-launch-groups.ts";
 import { createCapabilityRuntimeHostAdapter } from "./compose-capability-runtime-host.ts";
+import {
+  CHRONO_MCP_BEARER_TOKEN_SLOT,
+} from "./local-chrono-runtime-secret-resolver.ts";
+import type {
+  CapabilityRuntimeLaunchSecretInjector,
+  CapabilityRuntimeSecretSlotObserver,
+  CapabilityRuntimeSecretSnapshot,
+} from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import type { CommandResult, CommandRunner } from "../shared/docker-observer.ts";
 
 Deno.test("Compose host pulls the whole exact group then starts it with health wait and no dependency suppression", async () => {
@@ -162,6 +172,155 @@ Deno.test("sealed SysON group pins Postgres with its canonical Docker Hub reposi
   );
 });
 
+Deno.test("Build123d group without a declared healthcheck is active only when its exact owned service is running", async () => {
+  const group = (await createFirstPartyCapabilityRuntimeLaunchGroups()).find((
+    candidate,
+  ) => candidate.id === "casys-build123d-sandbox")!;
+  const runner = new FakeGroupRunner(group, { images: true, state: "running" });
+  const fixture = host(group, runner);
+
+  const states = await fixture.host.observe(
+    group.materials.map((member) => member.material),
+  );
+
+  assertEquals([...states.values()][0]?.runtime, "active");
+});
+
+Deno.test("Compose host translates only the observed Docker daemon platform, never the controller architecture", async () => {
+  const group = await sysonGroup();
+  const runner = new FakeGroupRunner(group, {
+    images: false,
+    state: "absent",
+    hostPlatform: "linux/aarch64",
+  });
+  const fixture = host(group, runner);
+
+  assertEquals(await fixture.host.observePlatform(), "linux/arm64");
+  assertEquals(
+    runner.calls.some((call) =>
+      call[0] === "docker" && call[1] === "version" &&
+      call[2] === "--format" && call[3] === "{{.Server.Os}}/{{.Server.Arch}}"
+    ),
+    true,
+  );
+
+  const mismatch = host(
+    group,
+    new FakeGroupRunner(group, {
+      images: false,
+      state: "absent",
+      hostPlatform: "linux/ppc64le",
+    }),
+  );
+  await assertRejects(
+    () => mismatch.host.observePlatform(),
+    Error,
+    "unsupported or malformed",
+  );
+});
+
+Deno.test("sealed Chrono group has one exact unqualified AMD64 service with no host privilege or interpolation", async () => {
+  const group = await chronoGroup();
+  const descriptor = JSON.parse(group.compose.content) as {
+    services: Record<string, Record<string, unknown>>;
+    volumes: Record<string, unknown>;
+  };
+  const service = descriptor.services["mcp-chrono"]!;
+
+  assertEquals(group.id, "casys-chrono");
+  assertEquals(group.version, "1.0.0");
+  assertEquals(group.qualification, "unqualified");
+  assertEquals(group.secretSlots, [CHRONO_MCP_BEARER_TOKEN_SLOT]);
+  assertEquals(group.materials.map((member) => member.material), [{
+    unitId: "casys.mcp-chrono",
+    materialId: "mcp-chrono-image",
+    imageDigest: "b6302001725df4722d84096a51eeff7e7ffeee843690a2ba0cc417191c67683c",
+  }]);
+  assertEquals(
+    service.image,
+    "ghcr.io/casys-ai/mcp-chrono@sha256:b6302001725df4722d84096a51eeff7e7ffeee843690a2ba0cc417191c67683c",
+  );
+  assertEquals(service.platform, "linux/amd64");
+  assertEquals(service.ports, ["127.0.0.1:3025:3025"]);
+  assertEquals(service.volumes, ["chrono-data:/data"]);
+  assertEquals(service.cap_drop, ["ALL"]);
+  assertEquals(service.security_opt, ["no-new-privileges:true"]);
+  assertEquals(descriptor.volumes, { "chrono-data": {} });
+  assertEquals("environment" in service, false);
+  assertEquals("devices" in service, false);
+  assertEquals("privileged" in service, false);
+  assertEquals("network_mode" in service, false);
+  assertEquals(group.compose.content.includes("$"), false);
+});
+
+Deno.test("Compose host refuses an unqualified Chrono group before inspecting or mutating Docker", async () => {
+  const group = await chronoGroup();
+  const runner = new FakeGroupRunner(group, { images: true, state: "running" });
+  const fixture = host(group, runner);
+
+  const outcome = await mutate(fixture, group, "runtime-start");
+
+  assertEquals(outcome.status, "failed");
+  assertEquals(outcome.detail, "Launch group is not operationally admissible.");
+  assertEquals(runner.calls, []);
+});
+
+Deno.test("Compose host reconciles a qualified secret-bearing group through stdin without journalling it or placing it in argv", async () => {
+  const group = await qualifiedChronoGroup();
+  const token = "test-chrono-bearer-value";
+  const snapshot = Object.freeze({}) as CapabilityRuntimeSecretSnapshot;
+  const secrets: CapabilityRuntimeSecretSlotObserver = {
+    observe: (slots) =>
+      Promise.resolve(new Map(slots.map((slot) => [slot, "available" as const]))),
+  };
+  const secretInjector: CapabilityRuntimeLaunchSecretInjector = {
+    composeOverlay: ({ group: overlayGroup, snapshot: suppliedSnapshot }) => {
+      assertEquals(overlayGroup.id, "casys-chrono");
+      assertEquals(suppliedSnapshot, snapshot);
+      const descriptor = JSON.parse(overlayGroup.compose.content) as {
+        services: Record<string, Record<string, unknown>>;
+        volumes: Record<string, unknown>;
+      };
+      return Promise.resolve(
+        new TextEncoder().encode(
+          deterministicJson({
+            ...descriptor,
+            services: {
+              ...descriptor.services,
+              "mcp-chrono": {
+                ...descriptor.services["mcp-chrono"],
+                environment: { MCP_BEARER_TOKEN: token },
+              },
+            },
+          }),
+        ),
+      );
+    },
+  };
+  const runner = new FakeGroupRunner(group, { images: true, state: "running" });
+  const fixture = host(group, runner, { secrets, secretInjector });
+
+  const outcome = await mutate(fixture, group, "runtime-start", snapshot);
+
+  assertEquals(outcome.status, "succeeded");
+  assertEquals(outcome.detail?.includes(token) ?? false, false);
+  assertEquals(
+    runner.calls.some((call) => call.some((argument) => argument.includes(token))),
+    false,
+  );
+  assertEquals(
+    runner.stdin.some((content) =>
+      content.includes(`\"MCP_BEARER_TOKEN\":\"${token}\"`)
+    ),
+    true,
+  );
+  assertEquals(JSON.stringify(await fixture.journal.list()).includes(token), false);
+  assertEquals(
+    JSON.stringify(await fixture.journal.listOutcomes()).includes(token),
+    false,
+  );
+});
+
 async function sysonGroup(): Promise<CapabilityRuntimeLaunchGroup> {
   return (await createFirstPartyCapabilityRuntimeLaunchGroups())[0]!;
 }
@@ -174,15 +333,40 @@ async function calculixGroup(): Promise<CapabilityRuntimeLaunchGroup> {
   return group;
 }
 
-function host(group: CapabilityRuntimeLaunchGroup, runner: FakeGroupRunner) {
+async function chronoGroup(): Promise<CapabilityRuntimeLaunchGroup> {
+  const group = (await createFirstPartyCapabilityRuntimeLaunchGroups()).find((
+    candidate,
+  ) => candidate.id === "casys-chrono");
+  if (!group) throw new Error("Expected the exact Chrono launch group.");
+  return group;
+}
+
+async function qualifiedChronoGroup(): Promise<CapabilityRuntimeLaunchGroup> {
+  const { fingerprint: _ignored, ...body } = await chronoGroup();
+  const qualified = { ...body, qualification: "qualified" as const };
+  return {
+    ...qualified,
+    fingerprint: await fingerprintCapabilityRuntimeLaunchGroup(qualified),
+  };
+}
+
+function host(
+  group: CapabilityRuntimeLaunchGroup,
+  runner: FakeGroupRunner,
+  options: {
+    readonly secrets?: CapabilityRuntimeSecretSlotObserver;
+    readonly secretInjector?: CapabilityRuntimeLaunchSecretInjector;
+  } = {},
+) {
   const journal = new InMemoryCapabilityRuntimeJournal();
   const host = createCapabilityRuntimeHostAdapter({
     registry: new FixedCapabilityRuntimeLaunchGroupRegistry([group]),
     journal,
-    secrets: {
+    secrets: options.secrets ?? {
       observe: (slots) =>
         Promise.resolve(new Map(slots.map((slot) => [slot, "unavailable" as const]))),
     },
+    secretInjector: options.secretInjector,
     runner,
     composeRoot: "/workspace",
     paths: { realPath: () => Promise.resolve("/canonical") },
@@ -195,6 +379,7 @@ async function mutate(
   fixture: ReturnType<typeof host>,
   group: CapabilityRuntimeLaunchGroup,
   action: CapabilityRuntimeJournalEntry["action"],
+  secretSnapshot?: CapabilityRuntimeSecretSnapshot,
 ) {
   const entry: CapabilityRuntimeJournalEntry = {
     id: `group-${action}`,
@@ -215,6 +400,7 @@ async function mutate(
       entry,
       fixture.journal,
     ),
+    secretSnapshot,
   });
 }
 
@@ -233,6 +419,7 @@ class FakeGroupRunner implements CommandRunner {
       readonly mountsByService?: Readonly<
         Record<string, readonly Record<string, unknown>[]>
       >;
+      readonly hostPlatform?: string;
     },
   ) {
     this.#images = options.images;
@@ -243,12 +430,14 @@ class FakeGroupRunner implements CommandRunner {
     );
     this.foreignService = options.foreignService;
     this.mountsByService = options.mountsByService ?? {};
+    this.hostPlatform = options.hostPlatform ?? "linux/arm64";
   }
 
   readonly foreignService: string | undefined;
   readonly mountsByService: Readonly<
     Record<string, readonly Record<string, unknown>[]>
   >;
+  readonly hostPlatform: string;
 
   async run(
     command: string,
@@ -259,6 +448,7 @@ class FakeGroupRunner implements CommandRunner {
     await Promise.resolve();
     this.calls.push([command, ...args]);
     if (options.stdin) this.stdin.push(new TextDecoder().decode(options.stdin));
+    if (args[0] === "version") return success(this.hostPlatform);
     if (args[0] === "image" && args[1] === "inspect") {
       const requested = args[2]!;
       const member = this.group.materials.find((candidate) =>
@@ -290,9 +480,11 @@ class FakeGroupRunner implements CommandRunner {
         },
         State: {
           Status: this.#states.get(service) ?? "exited",
-          Health: {
-            Status: this.#states.get(service) === "running" ? "healthy" : "unhealthy",
-          },
+          Health: serviceDeclaresHealthcheck(this.group, service)
+            ? {
+              Status: this.#states.get(service) === "running" ? "healthy" : "unhealthy",
+            }
+            : null,
         },
         Mounts: this.mountsByService[service] ?? descriptorMounts(this.group, service),
       }]));
@@ -343,6 +535,16 @@ function descriptorMounts(
       RW: mode !== "ro",
     };
   });
+}
+
+function serviceDeclaresHealthcheck(
+  group: CapabilityRuntimeLaunchGroup,
+  service: string,
+): boolean {
+  const descriptor = JSON.parse(group.compose.content) as {
+    services: Record<string, { healthcheck?: unknown }>;
+  };
+  return descriptor.services[service]?.healthcheck !== undefined;
 }
 
 function assertNoDestructiveComposeCommand(runner: FakeGroupRunner): void {

@@ -33,10 +33,17 @@ import type {
   CapabilityRuntimeHostObservation,
 } from "./read-model/capability-runtime-catalog.ts";
 import type { ProjectCapabilityLedgerStore } from "../ports/out/project-capability-ledger-store.ts";
+import type { CapabilityRuntimeHostMutationLock } from "../ports/out/capability/capability-runtime-supervisor.ts";
 import type { EngineeringOperationRegistry } from "../../orchestration/operations/operation-contract.ts";
 import type { BriefCapabilityIntentRouteTable } from "../../orchestration/operations/brief-capability-intent-routes.ts";
 import type { CapabilityRuntimePreloadScheduler } from "./capability-runtime-preload-scheduler.ts";
-import type { CapabilityRuntimeHostObservationReader } from "./project-capability-runtime-context-compiler.ts";
+import type { CapabilityRuntimeQualificationAttestationStore } from "../ports/out/capability/capability-runtime-qualification-attestation-store.ts";
+import { evaluateCapabilityRuntimeQualifications } from "./evaluate-capability-runtime-qualifications.ts";
+import type {
+  CapabilityRuntimeAdminLockReader,
+  CapabilityRuntimeAdminPolicyReader,
+  CapabilityRuntimeHostObservationReader,
+} from "./project-capability-runtime-context-compiler.ts";
 
 export class ProjectCapabilityAuthorizationError extends Error {}
 
@@ -45,15 +52,38 @@ export interface ProjectCapabilityAuthorizationServiceDependencies {
   readonly registry: Pick<EngineeringOperationRegistry, "list">;
   readonly routes?: BriefCapabilityIntentRouteTable;
   readonly catalog: CapabilityRuntimeCatalog;
-  readonly policy: CapabilityRuntimeAdminPolicy;
+  /** Durable local administrator policy or a fixed test fixture. */
+  readonly policy:
+    | CapabilityRuntimeAdminPolicy
+    | CapabilityRuntimeAdminPolicyReader;
   /** Static fixture or fresh, read-only host observation at review time. */
   readonly host:
     | CapabilityRuntimeHostObservation
     | CapabilityRuntimeHostObservationReader;
-  readonly lock: CapabilityRuntimeAdminLock;
+  /** Durable local desired-state lock or a fixed test fixture. */
+  readonly lock: CapabilityRuntimeAdminLock | CapabilityRuntimeAdminLockReader;
+  /**
+   * Present only in the local control-plane composition. It advances the
+   * host desired-state history under the exact same mutex used by runtime
+   * acquisition. Fixed fixtures remain read-only in focused unit tests.
+  */
+  readonly lockWriter?: CapabilityRuntimeAdminLockWriter;
+  readonly hostMutationLock?: CapabilityRuntimeHostMutationLock;
+  /** Same exact local overlay consulted by MCP and Workbench runtime contexts. */
+  readonly qualifications?: Pick<
+    CapabilityRuntimeQualificationAttestationStore,
+    "list"
+  >;
   /** Non-blocking host-material preload after durable authorization only. */
   readonly preloadScheduler?: Pick<CapabilityRuntimePreloadScheduler, "schedule">;
   readonly now?: () => string;
+}
+
+export interface CapabilityRuntimeAdminLockWriter
+  extends CapabilityRuntimeAdminLockReader {
+  save(value: CapabilityRuntimeAdminLock): Promise<void>;
+  readRevision(revision: number): Promise<CapabilityRuntimeAdminLock>;
+  list(): Promise<readonly CapabilityRuntimeAdminLock[]>;
 }
 
 export type ProjectCapabilityChangeReview =
@@ -263,6 +293,7 @@ export class ProjectCapabilityAuthorizationService {
       )
     );
     if (alreadyAuthorized) {
+      await this.reconcileHostAuthorization();
       this.#schedulePreload(current);
       return current;
     }
@@ -277,6 +308,7 @@ export class ProjectCapabilityAuthorizationService {
         // The new approved brief is independently persisted by the project
         // service. Its exact receipt was recrossed above; the host ceiling is
         // unchanged, so adding a second ledger event would be misleading.
+        await this.reconcileHostAuthorization();
         this.#schedulePreload(current);
         return current;
       }
@@ -306,6 +338,7 @@ export class ProjectCapabilityAuthorizationService {
       ...current.events,
       event,
     ]);
+    await this.reconcileHostAuthorization();
     this.#schedulePreload(finalized);
     return finalized;
   }
@@ -345,6 +378,7 @@ export class ProjectCapabilityAuthorizationService {
       .map((group) =>
         `Operation ${group.operation.id}@${group.operation.version} is unresolved: ${group.reason}.`
       );
+    const host = await this.#host();
     const proposal = await planProjectCapabilityRequirementsProposal({
       projectId: project.project.id,
       source: "published-plan",
@@ -356,10 +390,10 @@ export class ProjectCapabilityAuthorizationService {
       intent: null,
       requirements: demand.plannedCeiling.capabilityRequirements,
       unresolvedBlockers,
-      catalog: this.dependencies.catalog,
-      policy: this.dependencies.policy,
-      host: await this.#host(),
-      lock: this.dependencies.lock,
+      catalog: await this.#effectiveCatalog(host),
+      policy: await this.#policy(),
+      host,
+      lock: await this.#lock(),
     });
     if (!ledger || !envelope) {
       return { status: "not-authorized", ledger: null, proposal };
@@ -404,6 +438,23 @@ export class ProjectCapabilityAuthorizationService {
       ProjectCapabilityProposal["capabilityProposalFingerprint"],
   ): Promise<ProjectCapabilityLedger> {
     const review = await this.reviewPublishedPlan(project);
+    if (review.status === "covered") {
+      if (
+        !fingerprintsEqual(
+          review.proposal.capabilityProposalFingerprint,
+          expectedProposalFingerprint,
+        )
+      ) {
+        throw new ProjectCapabilityAuthorizationError(
+          "The capability amendment retry no longer matches the exact server-derived proposal.",
+        );
+      }
+      // The ledger may have committed immediately before a process crash. A
+      // retry must converge its host lock before it is allowed to preload.
+      await this.reconcileHostAuthorization();
+      this.#schedulePreload(review.ledger);
+      return review.ledger;
+    }
     if (review.status !== "amendment-required") {
       throw new ProjectCapabilityAuthorizationError(
         `Capability amendment cannot be authorized while review status is ${review.status}.`,
@@ -433,8 +484,78 @@ export class ProjectCapabilityAuthorizationService {
       ...review.ledger.events,
       event,
     ]);
+    await this.reconcileHostAuthorization();
     this.#schedulePreload(amended);
     return amended;
+  }
+
+  /**
+   * Full-envelope revocation is an append-only local operational decision.
+   * It does not delete project data, evidence, CAS, WAL or retained volumes.
+   */
+  async revoke(
+    projectId: string,
+    expectedEffectiveEnvelopeFingerprint:
+      ProjectCapabilityEffectiveEnvelope["effectiveEnvelopeFingerprint"],
+    reason: string,
+  ): Promise<ProjectCapabilityLedger> {
+    if (!reason.trim()) {
+      throw new ProjectCapabilityAuthorizationError(
+        "Capability revocation requires a non-empty local operator reason.",
+      );
+    }
+    const ledger = await this.dependencies.ledgers.get(projectId);
+    const envelope = ledger?.effectiveEnvelope;
+    if (ledger && envelope?.status === "revoked") {
+      const event = ledger.events.at(-1);
+      const predecessor = event?.kind === "revocation-recorded"
+        ? await reconstructProjectCapabilityEffectiveEnvelope(
+          ledger.events.slice(0, -1),
+        )
+        : null;
+      if (
+        event?.kind === "revocation-recorded" && event.reason === reason.trim() &&
+        predecessor?.status === "authorized" && fingerprintsEqual(
+          predecessor.effectiveEnvelopeFingerprint,
+          expectedEffectiveEnvelopeFingerprint,
+        )
+      ) {
+        await this.reconcileHostAuthorization();
+        return ledger;
+      }
+    }
+    if (!ledger || !envelope || envelope.status !== "authorized") {
+      throw new ProjectCapabilityAuthorizationError(
+        "Capability revocation requires one currently authorized project envelope.",
+      );
+    }
+    if (
+      !fingerprintsEqual(
+        envelope.effectiveEnvelopeFingerprint,
+        expectedEffectiveEnvelopeFingerprint,
+      )
+    ) {
+      throw new ProjectCapabilityAuthorizationError(
+        "Capability revocation review no longer names the exact effective envelope.",
+      );
+    }
+    const event = await eventWithFingerprint({
+      kind: "revocation-recorded" as const,
+      recordedAt: this.#now(),
+      scope: "full-envelope" as const,
+      reason: reason.trim(),
+    });
+    const revoked = await this.append(projectId, ledger.revision, [
+      ...ledger.events,
+      event,
+    ]);
+    await this.reconcileHostAuthorization();
+    return revoked;
+  }
+
+  /** Local-only convergence repair after an interrupted ledger-to-lock handoff. */
+  async reconcileHostAuthorization(): Promise<void> {
+    await this.#reconcileHostAuthorization();
   }
 
   private async append(
@@ -471,12 +592,104 @@ export class ProjectCapabilityAuthorizationService {
   #schedulePreload(ledger: ProjectCapabilityLedger): void {
     const envelope = ledger.effectiveEnvelope;
     if (envelope?.status !== "authorized") return;
-    this.dependencies.preloadScheduler?.schedule(envelope.proposal);
+    this.dependencies.preloadScheduler?.schedule(
+      envelope.proposal,
+      () => this.#canPreload(envelope.proposal),
+    );
+  }
+
+  /** Called by the preload host guard while it holds the host mutation mutex. */
+  async #canPreload(proposal: ProjectCapabilityProposal): Promise<boolean> {
+    const ledger = await this.dependencies.ledgers.get(proposal.projectId);
+    const envelope = ledger?.effectiveEnvelope;
+    if (
+      !envelope || envelope.status !== "authorized" ||
+      !fingerprintsEqual(
+        envelope.proposal.capabilityProposalFingerprint,
+        proposal.capabilityProposalFingerprint,
+      )
+    ) return false;
+    const lock = await this.#lock();
+    return proposal.units.every((unit) =>
+      lock.units.some((locked) =>
+        locked.id === unit.id && locked.version === unit.version &&
+        fingerprintsEqual(locked.manifestFingerprint, unit.manifestFingerprint) &&
+        locked.desired === "active"
+      )
+    );
+  }
+
+  /**
+   * One durable project ledger is committed before this host projection. A
+   * crash therefore only yields a stricter host state; every later finalize
+   * retry recomputes the full union before it can enqueue preload.
+   */
+  async #reconcileHostAuthorization(): Promise<void> {
+    const writer = this.dependencies.lockWriter;
+    const hostLock = this.dependencies.hostMutationLock;
+    if (!writer || !hostLock) return;
+    await hostLock.withLock(async () => {
+      const ledgers = await this.dependencies.ledgers.list();
+      const active = new Map<string, CapabilityRuntimeAdminLock["units"][number]>();
+      for (const ledger of ledgers) {
+        const envelope = ledger.effectiveEnvelope;
+        if (envelope?.status !== "authorized") continue;
+        for (const unit of envelope.proposal.units) {
+          const catalogued = this.dependencies.catalog.units.find((candidate) =>
+            candidate.id === unit.id
+          );
+          if (
+            !catalogued || catalogued.version !== unit.version ||
+            !fingerprintsEqual(
+              catalogued.manifestFingerprint,
+              unit.manifestFingerprint,
+            )
+          ) {
+            throw new ProjectCapabilityAuthorizationError(
+              `Authorized capability unit ${unit.id} is absent or differs from the current local catalogue.`,
+            );
+          }
+          active.set(unit.id, {
+            id: unit.id,
+            version: unit.version,
+            manifestFingerprint: structuredClone(unit.manifestFingerprint),
+            desired: "active",
+          });
+        }
+      }
+      const current = await writer.read();
+      const units = this.dependencies.catalog.units.map((unit) =>
+        active.get(unit.id) ?? {
+          id: unit.id,
+          version: unit.version,
+          manifestFingerprint: structuredClone(unit.manifestFingerprint),
+          desired: "inactive" as const,
+        }
+      ).toSorted((left, right) => left.id.localeCompare(right.id));
+      if (deterministicJson(current.units) === deterministicJson(units)) return;
+      const previous = await sha256Fingerprint(current);
+      await writer.save({
+        schemaVersion: current.schemaVersion,
+        revision: current.revision + 1,
+        previous,
+        units,
+      });
+    });
   }
 
   async #host(): Promise<CapabilityRuntimeHostObservation> {
     const host = this.dependencies.host;
     return "read" in host ? await host.read() : structuredClone(host);
+  }
+
+  async #policy(): Promise<CapabilityRuntimeAdminPolicy> {
+    const policy = this.dependencies.policy;
+    return "read" in policy ? await policy.read() : structuredClone(policy);
+  }
+
+  async #lock(): Promise<CapabilityRuntimeAdminLock> {
+    const lock = this.dependencies.lock;
+    return "read" in lock ? await lock.read() : structuredClone(lock);
   }
 
   private async proposeForBrief(
@@ -490,6 +703,7 @@ export class ProjectCapabilityAuthorizationService {
       this.dependencies.registry,
       this.dependencies.routes,
     );
+    const host = await this.#host();
     return await planProjectCapabilityIntent({
       projectId: project.project.id,
       brief: {
@@ -498,10 +712,20 @@ export class ProjectCapabilityAuthorizationService {
         briefReviewFingerprint,
       },
       intent,
+      catalog: await this.#effectiveCatalog(host),
+      policy: await this.#policy(),
+      host,
+      lock: await this.#lock(),
+    });
+  }
+
+  async #effectiveCatalog(
+    host: CapabilityRuntimeHostObservation,
+  ): Promise<CapabilityRuntimeCatalog> {
+    return evaluateCapabilityRuntimeQualifications({
       catalog: this.dependencies.catalog,
-      policy: this.dependencies.policy,
-      host: await this.#host(),
-      lock: this.dependencies.lock,
+      host,
+      attestations: (await this.dependencies.qualifications?.list()) ?? [],
     });
   }
 }

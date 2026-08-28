@@ -65,13 +65,19 @@ later reviewed material can declare them explicitly; this first-party catalogue 
 declares none.
 
 Each material carries either a literal `null` launch group or an exact launch-group
-id/version/fingerprint reference. The three `casys.syson-stack` materials share the
-same `casys-syson@1.0.0` group reference, and `casys.mcp-calculix@0.8.2` names the
-separate single-service `casys-mcp-calculix@0.8.2` group. The immutable ordered Compose
-body remains in the server-only H1 registry. Catalogue/project data cannot carry Compose
-commands, provider endpoints, tools, arguments or secret values. Other current
-first-party persistent materials remain literal `null`: an image alone never enrolls a
-topology.
+id/version/fingerprint reference. The three `casys.syson-stack` materials share the same
+`casys-syson@1.0.0` group reference. Build123d has two separate immutable one-service
+groups: `casys-build123d-sandbox@1.0.0` (`mcp-build123d-sandbox`, 3024 → 3014,
+`build123d-sandbox-exports:/exports`) and `casys-build123d-observation@1.0.0`
+(`mcp-build123d`, 3014 → 3014, `exports:/exports`). Both pin Build123d 0.6.1 digest
+`sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d`, have no
+shared named network or invented healthcheck, and retain their volumes.
+Catalogue/project data cannot carry Compose commands, provider endpoints, tools,
+arguments or secret values. `casys.mcp-calculix@0.8.2` names the separate single-service
+`casys-mcp-calculix@0.8.2` group. Its immutable Compose body remains in the server-only
+H1 registry, has no invented healthcheck, and retains its private inputs and run-ledger
+volumes. Other current first-party persistent materials remain literal `null`: an image
+alone never enrolls a topology.
 
 The semantic capability `mechanics.observe-static-structural-sensitivity@1` names only
 two static-structural sensitivity observations, never a verdict. Its concrete
@@ -82,8 +88,8 @@ retained private `calculix-inputs`/`calculix-runs` volumes; its image supports r
 `linux/arm64` and `linux/amd64` platforms, with no forced platform or invented health
 endpoint. The catalogue and planner therefore report the binding as `unavailable`: they
 cannot pull, start or call the HTTP service until a separate live qualification is
-recorded. The recorded solve/readback implementation is observation-only and is not
-that qualification. `mechanics.solve-static-structural@1` remains separately bound to
+recorded. The recorded solve/readback implementation is observation-only and is not that
+qualification. `mechanics.solve-static-structural@1` remains separately bound to
 `casys.calculix-worker` for isolated product static proof.
 
 ## Closed planning states
@@ -91,7 +97,28 @@ that qualification. `mechanics.solve-static-structural@1` remains separately bou
 Binding selection is deterministic only when policy identifies one qualified active
 binding. The plan preserves literal outcomes: `unavailable`, `ambiguous`, `disabled`,
 `revoked`, and `incompatible`. A material mode is independently `native`, `emulated`, or
-`unavailable`; no platform claim is rendered as `unavailable`, never guessed.
+`unavailable`; no platform claim is rendered as `unavailable`, never guessed. The
+code-owned catalogue baseline never declares a host runtime mode. An effective mode is
+derived only from a matching local qualification attestation for the exact binding,
+adapter contract, profile, unit manifest, material digest, target platform, launch-group
+reference and opaque host identity. A native historical code-owned qualification may
+produce a native mode on the observed matching platform; it can never imply emulation.
+
+The append-only attestation schema is
+`capability-runtime-binding-qualification-attestation/1.0`. Its only terminal facts are
+`qualified` and `revoked`; it contains fixture/outcome references and closed identities,
+never a probe payload, request headers, credential or provider response. An exact
+revocation is monotone: it makes that material unavailable rather than being sorted away
+by timestamps or hashes. A Chrono Linux/amd64 emulation attestation therefore does not
+qualify any other AMD64 image, binding, profile or host.
+
+The local attestation ledger is append-only. A concurrent reader ignores only the
+private UUID `.tmp` basename emitted by the durable write primitive before its atomic
+link; any other unexpected entry remains a literal store-integrity failure.
+
+A MicroVM cache likewise derives its expected guest architecture only from the one
+registered code-owned material platform. The controller process architecture is never a
+fallback for cache inspection or for a planned runtime mode.
 
 Before selection, the planner recalculates every atomic unit manifest from its id,
 version, and complete material body. A stale fingerprint is refused. A lock applies only
@@ -125,7 +152,9 @@ dispatch time, or that any engineering result has passed.
 
 `capability-runtime-admin-policy/1.0` can only disable or rank trusted binding ids.
 `capability-runtime-admin-lock/1.0` records exact unit id/version/manifest fingerprint
-and desired `inactive` or `active` state. Neither belongs in project or Thread state.
+and desired `inactive` or `active` state. It is append-only history with a durable head;
+`active` permits JIT but does not keep a service running. Neither belongs in project or
+Thread state. See [local runtime administration](local-runtime-administration.md).
 
 The next supervisor lot may consume this plan. It must journal before host mutation,
 observe recovery after interruption, use leases for JIT activation, preserve Thread/CAS/

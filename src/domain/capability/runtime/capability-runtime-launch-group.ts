@@ -443,6 +443,9 @@ function composeService(
     "command",
     "cap_drop",
     "security_opt",
+    "mem_limit",
+    "cpus",
+    "pids_limit",
     "platform",
   ]);
   for (const key of Object.keys(service)) {
@@ -540,11 +543,11 @@ function validateComposeService(
       );
     }
   }
-  if (service.healthcheck === undefined && qualification !== "unqualified") {
-    throw new TypeError(
-      `${path}.healthcheck is required unless the launch group is explicitly unqualified.`,
-    );
-  }
+  // The immutable descriptor records the provider's actual Compose contract.
+  // A provider image without a Compose healthcheck is observed as `running`
+  // after `docker compose up --wait`; callers must not manufacture a probe
+  // merely to activate it. Services which do declare one still require a
+  // healthy observation at the host boundary.
   if (service.healthcheck !== undefined) {
     const health = record(service.healthcheck, `${path}.healthcheck`);
     const allowed = new Set(["test", "interval", "timeout", "retries", "start_period"]);
@@ -589,6 +592,28 @@ function validateComposeService(
         throw new TypeError(`${path}.${key} must be a closed nonempty string array.`);
       }
     }
+  }
+  if (
+    service.mem_limit !== undefined &&
+    (typeof service.mem_limit !== "string" ||
+      !/^[1-9][0-9]*(?:b|k|m|g)$/i.test(service.mem_limit))
+  ) {
+    throw new TypeError(`${path}.mem_limit must be a closed positive memory limit.`);
+  }
+  if (
+    service.cpus !== undefined &&
+    (typeof service.cpus !== "number" || !Number.isFinite(service.cpus) ||
+      service.cpus <= 0 || service.cpus > 64)
+  ) {
+    throw new TypeError(`${path}.cpus must be a bounded positive number.`);
+  }
+  if (
+    service.pids_limit !== undefined &&
+    (typeof service.pids_limit !== "number" ||
+      !Number.isSafeInteger(service.pids_limit) || service.pids_limit < 1 ||
+      service.pids_limit > 65_535)
+  ) {
+    throw new TypeError(`${path}.pids_limit must be a bounded positive integer.`);
   }
   if (
     service.platform !== undefined && service.platform !== "linux/arm64" &&

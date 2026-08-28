@@ -6,6 +6,43 @@ H1 governs server-owned local runtime state. It does not select a provider, admi
 engineering method, or interpret an engineering result. The initial enrolled topology is
 the exact `casys-syson@1.0.0` group: Postgres, SysON and `mcp-syson`, with only
 `127.0.0.1:3009` published. The historical SysON UI port 8180 is not part of this group.
+`casys-chrono@1.0.0` is a separate one-service group enrolled as an unqualified
+candidate, not as an active or qualified engine.
+
+## Durable local read model
+
+The server rebuilds its runtime context for every review/queue decision from the trusted
+catalogue, actual local read-only observation, the append-only authorization ledger, and
+two strict local administrative files. An absent `admin-policy.json` is the neutral
+trusted-catalogue order. An absent `admin-lock.json` is revision 0 with no units: it
+requests no desired activation, but does not prevent a brief-approved acquisition. A
+malformed, non-canonical, unknown-field, stale-unit or otherwise unreadable file fails
+closed; it never silently becomes the neutral default.
+
+Observation is partitioned by code-owned material coverage. The Compose observer owns
+only enrolled exact launch-group materials and the Microsandbox observer owns only the
+exact CalculiX microVM cache contract. A duplicate coverage declaration, unexpected
+material response, or missing response for an owned material is rejected. A material
+which no local observer owns remains literally `unavailable` in the Workbench rather
+than being guessed present or absent.
+
+The factual observation contains only the Docker daemon's exact reported platform,
+installed exact images and an opaque stable local-host identity fingerprint. It does
+not infer a platform from the Deno controller process and it does not declare global
+emulation. An unreadable or unsupported daemon platform fails closed: it is not guessed
+from the Mac architecture. The same local read composition overlays the immutable
+catalogue with the append-only qualification-attestation store at
+`state/local/capability-runtime-host/qualification-attestations/`. Queue, session and
+Workbench contexts therefore see the same effective per-material modes. An attestation
+must match the current binding, unit manifest, digest, profile, contract, launch group
+and host identity exactly; an absent or mismatched mode blocks resolution before any
+host mutation.
+
+`GET /api/project/capabilities` exposes the existing redacted
+`project-capability-workbench/1.0` projection through the native Workbench BFF. It has
+no POST/SSE counterpart in this lot and contains no Docker argv, image repository,
+ports, mounts, credentials, secret-slot names, or mutation control. The visual card is
+deliberately deferred; the endpoint is the read-only integration surface.
 
 ```text
 catalogue material -> exact launch-group reference + fingerprint
@@ -43,6 +80,16 @@ a closed Deno loopback `/health` check because it has no baked image healthcheck
 fixed database values are existing internal development topology values, not secret-slot
 authority and not caller input.
 
+`casys-chrono` contains exactly the pinned mcp-chrono image on loopback port 3025 and
+the retained `chrono-data` named volume. Its descriptor carries only the fixed
+`chrono-mcp-bearer-token` slot; the host resolves the bearer value into a short-lived
+in-memory Compose overlay and the matching fixed client credential. The descriptor,
+group fingerprint, journal, argv, Thread, CAS, WAL, Workbench and error output never
+receive the value. A group with a secret slot always performs the sealed `compose up`
+reconciliation when a session begins, even if it is already active. A non-secret active
+group remains a no-op. The resolver keeps one snapshot generation for a server process,
+so parallel leases cannot rotate one client away from its container.
+
 ## Lease, journal and JIT lifecycle
 
 One execution session derives unique groups from its sealed runtime plan, starts them in
@@ -76,6 +123,11 @@ brief confirmation or a later bounded amendment. Only then may the preload sched
 acquire exact persistent material in the background; preload never starts Compose.
 Activation happens immediately before the covered run, after a fresh operational-plan
 recheck, and leaves the run/WAL unchanged if it cannot prove the group active.
+
+Terminal release rereads the exact current `EngineeringProject` demand before stopping a
+group. A missing project, unreadable runtime context, unresolved JIT demand or stale
+catalogue link blocks cleanup rather than releasing the final lease or stopping a shared
+runtime. An active sibling lease also retains the group.
 
 This is operational authorization only. MRTR still admits the engineering method, inputs
 and criteria. L3 observations, L4 evaluation and any L5 human decision remain
