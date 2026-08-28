@@ -311,7 +311,7 @@ Deno.test("a durable replay survives a new server composition without another pr
   const root = await Deno.makeTempDir();
   try {
     const cache = new FileAdmittedGeometryExportReplayCache(`${root}/replay`);
-    const state = { begins: 0, releases: 0, retains: 0 };
+    const state = { begins: 0, releases: 0, retains: 0, recordedReleases: 0 };
     const project = {
       project: { id: fixture.command.projectId },
       threadSnapshots: [{
@@ -332,6 +332,10 @@ Deno.test("a durable replay survives a new server composition without another pr
           retainForRecovery: () => state.retains++,
         });
       },
+      releaseRecorded: () => {
+        state.recordedReleases++;
+        return Promise.resolve();
+      },
     } as never;
     const compose = () =>
       new ExportAdmittedProjectGeometry({
@@ -350,7 +354,12 @@ Deno.test("a durable replay survives a new server composition without another pr
     const second = await compose().execute(fixture.command);
 
     assertEquals(second, first);
-    assertEquals(state, { begins: 1, releases: 1, retains: 0 });
+    assertEquals(state, {
+      begins: 1,
+      releases: 1,
+      retains: 0,
+      recordedReleases: 1,
+    });
     assertEquals(fixture.exporter.calls.length, 1);
     assert((await cache.read(await replayKey(fixture.command))) !== undefined);
   } finally {
@@ -402,6 +411,50 @@ Deno.test("a corrupt durable replay refuses before preparation instead of blindl
   } finally {
     await Deno.remove(root, { recursive: true });
   }
+});
+
+Deno.test("a generic replay-store failure is fail-closed before preparation or provider", async () => {
+  const fixture = await harness();
+  let begins = 0;
+  const service = new ExportAdmittedProjectGeometry({
+    admissions: fixture.reader,
+    exporter: fixture.exporter,
+    exporterFactory: () => fixture.exporter,
+    projects: {
+      get: () =>
+        Promise.resolve({
+          project: { id: fixture.command.projectId },
+          threadSnapshots: [{
+            snapshotId: fixture.command.basis.snapshotId,
+            revision: fixture.command.basis.revision,
+            subjectId: fixture.command.basis.subjectId,
+          }],
+        } as never),
+    },
+    preparation: {
+      begin: () => {
+        begins++;
+        return Promise.reject(new Error("must not activate"));
+      },
+      releaseRecorded: () => Promise.resolve(),
+    } as never,
+    replayCache: {
+      read: () => Promise.reject(new Error("disk I/O failed")),
+      prepare: () => Promise.resolve(),
+      dispatch: () => Promise.resolve(),
+      save: () => Promise.resolve(),
+    },
+    architecture: fixture.architecture,
+    snapshots: fixture.snapshots,
+    geometryCaptures: fixture.geometryCaptures,
+  });
+
+  await assertExportError(
+    () => service.execute(fixture.command),
+    "runtime_unavailable",
+  );
+  assertEquals(begins, 0);
+  assertEquals(fixture.exporter.calls.length, 0);
 });
 
 Deno.test("a durable dispatching record quarantines a non-idempotent Build123d retry before activation", async () => {

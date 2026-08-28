@@ -536,17 +536,43 @@ export class ExportAdmittedProjectGeometry
   ): Promise<ProjectAdmittedGeometryExportResult | undefined> {
     if (!this.#replayCache) return undefined;
     try {
-      return await this.#replayCache.read(await admittedGeometryReplayKey(command));
-    } catch (error) {
-      if (error instanceof AdmittedGeometryExportReplayUnavailableError) {
-        throw exportError(
-          "runtime_unavailable",
-          "The durable admitted-geometry replay record requires recovery.",
-        );
+      const replay = await this.#replayCache.read(
+        await admittedGeometryReplayKey(command),
+      );
+      if (replay) await this.#releaseRecordedPreparation(command);
+      return replay;
+    } catch {
+      // The replay/WAL records the only non-idempotent provider boundary. Any
+      // storage, parsing or hash failure is recoverable unavailable; returning
+      // a cache miss here could cause a second Build123d dispatch.
+      throw exportError(
+        "runtime_unavailable",
+        "The durable admitted-geometry replay record requires recovery.",
+      );
+    }
+  }
+
+  async #releaseRecordedPreparation(
+    command: ProjectAdmittedGeometryExportCommand,
+  ): Promise<void> {
+    if (!this.#preparation || !this.#projects) return;
+    try {
+      const project = await this.#projects.get(command.projectId);
+      if (!project || project.project.id !== command.projectId) {
+        throw new Error("Exact project unavailable.");
       }
-      // A replay index is an optimization only. A corrupt or unavailable entry
-      // must never turn into a caller-controlled provider selection.
-      return undefined;
+      await this.#preparation.releaseRecorded({
+        project,
+        operation: { ...DESIGN_WRITE_GEOMETRY_OPERATION, bindings: [] },
+      });
+    } catch {
+      // Returning a recorded draft while silently retaining a matching lease
+      // would block later exact exports. This path performs no activation or
+      // provider call, but it must finish exact cleanup or remain recoverable.
+      throw exportError(
+        "runtime_unavailable",
+        "The recorded admitted-geometry replay requires exact lease cleanup.",
+      );
     }
   }
 

@@ -49,6 +49,12 @@ and an exact durable result. Replay hits never activate a runtime; `dispatching`
 `recorded`, an unreadable record, or a collision is `unavailable` for recovery rather
 than a fresh provider dispatch.
 
+If an interruption occurs while only `prepared` exists, the server may resume the same
+exact preparation reservation after cold validation; an expired reservation gains an
+immutable linked successor rather than overwriting history. If `recorded` exists but the
+success-path cleanup did not run, replay returns the captured result and releases only the
+exact residual lease without activating Build123d or calling the provider.
+
 For a lowered closure, every reopen and replay recrosses the sealed closure, reopens all
 named file bytes, re-lowers them, compares the full manifest and effective script, and
 reanalyses before this exporter is reached. A mismatch fails before a provider call.

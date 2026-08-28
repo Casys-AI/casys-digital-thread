@@ -54,6 +54,11 @@ no agent run or work item. The canonical export lane records a tiny monotone rep
 the synced `dispatching` marker, and restart with that marker but no `recorded` result is
 recoverable `unavailable`, never permission to redispatch. A post-dispatch ambiguity
 retains the lease for recovery; a known pre-provider validation failure releases it.
+An interrupted `prepared` reservation can resume its exact still-live lease after fresh
+observation, or use an immutable successor linked to an expired claim; it cannot reuse a
+different scope. Conversely, replaying `recorded` performs exact lease cleanup without
+activation or provider call, while the group supervisor preserves other live leases/JIT
+demands before any stop.
 
 Public MCP exposure, remote Docker access, production secrets and an unreviewed host
 effect remain blockers for future activation.

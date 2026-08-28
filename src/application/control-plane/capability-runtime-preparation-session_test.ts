@@ -112,6 +112,77 @@ Deno.test("preparation refuses a non-preparation or mixed resolved operation bef
   assertEquals(activations, 0);
 });
 
+Deno.test("an interrupted pre-dispatch preparation reuses its exact live lease or creates a linked successor after expiry", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  let now = AT;
+  const reuse: ("allow" | "reject")[] = [];
+  const coordinator = preparationCoordinator(leases, () => now, reuse);
+
+  const original = await coordinator.begin({ project: PROJECT, operation: OPERATION });
+  now = "2026-08-29T00:05:00.000Z";
+  const resumed = await coordinator.begin({ project: PROJECT, operation: OPERATION });
+  assertEquals(resumed.lease.id, original.lease.id);
+  assertEquals(reuse, ["reject", "allow"]);
+
+  now = "2026-08-29T00:16:00.000Z";
+  const renewed = await coordinator.begin({ project: PROJECT, operation: OPERATION });
+  assertEquals(renewed.lease.id === original.lease.id, false);
+  assertEquals(reuse, ["reject", "allow", "reject"]);
+  assertEquals(await leases.read(original.lease.id), original.lease);
+
+  await renewed.releaseSuccess();
+  assertEquals(await leases.listActive(now), []);
+});
+
+Deno.test("recorded replay cleanup releases only its exact extant lease without a new activation", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  const reuse: ("allow" | "reject")[] = [];
+  const coordinator = preparationCoordinator(leases, () => AT, reuse);
+  const session = await coordinator.begin({ project: PROJECT, operation: OPERATION });
+
+  await coordinator.releaseRecorded({ project: PROJECT, operation: OPERATION });
+
+  assertEquals(reuse, ["reject"]);
+  assertEquals(await leases.read(session.lease.id), undefined);
+});
+
+function preparationCoordinator(
+  leases: InMemoryCapabilityRuntimeLeaseStore,
+  now: () => string,
+  reuse: ("allow" | "reject")[],
+): CapabilityRuntimePreparationSessionCoordinator {
+  return new CapabilityRuntimePreparationSessionCoordinator({
+    authorization: { requirePreparation: () => Promise.resolve(preparation()) },
+    leases,
+    groups: {
+      ensureActive: async (input: {
+        readonly group: CapabilityRuntimeLaunchGroupReference;
+        readonly lease: CapabilityRuntimeLease;
+        readonly reuseExistingLease: "allow" | "reject";
+      }) => {
+        reuse.push(input.reuseExistingLease);
+        await leases.claim(input.lease);
+        return {
+          group: input.group,
+          states: new Map([[
+            "casys.mcp-build123d-sandbox\u0000mcp-build123d-sandbox-image",
+            {
+              material: "installed",
+              runtime: "active",
+              qualification: "qualified",
+            },
+          ]]),
+          mutation: undefined,
+        };
+      },
+      releaseTerminal: async (input: { readonly leaseId: string }) => {
+        await leases.release(input.leaseId);
+      },
+    } as never,
+    now,
+  });
+}
+
 function preparation(): ResolvedCapabilityRuntimeOperation {
   return {
     schemaVersion: "resolved-capability-runtime-operation/1.0",
