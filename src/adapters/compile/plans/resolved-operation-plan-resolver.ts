@@ -7,11 +7,20 @@
 import {
   CALCULIX_ISOLATED_STATIC_RESOURCE_PROFILE,
   CALCULIX_RECORDED_STATIC_RESOURCE_PROFILE,
+  PRESCRIBED_KINEMATICS_OBSERVATION_RESOURCE_PROFILE,
   RESOLVED_OPERATION_PLAN_V2_SCHEMA,
   resolvedOperationPlanIdForRun,
   type ResolvedOperationPlanSource,
   type ResolvedOperationPlanV2,
 } from "../../../domain/compile/rop/resolved-operation-plan-v2.ts";
+import type { PrescribedKinematicsCaptureStore } from "../../../application/ports/out/mechanics/prescribed-kinematics-capture-store.ts";
+import {
+  prescribedKinematicsObservationMethod,
+} from "../../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-observation.ts";
+import {
+  VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+  VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION,
+} from "../../../domain/mechanism/prescribed-kinematics/operations.ts";
 import type { CalculixIsolatedExecutionProfile } from "../../../application/ports/out/fea/isolated-v3/calculix-isolated-execution-profile.ts";
 import { canonicalCalculixStepAssetCasUri } from "../../../domain/fea/isolated-v3/calculix-step-asset-uri.ts";
 import {
@@ -72,6 +81,7 @@ import { threadSnapshotDescendsFrom } from "../../shared/stores/thread-snapshot-
 
 const CALCULIX_OPERATION = VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION;
 const CALCULIX_LOCAL_OPERATION = VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION;
+const PRESCRIBED_KINEMATICS_OPERATION = VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION;
 const SHA256 = /^[a-f0-9]{64}$/;
 const CANONICAL_CAS_URI =
   /^casys:\/\/[a-z0-9][a-z0-9.-]{0,62}\/sha256\/([a-f0-9]{64})$/;
@@ -96,6 +106,10 @@ export interface ResolvedOperationPlanResolverOptions {
     readonly timeoutMs?: number;
     /** Exact server-composed profile required to seal the provider-free @3 plan. */
     readonly localProfile?: CalculixIsolatedExecutionProfile;
+  };
+  /** Exact V1 case capture reader; no generic filesystem or URI lookup. */
+  readonly prescribedKinematics?: {
+    readonly captures: Pick<PrescribedKinematicsCaptureStore, "readCase">;
   };
 }
 
@@ -172,6 +186,15 @@ export class ResolvedOperationPlanResolver implements FeaIsolatedRunAdmissionRev
     ) {
       return await this.#calculixPlan(input, snapshot, common);
     }
+    if (
+      sameOperation(
+        operation.id,
+        operation.version,
+        PRESCRIBED_KINEMATICS_OPERATION,
+      )
+    ) {
+      return await this.#prescribedKinematicsPlan(input, snapshot, common);
+    }
     throw new TypeError(
       "resolved-operation-plan/2.0 is not defined for this operation.",
     );
@@ -222,7 +245,7 @@ export class ResolvedOperationPlanResolver implements FeaIsolatedRunAdmissionRev
     const proof = proofCaptureView(admission.capture);
     const geometryCasUri = canonicalCalculixStepAssetCasUri(geometry);
     const stepBytes = admission.stepBytes;
-    const requestId = await requestIdFor(input.run.id, "calculix");
+    const requestId = await resolvedOperationPlanRequestIdFor(input.run.id, "calculix");
     const commonPlan = {
       ...common,
       authorization: {
@@ -317,6 +340,111 @@ export class ResolvedOperationPlanResolver implements FeaIsolatedRunAdmissionRev
       },
       recovery: {
         policy: "mcp-calculix.recorded-static-recovery@1.0",
+        requestId,
+        mode: "same-request-readback-no-blind-redispatch",
+        ambiguousOutcome: "quarantine-for-human-review",
+        capturedOutcome: "cas-only-recovery",
+      },
+    };
+  }
+
+  async #prescribedKinematicsPlan(
+    input: RegisteredRunPlanSealInput,
+    snapshot: ThreadSnapshot,
+    common: PlanCommon,
+  ): Promise<ResolvedOperationPlanV2> {
+    const captures = this.options.prescribedKinematics?.captures;
+    if (!captures) {
+      throw new TypeError(
+        "The prescribed-kinematics operation requires the exact server-composed case capture reader.",
+      );
+    }
+    const matches = snapshot.artifacts.filter((artifact) =>
+      artifact.producer.serverId === "digital-thread" &&
+      artifact.producer.tool ===
+        `${VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION.id}@${VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION.version}`
+    );
+    if (matches.length !== 1) {
+      throw new TypeError(
+        "The prescribed-kinematics run basis must contain exactly one sealed case artifact.",
+      );
+    }
+    const artifact = matches[0]!;
+    if (
+      artifact.kind !== "evidence" || artifact.mediaType !== "application/json" ||
+      artifact.freshness.status !== "fresh"
+    ) {
+      throw new TypeError(
+        "The prescribed-kinematics sealed case artifact is not a fresh JSON evidence capture.",
+      );
+    }
+    const sealedCase = await captures.readCase(artifact.fingerprint);
+    if (!sealedCase) {
+      throw new TypeError(
+        "The exact prescribed-kinematics case capture is absent from its closed CAS lane.",
+      );
+    }
+    if (
+      sealedCase.sourceClosure.workspace.projectId !== input.project.project.id ||
+      sealedCase.sourceClosure.workspace.declaredAgainst.thread.subjectId !==
+        snapshot.subject.id
+    ) {
+      throw new TypeError(
+        "The sealed prescribed-kinematics case belongs to another project or subject.",
+      );
+    }
+    const bytes = new TextEncoder().encode(deterministicJson(sealedCase));
+    if (await fingerprintResourceBytes(bytes) !== artifact.fingerprint.digest) {
+      throw new TypeError(
+        "The prescribed-kinematics case capture bytes do not match the exact Thread artifact fingerprint.",
+      );
+    }
+    const requestId = await resolvedOperationPlanRequestIdFor(
+      input.run.id,
+      "prescribed-kinematics",
+    );
+    const method = await prescribedKinematicsObservationMethod();
+    return {
+      ...common,
+      authorization: {
+        ...common.authorization,
+        methodQualification: {
+          id: method.id,
+          version: method.version,
+          fingerprint: method.fingerprint,
+        },
+      },
+      sources: [
+        sourceFromBytes(
+          snapshot,
+          "case",
+          "prescribed-kinematics-case",
+          artifact,
+          bytes,
+        ),
+      ],
+      action: {
+        kind: "prescribed-kinematics-observation",
+        lowering: { id: "prescribed-kinematics.case-json", version: "1.0" },
+        requestId,
+        input: {
+          prescribedKinematicsCase: {
+            id: artifact.id,
+            fingerprint: artifact.fingerprint,
+            sourceBinding: "case",
+          },
+        },
+      },
+      expectedProviderResources: {
+        receiptSchema: "chrono-prescribed-kinematics-receipt/1.0",
+        evidenceSchema: "prescribed-kinematics-observation/1.0",
+        resourceProfile: {
+          id: PRESCRIBED_KINEMATICS_OBSERVATION_RESOURCE_PROFILE.id,
+          version: PRESCRIBED_KINEMATICS_OBSERVATION_RESOURCE_PROFILE.version,
+        },
+      },
+      recovery: {
+        policy: "prescribed-kinematics.observation-recovery@1.0",
         requestId,
         mode: "same-request-readback-no-blind-redispatch",
         ambiguousOutcome: "quarantine-for-human-review",
@@ -1174,13 +1302,23 @@ function artifactById(snapshot: ThreadSnapshot, id: string): ThreadArtifact {
   return matches[0];
 }
 
-async function requestIdFor(runId: string, provider: string): Promise<string> {
+/**
+ * Server-only deterministic request identity for a sealed ROP action.
+ *
+ * It is intentionally shared with no provider-facing caller.  Executors must
+ * carry the action's sealed value through unchanged rather than derive a
+ * second run-id convention.
+ */
+export async function resolvedOperationPlanRequestIdFor(
+  runId: string,
+  family: string,
+): Promise<string> {
   const digest = (await sha256Fingerprint({
     schema: "resolved-operation-plan/2.0",
-    provider,
+    provider: family,
     runId,
   })).digest;
-  return `rop2-${provider}-${digest.slice(0, 32)}`;
+  return `rop2-${family}-${digest.slice(0, 32)}`;
 }
 
 function sameOperation(

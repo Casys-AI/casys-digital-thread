@@ -51,6 +51,7 @@ import {
 } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
 import { validateCapabilityRuntimeCatalog } from "./capability-runtime-catalog.ts";
 import {
+  firstPartyChronoLaunchGroupReference,
   firstPartySysonLaunchGroupReference,
   MCP_SYSON_IMAGE_REFERENCE,
   POSTGRES_IMAGE_REFERENCE,
@@ -74,7 +75,10 @@ const SYSON_LAUNCH_GROUP_NOTE =
 export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
   CapabilityRuntimeCatalog
 > {
-  const sysonLaunchGroup = await firstPartySysonLaunchGroupReference();
+  const [sysonLaunchGroup, chronoLaunchGroup] = await Promise.all([
+    firstPartySysonLaunchGroupReference(),
+    firstPartyChronoLaunchGroupReference(),
+  ]);
   const units = await Promise.all([
     unit("casys.syson-stack", [
       composeMaterial(
@@ -210,7 +214,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "reviewed",
       ),
     ]),
-    unit("casys.mcp-chrono", [chronoMaterial()], "0.3.1"),
+    unit("casys.mcp-chrono", [chronoMaterial(chronoLaunchGroup)], "0.3.1"),
   ]);
   return await validateCapabilityRuntimeCatalog({
     schemaVersion: CAPABILITY_RUNTIME_CATALOG_SCHEMA_VERSION,
@@ -526,14 +530,16 @@ function ociImageMaterial(
  * local microVM workers. Its runtime security and ARM emulation qualification
  * remain literal unknown/unqualified until a dedicated probe records them.
  */
-function chronoMaterial(): AtomicCapabilityRuntimeMaterial {
+function chronoMaterial(
+  launchGroup: CapabilityRuntimeLaunchGroupReference,
+): AtomicCapabilityRuntimeMaterial {
   return {
     id: "mcp-chrono-image",
     kind: "compose-service",
     imageReference: MCP_CHRONO_031_IMAGE_REFERENCE,
     platforms: ["linux/amd64"],
     lifecycle: "persistent",
-    launchGroup: null,
+    launchGroup,
     effects: {
       downloadBytes: null,
       storageBytes: null,
@@ -547,7 +553,7 @@ function chronoMaterial(): AtomicCapabilityRuntimeMaterial {
       devices: [],
       secretSlots: ["chrono-mcp-bearer-token"],
       licence: { status: "unknown", reference: REVIEWED_LICENCE_DOC },
-      security: "unknown",
+      security: "reviewed",
     },
   };
 }

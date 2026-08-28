@@ -12,8 +12,10 @@ sealed case → L3 factual observation → sealed method → L4 evaluation → h
 
 The current contract and its focused pure-domain tests live in
 [`src/domain/mechanism/prescribed-kinematics`](../../../../src/domain/mechanism/prescribed-kinematics).
-This reference does **not** claim that a provider adapter, runtime image, or real Chrono
-execution is installed or qualified.
+The registered server path includes the fixed Chrono adapter, an atomic local runtime
+definition and L1/L3/L4/L5 executors. It does **not** claim that the Chrono runtime has
+passed a live emulation probe: its exact binding remains `unqualified` and its runtime
+mode remains `unavailable` until that probe is recorded.
 
 ## Case source and graph binding
 
@@ -47,7 +49,7 @@ the whole duration is literally `unavailable` for this binding. The server must 
 average frames, compose an undocumented transform, infer a joint from a STEP/label, or
 synthesize geometry to make it runnable.
 
-Before submission, the binding also repeats the qualified mcp-chrono 0.3.1 numeric
+Before submission, the binding also repeats the pinned mcp-chrono 0.3.1 numeric
 boundary: every emitted numeric value, including poses, quaternions, limits, angles and
 derived angular speed, must be finite and within `±1,000,000`. It fixes
 `sample_every_steps` to `1` and rejects the source if
@@ -81,24 +83,34 @@ name, or a physical guess.
 
 ## L3: prescribed-kinematics observation
 
-`verify.run-prescribed-kinematics@1` will later produce one
-`prescribed-kinematics-observation/1.0`. The provider-neutral normal form is bound to
-the exact sealed case and contains every case-derived sample time, each body pose, each
-joint angle, and each joint's two residual vectors: `translationResidualM` in metres and
-the dimensionless `rotationQuaternionImagResidual`, plus the convergence state. It does
-not collapse those values into one ambiguous scalar.
+`verify.run-prescribed-kinematics@1` is a registered server-owned L3 operation. When
+the exact Chrono capability has been operationally authorized and its local binding is
+qualified, it produces one `prescribed-kinematics-observation/1.0`. The provider-neutral
+normal form is bound to the exact sealed case and contains every case-derived sample
+time, each body pose, each joint angle, and each joint's two residual vectors:
+`translationResidualM` in metres and the dimensionless
+`rotationQuaternionImagResidual`, plus the convergence state. It does not collapse
+those values into one ambiguous scalar.
 
 L3 values are literal facts only. Missing observations use `unresolved` and unsupported
 observations use `unavailable`; they are never guessed. Collision, contact, clearance,
 forces, strength, safety, and manufacturability are copied as literal `not_evaluated`
 boundaries.
 
-The immutable L3 capture records only the exact dispatch identity (`requestId` and case
-SHA-256), the source/lowering/request fingerprints, and a strictly normalized factual
-Chrono receipt. The receipt must repeat the same request and case identities, qualified
-engine/runtime identity, exact execution exit and the fixed `not_evaluated` boundary. It
-never stores the provider case JSON; that transient request is recoverable only by
+The immutable L3 capture records the exact dispatch identity (`requestId` and case
+SHA-256), source/lowering/request fingerprints, sealed ROP and capability fingerprints,
+binding/adapter/profile identity, material digest, launch-group identity, and a strictly
+normalized factual Chrono receipt. The receipt must repeat the same request and case
+identities, engine/runtime identity, exact execution exit and the fixed provider
+`not_evaluated` boundary. It never stores the provider case JSON, endpoint, bearer
+token, or Compose secret overlay; the transient request is recoverable only by
 re-lowering the sealed source under the recorded binding.
+
+The mcp-chrono 0.3.1 wire owns exactly nine `not_evaluated` literals: collision,
+clearance, contact, forces, torques, dynamics, strength, safety, and product fitness.
+The Digital Thread capture retains those nine verbatim **and separately** writes its
+code-owned coverage limit, including `manufacturability: not_evaluated`. It never edits
+or pretends that the provider wire supplied a tenth value.
 
 Time identity is a case-derived integer sample tick. The normalizer accepts decimal JSON
 spellings such as `0.3` for the `0.1 s` third tick within the fixed numeric tolerance,
@@ -123,12 +135,15 @@ L5 decision.
 
 `decide.accept-prescribed-kinematics-evaluation@1` is merely offered to a human when all
 L4 criteria pass. The reject consequence is always available; non-pass L4 uses the
-literal disposition `prescribed-kinematics-review-required`. Both preserve the method
-limitations and still require a human-origin, signed append operation. In this
-pure-domain lot they are **unregistered and uncallable** eligibility identities: a later
-application lot must bind the exact project, subject, Thread basis, and signed
-human-origin `EngineeringDecisionProposalParameter` before either can create L5
-evidence.
+literal disposition `prescribed-kinematics-review-required`. Both are registered and
+retain the exact project, subject, Thread basis, and human-origin signed decision before
+they can create L5 evidence. They preserve the method limitations and never make an L5
+decision from a provider success, runtime health check, or L4 result alone.
+
+The current MCP AX intentionally exposes only the provider-neutral L1 case review. A
+small follow-up tooling lot must add read-only review/next-hop discovery for the already
+registered method, L4, and L5 stages; it must not add a new approval authority or let an
+agent self-approve a decision.
 
 ## Explicit exclusions
 
@@ -137,3 +152,20 @@ fit-up, loads, forces, torque, dynamics, resistance, strength, fatigue, safety,
 fabrication, certification, or product fitness. A successful provider call, an L3
 observation, a runtime health check, or an L4 pass cannot be reinterpreted as any of
 those claims.
+
+## Runtime boundary
+
+`casys.mcp-chrono@0.3.1` is an optional atomic material selected only by the
+provider-neutral `prescribed-kinematics` verification authority in the project brief.
+The server selects its exact binding, image digest, launch group, and fixed loopback
+endpoint; the agent never sends any of them. `casys-chrono@1.0.0` runs one
+`linux/amd64` service on `127.0.0.1:3025`, retains `chrono-data:/data`, has no public
+port, bind mount, device, socket or privilege, and receives its one bearer value only
+through a host-local opaque secret snapshot at launch and client construction. The
+sealed group fingerprint covers the fixed shape and secret slot, never the value.
+
+An active secret-bearing group is reconciled with that same process-local snapshot
+before the fixed client is returned; this avoids a container/client token generation
+mismatch after restart or rotation. It is still operational plumbing, not engineering
+evidence. Until the explicit live AMD64-on-ARM64 emulation probe succeeds, this material
+is visible but `unqualified`/`unavailable` and cannot make an L3 call.

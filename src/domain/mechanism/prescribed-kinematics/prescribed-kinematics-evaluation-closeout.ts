@@ -32,9 +32,10 @@ import {
 export const PRESCRIBED_KINEMATICS_EVALUATION_CLOSEOUT_SCHEMA =
   "prescribed-kinematics-evaluation-closeout/1.0" as const;
 /**
- * This pure domain lot can determine only L5 eligibility. The accept/reject
- * operation identities remain unregistered and uncallable until application
- * code supplies the exact project/subject/Thread basis and signed human origin.
+ * This pure domain lot determines only L5 eligibility. The registered
+ * accept/reject operations still require the application layer to supply the
+ * exact project/subject/Thread basis and a signed human origin; neither an L3
+ * observation nor an L4 evaluation can self-accept a closeout.
  */
 export const PRESCRIBED_KINEMATICS_L5_STATUS = "eligibility-only" as const;
 

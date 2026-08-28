@@ -140,10 +140,14 @@ The exact module and STEP are reopened through the profile-free
 [static assembly basis](static-assembly-basis.md). Static integrity then adds its own
 bundle, method, bounds, and provider profile.
 
-Kinematics is not a richer provider profile for this port. It needs explicit bodies,
-frames, joints, limits, and sampled scenarios, so it will use a separate capability,
-capture, evaluation, and Brief verification authority. A possible Project Chrono
-provider remains deferred and is not current authority.
+Kinematics is not a richer provider profile for this port. It has a separate bounded
+vertical with explicit bodies, frames, joints, limits, sampled scenarios, capture,
+evaluation, and Brief verification authority; see
+[prescribed kinematics](../mechanism/prescribed-kinematics.md). It still does not turn
+static non-intersection into a motion, contact, clearance, forces, strength, safety, or
+manufacturability claim.
 
-Until that vertical is implemented and runtime-proven, static assembly integrity is the
-only executable baseline and motion remains literally `not-evaluated` or `unavailable`.
+The Chrono runtime for that separate vertical remains `unqualified`/`unavailable` until
+its live emulation probe is recorded. Static assembly integrity therefore remains the
+only current runtime-proven assembly baseline, and motion remains literally
+`not-evaluated` or `unavailable` here.

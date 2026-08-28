@@ -11,6 +11,7 @@ import type { PrescribedKinematicsPreDispatchRejectionCode } from "../../../appl
 import {
   closedRecord,
   exactRecord,
+  exactVersionToken,
   safeId,
 } from "../../../domain/kernel/case-validation.ts";
 import {
@@ -19,10 +20,16 @@ import {
   sha256Hex,
 } from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
+import {
+  validateCapabilityRuntimeLaunchGroupReference,
+} from "../../../domain/capability/runtime/capability-runtime-launch-group.ts";
+import type {
+  PrescribedKinematicsRuntimeProvenance,
+} from "../../../application/ports/in/mechanics/prescribed-kinematics/run-prescribed-kinematics-observation.ts";
 
-const SCHEMA = "prescribed-kinematics-observation-attempt/3.0" as const;
+const SCHEMA = "prescribed-kinematics-observation-attempt/4.0" as const;
 const DISPATCH_CLAIM_SCHEMA =
-  "prescribed-kinematics-observation-dispatch-claim/3.0" as const;
+  "prescribed-kinematics-observation-dispatch-claim/4.0" as const;
 type SubmittedAttempt = PrescribedKinematicsObservationAttemptIdentity & {
   readonly schemaVersion: typeof SCHEMA;
   readonly phase: "case-submitted";
@@ -553,9 +560,8 @@ const identityKeys = [
   "projectId",
   "agentRunId",
   "requestId",
-  "planFingerprint",
   "caseFingerprint",
-  "bindingFingerprint",
+  "runtime",
   "sourceFingerprint",
   "loweringFingerprint",
   "requestFingerprint",
@@ -598,9 +604,8 @@ function parseIdentityFields(
       "$prescribedKinematicsAttemptIdentity.agentRunId",
     ),
     requestId: safeId(root.requestId, "$prescribedKinematicsAttemptIdentity.requestId"),
-    planFingerprint: fingerprint(root.planFingerprint, "planFingerprint"),
     caseFingerprint: fingerprint(root.caseFingerprint, "caseFingerprint"),
-    bindingFingerprint: fingerprint(root.bindingFingerprint, "bindingFingerprint"),
+    runtime: runtime(root.runtime),
     sourceFingerprint: fingerprint(root.sourceFingerprint, "sourceFingerprint"),
     loweringFingerprint: fingerprint(root.loweringFingerprint, "loweringFingerprint"),
     requestFingerprint: fingerprint(root.requestFingerprint, "requestFingerprint"),
@@ -669,9 +674,7 @@ function assertSameIdentity(
   }
   for (
     const [recorded, resumed] of [
-      [current.planFingerprint, identity.planFingerprint],
       [current.caseFingerprint, identity.caseFingerprint],
-      [current.bindingFingerprint, identity.bindingFingerprint],
       [current.sourceFingerprint, identity.sourceFingerprint],
       [current.loweringFingerprint, identity.loweringFingerprint],
       [current.requestFingerprint, identity.requestFingerprint],
@@ -680,6 +683,9 @@ function assertSameIdentity(
     if (!fingerprintsEqual(recorded, resumed)) {
       throw integrity("The L3 WAL identity conflicts with the resumed run.");
     }
+  }
+  if (deterministicJson(current.runtime) !== deterministicJson(identity.runtime)) {
+    throw integrity("The L3 WAL runtime provenance conflicts with the resumed run.");
   }
 }
 function assertKey(
@@ -701,14 +707,82 @@ function base(
     projectId: current.projectId,
     agentRunId: current.agentRunId,
     requestId: current.requestId,
-    planFingerprint: current.planFingerprint,
     caseFingerprint: current.caseFingerprint,
-    bindingFingerprint: current.bindingFingerprint,
+    runtime: current.runtime,
     sourceFingerprint: current.sourceFingerprint,
     loweringFingerprint: current.loweringFingerprint,
     requestFingerprint: current.requestFingerprint,
     startedAt: current.startedAt,
   };
+}
+
+function runtime(value: unknown): PrescribedKinematicsRuntimeProvenance {
+  const root = exactRecord(value, [
+    "resolvedOperationPlanFingerprint",
+    "operationalCapabilityFingerprint",
+    "binding",
+    "adapter",
+    "profile",
+    "material",
+    "launchGroup",
+    "platformMode",
+  ], "$runtime");
+  const binding = exactRecord(root.binding, ["id", "version"], "$runtime.binding");
+  const adapter = exactRecord(
+    root.adapter,
+    ["id", "version", "source"],
+    "$runtime.adapter",
+  );
+  const profile = root.profile === null
+    ? null
+    : exactRecord(root.profile, ["id", "version", "fingerprint"], "$runtime.profile");
+  const material = exactRecord(
+    root.material,
+    ["unitId", "materialId", "imageDigest"],
+    "$runtime.material",
+  );
+  if (
+    root.platformMode !== "native" && root.platformMode !== "emulated" &&
+    root.platformMode !== "unavailable"
+  ) {
+    throw integrity("The L3 WAL runtime platform mode is unsupported.");
+  }
+  return Object.freeze({
+    resolvedOperationPlanFingerprint: fingerprint(
+      root.resolvedOperationPlanFingerprint,
+      "runtime.resolvedOperationPlanFingerprint",
+    ),
+    operationalCapabilityFingerprint: fingerprint(
+      root.operationalCapabilityFingerprint,
+      "runtime.operationalCapabilityFingerprint",
+    ),
+    binding: {
+      id: safeId(binding.id, "$runtime.binding.id"),
+      version: exactVersionToken(binding.version, "$runtime.binding.version"),
+    },
+    adapter: {
+      id: safeId(adapter.id, "$runtime.adapter.id"),
+      version: exactVersionToken(adapter.version, "$runtime.adapter.version"),
+      source: text(adapter.source, "$runtime.adapter.source"),
+    },
+    profile: profile === null ? null : {
+      id: safeId(profile.id, "$runtime.profile.id"),
+      version: exactVersionToken(profile.version, "$runtime.profile.version"),
+      fingerprint: profile.fingerprint === null
+        ? null
+        : fingerprint(profile.fingerprint, "$runtime.profile.fingerprint"),
+    },
+    material: {
+      unitId: safeId(material.unitId, "$runtime.material.unitId"),
+      materialId: safeId(material.materialId, "$runtime.material.materialId"),
+      imageDigest: sha(material.imageDigest),
+    },
+    launchGroup: validateCapabilityRuntimeLaunchGroupReference(
+      root.launchGroup,
+      "$runtime.launchGroup",
+    ),
+    platformMode: root.platformMode,
+  });
 }
 function dispatching(
   current: SubmittedAttempt,
@@ -731,6 +805,13 @@ function submittedAttempt(
 function sha(value: unknown): string {
   if (typeof value !== "string" || !/^[a-f0-9]{64}$/.test(value)) {
     throw integrity("The L3 WAL SHA-256 identity is invalid.");
+  }
+  return value;
+}
+
+function text(value: unknown, path: string): string {
+  if (typeof value !== "string" || value.length === 0 || value.includes("\0")) {
+    throw integrity(`${path} must be non-empty text.`);
   }
   return value;
 }

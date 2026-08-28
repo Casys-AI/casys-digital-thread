@@ -24,7 +24,9 @@ capability-runtime supervisor has one enrolled local persistent topology:
 After a durable operational-capability authorization, the server may preload its exact
 images; immediately before a covered run it acquires one lease, starts the whole group,
 and fresh-inspects every service. Other persistent catalogue materials remain literally
-unenrolled and unavailable for JIT activation.
+unenrolled and unavailable for JIT activation. The separate `casys-chrono@1.0.0` group
+is enrolled only as an `unqualified` Linux/amd64 candidate: it cannot start or dispatch
+until a server-recorded live emulation probe qualifies its exact binding.
 
 The loopback automation task controls only the separate local-YOLO approval opt-in:
 
@@ -75,6 +77,7 @@ environment variable enables it implicitly.
 | `http://127.0.0.1:3012/mcp`  | `mcp-erpnext`               | Provider-native ERP data                                                                                                                                                                                                                           |
 | `http://127.0.0.1:3014/mcp`  | `mcp-build123d`             | Dedicated HTTP `0.6.1` provider for server-fixed CAD recipes and shared exports. `deno task probe:build123d-contract` reads health, discovery, schemas and viewer declarations only; it never calls a provider tool and is not canonical geometry. |
 | `http://127.0.0.1:3024/mcp`  | `mcp-build123d-sandbox`     | Same dedicated `0.6.1` provider identity, but agent-proposed geometry preview stays on its private export volume. It is not canonical geometry.                                                                                                    |
+| `http://127.0.0.1:3025/mcp`  | `mcp-chrono`                | Fixed server-owned prescribed-kinematics binding only. The agent never calls this endpoint or supplies its bearer/tool/arguments; it stays `unqualified`/`unavailable` pending the live AMD64 emulation probe.                                  |
 | `http://127.0.0.1:3015/mcp`  | `mcp-calculix`              | Pinned HTTP `0.8.2` sensitivity fleet; S1 binding is unqualified/non-activable. Probe reads discovery only; not product static proof.                                                                                                              |
 | `http://127.0.0.1:3016/mcp`  | retired                     | Historical `mcp-modelica` Compose sidecar. Product Modelica is the local microVM (admitted + kit). Do not start or probe this port.                                                                                                                |
 | `http://127.0.0.1:3018/mcp`  | `mcp-dfm`                   | Measured DFM checks on produced STEP (`dfm_check_envelope`, `dfm_check_min_thickness`, `dfm_check_overhangs`); SHA-256 attestation required. Live tools take `step_path`, not STL.                                                                 |
@@ -317,6 +320,7 @@ captures remain documentary evidence; they are not a live projector or executor 
 | Generic FEA staging          | CalculiX `calculix-inputs` volume           | Digital Thread writes content-addressed STEP bytes; provider-private, non-authoritative, not evidence                                                                                                            |
 | CalculiX recorded runs       | `calculix-runs` volume                      | Identity-bound `calculix_run_get` plus exact `resources/read`; separate from CAD exchange                                                                                                                        |
 | Modelica execution           | Local Modelica microVM                      | Admitted closed-subset and qualified kit via `casys/modelica-microsandbox-worker`. Port 3016 sidecar and `modelica-runs` volume are retired                                                                      |
+| Chrono prescribed kinematics | `casys-chrono` Compose group                | Exact Linux/amd64 image, private `chrono-data` volume and fixed loopback MCP client. The host-only bearer snapshot never enters Thread/CAS/WAL/argv; no L3 dispatch before the live emulation qualification                                      |
 | ERP data                     | External ERPNext database                   | Provider-native MCP from backend only                                                                                                                                                                            |
 | Native `ThreadSnapshot`      | Immutable local file store                  | Read-only projection in the native Workbench                                                                                                                                                                     |
 | `EngineeringProjectSnapshot` | Immutable active file store                 | Intent, living brief, exact reviews, bounded runs and evidence references; CAS revisions                                                                                                                         |

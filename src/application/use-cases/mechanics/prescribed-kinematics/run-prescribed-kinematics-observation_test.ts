@@ -346,6 +346,21 @@ Deno.test("prescribed-kinematics L3 reads every 64-sample receipt page before se
       requestId: "request-1",
       caseSha256: caseSha,
     });
+    // The provider wire preserves its published nine-item boundary, while
+    // the code-owned L3 observation independently records the broader DT
+    // coverage limit (including manufacturability).
+    assertEquals(result.providerNotEvaluated, [
+      "collision",
+      "clearance",
+      "contact",
+      "forces",
+      "torques",
+      "dynamics",
+      "strength",
+      "safety",
+      "product fitness",
+    ]);
+    assertEquals(result.observation.limits.manufacturability, "not_evaluated");
     assertEquals(offsets, [0, 64]);
   } finally {
     await Deno.remove(directory, { recursive: true });
@@ -365,8 +380,7 @@ Deno.test("prescribed-kinematics L3 recovery reads every receipt page without an
       projectId: runCommand.projectId,
       agentRunId: runCommand.agentRunId,
       requestId: runCommand.requestId,
-      planFingerprint: runCommand.planFingerprint,
-      bindingFingerprint: runCommand.bindingFingerprint,
+      runtime: runCommand.runtime,
       startedAt: runCommand.startedAt,
       caseFingerprint: sealedCase.fingerprint,
       sourceFingerprint: sealedCase.sourceClosure.workspace.root.resourceFingerprint,
@@ -456,8 +470,34 @@ function command(
     agentRunId: "run-1",
     requestId: "request-1",
     startedAt: "2026-08-29T00:00:00.000Z",
-    planFingerprint: { algorithm: "sha256" as const, digest: "d".repeat(64) },
-    bindingFingerprint: { algorithm: "sha256" as const, digest: "e".repeat(64) },
+    runtime: {
+      resolvedOperationPlanFingerprint: {
+        algorithm: "sha256" as const,
+        digest: "d".repeat(64),
+      },
+      operationalCapabilityFingerprint: {
+        algorithm: "sha256" as const,
+        digest: "e".repeat(64),
+      },
+      binding: { id: "chrono-prescribed-kinematics", version: "1" },
+      adapter: {
+        id: "chrono-prescribed-kinematics-adapter",
+        version: "0.3.1",
+        source: "src/adapters/mechanics/chrono/chrono-prescribed-kinematics-client.ts",
+      },
+      profile: null,
+      material: {
+        unitId: "casys.mcp-chrono",
+        materialId: "mcp-chrono-image",
+        imageDigest: "f".repeat(64),
+      },
+      launchGroup: {
+        id: "casys-chrono",
+        version: "1.0.0",
+        fingerprint: { algorithm: "sha256" as const, digest: "a".repeat(64) },
+      },
+      platformMode: "emulated" as const,
+    },
     sealedCase,
   };
 }

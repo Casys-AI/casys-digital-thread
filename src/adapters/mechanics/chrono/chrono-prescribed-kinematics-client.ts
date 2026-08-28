@@ -13,10 +13,12 @@ import type {
   PrescribedKinematicsSamplePageRequest,
   SubmittedPrescribedKinematicsCase,
 } from "../../../application/ports/out/mechanics/prescribed-kinematics-observer.ts";
+import type {
+  CapabilityRuntimeSecretSnapshot,
+} from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import { sha256Hex } from "../../../domain/kernel/deterministic-json.ts";
 import { parseChronoPrescribedKinematicsReceipt } from "./chrono-prescribed-kinematics-receipt.ts";
 import {
-  createInternalMcpBearerCredential,
   type InternalMcpBearerCredential,
   StatelessMcpHttpTransport,
   StatelessMcpTransportError,
@@ -27,6 +29,9 @@ const CHRONO_CASE_SUBMIT = "chrono_case_submit";
 const CHRONO_RUN = "chrono_run_prescribed_kinematics";
 const CHRONO_RUN_GET = "chrono_run_get";
 const CHRONO_RECEIPT_GET = "chrono_run_receipt_get";
+// This adapter is a fixed, host-local binding.  Provider routing is never a
+// caller input: a capability launch group exposes this one loopback endpoint.
+const CHRONO_MCP_URL = "http://127.0.0.1:3025/mcp";
 const SHA256 = /^[a-f0-9]{64}$/;
 const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const CHRONO_PROVIDER_ERROR_CODES = new Set([
@@ -77,11 +82,22 @@ const NOT_EVALUATED = [
 ] as const;
 
 export interface ChronoPrescribedKinematicsClientOptions {
-  readonly mcpUrl: string;
-  /** Opaque local secret-slot value; never a project or provider argument. */
-  readonly bearerCredential: InternalMcpBearerCredential;
+  /** Closed host-only credential resolver; never an MCP/agent parameter. */
+  readonly secretResolver: ChronoMcpBearerCredentialResolver;
+  /** Same opaque generation used by the matching Compose launch overlay. */
+  readonly secretSnapshot: CapabilityRuntimeSecretSnapshot;
   readonly fetch?: typeof fetch;
   readonly timeoutMs?: number;
+}
+
+/**
+ * Fixed Chrono binding credential seam.  The implementation owns the token
+ * value in a private WeakMap; this adapter receives only an opaque snapshot.
+ */
+export interface ChronoMcpBearerCredentialResolver {
+  bearerCredentialFor(
+    snapshot: CapabilityRuntimeSecretSnapshot,
+  ): InternalMcpBearerCredential;
 }
 
 export class ChronoPrescribedKinematicsProtocolError extends Error {
@@ -152,10 +168,31 @@ export class ChronoPrescribedKinematicsRequestError extends Error {
 export class ChronoPrescribedKinematicsClient implements PrescribedKinematicsObserver {
   readonly #http: StatelessMcpHttpTransport;
 
-  constructor(options: ChronoPrescribedKinematicsClientOptions) {
+  private constructor(options: {
+    readonly bearerCredential: InternalMcpBearerCredential;
+    readonly fetch?: typeof fetch;
+    readonly timeoutMs?: number;
+  }) {
     this.#http = new StatelessMcpHttpTransport({
-      mcpUrl: options.mcpUrl,
+      mcpUrl: CHRONO_MCP_URL,
       bearerCredential: options.bearerCredential,
+      fetch: options.fetch,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Builds the fixed local client from the exact runtime session snapshot.
+   * Neither URL, token, provider, MCP tool nor arbitrary headers are caller
+   * configurable through this factory.
+   */
+  static fromTrustedRuntime(
+    options: ChronoPrescribedKinematicsClientOptions,
+  ): ChronoPrescribedKinematicsClient {
+    return new ChronoPrescribedKinematicsClient({
+      bearerCredential: options.secretResolver.bearerCredentialFor(
+        options.secretSnapshot,
+      ),
       fetch: options.fetch,
       timeoutMs: options.timeoutMs,
     });
@@ -385,10 +422,6 @@ export class ChronoPrescribedKinematicsClient implements PrescribedKinematicsObs
 }
 
 /** Convenience only for local composition; it creates the opaque credential. */
-export function chronoBearerCredential(value: string): InternalMcpBearerCredential {
-  return createInternalMcpBearerCredential(value);
-}
-
 function parseRecord(
   value: unknown,
   path: string,

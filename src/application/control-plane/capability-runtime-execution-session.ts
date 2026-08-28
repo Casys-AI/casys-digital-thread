@@ -24,6 +24,7 @@ import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import type {
   CapabilityRuntimeLeaseStore,
+  CapabilityRuntimeSecretSnapshot,
   ProjectCapabilityRuntimeContextReader,
 } from "../ports/out/capability/capability-runtime-supervisor.ts";
 import type { CapabilityRuntimeLaunchGroupSupervisor } from "./capability-runtime-launch-group-supervisor.ts";
@@ -124,6 +125,11 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
     /** Fixed-executor profile attestations, never supplied by an agent. */
     readonly microsandboxExecutionProfiles:
       readonly CapabilityRuntimeMicrosandboxExecutionProfile[];
+    /**
+     * The exact process-local secret generation shared by the sealed Compose
+     * start and the provider client for this session. It is never persisted.
+     */
+    readonly secretSnapshot?: CapabilityRuntimeSecretSnapshot;
     readonly recheck: CapabilityRuntimeSessionRecheck;
   }): Promise<CapabilityRuntimeExecutionSession> {
     const operationalCapability = validateResolvedCapabilityRuntimeOperation(
@@ -252,13 +258,19 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
         directLeaseAcquired = acquired.created;
       }
       for (const group of groups) {
+        const expectedMaterials = persistent.filter((lifecycle) =>
+          lifecycle.launchGroup !== null &&
+          groupToken(lifecycle.launchGroup) === groupToken(group)
+        ).map((lifecycle) => lifecycle.material);
         hostMutationAttempted = true;
         const result = await this.options.groups!.ensureActive({
           group,
+          expectedMaterials,
           projectId: input.project.project.id,
           at: this.#now(),
           lease,
           reuseExistingLease: groupLeaseCreated || canReuseLease ? "allow" : "reject",
+          secretSnapshot: input.secretSnapshot,
         });
         groupLeaseCreated ||= result.leaseDisposition === "created";
         assertGroupQualification(
