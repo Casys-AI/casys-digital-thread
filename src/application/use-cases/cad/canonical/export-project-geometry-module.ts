@@ -16,18 +16,13 @@ import type {
 import { ProjectGeometryModuleExportError } from "../../../ports/in/cad/canonical/project-geometry-module-export.ts";
 import type { GeometryDraftAssetStore } from "../../../ports/out/cad/canonical/geometry-draft-asset-store.ts";
 import type { GeometryModuleDraftStore } from "../../../ports/out/cad/canonical/geometry-module-evidence-store.ts";
+import type { GeometryModuleAssembler } from "../../../ports/out/cad/module-assembly/geometry-module-assembler.ts";
 import type { CanonicalAssetReader } from "../../../ports/out/canonical-asset-reader.ts";
 import type { CadPlacementArchitectureIndex } from "../../../ports/out/cad/placement/cad-placement-architecture-index.ts";
 import {
   type CadPlacementAnalysisCaptureStore,
   CadPlacementAnalysisCaptureStoreError,
 } from "../../../ports/out/cad/placement/cad-placement-analysis-capture-store.ts";
-import type { GeometryModuleAssemblyExecutionProfileCatalog } from "../../../ports/out/cad/module-assembly/geometry-module-assembly-profile.ts";
-import {
-  IsolatedCodeExecutionRejectedError,
-  type IsolatedCodeRunner,
-  type IsolatedOutputPublicationReader,
-} from "../../../ports/out/compile/isolation/isolated-code-runner.ts";
 import type { EngineeringProjectRevisionStore } from "../../../ports/out/engineering-project-revision-store.ts";
 import type { ProductStructureTraversal } from "../../../ports/out/product-navigation/product-structure-traversal.ts";
 import type { CadPlacementAnalysisCaptureLocator } from "../../../../domain/cad/placement/cad-placement-analysis-capture.ts";
@@ -56,17 +51,7 @@ import {
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../../../domain/cad/canonical/geometry-proposal.ts";
 import {
   createGeometryModuleInputBundle,
-  geometryModuleAssemblyExecutionRequest,
 } from "../../../../domain/cad/module-assembly/geometry-module-input-bundle.ts";
-import {
-  type IsolatedCodeExecutionReceipt,
-  isolatedCodeExecutionReceiptRecord,
-  type IsolatedCodeExecutionRequest,
-  isolatedCodeOutputManifestsEqual,
-  isolatedCodeRefsEqual,
-  runtimeAttestationsEqual,
-  validateIsolatedCodeExecutionReceiptRecord,
-} from "../../../../domain/compile/isolation/isolated-code-execution.ts";
 import { fingerprintResourceBytes } from "../../../../domain/compile/source/provider-resource-reader.ts";
 import {
   deepFreeze,
@@ -134,9 +119,7 @@ export interface ExportProjectGeometryModuleDependencies {
   readonly placements: Pick<CadPlacementAnalysisCaptureStore, "reopenLocator">;
   readonly geometryCaptures: GeometryCaptureReader;
   readonly stepAssets: CanonicalAssetReader;
-  readonly profiles: GeometryModuleAssemblyExecutionProfileCatalog;
-  readonly runner: IsolatedCodeRunner;
-  readonly publications: IsolatedOutputPublicationReader;
+  readonly assembler: GeometryModuleAssembler;
   readonly draftStore: Pick<GeometryModuleDraftStore, "save" | "read">;
   readonly draftAssets: GeometryDraftAssetStore;
 }
@@ -150,9 +133,7 @@ export class ExportProjectGeometryModule implements ProjectGeometryModuleExportU
   readonly #placements: Pick<CadPlacementAnalysisCaptureStore, "reopenLocator">;
   readonly #geometryCaptures: GeometryCaptureReader;
   readonly #stepAssets: CanonicalAssetReader;
-  readonly #profiles: GeometryModuleAssemblyExecutionProfileCatalog;
-  readonly #runner: IsolatedCodeRunner;
-  readonly #publications: IsolatedOutputPublicationReader;
+  readonly #assembler: GeometryModuleAssembler;
   readonly #draftStore: Pick<GeometryModuleDraftStore, "save" | "read">;
   readonly #draftAssets: GeometryDraftAssetStore;
 
@@ -165,9 +146,7 @@ export class ExportProjectGeometryModule implements ProjectGeometryModuleExportU
     this.#placements = dependencies.placements;
     this.#geometryCaptures = dependencies.geometryCaptures;
     this.#stepAssets = dependencies.stepAssets;
-    this.#profiles = dependencies.profiles;
-    this.#runner = dependencies.runner;
-    this.#publications = dependencies.publications;
+    this.#assembler = dependencies.assembler;
     this.#draftStore = dependencies.draftStore;
     this.#draftAssets = dependencies.draftAssets;
   }
@@ -352,37 +331,33 @@ export class ExportProjectGeometryModule implements ProjectGeometryModuleExportU
       })),
     );
 
-    const profile = await this.#profiles.initial();
     const runId = await moduleExportRunId(command);
-    const request = geometryModuleAssemblyExecutionRequest({
-      profile,
-      bundle,
-      runId,
-      producerGeneration: 0,
-    });
-    const receipt = await this.#resolveOrRunGenerationZero(request, profile);
-
-    const stepOutput = receipt.outputs.find((output) =>
-      output.role === "assembly.step"
-    );
-    const glbOutput = receipt.outputs.find((output) => output.role === "assembly.glb");
-    if (!stepOutput || !glbOutput) {
+    let assembly;
+    try {
+      assembly = await this.#assembler.assemble({ runId, bundle });
+    } catch {
       throw exportError(
-        "isolated_failure",
-        "The isolated receipt does not name assembly STEP and GLB.",
+        "assembly_failure",
+        "The registered geometry-module assembler failed closed.",
       );
     }
-    const persistedStep = await this.#draftAssets.persist(stepOutput.bytes.copy());
-    const persistedGlb = await this.#draftAssets.persist(glbOutput.bytes.copy());
+    const persistedStep = await this.#draftAssets.persist(
+      assembly.assemblyStep.copy(),
+    );
+    const persistedGlb = await this.#draftAssets.persist(
+      assembly.assemblyGlb.copy(),
+    );
     if (
-      persistedStep.fingerprint.digest !== stepOutput.sha256 ||
-      persistedStep.byteCount !== stepOutput.byteCount ||
-      persistedGlb.fingerprint.digest !== glbOutput.sha256 ||
-      persistedGlb.byteCount !== glbOutput.byteCount
+      persistedStep.fingerprint.digest !==
+        assembly.receipt.assembly.step.fingerprint.digest ||
+      persistedStep.byteCount !== assembly.receipt.assembly.step.byteCount ||
+      persistedGlb.fingerprint.digest !==
+        assembly.receipt.assembly.glb.fingerprint.digest ||
+      persistedGlb.byteCount !== assembly.receipt.assembly.glb.byteCount
     ) {
       throw exportError(
-        "isolated_failure",
-        "Persisted assembly bytes do not match the isolated receipt.",
+        "assembly_failure",
+        "Persisted assembly bytes do not match the neutral assembly receipt.",
       );
     }
 
@@ -410,7 +385,7 @@ export class ExportProjectGeometryModule implements ProjectGeometryModuleExportU
         byteCount: bundle.bytes.byteLength,
         manifest: bundle.manifest,
       },
-      receipt: isolatedCodeExecutionReceiptRecord(receipt),
+      receipt: assembly.receipt,
       assemblyStep: {
         fingerprint: persistedStep.fingerprint,
         bytes: persistedStep.byteCount,
@@ -705,113 +680,6 @@ export class ExportProjectGeometryModule implements ProjectGeometryModuleExportU
       );
     }
     return bytes;
-  }
-
-  async #resolveOrRunGenerationZero(
-    request: IsolatedCodeExecutionRequest,
-    profile: Awaited<
-      ReturnType<GeometryModuleAssemblyExecutionProfileCatalog["initial"]>
-    >,
-  ): Promise<IsolatedCodeExecutionReceipt> {
-    let resolution;
-    try {
-      resolution = await this.#publications.resolvePublicationByRunId(
-        request.runId,
-        0,
-      );
-    } catch {
-      throw exportError(
-        "isolated_failure",
-        "The generation-zero module-assembly publication could not be resolved safely.",
-      );
-    }
-    if (resolution.status === "outcome-unknown") {
-      throw exportError(
-        "isolated_failure",
-        "The generation-zero module-assembly publication outcome is unknown; no redispatch occurs.",
-      );
-    }
-    if (resolution.status === "published") {
-      let receipt: IsolatedCodeExecutionReceipt | undefined;
-      try {
-        receipt = await this.#publications.readReceipt(resolution.ref);
-      } catch {
-        throw exportError(
-          "isolated_failure",
-          "The published generation-zero module-assembly receipt could not be reopened.",
-        );
-      }
-      if (
-        !receipt ||
-        deterministicJson(isolatedCodeExecutionReceiptRecord(receipt)) !==
-          deterministicJson(resolution.receipt)
-      ) {
-        throw exportError(
-          "isolated_failure",
-          "The published generation-zero module-assembly receipt is unavailable or divergent.",
-        );
-      }
-      await assertReceiptMatchesAssemblyContext(receipt, request, profile);
-      return receipt;
-    }
-    try {
-      const receipt = await this.#runner.run(request);
-      await assertReceiptMatchesAssemblyContext(receipt, request, profile);
-      return receipt;
-    } catch (cause) {
-      if (cause instanceof ProjectGeometryModuleExportError) throw cause;
-      if (cause instanceof IsolatedCodeExecutionRejectedError) {
-        throw exportError(
-          "isolated_failure",
-          "The isolated module-assembler run was rejected.",
-        );
-      }
-      throw exportError(
-        "isolated_failure",
-        "The isolated module-assembler run failed.",
-      );
-    }
-  }
-}
-
-async function assertReceiptMatchesAssemblyContext(
-  receipt: IsolatedCodeExecutionReceipt,
-  request: IsolatedCodeExecutionRequest,
-  profile: Awaited<
-    ReturnType<GeometryModuleAssemblyExecutionProfileCatalog["initial"]>
-  >,
-): Promise<void> {
-  let record;
-  try {
-    record = await validateIsolatedCodeExecutionReceiptRecord(
-      isolatedCodeExecutionReceiptRecord(receipt),
-    );
-  } catch {
-    throw exportError(
-      "isolated_failure",
-      "The module-assembly receipt failed exact validation.",
-    );
-  }
-  if (
-    record.runId !== request.runId ||
-    record.producerGeneration !== 0 ||
-    record.publication.ref.runId !== request.runId ||
-    record.publication.ref.producerGeneration !== 0 ||
-    !isolatedCodeRefsEqual(record.profile, request.profile) ||
-    record.sourceSha256 !== request.source.sha256 ||
-    !isolatedCodeRefsEqual(record.policy, request.policy) ||
-    !isolatedCodeOutputManifestsEqual(record.outputs, request.outputs) ||
-    !runtimeAttestationsEqual(record.runtime, profile.runtime) ||
-    record.termination.kind !== "exited" ||
-    record.termination.exitCode !== 0 ||
-    record.termination.signal !== null ||
-    record.destruction.status !== profile.minimumDestructionAssurance ||
-    record.destruction.runId !== request.runId
-  ) {
-    throw exportError(
-      "isolated_failure",
-      "The module-assembly receipt differs from the exact generation-zero request and profile context.",
-    );
   }
 }
 

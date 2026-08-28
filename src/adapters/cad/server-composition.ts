@@ -34,6 +34,7 @@ import {
   DesignWriteGeometryRunExecutor,
 } from "./canonical/design-write-geometry-run-executor.ts";
 import { GeometryModuleAssemblyOutputValidator } from "./module-assembly/geometry-module-assembly-output-validator.ts";
+import { FileGeometryDraftAssetStore } from "./canonical/file-geometry-draft-asset-store.ts";
 import type { Build123dExecutionServerOptions } from "./isolated/build123d-execution-composition.ts";
 import type { Build123dExecutionComposition } from "./isolated/build123d-execution-composition.ts";
 import {
@@ -90,18 +91,13 @@ export interface CadProjectOptions {
   readonly writeSnapshots: ThreadSnapshotStore;
   readonly lease: EngineeringProjectRunLease;
   readonly capability: Build123dCapability;
-  /**
-   * Optional publication-gated reader for geometry-module assembly STEP/GLB.
-   * Never taken from Build123d `isolatedOutputPublications`. Absent means
-   * module sealing fails closed. Leaf `design.write-geometry@1` is unchanged.
-   */
-  readonly moduleAssembly?: IsolatedOutputPublicationReader;
   readonly admissions: CaptureBackedTechnicalCompilationAdmissionReader;
   readonly recordedAnalysisDirectory: string;
   readonly sourceAnalysisCaptures: FileCaptureStore<"source-analysis">;
   readonly architectureCaptures: FileCaptureStore<"architecture-capture">;
   readonly sysmlSourceAnalysis: SysmlSourceAnalysisCaptureService;
   readonly geometryDraftCaptureDirectory: string;
+  readonly geometryDraftAssetDirectory: string;
   readonly geometryCaptureDirectory: string;
 }
 
@@ -200,6 +196,14 @@ export function createCadProject(options: CadProjectOptions): CadProject {
     analysisCaptures: options.sourceAnalysisCaptures,
     frontend: new PythonCadSourceAnalyzer(),
   } as const;
+  const moduleAssemblyDraftAssets = new FileGeometryDraftAssetStore(
+    new FileByteStore({
+      kind: "geometry-draft-asset",
+      directory: options.geometryDraftAssetDirectory,
+      uriNamespace: "geometry-draft-asset",
+      label: "Geometry draft asset",
+    }),
+  );
   const genericDesignWriteGeometry = new DesignWriteGeometryRunExecutor({
     projects: options.projects,
     commands: options.commands,
@@ -217,7 +221,7 @@ export function createCadProject(options: CadProjectOptions): CadProject {
       directory: options.geometryCaptureDirectory,
     }),
     admissions: options.admissions,
-    moduleAssemblyPublications: options.moduleAssembly,
+    moduleAssemblyDraftAssets,
     moduleAssemblyOutputValidator: new GeometryModuleAssemblyOutputValidator(),
     lease: options.lease,
     now: () => new Date().toISOString(),

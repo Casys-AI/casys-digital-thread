@@ -11,6 +11,8 @@ import type {
 } from "../../../application/ports/out/cad/canonical/geometry-draft-asset-store.ts";
 import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
 import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
+import type { ImmutableBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
+import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 
 export class FileGeometryDraftAssetStore implements GeometryDraftAssetStore {
   readonly #store: FileByteStore<"geometry-draft-asset">;
@@ -27,5 +29,9 @@ export class FileGeometryDraftAssetStore implements GeometryDraftAssetStore {
       fingerprint: stored.fingerprint,
       byteCount: stored.byteCount,
     });
+  }
+
+  read(fingerprint: ContentFingerprint): Promise<ImmutableBytes | undefined> {
+    return this.#store.read(fingerprint);
   }
 }

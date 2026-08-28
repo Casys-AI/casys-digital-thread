@@ -735,7 +735,7 @@ Deno.test("legacy targeted PartDefinition validation stays exact after module cl
   assertEquals(sealedAssemblyGeometryBlocker(snapshot), undefined);
 
   step.system = "digital-thread";
-  step.producedBy = "build123d-module-assembler-v1@1.0.0";
+  step.producedBy = "geometry.module.immediate-compound@1.0";
   assertEquals(
     resolveCadSurface(snapshot, snapshot.components.components[0]!),
     undefined,
@@ -2090,7 +2090,7 @@ function projectedModuleGeometryBinary(
     freshness: "fresh",
     fingerprint: `sha256:${assetDigest}`,
     uri: `/api/thread/assets/${assetDigest}.${extension}`,
-    producedBy: "build123d-module-assembler-v1@1.0.0",
+    producedBy: "geometry.module.immediate-compound@1.0",
     dependsOn: [],
   };
 }

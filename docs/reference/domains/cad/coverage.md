@@ -93,9 +93,10 @@ envelopes, automatic assembly mapping in V1, and promotion of private isolated o
 canonical geometry. A new geometry inside this surface is **source text only**: there is
 no new agent, Workbench, or provider command for it.
 
-The qualified observer consumes a canonical module artifact; it does not migrate or
-replace the module assembler. Moving that assembler to a provider remains a separately
-bounded follow-up, with its own profile and runtime proof.
+The qualified observer consumes a canonical module artifact; it does not replace the
+[provider-neutral module assembler](module-assembly.md). The current fixed Build123d
+worker is one adapter implementation. Another qualified backend must implement the same
+closed input, neutral receipt, exact-output, and recovery contract.
 
 ## Targeted PartDefinition seal
 

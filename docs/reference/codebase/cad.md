@@ -5,8 +5,8 @@ Audience: agent · Diátaxis: reference · Kind: contract
 Census of isolated Build123d execution, isolated-geometry seal, and canonical geometry
 files. Shared admission lives on [compile](compile.md).
 
-Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays
-on [engineering domains](../domains/README.md).
+Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays on
+[engineering domains](../domains/README.md).
 
 ## Source map
 
@@ -129,8 +129,8 @@ encoding for `design.write-geometry@1`
 
 #### [`src/domain/cad/canonical/geometry-module-evidence.ts`](../../../src/domain/cad/canonical/geometry-module-evidence.ts)
 
-Public facade for the bounded module family. Identities, isolation recross, manifest,
-draft and capture stay in the sibling files below.
+Public facade for the bounded module family. Identities, neutral assembly recross,
+manifest, draft and capture stay in the sibling files below.
 
 #### [`src/domain/cad/geometry-module-contract.ts`](../../../src/domain/cad/geometry-module-contract.ts)
 
@@ -146,12 +146,11 @@ runtime manifest, and child capture plus authoritative STEP identities. Placemen
 locator authority stays on `cad-placement-analysis-capture.ts`. No program, lowerer, or
 admission stamp.
 
-#### [`src/domain/cad/canonical/geometry-module-isolation.ts`](../../../src/domain/cad/canonical/geometry-module-isolation.ts)
+#### [`src/domain/cad/canonical/geometry-module-assembly-recross.ts`](../../../src/domain/cad/canonical/geometry-module-assembly-recross.ts)
 
-Recross of the existing `IsolatedCodeExecutionReceiptRecord` to the code-owned
-`build123d-module-assembler-v1` profile, input-bundle digest, proven destruction,
-accepted termination, and `assembly.step` / `assembly.glb` outputs. Does not restate
-receipt fields.
+Recross of the provider-neutral `geometry-module-assembly-receipt/1.0` against the exact
+input-bundle and `assembly.step` / `assembly.glb` identities. Native provider or
+isolation evidence stays behind the selected assembler adapter.
 
 #### [`src/domain/cad/canonical/geometry-module-manifest.ts`](../../../src/domain/cad/canonical/geometry-module-manifest.ts)
 
@@ -161,8 +160,8 @@ mandatory.
 
 #### [`src/domain/cad/canonical/geometry-module-draft.ts`](../../../src/domain/cad/canonical/geometry-module-draft.ts)
 
-Review-only `geometry-module-draft-capture/1.0`: complete input-bundle identity,
-isolated receipt, reopened child capture/STEP identities, produced STEP+GLB. No Thread
+Review-only `geometry-module-draft-capture/1.0`: complete input-bundle identity, neutral
+assembly receipt, reopened child capture/STEP identities, produced STEP+GLB. No Thread
 write.
 
 #### [`src/domain/cad/canonical/geometry-module-capture.ts`](../../../src/domain/cad/canonical/geometry-module-capture.ts)
@@ -247,11 +246,28 @@ occurrences, placements, child-capture and STEP identities, packed offsets, then
 child STEP bytes. Shared literals come from `geometry-module-contract.ts`.
 Encode/decode/re-hash only. No agent CAD source and no exporter
 
+#### [`src/domain/cad/module-assembly/geometry-module-assembly-receipt.ts`](../../../src/domain/cad/module-assembly/geometry-module-assembly-receipt.ts)
+
+Provider-neutral `geometry-module-assembly-receipt/1.0`: stable capability, exact input
+bundle, STEP/GLB identities, and implementation provenance. It carries no
+caller-selected provider or runtime envelope.
+
+#### [`src/application/ports/out/cad/module-assembly/geometry-module-assembler.ts`](../../../src/application/ports/out/cad/module-assembly/geometry-module-assembler.ts)
+
+Single outward assembly port. The application supplies one run id and closed bundle and
+receives the neutral receipt plus immutable STEP/GLB bytes.
+
+#### [`src/adapters/cad/module-assembly/fixed-geometry-module-assembler.ts`](../../../src/adapters/cad/module-assembly/fixed-geometry-module-assembler.ts)
+
+Current Build123d/Microsandbox adapter. It privately selects the fixed execution
+profile, owns generation-zero recovery, and normalizes native evidence behind the
+neutral port.
+
 #### [`src/adapters/cad/module-assembly/geometry-module-assembly-composition.ts`](../../../src/adapters/cad/module-assembly/geometry-module-assembly-composition.ts)
 
-Digest-pinned module-assembler composition: profile-only review facts; empty runtime
-marker reuses the single-source Microsandbox broker and atomic output CAS. Not the
-public export tool and not the sealer
+Digest-pinned module-assembler composition. The empty runtime marker reuses the
+single-source Microsandbox broker and atomic output CAS, then exposes the neutral
+assembler adapter. Not the public export tool and not the sealer
 
 #### [`src/application/ports/in/cad/canonical/project-geometry-module-export.ts`](../../../src/application/ports/in/cad/canonical/project-geometry-module-export.ts)
 
@@ -262,15 +278,15 @@ composite PartDefinition and placement locator only
 
 Server recross of the exact Thread architecture, part-definitions CAS URI/digest/byte
 count, immediate placement coverage, unique active child capture and authoritative STEP
-bytes. A published generation-zero receipt is reopened exactly on retry; outcome-unknown
-never redispatches and no artificial generation one exists. Produces a review-only
-draft. No Thread write
+bytes. It delegates the closed bundle through `GeometryModuleAssembler`, persists the
+returned bytes against the neutral receipt, and produces a review-only draft. No Thread
+write
 
 #### [`src/adapters/cad/module-assembly/geometry-module-export-composition.ts`](../../../src/adapters/cad/module-assembly/geometry-module-export-composition.ts)
 
-Separate composition for the public export vertical. Wires the use case only when the
-same runtime exposes both `IsolatedCodeRunner` and its publication-gated receipt reader.
-Does not enter `createCadProject` or the sealer
+Separate composition for the public export vertical. Wires the use case only when server
+composition supplies a `GeometryModuleAssembler`. Provider/runtime mechanics do not
+enter the application use case or the sealer
 
 #### [`src/tools/project-control/geometry-module-export-tools.ts`](../../../src/tools/project-control/geometry-module-export-tools.ts)
 

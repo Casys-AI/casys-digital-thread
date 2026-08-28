@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST } from "../../../domain/cad/module-assembly/geometry-module-assembly-execution.ts";
+import { GEOMETRY_MODULE_ASSEMBLY_ASSETS } from "../../../domain/cad/module-assembly/geometry-module-assembly-receipt.ts";
 import {
   GeometryModuleAssemblyOutputValidationError,
   GeometryModuleAssemblyOutputValidator,
@@ -201,15 +201,11 @@ Deno.test("module-assembly output validator refuses structurally broken GLB cont
 });
 
 function stepDeclaration() {
-  return GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST.find((item) =>
-    item.role === "assembly.step"
-  )!;
+  return GEOMETRY_MODULE_ASSEMBLY_ASSETS.step;
 }
 
 function glbDeclaration() {
-  return GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST.find((item) =>
-    item.role === "assembly.glb"
-  )!;
+  return GEOMETRY_MODULE_ASSEMBLY_ASSETS.glb;
 }
 
 const GLB_MAGIC = 0x46546c67;

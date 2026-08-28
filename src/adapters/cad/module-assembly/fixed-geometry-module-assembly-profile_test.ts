@@ -3,7 +3,7 @@ import type { IsolatedCodeExecutionLimits } from "../../../domain/compile/isolat
 import {
   GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
   GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
-} from "../../../domain/cad/module-assembly/geometry-module-assembly-execution.ts";
+} from "./fixed-geometry-module-assembly-execution.ts";
 import { GEOMETRY_MODULE_MAXIMUM_BUNDLE_BYTES } from "../../../domain/cad/module-assembly/geometry-module-input-bundle.ts";
 import {
   FixedGeometryModuleAssemblyProfileCatalog,

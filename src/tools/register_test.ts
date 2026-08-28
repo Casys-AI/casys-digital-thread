@@ -186,7 +186,7 @@ Deno.test("local geometry-module assembly binding is code-owned and digest pinne
   ]);
 });
 
-Deno.test("server shares one module-assembly composition with export and geometry sealing", async () => {
+Deno.test("server hides native module assembly behind the neutral export and draft store", async () => {
   const source = await Deno.readTextFile("server.ts");
   const assemblyStart = source.indexOf("const geometryModuleAssembly =");
   const cadProjectStart = source.indexOf("const cadProject = createCadProject({");
@@ -199,7 +199,11 @@ Deno.test("server shares one module-assembly composition with export and geometr
   assert(cadProjectStart < moduleExportStart);
   assertStringIncludes(
     source.slice(cadProjectStart, moduleExportStart),
-    "moduleAssembly: geometryModuleAssembly?.execution?.publications,",
+    "geometryDraftAssetDirectory: GEOMETRY_DRAFT_ASSETS_DIR,",
+  );
+  assertStringIncludes(
+    source.slice(moduleExportStart),
+    "assembler: geometryModuleAssembly.assembler,",
   );
   assertEquals((source.match(/const geometryModuleAssembly =/g) ?? []).length, 1);
 });
