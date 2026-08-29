@@ -893,12 +893,6 @@ export function capabilityRuntimeBindingKey(
   return `${binding.id}\u0000${binding.version}`;
 }
 
-export function isCapabilityRuntimeUsable(
-  state: CapabilityRuntimeObservedState,
-): boolean {
-  return state.material === "installed" && state.runtime === "active";
-}
-
 /** Pure recovery projection: observe first, then report pending host intents. */
 export function recoverCapabilityRuntime(
   observations: readonly {
