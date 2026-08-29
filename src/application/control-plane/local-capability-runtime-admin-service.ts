@@ -24,7 +24,7 @@ import {
   sameCapabilityRuntimeLaunchGroupReference,
 } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import {
-  authorizeDurableCapabilityRuntimeHostMutation,
+  authorizeDurableAdministrativeMaterialRemoval,
 } from "./capability-runtime-host-authorization.ts";
 import type {
   CapabilityRuntimeAdministrativeRemovalInspector,
@@ -295,7 +295,6 @@ export class LocalCapabilityRuntimeAdminService {
             state: {
               material: "absent" as const,
               runtime: "inactive" as const,
-              qualification: "unqualified" as const,
             },
           })),
           detail: null,
@@ -310,8 +309,9 @@ export class LocalCapabilityRuntimeAdminService {
       let outcome;
       try {
         outcome = await removal.host.mutate({
-          authorization: await authorizeDurableCapabilityRuntimeHostMutation(
+          authorization: await authorizeDurableAdministrativeMaterialRemoval(
             entry,
+            review.plan,
             removal.journal,
           ),
           removalPlan: review.plan,
@@ -625,14 +625,13 @@ export class LocalCapabilityRuntimeAdminService {
               )
               ? "active" as const
               : "inactive" as const,
-            qualification: "unqualified" as const,
           }
           : {
             material: "absent" as const,
             runtime: "inactive" as const,
-            qualification: "unqualified" as const,
           },
       })),
+      effectiveRuntimeProjection: null,
       administrativeRemovalPlanFingerprint: review.plan.fingerprint,
     };
   }

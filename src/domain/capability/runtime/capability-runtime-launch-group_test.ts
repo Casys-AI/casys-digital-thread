@@ -25,6 +25,17 @@ Deno.test("launch group seals an ordered multi-service topology with exact retai
   });
 });
 
+Deno.test("launch group topology rejects a legacy qualification field", async () => {
+  const group = structuredClone(await validGroup()) as Record<string, unknown>;
+  group.qualification = "qualified";
+
+  await assertRejects(
+    () => validateCapabilityRuntimeLaunchGroup(group),
+    TypeError,
+    "unsupported field qualification",
+  );
+});
+
 Deno.test("launch group rejects a non-loopback port before it can publish a service", async () => {
   const group = structuredClone(await validGroup()) as { compose: { content: string } };
   const compose = JSON.parse(group.compose.content) as {
@@ -115,7 +126,6 @@ async function validGroup(
     },
     secretSlots: [],
     security: "reviewed" as const,
-    qualification: "qualified" as const,
   };
   return { ...body, fingerprint: await fingerprintCapabilityRuntimeLaunchGroup(body) };
 }

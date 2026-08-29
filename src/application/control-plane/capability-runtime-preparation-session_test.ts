@@ -185,7 +185,7 @@ function preparationCoordinator(
 
 function preparation(): ResolvedCapabilityRuntimeOperation {
   return {
-    schemaVersion: "resolved-capability-runtime-operation/1.0",
+    schemaVersion: "resolved-capability-runtime-operation/2.0",
     projectId: PROJECT.project.id,
     operation: { id: OPERATION.id, version: OPERATION.version },
     authorizationFingerprint: FINGERPRINT,
@@ -199,6 +199,7 @@ function preparation(): ResolvedCapabilityRuntimeOperation {
         minimumQualification: "qualified",
       },
       binding: { id: "build123d-export-admitted-source", version: "1" },
+      effectiveQualification: "qualified",
       adapter: { id: "build123d-export", version: "1", source: "server" },
       profile: null,
       materials: [{

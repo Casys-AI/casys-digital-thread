@@ -102,7 +102,7 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
     fingerprint: await fingerprintCapabilityRuntimeComposeContent(sysonComposeContent),
   };
   const body = {
-    schemaVersion: "capability-runtime-launch-group/1.0" as const,
+    schemaVersion: "capability-runtime-launch-group/2.0" as const,
     id: "casys-syson",
     version: "1.0.0",
     activationPolicy: "persistent" as const,
@@ -138,7 +138,6 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
     },
     secretSlots: [],
     security: "reviewed" as const,
-    qualification: "qualified" as const,
   };
   const syson = {
     ...body,
@@ -195,7 +194,7 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
     fingerprint: await fingerprintCapabilityRuntimeComposeContent(chronoComposeContent),
   };
   const chronoBody = {
-    schemaVersion: "capability-runtime-launch-group/1.0" as const,
+    schemaVersion: "capability-runtime-launch-group/2.0" as const,
     id: "casys-chrono",
     version: "1.0.0",
     activationPolicy: "persistent" as const,
@@ -217,9 +216,6 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
     },
     secretSlots: ["chrono-mcp-bearer-token"],
     security: "reviewed" as const,
-    // The exact linux/amd64 material is not qualified on this ARM64 host
-    // until a separate live emulation probe records that fact.
-    qualification: "unqualified" as const,
   };
   const chrono = {
     ...chronoBody,
@@ -263,7 +259,7 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
     ),
   };
   const calculixBody = {
-    schemaVersion: "capability-runtime-launch-group/1.0" as const,
+    schemaVersion: "capability-runtime-launch-group/2.0" as const,
     id: "casys-mcp-calculix",
     version: "0.8.2",
     activationPolicy: "persistent" as const,
@@ -285,7 +281,6 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
     },
     secretSlots: [],
     security: "reviewed" as const,
-    qualification: "unqualified" as const,
   };
   const calculix = {
     ...calculixBody,
@@ -365,7 +360,7 @@ async function build123dLaunchGroup(input: {
     fingerprint: await fingerprintCapabilityRuntimeComposeContent(composeContent),
   };
   const body = {
-    schemaVersion: "capability-runtime-launch-group/1.0" as const,
+    schemaVersion: "capability-runtime-launch-group/2.0" as const,
     id: input.id,
     version: "1.0.0",
     activationPolicy: "persistent" as const,
@@ -387,7 +382,6 @@ async function build123dLaunchGroup(input: {
     },
     secretSlots: [],
     security: "reviewed" as const,
-    qualification: "qualified" as const,
   };
   return {
     ...body,

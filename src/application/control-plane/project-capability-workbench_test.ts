@@ -290,7 +290,6 @@ class States implements CapabilityRuntimeStateObserver {
     ReadonlyMap<string, {
       readonly material: "installed";
       readonly runtime: "active";
-      readonly qualification: "qualified";
     }>
   > {
     this.observed = structuredClone(materials);
@@ -300,7 +299,6 @@ class States implements CapabilityRuntimeStateObserver {
         {
           material: "installed" as const,
           runtime: "active" as const,
-          qualification: "qualified" as const,
         },
       ])),
     );
@@ -471,7 +469,22 @@ function fixtureContext(): ProjectCapabilityRuntimeContext {
           },
         }],
       }],
-      bindings: [],
+      bindings: [{
+        id: "calculix-static-structural",
+        version: "3",
+        qualification: "qualified",
+        unitIds: ["casys.calculix-worker"],
+        runtimeModes: [{
+          material: {
+            unitId: "casys.calculix-worker",
+            materialId: "calculix-worker",
+            imageDigest: DIGEST,
+          },
+          targetPlatform: "linux/arm64",
+          mode: "native",
+          qualificationAttestationFingerprint: null,
+        }],
+      }],
     },
     authorization: {
       projectId: PROJECT.project.id,

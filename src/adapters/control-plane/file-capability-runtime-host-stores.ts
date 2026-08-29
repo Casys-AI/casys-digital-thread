@@ -103,7 +103,7 @@ export class FileCapabilityRuntimeJournal implements CapabilityRuntimeJournal {
   }
 
   async appendBeforeMutation(entryValue: CapabilityRuntimeJournalEntry): Promise<void> {
-    const entry = validateCapabilityRuntimeJournalEntry(entryValue);
+    const entry = await validateCapabilityRuntimeJournalEntry(entryValue);
     await this.#append(
       this.#intentPath(entry.id),
       entry,
@@ -179,7 +179,7 @@ export class FileCapabilityRuntimeJournal implements CapabilityRuntimeJournal {
 
   async #list<T>(
     directory: string,
-    validate: (value: unknown) => T,
+    validate: (value: unknown) => T | Promise<T>,
   ): Promise<readonly T[]> {
     let entries: Deno.DirEntry[];
     try {

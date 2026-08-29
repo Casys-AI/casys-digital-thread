@@ -56,7 +56,12 @@ import type {
   ProjectCapabilityRuntimeContext,
   ProjectCapabilityRuntimeContextReader,
 } from "../ports/out/capability/capability-runtime-supervisor.ts";
-import { authorizeDurableCapabilityRuntimeHostMutation } from "./capability-runtime-host-authorization.ts";
+import {
+  authorizeDurableAdministrativeMaterialRemoval,
+  authorizeDurableMaterialAcquire,
+  authorizeDurableNormalRuntimeStart,
+  authorizeDurableRuntimeStop,
+} from "./capability-runtime-host-authorization.ts";
 
 /** Narrow registry port: server composition owns exact operation descriptors. */
 export interface CapabilityRuntimeOperationRegistry {
@@ -206,7 +211,7 @@ export class CapabilityRuntimeSupervisor
     const bindings = resolveRuntimeBindings(requirements, context);
     assertResolvedMaterialsHaveActiveAdminLock(context, bindings);
     return deepFreeze({
-      schemaVersion: "resolved-capability-runtime-operation/1.0" as const,
+      schemaVersion: "resolved-capability-runtime-operation/2.0" as const,
       projectId: input.project.project.id,
       operation: { id: input.operation.id, version: input.operation.version },
       authorizationFingerprint: context.authorization!.fingerprint,
@@ -448,6 +453,7 @@ function selectResolvedBinding(
       minimumQualification: requirement.minimumQualification,
     },
     binding: { id: binding.id, version: binding.version },
+    effectiveQualification: binding.qualification as "compatible" | "qualified",
     adapter: { ...binding.adapter },
     profile: binding.profile === null ? null : structuredClone(binding.profile),
     materials,
@@ -730,10 +736,23 @@ export class CapabilityRuntimeLifecycleCoordinator {
     await this.journal.appendBeforeMutation(entry);
     let outcome: CapabilityRuntimeJournalOutcome;
     try {
-      const authorization = await authorizeDurableCapabilityRuntimeHostMutation(
-        entry,
-        this.journal,
-      );
+      const authorization = entry.action === "material-acquire"
+        ? await authorizeDurableMaterialAcquire(entry, this.journal)
+        : entry.action === "runtime-start"
+        ? await authorizeDurableNormalRuntimeStart(entry, this.journal)
+        : entry.action === "runtime-stop"
+        ? await authorizeDurableRuntimeStop(entry, this.journal)
+        : removalPlan
+        ? await authorizeDurableAdministrativeMaterialRemoval(
+          entry,
+          removalPlan,
+          this.journal,
+        )
+        : (() => {
+          throw new CapabilityRuntimeAuthorizationError(
+            "Administrative material removal requires its exact reviewed plan.",
+          );
+        })();
       outcome = await this.host.mutate({
         authorization,
         ...(removalPlan ? { removalPlan } : {}),

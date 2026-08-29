@@ -33,7 +33,10 @@ import type {
 } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import type { CapabilityRuntimePlatform } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
 import {
-  consumeAuthorizedCapabilityRuntimeHostMutation,
+  consumeAuthorizedAdministrativeMaterialRemoval,
+  consumeAuthorizedMaterialAcquire,
+  consumeAuthorizedNormalRuntimeStart,
+  consumeAuthorizedRuntimeStop,
 } from "../../application/control-plane/capability-runtime-host-authorization.ts";
 import {
   type CommandResult,
@@ -166,7 +169,15 @@ class ComposeCapabilityRuntimeHost
     readonly removalPlan?: CapabilityRuntimeAdministrativeRemovalPlan;
     readonly secretSnapshot?: CapabilityRuntimeSecretSnapshot;
   }): Promise<CapabilityRuntimeJournalOutcome> {
-    const entry = consumeAuthorizedCapabilityRuntimeHostMutation(input.authorization);
+    const entry = input.authorization.entry.action === "material-acquire"
+      ? consumeAuthorizedMaterialAcquire(input.authorization)
+      : input.authorization.entry.action === "runtime-start"
+      ? consumeAuthorizedNormalRuntimeStart(input.authorization)
+      : input.authorization.entry.action === "runtime-stop"
+      ? consumeAuthorizedRuntimeStop(input.authorization)
+      : input.authorization.entry.action === "material-remove"
+      ? consumeAuthorizedAdministrativeMaterialRemoval(input.authorization)
+      : undefined;
     if (!entry) {
       throw new Error(
         "Capability runtime host mutation authorization is absent or consumed.",
@@ -197,29 +208,19 @@ class ComposeCapabilityRuntimeHost
     if (entry.action === "material-remove") {
       return await this.#remove(entry, input.removalPlan);
     }
-    if (
-      group.security !== "reviewed" ||
-      (group.qualification !== "compatible" && group.qualification !== "qualified")
-    ) {
+    // A stop is deliberately a recovery action.  Once a group is owned, later
+    // policy, qualification, or secret degradation must not strand it running.
+    if (entry.action !== "runtime-stop" && group.security !== "reviewed") {
       return this.#outcome(
         entry,
         "failed",
         [],
-        "Launch group is not operationally admissible.",
-      );
-    }
-    const availability = await this.options.secrets.observe(group.secretSlots);
-    if (group.secretSlots.some((slot) => availability.get(slot) !== "available")) {
-      return this.#outcome(
-        entry,
-        "failed",
-        [],
-        "Launch group secret availability is unknown or unavailable.",
+        "Launch group topology is not reviewed.",
       );
     }
     if (
-      entry.action === "runtime-start" && group.secretSlots.length > 0 &&
-      (input.secretSnapshot === undefined || this.options.secretInjector === undefined)
+      entry.action === "runtime-start" &&
+      await this.#missingStartSecret(group, input.secretSnapshot)
     ) {
       return this.#outcome(
         entry,
@@ -402,6 +403,16 @@ class ComposeCapabilityRuntimeHost
       removalObservationValues(after),
       absent ? null : "Administrative removal did not yield an exact absent group.",
     );
+  }
+
+  async #missingStartSecret(
+    group: CapabilityRuntimeLaunchGroup,
+    snapshot: CapabilityRuntimeSecretSnapshot | undefined,
+  ): Promise<boolean> {
+    const availability = await this.options.secrets.observe(group.secretSlots);
+    return group.secretSlots.some((slot) => availability.get(slot) !== "available") ||
+      (group.secretSlots.length > 0 &&
+        (snapshot === undefined || this.options.secretInjector === undefined));
   }
 
   async #inspectRemoval(
@@ -655,7 +666,6 @@ class ComposeCapabilityRuntimeHost
       let state: CapabilityRuntimeObservedState = {
         material: installed,
         runtime: "inactive",
-        qualification: group.qualification,
       };
       if (containers.length === 1 && containers[0]!.id) {
         const inspected = await this.#docker(launch.root, [
@@ -707,7 +717,6 @@ class ComposeCapabilityRuntimeHost
                 : actual.status === "running"
                 ? "degraded"
                 : "inactive",
-              qualification: group.qualification,
             };
           }
         }
@@ -895,8 +904,7 @@ function satisfies(
     case "runtime-start":
       return inspection.ownership === "owned" && states.length > 0 &&
         states.every((state) =>
-          state.material === "installed" && state.runtime === "active" &&
-          (state.qualification === "qualified" || state.qualification === "compatible")
+          state.material === "installed" && state.runtime === "active"
         );
     case "runtime-stop":
       return inspection.ownership !== "mismatch" && states.length > 0 &&
@@ -945,7 +953,6 @@ function unknownInspection(group: CapabilityRuntimeLaunchGroup): GroupInspection
     ) => [materialKey(member.material), {
       material: "failed" as const,
       runtime: "degraded" as const,
-      qualification: group.qualification,
     }]),
   );
   return {
@@ -1072,8 +1079,8 @@ function removalObservationValues(
   return observation.materials.map((entry) => ({
     material: entry.material,
     state: entry.state === "owned"
-      ? { material: "installed", runtime: "inactive", qualification: "unqualified" }
-      : { material: "absent", runtime: "inactive", qualification: "unqualified" },
+      ? { material: "installed", runtime: "inactive" }
+      : { material: "absent", runtime: "inactive" },
   }));
 }
 

@@ -15,7 +15,6 @@ import {
   type CapabilityRuntimeMaterialIdentity,
   capabilityRuntimeMaterialKey,
   type CapabilityRuntimeObservedState,
-  type CapabilityRuntimeQualificationState,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 
 export interface MicrosandboxCapabilityRuntimeImageExpectation {
@@ -23,8 +22,6 @@ export interface MicrosandboxCapabilityRuntimeImageExpectation {
   readonly image: ExactMicrosandboxImageExpectation;
   /** Server-selected execution profile which owns image invocation semantics. */
   readonly executionProfileFingerprint?: ContentFingerprint;
-  /** Qualification remains code-owned even when this object is used read-only. */
-  readonly qualification?: CapabilityRuntimeQualificationState;
 }
 
 /**
@@ -121,7 +118,8 @@ export class LocalMicrosandboxCapabilityRuntimeCache
   /**
    * Read-only local cache observation. It does not import an OCI archive,
    * create a sandbox, or lend execution-profile authority to this read. A
-   * missing or non-exact cache remains literally absent/unqualified.
+   * missing or non-exact cache remains literally absent. Qualification is a
+   * separate server projection and is never supplied by host observation.
    */
   async observe(
     materials: readonly CapabilityRuntimeMaterialIdentity[],
@@ -154,7 +152,6 @@ export class LocalMicrosandboxCapabilityRuntimeCache
         return [capabilityRuntimeMaterialKey(material), {
           material: "installed" as const,
           runtime: "inactive" as const,
-          qualification: expected.qualification ?? "unqualified",
         }] as const;
       } catch {
         return [capabilityRuntimeMaterialKey(material), absentState()] as const;
@@ -168,7 +165,6 @@ function absentState(): CapabilityRuntimeObservedState {
   return {
     material: "absent",
     runtime: "inactive",
-    qualification: "unqualified",
   };
 }
 

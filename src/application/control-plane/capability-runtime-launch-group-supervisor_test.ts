@@ -11,6 +11,9 @@ import {
   type CapabilityRuntimeLease,
   capabilityRuntimeMaterialKey,
   type CapabilityRuntimeObservedState,
+  createEffectiveCapabilityRuntimeLaunchProjection,
+  deriveEffectiveCapabilityRuntimeLaunchProjection,
+  type ResolvedCapabilityRuntimeOperation,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import { FixedCapabilityRuntimeLaunchGroupRegistry } from "./capability-runtime-launch-group-registry.ts";
@@ -42,6 +45,8 @@ Deno.test("group supervisor shares one lease across N groups and stops eligible 
   const firstResult = await fixture.supervisor.ensureActive({
     group: capabilityRuntimeLaunchGroupReference(first),
     expectedMaterials: exactMaterials(first),
+    effectiveRuntimeProjection: await projection(first),
+    resolvedOperation: resolvedOperation(first),
     projectId: "project-test",
     lease,
     at: AT,
@@ -50,6 +55,8 @@ Deno.test("group supervisor shares one lease across N groups and stops eligible 
   const secondResult = await fixture.supervisor.ensureActive({
     group: capabilityRuntimeLaunchGroupReference(second),
     expectedMaterials: exactMaterials(second),
+    effectiveRuntimeProjection: await projection(second),
+    resolvedOperation: resolvedOperation(second),
     projectId: "project-test",
     lease,
     at: AT,
@@ -100,6 +107,8 @@ Deno.test("a pending start that already reached a fully active group converges w
   const result = await fixture.supervisor.ensureActive({
     group: capabilityRuntimeLaunchGroupReference(first),
     expectedMaterials: exactMaterials(first),
+    effectiveRuntimeProjection: await projection(first),
+    resolvedOperation: resolvedOperation(first),
     projectId: "project-test",
     lease,
     at: AT,
@@ -127,6 +136,8 @@ Deno.test("an active secret-bearing group reconciles its exact snapshot while an
   await fixture.supervisor.ensureActive({
     group: capabilityRuntimeLaunchGroupReference(secret),
     expectedMaterials: exactMaterials(secret),
+    effectiveRuntimeProjection: await projection(secret),
+    resolvedOperation: resolvedOperation(secret),
     projectId: lease.projectId,
     lease,
     at: AT,
@@ -136,6 +147,8 @@ Deno.test("an active secret-bearing group reconciles its exact snapshot while an
   await fixture.supervisor.ensureActive({
     group: capabilityRuntimeLaunchGroupReference(plain),
     expectedMaterials: exactMaterials(plain),
+    effectiveRuntimeProjection: await projection(plain),
+    resolvedOperation: resolvedOperation(plain),
     projectId: lease.projectId,
     lease,
     at: AT,
@@ -159,47 +172,81 @@ Deno.test("a launch-group activation rejects an expected material with the same 
   if (!material) throw new Error("Expected one test material.");
 
   await assertRejects(
-    () =>
+    async () =>
       fixture.supervisor.ensureActive({
         group: capabilityRuntimeLaunchGroupReference(first),
         expectedMaterials: [{ ...material, imageDigest: "f".repeat(64) }],
+        effectiveRuntimeProjection: await projection(first),
+        resolvedOperation: resolvedOperation(first),
         projectId: lease.projectId,
         lease,
         at: AT,
         reuseExistingLease: "reject",
       }),
     CapabilityRuntimeLaunchGroupSafetyError,
-    "exact launch-group material digests",
+    "projection does not cover",
   );
   assertEquals(fixture.host.calls, []);
   assertEquals(await fixture.leases.listActive(AT), []);
 });
 
-Deno.test("an unqualified launch group is unavailable before a lease or host mutation", async () => {
-  const first = await group(
-    "casys-unqualified",
-    "unqualified",
-    undefined,
-    undefined,
-    "unqualified",
-  );
+Deno.test("a canonical projection with a foreign runtime mode fails before lease, journal, or host mutation", async () => {
+  const first = await group("casys-first", "first");
   const fixture = supervisor([first]);
   const lease = sessionLease([first]);
+  const foreignProjection = await createEffectiveCapabilityRuntimeLaunchProjection({
+    launchGroup: capabilityRuntimeLaunchGroupReference(first),
+    materials: first.materials.map((member) => ({
+      material: member.material,
+      binding: { id: "test-binding", version: "1.0.0" },
+      effectiveQualification: "qualified" as const,
+      minimumQualification: "qualified" as const,
+      runtimeMode: {
+        material: member.material,
+        targetPlatform: "linux/arm64" as const,
+        mode: "emulated" as const,
+        qualificationAttestationFingerprint: {
+          algorithm: "sha256" as const,
+          digest: "f".repeat(64),
+        },
+      },
+    })),
+  });
 
   await assertRejects(
     () =>
       fixture.supervisor.ensureActive({
         group: capabilityRuntimeLaunchGroupReference(first),
         expectedMaterials: exactMaterials(first),
+        effectiveRuntimeProjection: foreignProjection,
+        resolvedOperation: resolvedOperation(first),
         projectId: lease.projectId,
         lease,
         at: AT,
         reuseExistingLease: "reject",
       }),
     CapabilityRuntimeLaunchGroupSafetyError,
-    "not operationally admissible",
+    "does not match the exact rechecked ROP",
   );
+  assertEquals(await fixture.leases.listActive(AT), []);
+  assertEquals(await fixture.journal.list(), []);
   assertEquals(fixture.host.calls, []);
+});
+
+Deno.test("a reviewed launch group can preload material without a qualification or lease", async () => {
+  const first = await group(
+    "casys-preload",
+    "preload",
+    ["preload"],
+    ["chrono-mcp-bearer-token"],
+  );
+  const fixture = supervisor([first]);
+  await fixture.supervisor.ensureMaterial({
+    group: capabilityRuntimeLaunchGroupReference(first),
+    projectId: "project-test",
+    at: AT,
+  });
+  assertEquals(fixture.host.calls.map((call) => call.action), ["material-acquire"]);
   assertEquals(await fixture.leases.listActive(AT), []);
 });
 
@@ -214,6 +261,8 @@ Deno.test("a pending start that left every member unchanged is safe to retry", a
   await fixture.supervisor.ensureActive({
     group: capabilityRuntimeLaunchGroupReference(first),
     expectedMaterials: exactMaterials(first),
+    effectiveRuntimeProjection: await projection(first),
+    resolvedOperation: resolvedOperation(first),
     projectId: "project-test",
     lease,
     at: AT,
@@ -237,15 +286,16 @@ Deno.test("a pending start with a partial group observation remains a recovery b
   fixture.states.set(first.materials[0]!.material, {
     material: "installed",
     runtime: "active",
-    qualification: "qualified",
   });
   await appendIntent(fixture, first, "runtime-start", "pending-start", AT, prior);
 
   await assertRejects(
-    () =>
+    async () =>
       fixture.supervisor.ensureActive({
         group: capabilityRuntimeLaunchGroupReference(first),
         expectedMaterials: exactMaterials(first),
+        effectiveRuntimeProjection: await projection(first),
+        resolvedOperation: resolvedOperation(first),
         projectId: "project-test",
         lease,
         at: AT,
@@ -265,6 +315,8 @@ Deno.test("releasing one lease cannot stop a group still protected by another ex
   await fixture.supervisor.ensureActive({
     group: capabilityRuntimeLaunchGroupReference(first),
     expectedMaterials: exactMaterials(first),
+    effectiveRuntimeProjection: await projection(first),
+    resolvedOperation: resolvedOperation(first),
     projectId: lease.projectId,
     lease,
     at: AT,
@@ -330,6 +382,8 @@ Deno.test("an older failed intent is superseded by a later succeeded group tip",
   await fixture.supervisor.ensureActive({
     group: capabilityRuntimeLaunchGroupReference(first),
     expectedMaterials: exactMaterials(first),
+    effectiveRuntimeProjection: await projection(first),
+    resolvedOperation: resolvedOperation(first),
     projectId: lease.projectId,
     lease,
     at: AT,
@@ -355,10 +409,12 @@ Deno.test("a succeeded group tip that later returns to its previous state is an 
   setStates(fixture, first, "inactive");
 
   await assertRejects(
-    () =>
+    async () =>
       fixture.supervisor.ensureActive({
         group: capabilityRuntimeLaunchGroupReference(first),
         expectedMaterials: exactMaterials(first),
+        effectiveRuntimeProjection: await projection(first),
+        resolvedOperation: resolvedOperation(first),
         projectId: lease.projectId,
         lease,
         at: AT,
@@ -381,7 +437,6 @@ function supervisor(
       states.set(member.material, {
         material: "absent",
         runtime: "inactive",
-        qualification: "qualified",
       });
     }
   }
@@ -456,7 +511,6 @@ class StateTransitionHost implements CapabilityRuntimeHostMutator {
         ? prior ?? {
           material: "absent",
           runtime: "inactive",
-          qualification: "qualified",
         }
         : transitionState(entry.action);
       this.states.set(material, state);
@@ -472,12 +526,10 @@ class StateTransitionHost implements CapabilityRuntimeHostMutator {
           ? {
             material: "installed",
             runtime: "active",
-            qualification: "qualified",
           } as const
           : {
             material: "installed",
             runtime: "inactive",
-            qualification: "qualified",
           } as const,
       })),
       detail: uncertain ? "transition outcome is unknown" : null,
@@ -490,7 +542,6 @@ async function group(
   materialId: string,
   memberIds: readonly string[] = [materialId],
   secretSlots: readonly string[] = [],
-  qualification: CapabilityRuntimeLaunchGroup["qualification"] = "qualified",
 ): Promise<CapabilityRuntimeLaunchGroup> {
   const projectName = id;
   const composeContent = deterministicJson({
@@ -529,7 +580,7 @@ async function group(
     };
   });
   const body = {
-    schemaVersion: "capability-runtime-launch-group/1.0" as const,
+    schemaVersion: "capability-runtime-launch-group/2.0" as const,
     id,
     version: "1.0.0",
     activationPolicy: "persistent" as const,
@@ -547,9 +598,52 @@ async function group(
     },
     secretSlots,
     security: "reviewed" as const,
-    qualification,
   };
   return { ...body, fingerprint: await fingerprintCapabilityRuntimeLaunchGroup(body) };
+}
+
+async function projection(group: CapabilityRuntimeLaunchGroup) {
+  return await deriveEffectiveCapabilityRuntimeLaunchProjection({
+    launchGroup: capabilityRuntimeLaunchGroupReference(group),
+    operation: resolvedOperation(group),
+  });
+}
+
+function resolvedOperation(
+  group: CapabilityRuntimeLaunchGroup,
+): ResolvedCapabilityRuntimeOperation {
+  return {
+    schemaVersion: "resolved-capability-runtime-operation/2.0",
+    projectId: "project-test",
+    operation: { id: `test.${group.id}`, version: "1" },
+    authorizationFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+    demandFingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
+    registryFingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+    bindings: [{
+      capability: {
+        id: `test.${group.id}`,
+        version: "1",
+        use: "execution",
+        minimumQualification: "qualified",
+      },
+      binding: { id: "test-binding", version: "1.0.0" },
+      effectiveQualification: "qualified",
+      adapter: { id: "test-adapter", version: "1", source: "test" },
+      profile: null,
+      materials: group.materials.map((member) => member.material),
+      runtimeModes: group.materials.map((member) => ({
+        material: member.material,
+        targetPlatform: "linux/arm64" as const,
+        mode: "native" as const,
+        qualificationAttestationFingerprint: null,
+      })),
+      hostLifecycles: group.materials.map((member) => ({
+        material: member.material,
+        kind: "persistent-compose" as const,
+        launchGroup: capabilityRuntimeLaunchGroupReference(group),
+      })),
+    }],
+  };
 }
 
 function inactive(
@@ -563,7 +657,6 @@ function inactive(
     state: {
       material: "installed",
       runtime: "inactive",
-      qualification: "qualified",
     },
   }));
 }
@@ -583,7 +676,6 @@ function setStates(
     fixture.states.set(member.material, {
       material: "installed",
       runtime,
-      qualification: "qualified",
     });
   }
 }
@@ -608,6 +700,9 @@ async function appendIntent(
     projectId: "project-test",
     plannedAt,
     previousObservations,
+    effectiveRuntimeProjection: action === "runtime-start"
+      ? await projection(group)
+      : null,
     administrativeRemovalPlanFingerprint: null,
   };
   await fixture.journal.appendBeforeMutation(entry);
@@ -628,10 +723,10 @@ function transitionState(
   switch (action) {
     case "material-acquire":
     case "runtime-stop":
-      return { material: "installed", runtime: "inactive", qualification: "qualified" };
+      return { material: "installed", runtime: "inactive" };
     case "runtime-start":
-      return { material: "installed", runtime: "active", qualification: "qualified" };
+      return { material: "installed", runtime: "active" };
     case "material-remove":
-      return { material: "absent", runtime: "inactive", qualification: "qualified" };
+      return { material: "absent", runtime: "inactive" };
   }
 }

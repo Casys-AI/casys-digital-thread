@@ -43,7 +43,7 @@ Deno.test("Microsandbox capability cache observes an exact pinned image without 
     }]),
     new Map([[
       "casys.worker\u0000worker",
-      { material: "installed", runtime: "inactive", qualification: "unqualified" },
+      { material: "installed", runtime: "inactive" },
     ]]),
   );
 });

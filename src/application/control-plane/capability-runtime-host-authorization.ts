@@ -1,6 +1,9 @@
-/** One-use mutation capabilities created after a durable host intent. */
+/** One-use, action-specific host-mutation capabilities after durable intent. */
 
-import type { CapabilityRuntimeJournalEntry } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type {
+  CapabilityRuntimeAdministrativeRemovalPlan,
+  CapabilityRuntimeJournalEntry,
+} from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import { validateCapabilityRuntimeJournalEntry } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import type {
@@ -8,10 +11,12 @@ import type {
   CapabilityRuntimeJournal,
 } from "../ports/out/capability/capability-runtime-supervisor.ts";
 
-const pending = new WeakSet<AuthorizedCapabilityRuntimeHostMutation>();
+const materialAcquire = new WeakSet<AuthorizedCapabilityRuntimeHostMutation>();
+const normalRuntimeStart = new WeakSet<AuthorizedCapabilityRuntimeHostMutation>();
+const runtimeStop = new WeakSet<AuthorizedCapabilityRuntimeHostMutation>();
+const administrativeRemoval = new WeakSet<AuthorizedCapabilityRuntimeHostMutation>();
 
-/** @internal Runtime supervisors mint this only after a durable exact intent. */
-export async function authorizeDurableCapabilityRuntimeHostMutation(
+async function durable(
   entry: CapabilityRuntimeJournalEntry,
   journal: CapabilityRuntimeJournal,
 ): Promise<AuthorizedCapabilityRuntimeHostMutation> {
@@ -34,17 +39,96 @@ export async function authorizeDurableCapabilityRuntimeHostMutation(
       "Capability runtime mutation intent already has a terminal outcome.",
     );
   }
-  const authorization = Object.freeze({
-    entry: validateCapabilityRuntimeJournalEntry(entry),
-  });
-  pending.add(authorization);
+  return Object.freeze({ entry: await validateCapabilityRuntimeJournalEntry(entry) });
+}
+
+/** @internal acquire needs topology only; it must never carry a start authority. */
+export async function authorizeDurableMaterialAcquire(
+  entry: CapabilityRuntimeJournalEntry,
+  journal: CapabilityRuntimeJournal,
+): Promise<AuthorizedCapabilityRuntimeHostMutation> {
+  if (
+    entry.action !== "material-acquire" || entry.effectiveRuntimeProjection !== null
+  ) {
+    throw new Error(
+      "Material acquisition requires a null-projection material-acquire intent.",
+    );
+  }
+  const authorization = await durable(entry, journal);
+  materialAcquire.add(authorization);
   return authorization;
 }
 
-/** @internal Raw host adapters consume the capability before invoking Docker. */
-export function consumeAuthorizedCapabilityRuntimeHostMutation(
+/** @internal normal start is impossible without the exact persisted projection. */
+export async function authorizeDurableNormalRuntimeStart(
+  entry: CapabilityRuntimeJournalEntry,
+  journal: CapabilityRuntimeJournal,
+): Promise<AuthorizedCapabilityRuntimeHostMutation> {
+  if (entry.action !== "runtime-start" || entry.effectiveRuntimeProjection === null) {
+    throw new Error(
+      "Normal runtime start requires its exact effective runtime projection.",
+    );
+  }
+  const authorization = await durable(entry, journal);
+  normalRuntimeStart.add(authorization);
+  return authorization;
+}
+
+/** @internal stop remains available for recovery after qualification/secret loss. */
+export async function authorizeDurableRuntimeStop(
+  entry: CapabilityRuntimeJournalEntry,
+  journal: CapabilityRuntimeJournal,
+): Promise<AuthorizedCapabilityRuntimeHostMutation> {
+  if (entry.action !== "runtime-stop" || entry.effectiveRuntimeProjection !== null) {
+    throw new Error("Runtime stop requires a null-projection runtime-stop intent.");
+  }
+  const authorization = await durable(entry, journal);
+  runtimeStop.add(authorization);
+  return authorization;
+}
+
+/** @internal removal remains tied to the independently reviewed exact plan. */
+export async function authorizeDurableAdministrativeMaterialRemoval(
+  entry: CapabilityRuntimeJournalEntry,
+  plan: CapabilityRuntimeAdministrativeRemovalPlan,
+  journal: CapabilityRuntimeJournal,
+): Promise<AuthorizedCapabilityRuntimeHostMutation> {
+  if (
+    entry.action !== "material-remove" || entry.effectiveRuntimeProjection !== null ||
+    entry.administrativeRemovalPlanFingerprint?.digest !== plan.fingerprint.digest ||
+    entry.administrativeRemovalPlanFingerprint?.algorithm !== plan.fingerprint.algorithm
+  ) {
+    throw new Error("Administrative removal requires its exact reviewed removal plan.");
+  }
+  const authorization = await durable(entry, journal);
+  administrativeRemoval.add(authorization);
+  return authorization;
+}
+
+/** @internal Raw host adapters consume exactly one purpose-specific capability. */
+export function consumeAuthorizedMaterialAcquire(
   value: AuthorizedCapabilityRuntimeHostMutation,
 ): CapabilityRuntimeJournalEntry | undefined {
-  if (!pending.delete(value)) return undefined;
-  return value.entry;
+  return materialAcquire.delete(value) ? value.entry : undefined;
+}
+
+/** @internal Raw host adapters consume exactly one purpose-specific capability. */
+export function consumeAuthorizedNormalRuntimeStart(
+  value: AuthorizedCapabilityRuntimeHostMutation,
+): CapabilityRuntimeJournalEntry | undefined {
+  return normalRuntimeStart.delete(value) ? value.entry : undefined;
+}
+
+/** @internal Raw host adapters consume exactly one purpose-specific capability. */
+export function consumeAuthorizedRuntimeStop(
+  value: AuthorizedCapabilityRuntimeHostMutation,
+): CapabilityRuntimeJournalEntry | undefined {
+  return runtimeStop.delete(value) ? value.entry : undefined;
+}
+
+/** @internal Raw host adapters consume exactly one purpose-specific capability. */
+export function consumeAuthorizedAdministrativeMaterialRemoval(
+  value: AuthorizedCapabilityRuntimeHostMutation,
+): CapabilityRuntimeJournalEntry | undefined {
+  return administrativeRemoval.delete(value) ? value.entry : undefined;
 }

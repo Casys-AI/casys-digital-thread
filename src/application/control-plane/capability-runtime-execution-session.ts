@@ -13,6 +13,7 @@ import {
   type CapabilityRuntimeLease,
   type CapabilityRuntimeMaterialIdentity,
   capabilityRuntimeMaterialKey,
+  deriveEffectiveCapabilityRuntimeLaunchProjection,
   fingerprintResolvedCapabilityRuntimeOperation,
   type ResolvedCapabilityRuntimeOperation,
   validateCapabilityRuntimeLease,
@@ -174,6 +175,17 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
     const groups = uniqueLaunchGroups(
       persistent.map((lifecycle) => lifecycle.launchGroup!),
     );
+    const effectiveProjections = new Map(
+      await Promise.all(groups.map(async (group) =>
+        [
+          groupToken(group),
+          await deriveEffectiveCapabilityRuntimeLaunchProjection({
+            launchGroup: group,
+            operation: operationalCapability,
+          }),
+        ] as const
+      )),
+    );
     if (groups.length > 0 && !this.options.groups) {
       throw new CapabilityRuntimeSessionUnavailableError(
         "A required persistent capability has no configured launch-group supervisor.",
@@ -261,6 +273,8 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
         const result = await this.options.groups!.ensureActive({
           group,
           expectedMaterials,
+          effectiveRuntimeProjection: effectiveProjections.get(groupToken(group))!,
+          resolvedOperation: operationalCapability,
           projectId: input.project.project.id,
           at: this.#now(),
           lease,
@@ -285,10 +299,6 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
           secretSnapshot: input.secretSnapshot,
         });
         groupLeaseCreated ||= result.leaseDisposition === "created";
-        assertGroupQualification(
-          result.states,
-          requiredQualificationForGroup(operationalCapability, persistent, group),
-        );
       }
     } catch (error) {
       // A cache miss and a pre-mutation rejection are known safe failures; an
@@ -470,60 +480,6 @@ function sameTokens(left: readonly string[], right: readonly string[]): boolean 
   const orderedRight = [...right].toSorted();
   return orderedLeft.length === orderedRight.length &&
     orderedLeft.every((token, index) => token === orderedRight[index]);
-}
-
-function assertGroupQualification(
-  states: ReadonlyMap<
-    string,
-    {
-      readonly material: string;
-      readonly runtime: string;
-      readonly qualification: string;
-    }
-  >,
-  required: "compatible" | "qualified",
-): void {
-  if (
-    [...states.values()].some((state) =>
-      state.material !== "installed" || state.runtime !== "active" ||
-      (state.qualification !== required && state.qualification !== "qualified")
-    )
-  ) {
-    throw new CapabilityRuntimeSessionUnavailableError(
-      "Persistent capability host did not reach an installed, active and sufficiently qualified observed state.",
-    );
-  }
-}
-
-function requiredQualificationForGroup(
-  operation: ResolvedCapabilityRuntimeOperation,
-  lifecycles: readonly Extract<CapabilityRuntimeHostLifecycle, {
-    readonly kind: "persistent-compose";
-  }>[],
-  group: CapabilityRuntimeLaunchGroupReference,
-): "compatible" | "qualified" {
-  const groupMaterialKeys = new Set(
-    lifecycles.filter((lifecycle) =>
-      lifecycle.launchGroup !== null &&
-      groupToken(lifecycle.launchGroup) === groupToken(group)
-    ).map((lifecycle) => capabilityRuntimeMaterialKey(lifecycle.material)),
-  );
-  const candidates = operation.bindings.filter((binding) =>
-    binding.hostLifecycles.some((candidate) =>
-      candidate.kind === "persistent-compose" &&
-      groupMaterialKeys.has(capabilityRuntimeMaterialKey(candidate.material))
-    )
-  );
-  if (candidates.length === 0) {
-    throw new CapabilityRuntimeSessionUnavailableError(
-      "Persistent material has no sealed operation qualification requirement.",
-    );
-  }
-  return candidates.some((binding) =>
-      binding.capability.minimumQualification === "qualified"
-    )
-    ? "qualified"
-    : "compatible";
 }
 
 function uniqueLaunchGroups(

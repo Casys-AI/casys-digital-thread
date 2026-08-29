@@ -13,6 +13,7 @@ import {
   type CapabilityRuntimeHostLifecycle,
   type CapabilityRuntimeLease,
   capabilityRuntimeMaterialKey,
+  deriveEffectiveCapabilityRuntimeLaunchProjection,
   fingerprintResolvedCapabilityRuntimeOperation,
   type ResolvedCapabilityRuntimeOperation,
   validateCapabilityRuntimeLease,
@@ -77,6 +78,11 @@ export class CapabilityRuntimePreparationSessionCoordinator {
     const scope = await this.#scope(input);
 
     const at = this.#now();
+    const effectiveRuntimeProjection =
+      await deriveEffectiveCapabilityRuntimeLaunchProjection({
+        launchGroup: scope.groups[0]!,
+        operation: scope.resolved,
+      });
     const initialLease = await candidateLease({
       projectId: input.project.project.id,
       projectSnapshotId: input.project.id,
@@ -101,6 +107,8 @@ export class CapabilityRuntimePreparationSessionCoordinator {
     const activated = await this.options.groups.ensureActive({
       group: scope.groups[0]!,
       expectedMaterials: scope.lifecycles.map((lifecycle) => lifecycle.material),
+      effectiveRuntimeProjection,
+      resolvedOperation: scope.resolved,
       projectId: input.project.project.id,
       lease: reservation.lease,
       at,
@@ -406,18 +414,16 @@ function assertActiveExactMaterials(
   states: ReadonlyMap<string, {
     readonly material: string;
     readonly runtime: string;
-    readonly qualification: string;
   }>,
   lifecycles: readonly CapabilityRuntimeHostLifecycle[],
 ): void {
   for (const lifecycle of lifecycles) {
     const state = states.get(capabilityRuntimeMaterialKey(lifecycle.material));
     if (
-      !state || state.material !== "installed" || state.runtime !== "active" ||
-      (state.qualification !== "qualified" && state.qualification !== "compatible")
+      !state || state.material !== "installed" || state.runtime !== "active"
     ) {
       throw new CapabilityRuntimePreparationUnavailableError(
-        "Preparation launch group did not reach an exact installed, active and qualified state.",
+        "Preparation launch group did not reach an exact installed, active physical state.",
       );
     }
   }

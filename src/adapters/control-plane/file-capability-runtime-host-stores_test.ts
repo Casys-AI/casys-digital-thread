@@ -52,7 +52,7 @@ Deno.test("file group journal is append-only and refuses an incomplete group out
     const journal = new FileCapabilityRuntimeJournal(directory);
     const entry = {
       id: "host-runtime:journal",
-      action: "runtime-start" as const,
+      action: "material-acquire" as const,
       materials: group!.materials.map((member) => member.material),
       launchGroup: capabilityRuntimeLaunchGroupReference(group!),
       projectId: "project:host-runtime",
@@ -62,6 +62,7 @@ Deno.test("file group journal is append-only and refuses an incomplete group out
         state: null,
       })),
       administrativeRemovalPlanFingerprint: null,
+      effectiveRuntimeProjection: null,
     };
     await journal.appendBeforeMutation(entry);
     const outcome = {

@@ -6,8 +6,9 @@ H1 governs server-owned local runtime state. It does not select a provider, admi
 engineering method, or interpret an engineering result. The initial enrolled topology is
 the exact `casys-syson@1.0.0` group: Postgres, SysON and `mcp-syson`, with only
 `127.0.0.1:3009` published. The historical SysON UI port 8180 is not part of this group.
-`casys-chrono@1.0.0` is a separate one-service group enrolled as an unqualified
-candidate, not as an active or qualified engine.
+`casys-chrono@1.0.0` is a separate one-service topology. Its binding remains unavailable
+until a separately qualified exact host-mode attestation exists; the topology itself
+does not carry a qualification claim.
 
 ## Durable local read model
 
@@ -26,17 +27,23 @@ material response, or missing response for an owned material is rejected. A mate
 which no local observer owns remains literally `unavailable` in the Workbench rather
 than being guessed present or absent.
 
-The factual observation contains only the Docker daemon's exact reported platform,
-installed exact images and an opaque stable local-host identity fingerprint. It does
-not infer a platform from the Deno controller process and it does not declare global
-emulation. An unreadable or unsupported daemon platform fails closed: it is not guessed
-from the Mac architecture. The same local read composition overlays the immutable
-catalogue with the append-only qualification-attestation store at
+The factual host observation contains only the Docker daemon's exact reported platform,
+installed exact images, runtime state and an opaque stable local-host identity
+fingerprint. It never reports a qualification. It does not infer a platform from the
+Deno controller process and it does not declare global emulation. An unreadable or
+unsupported daemon platform fails closed: it is not guessed from the Mac architecture.
+The same local read composition overlays the immutable catalogue with the append-only
+qualification-attestation store at
 `state/local/capability-runtime-host/qualification-attestations/`. Queue, session and
 Workbench contexts therefore see the same effective per-material modes. An attestation
 must match the current binding, unit manifest, digest, profile, contract, launch group
 and host identity exactly; an absent or mismatched mode blocks resolution before any
 host mutation.
+
+The Workbench still displays three literal axes per planned material: physical material,
+physical runtime, and qualification. Its third axis is derived from one exact planned
+binding plus the current server catalogue/mode context; ambiguous or missing context is
+shown as `unavailable`, never copied from Docker.
 
 `GET /api/project/capabilities` exposes the existing redacted
 `project-capability-workbench/1.0` projection through the native Workbench BFF. It has
@@ -56,23 +63,24 @@ one group intent (all materials) -> closed Compose argv -> terminal outcome -> r
 
 ## Closed launch-group contract
 
-An immutable `capability-runtime-launch-group/1.0` names an ordered set of exact
+An immutable `capability-runtime-launch-group/2.0` names an ordered set of exact
 materials and services. It fingerprints a canonical JSON Compose descriptor and records
-its project-scoped default network, ownership labels, retained volumes, secret-slot
-names, security and qualification. At qualified or compatible state, one group is usable
-only when every exact image is installed and every expected owned service satisfies its
-declared readiness check. An unqualified group may intentionally omit a healthcheck when
-the published provider has no sealed readiness route; it remains non-activable, and an
-observed running container is only an operational fact, never a substitute for
-qualification.
+only topology and security: its project-scoped default network, ownership labels,
+retained volumes, secret-slot names and reviewed topology. Qualification is deliberately
+absent. A group is physically active only when every exact image is installed and every
+expected owned service satisfies its declared readiness check. The server separately
+derives a binding's effective qualification and exact runtime mode from the catalogue,
+plan and attestation; an observed running container never substitutes for that
+authority.
 
 The descriptor admits only pinned images, literal labels/environment, named retained
-volumes, loopback ports, ordered `depends_on` health edges, conditional health checks, command,
-`cap_drop`, `security_opt` and platform. It rejects interpolation, `build`, `env_file`,
-`include`, `extends`, configs, Compose secrets, bind mounts/sockets, privileged mode,
-devices and public ports. Top-level named volumes must be empty declarations and match
-the service mounts exactly. Health durations use a bounded literal duration grammar.
-Secrets never appear in a group, project, journal, descriptor argv or Workbench view.
+volumes, loopback ports, ordered `depends_on` health edges, conditional health checks,
+command, `cap_drop`, `security_opt` and platform. It rejects interpolation, `build`,
+`env_file`, `include`, `extends`, configs, Compose secrets, bind mounts/sockets,
+privileged mode, devices and public ports. Top-level named volumes must be empty
+declarations and match the service mounts exactly. Health durations use a bounded
+literal duration grammar. Secrets never appear in a group, project, journal, descriptor
+argv or Workbench view.
 
 `casys-syson` uses pinned DB, application and MCP images in dependency order
 `syson-db -> syson-app -> mcp-syson`; it retains `syson-db-data`. The MCP image receives
@@ -99,8 +107,11 @@ claim. An external queued claim is rejected. A partial, failed or uncertain grou
 retains the lease and blocks a blind retry until recovery observes the group.
 
 Every group action writes one append-only intent covering the complete ordered material
-set and its per-material prior observations. The terminal outcome likewise covers every
-member. Runtime start performs journalled image acquisition, then executes:
+set and its per-material prior observations. Runtime-start additionally persists the
+exact server-derived effective launch projection (binding, minimum/effective
+qualification, mode and attestation fingerprint) used at intent time; acquire, stop and
+administrative removal literally store no projection. The terminal outcome likewise
+covers every member. Runtime start performs journalled image acquisition, then executes:
 
 ```text
 docker compose … up --detach --wait --wait-timeout 300 --pull never --no-build
@@ -126,7 +137,11 @@ The capability proposal is derived at brief review and becomes durable only with
 brief confirmation or a later bounded amendment. Only then may the preload scheduler
 acquire exact persistent material in the background; preload never starts Compose.
 Activation happens immediately before the covered run, after a fresh operational-plan
-recheck, and leaves the run/WAL unchanged if it cannot prove the group active.
+recheck and projection derivation. It requires the exact server-minted start authority
+and any declared secret snapshot, and leaves the run/WAL unchanged if it cannot prove
+the group active. Preload needs only reviewed topology and never claims a lease, reads a
+secret or starts Compose. Stop remains available for an already owned group after a
+later revocation, topology-policy degradation or secret loss.
 
 Terminal release rereads the exact current `EngineeringProject` demand before stopping a
 group. A missing project, unreadable runtime context, unresolved JIT demand or stale

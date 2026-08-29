@@ -916,7 +916,7 @@ function operationalCapabilityFor(
   operation: { readonly id: string; readonly version: string },
 ): NonNullable<RegisteredRunPlanSealInput["operationalCapability"]> {
   return {
-    schemaVersion: "resolved-capability-runtime-operation/1.0",
+    schemaVersion: "resolved-capability-runtime-operation/2.0",
     projectId,
     operation: { id: operation.id, version: operation.version },
     authorizationFingerprint: fingerprint("a"),
@@ -930,6 +930,7 @@ function operationalCapabilityFor(
         minimumQualification: "qualified",
       },
       binding: { id: "calculix-static-structural", version: "1" },
+      effectiveQualification: "qualified",
       adapter: { id: "casys.calculix-worker", version: "1", source: "test" },
       profile: {
         id: "calculix-static",

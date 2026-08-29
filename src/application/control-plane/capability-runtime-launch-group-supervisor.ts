@@ -19,7 +19,11 @@ import {
   type CapabilityRuntimeMaterialIdentity,
   capabilityRuntimeMaterialKey,
   type CapabilityRuntimeObservedState,
+  deriveEffectiveCapabilityRuntimeLaunchProjection,
+  type EffectiveCapabilityRuntimeLaunchProjection,
+  type ResolvedCapabilityRuntimeOperation,
   validateCapabilityRuntimeLease,
+  validateEffectiveCapabilityRuntimeLaunchProjection,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import type {
   CapabilityRuntimeHostMutationLock,
@@ -32,7 +36,9 @@ import type {
   CapabilityRuntimeStateObserver,
 } from "../ports/out/capability/capability-runtime-supervisor.ts";
 import {
-  authorizeDurableCapabilityRuntimeHostMutation,
+  authorizeDurableMaterialAcquire,
+  authorizeDurableNormalRuntimeStart,
+  authorizeDurableRuntimeStop,
 } from "./capability-runtime-host-authorization.ts";
 
 export class CapabilityRuntimeLaunchGroupSafetyError extends Error {
@@ -56,6 +62,14 @@ export interface EnsureCapabilityRuntimeLaunchGroupRequest {
   readonly group: CapabilityRuntimeLaunchGroupReference;
   /** Exact ROP lifecycle materials expected to use this group, including digest. */
   readonly expectedMaterials: readonly CapabilityRuntimeMaterialIdentity[];
+  /** Exact server-derived authority, never an observation or caller payload. */
+  readonly effectiveRuntimeProjection: EffectiveCapabilityRuntimeLaunchProjection;
+  /**
+   * The sealed ROP that produced the projection. H1 independently derives the
+   * same projection while holding its mutex, so a canonical but foreign
+   * binding/mode/attestation cannot acquire a lease or write an intent.
+   */
+  readonly resolvedOperation: ResolvedCapabilityRuntimeOperation;
   readonly projectId: string;
   readonly lease: CapabilityRuntimeLease;
   readonly at: string;
@@ -101,7 +115,7 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
           "Capability runtime material preload is no longer authorized by the exact local envelope and lock.",
         );
       }
-      const group = await this.#requireUsableGroup(input.group);
+      const group = await this.#requireReviewedGroup(input.group);
       await this.#assertNoPending(group);
       const before = await this.#observe(group);
       if (allInstalled(group, before)) {
@@ -146,10 +160,22 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
           "Capability runtime activation is no longer authorized by the exact local envelope and lock.",
         );
       }
-      const group = await this.#requireUsableGroup(request.group);
+      const group = await this.#requireReviewedGroup(request.group);
+      await this.#assertEffectiveRuntimeProjection(
+        group,
+        request.expectedMaterials,
+        request.effectiveRuntimeProjection,
+        request.resolvedOperation,
+      );
       if (group.secretSlots.length > 0 && request.secretSnapshot === undefined) {
         throw new CapabilityRuntimeLaunchGroupSafetyError(
           "Capability runtime group requires a server-minted launch secret snapshot.",
+        );
+      }
+      const availability = await this.options.secrets.observe(group.secretSlots);
+      if (group.secretSlots.some((slot) => availability.get(slot) !== "available")) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime group secret availability is unknown or unavailable.",
         );
       }
       const lease = validateCapabilityRuntimeLease(request.lease);
@@ -200,6 +226,7 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
           request.projectId,
           request.at,
           installed,
+          request.effectiveRuntimeProjection,
           request.secretSnapshot,
         );
         if (mutation.status !== "succeeded") {
@@ -257,9 +284,7 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
         );
       }
       const groups = await Promise.all(
-        uniqueGroups(input.groups).map((reference) =>
-          this.#requireUsableGroup(reference)
-        ),
+        uniqueGroups(input.groups).map((reference) => this.#requireGroup(reference)),
       );
       for (const group of groups) {
         this.#assertLeaseCovers(group, lease, input.projectId, input.at);
@@ -301,25 +326,22 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
     });
   }
 
-  async #requireUsableGroup(
+  async #requireReviewedGroup(
     reference: CapabilityRuntimeLaunchGroupReference,
   ): Promise<CapabilityRuntimeLaunchGroup> {
-    const group = await this.options.groups.require(reference);
-    if (
-      group.security !== "reviewed" || group.qualification === "revoked" ||
-      group.qualification === "unqualified"
-    ) {
+    const group = await this.#requireGroup(reference);
+    if (group.security !== "reviewed") {
       throw new CapabilityRuntimeLaunchGroupSafetyError(
-        "Capability runtime group is not operationally admissible.",
-      );
-    }
-    const availability = await this.options.secrets.observe(group.secretSlots);
-    if (group.secretSlots.some((slot) => availability.get(slot) !== "available")) {
-      throw new CapabilityRuntimeLaunchGroupSafetyError(
-        "Capability runtime group secret availability is unknown or unavailable.",
+        "Capability runtime group topology is not reviewed.",
       );
     }
     return group;
+  }
+
+  async #requireGroup(
+    reference: CapabilityRuntimeLaunchGroupReference,
+  ): Promise<CapabilityRuntimeLaunchGroup> {
+    return await this.options.groups.require(reference);
   }
 
   #assertLeaseCovers(
@@ -365,6 +387,46 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
     ) {
       throw new CapabilityRuntimeLaunchGroupSafetyError(
         "Capability runtime activation does not bind the exact launch-group material digests.",
+      );
+    }
+  }
+
+  async #assertEffectiveRuntimeProjection(
+    group: CapabilityRuntimeLaunchGroup,
+    expected: readonly CapabilityRuntimeMaterialIdentity[],
+    value: EffectiveCapabilityRuntimeLaunchProjection,
+    resolvedOperation: ResolvedCapabilityRuntimeOperation,
+  ): Promise<void> {
+    const projection = await validateEffectiveCapabilityRuntimeLaunchProjection(value);
+    const expectedProjection = await deriveEffectiveCapabilityRuntimeLaunchProjection({
+      launchGroup: capabilityRuntimeLaunchGroupReference(group),
+      operation: resolvedOperation,
+    });
+    if (
+      projection.fingerprint.digest !== expectedProjection.fingerprint.digest ||
+      projection.fingerprint.algorithm !== expectedProjection.fingerprint.algorithm
+    ) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime projection does not match the exact rechecked ROP binding, mode, or attestation.",
+      );
+    }
+    const reference = capabilityRuntimeLaunchGroupReference(group);
+    if (!sameCapabilityRuntimeLaunchGroupReference(projection.launchGroup, reference)) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime projection names another immutable launch group.",
+      );
+    }
+    if (
+      projection.materials.length !== group.materials.length ||
+      projection.materials.some((entry) =>
+        !group.materials.some((member) => sameMaterial(member.material, entry.material))
+      ) ||
+      projection.materials.some((entry) =>
+        !expected.some((material) => sameMaterial(material, entry.material))
+      )
+    ) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime projection does not cover the exact sealed group materials.",
       );
     }
   }
@@ -457,6 +519,7 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
     projectId: string | null,
     at: string,
     states: ReadonlyMap<string, CapabilityRuntimeObservedState>,
+    effectiveRuntimeProjection?: EffectiveCapabilityRuntimeLaunchProjection,
     secretSnapshot?: CapabilityRuntimeSecretSnapshot,
   ): Promise<CapabilityRuntimeJournalOutcome> {
     const entry: CapabilityRuntimeJournalEntry = {
@@ -470,15 +533,29 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
         material: { ...material.material },
         state: states.get(capabilityRuntimeMaterialKey(material.material)) ?? null,
       })),
+      effectiveRuntimeProjection: action === "runtime-start"
+        ? effectiveRuntimeProjection ?? (() => {
+          throw new CapabilityRuntimeLaunchGroupSafetyError(
+            "Normal runtime start requires its exact effective projection.",
+          );
+        })()
+        : null,
       administrativeRemovalPlanFingerprint: null,
     };
     await this.options.journal.appendBeforeMutation(entry);
     let outcome: CapabilityRuntimeJournalOutcome;
     try {
-      const authorization = await authorizeDurableCapabilityRuntimeHostMutation(
-        entry,
-        this.options.journal,
-      );
+      const authorization = action === "material-acquire"
+        ? await authorizeDurableMaterialAcquire(entry, this.options.journal)
+        : action === "runtime-start"
+        ? await authorizeDurableNormalRuntimeStart(entry, this.options.journal)
+        : action === "runtime-stop"
+        ? await authorizeDurableRuntimeStop(entry, this.options.journal)
+        : (() => {
+          throw new CapabilityRuntimeLaunchGroupSafetyError(
+            "Launch group supervisor cannot remove materials administratively.",
+          );
+        })();
       outcome = await this.options.host.mutate({ authorization, secretSnapshot });
     } catch (error) {
       outcome = {
@@ -542,8 +619,7 @@ function allActive(
 ): boolean {
   return group.materials.every((material) => {
     const state = states.get(capabilityRuntimeMaterialKey(material.material));
-    return state?.material === "installed" && state.runtime === "active" &&
-      (state.qualification === "qualified" || state.qualification === "compatible");
+    return state?.material === "installed" && state.runtime === "active";
   });
 }
 
@@ -639,8 +715,7 @@ function sameState(
   left: CapabilityRuntimeObservedState,
   right: CapabilityRuntimeObservedState,
 ): boolean {
-  return left.material === right.material && left.runtime === right.runtime &&
-    left.qualification === right.qualification;
+  return left.material === right.material && left.runtime === right.runtime;
 }
 
 function stateSatisfiesAction(

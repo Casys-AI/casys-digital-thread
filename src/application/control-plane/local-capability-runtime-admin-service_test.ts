@@ -345,7 +345,6 @@ class FakeRemovalHost {
         state: {
           material: "absent",
           runtime: "inactive",
-          qualification: "unqualified",
         },
       })),
       detail: null,
@@ -420,10 +419,10 @@ function runtimeEntry(
       state: {
         material: "installed",
         runtime: "inactive",
-        qualification: "unqualified",
       },
     })),
     administrativeRemovalPlanFingerprint: fingerprint,
+    effectiveRuntimeProjection: null,
   };
 }
 

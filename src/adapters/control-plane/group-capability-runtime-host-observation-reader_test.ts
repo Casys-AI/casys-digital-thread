@@ -17,7 +17,6 @@ Deno.test("group host observation takes the injected daemon platform rather than
             {
               material: "installed" as const,
               runtime: "inactive" as const,
-              qualification: "qualified" as const,
             },
           ])),
         ),

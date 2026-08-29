@@ -215,6 +215,7 @@ function validPrescribedKinematicsPlan(): Record<string, unknown> {
       minimumQualification: "qualified",
     },
     binding: { id: "chrono-prescribed-kinematics", version: "1" },
+    effectiveQualification: "qualified",
     adapter: {
       id: "chrono-prescribed-kinematics-adapter",
       version: "0.3.1",
@@ -284,7 +285,7 @@ function operationalCapabilityFor(
   operationVersion: "2" | "3",
 ): Record<string, unknown> {
   return {
-    schemaVersion: "resolved-capability-runtime-operation/1.0",
+    schemaVersion: "resolved-capability-runtime-operation/2.0",
     projectId: "project.cm01",
     operation: {
       id: "verify.run-fea-static-proof",
@@ -304,6 +305,7 @@ function operationalCapabilityFor(
         id: "calculix-static-structural",
         version: "1",
       },
+      effectiveQualification: "qualified",
       adapter: {
         id: "casys.calculix-worker",
         version: "1",

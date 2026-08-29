@@ -132,7 +132,6 @@ export async function createLocalCapabilityRuntimeReadComposition(
         ],
       },
       executionProfileFingerprint: options.calculixExecutionProfile?.profileFingerprint,
-      qualification: "qualified",
     }],
   );
   const groupMaterialKeys = (await launchGroups.list()).flatMap((group) =>

@@ -1040,7 +1040,7 @@ function sensitivityRuntimeOperation() {
     imageDigest: "4".repeat(64),
   };
   return {
-    schemaVersion: "resolved-capability-runtime-operation/1.0" as const,
+    schemaVersion: "resolved-capability-runtime-operation/2.0" as const,
     projectId: PROJECT_ID,
     operation: { id: "analyze.run-fea-sensitivity", version: "1" },
     authorizationFingerprint: { algorithm: "sha256" as const, digest: "1".repeat(64) },
@@ -1054,6 +1054,7 @@ function sensitivityRuntimeOperation() {
         minimumQualification: "qualified" as const,
       },
       binding: { id: "calculix-static-sensitivity", version: "1" },
+      effectiveQualification: "qualified" as const,
       adapter: { id: "casys.mcp-calculix", version: "0.8.2", source: "fixture" },
       profile: null,
       materials: [material],

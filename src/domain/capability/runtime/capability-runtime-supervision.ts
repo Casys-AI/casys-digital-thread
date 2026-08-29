@@ -45,17 +45,10 @@ export type CapabilityRuntimeProcessState =
   | "stopping"
   | "degraded";
 
-export type CapabilityRuntimeQualificationState =
-  | "unqualified"
-  | "compatible"
-  | "qualified"
-  | "revoked";
-
-/** The three axes intentionally do not collapse into one health string. */
+/** Physical host state only; qualification is a separate server projection. */
 export interface CapabilityRuntimeObservedState {
   readonly material: CapabilityRuntimeMaterialState;
   readonly runtime: CapabilityRuntimeProcessState;
-  readonly qualification: CapabilityRuntimeQualificationState;
 }
 
 /** Exact catalogue material identity, not an image tag or mutable alias. */
@@ -106,6 +99,8 @@ export interface ResolvedCapabilityRuntimeBinding {
     readonly id: string;
     readonly version: string;
   };
+  /** Server-evaluated qualification of this exact binding on this host. */
+  readonly effectiveQualification: "compatible" | "qualified";
   readonly adapter: {
     readonly id: string;
     readonly version: string;
@@ -129,7 +124,7 @@ export interface ResolvedCapabilityRuntimeBinding {
  * request, a result verdict, or a project Thread entity.
  */
 export interface ResolvedCapabilityRuntimeOperation {
-  readonly schemaVersion: "resolved-capability-runtime-operation/1.0";
+  readonly schemaVersion: "resolved-capability-runtime-operation/2.0";
   readonly projectId: string;
   readonly operation: { readonly id: string; readonly version: string };
   readonly authorizationFingerprint: ContentFingerprint;
@@ -153,7 +148,7 @@ export function validateResolvedCapabilityRuntimeOperation(
   ], "$operationalCapability");
   literalValue(
     root.schemaVersion,
-    "resolved-capability-runtime-operation/1.0",
+    "resolved-capability-runtime-operation/2.0",
     "$operationalCapability.schemaVersion",
   );
   const operation = exactRecord(
@@ -172,7 +167,7 @@ export function validateResolvedCapabilityRuntimeOperation(
     "$operationalCapability.bindings[]",
   );
   return deepFreeze({
-    schemaVersion: "resolved-capability-runtime-operation/1.0",
+    schemaVersion: "resolved-capability-runtime-operation/2.0",
     projectId: safeId(root.projectId, "$operationalCapability.projectId"),
     operation: {
       id: safeId(operation.id, "$operationalCapability.operation.id"),
@@ -216,6 +211,7 @@ function parseResolvedBinding(
   const root = exactRecord(value, [
     "capability",
     "binding",
+    "effectiveQualification",
     "adapter",
     "profile",
     "materials",
@@ -278,20 +274,31 @@ function parseResolvedBinding(
   ) {
     throw new TypeError(`${path}.hostLifecycles must cover exactly its materials.`);
   }
+  const minimumQualification = capabilityQualification(
+    capability.minimumQualification,
+    `${path}.capability.minimumQualification`,
+  );
+  const effectiveQualification = capabilityQualification(
+    root.effectiveQualification,
+    `${path}.effectiveQualification`,
+  );
+  if (!qualificationCoversMinimum(effectiveQualification, minimumQualification)) {
+    throw new TypeError(
+      `${path}.effectiveQualification does not meet the required capability qualification.`,
+    );
+  }
   return {
     capability: {
       id: safeId(capability.id, `${path}.capability.id`),
       version: exactVersionToken(capability.version, `${path}.capability.version`),
       use: capabilityUse(capability.use, `${path}.capability.use`),
-      minimumQualification: capabilityQualification(
-        capability.minimumQualification,
-        `${path}.capability.minimumQualification`,
-      ),
+      minimumQualification,
     },
     binding: {
       id: safeId(binding.id, `${path}.binding.id`),
       version: exactVersionToken(binding.version, `${path}.binding.version`),
     },
+    effectiveQualification,
     adapter: {
       id: safeId(adapter.id, `${path}.adapter.id`),
       version: exactVersionToken(adapter.version, `${path}.adapter.version`),
@@ -302,6 +309,226 @@ function parseResolvedBinding(
     runtimeModes,
     hostLifecycles,
   };
+}
+
+/**
+ * Exact operational authority for one persistent Compose group. This is
+ * server-derived from a rechecked resolved operation, never Docker state or
+ * caller input. It deliberately records qualification beside the sealed
+ * runtime mode instead of embedding it in an immutable topology descriptor.
+ */
+export const EFFECTIVE_CAPABILITY_RUNTIME_LAUNCH_PROJECTION_SCHEMA_VERSION =
+  "effective-capability-runtime-launch-projection/1.0" as const;
+
+export interface EffectiveCapabilityRuntimeLaunchProjection {
+  readonly schemaVersion:
+    typeof EFFECTIVE_CAPABILITY_RUNTIME_LAUNCH_PROJECTION_SCHEMA_VERSION;
+  readonly fingerprint: ContentFingerprint;
+  readonly launchGroup: CapabilityRuntimeLaunchGroupReference;
+  readonly materials: readonly {
+    readonly material: CapabilityRuntimeMaterialIdentity;
+    readonly binding: { readonly id: string; readonly version: string };
+    readonly effectiveQualification: "compatible" | "qualified";
+    readonly minimumQualification: "compatible" | "qualified";
+    readonly runtimeMode: CapabilityRuntimeMaterialRuntimeMode;
+  }[];
+}
+
+export async function deriveEffectiveCapabilityRuntimeLaunchProjection(input: {
+  readonly launchGroup: CapabilityRuntimeLaunchGroupReference;
+  readonly operation: ResolvedCapabilityRuntimeOperation;
+}): Promise<EffectiveCapabilityRuntimeLaunchProjection> {
+  const operation = validateResolvedCapabilityRuntimeOperation(input.operation);
+  const launchGroup = validateCapabilityRuntimeLaunchGroupReference(
+    input.launchGroup,
+    "$effectiveRuntimeProjection.launchGroup",
+  );
+  const materials = operation.bindings.flatMap((binding) =>
+    binding.hostLifecycles.filter((lifecycle) =>
+      lifecycle.kind === "persistent-compose" && lifecycle.launchGroup !== null &&
+      sameLaunchGroupReference(lifecycle.launchGroup, launchGroup)
+    ).map((lifecycle) => {
+      const material = binding.materials.filter((candidate) =>
+        sameMaterial(candidate, lifecycle.material)
+      );
+      const runtimeMode = binding.runtimeModes.filter((candidate) =>
+        sameMaterial(candidate.material, lifecycle.material)
+      );
+      if (material.length !== 1 || runtimeMode.length !== 1) {
+        throw new TypeError(
+          "Resolved persistent runtime lifecycle lacks one exact material and runtime mode.",
+        );
+      }
+      return {
+        material: material[0]!,
+        binding: { ...binding.binding },
+        effectiveQualification: binding.effectiveQualification,
+        minimumQualification: binding.capability.minimumQualification,
+        runtimeMode: structuredClone(runtimeMode[0]!),
+      };
+    })
+  );
+  if (materials.length === 0) {
+    throw new TypeError(
+      "Resolved operation has no persistent material for the requested launch group.",
+    );
+  }
+  return await createEffectiveCapabilityRuntimeLaunchProjection({
+    launchGroup,
+    materials,
+  });
+}
+
+export async function createEffectiveCapabilityRuntimeLaunchProjection(input: {
+  readonly launchGroup: CapabilityRuntimeLaunchGroupReference;
+  readonly materials: readonly {
+    readonly material: CapabilityRuntimeMaterialIdentity;
+    readonly binding: { readonly id: string; readonly version: string };
+    readonly effectiveQualification: "compatible" | "qualified";
+    readonly minimumQualification: "compatible" | "qualified";
+    readonly runtimeMode: CapabilityRuntimeMaterialRuntimeMode;
+  }[];
+}): Promise<EffectiveCapabilityRuntimeLaunchProjection> {
+  const body = effectiveRuntimeProjectionBody(input, "$effectiveRuntimeProjection");
+  return deepFreeze({ ...body, fingerprint: await sha256Fingerprint(body) });
+}
+
+export async function validateEffectiveCapabilityRuntimeLaunchProjection(
+  value: unknown,
+): Promise<EffectiveCapabilityRuntimeLaunchProjection> {
+  const root = exactRecord(value, [
+    "schemaVersion",
+    "fingerprint",
+    "launchGroup",
+    "materials",
+  ], "$effectiveRuntimeProjection");
+  literalValue(
+    root.schemaVersion,
+    EFFECTIVE_CAPABILITY_RUNTIME_LAUNCH_PROJECTION_SCHEMA_VERSION,
+    "$effectiveRuntimeProjection.schemaVersion",
+  );
+  const body = effectiveRuntimeProjectionBody({
+    launchGroup: validateCapabilityRuntimeLaunchGroupReference(
+      root.launchGroup,
+      "$effectiveRuntimeProjection.launchGroup",
+    ),
+    materials: arrayOf(root.materials, "$effectiveRuntimeProjection.materials").map(
+      (entry, index) =>
+        parseEffectiveRuntimeProjectionMaterial(
+          entry,
+          `$effectiveRuntimeProjection.materials[${index}]`,
+        ),
+    ),
+  }, "$effectiveRuntimeProjection");
+  const fingerprint = contentFingerprint(
+    root.fingerprint,
+    "$effectiveRuntimeProjection.fingerprint",
+  );
+  const expected = await sha256Fingerprint(body);
+  if (!sameFingerprint(fingerprint, expected)) {
+    throw new TypeError(
+      "$effectiveRuntimeProjection.fingerprint does not match its canonical body.",
+    );
+  }
+  return deepFreeze({ ...body, fingerprint });
+}
+
+function effectiveRuntimeProjectionBody(input: {
+  readonly launchGroup: CapabilityRuntimeLaunchGroupReference;
+  readonly materials: readonly {
+    readonly material: CapabilityRuntimeMaterialIdentity;
+    readonly binding: { readonly id: string; readonly version: string };
+    readonly effectiveQualification: "compatible" | "qualified";
+    readonly minimumQualification: "compatible" | "qualified";
+    readonly runtimeMode: CapabilityRuntimeMaterialRuntimeMode;
+  }[];
+}, path: string): Omit<EffectiveCapabilityRuntimeLaunchProjection, "fingerprint"> {
+  const materials = input.materials.map((entry, index) =>
+    parseEffectiveRuntimeProjectionMaterial(entry, `${path}.materials[${index}]`)
+  ).toSorted((left, right) =>
+    capabilityRuntimeMaterialKey(left.material).localeCompare(
+      capabilityRuntimeMaterialKey(right.material),
+    )
+  );
+  if (materials.length === 0) {
+    throw new TypeError(`${path}.materials must not be empty.`);
+  }
+  rejectDuplicates(
+    materials.map((entry) => capabilityRuntimeMaterialKey(entry.material)),
+    `${path}.materials`,
+  );
+  for (const entry of materials) {
+    if (
+      !qualificationCoversMinimum(
+        entry.effectiveQualification,
+        entry.minimumQualification,
+      )
+    ) {
+      throw new TypeError(
+        `${path}.materials effective qualification does not meet its minimum.`,
+      );
+    }
+    if (!sameMaterial(entry.material, entry.runtimeMode.material)) {
+      throw new TypeError(`${path}.materials runtime mode does not match material.`);
+    }
+  }
+  return {
+    schemaVersion: EFFECTIVE_CAPABILITY_RUNTIME_LAUNCH_PROJECTION_SCHEMA_VERSION,
+    launchGroup: validateCapabilityRuntimeLaunchGroupReference(
+      input.launchGroup,
+      `${path}.launchGroup`,
+    ),
+    materials: deepFreeze(materials),
+  };
+}
+
+function parseEffectiveRuntimeProjectionMaterial(
+  value: unknown,
+  path: string,
+): EffectiveCapabilityRuntimeLaunchProjection["materials"][number] {
+  const root = exactRecord(value, [
+    "material",
+    "binding",
+    "effectiveQualification",
+    "minimumQualification",
+    "runtimeMode",
+  ], path);
+  const binding = exactRecord(root.binding, ["id", "version"], `${path}.binding`);
+  return deepFreeze({
+    material: parseMaterial(root.material, `${path}.material`),
+    binding: {
+      id: safeId(binding.id, `${path}.binding.id`),
+      version: exactVersionToken(binding.version, `${path}.binding.version`),
+    },
+    effectiveQualification: capabilityQualification(
+      root.effectiveQualification,
+      `${path}.effectiveQualification`,
+    ),
+    minimumQualification: capabilityQualification(
+      root.minimumQualification,
+      `${path}.minimumQualification`,
+    ),
+    runtimeMode: parseRuntimeMode(root.runtimeMode, `${path}.runtimeMode`),
+  });
+}
+
+function qualificationCoversMinimum(
+  effective: "compatible" | "qualified",
+  minimum: "compatible" | "qualified",
+): boolean {
+  return effective === "qualified" || minimum === "compatible";
+}
+
+function sameLaunchGroupReference(
+  left: CapabilityRuntimeLaunchGroupReference,
+  right: CapabilityRuntimeLaunchGroupReference,
+): boolean {
+  return left.id === right.id && left.version === right.version &&
+    sameFingerprint(left.fingerprint, right.fingerprint);
+}
+
+function sameFingerprint(left: ContentFingerprint, right: ContentFingerprint): boolean {
+  return left.algorithm === right.algorithm && left.digest === right.digest;
 }
 
 function parseRuntimeMode(
@@ -468,6 +695,15 @@ export interface CapabilityRuntimeJournalEntry {
     readonly material: CapabilityRuntimeMaterialIdentity;
     readonly state: CapabilityRuntimeObservedState | null;
   }[];
+  /**
+   * Exact server-only authority used for a normal runtime start. It is kept
+   * in the durable intent so recovery can prove what was authorized without
+   * reading a later catalogue or Docker observation. Every other action is
+   * literally null.
+   */
+  readonly effectiveRuntimeProjection:
+    | EffectiveCapabilityRuntimeLaunchProjection
+    | null;
   readonly administrativeRemovalPlanFingerprint: ContentFingerprint | null;
 }
 
@@ -660,8 +896,7 @@ export function capabilityRuntimeBindingKey(
 export function isCapabilityRuntimeUsable(
   state: CapabilityRuntimeObservedState,
 ): boolean {
-  return state.material === "installed" && state.runtime === "active" &&
-    state.qualification === "qualified";
+  return state.material === "installed" && state.runtime === "active";
 }
 
 /** Pure recovery projection: observe first, then report pending host intents. */
@@ -740,9 +975,9 @@ export function recoverCapabilityRuntime(
 }
 
 /** Strict parser used by the durable host journal and test fixtures. */
-export function validateCapabilityRuntimeJournalEntry(
+export async function validateCapabilityRuntimeJournalEntry(
   value: unknown,
-): CapabilityRuntimeJournalEntry {
+): Promise<CapabilityRuntimeJournalEntry> {
   const root = exactRecord(value, [
     "id",
     "action",
@@ -751,6 +986,7 @@ export function validateCapabilityRuntimeJournalEntry(
     "projectId",
     "plannedAt",
     "previousObservations",
+    "effectiveRuntimeProjection",
     "administrativeRemovalPlanFingerprint",
   ], "$runtimeJournalEntry");
   const materials = arrayOf(root.materials, "$runtimeJournalEntry.materials").map(
@@ -787,24 +1023,75 @@ export function validateCapabilityRuntimeJournalEntry(
       "$runtimeJournalEntry.previousObservations must cover exactly its group materials.",
     );
   }
+  const action = journalAction(root.action, "$runtimeJournalEntry.action");
+  const effectiveRuntimeProjection = root.effectiveRuntimeProjection === null
+    ? null
+    : await validateEffectiveCapabilityRuntimeLaunchProjection(
+      root.effectiveRuntimeProjection,
+    );
+  const administrativeRemovalPlanFingerprint =
+    root.administrativeRemovalPlanFingerprint === null ? null : contentFingerprint(
+      root.administrativeRemovalPlanFingerprint,
+      "$runtimeJournalEntry.administrativeRemovalPlanFingerprint",
+    );
+  const launchGroup = validateCapabilityRuntimeLaunchGroupReference(
+    root.launchGroup,
+    "$runtimeJournalEntry.launchGroup",
+  );
+  if (action === "runtime-start") {
+    if (effectiveRuntimeProjection === null) {
+      throw new TypeError(
+        "$runtimeJournalEntry.runtime-start requires an exact effective runtime projection.",
+      );
+    }
+    if (
+      !sameLaunchGroupReference(effectiveRuntimeProjection.launchGroup, launchGroup)
+    ) {
+      throw new TypeError(
+        "$runtimeJournalEntry.effectiveRuntimeProjection names another launch group.",
+      );
+    }
+    if (
+      effectiveRuntimeProjection.materials.length !== materials.length ||
+      effectiveRuntimeProjection.materials.some((entry) =>
+        !materials.some((material) => sameMaterial(material, entry.material))
+      )
+    ) {
+      throw new TypeError(
+        "$runtimeJournalEntry.effectiveRuntimeProjection must cover exactly the group materials.",
+      );
+    }
+    if (administrativeRemovalPlanFingerprint !== null || root.projectId === null) {
+      throw new TypeError(
+        "$runtimeJournalEntry.runtime-start must be project-owned and not administrative.",
+      );
+    }
+  } else if (effectiveRuntimeProjection !== null) {
+    throw new TypeError(
+      "$runtimeJournalEntry.effectiveRuntimeProjection is only allowed for runtime-start.",
+    );
+  }
+  if (
+    action === "material-remove"
+      ? administrativeRemovalPlanFingerprint === null || root.projectId !== null
+      : administrativeRemovalPlanFingerprint !== null
+  ) {
+    throw new TypeError(
+      "$runtimeJournalEntry administrative removal authority does not match its action.",
+    );
+  }
   return deepFreeze({
     id: safeId(root.id, "$runtimeJournalEntry.id"),
-    action: journalAction(root.action, "$runtimeJournalEntry.action"),
+    action,
     materials,
-    launchGroup: validateCapabilityRuntimeLaunchGroupReference(
-      root.launchGroup,
-      "$runtimeJournalEntry.launchGroup",
-    ),
+    launchGroup,
     projectId: root.projectId === null
       ? null
       : safeId(root.projectId, "$runtimeJournalEntry.projectId"),
     plannedAt: isoDateTime(root.plannedAt, "$runtimeJournalEntry.plannedAt"),
     previousObservations,
-    administrativeRemovalPlanFingerprint:
-      root.administrativeRemovalPlanFingerprint === null ? null : contentFingerprint(
-        root.administrativeRemovalPlanFingerprint,
-        "$runtimeJournalEntry.administrativeRemovalPlanFingerprint",
-      ),
+    effectiveRuntimeProjection,
+    administrativeRemovalPlanFingerprint,
   });
 }
 
@@ -937,7 +1224,7 @@ function observationSatisfiesJournalIntent(
 }
 
 function observedState(value: unknown, path: string): CapabilityRuntimeObservedState {
-  const root = exactRecord(value, ["material", "runtime", "qualification"], path);
+  const root = exactRecord(value, ["material", "runtime"], path);
   return deepFreeze({
     material: oneOf(
       root.material,
@@ -948,11 +1235,6 @@ function observedState(value: unknown, path: string): CapabilityRuntimeObservedS
       root.runtime,
       ["inactive", "starting", "active", "stopping", "degraded"] as const,
       `${path}.runtime`,
-    ),
-    qualification: oneOf(
-      root.qualification,
-      ["unqualified", "compatible", "qualified", "revoked"] as const,
-      `${path}.qualification`,
     ),
   });
 }

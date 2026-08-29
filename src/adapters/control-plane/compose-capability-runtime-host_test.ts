@@ -7,10 +7,16 @@ import {
 import {
   type CapabilityRuntimeJournalEntry,
   createCapabilityRuntimeAdministrativeRemovalPlan,
+  createEffectiveCapabilityRuntimeLaunchProjection,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import { FixedCapabilityRuntimeLaunchGroupRegistry } from "../../application/control-plane/capability-runtime-launch-group-registry.ts";
-import { authorizeDurableCapabilityRuntimeHostMutation } from "../../application/control-plane/capability-runtime-host-authorization.ts";
+import {
+  authorizeDurableAdministrativeMaterialRemoval,
+  authorizeDurableMaterialAcquire,
+  authorizeDurableNormalRuntimeStart,
+  authorizeDurableRuntimeStop,
+} from "../../application/control-plane/capability-runtime-host-authorization.ts";
 import { InMemoryCapabilityRuntimeJournal } from "./in-memory-capability-runtime-supervisor.ts";
 import {
   createFirstPartyCapabilityRuntimeLaunchGroups,
@@ -101,8 +107,9 @@ Deno.test("Compose host removes only the exact reviewed containers and digest re
   await fixture.journal.appendBeforeMutation(entry);
 
   const result = await fixture.host.mutate({
-    authorization: await authorizeDurableCapabilityRuntimeHostMutation(
+    authorization: await authorizeDurableAdministrativeMaterialRemoval(
       entry,
+      plan,
       fixture.journal,
     ),
     removalPlan: plan,
@@ -146,8 +153,9 @@ Deno.test("Compose host treats an exact already-absent group as a removal no-op"
   await fixture.journal.appendBeforeMutation(entry);
 
   const result = await fixture.host.mutate({
-    authorization: await authorizeDurableCapabilityRuntimeHostMutation(
+    authorization: await authorizeDurableAdministrativeMaterialRemoval(
       entry,
+      plan,
       fixture.journal,
     ),
     removalPlan: plan,
@@ -183,7 +191,11 @@ Deno.test("Compose host refuses removal when another catalogue group retains the
   await journal.appendBeforeMutation(entry);
 
   const result = await runtime.mutate({
-    authorization: await authorizeDurableCapabilityRuntimeHostMutation(entry, journal),
+    authorization: await authorizeDurableAdministrativeMaterialRemoval(
+      entry,
+      plan,
+      journal,
+    ),
     removalPlan: plan,
   });
 
@@ -326,7 +338,7 @@ Deno.test("Compose host translates only the observed Docker daemon platform, nev
   );
 });
 
-Deno.test("sealed Chrono group has one exact unqualified AMD64 service with no host privilege or interpolation", async () => {
+Deno.test("sealed Chrono topology has one exact AMD64 service with no host privilege or interpolation", async () => {
   const group = await chronoGroup();
   const descriptor = JSON.parse(group.compose.content) as {
     services: Record<string, Record<string, unknown>>;
@@ -336,7 +348,6 @@ Deno.test("sealed Chrono group has one exact unqualified AMD64 service with no h
 
   assertEquals(group.id, "casys-chrono");
   assertEquals(group.version, "1.0.0");
-  assertEquals(group.qualification, "unqualified");
   assertEquals(group.secretSlots, [CHRONO_MCP_BEARER_TOKEN_SLOT]);
   assertEquals(group.materials.map((member) => member.material), [{
     unitId: "casys.mcp-chrono",
@@ -360,20 +371,40 @@ Deno.test("sealed Chrono group has one exact unqualified AMD64 service with no h
   assertEquals(group.compose.content.includes("$"), false);
 });
 
-Deno.test("Compose host refuses an unqualified Chrono group before inspecting or mutating Docker", async () => {
+Deno.test("Compose host acquires Chrono material without requiring a secret or qualification", async () => {
   const group = await chronoGroup();
   const runner = new FakeGroupRunner(group, { images: true, state: "running" });
   const fixture = host(group, runner);
 
-  const outcome = await mutate(fixture, group, "runtime-start");
+  const outcome = await mutate(fixture, group, "material-acquire");
 
-  assertEquals(outcome.status, "failed");
-  assertEquals(outcome.detail, "Launch group is not operationally admissible.");
-  assertEquals(runner.calls, []);
+  assertEquals(outcome.status, "succeeded");
+  assertEquals(runner.calls.some((call) => call.includes("pull")), true);
 });
 
-Deno.test("Compose host reconciles a qualified secret-bearing group through stdin without journalling it or placing it in argv", async () => {
-  const group = await qualifiedChronoGroup();
+Deno.test("Compose host stops an owned secret-bearing group after its topology policy degrades", async () => {
+  const reviewed = await chronoGroup();
+  const body = { ...reviewed, security: "unknown" as const };
+  const degraded: CapabilityRuntimeLaunchGroup = {
+    ...body,
+    fingerprint: await fingerprintCapabilityRuntimeLaunchGroup(body),
+  };
+  const runner = new FakeGroupRunner(degraded, { images: true, state: "running" });
+  // The default fixture has no available secret. Stop must never read it or
+  // require a currently reviewed topology once the group is already owned.
+  const fixture = host(degraded, runner);
+
+  const outcome = await mutate(fixture, degraded, "runtime-stop");
+
+  assertEquals(outcome.status, "succeeded");
+  assertEquals(
+    runner.calls.some((call) => call[1] === "container" && call[2] === "stop"),
+    true,
+  );
+});
+
+Deno.test("Compose host reconciles a secret-bearing group through stdin without journalling it or placing it in argv", async () => {
+  const group = await chronoGroup();
   const token = "test-chrono-bearer-value";
   const snapshot = Object.freeze({}) as CapabilityRuntimeSecretSnapshot;
   const secrets: CapabilityRuntimeSecretSlotObserver = {
@@ -448,15 +479,6 @@ async function chronoGroup(): Promise<CapabilityRuntimeLaunchGroup> {
   return group;
 }
 
-async function qualifiedChronoGroup(): Promise<CapabilityRuntimeLaunchGroup> {
-  const { fingerprint: _ignored, ...body } = await chronoGroup();
-  const qualified = { ...body, qualification: "qualified" as const };
-  return {
-    ...qualified,
-    fingerprint: await fingerprintCapabilityRuntimeLaunchGroup(qualified),
-  };
-}
-
 function host(
   group: CapabilityRuntimeLaunchGroup,
   runner: FakeGroupRunner,
@@ -499,14 +521,22 @@ async function mutate(
       material: member.material,
       state: null,
     })),
+    effectiveRuntimeProjection: action === "runtime-start"
+      ? await projection(group)
+      : null,
     administrativeRemovalPlanFingerprint: null,
   };
   await fixture.journal.appendBeforeMutation(entry);
   return await fixture.host.mutate({
-    authorization: await authorizeDurableCapabilityRuntimeHostMutation(
-      entry,
-      fixture.journal,
-    ),
+    authorization: action === "material-acquire"
+      ? await authorizeDurableMaterialAcquire(entry, fixture.journal)
+      : action === "runtime-start"
+      ? await authorizeDurableNormalRuntimeStart(entry, fixture.journal)
+      : action === "runtime-stop"
+      ? await authorizeDurableRuntimeStop(entry, fixture.journal)
+      : (() => {
+        throw new Error("Use removalEntry with its reviewed removal plan.");
+      })(),
     secretSnapshot,
   });
 }
@@ -667,11 +697,30 @@ function removalEntry(
     previousObservations: plan.observedMaterials.map((entry) => ({
       material: entry.material,
       state: entry.state === "owned"
-        ? { material: "installed", runtime: "inactive", qualification: "unqualified" }
-        : { material: "absent", runtime: "inactive", qualification: "unqualified" },
+        ? { material: "installed", runtime: "inactive" }
+        : { material: "absent", runtime: "inactive" },
     })),
+    effectiveRuntimeProjection: null,
     administrativeRemovalPlanFingerprint: plan.fingerprint,
   };
+}
+
+async function projection(group: CapabilityRuntimeLaunchGroup) {
+  return await createEffectiveCapabilityRuntimeLaunchProjection({
+    launchGroup: capabilityRuntimeLaunchGroupReference(group),
+    materials: group.materials.map((member, index) => ({
+      material: member.material,
+      binding: { id: `test-binding-${index}`, version: "1.0.0" },
+      effectiveQualification: "qualified" as const,
+      minimumQualification: "qualified" as const,
+      runtimeMode: {
+        material: member.material,
+        targetPlatform: "linux/arm64" as const,
+        mode: "native" as const,
+        qualificationAttestationFingerprint: null,
+      },
+    })),
+  });
 }
 
 function materialKey(input: {

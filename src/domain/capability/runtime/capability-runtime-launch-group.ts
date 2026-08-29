@@ -26,7 +26,7 @@ import type { ContentFingerprint } from "../../kernel/primitives.ts";
 import type { CapabilityRuntimeMaterialIdentity } from "./capability-runtime-supervision.ts";
 
 export const CAPABILITY_RUNTIME_LAUNCH_GROUP_SCHEMA_VERSION =
-  "capability-runtime-launch-group/1.0" as const;
+  "capability-runtime-launch-group/2.0" as const;
 
 export interface CapabilityRuntimeLaunchGroupReference {
   readonly id: string;
@@ -60,7 +60,6 @@ export interface CapabilityRuntimeLaunchGroup {
   /** Names only. Values remain outside groups, project data and agent input. */
   readonly secretSlots: readonly string[];
   readonly security: "reviewed" | "unknown";
-  readonly qualification: "unqualified" | "compatible" | "qualified" | "revoked";
 }
 
 export interface CapabilityRuntimeLaunchGroupMaterial {
@@ -103,7 +102,6 @@ export function capabilityRuntimeLaunchGroupManifest(
     retention: group.retention,
     secretSlots: group.secretSlots,
     security: group.security,
-    qualification: group.qualification,
   };
 }
 
@@ -128,7 +126,6 @@ export async function validateCapabilityRuntimeLaunchGroup(
     "retention",
     "secretSlots",
     "security",
-    "qualification",
   ], "$launchGroup");
   literalValue(
     root.schemaVersion,
@@ -137,16 +134,10 @@ export async function validateCapabilityRuntimeLaunchGroup(
   );
   const acquisition = parseAcquisition(root.acquisition);
   const materials = parseMaterials(root.materials, acquisition.projectName);
-  const qualification = oneOf(
-    root.qualification,
-    ["unqualified", "compatible", "qualified", "revoked"] as const,
-    "$launchGroup.qualification",
-  );
   const compose = await parseCompose(
     root.compose,
     acquisition.projectName,
     materials,
-    qualification,
   );
   const group = deepFreeze({
     schemaVersion: CAPABILITY_RUNTIME_LAUNCH_GROUP_SCHEMA_VERSION,
@@ -164,7 +155,6 @@ export async function validateCapabilityRuntimeLaunchGroup(
       ["reviewed", "unknown"] as const,
       "$launchGroup.security",
     ),
-    qualification,
   });
   const expected = await fingerprintCapabilityRuntimeLaunchGroup(
     capabilityRuntimeLaunchGroupManifest(group),
@@ -290,7 +280,6 @@ async function parseCompose(
   value: unknown,
   projectName: string,
   materials: readonly CapabilityRuntimeLaunchGroupMaterial[],
-  qualification: CapabilityRuntimeLaunchGroup["qualification"],
 ): Promise<CapabilityRuntimeLaunchGroup["compose"]> {
   const root = exactRecord(
     value,
@@ -315,7 +304,7 @@ async function parseCompose(
   if (content !== deterministicJson(parsed)) {
     throw new TypeError("$launchGroup.compose.content must be canonical JSON.");
   }
-  validateStrictCompose(parsed, projectName, materials, qualification);
+  validateStrictCompose(parsed, projectName, materials);
   const supplied = fingerprint(root.fingerprint, "$launchGroup.compose.fingerprint");
   const expected = await fingerprintCapabilityRuntimeComposeContent(content);
   if (!sameFingerprint(supplied, expected)) {
@@ -333,7 +322,6 @@ function validateStrictCompose(
   value: unknown,
   projectName: string,
   materials: readonly CapabilityRuntimeLaunchGroupMaterial[],
-  qualification: CapabilityRuntimeLaunchGroup["qualification"],
 ): void {
   const document = exactRecord(
     value,
@@ -371,7 +359,6 @@ function validateStrictCompose(
       materials,
       projectName,
       volumes,
-      qualification,
     );
   }
   const declaredVolumes = new Set(Object.keys(volumes));
@@ -466,7 +453,6 @@ function validateComposeService(
   materials: readonly CapabilityRuntimeLaunchGroupMaterial[],
   projectName: string,
   declaredVolumes: Readonly<Record<string, unknown>>,
-  qualification: CapabilityRuntimeLaunchGroup["qualification"],
 ): void {
   if (service.environment !== undefined) {
     for (

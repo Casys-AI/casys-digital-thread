@@ -52,7 +52,6 @@ Deno.test("JIT session deduplicates persistent group activation, preserves one l
           states: new Map([[input.group.id, {
             material: "installed" as const,
             runtime: "active" as const,
-            qualification: "qualified" as const,
           }]]),
           leaseDisposition: claim.status === "created"
             ? "created" as const
@@ -130,7 +129,6 @@ Deno.test("JIT session rechecks inside group activation before a revoked capabil
           states: new Map([[alpha.id, {
             material: "installed" as const,
             runtime: "active" as const,
-            qualification: "qualified" as const,
           }]]),
           leaseDisposition: claim.status === "created"
             ? "created" as const
@@ -190,7 +188,7 @@ function operationFor(
   const bravoWorker = persistentMaterial("casys.bravo", "worker", "c".repeat(64));
   const micro = microMaterial();
   return {
-    schemaVersion: "resolved-capability-runtime-operation/1.0",
+    schemaVersion: "resolved-capability-runtime-operation/2.0",
     projectId: PROJECT_ID,
     operation: { id: "verify.session", version: "1" },
     authorizationFingerprint: FINGERPRINT,
@@ -208,6 +206,7 @@ function operationFor(
           minimumQualification: "qualified",
         },
         binding: { id: "calculix-worker", version: "1" },
+        effectiveQualification: "qualified" as const,
         adapter: { id: "calculix-worker", version: "1", source: "server" },
         profile: null,
         materials: [micro],
@@ -235,6 +234,7 @@ function persistentBinding(
       minimumQualification: "qualified" as const,
     },
     binding: { id, version: "1" },
+    effectiveQualification: "qualified" as const,
     adapter: { id, version: "1", source: "server" },
     profile: null,
     materials: [material],

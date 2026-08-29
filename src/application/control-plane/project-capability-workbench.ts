@@ -43,7 +43,8 @@ type WorkbenchObservedRuntimeState =
   | CapabilityRuntimeObservedState["runtime"]
   | "unavailable";
 type WorkbenchObservedQualificationState =
-  | CapabilityRuntimeObservedState["qualification"]
+  | "compatible"
+  | "qualified"
   | "unavailable";
 
 export interface ProjectCapabilityWorkbenchProjection {
@@ -213,7 +214,7 @@ export class ProjectCapabilityWorkbenchProjector
       bindings,
       units: projectUnits(context.plan.bindings, resolvedMaterials),
       materials: resolvedMaterials.map((material) =>
-        projectMaterial(material, observed)
+        projectMaterial(material, observed, context)
       ),
       footprint: projectFootprint(context),
       effects: projectEffects(context),
@@ -310,6 +311,7 @@ function projectUnits(
 function projectMaterial(
   material: ResolvedPlannedMaterial,
   observed: ReadonlyMap<string, CapabilityRuntimeObservedState>,
+  context: ProjectCapabilityRuntimeContext,
 ): ProjectCapabilityWorkbenchMaterial {
   const state = material.identity === null
     ? undefined
@@ -321,8 +323,50 @@ function projectMaterial(
     mode: material.planned.mode,
     material: state?.material ?? "unavailable",
     runtime: state?.runtime ?? "unavailable",
-    qualification: state?.qualification ?? "unavailable",
+    qualification: effectiveMaterialQualification(material, context),
   };
+}
+
+/** Docker observation is deliberately not a qualification source. */
+function effectiveMaterialQualification(
+  material: ResolvedPlannedMaterial,
+  context: ProjectCapabilityRuntimeContext,
+): WorkbenchObservedQualificationState {
+  if (material.identity === null) return "unavailable";
+  const candidates = context.plan.bindings.flatMap((planned) => {
+    if (
+      planned.status !== "selected" || planned.binding === null ||
+      !planned.unitIds.includes(material.planned.unitId)
+    ) return [];
+    return context.catalog.bindings.filter((binding) =>
+      binding.id === planned.binding!.id &&
+      binding.version === planned.binding!.version &&
+      binding.unitIds.includes(material.planned.unitId) &&
+      (binding.qualification === "compatible" ||
+        binding.qualification === "qualified") &&
+      binding.qualification === planned.binding!.qualification &&
+      binding.runtimeModes.some((mode) =>
+        sameMaterialIdentity(mode.material, material.identity!) &&
+        mode.mode === material.planned.mode
+      )
+    ).map((binding) =>
+      `${binding.id}\u0000${binding.version}\u0000${binding.qualification}`
+    );
+  });
+  const unique = [...new Set(candidates)];
+  if (unique.length !== 1) return "unavailable";
+  const qualification = unique[0]!.split("\u0000").at(-1);
+  return qualification === "compatible" || qualification === "qualified"
+    ? qualification
+    : "unavailable";
+}
+
+function sameMaterialIdentity(
+  left: CapabilityRuntimeMaterialIdentity,
+  right: CapabilityRuntimeMaterialIdentity,
+): boolean {
+  return left.unitId === right.unitId && left.materialId === right.materialId &&
+    left.imageDigest === right.imageDigest;
 }
 
 function projectFootprint(

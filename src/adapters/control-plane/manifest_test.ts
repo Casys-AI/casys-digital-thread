@@ -207,7 +207,7 @@ Deno.test("CalculiX sensitivity is absent from root Compose and has one sealed p
     "calculix-runs:/var/lib/mcp-calculix-runs",
   ]);
   assertEquals(calculix.ports, ["127.0.0.1:3015:3015"]);
-  assertEquals(group.qualification, "unqualified");
+  assertEquals(group.security, "reviewed");
   assertEquals(/DockerVolumeAssetStager/.test(sensitivityCompositionSource), false);
 });
 

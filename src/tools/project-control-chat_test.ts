@@ -1810,7 +1810,7 @@ async function resolvedPlanInspectionFixture(): Promise<{
       operationFingerprint: await sha256Fingerprint(workItem.operation),
     },
     operationalCapability: {
-      schemaVersion: "resolved-capability-runtime-operation/1.0",
+      schemaVersion: "resolved-capability-runtime-operation/2.0",
       projectId: queueBasis.project.id,
       operation: { id: workItem.operation.id, version: workItem.operation.version },
       authorizationFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
@@ -1824,6 +1824,7 @@ async function resolvedPlanInspectionFixture(): Promise<{
           minimumQualification: "qualified",
         },
         binding: { id: "calculix-static-structural", version: "1" },
+        effectiveQualification: "qualified",
         adapter: { id: "casys.calculix-worker", version: "1", source: "test" },
         profile: {
           id: "calculix-static",
