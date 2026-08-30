@@ -33,6 +33,7 @@ import {
   LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
   parseConsoleCli,
 } from "../../server.ts";
+import { MCP_BUILD123D_061_IMAGE_REFERENCE } from "../adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
 import { CONSOLE_RESOURCE_URI } from "./control-plane.ts";
 import {
   createNeutralStartedProject,
@@ -638,7 +639,7 @@ Deno.test(
 
       const normal = await createConsoleServer({
         manifest: assemblyIntegrityBuild123dManifest(
-          `example.test/build123d@sha256:${"a".repeat(64)}`,
+          MCP_BUILD123D_061_IMAGE_REFERENCE,
         ),
         runs: [],
         logger: () => {},
@@ -667,6 +668,57 @@ Deno.test(
           }),
         TypeError,
         "$assemblyIntegrityBuild123d.image must be one OCI image name pinned by a lowercase sha256 digest.",
+      );
+
+      await assertRejects(
+        () =>
+          createConsoleServer({
+            manifest: assemblyIntegrityBuild123dManifest(
+              MCP_BUILD123D_061_IMAGE_REFERENCE,
+              "http://127.0.0.1:3024/mcp",
+            ),
+            runs: [],
+            logger: () => {},
+            activeProjectDirectory: `${temporaryDirectory}/sandbox-url/projects`,
+          }),
+        Error,
+        "does not match the sealed launch-group loopback host port",
+      );
+
+      await assertRejects(
+        () =>
+          createConsoleServer({
+            manifest: assemblyIntegrityBuild123dManifest(
+              `example.test/build123d@sha256:${"0".repeat(64)}`,
+            ),
+            runs: [],
+            logger: () => {},
+            activeProjectDirectory: `${temporaryDirectory}/digest-mismatch/projects`,
+          }),
+        TypeError,
+        "does not match the sealed casys-build123d-observation launch-group material",
+      );
+
+      const composition = await Deno.readTextFile(
+        new URL("../../server.ts", import.meta.url),
+      );
+      assertEquals(
+        composition.includes("firstPartyBuild123dObservationLaunchGroupReference"),
+        true,
+      );
+      assertEquals(
+        composition.includes("build123d-observe-assembly-integrity"),
+        true,
+      );
+      assertEquals(
+        composition.includes("createLocalFixedCapabilityRuntimeConnection"),
+        true,
+      );
+      assertEquals(
+        composition.includes(
+          "openObserver: (client) => new McpBuild123dAssemblyIntegrityObserver",
+        ),
+        true,
       );
     } finally {
       await Deno.remove(temporaryDirectory, { recursive: true });
@@ -1436,7 +1488,10 @@ function manifestFixture(): FleetManifest {
   };
 }
 
-function assemblyIntegrityBuild123dManifest(image: string): FleetManifest {
+function assemblyIntegrityBuild123dManifest(
+  image: string,
+  mcpUrl = "http://127.0.0.1:3014/mcp",
+): FleetManifest {
   return {
     version: 1,
     servers: [{
@@ -1445,8 +1500,8 @@ function assemblyIntegrityBuild123dManifest(image: string): FleetManifest {
       role: "factual assembly integrity",
       serviceName: "mcp-build123d",
       transport: "streamable-http",
-      mcpUrl: "http://127.0.0.1:3014/mcp",
-      healthUrl: "http://127.0.0.1:3014/health",
+      mcpUrl,
+      healthUrl: mcpUrl.replace(/\/mcp$/, "/health"),
       image,
       required: true,
       expectedTools: ["build123d_observe_assembly_integrity"],

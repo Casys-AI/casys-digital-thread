@@ -202,6 +202,27 @@ export class FileAssemblyIntegrityObservationAttemptStore {
     );
   }
 
+  async inspect(input: AttemptIdentity): Promise<AttemptInspectResult> {
+    const identity = validateIdentity(input);
+    let current: AssemblyIntegrityObservationAttempt | undefined;
+    try {
+      current = await this.read(identity.projectId, identity.runId);
+    } catch {
+      throw new AssemblyIntegrityObservationRunOutcomeUnknownError();
+    }
+    if (!current) return { action: "absent" };
+    if (current.planDigest !== identity.planDigest) {
+      throw new AssemblyIntegrityObservationRunOutcomeUnknownError();
+    }
+    if (current.status === "dispatched") return { action: "dispatched" };
+    return {
+      action: current.status,
+      recordedAt: current.recordedAt,
+      captureFingerprint: current.captureFingerprint,
+      canonicalCaptureText: current.canonicalCaptureText,
+    };
+  }
+
   async read(
     projectId: string,
     runId: string,
@@ -262,6 +283,16 @@ interface AttemptCompletion extends AttemptIdentity {
 
 type AttemptBeginResult =
   | { readonly action: "dispatch" }
+  | {
+    readonly action: "capture-recorded" | "completed";
+    readonly recordedAt: string;
+    readonly captureFingerprint: ContentFingerprint;
+    readonly canonicalCaptureText: string;
+  };
+
+type AttemptInspectResult =
+  | { readonly action: "absent" }
+  | { readonly action: "dispatched" }
   | {
     readonly action: "capture-recorded" | "completed";
     readonly recordedAt: string;

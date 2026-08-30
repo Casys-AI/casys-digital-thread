@@ -58,15 +58,14 @@ deno task preview:thread
 ```
 
 The current cold-start vertical opens H1 sessions for the SysON authoring/inspection
-operations and a preparation lease for the private Build123d sandbox before
-`design.write-geometry@1`; that operation only promotes verified bytes. Enrollment is
-not a running service. In particular, `casys-build123d-observation` is enrolled but the
-assembly-integrity L3 executor does not yet open its H1 execution session: on a cold
-atelier it stays literal `unavailable`. Do not start root Compose to work around that
-missing integration. Product FEA `@3` uses the local CalculiX microVM
-(`casys.calculix-worker`), not HTTP `mcp-calculix`. HTTP
-`casys.mcp-calculix@0.8.2` remains catalogue-`unqualified` and non-activable. An
-`unavailable` local run is not a completed proof.
+operations, for `verify.observe-assembly-integrity@1` through
+`casys-build123d-observation`, and a preparation lease for the private Build123d sandbox
+before `design.write-geometry@1`; that operation only promotes verified bytes.
+Enrollment is not a running service. Do not start root Compose to work around an
+`unavailable` runtime. Product FEA `@3` uses the local CalculiX microVM
+(`casys.calculix-worker`), not HTTP `mcp-calculix`. HTTP `casys.mcp-calculix@0.8.2`
+remains catalogue-`unqualified` and non-activable. An `unavailable` local run is not a
+completed proof.
 
 Connect the agent to `http://127.0.0.1:3020/mcp`. Open `http://127.0.0.1:5173/`.
 `deno task preview:thread` already follows cockpit focus (`--workspace-id=primary`). Do

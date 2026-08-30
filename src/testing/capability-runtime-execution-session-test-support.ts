@@ -8,19 +8,27 @@ import type {
   CapabilityRuntimeConnectionHandle,
 } from "../application/ports/out/capability/capability-runtime-connection.ts";
 import type { McpToolClient } from "../application/ports/out/mcp-tool-client.ts";
+import type { CapabilityRuntimeLaunchGroupReference } from "../domain/capability/runtime/capability-runtime-launch-group.ts";
 import type { ResolvedCapabilityRuntimeOperation } from "../domain/capability/runtime/capability-runtime-supervision.ts";
 
 export interface RecordingCapabilityRuntimeSession {
   readonly events: string[];
   readonly releases: number;
   readonly retains: number;
+  readonly recordedReleases: number;
   begin: CapabilityRuntimeExecutionSessionCoordinator["begin"];
+  releaseRecorded: CapabilityRuntimeExecutionSessionCoordinator["releaseRecorded"];
 }
 
 export function recordingCapabilityRuntimeSession(
   beginImpl?: CapabilityRuntimeExecutionSessionCoordinator["begin"],
 ): RecordingCapabilityRuntimeSession {
-  const state = { events: [] as string[], releases: 0, retains: 0 };
+  const state = {
+    events: [] as string[],
+    releases: 0,
+    retains: 0,
+    recordedReleases: 0,
+  };
   return {
     get events() {
       return state.events;
@@ -30,6 +38,9 @@ export function recordingCapabilityRuntimeSession(
     },
     get retains() {
       return state.retains;
+    },
+    get recordedReleases() {
+      return state.recordedReleases;
     },
     begin: beginImpl ?? (async (input) => {
       state.events.push("begin");
@@ -47,6 +58,11 @@ export function recordingCapabilityRuntimeSession(
         },
       };
     }),
+    releaseRecorded: () => {
+      state.events.push("releaseRecorded");
+      state.recordedReleases++;
+      return Promise.resolve();
+    },
   };
 }
 
@@ -54,11 +70,15 @@ export function testResolvedCapabilityRuntimeOperation(input: {
   readonly projectId: string;
   readonly operation: { readonly id: string; readonly version: string };
   readonly capabilityId: string;
+  readonly binding?: { readonly id: string; readonly version: string };
+  readonly unitId?: string;
+  readonly materialId?: string;
+  readonly launchGroup?: CapabilityRuntimeLaunchGroupReference;
 }): ResolvedCapabilityRuntimeOperation {
   const fingerprint = { algorithm: "sha256" as const, digest: "a".repeat(64) };
   const material = {
-    unitId: "casys.syson-stack",
-    materialId: "mcp-syson-image",
+    unitId: input.unitId ?? "casys.syson-stack",
+    materialId: input.materialId ?? "mcp-syson-image",
     imageDigest: "b".repeat(64),
   };
   return {
@@ -75,7 +95,7 @@ export function testResolvedCapabilityRuntimeOperation(input: {
         use: "execution",
         minimumQualification: "qualified",
       },
-      binding: { id: `${input.capabilityId}-binding`, version: "1" },
+      binding: input.binding ?? { id: `${input.capabilityId}-binding`, version: "1" },
       effectiveQualification: "qualified",
       adapter: {
         id: "syson-architecture-adapter",
@@ -93,7 +113,7 @@ export function testResolvedCapabilityRuntimeOperation(input: {
       hostLifecycles: [{
         material,
         kind: "persistent-compose",
-        launchGroup: {
+        launchGroup: input.launchGroup ?? {
           id: "casys-syson",
           version: "1.0.0",
           fingerprint,

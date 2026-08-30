@@ -192,8 +192,12 @@ import { createLocalCapabilityRuntimeReadComposition } from "./src/adapters/cont
 import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "./src/adapters/control-plane/first-party-capability-runtime-qualification-candidates.ts";
 import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "./src/adapters/control-plane/first-party-capability-runtime-qualification-specifications.ts";
 import { LocalChronoRuntimeSecretResolver } from "./src/adapters/control-plane/local-chrono-runtime-secret-resolver.ts";
-import { createLocalFixedSysonCapabilityRuntimeConnection } from "./src/adapters/control-plane/local-fixed-syson-capability-runtime-connection.ts";
-import { firstPartySysonLaunchGroupReference } from "./src/adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
+import { createLocalFixedCapabilityRuntimeConnection } from "./src/adapters/control-plane/local-fixed-capability-runtime-connection.ts";
+import {
+  firstPartyBuild123dObservationLaunchGroupReference,
+  firstPartySysonLaunchGroupReference,
+} from "./src/adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
+import type { CapabilityRuntimeLaunchGroup } from "./src/domain/capability/runtime/capability-runtime-launch-group.ts";
 import {
   listRegisteredEngineeringOperations,
   REGISTERED_ENGINEERING_OPERATION_REGISTRY,
@@ -1008,8 +1012,12 @@ async function createProjectControl(
   });
 
   const sysonRuntimeConnection = sysonMcpUrl
-    ? (await createLocalFixedSysonCapabilityRuntimeConnection({
+    ? (await createLocalFixedCapabilityRuntimeConnection({
       leases: capabilityRuntimeLeases,
+      binding: requiredCatalogBinding(
+        capabilityRead.catalog,
+        "syson-author-system",
+      ),
       launchGroup: await capabilityRead.launchGroups.require(
         await firstPartySysonLaunchGroupReference(),
       ),
@@ -1415,8 +1423,22 @@ async function createProjectControl(
     | VerifyEvaluateAssemblyIntegrityRunExecutor
     | undefined;
   if (assemblyIntegrityBuild123d !== undefined) {
+    const observationLaunchGroup = await capabilityRead.launchGroups.require(
+      await firstPartyBuild123dObservationLaunchGroupReference(),
+    );
+    const observationDigest = requiredBuild123dObservationMaterialDigest(
+      observationLaunchGroup,
+    );
+    if (assemblyIntegrityBuild123d.imageDigest.digest !== observationDigest) {
+      throw new TypeError(
+        "Assembly-integrity fleet image digest does not match the sealed casys-build123d-observation launch-group material.",
+      );
+    }
     const profiles = new FixedAssemblyIntegrityObserverProfileCatalog({
-      imageDigest: assemblyIntegrityBuild123d.imageDigest,
+      imageDigest: Object.freeze({
+        algorithm: "sha256" as const,
+        digest: observationDigest,
+      }),
     });
     const inputs = new ExactAssemblyIntegrityInputReopener({
       basis: new ExactStaticAssemblyBasisReopener({
@@ -1442,23 +1464,32 @@ async function createProjectControl(
         profiles,
       }),
     });
+    const assemblyObservationRuntimeConnection =
+      (await createLocalFixedCapabilityRuntimeConnection({
+        leases: capabilityRuntimeLeases,
+        binding: requiredCatalogBinding(
+          capabilityRead.catalog,
+          "build123d-observe-assembly-integrity",
+        ),
+        launchGroup: observationLaunchGroup,
+        fleetMcpUrl: assemblyIntegrityBuild123d.mcpUrl,
+        timeoutMs: 120_000,
+      })).boundClient();
     verifyObserveAssemblyIntegrity = new VerifyObserveAssemblyIntegrityRunExecutor({
       projects: runtime.projects,
       commands: runtime.commands,
       snapshots: build123dThreadSnapshots,
       inputs,
-      observer: new McpBuild123dAssemblyIntegrityObserver({
-        client: new HttpMcpToolClient({
-          mcpUrl: assemblyIntegrityBuild123d.mcpUrl,
-          timeoutMs: 120_000,
-        }),
-      }),
+      capabilityRuntimeConnection: assemblyObservationRuntimeConnection,
+      openObserver: (client) => new McpBuild123dAssemblyIntegrityObserver({ client }),
       captures,
       attempts: new FileAssemblyIntegrityObservationAttemptStore(
         options.assemblyIntegrityObservationAttemptDirectory ??
           DEFAULT_ASSEMBLY_INTEGRITY_OBSERVATION_ATTEMPT_DIRECTORY,
       ),
       lease,
+      capabilityRuntime,
+      capabilityRuntimeSession,
     });
     const evaluation = new PrepareAssemblyIntegrityEvaluation({
       projects: runtime.projects,
@@ -1871,6 +1902,44 @@ async function createProjectControl(
 interface AssemblyIntegrityBuild123dProvider {
   readonly mcpUrl: string;
   readonly imageDigest: ContentFingerprint;
+}
+
+function requiredBuild123dObservationMaterialDigest(
+  group: CapabilityRuntimeLaunchGroup,
+): string {
+  if (group.id !== "casys-build123d-observation" || group.version !== "1.0.0") {
+    throw new TypeError(
+      "Assembly-integrity observation requires the exact casys-build123d-observation launch group.",
+    );
+  }
+  if (group.materials.length !== 1) {
+    throw new TypeError(
+      "Assembly-integrity observation requires exactly one launch-group material.",
+    );
+  }
+  const item = group.materials[0]!;
+  const digest = item.material.imageDigest;
+  if (!item.imageReference.endsWith(`@sha256:${digest}`)) {
+    throw new TypeError(
+      "Assembly-integrity observation launch-group material digest does not match its image reference.",
+    );
+  }
+  return digest;
+}
+
+function requiredCatalogBinding(
+  catalog: {
+    readonly bindings: readonly { readonly id: string; readonly version: string }[];
+  },
+  id: string,
+): { readonly id: string; readonly version: string } {
+  const matches = catalog.bindings.filter((binding) => binding.id === id);
+  if (matches.length !== 1) {
+    throw new TypeError(
+      `Server composition requires exactly one catalogue binding ${id}.`,
+    );
+  }
+  return { id: matches[0]!.id, version: matches[0]!.version };
 }
 
 /**

@@ -47,10 +47,7 @@ import {
   type CapabilityRuntimeBoundMcpClient,
   CapabilityRuntimeConnectionError,
 } from "../../../application/ports/out/capability/capability-runtime-connection.ts";
-import {
-  type CapabilityRuntimeLaunchGroupReference,
-  sameCapabilityRuntimeLaunchGroupReference,
-} from "../../../domain/capability/runtime/capability-runtime-launch-group.ts";
+import { requiredQualifiedPersistentComposePublication } from "../../../application/control-plane/capability-runtime-persistent-compose-publication.ts";
 import type { EngineeringProjectRunLease } from "../../shared/stores/file-engineering-project-run-lease.ts";
 import {
   FileSysonModelSeedAttemptStore,
@@ -515,7 +512,9 @@ export class SysonModelSeedRunExecutor {
     operationalCapability: ResolvedCapabilityRuntimeOperation,
   ): Promise<McpToolClient> {
     try {
-      const publication = requiredSeedPublication(operationalCapability);
+      const publication = requiredQualifiedPersistentComposePublication(
+        operationalCapability,
+      );
       const handle = await this.#capabilityRuntimeConnection.broker.connect({
         lease: session.lease,
         binding: publication.binding,
@@ -1052,39 +1051,6 @@ class ProviderWriteOutcomeUnknownError extends Error {
     this.name = "ProviderWriteOutcomeUnknownError";
     this.step = step;
   }
-}
-
-function requiredSeedPublication(
-  operationalCapability: ResolvedCapabilityRuntimeOperation,
-): {
-  readonly binding: { readonly id: string; readonly version: string };
-  readonly launchGroup: CapabilityRuntimeLaunchGroupReference;
-} {
-  if (operationalCapability.bindings.length !== 1) {
-    throw new CapabilityRuntimeConnectionError(
-      "SysON model seed requires exactly one sealed operational binding.",
-    );
-  }
-  const binding = operationalCapability.bindings[0]!;
-  const groups: CapabilityRuntimeLaunchGroupReference[] = [];
-  for (const lifecycle of binding.hostLifecycles) {
-    if (lifecycle.kind !== "persistent-compose" || lifecycle.launchGroup === null) {
-      continue;
-    }
-    if (
-      !groups.some((group) =>
-        sameCapabilityRuntimeLaunchGroupReference(group, lifecycle.launchGroup!)
-      )
-    ) {
-      groups.push(lifecycle.launchGroup);
-    }
-  }
-  if (groups.length !== 1) {
-    throw new CapabilityRuntimeConnectionError(
-      "SysON model seed requires exactly one sealed launch group covered by the active lease.",
-    );
-  }
-  return { binding: binding.binding, launchGroup: groups[0]! };
 }
 
 function requireRun(

@@ -208,17 +208,11 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
       );
     }
 
-    const fingerprint = await fingerprintResolvedCapabilityRuntimeOperation(
+    const leaseId = await executionLeaseId({
+      projectId: input.project.project.id,
+      runId: input.runId,
       operationalCapability,
-    );
-    const leaseId = `capability-jit-${
-      (await sha256Fingerprint({
-        schemaVersion: "capability-runtime-jit-lease/1.0",
-        projectId: input.project.project.id,
-        runId: input.runId,
-        operationalCapabilityFingerprint: fingerprint.digest,
-      })).digest
-    }`;
+    });
     const candidate = candidateLease({
       id: leaseId,
       projectId: input.project.project.id,
@@ -324,6 +318,101 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
       this.options,
     );
   }
+
+  /**
+   * A recorded replay has already captured its provider result. This recovery
+   * path never calls ensureActive: it only releases the exact extant execution
+   * lease, and the group supervisor preserves sibling leases and remaining JIT
+   * demand before deciding whether a stop is safe.
+   */
+  async releaseRecorded(input: {
+    readonly project: EngineeringProjectSnapshot;
+    readonly runId: string;
+    readonly operationalCapability: ResolvedCapabilityRuntimeOperation;
+  }): Promise<void> {
+    const operationalCapability = validateResolvedCapabilityRuntimeOperation(
+      input.operationalCapability,
+    );
+    if (operationalCapability.projectId !== input.project.project.id) {
+      throw new CapabilityRuntimeSessionUnavailableError(
+        "Sealed operational capability belongs to another project.",
+      );
+    }
+    const run = input.project.agentRuns.find((candidate) =>
+      candidate.id === input.runId
+    );
+    if (!run) {
+      throw new CapabilityRuntimeSessionUnavailableError(
+        "Capability JIT recorded cleanup requires the exact current agent run.",
+      );
+    }
+    if (!isTerminalAgentRunStatus(run.status)) {
+      throw new CapabilityRuntimeSessionUnavailableError(
+        "Capability JIT recorded cleanup requires a durable terminal run.",
+      );
+    }
+    const lifecycles = uniqueLifecycles(
+      operationalCapability.bindings.flatMap((binding) => binding.hostLifecycles),
+    );
+    const groups = uniqueLaunchGroups(
+      lifecycles
+        .filter((lifecycle) => lifecycle.kind === "persistent-compose")
+        .map((lifecycle) => {
+          if (lifecycle.launchGroup === null) {
+            throw new CapabilityRuntimeSessionUnavailableError(
+              "A required persistent capability has no enrolled exact launch group; activation is unavailable.",
+            );
+          }
+          return lifecycle.launchGroup;
+        }),
+    );
+    if (groups.length > 0 && !this.options.groups) {
+      throw new CapabilityRuntimeSessionUnavailableError(
+        "A required persistent capability has no configured launch-group supervisor.",
+      );
+    }
+    const leaseId = await executionLeaseId({
+      projectId: input.project.project.id,
+      runId: input.runId,
+      operationalCapability,
+    });
+    const candidate = candidateLease({
+      id: leaseId,
+      projectId: input.project.project.id,
+      operationalCapability,
+      lifecycles,
+      at: this.#now(),
+    });
+    const stored = await this.options.leases.read(leaseId);
+    if (!stored) return;
+    const lease = assertEquivalentLease(stored, candidate);
+    const at = this.#now();
+    try {
+      if (groups.length > 0 && this.options.groups) {
+        await this.options.groups.releaseTerminal({
+          groups,
+          leaseId: lease.id,
+          projectId: lease.projectId,
+          at,
+          hasRemainingJitDemand: async (materialKeys) =>
+            this.options.hasRemainingJitDemand === undefined
+              ? true
+              : await this.options.hasRemainingJitDemand({
+                projectId: lease.projectId,
+                materialKeys,
+              }),
+        });
+        return;
+      }
+      await this.options.leases.release(lease.id);
+    } catch (error) {
+      throw new CapabilityRuntimeSessionUnavailableError(
+        error instanceof Error
+          ? error.message
+          : "Capability JIT recorded cleanup failed; the exact lease is retained.",
+      );
+    }
+  }
 }
 
 class ActiveCapabilityRuntimeExecutionSession
@@ -371,6 +460,28 @@ class ActiveCapabilityRuntimeExecutionSession
       this.#retained = true;
     }
   }
+}
+
+async function executionLeaseId(input: {
+  readonly projectId: string;
+  readonly runId: string;
+  readonly operationalCapability: ResolvedCapabilityRuntimeOperation;
+}): Promise<string> {
+  const fingerprint = await fingerprintResolvedCapabilityRuntimeOperation(
+    input.operationalCapability,
+  );
+  return `capability-jit-${
+    (await sha256Fingerprint({
+      schemaVersion: "capability-runtime-jit-lease/1.0",
+      projectId: input.projectId,
+      runId: input.runId,
+      operationalCapabilityFingerprint: fingerprint.digest,
+    })).digest
+  }`;
+}
+
+function isTerminalAgentRunStatus(status: string): boolean {
+  return status === "completed" || status === "failed" || status === "cancelled";
 }
 
 function candidateLease(input: {

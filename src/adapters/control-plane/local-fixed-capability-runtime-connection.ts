@@ -1,10 +1,10 @@
 /**
- * Phase-1 fixed publication for the SysON seed canary.
+ * Phase-1 fixed publication locator for one sealed binding and launch group.
  *
- * The adapter derives the current server-owned SysON loopback URL from the
- * exact sealed casys-syson Compose publication. Callers receive only an
- * opaque process-local handle. This is not a provider registry, gateway,
- * pool or supervisor.
+ * Composition supplies the exact trusted binding and the exact validated
+ * persistent Compose group. The adapter derives one loopback `/mcp` URL from
+ * that group. Callers receive only an opaque process-local handle. This is not
+ * a provider registry, gateway, pool, health checker, or supervisor.
  */
 
 import type {
@@ -32,13 +32,7 @@ import {
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import { HttpMcpToolClient } from "../shared/mcp/http-mcp-tool-client.ts";
 
-const SYSON_AUTHOR_SYSTEM_BINDING = {
-  id: "syson-author-system",
-  version: "1",
-} as const;
-const SYSON_LAUNCH_GROUP_ID = "casys-syson" as const;
-const SYSON_LAUNCH_GROUP_VERSION = "1.0.0" as const;
-const SYSON_CLIENT_TIMEOUT_MS = 30_000;
+const DEFAULT_CLIENT_TIMEOUT_MS = 30_000;
 
 interface BoundPublication {
   readonly lease: CapabilityRuntimeLease;
@@ -47,25 +41,29 @@ interface BoundPublication {
   readonly mcpUrl: string;
 }
 
-export interface LocalFixedSysonCapabilityRuntimeConnectionOptions {
+export interface LocalFixedCapabilityRuntimeConnectionOptions {
   readonly leases: CapabilityRuntimeLeaseStore;
+  readonly binding: { readonly id: string; readonly version: string };
   readonly launchGroup: unknown;
   readonly fleetMcpUrl?: string;
+  readonly timeoutMs?: number;
   readonly now?: () => string;
   readonly fetch?: typeof fetch;
 }
 
-export function createLocalFixedSysonCapabilityRuntimeConnection(
-  options: LocalFixedSysonCapabilityRuntimeConnectionOptions,
-): Promise<LocalFixedSysonCapabilityRuntimeConnection> {
-  return LocalFixedSysonCapabilityRuntimeConnection.create(options);
+export function createLocalFixedCapabilityRuntimeConnection(
+  options: LocalFixedCapabilityRuntimeConnectionOptions,
+): Promise<LocalFixedCapabilityRuntimeConnection> {
+  return LocalFixedCapabilityRuntimeConnection.create(options);
 }
 
-export class LocalFixedSysonCapabilityRuntimeConnection
+export class LocalFixedCapabilityRuntimeConnection
   implements CapabilityRuntimeConnectionBroker, CapabilityRuntimeMcpClientOpener {
   readonly #leases: CapabilityRuntimeLeaseStore;
+  readonly #binding: { readonly id: string; readonly version: string };
   readonly #launchGroup: CapabilityRuntimeLaunchGroupReference;
   readonly #mcpUrl: string;
+  readonly #timeoutMs: number;
   readonly #now: () => string;
   readonly #fetch: typeof fetch | undefined;
   readonly #handles = new WeakMap<
@@ -74,19 +72,22 @@ export class LocalFixedSysonCapabilityRuntimeConnection
   >();
 
   static async create(
-    options: LocalFixedSysonCapabilityRuntimeConnectionOptions,
-  ): Promise<LocalFixedSysonCapabilityRuntimeConnection> {
-    const group = await admittedSysonLaunchGroup(options.launchGroup);
-    const mcpUrl = derivedSysonLoopbackMcpUrl(group);
+    options: LocalFixedCapabilityRuntimeConnectionOptions,
+  ): Promise<LocalFixedCapabilityRuntimeConnection> {
+    const binding = admittedBinding(options.binding);
+    const group = await admittedLaunchGroup(options.launchGroup);
+    const mcpUrl = derivedLoopbackMcpUrl(group);
     if (options.fleetMcpUrl !== undefined && options.fleetMcpUrl !== mcpUrl) {
       throw new CapabilityRuntimeConnectionError(
-        "Local fixed SysON publication does not match the sealed casys-syson loopback host port.",
+        "Local fixed publication does not match the sealed launch-group loopback host port.",
       );
     }
-    return new LocalFixedSysonCapabilityRuntimeConnection({
+    return new LocalFixedCapabilityRuntimeConnection({
       leases: options.leases,
+      binding,
       launchGroup: capabilityRuntimeLaunchGroupReference(group),
       mcpUrl,
+      timeoutMs: options.timeoutMs ?? DEFAULT_CLIENT_TIMEOUT_MS,
       now: options.now,
       fetch: options.fetch,
     });
@@ -94,14 +95,18 @@ export class LocalFixedSysonCapabilityRuntimeConnection
 
   private constructor(options: {
     readonly leases: CapabilityRuntimeLeaseStore;
+    readonly binding: { readonly id: string; readonly version: string };
     readonly launchGroup: CapabilityRuntimeLaunchGroupReference;
     readonly mcpUrl: string;
+    readonly timeoutMs: number;
     readonly now?: () => string;
     readonly fetch?: typeof fetch;
   }) {
     this.#leases = options.leases;
+    this.#binding = options.binding;
     this.#launchGroup = options.launchGroup;
     this.#mcpUrl = options.mcpUrl;
+    this.#timeoutMs = options.timeoutMs;
     this.#now = options.now ?? (() => new Date().toISOString());
     this.#fetch = options.fetch;
   }
@@ -118,14 +123,14 @@ export class LocalFixedSysonCapabilityRuntimeConnection
   ): Promise<CapabilityRuntimeConnectionHandle> {
     const lease = admittedLease(request.lease);
     const binding = admittedBinding(request.binding);
-    const launchGroup = admittedLaunchGroup(request.launchGroup);
+    const launchGroup = admittedLaunchGroupReference(request.launchGroup);
     if (
-      binding.id !== SYSON_AUTHOR_SYSTEM_BINDING.id ||
-      binding.version !== SYSON_AUTHOR_SYSTEM_BINDING.version ||
+      binding.id !== this.#binding.id ||
+      binding.version !== this.#binding.version ||
       !sameCapabilityRuntimeLaunchGroupReference(launchGroup, this.#launchGroup)
     ) {
       throw new CapabilityRuntimeConnectionError(
-        "Capability runtime connection requires the exact trusted SysON binding and casys-syson launch group.",
+        "Capability runtime connection requires the exact trusted binding and launch group.",
       );
     }
     if (
@@ -174,7 +179,7 @@ export class LocalFixedSysonCapabilityRuntimeConnection
     }
     return new HttpMcpToolClient({
       mcpUrl: bound.mcpUrl,
-      timeoutMs: SYSON_CLIENT_TIMEOUT_MS,
+      timeoutMs: this.#timeoutMs,
       ...(this.#fetch ? { fetch: this.#fetch } : {}),
     });
   }
@@ -198,33 +203,23 @@ export class LocalFixedSysonCapabilityRuntimeConnection
   }
 }
 
-async function admittedSysonLaunchGroup(
+async function admittedLaunchGroup(
   value: unknown,
 ): Promise<CapabilityRuntimeLaunchGroup> {
-  let group: CapabilityRuntimeLaunchGroup;
   try {
-    group = await validateCapabilityRuntimeLaunchGroup(value);
+    return await validateCapabilityRuntimeLaunchGroup(value);
   } catch {
     throw new CapabilityRuntimeConnectionError(
-      "Local fixed SysON publication binds only the exact casys-syson launch group.",
+      "Local fixed publication binds only a validated persistent-Compose launch group.",
     );
   }
-  if (
-    group.id !== SYSON_LAUNCH_GROUP_ID ||
-    group.version !== SYSON_LAUNCH_GROUP_VERSION
-  ) {
-    throw new CapabilityRuntimeConnectionError(
-      "Local fixed SysON publication binds only the exact casys-syson launch group.",
-    );
-  }
-  return group;
 }
 
-function derivedSysonLoopbackMcpUrl(group: CapabilityRuntimeLaunchGroup): string {
+function derivedLoopbackMcpUrl(group: CapabilityRuntimeLaunchGroup): string {
   const ports = capabilityRuntimeLaunchGroupPublishedLoopbackHostPorts(group);
   if (ports.length !== 1) {
     throw new CapabilityRuntimeConnectionError(
-      "Local fixed SysON publication requires exactly one published loopback host port.",
+      "Local fixed publication requires exactly one published loopback host port.",
     );
   }
   return `http://127.0.0.1:${ports[0]}/mcp`;
@@ -240,14 +235,14 @@ function admittedLease(value: unknown): CapabilityRuntimeLease {
   }
 }
 
-function admittedLaunchGroup(
+function admittedLaunchGroupReference(
   value: unknown,
 ): CapabilityRuntimeLaunchGroupReference {
   try {
     return validateCapabilityRuntimeLaunchGroupReference(value);
   } catch {
     throw new CapabilityRuntimeConnectionError(
-      "Capability runtime connection requires the exact trusted SysON binding and casys-syson launch group.",
+      "Capability runtime connection requires the exact trusted binding and launch group.",
     );
   }
 }
@@ -262,7 +257,7 @@ function admittedBinding(
     value.id.length === 0 || value.version.length === 0
   ) {
     throw new CapabilityRuntimeConnectionError(
-      "Capability runtime connection requires the exact trusted SysON binding and casys-syson launch group.",
+      "Capability runtime connection requires the exact trusted binding and launch group.",
     );
   }
   return { id: value.id, version: value.version };

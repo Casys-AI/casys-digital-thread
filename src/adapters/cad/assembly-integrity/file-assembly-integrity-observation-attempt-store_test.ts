@@ -25,6 +25,39 @@ Deno.test("assembly-integrity WAL refuses a completed jump from dispatched", asy
   }
 });
 
+Deno.test("assembly-integrity WAL inspect stays cold and never writes dispatched", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "assembly-integrity-wal-" });
+  try {
+    const store = new FileAssemblyIntegrityObservationAttemptStore(directory);
+    assertEquals(await store.inspect(identity()), { action: "absent" });
+    assertEquals(
+      await store.read("project-assembly-integrity", "run-assembly-integrity"),
+      undefined,
+    );
+
+    await store.begin(basis());
+    assertEquals(await store.inspect(identity()), { action: "dispatched" });
+    await store.recordCapture({
+      ...identity(),
+      recordedAt: AT,
+      captureFingerprint: CAPTURE,
+      canonicalCaptureText: '{"capture":true}',
+    });
+    assertEquals(await store.inspect(identity()), {
+      action: "capture-recorded",
+      recordedAt: AT,
+      captureFingerprint: CAPTURE,
+      canonicalCaptureText: '{"capture":true}',
+    });
+    await assertRejects(
+      () => store.inspect({ ...identity(), planDigest: "c".repeat(64) }),
+      AssemblyIntegrityObservationRunOutcomeUnknownError,
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 Deno.test("assembly-integrity WAL refuses automatic redispatch after a durable dispatch", async () => {
   const directory = await Deno.makeTempDir({ prefix: "assembly-integrity-wal-" });
   try {

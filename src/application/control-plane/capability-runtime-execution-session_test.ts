@@ -163,6 +163,179 @@ Deno.test("JIT session rechecks inside group activation before a revoked capabil
   assertEquals(await leases.listActive(AT), []);
 });
 
+Deno.test("recorded execution cleanup releases the exact lease without activation", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  const activations: string[] = [];
+  const cleanups: string[] = [];
+  const coordinator = recordedCleanupCoordinator(leases, activations, cleanups);
+  const operation = persistentOperation();
+  const session = await coordinator.begin({
+    project: projectFor("queued"),
+    runId: "run:session",
+    operationalCapability: operation,
+    microsandboxExecutionProfiles: [],
+    recheck: () => Promise.resolve(operation),
+  });
+  assertEquals(activations, ["casys-observation"]);
+  assertEquals((await leases.listActive(AT)).map((lease) => lease.id), [
+    session.lease.id,
+  ]);
+
+  await coordinator.releaseRecorded({
+    project: projectFor("completed"),
+    runId: "run:session",
+    operationalCapability: operation,
+  });
+  assertEquals(activations, ["casys-observation"]);
+  assertEquals(cleanups, [session.lease.id]);
+  assertEquals(await leases.listActive(AT), []);
+});
+
+Deno.test("recorded execution cleanup is a no-op without a lease and never activates", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  const activations: string[] = [];
+  const cleanups: string[] = [];
+  const coordinator = recordedCleanupCoordinator(leases, activations, cleanups);
+  await coordinator.releaseRecorded({
+    project: projectFor("completed"),
+    runId: "run:session",
+    operationalCapability: persistentOperation(),
+  });
+  assertEquals(activations, []);
+  assertEquals(cleanups, []);
+});
+
+Deno.test("recorded execution cleanup fails closed on a mismatched lease scope", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  const activations: string[] = [];
+  const cleanups: string[] = [];
+  const coordinator = recordedCleanupCoordinator(leases, activations, cleanups);
+  const operation = persistentOperation();
+  const session = await coordinator.begin({
+    project: projectFor("queued"),
+    runId: "run:session",
+    operationalCapability: operation,
+    microsandboxExecutionProfiles: [],
+    recheck: () => Promise.resolve(operation),
+  });
+  await leases.release(session.lease.id);
+  await leases.claim({
+    ...session.lease,
+    bindingIds: ["foreign-binding"],
+  });
+
+  await assertRejects(
+    () =>
+      coordinator.releaseRecorded({
+        project: projectFor("completed"),
+        runId: "run:session",
+        operationalCapability: operation,
+      }),
+    Error,
+    "another operational scope",
+  );
+  assertEquals(cleanups, []);
+  assertEquals((await leases.read(session.lease.id))?.bindingIds, ["foreign-binding"]);
+});
+
+Deno.test("recorded execution cleanup refuses a non-terminal run and retains on failed host cleanup", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  const activations: string[] = [];
+  const cleanups: string[] = [];
+  const coordinator = recordedCleanupCoordinator(leases, activations, cleanups, {
+    failRelease: true,
+  });
+  const operation = persistentOperation();
+  await assertRejects(
+    () =>
+      coordinator.releaseRecorded({
+        project: projectFor("running"),
+        runId: "run:session",
+        operationalCapability: operation,
+      }),
+    Error,
+    "durable terminal run",
+  );
+  assertEquals(activations, []);
+
+  const session = await coordinator.begin({
+    project: projectFor("queued"),
+    runId: "run:session",
+    operationalCapability: operation,
+    microsandboxExecutionProfiles: [],
+    recheck: () => Promise.resolve(operation),
+  });
+  await assertRejects(
+    () =>
+      coordinator.releaseRecorded({
+        project: projectFor("completed"),
+        runId: "run:session",
+        operationalCapability: operation,
+      }),
+    Error,
+    "stop failed",
+  );
+  assertEquals(cleanups, []);
+  assertEquals((await leases.read(session.lease.id))?.id, session.lease.id);
+});
+
+function recordedCleanupCoordinator(
+  leases: InMemoryCapabilityRuntimeLeaseStore,
+  activations: string[],
+  cleanups: string[],
+  extras: { readonly failRelease?: boolean } = {},
+) {
+  return new CapabilityRuntimeExecutionSessionCoordinator({
+    contexts: contextFor(),
+    leases,
+    groups: {
+      ensureActive: async (input: {
+        readonly group: CapabilityRuntimeLaunchGroupReference;
+        readonly lease: CapabilityRuntimeLease;
+      }) => {
+        activations.push(input.group.id);
+        const claim = await leases.claim(input.lease);
+        return {
+          group: input.group,
+          states: new Map([[input.group.id, {
+            material: "installed" as const,
+            runtime: "active" as const,
+          }]]),
+          leaseDisposition: claim.status === "created"
+            ? "created" as const
+            : "reused" as const,
+          mutation: undefined,
+        };
+      },
+      releaseTerminal: async (input: { readonly leaseId: string }) => {
+        if (extras.failRelease) throw new Error("stop failed");
+        cleanups.push(input.leaseId);
+        await leases.release(input.leaseId);
+      },
+    } as never,
+    hasRemainingJitDemand: () => Promise.resolve(false),
+    now: () => AT,
+  });
+}
+
+function persistentOperation(): ResolvedCapabilityRuntimeOperation {
+  const group = launchGroup("casys-observation");
+  const material = persistentMaterial(
+    "casys.mcp-build123d-observation",
+    "mcp-build123d-observation-image",
+    "c".repeat(64),
+  );
+  return {
+    schemaVersion: "resolved-capability-runtime-operation/2.0",
+    projectId: PROJECT_ID,
+    operation: { id: "verify.observe-assembly-integrity", version: "1" },
+    authorizationFingerprint: FINGERPRINT,
+    demandFingerprint: FINGERPRINT,
+    registryFingerprint: FINGERPRINT,
+    bindings: [persistentBinding("observe", material, group)],
+  };
+}
+
 function launchGroup(id: string): CapabilityRuntimeLaunchGroupReference {
   return { id, version: "1.0.0", fingerprint: FINGERPRINT };
 }
@@ -272,11 +445,13 @@ function contextFor(): ProjectCapabilityRuntimeContextReader {
   };
 }
 
-function projectFor(): EngineeringProjectSnapshot {
+function projectFor(
+  status: "queued" | "running" | "completed" = "queued",
+): EngineeringProjectSnapshot {
   return {
     id: "snapshot:session",
     project: { id: PROJECT_ID },
     revision: 1,
-    agentRuns: [{ id: "run:session", status: "queued" }],
+    agentRuns: [{ id: "run:session", status }],
   } as unknown as EngineeringProjectSnapshot;
 }

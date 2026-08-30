@@ -5,7 +5,7 @@
  * Agent-authored seal stores stay distinct from the renderer SysML capture.
  * Write-architecture, write-requirements and part-definitions still require
  * an explicit SysON URL. The SysON seed canary locates the publication through
- * a lease-bound connection handle; it never receives a URL.
+ * the generic lease-bound connection handle; it never receives a URL.
  * `model.seal-architecture-sysml@1` never receives a provider client.
  * Requirements CAS is created once here so FEA, compilation basis, and ROP
  * reopen the same bytes.
@@ -109,7 +109,8 @@ export interface ArchitectureProjectOptions {
   readonly sysonMcpUrl?: string;
   /**
    * Lease-bound SysON seed publication. Composition owns the trusted binding
-   * and `casys-syson` mapping; the executor never names the URL.
+   * and `casys-syson` mapping; the executor never names the URL. The same
+   * generic locator is reused for assembly observation.
    */
   readonly sysonRuntimeConnection?: CapabilityRuntimeBoundMcpClient;
   readonly foundation: ArchitectureFoundation;
