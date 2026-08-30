@@ -100,8 +100,10 @@ closed input, neutral receipt, exact-output, and recovery contract.
 
 ## Targeted PartDefinition seal
 
-`geometry-part-manifest/1.0` and `geometry-part-draft-capture/1.0` are a separate
-target-only review family. Promotion remains exclusively `design.write-geometry@1`: it
+`geometry-part-manifest/1.0` and `geometry-part-draft-capture/1.1` are a separate
+target-only review family. Version `geometry-part-draft-capture/1.0` is unsupported:
+it retained a provider container path, so readers do not migrate or dual-read it.
+Promotion remains exclusively `design.write-geometry@1`: it
 reopens the human-signed target MRTR and the exact capture-backed
 `compile.seal-admission@3` artifact named by the v2 target-bound stamp, re-crossing
 admitted source bytes/hash plus the unique P1 `represents` PartDefinition, passive

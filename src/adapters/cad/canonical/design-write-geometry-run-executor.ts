@@ -3866,7 +3866,7 @@ async function loadReviewedGeometryPartDraft(
     for (const [index, file] of target.files.entries()) {
       exactRecord(
         file,
-        ["format", "name", "containerPath", "bytes", "fingerprint"],
+        ["format", "name", "bytes", "fingerprint"],
         `$geometryPartDraft.target.files[${index}]`,
       );
     }
@@ -4238,7 +4238,7 @@ function isGeometryBundleDraftSchema(value: unknown): boolean {
   return value === GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA;
 }
 
-/** Fail closed on current draft paths before canonical capture writes. */
+/** Fail closed on current server-owned draft export names before canonical writes. */
 function requireDraftAssemblyPaths(value: unknown): void {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new EngineeringProjectCommandError(
@@ -4253,7 +4253,7 @@ function requireDraftAssemblyPaths(value: unknown): void {
   } catch (error) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
-      `Geometry draft export path contract mismatch: ${
+      `Geometry draft export identity contract mismatch: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );

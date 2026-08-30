@@ -314,13 +314,15 @@ The current generic geometry boundary separates preview from seal, and it separa
 _natures of execution_ across two instances of the same MCP provider. `mcp-build123d`
 only ever runs server-fixed recipes rendered from reviewed code, and mounts the shared
 `exports` volume. `mcp-build123d-sandbox` runs geometry programs _proposed by an agent_
-and owns a private `build123d-sandbox-exports` volume, so a proposed program can never
-write into the evidence volume that other providers read. This matters because a SHA-256
-fingerprint proves the identity of bytes after sealing, not their causal provenance: a
-write landing in the shared volume before its producer computes the hash would make the
-wrong hash the expected one, and every downstream consumer would then authenticate the
-wrong bytes perfectly. The server lifts sandbox bytes out with `docker compose cp` plus
-fail-closed SHA-256 verification, exactly as it does for attested assets.
+and owns private delivery staging, so a proposed program can never write into the
+evidence volume that other providers read. This matters because a SHA-256 fingerprint
+proves the identity of bytes after sealing, not their causal provenance: a write landing
+in the shared volume before its producer computes the hash would make the wrong hash the
+expected one, and every downstream consumer would then authenticate the wrong bytes
+perfectly. The provider therefore promotes each delivery into an immutable digest-bound
+MCP resource; the server rereads that exact URI with `resources/read` and verifies MIME,
+byte count and SHA-256 before persisting a draft asset. No provider path is exposed or
+copied by Compose.
 
 `project_admitted_geometry_export` (composed when the `build123d-sandbox` fleet entry is
 configured) reopens a sealed admission and calls `build123d_export` on the sandbox

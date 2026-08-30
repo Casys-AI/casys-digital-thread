@@ -294,7 +294,7 @@ Deno.test("module evidence stores reject foreign schemas and corrupted bytes", a
       Error,
     );
     await assertRejects(
-      () => draftStore.save({ schemaVersion: "geometry-part-draft-capture/1.0" }),
+      () => draftStore.save({ schemaVersion: "geometry-part-draft-capture/1.1" }),
       Error,
     );
   });

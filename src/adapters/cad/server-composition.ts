@@ -33,6 +33,7 @@ import {
 } from "../shared/cas/file-capture-store.ts";
 import { FileIsolatedOutputCas } from "../shared/cas/file-isolated-output-cas.ts";
 import { HttpMcpToolClient } from "../shared/mcp/http-mcp-tool-client.ts";
+import { HttpMcpResourceReader } from "../shared/mcp/http-mcp-resource-reader.ts";
 import type { EngineeringProjectRunLease } from "../shared/stores/file-engineering-project-run-lease.ts";
 import { AdmissionBackedGeometryExportAdapter } from "./canonical/admission-backed-geometry-export-adapter.ts";
 import { FileAdmittedGeometryExportReplayCache } from "./canonical/file-admitted-geometry-export-replay-cache.ts";
@@ -259,9 +260,10 @@ export function createCadProject(options: CadProjectOptions): CadProject {
 /**
  * WHY THE SANDBOX INSTANCE AND NOT THE TRUSTED ONE — admitted export
  * reopens sealed CAD bytes. A fingerprint proves identity after sealing,
- * never causal provenance. The sandbox owns a private export volume, so
- * those bytes never touch evidence. No sandbox entry ⇒ no admitted-export
- * tool. Its private sandbox binding is independent from local microVM activation.
+ * never causal provenance. The sandbox owns private resource staging, so
+ * those bytes never touch evidence. The server reads only the returned immutable
+ * MCP resource receipt. No sandbox entry ⇒ no admitted-export tool. Its private
+ * sandbox binding is independent from local microVM activation.
  */
 export function composePrivateBuild123dGeometrySurfaces(input: {
   readonly projects: EngineeringProjectRevisionStore;
@@ -271,6 +273,7 @@ export function composePrivateBuild123dGeometrySurfaces(input: {
   readonly snapshots: Pick<ThreadSnapshotStore, "get">;
   readonly architectureCaptures: FileCaptureStore<"architecture-capture">;
   readonly geometryDraftCaptureDirectory: string;
+  readonly geometryDraftAssetDirectory: string;
   readonly geometryCaptureDirectory: string;
 }): PrivateBuild123dGeometrySurfaces {
   const draftCaptures = new FileCaptureStore({
@@ -281,6 +284,14 @@ export function composePrivateBuild123dGeometrySurfaces(input: {
     ...GEOMETRY_CAPTURE_DESCRIPTOR,
     directory: input.geometryCaptureDirectory,
   });
+  const draftAssets = new FileGeometryDraftAssetStore(
+    new FileByteStore({
+      kind: "geometry-draft-asset",
+      directory: input.geometryDraftAssetDirectory,
+      uriNamespace: "geometry-draft-asset",
+      label: "Geometry draft asset",
+    }),
+  );
   const replayCache = new FileAdmittedGeometryExportReplayCache(
     `${input.geometryDraftCaptureDirectory}/replay`,
   );
@@ -331,9 +342,13 @@ export function composePrivateBuild123dGeometrySurfaces(input: {
             mcpUrl: PRIVATE_BUILD123D_SANDBOX_MCP_URL,
             timeoutMs: 120_000,
           }),
+          resourceReader: new HttpMcpResourceReader({
+            mcpUrl: PRIVATE_BUILD123D_SANDBOX_MCP_URL,
+            timeoutMs: 120_000,
+          }),
           draftCaptures,
+          draftAssets,
           sourceAnalysis: input.geometrySourceAnalysis,
-          build123dService: "mcp-build123d-sandbox",
         }),
     }),
   };

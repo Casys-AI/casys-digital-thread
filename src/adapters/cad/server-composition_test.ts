@@ -98,6 +98,7 @@ Deno.test("Build123d profile-only review stays independent of private sandbox ad
       snapshots,
       architectureCaptures,
       geometryDraftCaptureDirectory: `${root}/drafts`,
+      geometryDraftAssetDirectory: `${root}/draft-assets`,
       geometryCaptureDirectory: `${root}/geometry-captures`,
     });
     assertInstanceOf(

@@ -2,8 +2,10 @@ import { assertEquals, assertThrows } from "@std/assert";
 import {
   assertDraftJoinsAdmission,
   GEOMETRY_DRAFT_ADMISSION_SCHEMA,
+  GEOMETRY_PART_DRAFT_ADMISSION_SCHEMA,
   parseGeometryDraftAdmission,
   requireCanonicalGeometryDraftAdmission,
+  requireCanonicalGeometryPartDraftAdmission,
   requireNamedCadLeverInDraftScript,
 } from "./geometry-draft-admission.ts";
 
@@ -86,5 +88,31 @@ Deno.test("requireCanonicalGeometryDraftAdmission refuses a photo preview draft"
       }),
     TypeError,
     "named numeric lever",
+  );
+});
+
+Deno.test("requireCanonicalGeometryPartDraftAdmission rejects the dropped 1.0 schema", () => {
+  assertThrows(
+    () =>
+      requireCanonicalGeometryPartDraftAdmission({
+        schemaVersion: "geometry-part-draft-capture/1.0",
+        target: {
+          partDefinitionElementId: "part-definition:frame",
+          label: "Frame",
+          script: PARAMETERIZED,
+          scriptHash: ADMISSION.sourceFingerprint,
+          files: [],
+        },
+        admission: {
+          ...ADMISSION,
+          schemaVersion: GEOMETRY_PART_DRAFT_ADMISSION_SCHEMA,
+          target: {
+            partDefinitionElementId: "part-definition:frame",
+            label: "Frame",
+          },
+        },
+      }),
+    TypeError,
+    "geometry-part-draft-capture/1.1",
   );
 });

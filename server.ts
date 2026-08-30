@@ -1723,6 +1723,7 @@ async function createProjectControl(
         snapshots: threadSnapshots,
         architectureCaptures: architectureFoundation.genericArchitectureCaptures,
         geometryDraftCaptureDirectory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
+        geometryDraftAssetDirectory: GEOMETRY_DRAFT_ASSETS_DIR,
         geometryCaptureDirectory: DEFAULT_GEOMETRY_CAPTURE_DIRECTORY,
       }),
       runExecutor: new RegisteredProjectRunExecutor({
