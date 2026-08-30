@@ -55,9 +55,14 @@ import {
   type ResolvedPrescribedKinematicsObservationAction,
 } from "../../../domain/compile/rop/resolved-operation-plan-v2.ts";
 import {
+  type CapabilityRuntimeMaterialIdentity,
   fingerprintResolvedCapabilityRuntimeOperation,
   type ResolvedCapabilityRuntimeOperation,
 } from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type {
+  CapabilityRuntimeExecutionMode,
+  CapabilityRuntimeMaterialRuntimeMode,
+} from "../../../domain/capability/runtime/capability-runtime-binding-qualification-attestation.ts";
 import {
   sameCapabilityRuntimeLaunchGroupReference,
 } from "../../../domain/capability/runtime/capability-runtime-launch-group.ts";
@@ -739,11 +744,36 @@ async function runtimeProvenance(
     profile: null,
     material: { ...material },
     launchGroup: structuredClone(lifecycle.launchGroup),
-    // This baseline has no sealed qualified deployment mode. Do not infer one
-    // from the process architecture: Rosetta/Docker emulation can disagree.
-    // A later qualified binding must supply a sealed native/emulated mode.
-    platformMode: "unavailable",
+    // The mode comes from the exact sealed/rechecked capability binding, never
+    // from the controller process architecture or a provider assertion.
+    platformMode: exactPrescribedKinematicsRuntimeMode(
+      binding.runtimeModes,
+      material,
+    ),
   });
+}
+
+/**
+ * Select the one host-qualified mode sealed for the exact Chrono material.
+ *
+ * This is deliberately fail-closed rather than treating a missing mode as an
+ * unavailable execution: an L3 run reaches this point only after runtime
+ * admission has established the exact qualified material.
+ */
+export function exactPrescribedKinematicsRuntimeMode(
+  runtimeModes: readonly CapabilityRuntimeMaterialRuntimeMode[],
+  material: CapabilityRuntimeMaterialIdentity,
+): CapabilityRuntimeExecutionMode {
+  const matches = runtimeModes.filter((candidate) =>
+    sameRuntimeMaterial(candidate.material, material)
+  );
+  if (matches.length !== 1) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "The sealed prescribed-kinematics binding must have one exact qualified runtime mode for its material.",
+    );
+  }
+  return matches[0]!.mode;
 }
 
 function sameRuntimeMaterial(

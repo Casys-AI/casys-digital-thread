@@ -1,8 +1,16 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import {
+  exactPrescribedKinematicsRuntimeMode,
   prescribedKinematicsObservationCommandFromResolvedAction,
   PrescribedKinematicsRunExecutor,
 } from "./prescribed-kinematics-run-executor.ts";
+import type {
+  CapabilityRuntimeMaterialIdentity,
+} from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type {
+  CapabilityRuntimeExecutionMode,
+  CapabilityRuntimeMaterialRuntimeMode,
+} from "../../../domain/capability/runtime/capability-runtime-binding-qualification-attestation.ts";
 import {
   resolvedOperationPlanRequestIdFor,
 } from "../../compile/plans/resolved-operation-plan-resolver.ts";
@@ -89,6 +97,42 @@ Deno.test("the Chrono executor carries the resolver's sealed ROP request identit
   assertEquals(command.requestId.startsWith("rop2-prescribed-kinematics-"), true);
 });
 
+Deno.test("the Chrono executor stamps the exact sealed native or emulated runtime mode", () => {
+  assertEquals(
+    exactPrescribedKinematicsRuntimeMode(
+      [runtimeMode(CHRONO_MATERIAL, "emulated")],
+      CHRONO_MATERIAL,
+    ),
+    "emulated",
+  );
+  assertEquals(
+    exactPrescribedKinematicsRuntimeMode(
+      [runtimeMode(CHRONO_MATERIAL, "native")],
+      CHRONO_MATERIAL,
+    ),
+    "native",
+  );
+});
+
+Deno.test("the Chrono executor refuses missing, duplicate, or mismatched sealed runtime modes", () => {
+  const cases: readonly (readonly CapabilityRuntimeMaterialRuntimeMode[])[] = [
+    [],
+    [
+      runtimeMode(CHRONO_MATERIAL, "emulated"),
+      runtimeMode(CHRONO_MATERIAL, "native"),
+    ],
+    [runtimeMode({ ...CHRONO_MATERIAL, materialId: "other-material" }, "emulated")],
+  ];
+
+  for (const runtimeModes of cases) {
+    assertThrows(
+      () => exactPrescribedKinematicsRuntimeMode(runtimeModes, CHRONO_MATERIAL),
+      Error,
+      "one exact qualified runtime mode",
+    );
+  }
+});
+
 const command = {
   commandId: "execute",
   projectId: "project",
@@ -96,6 +140,27 @@ const command = {
   issuedAt: "2026-08-29T00:00:00.000Z",
   runId: "run",
 } as const;
+
+const CHRONO_MATERIAL: CapabilityRuntimeMaterialIdentity = {
+  unitId: "casys.mcp-chrono",
+  materialId: "mcp-chrono-image",
+  imageDigest: "a".repeat(64),
+};
+
+function runtimeMode(
+  material: CapabilityRuntimeMaterialIdentity,
+  mode: CapabilityRuntimeExecutionMode,
+): CapabilityRuntimeMaterialRuntimeMode {
+  return {
+    material,
+    targetPlatform: "linux/amd64",
+    mode,
+    qualificationAttestationFingerprint: {
+      algorithm: "sha256",
+      digest: "b".repeat(64),
+    },
+  };
+}
 
 function fixture(
   operation: { readonly id: string; readonly version: string },
@@ -106,13 +171,13 @@ function fixture(
 ) {
   return new PrescribedKinematicsRunExecutor({
     projects: {
-      get: async () =>
-        ({
+      get: () =>
+        Promise.resolve({
           project: { id: "project" },
           agentRuns: [{ id: "run", workItemId: "work", status: "queued" }],
           workItems: [{ id: "work", operation }],
-        }) as never,
-      getRevision: async () => undefined,
+        } as never),
+      getRevision: () => Promise.resolve(undefined),
     },
     commands: (overrides.commands ?? {}) as never,
     snapshots: {} as never,
