@@ -63,7 +63,11 @@ the approved envelope needs no prompt. A widening, binding/profile/digest change
 host effect produces an amendment review with a structured delta: requirements,
 bindings, units, materials, host effects and known-or-unknown byte change. An amendment
 stores that delta rather than a duplicate successor envelope and must reconstruct its
-exact server-derived successor fingerprint.
+exact server-derived successor fingerprint. A binding, profile or digest change is
+never silent. When an already-proven project's method meaning changes, the change
+follows the existing transition/MRTR boundary. Operational authorization is not a
+fourth generic approval layer and does not replace MRTR admission of method, inputs
+and criteria.
 
 The review returns an explicit `revoked` state when the effective envelope was revoked;
 such an envelope can neither cover a plan nor be amended. The amendment elicitation
@@ -71,8 +75,21 @@ returns the exact opaque proposal fingerprint in structured content, and a signe
 must echo it unchanged.
 
 V1 revocation is deliberately `full-envelope` only. It records no destructive host
-action and never removes Thread, CAS, WAL or retained volumes. Partial revocation and
-runtime install/activation/remove semantics require the later supervisor contract.
+action and never removes Thread, CAS, WAL or retained volumes. Partial revocation is
+still not this contract. Acquire, JIT activate, stop and bounded material removal live
+on [host runtime supervision](host-runtime-supervision.md) and
+[local runtime administration](local-runtime-administration.md). An approved envelope
+does not authorize acquisition before that approval, silent provider switching for
+existing evidence, cache pruning, or evidence deletion.
+
+Semantic subset and host-effect subset are separate checks. Reusing an already present
+image may reduce disk effects without changing semantic demand; changing a digest or
+exposure may widen host effects while capability ids stay equal. The approval view
+projects declared catalogue host effects: download and incremental disk bytes,
+persistence class, networks, published loopback ports, volumes, privilege and exposure,
+secret-slot names (never values), licences and notices. CPU and memory class stay
+literal `unknown` until a material declares them. The planner never invents estimates
+to make an approval look complete.
 
 ## Authority boundary
 

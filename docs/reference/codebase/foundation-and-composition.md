@@ -30,11 +30,13 @@ Split lookalike catalogue (SysML, CAD, Modelica, FEA, DFM). Not substitutes.
 
 #### [`docker-compose.yml`](../../../docker-compose.yml)
 
-Provider containers, networks, volumes and loopback ports
+Maintainer diagnostic Compose topology and loopback mappings. Not the H1 JIT launch
+groups and not the Digital Thread cold start.
 
 #### [`config/mcp-fleet.json`](../../../config/mcp-fleet.json)
 
-Desired MCP endpoints, tools, views and trust posture
+Desired MCP endpoints, tools, views and trust posture. Current fixed URLs; not a
+lease-bound connection handle.
 
 #### [`docs/explanations/product/product-direction.md`](../../explanations/product/product-direction.md)
 

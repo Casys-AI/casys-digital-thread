@@ -24,7 +24,7 @@ Three operator surfaces. They are not substitutes.
 | ----------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Docker smoke      | `scripts/gates/verify-ngspice-microsandbox-worker.ts --run`              | Container contract outside IsolatedCodeRunner. Not the Microsandbox cache.                                                                  |
 | Cache preparation | `deno task prepare:ngspice:microsandbox`                                 | Idempotent import of the Docker source digest into the local Microsandbox cache under the runtime manifest pin. No pull. Not a product run. |
-| Product run       | `project_admitted_spice_run_review` then `simulate.run-admitted-spice@1` | Documentary isolated execution after an approved capability-runtime supervisor activates the exact unit. |
+| Product run       | `project_admitted_spice_run_review` then `simulate.run-admitted-spice@1` | Documentary isolated execution over the server-owned worker profile. Boot does not import the microVM image; this worker publishes no host port. |
 
 The Docker distribution/index digest
 `casys/ngspice-microsandbox-worker@sha256:62748f195c86751c5fc565ea8e0ac5ab6bd283ddcae2426918d697b25ce6d392`
@@ -34,8 +34,12 @@ is the runtime `imageReference`. Backend inspect requires `imageReference` diges
 attested `manifestDigest`. Do not pin the Docker index digest as the runtime image.
 `pullPolicy` stays `never`. Server startup does not pull or import.
 
+Ordinary start is cold Deno. Do not start the root Compose provider stack: H1 activates
+enrolled groups JIT under a lease when covered work needs them, and those groups collide
+with root Compose on the same loopback ports. A root `docker compose up` remains a
+manual maintainer probe only and must not run concurrently with H1-managed groups.
+
 ```bash
-docker compose up -d syson-db syson-app mcp-build123d mcp-build123d-sandbox mcp-syson
 deno task prepare:ngspice:microsandbox   # once per host cache; idempotent
 deno task start:yolo    # YOLO approval only; it does not activate SPICE
 ```
@@ -44,9 +48,12 @@ ERPNext is an optional sibling integration; start it separately only when its ch
 and environment file are available.
 
 Connect the agent to `http://127.0.0.1:3020/mcp`. The Workbench is read-only. The
-current console deliberately does not compose an admitted-SPICE executor. A future
-approved capability-runtime supervisor will make the exact pinned unit available
-just-in-time; restarting the console is not an activation mechanism.
+console does not auto-import the SPICE microVM at boot. The registered operation and
+catalogue demand exist, but the admitted-SPICE executor does not yet open an H1
+execution session and the H1 host observer does not yet cover `casys.spice-worker`.
+Consequently the cold capability path stays literal `unavailable` until that exact
+integration exists. Restarting the console or preparing the cache alone is not an
+activation mechanism.
 
 ## 1. Capture
 
@@ -78,12 +85,6 @@ Obtain human MRTR, queue, then execute `compile.seal-admission@3`.
 
 ## 3. Review and run
 
-This is the post-supervisor path. The current console deliberately does not compose the
-admitted-SPICE review/executor: until an approved capability-runtime supervisor
-activates the exact atomic unit, the registered operation is `unavailable`. The
-remaining steps specify the closed path that becomes available then; they do not turn
-cache preparation or a standalone worker check into a product run.
-
 Call `project_admitted_spice_run_review` with `projectId` only. Do not derive or pass a
 Thread basis, admission id, fingerprint, provider, solver, image, args, path, or
 observations. The server reopens the current Thread tip and selects exactly one fresh,
@@ -99,10 +100,9 @@ server-selected bytes and returns the fixed parameters and registered
 work item: `compilationAdmission` names the selected admission on the current review
 Thread basis. Do not copy a historical `compile.seal-admission@3` creation snapshot.
 
-Obtain human MRTR, queue, then execute `simulate.run-admitted-spice@1`.
-
-Until the approved capability-runtime supervisor activates the exact unit, the operation
-stays registered and the executor is `unavailable`.
+Obtain human MRTR, queue, then execute `simulate.run-admitted-spice@1`. A missing
+prepared cache, image, or operational envelope keeps the executor literal
+`unavailable`. Cache preparation or a standalone worker check is not a product run.
 
 ## 4. Read success correctly
 

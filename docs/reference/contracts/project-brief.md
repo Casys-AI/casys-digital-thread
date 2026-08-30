@@ -120,8 +120,9 @@ technical evidence by itself.
 Exact runtime capability demand can be compiled separately from the registered
 operations on that published project path. It is never stored as packs, providers,
 images, or host effects inside `ProjectBriefRevision`; a brief-only forecast remains
-provisional. The compiler is not yet invoked by `project_plan_publish` or exposed as a
-read model. See
+provisional. Operational authorization of that demand is the separate
+[project capability authorization](../runtime/capability-packs/project-capability-authorization.md)
+ledger; it is not a brief field. See
 [project capability demand](../runtime/capability-packs/project-capability-demand.md).
 
 The generic V3 bootstrap is deliberately additive and exact:

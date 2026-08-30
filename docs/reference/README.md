@@ -13,7 +13,7 @@ reading sequence.
 | [`domains/`](domains/README.md) | Living engineering-domain coverage and boundedness |
 | [`pipeline/`](pipeline/) | Capture, analysis, admission, execution, evaluation, and publication patterns |
 | [`providers/`](providers/README.md) | Provider boundaries, identities, and reviewed capabilities |
-| [`runtime/`](runtime/) | Local topology, ports, control plane, and runtime ownership |
+| [`runtime/`](runtime/) | Local topology, ports, control plane, capability packs, and runtime ownership |
 | [`codebase/`](codebase/codebase-map.md) | File-level implementation census by capability |
 
 The registered catalogue and backend code remain authoritative when a reference page

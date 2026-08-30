@@ -31,8 +31,10 @@ It is a loopback-only service on port 3025, has a preserved `chrono-data` volume
 requires only the local `chrono-mcp-bearer-token` secret slot. It declares no privileged
 mode, Docker socket, device or bind mount. Its source is MIT, but its aggregate OCI
 distribution is `NOASSERTION`, so the exact retained notices remain part of the image
-review. Until an explicit emulation probe is recorded, the Chrono binding is
-`unqualified`; on ARM64 it may become only `emulated`, never `native`.
+review. The catalogue baseline for this binding remains `unqualified`. Effective
+qualification is a host-local attestation overlay, never a catalogue rewrite; on ARM64 a
+matching overlay may be only `emulated`, never `native`. See
+[local runtime and ports](../local-runtime-and-ports.md).
 
 ## Host and data boundary
 
@@ -43,10 +45,11 @@ deny-all networking, pinned images and server-owned limits. No first-party mater
 requests a privileged container, Docker socket, device, host networking, arbitrary
 Compose input or provider/tool/argument selection.
 
-The `syson-db-data` and `build123d-sandbox-exports` volumes are retained data. A future
-runtime removal must preserve them by default and must never remove Thread, CAS, WAL or
-project state. This catalogue and its planner are read-only: they never pull, start,
-stop, bind, dispatch, qualify or delete material.
+The `syson-db-data` and `build123d-sandbox-exports` volumes are retained data.
+[Local runtime administration](local-runtime-administration.md) may remove an inactive
+owned group only while preserving those volumes, Thread, CAS, WAL and project state.
+This catalogue and its planner remain read-only: they never pull, start, stop, bind,
+dispatch, qualify or delete material.
 
 Canonical admitted geometry export has a separate short preparation lease for exactly
 `design.write-geometry@1`'s registered preparation demand. It activates only the

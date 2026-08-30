@@ -18,15 +18,23 @@ Lookalikes: [lookalike traps](../../reference/agent/lookalike-traps.md). Domain 
 
 ## 0. Surfaces
 
+Ordinary start is cold Deno. Do not start the root Compose provider stack: H1 activates
+enrolled groups JIT under a lease when covered work needs them, and those groups collide
+with root Compose on the same loopback ports. A root `docker compose up` remains a
+manual maintainer probe only and must not run concurrently with H1-managed groups.
+
 ```bash
-docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-build123d-sandbox
 deno task start:yolo    # YOLO approval only; it does not activate Modelica
 ```
 
 ERPNext is an optional sibling integration; start it separately only when its checkout
 and environment file are available.
 
-Connect the agent to `http://127.0.0.1:3020/mcp`. The Workbench is read-only.
+Connect the agent to `http://127.0.0.1:3020/mcp`. The Workbench is read-only. Covered
+SysON starts JIT after operational authorization. The catalogue binding
+`openmodelica-admitted-modelica` remains `unqualified`, so the registered executor stays
+literal `unavailable` until a matching host qualification overlay exists. That is a
+qualification gap, not a missing supervisor.
 
 ## 1. Capture
 
@@ -63,12 +71,6 @@ Obtain human MRTR, queue, then execute `compile.seal-admission@3`.
 
 ## 3. Review and run
 
-This is the post-supervisor path. The current console deliberately does not compose the
-admitted-Modelica review/executor: until an approved capability-runtime supervisor
-activates the exact atomic unit, the registered operation is `unavailable`. The
-remaining steps specify the closed path that becomes available then; they do not turn a
-standalone worker qualification into a product run.
-
 Call `project_admitted_modelica_run_review` with `projectId` only. Do not derive or pass
 a Thread basis, admission id, fingerprint, provider, solver or runtime. The server
 reopens the current Thread tip and selects exactly one fresh, non-archived canonical
@@ -84,7 +86,8 @@ later work item: `compilationAdmission` names the selected admission on the curr
 review Thread basis. Do not copy a historical `compile.seal-admission@3` creation
 snapshot.
 
-Obtain human MRTR, queue, then execute `simulate.run-admitted-modelica@1`.
+Obtain human MRTR, queue, then execute `simulate.run-admitted-modelica@1`. The catalogue
+binding remains `unqualified`; a successful review does not make the executor available.
 
 ## 4. Read success correctly
 

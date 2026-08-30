@@ -3,14 +3,21 @@
 Audience: both · Diátaxis: reference · Kind: boundary
 
 H1 governs server-owned local runtime state. It does not select a provider, admit an
-engineering method, or interpret an engineering result. The initial enrolled topology is
-the exact `casys-syson@1.0.0` group: Postgres, SysON and `mcp-syson`, with only
-`127.0.0.1:3009` published. The historical SysON UI port 8180 is not part of this group.
-`casys-chrono@1.0.0` is a separate one-service topology. Its binding remains unavailable
-until a separately qualified exact host-mode attestation exists; the topology itself
-does not carry a qualification claim. That probe is the private
+engineering method, or interpret an engineering result. The first-party launch-group
+registry enrolls five persistent topologies: `casys-syson@1.0.0` (Postgres, SysON and
+`mcp-syson`, with only `127.0.0.1:3009` published), `casys-build123d-sandbox@1.0.0`,
+`casys-build123d-observation@1.0.0`, `casys-chrono@1.0.0`, and
+`casys-mcp-calculix@0.8.2`. Enrollment is candidacy. It does not start a service. The
+historical SysON UI port 8180 is not part of `casys-syson`.
+
+`casys-chrono@1.0.0` is a one-service topology. The topology itself does not carry a
+qualification claim. The immutable catalogue baseline for `casys.mcp-chrono@0.3.1`
+remains `unqualified`; effective host qualification is the matching attestation overlay
+on [local runtime and ports](../local-runtime-and-ports.md). The probe that appends that
+overlay is the private
 [local runtime qualification](local-runtime-qualification.md) CLI, not an MCP operation,
-Workbench command, or engineering run.
+Workbench command, or engineering run. HTTP `casys.mcp-calculix@0.8.2` remains
+catalogue-`unqualified` and non-activable.
 
 ## Durable local read model
 
@@ -154,6 +161,12 @@ Terminal release rereads the exact current `EngineeringProject` demand before st
 group. A missing project, unreadable runtime context, unresolved JIT demand or stale
 catalogue link blocks cleanup rather than releasing the final lease or stopping a shared
 runtime. An active sibling lease also retains the group.
+
+A successful start proves the group active. It does not yet return a connection handle
+bound to that lease. Adapters still call the current server-owned loopback publications.
+See [capability runtime connection](capability-runtime-connection.md). Root
+`docker-compose.yml` is a different Docker project and cannot be adopted; the same host
+ports collide if both run.
 
 This is operational authorization only. MRTR still admits the engineering method, inputs
 and criteria. L3 observations, L4 evaluation and any L5 human decision remain

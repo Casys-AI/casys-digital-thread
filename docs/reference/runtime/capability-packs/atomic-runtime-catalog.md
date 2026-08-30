@@ -34,6 +34,8 @@ The demand contains none of the last three identities. The agent cannot name a b
 unit, image, endpoint, provider tool, profile, or arguments.
 
 `Behave Foundation` is consequently a derived recipe/census, never an atomic unit.
+Names such as `canonical`, `static` and `admitted` describe a method or operation use,
+not an installable package identity.
 
 ## First-party units in this lot
 
@@ -42,8 +44,14 @@ download and storage estimates are all literal `null` until a source establishes
 and the planner must never estimate bytes. Equal OCI digests are reused exactly once for
 byte accounting, but retain separate services and lifecycle records.
 
-| Unit                                     | Concrete scope                                 | Loopback port | Notes                                                                |
-| ---------------------------------------- | ---------------------------------------------- | ------------- | -------------------------------------------------------------------- |
+Published loopback numbers are the current server-owned HTTP publications for those
+persistent services. They are not a reserved-port census: a semantic capability does not
+own a port; several materials share one launch group and one MCP port; microVM workers
+publish none. See
+[capability runtime connection](capability-runtime-connection.md).
+
+| Unit                                     | Concrete scope                                 | Current HTTP loopback | Notes                                                                |
+| ---------------------------------------- | ---------------------------------------------- | --------------------- | -------------------------------------------------------------------- |
 | `casys.syson-stack`                      | Postgres, SysON app, SysON MCP                 | 3009          | `casys-syson@1.0.0` technically indivisible local stack              |
 | `casys.mcp-build123d-sandbox`            | Private Build123d Compose service              | 3024          | Separate private export volume                                       |
 | `casys.mcp-build123d-observation`        | Regular Build123d/OCCT observer service        | 3014          | Optional assembly-integrity path                                     |
@@ -54,15 +62,16 @@ byte accounting, but retain separate services and lifecycle records.
 | `casys.modelica-qualified-worker`        | Narrow qualified-kit microVM                   | —             | Not arbitrary admitted Modelica                                      |
 | `casys.modelica-worker`                  | Admitted Modelica microVM                      | —             | Currently unqualified/unavailable in this catalogue                  |
 | `casys.spice-worker`                     | OCI source cache plus distinct microVM runtime | —             | The source image is not a microVM or HTTP `mcp-spice`                |
-| `casys.mcp-chrono`                       | mcp-chrono 0.3.1 persistent MCP service        | 3025          | Linux/amd64 only; unqualified until explicit emulation qualification |
+| `casys.mcp-chrono`                       | mcp-chrono 0.3.1 persistent MCP service        | 3025          | Linux/amd64 only; catalogue baseline `unqualified`. Effective host mode is the attestation overlay, not this table |
 
 Every material records persistence, service/volume, network, bind-mount, privileged
 container, socket, device, secret-slot, licence and security effects. No material has a
 privileged container, Docker socket or device grant. Volumes marked `preserve` are
-retained by future runtime removal; this contract does not permit
-`docker compose down -v`. Bind mounts and devices remain structured contract fields: a
-later reviewed material can declare them explicitly; this first-party catalogue simply
-declares none.
+retained by current administrative removal: that action preserves Thread, CAS, WAL and
+project evidence, targets only an explicitly planned first-party launch group, and never
+removes foreign images or runs `docker compose down -v`. Bind mounts and devices remain
+structured contract fields: a later reviewed material can declare them explicitly; this
+first-party catalogue simply declares none.
 
 Each material carries either a literal `null` launch group or an exact launch-group
 id/version/fingerprint reference. The three `casys.syson-stack` materials share the same
@@ -73,11 +82,12 @@ groups: `casys-build123d-sandbox@1.0.0` (`mcp-build123d-sandbox`, 3024 → 3014,
 `sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d`, have no
 shared named network or invented healthcheck, and retain their volumes.
 Catalogue/project data cannot carry Compose commands, provider endpoints, tools,
-arguments or secret values. `casys.mcp-calculix@0.8.2` names the separate single-service
+arguments or secret values. `casys.mcp-chrono@0.3.1` names the separate single-service
+`casys-chrono@1.0.0` group. `casys.mcp-calculix@0.8.2` names the separate single-service
 `casys-mcp-calculix@0.8.2` group. Its immutable Compose body remains in the server-only
 H1 registry, has no invented healthcheck, and retains its private inputs and run-ledger
-volumes. Other current first-party persistent materials remain literal `null`: an image
-alone never enrolls a topology.
+volumes. Cache-only and microVM materials keep `launchGroup: null`: an image alone never
+enrolls a topology. Registry enrollment is candidacy; it does not start a service.
 
 The semantic capability `mechanics.observe-static-structural-sensitivity@1` names only
 two static-structural sensitivity observations, never a verdict. Its concrete
@@ -150,6 +160,16 @@ inputs and criteria; result semantics remain domain-specific.
 the plan. It does **not** say a runtime is active, healthy, reachable, qualified at
 dispatch time, or that any engineering result has passed.
 
+H1 already consumes this plan. The planner itself stays pure and write-free. Host
+mutation, journaling, leases, JIT activation and evidence-preserving stop/remove live on
+[host runtime supervision](host-runtime-supervision.md) and
+[local runtime administration](local-runtime-administration.md). Docker credentials stay
+outside the Digital Thread MCP and Workbench.
+
+Remote connectors, VPS/Kubernetes deployment, proprietary workstation adapters and
+marketplace publication are outside this catalogue. The first-party local developer
+composition remains the current target.
+
 ## Local administration boundary
 
 `capability-runtime-admin-policy/1.0` can only disable or rank trusted binding ids.
@@ -157,7 +177,3 @@ dispatch time, or that any engineering result has passed.
 and desired `inactive` or `active` state. It is append-only history with a durable head;
 `active` permits JIT but does not keep a service running. Neither belongs in project or
 Thread state. See [local runtime administration](local-runtime-administration.md).
-
-The next supervisor lot may consume this plan. It must journal before host mutation,
-observe recovery after interruption, use leases for JIT activation, preserve Thread/CAS/
-WAL/volumes, and keep Docker credentials outside the Digital Thread MCP and Workbench.

@@ -36,7 +36,8 @@ verdict, release decision, conformity finding, or certification claim.
 - **Find an exact contract, operation, port, or code location:** enter
   [reference](reference/README.md), especially the
   [engineering domains](reference/domains/README.md),
-  [local runtime and ports](reference/runtime/local-runtime-and-ports.md), and
+  [local runtime and ports](reference/runtime/local-runtime-and-ports.md),
+  [capability packs](reference/runtime/capability-packs/README.md), and
   [codebase map](reference/codebase/codebase-map.md).
 - **Understand why a boundary exists:** enter [explanations](explanations/README.md).
 

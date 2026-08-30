@@ -1,4 +1,11 @@
-# The core provider chain, one command:
+# Maintainer diagnostic Compose topology. Not the Digital Thread cold start.
+# Ordinary atelier start is Deno (`deno task start` / `dev` / `start:yolo`).
+# CapabilityRuntime providers are H1 JIT launch groups (`casys-syson`,
+# `casys-build123d-observation`, `casys-build123d-sandbox`, …). Those groups
+# cannot adopt these root-project containers; the same loopback ports collide
+# if both run. This file is not the atelier start.
+#
+# Manual probe only, incompatible with simultaneous H1 groups:
 #   docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-build123d-sandbox
 #
 # mcp-erpnext is an optional, separate sibling integration. Start it explicitly only
