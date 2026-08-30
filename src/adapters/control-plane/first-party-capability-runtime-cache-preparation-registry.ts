@@ -47,12 +47,6 @@ export const FIRST_PARTY_NGSPICE_SOURCE_CACHE_RECIPE_ID =
 export const FIRST_PARTY_NGSPICE_RUNTIME_CACHE_RECIPE_ID =
   "cache.ngspice.02-runtime" as const;
 
-/**
- * These are intentionally not registered by the current production factory.
- * The geometry-module candidate has not yet been adopted into the production
- * atomic catalogue; a caller must derive both source and runtime material from
- * a single adopted catalogue before it can opt in.
- */
 export const FIRST_PARTY_GEOMETRY_MODULE_SOURCE_CACHE_RECIPE_ID =
   "cache.geometry-module.01-source" as const;
 export const FIRST_PARTY_GEOMETRY_MODULE_RUNTIME_CACHE_RECIPE_ID =
@@ -69,7 +63,13 @@ export interface FirstPartyCapabilityRuntimeCachePreparationRegistryOptions {
    * The profile from the actually composed admitted-SPICE worker.  A
    * profile-only catalogue is not sufficient to enroll the runtime recipe.
    */
-  readonly admittedSpiceRuntimeProfile: AdmittedSpiceExecutionProfile;
+  readonly admittedSpiceRuntimeProfile?: AdmittedSpiceExecutionProfile;
+  /**
+   * The profile resolved by the actually composed geometry-module assembler.
+   * Catalogue metadata alone cannot attest its local Microsandbox contract.
+   */
+  readonly geometryModuleAssemblyRuntimeProfile?:
+    GeometryModuleAssemblyExecutionProfile;
 }
 
 /** Immutable first-party registry; it has no registration or mutation API. */
@@ -102,15 +102,34 @@ export class FirstPartyCapabilityRuntimeCachePreparationRecipeRegistry
 }
 
 /**
- * The currently adopted non-persistent production lane: Docker source cache
- * and its distinct Microsandbox runtime are two separately journalled,
- * atomic recipes.  The Docker digest is never passed as the runtime pin.
+ * The adopted non-persistent first-party lane. Each Docker source cache and
+ * its distinct Microsandbox runtime remains one separately journalled atomic
+ * recipe; a Docker digest is never passed as a runtime pin.
  */
 export async function createFirstPartyCapabilityRuntimeCachePreparationRecipeRegistry(
   options: FirstPartyCapabilityRuntimeCachePreparationRegistryOptions,
 ): Promise<FirstPartyCapabilityRuntimeCachePreparationRecipeRegistry> {
+  const [spice, geometry] = await Promise.all([
+    options.admittedSpiceRuntimeProfile === undefined
+      ? Promise.resolve([])
+      : createFirstPartyAdmittedSpiceCachePreparationRecipes({
+        catalog: options.catalog,
+        admittedSpiceRuntimeProfile: options.admittedSpiceRuntimeProfile,
+      }),
+    options.geometryModuleAssemblyRuntimeProfile === undefined
+      ? Promise.resolve([])
+      : createFirstPartyGeometryModuleCachePreparationRecipes({
+        catalog: options.catalog,
+        runtimeProfile: options.geometryModuleAssemblyRuntimeProfile,
+      }),
+  ]);
+  if (spice.length === 0 && geometry.length === 0) {
+    throw new TypeError(
+      "First-party cache preparation requires one actually composed executable lane.",
+    );
+  }
   return new FirstPartyCapabilityRuntimeCachePreparationRecipeRegistry(
-    await createFirstPartyAdmittedSpiceCachePreparationRecipes(options),
+    [...spice, ...geometry],
   );
 }
 
@@ -170,12 +189,7 @@ export async function createFirstPartyAdmittedSpiceCachePreparationRecipes(
   ]);
 }
 
-/**
- * Future-adoption helper only.  It derives both materials from one validated
- * catalogue and fails closed when the geometry source has not been adopted.
- * It deliberately does not import the qualification candidate or register
- * these recipes in the production factory.
- */
+/** Derives the adopted geometry source and runtime recipes from one exact unit. */
 export async function createFirstPartyGeometryModuleCachePreparationRecipes(
   input: {
     readonly catalog: CapabilityRuntimeCatalog;
@@ -186,24 +200,24 @@ export async function createFirstPartyGeometryModuleCachePreparationRecipes(
     validateCapabilityRuntimeCatalog(input.catalog),
     validateGeometryModuleAssemblyExecutionProfile(input.runtimeProfile),
   ]);
-  const runtime = requireOneMaterialByReference(catalog, {
-    kind: "microvm-image",
-    lifecycle: "ephemeral",
-    imageReference: LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
-    label: "geometry-module assembler runtime material",
-  });
-  const source = requireOneMaterialByReference(catalog, {
+  const source = requireExactMaterial(catalog, {
+    unitId: "casys.geometry-module-assembler-worker",
+    unitVersion: "1.1.0",
+    materialId: "geometry-module-assembler-docker-source-image",
     kind: "oci-image",
     lifecycle: "cache",
     imageReference: LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
-    label: "geometry-module assembler Docker source material",
   });
-  if (source.unit.id !== runtime.unit.id) {
-    throw new TypeError(
-      "The geometry-module cache source and runtime must belong to one exact atomic unit.",
-    );
-  }
+  const runtime = requireExactMaterial(catalog, {
+    unitId: "casys.geometry-module-assembler-worker",
+    unitVersion: "1.1.0",
+    materialId: "geometry-module-assembler-worker-image",
+    kind: "microvm-image",
+    lifecycle: "ephemeral",
+    imageReference: LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
+  });
   if (
+    runtimeProfile.imageReference !== runtime.material.imageReference ||
     runtimeProfile.runtimeBackend.imageReference !== runtime.material.imageReference ||
     runtimeProfile.runtimeBackend.imageDigest.digest !==
       imageDigest(runtime.material.imageReference)
@@ -236,6 +250,7 @@ function requireExactMaterial(
   catalog: CapabilityRuntimeCatalog,
   expected: {
     readonly unitId: string;
+    readonly unitVersion?: string;
     readonly materialId: string;
     readonly kind: AtomicCapabilityRuntimeMaterial["kind"];
     readonly lifecycle: AtomicCapabilityRuntimeMaterial["lifecycle"];
@@ -250,7 +265,10 @@ function requireExactMaterial(
     candidate.id === expected.materialId
   );
   if (
-    !unit || !material || material.kind !== expected.kind ||
+    !unit ||
+    (expected.unitVersion !== undefined && unit.version !== expected.unitVersion) ||
+    !material ||
+    material.kind !== expected.kind ||
     material.lifecycle !== expected.lifecycle ||
     material.imageReference !== expected.imageReference || material.launchGroup !== null
   ) {
@@ -259,35 +277,6 @@ function requireExactMaterial(
     );
   }
   return { unit, material };
-}
-
-function requireOneMaterialByReference(
-  catalog: CapabilityRuntimeCatalog,
-  expected: {
-    readonly kind: AtomicCapabilityRuntimeMaterial["kind"];
-    readonly lifecycle: AtomicCapabilityRuntimeMaterial["lifecycle"];
-    readonly imageReference: string;
-    readonly label: string;
-  },
-): {
-  readonly unit: AtomicCapabilityRuntimeUnit;
-  readonly material: AtomicCapabilityRuntimeMaterial;
-} {
-  const matches = catalog.units.flatMap((unit) =>
-    unit.materials
-      .filter((material) =>
-        material.kind === expected.kind && material.lifecycle === expected.lifecycle &&
-        material.imageReference === expected.imageReference &&
-        material.launchGroup === null
-      )
-      .map((material) => ({ unit, material }))
-  );
-  if (matches.length !== 1 || matches[0] === undefined) {
-    throw new TypeError(
-      `The first-party cache registry requires one exact ${expected.label}.`,
-    );
-  }
-  return matches[0];
 }
 
 async function atomicRecipe(input: {

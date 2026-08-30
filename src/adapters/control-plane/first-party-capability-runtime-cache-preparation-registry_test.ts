@@ -12,6 +12,7 @@ import { createLocalGeometryModuleAssemblyServerOptions } from "../cad/module-as
 import { FixedGeometryModuleAssemblyProfileCatalog } from "../cad/module-assembly/fixed-geometry-module-assembly-profile.ts";
 import {
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
+  LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
 } from "./first-party-capability-runtime-identities.ts";
 import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capability-binding-catalog.ts";
 import {
@@ -26,46 +27,111 @@ import type { CapabilityRuntimeCachePreparationRequestedMaterial } from "../../d
 
 const FINGERPRINT = { algorithm: "sha256" as const, digest: "a".repeat(64) };
 
-Deno.test("first-party cache registry retains disjoint atomic ngspice source and runtime recipes", async () => {
+Deno.test("first-party cache registry combines disjoint atomic SPICE and CAD recipes", async () => {
   const registry =
     await createFirstPartyCapabilityRuntimeCachePreparationRecipeRegistry({
       catalog: await createFirstPartyCapabilityRuntimeCatalog(),
       admittedSpiceRuntimeProfile: await admittedSpiceRuntimeProfile(),
+      geometryModuleAssemblyRuntimeProfile: await geometryRuntimeProfile(),
     });
   const recipes = registry.recipes();
 
   assertEquals(recipes.map((recipe) => recipe.id), [
     FIRST_PARTY_NGSPICE_SOURCE_CACHE_RECIPE_ID,
     FIRST_PARTY_NGSPICE_RUNTIME_CACHE_RECIPE_ID,
+    FIRST_PARTY_GEOMETRY_MODULE_SOURCE_CACHE_RECIPE_ID,
+    FIRST_PARTY_GEOMETRY_MODULE_RUNTIME_CACHE_RECIPE_ID,
   ]);
-  assertEquals(recipes.map((recipe) => recipe.scope.materials.length), [1, 1]);
-  const [source, runtime] = recipes;
-  if (!source || !runtime) throw new Error("first-party SPICE recipes are absent");
+  assertEquals(recipes.map((recipe) => recipe.scope.materials.length), [1, 1, 1, 1]);
+  const [spiceSource, spiceRuntime, geometrySource, geometryRuntime] = recipes;
+  if (!spiceSource || !spiceRuntime || !geometrySource || !geometryRuntime) {
+    throw new Error("first-party cache recipes are absent");
+  }
   assertEquals(
-    source.scope.materials[0]?.imageReference,
+    spiceSource.scope.materials[0]?.imageReference,
     LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE,
   );
   assertEquals(
-    runtime.scope.materials[0]?.imageReference,
+    spiceRuntime.scope.materials[0]?.imageReference,
     LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
   );
-  assertEquals(source.scope.materials[0]?.profile.id, "ngspice-docker-source-cache");
   assertEquals(
-    source.scope.materials[0]?.profile.id === runtime.scope.materials[0]?.profile.id,
+    geometrySource.scope.materials[0]?.imageReference,
+    LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
+  );
+  assertEquals(
+    geometryRuntime.scope.materials[0]?.imageReference,
+    LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
+  );
+  assertEquals(
+    geometrySource.scope.materials[0]?.material.unitId,
+    "casys.geometry-module-assembler-worker",
+  );
+  assertEquals(
+    geometrySource.scope.materials[0]?.material.unitId,
+    geometryRuntime.scope.materials[0]?.material.unitId,
+  );
+  assertEquals(
+    spiceSource.scope.materials[0]?.profile.id,
+    "ngspice-docker-source-cache",
+  );
+  assertEquals(
+    geometrySource.scope.materials[0]?.profile.id,
+    "geometry-module-assembler-docker-source-cache",
+  );
+  assertEquals(
+    spiceSource.scope.materials[0]?.profile.id ===
+      spiceRuntime.scope.materials[0]?.profile.id,
     false,
   );
   assertEquals(
-    source.scope.materials[0]?.profile.fingerprint ===
-      runtime.scope.materials[0]?.profile.fingerprint,
+    geometrySource.scope.materials[0]?.profile.id ===
+      geometryRuntime.scope.materials[0]?.profile.id,
     false,
   );
 
   const plan = await registry.plan(requested(recipes));
   assertEquals(plan.recipes.map((recipe) => recipe.id), [
+    FIRST_PARTY_GEOMETRY_MODULE_SOURCE_CACHE_RECIPE_ID,
+    FIRST_PARTY_GEOMETRY_MODULE_RUNTIME_CACHE_RECIPE_ID,
     FIRST_PARTY_NGSPICE_SOURCE_CACHE_RECIPE_ID,
     FIRST_PARTY_NGSPICE_RUNTIME_CACHE_RECIPE_ID,
   ]);
   assertEquals(plan.unavailable, []);
+});
+
+Deno.test("first-party cache registry enrolls each actually composed lane independently", async () => {
+  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+  const [spice, geometry] = await Promise.all([
+    createFirstPartyCapabilityRuntimeCachePreparationRecipeRegistry({
+      catalog,
+      admittedSpiceRuntimeProfile: await admittedSpiceRuntimeProfile(),
+    }),
+    createFirstPartyCapabilityRuntimeCachePreparationRecipeRegistry({
+      catalog,
+      geometryModuleAssemblyRuntimeProfile: await geometryRuntimeProfile(),
+    }),
+  ]);
+
+  assertEquals(spice.recipes().map((recipe) => recipe.id), [
+    FIRST_PARTY_NGSPICE_SOURCE_CACHE_RECIPE_ID,
+    FIRST_PARTY_NGSPICE_RUNTIME_CACHE_RECIPE_ID,
+  ]);
+  assertEquals(geometry.recipes().map((recipe) => recipe.id), [
+    FIRST_PARTY_GEOMETRY_MODULE_SOURCE_CACHE_RECIPE_ID,
+    FIRST_PARTY_GEOMETRY_MODULE_RUNTIME_CACHE_RECIPE_ID,
+  ]);
+});
+
+Deno.test("first-party cache registry rejects an empty profile-only composition", async () => {
+  await assertRejects(
+    async () =>
+      await createFirstPartyCapabilityRuntimeCachePreparationRecipeRegistry({
+        catalog: await createFirstPartyCapabilityRuntimeCatalog(),
+      }),
+    TypeError,
+    "one actually composed executable lane",
+  );
 });
 
 Deno.test("geometry cache recipe builder remains unavailable until source and runtime are in one adopted catalogue unit", async () => {
@@ -76,13 +142,13 @@ Deno.test("geometry cache recipe builder remains unavailable until source and ru
         runtimeProfile: await geometryRuntimeProfile(),
       }),
     TypeError,
-    "one exact geometry-module assembler Docker source material",
+    "casys.geometry-module-assembler-worker/geometry-module-assembler-docker-source-image",
   );
 });
 
 Deno.test("geometry cache recipe builder derives atomic source and runtime identities from an adopted catalogue", async () => {
   const recipes = await createFirstPartyGeometryModuleCachePreparationRecipes({
-    catalog: await catalogWithGeometrySource(),
+    catalog: await createFirstPartyCapabilityRuntimeCatalog(),
     runtimeProfile: await geometryRuntimeProfile(),
   });
 
@@ -96,6 +162,10 @@ Deno.test("geometry cache recipe builder derives atomic source and runtime ident
   assertEquals(
     source.scope.materials[0]?.imageReference,
     LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
+  );
+  assertEquals(
+    runtime.scope.materials[0]?.imageReference,
+    LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
   );
   assertEquals(
     source.scope.materials[0]?.material.unitId,
@@ -131,51 +201,6 @@ async function admittedSpiceRuntimeProfile() {
 async function geometryRuntimeProfile() {
   const options = await createLocalGeometryModuleAssemblyServerOptions();
   return await new FixedGeometryModuleAssemblyProfileCatalog(options.profile).initial();
-}
-
-async function catalogWithGeometrySource(): Promise<CapabilityRuntimeCatalog> {
-  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
-  const geometry = catalog.units.find((unit) =>
-    unit.id === "casys.geometry-module-assembler-worker"
-  );
-  if (!geometry) throw new Error("geometry module unit is absent");
-  const runtime = geometry.materials.find((material) =>
-    material.id === "geometry-module-assembler-worker-image"
-  );
-  if (!runtime) throw new Error("geometry runtime material is absent");
-  const source = {
-    ...runtime,
-    id: "geometry-module-assembler-docker-source-image",
-    kind: "oci-image" as const,
-    imageReference: LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
-    lifecycle: "cache" as const,
-    effects: {
-      ...runtime.effects,
-      services: [],
-    },
-  };
-  const materials = [
-    source,
-    ...geometry.materials.filter((material) =>
-      material.imageReference !==
-        LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE
-    ),
-  ] as const;
-  const amendedGeometry = {
-    ...geometry,
-    materials,
-    manifestFingerprint: await fingerprintAtomicCapabilityRuntimeUnit({
-      id: geometry.id,
-      version: geometry.version,
-      materials,
-    }),
-  };
-  return {
-    ...catalog,
-    units: catalog.units.map((unit) =>
-      unit.id === geometry.id ? amendedGeometry : unit
-    ),
-  };
 }
 
 async function catalogWithoutGeometrySource(): Promise<CapabilityRuntimeCatalog> {
