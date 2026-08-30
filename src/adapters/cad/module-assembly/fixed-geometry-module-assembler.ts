@@ -13,10 +13,10 @@ import {
 } from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
 import {
   GEOMETRY_MODULE_ASSEMBLY_ASSETS,
-  GEOMETRY_MODULE_ASSEMBLY_CAPABILITY,
   GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
   recrossGeometryModuleAssemblyReceipt,
 } from "../../../domain/cad/module-assembly/geometry-module-assembly-receipt.ts";
+import { GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY } from "../../../domain/capability/engineering-capability.ts";
 import {
   GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
   GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
@@ -77,7 +77,7 @@ export class FixedGeometryModuleAssembler implements GeometryModuleAssembler {
       const glb = requiredOutput(nativeReceipt, "assembly.glb");
       const receipt = recrossGeometryModuleAssemblyReceipt({
         schemaVersion: GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
-        capability: GEOMETRY_MODULE_ASSEMBLY_CAPABILITY,
+        capability: GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
         runId,
         inputBundle: {
           fingerprint: command.bundle.fingerprint,

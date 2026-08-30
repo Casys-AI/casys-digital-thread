@@ -1,9 +1,10 @@
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertNotEquals } from "@std/assert";
 import {
   type CapabilityReference,
   ELECTRONICS_RUN_ADMITTED_SPICE_CAPABILITY,
   GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY,
   GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY,
+  GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
   GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY,
   MANUFACTURING_ESTIMATE_FFF_CAPABILITY,
   MANUFACTURING_OBSERVE_PRINTABILITY_CAPABILITY,
@@ -18,9 +19,15 @@ import {
   SIMULATION_RUN_QUALIFIED_MODELICA_CAPABILITY,
 } from "../../domain/capability/engineering-capability.ts";
 import {
+  DESIGN_PREPARE_GEOMETRY_MODULE_OPERATION,
   engineeringOperationRegistry,
   fingerprintRegisteredEngineeringOperationRegistry,
 } from "./registry.ts";
+import {
+  resolveRuntimePreparationPrerequisiteRegistry,
+  runtimePreparationPrerequisiteRegistryFingerprintPayload,
+} from "./runtime-preparation-prerequisite-closure.ts";
+import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 
 const qualified = (
   capability: CapabilityReference,
@@ -35,6 +42,9 @@ const DEMANDING_OPERATIONS = new Map<string, readonly ReturnType<typeof qualifie
   ["model.capture-part-definitions@1", [qualified(MODEL_INSPECT_SYSTEM_CAPABILITY)]],
   ["design.execute-build123d@1", [
     qualified(GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY),
+  ]],
+  ["design.prepare-geometry-module@1", [
+    qualified(GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY, "preparation"),
   ]],
   ["verify.observe-assembly-integrity@1", [
     qualified(GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY),
@@ -87,7 +97,7 @@ const DEMANDING_OPERATIONS = new Map<string, readonly ReturnType<typeof qualifie
 
 Deno.test("runtime demand is an exhaustive provider-neutral registry projection", async () => {
   const operations = engineeringOperationRegistry.list();
-  assertEquals(operations.length, 52);
+  assertEquals(operations.length, 53);
   assertEquals(Object.isFrozen(operations), true);
   assertEquals(operations.every((operation) => Object.isFrozen(operation)), true);
   assertEquals(
@@ -124,11 +134,39 @@ Deno.test("runtime demand is an exhaustive provider-neutral registry projection"
   );
   assertEquals(noneCount, 33);
 
+  const preparation = engineeringOperationRegistry.require(
+    DESIGN_PREPARE_GEOMETRY_MODULE_OPERATION,
+  );
+  assertEquals(preparation.execution, "planning-only");
+  assertEquals(preparation.prerequisiteOnly, true);
+  assertEquals(preparation.runtimePreparationPrerequisites, undefined);
+  assertEquals(
+    engineeringOperationRegistry.require({
+      id: "verify.observe-assembly-integrity",
+      version: "1",
+    }).runtimePreparationPrerequisites,
+    [DESIGN_PREPARE_GEOMETRY_MODULE_OPERATION],
+  );
+
   const first = await fingerprintRegisteredEngineeringOperationRegistry();
   const second = await engineeringOperationRegistry.fingerprint();
   assertEquals(first, second);
   assertEquals(first.algorithm, "sha256");
   assertEquals(first.digest.length, 64);
+  const closure = resolveRuntimePreparationPrerequisiteRegistry(
+    engineeringOperationRegistry,
+  );
+  const withoutPreparationEdges = await sha256Fingerprint({
+    ...runtimePreparationPrerequisiteRegistryFingerprintPayload(closure.entries()),
+    operations: closure.entries().map((operation) => ({
+      id: operation.id,
+      version: operation.version,
+      prerequisiteOnly: operation.prerequisiteOnly === true,
+      runtimeDemand: operation.runtimeDemand,
+      runtimePreparationPrerequisites: [],
+    })),
+  });
+  assertNotEquals(first, withoutPreparationEdges);
   assert(operations.every((operation) => {
     const demandKeys = Object.keys(operation.runtimeDemand).toSorted();
     if (operation.runtimeDemand.kind === "none") {

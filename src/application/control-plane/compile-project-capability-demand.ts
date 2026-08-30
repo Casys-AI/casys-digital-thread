@@ -6,8 +6,6 @@ import {
   type ProjectCapabilityWorkItemHistory,
 } from "../../domain/capability/project-capability-demand.ts";
 import {
-  compareEngineeringCapabilities,
-  engineeringCapabilityRequirementKey,
   flattenEngineeringCapabilityRequirements,
   type RequiredEngineeringCapability,
 } from "../../domain/capability/engineering-capability.ts";
@@ -25,10 +23,12 @@ import type {
   EngineeringWorkItemStatus,
 } from "../../domain/project/engineering-project.ts";
 import { leafRevisionIdsForActivity } from "../../domain/project/engineering-activity.ts";
-import type {
-  EngineeringOperationRuntimeDemand,
-  RegisteredEngineeringOperation,
-} from "../../orchestration/operations/operation-contract.ts";
+import {
+  type ResolvedRuntimePreparationPrerequisiteRegistry,
+  resolveRuntimePreparationPrerequisiteRegistry,
+  runtimePreparationPrerequisiteRegistryFingerprintPayload,
+  type RuntimePreparationPrerequisiteRegistryView,
+} from "../../orchestration/operations/runtime-preparation-prerequisite-closure.ts";
 
 interface CanonicalOperationGroup {
   readonly operation: { readonly id: string; readonly version: string };
@@ -36,12 +36,8 @@ interface CanonicalOperationGroup {
 }
 
 /** Complete trusted registry projection. It is never caller request data. */
-export interface EngineeringOperationRuntimeDemandRegistryView {
-  list(): readonly Pick<
-    RegisteredEngineeringOperation,
-    "id" | "version" | "runtimeDemand"
-  >[];
-}
+export interface EngineeringOperationRuntimeDemandRegistryView
+  extends RuntimePreparationPrerequisiteRegistryView {}
 
 /**
  * Server-composition seam for compiling an exact planned operation path into
@@ -58,31 +54,28 @@ export async function compileProjectCapabilityDemand(
 ): Promise<ProjectCapabilityDemand> {
   const approvedBriefBasis = requireApprovedPlanBasis(project);
   const plan = copyPlan(project.plan!);
-  const registryEntries = validateRegistry(registry);
+  const registryClosure = resolveRuntimePreparationPrerequisiteRegistry(registry);
   const projectSnapshot = {
     projectId: project.project.id,
     snapshotId: project.id,
     revision: project.revision,
   };
-  const registryFingerprint = await sha256Fingerprint({
-    schemaVersion: "engineering-operation-runtime-demand-registry/1.0",
-    operations: [...registryEntries.values()].map((entry) => ({
-      id: entry.operation.id,
-      version: entry.operation.version,
-      runtimeDemand: entry.runtimeDemand,
-    })),
-  });
+  const registryFingerprint = await sha256Fingerprint(
+    runtimePreparationPrerequisiteRegistryFingerprintPayload(
+      registryClosure.entries(),
+    ),
+  );
   const workItemHistory = collectWorkItemHistory(
     project.workItems,
-    registryEntries,
+    registryClosure,
   );
   const plannedCeiling = compileSlice(
     currentLeafWorkItems(project.workItems, false),
-    registryEntries,
+    registryClosure,
   );
   const jitDemand = compileSlice(
     currentLeafWorkItems(project.workItems, true),
-    registryEntries,
+    registryClosure,
   );
   const historyPathFingerprint = await sha256Fingerprint({
     projectSnapshot,
@@ -135,39 +128,9 @@ function copyPlan(plan: EngineeringProjectPlan): EngineeringProjectPlan {
   return structuredClone(plan);
 }
 
-interface RegistryRuntimeDemandEntry {
-  readonly operation: { readonly id: string; readonly version: string };
-  readonly runtimeDemand: EngineeringOperationRuntimeDemand;
-}
-
-function validateRegistry(
-  registry: EngineeringOperationRuntimeDemandRegistryView,
-): ReadonlyMap<string, RegistryRuntimeDemandEntry> {
-  const entries = new Map<string, RegistryRuntimeDemandEntry>();
-  for (const [index, entry] of registry.list().entries()) {
-    const operation = canonicalOperation(entry, `$registry.entries[${index}]`);
-    const key = operationKey(operation);
-    if (entries.has(key)) {
-      throw new TypeError(
-        `$registry.entries has duplicate operation ${operation.id}@${operation.version}.`,
-      );
-    }
-    entries.set(key, {
-      operation,
-      runtimeDemand: canonicalRuntimeDemand(
-        entry.runtimeDemand,
-        `$registry.entries[${index}].runtimeDemand`,
-      ),
-    });
-  }
-  return new Map(
-    [...entries.entries()].toSorted(([left], [right]) => compareText(left, right)),
-  );
-}
-
 function collectWorkItemHistory(
   workItems: readonly EngineeringWorkItem[],
-  registryEntries: ReadonlyMap<string, RegistryRuntimeDemandEntry>,
+  registryClosure: ResolvedRuntimePreparationPrerequisiteRegistry,
 ): readonly ProjectCapabilityWorkItemHistory[] {
   const workItemIds = new Set<string>();
   for (const workItem of workItems) {
@@ -189,7 +152,7 @@ function collectWorkItemHistory(
         `$project.workItems[${workItem.id}].operation`,
       )
       : null;
-    const registered = operation && registryEntries.has(operationKey(operation));
+    const registered = operation && registryClosure.has(operation);
     return {
       id: safeId(workItem.id, `$project.workItems[${workItem.id}].id`),
       activityId: safeId(
@@ -296,7 +259,7 @@ function assertActivityGraphs(workItems: readonly EngineeringWorkItem[]): void {
 
 function compileSlice(
   workItems: readonly EngineeringWorkItem[],
-  registryEntries: ReadonlyMap<string, RegistryRuntimeDemandEntry>,
+  registryClosure: ResolvedRuntimePreparationPrerequisiteRegistry,
 ): ProjectCapabilityDemandSlice {
   const groups = new Map<string, CanonicalOperationGroup>();
   for (const workItem of workItems) {
@@ -314,8 +277,7 @@ function compileSlice(
   const operationGroups: ProjectCapabilityOperationGroup[] = [];
   const requiredCapabilities: RequiredEngineeringCapability[] = [];
   for (const group of [...groups.values()].sort(compareOperationGroup)) {
-    const entry = registryEntries.get(operationKey(group.operation));
-    if (!entry) {
+    if (!registryClosure.has(group.operation)) {
       operationGroups.push({
         operation: group.operation,
         workItemIds: group.workItemIds.toSorted(compareText),
@@ -324,9 +286,14 @@ function compileSlice(
       });
       continue;
     }
-    const capabilities = entry.runtimeDemand.kind === "none"
-      ? []
-      : canonicalCapabilities(entry.runtimeDemand.capabilities);
+    const capabilities = flattenEngineeringCapabilityRequirements(
+      registryClosure.resolve([group.operation]).flatMap(
+        (entry) =>
+          entry.runtimeDemand.kind === "required"
+            ? entry.runtimeDemand.capabilities
+            : [],
+      ),
+    );
     operationGroups.push({
       operation: group.operation,
       workItemIds: group.workItemIds.toSorted(compareText),
@@ -346,36 +313,6 @@ function compileSlice(
   };
 }
 
-function canonicalRuntimeDemand(
-  value: EngineeringOperationRuntimeDemand,
-  path: string,
-): EngineeringOperationRuntimeDemand {
-  if (value.kind === "none") return { kind: "none" };
-  if (value.kind !== "required" || value.capabilities.length === 0) {
-    throw new TypeError(`${path} must be none or required with nonempty capabilities.`);
-  }
-  const capabilities = canonicalCapabilities(value.capabilities);
-  const seen = new Set<string>();
-  for (const capability of capabilities) {
-    const key = engineeringCapabilityRequirementKey(capability);
-    if (seen.has(key)) {
-      throw new TypeError(
-        `${path}.capabilities has duplicate ${capability.id}@${capability.version} ${capability.use}.`,
-      );
-    }
-    seen.add(key);
-  }
-  return { kind: "required", capabilities };
-}
-
-function canonicalCapabilities(
-  capabilities: readonly RequiredEngineeringCapability[],
-): RequiredEngineeringCapability[] {
-  return capabilities.map((capability, index) =>
-    canonicalCapability(capability, `$runtimeDemand.capabilities[${index}]`)
-  ).sort(compareEngineeringCapabilities);
-}
-
 function canonicalOperation(
   value: { readonly id: string; readonly version: string },
   path: string,
@@ -383,28 +320,6 @@ function canonicalOperation(
   return {
     id: safeId(value.id, `${path}.id`),
     version: exactVersionToken(value.version, `${path}.version`),
-  };
-}
-
-function canonicalCapability(
-  value: RequiredEngineeringCapability,
-  path: string,
-): RequiredEngineeringCapability {
-  const minimumQualification = value.minimumQualification;
-  if (minimumQualification !== "compatible" && minimumQualification !== "qualified") {
-    throw new TypeError(
-      `${path}.minimumQualification must be compatible or qualified.`,
-    );
-  }
-  const use = value.use;
-  if (use !== "preparation" && use !== "execution") {
-    throw new TypeError(`${path}.use must be preparation or execution.`);
-  }
-  return {
-    id: safeId(value.id, `${path}.id`),
-    version: exactVersionToken(value.version, `${path}.version`),
-    minimumQualification,
-    use,
   };
 }
 

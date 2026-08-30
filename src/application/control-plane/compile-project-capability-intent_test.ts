@@ -1,4 +1,4 @@
-import { assert, assertEquals, assertNotEquals } from "@std/assert";
+import { assert, assertEquals, assertNotEquals, assertRejects } from "@std/assert";
 import {
   type BriefCapabilityIntentOperationRegistryView,
   compileProjectCapabilityIntent,
@@ -10,6 +10,7 @@ import type {
 import {
   ELECTRONICS_RUN_ADMITTED_SPICE_CAPABILITY,
   GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY,
+  GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
   GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY,
   MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY,
   MECHANICS_OBSERVE_STATIC_STRUCTURAL_SENSITIVITY_CAPABILITY,
@@ -34,6 +35,7 @@ import {
   STATIC_STRUCTURAL_FEA_VERIFICATION_AUTHORITY,
 } from "../../orchestration/operations/brief-capability-intent-routes.ts";
 import { engineeringOperationRegistry } from "../../orchestration/operations/registry.ts";
+import type { RuntimePreparationPrerequisiteRegistryEntry } from "../../orchestration/operations/runtime-preparation-prerequisite-closure.ts";
 
 const MODEL: CapabilityReference = { id: "model.author-system", version: "1" };
 const GEOMETRY: CapabilityReference = {
@@ -118,6 +120,117 @@ Deno.test("the closed assembly-integrity route resolves through registered runti
   }]);
 });
 
+Deno.test("intent closes and deduplicates hidden preparation prerequisites", async () => {
+  const intent = await compileProjectCapabilityIntent(
+    briefOf([verification("gate-assembly", "Assembly", ASSEMBLY)]),
+    registryOf([
+      operation("verify.first", [qualified(GEOMETRY)], [{
+        id: "design.prepare-module",
+        version: "1",
+      }]),
+      operation("verify.second", [qualified(GEOMETRY)], [{
+        id: "design.prepare-module",
+        version: "1",
+      }]),
+      preparation(
+        "design.prepare-module",
+        qualified(GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY, "preparation"),
+      ),
+    ]),
+    routesOf([route(ASSEMBLY, ["verify.first", "verify.second"])]),
+  );
+
+  assertEquals(intent.status, "resolved");
+  assertEquals(intent.authorities, [{
+    authority: ASSEMBLY,
+    resolution: "resolved",
+    operations: [
+      { id: "verify.first", version: "1" },
+      { id: "verify.second", version: "1" },
+    ],
+  }]);
+  assertEquals(intent.capabilityRequirements, [
+    qualified(GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY, "preparation"),
+    qualified(GEOMETRY),
+  ]);
+});
+
+Deno.test("intent refuses absent, cyclic, and malformed runtime preparation prerequisites", async () => {
+  const brief = briefOf([verification("gate-assembly", "Assembly", ASSEMBLY)]);
+  const routes = routesOf([route(ASSEMBLY, ["verify.assembly"])]);
+
+  await assertRejects(
+    () =>
+      compileProjectCapabilityIntent(
+        brief,
+        registryOf([
+          operation("verify.assembly", [qualified(GEOMETRY)], [{
+            id: "design.prepare-missing",
+            version: "1",
+          }]),
+        ]),
+        routes,
+      ),
+    TypeError,
+    "absent runtime preparation prerequisite",
+  );
+  await assertRejects(
+    () =>
+      compileProjectCapabilityIntent(
+        brief,
+        registryOf([
+          operation("verify.assembly", [qualified(GEOMETRY)], [{
+            id: "design.prepare-a",
+            version: "1",
+          }]),
+          preparation("design.prepare-a", qualified(GEOMETRY, "preparation"), [{
+            id: "design.prepare-b",
+            version: "1",
+          }]),
+          preparation("design.prepare-b", qualified(GEOMETRY, "preparation"), [{
+            id: "design.prepare-a",
+            version: "1",
+          }]),
+        ]),
+        routes,
+      ),
+    TypeError,
+    "prerequisite cycle",
+  );
+  await assertRejects(
+    () =>
+      compileProjectCapabilityIntent(
+        brief,
+        registryOf([
+          operation("verify.assembly", [qualified(GEOMETRY)], [{
+            id: "design.not-planning-only",
+            version: "1",
+          }]),
+          operation("design.not-planning-only", [qualified(GEOMETRY)]),
+        ]),
+        routes,
+      ),
+    TypeError,
+    "must be planning-only and prerequisite-only",
+  );
+  await assertRejects(
+    () =>
+      compileProjectCapabilityIntent(
+        brief,
+        registryOf([
+          operation("verify.assembly", [qualified(GEOMETRY)], [{
+            id: "design.not-preparation",
+            version: "1",
+          }]),
+          preparation("design.not-preparation", qualified(GEOMETRY)),
+        ]),
+        routes,
+      ),
+    TypeError,
+    "exactly one preparation capability",
+  );
+});
+
 Deno.test("the real route table and registry forecast the complete admitted lamp vertical", async () => {
   const intent = await compileProjectCapabilityIntent(
     briefOf([
@@ -145,6 +258,7 @@ Deno.test("the real route table and registry forecast the complete admitted lamp
   assertEquals(intent.capabilityRequirements, [
     qualified(ELECTRONICS_RUN_ADMITTED_SPICE_CAPABILITY),
     qualified(GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY, "preparation"),
+    qualified(GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY, "preparation"),
     qualified(GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY),
     qualified(MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY),
     qualified(MODEL_EVALUATE_REQUIREMENT_CAPABILITY),
@@ -468,7 +582,7 @@ function routesOf(
 }
 
 function registryOf(
-  entries: readonly ReturnType<typeof operation>[],
+  entries: readonly RuntimePreparationPrerequisiteRegistryEntry[],
 ): BriefCapabilityIntentOperationRegistryView {
   return { list: () => entries };
 }
@@ -486,11 +600,39 @@ function route(
 function operation(
   id: string,
   capabilities: readonly RequiredEngineeringCapability[],
-) {
+  runtimePreparationPrerequisites: readonly {
+    readonly id: string;
+    readonly version: string;
+  }[] = [],
+): RuntimePreparationPrerequisiteRegistryEntry {
   return {
     id,
     version: "1",
+    execution: "trusted",
     runtimeDemand: { kind: "required" as const, capabilities },
+    ...(runtimePreparationPrerequisites.length === 0
+      ? {}
+      : { runtimePreparationPrerequisites }),
+  };
+}
+
+function preparation(
+  id: string,
+  capability: RequiredEngineeringCapability,
+  runtimePreparationPrerequisites: readonly {
+    readonly id: string;
+    readonly version: string;
+  }[] = [],
+): RuntimePreparationPrerequisiteRegistryEntry {
+  return {
+    id,
+    version: "1",
+    execution: "planning-only",
+    prerequisiteOnly: true,
+    runtimeDemand: { kind: "required", capabilities: [capability] },
+    ...(runtimePreparationPrerequisites.length === 0
+      ? {}
+      : { runtimePreparationPrerequisites }),
   };
 }
 

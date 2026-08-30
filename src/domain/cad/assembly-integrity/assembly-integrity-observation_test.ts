@@ -12,9 +12,9 @@ import {
 } from "../geometry-module-contract.ts";
 import {
   GEOMETRY_MODULE_ASSEMBLY_ASSETS,
-  GEOMETRY_MODULE_ASSEMBLY_CAPABILITY,
   GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
 } from "../module-assembly/geometry-module-assembly-receipt.ts";
+import { GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY } from "../../capability/engineering-capability.ts";
 import { createGeometryModuleInputBundle } from "../module-assembly/geometry-module-input-bundle.ts";
 import { parseGeometryModuleCapture } from "../canonical/geometry-module-capture.ts";
 import {
@@ -847,7 +847,7 @@ async function validSource(
   const runId = "run-module-assembly";
   const receipt = {
     schemaVersion: GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
-    capability: GEOMETRY_MODULE_ASSEMBLY_CAPABILITY,
+    capability: GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
     runId,
     inputBundle: {
       fingerprint: childBundle.fingerprint,

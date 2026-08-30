@@ -1,5 +1,6 @@
 import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
 import {
+  DESIGN_PREPARE_GEOMETRY_MODULE_OPERATION,
   engineeringOperationRegistry,
   EngineeringOperationRegistryError,
   getRegisteredEngineeringOperation,
@@ -386,6 +387,34 @@ Deno.test("assembly-integrity observation is trusted and binds exactly one canon
       EngineeringOperationRegistryError,
     );
     assertEquals(error.code, "invalid_bindings");
+  }
+});
+
+Deno.test("runtime preparation prerequisites are invisible to direct planning and queueing", () => {
+  for (const stage of ["planning", "queue"] as const) {
+    const error = assertThrows(
+      () =>
+        validateRegisteredEngineeringOperationInput(
+          stage === "planning"
+            ? {
+              operation: {
+                ...DESIGN_PREPARE_GEOMETRY_MODULE_OPERATION,
+                bindings: [],
+              },
+              stage,
+            }
+            : {
+              operation: {
+                ...DESIGN_PREPARE_GEOMETRY_MODULE_OPERATION,
+                bindings: [],
+              },
+              stage,
+              basisKind: "thread-snapshot",
+            },
+        ),
+      EngineeringOperationRegistryError,
+    );
+    assertEquals(error.code, "prerequisite_only");
   }
 });
 

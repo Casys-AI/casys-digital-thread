@@ -4,6 +4,7 @@ import type {
   AllowedEngineeringCapability,
   RequiredEngineeringCapability,
 } from "../../domain/capability/engineering-capability.ts";
+import { GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY } from "../../domain/capability/engineering-capability.ts";
 import type {
   EngineeringApprovedBriefBasis,
   EngineeringProjectSnapshot,
@@ -17,6 +18,7 @@ import {
   engineeringOperationRegistry,
   fingerprintRegisteredEngineeringOperationRegistry,
 } from "../../orchestration/operations/registry.ts";
+import type { RuntimePreparationPrerequisiteRegistryEntry } from "../../orchestration/operations/runtime-preparation-prerequisite-closure.ts";
 
 const APPROVED_BRIEF_BASIS: EngineeringApprovedBriefBasis = {
   kind: "approved-brief",
@@ -31,6 +33,11 @@ const APPROVED_BRIEF_BASIS: EngineeringApprovedBriefBasis = {
 
 const AUTHOR = capability("model.author-system", "qualified");
 const STATIC = capability("mechanics.solve-static-structural", "qualified");
+const MODULE_PREPARATION: RequiredEngineeringCapability = {
+  ...GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
+  minimumQualification: "qualified",
+  use: "preparation",
+};
 
 Deno.test("V2 demand retains every revision while ceiling and JIT use exact current leaves", async () => {
   const demand = await compileProjectCapabilityDemand(
@@ -230,6 +237,96 @@ Deno.test("compiler registry fingerprint is identical to the full registry ident
   );
 });
 
+Deno.test("demand closes and deduplicates hidden preparation prerequisites", async () => {
+  const demand = await compileProjectCapabilityDemand(
+    project([
+      workItem("first", "activity:first", "ready", "verify.first", "1"),
+      workItem("second", "activity:second", "ready", "verify.second", "1"),
+    ]),
+    registry([
+      required("verify.first", "1", [AUTHOR], [{
+        id: "design.prepare-module",
+        version: "1",
+      }]),
+      required("verify.second", "1", [AUTHOR], [{
+        id: "design.prepare-module",
+        version: "1",
+      }]),
+      preparation("design.prepare-module", "1", [MODULE_PREPARATION]),
+    ]),
+  );
+
+  assertEquals(demand.status, "resolved");
+  assertEquals(demand.plannedCeiling.operationGroups, [
+    resolved("verify.first", "1", ["first"], [MODULE_PREPARATION, AUTHOR]),
+    resolved("verify.second", "1", ["second"], [MODULE_PREPARATION, AUTHOR]),
+  ]);
+  assertEquals(demand.plannedCeiling.capabilityRequirements, [
+    MODULE_PREPARATION,
+    AUTHOR,
+  ]);
+});
+
+Deno.test("demand refuses absent, cyclic, and non-unique preparation prerequisites", async () => {
+  const subject = project([
+    workItem("assembly", "activity:assembly", "ready", "verify.assembly", "1"),
+  ]);
+  await assertRejects(
+    () =>
+      compileProjectCapabilityDemand(
+        subject,
+        registry([
+          required("verify.assembly", "1", [AUTHOR], [{
+            id: "design.prepare-missing",
+            version: "1",
+          }]),
+        ]),
+      ),
+    TypeError,
+    "absent runtime preparation prerequisite",
+  );
+  await assertRejects(
+    () =>
+      compileProjectCapabilityDemand(
+        subject,
+        registry([
+          required("verify.assembly", "1", [AUTHOR], [{
+            id: "design.prepare-a",
+            version: "1",
+          }]),
+          preparation("design.prepare-a", "1", [MODULE_PREPARATION], [{
+            id: "design.prepare-b",
+            version: "1",
+          }]),
+          preparation("design.prepare-b", "1", [MODULE_PREPARATION], [{
+            id: "design.prepare-a",
+            version: "1",
+          }]),
+        ]),
+      ),
+    TypeError,
+    "prerequisite cycle",
+  );
+  await assertRejects(
+    () =>
+      compileProjectCapabilityDemand(
+        subject,
+        registry([
+          required("verify.assembly", "1", [AUTHOR], [{
+            id: "design.prepare-many",
+            version: "1",
+          }]),
+          preparation("design.prepare-many", "1", [
+            MODULE_PREPARATION,
+            { ...MODULE_PREPARATION, id: "geometry.module.alternative" },
+          ]),
+        ]),
+      ),
+    TypeError,
+    "exactly one preparation capability",
+  );
+});
+
 Deno.test("V2 fails closed on malformed lifecycle histories and registry demand", async () => {
   await assertRejects(
     () =>
@@ -352,16 +449,57 @@ function required(
   id: string,
   version: string,
   capabilities: readonly RequiredEngineeringCapability[],
-) {
-  return { id, version, runtimeDemand: { kind: "required" as const, capabilities } };
+  runtimePreparationPrerequisites: readonly {
+    readonly id: string;
+    readonly version: string;
+  }[] = [],
+): RuntimePreparationPrerequisiteRegistryEntry {
+  return {
+    id,
+    version,
+    execution: "trusted",
+    runtimeDemand: { kind: "required" as const, capabilities },
+    ...(runtimePreparationPrerequisites.length === 0
+      ? {}
+      : { runtimePreparationPrerequisites }),
+  };
 }
 
-function none(id: string, version: string) {
-  return { id, version, runtimeDemand: { kind: "none" as const } };
+function preparation(
+  id: string,
+  version: string,
+  capabilities: readonly RequiredEngineeringCapability[],
+  runtimePreparationPrerequisites: readonly {
+    readonly id: string;
+    readonly version: string;
+  }[] = [],
+): RuntimePreparationPrerequisiteRegistryEntry {
+  return {
+    id,
+    version,
+    execution: "planning-only",
+    prerequisiteOnly: true,
+    runtimeDemand: { kind: "required" as const, capabilities },
+    ...(runtimePreparationPrerequisites.length === 0
+      ? {}
+      : { runtimePreparationPrerequisites }),
+  };
+}
+
+function none(
+  id: string,
+  version: string,
+): RuntimePreparationPrerequisiteRegistryEntry {
+  return {
+    id,
+    version,
+    execution: "trusted",
+    runtimeDemand: { kind: "none" as const },
+  };
 }
 
 function registry(
-  entries: readonly (ReturnType<typeof required> | ReturnType<typeof none>)[],
+  entries: readonly RuntimePreparationPrerequisiteRegistryEntry[],
 ): EngineeringOperationRuntimeDemandRegistryView {
   return { list: () => entries };
 }

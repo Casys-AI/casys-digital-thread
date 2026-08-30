@@ -67,6 +67,17 @@ export const GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY = Object.freeze(
   } as const satisfies CapabilityReference,
 );
 
+/**
+ * Server-owned assembly of exact immediate child geometry into a compound
+ * module. This semantic capability does not select a provider or runtime.
+ */
+export const GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY = Object.freeze(
+  {
+    id: "geometry.module.immediate-compound",
+    version: "1.0",
+  } as const satisfies CapabilityReference,
+);
+
 export const SIMULATION_RUN_QUALIFIED_MODELICA_CAPABILITY = Object.freeze(
   {
     id: "simulation.run-qualified-modelica",

@@ -1,9 +1,9 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { GeometryModuleAssemblyError } from "../../../application/ports/out/cad/module-assembly/geometry-module-assembler.ts";
 import {
-  GEOMETRY_MODULE_ASSEMBLY_CAPABILITY,
   GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
 } from "../../../domain/cad/module-assembly/geometry-module-assembly-receipt.ts";
+import { GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY } from "../../../domain/capability/engineering-capability.ts";
 import {
   GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
   GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
@@ -69,7 +69,10 @@ Deno.test("fixed module assembler normalizes native evidence behind the neutral 
   });
   assertEquals(world.runner.requests.length, 1);
   assertEquals(result.receipt.schemaVersion, GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA);
-  assertEquals(result.receipt.capability, GEOMETRY_MODULE_ASSEMBLY_CAPABILITY);
+  assertEquals(
+    result.receipt.capability,
+    GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
+  );
   assertEquals(
     result.receipt.implementation.id,
     FIXED_GEOMETRY_MODULE_ASSEMBLER_IMPLEMENTATION.id,

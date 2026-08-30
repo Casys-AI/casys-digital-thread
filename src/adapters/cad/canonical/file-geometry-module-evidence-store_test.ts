@@ -1,7 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import {
   GEOMETRY_MODULE_ASSEMBLY_ASSETS,
-  GEOMETRY_MODULE_ASSEMBLY_CAPABILITY,
   GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
   GEOMETRY_MODULE_CAPTURE_SCHEMA,
   GEOMETRY_MODULE_CHILD_STEP_MEDIA_TYPE,
@@ -16,6 +15,7 @@ import {
   type GeometryModuleDraftCapture,
   type GeometryModuleManifest,
 } from "../../../domain/cad/canonical/geometry-module-evidence.ts";
+import { GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY } from "../../../domain/capability/engineering-capability.ts";
 import { GEOMETRY_PART_CAPTURE_SCHEMA } from "../../../domain/cad/canonical/geometry-part-manifest.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../../domain/cad/canonical/geometry-proposal.ts";
 import { validateGeometryModuleInputBundleManifest } from "../../../domain/cad/module-assembly/geometry-module-input-bundle.ts";
@@ -103,7 +103,7 @@ async function fixture() {
   const assemblyGlb = { fingerprint: fp(glbDigest), bytes: GLB_BYTES.byteLength };
   const receipt = {
     schemaVersion: GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
-    capability: GEOMETRY_MODULE_ASSEMBLY_CAPABILITY,
+    capability: GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
     runId,
     inputBundle: {
       fingerprint: inputBundle.fingerprint,

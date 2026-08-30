@@ -10,6 +10,7 @@ import {
   ELECTRONICS_RUN_ADMITTED_SPICE_CAPABILITY,
   GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY,
   GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY,
+  GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
   GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY,
   MANUFACTURING_ESTIMATE_FFF_CAPABILITY,
   MANUFACTURING_OBSERVE_PRINTABILITY_CAPABILITY,
@@ -103,10 +104,21 @@ import {
   type RegisteredEngineeringOperationInput,
   type ValidatedRegisteredEngineeringOperationInput,
 } from "./operation-contract.ts";
+import {
+  resolveRuntimePreparationPrerequisiteRegistry,
+  runtimePreparationPrerequisiteRegistryFingerprintPayload,
+} from "./runtime-preparation-prerequisite-closure.ts";
 
 export * from "./operation-contract.ts";
 
 const NO_RUNTIME_DEMAND = Object.freeze({ kind: "none" } as const);
+
+export const DESIGN_PREPARE_GEOMETRY_MODULE_OPERATION = Object.freeze(
+  {
+    id: "design.prepare-geometry-module",
+    version: "1",
+  } as const,
+);
 
 function qualifiedCapability(
   capability: CapabilityReference,
@@ -419,6 +431,31 @@ const OPERATIONS = [
     }],
   },
   /**
+   * Internal capability preparation for the exact immediate-compound geometry
+   * module. It is resolved only as a prerequisite of a registered operation;
+   * no caller can plan, queue, or execute it as a work item.
+   */
+  {
+    id: DESIGN_PREPARE_GEOMETRY_MODULE_OPERATION.id,
+    version: DESIGN_PREPARE_GEOMETRY_MODULE_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Prepare the immediate-compound geometry module runtime",
+    description:
+      "Internal preparation-only prerequisite for server-owned immediate-compound geometry module assembly. It accepts no caller binding and grants no geometry, evidence, verdict, provider, runtime, or execution authority.",
+    workItemKind: "design",
+    riskClass: "low",
+    execution: "planning-only",
+    prerequisiteOnly: true,
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(
+        GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
+        "preparation",
+      ),
+    ),
+    bindings: [],
+  },
+  /**
    * Trusted factual assembly-integrity observation.
    *
    * Its executor reopens a human-approved exact module and profile, records
@@ -440,6 +477,9 @@ const OPERATIONS = [
     runtimeDemand: requiredRuntimeDemand(
       qualifiedCapability(GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY),
     ),
+    runtimePreparationPrerequisites: [
+      DESIGN_PREPARE_GEOMETRY_MODULE_OPERATION,
+    ],
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: "geometryModule",
@@ -1660,14 +1700,12 @@ export function listRegisteredEngineeringOperations(): readonly RegisteredEngine
 export function fingerprintRegisteredEngineeringOperationRegistry(): Promise<
   ContentFingerprint
 > {
-  return sha256Fingerprint({
-    schemaVersion: "engineering-operation-runtime-demand-registry/1.0",
-    operations: listRegisteredEngineeringOperations().map((operation) => ({
-      id: operation.id,
-      version: operation.version,
-      runtimeDemand: operation.runtimeDemand,
-    })),
-  });
+  const closure = resolveRuntimePreparationPrerequisiteRegistry(
+    { list: listRegisteredEngineeringOperations },
+  );
+  return sha256Fingerprint(
+    runtimePreparationPrerequisiteRegistryFingerprintPayload(closure.entries()),
+  );
 }
 
 /** Return the one bounded V1 intake operation for a product starting point. */
@@ -1709,6 +1747,16 @@ export function validateRegisteredEngineeringOperationInput(
   };
   const bindings = bindingsValue(referenceRecord.bindings);
   const operation = requireRegisteredEngineeringOperation(reference);
+  if (operation.prerequisiteOnly) {
+    throw new EngineeringOperationRegistryError(
+      "prerequisite_only",
+      `${
+        operationLabel(reference)
+      } is an internal runtime preparation prerequisite and cannot be ${
+        stage === "planning" ? "planned" : "queued"
+      }.`,
+    );
+  }
   const basisKind = stage === "queue"
     ? basisKindValue(input.basisKind, "operation input.basisKind")
     : undefined;
@@ -1975,6 +2023,15 @@ function copyOperation(
     ...operation,
     allowedBasisKinds: [...operation.allowedBasisKinds],
     runtimeDemand: copyRuntimeDemand(operation.runtimeDemand),
+    ...(operation.runtimePreparationPrerequisites
+      ? {
+        runtimePreparationPrerequisites: operation.runtimePreparationPrerequisites.map((
+          reference,
+        ) => ({
+          ...reference,
+        })),
+      }
+      : {}),
     ...(operation.requiresDependsOnOperation
       ? { requiresDependsOnOperation: { ...operation.requiresDependsOnOperation } }
       : {}),
@@ -1996,6 +2053,15 @@ function immutableOperationCopy(
     ...copy,
     allowedBasisKinds: Object.freeze([...copy.allowedBasisKinds]),
     runtimeDemand: immutableRuntimeDemand(copy.runtimeDemand),
+    ...(copy.runtimePreparationPrerequisites
+      ? {
+        runtimePreparationPrerequisites: Object.freeze(
+          copy.runtimePreparationPrerequisites.map((reference) =>
+            Object.freeze({ ...reference })
+          ),
+        ),
+      }
+      : {}),
     ...(copy.requiresDependsOnOperation
       ? {
         requiresDependsOnOperation: Object.freeze({

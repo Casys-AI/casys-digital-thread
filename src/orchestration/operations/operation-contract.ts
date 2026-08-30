@@ -22,6 +22,12 @@ export type EngineeringOperationRiskClass = "low" | "consequential";
 
 export type EngineeringOperationExecution = "trusted" | "planning-only";
 
+/** Exact code-owned operation reference used only for runtime preparation. */
+export interface EngineeringOperationRuntimePreparationPrerequisite {
+  readonly id: string;
+  readonly version: string;
+}
+
 /** Explicit semantic runtime ceiling of one registered operation. */
 export type EngineeringOperationRuntimeDemand =
   | { readonly kind: "none" }
@@ -58,6 +64,15 @@ export interface RegisteredEngineeringOperation {
    * provider, package, image, endpoint, tool, argument, port, or secret.
    */
   readonly runtimeDemand: EngineeringOperationRuntimeDemand;
+  /**
+   * Closed, server-owned preparation closure. Every target must be a
+   * planning-only prerequisite operation with exactly one preparation demand.
+   * It is never an agent-plan or queue dependency.
+   */
+  readonly runtimePreparationPrerequisites?:
+    readonly EngineeringOperationRuntimePreparationPrerequisite[];
+  /** Excludes this descriptor from caller-visible planning and queueing. */
+  readonly prerequisiteOnly?: true;
   readonly resolvedOperationPlan?: "2.0";
   readonly decisionEvidenceScope?: "thread-entity-bindings";
   readonly requiresAdditiveChange?: true;
@@ -107,7 +122,7 @@ export interface EngineeringOperationRegistry {
   ): RegisteredEngineeringOperation | undefined;
   /** Immutable copies of every exact registered operation. */
   list(): readonly RegisteredEngineeringOperation[];
-  /** Deterministic fingerprint of exact id/version/runtime-demand entries. */
+  /** Deterministic fingerprint of exact demand entries and preparation edges. */
   fingerprint(): Promise<ContentFingerprint>;
   validate(input: unknown): ValidatedRegisteredEngineeringOperationInput;
 }
@@ -115,6 +130,7 @@ export interface EngineeringOperationRegistry {
 export type EngineeringOperationRegistryErrorCode =
   | "invalid_input"
   | "unknown_operation"
+  | "prerequisite_only"
   | "unsupported_basis"
   | "invalid_bindings";
 

@@ -6,7 +6,9 @@ Audience: both · Diátaxis: reference · Kind: contract
 ceiling compiled from one immutable engineering-project snapshot and the code-owned
 registered-operation registry. It is not a runtime plan.
 
-The registry declares exactly one `runtimeDemand` for every registered operation:
+The registry declares exactly one `runtimeDemand` for every registered operation. It may
+also declare closed `runtimePreparationPrerequisites`: exact internal operation references
+which resolve only for the owning operation's demand, never as caller-planned work:
 
 - `{ kind: "none" }` means the operation is resolved and requires no runtime capability;
 - `{ kind: "required", capabilities: [...] }` names one or more versioned semantic
@@ -61,7 +63,7 @@ The four deterministic SHA-256 fingerprints have separate meanings:
 
 | Fingerprint                 | Binds                                                                        |
 | --------------------------- | ---------------------------------------------------------------------------- |
-| `registryFingerprint`       | Every registered operation id/version/runtime demand, including `none`       |
+| `registryFingerprint`       | Every registered operation id/version/runtime demand, `prerequisiteOnly` marker and preparation-prerequisite edge, including `none` |
 | `historyPathFingerprint`    | Project snapshot, brief, plan, registry and full canonical work-item history |
 | `plannedCeilingFingerprint` | Only the exact current authorization ceiling                                 |
 | `jitDemandFingerprint`      | Only the ready/in-progress demand slice                                      |

@@ -2,7 +2,6 @@ import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import {
   encodeGeometryModuleDecisionParameters,
   GEOMETRY_MODULE_ASSEMBLY_ASSETS,
-  GEOMETRY_MODULE_ASSEMBLY_CAPABILITY,
   GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
   GEOMETRY_MODULE_CAPTURE_SCHEMA,
   GEOMETRY_MODULE_CHILD_STEP_MEDIA_TYPE,
@@ -27,6 +26,7 @@ import {
   parseGeometryModuleDraftCapture,
   parseGeometryModuleManifest,
 } from "./geometry-module-evidence.ts";
+import { GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY } from "../../capability/engineering-capability.ts";
 import { GEOMETRY_PART_CAPTURE_SCHEMA } from "./geometry-part-manifest.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "./geometry-proposal.ts";
 import { validateGeometryModuleInputBundleManifest } from "../module-assembly/geometry-module-input-bundle.ts";
@@ -172,8 +172,8 @@ async function assemblyAssets(
   const receipt = {
     schemaVersion: GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
     capability: {
-      id: overrides.capabilityId ?? GEOMETRY_MODULE_ASSEMBLY_CAPABILITY.id,
-      version: GEOMETRY_MODULE_ASSEMBLY_CAPABILITY.version,
+      id: overrides.capabilityId ?? GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY.id,
+      version: GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY.version,
     },
     runId,
     inputBundle: {
@@ -551,7 +551,10 @@ Deno.test("module draft binds the input bundle, neutral assembly receipt, child 
     draft.receipt.inputBundle.fingerprint,
     assets.bundle.fingerprint,
   );
-  assertEquals(draft.receipt.capability, GEOMETRY_MODULE_ASSEMBLY_CAPABILITY);
+  assertEquals(
+    draft.receipt.capability,
+    GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
+  );
   assertEquals(draft.receipt.implementation.id, "fixture-neutral-cad-assembler");
   assertEquals(draft.children[0]?.authoritativeStep, assets.armStep);
   assertEquals(Object.hasOwn(draft, "script"), false);

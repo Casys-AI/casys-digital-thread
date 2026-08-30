@@ -7,8 +7,6 @@ import {
   type UnresolvedProjectCapabilityIntentAuthority,
 } from "../../domain/capability/project-capability-intent.ts";
 import {
-  compareEngineeringCapabilities,
-  engineeringCapabilityRequirementKey,
   flattenEngineeringCapabilityRequirements,
   type RequiredEngineeringCapability,
 } from "../../domain/capability/engineering-capability.ts";
@@ -24,26 +22,17 @@ import type {
   BriefCapabilityIntentRouteTable,
 } from "../../orchestration/operations/brief-capability-intent-routes.ts";
 import { briefCapabilityIntentRouteTable } from "../../orchestration/operations/brief-capability-intent-routes.ts";
-import type {
-  EngineeringOperationRuntimeDemand,
-  RegisteredEngineeringOperation,
-} from "../../orchestration/operations/operation-contract.ts";
+import {
+  resolveRuntimePreparationPrerequisiteRegistry,
+  type RuntimePreparationPrerequisiteRegistryView,
+} from "../../orchestration/operations/runtime-preparation-prerequisite-closure.ts";
 
 /**
  * Trusted server projection of the operation registry. The caller never
  * supplies operations, runtime demands, or a capability list.
  */
-export interface BriefCapabilityIntentOperationRegistryView {
-  list(): readonly Pick<
-    RegisteredEngineeringOperation,
-    "id" | "version" | "runtimeDemand"
-  >[];
-}
-
-interface RegistryOperation {
-  readonly operation: ProjectCapabilityIntentOperationReference;
-  readonly runtimeDemand: EngineeringOperationRuntimeDemand;
-}
+export interface BriefCapabilityIntentOperationRegistryView
+  extends RuntimePreparationPrerequisiteRegistryView {}
 
 interface CanonicalRoute {
   readonly authority: ProjectCapabilityIntentAuthorityReference;
@@ -62,7 +51,7 @@ export async function compileProjectCapabilityIntent(
   registry: BriefCapabilityIntentOperationRegistryView,
   routes: BriefCapabilityIntentRouteTable = briefCapabilityIntentRouteTable,
 ): Promise<ProjectCapabilityIntent> {
-  const registryEntries = canonicalRegistry(registry);
+  const registryClosure = resolveRuntimePreparationPrerequisiteRegistry(registry);
   const routeEntries = canonicalRoutes(routes);
   const authorities = canonicalBriefAuthorities(brief);
   const resolutions: ProjectCapabilityIntentAuthorityResolution[] = [];
@@ -79,7 +68,7 @@ export async function compileProjectCapabilityIntent(
       continue;
     }
     const missingOperations = route.operations.filter((operation) =>
-      !registryEntries.has(operationKey(operation))
+      !registryClosure.has(operation)
     );
     if (missingOperations.length > 0) {
       resolutions.push(
@@ -87,13 +76,7 @@ export async function compileProjectCapabilityIntent(
       );
       continue;
     }
-    for (const operation of route.operations) {
-      const registered = registryEntries.get(operationKey(operation));
-      if (!registered) {
-        throw new TypeError(
-          `Registry operation ${operation.id}@${operation.version} disappeared during intent compilation.`,
-        );
-      }
+    for (const registered of registryClosure.resolve(route.operations)) {
       if (registered.runtimeDemand.kind === "required") {
         requirements.push(...registered.runtimeDemand.capabilities);
       }
@@ -174,76 +157,6 @@ function canonicalRoutes(
   return new Map(
     [...result.entries()].toSorted(([left], [right]) => compareText(left, right)),
   );
-}
-
-function canonicalRegistry(
-  registry: BriefCapabilityIntentOperationRegistryView,
-): ReadonlyMap<string, RegistryOperation> {
-  const result = new Map<string, RegistryOperation>();
-  for (const [index, candidate] of registry.list().entries()) {
-    const operation = canonicalOperation(candidate, `$registry[${index}]`);
-    const key = operationKey(operation);
-    if (result.has(key)) {
-      throw new TypeError(
-        `$registry has duplicate operation ${operation.id}@${operation.version}.`,
-      );
-    }
-    result.set(key, {
-      operation,
-      runtimeDemand: canonicalRuntimeDemand(
-        candidate.runtimeDemand,
-        `$registry[${index}].runtimeDemand`,
-      ),
-    });
-  }
-  return new Map(
-    [...result.entries()].toSorted(([left], [right]) => compareText(left, right)),
-  );
-}
-
-function canonicalRuntimeDemand(
-  value: EngineeringOperationRuntimeDemand,
-  path: string,
-): EngineeringOperationRuntimeDemand {
-  if (value.kind === "none") return { kind: "none" };
-  if (value.kind !== "required" || value.capabilities.length === 0) {
-    throw new TypeError(`${path} must be none or required with nonempty capabilities.`);
-  }
-  const capabilities = value.capabilities.map((capability, index) =>
-    canonicalCapability(capability, `${path}.capabilities[${index}]`)
-  ).toSorted(compareEngineeringCapabilities);
-  const seen = new Set<string>();
-  for (const capability of capabilities) {
-    const key = engineeringCapabilityRequirementKey(capability);
-    if (seen.has(key)) {
-      throw new TypeError(`${path}.capabilities has duplicate ${key}.`);
-    }
-    seen.add(key);
-  }
-  return { kind: "required", capabilities };
-}
-
-function canonicalCapability(
-  value: RequiredEngineeringCapability,
-  path: string,
-): RequiredEngineeringCapability {
-  if (
-    value.minimumQualification !== "compatible" &&
-    value.minimumQualification !== "qualified"
-  ) {
-    throw new TypeError(
-      `${path}.minimumQualification must be compatible or qualified.`,
-    );
-  }
-  if (value.use !== "preparation" && value.use !== "execution") {
-    throw new TypeError(`${path}.use must be preparation or execution.`);
-  }
-  return {
-    id: safeId(value.id, `${path}.id`),
-    version: exactVersionToken(value.version, `${path}.version`),
-    minimumQualification: value.minimumQualification,
-    use: value.use,
-  };
 }
 
 function canonicalAuthority(
