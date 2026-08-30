@@ -177,6 +177,167 @@ Deno.test("JIT session rechecks inside group activation before a revoked capabil
   assertEquals(await leases.listActive(AT), []);
 });
 
+Deno.test("a queued run resumes only its exact durable pre-claim persistent lease", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  const operation = persistentOperation();
+  const activation: {
+    readonly reuseExistingLease: "allow" | "reject";
+    readonly queuedPreclaimResumeOwner: CapabilityRuntimeLease["executionOwner"];
+  }[] = [];
+  let firstActivation = true;
+  const coordinator = new CapabilityRuntimeExecutionSessionCoordinator({
+    contexts: contextFor(),
+    leases,
+    groups: {
+      ensureActive: async (input: {
+        readonly group: CapabilityRuntimeLaunchGroupReference;
+        readonly lease: CapabilityRuntimeLease;
+        readonly reuseExistingLease: "allow" | "reject";
+        readonly queuedPreclaimResumeOwner?: CapabilityRuntimeLease["executionOwner"];
+      }) => {
+        activation.push({
+          reuseExistingLease: input.reuseExistingLease,
+          queuedPreclaimResumeOwner: input.queuedPreclaimResumeOwner,
+        });
+        const claim = await leases.claim(input.lease);
+        if (claim.status === "existing" && input.reuseExistingLease === "reject") {
+          throw new Error("H1 rejects an external queued lease claim");
+        }
+        if (firstActivation) {
+          firstActivation = false;
+          throw new Error("H1 persistent activation failed before the agent run claim");
+        }
+        return {
+          group: input.group,
+          states: new Map([[input.group.id, {
+            material: "installed" as const,
+            runtime: "active" as const,
+          }]]),
+          leaseDisposition: claim.status === "created"
+            ? "created" as const
+            : "reused" as const,
+          mutation: undefined,
+        };
+      },
+      releaseTerminal: async (input: { readonly leaseId: string }) => {
+        await leases.release(input.leaseId);
+      },
+    } as never,
+    now: () => AT,
+  });
+  const project = projectFor("queued", true);
+
+  await assertRejects(
+    () =>
+      coordinator.begin({
+        project,
+        runId: "run:session",
+        operationalCapability: operation,
+        microsandboxExecutionProfiles: [],
+        recheck: () => Promise.resolve(operation),
+      }),
+    Error,
+    "persistent activation failed",
+  );
+  const retained = (await leases.listActive(AT))[0]!;
+
+  const session = await coordinator.begin({
+    project,
+    runId: "run:session",
+    operationalCapability: operation,
+    microsandboxExecutionProfiles: [],
+    recheck: () => Promise.resolve(operation),
+  });
+
+  assertEquals(activation, [{
+    reuseExistingLease: "reject",
+    queuedPreclaimResumeOwner: undefined,
+  }, {
+    reuseExistingLease: "allow",
+    queuedPreclaimResumeOwner: retained.executionOwner,
+  }]);
+  assertEquals(session.lease.id, retained.id);
+  assertEquals(session.lease.executionOwner, retained.executionOwner);
+  await session.releaseTerminal();
+});
+
+Deno.test("a queued run refuses a foreign or expired durable pre-claim lease", async () => {
+  for (
+    const [name, mutate] of [
+      ["foreign owner", (lease: CapabilityRuntimeLease): CapabilityRuntimeLease => ({
+        ...lease,
+        executionOwner: {
+          ...lease.executionOwner!,
+          runId: "run:foreign",
+        },
+      })],
+      ["expired lease", (lease: CapabilityRuntimeLease): CapabilityRuntimeLease => ({
+        ...lease,
+        acquiredAt: "2026-08-28T17:59:59.999Z",
+        expiresAt: "2026-08-28T23:59:59.999Z",
+      })],
+    ] as const
+  ) {
+    const leases = new InMemoryCapabilityRuntimeLeaseStore();
+    const operation = persistentOperation();
+    const activation: ("allow" | "reject")[] = [];
+    const coordinator = new CapabilityRuntimeExecutionSessionCoordinator({
+      contexts: contextFor(),
+      leases,
+      groups: {
+        ensureActive: async (input: {
+          readonly group: CapabilityRuntimeLaunchGroupReference;
+          readonly lease: CapabilityRuntimeLease;
+          readonly reuseExistingLease: "allow" | "reject";
+        }) => {
+          activation.push(input.reuseExistingLease);
+          const claim = await leases.claim(input.lease);
+          if (claim.status === "existing" && input.reuseExistingLease === "reject") {
+            throw new Error("H1 rejects an external queued lease claim");
+          }
+          return {
+            group: input.group,
+            states: new Map([[input.group.id, {
+              material: "installed" as const,
+              runtime: "active" as const,
+            }]]),
+            leaseDisposition: "created" as const,
+            mutation: undefined,
+          };
+        },
+        releaseTerminal: () => Promise.resolve(),
+      } as never,
+      now: () => AT,
+    });
+    const project = projectFor("queued", true);
+    const seeded = await coordinator.begin({
+      project,
+      runId: "run:session",
+      operationalCapability: operation,
+      microsandboxExecutionProfiles: [],
+      recheck: () => Promise.resolve(operation),
+    });
+    const candidate = seeded.lease;
+    await leases.release(candidate.id);
+    await leases.claim(mutate(candidate));
+    activation.length = 0;
+
+    await assertRejects(
+      () =>
+        coordinator.begin({
+          project,
+          runId: "run:session",
+          operationalCapability: operation,
+          microsandboxExecutionProfiles: [],
+          recheck: () => Promise.resolve(operation),
+        }),
+      CapabilityRuntimeSessionUnavailableError,
+      name === "foreign owner" ? "owner-bearing" : "expired",
+    );
+    assertEquals(activation, []);
+  }
+});
+
 Deno.test("production JIT seam observes both exact ngspice materials before its first claim", async () => {
   const leases = new InMemoryCapabilityRuntimeLeaseStore();
   const operation = admittedSpiceOperation();

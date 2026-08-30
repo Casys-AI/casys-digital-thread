@@ -41,6 +41,7 @@ import {
   type CapabilityRuntimeMicrosandboxProfileAttestation,
   exactCatalogImageReference,
   exactMicrosandboxProfileAttestations,
+  sameExactCapabilityRuntimeExecutionLeaseOwner,
   uniqueCapabilityRuntimeHostLifecycles,
 } from "./capability-runtime-session-primitives.ts";
 
@@ -154,7 +155,12 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
         "Capability JIT session requires the exact current agent run.",
       );
     }
-    const canReuseLease = run.status === "running" || run.status === "publishing";
+    // A claimed run may resume its durable execution lease. A queued run is
+    // different: it may reach H1 before the agent-run claim, so it may resume
+    // only the exact owner-bearing lease left by that same pre-claim attempt.
+    // In particular, this is not a generic queued-lease reuse path.
+    const canReuseRunningOrPublishingLease = run.status === "running" ||
+      run.status === "publishing";
     const assertFreshOperationalCapability = () =>
       assertExactResolvedCapabilityRuntimeOperationRecheck(
         input.recheck,
@@ -232,6 +238,13 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
       at: this.#now(),
     });
     const lease = candidate;
+    const queuedPreclaimResumeOwner = run.status === "queued" && groups.length > 0
+      ? await queuedPreclaimResumeOwnerFor(
+        this.options.leases,
+        lease,
+        this.#now(),
+      )
+      : undefined;
 
     // One deterministic lease covers all persistent launch groups. The first
     // group can create it; later groups may reuse only that just-created claim.
@@ -287,7 +300,7 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
           this.options.leases,
           lease,
           this.#now(),
-          canReuseLease,
+          canReuseRunningOrPublishingLease,
         );
         directLeaseAcquired = acquired.created;
       }
@@ -305,7 +318,13 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
           projectId: input.project.project.id,
           at: this.#now(),
           lease,
-          reuseExistingLease: groupLeaseCreated || canReuseLease ? "allow" : "reject",
+          reuseExistingLease: groupLeaseCreated || canReuseRunningOrPublishingLease ||
+              queuedPreclaimResumeOwner !== undefined
+            ? "allow"
+            : "reject",
+          ...(queuedPreclaimResumeOwner === undefined
+            ? {}
+            : { queuedPreclaimResumeOwner }),
           // The outer recheck above protects cache observation. This second
           // recheck runs *inside* H1 immediately before a lease or host
           // mutation, closing the revocation/deactivation race.
@@ -882,16 +901,45 @@ function sameOptionalExecutionLeaseOwner(
   // deterministic legacy scope. They are intentionally not upgraded or
   // guessed from host materials.
   if (left === undefined || right === undefined) return true;
-  return left.kind === right.kind && left.runId === right.runId &&
-    left.operation.id === right.operation.id &&
-    left.operation.version === right.operation.version &&
-    left.basis.snapshotId === right.basis.snapshotId &&
-    left.basis.revision === right.basis.revision &&
-    left.basis.subjectId === right.basis.subjectId &&
-    left.operationalCapabilityFingerprint.algorithm ===
-      right.operationalCapabilityFingerprint.algorithm &&
-    left.operationalCapabilityFingerprint.digest ===
-      right.operationalCapabilityFingerprint.digest;
+  return sameExactCapabilityRuntimeExecutionLeaseOwner(left, right);
+}
+
+/**
+ * A queued run has not yet crossed its agent claim boundary.  The one narrow
+ * exception is a retry of that same queued run after H1 retained its durable
+ * lease during persistent-group activation.  The coordinator proves the
+ * immutable owner before telling H1 that reuse is allowed; H1 still owns the
+ * journal and fresh-observation convergence under its host lock.
+ */
+async function queuedPreclaimResumeOwnerFor(
+  store: CapabilityRuntimeLeaseStore,
+  candidate: CapabilityRuntimeLease,
+  at: string,
+): Promise<CapabilityRuntimeExecutionLeaseOwner | undefined> {
+  const stored = await store.read(candidate.id);
+  if (!stored) return undefined;
+  const lease = assertExactCapabilityRuntimeLeaseScope(
+    stored,
+    candidate,
+    (message) => new CapabilityRuntimeSessionUnavailableError(message),
+  );
+  if (lease.expiresAt <= at) {
+    throw new CapabilityRuntimeSessionUnavailableError(
+      "The deterministic capability lease is expired; recovery must reconcile it before a new host session.",
+    );
+  }
+  const owner = candidate.executionOwner;
+  if (
+    !owner || !sameExactCapabilityRuntimeExecutionLeaseOwner(
+      lease.executionOwner,
+      owner,
+    )
+  ) {
+    throw new CapabilityRuntimeSessionUnavailableError(
+      "A queued capability run may resume only its exact owner-bearing pre-claim lease; recovery must not reuse a foreign or legacy lease.",
+    );
+  }
+  return owner;
 }
 
 function assertUsableEquivalentLease(

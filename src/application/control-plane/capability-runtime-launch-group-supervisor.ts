@@ -14,6 +14,7 @@ import {
 } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import {
   CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
+  type CapabilityRuntimeExecutionLeaseOwner,
   type CapabilityRuntimeJournalEntry,
   type CapabilityRuntimeJournalOutcome,
   type CapabilityRuntimeLease,
@@ -50,6 +51,7 @@ import {
   authorizeDurableQualificationRuntimeStart,
   authorizeDurableRuntimeStop,
 } from "./capability-runtime-host-authorization.ts";
+import { sameExactCapabilityRuntimeExecutionLeaseOwner } from "./capability-runtime-session-primitives.ts";
 import {
   CAPABILITY_RUNTIME_QUALIFICATION_HOST_STOP_PROOF_SCHEMA,
   type CapabilityRuntimeQualificationHostStopProof,
@@ -82,6 +84,8 @@ export interface CapabilityRuntimeLaunchGroupSupervisorOptions {
   readonly secrets: CapabilityRuntimeSecretSlotObserver;
   readonly lock: CapabilityRuntimeHostMutationLock;
   readonly availabilityGate?: CapabilityRuntimeLaunchGroupAvailabilityGate;
+  /** H1-owned clock used for lock-bound lease expiry checks. */
+  readonly now?: () => string;
 }
 
 export interface EnsureCapabilityRuntimeLaunchGroupRequest {
@@ -101,6 +105,12 @@ export interface EnsureCapabilityRuntimeLaunchGroupRequest {
   readonly at: string;
   /** Fresh queues reject an extant claim; only the same session may reuse it. */
   readonly reuseExistingLease: "allow" | "reject";
+  /**
+   * Internal retry expectation for one queued run that reached H1 before its
+   * agent-run claim. It is never supplied by MCP/CLI surfaces. When present,
+   * H1 requires the atomic existing lease to retain this exact provenance.
+   */
+  readonly queuedPreclaimResumeOwner?: CapabilityRuntimeExecutionLeaseOwner;
   /**
    * Revalidates the exact project authorization while the host mutation mutex
    * is held. It runs before a lease claim or journalled host action so a
@@ -165,9 +175,13 @@ export interface EnsureCapabilityRuntimeQualificationLaunchGroupRequest {
 }
 
 export class CapabilityRuntimeLaunchGroupSupervisor {
+  readonly #now: () => string;
+
   constructor(
     private readonly options: CapabilityRuntimeLaunchGroupSupervisorOptions,
-  ) {}
+  ) {
+    this.#now = options.now ?? (() => new Date().toISOString());
+  }
 
   async ensureMaterial(input: {
     readonly group: CapabilityRuntimeLaunchGroupReference;
@@ -238,16 +252,29 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
       const lease = validateCapabilityRuntimeLease(request.lease);
       this.#assertExpectedMaterials(group, request.expectedMaterials);
       this.#assertLeaseCovers(group, lease, request.projectId, request.at);
-      await this.#assertNoPending(group);
       await this.#assertNoQualificationLeaseProtects(group, lease.id, request.at);
-      const disposition = await this.#claim(
-        lease,
-        request.reuseExistingLease,
-        request.at,
-      );
-      const before = await this.#observe(group);
+      let disposition: "created" | "reused" | undefined;
       let intentWritten = false;
       try {
+        if (request.queuedPreclaimResumeOwner !== undefined) {
+          // The atomic claim and its exact queued owner check must precede
+          // journal/host observation: H1 alone then decides convergence.
+          disposition = await this.#claim(
+            lease,
+            request.reuseExistingLease,
+            request.at,
+            request.queuedPreclaimResumeOwner,
+          );
+          await this.#assertNoPending(group);
+        } else {
+          await this.#assertNoPending(group);
+          disposition = await this.#claim(
+            lease,
+            request.reuseExistingLease,
+            request.at,
+          );
+        }
+        const before = await this.#observe(group);
         if (!allInstalled(group, before)) {
           intentWritten = true;
           const acquisition = await this.#mutate(
@@ -1048,13 +1075,47 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
     lease: CapabilityRuntimeLease,
     reuse: "allow" | "reject",
     at: string,
+    queuedPreclaimResumeOwner?: CapabilityRuntimeExecutionLeaseOwner,
   ): Promise<"created" | "reused"> {
     const claim = await this.options.leases.claim(lease);
-    if (claim.status === "created") return "created";
+    if (claim.status === "created") {
+      if (queuedPreclaimResumeOwner !== undefined) {
+        await this.options.leases.release(lease.id);
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "A queued pre-claim resume requires its exact retained lease; a replacement session lease was not accepted.",
+        );
+      }
+      return "created";
+    }
     if (
-      reuse === "reject" || claim.lease.expiresAt <= at ||
+      reuse === "reject" ||
       !sameLeaseScope(claim.lease, lease)
     ) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "An existing capability runtime lease requires explicit recovery.",
+      );
+    }
+    if (queuedPreclaimResumeOwner !== undefined) {
+      // `at` belongs to the caller's sealed request. Queue retry expiry is a
+      // host decision, so it uses H1's fresh clock while the mutex is held.
+      if (
+        claim.lease.expiresAt <= this.#now() ||
+        !sameExactCapabilityRuntimeExecutionLeaseOwner(
+          lease.executionOwner,
+          queuedPreclaimResumeOwner,
+        ) ||
+        !sameExactCapabilityRuntimeExecutionLeaseOwner(
+          claim.lease.executionOwner,
+          queuedPreclaimResumeOwner,
+        )
+      ) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "A queued pre-claim resume lease is expired, foreign, or lacks its exact execution owner.",
+        );
+      }
+      return "reused";
+    }
+    if (claim.lease.expiresAt <= at) {
       throw new CapabilityRuntimeLaunchGroupSafetyError(
         "An existing capability runtime lease requires explicit recovery.",
       );

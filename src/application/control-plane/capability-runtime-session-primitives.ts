@@ -9,6 +9,7 @@
 
 import {
   canonicalResolvedCapabilityRuntimeOperationText,
+  type CapabilityRuntimeExecutionLeaseOwner,
   type CapabilityRuntimeHostLifecycle,
   type CapabilityRuntimeLease,
   type CapabilityRuntimeMaterialIdentity,
@@ -168,8 +169,9 @@ export function exactCatalogImageReference(
 
 /**
  * Validates the immutable lease scope shared by every host-session flavour.
- * Execution-only ownership provenance is intentionally checked by the
- * execution coordinator after this generic scope comparison.
+ * Execution-only ownership provenance is intentionally checked separately by
+ * the execution coordinator and, for queued pre-claim retries, by H1 under
+ * its host lock.
  */
 export function assertExactCapabilityRuntimeLeaseScope(
   storedValue: CapabilityRuntimeLease,
@@ -192,6 +194,28 @@ export function assertExactCapabilityRuntimeLeaseScope(
     );
   }
   return stored;
+}
+
+/**
+ * Compares every immutable execution-run provenance fact.  Callers that need
+ * an owner-bearing lease must reject an absent legacy owner rather than infer
+ * one from the generic lease scope.
+ */
+export function sameExactCapabilityRuntimeExecutionLeaseOwner(
+  left: CapabilityRuntimeExecutionLeaseOwner | undefined,
+  right: CapabilityRuntimeExecutionLeaseOwner | undefined,
+): boolean {
+  if (left === undefined || right === undefined) return false;
+  return left.kind === right.kind && left.runId === right.runId &&
+    left.operation.id === right.operation.id &&
+    left.operation.version === right.operation.version &&
+    left.basis.snapshotId === right.basis.snapshotId &&
+    left.basis.revision === right.basis.revision &&
+    left.basis.subjectId === right.basis.subjectId &&
+    left.operationalCapabilityFingerprint.algorithm ===
+      right.operationalCapabilityFingerprint.algorithm &&
+    left.operationalCapabilityFingerprint.digest ===
+      right.operationalCapabilityFingerprint.digest;
 }
 
 export function capabilityRuntimeLaunchGroupToken(

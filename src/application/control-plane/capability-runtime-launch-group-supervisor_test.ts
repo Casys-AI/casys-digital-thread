@@ -7,6 +7,7 @@ import {
 } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import {
   CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
+  type CapabilityRuntimeExecutionLeaseOwner,
   type CapabilityRuntimeJournalEntry,
   type CapabilityRuntimeJournalOutcome,
   type CapabilityRuntimeLease,
@@ -92,6 +93,134 @@ Deno.test("group supervisor shares one lease across N groups and stops eligible 
     ["casys-second"],
   );
   assertEquals(await fixture.leases.listActive(AT), []);
+});
+
+Deno.test("queued pre-claim resume rechecks the atomic lease owner before journal or host observation", async () => {
+  const first = await group("casys-first", "first");
+  const fixture = supervisor([first], undefined, "unavailable", { now: () => AT });
+  const lease = executionLease([first]);
+  await fixture.leases.claim(lease);
+
+  await assertRejects(
+    async () =>
+      fixture.supervisor.ensureActive({
+        group: capabilityRuntimeLaunchGroupReference(first),
+        expectedMaterials: exactMaterials(first),
+        effectiveRuntimeProjection: await projection(first),
+        resolvedOperation: resolvedOperation(first),
+        projectId: lease.projectId,
+        lease,
+        at: AT,
+        reuseExistingLease: "allow",
+        queuedPreclaimResumeOwner: lease.executionOwner!,
+        // This models another durable lease action after the coordinator's
+        // pre-read but before H1 atomically claims under the host lock.
+        guard: async () => {
+          await fixture.leases.release(lease.id);
+          await fixture.leases.claim({ ...lease, executionOwner: undefined });
+          return true;
+        },
+      }),
+    CapabilityRuntimeLaunchGroupSafetyError,
+    "exact execution owner",
+  );
+
+  assertEquals(await fixture.journal.list(), []);
+  assertEquals(fixture.host.calls, []);
+  assertEquals((await fixture.leases.read(lease.id))?.executionOwner, undefined);
+});
+
+Deno.test("queued pre-claim resume rejects a vanished retained lease without replacing it", async () => {
+  const first = await group("casys-first", "first");
+  const fixture = supervisor([first], undefined, "unavailable", { now: () => AT });
+  const lease = executionLease([first]);
+  await fixture.leases.claim(lease);
+
+  await assertRejects(
+    async () =>
+      fixture.supervisor.ensureActive({
+        group: capabilityRuntimeLaunchGroupReference(first),
+        expectedMaterials: exactMaterials(first),
+        effectiveRuntimeProjection: await projection(first),
+        resolvedOperation: resolvedOperation(first),
+        projectId: lease.projectId,
+        lease,
+        at: AT,
+        reuseExistingLease: "allow",
+        queuedPreclaimResumeOwner: lease.executionOwner!,
+        guard: async () => {
+          await fixture.leases.release(lease.id);
+          return true;
+        },
+      }),
+    CapabilityRuntimeLaunchGroupSafetyError,
+    "replacement session lease",
+  );
+
+  assertEquals(await fixture.leases.read(lease.id), undefined);
+  assertEquals(await fixture.journal.list(), []);
+  assertEquals(fixture.observationCalls, 0);
+  assertEquals(fixture.host.calls, []);
+});
+
+Deno.test("queued pre-claim resume accepts an exact owner-bearing retained lease", async () => {
+  const first = await group("casys-first", "first");
+  const fixture = supervisor([first], undefined, "unavailable", { now: () => AT });
+  const lease = executionLease([first]);
+  await fixture.leases.claim(lease);
+  setStates(fixture, first, "active");
+
+  const result = await fixture.supervisor.ensureActive({
+    group: capabilityRuntimeLaunchGroupReference(first),
+    expectedMaterials: exactMaterials(first),
+    effectiveRuntimeProjection: await projection(first),
+    resolvedOperation: resolvedOperation(first),
+    projectId: lease.projectId,
+    lease,
+    at: AT,
+    reuseExistingLease: "allow",
+    queuedPreclaimResumeOwner: lease.executionOwner!,
+  });
+
+  assertEquals(result.leaseDisposition, "reused");
+  assertEquals(await fixture.journal.list(), []);
+  assertEquals(fixture.host.calls, []);
+});
+
+Deno.test("queued pre-claim resume uses H1's fresh lock-bound clock for expiry", async () => {
+  const first = await group("casys-first", "first");
+  let serverNow = AT;
+  const fixture = supervisor([first], undefined, "unavailable", {
+    now: () => serverNow,
+    beforeLock: () => {
+      serverNow = EXPIRES;
+    },
+  });
+  const lease = executionLease([first]);
+  await fixture.leases.claim(lease);
+
+  await assertRejects(
+    async () =>
+      fixture.supervisor.ensureActive({
+        group: capabilityRuntimeLaunchGroupReference(first),
+        expectedMaterials: exactMaterials(first),
+        effectiveRuntimeProjection: await projection(first),
+        resolvedOperation: resolvedOperation(first),
+        projectId: lease.projectId,
+        // The sealed request was issued while the lease was current. H1 waits
+        // for its host lock, then evaluates expiry from its own fresh clock.
+        at: AT,
+        lease,
+        reuseExistingLease: "allow",
+        queuedPreclaimResumeOwner: lease.executionOwner!,
+      }),
+    CapabilityRuntimeLaunchGroupSafetyError,
+    "expired",
+  );
+
+  assertEquals(await fixture.journal.list(), []);
+  assertEquals(fixture.host.calls, []);
+  assertEquals((await fixture.leases.read(lease.id))?.id, lease.id);
 });
 
 Deno.test("a pending start that already reached a fully active group converges without a second host call", async () => {
@@ -1781,6 +1910,8 @@ function supervisor(
     readonly throwOn?: CapabilityRuntimeJournalEntry["action"];
     readonly nullOutcomeObservationsFor?: CapabilityRuntimeJournalEntry["action"];
     readonly availabilityGate?: CapabilityRuntimeLaunchGroupAvailabilityGate;
+    readonly now?: () => string;
+    readonly beforeLock?: () => void;
   } = {},
 ) {
   const states = new InMemoryCapabilityRuntimeStateObserver();
@@ -1811,6 +1942,7 @@ function supervisor(
     }
     : innerJournal;
   const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  let observationCalls = 0;
   const host = new StateTransitionHost(
     states,
     failAction,
@@ -1822,16 +1954,36 @@ function supervisor(
     groups: new FixedCapabilityRuntimeLaunchGroupRegistry(groups),
     journal,
     leases,
-    states,
+    states: {
+      observe: async (materials) => {
+        observationCalls++;
+        return await states.observe(materials);
+      },
+    },
     host,
     secrets: {
       observe: (slots) =>
         Promise.resolve(new Map(slots.map((slot) => [slot, secretAvailability]))),
     },
-    lock: { withLock: (operation) => operation() },
+    lock: {
+      withLock: async (operation) => {
+        options.beforeLock?.();
+        return await operation();
+      },
+    },
     availabilityGate: options.availabilityGate,
+    now: options.now,
   });
-  return { supervisor, leases, host, states, journal };
+  return {
+    supervisor,
+    leases,
+    host,
+    states,
+    journal,
+    get observationCalls() {
+      return observationCalls;
+    },
+  };
 }
 
 function sessionLease(
@@ -1850,6 +2002,29 @@ function sessionLease(
     ) => left.id.localeCompare(right.id)),
     acquiredAt: AT,
     expiresAt: EXPIRES,
+  };
+}
+
+function executionLease(
+  groups: readonly CapabilityRuntimeLaunchGroup[],
+): CapabilityRuntimeLease {
+  return {
+    ...sessionLease(groups),
+    executionOwner: executionLeaseOwner(),
+  };
+}
+
+function executionLeaseOwner(): CapabilityRuntimeExecutionLeaseOwner {
+  return {
+    kind: "execution-run",
+    runId: "run:queued",
+    operation: { id: "verify.session", version: "1" },
+    basis: {
+      snapshotId: "subject:thread:r4",
+      revision: 4,
+      subjectId: "subject",
+    },
+    operationalCapabilityFingerprint: { algorithm: "sha256", digest: "e".repeat(64) },
   };
 }
 
