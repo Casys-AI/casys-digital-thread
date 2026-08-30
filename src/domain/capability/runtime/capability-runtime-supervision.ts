@@ -9,6 +9,7 @@
 
 import {
   arrayOf,
+  closedRecord,
   deepFreeze,
   exactRecord,
   exactVersionToken,
@@ -667,6 +668,28 @@ export interface CapabilityRuntimeLease {
   readonly launchGroups: readonly CapabilityRuntimeLaunchGroupReference[];
   readonly acquiredAt: string;
   readonly expiresAt: string;
+  /**
+   * Present on execution leases created after retained-lease recovery was
+   * introduced.  It binds an otherwise host-only claim to the one project run
+   * that may later release it through a human uncertain-writer reconciliation.
+   *
+   * Older immutable lease files deliberately omit this field. They remain
+   * readable, but cannot be selected by the new owner-based recovery path.
+   */
+  readonly executionOwner?: CapabilityRuntimeExecutionLeaseOwner;
+}
+
+/** Immutable execution provenance for a JIT lease; never agent-supplied. */
+export interface CapabilityRuntimeExecutionLeaseOwner {
+  readonly kind: "execution-run";
+  readonly runId: string;
+  readonly operation: { readonly id: string; readonly version: string };
+  readonly basis: {
+    readonly snapshotId: string;
+    readonly revision: number;
+    readonly subjectId: string;
+  };
+  readonly operationalCapabilityFingerprint: ContentFingerprint;
 }
 
 export type CapabilityRuntimeJournalAction =
@@ -1229,7 +1252,18 @@ export function validateCapabilityRuntimeJournalOutcome(
 }
 
 export function validateCapabilityRuntimeLease(value: unknown): CapabilityRuntimeLease {
-  const root = exactRecord(value, [
+  // `executionOwner` is optional for the one-time, pre-provenance on-disk
+  // lease format.  Do not infer an owner from materials, groups or labels.
+  const root = closedRecord(value, [
+    "id",
+    "projectId",
+    "bindingIds",
+    "materialKeys",
+    "launchGroups",
+    "acquiredAt",
+    "expiresAt",
+    "executionOwner",
+  ], [
     "id",
     "projectId",
     "bindingIds",
@@ -1282,6 +1316,68 @@ export function validateCapabilityRuntimeLease(value: unknown): CapabilityRuntim
     launchGroups,
     acquiredAt,
     expiresAt,
+    ...(root.executionOwner === undefined ? {} : {
+      executionOwner: validateCapabilityRuntimeExecutionLeaseOwner(
+        root.executionOwner,
+      ),
+    }),
+  });
+}
+
+export function validateCapabilityRuntimeExecutionLeaseOwner(
+  value: unknown,
+): CapabilityRuntimeExecutionLeaseOwner {
+  const root = exactRecord(value, [
+    "kind",
+    "runId",
+    "operation",
+    "basis",
+    "operationalCapabilityFingerprint",
+  ], "$runtimeLease.executionOwner");
+  literalValue(root.kind, "execution-run", "$runtimeLease.executionOwner.kind");
+  const operation = exactRecord(
+    root.operation,
+    ["id", "version"],
+    "$runtimeLease.executionOwner.operation",
+  );
+  const basis = exactRecord(
+    root.basis,
+    ["snapshotId", "revision", "subjectId"],
+    "$runtimeLease.executionOwner.basis",
+  );
+  if (
+    typeof basis.revision !== "number" ||
+    !Number.isSafeInteger(basis.revision) || basis.revision < 0
+  ) {
+    throw new TypeError(
+      "$runtimeLease.executionOwner.basis.revision must be a non-negative safe integer.",
+    );
+  }
+  return deepFreeze({
+    kind: "execution-run",
+    runId: safeId(root.runId, "$runtimeLease.executionOwner.runId"),
+    operation: {
+      id: safeId(operation.id, "$runtimeLease.executionOwner.operation.id"),
+      version: exactVersionToken(
+        operation.version,
+        "$runtimeLease.executionOwner.operation.version",
+      ),
+    },
+    basis: {
+      snapshotId: safeId(
+        basis.snapshotId,
+        "$runtimeLease.executionOwner.basis.snapshotId",
+      ),
+      revision: basis.revision as number,
+      subjectId: safeId(
+        basis.subjectId,
+        "$runtimeLease.executionOwner.basis.subjectId",
+      ),
+    },
+    operationalCapabilityFingerprint: contentFingerprint(
+      root.operationalCapabilityFingerprint,
+      "$runtimeLease.executionOwner.operationalCapabilityFingerprint",
+    ),
   });
 }
 

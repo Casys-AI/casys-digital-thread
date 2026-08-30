@@ -5,6 +5,10 @@ import {
 import {
   InMemoryCapabilityRuntimeLeaseStore,
 } from "../../adapters/control-plane/in-memory-capability-runtime-supervisor.ts";
+import {
+  fingerprintResolvedCapabilityRuntimeOperation,
+} from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import type {
   CapabilityRuntimeLease,
   CapabilityRuntimeMaterialIdentity,
@@ -189,6 +193,179 @@ Deno.test("recorded execution cleanup releases the exact lease without activatio
   assertEquals(activations, ["casys-observation"]);
   assertEquals(cleanups, [session.lease.id]);
   assertEquals(await leases.listActive(AT), []);
+});
+
+Deno.test("JIT execution lease records its exact run, operation and Thread basis for future reconciliation", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  const activations: string[] = [];
+  const cleanups: string[] = [];
+  const coordinator = recordedCleanupCoordinator(leases, activations, cleanups);
+  const operation = persistentOperation();
+  const session = await coordinator.begin({
+    project: projectFor("queued", true),
+    runId: "run:session",
+    operationalCapability: operation,
+    microsandboxExecutionProfiles: [],
+    recheck: () => Promise.resolve(operation),
+  });
+
+  assertEquals((await leases.read(session.lease.id))?.executionOwner, {
+    kind: "execution-run",
+    runId: "run:session",
+    operation: { id: operation.operation.id, version: operation.operation.version },
+    basis: {
+      snapshotId: "subject:thread:r4",
+      revision: 4,
+      subjectId: "subject",
+    },
+    operationalCapabilityFingerprint:
+      await fingerprintResolvedCapabilityRuntimeOperation(operation),
+  });
+});
+
+Deno.test("human did-not-write reconciliation releases only the retained lease owned by that failed run", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  const activations: string[] = [];
+  const cleanups: string[] = [];
+  const coordinator = recordedCleanupCoordinator(leases, activations, cleanups);
+  const operation = persistentOperation();
+  const project = await reconciledDidNotWriteProject(operation);
+  const session = await coordinator.begin({
+    project,
+    runId: "run:failed",
+    operationalCapability: operation,
+    microsandboxExecutionProfiles: [],
+    recheck: () => Promise.resolve(operation),
+  });
+  let legacyResolutionCalls = 0;
+
+  await coordinator.releaseReconciledUncertainWriterLease({
+    project,
+    failedRunId: "run:failed",
+    reconciliationRunId: "run:reconcile",
+    resolveLegacyOperationalCapability: () => {
+      legacyResolutionCalls++;
+      return Promise.reject(
+        new Error("owner provenance must bypass legacy resolution"),
+      );
+    },
+  });
+
+  assertEquals(cleanups, [session.lease.id]);
+  assertEquals(await leases.read(session.lease.id), undefined);
+  assertEquals(activations, ["casys-observation"]);
+  assertEquals(legacyResolutionCalls, 0);
+});
+
+Deno.test("human did-not-write reconciliation releases the exact pre-provenance lease only through its old server-resolved ROP", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  const activations: string[] = [];
+  const cleanups: string[] = [];
+  const coordinator = recordedCleanupCoordinator(leases, activations, cleanups);
+  const operation = persistentOperation();
+  const project = await reconciledDidNotWriteProject(operation);
+  const session = await coordinator.begin({
+    project,
+    runId: "run:failed",
+    operationalCapability: operation,
+    microsandboxExecutionProfiles: [],
+    recheck: () => Promise.resolve(operation),
+  });
+  // Simulate ATS01's already-persisted deterministic lease, created before
+  // execution-owner provenance was introduced.
+  await leases.release(session.lease.id);
+  await leases.claim({ ...session.lease, executionOwner: undefined });
+  let legacyResolutionCalls = 0;
+
+  await coordinator.releaseReconciledUncertainWriterLease({
+    project,
+    failedRunId: "run:failed",
+    reconciliationRunId: "run:reconcile",
+    resolveLegacyOperationalCapability: () => {
+      legacyResolutionCalls++;
+      return Promise.resolve(operation);
+    },
+  });
+
+  assertEquals(cleanups, [session.lease.id]);
+  assertEquals(await leases.read(session.lease.id), undefined);
+  assertEquals(activations, ["casys-observation"]);
+  assertEquals(legacyResolutionCalls, 1);
+});
+
+Deno.test("pre-provenance reconciliation never releases a lease from a changed runtime binding", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  const activations: string[] = [];
+  const cleanups: string[] = [];
+  const coordinator = recordedCleanupCoordinator(leases, activations, cleanups);
+  const operation = persistentOperation();
+  const project = await reconciledDidNotWriteProject(operation);
+  const session = await coordinator.begin({
+    project,
+    runId: "run:failed",
+    operationalCapability: operation,
+    microsandboxExecutionProfiles: [],
+    recheck: () => Promise.resolve(operation),
+  });
+  await leases.release(session.lease.id);
+  await leases.claim({ ...session.lease, executionOwner: undefined });
+  const rolled = {
+    ...operation,
+    authorizationFingerprint: { algorithm: "sha256" as const, digest: "b".repeat(64) },
+  };
+
+  await coordinator.releaseReconciledUncertainWriterLease({
+    project,
+    failedRunId: "run:failed",
+    reconciliationRunId: "run:reconcile",
+    resolveLegacyOperationalCapability: () => Promise.resolve(rolled),
+  });
+
+  assertEquals(cleanups, []);
+  assertEquals((await leases.read(session.lease.id))?.id, session.lease.id);
+  assertEquals(activations, ["casys-observation"]);
+});
+
+Deno.test("a plain failed run cannot release a retained pre-provenance lease", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  const activations: string[] = [];
+  const cleanups: string[] = [];
+  const coordinator = recordedCleanupCoordinator(leases, activations, cleanups);
+  const operation = persistentOperation();
+  const reconciled = await reconciledDidNotWriteProject(operation);
+  const project = {
+    ...reconciled,
+    agentRuns: reconciled.agentRuns.map((run) =>
+      run.id === "run:failed"
+        ? { ...run, uncertainWriterReconciliation: undefined }
+        : run
+    ),
+  } as EngineeringProjectSnapshot;
+  const session = await coordinator.begin({
+    project,
+    runId: "run:failed",
+    operationalCapability: operation,
+    microsandboxExecutionProfiles: [],
+    recheck: () => Promise.resolve(operation),
+  });
+  await leases.release(session.lease.id);
+  await leases.claim({ ...session.lease, executionOwner: undefined });
+
+  await assertRejects(
+    () =>
+      coordinator.releaseReconciledUncertainWriterLease({
+        project,
+        failedRunId: "run:failed",
+        reconciliationRunId: "run:reconcile",
+        resolveLegacyOperationalCapability: () => Promise.resolve(operation),
+      }),
+    Error,
+    "provider-did-not-write",
+  );
+
+  assertEquals(cleanups, []);
+  assertEquals((await leases.read(session.lease.id))?.id, session.lease.id);
+  assertEquals(activations, ["casys-observation"]);
 });
 
 Deno.test("recorded execution cleanup is a no-op without a lease and never activates", async () => {
@@ -447,11 +624,211 @@ function contextFor(): ProjectCapabilityRuntimeContextReader {
 
 function projectFor(
   status: "queued" | "running" | "completed" = "queued",
+  withThreadBasis = false,
 ): EngineeringProjectSnapshot {
   return {
     id: "snapshot:session",
     project: { id: PROJECT_ID },
     revision: 1,
-    agentRuns: [{ id: "run:session", status }],
+    agentRuns: [{
+      id: "run:session",
+      status,
+      ...(withThreadBasis
+        ? {
+          basis: {
+            kind: "thread-snapshot",
+            snapshotId: "subject:thread:r4",
+            revision: 4,
+            subjectId: "subject",
+          },
+        }
+        : {}),
+    }],
+  } as unknown as EngineeringProjectSnapshot;
+}
+
+async function reconciledDidNotWriteProject(
+  operation: ResolvedCapabilityRuntimeOperation,
+): Promise<EngineeringProjectSnapshot> {
+  const basis = {
+    kind: "thread-snapshot" as const,
+    snapshotId: "subject:thread:r4",
+    revision: 4,
+    subjectId: "subject",
+  };
+  const origin = { kind: "human" as const, actorId: "operator" };
+  const parameters = [
+    { key: "reconcileAction", label: "Action", value: "resolve-uncertain-writer" },
+    {
+      key: "reconcileOperation",
+      label: "Operation",
+      value: "record.reconcile-uncertain-writer@1",
+    },
+    { key: "reconcileRunId", label: "Run", value: "run:failed" },
+    {
+      key: "reconcileFailureCode",
+      label: "Failure",
+      value: "model-write-architecture-provider-outcome-unknown",
+    },
+    { key: "reconcileBasisSnapshotId", label: "Basis", value: basis.snapshotId },
+    { key: "reconcileOutcome", label: "Outcome", value: "provider-did-not-write" },
+    {
+      key: "reconcileAttestation",
+      label: "Attestation",
+      value: "Provider history shows no write.",
+    },
+  ];
+  const decision = {
+    id: "decision:reconcile",
+    phaseId: "phase",
+    title: "Reconcile",
+    question: "What did the provider do?",
+    status: "approved" as const,
+    requestedAt: "2026-08-10T00:00:00.000Z",
+    baseSnapshot: basis,
+    inputEvidenceRefs: [],
+    approvalIds: ["approval:reconcile"],
+    proposal: {
+      summary: "Provider inspection found no write.",
+      proposedAt: "2026-08-10T00:00:00.000Z",
+      proposedBy: { id: "agent", origin: "agent" as const },
+      parameters,
+    },
+  };
+  const decisionFingerprint = await sha256Fingerprint({
+    baseSnapshot: decision.baseSnapshot,
+    inputEvidenceRefs: decision.inputEvidenceRefs,
+    proposal: {
+      summary: decision.proposal.summary,
+      parameters: decision.proposal.parameters,
+    },
+  });
+  const command = {
+    commandId: "reconcile-command",
+    projectId: PROJECT_ID,
+    expectedRevision: 8,
+    issuedAt: "2026-08-10T00:00:00.000Z",
+    reconciliationRunId: "run:reconcile",
+    failedRunId: "run:failed",
+    decisionId: decision.id,
+    outcome: "provider-did-not-write" as const,
+    providerInspectionAttestation: "Provider history shows no write.",
+  };
+  const requestFingerprint = await sha256Fingerprint({
+    type: "agent-run.reconcile-annotation",
+    origin,
+    command,
+  });
+  const projectId = `${PROJECT_ID}:project:r9:${
+    requestFingerprint.digest.slice(0, 16)
+  }`;
+  return {
+    schemaVersion: "4.0",
+    id: projectId,
+    revision: 9,
+    generatedAt: "2026-08-10T00:00:10.000Z",
+    project: { id: PROJECT_ID, subjectId: basis.subjectId },
+    threadSnapshots: [basis],
+    phases: [{
+      id: "phase",
+      title: "Phase",
+      workItemIds: ["work:failed", "work:reconcile"],
+      requiredDecisionIds: [decision.id],
+    }],
+    workItems: [{
+      id: "work:failed",
+      activityId: "activity:failed",
+      phaseId: "phase",
+      title: "Failed writer",
+      description: "Provider outcome unknown.",
+      kind: "architect",
+      operation: { ...operation.operation, bindings: [] },
+      status: "ready",
+      owner: "agent",
+      dependsOnWorkItemIds: [],
+      evidenceRefs: [],
+      decisionIds: [],
+      blockerIds: [],
+    }, {
+      id: "work:reconcile",
+      activityId: "activity:reconcile",
+      phaseId: "phase",
+      title: "Reconcile",
+      description: "Human reconciliation.",
+      kind: "review",
+      operation: {
+        id: "record.reconcile-uncertain-writer",
+        version: "1",
+        bindings: [],
+      },
+      status: "completed",
+      owner: "human",
+      dependsOnWorkItemIds: [],
+      evidenceRefs: [],
+      decisionIds: [decision.id],
+      blockerIds: [],
+    }],
+    agentRuns: [{
+      id: "run:failed",
+      workItemId: "work:failed",
+      status: "failed",
+      summary: "Provider outcome unknown.",
+      queuedAt: "2026-08-10T00:00:00.000Z",
+      basis,
+      evidenceRefs: [],
+      failure: {
+        code: "model-write-architecture-provider-outcome-unknown",
+        message: "Provider outcome unknown.",
+      },
+      uncertainWriterReconciliation: {
+        kind: "uncertain-writer-resolved",
+        outcome: "provider-did-not-write",
+        reconciledAt: "2026-08-10T00:00:10.000Z",
+        reconciledBy: { id: "operator", origin: "human" },
+        decisionId: decision.id,
+        providerInspectionAttestation: command.providerInspectionAttestation,
+      },
+    }, {
+      id: "run:reconcile",
+      workItemId: "work:reconcile",
+      status: "completed",
+      summary: "Uncertain-writer reconciliation completed by human operator.",
+      queuedAt: "2026-08-10T00:00:00.000Z",
+      completedAt: "2026-08-10T00:00:10.000Z",
+      basis,
+      evidenceRefs: [],
+      annotationOnly: true,
+      statusHistory: [{
+        status: "completed",
+        at: "2026-08-10T00:00:10.000Z",
+        summary: "Uncertain-writer reconciliation completed by human operator.",
+        actor: { id: "operator", origin: "human" },
+        commandId: command.commandId,
+      }],
+    }],
+    decisions: [{ ...decision, inputFingerprint: decisionFingerprint }],
+    approvals: [{
+      id: "approval:reconcile",
+      decisionId: decision.id,
+      status: "approved",
+      requestedAt: "2026-08-10T00:00:00.000Z",
+      decidedAt: "2026-08-10T00:00:01.000Z",
+      decidedBy: "operator",
+      decidedByOrigin: "human",
+      rationale: "Inspected provider.",
+      baseSnapshot: basis,
+      inputFingerprint: decisionFingerprint,
+      inputEvidenceRefs: [],
+    }],
+    blockers: [],
+    commandReceipts: [{
+      commandId: command.commandId,
+      type: "agent-run.reconcile-annotation",
+      actor: { id: "operator", origin: "human" },
+      issuedAt: command.issuedAt,
+      appliedAt: "2026-08-10T00:00:10.000Z",
+      requestFingerprint,
+      resultingSnapshot: { snapshotId: projectId, revision: 9 },
+    }],
   } as unknown as EngineeringProjectSnapshot;
 }
