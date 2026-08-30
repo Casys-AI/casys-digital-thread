@@ -124,12 +124,20 @@ Deno.test("brief capability authorization retains resolved candidates beside an 
     );
     const proposal = await authorization.proposeForPendingBrief(proposed);
     assertEquals(proposal.intent?.status, "unresolved");
-    assertEquals(proposal.bindings.length, 1);
     assertEquals(
-      proposal.bindings[0]?.candidate?.id,
-      "build123d-observe-assembly-integrity",
+      proposal.bindings.map((binding) => binding.candidate?.id),
+      [
+        "build123d-geometry-module-immediate-compound",
+        "build123d-observe-assembly-integrity",
+      ],
     );
-    assertEquals(proposal.units[0]?.id, "casys.mcp-build123d-observation");
+    assertEquals(
+      proposal.units.map((unit) => unit.id),
+      [
+        "casys.geometry-module-assembler-worker",
+        "casys.mcp-build123d-observation",
+      ],
+    );
     assertEquals(proposal.activation, "blocked");
     const tamperedIntent = structuredClone(proposal) as unknown as {
       intent: { authorities: unknown[] };
@@ -675,7 +683,11 @@ Deno.test("SysON seed after documentary baseline amends the brief ceiling instea
     assertEquals(
       change.proposal.semanticRequirements.map((requirement) => requirement.id)
         .toSorted(),
-      ["geometry.observe-assembly-integrity", "model.author-system"],
+      [
+        "geometry.module.immediate-compound",
+        "geometry.observe-assembly-integrity",
+        "model.author-system",
+      ],
     );
     assertEquals(observedMaterialKeys.includes("unscoped\u0000full-catalog"), false);
     assertEquals(
