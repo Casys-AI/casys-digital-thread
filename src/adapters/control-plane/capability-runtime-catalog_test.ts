@@ -1,5 +1,11 @@
 import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capability-binding-catalog.ts";
+import {
+  createFirstPartyCapabilityRuntimeCatalog,
+  createFirstPartySysonRolloverPredecessorUnit,
+} from "./first-party-capability-binding-catalog.ts";
+import {
+  createFirstPartySysonRolloverPredecessorLaunchGroup,
+} from "./first-party-capability-runtime-launch-groups.ts";
 import {
   validateCapabilityRuntimeAdminLock,
   validateCapabilityRuntimeAdminPolicy,
@@ -15,6 +21,43 @@ import {
 Deno.test("atomic first-party runtime catalogue separates sources with distinct lifecycle and evidence", async () => {
   const catalog = await createFirstPartyCapabilityRuntimeCatalog();
   assertEquals(catalog.productionEligible, false);
+  const syson = catalog.units.find((unit) => unit.id === "casys.syson-stack");
+  assertEquals(syson?.version, "1.0.1");
+  assertEquals(
+    syson?.materials.find((material) => material.id === "syson-app-image")
+      ?.imageReference,
+    "ghcr.io/casys-ai/syson@sha256:d372ae26e5d32e5c599fa7c1599d42c73cf9a54e101cfe6f77175f313d7d84e9",
+  );
+  assertEquals(
+    syson?.materials.find((material) => material.id === "syson-app-image")
+      ?.platforms,
+    ["linux/amd64", "linux/arm64"],
+  );
+  const predecessorSyson = await createFirstPartySysonRolloverPredecessorUnit();
+  assertEquals(predecessorSyson.version, "1.0.0");
+  // The retired descriptor is a historical authority, not a derived alias for
+  // the current SysON material. Keep both fingerprints literal so a future
+  // successor update cannot silently rewrite the 1.0.0 rollover basis.
+  assertEquals(predecessorSyson.manifestFingerprint, {
+    algorithm: "sha256",
+    digest: "e8ac01cd5c94330d8ea89d6d1f9b24c363a3067bbb2923faac8dd56d53c7b7fd",
+  });
+  const predecessorLaunchGroup =
+    await createFirstPartySysonRolloverPredecessorLaunchGroup();
+  assertEquals(predecessorLaunchGroup.fingerprint, {
+    algorithm: "sha256",
+    digest: "8e470a77b13ae58bc70e0d4cc5b6deaff1e4f58b85f704b1ddaba74bb7e4d1a6",
+  });
+  assertEquals(
+    predecessorSyson.materials.find((material) => material.id === "syson-app-image")
+      ?.imageReference,
+    "ghcr.io/casys-ai/syson@sha256:fc599abb95587913de11ff6de68060b5593956abc0c47bc753cd19e2987141a6",
+  );
+  assertEquals(
+    predecessorSyson.materials.find((material) => material.id === "syson-app-image")
+      ?.platforms,
+    ["linux/arm64"],
+  );
   assertEquals(catalog.units.map((unit) => unit.id), [
     "casys.syson-stack",
     "casys.mcp-build123d-sandbox",

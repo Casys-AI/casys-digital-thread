@@ -22,7 +22,7 @@ runtime. `--local-execution` is no longer a console capability; it is rejected a
 unknown argument, including through the supervised MCP passthrough.
 
 The first-party H1 launch-group registry enrolls five persistent topologies:
-`casys-syson@1.0.0`, `casys-build123d-sandbox@1.0.0`,
+`casys-syson@1.0.1`, `casys-build123d-sandbox@1.0.0`,
 `casys-build123d-observation@1.0.0`, `casys-chrono@1.0.0`, and
 `casys-mcp-calculix@0.8.2`. Enrollment is candidacy. It does not start a service at
 boot, merely because YOLO is enabled, or because the group is listed. After a durable

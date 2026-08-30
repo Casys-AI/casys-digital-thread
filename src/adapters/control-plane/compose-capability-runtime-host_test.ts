@@ -19,10 +19,25 @@ import {
   authorizeDurableQualificationRuntimeStart,
   authorizeDurableRuntimeStop,
 } from "../../application/control-plane/capability-runtime-host-authorization.ts";
+import {
+  authorizeDurableRolloverSuccessorMaterialAcquire,
+  authorizeDurableRolloverSuccessorRuntimeStart,
+} from "../../application/control-plane/capability-runtime-rollover-host-authorization.ts";
+import {
+  sysonRolloverIdentityFor,
+} from "../../application/control-plane/capability-runtime-syson-rollover-definition.ts";
 import { InMemoryCapabilityRuntimeJournal } from "./in-memory-capability-runtime-supervisor.ts";
 import {
   createFirstPartyCapabilityRuntimeLaunchGroups,
+  createFirstPartySysonRolloverPredecessorLaunchGroup,
 } from "./first-party-capability-runtime-launch-groups.ts";
+import {
+  createFirstPartyCapabilityRuntimeCatalog,
+  createFirstPartySysonRolloverPredecessorUnit,
+} from "./first-party-capability-binding-catalog.ts";
+import {
+  FileCapabilityRuntimeRolloverSagaStore,
+} from "./file-capability-runtime-rollover-saga-store.ts";
 import { createCapabilityRuntimeHostAdapter } from "./compose-capability-runtime-host.ts";
 import {
   CHRONO_MCP_BEARER_TOKEN_SLOT,
@@ -33,6 +48,7 @@ import type {
   CapabilityRuntimeSecretSnapshot,
 } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import type { CommandResult, CommandRunner } from "../shared/docker-observer.ts";
+import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 
 Deno.test("relative compose root stays lexical and never realPaths the worktree", async () => {
   const group = await sysonGroup();
@@ -87,6 +103,90 @@ Deno.test("Compose host pulls the whole exact group then starts it with health w
     true,
   );
   assertNoDestructiveComposeCommand(runner);
+});
+
+Deno.test("Compose host performs the sealed SysON successor rollover commands exactly once", async () => {
+  const fixture = await rolloverHostFixture();
+  try {
+    await assertRejects(
+      () =>
+        fixture.host.acquireRolloverSuccessorMaterial({
+          authorization: {} as never,
+        }),
+      Error,
+      "authorization is absent or consumed",
+    );
+    assertEquals(
+      fixture.runner.calls.filter((call) => call.includes("pull")).length,
+      0,
+    );
+
+    await fixture.sagas.prepare(fixture.identity);
+    const materialAuthorization =
+      await authorizeDurableRolloverSuccessorMaterialAcquire(
+        fixture.identity,
+        fixture.sagas,
+      );
+    const acquired = await fixture.host.acquireRolloverSuccessorMaterial({
+      authorization: materialAuthorization,
+    });
+    assertEquals(acquired.classification, "predecessor");
+    assertEquals(acquired.successor.materials, "complete");
+    const pullCommands = fixture.runner.calls.filter((call) => call.includes("pull"));
+    assertEquals(pullCommands.length, 1);
+    assertEquals(pullCommands[0], composeCommand(fixture.successor, ["pull"]));
+    await assertRejects(
+      () =>
+        fixture.host.acquireRolloverSuccessorMaterial({
+          authorization: materialAuthorization,
+        }),
+      Error,
+      "authorization is absent or consumed",
+    );
+    assertEquals(
+      fixture.runner.calls.filter((call) => call.includes("pull")).length,
+      1,
+    );
+
+    await fixture.sagas.advance(fixture.identity, {
+      phase: "successor-material-observed",
+      evidenceFingerprint: await sha256Fingerprint(acquired),
+    });
+    const startAuthorization = await authorizeDurableRolloverSuccessorRuntimeStart(
+      fixture.identity,
+      fixture.sagas,
+    );
+    const activated = await fixture.host.activateRolloverSuccessor({
+      authorization: startAuthorization,
+    });
+    assertEquals(activated.classification, "successor");
+    assertEquals(activated.successor.runtime, "active");
+    const upCommands = fixture.runner.calls.filter((call) => call.includes("up"));
+    assertEquals(upCommands.length, 1);
+    assertEquals(
+      upCommands[0],
+      composeCommand(fixture.successor, [
+        "up",
+        "--detach",
+        "--wait",
+        "--wait-timeout",
+        "300",
+        "--pull",
+        "never",
+        "--no-build",
+      ]),
+    );
+    await assertRejects(
+      () =>
+        fixture.host.activateRolloverSuccessor({ authorization: startAuthorization }),
+      Error,
+      "authorization is absent or consumed",
+    );
+    assertEquals(fixture.runner.calls.filter((call) => call.includes("up")).length, 1);
+    assertNoRolloverDestructiveCommand(fixture.runner);
+  } finally {
+    await fixture.dispose();
+  }
 });
 
 Deno.test("Compose host consumes only the private qualification-start brand for the same sealed health-wait start", async () => {
@@ -626,6 +726,68 @@ async function sysonGroup(): Promise<CapabilityRuntimeLaunchGroup> {
   return (await createFirstPartyCapabilityRuntimeLaunchGroups())[0]!;
 }
 
+async function rolloverHostFixture() {
+  const [catalog, predecessorUnit, predecessor, successor] = await Promise.all([
+    createFirstPartyCapabilityRuntimeCatalog(),
+    createFirstPartySysonRolloverPredecessorUnit(),
+    createFirstPartySysonRolloverPredecessorLaunchGroup(),
+    sysonGroup(),
+  ]);
+  const successorUnit = catalog.units.find((unit) => unit.id === "casys.syson-stack");
+  if (!successorUnit) throw new Error("Expected the exact successor SysON unit.");
+  const identity = sysonRolloverIdentityFor(
+    {
+      catalog,
+      predecessor: {
+        unit: predecessorUnit,
+        launchGroup: predecessor,
+      },
+      successor: { unit: successorUnit, launchGroup: successor },
+    },
+    [],
+    "2026-08-30T12:00:00.000Z",
+  );
+  const directory = await Deno.makeTempDir({ prefix: "compose-rollover-" });
+  const sagas = new FileCapabilityRuntimeRolloverSagaStore(directory);
+  const runner = new RolloverFakeGroupRunner(predecessor, successor);
+  const host = createCapabilityRuntimeHostAdapter({
+    registry: new FixedCapabilityRuntimeLaunchGroupRegistry([successor]),
+    journal: new InMemoryCapabilityRuntimeJournal(),
+    secrets: { observe: () => Promise.resolve(new Map()) },
+    runner,
+    composeRoot: "/workspace",
+    paths: { realPath: () => Promise.resolve("/canonical") },
+    rollovers: [{ predecessor, successor }],
+  });
+  return {
+    identity,
+    sagas,
+    runner,
+    host,
+    successor,
+    dispose: () => Deno.remove(directory, { recursive: true }),
+  };
+}
+
+function composeCommand(
+  group: CapabilityRuntimeLaunchGroup,
+  operation: readonly string[],
+): string[] {
+  return [
+    "docker",
+    "compose",
+    "--env-file",
+    "/dev/null",
+    "--project-name",
+    group.acquisition.projectName,
+    "--project-directory",
+    "/canonical",
+    "--file",
+    "-",
+    ...operation,
+  ];
+}
+
 async function calculixGroup(): Promise<CapabilityRuntimeLaunchGroup> {
   const group = (await createFirstPartyCapabilityRuntimeLaunchGroups()).find(
     (candidate) => candidate.id === "casys-mcp-calculix",
@@ -850,6 +1012,112 @@ class FakeGroupRunner implements CommandRunner {
   }
 }
 
+/**
+ * Minimal two-topology fake for the one server-owned SysON transition. It
+ * models Docker's retained predecessor image separately from the container's
+ * active image, which is what lets the adapter distinguish material preload
+ * from the later sealed `up --wait` handoff.
+ */
+class RolloverFakeGroupRunner implements CommandRunner {
+  readonly calls: string[][] = [];
+  readonly stdin: string[] = [];
+  readonly #installed = new Set<string>();
+  readonly #states = new Map<string, "running" | "exited">();
+  #active: CapabilityRuntimeLaunchGroup;
+
+  constructor(
+    private readonly predecessor: CapabilityRuntimeLaunchGroup,
+    private readonly successor: CapabilityRuntimeLaunchGroup,
+  ) {
+    this.#active = predecessor;
+    for (const member of predecessor.materials) {
+      this.#installed.add(member.imageReference);
+      this.#states.set(member.serviceName, "running");
+    }
+  }
+
+  async run(
+    command: string,
+    args: string[],
+    _cwd: string,
+    options: { readonly stdin?: Uint8Array } = {},
+  ): Promise<CommandResult> {
+    await Promise.resolve();
+    this.calls.push([command, ...args]);
+    const input = options.stdin ? new TextDecoder().decode(options.stdin) : undefined;
+    if (input !== undefined) this.stdin.push(input);
+    if (args[0] === "image" && args[1] === "inspect") {
+      const reference = args[2]!;
+      const actualService = reference.startsWith("sha256:")
+        ? reference.slice("sha256:".length)
+        : undefined;
+      const activeMember = actualService === undefined
+        ? undefined
+        : this.#active.materials.find(
+          (candidate) => candidate.serviceName === actualService,
+        );
+      if (activeMember && this.#installed.has(activeMember.imageReference)) {
+        return success(
+          JSON.stringify([{ RepoDigests: [activeMember.imageReference] }]),
+        );
+      }
+      if (this.#installed.has(reference)) {
+        return success(JSON.stringify([{ RepoDigests: [reference] }]));
+      }
+      return failure("No such image");
+    }
+    if (args[0] === "inspect") {
+      const service = args[1]!.replace("container-", "");
+      const member = this.#active.materials.find((candidate) =>
+        candidate.serviceName === service
+      );
+      if (!member) return failure("unknown container");
+      return success(JSON.stringify([{
+        Id: `container-${service}`,
+        Image: `sha256:${service}`,
+        Config: {
+          Labels: {
+            "com.docker.compose.project": this.#active.acquisition.projectName,
+            "com.docker.compose.service": service,
+          },
+        },
+        State: {
+          Status: this.#states.get(service) ?? "exited",
+          Health: serviceDeclaresHealthcheck(this.#active, service)
+            ? {
+              Status: this.#states.get(service) === "running" ? "healthy" : "unhealthy",
+            }
+            : null,
+        },
+        Mounts: descriptorMounts(this.#active, service),
+      }]));
+    }
+    if (args.includes("ps")) {
+      return success(JSON.stringify([...this.#states].map(([service, state]) => ({
+        Service: service,
+        ID: `container-${service}`,
+        State: state,
+      }))));
+    }
+    if (args.includes("pull")) {
+      for (const member of this.successor.materials) {
+        this.#installed.add(member.imageReference);
+      }
+      return success("");
+    }
+    if (args.includes("up")) {
+      if (input?.includes(this.successor.compose.content)) {
+        this.#active = this.successor;
+      }
+      for (const member of this.#active.materials) {
+        this.#states.set(member.serviceName, "running");
+      }
+      return success("");
+    }
+    return success("");
+  }
+}
+
 async function removalPlan(
   group: CapabilityRuntimeLaunchGroup,
   state: "owned" | "absent",
@@ -955,6 +1223,19 @@ function assertNoDestructiveComposeCommand(runner: FakeGroupRunner): void {
       call[1] === "compose" &&
       (call.includes("down") || call.includes("--remove-orphans") ||
         call.includes("-v"))
+    ),
+    false,
+  );
+}
+
+function assertNoRolloverDestructiveCommand(runner: RolloverFakeGroupRunner): void {
+  assertEquals(
+    runner.calls.some((call) =>
+      call.some((argument) =>
+        argument === "down" || argument === "-v" || argument === "--volumes" ||
+        argument === "prune" || argument === "rm" || argument === "rmi" ||
+        argument === "--force" || argument === "--force-recreate"
+      )
     ),
     false,
   );

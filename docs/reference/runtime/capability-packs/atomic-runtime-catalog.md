@@ -52,7 +52,7 @@ publish none. See
 
 | Unit                                     | Concrete scope                                 | Current HTTP loopback | Notes                                                                |
 | ---------------------------------------- | ---------------------------------------------- | --------------------- | -------------------------------------------------------------------- |
-| `casys.syson-stack`                      | Postgres, SysON app, SysON MCP                 | 3009          | `casys-syson@1.0.0` technically indivisible local stack              |
+| `casys.syson-stack`                      | Postgres, SysON app, SysON MCP                 | 3009          | `casys-syson@1.0.1` technically indivisible local stack              |
 | `casys.mcp-build123d-sandbox`            | Private Build123d Compose service              | 3024          | Separate private export volume                                       |
 | `casys.mcp-build123d-observation`        | Regular Build123d/OCCT observer service        | 3014          | Optional assembly-integrity path                                     |
 | `casys.build123d-isolated-worker`        | Admitted source microVM                        | —             | Different lifecycle from either HTTP service                         |
@@ -75,7 +75,7 @@ first-party catalogue simply declares none.
 
 Each material carries either a literal `null` launch group or an exact launch-group
 id/version/fingerprint reference. The three `casys.syson-stack` materials share the same
-`casys-syson@1.0.0` group reference. Build123d has two separate immutable one-service
+`casys-syson@1.0.1` group reference. Build123d has two separate immutable one-service
 groups: `casys-build123d-sandbox@1.0.0` (`mcp-build123d-sandbox`, 3024 → 3014,
 `build123d-sandbox-exports:/exports`) and `casys-build123d-observation@1.0.0`
 (`mcp-build123d`, 3014 → 3014, `exports:/exports`). Both pin Build123d 0.6.1 digest

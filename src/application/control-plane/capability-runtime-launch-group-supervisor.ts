@@ -64,6 +64,15 @@ export class CapabilityRuntimeLaunchGroupSafetyError extends Error {
   }
 }
 
+/**
+ * Narrow, server-owned temporary barrier for one launch group.  It is not a
+ * policy engine: normal lifecycle supervision asks it only after resolving a
+ * reviewed, registry-owned group and before it writes any lease or intent.
+ */
+export interface CapabilityRuntimeLaunchGroupAvailabilityGate {
+  assertLaunchGroupAvailable(group: CapabilityRuntimeLaunchGroup): Promise<void>;
+}
+
 export interface CapabilityRuntimeLaunchGroupSupervisorOptions {
   readonly groups: CapabilityRuntimeLaunchGroupRegistry;
   readonly journal: CapabilityRuntimeJournal;
@@ -72,6 +81,7 @@ export interface CapabilityRuntimeLaunchGroupSupervisorOptions {
   readonly host: CapabilityRuntimeHostMutator;
   readonly secrets: CapabilityRuntimeSecretSlotObserver;
   readonly lock: CapabilityRuntimeHostMutationLock;
+  readonly availabilityGate?: CapabilityRuntimeLaunchGroupAvailabilityGate;
 }
 
 export interface EnsureCapabilityRuntimeLaunchGroupRequest {
@@ -843,6 +853,7 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
         "Capability runtime group topology is not reviewed.",
       );
     }
+    await this.options.availabilityGate?.assertLaunchGroupAvailable(group);
     return group;
   }
 

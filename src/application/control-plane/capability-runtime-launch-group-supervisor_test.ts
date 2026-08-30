@@ -20,6 +20,7 @@ import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import { FixedCapabilityRuntimeLaunchGroupRegistry } from "./capability-runtime-launch-group-registry.ts";
 import { createCapabilityRuntimeQualificationHostStopProof } from "../../domain/capability/runtime/capability-runtime-qualification-host-proof.ts";
 import {
+  type CapabilityRuntimeLaunchGroupAvailabilityGate,
   CapabilityRuntimeLaunchGroupSafetyError,
   CapabilityRuntimeLaunchGroupSupervisor,
   qualificationStopIntentId,
@@ -251,6 +252,28 @@ Deno.test("a reviewed launch group can preload material without a qualification 
   });
   assertEquals(fixture.host.calls.map((call) => call.action), ["material-acquire"]);
   assertEquals(await fixture.leases.listActive(AT), []);
+});
+
+Deno.test("a server availability gate blocks SysON material preload before a journal or host mutation", async () => {
+  const syson = await group("casys-syson", "syson");
+  const gate: CapabilityRuntimeLaunchGroupAvailabilityGate = {
+    assertLaunchGroupAvailable: () => Promise.reject(new Error("rollover in progress")),
+  };
+  const fixture = supervisor([syson], undefined, "unavailable", {
+    availabilityGate: gate,
+  });
+  await assertRejects(
+    () =>
+      fixture.supervisor.ensureMaterial({
+        group: capabilityRuntimeLaunchGroupReference(syson),
+        projectId: "project-test",
+        at: AT,
+      }),
+    Error,
+    "rollover in progress",
+  );
+  assertEquals(await fixture.journal.list(), []);
+  assertEquals(fixture.host.calls, []);
 });
 
 Deno.test("a private qualification start is separately authorized while a normal start still needs an exact ROP projection", async () => {
@@ -1757,6 +1780,7 @@ function supervisor(
     readonly reportUncertainFor?: CapabilityRuntimeJournalEntry["action"];
     readonly throwOn?: CapabilityRuntimeJournalEntry["action"];
     readonly nullOutcomeObservationsFor?: CapabilityRuntimeJournalEntry["action"];
+    readonly availabilityGate?: CapabilityRuntimeLaunchGroupAvailabilityGate;
   } = {},
 ) {
   const states = new InMemoryCapabilityRuntimeStateObserver();
@@ -1805,6 +1829,7 @@ function supervisor(
         Promise.resolve(new Map(slots.map((slot) => [slot, secretAvailability]))),
     },
     lock: { withLock: (operation) => operation() },
+    availabilityGate: options.availabilityGate,
   });
   return { supervisor, leases, host, states, journal };
 }

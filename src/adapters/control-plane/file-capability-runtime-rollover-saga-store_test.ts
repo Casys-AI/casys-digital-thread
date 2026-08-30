@@ -154,11 +154,13 @@ Deno.test("rollover amendments follow the exact ledger order and may be absent",
         {
           projectId: "alpha",
           ledgerRevision: 2,
+          ledgerFingerprint: await fingerprint("alpha-ledger"),
           proposalFingerprint: await fingerprint("alpha"),
         },
         {
           projectId: "bravo",
           ledgerRevision: 3,
+          ledgerFingerprint: await fingerprint("bravo-ledger"),
           proposalFingerprint: await fingerprint("bravo"),
         },
       ],
@@ -226,6 +228,7 @@ async function fixtureIdentity(): Promise<CapabilityRuntimeRolloverIdentity> {
   const newArtifact = await fingerprint("new-image");
   return {
     transitionId: "syson-v2026.7.0-casys.2-rollover",
+    authorizedAt: "2026-08-30T12:00:00.000Z",
     predecessor: {
       launchGroup: { id: "casys-syson", version: "1.0.0", fingerprint: oldArtifact },
       unit: {
@@ -245,6 +248,7 @@ async function fixtureIdentity(): Promise<CapabilityRuntimeRolloverIdentity> {
     affectedProjects: [{
       projectId: "ats01-adjustable-tablet-stand",
       ledgerRevision: 4,
+      ledgerFingerprint: await fingerprint("ledger-r4"),
       proposalFingerprint: await fingerprint("proposal-r4"),
     }],
     preserved: {

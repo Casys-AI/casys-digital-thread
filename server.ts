@@ -184,9 +184,11 @@ import {
   FileCapabilityRuntimeHostMutationLock,
   FileCapabilityRuntimeLeaseStore,
 } from "./src/adapters/control-plane/file-capability-runtime-host-stores.ts";
+import { FileCapabilityRuntimeRolloverSagaStore } from "./src/adapters/control-plane/file-capability-runtime-rollover-saga-store.ts";
 import { DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY } from "./src/adapters/control-plane/file-project-capability-ledger-store.ts";
 import { createCapabilityRuntimeHostAdapter } from "./src/adapters/control-plane/compose-capability-runtime-host.ts";
 import { CapabilityRuntimeLaunchGroupSupervisor } from "./src/application/control-plane/capability-runtime-launch-group-supervisor.ts";
+import { CapabilityRuntimeSysonRolloverGate } from "./src/application/control-plane/capability-runtime-syson-rollover-service.ts";
 import { CapabilityRuntimePreloadScheduler } from "./src/application/control-plane/capability-runtime-preload-scheduler.ts";
 import { createLocalCapabilityRuntimeReadComposition } from "./src/adapters/control-plane/local-capability-runtime-read-composition.ts";
 import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "./src/adapters/control-plane/first-party-capability-runtime-qualification-candidates.ts";
@@ -194,9 +196,11 @@ import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "./
 import { LocalChronoRuntimeSecretResolver } from "./src/adapters/control-plane/local-chrono-runtime-secret-resolver.ts";
 import { createLocalFixedCapabilityRuntimeConnection } from "./src/adapters/control-plane/local-fixed-capability-runtime-connection.ts";
 import {
+  createFirstPartySysonRolloverPredecessorLaunchGroup,
   firstPartyBuild123dObservationLaunchGroupReference,
   firstPartySysonLaunchGroupReference,
 } from "./src/adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
+import { createFirstPartySysonRolloverPredecessorUnit } from "./src/adapters/control-plane/first-party-capability-binding-catalog.ts";
 import type { CapabilityRuntimeLaunchGroup } from "./src/domain/capability/runtime/capability-runtime-launch-group.ts";
 import {
   listRegisteredEngineeringOperations,
@@ -940,11 +944,30 @@ async function createProjectControl(
     DEFAULT_CAPABILITY_RUNTIME_LEASE_DIRECTORY,
   );
   const capabilityRuntimeMutationLock = new FileCapabilityRuntimeHostMutationLock();
+  const [sysonRolloverPredecessorUnit, sysonRolloverPredecessorGroup] = await Promise
+    .all([
+      createFirstPartySysonRolloverPredecessorUnit(),
+      createFirstPartySysonRolloverPredecessorLaunchGroup(),
+    ]);
+  const sysonRolloverSuccessorGroup = await capabilityRead.launchGroups.require(
+    await firstPartySysonLaunchGroupReference(),
+  );
+  const sysonRolloverSuccessorUnit = capabilityRead.catalog.units.find((unit) =>
+    unit.id === "casys.syson-stack"
+  );
+  if (!sysonRolloverSuccessorUnit) {
+    throw new Error("Current capability catalogue lacks casys.syson-stack.");
+  }
+  const capabilityRuntimeRolloverSagas = new FileCapabilityRuntimeRolloverSagaStore();
   const capabilityRuntimeHost = createCapabilityRuntimeHostAdapter({
     registry: capabilityRead.launchGroups,
     journal: capabilityRead.journal,
     secrets: capabilityRuntimeSecrets,
     secretInjector: capabilityRuntimeSecrets,
+    rollovers: [{
+      predecessor: sysonRolloverPredecessorGroup,
+      successor: sysonRolloverSuccessorGroup,
+    }],
   });
   const capabilityRuntimeGroups = new CapabilityRuntimeLaunchGroupSupervisor({
     groups: capabilityRead.launchGroups,
@@ -954,6 +977,9 @@ async function createProjectControl(
     host: capabilityRuntimeHost,
     secrets: capabilityRuntimeSecrets,
     lock: capabilityRuntimeMutationLock,
+    availabilityGate: new CapabilityRuntimeSysonRolloverGate(
+      capabilityRuntimeRolloverSagas,
+    ),
   });
   const capabilityRuntime = new CapabilityRuntimeSupervisor({
     contexts: capabilityRead.contexts,
@@ -1303,6 +1329,29 @@ async function createProjectControl(
   const genericReconcileUncertainWriter = new ReconcileUncertainWriterRunExecutor({
     projects: runtime.projects,
     commands: runtime.commands,
+    retainedCapabilityLeaseFinalizer: {
+      releaseReconciledUncertainWriterLease: async (input) =>
+        await capabilityRuntimeSession.releaseReconciledUncertainWriterLease({
+          ...input,
+          resolveLegacyOperationalCapability: async () => {
+            const failedRun = input.project.agentRuns.find((candidate) =>
+              candidate.id === input.failedRunId
+            );
+            const workItem = failedRun === undefined
+              ? undefined
+              : input.project.workItems.find((candidate) =>
+                candidate.id === failedRun.workItemId
+              );
+            if (!failedRun || !workItem?.operation) return undefined;
+            return await capabilityRuntime.requireExecution({
+              project: input.project,
+              run: failedRun,
+              workItem,
+              operation: workItem.operation,
+            });
+          },
+        }),
+    },
   });
   const printabilityCaseCaptures = new FileCaptureStore({
     ...PRINTABILITY_CASE_CAPTURE_DESCRIPTOR,

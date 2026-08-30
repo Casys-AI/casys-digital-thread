@@ -7,14 +7,26 @@ import {
   FileCapabilityRuntimeHostMutationLock,
   FileCapabilityRuntimeLeaseStore,
 } from "../../src/adapters/control-plane/file-capability-runtime-host-stores.ts";
+import { FileCapabilityRuntimeRolloverSagaStore } from "../../src/adapters/control-plane/file-capability-runtime-rollover-saga-store.ts";
 import { createCapabilityRuntimeHostAdapter } from "../../src/adapters/control-plane/compose-capability-runtime-host.ts";
 import { createLocalCapabilityRuntimeReadComposition } from "../../src/adapters/control-plane/local-capability-runtime-read-composition.ts";
+import { createFirstPartySysonRolloverPredecessorUnit } from "../../src/adapters/control-plane/first-party-capability-binding-catalog.ts";
+import {
+  createFirstPartySysonRolloverPredecessorLaunchGroup,
+  firstPartySysonLaunchGroupReference,
+} from "../../src/adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
 import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "../../src/adapters/control-plane/first-party-capability-runtime-qualification-candidates.ts";
 import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "../../src/adapters/control-plane/first-party-capability-runtime-qualification-specifications.ts";
 import { FileEngineeringProjectRevisionStore } from "../../src/adapters/shared/stores/engineering-project-store.ts";
 import { LocalCapabilityRuntimeAdminService } from "../../src/application/control-plane/local-capability-runtime-admin-service.ts";
 import { ProjectCapabilityAuthorizationService } from "../../src/application/control-plane/project-capability-authorization-service.ts";
 import { ProjectCapabilityJitDemandReader } from "../../src/application/control-plane/project-capability-jit-demand-reader.ts";
+import { ProjectCapabilityRolloverJitDemandReader } from "../../src/application/control-plane/project-capability-rollover-jit-demand-reader.ts";
+import {
+  CapabilityRuntimeSysonRolloverService,
+  SYSON_NODE_REPACK_ROLLOVER_TRANSITION_ID,
+} from "../../src/application/control-plane/capability-runtime-syson-rollover-service.ts";
+import { engineeringOperationRegistry } from "../../src/orchestration/operations/registry.ts";
 
 const [command, ...argumentsList] = Deno.args;
 const flags = parseFlags(argumentsList);
@@ -25,10 +37,59 @@ const lock = capability.lock;
 const ledgers = capability.ledgers;
 const hostMutationLock = new FileCapabilityRuntimeHostMutationLock();
 const leases = new FileCapabilityRuntimeLeaseStore();
+const [sysonRolloverPredecessorUnit, sysonRolloverPredecessorGroup] = await Promise.all(
+  [
+    createFirstPartySysonRolloverPredecessorUnit(),
+    createFirstPartySysonRolloverPredecessorLaunchGroup(),
+  ],
+);
+const sysonRolloverSuccessorGroup = await capability.launchGroups.require(
+  await firstPartySysonLaunchGroupReference(),
+);
+const sysonRolloverSuccessorUnit = catalog.units.find((unit) =>
+  unit.id === "casys.syson-stack"
+);
+if (!sysonRolloverSuccessorUnit) {
+  throw new Error("Current capability catalogue lacks casys.syson-stack.");
+}
+const rollovers = new FileCapabilityRuntimeRolloverSagaStore();
 const host = createCapabilityRuntimeHostAdapter({
   registry: capability.launchGroups,
   journal: capability.journal,
   secrets: capability.secrets,
+  rollovers: [{
+    predecessor: sysonRolloverPredecessorGroup,
+    successor: sysonRolloverSuccessorGroup,
+  }],
+});
+const projects = new FileEngineeringProjectRevisionStore();
+const jitDemand = new ProjectCapabilityJitDemandReader({
+  projects,
+  contexts: capability.contexts,
+});
+const rolloverJitDemand = new ProjectCapabilityRolloverJitDemandReader({
+  projects,
+  operations: engineeringOperationRegistry,
+  ledgers,
+});
+const sysonRollover = new CapabilityRuntimeSysonRolloverService({
+  catalog,
+  predecessor: {
+    unit: sysonRolloverPredecessorUnit,
+    launchGroup: sysonRolloverPredecessorGroup,
+  },
+  successor: {
+    unit: sysonRolloverSuccessorUnit,
+    launchGroup: sysonRolloverSuccessorGroup,
+  },
+  ledgers,
+  lock,
+  leases,
+  journal: capability.journal,
+  sagas: rollovers,
+  host,
+  hostMutationLock,
+  jitDemand: rolloverJitDemand,
 });
 const authorization = new ProjectCapabilityAuthorizationService({
   ledgers,
@@ -55,10 +116,7 @@ const admin = new LocalCapabilityRuntimeAdminService({
     journal: capability.journal,
     leases,
     host,
-    jitDemand: new ProjectCapabilityJitDemandReader({
-      projects: new FileEngineeringProjectRevisionStore(),
-      contexts: capability.contexts,
-    }),
+    jitDemand,
   },
 });
 
@@ -115,9 +173,24 @@ switch (command) {
       ),
     );
     break;
+  case "rollover-status":
+    print(await sysonRollover.status(transitionId(flags)));
+    break;
+  case "rollover-review":
+    print(await sysonRollover.review(transitionId(flags)));
+    break;
+  case "rollover-apply":
+    print(
+      await sysonRollover.apply({
+        transitionId: transitionId(flags),
+        reviewFingerprint: fingerprint(flags, "review-fingerprint"),
+        confirm: confirmed(flags),
+      }),
+    );
+    break;
   default:
     throw new Error(
-      "Usage: capability-runtime-admin <status|lock-review|lock-apply|rollback-review|rollback-apply|revoke-review|revoke-apply|remove-review|remove-apply> [--unit-id=<id>|--launch-group-id=<id>] [--review-fingerprint=<sha256>] [--confirm]",
+      "Usage: capability-runtime-admin <status|lock-review|lock-apply|rollback-review|rollback-apply|revoke-review|revoke-apply|remove-review|remove-apply|rollover-status|rollover-review|rollover-apply> [--unit-id=<id>|--launch-group-id=<id>|--transition-id=casys-syson-node-repack-v1] [--review-fingerprint=<sha256>] [--confirm]",
     );
 }
 
@@ -157,6 +230,10 @@ function assertAllowedFlags(
       ? ["unit-id", "launch-group-id"]
       : command === "remove-apply"
       ? ["unit-id", "launch-group-id", "review-fingerprint", "confirm"]
+      : command === "rollover-status" || command === "rollover-review"
+      ? ["transition-id"]
+      : command === "rollover-apply"
+      ? ["transition-id", "review-fingerprint", "confirm"]
       : [],
   );
   for (const name of flags.keys()) {
@@ -164,6 +241,16 @@ function assertAllowedFlags(
       throw new Error(`--${name} is not valid for local admin ${command}.`);
     }
   }
+}
+
+function transitionId(flags: ReadonlyMap<string, string | true>): string {
+  const value = required(flags, "transition-id");
+  if (value !== SYSON_NODE_REPACK_ROLLOVER_TRANSITION_ID) {
+    throw new Error(
+      `--transition-id must be ${SYSON_NODE_REPACK_ROLLOVER_TRANSITION_ID}.`,
+    );
+  }
+  return value;
 }
 
 function required(flags: ReadonlyMap<string, string | true>, name: string): string {

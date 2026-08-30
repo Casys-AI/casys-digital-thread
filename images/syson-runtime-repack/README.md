@@ -6,12 +6,13 @@ local Digital Thread topology. It is not the `mcp-syson` server.
 The current runtime catalog still pins this image by immutable digest:
 
 ```text
-ghcr.io/casys-ai/syson@sha256:fc599abb95587913de11ff6de68060b5593956abc0c47bc753cd19e2987141a6
+ghcr.io/casys-ai/syson@sha256:d372ae26e5d32e5c599fa7c1599d42c73cf9a54e101cfe6f77175f313d7d84e9
 ```
 
-Live ATS01 execution proved that this published image lacks `node`, so it does
-**not** qualify for SysON's textual SysML path. Keep its digest as historical
-evidence; do not silently substitute a mutable tag.
+The retired 1.0.0 digest remains historical evidence only. The 1.0.1 repack
+is a separately pinned runtime identity; its host qualification stays literal
+until the exact textual SysML workflow records it. Never silently substitute a
+mutable tag or treat this publication change as a scientific result.
 
 `mcp-syson` runs as a separate service and connects to this application at
 `http://syson-app:8080`. The application persists its data in the separate `syson-db`

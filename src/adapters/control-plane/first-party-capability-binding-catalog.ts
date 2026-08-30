@@ -51,6 +51,7 @@ import {
 } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
 import { validateCapabilityRuntimeCatalog } from "./capability-runtime-catalog.ts";
 import {
+  createFirstPartySysonRolloverPredecessorLaunchGroup,
   firstPartyBuild123dObservationLaunchGroupReference,
   firstPartyBuild123dSandboxLaunchGroupReference,
   firstPartyCalculixLaunchGroupReference,
@@ -60,6 +61,7 @@ import {
   MCP_SYSON_IMAGE_REFERENCE,
   POSTGRES_IMAGE_REFERENCE,
   SYSON_IMAGE_REFERENCE,
+  SYSON_PREDECESSOR_IMAGE_REFERENCE,
 } from "./first-party-capability-runtime-launch-groups.ts";
 import type { CapabilityRuntimeLaunchGroupReference } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 
@@ -108,7 +110,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
       composeMaterial(
         "syson-app-image",
         SYSON_IMAGE_REFERENCE,
-        ["linux/arm64"],
+        ["linux/amd64", "linux/arm64"],
         "syson-app",
         "internal",
         [],
@@ -127,7 +129,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "reviewed",
         sysonLaunchGroup,
       ),
-    ]),
+    ], "1.0.1"),
     unit("casys.mcp-build123d-sandbox", [
       composeMaterial(
         "mcp-build123d-sandbox-image",
@@ -413,6 +415,48 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
       ),
     ],
   });
+}
+
+/**
+ * The only retired unit identity accepted by the server-owned 1.0.0 → 1.0.1
+ * SysON rollover. It is intentionally not a runtime catalogue: normal
+ * selection exposes the successor only. The caller may use this value solely
+ * to recognize immutable history or the exact rollover predecessor.
+ */
+export async function createFirstPartySysonRolloverPredecessorUnit(): Promise<
+  AtomicCapabilityRuntimeUnit
+> {
+  const [successor, predecessorGroup] = await Promise.all([
+    createFirstPartyCapabilityRuntimeCatalog(),
+    createFirstPartySysonRolloverPredecessorLaunchGroup(),
+  ]);
+  const successorUnit = successor.units.find((unit) => unit.id === "casys.syson-stack");
+  if (!successorUnit) {
+    throw new Error("Current first-party catalogue lacks casys.syson-stack.");
+  }
+  const materials = successorUnit.materials.map((material) => ({
+    ...material,
+    imageReference: material.id === "syson-app-image"
+      ? SYSON_PREDECESSOR_IMAGE_REFERENCE
+      : material.imageReference,
+    // The historical 1.0.0 manifest was ARM64-only. The new publication is
+    // multi-architecture, so reusing successor metadata here would silently
+    // falsify the immutable predecessor fingerprint accepted by lock history.
+    platforms: material.id === "syson-app-image"
+      ? ["linux/arm64"] as const
+      : material.platforms,
+    launchGroup: {
+      id: predecessorGroup.id,
+      version: predecessorGroup.version,
+      fingerprint: structuredClone(predecessorGroup.fingerprint),
+    },
+  }));
+  const predecessorUnit = await unit(
+    "casys.syson-stack",
+    materials,
+    "1.0.0",
+  );
+  return predecessorUnit;
 }
 
 async function unit(

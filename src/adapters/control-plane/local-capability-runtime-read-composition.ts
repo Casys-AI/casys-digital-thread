@@ -31,7 +31,10 @@ import {
 import { FileCapabilityRuntimeQualificationAttemptStore } from "./file-capability-runtime-qualification-attempt-store.ts";
 import { FileCapabilityRuntimeQualificationAttestationStore } from "./file-capability-runtime-qualification-attestation-store.ts";
 import { FileProjectCapabilityLedgerStore } from "./file-project-capability-ledger-store.ts";
-import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capability-binding-catalog.ts";
+import {
+  createFirstPartyCapabilityRuntimeCatalog,
+  createFirstPartySysonRolloverPredecessorUnit,
+} from "./first-party-capability-binding-catalog.ts";
 import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "./first-party-capability-runtime-qualification-candidates.ts";
 import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "./first-party-capability-runtime-qualification-specifications.ts";
 import { createFirstPartyCapabilityRuntimeLaunchGroupRegistry } from "./first-party-capability-runtime-launch-groups.ts";
@@ -101,13 +104,19 @@ export interface LocalCapabilityRuntimeReadComposition {
 export async function createLocalCapabilityRuntimeReadComposition(
   options: LocalCapabilityRuntimeReadCompositionOptions = {},
 ): Promise<LocalCapabilityRuntimeReadComposition> {
-  const [catalog, launchGroups, qualificationCandidates, qualificationSpecs] =
-    await Promise.all([
-      createFirstPartyCapabilityRuntimeCatalog(),
-      createFirstPartyCapabilityRuntimeLaunchGroupRegistry(),
-      createFirstPartyCapabilityRuntimeQualificationCandidates(),
-      createFirstPartyCapabilityRuntimeQualificationSpecifications(),
-    ]);
+  const [
+    catalog,
+    predecessorSysonUnit,
+    launchGroups,
+    qualificationCandidates,
+    qualificationSpecs,
+  ] = await Promise.all([
+    createFirstPartyCapabilityRuntimeCatalog(),
+    createFirstPartySysonRolloverPredecessorUnit(),
+    createFirstPartyCapabilityRuntimeLaunchGroupRegistry(),
+    createFirstPartyCapabilityRuntimeQualificationCandidates(),
+    createFirstPartyCapabilityRuntimeQualificationSpecifications(),
+  ]);
   const journal = new FileCapabilityRuntimeJournal();
   const secrets: CapabilityRuntimeSecretSlotObserver = options.secrets ?? {
     observe: (slots) =>
@@ -208,7 +217,28 @@ export async function createLocalCapabilityRuntimeReadComposition(
     },
   ]);
   const policy = new FileCapabilityRuntimeAdminPolicyStore(undefined, catalog);
-  const lock = new FileCapabilityRuntimeAdminLockStore(undefined, catalog);
+  const successorSysonUnit = catalog.units.find((unit) =>
+    unit.id === "casys.syson-stack"
+  );
+  if (!predecessorSysonUnit || !successorSysonUnit) {
+    throw new Error(
+      "The code-owned SysON rollover requires exact predecessor and successor units.",
+    );
+  }
+  const lock = new FileCapabilityRuntimeAdminLockStore(undefined, catalog, {
+    transitionPredecessors: [{
+      predecessor: {
+        id: predecessorSysonUnit.id,
+        version: predecessorSysonUnit.version,
+        manifestFingerprint: predecessorSysonUnit.manifestFingerprint,
+      },
+      successor: {
+        id: successorSysonUnit.id,
+        version: successorSysonUnit.version,
+        manifestFingerprint: successorSysonUnit.manifestFingerprint,
+      },
+    }],
+  });
   const hostIdentity = new FileCapabilityRuntimeHostIdentityStore();
   const qualifications = new FileCapabilityRuntimeQualificationAttestationStore();
   const qualificationAttempts = new FileCapabilityRuntimeQualificationAttemptStore();

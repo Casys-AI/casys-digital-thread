@@ -15,8 +15,15 @@ import {
 
 export const POSTGRES_IMAGE_REFERENCE =
   "docker.io/library/postgres@sha256:926f8799aef36e00001cfe15fba7abbd37d3c5224ea57e4c858e4bb670f10561" as const;
-export const SYSON_IMAGE_REFERENCE =
+/**
+ * Retired only through the server-owned SysON rollover. It remains a literal
+ * predecessor descriptor so an old local host can be identified exactly;
+ * ordinary runtime composition never publishes or selects it.
+ */
+export const SYSON_PREDECESSOR_IMAGE_REFERENCE =
   "ghcr.io/casys-ai/syson@sha256:fc599abb95587913de11ff6de68060b5593956abc0c47bc753cd19e2987141a6" as const;
+export const SYSON_IMAGE_REFERENCE =
+  "ghcr.io/casys-ai/syson@sha256:d372ae26e5d32e5c599fa7c1599d42c73cf9a54e101cfe6f77175f313d7d84e9" as const;
 export const MCP_SYSON_IMAGE_REFERENCE =
   "ghcr.io/casys-ai/mcp-syson@sha256:87eee6e35a636124d5ba6911492a245d69edcdf1ba67575676c22a0e9d7ce65e" as const;
 export const MCP_BUILD123D_061_IMAGE_REFERENCE =
@@ -31,118 +38,7 @@ export const MCP_BUILD123D_061_IMAGE_REFERENCE =
 export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
   readonly CapabilityRuntimeLaunchGroup[]
 > {
-  const sysonComposeContent = deterministicJson({
-    services: {
-      "syson-db": {
-        image: POSTGRES_IMAGE_REFERENCE,
-        environment: {
-          POSTGRES_DB: "syson",
-          POSTGRES_PASSWORD: "syson",
-          POSTGRES_USER: "syson",
-        },
-        volumes: ["syson-db-data:/var/lib/postgresql/data"],
-        healthcheck: {
-          test: ["CMD-SHELL", "pg_isready -U syson -d syson"],
-          interval: "5s",
-          timeout: "5s",
-          retries: 10,
-        },
-      },
-      "syson-app": {
-        image: SYSON_IMAGE_REFERENCE,
-        environment: {
-          MANAGEMENT_HEALTH_ELASTICSEARCH_ENABLED: "false",
-          SERVER_PORT: "8080",
-          SIRIUS_COMPONENTS_CORS_ALLOWEDORIGINPATTERNS: "*",
-          SPRING_DATASOURCE_PASSWORD: "syson",
-          SPRING_DATASOURCE_URL: "jdbc:postgresql://syson-db/syson",
-          SPRING_DATASOURCE_USERNAME: "syson",
-        },
-        depends_on: { "syson-db": { condition: "service_healthy" } },
-        healthcheck: {
-          test: [
-            "CMD",
-            "wget",
-            "-q",
-            "--spider",
-            "http://localhost:8080/actuator/health",
-          ],
-          interval: "10s",
-          timeout: "5s",
-          retries: 20,
-          start_period: "240s",
-        },
-      },
-      "mcp-syson": {
-        image: MCP_SYSON_IMAGE_REFERENCE,
-        command: ["--port=3009", "--hostname=0.0.0.0"],
-        environment: { SYSON_URL: "http://syson-app:8080" },
-        depends_on: { "syson-app": { condition: "service_healthy" } },
-        ports: ["127.0.0.1:3009:3009"],
-        healthcheck: {
-          test: [
-            "CMD",
-            "deno",
-            "eval",
-            "--allow-net=127.0.0.1:3009",
-            "const r=await fetch('http://127.0.0.1:3009/health');if(!r.ok)Deno.exit(1)",
-          ],
-          interval: "10s",
-          timeout: "5s",
-          retries: 12,
-          start_period: "10s",
-        },
-      },
-    },
-    volumes: { "syson-db-data": {} },
-  });
-  const compose = {
-    schemaVersion: "capability-runtime-compose-descriptor/1.0" as const,
-    content: sysonComposeContent,
-    fingerprint: await fingerprintCapabilityRuntimeComposeContent(sysonComposeContent),
-  };
-  const body = {
-    schemaVersion: "capability-runtime-launch-group/2.0" as const,
-    id: "casys-syson",
-    version: "1.0.0",
-    activationPolicy: "persistent" as const,
-    acquisition: { kind: "compose" as const, projectName: "casys-syson" },
-    materials: [
-      material(
-        "casys.syson-stack",
-        "syson-db-image",
-        POSTGRES_IMAGE_REFERENCE,
-        "syson-db",
-        "casys-syson",
-      ),
-      material(
-        "casys.syson-stack",
-        "syson-app-image",
-        SYSON_IMAGE_REFERENCE,
-        "syson-app",
-        "casys-syson",
-      ),
-      material(
-        "casys.syson-stack",
-        "mcp-syson-image",
-        MCP_SYSON_IMAGE_REFERENCE,
-        "mcp-syson",
-        "casys-syson",
-      ),
-    ],
-    compose,
-    retention: {
-      containers: "stop-only" as const,
-      images: "preserve" as const,
-      volumes: "preserve" as const,
-    },
-    secretSlots: [],
-    security: "reviewed" as const,
-  };
-  const syson = {
-    ...body,
-    fingerprint: await fingerprintCapabilityRuntimeLaunchGroup(body),
-  } as const;
+  const syson = await createFirstPartySysonLaunchGroup("successor");
   const build123dSandbox = await build123dLaunchGroup({
     id: "casys-build123d-sandbox",
     projectName: "casys-build123d-sandbox",
@@ -287,6 +183,141 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
     fingerprint: await fingerprintCapabilityRuntimeLaunchGroup(calculixBody),
   } as const;
   return [syson, build123dSandbox, build123dObservation, chrono, calculix];
+}
+
+/**
+ * The one code-owned predecessor admissible to the SysON 1.0.1 rollover.
+ * It is intentionally not included in the ordinary registry: it shares the
+ * same Compose project and loopback port with its successor.
+ */
+export async function createFirstPartySysonRolloverPredecessorLaunchGroup(): Promise<
+  CapabilityRuntimeLaunchGroup
+> {
+  return await createFirstPartySysonLaunchGroup("predecessor");
+}
+
+type FirstPartySysonDescriptor = "predecessor" | "successor";
+
+async function createFirstPartySysonLaunchGroup(
+  descriptor: FirstPartySysonDescriptor,
+): Promise<CapabilityRuntimeLaunchGroup> {
+  const image = descriptor === "predecessor"
+    ? SYSON_PREDECESSOR_IMAGE_REFERENCE
+    : SYSON_IMAGE_REFERENCE;
+  const version = descriptor === "predecessor" ? "1.0.0" : "1.0.1";
+  const sysonComposeContent = deterministicJson({
+    services: {
+      "syson-db": {
+        image: POSTGRES_IMAGE_REFERENCE,
+        environment: {
+          POSTGRES_DB: "syson",
+          POSTGRES_PASSWORD: "syson",
+          POSTGRES_USER: "syson",
+        },
+        volumes: ["syson-db-data:/var/lib/postgresql/data"],
+        healthcheck: {
+          test: ["CMD-SHELL", "pg_isready -U syson -d syson"],
+          interval: "5s",
+          timeout: "5s",
+          retries: 10,
+        },
+      },
+      "syson-app": {
+        image,
+        environment: {
+          MANAGEMENT_HEALTH_ELASTICSEARCH_ENABLED: "false",
+          SERVER_PORT: "8080",
+          SIRIUS_COMPONENTS_CORS_ALLOWEDORIGINPATTERNS: "*",
+          SPRING_DATASOURCE_PASSWORD: "syson",
+          SPRING_DATASOURCE_URL: "jdbc:postgresql://syson-db/syson",
+          SPRING_DATASOURCE_USERNAME: "syson",
+        },
+        depends_on: { "syson-db": { condition: "service_healthy" } },
+        healthcheck: {
+          test: [
+            "CMD",
+            "wget",
+            "-q",
+            "--spider",
+            "http://localhost:8080/actuator/health",
+          ],
+          interval: "10s",
+          timeout: "5s",
+          retries: 20,
+          start_period: "240s",
+        },
+      },
+      "mcp-syson": {
+        image: MCP_SYSON_IMAGE_REFERENCE,
+        command: ["--port=3009", "--hostname=0.0.0.0"],
+        environment: { SYSON_URL: "http://syson-app:8080" },
+        depends_on: { "syson-app": { condition: "service_healthy" } },
+        ports: ["127.0.0.1:3009:3009"],
+        healthcheck: {
+          test: [
+            "CMD",
+            "deno",
+            "eval",
+            "--allow-net=127.0.0.1:3009",
+            "const r=await fetch('http://127.0.0.1:3009/health');if(!r.ok)Deno.exit(1)",
+          ],
+          interval: "10s",
+          timeout: "5s",
+          retries: 12,
+          start_period: "10s",
+        },
+      },
+    },
+    volumes: { "syson-db-data": {} },
+  });
+  const compose = {
+    schemaVersion: "capability-runtime-compose-descriptor/1.0" as const,
+    content: sysonComposeContent,
+    fingerprint: await fingerprintCapabilityRuntimeComposeContent(sysonComposeContent),
+  };
+  const body = {
+    schemaVersion: "capability-runtime-launch-group/2.0" as const,
+    id: "casys-syson",
+    version,
+    activationPolicy: "persistent" as const,
+    acquisition: { kind: "compose" as const, projectName: "casys-syson" },
+    materials: [
+      material(
+        "casys.syson-stack",
+        "syson-db-image",
+        POSTGRES_IMAGE_REFERENCE,
+        "syson-db",
+        "casys-syson",
+      ),
+      material(
+        "casys.syson-stack",
+        "syson-app-image",
+        image,
+        "syson-app",
+        "casys-syson",
+      ),
+      material(
+        "casys.syson-stack",
+        "mcp-syson-image",
+        MCP_SYSON_IMAGE_REFERENCE,
+        "mcp-syson",
+        "casys-syson",
+      ),
+    ],
+    compose,
+    retention: {
+      containers: "stop-only" as const,
+      images: "preserve" as const,
+      volumes: "preserve" as const,
+    },
+    secretSlots: [],
+    security: "reviewed" as const,
+  };
+  const syson = {
+    ...body,
+    fingerprint: await fingerprintCapabilityRuntimeLaunchGroup(body),
+  } as const;
+  return syson;
 }
 
 export async function createFirstPartyCapabilityRuntimeLaunchGroupRegistry(): Promise<

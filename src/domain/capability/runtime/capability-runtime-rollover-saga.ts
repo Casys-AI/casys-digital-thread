@@ -43,6 +43,8 @@ export interface CapabilityRuntimeRolloverRuntimeReference {
 export interface CapabilityRuntimeRolloverAffectedProject {
   readonly projectId: string;
   readonly ledgerRevision: number;
+  /** Exact predecessor ledger revision to which the successor must append. */
+  readonly ledgerFingerprint: ContentFingerprint;
   readonly proposalFingerprint: ContentFingerprint;
 }
 
@@ -63,6 +65,12 @@ export interface CapabilityRuntimeRolloverPreservationSet {
 export interface CapabilityRuntimeRolloverIdentity {
   /** Code-owned explicit migration identity; permits a later rollback saga. */
   readonly transitionId: string;
+  /**
+   * Server-selected instant at which the successor ledger amendment is
+   * authorized.  It is carried by the prepared identity so a resumed saga
+   * never rewrites history with a fresh clock value.
+   */
+  readonly authorizedAt: string;
   readonly predecessor: CapabilityRuntimeRolloverRuntimeReference;
   readonly successor: CapabilityRuntimeRolloverRuntimeReference;
   readonly affectedProjects: readonly CapabilityRuntimeRolloverAffectedProject[];
@@ -120,6 +128,7 @@ export function validateCapabilityRuntimeRolloverIdentity(
 ): CapabilityRuntimeRolloverIdentity {
   const root = exactRecord(value, [
     "transitionId",
+    "authorizedAt",
     "predecessor",
     "successor",
     "affectedProjects",
@@ -149,6 +158,7 @@ export function validateCapabilityRuntimeRolloverIdentity(
   );
   return freeze({
     transitionId: safeId(root.transitionId, `${path}.transitionId`),
+    authorizedAt: timestamp(root.authorizedAt, `${path}.authorizedAt`),
     predecessor,
     successor,
     affectedProjects,
@@ -443,11 +453,16 @@ function affectedProject(
   const root = exactRecord(value, [
     "projectId",
     "ledgerRevision",
+    "ledgerFingerprint",
     "proposalFingerprint",
   ], path);
   return freeze({
     projectId: safeId(root.projectId, `${path}.projectId`),
     ledgerRevision: positiveInteger(root.ledgerRevision, `${path}.ledgerRevision`),
+    ledgerFingerprint: fingerprint(
+      root.ledgerFingerprint,
+      `${path}.ledgerFingerprint`,
+    ),
     proposalFingerprint: fingerprint(
       root.proposalFingerprint,
       `${path}.proposalFingerprint`,
@@ -480,6 +495,17 @@ function preservationSet(
 
 function preserve(value: unknown, path: string): "preserve" {
   if (value !== "preserve") throw integrity(`${path} must be literal preserve.`);
+  return value;
+}
+
+function timestamp(value: unknown, path: string): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw integrity(`${path} must be an exact ISO timestamp.`);
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf()) || date.toISOString() !== value) {
+    throw integrity(`${path} must be an exact ISO timestamp.`);
+  }
   return value;
 }
 
