@@ -523,3 +523,177 @@ function item(
     sourceRefs: [{ kind: "intent" as const, reference: "conversation" }],
   };
 }
+
+Deno.test("SysON seed after documentary baseline amends the brief ceiling instead of switching methods", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "capability-seed-amendment-" });
+  try {
+    let tick = 0;
+    const now = () =>
+      new Date(Date.parse("2026-08-29T00:00:00.000Z") + ++tick * 1_000).toISOString();
+    const projects = new FileEngineeringProjectRevisionStore(directory);
+    const briefs = new ProjectBriefCommandService(projects, now);
+    const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+    const lock = new FileCapabilityRuntimeAdminLockStore(
+      `${directory}/host/admin-lock.json`,
+      catalog,
+    );
+    const authorization = new ProjectCapabilityAuthorizationService({
+      ledgers: new InMemoryProjectCapabilityLedgerStore(),
+      registry: { list: listRegisteredEngineeringOperations },
+      catalog,
+      qualificationSpecs: [],
+      qualificationCandidates: [],
+      policy: new FileCapabilityRuntimeAdminPolicyStore(
+        `${directory}/host/admin-policy.json`,
+        catalog,
+      ),
+      host: {
+        schemaVersion: "capability-runtime-host-observation/1.0",
+        identityFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+        platform: "linux/arm64",
+        images: [],
+      },
+      lock,
+      now,
+    });
+    const started = await briefs.startProject(
+      { kind: "agent", actorId: "test" },
+      {
+        commandId: "start",
+        projectId: "tps-capability-seed",
+        projectName: "Capability seed amendment",
+        issuedAt: "2026-08-28T23:59:00.000Z",
+        intent: "Author a SysML container after a documentary baseline.",
+        intentSource: { kind: "human", reference: "conversation" },
+      },
+    );
+    const proposed = await briefs.proposeBrief(
+      { kind: "agent", actorId: "test" },
+      {
+        commandId: "propose",
+        projectId: started.project.id,
+        expectedRevision: started.revision,
+        issuedAt: "2026-08-28T23:59:10.000Z",
+        items: [
+          item("objective", "objective", "Seed a system model."),
+          item("mission", "mission-scenario", "Create a blank SysON container."),
+          {
+            ...item("success", "success-criterion", "The seed is reviewable."),
+            dependsOnItemIds: [],
+          },
+          {
+            ...item(
+              "assembly",
+              "verification-activity",
+              "Observe exact assembly facts later.",
+            ),
+            dependsOnItemIds: ["success"],
+            verificationAuthority: { id: "assembly-integrity", version: "1.0" },
+          },
+        ],
+      },
+    );
+    const proposal = await authorization.proposeForPendingBrief(proposed);
+    await authorization.prepareInitial(proposal);
+    const review = proposed.framing!.proposalReview!;
+    const approved = await briefs.approveBrief(
+      { kind: "human", actorId: "operator" },
+      {
+        commandId: "approve",
+        projectId: proposed.project.id,
+        expectedRevision: proposed.revision,
+        issuedAt: "2026-08-28T23:59:20.000Z",
+        briefSnapshotId: review.briefSnapshotId,
+        briefRevision: review.briefRevision,
+        inputFingerprint: review.inputFingerprint,
+        rationale: "Confirmed.",
+      },
+    );
+    await authorization.finalizeInitial(approved, proposal);
+    const seeded = {
+      ...approved,
+      plan: {
+        startingPoint: "idea-or-spec" as const,
+        basis: {
+          kind: "approved-brief" as const,
+          projectId: approved.project.id,
+          projectSnapshotId: approved.id,
+          projectRevision: approved.revision,
+          briefId: approved.framing!.currentBrief!.briefId,
+          briefSnapshotId: approved.framing!.currentBrief!.id,
+          briefRevision: approved.framing!.currentBrief!.revision,
+          approvedBriefFingerprint: approved.framing!.currentBriefApproval!
+            .inputFingerprint,
+        },
+        publishedAt: approved.generatedAt,
+        publishedBy: { id: "agent:test", origin: "agent" as const },
+      },
+      threadSnapshots: [{
+        revision: 1,
+        snapshotId: `project:${approved.project.id}:r1:approved-brief-baseline`,
+        subjectId: `project:${approved.project.id}`,
+      }],
+      workItems: [
+        plannedWorkItem({
+          id: "wi-baseline",
+          status: "completed",
+          kind: "define",
+          operationId: "baseline.from-approved-brief",
+          operationVersion: "1",
+        }),
+        plannedWorkItem({
+          id: "wi-seed",
+          status: "ready",
+          kind: "architect",
+          operationId: "architecture.seed-syson-model",
+          operationVersion: "2",
+        }),
+      ],
+    };
+    const change = await authorization.reviewPublishedPlan(seeded);
+    assertEquals(change.status, "amendment-required");
+    if (change.status !== "amendment-required") return;
+    assertEquals(change.delta.removedRequirementKeys, []);
+    assertEquals(change.delta.addedRequirementKeys, [
+      "model.author-system\u00001\u0000execution",
+    ]);
+    assertEquals(
+      change.proposal.semanticRequirements.map((requirement) => requirement.id)
+        .toSorted(),
+      ["geometry.observe-assembly-integrity", "model.author-system"],
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+function plannedWorkItem(input: {
+  readonly id: string;
+  readonly status: "completed" | "ready";
+  readonly kind: "define" | "architect";
+  readonly operationId: string;
+  readonly operationVersion: string;
+}) {
+  return {
+    id: input.id,
+    activityId: `activity:${input.id}`,
+    phaseId: "phase-1",
+    title: input.id,
+    description: input.id,
+    kind: input.kind,
+    status: input.status,
+    owner: "agent" as const,
+    dependsOnWorkItemIds: [],
+    decisionIds: [],
+    evidenceRefs: [],
+    blockerIds: [],
+    operation: {
+      id: input.operationId,
+      version: input.operationVersion,
+      bindings: [{
+        name: "approvedBrief",
+        source: { kind: "approved-brief" as const },
+      }],
+    },
+  };
+}

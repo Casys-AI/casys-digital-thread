@@ -4,6 +4,7 @@ import {
   fingerprintProjectCapabilityProposal,
   PROJECT_CAPABILITY_PROPOSAL_SCHEMA_VERSION,
   type ProjectCapabilityAuthorizationEvent,
+  projectCapabilityChangeRequiresMethodTransition,
   type ProjectCapabilityProposal,
   reconstructProjectCapabilityEffectiveEnvelope,
 } from "./project-capability-authorization.ts";
@@ -208,9 +209,39 @@ Deno.test("adding prescribed kinematics later is a Chrono-only semantic amendmen
   assertEquals(delta.bindingReplacements.map((entry) => entry.requirementKey), [
     "mechanics.observe-prescribed-kinematics\u00001\u0000execution",
   ]);
+  assertEquals(delta.bindingReplacements[0]?.previous, null);
+  assertEquals(
+    projectCapabilityChangeRequiresMethodTransition(delta, true),
+    false,
+  );
   // An amendment compares only the changed operational envelope. It neither
   // rewrites the Brief nor invents provider input for an agent.
   assertEquals(initial.brief, successor.brief);
+});
+
+Deno.test("dropping an authorized binding after Thread evidence is a method transition", async () => {
+  const requirement = {
+    id: "geometry.observe-assembly-integrity",
+    version: "1",
+    minimumQualification: "qualified" as const,
+    use: "execution" as const,
+  };
+  const initial = await proposal("brief-intent", [requirement]);
+  const successor = await proposal("published-plan", []);
+  const delta = projectCapabilityEnvelopeDelta(initial, successor);
+  assertEquals(delta.removedRequirementKeys, [
+    "geometry.observe-assembly-integrity\u00001\u0000execution",
+  ]);
+  assertEquals(delta.bindingReplacements[0]?.previous?.requirement.id, requirement.id);
+  assertEquals(delta.bindingReplacements[0]?.next, null);
+  assertEquals(
+    projectCapabilityChangeRequiresMethodTransition(delta, true),
+    true,
+  );
+  assertEquals(
+    projectCapabilityChangeRequiresMethodTransition(delta, false),
+    false,
+  );
 });
 
 Deno.test("capability coverage keeps the exact candidate ceiling while local qualification mode may change", async () => {

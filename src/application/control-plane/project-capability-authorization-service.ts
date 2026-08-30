@@ -7,6 +7,7 @@ import {
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import type { ProjectBriefRevision } from "../../domain/project/project-brief.ts";
 import { compileProjectCapabilityIntent } from "./compile-project-capability-intent.ts";
+import { flattenEngineeringCapabilityRequirements } from "../../domain/capability/engineering-capability.ts";
 import { compileProjectCapabilityDemand } from "./compile-project-capability-demand.ts";
 import {
   planProjectCapabilityIntent,
@@ -19,6 +20,7 @@ import {
   PROJECT_CAPABILITY_LEDGER_SCHEMA_VERSION,
   type ProjectCapabilityApprovalReceipt,
   type ProjectCapabilityAuthorizationEvent,
+  projectCapabilityChangeRequiresMethodTransition,
   type ProjectCapabilityEffectiveEnvelope,
   type ProjectCapabilityEnvelopeDelta,
   type ProjectCapabilityLedger,
@@ -391,6 +393,9 @@ export class ProjectCapabilityAuthorizationService {
         `Operation ${group.operation.id}@${group.operation.version} is unresolved: ${group.reason}.`
       );
     const host = await this.#host();
+    const retainedRequirements = envelope?.status === "authorized"
+      ? envelope.proposal.semanticRequirements
+      : [];
     const proposal = await planProjectCapabilityRequirementsProposal({
       projectId: project.project.id,
       source: "published-plan",
@@ -400,7 +405,10 @@ export class ProjectCapabilityAuthorizationService {
         briefReviewFingerprint: project.framing.currentBriefApproval.inputFingerprint,
       },
       intent: null,
-      requirements: demand.plannedCeiling.capabilityRequirements,
+      requirements: flattenEngineeringCapabilityRequirements([
+        ...retainedRequirements,
+        ...demand.plannedCeiling.capabilityRequirements,
+      ]),
       unresolvedBlockers,
       catalog: await this.#effectiveCatalog(host),
       policy: await this.#policy(),
@@ -431,10 +439,11 @@ export class ProjectCapabilityAuthorizationService {
       return { status: "covered", ledger, proposal, effectiveEnvelope: envelope };
     }
     const delta = projectCapabilityEnvelopeDelta(envelope.proposal, proposal);
-    const bindingChangesWithProof = delta.bindingReplacements.length > 0 &&
-      project.threadSnapshots.length > 0;
     return {
-      status: bindingChangesWithProof
+      status: projectCapabilityChangeRequiresMethodTransition(
+          delta,
+          project.threadSnapshots.length > 0,
+        )
         ? "method-transition-required"
         : "amendment-required",
       ledger,

@@ -181,6 +181,18 @@ export interface ProjectCapabilityBindingReplacement {
   readonly next: PlannedProjectCapabilityBinding | null;
 }
 
+/**
+ * Additions (`previous === null`) stay amendments. Dropping or switching an
+ * already-authorized binding after Thread evidence needs a method transition.
+ */
+export function projectCapabilityChangeRequiresMethodTransition(
+  delta: ProjectCapabilityEnvelopeDelta,
+  hasThreadEvidence: boolean,
+): boolean {
+  return hasThreadEvidence &&
+    delta.bindingReplacements.some((replacement) => replacement.previous !== null);
+}
+
 export interface ProjectCapabilityRequirementReplacement {
   readonly requirementKey: string;
   readonly previous: RequiredEngineeringCapability;
