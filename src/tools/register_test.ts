@@ -230,6 +230,56 @@ Deno.test("server injects the resolved Build123d execution profile into the exac
   assertStringIncludes(cad, "capabilityRuntimeSession,");
 });
 
+Deno.test("server prepares only actually composed SPICE and geometry-module cache lanes", async () => {
+  const source = await Deno.readTextFile("server.ts");
+  const geometryComposition = source.indexOf("const geometryModuleAssembly =");
+  const geometryProfile = source.indexOf(
+    "const geometryModuleAssemblyRuntimeProfile =",
+  );
+  const runtimeLock = source.indexOf(
+    "const capabilityRuntimeMutationLock = new FileCapabilityRuntimeHostMutationLock();",
+  );
+  const cachePreparation = source.indexOf(
+    "const capabilityRuntimeCachePreparation =",
+  );
+  const scheduler = source.indexOf(
+    "preloadScheduler: new CapabilityRuntimePreloadScheduler({",
+  );
+
+  assert(geometryComposition >= 0);
+  assert(geometryProfile > geometryComposition);
+  assert(runtimeLock > geometryProfile);
+  assert(cachePreparation > runtimeLock);
+  assert(scheduler > cachePreparation);
+  const cache = source.slice(cachePreparation, scheduler);
+  assertStringIncludes(
+    cache,
+    "admittedSpiceExecutionProfile === undefined &&",
+  );
+  assertStringIncludes(
+    cache,
+    "geometryModuleAssemblyRuntimeProfile === undefined",
+  );
+  assertStringIncludes(
+    cache,
+    "catalog: capabilityRead.catalog,",
+  );
+  assertStringIncludes(cache, "lock: capabilityRuntimeMutationLock,");
+  assertStringIncludes(
+    cache,
+    "admittedSpiceRuntimeProfile: admittedSpiceExecutionProfile,",
+  );
+  assertStringIncludes(
+    cache,
+    "geometryModuleAssemblyRuntimeProfile,",
+  );
+  const schedulerBlock = source.slice(scheduler);
+  assertStringIncludes(
+    schedulerBlock,
+    "cachePreparer: capabilityRuntimeCachePreparation?.cachePreparer,",
+  );
+});
+
 Deno.test("future Modelica runtime binding factory is code-owned, digest pinned, and qualification-gated", async () => {
   const first = await createLocalModelicaIsolatedExecutionServerOptions();
   const second = await createLocalModelicaIsolatedExecutionServerOptions();
@@ -281,7 +331,7 @@ Deno.test("future CalculiX runtime binding factory is code-owned, digest pinned,
   assertEquals(first.runtime, {});
 });
 
-Deno.test("startup tasks cannot globally compose local engineering runtimes", async () => {
+Deno.test("startup composes only code-owned local engineering runtimes", async () => {
   const config = JSON.parse(await Deno.readTextFile("deno.json")) as {
     imports: Record<string, string>;
     tasks: Record<string, string>;
@@ -289,23 +339,62 @@ Deno.test("startup tasks cannot globally compose local engineering runtimes", as
   assertEquals(config.imports[["@deno", "sandbox"].join("/")], undefined);
   assertEquals(config.imports.microsandbox, "npm:microsandbox@0.6.8");
   assertEquals(config.tasks.start.includes("--local-execution"), false);
-  assertEquals(config.tasks.start.includes("--node-modules-dir"), false);
+  assertStringIncludes(config.tasks.start, "--node-modules-dir=auto");
+  assertStringIncludes(
+    config.tasks.start,
+    "--allow-read=config,state,src/ui,mcp-server.yaml,node_modules",
+  );
+  assertStringIncludes(config.tasks.start, "--allow-ffi=node_modules");
 
   const yolo = config.tasks["start:yolo"];
   assertEquals(config.tasks["start:local"], undefined);
   assertEquals(config.tasks["capability:behave:inspect"], undefined);
   assertEquals(config.tasks["capability:behave:doctor"], undefined);
   assertEquals(yolo, `${config.tasks.start} --yolo`);
-  assertStringIncludes(yolo, "--allow-read=config,state,src/ui,mcp-server.yaml");
+  assertStringIncludes(
+    yolo,
+    "--allow-read=config,state,src/ui,mcp-server.yaml,node_modules",
+  );
   assertStringIncludes(yolo, "--allow-write=state/local");
-  assertEquals(yolo.includes("--allow-ffi"), false);
-  assertEquals(yolo.includes("--node-modules-dir"), false);
+  assertStringIncludes(yolo, "--allow-ffi=node_modules");
+  assertStringIncludes(yolo, "--node-modules-dir=auto");
   assertEquals(yolo.endsWith("server.ts --yolo"), true);
   assertEquals(yolo.includes("--local-execution"), false);
   const source = await Deno.readTextFile("server.ts");
   assertEquals(source.includes("localExecutionForBinding"), false);
   assertEquals(source.includes("cli.localExecution"), false);
   assertEquals(source.includes("build123dExecution: localExecution"), false);
+  const mainStart = source.indexOf("if (import.meta.main) {");
+  assert(mainStart >= 0);
+  const main = source.slice(mainStart);
+  for (
+    const factory of [
+      "createLocalBuild123dExecutionServerOptions()",
+      "createLocalGeometryModuleAssemblyServerOptions()",
+      "createLocalModelicaIsolatedExecutionServerOptions()",
+      "createLocalAdmittedModelicaExecutionServerOptions()",
+      "createLocalAdmittedSpiceExecutionServerOptions()",
+      "createLocalCalculixIsolatedExecutionServerOptions()",
+    ]
+  ) {
+    assertStringIncludes(main, factory);
+  }
+  for (
+    const option of [
+      "build123dExecution,",
+      "geometryModuleAssembly,",
+      "modelicaIsolatedExecution,",
+      "admittedModelicaExecution,",
+      "admittedSpiceExecution,",
+      "calculixIsolatedExecution,",
+    ]
+  ) {
+    assertStringIncludes(main, option);
+  }
+  assertStringIncludes(
+    source,
+    "cachePreparer: capabilityRuntimeCachePreparation?.cachePreparer,",
+  );
 });
 
 Deno.test("server orchestrates one historical proof and requirements CAS into ROP2", async () => {
@@ -788,6 +877,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "console_run_list",
     "console_server_detail",
     "console_snapshot",
+    "project_admitted_geometry_export",
     "project_admitted_modelica_evaluation_closeout_review",
     "project_admitted_modelica_evaluation_review",
     "project_admitted_spice_evaluation_closeout_review",
@@ -824,6 +914,9 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_led_driver_source_review",
     "project_plan_publish",
     "project_prescribed_kinematics_case_review",
+    "project_prescribed_kinematics_evaluation_closeout_review",
+    "project_prescribed_kinematics_evaluation_review",
+    "project_prescribed_kinematics_method_review",
     "project_product_explore",
     "project_product_inspect",
     "project_product_search",
@@ -880,6 +973,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "console_run_list",
       "console_server_detail",
       "console_snapshot",
+      "project_admitted_geometry_export",
       "project_admitted_modelica_evaluation_closeout_review",
       "project_admitted_modelica_evaluation_review",
       "project_admitted_spice_evaluation_closeout_review",
@@ -916,6 +1010,9 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_led_driver_source_review",
       "project_plan_publish",
       "project_prescribed_kinematics_case_review",
+      "project_prescribed_kinematics_evaluation_closeout_review",
+      "project_prescribed_kinematics_evaluation_review",
+      "project_prescribed_kinematics_method_review",
       "project_product_explore",
       "project_product_inspect",
       "project_product_search",
@@ -1178,6 +1275,9 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_agent_run_plan_get" ||
           tool.name === "project_capability_inspect" ||
           tool.name === "project_prescribed_kinematics_case_review" ||
+          tool.name === "project_prescribed_kinematics_evaluation_closeout_review" ||
+          tool.name === "project_prescribed_kinematics_evaluation_review" ||
+          tool.name === "project_prescribed_kinematics_method_review" ||
           tool.name === "project_isolated_geometry_seal_review" ||
           tool.name === "project_led_driver_source_review" ||
           tool.name === "project_evaluation_closeout_review" ||
@@ -1232,6 +1332,9 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_capability_change_review" ||
           tool.name === "project_capability_inspect" ||
           tool.name === "project_prescribed_kinematics_case_review" ||
+          tool.name === "project_prescribed_kinematics_evaluation_closeout_review" ||
+          tool.name === "project_prescribed_kinematics_evaluation_review" ||
+          tool.name === "project_prescribed_kinematics_method_review" ||
           tool.name === "project_architecture_sysml_preview" ||
           tool.name === "project_architecture_sysml_source_capture" ||
           tool.name === "project_cross_domain_impact_manifest_capture" ||
@@ -1240,6 +1343,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_technical_compilation_preview" ||
           tool.name === "project_technical_source_capture" ||
           tool.name === "project_cad_placement_capture" ||
+          tool.name === "project_admitted_geometry_export" ||
           tool.name === "project_work_item_abandon" ||
           tool.name === "project_decision_approve" ||
           tool.name === "project_decision_reject" ||

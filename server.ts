@@ -51,7 +51,6 @@ import { LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE } from "./src/adapters/e
 import {
   LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE,
   LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
-  LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
   LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
 } from "./src/adapters/control-plane/first-party-capability-runtime-identities.ts";
 export {
@@ -63,10 +62,14 @@ export {
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "./src/adapters/cad/sealed-isolated/design-seal-isolated-geometry-run-executor.ts";
 import type { ModelicaIsolatedExecutionServerOptions } from "./src/adapters/modelica/qualified-kit/execution-composition.ts";
 import type { CalculixIsolatedExecutionServerOptions } from "./src/adapters/fea/isolated-v3/calculix-isolated-execution-composition.ts";
-export {
+import {
   createLocalCalculixIsolatedExecutionServerOptions,
   LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
 } from "./src/adapters/fea/isolated-v3/local-calculix-isolated-execution-options.ts";
+export {
+  createLocalCalculixIsolatedExecutionServerOptions,
+  LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
+};
 import { VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION } from "./src/adapters/modelica/evaluation/verify-evaluate-admitted-modelica-observations-run-executor.ts";
 import {
   DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
@@ -190,6 +193,7 @@ import { createCapabilityRuntimeHostAdapter } from "./src/adapters/control-plane
 import { CapabilityRuntimeLaunchGroupSupervisor } from "./src/application/control-plane/capability-runtime-launch-group-supervisor.ts";
 import { CapabilityRuntimeSysonRolloverGate } from "./src/application/control-plane/capability-runtime-syson-rollover-service.ts";
 import { CapabilityRuntimePreloadScheduler } from "./src/application/control-plane/capability-runtime-preload-scheduler.ts";
+import { createLocalCapabilityRuntimeCachePreparationComposition } from "./src/adapters/control-plane/local-capability-runtime-cache-preparation-composition.ts";
 import { createLocalCapabilityRuntimeReadComposition } from "./src/adapters/control-plane/local-capability-runtime-read-composition.ts";
 import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "./src/adapters/control-plane/first-party-capability-runtime-qualification-candidates.ts";
 import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "./src/adapters/control-plane/first-party-capability-runtime-qualification-specifications.ts";
@@ -276,7 +280,6 @@ import {
 } from "./src/adapters/cad/module-assembly/geometry-module-assembly-composition.ts";
 import {
   createLocalGeometryModuleAssemblyServerOptions,
-  LOCAL_GEOMETRY_MODULE_ASSEMBLY_WRAPPER_SHA256,
 } from "./src/adapters/cad/module-assembly/first-party-geometry-module-assembly.ts";
 export {
   createLocalGeometryModuleAssemblyServerOptions,
@@ -862,6 +865,14 @@ async function createProjectControl(
     admittedSpiceExecution: options.admittedSpiceExecution,
     recordedAnalysisDirectory,
   });
+  const geometryModuleAssembly = options.geometryModuleAssembly === undefined
+    ? undefined
+    : await createGeometryModuleAssemblyComposition(
+      options.geometryModuleAssembly,
+      {
+        outputCasDirectory: `${recordedAnalysisDirectory}/geometry-module/outputs`,
+      },
+    );
   // A profile catalog alone is deliberately not an executable composition.
   // Pass cache-attestation identity only when the fixed local worker exists;
   // otherwise a queued run must remain unavailable before it can claim a JIT
@@ -873,6 +884,10 @@ async function createProjectControl(
   const admittedSpiceExecutionProfile = admittedSpice.execution?.execution === undefined
     ? undefined
     : await admittedSpice.execution.profiles.initial();
+  const geometryModuleAssemblyRuntimeProfile =
+    geometryModuleAssembly?.execution === undefined
+      ? undefined
+      : await geometryModuleAssembly.profiles.initial();
   const calculixCapability = await createCalculixCapability({
     calculixIsolatedExecution: options.calculixIsolatedExecution,
     recordedAnalysisDirectory,
@@ -952,7 +967,17 @@ async function createProjectControl(
     DEFAULT_CAPABILITY_RUNTIME_LEASE_DIRECTORY,
   );
   const capabilityRuntimeMutationLock = new FileCapabilityRuntimeHostMutationLock();
-  const [sysonRolloverPredecessorUnit, sysonRolloverPredecessorGroup] = await Promise
+  const capabilityRuntimeCachePreparation =
+    admittedSpiceExecutionProfile === undefined &&
+      geometryModuleAssemblyRuntimeProfile === undefined
+      ? undefined
+      : await createLocalCapabilityRuntimeCachePreparationComposition({
+        catalog: capabilityRead.catalog,
+        lock: capabilityRuntimeMutationLock,
+        admittedSpiceRuntimeProfile: admittedSpiceExecutionProfile,
+        geometryModuleAssemblyRuntimeProfile,
+      });
+  const [_sysonRolloverPredecessorUnit, sysonRolloverPredecessorGroup] = await Promise
     .all([
       createFirstPartySysonRolloverPredecessorUnit(),
       createFirstPartySysonRolloverPredecessorLaunchGroup(),
@@ -1050,6 +1075,7 @@ async function createProjectControl(
     hostMutationLock: capabilityRuntimeMutationLock,
     preloadScheduler: new CapabilityRuntimePreloadScheduler({
       host: capabilityRuntimeGroups,
+      cachePreparer: capabilityRuntimeCachePreparation?.cachePreparer,
     }),
   });
 
@@ -1108,15 +1134,6 @@ async function createProjectControl(
     projects: runtime.projects,
     methodSheets: thermalJoin.thermalMethodSheetCompilationJoin,
   });
-  const geometryModuleAssembly = options.geometryModuleAssembly === undefined
-    ? undefined
-    : await createGeometryModuleAssemblyComposition(
-      options.geometryModuleAssembly,
-      {
-        outputCasDirectory: `${recordedAnalysisDirectory}/geometry-module/outputs`,
-      },
-    );
-
   const cadProject = createCadProject({
     projects: runtime.projects,
     commands: runtime.commands,
@@ -2059,9 +2076,30 @@ if (import.meta.main) {
   const hostname = cli.hostname ?? env("MCP_HOSTNAME") ?? DEFAULT_HOSTNAME;
   const projectToolsEnabled = isExplicitLoopbackHostname(hostname);
   const approvalMode = approvalModeForBinding(cli.yolo === true, hostname);
+  const [
+    build123dExecution,
+    geometryModuleAssembly,
+    modelicaIsolatedExecution,
+    admittedModelicaExecution,
+    admittedSpiceExecution,
+    calculixIsolatedExecution,
+  ] = await Promise.all([
+    createLocalBuild123dExecutionServerOptions(),
+    createLocalGeometryModuleAssemblyServerOptions(),
+    createLocalModelicaIsolatedExecutionServerOptions(),
+    createLocalAdmittedModelicaExecutionServerOptions(),
+    createLocalAdmittedSpiceExecutionServerOptions(),
+    createLocalCalculixIsolatedExecutionServerOptions(),
+  ]);
   const { app } = await createConsoleServer({
     projectControl: projectToolsEnabled ? undefined : false,
     approvalMode,
+    build123dExecution,
+    geometryModuleAssembly,
+    modelicaIsolatedExecution,
+    admittedModelicaExecution,
+    admittedSpiceExecution,
+    calculixIsolatedExecution,
   });
   const http = await app.startHttp({
     port,

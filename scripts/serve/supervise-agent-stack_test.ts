@@ -45,9 +45,10 @@ Deno.test("the normal stack starts only MCP and the focused cockpit", () => {
   );
   assert(
     mcp.args.includes(
-      "--allow-read=config,state,src/ui,mcp-server.yaml",
+      "--allow-read=config,state,src/ui,mcp-server.yaml,node_modules",
     ),
   );
+  assert(mcp.args.includes("--node-modules-dir=auto"));
   assert(mcp.args.includes("--allow-write=state/local"));
   assert(!mcp.args.some((argument) => argument.includes("review-intent")));
   assert(mcp.args.includes("--allow-net=127.0.0.1,localhost,127.0.0.1:3020"));
@@ -56,10 +57,15 @@ Deno.test("the normal stack starts only MCP and the focused cockpit", () => {
       "--allow-env=MCP_FLEET_MANIFEST,MCP_RUN_FIXTURE,MCP_MRTR_SIGNING_KEY," +
         "MCP_AUTH_PROVIDER,MCP_AUTH_AUDIENCE,MCP_AUTH_RESOURCE,MCP_AUTH_DOMAIN," +
         "MCP_AUTH_ISSUER,MCP_AUTH_JWKS_URI,MCP_AUTH_SCOPES," +
-        "MCP_AUTH_RESOURCE_METADATA_URL",
+        "MCP_AUTH_RESOURCE_METADATA_URL,NAPI_RS_ENFORCE_VERSION_CHECK," +
+        "NAPI_RS_NATIVE_LIBRARY_PATH,NAPI_RS_FORCE_WASI,NAPI_RS_WASI_FLAVOR," +
+        "MSB_PATH,MSB_LIBKRUNFW_PATH,MSB_CONFIG_PATH,MSB_HOME,MSB_BACKEND," +
+        "MSB_API_URL,MSB_API_KEY,MSB_PROFILE",
     ),
   );
   assert(mcp.args.includes("--allow-run=docker"));
+  assert(mcp.args.includes("--allow-ffi=node_modules"));
+  assert(!cockpit.args.some((argument) => argument.startsWith("--allow-ffi")));
   assert(!mcp.args.includes("--allow-net"));
   assert(!commands.some((command) => command.command === "npm"));
 });
