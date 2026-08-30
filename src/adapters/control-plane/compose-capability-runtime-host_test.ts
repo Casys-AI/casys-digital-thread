@@ -344,6 +344,116 @@ Deno.test("sealed SysON group pins Postgres with its canonical Docker Hub reposi
   );
 });
 
+Deno.test("Compose host accepts Docker Hub's official familiar RepoDigest spelling", async () => {
+  const group = await sysonGroup();
+  const postgres = group.materials.find((member) => member.serviceName === "syson-db")!;
+  const runner = new FakeGroupRunner(group, {
+    images: true,
+    state: "running",
+    repoDigestsByService: {
+      "syson-db": [`postgres@sha256:${postgres.material.imageDigest}`],
+    },
+  });
+  const fixture = host(group, runner);
+
+  const observed = await fixture.host.observe(
+    group.materials.map((member) => member.material),
+  );
+
+  assertEquals(
+    observed.get(materialKey(postgres.material)),
+    { material: "installed", runtime: "active" },
+  );
+
+  const plan = await removalPlan(group, "owned");
+  const entry = removalEntry(group, plan);
+  await fixture.journal.appendBeforeMutation(entry);
+  const removal = await fixture.host.mutate({
+    authorization: await authorizeDurableAdministrativeMaterialRemoval(
+      entry,
+      plan,
+      fixture.journal,
+    ),
+    removalPlan: plan,
+  });
+  assertEquals(removal.status, "succeeded");
+});
+
+Deno.test("Compose host observes an exact RepoDigest when Docker reports additional aliases", async () => {
+  const group = await sysonGroup();
+  const postgres = group.materials.find((member) => member.serviceName === "syson-db")!;
+  const runner = new FakeGroupRunner(group, {
+    images: true,
+    state: "running",
+    repoDigestsByService: {
+      "syson-db": [
+        `postgres@sha256:${postgres.material.imageDigest}`,
+        `registry.example/postgres-mirror@sha256:${postgres.material.imageDigest}`,
+      ],
+    },
+  });
+  const fixture = host(group, runner);
+
+  const observed = await fixture.host.observe(
+    group.materials.map((member) => member.material),
+  );
+
+  assertEquals(
+    observed.get(materialKey(postgres.material)),
+    { material: "installed", runtime: "active" },
+  );
+});
+
+Deno.test("Compose host rejects non-equivalent RepoDigests even when Docker Hub names look familiar", async () => {
+  const group = await sysonGroup();
+  const postgres = group.materials.find((member) => member.serviceName === "syson-db")!;
+  const mcpSyson = group.materials.find((member) =>
+    member.serviceName === "mcp-syson"
+  )!;
+  const cases: readonly {
+    readonly name: string;
+    readonly member: typeof postgres;
+    readonly repoDigest: string;
+  }[] = [
+    {
+      name: "different digest",
+      member: postgres,
+      repoDigest: `postgres@sha256:${"a".repeat(64)}`,
+    },
+    {
+      name: "tagged repository",
+      member: postgres,
+      repoDigest: `postgres:17@sha256:${postgres.material.imageDigest}`,
+    },
+    {
+      name: "GHCR repository without its registry",
+      member: mcpSyson,
+      repoDigest: `casys-ai/mcp-syson@sha256:${mcpSyson.material.imageDigest}`,
+    },
+  ];
+
+  for (const testCase of cases) {
+    const runner = new FakeGroupRunner(group, {
+      images: true,
+      state: "running",
+      repoDigestsByService: {
+        [testCase.member.serviceName]: [testCase.repoDigest],
+      },
+    });
+    const fixture = host(group, runner);
+
+    const observed = await fixture.host.observe(
+      group.materials.map((member) => member.material),
+    );
+
+    assertEquals(
+      observed.get(materialKey(testCase.member.material))?.material,
+      "failed",
+      testCase.name,
+    );
+  }
+});
+
 Deno.test("Build123d group without a declared healthcheck is active only when its exact owned service is running", async () => {
   const group = (await createFirstPartyCapabilityRuntimeLaunchGroups()).find((
     candidate,
@@ -626,6 +736,7 @@ class FakeGroupRunner implements CommandRunner {
       readonly mountsByService?: Readonly<
         Record<string, readonly Record<string, unknown>[]>
       >;
+      readonly repoDigestsByService?: Readonly<Record<string, readonly string[]>>;
       readonly hostPlatform?: string;
     },
   ) {
@@ -637,6 +748,7 @@ class FakeGroupRunner implements CommandRunner {
     );
     this.foreignService = options.foreignService;
     this.mountsByService = options.mountsByService ?? {};
+    this.repoDigestsByService = options.repoDigestsByService ?? {};
     this.hostPlatform = options.hostPlatform ?? "linux/arm64";
   }
 
@@ -644,6 +756,7 @@ class FakeGroupRunner implements CommandRunner {
   readonly mountsByService: Readonly<
     Record<string, readonly Record<string, unknown>[]>
   >;
+  readonly repoDigestsByService: Readonly<Record<string, readonly string[]>>;
   readonly hostPlatform: string;
 
   async run(
@@ -663,7 +776,11 @@ class FakeGroupRunner implements CommandRunner {
         `sha256:${candidate.serviceName}` === requested
       );
       return this.#images && member
-        ? success(JSON.stringify([{ RepoDigests: [member.imageReference] }]))
+        ? success(JSON.stringify([{
+          RepoDigests: this.repoDigestsByService[member.serviceName] ?? [
+            member.imageReference,
+          ],
+        }]))
         : failure("No such image");
     }
     if (args[0] === "container" && args[1] === "ls") {
