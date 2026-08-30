@@ -1,13 +1,21 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import { FixedAdmittedSpiceExecutionProfileCatalog } from "../electrical/spice/admitted/execution-profile-catalog.ts";
 import {
   LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
 } from "../electrical/spice/admitted/local-image-references.ts";
+import { createLocalGeometryModuleAssemblyServerOptions } from "../cad/module-assembly/first-party-geometry-module-assembly.ts";
+import { FixedGeometryModuleAssemblyProfileCatalog } from "../cad/module-assembly/fixed-geometry-module-assembly-profile.ts";
 import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capability-binding-catalog.ts";
 import { FileCapabilityRuntimeCachePreparationJournal } from "./file-capability-runtime-cache-preparation-journal.ts";
 import {
   createLocalCapabilityRuntimeCachePreparationComposition,
 } from "./local-capability-runtime-cache-preparation-composition.ts";
+import {
+  FIRST_PARTY_GEOMETRY_MODULE_RUNTIME_CACHE_RECIPE_ID,
+  FIRST_PARTY_GEOMETRY_MODULE_SOURCE_CACHE_RECIPE_ID,
+  FIRST_PARTY_NGSPICE_RUNTIME_CACHE_RECIPE_ID,
+  FIRST_PARTY_NGSPICE_SOURCE_CACHE_RECIPE_ID,
+} from "./first-party-capability-runtime-cache-preparation-registry.ts";
 import type {
   CapabilityRuntimeCachePreparationRequestedMaterial,
 } from "../../domain/capability/runtime/capability-runtime-cache-preparation.ts";
@@ -15,18 +23,21 @@ import type {
 const FINGERPRINT = { algorithm: "sha256" as const, digest: "a".repeat(64) };
 const NOW = "2026-08-31T00:00:00.000Z";
 
-Deno.test("local cache-preparation composition journals atomic SPICE cache work under the supplied host lock", async () => {
+Deno.test("local cache-preparation composition journals atomic SPICE and CAD work under the supplied host lock", async () => {
   const directory = await Deno.makeTempDir({ prefix: "casys-cache-composition-" });
   try {
     let lockCalls = 0;
-    let sourceObservations = 0;
-    let runtimeObservations = 0;
-    let runtimeAcquisitions = 0;
-    let runtimeExact = false;
+    const observations = new Map<string, number>();
+    const acquisitions = new Map<string, number>();
+    const exact = new Set<string>([
+      FIRST_PARTY_NGSPICE_SOURCE_CACHE_RECIPE_ID,
+      FIRST_PARTY_GEOMETRY_MODULE_SOURCE_CACHE_RECIPE_ID,
+    ]);
     const journal = new FileCapabilityRuntimeCachePreparationJournal(directory);
     const composition = await createLocalCapabilityRuntimeCachePreparationComposition({
       catalog: await createFirstPartyCapabilityRuntimeCatalog(),
       admittedSpiceRuntimeProfile: await admittedSpiceRuntimeProfile(),
+      geometryModuleAssemblyRuntimeProfile: await geometryRuntimeProfile(),
       lock: {
         withLock: async <T>(operation: () => Promise<T>): Promise<T> => {
           lockCalls++;
@@ -35,17 +46,13 @@ Deno.test("local cache-preparation composition journals atomic SPICE cache work 
       },
       journal,
       actions: {
-        observeSource: () => {
-          sourceObservations++;
-          return Promise.resolve(true);
+        observe: (recipe) => {
+          observations.set(recipe.id, (observations.get(recipe.id) ?? 0) + 1);
+          return Promise.resolve(exact.has(recipe.id));
         },
-        observeRuntime: () => {
-          runtimeObservations++;
-          return Promise.resolve(runtimeExact);
-        },
-        acquireRuntime: () => {
-          runtimeAcquisitions++;
-          runtimeExact = true;
+        acquire: (recipe) => {
+          acquisitions.set(recipe.id, (acquisitions.get(recipe.id) ?? 0) + 1);
+          exact.add(recipe.id);
           return Promise.resolve();
         },
       },
@@ -58,18 +65,39 @@ Deno.test("local cache-preparation composition journals atomic SPICE cache work 
         materials: requested(composition.recipes),
         guard: () => Promise.resolve(true),
       })).map((result) => result.status),
-      ["observed", "observed"],
+      ["observed", "observed", "observed", "observed"],
     );
     assertEquals(lockCalls, 1);
-    assertEquals(sourceObservations, 1);
-    assertEquals(runtimeObservations, 2);
-    assertEquals(runtimeAcquisitions, 1);
+    assertEquals(
+      observations,
+      new Map([
+        [FIRST_PARTY_GEOMETRY_MODULE_SOURCE_CACHE_RECIPE_ID, 1],
+        [FIRST_PARTY_GEOMETRY_MODULE_RUNTIME_CACHE_RECIPE_ID, 2],
+        [FIRST_PARTY_NGSPICE_SOURCE_CACHE_RECIPE_ID, 1],
+        [FIRST_PARTY_NGSPICE_RUNTIME_CACHE_RECIPE_ID, 2],
+      ]),
+    );
+    assertEquals(
+      acquisitions,
+      new Map([
+        [FIRST_PARTY_GEOMETRY_MODULE_RUNTIME_CACHE_RECIPE_ID, 1],
+        [FIRST_PARTY_NGSPICE_RUNTIME_CACHE_RECIPE_ID, 1],
+      ]),
+    );
     assertEquals(
       (await journal.list()).map((attempt) => ({
         materialId: attempt.intent.scope.materials[0]?.material.materialId,
         terminal: attempt.terminal?.schemaVersion,
       })),
       [
+        {
+          materialId: "geometry-module-assembler-docker-source-image",
+          terminal: "capability-runtime-cache-preparation-observed/1.0",
+        },
+        {
+          materialId: "geometry-module-assembler-worker-image",
+          terminal: "capability-runtime-cache-preparation-observed/1.0",
+        },
         {
           materialId: "ngspice-docker-source-image",
           terminal: "capability-runtime-cache-preparation-observed/1.0",
@@ -85,6 +113,50 @@ Deno.test("local cache-preparation composition journals atomic SPICE cache work 
   }
 });
 
+Deno.test("local cache-preparation composition retains a composed CAD lane independently", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "casys-cache-composition-" });
+  try {
+    const composition = await createLocalCapabilityRuntimeCachePreparationComposition({
+      catalog: await createFirstPartyCapabilityRuntimeCatalog(),
+      geometryModuleAssemblyRuntimeProfile: await geometryRuntimeProfile(),
+      lock: { withLock: <T>(operation: () => Promise<T>) => operation() },
+      journalDirectory: directory,
+      actions: {
+        observe: () => Promise.resolve(true),
+        acquire: () =>
+          Promise.reject(new Error("exact source and runtime do not acquire")),
+      },
+    });
+
+    assertEquals(composition.recipes.map((recipe) => recipe.id), [
+      FIRST_PARTY_GEOMETRY_MODULE_SOURCE_CACHE_RECIPE_ID,
+      FIRST_PARTY_GEOMETRY_MODULE_RUNTIME_CACHE_RECIPE_ID,
+    ]);
+    assertEquals(
+      (await composition.cachePreparer.prepare({
+        projectId: "project:geometry-cache-preload",
+        materials: requested(composition.recipes),
+        guard: () => Promise.resolve(true),
+      })).map((result) => result.status),
+      ["observed", "observed"],
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("local cache-preparation composition refuses a profile-only zero-lane setup", async () => {
+  await assertRejects(
+    async () =>
+      await createLocalCapabilityRuntimeCachePreparationComposition({
+        catalog: await createFirstPartyCapabilityRuntimeCatalog(),
+        lock: { withLock: <T>(operation: () => Promise<T>) => operation() },
+      }),
+    TypeError,
+    "one actually composed executable lane",
+  );
+});
+
 Deno.test("local cache-preparation composition uses its durable file journal by default", async () => {
   const directory = await Deno.makeTempDir({ prefix: "casys-cache-composition-" });
   try {
@@ -94,9 +166,8 @@ Deno.test("local cache-preparation composition uses its durable file journal by 
       lock: { withLock: <T>(operation: () => Promise<T>) => operation() },
       journalDirectory: directory,
       actions: {
-        observeSource: () => Promise.resolve(false),
-        observeRuntime: () => Promise.resolve(false),
-        acquireRuntime: () => Promise.resolve(),
+        observe: () => Promise.resolve(false),
+        acquire: () => Promise.resolve(),
       },
     });
 
@@ -129,6 +200,11 @@ async function admittedSpiceRuntimeProfile() {
       maxOutputTotalBytes: 524_288,
     },
   }).initial();
+}
+
+async function geometryRuntimeProfile() {
+  const options = await createLocalGeometryModuleAssemblyServerOptions();
+  return await new FixedGeometryModuleAssemblyProfileCatalog(options.profile).initial();
 }
 
 function requested(
