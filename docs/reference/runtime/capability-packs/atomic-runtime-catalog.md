@@ -56,7 +56,7 @@ publish none. See
 | `casys.mcp-build123d-sandbox`            | Private Build123d Compose service              | 3024          | Separate private export volume                                       |
 | `casys.mcp-build123d-observation`        | Regular Build123d/OCCT observer service        | 3014          | Optional assembly-integrity path                                     |
 | `casys.build123d-isolated-worker`        | Admitted source microVM                        | —             | Different lifecycle from either HTTP service                         |
-| `casys.geometry-module-assembler-worker` | One-level STEP compound microVM                | —             | Platform/qualification remains literal unknown                       |
+| `casys.geometry-module-assembler-worker` | One-level STEP compound microVM                | —             | Catalogue: `linux/arm64`, qualified binding; exact native platform uses its code-owned qualification without attestation; emulation and upgrading unqualified/revoked bindings require exact local attestation |
 | `casys.calculix-worker`                  | Product isolated static-proof worker           | —             | Not HTTP `mcp-calculix`                                              |
 | `casys.mcp-calculix`                     | CalculiX HTTP sensitivity service              | 3015          | Separate unqualified S1 binding                                      |
 | `casys.modelica-qualified-worker`        | Narrow qualified-kit microVM                   | —             | Not arbitrary admitted Modelica                                      |

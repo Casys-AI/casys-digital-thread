@@ -38,6 +38,7 @@ import {
   GEOMETRY_PART_DRAFT_ADMISSION_SCHEMA,
 } from "../../../../domain/cad/canonical/geometry-draft-admission.ts";
 import {
+  DESIGN_WRITE_GEOMETRY_OPERATION,
   parseGeometryDecisionParameters,
 } from "../../../../domain/cad/canonical/geometry-proposal.ts";
 import {
@@ -312,6 +313,7 @@ Deno.test("a durable replay survives a new server composition without another pr
   try {
     const cache = new FileAdmittedGeometryExportReplayCache(`${root}/replay`);
     const state = { begins: 0, releases: 0, retains: 0, recordedReleases: 0 };
+    const begunOperations: unknown[] = [];
     const project = {
       project: { id: fixture.command.projectId },
       threadSnapshots: [{
@@ -321,8 +323,9 @@ Deno.test("a durable replay survives a new server composition without another pr
       }],
     } as never;
     const preparation = {
-      begin: () => {
+      begin: ({ operation }: { readonly operation: unknown }) => {
         state.begins++;
+        begunOperations.push(structuredClone(operation));
         return Promise.resolve({
           lease: { id: "lease:geometry" },
           releaseSuccess: () => {
@@ -360,6 +363,10 @@ Deno.test("a durable replay survives a new server composition without another pr
       retains: 0,
       recordedReleases: 1,
     });
+    assertEquals(begunOperations, [{
+      ...DESIGN_WRITE_GEOMETRY_OPERATION,
+      bindings: [],
+    }]);
     assertEquals(fixture.exporter.calls.length, 1);
     assert((await cache.read(await replayKey(fixture.command))) !== undefined);
   } finally {

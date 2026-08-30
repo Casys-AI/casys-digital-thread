@@ -45,6 +45,11 @@ Deno.test("project capability planner selects exact trusted bindings and dedupli
     "build123d-observe-assembly-integrity",
     "calculix-static-structural",
   ]);
+  assertEquals(plan.bindings[0]?.candidate?.adapter, {
+    id: "build123d-admitted-geometry-export-adapter",
+    version: "1.0.0",
+    source: "src/adapters/cad/canonical/admission-backed-geometry-export-adapter.ts",
+  });
   assertEquals(
     plan.materials.filter((material) =>
       material.imageReference.includes("mcp-build123d@sha256:765d73ca")

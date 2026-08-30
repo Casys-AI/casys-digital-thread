@@ -299,7 +299,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "1.0.0",
         null,
         ["casys.mcp-build123d-sandbox"],
-        "src/adapters/cad/canonical/design-write-geometry-run-executor.ts",
+        "src/adapters/cad/canonical/admission-backed-geometry-export-adapter.ts",
         [
           "The binding exports exact admitted geometry; it does not execute arbitrary agent CAD source.",
         ],

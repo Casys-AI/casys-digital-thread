@@ -64,6 +64,22 @@ Deno.test("first-party catalogue adopts the exact qualified geometry-module cand
   );
 });
 
+Deno.test("first-party catalogue binds admitted geometry export to its admission-backed adapter", async () => {
+  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+
+  assertEquals(
+    catalog.bindings.find((binding) =>
+      binding.id === "build123d-export-admitted-source"
+    )
+      ?.adapter,
+    {
+      id: "build123d-admitted-geometry-export-adapter",
+      version: "1.0.0",
+      source: "src/adapters/cad/canonical/admission-backed-geometry-export-adapter.ts",
+    },
+  );
+});
+
 Deno.test("atomic first-party runtime catalogue separates sources with distinct lifecycle and evidence", async () => {
   const catalog = await createFirstPartyCapabilityRuntimeCatalog();
   assertEquals(catalog.productionEligible, false);
