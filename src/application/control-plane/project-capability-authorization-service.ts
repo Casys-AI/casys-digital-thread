@@ -6,8 +6,12 @@ import {
 } from "../../domain/kernel/deterministic-json.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import type { ProjectBriefRevision } from "../../domain/project/project-brief.ts";
+import { capabilityRuntimeCatalogMaterialsForRequirements } from "./capability-runtime-catalog-materials.ts";
 import { compileProjectCapabilityIntent } from "./compile-project-capability-intent.ts";
-import { flattenEngineeringCapabilityRequirements } from "../../domain/capability/engineering-capability.ts";
+import {
+  flattenEngineeringCapabilityRequirements,
+  type RequiredEngineeringCapability,
+} from "../../domain/capability/engineering-capability.ts";
 import { compileProjectCapabilityDemand } from "./compile-project-capability-demand.ts";
 import {
   planProjectCapabilityIntent,
@@ -392,10 +396,14 @@ export class ProjectCapabilityAuthorizationService {
       .map((group) =>
         `Operation ${group.operation.id}@${group.operation.version} is unresolved: ${group.reason}.`
       );
-    const host = await this.#host();
     const retainedRequirements = envelope?.status === "authorized"
       ? envelope.proposal.semanticRequirements
       : [];
+    const requirements = flattenEngineeringCapabilityRequirements([
+      ...retainedRequirements,
+      ...demand.plannedCeiling.capabilityRequirements,
+    ]);
+    const host = await this.#host(requirements);
     const proposal = await planProjectCapabilityRequirementsProposal({
       projectId: project.project.id,
       source: "published-plan",
@@ -405,10 +413,7 @@ export class ProjectCapabilityAuthorizationService {
         briefReviewFingerprint: project.framing.currentBriefApproval.inputFingerprint,
       },
       intent: null,
-      requirements: flattenEngineeringCapabilityRequirements([
-        ...retainedRequirements,
-        ...demand.plannedCeiling.capabilityRequirements,
-      ]),
+      requirements,
       unresolvedBlockers,
       catalog: await this.#effectiveCatalog(host),
       policy: await this.#policy(),
@@ -698,9 +703,17 @@ export class ProjectCapabilityAuthorizationService {
     });
   }
 
-  async #host(): Promise<CapabilityRuntimeHostObservation> {
+  async #host(
+    requirements: readonly RequiredEngineeringCapability[],
+  ): Promise<CapabilityRuntimeHostObservation> {
     const host = this.dependencies.host;
-    return "read" in host ? await host.read() : structuredClone(host);
+    if (!("read" in host)) return structuredClone(host);
+    return await host.read({
+      materials: capabilityRuntimeCatalogMaterialsForRequirements(
+        this.dependencies.catalog,
+        requirements,
+      ),
+    });
   }
 
   async #policy(): Promise<CapabilityRuntimeAdminPolicy> {
@@ -724,7 +737,7 @@ export class ProjectCapabilityAuthorizationService {
       this.dependencies.registry,
       this.dependencies.routes,
     );
-    const host = await this.#host();
+    const host = await this.#host(intent.capabilityRequirements);
     return await planProjectCapabilityIntent({
       projectId: project.project.id,
       brief: {

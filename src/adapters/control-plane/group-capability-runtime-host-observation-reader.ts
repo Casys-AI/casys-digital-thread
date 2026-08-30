@@ -3,16 +3,21 @@
  *
  * It observes only exact catalogue materials through their own read-only
  * runtime authority (enrolled Compose group or exact Microsandbox cache).
- * Other local images are neither claimed nor inspected. This keeps project
- * planning honest while avoiding a startup pull, service start, or speculative
- * host claim.
+ * A scoped `read({ materials })` inspects only that closed set. An unscoped
+ * `read()` is the explicit full-catalogue path for administration and
+ * qualification. Other local images are neither claimed nor inspected. This
+ * keeps project planning honest while avoiding a startup pull, service start,
+ * or speculative host claim.
  */
 
 import type {
   CapabilityRuntimeHostPlatformObserver,
   CapabilityRuntimeStateObserver,
 } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
-import type { CapabilityRuntimeHostObservationReader } from "../../application/control-plane/project-capability-runtime-context-compiler.ts";
+import type {
+  CapabilityRuntimeHostObservationReader,
+  CapabilityRuntimeHostObservationScope,
+} from "../../application/control-plane/project-capability-runtime-context-compiler.ts";
 import {
   CAPABILITY_RUNTIME_HOST_OBSERVATION_SCHEMA_VERSION,
   type CapabilityRuntimeCatalog,
@@ -30,8 +35,10 @@ export class GroupCapabilityRuntimeHostObservationReader
     private readonly platform: CapabilityRuntimeHostPlatformObserver,
   ) {}
 
-  async read(): Promise<CapabilityRuntimeHostObservation> {
-    const materials = this.catalog.units.flatMap((unit) =>
+  async read(
+    scope?: CapabilityRuntimeHostObservationScope,
+  ): Promise<CapabilityRuntimeHostObservation> {
+    const catalogMaterials = this.catalog.units.flatMap((unit) =>
       unit.materials.map((material) => ({
         identity: {
           unitId: unit.id,
@@ -41,6 +48,7 @@ export class GroupCapabilityRuntimeHostObservationReader
         imageReference: material.imageReference,
       }))
     );
+    const materials = selectCatalogMaterials(catalogMaterials, scope?.materials);
     const observed = await this.states.observe(
       materials.map((material) => material.identity),
     );
@@ -54,6 +62,42 @@ export class GroupCapabilityRuntimeHostObservationReader
       ).map((material) => ({ reference: material.imageReference, sizeBytes: null })),
     };
   }
+}
+
+function selectCatalogMaterials<
+  T extends {
+    readonly identity: {
+      readonly unitId: string;
+      readonly materialId: string;
+      readonly imageDigest: string;
+    };
+  },
+>(
+  catalogMaterials: readonly T[],
+  requested: CapabilityRuntimeHostObservationScope["materials"] | undefined,
+): readonly T[] {
+  if (requested === undefined) return catalogMaterials;
+  const catalogByKey = new Map(
+    catalogMaterials.map((material) => [
+      capabilityRuntimeMaterialKey(material.identity),
+      material,
+    ]),
+  );
+  const selected: T[] = [];
+  const seen = new Set<string>();
+  for (const identity of requested) {
+    const key = capabilityRuntimeMaterialKey(identity);
+    const catalogued = catalogByKey.get(key);
+    if (!catalogued || catalogued.identity.imageDigest !== identity.imageDigest) {
+      throw new TypeError(
+        `Host observation requested ${identity.unitId}/${identity.materialId} absent from the current catalogue.`,
+      );
+    }
+    if (seen.has(key)) continue;
+    seen.add(key);
+    selected.push(catalogued);
+  }
+  return selected;
 }
 
 function digestFromReference(reference: string): string {

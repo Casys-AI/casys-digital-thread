@@ -3,6 +3,7 @@ import { createFirstPartyCapabilityRuntimeCatalog } from "../../adapters/control
 import { InMemoryProjectCapabilityLedgerStore } from "../../adapters/control-plane/file-project-capability-ledger-store.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import { listRegisteredEngineeringOperations } from "../../orchestration/operations/registry.ts";
+import { capabilityRuntimeMaterialKey } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import {
   FixedCapabilityRuntimeAdminLockReader,
   FixedCapabilityRuntimeAdminPolicyReader,
@@ -49,6 +50,59 @@ Deno.test("runtime context compiler reconstructs a fresh plan from durable autho
     context.plan.bindings.some((binding) =>
       binding.requirement.id === "mechanics.solve-static-structural"
     ),
+    true,
+  );
+});
+
+Deno.test("runtime context compiler observes only demanded catalogue materials", async () => {
+  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+  const observed: string[] = [];
+  const compiler = new ProjectCapabilityRuntimeContextCompiler({
+    registry: { list: listRegisteredEngineeringOperations },
+    catalog,
+    qualificationSpecs: [],
+    qualificationCandidates: [],
+    policy: new FixedCapabilityRuntimeAdminPolicyReader({
+      schemaVersion: "capability-runtime-admin-policy/1.0",
+      disabledBindingIds: [],
+      preferences: [],
+    }),
+    host: {
+      read: (scope) => {
+        observed.push(
+          ...(scope?.materials ?? []).map(capabilityRuntimeMaterialKey),
+        );
+        return Promise.resolve({
+          schemaVersion: "capability-runtime-host-observation/1.0",
+          identityFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+          platform: "linux/arm64",
+          images: [],
+        });
+      },
+    },
+    lock: new FixedCapabilityRuntimeAdminLockReader({
+      schemaVersion: "capability-runtime-admin-lock/1.0",
+      revision: 0,
+      previous: null,
+      units: [],
+    }),
+    ledgers: new InMemoryProjectCapabilityLedgerStore(),
+  });
+
+  await compiler.read(project());
+  assertEquals(
+    observed.includes("casys.calculix-worker\u0000calculix-worker-image"),
+    true,
+  );
+
+  observed.length = 0;
+  await compiler.read(seedProject());
+  assertEquals(
+    observed.includes("casys.calculix-worker\u0000calculix-worker-image"),
+    false,
+  );
+  assertEquals(
+    observed.some((key) => key.startsWith("casys.syson-stack\u0000")),
     true,
   );
 });
@@ -106,5 +160,29 @@ function project(): EngineeringProjectSnapshot {
     decisions: [],
     approvals: [],
     blockers: [],
+  };
+}
+
+function seedProject(): EngineeringProjectSnapshot {
+  const base = project();
+  return {
+    ...base,
+    project: {
+      ...base.project,
+      objective: { title: "Seed", statement: "Author a SysON container." },
+    },
+    workItems: [{
+      ...base.workItems[0]!,
+      id: "work:seed",
+      activityId: "activity:seed",
+      kind: "architect",
+      title: "SysON seed",
+      description: "SysON seed",
+      operation: {
+        id: "architecture.seed-syson-model",
+        version: "2",
+        bindings: [],
+      },
+    }],
   };
 }

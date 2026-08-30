@@ -6,9 +6,12 @@
  * is not an in-memory test map and it never performs host work.
  */
 
+import { flattenEngineeringCapabilityRequirements } from "../../domain/capability/engineering-capability.ts";
+import type { CapabilityRuntimeMaterialIdentity } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import { deepFreeze } from "../../domain/kernel/case-validation.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import type { EngineeringOperationRegistry } from "../../orchestration/operations/operation-contract.ts";
+import { capabilityRuntimeCatalogMaterialsForRequirements } from "./capability-runtime-catalog-materials.ts";
 import { compileProjectCapabilityDemand } from "./compile-project-capability-demand.ts";
 import { planProjectCapability } from "./plan-project-capability.ts";
 import {
@@ -34,8 +37,15 @@ import type {
   ProjectCapabilityRuntimeContextReader,
 } from "../ports/out/capability/capability-runtime-supervisor.ts";
 
+/** Closed host-read scope. Omitted `read()` remains the full-catalogue path. */
+export interface CapabilityRuntimeHostObservationScope {
+  readonly materials: readonly CapabilityRuntimeMaterialIdentity[];
+}
+
 export interface CapabilityRuntimeHostObservationReader {
-  read(): Promise<CapabilityRuntimeHostObservation>;
+  read(
+    scope?: CapabilityRuntimeHostObservationScope,
+  ): Promise<CapabilityRuntimeHostObservation>;
 }
 
 export interface CapabilityRuntimeAdminPolicyReader {
@@ -51,7 +61,9 @@ export class FixedCapabilityRuntimeHostObservationReader
   implements CapabilityRuntimeHostObservationReader {
   constructor(private readonly value: CapabilityRuntimeHostObservation) {}
 
-  read(): Promise<CapabilityRuntimeHostObservation> {
+  read(
+    _scope?: CapabilityRuntimeHostObservationScope,
+  ): Promise<CapabilityRuntimeHostObservation> {
     return Promise.resolve(structuredClone(this.value));
   }
 }
@@ -104,13 +116,22 @@ export class ProjectCapabilityRuntimeContextCompiler
   async read(
     project: EngineeringProjectSnapshot,
   ): Promise<ProjectCapabilityRuntimeContext> {
-    const [host, policy, lock, ledger, attestations] = await Promise.all([
-      this.options.host.read(),
+    const [policy, lock, ledger, attestations, demand] = await Promise.all([
       this.options.policy.read(),
       this.options.lock.read(),
       this.options.ledgers.get(project.project.id),
       this.options.qualifications?.list() ?? Promise.resolve([]),
+      compileProjectCapabilityDemand(project, this.options.registry),
     ]);
+    const host = await this.options.host.read({
+      materials: capabilityRuntimeCatalogMaterialsForRequirements(
+        this.options.catalog,
+        flattenEngineeringCapabilityRequirements([
+          ...demand.plannedCeiling.capabilityRequirements,
+          ...demand.jitDemand.capabilityRequirements,
+        ]),
+      ),
+    });
     const catalog = evaluateCapabilityRuntimeQualifications({
       catalog: this.options.catalog,
       host,
@@ -127,7 +148,6 @@ export class ProjectCapabilityRuntimeContextCompiler
         })
         : [],
     });
-    const demand = await compileProjectCapabilityDemand(project, this.options.registry);
     const plan = await planProjectCapability({
       demand,
       catalog,

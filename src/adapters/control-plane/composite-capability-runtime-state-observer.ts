@@ -16,10 +16,11 @@ export interface CapabilityRuntimeStateObserverSlice {
 
 /**
  * Each observer owns a disjoint, code-owned material slice (Compose group or
- * exact Microsandbox cache). A duplicate coverage declaration, an unexpected
- * response, or a missing response for an owned requested material is an
- * authority/configuration error. Materials outside every slice deliberately
- * remain unobserved; the redacted Workbench projects them as `unavailable`.
+ * exact Microsandbox cache). A slice with no assigned requested material is
+ * not invoked. A duplicate coverage declaration, an unexpected response, or a
+ * missing response for an owned requested material is an authority/
+ * configuration error. Materials outside every slice deliberately remain
+ * unobserved; the redacted Workbench projects them as `unavailable`.
  */
 export class CompositeCapabilityRuntimeStateObserver
   implements CapabilityRuntimeStateObserver {
@@ -65,6 +66,9 @@ export class CompositeCapabilityRuntimeStateObserver
       const assigned = [...requested.entries()]
         .filter(([key]) => slice.materialKeys.has(key))
         .map(([, material]) => material);
+      if (assigned.length === 0) {
+        return new Map<string, CapabilityRuntimeObservedState>();
+      }
       const values = await slice.observer.observe(assigned);
       for (const key of values.keys()) {
         if (!slice.materialKeys.has(key) || !requested.has(key)) {

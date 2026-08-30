@@ -537,6 +537,7 @@ Deno.test("SysON seed after documentary baseline amends the brief ceiling instea
       `${directory}/host/admin-lock.json`,
       catalog,
     );
+    const observedMaterialKeys: string[] = [];
     const authorization = new ProjectCapabilityAuthorizationService({
       ledgers: new InMemoryProjectCapabilityLedgerStore(),
       registry: { list: listRegisteredEngineeringOperations },
@@ -548,10 +549,24 @@ Deno.test("SysON seed after documentary baseline amends the brief ceiling instea
         catalog,
       ),
       host: {
-        schemaVersion: "capability-runtime-host-observation/1.0",
-        identityFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
-        platform: "linux/arm64",
-        images: [],
+        read: (scope) => {
+          observedMaterialKeys.push(
+            ...(scope?.materials ?? [{
+              unitId: "unscoped",
+              materialId: "full-catalog",
+              imageDigest: "a".repeat(64),
+            }]).map((material) => `${material.unitId}\u0000${material.materialId}`),
+          );
+          return Promise.resolve({
+            schemaVersion: "capability-runtime-host-observation/1.0" as const,
+            identityFingerprint: {
+              algorithm: "sha256" as const,
+              digest: "a".repeat(64),
+            },
+            platform: "linux/arm64" as const,
+            images: [],
+          });
+        },
       },
       lock,
       now,
@@ -661,6 +676,15 @@ Deno.test("SysON seed after documentary baseline amends the brief ceiling instea
       change.proposal.semanticRequirements.map((requirement) => requirement.id)
         .toSorted(),
       ["geometry.observe-assembly-integrity", "model.author-system"],
+    );
+    assertEquals(observedMaterialKeys.includes("unscoped\u0000full-catalog"), false);
+    assertEquals(
+      observedMaterialKeys.includes("casys.calculix-worker\u0000calculix-worker-image"),
+      false,
+    );
+    assertEquals(
+      observedMaterialKeys.some((key) => key.startsWith("casys.syson-stack\u0000")),
+      true,
     );
   } finally {
     await Deno.remove(directory, { recursive: true });
