@@ -503,6 +503,12 @@ function isResolvedOperationPlanV2Operation(
   ) || (
     operation?.id === "verify.run-prescribed-kinematics" &&
     operation.version === "1"
+  ) || (
+    operation?.id === "simulate.run-admitted-modelica" &&
+    operation.version === "1"
+  ) || (
+    operation?.id === "simulate.run-admitted-spice" &&
+    operation.version === "1"
   );
 }
 

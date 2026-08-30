@@ -161,6 +161,48 @@ Deno.test("phase status cannot be duplicated as blocked work-item state", async 
   );
 });
 
+Deno.test("only exact admitted Modelica and SPICE @1 runs may carry their required resolved operation plan", async () => {
+  for (
+    const operation of [
+      { id: "simulate.run-admitted-modelica", version: "1" },
+      { id: "simulate.run-admitted-spice", version: "1" },
+    ]
+  ) {
+    const project = await projectWithQueuedResolvedOperationPlan(operation);
+    const planIssues = collectEngineeringProjectIssues(project).filter((issue) =>
+      issue.code.includes("resolved_operation_plan")
+    );
+    assertEquals(planIssues, [], `${operation.id}@${operation.version}`);
+
+    delete project.agentRuns[0]!.resolvedOperationPlan;
+    delete project.commandReceipts![2]!.queuedRun!.resolvedOperationPlan;
+    assertEquals(
+      collectEngineeringProjectIssues(project).some((issue) =>
+        issue.code === "missing_resolved_operation_plan"
+      ),
+      true,
+      `${operation.id}@${operation.version} requires its resolved operation plan`,
+    );
+  }
+
+  for (
+    const operation of [
+      { id: "simulate.run-admitted-modelica", version: "2" },
+      { id: "simulate.run-admitted-spice", version: "2" },
+      { id: "simulate.run-qualified-modelica-kit", version: "1" },
+    ]
+  ) {
+    const issues = collectEngineeringProjectIssues(
+      await projectWithQueuedResolvedOperationPlan(operation),
+    );
+    assertEquals(
+      issues.some((issue) => issue.code === "unexpected_resolved_operation_plan"),
+      true,
+      `${operation.id}@${operation.version}`,
+    );
+  }
+});
+
 Deno.test("a cancelled run has exactly one queued transition and one human cancellation", async () => {
   const exact = await projectJson();
   const workItem = exact.workItems.find((item) =>
@@ -375,6 +417,65 @@ async function projectJson(): Promise<Mutable<EngineeringProjectSnapshot>> {
   return JSON.parse(
     await Deno.readTextFile(CONFIG),
   ) as Mutable<EngineeringProjectSnapshot>;
+}
+
+async function projectWithQueuedResolvedOperationPlan(
+  operation: { id: string; version: string },
+): Promise<Mutable<EngineeringProjectSnapshot>> {
+  const project = await projectJson();
+  const previousSnapshotId = project.id;
+  const runId = "run:admitted-plan";
+  const queueCommandId = "queue:admitted-plan";
+  const queuedAt = "2026-08-01T10:36:58.345Z";
+  const workItem = project.workItems.find((item) =>
+    item.id === "observe-modelica-run"
+  )!;
+  workItem.status = "in-progress";
+  workItem.operation = { ...operation, bindings: [] };
+  project.id = "engineering-project-generic-test-system-r2";
+  project.revision = 3;
+  project.previous = { snapshotId: previousSnapshotId, revision: 2 };
+  const resolvedOperationPlan = {
+    schemaVersion: "resolved-operation-plan-ref/1.0" as const,
+    planId: runId,
+    fingerprint: fingerprint("f"),
+    byteCount: 256,
+    casUri: `casys://resolved-operation-plan/sha256/${"f".repeat(64)}`,
+  };
+  project.agentRuns = [{
+    id: runId,
+    workItemId: workItem.id,
+    status: "queued",
+    summary: "Queued admitted source execution.",
+    queuedAt,
+    basis: {
+      kind: "thread-snapshot",
+      snapshotId: project.threadSnapshots[0]!.snapshotId,
+      revision: project.threadSnapshots[0]!.revision,
+      subjectId: project.threadSnapshots[0]!.subjectId,
+    },
+    inputFingerprint: fingerprint("a"),
+    evidenceRefs: [],
+    statusHistory: [{
+      commandId: queueCommandId,
+      status: "queued",
+      at: queuedAt,
+      actor: { id: "agent:fixture", origin: "agent" },
+      summary: "Queued admitted source execution.",
+    }],
+    resolvedOperationPlan,
+  }];
+  project.commandReceipts!.push({
+    commandId: queueCommandId,
+    type: "agent-run.queue",
+    actor: { id: "agent:fixture", origin: "agent" },
+    issuedAt: queuedAt,
+    appliedAt: queuedAt,
+    requestFingerprint: fingerprint("a"),
+    resultingSnapshot: { snapshotId: project.id, revision: project.revision },
+    queuedRun: { runId, workItemId: workItem.id, resolvedOperationPlan },
+  });
+  return project;
 }
 
 async function projectWithAmbiguousBlockerDecisionScope(
