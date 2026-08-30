@@ -19,6 +19,7 @@ import type {
   ProjectTechnicalSourceCaptureCommand,
   ProjectTechnicalSourceCaptureUseCase,
 } from "../../application/ports/in/compile/admission/project-technical-source-capture.ts";
+import { ProjectTechnicalSourceCaptureError } from "../../application/ports/in/compile/admission/project-technical-source-capture.ts";
 import { compilationPreviewContent } from "../../domain/compile/admission/technical-compilation-preview-review.ts";
 import {
   captureReviewContent,
@@ -63,7 +64,20 @@ export function registerProjectTechnicalCompilationTools(
     const capture = dependencies.technicalSourceCapture;
     app.registerTool(projectTechnicalSourceCaptureTool, async (args) => {
       const command = technicalSourceCaptureCommand(args);
-      const review = await capture.capture(command);
+      let review;
+      try {
+        review = await capture.capture(command);
+      } catch (cause) {
+        if (cause instanceof ProjectTechnicalSourceCaptureError) {
+          // McpApp serialises mapped tool errors as text, not Error properties.
+          // Keep the application rejection fail-closed while making its exact,
+          // server-owned lowerer diagnosis actionable to the MCP caller.
+          throw new TypeError(
+            `project_technical_source_capture rejected (${cause.code}): ${cause.message}`,
+          );
+        }
+        throw cause;
+      }
       return {
         content: captureReviewContent(review),
         structuredContent: review as unknown as Readonly<Record<string, unknown>>,
