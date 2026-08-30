@@ -8,7 +8,6 @@
  */
 
 import {
-  canonicalResolvedCapabilityRuntimeOperationText,
   type CapabilityRuntimeExecutionLeaseOwner,
   type CapabilityRuntimeHostLifecycle,
   type CapabilityRuntimeLease,
@@ -22,7 +21,6 @@ import {
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import type { CapabilityRuntimeLaunchGroupReference } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type {
   EngineeringAgentRun,
   EngineeringProjectSnapshot,
@@ -36,6 +34,17 @@ import type {
   ProjectCapabilityRuntimeContextReader,
 } from "../ports/out/capability/capability-runtime-supervisor.ts";
 import type { CapabilityRuntimeLaunchGroupSupervisor } from "./capability-runtime-launch-group-supervisor.ts";
+import {
+  assertExactCapabilityRuntimeLeaseScope,
+  assertExactResolvedCapabilityRuntimeOperationRecheck,
+  type CapabilityRuntimeMicrosandboxCache,
+  type CapabilityRuntimeMicrosandboxProfileAttestation,
+  exactCatalogImageReference,
+  exactMicrosandboxProfileAttestations,
+  uniqueCapabilityRuntimeHostLifecycles,
+} from "./capability-runtime-session-primitives.ts";
+
+export type { CapabilityRuntimeMicrosandboxCache } from "./capability-runtime-session-primitives.ts";
 
 // The isolated FEA profile is bounded in minutes. Six hours leaves recovery
 // room without treating an old queue claim as a permanent host reservation.
@@ -48,24 +57,13 @@ export class CapabilityRuntimeSessionUnavailableError extends Error {
   }
 }
 
-/** Read-only Microsandbox cache boundary. It never pulls or starts a sandbox. */
-export interface CapabilityRuntimeMicrosandboxCache {
-  ensureExactCached(input: {
-    readonly material: CapabilityRuntimeMaterialIdentity;
-    readonly imageReference: string;
-    readonly executionProfileFingerprint: ContentFingerprint;
-  }): Promise<void>;
-}
-
 /**
  * Exact fixed-executor invocation profile for one sealed microVM material.
  * It is intentionally keyed by the complete material identity so a future
  * multi-worker operation cannot lend one profile's authority to another.
  */
-export interface CapabilityRuntimeMicrosandboxExecutionProfile {
-  readonly material: CapabilityRuntimeMaterialIdentity;
-  readonly executionProfileFingerprint: ContentFingerprint;
-}
+export type CapabilityRuntimeMicrosandboxExecutionProfile =
+  CapabilityRuntimeMicrosandboxProfileAttestation;
 
 export interface CapabilityRuntimeExecutionSession {
   readonly lease: CapabilityRuntimeLease;
@@ -160,16 +158,19 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
 
     // This is intentionally inside the session seam, not merely the caller's
     // earlier prepare. It closes the TOCTOU window before the first host action.
-    await assertExactOperationalCapabilityRecheck(
+    await assertExactResolvedCapabilityRuntimeOperationRecheck(
       input.recheck,
       operationalCapability,
+      (message) => new CapabilityRuntimeSessionUnavailableError(message),
     );
-    const lifecycles = uniqueLifecycles(
+    const lifecycles = uniqueCapabilityRuntimeHostLifecycles(
       operationalCapability.bindings.flatMap((binding) => binding.hostLifecycles),
+      (message) => new CapabilityRuntimeSessionUnavailableError(message),
     );
-    const microsandboxExecutionProfiles = exactMicrosandboxExecutionProfiles(
+    const microsandboxExecutionProfiles = exactMicrosandboxProfileAttestations(
       lifecycles,
       input.microsandboxExecutionProfiles,
+      (message) => new CapabilityRuntimeSessionUnavailableError(message),
     );
     const persistent = lifecycles.filter((lifecycle) =>
       lifecycle.kind === "persistent-compose"
@@ -244,7 +245,11 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
         if (lifecycle.kind === "ephemeral-microsandbox") {
           await this.options.microsandbox!.ensureExactCached({
             material: lifecycle.material,
-            imageReference: exactCatalogImageReference(context, lifecycle.material),
+            imageReference: exactCatalogImageReference(
+              context,
+              lifecycle.material,
+              (message) => new CapabilityRuntimeSessionUnavailableError(message),
+            ),
             executionProfileFingerprint: microsandboxExecutionProfiles.get(
               capabilityRuntimeMaterialKey(lifecycle.material),
             )!,
@@ -253,7 +258,11 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
         if (lifecycle.kind === "cache-only") {
           await this.options.cache!.ensureExactCached({
             material: lifecycle.material,
-            imageReference: exactCatalogImageReference(context, lifecycle.material),
+            imageReference: exactCatalogImageReference(
+              context,
+              lifecycle.material,
+              (message) => new CapabilityRuntimeSessionUnavailableError(message),
+            ),
           });
         }
       }
@@ -286,9 +295,10 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
           // mutation, closing the revocation/deactivation race.
           guard: async () => {
             try {
-              await assertExactOperationalCapabilityRecheck(
+              await assertExactResolvedCapabilityRuntimeOperationRecheck(
                 input.recheck,
                 operationalCapability,
+                (message) => new CapabilityRuntimeSessionUnavailableError(message),
               );
               return true;
             } catch (error) {
@@ -359,8 +369,9 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
         "Capability JIT recorded cleanup requires a durable terminal run.",
       );
     }
-    const lifecycles = uniqueLifecycles(
+    const lifecycles = uniqueCapabilityRuntimeHostLifecycles(
       operationalCapability.bindings.flatMap((binding) => binding.hostLifecycles),
+      (message) => new CapabilityRuntimeSessionUnavailableError(message),
     );
     const groups = uniqueLaunchGroups(
       lifecycles
@@ -586,8 +597,9 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
         "Legacy capability JIT reconciliation cleanup requires the failed run's exact server-resolved operation.",
       );
     }
-    const lifecycles = uniqueLifecycles(
+    const lifecycles = uniqueCapabilityRuntimeHostLifecycles(
       operationalCapability.bindings.flatMap((binding) => binding.hostLifecycles),
+      (message) => new CapabilityRuntimeSessionUnavailableError(message),
     );
     const leaseId = await executionLeaseId({
       projectId: input.project.project.id,
@@ -807,39 +819,21 @@ function sameThreadBasis(
     left.subjectId === right.subjectId;
 }
 
-async function assertExactOperationalCapabilityRecheck(
-  recheck: CapabilityRuntimeSessionRecheck,
-  expected: ResolvedCapabilityRuntimeOperation,
-): Promise<void> {
-  const current = validateResolvedCapabilityRuntimeOperation(await recheck());
-  if (
-    canonicalResolvedCapabilityRuntimeOperationText(current) !==
-      canonicalResolvedCapabilityRuntimeOperationText(expected)
-  ) {
-    throw new CapabilityRuntimeSessionUnavailableError(
-      "Operational capability changed after its sealed ROP recheck; requeue through a reviewed authorization amendment.",
-    );
-  }
-}
-
 function assertEquivalentLease(
   existingValue: CapabilityRuntimeLease,
   candidate: CapabilityRuntimeLease,
 ): CapabilityRuntimeLease {
-  const existing = validateCapabilityRuntimeLease(existingValue);
-  const sameScope = existing.id === candidate.id &&
-    existing.projectId === candidate.projectId &&
-    sameTokens(existing.bindingIds, candidate.bindingIds) &&
-    sameTokens(existing.materialKeys, candidate.materialKeys) &&
-    sameTokens(
-      existing.launchGroups.map(groupToken),
-      candidate.launchGroups.map(groupToken),
-    ) &&
-    sameOptionalExecutionLeaseOwner(
+  const existing = assertExactCapabilityRuntimeLeaseScope(
+    existingValue,
+    candidate,
+    (message) => new CapabilityRuntimeSessionUnavailableError(message),
+  );
+  if (
+    !sameOptionalExecutionLeaseOwner(
       existing.executionOwner,
       candidate.executionOwner,
-    );
-  if (!sameScope) {
+    )
+  ) {
     throw new CapabilityRuntimeSessionUnavailableError(
       "The deterministic capability lease id is already held for another operational scope; recovery must resolve it.",
     );
@@ -906,13 +900,6 @@ function groupToken(group: CapabilityRuntimeLaunchGroupReference): string {
   return `${group.id}\u0000${group.version}\u0000${group.fingerprint.digest}`;
 }
 
-function sameTokens(left: readonly string[], right: readonly string[]): boolean {
-  const orderedLeft = [...left].toSorted();
-  const orderedRight = [...right].toSorted();
-  return orderedLeft.length === orderedRight.length &&
-    orderedLeft.every((token, index) => token === orderedRight[index]);
-}
-
 function uniqueLaunchGroups(
   groups: readonly CapabilityRuntimeLaunchGroupReference[],
 ): readonly CapabilityRuntimeLaunchGroupReference[] {
@@ -921,91 +908,4 @@ function uniqueLaunchGroups(
   return [...result.values()].toSorted((left, right) =>
     groupToken(left).localeCompare(groupToken(right))
   );
-}
-
-function uniqueLifecycles(
-  value: readonly CapabilityRuntimeHostLifecycle[],
-): readonly CapabilityRuntimeHostLifecycle[] {
-  const result = new Map<string, CapabilityRuntimeHostLifecycle>();
-  for (const lifecycle of value) {
-    const key = capabilityRuntimeMaterialKey(lifecycle.material);
-    const existing = result.get(key);
-    if (existing && JSON.stringify(existing) !== JSON.stringify(lifecycle)) {
-      throw new CapabilityRuntimeSessionUnavailableError(
-        `Sealed operation has contradictory host lifecycle records for ${key}.`,
-      );
-    }
-    result.set(key, structuredClone(lifecycle));
-  }
-  if (result.size === 0) {
-    throw new CapabilityRuntimeSessionUnavailableError(
-      "A demanded operational capability has no host lifecycle materials.",
-    );
-  }
-  return [...result.values()].toSorted((left, right) =>
-    capabilityRuntimeMaterialKey(left.material).localeCompare(
-      capabilityRuntimeMaterialKey(right.material),
-    )
-  );
-}
-
-function exactMicrosandboxExecutionProfiles(
-  lifecycles: readonly CapabilityRuntimeHostLifecycle[],
-  supplied: readonly CapabilityRuntimeMicrosandboxExecutionProfile[],
-): ReadonlyMap<string, ContentFingerprint> {
-  const expected = lifecycles.filter((lifecycle) =>
-    lifecycle.kind === "ephemeral-microsandbox"
-  );
-  const values = new Map<string, ContentFingerprint>();
-  for (const profile of supplied) {
-    const key = capabilityRuntimeMaterialKey(profile.material);
-    if (values.has(key)) {
-      throw new CapabilityRuntimeSessionUnavailableError(
-        `Microsandbox execution-profile attestation is duplicated for ${key}.`,
-      );
-    }
-    const lifecycle = expected.find((candidate) =>
-      capabilityRuntimeMaterialKey(candidate.material) === key
-    );
-    if (!lifecycle) {
-      throw new CapabilityRuntimeSessionUnavailableError(
-        `Microsandbox execution-profile attestation is extra for ${key}.`,
-      );
-    }
-    if (lifecycle.material.imageDigest !== profile.material.imageDigest) {
-      throw new CapabilityRuntimeSessionUnavailableError(
-        `Microsandbox execution-profile attestation digest does not match ${key}.`,
-      );
-    }
-    values.set(key, profile.executionProfileFingerprint);
-  }
-  for (const lifecycle of expected) {
-    const key = capabilityRuntimeMaterialKey(lifecycle.material);
-    if (!values.has(key)) {
-      throw new CapabilityRuntimeSessionUnavailableError(
-        `Microsandbox execution-profile attestation is absent for ${key}.`,
-      );
-    }
-  }
-  return values;
-}
-
-function exactCatalogImageReference(
-  context: Awaited<ReturnType<ProjectCapabilityRuntimeContextReader["read"]>>,
-  identity: CapabilityRuntimeMaterialIdentity,
-): string {
-  const unit = context.catalog.units.find((candidate) =>
-    candidate.id === identity.unitId
-  );
-  const material = unit?.materials.find((candidate) =>
-    candidate.id === identity.materialId
-  );
-  if (
-    !material || !material.imageReference.endsWith(`@sha256:${identity.imageDigest}`)
-  ) {
-    throw new CapabilityRuntimeSessionUnavailableError(
-      `Current runtime catalog no longer attests ${identity.unitId}/${identity.materialId} with the sealed digest.`,
-    );
-  }
-  return material.imageReference;
 }

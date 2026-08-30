@@ -1,6 +1,6 @@
 /** Exact local Microsandbox cache observation for an already catalogued image. */
 
-import type { CapabilityRuntimeMicrosandboxCache } from "../../application/control-plane/capability-runtime-execution-session.ts";
+import type { CapabilityRuntimeMicrosandboxCache } from "../../application/control-plane/capability-runtime-session-primitives.ts";
 import type {
   CapabilityRuntimeStateObserver,
 } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
