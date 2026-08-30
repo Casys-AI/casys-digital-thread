@@ -8,7 +8,9 @@ the exact `casys-syson@1.0.0` group: Postgres, SysON and `mcp-syson`, with only
 `127.0.0.1:3009` published. The historical SysON UI port 8180 is not part of this group.
 `casys-chrono@1.0.0` is a separate one-service topology. Its binding remains unavailable
 until a separately qualified exact host-mode attestation exists; the topology itself
-does not carry a qualification claim.
+does not carry a qualification claim. That probe is the private
+[local runtime qualification](local-runtime-qualification.md) CLI, not an MCP
+operation, Workbench command, or engineering run.
 
 ## Durable local read model
 

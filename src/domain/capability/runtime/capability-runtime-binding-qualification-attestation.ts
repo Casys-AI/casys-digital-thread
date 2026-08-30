@@ -27,7 +27,7 @@ import {
 import type { CapabilityRuntimeMaterialIdentity } from "./capability-runtime-supervision.ts";
 
 export const CAPABILITY_RUNTIME_BINDING_QUALIFICATION_ATTESTATION_SCHEMA_VERSION =
-  "capability-runtime-binding-qualification-attestation/1.0" as const;
+  "capability-runtime-binding-qualification-attestation/1.1" as const;
 
 export type CapabilityRuntimePlatform = "linux/amd64" | "linux/arm64";
 export type CapabilityRuntimeExecutionMode = "native" | "emulated";
@@ -78,6 +78,7 @@ export interface CapabilityRuntimeBindingQualificationAttestation {
   readonly observedHost: CapabilityRuntimeObservedHost;
   /** References only: no probe command, headers, secrets or provider output. */
   readonly fixture: CapabilityRuntimeQualificationEvidenceReference;
+  readonly qualificationSpec: CapabilityRuntimeQualificationEvidenceReference;
   readonly outcome: CapabilityRuntimeQualificationEvidenceReference;
   /** SHA-256 of this exact closed event body. */
   readonly fingerprint: ContentFingerprint;
@@ -92,6 +93,70 @@ export interface CapabilityRuntimeObservedHost {
 export interface CapabilityRuntimeQualificationEvidenceReference {
   readonly id: string;
   readonly fingerprint: ContentFingerprint;
+}
+
+export function capabilityRuntimeQualificationStoppedOutcomeId(
+  stoppedFingerprint: ContentFingerprint,
+): string {
+  return `capability-runtime-qualification-stopped-${stoppedFingerprint.digest}`;
+}
+
+export function isCanonicalCapabilityRuntimeQualificationStoppedOutcome(
+  value: CapabilityRuntimeQualificationEvidenceReference,
+): boolean {
+  return value.id ===
+    capabilityRuntimeQualificationStoppedOutcomeId(value.fingerprint);
+}
+
+/**
+ * Exact monotone revocation identity. Spec, outcome, state, recordedAt and
+ * fingerprint are excluded: a later specification cannot escape an earlier
+ * revocation of the same binding/host probe.
+ */
+export function sameCapabilityRuntimeQualificationRevocationScope(
+  left: CapabilityRuntimeBindingQualificationAttestation,
+  right: CapabilityRuntimeBindingQualificationAttestation,
+): boolean {
+  return left.binding.id === right.binding.id &&
+    left.binding.version === right.binding.version &&
+    left.selector.capability.id === right.selector.capability.id &&
+    left.selector.capability.version === right.selector.capability.version &&
+    left.selector.use === right.selector.use &&
+    left.contract.id === right.contract.id &&
+    left.contract.version === right.contract.version &&
+    left.contract.source === right.contract.source &&
+    sameAttestationProfile(left.profile, right.profile) &&
+    left.unit.id === right.unit.id &&
+    left.unit.version === right.unit.version &&
+    sameFingerprint(left.unit.manifestFingerprint, right.unit.manifestFingerprint) &&
+    left.material.unitId === right.material.unitId &&
+    left.material.materialId === right.material.materialId &&
+    left.material.imageDigest === right.material.imageDigest &&
+    left.targetPlatform === right.targetPlatform &&
+    left.mode === right.mode &&
+    left.launchGroup !== null &&
+    right.launchGroup !== null &&
+    left.launchGroup.id === right.launchGroup.id &&
+    left.launchGroup.version === right.launchGroup.version &&
+    sameFingerprint(left.launchGroup.fingerprint, right.launchGroup.fingerprint) &&
+    left.observedHost.platform === right.observedHost.platform &&
+    sameFingerprint(
+      left.observedHost.identityFingerprint,
+      right.observedHost.identityFingerprint,
+    ) &&
+    left.fixture.id === right.fixture.id &&
+    sameFingerprint(left.fixture.fingerprint, right.fixture.fingerprint);
+}
+
+function sameAttestationProfile(
+  left: CapabilityRuntimeBindingQualificationAttestation["profile"],
+  right: CapabilityRuntimeBindingQualificationAttestation["profile"],
+): boolean {
+  if (left === null || right === null) return left === right;
+  return left.id === right.id && left.version === right.version &&
+    ((left.fingerprint === null && right.fingerprint === null) ||
+      (left.fingerprint !== null && right.fingerprint !== null &&
+        sameFingerprint(left.fingerprint, right.fingerprint)));
 }
 
 export function capabilityRuntimeObservedHostManifest(
@@ -136,6 +201,7 @@ export function capabilityRuntimeBindingQualificationAttestationManifest(
     launchGroup: value.launchGroup,
     observedHost: value.observedHost,
     fixture: value.fixture,
+    qualificationSpec: value.qualificationSpec,
     outcome: value.outcome,
   };
 }
@@ -173,6 +239,7 @@ export async function validateCapabilityRuntimeBindingQualificationAttestation(
     "launchGroup",
     "observedHost",
     "fixture",
+    "qualificationSpec",
     "outcome",
     "fingerprint",
   ], path);
@@ -217,6 +284,10 @@ export async function validateCapabilityRuntimeBindingQualificationAttestation(
       ),
     observedHost,
     fixture: parseEvidenceReference(root.fixture, `${path}.fixture`),
+    qualificationSpec: parseEvidenceReference(
+      root.qualificationSpec,
+      `${path}.qualificationSpec`,
+    ),
     outcome: parseEvidenceReference(root.outcome, `${path}.outcome`),
     fingerprint: fingerprint(root.fingerprint, `${path}.fingerprint`),
   });

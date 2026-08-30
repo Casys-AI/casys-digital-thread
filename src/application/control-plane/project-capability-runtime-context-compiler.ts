@@ -11,7 +11,13 @@ import type { EngineeringProjectSnapshot } from "../../domain/project/engineerin
 import type { EngineeringOperationRegistry } from "../../orchestration/operations/operation-contract.ts";
 import { compileProjectCapabilityDemand } from "./compile-project-capability-demand.ts";
 import { planProjectCapability } from "./plan-project-capability.ts";
-import { evaluateCapabilityRuntimeQualifications } from "./evaluate-capability-runtime-qualifications.ts";
+import {
+  evaluateCapabilityRuntimeQualifications,
+  loadProvenCapabilityRuntimeQualificationAttestations,
+} from "./evaluate-capability-runtime-qualifications.ts";
+import type { CapabilityRuntimeQualificationCandidate } from "../../domain/capability/runtime/capability-runtime-qualification-candidate.ts";
+import type { CapabilityRuntimeQualificationSpecification } from "../../domain/capability/runtime/capability-runtime-qualification-specification.ts";
+import type { CapabilityRuntimeQualificationAttemptStore } from "../ports/out/capability/capability-runtime-qualification-attempt-store.ts";
 import type { ProjectCapabilityEffectiveEnvelope } from "./project-capability-authorization.ts";
 import type {
   CapabilityRuntimeAdminLock,
@@ -71,6 +77,8 @@ export class FixedCapabilityRuntimeAdminLockReader
 export interface ProjectCapabilityRuntimeContextCompilerOptions {
   readonly registry: Pick<EngineeringOperationRegistry, "list">;
   readonly catalog: CapabilityRuntimeCatalog;
+  readonly qualificationSpecs: readonly CapabilityRuntimeQualificationSpecification[];
+  readonly qualificationCandidates: readonly CapabilityRuntimeQualificationCandidate[];
   readonly policy: CapabilityRuntimeAdminPolicyReader;
   readonly host: CapabilityRuntimeHostObservationReader;
   readonly lock: CapabilityRuntimeAdminLockReader;
@@ -78,6 +86,10 @@ export interface ProjectCapabilityRuntimeContextCompilerOptions {
   readonly qualifications?: Pick<
     CapabilityRuntimeQualificationAttestationStore,
     "list"
+  >;
+  readonly qualificationAttempts?: Pick<
+    CapabilityRuntimeQualificationAttemptStore,
+    "read"
   >;
   readonly ledgers: ProjectCapabilityLedgerStore;
 }
@@ -103,6 +115,17 @@ export class ProjectCapabilityRuntimeContextCompiler
       catalog: this.options.catalog,
       host,
       attestations,
+      specs: this.options.qualificationSpecs,
+      candidates: this.options.qualificationCandidates,
+      provenAttestations: this.options.qualificationAttempts
+        ? await loadProvenCapabilityRuntimeQualificationAttestations({
+          attempts: this.options.qualificationAttempts,
+          attestations,
+          candidates: this.options.qualificationCandidates,
+          specs: this.options.qualificationSpecs,
+          host,
+        })
+        : [],
     });
     const demand = await compileProjectCapabilityDemand(project, this.options.registry);
     const plan = await planProjectCapability({

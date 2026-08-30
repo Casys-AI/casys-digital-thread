@@ -14,6 +14,8 @@ Deno.test("runtime context compiler reconstructs a fresh plan from durable autho
   const compiler = new ProjectCapabilityRuntimeContextCompiler({
     registry: { list: listRegisteredEngineeringOperations },
     catalog: await createFirstPartyCapabilityRuntimeCatalog(),
+    qualificationSpecs: [],
+    qualificationCandidates: [],
     policy: new FixedCapabilityRuntimeAdminPolicyReader({
       schemaVersion: "capability-runtime-admin-policy/1.0",
       disabledBindingIds: [],

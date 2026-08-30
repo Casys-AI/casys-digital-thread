@@ -22,9 +22,12 @@ import {
   FileCapabilityRuntimeAdminPolicyStore,
   FileCapabilityRuntimeJournal,
 } from "./file-capability-runtime-host-stores.ts";
+import { FileCapabilityRuntimeQualificationAttemptStore } from "./file-capability-runtime-qualification-attempt-store.ts";
 import { FileCapabilityRuntimeQualificationAttestationStore } from "./file-capability-runtime-qualification-attestation-store.ts";
 import { FileProjectCapabilityLedgerStore } from "./file-project-capability-ledger-store.ts";
 import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capability-binding-catalog.ts";
+import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "./first-party-capability-runtime-qualification-candidates.ts";
+import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "./first-party-capability-runtime-qualification-specifications.ts";
 import { createFirstPartyCapabilityRuntimeLaunchGroupRegistry } from "./first-party-capability-runtime-launch-groups.ts";
 import { GroupCapabilityRuntimeHostObservationReader } from "./group-capability-runtime-host-observation-reader.ts";
 import { FileCapabilityRuntimeHostIdentityStore } from "./file-capability-runtime-host-identity-store.ts";
@@ -69,6 +72,7 @@ export interface LocalCapabilityRuntimeReadComposition {
   readonly lock: FileCapabilityRuntimeAdminLockStore;
   readonly hostIdentity: FileCapabilityRuntimeHostIdentityStore;
   readonly qualifications: FileCapabilityRuntimeQualificationAttestationStore;
+  readonly qualificationAttempts: FileCapabilityRuntimeQualificationAttemptStore;
   readonly ledgers: FileProjectCapabilityLedgerStore;
   readonly contexts: ProjectCapabilityRuntimeContextCompiler;
   readonly workbench: ProjectCapabilityWorkbenchProjector;
@@ -82,10 +86,13 @@ export interface LocalCapabilityRuntimeReadComposition {
 export async function createLocalCapabilityRuntimeReadComposition(
   options: LocalCapabilityRuntimeReadCompositionOptions = {},
 ): Promise<LocalCapabilityRuntimeReadComposition> {
-  const [catalog, launchGroups] = await Promise.all([
-    createFirstPartyCapabilityRuntimeCatalog(),
-    createFirstPartyCapabilityRuntimeLaunchGroupRegistry(),
-  ]);
+  const [catalog, launchGroups, qualificationCandidates, qualificationSpecs] =
+    await Promise.all([
+      createFirstPartyCapabilityRuntimeCatalog(),
+      createFirstPartyCapabilityRuntimeLaunchGroupRegistry(),
+      createFirstPartyCapabilityRuntimeQualificationCandidates(),
+      createFirstPartyCapabilityRuntimeQualificationSpecifications(),
+    ]);
   const journal = new FileCapabilityRuntimeJournal();
   const secrets: CapabilityRuntimeSecretSlotObserver = options.secrets ?? {
     observe: (slots) =>
@@ -148,6 +155,7 @@ export async function createLocalCapabilityRuntimeReadComposition(
   const lock = new FileCapabilityRuntimeAdminLockStore(undefined, catalog);
   const hostIdentity = new FileCapabilityRuntimeHostIdentityStore();
   const qualifications = new FileCapabilityRuntimeQualificationAttestationStore();
+  const qualificationAttempts = new FileCapabilityRuntimeQualificationAttemptStore();
   const ledgers = new FileProjectCapabilityLedgerStore(options.ledgerDirectory);
   const host = new GroupCapabilityRuntimeHostObservationReader(
     catalog,
@@ -158,10 +166,13 @@ export async function createLocalCapabilityRuntimeReadComposition(
   const contexts = new ProjectCapabilityRuntimeContextCompiler({
     registry: { list: listRegisteredEngineeringOperations },
     catalog,
+    qualificationSpecs,
+    qualificationCandidates,
     policy,
     host,
     lock,
     qualifications,
+    qualificationAttempts,
     ledgers,
   });
   return {
@@ -177,6 +188,7 @@ export async function createLocalCapabilityRuntimeReadComposition(
     lock,
     hostIdentity,
     qualifications,
+    qualificationAttempts,
     ledgers,
     contexts,
     workbench: new ProjectCapabilityWorkbenchProjector({ contexts, states }),

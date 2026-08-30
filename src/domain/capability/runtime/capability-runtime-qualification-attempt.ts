@@ -9,6 +9,10 @@ import {
   fingerprintCapabilityRuntimeObservedHost,
 } from "./capability-runtime-binding-qualification-attestation.ts";
 import {
+  type CapabilityRuntimeQualificationHostStopProof,
+  validateCapabilityRuntimeQualificationHostStopProof,
+} from "./capability-runtime-qualification-host-proof.ts";
+import {
   deepFreeze,
   exactRecord,
   literalValue,
@@ -32,33 +36,37 @@ export const CAPABILITY_RUNTIME_QUALIFICATION_ATTEMPT_OUTCOME_SCHEMA =
 const IDENTITY_FIELDS = [
   "candidate",
   "observedHost",
+  "reviewFingerprint",
   "requestId",
   "sourceFingerprint",
   "loweringFingerprint",
   "caseFingerprint",
-  "requestFingerprint",
-  "preparedAt",
+  "runRequestFingerprint",
+  "qualificationSpecFingerprint",
 ] as const;
 
 export interface CapabilityRuntimeQualificationAttemptIdentity {
   readonly candidate: { readonly id: string; readonly fingerprint: ContentFingerprint };
   readonly observedHost: CapabilityRuntimeObservedHost;
+  readonly reviewFingerprint: ContentFingerprint;
   readonly requestId: string;
   readonly sourceFingerprint: ContentFingerprint;
   readonly loweringFingerprint: ContentFingerprint;
   readonly caseFingerprint: ContentFingerprint;
-  readonly requestFingerprint: ContentFingerprint;
-  readonly preparedAt: string;
+  readonly runRequestFingerprint: ContentFingerprint;
+  readonly qualificationSpecFingerprint: ContentFingerprint;
 }
 
 export interface CapabilityRuntimeQualificationAttemptKey {
   readonly candidateId: string;
   readonly candidateFingerprint: ContentFingerprint;
   readonly observedHostFingerprint: ContentFingerprint;
+  readonly qualificationSpecFingerprint: ContentFingerprint;
 }
 
 type Base = CapabilityRuntimeQualificationAttemptIdentity & {
   readonly schemaVersion: typeof CAPABILITY_RUNTIME_QUALIFICATION_ATTEMPT_SCHEMA;
+  readonly preparedAt: string;
 };
 type Active = { readonly runtimeStartFingerprint: ContentFingerprint };
 type Submitted = { readonly caseSha256: string; readonly caseUri: string };
@@ -67,7 +75,7 @@ export interface CapabilityRuntimeQualificationAttemptOutcome {
   readonly schemaVersion:
     typeof CAPABILITY_RUNTIME_QUALIFICATION_ATTEMPT_OUTCOME_SCHEMA;
   readonly status: "qualified" | "failed" | "unavailable";
-  readonly basis: "recorded" | "quarantined";
+  readonly basis: "recorded" | "quarantined" | "pre-dispatch";
   /** Immutable time at which this exact outcome was first recorded. */
   readonly recordedAt: string;
   /** Exact receipt or quarantine-event fingerprint on which it is based. */
@@ -85,14 +93,21 @@ export type CapabilityRuntimeQualificationAttempt =
   | (Base & { readonly phase: "prepared" })
   | (Base & Active & { readonly phase: "active" })
   | (Base & Active & Submitted & { readonly phase: "case-submitted" })
-  | (Base & Active & Submitted & { readonly phase: "dispatching" })
+  | (Base & Active & Submitted & {
+    readonly phase: "dispatching";
+    readonly claimedAt: string;
+    readonly deadlineAt: string;
+  })
   | (Base & Active & Submitted & {
     readonly phase: "recorded";
+    readonly receiptSha256: string;
     readonly receiptFingerprint: ContentFingerprint;
   })
   | (Base & Active & Submitted & {
     readonly phase: "quarantined";
     readonly quarantineReason: "uncertain" | "absent" | "malformed";
+    readonly claimedAt: string;
+    readonly deadlineAt: string;
   })
   | (Base & Active & Submitted & {
     readonly phase: "outcome";
@@ -101,12 +116,12 @@ export type CapabilityRuntimeQualificationAttempt =
   | (Base & Active & Submitted & {
     readonly phase: "stopped";
     readonly outcome: CapabilityRuntimeQualificationAttemptOutcome;
-    readonly runtimeStopFingerprint: ContentFingerprint;
+    readonly runtimeStopProof: CapabilityRuntimeQualificationHostStopProof;
   })
   | (Base & Active & Submitted & {
     readonly phase: "attested";
     readonly outcome: CapabilityRuntimeQualificationAttemptOutcome;
-    readonly runtimeStopFingerprint: ContentFingerprint;
+    readonly runtimeStopProof: CapabilityRuntimeQualificationHostStopProof;
     readonly attestationFingerprint: ContentFingerprint;
   });
 
@@ -139,17 +154,24 @@ export async function validateCapabilityRuntimeQualificationAttemptIdentity(
     },
     observedHost: await observedHost(root.observedHost, `${path}.observedHost`),
     requestId: safeId(root.requestId, `${path}.requestId`),
+    reviewFingerprint: fingerprint(
+      root.reviewFingerprint,
+      `${path}.reviewFingerprint`,
+    ),
     sourceFingerprint: fingerprint(root.sourceFingerprint, `${path}.sourceFingerprint`),
     loweringFingerprint: fingerprint(
       root.loweringFingerprint,
       `${path}.loweringFingerprint`,
     ),
     caseFingerprint: fingerprint(root.caseFingerprint, `${path}.caseFingerprint`),
-    requestFingerprint: fingerprint(
-      root.requestFingerprint,
-      `${path}.requestFingerprint`,
+    runRequestFingerprint: fingerprint(
+      root.runRequestFingerprint,
+      `${path}.runRequestFingerprint`,
     ),
-    preparedAt: timestamp(root.preparedAt, `${path}.preparedAt`),
+    qualificationSpecFingerprint: fingerprint(
+      root.qualificationSpecFingerprint,
+      `${path}.qualificationSpecFingerprint`,
+    ),
   });
 }
 
@@ -160,6 +182,7 @@ export function validateCapabilityRuntimeQualificationAttemptKey(
     "candidateId",
     "candidateFingerprint",
     "observedHostFingerprint",
+    "qualificationSpecFingerprint",
   ], "$capabilityRuntimeQualificationAttemptKey");
   return freeze({
     candidateId: safeId(
@@ -174,6 +197,10 @@ export function validateCapabilityRuntimeQualificationAttemptKey(
       root.observedHostFingerprint,
       "$capabilityRuntimeQualificationAttemptKey.observedHostFingerprint",
     ),
+    qualificationSpecFingerprint: fingerprint(
+      root.qualificationSpecFingerprint,
+      "$capabilityRuntimeQualificationAttemptKey.qualificationSpecFingerprint",
+    ),
   });
 }
 
@@ -184,6 +211,7 @@ export function qualificationAttemptKeyFor(
     candidateId: identity.candidate.id,
     candidateFingerprint: identity.candidate.fingerprint,
     observedHostFingerprint: identity.observedHost.fingerprint,
+    qualificationSpecFingerprint: identity.qualificationSpecFingerprint,
   });
 }
 
@@ -198,6 +226,10 @@ export function assertQualificationAttemptKey(
     !fingerprintsEqual(
       attempt.observedHost.fingerprint,
       expected.observedHostFingerprint,
+    ) ||
+    !fingerprintsEqual(
+      attempt.qualificationSpecFingerprint,
+      expected.qualificationSpecFingerprint,
     )
   ) throw integrity("Qualification WAL key does not match its body.");
 }
@@ -224,28 +256,44 @@ export async function validateCapabilityRuntimeQualificationAttempt(
     `${path}.schemaVersion`,
   );
   const identity = await identityFields(root, path);
-  if (phase === "prepared") return freeze({ ...base(identity), phase });
+  const preparedAt = timestamp(root.preparedAt, `${path}.preparedAt`);
+  if (phase === "prepared") {
+    return freeze({ ...base(identity, preparedAt), phase });
+  }
   const active = {
     runtimeStartFingerprint: fingerprint(
       root.runtimeStartFingerprint,
       `${path}.runtimeStartFingerprint`,
     ),
   };
-  if (phase === "active") return freeze({ ...base(identity), phase, ...active });
+  if (phase === "active") {
+    return freeze({ ...base(identity, preparedAt), phase, ...active });
+  }
   const submitted = submission(
     { caseSha256: root.caseSha256, caseUri: root.caseUri },
     identity.caseFingerprint,
     path,
   );
-  if (phase === "case-submitted" || phase === "dispatching") {
-    return freeze({ ...base(identity), phase, ...active, ...submitted });
+  if (phase === "case-submitted") {
+    return freeze({ ...base(identity, preparedAt), phase, ...active, ...submitted });
   }
-  if (phase === "recorded") {
+  if (phase === "dispatching") {
     return freeze({
-      ...base(identity),
+      ...base(identity, preparedAt),
       phase,
       ...active,
       ...submitted,
+      claimedAt: timestamp(root.claimedAt, `${path}.claimedAt`),
+      deadlineAt: timestamp(root.deadlineAt, `${path}.deadlineAt`),
+    });
+  }
+  if (phase === "recorded") {
+    return freeze({
+      ...base(identity, preparedAt),
+      phase,
+      ...active,
+      ...submitted,
+      receiptSha256: sha256(root.receiptSha256, `${path}.receiptSha256`),
       receiptFingerprint: fingerprint(
         root.receiptFingerprint,
         `${path}.receiptFingerprint`,
@@ -254,11 +302,13 @@ export async function validateCapabilityRuntimeQualificationAttempt(
   }
   if (phase === "quarantined") {
     return freeze({
-      ...base(identity),
+      ...base(identity, preparedAt),
       phase,
       ...active,
       ...submitted,
       quarantineReason: quarantineReason(root.quarantineReason),
+      claimedAt: timestamp(root.claimedAt, `${path}.claimedAt`),
+      deadlineAt: timestamp(root.deadlineAt, `${path}.deadlineAt`),
     });
   }
   const outcome = await validateCapabilityRuntimeQualificationAttemptOutcome(
@@ -266,30 +316,36 @@ export async function validateCapabilityRuntimeQualificationAttempt(
     `${path}.outcome`,
   );
   if (phase === "outcome") {
-    return freeze({ ...base(identity), phase, ...active, ...submitted, outcome });
-  }
-  const runtimeStopFingerprint = fingerprint(
-    root.runtimeStopFingerprint,
-    `${path}.runtimeStopFingerprint`,
-  );
-  if (phase === "stopped") {
     return freeze({
-      ...base(identity),
+      ...base(identity, preparedAt),
       phase,
       ...active,
       ...submitted,
       outcome,
-      runtimeStopFingerprint,
+    });
+  }
+  const runtimeStopProof = await validateCapabilityRuntimeQualificationHostStopProof(
+    root.runtimeStopProof,
+    `${path}.runtimeStopProof`,
+  );
+  if (phase === "stopped") {
+    return freeze({
+      ...base(identity, preparedAt),
+      phase,
+      ...active,
+      ...submitted,
+      outcome,
+      runtimeStopProof,
     });
   }
   if (phase === "attested") {
     return freeze({
-      ...base(identity),
+      ...base(identity, preparedAt),
       phase,
       ...active,
       ...submitted,
       outcome,
-      runtimeStopFingerprint,
+      runtimeStopProof,
       attestationFingerprint: fingerprint(
         root.attestationFingerprint,
         `${path}.attestationFingerprint`,
@@ -345,12 +401,16 @@ export async function qualificationAttemptIdentityOf(
 export function prepareQualificationAttempt(
   identity: CapabilityRuntimeQualificationAttemptIdentity,
   current: CapabilityRuntimeQualificationAttempt | undefined,
+  preparedAt: string,
 ): CapabilityRuntimeQualificationAttempt {
   if (current) {
     assertQualificationAttemptIdentity(current, identity);
     return current;
   }
-  return freeze({ ...base(identity), phase: "prepared" });
+  return freeze({
+    ...base(identity, timestamp(preparedAt, "$preparedAt")),
+    phase: "prepared",
+  });
 }
 
 export function activateQualificationAttempt(
@@ -364,7 +424,11 @@ export function activateQualificationAttempt(
     ),
   };
   if (current.phase === "prepared") {
-    return freeze({ ...base(current), phase: "active", ...active });
+    return freeze({
+      ...base(current, current.preparedAt),
+      phase: "active",
+      ...active,
+    });
   }
   assertActive(current, active);
   return current;
@@ -382,7 +446,7 @@ export function submitQualificationAttemptCase(
   const submitted = submission(input, current.caseFingerprint, "$submittedCase");
   if (current.phase === "active") {
     return freeze({
-      ...base(current),
+      ...base(current, current.preparedAt),
       phase: "case-submitted",
       ...activeOf(current),
       ...submitted,
@@ -394,26 +458,43 @@ export function submitQualificationAttemptCase(
 
 export function dispatchingQualificationAttempt(
   current: CapabilityRuntimeQualificationAttempt,
+  clock: { readonly claimedAt: string; readonly deadlineAt: string },
 ): CapabilityRuntimeQualificationDispatchingAttempt | undefined {
+  if (current.phase === "dispatching") return current;
   if (current.phase !== "case-submitted") return undefined;
   return freeze({
-    ...base(current),
+    ...base(current, current.preparedAt),
     phase: "dispatching",
     ...activeOf(current),
     ...submittedOf(current),
+    claimedAt: timestamp(clock.claimedAt, "$claimedAt"),
+    deadlineAt: timestamp(clock.deadlineAt, "$deadlineAt"),
   });
 }
 
 export function recordQualificationAttempt(
   current: CapabilityRuntimeQualificationAttempt,
-  input: { readonly receiptFingerprint: ContentFingerprint },
+  input: {
+    readonly receiptSha256: string;
+    readonly receiptFingerprint: ContentFingerprint;
+  },
 ): CapabilityRuntimeQualificationAttempt {
+  const receiptSha256 = sha256(input.receiptSha256, "$receiptSha256");
   const receiptFingerprint = fingerprint(
     input.receiptFingerprint,
     "$receiptFingerprint",
   );
   if (current.phase === "recorded") {
+    if (current.receiptSha256 !== receiptSha256) {
+      throw integrity("Qualification receipt lookup SHA conflicts with WAL.");
+    }
     assertFingerprint(current.receiptFingerprint, receiptFingerprint, "receipt");
+    return current;
+  }
+  if (
+    current.phase === "outcome" || current.phase === "stopped" ||
+    current.phase === "attested"
+  ) {
     return current;
   }
   // A later factual readback may promote a prior uncertain quarantine.
@@ -421,10 +502,11 @@ export function recordQualificationAttempt(
     throw integrity("Qualification readback cannot precede dispatch claim.");
   }
   return freeze({
-    ...base(current),
+    ...base(current, current.preparedAt),
     phase: "recorded",
     ...activeOf(current),
     ...submittedOf(current),
+    receiptSha256,
     receiptFingerprint,
   });
 }
@@ -445,11 +527,13 @@ export function quarantineQualificationAttempt(
     throw integrity("Only a dispatched qualification can be quarantined.");
   }
   return freeze({
-    ...base(current),
+    ...base(current, current.preparedAt),
     phase: "quarantined",
     ...activeOf(current),
     ...submittedOf(current),
     quarantineReason: reason,
+    claimedAt: current.claimedAt,
+    deadlineAt: current.deadlineAt,
   });
 }
 
@@ -467,6 +551,27 @@ export async function outcomeQualificationAttempt(
   ) {
     assertOutcome(current.outcome, outcome);
     return current;
+  }
+  if (current.phase === "active" || current.phase === "case-submitted") {
+    if (outcome.basis !== "pre-dispatch" || outcome.status !== "unavailable") {
+      throw integrity("Pre-dispatch can only record unavailable outcome.");
+    }
+    assertFingerprint(
+      outcome.basisFingerprint,
+      await fingerprintCapabilityRuntimeQualificationAttempt(current),
+      "pre-dispatch basis",
+    );
+    const submitted = current.phase === "case-submitted" ? submittedOf(current) : {
+      caseSha256: current.caseFingerprint.digest,
+      caseUri: `chrono-case:sha256:${current.caseFingerprint.digest}`,
+    };
+    return freeze({
+      ...base(current, current.preparedAt),
+      phase: "outcome",
+      ...activeOf(current),
+      ...submitted,
+      outcome,
+    });
   }
   if (current.phase === "recorded") {
     if (outcome.basis !== "recorded") {
@@ -491,7 +596,7 @@ export async function outcomeQualificationAttempt(
     throw integrity("Only recorded readback can qualify a runtime.");
   }
   return freeze({
-    ...base(current),
+    ...base(current, current.preparedAt),
     phase: "outcome",
     ...activeOf(current),
     ...submittedOf(current),
@@ -499,32 +604,32 @@ export async function outcomeQualificationAttempt(
   });
 }
 
-export function stopQualificationAttempt(
+export async function stopQualificationAttempt(
   current: CapabilityRuntimeQualificationAttempt,
-  input: { readonly runtimeStopFingerprint: ContentFingerprint },
-): CapabilityRuntimeQualificationAttempt {
-  const runtimeStopFingerprint = fingerprint(
-    input.runtimeStopFingerprint,
-    "$runtimeStopFingerprint",
+  input: { readonly runtimeStopProof: CapabilityRuntimeQualificationHostStopProof },
+): Promise<CapabilityRuntimeQualificationAttempt> {
+  const runtimeStopProof = await validateCapabilityRuntimeQualificationHostStopProof(
+    input.runtimeStopProof,
   );
   if (current.phase === "stopped" || current.phase === "attested") {
-    assertFingerprint(
-      current.runtimeStopFingerprint,
-      runtimeStopFingerprint,
-      "runtime stop",
-    );
+    if (
+      deterministicJson(current.runtimeStopProof) !==
+        deterministicJson(runtimeStopProof)
+    ) {
+      throw integrity("Qualification runtime stop proof cannot be rewritten.");
+    }
     return current;
   }
   if (current.phase !== "outcome") {
     throw integrity("Qualification runtime stop cannot precede outcome.");
   }
   return freeze({
-    ...base(current),
+    ...base(current, current.preparedAt),
     phase: "stopped",
     ...activeOf(current),
     ...submittedOf(current),
     outcome: current.outcome,
-    runtimeStopFingerprint,
+    runtimeStopProof,
   });
 }
 
@@ -553,12 +658,12 @@ export function attestQualificationAttempt(
     throw integrity("Only recorded qualified outcome can be attested.");
   }
   return freeze({
-    ...base(current),
+    ...base(current, current.preparedAt),
     phase: "attested",
     ...activeOf(current),
     ...submittedOf(current),
     outcome: current.outcome,
-    runtimeStopFingerprint: current.runtimeStopFingerprint,
+    runtimeStopProof: current.runtimeStopProof,
     attestationFingerprint,
   });
 }
@@ -628,15 +733,31 @@ export async function resolveQualificationAttempts(
   ) throw integrity("Qualification WAL has a transition before activation.");
   if (
     !submitted &&
-    (dispatching || recorded || quarantined || outcome || stopped || attested)
+    (dispatching || recorded || quarantined ||
+      (outcome && outcome.outcome.basis !== "pre-dispatch") ||
+      ((stopped || attested) && outcome?.outcome.basis !== "pre-dispatch"))
   ) throw integrity("Qualification WAL has a transition before case submission.");
-  if (!dispatching && (recorded || quarantined || outcome || stopped || attested)) {
+  if (
+    !dispatching && (recorded || quarantined ||
+      (outcome && outcome.outcome.basis !== "pre-dispatch") ||
+      ((stopped || attested) && outcome?.outcome.basis !== "pre-dispatch"))
+  ) {
     throw integrity("Qualification WAL has a result before dispatch claim.");
+  }
+  if (
+    outcome?.outcome.basis === "pre-dispatch" &&
+    (dispatching || recorded || quarantined)
+  ) {
+    throw integrity("Pre-dispatch outcome cannot coexist with a dispatch claim.");
   }
   if (dispatching && !claim) {
     throw integrity("Qualification dispatch event lacks its durable claim.");
   }
-  if (!recorded && !quarantined && (outcome || stopped || attested)) {
+  if (
+    !recorded && !quarantined &&
+    outcome?.outcome.basis !== "pre-dispatch" &&
+    (outcome || stopped || attested)
+  ) {
     throw integrity("Qualification WAL has terminal action without readback.");
   }
   if (!outcome && (stopped || attested)) {
@@ -654,10 +775,15 @@ export async function resolveQualificationAttempts(
     assertSubmittedContinuation(quarantined, dispatching);
   }
   if (outcome) {
-    await assertOutcomeBasis(outcome, recorded, quarantined);
-    const basis = outcome.outcome.basis === "recorded" ? recorded : quarantined;
-    if (!basis) throw integrity("Qualification outcome basis is absent.");
-    assertSubmittedContinuation(outcome, basis);
+    await assertOutcomeBasis(outcome, recorded, quarantined, submitted, active);
+    if (outcome.outcome.basis === "pre-dispatch") {
+      if (submitted) assertSubmittedContinuation(outcome, submitted);
+      else if (active) assertActive(outcome, activeOf(active));
+    } else {
+      const basis = outcome.outcome.basis === "recorded" ? recorded : quarantined;
+      if (!basis) throw integrity("Qualification outcome basis is absent.");
+      assertSubmittedContinuation(outcome, basis);
+    }
   }
   if (outcome && stopped) {
     assertSubmittedContinuation(stopped, outcome);
@@ -666,11 +792,12 @@ export async function resolveQualificationAttempts(
   if (stopped && attested) {
     assertSubmittedContinuation(attested, stopped);
     assertOutcome(attested.outcome, stopped.outcome);
-    assertFingerprint(
-      attested.runtimeStopFingerprint,
-      stopped.runtimeStopFingerprint,
-      "runtime stop",
-    );
+    if (
+      deterministicJson(attested.runtimeStopProof) !==
+        deterministicJson(stopped.runtimeStopProof)
+    ) {
+      throw integrity("Qualification runtime stop proof cannot be rewritten.");
+    }
   }
   if (
     attested &&
@@ -681,11 +808,21 @@ export async function resolveQualificationAttempts(
 }
 
 function fieldsFor(phase: unknown): readonly string[] {
-  const base = [...IDENTITY_FIELDS, "schemaVersion", "phase"];
+  const base = [...IDENTITY_FIELDS, "preparedAt", "schemaVersion", "phase"];
   if (phase === "prepared") return base;
   if (phase === "active") return [...base, "runtimeStartFingerprint"];
-  if (phase === "case-submitted" || phase === "dispatching") {
+  if (phase === "case-submitted") {
     return [...base, "runtimeStartFingerprint", "caseSha256", "caseUri"];
+  }
+  if (phase === "dispatching") {
+    return [
+      ...base,
+      "runtimeStartFingerprint",
+      "caseSha256",
+      "caseUri",
+      "claimedAt",
+      "deadlineAt",
+    ];
   }
   if (phase === "recorded") {
     return [
@@ -693,6 +830,7 @@ function fieldsFor(phase: unknown): readonly string[] {
       "runtimeStartFingerprint",
       "caseSha256",
       "caseUri",
+      "receiptSha256",
       "receiptFingerprint",
     ];
   }
@@ -703,6 +841,8 @@ function fieldsFor(phase: unknown): readonly string[] {
       "caseSha256",
       "caseUri",
       "quarantineReason",
+      "claimedAt",
+      "deadlineAt",
     ];
   }
   if (phase === "outcome") {
@@ -715,7 +855,7 @@ function fieldsFor(phase: unknown): readonly string[] {
       "caseSha256",
       "caseUri",
       "outcome",
-      "runtimeStopFingerprint",
+      "runtimeStopProof",
     ];
   }
   if (phase === "attested") {
@@ -725,7 +865,7 @@ function fieldsFor(phase: unknown): readonly string[] {
       "caseSha256",
       "caseUri",
       "outcome",
-      "runtimeStopFingerprint",
+      "runtimeStopProof",
       "attestationFingerprint",
     ];
   }
@@ -847,10 +987,16 @@ function outcomeBody(
     root.status !== "qualified" && root.status !== "failed" &&
     root.status !== "unavailable"
   ) throw integrity(`${path}.status is unsupported.`);
-  if (root.basis !== "recorded" && root.basis !== "quarantined") {
+  if (
+    root.basis !== "recorded" && root.basis !== "quarantined" &&
+    root.basis !== "pre-dispatch"
+  ) {
     throw integrity(`${path}.basis is unsupported.`);
   }
-  if (root.basis === "quarantined" && root.status !== "unavailable") {
+  if (
+    (root.basis === "quarantined" || root.basis === "pre-dispatch") &&
+    root.status !== "unavailable"
+  ) {
     throw integrity(`${path}.quarantined requires unavailable.`);
   }
   return freeze({
@@ -862,17 +1008,22 @@ function outcomeBody(
   });
 }
 
-function base(identity: CapabilityRuntimeQualificationAttemptIdentity): Base {
+function base(
+  identity: CapabilityRuntimeQualificationAttemptIdentity,
+  preparedAt: string,
+): Base {
   return freeze({
     schemaVersion: CAPABILITY_RUNTIME_QUALIFICATION_ATTEMPT_SCHEMA,
     candidate: identity.candidate,
     observedHost: identity.observedHost,
     requestId: identity.requestId,
+    reviewFingerprint: identity.reviewFingerprint,
     sourceFingerprint: identity.sourceFingerprint,
     loweringFingerprint: identity.loweringFingerprint,
     caseFingerprint: identity.caseFingerprint,
-    requestFingerprint: identity.requestFingerprint,
-    preparedAt: identity.preparedAt,
+    runRequestFingerprint: identity.runRequestFingerprint,
+    qualificationSpecFingerprint: identity.qualificationSpecFingerprint,
+    preparedAt,
   });
 }
 function activeOf(
@@ -891,12 +1042,27 @@ function submittedOf(
 ): Submitted {
   return { caseSha256: attempt.caseSha256, caseUri: attempt.caseUri };
 }
+function identityBody(value: CapabilityRuntimeQualificationAttemptIdentity) {
+  return {
+    candidate: value.candidate,
+    observedHost: value.observedHost,
+    reviewFingerprint: value.reviewFingerprint,
+    requestId: value.requestId,
+    sourceFingerprint: value.sourceFingerprint,
+    loweringFingerprint: value.loweringFingerprint,
+    caseFingerprint: value.caseFingerprint,
+    runRequestFingerprint: value.runRequestFingerprint,
+    qualificationSpecFingerprint: value.qualificationSpecFingerprint,
+  };
+}
 /** Refuse a same-key attempt whose closed identity differs from the caller. */
 export function assertQualificationAttemptIdentity(
   attempt: CapabilityRuntimeQualificationAttempt,
   identity: CapabilityRuntimeQualificationAttemptIdentity,
 ): void {
-  if (deterministicJson(base(attempt)) !== deterministicJson(base(identity))) {
+  const left = identityBody(attempt);
+  const right = identityBody(identity);
+  if (deterministicJson(left) !== deterministicJson(right)) {
     throw integrity("Qualification WAL identity conflicts with resumed work.");
   }
 }
@@ -961,7 +1127,21 @@ async function assertOutcomeBasis(
   >,
   recorded: CapabilityRuntimeQualificationAttempt | undefined,
   quarantined: CapabilityRuntimeQualificationAttempt | undefined,
+  submitted: CapabilityRuntimeQualificationAttempt | undefined,
+  active: CapabilityRuntimeQualificationAttempt | undefined,
 ): Promise<void> {
+  if (outcome.outcome.basis === "pre-dispatch") {
+    const basis = submitted ?? active;
+    if (!basis || (basis.phase !== "active" && basis.phase !== "case-submitted")) {
+      throw integrity("Pre-dispatch outcome claims missing prior event.");
+    }
+    assertFingerprint(
+      outcome.outcome.basisFingerprint,
+      await fingerprintCapabilityRuntimeQualificationAttempt(basis),
+      "pre-dispatch basis",
+    );
+    return;
+  }
   if (outcome.outcome.basis === "recorded") {
     if (!recorded || recorded.phase !== "recorded") {
       throw integrity("Qualification outcome claims missing recorded readback.");

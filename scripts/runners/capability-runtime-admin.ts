@@ -9,6 +9,8 @@ import {
 } from "../../src/adapters/control-plane/file-capability-runtime-host-stores.ts";
 import { createCapabilityRuntimeHostAdapter } from "../../src/adapters/control-plane/compose-capability-runtime-host.ts";
 import { createLocalCapabilityRuntimeReadComposition } from "../../src/adapters/control-plane/local-capability-runtime-read-composition.ts";
+import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "../../src/adapters/control-plane/first-party-capability-runtime-qualification-candidates.ts";
+import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "../../src/adapters/control-plane/first-party-capability-runtime-qualification-specifications.ts";
 import { FileEngineeringProjectRevisionStore } from "../../src/adapters/shared/stores/engineering-project-store.ts";
 import { LocalCapabilityRuntimeAdminService } from "../../src/application/control-plane/local-capability-runtime-admin-service.ts";
 import { ProjectCapabilityAuthorizationService } from "../../src/application/control-plane/project-capability-authorization-service.ts";
@@ -32,6 +34,10 @@ const authorization = new ProjectCapabilityAuthorizationService({
   ledgers,
   registry: { list: () => [] },
   catalog,
+  qualificationSpecs:
+    await createFirstPartyCapabilityRuntimeQualificationSpecifications(),
+  qualificationCandidates:
+    await createFirstPartyCapabilityRuntimeQualificationCandidates(),
   policy: await capability.policy.read(),
   host: capability.host,
   lock,

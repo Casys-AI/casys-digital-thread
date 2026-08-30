@@ -621,6 +621,8 @@ async function briefDependencies(
       ledgers: new InMemoryProjectCapabilityLedgerStore(),
       registry: { list: listRegisteredEngineeringOperations },
       catalog: await createFirstPartyCapabilityRuntimeCatalog(),
+      qualificationSpecs: [],
+      qualificationCandidates: [],
       policy: {
         schemaVersion: "capability-runtime-admin-policy/1.0",
         disabledBindingIds: [],

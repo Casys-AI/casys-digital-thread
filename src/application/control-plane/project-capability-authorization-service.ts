@@ -38,7 +38,13 @@ import type { EngineeringOperationRegistry } from "../../orchestration/operation
 import type { BriefCapabilityIntentRouteTable } from "../../orchestration/operations/brief-capability-intent-routes.ts";
 import type { CapabilityRuntimePreloadScheduler } from "./capability-runtime-preload-scheduler.ts";
 import type { CapabilityRuntimeQualificationAttestationStore } from "../ports/out/capability/capability-runtime-qualification-attestation-store.ts";
-import { evaluateCapabilityRuntimeQualifications } from "./evaluate-capability-runtime-qualifications.ts";
+import {
+  evaluateCapabilityRuntimeQualifications,
+  loadProvenCapabilityRuntimeQualificationAttestations,
+} from "./evaluate-capability-runtime-qualifications.ts";
+import type { CapabilityRuntimeQualificationAttemptStore } from "../ports/out/capability/capability-runtime-qualification-attempt-store.ts";
+import type { CapabilityRuntimeQualificationCandidate } from "../../domain/capability/runtime/capability-runtime-qualification-candidate.ts";
+import type { CapabilityRuntimeQualificationSpecification } from "../../domain/capability/runtime/capability-runtime-qualification-specification.ts";
 import type {
   CapabilityRuntimeAdminLockReader,
   CapabilityRuntimeAdminPolicyReader,
@@ -52,6 +58,8 @@ export interface ProjectCapabilityAuthorizationServiceDependencies {
   readonly registry: Pick<EngineeringOperationRegistry, "list">;
   readonly routes?: BriefCapabilityIntentRouteTable;
   readonly catalog: CapabilityRuntimeCatalog;
+  readonly qualificationSpecs: readonly CapabilityRuntimeQualificationSpecification[];
+  readonly qualificationCandidates: readonly CapabilityRuntimeQualificationCandidate[];
   /** Durable local administrator policy or a fixed test fixture. */
   readonly policy:
     | CapabilityRuntimeAdminPolicy
@@ -66,13 +74,17 @@ export interface ProjectCapabilityAuthorizationServiceDependencies {
    * Present only in the local control-plane composition. It advances the
    * host desired-state history under the exact same mutex used by runtime
    * acquisition. Fixed fixtures remain read-only in focused unit tests.
-  */
+   */
   readonly lockWriter?: CapabilityRuntimeAdminLockWriter;
   readonly hostMutationLock?: CapabilityRuntimeHostMutationLock;
   /** Same exact local overlay consulted by MCP and Workbench runtime contexts. */
   readonly qualifications?: Pick<
     CapabilityRuntimeQualificationAttestationStore,
     "list"
+  >;
+  readonly qualificationAttempts?: Pick<
+    CapabilityRuntimeQualificationAttemptStore,
+    "read"
   >;
   /** Non-blocking host-material preload after durable authorization only. */
   readonly preloadScheduler?: Pick<CapabilityRuntimePreloadScheduler, "schedule">;
@@ -722,10 +734,22 @@ export class ProjectCapabilityAuthorizationService {
   async #effectiveCatalog(
     host: CapabilityRuntimeHostObservation,
   ): Promise<CapabilityRuntimeCatalog> {
+    const attestations = (await this.dependencies.qualifications?.list()) ?? [];
     return evaluateCapabilityRuntimeQualifications({
       catalog: this.dependencies.catalog,
       host,
-      attestations: (await this.dependencies.qualifications?.list()) ?? [],
+      attestations,
+      specs: this.dependencies.qualificationSpecs,
+      candidates: this.dependencies.qualificationCandidates,
+      provenAttestations: this.dependencies.qualificationAttempts
+        ? await loadProvenCapabilityRuntimeQualificationAttestations({
+          attempts: this.dependencies.qualificationAttempts,
+          attestations,
+          candidates: this.dependencies.qualificationCandidates,
+          specs: this.dependencies.qualificationSpecs,
+          host,
+        })
+        : [],
     });
   }
 }

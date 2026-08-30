@@ -60,6 +60,8 @@ Deno.test("brief capability authorization retains resolved candidates beside an 
       ledgers,
       registry: { list: listRegisteredEngineeringOperations },
       catalog,
+      qualificationSpecs: [],
+      qualificationCandidates: [],
       policy: new FileCapabilityRuntimeAdminPolicyStore(
         `${directory}/host/admin-policy.json`,
         catalog,
@@ -421,6 +423,8 @@ async function authorizationService(
     ledgers,
     registry: { list: listRegisteredEngineeringOperations },
     catalog: await createFirstPartyCapabilityRuntimeCatalog(),
+    qualificationSpecs: [],
+    qualificationCandidates: [],
     policy: {
       schemaVersion: "capability-runtime-admin-policy/1.0",
       disabledBindingIds: [],

@@ -189,6 +189,8 @@ import { createCapabilityRuntimeHostAdapter } from "./src/adapters/control-plane
 import { CapabilityRuntimeLaunchGroupSupervisor } from "./src/application/control-plane/capability-runtime-launch-group-supervisor.ts";
 import { CapabilityRuntimePreloadScheduler } from "./src/application/control-plane/capability-runtime-preload-scheduler.ts";
 import { createLocalCapabilityRuntimeReadComposition } from "./src/adapters/control-plane/local-capability-runtime-read-composition.ts";
+import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "./src/adapters/control-plane/first-party-capability-runtime-qualification-candidates.ts";
+import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "./src/adapters/control-plane/first-party-capability-runtime-qualification-specifications.ts";
 import { LocalChronoRuntimeSecretResolver } from "./src/adapters/control-plane/local-chrono-runtime-secret-resolver.ts";
 import {
   listRegisteredEngineeringOperations,
@@ -987,9 +989,14 @@ async function createProjectControl(
     ledgers: capabilityRead.ledgers,
     registry: { list: listRegisteredEngineeringOperations },
     catalog: capabilityRead.catalog,
+    qualificationSpecs:
+      await createFirstPartyCapabilityRuntimeQualificationSpecifications(),
+    qualificationCandidates:
+      await createFirstPartyCapabilityRuntimeQualificationCandidates(),
     policy: capabilityRead.policy,
     host: capabilityRead.host,
     qualifications: capabilityRead.qualifications,
+    qualificationAttempts: capabilityRead.qualificationAttempts,
     lock: capabilityRead.lock,
     lockWriter: capabilityRead.lock,
     hostMutationLock: capabilityRuntimeMutationLock,

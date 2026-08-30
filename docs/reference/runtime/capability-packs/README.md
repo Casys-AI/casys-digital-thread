@@ -13,6 +13,7 @@ do not add an agent-facing provider selector or give the Workbench runtime autho
 | [Project capability authorization](project-capability-authorization.md) | Brief-bound operational ceiling, append-only amendments and read-only inspection  |
 | [Host runtime supervision](host-runtime-supervision.md)                 | Immutable launch groups, local leases, journaling and closed Compose host control |
 | [Local runtime administration](local-runtime-administration.md)         | Append-only lock/revocation and bounded exact private material removal            |
+| [Local runtime qualification](local-runtime-qualification.md)           | Private Chrono `chrono-arm64-emulation-v1` review/apply/recover probe             |
 
 `Behave Foundation` remains a derived recipe name only: it is neither an installable
 pack nor a separate capability authority. The executable surface records a separate,

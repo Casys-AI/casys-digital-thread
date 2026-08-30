@@ -83,7 +83,7 @@ export async function createFirstPartyCapabilityRuntimeQualificationCandidates()
       targetPlatform: "linux/amd64",
       mode: "emulated",
       fixture: {
-        id: "chrono-two-body-one-hinge-v1",
+        id: "chrono-two-body-one-hinge-v2",
         source,
         sourceFingerprint: await fingerprintPrescribedKinematicsCaseSource(source),
       },
@@ -99,7 +99,7 @@ function canonicalTwoBodyOneHingeQualificationSource() {
   return validatePrescribedKinematicsCaseSource({
     schemaVersion: "prescribed-kinematics-case-source/1.0",
     id: "chrono-runtime-qualification-two-body-hinge",
-    revision: 1,
+    revision: 2,
     scope: "Fixed runtime qualification fixture with one prescribed revolute hinge.",
     evidenceBoundary:
       "Operational provider contract only; no product, collision, clearance, force, strength or safety claim.",
@@ -135,7 +135,7 @@ function canonicalTwoBodyOneHingeQualificationSource() {
         finalAngleRad: 0.5,
       },
     }],
-    sampling: { timeStepS: 0.5 },
+    sampling: { timeStepS: 1 / 64 },
   });
 }
 

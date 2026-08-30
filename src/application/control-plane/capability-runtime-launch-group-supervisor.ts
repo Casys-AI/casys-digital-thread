@@ -28,6 +28,12 @@ import {
   validateCapabilityRuntimeQualificationStartAuthority,
   validateEffectiveCapabilityRuntimeLaunchProjection,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+  sha256Hex,
+} from "../../domain/kernel/deterministic-json.ts";
+import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type {
   CapabilityRuntimeHostMutationLock,
   CapabilityRuntimeHostMutator,
@@ -44,6 +50,12 @@ import {
   authorizeDurableQualificationRuntimeStart,
   authorizeDurableRuntimeStop,
 } from "./capability-runtime-host-authorization.ts";
+import {
+  CAPABILITY_RUNTIME_QUALIFICATION_HOST_STOP_PROOF_SCHEMA,
+  type CapabilityRuntimeQualificationHostStopProof,
+  createCapabilityRuntimeQualificationHostStopProof,
+  validateCapabilityRuntimeQualificationHostStopProof,
+} from "../../domain/capability/runtime/capability-runtime-qualification-host-proof.ts";
 
 export class CapabilityRuntimeLaunchGroupSafetyError extends Error {
   constructor(message: string) {
@@ -99,7 +111,26 @@ export interface CapabilityRuntimeLaunchGroupEnsureResult {
   /** Present only for an activation that claimed the shared session lease. */
   readonly leaseDisposition?: "created" | "reused";
   readonly mutation: CapabilityRuntimeJournalOutcome | undefined;
+  readonly qualificationStart?: CapabilityRuntimeQualificationStartProof;
 }
+
+export type CapabilityRuntimeQualificationConvergence =
+  | "host-outcome-succeeded"
+  | "observed-all-active-after-exact-intent"
+  | "observed-all-inactive-after-exact-intent";
+
+/** Exact durable qualification-start proof. It is not a boolean health flag. */
+export interface CapabilityRuntimeQualificationStartProof {
+  readonly qualificationStartAuthority: CapabilityRuntimeQualificationStartAuthority;
+  readonly journalEntry: CapabilityRuntimeJournalEntry;
+  readonly outcome: CapabilityRuntimeJournalOutcome | null;
+  readonly convergence: CapabilityRuntimeQualificationConvergence;
+  readonly observations: ReadonlyMap<string, CapabilityRuntimeObservedState>;
+  readonly fingerprint: ContentFingerprint;
+}
+
+export type CapabilityRuntimeQualificationStopProof =
+  CapabilityRuntimeQualificationHostStopProof;
 
 /**
  * Private host-only qualification activation. Its guard is composed by the
@@ -116,6 +147,11 @@ export interface EnsureCapabilityRuntimeQualificationLaunchGroupRequest {
   readonly reuseExistingLease: "allow" | "reject";
   readonly guard: () => Promise<boolean>;
   readonly secretSnapshot?: CapabilityRuntimeSecretSnapshot;
+  /**
+   * Runs after H1 start preflight and before the lease is claimed. Failure
+   * leaves no lease, journal entry, or host mutation.
+   */
+  readonly prepareAfterAuthorization?: () => Promise<void>;
 }
 
 export class CapabilityRuntimeLaunchGroupSupervisor {
@@ -300,18 +336,41 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
         CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
         request.at,
       );
-      await this.#assertNoPending(group);
+      await this.#assertNoForeignPending(group, qualificationStartAuthority);
       await this.#assertNoOtherLeaseProtects(group, lease.id, request.at);
+      await this.#assertLeasePreflight(lease, request.reuseExistingLease, request.at);
+      if (request.prepareAfterAuthorization) {
+        await request.prepareAfterAuthorization();
+      }
       const disposition = await this.#claim(
         lease,
         request.reuseExistingLease,
         request.at,
       );
       const before = await this.#observe(group);
-      let intentWritten = false;
       try {
+        const reconciled = await this.#reconcileQualificationStart(
+          group,
+          qualificationStartAuthority,
+          before,
+          request.secretSnapshot,
+        );
+        if (reconciled) {
+          return {
+            group: capabilityRuntimeLaunchGroupReference(group),
+            states: reconciled.observations,
+            leaseDisposition: disposition,
+            mutation: reconciled.outcome ?? undefined,
+            qualificationStart: reconciled,
+          };
+        }
+        if (!allInactive(group, before)) {
+          throw new CapabilityRuntimeLaunchGroupSafetyError(
+            "Capability runtime qualification start requires an exact inactive group; partial or foreign active state is blocked.",
+          );
+        }
+        await this.#assertNoPending(group);
         if (!allInstalled(group, before)) {
-          intentWritten = true;
           const acquisition = await this.#mutate(
             group,
             "material-acquire",
@@ -326,15 +385,6 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
           }
         }
         const installed = await this.#observe(group);
-        if (allActive(group, installed) && group.secretSlots.length === 0) {
-          return {
-            group: capabilityRuntimeLaunchGroupReference(group),
-            states: installed,
-            leaseDisposition: disposition,
-            mutation: undefined,
-          };
-        }
-        intentWritten = true;
         const mutation = await this.#mutate(
           group,
           "runtime-qualification-start",
@@ -346,29 +396,372 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
             secretSnapshot: request.secretSnapshot,
           },
         );
-        if (mutation.status !== "succeeded") {
-          throw new CapabilityRuntimeLaunchGroupSafetyError(
-            `Capability runtime group qualification start is ${mutation.status}; recovery is required.`,
-          );
-        }
         const active = await this.#observe(group);
         if (!allActive(group, active)) {
           throw new CapabilityRuntimeLaunchGroupSafetyError(
-            "Capability runtime qualification start did not produce an exact active group observation.",
+            `Capability runtime qualification start is ${mutation.status} without an exact active group observation.`,
           );
         }
+        const entry = (await this.options.journal.list()).find((item) =>
+          item.id === mutation.journalEntryId
+        );
+        if (!entry) {
+          throw new CapabilityRuntimeLaunchGroupSafetyError(
+            "Capability runtime qualification start intent was not readable.",
+          );
+        }
+        const proof = await this.#makeQualificationStartProof(
+          group,
+          entry,
+          mutation,
+          active,
+        );
         return {
           group: capabilityRuntimeLaunchGroupReference(group),
           states: active,
           leaseDisposition: disposition,
           mutation,
+          qualificationStart: proof,
         };
       } catch (error) {
-        if (disposition === "created" && !intentWritten) {
-          await this.options.leases.release(lease.id);
+        const after = await this.#observe(group);
+        if (disposition === "created" && allInactive(group, after)) {
+          const exact = await this.#uniqueQualificationStartEntry(
+            group,
+            qualificationStartAuthority,
+          );
+          if (!exact) {
+            const held = await this.options.leases.read(lease.id);
+            if (held && !sameLeaseScope(held, lease)) {
+              throw new CapabilityRuntimeLaunchGroupSafetyError(
+                "Capability runtime qualification start lease is foreign to this attempt.",
+              );
+            }
+            if (held) await this.options.leases.release(lease.id);
+          }
         }
         throw error;
       }
+    });
+  }
+
+  /**
+   * Reacquires the exact reserved qualification lease. It never journals or
+   * starts Docker. An exact expired qualification lease may be refreshed when
+   * no other active lease protects the group.
+   */
+  async reacquireQualificationLease(input: {
+    readonly group: CapabilityRuntimeLaunchGroupReference;
+    readonly expectedMaterials: readonly CapabilityRuntimeMaterialIdentity[];
+    readonly lease: CapabilityRuntimeLease;
+    readonly at: string;
+  }): Promise<CapabilityRuntimeLease> {
+    return await this.options.lock.withLock(async () => {
+      const group = await this.#requireReviewedGroup(input.group);
+      this.#assertExpectedMaterials(group, input.expectedMaterials);
+      const lease = validateCapabilityRuntimeLease(input.lease);
+      this.#assertQualificationLeaseScope(group, lease);
+      await this.#assertNoOtherLeaseProtects(group, lease.id, input.at);
+      const existing = await this.options.leases.read(lease.id);
+      if (existing) {
+        if (!sameLeaseScope(existing, lease)) {
+          throw new CapabilityRuntimeLaunchGroupSafetyError(
+            "Capability runtime qualification recovery lease is foreign to this attempt.",
+          );
+        }
+        if (existing.expiresAt > input.at) return existing;
+        await this.options.leases.release(lease.id);
+      }
+      const claimed = await this.options.leases.claim(lease);
+      if (claimed.status === "existing" && !sameLeaseScope(claimed.lease, lease)) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime qualification recovery lease is foreign to this attempt.",
+        );
+      }
+      return claimed.lease;
+    });
+  }
+
+  /**
+   * Mutation authority for an existing qualification attempt. Historical
+   * start-proof lookup remains available to bind stop to its start; this
+   * method only authorizes acting on the current group journal tip.
+   */
+  async requireQualificationMutationTip(input: {
+    readonly group: CapabilityRuntimeLaunchGroupReference;
+    readonly expectedMaterials: readonly CapabilityRuntimeMaterialIdentity[];
+    readonly qualificationStartAuthority: CapabilityRuntimeQualificationStartAuthority;
+    readonly kind: "start" | "stop";
+    readonly startProofFingerprint?: ContentFingerprint;
+  }): Promise<void> {
+    await this.options.lock.withLock(async () => {
+      const group = await this.#requireReviewedGroup(input.group);
+      this.#assertExpectedMaterials(group, input.expectedMaterials);
+      const authority = validateCapabilityRuntimeQualificationStartAuthority(
+        input.qualificationStartAuthority,
+      );
+      const tip = await this.#groupTip(group);
+      if (input.kind === "start") {
+        const exact = await this.#uniqueQualificationStartEntry(group, authority);
+        if (exact && (!tip || tip.id !== exact.id)) {
+          throw new CapabilityRuntimeLaunchGroupSafetyError(
+            "Capability runtime qualification start is blocked by a later group tip.",
+          );
+        }
+        return;
+      }
+      if (!input.startProofFingerprint) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime qualification stop requires the exact start proof.",
+        );
+      }
+      const start = await this.#qualificationStartProofByFingerprint(
+        group,
+        authority,
+        input.startProofFingerprint,
+      );
+      if (!start) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime qualification stop requires the exact start proof.",
+        );
+      }
+      const stopId = await qualificationStopIntentId(
+        group,
+        input.startProofFingerprint,
+      );
+      if (!tip || (tip.id !== start.journalEntry.id && tip.id !== stopId)) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime qualification stop is blocked by a later group tip.",
+        );
+      }
+    });
+  }
+
+  async verifyQualificationStopProof(input: {
+    readonly group: CapabilityRuntimeLaunchGroupReference;
+    readonly expectedMaterials: readonly CapabilityRuntimeMaterialIdentity[];
+    readonly qualificationStartAuthority: CapabilityRuntimeQualificationStartAuthority;
+    readonly proof: CapabilityRuntimeQualificationHostStopProof;
+  }): Promise<CapabilityRuntimeQualificationHostStopProof> {
+    return await this.options.lock.withLock(async () => {
+      const group = await this.#requireReviewedGroup(input.group);
+      this.#assertExpectedMaterials(group, input.expectedMaterials);
+      const authority = validateCapabilityRuntimeQualificationStartAuthority(
+        input.qualificationStartAuthority,
+      );
+      const proof = await validateCapabilityRuntimeQualificationHostStopProof(
+        input.proof,
+      );
+      const expectedStopId = await qualificationStopIntentId(
+        group,
+        proof.startProofFingerprint,
+      );
+      if (proof.journalEntry.id !== expectedStopId) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime qualification stop proof does not bind the derived stop intent.",
+        );
+      }
+      const start = await this.#qualificationStartProofByFingerprint(
+        group,
+        authority,
+        proof.startProofFingerprint,
+      );
+      if (!start) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime qualification stop proof does not bind the exact start.",
+        );
+      }
+      this.#assertQualificationStopProofFacts(group, start, proof);
+      const stored = (await this.options.journal.list()).find((entry) =>
+        entry.id === proof.journalEntry.id
+      );
+      if (
+        !stored || deterministicJson(stored) !== deterministicJson(proof.journalEntry)
+      ) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime qualification stop proof does not match the journal.",
+        );
+      }
+      const outcome = await this.#outcomeOf(proof.journalEntry.id);
+      if (deterministicJson(outcome) !== deterministicJson(proof.outcome)) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime qualification stop proof outcome does not match the journal.",
+        );
+      }
+      const expected = await createCapabilityRuntimeQualificationHostStopProof({
+        schemaVersion: proof.schemaVersion,
+        journalEntry: proof.journalEntry,
+        outcome: proof.outcome,
+        convergence: proof.convergence,
+        observations: proof.observations,
+        observedAt: proof.observedAt,
+        startProofFingerprint: proof.startProofFingerprint,
+      });
+      if (
+        expected.fingerprint.digest !== proof.fingerprint.digest ||
+        expected.fingerprint.algorithm !== proof.fingerprint.algorithm
+      ) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime qualification stop proof fingerprint is not canonical.",
+        );
+      }
+      return proof;
+    });
+  }
+
+  /**
+   * Observes an exact active qualification start proof. It never claims a
+   * lease, journals, or starts Docker.
+   */
+  async readQualificationStartProof(input: {
+    readonly group: CapabilityRuntimeLaunchGroupReference;
+    readonly expectedMaterials: readonly CapabilityRuntimeMaterialIdentity[];
+    readonly qualificationStartAuthority: CapabilityRuntimeQualificationStartAuthority;
+  }): Promise<CapabilityRuntimeQualificationStartProof | undefined> {
+    return await this.options.lock.withLock(async () => {
+      const group = await this.#requireReviewedGroup(input.group);
+      this.#assertExpectedMaterials(group, input.expectedMaterials);
+      const authority = validateCapabilityRuntimeQualificationStartAuthority(
+        input.qualificationStartAuthority,
+      );
+      const observed = await this.#observe(group);
+      if (!allActive(group, observed)) return undefined;
+      const exact = await this.#uniqueQualificationStartEntry(group, authority);
+      const tip = await this.#groupTip(group);
+      if (!exact || !tip || tip.id !== exact.id) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime qualification start refuses a foreign or superseded group tip.",
+        );
+      }
+      return await this.#makeQualificationStartProof(
+        group,
+        exact,
+        await this.#outcomeOf(exact.id),
+        observed,
+      );
+    });
+  }
+
+  /**
+   * Stops the qualification group from an exact start proof. Cleanup does not
+   * require the current start policy, review, or bearer.
+   */
+  async releaseQualificationTerminal(input: {
+    readonly group: CapabilityRuntimeLaunchGroupReference;
+    readonly expectedMaterials: readonly CapabilityRuntimeMaterialIdentity[];
+    readonly qualificationStartAuthority: CapabilityRuntimeQualificationStartAuthority;
+    readonly startProofFingerprint: ContentFingerprint;
+    readonly lease: CapabilityRuntimeLease;
+    readonly at: string;
+  }): Promise<CapabilityRuntimeQualificationStopProof> {
+    return await this.options.lock.withLock(async () => {
+      const group = await this.#requireReviewedGroup(input.group);
+      this.#assertExpectedMaterials(group, input.expectedMaterials);
+      const authority = validateCapabilityRuntimeQualificationStartAuthority(
+        input.qualificationStartAuthority,
+      );
+      const start = await this.#qualificationStartProofByFingerprint(
+        group,
+        authority,
+        input.startProofFingerprint,
+      );
+      if (!start) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime qualification stop requires the exact start proof.",
+        );
+      }
+      const expectedLease = validateCapabilityRuntimeLease(input.lease);
+      const stopId = await qualificationStopIntentId(
+        group,
+        input.startProofFingerprint,
+      );
+      const tip = await this.#groupTip(group);
+      if (!tip || (tip.id !== start.journalEntry.id && tip.id !== stopId)) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime qualification stop is blocked by a later group tip.",
+        );
+      }
+      const existing = (await this.options.journal.list()).find((entry) =>
+        entry.id === stopId
+      );
+      const existingOutcome = existing
+        ? (await this.options.journal.listOutcomes()).find((outcome) =>
+          outcome.journalEntryId === existing.id
+        )
+        : undefined;
+      const observed = await this.#observe(group);
+      const reconciled = await this.#reconcileQualificationStop(
+        group,
+        existing,
+        existingOutcome,
+        observed,
+        input.startProofFingerprint,
+        expectedLease,
+        input.at,
+      );
+      if (reconciled) return reconciled;
+      if (isPartial(group, observed)) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime qualification stop is blocked on a partial group observation.",
+        );
+      }
+      await this.#requireMatchingQualificationLease(expectedLease);
+      if (!allActive(group, observed)) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime qualification stop requires the exact active group or an exact terminal stop proof.",
+        );
+      }
+      if (existing) {
+        if (
+          !existingOutcome &&
+          matchesPreviousObservation(existing, group, observed)
+        ) {
+          const mutation = await this.#replay(existing, undefined);
+          const after = await this.#observe(group);
+          return await this.#finishQualificationStop(
+            group,
+            existing,
+            mutation,
+            after,
+            input.startProofFingerprint,
+            expectedLease,
+            input.at,
+          );
+        }
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          `Capability runtime qualification stop is ${
+            existingOutcome?.status ?? "pending"
+          }; a second host stop is blocked.`,
+        );
+      }
+      const mutation = await this.#mutate(
+        group,
+        "runtime-stop",
+        CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
+        input.at,
+        observed,
+        {
+          intentId: stopId,
+          plannedAt: start.journalEntry.plannedAt,
+        },
+      );
+      const after = await this.#observe(group);
+      const entry = existing ??
+        (await this.options.journal.list()).find((item) => item.id === stopId);
+      if (!entry) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime qualification stop intent was not readable.",
+        );
+      }
+      return await this.#finishQualificationStop(
+        group,
+        entry,
+        mutation,
+        after,
+        input.startProofFingerprint,
+        expectedLease,
+        input.at,
+      );
     });
   }
 
@@ -503,6 +896,83 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
     if (group.secretSlots.some((slot) => availability.get(slot) !== "available")) {
       throw new CapabilityRuntimeLaunchGroupSafetyError(
         "Capability runtime group secret availability is unknown or unavailable.",
+      );
+    }
+  }
+
+  #assertQualificationStopProofFacts(
+    group: CapabilityRuntimeLaunchGroup,
+    start: CapabilityRuntimeQualificationStartProof,
+    proof: CapabilityRuntimeQualificationHostStopProof,
+  ): void {
+    const reference = capabilityRuntimeLaunchGroupReference(group);
+    if (
+      !sameCapabilityRuntimeLaunchGroupReference(
+        proof.journalEntry.launchGroup,
+        reference,
+      ) ||
+      !sameCapabilityRuntimeLaunchGroupReference(
+        start.journalEntry.launchGroup,
+        reference,
+      )
+    ) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime qualification stop proof does not bind the exact launch group.",
+      );
+    }
+    if (
+      proof.journalEntry.projectId !==
+        CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID ||
+      start.journalEntry.projectId !==
+        CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID
+    ) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime qualification stop proof does not bind the reserved qualification owner.",
+      );
+    }
+    if (
+      !sameGroupMaterials(group, proof.journalEntry.materials) ||
+      !sameGroupMaterials(group, start.journalEntry.materials)
+    ) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime qualification stop proof materials do not match the launch group.",
+      );
+    }
+    if (
+      !coversExactGroup(group, start.observations) ||
+      !allActive(group, start.observations)
+    ) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime qualification start proof observations are not the exact active group.",
+      );
+    }
+    const stopStates = statesOf(proof.observations);
+    if (
+      proof.observations.length !== group.materials.length ||
+      !coversExactGroup(group, stopStates) ||
+      !allInactive(group, stopStates)
+    ) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime qualification stop proof observations are not the exact inactive group.",
+      );
+    }
+    if (proof.convergence === "host-outcome-succeeded") {
+      if (!outcomeProvesExactRuntime(group, proof.outcome, "inactive")) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime qualification stop proof convergence contradicts its journal outcome.",
+        );
+      }
+      if (
+        deterministicJson(proof.observations) !==
+          deterministicJson(observationVector(group, observationMap(proof.outcome!)))
+      ) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime qualification stop proof observations contradict the succeeded outcome.",
+        );
+      }
+    } else if (outcomeProvesExactRuntime(group, proof.outcome, "inactive")) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime qualification stop proof convergence contradicts its journal outcome.",
       );
     }
   }
@@ -684,6 +1154,401 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
     return states;
   }
 
+  async #assertLeasePreflight(
+    lease: CapabilityRuntimeLease,
+    reuse: "allow" | "reject",
+    at: string,
+  ): Promise<void> {
+    const existing = await this.options.leases.read(lease.id);
+    if (!existing) return;
+    if (
+      reuse === "reject" || existing.expiresAt <= at ||
+      !sameLeaseScope(existing, lease)
+    ) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "An existing capability runtime lease requires explicit recovery.",
+      );
+    }
+  }
+
+  #assertQualificationLeaseScope(
+    group: CapabilityRuntimeLaunchGroup,
+    lease: CapabilityRuntimeLease,
+  ): void {
+    if (lease.projectId !== CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime qualification lease requires the reserved local owner.",
+      );
+    }
+    const reference = capabilityRuntimeLaunchGroupReference(group);
+    if (
+      !lease.launchGroups.some((candidate) =>
+        sameCapabilityRuntimeLaunchGroupReference(candidate, reference)
+      )
+    ) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime lease does not attest the exact launch group.",
+      );
+    }
+    for (const material of group.materials) {
+      if (
+        !lease.materialKeys.includes(capabilityRuntimeMaterialKey(material.material))
+      ) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime lease does not protect each exact group material.",
+        );
+      }
+    }
+  }
+
+  async #reconcileQualificationStart(
+    group: CapabilityRuntimeLaunchGroup,
+    authority: CapabilityRuntimeQualificationStartAuthority,
+    observed: ReadonlyMap<string, CapabilityRuntimeObservedState>,
+    secretSnapshot: CapabilityRuntimeSecretSnapshot | undefined,
+  ): Promise<CapabilityRuntimeQualificationStartProof | undefined> {
+    const exact = await this.#uniqueQualificationStartEntry(group, authority);
+    const tip = await this.#groupTip(group);
+    if (allActive(group, observed)) {
+      if (!exact || !tip || tip.id !== exact.id) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime qualification start refuses a foreign or superseded group tip.",
+        );
+      }
+      return await this.#makeQualificationStartProof(
+        group,
+        exact,
+        await this.#outcomeOf(exact.id),
+        observed,
+      );
+    }
+    if (isPartial(group, observed)) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime qualification start is blocked on a partial group observation.",
+      );
+    }
+    if (!exact) return undefined;
+    if (!tip || tip.id !== exact.id) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime qualification start is blocked by a later group tip.",
+      );
+    }
+    const outcome = await this.#outcomeOf(exact.id);
+    if (outcome?.status === "succeeded") {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime qualification start proof is succeeded but the group is inactive.",
+      );
+    }
+    if (!matchesPreviousObservation(exact, group, observed)) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime qualification start prior observation does not match the inactive group.",
+      );
+    }
+    if (outcome) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        `Capability runtime qualification start is ${outcome.status}; a second host start is blocked.`,
+      );
+    }
+    const mutation = await this.#replay(exact, secretSnapshot);
+    const active = await this.#observe(group);
+    if (!allActive(group, active)) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        `Capability runtime qualification start replay is ${mutation.status} without an exact active group.`,
+      );
+    }
+    return await this.#makeQualificationStartProof(group, exact, mutation, active);
+  }
+
+  async #reconcileQualificationStop(
+    group: CapabilityRuntimeLaunchGroup,
+    existing: CapabilityRuntimeJournalEntry | undefined,
+    existingOutcome: CapabilityRuntimeJournalOutcome | undefined,
+    observed: ReadonlyMap<string, CapabilityRuntimeObservedState>,
+    startProofFingerprint: ContentFingerprint,
+    expectedLease: CapabilityRuntimeLease,
+    at: string,
+  ): Promise<CapabilityRuntimeQualificationStopProof | undefined> {
+    if (!existing || !allInactive(group, observed)) return undefined;
+    return await this.#releaseInactiveStopProof(
+      group,
+      existing,
+      existingOutcome ?? null,
+      observed,
+      startProofFingerprint,
+      expectedLease,
+      at,
+    );
+  }
+
+  async #releaseInactiveStopProof(
+    group: CapabilityRuntimeLaunchGroup,
+    entry: CapabilityRuntimeJournalEntry,
+    outcome: CapabilityRuntimeJournalOutcome | null,
+    observed: ReadonlyMap<string, CapabilityRuntimeObservedState>,
+    startProofFingerprint: ContentFingerprint,
+    expectedLease: CapabilityRuntimeLease,
+    at: string,
+  ): Promise<CapabilityRuntimeQualificationStopProof> {
+    const held = await this.options.leases.read(expectedLease.id);
+    if (held && !sameLeaseScope(held, expectedLease)) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime qualification stop lease is foreign to this attempt.",
+      );
+    }
+    if (!held && outcome?.status !== "succeeded") {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime qualification stop without a lease requires the exact prior succeeded stop proof.",
+      );
+    }
+    if (held) {
+      if (!sameLeaseScope(held, expectedLease)) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime qualification stop lease is foreign to this attempt.",
+        );
+      }
+      await this.options.leases.release(expectedLease.id);
+    }
+    return await this.#makeQualificationStopProof(
+      group,
+      entry,
+      outcome,
+      observed,
+      startProofFingerprint,
+      at,
+    );
+  }
+
+  async #finishQualificationStop(
+    group: CapabilityRuntimeLaunchGroup,
+    entry: CapabilityRuntimeJournalEntry,
+    mutation: CapabilityRuntimeJournalOutcome,
+    after: ReadonlyMap<string, CapabilityRuntimeObservedState>,
+    startProofFingerprint: ContentFingerprint,
+    expectedLease: CapabilityRuntimeLease,
+    at: string,
+  ): Promise<CapabilityRuntimeQualificationStopProof> {
+    if (!allInactive(group, after)) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        `Capability runtime qualification stop is ${mutation.status} without an exact inactive observation.`,
+      );
+    }
+    return await this.#releaseInactiveStopProof(
+      group,
+      entry,
+      mutation,
+      after,
+      startProofFingerprint,
+      expectedLease,
+      at,
+    );
+  }
+
+  async #requireMatchingQualificationLease(
+    expected: CapabilityRuntimeLease,
+  ): Promise<CapabilityRuntimeLease> {
+    const held = await this.options.leases.read(expected.id);
+    if (!held) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime qualification stop without a lease requires the exact prior succeeded stop proof.",
+      );
+    }
+    if (!sameLeaseScope(held, expected)) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime qualification stop lease is foreign to this attempt.",
+      );
+    }
+    return held;
+  }
+
+  async #qualificationStartProofByFingerprint(
+    group: CapabilityRuntimeLaunchGroup,
+    authority: CapabilityRuntimeQualificationStartAuthority,
+    fingerprint: ContentFingerprint,
+  ): Promise<CapabilityRuntimeQualificationStartProof | undefined> {
+    const matches = await this.#qualificationStartEntries(group, authority);
+    const proofs = [];
+    for (const journalEntry of matches) {
+      const proof = await this.#makeQualificationStartProof(
+        group,
+        journalEntry,
+        await this.#outcomeOf(journalEntry.id),
+        canonicalStates(group, "active"),
+      );
+      if (
+        proof.fingerprint.algorithm === fingerprint.algorithm &&
+        proof.fingerprint.digest === fingerprint.digest
+      ) {
+        proofs.push(proof);
+      }
+    }
+    if (proofs.length > 1) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime qualification has multiple exact start proofs.",
+      );
+    }
+    return proofs[0];
+  }
+
+  async #qualificationStartEntries(
+    group: CapabilityRuntimeLaunchGroup,
+    authority: CapabilityRuntimeQualificationStartAuthority,
+  ): Promise<readonly CapabilityRuntimeJournalEntry[]> {
+    const reference = capabilityRuntimeLaunchGroupReference(group);
+    return (await this.options.journal.list()).filter((entry) =>
+      entry.action === "runtime-qualification-start" &&
+      entry.projectId === CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID &&
+      sameCapabilityRuntimeLaunchGroupReference(entry.launchGroup, reference) &&
+      deterministicJson(entry.qualificationStartAuthority) ===
+        deterministicJson(authority)
+    );
+  }
+
+  async #succeededJournalEntries(
+    entries: readonly CapabilityRuntimeJournalEntry[],
+  ): Promise<readonly CapabilityRuntimeJournalEntry[]> {
+    const outcomes = await this.options.journal.listOutcomes();
+    return entries.filter((entry) =>
+      outcomes.some((outcome) =>
+        outcome.journalEntryId === entry.id && outcome.status === "succeeded"
+      )
+    );
+  }
+
+  async #makeQualificationStartProof(
+    group: CapabilityRuntimeLaunchGroup,
+    journalEntry: CapabilityRuntimeJournalEntry,
+    outcome: CapabilityRuntimeJournalOutcome | null,
+    observed: ReadonlyMap<string, CapabilityRuntimeObservedState>,
+  ): Promise<CapabilityRuntimeQualificationStartProof> {
+    const authority = validateCapabilityRuntimeQualificationStartAuthority(
+      journalEntry.qualificationStartAuthority,
+    );
+    const exact = outcomeProvesExactRuntime(group, outcome, "active");
+    const convergence = exact
+      ? "host-outcome-succeeded" as const
+      : "observed-all-active-after-exact-intent" as const;
+    const observations = exact ? observationMap(outcome!) : observed;
+    return {
+      qualificationStartAuthority: authority,
+      journalEntry,
+      outcome,
+      convergence,
+      observations,
+      fingerprint: await fingerprintQualificationStartProof({
+        journalEntry,
+        outcome,
+        convergence,
+        observations: observationVector(group, observations),
+      }),
+    };
+  }
+
+  async #makeQualificationStopProof(
+    group: CapabilityRuntimeLaunchGroup,
+    journalEntry: CapabilityRuntimeJournalEntry,
+    outcome: CapabilityRuntimeJournalOutcome | null,
+    observed: ReadonlyMap<string, CapabilityRuntimeObservedState>,
+    startProofFingerprint: ContentFingerprint,
+    observedAt: string,
+  ): Promise<CapabilityRuntimeQualificationStopProof> {
+    const exact = outcomeProvesExactRuntime(group, outcome, "inactive");
+    const convergence = exact
+      ? "host-outcome-succeeded" as const
+      : "observed-all-inactive-after-exact-intent" as const;
+    const observations = exact ? observationMap(outcome!) : observed;
+    return await createCapabilityRuntimeQualificationHostStopProof({
+      schemaVersion: CAPABILITY_RUNTIME_QUALIFICATION_HOST_STOP_PROOF_SCHEMA,
+      journalEntry,
+      outcome,
+      convergence,
+      observations: observationVector(group, observations),
+      observedAt,
+      startProofFingerprint,
+    });
+  }
+
+  async #groupTip(
+    group: CapabilityRuntimeLaunchGroup,
+  ): Promise<CapabilityRuntimeJournalEntry | undefined> {
+    return (await this.options.journal.list()).filter((entry) =>
+      hasGroupIntent([entry], group)
+    ).toSorted((left, right) =>
+      left.plannedAt.localeCompare(right.plannedAt) || left.id.localeCompare(right.id)
+    ).at(-1);
+  }
+
+  async #uniqueQualificationStartEntry(
+    group: CapabilityRuntimeLaunchGroup,
+    authority: CapabilityRuntimeQualificationStartAuthority,
+  ): Promise<CapabilityRuntimeJournalEntry | undefined> {
+    const matches = await this.#qualificationStartEntries(group, authority);
+    if (matches.length > 1) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime qualification has multiple exact start proofs.",
+      );
+    }
+    return matches[0];
+  }
+
+  async #outcomeOf(
+    journalEntryId: string,
+  ): Promise<CapabilityRuntimeJournalOutcome | null> {
+    return (await this.options.journal.listOutcomes()).find((item) =>
+      item.journalEntryId === journalEntryId
+    ) ?? null;
+  }
+
+  async #assertNoForeignPending(
+    group: CapabilityRuntimeLaunchGroup,
+    authority: CapabilityRuntimeQualificationStartAuthority,
+  ): Promise<void> {
+    const exact = await this.#qualificationStartEntries(group, authority);
+    const journal = await this.options.journal.list();
+    const latest = journal.filter((entry) => hasGroupIntent([entry], group))
+      .toSorted((left, right) =>
+        left.plannedAt.localeCompare(right.plannedAt) || left.id.localeCompare(right.id)
+      ).at(-1);
+    if (latest && !exact.some((entry) => entry.id === latest.id)) {
+      await this.#assertNoPending(group);
+    }
+  }
+
+  async #replay(
+    entry: CapabilityRuntimeJournalEntry,
+    secretSnapshot: CapabilityRuntimeSecretSnapshot | undefined,
+  ): Promise<CapabilityRuntimeJournalOutcome> {
+    const authorization = entry.action === "runtime-qualification-start"
+      ? await authorizeDurableQualificationRuntimeStart(entry, this.options.journal)
+      : entry.action === "runtime-stop"
+      ? await authorizeDurableRuntimeStop(entry, this.options.journal)
+      : (() => {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Qualification replay requires an exact start or stop intent.",
+        );
+      })();
+    let outcome: CapabilityRuntimeJournalOutcome;
+    try {
+      outcome = await this.options.host.mutate({ authorization, secretSnapshot });
+    } catch (error) {
+      outcome = {
+        schemaVersion: "capability-runtime-host-mutation-outcome/1.0",
+        journalEntryId: entry.id,
+        recordedAt: new Date().toISOString(),
+        status: "uncertain",
+        observations: entry.materials.map((material) => ({ material, state: null })),
+        detail: "Sealed qualification replay did not return an outcome.",
+      };
+      void error;
+    }
+    if (outcome.journalEntryId !== entry.id) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Host returned an outcome for another group intent.",
+      );
+    }
+    await this.options.journal.appendOutcome(outcome);
+    return outcome;
+  }
+
   async #mutate(
     group: CapabilityRuntimeLaunchGroup,
     action: CapabilityRuntimeJournalEntry["action"],
@@ -695,15 +1560,18 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
       readonly secretSnapshot?: CapabilityRuntimeSecretSnapshot;
       readonly qualificationStartAuthority?:
         CapabilityRuntimeQualificationStartAuthority;
+      readonly intentId?: string;
+      readonly plannedAt?: string;
     } = {},
   ): Promise<CapabilityRuntimeJournalOutcome> {
     const entry: CapabilityRuntimeJournalEntry = {
-      id: `capability-group-${await shortId(group, action, at, projectId)}`,
+      id: options.intentId ??
+        `capability-group-${await shortId(group, action, at, projectId)}`,
       action,
       materials: group.materials.map((material) => ({ ...material.material })),
       launchGroup: capabilityRuntimeLaunchGroupReference(group),
       projectId,
-      plannedAt: at,
+      plannedAt: options.plannedAt ?? at,
       previousObservations: group.materials.map((material) => ({
         material: { ...material.material },
         state: states.get(capabilityRuntimeMaterialKey(material.material)) ?? null,
@@ -767,6 +1635,112 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
     await this.options.journal.appendOutcome(outcome);
     return outcome;
   }
+}
+
+async function fingerprintQualificationStartProof(input: {
+  readonly journalEntry: CapabilityRuntimeJournalEntry;
+  readonly outcome: CapabilityRuntimeJournalOutcome | null;
+  readonly convergence: CapabilityRuntimeQualificationConvergence;
+  readonly observations: readonly unknown[];
+}): Promise<ContentFingerprint> {
+  return await sha256Fingerprint({
+    schemaVersion: "capability-runtime-qualification-start-proof/2.0",
+    journalEntry: input.journalEntry,
+    outcome: input.outcome,
+    convergence: input.convergence,
+    observations: input.observations,
+    qualificationStartAuthority: input.journalEntry.qualificationStartAuthority,
+  });
+}
+
+function isPartial(
+  group: CapabilityRuntimeLaunchGroup,
+  states: ReadonlyMap<string, CapabilityRuntimeObservedState>,
+): boolean {
+  return !allActive(group, states) && !allInactive(group, states);
+}
+
+function canonicalStates(
+  group: CapabilityRuntimeLaunchGroup,
+  runtime: "active" | "inactive",
+): ReadonlyMap<string, CapabilityRuntimeObservedState> {
+  return new Map(
+    group.materials.map((member) => [
+      capabilityRuntimeMaterialKey(member.material),
+      { material: "installed" as const, runtime },
+    ]),
+  );
+}
+
+function observationMap(
+  outcome: CapabilityRuntimeJournalOutcome,
+): ReadonlyMap<string, CapabilityRuntimeObservedState> {
+  return statesOf(outcome.observations);
+}
+
+function statesOf(
+  observations: CapabilityRuntimeJournalOutcome["observations"],
+): ReadonlyMap<string, CapabilityRuntimeObservedState> {
+  return new Map(
+    observations.flatMap((item) =>
+      item.state
+        ? [[capabilityRuntimeMaterialKey(item.material), item.state] as const]
+        : []
+    ),
+  );
+}
+
+function outcomeProvesExactRuntime(
+  group: CapabilityRuntimeLaunchGroup,
+  outcome: CapabilityRuntimeJournalOutcome | null,
+  runtime: "active" | "inactive",
+): boolean {
+  if (outcome?.status !== "succeeded") return false;
+  const states = observationMap(outcome);
+  return coversExactGroup(group, states) &&
+    (runtime === "active" ? allActive(group, states) : allInactive(group, states));
+}
+
+function coversExactGroup(
+  group: CapabilityRuntimeLaunchGroup,
+  states: ReadonlyMap<string, CapabilityRuntimeObservedState>,
+): boolean {
+  const keys = group.materials.map((member) =>
+    capabilityRuntimeMaterialKey(member.material)
+  );
+  return states.size === keys.length && keys.every((key) => states.has(key));
+}
+
+function sameGroupMaterials(
+  group: CapabilityRuntimeLaunchGroup,
+  materials: readonly CapabilityRuntimeMaterialIdentity[],
+): boolean {
+  return materials.length === group.materials.length &&
+    group.materials.every((member) =>
+      materials.some((material) => sameMaterial(material, member.material))
+    );
+}
+
+function observationVector(
+  group: CapabilityRuntimeLaunchGroup,
+  states: ReadonlyMap<string, CapabilityRuntimeObservedState>,
+): CapabilityRuntimeJournalOutcome["observations"] {
+  return group.materials.map((member) => ({
+    material: member.material,
+    state: states.get(capabilityRuntimeMaterialKey(member.material)) ?? null,
+  }));
+}
+
+export async function qualificationStopIntentId(
+  group: CapabilityRuntimeLaunchGroup,
+  startProofFingerprint: ContentFingerprint,
+): Promise<string> {
+  const digest = await sha256Hex(
+    new TextEncoder().encode(
+      `${group.id}\u0000${group.version}\u0000${group.fingerprint.digest}\u0000runtime-stop\u0000${CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID}\u0000${startProofFingerprint.digest}`,
+    ),
+  );
+  return `capability-group-runtime-stop-${digest}`;
 }
 
 async function shortId(
@@ -933,7 +1907,10 @@ function sameLeaseScope(
 }
 
 function sameTokens(left: readonly string[], right: readonly string[]): boolean {
-  return [...left].toSorted().join("\u0000") === [...right].toSorted().join("\u0000");
+  if (left.length !== right.length) return false;
+  const orderedLeft = [...left].toSorted();
+  const orderedRight = [...right].toSorted();
+  return orderedLeft.every((token, index) => token === orderedRight[index]);
 }
 
 function groupToken(group: CapabilityRuntimeLaunchGroupReference): string {

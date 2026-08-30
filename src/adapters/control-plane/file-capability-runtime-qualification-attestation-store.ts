@@ -2,10 +2,12 @@
 
 import type {
   CapabilityRuntimeQualificationAttestationStore,
+  CapabilityRuntimeQualifiedAttestationAppendResult,
 } from "../../application/ports/out/capability/capability-runtime-qualification-attestation-store.ts";
 import {
   canonicalCapabilityRuntimeBindingQualificationAttestationText,
   type CapabilityRuntimeBindingQualificationAttestation,
+  sameCapabilityRuntimeQualificationRevocationScope,
   validateCapabilityRuntimeBindingQualificationAttestation,
 } from "../../domain/capability/runtime/capability-runtime-binding-qualification-attestation.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
@@ -16,11 +18,13 @@ import {
 
 const DEFAULT_DIRECTORY =
   "state/local/capability-runtime-host/qualification-attestations";
+const LOCK_NAME = "attestation.lock";
 
 /**
  * An event file is named solely by its content fingerprint.  Existing equal
  * content is idempotent; a different collision is an integrity failure.  No
- * record is replaced or removed by this adapter.
+ * record is replaced or removed by this adapter. All appends share one
+ * exclusive File.lock so qualified/revoked order is the durable linearization.
  */
 export class FileCapabilityRuntimeQualificationAttestationStore
   implements CapabilityRuntimeQualificationAttestationStore {
@@ -34,14 +38,94 @@ export class FileCapabilityRuntimeQualificationAttestationStore
   }
 
   async append(value: CapabilityRuntimeBindingQualificationAttestation): Promise<void> {
+    await this.#serialized(() => this.#write(value));
+  }
+
+  async appendQualifiedUnlessRevoked(
+    value: CapabilityRuntimeBindingQualificationAttestation,
+  ): Promise<CapabilityRuntimeQualifiedAttestationAppendResult> {
     const attestation = await validateCapabilityRuntimeBindingQualificationAttestation(
       value,
     );
+    if (attestation.state !== "qualified") {
+      throw new TypeError(
+        "Conditional qualification append requires a qualified attestation.",
+      );
+    }
+    return await this.#serialized(async () => {
+      const existing = await this.#readUnlocked(attestation.fingerprint);
+      if (existing) {
+        const expected =
+          `${await canonicalCapabilityRuntimeBindingQualificationAttestationText(
+            attestation,
+          )}\n`;
+        const path = this.#path(attestation.fingerprint);
+        if (await Deno.readTextFile(path) !== expected) {
+          throw new Error(
+            `Capability runtime qualification attestation ${attestation.fingerprint.digest} already exists with different content.`,
+          );
+        }
+        return { status: "existing" as const };
+      }
+      const events = await this.#scanUnlocked();
+      if (
+        events.some((event) =>
+          event.state === "revoked" &&
+          sameCapabilityRuntimeQualificationRevocationScope(event, attestation)
+        )
+      ) {
+        return { status: "revoked" as const };
+      }
+      await this.#writeUnlocked(attestation);
+      return { status: "appended" as const };
+    });
+  }
+
+  async read(
+    fingerprint: ContentFingerprint,
+  ): Promise<CapabilityRuntimeBindingQualificationAttestation | undefined> {
+    validateFingerprint(fingerprint, "$qualificationAttestationFingerprint");
+    return await this.#readUnlocked(fingerprint);
+  }
+
+  async list(): Promise<readonly CapabilityRuntimeBindingQualificationAttestation[]> {
+    return await this.#scanUnlocked();
+  }
+
+  async #serialized<T>(operation: () => Promise<T>): Promise<T> {
+    await Deno.mkdir(this.#directory, { recursive: true, mode: 0o700 });
+    const file = await openAttestationLockFile(`${this.#directory}/${LOCK_NAME}`);
+    let locked = false;
+    try {
+      await file.lock(true);
+      locked = true;
+      return await operation();
+    } finally {
+      try {
+        if (locked) await file.unlock();
+      } finally {
+        file.close();
+      }
+    }
+  }
+
+  async #write(
+    value: CapabilityRuntimeBindingQualificationAttestation,
+  ): Promise<void> {
+    const attestation = await validateCapabilityRuntimeBindingQualificationAttestation(
+      value,
+    );
+    await this.#writeUnlocked(attestation);
+  }
+
+  async #writeUnlocked(
+    attestation: CapabilityRuntimeBindingQualificationAttestation,
+  ): Promise<void> {
     const text = `${await canonicalCapabilityRuntimeBindingQualificationAttestationText(
       attestation,
     )}\n`;
     const path = this.#path(attestation.fingerprint);
-    await Deno.mkdir(this.#directory, { recursive: true });
+    await Deno.mkdir(this.#directory, { recursive: true, mode: 0o700 });
     try {
       await writeNewAttemptFileDurably(
         path,
@@ -59,10 +143,9 @@ export class FileCapabilityRuntimeQualificationAttestationStore
     }
   }
 
-  async read(
+  async #readUnlocked(
     fingerprint: ContentFingerprint,
   ): Promise<CapabilityRuntimeBindingQualificationAttestation | undefined> {
-    validateFingerprint(fingerprint, "$qualificationAttestationFingerprint");
     const path = this.#path(fingerprint);
     let text: string;
     try {
@@ -83,7 +166,9 @@ export class FileCapabilityRuntimeQualificationAttestationStore
     return value;
   }
 
-  async list(): Promise<readonly CapabilityRuntimeBindingQualificationAttestation[]> {
+  async #scanUnlocked(): Promise<
+    readonly CapabilityRuntimeBindingQualificationAttestation[]
+  > {
     let entries: Deno.DirEntry[];
     try {
       entries = await Array.fromAsync(Deno.readDir(this.#directory));
@@ -97,10 +182,8 @@ export class FileCapabilityRuntimeQualificationAttestationStore
         left.name.localeCompare(right.name)
       )
     ) {
-      // A list may overlap the short private-write window before `link` makes
-      // the canonical immutable name visible. Ignore only this writer's exact
-      // UUID temporary pattern; every other foreign entry remains corruption.
       if (entry.isFile && isDurableAttemptTemporaryFileName(entry.name)) continue;
+      if (entry.isFile && entry.name === LOCK_NAME) continue;
       if (!entry.isFile || !entry.name.endsWith(".json")) {
         throw new Error(
           `Capability runtime qualification store contains unsupported entry ${entry.name}.`,
@@ -128,6 +211,46 @@ export class FileCapabilityRuntimeQualificationAttestationStore
 
   #path(fingerprint: ContentFingerprint): string {
     return `${this.#directory}/${fingerprint.digest}.json`;
+  }
+}
+
+async function openAttestationLockFile(path: string): Promise<Deno.FsFile> {
+  let file: Deno.FsFile;
+  try {
+    file = await Deno.open(path, {
+      createNew: true,
+      read: true,
+      write: true,
+      mode: 0o600,
+    });
+  } catch (error) {
+    if (!(error instanceof Deno.errors.AlreadyExists) && !isAlreadyExists(error)) {
+      throw error;
+    }
+    file = await Deno.open(path, { read: true, write: true });
+  }
+  try {
+    const info = await Deno.lstat(path);
+    if (info.isSymlink || !info.isFile) {
+      throw new Error(
+        "Capability runtime qualification lock must be one regular file.",
+      );
+    }
+    const openInfo = await file.stat();
+    if (
+      !openInfo.isFile ||
+      (info.dev !== null && info.ino !== null &&
+        openInfo.dev !== null && openInfo.ino !== null &&
+        (info.dev !== openInfo.dev || info.ino !== openInfo.ino))
+    ) {
+      throw new Error(
+        "Capability runtime qualification lock path changed while it was open.",
+      );
+    }
+    return file;
+  } catch (error) {
+    file.close();
+    throw error;
   }
 }
 

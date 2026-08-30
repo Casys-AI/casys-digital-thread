@@ -1,6 +1,7 @@
 /** Port for the private host-local qualification attempt ledger. */
 
 import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
+import type { CapabilityRuntimeQualificationHostStopProof } from "../../../../domain/capability/runtime/capability-runtime-qualification-host-proof.ts";
 import type {
   CapabilityRuntimeQualificationAttempt,
   CapabilityRuntimeQualificationAttemptIdentity,
@@ -16,6 +17,7 @@ export interface CapabilityRuntimeQualificationAttemptStore {
   ): Promise<CapabilityRuntimeQualificationAttempt | undefined>;
   prepare(
     identity: CapabilityRuntimeQualificationAttemptIdentity,
+    clock: { readonly preparedAt: string },
   ): Promise<CapabilityRuntimeQualificationAttempt>;
   markActive(
     identity: CapabilityRuntimeQualificationAttemptIdentity,
@@ -27,6 +29,7 @@ export interface CapabilityRuntimeQualificationAttemptStore {
   ): Promise<CapabilityRuntimeQualificationAttempt>;
   claimDispatching(
     identity: CapabilityRuntimeQualificationAttemptIdentity,
+    clock: { readonly claimedAt: string; readonly deadlineAt: string },
   ): Promise<
     | {
       readonly attempt: CapabilityRuntimeQualificationDispatchingAttempt;
@@ -39,7 +42,13 @@ export interface CapabilityRuntimeQualificationAttemptStore {
   >;
   markRecorded(
     identity: CapabilityRuntimeQualificationAttemptIdentity,
-    input: { readonly receiptFingerprint: ContentFingerprint },
+    input: {
+      readonly receiptSha256: string;
+      readonly receiptFingerprint: ContentFingerprint;
+    },
+  ): Promise<CapabilityRuntimeQualificationAttempt>;
+  sealDispatchDeadline(
+    identity: CapabilityRuntimeQualificationAttemptIdentity,
   ): Promise<CapabilityRuntimeQualificationAttempt>;
   markQuarantined(
     identity: CapabilityRuntimeQualificationAttemptIdentity,
@@ -51,7 +60,7 @@ export interface CapabilityRuntimeQualificationAttemptStore {
   ): Promise<CapabilityRuntimeQualificationAttempt>;
   markStopped(
     identity: CapabilityRuntimeQualificationAttemptIdentity,
-    input: { readonly runtimeStopFingerprint: ContentFingerprint },
+    input: { readonly runtimeStopProof: CapabilityRuntimeQualificationHostStopProof },
   ): Promise<CapabilityRuntimeQualificationAttempt>;
   markAttested(
     identity: CapabilityRuntimeQualificationAttemptIdentity,

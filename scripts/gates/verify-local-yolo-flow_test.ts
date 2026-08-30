@@ -159,6 +159,8 @@ async function localCapabilityAuthorization(
     ledgers: new FileProjectCapabilityLedgerStore(`${directory}/capability-ledgers`),
     registry: { list: listRegisteredEngineeringOperations },
     catalog: await createFirstPartyCapabilityRuntimeCatalog(),
+    qualificationSpecs: [],
+    qualificationCandidates: [],
     policy: {
       schemaVersion: "capability-runtime-admin-policy/1.0",
       disabledBindingIds: [],

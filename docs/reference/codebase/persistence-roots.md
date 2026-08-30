@@ -14,6 +14,13 @@ on [engineering domains](../domains/README.md).
 
 Explicitly labelled demo evidence
 
+#### `state/local/capability-runtime-host/`
+
+Host-local admin lock, journal, leases, opaque host identity, qualification attempt WAL
+and append-only qualification attestations. Not Thread, CAS, project evidence, or a
+Workbench command surface. The Chrono probe writes
+`qualification-attempts/` and `qualification-attestations/` only.
+
 #### `state/local/engineering-projects/`
 
 Ignored immutable active project revisions and CAS claims

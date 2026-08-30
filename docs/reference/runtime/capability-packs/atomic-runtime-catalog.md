@@ -105,11 +105,13 @@ reference and opaque host identity. A native historical code-owned qualification
 produce a native mode on the observed matching platform; it can never imply emulation.
 
 The append-only attestation schema is
-`capability-runtime-binding-qualification-attestation/1.0`. Its only terminal facts are
-`qualified` and `revoked`; it contains fixture/outcome references and closed identities,
-never a probe payload, request headers, credential or provider response. An exact
-revocation is monotone: it makes that material unavailable rather than being sorted away
-by timestamps or hashes. A Chrono Linux/amd64 emulation attestation therefore does not
+`capability-runtime-binding-qualification-attestation/1.1`. Its only terminal facts are
+`qualified` and `revoked`; it contains fixture/specification/outcome references and
+closed identities, never a probe payload, request headers, credential or provider
+response. The Chrono emulation probe that appends a matching record is the private
+[local runtime qualification](local-runtime-qualification.md) CLI. An exact revocation
+is monotone: it makes that material unavailable rather than being sorted away by
+timestamps or hashes. A Chrono Linux/amd64 emulation attestation therefore does not
 qualify any other AMD64 image, binding, profile or host.
 
 The local attestation ledger is append-only. A concurrent reader ignores only the

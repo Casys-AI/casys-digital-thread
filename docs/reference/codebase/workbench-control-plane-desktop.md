@@ -37,7 +37,9 @@ Console application service (`console_*`), probe / container-observation ports, 
 effect-free project capability-demand compiler. Not a human page; `preview:browser`
 refuses. HTTP probe lives in `adapters/shared/mcp/`; Docker observer is
 `adapters/shared/docker-observer.ts`. The retired `ObservedRunCatalog` /
-`ModelicaRunObserver` merge is gone.
+`ModelicaRunObserver` merge is gone. `CapabilityRuntimeQualificationService` is a
+private host-local Chrono probe (`review`/`apply`/`recover` only); it is not a
+Workbench, MCP or project command.
 
 #### [`src/adapters/control-plane/`](../../../src/adapters/control-plane)
 

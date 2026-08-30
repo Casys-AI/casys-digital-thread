@@ -3,7 +3,9 @@
 Audience: maintainer · Diátaxis: reference · Kind: contract
 
 This is a local host-administration surface. It is not a project command, MCP tool,
-Workbench mutation, Docker shortcut, provider selector, or engineering verdict.
+Workbench mutation, Docker shortcut, provider selector, or engineering verdict. Chrono
+emulation qualification is the separate
+[local runtime qualification](local-runtime-qualification.md) CLI.
 
 ## Desired-state history
 

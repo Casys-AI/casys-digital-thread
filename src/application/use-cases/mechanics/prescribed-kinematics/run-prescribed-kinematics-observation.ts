@@ -18,16 +18,19 @@ import type {
   PrescribedKinematicsObservationRecord,
   PrescribedKinematicsObserver,
 } from "../../../ports/out/mechanics/prescribed-kinematics-observer.ts";
-import {
-  fingerprintsEqual,
-  sha256Hex,
-} from "../../../../domain/kernel/deterministic-json.ts";
+import { fingerprintsEqual } from "../../../../domain/kernel/deterministic-json.ts";
 import {
   parsePrescribedKinematicsObservation,
   prescribedKinematicsObservationMethod,
 } from "../../../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-observation.ts";
 import { fingerprintPrescribedKinematicsCaseSource } from "../../../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-case-source.ts";
 import { validatePrescribedKinematicsCase } from "../../../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-source-closure.ts";
+import {
+  assertPrescribedKinematicsLoweredCase,
+  assertPrescribedKinematicsRecordBoundToIdentity,
+  PRESCRIBED_KINEMATICS_RECEIPT_PAGE_LIMIT,
+  readCompletePrescribedKinematicsReceipt,
+} from "./prescribed-kinematics-receipt-readback.ts";
 
 export interface RunPrescribedKinematicsObservationDependencies {
   readonly attempts: PrescribedKinematicsObservationAttemptStore;
@@ -64,7 +67,7 @@ export class RunPrescribedKinematicsObservation
       );
     }
     const lowered = await this.#lowerer.lower({ source, sourceFingerprint });
-    await assertLoweredCase(lowered, sourceFingerprint);
+    await assertPrescribedKinematicsLoweredCase(lowered, sourceFingerprint);
     const identity = {
       projectId: command.projectId,
       agentRunId: command.agentRunId,
@@ -117,7 +120,7 @@ export class RunPrescribedKinematicsObservation
         caseSha256: dispatch.attempt.caseSha256,
         caseUri: dispatch.attempt.caseUri,
         sampleOffset: 0,
-        sampleLimit: PAGE_LIMIT,
+        sampleLimit: PRESCRIBED_KINEMATICS_RECEIPT_PAGE_LIMIT,
       });
       if (result.state === "rejected") return await this.#reject(identity, result.code);
       // Every non-recorded response occurs after the local durable dispatch
@@ -162,7 +165,7 @@ export class RunPrescribedKinematicsObservation
         },
         {
           sampleOffset: 0,
-          sampleLimit: PAGE_LIMIT,
+          sampleLimit: PRESCRIBED_KINEMATICS_RECEIPT_PAGE_LIMIT,
         },
       );
       if (result.state === "absent") {
@@ -206,7 +209,10 @@ export class RunPrescribedKinematicsObservation
   ): Promise<RunPrescribedKinematicsObservationResult> {
     try {
       const record = await this.#readCompleteReceipt(receiptSha256);
-      assertRecordBoundToIdentity(record, identity);
+      assertPrescribedKinematicsRecordBoundToIdentity(record, {
+        requestId: identity.requestId,
+        caseSha256: identity.requestFingerprint.digest,
+      });
       return await recordToResult(record, sealedCase, lowered);
     } catch {
       return await this.#quarantine(identity, "malformed");
@@ -223,7 +229,10 @@ export class RunPrescribedKinematicsObservation
       // A receipt reread is mandatory even after a direct acknowledgement: the
       // persisted receipt, not an acknowledgement, is the factual provenance.
       const reread = await this.#readCompleteReceipt(record.receipt.receiptSha256);
-      assertRecordBoundToIdentity(reread, identity);
+      assertPrescribedKinematicsRecordBoundToIdentity(reread, {
+        requestId: identity.requestId,
+        caseSha256: identity.requestFingerprint.digest,
+      });
       // Validate every fact and its literal boundary before advancing the WAL
       // to recorded. A malformed receipt is recoverable quarantine, never a
       // durable L3 observation merely because a provider named a receipt.
@@ -248,47 +257,10 @@ export class RunPrescribedKinematicsObservation
   async #readCompleteReceipt(
     receiptSha256: string,
   ): Promise<PrescribedKinematicsObservationRecord> {
-    const first = await this.#observer.readReceipt(receiptSha256, {
-      sampleOffset: 0,
-      sampleLimit: PAGE_LIMIT,
-    });
-    const samples: Array<(typeof first.samplePage.samples)[number]> = [];
-    assertReceiptPage(first, first, 0, samples, new Set<number>());
-    samples.push(...first.samplePage.samples);
-    let current = first;
-    while (current.samplePage.hasMore) {
-      const nextOffset = samples.length;
-      const next = await this.#observer.readReceipt(receiptSha256, {
-        sampleOffset: nextOffset,
-        sampleLimit: PAGE_LIMIT,
-      });
-      assertSameReceipt(first, next);
-      assertReceiptPage(
-        next,
-        first,
-        nextOffset,
-        samples,
-        new Set(samples.map((sample) => sample.timeSeconds)),
-      );
-      samples.push(...next.samplePage.samples);
-      current = next;
-    }
-    if (samples.length !== first.samplePage.total) {
-      throw new TypeError(
-        "The prescribed-kinematics receipt pages do not cover their declared total.",
-      );
-    }
-    return {
-      ...first,
-      samplePage: {
-        sampleOffset: 0,
-        sampleLimit: PAGE_LIMIT,
-        total: first.samplePage.total,
-        returned: samples.length,
-        hasMore: false,
-        samples,
-      },
-    };
+    return await readCompletePrescribedKinematicsReceipt(
+      this.#observer,
+      receiptSha256,
+    );
   }
 
   async #reject(
@@ -372,101 +344,4 @@ async function recordToResult(
       requestFingerprint: lowered.requestFingerprint,
     },
   };
-}
-
-function assertRecordBoundToIdentity(
-  record: PrescribedKinematicsObservationRecord,
-  identity: Parameters<PrescribedKinematicsObservationAttemptStore["prepare"]>[0],
-): void {
-  if (
-    record.request.requestId !== identity.requestId ||
-    record.request.caseSha256 !== identity.requestFingerprint.digest ||
-    record.request.caseUri !==
-      `chrono-case:sha256:${identity.requestFingerprint.digest}` ||
-    record.receipt.caseSha256 !== identity.requestFingerprint.digest ||
-    record.receipt.requestId !== identity.requestId
-  ) {
-    throw new TypeError(
-      "The prescribed-kinematics receipt does not bind the exact dispatched request identity.",
-    );
-  }
-}
-
-const PAGE_LIMIT = 64;
-
-function assertSameReceipt(
-  expected: PrescribedKinematicsObservationRecord,
-  observed: PrescribedKinematicsObservationRecord,
-): void {
-  if (
-    observed.receipt.receiptSha256 !== expected.receipt.receiptSha256 ||
-    observed.receipt.caseSha256 !== expected.receipt.caseSha256 ||
-    observed.receipt.requestId !== expected.receipt.requestId ||
-    observed.request.requestId !== expected.request.requestId ||
-    observed.request.caseSha256 !== expected.request.caseSha256 ||
-    observed.request.caseUri !== expected.request.caseUri ||
-    observed.samplePage.total !== expected.samplePage.total ||
-    observed.sampleCount !== expected.sampleCount
-  ) {
-    throw new TypeError(
-      "A prescribed-kinematics receipt page changed identity or total during readback.",
-    );
-  }
-}
-
-function assertReceiptPage(
-  pageRecord: PrescribedKinematicsObservationRecord,
-  first: PrescribedKinematicsObservationRecord,
-  expectedOffset: number,
-  accumulated: PrescribedKinematicsObservationRecord["samplePage"]["samples"],
-  seenTimes: ReadonlySet<number>,
-): void {
-  const page = pageRecord.samplePage;
-  if (
-    page.sampleOffset !== expectedOffset || page.sampleLimit !== PAGE_LIMIT ||
-    page.returned !== page.samples.length || page.total !== first.samplePage.total ||
-    page.total > 512 || page.total !== pageRecord.sampleCount ||
-    page.returned !== Math.min(PAGE_LIMIT, page.total - expectedOffset) ||
-    page.hasMore !== (expectedOffset + page.returned < page.total) ||
-    accumulated.length !== expectedOffset
-  ) {
-    throw new TypeError(
-      "The prescribed-kinematics receipt page is incomplete, overlapping, or has invalid bounds.",
-    );
-  }
-  for (const sample of page.samples) {
-    if (seenTimes.has(sample.timeSeconds)) {
-      throw new TypeError(
-        "The prescribed-kinematics receipt pages contain a duplicate sample time.",
-      );
-    }
-  }
-}
-
-async function assertLoweredCase(
-  lowered: PrescribedKinematicsLoweredCase,
-  sourceFingerprint: PrescribedKinematicsLoweredCase["sourceFingerprint"],
-): Promise<void> {
-  if (
-    !fingerprintsEqual(lowered.sourceFingerprint, sourceFingerprint) ||
-    lowered.requestFingerprint.algorithm !== "sha256" ||
-    lowered.loweringFingerprint.algorithm !== "sha256" ||
-    !/^[a-f0-9]{64}$/.test(lowered.requestFingerprint.digest) ||
-    !/^[a-f0-9]{64}$/.test(lowered.loweringFingerprint.digest) ||
-    typeof lowered.exactRequestText !== "string" ||
-    lowered.exactRequestText.length === 0 ||
-    lowered.exactRequestText.length > 524_288
-  ) {
-    throw new TypeError(
-      "The server-owned prescribed-kinematics lowering is absent, unbound, or exceeds its fixed bound.",
-    );
-  }
-  if (
-    (await sha256Hex(new TextEncoder().encode(lowered.exactRequestText))) !==
-      lowered.requestFingerprint.digest
-  ) {
-    throw new TypeError(
-      "The server-owned prescribed-kinematics lowering request fingerprint does not bind its exact bytes.",
-    );
-  }
 }
