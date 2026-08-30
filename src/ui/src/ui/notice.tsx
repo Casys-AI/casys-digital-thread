@@ -20,6 +20,8 @@ export function Notice({ title, tone = "neutral", children }: {
           ? "bg-warning/10 text-warning"
           : tone === "success"
           ? "bg-success/10 text-success"
+          : tone === "info"
+          ? "bg-brand/10 text-brand-strong"
           : "bg-muted/50 text-muted-foreground",
       )}
       data-tone={tone}

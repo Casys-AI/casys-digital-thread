@@ -1,4 +1,4 @@
-import { PAGE_EYEBROW } from "../ui/cockpit.tsx";
+import { CARD_SURFACE, PAGE_EYEBROW, SECTION_LABEL } from "../ui/cockpit.tsx";
 import type { JSX } from "react";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
 import { Badge } from "../ui/badge.tsx";
@@ -46,12 +46,70 @@ export function ProductSourcingLane({
 }: {
   readonly thread: ThreadWorkbenchSnapshot;
 }): JSX.Element {
+  const coverage = productSourcingCoverage(thread);
   return (
-    <div className="flex flex-col gap-3">
-      <p className={cn("mb-0", PAGE_EYEBROW)}>
-        Product › Sourcing · ERP
-      </p>
-      <ProductSourcingCoverageLine thread={thread} />
-    </div>
+    <section className="flex flex-col gap-5" aria-labelledby="sourcing-title">
+      <div className="max-w-3xl">
+        <p className={cn("mb-1", PAGE_EYEBROW)}>Lifecycle coverage · To Buy</p>
+        <h3 id="sourcing-title" className="text-lg font-semibold">
+          Sourcing record
+        </h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          What is recorded for purchased parts in this exact project revision.
+        </p>
+      </div>
+      <dl
+        className={cn(
+          CARD_SURFACE,
+          "grid grid-cols-[repeat(auto-fit,minmax(min(100%,12rem),1fr))] overflow-hidden [&>div+div]:border-l [&>div+div]:border-border",
+        )}
+      >
+        <div className="p-4">
+          <dt className={SECTION_LABEL}>
+            Coverage status
+          </dt>
+          <dd className="mt-2">
+            <Badge variant={coverage.badge === "GAP" ? "warning" : "secondary"}>
+              {coverage.badge}
+            </Badge>
+          </dd>
+        </div>
+        <div className="p-4">
+          <dt className={SECTION_LABEL}>
+            ERP records
+          </dt>
+          <dd className="mt-1 font-mono text-lg font-semibold tabular-nums">
+            {coverage.boundCount}/{coverage.componentCount}
+          </dd>
+        </div>
+        <div className="p-4">
+          <dt className={SECTION_LABEL}>
+            Record system
+          </dt>
+          <dd className="mt-1 text-sm font-medium">ERPNext</dd>
+        </div>
+      </dl>
+      {coverage.boundCount === 0
+        ? (
+          <div className="rounded-lg border border-dashed border-warning/40 bg-warning/[0.04] p-4">
+            <p className="text-sm font-medium">
+              No sourcing record exists yet.
+            </p>
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+              The lane stays{" "}
+              <strong className="font-mono text-warning">GAP</strong>{" "}
+              until exact ERP records are linked. No BOM, supplier, price or
+              availability is inferred from the product structure.
+            </p>
+          </div>
+        )
+        : (
+          <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+            {coverage.boundCount} of {coverage.componentCount}{" "}
+            components have an exact ERP binding. Unbound components remain
+            explicitly outside sourcing coverage.
+          </div>
+        )}
+    </section>
   );
 }

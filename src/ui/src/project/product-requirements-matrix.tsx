@@ -21,8 +21,7 @@ import {
   type RequirementVerdictTrailStep,
 } from "./product-requirements-model.ts";
 
-const MATRIX_GRID =
-  "grid-cols-[204px_minmax(230px,2fr)_minmax(170px,1.3fr)_minmax(140px,1fr)_84px_90px_minmax(180px,1.3fr)]";
+const MATRIX_GRID = "requirements-matrix-grid";
 
 export function ProductRequirementsMatrix({
   thread,
@@ -58,13 +57,13 @@ export function ProductRequirementsMatrix({
             tone={noModelledRequirements ? "warning" : "success"}
           />
           <CoverageCell
-            label="OPEN"
+            label="NEEDS ATTENTION"
             value={`${openCount}`}
             tone={matrix.counts.fail > 0 ? "warning" : undefined}
           />
           <CoverageCell
-            label="WORST MARGIN"
-            value={matrix.worstMargin ?? "—"}
+            label="RECORDED FAIL MARGIN"
+            value={matrix.worstMargin ?? "None recorded"}
             tone={matrix.worstMargin ? "warning" : undefined}
           />
         </dl>
@@ -95,40 +94,40 @@ export function ProductRequirementsMatrix({
           active={filter === "unresolved"}
           onSelect={() => setFilter("unresolved")}
         >
-          Unverified {matrix.counts.unresolved}
+          Unresolved {matrix.counts.unresolved}
         </FilterChip>
         <span className="ml-auto font-mono text-[10px] text-muted-foreground">
           constraint-solver · units checked
         </span>
       </div>
 
-      <div className={cn("overflow-x-auto shadow-sm", CARD_SURFACE)}>
-        <div className="min-w-[1120px]">
+      <div className={cn("requirements-matrix-frame shadow-sm", CARD_SURFACE)}>
+        <div className="min-w-0">
           <div
             className={cn(
               "grid font-mono text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground",
               MATRIX_GRID,
             )}
           >
-            <span className="border-b border-border px-3.5 py-2">
+            <span className="requirements-col-id border-b border-border px-3.5 py-2">
               REQ
             </span>
-            <span className="border-b border-border px-2 py-2">
+            <span className="requirements-col-requirement border-b border-border px-2 py-2">
               REQUIREMENT
             </span>
-            <span className="border-b border-border px-2 py-2">
+            <span className="requirements-col-limit border-b border-border px-2 py-2">
               LIMIT
             </span>
-            <span className="border-b border-border px-2 py-2">
-              COMPUTED
+            <span className="requirements-col-observed border-b border-border px-2 py-2">
+              OBSERVED
             </span>
-            <span className="border-b border-border px-2 py-2 text-right">
-              MARGIN
+            <span className="requirements-col-margin border-b border-border px-2 py-2 text-right">
+              RECORDED MARGIN
             </span>
-            <span className="border-b border-border px-2 py-2">
+            <span className="requirements-col-verdict border-b border-border px-2 py-2">
               VERDICT
             </span>
-            <span className="border-b border-border px-3.5 py-2 pl-2">
+            <span className="requirements-col-evidence border-b border-border px-3.5 py-2 pl-2">
               EVIDENCE
             </span>
           </div>
@@ -195,45 +194,78 @@ function RequirementRow({
       )}
     >
       <Accordion.ItemTrigger
+        aria-label={`${row.label}. Limit ${row.expression}. Observed ${row.computed}. Recorded margin ${row.marginLabel}. Verdict ${row.status}. Evidence ${row.evidenceLabel}.`}
         className={cn(
           "grid w-full items-center text-left tabular-nums transition-colors hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
           MATRIX_GRID,
         )}
       >
-        <span className="flex min-w-0 items-center gap-1.5 px-3.5 py-2 font-mono text-[10px] font-medium text-brand">
+        <span className="requirements-col-id flex min-w-0 items-center gap-1.5 px-3.5 py-2 font-mono text-[10px] font-medium text-brand">
           <RequirementChevron open={open} />
           <span className="truncate" title={row.id} aria-hidden="true">
             {compactTechnicalIdentifier(row.id)}
           </span>
           <span className="sr-only">Requirement identifier: {row.id}</span>
         </span>
-        <span className="flex flex-col gap-0.5 px-2 py-2">
-          <span className="truncate text-xs">{row.label}</span>
+        <span className="requirements-col-requirement flex min-w-0 flex-col gap-0.5 px-2 py-2">
+          <span
+            className="line-clamp-2 break-words text-sm font-medium leading-snug"
+            title={row.label}
+          >
+            {row.label}
+          </span>
           {row.anchor && (
             <span className="truncate font-mono text-[9px] text-muted-foreground">
               {row.anchor}
             </span>
           )}
         </span>
-        <span className="truncate px-2 py-2 font-mono text-[10px] text-muted-foreground">
+        <span
+          className="requirements-col-limit min-w-0 break-words px-2 py-2 font-mono text-xs text-muted-foreground"
+          title={row.expression}
+        >
           {row.expression}
         </span>
-        <span className="truncate px-2 py-2 font-mono text-[11px] font-medium">
+        <span
+          className="requirements-col-observed min-w-0 break-words px-2 py-2 font-mono text-xs font-medium"
+          title={row.computed}
+        >
           {row.computed}
         </span>
-        <span className="truncate px-2 py-2 text-right font-mono text-[11px] font-medium">
+        <span className="requirements-col-margin truncate px-2 py-2 text-right font-mono text-xs font-medium">
           {row.marginLabel}
         </span>
-        <span className="px-2 py-1.5">
+        <span className="requirements-col-verdict px-2 py-1.5">
           <Badge variant={recordStatusVariant(row.status)}>
             {row.status.toUpperCase()}
           </Badge>
         </span>
-        <span className="truncate px-3.5 py-2 pl-2 font-mono text-[10px] text-muted-foreground">
+        <span
+          className="requirements-col-evidence line-clamp-2 min-w-0 break-words px-3.5 py-2 pl-2 font-mono text-[10px] leading-snug text-muted-foreground"
+          title={row.evidenceLabel}
+        >
           {row.evidenceLabel}
         </span>
       </Accordion.ItemTrigger>
       <Accordion.ItemContent className="flex flex-col gap-2.5 overflow-hidden px-3.5 pb-3">
+        <dl className="requirements-compact-details grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md bg-muted/45 p-3 text-xs">
+          <dt className="text-muted-foreground">Exact ID</dt>
+          <dd className="break-all font-mono">{row.id}</dd>
+          {row.anchor && (
+            <>
+              <dt className="text-muted-foreground">Anchor</dt>
+              <dd className="break-all font-mono">{row.anchor}</dd>
+            </>
+          )}
+          <dt className="text-muted-foreground">Limit</dt>
+          <dd className="break-words font-mono">{row.expression}</dd>
+          <dt className="text-muted-foreground">Observed</dt>
+          <dd className="break-words font-mono">{row.computed}</dd>
+          <dt className="text-muted-foreground">Recorded margin</dt>
+          <dd className="break-words font-mono">{row.marginLabel}</dd>
+          <dt className="text-muted-foreground">Evidence</dt>
+          <dd className="break-words font-mono">{row.evidenceLabel}</dd>
+        </dl>
         <EvidenceChain row={row} />
         <div className="flex flex-wrap items-center gap-3">
           <span className="font-mono text-[10px] text-muted-foreground">

@@ -6,6 +6,7 @@ import type {
   ThreadComponentPreview,
   ThreadGraphNode,
   ThreadRequirement,
+  ThreadSourceFileCatalog,
   ThreadWorkbenchSnapshot,
 } from "./types.ts";
 
@@ -371,6 +372,46 @@ export function cadSurfaceCoverage(
 }
 
 /**
+ * Compact Product header text.  A sealed module can coexist with separately
+ * sealed exact part geometry; the header must retain both facts rather than
+ * treating the module capture as the sole CAD source.
+ */
+export function cadCoverageLabel(
+  coverage: CadSurfaceCoverage,
+  sealed: SealedAssemblyGeometry | undefined,
+): string {
+  if (sealed) {
+    if (coverage.partSurfaces > 0) {
+      return `1 sealed assembly · ${coverage.partSurfaces} linked part geometr${
+        coverage.partSurfaces === 1 ? "y" : "ies"
+      }`;
+    }
+    if (sealed.independentPartDefinitionGeometryCount > 0) {
+      return `1 sealed assembly · ${sealed.independentPartDefinitionGeometryCount} independent PartDefinition geometr${
+        sealed.independentPartDefinitionGeometryCount === 1 ? "y" : "ies"
+      }`;
+    }
+    if (sealed.legacyPartMeshCount > 0) {
+      return `1 sealed assembly · ${sealed.legacyPartMeshCount} legacy part mesh${
+        sealed.legacyPartMeshCount === 1 ? "" : "es"
+      }`;
+    }
+    return "1 sealed assembly · no independent part geometry";
+  }
+  const assembly = coverage.assemblySurfaces === 0
+    ? "no assembly geometry"
+    : `${coverage.assemblySurfaces} assembly geometr${
+      coverage.assemblySurfaces === 1 ? "y" : "ies"
+    }`;
+  const parts = coverage.partSurfaces === 0
+    ? "no PartDefinition geometry"
+    : `${coverage.partSurfaces} PartDefinition geometr${
+      coverage.partSurfaces === 1 ? "y" : "ies"
+    }`;
+  return `${assembly} · ${parts}`;
+}
+
+/**
  * Resolve the current generic geometry result from immutable graph facts.
  *
  * The operation capture must be the unique active `geometry-capture` tip (or
@@ -414,9 +455,7 @@ export function resolveSealedAssemblyGeometry(
   );
   if (records.some((record) => !record)) return undefined;
   const exactRecords = records as GeometryBinaryRecord[];
-  const hasV2Records = exactRecords.some((record) =>
-    record.generation === "v2"
-  );
+  const hasV2Records = exactRecords.some((record) => record.generation === "v2");
   const hasModuleRecords = exactRecords.some((record) =>
     record.generation === "module"
   );
@@ -428,9 +467,7 @@ export function resolveSealedAssemblyGeometry(
     exactRecords.some((record) => record.generation !== "module")
   ) return undefined;
 
-  const assemblyRecords = exactRecords.filter((record) =>
-    record.scope === "assembly"
-  )
+  const assemblyRecords = exactRecords.filter((record) => record.scope === "assembly")
     .toSorted((left, right) =>
       left.generation === "v2" && right.generation === "v2"
         ? left.formatIndex - right.formatIndex
@@ -917,7 +954,10 @@ function classifyGeometryBinary(
  * Exact projector identity for module binaries. The browser copies the
  * profile `id@version` string; it does not import the assembler manifest.
  */
-const MODULE_GEOMETRY_BINARY_PRODUCER = "geometry.module.immediate-compound@1.0";
+const MODULE_GEOMETRY_BINARY_PRODUCERS = new Set([
+  "geometry.module.immediate-compound@1.0",
+  "build123d-module-assembler-v1@1.0.0",
+]);
 
 /**
  * Module STEP/GLB identities are digital-thread assembler products. This
@@ -930,7 +970,7 @@ function classifyModuleGeometryBinary(
   if (
     artifact.freshness !== "fresh" ||
     artifact.system !== "digital-thread" ||
-    artifact.producedBy !== MODULE_GEOMETRY_BINARY_PRODUCER
+    !MODULE_GEOMETRY_BINARY_PRODUCERS.has(artifact.producedBy ?? "")
   ) return undefined;
   const assetDigest = fingerprintDigest(artifact.fingerprint);
   if (
@@ -1040,6 +1080,95 @@ export interface SysmlSensitivityRecord {
 }
 
 /**
+ * One source-file revision whose captured SysML bindings target the selected
+ * Product node.  This is a read-side convenience only: source files remain
+ * versioned workspace records, and the Product tree remains SysML-owned.
+ */
+export interface ComponentSourceFile {
+  /** Stable logical module name, falling back only to recorded file metadata. */
+  readonly logicalName: string;
+  readonly role: string;
+  readonly fileId: string;
+  readonly fileRevision: number;
+  readonly workspaceRevision: number;
+}
+
+/**
+ * Select source files attached to the selected SysML component using only
+ * recorded identities.  A direct source-symbol binding may target either the
+ * component's SysML PartDefinition/PartUsage or one of its AttributeUsages.
+ * The root-level Product projection can additionally attest source files for
+ * its exact root PartDefinition.  Names, paths and labels never join records.
+ */
+export function sourceFilesForComponent(
+  snapshot: ThreadWorkbenchSnapshot,
+  component: ThreadComponent,
+): readonly ComponentSourceFile[] {
+  const catalog = snapshot.sourceFiles;
+  if (!catalog || catalog.status !== "observed") return [];
+
+  const elementIds = componentSourceElementIds(component);
+  const rootSourceIds = rootSourceFileIds(snapshot, component);
+  if (elementIds.size === 0 && rootSourceIds.size === 0) return [];
+
+  const selected = new Map<string, ComponentSourceFile>();
+  for (const file of catalog.files) {
+    const sourceId = sourceFileIdentity(file);
+    const hasExactBinding = file.bindings.some((binding) =>
+      elementIds.has(binding.sysmlElementId)
+    );
+    if (!hasExactBinding && !rootSourceIds.has(sourceId)) continue;
+    selected.set(sourceId, {
+      logicalName: file.moduleId || file.derivedPath || file.resourceName,
+      role: file.role,
+      fileId: file.fileId,
+      fileRevision: file.fileRevision,
+      workspaceRevision: file.workspaceRevision,
+    });
+  }
+  return [...selected.values()];
+}
+
+function componentSourceElementIds(
+  component: ThreadComponent,
+): ReadonlySet<string> {
+  return new Set([
+    ...component.bindings.flatMap((binding) =>
+      binding.provider === "syson" ? [binding.id] : []
+    ),
+    ...(component.attributes ?? []).map((attribute) => attribute.id),
+  ]);
+}
+
+function rootSourceFileIds(
+  snapshot: ThreadWorkbenchSnapshot,
+  component: ThreadComponent,
+): ReadonlySet<string> {
+  const definitionId = uniqueSysonBindingId(component, "part-definition");
+  const roots = snapshot.productNavigation?.roots;
+  if (
+    !definitionId ||
+    !roots?.some((root) =>
+      root.element.elementKind === "PartDefinition" &&
+      root.element.elementId === definitionId
+    )
+  ) {
+    return new Set();
+  }
+  return new Set(
+    snapshot.productNavigation?.attachments.sources
+      .filter((attachment) => attachment.kind === "source-file")
+      .map((attachment) => attachment.id),
+  );
+}
+
+function sourceFileIdentity(
+  file: ThreadSourceFileCatalog["files"][number],
+): string {
+  return `${file.fileId}@${file.fileRevision}`;
+}
+
+/**
  * Read model for the native SVG SysML sub-tree facet.
  *
  * The SVG renders:
@@ -1109,9 +1238,7 @@ export function buildSysmlSubtree(
   // rationale text.
   const anchoredRequirements: SysmlAnchoredRequirement[] = definitionId
     ? snapshot.requirements
-      .filter((req) =>
-        requirementTargetsDefinition(snapshot, req, definitionId)
-      )
+      .filter((req) => requirementTargetsDefinition(snapshot, req, definitionId))
       .map(toAnchoredRequirement)
     : [];
 
@@ -1268,13 +1395,10 @@ export function buildComponentTree(
     kind: component.kind,
     quantity: component.quantity,
     verified: component.bindings.some(
-      (binding) =>
-        binding.provider === "syson" && binding.status === "verified",
+      (binding) => binding.provider === "syson" && binding.status === "verified",
     ),
-    children: seen.has(component.id)
-      ? []
-      : (childrenByParent.get(component.id) ??
-        []).map((child) => project(child, new Set([...seen, component.id]))),
+    children: seen.has(component.id) ? [] : (childrenByParent.get(component.id) ??
+      []).map((child) => project(child, new Set([...seen, component.id]))),
   });
   return roots.map((root) => project(root, new Set()));
 }

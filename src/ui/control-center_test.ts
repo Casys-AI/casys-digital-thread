@@ -173,7 +173,7 @@ Deno.test("Activity reuses one exact GLB viewer across selectable PartDefinition
   assertEquals(source.includes("Desk Lamp"), false);
 });
 
-Deno.test("Project keeps its brief and path without duplicate engineering summaries", async () => {
+Deno.test("Project keeps its brief and path on one whiteboard without duplicate engineering summaries", async () => {
   const overview = await Deno.readTextFile(
     new URL("./src/project/overview.tsx", import.meta.url),
   );
@@ -182,8 +182,17 @@ Deno.test("Project keeps its brief and path without duplicate engineering summar
   );
   assertStringIncludes(brief, "Complete engineering brief");
   assertStringIncludes(brief, "Approved engineering project brief");
-  assertStringIncludes(overview, ">Project path</h3>");
+  assertStringIncludes(overview, "Project path and digital thread");
+  assertStringIncludes(overview, 'data-surface="digital-thread-whiteboard"');
+  assertStringIncludes(overview, "<OverviewThreadHero");
+  assertStringIncludes(overview, "immersive");
+  assertEquals(overview.match(/<OverviewThreadHero/g)?.length, 1);
+  assertStringIncludes(overview, 'className="project-thread-top-hud"');
+  assertStringIncludes(overview, 'className="project-thread-bottom-hud"');
+  assertStringIncludes(overview, 'className="project-thread-now-hud"');
   assertStringIncludes(overview, 'title="Agent now"');
+  assertEquals(overview.includes("<ThreadAssetOpenLinks"), false);
+  assertEquals(overview.includes("<GltfAssetCanvas"), false);
   assertEquals(overview.includes("RUNNING"), false);
   assertEquals(overview.includes("168.4 g"), false);
   assertEquals(overview.includes("REQ-M-001"), false);
@@ -213,9 +222,10 @@ Deno.test("Workbench keeps navigation and recorded review projection without a m
   assertStringIncludes(source, 'target.startsWith("review/")');
   assertStringIncludes(source, "const changeProductFacet");
   assertStringIncludes(source, "productFacetHash");
+  assertStringIncludes(source, "<ProductFacetNavigation");
   assertStringIncludes(source, "<ProductRequirementsMatrix");
   assertStringIncludes(source, "<ProductSourcingLane");
-  assertStringIncludes(source, "activeProductFacet={activeProductFacet}");
+  assertStringIncludes(source, "activeFacet={activeProductFacet}");
   assertEquals(source.includes("<ReviewNotifications"), false);
   assertEquals(source.includes('surface="activity"'), false);
   assertEquals(source.includes("onOpenOwner"), false);
@@ -278,7 +288,8 @@ Deno.test("Product structure is geometry-first with a compact SysML rail", async
   assertStringIncludes(source, "Product · sealed geometry");
   assertStringIncludes(source, "StructurePartChips");
   assertStringIncludes(source, "SysmlRail");
-  assertStringIncludes(source, "disabled={!available}");
+  assertEquals(source.includes("disabled={!available}"), false);
+  assertStringIncludes(source, "exact CAD geometry unavailable");
   assertStringIncludes(source, "ProductSourcingCoverageLine");
   assertStringIncludes(source, "sealedAssemblyGlbAsset");
   assertStringIncludes(source, "GltfAssetCanvas");

@@ -20,7 +20,6 @@ export function recordStatusVariant(status: string): BadgeVariant {
     status === "completed" ||
     status === "approved" ||
     status === "active" ||
-    status === "in-progress" ||
     status === "sealed" ||
     status === "pass"
   ) {
@@ -28,6 +27,7 @@ export function recordStatusVariant(status: string): BadgeVariant {
   }
   if (
     status === "running" ||
+    status === "in-progress" ||
     status === "publishing" ||
     status === "queued" ||
     status === "ready" ||

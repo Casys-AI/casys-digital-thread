@@ -95,8 +95,11 @@ Deno.test("operations keeps agent preparation outside concrete proposed MRTR dec
   const preparationEnd = source.indexOf("// MRTR card", preparationStart);
   const preparation = source.slice(preparationStart, preparationEnd);
 
-  assertEquals(preparationStart >= 0 && preparationEnd > preparationStart, true);
-  assertStringIncludes(preparation, "AGENT PROPOSAL PREPARATION");
+  assertEquals(
+    preparationStart >= 0 && preparationEnd > preparationStart,
+    true,
+  );
+  assertStringIncludes(preparation, "Agent proposals in preparation");
   assertStringIncludes(preparation, 'decision.status === "rejected"');
   assertStringIncludes(preparation, "Only a later <strong>proposed</strong>");
   assertStringIncludes(preparation, "the MRTR card above");
@@ -113,7 +116,7 @@ Deno.test("operations systems expose literal recorded state without row commands
   assertEquals(start >= 0 && end > start, true);
   for (
     const label of [
-      "Requirement",
+      "Fleet declaration",
       "Recorded state",
       "Last evidence",
       "Required",
@@ -171,7 +174,7 @@ Deno.test("assembly-integrity work card keeps L3 facts, L4 verdict and L5 formal
   assertStringIncludes(card, "L5 · human disposition");
   assertStringIncludes(card, 'data-formal-gate="assembly-integrity"');
   assertStringIncludes(
-    card,
+    card.replace(/\s+/g, " "),
     "separate from the activity stage band",
   );
   assertStringIncludes(card, "Exact lineage and evidence identities");
@@ -206,7 +209,7 @@ Deno.test("operations page heading describes recorded state rather than fleet he
   const heading = source.slice(start, end);
 
   assertEquals(start >= 0 && end > start, true);
-  assertStringIncludes(source, "Operations · recorded execution");
+  assertStringIncludes(source, "Utility · systems and runs");
   assertStringIncludes(heading, 'run.status === "running"');
   assertStringIncludes(heading, 'run.status === "queued"');
   assertStringIncludes(heading, "pendingHumanConfirmationDecisions(project)");

@@ -150,7 +150,10 @@ export function ToolInspectorPanel({
           data-tool={context.owner.id}
         >
           <span
-            className="grid size-11 shrink-0 place-items-center rounded-md border border-border font-mono text-xs font-semibold"
+            className={cn(
+              "grid size-11 shrink-0 place-items-center rounded-md border border-border font-mono text-xs font-semibold",
+              toolMonogramTone(context.owner),
+            )}
             aria-hidden="true"
           >
             {toolMonogram(context.owner)}
@@ -168,7 +171,7 @@ export function ToolInspectorPanel({
               </span>
             )}
             {target && (
-              <code className="font-mono text-xs text-muted-foreground">
+              <code className="break-all font-mono text-xs text-muted-foreground">
                 {target.kind}:{target.id}
               </code>
             )}
@@ -291,7 +294,10 @@ function ToolFacetRail({
             )}
           >
             <span className="flex min-w-0 items-center gap-2">
-              <span className="font-mono text-xs" aria-hidden="true">
+              <span
+                className={cn("font-mono text-xs", toolMonogramTone(tool))}
+                aria-hidden="true"
+              >
                 {toolMonogram(tool)}
               </span>
               <strong className="truncate font-medium">{tool.label}</strong>
@@ -368,7 +374,9 @@ function ArchitectureSysmlSealSummary({
           <>
             <dt className="text-xs text-muted-foreground">fingerprint</dt>
             <dd className="min-w-0 text-sm">
-              <strong className="font-mono text-xs">{view.fingerprint}</strong>
+              <strong className="break-all font-mono text-xs">
+                {view.fingerprint}
+              </strong>
               <span className="ml-2 text-xs text-muted-foreground">
                 content-addressed capture
               </span>
@@ -379,7 +387,7 @@ function ArchitectureSysmlSealSummary({
           <>
             <dt className="text-xs text-muted-foreground">uri</dt>
             <dd className="min-w-0 text-sm">
-              <strong className="font-mono text-xs">{view.uri}</strong>
+              <strong className="break-all font-mono text-xs">{view.uri}</strong>
               <span className="ml-2 font-mono text-xs text-muted-foreground">
                 architecture-sysml-seal-capture/1.0
               </span>
@@ -469,8 +477,8 @@ function SealFactRow({
     <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 py-2">
       <dt className="text-xs text-muted-foreground">{kind}</dt>
       <dd className="min-w-0">
-        <strong className="block font-mono text-sm">{id}</strong>
-        <span className="block font-mono text-xs text-muted-foreground">
+        <strong className="block break-all font-mono text-sm">{id}</strong>
+        <span className="block break-words font-mono text-xs text-muted-foreground">
           {detail}
         </span>
         {spanLabel && (
@@ -823,7 +831,7 @@ function InspectorMetrics({
   items: readonly InspectorMetric[];
 }): JSX.Element {
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,7rem),1fr))] gap-3">
       {items.map((metric) => (
         <article
           key={metric.id}
@@ -934,6 +942,27 @@ function toolMonogram(tool: WorkbenchToolIdentity): string {
       return "DT";
     case "other":
       return "••";
+  }
+}
+
+/** Provider colours are provenance cues only; the nearby badges carry status. */
+function toolMonogramTone(tool: WorkbenchToolIdentity): string {
+  switch (tool.id) {
+    case "syson":
+      return "text-cyan-700 dark:text-cyan-300";
+    case "build123d":
+      return "text-amber-700 dark:text-amber-300";
+    case "calculix":
+      return "text-red-700 dark:text-red-300";
+    case "modelica":
+    case "spice":
+      return "text-violet-700 dark:text-violet-300";
+    case "erpnext":
+      return "text-blue-700 dark:text-blue-300";
+    case "digital-thread":
+      return "text-success";
+    case "other":
+      return "text-muted-foreground";
   }
 }
 

@@ -478,7 +478,7 @@ Deno.test(
 // ---------------------------------------------------------------------------
 
 Deno.test(
-  "nodeColorFor utilise les tokens passés en paramètre, pas des constantes",
+  "nodeColorFor uses the recorded provider family and passed tokens",
   () => {
     const nodeSys = node("SYS-1", "requirement", "syson", "requirement");
     const rawGraph = { nodes: [nodeSys], edges: [] };
@@ -490,11 +490,10 @@ Deno.test(
       new Map(),
     );
 
-    // Tokens avec une couleur violette distincte : une exigence est peinte
-    // par son TYPE, et ce type prend le jeton violet.
+    // SysON is a recorded provider-family cue, not a requirement verdict.
     const customTokens: CssTokens = {
       ...FALLBACK_TOKENS,
-      violet: "#123456",
+      cyan: "#123456",
     };
 
     const model = buildExplorationModel(
@@ -511,13 +510,13 @@ Deno.test(
     assertEquals(
       sysonColor,
       "#123456",
-      "La couleur d'une exigence doit utiliser tokens.violet",
+      "SysON must use the supplied provenance token",
     );
   },
 );
 
 Deno.test(
-  "a sandbox CAD artifact is painted by type and keeps its declared family",
+  "a sandbox CAD artifact is painted by its recorded provider family",
   () => {
     const sandboxCad = node(
       "CAD-SANDBOX",
@@ -527,13 +526,12 @@ Deno.test(
     );
     const customTokens: CssTokens = {
       ...FALLBACK_TOKENS,
-      cyan: "#0e7490",
+      amber: "#0e7490",
       muted: "#777777",
     };
     const model = buildMinimalModel([sandboxCad], [], customTokens);
 
-    // La couleur vient du type d'enregistrement, jamais du système : un
-    // provider nouveau ne peut donc plus tomber dans le gris par défaut.
+    // build123d-sandbox shares its recorded CAD provider family.
     assertEquals(
       model.graph.getNodeAttribute("artifact:CAD-SANDBOX", "color"),
       "#0e7490",
@@ -546,6 +544,7 @@ Deno.test(
       system: "build123d-sandbox",
       systems: ["build123d-sandbox"],
       label: "build123d · CAD",
+      color: "#0e7490",
       count: 1,
     }]);
   },
@@ -726,7 +725,7 @@ Deno.test(
 // ---------------------------------------------------------------------------
 
 Deno.test(
-  "an artifact is painted by its type, whichever tool produced it",
+  "artifacts retain distinct recorded-provider colours",
   () => {
     const model = buildMinimalModel(
       [
@@ -740,15 +739,13 @@ Deno.test(
     );
     const modelica = model.graph.getNodeAttributes("artifact:m1");
     const syson = model.graph.getNodeAttributes("artifact:s1");
-    // Deux outils différents, un seul type : une seule couleur. C'est ce qui
-    // rend la légende des types exacte au lieu d'afficher une dominante.
-    assertEquals(modelica.color, syson.color);
+    assertNotEquals(modelica.color, syson.color);
     assertNotEquals(modelica.color, FALLBACK_TOKENS.muted);
   },
 );
 
 Deno.test(
-  "the tool key lists one entry per visible family and claims no color",
+  "the tool key lists exact provenance colours and visible-family counts",
   () => {
     const model = buildMinimalModel(
       [
@@ -772,14 +769,9 @@ Deno.test(
     );
     assertEquals(bySystem.size, 3, "One legend entry per visible family.");
     assertEquals(bySystem.get("modelica")?.count, 1);
-    // Le canvas ne peint plus par outil : une couleur ici serait un mapping
-    // que rien ne rend.
     for (const item of model.systemLegend) {
-      assertEquals(
-        Object.hasOwn(item, "color"),
-        false,
-        "a producer family must not carry a canvas color",
-      );
+      assertEquals(typeof item.color, "string");
+      assertNotEquals(item.color, "");
     }
   },
 );
@@ -800,6 +792,7 @@ Deno.test(
       system: "calculix",
       systems: ["calculix", "mcp-calculix"],
       label: "CalculiX · FEA",
+      color: FALLBACK_TOKENS.red,
       count: 2,
     }]);
     // Regrouper deux couches d'enregistrement sous une famille ne doit pas

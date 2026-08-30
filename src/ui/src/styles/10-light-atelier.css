@@ -18,16 +18,16 @@
 }
 
 .thread-workbench {
-  --thread-canvas: #f7f8fa;
-  --thread-paper: #fbfcfd;
+  --thread-canvas: #f4f5f2;
+  --thread-paper: #fafbf8;
   --thread-panel: #ffffff;
-  --thread-panel-muted: #f2f4f6;
+  --thread-panel-muted: #f0f2ef;
   --thread-ink: #1c2126;
   --thread-text: #3a424b;
   --thread-muted: #5f6773;
   --thread-faint: #868e99;
-  --thread-border: #e2e5e9;
-  --thread-border-strong: #c6cbd2;
+  --thread-border: #dfe3df;
+  --thread-border-strong: #c3cbc5;
   --thread-focus: #0e7490;
   --thread-info: #3f68c4;
   --thread-green: #1a7f4e;

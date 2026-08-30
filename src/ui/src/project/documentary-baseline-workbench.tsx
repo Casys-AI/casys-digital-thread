@@ -18,11 +18,7 @@ import {
   projectBriefStatusLabel,
   projectStatusTone,
 } from "./model.ts";
-import {
-  ProjectCockpitHeader,
-  ProjectNavigation,
-  type ProjectWorkspaceView,
-} from "./navigation.tsx";
+import { ProjectNavigation, type ProjectWorkspaceView } from "./navigation.tsx";
 import { hasDistinctProjectObjectiveStatement } from "./navigation-model.ts";
 import { ProjectWorkRibbon } from "./work.tsx";
 
@@ -52,20 +48,31 @@ export function DocumentaryBaselineWorkbench({
   const statusSeal = documentaryProjectStatusSeal(brief, technicalStart);
   return (
     <div className="thread-workbench cockpit-surface">
-      <ProjectCockpitHeader
-        projectId={project.project.id}
-        revision={project.revision}
-        projectName={project.project.name}
-        context={`Documentary · ${project.project.subjectId}`}
-        streamState={streamStatus}
-        streamLabel={documentaryStreamLabel(streamStatus)}
-        statusLabel="Technical proof"
-        statusValue="Not recorded yet"
-        metaLabel="Recorded"
-        metaValue={formatTime(record.recordedAt)}
+      <ProjectNavigation
+        activeView={activeView}
+        onChange={onChangeView}
+        status={
+          <>
+            <span
+              className="project-navigation-stream"
+              data-state={streamStatus}
+              aria-live="polite"
+            >
+              <i aria-hidden="true" />
+              <span className="project-navigation-stream-label">
+                {documentaryStreamLabel(streamStatus)}
+              </span>
+            </span>
+            <time
+              className="project-navigation-time"
+              dateTime={record.recordedAt}
+              title={`Recorded ${record.recordedAt}`}
+            >
+              {formatTime(record.recordedAt)}
+            </time>
+          </>
+        }
       />
-
-      <ProjectNavigation activeView={activeView} onChange={onChangeView} />
 
       {activeView === "overview"
         ? (

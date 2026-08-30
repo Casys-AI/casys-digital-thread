@@ -64,9 +64,45 @@ export function ProjectWorkRibbon({
       label: sentenceLabel(blocker.kind),
     }
     : { variant: "success" as const, label: "Clear" };
+  const calm = agentNow.kind !== "active-run" &&
+    agentNow.kind !== "current-work" && !decisionToReview &&
+    !decisionBeingPrepared && !blocker;
+  if (calm) {
+    const lastActivity = agentNow.kind === "last-settled-run"
+      ? `${workTitle(project, agentNow.run)} · ${
+        formatDateTime(agentRunRecordedAt(agentNow.run))
+      }`
+      : "No recorded agent execution";
+    return (
+      <section
+        className="flex flex-wrap items-center gap-x-3 gap-y-1 border-y border-border py-2.5"
+        aria-label="Shared work plan"
+      >
+        <i aria-hidden="true" className="size-2 rounded-full bg-success" />
+        <strong className="text-sm font-medium">Nothing needs attention</strong>
+        <span
+          className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
+          title={lastActivity}
+        >
+          Last recorded activity: {lastActivity}.
+        </span>
+        <Badge variant="success">Clear</Badge>
+        <details className="basis-full pl-5 text-xs text-muted-foreground">
+          <summary className="w-fit cursor-pointer font-medium text-foreground">
+            Status details
+          </summary>
+          <p className="mt-1 max-w-3xl">
+            No run is active, no proposal is waiting for review, and no open
+            blocker is recorded. Discuss any change of intent with the agent;
+            this cockpit follows the recorded plan.
+          </p>
+        </details>
+      </section>
+    );
+  }
   return (
     <section
-      className="grid grid-cols-1 gap-3 md:grid-cols-3"
+      className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] gap-3"
       aria-label="Shared work plan"
     >
       <Card className="p-3">
@@ -225,23 +261,44 @@ export function ProjectOperations({
   const queuedCount = activeRuns.filter(
     (r) => r.status === "queued",
   ).length;
+  const noAttention = activeRuns.length === 0 &&
+    pendingDecisions.length === 0 &&
+    preparationDecisions.length === 0;
+  const attentionCards = (
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,24rem),1fr))] items-start gap-3">
+      <QueueCard
+        runs={activeRuns}
+        runningCount={runningCount}
+        queuedCount={queuedCount}
+        onOpenWork={onOpenWork}
+        project={project}
+      />
+      <div className="flex flex-col gap-3">
+        <MrtrCard decisions={pendingDecisions} />
+        <AgentPreparationCard decisions={preparationDecisions} />
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex flex-col gap-4">
       {/* Recorded execution and human attention come before implementation surfaces. */}
-      <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
-        <QueueCard
-          runs={activeRuns}
-          runningCount={runningCount}
-          queuedCount={queuedCount}
-          onOpenWork={onOpenWork}
-          project={project}
-        />
-        <div className="flex flex-col gap-3">
-          <MrtrCard decisions={pendingDecisions} />
-          <AgentPreparationCard decisions={preparationDecisions} />
-        </div>
-      </div>
+      {noAttention
+        ? (
+          <details className={cn("overflow-hidden", CARD_SURFACE)}>
+            <summary className="cursor-pointer px-4 py-3 select-none">
+              <strong className="block text-sm font-semibold">
+                No operation needs attention
+              </strong>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                0 running · 0 queued · no human confirmation · no agent proposal
+                · Show operational details
+              </span>
+            </summary>
+            <div className="border-t border-border p-3">{attentionCards}</div>
+          </details>
+        )
+        : attentionCards}
 
       {thread.evaluationCloseouts && (
         <EvaluationCloseoutCard index={thread.evaluationCloseouts} />
@@ -360,7 +417,7 @@ function EvaluationCloseoutCard({
       data-closeout-family="static-mechanical"
       aria-labelledby="operations-closeout-title"
     >
-      <CardHeader className="flex-row items-center justify-between gap-3 border-b border-border px-3 py-2">
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-2">
         <h4
           id="operations-closeout-title"
           className="font-mono text-[9.5px] tracking-[.1em] text-muted-foreground"
@@ -479,7 +536,7 @@ function AssemblyIntegrityCard({
       data-closeout-family="assembly-integrity"
       aria-labelledby="operations-assembly-integrity-title"
     >
-      <CardHeader className="flex-row items-center justify-between gap-3 border-b border-border px-3 py-2">
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-2">
         <div>
           <h4
             id="operations-assembly-integrity-title"
@@ -508,13 +565,14 @@ function AssemblyIntegrityCard({
                   <Badge variant="secondary">No verdict</Badge>
                 </div>
                 <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
-                  Import {assemblyFactLabel(chain.observation.facts.importability)} ·
+                  Import{" "}
+                  {assemblyFactLabel(chain.observation.facts.importability)} ·
                   {" "}
-                  solid count{" "}
-                  {assemblyFactLabel(chain.observation.facts.importFacts.solidCount)} ·
-                  {" "}
-                  {chain.observation.facts.occurrences.length} occurrence facts ·{" "}
-                  {chain.observation.facts.pairs.length} pair facts.
+                  solid count {assemblyFactLabel(
+                    chain.observation.facts.importFacts.solidCount,
+                  )} · {chain.observation.facts.occurrences.length}{" "}
+                  occurrence facts · {chain.observation.facts.pairs.length}{" "}
+                  pair facts.
                 </p>
                 <p className="m-0 text-[10px] text-muted-foreground">
                   Limits · no fitness, safety, motion or strength conclusion.
@@ -523,10 +581,14 @@ function AssemblyIntegrityCard({
 
               <section className="rounded-md border border-border px-3 py-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="m-0 text-xs font-medium">L4 · recorded evaluation</p>
+                  <p className="m-0 text-xs font-medium">
+                    L4 · recorded evaluation
+                  </p>
                   {l4
                     ? (
-                      <Badge variant={assemblyVerdictVariant(l4.aggregateVerdict)}>
+                      <Badge
+                        variant={assemblyVerdictVariant(l4.aggregateVerdict)}
+                      >
                         {l4.aggregateVerdict}
                       </Badge>
                     )
@@ -542,16 +604,20 @@ function AssemblyIntegrityCard({
                             className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground"
                           >
                             <span>{sentenceLabel(criterion.id)}</span>
-                            <Badge variant={assemblyVerdictVariant(criterion.verdict)}>
+                            <Badge
+                              variant={assemblyVerdictVariant(
+                                criterion.verdict,
+                              )}
+                            >
                               {criterion.verdict}
                             </Badge>
                           </li>
                         ))}
                       </ul>
                       <p className="mb-0 mt-2 text-[10px] leading-snug text-muted-foreground">
-                        Scope only: import, occurrence coverage, placement recross, BRep
-                        validity and pairwise intersection. Not safety, joints,
-                        clearance, motion, load or fabrication.
+                        Scope only: import, occurrence coverage, placement
+                        recross, BRep validity and pairwise intersection. Not
+                        safety, joints, clearance, motion, load or fabrication.
                       </p>
                     </>
                   )
@@ -564,7 +630,9 @@ function AssemblyIntegrityCard({
 
               <section className="rounded-md border border-border px-3 py-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="m-0 text-xs font-medium">L5 · human disposition</p>
+                  <p className="m-0 text-xs font-medium">
+                    L5 · human disposition
+                  </p>
                   {l5
                     ? (
                       <Badge
@@ -582,15 +650,16 @@ function AssemblyIntegrityCard({
                     <>
                       <p className="mb-0 mt-1.5 text-[11px] text-muted-foreground">
                         Authority · {l5.verificationAuthority.id}@
-                        {l5.verificationAuthority.version}. A recorded L4 pass is not
-                        the human L5 decision.
+                        {l5.verificationAuthority.version}. A recorded L4 pass
+                        is not the human L5 decision.
                       </p>
                       <div
                         className="mt-2 rounded border border-border bg-muted/20 px-2.5 py-2"
                         data-formal-gate="assembly-integrity"
                       >
                         <p className="m-0 text-[10px] font-medium text-muted-foreground">
-                          Formal gate claims · separate from the activity stage band
+                          Formal gate claims · separate from the activity stage
+                          band
                         </p>
                         {l5.gateClaims.length
                           ? (
@@ -600,7 +669,8 @@ function AssemblyIntegrityCard({
                                   key={claim.gateItemId}
                                   className="font-mono text-[10px] text-muted-foreground"
                                 >
-                                  {claim.gateItemId} · {claim.role} · {claim.status}
+                                  {claim.gateItemId} · {claim.role} ·{" "}
+                                  {claim.status}
                                 </li>
                               ))}
                             </ul>
@@ -683,7 +753,7 @@ function ContributingSystemsCard({
       className="overflow-hidden"
       aria-labelledby="operations-systems-title"
     >
-      <CardHeader className="flex-row items-center justify-between gap-4 border-b border-border px-4 py-3">
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-4 border-b border-border px-4 py-3">
         <h4
           id="operations-systems-title"
           className={SECTION_LABEL}
@@ -707,7 +777,7 @@ function ContributingSystemsCard({
                   {[
                     "Surface",
                     "Role",
-                    "Requirement",
+                    "Fleet declaration",
                     "Recorded state",
                     "Last evidence",
                     "Stages",
@@ -814,12 +884,12 @@ function AgentPreparationCard({
       className="overflow-hidden"
       aria-labelledby="operations-preparation-title"
     >
-      <CardHeader className="flex-row items-center justify-between gap-4 border-b border-border px-3 py-2">
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-4 border-b border-border px-3 py-2">
         <h4
           id="operations-preparation-title"
           className="font-mono text-[9.5px] tracking-[.1em] text-muted-foreground"
         >
-          AGENT PROPOSAL PREPARATION
+          Agent proposals in preparation
         </h4>
         {decisions.length > 0 && (
           <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
@@ -885,12 +955,12 @@ function MrtrCard({
       className="overflow-hidden"
       aria-labelledby="operations-confirmations-title"
     >
-      <CardHeader className="flex-row items-center justify-between gap-4 border-b border-border px-3 py-2">
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-4 border-b border-border px-3 py-2">
         <h4
           id="operations-confirmations-title"
           className="font-mono text-[9.5px] tracking-[.1em] text-muted-foreground"
         >
-          HUMAN CONFIRMATIONS · MRTR
+          Human confirmations
         </h4>
         {decisions.length > 0 && (
           <span className="shrink-0 font-mono text-[10px] text-warning">
@@ -959,12 +1029,12 @@ function QueueCard({
       className="overflow-hidden flex flex-col"
       aria-labelledby="operations-queue-title"
     >
-      <CardHeader className="flex-row items-center justify-between gap-4 border-b border-border px-3 py-2">
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-4 border-b border-border px-3 py-2">
         <h4
           id="operations-queue-title"
           className="font-mono text-[9.5px] tracking-[.1em] text-muted-foreground"
         >
-          EXECUTION NOW · QUEUE
+          Execution
         </h4>
         <span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
           {runningCount} {runningCount === 1 ? "RUNNING" : "RUNNING"}·
@@ -1130,7 +1200,7 @@ function RunTimelineCard(
     `${(seconds / view.scaleSeconds) * 100}%`;
   return (
     <Card className="overflow-hidden">
-      <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-2">
         <span className={SECTION_LABEL}>Run timeline · queued vs running</span>
         {share !== undefined && (
           <span className="font-mono text-[9.5px] text-muted-foreground">
@@ -1182,9 +1252,7 @@ function RunTimelineActivityRow({
           </span>
           {showCounts && (
             <span className="mt-0.5 block font-mono text-[10px] text-muted-foreground">
-              {row.revisionCount > 1
-                ? `${row.revisionCount} revisions`
-                : null}
+              {row.revisionCount > 1 ? `${row.revisionCount} revisions` : null}
               {row.revisionCount > 1 && row.attemptCount > 1 ? " · " : null}
               {row.attemptCount > 1 ? `${row.attemptCount} attempts` : null}
             </span>

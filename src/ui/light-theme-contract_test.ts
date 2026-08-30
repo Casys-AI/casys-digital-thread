@@ -5,6 +5,7 @@ const STYLE_FILES = [
   "05-tool-drawer.css",
   "06-component-workspace.css",
   "17-saas-shell.css",
+  "18-overview-thread-flow.css",
   "18-desktop-chat.css",
 ] as const;
 
