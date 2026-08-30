@@ -1,6 +1,9 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import type { MicrosandboxImageInspection } from "../../shared/execution/microsandbox-ephemeral-execution-backend.ts";
-import { LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE } from "../../control-plane/first-party-capability-runtime-identities.ts";
+import {
+  LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
+  LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
+} from "../../control-plane/first-party-capability-runtime-identities.ts";
 import { GEOMETRY_MODULE_ASSEMBLER_MICROSANDBOX_WORKER_CONTRACT } from "./worker-contract.ts";
 import {
   assertAllowedGeometryModuleAssemblyCacheTempPath,
@@ -9,6 +12,7 @@ import {
   assertNoCallerSelectedGeometryModuleAssemblyCacheArguments,
   expectedGeometryModuleAssemblyRuntimeImage,
   type GeometryModuleAssemblyMicrosandboxCachePorts,
+  LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_DIGEST,
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_DIGEST,
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_SOURCE_HASH_LABELS,
   parseDockerGeometryModuleAssemblySourceInspection,
@@ -32,6 +36,18 @@ Deno.test("geometry-module cache operator pins the exact worker manifest", () =>
   assertEquals(EXPECTED.architecture, "arm64");
   assertEquals(EXPECTED.user, "65532:65532");
   assertEquals(EXPECTED.entrypoint, ENTRYPOINT);
+  assertEquals(
+    LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
+    "casys/build123d-module-assembler-worker@sha256:40accee586603416f573386df29d881ffd682730bb8bd0e2df53ce1454ede5a2",
+  );
+  assertEquals(
+    LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
+    "casys/build123d-module-assembler-worker@sha256:5aa833e19f1956a001013661e726c19c4566677a75f58493a6534456b99b6707",
+  );
+  assertEquals(
+    LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_DIGEST,
+    "40accee586603416f573386df29d881ffd682730bb8bd0e2df53ce1454ede5a2",
+  );
 });
 
 Deno.test("geometry-module cache operator rejects caller-selected arguments and paths", () => {
@@ -123,6 +139,14 @@ Deno.test("geometry-module cache preparation imports the exact Docker worker tag
       "/tmp/casys-geometry-module-assembler-test/geometry-module-assembler-worker.tar",
     tag: LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
   }]);
+  assertEquals(
+    result.sourceImageReference,
+    LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
+  );
+  assertEquals(
+    result.runtimeImageReference,
+    LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
+  );
   assertEquals(ports.cleaned, 1);
 });
 
@@ -251,7 +275,7 @@ function dockerInspection(): {
   return {
     Architecture: "arm64",
     Os: "linux",
-    RepoDigests: [LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE],
+    RepoDigests: [LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE],
     Config: {
       User: WORKER.expectedImageUser,
       Entrypoint: ENTRYPOINT,

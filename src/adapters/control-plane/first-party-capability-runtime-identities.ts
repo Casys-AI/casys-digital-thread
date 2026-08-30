@@ -7,6 +7,11 @@
 export const LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE =
   "casys/build123d-microsandbox-worker@sha256:0e19aee61aaab326ec29e50753a0ef56432d255fb44fd21c40988e90ff7601f8" as const;
 
+/** Docker source for `docker image save`. Not the Microsandbox runtime pin. */
+export const LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE =
+  "casys/build123d-module-assembler-worker@sha256:40accee586603416f573386df29d881ffd682730bb8bd0e2df53ce1454ede5a2" as const;
+
+/** Microsandbox inspectImage manifest. Product runtime imageReference. */
 export const LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE =
   "casys/build123d-module-assembler-worker@sha256:5aa833e19f1956a001013661e726c19c4566677a75f58493a6534456b99b6707" as const;
 

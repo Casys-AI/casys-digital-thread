@@ -34,6 +34,7 @@ import {
   parseConsoleCli,
 } from "../../server.ts";
 import { MCP_BUILD123D_061_IMAGE_REFERENCE } from "../adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
+import { LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE } from "../adapters/control-plane/first-party-capability-runtime-identities.ts";
 import { CONSOLE_RESOURCE_URI } from "./control-plane.ts";
 import {
   createNeutralStartedProject,
@@ -140,6 +141,10 @@ Deno.test("future geometry-module runtime binding factory is code-owned and dige
   assertEquals(
     first.profile.imageReference,
     "casys/build123d-module-assembler-worker@sha256:5aa833e19f1956a001013661e726c19c4566677a75f58493a6534456b99b6707",
+  );
+  assertEquals(
+    LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
+    "casys/build123d-module-assembler-worker@sha256:40accee586603416f573386df29d881ffd682730bb8bd0e2df53ce1454ede5a2",
   );
   assertEquals(
     first.profile.wrapperSha256,

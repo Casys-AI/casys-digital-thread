@@ -14,7 +14,10 @@ import {
   microsandboxHostArchitecture,
 } from "../../shared/execution/microsandbox-ephemeral-execution-backend.ts";
 import { pinnedOciImageReference } from "../../../domain/compile/isolation/local-isolation-runtime.ts";
-import { LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE } from "../../control-plane/first-party-capability-runtime-identities.ts";
+import {
+  LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
+  LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
+} from "../../control-plane/first-party-capability-runtime-identities.ts";
 import { GEOMETRY_MODULE_ASSEMBLER_MICROSANDBOX_WORKER_CONTRACT } from "./worker-contract.ts";
 
 export const GEOMETRY_MODULE_ASSEMBLY_MICROSANDBOX_CACHE_PREPARATION_SCHEMA =
@@ -23,6 +26,10 @@ export const GEOMETRY_MODULE_ASSEMBLY_MICROSANDBOX_CACHE_PREPARATION_SCHEMA =
 export const LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_DIGEST = digestOfPinnedReference(
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
 );
+export const LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_DIGEST =
+  digestOfPinnedReference(
+    LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
+  );
 
 /** Hashes asserted by the image Dockerfile before it changes to its worker user. */
 export const LOCAL_GEOMETRY_MODULE_ASSEMBLY_SOURCE_HASH_LABELS = Object.freeze({
@@ -82,7 +89,8 @@ export interface GeometryModuleAssemblyMicrosandboxCachePreparation {
   readonly schemaVersion:
     typeof GEOMETRY_MODULE_ASSEMBLY_MICROSANDBOX_CACHE_PREPARATION_SCHEMA;
   readonly status: "already-cached" | "imported";
-  readonly sourceImageReference: typeof LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE;
+  readonly sourceImageReference:
+    typeof LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE;
   readonly runtimeImageReference: typeof LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE;
   readonly manifestDigest: string;
   readonly os: "linux";
@@ -167,8 +175,9 @@ export function assertExactDockerGeometryModuleAssemblySourceImage(
 ): DockerGeometryModuleAssemblySourceInspection {
   if (
     !inspection.repoDigests.some((digest) =>
-      digest === LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE ||
-      digest === `docker.io/${LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE}`
+      digest === LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE ||
+      digest ===
+        `docker.io/${LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE}`
     ) || inspection.os !== EXPECTED_OS ||
     inspection.architecture !== EXPECTED_ARCHITECTURE ||
     inspection.user !== WORKER.expectedImageUser ||
@@ -283,7 +292,7 @@ function preparation(
   return Object.freeze({
     schemaVersion: GEOMETRY_MODULE_ASSEMBLY_MICROSANDBOX_CACHE_PREPARATION_SCHEMA,
     status,
-    sourceImageReference: LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
+    sourceImageReference: LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
     runtimeImageReference: LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
     manifestDigest: inspection.manifestDigest,
     os: EXPECTED_OS,
@@ -300,7 +309,7 @@ async function inspectDockerGeometryModuleAssemblySource(): Promise<unknown> {
     "inspect",
     "--format",
     "{{json .}}",
-    LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
+    LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
   ]);
   if (!output.success) {
     throw new Error(`docker inspect failed: ${decode(output.stderr).slice(-2_000)}`);
@@ -316,7 +325,7 @@ async function saveDockerGeometryModuleAssemblySource(
     "save",
     "-o",
     archivePath,
-    LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
+    LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
   ]);
   if (!output.success) {
     throw new Error(
