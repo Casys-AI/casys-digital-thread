@@ -19,7 +19,7 @@
   "tasks": {
     "start": "deno run --node-modules-dir=auto --allow-read=config,state,src/ui,mcp-server.yaml,node_modules --allow-write=state/local --allow-net --allow-run=docker --allow-env --allow-ffi=node_modules server.ts",
     "start:yolo": "deno run --node-modules-dir=auto --allow-read=config,state,src/ui,mcp-server.yaml,node_modules --allow-write=state/local --allow-net --allow-run=docker --allow-env --allow-ffi=node_modules server.ts --yolo",
-    "start:agent": "npm --prefix src/ui run build:thread && deno run --allow-run=deno --allow-net=127.0.0.1:5175 scripts/serve/supervise-agent-stack.ts",
+    "start:agent": "npm --prefix src/ui run build:thread && deno run --allow-run --allow-net=127.0.0.1:5175 scripts/serve/supervise-agent-stack.ts",
     "dev": "deno run --watch=server.ts,src,config --node-modules-dir=auto --allow-read=config,state,src/ui,mcp-server.yaml,node_modules --allow-write=state/local --allow-net --allow-run=docker --allow-env --allow-ffi=node_modules server.ts",
     "preview:browser": "deno run scripts/serve/console-browser-harness.ts",
     "thread:capture-syson-inventory": "deno run --allow-net=127.0.0.1:3009 --allow-write=state/local scripts/probes/capture-build123d-api-inventory.ts scripts/probes/capture-syson-model-inventory.ts",

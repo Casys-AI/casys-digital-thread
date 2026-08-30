@@ -19,6 +19,16 @@ import {
 
 const EXITED = { success: true, code: 0, signal: null } satisfies Deno.CommandStatus;
 const FAILED = { success: false, code: 42, signal: null } satisfies Deno.CommandStatus;
+const denoConfig = JSON.parse(
+  await Deno.readTextFile(new URL("../../deno.json", import.meta.url)),
+) as { tasks: Record<string, string> };
+
+Deno.test("start:agent grants the supervisor portable run permission", () => {
+  const command = denoConfig.tasks["start:agent"];
+
+  assertStringIncludes(command, "deno run --allow-run --allow-net=127.0.0.1:5175");
+  assert(!command.includes("--allow-run=deno"));
+});
 
 Deno.test("the normal stack starts only MCP and the focused cockpit", () => {
   const config = defaultAgentStackConfig();
@@ -54,7 +64,7 @@ Deno.test("the normal stack starts only MCP and the focused cockpit", () => {
   assert(mcp.args.includes("--allow-net=127.0.0.1,localhost,127.0.0.1:3020"));
   assert(
     mcp.args.includes(
-      "--allow-env=MCP_FLEET_MANIFEST,MCP_RUN_FIXTURE,MCP_MRTR_SIGNING_KEY," +
+      "--allow-env=LOG,MCP_FLEET_MANIFEST,MCP_RUN_FIXTURE,MCP_MRTR_SIGNING_KEY," +
         "MCP_AUTH_PROVIDER,MCP_AUTH_AUDIENCE,MCP_AUTH_RESOURCE,MCP_AUTH_DOMAIN," +
         "MCP_AUTH_ISSUER,MCP_AUTH_JWKS_URI,MCP_AUTH_SCOPES," +
         "MCP_AUTH_RESOURCE_METADATA_URL,NAPI_RS_ENFORCE_VERSION_CHECK," +

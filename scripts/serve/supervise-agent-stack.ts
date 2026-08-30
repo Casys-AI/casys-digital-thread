@@ -177,6 +177,7 @@ export function defaultAgentStackConfig(): AgentStackConfig {
       write: ["state/local"],
       net: ["127.0.0.1", "localhost"],
       env: [
+        "LOG",
         "MCP_FLEET_MANIFEST",
         "MCP_RUN_FIXTURE",
         "MCP_MRTR_SIGNING_KEY",
