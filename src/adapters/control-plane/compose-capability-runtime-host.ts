@@ -13,6 +13,7 @@ import {
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import {
   type CapabilityRuntimeLaunchGroup,
+  capabilityRuntimeLaunchGroupPublishedLoopbackHostPorts,
   type CapabilityRuntimeLaunchGroupReference,
   capabilityRuntimeLaunchGroupReference,
   fingerprintCapabilityRuntimeComposeContent,
@@ -57,6 +58,9 @@ import {
   DenoCommandRunner,
   parseComposePs,
 } from "../shared/docker-observer.ts";
+import {
+  StatelessMcpHttpTransport,
+} from "../shared/mcp/stateless-mcp-http-transport.ts";
 
 export interface CapabilityRuntimeHostAdapterOptions {
   readonly registry: CapabilityRuntimeLaunchGroupRegistry;
@@ -70,11 +74,30 @@ export interface CapabilityRuntimeHostAdapterOptions {
   readonly paths?: { realPath(path: string): Promise<string> };
   readonly clock?: () => string;
   /**
+   * Concrete host-local readiness probe for sealed MCP publications. It is
+   * intentionally adapter-owned: application bindings and fleet manifests do
+   * not name a provider endpoint or readiness implementation.
+   */
+  readonly readinessProbe?: CapabilityRuntimeLaunchReadinessProbe;
+  /** Testable transport seam for the concrete read-only MCP readiness probe. */
+  readonly readinessFetch?: typeof fetch;
+  /** Injectable monotonic clock and delay keep bounded readiness testable. */
+  readonly monotonicNow?: () => number;
+  readonly wait?: (milliseconds: number) => Promise<void>;
+  /**
    * Exact code-owned rollover descriptors. They are deliberately separate
    * from the normal launch-group registry because a predecessor/successor
    * pair shares one Compose project and loopback port.
    */
   readonly rollovers?: readonly CapabilityRuntimeHostRolloverDefinition[];
+}
+
+/** A readiness probe may only perform the sealed group’s read-only MCP check. */
+export interface CapabilityRuntimeLaunchReadinessProbe {
+  probe(input: {
+    readonly mcpUrl: string;
+    readonly timeoutMs: number;
+  }): Promise<void>;
 }
 
 export interface CapabilityRuntimeHostRolloverDefinition {
@@ -122,6 +145,9 @@ class ComposeCapabilityRuntimeHost
   readonly #paths: { realPath(path: string): Promise<string> };
   readonly #environment: Readonly<Record<string, string>>;
   readonly #clock: () => string;
+  readonly #readinessProbe: CapabilityRuntimeLaunchReadinessProbe;
+  readonly #monotonicNow: () => number;
+  readonly #wait: (milliseconds: number) => Promise<void>;
 
   constructor(private readonly options: CapabilityRuntimeHostAdapterOptions) {
     // Compose itself waits up to 300 seconds for a sealed service topology.
@@ -134,6 +160,11 @@ class ComposeCapabilityRuntimeHost
     this.#paths = options.paths ?? { realPath: (path) => Deno.realPath(path) };
     this.#environment = dockerEnvironment(options.dockerEnvironment);
     this.#clock = options.clock ?? (() => new Date().toISOString());
+    this.#readinessProbe = options.readinessProbe ?? {
+      probe: (input) => probeReadOnlyMcpTools(input, options.readinessFetch),
+    };
+    this.#monotonicNow = options.monotonicNow ?? (() => performance.now());
+    this.#wait = options.wait ?? delay;
   }
 
   async observe(
@@ -327,7 +358,9 @@ class ComposeCapabilityRuntimeHost
       );
     }
     const launch = await this.#launch(group);
-    const before = await this.#inspect(group, launch);
+    const before = await this.#inspect(group, launch, {
+      ignorePendingReadiness: true,
+    });
     const rollover = before.ownership === "mismatch"
       ? await this.#observeNormalStartRollover(group, entry.action, before)
       : null;
@@ -369,11 +402,19 @@ class ComposeCapabilityRuntimeHost
         command,
         isRuntimeStartAction(entry.action) ? input.secretSnapshot : undefined,
       );
-    const after = await this.#inspect(group, launch);
-    const satisfied = satisfies(entry.action, after);
+    const readinessReady = !isRuntimeStartAction(entry.action) ||
+      (execution.success && await this.#awaitReadiness(launch));
+    const after = await this.#inspect(group, launch, {
+      ignorePendingReadiness: true,
+    });
+    const satisfied = readinessReady && satisfies(entry.action, after);
+    const readinessTimedOut = isRuntimeStartAction(entry.action) &&
+      execution.success && !readinessReady;
     const status = execution.success && satisfied
       ? "succeeded"
       : after.ownership === "mismatch" || after.states.size !== group.materials.length
+      ? "failed"
+      : readinessTimedOut
       ? "failed"
       : "uncertain";
     return this.#outcome(
@@ -385,6 +426,8 @@ class ComposeCapabilityRuntimeHost
         // Docker may echo parts of a dynamic Compose input in an error. A
         // secret-bearing `up` therefore records only a fixed diagnosis, never
         // provider stderr, argv or an overlay fragment.
+        : readinessTimedOut
+        ? "Sealed launch-group MCP readiness did not complete before its declared deadline."
         : isRuntimeStartAction(entry.action) && group.secretSlots.length > 0
         ? "Sealed secret-bearing launch group did not reach its required active state."
         : compactFailure(execution),
@@ -796,8 +839,12 @@ class ComposeCapabilityRuntimeHost
   async #inspect(
     group: CapabilityRuntimeLaunchGroup,
     supplied?: Launch,
+    options: { readonly ignorePendingReadiness?: boolean } = {},
   ): Promise<GroupInspection> {
     const launch = supplied ?? await this.#launch(group);
+    const readinessDisposition = options.ignorePendingReadiness
+      ? undefined
+      : await this.#readinessDisposition(group);
     const [ps, ...images] = await Promise.all([
       this.#compose(launch, ["ps", "--all", "--format", "json"]),
       ...group.materials.map((member) =>
@@ -871,14 +918,21 @@ class ComposeCapabilityRuntimeHost
             state = {
               material: installed,
               // A sealed group without a Docker healthcheck proves only that
-              // its owned process is running. Do not invent an HTTP readiness
-              // probe for it; this remains operational state, never provider
-              // qualification or an engineering verdict. A service that does
-              // declare a healthcheck must report it healthy.
+              // its owned process is running. A declared launch-group
+              // readiness contract keeps that process `starting` until the
+              // adapter has completed its bounded read-only MCP handshake;
+              // it remains operational state, never qualification or an
+              // engineering verdict. A service that declares a Docker
+              // healthcheck must also report it healthy.
               runtime: actual.status === "running" &&
-                  (actual.health === "healthy" ||
-                    (actual.health === null &&
-                      !serviceDeclaresHealthcheck(group, member.serviceName)))
+                  readinessDisposition === "starting"
+                ? "starting"
+                : actual.status === "running" && readinessDisposition === "degraded"
+                ? "degraded"
+                : actual.status === "running" &&
+                    (actual.health === "healthy" ||
+                      (actual.health === null &&
+                        !serviceDeclaresHealthcheck(group, member.serviceName)))
                 ? "active"
                 : actual.status === "running"
                 ? "degraded"
@@ -894,6 +948,62 @@ class ComposeCapabilityRuntimeHost
       values.push({ material: member.material, state });
     }
     return { ownership, states, values, owned };
+  }
+
+  /**
+   * A pending readiness-bearing start is physically running but not active.
+   * A terminal failed/uncertain start remains degraded rather than becoming
+   * silently usable when a late process eventually opens its port.
+   */
+  async #readinessDisposition(
+    group: CapabilityRuntimeLaunchGroup,
+  ): Promise<"starting" | "degraded" | undefined> {
+    if (group.readiness === undefined) return undefined;
+    const reference = capabilityRuntimeLaunchGroupReference(group);
+    const latest = (await this.options.journal.list()).filter((entry) =>
+      isRuntimeStartAction(entry.action) &&
+      sameCapabilityRuntimeLaunchGroupReference(entry.launchGroup, reference)
+    ).toSorted((left, right) =>
+      left.plannedAt.localeCompare(right.plannedAt) || left.id.localeCompare(right.id)
+    ).at(-1);
+    // A readiness-bearing group observed outside a succeeded H1 start has no
+    // durable proof that its MCP endpoint accepted the read-only handshake.
+    // It therefore remains `starting` until H1 reconciles the sealed group.
+    if (!latest) return "starting";
+    const outcome = (await this.options.journal.listOutcomes()).find((candidate) =>
+      candidate.journalEntryId === latest.id
+    );
+    if (!outcome) return "starting";
+    return outcome.status === "succeeded" ? undefined : "degraded";
+  }
+
+  /**
+   * Bounded lifecycle readiness only. The probe is `tools/list`, never an
+   * engineering `tools/call`; retries apply exclusively to that idempotent
+   * transport handshake and are declared by the immutable launch group.
+   */
+  async #awaitReadiness(launch: Launch): Promise<boolean> {
+    const readiness = launch.group.readiness;
+    if (!readiness) return true;
+    const ports = capabilityRuntimeLaunchGroupPublishedLoopbackHostPorts(launch.group);
+    if (ports.length !== 1) return false;
+    const startedAt = this.#monotonicNow();
+    let remaining = readiness.timeoutMs;
+    while (remaining > 0) {
+      try {
+        await this.#readinessProbe.probe({
+          mcpUrl: `http://127.0.0.1:${ports[0]}/mcp`,
+          timeoutMs: Math.min(readiness.attemptTimeoutMs, remaining),
+        });
+        return true;
+      } catch {
+        remaining = readiness.timeoutMs - (this.#monotonicNow() - startedAt);
+        if (remaining <= 0) break;
+        await this.#wait(Math.min(readiness.retryIntervalMs, remaining));
+        remaining = readiness.timeoutMs - (this.#monotonicNow() - startedAt);
+      }
+    }
+    return false;
   }
 
   async #stopOwnedReverse(
@@ -1634,4 +1744,34 @@ function dockerEnvironment(
     result[key] = value;
   }
   return Object.freeze(result);
+}
+
+/**
+ * Reuses the shared stateless MCP transport but sends only `tools/list`.
+ * Unlike a fleet health probe, a launch group derives this short-lived
+ * loopback publication from its own sealed Compose descriptor and never reads
+ * or changes the provider manifest.
+ */
+async function probeReadOnlyMcpTools(input: {
+  readonly mcpUrl: string;
+  readonly timeoutMs: number;
+}, fetchImplementation?: typeof fetch): Promise<void> {
+  const result = await new StatelessMcpHttpTransport({
+    mcpUrl: input.mcpUrl,
+    timeoutMs: input.timeoutMs,
+    ...(fetchImplementation === undefined ? {} : { fetch: fetchImplementation }),
+  }).request({
+    method: "tools/list",
+    label: "launch-group readiness",
+    params: {},
+  });
+  if (result.resultType !== "complete" || !Array.isArray(result.tools)) {
+    throw new Error(
+      "launch-group readiness did not return a complete tools/list result",
+    );
+  }
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }

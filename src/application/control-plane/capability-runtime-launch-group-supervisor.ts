@@ -268,7 +268,11 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
           await this.#assertNoPending(group);
         } else {
           await this.#assertNoPending(group);
-          disposition = await this.#claim(
+          // A fresh execution lease is deliberately not delivered while an
+          // owned process is merely starting. The sealed host mutation keeps
+          // the journal intent pending through its bounded readiness check;
+          // only then may H1 create or reuse the session lease.
+          await this.#assertLeasePreflight(
             lease,
             request.reuseExistingLease,
             request.at,
@@ -291,12 +295,20 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
           }
         }
         const installed = await this.#observe(group);
-        // A non-secret group is already exactly usable. A secret-bearing
-        // group must still run the fixed `up --wait` reconciliation using the
-        // same opaque snapshot that will construct the provider client: after
-        // a process restart or token rotation, observation alone cannot prove
-        // that the existing container uses that generation.
-        if (allActive(group, installed) && group.secretSlots.length === 0) {
+        // A non-secret, readiness-free group is already exactly usable. A
+        // secret-bearing or readiness-gated group must still run the fixed
+        // reconciliation: after a process restart, observation alone cannot
+        // prove either that a container uses the secret generation or that
+        // its MCP endpoint is accepting requests.
+        if (
+          allActive(group, installed) && group.secretSlots.length === 0 &&
+          group.readiness === undefined
+        ) {
+          disposition ??= await this.#claim(
+            lease,
+            request.reuseExistingLease,
+            request.at,
+          );
           return {
             group: capabilityRuntimeLaunchGroupReference(group),
             states: installed,
@@ -327,6 +339,11 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
             "Capability runtime group start did not produce an exact active group observation.",
           );
         }
+        disposition ??= await this.#claim(
+          lease,
+          request.reuseExistingLease,
+          request.at,
+        );
         return {
           group: capabilityRuntimeLaunchGroupReference(group),
           states: active,

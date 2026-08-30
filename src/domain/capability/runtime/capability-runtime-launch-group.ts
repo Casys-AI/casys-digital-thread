@@ -9,6 +9,7 @@
 
 import {
   arrayOf,
+  closedRecord,
   deepFreeze,
   exactRecord,
   exactVersionToken,
@@ -52,6 +53,12 @@ export interface CapabilityRuntimeLaunchGroup {
     readonly content: string;
     readonly fingerprint: ContentFingerprint;
   };
+  /**
+   * Optional, sealed process-readiness contract for a published MCP service.
+   * It is a host-lifecycle fact only: no binding, provider envelope, tool
+   * invocation, or credential is carried here.
+   */
+  readonly readiness?: CapabilityRuntimeLaunchGroupReadiness;
   readonly retention: {
     readonly containers: "stop-only";
     readonly images: "preserve";
@@ -67,6 +74,21 @@ export interface CapabilityRuntimeLaunchGroupMaterial {
   readonly serviceName: string;
   readonly imageReference: string;
   readonly ownership: readonly { readonly key: string; readonly value: string }[];
+}
+
+/**
+ * A bounded read-only MCP handshake after Compose has started the exact group.
+ * The adapter derives the one loopback publication from the sealed Compose
+ * descriptor; callers never provide a URL, port, provider name, or tool.
+ */
+export interface CapabilityRuntimeLaunchGroupReadiness {
+  readonly kind: "mcp-tools-list";
+  /** Total bounded readiness window, including all attempts and waits. */
+  readonly timeoutMs: number;
+  /** Per-read-only-probe transport deadline. */
+  readonly attemptTimeoutMs: number;
+  /** Declared spacing between failed readiness probes. */
+  readonly retryIntervalMs: number;
 }
 
 export function capabilityRuntimeLaunchGroupReference(
@@ -99,6 +121,7 @@ export function capabilityRuntimeLaunchGroupManifest(
     acquisition: group.acquisition,
     materials: group.materials,
     compose: group.compose,
+    ...(group.readiness === undefined ? {} : { readiness: group.readiness }),
     retention: group.retention,
     secretSlots: group.secretSlots,
     security: group.security,
@@ -114,7 +137,20 @@ export function fingerprintCapabilityRuntimeLaunchGroup(
 export async function validateCapabilityRuntimeLaunchGroup(
   value: unknown,
 ): Promise<CapabilityRuntimeLaunchGroup> {
-  const root = exactRecord(value, [
+  const root = closedRecord(value, [
+    "schemaVersion",
+    "id",
+    "version",
+    "fingerprint",
+    "activationPolicy",
+    "acquisition",
+    "materials",
+    "compose",
+    "readiness",
+    "retention",
+    "secretSlots",
+    "security",
+  ], [
     "schemaVersion",
     "id",
     "version",
@@ -139,6 +175,7 @@ export async function validateCapabilityRuntimeLaunchGroup(
     acquisition.projectName,
     materials,
   );
+  const readiness = parseReadiness(root.readiness);
   const group = deepFreeze({
     schemaVersion: CAPABILITY_RUNTIME_LAUNCH_GROUP_SCHEMA_VERSION,
     id: safeId(root.id, "$launchGroup.id"),
@@ -148,6 +185,7 @@ export async function validateCapabilityRuntimeLaunchGroup(
     acquisition,
     materials,
     compose,
+    ...(readiness === undefined ? {} : { readiness }),
     retention: parseRetention(root.retention),
     secretSlots: parseSlots(root.secretSlots),
     security: oneOf(
@@ -156,6 +194,14 @@ export async function validateCapabilityRuntimeLaunchGroup(
       "$launchGroup.security",
     ),
   });
+  if (
+    readiness !== undefined &&
+    capabilityRuntimeLaunchGroupPublishedLoopbackHostPorts(group).length !== 1
+  ) {
+    throw new TypeError(
+      "$launchGroup.readiness requires exactly one published loopback host port.",
+    );
+  }
   const expected = await fingerprintCapabilityRuntimeLaunchGroup(
     capabilityRuntimeLaunchGroupManifest(group),
   );
@@ -684,6 +730,54 @@ function parseSlots(value: unknown): readonly string[] {
   );
   rejectDuplicates(slots, "$launchGroup.secretSlots");
   return deepFreeze(slots);
+}
+
+function parseReadiness(
+  value: unknown,
+): CapabilityRuntimeLaunchGroupReadiness | undefined {
+  if (value === undefined) return undefined;
+  const root = exactRecord(value, [
+    "kind",
+    "timeoutMs",
+    "attemptTimeoutMs",
+    "retryIntervalMs",
+  ], "$launchGroup.readiness");
+  literalValue(root.kind, "mcp-tools-list", "$launchGroup.readiness.kind");
+  const timeoutMs = readinessMilliseconds(
+    root.timeoutMs,
+    "$launchGroup.readiness.timeoutMs",
+  );
+  const attemptTimeoutMs = readinessMilliseconds(
+    root.attemptTimeoutMs,
+    "$launchGroup.readiness.attemptTimeoutMs",
+  );
+  const retryIntervalMs = readinessMilliseconds(
+    root.retryIntervalMs,
+    "$launchGroup.readiness.retryIntervalMs",
+  );
+  if (attemptTimeoutMs > timeoutMs || retryIntervalMs > timeoutMs) {
+    throw new TypeError(
+      "$launchGroup.readiness attempt and retry windows must not exceed the total timeout.",
+    );
+  }
+  return deepFreeze({
+    kind: "mcp-tools-list" as const,
+    timeoutMs,
+    attemptTimeoutMs,
+    retryIntervalMs,
+  });
+}
+
+function readinessMilliseconds(value: unknown, path: string): number {
+  if (
+    !Number.isSafeInteger(value) || typeof value !== "number" || value < 1 ||
+    value > 300_000
+  ) {
+    throw new TypeError(
+      `${path} must be a bounded positive integer milliseconds value.`,
+    );
+  }
+  return value;
 }
 
 function pinnedReference(value: unknown, path: string): string {

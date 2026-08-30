@@ -374,8 +374,9 @@ async function build123dLaunchGroup(input: {
         ports: [`127.0.0.1:${input.port}:3014`],
         volumes: [`${input.volume}:/exports`],
         // Exact limits from the reviewed provider Compose contract. The image
-        // does not declare a healthcheck, so this group intentionally does not
-        // add one; `running` is the bounded operational readiness signal.
+        // does not declare a Docker healthcheck; launch-group readiness below
+        // therefore verifies the already-published MCP protocol in read-only
+        // mode before H1 delivers a runtime lease.
         mem_limit: "2g",
         cpus: 2,
         pids_limit: 128,
@@ -406,6 +407,12 @@ async function build123dLaunchGroup(input: {
       ),
     ],
     compose,
+    readiness: {
+      kind: "mcp-tools-list" as const,
+      timeoutMs: 15_000,
+      attemptTimeoutMs: 1_000,
+      retryIntervalMs: 250,
+    },
     retention: {
       containers: "stop-only" as const,
       images: "preserve" as const,

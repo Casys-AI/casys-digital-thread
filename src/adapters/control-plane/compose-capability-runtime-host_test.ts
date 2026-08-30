@@ -38,7 +38,10 @@ import {
 import {
   FileCapabilityRuntimeRolloverSagaStore,
 } from "./file-capability-runtime-rollover-saga-store.ts";
-import { createCapabilityRuntimeHostAdapter } from "./compose-capability-runtime-host.ts";
+import {
+  type CapabilityRuntimeLaunchReadinessProbe,
+  createCapabilityRuntimeHostAdapter,
+} from "./compose-capability-runtime-host.ts";
 import {
   CHRONO_MCP_BEARER_TOKEN_SLOT,
 } from "./local-chrono-runtime-secret-resolver.ts";
@@ -676,7 +679,7 @@ Deno.test("Compose host rejects non-equivalent RepoDigests even when Docker Hub 
   }
 });
 
-Deno.test("Build123d group without a declared healthcheck is active only when its exact owned service is running", async () => {
+Deno.test("Build123d group stays starting until H1 records its declared MCP readiness", async () => {
   const group = (await createFirstPartyCapabilityRuntimeLaunchGroups()).find((
     candidate,
   ) => candidate.id === "casys-build123d-sandbox")!;
@@ -687,7 +690,111 @@ Deno.test("Build123d group without a declared healthcheck is active only when it
     group.materials.map((member) => member.material),
   );
 
-  assertEquals([...states.values()][0]?.runtime, "active");
+  assertEquals([...states.values()][0]?.runtime, "starting");
+});
+
+Deno.test("Compose host keeps a delayed MCP publication starting until its read-only readiness probe succeeds", async () => {
+  const group = (await createFirstPartyCapabilityRuntimeLaunchGroups()).find((
+    candidate,
+  ) => candidate.id === "casys-build123d-sandbox")!;
+  const runner = new FakeGroupRunner(group, { images: true, state: "absent" });
+  let probeStarted!: () => void;
+  const started = new Promise<void>((resolve) => probeStarted = resolve);
+  let releaseProbe!: () => void;
+  const release = new Promise<void>((resolve) => releaseProbe = resolve);
+  const fixture = host(group, runner, {
+    readinessProbe: {
+      probe: async ({ mcpUrl, timeoutMs }) => {
+        assertEquals(mcpUrl, "http://127.0.0.1:3024/mcp");
+        assertEquals(timeoutMs, 1_000);
+        probeStarted();
+        await release;
+      },
+    },
+  });
+
+  const mutation = mutate(fixture, group, "runtime-start");
+  await started;
+  const whileProbing = await fixture.host.observe(
+    group.materials.map((member) => member.material),
+  );
+  assertEquals([...whileProbing.values()][0]?.runtime, "starting");
+
+  releaseProbe();
+  const outcome = await mutation;
+  assertEquals(outcome.status, "succeeded");
+  await fixture.journal.appendOutcome(outcome);
+  const after = await fixture.host.observe(
+    group.materials.map((member) => member.material),
+  );
+  assertEquals([...after.values()][0]?.runtime, "active");
+});
+
+Deno.test("Compose host retries only read-only tools/list while a delayed MCP endpoint becomes ready", async () => {
+  const group = (await createFirstPartyCapabilityRuntimeLaunchGroups()).find((
+    candidate,
+  ) => candidate.id === "casys-build123d-sandbox")!;
+  const runner = new FakeGroupRunner(group, { images: true, state: "absent" });
+  let now = 0;
+  const methods: string[] = [];
+  const fixture = host(group, runner, {
+    readinessFetch: (async (_url, init) => {
+      const body = JSON.parse(String(init?.body)) as { method?: string };
+      methods.push(body.method ?? "");
+      if (methods.length < 3) return new Response("not listening", { status: 503 });
+      return Response.json({
+        jsonrpc: "2.0",
+        id: 1,
+        result: { resultType: "complete", tools: [] },
+      });
+    }) as typeof fetch,
+    monotonicNow: () => now,
+    wait: (milliseconds) => {
+      now += milliseconds;
+      return Promise.resolve();
+    },
+  });
+
+  const outcome = await mutate(fixture, group, "runtime-start");
+
+  assertEquals(outcome.status, "succeeded");
+  assertEquals(methods, ["tools/list", "tools/list", "tools/list"]);
+});
+
+Deno.test("Compose host records a bounded readiness timeout as failed and degraded", async () => {
+  const group = (await createFirstPartyCapabilityRuntimeLaunchGroups()).find((
+    candidate,
+  ) => candidate.id === "casys-build123d-sandbox")!;
+  const runner = new FakeGroupRunner(group, { images: true, state: "absent" });
+  let now = 0;
+  let attempts = 0;
+  const fixture = host(group, runner, {
+    readinessProbe: {
+      probe: () => {
+        attempts++;
+        return Promise.reject(new Error("MCP not listening"));
+      },
+    },
+    monotonicNow: () => now,
+    wait: (milliseconds) => {
+      now += milliseconds;
+      return Promise.resolve();
+    },
+  });
+
+  const outcome = await mutate(fixture, group, "runtime-start");
+
+  assertEquals(outcome.status, "failed");
+  assertEquals(
+    outcome.detail,
+    "Sealed launch-group MCP readiness did not complete before its declared deadline.",
+  );
+  assertEquals(attempts, 60);
+  await fixture.journal.appendOutcome(outcome);
+  const observed = await fixture.host.observe(
+    group.materials.map((member) => member.material),
+  );
+  assertEquals([...observed.values()][0]?.runtime, "degraded");
 });
 
 Deno.test("Compose host translates only the observed Docker daemon platform, never the controller architecture", async () => {
@@ -942,6 +1049,10 @@ function host(
   options: {
     readonly secrets?: CapabilityRuntimeSecretSlotObserver;
     readonly secretInjector?: CapabilityRuntimeLaunchSecretInjector;
+    readonly readinessProbe?: CapabilityRuntimeLaunchReadinessProbe;
+    readonly readinessFetch?: typeof fetch;
+    readonly monotonicNow?: () => number;
+    readonly wait?: (milliseconds: number) => Promise<void>;
   } = {},
 ) {
   const journal = new InMemoryCapabilityRuntimeJournal();
@@ -953,6 +1064,10 @@ function host(
         Promise.resolve(new Map(slots.map((slot) => [slot, "unavailable" as const]))),
     },
     secretInjector: options.secretInjector,
+    readinessProbe: options.readinessProbe,
+    readinessFetch: options.readinessFetch,
+    monotonicNow: options.monotonicNow,
+    wait: options.wait,
     runner,
     composeRoot: "/workspace",
     paths: { realPath: () => Promise.resolve("/canonical") },

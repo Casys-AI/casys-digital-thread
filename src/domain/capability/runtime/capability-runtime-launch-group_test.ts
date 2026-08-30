@@ -36,6 +36,30 @@ Deno.test("launch group topology rejects a legacy qualification field", async ()
   );
 });
 
+Deno.test("launch group seals a bounded read-only MCP readiness contract to one loopback publication", async () => {
+  const parsed = await validateCapabilityRuntimeLaunchGroup(
+    await validGroup({ readiness: true }),
+  );
+
+  assertEquals(parsed.readiness, {
+    kind: "mcp-tools-list",
+    timeoutMs: 15_000,
+    attemptTimeoutMs: 1_000,
+    retryIntervalMs: 250,
+  });
+});
+
+Deno.test("launch group refuses MCP readiness without one published loopback port", async () => {
+  await assertRejects(
+    async () =>
+      await validateCapabilityRuntimeLaunchGroup(
+        await validGroup({ readiness: true, readinessWithoutPort: true }),
+      ),
+    TypeError,
+    "requires exactly one published loopback host port",
+  );
+});
+
 Deno.test("launch group rejects a non-loopback port before it can publish a service", async () => {
   const group = structuredClone(await validGroup()) as { compose: { content: string } };
   const compose = JSON.parse(group.compose.content) as {
@@ -85,7 +109,11 @@ Deno.test("launch group rejects interpolation and undeclared Compose topology", 
 });
 
 async function validGroup(
-  options: { readonly volume?: boolean } = {},
+  options: {
+    readonly volume?: boolean;
+    readonly readiness?: boolean;
+    readonly readinessWithoutPort?: boolean;
+  } = {},
 ): Promise<unknown> {
   const projectName = "casys-test";
   const materials = [
@@ -103,6 +131,9 @@ async function validGroup(
         image: materials[1]!.imageReference,
         depends_on: { database: { condition: "service_healthy" } },
         healthcheck: health(),
+        ...(options.readiness && !options.readinessWithoutPort
+          ? { ports: ["127.0.0.1:3000:3000"] }
+          : {}),
       },
     },
     volumes: options.volume === false ? {} : { "test-data": {} },
@@ -119,6 +150,16 @@ async function validGroup(
       content,
       fingerprint: await fingerprintCapabilityRuntimeComposeContent(content),
     },
+    ...(options.readiness
+      ? {
+        readiness: {
+          kind: "mcp-tools-list" as const,
+          timeoutMs: 15_000,
+          attemptTimeoutMs: 1_000,
+          retryIntervalMs: 250,
+        },
+      }
+      : {}),
     retention: {
       containers: "stop-only" as const,
       images: "preserve" as const,

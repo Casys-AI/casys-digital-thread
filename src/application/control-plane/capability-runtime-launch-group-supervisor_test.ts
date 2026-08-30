@@ -95,6 +95,85 @@ Deno.test("group supervisor shares one lease across N groups and stops eligible 
   assertEquals(await fixture.leases.listActive(AT), []);
 });
 
+Deno.test("a fresh execution lease is not created until delayed launch-group readiness completes", async () => {
+  const first = await group("casys-first", "first");
+  const fixture = supervisor([first]);
+  let readinessEntered!: () => void;
+  const entered = new Promise<void>((resolve) => readinessEntered = resolve);
+  let releaseReadiness!: () => void;
+  fixture.host.startGate = new Promise<void>((resolve) => releaseReadiness = resolve);
+  fixture.host.onRuntimeStart = readinessEntered;
+  const lease = sessionLease([first]);
+
+  const activation = fixture.supervisor.ensureActive({
+    group: capabilityRuntimeLaunchGroupReference(first),
+    expectedMaterials: exactMaterials(first),
+    effectiveRuntimeProjection: await projection(first),
+    resolvedOperation: resolvedOperation(first),
+    projectId: lease.projectId,
+    lease,
+    at: AT,
+    reuseExistingLease: "reject",
+  });
+  await entered;
+
+  assertEquals(await fixture.leases.listActive(AT), []);
+  assertEquals(fixture.host.calls.map((call) => call.action), [
+    "material-acquire",
+    "runtime-start",
+  ]);
+
+  releaseReadiness();
+  const result = await activation;
+  assertEquals(result.leaseDisposition, "created");
+  assertEquals((await fixture.leases.listActive(AT)).map((item) => item.id), [
+    lease.id,
+  ]);
+});
+
+Deno.test("an already-running readiness group is reconciled before a fresh lease is delivered", async () => {
+  const first = await group("casys-first", "first", ["first"], [], true);
+  const fixture = supervisor([first]);
+  await appendIntent(
+    fixture,
+    first,
+    "runtime-start",
+    "previous-ready-start",
+    "2026-08-29T00:00:00.000Z",
+    inactive(first),
+    "succeeded",
+  );
+  setStates(fixture, first, "active");
+  let readinessEntered!: () => void;
+  const entered = new Promise<void>((resolve) => readinessEntered = resolve);
+  let releaseReadiness!: () => void;
+  fixture.host.startGate = new Promise<void>((resolve) => releaseReadiness = resolve);
+  fixture.host.onRuntimeStart = readinessEntered;
+  const lease = sessionLease([first]);
+
+  const activation = fixture.supervisor.ensureActive({
+    group: capabilityRuntimeLaunchGroupReference(first),
+    expectedMaterials: exactMaterials(first),
+    effectiveRuntimeProjection: await projection(first),
+    resolvedOperation: resolvedOperation(first),
+    projectId: lease.projectId,
+    lease,
+    at: AT,
+    reuseExistingLease: "reject",
+  });
+  await entered;
+
+  assertEquals(await fixture.leases.listActive(AT), []);
+  assertEquals(fixture.host.calls.map((call) => call.action), ["runtime-start"]);
+
+  releaseReadiness();
+  const result = await activation;
+  assertEquals(result.leaseDisposition, "created");
+  assertEquals((await fixture.leases.listActive(AT)).map((item) => item.id), [
+    lease.id,
+  ]);
+});
+
 Deno.test("queued pre-claim resume rechecks the atomic lease owner before journal or host observation", async () => {
   const first = await group("casys-first", "first");
   const fixture = supervisor([first], undefined, "unavailable", { now: () => AT });
@@ -2079,6 +2158,8 @@ class StateTransitionHost implements CapabilityRuntimeHostMutator {
   }[] = [];
   readonly secretSnapshots: CapabilityRuntimeSecretSnapshot[] = [];
   freezeRuntime = false;
+  startGate: Promise<void> | undefined;
+  onRuntimeStart: (() => void) | undefined;
 
   constructor(
     private readonly states: InMemoryCapabilityRuntimeStateObserver,
@@ -2103,6 +2184,13 @@ class StateTransitionHost implements CapabilityRuntimeHostMutator {
     await Promise.resolve();
     const entry = input.authorization.entry;
     this.calls.push({ action: entry.action, groupId: entry.launchGroup.id });
+    if (
+      (entry.action === "runtime-start" ||
+        entry.action === "runtime-qualification-start")
+    ) {
+      this.onRuntimeStart?.();
+      await this.startGate;
+    }
     if (entry.action === this.throwOn) {
       throw new Error(`host-${entry.action}-threw`);
     }
@@ -2157,6 +2245,7 @@ async function group(
   materialId: string,
   memberIds: readonly string[] = [materialId],
   secretSlots: readonly string[] = [],
+  readiness = false,
 ): Promise<CapabilityRuntimeLaunchGroup> {
   const projectName = id;
   const composeContent = deterministicJson({
@@ -2172,6 +2261,7 @@ async function group(
             timeout: "1s",
             retries: 1,
           },
+          ...(readiness && index === 0 ? { ports: ["127.0.0.1:3000:3000"] } : {}),
         }];
       })),
     },
@@ -2213,6 +2303,16 @@ async function group(
     },
     secretSlots,
     security: "reviewed" as const,
+    ...(readiness
+      ? {
+        readiness: {
+          kind: "mcp-tools-list" as const,
+          timeoutMs: 15_000,
+          attemptTimeoutMs: 1_000,
+          retryIntervalMs: 250,
+        },
+      }
+      : {}),
   };
   return { ...body, fingerprint: await fingerprintCapabilityRuntimeLaunchGroup(body) };
 }
