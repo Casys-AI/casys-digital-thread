@@ -328,7 +328,9 @@ class ComposeCapabilityRuntimeHost
     }
     const launch = await this.#launch(group);
     const before = await this.#inspect(group, launch);
-    if (before.ownership === "mismatch") {
+    const mayReconcileRolloverPredecessor = before.ownership === "mismatch" &&
+      await this.#mayReconcileRolloverPredecessor(group, entry.action);
+    if (before.ownership === "mismatch" && !mayReconcileRolloverPredecessor) {
       return this.#outcome(
         entry,
         "failed",
@@ -344,7 +346,11 @@ class ComposeCapabilityRuntimeHost
         "Group ownership or health could not be observed.",
       );
     }
-    const command = commandFor(entry.action, before);
+    const command = commandFor(
+      entry.action,
+      before,
+      mayReconcileRolloverPredecessor,
+    );
     if (command === null) {
       return this.#outcome(
         entry,
@@ -521,6 +527,27 @@ class ComposeCapabilityRuntimeHost
       );
     }
     return matches[0]!;
+  }
+
+  /**
+   * A normal successor start may reconcile only the one registered predecessor
+   * topology that Docker currently observes. All other mismatch states remain
+   * fail-closed, including qualification starts and ambiguous rollover pairs.
+   */
+  async #mayReconcileRolloverPredecessor(
+    group: CapabilityRuntimeLaunchGroup,
+    action: CapabilityRuntimeJournalEntry["action"],
+  ): Promise<boolean> {
+    if (action !== "runtime-start") return false;
+    const definitions = (this.options.rollovers ?? []).filter((definition) =>
+      sameCapabilityRuntimeLaunchGroupReference(
+        capabilityRuntimeLaunchGroupReference(definition.successor),
+        capabilityRuntimeLaunchGroupReference(group),
+      )
+    );
+    if (definitions.length !== 1) return false;
+    return (await this.#observeRolloverDefinition(definitions[0]!)).classification ===
+      "predecessor";
   }
 
   async #observeRolloverDefinition(
@@ -1048,13 +1075,17 @@ function classifyRolloverHost(
 function commandFor(
   action: CapabilityRuntimeJournalEntry["action"],
   inspection: GroupInspection,
+  allowRolloverPredecessorReconcile = false,
 ): readonly string[] | null {
   switch (action) {
     case "material-acquire":
       return ["pull"];
     case "runtime-start":
     case "runtime-qualification-start":
-      if (inspection.ownership !== "absent" && inspection.ownership !== "owned") {
+      if (
+        inspection.ownership !== "absent" && inspection.ownership !== "owned" &&
+        !allowRolloverPredecessorReconcile
+      ) {
         return null;
       }
       // No --no-deps/remove-orphans and no implicit pull after the durable

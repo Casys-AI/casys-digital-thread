@@ -189,6 +189,106 @@ Deno.test("Compose host performs the sealed SysON successor rollover commands ex
   }
 });
 
+Deno.test("Compose host normal-start reconciles only an observed registered rollover predecessor", async () => {
+  const fixture = await rolloverHostFixture();
+  try {
+    fixture.runner.installSuccessorMaterial();
+
+    const started = await mutate(
+      { host: fixture.host, journal: fixture.journal },
+      fixture.successor,
+      "runtime-start",
+    );
+
+    assertEquals(started.status, "succeeded");
+    assertEquals(
+      fixture.runner.calls.filter((call) => call.includes("up")),
+      [
+        composeCommand(fixture.successor, [
+          "up",
+          "--detach",
+          "--wait",
+          "--wait-timeout",
+          "300",
+          "--pull",
+          "never",
+          "--no-build",
+        ]),
+      ],
+    );
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("Compose host keeps qualification-start and unregistered mismatch fail-closed", async () => {
+  const rollover = await rolloverHostFixture();
+  try {
+    rollover.runner.installSuccessorMaterial();
+    const qualification = await mutate(
+      { host: rollover.host, journal: rollover.journal },
+      rollover.successor,
+      "runtime-qualification-start",
+    );
+    assertEquals(qualification.status, "failed");
+    assertEquals(rollover.runner.calls.some((call) => call.includes("up")), false);
+  } finally {
+    await rollover.dispose();
+  }
+
+  const group = await sysonGroup();
+  const runner = new FakeGroupRunner(group, {
+    images: true,
+    state: "running",
+    foreignService: "mcp-syson",
+  });
+  const fixture = host(group, runner);
+  const normal = await mutate(fixture, group, "runtime-start");
+  assertEquals(normal.status, "failed");
+  assertEquals(runner.calls.some((call) => call.includes("up")), false);
+});
+
+Deno.test("Compose host rejects ambiguous registered rollover successors without reconciling", async () => {
+  const fixture = await rolloverHostFixture({ duplicateSuccessorDefinition: true });
+  try {
+    fixture.runner.installSuccessorMaterial();
+
+    const normal = await mutate(
+      { host: fixture.host, journal: fixture.journal },
+      fixture.successor,
+      "runtime-start",
+    );
+
+    assertEquals(normal.status, "failed");
+    assertEquals(fixture.runner.calls.some((call) => call.includes("up")), false);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("Compose host rejects hybrid and unknown registered rollover observations without reconciling", async () => {
+  for (const options of [
+    { mismatchedSharedService: "syson-db" },
+    { unknownPredecessorObservation: true },
+  ] as const) {
+    const fixture = await rolloverHostFixture(options);
+    try {
+      fixture.runner.installSuccessorMaterial();
+
+      const normal = await mutate(
+        { host: fixture.host, journal: fixture.journal },
+        fixture.successor,
+        "runtime-start",
+      );
+
+      assertEquals(normal.status, "failed");
+      assertEquals(fixture.runner.calls.some((call) => call.includes("up")), false);
+    } finally {
+      await fixture.dispose();
+    }
+  }
+});
+
 Deno.test("Compose host consumes only the private qualification-start brand for the same sealed health-wait start", async () => {
   const group = await sysonGroup();
   const runner = new FakeGroupRunner(group, { images: true, state: "absent" });
@@ -726,7 +826,13 @@ async function sysonGroup(): Promise<CapabilityRuntimeLaunchGroup> {
   return (await createFirstPartyCapabilityRuntimeLaunchGroups())[0]!;
 }
 
-async function rolloverHostFixture() {
+async function rolloverHostFixture(
+  options: {
+    readonly duplicateSuccessorDefinition?: boolean;
+    readonly mismatchedSharedService?: string;
+    readonly unknownPredecessorObservation?: boolean;
+  } = {},
+) {
   const [catalog, predecessorUnit, predecessor, successor] = await Promise.all([
     createFirstPartyCapabilityRuntimeCatalog(),
     createFirstPartySysonRolloverPredecessorUnit(),
@@ -749,20 +855,24 @@ async function rolloverHostFixture() {
   );
   const directory = await Deno.makeTempDir({ prefix: "compose-rollover-" });
   const sagas = new FileCapabilityRuntimeRolloverSagaStore(directory);
-  const runner = new RolloverFakeGroupRunner(predecessor, successor);
+  const runner = new RolloverFakeGroupRunner(predecessor, successor, options);
+  const journal = new InMemoryCapabilityRuntimeJournal();
   const host = createCapabilityRuntimeHostAdapter({
     registry: new FixedCapabilityRuntimeLaunchGroupRegistry([successor]),
-    journal: new InMemoryCapabilityRuntimeJournal(),
+    journal,
     secrets: { observe: () => Promise.resolve(new Map()) },
     runner,
     composeRoot: "/workspace",
     paths: { realPath: () => Promise.resolve("/canonical") },
-    rollovers: [{ predecessor, successor }],
+    rollovers: options.duplicateSuccessorDefinition
+      ? [{ predecessor, successor }, { predecessor, successor }]
+      : [{ predecessor, successor }],
   });
   return {
     identity,
     sagas,
     runner,
+    journal,
     host,
     successor,
     dispose: () => Deno.remove(directory, { recursive: true }),
@@ -1028,11 +1138,21 @@ class RolloverFakeGroupRunner implements CommandRunner {
   constructor(
     private readonly predecessor: CapabilityRuntimeLaunchGroup,
     private readonly successor: CapabilityRuntimeLaunchGroup,
+    private readonly options: {
+      readonly mismatchedSharedService?: string;
+      readonly unknownPredecessorObservation?: boolean;
+    } = {},
   ) {
     this.#active = predecessor;
     for (const member of predecessor.materials) {
       this.#installed.add(member.imageReference);
       this.#states.set(member.serviceName, "running");
+    }
+  }
+
+  installSuccessorMaterial(): void {
+    for (const member of this.successor.materials) {
+      this.#installed.add(member.imageReference);
     }
   }
 
@@ -1077,7 +1197,9 @@ class RolloverFakeGroupRunner implements CommandRunner {
         Image: `sha256:${service}`,
         Config: {
           Labels: {
-            "com.docker.compose.project": this.#active.acquisition.projectName,
+            "com.docker.compose.project": service === this.options.mismatchedSharedService
+              ? "foreign-project"
+              : this.#active.acquisition.projectName,
             "com.docker.compose.service": service,
           },
         },
@@ -1093,6 +1215,12 @@ class RolloverFakeGroupRunner implements CommandRunner {
       }]));
     }
     if (args.includes("ps")) {
+      if (
+        this.options.unknownPredecessorObservation &&
+        input === this.predecessor.compose.content
+      ) {
+        return failure("predecessor Docker observation unavailable");
+      }
       return success(JSON.stringify([...this.#states].map(([service, state]) => ({
         Service: service,
         ID: `container-${service}`,
