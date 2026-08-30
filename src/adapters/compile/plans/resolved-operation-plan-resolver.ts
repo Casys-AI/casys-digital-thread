@@ -7,11 +7,13 @@
 import {
   CALCULIX_ISOLATED_STATIC_RESOURCE_PROFILE,
   CALCULIX_RECORDED_STATIC_RESOURCE_PROFILE,
+  MODELICA_ADMITTED_ISOLATED_RESOURCE_PROFILE,
   PRESCRIBED_KINEMATICS_OBSERVATION_RESOURCE_PROFILE,
   RESOLVED_OPERATION_PLAN_V2_SCHEMA,
   resolvedOperationPlanIdForRun,
   type ResolvedOperationPlanSource,
   type ResolvedOperationPlanV2,
+  SPICE_ADMITTED_ISOLATED_RESOURCE_PROFILE,
 } from "../../../domain/compile/rop/resolved-operation-plan-v2.ts";
 import type { PrescribedKinematicsCaptureStore } from "../../../application/ports/out/mechanics/prescribed-kinematics-capture-store.ts";
 import {
@@ -69,6 +71,40 @@ import { parseSensitivityCatalogOfferCapture } from "../../../domain/sensitivity
 import type { CanonicalAssetReader } from "../../../application/ports/out/canonical-asset-reader.ts";
 import type { TechnicalCompilationAdmissionReader } from "../../../application/ports/out/compile/admission/technical-compilation-admission-reader.ts";
 import type {
+  AdmittedModelicaExecutionProfileCatalog,
+} from "../../../application/ports/out/modelica/admitted-execution-profile-catalog.ts";
+import type {
+  AdmittedSpiceExecutionProfileCatalog,
+} from "../../../application/ports/out/electrical/spice/admitted-execution-profile-catalog.ts";
+import {
+  fingerprintTechnicalSourceText,
+  type TechnicalCompilationDocument,
+  uniqueCompilationAdmissionTarget,
+} from "../../../domain/compile/admission/technical-compilation.ts";
+import {
+  fingerprintSourceAnalysisBundle,
+} from "../../../domain/compile/source/source-analysis.ts";
+import {
+  MODELICA_ADMITTED_EXECUTION_PROFILE,
+  MODELICA_ADMITTED_OUTPUT_MANIFEST,
+  SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
+} from "../../../domain/modelica/admitted/run-proposal.ts";
+import {
+  deriveAdmittedModelicaExecutionRunId,
+} from "../../../domain/modelica/admitted/execution-evidence.ts";
+import {
+  SIMULATE_RUN_ADMITTED_SPICE_OPERATION,
+  SPICE_ADMITTED_EXECUTION_PROFILE,
+  SPICE_ADMITTED_OUTPUT_MANIFEST,
+} from "../../../domain/electrical/spice/admitted/run-proposal.ts";
+import {
+  deriveAdmittedSpiceExecutionRunId,
+} from "../../../domain/electrical/spice/admitted/execution-evidence.ts";
+import {
+  COMPILE_SEAL_ADMISSION_PRODUCER_TOOL,
+  type TechnicalCompilationAdmission,
+} from "../../../domain/compile/admission/technical-compilation-proposal.ts";
+import type {
   FeaIsolatedRunAdmissionReview,
   FeaIsolatedRunAdmissionReviewer,
 } from "../../../application/ports/out/fea/isolated-v3/fea-isolated-run-admission-reviewer.ts";
@@ -82,9 +118,13 @@ import { threadSnapshotDescendsFrom } from "../../shared/stores/thread-snapshot-
 const CALCULIX_OPERATION = VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION;
 const CALCULIX_LOCAL_OPERATION = VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION;
 const PRESCRIBED_KINEMATICS_OPERATION = VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION;
+const ADMITTED_MODELICA_OPERATION = SIMULATE_RUN_ADMITTED_MODELICA_OPERATION;
+const ADMITTED_SPICE_OPERATION = SIMULATE_RUN_ADMITTED_SPICE_OPERATION;
 const SHA256 = /^[a-f0-9]{64}$/;
 const CANONICAL_CAS_URI =
   /^casys:\/\/[a-z0-9][a-z0-9.-]{0,62}\/sha256\/([a-f0-9]{64})$/;
+const TECHNICAL_COMPILATION_ADMISSION_URI_PREFIX =
+  "casys://technical-compilation-admission-capture/sha256/";
 
 /**
  * The reader receives the complete immutable Thread artifact identity.  An
@@ -110,6 +150,14 @@ export interface ResolvedOperationPlanResolverOptions {
   /** Exact V1 case capture reader; no generic filesystem or URI lookup. */
   readonly prescribedKinematics?: {
     readonly captures: Pick<PrescribedKinematicsCaptureStore, "readCase">;
+  };
+  /** Exact server-owned profile catalogue; callers cannot choose a runtime. */
+  readonly admittedModelica?: {
+    readonly profiles: Pick<AdmittedModelicaExecutionProfileCatalog, "initial">;
+  };
+  /** Exact server-owned profile catalogue; callers cannot choose a runtime. */
+  readonly admittedSpice?: {
+    readonly profiles: Pick<AdmittedSpiceExecutionProfileCatalog, "initial">;
   };
 }
 
@@ -194,6 +242,12 @@ export class ResolvedOperationPlanResolver implements FeaIsolatedRunAdmissionRev
       )
     ) {
       return await this.#prescribedKinematicsPlan(input, snapshot, common);
+    }
+    if (sameOperation(operation.id, operation.version, ADMITTED_MODELICA_OPERATION)) {
+      return await this.#admittedModelicaPlan(input, snapshot, common);
+    }
+    if (sameOperation(operation.id, operation.version, ADMITTED_SPICE_OPERATION)) {
+      return await this.#admittedSpicePlan(input, snapshot, common);
     }
     throw new TypeError(
       "resolved-operation-plan/2.0 is not defined for this operation.",
@@ -453,6 +507,235 @@ export class ResolvedOperationPlanResolver implements FeaIsolatedRunAdmissionRev
     };
   }
 
+  async #admittedModelicaPlan(
+    input: RegisteredRunPlanSealInput,
+    snapshot: ThreadSnapshot,
+    common: PlanCommon,
+  ): Promise<ResolvedOperationPlanV2> {
+    const profiles = this.options.admittedModelica?.profiles;
+    if (!profiles) {
+      throw new TypeError(
+        "The admitted Modelica operation requires its exact server-composed execution profile catalogue.",
+      );
+    }
+    const profile = await profiles.initial();
+    const resolved = await this.#admittedCompilationInput({
+      input,
+      snapshot,
+      target: "modelica-source-qualification",
+      profile,
+      label: "admitted Modelica",
+    });
+    const executionRunId = await deriveAdmittedModelicaExecutionRunId(
+      input.project.project.id,
+      input.run.id,
+    );
+    return {
+      ...common,
+      authorization: {
+        ...common.authorization,
+        methodQualification: {
+          id: MODELICA_ADMITTED_EXECUTION_PROFILE.id,
+          version: MODELICA_ADMITTED_EXECUTION_PROFILE.version,
+          fingerprint: profile.profileFingerprint,
+        },
+      },
+      sources: [
+        await this.#artifactSource(
+          snapshot,
+          "compilationAdmission",
+          "compilation-admission",
+          resolved.artifact,
+        ),
+      ],
+      action: {
+        kind: "admitted-modelica-isolated-execution",
+        executionProfile: {
+          id: MODELICA_ADMITTED_EXECUTION_PROFILE.id,
+          version: MODELICA_ADMITTED_EXECUTION_PROFILE.version,
+          fingerprint: profile.profileFingerprint,
+        },
+        executionRunId,
+        input: resolved.input,
+      },
+      expectedProviderResources: {
+        receiptSchema: "isolated-code-execution-receipt-record/1.0",
+        evidenceSchema: "modelica-admitted-execution-capture/2.0",
+        resourceProfile: {
+          id: MODELICA_ADMITTED_ISOLATED_RESOURCE_PROFILE.id,
+          version: MODELICA_ADMITTED_ISOLATED_RESOURCE_PROFILE.version,
+        },
+      },
+      recovery: {
+        policy: "modelica-admitted-generation-recovery@1.0",
+        executionRunId,
+        mode: "same-request-readback-no-blind-redispatch",
+        ambiguousOutcome: "quarantine-for-human-review",
+        capturedOutcome: "cas-only-recovery",
+      },
+    };
+  }
+
+  async #admittedSpicePlan(
+    input: RegisteredRunPlanSealInput,
+    snapshot: ThreadSnapshot,
+    common: PlanCommon,
+  ): Promise<ResolvedOperationPlanV2> {
+    const profiles = this.options.admittedSpice?.profiles;
+    if (!profiles) {
+      throw new TypeError(
+        "The admitted SPICE operation requires its exact server-composed execution profile catalogue.",
+      );
+    }
+    const profile = await profiles.initial();
+    const resolved = await this.#admittedCompilationInput({
+      input,
+      snapshot,
+      target: "spice-circuit-source",
+      profile,
+      label: "admitted SPICE",
+    });
+    const executionRunId = await deriveAdmittedSpiceExecutionRunId(
+      input.project.project.id,
+      input.run.id,
+    );
+    return {
+      ...common,
+      authorization: {
+        ...common.authorization,
+        methodQualification: {
+          id: SPICE_ADMITTED_EXECUTION_PROFILE.id,
+          version: SPICE_ADMITTED_EXECUTION_PROFILE.version,
+          fingerprint: profile.profileFingerprint,
+        },
+      },
+      sources: [
+        await this.#artifactSource(
+          snapshot,
+          "compilationAdmission",
+          "compilation-admission",
+          resolved.artifact,
+        ),
+      ],
+      action: {
+        kind: "admitted-spice-isolated-execution",
+        executionProfile: {
+          id: SPICE_ADMITTED_EXECUTION_PROFILE.id,
+          version: SPICE_ADMITTED_EXECUTION_PROFILE.version,
+          fingerprint: profile.profileFingerprint,
+        },
+        executionRunId,
+        input: resolved.input,
+      },
+      expectedProviderResources: {
+        receiptSchema: "isolated-code-execution-receipt-record/1.0",
+        evidenceSchema: "spice-admitted-execution-capture/1.0",
+        resourceProfile: {
+          id: SPICE_ADMITTED_ISOLATED_RESOURCE_PROFILE.id,
+          version: SPICE_ADMITTED_ISOLATED_RESOURCE_PROFILE.version,
+        },
+      },
+      recovery: {
+        policy: "spice-admitted-generation-recovery@1.0",
+        executionRunId,
+        mode: "same-request-readback-no-blind-redispatch",
+        ambiguousOutcome: "quarantine-for-human-review",
+        capturedOutcome: "cas-only-recovery",
+      },
+    };
+  }
+
+  async #admittedCompilationInput(input: {
+    readonly input: RegisteredRunPlanSealInput;
+    readonly snapshot: ThreadSnapshot;
+    readonly target: "modelica-source-qualification" | "spice-circuit-source";
+    readonly profile: AdmittedExecutionProfilePlanFacts;
+    readonly label: string;
+  }): Promise<{
+    readonly artifact: ThreadArtifact;
+    readonly input: {
+      readonly compilationAdmission: {
+        readonly id: string;
+        readonly fingerprint: ContentFingerprint;
+        readonly sourceBinding: "compilationAdmission";
+      };
+      readonly source: {
+        readonly id: string;
+        readonly sourceFingerprint: ContentFingerprint;
+        readonly captureFingerprint: ContentFingerprint;
+        readonly analysisFingerprint: ContentFingerprint;
+      };
+    };
+  }> {
+    const admissions = this.options.admissions;
+    if (!admissions) {
+      throw new TypeError(
+        `The ${input.label} operation requires the exact sealed technical-compilation admission reader.`,
+      );
+    }
+    const bindings = exactBindings(
+      input.input.workItem.operation!.bindings,
+      ["compilationAdmission"],
+      input.snapshot,
+    );
+    const artifact = bindings.compilationAdmission;
+    assertExactCompilationAdmissionArtifact(artifact, input.snapshot);
+    // Read and fingerprint the same Thread artifact before admitting any facts
+    // returned by the specialised capture-backed reader.
+    await this.#artifactSource(
+      input.snapshot,
+      "compilationAdmission",
+      "compilation-admission",
+      artifact,
+    );
+    const reopened = await admissions.read({
+      projectId: input.input.project.project.id,
+      basis: {
+        kind: "thread-snapshot",
+        snapshotId: input.snapshot.id,
+        revision: input.snapshot.revision,
+        subjectId: input.snapshot.subject.id,
+      },
+      artifactId: artifact.id,
+      artifactFingerprint: artifact.fingerprint,
+    });
+    if (!reopened) {
+      throw new TypeError(
+        `The ${input.label} compilation admission is absent from its exact capture lane.`,
+      );
+    }
+    if (
+      reopened.trustedRunId !== artifact.producer.runId ||
+      reopened.admission.draft.projectId !== input.input.project.project.id ||
+      uniqueCompilationAdmissionTarget({
+          admission: reopened.admission,
+          document: reopened.document,
+        }) !== input.target
+    ) {
+      throw new TypeError(
+        `The ${input.label} compilation admission does not retain its exact registered target and seal identity.`,
+      );
+    }
+    const source = await exactAdmittedCompilationSource({
+      label: input.label,
+      target: input.target,
+      profile: input.profile,
+      admission: reopened.admission,
+      document: reopened.document,
+    });
+    return {
+      artifact,
+      input: {
+        compilationAdmission: {
+          id: artifact.id,
+          fingerprint: artifact.fingerprint,
+          sourceBinding: "compilationAdmission",
+        },
+        source,
+      },
+    };
+  }
+
   async reviewIsolatedCalculixAdmission(input: {
     readonly project: EngineeringProjectSnapshot;
     readonly snapshot: ThreadSnapshot;
@@ -668,6 +951,148 @@ type PlanCommon =
       "methodQualification"
     >;
   };
+
+type AdmittedExecutionProfilePlanFacts = {
+  readonly compilationTarget:
+    | "modelica-source-qualification"
+    | "spice-circuit-source";
+  readonly executionProfile: {
+    readonly id: string;
+    readonly version: string;
+  };
+  readonly compilationProfile: unknown;
+  readonly compilationProfileFingerprint: ContentFingerprint;
+  readonly outputManifest: readonly unknown[];
+  readonly maximumSourceBytes: number;
+  readonly minimumDestructionAssurance: "acknowledged-unattested" | "proven";
+  readonly profileFingerprint: ContentFingerprint;
+};
+
+function assertExactCompilationAdmissionArtifact(
+  artifact: ThreadArtifact,
+  snapshot: ThreadSnapshot,
+): void {
+  const digest = artifact.fingerprint.digest;
+  if (
+    artifact.kind !== "document" ||
+    artifact.mediaType !== "application/json" ||
+    artifact.fingerprint.algorithm !== "sha256" ||
+    artifact.id !== `technical-compilation-admission-${digest}` ||
+    artifact.version !== digest ||
+    artifact.uri !== `${TECHNICAL_COMPILATION_ADMISSION_URI_PREFIX}${digest}` ||
+    artifact.freshness.status !== "fresh" ||
+    archivedRefKeys(snapshot).has(`artifact:${artifact.id}`) ||
+    artifact.producer.serverId !== "digital-thread" ||
+    artifact.producer.tool !== COMPILE_SEAL_ADMISSION_PRODUCER_TOOL
+  ) {
+    throw new TypeError(
+      "The admitted execution binding must name one fresh canonical compile.seal-admission@3 document.",
+    );
+  }
+}
+
+async function exactAdmittedCompilationSource(input: {
+  readonly label: string;
+  readonly target: "modelica-source-qualification" | "spice-circuit-source";
+  readonly profile: AdmittedExecutionProfilePlanFacts;
+  readonly admission: TechnicalCompilationAdmission;
+  readonly document: TechnicalCompilationDocument;
+}): Promise<{
+  readonly id: string;
+  readonly sourceFingerprint: ContentFingerprint;
+  readonly captureFingerprint: ContentFingerprint;
+  readonly analysisFingerprint: ContentFingerprint;
+}> {
+  const { admission, document, profile, target } = input;
+  if (
+    profile.compilationTarget !== target ||
+    admission.sources.length !== 1 ||
+    admission.compilationProfileRequests.length !== 1 ||
+    document.inputManifest.sources.length !== 1 ||
+    document.projections.length !== 1
+  ) {
+    throw new TypeError(
+      `The ${input.label} execution plan requires exactly one admitted source and one exact compilation profile request.`,
+    );
+  }
+  const source = admission.sources[0]!;
+  const request = admission.compilationProfileRequests[0]!;
+  const documentSource = document.inputManifest.sources[0]!;
+  const projection = document.projections[0]!;
+  const expectedSource = target === "modelica-source-qualification"
+    ? { role: "modelica-model", language: "modelica" }
+    : { role: "spice-circuit", language: "spice" };
+  const expectedExecution = target === "modelica-source-qualification"
+    ? MODELICA_ADMITTED_EXECUTION_PROFILE
+    : SPICE_ADMITTED_EXECUTION_PROFILE;
+  const expectedOutputs = target === "modelica-source-qualification"
+    ? MODELICA_ADMITTED_OUTPUT_MANIFEST
+    : SPICE_ADMITTED_OUTPUT_MANIFEST;
+  const observedSourceFingerprint = await fingerprintTechnicalSourceText(
+    documentSource.sourceText,
+  );
+  const observedAnalysisFingerprint = await fingerprintSourceAnalysisBundle(
+    documentSource.analysis,
+  );
+  const observedProfileFingerprint = await sha256Fingerprint(
+    profile.compilationProfile,
+  );
+  if (
+    source.role !== expectedSource.role ||
+    source.language !== expectedSource.language ||
+    source.id !== documentSource.analysis.source.id ||
+    !fingerprintsEqual(source.sourceFingerprint, observedSourceFingerprint) ||
+    !fingerprintsEqual(
+      source.sourceFingerprint,
+      documentSource.analysis.source.fingerprint,
+    ) ||
+    !fingerprintsEqual(source.analysisFingerprint, observedAnalysisFingerprint) ||
+    !fingerprintsEqual(
+      source.analysisFingerprint,
+      documentSource.analysisFingerprint,
+    ) ||
+    source.analyzer.id !== documentSource.analysis.analyzer.id ||
+    source.analyzer.version !== documentSource.analysis.analyzer.version ||
+    request.target !== target ||
+    request.sourceIds.length !== 1 ||
+    request.sourceIds[0] !== source.id ||
+    request.profileId !== source.profileId ||
+    request.profileVersion !== source.profileVersion ||
+    !fingerprintsEqual(request.profileFingerprint, source.profileFingerprint) ||
+    deterministicJson(projection.profile) !==
+      deterministicJson(profile.compilationProfile) ||
+    !fingerprintsEqual(
+      projection.profileFingerprint,
+      profile.compilationProfileFingerprint,
+    ) ||
+    !fingerprintsEqual(
+      source.profileFingerprint,
+      profile.compilationProfileFingerprint,
+    ) ||
+    !fingerprintsEqual(
+      profile.compilationProfileFingerprint,
+      observedProfileFingerprint,
+    ) ||
+    profile.executionProfile.id !== expectedExecution.id ||
+    profile.executionProfile.version !== expectedExecution.version ||
+    deterministicJson(profile.outputManifest) !== deterministicJson(expectedOutputs) ||
+    documentSource.sourceText.length === 0 ||
+    new TextEncoder().encode(documentSource.sourceText).byteLength >
+      profile.maximumSourceBytes ||
+    profile.minimumDestructionAssurance !== "proven"
+  ) {
+    throw new TypeError(
+      `The ${input.label} admission, exact source, or code-owned execution profile does not match.`,
+    );
+  }
+  return {
+    id: source.id,
+    sourceFingerprint: source.sourceFingerprint,
+    captureFingerprint: source.captureFingerprint,
+    analysisFingerprint: source.analysisFingerprint,
+  };
+}
+
 interface ProofCapture {
   readonly case: MechanicalProofCase;
   readonly trustedRunId: string;
@@ -1303,11 +1728,10 @@ function artifactById(snapshot: ThreadSnapshot, id: string): ThreadArtifact {
 }
 
 /**
- * Server-only deterministic request identity for a sealed ROP action.
+ * Server-only deterministic request identity for a provider-style sealed ROP
+ * action. Admitted Modelica and SPICE use their domain executionRunId helpers.
  *
- * It is intentionally shared with no provider-facing caller.  Executors must
- * carry the action's sealed value through unchanged rather than derive a
- * second run-id convention.
+ * It is intentionally shared with no provider-facing caller.
  */
 export async function resolvedOperationPlanRequestIdFor(
   runId: string,

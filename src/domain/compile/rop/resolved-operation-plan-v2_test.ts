@@ -4,9 +4,11 @@ import {
   CALCULIX_RECORDED_STATIC_RESOURCE_PROFILE,
   canonicalResolvedOperationPlanV2Text,
   fingerprintResolvedOperationPlanV2,
+  MODELICA_ADMITTED_ISOLATED_RESOURCE_PROFILE,
   RESOLVED_OPERATION_PLAN_REF_SCHEMA,
   RESOLVED_OPERATION_PLAN_V2_SCHEMA,
   sameResolvedOperationPlanRef,
+  SPICE_ADMITTED_ISOLATED_RESOURCE_PROFILE,
   validateResolvedOperationPlanRef,
   validateResolvedOperationPlanV2,
 } from "./resolved-operation-plan-v2.ts";
@@ -281,6 +283,97 @@ function validPrescribedKinematicsPlan(): Record<string, unknown> {
   return plan;
 }
 
+function validAdmittedExecutionPlan(
+  language: "modelica" | "spice",
+): Record<string, unknown> {
+  const plan = validCalculixPlan();
+  const modelica = language === "modelica";
+  const operation = modelica
+    ? { id: "simulate.run-admitted-modelica", version: "1" }
+    : { id: "simulate.run-admitted-spice", version: "1" };
+  const executionProfile = modelica
+    ? { id: "modelica-closed-subset-v2", version: "2.0.0" }
+    : { id: "spice-circuit-closed-subset-v1", version: "1.0.0" };
+  const resourceProfile = modelica
+    ? MODELICA_ADMITTED_ISOLATED_RESOURCE_PROFILE
+    : SPICE_ADMITTED_ISOLATED_RESOURCE_PROFILE;
+  const recoveryPolicy = modelica
+    ? "modelica-admitted-generation-recovery@1.0"
+    : "spice-admitted-generation-recovery@1.0";
+  const evidenceSchema = modelica
+    ? "modelica-admitted-execution-capture/2.0"
+    : "spice-admitted-execution-capture/1.0";
+  const run = plan.run as Record<string, unknown>;
+  run.runId = modelica ? "run-admitted-modelica" : "run-admitted-spice";
+  run.workItemId = modelica ? "simulate-modelica" : "simulate-spice";
+  plan.id = run.runId;
+  const workItem = plan.workItem as Record<string, unknown>;
+  workItem.id = run.workItemId;
+  workItem.operation = operation;
+  const operational = plan.operationalCapability as {
+    operation: Record<string, unknown>;
+  };
+  operational.operation = operation;
+  const profileFingerprint = fingerprint(modelica ? "a" : "b");
+  (plan.authorization as Record<string, unknown>).methodQualification = {
+    ...executionProfile,
+    fingerprint: profileFingerprint,
+  };
+  const admissionSource = (plan.sources as Record<string, unknown>[]).find(
+    (source) => source.bindingName === "proofCase",
+  )!;
+  admissionSource.bindingName = "compilationAdmission";
+  admissionSource.role = "compilation-admission";
+  admissionSource.threadRef = {
+    snapshotId: "thread.cm01",
+    snapshotRevision: 12,
+    kind: "artifact",
+    id: `technical-compilation-admission-${"c".repeat(64)}`,
+  };
+  (admissionSource.artifact as Record<string, unknown>).casUri =
+    `casys://technical-compilation-admission-capture/sha256/${"c".repeat(64)}`;
+  plan.sources = [admissionSource];
+  const executionRunId = modelica
+    ? `admitted-modelica-${"a".repeat(64)}`
+    : `admitted-spice-${"b".repeat(64)}`;
+  plan.action = {
+    kind: modelica
+      ? "admitted-modelica-isolated-execution"
+      : "admitted-spice-isolated-execution",
+    executionProfile: { ...executionProfile, fingerprint: profileFingerprint },
+    executionRunId,
+    input: {
+      compilationAdmission: {
+        id: (admissionSource.threadRef as Record<string, unknown>).id,
+        fingerprint: fingerprint("c"),
+        sourceBinding: "compilationAdmission",
+      },
+      source: {
+        id: modelica ? "source.modelica" : "source.spice",
+        sourceFingerprint: fingerprint("d"),
+        captureFingerprint: fingerprint("e"),
+        analysisFingerprint: fingerprint("f"),
+      },
+    },
+  };
+  plan.expectedProviderResources = {
+    receiptSchema: "isolated-code-execution-receipt-record/1.0",
+    evidenceSchema,
+    resourceProfile: {
+      id: resourceProfile.id,
+      version: resourceProfile.version,
+    },
+  };
+  plan.recovery = {
+    policy: recoveryPolicy,
+    executionRunId,
+    mode: "same-request-readback-no-blind-redispatch",
+    ambiguousOutcome: "quarantine-for-human-review",
+    capturedOutcome: "cas-only-recovery",
+  };
+  return plan;
+}
+
 function operationalCapabilityFor(
   operationVersion: "2" | "3",
 ): Record<string, unknown> {
@@ -366,6 +459,77 @@ Deno.test("ResolvedOperationPlan keeps MCP @2 and local @3 CalculiX identities d
   const transplanted = validLocalCalculixPlan();
   (transplanted.action as Record<string, unknown>).kind = "static-structural-analysis";
   assertThrows(() => validateResolvedOperationPlanV2(transplanted), TypeError);
+});
+
+Deno.test("ResolvedOperationPlan closes admitted Modelica and SPICE to their semantic execution profiles", () => {
+  const modelica = validateResolvedOperationPlanV2(
+    validAdmittedExecutionPlan("modelica"),
+  );
+  const spice = validateResolvedOperationPlanV2(
+    validAdmittedExecutionPlan("spice"),
+  );
+  assertEquals(modelica.action.kind, "admitted-modelica-isolated-execution");
+  assertEquals(spice.action.kind, "admitted-spice-isolated-execution");
+  assertEquals(modelica.expectedProviderResources.resourceProfile, {
+    id: MODELICA_ADMITTED_ISOLATED_RESOURCE_PROFILE.id,
+    version: MODELICA_ADMITTED_ISOLATED_RESOURCE_PROFILE.version,
+  });
+  assertEquals(spice.expectedProviderResources.resourceProfile, {
+    id: SPICE_ADMITTED_ISOLATED_RESOURCE_PROFILE.id,
+    version: SPICE_ADMITTED_ISOLATED_RESOURCE_PROFILE.version,
+  });
+  assertEquals(Object.hasOwn(modelica.action, "provider"), false);
+  assertEquals(Object.hasOwn(spice.action, "provider"), false);
+});
+
+Deno.test("ResolvedOperationPlan rejects admitted execution profile, exact admission identity, source, resource, and recovery tampering", () => {
+  const mutations: readonly ((plan: Record<string, unknown>) => void)[] = [
+    (plan) =>
+      ((plan.action as Record<string, unknown>).executionProfile as Record<
+        string,
+        unknown
+      >).id = "caller-selected-runtime",
+    (plan) =>
+      (((plan.action as Record<string, unknown>).input as Record<string, unknown>)
+        .compilationAdmission as Record<string, unknown>).fingerprint = fingerprint(
+          "a",
+        ),
+    (plan) =>
+      (((plan.action as Record<string, unknown>).input as Record<string, unknown>)
+        .compilationAdmission as Record<string, unknown>).sourceBinding =
+          "foreignAdmission",
+    (plan) =>
+      ((plan.expectedProviderResources as Record<string, unknown>)
+        .resourceProfile as Record<string, unknown>).id = "invented-admitted-output",
+    (plan) =>
+      (plan.recovery as Record<string, unknown>).policy =
+        "modelica-admitted-generation-recovery@2.0",
+    (plan) =>
+      (plan.recovery as Record<string, unknown>).executionRunId = `admitted-modelica-${
+        "f".repeat(64)
+      }`,
+    (plan) => ((plan.action as Record<string, unknown>).tool = "ngspice"),
+    (plan) =>
+      (plan.action as Record<string, unknown>).requestId = "rop2-admitted-modelica",
+    (plan) =>
+      (plan.recovery as Record<string, unknown>).requestId = "rop2-admitted-modelica",
+  ];
+  for (const mutate of mutations) {
+    const plan = validAdmittedExecutionPlan("modelica");
+    mutate(plan);
+    assertThrows(() => validateResolvedOperationPlanV2(plan), TypeError);
+  }
+});
+
+Deno.test("ResolvedOperationPlan rejects an admitted compilation admission id detached from its Thread source", () => {
+  const plan = validAdmittedExecutionPlan("modelica");
+  (((plan.action as Record<string, unknown>).input as Record<string, unknown>)
+    .compilationAdmission as Record<string, unknown>).id = "foreignAdmission";
+  assertThrows(
+    () => validateResolvedOperationPlanV2(plan),
+    TypeError,
+    "compilationAdmission.id must equal its exact source threadRef.id",
+  );
 });
 
 Deno.test("ResolvedOperationPlan rejects a lifecycle record with an unknown field", () => {
@@ -634,8 +798,12 @@ Deno.test("ResolvedOperationPlan 2.0 enforces exact provider request ids and tim
   const calculixColon = validCalculixPlan();
   (calculixColon.action as Record<string, unknown>).requestId = "request:calculix:1";
   (calculixColon.recovery as Record<string, unknown>).requestId = "request:calculix:1";
+  const parsedCalculixColon = validateResolvedOperationPlanV2(calculixColon);
+  if (parsedCalculixColon.action.kind !== "static-structural-analysis") {
+    throw new Error("Expected a recorded CalculiX action.");
+  }
   assertEquals(
-    validateResolvedOperationPlanV2(calculixColon).action.requestId,
+    parsedCalculixColon.action.requestId,
     "request:calculix:1",
   );
 
