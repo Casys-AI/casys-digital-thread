@@ -35,8 +35,9 @@ groups and not the Digital Thread cold start.
 
 #### [`config/mcp-fleet.json`](../../../config/mcp-fleet.json)
 
-Desired MCP endpoints, tools, views and trust posture. Current fixed URLs; not a
-lease-bound connection handle.
+Desired MCP endpoints, tools, views and trust posture. URLs remain fixed. The SysON seed
+canary verifies its fleet URL against the sealed launch-group publication and wraps it in
+a lease-bound process-local handle; the remaining clients do not yet use that seam.
 
 #### [`docs/explanations/product/product-direction.md`](../../explanations/product/product-direction.md)
 

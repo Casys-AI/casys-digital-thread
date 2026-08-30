@@ -54,6 +54,7 @@ import { ApprovedBriefBaselineRunExecutor } from "../../project/approved-brief-b
 import { approvedBriefSourceAnalysisFixture } from "../../../testing/approved-brief-source-analysis-fixture.ts";
 import { SysonModelSeedRunExecutor } from "../seed/syson-model-seed-run-executor.ts";
 import {
+  passthroughCapabilityRuntimeConnection,
   recordingCapabilityRuntimeSession,
   successfulCapabilityRuntimeFor,
 } from "../../../testing/capability-runtime-execution-session-test-support.ts";
@@ -1417,7 +1418,9 @@ async function queuedRequirementsFixture(
     snapshots,
     captures: seedCaptures,
     attempts: seedAttempts,
-    syson: new SeedSyson(),
+    capabilityRuntimeConnection: passthroughCapabilityRuntimeConnection(
+      new SeedSyson(),
+    ),
     lease: new FileEngineeringProjectRunLease(`${directory}/seed-leases`),
     ...successfulCapabilityRuntimeFor(
       PROJECT_ID,

@@ -192,6 +192,8 @@ import { createLocalCapabilityRuntimeReadComposition } from "./src/adapters/cont
 import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "./src/adapters/control-plane/first-party-capability-runtime-qualification-candidates.ts";
 import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "./src/adapters/control-plane/first-party-capability-runtime-qualification-specifications.ts";
 import { LocalChronoRuntimeSecretResolver } from "./src/adapters/control-plane/local-chrono-runtime-secret-resolver.ts";
+import { createLocalFixedSysonCapabilityRuntimeConnection } from "./src/adapters/control-plane/local-fixed-syson-capability-runtime-connection.ts";
+import { firstPartySysonLaunchGroupReference } from "./src/adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
 import {
   listRegisteredEngineeringOperations,
   REGISTERED_ENGINEERING_OPERATION_REGISTRY,
@@ -1005,6 +1007,15 @@ async function createProjectControl(
     }),
   });
 
+  const sysonRuntimeConnection = sysonMcpUrl
+    ? (await createLocalFixedSysonCapabilityRuntimeConnection({
+      leases: capabilityRuntimeLeases,
+      launchGroup: await capabilityRead.launchGroups.require(
+        await firstPartySysonLaunchGroupReference(),
+      ),
+      fleetMcpUrl: sysonMcpUrl,
+    })).boundClient()
+    : undefined;
   const architectureProject = createArchitectureProject({
     projects: runtime.projects,
     commands: runtime.commands,
@@ -1012,6 +1023,7 @@ async function createProjectControl(
     lease,
     liveUpdates,
     sysonMcpUrl,
+    sysonRuntimeConnection,
     foundation: architectureFoundation,
     capabilityRuntime,
     capabilityRuntimeSession,

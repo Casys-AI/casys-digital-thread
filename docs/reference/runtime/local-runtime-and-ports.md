@@ -103,9 +103,11 @@ not substitutes.
 | H1 JIT launch group (`casys-syson`, `casys-build123d-sandbox`, `casys-build123d-observation`, `casys-chrono`, `casys-mcp-calculix`) | `CapabilityRuntimeSupervisor` | Product path after operational authorization. Separate Compose project names. Registry enrollment is candidacy; a group starts only under a demanded lease. |
 | Root `docker-compose.yml` | Maintainer diagnostic | Probe topology only. Different Compose project; same host ports. Incompatible with a simultaneous H1 group. |
 
-A successful JIT start proves the group active. It does not yet mint a connection handle
-bound to the lease. Adapters and `config/mcp-fleet.json` still use the fixed server-owned
-URLs below. That coincidence is the current
+A successful JIT start proves the group active; the lease alone is not a locator. The
+SysON seed canary now asks the server-only broker for a process-local handle bound to that
+active lease and to the sealed `casys-syson` publication. Other adapters and
+`config/mcp-fleet.json` still use the fixed server-owned URLs below. Ports remain fixed.
+That partial adoption is the current
 [connection seam](capability-packs/capability-runtime-connection.md), not a reserved-port
 plan: a semantic capability does not own a host port, and adding a capability does not
 allocate one.

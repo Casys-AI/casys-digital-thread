@@ -1,6 +1,11 @@
 import { assertEquals, assertRejects } from "@std/assert";
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import {
+  CAPABILITY_RUNTIME_LAUNCH_GROUP_SCHEMA_VERSION,
+  capabilityRuntimeLaunchGroupPublishedLoopbackHostPorts,
   capabilityRuntimeLaunchGroupReference,
+  fingerprintCapabilityRuntimeComposeContent,
+  fingerprintCapabilityRuntimeLaunchGroup,
 } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import {
   createFirstPartyCapabilityRuntimeLaunchGroups,
@@ -61,3 +66,102 @@ Deno.test("Build123d launch groups pin the reviewed image, private loopback port
     });
   }
 });
+
+Deno.test("first-party launch groups publish distinct loopback host ports", async () => {
+  const groups = await createFirstPartyCapabilityRuntimeLaunchGroups();
+  const registry = new FixedCapabilityRuntimeLaunchGroupRegistry(groups);
+  const listed = await registry.list();
+  assertEquals(listed.map((group) => group.id), [
+    "casys-build123d-observation",
+    "casys-build123d-sandbox",
+    "casys-chrono",
+    "casys-mcp-calculix",
+    "casys-syson",
+  ]);
+  const published = listed.flatMap((group) =>
+    capabilityRuntimeLaunchGroupPublishedLoopbackHostPorts(group)
+  );
+  assertEquals(published.toSorted((left, right) => left - right), [
+    3009,
+    3014,
+    3015,
+    3024,
+    3025,
+  ]);
+  assertEquals(new Set(published).size, published.length);
+});
+
+Deno.test("launch-group registry rejects the same loopback host port on two groups", async () => {
+  const left = await publishedGroup({
+    id: "casys.port-left",
+    projectName: "casys-port-left",
+    hostPort: 3456,
+    digest: "c".repeat(64),
+  });
+  const right = await publishedGroup({
+    id: "casys.port-right",
+    projectName: "casys-port-right",
+    hostPort: 3456,
+    digest: "d".repeat(64),
+  });
+  const registry = new FixedCapabilityRuntimeLaunchGroupRegistry([left, right]);
+  await assertRejects(
+    () => registry.list(),
+    TypeError,
+    "loopback host port 3456 from both casys.port-left@1.0.0 and casys.port-right@1.0.0",
+  );
+});
+
+async function publishedGroup(input: {
+  readonly id: string;
+  readonly projectName: string;
+  readonly hostPort: number;
+  readonly digest: string;
+}): Promise<unknown> {
+  const materials = [{
+    material: {
+      unitId: input.id,
+      materialId: "worker-image",
+      imageDigest: input.digest,
+    },
+    serviceName: "worker",
+    imageReference: `ghcr.io/casys-ai/worker@sha256:${input.digest}`,
+    ownership: [
+      { key: "com.docker.compose.project", value: input.projectName },
+      { key: "com.docker.compose.service", value: "worker" },
+    ],
+  }];
+  const content = deterministicJson({
+    services: {
+      worker: {
+        image: materials[0]!.imageReference,
+        ports: [`127.0.0.1:${input.hostPort}:${input.hostPort}`],
+      },
+    },
+    volumes: {},
+  });
+  const body = {
+    schemaVersion: CAPABILITY_RUNTIME_LAUNCH_GROUP_SCHEMA_VERSION,
+    id: input.id,
+    version: "1.0.0",
+    activationPolicy: "persistent" as const,
+    acquisition: { kind: "compose" as const, projectName: input.projectName },
+    materials,
+    compose: {
+      schemaVersion: "capability-runtime-compose-descriptor/1.0" as const,
+      content,
+      fingerprint: await fingerprintCapabilityRuntimeComposeContent(content),
+    },
+    retention: {
+      containers: "stop-only" as const,
+      images: "preserve" as const,
+      volumes: "preserve" as const,
+    },
+    secretSlots: [],
+    security: "reviewed" as const,
+  };
+  return {
+    ...body,
+    fingerprint: await fingerprintCapabilityRuntimeLaunchGroup(body),
+  };
+}

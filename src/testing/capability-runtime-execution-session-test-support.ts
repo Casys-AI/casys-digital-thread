@@ -3,6 +3,11 @@ import type {
   CapabilityRuntimeExecutionSessionCoordinator,
 } from "../application/control-plane/capability-runtime-execution-session.ts";
 import type { CapabilityRuntimeExecutionEligibility } from "../application/ports/out/capability/capability-runtime-supervisor.ts";
+import type {
+  CapabilityRuntimeBoundMcpClient,
+  CapabilityRuntimeConnectionHandle,
+} from "../application/ports/out/capability/capability-runtime-connection.ts";
+import type { McpToolClient } from "../application/ports/out/mcp-tool-client.ts";
 import type { ResolvedCapabilityRuntimeOperation } from "../domain/capability/runtime/capability-runtime-supervision.ts";
 
 export interface RecordingCapabilityRuntimeSession {
@@ -95,6 +100,39 @@ export function testResolvedCapabilityRuntimeOperation(input: {
         },
       }],
     }],
+  };
+}
+
+export function passthroughCapabilityRuntimeConnection(
+  syson: McpToolClient,
+  events?: string[],
+): CapabilityRuntimeBoundMcpClient & {
+  readonly opens: number;
+} {
+  const handles = new WeakSet<object>();
+  const state = { opens: 0 };
+  return {
+    get opens() {
+      return state.opens;
+    },
+    broker: {
+      connect: () => {
+        events?.push("connect");
+        const handle = Object.freeze({}) as CapabilityRuntimeConnectionHandle;
+        handles.add(handle);
+        return Promise.resolve(handle);
+      },
+    },
+    openMcpClient: (handle) => {
+      events?.push("open");
+      if (!handles.has(handle)) {
+        return Promise.reject(
+          new Error("unknown capability runtime connection handle"),
+        );
+      }
+      state.opens++;
+      return Promise.resolve(syson);
+    },
   };
 }
 

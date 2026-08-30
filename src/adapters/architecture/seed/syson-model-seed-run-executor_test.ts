@@ -40,6 +40,8 @@ import type {
   CapabilityRuntimeExecutionSessionCoordinator,
 } from "../../../application/control-plane/capability-runtime-execution-session.ts";
 import type { ResolvedCapabilityRuntimeOperation } from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import { CapabilityRuntimeConnectionError } from "../../../application/ports/out/capability/capability-runtime-connection.ts";
+import { passthroughCapabilityRuntimeConnection } from "../../../testing/capability-runtime-execution-session-test-support.ts";
 import { SysonModelSeedRunExecutor } from "./syson-model-seed-run-executor.ts";
 
 const HUMAN = {
@@ -117,7 +119,11 @@ Deno.test("trusted SysON seed creates only the read-back model container and pub
     const fixture = await queuedSeed(directory);
     const syson = new FakeSysonClient();
     const session = recordingSeedSession();
-    const executor = seedExecutor(fixture, syson, fixture.projects, { session });
+    const connection = passthroughCapabilityRuntimeConnection(syson);
+    const executor = seedExecutor(fixture, syson, fixture.projects, {
+      session,
+      connection,
+    });
     const execution = executionCommand(fixture.queued);
 
     const completed = await executor.execute(AGENT, execution);
@@ -163,6 +169,7 @@ Deno.test("trusted SysON seed creates only the read-back model container and pub
     assertEquals(replay.revision, completed.revision);
     assertEquals(syson.calls.length, 3);
     assertEquals(session.events, ["begin"]);
+    assertEquals(connection.opens, 1);
     assertEquals(session.releases, 1);
     assertEquals(session.retains, 0);
     assertEquals(
@@ -403,6 +410,7 @@ Deno.test("SysON seed opens the JIT session before claim, WAL, or provider", asy
         retainForRecovery: () => undefined,
       };
     });
+    const connection = passthroughCapabilityRuntimeConnection(syson, events);
     const commands = Object.create(fixture.commands) as typeof fixture.commands;
     commands.claimRun = (origin, command) => {
       events.push("claim");
@@ -420,18 +428,66 @@ Deno.test("SysON seed opens the JIT session before claim, WAL, or provider", asy
     };
     const executor = seedExecutor(fixture, syson, fixture.projects, {
       session,
+      connection,
       commands,
       attempts,
     });
     await executor.execute(AGENT, executionCommand(fixture.queued));
     assertEquals(events[0], "begin");
-    assertEquals(events.includes("claim"), true);
-    assertEquals(events.indexOf("begin") < events.indexOf("claim"), true);
+    assertEquals(events.includes("connect"), true);
+    assertEquals(events.includes("open"), true);
+    assertEquals(events.indexOf("begin") < events.indexOf("connect"), true);
+    assertEquals(events.indexOf("connect") < events.indexOf("open"), true);
+    assertEquals(events.indexOf("open") < events.indexOf("claim"), true);
     assertEquals(events.indexOf("claim") < events.indexOf("wal:project-create"), true);
     assertEquals(
       events.indexOf("wal:project-create") <
         events.indexOf("provider:syson_project_create"),
       true,
+    );
+    assertEquals(connection.opens, 1);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("a failed runtime connection after JIT begin does not construct or call SysON", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "casys-syson-seed-connection-failed-",
+  });
+  try {
+    const fixture = await queuedSeed(directory);
+    const syson = new FakeSysonClient();
+    const session = recordingSeedSession();
+    const connection = {
+      ...passthroughCapabilityRuntimeConnection(syson),
+      broker: {
+        connect: () =>
+          Promise.reject(
+            new CapabilityRuntimeConnectionError(
+              "exact SysON publication is unavailable",
+            ),
+          ),
+      },
+    };
+    const executor = seedExecutor(fixture, syson, fixture.projects, {
+      session,
+      connection,
+    });
+    await assertRejects(
+      () => executor.execute(AGENT, executionCommand(fixture.queued)),
+      Error,
+      "publication is unavailable",
+    );
+    assertEquals(session.events, ["begin"]);
+    assertEquals(session.releases, 1);
+    assertEquals(session.retains, 0);
+    assertEquals(connection.opens, 0);
+    assertEquals(syson.calls, []);
+    assertEquals(
+      (await fixture.projects.get(fixture.queued.project.id))?.agentRuns.at(-1)
+        ?.status,
+      "queued",
     );
   } finally {
     await Deno.remove(directory, { recursive: true });
@@ -448,7 +504,11 @@ Deno.test("JIT unavailability before claim leaves run, WAL, Thread and SysON int
     const session = recordingSeedSession(() =>
       Promise.reject(new Error("exact SysON host group unavailable"))
     );
-    const executor = seedExecutor(fixture, syson, fixture.projects, { session });
+    const connection = passthroughCapabilityRuntimeConnection(syson);
+    const executor = seedExecutor(fixture, syson, fixture.projects, {
+      session,
+      connection,
+    });
     const execution = executionCommand(fixture.queued);
     await assertRejects(
       () => executor.execute(AGENT, execution),
@@ -456,6 +516,7 @@ Deno.test("JIT unavailability before claim leaves run, WAL, Thread and SysON int
       "host group unavailable",
     );
     assertEquals(syson.calls, []);
+    assertEquals(connection.opens, 0);
     assertEquals(
       await fixture.attempts.read(
         fixture.queued.project.id,
@@ -484,8 +545,10 @@ Deno.test("SysON seed rechecks the sealed operational capability before claim", 
   try {
     const fixture = await queuedSeed(directory);
     const syson = new FakeSysonClient();
+    const connection = passthroughCapabilityRuntimeConnection(syson);
     let requireCalls = 0;
     const executor = seedExecutor(fixture, syson, fixture.projects, {
+      connection,
       capabilityRuntime: {
         requireExecution: () => {
           requireCalls++;
@@ -510,6 +573,7 @@ Deno.test("SysON seed rechecks the sealed operational capability before claim", 
     );
     assertEquals(requireCalls, 2);
     assertEquals(syson.calls, []);
+    assertEquals(connection.opens, 0);
     assertEquals(
       (await fixture.projects.get(fixture.queued.project.id))?.agentRuns.at(-1)
         ?.status,
@@ -535,7 +599,11 @@ Deno.test("a dispatched seed WAL forbids JIT begin, claim, and SysON", async () 
     });
     const syson = new FakeSysonClient();
     const session = recordingSeedSession();
-    const executor = seedExecutor(fixture, syson, fixture.projects, { session });
+    const connection = passthroughCapabilityRuntimeConnection(syson);
+    const executor = seedExecutor(fixture, syson, fixture.projects, {
+      session,
+      connection,
+    });
     await assertRejects(
       () => executor.execute(AGENT, execution),
       Error,
@@ -543,6 +611,7 @@ Deno.test("a dispatched seed WAL forbids JIT begin, claim, and SysON", async () 
     );
     assertEquals(session.events, []);
     assertEquals(syson.calls, []);
+    assertEquals(connection.opens, 0);
     assertEquals(
       (await fixture.attempts.read(
         fixture.queued.project.id,
@@ -576,7 +645,11 @@ Deno.test("model-create without completed project-create forbids JIT begin", asy
     });
     const syson = new FakeSysonClient();
     const session = recordingSeedSession();
-    const executor = seedExecutor(fixture, syson, fixture.projects, { session });
+    const connection = passthroughCapabilityRuntimeConnection(syson);
+    const executor = seedExecutor(fixture, syson, fixture.projects, {
+      session,
+      connection,
+    });
     await assertRejects(
       () => executor.execute(AGENT, execution),
       Error,
@@ -584,6 +657,7 @@ Deno.test("model-create without completed project-create forbids JIT begin", asy
     );
     assertEquals(session.events, []);
     assertEquals(syson.calls, []);
+    assertEquals(connection.opens, 0);
     assertEquals(
       (await fixture.attempts.read(
         fixture.queued.project.id,
@@ -645,18 +719,23 @@ function seedExecutor(
       "begin"
     >;
     readonly session?: RecordingSeedSession;
+    readonly connection?: ReturnType<typeof passthroughCapabilityRuntimeConnection> & {
+      readonly opens?: number;
+    };
     readonly commands?: typeof fixture.commands;
     readonly attempts?: typeof fixture.attempts;
   } = {},
 ) {
   const session = extras.session ?? recordingSeedSession();
+  const connection = extras.connection ??
+    passthroughCapabilityRuntimeConnection(syson);
   return new SysonModelSeedRunExecutor({
     projects,
     commands: extras.commands ?? fixture.commands,
     snapshots: fixture.snapshots,
     captures: fixture.seedCaptures,
     attempts: extras.attempts ?? fixture.attempts,
-    syson,
+    capabilityRuntimeConnection: connection,
     lease: new FileEngineeringProjectRunLease(`${fixture.directory}/seed-leases`),
     capabilityRuntime: extras.capabilityRuntime ?? {
       requireExecution: () =>

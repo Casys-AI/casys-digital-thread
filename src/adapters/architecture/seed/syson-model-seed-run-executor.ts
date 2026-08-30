@@ -43,6 +43,14 @@ import {
   CapabilityRuntimeSessionUnavailableError,
 } from "../../../application/control-plane/capability-runtime-execution-session.ts";
 import type { ResolvedCapabilityRuntimeOperation } from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import {
+  type CapabilityRuntimeBoundMcpClient,
+  CapabilityRuntimeConnectionError,
+} from "../../../application/ports/out/capability/capability-runtime-connection.ts";
+import {
+  type CapabilityRuntimeLaunchGroupReference,
+  sameCapabilityRuntimeLaunchGroupReference,
+} from "../../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import type { EngineeringProjectRunLease } from "../../shared/stores/file-engineering-project-run-lease.ts";
 import {
   FileSysonModelSeedAttemptStore,
@@ -80,8 +88,11 @@ export interface SysonModelSeedRunExecutorDependencies {
   readonly captures: FileCaptureStore<"syson-model-seed">;
   /** Write-ahead state for non-idempotent SysON mutations. */
   readonly attempts: FileSysonModelSeedAttemptStore;
-  /** Server-owned provider client; the MCP tool exposes none of this surface. */
-  readonly syson: McpToolClient;
+  /**
+   * Lease-bound SysON publication. The executor never names a URL, host,
+   * port, bearer, provider or tool envelope; composition owns the mapping.
+   */
+  readonly capabilityRuntimeConnection: CapabilityRuntimeBoundMcpClient;
   readonly lease: EngineeringProjectRunLease;
   /**
    * Cold recheck of the sealed `model.author-system@1` binding. Seed does not
@@ -131,7 +142,7 @@ export class SysonModelSeedRunExecutor {
   readonly #snapshots: ThreadSnapshotStore;
   readonly #captures: FileCaptureStore<"syson-model-seed">;
   readonly #attempts: FileSysonModelSeedAttemptStore;
-  readonly #syson: McpToolClient;
+  readonly #capabilityRuntimeConnection: CapabilityRuntimeBoundMcpClient;
   readonly #lease: EngineeringProjectRunLease;
   readonly #capabilityRuntime: CapabilityRuntimeExecutionEligibility | undefined;
   readonly #capabilityRuntimeSession:
@@ -146,7 +157,7 @@ export class SysonModelSeedRunExecutor {
     this.#snapshots = dependencies.snapshots;
     this.#captures = dependencies.captures;
     this.#attempts = dependencies.attempts;
-    this.#syson = dependencies.syson;
+    this.#capabilityRuntimeConnection = dependencies.capabilityRuntimeConnection;
     this.#lease = dependencies.lease;
     this.#capabilityRuntime = dependencies.capabilityRuntime;
     this.#capabilityRuntimeSession = dependencies.capabilityRuntimeSession;
@@ -245,6 +256,27 @@ export class SysonModelSeedRunExecutor {
           return await this.requireOperationalCapability(fresh, run);
         },
       });
+      let syson: McpToolClient;
+      try {
+        syson = await this.openBoundSysonClient(
+          capabilitySession,
+          operationalCapability,
+        );
+      } catch (error) {
+        // Locator failure is pre-claim: not host or WAL uncertainty.
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "release" },
+        });
+        capabilitySession = undefined;
+        if (error instanceof CapabilityRuntimeConnectionError) {
+          throw new EngineeringProjectCommandError(
+            "invalid_transition",
+            error.message,
+          );
+        }
+        throw error;
+      }
       if (beforeClaimRun.status === "queued") {
         await this.#commands.claimRun(origin, {
           ...command,
@@ -285,6 +317,7 @@ export class SysonModelSeedRunExecutor {
         step: "project-create",
         capturedAt,
         live,
+        syson,
         call: {
           name: "syson_project_create",
           arguments: { name: providerProjectName(project, run) },
@@ -300,6 +333,7 @@ export class SysonModelSeedRunExecutor {
         step: "model-create",
         capturedAt,
         live,
+        syson,
         call: {
           name: "syson_model_create",
           arguments: {
@@ -322,6 +356,7 @@ export class SysonModelSeedRunExecutor {
           },
         },
         live,
+        syson,
       );
       const rootPackageGet = rootPackageGetResult(rootRead.structuredContent);
 
@@ -475,6 +510,29 @@ export class SysonModelSeedRunExecutor {
     }
   }
 
+  private async openBoundSysonClient(
+    session: CapabilityRuntimeExecutionSession,
+    operationalCapability: ResolvedCapabilityRuntimeOperation,
+  ): Promise<McpToolClient> {
+    try {
+      const publication = requiredSeedPublication(operationalCapability);
+      const handle = await this.#capabilityRuntimeConnection.broker.connect({
+        lease: session.lease,
+        binding: publication.binding,
+        launchGroup: publication.launchGroup,
+      });
+      return await this.#capabilityRuntimeConnection.openMcpClient(handle);
+    } catch (error) {
+      if (error instanceof CapabilityRuntimeSessionUnavailableError) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          error.message,
+        );
+      }
+      throw error;
+    }
+  }
+
   private async assertSeedWriteAheadAllowsHostSession(
     projectId: string,
     runId: string,
@@ -554,6 +612,7 @@ export class SysonModelSeedRunExecutor {
     step: SysonModelSeedWriteStep;
     capturedAt: string;
     live: LiveRecorder;
+    syson: McpToolClient;
     call: {
       readonly name: "syson_project_create" | "syson_model_create";
       readonly arguments: Record<string, unknown>;
@@ -583,7 +642,7 @@ export class SysonModelSeedRunExecutor {
       }
     }
     try {
-      const response = await this.#syson.callTool(input.call);
+      const response = await input.syson.callTool(input.call);
       const normalized = input.normalize(response.structuredContent);
       await this.#attempts.complete({
         projectId: input.project.project.id,
@@ -610,9 +669,10 @@ export class SysonModelSeedRunExecutor {
       readonly arguments: Record<string, unknown>;
     },
     live: LiveRecorder,
+    syson: McpToolClient,
   ): Promise<McpToolResult> {
     try {
-      const result = await this.#syson.callTool(call);
+      const result = await syson.callTool(call);
       await live(call.name, "completed");
       return result;
     } catch (error) {
@@ -992,6 +1052,39 @@ class ProviderWriteOutcomeUnknownError extends Error {
     this.name = "ProviderWriteOutcomeUnknownError";
     this.step = step;
   }
+}
+
+function requiredSeedPublication(
+  operationalCapability: ResolvedCapabilityRuntimeOperation,
+): {
+  readonly binding: { readonly id: string; readonly version: string };
+  readonly launchGroup: CapabilityRuntimeLaunchGroupReference;
+} {
+  if (operationalCapability.bindings.length !== 1) {
+    throw new CapabilityRuntimeConnectionError(
+      "SysON model seed requires exactly one sealed operational binding.",
+    );
+  }
+  const binding = operationalCapability.bindings[0]!;
+  const groups: CapabilityRuntimeLaunchGroupReference[] = [];
+  for (const lifecycle of binding.hostLifecycles) {
+    if (lifecycle.kind !== "persistent-compose" || lifecycle.launchGroup === null) {
+      continue;
+    }
+    if (
+      !groups.some((group) =>
+        sameCapabilityRuntimeLaunchGroupReference(group, lifecycle.launchGroup!)
+      )
+    ) {
+      groups.push(lifecycle.launchGroup);
+    }
+  }
+  if (groups.length !== 1) {
+    throw new CapabilityRuntimeConnectionError(
+      "SysON model seed requires exactly one sealed launch group covered by the active lease.",
+    );
+  }
+  return { binding: binding.binding, launchGroup: groups[0]! };
 }
 
 function requireRun(

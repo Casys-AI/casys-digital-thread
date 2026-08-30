@@ -84,6 +84,7 @@ import type { ContentFingerprint } from "../../../domain/thread/thread-snapshot.
 import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../../shared/stores/live-thread-update-store.ts";
 import {
+  passthroughCapabilityRuntimeConnection,
   recordingCapabilityRuntimeSession,
   successfulCapabilityRuntimeFor,
 } from "../../../testing/capability-runtime-execution-session-test-support.ts";
@@ -1278,7 +1279,9 @@ async function queuedArchitectureFixture(
     snapshots,
     captures: seedCaptures,
     attempts: seedAttempts,
-    syson: new SeedSyson(),
+    capabilityRuntimeConnection: passthroughCapabilityRuntimeConnection(
+      new SeedSyson(),
+    ),
     lease: new FileEngineeringProjectRunLease(`${directory}/seed-leases`),
     ...successfulCapabilityRuntimeFor(
       PROJECT_ID,
@@ -4007,7 +4010,9 @@ Deno.test(
           snapshots: snapshots2,
           captures: seedCaptures2,
           attempts: seedAttempts2,
-          syson: new SeedSyson(),
+          capabilityRuntimeConnection: passthroughCapabilityRuntimeConnection(
+            new SeedSyson(),
+          ),
           lease: new FileEngineeringProjectRunLease(
             `${directory2}/seed-leases`,
           ),

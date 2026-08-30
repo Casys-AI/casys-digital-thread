@@ -363,7 +363,6 @@ function validateStrictCompose(
   }
   const declaredVolumes = new Set(Object.keys(volumes));
   const referencedVolumes = new Set<string>();
-  const loopbackPorts = new Set<number>();
   for (const [volume, config] of Object.entries(volumes)) {
     if (
       !/^[a-z0-9][a-z0-9_-]{0,62}$/.test(volume) ||
@@ -388,22 +387,8 @@ function validateStrictCompose(
         if (typeof mount === "string") referencedVolumes.add(mount.split(":", 1)[0]!);
       }
     }
-    if (parsedService.ports !== undefined) {
-      for (
-        const port of arrayOf(
-          parsedService.ports,
-          "$launchGroup.compose.content.services.*.ports",
-        )
-      ) {
-        if (typeof port !== "string") continue;
-        const host = Number(port.split(":")[1]);
-        if (loopbackPorts.has(host)) {
-          throw new TypeError("Compose launch-group loopback ports must be unique.");
-        }
-        loopbackPorts.add(host);
-      }
-    }
   }
+  collectPublishedLoopbackHostPorts(services);
   if (
     declaredVolumes.size !== referencedVolumes.size ||
     [...declaredVolumes].some((volume) => !referencedVolumes.has(volume))
@@ -490,14 +475,8 @@ function validateComposeService(
   if (service.ports !== undefined) {
     const seen = new Set<number>();
     for (const [index, port] of arrayOf(service.ports, `${path}.ports`).entries()) {
-      const parts = typeof port === "string" ? port.split(":") : [];
-      const host = Number(parts[1]);
-      const container = Number(parts[2]);
-      if (
-        parts.length !== 3 || parts[0] !== "127.0.0.1" || !Number.isInteger(host) ||
-        !Number.isInteger(container) || host < 1 || host > 65535 || container < 1 ||
-        container > 65535 || seen.has(host)
-      ) {
+      const host = loopbackHostPort(port, `${path}.ports[${index}]`);
+      if (seen.has(host)) {
         throw new TypeError(
           `${path}.ports[${index}] must be a loopback-only literal mapping.`,
         );
@@ -621,6 +600,66 @@ export async function fingerprintCapabilityRuntimeComposeContent(
     algorithm: "sha256" as const,
     digest: await sha256Hex(new TextEncoder().encode(content)),
   });
+}
+
+/**
+ * Host ports published by one already-validated canonical Compose descriptor.
+ * This is not a second Compose authority: YAML, aliases and raw documents are
+ * refused. Inter-group uniqueness is a registry invariant.
+ */
+export function capabilityRuntimeLaunchGroupPublishedLoopbackHostPorts(
+  group: CapabilityRuntimeLaunchGroup,
+): readonly number[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(group.compose.content);
+  } catch {
+    throw new TypeError("$launchGroup.compose.content must be canonical JSON.");
+  }
+  const document = exactRecord(
+    parsed,
+    ["services", "volumes"],
+    "$launchGroup.compose.content",
+  );
+  const services = record(document.services, "$launchGroup.compose.content.services");
+  return deepFreeze(collectPublishedLoopbackHostPorts(services));
+}
+
+function collectPublishedLoopbackHostPorts(
+  services: Readonly<Record<string, unknown>>,
+): readonly number[] {
+  const ports: number[] = [];
+  const seen = new Set<number>();
+  for (const [name, service] of Object.entries(services)) {
+    const path = `$launchGroup.compose.content.services.${name}`;
+    const parsedService = record(service, path);
+    if (parsedService.ports === undefined) continue;
+    for (
+      const [index, port] of arrayOf(parsedService.ports, `${path}.ports`).entries()
+    ) {
+      const host = loopbackHostPort(port, `${path}.ports[${index}]`);
+      if (seen.has(host)) {
+        throw new TypeError("Compose launch-group loopback ports must be unique.");
+      }
+      seen.add(host);
+      ports.push(host);
+    }
+  }
+  return ports;
+}
+
+function loopbackHostPort(value: unknown, path: string): number {
+  const parts = typeof value === "string" ? value.split(":") : [];
+  const host = Number(parts[1]);
+  const container = Number(parts[2]);
+  if (
+    parts.length !== 3 || parts[0] !== "127.0.0.1" || !Number.isInteger(host) ||
+    !Number.isInteger(container) || host < 1 || host > 65535 || container < 1 ||
+    container > 65535
+  ) {
+    throw new TypeError(`${path} must be a loopback-only literal mapping.`);
+  }
+  return host;
 }
 
 function parseRetention(value: unknown): CapabilityRuntimeLaunchGroup["retention"] {

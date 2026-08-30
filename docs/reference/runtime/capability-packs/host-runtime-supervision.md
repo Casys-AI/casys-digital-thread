@@ -162,9 +162,10 @@ group. A missing project, unreadable runtime context, unresolved JIT demand or s
 catalogue link blocks cleanup rather than releasing the final lease or stopping a shared
 runtime. An active sibling lease also retains the group.
 
-A successful start proves the group active. It does not yet return a connection handle
-bound to that lease. Adapters still call the current server-owned loopback publications.
-See [capability runtime connection](capability-runtime-connection.md). Root
+A successful start proves the group active; it does not itself locate a provider. The
+SysON seed canary subsequently obtains a process-local handle bound to that lease and the
+sealed publication. Other adapters still call the current server-owned loopback
+publications. See [capability runtime connection](capability-runtime-connection.md). Root
 `docker-compose.yml` is a different Docker project and cannot be adopted; the same host
 ports collide if both run.
 

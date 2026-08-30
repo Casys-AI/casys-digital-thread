@@ -29,9 +29,10 @@ groups (`casys-syson`, `casys-build123d-sandbox`, `casys-build123d-observation`,
 is candidacy; it does not start a service, and only an executor that opens its registered
 runtime/preparation session can activate a demanded group. Root `docker-compose.yml` is
 a maintainer probe and collides with those groups on the same loopback ports. A
-successful JIT start proves the group active; it does not yet mint a lease-bound
-connection handle. This remains an operational boundary: it neither admits an
-engineering method nor turns container health into an engineering result.
+successful JIT start proves the group active. The SysON seed canary alone then obtains a
+lease-bound, process-local connection handle; the remaining provider clients still use
+their fixed server-owned publications. This remains an operational boundary: it neither
+admits an engineering method nor turns container health into an engineering result.
 
 Loopback publications and the three start paths live on
 [local runtime and ports](../local-runtime-and-ports.md).
