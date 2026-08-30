@@ -582,7 +582,14 @@ annotation is not authority by itself: the basis guard re-hashes the exact MRTR 
 requires its matching human approval for either outcome. When the outcome is
 `write-effect-accepted`, the server creates a separate required decision linked to the
 blocker. Only that decision's exact eleven-field proposal and later human approval can
-release the basis; incomplete legacy snapshots remain blocked.
+release the basis; incomplete legacy snapshots remain blocked. Once the annotation is
+durable, the target failed work item is terminal `cancelled` while its run remains
+`failed`; it is never requeued. A later appended successor work item follows normal
+readiness and queueing. Only after that successor completes may successor reconciliation
+close the old cancelled item, and only when it revalidates the exact durable
+uncertain-writer ceremony and finds no existing successor reconciliation. The closing
+successor must directly name that failed work item through `predecessorRevisionId`; a
+shared activity, phase or operation never supplies the missing revision edge.
 
 ## Command and authority surfaces
 

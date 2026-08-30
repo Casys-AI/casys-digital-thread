@@ -97,9 +97,10 @@ refused at the executor gate.
 
 Once it completes, the annotation is attached to the failed run. The failed run stays
 failed — reconciliation records a judgement, it never converts a failure into a success.
-`provider-did-not-write` can release the basis only while its exact signed MRTR ceremony
-remains valid. `write-effect-accepted` deliberately keeps the basis locked and creates a
-separate server-fixed release decision linked to the blocker.
+The original failed work item becomes terminal `cancelled` for either outcome and cannot
+be queued again. `provider-did-not-write` can release the basis only while its exact
+signed MRTR ceremony remains valid. `write-effect-accepted` deliberately keeps the basis
+locked and creates a separate server-fixed release decision linked to the blocker.
 
 ## 6. Approve the basis release when the write effect was accepted
 
@@ -129,8 +130,12 @@ partial record stays blocked.
 
 ## 7. Requeue the work
 
-Append a new work item for the retry and take it through the normal path: propose,
-approve, queue, execute. The original work item keeps its failed run in history.
+Append a successor work-item revision for the retry and take it through the normal path:
+propose, approve, queue, execute. The original work item keeps its failed run in
+history; do not make it `ready` again. After the successor has completed with exact
+evidence, the separate successor-reconciliation closeout may record that relation on the
+cancelled original work item. That successor must name the cancelled work item directly
+through `predecessorRevisionId`; a same-activity sibling is not a recovery successor.
 
 ## What this procedure is not
 
