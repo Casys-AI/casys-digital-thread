@@ -43,6 +43,8 @@ import { FileProjectCapabilityLedgerStore } from "./file-project-capability-ledg
 import {
   createFirstPartyCapabilityRuntimeCatalog,
   createFirstPartySysonRolloverPredecessorUnit,
+  firstPartyAdmittedModelicaHistoryPredecessor,
+  firstPartyGeometryModuleAssemblerHistoryPredecessor,
 } from "./first-party-capability-binding-catalog.ts";
 import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "./first-party-capability-runtime-qualification-candidates.ts";
 import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "./first-party-capability-runtime-qualification-specifications.ts";
@@ -326,27 +328,15 @@ export async function createLocalCapabilityRuntimeReadComposition(
       : []),
   ]);
   const policy = new FileCapabilityRuntimeAdminPolicyStore(undefined, catalog);
-  const successorSysonUnit = catalog.units.find((unit) =>
-    unit.id === "casys.syson-stack"
-  );
-  if (!predecessorSysonUnit || !successorSysonUnit) {
-    throw new Error(
-      "The code-owned SysON rollover requires exact predecessor and successor units.",
-    );
-  }
   const lock = new FileCapabilityRuntimeAdminLockStore(undefined, catalog, {
-    transitionPredecessors: [{
-      predecessor: {
-        id: predecessorSysonUnit.id,
-        version: predecessorSysonUnit.version,
-        manifestFingerprint: predecessorSysonUnit.manifestFingerprint,
-      },
-      successor: {
-        id: successorSysonUnit.id,
-        version: successorSysonUnit.version,
-        manifestFingerprint: successorSysonUnit.manifestFingerprint,
-      },
-    }],
+    transitionPredecessors: currentCatalogTransitionPredecessors(
+      catalog,
+      [
+        predecessorSysonUnit,
+        firstPartyGeometryModuleAssemblerHistoryPredecessor(),
+        firstPartyAdmittedModelicaHistoryPredecessor(),
+      ],
+    ),
   });
   const hostIdentity = new FileCapabilityRuntimeHostIdentityStore();
   const qualifications = new FileCapabilityRuntimeQualificationAttestationStore();
@@ -389,4 +379,34 @@ export async function createLocalCapabilityRuntimeReadComposition(
     contexts,
     workbench: new ProjectCapabilityWorkbenchProjector({ contexts, states }),
   };
+}
+
+function currentCatalogTransitionPredecessors(
+  catalog: LocalCapabilityRuntimeReadComposition["catalog"],
+  predecessors: readonly {
+    readonly id: string;
+    readonly version: string;
+    readonly manifestFingerprint: ContentFingerprint;
+  }[],
+) {
+  return predecessors.map((predecessor) => {
+    const successor = catalog.units.find((unit) => unit.id === predecessor.id);
+    if (!successor) {
+      throw new Error(
+        `The code-owned local-lock transition predecessor ${predecessor.id} has no current catalogue successor.`,
+      );
+    }
+    return {
+      predecessor: {
+        id: predecessor.id,
+        version: predecessor.version,
+        manifestFingerprint: structuredClone(predecessor.manifestFingerprint),
+      },
+      successor: {
+        id: successor.id,
+        version: successor.version,
+        manifestFingerprint: structuredClone(successor.manifestFingerprint),
+      },
+    };
+  });
 }

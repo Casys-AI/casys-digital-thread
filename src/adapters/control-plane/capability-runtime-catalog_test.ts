@@ -2,6 +2,8 @@ import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import {
   createFirstPartyCapabilityRuntimeCatalog,
   createFirstPartySysonRolloverPredecessorUnit,
+  firstPartyAdmittedModelicaHistoryPredecessor,
+  firstPartyGeometryModuleAssemblerHistoryPredecessor,
 } from "./first-party-capability-binding-catalog.ts";
 import {
   createFirstPartySysonRolloverPredecessorLaunchGroup,
@@ -78,6 +80,9 @@ Deno.test("atomic first-party runtime catalogue separates sources with distinct 
     ["linux/amd64", "linux/arm64"],
   );
   const predecessorSyson = await createFirstPartySysonRolloverPredecessorUnit();
+  const predecessorGeometryModuleAssembler =
+    firstPartyGeometryModuleAssemblerHistoryPredecessor();
+  const predecessorAdmittedModelica = firstPartyAdmittedModelicaHistoryPredecessor();
   assertEquals(predecessorSyson.version, "1.0.0");
   // The retired descriptor is a historical authority, not a derived alias for
   // the current SysON material. Keep both fingerprints literal so a future
@@ -101,6 +106,32 @@ Deno.test("atomic first-party runtime catalogue separates sources with distinct 
     predecessorSyson.materials.find((material) => material.id === "syson-app-image")
       ?.platforms,
     ["linux/arm64"],
+  );
+  assertEquals(predecessorGeometryModuleAssembler.manifestFingerprint, {
+    algorithm: "sha256",
+    digest: "e03e1f245088f8f49b2d680ae6d4ff7664329f4ea0227be74e701f9f579c532f",
+  });
+  assertEquals(predecessorAdmittedModelica.manifestFingerprint, {
+    algorithm: "sha256",
+    digest: "8792f440a4ee3b6f835f730082081828c87fe657044fc5d1bd6405b64bdfb515",
+  });
+  assertEquals(
+    catalog.units.some((unit) =>
+      unit.id === predecessorGeometryModuleAssembler.id &&
+      unit.version === predecessorGeometryModuleAssembler.version &&
+      unit.manifestFingerprint.digest ===
+        predecessorGeometryModuleAssembler.manifestFingerprint.digest
+    ),
+    false,
+  );
+  assertEquals(
+    catalog.units.some((unit) =>
+      unit.id === predecessorAdmittedModelica.id &&
+      unit.version === predecessorAdmittedModelica.version &&
+      unit.manifestFingerprint.digest ===
+        predecessorAdmittedModelica.manifestFingerprint.digest
+    ),
+    false,
   );
   assertEquals(catalog.units.map((unit) => unit.id), [
     "casys.syson-stack",

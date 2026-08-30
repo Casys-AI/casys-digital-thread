@@ -482,6 +482,39 @@ export async function createFirstPartySysonRolloverPredecessorUnit(): Promise<
   return predecessorUnit;
 }
 
+/**
+ * Retired local-lock identity before the qualified geometry-module assembler
+ * catalogue promotion. The former manifest predates the current launch-group
+ * schema, so this is an exact lock-history identity, not a synthetic runtime
+ * descriptor.
+ */
+export function firstPartyGeometryModuleAssemblerHistoryPredecessor() {
+  return {
+    id: "casys.geometry-module-assembler-worker",
+    version: "1.0.0",
+    manifestFingerprint: {
+      algorithm: "sha256" as const,
+      digest: "e03e1f245088f8f49b2d680ae6d4ff7664329f4ea0227be74e701f9f579c532f",
+    },
+  };
+}
+
+/**
+ * Retired local-lock identity before the admitted Modelica worker platform
+ * declaration. It is readable only as immutable history, never selectable;
+ * its former manifest likewise predates the current launch-group schema.
+ */
+export function firstPartyAdmittedModelicaHistoryPredecessor() {
+  return {
+    id: "casys.modelica-worker",
+    version: "1.0.0",
+    manifestFingerprint: {
+      algorithm: "sha256" as const,
+      digest: "8792f440a4ee3b6f835f730082081828c87fe657044fc5d1bd6405b64bdfb515",
+    },
+  };
+}
+
 async function unit(
   id: string,
   materials: readonly AtomicCapabilityRuntimeMaterial[],

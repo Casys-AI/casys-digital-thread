@@ -4,7 +4,12 @@ import {
   FileCapabilityRuntimeHostMutationLock,
 } from "../../adapters/control-plane/file-capability-runtime-host-stores.ts";
 import { InMemoryProjectCapabilityLedgerStore } from "../../adapters/control-plane/file-project-capability-ledger-store.ts";
-import { createFirstPartyCapabilityRuntimeCatalog } from "../../adapters/control-plane/first-party-capability-binding-catalog.ts";
+import {
+  createFirstPartyCapabilityRuntimeCatalog,
+  createFirstPartySysonRolloverPredecessorUnit,
+  firstPartyAdmittedModelicaHistoryPredecessor,
+  firstPartyGeometryModuleAssemblerHistoryPredecessor,
+} from "../../adapters/control-plane/first-party-capability-binding-catalog.ts";
 import { createFirstPartyCapabilityRuntimeLaunchGroupRegistry } from "../../adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
 import {
   InMemoryCapabilityRuntimeJournal,
@@ -14,6 +19,10 @@ import {
   type CapabilityRuntimeLaunchGroup,
   capabilityRuntimeLaunchGroupReference,
 } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../domain/kernel/deterministic-json.ts";
 import type {
   CapabilityRuntimeAdministrativeRemovalObservation,
   CapabilityRuntimeJournalEntry,
@@ -64,6 +73,102 @@ Deno.test("local admin lock review requires exact fingerprint and explicit confi
     );
     assertEquals(rolledBack.revision, 2);
     assertEquals(rolledBack.units, applied.units);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("local lock review replaces only declared historical units with exact current catalogue units", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "casys-local-admin-history-upgrade-",
+  });
+  try {
+    const [catalog, predecessorSyson] = await Promise.all([
+      createFirstPartyCapabilityRuntimeCatalog(),
+      createFirstPartySysonRolloverPredecessorUnit(),
+    ]);
+    const predecessors = [
+      predecessorSyson,
+      firstPartyGeometryModuleAssemblerHistoryPredecessor(),
+      firstPartyAdmittedModelicaHistoryPredecessor(),
+    ];
+    const currentUnits = currentLockUnits(catalog);
+    const first = {
+      schemaVersion: "capability-runtime-admin-lock/1.0" as const,
+      revision: 1,
+      previous: await sha256Fingerprint({
+        schemaVersion: "capability-runtime-admin-lock/1.0",
+        revision: 0,
+        previous: null,
+        units: [],
+      }),
+      units: currentUnits.map((unit) => ({
+        ...(predecessors.find((candidate) => candidate.id === unit.id)
+          ? lockedUnit(predecessors.find((candidate) => candidate.id === unit.id)!)
+          : unit),
+        desired: "inactive" as const,
+      })),
+    };
+    const second = {
+      ...first,
+      revision: 2,
+      previous: await sha256Fingerprint(first),
+      units: first.units.map((unit) => ({
+        ...unit,
+        desired: unit.id === "casys.syson-stack"
+          ? "active" as const
+          : "inactive" as const,
+      })),
+    };
+    await writeAdminLockHistory(directory, [first, second]);
+
+    const forgedPredecessors = predecessors.map((unit) =>
+      unit.id === "casys.geometry-module-assembler-worker"
+        ? {
+          ...unit,
+          manifestFingerprint: {
+            algorithm: "sha256" as const,
+            digest: "f".repeat(64),
+          },
+        }
+        : unit
+    );
+    await assertRejects(
+      () =>
+        new FileCapabilityRuntimeAdminLockStore(
+          `${directory}/admin-lock.json`,
+          catalog,
+          transitionPredecessors(catalog, forgedPredecessors),
+        ).read(),
+      TypeError,
+      "current unit or declared transition predecessor",
+    );
+
+    const lock = new FileCapabilityRuntimeAdminLockStore(
+      `${directory}/admin-lock.json`,
+      catalog,
+      transitionPredecessors(catalog, predecessors),
+    );
+    const service = new LocalCapabilityRuntimeAdminService({
+      catalog,
+      ledgers: new InMemoryProjectCapabilityLedgerStore(),
+      lock,
+      hostMutationLock: new FileCapabilityRuntimeHostMutationLock(
+        `${directory}/mutation.lock`,
+      ),
+      authorization: {} as never,
+    });
+    const review = await service.lockReview();
+    assertEquals((await lock.read()).revision, 2);
+    assertEquals(review.nextLock.revision, 3);
+    assertEquals(review.nextLock.units, currentUnits);
+
+    const applied = await service.lockApply(review.reviewFingerprint, true);
+    assertEquals(applied.revision, 3);
+    assertEquals(applied.units, currentUnits);
+    assertEquals((await lock.list()).map((entry) => entry.revision), [0, 1, 2, 3]);
+    assertEquals((await lock.readRevision(1)).units, first.units);
+    assertEquals((await lock.readRevision(2)).units, second.units);
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
@@ -239,6 +344,85 @@ Deno.test("administrative removal is an already-absent no-op and blocks foreign 
     await shared.close();
   }
 });
+
+function transitionPredecessors(
+  catalog: Awaited<ReturnType<typeof createFirstPartyCapabilityRuntimeCatalog>>,
+  predecessors: readonly {
+    readonly id: string;
+    readonly version: string;
+    readonly manifestFingerprint: {
+      readonly algorithm: "sha256";
+      readonly digest: string;
+    };
+  }[],
+) {
+  return {
+    transitionPredecessors: predecessors.map((predecessor) => {
+      const successor = catalog.units.find((unit) => unit.id === predecessor.id);
+      if (!successor) {
+        throw new Error(`Current catalogue lacks ${predecessor.id}.`);
+      }
+      return {
+        predecessor: lockedUnit(predecessor),
+        successor: lockedUnit(successor),
+      };
+    }),
+  };
+}
+
+function lockedUnit(unit: {
+  readonly id: string;
+  readonly version: string;
+  readonly manifestFingerprint: {
+    readonly algorithm: "sha256";
+    readonly digest: string;
+  };
+}) {
+  return {
+    id: unit.id,
+    version: unit.version,
+    manifestFingerprint: structuredClone(unit.manifestFingerprint),
+  };
+}
+
+function currentLockUnits(
+  catalog: Awaited<ReturnType<typeof createFirstPartyCapabilityRuntimeCatalog>>,
+) {
+  return catalog.units.map((unit) => ({
+    ...lockedUnit(unit),
+    desired: "inactive" as const,
+  })).toSorted((left, right) => left.id.localeCompare(right.id));
+}
+
+async function writeAdminLockHistory(
+  directory: string,
+  revisions: readonly {
+    readonly schemaVersion: "capability-runtime-admin-lock/1.0";
+    readonly revision: number;
+    readonly previous: Awaited<ReturnType<typeof sha256Fingerprint>>;
+    readonly units: readonly unknown[];
+  }[],
+): Promise<void> {
+  const historyDirectory = `${directory}/admin-lock-revisions`;
+  await Deno.mkdir(historyDirectory, { recursive: true });
+  for (const revision of revisions) {
+    await Deno.writeTextFile(
+      `${historyDirectory}/${String(revision.revision).padStart(10, "0")}.json`,
+      `${deterministicJson(revision)}\n`,
+    );
+  }
+  const tip = revisions.at(-1)!;
+  await Deno.writeTextFile(
+    `${directory}/admin-lock-head.json`,
+    `${
+      deterministicJson({
+        schemaVersion: "capability-runtime-admin-lock-head/1.0",
+        revision: tip.revision,
+        lockFingerprint: await sha256Fingerprint(tip),
+      })
+    }\n`,
+  );
+}
 
 async function removalRuntime(input: {
   readonly state?: "owned" | "absent";
