@@ -4,6 +4,11 @@ import {
   capabilityRuntimeLaunchGroupReference,
 } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import {
+  CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
+  createEffectiveCapabilityRuntimeLaunchProjection,
+  validateCapabilityRuntimeJournalEntry,
+} from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import {
   FileCapabilityRuntimeAdminLockStore,
   FileCapabilityRuntimeAdminPolicyStore,
   FileCapabilityRuntimeJournal,
@@ -63,6 +68,7 @@ Deno.test("file group journal is append-only and refuses an incomplete group out
       })),
       administrativeRemovalPlanFingerprint: null,
       effectiveRuntimeProjection: null,
+      qualificationStartAuthority: null,
     };
     await journal.appendBeforeMutation(entry);
     const outcome = {
@@ -97,6 +103,99 @@ Deno.test("file group journal is append-only and refuses an incomplete group out
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
+});
+
+Deno.test("host journal accepts private qualification authority only on its dedicated action", async () => {
+  const [group] = await createFirstPartyCapabilityRuntimeLaunchGroups();
+  if (!group) throw new Error("Expected first-party launch group.");
+  const authority = {
+    candidate: {
+      id: "chrono-arm64-emulation-v1",
+      fingerprint: { algorithm: "sha256" as const, digest: "a".repeat(64) },
+    },
+    reviewFingerprint: { algorithm: "sha256" as const, digest: "b".repeat(64) },
+  };
+  const qualification = {
+    id: "host-runtime:qualification",
+    action: "runtime-qualification-start" as const,
+    materials: group.materials.map((member) => member.material),
+    launchGroup: capabilityRuntimeLaunchGroupReference(group),
+    projectId: CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
+    plannedAt: "2026-08-29T00:00:00.000Z",
+    previousObservations: group.materials.map((member) => ({
+      material: member.material,
+      state: null,
+    })),
+    effectiveRuntimeProjection: null,
+    qualificationStartAuthority: authority,
+    administrativeRemovalPlanFingerprint: null,
+  };
+
+  assertEquals(
+    (await validateCapabilityRuntimeJournalEntry(qualification)).action,
+    "runtime-qualification-start",
+  );
+  await assertRejects(
+    () =>
+      validateCapabilityRuntimeJournalEntry({
+        ...qualification,
+        projectId: "project-attempted-override",
+      }),
+    TypeError,
+    "reserved local qualification project owner",
+  );
+  await assertRejects(
+    () =>
+      validateCapabilityRuntimeJournalEntry({
+        ...qualification,
+        action: "material-acquire",
+      }),
+    TypeError,
+    "only allowed for its matching start action",
+  );
+  await assertRejects(
+    () =>
+      validateCapabilityRuntimeJournalEntry({
+        ...qualification,
+        qualificationStartAuthority: null,
+      }),
+    TypeError,
+    "requires only its exact private qualification authority",
+  );
+  const projection = await createEffectiveCapabilityRuntimeLaunchProjection({
+    launchGroup: qualification.launchGroup,
+    materials: group.materials.map((member) => ({
+      material: member.material,
+      binding: { id: "test-binding", version: "1.0.0" },
+      effectiveQualification: "qualified" as const,
+      minimumQualification: "qualified" as const,
+      runtimeMode: {
+        material: member.material,
+        targetPlatform: "linux/arm64" as const,
+        mode: "native" as const,
+        qualificationAttestationFingerprint: null,
+      },
+    })),
+  });
+  await assertRejects(
+    () =>
+      validateCapabilityRuntimeJournalEntry({
+        ...qualification,
+        effectiveRuntimeProjection: projection,
+      }),
+    TypeError,
+    "requires only its exact private qualification authority",
+  );
+  await assertRejects(
+    () =>
+      validateCapabilityRuntimeJournalEntry({
+        ...qualification,
+        action: "runtime-start",
+        effectiveRuntimeProjection: projection,
+      }),
+    TypeError,
+    "must not carry a qualification start authority",
+  );
 });
 
 Deno.test("local capability admin readers default safely only when their files are absent", async () => {

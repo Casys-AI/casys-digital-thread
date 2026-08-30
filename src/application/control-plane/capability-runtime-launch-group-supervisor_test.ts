@@ -6,6 +6,7 @@ import {
   fingerprintCapabilityRuntimeLaunchGroup,
 } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import {
+  CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
   type CapabilityRuntimeJournalEntry,
   type CapabilityRuntimeJournalOutcome,
   type CapabilityRuntimeLease,
@@ -250,6 +251,260 @@ Deno.test("a reviewed launch group can preload material without a qualification 
   assertEquals(await fixture.leases.listActive(AT), []);
 });
 
+Deno.test("a private qualification start is separately authorized while a normal start still needs an exact ROP projection", async () => {
+  const first = await group("casys-qualification", "qualification");
+  const fixture = supervisor([first]);
+  const lease = qualificationLease([first]);
+  setStates(fixture, first, "inactive");
+
+  await assertRejects(
+    () =>
+      fixture.supervisor.ensureActive({
+        group: capabilityRuntimeLaunchGroupReference(first),
+        expectedMaterials: exactMaterials(first),
+        effectiveRuntimeProjection: null as never,
+        resolvedOperation: resolvedOperation(first),
+        projectId: "project-test",
+        lease: sessionLease([first]),
+        at: AT,
+        reuseExistingLease: "reject",
+      }),
+    TypeError,
+    "$effectiveRuntimeProjection must be an object.",
+  );
+  assertEquals(await fixture.leases.listActive(AT), []);
+  assertEquals(await fixture.journal.list(), []);
+  assertEquals(fixture.host.calls, []);
+
+  const result = await fixture.supervisor.ensureQualificationActive(
+    Object.assign({
+      group: capabilityRuntimeLaunchGroupReference(first),
+      expectedMaterials: exactMaterials(first),
+      qualificationStartAuthority: qualificationAuthority(),
+      lease,
+      at: AT,
+      reuseExistingLease: "reject" as const,
+      guard: () => Promise.resolve(true),
+    }, {
+      // Extra caller data cannot select a project owner: the public request
+      // does not declare it and runtime logic ignores it.
+      projectId: "project-attempted-override",
+    }),
+  );
+
+  assertEquals(result.mutation?.status, "succeeded");
+  const entries = await fixture.journal.list();
+  assertEquals(entries.map((entry) => entry.action), [
+    "runtime-qualification-start",
+  ]);
+  assertEquals(
+    entries[0]?.projectId,
+    CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
+  );
+  assertEquals(entries[0]?.effectiveRuntimeProjection, null);
+  assertEquals(entries[0]?.qualificationStartAuthority, qualificationAuthority());
+  assertEquals(fixture.host.calls.map((call) => call.action), [
+    "runtime-qualification-start",
+  ]);
+});
+
+Deno.test("a stale private qualification review fails before lease, journal, or host mutation", async () => {
+  const first = await group("casys-qualification-stale", "qualification-stale");
+  const fixture = supervisor([first]);
+
+  await assertRejects(
+    () =>
+      fixture.supervisor.ensureQualificationActive({
+        group: capabilityRuntimeLaunchGroupReference(first),
+        expectedMaterials: exactMaterials(first),
+        qualificationStartAuthority: qualificationAuthority(),
+        lease: qualificationLease([first]),
+        at: AT,
+        reuseExistingLease: "reject",
+        guard: () => Promise.resolve(false),
+      }),
+    CapabilityRuntimeLaunchGroupSafetyError,
+    "candidate or review is no longer current",
+  );
+  assertEquals(await fixture.leases.listActive(AT), []);
+  assertEquals(await fixture.journal.list(), []);
+  assertEquals(fixture.host.calls, []);
+});
+
+Deno.test("a disappeared qualification-start secret fails before lease, journal, or host mutation", async () => {
+  const first = await group(
+    "casys-qualification-secret",
+    "qualification-secret",
+    ["qualification-secret"],
+    ["chrono-mcp-bearer-token"],
+  );
+  const fixture = supervisor([first], undefined, "unavailable");
+  let guarded = false;
+
+  await assertRejects(
+    () =>
+      fixture.supervisor.ensureQualificationActive({
+        group: capabilityRuntimeLaunchGroupReference(first),
+        expectedMaterials: exactMaterials(first),
+        qualificationStartAuthority: qualificationAuthority(),
+        lease: qualificationLease([first]),
+        at: AT,
+        reuseExistingLease: "reject",
+        guard: () => {
+          guarded = true;
+          return Promise.resolve(true);
+        },
+        secretSnapshot: {} as CapabilityRuntimeSecretSnapshot,
+      }),
+    CapabilityRuntimeLaunchGroupSafetyError,
+    "secret availability is unknown or unavailable",
+  );
+  assertEquals(guarded, true);
+  assertEquals(await fixture.leases.listActive(AT), []);
+  assertEquals(await fixture.journal.list(), []);
+  assertEquals(fixture.host.calls, []);
+});
+
+Deno.test("a missing qualification-start secret snapshot fails before lease, journal, or host mutation", async () => {
+  const first = await group(
+    "casys-qualification-missing-secret",
+    "qualification-missing-secret",
+    ["qualification-missing-secret"],
+    ["chrono-mcp-bearer-token"],
+  );
+  const fixture = supervisor([first], undefined, "available");
+  let guarded = false;
+
+  await assertRejects(
+    () =>
+      fixture.supervisor.ensureQualificationActive({
+        group: capabilityRuntimeLaunchGroupReference(first),
+        expectedMaterials: exactMaterials(first),
+        qualificationStartAuthority: qualificationAuthority(),
+        lease: qualificationLease([first]),
+        at: AT,
+        reuseExistingLease: "reject",
+        guard: () => {
+          guarded = true;
+          return Promise.resolve(true);
+        },
+      }),
+    CapabilityRuntimeLaunchGroupSafetyError,
+    "server-minted launch secret snapshot",
+  );
+  assertEquals(guarded, true);
+  assertEquals(await fixture.leases.listActive(AT), []);
+  assertEquals(await fixture.journal.list(), []);
+  assertEquals(fixture.host.calls, []);
+});
+
+Deno.test("a qualification start refuses a project-owned lease before mutation", async () => {
+  const first = await group(
+    "casys-qualification-project-lease",
+    "qualification-project-lease",
+  );
+  const fixture = supervisor([first]);
+
+  await assertRejects(
+    () =>
+      fixture.supervisor.ensureQualificationActive({
+        group: capabilityRuntimeLaunchGroupReference(first),
+        expectedMaterials: exactMaterials(first),
+        qualificationStartAuthority: qualificationAuthority(),
+        lease: sessionLease([first]),
+        at: AT,
+        reuseExistingLease: "reject",
+        guard: () => Promise.resolve(true),
+      }),
+    CapabilityRuntimeLaunchGroupSafetyError,
+    "not current for this group activation",
+  );
+  assertEquals(await fixture.leases.listActive(AT), []);
+  assertEquals(await fixture.journal.list(), []);
+  assertEquals(fixture.host.calls, []);
+});
+
+Deno.test("a qualification probe rejects a foreign exact material before lease, journal, or host mutation", async () => {
+  const first = await group("casys-qualification-material", "qualification-material");
+  const fixture = supervisor([first]);
+  const [material] = exactMaterials(first);
+  if (!material) throw new Error("Expected one test material.");
+
+  await assertRejects(
+    () =>
+      fixture.supervisor.ensureQualificationActive({
+        group: capabilityRuntimeLaunchGroupReference(first),
+        expectedMaterials: [{ ...material, imageDigest: "f".repeat(64) }],
+        qualificationStartAuthority: qualificationAuthority(),
+        lease: qualificationLease([first]),
+        at: AT,
+        reuseExistingLease: "reject",
+        guard: () => Promise.resolve(true),
+      }),
+    CapabilityRuntimeLaunchGroupSafetyError,
+    "does not bind the exact launch-group material digests",
+  );
+  assertEquals(await fixture.leases.listActive(AT), []);
+  assertEquals(await fixture.journal.list(), []);
+  assertEquals(fixture.host.calls, []);
+});
+
+Deno.test("a qualification lease exclusively blocks a normal operation start under H1", async () => {
+  const first = await group("casys-qualification-exclusive", "qualification-exclusive");
+  const fixture = supervisor([first]);
+  const qualificationLeaseValue = qualificationLease([first]);
+  await fixture.leases.claim(qualificationLeaseValue);
+
+  await assertRejects(
+    async () =>
+      fixture.supervisor.ensureActive({
+        group: capabilityRuntimeLaunchGroupReference(first),
+        expectedMaterials: exactMaterials(first),
+        effectiveRuntimeProjection: await projection(first),
+        resolvedOperation: resolvedOperation(first),
+        projectId: "project-test",
+        lease: sessionLease([first]),
+        at: AT,
+        reuseExistingLease: "reject",
+      }),
+    CapabilityRuntimeLaunchGroupSafetyError,
+    "exclusively leased by a private qualification probe",
+  );
+  assertEquals(
+    (await fixture.leases.listActive(AT)).map((lease) => lease.id),
+    [qualificationLeaseValue.id],
+  );
+  assertEquals((await fixture.journal.list()).length, 0);
+  assertEquals(fixture.host.calls, []);
+});
+
+Deno.test("a normal operation lease exclusively blocks a qualification start under H1", async () => {
+  const first = await group("casys-operation-exclusive", "operation-exclusive");
+  const fixture = supervisor([first]);
+  await fixture.leases.claim(sessionLease([first]));
+
+  await assertRejects(
+    () =>
+      fixture.supervisor.ensureQualificationActive({
+        group: capabilityRuntimeLaunchGroupReference(first),
+        expectedMaterials: exactMaterials(first),
+        qualificationStartAuthority: qualificationAuthority(),
+        lease: qualificationLease([first]),
+        at: AT,
+        reuseExistingLease: "reject",
+        guard: () => Promise.resolve(true),
+      }),
+    CapabilityRuntimeLaunchGroupSafetyError,
+    "requires exclusive possession",
+  );
+  assertEquals(
+    (await fixture.leases.listActive(AT)).map((lease) => lease.id),
+    ["lease-session"],
+  );
+  assertEquals((await fixture.journal.list()).length, 0);
+  assertEquals(fixture.host.calls, []);
+});
+
 Deno.test("a pending start that left every member unchanged is safe to retry", async () => {
   const first = await group("casys-first", "first");
   const fixture = supervisor([first]);
@@ -477,6 +732,27 @@ function sessionLease(
   };
 }
 
+function qualificationLease(
+  groups: readonly CapabilityRuntimeLaunchGroup[],
+): CapabilityRuntimeLease {
+  return {
+    ...sessionLease(groups),
+    id: "lease-qualification",
+    projectId: CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
+    bindingIds: ["runtime-qualification"],
+  };
+}
+
+function qualificationAuthority() {
+  return {
+    candidate: {
+      id: "chrono-arm64-emulation-v1",
+      fingerprint: { algorithm: "sha256" as const, digest: "a".repeat(64) },
+    },
+    reviewFingerprint: { algorithm: "sha256" as const, digest: "b".repeat(64) },
+  };
+}
+
 class StateTransitionHost implements CapabilityRuntimeHostMutator {
   readonly calls: {
     readonly action: CapabilityRuntimeJournalEntry["action"];
@@ -522,7 +798,8 @@ class StateTransitionHost implements CapabilityRuntimeHostMutator {
       status: uncertain ? "uncertain" : "succeeded",
       observations: entry.materials.map((material) => ({
         material,
-        state: uncertain ? null : entry.action === "runtime-start"
+        state: uncertain ? null : entry.action === "runtime-start" ||
+            entry.action === "runtime-qualification-start"
           ? {
             material: "installed",
             runtime: "active",
@@ -703,6 +980,7 @@ async function appendIntent(
     effectiveRuntimeProjection: action === "runtime-start"
       ? await projection(group)
       : null,
+    qualificationStartAuthority: null,
     administrativeRemovalPlanFingerprint: null,
   };
   await fixture.journal.appendBeforeMutation(entry);
@@ -725,6 +1003,7 @@ function transitionState(
     case "runtime-stop":
       return { material: "installed", runtime: "inactive" };
     case "runtime-start":
+    case "runtime-qualification-start":
       return { material: "installed", runtime: "active" };
     case "material-remove":
       return { material: "absent", runtime: "inactive" };

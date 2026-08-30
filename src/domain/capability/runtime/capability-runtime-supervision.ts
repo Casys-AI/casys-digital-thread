@@ -672,8 +672,32 @@ export interface CapabilityRuntimeLease {
 export type CapabilityRuntimeJournalAction =
   | "material-acquire"
   | "runtime-start"
+  /** A private, host-local candidate qualification probe; never an operation run. */
+  | "runtime-qualification-start"
   | "runtime-stop"
   | "material-remove";
+
+/**
+ * The reserved local lease owner for a private runtime qualification probe.
+ * It deliberately cannot name an engineering project or a caller-selected
+ * engine. Candidate selection and review recomposition stay in the private
+ * qualification service; this durable record carries only exact opaque ids.
+ */
+export const CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID =
+  "system-capability-qualification";
+
+/**
+ * Exact code-owned authority carried by a durable private qualification-start
+ * intent. It is operational host evidence only: it does not admit a method,
+ * create a project operation, or certify an engineering result.
+ */
+export interface CapabilityRuntimeQualificationStartAuthority {
+  readonly candidate: {
+    readonly id: string;
+    readonly fingerprint: ContentFingerprint;
+  };
+  readonly reviewFingerprint: ContentFingerprint;
+}
 
 /**
  * The journal is appended before a host action. `planned` never asserts that
@@ -703,6 +727,10 @@ export interface CapabilityRuntimeJournalEntry {
    */
   readonly effectiveRuntimeProjection:
     | EffectiveCapabilityRuntimeLaunchProjection
+    | null;
+  /** Present only on the private qualification-start action. */
+  readonly qualificationStartAuthority:
+    | CapabilityRuntimeQualificationStartAuthority
     | null;
   readonly administrativeRemovalPlanFingerprint: ContentFingerprint | null;
 }
@@ -968,6 +996,35 @@ export function recoverCapabilityRuntime(
   };
 }
 
+/** Strict parser for the opaque, private qualification authority in a host intent. */
+export function validateCapabilityRuntimeQualificationStartAuthority(
+  value: unknown,
+): CapabilityRuntimeQualificationStartAuthority {
+  const root = exactRecord(
+    value,
+    ["candidate", "reviewFingerprint"],
+    "$qualificationStart",
+  );
+  const candidate = exactRecord(
+    root.candidate,
+    ["id", "fingerprint"],
+    "$qualificationStart.candidate",
+  );
+  return deepFreeze({
+    candidate: {
+      id: safeId(candidate.id, "$qualificationStart.candidate.id"),
+      fingerprint: contentFingerprint(
+        candidate.fingerprint,
+        "$qualificationStart.candidate.fingerprint",
+      ),
+    },
+    reviewFingerprint: contentFingerprint(
+      root.reviewFingerprint,
+      "$qualificationStart.reviewFingerprint",
+    ),
+  });
+}
+
 /** Strict parser used by the durable host journal and test fixtures. */
 export async function validateCapabilityRuntimeJournalEntry(
   value: unknown,
@@ -981,6 +1038,7 @@ export async function validateCapabilityRuntimeJournalEntry(
     "plannedAt",
     "previousObservations",
     "effectiveRuntimeProjection",
+    "qualificationStartAuthority",
     "administrativeRemovalPlanFingerprint",
   ], "$runtimeJournalEntry");
   const materials = arrayOf(root.materials, "$runtimeJournalEntry.materials").map(
@@ -1023,6 +1081,11 @@ export async function validateCapabilityRuntimeJournalEntry(
     : await validateEffectiveCapabilityRuntimeLaunchProjection(
       root.effectiveRuntimeProjection,
     );
+  const qualificationStartAuthority = root.qualificationStartAuthority === null
+    ? null
+    : validateCapabilityRuntimeQualificationStartAuthority(
+      root.qualificationStartAuthority,
+    );
   const administrativeRemovalPlanFingerprint =
     root.administrativeRemovalPlanFingerprint === null ? null : contentFingerprint(
       root.administrativeRemovalPlanFingerprint,
@@ -1055,14 +1118,35 @@ export async function validateCapabilityRuntimeJournalEntry(
         "$runtimeJournalEntry.effectiveRuntimeProjection must cover exactly the group materials.",
       );
     }
+    if (qualificationStartAuthority !== null) {
+      throw new TypeError(
+        "$runtimeJournalEntry.runtime-start must not carry a qualification start authority.",
+      );
+    }
     if (administrativeRemovalPlanFingerprint !== null || root.projectId === null) {
       throw new TypeError(
         "$runtimeJournalEntry.runtime-start must be project-owned and not administrative.",
       );
     }
-  } else if (effectiveRuntimeProjection !== null) {
+  } else if (action === "runtime-qualification-start") {
+    if (effectiveRuntimeProjection !== null || qualificationStartAuthority === null) {
+      throw new TypeError(
+        "$runtimeJournalEntry.runtime-qualification-start requires only its exact private qualification authority.",
+      );
+    }
+    if (
+      administrativeRemovalPlanFingerprint !== null ||
+      root.projectId !== CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID
+    ) {
+      throw new TypeError(
+        "$runtimeJournalEntry.runtime-qualification-start requires the reserved local qualification project owner.",
+      );
+    }
+  } else if (
+    effectiveRuntimeProjection !== null || qualificationStartAuthority !== null
+  ) {
     throw new TypeError(
-      "$runtimeJournalEntry.effectiveRuntimeProjection is only allowed for runtime-start.",
+      "$runtimeJournalEntry start authority is only allowed for its matching start action.",
     );
   }
   if (
@@ -1085,6 +1169,7 @@ export async function validateCapabilityRuntimeJournalEntry(
     plannedAt: isoDateTime(root.plannedAt, "$runtimeJournalEntry.plannedAt"),
     previousObservations,
     effectiveRuntimeProjection,
+    qualificationStartAuthority,
     administrativeRemovalPlanFingerprint,
   });
 }
@@ -1209,6 +1294,7 @@ function observationSatisfiesJournalIntent(
     case "material-acquire":
       return observed.material === "installed";
     case "runtime-start":
+    case "runtime-qualification-start":
       return observed.runtime === "active";
     case "runtime-stop":
       return observed.runtime === "inactive";
@@ -1333,7 +1419,13 @@ function assertRemovalPlanCoverage(
 function journalAction(value: unknown, path: string): CapabilityRuntimeJournalAction {
   return oneOf(
     value,
-    ["material-acquire", "runtime-start", "runtime-stop", "material-remove"] as const,
+    [
+      "material-acquire",
+      "runtime-start",
+      "runtime-qualification-start",
+      "runtime-stop",
+      "material-remove",
+    ] as const,
     path,
   );
 }

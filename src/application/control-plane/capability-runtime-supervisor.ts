@@ -808,6 +808,11 @@ function assertMutationContract(
   entry: CapabilityRuntimeJournalEntry,
   removalPlan: CapabilityRuntimeAdministrativeRemovalPlan | undefined,
 ): void {
+  if (entry.action === "runtime-qualification-start") {
+    throw new CapabilityRuntimeAuthorizationError(
+      "Private runtime qualification starts are available only through the launch-group qualification supervisor.",
+    );
+  }
   if (entry.action !== "material-remove") {
     if (removalPlan !== undefined) {
       throw new CapabilityRuntimeAuthorizationError(

@@ -5,6 +5,7 @@ import {
   fingerprintCapabilityRuntimeLaunchGroup,
 } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import {
+  CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
   type CapabilityRuntimeJournalEntry,
   createCapabilityRuntimeAdministrativeRemovalPlan,
   createEffectiveCapabilityRuntimeLaunchProjection,
@@ -15,6 +16,7 @@ import {
   authorizeDurableAdministrativeMaterialRemoval,
   authorizeDurableMaterialAcquire,
   authorizeDurableNormalRuntimeStart,
+  authorizeDurableQualificationRuntimeStart,
   authorizeDurableRuntimeStop,
 } from "../../application/control-plane/capability-runtime-host-authorization.ts";
 import { InMemoryCapabilityRuntimeJournal } from "./in-memory-capability-runtime-supervisor.ts";
@@ -56,6 +58,28 @@ Deno.test("Compose host pulls the whole exact group then starts it with health w
     true,
   );
   assertNoDestructiveComposeCommand(runner);
+});
+
+Deno.test("Compose host consumes only the private qualification-start brand for the same sealed health-wait start", async () => {
+  const group = await sysonGroup();
+  const runner = new FakeGroupRunner(group, { images: true, state: "absent" });
+  const fixture = host(group, runner);
+
+  const result = await mutate(fixture, group, "runtime-qualification-start");
+
+  assertEquals(result.status, "succeeded");
+  const up = runner.calls.find((call) => call.includes("up"));
+  assertEquals(up?.includes("--wait"), true);
+  assertEquals(up?.includes("--pull"), true);
+  assertEquals(up?.includes("never"), true);
+  assertNoDestructiveComposeCommand(runner);
+
+  const stopped = await mutate(fixture, group, "runtime-stop");
+  assertEquals(stopped.status, "succeeded");
+  assertEquals(
+    runner.calls.some((call) => call[1] === "container" && call[2] === "stop"),
+    true,
+  );
 });
 
 Deno.test("Compose host stops only exact owned IDs in reverse group order and preserves all material", async () => {
@@ -515,7 +539,9 @@ async function mutate(
     action,
     materials: group.materials.map((member) => member.material),
     launchGroup: capabilityRuntimeLaunchGroupReference(group),
-    projectId: "project-test",
+    projectId: action === "runtime-qualification-start"
+      ? CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID
+      : "project-test",
     plannedAt: "2026-08-29T00:00:00.000Z",
     previousObservations: group.materials.map((member) => ({
       material: member.material,
@@ -523,6 +549,9 @@ async function mutate(
     })),
     effectiveRuntimeProjection: action === "runtime-start"
       ? await projection(group)
+      : null,
+    qualificationStartAuthority: action === "runtime-qualification-start"
+      ? qualificationAuthority()
       : null,
     administrativeRemovalPlanFingerprint: null,
   };
@@ -532,6 +561,8 @@ async function mutate(
       ? await authorizeDurableMaterialAcquire(entry, fixture.journal)
       : action === "runtime-start"
       ? await authorizeDurableNormalRuntimeStart(entry, fixture.journal)
+      : action === "runtime-qualification-start"
+      ? await authorizeDurableQualificationRuntimeStart(entry, fixture.journal)
       : action === "runtime-stop"
       ? await authorizeDurableRuntimeStop(entry, fixture.journal)
       : (() => {
@@ -539,6 +570,16 @@ async function mutate(
       })(),
     secretSnapshot,
   });
+}
+
+function qualificationAuthority() {
+  return {
+    candidate: {
+      id: "chrono-arm64-emulation-v1",
+      fingerprint: { algorithm: "sha256" as const, digest: "a".repeat(64) },
+    },
+    reviewFingerprint: { algorithm: "sha256" as const, digest: "b".repeat(64) },
+  };
 }
 
 class FakeGroupRunner implements CommandRunner {
@@ -701,6 +742,7 @@ function removalEntry(
         : { material: "absent", runtime: "inactive" },
     })),
     effectiveRuntimeProjection: null,
+    qualificationStartAuthority: null,
     administrativeRemovalPlanFingerprint: plan.fingerprint,
   };
 }

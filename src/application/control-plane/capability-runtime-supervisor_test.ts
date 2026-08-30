@@ -6,6 +6,10 @@ import {
   CapabilityRuntimeSupervisor,
 } from "./capability-runtime-supervisor.ts";
 import {
+  CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
+  createEffectiveCapabilityRuntimeLaunchProjection,
+} from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import {
   InMemoryCapabilityRuntimeHostMutator,
   InMemoryCapabilityRuntimeJournal,
   InMemoryCapabilityRuntimeLeaseStore,
@@ -204,6 +208,7 @@ Deno.test("capability supervisor resolves exact approved binding, profile, mater
       minimumQualification: "qualified",
     },
     binding: { id: "calculix-static-structural", version: "1" },
+    effectiveQualification: "qualified",
     adapter: { id: "isolated-calculix", version: "1", source: "server" },
     profile: {
       id: "calculix-static",
@@ -289,7 +294,6 @@ Deno.test("lifecycle coordinator journals before host mutation and recovery keep
   states.set(material, {
     material: "installed",
     runtime: "inactive",
-    qualification: "qualified",
   });
   const coordinator = new CapabilityRuntimeLifecycleCoordinator(
     journal,
@@ -323,6 +327,26 @@ Deno.test("lifecycle coordinator journals before host mutation and recovery keep
     plannedAt: "2026-08-29T00:00:00.000Z",
     previousObservations: [{ material, state: null }],
     administrativeRemovalPlanFingerprint: null,
+    qualificationStartAuthority: null,
+    effectiveRuntimeProjection: await createEffectiveCapabilityRuntimeLaunchProjection({
+      launchGroup: {
+        id: "test-runtime-group",
+        version: "1",
+        fingerprint: FINGERPRINT,
+      },
+      materials: [{
+        material,
+        binding: { id: "test-binding", version: "1.0.0" },
+        effectiveQualification: "qualified",
+        minimumQualification: "qualified",
+        runtimeMode: {
+          material,
+          targetPlatform: "linux/arm64",
+          mode: "native",
+          qualificationAttestationFingerprint: null,
+        },
+      }],
+    }),
   });
 
   assertEquals((await journal.list()).map((entry) => entry.id), ["journal:start"]);
@@ -334,6 +358,54 @@ Deno.test("lifecycle coordinator journals before host mutation and recovery keep
     ),
     ["journal:start"],
   );
+});
+
+Deno.test("lifecycle coordinator refuses a private qualification-start before any journal write", async () => {
+  const journal = new InMemoryCapabilityRuntimeJournal();
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  const states = new InMemoryCapabilityRuntimeStateObserver();
+  const host = new InMemoryCapabilityRuntimeHostMutator();
+  const material = {
+    unitId: "casys.calculix-worker",
+    materialId: "calculix-worker",
+    imageDigest: IMAGE_DIGEST,
+  };
+  const coordinator = new CapabilityRuntimeLifecycleCoordinator(
+    journal,
+    leases,
+    states,
+    host,
+  );
+
+  await assertRejects(
+    () =>
+      coordinator.mutate({
+        id: "journal:qualification",
+        action: "runtime-qualification-start",
+        materials: [material],
+        launchGroup: {
+          id: "test-runtime-group",
+          version: "1",
+          fingerprint: FINGERPRINT,
+        },
+        projectId: CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
+        plannedAt: "2026-08-29T00:00:00.000Z",
+        previousObservations: [{ material, state: null }],
+        administrativeRemovalPlanFingerprint: null,
+        effectiveRuntimeProjection: null,
+        qualificationStartAuthority: {
+          candidate: {
+            id: "chrono-arm64-emulation-v1",
+            fingerprint: FINGERPRINT,
+          },
+          reviewFingerprint: REGISTRY_FINGERPRINT,
+        },
+      }),
+    CapabilityRuntimeAuthorizationError,
+    "only through the launch-group qualification supervisor",
+  );
+  assertEquals(await journal.list(), []);
+  assertEquals(host.calls, []);
 });
 
 async function readyFixture() {

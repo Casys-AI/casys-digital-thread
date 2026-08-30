@@ -13,6 +13,9 @@ import type {
 
 const materialAcquire = new WeakSet<AuthorizedCapabilityRuntimeHostMutation>();
 const normalRuntimeStart = new WeakSet<AuthorizedCapabilityRuntimeHostMutation>();
+const qualificationRuntimeStart = new WeakSet<
+  AuthorizedCapabilityRuntimeHostMutation
+>();
 const runtimeStop = new WeakSet<AuthorizedCapabilityRuntimeHostMutation>();
 const administrativeRemoval = new WeakSet<AuthorizedCapabilityRuntimeHostMutation>();
 
@@ -48,7 +51,9 @@ export async function authorizeDurableMaterialAcquire(
   journal: CapabilityRuntimeJournal,
 ): Promise<AuthorizedCapabilityRuntimeHostMutation> {
   if (
-    entry.action !== "material-acquire" || entry.effectiveRuntimeProjection !== null
+    entry.action !== "material-acquire" ||
+    entry.effectiveRuntimeProjection !== null ||
+    entry.qualificationStartAuthority !== null
   ) {
     throw new Error(
       "Material acquisition requires a null-projection material-acquire intent.",
@@ -64,7 +69,11 @@ export async function authorizeDurableNormalRuntimeStart(
   entry: CapabilityRuntimeJournalEntry,
   journal: CapabilityRuntimeJournal,
 ): Promise<AuthorizedCapabilityRuntimeHostMutation> {
-  if (entry.action !== "runtime-start" || entry.effectiveRuntimeProjection === null) {
+  if (
+    entry.action !== "runtime-start" ||
+    entry.effectiveRuntimeProjection === null ||
+    entry.qualificationStartAuthority !== null
+  ) {
     throw new Error(
       "Normal runtime start requires its exact effective runtime projection.",
     );
@@ -74,12 +83,35 @@ export async function authorizeDurableNormalRuntimeStart(
   return authorization;
 }
 
+/** @internal qualification start is separately branded from every operation start. */
+export async function authorizeDurableQualificationRuntimeStart(
+  entry: CapabilityRuntimeJournalEntry,
+  journal: CapabilityRuntimeJournal,
+): Promise<AuthorizedCapabilityRuntimeHostMutation> {
+  if (
+    entry.action !== "runtime-qualification-start" ||
+    entry.effectiveRuntimeProjection !== null ||
+    entry.qualificationStartAuthority === null
+  ) {
+    throw new Error(
+      "Qualification runtime start requires its exact private qualification authority and no ROP projection.",
+    );
+  }
+  const authorization = await durable(entry, journal);
+  qualificationRuntimeStart.add(authorization);
+  return authorization;
+}
+
 /** @internal stop remains available for recovery after qualification/secret loss. */
 export async function authorizeDurableRuntimeStop(
   entry: CapabilityRuntimeJournalEntry,
   journal: CapabilityRuntimeJournal,
 ): Promise<AuthorizedCapabilityRuntimeHostMutation> {
-  if (entry.action !== "runtime-stop" || entry.effectiveRuntimeProjection !== null) {
+  if (
+    entry.action !== "runtime-stop" ||
+    entry.effectiveRuntimeProjection !== null ||
+    entry.qualificationStartAuthority !== null
+  ) {
     throw new Error("Runtime stop requires a null-projection runtime-stop intent.");
   }
   const authorization = await durable(entry, journal);
@@ -94,7 +126,9 @@ export async function authorizeDurableAdministrativeMaterialRemoval(
   journal: CapabilityRuntimeJournal,
 ): Promise<AuthorizedCapabilityRuntimeHostMutation> {
   if (
-    entry.action !== "material-remove" || entry.effectiveRuntimeProjection !== null ||
+    entry.action !== "material-remove" ||
+    entry.effectiveRuntimeProjection !== null ||
+    entry.qualificationStartAuthority !== null ||
     entry.administrativeRemovalPlanFingerprint?.digest !== plan.fingerprint.digest ||
     entry.administrativeRemovalPlanFingerprint?.algorithm !== plan.fingerprint.algorithm
   ) {
@@ -117,6 +151,13 @@ export function consumeAuthorizedNormalRuntimeStart(
   value: AuthorizedCapabilityRuntimeHostMutation,
 ): CapabilityRuntimeJournalEntry | undefined {
   return normalRuntimeStart.delete(value) ? value.entry : undefined;
+}
+
+/** @internal Raw host adapters consume exactly one purpose-specific capability. */
+export function consumeAuthorizedQualificationRuntimeStart(
+  value: AuthorizedCapabilityRuntimeHostMutation,
+): CapabilityRuntimeJournalEntry | undefined {
+  return qualificationRuntimeStart.delete(value) ? value.entry : undefined;
 }
 
 /** @internal Raw host adapters consume exactly one purpose-specific capability. */

@@ -13,16 +13,19 @@ import {
   sameCapabilityRuntimeLaunchGroupReference,
 } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import {
+  CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
   type CapabilityRuntimeJournalEntry,
   type CapabilityRuntimeJournalOutcome,
   type CapabilityRuntimeLease,
   type CapabilityRuntimeMaterialIdentity,
   capabilityRuntimeMaterialKey,
   type CapabilityRuntimeObservedState,
+  type CapabilityRuntimeQualificationStartAuthority,
   deriveEffectiveCapabilityRuntimeLaunchProjection,
   type EffectiveCapabilityRuntimeLaunchProjection,
   type ResolvedCapabilityRuntimeOperation,
   validateCapabilityRuntimeLease,
+  validateCapabilityRuntimeQualificationStartAuthority,
   validateEffectiveCapabilityRuntimeLaunchProjection,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import type {
@@ -38,6 +41,7 @@ import type {
 import {
   authorizeDurableMaterialAcquire,
   authorizeDurableNormalRuntimeStart,
+  authorizeDurableQualificationRuntimeStart,
   authorizeDurableRuntimeStop,
 } from "./capability-runtime-host-authorization.ts";
 
@@ -95,6 +99,23 @@ export interface CapabilityRuntimeLaunchGroupEnsureResult {
   /** Present only for an activation that claimed the shared session lease. */
   readonly leaseDisposition?: "created" | "reused";
   readonly mutation: CapabilityRuntimeJournalOutcome | undefined;
+}
+
+/**
+ * Private host-only qualification activation. Its guard is composed by the
+ * caller from the exact candidate and reviewed snapshot before a lease,
+ * durable intent, or Docker action is possible. It deliberately has no ROP
+ * nor effective runtime projection because it is not an engineering run.
+ */
+export interface EnsureCapabilityRuntimeQualificationLaunchGroupRequest {
+  readonly group: CapabilityRuntimeLaunchGroupReference;
+  readonly expectedMaterials: readonly CapabilityRuntimeMaterialIdentity[];
+  readonly qualificationStartAuthority: CapabilityRuntimeQualificationStartAuthority;
+  readonly lease: CapabilityRuntimeLease;
+  readonly at: string;
+  readonly reuseExistingLease: "allow" | "reject";
+  readonly guard: () => Promise<boolean>;
+  readonly secretSnapshot?: CapabilityRuntimeSecretSnapshot;
 }
 
 export class CapabilityRuntimeLaunchGroupSupervisor {
@@ -167,21 +188,12 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
         request.effectiveRuntimeProjection,
         request.resolvedOperation,
       );
-      if (group.secretSlots.length > 0 && request.secretSnapshot === undefined) {
-        throw new CapabilityRuntimeLaunchGroupSafetyError(
-          "Capability runtime group requires a server-minted launch secret snapshot.",
-        );
-      }
-      const availability = await this.options.secrets.observe(group.secretSlots);
-      if (group.secretSlots.some((slot) => availability.get(slot) !== "available")) {
-        throw new CapabilityRuntimeLaunchGroupSafetyError(
-          "Capability runtime group secret availability is unknown or unavailable.",
-        );
-      }
+      await this.#assertSecretSnapshotReady(group, request.secretSnapshot);
       const lease = validateCapabilityRuntimeLease(request.lease);
       this.#assertExpectedMaterials(group, request.expectedMaterials);
       this.#assertLeaseCovers(group, lease, request.projectId, request.at);
       await this.#assertNoPending(group);
+      await this.#assertNoQualificationLeaseProtects(group, lease.id, request.at);
       const disposition = await this.#claim(
         lease,
         request.reuseExistingLease,
@@ -226,8 +238,10 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
           request.projectId,
           request.at,
           installed,
-          request.effectiveRuntimeProjection,
-          request.secretSnapshot,
+          {
+            effectiveRuntimeProjection: request.effectiveRuntimeProjection,
+            secretSnapshot: request.secretSnapshot,
+          },
         );
         if (mutation.status !== "succeeded") {
           throw new CapabilityRuntimeLaunchGroupSafetyError(
@@ -249,6 +263,107 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
       } catch (error) {
         // A group intent may have reached Docker.  Keeping the one session lease
         // gives recovery an exact owner and prevents a blind second start.
+        if (disposition === "created" && !intentWritten) {
+          await this.options.leases.release(lease.id);
+        }
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Starts a sealed group solely for a private runtime-qualification probe.
+   * Unlike an engineering operation start this has no ROP and no effective
+   * projection. The candidate/review guard is recomposed under the same H1
+   * host mutex before it can claim a lease or write any mutation intent.
+   */
+  async ensureQualificationActive(
+    request: EnsureCapabilityRuntimeQualificationLaunchGroupRequest,
+  ): Promise<CapabilityRuntimeLaunchGroupEnsureResult> {
+    return await this.options.lock.withLock(async () => {
+      if (!(await request.guard())) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime qualification candidate or review is no longer current under the host lock.",
+        );
+      }
+      const group = await this.#requireReviewedGroup(request.group);
+      this.#assertExpectedMaterials(group, request.expectedMaterials);
+      const qualificationStartAuthority =
+        validateCapabilityRuntimeQualificationStartAuthority(
+          request.qualificationStartAuthority,
+        );
+      await this.#assertSecretSnapshotReady(group, request.secretSnapshot);
+      const lease = validateCapabilityRuntimeLease(request.lease);
+      this.#assertLeaseCovers(
+        group,
+        lease,
+        CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
+        request.at,
+      );
+      await this.#assertNoPending(group);
+      await this.#assertNoOtherLeaseProtects(group, lease.id, request.at);
+      const disposition = await this.#claim(
+        lease,
+        request.reuseExistingLease,
+        request.at,
+      );
+      const before = await this.#observe(group);
+      let intentWritten = false;
+      try {
+        if (!allInstalled(group, before)) {
+          intentWritten = true;
+          const acquisition = await this.#mutate(
+            group,
+            "material-acquire",
+            CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
+            request.at,
+            before,
+          );
+          if (acquisition.status !== "succeeded") {
+            throw new CapabilityRuntimeLaunchGroupSafetyError(
+              `Capability runtime group material acquisition is ${acquisition.status}; recovery is required.`,
+            );
+          }
+        }
+        const installed = await this.#observe(group);
+        if (allActive(group, installed) && group.secretSlots.length === 0) {
+          return {
+            group: capabilityRuntimeLaunchGroupReference(group),
+            states: installed,
+            leaseDisposition: disposition,
+            mutation: undefined,
+          };
+        }
+        intentWritten = true;
+        const mutation = await this.#mutate(
+          group,
+          "runtime-qualification-start",
+          CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
+          request.at,
+          installed,
+          {
+            qualificationStartAuthority,
+            secretSnapshot: request.secretSnapshot,
+          },
+        );
+        if (mutation.status !== "succeeded") {
+          throw new CapabilityRuntimeLaunchGroupSafetyError(
+            `Capability runtime group qualification start is ${mutation.status}; recovery is required.`,
+          );
+        }
+        const active = await this.#observe(group);
+        if (!allActive(group, active)) {
+          throw new CapabilityRuntimeLaunchGroupSafetyError(
+            "Capability runtime qualification start did not produce an exact active group observation.",
+          );
+        }
+        return {
+          group: capabilityRuntimeLaunchGroupReference(group),
+          states: active,
+          leaseDisposition: disposition,
+          mutation,
+        };
+      } catch (error) {
         if (disposition === "created" && !intentWritten) {
           await this.options.leases.release(lease.id);
         }
@@ -375,6 +490,23 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
     }
   }
 
+  async #assertSecretSnapshotReady(
+    group: CapabilityRuntimeLaunchGroup,
+    secretSnapshot: CapabilityRuntimeSecretSnapshot | undefined,
+  ): Promise<void> {
+    if (group.secretSlots.length > 0 && secretSnapshot === undefined) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime group requires a server-minted launch secret snapshot.",
+      );
+    }
+    const availability = await this.options.secrets.observe(group.secretSlots);
+    if (group.secretSlots.some((slot) => availability.get(slot) !== "available")) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime group secret availability is unknown or unavailable.",
+      );
+    }
+  }
+
   #assertExpectedMaterials(
     group: CapabilityRuntimeLaunchGroup,
     expected: readonly CapabilityRuntimeMaterialIdentity[],
@@ -495,6 +627,45 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
     );
   }
 
+  /**
+   * A private qualification probe has exclusive possession of its complete
+   * persistent group. Ordinary engineering execution waits rather than
+   * sharing a process whose candidate credentials/configuration are changing.
+   */
+  async #assertNoQualificationLeaseProtects(
+    group: CapabilityRuntimeLaunchGroup,
+    leaseId: string,
+    at: string,
+  ): Promise<void> {
+    const protectedByQualification = (await this.options.leases.listActive(at)).some(
+      (lease) =>
+        lease.id !== leaseId &&
+        lease.projectId === CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID &&
+        leaseProtectsGroup(lease, group),
+    );
+    if (protectedByQualification) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime group is exclusively leased by a private qualification probe.",
+      );
+    }
+  }
+
+  /** A qualification probe never shares its group with another active lease. */
+  async #assertNoOtherLeaseProtects(
+    group: CapabilityRuntimeLaunchGroup,
+    leaseId: string,
+    at: string,
+  ): Promise<void> {
+    const protectedByAnotherLease = (await this.options.leases.listActive(at)).some(
+      (lease) => lease.id !== leaseId && leaseProtectsGroup(lease, group),
+    );
+    if (protectedByAnotherLease) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime qualification requires exclusive possession of its exact launch group.",
+      );
+    }
+  }
+
   async #observe(
     group: CapabilityRuntimeLaunchGroup,
   ): Promise<ReadonlyMap<string, CapabilityRuntimeObservedState>> {
@@ -519,8 +690,12 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
     projectId: string | null,
     at: string,
     states: ReadonlyMap<string, CapabilityRuntimeObservedState>,
-    effectiveRuntimeProjection?: EffectiveCapabilityRuntimeLaunchProjection,
-    secretSnapshot?: CapabilityRuntimeSecretSnapshot,
+    options: {
+      readonly effectiveRuntimeProjection?: EffectiveCapabilityRuntimeLaunchProjection;
+      readonly secretSnapshot?: CapabilityRuntimeSecretSnapshot;
+      readonly qualificationStartAuthority?:
+        CapabilityRuntimeQualificationStartAuthority;
+    } = {},
   ): Promise<CapabilityRuntimeJournalOutcome> {
     const entry: CapabilityRuntimeJournalEntry = {
       id: `capability-group-${await shortId(group, action, at, projectId)}`,
@@ -534,9 +709,16 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
         state: states.get(capabilityRuntimeMaterialKey(material.material)) ?? null,
       })),
       effectiveRuntimeProjection: action === "runtime-start"
-        ? effectiveRuntimeProjection ?? (() => {
+        ? options.effectiveRuntimeProjection ?? (() => {
           throw new CapabilityRuntimeLaunchGroupSafetyError(
             "Normal runtime start requires its exact effective projection.",
+          );
+        })()
+        : null,
+      qualificationStartAuthority: action === "runtime-qualification-start"
+        ? options.qualificationStartAuthority ?? (() => {
+          throw new CapabilityRuntimeLaunchGroupSafetyError(
+            "Qualification runtime start requires its exact private authority.",
           );
         })()
         : null,
@@ -549,6 +731,8 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
         ? await authorizeDurableMaterialAcquire(entry, this.options.journal)
         : action === "runtime-start"
         ? await authorizeDurableNormalRuntimeStart(entry, this.options.journal)
+        : action === "runtime-qualification-start"
+        ? await authorizeDurableQualificationRuntimeStart(entry, this.options.journal)
         : action === "runtime-stop"
         ? await authorizeDurableRuntimeStop(entry, this.options.journal)
         : (() => {
@@ -556,7 +740,10 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
             "Launch group supervisor cannot remove materials administratively.",
           );
         })();
-      outcome = await this.options.host.mutate({ authorization, secretSnapshot });
+      outcome = await this.options.host.mutate({
+        authorization,
+        secretSnapshot: options.secretSnapshot,
+      });
     } catch (error) {
       outcome = {
         schemaVersion: "capability-runtime-host-mutation-outcome/1.0",
@@ -726,6 +913,7 @@ function stateSatisfiesAction(
     case "material-acquire":
       return state.material === "installed";
     case "runtime-start":
+    case "runtime-qualification-start":
       return state.runtime === "active";
     case "runtime-stop":
       return state.runtime === "inactive";

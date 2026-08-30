@@ -632,6 +632,7 @@ export class LocalCapabilityRuntimeAdminService {
           },
       })),
       effectiveRuntimeProjection: null,
+      qualificationStartAuthority: null,
       administrativeRemovalPlanFingerprint: review.plan.fingerprint,
     };
   }

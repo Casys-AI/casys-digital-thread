@@ -36,6 +36,7 @@ import {
   consumeAuthorizedAdministrativeMaterialRemoval,
   consumeAuthorizedMaterialAcquire,
   consumeAuthorizedNormalRuntimeStart,
+  consumeAuthorizedQualificationRuntimeStart,
   consumeAuthorizedRuntimeStop,
 } from "../../application/control-plane/capability-runtime-host-authorization.ts";
 import {
@@ -173,6 +174,8 @@ class ComposeCapabilityRuntimeHost
       ? consumeAuthorizedMaterialAcquire(input.authorization)
       : input.authorization.entry.action === "runtime-start"
       ? consumeAuthorizedNormalRuntimeStart(input.authorization)
+      : input.authorization.entry.action === "runtime-qualification-start"
+      ? consumeAuthorizedQualificationRuntimeStart(input.authorization)
       : input.authorization.entry.action === "runtime-stop"
       ? consumeAuthorizedRuntimeStop(input.authorization)
       : input.authorization.entry.action === "material-remove"
@@ -219,7 +222,7 @@ class ComposeCapabilityRuntimeHost
       );
     }
     if (
-      entry.action === "runtime-start" &&
+      isRuntimeStartAction(entry.action) &&
       await this.#missingStartSecret(group, input.secretSnapshot)
     ) {
       return this.#outcome(
@@ -261,7 +264,7 @@ class ComposeCapabilityRuntimeHost
       : await this.#compose(
         launch,
         command,
-        entry.action === "runtime-start" ? input.secretSnapshot : undefined,
+        isRuntimeStartAction(entry.action) ? input.secretSnapshot : undefined,
       );
     const after = await this.#inspect(group, launch);
     const satisfied = satisfies(entry.action, after);
@@ -279,7 +282,7 @@ class ComposeCapabilityRuntimeHost
         // Docker may echo parts of a dynamic Compose input in an error. A
         // secret-bearing `up` therefore records only a fixed diagnosis, never
         // provider stderr, argv or an overlay fragment.
-        : entry.action === "runtime-start" && group.secretSlots.length > 0
+        : isRuntimeStartAction(entry.action) && group.secretSlots.length > 0
         ? "Sealed secret-bearing launch group did not reach its required active state."
         : compactFailure(execution),
     );
@@ -868,6 +871,7 @@ function commandFor(
     case "material-acquire":
       return ["pull"];
     case "runtime-start":
+    case "runtime-qualification-start":
       if (inspection.ownership !== "absent" && inspection.ownership !== "owned") {
         return null;
       }
@@ -902,6 +906,7 @@ function satisfies(
       return states.length > 0 &&
         states.every((state) => state.material === "installed");
     case "runtime-start":
+    case "runtime-qualification-start":
       return inspection.ownership === "owned" && states.length > 0 &&
         states.every((state) =>
           state.material === "installed" && state.runtime === "active"
@@ -912,6 +917,12 @@ function satisfies(
     case "material-remove":
       return false;
   }
+}
+
+function isRuntimeStartAction(
+  action: CapabilityRuntimeJournalEntry["action"],
+): action is "runtime-start" | "runtime-qualification-start" {
+  return action === "runtime-start" || action === "runtime-qualification-start";
 }
 
 function sameGroupMaterials(

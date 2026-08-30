@@ -423,6 +423,7 @@ function runtimeEntry(
     })),
     administrativeRemovalPlanFingerprint: fingerprint,
     effectiveRuntimeProjection: null,
+    qualificationStartAuthority: null,
   };
 }
 
