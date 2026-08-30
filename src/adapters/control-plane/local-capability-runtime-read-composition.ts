@@ -15,8 +15,17 @@ import {
   BUILD123D_ISOLATED_WORKER_UNIT_ID,
   BUILD123D_MICROSANDBOX_WORKER_CONTRACT,
 } from "../cad/isolated/worker-contract.ts";
+import {
+  NGSPICE_ADMITTED_MICROSANDBOX_WORKER_CONTRACT,
+} from "../electrical/spice/admitted/worker-contract.ts";
+import {
+  LocalNgspiceDockerSourceImageCache,
+} from "../electrical/spice/admitted/ngspice-docker-source-image-cache.ts";
 import { CALCULIX_MICROSANDBOX_WORKER_CONTRACT } from "../fea/isolated-v3/calculix-static-proof-v1/worker-contract.ts";
 import { LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE } from "../fea/isolated-v3/local-calculix-isolated-execution-options.ts";
+import {
+  MODELICA_ADMITTED_MICROSANDBOX_WORKER_CONTRACT,
+} from "../modelica/admitted/closed-subset-v2/worker-contract.ts";
 import { LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE } from "./first-party-capability-runtime-identities.ts";
 import {
   createLocalMicrosandboxSdk,
@@ -71,6 +80,25 @@ export interface LocalCapabilityRuntimeReadCompositionOptions {
     readonly imageDigest: ContentFingerprint;
     readonly profileFingerprint: ContentFingerprint;
   };
+  /**
+   * The server's code-owned admitted Modelica profile. It is supplied only
+   * when the actual worker composition exists; a profile-only construction is
+   * not an executable host composition.
+   */
+  readonly admittedModelicaExecutionProfile?: {
+    readonly imageReference: string;
+    readonly imageDigest: ContentFingerprint;
+    readonly profileFingerprint: ContentFingerprint;
+  };
+  /**
+   * The server's code-owned admitted SPICE profile. It binds the executable
+   * Microsandbox runtime, never its separate Docker source-cache material.
+   */
+  readonly admittedSpiceExecutionProfile?: {
+    readonly imageReference: string;
+    readonly imageDigest: ContentFingerprint;
+    readonly profileFingerprint: ContentFingerprint;
+  };
 }
 
 export interface LocalCapabilityRuntimeReadComposition {
@@ -84,6 +112,7 @@ export interface LocalCapabilityRuntimeReadComposition {
   readonly secrets: CapabilityRuntimeSecretSlotObserver;
   readonly composeObserver: ReturnType<typeof createCapabilityRuntimeHostObserver>;
   readonly microsandbox: LocalMicrosandboxCapabilityRuntimeCache;
+  readonly cache: LocalNgspiceDockerSourceImageCache;
   readonly states: CompositeCapabilityRuntimeStateObserver;
   readonly host: GroupCapabilityRuntimeHostObservationReader;
   readonly policy: FileCapabilityRuntimeAdminPolicyStore;
@@ -147,6 +176,22 @@ export async function createLocalCapabilityRuntimeReadComposition(
       `The code-owned catalog is missing ${BUILD123D_ISOLATED_WORKER_UNIT_ID}/${BUILD123D_ISOLATED_WORKER_MATERIAL_ID}.`,
     );
   }
+  const admittedModelicaWorker = catalog.units.find((unit) =>
+    unit.id === "casys.modelica-worker"
+  )?.materials.find((material) => material.id === "modelica-admitted-worker-image");
+  if (!admittedModelicaWorker) {
+    throw new Error(
+      "The code-owned catalog is missing casys.modelica-worker/modelica-admitted-worker-image.",
+    );
+  }
+  const admittedSpiceWorker = catalog.units.find((unit) =>
+    unit.id === "casys.spice-worker"
+  )?.materials.find((material) => material.id === "ngspice-runtime-image");
+  if (!admittedSpiceWorker) {
+    throw new Error(
+      "The code-owned catalog is missing casys.spice-worker/ngspice-runtime-image.",
+    );
+  }
   const microsandbox = new LocalMicrosandboxCapabilityRuntimeCache(
     createLocalMicrosandboxSdk,
     [{
@@ -198,8 +243,55 @@ export async function createLocalCapabilityRuntimeReadComposition(
       },
       executionProfileFingerprint: options.build123dExecutionProfile
         ?.profileFingerprint,
+    }, {
+      material: {
+        unitId: "casys.modelica-worker",
+        materialId: "modelica-admitted-worker-image",
+      },
+      image: {
+        reference: options.admittedModelicaExecutionProfile?.imageReference ??
+          admittedModelicaWorker.imageReference,
+        manifestDigest: options.admittedModelicaExecutionProfile
+          ? `sha256:${options.admittedModelicaExecutionProfile.imageDigest.digest}`
+          : pinnedManifestDigest(admittedModelicaWorker.imageReference),
+        os: "linux",
+        architecture: exactMicrosandboxMaterialArchitecture(
+          admittedModelicaWorker.platforms,
+        ),
+        user: MODELICA_ADMITTED_MICROSANDBOX_WORKER_CONTRACT.expectedImageUser,
+        entrypoint: [
+          MODELICA_ADMITTED_MICROSANDBOX_WORKER_CONTRACT.executable,
+          ...MODELICA_ADMITTED_MICROSANDBOX_WORKER_CONTRACT.args,
+        ],
+      },
+      executionProfileFingerprint: options.admittedModelicaExecutionProfile
+        ?.profileFingerprint,
+    }, {
+      material: {
+        unitId: "casys.spice-worker",
+        materialId: "ngspice-runtime-image",
+      },
+      image: {
+        reference: options.admittedSpiceExecutionProfile?.imageReference ??
+          admittedSpiceWorker.imageReference,
+        manifestDigest: options.admittedSpiceExecutionProfile
+          ? `sha256:${options.admittedSpiceExecutionProfile.imageDigest.digest}`
+          : pinnedManifestDigest(admittedSpiceWorker.imageReference),
+        os: "linux",
+        architecture: exactMicrosandboxMaterialArchitecture(
+          admittedSpiceWorker.platforms,
+        ),
+        user: NGSPICE_ADMITTED_MICROSANDBOX_WORKER_CONTRACT.expectedImageUser,
+        entrypoint: [
+          NGSPICE_ADMITTED_MICROSANDBOX_WORKER_CONTRACT.executable,
+          ...NGSPICE_ADMITTED_MICROSANDBOX_WORKER_CONTRACT.args,
+        ],
+      },
+      executionProfileFingerprint: options.admittedSpiceExecutionProfile
+        ?.profileFingerprint,
     }],
   );
+  const cache = new LocalNgspiceDockerSourceImageCache();
   const groupMaterialKeys = (await launchGroups.list()).flatMap((group) =>
     group.materials.map((member) => capabilityRuntimeMaterialKey(member.material))
   );
@@ -213,7 +305,13 @@ export async function createLocalCapabilityRuntimeReadComposition(
           unitId: BUILD123D_ISOLATED_WORKER_UNIT_ID,
           materialId: BUILD123D_ISOLATED_WORKER_MATERIAL_ID,
         }),
+        "casys.modelica-worker\u0000modelica-admitted-worker-image",
+        "casys.spice-worker\u0000ngspice-runtime-image",
       ],
+    },
+    {
+      observer: cache,
+      materialKeys: ["casys.spice-worker\u0000ngspice-docker-source-image"],
     },
   ]);
   const policy = new FileCapabilityRuntimeAdminPolicyStore(undefined, catalog);
@@ -268,6 +366,7 @@ export async function createLocalCapabilityRuntimeReadComposition(
     secrets,
     composeObserver,
     microsandbox,
+    cache,
     states,
     host,
     policy,
@@ -279,4 +378,11 @@ export async function createLocalCapabilityRuntimeReadComposition(
     contexts,
     workbench: new ProjectCapabilityWorkbenchProjector({ contexts, states }),
   };
+}
+
+function pinnedManifestDigest(reference: string): string {
+  const marker = "@sha256:";
+  const index = reference.lastIndexOf(marker);
+  if (index < 0) throw new TypeError("A local cache image must be digest-pinned.");
+  return reference.slice(index + 1);
 }

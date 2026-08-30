@@ -31,7 +31,10 @@ import type {
   CapabilityRuntimeExecutionEligibility,
 } from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
-import { requireResolvedRunPlanExecution } from "./resolved-run-plan-execution-guard.ts";
+import {
+  requireRecordedResolvedRunPlanExecution,
+  requireResolvedRunPlanExecution,
+} from "./resolved-run-plan-execution-guard.ts";
 
 const PROJECT_ID = "project-rop2-guard";
 const AGENT = { kind: "agent" as const, actorId: "agent:rop2-guard" };
@@ -69,6 +72,34 @@ Deno.test("resolved run-plan execution guard admits one fully reread local Calcu
   );
 });
 
+Deno.test("recorded run-plan guard reopens exact seals without a current runtime authorization", async () => {
+  const fixture = await createFixture("isolated");
+  let planReads = 0;
+  const recorded = await requireRecordedResolvedRunPlanExecution({
+    project: fixture.project,
+    runId: fixture.plan.run.runId,
+    expectedOperation: operationFor(fixture.kind),
+    expectedRunStatuses: ["queued"],
+    projects: fixture.store,
+    snapshots: { get: () => Promise.resolve(fixture.snapshot) },
+    plans: {
+      read: (ref) => {
+        planReads += 1;
+        if (!sameResolvedOperationPlanRef(ref, fixture.ref)) {
+          throw new TypeError("Plan reader refuses an arbitrary CAS reference.");
+        }
+        return Promise.resolve(fixture.plan);
+      },
+    },
+  });
+
+  assertEquals(planReads, 1);
+  assertEquals(
+    recorded.capabilityRuntime,
+    fixture.plan.operationalCapability,
+  );
+});
+
 Deno.test("resolved run-plan execution guard admits one fully reread CalculiX authorization", async () => {
   const fixture = await createFixture("calculix");
   const admitted = await admit(fixture);
@@ -93,9 +124,9 @@ Deno.test("resolved run-plan execution guard rechecks the capability runtime bef
   const fixture = await createFixture("isolated");
   const calls: string[] = [];
   const capabilityRuntime: CapabilityRuntimeExecutionEligibility = {
-    async requireExecution(input) {
+    requireExecution(input) {
       calls.push(`${input.project.id}:${input.run.id}:${input.operation.id}`);
-      return undefined;
+      return Promise.resolve(undefined);
     },
   };
 

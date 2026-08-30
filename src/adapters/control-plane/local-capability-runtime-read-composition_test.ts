@@ -43,9 +43,106 @@ Deno.test("local read composition observes CalculiX and Build123d exact cache co
   );
 });
 
+Deno.test("local read composition enrolls the exact admitted SPICE and Modelica cache materials without starting a worker", async () => {
+  const composition = await createLocalCapabilityRuntimeReadComposition({
+    admittedModelicaExecutionProfile: profileFor(
+      "casys/modelica-microsandbox-worker@sha256:d25f220287cd8d1713e9e7d773afb8bb867fc5404a112e5e50ffa2e862fd6fdf",
+    ),
+    admittedSpiceExecutionProfile: profileFor(
+      "casys/ngspice-microsandbox-worker@sha256:3350527ceba0dbe8f2e31e435e834f962978e800134b83d6ee8f4875b7ffb79a",
+    ),
+  });
+  const modelica = composition.catalog.units.find((unit) =>
+    unit.id === "casys.modelica-worker"
+  )?.materials.find((material) => material.id === "modelica-admitted-worker-image");
+  const spice = composition.catalog.units.find((unit) =>
+    unit.id === "casys.spice-worker"
+  )?.materials;
+
+  assertEquals(modelica?.platforms, ["linux/arm64"]);
+  assertEquals(
+    spice?.map((material) => material.id),
+    ["ngspice-docker-source-image", "ngspice-runtime-image"],
+  );
+  assertEquals(
+    spice?.map((material) => material.launchGroup),
+    [null, null],
+  );
+  assertEquals(
+    composition.cache.constructor.name,
+    "LocalNgspiceDockerSourceImageCache",
+  );
+
+  if (!modelica || !spice) throw new Error("admitted material catalogue is incomplete");
+  const source = spice.find((material) =>
+    material.id === "ngspice-docker-source-image"
+  );
+  const runtime = spice.find((material) => material.id === "ngspice-runtime-image");
+  if (!source || !runtime) throw new Error("SPICE material catalogue is incomplete");
+  const microsandboxRequests: string[][] = [];
+  const cacheRequests: string[][] = [];
+  composition.microsandbox.observe = (materials) => {
+    microsandboxRequests.push(materials.map(capabilityRuntimeMaterialKey));
+    return Promise.resolve(
+      new Map(materials.map((material) => [
+        capabilityRuntimeMaterialKey(material),
+        { material: "installed" as const, runtime: "inactive" as const },
+      ])),
+    );
+  };
+  composition.cache.observe = (materials) => {
+    cacheRequests.push(materials.map(capabilityRuntimeMaterialKey));
+    return Promise.resolve(
+      new Map(materials.map((material) => [
+        capabilityRuntimeMaterialKey(material),
+        { material: "installed" as const, runtime: "inactive" as const },
+      ])),
+    );
+  };
+  const observed = await composition.states.observe([
+    identityFor(modelica, "casys.modelica-worker"),
+    identityFor(source, "casys.spice-worker"),
+    identityFor(runtime, "casys.spice-worker"),
+  ]);
+  assertEquals(microsandboxRequests, [[
+    "casys.modelica-worker\u0000modelica-admitted-worker-image",
+    "casys.spice-worker\u0000ngspice-runtime-image",
+  ]]);
+  assertEquals(cacheRequests, [[
+    "casys.spice-worker\u0000ngspice-docker-source-image",
+  ]]);
+  assertEquals([...observed.keys()].toSorted(), [
+    "casys.modelica-worker\u0000modelica-admitted-worker-image",
+    "casys.spice-worker\u0000ngspice-docker-source-image",
+    "casys.spice-worker\u0000ngspice-runtime-image",
+  ]);
+});
+
 function digestFromPinnedReference(reference: string): string {
   const marker = "@sha256:";
   const index = reference.lastIndexOf(marker);
   if (index < 0) throw new Error(`image reference is not digest-pinned: ${reference}`);
   return reference.slice(index + marker.length);
+}
+
+function profileFor(imageReference: string) {
+  return {
+    imageReference,
+    imageDigest: {
+      algorithm: "sha256" as const,
+      digest: digestFromPinnedReference(imageReference),
+    },
+    profileFingerprint: { algorithm: "sha256" as const, digest: "a".repeat(64) },
+  };
+}
+
+function identityFor(
+  material: { readonly id: string; readonly imageReference: string },
+  unitId: string,
+) {
+  return {
+    unitId,
+    materialId: material.id,
+    imageDigest: digestFromPinnedReference(material.imageReference),
+  };
 }

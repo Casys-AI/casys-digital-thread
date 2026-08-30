@@ -880,6 +880,17 @@ async function createProjectControl(
     admittedSpiceExecution: options.admittedSpiceExecution,
     recordedAnalysisDirectory,
   });
+  // A profile catalog alone is deliberately not an executable composition.
+  // Pass cache-attestation identity only when the fixed local worker exists;
+  // otherwise a queued run must remain unavailable before it can claim a JIT
+  // lease or reach a provider boundary.
+  const admittedModelicaExecutionProfile =
+    admittedModelica.execution?.execution === undefined
+      ? undefined
+      : await admittedModelica.execution.profiles.initial();
+  const admittedSpiceExecutionProfile = admittedSpice.execution?.execution === undefined
+    ? undefined
+    : await admittedSpice.execution.profiles.initial();
   const calculixCapability = await createCalculixCapability({
     calculixIsolatedExecution: options.calculixIsolatedExecution,
     recordedAnalysisDirectory,
@@ -938,6 +949,21 @@ async function createProjectControl(
         imageReference: build123dCapability.localProfile.runtimeBackend.imageReference,
         imageDigest: build123dCapability.localProfile.runtimeBackend.imageDigest,
         profileFingerprint: build123dCapability.localProfile.profileFingerprint,
+      },
+    admittedModelicaExecutionProfile: admittedModelicaExecutionProfile === undefined
+      ? undefined
+      : {
+        imageReference: admittedModelicaExecutionProfile.runtimeBackend
+          .imageReference,
+        imageDigest: admittedModelicaExecutionProfile.runtimeBackend.imageDigest,
+        profileFingerprint: admittedModelicaExecutionProfile.profileFingerprint,
+      },
+    admittedSpiceExecutionProfile: admittedSpiceExecutionProfile === undefined
+      ? undefined
+      : {
+        imageReference: admittedSpiceExecutionProfile.runtimeBackend.imageReference,
+        imageDigest: admittedSpiceExecutionProfile.runtimeBackend.imageDigest,
+        profileFingerprint: admittedSpiceExecutionProfile.profileFingerprint,
       },
   });
   const capabilityRuntimeLeases = new FileCapabilityRuntimeLeaseStore(
@@ -1022,6 +1048,7 @@ async function createProjectControl(
     // Lazy exact inspection only: no image load, pull, sandbox create or
     // Compose start occurs during server construction or queueing.
     microsandbox: capabilityRead.microsandbox,
+    cache: capabilityRead.cache,
     hasRemainingJitDemand: (input) => capabilityJitDemand.hasRemainingDemand(input),
   });
   const capabilityAuthorization = new ProjectCapabilityAuthorizationService({
@@ -1157,6 +1184,9 @@ async function createProjectControl(
     thermal: thermalJoin,
     qualified: qualifiedModelica,
     admitted: admittedModelica,
+    plans: recordedPlans.recordedRunPlans,
+    capabilityRuntime,
+    capabilityRuntimeSession,
   });
   const impactProject = createCrossDomainImpactProject({
     projects: runtime.projects,
@@ -1215,6 +1245,9 @@ async function createProjectControl(
     recordedAnalysisDirectory,
     admissions: compilationFoundation.technicalCompilationAdmissions,
     admitted: admittedSpice,
+    recordedRunPlans: recordedPlans.recordedRunPlans,
+    capabilityRuntime,
+    capabilityRuntimeSession,
   });
   const electricalMethodSheets = createElectricalMethodSheetJoin({
     recordedAnalysisDirectory,

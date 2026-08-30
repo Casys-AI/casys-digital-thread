@@ -90,6 +90,17 @@ export interface RequireResolvedRunPlanExecutionInput {
   readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
 }
 
+/**
+ * Read-only replay admission for a durable terminal result. It verifies the
+ * same recorded plan/reference, pre-queue project, MRTR and Thread basis as
+ * fresh admission, but deliberately does not re-authorize a runtime that may
+ * have been revoked or rolled over after the result was recorded.
+ */
+export type RequireRecordedResolvedRunPlanExecutionInput = Omit<
+  RequireResolvedRunPlanExecutionInput,
+  "capabilityRuntime"
+>;
+
 export interface ResolvedRunPlanExecutionAuthorization {
   readonly plan: ResolvedOperationPlanV2;
   readonly run: EngineeringAgentRun;
@@ -112,6 +123,40 @@ export interface ResolvedRunPlanExecutionAuthorization {
  */
 export async function requireResolvedRunPlanExecution(
   input: RequireResolvedRunPlanExecutionInput,
+): Promise<ResolvedRunPlanExecutionAuthorization> {
+  const authorization = await requireRecordedResolvedRunPlanExecution(input);
+  if (!input.capabilityRuntime) {
+    throw new TypeError(
+      "Resolved operation plan execution requires the configured capability runtime supervisor before WAL or provider dispatch.",
+    );
+  }
+  const project = validateEngineeringProjectSnapshot(input.project);
+  const freshOperationalCapability = await input.capabilityRuntime.requireExecution({
+    project,
+    run: authorization.run,
+    workItem: authorization.workItem,
+    operation: authorization.workItem.operation!,
+  });
+  if (!freshOperationalCapability) {
+    throw new TypeError(
+      "Resolved operation plan requires an active operational capability binding, but the runtime supervisor resolved none.",
+    );
+  }
+  if (
+    canonicalResolvedCapabilityRuntimeOperationText(freshOperationalCapability) !==
+      canonicalResolvedCapabilityRuntimeOperationText(
+        authorization.plan.operationalCapability,
+      )
+  ) {
+    throw new TypeError(
+      "Capability runtime binding changed after queueing; requeue through a reviewed authorization amendment.",
+    );
+  }
+  return authorization;
+}
+
+export async function requireRecordedResolvedRunPlanExecution(
+  input: RequireRecordedResolvedRunPlanExecutionInput,
 ): Promise<ResolvedRunPlanExecutionAuthorization> {
   // Reject an executor invocation in a disallowed lifecycle state before any
   // plan-store read. The fully validated snapshot is reselected immediately
@@ -188,32 +233,6 @@ export async function requireResolvedRunPlanExecution(
   await assertQueuedRunInputFingerprint(run, queuedWorkItem, decision);
 
   const basis = await requireExactBasis(plan, run, input.snapshots);
-  const artifactsByBinding = requireExactSourceArtifacts(plan, basis);
-  if (!input.capabilityRuntime) {
-    throw new TypeError(
-      "Resolved operation plan execution requires the configured capability runtime supervisor before WAL or provider dispatch.",
-    );
-  }
-  const freshOperationalCapability = await input.capabilityRuntime.requireExecution({
-    project,
-    run,
-    workItem,
-    operation: workItem.operation!,
-  });
-  if (!freshOperationalCapability) {
-    throw new TypeError(
-      "Resolved operation plan requires an active operational capability binding, but the runtime supervisor resolved none.",
-    );
-  }
-  if (
-    canonicalResolvedCapabilityRuntimeOperationText(freshOperationalCapability) !==
-      canonicalResolvedCapabilityRuntimeOperationText(plan.operationalCapability)
-  ) {
-    throw new TypeError(
-      "Capability runtime binding changed after queueing; requeue through a reviewed authorization amendment.",
-    );
-  }
-
   return {
     plan,
     run,
@@ -221,7 +240,7 @@ export async function requireResolvedRunPlanExecution(
     decision,
     approval,
     basis,
-    artifactsByBinding,
+    artifactsByBinding: requireExactSourceArtifacts(plan, basis),
     capabilityRuntime: plan.operationalCapability,
   };
 }

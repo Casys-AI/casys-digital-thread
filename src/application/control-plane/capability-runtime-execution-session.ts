@@ -155,14 +155,16 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
       );
     }
     const canReuseLease = run.status === "running" || run.status === "publishing";
+    const assertFreshOperationalCapability = () =>
+      assertExactResolvedCapabilityRuntimeOperationRecheck(
+        input.recheck,
+        operationalCapability,
+        (message) => new CapabilityRuntimeSessionUnavailableError(message),
+      );
 
     // This is intentionally inside the session seam, not merely the caller's
     // earlier prepare. It closes the TOCTOU window before the first host action.
-    await assertExactResolvedCapabilityRuntimeOperationRecheck(
-      input.recheck,
-      operationalCapability,
-      (message) => new CapabilityRuntimeSessionUnavailableError(message),
-    );
+    await assertFreshOperationalCapability();
     const lifecycles = uniqueCapabilityRuntimeHostLifecycles(
       operationalCapability.bindings.flatMap((binding) => binding.hostLifecycles),
       (message) => new CapabilityRuntimeSessionUnavailableError(message),
@@ -243,30 +245,44 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
       const context = await this.options.contexts.read(input.project);
       for (const lifecycle of lifecycles) {
         if (lifecycle.kind === "ephemeral-microsandbox") {
-          await this.options.microsandbox!.ensureExactCached({
-            material: lifecycle.material,
-            imageReference: exactCatalogImageReference(
-              context,
-              lifecycle.material,
-              (message) => new CapabilityRuntimeSessionUnavailableError(message),
-            ),
-            executionProfileFingerprint: microsandboxExecutionProfiles.get(
-              capabilityRuntimeMaterialKey(lifecycle.material),
-            )!,
-          });
+          await ensureExactCachePrerequisite(
+            lifecycle.material,
+            "Microsandbox",
+            () =>
+              this.options.microsandbox!.ensureExactCached({
+                material: lifecycle.material,
+                imageReference: exactCatalogImageReference(
+                  context,
+                  lifecycle.material,
+                  (message) => new CapabilityRuntimeSessionUnavailableError(message),
+                ),
+                executionProfileFingerprint: microsandboxExecutionProfiles.get(
+                  capabilityRuntimeMaterialKey(lifecycle.material),
+                )!,
+              }),
+          );
         }
         if (lifecycle.kind === "cache-only") {
-          await this.options.cache!.ensureExactCached({
-            material: lifecycle.material,
-            imageReference: exactCatalogImageReference(
-              context,
-              lifecycle.material,
-              (message) => new CapabilityRuntimeSessionUnavailableError(message),
-            ),
-          });
+          await ensureExactCachePrerequisite(
+            lifecycle.material,
+            "cache-only",
+            () =>
+              this.options.cache!.ensureExactCached({
+                material: lifecycle.material,
+                imageReference: exactCatalogImageReference(
+                  context,
+                  lifecycle.material,
+                  (message) => new CapabilityRuntimeSessionUnavailableError(message),
+                ),
+              }),
+          );
         }
       }
       if (groups.length === 0) {
+        // Cache observations are cold prerequisites, but a revocation can land
+        // while they inspect the host. Recheck immediately before this direct
+        // path claims a durable lease.
+        await assertFreshOperationalCapability();
         const acquired = await acquireOrReuseExactScope(
           this.options.leases,
           lease,
@@ -295,11 +311,7 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
           // mutation, closing the revocation/deactivation race.
           guard: async () => {
             try {
-              await assertExactResolvedCapabilityRuntimeOperationRecheck(
-                input.recheck,
-                operationalCapability,
-                (message) => new CapabilityRuntimeSessionUnavailableError(message),
-              );
+              await assertFreshOperationalCapability();
               return true;
             } catch (error) {
               if (error instanceof CapabilityRuntimeSessionUnavailableError) {
@@ -784,6 +796,27 @@ async function executionLeaseOwnerFor(
     operationalCapabilityFingerprint:
       await fingerprintResolvedCapabilityRuntimeOperation(operationalCapability),
   };
+}
+
+/**
+ * Cache observation is the last cold prerequisite before a direct lease claim
+ * or any H1 activation.  Cache adapters deliberately expose no acquisition
+ * API; every failure is therefore an unavailable session, never a recovery
+ * claim or a provider attempt.
+ */
+async function ensureExactCachePrerequisite(
+  material: CapabilityRuntimeMaterialIdentity,
+  kind: "Microsandbox" | "cache-only",
+  observe: () => Promise<void>,
+): Promise<void> {
+  try {
+    await observe();
+  } catch (error) {
+    if (error instanceof CapabilityRuntimeSessionUnavailableError) throw error;
+    throw new CapabilityRuntimeSessionUnavailableError(
+      `The exact ${kind} cache prerequisite is unavailable for ${material.unitId}/${material.materialId}; no lease or provider dispatch was attempted.`,
+    );
+  }
 }
 
 function sameExecutionLeaseOwner(

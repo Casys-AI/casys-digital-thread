@@ -102,6 +102,23 @@ Deno.test("Microsandbox capability cache refuses an execution-profile drift befo
   );
 });
 
+Deno.test("Microsandbox cache does not treat an unconfigured execution profile as executable", async () => {
+  const cache = new LocalMicrosandboxCapabilityRuntimeCache(
+    () => Promise.resolve(sdk(inspection())),
+    [{ ...expectation(), executionProfileFingerprint: undefined }],
+  );
+  await assertRejects(
+    () =>
+      cache.ensureExactCached({
+        material: { unitId: "casys.worker", materialId: "worker", imageDigest: DIGEST },
+        imageReference: REFERENCE,
+        executionProfileFingerprint: PROFILE_FINGERPRINT,
+      }),
+    Error,
+    "execution profile does not attest",
+  );
+});
+
 function expectation() {
   return {
     material: { unitId: "casys.worker", materialId: "worker" },

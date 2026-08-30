@@ -1,10 +1,20 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import {
   CapabilityRuntimeExecutionSessionCoordinator,
+  CapabilityRuntimeSessionUnavailableError,
 } from "./capability-runtime-execution-session.ts";
 import {
   InMemoryCapabilityRuntimeLeaseStore,
 } from "../../adapters/control-plane/in-memory-capability-runtime-supervisor.ts";
+import {
+  LocalNgspiceDockerSourceImageCache,
+} from "../../adapters/electrical/spice/admitted/ngspice-docker-source-image-cache.ts";
+import {
+  LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE,
+} from "../../adapters/electrical/spice/admitted/local-image-references.ts";
+import {
+  NGSPICE_ADMITTED_MICROSANDBOX_WORKER_CONTRACT,
+} from "../../adapters/electrical/spice/admitted/worker-contract.ts";
 import {
   fingerprintResolvedCapabilityRuntimeOperation,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
@@ -164,6 +174,179 @@ Deno.test("JIT session rechecks inside group activation before a revoked capabil
     "authorized",
   );
   assertEquals(hostMutations, 0);
+  assertEquals(await leases.listActive(AT), []);
+});
+
+Deno.test("production JIT seam observes both exact ngspice materials before its first claim", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  const operation = admittedSpiceOperation();
+  const sourceInspections: string[] = [];
+  const microsandboxObservations: string[] = [];
+  const coordinator = new CapabilityRuntimeExecutionSessionCoordinator({
+    contexts: contextForExactMaterials([
+      spiceDockerSourceMaterial(),
+      spiceRuntimeMaterial(),
+    ]),
+    leases,
+    cache: new LocalNgspiceDockerSourceImageCache({
+      inspect: (reference) => {
+        sourceInspections.push(reference);
+        return Promise.resolve(exactNgspiceDockerSourceInspection());
+      },
+    }),
+    microsandbox: {
+      ensureExactCached: ({ material }) => {
+        microsandboxObservations.push(materialKey(material));
+        return Promise.resolve();
+      },
+    },
+    now: () => AT,
+  });
+
+  const session = await coordinator.begin({
+    project: projectFor(),
+    runId: "run:session",
+    operationalCapability: operation,
+    microsandboxExecutionProfiles: [{
+      material: spiceRuntimeMaterial(),
+      executionProfileFingerprint: FINGERPRINT,
+    }],
+    recheck: () => Promise.resolve(operation),
+  });
+
+  assertEquals(sourceInspections, [LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE]);
+  assertEquals(microsandboxObservations, [materialKey(spiceRuntimeMaterial())]);
+  assertEquals((await leases.listActive(AT)).map((lease) => lease.id), [
+    session.lease.id,
+  ]);
+  await session.releaseTerminal();
+  assertEquals(await leases.listActive(AT), []);
+});
+
+Deno.test("a missing exact ngspice cache material leaves the JIT run unclaimed", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  const operation = admittedSpiceOperation();
+  const microsandboxObservations: string[] = [];
+  const coordinator = new CapabilityRuntimeExecutionSessionCoordinator({
+    contexts: contextForExactMaterials([
+      spiceDockerSourceMaterial(),
+      spiceRuntimeMaterial(),
+    ]),
+    leases,
+    cache: new LocalNgspiceDockerSourceImageCache({
+      inspect: () =>
+        Promise.resolve({
+          ...exactNgspiceDockerSourceInspection(),
+          Architecture: "amd64",
+        }),
+    }),
+    microsandbox: {
+      ensureExactCached: ({ material }) => {
+        microsandboxObservations.push(materialKey(material));
+        return Promise.resolve();
+      },
+    },
+    now: () => AT,
+  });
+
+  await assertRejects(
+    () =>
+      coordinator.begin({
+        project: projectFor(),
+        runId: "run:session",
+        operationalCapability: operation,
+        microsandboxExecutionProfiles: [{
+          material: spiceRuntimeMaterial(),
+          executionProfileFingerprint: FINGERPRINT,
+        }],
+        recheck: () => Promise.resolve(operation),
+      }),
+    CapabilityRuntimeSessionUnavailableError,
+    "no lease or provider dispatch was attempted",
+  );
+  assertEquals(microsandboxObservations, []);
+  assertEquals(await leases.listActive(AT), []);
+});
+
+Deno.test("production JIT seam observes the exact admitted Modelica Microsandbox material", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  const operation = admittedModelicaOperation();
+  const microsandboxObservations: string[] = [];
+  const coordinator = new CapabilityRuntimeExecutionSessionCoordinator({
+    contexts: contextForExactMaterials([modelicaRuntimeMaterial()]),
+    leases,
+    microsandbox: {
+      ensureExactCached: ({ material, executionProfileFingerprint }) => {
+        microsandboxObservations.push(
+          `${materialKey(material)}:${executionProfileFingerprint.digest}`,
+        );
+        return Promise.resolve();
+      },
+    },
+    now: () => AT,
+  });
+
+  const session = await coordinator.begin({
+    project: projectFor(),
+    runId: "run:session",
+    operationalCapability: operation,
+    microsandboxExecutionProfiles: [{
+      material: modelicaRuntimeMaterial(),
+      executionProfileFingerprint: FINGERPRINT,
+    }],
+    recheck: () => Promise.resolve(operation),
+  });
+
+  assertEquals(microsandboxObservations, [
+    `${materialKey(modelicaRuntimeMaterial())}:${FINGERPRINT.digest}`,
+  ]);
+  await session.releaseTerminal();
+  assertEquals(await leases.listActive(AT), []);
+});
+
+Deno.test("JIT direct session rechecks after Microsandbox observation before a revoked capability can claim a lease", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  const operation = admittedModelicaOperation();
+  const changed = {
+    ...operation,
+    authorizationFingerprint: { algorithm: "sha256" as const, digest: "a".repeat(64) },
+  };
+  const observations: string[] = [];
+  const rechecks: boolean[] = [];
+  let revoked = false;
+  const coordinator = new CapabilityRuntimeExecutionSessionCoordinator({
+    contexts: contextForExactMaterials([modelicaRuntimeMaterial()]),
+    leases,
+    microsandbox: {
+      ensureExactCached: ({ material }) => {
+        observations.push(materialKey(material));
+        revoked = true;
+        return Promise.resolve();
+      },
+    },
+    now: () => AT,
+  });
+
+  await assertRejects(
+    () =>
+      coordinator.begin({
+        project: projectFor(),
+        runId: "run:session",
+        operationalCapability: operation,
+        microsandboxExecutionProfiles: [{
+          material: modelicaRuntimeMaterial(),
+          executionProfileFingerprint: FINGERPRINT,
+        }],
+        recheck: () => {
+          rechecks.push(revoked);
+          return Promise.resolve(revoked ? changed : operation);
+        },
+      }),
+    CapabilityRuntimeSessionUnavailableError,
+    "Operational capability changed",
+  );
+  assertEquals(observations, [materialKey(modelicaRuntimeMaterial())]);
+  assertEquals(rechecks, [false, true]);
   assertEquals(await leases.listActive(AT), []);
 });
 
@@ -529,6 +712,113 @@ function microMaterial(): CapabilityRuntimeMaterialIdentity {
   return persistentMaterial("casys.calculix-worker", "worker", "d".repeat(64));
 }
 
+function spiceDockerSourceMaterial(): CapabilityRuntimeMaterialIdentity {
+  return persistentMaterial(
+    "casys.spice-worker",
+    "ngspice-docker-source-image",
+    digestFromPinnedReference(LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE),
+  );
+}
+
+function spiceRuntimeMaterial(): CapabilityRuntimeMaterialIdentity {
+  return persistentMaterial(
+    "casys.spice-worker",
+    "ngspice-runtime-image",
+    "2".repeat(64),
+  );
+}
+
+function modelicaRuntimeMaterial(): CapabilityRuntimeMaterialIdentity {
+  return persistentMaterial(
+    "casys.modelica-worker",
+    "modelica-admitted-worker-image",
+    "3".repeat(64),
+  );
+}
+
+function admittedSpiceOperation(): ResolvedCapabilityRuntimeOperation {
+  const source = spiceDockerSourceMaterial();
+  const runtime = spiceRuntimeMaterial();
+  return {
+    schemaVersion: "resolved-capability-runtime-operation/2.0",
+    projectId: PROJECT_ID,
+    operation: { id: "simulate.run-admitted-spice", version: "1" },
+    authorizationFingerprint: FINGERPRINT,
+    demandFingerprint: FINGERPRINT,
+    registryFingerprint: FINGERPRINT,
+    bindings: [{
+      capability: {
+        id: "electronics.run-admitted-spice",
+        version: "1",
+        use: "execution",
+        minimumQualification: "qualified",
+      },
+      binding: { id: "ngspice-admitted-circuit", version: "1" },
+      effectiveQualification: "qualified",
+      adapter: {
+        id: "ngspice-admitted-execution-adapter",
+        version: "1",
+        source: "server",
+      },
+      profile: {
+        id: "spice-admitted-execution",
+        version: "2",
+        fingerprint: FINGERPRINT,
+      },
+      materials: [source, runtime],
+      runtimeModes: [runtimeMode(source), runtimeMode(runtime)],
+      hostLifecycles: [{
+        material: source,
+        kind: "cache-only",
+        launchGroup: null,
+      }, {
+        material: runtime,
+        kind: "ephemeral-microsandbox",
+        launchGroup: null,
+      }],
+    }],
+  };
+}
+
+function admittedModelicaOperation(): ResolvedCapabilityRuntimeOperation {
+  const runtime = modelicaRuntimeMaterial();
+  return {
+    schemaVersion: "resolved-capability-runtime-operation/2.0",
+    projectId: PROJECT_ID,
+    operation: { id: "simulate.run-admitted-modelica", version: "1" },
+    authorizationFingerprint: FINGERPRINT,
+    demandFingerprint: FINGERPRINT,
+    registryFingerprint: FINGERPRINT,
+    bindings: [{
+      capability: {
+        id: "simulation.run-admitted-modelica",
+        version: "1",
+        use: "execution",
+        minimumQualification: "qualified",
+      },
+      binding: { id: "openmodelica-admitted-modelica", version: "1" },
+      effectiveQualification: "qualified",
+      adapter: {
+        id: "modelica-admitted-execution-adapter",
+        version: "1",
+        source: "server",
+      },
+      profile: {
+        id: "modelica-admitted-execution",
+        version: "2",
+        fingerprint: FINGERPRINT,
+      },
+      materials: [runtime],
+      runtimeModes: [runtimeMode(runtime)],
+      hostLifecycles: [{
+        material: runtime,
+        kind: "ephemeral-microsandbox",
+        launchGroup: null,
+      }],
+    }],
+  };
+}
+
 function operationFor(
   alpha: CapabilityRuntimeLaunchGroupReference,
   bravo: CapabilityRuntimeLaunchGroupReference,
@@ -620,6 +910,60 @@ function contextFor(): ProjectCapabilityRuntimeContextReader {
         },
       } as never),
   };
+}
+
+function contextForExactMaterials(
+  materials: readonly CapabilityRuntimeMaterialIdentity[],
+): ProjectCapabilityRuntimeContextReader {
+  const units = new Map<string, {
+    id: string;
+    version: string;
+    manifestFingerprint: typeof FINGERPRINT;
+    materials: { id: string; imageReference: string }[];
+  }>();
+  for (const material of materials) {
+    const unit = units.get(material.unitId) ?? {
+      id: material.unitId,
+      version: "1",
+      manifestFingerprint: FINGERPRINT,
+      materials: [],
+    };
+    unit.materials.push({
+      id: material.materialId,
+      imageReference: material.unitId === "casys.spice-worker" &&
+          material.materialId === "ngspice-docker-source-image"
+        ? LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE
+        : `example.test/${material.unitId}/${material.materialId}@sha256:${material.imageDigest}`,
+    });
+    units.set(material.unitId, unit);
+  }
+  return {
+    read: () => Promise.resolve({ catalog: { units: [...units.values()] } } as never),
+  };
+}
+
+function materialKey(material: CapabilityRuntimeMaterialIdentity): string {
+  return `${material.unitId}\u0000${material.materialId}`;
+}
+
+function exactNgspiceDockerSourceInspection(): Record<string, unknown> {
+  const worker = NGSPICE_ADMITTED_MICROSANDBOX_WORKER_CONTRACT;
+  return {
+    RepoDigests: [LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE],
+    Os: "linux",
+    Architecture: "arm64",
+    Config: {
+      User: worker.expectedImageUser,
+      Entrypoint: [worker.executable, ...worker.args],
+    },
+  };
+}
+
+function digestFromPinnedReference(reference: string): string {
+  const marker = "@sha256:";
+  const index = reference.lastIndexOf(marker);
+  if (index < 0) throw new Error(`image reference is not digest-pinned: ${reference}`);
+  return reference.slice(index + marker.length);
 }
 
 function projectFor(

@@ -258,6 +258,7 @@ async function reviewedProject(
       workItemId: "work.modelica.admitted",
       basis: runBasis,
       inputFingerprint: runFingerprint,
+      resolvedOperationPlan: {} as never,
     }],
     decisions: [{
       id: "decision.modelica.admitted",
