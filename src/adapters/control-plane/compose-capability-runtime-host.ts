@@ -102,7 +102,10 @@ class ComposeCapabilityRuntimeHost
     // Compose itself waits up to 300 seconds for a sealed service topology.
     // Leave margin for the process boundary and the mandatory fresh inspect.
     this.#runner = options.runner ?? new DenoCommandRunner(360_000);
-    this.#root = nonBlank(options.composeRoot ?? Deno.cwd());
+    // Production `start`/`start:yolo` grants `--allow-read=config,state,...`,
+    // not the worktree absolute path. A relative compose root must stay
+    // lexical (`.`) so observe/proposal never `realPath`s `/Volumes/...`.
+    this.#root = nonBlank(options.composeRoot ?? ".");
     this.#paths = options.paths ?? { realPath: (path) => Deno.realPath(path) };
     this.#environment = dockerEnvironment(options.dockerEnvironment);
     this.#clock = options.clock ?? (() => new Date().toISOString());
@@ -613,7 +616,9 @@ class ComposeCapabilityRuntimeHost
   }
 
   async #launch(group: CapabilityRuntimeLaunchGroup): Promise<Launch> {
-    const root = await this.#paths.realPath(this.#root);
+    const root = this.#root.startsWith("/")
+      ? await this.#paths.realPath(this.#root)
+      : this.#root;
     const fingerprint = await fingerprintCapabilityRuntimeComposeContent(
       group.compose.content,
     );

@@ -639,6 +639,84 @@ console.log(JSON.stringify({
   },
 );
 
+Deno.test(
+  "qualification WAL list/read under YOLO read grants does not inspect the worktree root",
+  async () => {
+    const nonce = crypto.randomUUID();
+    const relativeRoot =
+      `state/local/capability-runtime-host/.yolo-permission-anchor-${nonce}`;
+    const relativeAttempts = `${relativeRoot}/attempts`;
+    const relativeAttestations = `${relativeRoot}/attestations`;
+    const identity = await fixtureIdentity();
+    const key = keyFor(identity);
+    const worktree = Deno.cwd();
+    if (!worktree.startsWith("/")) {
+      throw new Error("YOLO-grant regression requires an absolute cwd");
+    }
+    await Deno.mkdir(relativeRoot, { recursive: true, mode: 0o700 });
+    const workerPath = `${relativeRoot}/worker.ts`;
+    const attemptStoreUrl = new URL(
+      "./file-capability-runtime-qualification-attempt-store.ts",
+      import.meta.url,
+    ).href;
+    const attestationStoreUrl = new URL(
+      "./file-capability-runtime-qualification-attestation-store.ts",
+      import.meta.url,
+    ).href;
+    await Deno.writeTextFile(
+      workerPath,
+      `import { FileCapabilityRuntimeQualificationAttemptStore } from ${
+        JSON.stringify(attemptStoreUrl)
+      };
+import { FileCapabilityRuntimeQualificationAttestationStore } from ${
+        JSON.stringify(attestationStoreUrl)
+      };
+const attempts = new FileCapabilityRuntimeQualificationAttemptStore(${
+        JSON.stringify(relativeAttempts)
+      });
+const read = await attempts.read(${JSON.stringify(key)});
+const attestations = new FileCapabilityRuntimeQualificationAttestationStore(${
+        JSON.stringify(relativeAttestations)
+      });
+const listed = await attestations.list();
+console.log(JSON.stringify({
+  missingAttempt: read === undefined,
+  listed: listed.length,
+}));
+`,
+    );
+    try {
+      const output = await new Deno.Command(Deno.execPath(), {
+        args: [
+          "run",
+          "--no-prompt",
+          "--allow-read=config,state,src/ui,mcp-server.yaml",
+          "--allow-write=state/local",
+          workerPath,
+        ],
+        cwd: worktree,
+        stdout: "piped",
+        stderr: "piped",
+      }).output();
+      if (!output.success) {
+        throw new Error(
+          `YOLO-grant WAL worker failed (${output.code}): ${
+            new TextDecoder().decode(output.stderr)
+          }`,
+        );
+      }
+      assertEquals(
+        JSON.parse(new TextDecoder().decode(output.stdout)),
+        { missingAttempt: true, listed: 0 },
+      );
+    } finally {
+      await Deno.remove(relativeRoot, { recursive: true }).catch((error) => {
+        if (!(error instanceof Deno.errors.NotFound)) throw error;
+      });
+    }
+  },
+);
+
 Deno.test({
   name:
     "qualification WAL rejects a pre-existing descendant behind an ancestor symlink",

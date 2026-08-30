@@ -115,12 +115,14 @@ File-store transitions are linearizable across processes via exclusive
 `Deno.File.lock(true)` on `{attemptDir}/attempt.lock`. That lock is distinct from the H1
 host mutation lock (`prepareAfterAuthorization` already runs under H1). Dispatch
 create-new remains at-most-once. Relative production roots (`state/local/...`) capture
-`Deno.cwd()` as the trusted lexical anchor and `lstat` only that anchor plus descendants
-down to the selected directory, lock or WAL file; `--allow-read=.` is sufficient. An
-explicit absolute root still walks from `/`. An ancestor symlink below the trusted
-anchor, including a pre-existing real descendant behind one, is refused. The attestation
-store uses the same anchored primitive for directory creation, lock open/revalidation
-after `File.lock(true)`, reads, listings and writes.
+`Deno.cwd()` as the trusted lexical anchor and never inspect ancestors above it. The cwd
+node itself is not `lstat`/`realPath`'d: `start`/`start:yolo` grants
+`--allow-read=config,state,src/ui,mcp-server.yaml` and cannot inspect the worktree root.
+Inspection starts at descendants. `capability:qualify` still uses `--allow-read=.`,
+which remains sufficient. An explicit absolute root still walks from `/`. An ancestor
+symlink below the trusted anchor, including a pre-existing real descendant behind one,
+is refused. The attestation store uses the same anchored primitive for directory
+creation, lock open/revalidation after `File.lock(true)`, reads, listings and writes.
 
 Quarantine uses a code-owned temporal window, not a 4-poll counter. Protocol
 `chrono-qualification-protocol/2.0` fingerprints `dispatchDeadlineMs: 300000` (5

@@ -34,6 +34,35 @@ import type {
 } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import type { CommandResult, CommandRunner } from "../shared/docker-observer.ts";
 
+Deno.test("relative compose root stays lexical and never realPaths the worktree", async () => {
+  const group = await sysonGroup();
+  const runner = new FakeGroupRunner(group, { images: false, state: "absent" });
+  const journal = new InMemoryCapabilityRuntimeJournal();
+  const realPathCalls: string[] = [];
+  const runtime = createCapabilityRuntimeHostAdapter({
+    registry: new FixedCapabilityRuntimeLaunchGroupRegistry([group]),
+    journal,
+    secrets: {
+      observe: (slots) =>
+        Promise.resolve(new Map(slots.map((slot) => [slot, "available" as const]))),
+    },
+    runner,
+    paths: {
+      realPath: (path) => {
+        realPathCalls.push(path);
+        return Promise.reject(new Error(`must not realPath ${path}`));
+      },
+    },
+  });
+
+  await runtime.observe([group.materials[0]!.material]);
+
+  assertEquals(realPathCalls, []);
+  const compose = runner.calls.find((call) => call[1] === "compose");
+  assertEquals(compose?.includes("--project-directory"), true);
+  assertEquals(compose?.includes("."), true);
+});
+
 Deno.test("Compose host pulls the whole exact group then starts it with health wait and no dependency suppression", async () => {
   const group = await sysonGroup();
   const runner = new FakeGroupRunner(group, { images: false, state: "absent" });

@@ -1,9 +1,12 @@
 /**
  * Trusted lexical storage-root resolution and component-wise lstat walks.
  *
- * Relative configured roots capture `Deno.cwd()` as the trusted anchor and
- * never inspect lexical ancestors above it. Absolute configured roots walk
- * from `/`. This is not a generic filesystem framework.
+ * Relative configured roots capture `Deno.cwd()` as the trusted lexical
+ * anchor and never inspect ancestors above it. The cwd node itself is not
+ * `lstat`/`realPath`'d: `start`/`start:yolo` grants
+ * `--allow-read=config,state,...` cannot inspect the worktree root.
+ * Inspection starts at descendants. Absolute configured roots walk from `/`.
+ * This is not a generic filesystem framework.
  */
 
 export class AnchoredLexicalPathError extends Error {
@@ -151,6 +154,7 @@ export async function assertExistingLexicalComponents(
   for (let index = 0; index < components.length; index += 1) {
     const cursor = components[index]!;
     const last = index === components.length - 1;
+    if (isUninspectedRelativeTrustedAnchor(trustedAnchor, cursor)) continue;
     let info: Deno.FileInfo;
     try {
       info = await Deno.lstat(cursor);
@@ -197,6 +201,9 @@ export async function collectMissingLexicalDirectories(
   const missing: string[] = [];
   let cursor = withoutTrailingSlash(path);
   while (true) {
+    if (isUninspectedRelativeTrustedAnchor(trustedAnchor, cursor)) {
+      return missing;
+    }
     try {
       await Deno.lstat(cursor);
       requireEqualOrStrictLexicalDescendant(
@@ -229,6 +236,9 @@ export async function assertAnchoredRealDirectory(
   messages: LexicalWalkMessages,
 ): Promise<Deno.FileInfo> {
   requireEqualOrStrictLexicalDescendant(root.trustedAnchor, path, messages.escaped);
+  if (isUninspectedRelativeTrustedAnchor(root.trustedAnchor, path)) {
+    throw new AnchoredLexicalPathError(messages.notRealDirectory);
+  }
   await assertExistingLexicalComponents(root.trustedAnchor, path, messages);
   const info = await Deno.lstat(path);
   if (info.isSymlink || !info.isDirectory) {
@@ -276,7 +286,9 @@ export async function ensureAnchoredDirectoryTree(
   );
   for (const directory of missing.reverse()) {
     const parent = parentLexicalPath(directory);
-    await assertAnchoredRealDirectory(root, parent, messages);
+    if (!isUninspectedRelativeTrustedAnchor(root.trustedAnchor, parent)) {
+      await assertAnchoredRealDirectory(root, parent, messages);
+    }
     try {
       await Deno.mkdir(directory, { mode: 0o700 });
     } catch (error) {
@@ -446,6 +458,15 @@ function isSafeLexicalPath(
 function withoutTrailingSlash(path: string): string {
   if (path === "/") return "/";
   return path.replace(/\/+$/, "");
+}
+
+/** Relative cwd anchors are lexical only; YOLO cannot inspect the worktree root. */
+function isUninspectedRelativeTrustedAnchor(
+  trustedAnchor: string,
+  path: string,
+): boolean {
+  return trustedAnchor !== "/" &&
+    withoutTrailingSlash(path) === withoutTrailingSlash(trustedAnchor);
 }
 
 type PathComponentSnapshot = {
