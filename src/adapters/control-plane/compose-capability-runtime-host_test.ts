@@ -221,6 +221,28 @@ Deno.test("Compose host normal-start reconciles only an observed registered roll
   }
 });
 
+Deno.test("Compose host normal-start does not reconcile a predecessor without complete successor material", async () => {
+  const fixture = await rolloverHostFixture();
+  try {
+    const observed = await fixture.host.observeRollover({
+      identity: fixture.identity,
+    });
+    assertEquals(observed.classification, "predecessor");
+    assertEquals(observed.successor.materials, "incomplete");
+
+    const started = await mutate(
+      { host: fixture.host, journal: fixture.journal },
+      fixture.successor,
+      "runtime-start",
+    );
+
+    assertEquals(started.status, "failed");
+    assertEquals(fixture.runner.calls.some((call) => call.includes("up")), false);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 Deno.test("Compose host keeps qualification-start and unregistered mismatch fail-closed", async () => {
   const rollover = await rolloverHostFixture();
   try {

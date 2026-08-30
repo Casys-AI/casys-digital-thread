@@ -328,8 +328,11 @@ class ComposeCapabilityRuntimeHost
     }
     const launch = await this.#launch(group);
     const before = await this.#inspect(group, launch);
-    const mayReconcileRolloverPredecessor = before.ownership === "mismatch" &&
-      await this.#mayReconcileRolloverPredecessor(group, entry.action);
+    const rollover = before.ownership === "mismatch"
+      ? await this.#observeNormalStartRollover(group, entry.action, before)
+      : null;
+    const mayReconcileRolloverPredecessor = rollover?.classification ===
+        "predecessor" && rollover.successor.materials === "complete";
     if (before.ownership === "mismatch" && !mayReconcileRolloverPredecessor) {
       return this.#outcome(
         entry,
@@ -531,23 +534,25 @@ class ComposeCapabilityRuntimeHost
 
   /**
    * A normal successor start may reconcile only the one registered predecessor
-   * topology that Docker currently observes. All other mismatch states remain
-   * fail-closed, including qualification starts and ambiguous rollover pairs.
+   * topology that Docker currently observes, after the successor material is
+   * complete. All other mismatch states remain fail-closed, including
+   * qualification starts and ambiguous rollover pairs.
    */
-  async #mayReconcileRolloverPredecessor(
+  async #observeNormalStartRollover(
     group: CapabilityRuntimeLaunchGroup,
     action: CapabilityRuntimeJournalEntry["action"],
-  ): Promise<boolean> {
-    if (action !== "runtime-start") return false;
+    successor: GroupInspection,
+  ): Promise<CapabilityRuntimeRolloverHostObservation | null> {
+    if (action !== "runtime-start") return null;
     const definitions = (this.options.rollovers ?? []).filter((definition) =>
       sameCapabilityRuntimeLaunchGroupReference(
         capabilityRuntimeLaunchGroupReference(definition.successor),
         capabilityRuntimeLaunchGroupReference(group),
       )
     );
-    if (definitions.length !== 1) return false;
-    return (await this.#observeRolloverDefinition(definitions[0]!)).classification ===
-      "predecessor";
+    if (definitions.length !== 1) return null;
+    const predecessor = await this.#inspect(definitions[0]!.predecessor);
+    return rolloverObservation(predecessor, successor);
   }
 
   async #observeRolloverDefinition(
@@ -561,12 +566,7 @@ class ComposeCapabilityRuntimeHost
       this.#inspect(definition.predecessor, predecessorLaunch),
       this.#inspect(definition.successor, successorLaunch),
     ]);
-    return {
-      schemaVersion: "capability-runtime-rollover-host-observation/1.0",
-      classification: classifyRolloverHost(predecessor, successor),
-      predecessor: rolloverGroupObservation(predecessor),
-      successor: rolloverGroupObservation(successor),
-    };
+    return rolloverObservation(predecessor, successor);
   }
 
   async #missingStartSecret(
@@ -1072,6 +1072,18 @@ function classifyRolloverHost(
   return "foreign";
 }
 
+function rolloverObservation(
+  predecessor: GroupInspection,
+  successor: GroupInspection,
+): CapabilityRuntimeRolloverHostObservation {
+  return {
+    schemaVersion: "capability-runtime-rollover-host-observation/1.0",
+    classification: classifyRolloverHost(predecessor, successor),
+    predecessor: rolloverGroupObservation(predecessor),
+    successor: rolloverGroupObservation(successor),
+  };
+}
+
 function commandFor(
   action: CapabilityRuntimeJournalEntry["action"],
   inspection: GroupInspection,
@@ -1084,7 +1096,7 @@ function commandFor(
     case "runtime-qualification-start":
       if (
         inspection.ownership !== "absent" && inspection.ownership !== "owned" &&
-        !allowRolloverPredecessorReconcile
+        !(action === "runtime-start" && allowRolloverPredecessorReconcile)
       ) {
         return null;
       }
