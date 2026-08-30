@@ -181,6 +181,7 @@ export function defaultAgentStackConfig(): AgentStackConfig {
         "MCP_FLEET_MANIFEST",
         "MCP_RUN_FIXTURE",
         "MCP_MRTR_SIGNING_KEY",
+        "CASYS_CHRONO_MCP_BEARER_TOKEN",
         "MCP_AUTH_PROVIDER",
         "MCP_AUTH_AUDIENCE",
         "MCP_AUTH_RESOURCE",
