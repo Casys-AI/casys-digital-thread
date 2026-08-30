@@ -50,6 +50,7 @@ Deno.test("Build123d profile-only review stays independent of private sandbox ad
       snapshots,
     });
     assertEquals(absent.build123dExecution, undefined);
+    assertEquals(absent.localProfile, undefined);
     assertEquals(absent.build123dExecutionReview, undefined);
 
     const reviewOnly = await createBuild123dCapability({
@@ -63,6 +64,10 @@ Deno.test("Build123d profile-only review stays independent of private sandbox ad
       PrepareProjectBuild123dExecutionReview,
     );
     assertEquals(reviewOnly.build123dExecution?.execution, undefined);
+    assertEquals(
+      reviewOnly.localProfile?.runtimeBackend.imageReference,
+      PROFILE.imageReference,
+    );
 
     const geometrySourceAnalysis = {
       sourceCaptures: new FileCaptureStore({

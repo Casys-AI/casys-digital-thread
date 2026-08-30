@@ -928,6 +928,13 @@ async function createProjectControl(
         imageDigest: calculixCapability.localProfile.runtimeBackend.imageDigest,
         profileFingerprint: calculixCapability.localProfile.profileFingerprint,
       },
+    build123dExecutionProfile: build123dCapability.localProfile === undefined
+      ? undefined
+      : {
+        imageReference: build123dCapability.localProfile.runtimeBackend.imageReference,
+        imageDigest: build123dCapability.localProfile.runtimeBackend.imageDigest,
+        profileFingerprint: build123dCapability.localProfile.profileFingerprint,
+      },
   });
   const capabilityRuntimeLeases = new FileCapabilityRuntimeLeaseStore(
     DEFAULT_CAPABILITY_RUNTIME_LEASE_DIRECTORY,
@@ -1090,6 +1097,8 @@ async function createProjectControl(
     geometryDraftCaptureDirectory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
     geometryDraftAssetDirectory: GEOMETRY_DRAFT_ASSETS_DIR,
     geometryCaptureDirectory: DEFAULT_GEOMETRY_CAPTURE_DIRECTORY,
+    capabilityRuntime,
+    capabilityRuntimeSession,
   });
   const assemblyIntegrityEvaluationCaptures =
     new FileAssemblyIntegrityEvaluationCaptureStore(

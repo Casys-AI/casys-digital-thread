@@ -9,7 +9,10 @@
 import {
   ExportAdmittedProjectGeometry,
 } from "../../application/use-cases/cad/canonical/export-admitted-project-geometry.ts";
+import type { CapabilityRuntimeExecutionSessionCoordinator } from "../../application/control-plane/capability-runtime-execution-session.ts";
 import type { CapabilityRuntimePreparationSessionCoordinator } from "../../application/control-plane/capability-runtime-preparation-session.ts";
+import type { CapabilityRuntimeExecutionEligibility } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import type { Build123dExecutionProfile } from "../../application/ports/out/cad/isolated/build123d-execution-profile-catalog.ts";
 import { PrepareProjectBuild123dExecutionReview } from "../../application/use-cases/cad/isolated/prepare-project-build123d-execution-review.ts";
 import { PrepareProjectIsolatedGeometrySealReview } from "../../application/use-cases/cad/sealed-isolated/prepare-project-isolated-geometry-seal-review.ts";
 import type { EngineeringProjectRevisionStore } from "../../application/ports/out/engineering-project-revision-store.ts";
@@ -75,6 +78,7 @@ export interface Build123dCapabilityOptions {
 
 export interface Build123dCapability {
   readonly build123dExecution: Build123dExecutionComposition | undefined;
+  readonly localProfile: Build123dExecutionProfile | undefined;
   readonly build123dExecutionReview:
     | PrepareProjectBuild123dExecutionReview
     | undefined;
@@ -103,6 +107,12 @@ export interface CadProjectOptions {
   readonly geometryDraftCaptureDirectory: string;
   readonly geometryDraftAssetDirectory: string;
   readonly geometryCaptureDirectory: string;
+  /** Optional until isolated execution is composed; then required at execute. */
+  readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
+  readonly capabilityRuntimeSession?: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin" | "releaseRecorded"
+  >;
 }
 
 export interface CadProject {
@@ -154,8 +164,12 @@ export async function createBuild123dCapability(
     snapshots: options.snapshots,
     captures: build123dExecutionCaptures,
   });
+  const localProfile = build123dExecution === undefined
+    ? undefined
+    : await build123dExecution.profiles.initial();
   return {
     build123dExecution,
+    localProfile,
     build123dExecutionReview,
     build123dExecutionCaptures,
     isolatedOutputPublications,
@@ -187,6 +201,8 @@ export function createCadProject(options: CadProjectOptions): CadProject {
       ),
       captures: capability.build123dExecutionCaptures,
       lease: options.lease,
+      capabilityRuntime: options.capabilityRuntime,
+      capabilityRuntimeSession: options.capabilityRuntimeSession,
     });
   const designSealIsolatedGeometry = new DesignSealIsolatedGeometryRunExecutor({
     projects: options.projects,

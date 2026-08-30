@@ -10,8 +10,14 @@ import type { CapabilityRuntimeSecretSlotObserver } from "../../application/port
 import { capabilityRuntimeMaterialKey } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import { listRegisteredEngineeringOperations } from "../../orchestration/operations/registry.ts";
+import {
+  BUILD123D_ISOLATED_WORKER_MATERIAL_ID,
+  BUILD123D_ISOLATED_WORKER_UNIT_ID,
+  BUILD123D_MICROSANDBOX_WORKER_CONTRACT,
+} from "../cad/isolated/worker-contract.ts";
 import { CALCULIX_MICROSANDBOX_WORKER_CONTRACT } from "../fea/isolated-v3/calculix-static-proof-v1/worker-contract.ts";
 import { LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE } from "../fea/isolated-v3/local-calculix-isolated-execution-options.ts";
+import { LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE } from "./first-party-capability-runtime-identities.ts";
 import {
   createLocalMicrosandboxSdk,
 } from "../shared/execution/microsandbox-ephemeral-execution-backend.ts";
@@ -49,6 +55,15 @@ export interface LocalCapabilityRuntimeReadCompositionOptions {
    * BFF process: it may observe the exact cache but cannot use it to execute.
    */
   readonly calculixExecutionProfile?: {
+    readonly imageReference: string;
+    readonly imageDigest: ContentFingerprint;
+    readonly profileFingerprint: ContentFingerprint;
+  };
+  /**
+   * The server's code-owned Build123d execution profile. Omit in a read-only
+   * BFF process: it may observe the exact cache but cannot use it to execute.
+   */
+  readonly build123dExecutionProfile?: {
     readonly imageReference: string;
     readonly imageDigest: ContentFingerprint;
     readonly profileFingerprint: ContentFingerprint;
@@ -113,6 +128,16 @@ export async function createLocalCapabilityRuntimeReadComposition(
       "The code-owned catalog is missing casys.calculix-worker/calculix-worker-image.",
     );
   }
+  const build123dWorker = catalog.units.find((unit) =>
+    unit.id === BUILD123D_ISOLATED_WORKER_UNIT_ID
+  )?.materials.find((material) =>
+    material.id === BUILD123D_ISOLATED_WORKER_MATERIAL_ID
+  );
+  if (!build123dWorker) {
+    throw new Error(
+      `The code-owned catalog is missing ${BUILD123D_ISOLATED_WORKER_UNIT_ID}/${BUILD123D_ISOLATED_WORKER_MATERIAL_ID}.`,
+    );
+  }
   const microsandbox = new LocalMicrosandboxCapabilityRuntimeCache(
     createLocalMicrosandboxSdk,
     [{
@@ -139,6 +164,31 @@ export async function createLocalCapabilityRuntimeReadComposition(
         ],
       },
       executionProfileFingerprint: options.calculixExecutionProfile?.profileFingerprint,
+    }, {
+      material: {
+        unitId: BUILD123D_ISOLATED_WORKER_UNIT_ID,
+        materialId: BUILD123D_ISOLATED_WORKER_MATERIAL_ID,
+      },
+      image: {
+        reference: options.build123dExecutionProfile?.imageReference ??
+          LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
+        manifestDigest: options.build123dExecutionProfile
+          ? `sha256:${options.build123dExecutionProfile.imageDigest.digest}`
+          : LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE.slice(
+            LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE.lastIndexOf("@") + 1,
+          ),
+        os: "linux",
+        architecture: exactMicrosandboxMaterialArchitecture(
+          build123dWorker.platforms,
+        ),
+        user: BUILD123D_MICROSANDBOX_WORKER_CONTRACT.expectedImageUser,
+        entrypoint: [
+          BUILD123D_MICROSANDBOX_WORKER_CONTRACT.executable,
+          ...BUILD123D_MICROSANDBOX_WORKER_CONTRACT.args,
+        ],
+      },
+      executionProfileFingerprint: options.build123dExecutionProfile
+        ?.profileFingerprint,
     }],
   );
   const groupMaterialKeys = (await launchGroups.list()).flatMap((group) =>
@@ -148,7 +198,13 @@ export async function createLocalCapabilityRuntimeReadComposition(
     { observer: composeObserver, materialKeys: groupMaterialKeys },
     {
       observer: microsandbox,
-      materialKeys: ["casys.calculix-worker\u0000calculix-worker-image"],
+      materialKeys: [
+        "casys.calculix-worker\u0000calculix-worker-image",
+        capabilityRuntimeMaterialKey({
+          unitId: BUILD123D_ISOLATED_WORKER_UNIT_ID,
+          materialId: BUILD123D_ISOLATED_WORKER_MATERIAL_ID,
+        }),
+      ],
     },
   ]);
   const policy = new FileCapabilityRuntimeAdminPolicyStore(undefined, catalog);

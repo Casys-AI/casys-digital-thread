@@ -196,6 +196,35 @@ Deno.test("server hides native module assembly behind the neutral export and dra
   assertEquals((source.match(/const geometryModuleAssembly =/g) ?? []).length, 1);
 });
 
+Deno.test("server injects the resolved Build123d execution profile into the exact cache composition", async () => {
+  const source = await Deno.readTextFile("server.ts");
+  const readStart = source.indexOf(
+    "const capabilityRead = await createLocalCapabilityRuntimeReadComposition({",
+  );
+  const readEnd = source.indexOf(
+    "const capabilityRuntimeLeases = new FileCapabilityRuntimeLeaseStore(",
+  );
+  assert(readStart >= 0);
+  assert(readEnd > readStart);
+  const block = source.slice(readStart, readEnd);
+  assertStringIncludes(
+    block,
+    "build123dExecutionProfile: build123dCapability.localProfile",
+  );
+  assertStringIncludes(
+    block,
+    "profileFingerprint: build123dCapability.localProfile.profileFingerprint",
+  );
+  assertEquals(block.includes("Deno.env"), false);
+  const cadStart = source.indexOf("const cadProject = createCadProject({");
+  const cadEnd = source.indexOf("const assemblyIntegrityEvaluationCaptures");
+  assert(cadStart >= 0);
+  assert(cadEnd > cadStart);
+  const cad = source.slice(cadStart, cadEnd);
+  assertStringIncludes(cad, "capabilityRuntime,");
+  assertStringIncludes(cad, "capabilityRuntimeSession,");
+});
+
 Deno.test("future Modelica runtime binding factory is code-owned, digest pinned, and qualification-gated", async () => {
   const first = await createLocalModelicaIsolatedExecutionServerOptions();
   const second = await createLocalModelicaIsolatedExecutionServerOptions();

@@ -31,10 +31,10 @@ closed; it never silently becomes the neutral default.
 
 Observation is partitioned by code-owned material coverage. The Compose observer owns
 only enrolled exact launch-group materials and the Microsandbox observer owns only the
-exact CalculiX microVM cache contract. A composite observer never invokes a slice that
-has no assigned requested material. Planning and intent review observe only the
-catalogue materials that can satisfy the known demand or brief intent; they do not
-inspect the rest of the catalogue. Full-catalogue observation remains an explicit
+exact CalculiX and isolated Build123d microVM cache contracts. A composite observer never
+invokes a slice that has no assigned requested material. Planning and intent review
+observe only the catalogue materials that can satisfy the known demand or brief intent;
+they do not inspect the rest of the catalogue. Full-catalogue observation remains an explicit
 `read()` with no material scope, used by administrative and qualification paths that
 need the complete host picture. A duplicate coverage declaration, unexpected material
 response, or missing response for an owned requested material is rejected. A material

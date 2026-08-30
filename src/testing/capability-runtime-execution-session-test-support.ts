@@ -1,6 +1,7 @@
 import type {
   CapabilityRuntimeExecutionSession,
   CapabilityRuntimeExecutionSessionCoordinator,
+  CapabilityRuntimeMicrosandboxExecutionProfile,
 } from "../application/control-plane/capability-runtime-execution-session.ts";
 import type { CapabilityRuntimeExecutionEligibility } from "../application/ports/out/capability/capability-runtime-supervisor.ts";
 import type {
@@ -16,6 +17,9 @@ export interface RecordingCapabilityRuntimeSession {
   readonly releases: number;
   readonly retains: number;
   readonly recordedReleases: number;
+  readonly microsandboxExecutionProfiles:
+    | readonly CapabilityRuntimeMicrosandboxExecutionProfile[]
+    | undefined;
   begin: CapabilityRuntimeExecutionSessionCoordinator["begin"];
   releaseRecorded: CapabilityRuntimeExecutionSessionCoordinator["releaseRecorded"];
 }
@@ -28,6 +32,9 @@ export function recordingCapabilityRuntimeSession(
     releases: 0,
     retains: 0,
     recordedReleases: 0,
+    microsandboxExecutionProfiles: undefined as
+      | readonly CapabilityRuntimeMicrosandboxExecutionProfile[]
+      | undefined,
   };
   return {
     get events() {
@@ -42,8 +49,13 @@ export function recordingCapabilityRuntimeSession(
     get recordedReleases() {
       return state.recordedReleases;
     },
-    begin: beginImpl ?? (async (input) => {
+    get microsandboxExecutionProfiles() {
+      return state.microsandboxExecutionProfiles;
+    },
+    begin: async (input) => {
       state.events.push("begin");
+      state.microsandboxExecutionProfiles = input.microsandboxExecutionProfiles;
+      if (beginImpl) return await beginImpl(input);
       await input.recheck();
       return {
         lease: { id: "capability-jit-test" } as CapabilityRuntimeExecutionSession[
@@ -57,7 +69,7 @@ export function recordingCapabilityRuntimeSession(
           state.retains++;
         },
       };
-    }),
+    },
     releaseRecorded: () => {
       state.events.push("releaseRecorded");
       state.recordedReleases++;
@@ -73,14 +85,17 @@ export function testResolvedCapabilityRuntimeOperation(input: {
   readonly binding?: { readonly id: string; readonly version: string };
   readonly unitId?: string;
   readonly materialId?: string;
+  readonly imageDigest?: string;
   readonly launchGroup?: CapabilityRuntimeLaunchGroupReference;
+  readonly hostLifecycleKind?: "persistent-compose" | "ephemeral-microsandbox";
 }): ResolvedCapabilityRuntimeOperation {
   const fingerprint = { algorithm: "sha256" as const, digest: "a".repeat(64) };
   const material = {
     unitId: input.unitId ?? "casys.syson-stack",
     materialId: input.materialId ?? "mcp-syson-image",
-    imageDigest: "b".repeat(64),
+    imageDigest: input.imageDigest ?? "b".repeat(64),
   };
+  const hostLifecycleKind = input.hostLifecycleKind ?? "persistent-compose";
   return {
     schemaVersion: "resolved-capability-runtime-operation/2.0",
     projectId: input.projectId,
@@ -110,15 +125,23 @@ export function testResolvedCapabilityRuntimeOperation(input: {
         mode: "native",
         qualificationAttestationFingerprint: null,
       }],
-      hostLifecycles: [{
-        material,
-        kind: "persistent-compose",
-        launchGroup: input.launchGroup ?? {
-          id: "casys-syson",
-          version: "1.0.0",
-          fingerprint,
-        },
-      }],
+      hostLifecycles: [
+        hostLifecycleKind === "ephemeral-microsandbox"
+          ? {
+            material,
+            kind: "ephemeral-microsandbox" as const,
+            launchGroup: null,
+          }
+          : {
+            material,
+            kind: "persistent-compose" as const,
+            launchGroup: input.launchGroup ?? {
+              id: "casys-syson",
+              version: "1.0.0",
+              fingerprint,
+            },
+          },
+      ],
     }],
   };
 }
