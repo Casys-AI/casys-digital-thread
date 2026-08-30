@@ -9,9 +9,10 @@ import {
   fingerprintCapabilityRuntimeObservedHost,
 } from "./capability-runtime-binding-qualification-attestation.ts";
 import {
-  type CapabilityRuntimeQualificationHostStopProof,
-  validateCapabilityRuntimeQualificationHostStopProof,
-} from "./capability-runtime-qualification-host-proof.ts";
+  CAPABILITY_RUNTIME_QUALIFICATION_ISOLATED_DESTRUCTION_PROOF_SCHEMA,
+  type CapabilityRuntimeQualificationStopProof,
+  validateCapabilityRuntimeQualificationStopProof,
+} from "./capability-runtime-qualification-stop-proof.ts";
 import {
   deepFreeze,
   exactRecord,
@@ -116,12 +117,12 @@ export type CapabilityRuntimeQualificationAttempt =
   | (Base & Active & Submitted & {
     readonly phase: "stopped";
     readonly outcome: CapabilityRuntimeQualificationAttemptOutcome;
-    readonly runtimeStopProof: CapabilityRuntimeQualificationHostStopProof;
+    readonly runtimeStopProof: CapabilityRuntimeQualificationStopProof;
   })
   | (Base & Active & Submitted & {
     readonly phase: "attested";
     readonly outcome: CapabilityRuntimeQualificationAttemptOutcome;
-    readonly runtimeStopProof: CapabilityRuntimeQualificationHostStopProof;
+    readonly runtimeStopProof: CapabilityRuntimeQualificationStopProof;
     readonly attestationFingerprint: ContentFingerprint;
   });
 
@@ -324,7 +325,7 @@ export async function validateCapabilityRuntimeQualificationAttempt(
       outcome,
     });
   }
-  const runtimeStopProof = await validateCapabilityRuntimeQualificationHostStopProof(
+  const runtimeStopProof = await validateCapabilityRuntimeQualificationStopProof(
     root.runtimeStopProof,
     `${path}.runtimeStopProof`,
   );
@@ -563,7 +564,7 @@ export async function outcomeQualificationAttempt(
     );
     const submitted = current.phase === "case-submitted" ? submittedOf(current) : {
       caseSha256: current.caseFingerprint.digest,
-      caseUri: `chrono-case:sha256:${current.caseFingerprint.digest}`,
+      caseUri: `qualification-case:sha256:${current.caseFingerprint.digest}`,
     };
     return freeze({
       ...base(current, current.preparedAt),
@@ -606,9 +607,9 @@ export async function outcomeQualificationAttempt(
 
 export async function stopQualificationAttempt(
   current: CapabilityRuntimeQualificationAttempt,
-  input: { readonly runtimeStopProof: CapabilityRuntimeQualificationHostStopProof },
+  input: { readonly runtimeStopProof: CapabilityRuntimeQualificationStopProof },
 ): Promise<CapabilityRuntimeQualificationAttempt> {
-  const runtimeStopProof = await validateCapabilityRuntimeQualificationHostStopProof(
+  const runtimeStopProof = await validateCapabilityRuntimeQualificationStopProof(
     input.runtimeStopProof,
   );
   if (current.phase === "stopped" || current.phase === "attested") {
@@ -623,6 +624,7 @@ export async function stopQualificationAttempt(
   if (current.phase !== "outcome") {
     throw integrity("Qualification runtime stop cannot precede outcome.");
   }
+  assertStopProofBindsAttempt(current, runtimeStopProof);
   return freeze({
     ...base(current, current.preparedAt),
     phase: "stopped",
@@ -788,6 +790,7 @@ export async function resolveQualificationAttempts(
   if (outcome && stopped) {
     assertSubmittedContinuation(stopped, outcome);
     assertOutcome(stopped.outcome, outcome.outcome);
+    assertStopProofBindsAttempt(stopped, stopped.runtimeStopProof);
   }
   if (stopped && attested) {
     assertSubmittedContinuation(attested, stopped);
@@ -924,7 +927,11 @@ function submission(
   if (caseSha256 !== caseFingerprint.digest) {
     throw integrity(`${path}.caseSha256 does not bind exact case.`);
   }
-  if (value.caseUri !== `chrono-case:sha256:${caseSha256}`) {
+  if (
+    typeof value.caseUri !== "string" ||
+    !/^[a-z][a-z0-9-]*:sha256:[a-f0-9]{64}$/.test(value.caseUri) ||
+    !value.caseUri.endsWith(`:sha256:${caseSha256}`)
+  ) {
     throw integrity(`${path}.caseUri is not bound to exact case.`);
   }
   return freeze({ caseSha256, caseUri: value.caseUri });
@@ -1110,6 +1117,42 @@ function assertFingerprint(
 ): void {
   if (!fingerprintsEqual(left, right)) {
     throw integrity(`Qualification ${label} conflicts with WAL.`);
+  }
+}
+
+/**
+ * Host stop proofs retain their own journal/lease authority.  An isolated
+ * destruction proof instead owns one concrete microVM run, so it cannot be
+ * transplanted from a sibling qualification attempt or receipt.
+ */
+function assertStopProofBindsAttempt(
+  attempt: Extract<
+    CapabilityRuntimeQualificationAttempt,
+    { readonly phase: "outcome" | "stopped" | "attested" }
+  >,
+  proof: CapabilityRuntimeQualificationStopProof,
+): void {
+  if (
+    proof.schemaVersion !==
+      CAPABILITY_RUNTIME_QUALIFICATION_ISOLATED_DESTRUCTION_PROOF_SCHEMA
+  ) return;
+  if (proof.runId !== attempt.requestId) {
+    throw integrity("Qualification isolated stop proof run ID conflicts with WAL.");
+  }
+  if (
+    attempt.outcome.status === "qualified" ||
+    attempt.outcome.basis === "recorded"
+  ) {
+    if (!proof.receiptFingerprint) {
+      throw integrity(
+        "Qualification isolated stop proof lacks the recorded receipt fingerprint.",
+      );
+    }
+    assertFingerprint(
+      proof.receiptFingerprint,
+      attempt.outcome.basisFingerprint,
+      "isolated stop proof receipt",
+    );
   }
 }
 function assertOutcome(

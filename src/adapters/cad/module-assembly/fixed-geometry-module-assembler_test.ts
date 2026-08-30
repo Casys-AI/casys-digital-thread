@@ -107,6 +107,26 @@ Deno.test("fixed module assembler refuses an unknown generation-zero outcome", a
   assertEquals(world.runner.requests.length, 0);
 });
 
+Deno.test("fixed module assembler invokes its adapter-only dispatch fence immediately before runner execution", async () => {
+  const world = await createWorld();
+  const calls: string[] = [];
+  const assembler = new FixedGeometryModuleAssembler({
+    profiles: world.profiles as never,
+    runner: {
+      run: async (request) => {
+        calls.push("run");
+        return await world.runner.run(request);
+      },
+    },
+    publications: world.publications,
+    beforeDispatch: (request) => {
+      calls.push(`claim:${request.runId}`);
+    },
+  });
+  await assembler.assemble({ runId: "module-dispatch-fence", bundle: world.bundle });
+  assertEquals(calls, ["claim:module-dispatch-fence", "run"]);
+});
+
 async function createWorld() {
   const bundle = await createGeometryModuleInputBundle([{
     usageElementId: "usage.child",
@@ -132,6 +152,7 @@ async function createWorld() {
     bundle,
     runner,
     publications,
+    profiles,
     assembler: new FixedGeometryModuleAssembler({
       profiles: profiles as never,
       runner,

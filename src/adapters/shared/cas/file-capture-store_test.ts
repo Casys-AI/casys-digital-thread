@@ -443,3 +443,134 @@ Deno.test(
     }
   },
 );
+
+// ── Anchored-path integrity ─────────────────────────────────────────────────
+
+Deno.test({
+  name: "A capture store refuses symlinked roots and ancestors before writing",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const base = await Deno.realPath(
+      await Deno.makeTempDir({ prefix: "casys-file-capture-symlink-root-" }),
+    );
+    try {
+      const text = '{"symlink":"root"}';
+      const fingerprint = await sha256Fingerprint({ symlink: "root" });
+      const target = `${base}/target`;
+      const linkedRoot = `${base}/linked-root`;
+      await Deno.mkdir(target, { mode: 0o700 });
+      await Deno.symlink(target, linkedRoot);
+      const linkedStore = new FileCaptureStore({
+        ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+        directory: linkedRoot,
+      });
+
+      await assertRejects(
+        () => linkedStore.save(fingerprint, text),
+        Error,
+        "root and ancestors",
+      );
+      assertEquals([...(await Array.fromAsync(Deno.readDir(target)))], []);
+
+      const trusted = `${base}/trusted`;
+      const ancestorTarget = `${base}/ancestor-target`;
+      const linkedAncestor = `${trusted}/linked-ancestor`;
+      await Deno.mkdir(trusted, { mode: 0o700 });
+      await Deno.mkdir(ancestorTarget, { mode: 0o700 });
+      await Deno.symlink(ancestorTarget, linkedAncestor);
+      const ancestorStore = new FileCaptureStore({
+        ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+        directory: `${linkedAncestor}/captures`,
+      });
+
+      await assertRejects(
+        () => ancestorStore.save(fingerprint, text),
+        Error,
+        "root and ancestors",
+      );
+      assertEquals(
+        [...(await Array.fromAsync(Deno.readDir(ancestorTarget)))],
+        [],
+      );
+    } finally {
+      await Deno.remove(base, { recursive: true });
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "A capture store refuses an identical final-file symlink on read and idempotent save",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const directory = await Deno.realPath(
+      await Deno.makeTempDir({ prefix: "casys-file-capture-symlink-final-" }),
+    );
+    try {
+      const store = new FileCaptureStore({
+        ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+        directory,
+      });
+      const text = '{"symlink":"final"}';
+      const fingerprint = await sha256Fingerprint({ symlink: "final" });
+      const outside = `${directory}/outside.json`;
+      await Deno.writeTextFile(outside, text);
+      await Deno.symlink(outside, store.pathFor(fingerprint));
+
+      await assertRejects(
+        () => store.read(fingerprint),
+        Error,
+        "regular file",
+      );
+      await assertRejects(
+        () => store.save(fingerprint, text),
+        Error,
+        "regular file",
+      );
+      assertEquals(await Deno.readTextFile(outside), text);
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+});
+
+Deno.test({
+  name: "A capture store rejects a root substituted by a symlink after a durable write",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const base = await Deno.realPath(
+      await Deno.makeTempDir({ prefix: "casys-file-capture-root-substitution-" }),
+    );
+    try {
+      const root = `${base}/captures`;
+      const outside = `${base}/outside`;
+      const store = new FileCaptureStore({
+        ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+        directory: root,
+      });
+      const text = '{"substitution":"root"}';
+      const fingerprint = await sha256Fingerprint({ substitution: "root" });
+      await store.save(fingerprint, text);
+
+      await Deno.mkdir(outside, { mode: 0o700 });
+      await Deno.writeTextFile(
+        `${outside}/${fingerprint.digest}.json`,
+        text,
+      );
+      await Deno.rename(root, `${base}/captures-retained`);
+      await Deno.symlink(outside, root);
+
+      await assertRejects(
+        () => store.read(fingerprint),
+        Error,
+        "root and ancestors",
+      );
+      assertEquals(
+        await Deno.readTextFile(`${outside}/${fingerprint.digest}.json`),
+        text,
+      );
+    } finally {
+      await Deno.remove(base, { recursive: true });
+    }
+  },
+});

@@ -274,6 +274,14 @@ import {
   createGeometryModuleAssemblyComposition,
   type GeometryModuleAssemblyServerOptions,
 } from "./src/adapters/cad/module-assembly/geometry-module-assembly-composition.ts";
+import {
+  createLocalGeometryModuleAssemblyServerOptions,
+  LOCAL_GEOMETRY_MODULE_ASSEMBLY_WRAPPER_SHA256,
+} from "./src/adapters/cad/module-assembly/first-party-geometry-module-assembly.ts";
+export {
+  createLocalGeometryModuleAssemblyServerOptions,
+  LOCAL_GEOMETRY_MODULE_ASSEMBLY_WRAPPER_SHA256,
+} from "./src/adapters/cad/module-assembly/first-party-geometry-module-assembly.ts";
 import { createGeometryModuleExportComposition } from "./src/adapters/cad/module-assembly/geometry-module-export-composition.ts";
 import { GEOMETRY_DRAFT_ASSETS_DIR } from "./src/adapters/cad/canonical/geometry-draft-capture.ts";
 import {
@@ -389,9 +397,6 @@ const DEFAULT_PROJECT_BASELINE_DIRECTORY = "config/projects/baselines";
  */
 const DEFAULT_RECORDED_ANALYSIS_DIRECTORY = "state/local/recorded-analysis";
 
-export const LOCAL_GEOMETRY_MODULE_ASSEMBLY_WRAPPER_SHA256 =
-  "609eaf93f2564b88b9103d5e0d53d1dd3e93fcdf8e54c61cc313b957370bf581" as const;
-
 export { LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE };
 const LOCAL_MODELICA_QUALIFICATION_CAPTURE_FINGERPRINT = Object.freeze({
   algorithm: "sha256" as const,
@@ -422,29 +427,6 @@ const LOCAL_BUILD123D_EXECUTION_POLICY_BODY = Object.freeze({
   supervisorUser: "0:0",
   untrustedChildUser: "65532:65532",
   limits: LOCAL_BUILD123D_EXECUTION_LIMITS,
-});
-
-const LOCAL_GEOMETRY_MODULE_ASSEMBLY_LIMITS = Object.freeze({
-  maxWallTimeMs: 120_000,
-  maxCpuTimeMs: 90_000,
-  maxMemoryBytes: 2 * 1_073_741_824,
-  maxProcesses: 32,
-  maxStdoutBytes: 65_536,
-  maxStderrBytes: 65_536,
-  maxOutputFileBytes: 64 * 1_048_576,
-  maxOutputTotalBytes: 128 * 1_048_576,
-});
-
-const LOCAL_GEOMETRY_MODULE_ASSEMBLY_POLICY_BODY = Object.freeze({
-  schemaVersion: "geometry-module-assembler-microsandbox-policy/1.0",
-  backend: "microsandbox-local@0.6.8",
-  imageReference: LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
-  network: "deny-all",
-  pullPolicy: "never",
-  securityProfile: "restricted",
-  workerUser: "65532:65532",
-  fixedExecutable: "/usr/local/bin/python3",
-  limits: LOCAL_GEOMETRY_MODULE_ASSEMBLY_LIMITS,
 });
 
 const LOCAL_MODELICA_EXECUTION_LIMITS = Object.freeze({
@@ -2169,28 +2151,6 @@ export async function createLocalBuild123dExecutionServerOptions(): Promise<
       imageReference: LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
       policy,
       limits: LOCAL_BUILD123D_EXECUTION_LIMITS,
-    }),
-    runtime: Object.freeze({}),
-  });
-}
-
-/** Code-owned binding for deterministic one-level geometry-module assembly. */
-export async function createLocalGeometryModuleAssemblyServerOptions(): Promise<
-  GeometryModuleAssemblyServerOptions
-> {
-  const policy = Object.freeze({
-    id: "geometry-module-assembler-microsandbox-deny-all-v1",
-    version: "1.0.0",
-    fingerprint: await sha256Fingerprint(
-      LOCAL_GEOMETRY_MODULE_ASSEMBLY_POLICY_BODY,
-    ),
-  });
-  return Object.freeze({
-    profile: Object.freeze({
-      imageReference: LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
-      wrapperSha256: LOCAL_GEOMETRY_MODULE_ASSEMBLY_WRAPPER_SHA256,
-      policy,
-      limits: LOCAL_GEOMETRY_MODULE_ASSEMBLY_LIMITS,
     }),
     runtime: Object.freeze({}),
   });

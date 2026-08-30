@@ -36,7 +36,7 @@ import {
   validateCapabilityRuntimeQualificationAttemptIdentity,
   validateCapabilityRuntimeQualificationAttemptKey,
 } from "../../domain/capability/runtime/capability-runtime-qualification-attempt.ts";
-import type { CapabilityRuntimeQualificationHostStopProof } from "../../domain/capability/runtime/capability-runtime-qualification-host-proof.ts";
+import type { CapabilityRuntimeQualificationStopProof } from "../../domain/capability/runtime/capability-runtime-qualification-stop-proof.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import {
   isDurableAttemptTemporaryFileName,
@@ -246,7 +246,7 @@ export class FileCapabilityRuntimeQualificationAttemptStore
 
   markStopped(
     identityValue: CapabilityRuntimeQualificationAttemptIdentity,
-    input: { readonly runtimeStopProof: CapabilityRuntimeQualificationHostStopProof },
+    input: { readonly runtimeStopProof: CapabilityRuntimeQualificationStopProof },
   ): Promise<CapabilityRuntimeQualificationAttempt> {
     return this.#transition(
       identityValue,

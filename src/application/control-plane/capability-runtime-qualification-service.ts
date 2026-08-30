@@ -19,6 +19,7 @@ import {
   qualificationAttemptIdentityOf,
   qualificationAttemptKeyFor,
 } from "../../domain/capability/runtime/capability-runtime-qualification-attempt.ts";
+import { CAPABILITY_RUNTIME_QUALIFICATION_HOST_STOP_PROOF_SCHEMA } from "../../domain/capability/runtime/capability-runtime-qualification-host-proof.ts";
 import {
   CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
   type CapabilityRuntimeLease,
@@ -719,6 +720,12 @@ export class CapabilityRuntimeQualificationService {
       { readonly phase: "stopped" }
     >,
   ): Promise<CapabilityRuntimeQualificationAttempt> {
+    if (
+      attempt.runtimeStopProof.schemaVersion !==
+        CAPABILITY_RUNTIME_QUALIFICATION_HOST_STOP_PROOF_SCHEMA
+    ) {
+      throw unavailable("Chrono qualification requires a host stop proof.");
+    }
     await this.options.groups.verifyQualificationStopProof({
       group: candidate.launchGroup,
       expectedMaterials: [candidate.material],

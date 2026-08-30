@@ -24,6 +24,7 @@ import {
   submitQualificationAttemptCase,
 } from "../../domain/capability/runtime/capability-runtime-qualification-attempt.ts";
 import { createCapabilityRuntimeQualificationHostStopProof } from "../../domain/capability/runtime/capability-runtime-qualification-host-proof.ts";
+import { createCapabilityRuntimeQualificationIsolatedDestructionProof } from "../../domain/capability/runtime/capability-runtime-qualification-stop-proof.ts";
 import { CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import type {
@@ -40,6 +41,7 @@ import {
 } from "./capability-runtime-qualification-attestation-factory.ts";
 import {
   evaluateCapabilityRuntimeQualifications,
+  loadProvenCapabilityRuntimeQualificationAttestations,
   matchesCapabilityRuntimeQualificationCandidate,
 } from "./evaluate-capability-runtime-qualifications.ts";
 
@@ -79,6 +81,46 @@ Deno.test("an exact Chrono emulation attestation qualifies only its binding and 
     binding(effective, "calculix-http-static-sensitivity").runtimeModes,
     [],
   );
+});
+
+Deno.test("Chrono factory and evaluator reject an isolated destruction stop-proof", async () => {
+  const host = observedHost(HOST_A);
+  const proven = await provenChrono(host);
+  const isolatedProof =
+    await createCapabilityRuntimeQualificationIsolatedDestructionProof({
+      runId: "isolated-qualification-test-run",
+      producerGeneration: 0,
+      receiptFingerprint: null,
+      destruction: {
+        status: "proven",
+        runId: "isolated-qualification-test-run",
+        proofFingerprint: { algorithm: "sha256", digest: "f".repeat(64) },
+      },
+    });
+  const stopped = { ...proven.attempt, runtimeStopProof: isolatedProof };
+  await assertRejects(
+    () =>
+      createChronoRuntimeQualificationAttestation({
+        attempt: stopped,
+        candidate: proven.candidate,
+        spec: proven.spec,
+      }),
+    TypeError,
+    "requires a host stop proof",
+  );
+  const attested = {
+    ...stopped,
+    phase: "attested" as const,
+    attestationFingerprint: proven.event.fingerprint,
+  };
+  const loaded = await loadProvenCapabilityRuntimeQualificationAttestations({
+    attempts: { read: () => Promise.resolve(attested) },
+    attestations: [proven.event],
+    candidates: proven.candidates,
+    specs: proven.specs,
+    host,
+  });
+  assertEquals(loaded, []);
 });
 
 Deno.test("candidate attestation matcher requires the exact fixture and every candidate axis", async () => {
@@ -454,6 +496,33 @@ Deno.test("a durable revocation linearizes before qualification and blocks the q
       false,
     );
     assertEquals(await store.read(proven.event.fingerprint), undefined);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("a null launch-group revocation blocks the exact null launch-group qualification", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "capability-qualification-" });
+  try {
+    const proven = await provenChrono(observedHost(HOST_A));
+    const qualified = await reattest(proven.event, (event) => {
+      event.launchGroup = null;
+    });
+    const revoked = await reattest(qualified, (event) => {
+      event.state = "revoked";
+      event.recordedAt = "2026-08-29T00:00:01.000Z";
+    });
+    assertEquals(
+      sameCapabilityRuntimeQualificationRevocationScope(revoked, qualified),
+      true,
+    );
+    const store = new FileCapabilityRuntimeQualificationAttestationStore(directory);
+    await store.append(revoked);
+    assertEquals(
+      await store.appendQualifiedUnlessRevoked(qualified),
+      { status: "revoked" },
+    );
+    assertEquals(await store.read(qualified.fingerprint), undefined);
   } finally {
     await Deno.remove(directory, { recursive: true });
   }

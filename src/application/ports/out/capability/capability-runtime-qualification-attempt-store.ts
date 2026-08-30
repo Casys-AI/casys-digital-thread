@@ -1,7 +1,7 @@
 /** Port for the private host-local qualification attempt ledger. */
 
 import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
-import type { CapabilityRuntimeQualificationHostStopProof } from "../../../../domain/capability/runtime/capability-runtime-qualification-host-proof.ts";
+import type { CapabilityRuntimeQualificationStopProof } from "../../../../domain/capability/runtime/capability-runtime-qualification-stop-proof.ts";
 import type {
   CapabilityRuntimeQualificationAttempt,
   CapabilityRuntimeQualificationAttemptIdentity,
@@ -60,7 +60,7 @@ export interface CapabilityRuntimeQualificationAttemptStore {
   ): Promise<CapabilityRuntimeQualificationAttempt>;
   markStopped(
     identity: CapabilityRuntimeQualificationAttemptIdentity,
-    input: { readonly runtimeStopProof: CapabilityRuntimeQualificationHostStopProof },
+    input: { readonly runtimeStopProof: CapabilityRuntimeQualificationStopProof },
   ): Promise<CapabilityRuntimeQualificationAttempt>;
   markAttested(
     identity: CapabilityRuntimeQualificationAttemptIdentity,

@@ -10,6 +10,7 @@ import {
   qualificationAttemptKeyFor,
 } from "../../domain/capability/runtime/capability-runtime-qualification-attempt.ts";
 import { createCapabilityRuntimeQualificationHostStopProof } from "../../domain/capability/runtime/capability-runtime-qualification-host-proof.ts";
+import { createCapabilityRuntimeQualificationIsolatedDestructionProof } from "../../domain/capability/runtime/capability-runtime-qualification-stop-proof.ts";
 import { CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import {
   FileCapabilityRuntimeQualificationAttemptStore,
@@ -164,6 +165,66 @@ Deno.test("qualification WAL claim prevents redispatch after an uncertain readba
         }),
       CapabilityRuntimeQualificationAttemptIntegrityError,
       "cannot precede verified runtime stop",
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("qualification WAL rejects an isolated stop proof transplanted from another attempt or receipt", async () => {
+  const directory = await Deno.makeTempDir();
+  try {
+    const identity = await fixtureIdentity();
+    const store = new FileCapabilityRuntimeQualificationAttemptStore(directory);
+    await prepareThroughDispatch(store, identity);
+    const receipt = await fingerprint("recorded-receipt");
+    await store.markRecorded(identity, {
+      receiptSha256: "c".repeat(64),
+      receiptFingerprint: receipt,
+    });
+    await store.markOutcome(
+      identity,
+      await outcome({
+        status: "qualified",
+        basis: "recorded",
+        recordedAt: "2026-08-29T00:01:00.000Z",
+        basisFingerprint: receipt,
+      }),
+    );
+
+    const otherRun = await createCapabilityRuntimeQualificationIsolatedDestructionProof(
+      {
+        runId: "sibling-qualification-run",
+        producerGeneration: 0,
+        receiptFingerprint: receipt,
+        destruction: {
+          status: "proven",
+          runId: "sibling-qualification-run",
+          proofFingerprint: await fingerprint("sibling-destruction"),
+        },
+      },
+    );
+    await assertRejects(
+      () => store.markStopped(identity, { runtimeStopProof: otherRun }),
+      CapabilityRuntimeQualificationAttemptIntegrityError,
+      "run ID conflicts",
+    );
+
+    const otherReceipt =
+      await createCapabilityRuntimeQualificationIsolatedDestructionProof({
+        runId: identity.requestId,
+        producerGeneration: 0,
+        receiptFingerprint: await fingerprint("sibling-receipt"),
+        destruction: {
+          status: "proven",
+          runId: identity.requestId,
+          proofFingerprint: await fingerprint("same-run-sibling-receipt"),
+        },
+      });
+    await assertRejects(
+      () => store.markStopped(identity, { runtimeStopProof: otherReceipt }),
+      CapabilityRuntimeQualificationAttemptIntegrityError,
+      "isolated stop proof receipt",
     );
   } finally {
     await Deno.remove(directory, { recursive: true });

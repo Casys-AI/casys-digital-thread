@@ -134,11 +134,7 @@ export function sameCapabilityRuntimeQualificationRevocationScope(
     left.material.imageDigest === right.material.imageDigest &&
     left.targetPlatform === right.targetPlatform &&
     left.mode === right.mode &&
-    left.launchGroup !== null &&
-    right.launchGroup !== null &&
-    left.launchGroup.id === right.launchGroup.id &&
-    left.launchGroup.version === right.launchGroup.version &&
-    sameFingerprint(left.launchGroup.fingerprint, right.launchGroup.fingerprint) &&
+    sameLaunchGroup(left.launchGroup, right.launchGroup) &&
     left.observedHost.platform === right.observedHost.platform &&
     sameFingerprint(
       left.observedHost.identityFingerprint,
@@ -146,6 +142,15 @@ export function sameCapabilityRuntimeQualificationRevocationScope(
     ) &&
     left.fixture.id === right.fixture.id &&
     sameFingerprint(left.fixture.fingerprint, right.fixture.fingerprint);
+}
+
+function sameLaunchGroup(
+  left: CapabilityRuntimeBindingQualificationAttestation["launchGroup"],
+  right: CapabilityRuntimeBindingQualificationAttestation["launchGroup"],
+): boolean {
+  if (left === null || right === null) return left === right;
+  return left.id === right.id && left.version === right.version &&
+    sameFingerprint(left.fingerprint, right.fingerprint);
 }
 
 function sameAttestationProfile(

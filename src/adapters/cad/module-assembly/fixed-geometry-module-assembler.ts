@@ -48,17 +48,29 @@ export interface FixedGeometryModuleAssemblerDependencies {
   readonly profiles: GeometryModuleAssemblyExecutionProfileCatalog;
   readonly runner: IsolatedCodeRunner;
   readonly publications: IsolatedOutputPublicationReader;
+  /**
+   * Adapter-only linearization seam.  It is invoked after the generation-zero
+   * publication check and immediately before the native runner boundary.
+   * The public GeometryModuleAssembler command remains provider-neutral.
+   */
+  readonly beforeDispatch?: (
+    request: IsolatedCodeExecutionRequest,
+  ) => Promise<void> | void;
 }
 
 export class FixedGeometryModuleAssembler implements GeometryModuleAssembler {
   readonly #profiles: GeometryModuleAssemblyExecutionProfileCatalog;
   readonly #runner: IsolatedCodeRunner;
   readonly #publications: IsolatedOutputPublicationReader;
+  readonly #beforeDispatch?: (
+    request: IsolatedCodeExecutionRequest,
+  ) => Promise<void> | void;
 
   constructor(dependencies: FixedGeometryModuleAssemblerDependencies) {
     this.#profiles = dependencies.profiles;
     this.#runner = dependencies.runner;
     this.#publications = dependencies.publications;
+    this.#beforeDispatch = dependencies.beforeDispatch;
   }
 
   async assemble(
@@ -174,6 +186,7 @@ export class FixedGeometryModuleAssembler implements GeometryModuleAssembler {
       await assertNativeReceiptMatches(receipt, request, profile);
       return receipt;
     }
+    await this.#beforeDispatch?.(request);
     const receipt = await this.#runner.run(request);
     await assertNativeReceiptMatches(receipt, request, profile);
     return receipt;

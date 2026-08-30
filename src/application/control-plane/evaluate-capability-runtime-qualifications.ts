@@ -19,6 +19,7 @@ import {
 import type { CapabilityRuntimeQualificationCandidate } from "../../domain/capability/runtime/capability-runtime-qualification-candidate.ts";
 import type { CapabilityRuntimeQualificationSpecification } from "../../domain/capability/runtime/capability-runtime-qualification-specification.ts";
 import type { CapabilityRuntimeQualificationAttemptStore } from "../ports/out/capability/capability-runtime-qualification-attempt-store.ts";
+import { CAPABILITY_RUNTIME_QUALIFICATION_HOST_STOP_PROOF_SCHEMA } from "../../domain/capability/runtime/capability-runtime-qualification-host-proof.ts";
 import { fingerprintsEqual } from "../../domain/kernel/deterministic-json.ts";
 import {
   capabilityRuntimeQualificationStoppedOutcomeReference,
@@ -201,7 +202,9 @@ export async function loadProvenCapabilityRuntimeQualificationAttestations(input
     if (
       attempt?.phase !== "attested" ||
       attempt.outcome.status !== "qualified" ||
-      attempt.outcome.basis !== "recorded"
+      attempt.outcome.basis !== "recorded" ||
+      attempt.runtimeStopProof.schemaVersion !==
+        CAPABILITY_RUNTIME_QUALIFICATION_HOST_STOP_PROOF_SCHEMA
     ) {
       continue;
     }

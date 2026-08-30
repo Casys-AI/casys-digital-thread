@@ -16,6 +16,7 @@ import {
   type CapabilityRuntimeQualificationAttempt,
   fingerprintCapabilityRuntimeQualificationAttempt,
 } from "../../domain/capability/runtime/capability-runtime-qualification-attempt.ts";
+import { CAPABILITY_RUNTIME_QUALIFICATION_HOST_STOP_PROOF_SCHEMA } from "../../domain/capability/runtime/capability-runtime-qualification-host-proof.ts";
 import { fingerprintsEqual } from "../../domain/kernel/deterministic-json.ts";
 
 export async function createChronoRuntimeQualificationAttestation(input: {
@@ -35,6 +36,14 @@ export async function createChronoRuntimeQualificationAttestation(input: {
   if (attempt.outcome.status !== "qualified" || attempt.outcome.basis !== "recorded") {
     throw new TypeError(
       "Chrono qualification attestation requires a recorded qualified outcome.",
+    );
+  }
+  if (
+    attempt.runtimeStopProof.schemaVersion !==
+      CAPABILITY_RUNTIME_QUALIFICATION_HOST_STOP_PROOF_SCHEMA
+  ) {
+    throw new TypeError(
+      "Chrono qualification attestation requires a host stop proof.",
     );
   }
   if (!fingerprintsEqual(attempt.candidate.fingerprint, candidate.fingerprint)) {
