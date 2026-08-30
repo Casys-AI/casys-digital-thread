@@ -5,6 +5,7 @@ import {
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
 } from "../../control-plane/first-party-capability-runtime-identities.ts";
 import { GEOMETRY_MODULE_ASSEMBLER_MICROSANDBOX_WORKER_CONTRACT } from "./worker-contract.ts";
+import { createLocalGeometryModuleAssemblyServerOptions } from "./first-party-geometry-module-assembly.ts";
 import {
   assertAllowedGeometryModuleAssemblyCacheTempPath,
   assertExactCachedGeometryModuleAssemblyRuntimeImage,
@@ -42,12 +43,21 @@ Deno.test("geometry-module cache operator pins the exact worker manifest", () =>
   );
   assertEquals(
     LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
-    "casys/build123d-module-assembler-worker@sha256:5aa833e19f1956a001013661e726c19c4566677a75f58493a6534456b99b6707",
+    "docker.io/casys/build123d-module-assembler-worker@sha256:5aa833e19f1956a001013661e726c19c4566677a75f58493a6534456b99b6707",
   );
   assertEquals(
     LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_DIGEST,
     "40accee586603416f573386df29d881ffd682730bb8bd0e2df53ce1454ede5a2",
   );
+});
+
+Deno.test("geometry-module profile and cache operator use the Microsandbox builder key", async () => {
+  const profile = await createLocalGeometryModuleAssemblyServerOptions();
+  const ports = fakePorts({ cached: undefined });
+  await prepareGeometryModuleAssemblyMicrosandboxCache(ports);
+  assertEquals(profile.profile.imageReference, EXPECTED.reference);
+  assertEquals(ports.loads[0]?.tag, profile.profile.imageReference);
+  assertEquals(profile.profile.imageReference.startsWith("docker.io/"), true);
 });
 
 Deno.test("geometry-module cache operator rejects caller-selected arguments and paths", () => {

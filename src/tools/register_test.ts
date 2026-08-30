@@ -140,7 +140,7 @@ Deno.test("future geometry-module runtime binding factory is code-owned and dige
   );
   assertEquals(
     first.profile.imageReference,
-    "casys/build123d-module-assembler-worker@sha256:5aa833e19f1956a001013661e726c19c4566677a75f58493a6534456b99b6707",
+    "docker.io/casys/build123d-module-assembler-worker@sha256:5aa833e19f1956a001013661e726c19c4566677a75f58493a6534456b99b6707",
   );
   assertEquals(
     LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,

@@ -13,7 +13,7 @@ export const LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE =
 
 /** Microsandbox inspectImage manifest. Product runtime imageReference. */
 export const LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE =
-  "casys/build123d-module-assembler-worker@sha256:5aa833e19f1956a001013661e726c19c4566677a75f58493a6534456b99b6707" as const;
+  "docker.io/casys/build123d-module-assembler-worker@sha256:5aa833e19f1956a001013661e726c19c4566677a75f58493a6534456b99b6707" as const;
 
 export const LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE =
   "casys/modelica-microsandbox-worker@sha256:7d3fdeabe794b0ded5360921b16724c7904487e9d11bc24fa37c72f9b92a1894" as const;
