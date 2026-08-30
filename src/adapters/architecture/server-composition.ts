@@ -18,6 +18,8 @@ import { INITIAL_ARCHITECTURE_SYSML_MAX_SOURCE_BYTES } from "./agent-seal/archit
 import { PreviewProjectArchitectureSysml } from "../../application/use-cases/architecture/agent-seal/preview-project-architecture-sysml.ts";
 import { PrepareProjectBriefArchitectureReview } from "../../application/use-cases/architecture/renderer/prepare-project-brief-architecture-review.ts";
 import { PrepareProjectBriefRequirementsReview } from "../../application/use-cases/architecture/requirements/prepare-project-brief-requirements-review.ts";
+import type { CapabilityRuntimeExecutionEligibility } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import type { CapabilityRuntimeExecutionSessionCoordinator } from "../../application/control-plane/capability-runtime-execution-session.ts";
 import type { EngineeringProjectCommandService } from "../../application/use-cases/project/engineering-project-command-service.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
@@ -108,6 +110,13 @@ export interface ArchitectureProjectOptions {
   readonly partDefinitionsCaptureDirectory: string;
   readonly partDefinitionsPublicationDirectory: string;
   readonly requirementsAttemptDirectory: string;
+  /** Cold operational envelope recheck before SysON seed/writes/reads. */
+  readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
+  /** JIT host session. Entered only after the final cold recheck. */
+  readonly capabilityRuntimeSession?: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin"
+  >;
 }
 
 export interface ArchitectureProject {
@@ -240,6 +249,8 @@ export function createArchitectureProject(
       ),
       syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
       lease: options.lease,
+      capabilityRuntime: options.capabilityRuntime,
+      capabilityRuntimeSession: options.capabilityRuntimeSession,
       liveUpdates: options.liveUpdates,
     })
     : undefined;
@@ -256,6 +267,8 @@ export function createArchitectureProject(
       ),
       syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
       lease: options.lease,
+      capabilityRuntime: options.capabilityRuntime,
+      capabilityRuntimeSession: options.capabilityRuntimeSession,
       liveUpdates: options.liveUpdates,
     })
     : undefined;
@@ -275,6 +288,8 @@ export function createArchitectureProject(
       publications: new FilePartDefinitionsPublicationStore(
         options.partDefinitionsPublicationDirectory,
       ),
+      capabilityRuntime: options.capabilityRuntime,
+      capabilityRuntimeSession: options.capabilityRuntimeSession,
     })
     : undefined;
   const genericModelWriteRequirements = sysonMcpUrl
@@ -291,6 +306,8 @@ export function createArchitectureProject(
       ),
       syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
       lease: options.lease,
+      capabilityRuntime: options.capabilityRuntime,
+      capabilityRuntimeSession: options.capabilityRuntimeSession,
       liveUpdates: options.liveUpdates,
     })
     : undefined;

@@ -9,8 +9,8 @@ the exact `casys-syson@1.0.0` group: Postgres, SysON and `mcp-syson`, with only
 `casys-chrono@1.0.0` is a separate one-service topology. Its binding remains unavailable
 until a separately qualified exact host-mode attestation exists; the topology itself
 does not carry a qualification claim. That probe is the private
-[local runtime qualification](local-runtime-qualification.md) CLI, not an MCP
-operation, Workbench command, or engineering run.
+[local runtime qualification](local-runtime-qualification.md) CLI, not an MCP operation,
+Workbench command, or engineering run.
 
 ## Durable local read model
 
@@ -24,10 +24,15 @@ closed; it never silently becomes the neutral default.
 
 Observation is partitioned by code-owned material coverage. The Compose observer owns
 only enrolled exact launch-group materials and the Microsandbox observer owns only the
-exact CalculiX microVM cache contract. A duplicate coverage declaration, unexpected
-material response, or missing response for an owned material is rejected. A material
-which no local observer owns remains literally `unavailable` in the Workbench rather
-than being guessed present or absent.
+exact CalculiX microVM cache contract. A composite observer never invokes a slice that
+has no assigned requested material. Planning and intent review observe only the
+catalogue materials that can satisfy the known demand or brief intent; they do not
+inspect the rest of the catalogue. Full-catalogue observation remains an explicit
+`read()` with no material scope, used by administrative and qualification paths that
+need the complete host picture. A duplicate coverage declaration, unexpected material
+response, or missing response for an owned requested material is rejected. A material
+which was not observed, or which no local observer owns, remains literally `unavailable`
+in the Workbench rather than being guessed present or absent.
 
 The factual host observation contains only the Docker daemon's exact reported platform,
 installed exact images, runtime state and an opaque stable local-host identity

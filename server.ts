@@ -1013,6 +1013,8 @@ async function createProjectControl(
     liveUpdates,
     sysonMcpUrl,
     foundation: architectureFoundation,
+    capabilityRuntime,
+    capabilityRuntimeSession,
     sysonModelSeedAttemptDirectory: options.sysonModelSeedAttemptDirectory ??
       DEFAULT_SYSON_MODEL_SEED_ATTEMPT_DIRECTORY,
     architectureAttemptDirectory: options.architectureAttemptDirectory ??
