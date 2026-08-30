@@ -170,13 +170,17 @@ class FakeAdmissionReader implements TechnicalCompilationAdmissionReader {
 
 class FakeProfiles implements AdmittedModelicaExecutionProfileCatalog {
   available = true;
+  initialCalls = 0;
+  resolveCalls = 0;
 
   constructor(public profile: AdmittedModelicaExecutionProfile) {}
   initial(): Promise<AdmittedModelicaExecutionProfile> {
+    this.initialCalls += 1;
     if (!this.available) return Promise.reject(new Error("profile rollover"));
     return Promise.resolve(structuredClone(this.profile));
   }
   resolve(): Promise<AdmittedModelicaExecutionProfile> {
+    this.resolveCalls += 1;
     return Promise.resolve(structuredClone(this.profile));
   }
 }
@@ -867,7 +871,7 @@ Deno.test("a lost generation-zero WAL acknowledgement never dispatches from repl
   }
 });
 
-Deno.test("a lost generation-one WAL acknowledgement is CAS-only and never dispatches generation one", async () => {
+Deno.test("a lost generation-one WAL acknowledgement closes without dispatching generation one", async () => {
   const fixture = await executorHarness({
     failGenerationZero: true,
     loseRedispatchAck: true,
@@ -878,6 +882,154 @@ Deno.test("a lost generation-one WAL acknowledgement is CAS-only and never dispa
       Error,
     );
     assertEquals(fixture.runtime.runs, [0]);
+    const failed = await fixture.executor.execute(EXECUTION_AGENT, {
+      ...EXECUTION_COMMAND,
+      expectedRevision: fixture.project.revision,
+    });
+    assertEquals(runStatus(failed), "failed");
+    assertEquals(
+      failed.agentRuns.find((run) => run.id === EXECUTION_COMMAND.runId)?.failure
+        ?.code,
+      "isolated_redispatch_exhausted",
+    );
+    assertEquals(fixture.runtime.runs, [0]);
+    assertEquals(fixture.runtime.recoveries, [0, 1]);
+    assertEquals(fixture.runtime.advances, 1);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("dispatching generation one closes historically after profile rollover and runtime revocation", async () => {
+  const fixture = await executorHarness({
+    failGenerationZero: true,
+    failGenerationOne: true,
+  });
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(EXECUTION_AGENT, EXECUTION_COMMAND),
+      Error,
+      "no third dispatch",
+    );
+    assertEquals(runStatus(fixture.project), "running");
+    assertEquals(
+      (await fixture.attempts.read(
+        EXECUTION_COMMAND.projectId,
+        EXECUTION_COMMAND.runId,
+      ))?.phase,
+      "dispatching",
+    );
+    const initialCalls = fixture.profiles.initialCalls;
+    const resolveCalls = fixture.profiles.resolveCalls;
+    const begins = fixture.session.events.filter((event) => event === "begin").length;
+    const runs = [...fixture.runtime.runs];
+    fixture.profiles.available = false;
+    fixture.revokeRuntime();
+
+    const failed = await fixture.executor.execute(EXECUTION_AGENT, {
+      ...EXECUTION_COMMAND,
+      expectedRevision: fixture.project.revision,
+    });
+    assertEquals(runStatus(failed), "failed");
+    assertEquals(
+      failed.agentRuns.find((run) => run.id === EXECUTION_COMMAND.runId)?.failure,
+      {
+        code: "isolated_redispatch_exhausted",
+        message:
+          "The sole admitted Modelica retry generation produced no publication and was closed; no third dispatch exists.",
+      },
+    );
+    assertEquals(fixture.profiles.initialCalls, initialCalls);
+    assertEquals(fixture.profiles.resolveCalls, resolveCalls);
+    assertEquals(
+      fixture.session.events.filter((event) => event === "begin").length,
+      begins,
+    );
+    assertEquals(fixture.runtime.runs, runs);
+    assertEquals(fixture.runtime.recoveries, [0, 1, 1]);
+    assertEquals(fixture.session.recordedReleases, 1);
+
+    const replayed = await fixture.executor.execute(EXECUTION_AGENT, {
+      ...EXECUTION_COMMAND,
+      expectedRevision: failed.revision,
+    });
+    assertEquals(runStatus(replayed), "failed");
+    assertEquals(fixture.profiles.initialCalls, initialCalls);
+    assertEquals(fixture.profiles.resolveCalls, resolveCalls);
+    assertEquals(
+      fixture.session.events.filter((event) => event === "begin").length,
+      begins,
+    );
+    assertEquals(fixture.runtime.runs, runs);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("dispatching generation one adopts an exact published receipt after profile rollover and runtime revocation", async () => {
+  const fixture = await executorHarness({
+    failGenerationZero: true,
+    publishThenThrow: [1],
+    losePublicationResolveAckGeneration: 1,
+  });
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(EXECUTION_AGENT, EXECUTION_COMMAND),
+      Error,
+      "publication cannot be resolved",
+    );
+    assertEquals(runStatus(fixture.project), "running");
+    assertEquals(
+      (await fixture.attempts.read(
+        EXECUTION_COMMAND.projectId,
+        EXECUTION_COMMAND.runId,
+      ))?.phase,
+      "dispatching",
+    );
+    const initialCalls = fixture.profiles.initialCalls;
+    const resolveCalls = fixture.profiles.resolveCalls;
+    const begins = fixture.session.events.filter((event) => event === "begin").length;
+    const runs = [...fixture.runtime.runs];
+    fixture.profiles.available = false;
+    fixture.revokeRuntime();
+
+    const completed = await fixture.executor.execute(EXECUTION_AGENT, {
+      ...EXECUTION_COMMAND,
+      expectedRevision: fixture.project.revision,
+    });
+    assertEquals(runStatus(completed), "completed");
+    assertEquals(fixture.profiles.initialCalls, initialCalls);
+    assertEquals(fixture.profiles.resolveCalls, resolveCalls);
+    assertEquals(
+      fixture.session.events.filter((event) => event === "begin").length,
+      begins,
+    );
+    assertEquals(fixture.runtime.runs, runs);
+    assertEquals(fixture.session.recordedReleases, 1);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("dispatching generation one rejects a tampered historical publication receipt", async () => {
+  const fixture = await executorHarness({
+    failGenerationZero: true,
+    publishThenThrow: [1],
+    losePublicationResolveAckGeneration: 1,
+    receiptDriftGeneration: 1,
+  });
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(EXECUTION_AGENT, EXECUTION_COMMAND),
+      Error,
+      "publication cannot be resolved",
+    );
+    const initialCalls = fixture.profiles.initialCalls;
+    const begins = fixture.session.events.filter((event) => event === "begin").length;
+    const runs = [...fixture.runtime.runs];
+    fixture.profiles.available = false;
+    fixture.revokeRuntime();
+
     await assertRejects(
       () =>
         fixture.executor.execute(EXECUTION_AGENT, {
@@ -885,13 +1037,62 @@ Deno.test("a lost generation-one WAL acknowledgement is CAS-only and never dispa
           expectedRevision: fixture.project.revision,
         }),
       Error,
-      "no third dispatch",
+      "differs from its durable journal record",
     );
-    assertEquals(fixture.runtime.runs, [0]);
-    assertEquals(fixture.runtime.recoveries, [0, 1]);
-    assertEquals(fixture.runtime.advances, 1);
+    assertEquals(runStatus(fixture.project), "running");
+    assertEquals(fixture.profiles.initialCalls, initialCalls);
+    assertEquals(
+      fixture.session.events.filter((event) => event === "begin").length,
+      begins,
+    );
+    assertEquals(fixture.runtime.runs, runs);
   } finally {
     await fixture.dispose();
+  }
+});
+
+Deno.test("mismatched historical generation-one plan or attempt remains fail-closed", async () => {
+  for (const mismatch of ["plan", "attempt"] as const) {
+    const fixture = await executorHarness({
+      failGenerationZero: true,
+      failGenerationOne: true,
+    });
+    try {
+      await assertRejects(
+        () => fixture.executor.execute(EXECUTION_AGENT, EXECUTION_COMMAND),
+        Error,
+        "no third dispatch",
+      );
+      const initialCalls = fixture.profiles.initialCalls;
+      const resolveCalls = fixture.profiles.resolveCalls;
+      const begins = fixture.session.events.filter((event) => event === "begin").length;
+      const runs = [...fixture.runtime.runs];
+      const recoveries = [...fixture.runtime.recoveries];
+      if (mismatch === "plan") fixture.tamperRecordedPlan();
+      else fixture.tamperAttemptIdentity();
+      fixture.profiles.available = false;
+      fixture.revokeRuntime();
+
+      await assertRejects(
+        () =>
+          fixture.executor.execute(EXECUTION_AGENT, {
+            ...EXECUTION_COMMAND,
+            expectedRevision: fixture.project.revision,
+          }),
+        Error,
+      );
+      assertEquals(runStatus(fixture.project), "running");
+      assertEquals(fixture.profiles.initialCalls, initialCalls);
+      assertEquals(fixture.profiles.resolveCalls, resolveCalls);
+      assertEquals(
+        fixture.session.events.filter((event) => event === "begin").length,
+        begins,
+      );
+      assertEquals(fixture.runtime.runs, runs);
+      assertEquals(fixture.runtime.recoveries, recoveries);
+    } finally {
+      await fixture.dispose();
+    }
   }
 });
 
@@ -1417,6 +1618,7 @@ interface ExecutorHarnessOptions {
   readonly drift?: ExecutorDrift;
   readonly initialStatus?: "queued" | "running";
   readonly failGenerationZero?: boolean;
+  readonly failGenerationOne?: boolean;
   readonly rejectOutputValidation?: boolean;
   readonly losePrepareAck?: boolean;
   readonly loseDispatchAck?: boolean;
@@ -1425,6 +1627,8 @@ interface ExecutorHarnessOptions {
   readonly loseOutputPublishedAck?: boolean;
   readonly loseCompletedAck?: boolean;
   readonly publishThenThrow?: readonly (0 | 1)[];
+  readonly losePublicationResolveAckGeneration?: 0 | 1;
+  readonly receiptDriftGeneration?: 0 | 1;
   readonly outcomeUnknownGeneration?: 0 | 1;
   readonly resolutionRefDrift?: boolean;
   readonly loseDestroyAck?: boolean;
@@ -1454,6 +1658,8 @@ interface ExecutorHarness {
   readonly captures: FakeAdmittedCaptures;
   readonly snapshots: FakeAdmittedSnapshots;
   readonly commands: FakeAdmittedCommands;
+  readonly tamperRecordedPlan: () => void;
+  readonly tamperAttemptIdentity: () => void;
   readonly peerExecutor?: SimulateRunAdmittedModelicaRunExecutor;
   readonly dispose: () => Promise<void>;
 }
@@ -1645,6 +1851,7 @@ async function executorHarness(
   }
   const plan = sealed.plan;
   const ref = sealed.ref;
+  let recordedPlanTampered = false;
   if (options.initialStatus === "running") {
     const run = project.agentRuns.find((candidate) =>
       candidate.id === EXECUTION_COMMAND.runId
@@ -1704,7 +1911,17 @@ async function executorHarness(
     plans: {
       read: (candidate: ResolvedOperationPlanRef) =>
         deterministicJson(candidate) === deterministicJson(ref)
-          ? Promise.resolve(structuredClone(plan))
+          ? Promise.resolve(structuredClone(
+            recordedPlanTampered
+              ? {
+                ...plan,
+                recovery: {
+                  ...plan.recovery,
+                  executionRunId: "run.recorded-plan-tampered",
+                },
+              }
+              : plan,
+          ))
           : Promise.reject(new Error("unexpected resolved operation plan ref")),
     },
     capabilityRuntime: {
@@ -1757,6 +1974,10 @@ async function executorHarness(
     captures,
     snapshots,
     commands,
+    tamperRecordedPlan: () => {
+      recordedPlanTampered = true;
+    },
+    tamperAttemptIdentity: () => attempts.tamperReadIdentity(),
     peerExecutor,
     dispose: () => Deno.remove(directory, { recursive: true }),
   };
@@ -2237,6 +2458,7 @@ class FaultInjectingAttemptStore implements AdmittedModelicaExecutionAttemptStor
   #loseOutputPublishedAck: boolean;
   #loseCompletedAck: boolean;
   #loseCompletionBeforeWrite: boolean;
+  #tamperReadIdentity = false;
 
   constructor(
     readonly inner: AdmittedModelicaExecutionAttemptStore,
@@ -2251,8 +2473,26 @@ class FaultInjectingAttemptStore implements AdmittedModelicaExecutionAttemptStor
     this.#loseCompletionBeforeWrite = options.loseCompletionJournalBeforeWrite ?? false;
   }
 
-  read(projectId: string, agentRunId: string) {
-    return this.inner.read(projectId, agentRunId);
+  async read(projectId: string, agentRunId: string) {
+    const attempt = await this.inner.read(projectId, agentRunId);
+    if (!attempt || !this.#tamperReadIdentity) return attempt;
+    return {
+      ...attempt,
+      identity: {
+        ...attempt.identity,
+        executionProfile: {
+          ...attempt.identity.executionProfile,
+          profileFingerprint: {
+            algorithm: "sha256" as const,
+            digest: "f".repeat(64),
+          },
+        },
+      },
+    };
+  }
+
+  tamperReadIdentity(): void {
+    this.#tamperReadIdentity = true;
   }
 
   async prepare(
@@ -2359,6 +2599,7 @@ class FakeAdmittedRuntime {
     | undefined;
   #loseDestroyAck: boolean;
   #loseAdvanceAck: boolean;
+  #losePublicationResolveAckGeneration: 0 | 1 | undefined;
 
   constructor(
     readonly profile: AdmittedModelicaExecutionProfile,
@@ -2366,6 +2607,8 @@ class FakeAdmittedRuntime {
   ) {
     this.#loseDestroyAck = options.loseDestroyAck ?? false;
     this.#loseAdvanceAck = options.loseAdvanceAck ?? false;
+    this.#losePublicationResolveAckGeneration =
+      options.losePublicationResolveAckGeneration;
   }
 
   async run(request: IsolatedCodeExecutionRequest) {
@@ -2390,12 +2633,19 @@ class FakeAdmittedRuntime {
     if (this.options.failGenerationZero && request.producerGeneration === 0) {
       throw new Error("generation-zero acknowledgement lost before publication");
     }
+    if (this.options.failGenerationOne && request.producerGeneration === 1) {
+      throw new Error("generation-one acknowledgement lost before publication");
+    }
     const receipt = await this.#receipt(request);
     this.#receipts.set(request.producerGeneration, receipt);
     return receipt;
   }
 
   resolvePublicationByRunId(runId: string, producerGeneration: 0 | 1) {
+    if (this.#losePublicationResolveAckGeneration === producerGeneration) {
+      this.#losePublicationResolveAckGeneration = undefined;
+      return Promise.reject(new Error("publication resolution acknowledgement lost"));
+    }
     if (this.options.outcomeUnknownGeneration === producerGeneration) {
       return Promise.resolve({
         status: "outcome-unknown" as const,
@@ -2427,7 +2677,17 @@ class FakeAdmittedRuntime {
   }
 
   readReceipt(ref: { readonly producerGeneration: 0 | 1 }) {
-    return Promise.resolve(this.#receipts.get(ref.producerGeneration));
+    const receipt = this.#receipts.get(ref.producerGeneration);
+    if (
+      receipt &&
+      this.options.receiptDriftGeneration === ref.producerGeneration
+    ) {
+      return Promise.resolve({
+        ...receipt,
+        termination: { kind: "exited" as const, exitCode: 7, signal: null },
+      });
+    }
+    return Promise.resolve(receipt);
   }
 
   readPublishedObject(

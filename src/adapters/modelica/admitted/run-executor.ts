@@ -58,6 +58,7 @@ import {
   type ReviewedAdmittedModelicaAuthority,
 } from "../../../application/use-cases/modelica/admitted/reopen-reviewed-execution.ts";
 import {
+  assertFailedIsolatedExecutionReplay,
   assertFailedIsolatedOutputValidationReplay,
   isolatedOutputValidationFailedMessage,
 } from "../../../application/use-cases/compile/isolation/failed-isolated-output-validation-replay.ts";
@@ -182,6 +183,14 @@ const assertAdmissionScope = assertAdmittedModelicaAdmissionScope;
 const assertSameAuthority = assertSameReviewedAdmittedModelicaAuthority;
 const requireExecutionShape = requireAdmittedModelicaExecutionShape;
 
+const ADMITTED_MODELICA_RETRY_GENERATION_CLOSED = {
+  summary:
+    "Isolated admitted Modelica retry generation was closed before Thread publication.",
+  code: "isolated_redispatch_exhausted",
+  message:
+    "The sole admitted Modelica retry generation produced no publication and was closed; no third dispatch exists.",
+} as const;
+
 export interface AdmittedModelicaThreadSnapshotStore extends ThreadSnapshotStore {
   getFresh(snapshotId: string): Promise<ThreadSnapshot | undefined>;
 }
@@ -262,6 +271,26 @@ export class SimulateRunAdmittedModelicaRunExecutor {
     const run = requireRun(project, command.runId);
     requireExecutionShape(project, run);
     const attempt = await this.d.attempts.read(project.project.id, run.id);
+    if (isAdmittedModelicaGenerationOneHistoricalRecoveryEligible(run, attempt)) {
+      const authority = await requireReviewedAuthority(project, run);
+      assertAdmissionScope(project, run, authority.decision, authority.admission);
+      const authorization = await this.#requireRecordedPlan(project, run);
+      const recovered = await this.d.lease.withLease(
+        command.projectId,
+        threadWriteBasisLeaseScope(run),
+        () =>
+          this.#recoverHistoricalGenerationOneClosure(
+            origin,
+            command,
+            authority,
+            authorization,
+          ),
+      );
+      await this.#releaseRecordedRuntimeBestEffort(recovered, command.runId, {
+        authorization,
+      });
+      return recovered;
+    }
     if (isRecordedAdmittedModelicaTerminalAttempt(attempt)) {
       const replay = await this.d.lease.withLease(
         command.projectId,
@@ -511,10 +540,7 @@ export class SimulateRunAdmittedModelicaRunExecutor {
     run: EngineeringAgentRun,
     authority: ReviewedAuthority,
     authorization: ResolvedRunPlanExecutionAuthorization,
-    attempt: Extract<
-      AdmittedModelicaExecutionAttempt,
-      { phase: "output-published" | "output-validation-rejected" | "completed" }
-    >,
+    attempt: AdmittedModelicaExecutionAttempt,
   ): Promise<ReopenedRecordedAdmittedModelicaExecution> {
     const basis = requireBasis(run);
     const basisSnapshot = await exactBasisSnapshot(this.d.snapshots, basis, true);
@@ -554,6 +580,123 @@ export class SimulateRunAdmittedModelicaRunExecutor {
     };
     assertAttemptIdentity(attempt, key, identity);
     return { basis, basisSnapshot, context, key };
+  }
+
+  /**
+   * A dispatching generation one has already consumed the sole retry.  It may
+   * therefore reconcile its publication or close from the WAL, exact ROP and
+   * the attempt-recorded profile alone.  In particular, a later
+   * profile/catalogue rollover or capability revocation must not cause another
+   * profile reopen, JIT lease or runner call.
+   */
+  async #recoverHistoricalGenerationOneClosure(
+    origin: EngineeringProjectCommandOrigin,
+    command: RegisteredProjectRunExecutorCommand,
+    initialAuthority: ReviewedAuthority,
+    authorization: ResolvedRunPlanExecutionAuthorization,
+  ): Promise<EngineeringProjectSnapshot> {
+    const project = await this.#requiredProject(command.projectId);
+    const run = requireRun(project, command.runId);
+    requireExecutionShape(project, run);
+    requireClaimedShape(project, run, origin);
+    const authority = await requireReviewedAuthority(project, run);
+    assertSameAuthority(initialAuthority, authority);
+    assertAdmissionScope(project, run, authority.decision, authority.admission);
+    const attempt = await this.d.attempts.read(project.project.id, run.id);
+    if (!isAdmittedModelicaGenerationOneHistoricalRecoveryEligible(run, attempt)) {
+      throw invalidTransition(
+        "The admitted Modelica journal no longer proves a dispatching generation-one historical recovery.",
+      );
+    }
+    const reopened = await this.#reopenRecordedAttempt(
+      project,
+      run,
+      authority,
+      authorization,
+      attempt,
+    );
+    const failure = admittedModelicaRetryGenerationClosedFailure();
+    if (run.status === "failed") {
+      await this.#assertFailedRetryGenerationClosedReplay(
+        origin,
+        command,
+        project,
+        run,
+        failure,
+      );
+      return project;
+    }
+    if (run.status !== "running") {
+      throw unexpectedStatus(run, "running or failed");
+    }
+    if (run.resultSnapshot || run.evidenceRefs.length !== 0) {
+      throw invalidTransition(
+        "The claimed admitted Modelica run already carries Thread evidence and cannot take an evidence-free terminal failure.",
+      );
+    }
+    let resolution;
+    try {
+      resolution = await this.d.publications.resolvePublicationByRunId(
+        attempt.executionRunId,
+        1,
+      );
+    } catch {
+      throw invalidTransition(
+        "The admitted Modelica publication cannot be resolved; no isolated redispatch is authorized.",
+      );
+    }
+    const decision = decideAdmittedModelicaAttemptResume({
+      phase: "dispatching",
+      executionRunId: attempt.executionRunId,
+      producerGeneration: 1,
+      resolution,
+    });
+    if (decision.action === "adopt-publication") {
+      const receipt = await this.#reopenReceipt(decision.receipt);
+      const recorded = await this.#recordPublishedReceipt(
+        attempt,
+        reopened.key,
+        receipt,
+      );
+      if (recorded.phase !== "output-published") {
+        throw invalidTransition(
+          "The admitted Modelica output publication was not durably recorded.",
+        );
+      }
+      return await this.#finalizePublishedOutput(
+        origin,
+        command,
+        project,
+        run,
+        reopened.basisSnapshot,
+        reopened.context,
+        recorded,
+        reopened.key,
+      );
+    }
+    if (decision.action !== "close-g1") {
+      throw invalidTransition(
+        decision.action === "quarantine"
+          ? decision.message
+          : "The admitted Modelica journal phase is not recoverable.",
+      );
+    }
+    await this.#proveGenerationClosed(attempt.executionRunId, 1);
+    const startedAt = run.startedAt;
+    await this.d.commands.failRun(
+      origin,
+      failCommand(command, failure, project.revision),
+    );
+    const failed = await this.#requiredProject(command.projectId);
+    await this.#assertFailedRetryGenerationClosedReplay(
+      origin,
+      command,
+      failed,
+      requireRun(failed, command.runId),
+      failure,
+      startedAt,
+    );
+    return failed;
   }
 
   async #requiresJitBeforeLease(
@@ -1825,6 +1968,29 @@ export class SimulateRunAdmittedModelicaRunExecutor {
         failCommand(command, failure, expectedRevision, issuedAt),
     });
   }
+
+  async #assertFailedRetryGenerationClosedReplay(
+    origin: EngineeringProjectCommandOrigin,
+    command: RegisteredProjectRunExecutorCommand,
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+    failure: ReturnType<typeof admittedModelicaRetryGenerationClosedFailure>,
+    originalStartedAt = run.startedAt,
+  ): Promise<void> {
+    await assertFailedIsolatedExecutionReplay({
+      project,
+      run,
+      origin,
+      originalStartedAt,
+      failure,
+      claimCommandId: commandStep(command.commandId, "claim"),
+      failCommandId: commandStep(command.commandId, "fail"),
+      buildClaimCommand: (expectedRevision, issuedAt) =>
+        claimCommand(command, expectedRevision, issuedAt),
+      buildFailCommand: (expectedRevision, issuedAt) =>
+        failCommand(command, failure, expectedRevision, issuedAt),
+    });
+  }
 }
 
 function requireClaimedShape(
@@ -2092,6 +2258,26 @@ function isRecordedAdmittedModelicaTerminalAttempt(
   return attempt?.phase === "output-published" ||
     attempt?.phase === "output-validation-rejected" ||
     attempt?.phase === "completed";
+}
+
+function isAdmittedModelicaGenerationOneHistoricalRecoveryEligible(
+  run: EngineeringAgentRun,
+  attempt: AdmittedModelicaExecutionAttempt | undefined,
+): attempt is Extract<
+  AdmittedModelicaExecutionAttempt,
+  { phase: "dispatching" }
+> {
+  return (run.status === "running" || run.status === "failed") &&
+    attempt?.phase === "dispatching" &&
+    attempt.dispatch.producerGeneration === 1;
+}
+
+function admittedModelicaRetryGenerationClosedFailure(): {
+  readonly summary: string;
+  readonly code: string;
+  readonly message: string;
+} {
+  return ADMITTED_MODELICA_RETRY_GENERATION_CLOSED;
 }
 
 function domainTransition(error: unknown): EngineeringProjectCommandError {

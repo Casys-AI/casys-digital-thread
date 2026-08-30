@@ -212,7 +212,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
       microvmMaterial(
         "modelica-admitted-worker-image",
         LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE,
-        [],
+        ["linux/arm64"],
         "unknown",
       ),
     ]),
