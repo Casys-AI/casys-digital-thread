@@ -2,6 +2,7 @@ import {
   ELECTRONICS_RUN_ADMITTED_SPICE_CAPABILITY,
   GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY,
   GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY,
+  GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
   GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY,
   MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY,
   MECHANICS_OBSERVE_STATIC_STRUCTURAL_SENSITIVITY_CAPABILITY,
@@ -37,6 +38,7 @@ import {
 import {
   LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE,
   LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
+  LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
   LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
   MCP_CALCULIX_082_IMAGE_REFERENCE,
@@ -169,13 +171,19 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
       ),
     ]),
     unit("casys.geometry-module-assembler-worker", [
+      ociImageMaterial(
+        "geometry-module-assembler-docker-source-image",
+        LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
+        ["linux/arm64"],
+        "reviewed",
+      ),
       microvmMaterial(
         "geometry-module-assembler-worker-image",
         LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
-        [],
-        "unknown",
+        ["linux/arm64"],
+        "reviewed",
       ),
-    ]),
+    ], "1.1.0"),
     unit("casys.calculix-worker", [
       microvmMaterial(
         "calculix-worker-image",
@@ -322,6 +330,21 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "src/adapters/cad/assembly-integrity/fixed-assembly-integrity-observer-profile-catalog.ts",
         [
           "This observer covers exact imported assembly facts only, not collision, motion, force, clearance, safety, or manufacturability.",
+        ],
+      ),
+      binding(
+        "build123d-geometry-module-immediate-compound",
+        GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
+        "preparation",
+        "qualified",
+        "build123d-module-assembler-adapter",
+        "1.0.0",
+        { id: "build123d-module-assembler-v1", version: "1.0.0" },
+        ["casys.geometry-module-assembler-worker"],
+        "src/adapters/cad/module-assembly/fixed-geometry-module-assembler.ts",
+        [
+          "This binding assembles an exact static immediate compound only.",
+          "It does not cover collision, contact, clearance, motion, forces, resistance, safety, or fabricability.",
         ],
       ),
       binding(

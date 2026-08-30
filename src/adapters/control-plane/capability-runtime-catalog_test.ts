@@ -17,6 +17,50 @@ import {
   CAPABILITY_RUNTIME_ADMIN_POLICY_SCHEMA_VERSION,
   CAPABILITY_RUNTIME_HOST_OBSERVATION_SCHEMA_VERSION,
 } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
+import {
+  createGeometryModuleAssemblerMicrosandboxQualificationCandidate,
+} from "../cad/module-assembly/geometry-module-assembly-microsandbox-qualification-candidate.ts";
+
+Deno.test("first-party catalogue adopts the exact qualified geometry-module candidate", async () => {
+  const [catalog, candidate] = await Promise.all([
+    createFirstPartyCapabilityRuntimeCatalog(),
+    createGeometryModuleAssemblerMicrosandboxQualificationCandidate(),
+  ]);
+  const unit = catalog.units.find((value) => value.id === candidate.unit.id);
+  assertEquals(unit, {
+    id: candidate.unit.id,
+    version: candidate.unit.version,
+    manifestFingerprint: candidate.unit.manifestFingerprint,
+    materials: candidate.materials,
+  });
+  assertEquals(
+    catalog.bindings.find((value) => value.id === candidate.binding.id),
+    {
+      id: candidate.binding.id,
+      version: candidate.binding.version,
+      capability: candidate.selector.capability,
+      use: candidate.selector.use,
+      qualification: "qualified",
+      adapter: candidate.contract,
+      profile: {
+        id: candidate.profile.id,
+        version: candidate.profile.version,
+        fingerprint: null,
+      },
+      unitIds: [candidate.unit.id],
+      qualificationEvidence: {
+        id: `${candidate.binding.id}-qualification`,
+        source: candidate.contract.source,
+        fingerprint: null,
+      },
+      runtimeModes: [],
+      limitations: [
+        "This binding assembles an exact static immediate compound only.",
+        "It does not cover collision, contact, clearance, motion, forces, resistance, safety, or fabricability.",
+      ],
+    },
+  );
+});
 
 Deno.test("atomic first-party runtime catalogue separates sources with distinct lifecycle and evidence", async () => {
   const catalog = await createFirstPartyCapabilityRuntimeCatalog();
