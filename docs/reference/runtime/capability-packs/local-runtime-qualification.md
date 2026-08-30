@@ -29,7 +29,9 @@ specification, relevant admin policy/lock, complete host effects, secret-slot
 availability (never the secret value or hash), sorted attestation state, and a derived
 `chrono-qual-<sha256>` request id. The fingerprint excludes timestamps, bearer/secret
 values, lease/journal/container ids, samples and provider
-endpoint/tool/args/payload/token/project/MRTR/Thread.
+endpoint/tool/args/payload/token/project/MRTR/Thread. Calling `review` may materialize
+the opaque host-identity file under `state/local/capability-runtime-host/` on first
+read; it does not mutate Docker or the qualification WAL.
 
 `apply` recomputes that review under the live host, refuses a stale fingerprint or a
 missing `--confirm`, then under H1:
@@ -57,9 +59,9 @@ missing `--confirm`, then under H1:
    After the claim, recovery never calls `run` again.
 8. continues only through `readRun` / `readReceipt`
 9. reads every receipt page (provider page limit 64, 65 samples total)
-10. requires Project Chrono `completed` and a FULL kinematics exit exactly one of
-    `{2,ABSTOL_RESIDUAL}`, `{3,RELTOL_UPDATE}`, `{4,ABSTOL_UPDATE}` (the mobile
-    `DoStepKinematics(FULL)` probe cannot return `{1,SUCCESS}`). Requires 65 complete
+10. requires Project Chrono `completed` and the closed FULL kinematics predicate
+    (`ABSTOL_RESIDUAL` | `RELTOL_UPDATE` | `ABSTOL_UPDATE` in the code-owned criteria
+    manifest). Provider `{1,SUCCESS}` is never that predicate. Requires 65 complete
     samples, exact base/link/hinge ids, fixed base pose, link `[0,0,1]` with quaternion
     `[cos(θ/2),0,0,sin(θ/2)]` compared as normalized sign-invariant `abs(dot(q,e))`,
     prescribed ramp `0 -> 0.5` rad, `within` limits, residual bounds, and the literal
@@ -86,10 +88,11 @@ missing `--confirm`, then under H1:
     stopped. A qualified event that linearized first may be followed by a revocation;
     effective projection remains revoked. Effective qualification accepts only phase
     `attested` and recrosses the reconstructed event against the WAL
-    `attestationFingerprint`. Revocation is monotone on binding/candidate/host identity
-    across spec revisions, but does not block factual readback, terminal stop or lease
-    release of an already-started attempt. A self-consistent arbitrary digest is not a
-    verdict.
+    `attestationFingerprint`. The stopped outcome reference is the strict terminal
+    predicate `capability-runtime-qualification-stopped-<fingerprint>`, not a raw
+    provider exit code. Revocation is monotone on binding/candidate/host identity across
+    spec revisions, but does not block factual readback, terminal stop or lease release
+    of an already-started attempt. A self-consistent arbitrary digest is not a verdict.
 
 `recover` is monotonic continuation and cleanup of that WAL. It never redispatches,
 never starts Docker, and never creates a second qualified attestation. From `prepared`
@@ -111,9 +114,13 @@ no poll sidecar.
 File-store transitions are linearizable across processes via exclusive
 `Deno.File.lock(true)` on `{attemptDir}/attempt.lock`. That lock is distinct from the H1
 host mutation lock (`prepareAfterAuthorization` already runs under H1). Dispatch
-create-new remains at-most-once. Every existing path component from the qualification
-root down to the selected directory, lock or WAL file is `lstat`'d; an ancestor symlink,
-including a pre-existing real descendant behind one, is refused.
+create-new remains at-most-once. Relative production roots (`state/local/...`) capture
+`Deno.cwd()` as the trusted lexical anchor and `lstat` only that anchor plus descendants
+down to the selected directory, lock or WAL file; `--allow-read=.` is sufficient. An
+explicit absolute root still walks from `/`. An ancestor symlink below the trusted
+anchor, including a pre-existing real descendant behind one, is refused. The attestation
+store uses the same anchored primitive for directory creation, lock open/revalidation
+after `File.lock(true)`, reads, listings and writes.
 
 Quarantine uses a code-owned temporal window, not a 4-poll counter. Protocol
 `chrono-qualification-protocol/2.0` fingerprints `dispatchDeadlineMs: 300000` (5
@@ -124,8 +131,9 @@ factual readback runs, then the store seals a single `unavailable` under lock wi
 real `now()`. A late receipt before that seal still promotes to `recorded`.
 
 The path fails closed on a stale review, missing Chrono bearer at start, unknown or
-unreviewed host effects, host drift, receipt mismatch, or incomplete pagination. Literal
-`unavailable` states stay `unavailable`.
+unreviewed **security** host effects (privileged, docker socket, devices), host drift,
+receipt mismatch, or incomplete pagination. Unknown size or licence stay literal and do
+not block this probe. Literal `unavailable` states stay `unavailable`.
 
 ## Private operator CLI
 

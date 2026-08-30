@@ -15,6 +15,20 @@ import {
   isDurableAttemptTemporaryFileName,
   writeNewAttemptFileDurably,
 } from "../shared/wal/durable-attempt-file-writes.ts";
+import {
+  AnchoredLexicalPathError,
+  assertAnchoredOpenRegularFile,
+  assertAnchoredRealDirectory,
+  assertAnchoredRegularFile,
+  ensureAnchoredDirectoryTree,
+  isAlreadyExists,
+  isNotFound,
+  type LexicalWalkMessages,
+  openAnchoredRegularLockFile,
+  requireContainedStoragePath,
+  resolveTrustedAnchoredStorageRoot,
+  type TrustedAnchoredStorageRoot,
+} from "../shared/wal/trusted-anchored-storage-root.ts";
 
 const DEFAULT_DIRECTORY =
   "state/local/capability-runtime-host/qualification-attestations";
@@ -26,15 +40,33 @@ const LOCK_NAME = "attestation.lock";
  * record is replaced or removed by this adapter. All appends share one
  * exclusive File.lock so qualified/revoked order is the durable linearization.
  */
+export interface FileCapabilityRuntimeQualificationAttestationStoreOptions {
+  readonly afterAnchoredDirectoryReady?: () => Promise<void> | void;
+  readonly afterLockAcquired?: () => Promise<void> | void;
+}
+
 export class FileCapabilityRuntimeQualificationAttestationStore
   implements CapabilityRuntimeQualificationAttestationStore {
-  readonly #directory: string;
+  readonly #root: TrustedAnchoredStorageRoot;
+  readonly #afterAnchoredDirectoryReady?: () => Promise<void> | void;
+  readonly #afterLockAcquired?: () => Promise<void> | void;
 
-  constructor(directory = DEFAULT_DIRECTORY) {
-    if (!directory || directory !== directory.trim() || directory.includes("\0")) {
-      throw new TypeError("Capability runtime qualification directory is invalid.");
+  constructor(
+    directory = DEFAULT_DIRECTORY,
+    options: FileCapabilityRuntimeQualificationAttestationStoreOptions = {},
+  ) {
+    try {
+      this.#root = resolveTrustedAnchoredStorageRoot(directory);
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw new TypeError(
+          "Capability runtime qualification directory is invalid.",
+        );
+      }
+      throw error;
     }
-    this.#directory = directory;
+    this.#afterAnchoredDirectoryReady = options.afterAnchoredDirectoryReady;
+    this.#afterLockAcquired = options.afterLockAcquired;
   }
 
   async append(value: CapabilityRuntimeBindingQualificationAttestation): Promise<void> {
@@ -60,6 +92,7 @@ export class FileCapabilityRuntimeQualificationAttestationStore
             attestation,
           )}\n`;
         const path = this.#path(attestation.fingerprint);
+        await assertRegularAttestationFile(this.#root, path);
         if (await Deno.readTextFile(path) !== expected) {
           throw new Error(
             `Capability runtime qualification attestation ${attestation.fingerprint.digest} already exists with different content.`,
@@ -93,12 +126,16 @@ export class FileCapabilityRuntimeQualificationAttestationStore
   }
 
   async #serialized<T>(operation: () => Promise<T>): Promise<T> {
-    await Deno.mkdir(this.#directory, { recursive: true, mode: 0o700 });
-    const file = await openAttestationLockFile(`${this.#directory}/${LOCK_NAME}`);
+    await ensureAttestationDirectory(this.#root);
+    await this.#afterAnchoredDirectoryReady?.();
+    const path = `${this.#root.storageRoot}/${LOCK_NAME}`;
+    const file = await openAttestationLockFile(this.#root, path);
     let locked = false;
     try {
       await file.lock(true);
       locked = true;
+      await this.#afterLockAcquired?.();
+      await assertOpenAttestationLock(this.#root, path, file);
       return await operation();
     } finally {
       try {
@@ -125,16 +162,17 @@ export class FileCapabilityRuntimeQualificationAttestationStore
       attestation,
     )}\n`;
     const path = this.#path(attestation.fingerprint);
-    await Deno.mkdir(this.#directory, { recursive: true, mode: 0o700 });
+    await ensureAttestationDirectory(this.#root);
     try {
       await writeNewAttemptFileDurably(
         path,
         text,
-        this.#directory,
+        this.#root.storageRoot,
         "Capability runtime qualification attestation made no write progress.",
       );
     } catch (error) {
       if (!isAlreadyExists(error)) throw error;
+      await assertRegularAttestationFile(this.#root, path);
       const existing = await Deno.readTextFile(path);
       if (existing === text) return;
       throw new Error(
@@ -147,13 +185,13 @@ export class FileCapabilityRuntimeQualificationAttestationStore
     fingerprint: ContentFingerprint,
   ): Promise<CapabilityRuntimeBindingQualificationAttestation | undefined> {
     const path = this.#path(fingerprint);
-    let text: string;
     try {
-      text = await Deno.readTextFile(path);
+      await assertRegularAttestationFile(this.#root, path);
     } catch (error) {
       if (isNotFound(error)) return undefined;
       throw error;
     }
+    const text = await Deno.readTextFile(path);
     const value = await parseCanonical(
       text,
       `Capability runtime qualification attestation ${fingerprint.digest}`,
@@ -169,22 +207,29 @@ export class FileCapabilityRuntimeQualificationAttestationStore
   async #scanUnlocked(): Promise<
     readonly CapabilityRuntimeBindingQualificationAttestation[]
   > {
-    let entries: Deno.DirEntry[];
     try {
-      entries = await Array.fromAsync(Deno.readDir(this.#directory));
+      await assertAnchoredRealDirectory(
+        this.#root,
+        this.#root.storageRoot,
+        ATTESTATION_WALK_MESSAGES,
+      );
     } catch (error) {
       if (isNotFound(error)) return [];
-      throw error;
+      rethrowAttestationWalk(error);
     }
+    const entries = await Array.fromAsync(Deno.readDir(this.#root.storageRoot));
     const result: CapabilityRuntimeBindingQualificationAttestation[] = [];
     for (
       const entry of entries.toSorted((left, right) =>
         left.name.localeCompare(right.name)
       )
     ) {
-      if (entry.isFile && isDurableAttemptTemporaryFileName(entry.name)) continue;
-      if (entry.isFile && entry.name === LOCK_NAME) continue;
-      if (!entry.isFile || !entry.name.endsWith(".json")) {
+      if (isDurableAttemptTemporaryFileName(entry.name)) continue;
+      if (entry.name === LOCK_NAME) continue;
+      const path = `${this.#root.storageRoot}/${entry.name}`;
+      requireContainedAttestationPath(this.#root, path);
+      await assertRegularAttestationFile(this.#root, path);
+      if (!entry.name.endsWith(".json")) {
         throw new Error(
           `Capability runtime qualification store contains unsupported entry ${entry.name}.`,
         );
@@ -196,7 +241,7 @@ export class FileCapabilityRuntimeQualificationAttestationStore
         );
       }
       const value = await parseCanonical(
-        await Deno.readTextFile(`${this.#directory}/${entry.name}`),
+        await Deno.readTextFile(path),
         `Capability runtime qualification attestation ${digest}`,
       );
       if (value.fingerprint.digest !== digest) {
@@ -210,47 +255,98 @@ export class FileCapabilityRuntimeQualificationAttestationStore
   }
 
   #path(fingerprint: ContentFingerprint): string {
-    return `${this.#directory}/${fingerprint.digest}.json`;
+    const path = `${this.#root.storageRoot}/${fingerprint.digest}.json`;
+    requireContainedAttestationPath(this.#root, path);
+    return path;
   }
 }
 
-async function openAttestationLockFile(path: string): Promise<Deno.FsFile> {
-  let file: Deno.FsFile;
+const ATTESTATION_WALK_MESSAGES: LexicalWalkMessages = {
+  escaped: "Filesystem operation escaped the anchored qualification store root.",
+  appearedBehindMissingAncestor:
+    "Qualification store path component appeared behind a missing ancestor.",
+  notRealDirectory:
+    "Qualification store directory and its ancestors must be real directories.",
+  componentChanged: "Qualification store path component changed while it was checked.",
+  regularFile:
+    "Qualification attestation lock or event must be one regular file inside the store root.",
+  pathChangedWhileOpen:
+    "Qualification attestation lock path changed while it was open.",
+};
+
+function rethrowAttestationWalk(error: unknown): never {
+  if (error instanceof AnchoredLexicalPathError) throw new Error(error.message);
+  throw error;
+}
+
+function requireContainedAttestationPath(
+  root: TrustedAnchoredStorageRoot,
+  path: string,
+): void {
   try {
-    file = await Deno.open(path, {
-      createNew: true,
-      read: true,
-      write: true,
-      mode: 0o600,
-    });
+    requireContainedStoragePath(root, path, ATTESTATION_WALK_MESSAGES.escaped);
   } catch (error) {
-    if (!(error instanceof Deno.errors.AlreadyExists) && !isAlreadyExists(error)) {
-      throw error;
-    }
-    file = await Deno.open(path, { read: true, write: true });
+    rethrowAttestationWalk(error);
   }
+}
+
+async function ensureAttestationDirectory(
+  root: TrustedAnchoredStorageRoot,
+): Promise<void> {
   try {
-    const info = await Deno.lstat(path);
-    if (info.isSymlink || !info.isFile) {
-      throw new Error(
-        "Capability runtime qualification lock must be one regular file.",
-      );
-    }
-    const openInfo = await file.stat();
-    if (
-      !openInfo.isFile ||
-      (info.dev !== null && info.ino !== null &&
-        openInfo.dev !== null && openInfo.ino !== null &&
-        (info.dev !== openInfo.dev || info.ino !== openInfo.ino))
-    ) {
-      throw new Error(
-        "Capability runtime qualification lock path changed while it was open.",
-      );
-    }
-    return file;
+    await ensureAnchoredDirectoryTree(
+      root,
+      root.storageRoot,
+      ATTESTATION_WALK_MESSAGES,
+      0o700,
+    );
   } catch (error) {
-    file.close();
-    throw error;
+    rethrowAttestationWalk(error);
+  }
+}
+
+async function assertRegularAttestationFile(
+  root: TrustedAnchoredStorageRoot,
+  path: string,
+): Promise<Deno.FileInfo> {
+  try {
+    return await assertAnchoredRegularFile(root, path, ATTESTATION_WALK_MESSAGES);
+  } catch (error) {
+    rethrowAttestationWalk(error);
+  }
+}
+
+async function openAttestationLockFile(
+  root: TrustedAnchoredStorageRoot,
+  path: string,
+): Promise<Deno.FsFile> {
+  try {
+    return await openAnchoredRegularLockFile(
+      root,
+      path,
+      ATTESTATION_WALK_MESSAGES,
+      0o600,
+    );
+  } catch (error) {
+    rethrowAttestationWalk(error);
+  }
+}
+
+async function assertOpenAttestationLock(
+  root: TrustedAnchoredStorageRoot,
+  path: string,
+  file: Deno.FsFile,
+): Promise<Deno.FileInfo> {
+  try {
+    return await assertAnchoredOpenRegularFile(
+      root,
+      path,
+      file,
+      ATTESTATION_WALK_MESSAGES,
+      0o600,
+    );
+  } catch (error) {
+    rethrowAttestationWalk(error);
   }
 }
 
@@ -279,14 +375,4 @@ function validateFingerprint(value: ContentFingerprint, path: string): void {
 
 function sameFingerprint(left: ContentFingerprint, right: ContentFingerprint): boolean {
   return left.algorithm === right.algorithm && left.digest === right.digest;
-}
-
-function isNotFound(error: unknown): boolean {
-  return error instanceof Deno.errors.NotFound ||
-    (error instanceof Error && error.name === "NotFound");
-}
-
-function isAlreadyExists(error: unknown): boolean {
-  return error instanceof Deno.errors.AlreadyExists ||
-    (error instanceof Error && /already exists/i.test(error.message));
 }

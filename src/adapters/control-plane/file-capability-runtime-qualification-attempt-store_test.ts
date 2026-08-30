@@ -546,6 +546,99 @@ Deno.test("qualification WAL constructor rejects path escape", () => {
   }
 });
 
+Deno.test(
+  "qualification WAL prepare/read under production read grants does not inspect ancestors",
+  async () => {
+    const nonce = crypto.randomUUID();
+    const relativeRoot =
+      `state/local/capability-runtime-host/.permission-anchor-${nonce}`;
+    const relativeAttempts = `${relativeRoot}/attempts`;
+    const relativeAttestations = `${relativeRoot}/attestations`;
+    const identity = await fixtureIdentity();
+    const key = keyFor(identity);
+    const worktree = Deno.cwd();
+    if (!worktree.startsWith("/")) {
+      throw new Error("permission-anchor regression requires an absolute cwd");
+    }
+    await Deno.mkdir(relativeRoot, { recursive: true, mode: 0o700 });
+    const workerPath = `${relativeRoot}/worker.ts`;
+    const attemptStoreUrl = new URL(
+      "./file-capability-runtime-qualification-attempt-store.ts",
+      import.meta.url,
+    ).href;
+    const attestationStoreUrl = new URL(
+      "./file-capability-runtime-qualification-attestation-store.ts",
+      import.meta.url,
+    ).href;
+    await Deno.writeTextFile(
+      workerPath,
+      `import { FileCapabilityRuntimeQualificationAttemptStore } from ${
+        JSON.stringify(attemptStoreUrl)
+      };
+import { FileCapabilityRuntimeQualificationAttestationStore } from ${
+        JSON.stringify(attestationStoreUrl)
+      };
+const attempts = new FileCapabilityRuntimeQualificationAttemptStore(${
+        JSON.stringify(relativeAttempts)
+      });
+const prepared = await attempts.prepare(${JSON.stringify(identity)}, {
+  preparedAt: "2026-08-29T00:00:00.000Z",
+});
+const read = await attempts.read(${JSON.stringify(key)});
+const attestations = new FileCapabilityRuntimeQualificationAttestationStore(${
+        JSON.stringify(relativeAttestations)
+      });
+try {
+  await attestations.append(JSON.parse("{}"));
+  throw new Error("expected attestation append to fail closed");
+} catch (error) {
+  if (!(error instanceof Error)) throw error;
+}
+const listed = await attestations.list();
+const missing = await attestations.read({
+  algorithm: "sha256",
+  digest: ${JSON.stringify("a".repeat(64))},
+});
+console.log(JSON.stringify({
+  prepared: prepared.phase,
+  read: read?.phase ?? null,
+  listed: listed.length,
+  missing: missing === undefined,
+}));
+`,
+    );
+    try {
+      const output = await new Deno.Command(Deno.execPath(), {
+        args: [
+          "run",
+          "--no-prompt",
+          "--allow-read=.,state/local",
+          "--allow-write=state/local",
+          workerPath,
+        ],
+        cwd: worktree,
+        stdout: "piped",
+        stderr: "piped",
+      }).output();
+      if (!output.success) {
+        throw new Error(
+          `Production-grant WAL worker failed (${output.code}): ${
+            new TextDecoder().decode(output.stderr)
+          }`,
+        );
+      }
+      assertEquals(
+        JSON.parse(new TextDecoder().decode(output.stdout)),
+        { prepared: "prepared", read: "prepared", listed: 0, missing: true },
+      );
+    } finally {
+      await Deno.remove(relativeRoot, { recursive: true }).catch((error) => {
+        if (!(error instanceof Deno.errors.NotFound)) throw error;
+      });
+    }
+  },
+);
+
 Deno.test({
   name:
     "qualification WAL rejects a pre-existing descendant behind an ancestor symlink",

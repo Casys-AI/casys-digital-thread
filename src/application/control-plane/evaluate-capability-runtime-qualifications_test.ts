@@ -1,5 +1,7 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { FileCapabilityRuntimeQualificationAttestationStore } from "../../adapters/control-plane/file-capability-runtime-qualification-attestation-store.ts";
+import {
+  FileCapabilityRuntimeQualificationAttestationStore,
+} from "../../adapters/control-plane/file-capability-runtime-qualification-attestation-store.ts";
 import { FileCapabilityRuntimeHostIdentityStore } from "../../adapters/control-plane/file-capability-runtime-host-identity-store.ts";
 import { createFirstPartyCapabilityRuntimeCatalog } from "../../adapters/control-plane/first-party-capability-binding-catalog.ts";
 import {
@@ -457,6 +459,72 @@ Deno.test("a durable revocation linearizes before qualification and blocks the q
   }
 });
 
+Deno.test({
+  name: "attestation read and list refuse a symlink store root",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const base = await Deno.realPath(
+      await Deno.makeTempDir({ prefix: "attestation-root-symlink-" }),
+    );
+    try {
+      const proven = await provenChrono(observedHost(HOST_A));
+      const realRoot = `${base}/real`;
+      const linkedRoot = `${base}/linked`;
+      await Deno.mkdir(realRoot, { mode: 0o700 });
+      await new FileCapabilityRuntimeQualificationAttestationStore(realRoot)
+        .append(proven.event);
+      await Deno.symlink(realRoot, linkedRoot);
+      const store = new FileCapabilityRuntimeQualificationAttestationStore(linkedRoot);
+      await assertRejects(() => store.list(), Error, "real directories");
+      await assertRejects(
+        () => store.read(proven.event.fingerprint),
+        Error,
+        "real directories",
+      );
+    } finally {
+      await Deno.remove(base, { recursive: true });
+    }
+  },
+});
+
+Deno.test({
+  name: "attestation read and list refuse a symlink event file",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const directory = await Deno.realPath(
+      await Deno.makeTempDir({ prefix: "attestation-file-symlink-" }),
+    );
+    try {
+      const proven = await provenChrono(observedHost(HOST_A));
+      const store = new FileCapabilityRuntimeQualificationAttestationStore(directory);
+      await store.append(proven.event);
+      const path = `${directory}/${proven.event.fingerprint.digest}.json`;
+      const outside = `${directory}/outside.json`;
+      await Deno.copyFile(path, outside);
+      await Deno.remove(path);
+      await Deno.symlink(outside, path);
+      await assertRejects(() => store.list(), Error, "regular file");
+      await assertRejects(
+        () => store.read(proven.event.fingerprint),
+        Error,
+        "regular file",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+});
+
+Deno.test({
+  name: "attestation lock refuses ancestor replacement before open and after lock",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const proven = await provenChrono(observedHost(HOST_A));
+    await rejectAncestorReplacement(proven.event, "afterAnchoredDirectoryReady");
+    await rejectAncestorReplacement(proven.event, "afterLockAcquired");
+  },
+});
+
 Deno.test("host qualification identity is stable and opaque rather than a platform fingerprint", async () => {
   const directory = await Deno.makeTempDir({ prefix: "capability-host-identity-" });
   try {
@@ -476,6 +544,36 @@ Deno.test("host qualification identity is stable and opaque rather than a platfo
     await Deno.remove(directory, { recursive: true });
   }
 });
+
+async function rejectAncestorReplacement(
+  event: CapabilityRuntimeBindingQualificationAttestation,
+  seam: "afterAnchoredDirectoryReady" | "afterLockAcquired",
+): Promise<void> {
+  const base = await Deno.realPath(
+    await Deno.makeTempDir({ prefix: `attestation-${seam}-` }),
+  );
+  try {
+    const trusted = `${base}/trusted`;
+    const storeRoot = `${trusted}/store`;
+    const outside = `${base}/outside`;
+    await Deno.mkdir(storeRoot, { recursive: true, mode: 0o700 });
+    await Deno.mkdir(outside, { mode: 0o700 });
+    let replaced = false;
+    const replace = async () => {
+      if (replaced) return;
+      replaced = true;
+      await Deno.rename(trusted, `${base}/trusted-real`);
+      await Deno.symlink(outside, trusted);
+    };
+    const store = new FileCapabilityRuntimeQualificationAttestationStore(storeRoot, {
+      [seam]: replace,
+    });
+    await assertRejects(() => store.append(event), Error, "real directories");
+    assertEquals((await Array.fromAsync(Deno.readDir(outside))).length, 0);
+  } finally {
+    await Deno.remove(base, { recursive: true });
+  }
+}
 
 function observedHost(
   identityFingerprint: typeof HOST_A,
