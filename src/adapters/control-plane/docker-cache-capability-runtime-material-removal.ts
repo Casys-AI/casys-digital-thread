@@ -184,7 +184,9 @@ function parseExactImageOwnership(
   const tags = stringList(record.RepoTags);
   const digests = stringList(record.RepoDigests);
   if (tags === undefined || digests === undefined) return "unknown";
-  if (tags.length !== 0) return "foreign";
+  if (tags.some((tag) => !samePinnedRepositoryDigest(tag, sealedReference))) {
+    return "foreign";
+  }
   if (
     digests.length === 0 ||
     digests.some((digest) => !samePinnedRepositoryDigest(digest, sealedReference))

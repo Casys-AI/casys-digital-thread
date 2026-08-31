@@ -564,6 +564,12 @@ Deno.test("Compose host removes only the exact reviewed containers and digest re
 
   assertEquals(result.status, "succeeded");
   assertEquals(
+    runner.calls.filter((call) =>
+      call[1] === "container" && call[2] === "ls"
+    ).every((call) => call.includes("--no-trunc")),
+    true,
+  );
+  assertEquals(
     runner.calls.filter((call) => call[1] === "container" && call[2] === "stop").map(
       (call) => call[3],
     ),
@@ -796,6 +802,53 @@ Deno.test("Compose host observes an exact RepoDigest when Docker reports additio
     observed.get(materialKey(postgres.material)),
     { material: "installed", runtime: "active" },
   );
+});
+
+Deno.test("Compose host accepts a sealed digest RepoTag and rejects ordinary Chrono tags on removal review", async () => {
+  const group = await chronoGroup();
+  const reference = group.materials[0]!.imageReference;
+  const cases: readonly {
+    readonly name: string;
+    readonly repoTags: readonly string[];
+    readonly safety: "exact" | "foreign";
+  }[] = [
+    {
+      name: "exact digest-as-RepoTag",
+      repoTags: [reference],
+      safety: "exact",
+    },
+    {
+      name: "ordinary tag",
+      repoTags: ["ghcr.io/casys-ai/mcp-chrono:latest"],
+      safety: "foreign",
+    },
+    {
+      name: "additional tag",
+      repoTags: [reference, "ghcr.io/casys-ai/mcp-chrono:latest"],
+      safety: "foreign",
+    },
+  ];
+
+  for (const variant of cases) {
+    const runner = new FakeGroupRunner(group, {
+      images: true,
+      state: "absent",
+      repoTagsByService: { "mcp-chrono": variant.repoTags },
+    });
+    const fixture = host(group, runner);
+    const observed = await fixture.host.inspectAdministrativeRemoval({
+      launchGroup: capabilityRuntimeLaunchGroupReference(group),
+    });
+    assertEquals(observed.safety, variant.safety, variant.name);
+    if (variant.safety === "exact") {
+      assertEquals(
+        observed.materials.map((entry) => entry.state),
+        ["owned"],
+        variant.name,
+      );
+      assertEquals(observed.ownedContainerIds, [], variant.name);
+    }
+  }
 });
 
 Deno.test("Compose host rejects non-equivalent RepoDigests even when Docker Hub names look familiar", async () => {
@@ -1324,6 +1377,7 @@ class FakeGroupRunner implements CommandRunner {
         Record<string, readonly Record<string, unknown>[]>
       >;
       readonly repoDigestsByService?: Readonly<Record<string, readonly string[]>>;
+      readonly repoTagsByService?: Readonly<Record<string, readonly string[]>>;
       readonly hostPlatform?: string;
     },
   ) {
@@ -1336,6 +1390,7 @@ class FakeGroupRunner implements CommandRunner {
     this.foreignService = options.foreignService;
     this.mountsByService = options.mountsByService ?? {};
     this.repoDigestsByService = options.repoDigestsByService ?? {};
+    this.repoTagsByService = options.repoTagsByService ?? {};
     this.hostPlatform = options.hostPlatform ?? "linux/arm64";
   }
 
@@ -1344,6 +1399,7 @@ class FakeGroupRunner implements CommandRunner {
     Record<string, readonly Record<string, unknown>[]>
   >;
   readonly repoDigestsByService: Readonly<Record<string, readonly string[]>>;
+  readonly repoTagsByService: Readonly<Record<string, readonly string[]>>;
   readonly hostPlatform: string;
 
   async run(
@@ -1362,13 +1418,15 @@ class FakeGroupRunner implements CommandRunner {
         candidate.imageReference === requested ||
         `sha256:${candidate.serviceName}` === requested
       );
-      return this.#images && member
-        ? success(JSON.stringify([{
-          RepoDigests: this.repoDigestsByService[member.serviceName] ?? [
-            member.imageReference,
-          ],
-        }]))
-        : failure("No such image");
+      if (!(this.#images && member)) return failure("No such image");
+      const inspect: Record<string, unknown> = {
+        RepoDigests: this.repoDigestsByService[member.serviceName] ?? [
+          member.imageReference,
+        ],
+      };
+      const tags = this.repoTagsByService[member.serviceName];
+      if (tags !== undefined) inspect.RepoTags = tags;
+      return success(JSON.stringify([inspect]));
     }
     if (args[0] === "container" && args[1] === "ls") {
       const reference = args.find((value) => value.startsWith("ancestor="))?.slice(

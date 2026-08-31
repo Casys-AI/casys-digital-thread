@@ -59,6 +59,13 @@ Deno.test("Docker cache exact ownership accepts catalog and docker.io repository
         RepoDigests: [REFERENCE, dockerIo],
       }])),
     },
+    {
+      name: "exact digest-as-RepoTag",
+      inspect: success(JSON.stringify([{
+        RepoTags: [REFERENCE],
+        RepoDigests: [REFERENCE],
+      }])),
+    },
   ];
   for (const variant of cases) {
     const runner = new FakeDockerRunner({
@@ -116,6 +123,13 @@ Deno.test("Docker cache refuses extra tags, a foreign digest and ancestor contai
       name: "extra tag",
       inspect: success(JSON.stringify([{
         RepoTags: ["casys/ngspice-source:latest"],
+        RepoDigests: [REFERENCE],
+      }])),
+    },
+    {
+      name: "mixed exact and extra tag",
+      inspect: success(JSON.stringify([{
+        RepoTags: [REFERENCE, "casys/ngspice-source:latest"],
         RepoDigests: [REFERENCE],
       }])),
     },

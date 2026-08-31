@@ -86,6 +86,13 @@ deno task capability:admin remove-apply --unit-id=<code-owned-id> --material-id=
 The exact review refuses a still-authorized unit, a pending ledger, active lease or JIT
 demand, pending cache preparation, uncertain journal, shared digest, foreign object, or
 unknown observation. It preserves Thread, CAS, WAL, project state, and retained volumes.
+Docker Desktop may report the exact sealed `repository@sha256:digest` in both
+`RepoDigests` and `RepoTags`; that duplicate exact identity is accepted. Any mutable tag,
+different repository, or different digest remains foreign and blocks removal.
+
+A historical terminal failure from a runtime start or stop does not permanently poison
+later material removal. Pending or uncertain host mutations still block it, and a failed
+`material-remove` action must be recovered before another removal attempt.
 Never replace this with `down`, volume removal, prune, force, tag/alias removal, a
 root-Compose action, or a Microsandbox uninstall.
 

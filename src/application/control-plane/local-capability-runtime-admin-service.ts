@@ -1160,8 +1160,9 @@ export class LocalCapabilityRuntimeAdminService {
     }
     if (
       outcomes.some((outcome) =>
-        entries.some((entry) => entry.id === outcome.journalEntryId) &&
-        outcome.status === "failed"
+        entries.some((entry) =>
+          entry.id === outcome.journalEntryId && entry.action === "material-remove"
+        ) && outcome.status === "failed"
       )
     ) {
       throw new Error(

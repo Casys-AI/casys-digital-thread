@@ -756,6 +756,7 @@ class ComposeCapabilityRuntimeHost
         "container",
         "ls",
         "--all",
+        "--no-trunc",
         "--filter",
         `ancestor=${member.imageReference}`,
         "--format",
@@ -1403,6 +1404,17 @@ function unknownRemovalObservation(
   };
 }
 
+function repoTagsAreExactPinnedIdentity(
+  tags: unknown,
+  reference: string,
+): boolean {
+  if (tags === undefined || tags === null) return true;
+  return Array.isArray(tags) &&
+    tags.every((tag) =>
+      typeof tag === "string" && samePinnedRepositoryDigest(tag, reference)
+    );
+}
+
 function exactImageState(
   result: CommandResult,
   reference: string,
@@ -1428,10 +1440,8 @@ function exactImageState(
     ) {
       return "foreign";
     }
-    if (
-      tags !== undefined && tags !== null &&
-      (!Array.isArray(tags) || tags.length !== 0)
-    ) {
+    // Docker Desktop may echo the sealed repository@sha256:digest in RepoTags.
+    if (!repoTagsAreExactPinnedIdentity(tags, reference)) {
       return "foreign";
     }
     return "exact";

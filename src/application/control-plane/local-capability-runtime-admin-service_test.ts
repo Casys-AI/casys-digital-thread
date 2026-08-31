@@ -262,6 +262,53 @@ Deno.test("administrative removal blocks active lease, JIT demand and unresolved
   }
 });
 
+Deno.test("administrative removal ignores a terminal failed runtime start but not a failed removal", async () => {
+  const runtime = await removalRuntime({});
+  try {
+    const failedStart = runtimeEntry(runtime.group, "runtime-start", null);
+    await runtime.journal.appendBeforeMutation(failedStart);
+    await runtime.journal.appendOutcome({
+      schemaVersion: "capability-runtime-host-mutation-outcome/1.0",
+      journalEntryId: failedStart.id,
+      recordedAt: "2026-08-29T00:10:00.000Z",
+      status: "failed",
+      observations: [],
+      detail: "Historical terminal runtime start failure.",
+    });
+    const review = await runtime.service.removeReview({
+      kind: "launch-group",
+      id: "casys-syson",
+    });
+    assertEquals(review.kind, "remove-apply");
+
+    const failedRemoval = runtimeEntry(
+      runtime.group,
+      "material-remove",
+      review.plan.fingerprint,
+    );
+    await runtime.journal.appendBeforeMutation(failedRemoval);
+    await runtime.journal.appendOutcome({
+      schemaVersion: "capability-runtime-host-mutation-outcome/1.0",
+      journalEntryId: failedRemoval.id,
+      recordedAt: "2026-08-29T00:20:00.000Z",
+      status: "failed",
+      observations: [],
+      detail: "Terminal administrative removal failure.",
+    });
+    await assertRejects(
+      () =>
+        runtime.service.removeReview({
+          kind: "launch-group",
+          id: "casys-syson",
+        }),
+      Error,
+      "failed group journal outcome",
+    );
+  } finally {
+    await runtime.close();
+  }
+});
+
 Deno.test("administrative removal persists inactive lock before journal intent and resumes only one exact pending intent", async () => {
   const runtime = await removalRuntime({ state: "owned" });
   try {
