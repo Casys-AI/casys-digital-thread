@@ -22,7 +22,10 @@ import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 
 const CHRONO_CASE_SCHEMA = "chrono-prescribed-kinematics-case/1.0" as const;
 const LOWERING_SCHEMA = "chrono-prescribed-kinematics-lowering/1.0" as const;
-const CHRONO_BINDING = "casys.mcp-chrono@0.3.2" as const;
+const CHRONO_BINDING = {
+  unitId: "casys.mcp-chrono",
+  adapterVersion: "0.3.2",
+} as const;
 const PROVIDER_ID = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 const PROVIDER_MAX_ABS = 1_000_000;
 const PROVIDER_MAX_DURATION_S = 10;
@@ -68,6 +71,30 @@ export class ChronoPrescribedKinematicsLoweringError extends Error {
 }
 
 /**
+ * The lowering identity names the concrete installed Chrono material and the
+ * adapter contract that produced its wire request. A lifecycle recross can
+ * therefore rederive a historical fingerprint from sealed runtime provenance
+ * without enrolling that historical runtime as the active one.
+ */
+export interface ChronoPrescribedKinematicsLoweringBinding {
+  readonly unitId: string;
+  readonly adapterVersion: string;
+}
+
+export function fingerprintChronoPrescribedKinematicsLowering(input: {
+  readonly sourceFingerprint: ContentFingerprint;
+  readonly binding: ChronoPrescribedKinematicsLoweringBinding;
+}): Promise<ContentFingerprint> {
+  return sha256Fingerprint({
+    schemaVersion: LOWERING_SCHEMA,
+    sourceFingerprint: input.sourceFingerprint,
+    binding: `${input.binding.unitId}@${input.binding.adapterVersion}`,
+    targetSchema: CHRONO_CASE_SCHEMA,
+    mapping: "absolute-zero-angle-revolute-z-ramp-v1",
+  });
+}
+
+/**
  * The source remains the engineering authority. This adapter merely lowers its
  * exact, already-validated global zero-angle poses to Chrono's closed wire
  * case. It rejects every relationship that cannot be represented by one
@@ -107,12 +134,9 @@ export class ChronoPrescribedKinematicsCaseLowerer
       algorithm: "sha256",
       digest: await sha256Hex(new TextEncoder().encode(exactRequestText)),
     });
-    const loweringFingerprint = await sha256Fingerprint({
-      schemaVersion: LOWERING_SCHEMA,
+    const loweringFingerprint = await fingerprintChronoPrescribedKinematicsLowering({
       sourceFingerprint,
       binding: CHRONO_BINDING,
-      targetSchema: CHRONO_CASE_SCHEMA,
-      mapping: "absolute-zero-angle-revolute-z-ramp-v1",
     });
     return Object.freeze({
       sourceFingerprint,

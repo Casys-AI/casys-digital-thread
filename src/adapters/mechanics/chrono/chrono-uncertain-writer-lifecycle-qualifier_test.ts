@@ -4,7 +4,10 @@ import {
   sealedPrescribedKinematicsRuntimeFromPlan,
 } from "./chrono-uncertain-writer-lifecycle-qualifier.ts";
 import { FilePrescribedKinematicsObservationAttemptStore } from "./file-prescribed-kinematics-observation-attempt-store.ts";
-import { ChronoPrescribedKinematicsCaseLowerer } from "./chrono-prescribed-kinematics-case-lowerer.ts";
+import {
+  ChronoPrescribedKinematicsCaseLowerer,
+  fingerprintChronoPrescribedKinematicsLowering,
+} from "./chrono-prescribed-kinematics-case-lowerer.ts";
 import {
   canonicalizePrescribedKinematicsCaseSource,
 } from "../../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-case-source.ts";
@@ -18,6 +21,7 @@ import {
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
+import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import {
   canonicalResolvedOperationPlanV2Text,
   fingerprintResolvedOperationPlanV2,
@@ -85,6 +89,39 @@ Deno.test("Chrono lifecycle authority accepts only the exact quarantined/malform
       failedRunId: RUN_ID,
     });
     assertEquals(result.status, "qualified-uncertain-write");
+  } finally {
+    await Deno.remove(fixture.directory, { recursive: true });
+  }
+});
+
+Deno.test("Chrono lifecycle recross uses the sealed 0.3.1 lowering identity, not the active 0.3.2 lowerer", async () => {
+  const fixture = await recrossFixture({
+    wal: { phase: "quarantined", reason: "malformed" },
+  });
+  try {
+    const sealedCase = await sealedCaseFixture();
+    const sourceFingerprint =
+      sealedCase.sourceClosure.workspace.root.resourceFingerprint;
+    const historical = await fingerprintChronoPrescribedKinematicsLowering({
+      sourceFingerprint,
+      binding: { unitId: "casys.mcp-chrono", adapterVersion: "0.3.1" },
+    });
+    const active = await new ChronoPrescribedKinematicsCaseLowerer().lower({
+      source: sealedCase.sourceClosure.source,
+      sourceFingerprint,
+    });
+    assertEquals(fixture.historicalLoweringFingerprint, historical);
+    assertEquals(
+      fingerprintsEqual(historical, active.loweringFingerprint),
+      false,
+    );
+    assertEquals(
+      (await fixture.qualifier.qualify({
+        project: fixture.project,
+        failedRunId: RUN_ID,
+      })).status,
+      "qualified-uncertain-write",
+    );
   } finally {
     await Deno.remove(fixture.directory, { recursive: true });
   }
@@ -313,6 +350,7 @@ interface RecrossFixture {
   qualifier: ChronoUncertainWriterLifecycleQualifier;
   project: EngineeringProjectSnapshot;
   plan: ResolvedOperationPlanV2;
+  historicalLoweringFingerprint: ContentFingerprint;
 }
 
 type WalPhase =
@@ -491,6 +529,11 @@ async function recrossFixture(input: {
     source: sealedCase.sourceClosure.source,
     sourceFingerprint: sealedCase.sourceClosure.workspace.root.resourceFingerprint,
   });
+  const historicalLoweringFingerprint =
+    await fingerprintChronoPrescribedKinematicsLowering({
+      sourceFingerprint: sealedCase.sourceClosure.workspace.root.resourceFingerprint,
+      binding: { unitId: "casys.mcp-chrono", adapterVersion: "0.3.1" },
+    });
   const identity = {
     projectId: PROJECT_ID,
     agentRunId: RUN_ID,
@@ -498,7 +541,7 @@ async function recrossFixture(input: {
     caseFingerprint: sealedCase.fingerprint,
     runtime,
     sourceFingerprint: sealedCase.sourceClosure.workspace.root.resourceFingerprint,
-    loweringFingerprint: lowered.loweringFingerprint,
+    loweringFingerprint: historicalLoweringFingerprint,
     requestFingerprint: lowered.requestFingerprint,
     startedAt: STARTED_AT,
   };
@@ -528,7 +571,13 @@ async function recrossFixture(input: {
     },
     lowerer,
   });
-  return { directory, qualifier, project, plan };
+  return {
+    directory,
+    qualifier,
+    project,
+    plan,
+    historicalLoweringFingerprint,
+  };
 }
 
 async function driveWal(

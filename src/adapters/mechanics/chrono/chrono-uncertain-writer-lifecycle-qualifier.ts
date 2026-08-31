@@ -51,6 +51,10 @@ import {
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
+import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
+import {
+  fingerprintChronoPrescribedKinematicsLowering,
+} from "./chrono-prescribed-kinematics-case-lowerer.ts";
 import {
   VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
 } from "../../../domain/mechanism/prescribed-kinematics/operations.ts";
@@ -255,12 +259,21 @@ export class ChronoUncertainWriterLifecycleQualifier
     const sourceFingerprint =
       sealedCase.sourceClosure.workspace.root.resourceFingerprint;
     let lowered: PrescribedKinematicsLoweredCase;
+    let historicalLoweringFingerprint: ContentFingerprint;
     try {
       lowered = await this.#lowerer.lower({
         source: sealedCase.sourceClosure.source,
         sourceFingerprint,
       });
       await assertPrescribedKinematicsLoweredCase(lowered, sourceFingerprint);
+      historicalLoweringFingerprint =
+        await fingerprintChronoPrescribedKinematicsLowering({
+          sourceFingerprint,
+          binding: {
+            unitId: runtime.material.unitId,
+            adapterVersion: runtime.adapter.version,
+          },
+        });
     } catch {
       return false;
     }
@@ -268,7 +281,10 @@ export class ChronoUncertainWriterLifecycleQualifier
     return fingerprintsEqual(attempt.caseFingerprint, sealedCase.fingerprint) &&
       fingerprintsEqual(attempt.sourceFingerprint, sourceFingerprint) &&
       fingerprintsEqual(attempt.sourceFingerprint, lowered.sourceFingerprint) &&
-      fingerprintsEqual(attempt.loweringFingerprint, lowered.loweringFingerprint) &&
+      fingerprintsEqual(
+        attempt.loweringFingerprint,
+        historicalLoweringFingerprint,
+      ) &&
       fingerprintsEqual(attempt.requestFingerprint, lowered.requestFingerprint) &&
       attempt.caseSha256 === reconstructedCaseSha256 &&
       attempt.caseUri === `chrono-case:sha256:${reconstructedCaseSha256}` &&
