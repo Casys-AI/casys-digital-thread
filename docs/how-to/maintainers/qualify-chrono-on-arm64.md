@@ -8,6 +8,30 @@ an engineering verdict. The repository catalogue remains `unqualified`; inspect 
 result when a later server check needs to know whether this host has an exact
 attestation.
 
+## Order
+
+On a host still running mcp-chrono 0.3.1, keep this order. Do not replace any step with
+manual Docker `up`, `down`, `-v`, prune, or image removal.
+
+1. Reconcile every authorized Chrono project and the administrative lock to exact
+   `casys.mcp-chrono@0.3.2` through the ordinary project-capability and admin-lock
+   surfaces. The Chrono rollover saga does not append ledgers or write the lock. ML01
+   has no published Chrono L3, so its change is a standard amendment. A project with an
+   exact published L3 remains `method-transition-required`.
+2. Apply the closed host-only rollover `casys-chrono-031-to-032-v1`. It preserves
+   Thread/CAS/WAL/project and the named volume `chrono-data`. It does not start 0.3.2.
+
+   ```bash
+   deno task capability:admin rollover-review \
+     --transition-id=casys-chrono-031-to-032-v1
+   deno task capability:admin rollover-apply \
+     --transition-id=casys-chrono-031-to-032-v1 \
+     --review-fingerprint=<sha256> --confirm
+   ```
+
+3. Then qualify `chrono-arm64-emulation-v1` as below. Qualification is a separate
+   private probe: it starts, probes and stops 0.3.2 with the opaque secret overlay.
+
 ## 1. Review the closed candidate
 
 The only accepted candidate is `chrono-arm64-emulation-v1`: Docker daemon `linux/arm64`,

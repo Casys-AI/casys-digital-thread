@@ -58,11 +58,11 @@ deno task capability:admin rollover-status \
   --transition-id=casys-syson-node-repack-v1
 ```
 
-The transition identifier is literal. The CLI rejects every other id and has no image,
-provider, endpoint, tool or argument option. `rollover-apply` recomputes the review
-under the host lock; it refuses a stale fingerprint or missing `--confirm`. The returned
-review is the operator record: it exposes `ready`, `blocked`, `in-progress`, `completed`
-or `recovery-required`, never an engineering verdict.
+The transition identifier is literal. The CLI accepts only this id and the closed Chrono
+id below. It has no image, provider, endpoint, tool or argument option. `rollover-apply`
+recomputes the review under the host lock; it refuses a stale fingerprint or missing
+`--confirm`. The returned review is the operator record: it exposes `ready`, `blocked`,
+`in-progress`, `completed` or `recovery-required`, never an engineering verdict.
 
 Before it can be `ready`, the server requires one exact predecessor lock and topology,
 no pending capability ledger, no active SysON lease, no unfinished SysON runtime journal
@@ -78,6 +78,41 @@ becomes `recovery-required`: no automatic rollback, Docker mutation or inferred 
 follows. Thread, CAS, WAL, project evidence and retained volumes are preserved at every
 phase. This path never uses `down`, `down -v`, `prune`, volume removal or a general
 rollback command.
+
+## Closed Chrono rollover
+
+`casys-chrono-031-to-032-v1` is one closed, host-only transition from
+`casys.mcp-chrono@0.3.1` to `casys.mcp-chrono@0.3.2` on `casys-chrono@1.0.0`. It changes
+only the pinned mcp-chrono image identity. The Compose project, service, loopback port,
+secret slot, healthcheck, retention and named volume `chrono-data` stay exact. Runtime
+replacement is not qualification, MRTR, or an engineering result.
+
+Project capability amendment and admin-lock reconciliation to the successor happen on
+the ordinary surfaces **before** this saga. The saga itself has `affectedProjects: []`:
+it never appends a ledger and never writes the lock. A later private qualification probe
+may start, probe and stop 0.3.2 with the opaque secret overlay; this rollover never
+calls successor activation.
+
+Use the private local CLI only after those standard amendments have drained:
+
+```bash
+deno task capability:admin rollover-review \
+  --transition-id=casys-chrono-031-to-032-v1
+deno task capability:admin rollover-apply \
+  --transition-id=casys-chrono-031-to-032-v1 \
+  --review-fingerprint=<sha256> --confirm
+deno task capability:admin rollover-status \
+  --transition-id=casys-chrono-031-to-032-v1
+```
+
+The transition identifier is literal. The CLI accepts only this id and
+`casys-syson-node-repack-v1`. It has no image, provider, endpoint, tool or argument
+option. `successor-runtime-observed` records the host transition receipt: predecessor
+retired, classification `absent`, successor material complete, both runtimes inactive.
+It does not mean the successor is active. Thread, CAS, WAL, project evidence and
+`chrono-data` are preserved. This path never uses `down`, `down -v`, `prune`, volume
+removal or a general rollback command. A non-terminal saga blocks Chrono preload, JIT
+and qualification only.
 
 ## Bounded material removal
 
@@ -165,6 +200,9 @@ deno task capability:admin remove-apply --unit-id=<code-owned-id> --material-id=
 deno task capability:admin rollover-status --transition-id=casys-syson-node-repack-v1
 deno task capability:admin rollover-review --transition-id=casys-syson-node-repack-v1
 deno task capability:admin rollover-apply --transition-id=casys-syson-node-repack-v1 --review-fingerprint=<sha256> --confirm
+deno task capability:admin rollover-status --transition-id=casys-chrono-031-to-032-v1
+deno task capability:admin rollover-review --transition-id=casys-chrono-031-to-032-v1
+deno task capability:admin rollover-apply --transition-id=casys-chrono-031-to-032-v1 --review-fingerprint=<sha256> --confirm
 ```
 
 Every apply recomputes the review under the local host mutation lock and refuses a stale

@@ -191,6 +191,7 @@ import { FileCapabilityRuntimeRolloverSagaStore } from "./src/adapters/control-p
 import { DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY } from "./src/adapters/control-plane/file-project-capability-ledger-store.ts";
 import { createCapabilityRuntimeHostAdapter } from "./src/adapters/control-plane/compose-capability-runtime-host.ts";
 import { CapabilityRuntimeLaunchGroupSupervisor } from "./src/application/control-plane/capability-runtime-launch-group-supervisor.ts";
+import { CapabilityRuntimeChronoRolloverGate } from "./src/application/control-plane/capability-runtime-chrono-rollover-service.ts";
 import { CapabilityRuntimeSysonRolloverGate } from "./src/application/control-plane/capability-runtime-syson-rollover-service.ts";
 import { CapabilityRuntimePreloadScheduler } from "./src/application/control-plane/capability-runtime-preload-scheduler.ts";
 import { createLocalCapabilityRuntimeCachePreparationComposition } from "./src/adapters/control-plane/local-capability-runtime-cache-preparation-composition.ts";
@@ -200,11 +201,12 @@ import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "./
 import { LocalChronoRuntimeSecretResolver } from "./src/adapters/control-plane/local-chrono-runtime-secret-resolver.ts";
 import { createLocalFixedCapabilityRuntimeConnection } from "./src/adapters/control-plane/local-fixed-capability-runtime-connection.ts";
 import {
+  createFirstPartyChronoRolloverPredecessorLaunchGroup,
   createFirstPartySysonRolloverPredecessorLaunchGroup,
   firstPartyBuild123dObservationLaunchGroupReference,
+  firstPartyChronoLaunchGroupReference,
   firstPartySysonLaunchGroupReference,
 } from "./src/adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
-import { createFirstPartySysonRolloverPredecessorUnit } from "./src/adapters/control-plane/first-party-capability-binding-catalog.ts";
 import type { CapabilityRuntimeLaunchGroup } from "./src/domain/capability/runtime/capability-runtime-launch-group.ts";
 import {
   listRegisteredEngineeringOperations,
@@ -986,21 +988,24 @@ async function createProjectControl(
         admittedSpiceRuntimeProfile: admittedSpiceExecutionProfile,
         geometryModuleAssemblyRuntimeProfile,
       });
-  const [_sysonRolloverPredecessorUnit, sysonRolloverPredecessorGroup] = await Promise
+  const [sysonRolloverPredecessorGroup, chronoRolloverPredecessorGroup] = await Promise
     .all([
-      createFirstPartySysonRolloverPredecessorUnit(),
       createFirstPartySysonRolloverPredecessorLaunchGroup(),
+      createFirstPartyChronoRolloverPredecessorLaunchGroup(),
     ]);
-  const sysonRolloverSuccessorGroup = await capabilityRead.launchGroups.require(
-    await firstPartySysonLaunchGroupReference(),
+  const [sysonRolloverSuccessorGroup, chronoRolloverSuccessorGroup] = await Promise.all(
+    [
+      capabilityRead.launchGroups.require(await firstPartySysonLaunchGroupReference()),
+      capabilityRead.launchGroups.require(await firstPartyChronoLaunchGroupReference()),
+    ],
   );
-  const sysonRolloverSuccessorUnit = capabilityRead.catalog.units.find((unit) =>
-    unit.id === "casys.syson-stack"
-  );
-  if (!sysonRolloverSuccessorUnit) {
-    throw new Error("Current capability catalogue lacks casys.syson-stack.");
-  }
   const capabilityRuntimeRolloverSagas = new FileCapabilityRuntimeRolloverSagaStore();
+  const sysonRolloverGate = new CapabilityRuntimeSysonRolloverGate(
+    capabilityRuntimeRolloverSagas,
+  );
+  const chronoRolloverGate = new CapabilityRuntimeChronoRolloverGate(
+    capabilityRuntimeRolloverSagas,
+  );
   const capabilityRuntimeHost = createCapabilityRuntimeHostAdapter({
     registry: capabilityRead.launchGroups,
     journal: capabilityRead.journal,
@@ -1009,6 +1014,9 @@ async function createProjectControl(
     rollovers: [{
       predecessor: sysonRolloverPredecessorGroup,
       successor: sysonRolloverSuccessorGroup,
+    }, {
+      predecessor: chronoRolloverPredecessorGroup,
+      successor: chronoRolloverSuccessorGroup,
     }],
   });
   const capabilityRuntimeGroups = new CapabilityRuntimeLaunchGroupSupervisor({
@@ -1019,9 +1027,12 @@ async function createProjectControl(
     host: capabilityRuntimeHost,
     secrets: capabilityRuntimeSecrets,
     lock: capabilityRuntimeMutationLock,
-    availabilityGate: new CapabilityRuntimeSysonRolloverGate(
-      capabilityRuntimeRolloverSagas,
-    ),
+    availabilityGate: {
+      assertLaunchGroupAvailable: async (group) => {
+        await sysonRolloverGate.assertLaunchGroupAvailable(group);
+        await chronoRolloverGate.assertLaunchGroupAvailable(group);
+      },
+    },
   });
   const capabilityRuntime = new CapabilityRuntimeSupervisor({
     contexts: capabilityRead.contexts,

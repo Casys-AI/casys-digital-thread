@@ -17,6 +17,10 @@ Deno.test("qualification composition constructs one secret resolver for review, 
   );
   assertEquals(text.includes("src/tools/"), false);
   assertEquals(text.includes("orchestration/operations"), false);
+  assertEquals(text.includes("FileCapabilityRuntimeRolloverSagaStore"), true);
+  assertEquals(text.includes("CapabilityRuntimeChronoRolloverGate"), true);
+  assertEquals(text.includes("availabilityGate:"), true);
+  assertEquals(text.includes("rollovers:"), false);
   assertEquals(
     LocalChronoRuntimeSecretResolver.name,
     "LocalChronoRuntimeSecretResolver",

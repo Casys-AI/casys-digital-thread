@@ -16,9 +16,14 @@ import { LocalNonpersistentMaterialRemovalHost } from "../../src/adapters/contro
 import { createFirstPartyNonpersistentMicrosandboxExpectations } from "../../src/adapters/control-plane/first-party-capability-runtime-nonpersistent-materials.ts";
 import { createCapabilityRuntimeHostAdapter } from "../../src/adapters/control-plane/compose-capability-runtime-host.ts";
 import { createLocalCapabilityRuntimeReadComposition } from "../../src/adapters/control-plane/local-capability-runtime-read-composition.ts";
-import { createFirstPartySysonRolloverPredecessorUnit } from "../../src/adapters/control-plane/first-party-capability-binding-catalog.ts";
 import {
+  createFirstPartyChronoRolloverPredecessorUnit,
+  createFirstPartySysonRolloverPredecessorUnit,
+} from "../../src/adapters/control-plane/first-party-capability-binding-catalog.ts";
+import {
+  createFirstPartyChronoRolloverPredecessorLaunchGroup,
   createFirstPartySysonRolloverPredecessorLaunchGroup,
+  firstPartyChronoLaunchGroupReference,
   firstPartySysonLaunchGroupReference,
 } from "../../src/adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
 import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "../../src/adapters/control-plane/first-party-capability-runtime-qualification-candidates.ts";
@@ -32,6 +37,10 @@ import {
 import { ProjectCapabilityAuthorizationService } from "../../src/application/control-plane/project-capability-authorization-service.ts";
 import { ProjectCapabilityJitDemandReader } from "../../src/application/control-plane/project-capability-jit-demand-reader.ts";
 import { ProjectCapabilityRolloverJitDemandReader } from "../../src/application/control-plane/project-capability-rollover-jit-demand-reader.ts";
+import {
+  CapabilityRuntimeChronoRolloverService,
+  CHRONO_031_TO_032_ROLLOVER_TRANSITION_ID,
+} from "../../src/application/control-plane/capability-runtime-chrono-rollover-service.ts";
 import {
   CapabilityRuntimeSysonRolloverService,
   SYSON_NODE_REPACK_ROLLOVER_TRANSITION_ID,
@@ -86,7 +95,7 @@ export type CapabilityRuntimeAdminCliRequest =
   };
 
 const USAGE =
-  "Usage: capability-runtime-admin <status|lock-review|lock-apply|rollback-review|rollback-apply|revoke-review|revoke-apply|remove-review|remove-apply|rollover-status|rollover-review|rollover-apply> [--unit-id=<id>|--launch-group-id=<id>|--unit-id=<id> --material-id=<id>|--transition-id=casys-syson-node-repack-v1] [--review-fingerprint=<sha256>] [--confirm]";
+  "Usage: capability-runtime-admin <status|lock-review|lock-apply|rollback-review|rollback-apply|revoke-review|revoke-apply|remove-review|remove-apply|rollover-status|rollover-review|rollover-apply> [--unit-id=<id>|--launch-group-id=<id>|--unit-id=<id> --material-id=<id>|--transition-id=casys-syson-node-repack-v1|casys-chrono-031-to-032-v1] [--review-fingerprint=<sha256>] [--confirm]";
 
 export function parseCapabilityRuntimeAdminCli(
   args: readonly string[],
@@ -162,19 +171,34 @@ async function main(request: CapabilityRuntimeAdminCliRequest): Promise<void> {
   const ledgers = capability.ledgers;
   const hostMutationLock = new FileCapabilityRuntimeHostMutationLock();
   const leases = new FileCapabilityRuntimeLeaseStore();
-  const [sysonRolloverPredecessorUnit, sysonRolloverPredecessorGroup] = await Promise
-    .all([
-      createFirstPartySysonRolloverPredecessorUnit(),
-      createFirstPartySysonRolloverPredecessorLaunchGroup(),
-    ]);
-  const sysonRolloverSuccessorGroup = await capability.launchGroups.require(
-    await firstPartySysonLaunchGroupReference(),
+  const [
+    sysonRolloverPredecessorUnit,
+    sysonRolloverPredecessorGroup,
+    chronoRolloverPredecessorUnit,
+    chronoRolloverPredecessorGroup,
+  ] = await Promise.all([
+    createFirstPartySysonRolloverPredecessorUnit(),
+    createFirstPartySysonRolloverPredecessorLaunchGroup(),
+    createFirstPartyChronoRolloverPredecessorUnit(),
+    createFirstPartyChronoRolloverPredecessorLaunchGroup(),
+  ]);
+  const [sysonRolloverSuccessorGroup, chronoRolloverSuccessorGroup] = await Promise.all(
+    [
+      capability.launchGroups.require(await firstPartySysonLaunchGroupReference()),
+      capability.launchGroups.require(await firstPartyChronoLaunchGroupReference()),
+    ],
   );
   const sysonRolloverSuccessorUnit = catalog.units.find((unit) =>
     unit.id === "casys.syson-stack"
   );
+  const chronoRolloverSuccessorUnit = catalog.units.find((unit) =>
+    unit.id === "casys.mcp-chrono"
+  );
   if (!sysonRolloverSuccessorUnit) {
     throw new Error("Current capability catalogue lacks casys.syson-stack.");
+  }
+  if (!chronoRolloverSuccessorUnit) {
+    throw new Error("Current capability catalogue lacks casys.mcp-chrono.");
   }
   const rollovers = new FileCapabilityRuntimeRolloverSagaStore();
   const host = createCapabilityRuntimeHostAdapter({
@@ -184,6 +208,9 @@ async function main(request: CapabilityRuntimeAdminCliRequest): Promise<void> {
     rollovers: [{
       predecessor: sysonRolloverPredecessorGroup,
       successor: sysonRolloverSuccessorGroup,
+    }, {
+      predecessor: chronoRolloverPredecessorGroup,
+      successor: chronoRolloverSuccessorGroup,
     }],
   });
   const projects = new FileEngineeringProjectRevisionStore();
@@ -205,6 +232,25 @@ async function main(request: CapabilityRuntimeAdminCliRequest): Promise<void> {
     successor: {
       unit: sysonRolloverSuccessorUnit,
       launchGroup: sysonRolloverSuccessorGroup,
+    },
+    ledgers,
+    lock,
+    leases,
+    journal: capability.journal,
+    sagas: rollovers,
+    host,
+    hostMutationLock,
+    jitDemand: rolloverJitDemand,
+  });
+  const chronoRollover = new CapabilityRuntimeChronoRolloverService({
+    catalog,
+    predecessor: {
+      unit: chronoRolloverPredecessorUnit,
+      launchGroup: chronoRolloverPredecessorGroup,
+    },
+    successor: {
+      unit: chronoRolloverSuccessorUnit,
+      launchGroup: chronoRolloverSuccessorGroup,
     },
     ledgers,
     lock,
@@ -266,6 +312,18 @@ async function main(request: CapabilityRuntimeAdminCliRequest): Promise<void> {
     },
   });
 
+  const rolloverService = (transitionId: string) => {
+    if (transitionId === SYSON_NODE_REPACK_ROLLOVER_TRANSITION_ID) {
+      return sysonRollover;
+    }
+    if (transitionId === CHRONO_031_TO_032_ROLLOVER_TRANSITION_ID) {
+      return chronoRollover;
+    }
+    throw new Error(
+      `--transition-id must be ${SYSON_NODE_REPACK_ROLLOVER_TRANSITION_ID} or ${CHRONO_031_TO_032_ROLLOVER_TRANSITION_ID}.`,
+    );
+  };
+
   switch (request.command) {
     case "status":
       print(await admin.status());
@@ -313,14 +371,14 @@ async function main(request: CapabilityRuntimeAdminCliRequest): Promise<void> {
       );
       break;
     case "rollover-status":
-      print(await sysonRollover.status(request.transitionId));
+      print(await rolloverService(request.transitionId).status(request.transitionId));
       break;
     case "rollover-review":
-      print(await sysonRollover.review(request.transitionId));
+      print(await rolloverService(request.transitionId).review(request.transitionId));
       break;
     case "rollover-apply":
       print(
-        await sysonRollover.apply({
+        await rolloverService(request.transitionId).apply({
           transitionId: request.transitionId,
           reviewFingerprint: request.reviewFingerprint,
           confirm: request.confirm,
@@ -381,9 +439,12 @@ function assertAllowedFlags(
 
 function transitionId(flags: ReadonlyMap<string, string | true>): string {
   const value = required(flags, "transition-id");
-  if (value !== SYSON_NODE_REPACK_ROLLOVER_TRANSITION_ID) {
+  if (
+    value !== SYSON_NODE_REPACK_ROLLOVER_TRANSITION_ID &&
+    value !== CHRONO_031_TO_032_ROLLOVER_TRANSITION_ID
+  ) {
     throw new Error(
-      `--transition-id must be ${SYSON_NODE_REPACK_ROLLOVER_TRANSITION_ID}.`,
+      `--transition-id must be ${SYSON_NODE_REPACK_ROLLOVER_TRANSITION_ID} or ${CHRONO_031_TO_032_ROLLOVER_TRANSITION_ID}.`,
     );
   }
   return value;
