@@ -398,12 +398,15 @@ function artifact(
     label: id,
     kind,
     system: "digital-thread",
+    producer: {
+      serverId: "digital-thread",
+      tool: producedBy,
+      runId: producerRunId,
+    },
     revision: digest,
     freshness: "fresh" as const,
     fingerprint: "sha256:" + digest,
     uri,
-    producedBy,
-    producerRunId,
     dependsOn,
   };
 }
