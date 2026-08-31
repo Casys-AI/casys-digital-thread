@@ -12,7 +12,7 @@ do not add an agent-facing provider selector or give the Workbench runtime autho
 | [Atomic runtime catalogue](atomic-runtime-catalog.md)                   | Trusted bindings, concrete units and pure project host planning                   |
 | [Qualified binding catalogue](qualified-binding-catalog.md)             | Current semantic capability to binding and unit mapping, with literal qualification state |
 | [Atomic runtime boundaries](atomic-runtime-boundaries.md)               | Platform, licence, security, and retained-data limits for those units             |
-| [Project capability authorization](project-capability-authorization.md) | Brief-bound operational ceiling, append-only amendments and read-only inspection  |
+| [Project capability authorization](project-capability-authorization.md) | Brief-bound operational ceiling, append-only amendments, explicit unused withdrawal, and read-only inspection |
 | [Host runtime supervision](host-runtime-supervision.md)                 | Immutable launch groups, local leases, journaling and closed Compose host control |
 | [Capability runtime connection](capability-runtime-connection.md)       | Current fixed loopback seam; progressive lease-bound connection handle            |
 | [Local runtime administration](local-runtime-administration.md)         | Append-only lock/revocation and bounded exact private material removal            |

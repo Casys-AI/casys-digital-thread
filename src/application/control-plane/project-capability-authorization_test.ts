@@ -2,6 +2,7 @@ import { assertEquals, assertRejects } from "@std/assert";
 import {
   fingerprintProjectCapabilityAuthorizationEvent,
   fingerprintProjectCapabilityProposal,
+  isStrictUnusedWithdrawalDelta,
   PROJECT_CAPABILITY_PROPOSAL_SCHEMA_VERSION,
   type ProjectCapabilityAuthorizationEvent,
   projectCapabilityChangeRequiresMethodTransition,
@@ -34,6 +35,7 @@ Deno.test("capability amendment is a structured delta that reconstructs only the
     changed: [],
   });
   assertEquals(delta.effects.downloadBytes, { previous: 0, next: 0, delta: 0 });
+  assertEquals(isStrictUnusedWithdrawalDelta(delta), false);
 
   const prepared = await event({
     kind: "initial-prepared" as const,
@@ -242,6 +244,7 @@ Deno.test("dropping an authorized binding after Thread evidence is a method tran
     projectCapabilityChangeRequiresMethodTransition(delta, false),
     false,
   );
+  assertEquals(isStrictUnusedWithdrawalDelta(delta), true);
 });
 
 Deno.test("Thread evidence follows versioned binding methods, not adapter source metadata", async () => {
@@ -303,6 +306,12 @@ Deno.test("Thread evidence follows versioned binding methods, not adapter source
     ),
     true,
   );
+  assertEquals(
+    isStrictUnusedWithdrawalDelta(
+      projectCapabilityEnvelopeDelta(initial, profileChanged),
+    ),
+    false,
+  );
 });
 
 Deno.test("capability coverage keeps the exact candidate ceiling while local qualification mode may change", async () => {
@@ -341,6 +350,177 @@ Deno.test("capability coverage keeps the exact candidate ceiling while local qua
 
   const profileChanged = await withBindingProfile(envelope);
   assertEquals(projectCapabilityProposalCovers(envelope, profileChanged), false);
+});
+
+Deno.test("unused withdrawal may improve unknown security and unknown bytes by removal only", async () => {
+  const kept = {
+    id: "geometry.observe-assembly-integrity",
+    version: "1",
+    minimumQualification: "qualified" as const,
+    use: "execution" as const,
+  };
+  const unused = {
+    id: "mechanics.observe-prescribed-kinematics",
+    version: "1",
+    minimumQualification: "qualified" as const,
+    use: "execution" as const,
+  };
+  const keptMaterial = material(
+    "casys.kept-worker",
+    "kept-image",
+    "a",
+    12,
+    20,
+  );
+  const unusedUnknownMaterial = material(
+    "casys.unused-worker",
+    "unused-image",
+    "b",
+    null,
+    null,
+  );
+  const unusedZeroMaterial = material(
+    "casys.unused-worker",
+    "unused-image",
+    "b",
+    0,
+    0,
+  );
+  const extraMaterial = material(
+    "casys.extra-worker",
+    "extra-image",
+    "c",
+    5,
+    5,
+  );
+
+  const unknownAuthorized = await cloneProposal(
+    await proposal("brief-intent", [kept, unused]),
+    {
+      materials: [keptMaterial, unusedUnknownMaterial],
+      effects: {
+        downloadBytes: null,
+        storageBytes: null,
+        security: "unknown",
+      },
+    },
+  );
+  const removedUnknown = await cloneProposal(
+    await proposal("published-plan", [kept]),
+    {
+      materials: [keptMaterial],
+      effects: {
+        downloadBytes: 12,
+        storageBytes: 20,
+        security: "reviewed",
+      },
+    },
+  );
+  assertEquals(
+    projectCapabilityProposalCovers(unknownAuthorized, removedUnknown),
+    true,
+  );
+  const improved = projectCapabilityEnvelopeDelta(unknownAuthorized, removedUnknown);
+  assertEquals(improved.effects.added.security, "reviewed");
+  assertEquals(improved.effects.removed.security, "unknown");
+  assertEquals(improved.effects.downloadBytes, {
+    previous: null,
+    next: 12,
+    delta: null,
+  });
+  assertEquals(improved.effects.storageBytes, {
+    previous: null,
+    next: 20,
+    delta: null,
+  });
+  assertEquals(isStrictUnusedWithdrawalDelta(improved), true);
+
+  const knownToNull = await cloneProposal(removedUnknown, {
+    effects: { downloadBytes: null, storageBytes: null },
+  });
+  assertEquals(projectCapabilityProposalCovers(removedUnknown, knownToNull), false);
+
+  const knownAuthorized = await cloneProposal(
+    await proposal("brief-intent", [kept, unused]),
+    {
+      materials: [keptMaterial, unusedZeroMaterial],
+      effects: {
+        downloadBytes: 12,
+        storageBytes: 20,
+        security: "reviewed",
+      },
+    },
+  );
+  const largerAfterRemoval = await cloneProposal(removedUnknown, {
+    effects: { downloadBytes: 13, storageBytes: 20 },
+  });
+  assertEquals(
+    projectCapabilityProposalCovers(knownAuthorized, largerAfterRemoval),
+    false,
+  );
+  assertEquals(
+    isStrictUnusedWithdrawalDelta(
+      projectCapabilityEnvelopeDelta(knownAuthorized, largerAfterRemoval),
+    ),
+    false,
+  );
+
+  const reviewedToUnknown = await cloneProposal(removedUnknown, {
+    effects: { security: "unknown" },
+  });
+  assertEquals(
+    projectCapabilityProposalCovers(knownAuthorized, reviewedToUnknown),
+    false,
+  );
+  assertEquals(
+    isStrictUnusedWithdrawalDelta(
+      projectCapabilityEnvelopeDelta(knownAuthorized, reviewedToUnknown),
+    ),
+    false,
+  );
+
+  const addedMaterial = await cloneProposal(removedUnknown, {
+    materials: [keptMaterial, extraMaterial],
+    effects: { downloadBytes: 17, storageBytes: 25 },
+  });
+  assertEquals(
+    projectCapabilityProposalCovers(unknownAuthorized, addedMaterial),
+    false,
+  );
+  assertEquals(
+    isStrictUnusedWithdrawalDelta(
+      projectCapabilityEnvelopeDelta(unknownAuthorized, addedMaterial),
+    ),
+    false,
+  );
+
+  const changedRetained = await cloneProposal(removedUnknown, {
+    materials: [{ ...keptMaterial, downloadBytes: 99 }],
+    effects: { downloadBytes: 99 },
+  });
+  assertEquals(
+    projectCapabilityProposalCovers(unknownAuthorized, changedRetained),
+    false,
+  );
+  assertEquals(
+    isStrictUnusedWithdrawalDelta(
+      projectCapabilityEnvelopeDelta(unknownAuthorized, changedRetained),
+    ),
+    false,
+  );
+
+  const addedService = await cloneProposal(removedUnknown, {
+    effects: {
+      services: [{ id: "new-host-service", lifecycle: "ephemeral" }],
+    },
+  });
+  assertEquals(projectCapabilityProposalCovers(unknownAuthorized, addedService), false);
+  assertEquals(
+    isStrictUnusedWithdrawalDelta(
+      projectCapabilityEnvelopeDelta(unknownAuthorized, addedService),
+    ),
+    false,
+  );
 });
 
 Deno.test("an approved unqualified candidate becomes executable after its exact local qualification without an amendment", async () => {
@@ -438,6 +618,45 @@ async function proposal(
   return {
     ...body,
     capabilityProposalFingerprint: await fingerprintProjectCapabilityProposal(body),
+  };
+}
+
+function material(
+  unitId: string,
+  materialId: string,
+  digestChar: string,
+  downloadBytes: number | null,
+  storageBytes: number | null,
+): ProjectCapabilityProposal["materials"][number] {
+  return {
+    unitId,
+    materialId,
+    imageReference: `ghcr.io/casys/${materialId}@sha256:${digestChar.repeat(64)}`,
+    mode: "native",
+    downloadBytes,
+    storageBytes,
+  };
+}
+
+async function cloneProposal(
+  proposal: ProjectCapabilityProposal,
+  patch: {
+    readonly materials?: ProjectCapabilityProposal["materials"];
+    readonly effects?: Partial<ProjectCapabilityProposal["effects"]>;
+  },
+): Promise<ProjectCapabilityProposal> {
+  const { capabilityProposalFingerprint: _fingerprint, ...body } = proposal;
+  const next = {
+    ...body,
+    ...(patch.materials === undefined ? {} : { materials: patch.materials }),
+    effects: patch.effects === undefined ? body.effects : {
+      ...body.effects,
+      ...patch.effects,
+    },
+  };
+  return {
+    ...next,
+    capabilityProposalFingerprint: await fingerprintProjectCapabilityProposal(next),
   };
 }
 

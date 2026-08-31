@@ -22,6 +22,7 @@ import {
 } from "./plan-project-capability-intent.ts";
 import {
   fingerprintProjectCapabilityAuthorizationEvent,
+  isStrictUnusedWithdrawalDelta,
   PROJECT_CAPABILITY_LEDGER_SCHEMA_VERSION,
   type ProjectCapabilityApprovalReceipt,
   type ProjectCapabilityAuthorizationEvent,
@@ -118,6 +119,12 @@ export type ProjectCapabilityChangeReview =
     readonly effectiveEnvelope: ProjectCapabilityEffectiveEnvelope;
   }
   | {
+    readonly status: "no-change";
+    readonly ledger: ProjectCapabilityLedger;
+    readonly proposal: ProjectCapabilityProposal;
+    readonly effectiveEnvelope: ProjectCapabilityEffectiveEnvelope;
+  }
+  | {
     readonly status: "revoked";
     readonly ledger: ProjectCapabilityLedger;
     readonly proposal: ProjectCapabilityProposal;
@@ -125,6 +132,13 @@ export type ProjectCapabilityChangeReview =
   }
   | {
     readonly status: "amendment-required";
+    readonly ledger: ProjectCapabilityLedger;
+    readonly proposal: ProjectCapabilityProposal;
+    readonly effectiveEnvelope: ProjectCapabilityEffectiveEnvelope;
+    readonly delta: ProjectCapabilityEnvelopeDelta;
+  }
+  | {
+    readonly status: "withdrawal-required";
     readonly ledger: ProjectCapabilityLedger;
     readonly proposal: ProjectCapabilityProposal;
     readonly effectiveEnvelope: ProjectCapabilityEffectiveEnvelope;
@@ -392,11 +406,9 @@ export class ProjectCapabilityAuthorizationService {
       project,
       this.dependencies.registry,
     );
-    const unresolvedBlockers = demand.plannedCeiling.operationGroups
-      .filter((group) => group.resolution === "unresolved")
-      .map((group) =>
-        `Operation ${group.operation.id}@${group.operation.version} is unresolved: ${group.reason}.`
-      );
+    const unresolvedBlockers = publishedPlanUnresolvedBlockers(demand);
+    // Union retained authorized requirements so a later plan extension cannot
+    // silently drop still-authorized brief capacity.
     const retainedRequirements = envelope?.status === "authorized"
       ? envelope.proposal.semanticRequirements
       : [];
@@ -404,23 +416,11 @@ export class ProjectCapabilityAuthorizationService {
       ...retainedRequirements,
       ...demand.plannedCeiling.capabilityRequirements,
     ]);
-    const host = await this.#host(requirements);
-    const proposal = await planProjectCapabilityRequirementsProposal({
-      projectId: project.project.id,
-      source: "published-plan",
-      brief: {
-        briefSnapshotId: project.framing.currentBrief.id,
-        briefRevision: project.framing.currentBrief.revision,
-        briefReviewFingerprint: project.framing.currentBriefApproval.inputFingerprint,
-      },
-      intent: null,
+    const proposal = await this.#planPublishedProposal(
+      project,
       requirements,
       unresolvedBlockers,
-      catalog: await this.#effectiveCatalog(host),
-      policy: await this.#policy(),
-      host,
-      lock: await this.#lock(),
-    });
+    );
     if (!ledger || !envelope) {
       return { status: "not-authorized", ledger: null, proposal };
     }
@@ -521,6 +521,147 @@ export class ProjectCapabilityAuthorizationService {
     await this.reconcileHostAuthorization();
     this.#schedulePreload(amended);
     return amended;
+  }
+
+  /**
+   * Plans the exact current planned ceiling without retaining unused brief
+   * capacity. Dropping unused bindings is not a method transition.
+   */
+  async reviewUnusedWithdrawal(
+    project: EngineeringProjectSnapshot,
+  ): Promise<ProjectCapabilityChangeReview> {
+    const ledger = await this.dependencies.ledgers.get(project.project.id);
+    const envelope = ledger?.effectiveEnvelope;
+    if (
+      !project.plan || !project.framing?.currentBrief ||
+      !project.framing.currentBriefApproval
+    ) {
+      return { status: "not-authorized", ledger: null, proposal: null };
+    }
+    const demand = await compileProjectCapabilityDemand(
+      project,
+      this.dependencies.registry,
+    );
+    const unresolvedBlockers = publishedPlanUnresolvedBlockers(demand);
+    const requirements = flattenEngineeringCapabilityRequirements(
+      demand.plannedCeiling.capabilityRequirements,
+    );
+    const proposal = await this.#planPublishedProposal(
+      project,
+      requirements,
+      unresolvedBlockers,
+    );
+    if (!ledger || !envelope) {
+      return { status: "not-authorized", ledger: null, proposal };
+    }
+    if (envelope.status === "revoked") {
+      return {
+        status: "revoked",
+        ledger,
+        proposal,
+        effectiveEnvelope: envelope,
+      };
+    }
+    if (
+      proposal.status === "unresolved" &&
+      !unresolvedProposalOnlyRetainsAuthorizedBlockers(
+        envelope.proposal,
+        proposal,
+        unresolvedBlockers,
+      )
+    ) {
+      return {
+        status: "unresolved",
+        ledger,
+        proposal,
+        effectiveEnvelope: envelope,
+        delta: projectCapabilityEnvelopeDelta(envelope.proposal, proposal),
+      };
+    }
+    if (projectCapabilityProposalCovers(envelope.proposal, proposal)) {
+      const delta = projectCapabilityEnvelopeDelta(envelope.proposal, proposal);
+      if (isStrictUnusedWithdrawalDelta(delta)) {
+        return {
+          status: "withdrawal-required",
+          ledger,
+          proposal,
+          effectiveEnvelope: envelope,
+          delta,
+        };
+      }
+      return { status: "no-change", ledger, proposal, effectiveEnvelope: envelope };
+    }
+    const published = await this.reviewPublishedPlan(project);
+    if (published.status === "covered") {
+      return {
+        status: "no-change",
+        ledger: published.ledger,
+        proposal: published.proposal,
+        effectiveEnvelope: published.effectiveEnvelope,
+      };
+    }
+    return published;
+  }
+
+  async authorizeUnusedWithdrawal(
+    project: EngineeringProjectSnapshot,
+    expectedProposalFingerprint:
+      ProjectCapabilityProposal["capabilityProposalFingerprint"],
+  ): Promise<ProjectCapabilityLedger> {
+    const review = await this.reviewUnusedWithdrawal(project);
+    if (review.status === "covered" || review.status === "no-change") {
+      if (
+        !fingerprintsEqual(
+          review.proposal.capabilityProposalFingerprint,
+          expectedProposalFingerprint,
+        )
+      ) {
+        throw new ProjectCapabilityAuthorizationError(
+          "The unused capability withdrawal retry no longer matches the exact server-derived proposal.",
+        );
+      }
+      await this.reconcileHostAuthorization();
+      this.#schedulePreload(review.ledger);
+      return review.ledger;
+    }
+    if (
+      review.status !== "withdrawal-required" ||
+      !isStrictUnusedWithdrawalDelta(review.delta)
+    ) {
+      throw new ProjectCapabilityAuthorizationError(
+        review.status === "amendment-required" ||
+          review.status === "method-transition-required"
+          ? "Unused capability withdrawal is not available; use the published-plan amendment or method-transition path."
+          : `Unused capability withdrawal cannot be authorized while review status is ${review.status}.`,
+      );
+    }
+    if (
+      !fingerprintsEqual(
+        review.proposal.capabilityProposalFingerprint,
+        expectedProposalFingerprint,
+      )
+    ) {
+      throw new ProjectCapabilityAuthorizationError(
+        "The unused capability withdrawal no longer matches the exact server-derived proposal.",
+      );
+    }
+    const event = await eventWithFingerprint({
+      kind: "amendment-authorized" as const,
+      recordedAt: this.#now(),
+      previousEnvelopeFingerprint:
+        review.effectiveEnvelope.effectiveEnvelopeFingerprint,
+      proposalFingerprint: structuredClone(
+        review.proposal.capabilityProposalFingerprint,
+      ),
+      delta: review.delta,
+    });
+    const withdrawn = await this.append(project.project.id, review.ledger.revision, [
+      ...review.ledger.events,
+      event,
+    ]);
+    await this.reconcileHostAuthorization();
+    this.#schedulePreload(withdrawn);
+    return withdrawn;
   }
 
   /**
@@ -734,6 +875,37 @@ export class ProjectCapabilityAuthorizationService {
     return "read" in lock ? await lock.read() : structuredClone(lock);
   }
 
+  async #planPublishedProposal(
+    project: EngineeringProjectSnapshot,
+    requirements: readonly RequiredEngineeringCapability[],
+    unresolvedBlockers: readonly string[],
+  ): Promise<ProjectCapabilityProposal> {
+    const brief = project.framing?.currentBrief;
+    const approval = project.framing?.currentBriefApproval;
+    if (!brief || !approval) {
+      throw new ProjectCapabilityAuthorizationError(
+        "Published-plan capability proposal requires one exact approved brief.",
+      );
+    }
+    const host = await this.#host(requirements);
+    return await planProjectCapabilityRequirementsProposal({
+      projectId: project.project.id,
+      source: "published-plan",
+      brief: {
+        briefSnapshotId: brief.id,
+        briefRevision: brief.revision,
+        briefReviewFingerprint: approval.inputFingerprint,
+      },
+      intent: null,
+      requirements,
+      unresolvedBlockers,
+      catalog: await this.#effectiveCatalog(host),
+      policy: await this.#policy(),
+      host,
+      lock: await this.#lock(),
+    });
+  }
+
   private async proposeForBrief(
     project: EngineeringProjectSnapshot,
     brief: ProjectBriefRevision,
@@ -791,6 +963,16 @@ export class ProjectCapabilityAuthorizationService {
  * resolved delta unamendable. Any new unresolved operation or binding, or a
  * changed retained candidate/unit/material, stays a hard unresolved review.
  */
+function publishedPlanUnresolvedBlockers(
+  demand: Awaited<ReturnType<typeof compileProjectCapabilityDemand>>,
+): readonly string[] {
+  return demand.plannedCeiling.operationGroups
+    .filter((group) => group.resolution === "unresolved")
+    .map((group) =>
+      `Operation ${group.operation.id}@${group.operation.version} is unresolved: ${group.reason}.`
+    );
+}
+
 function unresolvedProposalOnlyRetainsAuthorizedBlockers(
   envelope: ProjectCapabilityProposal,
   proposal: ProjectCapabilityProposal,

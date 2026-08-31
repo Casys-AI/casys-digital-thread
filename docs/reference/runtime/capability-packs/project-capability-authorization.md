@@ -59,15 +59,36 @@ before they can use this local ledger.
 
 `project_capability_inspect` is read-only. After a plan is published,
 `project_capability_change_review` derives its exact demand again. A strict subset of
-the approved envelope needs no prompt. A widening, binding/profile/digest change or new
+the approved envelope needs no prompt and does not shrink the ceiling: the review
+unions current demand with still-authorized brief capacity so a later plan extension
+cannot silently drop unused authority. A widening, binding/profile/digest change or new
 host effect produces an amendment review with a structured delta: requirements,
 bindings, units, materials, host effects and known-or-unknown byte change. An amendment
 stores that delta rather than a duplicate successor envelope and must reconstruct its
 exact server-derived successor fingerprint. A binding, profile or digest change is
 never silent. When an already-proven project's method meaning changes, the change
-follows the existing transition/MRTR boundary. Operational authorization is not a
-fourth generic approval layer and does not replace MRTR admission of method, inputs
-and criteria.
+follows the existing transition/MRTR boundary.
+
+`withdrawUnused: true` is a separate server-derived withdrawal of that unused surplus.
+The caller still names only the project. The server plans the exact current
+`plannedCeiling.capabilityRequirements` with the same catalogue, policy, host and lock.
+It may be offered only when the authorized envelope already covers that subset and the
+delta is strictly subtractive: at least one removed requirement, no added requirement,
+no requirement replacement, no remaining binding/digest/profile/unit/material change,
+and no added host effect. Removing the unused unit that made aggregate security or
+byte estimates unknown may improve `security` from `unknown` to `reviewed` and
+aggregate `downloadBytes`/`storageBytes` from `null` to a known exact remainder;
+those reductions are not new host authority. `reviewed` becoming `unknown`, a known
+aggregate becoming `null`, or a larger known estimate remains a widening. Removed
+units, materials and effects are allowed. The signed retry reuses the append-only
+`amendment-authorized` event. The confirmation removes
+unused operational authority only; it does not delete images, data or evidence, and
+does not approve or reinterpret engineering methods or results. A no-op withdrawal
+returns `no-change`. If current demand is not covered, the existing amendment or
+method-transition path remains required.
+
+Operational authorization is not a fourth generic approval layer and does not replace
+MRTR admission of method, inputs and criteria.
 
 An unchanged blocked candidate already present in the approved ceiling remains visible
 without blocking an otherwise resolved comparison. For example, a previously approved

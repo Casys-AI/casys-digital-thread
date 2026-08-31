@@ -198,6 +198,67 @@ export function projectCapabilityChangeRequiresMethodTransition(
 }
 
 /**
+ * Unused-withdrawal may shrink only by dropping requirements the current plan
+ * no longer names. Any addition, replacement, or remaining-binding/digest
+ * change is a published-plan amendment or method transition instead.
+ * Dropping the unused unit that made aggregate security or byte estimates
+ * unknown may improve `unknown -> reviewed` and `null -> known`; those
+ * reductions are not new host authority. `reviewed -> unknown` and a larger
+ * known byte estimate remain widenings.
+ */
+export function isStrictUnusedWithdrawalDelta(
+  delta: ProjectCapabilityEnvelopeDelta,
+): boolean {
+  if (
+    delta.removedRequirementKeys.length === 0 ||
+    delta.addedRequirementKeys.length > 0 ||
+    delta.addedRequirements.length > 0 ||
+    delta.requirementReplacements.length > 0 ||
+    delta.units.addedIds.length > 0 ||
+    delta.units.changedIds.length > 0 ||
+    delta.units.added.length > 0 ||
+    delta.units.changed.length > 0 ||
+    delta.materials.added.length > 0 ||
+    delta.materials.changed.length > 0
+  ) {
+    return false;
+  }
+  const removedRequirements = new Set(delta.removedRequirementKeys);
+  if (
+    delta.bindingReplacements.some((replacement) =>
+      replacement.next !== null || replacement.previous === null ||
+      !removedRequirements.has(replacement.requirementKey)
+    )
+  ) {
+    return false;
+  }
+  return !unusedWithdrawalAddsHostEffects(delta.effects);
+}
+
+function unusedWithdrawalAddsHostEffects(
+  effects: ProjectCapabilityHostEffectsDelta,
+): boolean {
+  const added = effects.added;
+  if (
+    added.services.length > 0 || added.volumes.length > 0 ||
+    added.networks.length > 0 || added.loopbackPorts.length > 0 ||
+    added.bindMounts.length > 0 || added.devices.length > 0 ||
+    added.secretSlots.length > 0 || added.licences.length > 0 ||
+    added.security === "unknown"
+  ) {
+    return true;
+  }
+  return bytesIncreaseHostAuthority(effects.downloadBytes) ||
+    bytesIncreaseHostAuthority(effects.storageBytes);
+}
+
+/** Only a larger known estimate is a byte widening; `null -> known` is not. */
+function bytesIncreaseHostAuthority(value: ProjectCapabilityBytesDelta): boolean {
+  if (value.previous === null || value.next === null) return false;
+  return value.next > value.previous;
+}
+
+/**
  * Adapter metadata remains visible in the amendment delta but cannot
  * reinterpret recorded evidence. Missing candidate identities remain a method
  * transition rather than being treated as equal by omission.

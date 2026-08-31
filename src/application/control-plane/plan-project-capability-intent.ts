@@ -404,14 +404,16 @@ function effectsAreCoveredBy(
 
 /**
  * Aggregate bytes may drop when an exact plan uses fewer already-authorized
- * materials. A new unknown or a larger estimate is an operational widening;
- * unchanged retained material estimates are checked above.
+ * materials. An authorized unknown aggregate may become a known exact remainder
+ * after those unknown materials are dropped; retained material identities and
+ * individual estimates are checked above. A new unknown or a larger known
+ * estimate is an operational widening.
  */
 function bytesAreCovered(
   next: number | null,
   allowed: number | null,
 ): boolean {
-  if (allowed === null) return next === null;
+  if (allowed === null) return true;
   return next !== null && next <= allowed;
 }
 

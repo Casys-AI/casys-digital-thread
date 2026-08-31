@@ -100,7 +100,7 @@ links, not a cascade that computes them. Half a cascade cannot be exercised.
 | `project_brief_propose`    | Agent             | Add an immutable review proposal plus its server-derived `capabilityProposalFingerprint`; neither changes canonical intent nor selects a runtime |
 | `project_brief_confirm`    | Human elicitation | Promote only the exact accepted proposal while echoing its exact `capabilityProposalFingerprint` |
 | `project_capability_inspect` | Read            | Inspect the separate local operational authorization after brief confirmation    |
-| `project_capability_change_review` | Read / human elicitation | Recheck the exact published-plan ceiling; a covered subset needs no prompt, while a server-derived widening delta requires exact signed confirmation |
+| `project_capability_change_review` | Read / human elicitation | Recheck the exact published-plan ceiling; a covered subset needs no prompt and does not shrink the ceiling, `withdrawUnused: true` may confirm a strictly subtractive unused-authority withdrawal, and a server-derived widening delta still requires exact signed confirmation |
 
 Every mutation has a stable command ID, optimistic `expectedRevision` after project
 creation, and stable issue time. An identical retry is idempotent; another payload under

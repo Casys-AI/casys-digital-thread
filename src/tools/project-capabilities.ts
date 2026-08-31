@@ -1,4 +1,5 @@
 import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-server";
+import type { EngineeringProjectSnapshot } from "../domain/project/engineering-project.ts";
 import type { EngineeringProjectRevisionStore } from "../application/ports/out/engineering-project-revision-store.ts";
 import {
   ProjectCapabilityAuthorizationService,
@@ -50,50 +51,31 @@ export function registerProjectCapabilityTools(
     if (!project) {
       throw new TypeError(`Engineering project ${projectId} does not exist.`);
     }
-    const review = await dependencies.authorization.reviewPublishedPlan(project);
+    const withdrawUnused = optionalBoolean(args.withdrawUnused, "withdrawUnused") ??
+      false;
+    const review = withdrawUnused
+      ? await dependencies.authorization.reviewUnusedWithdrawal(project)
+      : await dependencies.authorization.reviewPublishedPlan(project);
+    if (withdrawUnused) {
+      return await resolveUnusedWithdrawal(
+        dependencies,
+        project,
+        review,
+        args,
+        context,
+      );
+    }
     if (review.status !== "amendment-required") {
       return changeReviewResult(review);
     }
-    const expectedFingerprint = optionalFingerprint(
-      args.capabilityProposalFingerprint,
-      "capabilityProposalFingerprint",
-    );
-    const mode = dependencies.approvalMode ?? INTERACTIVE_PROJECT_APPROVAL_MODE;
-    if (autoConfirms(mode, "capability-amend")) {
-      const ledger = await dependencies.authorization.authorizeAmendment(
-        project,
-        expectedFingerprint ?? review.proposal.capabilityProposalFingerprint,
-      );
-      return {
-        content: localYoloRationale(
-          `capability amendment ${review.proposal.capabilityProposalFingerprint.digest}`,
-        ),
-        structuredContent: { authorization: ledger.effectiveEnvelope },
-      };
-    }
-    const confirmed = amendmentConfirmationResponse(context);
-    if (confirmed === undefined) return amendmentConfirmationRequest(review);
-    if (!confirmed) {
-      return {
-        content:
-          "The capability amendment was not confirmed. The existing operational authorization remains unchanged.",
-        structuredContent: review,
-      };
-    }
-    if (!expectedFingerprint) {
-      throw new TypeError(
-        "A confirmed capability amendment must echo capabilityProposalFingerprint from this exact review.",
-      );
-    }
-    const ledger = await dependencies.authorization.authorizeAmendment(
+    return await resolveConfirmedCapabilityChange({
+      dependencies,
       project,
-      expectedFingerprint,
-    );
-    return {
-      content:
-        "The exact operational capability amendment is now authorized. It does not approve an engineering method or result.",
-      structuredContent: { authorization: ledger.effectiveEnvelope },
-    };
+      review,
+      args,
+      context,
+      kind: "amendment",
+    });
   });
 }
 
@@ -114,15 +96,21 @@ const projectCapabilityInspectTool: MCPTool = {
 const projectCapabilityChangeReviewTool: MCPTool = {
   name: "project_capability_change_review",
   description:
-    "Compare the current exact published-plan demand with the project operational capability ceiling. Covered subsets need no prompt. A widening or binding/digest/host-effect change is presented as a delta-only human confirmation; callers never supply capabilities, providers, images, endpoints, tools or arguments.",
+    "Compare the current exact published-plan demand with the project operational capability ceiling. Covered subsets need no prompt and do not shrink the ceiling. withdrawUnused=true may offer a server-derived shrink to that exact current demand when the delta is strictly subtractive. A widening or binding/digest/host-effect change remains a delta-only human confirmation. Callers never supply capabilities, providers, images, endpoints, tools or arguments.",
   inputSchema: {
     type: "object",
     properties: {
       projectId: PROJECT_ID,
+      withdrawUnused: {
+        type: "boolean",
+        default: false,
+        description:
+          "When true, review shrinking the authorized ceiling to the exact current planned demand. Omitted or false leaves a covered subset unchanged. Callers never supply capability ids, providers, images, endpoints, tools or arguments.",
+      },
       capabilityProposalFingerprint: {
         ...FINGERPRINT_SCHEMA,
         description:
-          "Optional on the first read. Required only on an accepted signed retry, copied exactly from the preceding amendment review.",
+          "Optional on the first read. Required only on an accepted signed retry, copied exactly from the preceding amendment or unused-withdrawal review.",
       },
     },
     required: ["projectId"],
@@ -135,6 +123,8 @@ const projectCapabilityChangeReviewTool: MCPTool = {
 function changeReviewResult(review: ProjectCapabilityChangeReview) {
   const content = review.status === "covered"
     ? "The exact published-plan capability demand is covered by the existing operational ceiling; no new prompt is needed."
+    : review.status === "no-change"
+    ? "No unused operational capability authority to withdraw; the authorized ceiling is unchanged."
     : review.status === "not-authorized"
     ? "This project has no effective operational capability authorization."
     : review.status === "revoked"
@@ -143,13 +133,124 @@ function changeReviewResult(review: ProjectCapabilityChangeReview) {
     ? "The exact plan would switch a binding on a project with recorded proofs. A method transition/MRTR path is required; no silent amendment is available."
     : review.status === "unresolved"
     ? "The exact plan capability demand is unresolved and cannot be authorized."
+    : review.status === "withdrawal-required"
+    ? "The project can shrink unused operational authority to the exact current planned demand."
     : "The exact plan needs an operational capability amendment.";
   return { content, structuredContent: review };
 }
 
-function amendmentConfirmationRequest(
-  review: Extract<ProjectCapabilityChangeReview, { status: "amendment-required" }>,
+async function resolveUnusedWithdrawal(
+  dependencies: ProjectCapabilityToolDependencies,
+  project: EngineeringProjectSnapshot,
+  review: ProjectCapabilityChangeReview,
+  args: Record<string, unknown>,
+  context?: ToolHandlerContext,
 ) {
+  if (review.status === "no-change" || review.status === "covered") {
+    return {
+      content:
+        "No unused operational capability authority to withdraw; the authorized ceiling is unchanged.",
+      structuredContent: { ...review, status: "no-change" as const },
+    };
+  }
+  if (review.status !== "withdrawal-required") {
+    const fallback = changeReviewResult(review);
+    return {
+      content: `Unused operational withdrawal is not available. ${fallback.content}`,
+      structuredContent: review,
+    };
+  }
+  return await resolveConfirmedCapabilityChange({
+    dependencies,
+    project,
+    review,
+    args,
+    context,
+    kind: "withdrawal",
+  });
+}
+
+async function resolveConfirmedCapabilityChange(input: {
+  readonly dependencies: ProjectCapabilityToolDependencies;
+  readonly project: EngineeringProjectSnapshot;
+  readonly review: Extract<
+    ProjectCapabilityChangeReview,
+    { status: "amendment-required" | "withdrawal-required" }
+  >;
+  readonly args: Record<string, unknown>;
+  readonly context?: ToolHandlerContext;
+  readonly kind: "amendment" | "withdrawal";
+}) {
+  const expectedFingerprint = optionalFingerprint(
+    input.args.capabilityProposalFingerprint,
+    "capabilityProposalFingerprint",
+  );
+  const mode = input.dependencies.approvalMode ?? INTERACTIVE_PROJECT_APPROVAL_MODE;
+  const authorize = input.kind === "withdrawal"
+    ? input.dependencies.authorization.authorizeUnusedWithdrawal.bind(
+      input.dependencies.authorization,
+    )
+    : input.dependencies.authorization.authorizeAmendment.bind(
+      input.dependencies.authorization,
+    );
+  if (autoConfirms(mode, "capability-amend")) {
+    const ledger = await authorize(
+      input.project,
+      expectedFingerprint ?? input.review.proposal.capabilityProposalFingerprint,
+    );
+    return {
+      content: localYoloRationale(
+        input.kind === "withdrawal"
+          ? `unused capability withdrawal ${input.review.proposal.capabilityProposalFingerprint.digest}`
+          : `capability amendment ${input.review.proposal.capabilityProposalFingerprint.digest}`,
+      ),
+      structuredContent: { authorization: ledger.effectiveEnvelope },
+    };
+  }
+  const confirmed = amendmentConfirmationResponse(input.context);
+  if (confirmed === undefined) {
+    return capabilityChangeConfirmationRequest(input.review, input.kind);
+  }
+  if (!confirmed) {
+    return {
+      content: input.kind === "withdrawal"
+        ? "The unused capability withdrawal was not confirmed. The existing operational authorization remains unchanged."
+        : "The capability amendment was not confirmed. The existing operational authorization remains unchanged.",
+      structuredContent: input.review,
+    };
+  }
+  if (!expectedFingerprint) {
+    throw new TypeError(
+      input.kind === "withdrawal"
+        ? "A confirmed unused capability withdrawal must echo capabilityProposalFingerprint from this exact review."
+        : "A confirmed capability amendment must echo capabilityProposalFingerprint from this exact review.",
+    );
+  }
+  const ledger = await authorize(input.project, expectedFingerprint);
+  return {
+    content: input.kind === "withdrawal"
+      ? "The unused operational capability authority has been withdrawn to the exact current planned demand. This removes unused operational authority only; it does not delete images, data, or evidence, and does not approve or reinterpret engineering methods or results."
+      : "The exact operational capability amendment is now authorized. It does not approve an engineering method or result.",
+    structuredContent: { authorization: ledger.effectiveEnvelope },
+  };
+}
+
+function capabilityChangeConfirmationRequest(
+  review: Extract<
+    ProjectCapabilityChangeReview,
+    { status: "amendment-required" | "withdrawal-required" }
+  >,
+  kind: "amendment" | "withdrawal",
+) {
+  const withdrawalCopy =
+    "This removes unused operational authority only; it does not delete images, data, or evidence, and does not approve or reinterpret engineering methods or results.";
+  const message = kind === "withdrawal"
+    ? `The project can shrink unused operational authority: -${review.delta.removedRequirementKeys.length} requirement(s), binding removals ${review.delta.bindingReplacements.length}, unit removals ${review.delta.units.removedIds.length}. Confirm this exact host-operational withdrawal. ${withdrawalCopy}`
+    : `The project now needs an operational capability delta: +${review.delta.addedRequirementKeys.length}, binding changes ${review.delta.bindingReplacements.length}, unit changes ${
+      review.delta.units.addedIds.length +
+      review.delta.units.removedIds.length +
+      review.delta.units.changedIds.length
+    }. Confirm this exact host-operational amendment. This does not approve an engineering method or result.`;
   return {
     resultType: "input_required",
     // The signed retry needs an exact opaque proposal identity. It is emitted
@@ -164,20 +265,18 @@ function amendmentConfirmationRequest(
         method: "elicitation/create",
         params: {
           mode: "form",
-          message:
-            `The project now needs an operational capability delta: +${review.delta.addedRequirementKeys.length}, binding changes ${review.delta.bindingReplacements.length}, unit changes ${
-              review.delta.units.addedIds.length +
-              review.delta.units.removedIds.length +
-              review.delta.units.changedIds.length
-            }. Confirm this exact host-operational amendment. This does not approve an engineering method or result.`,
+          message,
           requestedSchema: {
             type: "object",
             properties: {
               confirmed: {
                 type: "boolean",
-                title: "Confirm this capability amendment",
-                description:
-                  "I authorize this exact additional local operational capability ceiling for the project.",
+                title: kind === "withdrawal"
+                  ? "Confirm this unused capability withdrawal"
+                  : "Confirm this capability amendment",
+                description: kind === "withdrawal"
+                  ? `I authorize shrinking this project's operational capability ceiling to the exact current planned demand. ${withdrawalCopy}`
+                  : "I authorize this exact additional local operational capability ceiling for the project.",
               },
             },
             required: ["confirmed"],
@@ -237,6 +336,11 @@ function requiredString(value: unknown, name: string): string {
 function requiredBoolean(value: unknown, name: string): boolean {
   if (typeof value !== "boolean") throw new TypeError(`${name} must be boolean.`);
   return value;
+}
+
+function optionalBoolean(value: unknown, name: string): boolean | undefined {
+  if (value === undefined) return undefined;
+  return requiredBoolean(value, name);
 }
 
 function oneOf<T extends string>(value: unknown, allowed: readonly T[]): T {

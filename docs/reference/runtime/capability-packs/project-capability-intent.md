@@ -55,8 +55,10 @@ authorizes that exact operational ceiling; it does not approve a method or resul
 After publication, the demand compiler derives the exact current planned ceiling and JIT
 slice from the registered work-item history. `project_capability_change_review` then
 compares that later `published-plan` proposal against the approved envelope. A subset
-needs no new prompt; a widening or changed binding/material/effect is a bounded human
-amendment. See [project capability demand](project-capability-demand.md) and
+needs no new prompt and does not shrink the ceiling; a widening or changed
+binding/material/effect is a bounded human amendment. Shrinking unused surplus requires
+the explicit `withdrawUnused` confirmation on that same tool. See
+[project capability demand](project-capability-demand.md) and
 [project capability authorization](project-capability-authorization.md).
 
 The code-owned route is

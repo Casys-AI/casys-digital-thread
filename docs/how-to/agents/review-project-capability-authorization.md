@@ -53,18 +53,23 @@ other reported states literal.
 
 After `project_plan_publish`, or after a change that changes the published plan, call
 `project_capability_change_review` with the project id. The server recompiles the exact
-current planned ceiling; it does not accept an agent-supplied capability list.
+current planned ceiling; it does not accept an agent-supplied capability list. Omit
+`withdrawUnused` unless the person asked to shrink unused operational authority.
 
 | Review state | Next action |
 | --- | --- |
-| `covered` | The exact plan is a subset of the approved envelope. No new capability prompt is needed. Continue through the normal project/MRTR path. |
-| `amendment-required` | Read the structured delta. Ask the paired MCP host for the human decision, then let its verified signed retry echo the returned `capabilityProposalFingerprint` exactly. |
+| `covered` | The exact plan is a subset of the approved envelope. No new capability prompt is needed and the ceiling is not shrunk. Continue through the normal project/MRTR path. |
+| `no-change` (`withdrawUnused: true`) | There is no unused surplus to withdraw. The authorized ceiling is unchanged. |
+| `withdrawal-required` (`withdrawUnused: true`) | Read the removal-only delta. Ask the paired MCP host for the human decision, then let its verified signed retry echo the returned `capabilityProposalFingerprint` exactly. This removes unused operational authority only; it does not delete images, data or evidence, and does not approve or reinterpret engineering methods or results. |
+| `amendment-required` | Read the structured delta. Ask the paired MCP host for the human decision, then let its verified signed retry echo the returned `capabilityProposalFingerprint` exactly. If this appeared during `withdrawUnused: true`, stop the withdrawal and use this ordinary amendment path instead. |
 | `method-transition-required` | Stop this amendment path. Follow the existing method-transition/MRTR boundary; do not silently switch a recorded proof's binding. |
 | `not-authorized`, `revoked`, or `unresolved` | Stop. Re-establish the appropriate brief/authorization basis or resolve the reported project state; do not queue around it. |
 
 The subset test uses the full planned ceiling, not only work that happens to be ready for
 JIT now. A runtime becoming qualified or cached without changing the approved ceiling is
-an operational observation, not by itself an amendment.
+an operational observation, not by itself an amendment. After a confirmed unused
+withdrawal, a later or current plan that again needs a removed capability is
+`amendment-required` until that ordinary delta is authorized.
 
 A blocked capability that was already approved may remain literally visible while the
 server reviews a wholly resolved delta beside it. Treat that only as retention of the
