@@ -21,13 +21,14 @@ const SUBJECT = "subject-mechanism";
 const ARCHITECTURE = `architecture-${"a".repeat(64)}`;
 const FP = { algorithm: "sha256" as const, digest: "a".repeat(64) };
 
-Deno.test("prescribed-kinematics case review preserves the exact same-file assembly/body closure", async () => {
-  const { text, state } = await workspace([
-    "usage-assembly",
-    "usage-base",
-    "usage-head",
-  ]);
-  const review = await capture(text, state, ["usage-base", "usage-head"]).capture({
+Deno.test("prescribed-kinematics case review recrosses a nested PartUsage assembly through typed_by", async () => {
+  const { text, state } = await workspace(PART_USAGE_TARGETS);
+  const review = await capture(text, state, {
+    typedDefinitionId: (usageId) =>
+      usageId === "usage-assembly" ? "definition-assembly" : undefined,
+    immediateUsageIds: (definitionId) =>
+      definitionId === "definition-assembly" ? ["usage-base", "usage-head"] : [],
+  }).capture({
     projectId: PROJECT,
     workspaceRevision: state.workspaceRevision,
     attachmentId: "attachment-assembly",
@@ -37,16 +38,58 @@ Deno.test("prescribed-kinematics case review preserves the exact same-file assem
   if (review.status !== "resolved") return;
   assertEquals(review.grants, "none");
   assertEquals(
-    review.sealedCase.sourceClosure.workspace.attachments.map((item) =>
-      item.partUsageElementId
-    ),
-    ["usage-assembly", "usage-base", "usage-head"],
+    review.sealedCase.sourceClosure.workspace.attachments.map((item) => ({
+      elementKind: item.elementKind,
+      elementId: item.elementId,
+    })),
+    [
+      { elementKind: "PartUsage", elementId: "usage-assembly" },
+      { elementKind: "PartUsage", elementId: "usage-base" },
+      { elementKind: "PartUsage", elementId: "usage-head" },
+    ],
+  );
+});
+
+Deno.test("prescribed-kinematics case review recrosses a root PartDefinition assembly directly", async () => {
+  const { text, state } = await workspace(PART_DEFINITION_TARGETS, {
+    elementId: "definition-assembly",
+    elementKind: "PartDefinition",
+  });
+  const review = await capture(text, state, {
+    typedDefinitionId: () => undefined,
+    immediateUsageIds: (definitionId) =>
+      definitionId === "definition-assembly" ? ["usage-base", "usage-head"] : [],
+  }).capture({
+    projectId: PROJECT,
+    workspaceRevision: state.workspaceRevision,
+    attachmentId: "attachment-assembly",
+    attachmentRevision: 1,
+  });
+  assertEquals(review.status, "resolved");
+  if (review.status !== "resolved") return;
+  assertEquals(
+    review.sealedCase.sourceClosure.workspace.attachments.map((item) => ({
+      elementKind: item.elementKind,
+      elementId: item.elementId,
+    })),
+    [
+      { elementKind: "PartDefinition", elementId: "definition-assembly" },
+      { elementKind: "PartUsage", elementId: "usage-base" },
+      { elementKind: "PartUsage", elementId: "usage-head" },
+    ],
   );
 });
 
 Deno.test("prescribed-kinematics case review leaves a missing same-file body attachment unresolved", async () => {
-  const { text, state } = await workspace(["usage-assembly", "usage-base"]);
-  const review = await capture(text, state, ["usage-base", "usage-head"]).capture({
+  const { text, state } = await workspace([
+    { elementId: "usage-assembly", elementKind: "PartUsage" },
+    { elementId: "usage-base", elementKind: "PartUsage" },
+  ]);
+  const review = await capture(text, state, {
+    typedDefinitionId: (usageId) =>
+      usageId === "usage-assembly" ? "definition-assembly" : undefined,
+    immediateUsageIds: () => ["usage-base", "usage-head"],
+  }).capture({
     projectId: PROJECT,
     workspaceRevision: state.workspaceRevision,
     attachmentId: "attachment-assembly",
@@ -59,12 +102,12 @@ Deno.test("prescribed-kinematics case review leaves a missing same-file body att
 });
 
 Deno.test("prescribed-kinematics case review refuses a declared-against immediate-body mismatch", async () => {
-  const { text, state } = await workspace([
-    "usage-assembly",
-    "usage-base",
-    "usage-head",
-  ]);
-  const review = await capture(text, state, ["usage-base"]).capture({
+  const { text, state } = await workspace(PART_USAGE_TARGETS);
+  const review = await capture(text, state, {
+    typedDefinitionId: (usageId) =>
+      usageId === "usage-assembly" ? "definition-assembly" : undefined,
+    immediateUsageIds: () => ["usage-base"],
+  }).capture({
     projectId: PROJECT,
     workspaceRevision: state.workspaceRevision,
     attachmentId: "attachment-assembly",
@@ -76,10 +119,41 @@ Deno.test("prescribed-kinematics case review refuses a declared-against immediat
   assertEquals(review.grants, "none");
 });
 
+Deno.test("prescribed-kinematics case review refuses a nested PartUsage without typed_by", async () => {
+  const { text, state } = await workspace(PART_USAGE_TARGETS);
+  const review = await capture(text, state, {
+    typedDefinitionId: () => undefined,
+    immediateUsageIds: () => ["usage-base", "usage-head"],
+  }).capture({
+    projectId: PROJECT,
+    workspaceRevision: state.workspaceRevision,
+    attachmentId: "attachment-assembly",
+    attachmentRevision: 1,
+  });
+  assertEquals(review.status, "unresolved");
+  if (review.status !== "unresolved") return;
+  assertEquals(review.diagnostic.code, "assembly_typed_by_missing");
+});
+
+const PART_USAGE_TARGETS = [
+  { elementId: "usage-assembly", elementKind: "PartUsage" as const },
+  { elementId: "usage-base", elementKind: "PartUsage" as const },
+  { elementId: "usage-head", elementKind: "PartUsage" as const },
+];
+
+const PART_DEFINITION_TARGETS = [
+  { elementId: "definition-assembly", elementKind: "PartDefinition" as const },
+  { elementId: "usage-base", elementKind: "PartUsage" as const },
+  { elementId: "usage-head", elementKind: "PartUsage" as const },
+];
+
 function capture(
   text: string,
   state: ProjectSourceWorkspaceState,
-  immediateBodyUsages: readonly string[],
+  facts: {
+    typedDefinitionId: (usageId: string) => string | undefined;
+    immediateUsageIds: (definitionId: string) => readonly string[];
+  },
 ): CaptureProjectPrescribedKinematicsCase {
   return new CaptureProjectPrescribedKinematicsCase({
     workspace: {
@@ -94,21 +168,25 @@ function capture(
       reopenUtf8Text: async () => ({ text }),
     } as unknown as ReopenAgentResource,
     architecture: {
-      open: async () => ({
-        typedDefinitionId: (usageId: string) =>
-          usageId === "usage-assembly" ? "definition-assembly" : undefined,
-        immediateUsageIds: (definitionId: string) =>
-          definitionId === "definition-assembly" ? immediateBodyUsages : [],
-      }),
+      open: async () => facts,
     },
   });
 }
 
-async function workspace(targets: readonly string[]): Promise<{
+async function workspace(
+  targets: readonly {
+    readonly elementId: string;
+    readonly elementKind: "PartDefinition" | "PartUsage";
+  }[],
+  assembly: {
+    readonly elementId: string;
+    readonly elementKind: "PartDefinition" | "PartUsage";
+  } = { elementId: "usage-assembly", elementKind: "PartUsage" },
+): Promise<{
   readonly text: string;
   readonly state: ProjectSourceWorkspaceState;
 }> {
-  const { text } = canonicalizePrescribedKinematicsCaseSource(source());
+  const { text } = canonicalizePrescribedKinematicsCaseSource(source(assembly));
   const digest = await sha256Hex(new TextEncoder().encode(text));
   let state = emptyProjectSourceWorkspace(PROJECT);
   state = (await applyProjectSourceWorkspaceCommand(state, {
@@ -143,16 +221,19 @@ async function workspace(targets: readonly string[]): Promise<{
     },
   })).state;
   for (const target of targets) {
+    const attachmentId = `attachment-${
+      target.elementId.replace(/^(usage|definition)-/, "")
+    }`;
     state = (await applyProjectSourceWorkspaceCommand(state, {
       projectId: PROJECT,
-      mutationId: `attachment-${target}`,
+      mutationId: attachmentId,
       expectedWorkspaceRevision: state.workspaceRevision,
       mutation: {
         kind: "attachment_put",
-        attachmentId: `attachment-${target.slice("usage-".length)}`,
+        attachmentId,
         fileId: "file-mechanism",
         role: PRESCRIBED_KINEMATICS_SOURCE_ATTACHMENT_ROLE,
-        target: { elementId: target, elementKind: "PartUsage" },
+        target,
         declaredAgainst: {
           thread: { snapshotId: "thread-mechanism", revision: 1, subjectId: SUBJECT },
           architecture: {
@@ -167,7 +248,12 @@ async function workspace(targets: readonly string[]): Promise<{
   return { text, state };
 }
 
-function source() {
+function source(
+  assembly: {
+    readonly elementId: string;
+    readonly elementKind: "PartDefinition" | "PartUsage";
+  },
+) {
   const pose = {
     positionM: [0, 0, 0] as const,
     orientationWxyz: [1, 0, 0, 0] as const,
@@ -180,7 +266,7 @@ function source() {
     evidenceBoundary:
       "Only prescribed kinematic poses, angles, residuals, and convergence are observable.",
     project: { id: PROJECT, subjectId: SUBJECT },
-    assembly: { partUsageElementId: "usage-assembly" },
+    assembly,
     units: { length: "m", angle: "rad", time: "s" },
     durationS: 1,
     groundBodyId: "body-base",

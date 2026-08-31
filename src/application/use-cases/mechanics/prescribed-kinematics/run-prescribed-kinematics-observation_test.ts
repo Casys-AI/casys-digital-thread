@@ -594,7 +594,7 @@ function source(sampleCount = 3) {
     evidenceBoundary:
       "Only kinematic poses, angles, residuals, and convergence are observable.",
     project: { id: PROJECT, subjectId: "subject" },
-    assembly: { partUsageElementId: "usage-assembly" },
+    assembly: { elementId: "usage-assembly", elementKind: "PartUsage" },
     units: { length: "m", angle: "rad", time: "s" },
     durationS,
     groundBodyId: "base",

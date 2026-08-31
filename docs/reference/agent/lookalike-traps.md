@@ -39,12 +39,12 @@ The server owns the translation from engineering need to local runtime. These id
 are deliberately separate; an agent proposes registered work but does not select or
 supply any of them.
 
-| This | Is | Is not |
-| --- | --- | --- |
-| Semantic capability | Provider-neutral engineering need, for example `mechanics.solve-static-structural@1` | A provider, package, image, endpoint, or runtime command |
-| Binding | Policy-selected concrete adapter/profile for one semantic capability, with its catalogue qualification | An agent choice or a scientific verdict |
-| Atomic unit | Concrete installable material or technically indivisible cluster | A semantic capability or a method/MRTR approval |
-| Immutable material / digest | Exact versioned runtime artifact identity inside an atomic unit | A mutable tag, an authorization by itself, or an engineering result |
+| This                        | Is                                                                                                     | Is not                                                              |
+| --------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| Semantic capability         | Provider-neutral engineering need, for example `mechanics.solve-static-structural@1`                   | A provider, package, image, endpoint, or runtime command            |
+| Binding                     | Policy-selected concrete adapter/profile for one semantic capability, with its catalogue qualification | An agent choice or a scientific verdict                             |
+| Atomic unit                 | Concrete installable material or technically indivisible cluster                                       | A semantic capability or a method/MRTR approval                     |
+| Immutable material / digest | Exact versioned runtime artifact identity inside an atomic unit                                        | A mutable tag, an authorization by itself, or an engineering result |
 
 The [capability pack references](../runtime/capability-packs/README.md) own the exact
 catalogue, authorization and lifecycle rules.
@@ -74,18 +74,18 @@ of that catalog.
 Domain contract: [mechanism](../domains/mechanism/README.md). Recovery:
 [prescribed-kinematics observation recovery](../pipeline/prescribed-kinematics-observation-recovery.md).
 
-| This | Is | Is not |
-| --- | --- | --- |
-| `project_prescribed_kinematics_case_review` | Read-only recross of one exact same-file `mechanism-source@1` closure and immediate `PartUsage` architecture binding, plus pasteable L1 envelopes | L1 seal, provider probe, MRTR, L3 observation, L4 evaluation, or L5 decision |
-| `verify.seal-prescribed-kinematics-case@1` | L1 Thread seal of the exact recrossed case | The L2 run MRTR, a provider request, or an L3 observation |
-| `project_prescribed_kinematics_run_review` | Read-only next-hop for `verify.run-prescribed-kinematics@1` from the unique current L1 case | L2 approval, Chrono call, or a caller-selected provider/runtime |
-| `methodSheet.caseFingerprint` / `methodSheet.observationFingerprint` | Domain sealed-case SHA-256 and canonical observation SHA-256 required by the method sheet | Outer Thread artifact or observation-capture fingerprints on `evidence.*` |
-| L2 signed MRTR + sealed ROP | Exact authority for one registered L3 observation action | A runtime qualification, a provider request, or L3 facts |
-| `deno task capability:qualify` | Private host-local qualification attestation; an exact host may be qualified in emulated AMD64 mode | A catalogue rewrite, project authorization, sealed ROP, JIT lease, MCP operation, or L3 product run |
-| `verify.run-prescribed-kinematics@1` | L3 factual observation after the server's one-dispatch WAL and same-request receipt readback | L4, L5, collision/clearance/force/safety verdict, or an agent-selected provider call |
-| `verify.evaluate-prescribed-kinematics@1` | Provider-free L4 application of an exact sealed method to L1/L3 evidence | Provider dispatch, a method seal, or human closeout |
-| `record.reconcile-uncertain-writer@1` | Human-only resolution of a terminal unknown provider outcome | A missing L3 capture, basis release by itself, or a retry of the failed run |
-| Product L3 WAL | Run/case/request identity, one dispatch claim, and same-request readback | The separate host qualification WAL |
+| This                                                                 | Is                                                                                                                                           | Is not                                                                                              |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `project_prescribed_kinematics_case_review`                          | Read-only recross of one exact same-file `mechanism-source@1` closure and assembly-context architecture binding, plus pasteable L1 envelopes | L1 seal, provider probe, MRTR, L3 observation, L4 evaluation, or L5 decision                        |
+| `verify.seal-prescribed-kinematics-case@1`                           | L1 Thread seal of the exact recrossed case                                                                                                   | The L2 run MRTR, a provider request, or an L3 observation                                           |
+| `project_prescribed_kinematics_run_review`                           | Read-only next-hop for `verify.run-prescribed-kinematics@1` from the unique current L1 case                                                  | L2 approval, Chrono call, or a caller-selected provider/runtime                                     |
+| `methodSheet.caseFingerprint` / `methodSheet.observationFingerprint` | Domain sealed-case SHA-256 and canonical observation SHA-256 required by the method sheet                                                    | Outer Thread artifact or observation-capture fingerprints on `evidence.*`                           |
+| L2 signed MRTR + sealed ROP                                          | Exact authority for one registered L3 observation action                                                                                     | A runtime qualification, a provider request, or L3 facts                                            |
+| `deno task capability:qualify`                                       | Private host-local qualification attestation; an exact host may be qualified in emulated AMD64 mode                                          | A catalogue rewrite, project authorization, sealed ROP, JIT lease, MCP operation, or L3 product run |
+| `verify.run-prescribed-kinematics@1`                                 | L3 factual observation after the server's one-dispatch WAL and same-request receipt readback                                                 | L4, L5, collision/clearance/force/safety verdict, or an agent-selected provider call                |
+| `verify.evaluate-prescribed-kinematics@1`                            | Provider-free L4 application of an exact sealed method to L1/L3 evidence                                                                     | Provider dispatch, a method seal, or human closeout                                                 |
+| `record.reconcile-uncertain-writer@1`                                | Human-only resolution of a terminal unknown provider outcome                                                                                 | A missing L3 capture, basis release by itself, or a retry of the failed run                         |
+| Product L3 WAL                                                       | Run/case/request identity, one dispatch claim, and same-request readback                                                                     | The separate host qualification WAL                                                                 |
 
 ## CAD and compile
 

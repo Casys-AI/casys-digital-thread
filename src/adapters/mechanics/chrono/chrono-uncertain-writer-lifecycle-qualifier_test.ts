@@ -814,7 +814,7 @@ async function sealedCaseFixture(): Promise<PrescribedKinematicsCase> {
     evidenceBoundary:
       "Only kinematic poses, angles, residuals, and convergence are observable.",
     project: { id: projectId, subjectId },
-    assembly: { partUsageElementId: "usage-assembly" },
+    assembly: { elementId: "usage-assembly", elementKind: "PartUsage" },
     units: { length: "m", angle: "rad", time: "s" },
     durationS: 1,
     groundBodyId: "base",
@@ -861,12 +861,13 @@ async function sealedCaseFixture(): Promise<PrescribedKinematicsCase> {
         },
       },
       attachments: ["usage-assembly", "usage-base", "usage-head"].map(
-        (partUsageElementId, index) => ({
+        (elementId, index) => ({
           attachmentId: `attachment-${index + 1}`,
           attachmentRevision: 1,
           fingerprint: FP("c"),
           closureFingerprint: FP("d"),
-          partUsageElementId,
+          elementId,
+          elementKind: "PartUsage" as const,
         }),
       ),
       root: {

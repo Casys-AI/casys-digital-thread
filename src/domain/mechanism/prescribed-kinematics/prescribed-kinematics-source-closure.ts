@@ -1,10 +1,10 @@
 /**
  * Exact ProjectSourceWorkspace binding for a prescribed-kinematics JSON case.
  *
- * One mechanism file is attached, at exact active heads, to its assembly and
- * every explicitly mapped body PartUsage. The pure workspace can prove the
- * same-file and same-basis facts; the application layer must still recross the
- * exact SysML graph to establish that those usages are immediate children.
+ * One mechanism file is attached, at exact active heads, to its assembly
+ * context and every explicitly mapped body PartUsage. The pure workspace can
+ * prove the same-file and same-basis facts; the application layer must still
+ * recross the exact SysML graph to establish the body set.
  */
 
 import {
@@ -22,6 +22,11 @@ import {
   sha256Fingerprint,
   sha256Hex,
 } from "../../kernel/deterministic-json.ts";
+import {
+  parseProductStructureElementRef,
+  type ProductStructureElementKind,
+  type ProductStructureElementRef,
+} from "../../architecture/product-structure-ref.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
 import {
   PROJECT_SOURCE_CLOSURE_SCHEMA,
@@ -71,7 +76,8 @@ export interface PrescribedKinematicsSourceClosure {
       readonly attachmentRevision: number;
       readonly fingerprint: ContentFingerprint;
       readonly closureFingerprint: ContentFingerprint;
-      readonly partUsageElementId: string;
+      readonly elementId: string;
+      readonly elementKind: ProductStructureElementKind;
     }[];
     readonly root: {
       readonly fileId: string;
@@ -97,8 +103,9 @@ export interface PrescribedKinematicsCase {
 
 /**
  * Bind one exact source text to active same-file workspace closures. Callers
- * cannot provide arbitrary PartUsage ids: every declared mapping has to have
- * one matching `mechanism-source@1` attachment at the common exact basis.
+ * cannot provide arbitrary SysML ids: the assembly context and every body
+ * mapping must have one matching `mechanism-source@1` attachment at the
+ * common exact basis.
  */
 export async function resolvePrescribedKinematicsSourceClosure(input: {
   readonly closures: readonly ProjectSourceClosure[];
@@ -281,13 +288,13 @@ function assertSingleJsonRoot(closure: ProjectSourceClosure): void {
     );
   }
   if (
-    closure.attachment.target.elementKind !== "PartUsage" ||
+    !isAssemblyOrBodyKind(closure.attachment.target.elementKind) ||
     closure.attachment.role.id !== PRESCRIBED_KINEMATICS_SOURCE_ATTACHMENT_ROLE.id ||
     closure.attachment.role.version !==
       PRESCRIBED_KINEMATICS_SOURCE_ATTACHMENT_ROLE.version
   ) {
     throw new TypeError(
-      "Prescribed-kinematics source attachments must be mechanism-source@1 edges to PartUsage targets.",
+      "Prescribed-kinematics source attachments must be mechanism-source@1 edges to PartDefinition or PartUsage targets.",
     );
   }
 }
@@ -325,8 +332,8 @@ function assertSameFileAttachmentBasis(
     "$prescribedKinematicsClosures attachment ids",
   );
   rejectDuplicates(
-    closures.map((closure) => closure.attachment.target.elementId),
-    "$prescribedKinematicsClosures PartUsage targets",
+    closures.map((closure) => attachmentTargetKey(closure.attachment.target)),
+    "$prescribedKinematicsClosures attachment targets",
   );
 }
 
@@ -349,13 +356,7 @@ function assertSourceMatchesClosures(
   }
   assertAttachmentTargets(
     source,
-    closures.map((closure) => ({
-      attachmentId: closure.attachment.attachmentId,
-      attachmentRevision: closure.attachment.attachmentRevision,
-      fingerprint: closure.attachment.fingerprint,
-      closureFingerprint: closure.fingerprint,
-      partUsageElementId: closure.attachment.target.elementId,
-    })),
+    closures.map((closure) => closure.attachment.target),
     "$prescribedKinematicsClosures",
   );
 }
@@ -393,11 +394,10 @@ function sourceClosureBody(
       attachmentRevision: closure.attachment.attachmentRevision,
       fingerprint: closure.attachment.fingerprint,
       closureFingerprint: closure.fingerprint,
-      partUsageElementId: closure.attachment.target.elementId,
+      elementId: closure.attachment.target.elementId,
+      elementKind: closure.attachment.target.elementKind,
     })
-  ).sort((left, right) =>
-    left.partUsageElementId.localeCompare(right.partUsageElementId)
-  );
+  ).sort(compareAttachmentTargets);
   return {
     schemaVersion: PRESCRIBED_KINEMATICS_SOURCE_CLOSURE_SCHEMA,
     source,
@@ -454,8 +454,16 @@ function parseWorkspace(
           "attachmentRevision",
           "fingerprint",
           "closureFingerprint",
-          "partUsageElementId",
+          "elementId",
+          "elementKind",
         ],
+        itemPath,
+      );
+      const target = parseProductStructureElementRef(
+        {
+          elementId: record.elementId,
+          elementKind: record.elementKind,
+        },
         itemPath,
       );
       return deepFreeze({
@@ -469,10 +477,8 @@ function parseWorkspace(
           record.closureFingerprint,
           `${itemPath}.closureFingerprint`,
         ),
-        partUsageElementId: safeId(
-          record.partUsageElementId,
-          `${itemPath}.partUsageElementId`,
-        ),
+        elementId: target.elementId,
+        elementKind: target.elementKind,
       });
     },
   );
@@ -484,14 +490,14 @@ function parseWorkspace(
     `${path}.attachments attachment ids`,
   );
   rejectDuplicates(
-    attachments.map((attachment) => attachment.partUsageElementId),
-    `${path}.attachments PartUsage targets`,
+    attachments.map((attachment) => attachmentTargetKey(attachment)),
+    `${path}.attachments targets`,
   );
-  const expectedOrder = [...attachments].sort((left, right) =>
-    left.partUsageElementId.localeCompare(right.partUsageElementId)
-  );
+  const expectedOrder = [...attachments].sort(compareAttachmentTargets);
   if (attachments.some((attachment, index) => attachment !== expectedOrder[index])) {
-    throw new TypeError(`${path}.attachments must use canonical PartUsage order.`);
+    throw new TypeError(
+      `${path}.attachments must use canonical (elementKind, elementId) order.`,
+    );
   }
   const sourceRoot = exactRecord(
     root.root,
@@ -564,27 +570,60 @@ function parseDeclaredAgainst(
 
 function assertAttachmentTargets(
   source: PrescribedKinematicsCaseSource,
-  attachments: readonly { readonly partUsageElementId: string }[],
+  attachments: readonly ProductStructureElementRef[],
   path: string,
 ): void {
-  const expected = [
-    source.assembly.partUsageElementId,
-    ...source.bodies.map((body) => body.partUsageElementId),
-  ].sort();
-  if (new Set(expected).size !== expected.length) {
+  const expected = expectedAttachmentTargets(source);
+  if (new Set(expected.map(attachmentTargetKey)).size !== expected.length) {
     throw new TypeError(
-      `${path} cannot collapse the assembly PartUsage into a body-mapped PartUsage.`,
+      `${path} cannot collapse the assembly context into a body-mapped PartUsage.`,
     );
   }
-  const actual = attachments.map((attachment) => attachment.partUsageElementId).sort();
+  const actual = [...attachments].sort(compareAttachmentTargets);
   if (
     actual.length !== expected.length ||
-    actual.some((partUsageElementId, index) => partUsageElementId !== expected[index])
+    actual.some((attachment, index) =>
+      attachmentTargetKey(attachment) !== attachmentTargetKey(expected[index]!)
+    )
   ) {
     throw new TypeError(
-      `${path} must equal exactly the assembly and body-mapped PartUsage target set.`,
+      `${path} must equal exactly the assembly context and body-mapped PartUsage target set.`,
     );
   }
+}
+
+function expectedAttachmentTargets(
+  source: PrescribedKinematicsCaseSource,
+): readonly ProductStructureElementRef[] {
+  return [
+    source.assembly,
+    ...source.bodies.map((body) =>
+      deepFreeze({
+        elementId: body.partUsageElementId,
+        elementKind: "PartUsage" as const,
+      })
+    ),
+  ].sort(compareAttachmentTargets);
+}
+
+function isAssemblyOrBodyKind(
+  value: string,
+): value is ProductStructureElementKind {
+  return value === "PartDefinition" || value === "PartUsage";
+}
+
+function attachmentTargetKey(
+  target: ProductStructureElementRef,
+): string {
+  return `${target.elementKind}\0${target.elementId}`;
+}
+
+function compareAttachmentTargets(
+  left: ProductStructureElementRef,
+  right: ProductStructureElementRef,
+): number {
+  return left.elementKind.localeCompare(right.elementKind) ||
+    left.elementId.localeCompare(right.elementId);
 }
 
 function fingerprintValue(value: unknown, path: string): ContentFingerprint {

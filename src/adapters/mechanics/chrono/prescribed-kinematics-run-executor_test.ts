@@ -525,7 +525,7 @@ async function sealedCaseFixture(input: {
         },
       },
       attachments: ["usage-assembly", "usage-base", "usage-head"].map(
-        (partUsageElementId, index) => ({
+        (elementId, index) => ({
           attachmentId: `attachment-${index + 1}`,
           attachmentRevision: 1,
           fingerprint: { algorithm: "sha256" as const, digest: "c".repeat(64) },
@@ -533,7 +533,8 @@ async function sealedCaseFixture(input: {
             algorithm: "sha256" as const,
             digest: "d".repeat(64),
           },
-          partUsageElementId,
+          elementId,
+          elementKind: "PartUsage" as const,
         }),
       ),
       root: {
@@ -568,7 +569,7 @@ function caseSource(
     evidenceBoundary:
       "Only kinematic poses, angles, residuals, and convergence are observable.",
     project: { id: projectId, subjectId },
-    assembly: { partUsageElementId: "usage-assembly" },
+    assembly: { elementId: "usage-assembly", elementKind: "PartUsage" },
     units: { length: "m", angle: "rad", time: "s" },
     durationS: 1,
     groundBodyId: "base",

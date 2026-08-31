@@ -3,8 +3,9 @@
 Audience: maintainers · Diátaxis: how-to · Kind: runbook
 
 Use this only when the requested joint, frame, axis, topology, scenario or physical
-question falls outside [current mechanism coverage](../../reference/domains/mechanism/coverage.md).
-A new project that fits V1 is data, attachments and reviewed decisions; it needs no
+question falls outside
+[current mechanism coverage](../../reference/domains/mechanism/coverage.md). A new
+project that fits V1 is data, attachments and reviewed decisions; it needs no
 project-specific code branch. A native Chrono feature or extra JSON key is not a product
 extension.
 
@@ -19,9 +20,10 @@ non-claims before selecting an engine.
 ## 2. Version the closed source and method
 
 Introduce a new schema/profile version when accepted source meaning changes. Define
-exact canonical bytes, fields, limits, workspace closure and `PartUsage` recross. Define
-which facts L3 may report and which separately reviewed L4 criteria may consume them.
-Never accept provider, tool, endpoint, image, solver payload or requested verdict fields.
+exact canonical bytes, fields, limits, workspace closure and assembly-context recross.
+Define which facts L3 may report and which separately reviewed L4 criteria may consume
+them. Never accept provider, tool, endpoint, image, solver payload or requested verdict
+fields.
 
 ## 3. Preserve the authority ladder
 

@@ -128,21 +128,23 @@ export class CaptureProjectPrescribedKinematicsCase
         "The exact declared-against architecture-capture/4.0 could not be reopened.",
       );
     }
-    const assembly = sourceClosure.source.assembly.partUsageElementId;
-    const typedAssembly = facts.typedDefinitionId(assembly);
-    if (!typedAssembly) {
+    const assembly = sourceClosure.source.assembly;
+    const definitionId = assembly.elementKind === "PartDefinition"
+      ? assembly.elementId
+      : facts.typedDefinitionId(assembly.elementId);
+    if (!definitionId) {
       return unresolved(
         "assembly_typed_by_missing",
         "The declared assembly PartUsage has no exact typed_by PartDefinition in its declared architecture capture.",
       );
     }
     const bodies = sourceClosure.source.bodies.map((body) => body.partUsageElementId);
-    const immediate = [...new Set(facts.immediateUsageIds(typedAssembly))].toSorted();
+    const immediate = [...new Set(facts.immediateUsageIds(definitionId))].toSorted();
     const expected = [...bodies].toSorted();
     if (JSON.stringify(immediate) !== JSON.stringify(expected)) {
       return unresolved(
         "immediate_body_set_mismatch",
-        "The declared body PartUsage set must equal exactly the immediate children of the assembly typed PartDefinition.",
+        "The declared body PartUsage set must equal exactly the immediate children of the assembly PartDefinition.",
       );
     }
     return {
@@ -204,7 +206,7 @@ function sameFileMechanismAttachments(
   }
   if (!mechanismAttachment(namedRevision)) {
     throw new TypeError(
-      "The named attachment is not mechanism-source@1 onto a PartUsage.",
+      "The named attachment is not mechanism-source@1 onto a PartDefinition or PartUsage.",
     );
   }
   const file = state.files.get(namedRevision.fileId);
@@ -223,7 +225,8 @@ function sameFileMechanismAttachments(
 function mechanismAttachment(value: ProjectSourceAttachmentRevision): boolean {
   return value.role.id === PRESCRIBED_KINEMATICS_SOURCE_ATTACHMENT_ROLE.id &&
     value.role.version === PRESCRIBED_KINEMATICS_SOURCE_ATTACHMENT_ROLE.version &&
-    value.target.elementKind === "PartUsage";
+    (value.target.elementKind === "PartDefinition" ||
+      value.target.elementKind === "PartUsage");
 }
 
 function unavailable(

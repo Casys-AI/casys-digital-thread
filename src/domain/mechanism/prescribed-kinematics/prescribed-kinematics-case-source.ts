@@ -9,6 +9,10 @@
  */
 
 import {
+  parseProductStructureElementRef,
+  type ProductStructureElementRef,
+} from "../../architecture/product-structure-ref.ts";
+import {
   arrayOf,
   deepFreeze,
   exactRecord,
@@ -60,6 +64,9 @@ export interface PrescribedKinematicsFrame extends PrescribedKinematicsPose {
   readonly axis: readonly [number, number, number];
 }
 
+/** Exact SysML assembly context; never a Chrono, runtime, or provider identity. */
+export type PrescribedKinematicsAssemblyContext = ProductStructureElementRef;
+
 export interface PrescribedKinematicsBody {
   readonly bodyId: string;
   /** Exact SysML PartUsage element identity; never a label or a STEP name. */
@@ -99,10 +106,11 @@ export interface PrescribedKinematicsCaseSource {
     readonly id: string;
     readonly subjectId: string;
   };
-  /** The PartUsage to which the source resource is explicitly attached. */
-  readonly assembly: {
-    readonly partUsageElementId: string;
-  };
+  /**
+   * Exact assembly context: a reusable PartDefinition or an occurrence-specific
+   * PartUsage. Distinct from every body PartUsage mapping.
+   */
+  readonly assembly: PrescribedKinematicsAssemblyContext;
   readonly units: typeof PRESCRIBED_KINEMATICS_UNITS;
   readonly durationS: number;
   readonly groundBodyId: string;
@@ -168,11 +176,6 @@ export function validatePrescribedKinematicsCaseSource(
     `${path}.schemaVersion`,
   );
   const project = exactRecord(root.project, ["id", "subjectId"], `${path}.project`);
-  const assembly = exactRecord(
-    root.assembly,
-    ["partUsageElementId"],
-    `${path}.assembly`,
-  );
   validateUnits(root.units, `${path}.units`);
   const durationS = positiveFinite(root.durationS, `${path}.durationS`);
   if (durationS > PRESCRIBED_KINEMATICS_MAX_DURATION_S) {
@@ -181,15 +184,7 @@ export function validatePrescribedKinematicsCaseSource(
     );
   }
   const bodies = parseBodies(root.bodies, `${path}.bodies`);
-  const assemblyPartUsageElementId = safeId(
-    assembly.partUsageElementId,
-    `${path}.assembly.partUsageElementId`,
-  );
-  if (bodies.some((body) => body.partUsageElementId === assemblyPartUsageElementId)) {
-    throw new TypeError(
-      `${path}.assembly.partUsageElementId must be distinct from every body PartUsage.`,
-    );
-  }
+  const assembly = parseAssembly(root.assembly, `${path}.assembly`, bodies);
   const groundBodyId = safeId(root.groundBodyId, `${path}.groundBodyId`);
   if (!bodies.some((body) => body.bodyId === groundBodyId)) {
     throw new TypeError(`${path}.groundBodyId must name one declared body.`);
@@ -207,9 +202,7 @@ export function validatePrescribedKinematicsCaseSource(
       id: safeId(project.id, `${path}.project.id`),
       subjectId: safeId(project.subjectId, `${path}.project.subjectId`),
     },
-    assembly: {
-      partUsageElementId: assemblyPartUsageElementId,
-    },
+    assembly,
     units: PRESCRIBED_KINEMATICS_UNITS,
     durationS,
     groundBodyId,
@@ -332,6 +325,23 @@ function rejectForbiddenRootKeys(value: unknown, path: string): void {
       throw new TypeError(`${path} has unsupported field ${key}.`);
     }
   }
+}
+
+function parseAssembly(
+  value: unknown,
+  path: string,
+  bodies: readonly PrescribedKinematicsBody[],
+): PrescribedKinematicsAssemblyContext {
+  const assembly = parseProductStructureElementRef(value, path);
+  if (bodies.some((body) => body.partUsageElementId === assembly.elementId)) {
+    throw new TypeError(
+      `${path} must be distinct from every body PartUsage.`,
+    );
+  }
+  return deepFreeze({
+    elementId: assembly.elementId,
+    elementKind: assembly.elementKind,
+  });
 }
 
 function validateUnits(value: unknown, path: string): void {

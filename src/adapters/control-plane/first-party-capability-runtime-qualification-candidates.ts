@@ -107,7 +107,7 @@ function canonicalTwoBodyOneHingeQualificationSource() {
       id: "capability-runtime-qualification",
       subjectId: "chrono-two-body-one-hinge",
     },
-    assembly: { partUsageElementId: "qualification-assembly" },
+    assembly: { elementId: "qualification-assembly", elementKind: "PartUsage" },
     units: { length: "m", angle: "rad", time: "s" },
     durationS: 1,
     groundBodyId: "base",

@@ -7,7 +7,7 @@
 import type { ProjectSourceAttachmentDeclaredAgainst } from "../../../../domain/project-source-workspace/types.ts";
 
 export interface PrescribedKinematicsArchitectureFacts {
-  /** Exact PartDefinition selected by the assembly PartUsage typed_by edge. */
+  /** Exact PartDefinition selected by a PartUsage typed_by edge. */
   typedDefinitionId(usageElementId: string): string | undefined;
   /** Exact immediate PartUsage children of one PartDefinition. */
   immediateUsageIds(definitionElementId: string): readonly string[];

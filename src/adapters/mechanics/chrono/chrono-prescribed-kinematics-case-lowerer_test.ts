@@ -30,8 +30,37 @@ Deno.test("Chrono lowerer emits the exact closed 0.3.2 provider case", async () 
     lowered.loweringFingerprint,
     {
       algorithm: "sha256",
-      digest: "27d65b453095e19bd56174161701a8d3711aa38d313cac1faafaaf96ed3f263b",
+      digest: "82adfc794e27a5af418f5152a2488e9ac2312eb8443152f547e317c0ad77dab4",
     },
+  );
+});
+
+Deno.test("Chrono lowering ignores assembly context identity", async () => {
+  const nested = validSource();
+  const root = validatePrescribedKinematicsCaseSource({
+    ...nested,
+    assembly: {
+      elementId: "definition-assembly",
+      elementKind: "PartDefinition",
+    },
+  });
+  const lowerer = new ChronoPrescribedKinematicsCaseLowerer();
+  const nestedLowered = await lowerer.lower({
+    source: nested,
+    sourceFingerprint: await fingerprintPrescribedKinematicsCaseSource(nested),
+  });
+  const rootLowered = await lowerer.lower({
+    source: root,
+    sourceFingerprint: await fingerprintPrescribedKinematicsCaseSource(root),
+  });
+  assertEquals(rootLowered.exactRequestText, nestedLowered.exactRequestText);
+  assertEquals(rootLowered.exactRequestText.includes("PartDefinition"), false);
+  assertEquals(rootLowered.exactRequestText.includes("PartUsage"), false);
+  assertEquals(rootLowered.exactRequestText.includes("elementKind"), false);
+  assertEquals(rootLowered.exactRequestText.includes("definition-assembly"), false);
+  assertEquals(
+    nestedLowered.sourceFingerprint.digest === rootLowered.sourceFingerprint.digest,
+    false,
   );
 });
 
@@ -194,7 +223,7 @@ function validSource(options: {
     scope: "One prescribed hinge.",
     evidenceBoundary: "Only factual prescribed kinematics.",
     project: { id: "project", subjectId: "subject" },
-    assembly: { partUsageElementId: "assembly" },
+    assembly: { elementId: "assembly", elementKind: "PartUsage" },
     units: { length: "m", angle: "rad", time: "s" },
     durationS,
     groundBodyId: "base",

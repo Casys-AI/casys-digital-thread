@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { sampleAgentResourceReference } from "../../../testing/agent-resource-test-support.ts";
 import {
   applyProjectSourceWorkspaceCommand,
@@ -57,10 +57,10 @@ Deno.test("prescribed-kinematics source accepts only the connected SI mechanism 
   assertThrowsType(() => canonicalizePrescribedKinematicsCaseSource(duplicateUsage));
 
   const collapsedAssembly = structuredClone(sourceValue()) as unknown as {
-    assembly: { partUsageElementId: string };
+    assembly: { elementId: string; elementKind: string };
     bodies: { partUsageElementId: string }[];
   };
-  collapsedAssembly.assembly.partUsageElementId =
+  collapsedAssembly.assembly.elementId =
     collapsedAssembly.bodies[0]!.partUsageElementId;
   assertThrowsType(() => canonicalizePrescribedKinematicsCaseSource(collapsedAssembly));
 
@@ -101,6 +101,78 @@ Deno.test("prescribed-kinematics source accepts only the connected SI mechanism 
   assertThrowsType(() => canonicalizePrescribedKinematicsCaseSource(tooManyBodies));
 });
 
+Deno.test("prescribed-kinematics source admits PartDefinition and PartUsage assembly contexts and refuses any other kind", () => {
+  const nested = canonicalizePrescribedKinematicsCaseSource(sourceValue()).source;
+  assertEquals(nested.assembly, {
+    elementId: "usage-assembly",
+    elementKind: "PartUsage",
+  });
+
+  const root = canonicalizePrescribedKinematicsCaseSource(
+    sourceValue({
+      elementId: "definition-assembly",
+      elementKind: "PartDefinition",
+    }),
+  ).source;
+  assertEquals(root.assembly, {
+    elementId: "definition-assembly",
+    elementKind: "PartDefinition",
+  });
+
+  assertThrows(
+    () =>
+      canonicalizePrescribedKinematicsCaseSource({
+        ...sourceValue(),
+        assembly: { elementId: "usage-assembly", elementKind: "Package" },
+      }),
+    TypeError,
+    "PartDefinition or PartUsage",
+  );
+  assertThrows(
+    () =>
+      canonicalizePrescribedKinematicsCaseSource({
+        ...sourceValue(),
+        assembly: { elementId: "usage-assembly" },
+      }),
+    TypeError,
+    "elementKind",
+  );
+  assertThrows(
+    () =>
+      canonicalizePrescribedKinematicsCaseSource({
+        ...sourceValue(),
+        assembly: {
+          elementId: "usage-assembly",
+          elementKind: "PartUsage",
+          partUsageElementId: "usage-assembly",
+        },
+      }),
+    TypeError,
+    "unsupported field partUsageElementId",
+  );
+});
+
+Deno.test("prescribed-kinematics source refuses a collapsed assembly context that reuses a body PartUsage", () => {
+  assertThrows(
+    () =>
+      canonicalizePrescribedKinematicsCaseSource({
+        ...sourceValue(),
+        assembly: { elementId: "usage-base", elementKind: "PartUsage" },
+      }),
+    TypeError,
+    "distinct from every body PartUsage",
+  );
+  assertThrows(
+    () =>
+      canonicalizePrescribedKinematicsCaseSource({
+        ...sourceValue(),
+        assembly: { elementId: "usage-base", elementKind: "PartDefinition" },
+      }),
+    TypeError,
+    "distinct from every body PartUsage",
+  );
+});
+
 Deno.test("same-file mechanism-source attachments are exhaustive for assembly and every body mapping", async () => {
   const { source, text } = canonicalizePrescribedKinematicsCaseSource(sourceValue());
   const closures = await mechanismClosures(text);
@@ -109,10 +181,15 @@ Deno.test("same-file mechanism-source attachments are exhaustive for assembly an
     sourceText: text,
   });
   assertEquals(
-    sourceClosure.workspace.attachments.map((attachment) =>
-      attachment.partUsageElementId
-    ),
-    ["usage-assembly", "usage-base", "usage-head"],
+    sourceClosure.workspace.attachments.map((attachment) => ({
+      elementKind: attachment.elementKind,
+      elementId: attachment.elementId,
+    })),
+    [
+      { elementKind: "PartUsage", elementId: "usage-assembly" },
+      { elementKind: "PartUsage", elementId: "usage-base" },
+      { elementKind: "PartUsage", elementId: "usage-head" },
+    ],
   );
   assertEquals(sourceClosure.source, source);
 
@@ -148,6 +225,73 @@ Deno.test("same-file mechanism-source attachments are exhaustive for assembly an
       }),
     TypeError,
     "byteCount differs",
+  );
+});
+
+Deno.test("same-file mechanism-source attachments bind a root PartDefinition assembly context in canonical order", async () => {
+  const { source, text } = canonicalizePrescribedKinematicsCaseSource(
+    sourceValue({
+      elementId: "definition-assembly",
+      elementKind: "PartDefinition",
+    }),
+  );
+  const closures = await mechanismClosures(text, [
+    { elementId: "definition-assembly", elementKind: "PartDefinition" },
+    { elementId: "usage-base", elementKind: "PartUsage" },
+    { elementId: "usage-head", elementKind: "PartUsage" },
+  ]);
+  const sourceClosure = await resolvePrescribedKinematicsSourceClosure({
+    closures,
+    sourceText: text,
+  });
+  assertEquals(
+    sourceClosure.workspace.attachments.map((attachment) => ({
+      elementKind: attachment.elementKind,
+      elementId: attachment.elementId,
+    })),
+    [
+      { elementKind: "PartDefinition", elementId: "definition-assembly" },
+      { elementKind: "PartUsage", elementId: "usage-base" },
+      { elementKind: "PartUsage", elementId: "usage-head" },
+    ],
+  );
+  assertEquals(sourceClosure.source, source);
+});
+
+Deno.test("mechanism-source attachments refuse a wrong target kind or an inexact attachment set", async () => {
+  const nested = canonicalizePrescribedKinematicsCaseSource(sourceValue());
+  await assertRejects(
+    async () =>
+      resolvePrescribedKinematicsSourceClosure({
+        closures: await mechanismClosures(nested.text, [
+          { elementId: "usage-assembly", elementKind: "PartUsage" },
+          { elementId: "usage-base", elementKind: "PartDefinition" },
+          { elementId: "usage-head", elementKind: "PartUsage" },
+        ]),
+        sourceText: nested.text,
+      }),
+    TypeError,
+    "target set",
+  );
+
+  const root = canonicalizePrescribedKinematicsCaseSource(
+    sourceValue({
+      elementId: "definition-assembly",
+      elementKind: "PartDefinition",
+    }),
+  );
+  await assertRejects(
+    async () =>
+      resolvePrescribedKinematicsSourceClosure({
+        closures: await mechanismClosures(root.text, [
+          { elementId: "definition-assembly", elementKind: "PartUsage" },
+          { elementId: "usage-base", elementKind: "PartUsage" },
+          { elementId: "usage-head", elementKind: "PartUsage" },
+        ]),
+        sourceText: root.text,
+      }),
+    TypeError,
+    "target set",
   );
 });
 
@@ -493,7 +637,12 @@ Deno.test("all observed signed method criteria may offer but never create an L5 
   );
 });
 
-function sourceValue() {
+function sourceValue(
+  assembly: {
+    readonly elementId: string;
+    readonly elementKind: "PartDefinition" | "PartUsage";
+  } = { elementId: "usage-assembly", elementKind: "PartUsage" },
+) {
   return {
     schemaVersion: "prescribed-kinematics-case-source/1.0",
     id: "case-arm",
@@ -502,7 +651,7 @@ function sourceValue() {
     evidenceBoundary:
       "Only prescribed kinematic poses, angles, residuals, and convergence are observable.",
     project: { id: PROJECT_ID, subjectId: "subject-lamp" },
-    assembly: { partUsageElementId: "usage-assembly" },
+    assembly,
     units: { length: "m", angle: "rad", time: "s" },
     durationS: 1,
     groundBodyId: "body-base",
@@ -542,7 +691,17 @@ function pose(positionM: readonly [number, number, number]) {
   return { positionM, orientationWxyz: [1, 0, 0, 0] as const };
 }
 
-async function mechanismClosures(sourceText: string) {
+async function mechanismClosures(
+  sourceText: string,
+  targets: readonly {
+    readonly elementId: string;
+    readonly elementKind: "PartDefinition" | "PartUsage";
+  }[] = [
+    { elementId: "usage-assembly", elementKind: "PartUsage" },
+    { elementId: "usage-base", elementKind: "PartUsage" },
+    { elementId: "usage-head", elementKind: "PartUsage" },
+  ],
+) {
   const sourceDigest = await crypto.subtle.digest(
     "SHA-256",
     new TextEncoder().encode(sourceText),
@@ -582,16 +741,17 @@ async function mechanismClosures(sourceText: string) {
       }),
     },
   })).state;
-  for (
-    const [index, target] of ["usage-assembly", "usage-base", "usage-head"].entries()
-  ) {
+  for (const [index, target] of targets.entries()) {
     state =
       (await apply(state, attachmentCommand(state, `attachment-${index + 1}`, target)))
         .state;
   }
   return await Promise.all(
-    ["attachment-1", "attachment-2", "attachment-3"].map((attachmentId) =>
-      resolveProjectSourceClosure(state, { attachmentId, attachmentRevision: 1 })
+    targets.map((_, index) =>
+      resolveProjectSourceClosure(state, {
+        attachmentId: `attachment-${index + 1}`,
+        attachmentRevision: 1,
+      })
     ),
   );
 }
@@ -599,7 +759,10 @@ async function mechanismClosures(sourceText: string) {
 function attachmentCommand(
   state: ProjectSourceWorkspaceState,
   attachmentId: string,
-  target: string,
+  target: {
+    readonly elementId: string;
+    readonly elementKind: "PartDefinition" | "PartUsage";
+  },
 ) {
   return {
     projectId: PROJECT_ID,
@@ -610,7 +773,7 @@ function attachmentCommand(
       attachmentId,
       fileId: "file-mechanism",
       role: PRESCRIBED_KINEMATICS_SOURCE_ATTACHMENT_ROLE,
-      target: { elementId: target, elementKind: "PartUsage" as const },
+      target,
       declaredAgainst: {
         thread: { snapshotId: "thread-lamp", revision: 1, subjectId: "subject-lamp" },
         architecture: {
