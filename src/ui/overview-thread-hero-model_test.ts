@@ -53,6 +53,18 @@ Deno.test("overview hero places recorded nodes in 2a lanes and never invents ids
     hero.nodes.find((item) => recordedId(item) === "OBS-STRESS-MAX")?.lane,
     "physics",
   );
+  assertEquals(
+    hero.edges.reduce((count, edge) => count + edge.pathCount, 0),
+    hero.projectedPathCount,
+  );
+  assertEquals(
+    hero.edges.every((edge) => edge.pathKeys.length === edge.pathCount),
+    true,
+  );
+  assertEquals(
+    new Set(hero.edges.map((edge) => `${edge.fromKey}>${edge.toKey}`)).size,
+    hero.edges.length,
+  );
 });
 
 Deno.test("assembly-integrity-observation/1.0 stays an observation in the physics lane", () => {
@@ -228,24 +240,55 @@ Deno.test("overview promotes exact assembly-integrity L3 and L4 records without 
   );
 });
 
-Deno.test("Overview sealed preview opens exact STEP and GLB as accessible GET links", async () => {
-  const source = await Deno.readTextFile(
+Deno.test("Overview opens the exact selected CAD asset from an explicit context action", async () => {
+  const overview = await Deno.readTextFile(
     new URL("./src/project/overview.tsx", import.meta.url),
   );
-  const links = await Deno.readTextFile(
-    new URL("./src/cad/thread-asset-open-links.tsx", import.meta.url),
+  const hero = await Deno.readTextFile(
+    new URL("./src/project/overview-thread-hero.tsx", import.meta.url),
   );
-  assertStringIncludes(source, 'from "../cad/thread-asset-open-links.tsx"');
-  assertStringIncludes(source, "<ThreadAssetOpenLinks");
-  assertStringIncludes(links, "{`Open ${format}`}");
-  assertStringIncludes(links, 'target="_blank"');
-  assertStringIncludes(links, 'rel="noreferrer"');
-  assertStringIncludes(links, "aria-label={`Open ${format} for ${subject}`}");
-  assertStringIncludes(links, "Open CAD assets for ${subject}");
-  assertEquals(source.includes('method="POST"'), false);
-  assertEquals(source.includes('method: "POST"'), false);
-  assertEquals(source.includes("download="), false);
-  assertEquals(source.includes("fetch("), false);
+  const capabilities = await Deno.readTextFile(
+    new URL("./src/project/overview-thread-viewer-model.ts", import.meta.url),
+  );
+
+  assertStringIncludes(overview, "<OverviewThreadHero");
+  assertEquals(overview.includes("ThreadAssetOpenLinks"), false);
+  assertEquals(overview.includes("thread-asset-open-links"), false);
+  assertEquals(overview.includes("<GltfAssetCanvas"), false);
+
+  assertStringIncludes(hero, "resolveOverviewThreadViewerCapabilities(");
+  assertStringIncludes(hero, "function overviewNodeContextActions(");
+  assertStringIncludes(hero, "for (const asset of capabilities.cadAssets)");
+  assertStringIncludes(hero, 'kind: "open-cad"');
+  assertStringIncludes(hero, "assetId: asset.id");
+  assertStringIncludes(hero, "label: `Open CAD · ${asset.label}`");
+  assertStringIncludes(hero, 'if (action.kind === "open-cad")');
+  assertStringIncludes(
+    hero,
+    "assetId: action.assetId",
+  );
+  assertEquals(hero.includes("cadAssets[0]"), false);
+  assertStringIncludes(
+    hero,
+    ".cadAssets.find((asset) => asset.id === viewer.assetId)",
+  );
+  assertStringIncludes(hero, "<OverviewThreadContextMenu");
+  assertStringIncludes(hero, "<DropdownMenuContextTrigger");
+  assertStringIncludes(hero, "<DropdownMenuItem");
+  assertStringIncludes(hero, "<OverviewNodeSelectionCard");
+  assertStringIncludes(hero, "<GltfAssetCanvas");
+  assertStringIncludes(hero, 'className="overview-thread-viewer-layer"');
+  assertEquals(hero.includes("Open STEP"), false);
+
+  assertStringIncludes(capabilities, "directArtifactIds");
+  assertStringIncludes(capabilities, "isExactOverviewGlbArtifact(artifact)");
+  assertStringIncludes(capabilities, "\\/api\\/thread\\/assets\\/");
+  assertStringIncludes(capabilities, ".glb");
+  assertEquals(overview.includes('method="POST"'), false);
+  assertEquals(overview.includes('method: "POST"'), false);
+  assertEquals(overview.includes("download="), false);
+  assertEquals(overview.includes("fetch("), false);
+  assertEquals(hero.includes("fetch("), false);
 });
 
 Deno.test("overview lane assignment skips change and action nodes", () => {
@@ -259,7 +302,29 @@ Deno.test("overview lane assignment skips change and action nodes", () => {
   assertEquals(overviewLaneFor(action), undefined);
 });
 
-Deno.test("overview hero wraps every recorded semantic point instead of truncating a lane", () => {
+Deno.test("overview lane assignment projects reviewed SysML structure into the system-model lane", () => {
+  const requirement = GENERIC_THREAD_FIXTURE.graph.nodes.find((node) =>
+    node.entityKind === "requirement"
+  )!;
+  for (
+    const entityKind of [
+      "part-definition",
+      "part-usage",
+      "attribute-usage",
+    ] as const
+  ) {
+    assertEquals(
+      overviewLaneFor({
+        ...requirement,
+        ref: { kind: entityKind, id: `structure:${entityKind}` },
+        entityKind,
+      }),
+      "system-model",
+    );
+  }
+});
+
+Deno.test("overview hero retains every recorded semantic point instead of truncating a lane", () => {
   const thread = structuredClone(GENERIC_THREAD_FIXTURE);
   const requirement = thread.graph.nodes.find((node) =>
     node.entityKind === "requirement"
@@ -296,8 +361,11 @@ Deno.test("overview hero wraps every recorded semantic point instead of truncati
     item.node.ref.id.startsWith("wrap-")
   );
   assertEquals(verdicts.length, 6);
-  assertEquals(new Set(verdicts.map((item) => item.x)).size, 2);
-  assertEquals(new Set(verdicts.map((item) => item.y)).size >= 3, true);
+  assertEquals(new Set(verdicts.map((item) => item.key)).size, 6);
+  assertEquals(
+    verdicts.every((item) => item.label.startsWith("Wrapped verdict")),
+    true,
+  );
 });
 
 Deno.test("overview hero appends one non-completed activity marker per stable activity in its exact lane", () => {

@@ -1,0 +1,430 @@
+/* Whiteboard-local viewer frames for the Project surface.
+
+   The frame owns presentation geometry only. Record/CAD/activity bodies inspect
+   the loaded snapshot. Project chat stays in the surrounding application shell,
+   so its command authority never enters the read-only Workbench. */
+
+.overview-thread-viewer-layer {
+  position: absolute;
+  z-index: 30;
+  top: 0;
+  left: 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: visible;
+  isolation: isolate;
+  pointer-events: none;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.overview-thread-viewer-connectors {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  color: color-mix(in srgb, var(--ui-muted-foreground) 58%, transparent);
+  pointer-events: none;
+}
+
+.overview-thread-viewer-connector {
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.15;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.overview-thread-viewer-anchor {
+  fill: var(--ui-background);
+  stroke: currentcolor;
+  stroke-width: 1.15;
+  vector-effect: non-scaling-stroke;
+}
+
+.overview-thread-viewer {
+  position: absolute;
+  display: grid;
+  /* Runtime geometry is inline and expressed in transformed world units. */
+  width: 27.5rem;
+  min-width: 0;
+  height: 22.5rem;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--ui-border) 90%, #75858b);
+  border-radius: var(--radius-md);
+  background: var(--ui-card);
+  box-shadow: 0 1px 2px rgb(24 37 43 / 6%), 0 5px 14px rgb(24 37 43 / 5%);
+  color: var(--ui-foreground);
+  container-name: overview-thread-viewer;
+  container-type: inline-size;
+  cursor: default;
+  isolation: isolate;
+  pointer-events: auto;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.overview-thread-viewer:hover {
+  border-color: color-mix(in srgb, var(--ui-foreground) 22%, var(--ui-border));
+  box-shadow: 0 2px 5px rgb(24 37 43 / 7%), 0 9px 24px rgb(24 37 43 / 9%);
+}
+
+.overview-thread-viewer:focus-within {
+  border-color: color-mix(in srgb, var(--ui-primary) 42%, var(--ui-border));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--ui-primary) 13%, transparent),
+    0 3px 8px rgb(24 37 43 / 7%),
+    0 10px 26px rgb(24 37 43 / 10%);
+}
+
+.overview-thread-viewer:has(.overview-thread-viewer-handle:active),
+.overview-thread-viewer:has(.overview-thread-viewer-resize:active) {
+  border-color: color-mix(in srgb, var(--ui-primary) 48%, var(--ui-border));
+  box-shadow: 0 4px 10px rgb(24 37 43 / 8%), 0 13px 30px rgb(24 37 43 / 11%);
+  transition: none;
+}
+
+.overview-thread-viewer[data-expanded="true"] {
+  border-radius: var(--radius-md);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--ui-primary) 10%, transparent),
+    0 4px 12px rgb(24 37 43 / 8%);
+}
+
+.overview-thread-viewer-handle {
+  display: grid;
+  min-height: 2rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.18rem 0.24rem 0.18rem 0.55rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border) 72%,
+    transparent);
+  background: var(--ui-card);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.overview-thread-viewer-handle:active {
+  cursor: grabbing;
+}
+
+.overview-thread-viewer-handle:focus-visible {
+  outline: 1px solid var(--ui-ring);
+  outline-offset: -1px;
+}
+
+.overview-thread-viewer-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.7rem;
+  font-weight: 690;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-thread-viewer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.22rem;
+}
+
+.overview-thread-viewer-actions > button {
+  min-height: 1.5rem;
+  padding: 0.18rem 0.34rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ui-muted-foreground);
+  font-size: 0.55rem;
+  font-weight: 650;
+  line-height: 1;
+  opacity: 0.62;
+  touch-action: manipulation;
+  transition: color 100ms ease, background-color 100ms ease, opacity 100ms ease;
+  white-space: nowrap;
+}
+
+.overview-thread-viewer:hover .overview-thread-viewer-actions > button,
+.overview-thread-viewer:focus-within .overview-thread-viewer-actions > button,
+.overview-thread-viewer-actions > button:hover,
+.overview-thread-viewer-actions > button:focus-visible {
+  opacity: 1;
+}
+
+.overview-thread-viewer-actions > button:hover,
+.overview-thread-viewer-actions > button:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--ui-muted) 64%, var(--ui-card));
+  color: var(--ui-foreground);
+}
+
+.overview-thread-viewer-body {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--ui-card);
+  cursor: auto;
+  scrollbar-gutter: auto;
+  scrollbar-width: thin;
+  touch-action: pan-x pan-y;
+}
+
+.overview-thread-viewer-resize {
+  position: absolute;
+  z-index: 3;
+  right: 0.2rem;
+  bottom: 0.2rem;
+  min-width: 2.2rem;
+  min-height: 1.2rem;
+  padding: 0.12rem 0.26rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--ui-card) 88%, transparent);
+  box-shadow: none;
+  color: var(--ui-muted-foreground);
+  cursor: nwse-resize;
+  font-size: 0.5rem;
+  font-weight: 650;
+  line-height: 1;
+  opacity: 0.42;
+  touch-action: none;
+  transition: color 100ms ease, background-color 100ms ease, opacity 100ms ease;
+  user-select: none;
+}
+
+.overview-thread-viewer-resize:hover,
+.overview-thread-viewer-resize:focus-visible {
+  outline: 1px solid var(--ui-ring);
+  outline-offset: 1px;
+  background: var(--ui-card);
+  color: var(--ui-foreground);
+  opacity: 1;
+}
+
+.overview-thread-viewer[data-expanded="true"] .overview-thread-viewer-resize {
+  display: none;
+}
+
+.overview-thread-viewer-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(5rem, 44%);
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.34rem 0.55rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border) 72%,
+    transparent);
+  background: color-mix(in srgb, var(--ui-muted) 38%, var(--ui-card));
+  font-size: 0.66rem;
+  font-weight: 650;
+}
+
+.overview-thread-viewer-meta > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-thread-viewer-meta code {
+  overflow: hidden;
+  color: var(--ui-muted-foreground);
+  font-size: 0.5rem;
+  text-align: end;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-thread-viewer[data-viewer-kind="cad"] .overview-thread-viewer-body:has(.geometry-draft-canvas-shell) {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.overview-thread-viewer[data-viewer-kind="cad"] .geometry-draft-canvas-shell {
+  height: 100%;
+  min-height: 0;
+}
+
+.overview-thread-viewer[data-viewer-kind="cad"] .geometry-draft-canvas {
+  min-height: 0;
+}
+
+.overview-thread-viewer[data-viewer-kind="cad"] .geometry-draft-reset {
+  top: 0.5rem;
+  right: 0.5rem;
+  padding: 0.3rem 0.42rem;
+  border-color: color-mix(in srgb, var(--ui-border) 84%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--ui-card) 90%, transparent);
+  box-shadow: 0 1px 3px rgb(24 37 43 / 7%);
+  font-size: 0.52rem;
+}
+
+.overview-thread-viewer[data-viewer-kind="cad"] .geometry-draft-canvas-state[data-state="ready"] {
+  right: 0.5rem;
+  bottom: 0.45rem;
+  padding: 0.2rem 0.35rem;
+  background: color-mix(in srgb, var(--ui-card) 86%, transparent);
+}
+
+.overview-thread-viewer-unavailable {
+  margin: 0;
+  padding: 0.8rem;
+  color: var(--ui-muted-foreground);
+  font-size: 0.7rem;
+}
+
+.overview-thread-activity-viewer {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.65rem 0.7rem 0.8rem;
+  font-size: 0.7rem;
+}
+
+.overview-thread-activity-viewer h4,
+.overview-thread-activity-viewer p {
+  margin: 0;
+}
+
+.overview-thread-activity-viewer h4 {
+  overflow: hidden;
+  font-size: 0.72rem;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-thread-activity-viewer > p {
+  color: var(--ui-muted-foreground);
+  font-size: 0.6rem;
+  line-height: 1.35;
+}
+
+.overview-thread-activity-viewer dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--ui-border) 78%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--ui-muted) 28%, var(--ui-card));
+}
+
+.overview-thread-activity-viewer dl > div {
+  padding: 0.42rem 0.48rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.overview-thread-activity-viewer dl > div + div {
+  border-inline-start: 1px solid color-mix(in srgb, var(--ui-border) 78%,
+    transparent);
+}
+
+.overview-thread-activity-viewer dt {
+  color: var(--ui-muted-foreground);
+  font-size: 0.55rem;
+}
+
+.overview-thread-activity-viewer dd {
+  margin: 0.14rem 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 730;
+}
+
+/* The record body already owns a complete inspector Card. Inside a spatial
+   instrument the outer Card surface would create a card-inside-a-window. Keep
+   its content and semantics, but let the shared viewer frame own the chrome. */
+.overview-thread-viewer[data-viewer-kind="record"] .overview-thread-viewer-body > div {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.overview-thread-viewer[data-viewer-kind="record"] .overview-thread-viewer-body > div > div:first-child {
+  padding: 0.55rem 0.7rem 0.24rem;
+}
+
+.overview-thread-viewer[data-viewer-kind="record"] .overview-thread-viewer-body > div > div:last-child {
+  gap: 0.7rem;
+  padding: 0.4rem 0.7rem 0.8rem;
+}
+
+.overview-thread-viewer[data-viewer-kind="record"] .overview-thread-viewer-body > div > div:last-child > header {
+  margin-inline: -0.7rem;
+  padding: 0.48rem 0.7rem;
+  border-block: 1px solid color-mix(in srgb, var(--ui-border) 70%, transparent);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--ui-muted) 32%, var(--ui-card));
+}
+
+.overview-thread-viewer[data-viewer-kind="record"] .overview-thread-viewer-body > div > div:last-child > header > span:first-child {
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.6rem;
+}
+
+.overview-thread-viewer[data-viewer-kind="record"] .overview-thread-viewer-body nav button {
+  padding-block: 0.3rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.7rem;
+}
+
+.overview-thread-viewer[data-viewer-kind="record"] .overview-thread-viewer-body div:has(> [data-metric]) {
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--ui-border) 76%, transparent);
+  border-radius: var(--radius-sm);
+  background: var(--ui-border);
+}
+
+.overview-thread-viewer[data-viewer-kind="record"] .overview-thread-viewer-body [data-metric] {
+  padding: 0.42rem 0.5rem;
+  border: 0;
+  border-radius: 0;
+  background: var(--ui-card);
+}
+
+.overview-thread-viewer[data-viewer-kind="record"] .overview-thread-viewer-body [data-metric] strong {
+  font-size: 1rem;
+}
+
+@container overview-thread-viewer (max-width: 18rem) {
+  .overview-thread-activity-viewer dl {
+    grid-template-columns: 1fr;
+  }
+
+  .overview-thread-activity-viewer dl > div + div {
+    border-block-start: 1px solid color-mix(in srgb, var(--ui-border) 78%,
+      transparent);
+    border-inline-start: 0;
+  }
+
+  .overview-thread-viewer-actions {
+    gap: 0;
+  }
+
+  .overview-thread-viewer-actions > button {
+    padding-inline: 0.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overview-thread-viewer,
+  .overview-thread-viewer-actions > button,
+  .overview-thread-viewer-resize {
+    scroll-behavior: auto;
+    transition: none;
+  }
+}

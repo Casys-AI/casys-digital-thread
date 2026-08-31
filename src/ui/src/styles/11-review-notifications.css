@@ -67,7 +67,7 @@ not another control room. The Overview only
   border: 1px solid var(--thread-border-strong);
   color: var(--thread-ink);
   background: rgba(255, 255, 255, 0.88);
-  font: 700 var(--text-3xs) / 1 var(--mono);
+  font: 700 var(--cockpit-text-3xs) / 1 var(--mono);
   cursor: pointer;
 }
 

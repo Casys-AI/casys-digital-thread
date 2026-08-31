@@ -26,6 +26,7 @@ import type {
 import {
   buildComponentTree,
   buildSysmlSubtree,
+  cadCoverageLabel,
   cadSurfaceCoverage,
   type ComponentTreeNode,
   correctionNodesForComponent,
@@ -35,8 +36,17 @@ import {
   sealedAssemblyGeometryBlocker,
   sealedAssemblyGlbAsset,
   sealedGlbPreviewBlocks,
+  sourceFilesForComponent,
   type SysmlAnchoredRequirement,
 } from "./component-workspace-model.ts";
+import {
+  authoringSourceSelectionsForComponent,
+  mergeAuthoringSourcePages,
+  type ProductAuthoringSourceAttachment,
+  type ProductAuthoringSourceClient,
+  type ProductAuthoringSourcePage,
+  type ProductAuthoringSourceSelection,
+} from "./product-authoring-sources.ts";
 import { CompactIdentifier } from "./compact-identifier.tsx";
 import { GltfAssetCanvas } from "./gltf-asset-canvas.tsx";
 import {
@@ -47,12 +57,16 @@ import {
 export interface ComponentWorkspaceProps {
   snapshot: ThreadWorkbenchSnapshot;
   activeProvider: ThreadComponentProvider;
+  /** Optional GET-only reader for live ProjectSourceWorkspace attachments. */
+  authoringSourceClient?: ProductAuthoringSourceClient;
   selectedComponentId?: string;
   onProviderChange: (provider: ThreadComponentProvider) => void;
   onComponentSelect: (component: ThreadComponent) => void;
   onBindingSelect: (binding: ThreadComponentBinding) => void;
   /** Opens the same recorded correction context used by the Activity feed. */
   onRevisionOpen: (node: ThreadGraphNode) => void;
+  /** Opens the read-only Work surface at the recorded geometry lineage. */
+  onOpenWork?: () => void;
   /** Opens the reserved Product › Sourcing · ERP facet. */
   onOpenSourcing?: () => void;
 }
@@ -63,11 +77,13 @@ const focusRing =
 export function ComponentWorkspace({
   snapshot,
   activeProvider,
+  authoringSourceClient,
   selectedComponentId,
   onProviderChange,
   onComponentSelect,
   onBindingSelect,
   onRevisionOpen,
+  onOpenWork,
   onOpenSourcing,
 }: ComponentWorkspaceProps): JSX.Element {
   const components = snapshot.components.components;
@@ -83,8 +99,42 @@ export function ComponentWorkspace({
     [components, snapshot],
   );
   const structure = productStructureAvailability(snapshot);
+  const splitterHostRef = useRef<HTMLDivElement>(null);
+  const [stackedPanes, setStackedPanes] = useState(false);
+  useEffect(() => {
+    const host = splitterHostRef.current;
+    const Observer = globalThis.ResizeObserver;
+    if (!host || !Observer) return;
+    let animationFrame: number | undefined;
+    const update = (width: number) => {
+      const next = width < 760;
+      setStackedPanes((current) => current === next ? current : next);
+    };
+    const scheduleUpdate = (width: number) => {
+      if (animationFrame !== undefined) {
+        globalThis.cancelAnimationFrame(animationFrame);
+      }
+      animationFrame = globalThis.requestAnimationFrame(() => {
+        animationFrame = undefined;
+        update(width);
+      });
+    };
+    update(host.getBoundingClientRect().width);
+    const observer = new Observer((entries) => {
+      const entry = entries[0];
+      if (entry) scheduleUpdate(entry.contentRect.width);
+    });
+    observer.observe(host);
+    return () => {
+      observer.disconnect();
+      if (animationFrame !== undefined) {
+        globalThis.cancelAnimationFrame(animationFrame);
+      }
+    };
+  }, []);
   const selected =
     components.find((component) => component.id === selectedComponentId) ??
+      components.find((component) => cadComponentIds.has(component.id)) ??
       components[0];
   const revisions = selected
     ? correctionNodesForComponent(snapshot, selected)
@@ -97,7 +147,7 @@ export function ComponentWorkspace({
     return (
       <Card className="min-w-0">
         <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
-          <Badge variant="secondary" aria-hidden="true">N/A</Badge>
+          <Badge variant="secondary">Unavailable</Badge>
           <div className="space-y-2">
             <CardTitle className="text-base">
               {unavailable?.title ?? "Product structure unavailable"}
@@ -136,31 +186,31 @@ export function ComponentWorkspace({
         </div>
         <dl
           className={cn(
-            "grid shrink-0 grid-cols-2 divide-x divide-border overflow-hidden sm:grid-cols-3",
+            "component-summary-metrics grid w-full min-w-0 overflow-hidden",
             CARD_SURFACE,
           )}
         >
-          <div className="flex flex-col gap-0.5 px-3 py-1.5">
+          <div className="flex min-w-0 flex-col gap-0.5 px-3 py-1.5">
             <dt className="font-mono text-[9px] font-medium tracking-wider text-muted-foreground">
-              Catalog
+              Product structure
             </dt>
-            <dd className="m-0 font-mono text-[12.5px] tabular-nums">
+            <dd className="m-0 break-words font-mono text-[12.5px] tabular-nums">
               {headline.count} {headline.label}
             </dd>
           </div>
-          <div className="flex flex-col gap-0.5 px-3 py-1.5">
+          <div className="flex min-w-0 flex-col gap-0.5 px-3 py-1.5">
             <dt className="font-mono text-[9px] font-medium tracking-wider text-muted-foreground">
-              Geometry
+              Current geometry
             </dt>
-            <dd className="m-0 font-mono text-[12.5px]">
+            <dd className="m-0 break-words font-mono text-[12.5px]">
               {cadCoverageLabel(cadCoverage, sealedAssembly)}
             </dd>
           </div>
-          <div className="col-span-2 flex flex-col gap-0.5 px-3 py-1.5 sm:col-span-1">
+          <div className="flex min-w-0 flex-col gap-0.5 px-3 py-1.5">
             <dt className="font-mono text-[9px] font-medium tracking-wider text-muted-foreground">
-              Detail
+              Occurrence scope
             </dt>
-            <dd className="m-0 font-mono text-[12.5px] text-muted-foreground">
+            <dd className="m-0 break-words font-mono text-[12.5px] text-muted-foreground">
               {headline.detail}
             </dd>
           </div>
@@ -179,7 +229,7 @@ export function ComponentWorkspace({
             {revisions.length === 1 ? "" : "s"}
           </span>
           <strong className="font-medium">
-            View this part’s lifecycle in Activity
+            Inspect this part in Work →
           </strong>
         </Button>
       )}
@@ -189,84 +239,108 @@ export function ComponentWorkspace({
           la structure se lisent ensemble, et la répartition appartient au
           lecteur. Les tailles minimales gardent les deux exploitables. */
       }
-      <Splitter.Root
-        defaultSize={[70, 30]}
-        panels={[
-          { id: "viewer", minSize: 45 },
-          { id: "rail", minSize: 22 },
-        ]}
-        className="flex items-stretch"
-      >
-        <Splitter.Panel id="viewer" className="min-w-0">
-          <Card className="min-w-0 overflow-hidden">
-            <CardContent className="flex flex-col gap-0 p-0">
-              <StructurePartChips
-                components={components}
-                selectedId={selected.id}
-                availableIds={cadComponentIds}
-                sealLabel={sealedAssembly
-                  ? sealedAssembly.assemblyFormats.join(" · ") + " · SEALED"
-                  : undefined}
-                onSelect={(component) => {
-                  onComponentSelect(component);
-                  onProviderChange("build123d");
-                }}
-              />
-              <div
-                className="min-h-[388px] p-4"
-                data-provider={activeProvider}
-              >
-                <CadGeometry
-                  snapshot={snapshot}
-                  selected={selected}
-                  onInspect={onBindingSelect}
-                />
-              </div>
-              {sealedAssembly && (
-                <div className="flex items-center justify-between gap-3 border-t border-border bg-muted/30 px-3 py-2">
-                  <CompactIdentifier
-                    value={sealedAssembly.captureArtifact.fingerprint ??
-                      sealedAssembly.captureArtifact.id}
-                    label="sealed geometry fingerprint"
-                  />
-                  <button
-                    type="button"
-                    className={cn(
-                      "font-mono text-[9.5px] text-brand hover:underline",
-                      focusRing,
-                    )}
-                    onClick={() =>
-                      onBindingSelect(sealedAssembly.inspectionBinding)}
-                  >
-                    Inspect in Activity →
-                  </button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </Splitter.Panel>
-        <Splitter.ResizeTrigger
-          id="viewer:rail"
-          aria-label="Resize the geometry and structure panes"
-          className="mx-1.5 grid w-1.5 shrink-0 cursor-col-resize place-items-center rounded-full hover:bg-muted data-[dragging]:bg-brand/15"
+      <div ref={splitterHostRef} className="min-w-0">
+        <Splitter.Root
+          key={stackedPanes ? "stacked" : "side-by-side"}
+          orientation={stackedPanes ? "vertical" : "horizontal"}
+          defaultSize={[70, 30]}
+          panels={[
+            { id: "viewer", minSize: 45 },
+            { id: "rail", minSize: 22 },
+          ]}
+          className={cn(
+            "flex items-stretch",
+            stackedPanes
+              ? "h-[calc(100dvh-8rem)] min-h-[64rem] flex-col"
+              : "flex-row",
+          )}
         >
-          <i aria-hidden="true" className="h-8 w-0.5 rounded-full bg-border" />
-        </Splitter.ResizeTrigger>
-        <Splitter.Panel id="rail" className="flex min-w-0 flex-col">
-          <SysmlRail
-            snapshot={snapshot}
-            selected={selected}
-            activeProvider={activeProvider}
-            onSelect={(component) => {
-              onComponentSelect(component);
-              onProviderChange("syson");
-              const binding = bindingFor(component, "syson");
-              if (binding) onBindingSelect(binding);
-            }}
-            onInspect={onBindingSelect}
-          />
-        </Splitter.Panel>
-      </Splitter.Root>
+          <Splitter.Panel id="viewer" className="min-w-0">
+            <Card className="min-w-0 overflow-hidden">
+              <CardContent className="flex flex-col gap-0 p-0">
+                <StructurePartChips
+                  components={components}
+                  selectedId={selected.id}
+                  availableIds={cadComponentIds}
+                  sealLabel={sealedAssembly
+                    ? sealedAssembly.assemblyFormats.join(" · ") + " · SEALED"
+                    : undefined}
+                  onSelect={(component) => {
+                    onComponentSelect(component);
+                    onProviderChange(
+                      cadComponentIds.has(component.id) ? "build123d" : "syson",
+                    );
+                  }}
+                />
+                <div
+                  className="min-h-[388px] p-4"
+                  data-provider={activeProvider}
+                >
+                  <CadGeometry
+                    snapshot={snapshot}
+                    selected={selected}
+                    onInspect={onBindingSelect}
+                    onOpenWork={onOpenWork}
+                  />
+                </div>
+                {sealedAssembly && (
+                  <div className="flex items-center justify-between gap-3 border-t border-border bg-muted/30 px-3 py-2">
+                    <CompactIdentifier
+                      value={sealedAssembly.captureArtifact.fingerprint ??
+                        sealedAssembly.captureArtifact.id}
+                      label="sealed geometry fingerprint"
+                    />
+                    <button
+                      type="button"
+                      className={cn(
+                        "font-mono text-[9.5px] text-brand hover:underline",
+                        focusRing,
+                      )}
+                      onClick={() =>
+                        onBindingSelect(sealedAssembly.inspectionBinding)}
+                    >
+                      Inspect in Work →
+                    </button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </Splitter.Panel>
+          <Splitter.ResizeTrigger
+            id="viewer:rail"
+            aria-label="Resize the geometry and structure panes"
+            className={cn(
+              "grid shrink-0 place-items-center rounded-full hover:bg-muted data-[dragging]:bg-brand/15",
+              stackedPanes
+                ? "my-1.5 h-1.5 cursor-row-resize"
+                : "mx-1.5 w-1.5 cursor-col-resize",
+            )}
+          >
+            <i
+              aria-hidden="true"
+              className={cn(
+                "rounded-full bg-border",
+                stackedPanes ? "h-0.5 w-8" : "h-8 w-0.5",
+              )}
+            />
+          </Splitter.ResizeTrigger>
+          <Splitter.Panel id="rail" className="flex min-w-0 flex-col">
+            <SysmlRail
+              snapshot={snapshot}
+              selected={selected}
+              activeProvider={activeProvider}
+              authoringSourceClient={authoringSourceClient}
+              onSelect={(component) => {
+                onComponentSelect(component);
+                onProviderChange("syson");
+                const binding = bindingFor(component, "syson");
+                if (binding) onBindingSelect(binding);
+              }}
+              onInspect={onBindingSelect}
+            />
+          </Splitter.Panel>
+        </Splitter.Root>
+      </div>
 
       <ProductSourcingCoverageLine
         thread={snapshot}
@@ -291,7 +365,7 @@ function StructurePartChips({
 }): JSX.Element {
   return (
     <div
-      className="flex items-center gap-1.5 border-b border-border px-3 py-2"
+      className="flex min-w-0 flex-wrap items-center gap-1.5 border-b border-border px-3 py-2"
       aria-label="Catalog components"
     >
       <div className="flex flex-1 flex-wrap gap-1.5">
@@ -301,13 +375,15 @@ function StructurePartChips({
             <Button
               key={component.id}
               size="sm"
-              variant={component.id === selectedId && available
-                ? "default"
-                : "outline"}
+              variant={component.id === selectedId ? "default" : "outline"}
               aria-pressed={component.id === selectedId}
-              className="h-7 px-2.5"
-              disabled={!available}
-              title={available ? undefined : "No exact CAD geometry linked"}
+              aria-label={`${component.label}${
+                available ? "" : "; exact CAD geometry unavailable"
+              }`}
+              className="h-auto min-h-8 max-w-full whitespace-normal px-2.5 py-1 text-left"
+              title={available
+                ? component.label
+                : `${component.label} · no exact CAD geometry linked`}
               onClick={() => onSelect(component)}
             >
               {component.label}
@@ -316,7 +392,10 @@ function StructurePartChips({
         })}
       </div>
       {sealLabel && (
-        <span className="shrink-0 font-mono text-[9.5px] text-muted-foreground">
+        <span
+          className="max-w-full break-words font-mono text-[9.5px] text-muted-foreground"
+          title={sealLabel}
+        >
           {sealLabel}
         </span>
       )}
@@ -328,18 +407,21 @@ function SysmlRail({
   snapshot,
   selected,
   activeProvider,
+  authoringSourceClient,
   onSelect,
   onInspect,
 }: {
   snapshot: ThreadWorkbenchSnapshot;
   selected: ThreadComponent;
   activeProvider: ThreadComponentProvider;
+  authoringSourceClient?: ProductAuthoringSourceClient;
   onSelect: (component: ThreadComponent) => void;
   onInspect: (binding: ThreadComponentBinding) => void;
 }): JSX.Element {
   const view = snapshot.components.systemViews.syson;
   const terminology = sysonTerminology(snapshot.components.components);
   const subtree = buildSysmlSubtree(snapshot, selected);
+  const sourceFiles = sourceFilesForComponent(snapshot, selected);
   const sysonBinding = bindingFor(selected, "syson");
   const verifiedCount =
     snapshot.components.components.filter((component) =>
@@ -348,7 +430,7 @@ function SysmlRail({
   return (
     <aside className="flex min-w-0 flex-col gap-3">
       <Card>
-        <CardHeader className="flex-row items-center justify-between gap-2 px-3 py-2">
+        <CardHeader className="min-w-0 flex-row flex-wrap items-center justify-between gap-2 px-3 py-2">
           <p className={SECTION_LABEL}>
             SysML v2 · {terminology.heading}
           </p>
@@ -397,6 +479,45 @@ function SysmlRail({
         </Card>
       )}
 
+      {sourceFiles.length > 0 && (
+        <Card>
+          <CardHeader className="min-w-0 flex-row flex-wrap items-center justify-between gap-2 px-3 py-2">
+            <p className={SECTION_LABEL}>Admitted Thread sources</p>
+            <span className="font-mono text-[9.5px] text-muted-foreground">
+              {sourceFiles.length}
+            </span>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-1 px-3 pb-3">
+            {sourceFiles.map((file) => (
+              <div
+                key={`${file.fileId}@${file.fileRevision}`}
+                className="flex min-w-0 items-center justify-between gap-3 rounded-md bg-muted/50 px-2.5 py-2"
+              >
+                <div className="min-w-0">
+                  <strong className="block truncate text-[11.5px] font-medium">
+                    {file.logicalName}
+                  </strong>
+                  <span className="block truncate font-mono text-[9.5px] text-muted-foreground">
+                    {file.role} · file r{file.fileRevision} · workspace r
+                    {file.workspaceRevision}
+                  </span>
+                </div>
+                <CompactIdentifier
+                  value={`${file.fileId}@${file.fileRevision}`}
+                  label={`${file.logicalName} exact source-file identity`}
+                  copyable={false}
+                />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      <AuthoringSourcesCard
+        selected={selected}
+        client={authoringSourceClient}
+      />
+
       {subtree.anchoredRequirements.length > 0 && (
         <Card>
           <CardHeader className="px-3 py-2">
@@ -431,6 +552,167 @@ function SysmlRail({
       )}
     </aside>
   );
+}
+
+type AuthoringSourceResult = {
+  readonly selection: ProductAuthoringSourceSelection;
+  readonly page: ProductAuthoringSourcePage;
+};
+
+type AuthoringSourceState =
+  | {
+    readonly status: "idle" | "loading" | "error";
+    readonly selectionKey: string;
+  }
+  | {
+    readonly status: "ready";
+    readonly selectionKey: string;
+    readonly results: readonly AuthoringSourceResult[];
+  };
+
+function AuthoringSourcesCard({
+  selected,
+  client,
+}: {
+  selected: ThreadComponent;
+  client?: ProductAuthoringSourceClient;
+}): JSX.Element | null {
+  const selections = useMemo(
+    () => authoringSourceSelectionsForComponent(selected),
+    [selected],
+  );
+  const selectionKey = selections.map(({ kind, id }) => `${kind}:${id}`).join(
+    "|",
+  );
+  const [state, setState] = useState<AuthoringSourceState>({
+    status: "idle",
+    selectionKey: "",
+  });
+
+  useEffect(() => {
+    if (!client || selections.length === 0) {
+      setState({ status: "idle", selectionKey });
+      return;
+    }
+    const controller = new AbortController();
+    let current = true;
+    setState({ status: "loading", selectionKey });
+    void Promise.all(
+      selections.map(async (selection) => ({
+        selection,
+        page: await client.load(selection, controller.signal),
+      })),
+    ).then(
+      (results) => {
+        if (!current) return;
+        setState({ status: "ready", selectionKey, results });
+      },
+      () => {
+        if (!current || controller.signal.aborted) return;
+        setState({ status: "error", selectionKey });
+      },
+    );
+    return () => {
+      current = false;
+      controller.abort();
+    };
+  }, [client, selectionKey, selections]);
+
+  if (!client || selections.length === 0) return null;
+  const visibleState = state.selectionKey === selectionKey
+    ? state
+    : { status: "loading" as const, selectionKey };
+  const results = visibleState.status === "ready" ? visibleState.results : [];
+  const attachments = mergeAuthoringSourcePages(
+    results.map((result) => result.page),
+  );
+  const nonObserved = results.filter((result) =>
+    result.page.status !== "observed"
+  );
+
+  return (
+    <Card aria-label={`Authoring sources for ${selected.label}`}>
+      <CardHeader className="min-w-0 flex-row flex-wrap items-center justify-between gap-2 px-3 py-2">
+        <p className={SECTION_LABEL}>Authoring sources</p>
+        <span className="font-mono text-[9.5px] text-muted-foreground">
+          {visibleState.status === "loading"
+            ? "loading"
+            : visibleState.status === "error"
+            ? "unavailable"
+            : attachments.length}
+        </span>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-1 px-3 pb-3">
+        {visibleState.status === "loading"
+          ? (
+            <p className="text-[11px] text-muted-foreground">
+              Reading exact SysML attachments…
+            </p>
+          )
+          : visibleState.status === "error"
+          ? (
+            <p className="text-[11px] text-muted-foreground">
+              Authoring-source read unavailable.
+            </p>
+          )
+          : attachments.length > 0
+          ? attachments.map((attachment) => (
+            <AuthoringSourceRow
+              key={`${attachment.attachmentId}@${attachment.attachmentRevision}`}
+              attachment={attachment}
+            />
+          ))
+          : (
+            <p className="text-[11px] text-muted-foreground">
+              No authoring source is attached to this selected SysML node.
+            </p>
+          )}
+        {nonObserved.map((result) => (
+          <p
+            key={`${result.selection.kind}:${result.selection.id}`}
+            className="font-mono text-[9.5px] text-muted-foreground"
+          >
+            {authoringSelectionLabel(result.selection)} · {result.page.status}
+          </p>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function AuthoringSourceRow({
+  attachment,
+}: {
+  attachment: ProductAuthoringSourceAttachment;
+}): JSX.Element {
+  const exactBasis = attachment.basisStatus === "exact-basis";
+  return (
+    <div className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-muted/50 px-2.5 py-2">
+      <div className="min-w-0">
+        <strong className="block truncate text-[11.5px] font-medium">
+          {attachment.fileId}
+        </strong>
+        <span className="block truncate font-mono text-[9.5px] text-muted-foreground">
+          {attachment.target.elementKind} · {attachment.role.id}@
+          {attachment.role.version}{" "}
+          · attachment r{attachment.attachmentRevision}
+          {attachment.fileHeadRevision === null
+            ? " · file head unavailable"
+            : ` · file head r${attachment.fileHeadRevision}`} ·{" "}
+          {attachment.sourceStatus}
+        </span>
+      </div>
+      <Badge variant={exactBasis ? "success" : "warning"}>
+        {exactBasis ? "exact basis" : "different basis"}
+      </Badge>
+    </div>
+  );
+}
+
+function authoringSelectionLabel(
+  selection: ProductAuthoringSourceSelection,
+): string {
+  return selection.kind === "part-definition" ? "PartDefinition" : "PartUsage";
 }
 
 function SysmlRequirementRow(
@@ -506,10 +788,11 @@ function sysonTerminology(
   };
 }
 
-function CadGeometry({ snapshot, selected, onInspect }: {
+function CadGeometry({ snapshot, selected, onInspect, onOpenWork }: {
   snapshot: ThreadWorkbenchSnapshot;
   selected: ThreadComponent;
   onInspect: (binding: ThreadComponentBinding) => void;
+  onOpenWork?: () => void;
 }): JSX.Element {
   const binding = bindingFor(selected, "build123d");
   const surface = resolveCadSurface(snapshot, selected);
@@ -540,15 +823,35 @@ function CadGeometry({ snapshot, selected, onInspect }: {
   return (
     <section className="flex flex-col gap-4" aria-label="build123d geometry">
       {geometryBlocker && (
-        <div
-          className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive"
-          role="alert"
+        <aside
+          className="rounded-lg border border-warning/30 bg-warning/10 px-3.5 py-3 text-sm"
+          aria-label="Current geometry unavailable"
         >
-          <strong className="block font-semibold">
-            Geometry result unavailable
+          <strong className="block font-semibold text-foreground">
+            Current geometry unavailable
           </strong>
-          <p className="mt-1">{geometryBlocker}</p>
-        </div>
+          <p className="mt-1 text-muted-foreground">
+            The Workbench has not selected an authoritative geometry for this
+            revision.
+          </p>
+          <details className="mt-2 text-xs text-muted-foreground">
+            <summary className="cursor-pointer font-medium text-foreground">
+              Why this is unavailable
+            </summary>
+            <p className="mt-1 break-words">{geometryBlocker}</p>
+          </details>
+          {onOpenWork && (
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="mt-2 h-auto whitespace-normal p-0 text-left"
+              onClick={onOpenWork}
+            >
+              Inspect geometry records in Work →
+            </Button>
+          )}
+        </aside>
       )}
       {glbBlocks.assembly || definitionGlb
         ? (
@@ -795,7 +1098,7 @@ function SealedAssemblyGlbViewer({ asset, stepHref, captureArtifact }: {
       </header>
       <GltfAssetCanvas
         url={asset.uri!}
-        ariaLabel="Interactive sealed assembly geometry"
+        ariaLabel="Sealed assembly geometry preview"
         loadingLabel="Loading sealed assembly…"
         errorLabel="Sealed assembly preview unavailable"
       />
@@ -863,7 +1166,7 @@ function PartDefinitionGlbViewer({
       </header>
       <GltfAssetCanvas
         url={preview.url}
-        ariaLabel={`Interactive ${label} PartDefinition geometry`}
+        ariaLabel={`${label} PartDefinition geometry preview`}
         loadingLabel={`Loading ${label}…`}
         errorLabel={`${label} preview unavailable`}
       />
@@ -968,7 +1271,8 @@ function CadStlViewer({ preview, authoritativeArtifact, snapshot }: {
     <div className={cn("overflow-hidden", CARD_SURFACE)}>
       <div
         className="relative h-[clamp(360px,47vh,570px)] overflow-hidden"
-        aria-label="Interactive STL geometry"
+        aria-label="STL geometry preview"
+        role="img"
       >
         <div
           className="size-full [&_canvas]:block [&_canvas]:size-full"
@@ -1232,34 +1536,4 @@ function verifiedBinding(
 ): ThreadComponentBinding | undefined {
   const binding = bindingFor(component, provider);
   return binding?.status === "verified" ? binding : undefined;
-}
-
-function cadCoverageLabel(
-  coverage: ReturnType<typeof cadSurfaceCoverage>,
-  sealed: ReturnType<typeof resolveSealedAssemblyGeometry>,
-): string {
-  if (sealed) {
-    if (sealed.independentPartDefinitionGeometryCount > 0) {
-      return `1 sealed assembly · ${sealed.independentPartDefinitionGeometryCount} independent PartDefinition geometr${
-        sealed.independentPartDefinitionGeometryCount === 1 ? "y" : "ies"
-      }`;
-    }
-    if (sealed.legacyPartMeshCount > 0) {
-      return `1 sealed assembly · ${sealed.legacyPartMeshCount} legacy part mesh${
-        sealed.legacyPartMeshCount === 1 ? "" : "es"
-      }`;
-    }
-    return "1 sealed assembly · no independent part geometry";
-  }
-  const assembly = coverage.assemblySurfaces === 0
-    ? "no assembly geometry"
-    : `${coverage.assemblySurfaces} assembly geometr${
-      coverage.assemblySurfaces === 1 ? "y" : "ies"
-    }`;
-  const parts = coverage.partSurfaces === 0
-    ? "no PartDefinition geometry"
-    : `${coverage.partSurfaces} PartDefinition geometr${
-      coverage.partSurfaces === 1 ? "y" : "ies"
-    }`;
-  return `${assembly} · ${parts}`;
 }

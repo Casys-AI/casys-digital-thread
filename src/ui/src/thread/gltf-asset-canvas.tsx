@@ -87,8 +87,13 @@ export function GltfAssetCanvas({
         className="geometry-draft-canvas"
         ref={host}
         aria-label={ariaLabel}
+        role="img"
       />
-      <div className="geometry-draft-canvas-state" data-state={state}>
+      <div
+        className="geometry-draft-canvas-state"
+        data-state={state}
+        aria-live="polite"
+      >
         {state === "loading"
           ? loadingLabel
           : state === "error"

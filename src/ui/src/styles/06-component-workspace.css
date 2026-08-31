@@ -13,7 +13,7 @@
   min-width: 0;
   overflow-wrap: anywhere;
   color: inherit;
-  font: 500 var(--text-3xs) / 1.35 var(--mono);
+  font: 500 var(--cockpit-text-3xs) / 1.35 var(--mono);
 }
 
 .compact-identifier-copy {
@@ -23,7 +23,7 @@
   border: 1px solid var(--thread-border-strong);
   color: var(--text-soft);
   background: transparent;
-  font: 700 var(--text-3xs) / 1 var(--mono);
+  font: 700 var(--cockpit-text-3xs) / 1 var(--mono);
   cursor: pointer;
 }
 

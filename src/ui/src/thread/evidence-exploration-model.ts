@@ -39,10 +39,6 @@ export {
   displayKindOf,
   isDisplayKindVisible,
 } from "./essential-graph-filter.ts";
-import {
-  DISPLAY_KIND_COLOR_TOKEN,
-  displayKindOf,
-} from "./essential-graph-filter.ts";
 import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
 import type { EvidenceCanvasProjection } from "./evidence-canvas-model.ts";
 import {
@@ -158,11 +154,7 @@ interface ExplorationVisualEdgeGroup {
 }
 
 /** Prepared model consumed directly by the EvidenceExploration component. */
-/**
- * Une entrée du regroupement par système producteur. Elle ne porte AUCUNE
- * couleur : le canvas peint par type d'enregistrement, pas par outil, et une
- * couleur d'outil ici serait un mapping que rien ne rend.
- */
+/** One entry of the recorded-provider colour key. */
 export interface SystemLegendItem {
   /** Stable visual family id (e.g. "calculix"). */
   readonly system: string;
@@ -170,6 +162,8 @@ export interface SystemLegendItem {
   readonly systems: readonly string[];
   /** Human label (e.g. "FEA · CalculiX"). */
   readonly label: string;
+  /** Exact canvas colour for this recorded provider family. */
+  readonly color: string;
   /** Number of visible nodes produced by this system. */
   readonly count: number;
 }
@@ -565,6 +559,7 @@ export function buildExplorationModel(
       system,
       systems: [...entry.systems].sort(),
       label: SYSTEM_LEGEND_LABEL[system] ?? system,
+      color: systemColorFor(system, tokens),
       count: entry.count,
     }));
 
@@ -859,18 +854,38 @@ function dagreNodeBox(
 }
 
 /**
- * Node color per dominant system. Colours match the thread-blue/green/amber
- * tokens so the graph reads as the same design system as the SVG canvas.
- */
-/**
- * La couleur d'un nœud vient de son TYPE d'enregistrement, pas du système qui
- * l'a produit : un provider est un moyen remplaçable, la nature de la preuve
- * ne l'est pas. C'est aussi ce qui rend la légende TYPES exacte — auparavant
- * elle affichait la couleur d'outil majoritaire d'un type et mentait donc
- * pour ses nœuds minoritaires.
+ * Colour communicates the recorded provider family, never a verdict. The
+ * semantic type filter remains independent from this provenance cue.
  */
 function nodeColorFor(node: ThreadGraphNode, tokens: CssTokens): string {
-  return tokens[DISPLAY_KIND_COLOR_TOKEN[displayKindOf(node)]];
+  return systemColorFor(node.system, tokens);
+}
+
+function systemColorFor(system: string, tokens: CssTokens): string {
+  switch (evidenceSystemFamily(system)) {
+    case "syson":
+    case "sysml":
+      return tokens.cyan;
+    case "build123d":
+    case "build123d-sandbox":
+    case "cad":
+      return tokens.amber;
+    case "calculix":
+      return tokens.red;
+    case "modelica":
+    case "openmodelica":
+    case "mcp-modelica":
+      return tokens.violet;
+    case "erpnext":
+      return tokens.blue;
+    case "digital-thread":
+    case "casys-digital-thread":
+    case "brief":
+    case "thread":
+      return tokens.green;
+    default:
+      return tokens.muted;
+  }
 }
 
 export interface EvidenceMinimapNode {

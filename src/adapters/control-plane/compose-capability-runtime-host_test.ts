@@ -292,10 +292,12 @@ Deno.test("Compose host rejects ambiguous registered rollover successors without
 });
 
 Deno.test("Compose host rejects hybrid and unknown registered rollover observations without reconciling", async () => {
-  for (const options of [
-    { mismatchedSharedService: "syson-db" },
-    { unknownPredecessorObservation: true },
-  ] as const) {
+  for (
+    const options of [
+      { mismatchedSharedService: "syson-db" },
+      { unknownPredecessorObservation: true },
+    ] as const
+  ) {
     const fixture = await rolloverHostFixture(options);
     try {
       fixture.runner.installSuccessorMaterial();
@@ -1334,9 +1336,10 @@ class RolloverFakeGroupRunner implements CommandRunner {
         Image: `sha256:${service}`,
         Config: {
           Labels: {
-            "com.docker.compose.project": service === this.options.mismatchedSharedService
-              ? "foreign-project"
-              : this.#active.acquisition.projectName,
+            "com.docker.compose.project":
+              service === this.options.mismatchedSharedService
+                ? "foreign-project"
+                : this.#active.acquisition.projectName,
             "com.docker.compose.service": service,
           },
         },

@@ -42,7 +42,16 @@ export function DesktopChat(
 ): JSX.Element {
   const bindings = desktopBindings();
   const nativeChatAvailable = bindings !== undefined;
-  const compactModal = useMediaQuery("(max-width: 899px)");
+  const fallbackCompactModal = useMediaQuery("(max-width: 899px)");
+  const smallProjectModal = useMediaQuery("(max-width: 767px)");
+  const wideDesktop = useMediaQuery("(min-width: 1200px)");
+  const fixedPanelAvailable = typeof projectId === "string" &&
+    projectId.length > 0;
+  const fixedProjectPanel = fixedPanelAvailable && wideDesktop;
+  const compactModal = fixedPanelAvailable
+    ? smallProjectModal
+    : fallbackCompactModal;
+  const projectSheet = fixedPanelAvailable && !wideDesktop && !compactModal;
   const triggerRef = useRef<HTMLButtonElement>(null);
   const previousPresentationRef = useRef({ open, compactModal });
   const [snapshot, setSnapshot] = useState<ChatSnapshotDto>();
@@ -86,13 +95,13 @@ export function DesktopChat(
   }, [compactModal, open]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || fixedPanelAvailable || compactModal) return;
     const dismiss = (event: KeyboardEvent) => {
       if (event.key === "Escape") onOpenChange(false);
     };
     globalThis.addEventListener("keydown", dismiss);
     return () => globalThis.removeEventListener("keydown", dismiss);
-  }, [onOpenChange, open]);
+  }, [compactModal, fixedPanelAvailable, onOpenChange, open]);
 
   useEffect(() => {
     if (!bindings || !open) return;
@@ -138,6 +147,59 @@ export function DesktopChat(
       conversation.projectId === projectId
     ) ?? [];
   const selected = selectedConversation(snapshot, selectedId, projectId);
+  const panel = (
+    <ArkDialog.Content className="desktop-chat-panel">
+      <header className="desktop-chat-head">
+        <div className="min-w-0">
+          <p className="desktop-chat-eyebrow">Agent workspace</p>
+          <ArkDialog.Title className="desktop-chat-title">
+            Project chat
+          </ArkDialog.Title>
+          <ArkDialog.Description className="desktop-chat-description">
+            One project. One conversation.
+          </ArkDialog.Description>
+        </div>
+        <ArkDialog.CloseTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="desktop-chat-close h-8 px-2"
+            aria-label="Close project chat"
+          >
+            Close
+          </Button>
+        </ArkDialog.CloseTrigger>
+      </header>
+      <ConversationRail
+        conversations={conversations}
+        selectedId={selected?.id}
+        onSelect={setSelectedId}
+        interactive={nativeChatAvailable}
+      />
+      {!nativeChatAvailable
+        ? <BrowserPreviewUnavailable projectId={projectId} />
+        : selected
+        ? (
+          <Conversation
+            key={selected.id}
+            conversation={selected}
+            busy={busy}
+            command={command}
+          />
+        )
+        : (
+          <NewConversation
+            projectId={projectId}
+            busy={busy}
+            command={command}
+          />
+        )}
+      {error && <p className="desktop-chat-error" role="alert">{error}</p>}
+      <footer className="desktop-chat-foot">
+        Transcript history is separate from authoritative Thread/CAS evidence.
+      </footer>
+    </ArkDialog.Content>
+  );
   return (
     // Zag installs modal effects only when its open state is entered. Remount
     // when the responsive presentation changes so those effects are rebuilt.
@@ -154,7 +216,7 @@ export function DesktopChat(
       trapFocus={compactModal}
       preventScroll={compactModal}
       closeOnInteractOutside={compactModal}
-      closeOnEscape
+      closeOnEscape={!fixedPanelAvailable || compactModal}
     >
       <aside
         className={`desktop-chat${open ? " is-open" : ""}${
@@ -162,7 +224,13 @@ export function DesktopChat(
         }`}
         aria-label="Project agent chat"
         data-chat-runtime={nativeChatAvailable ? "native" : "browser-preview"}
-        data-chat-presentation={compactModal ? "modal" : "panel"}
+        data-chat-presentation={fixedProjectPanel
+          ? "project-panel"
+          : projectSheet
+          ? "project-sheet"
+          : compactModal
+          ? "modal"
+          : "panel"}
       >
         <ArkDialog.Trigger
           ref={triggerRef}
@@ -193,58 +261,7 @@ export function DesktopChat(
         </ArkDialog.Trigger>
         <ArkDialog.Backdrop className="desktop-chat-backdrop" />
         <ArkDialog.Positioner className="desktop-chat-positioner">
-          <ArkDialog.Content className="desktop-chat-panel">
-            <header className="desktop-chat-head">
-              <div className="min-w-0">
-                <p className="desktop-chat-eyebrow">Agent workspace</p>
-                <ArkDialog.Title className="desktop-chat-title">
-                  Project chat
-                </ArkDialog.Title>
-                <ArkDialog.Description className="desktop-chat-description">
-                  One project. One conversation.
-                </ArkDialog.Description>
-              </div>
-              <ArkDialog.CloseTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="desktop-chat-close h-8 px-2"
-                  aria-label="Close project chat"
-                >
-                  Close
-                </Button>
-              </ArkDialog.CloseTrigger>
-            </header>
-            <ConversationRail
-              conversations={conversations}
-              selectedId={selected?.id}
-              onSelect={setSelectedId}
-              interactive={nativeChatAvailable}
-            />
-            {!nativeChatAvailable
-              ? <BrowserPreviewUnavailable projectId={projectId} />
-              : selected
-              ? (
-                <Conversation
-                  conversation={selected}
-                  busy={busy}
-                  command={command}
-                />
-              )
-              : (
-                <NewConversation
-                  projectId={projectId}
-                  busy={busy}
-                  command={command}
-                />
-              )}
-            {error && <p className="desktop-chat-error" role="alert">{error}
-            </p>}
-            <footer className="desktop-chat-foot">
-              Transcript history is separate from authoritative Thread/CAS
-              evidence.
-            </footer>
-          </ArkDialog.Content>
+          {panel}
         </ArkDialog.Positioner>
       </aside>
     </ArkDialog.Root>
@@ -296,7 +313,7 @@ function BrowserPreviewUnavailable(
   { projectId }: { readonly projectId?: string },
 ): JSX.Element {
   return (
-    <div className="desktop-chat-preview">
+    <div className="desktop-chat-preview" tabIndex={-1} data-autofocus>
       <p className="desktop-chat-interaction-kind">
         Browser preview · non-native
       </p>
@@ -351,6 +368,7 @@ function NewConversation({
               size="sm"
               className="bg-brand text-white hover:bg-brand-strong"
               disabled={busy}
+              data-autofocus
             >
               Start project conversation
             </Button>
@@ -444,6 +462,7 @@ function Conversation({
           onChange={(event) => setText(event.currentTarget.value)}
           placeholder="Ask the agent to review the current project…"
           rows={3}
+          data-autofocus
         />
         <div>
           <Button

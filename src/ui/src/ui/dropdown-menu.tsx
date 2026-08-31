@@ -29,6 +29,7 @@ export function DropdownMenu(
 }
 
 export const DropdownMenuTrigger = Ark.Trigger;
+export const DropdownMenuContextTrigger = Ark.ContextTrigger;
 export const DropdownMenuGroup = Ark.ItemGroup;
 
 export function DropdownMenuContent(

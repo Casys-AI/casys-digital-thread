@@ -1,5 +1,5 @@
 import { cn } from "../lib/utils.ts";
-import { CARD_SURFACE, PAGE_EYEBROW } from "../ui/cockpit.tsx";
+import { CARD_SURFACE, PAGE_EYEBROW, SECTION_LABEL } from "../ui/cockpit.tsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Badge, type BadgeProps } from "../ui/badge.tsx";
@@ -26,7 +26,7 @@ import {
   pendingHumanConfirmationDecisions,
 } from "../project/model.ts";
 import {
-  ProjectCockpitHeader,
+  ProductFacetNavigation,
   ProjectNavigation,
   type ProjectWorkspaceView,
 } from "../project/navigation.tsx";
@@ -35,7 +35,6 @@ import {
   parseProjectLocationHash,
   parseProjectViewHash,
   productFacetHash,
-  productFacetLabel,
   type ProductWorkspaceFacet,
   projectDeepLinkDomId,
   projectDeepLinkHash,
@@ -79,6 +78,7 @@ import {
 } from "./evidence-graph-model.ts";
 import { EvidenceExploration } from "./evidence-exploration.tsx";
 import {
+  buildVerificationCaseLegend,
   filterGraphByVerificationCase,
   reconcileVerificationCaseContext,
   UNAVAILABLE_VERIFICATION_CASE_CATALOG,
@@ -89,6 +89,7 @@ import {
   type PartAnchorageResolution,
 } from "./part-anchorage-model.ts";
 import { ComponentWorkspace } from "./component-workspace.tsx";
+import type { ProductAuthoringSourceClient } from "./product-authoring-sources.ts";
 import {
   ToolInspectorPanel,
   type WorkbenchToolIdentity,
@@ -118,7 +119,17 @@ const EMPTY_PART_ANCHORAGE: PartAnchorageResolution = {
   ambiguousByRef: new Map(),
   orphanRefKeys: new Set(),
 };
+
+function focusProjectWorkspace(): void {
+  requestAnimationFrame(() => {
+    globalThis.document?.getElementById("project-workspace-panel")?.focus({
+      preventScroll: true,
+    });
+    globalThis.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  });
+}
 import type {
+  EngineeringCaseCatalog,
   EngineeringWorkbenchSnapshot,
   ThreadAction,
   ThreadArtifact,
@@ -174,6 +185,8 @@ export interface ThreadWorkbenchProps {
   client: ThreadWorkbenchClient;
   /** Declared fleet topology; absent when the BFF has no manifest. */
   fleetClient?: CockpitFleetClient;
+  /** Optional GET-only reader for live ProjectSourceWorkspace attachments. */
+  authoringSourceClient?: ProductAuthoringSourceClient;
   /** Validated read-only projection focus for sibling Desktop capabilities. */
   onProjectFocus?: (projectId: string | undefined) => void;
 }
@@ -181,6 +194,7 @@ export interface ThreadWorkbenchProps {
 export function ThreadWorkbench({
   client,
   fleetClient,
+  authoringSourceClient,
   onProjectFocus,
 }: ThreadWorkbenchProps): JSX.Element {
   const [workbench, setWorkbench] = useState<EngineeringWorkbenchSnapshot>();
@@ -295,6 +309,7 @@ export function ThreadWorkbench({
           location.productFacet ?? DEFAULT_PRODUCT_FACET,
         );
       }
+      focusProjectWorkspace();
     };
     globalThis.addEventListener("popstate", syncFromHash);
     globalThis.addEventListener("hashchange", syncFromHash);
@@ -775,6 +790,7 @@ export function ThreadWorkbench({
     setActiveDeepLink(undefined);
     setInspectorOpen(false);
     pushWorkspaceHash(productFacetHash(facet));
+    focusProjectWorkspace();
   };
 
   const changeView = (next: ProjectWorkspaceView) => {
@@ -797,6 +813,7 @@ export function ThreadWorkbench({
         ? productFacetHash(activeProductFacet)
         : projectViewHash(next),
     );
+    focusProjectWorkspace();
   };
 
   /**
@@ -824,6 +841,7 @@ export function ThreadWorkbench({
         globalThis.history.pushState(null, "", hash);
       }
     }
+    focusProjectWorkspace();
   };
 
   /**
@@ -878,6 +896,8 @@ export function ThreadWorkbench({
       <PlanningWorkbench
         workbench={workbench}
         streamStatus={streamStatus}
+        activeView={activeView}
+        onChangeView={changeView}
       />
     );
   }
@@ -1181,9 +1201,22 @@ export function ThreadWorkbench({
           <p className={PAGE_EYEBROW}>
             Inspector
           </p>
-          <Badge variant="secondary" className="font-mono text-[9px]">
-            Read only
-          </Badge>
+          <div className="flex items-center gap-1.5">
+            <Badge variant="secondary" className="font-mono text-[9px]">
+              Read only
+            </Badge>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              aria-label="Close details"
+              title="Close details"
+              onClick={() => setInspectorOpen(false)}
+            >
+              <span aria-hidden="true">×</span>
+            </Button>
+          </div>
         </div>
         <p className="mt-1 truncate text-xs font-medium text-foreground">
           {selectedEdge
@@ -1262,40 +1295,42 @@ export function ThreadWorkbench({
 
   return (
     <div className="thread-workbench cockpit-surface">
-      <ProjectCockpitHeader
-        projectId={project.project.id}
-        revision={project.revision}
-        projectName={project.project.name}
-        context={snapshot.subject.label}
-        streamState={followLive ? streamStatus : "history"}
-        streamLabel={streamStatusLabel(streamStatus, followLive)}
-        statusLabel={agentHeader.label}
-        statusValue={
-          <span title={agentHeader.value}>
-            {agentHeader.value}
-          </span>
-        }
-        metaLabel="Projection"
-        metaValue={
-          <time dateTime={snapshot.generatedAt} title={snapshot.generatedAt}>
-            {formatTime(snapshot.generatedAt)}
-          </time>
-        }
-        badge={
-          <Badge
-            variant={snapshot.source === "fixture" ? "warning" : "success"}
-          >
-            {snapshot.sourceLabel}
-          </Badge>
-        }
-      />
-
       <ProjectNavigation
         activeView={activeView}
         onChange={changeView}
-        activeProductFacet={activeProductFacet}
-        onProductFacetChange={changeProductFacet}
-        sourcingBadge={productSourcingCoverage(snapshot).badge}
+        status={
+          <>
+            <span
+              className="project-navigation-stream"
+              data-state={followLive ? streamStatus : "history"}
+              aria-live="polite"
+            >
+              <i aria-hidden="true" />
+              <span className="project-navigation-stream-label">
+                {streamStatusLabel(streamStatus, followLive)}
+              </span>
+            </span>
+            <span
+              className="project-navigation-agent"
+              title={`${agentHeader.label}: ${agentHeader.value}`}
+            >
+              <span>{agentHeader.label}</span>
+              <strong>{agentHeader.value}</strong>
+            </span>
+            <time
+              className="project-navigation-time"
+              dateTime={snapshot.generatedAt}
+              title={`Projection ${snapshot.generatedAt}`}
+            >
+              {formatTime(snapshot.generatedAt)}
+            </time>
+            <Badge
+              variant={snapshot.source === "fixture" ? "warning" : "success"}
+            >
+              {snapshot.sourceLabel}
+            </Badge>
+          </>
+        }
       />
 
       {workbench.alignment.status === "thread-ahead" && (
@@ -1353,29 +1388,21 @@ export function ThreadWorkbench({
             tabIndex={-1}
             aria-labelledby="thread-flow-title"
           >
-            <div className="mb-3 flex items-end justify-between gap-4 max-md:flex-col max-md:items-start">
+            <div className="project-page-heading mb-5 flex items-end justify-between gap-4 max-md:flex-col max-md:items-start">
               <div className="min-w-0">
                 <p className="mb-1 font-mono text-[10px] font-medium uppercase tracking-[.1em] text-brand">
-                  {workspaceEyebrow(activeView, activeProductFacet)}
+                  {workspaceEyebrow(activeView)}
                 </p>
-                <h3
+                <h2
                   id="thread-flow-title"
-                  className="text-lg font-semibold tracking-tight"
+                  className="text-[22px] font-semibold leading-tight tracking-tight"
                 >
-                  {activeView === "verification"
-                    ? presentedMemberRef
-                      ? "Selected version path"
-                      : evidenceCanvas.isFiltered
-                      ? `Local view · depth ${localDepth}`
-                      : "Full evidence map"
-                    : activeView === "operations"
-                    // Ce qu'on vient lire ici, c'est « combien de surfaces,
-                    // dans quel état » — pas le mot « flotte ».
-                    ? operationsHeadline(project)
-                    : workspaceTitle(activeView, activeProductFacet)}
-                </h3>
+                  {workspaceTitle(activeView)}
+                </h2>
                 <p className="text-sm text-muted-foreground">
-                  {workspaceDescription(activeView, activeProductFacet)}
+                  {activeView === "operations"
+                    ? operationsHeadline(project)
+                    : workspaceDescription(activeView)}
                 </p>
               </div>
               <div className="flex shrink-0 items-center justify-end gap-3">
@@ -1386,22 +1413,42 @@ export function ThreadWorkbench({
                 )}
               </div>
             </div>
+            {activeView === "product" && (
+              <div className="mb-5">
+                <ProductFacetNavigation
+                  activeFacet={activeProductFacet}
+                  onChange={changeProductFacet}
+                  sourcingBadge={productSourcingCoverage(snapshot).badge}
+                />
+              </div>
+            )}
             {activeView === "work" && (
               <div className="mb-3">
                 <ProjectWorkRibbon project={project} />
               </div>
             )}
             {activeView === "verification" && (
-              <MetricTiles
-                items={summaryMetrics(
-                  snapshot,
-                  paintedDossierMetric(displayedEvidenceModel, fullMapCanvas),
-                )}
-              />
+              <>
+                <EvidenceCaseNavigator
+                  catalog={snapshot.engineeringCases ??
+                    UNAVAILABLE_VERIFICATION_CASE_CATALOG}
+                  nodes={evidenceRawGraphMemo!.nodes}
+                  filter={verificationCaseFilter}
+                  onChange={changeVerificationCaseFilter}
+                />
+                <MetricTiles
+                  items={summaryMetrics(
+                    snapshot,
+                    paintedDossierMetric(displayedEvidenceModel, fullMapCanvas),
+                  )}
+                />
+              </>
             )}
             <div
               className={`thread-graph-workspace ${
-                activeView === "verification" ? "is-verification" : "is-wide"
+                activeView === "verification"
+                  ? `is-verification ${inspectorOpen ? "has-inspector" : ""}`
+                  : "is-wide"
               }`}
             >
               <div
@@ -1471,7 +1518,7 @@ export function ThreadWorkbench({
                       className="thread-versioned-provenance"
                       aria-labelledby="thread-versioned-provenance-title"
                     >
-                      <div className="flex items-start justify-between gap-4 px-5 py-4">
+                      <header className="flex items-start justify-between gap-4 px-5 py-4">
                         <div className="min-w-0 space-y-1">
                           <h4
                             id="thread-versioned-provenance-title"
@@ -1479,14 +1526,16 @@ export function ThreadWorkbench({
                           >
                             {presentedMemberRef
                               ? "Selected version path"
-                              : "Evidence map"}
+                              : evidenceCanvas.isFiltered
+                              ? `Local evidence · depth ${localDepth}`
+                              : "Full evidence map"}
                           </h4>
                           <p className="text-sm text-muted-foreground">
                             {presentedMemberRef
                               ? `Depth ${localDepth}; the alternate version stays hidden.`
                               : evidenceCanvas.isFiltered
                               ? "Local view. Select the background for the full map."
-                              : "Select a record to inspect. Double-click for the local neighbourhood."}
+                              : "Select a record to inspect. Double-click a node to focus its neighbourhood."}
                           </p>
                         </div>
                         <p className="shrink-0 font-mono text-xs text-muted-foreground">
@@ -1511,7 +1560,7 @@ export function ThreadWorkbench({
                               return parts.join(" · ");
                             })()}
                         </p>
-                      </div>
+                      </header>
                       <div className="evidence-graph-menu">
                         <DropdownMenu align="end">
                           <DropdownMenuTrigger asChild>
@@ -1622,6 +1671,7 @@ export function ThreadWorkbench({
                       <ComponentWorkspace
                         snapshot={snapshot}
                         activeProvider={activeComponentProvider}
+                        authoringSourceClient={authoringSourceClient}
                         selectedComponentId={selectedComponentId}
                         onProviderChange={changeComponentProvider}
                         onComponentSelect={selectComponent}
@@ -1630,6 +1680,7 @@ export function ThreadWorkbench({
                           selectGraphNode(node, { inspect: false });
                           changeView("work");
                         }}
+                        onOpenWork={() => changeView("work")}
                         onOpenSourcing={() => changeProductFacet("sourcing")}
                       />
                     )
@@ -1642,7 +1693,7 @@ export function ThreadWorkbench({
                     />
                   )}
               </div>
-              {activeView === "verification" && inspector}
+              {activeView === "verification" && inspectorOpen && inspector}
             </div>
           </main>
         )}
@@ -1665,14 +1716,11 @@ function shouldAcceptPlanningActivityUpdate(
 
 function workspaceEyebrow(
   view: Exclude<ProjectWorkspaceView, "overview">,
-  productFacet: ProductWorkspaceFacet = DEFAULT_PRODUCT_FACET,
 ): string {
-  if (view === "work") return "Work · recorded activity";
-  if (view === "product") {
-    return `Product · ${productFacetLabel(productFacet).toLowerCase()}`;
-  }
-  if (view === "verification") return "Verification · evidence exploration";
-  return "Operations · recorded execution";
+  if (view === "work") return "Project · recorded activity";
+  if (view === "product") return "Product dossier";
+  if (view === "verification") return "Evidence · verification";
+  return "Utility · systems and runs";
 }
 
 /** Recorded run and human-attention state; never provider liveness. */
@@ -1694,51 +1742,138 @@ function operationsHeadline(
 
 function workspaceTitle(
   view: Exclude<ProjectWorkspaceView, "overview">,
-  productFacet: ProductWorkspaceFacet = DEFAULT_PRODUCT_FACET,
 ): string {
-  if (view === "work") return "Recorded activity";
-  if (view === "product") {
-    if (productFacet === "requirements") {
-      return "What the current revision must hold";
-    }
-    if (productFacet === "sourcing") return "To Buy stays a reserved lane";
-    return "Product structure";
-  }
-  if (view === "verification") return "Evidence map";
-  return "Engineering fleet";
+  if (view === "work") return "Activity";
+  if (view === "product") return "Product";
+  if (view === "verification") return "Evidence";
+  return "Systems & runs";
 }
 
 function workspaceDescription(
   view: Exclude<ProjectWorkspaceView, "overview">,
-  productFacet: ProductWorkspaceFacet = DEFAULT_PRODUCT_FACET,
 ): string {
   if (view === "work") {
-    return "Recorded results and review requests, in order.";
+    return "Recorded activity, reviews and lineage.";
   }
   if (view === "product") {
-    if (productFacet === "requirements") {
-      return "Requirement expressions and the last recorded verdict.";
-    }
-    if (productFacet === "sourcing") {
-      return "ERP coverage stays GAP until sourcing records exist.";
-    }
-    return "Components matched across system, CAD and ERP records.";
+    return "Structure, requirements and lifecycle coverage for the current revision.";
   }
   if (view === "verification") {
-    return "Recorded support and impact for each result.";
+    return "Start from a verification case, then inspect its exact evidence chain.";
   }
-  return "Read-only projection of recorded runs, agent preparation, human confirmations, closeouts and contributing systems.";
+  return "Read-only execution, integrations and record diagnostics.";
+}
+
+function EvidenceCaseNavigator({
+  catalog,
+  nodes,
+  filter,
+  onChange,
+}: {
+  catalog: EngineeringCaseCatalog;
+  nodes: readonly ThreadGraphNode[];
+  filter: VerificationCaseFilter;
+  onChange: (filter: VerificationCaseFilter) => void;
+}): JSX.Element {
+  const cases = buildVerificationCaseLegend(catalog, nodes);
+  const statusVariant = catalog.status === "observed"
+    ? "success"
+    : catalog.status === "unresolved"
+    ? "warning"
+    : "secondary";
+  return (
+    <section
+      className="evidence-case-navigator mb-4 border-y border-border py-4"
+      aria-labelledby="evidence-cases-title"
+    >
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className={SECTION_LABEL}>Verification cases</p>
+          <h3
+            id="evidence-cases-title"
+            className="mt-1 text-base font-semibold"
+          >
+            Start with the engineering question
+          </h3>
+        </div>
+        <Badge variant={statusVariant}>{catalog.status}</Badge>
+      </div>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] gap-2">
+        <button
+          type="button"
+          aria-pressed={filter.kind === "all"}
+          className={cn(
+            "min-w-0 rounded-lg border p-3 text-left transition-colors",
+            filter.kind === "all"
+              ? "border-brand bg-brand/[0.04]"
+              : "border-border bg-card hover:border-brand/40",
+          )}
+          onClick={() => onChange({ kind: "all" })}
+        >
+          <span className="block text-sm font-semibold">
+            Complete project record
+          </span>
+          <span className="mt-1 block text-xs text-muted-foreground">
+            {nodes.length} linked evidence items across every recorded case
+          </span>
+        </button>
+        {cases.map((item) => {
+          const selected = filter.kind === "case" &&
+            filter.caseKey === item.case.key;
+          return (
+            <button
+              key={item.case.key}
+              type="button"
+              aria-pressed={selected}
+              className={cn(
+                "min-w-0 rounded-lg border p-3 text-left transition-colors",
+                selected
+                  ? "border-brand bg-brand/[0.04]"
+                  : "border-border bg-card hover:border-brand/40",
+              )}
+              onClick={() => onChange({ kind: "case", caseKey: item.case.key })}
+            >
+              <span className="block text-sm font-semibold">
+                {sentenceCaseLabel(item.case.family)}
+              </span>
+              <span className="mt-1 block break-words text-xs text-muted-foreground">
+                {item.case.id} · r{item.case.revision} · {item.nodeCount}{" "}
+                linked items
+              </span>
+              <span
+                className="mt-2 line-clamp-2 block text-xs text-foreground/75"
+                title={item.case.scope}
+              >
+                {item.case.scope}
+              </span>
+            </button>
+          );
+        })}
+        {cases.length === 0 && (
+          <div className="rounded-lg border border-dashed border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+            No engineering case is recorded in this exact snapshot. Catalog
+            status: {catalog.status}.
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function sentenceCaseLabel(value: string): string {
+  const label = value.replaceAll("-", " ");
+  return `${label.charAt(0).toUpperCase()}${label.slice(1)}`;
 }
 
 function FactList(
   { items }: { items: readonly FactItem[] },
 ): JSX.Element {
   return (
-    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
+    <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5">
       {items.map((item) => (
         <div key={item.id} className="contents">
           <dt className="text-xs text-muted-foreground">{item.label}</dt>
-          <dd className="text-sm">{item.value}</dd>
+          <dd className="min-w-0 break-words text-sm">{item.value}</dd>
         </div>
       ))}
     </dl>
@@ -1749,7 +1884,7 @@ function MetricTiles(
   { items }: { items: readonly MetricTileItem[] },
 ): JSX.Element {
   return (
-    <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+    <div className="mb-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,9rem),1fr))] gap-3">
       {items.map((metric) => (
         <article
           key={metric.id}
@@ -2451,9 +2586,7 @@ function summaryMetrics(
           ? ` · ${historicalArtifactCount} historical`
           : ""
       }`,
-      detail: stale > 0
-        ? `${fresh} fresh · ${stale} current stale`
-        : `${fresh} current fresh`,
+      detail: stale > 0 ? `${fresh} fresh · ${stale} stale` : `${fresh} fresh`,
       tone: stale ? "warning" : "success",
     },
     {

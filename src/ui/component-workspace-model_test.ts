@@ -3,6 +3,7 @@ import { exactThreadAssetHref } from "./src/cad/exact-thread-asset.ts";
 import {
   buildComponentTree,
   buildSysmlSubtree,
+  cadCoverageLabel,
   cadSurfaceCoverage,
   correctionNodesForComponent,
   isDuplicateSealedGlbCopy,
@@ -12,6 +13,7 @@ import {
   sealedAssemblyGeometryBlocker,
   sealedAssemblyGlbAsset,
   sealedGlbPreviewBlocks,
+  sourceFilesForComponent,
 } from "./src/thread/component-workspace-model.ts";
 import { GENERIC_THREAD_FIXTURE } from "../testing/workbench/generic-thread-workbench-fixture.ts";
 import type {
@@ -651,6 +653,9 @@ Deno.test("module binaries fail closed on the wrong tool, system, id, URI, or tr
 
   assertClosed(({ step }) => {
     step.producedBy = "build123d-module-assembler-v1@1";
+  });
+  assertClosed(({ step }) => {
+    step.producedBy = "build123d-module-assembler-v1@1.0.0";
   });
   assertClosed(({ step }) => {
     step.producedBy = "lookalike-module-assembler-v1@1.0.0";
@@ -1561,6 +1566,163 @@ Deno.test("buildSysmlSubtree returns the assembly itself as root and selected wh
   assertEquals(subtree.siblings.length, 0);
 });
 
+Deno.test("source files stay scoped to exact selected SysML identities", () => {
+  const snapshot = minimalSnapshot();
+  const root: ThreadComponent = {
+    id: "system-root",
+    label: "Module",
+    kind: "assembly",
+    quantity: 1,
+    bindings: [{
+      provider: "syson",
+      kind: "part-definition",
+      id: "sysml-module",
+      label: "Module",
+      evidenceArtifactId: "architecture",
+      status: "verified",
+    }],
+  };
+  const selected: ThreadComponent = {
+    id: "base-plate",
+    parentId: root.id,
+    label: "BasePlate",
+    kind: "part",
+    quantity: 1,
+    bindings: [{
+      provider: "syson",
+      kind: "part-definition",
+      id: "sysml-base-plate",
+      label: "BasePlate",
+      evidenceArtifactId: "architecture",
+      status: "verified",
+    }, {
+      provider: "syson",
+      kind: "part-usage",
+      id: "sysml-base-plate-usage",
+      label: "basePlate",
+      evidenceArtifactId: "architecture",
+      status: "verified",
+    }],
+    attributes: [{
+      id: "sysml-base-width",
+      kind: "AttributeUsage",
+      label: "baseWidth",
+    }],
+  };
+  const sibling: ThreadComponent = {
+    id: "riser",
+    parentId: root.id,
+    label: "Riser",
+    kind: "part",
+    quantity: 1,
+    bindings: [{
+      provider: "syson",
+      kind: "part-definition",
+      id: "sysml-riser",
+      label: "Riser",
+      evidenceArtifactId: "architecture",
+      status: "verified",
+    }],
+  };
+  snapshot.components.components = [root, selected, sibling];
+  snapshot.sourceFiles = {
+    schemaVersion: "thread-source-files/1.0",
+    status: "observed",
+    files: [
+      sourceFile("cad.base-plate", 2, "cad.base-plate", "design-source", [{
+        relation: "represents",
+        sourceSymbolId: "result",
+        sysmlElementId: "sysml-base-plate",
+        sysmlElementKind: "PartDefinition",
+      }]),
+      sourceFile("cad.dimensions", 1, "cad.dimensions", "design-source", [{
+        relation: "parameterizes",
+        sourceSymbolId: "baseWidth",
+        sysmlElementId: "sysml-base-width",
+        sysmlElementKind: "AttributeUsage",
+      }]),
+      sourceFile("cad.riser", 1, "cad.riser", "design-source", [{
+        relation: "represents",
+        sourceSymbolId: "result",
+        sysmlElementId: "sysml-riser",
+        sysmlElementKind: "PartDefinition",
+      }]),
+      sourceFile("cad.label-decoy", 1, "BasePlate", "design-source", [{
+        relation: "represents",
+        sourceSymbolId: "result",
+        sysmlElementId: "sysml-base-plate-copy",
+        sysmlElementKind: "PartDefinition",
+      }]),
+      sourceFile("cad.module", 1, "cad.module", "design-source", []),
+    ],
+  };
+  snapshot.productNavigation = {
+    schemaVersion: "product-navigation-query/2.0",
+    status: "observed",
+    basis: {
+      projectId: "project",
+      threadSnapshotId: snapshot.id,
+      threadRevision: 1,
+      threadSubjectId: snapshot.subject.id,
+      architectureArtifactId: "architecture",
+      architectureFingerprint: `sha256:${"a".repeat(64)}`,
+      captureSchema: "architecture-capture/4.0",
+    },
+    roots: [{
+      element: { elementKind: "PartDefinition", elementId: "sysml-module" },
+      label: "Module",
+      expandable: true,
+    }],
+    children: [],
+    attachments: {
+      sources: [{
+        group: "sources",
+        kind: "source-file",
+        id: "cad.module@1",
+        label: "Module CAD source",
+      }],
+      geometry: [],
+      physics: [],
+      requirements: [],
+    },
+  };
+
+  assertEquals(
+    sourceFilesForComponent(snapshot, selected),
+    [{
+      logicalName: "cad.base-plate",
+      role: "design-source",
+      fileId: "cad.base-plate",
+      fileRevision: 2,
+      workspaceRevision: 7,
+    }, {
+      logicalName: "cad.dimensions",
+      role: "design-source",
+      fileId: "cad.dimensions",
+      fileRevision: 1,
+      workspaceRevision: 7,
+    }],
+  );
+  assertEquals(
+    sourceFilesForComponent(snapshot, root).map((file) => file.fileId),
+    ["cad.module"],
+  );
+});
+
+Deno.test("CAD header keeps separately linked part geometry visible beside a sealed assembly", () => {
+  const sealed = resolveSealedAssemblyGeometry(
+    moduleAssemblyFixture().snapshot,
+  );
+  assertEquals(sealed?.independentPartDefinitionGeometryCount, 0);
+  assertEquals(
+    cadCoverageLabel(
+      { assemblySurfaces: 0, partSurfaces: 3, totalComponents: 4 },
+      sealed,
+    ),
+    "1 sealed assembly · 3 linked part geometries",
+  );
+});
+
 Deno.test("buildSysmlSubtree anchors requirements by exact target PartDefinition, not RequirementUsage", () => {
   const snapshot = minimalSnapshot();
   const dripTray: ThreadComponent = {
@@ -1933,6 +2095,32 @@ function minimalSnapshot(): ThreadWorkbenchSnapshot {
   snapshot.requirements = [];
   snapshot.observations = [];
   return snapshot;
+}
+
+function sourceFile(
+  fileId: string,
+  fileRevision: number,
+  moduleId: string,
+  role: string,
+  bindings: NonNullable<
+    ThreadWorkbenchSnapshot["sourceFiles"]
+  >["files"][number]["bindings"],
+): NonNullable<ThreadWorkbenchSnapshot["sourceFiles"]>["files"][number] {
+  return {
+    fileId,
+    fileRevision,
+    workspaceRevision: 7,
+    workspaceEventFingerprint: `sha256:${"a".repeat(64)}`,
+    fileFingerprint: `sha256:${"b".repeat(64)}`,
+    resourceFingerprint: `sha256:${"c".repeat(64)}`,
+    resourceUri: `casys://resource/${fileId}`,
+    resourceName: `${fileId}.py`,
+    mimeType: "text/x-python",
+    moduleId,
+    role,
+    admissionArtifactId: "admission",
+    bindings,
+  };
 }
 
 function analysisNode(

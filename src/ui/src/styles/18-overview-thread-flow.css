@@ -1,0 +1,722 @@
+/* Compact left-to-right D3 thread presentation.
+
+   Record families are matrices of small nodes. Names only surface on hover,
+   focus or selection, leaving enough room for 10x10 part families without a
+   nested scrollbar or a wall of cards. */
+
+.overview-thread-hero {
+  position: relative;
+}
+
+.overview-thread-hero > .overview-thread-viewport:has(.overview-thread-flow) {
+  max-height: none;
+  overflow: hidden;
+  overscroll-behavior: none;
+  scrollbar-width: none;
+  cursor: grab;
+  touch-action: none;
+}
+
+.overview-thread-hero > .overview-thread-viewport:has(.overview-thread-flow)::-webkit-scrollbar {
+  display: none;
+}
+
+.overview-thread-hero > .overview-thread-viewport:has(.overview-thread-flow):active {
+  cursor: grabbing;
+}
+
+.overview-thread-hero > .overview-thread-viewport:has(.overview-thread-map) {
+  max-height: none;
+  overflow: hidden;
+}
+
+.overview-thread-hero .overview-thread-map {
+  width: 100%;
+  min-width: 0;
+}
+
+.overview-thread-hero .overview-thread-svg {
+  width: 100%;
+  height: auto;
+}
+
+.overview-thread-hero .overview-thread-layout-switch {
+  position: relative;
+  top: auto;
+  right: auto;
+  z-index: 5;
+  justify-content: flex-end;
+  min-height: 2rem;
+  padding: 0.25rem 0.5rem 0.125rem;
+  border-bottom: 0;
+  background: #fff;
+}
+
+.overview-thread-hero .overview-thread-layout-switch > button {
+  min-height: 1.5rem;
+  padding: 0.15rem 0.5rem;
+  border-color: transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: #68767c;
+  font-size: 0.5625rem;
+  letter-spacing: 0.055em;
+}
+
+.overview-thread-hero .overview-thread-layout-switch > button:first-child,
+.overview-thread-hero .overview-thread-layout-switch > button:last-child {
+  margin: 0;
+  border-radius: 999px;
+}
+
+.overview-thread-hero .overview-thread-layout-switch > button[aria-pressed="true"] {
+  border-color: #dbe2e4;
+  background: #eef2f2;
+  color: #27363d;
+}
+
+.overview-thread-hero .overview-thread-flow {
+  container-name: overview-thread-flow;
+  container-type: inline-size;
+  width: 100%;
+  min-width: 0;
+  overflow: visible;
+  background: #fff;
+}
+
+.overview-thread-flow-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.overview-thread-hero .overview-thread-flow-lane-strip {
+  position: relative;
+  top: auto;
+  z-index: 3;
+  width: 100%;
+  height: 3.375rem;
+  border-top: 1px solid #edf0ef;
+  border-bottom: 1px solid #e7ebea;
+  background: #fbfcfb;
+  backdrop-filter: none;
+}
+
+.overview-thread-hero .overview-thread-flow-lane {
+  position: absolute;
+  top: 0;
+  left: var(--flow-x);
+  display: flex;
+  width: clamp(4.25rem, 17cqi, 11rem);
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  transform: translateX(-50%);
+  color: var(--flow-color);
+}
+
+.overview-thread-flow-lane-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.14rem;
+  line-height: 1;
+}
+
+.overview-thread-flow-stage-title {
+  overflow: hidden;
+  color: color-mix(in srgb, var(--flow-color) 88%, #1f2f35);
+  font-family: var(--font-mono);
+  font-size: clamp(0.5625rem, 0.88cqi, 0.6875rem);
+  font-weight: 820;
+  letter-spacing: 0.075em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.overview-thread-flow-lane-meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.2rem;
+  color: #6d797e;
+  font-family: var(--font-mono);
+  font-size: clamp(0.4375rem, 0.66cqi, 0.525rem);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.overview-thread-flow-stage-count {
+  flex: 0 0 auto;
+  color: #4e5d63;
+  font-weight: 720;
+}
+
+.overview-thread-flow-stage-status {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.16rem;
+  color: var(--thread-muted);
+  font-weight: 720;
+}
+
+.overview-thread-flow-status-dot {
+  display: block;
+  width: 0.3rem;
+  height: 0.3rem;
+  flex: 0 0 auto;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: #fff;
+}
+
+.overview-thread-flow-stage-status[data-status="active"] {
+  color: var(--ui-success);
+}
+
+.overview-thread-flow-stage-status[data-status="active"] .overview-thread-flow-status-dot,
+.overview-thread-flow-stage-status[data-status="completed"] .overview-thread-flow-status-dot {
+  background: currentColor;
+}
+
+.overview-thread-flow-stage-status[data-status="blocked"] {
+  color: var(--ui-destructive);
+}
+
+.overview-thread-flow-stage-status[data-status="planned"] .overview-thread-flow-status-dot {
+  border-style: dashed;
+}
+
+.overview-thread-flow-lane-index {
+  display: grid;
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--flow-color) 36%, #dfe5e3);
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--flow-color) 74%, #26343a);
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.overview-thread-hero .overview-thread-flow-lane-title {
+  min-width: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--flow-color) 70%, #26343a);
+  font-family: var(--font-mono);
+  font-size: clamp(0.5rem, 0.78cqi, 0.625rem);
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.overview-thread-flow-lane-meta .overview-thread-flow-lane-title {
+  flex: 1 1 auto;
+  color: #6d797e;
+  font-size: inherit;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.overview-thread-flow-canvas {
+  position: relative;
+  width: 100%;
+  overflow: visible;
+  background: #fff;
+  isolation: isolate;
+}
+
+.overview-thread-flow-activity-legend {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.75rem;
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.25rem 0.6rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--ui-border) 78%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, #fff 88%, transparent);
+  color: #5c6a70;
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  font-weight: 720;
+  letter-spacing: 0.035em;
+  pointer-events: none;
+  text-transform: uppercase;
+}
+
+.overview-thread-flow-activity-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.overview-thread-flow-activity-key {
+  display: block;
+  width: 0.42rem;
+  height: 0.42rem;
+  border: 1.5px solid var(--thread-muted);
+  border-radius: 0.1rem;
+  background: #fff;
+}
+
+.overview-thread-flow-activity-key[data-status="planned"] {
+  border-style: dashed;
+}
+
+.overview-thread-flow-activity-key[data-status="active"] {
+  border-color: var(--ui-success);
+  background: color-mix(in srgb, var(--ui-success) 22%, #fff);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-success) 12%, transparent);
+}
+
+.overview-thread-flow-activity-key[data-status="blocked"] {
+  border-color: var(--ui-destructive);
+  background: color-mix(in srgb, var(--ui-destructive) 16%, #fff);
+}
+
+.overview-thread-hero .overview-thread-flow-svg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  overflow: visible;
+  background: transparent;
+}
+
+.overview-thread-flow-guides line {
+  stroke: #819097;
+  stroke-dasharray: 1 6;
+  stroke-linecap: round;
+  stroke-opacity: 0.14;
+}
+
+.overview-thread-hero-immersive .overview-thread-flow-guides {
+  display: none;
+}
+
+.overview-thread-flow-groups rect {
+  fill: #f7faf8;
+  stroke: #d5dedb;
+  stroke-width: 1;
+}
+
+.overview-thread-flow-groups rect[data-draggable="true"] {
+  cursor: grab;
+  pointer-events: all;
+  touch-action: none;
+}
+
+.overview-thread-flow-groups rect[data-draggable="true"]:hover {
+  stroke: color-mix(in srgb, var(--ui-brand) 34%, #cbd6d3);
+  stroke-width: 1.35;
+}
+
+.overview-thread-flow-groups rect[data-draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.overview-thread-flow-groups rect[data-lane="requirements"] {
+  fill: color-mix(in srgb, var(--ui-lane-req) 4%, #fff);
+}
+
+.overview-thread-flow-groups rect[data-lane="system-model"] {
+  fill: color-mix(in srgb, var(--ui-lane-model) 4%, #fff);
+}
+
+.overview-thread-flow-groups rect[data-lane="geometry"] {
+  fill: color-mix(in srgb, var(--ui-lane-geom) 4%, #fff);
+}
+
+.overview-thread-flow-groups rect[data-lane="physics"] {
+  fill: color-mix(in srgb, var(--ui-lane-phys) 4%, #fff);
+}
+
+.overview-thread-flow-groups rect[data-lane="verdicts"] {
+  fill: color-mix(in srgb, var(--ui-lane-verdict) 4%, #fff);
+}
+
+.overview-thread-hero .overview-thread-flow-segment {
+  pointer-events: none;
+  stroke: #6e7f86;
+  opacity: 0.16;
+  transition:
+    stroke 120ms ease,
+    opacity 120ms ease;
+}
+
+.overview-thread-hero .overview-thread-flow-segment[data-kind="bundle-trunk"] {
+  stroke: #3f555e;
+  opacity: 0.3;
+}
+
+.overview-thread-hero .overview-thread-flow-segment[data-kind="pair-feeder"] {
+  stroke: #566b73;
+  opacity: 0.22;
+}
+
+.overview-thread-hero .overview-thread-flow-segment[data-kind="node-branch"] {
+  opacity: 0.14;
+}
+
+.overview-thread-hero .overview-thread-flow-segment[data-state="emphasis"] {
+  stroke: #986a12;
+  opacity: 0.58;
+}
+
+.overview-thread-hero .overview-thread-flow-segment[data-state="incoming"] {
+  stroke: #6d28d9;
+  opacity: 0.7;
+}
+
+.overview-thread-hero .overview-thread-flow-segment[data-state="outgoing"] {
+  stroke: #0f766e;
+  opacity: 0.7;
+}
+
+.overview-thread-hero .overview-thread-flow-segment[data-state="muted"] {
+  opacity: 0.055;
+}
+
+.overview-thread-flow[data-inspection="hover"] .overview-thread-flow-segment[data-state="incoming"],
+.overview-thread-flow[data-inspection="hover"] .overview-thread-flow-segment[data-state="outgoing"] {
+  opacity: 0.42;
+}
+
+.overview-thread-flow[data-inspection="hover"] .overview-thread-flow-segment[data-state="muted"] {
+  opacity: 0.06;
+}
+
+.overview-thread-flow[data-inspection="hover"] .overview-thread-flow-segment[data-state="incoming"] {
+  stroke: color-mix(in srgb, #6d28d9 56%, #75868d);
+}
+
+.overview-thread-flow[data-inspection="hover"] .overview-thread-flow-segment[data-state="outgoing"] {
+  stroke: color-mix(in srgb, #0f766e 58%, #75868d);
+}
+
+.overview-thread-flow[data-inspection="selected"] .overview-thread-flow-segment[data-state="incoming"],
+.overview-thread-flow[data-inspection="selected"] .overview-thread-flow-segment[data-state="outgoing"] {
+  opacity: 0.68;
+}
+
+.overview-thread-flow[data-dragging="true"] .overview-thread-flow-segment[data-drag-route="idle"] {
+  opacity: 0.06;
+}
+
+.overview-thread-flow[data-dragging="true"] .overview-thread-flow-segment[data-drag-route="connected"] {
+  opacity: 0.46;
+}
+
+.overview-thread-flow[data-dragging="true"] .overview-thread-flow-segment[data-kind="bundle-trunk"][data-drag-route="connected"] {
+  opacity: 0.56;
+}
+
+.overview-thread-flow-group-labels {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.overview-thread-flow-group-label {
+  position: absolute;
+  top: var(--flow-y);
+  left: var(--flow-x);
+  display: block;
+  min-height: 1.35rem;
+  max-width: 17%;
+  padding: 0.22rem 0.42rem;
+  overflow: hidden;
+  transform: translate(-50%, -100%);
+  border: 1px solid color-mix(in srgb, var(--flow-color) 24%, #dce3e1);
+  border-radius: 999px;
+  outline: none;
+  background: color-mix(in srgb, #fff 92%, var(--flow-color));
+  box-shadow: 0 1px 3px rgb(31 47 53 / 7%);
+  color: color-mix(in srgb, var(--flow-color) 78%, #405158);
+  cursor: grab;
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+  line-height: 1.1;
+  pointer-events: auto;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  touch-action: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.overview-thread-flow-group-label:hover {
+  border-color: color-mix(in srgb, var(--flow-color) 42%, #d2dcda);
+  background: color-mix(in srgb, #fff 84%, var(--flow-color));
+}
+
+.overview-thread-flow-group-label:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--flow-color) 70%, #fff);
+  outline-offset: 2px;
+}
+
+.overview-thread-flow-group-label:active {
+  cursor: grabbing;
+}
+
+.overview-thread-flow-group-label[data-draggable="false"] {
+  pointer-events: none;
+}
+
+.overview-thread-flow-nodes {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.overview-thread-hero .overview-thread-flow-node {
+  position: absolute;
+  top: var(--flow-y);
+  left: var(--flow-x);
+  display: grid;
+  width: 0.875rem;
+  height: 0.875rem;
+  place-items: center;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border: 0;
+  border-radius: 999px;
+  outline: none;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.overview-thread-hero .overview-thread-flow-node[data-draggable="true"] {
+  cursor: grab;
+  touch-action: none;
+}
+
+.overview-thread-hero .overview-thread-flow-node[data-draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.overview-thread-flow-node-dot {
+  display: block;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border: 1px solid color-mix(in srgb, var(--flow-color) 76%, #fff);
+  border-radius: 999px;
+  background: var(--flow-color);
+  box-shadow: 0 0 0 2px #fff;
+}
+
+.overview-thread-flow-node[data-kind="activity"] .overview-thread-flow-node-dot {
+  border-width: 1.5px;
+  border-color: var(--thread-muted);
+  border-radius: 0.125rem;
+  background: #fff;
+  box-shadow: none;
+}
+
+.overview-thread-flow-node[data-kind="activity"][data-status="planned"] .overview-thread-flow-node-dot {
+  border-style: dashed;
+}
+
+.overview-thread-flow-node[data-kind="activity"][data-status="active"] .overview-thread-flow-node-dot {
+  border-color: var(--ui-success);
+  background: color-mix(in srgb, var(--ui-success) 22%, #fff);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-success) 12%, transparent);
+}
+
+.overview-thread-flow-node[data-kind="activity"][data-status="blocked"] .overview-thread-flow-node-dot {
+  border-color: var(--ui-destructive);
+  background: color-mix(in srgb, var(--ui-destructive) 16%, #fff);
+}
+
+.overview-thread-flow-node[data-emphasis="true"] .overview-thread-flow-node-dot {
+  width: 0.5625rem;
+  height: 0.5625rem;
+}
+
+.overview-thread-flow-node-tooltip {
+  position: absolute;
+  bottom: calc(100% + 0.35rem);
+  left: 50%;
+  z-index: 10;
+  display: none;
+  width: max-content;
+  max-width: min(12rem, 32cqi);
+  padding: 0.32rem 0.45rem;
+  transform: translateX(-50%);
+  border: 1px solid var(--ui-border);
+  border-radius: 0.35rem;
+  background: var(--ui-popover);
+  box-shadow: 0 4px 14px rgb(19 31 36 / 18%);
+  color: var(--ui-popover-foreground);
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.25;
+  pointer-events: none;
+  text-align: left;
+}
+
+.overview-thread-flow-node-tooltip strong,
+.overview-thread-flow-node-tooltip > span {
+  display: block;
+}
+
+.overview-thread-flow-node-tooltip > span {
+  display: -webkit-box;
+  margin-top: 0.18rem;
+  overflow: hidden;
+  color: var(--ui-muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  font-weight: 500;
+  line-height: 1.25;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.overview-thread-flow-node:hover .overview-thread-flow-node-tooltip,
+.overview-thread-flow-node:focus-visible .overview-thread-flow-node-tooltip {
+  display: block;
+}
+
+.overview-thread-flow-node[data-lane="requirements"] .overview-thread-flow-node-tooltip {
+  left: 0;
+  transform: none;
+}
+
+.overview-thread-flow-node[data-lane="verdicts"] .overview-thread-flow-node-tooltip {
+  right: 0;
+  left: auto;
+  transform: none;
+}
+
+.overview-thread-hero .overview-thread-flow-node:hover .overview-thread-flow-node-dot,
+.overview-thread-hero .overview-thread-flow-node:focus-visible .overview-thread-flow-node-dot,
+.overview-thread-hero .overview-thread-flow-node[data-state="selected"] .overview-thread-flow-node-dot {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px color-mix(in srgb, var(--flow-color) 48%, transparent);
+}
+
+.overview-thread-hero .overview-thread-flow-node[data-kind="activity"][data-status="planned"]:hover .overview-thread-flow-node-dot,
+.overview-thread-hero .overview-thread-flow-node[data-kind="activity"][data-status="planned"]:focus-visible .overview-thread-flow-node-dot,
+.overview-thread-hero .overview-thread-flow-node[data-kind="activity"][data-status="planned"][data-state="selected"] .overview-thread-flow-node-dot {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px color-mix(in srgb, var(--thread-muted)
+    34%, transparent);
+}
+
+.overview-thread-hero .overview-thread-flow-node[data-kind="activity"][data-status="active"]:hover .overview-thread-flow-node-dot,
+.overview-thread-hero .overview-thread-flow-node[data-kind="activity"][data-status="active"]:focus-visible .overview-thread-flow-node-dot,
+.overview-thread-hero .overview-thread-flow-node[data-kind="activity"][data-status="active"][data-state="selected"] .overview-thread-flow-node-dot {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px color-mix(in srgb, var(--ui-success)
+    34%, transparent);
+}
+
+.overview-thread-hero .overview-thread-flow-node[data-kind="activity"][data-status="blocked"]:hover .overview-thread-flow-node-dot,
+.overview-thread-hero .overview-thread-flow-node[data-kind="activity"][data-status="blocked"]:focus-visible .overview-thread-flow-node-dot,
+.overview-thread-hero .overview-thread-flow-node[data-kind="activity"][data-status="blocked"][data-state="selected"] .overview-thread-flow-node-dot {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px color-mix(in srgb, var(--ui-destructive)
+    30%, transparent);
+}
+
+.overview-thread-hero .overview-thread-flow-node:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--flow-color) 72%, #fff);
+  outline-offset: 2px;
+}
+
+.overview-thread-hero .overview-thread-flow-node[data-state="muted"] {
+  opacity: 0.28;
+}
+
+.overview-thread-flow[data-inspection="hover"] .overview-thread-flow-node[data-state="muted"] {
+  opacity: 0.5;
+}
+
+.overview-thread-flow[data-inspection="selected"] .overview-thread-flow-node[data-state="muted"] {
+  opacity: 0.18;
+}
+
+@container overview-thread-flow (max-width: 44rem) {
+  .overview-thread-flow-lane-index {
+    display: none;
+  }
+
+  .overview-thread-hero .overview-thread-flow-lane {
+    width: 18cqi;
+  }
+
+  .overview-thread-hero .overview-thread-flow-lane-title {
+    font-size: clamp(0.4375rem, 1.55cqi, 0.5625rem);
+    letter-spacing: 0.02em;
+  }
+
+  .overview-thread-flow-status-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+
+  .overview-thread-hero .overview-thread-flow-node {
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+
+  .overview-thread-flow-node-dot {
+    width: 0.375rem;
+    height: 0.375rem;
+    border: 0;
+    box-shadow: 0 0 0 1px #fff;
+  }
+
+  .overview-thread-flow-node-tooltip {
+    max-width: min(10rem, 40cqi);
+    font-size: 0.625rem;
+  }
+
+  .overview-thread-flow-group-label {
+    font-size: 0.5rem;
+  }
+}
+
+@container overview-thread-flow (max-width: 30rem) {
+  .overview-thread-hero .overview-thread-flow-lane-title {
+    font-size: 0.5rem;
+    letter-spacing: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overview-thread-hero .overview-thread-flow-segment {
+    transition: none;
+  }
+}

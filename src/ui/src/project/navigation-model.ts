@@ -35,13 +35,13 @@ export interface ProductWorkspaceFacetDescriptor {
 export const PROJECT_VIEWS: readonly ProjectWorkspaceViewDescriptor[] = [
   {
     id: "overview",
-    label: "Overview",
-    description: "Mission and record",
+    label: "Project",
+    description: "Objective, status and next attention",
   },
   {
     id: "work",
-    label: "Work",
-    description: "What the agent changes",
+    label: "Activity",
+    description: "Recorded work, reviews and lineage",
   },
   {
     id: "product",
@@ -50,13 +50,13 @@ export const PROJECT_VIEWS: readonly ProjectWorkspaceViewDescriptor[] = [
   },
   {
     id: "verification",
-    label: "Verification",
-    description: "Why a result can be trusted",
+    label: "Evidence",
+    description: "Cases, results and exact provenance",
   },
   {
     id: "operations",
-    label: "Operations",
-    description: "Runs, plans and tools",
+    label: "Systems & runs",
+    description: "Execution, integrations and record diagnostics",
   },
 ] as const;
 
@@ -73,7 +73,7 @@ export const PRODUCT_FACETS: readonly ProductWorkspaceFacetDescriptor[] = [
   },
   {
     id: "sourcing",
-    label: "Sourcing · ERP",
+    label: "Sourcing",
     description: "To Buy coverage — reserved until sourcing starts",
   },
 ] as const;
