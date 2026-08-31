@@ -849,6 +849,20 @@ Deno.test("ResolvedOperationPlan rejects a colon-bearing Chrono request before t
   );
 });
 
+Deno.test("ResolvedOperationPlan rejects a prescribed-kinematics action case fingerprint detached from its source artifact", () => {
+  const plan = validPrescribedKinematicsPlan();
+  const action = plan.action as Record<string, unknown>;
+  const input = action.input as Record<string, unknown>;
+  const caseIdentity = input.prescribedKinematicsCase as Record<string, unknown>;
+  caseIdentity.fingerprint = fingerprint("d");
+
+  assertThrows(
+    () => validateResolvedOperationPlanV2(plan),
+    TypeError,
+    "prescribed kinematics case fingerprint must equal its exact source artifact fingerprint",
+  );
+});
+
 Deno.test("ResolvedOperationPlan 2.0 validates a closed CalculiX action and its exact geometry source", () => {
   const plan = validCalculixPlan();
   assertEquals(

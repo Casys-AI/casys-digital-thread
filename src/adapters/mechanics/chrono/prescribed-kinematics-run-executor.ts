@@ -81,6 +81,9 @@ import type {
 import {
   applyThreadSnapshotExtensionIfNew,
 } from "../../../domain/thread/thread-snapshot-extension.ts";
+import type {
+  PrescribedKinematicsCase,
+} from "../../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-source-closure.ts";
 import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
 import type { ResolvedRunPlanReader } from "../../../domain/project/resolved-run-plan-sealer.ts";
 import type {
@@ -496,37 +499,44 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
         [],
       );
     }
-    const caseArtifact = inputArtifact(
-      input.base,
-      VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION,
-    );
+    const l3 = input.operation === VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION
+      ? input.l3
+      : undefined;
+    if (
+      input.operation === VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION &&
+      !l3
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "The prescribed-kinematics L3 runtime preparation is absent.",
+      );
+    }
+    // L3 consumes the exact Thread artifact named by its sealed ROP source
+    // binding. Later stages derive their case artifact from their fixed prior
+    // operation because they have no ROP action.
+    const caseArtifact = l3
+      ? requiredBoundArtifact(
+        l3.authorization,
+        l3.action.input.prescribedKinematicsCase.sourceBinding,
+      )
+      : inputArtifact(
+        input.base,
+        VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION,
+      );
     const sealedCase = await required(
       this.#captures.readCase(caseArtifact.fingerprint),
       "The exact prescribed-kinematics case capture is absent.",
     );
-    if (input.operation === VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION) {
-      const l3 = input.l3;
-      if (!l3) {
-        throw new EngineeringProjectCommandError(
-          "invalid_transition",
-          "The prescribed-kinematics L3 runtime preparation is absent.",
-        );
-      }
+    if (l3) {
       // The run-to-request identity is already sealed by the exact ROP and
       // reread by `requireResolvedRunPlanExecution`.  Do not derive a second
       // local spelling from the run id: that would create a parallel request
       // identity convention and could reject a valid sealed plan.
-      if (
-        !fingerprintsEqual(
-          l3.action.input.prescribedKinematicsCase.fingerprint,
-          sealedCase.fingerprint,
-        )
-      ) {
-        throw new EngineeringProjectCommandError(
-          "invalid_transition",
-          "The sealed prescribed-kinematics ROP does not bind the reopened exact case.",
-        );
-      }
+      const caseForLowering = recrossResolvedPrescribedKinematicsCaseArtifact({
+        action: l3.action,
+        caseArtifact,
+        sealedCase,
+      });
       const result = await l3.observe.execute(
         prescribedKinematicsObservationCommandFromResolvedAction({
           action: l3.action,
@@ -534,7 +544,7 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
           agentRunId: input.run.id,
           startedAt: requiredStart(input.run),
           runtime: l3.runtime,
-          sealedCase,
+          sealedCase: caseForLowering,
         }),
       );
       if (result.status !== "recorded") {
@@ -552,7 +562,7 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
         digitalThreadLimits: result.observation.limits,
         lowering: result.lowering,
         runtime: l3.runtime,
-      }, sealedCase);
+      }, caseForLowering);
       return output(
         input,
         "observation",
@@ -679,6 +689,36 @@ export function prescribedKinematicsObservationCommandFromResolvedAction(input: 
     runtime: input.runtime,
     sealedCase: input.sealedCase,
   });
+}
+
+/**
+ * The ROP validator proves that `sourceBinding` names one sealed plan source;
+ * `requireResolvedRunPlanExecution` then rereads the exact Thread artifact for
+ * that binding. Re-cross the action identity against that artifact here. The
+ * reopened domain case has a distinct source-case fingerprint and belongs only
+ * to the lowerer and domain validators.
+ */
+export function recrossResolvedPrescribedKinematicsCaseArtifact(
+  input: {
+    readonly action: ResolvedPrescribedKinematicsObservationAction;
+    readonly caseArtifact: ThreadArtifact;
+    readonly sealedCase: PrescribedKinematicsCase;
+  },
+): PrescribedKinematicsCase {
+  const caseIdentity = input.action.input.prescribedKinematicsCase;
+  if (
+    caseIdentity.id !== input.caseArtifact.id ||
+    !fingerprintsEqual(
+      caseIdentity.fingerprint,
+      input.caseArtifact.fingerprint,
+    )
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "The sealed prescribed-kinematics ROP does not bind the exact Thread case artifact.",
+    );
+  }
+  return input.sealedCase;
 }
 
 async function runtimeProvenance(
@@ -909,6 +949,20 @@ function inputArtifact(
     );
   }
   return matches[0]!;
+}
+
+function requiredBoundArtifact(
+  authorization: ResolvedRunPlanExecutionAuthorization,
+  binding: string,
+): ThreadArtifact {
+  const artifact = authorization.artifactsByBinding.get(binding);
+  if (!artifact) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `The sealed prescribed-kinematics ROP source ${binding} is absent.`,
+    );
+  }
+  return artifact;
 }
 async function required<T>(value: Promise<T | undefined>, message: string): Promise<T> {
   const resolved = await value;
