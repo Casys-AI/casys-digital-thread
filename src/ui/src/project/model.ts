@@ -8,6 +8,7 @@ import {
   type EngineeringProjectPhase,
   type EngineeringProjectSnapshot,
   type EngineeringProjectStatus,
+  type EngineeringThreadEntityRef,
   type EngineeringWorkItem,
   isEngineeringDecisionSatisfied,
 } from "../../../domain/project/engineering-project.ts";
@@ -152,6 +153,14 @@ export interface ProjectPathActivityView {
   readonly title: string;
   readonly status: EngineeringPhaseStatus;
   readonly revisions: readonly ProjectPathRevisionView[];
+  /** Exact evidence recorded by revisions of this stable activity. */
+  readonly evidenceRefs: readonly EngineeringThreadEntityRef[];
+  /**
+   * Exact evidence recorded by work items directly named in this activity's
+   * `dependsOnWorkItemIds`. This is a presentation join only: it does not add
+   * a Thread relation or imply technical consumption.
+   */
+  readonly dependencyEvidenceRefs: readonly EngineeringThreadEntityRef[];
   readonly approvedDecisions: number;
   readonly requiredDecisions: number;
   readonly evidenceCount: number;
@@ -474,6 +483,10 @@ export function buildProjectPath(
     buildCurrentProjectWork(snapshot).historicalWorkItemIds,
   );
   const activities = projectedActivities.map((projected) => {
+    const activityWorkItems = projected.revisionIds.flatMap((id) => {
+      const item = workById.get(id);
+      return item ? [item] : [];
+    });
     const revisions = projected.revisionIds.flatMap((id) => {
       const item = workById.get(id);
       return item
@@ -496,6 +509,16 @@ export function buildProjectPath(
         total + (workById.get(revision.id)?.evidenceRefs.length ?? 0),
       0,
     );
+    const evidenceRefs = uniqueExactThreadEntityRefs(
+      activityWorkItems.flatMap((item) => item.evidenceRefs),
+    );
+    const dependencyEvidenceRefs = uniqueExactThreadEntityRefs(
+      activityWorkItems.flatMap((item) =>
+        item.dependsOnWorkItemIds.flatMap((dependencyId) =>
+          workById.get(dependencyId)?.evidenceRefs ?? []
+        )
+      ),
+    );
     const decisionIds = new Set(
       revisions.flatMap((revision) =>
         workById.get(revision.id)?.decisionIds ?? []
@@ -510,6 +533,8 @@ export function buildProjectPath(
       title: root?.title ?? projected.id,
       status,
       revisions,
+      evidenceRefs,
+      dependencyEvidenceRefs,
       approvedDecisions: decisions.filter((decision) =>
         isEngineeringDecisionSatisfied(snapshot, decision)
       ).length,
@@ -531,6 +556,22 @@ export function buildProjectPath(
       .length,
     pendingDecisions,
   };
+}
+
+function uniqueExactThreadEntityRefs(
+  refs: readonly EngineeringThreadEntityRef[],
+): readonly EngineeringThreadEntityRef[] {
+  const seen = new Set<string>();
+  return refs.filter((ref) => {
+    const key = exactThreadEntityRefKey(ref);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function exactThreadEntityRefKey(ref: EngineeringThreadEntityRef): string {
+  return `${ref.snapshotId}@${ref.snapshotRevision}:${ref.kind}:${ref.id}`;
 }
 
 function deriveProjectPathActivityStatus(

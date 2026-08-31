@@ -182,6 +182,62 @@ Deno.test("Project Path keeps failed and ready revisions visible inside their ac
   );
 });
 
+Deno.test("ML01 Project Path retains exact activity and named dependency evidence joins", () => {
+  const snapshotRevision =
+    GENERIC_THREAD_FIXTURE.evidenceFamilyGraph.asOf.revision;
+  const admissionRef = {
+    snapshotId: GENERIC_THREAD_FIXTURE.id,
+    snapshotRevision,
+    kind: "artifact" as const,
+    id: "ml01-document-admission",
+  };
+  const project = {
+    ...GENERIC_PROJECT_FIXTURE,
+    workItems: GENERIC_PROJECT_FIXTURE.workItems.map((item) => {
+      if (item.id === "work-define") {
+        return { ...item, evidenceRefs: [admissionRef] };
+      }
+      if (item.id === "work-architect") {
+        return {
+          ...item,
+          status: "in-progress" as const,
+          dependsOnWorkItemIds: ["work-define", "work-not-recorded"],
+        };
+      }
+      return item;
+    }),
+  };
+  const activities: readonly EngineeringWorkbenchActivity[] = [{
+    id: "activity:work-define",
+    lane: "requirements",
+    rootRevisionId: "work-define",
+    revisionIds: ["work-define"],
+  }, {
+    id: "activity:work-architect",
+    lane: "system-model",
+    rootRevisionId: "work-architect",
+    revisionIds: ["work-architect"],
+  }];
+
+  const path = buildProjectPath(
+    project,
+    GENERIC_THREAD_FIXTURE,
+    activities,
+  );
+  const baseline = path.activities.find((activity) =>
+    activity.id === "activity:work-define"
+  );
+  const active = path.activities.find((activity) =>
+    activity.id === "activity:work-architect"
+  );
+
+  assertEquals(baseline?.evidenceRefs, [admissionRef]);
+  assertEquals(baseline?.dependencyEvidenceRefs, []);
+  assertEquals(active?.evidenceRefs, []);
+  assertEquals(active?.dependencyEvidenceRefs, [admissionRef]);
+  assertEquals(active?.status, "active");
+});
+
 Deno.test("Project Path folds a model enrichment under the phase that owns the enriched model", () => {
   // Requirement anchoring writes into the system model rather than opening a
   // new engineering stage: its only evidence is a sysml-model derived from the
@@ -2397,6 +2453,8 @@ Deno.test("path band status follows group gates and leaves empty lanes planned",
       title: "gate",
       status,
       revisions: [],
+      evidenceRefs: [],
+      dependencyEvidenceRefs: [],
       approvedDecisions: 0,
       requiredDecisions: 0,
       evidenceCount: 0,
@@ -2450,6 +2508,8 @@ Deno.test("project path gates always occupy the five projected thread lanes with
     title: "Same deliberately uninformative label",
     status: "completed" as const,
     revisions: [],
+    evidenceRefs: [],
+    dependencyEvidenceRefs: [],
     approvedDecisions: 1,
     requiredDecisions: 1,
     evidenceCount,
