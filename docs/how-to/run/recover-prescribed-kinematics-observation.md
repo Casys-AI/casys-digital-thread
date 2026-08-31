@@ -2,10 +2,13 @@
 
 Audience: both · Diátaxis: how-to · Kind: how-to
 
-Use this guide only after the L3 run failed with
-`verify-run-prescribed-kinematics-provider-outcome-unknown`. The failure says that a
-provider outcome could not be proved after the one allowed dispatch; it is not a failed
-mechanism verdict.
+Use this guide after the L3 run failed with
+`verify-run-prescribed-kinematics-provider-outcome-unknown`, or after a historical
+`prescribed-kinematics-execution-failed` run whose exact L3 WAL recrosses as terminal
+`quarantined` (including `malformed`). The server computes that extra eligibility from
+the sealed ROP and WAL; do not supply it. The failure says that a provider outcome could
+not be proved after the one allowed dispatch; it is not a failed mechanism verdict and
+does not turn samples into Thread evidence.
 
 For the exact state machine, read
 [prescribed-kinematics observation recovery](../../reference/pipeline/prescribed-kinematics-observation-recovery.md).

@@ -64,6 +64,14 @@ That code means the provider outcome is unknown; it does not mean provider failu
 absence of an engineering effect, or a failed kinematics verdict. Known rejections and
 ordinary local failures retain their own failure states.
 
+A historical run that recorded the generic `prescribed-kinematics-execution-failed`
+code remains generic in the project snapshot. The server may still treat it as
+terminal-uncertain for reconciliation and the shared Thread-basis guard when the
+recorded ROP and the exact L3 WAL recross as monotone terminal `quarantined`
+(including `malformed`). Callers cannot supply that eligibility. The recross cannot
+invent L3 evidence or a verdict. An approved human annotation then becomes the
+lifecycle truth without rewriting the original failure.
+
 The JIT session is retained for recovery on an uncertain outcome. It must not be released
 as though the provider boundary were known safe.
 

@@ -14,6 +14,7 @@ import {
   TERMINAL_THREAD_WRITE_FAILURES,
   threadWriteBasisLeaseScope,
 } from "./thread-write-basis-guard.ts";
+import { closedUncertainWriterLifecycleQualifier } from "../../application/ports/out/record/uncertain-writer-lifecycle-qualifier.ts";
 import {
   UNCERTAIN_WRITER_BASIS_RELEASE_ACTION,
   UNCERTAIN_WRITER_BASIS_RELEASE_OUTCOME,
@@ -52,6 +53,14 @@ const BASIS = {
   revision: 4,
   subjectId: "subject-1",
 };
+
+Deno.test("the Thread write basis guard has no process-global lifecycle qualifier", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./thread-write-basis-guard.ts", import.meta.url),
+  );
+  assertEquals(source.includes("composedUncertainWriterLifecycle"), false);
+  assertEquals(source.includes("composeUncertainWriterLifecycleQualifier"), false);
+});
 
 Deno.test("all generic Thread writers share one lease for an exact basis", () => {
   const scopes = [
@@ -437,6 +446,137 @@ Deno.test("an ordinary prescribed-kinematics failure does not poison the Thread 
   };
 
   await assertThreadWriteBasisAvailable(value, current);
+});
+
+Deno.test("a lifecycle-qualified generic prescribed-kinematics failure blocks the Thread basis", async () => {
+  const current = run("architecture", "queued");
+  const sibling = {
+    ...run("geometry", "failed"),
+    id: "run:prescribed-kinematics-generic-uncertain",
+    workItemId: "work:prescribed-kinematics-generic-uncertain",
+    failure: {
+      code: "prescribed-kinematics-execution-failed",
+      message: "Chrono outcome remains recoverable/quarantined: malformed.",
+    },
+  };
+  const value = kinematicsSibling(current, sibling);
+  const qualifier = {
+    qualify: (input: { readonly failedRunId: string }) =>
+      Promise.resolve({
+        status: input.failedRunId === sibling.id
+          ? "qualified-uncertain-write" as const
+          : "not-qualified" as const,
+      }),
+  };
+
+  await assertRejects(
+    () => assertThreadWriteBasisAvailable(value, current, qualifier),
+    EngineeringProjectCommandError,
+    "active, completed, or uncertain durable write",
+  );
+});
+
+Deno.test("an approved write-effect-accepted annotation on a generic Chrono failure still requires basis release", async () => {
+  const current = run("architecture", "queued");
+  const sibling = {
+    ...run("geometry", "failed"),
+    id: "run:prescribed-kinematics-generic-accepted",
+    workItemId: "work:prescribed-kinematics-generic-accepted",
+    failure: {
+      code: "prescribed-kinematics-execution-failed",
+      message: "Chrono outcome remains recoverable/quarantined: malformed.",
+    },
+    uncertainWriterReconciliation: {
+      kind: "uncertain-writer-resolved" as const,
+      outcome: "write-effect-accepted" as const,
+      reconciledAt: "2026-08-10T00:00:00.000Z",
+      reconciledBy: { id: "op-1", origin: "human" as const },
+      decisionId: "decision-reconcile-generic",
+      providerInspectionAttestation: "Provider history shows a write.",
+    },
+  };
+  const blocked = await reconciledProject(
+    kinematicsSibling(current, sibling),
+    sibling,
+  );
+  await assertRejects(
+    () => assertThreadWriteBasisAvailable(blocked, current),
+    EngineeringProjectCommandError,
+    "requires an approved human basis release",
+  );
+  const released = await releasedProject(blocked, sibling);
+  await assertThreadWriteBasisAvailable(released, current);
+});
+
+Deno.test("a forged annotation on a generic historical failure is suspicious lifecycle state, not absence", async () => {
+  const current = run("architecture", "queued");
+  const sibling = {
+    ...run("geometry", "failed"),
+    id: "run:prescribed-kinematics-forged-annotation",
+    workItemId: "work:prescribed-kinematics-forged-annotation",
+    failure: {
+      code: "prescribed-kinematics-execution-failed",
+      message: "Chrono outcome remains recoverable/quarantined: malformed.",
+    },
+    uncertainWriterReconciliation: {
+      kind: "uncertain-writer-resolved" as const,
+      outcome: "provider-did-not-write" as const,
+      reconciledAt: "2026-08-10T00:00:00.000Z",
+      reconciledBy: { id: "op-1", origin: "human" as const },
+      decisionId: "decision-reconcile-forged-generic",
+      providerInspectionAttestation: "Shape-only forged annotation.",
+    },
+  };
+  const value = kinematicsSibling(current, sibling);
+  const wouldQualify = {
+    qualify: (input: { readonly failedRunId: string }) =>
+      Promise.resolve({
+        status: input.failedRunId === sibling.id
+          ? "qualified-uncertain-write" as const
+          : "not-qualified" as const,
+      }),
+  };
+
+  await assertRejects(
+    () =>
+      assertThreadWriteBasisAvailable(
+        value,
+        current,
+        closedUncertainWriterLifecycleQualifier,
+      ),
+    EngineeringProjectCommandError,
+    "has no exact approved human reconciliation",
+  );
+  await assertRejects(
+    () => assertThreadWriteBasisAvailable(value, current, wouldQualify),
+    EngineeringProjectCommandError,
+    "has no exact approved human reconciliation",
+  );
+});
+
+Deno.test("an approved provider-did-not-write annotation on a generic Chrono failure unblocks the basis", async () => {
+  const current = run("architecture", "queued");
+  const sibling = {
+    ...run("geometry", "failed"),
+    id: "run:prescribed-kinematics-generic-did-not-write",
+    workItemId: "work:prescribed-kinematics-generic-did-not-write",
+    failure: {
+      code: "prescribed-kinematics-execution-failed",
+      message: "Chrono outcome remains recoverable/quarantined: malformed.",
+    },
+    uncertainWriterReconciliation: {
+      kind: "uncertain-writer-resolved" as const,
+      outcome: "provider-did-not-write" as const,
+      reconciledAt: "2026-08-10T00:00:00.000Z",
+      reconciledBy: { id: "op-1", origin: "human" as const },
+      decisionId: "decision-reconcile-generic-dnw",
+      providerInspectionAttestation: "Inspected container logs; no file written.",
+    },
+  };
+  await assertThreadWriteBasisAvailable(
+    await reconciledProject(kinematicsSibling(current, sibling), sibling),
+    current,
+  );
 });
 
 Deno.test("join writers share the same Thread-basis exclusion", async () => {
@@ -842,6 +982,27 @@ function run(
     queuedAt: "2026-08-09T00:00:00.000Z",
     basis: BASIS,
     evidenceRefs: [],
+  };
+}
+
+function kinematicsSibling(
+  current: EngineeringAgentRun,
+  sibling: EngineeringAgentRun,
+): EngineeringProjectSnapshot {
+  const initial = project([current, sibling]);
+  return {
+    ...initial,
+    workItems: initial.workItems.map((item) =>
+      item.id === sibling.workItemId
+        ? {
+          ...item,
+          operation: {
+            ...VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+            bindings: item.operation?.bindings ?? [],
+          },
+        }
+        : item
+    ),
   };
 }
 

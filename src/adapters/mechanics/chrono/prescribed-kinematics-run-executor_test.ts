@@ -82,6 +82,9 @@ import type {
   RunPrescribedKinematicsObservationResult,
 } from "../../../application/ports/in/mechanics/prescribed-kinematics/run-prescribed-kinematics-observation.ts";
 import type {
+  UncertainWriterLifecycleQualifier,
+} from "../../../application/ports/out/record/uncertain-writer-lifecycle-qualifier.ts";
+import type {
   CapabilityRuntimeSecretSnapshot,
 } from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import {
@@ -164,6 +167,51 @@ Deno.test("the prescribed-kinematics executor checks the Thread write basis befo
     operation: VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
     status: "queued",
     siblingCompleted: MODEL_WRITE_ARCHITECTURE_OPERATION,
+    l3: effects,
+  });
+
+  await assertRejects(
+    () => harness.executor.execute(AGENT, command),
+    EngineeringProjectCommandError,
+    "sibling run",
+  );
+  assertEquals(effects, {
+    planReads: 0,
+    sessionBegins: 0,
+    secretSnapshots: 0,
+    claims: 0,
+    observes: 0,
+  });
+  assertEquals(harness.failed, undefined);
+});
+
+Deno.test("a lifecycle-qualified legacy Chrono sibling blocks before JIT session begin or provider effects", async () => {
+  const effects = {
+    planReads: 0,
+    sessionBegins: 0,
+    secretSnapshots: 0,
+    claims: 0,
+    observes: 0,
+  };
+  const siblingId = "run:sibling";
+  const harness = writerHarness({
+    operation: VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+    status: "queued",
+    siblingFailed: {
+      operation: VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+      failure: {
+        code: "prescribed-kinematics-execution-failed",
+        message: "Chrono outcome remains recoverable/quarantined: malformed.",
+      },
+    },
+    uncertainWriterLifecycle: {
+      qualify: (input) =>
+        Promise.resolve({
+          status: input.failedRunId === siblingId
+            ? "qualified-uncertain-write" as const
+            : "not-qualified" as const,
+        }),
+    },
     l3: effects,
   });
 
@@ -614,6 +662,11 @@ function writerHarness(input: {
   readonly operation: { readonly id: string; readonly version: string };
   readonly status: "queued" | "running";
   readonly siblingCompleted?: { readonly id: string; readonly version: string };
+  readonly siblingFailed?: {
+    readonly operation: { readonly id: string; readonly version: string };
+    readonly failure: { readonly code: string; readonly message: string };
+  };
+  readonly uncertainWriterLifecycle?: UncertainWriterLifecycleQualifier;
   readonly l3?: {
     planReads: number;
     sessionBegins: number;
@@ -714,6 +767,7 @@ function writerHarness(input: {
     sealMethod: {} as never,
     evaluate: {} as never,
     decideCloseout: {} as never,
+    uncertainWriterLifecycle: input.uncertainWriterLifecycle,
   });
   return harness;
 }
@@ -722,6 +776,10 @@ function writerSnapshot(input: {
   readonly operation: { readonly id: string; readonly version: string };
   readonly status: "queued" | "running";
   readonly siblingCompleted?: { readonly id: string; readonly version: string };
+  readonly siblingFailed?: {
+    readonly operation: { readonly id: string; readonly version: string };
+    readonly failure: { readonly code: string; readonly message: string };
+  };
 }): EngineeringProjectSnapshot {
   const current: EngineeringAgentRun = {
     id: "run",
@@ -744,6 +802,17 @@ function writerSnapshot(input: {
       queuedAt: "2026-08-29T00:00:00.000Z",
       basis: THREAD_BASIS,
       evidenceRefs: [],
+    }
+    : input.siblingFailed
+    ? {
+      id: "run:sibling",
+      workItemId: "work:sibling",
+      status: "failed",
+      summary: "Failed sibling writer",
+      queuedAt: "2026-08-29T00:00:00.000Z",
+      basis: THREAD_BASIS,
+      evidenceRefs: [],
+      failure: input.siblingFailed.failure,
     }
     : undefined;
   const runs = sibling ? [current, sibling] : [current];
@@ -780,7 +849,9 @@ function writerSnapshot(input: {
       description: `${run.workItemId} work`,
       kind: "verify" as const,
       operation: {
-        ...(run.id === "run" ? input.operation : input.siblingCompleted!),
+        ...(run.id === "run"
+          ? input.operation
+          : input.siblingCompleted ?? input.siblingFailed!.operation),
         bindings: [],
       },
       status: "ready" as const,

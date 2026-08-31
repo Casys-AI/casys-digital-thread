@@ -35,13 +35,21 @@ claim, continuation is same-request readback only.
 #### [`src/adapters/mechanics/chrono/`](../../../src/adapters/mechanics/chrono)
 
 Server-owned Chrono lowerer, private adapter, capture store, L3 WAL implementation,
-architecture recross adapter, and registered run executor. Context-specific WAL stays
-here; it is not generic provider recovery and not an agent transport.
+architecture recross adapter, registered run executor, and the first uncertain-writer
+lifecycle qualifier. Context-specific WAL stays here; it is not generic provider
+recovery, not L3 evidence, and not an agent transport.
+
+#### [`src/application/ports/out/record/uncertain-writer-lifecycle-qualifier.ts`](../../../src/application/ports/out/record/uncertain-writer-lifecycle-qualifier.ts)
+
+Provider-neutral server-side uncertain-writer lifecycle qualification. Callers name a
+project and failed run only. The closed default never grants eligibility.
 
 #### [`src/adapters/shared/thread-write-basis-guard.ts`](../../../src/adapters/shared/thread-write-basis-guard.ts)
 
 Shared one-successor Thread-basis lease and sibling-writer block. It includes every
-prescribed-kinematics writer so an uncertain L3 effect blocks conflicting writes.
+prescribed-kinematics writer so an uncertain L3 effect blocks conflicting writes. A
+server-computed lifecycle recross can treat a historical generic Chrono failure as
+terminal-uncertain without broadening the dedicated failure catalogue.
 
 #### [`src/domain/record/reconcile-uncertain-writer-proposal.ts`](../../../src/domain/record/reconcile-uncertain-writer-proposal.ts)
 

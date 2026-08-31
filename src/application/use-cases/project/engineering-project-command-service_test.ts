@@ -26,6 +26,7 @@ import {
   validateEngineeringProjectSnapshot,
 } from "../../../domain/project/engineering-project-validation.ts";
 import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
+import type { UncertainWriterLifecycleQualifier } from "../../ports/out/record/uncertain-writer-lifecycle-qualifier.ts";
 
 const CONFIG = new URL(
   "../../../testing/generic-engineering-project.fixture.json",
@@ -1393,6 +1394,7 @@ function serviceFor(
   validator?: EngineeringProjectCompletionEvidenceValidator,
   reconciliationOperationPolicy?: EngineeringProjectReconciliationOperationPolicy,
   firstAppliedAt = "2026-08-01T11:00:00.000Z",
+  uncertainWriterLifecycle?: UncertainWriterLifecycleQualifier,
 ) {
   let tick = 0;
   return new EngineeringProjectCommandService(
@@ -1422,7 +1424,18 @@ function serviceFor(
       },
     },
     reconciliationOperationPolicy,
+    uncertainWriterLifecycle,
   );
+}
+
+async function kinematicsGenericReconciliationProject(): Promise<
+  EngineeringProjectSnapshot
+> {
+  return await reconcileAnnotationProject({
+    failureCode: "prescribed-kinematics-execution-failed",
+    outcome: "write-effect-accepted",
+    legacyDecisionFingerprint: false,
+  });
 }
 
 async function projectFixture(): Promise<EngineeringProjectSnapshot> {
@@ -2183,6 +2196,76 @@ Deno.test(
           ),
         }),
       "invalid_transition",
+    );
+  },
+);
+
+Deno.test(
+  "reconcileAnnotationRun rejects an unqualified generic prescribed-kinematics failure",
+  async () => {
+    const project = await kinematicsGenericReconciliationProject();
+    const store = new MemoryRevisionStore(project);
+    const service = serviceFor(store);
+    await assertCommandError(
+      () =>
+        service.reconcileAnnotationRun(HUMAN, {
+          ...context("reconcile-generic-kinematics", project.revision),
+          reconciliationRunId: "run:reconcile-annotation",
+          failedRunId: "run:uncertain-write-failed",
+          decisionId: "decision-mrtr-1",
+          outcome: "write-effect-accepted",
+          providerInspectionAttestation: uncertainWriterAttestation(
+            "write-effect-accepted",
+          ),
+        }),
+      "invalid_transition",
+    );
+  },
+);
+
+Deno.test(
+  "reconciliation of a lifecycle-qualified generic Chrono failure annotates without evidence or rewriting the failure",
+  async () => {
+    const project = await kinematicsGenericReconciliationProject();
+    const store = new MemoryRevisionStore(project);
+    const qualifier: UncertainWriterLifecycleQualifier = {
+      qualify: (input) =>
+        Promise.resolve({
+          status: input.failedRunId === "run:uncertain-write-failed"
+            ? "qualified-uncertain-write"
+            : "not-qualified",
+        }),
+    };
+    const service = serviceFor(
+      store,
+      undefined,
+      undefined,
+      "2026-08-01T11:00:00.000Z",
+      qualifier,
+    );
+    const reconciled = await service.reconcileAnnotationRun(HUMAN, {
+      ...context("reconcile-qualified-generic-kinematics", project.revision),
+      reconciliationRunId: "run:reconcile-annotation",
+      failedRunId: "run:uncertain-write-failed",
+      decisionId: "decision-mrtr-1",
+      outcome: "write-effect-accepted",
+      providerInspectionAttestation: uncertainWriterAttestation(
+        "write-effect-accepted",
+      ),
+    });
+    const failed = reconciled.agentRuns.find((run) =>
+      run.id === "run:uncertain-write-failed"
+    )!;
+    assertEquals(failed.status, "failed");
+    assertEquals(failed.failure?.code, "prescribed-kinematics-execution-failed");
+    assertEquals(failed.evidenceRefs, []);
+    assertEquals(
+      failed.uncertainWriterReconciliation?.outcome,
+      "write-effect-accepted",
+    );
+    assertEquals(
+      findWorkItem(reconciled, "reconcile-uncertain-writer").status,
+      "completed",
     );
   },
 );

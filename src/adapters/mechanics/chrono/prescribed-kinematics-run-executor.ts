@@ -113,6 +113,10 @@ import {
   unexpectedStatus,
 } from "../../shared/executor-run-helpers.ts";
 import {
+  closedUncertainWriterLifecycleQualifier,
+  type UncertainWriterLifecycleQualifier,
+} from "../../../application/ports/out/record/uncertain-writer-lifecycle-qualifier.ts";
+import {
   assertThreadWriteBasisAvailable,
   threadWriteBasisLeaseScope,
 } from "../../shared/thread-write-basis-guard.ts";
@@ -169,6 +173,11 @@ export interface PrescribedKinematicsRunExecutorDependencies {
   readonly sealMethod: SealPrescribedKinematicsMethodUseCase;
   readonly evaluate: EvaluatePrescribedKinematicsUseCase;
   readonly decideCloseout: DecidePrescribedKinematicsCloseoutUseCase;
+  /**
+   * Server-computed extra eligibility for historical generic Chrono failures.
+   * Closed by default for tests and alternate composition.
+   */
+  readonly uncertainWriterLifecycle?: UncertainWriterLifecycleQualifier;
 }
 
 interface PreparedPrescribedKinematicsL3 {
@@ -217,6 +226,7 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
   readonly #sealMethod: SealPrescribedKinematicsMethodUseCase;
   readonly #evaluate: EvaluatePrescribedKinematicsUseCase;
   readonly #decideCloseout: DecidePrescribedKinematicsCloseoutUseCase;
+  readonly #uncertainWriterLifecycle: UncertainWriterLifecycleQualifier;
 
   constructor(dependencies: PrescribedKinematicsRunExecutorDependencies) {
     this.#projects = dependencies.projects;
@@ -232,6 +242,8 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
     this.#sealMethod = dependencies.sealMethod;
     this.#evaluate = dependencies.evaluate;
     this.#decideCloseout = dependencies.decideCloseout;
+    this.#uncertainWriterLifecycle = dependencies.uncertainWriterLifecycle ??
+      closedUncertainWriterLifecycleQualifier;
   }
 
   async execute(
@@ -278,7 +290,11 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
       let project = await requiredProject(this.#projects, command.projectId);
       let run = requireRun(project, command.runId);
       const operation = exactOperation(project, run);
-      await assertThreadWriteBasisAvailable(project, run);
+      await assertThreadWriteBasisAvailable(
+        project,
+        run,
+        this.#uncertainWriterLifecycle,
+      );
       const l3 = operation === VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION
         ? await this.#prepareL3(project, run)
         : undefined;

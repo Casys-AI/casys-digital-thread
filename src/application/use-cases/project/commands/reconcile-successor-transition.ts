@@ -22,6 +22,12 @@ import {
   sameEvidenceReferences,
   sameSnapshotReference,
 } from "./engineering-project-transition-values.ts";
+import type {
+  UncertainWriterLifecycleEligibility,
+} from "../../../../domain/record/uncertain-writer-lifecycle-eligibility.ts";
+import {
+  UNCERTAIN_WRITER_LIFECYCLE_NOT_QUALIFIED,
+} from "../../../../domain/record/uncertain-writer-lifecycle-eligibility.ts";
 import { isEligibleUncertainWriterFailure } from "./reconcile-uncertain-writer-transition.ts";
 
 export async function applyReconcileWorkItemWithSuccessor(
@@ -35,6 +41,8 @@ export async function applyReconcileWorkItemWithSuccessor(
   reconciliationOperationPolicy:
     | EngineeringProjectReconciliationOperationPolicy
     | undefined,
+  lifecycle: UncertainWriterLifecycleEligibility =
+    UNCERTAIN_WRITER_LIFECYCLE_NOT_QUALIFIED,
 ): Promise<void> {
   nonEmpty(command.failedWorkItemId, "failedWorkItemId");
   nonEmpty(command.failedRunId, "failedRunId");
@@ -124,10 +132,12 @@ export async function applyReconcileWorkItemWithSuccessor(
     );
   }
   const isTerminalUncertainWriterFailure = !!failedRun.failure &&
-    isEligibleUncertainWriterFailure(
+    (isEligibleUncertainWriterFailure(
       failedRun.failure.code,
       failedWork.operation,
-    );
+      lifecycle,
+    ) ||
+      failedRun.uncertainWriterReconciliation !== undefined);
   let hasExactUncertainWriterCancellation = false;
   if (
     failedWork.status === "cancelled" &&

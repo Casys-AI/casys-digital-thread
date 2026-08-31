@@ -23,6 +23,10 @@ import {
   TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES,
 } from "../../domain/record/reconcile-uncertain-writer-proposal.ts";
 import {
+  closedUncertainWriterLifecycleQualifier,
+  type UncertainWriterLifecycleQualifier,
+} from "../../application/ports/out/record/uncertain-writer-lifecycle-qualifier.ts";
+import {
   VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
   VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
 } from "../../orchestration/operations/fea-isolated-static-proof.ts";
@@ -164,6 +168,8 @@ export function threadWriteBasisLeaseScope(run: EngineeringAgentRun): string {
 export async function assertThreadWriteBasisAvailable(
   project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
+  lifecycle: UncertainWriterLifecycleQualifier =
+    closedUncertainWriterLifecycleQualifier,
 ): Promise<void> {
   const basis = requireThreadBasis(run);
   const subjectReferences = project.threadSnapshots.filter((reference) =>
@@ -212,16 +218,7 @@ export async function assertThreadWriteBasisAvailable(
         `sibling run ${sibling.id} has a local ThreadSnapshot write whose outcome requires exact recovery attachment`,
       );
     }
-    const isTerminalUncertainFailure = sibling.status === "failed" &&
-      !!sibling.failure &&
-      (operationKey === GEOMETRY_WRITE_OPERATION ||
-        TERMINAL_THREAD_WRITE_FAILURES.has(sibling.failure.code));
-    if (isTerminalUncertainFailure && !sibling.uncertainWriterReconciliation) {
-      throw unavailableBasis(
-        `sibling run ${sibling.id} has an active, completed, or uncertain durable write`,
-      );
-    }
-    if (isTerminalUncertainFailure) {
+    if (sibling.status === "failed" && sibling.uncertainWriterReconciliation) {
       try {
         await assertApprovedUncertainWriterReconciliation(project, sibling);
       } catch {
@@ -229,7 +226,9 @@ export async function assertThreadWriteBasisAvailable(
           `uncertain write in sibling run ${sibling.id} has no exact approved human reconciliation`,
         );
       }
-      if (sibling.uncertainWriterReconciliation!.outcome === "write-effect-accepted") {
+      if (
+        sibling.uncertainWriterReconciliation.outcome === "write-effect-accepted"
+      ) {
         try {
           await assertApprovedUncertainWriterBasisRelease(project, sibling);
         } catch {
@@ -238,8 +237,45 @@ export async function assertThreadWriteBasisAvailable(
           );
         }
       }
+      continue;
+    }
+    const dedicatedUncertainFailure = sibling.status === "failed" &&
+      !!sibling.failure &&
+      (operationKey === GEOMETRY_WRITE_OPERATION ||
+        TERMINAL_THREAD_WRITE_FAILURES.has(sibling.failure.code));
+    const lifecycleQualified = !dedicatedUncertainFailure &&
+      sibling.status === "failed" &&
+      !!sibling.failure &&
+      (await lifecycle.qualify({
+          project,
+          failedRunId: sibling.id,
+        })).status === "qualified-uncertain-write";
+    const isTerminalUncertainFailure = dedicatedUncertainFailure ||
+      lifecycleQualified;
+    if (isTerminalUncertainFailure) {
+      throw unavailableBasis(
+        `sibling run ${sibling.id} has an active, completed, or uncertain durable write`,
+      );
     }
   }
+}
+
+/**
+ * Smallest claim-run injection: only Thread writers on a ThreadSnapshot basis
+ * re-enter the shared guard. Non-writers and approved-brief claims pass through.
+ */
+export async function assertThreadWriteClaimAllowed(
+  project: EngineeringProjectSnapshot,
+  run: EngineeringAgentRun,
+  lifecycle: UncertainWriterLifecycleQualifier =
+    closedUncertainWriterLifecycleQualifier,
+): Promise<void> {
+  if (run.basis?.kind !== "thread-snapshot") return;
+  const operation = project.workItems.find((item) => item.id === run.workItemId)
+    ?.operation;
+  const operationKey = operation ? `${operation.id}@${operation.version}` : undefined;
+  if (!operationKey || !THREAD_WRITE_OPERATIONS.has(operationKey)) return;
+  await assertThreadWriteBasisAvailable(project, run, lifecycle);
 }
 
 function requireThreadBasis(run: EngineeringAgentRun): EngineeringThreadSnapshotBasis {

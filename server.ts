@@ -257,6 +257,7 @@ import { createCadPlacementComposition } from "./src/adapters/cad/placement/serv
 import { DeclaredAgainstPrescribedKinematicsArchitectureIndex } from "./src/adapters/mechanics/chrono/declared-against-prescribed-kinematics-architecture-index.ts";
 import { FilePrescribedKinematicsCaptureStore } from "./src/adapters/mechanics/chrono/file-prescribed-kinematics-capture-store.ts";
 import { FilePrescribedKinematicsObservationAttemptStore } from "./src/adapters/mechanics/chrono/file-prescribed-kinematics-observation-attempt-store.ts";
+import { ChronoUncertainWriterLifecycleQualifier } from "./src/adapters/mechanics/chrono/chrono-uncertain-writer-lifecycle-qualifier.ts";
 import { ChronoPrescribedKinematicsCaseLowerer } from "./src/adapters/mechanics/chrono/chrono-prescribed-kinematics-case-lowerer.ts";
 import { ChronoPrescribedKinematicsClient } from "./src/adapters/mechanics/chrono/chrono-prescribed-kinematics-client.ts";
 import { PrescribedKinematicsRunExecutor } from "./src/adapters/mechanics/chrono/prescribed-kinematics-run-executor.ts";
@@ -923,6 +924,13 @@ async function createProjectControl(
     recordedAnalysisDirectory,
     canonicalAssetDirectory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
   });
+  const chronoCaseLowerer = new ChronoPrescribedKinematicsCaseLowerer();
+  const uncertainWriterLifecycle = new ChronoUncertainWriterLifecycleQualifier({
+    attempts: prescribedKinematicsExecution.observationAttempts,
+    plans: recordedPlans.recordedRunPlans,
+    captures: prescribedKinematicsExecution.captures,
+    lowerer: chronoCaseLowerer,
+  });
 
   const activeProjectDirectory = options.activeProjectDirectory ??
     DEFAULT_ACTIVE_PROJECT_DIRECTORY;
@@ -1044,6 +1052,7 @@ async function createProjectControl(
         frontends: briefSourceAnalysisFrontends,
       },
     ),
+    uncertainWriterLifecycle,
   });
   const capabilityJitDemand = new ProjectCapabilityJitDemandReader({
     projects: runtime.projects,
@@ -1333,9 +1342,10 @@ async function createProjectControl(
             secretResolver: capabilityRuntimeSecrets,
             secretSnapshot,
           }),
-          lowerer: new ChronoPrescribedKinematicsCaseLowerer(),
+          lowerer: chronoCaseLowerer,
         }),
     },
+    uncertainWriterLifecycle,
     sealMethod: prescribedKinematicsExecution.sealMethod,
     evaluate: prescribedKinematicsExecution.evaluate,
     decideCloseout: prescribedKinematicsExecution.decideCloseout,
@@ -1369,6 +1379,7 @@ async function createProjectControl(
   const genericReconcileUncertainWriter = new ReconcileUncertainWriterRunExecutor({
     projects: runtime.projects,
     commands: runtime.commands,
+    uncertainWriterLifecycle,
     retainedCapabilityLeaseFinalizer: {
       releaseReconciledUncertainWriterLease: async (input) =>
         await capabilityRuntimeSession.releaseReconciledUncertainWriterLease({

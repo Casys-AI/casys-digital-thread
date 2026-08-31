@@ -7,6 +7,12 @@ import {
   requireApprovedUncertainWriterReconciliationDecision,
   TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES,
 } from "../../../../domain/record/reconcile-uncertain-writer-proposal.ts";
+import type {
+  UncertainWriterLifecycleEligibility,
+} from "../../../../domain/record/uncertain-writer-lifecycle-eligibility.ts";
+import {
+  UNCERTAIN_WRITER_LIFECYCLE_NOT_QUALIFIED,
+} from "../../../../domain/record/uncertain-writer-lifecycle-eligibility.ts";
 import {
   uncertainWriterBasisReleaseIds,
   uncertainWriterBasisReleaseText,
@@ -33,11 +39,14 @@ const ELIGIBLE_UNCERTAIN_WRITE_FAILURE_CODES = TERMINAL_UNCERTAIN_WRITE_FAILURE_
 export function isEligibleUncertainWriterFailure(
   failureCode: string,
   operation: { readonly id: string; readonly version: string } | undefined,
+  lifecycle: UncertainWriterLifecycleEligibility =
+    UNCERTAIN_WRITER_LIFECYCLE_NOT_QUALIFIED,
 ): boolean {
   return ELIGIBLE_UNCERTAIN_WRITE_FAILURE_CODES.has(failureCode) ||
     (operation !== undefined &&
       `${operation.id}@${operation.version}` ===
-        `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}`);
+        `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}`) ||
+    lifecycle.status === "qualified-uncertain-write";
 }
 
 export async function applyReconcileAnnotationRun(
@@ -45,6 +54,8 @@ export async function applyReconcileAnnotationRun(
   appliedAt: string,
   origin: EngineeringProjectCommandOrigin,
   command: ReconcileAnnotationRunCommand,
+  lifecycle: UncertainWriterLifecycleEligibility =
+    UNCERTAIN_WRITER_LIFECYCLE_NOT_QUALIFIED,
 ): Promise<void> {
   nonEmpty(command.reconciliationRunId, "reconciliationRunId");
   nonEmpty(command.failedRunId, "failedRunId");
@@ -106,11 +117,13 @@ export async function applyReconcileAnnotationRun(
     !isEligibleUncertainWriterFailure(
       failedRun.failure.code,
       failedWorkItem.operation,
+      lifecycle,
     )
   ) {
     invalidTransition(
       `Target run ${failedRun.id} failure code "${failedRun.failure.code}" is not in ` +
-        "ELIGIBLE_UNCERTAIN_WRITE_FAILURE_CODES and is not the geometry write operation. " +
+        "ELIGIBLE_UNCERTAIN_WRITE_FAILURE_CODES, is not the geometry write operation, " +
+        "and is not a server-qualified uncertain writer. " +
         "Only terminal-uncertain failures are eligible for uncertain-writer reconciliation.",
     );
   }
