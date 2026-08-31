@@ -324,6 +324,10 @@ class RecordingRolloverHost implements CapabilityRuntimeRolloverHost {
     return Promise.resolve(this.#observation());
   }
 
+  retireRolloverPredecessor(): Promise<CapabilityRuntimeRolloverHostObservation> {
+    return Promise.resolve(this.#observation());
+  }
+
   #observation(): CapabilityRuntimeRolloverHostObservation {
     if (this.#forcedClassification) {
       return observation(

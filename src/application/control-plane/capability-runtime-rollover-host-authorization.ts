@@ -1,9 +1,11 @@
 /**
- * Purpose-specific H1 authority for the one SysON rollover host mutation.
+ * Purpose-specific H1 authority for exact rollover host mutations.
  *
  * This intentionally mirrors the normal runtime host-mutation boundary while
  * staying separate from its one-group journal: a rollover names two exact
  * topologies and cannot safely be represented as an ordinary group action.
+ * Each action is single-use and phase-gated; successor-start and predecessor
+ * retirement are distinct capabilities even at the same saga phase.
  */
 
 import {
@@ -16,7 +18,10 @@ import type {
 } from "../ports/out/capability/capability-runtime-rollover-host.ts";
 import type { CapabilityRuntimeRolloverSagaStore } from "../ports/out/capability/capability-runtime-rollover-saga-store.ts";
 
-type RolloverHostAction = "successor-material-acquire" | "successor-runtime-start";
+type RolloverHostAction =
+  | "successor-material-acquire"
+  | "successor-runtime-start"
+  | "predecessor-runtime-retire";
 
 interface AuthorizedRolloverMutation {
   readonly identity: CapabilityRuntimeRolloverIdentity;
@@ -52,6 +57,18 @@ export async function authorizeDurableRolloverSuccessorRuntimeStart(
   );
 }
 
+export async function authorizeDurableRolloverPredecessorRuntimeRetire(
+  identity: CapabilityRuntimeRolloverIdentity,
+  sagas: CapabilityRuntimeRolloverSagaStore,
+): Promise<AuthorizedCapabilityRuntimeRolloverHostMutation> {
+  return await authorize(
+    identity,
+    sagas,
+    "predecessor-runtime-retire",
+    "successor-material-observed",
+  );
+}
+
 /** Adapter-only consumption: a capability cannot be replayed after one call. */
 export function consumeAuthorizedRolloverSuccessorMaterialAcquire(
   value: AuthorizedCapabilityRuntimeRolloverHostMutation,
@@ -64,6 +81,13 @@ export function consumeAuthorizedRolloverSuccessorRuntimeStart(
   value: AuthorizedCapabilityRuntimeRolloverHostMutation,
 ): CapabilityRuntimeRolloverIdentity {
   return consume(value, "successor-runtime-start");
+}
+
+/** Adapter-only consumption: a capability cannot be replayed after one call. */
+export function consumeAuthorizedRolloverPredecessorRuntimeRetire(
+  value: AuthorizedCapabilityRuntimeRolloverHostMutation,
+): CapabilityRuntimeRolloverIdentity {
+  return consume(value, "predecessor-runtime-retire");
 }
 
 async function authorize(

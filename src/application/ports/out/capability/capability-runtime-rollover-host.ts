@@ -4,7 +4,9 @@
  * The application passes a durable, exact rollover identity. This port never
  * accepts an image, provider, Docker argument, compose fragment, port, volume
  * or service name from an operator or agent. Implementations may only inspect
- * the declared predecessor/successor or run the fixed successor pull/up path.
+ * the declared predecessor/successor, run the fixed successor pull/up path, or
+ * retire exact owned predecessor containers via stop then `docker container rm
+ * <id>`.
  */
 
 import type {
@@ -55,6 +57,9 @@ export interface CapabilityRuntimeRolloverHost {
     readonly authorization: AuthorizedCapabilityRuntimeRolloverHostMutation;
   }): Promise<CapabilityRuntimeRolloverHostObservation>;
   activateRolloverSuccessor(input: {
+    readonly authorization: AuthorizedCapabilityRuntimeRolloverHostMutation;
+  }): Promise<CapabilityRuntimeRolloverHostObservation>;
+  retireRolloverPredecessor(input: {
     readonly authorization: AuthorizedCapabilityRuntimeRolloverHostMutation;
   }): Promise<CapabilityRuntimeRolloverHostObservation>;
 }

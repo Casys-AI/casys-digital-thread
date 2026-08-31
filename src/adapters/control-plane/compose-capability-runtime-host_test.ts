@@ -20,6 +20,7 @@ import {
   authorizeDurableRuntimeStop,
 } from "../../application/control-plane/capability-runtime-host-authorization.ts";
 import {
+  authorizeDurableRolloverPredecessorRuntimeRetire,
   authorizeDurableRolloverSuccessorMaterialAcquire,
   authorizeDurableRolloverSuccessorRuntimeStart,
 } from "../../application/control-plane/capability-runtime-rollover-host-authorization.ts";
@@ -189,6 +190,172 @@ Deno.test("Compose host performs the sealed SysON successor rollover commands ex
     assertNoRolloverDestructiveCommand(fixture.runner);
   } finally {
     await fixture.dispose();
+  }
+});
+
+Deno.test("Compose host predecessor retirement consumes only predecessor-runtime-retire authority", async () => {
+  const fixture = await rolloverHostFixture();
+  try {
+    fixture.runner.installSuccessorMaterial();
+    await advanceRolloverToSuccessorMaterialObserved(fixture);
+    const prior = fixture.runner.calls.length;
+    await assertRejects(
+      async () =>
+        await fixture.host.retireRolloverPredecessor({
+          authorization: await authorizeDurableRolloverSuccessorRuntimeStart(
+            fixture.identity,
+            fixture.sagas,
+          ),
+        }),
+      Error,
+      "authorization is absent or consumed",
+    );
+    assertEquals(containerCommands(fixture.runner.calls.slice(prior), "stop"), []);
+    assertEquals(containerCommands(fixture.runner.calls.slice(prior), "rm"), []);
+    await assertRejects(
+      async () =>
+        await fixture.host.activateRolloverSuccessor({
+          authorization: await authorizeDurableRolloverPredecessorRuntimeRetire(
+            fixture.identity,
+            fixture.sagas,
+          ),
+        }),
+      Error,
+      "authorization is absent or consumed",
+    );
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("Compose host retires an exact active predecessor by stop, fresh inspect, then container rm", async () => {
+  const fixture = await rolloverHostFixture();
+  try {
+    fixture.runner.installSuccessorMaterial();
+    await advanceRolloverToSuccessorMaterialObserved(fixture);
+    const prior = fixture.runner.calls.length;
+    const retired = await fixture.host.retireRolloverPredecessor({
+      authorization: await authorizeDurableRolloverPredecessorRuntimeRetire(
+        fixture.identity,
+        fixture.sagas,
+      ),
+    });
+    const calls = fixture.runner.calls.slice(prior);
+    assertEquals(retired.classification, "absent");
+    assertEquals(retired.successor.materials, "complete");
+    assertEquals(retired.predecessor.runtime, "inactive");
+    assertEquals(retired.successor.runtime, "inactive");
+    assertEquals(containerCommands(calls, "stop"), PREDECESSOR_CONTAINER_IDS);
+    assertEquals(containerCommands(calls, "rm"), PREDECESSOR_CONTAINER_IDS);
+    assertFreshInspectBetweenStopAndRm(calls);
+    assertNoUnsafeRolloverRetirementCommand(calls);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("Compose host retries a stopped exact predecessor by completing container rm without widening", async () => {
+  const fixture = await rolloverHostFixture({ predecessorRuntime: "stopped" });
+  try {
+    fixture.runner.installSuccessorMaterial();
+    await advanceRolloverToSuccessorMaterialObserved(fixture);
+    const prior = fixture.runner.calls.length;
+    const retired = await fixture.host.retireRolloverPredecessor({
+      authorization: await authorizeDurableRolloverPredecessorRuntimeRetire(
+        fixture.identity,
+        fixture.sagas,
+      ),
+    });
+    const calls = fixture.runner.calls.slice(prior);
+    assertEquals(retired.classification, "absent");
+    assertEquals(retired.successor.materials, "complete");
+    assertEquals(retired.predecessor.runtime, "inactive");
+    assertEquals(retired.successor.runtime, "inactive");
+    assertEquals(containerCommands(calls, "stop"), []);
+    assertEquals(containerCommands(calls, "rm"), PREDECESSOR_CONTAINER_IDS);
+    assertNoUnsafeRolloverRetirementCommand(calls);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("Compose host treats an already-absent exact rollover as a predecessor-retirement no-op", async () => {
+  const fixture = await rolloverHostFixture({ predecessorRuntime: "absent" });
+  try {
+    fixture.runner.installSuccessorMaterial();
+    await advanceRolloverToSuccessorMaterialObserved(fixture);
+    const prior = fixture.runner.calls.length;
+    const retired = await fixture.host.retireRolloverPredecessor({
+      authorization: await authorizeDurableRolloverPredecessorRuntimeRetire(
+        fixture.identity,
+        fixture.sagas,
+      ),
+    });
+    const calls = fixture.runner.calls.slice(prior);
+    assertEquals(retired.classification, "absent");
+    assertEquals(retired.successor.materials, "complete");
+    assertEquals(retired.predecessor.runtime, "inactive");
+    assertEquals(retired.successor.runtime, "inactive");
+    assertEquals(containerCommands(calls, "stop"), []);
+    assertEquals(containerCommands(calls, "rm"), []);
+    assertNoUnsafeRolloverRetirementCommand(calls);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("Compose host does not retire foreign, hybrid, unknown, successor, or incomplete-successor topologies", async () => {
+  const cases: readonly {
+    readonly name: string;
+    readonly hideSuccessorContainers?: boolean;
+    readonly mismatchedSharedService?: string;
+    readonly unknownPredecessorObservation?: boolean;
+    readonly successorActive?: boolean;
+    readonly installSuccessorMaterial?: boolean;
+  }[] = [
+    {
+      name: "foreign",
+      hideSuccessorContainers: true,
+      installSuccessorMaterial: true,
+    },
+    {
+      name: "hybrid",
+      mismatchedSharedService: "syson-db",
+      installSuccessorMaterial: true,
+    },
+    {
+      name: "unknown",
+      unknownPredecessorObservation: true,
+      installSuccessorMaterial: true,
+    },
+    { name: "successor", successorActive: true, installSuccessorMaterial: true },
+    { name: "incomplete successor" },
+  ];
+  for (const testCase of cases) {
+    const fixture = await rolloverHostFixture(testCase);
+    try {
+      if (testCase.installSuccessorMaterial) {
+        fixture.runner.installSuccessorMaterial();
+      }
+      await advanceRolloverToSuccessorMaterialObserved(fixture);
+      const before = await fixture.host.observeRollover({
+        identity: fixture.identity,
+      });
+      const prior = fixture.runner.calls.length;
+      const retired = await fixture.host.retireRolloverPredecessor({
+        authorization: await authorizeDurableRolloverPredecessorRuntimeRetire(
+          fixture.identity,
+          fixture.sagas,
+        ),
+      });
+      const calls = fixture.runner.calls.slice(prior);
+      assertEquals(retired, before, testCase.name);
+      assertEquals(containerCommands(calls, "stop"), [], testCase.name);
+      assertEquals(containerCommands(calls, "rm"), [], testCase.name);
+      assertNoUnsafeRolloverRetirementCommand(calls);
+    } finally {
+      await fixture.dispose();
+    }
   }
 });
 
@@ -957,11 +1124,20 @@ async function sysonGroup(): Promise<CapabilityRuntimeLaunchGroup> {
   return (await createFirstPartyCapabilityRuntimeLaunchGroups())[0]!;
 }
 
+const PREDECESSOR_CONTAINER_IDS = [
+  "container-mcp-syson",
+  "container-syson-app",
+  "container-syson-db",
+];
+
 async function rolloverHostFixture(
   options: {
     readonly duplicateSuccessorDefinition?: boolean;
     readonly mismatchedSharedService?: string;
     readonly unknownPredecessorObservation?: boolean;
+    readonly hideSuccessorContainers?: boolean;
+    readonly predecessorRuntime?: "running" | "stopped" | "absent";
+    readonly successorActive?: boolean;
   } = {},
 ) {
   const [catalog, predecessorUnit, predecessor, successor] = await Promise.all([
@@ -1280,12 +1456,26 @@ class RolloverFakeGroupRunner implements CommandRunner {
     private readonly options: {
       readonly mismatchedSharedService?: string;
       readonly unknownPredecessorObservation?: boolean;
+      readonly hideSuccessorContainers?: boolean;
+      readonly predecessorRuntime?: "running" | "stopped" | "absent";
+      readonly successorActive?: boolean;
     } = {},
   ) {
-    this.#active = predecessor;
+    this.#active = options.successorActive ? successor : predecessor;
     for (const member of predecessor.materials) {
       this.#installed.add(member.imageReference);
-      this.#states.set(member.serviceName, "running");
+    }
+    if (options.successorActive) {
+      for (const member of successor.materials) {
+        this.#installed.add(member.imageReference);
+        this.#states.set(member.serviceName, "running");
+      }
+      return;
+    }
+    if (options.predecessorRuntime === "absent") return;
+    const state = options.predecessorRuntime === "stopped" ? "exited" : "running";
+    for (const member of predecessor.materials) {
+      this.#states.set(member.serviceName, state);
     }
   }
 
@@ -1361,6 +1551,12 @@ class RolloverFakeGroupRunner implements CommandRunner {
       ) {
         return failure("predecessor Docker observation unavailable");
       }
+      if (
+        this.options.hideSuccessorContainers &&
+        input === this.successor.compose.content
+      ) {
+        return success("[]");
+      }
       return success(JSON.stringify([...this.#states].map(([service, state]) => ({
         Service: service,
         ID: `container-${service}`,
@@ -1380,6 +1576,14 @@ class RolloverFakeGroupRunner implements CommandRunner {
       for (const member of this.#active.materials) {
         this.#states.set(member.serviceName, "running");
       }
+      return success("");
+    }
+    if (args[0] === "container" && args[1] === "stop") {
+      this.#states.set(args[2]!.replace("container-", ""), "exited");
+      return success("");
+    }
+    if (args[0] === "container" && args[1] === "rm") {
+      this.#states.delete(args[2]!.replace("container-", ""));
       return success("");
     }
     return success("");
@@ -1504,6 +1708,64 @@ function assertNoRolloverDestructiveCommand(runner: RolloverFakeGroupRunner): vo
         argument === "prune" || argument === "rm" || argument === "rmi" ||
         argument === "--force" || argument === "--force-recreate"
       )
+    ),
+    false,
+  );
+}
+
+async function advanceRolloverToSuccessorMaterialObserved(
+  fixture: Awaited<ReturnType<typeof rolloverHostFixture>>,
+): Promise<void> {
+  await fixture.sagas.prepare(fixture.identity);
+  await fixture.sagas.advance(fixture.identity, {
+    phase: "successor-material-observed",
+    evidenceFingerprint: await sha256Fingerprint({ successor: "material" }),
+  });
+}
+
+function containerCommands(
+  calls: readonly string[][],
+  verb: "stop" | "rm",
+): string[] {
+  return calls.filter((call) => call[1] === "container" && call[2] === verb).map(
+    (call) => call[3]!,
+  );
+}
+
+function assertFreshInspectBetweenStopAndRm(calls: readonly string[][]): void {
+  const stopIndexes = calls.flatMap((call, index) =>
+    call[1] === "container" && call[2] === "stop" ? [index] : []
+  );
+  const rmIndexes = calls.flatMap((call, index) =>
+    call[1] === "container" && call[2] === "rm" ? [index] : []
+  );
+  assertEquals(stopIndexes.length > 0 && rmIndexes.length > 0, true);
+  const lastStop = Math.max(...stopIndexes);
+  const firstRm = Math.min(...rmIndexes);
+  assertEquals(lastStop < firstRm, true);
+  assertEquals(
+    calls.slice(lastStop + 1, firstRm).some((call) =>
+      call.includes("ps") || call[1] === "inspect"
+    ),
+    true,
+  );
+}
+
+function assertNoUnsafeRolloverRetirementCommand(calls: readonly string[][]): void {
+  assertEquals(
+    calls.some((call) =>
+      call.includes("down") ||
+      call.includes("-v") ||
+      call.includes("--volumes") ||
+      call.includes("prune") ||
+      call.includes("rmi") ||
+      call.includes("--force") ||
+      call.includes("--force-recreate") ||
+      (call[1] === "compose" && call.includes("rm")) ||
+      (call[1] === "image" && call[2] === "rm") ||
+      (call[1] === "volume") ||
+      ((call[1] === "container" && (call[2] === "stop" || call[2] === "rm")) &&
+        call.length !== 4)
     ),
     false,
   );

@@ -49,6 +49,7 @@ import {
   consumeAuthorizedRuntimeStop,
 } from "../../application/control-plane/capability-runtime-host-authorization.ts";
 import {
+  consumeAuthorizedRolloverPredecessorRuntimeRetire,
   consumeAuthorizedRolloverSuccessorMaterialAcquire,
   consumeAuthorizedRolloverSuccessorRuntimeStart,
 } from "../../application/control-plane/capability-runtime-rollover-host-authorization.ts";
@@ -273,6 +274,63 @@ class ComposeCapabilityRuntimeHost
       "never",
       "--no-build",
     ]);
+    return await this.#observeRolloverDefinition(definition);
+  }
+
+  /**
+   * Closed predecessor retirement: stop then `docker container rm <id>` on
+   * freshly recrossed owned predecessor containers only. No `-v`/`--volumes`,
+   * compose down/rm, prune, image removal or successor-start branch.
+   */
+  async retireRolloverPredecessor(input: {
+    readonly authorization: AuthorizedCapabilityRuntimeRolloverHostMutation;
+  }): Promise<CapabilityRuntimeRolloverHostObservation> {
+    const definition = this.#requireRolloverDefinition(
+      consumeAuthorizedRolloverPredecessorRuntimeRetire(input.authorization),
+    );
+    const before = await this.#observeRolloverDefinition(definition);
+    if (
+      before.classification === "foreign" ||
+      before.classification === "hybrid" ||
+      before.classification === "unknown" ||
+      before.classification === "successor" ||
+      before.successor.materials !== "complete"
+    ) {
+      return before;
+    }
+    if (
+      before.classification === "absent" &&
+      before.predecessor.runtime === "inactive" &&
+      before.successor.runtime === "inactive"
+    ) {
+      return before;
+    }
+    if (before.classification !== "predecessor") {
+      return before;
+    }
+    const predecessor = await this.#launch(definition.predecessor);
+    const ownedBefore = await this.#inspect(definition.predecessor, predecessor, {
+      ignorePendingReadiness: true,
+    });
+    if (ownedBefore.ownership !== "owned") {
+      return before;
+    }
+    if (rolloverGroupObservation(ownedBefore).runtime !== "inactive") {
+      const stop = await this.#stopOwnedReverse(predecessor, ownedBefore);
+      if (!stop.success) {
+        return await this.#observeRolloverDefinition(definition);
+      }
+    }
+    const recrossed = await this.#inspect(definition.predecessor, predecessor, {
+      ignorePendingReadiness: true,
+    });
+    if (
+      recrossed.ownership !== "owned" ||
+      rolloverGroupObservation(recrossed).runtime !== "inactive"
+    ) {
+      return await this.#observeRolloverDefinition(definition);
+    }
+    await this.#removeOwnedReverse(predecessor, recrossed);
     return await this.#observeRolloverDefinition(definition);
   }
 
@@ -1021,6 +1079,20 @@ class ComposeCapabilityRuntimeHost
       if (!result.success) return result;
     }
     return { success: true, code: 0, stdout: "", stderr: "" };
+  }
+
+  async #removeOwnedReverse(
+    launch: Launch,
+    inspection: GroupInspection,
+  ): Promise<CommandResult> {
+    for (const member of [...launch.group.materials].reverse()) {
+      const id = inspection.owned[member.serviceName];
+      if (!id) continue;
+      // Exact ID only: never `-v`/`--volumes`, compose rm/down, prune or image rm.
+      const result = await this.#docker(launch.root, ["container", "rm", id]);
+      if (!result.success) return result;
+    }
+    return successfulCommand();
   }
 
   async #compose(
