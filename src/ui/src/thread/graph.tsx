@@ -9,7 +9,7 @@ import {
   directionalThreadGraphNode,
   positionedEdgeCenter,
   positionedEdgeOccurrenceKey,
-  projectEssentialThreadGraph,
+  projectCompleteThreadGraph,
   threadGraphEdgeImpactState,
   threadGraphImpactContext,
   threadGraphNodeImpactState,
@@ -36,7 +36,6 @@ import type {
   ThreadRef,
 } from "./types.ts";
 import { displayedGraphEdgeOccurrenceKey } from "./graph-selection-model.ts";
-import { isUiOnlyPresentationEdge } from "../cad/cad-presentation-projection.ts";
 
 export type { ThreadGraphSelection };
 
@@ -49,10 +48,6 @@ export interface ThreadGraphProps {
   focus?: ThreadGraphRef;
   ariaLabel?: string;
   emptyLabel?: string;
-  /** Controlled density. Omit it to let the graph own its compact/all toggle. */
-  showSupporting?: boolean;
-  /** Hides the density explanation in compact embedded graph projections. */
-  showDensityControl?: boolean;
   /**
    * Embedded graphs tell the story of one feed event. Canvas graphs are a
    * dedicated inspection surface with explicit fit and zoom controls.
@@ -63,7 +58,6 @@ export interface ThreadGraphProps {
   /** Staggers node and edge entry when a live lineage first appears. */
   animate?: boolean;
   onSelectionChange?: (selection: ThreadGraphSelection | undefined) => void;
-  onShowSupportingChange?: (showSupporting: boolean) => void;
   /** Opens the existing Workbench inspector when a node exposes a UI ref. */
   onInspect?: (selection: ThreadRef, node: ThreadGraphNode) => void;
   /**
@@ -96,13 +90,10 @@ export function ThreadGraph({
   focus,
   ariaLabel = "Engineering traceability graph",
   emptyLabel = "No linked engineering evidence is available.",
-  showSupporting,
-  showDensityControl = true,
   presentation = "embedded",
   initialZoom = 1,
   animate = false,
   onSelectionChange,
-  onShowSupportingChange,
   onInspect,
   componentLabeler,
 }: ThreadGraphProps): JSX.Element {
@@ -120,9 +111,6 @@ export function ThreadGraph({
   }>();
   const [keyboardNode, setKeyboardNode] = useState<string>();
   const [keyboardEdge, setKeyboardEdge] = useState<string>();
-  const [locallyShowingSupporting, setLocallyShowingSupporting] = useState(
-    false,
-  );
   const [zoom, setZoom] = useState(() => normaliseZoom(initialZoom));
   const [cameraTarget, setCameraTarget] = useState<ThreadGraphRef>();
   const [cameraCenter, setCameraCenter] = useState<GraphViewportPoint>();
@@ -130,17 +118,9 @@ export function ThreadGraph({
   const [panning, setPanning] = useState(false);
   const focusedRef = focus ??
     (selection?.kind === "node" ? selection.ref : undefined);
-  const showingSupporting = showSupporting ?? locallyShowingSupporting;
   const projection = useMemo(
-    () =>
-      projectEssentialThreadGraph(
-        nodes,
-        edges,
-        showingSupporting,
-        focusedRef,
-        selection,
-      ),
-    [nodes, edges, showingSupporting, focusedRef, selection],
+    () => projectCompleteThreadGraph(nodes, edges),
+    [nodes, edges],
   );
   const layout = useMemo(
     () =>
@@ -203,7 +183,7 @@ export function ThreadGraph({
     setZoom(normaliseZoom(initialZoom));
     setCameraTarget(undefined);
     setCameraCenter(undefined);
-  }, [layout.width, layout.height, showingSupporting, initialZoom]);
+  }, [layout.width, layout.height, initialZoom]);
 
   useEffect(() => {
     const element = viewportElement.current;
@@ -242,7 +222,6 @@ export function ThreadGraph({
     if (item.node.selection) onInspect?.(item.node.selection, item.node);
   };
   const selectEdge = (item: PositionedThreadGraphEdge) => {
-    if (isUiOnlyPresentationEdge(item.edge)) return;
     const keyboardOccurrenceKey = positionedEdgeOccurrenceKey(
       item,
       layout.edges,
@@ -277,9 +256,7 @@ export function ThreadGraph({
     item: PositionedThreadGraphEdge,
     direction: "previous" | "next" | "first" | "last",
   ) => {
-    const selectableEdges = layout.edges.filter((candidate) =>
-      !isUiOnlyPresentationEdge(candidate.edge)
-    );
+    const selectableEdges = layout.edges;
     const currentIndex = selectableEdges.indexOf(item);
     const targetIndex = direction === "first"
       ? 0
@@ -330,7 +307,7 @@ export function ThreadGraph({
       className="thread-graph"
       data-focused={focusedRef ? "true" : "false"}
       data-components={layout.components.length}
-      data-density={showingSupporting ? "complete" : "essential"}
+      data-density="complete"
       data-animate={animate ? "true" : "false"}
       data-presentation={presentation}
       data-panning={panning ? "true" : "false"}
@@ -375,35 +352,6 @@ export function ThreadGraph({
           </div>
         </div>
       )}
-      {showDensityControl && (projection.hiddenNodeCount > 0 ||
-        (showingSupporting && projection.supportingCount > 0)) &&
-        (
-          <div className="thread-graph-density">
-            <span>
-              {showingSupporting
-                ? `All ${nodes.length} evidence nodes are visible.`
-                : `${projection.hiddenNodeCount} supporting node${
-                  projection.hiddenNodeCount === 1 ? " is" : "s are"
-                } condensed from the essential thread.`}
-            </span>
-            <button
-              type="button"
-              className="thread-graph-density-toggle"
-              aria-pressed={showingSupporting}
-              onClick={() => {
-                const next = !showingSupporting;
-                if (showSupporting === undefined) {
-                  setLocallyShowingSupporting(next);
-                }
-                onShowSupportingChange?.(next);
-              }}
-            >
-              {showingSupporting
-                ? "Show essential thread"
-                : "Show all evidence"}
-            </button>
-          </div>
-        )}
       <div className="thread-graph-viewport" ref={viewportElement}>
         <svg
           className="thread-graph-canvas"
@@ -530,7 +478,7 @@ export function ThreadGraph({
                 item,
                 layout.edges,
               );
-              const selectable = !isUiOnlyPresentationEdge(item.edge);
+              const selectable = true;
               const selected = selection?.kind === "edge" &&
                 threadGraphSelectionMatchesEdge(selection, item.edge);
               const state = threadGraphEdgeImpactState(
@@ -542,9 +490,7 @@ export function ThreadGraph({
                 ? keyboardEdge === occurrenceKey
                 : selectedEdgeVisible
                 ? selected
-                : layout.edges.findIndex((candidate) =>
-                  !isUiOnlyPresentationEdge(candidate.edge)
-                ) === index);
+                : index === 0);
               const attestation = item.edge.attestation?.status ?? "none";
               return (
                 <g

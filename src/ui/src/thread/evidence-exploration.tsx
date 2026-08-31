@@ -23,7 +23,6 @@ import {
   type DisplayKind,
   displayKindOf,
   type EvidenceMinimapView,
-  evidenceSystemFamily,
   isDisplayKindVisible,
   readCssTokens,
   type SigmaEdgeAttrs,
@@ -40,7 +39,6 @@ import type {
   ThreadGraphRef,
 } from "./types.ts";
 import type { ThreadGraphSelection } from "./graph.tsx";
-import { isUiOnlyPresentationEdge } from "../cad/cad-presentation-projection.ts";
 import {
   buildVerificationCaseLegend,
   type VerificationCaseFilter,
@@ -184,7 +182,7 @@ export function EvidenceExploration({
       if (!compact) {
         instance.on("clickEdge", ({ edge: edgeKey }) => {
           const attrs = explorationModel.graph.getEdgeAttributes(edgeKey);
-          if (!attrs || isUiOnlyPresentationEdge(attrs.edge)) return;
+          if (!attrs) return;
           onSelectionChangeRef.current?.({
             kind: "edge",
             id: attrs.edgeId,
@@ -360,15 +358,11 @@ export function EvidenceExploration({
       return true;
     };
     const systemCounts = new Map<string, number>();
-    const visibleSystemsByFamily = new Map<string, Set<string>>();
     const kindCounts = new Map<DisplayKind, number>();
     explorationModel.graph.forEachNode((key, attrs) => {
       if (filtersActive && !isVisible(key, attrs)) return;
-      const system = evidenceSystemFamily(attrs.node.system);
+      const system = attrs.node.system;
       systemCounts.set(system, (systemCounts.get(system) ?? 0) + 1);
-      const visibleSystems = visibleSystemsByFamily.get(system) ?? new Set();
-      visibleSystems.add(attrs.node.system);
-      visibleSystemsByFamily.set(system, visibleSystems);
       const dk = displayKindOf(attrs.node);
       kindCounts.set(dk, (kindCounts.get(dk) ?? 0) + 1);
     });
@@ -376,7 +370,6 @@ export function EvidenceExploration({
       systemLegend: explorationModel.systemLegend
         .map((item) => ({
           ...item,
-          systems: [...(visibleSystemsByFamily.get(item.system) ?? [])].sort(),
           count: systemCounts.get(item.system) ?? 0,
         }))
         .filter((item) => item.count > 0),
@@ -481,15 +474,13 @@ export function EvidenceExploration({
         >
           {systemLegend.length > 0 && (
             <div className="flex min-w-[10rem] flex-col">
-              <p className={legendTitleClass}>Tools</p>
+              <p className={legendTitleClass}>Recorded systems</p>
               {systemLegend.map((item) => (
                 <span
                   key={item.system}
                   className={legendRowClass}
-                  aria-label={`${item.label} — ${item.count} visible items — recorded as ${
-                    item.systems.join(", ")
-                  }`}
-                  title={`Recorded systems: ${item.systems.join(", ")}`}
+                  aria-label={`${item.label} — ${item.count} visible items`}
+                  title={`Recorded system: ${item.system}`}
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     <span

@@ -13,7 +13,7 @@
  *   c) `state/local/geometry-draft-captures/` — content-addressed JSON captures
  *      (FileCaptureStore<"geometry-draft">)
  *   d) `state/local/geometry-draft-assets/` — raw binary files keyed by their
- *      SHA-256, served by `/api/draft-assets/<digest>`
+ *      SHA-256 and reopened only by authorized CAD execution/seal flows
  *
  * The operator reviews the MRTR proposal (which carries the `draftDigest`) and
  * approves the exact bytes they previewed.  The write executor later reads the

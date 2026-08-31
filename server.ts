@@ -1712,9 +1712,6 @@ async function createProjectControl(
         traversal: productStructureTraversal,
         workspace: sourceWorkspaceStore,
         evidenceAttachments: new WorkbenchProductNavigationEvidenceAttachmentReader({
-          architectureCaptures: architectureFoundation.genericArchitectureCaptures,
-          geometryCaptures: productNavigationGeometryCaptures,
-          sysmlSourceAnalysis: architectureFoundation.sysmlSourceAnalysis,
           admissions: compilationFoundation.technicalCompilationSeals,
           workspace: sourceWorkspaceStore,
           requirementsCaptures: architectureFoundation.requirementsCaptures,

@@ -18,7 +18,7 @@ const REQUIREMENT_NODE = "artifact:req-1";
 const ACTIVITY_NODE = "project-activity:run-1";
 const HULL_NODE = "artifact:hull-1";
 const STALE_NODE = "artifact:retired";
-const HULL_ASSET = "asset-hull-glb";
+const HULL_SESSION = `mcp-app:${"a".repeat(64)}`;
 
 const CURRENT: OverviewThreadWhiteboardPresentationReconciliation = {
   groupKeys: [REQUIREMENTS_GROUP, BUILD_GROUP],
@@ -26,7 +26,10 @@ const CURRENT: OverviewThreadWhiteboardPresentationReconciliation = {
   viewerCapabilities: {
     [REQUIREMENT_NODE]: { record: true },
     [ACTIVITY_NODE]: { activity: true },
-    [HULL_NODE]: { record: true, cadAssetIds: [HULL_ASSET] },
+    [HULL_NODE]: {
+      record: true,
+      sessionIds: [HULL_SESSION],
+    },
   },
 };
 
@@ -60,10 +63,10 @@ function completeState(): OverviewThreadWhiteboardPresentationState {
         expanded: false,
       },
       {
-        kind: "cad",
-        id: `cad:${HULL_NODE}:${HULL_ASSET}`,
+        kind: "session",
+        id: `session:${HULL_NODE}:${HULL_SESSION}`,
         nodeKey: HULL_NODE,
-        assetId: HULL_ASSET,
+        sessionId: HULL_SESSION,
         geometry: { x: 8, y: 8, width: 980, height: 540 },
         z: 4,
         expanded: true,
@@ -77,7 +80,7 @@ Deno.test("whiteboard persistence keys are versioned, encoded and project scoped
   const key = overviewThreadWhiteboardPresentationStorageKey(PROJECT_ID);
   assertEquals(
     key,
-    "casys.project-whiteboard.presentation:v1:project%2Fdemo%20alpha",
+    "casys.project-whiteboard.presentation:v2:project%2Fdemo%20alpha",
   );
   assertEquals(
     overviewThreadWhiteboardPresentationStorageKey("project/demo beta") === key,
@@ -109,7 +112,10 @@ Deno.test("whiteboard presentation round-trips every spatial field without grant
     serialized,
     '"schema":"casys-project-whiteboard-presentation"',
   );
-  assertStringIncludes(serialized, '"version":1');
+  assertStringIncludes(serialized, '"version":2');
+  assertStringIncludes(serialized, `"sessionId":"${HULL_SESSION}"`);
+  assertEquals(serialized.includes('"uri"'), false);
+  assertEquals(serialized.includes('"token"'), false);
   assertEquals(
     parseOverviewThreadWhiteboardPresentation(serialized, PROJECT_ID),
     state,
@@ -192,7 +198,7 @@ Deno.test("parser fails closed on malformed, cross-project, stale-schema and inv
   );
 
   const badVersion = JSON.parse(serialized);
-  badVersion.version = 2;
+  badVersion.version = 1;
   assertEquals(parseEnvelope(badVersion), undefined);
 
   const unknownStateField = JSON.parse(serialized);
@@ -247,10 +253,10 @@ Deno.test("reconciliation retains only current exact groups, nodes and viewer ca
         expanded: false,
       },
       {
-        kind: "cad",
-        id: `cad:${HULL_NODE}:asset-unrelated-glb`,
+        kind: "session",
+        id: `session:${HULL_NODE}:mcp-app:${"b".repeat(64)}`,
         nodeKey: HULL_NODE,
-        assetId: "asset-unrelated-glb",
+        sessionId: `mcp-app:${"b".repeat(64)}`,
         geometry: { x: 20, y: 20, width: 300, height: 220 },
         z: 6,
         expanded: false,
@@ -285,6 +291,16 @@ Deno.test("reconciliation retains only current exact groups, nodes and viewer ca
   );
   assertEquals(reconciled.transform, state.transform);
   assertEquals(reconciled.layoutMode, state.layoutMode);
+});
+
+Deno.test("session presentation is rejected without its exact current session key", () => {
+  const serialized = serializeOverviewThreadWhiteboardPresentation(
+    PROJECT_ID,
+    completeState(),
+  )!;
+  const session = JSON.parse(serialized);
+  session.state.viewers[2].sessionId = `mcp-app:${"c".repeat(64)}`;
+  assertEquals(parseEnvelope(session), undefined);
 });
 
 Deno.test("local load and save reconcile before storage and contain storage failures", () => {

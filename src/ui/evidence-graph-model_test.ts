@@ -4,13 +4,9 @@
  * All fixtures are minimal synthetic graphs derived from the real GEN-01 V3
  * graph structure (175 nodes, 256 edges, 1 giant component + 12 small islands),
  * constructed so that each test exercises exactly one invariant.
- *
- * The analyze.* predicate in these tests uses node.system === "analyze" as a
- * structural identifier — a sentinel value that synthetic fixtures stamp on
- * instrument nodes. Real callers will use operation identifiers, not labels.
  */
 
-import { assertEquals, assertNotEquals } from "@std/assert";
+import { assertEquals } from "@std/assert";
 import {
   boundedLineageNeighborhood,
   buildEvidenceGraphModel,
@@ -207,95 +203,6 @@ Deno.test(
 );
 
 // ---------------------------------------------------------------------------
-// Core invariant: a folded connector never severs the component link
-// ---------------------------------------------------------------------------
-
-Deno.test("component assignment survives analyze.* folding — stub preserves the link", () => {
-  // A ← evaluates — B (instrument) — evidences → C
-  // B is an analyze.* instrument. Without the fix, A and C appear as islands.
-  // With the model: component computed on full graph → A and C share component 0.
-  // The stub A→C must exist after folding.
-  const { graph, familyGraph } = threeNodeBridge();
-
-  const model = buildEvidenceGraphModel(graph, familyGraph, {
-    isAnalyzeInstrumentNode: (n) => n.system === "analyze",
-  });
-
-  // A and C are in the same component (computed before folding).
-  assertEquals(model.componentOf(ref("A", "artifact")), 0);
-  assertEquals(model.componentOf(ref("C", "artifact")), 0);
-  // B is also in component 0 (full graph never changes).
-  assertEquals(model.componentOf(ref("B", "evaluation")), 0);
-
-  // B is not in the visible nodes.
-  assertEquals(
-    model.nodes.map((n) => n.ref.id),
-    ["A", "C"],
-  );
-
-  // A stub connecting A→C must exist.
-  assertEquals(model.stubs.length, 1);
-  assertEquals(model.stubs[0]?.from.id, "A");
-  assertEquals(model.stubs[0]?.to.id, "C");
-});
-
-Deno.test("folding never emits a stub whose endpoints are the same node", () => {
-  // admission → instrument, and the instrument's only other path is back to
-  // admission. A self-loop stub would look like a recorded relation.
-  const graph = {
-    nodes: [
-      nodeFor("admission", "artifact", "digital-thread"),
-      nodeFor("case", "artifact", "analyze"),
-      nodeFor("eval", "evaluation", "syson"),
-    ],
-    edges: [
-      edgeFor(
-        "admission-case",
-        "admission",
-        "artifact",
-        "case",
-        "artifact",
-        "derived_from",
-      ),
-      edgeFor(
-        "case-eval",
-        "case",
-        "artifact",
-        "eval",
-        "evaluation",
-        "derived_from",
-      ),
-    ],
-  };
-  const model = buildEvidenceGraphModel(graph, emptyFamilyGraph(), {
-    isAnalyzeInstrumentNode: (n) => n.system === "analyze",
-  });
-  assertEquals(
-    model.stubs.some((stub) =>
-      stub.from.kind === stub.to.kind && stub.from.id === stub.to.id
-    ),
-    false,
-  );
-  assertEquals(
-    model.stubs.some((stub) => stub.from.id === "admission" && stub.to.id === "eval"),
-    true,
-  );
-});
-
-Deno.test("non-instrument nodes are never folded — stubs are only for instruments", () => {
-  const { graph, familyGraph } = threeNodeBridge();
-
-  const model = buildEvidenceGraphModel(graph, familyGraph, {
-    isAnalyzeInstrumentNode: () => false, // no exclusion
-  });
-
-  // All three nodes visible.
-  assertEquals(model.nodes.map((n) => n.ref.id).sort(), ["A", "B", "C"]);
-  // No stubs needed.
-  assertEquals(model.stubs.length, 0);
-});
-
-// ---------------------------------------------------------------------------
 // Intentionally isolated component (Modelica thermal)
 // ---------------------------------------------------------------------------
 
@@ -324,36 +231,6 @@ Deno.test("intentionally isolated component is flagged but nodes remain in data"
   assertEquals(model.rawNodeCount, 3);
   // Thermal node IS visible (not folded — isolation is purely a flag).
   assertEquals(model.nodes.some((n) => n.ref.id === "T"), true);
-});
-
-// ---------------------------------------------------------------------------
-// Versioned supersession + stub combination
-// ---------------------------------------------------------------------------
-
-Deno.test("superseded versions are folded before analyze instrument folding", () => {
-  // Proof-R1 superseded → Proof-R2 (current). Proof-R2 feeds an instrument I
-  // which feeds requirement R.
-  // After version folding: Proof-R1 disappears → Proof-R2 visible.
-  // After instrument folding: I disappears → stub Proof-R2 → R.
-  const { graph, familyGraph } = versionedPlusBridgeGraph();
-
-  const model = buildEvidenceGraphModel(graph, familyGraph, {
-    isAnalyzeInstrumentNode: (n) => n.system === "analyze",
-  });
-
-  const visibleIds = model.nodes.map((n) => n.ref.id).sort();
-  assertEquals(visibleIds.includes("proof-r1"), false);
-  assertEquals(visibleIds.includes("proof-r2"), true);
-  assertEquals(visibleIds.includes("R"), true);
-  assertEquals(visibleIds.includes("I"), false);
-
-  // Stub from Proof-R2 to R.
-  const stub = model.stubs.find((s) => s.from.id === "proof-r2" && s.to.id === "R");
-  assertNotEquals(stub, undefined, "stub proof-r2→R must exist");
-  assertEquals(
-    model.stubs.some((s) => s.from.id === "R" && s.to.id === "proof-r2"),
-    false,
-  );
 });
 
 Deno.test("a supplied versioned projection preserves the exact rendered edge object", () => {
@@ -391,8 +268,7 @@ Deno.test("component name uses dominant system, not node labels", () => {
 
   assertEquals(model.components.length, 1);
   const name = model.components[0]!.name;
-  // Name must contain "FEA" (the SYSTEM_LABEL for calculix).
-  assertEquals(name.includes("FEA"), true);
+  assertEquals(name.includes("calculix"), true);
   // Name must NOT be "EVIDENCE COMPONENT 01" or any numbered fallback.
   assertEquals(/COMPONENT\s+\d+/i.test(name), false);
 });
@@ -406,14 +282,12 @@ Deno.test("single-node component gets a name from its system", () => {
   const model = buildEvidenceGraphModel(graph, emptyFamilyGraph());
 
   assertEquals(model.components.length, 1);
-  assertEquals(model.components[0]!.name.includes("SysML"), true);
+  assertEquals(model.components[0]!.name.includes("syson"), true);
 });
 
 Deno.test(
-  "SYSTEM_LABEL maps 'modelica' to 'Thermal' — intentionally isolated component",
+  "an intentionally isolated component keeps its literal system id",
   () => {
-    // Generic "modelica" serverId (producer identity used by the simulate
-    // executors) must be treated identically to "mcp-modelica"/"openmodelica".
     const graph = {
       nodes: [nodeFor("sim", "artifact", "modelica")],
       edges: [],
@@ -426,11 +300,10 @@ Deno.test(
     assertEquals(model.components.length, 1);
     // Component is flagged isolated (all nodes belong to "modelica" system).
     assertEquals(model.components[0]!.intentionallyIsolated, true);
-    // Name is derived from SYSTEM_LABEL["modelica"] = "Thermal".
     assertEquals(
-      model.components[0]!.name.includes("Thermal"),
+      model.components[0]!.name.includes("modelica"),
       true,
-      "SYSTEM_LABEL must map 'modelica' to 'Thermal'",
+      "the browser must preserve the literal system id",
     );
   },
 );
@@ -482,19 +355,6 @@ Deno.test("boundedNeighborhood direction=upstream excludes downstream nodes", ()
   const ids = nb.nodes.map((n) => n.ref.id);
   assertEquals(ids.includes("A"), true);
   assertEquals(ids.includes("C"), false);
-});
-
-Deno.test("boundedNeighborhood for invisible node returns empty", () => {
-  const { graph, familyGraph } = threeNodeBridge();
-
-  const model = buildEvidenceGraphModel(graph, familyGraph, {
-    isAnalyzeInstrumentNode: (n) => n.system === "analyze",
-  });
-
-  // B is folded (invisible).
-  const nb = model.boundedNeighborhood(ref("B", "evaluation"), 2);
-  assertEquals(nb.nodes.length, 0);
-  assertEquals(nb.edges.length, 0);
 });
 
 Deno.test("boundedLineageNeighborhood keeps ancestors and descendants without hub siblings", () => {
@@ -695,20 +555,17 @@ Deno.test("boundedLineageNeighborhood adds the exact SysML identity of one STEP 
 });
 
 // ---------------------------------------------------------------------------
-// Raw counts are unchanged by folding
+// Raw counts are preserved by the generic projection
 // ---------------------------------------------------------------------------
 
 Deno.test("rawNodeCount and rawEdgeCount reflect the unfiltered graph", () => {
   const { graph, familyGraph } = threeNodeBridge();
 
-  const model = buildEvidenceGraphModel(graph, familyGraph, {
-    isAnalyzeInstrumentNode: (n) => n.system === "analyze",
-  });
+  const model = buildEvidenceGraphModel(graph, familyGraph);
 
   assertEquals(model.rawNodeCount, 3);
   assertEquals(model.rawEdgeCount, 2);
-  // Only 2 visible (B folded).
-  assertEquals(model.nodes.length, 2);
+  assertEquals(model.nodes.length, 3);
 });
 
 // ---------------------------------------------------------------------------

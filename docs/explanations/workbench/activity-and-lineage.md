@@ -16,9 +16,9 @@ turning the feed into a 39-row implementation log.
 
 The page is not a static dashboard. It is the shared live dossier for an engineer and an
 agent: activity establishes what happened, lineage establishes what it means for the
-chain, and the active tool context exposes the evidence behind the next conversational
-decision. It remains read-only; execution and human authority stay in the paired agent
-conversation.
+chain, and the active record inspector exposes fields and relations already loaded for
+the next conversational decision. It remains read-only; execution and human authority
+stay in the paired agent conversation.
 
 ## Recommended shell
 
@@ -33,44 +33,44 @@ conversation.
   meaningful fact; manual history selection pauses following until the operator resumes.
 - **Context graph:** each active card can reveal a scoped graph containing every
   recorded ancestor and descendant, not only the shortest path.
-- **Evidence graph:** one native canvas owns the Evidence space, fit/zoom controls,
-  legend and large-topology inspection. Revision history is folded into its current
-  evidence node instead of creating a second graph mode. The canvas paints the
+- **Evidence graph:** one generic graph canvas owns the Evidence space, fit/zoom
+  controls, legend and large-topology inspection. Revision history is folded into its
+  current evidence node instead of creating a second graph mode. The canvas paints the
   Thread dossier (`origin: provenance` and `structure`) as one Graphology
-  `MultiDirectedGraph`. `AnalysisGraph` stays a semantic index: its
-  `analysis-node` overlay is not painted, so a sensitivity study cannot appear
-  as a second disconnected graph. Graphology never grants admission, a join,
-  or an execution.
-- **Right drawer:** one sticky, resizable tool inspector. It follows selection without
-  changing the feed or topology viewport and exposes the selected node's exact recorded
-  versions and their internal transition relations.
-- **Provider facets:** SysON, build123d, CalculiX, Modelica and ERPNext remain available
-  inside the inspector as compact context controls. They do not create another permanent
-  vertical rail before the useful content. A facet with no observed evidence stays
-  visible but disabled.
-- **Drawer body:** selected identity, provider role, related artifacts, observations,
-  requirements, violations, attestations and proposed actions.
-- **Full tool view:** an optional native route or workspace tab for geometry, mesh,
-  plots, SysML diagrams or BOM tables. It replaces the centre viewport temporarily; it
-  is never a mini-app embedded inside the drawer.
+  `MultiDirectedGraph`. `AnalysisGraph` stays a semantic index: its `analysis-node`
+  overlay is not painted, so a sensitivity study cannot appear as a second disconnected
+  graph. Graphology never grants admission, a join, or an execution.
+- **Right drawer:** one sticky, resizable generic record inspector. It follows selection
+  without changing the feed or topology viewport and exposes the selected node's exact
+  recorded versions and their internal transition relations.
+- **Recorded context:** provider identities such as SysON, build123d, CalculiX, Modelica
+  and ERPNext may appear only as compact identity/provenance fields. They do not render
+  a provider surface or imply that an App binding exists.
+- **Drawer body:** selected identity, raw graph and record fields, exact incident
+  relations, loaded neighbour records and recorded attestations.
+- **Whole App handoff:** a complete geometry, mesh, plot, SysML or BOM surface belongs
+  to its versioned MCP App. Product lists only exact registered descriptors and returns
+  to the Project whiteboard, where the generic sandboxed frame hosts that App.
 
-On a narrow screen the right drawer becomes a bottom sheet. Tabs should be reserved for
-full native tool views, not used to keep five provider panels alive at once. Nodes,
-edges, relation colors, arrows, and legend samples must use the same visual tokens;
-semantic edges are strokes, never decorative filled ribbons that imply an area value.
+On a narrow screen the right drawer becomes a bottom sheet. The same generic inspector
+continues to show graph fields, exact record fields, and recorded relations; it does not
+keep a second native record renderer alive. Nodes, edges, relation colors, arrows, and
+legend samples must use the same visual tokens; semantic edges are strokes, never
+decorative filled ribbons that imply an area value.
 
-## Selection and tool-panel contract
+## Selection and record-panel contract
 
 The graph selection is authoritative for the right drawer. Selecting a node always opens
-the panel for that node's recorded `system`, including graph-only entities such as
-consumptions, evaluations and actions. When the node also projects an artifact,
-observation, requirement, violation or change record, the drawer enables **Exact
-record** as a second level of detail. Otherwise that tab stays disabled; the Workbench
-must never leave a previous record visible under a new graph selection.
+the panel for that exact graph reference, including graph-only entities such as
+consumptions, evaluations and actions. The recorded `system` is displayed only as a raw
+field; it does not choose a renderer or classify a provider facet. When the node also
+projects an artifact, observation, requirement, violation or change record, the same
+generic panel lists that record's stored fields. The Workbench must never leave a
+previous record visible under a new graph selection.
 
-Selecting an edge opens the native handoff inspector with its source, result, relation
+Selecting an edge opens the generic relation inspector with its source, result, relation
 and optional producer/consumer attestation. Endpoint navigation returns to the selected
-node and its owning-tool panel. Both node and edge inspectors read only the loaded
+node and its generic record panel. Both node and edge inspectors read only the loaded
 `ThreadWorkbenchSnapshot`: they do not embed a provider application, create an iframe,
 or call MCP from the browser.
 
@@ -93,8 +93,8 @@ The visible graph is a quotient DAG. A version count inside a node shows that ea
 records were replaced, but the projection never emits a literal loop, self-edge, or
 invented causal edge. A topology may explicitly converge several historical records on
 one successor; that preserves one current record without inventing an order between the
-historical predecessors. Selecting the node opens the existing tool inspector, where the
-internal canonical relations explain each transition.
+historical predecessors. Selecting the node opens the generic record inspector, where
+the internal canonical relations explain each transition.
 
 There is no alternate "all versions" graph. External relations which repeat across
 versions share one visible handoff; the edge inspector retains the exact member edges.
@@ -123,42 +123,32 @@ control-plane command, or a registered backend operation has persisted a new rev
 Provisional run events must remain visibly provisional and must resolve to persisted
 evidence before supporting a verdict or project completion.
 
-`ToolInspectorPanel` is read-only by construction. It receives the latest loaded
+`RecordInspectorPanel` is read-only by construction. It receives the latest loaded
 `ThreadWorkbenchSnapshot`, the active graph node and its optional richer record,
-performs no network call, and exposes callbacks for selection, preparing an action, and
-host-owned navigation to a full native tool view. A branch that only shares the declared
-subject identity is labelled independent until an explicit cross-tool dependency exists
-in the Workbench projection.
+performs no network call, and exposes callbacks only for exact record and graph
+selection. It neither classifies the selection by producer nor prepares actions or
+navigates to a native domain view.
 
-The data model behind this UX — four layers, three `origin` vocabularies, and
-what a live head actually emits — is inventoried in
+The data model behind this UX — four layers, three `origin` vocabularies, and what a
+live head actually emits — is inventoried in
 [`docs/reference/contracts/graph-data-model.md`](../../reference/contracts/graph-data-model.md).
 
 ## Evidence canvas: one Graphology dossier
 
-The BFF still projects `AnalysisGraph` as browser-safe `origin: "analysis"`
-data. Product and tests may inspect that index. The Evidence canvas does not
-paint it. Painting those nodes created disconnected islands (brief, FEA
-sensitivity, other analysis families) that looked like three graphs.
+The BFF still projects `AnalysisGraph` as browser-safe `origin: "analysis"` data.
+Product and tests may inspect that index. The Evidence canvas does not paint it.
+Painting those nodes created disconnected islands (brief, FEA sensitivity, other
+analysis families) that looked like three graphs.
 
-The presentation model is a Graphology `MultiDirectedGraph` loaded from the
-Thread dossier after closed actions and the analysis overlay are removed.
-Connected components, neighbourhood, and the Sigma canvas all read that
-same directed multigraph. Positions come from one deterministic dagre LR
-layout. Evidence no longer has a second SVG Map organisation of the same
-dossier. Activity may still render a small SVG fallback when no Evidence
-model is available. Parallel recorded relations stay distinct edges. The
-canvas does not invent an analysis→Thread join to re-attach a sensitivity
-island. The sensitivity *campaign* (case, study, edges, join capture,
-instrument observations) is folded from Evidence: it is accumulated
-neighbourhood experience, not a second construction study. Study-base
-evaluations stay on the Thread requirements they evaluate, so the experience
-remains attached to the dossier instead of floating as a separate graph.
-Provider solver envelopes (`solver-input`, `solver-result`) are folded
-the same way: `CalculiX input.step` is a byte-identical copy of the
-authoritative STEP, and `result.json` is the raw container of the
-already-painted observations. They are not a second build123d product.
-An authoritative STEP and its GLB preview are two recorded artifacts
-(the agent still publishes both hashes). The canvas draws them as one
-node so the dossier does not look like two CAD products. Focusing the
-node restores both identities.
+The presentation model is a Graphology `MultiDirectedGraph` loaded from the Thread
+dossier after closed actions and the analysis index are omitted from the main canvas.
+Connected components, neighbourhood, and the Sigma canvas all read that same directed
+multigraph. Positions come from one deterministic dagre LR layout. Evidence no longer
+has a second SVG Map organisation of the same dossier. Activity may still render a small
+SVG fallback when no Evidence model is available. Parallel recorded relations stay
+distinct edges. The canvas does not invent an analysis→Thread join to re-attach an
+island. It also does not hide a record because its id, producer, or `artifactKind`
+resembles a campaign, solver envelope, mesh, or preview. Literal recorded nodes and
+relations remain visible; the browser never collapses them into a synthetic CAD, SysML,
+solver, or requirements identity. An exact domain presentation belongs to a separately
+registered whole MCP App.

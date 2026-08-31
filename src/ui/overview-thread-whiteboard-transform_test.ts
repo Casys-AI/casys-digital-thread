@@ -4,6 +4,7 @@ import {
   fitOverviewThreadWhiteboardTransform,
   normalizeOverviewThreadWhiteboardTransform,
   type OverviewThreadWhiteboardBounds,
+  overviewThreadWhiteboardContentBounds,
   type OverviewThreadWhiteboardPoint,
   type OverviewThreadWhiteboardTransform,
   panOverviewThreadWhiteboard,
@@ -180,6 +181,26 @@ Deno.test("scene bounds include off-graph viewers in every direction", () => {
       { x: 1_450, y: -500, width: 400, height: 300 },
     ]),
     { x: -720, y: -500, width: 2_570, height: 1_100 },
+  );
+});
+
+Deno.test("sparse scene fit ignores the nominal infinite-canvas frame", () => {
+  assertEquals(
+    overviewThreadWhiteboardContentBounds(
+      { width: 1_000, height: 560 },
+      [
+        { x: 280, y: 210, width: 80, height: 70 },
+        { x: 490, y: 230, width: 60, height: 50 },
+      ],
+    ),
+    { x: 280, y: 210, width: 270, height: 70 },
+  );
+  assertEquals(
+    overviewThreadWhiteboardContentBounds(
+      { width: 1_000, height: 560 },
+      [],
+    ),
+    { x: 0, y: 0, width: 1_000, height: 560 },
   );
 });
 

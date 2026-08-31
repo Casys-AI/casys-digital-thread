@@ -240,8 +240,24 @@ never enter a `ThreadSnapshot`. Older draft schemas are unsupported.
 
 #### `state/local/geometry-draft-assets/<sha256>`
 
-Raw STEP, STL, or binary GLB preview bytes keyed by their recomputed SHA-256; served
-read-only by `/api/draft-assets/<digest>`
+Raw STEP, STL, or binary GLB draft bytes keyed by their recomputed SHA-256. They remain
+server-internal and are reopened only by the authorized CAD MRTR, execution, and seal
+flows; the Workbench exposes no draft-byte route
+
+#### `state/local/thread-viewer-apps/registry.json`
+
+Explicit `thread-viewer-app-registry/1.0` registrations for exact Project/Thread bases,
+anchors, App identities, whole-view resources, session schemas and opaque payloads. This
+file is written by a trusted registrar outside the Workbench. The Workbench is a
+read-only consumer: an absent or invalid registry projects zero App sessions.
+
+#### `state/local/thread-viewer-apps/objects/<sha256>`
+
+Immutable manifest JSON, whole-App HTML and registered read-resource bytes named by
+their exact SHA-256. The packaged Desktop and standalone BFF reopen and rehash these
+objects before projection or service. The browser never frames the stored HTML route
+directly; it verifies MIME, byte count and digest again, applies the staged CSP
+transform and frames only the resulting Blob document.
 
 #### `state/local/geometry-captures/`
 

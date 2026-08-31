@@ -10,11 +10,11 @@ capability-bounded, mounted, and synchronized. It also exposed the product limit
 architecture: five isolated applications remain five isolated applications even when
 they share colors and small reusable components.
 
-The product Workbench therefore no longer uses nested MCP Apps or iframes as its main
-composition primitive. It renders one linked engineering state in one native React +
-Vite application. MCP remains the protocol between the backend and the engineering
-tools. Provider MCP Apps may still show one rich tool result in another host; they are
-not the atelier product page. `preview:browser` refuses.
+The product Workbench does not use a nested multi-App dashboard as its main composition
+primitive. It renders one linked engineering state in one native React + Vite shell.
+Domain presentations, however, are no longer reimplemented in that shell: an exact whole
+MCP App can open on demand as a floating window on the Project whiteboard. MCP remains
+the protocol between the separately composed App host and its provider.
 
 ## Product question
 
@@ -74,11 +74,11 @@ owes a revision. **Project** exposes a lightweight notification view: it signals
 needs attention and leads the reviewer to the relevant context; it is neither a command
 surface nor a second technical authoring surface. **Activity** is where the reviewer
 follows the live evidence and lineage behind a recommendation. Inspection and any
-correction request start with the affected SysON/specification context in **Product**
-and the paired agent conversation, never in a generic decision card. The person requests
-a revision or confirms the recommendation in conversation; Activity only reflects the
-resulting immutable state. Exact hashes and snapshot IDs remain available as audit
-context.
+correction request start with the affected exact record in **Activity** or **Evidence**,
+or with its one registered whole App reached through **Product** and the Project
+whiteboard. The paired agent conversation remains the only decision surface. Activity
+only reflects the resulting immutable state; exact hashes and snapshot IDs remain
+available as audit context.
 
 ## Runtime boundary
 
@@ -143,9 +143,9 @@ identity: it is not a system architecture, requirements, CAD, simulation, measur
 or a verdict.
 
 The generic route continues beyond r2 only through separately registered operations for
-reviewed architecture, requirements, geometry, proof sealing and isolated CalculiX `@3`. Each
-operation must publish and reread its own exact descendant `ThreadSnapshot`; no earlier
-project or superficially similar artifact can satisfy completion.
+reviewed architecture, requirements, geometry, proof sealing and isolated CalculiX `@3`.
+Each operation must publish and reread its own exact descendant `ThreadSnapshot`; no
+earlier project or superficially similar artifact can satisfy completion.
 
 The browser does not call the five MCP endpoints directly. The Deno backend owns service
 endpoints, credentials, workflow execution, and result validation. Provider tools keep
@@ -155,37 +155,40 @@ thread model.
 ## Presentation boundary
 
 The product cockpit is a React + Vite SPA (`native-preview.tsx` mounts
-`ThreadWorkbench`). Presentation primitives live in `src/ui/src/ui/*`. A local
-token copy (`src/ui/src/view/mcp-view-theme.ts`) holds `--cockpit-*` and
-`.cockpit-surface`; leftover `.mcp-view-*` class rules were retired. The native
-bundle must not import `@casys/mcp-view` and must not contain the Apps handshake
-(`ui/initialize`, `toolresult`). `deno task verify:thread:presentation` enforces
-that boundary.
+`ThreadWorkbench`). Presentation primitives live in `src/ui/src/ui/*`. A local token
+copy (`src/ui/src/view/mcp-view-theme.ts`) holds `--cockpit-*` and `.cockpit-surface`;
+leftover `.mcp-view-*` class rules were retired. The native bundle must not import
+`@casys/mcp-view`, hydrate MCP tool results, advertise MCP server capabilities or
+contain a native domain renderer. `deno task verify:thread:presentation` enforces that
+boundary.
 
-The standalone browser Workbench talks to the BFF over HTTP and SSE. It is not an
-MCP App and is not embedded through an Apps host. Individual provider viewers
-remain useful when an agent calls one provider tool and wants one rich result in
-that provider's own host. An iframe remains an isolation fallback for third-party
-or unreviewed Apps; it is not the first-party product layout.
+The standalone browser Workbench talks to the BFF over HTTP and SSE. It is not an MCP
+App or MCP client. Its Project whiteboard fetches only an explicitly registered, exact,
+same-origin whole-App launch resource, re-attests those bytes, and frames the resulting
+confined Blob document. The frame is an accessible neutral window with
+`sandbox="allow-scripts"`; `allow-same-origin` is forbidden. The shell implements only
+the read-only Apps lifecycle: exact App identity, empty host capabilities, inline
+context, and one registered `viewer.session.apply` after the App's initialized
+notification. It cannot call or proxy MCP tools/resources.
 
-In the native Workbench, SysON, build123d, CalculiX, Modelica, and ERPNext are tool
-facets in one contextual drawer. Feed or topology selection activates the owning tool
-and its related evidence. A second drawer mode exposes the exact selected record. A full
-geometry, diagram, or BOM view replaces the central viewport through native routing; it
-is not mounted as a permanent mini application beside four other tools. The first
-implemented route is the part-centric workspace: one component selection persists across
-native SysON structure, ERPNext BOM, and build123d geometry surfaces.
+SysON, build123d, CalculiX, Modelica and ERPNext own their complete rendering in their
+MCP repositories. Digital Thread keeps generic graph, record and Activity inspectors; it
+has no native geometry canvas, SysML diagram, solver view, simulation view or BOM
+viewer. The former Component Workspace and Control Center domain previews are retired.
+Product routes hand back to the exact App window on the Project whiteboard.
 
-Component identity is a reviewed data contract, not a visual guess. The shell maps exact
-PartUsage, Item, and CAD artifact IDs through a workspace-declared component catalog
-whose bindings cite immutable provider evidence. Missing facets remain visible as trace
-gaps. This is distinct from causal lineage: saying that two records describe the same
-component does not say that one produced or verified the other.
+Component identity may still be declared in the separate reviewed domain catalog, but
+that catalog is not a Workbench projection. The shell displays only literal nodes,
+relations, labels and categories already recorded in the generic graph. It does not
+synthesize PartUsage/Item/CAD facet mappings, provider topology, trace-gap panels, or
+preview payloads. An exact App binding is separate from both component identity and
+causal lineage; the browser derives neither one from the other.
 
 ## Composition model
 
-There is no iframe dashboard or secondary compatibility host. The useful composition
-concepts are native workflow concerns:
+There is no inferred iframe dashboard or secondary native domain-renderer stack. The
+whiteboard frames an App only for an exact registered binding; zero bindings means zero
+App windows. The useful composition concepts remain workflow concerns:
 
 - reviewed manifests and deny-by-default grants;
 - named tools and bounded arguments;
@@ -194,8 +197,27 @@ concepts are native workflow concerns:
 - an agent-editable YAML authoring format.
 
 The new YAML describes a workflow graph. It is validated and compiled into a typed DAG
-before execution. It does not carry live UI state and does not describe iframes,
-viewports, or CSS layout.
+before execution. It does not carry live UI state and does not describe App bindings,
+iframes, viewports, or CSS layout.
+
+The registered binding pins exact App SemVer, manifest and whole-view `ui://`
+fingerprints, exact HTML MIME and byte count, Thread basis and graph anchor, plus the
+App-owned `viewer.session.apply` schema, payload and payload SHA-256. It cannot name a
+launch URI. A generic resolver must re-attest the manifest JSON and whole-view HTML
+bytes before the projected descriptor gains a same-origin launch URI. The browser then
+rechecks status, MIME, bounded length and SHA-256 before it creates the confined Blob
+document; it never navigates the frame directly to that route. Provider endpoint,
+credentials, tool name, tool arguments, aliases and `latest` are not fields.
+
+One coherent MCP App can own several internal views behind the same exact whole-view
+resource. Exact session schemas or App-owned discriminators select those views inside
+the App; Digital Thread does not turn them into separate native viewers.
+
+Because the sandbox has an opaque origin, Apps read binary results through the generic
+host bridge rather than raw-fetching `/api/thread/assets`. The App requests only an
+already registered SHA-256. The parent fixes the URI, MIME and byte ceiling, performs a
+same-origin GET with redirects disabled, verifies MIME, length and digest, and returns
+base64. It never calls a provider.
 
 ## Current acceptance slice
 
@@ -224,6 +246,7 @@ itself a compliance, fabrication-release or certification verdict.
 
 ## Product rule
 
-Product behavior targets the linked model and native shell. Do not add an iframe panel,
-a presentation-only MCP, cockpit command buttons, or a browser-to-provider escape hatch
-to compensate for missing orchestration.
+Product behavior targets the linked model and generic shell. Do not add a native domain
+renderer, inferred App binding, presentation-only MCP, cockpit command buttons, an
+`allow-same-origin` escape hatch, or a browser-to-provider path to compensate for
+missing orchestration.

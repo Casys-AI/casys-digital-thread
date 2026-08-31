@@ -477,7 +477,7 @@ function isSysonModelSeedOperation(workItem: EngineeringWorkItem): boolean {
  * projected engineering fact continues through the technical evidence surface.
  *
  * The generic thread projection omits canonical evaluations and consumptions,
- * but the trusted initial-result validator requires those collections to be
+ * but the canonical snapshot validator requires those collections to be
  * empty before this BFF can ever see the snapshot. Here we recheck every
  * browser-visible part of that same boundary before dropping the graph.
  */

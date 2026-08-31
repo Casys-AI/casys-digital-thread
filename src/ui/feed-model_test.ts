@@ -4,20 +4,13 @@ import {
   activityCurrency,
   activityFeedNodes,
   activityKindLabel,
-  AMBIGUOUS_FEED_SCOPE,
   buildActivityTimeline,
-  buildFeedComponentCounts,
-  buildFilterOptions,
   compactLineageCounters,
   compactLineageProjection,
-  filterFeedNodesByScope,
   isActivityEntryExpanded,
-  isArchitectureSysmlSealArtifactId,
-  ORPHAN_FEED_SCOPE,
   traceThreadLineage,
 } from "./src/thread/feed-model.ts";
 import type { ProjectReviewRecord } from "./src/project/review-decision-model.ts";
-import type { PartAnchorageResolution } from "./src/thread/part-anchorage-model.ts";
 import { buildEvidenceGraphModel } from "./src/thread/evidence-graph-model.ts";
 import {
   buildExplorationModel,
@@ -25,7 +18,6 @@ import {
 } from "./src/thread/evidence-exploration-model.ts";
 import type { EvidenceCanvasProjection } from "./src/thread/evidence-canvas-model.ts";
 import type {
-  ThreadComponentCatalog,
   ThreadEvidenceFamilyGraph,
   ThreadGraphEdge,
   ThreadGraphNode,
@@ -69,7 +61,7 @@ Deno.test("feedback nodes are not duplicated across both lineage directions", ()
   assertEquals(lineage.edges.length, 3);
 });
 
-Deno.test("activity feed hides support plumbing but keeps meaningful outputs", () => {
+Deno.test("activity feed lists every recorded fact in reverse chronology", () => {
   const nodes = [
     node("change", "change", "2026-08-01T08:00:00.000Z"),
     node("attestation", "consumption", "2026-08-01T08:01:00.000Z"),
@@ -81,144 +73,29 @@ Deno.test("activity feed hides support plumbing but keeps meaningful outputs", (
   assertEquals(activityFeedNodes(nodes).map((item) => item.ref.id), [
     "stress",
     "step",
+    "raw-evidence",
+    "attestation",
+    "change",
   ]);
 });
 
-Deno.test("activity feed promotes only a change whose target explicitly supersedes evidence", () => {
-  const correction = node("correction", "change", "2026-08-01T08:04:00.000Z");
-  const record = node(
-    "correction-record",
+Deno.test("activity kind labels remain literal recorded kinds", () => {
+  const document = node(
+    "any-document",
     "artifact",
-    "2026-08-01T08:04:01.000Z",
+    "2026-08-14T08:00:00.000Z",
     "document",
   );
-  const historic = node(
-    "proof-r28",
-    "artifact",
-    "2026-08-01T08:00:00.000Z",
-    "solver-result",
-  );
-  const automaticCapture = node(
-    "capture",
-    "change",
-    "2026-08-01T08:05:00.000Z",
-  );
-  const capturedArtifact = node(
-    "capture-record",
-    "artifact",
-    "2026-08-01T08:05:01.000Z",
-  );
-  const edges: ThreadGraphEdge[] = [
-    {
-      id: "recorded-correction",
-      from: correction.ref,
-      to: record.ref,
-      relation: "changes",
-      rationale: "The correction is recorded.",
-      origin: "provenance",
-    },
-    {
-      id: "supersedes-proof",
-      from: historic.ref,
-      to: record.ref,
-      relation: "supersedes",
-      rationale: "The correction replaces the historic basis.",
-      origin: "provenance",
-    },
-    {
-      id: "automatic-capture",
-      from: automaticCapture.ref,
-      to: capturedArtifact.ref,
-      relation: "changes",
-      rationale: "A snapshot extension introduced a support artifact.",
-      origin: "provenance",
-    },
-  ];
-
-  assertEquals(
-    activityFeedNodes(
-      [correction, record, historic, automaticCapture, capturedArtifact],
-      edges,
-    ).map((item) => item.ref.id),
-    ["correction", "proof-r28"],
-  );
-});
-
-Deno.test(
-  "activity feed promotes only the architecture SysML seal document, not every document",
-  () => {
-    const digest = "a".repeat(64);
-    const seal = node(
-      `architecture-sysml-seal-${digest}`,
-      "artifact",
-      "2026-08-14T08:04:00.000Z",
-      "document",
-      "digital-thread",
-    );
-    const brief = node(
-      "artifact.brief",
-      "artifact",
-      "2026-08-14T08:00:00.000Z",
-      "document",
-      "digital-thread",
-    );
-    const proof = node(
-      `fea-proof-${digest}`,
-      "artifact",
-      "2026-08-14T08:03:00.000Z",
-      "document",
-      "digital-thread",
-    );
-
-    assertEquals(
-      isArchitectureSysmlSealArtifactId(seal.ref.id),
-      true,
-    );
-    assertEquals(
-      activityFeedNodes([seal, brief, proof]).map((item) => item.ref.id),
-      [
-        seal.ref.id,
-      ],
-    );
-    assertEquals(activityKindLabel(seal), "document · documentary");
-    assertEquals(activityKindLabel(brief), "document");
-  },
-);
-
-Deno.test("activity feed promotes measured DFM and study-base evaluation documents", () => {
-  const digest = "b".repeat(64);
-  const dfm = node(
-    `dfm-check-${digest}`,
-    "artifact",
-    "2026-08-15T10:00:00.000Z",
-    "evidence",
-    "digital-thread",
-  );
-  const join = node(
-    `sensitivity-base-evaluation-${digest}`,
-    "artifact",
-    "2026-08-15T10:02:00.000Z",
-    "evidence",
-    "digital-thread",
-  );
-  assertEquals(
-    activityFeedNodes([dfm, join]).map((item) => item.ref.id),
-    [join.ref.id, dfm.ref.id],
-  );
-  assertEquals(activityKindLabel(dfm), "measured DFM");
-  assertEquals(activityKindLabel(join), "study-base evaluation");
-  const joinEval: ThreadGraphNode = {
-    ...node(
-      "requirement-arm-maxDisplacement-evaluation-abc",
-      "evaluation",
-      "2026-08-16T10:12:00.000Z",
-    ),
+  const evaluation: ThreadGraphNode = {
+    ...node("any-evaluation", "evaluation"),
     evaluationFamily: "study-base",
   };
-  assertEquals(activityKindLabel(joinEval), "study-base evaluation");
+
+  assertEquals(activityKindLabel(document), "document");
+  assertEquals(activityKindLabel(evaluation), "evaluation");
 });
 
-Deno.test("activity feed promotes server-declared live milestones, not generic support", () => {
+Deno.test("activity feed includes explicit milestones even when undated", () => {
   const nodes = [
     {
       ...node(
@@ -228,15 +105,19 @@ Deno.test("activity feed promotes server-declared live milestones, not generic s
         "other",
         "any-server-owned-projector",
       ),
+      recordedAt: undefined,
       activityRole: "milestone" as const,
     },
-    node(
-      "run-7:provider-support",
-      "artifact",
-      "2026-08-01T08:02:00.000Z",
-      "other",
-      "any-server-owned-projector",
-    ),
+    {
+      ...node(
+        "run-7:provider-support",
+        "artifact",
+        "2026-08-01T08:02:00.000Z",
+        "other",
+        "any-server-owned-projector",
+      ),
+      recordedAt: undefined,
+    },
   ];
 
   assertEquals(activityFeedNodes(nodes).map((item) => item.ref.id), [
@@ -441,31 +322,6 @@ Deno.test(
   },
 );
 
-Deno.test("part filtering keeps exact attached reviews but omits unscoped review-only events", () => {
-  const visible = node("geometry-result");
-  const attached = reviewRecord({
-    decisionId: "decision-geometry",
-    state: "published",
-    resultEvidence: canonicalResultRef(visible),
-  });
-  const waiting = reviewRecord({
-    decisionId: "decision-requirements",
-    state: "needs-review",
-  });
-
-  const timeline = buildActivityTimeline(
-    [visible],
-    [attached, waiting],
-    false,
-  );
-
-  assertEquals(timeline.length, 1);
-  assertEquals(timeline[0]?.kind, "thread");
-  if (timeline[0]?.kind === "thread") {
-    assertEquals(timeline[0].review?.decision?.id, "decision-geometry");
-  }
-});
-
 // ---------------------------------------------------------------------------
 // Feed lineage local view — compact preparation (depth 2, anchored on focus)
 //
@@ -646,17 +502,15 @@ Deno.test(
       nodes: neighborhood1.nodes,
       edges: neighborhood1.edges,
       displayedCount: neighborhood1.nodes.length,
-      foldedInstrumentCount: 0,
       isFiltered: true,
-      supportingNodeCount: 0,
+      hiddenByKindCount: 0,
     };
     const projection2: EvidenceCanvasProjection = {
       nodes: neighborhood2.nodes,
       edges: neighborhood2.edges,
       displayedCount: neighborhood2.nodes.length,
-      foldedInstrumentCount: 0,
       isFiltered: true,
-      supportingNodeCount: 0,
+      hiddenByKindCount: 0,
     };
 
     const m1 = buildExplorationModel(
@@ -700,32 +554,6 @@ Deno.test(
   },
 );
 
-Deno.test(
-  "feed lineage local view: invisible focus node returns empty neighborhood (unlinked fallback)",
-  () => {
-    // A visible, B invisible (instrument folded out). Querying B yields empty.
-    const nodeA = artifact("A", "syson");
-    const nodeB = { ...artifact("B", "analyze"), system: "analyze" };
-
-    const rawGraph = {
-      nodes: [nodeA, nodeB],
-      edges: [link("e1", nodeA.ref, nodeB.ref, "input_to")],
-    };
-
-    const evidenceModel = buildEvidenceGraphModel(rawGraph, EMPTY_FAMILY, {
-      isAnalyzeInstrumentNode: (n) => n.system === "analyze",
-    });
-
-    // B is folded out — querying it must return empty (component renders fallback).
-    const nb = compactLineageProjection(evidenceModel, nodeB.ref);
-    assertEquals(
-      nb.nodes.length,
-      0,
-      "invisible focus node → empty neighborhood",
-    );
-  },
-);
-
 // ---------------------------------------------------------------------------
 // Helpers for the feed lineage sigma tests
 // ---------------------------------------------------------------------------
@@ -758,229 +586,6 @@ function link(
     relation,
     rationale: `${from.id} → ${to.id}`,
     origin: "provenance",
-  };
-}
-
-function structureLink(
-  id: string,
-  from: ThreadGraphRef,
-  to: ThreadGraphRef,
-  relation: ThreadGraphEdge["relation"],
-): ThreadGraphEdge {
-  return {
-    ...link(id, from, to, relation),
-    origin: "structure",
-  };
-}
-
-function deskLampActivityEvidence(): {
-  evidenceModel: ReturnType<typeof buildEvidenceGraphModel>;
-  refs: {
-    architecture: ThreadGraphRef;
-    geometry: ThreadGraphRef;
-    baseStep: ThreadGraphRef;
-  };
-} {
-  const architecture = node(
-    "architecture",
-    "artifact",
-    "2026-08-01T08:00:00.000Z",
-    "sysml-model",
-    "syson",
-  );
-  const geometry = node(
-    "geometry",
-    "artifact",
-    "2026-08-01T08:01:00.000Z",
-    "cad-model",
-    "digital-thread",
-  );
-  const sourceHub = node(
-    "source-hub",
-    "artifact",
-    "2026-08-01T07:59:00.000Z",
-    "cad-model",
-    "digital-thread",
-  );
-  const unrelatedCapture = node(
-    "unrelated-capture",
-    "artifact",
-    "2026-08-01T08:01:00.000Z",
-    "cad-model",
-    "digital-thread",
-  );
-  const script = node(
-    "raw-script",
-    "artifact",
-    "2026-08-01T08:02:00.000Z",
-    "script",
-    "build123d",
-  );
-
-  const definitionIds = [
-    "def-system",
-    "def-base",
-    "def-stem",
-    "def-head",
-    "def-socket",
-  ];
-  const usageIds = [
-    "usage-base",
-    "usage-stem",
-    "usage-head",
-    "usage-socket",
-  ];
-  const definitions = new Map(
-    definitionIds.map((id) =>
-      [
-        id,
-        node(
-          id,
-          "part-definition",
-          "2026-08-01T08:00:00.000Z",
-          undefined,
-          "syson",
-        ),
-      ] as const
-    ),
-  );
-  const usages = new Map(
-    usageIds.map((id) =>
-      [
-        id,
-        node(
-          id,
-          "part-usage",
-          "2026-08-01T08:00:00.000Z",
-          undefined,
-          "syson",
-        ),
-      ] as const
-    ),
-  );
-  const stepIds = ["assembly", "base", "stem", "head", "socket"];
-  const steps = new Map(
-    stepIds.map((id) =>
-      [
-        id,
-        node(
-          `step-${id}`,
-          "artifact",
-          "2026-08-01T08:02:00.000Z",
-          "step",
-          "build123d",
-        ),
-      ] as const
-    ),
-  );
-  const required = <T>(value: T | undefined, label: string): T => {
-    if (!value) throw new Error(`Missing Desk Lamp fixture node ${label}.`);
-    return value;
-  };
-  const definition = (id: string) => required(definitions.get(id), id);
-  const usage = (id: string) => required(usages.get(id), id);
-  const step = (id: string) => required(steps.get(id), id);
-
-  const edges: ThreadGraphEdge[] = [
-    link("hub-geometry", sourceHub.ref, geometry.ref),
-    link("hub-unrelated", sourceHub.ref, unrelatedCapture.ref),
-    structureLink(
-      "architecture-geometry",
-      architecture.ref,
-      geometry.ref,
-      "input_to",
-    ),
-    structureLink(
-      "architecture-root",
-      architecture.ref,
-      definition("def-system").ref,
-      "contains",
-    ),
-    structureLink(
-      "root-base-usage",
-      definition("def-system").ref,
-      usage("usage-base").ref,
-      "contains",
-    ),
-    structureLink(
-      "root-stem-usage",
-      definition("def-system").ref,
-      usage("usage-stem").ref,
-      "contains",
-    ),
-    structureLink(
-      "stem-head-usage",
-      definition("def-stem").ref,
-      usage("usage-head").ref,
-      "contains",
-    ),
-    structureLink(
-      "head-socket-usage",
-      definition("def-head").ref,
-      usage("usage-socket").ref,
-      "contains",
-    ),
-    ...[
-      ["base", "usage-base", "def-base"],
-      ["stem", "usage-stem", "def-stem"],
-      ["head", "usage-head", "def-head"],
-      ["socket", "usage-socket", "def-socket"],
-    ].map(([id, usageId, definitionId]) =>
-      structureLink(
-        `typed-${id}`,
-        usage(required(usageId, "usage id")).ref,
-        definition(required(definitionId, "definition id")).ref,
-        "typed_by",
-      )
-    ),
-    ...stepIds.map((id) =>
-      structureLink(
-        `geometry-${id}`,
-        geometry.ref,
-        step(id).ref,
-        "input_to",
-      )
-    ),
-    ...[
-      ["assembly", "def-system"],
-      ["base", "def-base"],
-      ["stem", "def-stem"],
-      ["head", "def-head"],
-      ["socket", "def-socket"],
-    ].map(([stepId, definitionId]) =>
-      structureLink(
-        `represented-${stepId}`,
-        definition(required(definitionId, "definition id")).ref,
-        step(required(stepId, "STEP id")).ref,
-        "represented_by",
-      )
-    ),
-    structureLink("geometry-script", geometry.ref, script.ref, "input_to"),
-  ];
-
-  return {
-    evidenceModel: buildEvidenceGraphModel(
-      {
-        nodes: [
-          sourceHub,
-          unrelatedCapture,
-          architecture,
-          geometry,
-          script,
-          ...definitions.values(),
-          ...usages.values(),
-          ...steps.values(),
-        ],
-        edges,
-      },
-      EMPTY_FAMILY,
-      {},
-    ),
-    refs: {
-      architecture: architecture.ref,
-      geometry: geometry.ref,
-      baseStep: step("base").ref,
-    },
   };
 }
 
@@ -1019,6 +624,7 @@ function reviewRecord(
 ): ProjectReviewRecord {
   return {
     id: decisionId.includes("requirements") ? "requirements" : "geometry",
+    recordId: decisionId,
     anchorId: `review-${decisionId}`,
     href: `#work/review/${decisionId}`,
     title: decisionId,
@@ -1027,7 +633,6 @@ function reviewRecord(
     state,
     representation: state === "published" ? "published-result" : "proposal",
     recordedAt,
-    preview: { kind: "unavailable", reason: "Fixture preview" },
     decision: { id: decisionId } as ProjectReviewRecord["decision"],
     resultEvidence: resultEvidence
       ? {
@@ -1048,10 +653,7 @@ function canonicalResultRef(
     reference.kind === "analysis-node" ||
     reference.kind === "part-definition" ||
     reference.kind === "part-usage" ||
-    reference.kind === "attribute-usage" ||
-    reference.kind === "cad-lever" ||
-    reference.kind === "cad-unnamed-literal" ||
-    reference.kind === "source-file"
+    reference.kind === "attribute-usage"
   ) {
     throw new Error(
       "A browser-only analysis or SysML element cannot be review result evidence.",
@@ -1179,359 +781,3 @@ Deno.test(
     assertEquals(counters.downstream, 2, "B and C are downstream (D excluded)");
   },
 );
-
-Deno.test(
-  "Activity geometry context compacts unique SysML pairs, folds plumbing, and excludes hub siblings",
-  () => {
-    const { evidenceModel, refs } = deskLampActivityEvidence();
-
-    const projection = compactLineageProjection(evidenceModel, refs.geometry);
-    const counters = compactLineageCounters(evidenceModel, refs.geometry);
-
-    assertEquals(
-      projection.nodes
-        .filter((candidate) =>
-          candidate.entityKind === "part-definition" ||
-          candidate.entityKind === "part-usage"
-        )
-        .map((candidate) => candidate.ref.id)
-        .sort(),
-      [
-        "def-base",
-        "def-head",
-        "def-socket",
-        "def-stem",
-        "def-system",
-      ],
-      "the geometry card keeps the root plus four definition-backed composites",
-    );
-    assertEquals(
-      projection.nodes
-        .filter((candidate) => candidate.entityKind === "part-definition")
-        .map((candidate) => candidate.label)
-        .sort(),
-      [
-        "def-system",
-        "usage-base : def-base",
-        "usage-head : def-head",
-        "usage-socket : def-socket",
-        "usage-stem : def-stem",
-      ],
-    );
-    assertEquals(
-      projection.nodes.some((candidate) => candidate.ref.id === "raw-script"),
-      false,
-      "the shared essential mask must fold a dead-end build script",
-    );
-    assertEquals(projection.hiddenSupportingCount, 1);
-    assertEquals(
-      projection.nodes.some((candidate) => candidate.ref.id === "unrelated-capture"),
-      false,
-      "lineage must not cross the upstream hub and fan out to its sibling",
-    );
-    assertEquals(
-      counters.total,
-      projection.nodes.length,
-      "the Activity counter must equal the nodes handed to its renderer",
-    );
-
-    const partProjection = compactLineageProjection(
-      evidenceModel,
-      refs.baseStep,
-    );
-    assertEquals(
-      partProjection.nodes
-        .filter((candidate) => candidate.artifactKind === "step")
-        .map((candidate) => candidate.ref.id)
-        .sort(),
-      ["step-base"],
-      "selecting one part STEP must not pull the four sibling STEP files",
-    );
-  },
-);
-
-Deno.test(
-  "Activity architecture context renders four composites plus the root and shares its count",
-  () => {
-    const { evidenceModel, refs } = deskLampActivityEvidence();
-
-    const projection = compactLineageProjection(
-      evidenceModel,
-      refs.architecture,
-    );
-    const counters = compactLineageCounters(evidenceModel, refs.architecture);
-
-    assertEquals(
-      projection.nodes.filter((candidate) => candidate.entityKind === "part-definition")
-        .length,
-      5,
-    );
-    assertEquals(
-      projection.nodes.filter((candidate) => candidate.entityKind === "part-usage")
-        .length,
-      0,
-    );
-    assertEquals(
-      projection.nodes.some((candidate) => candidate.ref.id === "raw-script"),
-      false,
-      "the architecture vignette must apply the essential mask too",
-    );
-    assertEquals(
-      counters.total,
-      projection.nodes.length,
-      "the Activity header and rendered architecture projection must agree",
-    );
-  },
-);
-
-// ---------------------------------------------------------------------------
-// buildFeedComponentCounts — per-part event counts for the feed selector
-// ---------------------------------------------------------------------------
-
-Deno.test(
-  "buildFeedComponentCounts: empty feed yields empty map",
-  () => {
-    const counts = buildFeedComponentCounts([], emptyAnchorage());
-    assertEquals(counts.size, 0, "no nodes → no counts");
-  },
-);
-
-Deno.test(
-  "buildFeedComponentCounts: unanchored nodes remain explicit orphan facts",
-  () => {
-    const nodes = [
-      artifact("obs-1"),
-      artifact("obs-2"),
-      artifact("obs-3"),
-    ];
-    const counts = buildFeedComponentCounts(nodes, emptyAnchorage());
-    assertEquals(counts.size, 1, "only one explicit orphan scope");
-    assertEquals(
-      counts.get(ORPHAN_FEED_SCOPE),
-      3,
-      "three unanchored nodes must not inflate assembly",
-    );
-  },
-);
-
-Deno.test(
-  "buildFeedComponentCounts: anchored nodes are attributed to their target",
-  () => {
-    const obs1 = artifact("obs-1");
-    const obs2 = artifact("obs-2");
-    const cad = artifact("cad-artifact");
-    // anchorage uses kind:id format (as produced by buildPartAnchorage)
-    const anchorage = anchoredResolution([
-      ["artifact:obs-1", {
-        target: "generic-v3:drip-tray",
-        criterion: "prefix" as const,
-      }],
-      ["artifact:obs-2", {
-        target: "generic-v3:drip-tray",
-        criterion: "prefix" as const,
-      }],
-      ["artifact:cad-artifact", {
-        target: "assembly",
-        criterion: "prefix" as const,
-      }],
-    ]);
-    const counts = buildFeedComponentCounts([obs1, obs2, cad], anchorage);
-    assertEquals(counts.get("generic-v3:drip-tray"), 2, "two drip-tray events");
-    assertEquals(counts.get("assembly"), 1, "one assembly event");
-    assertEquals(counts.size, 2, "exactly two distinct targets");
-  },
-);
-
-Deno.test(
-  "Activity feed partitions assembly, ambiguous-evidence and unanchored-fact without loss or assembly fallback",
-  () => {
-    const assemblyEvidence = node(
-      "assembly-evidence",
-      "artifact",
-      "2026-08-01T08:00:00.000Z",
-      "solver-result",
-    );
-    const ambiguousEvidence = node(
-      "ambiguous-evidence",
-      "observation",
-      "2026-08-01T08:01:00.000Z",
-    );
-    const unanchoredFact = node(
-      "unanchored-fact",
-      "artifact",
-      "2026-08-01T08:02:00.000Z",
-      "solver-result",
-    );
-    const hiddenSupport = artifact("support-only");
-    const anchorage: PartAnchorageResolution = {
-      anchors: new Map([
-        ["artifact:assembly-evidence", {
-          target: "assembly",
-          criterion: "nature",
-        }],
-      ]),
-      ambiguousByRef: new Map([
-        ["observation:ambiguous-evidence", [
-          "generic-v3:drip-tray",
-          "generic-v3:enclosure",
-        ]],
-      ]),
-      orphanRefKeys: new Set(["artifact:unanchored-fact"]),
-    };
-    const activity = activityFeedNodes([
-      assemblyEvidence,
-      ambiguousEvidence,
-      unanchoredFact,
-      hiddenSupport,
-    ]);
-    assertEquals(
-      activity.map((node) => node.ref.id),
-      ["unanchored-fact", "ambiguous-evidence", "assembly-evidence"],
-      "the regression must exercise actual Activity cards, not invisible support artifacts",
-    );
-    const counts = buildFeedComponentCounts(activity, anchorage);
-    assertEquals(
-      counts.get("assembly"),
-      1,
-      "only a unique assembly anchor counts as assembly",
-    );
-    assertEquals(counts.get(AMBIGUOUS_FEED_SCOPE), 1);
-    assertEquals(counts.get(ORPHAN_FEED_SCOPE), 1);
-    assertEquals(
-      filterFeedNodesByScope(activity, anchorage, "assembly").map((node) =>
-        node.ref.id
-      ),
-      ["assembly-evidence"],
-      "assembly filter must not acquire ambiguous or orphan evidence",
-    );
-    assertEquals(
-      filterFeedNodesByScope(activity, anchorage, AMBIGUOUS_FEED_SCOPE).map((
-        node,
-      ) => node.ref.id),
-      ["ambiguous-evidence"],
-      "ambiguous-evidence remains visible through its dedicated filter",
-    );
-    assertEquals(
-      filterFeedNodesByScope(activity, anchorage, ORPHAN_FEED_SCOPE).map((
-        node,
-      ) => node.ref.id),
-      ["unanchored-fact"],
-      "unanchored-fact remains visible through its dedicated filter",
-    );
-    const scopes = [
-      "assembly",
-      AMBIGUOUS_FEED_SCOPE,
-      ORPHAN_FEED_SCOPE,
-    ] as const;
-    const partition = scopes.flatMap((scope) =>
-      filterFeedNodesByScope(activity, anchorage, scope).map((node) => node.ref.id)
-    );
-    assertEquals(
-      [...new Set(partition)].sort(),
-      activity.map((node) => node.ref.id).sort(),
-      "every Activity card belongs to exactly one scope",
-    );
-    assertEquals(
-      [...counts.values()].reduce((total, count) => total + count, 0),
-      activity.length,
-      "scope counters are an exhaustive Activity partition",
-    );
-    assertEquals(
-      buildFilterOptions(FEED_TEST_COMPONENTS, counts),
-      [
-        { id: "assembly", label: "Machine (assemblage) · 1" },
-        {
-          id: AMBIGUOUS_FEED_SCOPE,
-          label: "À rattacher — ambigu · 1",
-        },
-        { id: ORPHAN_FEED_SCOPE, label: "Non rattachés · 1" },
-      ],
-      "filter labels expose the exact non-anchored counts without inventing a part",
-    );
-  },
-);
-
-Deno.test(
-  "buildFeedComponentCounts: observation node (kind=observation) keyed correctly",
-  () => {
-    // The anchorage key format is kind:id — verify that non-artifact kinds work.
-    const obsNode: ThreadGraphNode = {
-      id: "graph:observation:obs-drip-1",
-      ref: { kind: "observation", id: "obs-drip-1" },
-      entityKind: "observation",
-      label: "Max displacement",
-      system: "calculix",
-      freshness: "fresh",
-      summary: "Observed displacement",
-    };
-    const anchorage = anchoredResolution([
-      ["observation:obs-drip-1", {
-        target: "generic-v3:drip-tray",
-        criterion: "change-consumption" as const,
-      }],
-    ]);
-    const counts = buildFeedComponentCounts([obsNode], anchorage);
-    assertEquals(
-      counts.get("generic-v3:drip-tray"),
-      1,
-      "observation node anchored to drip-tray via kind:id key",
-    );
-  },
-);
-
-function emptyAnchorage(): PartAnchorageResolution {
-  return {
-    anchors: new Map(),
-    ambiguousByRef: new Map(),
-    orphanRefKeys: new Set(),
-  };
-}
-
-function anchoredResolution(
-  entries: [string, {
-    target: "assembly" | string;
-    criterion:
-      | "catalog"
-      | "prefix"
-      | "nature"
-      | "derived-from"
-      | "change-consumption";
-  }][],
-): PartAnchorageResolution {
-  return {
-    anchors: new Map(entries),
-    ambiguousByRef: new Map(),
-    orphanRefKeys: new Set(),
-  };
-}
-
-const FEED_TEST_COMPONENTS: ThreadComponentCatalog = {
-  schemaVersion: "thread-components/1.0",
-  authority: "workspace-declared",
-  subjectId: "feed-test",
-  rationale: "Test catalog for Activity feed anchorage scopes.",
-  systemViews: {},
-  components: [
-    {
-      id: "assembly-root",
-      label: "Machine",
-      kind: "assembly",
-      quantity: 1,
-      bindings: [],
-    },
-    {
-      id: "generic-v3:drip-tray",
-      label: "Drip tray",
-      kind: "part",
-      quantity: 1,
-      bindings: [],
-    },
-    {
-      id: "generic-v3:enclosure",
-      label: "Enclosure",
-      kind: "part",
-      quantity: 1,
-      bindings: [],
-    },
-  ],
-};
