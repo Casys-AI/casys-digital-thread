@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import { useCallback, useState } from "react";
 import type { JSX } from "react";
 import { HttpCockpitFleetClient, HttpThreadWorkbenchClient } from "./client.ts";
+import { HttpThreadViewerSessionsClient } from "./viewer-sessions-client.ts";
 import { HttpProductAuthoringSourceClient } from "./product-authoring-sources.ts";
 import { ThreadWorkbench } from "./workbench.tsx";
 import { DesktopChat } from "./desktop-chat.tsx";
@@ -21,6 +22,11 @@ const fleetClient = new HttpCockpitFleetClient(
 );
 const authoringSourceClient = new HttpProductAuthoringSourceClient(
   "/api/thread/product-navigation",
+  globalThis.fetch.bind(globalThis),
+);
+const viewerSessionsClient = new HttpThreadViewerSessionsClient(
+  "/api/thread/viewer-sessions",
+  "/api/thread/viewer-sessions/events",
   globalThis.fetch.bind(globalThis),
 );
 
@@ -72,6 +78,7 @@ function NativeCockpit(): JSX.Element {
           client={client}
           fleetClient={fleetClient}
           authoringSourceClient={authoringSourceClient}
+          viewerSessionsClient={viewerSessionsClient}
           onProjectFocus={focusProject}
         />
       </div>

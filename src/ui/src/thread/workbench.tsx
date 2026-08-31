@@ -54,6 +54,12 @@ import {
   type ThreadStreamStatus,
   type ThreadWorkbenchClient,
 } from "./client.ts";
+import {
+  shouldAcceptViewerSessionsUpdate,
+  type ThreadViewerSessionsClient,
+  type ThreadViewerSessionsProjection,
+  viewerSessionsMatchWorkbench,
+} from "./viewer-sessions-client.ts";
 import type { CockpitFleetProjection } from "../../../presentation/workbench/fleet/projection.ts";
 import { activityFeedNodes, type FeedScope } from "./feed-model.ts";
 import { shouldAcceptWorkbenchUpdate } from "./live-update.ts";
@@ -187,6 +193,8 @@ export interface ThreadWorkbenchProps {
   fleetClient?: CockpitFleetClient;
   /** Optional GET-only reader for live ProjectSourceWorkspace attachments. */
   authoringSourceClient?: ProductAuthoringSourceClient;
+  /** Optional GET+SSE reader for exact browser-safe viewer descriptors. */
+  viewerSessionsClient?: ThreadViewerSessionsClient;
   /** Validated read-only projection focus for sibling Desktop capabilities. */
   onProjectFocus?: (projectId: string | undefined) => void;
 }
@@ -195,10 +203,14 @@ export function ThreadWorkbench({
   client,
   fleetClient,
   authoringSourceClient,
+  viewerSessionsClient,
   onProjectFocus,
 }: ThreadWorkbenchProps): JSX.Element {
   const [workbench, setWorkbench] = useState<EngineeringWorkbenchSnapshot>();
   const [fleet, setFleet] = useState<CockpitFleetProjection>();
+  const [viewerSessions, setViewerSessions] = useState<
+    ThreadViewerSessionsProjection
+  >();
   const [selection, setSelection] = useState<ThreadRef>();
   const [graphSelection, setGraphSelection] = useState<ThreadGraphSelection>();
   const [lineageFocus, setLineageFocus] = useState<ThreadGraphRef>();
@@ -291,6 +303,7 @@ export function ThreadWorkbench({
     FeedScope | undefined
   >(undefined);
   const snapshotRef = useRef<EngineeringWorkbenchSnapshot>();
+  const viewerSessionsRef = useRef<ThreadViewerSessionsProjection>();
   const lastScrolledDeepLinkRef = useRef<string>();
 
   // Retour arriere et avance du navigateur : le fragment fait autorite sur
@@ -432,6 +445,43 @@ export function ThreadWorkbench({
       unsubscribe?.();
     };
   }, [client]);
+
+  const viewerSessionsBasis = workbench?.surface === "evidence"
+    ? workbench
+    : undefined;
+  useEffect(() => {
+    viewerSessionsRef.current = undefined;
+    setViewerSessions(undefined);
+    if (!viewerSessionsClient || !viewerSessionsBasis) return;
+
+    const controller = new AbortController();
+    const accept = (incoming: ThreadViewerSessionsProjection) => {
+      if (!viewerSessionsMatchWorkbench(incoming, viewerSessionsBasis)) return;
+      if (
+        !shouldAcceptViewerSessionsUpdate(viewerSessionsRef.current, incoming)
+      ) {
+        return;
+      }
+      viewerSessionsRef.current = incoming;
+      setViewerSessions(incoming);
+    };
+    viewerSessionsClient.load(controller.signal).then(accept).catch(() => {
+      // The read-only workbench remains usable when this optional projection
+      // is unavailable. It does not invent a session from the Thread graph.
+    });
+    const unsubscribe = viewerSessionsClient.subscribe?.(accept);
+    return () => {
+      controller.abort();
+      unsubscribe?.();
+    };
+  }, [
+    viewerSessionsBasis?.alignment.currentThreadRevision,
+    viewerSessionsBasis?.project.id,
+    viewerSessionsBasis?.project.project.subjectId,
+    viewerSessionsBasis?.project.revision,
+    viewerSessionsBasis?.thread.id,
+    viewerSessionsClient,
+  ]);
 
   const activityReviewRecords = workbench
     ? buildActivityReviewRecords(
@@ -1371,6 +1421,7 @@ export function ThreadWorkbench({
           <ProjectOverview
             project={project}
             thread={snapshot}
+            viewerSessions={viewerSessions}
             phaseLanes={workbench.projectPath.phaseLanes}
             activities={workbench.projectPath.activities}
             caseActivityJoins={workbench.caseActivityJoins}

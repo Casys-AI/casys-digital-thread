@@ -1448,6 +1448,25 @@ Deno.test("native Workbench exposes viewer sessions as complete GET and SSE repl
   assertEquals(text.includes("toolresult"), false);
 });
 
+Deno.test("native Workbench viewer-sessions SSE refuses a missing declared Thread tip", async () => {
+  const r2 = genericArchitectureThreadSnapshot(2);
+  const r3 = genericArchitectureThreadSnapshot(3, r2);
+  const project = genericArchitectureProject("completed", r2, r3);
+  const handler = createNativeWorkbenchHandler({
+    store: new EmptyThreadStore(),
+    projectStore: new ProjectStore([project]),
+    projectId: project.project.id,
+    subjectId: project.project.subjectId,
+    html: "unused",
+  });
+
+  const response = await handler(
+    new Request("http://localhost/api/thread/viewer-sessions/events"),
+  );
+  assertEquals(response.status, 404);
+  assertEquals((await response.json()).error, "thread_snapshot_not_found");
+});
+
 Deno.test("native Workbench carries the assembly-integrity index through both GET and SSE projections", async () => {
   const r2 = genericArchitectureThreadSnapshot(2);
   const r3 = genericArchitectureThreadSnapshot(3, r2);

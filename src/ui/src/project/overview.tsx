@@ -16,6 +16,7 @@ import type {
   ThreadGraphRef,
   ThreadWorkbenchSnapshot,
 } from "../thread/types.ts";
+import type { ThreadViewerSessionsProjection } from "../thread/viewer-sessions-client.ts";
 import { sealedAssemblyGeometryBlocker } from "../thread/component-workspace-model.ts";
 import { OverviewThreadHero } from "./overview-thread-hero.tsx";
 import type { OverviewThreadStageSummary } from "./overview-thread-d3-flow.tsx";
@@ -79,6 +80,8 @@ export interface ProjectOverviewProps {
   readonly phaseLanes: readonly EngineeringWorkbenchPhaseLane[];
   readonly activities: readonly EngineeringWorkbenchActivity[];
   readonly caseActivityJoins: readonly EngineeringWorkbenchCaseActivityJoin[];
+  /** Exact browser-safe session descriptors from the read-only Workbench BFF. */
+  readonly viewerSessions?: ThreadViewerSessionsProjection;
   readonly onNavigate: (view: ProjectWorkspaceView) => void;
   readonly onOpenProductFacet?: (facet: ProductWorkspaceFacet) => void;
   readonly onOpenActivity?: (decisionId?: string) => void;
@@ -97,6 +100,7 @@ export function ProjectOverview({
   phaseLanes,
   activities,
   caseActivityJoins,
+  viewerSessions,
   onNavigate,
   onOpenProductFacet,
   onOpenActivity,
@@ -316,6 +320,7 @@ export function ProjectOverview({
           <OverviewThreadHero
             thread={thread}
             projectId={project.id}
+            viewerSessions={viewerSessions}
             activities={projectPath.activities}
             immersive
             stages={overviewStages}

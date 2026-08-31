@@ -241,22 +241,30 @@
   white-space: nowrap;
 }
 
-.overview-thread-viewer[data-viewer-kind="cad"] .overview-thread-viewer-body:has(.geometry-draft-canvas-shell) {
+.overview-thread-viewer[data-viewer-kind="cad"] .overview-thread-viewer-body:has(.geometry-draft-canvas-shell),
+.overview-thread-viewer[data-viewer-kind="session"] .overview-thread-viewer-body:has(.geometry-draft-canvas-shell) {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
 }
 
-.overview-thread-viewer[data-viewer-kind="cad"] .geometry-draft-canvas-shell {
+.overview-thread-viewer[data-viewer-kind="session"] .overview-thread-viewer-body:has(.geometry-draft-canvas-shell) {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.overview-thread-viewer[data-viewer-kind="cad"] .geometry-draft-canvas-shell,
+.overview-thread-viewer[data-viewer-kind="session"] .geometry-draft-canvas-shell {
   height: 100%;
   min-height: 0;
 }
 
-.overview-thread-viewer[data-viewer-kind="cad"] .geometry-draft-canvas {
+.overview-thread-viewer[data-viewer-kind="cad"] .geometry-draft-canvas,
+.overview-thread-viewer[data-viewer-kind="session"] .geometry-draft-canvas {
   min-height: 0;
 }
 
-.overview-thread-viewer[data-viewer-kind="cad"] .geometry-draft-reset {
+.overview-thread-viewer[data-viewer-kind="cad"] .geometry-draft-reset,
+.overview-thread-viewer[data-viewer-kind="session"] .geometry-draft-reset {
   top: 0.5rem;
   right: 0.5rem;
   padding: 0.3rem 0.42rem;
@@ -267,7 +275,8 @@
   font-size: 0.52rem;
 }
 
-.overview-thread-viewer[data-viewer-kind="cad"] .geometry-draft-canvas-state[data-state="ready"] {
+.overview-thread-viewer[data-viewer-kind="cad"] .geometry-draft-canvas-state[data-state="ready"],
+.overview-thread-viewer[data-viewer-kind="session"] .geometry-draft-canvas-state[data-state="ready"] {
   right: 0.5rem;
   bottom: 0.45rem;
   padding: 0.2rem 0.35rem;
@@ -279,6 +288,39 @@
   padding: 0.8rem;
   color: var(--ui-muted-foreground);
   font-size: 0.7rem;
+}
+
+.overview-thread-viewer-session-detail {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.42rem;
+  padding: 0.26rem 0.55rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border) 72%,
+    transparent);
+  background: color-mix(in srgb, var(--ui-muted) 22%, var(--ui-card));
+  color: var(--ui-muted-foreground);
+  font-size: 0.52rem;
+  line-height: 1.2;
+}
+
+.overview-thread-viewer-session-detail code,
+.overview-thread-viewer-session-detail span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-thread-viewer-session-detail code {
+  flex: 0 1 auto;
+  color: var(--ui-foreground);
+  font-family: var(--font-mono);
+}
+
+.overview-thread-viewer-session-detail span {
+  flex: 1 1 auto;
+  text-align: end;
 }
 
 .overview-thread-activity-viewer {

@@ -704,6 +704,17 @@ async function viewerSessionsEventStream(
     }
     throw error;
   }
+  const initialSnapshot = await resolveCurrentThreadSnapshot(
+    initial.project,
+    options,
+    initial.subjectId,
+  );
+  if (!initialSnapshot && initial.project.threadSnapshots.length > 0) {
+    return json({
+      error: "thread_snapshot_not_found",
+      subjectId: initial.subjectId,
+    }, 404);
+  }
   let current = initial;
   const encoder = new TextEncoder();
   const pollIntervalMs = options.pollIntervalMs ?? 500;
@@ -747,8 +758,9 @@ async function viewerSessionsEventStream(
             current.subjectId,
           );
           if (!snapshot && current.project.threadSnapshots.length > 0) {
-            await waitForPoll(pollIntervalMs);
-            continue;
+            throw new Error(
+              "A declared technical baseline could not be resolved for viewer sessions.",
+            );
           }
           const liveUpdates = await options.liveUpdates?.list(current.subjectId) ?? [];
           const projection = await projectViewerSessions(
@@ -822,6 +834,7 @@ async function projectViewerSessions(
     projectId: context.projectId,
     projectRevision: context.project.revision,
     subjectId: context.subjectId,
+    sequence: thread?.live.version ?? context.project.revision,
     ...(snapshot ? { thread: { id: snapshot.id, revision: snapshot.revision } } : {}),
   }, thread);
 }

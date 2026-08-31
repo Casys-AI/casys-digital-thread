@@ -49,7 +49,7 @@ export interface ThreadViewerSession {
 export interface ThreadViewerSessionsProjection {
   readonly schemaVersion: typeof THREAD_VIEWER_SESSIONS_SCHEMA;
   readonly basis: ThreadViewerSessionsBasis;
-  /** Monotonic within one project/thread lineage; used by SSE consumers. */
+  /** Monotonic within this exact basis; used by SSE consumers. */
   readonly sequence: number;
   readonly projectionFingerprint: string;
   readonly sessions: readonly ThreadViewerSession[];
@@ -191,11 +191,15 @@ function isThreadAnalysisSemanticRef(
     isNonEmptyString(value.kind) &&
     isNonEmptyString(value.id) &&
     (value.basisFingerprint === undefined ||
-      isNonEmptyString(value.basisFingerprint));
+      isSha256Digest(value.basisFingerprint));
 }
 
 function isSha256Fingerprint(value: unknown): value is string {
   return typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value);
+}
+
+function isSha256Digest(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 }
 
 function isNonEmptyString(value: unknown): value is string {

@@ -149,3 +149,42 @@ Deno.test("overview viewers stay read-only, spatially tethered, and keyboard rea
     "export function buildOverviewThreadViewerConnectorGeometry(",
   );
 });
+
+Deno.test("viewer-session cards use only current exact descriptors and the native CAD viewer", async () => {
+  const hero = await Deno.readTextFile(
+    new URL("./src/project/overview-thread-hero.tsx", import.meta.url),
+  );
+  const persistence = await Deno.readTextFile(
+    new URL(
+      "./src/project/overview-thread-whiteboard-persistence.ts",
+      import.meta.url,
+    ),
+  );
+  const nativePreview = await Deno.readTextFile(
+    new URL("./src/thread/native-preview.tsx", import.meta.url),
+  );
+  const sessionClient = await Deno.readTextFile(
+    new URL("./src/thread/viewer-sessions-client.ts", import.meta.url),
+  );
+
+  assertStringIncludes(hero, "viewerSessions?.sessions ?? []");
+  assertStringIncludes(hero, "overviewThreadGraphRefKey(session.anchor)");
+  assertStringIncludes(hero, 'kind: "open-session"');
+  assertStringIncludes(hero, "Open viewer session · ${session.kind}");
+  assertStringIncludes(hero, "sessionAssetIds.has(asset.id)");
+  assertStringIncludes(hero, 'viewer.kind === "session"');
+  assertStringIncludes(hero, 'viewerSession?.kind === "native-cad-glb"');
+  assertStringIncludes(hero, "<GltfAssetCanvas");
+  assertEquals(hero.includes("<iframe"), false);
+  assertEquals(hero.includes("fetch("), false);
+  assertStringIncludes(persistence, "readonly sessionId: string;");
+  assertStringIncludes(persistence, "hasExactSessionId");
+  assertEquals(persistence.includes("sessionUrl"), false);
+  assertEquals(persistence.includes("interactiveToken"), false);
+  assertStringIncludes(nativePreview, '"/api/thread/viewer-sessions"');
+  assertStringIncludes(nativePreview, '"/api/thread/viewer-sessions/events"');
+  assertStringIncludes(sessionClient, 'method: "GET"');
+  assertStringIncludes(sessionClient, 'addEventListener("viewer-sessions"');
+  assertEquals(sessionClient.includes("POST"), false);
+  assertEquals(sessionClient.includes("callTool"), false);
+});

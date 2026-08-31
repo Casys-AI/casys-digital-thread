@@ -10,6 +10,7 @@ const CONTEXT = {
   projectId: "project-generic",
   projectRevision: 12,
   subjectId: "GEN-01",
+  sequence: 7,
   thread: { id: GENERIC_THREAD_FIXTURE.id, revision: 42 },
 } as const;
 
@@ -28,7 +29,7 @@ Deno.test("viewer sessions project only an exact represented GLB", async () => {
     /^sha256:[a-f0-9]{64}$/.test(projection.projectionFingerprint),
     true,
   );
-  assertEquals(projection.sequence, 42);
+  assertEquals(projection.sequence, 7);
   assertEquals(projection.sessions.length, 1);
   assertEquals(projection.sessions[0], {
     id: projection.sessions[0]?.id,
@@ -100,7 +101,7 @@ Deno.test("viewer session contract preserves complete semantic references", asyn
       domain: "cad",
       kind: "face",
       id: "face-12",
-      basisFingerprint: `sha256:${"c".repeat(64)}`,
+      basisFingerprint: "c".repeat(64),
     },
   };
   assertEquals(isThreadViewerSessionsProjection(available), true);
@@ -111,12 +112,29 @@ Deno.test("viewer session contract preserves complete semantic references", asyn
   invented.sessions[0]!.semanticSelection.semanticRef.label = "nearby face";
   assertEquals(isThreadViewerSessionsProjection(invented), false);
 
+  const prefixedBasis = structuredClone(available) as MutableProjection;
+  const availableSelection = prefixedBasis.sessions[0]!.semanticSelection;
+  if (availableSelection.status !== "available") {
+    throw new Error("expected available semantic selection");
+  }
+  availableSelection.semanticRef.basisFingerprint = `sha256:${"c".repeat(64)}`;
+  assertEquals(isThreadViewerSessionsProjection(prefixedBasis), false);
+
   const wrongAsset = structuredClone(projection) as MutableProjection;
   wrongAsset.sessions[0]!.asset.fingerprint = `sha256:${"d".repeat(64)}`;
   assertEquals(isThreadViewerSessionsProjection(wrongAsset), false);
 });
 
 Deno.test("viewer sessions require the exact canonical Thread identity", async () => {
+  await assertRejects(
+    () =>
+      projectThreadViewerSessions(
+        { ...CONTEXT, sequence: -1 },
+        exactGlbFixture(),
+      ),
+    TypeError,
+    "non-negative integer",
+  );
   await assertRejects(
     () =>
       projectThreadViewerSessions(

@@ -12,6 +12,8 @@ export interface ThreadViewerSessionsProjectionContext {
   readonly projectId: string;
   readonly projectRevision: number;
   readonly subjectId: string;
+  /** Monotonic read-model sequence within this exact project/Thread basis. */
+  readonly sequence: number;
   readonly thread?: {
     readonly id: string;
     readonly revision: number;
@@ -30,6 +32,11 @@ export async function projectThreadViewerSessions(
   context: ThreadViewerSessionsProjectionContext,
   snapshot?: ThreadWorkbenchSnapshot,
 ): Promise<ThreadViewerSessionsProjection> {
+  if (!Number.isSafeInteger(context.sequence) || context.sequence < 0) {
+    throw new TypeError(
+      "Thread viewer projection sequence must be a non-negative integer.",
+    );
+  }
   if (snapshot && snapshot.subject.id !== context.subjectId) {
     throw new TypeError(
       `Thread viewer subject ${snapshot.subject.id} does not match ${context.subjectId}.`,
@@ -53,7 +60,7 @@ export async function projectThreadViewerSessions(
   const projection = {
     schemaVersion: THREAD_VIEWER_SESSIONS_SCHEMA,
     basis,
-    sequence: context.thread?.revision ?? context.projectRevision,
+    sequence: context.sequence,
     sessions,
   };
   const fingerprint = await sha256Fingerprint(projection);

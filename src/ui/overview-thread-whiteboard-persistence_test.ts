@@ -19,6 +19,7 @@ const ACTIVITY_NODE = "project-activity:run-1";
 const HULL_NODE = "artifact:hull-1";
 const STALE_NODE = "artifact:retired";
 const HULL_ASSET = "asset-hull-glb";
+const HULL_SESSION = `native-cad-glb:${"a".repeat(64)}`;
 
 const CURRENT: OverviewThreadWhiteboardPresentationReconciliation = {
   groupKeys: [REQUIREMENTS_GROUP, BUILD_GROUP],
@@ -26,7 +27,11 @@ const CURRENT: OverviewThreadWhiteboardPresentationReconciliation = {
   viewerCapabilities: {
     [REQUIREMENT_NODE]: { record: true },
     [ACTIVITY_NODE]: { activity: true },
-    [HULL_NODE]: { record: true, cadAssetIds: [HULL_ASSET] },
+    [HULL_NODE]: {
+      record: true,
+      cadAssetIds: [HULL_ASSET],
+      sessionIds: [HULL_SESSION],
+    },
   },
 };
 
@@ -69,6 +74,15 @@ function completeState(): OverviewThreadWhiteboardPresentationState {
         expanded: true,
         restoreGeometry: { x: 620, y: 120, width: 360, height: 300 },
       },
+      {
+        kind: "session",
+        id: `session:${HULL_NODE}:${HULL_SESSION}`,
+        nodeKey: HULL_NODE,
+        sessionId: HULL_SESSION,
+        geometry: { x: 1020, y: 160, width: 340, height: 280 },
+        z: 5,
+        expanded: false,
+      },
     ],
   };
 }
@@ -110,6 +124,9 @@ Deno.test("whiteboard presentation round-trips every spatial field without grant
     '"schema":"casys-project-whiteboard-presentation"',
   );
   assertStringIncludes(serialized, '"version":1');
+  assertStringIncludes(serialized, `"sessionId":"${HULL_SESSION}"`);
+  assertEquals(serialized.includes('"uri"'), false);
+  assertEquals(serialized.includes('"token"'), false);
   assertEquals(
     parseOverviewThreadWhiteboardPresentation(serialized, PROJECT_ID),
     state,
@@ -256,6 +273,15 @@ Deno.test("reconciliation retains only current exact groups, nodes and viewer ca
         expanded: false,
       },
       {
+        kind: "session",
+        id: `session:${HULL_NODE}:native-cad-glb:retired`,
+        nodeKey: HULL_NODE,
+        sessionId: "native-cad-glb:retired",
+        geometry: { x: 20, y: 20, width: 300, height: 220 },
+        z: 7,
+        expanded: false,
+      },
+      {
         kind: "record",
         id: `record:${ACTIVITY_NODE}`,
         nodeKey: ACTIVITY_NODE,
@@ -285,6 +311,16 @@ Deno.test("reconciliation retains only current exact groups, nodes and viewer ca
   );
   assertEquals(reconciled.transform, state.transform);
   assertEquals(reconciled.layoutMode, state.layoutMode);
+});
+
+Deno.test("session presentation is rejected without its exact current session key", () => {
+  const serialized = serializeOverviewThreadWhiteboardPresentation(
+    PROJECT_ID,
+    completeState(),
+  )!;
+  const session = JSON.parse(serialized);
+  session.state.viewers[3].sessionId = "native-cad-glb:invented";
+  assertEquals(parseEnvelope(session), undefined);
 });
 
 Deno.test("local load and save reconcile before storage and contain storage failures", () => {

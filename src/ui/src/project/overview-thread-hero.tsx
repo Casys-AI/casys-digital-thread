@@ -39,6 +39,10 @@ import type {
   ThreadGraphRef,
   ThreadWorkbenchSnapshot,
 } from "../thread/types.ts";
+import type {
+  ThreadViewerSession,
+  ThreadViewerSessionsProjection,
+} from "../thread/viewer-sessions-client.ts";
 import { GltfAssetCanvas } from "../thread/gltf-asset-canvas.tsx";
 import { ToolInspectorPanel } from "../thread/tool-inspectors.tsx";
 import { Badge } from "../ui/badge.tsx";
@@ -113,6 +117,12 @@ type OverviewNodeContextAction =
     readonly label: string;
   }
   | {
+    readonly kind: "open-session";
+    readonly nodeKey: string;
+    readonly sessionId: string;
+    readonly label: string;
+  }
+  | {
     readonly kind: "open-evidence";
     readonly reference: ThreadGraphRef;
     readonly label: string;
@@ -130,6 +140,7 @@ type OverviewNodeContextAction =
 type OverviewViewerState =
   | OverviewRecordViewerState
   | OverviewCadViewerState
+  | OverviewSessionViewerState
   | OverviewActivityViewerState;
 
 interface OverviewViewerBase {
@@ -151,6 +162,13 @@ interface OverviewCadViewerState extends OverviewViewerBase {
   readonly kind: "cad";
   readonly nodeKey: string;
   readonly assetId: string;
+}
+
+interface OverviewSessionViewerState extends OverviewViewerBase {
+  readonly kind: "session";
+  readonly nodeKey: string;
+  /** Stable descriptor key; URL and runtime state are never persisted. */
+  readonly sessionId: string;
 }
 
 interface OverviewActivityViewerState extends OverviewViewerBase {
@@ -210,6 +228,7 @@ const OVERVIEW_WHITEBOARD_SAVE_DELAY_MS = 240;
 export function OverviewThreadHero({
   thread,
   projectId,
+  viewerSessions,
   activities = [],
   stages = [],
   immersive = false,
@@ -218,6 +237,7 @@ export function OverviewThreadHero({
 }: {
   readonly thread: ThreadWorkbenchSnapshot;
   readonly projectId?: string;
+  readonly viewerSessions?: ThreadViewerSessionsProjection;
   readonly activities?: readonly ProjectPathActivityView[];
   readonly stages?: readonly OverviewThreadStageSummary[];
   readonly immersive?: boolean;
@@ -295,6 +315,30 @@ export function OverviewThreadHero({
     () => new Map(view.nodes.map((item) => [item.key, item])),
     [view.nodes],
   );
+  const viewerSessionsByNodeKey = useMemo(() => {
+    const sessionsByNodeKey = new Map<
+      string,
+      readonly ThreadViewerSession[]
+    >();
+    for (const session of viewerSessions?.sessions ?? []) {
+      const nodeKey = overviewThreadGraphRefKey(session.anchor);
+      const node = nodesByKey.get(nodeKey);
+      if (node?.kind !== "recorded") continue;
+      const current = sessionsByNodeKey.get(nodeKey) ?? [];
+      sessionsByNodeKey.set(nodeKey, [...current, session]);
+    }
+    return sessionsByNodeKey;
+  }, [nodesByKey, viewerSessions]);
+  const viewerSessionsById = useMemo(
+    () =>
+      new Map(
+        [...viewerSessionsByNodeKey.values()].flat().map((session) => [
+          session.id,
+          session,
+        ]),
+      ),
+    [viewerSessionsByNodeKey],
+  );
   const persistenceProjectId = projectId &&
       overviewThreadWhiteboardPresentationStorageKey(projectId)
     ? projectId
@@ -330,10 +374,13 @@ export function OverviewThreadHero({
       result[item.key] = {
         record: capabilities.inspectRecord,
         cadAssetIds: capabilities.cadAssets.map((asset) => asset.id),
+        sessionIds: (viewerSessionsByNodeKey.get(item.key) ?? []).map(
+          (session) => session.id,
+        ),
       };
     }
     return result;
-  }, [thread, view.nodes]);
+  }, [thread, view.nodes, viewerSessionsByNodeKey]);
   const persistenceReconciliation = useMemo<
     OverviewThreadWhiteboardPresentationReconciliation
   >(() => ({
@@ -588,6 +635,11 @@ export function OverviewThreadHero({
         readonly nodeKey: string;
         readonly assetId: string;
       }
+      | {
+        readonly kind: "session";
+        readonly nodeKey: string;
+        readonly sessionId: string;
+      }
       | { readonly kind: "activity"; readonly nodeKey: string },
   ) => {
     const id = overviewViewerId(request);
@@ -656,6 +708,14 @@ export function OverviewThreadHero({
         kind: "cad",
         nodeKey: action.nodeKey,
         assetId: action.assetId,
+      });
+      return;
+    }
+    if (action.kind === "open-session") {
+      openViewer({
+        kind: "session",
+        nodeKey: action.nodeKey,
+        sessionId: action.sessionId,
       });
       return;
     }
@@ -1015,7 +1075,7 @@ export function OverviewThreadHero({
     ? flowLayout.groups.find((group) => group.key === contextTarget.key)
     : undefined;
   const contextActions = contextNode
-    ? overviewNodeContextActions(thread, contextNode)
+    ? overviewNodeContextActions(thread, contextNode, viewerSessionsByNodeKey)
     : [];
   const commitContextTargetBeforeOpen = (value: string | null | undefined) => {
     if (!parseOverviewThreadContextTarget(value)) return;
@@ -1370,6 +1430,7 @@ export function OverviewThreadHero({
                 <OverviewNodeSelectionCard
                   item={selected}
                   thread={thread}
+                  viewerSessionsByNodeKey={viewerSessionsByNodeKey}
                   geometry={selectedCard}
                   onAction={runContextAction}
                   onDismiss={() => {
@@ -1390,6 +1451,10 @@ export function OverviewThreadHero({
                   ? resolveOverviewThreadViewerCapabilities(thread, item.node)
                     .cadAssets.find((asset) => asset.id === viewer.assetId)
                   : undefined;
+                const viewerSession = viewer.kind === "session" &&
+                    item.kind === "recorded"
+                  ? viewerSessionsById.get(viewer.sessionId)
+                  : undefined;
                 return (
                   <OverviewFloatingViewer
                     key={viewer.id}
@@ -1401,6 +1466,7 @@ export function OverviewThreadHero({
                     item={item}
                     thread={thread}
                     cadAsset={cadAsset}
+                    viewerSession={viewerSession}
                     onBringFront={() => bringViewerFront(viewer.id)}
                     onClose={() => closeViewer(viewer.id)}
                     onToggleExpanded={() => toggleViewerExpanded(viewer.id)}
@@ -1474,6 +1540,8 @@ function overviewViewerToPresentation(
   };
   return viewer.kind === "cad"
     ? { ...spatial, kind: "cad", assetId: viewer.assetId }
+    : viewer.kind === "session"
+    ? { ...spatial, kind: "session", sessionId: viewer.sessionId }
     : { ...spatial, kind: viewer.kind };
 }
 
@@ -1491,6 +1559,8 @@ function overviewViewerFromPresentation(
   };
   return viewer.kind === "cad"
     ? { ...spatial, kind: "cad", assetId: viewer.assetId }
+    : viewer.kind === "session"
+    ? { ...spatial, kind: "session", sessionId: viewer.sessionId }
     : { ...spatial, kind: viewer.kind };
 }
 
@@ -1977,6 +2047,10 @@ function clamp(value: number, minimum: number, maximum: number): number {
 function overviewNodeContextActions(
   snapshot: ThreadWorkbenchSnapshot,
   item: OverviewHeroNode,
+  viewerSessionsByNodeKey: ReadonlyMap<
+    string,
+    readonly ThreadViewerSession[]
+  > = new Map(),
 ): readonly OverviewNodeContextAction[] {
   if (item.kind === "activity") {
     return [
@@ -2001,7 +2075,23 @@ function overviewNodeContextActions(
       label: "Inspect record",
     });
   }
+  const anchoredSessions = viewerSessionsByNodeKey.get(item.key) ?? [];
+  const sessionAssetIds = new Set(
+    anchoredSessions.map((session) => session.asset.id),
+  );
+  for (const session of anchoredSessions) {
+    actions.push({
+      kind: "open-session",
+      nodeKey: item.key,
+      sessionId: session.id,
+      label: `Open viewer session · ${session.kind}`,
+    });
+  }
   for (const asset of capabilities.cadAssets) {
+    // When the exact session describes this GLB, opening it keeps the
+    // session's recorded anchor and semantic-selection status visible. The
+    // older direct CAD affordance remains only for assets with no session.
+    if (sessionAssetIds.has(asset.id)) continue;
     actions.push({
       kind: "open-cad",
       nodeKey: item.key,
@@ -2026,11 +2116,18 @@ function overviewContextActionValue(
   if (action.kind === "open-cad") {
     return `${action.kind}:${action.nodeKey}:${action.assetId}`;
   }
+  if (action.kind === "open-session") {
+    return `${action.kind}:${action.nodeKey}:${action.sessionId}`;
+  }
   if (action.kind === "open-evidence") {
     return `${action.kind}:${action.reference.kind}:${action.reference.id}`;
   }
   if ("nodeKey" in action) return `${action.kind}:${action.nodeKey}`;
   return `${action.kind}:${index}`;
+}
+
+function overviewThreadGraphRefKey(reference: ThreadGraphRef): string {
+  return `${reference.kind}:${reference.id}`;
 }
 
 function overviewNodeContextMeta(item: OverviewHeroNode): string {
@@ -2164,17 +2261,26 @@ function OverviewThreadContextMenu({
 function OverviewNodeSelectionCard({
   item,
   thread,
+  viewerSessionsByNodeKey,
   geometry,
   onAction,
   onDismiss,
 }: {
   readonly item: OverviewHeroNode;
   readonly thread: ThreadWorkbenchSnapshot;
+  readonly viewerSessionsByNodeKey: ReadonlyMap<
+    string,
+    readonly ThreadViewerSession[]
+  >;
   readonly geometry: OverviewThreadViewerGeometry;
   readonly onAction: (action: OverviewNodeContextAction) => void;
   readonly onDismiss: () => void;
 }): JSX.Element {
-  const actions = overviewNodeContextActions(thread, item);
+  const actions = overviewNodeContextActions(
+    thread,
+    item,
+    viewerSessionsByNodeKey,
+  );
   const laneLabel = overviewLaneTitle(item.lane);
   const summary = item.kind === "recorded"
     ? item.node.summary
@@ -2246,6 +2352,7 @@ function OverviewFloatingViewer({
   item,
   thread,
   cadAsset,
+  viewerSession,
   onBringFront,
   onClose,
   onToggleExpanded,
@@ -2263,6 +2370,7 @@ function OverviewFloatingViewer({
   readonly item?: OverviewHeroNode;
   readonly thread: ThreadWorkbenchSnapshot;
   readonly cadAsset?: ThreadArtifact;
+  readonly viewerSession?: ThreadViewerSession;
   readonly onBringFront: () => void;
   readonly onClose: () => void;
   readonly onToggleExpanded: () => void;
@@ -2283,7 +2391,7 @@ function OverviewFloatingViewer({
     event: ReactPointerEvent<HTMLButtonElement>,
   ) => void;
 }): JSX.Element {
-  const title = overviewViewerTitle(viewer, item, cadAsset);
+  const title = overviewViewerTitle(viewer, item, cadAsset, viewerSession);
   return (
     <article
       ref={refViewer}
@@ -2372,6 +2480,36 @@ function OverviewFloatingViewer({
               </p>
             )
         )}
+        {viewer.kind === "session" && (
+          viewerSession?.kind === "native-cad-glb"
+            ? (
+              <>
+                <div className="overview-thread-viewer-meta">
+                  <span>{viewerSession.kind}</span>
+                  <code>{viewerSession.asset.fingerprint}</code>
+                </div>
+                <div className="overview-thread-viewer-session-detail">
+                  <code>{overviewThreadGraphRefKey(viewerSession.anchor)}</code>
+                  <span>
+                    {overviewViewerSessionSelectionLabel(
+                      viewerSession.semanticSelection,
+                    )}
+                  </span>
+                </div>
+                <GltfAssetCanvas
+                  url={viewerSession.asset.uri}
+                  ariaLabel={`Viewer session for ${viewerSession.asset.id}`}
+                  loadingLabel="Loading exact GLB session…"
+                  errorLabel="Exact GLB session unavailable"
+                />
+              </>
+            )
+            : (
+              <p className="overview-thread-viewer-unavailable">
+                Exact viewer session unavailable in this replacement.
+              </p>
+            )
+        )}
         {viewer.kind === "activity" && item?.kind === "activity" && (
           <div className="overview-thread-activity-viewer">
             <div className="flex flex-wrap items-center gap-2">
@@ -2430,9 +2568,15 @@ function overviewViewerTitle(
   viewer: OverviewViewerState,
   item?: OverviewHeroNode,
   cadAsset?: ThreadArtifact,
+  viewerSession?: ThreadViewerSession,
 ): string {
   if (viewer.kind === "cad") {
     return cadAsset ? `CAD · ${cadAsset.label}` : "CAD · unavailable";
+  }
+  if (viewer.kind === "session") {
+    return viewerSession
+      ? `Viewer · ${viewerSession.kind} · ${item?.label ?? "unavailable"}`
+      : "Viewer session · unavailable";
   }
   if (!item) return "Thread viewer · unavailable";
   if (viewer.kind === "activity") return `Activity · ${item.label}`;
@@ -2449,11 +2593,30 @@ function overviewViewerId(
       readonly nodeKey: string;
       readonly assetId: string;
     }
+    | {
+      readonly kind: "session";
+      readonly nodeKey: string;
+      readonly sessionId: string;
+    }
     | { readonly kind: "activity"; readonly nodeKey: string },
 ): string {
-  return request.kind === "cad"
-    ? `${request.kind}:${request.nodeKey}:${request.assetId}`
-    : `${request.kind}:${request.nodeKey}`;
+  if (request.kind === "cad") {
+    return `${request.kind}:${request.nodeKey}:${request.assetId}`;
+  }
+  if (request.kind === "session") {
+    return `${request.kind}:${request.nodeKey}:${request.sessionId}`;
+  }
+  return `${request.kind}:${request.nodeKey}`;
+}
+
+function overviewViewerSessionSelectionLabel(
+  selection: ThreadViewerSession["semanticSelection"],
+): string {
+  if (selection.status === "available") {
+    const { semanticRef } = selection;
+    return `Recorded selection · ${semanticRef.domain}:${semanticRef.kind}:${semanticRef.id}`;
+  }
+  return `${selection.status} · ${selection.reason}`;
 }
 
 function activityStatusCaption(status: EngineeringPhaseStatus): string {
