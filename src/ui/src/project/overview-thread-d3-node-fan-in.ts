@@ -150,6 +150,7 @@ export function buildOverviewThreadD3NodeFanIn(
   for (const [rank, leaf] of physicalLeaves.entries()) {
     leaf.transverseRank = rank;
   }
+  const normal = { x: -trunkTangent.y, y: trunkTangent.x };
   assertDistinctAnchors(lexicalLeaves);
 
   const minimumSpan = Math.min(
@@ -165,16 +166,35 @@ export function buildOverviewThreadD3NodeFanIn(
     x: junction.x - trunkTangent.x * sharedTailLength,
     y: junction.y - trunkTangent.y * sharedTailLength,
   };
+  // A patch-panel comb has ordered teeth at the throat, not a single
+  // shared pin that would collapse every strand into one wire.
+  const ARRIVAL_PITCH = 1.2;
+  const rankOffsets = new Map(
+    physicalLeaves.map((leaf) => {
+      const rawOffset = (leaf.transverseRank - (lexicalLeaves.length - 1) / 2) *
+        ARRIVAL_PITCH;
+      const clampedOffset = Math.max(
+        -sharedTailLength * 0.8,
+        Math.min(sharedTailLength * 0.8, rawOffset),
+      );
+      return [leaf.key, clampedOffset];
+    }),
+  );
   const particleRoutes = new Map<string, FanParticle[]>();
   const particles: FanParticle[] = [];
   const links: FanLink[] = [];
 
   for (const leaf of lexicalLeaves) {
+    const offset = rankOffsets.get(leaf.key)!;
+    const perLeafTailStart = {
+      x: sharedTailStart.x + normal.x * offset,
+      y: sharedTailStart.y + normal.y * offset,
+    };
     const route = initialParticleRoute(
       leaf,
       junction,
       trunkTangent,
-      sharedTailStart,
+      perLeafTailStart,
     );
     particleRoutes.set(leaf.key, route);
     particles.push(...route);
@@ -187,7 +207,6 @@ export function buildOverviewThreadD3NodeFanIn(
     }
   }
 
-  const normal = { x: -trunkTangent.y, y: trunkTangent.x };
   const simulation = forceSimulation<FanParticle>(particles)
     .stop()
     .randomSource(seededRandom(0x6e6f6465))
@@ -285,8 +304,13 @@ function initialParticleRoute(
   trunkTangent: OverviewThreadD3CablePoint,
   sharedTailStart: OverviewThreadD3CablePoint,
 ): FanParticle[] {
-  const span = distance(leaf.anchor, junction);
-  const departureLength = clamp(span * 0.12, 5, 15);
+  // Stub length is a field constant (the shared throat), so every port
+  // shows the same slack before its first bend.
+  const departureLength = clamp(
+    distance(junction, sharedTailStart) * 0.6,
+    4,
+    10,
+  );
   const departureGuard = {
     x: leaf.anchor.x + leaf.tangent.x * departureLength,
     y: leaf.anchor.y + leaf.tangent.y * departureLength,
@@ -547,18 +571,46 @@ function catmullPathWithExactEndpointTangents(
   if (visible.length !== points.length - 1) {
     throw new Error("D3 Catmull-Rom endpoint trimming failed");
   }
+  // Ghost points only produce the requested tangent when the last two
+  // particles sit on the trunk. Combed teeth sit off-axis, so the last
+  // cubic handle has to be rewritten the same way joint-corridor does.
+  const exact = visible.map((segment, index) => {
+    const first = index === 0;
+    const last = index === visible.length - 1;
+    const departureHandle = first
+      ? Math.max(2, distance(segment.source, segment.control1))
+      : 0;
+    const arrivalHandle = last
+      ? Math.max(2, distance(segment.control2, segment.target))
+      : 0;
+    return {
+      ...segment,
+      control1: first
+        ? {
+          x: segment.source.x + departureTangent.x * departureHandle,
+          y: segment.source.y + departureTangent.y * departureHandle,
+        }
+        : segment.control1,
+      control2: last
+        ? {
+          x: segment.target.x - arrivalTangent.x * arrivalHandle,
+          y: segment.target.y - arrivalTangent.y * arrivalHandle,
+        }
+        : segment.control2,
+    };
+  });
   return [
     `M${formatNumber(points[0]!.x)},${formatNumber(points[0]!.y)}`,
-    ...visible.map(serializeCubic),
+    ...exact.map(serializeCubic),
   ].join("");
 }
 
 function serializeCubic(segment: CubicSegment): string {
-  return `C${formatNumber(segment.control1.x)},${formatNumber(segment.control1.y)},${
-    formatNumber(segment.control2.x)
-  },${formatNumber(segment.control2.y)},${formatNumber(segment.target.x)},${
-    formatNumber(segment.target.y)
-  }`;
+  return `C${formatNumber(segment.control1.x)},${
+    formatNumber(segment.control1.y)
+  },${formatNumber(segment.control2.x)},${formatNumber(segment.control2.y)},${
+    formatNumber(segment.target.x)
+  },${formatNumber(segment.target.y)}`;
 }
 
 function parseCubicPath(d: string): CubicSegment[] {
@@ -682,7 +734,9 @@ function transverseSeparation(leaves: readonly NormalizedLeaf[]): number {
     const gap = leaves[index]!.transverse - leaves[index - 1]!.transverse;
     if (gap > EPSILON) minimum = Math.min(minimum, gap);
   }
-  return Number.isFinite(minimum) ? clamp(minimum * 0.16, 0.6, 2.4) : 0.6;
+  // Closely packed hull columns would otherwise yield a sub-pixel
+  // mid-path pitch and read as one thick stroke.
+  return Number.isFinite(minimum) ? clamp(minimum * 0.16, 1.5, 2.4) : 1.5;
 }
 
 function assertRouteFinite(
@@ -691,7 +745,9 @@ function assertRouteFinite(
 ): void {
   if (
     points.length !== PARTICLES_PER_LEAF ||
-    points.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))
+    points.some((point) =>
+      !Number.isFinite(point.x) || !Number.isFinite(point.y)
+    )
   ) throw new Error(`${key} produced an invalid node fan-in particle chain`);
 }
 

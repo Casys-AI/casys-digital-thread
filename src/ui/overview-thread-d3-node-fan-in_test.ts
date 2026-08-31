@@ -66,11 +66,20 @@ Deno.test(
         );
       }
     }
-    const sharedTailStarts = [...routes.values()].map((route) => route.points[4]);
-    assert(
-      sharedTailStarts.every((point) => samePoint(point!, sharedTailStarts[0]!)),
-      "Leaves may meet only in the short shared tail immediately before the gate",
-    );
+    const arrivalPitch = 1.2;
+    const tailStarts = orderedRoutes.map((route) => route.points[4]!);
+    for (let index = 1; index < tailStarts.length; index++) {
+      assert(
+        Math.abs(
+          tailStarts[index]!.y - tailStarts[index - 1]!.y - arrivalPitch,
+        ) < 1e-6,
+        "Combed arrival teeth must sit 1.2 units apart along the throat normal",
+      );
+      assert(
+        Math.abs(tailStarts[index]!.x - tailStarts[0]!.x) < 1e-6,
+        "Arrival teeth must share the same axial station before the gate",
+      );
+    }
   },
 );
 
@@ -240,13 +249,6 @@ function pathYAtX(d: string, x: number): number {
     return left.y + (right.y - left.y) * ratio;
   }
   throw new Error(`Path has no sample crossing x=${x}`);
-}
-
-function samePoint(
-  left: { readonly x: number; readonly y: number },
-  right: { readonly x: number; readonly y: number },
-): boolean {
-  return distance(left, right) <= EPSILON;
 }
 
 function dot(

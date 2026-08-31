@@ -569,9 +569,51 @@ function projectGraph(
       }),
       ...projectStructuralGraphEdges(snapshot, context),
       ...analysis.edges,
+      ...projectAnalysisEvidenceGraphEdges(analysis, nodeKeys),
       ...componentStructure.edges,
     ],
   };
+}
+
+/**
+ * Attach each analysis node to the records its assertions stand on.
+ *
+ * An assertion already names its evidence, and `projectAnalysisGraph` already
+ * refuses any assertion whose evidence is not a current artifact. Keeping that
+ * link as edge metadata alone leaves a declared subgraph — a brief's mission,
+ * criteria and checks — floating as an island: the reader sees no path from an
+ * intent to the record it was approved from, and nothing reports the gap.
+ * Projecting the evidence as a relation states what the snapshot already
+ * knows. It asserts nothing new: an evidence that is not a projected node
+ * produces no edge.
+ */
+function projectAnalysisEvidenceGraphEdges(
+  analysis: ThreadGraph,
+  nodeKeys: ReadonlySet<string>,
+): readonly ThreadGraphEdge[] {
+  const edges: ThreadGraphEdge[] = [];
+  const emitted = new Set<string>();
+  for (const edge of analysis.edges) {
+    for (const evidence of edge.analysis?.evidence ?? []) {
+      const from: ThreadGraphRef = { kind: "artifact", id: evidence.id };
+      if (!nodeKeys.has(entityKey(from))) continue;
+      for (const to of [edge.from, edge.to]) {
+        if (!nodeKeys.has(entityKey(to))) continue;
+        const id = `${evidence.id}:evidences:${to.id}`;
+        if (emitted.has(id)) continue;
+        emitted.add(id);
+        edges.push({
+          id,
+          from,
+          to: { ...to },
+          relation: "evidences",
+          rationale: "Recorded evidence of the analysis assertion.",
+          origin: "analysis",
+        });
+      }
+    }
+  }
+  return edges.toSorted((left, right) => left.id.localeCompare(right.id));
 }
 
 /**

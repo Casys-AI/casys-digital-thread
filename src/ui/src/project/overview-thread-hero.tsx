@@ -1,6 +1,10 @@
 import { SECTION_LABEL } from "../ui/cockpit.tsx";
 import { cn } from "../lib/utils.ts";
-import type { CSSProperties, JSX, PointerEvent as ReactPointerEvent } from "react";
+import type {
+  CSSProperties,
+  JSX,
+  PointerEvent as ReactPointerEvent,
+} from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import type { EngineeringPhaseStatus } from "../../../domain/project/engineering-project.ts";
@@ -65,10 +69,10 @@ import {
   fitOverviewThreadWhiteboardTransform,
   normalizeOverviewThreadWhiteboardTransform,
   type OverviewThreadWhiteboardBounds,
+  overviewThreadWhiteboardContentBounds,
   type OverviewThreadWhiteboardTransform,
   panOverviewThreadWhiteboard,
   resetOverviewThreadWhiteboardTransform,
-  unionOverviewThreadWhiteboardRects,
   zoomOverviewThreadWhiteboardAt,
   zoomOverviewThreadWhiteboardByWheel,
 } from "./overview-thread-whiteboard-transform.ts";
@@ -258,11 +262,17 @@ export function OverviewThreadHero({
   const flowLayout = useMemo(
     () =>
       buildOverviewThreadD3FlowLayout(
-        view.nodes.map(({ key, lane, groupKey, label }) => ({
-          key,
-          lane,
-          groupKey,
-          label,
+        view.nodes.map((item) => ({
+          key: item.key,
+          lane: item.lane,
+          groupKey: item.groupKey,
+          label: item.label,
+          ...(item.kind === "recorded" && item.node.recordedAt
+            ? { recordedAt: item.node.recordedAt }
+            : {}),
+          ...(item.kind === "recorded" && item.parentKey
+            ? { parentKey: item.parentKey }
+            : {}),
         })),
         view.edges,
         immersive
@@ -670,7 +680,9 @@ export function OverviewThreadHero({
     setViewers((current) => current.filter((viewer) => viewer.id !== viewerId));
     if (viewer) {
       setFocusedKey(viewer.nodeKey);
-      requestAnimationFrame(() => nodeRefs.current.get(viewer.nodeKey)?.focus());
+      requestAnimationFrame(() =>
+        nodeRefs.current.get(viewer.nodeKey)?.focus()
+      );
     }
   };
   const beginViewerDrag = (
@@ -980,7 +992,9 @@ export function OverviewThreadHero({
     pan.lastClientX = event.clientX;
     pan.lastClientY = event.clientY;
     event.preventDefault();
-    setWhiteboardTransform((current) => panOverviewThreadWhiteboard(current, delta));
+    setWhiteboardTransform((current) =>
+      panOverviewThreadWhiteboard(current, delta)
+    );
   };
   const endCanvasPan = (event: ReactPointerEvent<HTMLDivElement>) => {
     const pan = canvasPanRef.current;
@@ -994,7 +1008,8 @@ export function OverviewThreadHero({
     setFocusedKey(key);
     requestAnimationFrame(() => nodeRefs.current.get(key)?.focus());
   };
-  const [viewBoxX, viewBoxY, viewBoxWidth, viewBoxHeight] = radialLayout.viewBox;
+  const [viewBoxX, viewBoxY, viewBoxWidth, viewBoxHeight] =
+    radialLayout.viewBox;
   const unroutedEdgeCount = layoutMode === "hierarchy"
     ? flowLayout.unroutedEdgeKeys.length
     : radialLayout.unroutedEdgeKeys.length;
@@ -1103,7 +1118,9 @@ export function OverviewThreadHero({
           </button>
           <span
             className="overview-thread-layout-scale"
-            aria-label={`Zoom ${Math.round(whiteboardTransform.k * 100)} percent`}
+            aria-label={`Zoom ${
+              Math.round(whiteboardTransform.k * 100)
+            } percent`}
           >
             {Math.round(whiteboardTransform.k * 100)}%
           </span>
@@ -1153,20 +1170,61 @@ export function OverviewThreadHero({
                   onMoveGroup={(key, position) => {
                     setGroupPlacements((current) => ({
                       ...current,
-                      [key]: position,
+                      [key]: { ...current[key], ...position },
                     }));
                   }}
-                  onMoveNode={(key, delta) => {
-                    setNodePlacements((current) => ({
+                  onResizeGroup={(key, size) => {
+                    setGroupPlacements((current) => ({
+                      ...current,
+                      [key]: { ...current[key], ...size },
+                    }));
+                  }}
+                  onSetGroupView={(key, view) => {
+                    setGroupPlacements((current) => ({
+                      ...current,
+                      [key]: { ...current[key], view },
+                    }));
+                  }}
+                  onCycleGroupSort={(key) => {
+                    setGroupPlacements((current) => {
+                      const order = current[key]?.sort ?? "recorded";
+                      const next = order === "recorded"
+                        ? "recent"
+                        : order === "recent"
+                        ? "name"
+                        : "recorded";
+                      return {
+                        ...current,
+                        [key]: { ...current[key], sort: next },
+                      };
+                    });
+                  }}
+                  onScrollGroup={(key, rows) => {
+                    setGroupPlacements((current) => ({
                       ...current,
                       [key]: {
-                        offsetX: (current[key]?.offsetX ?? 0) + delta.x,
-                        offsetY: (current[key]?.offsetY ?? 0) + delta.y,
+                        ...current[key],
+                        scrollRow: Math.max(
+                          0,
+                          (current[key]?.scrollRow ?? 0) + rows,
+                        ),
                       },
                     }));
                   }}
+                  onToggleGroupFold={(key) => {
+                    setGroupPlacements((current) => ({
+                      ...current,
+                      [key]: {
+                        ...current[key],
+                        collapsed: !current[key]?.collapsed,
+                      },
+                    }));
+                  }}
+                  boardScale={whiteboardTransform.k}
                   onMove={(key, direction) => {
-                    const current = flowLayout.nodes.find((node) => node.key === key);
+                    const current = flowLayout.nodes.find((node) =>
+                      node.key === key
+                    );
                     if (!current) return;
                     const next = directionalOverviewFlowNode(
                       flowLayout.nodes,
@@ -1196,8 +1254,9 @@ export function OverviewThreadHero({
                     </title>
                     <desc id={OVERVIEW_GRAPH_DESCRIPTION_ID}>
                       A static D3 hierarchical edge-bundling view of recorded
-                      requirements, system model, geometry, physics and verdicts. Use
-                      the arrow keys to move between records, then Enter to inspect one.
+                      requirements, system model, geometry, physics and
+                      verdicts. Use the arrow keys to move between records, then
+                      Enter to inspect one.
                     </desc>
                     <g aria-hidden="true" className="overview-thread-lane-arcs">
                       {radialLayout.lanes.map((lane) => (
@@ -1408,7 +1467,8 @@ export function OverviewThreadHero({
         </div>
         {unroutedEdgeCount > 0 && (
           <p className="m-0 border-t border-border px-4 py-2 text-xs text-warning">
-            {unroutedEdgeCount} graph connections unavailable in this projection.
+            {unroutedEdgeCount}{" "}
+            graph connections unavailable in this projection.
           </p>
         )}
       </div>
@@ -1453,7 +1513,9 @@ function overviewViewerToPresentation(
     geometry: overviewViewerGeometry(viewer),
     z: viewer.z,
     expanded: viewer.restoreGeometry !== undefined,
-    ...(viewer.restoreGeometry ? { restoreGeometry: viewer.restoreGeometry } : {}),
+    ...(viewer.restoreGeometry
+      ? { restoreGeometry: viewer.restoreGeometry }
+      : {}),
   };
   return viewer.kind === "cad"
     ? { ...spatial, kind: "cad", assetId: viewer.assetId }
@@ -1528,16 +1590,18 @@ function readOverviewWhiteboardBounds(
     viewportWidth <= 0 || viewportHeight <= 0 || worldWidth <= 0 ||
     worldHeight <= 0
   ) return undefined;
-  const content = unionOverviewThreadWhiteboardRects([
-    { x: 0, y: 0, width: worldWidth, height: worldHeight },
-    ...overviewThreadFlowSceneRects(flowLayout, {
-      width: worldWidth,
-      height: worldHeight,
-    }),
-    ...viewers.map((viewer) =>
-      viewer.restoreGeometry ?? overviewViewerGeometry(viewer)
-    ),
-  ]);
+  const content = overviewThreadWhiteboardContentBounds(
+    { width: worldWidth, height: worldHeight },
+    [
+      ...overviewThreadFlowSceneRects(flowLayout, {
+        width: worldWidth,
+        height: worldHeight,
+      }),
+      ...viewers.map((viewer) =>
+        viewer.restoreGeometry ?? overviewViewerGeometry(viewer)
+      ),
+    ],
+  );
   if (!content) return undefined;
   return {
     viewport: { width: viewportWidth, height: viewportHeight },
@@ -1637,17 +1701,23 @@ function overviewViewerAnchorPoint(
   world: { readonly width: number; readonly height: number },
 ): { readonly x: number; readonly y: number } | undefined {
   if (layoutMode === "hierarchy") {
-    const node = flowLayout.nodes.find((candidate) => candidate.key === nodeKey);
+    const node = flowLayout.nodes.find((candidate) =>
+      candidate.key === nodeKey
+    );
     if (!node) return undefined;
-    const [viewBoxX, viewBoxY, viewBoxWidth, viewBoxHeight] = flowLayout.viewBox;
+    const [viewBoxX, viewBoxY, viewBoxWidth, viewBoxHeight] =
+      flowLayout.viewBox;
     return {
       x: (node.centerX - viewBoxX) / viewBoxWidth * world.width,
       y: (node.centerY - viewBoxY) / viewBoxHeight * world.height,
     };
   }
-  const node = radialLayout.nodes.find((candidate) => candidate.key === nodeKey);
+  const node = radialLayout.nodes.find((candidate) =>
+    candidate.key === nodeKey
+  );
   if (!node) return undefined;
-  const [viewBoxX, viewBoxY, viewBoxWidth, viewBoxHeight] = radialLayout.viewBox;
+  const [viewBoxX, viewBoxY, viewBoxWidth, viewBoxHeight] =
+    radialLayout.viewBox;
   return {
     x: (node.anchorX - viewBoxX) / viewBoxWidth * world.width,
     y: (node.anchorY - viewBoxY) / viewBoxHeight * world.height,
@@ -1672,7 +1742,7 @@ function overviewCableWidth(pathCount: number): number {
 }
 
 function overviewEdgeState(
-  edge: OverviewHeroEdge,
+  edge: Pick<OverviewHeroEdge, "fromKey" | "toKey" | "emphasis">,
   activeKey: string | undefined,
 ): "default" | "emphasis" | "incoming" | "outgoing" | "muted" {
   if (!activeKey) return edge.emphasis ? "emphasis" : "default";
@@ -1744,7 +1814,9 @@ function directionalOverviewFlowNode(
   direction: OverviewThreadD3FlowMoveDirection,
 ): OverviewFlowNode | undefined {
   const horizontal = direction === "ArrowLeft" || direction === "ArrowRight";
-  const axisDirection = direction === "ArrowLeft" || direction === "ArrowUp" ? -1 : 1;
+  const axisDirection = direction === "ArrowLeft" || direction === "ArrowUp"
+    ? -1
+    : 1;
   const candidates = nodes.flatMap((candidate) => {
     if (candidate.key === current.key) return [];
     const primary = (horizontal
@@ -2302,7 +2374,9 @@ function OverviewFloatingViewer({
           <button
             type="button"
             onClick={onToggleExpanded}
-            aria-label={`${viewer.restoreGeometry ? "Restore" : "Expand"} ${title}`}
+            aria-label={`${
+              viewer.restoreGeometry ? "Restore" : "Expand"
+            } ${title}`}
           >
             {viewer.restoreGeometry ? "Restore" : "Expand"}
           </button>

@@ -4,12 +4,23 @@ import type {
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
 } from "react";
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { curveBumpX, line } from "d3-shape";
 import type { EngineeringPhaseStatus } from "../../../domain/project/engineering-project.ts";
 import type { EngineeringPathLaneId } from "../../../domain/project/engineering-path-lane.ts";
-import type { OverviewHeroNode } from "./overview-thread-hero-model.ts";
+import {
+  overviewGroupCaption,
+  type OverviewHeroNode,
+} from "./overview-thread-hero-model.ts";
 import { overviewThreadD3CableCatmullRomPath } from "./overview-thread-d3-cable-field.ts";
+import type { OverviewThreadD3FlowHullView } from "./overview-thread-d3-flow-layout.ts";
 import {
   type OverviewThreadD3FlowCurve,
   type OverviewThreadD3FlowGroupLayout,
@@ -19,6 +30,18 @@ import {
   overviewThreadD3FlowRoundedPath,
   type OverviewThreadD3FlowSegmentLayout,
 } from "./overview-thread-d3-flow-layout.ts";
+import { OverviewThreadInstrument as InstrumentCard } from "./overview-thread-instrument.tsx";
+import {
+  type OverviewThreadInstrument,
+  overviewThreadInstrumentPresentation,
+} from "./overview-thread-instrument-model.ts";
+import {
+  overviewThreadHullControlsVisible,
+  overviewThreadHullLabel,
+  overviewThreadHullLabelBudget,
+  overviewThreadHullNameParts,
+} from "./overview-thread-hull-model.ts";
+import { overviewThreadInstrumentTime } from "./overview-thread-instrument-model.ts";
 import {
   overviewThreadGroupContextValue,
   overviewThreadNodeContextValue,
@@ -57,11 +80,32 @@ export interface OverviewThreadD3FlowProps {
     key: string,
     delta: { readonly x: number; readonly y: number },
   ) => void;
+  /** Resize one hull. The matrix re-flows; no leaf is ever dropped. */
+  readonly onResizeGroup?: (
+    key: string,
+    size: { readonly width: number; readonly height: number },
+  ) => void;
+  /** Fold or unfold one hull down to its band. */
+  readonly onToggleGroupFold?: (key: string) => void;
+  /** Choose how one hull presents its contents. */
+  readonly onSetGroupView?: (
+    key: string,
+    view: OverviewThreadD3FlowHullView,
+  ) => void;
+  /** Cycle the hull's reading order. */
+  readonly onCycleGroupSort?: (key: string) => void;
+  /** Scroll a listed hull's window, in rows. */
+  readonly onScrollGroup?: (key: string, rows: number) => void;
   readonly onMove: (
     key: string,
     direction: OverviewThreadD3FlowMoveDirection,
   ) => void;
   readonly refNode: (key: string, node: HTMLButtonElement | null) => void;
+  /** Instruments currently open on the board, anchored to their node. */
+  readonly instruments?: readonly OverviewThreadInstrument[];
+  /** Live board scale: an instrument reads as a chip when zoomed out. */
+  readonly boardScale?: number;
+  readonly onOpenInstrument?: (key: string) => void;
 }
 
 interface OverviewFlowDragState {
@@ -85,12 +129,27 @@ interface OverviewFlowDragState {
   moved: boolean;
 }
 
+interface OverviewFlowResizeState {
+  readonly key: string;
+  readonly pointerId: number;
+  readonly startClientX: number;
+  readonly startClientY: number;
+  readonly originWidth: number;
+  readonly originHeight: number;
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
+}
+
 interface OverviewFlowDragTarget {
   readonly kind: OverviewFlowDragState["kind"];
   readonly key: string;
 }
 
 const FLOW_DRAG_THRESHOLD_PX = 4;
+const FLOW_HULL_MINIMUM_WIDTH = 24;
+/** Drawn hull bleeds this far past the layout box on every side. */
+const FLOW_HULL_MARGIN = 7;
+const FLOW_HULL_MINIMUM_HEIGHT = 28;
 const FLOW_KEYBOARD_MOVE_STEP = 12;
 const FLOW_PRACTICAL_WORLD_LIMIT = 10_000_000;
 // A strong critically damped response reads as a cable under tension: it
@@ -139,7 +198,8 @@ export interface OverviewFlowMotionTarget {
   readonly pinEndpoints: boolean;
 }
 
-export interface OverviewFlowMotionPointSnapshot extends OverviewThreadD3FlowPoint {
+export interface OverviewFlowMotionPointSnapshot
+  extends OverviewThreadD3FlowPoint {
   readonly vx: number;
   readonly vy: number;
 }
@@ -288,7 +348,9 @@ export class OverviewFlowMotionScene {
     if (deltaSeconds <= 0) return;
 
     for (const [id, entry] of this.#entries) {
-      const omega = entry.pinEndpoints ? FLOW_DRAG_MOTION_OMEGA : FLOW_MOTION_OMEGA;
+      const omega = entry.pinEndpoints
+        ? FLOW_DRAG_MOTION_OMEGA
+        : FLOW_MOTION_OMEGA;
       for (const [index, point] of entry.points.entries()) {
         const target = entry.targetPoints[index];
         if (!target) continue;
@@ -476,7 +538,9 @@ export class OverviewFlowMotionScene {
 export function overviewFlowMotionPath(
   points: readonly OverviewThreadD3FlowPoint[],
   kind: string,
-  curve: OverviewThreadD3FlowCurve = kind === "node-branch" ? "bump" : "rounded",
+  curve: OverviewThreadD3FlowCurve = kind === "node-branch"
+    ? "bump"
+    : "rounded",
 ): string {
   if (points.length === 0) return "";
   if (points.length === 1) return `M ${points[0]!.x} ${points[0]!.y}`;
@@ -709,18 +773,32 @@ export function OverviewThreadD3Flow({
   onToggle,
   onMoveGroup,
   onMoveNode,
+  onResizeGroup,
+  onToggleGroupFold,
+  onSetGroupView,
+  onCycleGroupSort,
+  onScrollGroup,
   onMove,
   refNode,
+  instruments = [],
+  boardScale = 1,
+  onOpenInstrument,
 }: OverviewThreadD3FlowProps): JSX.Element {
   const titleId = useId();
   const descriptionId = useId();
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<OverviewFlowDragState>();
+  const resizeRef = useRef<OverviewFlowResizeState>();
   const dragFrameRef = useRef<number>();
   const suppressedClicksRef = useRef(new Set<string>());
   const [dragging, setDragging] = useState<OverviewFlowDragTarget>();
   const reducedMotion = usePrefersReducedMotion();
   const [viewBoxX, viewBoxY, viewBoxWidth, viewBoxHeight] = layout.viewBox;
+  // Folder controls are noise at a distance: past this scale they retract and
+  // the hull is read by its band alone.
+  const controlsVisible = overviewThreadHullControlsVisible(boardScale);
+  /** A band narrower than this has room for its name or its controls, not both. */
+  const bandFitsControls = (width: number) => width >= 120;
   const relatedKeys = useMemo(
     () => flowRelatedNodeKeys(layout, activeKey),
     [activeKey, layout],
@@ -770,6 +848,59 @@ export function OverviewThreadD3Flow({
     drag.appliedX = nextX;
     drag.appliedY = nextY;
   };
+  const beginResize = (
+    key: string,
+    event: ReactPointerEvent<Element>,
+  ) => {
+    if (event.button !== 0 || !event.isPrimary || !onResizeGroup) return;
+    const canvasBounds = canvasRef.current?.getBoundingClientRect();
+    if (!canvasBounds || canvasBounds.width <= 0) return;
+    const group = layout.groups.find((candidate) => candidate.key === key);
+    if (!group) return;
+    event.stopPropagation();
+    resizeRef.current = {
+      key,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      originWidth: group.width,
+      originHeight: group.height,
+      canvasWidth: canvasBounds.width,
+      canvasHeight: canvasBounds.height,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const moveResize = (event: ReactPointerEvent<Element>) => {
+    const resize = resizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId || !onResizeGroup) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    onResizeGroup(resize.key, {
+      width: Math.max(
+        FLOW_HULL_MINIMUM_WIDTH,
+        resize.originWidth +
+          (event.clientX - resize.startClientX) * viewBoxWidth /
+            resize.canvasWidth,
+      ),
+      height: Math.max(
+        FLOW_HULL_MINIMUM_HEIGHT,
+        resize.originHeight +
+          (event.clientY - resize.startClientY) * viewBoxHeight /
+            resize.canvasHeight,
+      ),
+    });
+  };
+
+  const endResize = (event: ReactPointerEvent<Element>) => {
+    const resize = resizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    resizeRef.current = undefined;
+    event.stopPropagation();
+  };
+
   const beginDrag = (
     kind: OverviewFlowDragState["kind"],
     key: string,
@@ -783,7 +914,9 @@ export function OverviewThreadD3Flow({
       !canvasBounds || canvasBounds.width <= 0 || canvasBounds.height <= 0
     ) return;
     const group = layout.groups.find((candidate) =>
-      kind === "group" ? candidate.key === key : candidate.nodeKeys.includes(key)
+      kind === "group"
+        ? candidate.key === key
+        : candidate.nodeKeys.includes(key)
     );
     if (!group) return;
     const node = kind === "node"
@@ -915,10 +1048,10 @@ export function OverviewThreadD3Flow({
       </h3>
       <p id={descriptionId} className="overview-thread-flow-sr-only">
         A left-to-right hierarchy from requirements to verdicts. Shared D3 cable
-        segments merge related records and reroute while groups or records move. Group
-        labels are drag handles and can be moved with the arrow keys. Records can be
-        dragged within their group. Use the arrow keys on a record to navigate, then
-        Enter or Space to inspect it.
+        segments merge related records and reroute while groups or records move.
+        Group labels are drag handles and can be moved with the arrow keys.
+        Records can be dragged within their group. Use the arrow keys on a
+        record to navigate, then Enter or Space to inspect it.
       </p>
 
       <div
@@ -1041,18 +1174,19 @@ export function OverviewThreadD3Flow({
                 asChild
               >
                 <rect
-                  x={group.x - 7}
-                  y={group.y - 7}
-                  width={group.width + 14}
-                  height={group.height + 14}
-                  rx="10"
+                  x={group.x - FLOW_HULL_MARGIN}
+                  y={group.y - FLOW_HULL_MARGIN}
+                  width={group.width + FLOW_HULL_MARGIN * 2}
+                  height={group.height + FLOW_HULL_MARGIN * 2}
+                  rx="12"
                   data-lane={group.lane}
                   data-draggable={onMoveGroup ? "true" : "false"}
                   data-overview-context-target={overviewThreadGroupContextValue(
                     group.key,
                   )}
                   vectorEffect="non-scaling-stroke"
-                  onPointerDown={(event) => beginDrag("group", group.key, event)}
+                  onPointerDown={(event) =>
+                    beginDrag("group", group.key, event)}
                   onPointerMove={moveDrag}
                   onPointerUp={endDrag}
                   onPointerCancel={(event) => endDrag(event, false)}
@@ -1072,70 +1206,283 @@ export function OverviewThreadD3Flow({
 
         <div className="overview-thread-flow-group-labels">
           {layout.groups.map((group) => (
-            <DropdownMenuContextTrigger
+            <div
               key={group.key}
-              value={overviewThreadGroupContextValue(group.key)}
-              asChild
+              className="overview-thread-flow-group-band"
+              data-lane={group.lane}
+              onWheel={onScrollGroup &&
+                  (group.view === "list" || group.view === "tree") &&
+                  !group.collapsed
+                ? (event) => {
+                  if (group.rowCount <= group.visibleRows * group.columns) {
+                    return;
+                  }
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onScrollGroup(group.key, event.deltaY > 0 ? 1 : -1);
+                }
+                : undefined}
+              data-collapsed={group.collapsed ? "true" : "false"}
+              style={{
+                "--flow-x": flowXPercent(
+                  group.x + group.width / 2,
+                  layout.viewBox,
+                ),
+                "--flow-y": flowYPercent(
+                  group.y - FLOW_HULL_MARGIN +
+                    (group.headerHeight + FLOW_HULL_MARGIN) / 2,
+                  layout.viewBox,
+                ),
+                "--hull-width": flowWidthPercent(
+                  group.width + FLOW_HULL_MARGIN * 2,
+                  layout.viewBox,
+                ),
+                "--hull-header": flowHeightPercent(
+                  group.headerHeight + FLOW_HULL_MARGIN,
+                  layout.viewBox,
+                ),
+                "--flow-color": laneColorById.get(group.lane) ??
+                  "currentColor",
+              } as CSSProperties}
             >
-              <button
-                type="button"
-                className="overview-thread-flow-group-label"
-                data-lane={group.lane}
-                data-draggable={onMoveGroup ? "true" : "false"}
-                data-overview-context-target={overviewThreadGroupContextValue(
-                  group.key,
-                )}
-                disabled={!onMoveGroup}
-                aria-label={`Move ${
-                  flowGroupCaption(group)
-                } group. Drag, use the arrow keys, or open its context menu.`}
-                aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+F10"
-                title={`Drag ${flowGroupCaption(group)} group or open its context menu`}
+              <DropdownMenuContextTrigger
+                value={overviewThreadGroupContextValue(group.key)}
+                asChild
+              >
+                <button
+                  type="button"
+                  className="overview-thread-flow-group-label"
+                  data-lane={group.lane}
+                  data-draggable={onMoveGroup ? "true" : "false"}
+                  data-overview-context-target={overviewThreadGroupContextValue(
+                    group.key,
+                  )}
+                  disabled={!onMoveGroup}
+                  aria-label={`Move ${
+                    flowGroupCaption(group)
+                  } group. Drag, use the arrow keys, or open its context menu.`}
+                  aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+F10"
+                  title={group.title ?? flowGroupCaption(group)}
+                  onPointerDown={(event) =>
+                    beginDrag("group", group.key, event)}
+                  onPointerMove={moveDrag}
+                  onPointerUp={endDrag}
+                  onPointerCancel={(event) => endDrag(event, false)}
+                  onLostPointerCapture={(event) => endDrag(event, false)}
+                  onKeyDown={(event) => {
+                    if (!onMoveGroup || !isFlowMoveDirection(event.key)) return;
+                    event.preventDefault();
+                    const delta = flowKeyboardMoveDelta(event.key);
+                    onMoveGroup(group.key, {
+                      x: clampNumber(
+                        group.x + delta.x,
+                        -FLOW_PRACTICAL_WORLD_LIMIT,
+                        FLOW_PRACTICAL_WORLD_LIMIT,
+                      ),
+                      y: clampNumber(
+                        group.y + delta.y,
+                        -FLOW_PRACTICAL_WORLD_LIMIT,
+                        FLOW_PRACTICAL_WORLD_LIMIT,
+                      ),
+                    });
+                  }}
+                >
+                  <span className="overview-thread-flow-group-name">
+                    {overviewThreadHullLabel(
+                      group.title ?? flowGroupCaption(group),
+                      overviewThreadHullLabelBudget(group.width),
+                    )}
+                  </span>
+                  {bandFitsControls(group.width) && (
+                    <span
+                      className="overview-thread-flow-group-scope"
+                      aria-hidden="true"
+                    >
+                      {group.lane}
+                    </span>
+                  )}
+                </button>
+              </DropdownMenuContextTrigger>
+              {controlsVisible && bandFitsControls(group.width) &&
+                !group.collapsed && onSetGroupView && (
+                <>
+                  <button
+                    type="button"
+                    className="overview-thread-flow-group-control"
+                    data-active={group.view === "list" ? "true" : "false"}
+                    aria-pressed={group.view === "list"}
+                    aria-label={`List ${flowGroupCaption(group)}`}
+                    title="Liste — colonnes selon la largeur"
+                    onClick={() => onSetGroupView(group.key, "list")}
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
+                    ≣
+                  </button>
+                  <button
+                    type="button"
+                    className="overview-thread-flow-group-control"
+                    data-active={group.view === "tree" ? "true" : "false"}
+                    aria-pressed={group.view === "tree"}
+                    aria-label={`Tree ${flowGroupCaption(group)}`}
+                    title="Arbre — une colonne, largeur fixe"
+                    onClick={() => onSetGroupView(group.key, "tree")}
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
+                    ⇥
+                  </button>
+                  <button
+                    type="button"
+                    className="overview-thread-flow-group-control"
+                    data-active={group.view === "graph" ? "true" : "false"}
+                    aria-pressed={group.view === "graph"}
+                    aria-label={`Graph ${flowGroupCaption(group)}`}
+                    title="Graphe — la topologie du hull"
+                    onClick={() => onSetGroupView(group.key, "graph")}
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
+                    ◇
+                  </button>
+                  <button
+                    type="button"
+                    className="overview-thread-flow-group-control"
+                    data-active={group.view === "matrix" ? "true" : "false"}
+                    aria-pressed={group.view === "matrix"}
+                    aria-label={`Compact ${flowGroupCaption(group)}`}
+                    title="Matrice de points"
+                    onClick={() => onSetGroupView(group.key, "matrix")}
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
+                    ⠿
+                  </button>
+                </>
+              )}
+              {controlsVisible && bandFitsControls(group.width) &&
+                !group.collapsed && onCycleGroupSort && (
+                <button
+                  type="button"
+                  className="overview-thread-flow-group-control"
+                  aria-label={`Reading order of ${flowGroupCaption(group)}`}
+                  title="Ordre de lecture — enregistré / récent / nom"
+                  onClick={() => onCycleGroupSort(group.key)}
+                  onPointerDown={(event) => event.stopPropagation()}
+                >
+                  ↓t
+                </button>
+              )}
+              {onToggleGroupFold && (controlsVisible || group.collapsed) && (
+                <button
+                  type="button"
+                  className="overview-thread-flow-group-fold"
+                  aria-label={`${group.collapsed ? "Unfold" : "Fold"} ${
+                    flowGroupCaption(group)
+                  } hull`}
+                  aria-expanded={!group.collapsed}
+                  title={group.collapsed ? "Déplier" : "Plier"}
+                  onClick={() => onToggleGroupFold(group.key)}
+                  onPointerDown={(event) => event.stopPropagation()}
+                >
+                  {group.collapsed ? "▸" : "▾"}
+                </button>
+              )}
+            </div>
+          ))}
+          {layout.groups.filter((group) =>
+            (group.view === "list" || group.view === "tree") &&
+            !group.collapsed
+          ).map((group) => (
+            <div
+              key={`foot:${group.key}`}
+              className="overview-thread-flow-group-foot"
+              data-lane={group.lane}
+              style={{
+                "--flow-x": flowXPercent(
+                  group.x + group.width / 2,
+                  layout.viewBox,
+                ),
+                "--flow-y": flowYPercent(
+                  group.y + group.height - group.footerHeight / 2,
+                  layout.viewBox,
+                ),
+                "--hull-width": flowWidthPercent(
+                  group.width + FLOW_HULL_MARGIN * 2,
+                  layout.viewBox,
+                ),
+                "--flow-color": laneColorById.get(group.lane) ??
+                  "currentColor",
+              } as CSSProperties}
+            >
+              {Math.min(group.visibleRows * group.columns, group.rowCount)}
+              {" / "}
+              {group.rowCount}
+              {group.rowCount > group.visibleRows * group.columns &&
+                " — molette dans le hull"}
+            </div>
+          ))}
+          {layout.groups.filter((group) => !group.collapsed).map((group) => {
+            const live = group.nodeKeys.filter((key) => {
+              const item = nodesByKey.get(key);
+              return item?.kind === "recorded" &&
+                item.node.freshness === "running";
+            }).length;
+            const failed = group.nodeKeys.some((key) => {
+              const item = nodesByKey.get(key);
+              return item?.kind === "recorded" &&
+                item.node.freshness === "failed";
+            });
+            return (
+              <span
+                key={`monitor:${group.key}`}
+                className="overview-thread-flow-group-monitor"
+                data-alert={failed ? "true" : "false"}
                 style={{
                   "--flow-x": flowXPercent(
-                    group.x + group.width / 2,
+                    group.x + group.width,
                     layout.viewBox,
                   ),
-                  "--flow-y": flowYPercent(
-                    group.y - 10,
-                    layout.viewBox,
-                  ),
+                  "--flow-y": flowYPercent(group.y, layout.viewBox),
                   "--flow-color": laneColorById.get(group.lane) ??
                     "currentColor",
                 } as CSSProperties}
-                onPointerDown={(event) => beginDrag("group", group.key, event)}
-                onPointerMove={moveDrag}
-                onPointerUp={endDrag}
-                onPointerCancel={(event) => endDrag(event, false)}
-                onLostPointerCapture={(event) => endDrag(event, false)}
-                onKeyDown={(event) => {
-                  if (!onMoveGroup || !isFlowMoveDirection(event.key)) return;
-                  event.preventDefault();
-                  const delta = flowKeyboardMoveDelta(event.key);
-                  onMoveGroup(group.key, {
-                    x: clampNumber(
-                      group.x + delta.x,
-                      -FLOW_PRACTICAL_WORLD_LIMIT,
-                      FLOW_PRACTICAL_WORLD_LIMIT,
-                    ),
-                    y: clampNumber(
-                      group.y + delta.y,
-                      -FLOW_PRACTICAL_WORLD_LIMIT,
-                      FLOW_PRACTICAL_WORLD_LIMIT,
-                    ),
-                  });
-                }}
               >
-                {flowGroupCaption(group)}
-              </button>
-            </DropdownMenuContextTrigger>
-          ))}
+                <i aria-hidden="true" />
+                {group.rowCount}
+                {live > 0 && ` · ${live} live`}
+                {failed && " · ⚠"}
+              </span>
+            );
+          })}
+          {onResizeGroup && controlsVisible &&
+            layout.groups.filter((group) => !group.collapsed).map((group) => (
+              <button
+                key={`resize:${group.key}`}
+                type="button"
+                className="overview-thread-flow-group-resize"
+                data-axis={group.view === "tree" ? "height" : "both"}
+                aria-label={`Resize ${flowGroupCaption(group)} hull`}
+                tabIndex={-1}
+                style={{
+                  "--flow-x": flowXPercent(
+                    group.x + group.width,
+                    layout.viewBox,
+                  ),
+                  "--flow-y": flowYPercent(
+                    group.y + group.height,
+                    layout.viewBox,
+                  ),
+                } as CSSProperties}
+                onPointerDown={(event) => beginResize(group.key, event)}
+                onPointerMove={moveResize}
+                onPointerUp={endResize}
+                onPointerCancel={endResize}
+                onLostPointerCapture={endResize}
+              />
+            ))}
         </div>
 
         <div className="overview-thread-flow-nodes">
           {layout.nodes.map((position) => {
             const item = nodesByKey.get(position.key);
-            if (!item) return null;
+            if (!item || position.folded) return null;
             return (
               <FlowNode
                 key={position.key}
@@ -1150,7 +1497,8 @@ export function OverviewThreadD3Flow({
                 tabIndex={position.key === focusedKey ? 0 : -1}
                 draggable={Boolean(onMoveNode)}
                 refNode={(node) => refNode(position.key, node)}
-                onHover={(hovered) => onHover(hovered ? position.key : undefined)}
+                onHover={(hovered) =>
+                  onHover(hovered ? position.key : undefined)}
                 onFocus={() => onFocus(position.key)}
                 onToggle={(event) =>
                   event
@@ -1165,9 +1513,115 @@ export function OverviewThreadD3Flow({
             );
           })}
         </div>
+        {instruments.length > 0 && (
+          <div className="overview-thread-flow-instruments">
+            {instruments.map((instrument) => {
+              const position = layout.nodes.find((node) =>
+                node.key === instrument.nodeKey
+              );
+              if (!position) return null;
+              return (
+                <InstrumentCard
+                  key={instrument.key}
+                  instrument={instrument}
+                  presentation={overviewThreadInstrumentPresentation(
+                    boardScale,
+                  )}
+                  x={flowXPercent(position.centerX, layout.viewBox)}
+                  y={flowYPercent(position.centerY, layout.viewBox)}
+                  color={laneColorById.get(position.lane) ?? "currentColor"}
+                  onOpen={onOpenInstrument
+                    ? () => onOpenInstrument(instrument.nodeKey)
+                    : undefined}
+                />
+              );
+            })}
+          </div>
+        )}
       </div>
     </section>
   );
+}
+
+/**
+ * The contents of one listed row: status, name, and the one figure that dates
+ * it. The name's distinguishing tail is lifted out of the ellipsis so a long
+ * title loses its middle rather than the part that tells it from its siblings.
+ */
+/** One node of a hull shown as a graph: a dot and a short name, nothing else. */
+function FlowPillBody(
+  { item }: { readonly item: OverviewHeroNode },
+): JSX.Element {
+  const label = item.kind === "activity"
+    ? item.activity.title
+    : item.node.label;
+  return (
+    <>
+      <span className="overview-thread-flow-row-dot" aria-hidden="true" />
+      <span className="overview-thread-flow-pill-name" title={label}>
+        {overviewThreadHullLabel(label, 14)}
+      </span>
+    </>
+  );
+}
+
+function FlowRowBody(
+  { item, depth, childCount }: {
+    readonly item: OverviewHeroNode;
+    readonly depth: number;
+    readonly childCount: number;
+  },
+): JSX.Element {
+  const label = item.kind === "activity"
+    ? item.activity.title
+    : item.node.label;
+  const { head, tail } = overviewThreadHullNameParts(label);
+  const meta = flowRowMeta(item);
+  return (
+    <>
+      {Array.from({ length: depth }, (_, level) => (
+        <span
+          key={`indent:${level}`}
+          className="overview-thread-flow-row-indent"
+          aria-hidden="true"
+        />
+      ))}
+      {childCount > 0 && (
+        <span className="overview-thread-flow-row-twist" aria-hidden="true">
+          ▾
+        </span>
+      )}
+      <span className="overview-thread-flow-row-dot" aria-hidden="true" />
+      <span className="overview-thread-flow-row-name" title={label}>
+        <span className="overview-thread-flow-row-head">{head}</span>
+        {tail && <span className="overview-thread-flow-row-tail">{tail}</span>}
+      </span>
+      {childCount > 0 && (
+        <span className="overview-thread-flow-row-children">{childCount}</span>
+      )}
+      {childCount === 0 && meta && (
+        <span
+          className="overview-thread-flow-row-meta"
+          data-live={item.kind === "recorded" &&
+              item.node.freshness === "running"
+            ? "true"
+            : "false"}
+        >
+          {meta}
+        </span>
+      )}
+    </>
+  );
+}
+
+/** The single figure a row carries: what it is doing, or when it settled. */
+function flowRowMeta(item: OverviewHeroNode): string {
+  if (item.kind === "activity") return flowStatusCaption(item.activity.status);
+  if (item.node.freshness === "running") return "RUNNING";
+  if (item.node.freshness === "failed") return "échec";
+  const at = overviewThreadInstrumentTime(item.node.recordedAt);
+  if (!at) return item.node.freshness === "stale" ? "périmé" : "";
+  return item.node.freshness === "stale" ? `${at} périmé` : `${at} ✓`;
 }
 
 function FlowNode({
@@ -1226,16 +1680,26 @@ function FlowNode({
         aria-expanded={selected}
         className="overview-thread-flow-node"
         data-kind={item.kind}
-        data-status={item.kind === "activity" ? item.activity.status : undefined}
+        data-status={item.kind === "activity"
+          ? item.activity.status
+          : undefined}
         data-lane={position.lane}
         data-state={selected ? "selected" : related ? "related" : "muted"}
         data-focused={focused ? "true" : "false"}
         data-draggable={draggable ? "true" : "false"}
-        data-emphasis={item.kind === "recorded" && item.emphasis ? "true" : "false"}
+        data-emphasis={item.kind === "recorded" && item.emphasis
+          ? "true"
+          : "false"}
         data-overview-context-target={overviewThreadNodeContextValue(item.key)}
+        data-listed={position.listed ? "true" : "false"}
+        data-shape={position.shape}
         style={{
-          "--flow-x": flowXPercent(position.centerX, viewBox),
+          "--flow-x": position.listed
+            ? flowXPercent(position.x, viewBox)
+            : flowXPercent(position.centerX, viewBox),
           "--flow-y": flowYPercent(position.centerY, viewBox),
+          "--row-width": flowWidthPercent(position.width, viewBox),
+          "--row-height": flowHeightPercent(position.height, viewBox),
           "--flow-color": color,
         } as CSSProperties}
         onClick={onToggle}
@@ -1260,11 +1724,48 @@ function FlowNode({
           }
         }}
       >
-        <span className="overview-thread-flow-node-dot" aria-hidden="true" />
-        <span className="overview-thread-flow-node-tooltip" aria-hidden="true">
-          <strong>{item.label}</strong>
-          <span>{flowNodeDescription(item)}</span>
-        </span>
+        {position.shape === "pill"
+          ? <FlowPillBody item={item} />
+          : position.listed
+          ? (
+            <FlowRowBody
+              item={item}
+              depth={position.depth}
+              childCount={position.childCount}
+            />
+          )
+          : (
+            <span
+              className="overview-thread-flow-node-dot"
+              aria-hidden="true"
+            />
+          )}
+        {item.kind === "activity"
+          ? (
+            <span
+              className="overview-thread-flow-activity-label"
+              data-status={item.activity.status}
+              aria-hidden="true"
+            >
+              <strong>{item.activity.title}</strong>
+              <span className="overview-thread-flow-activity-status">
+                <span
+                  className="overview-thread-flow-activity-status-mark"
+                  aria-hidden="true"
+                />
+                {flowStatusCaption(item.activity.status)}
+              </span>
+            </span>
+          )
+          : (
+            <span
+              className="overview-thread-flow-node-tooltip"
+              aria-hidden="true"
+            >
+              <strong>{item.label}</strong>
+              <span>{flowNodeDescription(item)}</span>
+            </span>
+          )}
       </button>
     </DropdownMenuContextTrigger>
   );
@@ -1405,9 +1906,10 @@ function FlowSegmentLayer({
     sceneRef.current.reconcile(
       presentations.map(({ segment, connectedToDrag }) => {
         const points = canonicalOverviewFlowMotionPoints(segment, layout);
-        const declaredTopology = (segment as OverviewThreadD3FlowSegmentLayout & {
-          readonly topologySignature?: string;
-        }).topologySignature;
+        const declaredTopology =
+          (segment as OverviewThreadD3FlowSegmentLayout & {
+            readonly topologySignature?: string;
+          }).topologySignature;
         return {
           key: segment.key,
           kind: segment.kind,
@@ -1566,6 +2068,20 @@ function flowXPercent(
   return `${((x - viewBox[0]) / viewBox[2]) * 100}%`;
 }
 
+function flowWidthPercent(
+  width: number,
+  viewBox: readonly [number, number, number, number],
+): string {
+  return `${(width / viewBox[2]) * 100}%`;
+}
+
+function flowHeightPercent(
+  height: number,
+  viewBox: readonly [number, number, number, number],
+): string {
+  return `${(height / viewBox[3]) * 100}%`;
+}
+
 function flowYPercent(
   y: number,
   viewBox: readonly [number, number, number, number],
@@ -1576,28 +2092,19 @@ function flowYPercent(
 export function flowGroupCaption(
   group: OverviewThreadD3FlowGroupLayout,
 ): string {
-  const normalized = group.groupKey.trim();
-  if (
-    !normalized || normalized === "__ungrouped__" || normalized === "unassigned"
-  ) {
-    return "Recorded items";
-  }
-  if (normalized === "project-activity") return "Project activity";
-  if (normalized.toLowerCase() === "syson") return "SysON model";
-  const leaf = normalized.split(/[/:]/).filter(Boolean).at(-1) ?? normalized;
-  return leaf.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+  return overviewGroupCaption(group.groupKey, group.lane);
 }
 
 function flowNodeDescription(item: OverviewHeroNode): string {
   if (item.kind === "activity") {
-    return `Project activity \u00b7 ${flowStatusCaption(item.activity.status)}`;
+    return `Current activity \u00b7 ${flowStatusCaption(item.activity.status)}`;
   }
   return item.node.summary;
 }
 
 function flowNodeAriaLabel(item: OverviewHeroNode): string {
   if (item.kind === "activity") {
-    return `Inspect project activity ${item.activity.title}, ${
+    return `Inspect current activity ${item.activity.title}, ${
       flowStatusCaption(item.activity.status)
     }`;
   }

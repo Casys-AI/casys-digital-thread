@@ -1,5 +1,7 @@
 import type {
   OverviewThreadD3FlowGroupPlacement,
+  OverviewThreadD3FlowHullSort,
+  OverviewThreadD3FlowHullView,
   OverviewThreadD3FlowNodePlacement,
 } from "./overview-thread-d3-flow-layout.ts";
 import type { OverviewThreadViewerGeometry } from "./overview-thread-viewer-geometry.ts";
@@ -307,19 +309,92 @@ function parseGroupPlacements(
   if (entries.length > MAX_PLACEMENT_COUNT) return undefined;
   const result = nullRecord<OverviewThreadD3FlowGroupPlacement>();
   for (const [key, value] of entries) {
-    if (
-      !isSafeId(key) || !isPlacement(value, ["x", "y", "offsetX", "offsetY"])
-    ) {
-      return undefined;
-    }
-    result[key] = copyDefinedCoordinates(value, [
-      "x",
-      "y",
-      "offsetX",
-      "offsetY",
-    ]);
+    const placement = isSafeId(key) ? parseGroupPlacement(value) : undefined;
+    if (!placement) return undefined;
+    result[key] = placement;
   }
   return result;
+}
+
+/**
+ * Reading state a hull remembers, alongside its box. These are presentation
+ * choices: an unknown value rejects the whole entry rather than degrading to a
+ * default, so a restored board is exactly what was saved or nothing.
+ */
+const HULL_VIEWS: readonly string[] = ["list", "tree", "matrix", "graph"];
+const HULL_SORTS: readonly string[] = ["recorded", "recent", "name"];
+
+/**
+ * One hull's remembered box.
+ *
+ * A hull carries more than a position: an operator-chosen size and whether it
+ * is folded. All of it is presentation, and all of it is validated here — an
+ * unknown or malformed field rejects the whole entry rather than being dropped
+ * silently, so a restored board is either exactly what was saved or nothing.
+ */
+function parseGroupPlacement(
+  candidate: unknown,
+): OverviewThreadD3FlowGroupPlacement | undefined {
+  if (!isRecord(candidate)) return undefined;
+  const coordinateKeys = ["x", "y", "offsetX", "offsetY"] as const;
+  const dimensionKeys = ["width", "height"] as const;
+  const ownKeys = Object.keys(candidate);
+  if (ownKeys.length === 0) return undefined;
+  for (const key of ownKeys) {
+    const value = candidate[key];
+    if ((coordinateKeys as readonly string[]).includes(key)) {
+      if (!isCoordinate(value)) return undefined;
+      continue;
+    }
+    if ((dimensionKeys as readonly string[]).includes(key)) {
+      if (!isPositiveDimension(value)) return undefined;
+      continue;
+    }
+    if (key === "collapsed") {
+      if (typeof value !== "boolean") return undefined;
+      continue;
+    }
+    if (key === "view") {
+      if (!HULL_VIEWS.includes(value as string)) return undefined;
+      continue;
+    }
+    if (key === "sort") {
+      if (!HULL_SORTS.includes(value as string)) return undefined;
+      continue;
+    }
+    if (key === "scrollRow") {
+      if (
+        typeof value !== "number" || !Number.isInteger(value) || value < 0
+      ) {
+        return undefined;
+      }
+      continue;
+    }
+    return undefined;
+  }
+  const placement = nullRecord<number | boolean>();
+  for (const key of [...coordinateKeys, ...dimensionKeys]) {
+    const value = candidate[key];
+    if (Object.hasOwn(candidate, key) && typeof value === "number") {
+      placement[key] = value;
+    }
+  }
+  if (typeof candidate.collapsed === "boolean") {
+    placement.collapsed = candidate.collapsed;
+  }
+  const view = candidate.view;
+  const sort = candidate.sort;
+  const scrollRow = candidate.scrollRow;
+  return {
+    ...(placement as OverviewThreadD3FlowGroupPlacement),
+    ...(typeof view === "string" && HULL_VIEWS.includes(view)
+      ? { view: view as OverviewThreadD3FlowHullView }
+      : {}),
+    ...(typeof sort === "string" && HULL_SORTS.includes(sort)
+      ? { sort: sort as OverviewThreadD3FlowHullSort }
+      : {}),
+    ...(typeof scrollRow === "number" ? { scrollRow } : {}),
+  };
 }
 
 function parseNodePlacements(
