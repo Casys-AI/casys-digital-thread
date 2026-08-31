@@ -1352,6 +1352,8 @@ Deno.test("native Workbench API routes reject non-GET verbs and keep SSE on GET"
     "/healthz",
     "/api/thread/workbench",
     "/api/thread/product-navigation",
+    "/api/thread/viewer-sessions",
+    "/api/thread/viewer-sessions/events",
     "/api/thread/workbench/events",
     "/api/fleet",
     `/api/thread/assets/${digest}.glb`,
@@ -1390,6 +1392,60 @@ Deno.test("native Workbench API routes reject non-GET verbs and keep SSE on GET"
     (await handler(new Request("http://localhost/api/review-intents"))).status,
     404,
   );
+});
+
+Deno.test("native Workbench exposes viewer sessions as complete GET and SSE replacements", async () => {
+  const project = projectFixture("project-one", "subject-one");
+  const handler = createNativeWorkbenchHandler({
+    store: new EmptyThreadStore(),
+    projectStore: new ProjectStore([project]),
+    projectId: project.project.id,
+    subjectId: project.project.subjectId,
+    html: "unused",
+    pollIntervalMs: 50,
+  });
+
+  const response = await handler(
+    new Request("http://localhost/api/thread/viewer-sessions"),
+  );
+  assertEquals(response.status, 200);
+  const projection = await response.json() as {
+    schemaVersion: string;
+    basis: Record<string, unknown>;
+    sequence: number;
+    projectionFingerprint: string;
+    sessions: unknown[];
+  };
+  assertEquals(projection.schemaVersion, "thread-viewer-sessions/1.0");
+  assertEquals(projection.basis, {
+    projectId: "project-one",
+    projectRevision: 1,
+    subjectId: "subject-one",
+  });
+  assertEquals(projection.sequence, 1);
+  assertEquals(
+    /^sha256:[a-f0-9]{64}$/.test(projection.projectionFingerprint),
+    true,
+  );
+  assertEquals(projection.sessions, []);
+
+  const events = await handler(
+    new Request("http://localhost/api/thread/viewer-sessions/events"),
+  );
+  assertEquals(events.status, 200);
+  assertEquals(
+    events.headers.get("Content-Type"),
+    "text/event-stream; charset=utf-8",
+  );
+  const reader = events.body!.getReader();
+  const first = await reader.read();
+  await reader.cancel();
+  const text = new TextDecoder().decode(first.value);
+  assertStringIncludes(text, "event: viewer-sessions");
+  assertStringIncludes(text, '"schemaVersion":"thread-viewer-sessions/1.0"');
+  assertStringIncludes(text, `:${projection.projectionFingerprint}`);
+  assertEquals(text.includes("ui/initialize"), false);
+  assertEquals(text.includes("toolresult"), false);
 });
 
 Deno.test("native Workbench carries the assembly-integrity index through both GET and SSE projections", async () => {

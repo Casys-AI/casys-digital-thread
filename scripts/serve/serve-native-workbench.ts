@@ -80,6 +80,7 @@ import {
   OrderedEngineeringAssetReader,
 } from "../../src/adapters/engineering-asset-resolver.ts";
 import { projectThreadWorkbenchSnapshot } from "../../src/adapters/thread/thread-workbench-projector.ts";
+import { projectThreadViewerSessions } from "../../src/adapters/thread/thread-viewer-sessions-projector.ts";
 import { FileByteStore } from "../../src/adapters/shared/cas/file-byte-store.ts";
 import { fileArchitectureSysmlSealCaptureReader } from "../../src/adapters/architecture/agent-seal/file-architecture-sysml-seal-capture-reader.ts";
 import { createArchitectureSysmlSourceAnalysisCaptureService } from "../../src/adapters/architecture/agent-seal/architecture-sysml-source-analysis-composition.ts";
@@ -470,6 +471,41 @@ export function createNativeWorkbenchHandler(
       if (request.method !== "GET") return methodNotAllowed();
       return await serveProductNavigationQuery(url, options, navigation);
     }
+    if (url.pathname === "/api/thread/viewer-sessions/events") {
+      if (request.method !== "GET") return methodNotAllowed();
+      return await viewerSessionsEventStream(request, options);
+    }
+    if (url.pathname === "/api/thread/viewer-sessions") {
+      if (request.method !== "GET") return methodNotAllowed();
+      let context: ActiveTargetResolution;
+      try {
+        context = await resolveActiveProject(options);
+      } catch (error) {
+        if (error instanceof NativeWorkbenchProjectNotFoundError) {
+          return projectNotFound(error.projectId);
+        }
+        throw error;
+      }
+      const snapshot = await resolveCurrentThreadSnapshot(
+        context.project,
+        options,
+        context.subjectId,
+      );
+      if (!snapshot && context.project.threadSnapshots.length > 0) {
+        return json({
+          error: "thread_snapshot_not_found",
+          subjectId: context.subjectId,
+        }, 404);
+      }
+      return json(
+        await projectViewerSessions(
+          context,
+          snapshot,
+          options,
+        ),
+        200,
+      );
+    }
     if (url.pathname === "/api/thread/workbench/events") {
       if (request.method !== "GET") return methodNotAllowed();
       return await snapshotEventStream(request, options, navigation);
@@ -653,6 +689,141 @@ async function snapshotEventStream(
       "X-Accel-Buffering": "no",
     }),
   });
+}
+
+async function viewerSessionsEventStream(
+  request: Request,
+  options: NativeWorkbenchHandlerOptions,
+): Promise<Response> {
+  let initial: ActiveTargetResolution;
+  try {
+    initial = await resolveActiveProject(options);
+  } catch (error) {
+    if (error instanceof NativeWorkbenchProjectNotFoundError) {
+      return projectNotFound(error.projectId);
+    }
+    throw error;
+  }
+  let current = initial;
+  const encoder = new TextEncoder();
+  const pollIntervalMs = options.pollIntervalMs ?? 500;
+  let lastEventId = request.headers.get("Last-Event-ID") ?? "";
+  let cancelled = false;
+  let lastWrite = Date.now();
+
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const run = async () => {
+        while (!cancelled) {
+          let latestProject: ActiveTargetResolution;
+          try {
+            latestProject = await resolveActiveProject(options);
+          } catch (error) {
+            if (!(error instanceof NativeWorkbenchProjectNotFoundError)) {
+              throw error;
+            }
+            await waitForPoll(pollIntervalMs);
+            continue;
+          }
+          if (latestProject.projectId !== current.projectId) {
+            const targetId = `focus:project:${latestProject.projectId}`;
+            if (targetId !== lastEventId) {
+              controller.enqueue(encoder.encode(
+                `id: ${targetId}\nevent: cockpit-focus\ndata: ${
+                  JSON.stringify({ target: publicFocusTarget(latestProject) })
+                }\n\n`,
+              ));
+              lastEventId = targetId;
+              lastWrite = Date.now();
+            }
+            current = latestProject;
+            await waitForPoll(pollIntervalMs);
+            continue;
+          }
+          current = latestProject;
+          const snapshot = await resolveCurrentThreadSnapshot(
+            current.project,
+            options,
+            current.subjectId,
+          );
+          if (!snapshot && current.project.threadSnapshots.length > 0) {
+            await waitForPoll(pollIntervalMs);
+            continue;
+          }
+          const liveUpdates = await options.liveUpdates?.list(current.subjectId) ?? [];
+          const projection = await projectViewerSessions(
+            current,
+            snapshot,
+            options,
+            liveUpdates,
+          );
+          const eventId =
+            `viewer-sessions:${current.projectId}:${projection.sequence}:${projection.projectionFingerprint}`;
+          if (eventId !== lastEventId) {
+            controller.enqueue(encoder.encode(
+              `id: ${eventId}\nevent: viewer-sessions\ndata: ${
+                JSON.stringify(projection)
+              }\n\n`,
+            ));
+            lastEventId = eventId;
+            lastWrite = Date.now();
+          } else if (Date.now() - lastWrite >= 15_000) {
+            controller.enqueue(encoder.encode(": keep-alive\n\n"));
+            lastWrite = Date.now();
+          }
+          await waitForPoll(pollIntervalMs);
+        }
+      };
+      void run().then(() => {
+        try {
+          controller.close();
+        } catch {
+          // The browser may have cancelled the stream first.
+        }
+      }).catch((error) => {
+        try {
+          controller.error(error);
+        } catch {
+          // The browser may have cancelled the stream first.
+        }
+      });
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+
+  return new Response(body, {
+    headers: workbenchReadHeaders({
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
+    }),
+  });
+}
+
+async function projectViewerSessions(
+  context: ActiveTargetResolution,
+  snapshot: ThreadSnapshot | undefined,
+  options: NativeWorkbenchHandlerOptions,
+  liveUpdates?: LiveThreadUpdate[],
+) {
+  const thread = snapshot
+    ? await projectThreadSnapshot(
+      snapshot,
+      options,
+      context.projectId,
+      context.subjectId,
+      context.componentCatalog,
+      liveUpdates,
+    )
+    : undefined;
+  return await projectThreadViewerSessions({
+    projectId: context.projectId,
+    projectRevision: context.project.revision,
+    subjectId: context.subjectId,
+    ...(snapshot ? { thread: { id: snapshot.id, revision: snapshot.revision } } : {}),
+  }, thread);
 }
 
 async function currentProjectSourceWorkspaceHeadIdentity(
