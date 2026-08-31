@@ -41,6 +41,7 @@ import {
   DECIDE_REJECT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION,
   VERIFY_EVALUATE_PRESCRIBED_KINEMATICS_OPERATION,
   VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+  VERIFY_RUN_PRESCRIBED_KINEMATICS_PROVIDER_OUTCOME_UNKNOWN_FAILURE,
   VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION,
   VERIFY_SEAL_PRESCRIBED_KINEMATICS_METHOD_OPERATION,
 } from "../../../domain/mechanism/prescribed-kinematics/operations.ts";
@@ -107,7 +108,10 @@ import {
   snapshotRef,
   unexpectedStatus,
 } from "../../shared/executor-run-helpers.ts";
-import { threadWriteBasisLeaseScope } from "../../shared/thread-write-basis-guard.ts";
+import {
+  assertThreadWriteBasisAvailable,
+  threadWriteBasisLeaseScope,
+} from "../../shared/thread-write-basis-guard.ts";
 import {
   MCP_CHRONO_031_IMAGE_REFERENCE,
 } from "../../control-plane/first-party-capability-runtime-identities.ts";
@@ -270,6 +274,7 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
       let project = await requiredProject(this.#projects, command.projectId);
       let run = requireRun(project, command.runId);
       const operation = exactOperation(project, run);
+      await assertThreadWriteBasisAvailable(project, run);
       const l3 = operation === VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION
         ? await this.#prepareL3(project, run)
         : undefined;
@@ -380,10 +385,12 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
       await capabilitySession?.releaseTerminal();
       return completed;
     } catch (error) {
-      if (error instanceof PrescribedKinematicsUncertainOutcomeError) {
+      const uncertain = error instanceof PrescribedKinematicsUncertainOutcomeError;
+      const knownRejected = error instanceof PrescribedKinematicsKnownRejectionError;
+      if (uncertain) {
         retainCapabilitySession = true;
       }
-      if (claimed) {
+      if (claimed || uncertain || knownRejected) {
         try {
           const project = await requiredProject(this.#projects, command.projectId);
           const run = requireRun(project, command.runId);
@@ -392,13 +399,17 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
               ...command,
               commandId: step(command.commandId, "fail"),
               expectedRevision: project.revision,
-              summary: "Prescribed-kinematics execution did not materialize evidence.",
-              code: "prescribed-kinematics-execution-failed",
+              summary: uncertain
+                ? "Prescribed-kinematics Chrono outcome remains quarantined."
+                : "Prescribed-kinematics execution did not materialize evidence.",
+              code: uncertain
+                ? VERIFY_RUN_PRESCRIBED_KINEMATICS_PROVIDER_OUTCOME_UNKNOWN_FAILURE
+                : "prescribed-kinematics-execution-failed",
               message: error instanceof Error
                 ? error.message.slice(0, 400)
                 : "Unknown prescribed-kinematics execution error.",
             });
-            if (!(error instanceof PrescribedKinematicsUncertainOutcomeError)) {
+            if (!uncertain) {
               await capabilitySession?.releaseTerminal();
             }
           }
@@ -407,9 +418,13 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
           retainCapabilitySession = true;
         }
       }
-      if (capabilitySession && (retainCapabilitySession || !claimed)) {
-        // No claimed terminal project outcome means the provider/WAL boundary
-        // cannot be inferred safe. Preserve the durable lease for recovery.
+      if (
+        capabilitySession &&
+        (retainCapabilitySession || !(claimed || knownRejected))
+      ) {
+        // No claimed or determined pre-dispatch terminal outcome means the
+        // provider/WAL boundary cannot be inferred safe. Preserve the durable
+        // lease for recovery.
         capabilitySession.retainForRecovery();
       }
       throw error;

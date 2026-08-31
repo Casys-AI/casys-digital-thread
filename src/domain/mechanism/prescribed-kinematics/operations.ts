@@ -23,6 +23,16 @@ export const VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION = Object.freeze(
   } as const,
 );
 
+/**
+ * Terminal failure recorded when Chrono reports an uncertain, absent, or
+ * malformed provider outcome after dispatch intent. The exact run may be
+ * released only through the human uncertain-writer reconciliation ceremony.
+ * Keeping the code beside the operation identity prevents the executor and
+ * reconciliation policy from inventing aliases.
+ */
+export const VERIFY_RUN_PRESCRIBED_KINEMATICS_PROVIDER_OUTCOME_UNKNOWN_FAILURE =
+  "verify-run-prescribed-kinematics-provider-outcome-unknown" as const;
+
 export const VERIFY_SEAL_PRESCRIBED_KINEMATICS_METHOD_OPERATION = Object.freeze(
   {
     id: "verify.seal-prescribed-kinematics-method",
