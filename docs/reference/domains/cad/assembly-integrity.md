@@ -143,11 +143,11 @@ bundle, method, bounds, and provider profile.
 Kinematics is not a richer provider profile for this port. It has a separate bounded
 vertical with explicit bodies, frames, joints, limits, sampled scenarios, capture,
 evaluation, and Brief verification authority; see
-[prescribed kinematics](../mechanism/prescribed-kinematics.md). It still does not turn
-static non-intersection into a motion, contact, clearance, forces, strength, safety, or
-manufacturability claim.
+[mechanism](../mechanism/README.md). It still does not turn static non-intersection into
+a motion, contact, clearance, forces, strength, safety, or manufacturability claim.
 
-The Chrono runtime for that separate vertical remains `unqualified`/`unavailable` until
-its live emulation probe is recorded. Static assembly integrity therefore remains the
-only current runtime-proven assembly baseline, and motion remains literally
-`not-evaluated` or `unavailable` here.
+The mechanism catalogue baseline is `unqualified`. A particular host may carry an exact
+qualified emulated AMD64 attestation, but that host fact neither rewrites the catalogue
+nor makes an L3 product observation. Product L3 separately needs project authorization,
+a sealed ROP, a current Thread basis, and a JIT lease. Static assembly integrity does not
+establish any of those prerequisites, and its L3/L4/L5 evidence never establishes motion.

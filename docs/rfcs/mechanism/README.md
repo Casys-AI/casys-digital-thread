@@ -7,7 +7,7 @@ mechanism vertical. It is not the living contract and does not widen assembly in
 
 | RFC | Status | Purpose |
 | --- | --- | --- |
-| [Chrono provider decision](mcp-chrono-provider.md) | `implemented` | Historical decision; read the living prescribed-kinematics reference |
+| [Chrono provider decision](mcp-chrono-provider.md) | `implemented` | Historical decision; read the living [mechanism reference](../../reference/domains/mechanism/README.md) |
 
 Static assembly integrity remains a distinct provider-neutral vertical: canonical STEP
 import, topology, immediate-occurrence placement recross, and pairwise intersection.
@@ -15,7 +15,8 @@ Its living contracts are the
 [static assembly basis](../../reference/domains/cad/static-assembly-basis.md) and
 [assembly integrity](../../reference/domains/cad/assembly-integrity.md).
 
-The separate prescribed-kinematics vertical is registered, but its Chrono runtime is
-still `unqualified`/`unavailable` pending a live emulation probe. Motion, trajectory
-clearance, contact dynamics, forces, strength, safety, and manufacturing remain outside
-both verticals.
+The prescribed-kinematics catalogue baseline is `unqualified`. A host may have an exact
+qualified emulated AMD64 attestation, but it does not rewrite the catalogue or make L3
+product evidence. L3 still needs project authorization, a sealed ROP, a current Thread
+basis, and a JIT lease. Motion, trajectory clearance, contact dynamics, forces, strength,
+safety, and manufacturing remain outside both verticals.

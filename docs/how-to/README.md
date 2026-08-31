@@ -25,3 +25,9 @@ Start with [Walk through an engineering project](verify-design/walk-through-an-e
 to inspect an existing dated path, or
 [Verify a new design from scratch](verify-design/verify-a-new-design-from-scratch.md)
 when the stated prerequisites are already satisfied.
+
+For the bounded mechanism path, use
+[Verify prescribed kinematics](verify-design/verify-prescribed-kinematics.md). If its
+single L3 dispatch ends with an unknown provider outcome, switch to
+[Recover a prescribed-kinematics observation](run/recover-prescribed-kinematics-observation.md)
+instead of retrying it.

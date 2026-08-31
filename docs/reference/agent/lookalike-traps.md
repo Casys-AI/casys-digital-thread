@@ -53,6 +53,22 @@ of that catalog.
 | `simulate.run-admitted-spice@1`                                              | Circuit-only admitted SPICE                                                     | An Engineering Case or mcp-spice                |
 | Historical `simulate.seal-simulation-case@1`/`@2`                            | Retired recorded-provider route. Not registered                                 | An Engineering Case family                      |
 
+## Mechanism
+
+Domain contract: [mechanism](../domains/mechanism/README.md). Recovery:
+[prescribed-kinematics observation recovery](../pipeline/prescribed-kinematics-observation-recovery.md).
+
+| This | Is | Is not |
+| --- | --- | --- |
+| `project_prescribed_kinematics_case_review` | Read-only recross of one exact same-file `mechanism-source@1` closure and immediate `PartUsage` architecture binding | L1 seal, provider probe, MRTR, L3 observation, L4 evaluation, or L5 decision |
+| `verify.seal-prescribed-kinematics-case@1` | L1 Thread seal of the exact recrossed case | The L2 run MRTR, a provider request, or an L3 observation |
+| L2 signed MRTR + sealed ROP | Exact authority for one registered L3 observation action | A runtime qualification, a provider request, or L3 facts |
+| `deno task capability:qualify` | Private host-local qualification attestation; an exact host may be qualified in emulated AMD64 mode | A catalogue rewrite, project authorization, sealed ROP, JIT lease, MCP operation, or L3 product run |
+| `verify.run-prescribed-kinematics@1` | L3 factual observation after the server's one-dispatch WAL and same-request receipt readback | L4, L5, collision/clearance/force/safety verdict, or an agent-selected provider call |
+| `verify.evaluate-prescribed-kinematics@1` | Provider-free L4 application of an exact sealed method to L1/L3 evidence | Provider dispatch, a method seal, or human closeout |
+| `record.reconcile-uncertain-writer@1` | Human-only resolution of a terminal unknown provider outcome | A missing L3 capture, basis release by itself, or a retry of the failed run |
+| Product L3 WAL | Run/case/request identity, one dispatch claim, and same-request readback | The separate host qualification WAL |
+
 ## CAD and compile
 
 Domain contracts: [closed subset](../domains/cad/build123d-closed-subset-v1.md) and
@@ -184,4 +200,3 @@ CalculiX `@3` is not the admitted-source pattern: the agent never writes `.inp`.
 | Public `resourceRef`                                    | Full `AgentResourceReference` from `project_resource_capture`                                            | Inline `sourceText`, URI alone, digest alone, or `resources/read` upload                 |
 | Project source workspace                                | Draft file identities, paths and revisions for one project                                               | Engineering Project ledger, Thread evidence, admission, or a compilation/runtime profile |
 | `captureRequest` on a workspace file revision           | Caller-authored requested parser/source identity. Vertical 1 stores it inertly; not a registered profile | Compilation profile, provider, tool, image, or runtime selection                         |
-| `deno task capability:qualify`                          | Private host-local Chrono `chrono-arm64-emulation-v1` emulation probe                                    | An MCP operation, L3 product run, Workbench command, or CalculiX qualification           |

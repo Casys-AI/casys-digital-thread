@@ -31,10 +31,10 @@ The fixed `mechanism-source@1` attachment role is the bounded draft bridge to th
 provider-neutral prescribed-kinematics case review. It records exact authoring edges for
 one source file, assembly `PartUsage`, and body `PartUsage`s; that later review
 recrosses the workspace and architecture before any L1 case can be sealed. This is not a
-runtime claim: the server-owned Chrono binding stays `unqualified` and its runtime mode
-`unavailable` until the separate live qualification proves it. No workspace mutation or
-attachment can promote that state, call a provider, approve MRTR, or create L3/L4/L5
-evidence.
+runtime claim: the repository catalogue baseline stays `unqualified`. A host may have
+an exact qualified emulated AMD64 attestation, but it does not promote a workspace
+attachment, call a provider, approve MRTR, or create L3/L4/L5 evidence. Product L3 still
+requires project authorization, sealed ROP, current Thread basis, and JIT lease.
 
 Vertical 2 is the only public technical-source authority for CAD, Modelica and SPICE:
 `project_technical_source_capture` names `projectId`, `workspaceRevision`,

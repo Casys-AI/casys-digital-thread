@@ -52,6 +52,20 @@ Ignored immutable active project revisions and CAS claims
 Ignored append-only project source workspace events (`NNNNNNNNNN.claim` then `.json`).
 Rebuildable in-memory index. Not Thread evidence and not a per-mutation snapshot dump
 
+#### `state/local/mechanics/prescribed-kinematics/captures/`
+
+Five immutable CAS lanes for the exact L1 case, factual L3 observation, reviewed method,
+provider-free L4 evaluation, and human L5 closeout. They preserve separate evidence
+levels; the directory, a provider receipt, and a later artifact never promote an earlier
+level or create a verdict by themselves.
+
+#### `state/local/mechanics/prescribed-kinematics/observation-attempts/`
+
+Append-only product L3 attempt WAL and create-new dispatch claims for prescribed
+kinematics. After the durable dispatch boundary it permits only same-request readback;
+`quarantined` does not authorize a redispatch. This root is distinct from the private
+host qualification WAL under `capability-runtime-host/`.
+
 #### `state/local/engineering-project-run-leases/`
 
 Empty local OS lock targets for executor-owned scopes; generic Thread writers share an

@@ -50,8 +50,10 @@ against `PartDefinition` and `PartUsage`. No per-project or per-provider role ex
 `mechanism-source@1` is draft authoring classification only. A later
 prescribed-kinematics case review requires one exact same-file attachment set for the
 assembly and every body `PartUsage`, then recrosses their declared architecture basis.
-It does not select or start Chrono: the optional Chrono runtime remains
-`unqualified`/`unavailable` until a separate live qualification record exists.
+It does not select or start Chrono. The catalogue baseline is `unqualified`; even an
+exact host-local qualified emulated AMD64 attestation does not authorize a run. Product
+L3 additionally requires project authorization, a sealed ROP, current Thread basis, and
+the server-owned JIT lease.
 
 `project_source_attachment_recross` takes only `projectId`, `mutationId`, exact
 `expectedWorkspaceRevision`, and one to `maxAttachmentRecrossItems` unique

@@ -42,8 +42,10 @@ is attached to the assembly `PartUsage` and to every declared immediate body
 `PartUsage`, on one exact workspace revision and one exact declared-against architecture
 basis. The workspace still grants no mechanism case, Chrono dispatch, MRTR, L3
 observation, L4 evaluation, or L5 closeout. The later provider-free case review
-recrosses this attachment set; the Chrono runtime remains literally `unqualified` and
-`unavailable` until its separate live qualification is recorded.
+recrosses this attachment set. The repository catalogue baseline is `unqualified`; a
+host-local exact qualified emulated AMD64 attestation does not change the workspace grant
+or authorize product L3, which still needs project authorization, sealed ROP, current
+Thread basis, and JIT lease.
 
 `attachment_recross` is an internal, one-event successor batch generated only by
 `project_source_attachment_recross`. Its public intent is the exact workspace revision

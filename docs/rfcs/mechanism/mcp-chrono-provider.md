@@ -3,7 +3,7 @@
 Audience: agent · Diátaxis: none · Kind: RFC
 
 Status: `implemented` · historical decision; the living boundary is the
-[prescribed-kinematics reference](../../reference/domains/mechanism/prescribed-kinematics.md)
+[mechanism reference](../../reference/domains/mechanism/README.md)
 
 This page records the decision that opened the bounded V1 vertical. It is not a current
 work brief and must not be used to alter the registered operation, binding, runtime, or
@@ -13,8 +13,8 @@ evidence contract.
 
 For V1 prescribed rigid-body kinematics, Project Chrono is the selected provider behind
 the provider-neutral `mechanics.observe-prescribed-kinematics@1` capability. The provider
-implementation remains in the separate `mcp-chrono` repository and published image;
-Digital Thread consumes it through a fixed server-owned adapter.
+implementation remains outside this repository; Digital Thread consumes it through a
+server-owned adapter.
 
 There would be one provider MCP, not one MCP per gate. The Brief would name only a
 versioned semantic verification authority. The server would continue to own provider,
@@ -35,12 +35,15 @@ Brief opt-in
 
 ## Current runtime boundary
 
-The server now has the exact `casys.mcp-chrono@0.3.1` material and
-`casys-chrono@1.0.0` launch group. It is Linux/amd64, loopback-only on 3025, retains its
-named volume, and has a closed host-only bearer slot. The brief names only semantic
-kinematics intent; the server selects the binding, image, endpoint, tool and arguments.
-The adapter/runtime remains `unqualified` and `unavailable` pending a live AMD64
-emulation probe. This page cannot be used to promote it early.
+The exact provider material and launch-group identity are server-owned runtime facts, not
+a release announcement or caller input. The Brief names only semantic kinematics intent;
+the server selects the binding, image, endpoint, tool, bearer, and arguments.
+
+The repository catalogue baseline is `unqualified`. A particular host may hold an exact
+qualified emulated AMD64 attestation, but that host-local fact does not rewrite the
+catalogue or make product evidence. Product L3 additionally requires project
+authorization, a sealed ROP, a current Thread basis, and a JIT lease. This historical RFC
+cannot promote any missing condition.
 
 Static assembly integrity remains separate. Its common profile-free basis may feed
 another capability, but its
@@ -62,11 +65,11 @@ The completed bounded implementation defines:
 5. WAL, uncertain-outcome recovery, capture readback, and provenance;
 6. L3 facts distinct from provider-free L4 and human L5;
 7. a scoped Brief gate policy so one case cannot close another case's gate;
-8. a pinned, licensed, minimal runtime with focused fixtures.
+8. a bounded server-owned runtime composition with focused fixtures.
 
-A real runtime/emulation probe is still required before L3 dispatch is operationally
-available. That probe cannot make a collision, contact, clearance, forces, strength,
-safety, manufacturing, or certification verdict.
+An exact host runtime attestation is necessary but not sufficient for product L3. It
+cannot make a collision, contact, clearance, forces, strength, safety, manufacturing, or
+certification verdict.
 
 Static BRep intersection, exact clearance at sampled poses, kinematics, contact
 dynamics, and structural strength remain separate engineering questions. A provider
