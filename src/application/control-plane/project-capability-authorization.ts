@@ -182,15 +182,39 @@ export interface ProjectCapabilityBindingReplacement {
 }
 
 /**
- * Additions (`previous === null`) stay amendments. Dropping or switching an
- * already-authorized binding after Thread evidence needs a method transition.
+ * Additions (`previous === null`) stay amendments. Thread evidence binds a
+ * project to a versioned method, not an adapter's internal source location.
+ * Dropping a prior binding or changing that method identity needs a transition.
  */
 export function projectCapabilityChangeRequiresMethodTransition(
   delta: ProjectCapabilityEnvelopeDelta,
   hasThreadEvidence: boolean,
 ): boolean {
-  return hasThreadEvidence &&
-    delta.bindingReplacements.some((replacement) => replacement.previous !== null);
+  return hasThreadEvidence && delta.bindingReplacements.some((replacement) => {
+    if (replacement.previous === null) return false;
+    if (replacement.next === null) return true;
+    return !sameVersionedMethodIdentity(replacement.previous, replacement.next);
+  });
+}
+
+/**
+ * Adapter metadata remains visible in the amendment delta but cannot
+ * reinterpret recorded evidence. Missing candidate identities remain a method
+ * transition rather than being treated as equal by omission.
+ */
+function sameVersionedMethodIdentity(
+  previous: PlannedProjectCapabilityBinding,
+  next: PlannedProjectCapabilityBinding,
+): boolean {
+  if (previous.candidate === undefined || next.candidate === undefined) {
+    return false;
+  }
+  return previous.candidate.id === next.candidate.id &&
+    previous.candidate.version === next.candidate.version &&
+    previous.candidate.adapter.id === next.candidate.adapter.id &&
+    previous.candidate.adapter.version === next.candidate.adapter.version &&
+    deterministicJson(previous.candidate.profile) ===
+      deterministicJson(next.candidate.profile);
 }
 
 export interface ProjectCapabilityRequirementReplacement {

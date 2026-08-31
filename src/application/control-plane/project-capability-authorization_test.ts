@@ -244,6 +244,67 @@ Deno.test("dropping an authorized binding after Thread evidence is a method tran
   );
 });
 
+Deno.test("Thread evidence follows versioned binding methods, not adapter source metadata", async () => {
+  const requirement = {
+    id: "geometry.observe-assembly-integrity",
+    version: "1",
+    minimumQualification: "qualified" as const,
+    use: "execution" as const,
+  };
+  const initial = await proposal("brief-intent", [requirement]);
+
+  const sourceCorrected = await withAdapterSource(
+    initial,
+    "src/adapters/cad/canonical/admission-backed-geometry-export-adapter.ts",
+  );
+  const sourceDelta = projectCapabilityEnvelopeDelta(initial, sourceCorrected);
+  assertEquals(sourceDelta.bindingReplacements.length, 1);
+  assertEquals(
+    projectCapabilityChangeRequiresMethodTransition(sourceDelta, true),
+    false,
+  );
+
+  const adapterVersionChanged = await withAdapterIdentity(
+    initial,
+    "adapter",
+    "2",
+  );
+  assertEquals(
+    projectCapabilityChangeRequiresMethodTransition(
+      projectCapabilityEnvelopeDelta(initial, adapterVersionChanged),
+      true,
+    ),
+    true,
+  );
+
+  const idChanged = await withBindingMethod(initial, "assembly-observer-v2", "1");
+  assertEquals(
+    projectCapabilityChangeRequiresMethodTransition(
+      projectCapabilityEnvelopeDelta(initial, idChanged),
+      true,
+    ),
+    true,
+  );
+
+  const versionChanged = await withBindingMethod(initial, "assembly-observer", "2");
+  assertEquals(
+    projectCapabilityChangeRequiresMethodTransition(
+      projectCapabilityEnvelopeDelta(initial, versionChanged),
+      true,
+    ),
+    true,
+  );
+
+  const profileChanged = await withBindingProfile(initial);
+  assertEquals(
+    projectCapabilityChangeRequiresMethodTransition(
+      projectCapabilityEnvelopeDelta(initial, profileChanged),
+      true,
+    ),
+    true,
+  );
+});
+
 Deno.test("capability coverage keeps the exact candidate ceiling while local qualification mode may change", async () => {
   const requirement = {
     id: "geometry.observe-assembly-integrity",
@@ -431,6 +492,77 @@ async function withBindingProfile(
           version: "1",
           fingerprint: { algorithm: "sha256" as const, digest: "b".repeat(64) },
         },
+      },
+    })),
+  };
+  return {
+    ...next,
+    capabilityProposalFingerprint: await fingerprintProjectCapabilityProposal(next),
+  };
+}
+
+async function withAdapterSource(
+  proposal: ProjectCapabilityProposal,
+  source: string,
+): Promise<ProjectCapabilityProposal> {
+  const { capabilityProposalFingerprint: _fingerprint, ...body } = proposal;
+  const next = {
+    ...body,
+    bindings: body.bindings.map((binding) => ({
+      ...binding,
+      candidate: binding.candidate === undefined ? undefined : {
+        ...binding.candidate,
+        adapter: { ...binding.candidate.adapter, source },
+      },
+    })),
+  };
+  return {
+    ...next,
+    capabilityProposalFingerprint: await fingerprintProjectCapabilityProposal(next),
+  };
+}
+
+async function withAdapterIdentity(
+  proposal: ProjectCapabilityProposal,
+  id: string,
+  version: string,
+): Promise<ProjectCapabilityProposal> {
+  const { capabilityProposalFingerprint: _fingerprint, ...body } = proposal;
+  const next = {
+    ...body,
+    bindings: body.bindings.map((binding) => ({
+      ...binding,
+      candidate: binding.candidate === undefined ? undefined : {
+        ...binding.candidate,
+        adapter: { ...binding.candidate.adapter, id, version },
+      },
+    })),
+  };
+  return {
+    ...next,
+    capabilityProposalFingerprint: await fingerprintProjectCapabilityProposal(next),
+  };
+}
+
+async function withBindingMethod(
+  proposal: ProjectCapabilityProposal,
+  id: string,
+  version: string,
+): Promise<ProjectCapabilityProposal> {
+  const { capabilityProposalFingerprint: _fingerprint, ...body } = proposal;
+  const next = {
+    ...body,
+    bindings: body.bindings.map((binding) => ({
+      ...binding,
+      binding: binding.binding === null ? null : {
+        ...binding.binding,
+        id,
+        version,
+      },
+      candidate: binding.candidate === undefined ? undefined : {
+        ...binding.candidate,
+        id,
+        version,
       },
     })),
   };

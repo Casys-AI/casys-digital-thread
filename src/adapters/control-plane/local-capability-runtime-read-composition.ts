@@ -44,6 +44,8 @@ import {
   createFirstPartyCapabilityRuntimeCatalog,
   createFirstPartySysonRolloverPredecessorUnit,
   firstPartyAdmittedModelicaHistoryPredecessor,
+  firstPartyBuild123dObservationHistoryPredecessor,
+  firstPartyBuild123dSandboxHistoryPredecessor,
   firstPartyGeometryModuleAssemblerHistoryPredecessor,
 } from "./first-party-capability-binding-catalog.ts";
 import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "./first-party-capability-runtime-qualification-candidates.ts";
@@ -333,6 +335,8 @@ export async function createLocalCapabilityRuntimeReadComposition(
       catalog,
       [
         predecessorSysonUnit,
+        firstPartyBuild123dSandboxHistoryPredecessor(),
+        firstPartyBuild123dObservationHistoryPredecessor(),
         firstPartyGeometryModuleAssemblerHistoryPredecessor(),
         firstPartyAdmittedModelicaHistoryPredecessor(),
       ],

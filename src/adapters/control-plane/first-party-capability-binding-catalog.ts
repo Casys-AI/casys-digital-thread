@@ -483,6 +483,38 @@ export async function createFirstPartySysonRolloverPredecessorUnit(): Promise<
 }
 
 /**
+ * Retired local-lock identity from before Build123d sandbox readiness became
+ * part of the sealed launch-group descriptor. It is accepted only while
+ * reading immutable history; the current catalogue remains the successor.
+ */
+export function firstPartyBuild123dSandboxHistoryPredecessor() {
+  return {
+    id: "casys.mcp-build123d-sandbox",
+    version: "0.6.1",
+    manifestFingerprint: {
+      algorithm: "sha256" as const,
+      digest: "7450ed6ffcb1bfd2b970e2f15647eaf8097a26b1656d19864992bde6e297b15e",
+    },
+  };
+}
+
+/**
+ * Retired local-lock identity from before Build123d observation readiness
+ * became part of the sealed launch-group descriptor. It is history-only and
+ * never an alternative runtime selection.
+ */
+export function firstPartyBuild123dObservationHistoryPredecessor() {
+  return {
+    id: "casys.mcp-build123d-observation",
+    version: "0.6.1",
+    manifestFingerprint: {
+      algorithm: "sha256" as const,
+      digest: "7540b7263f570cec0ea4218ecf902400b817e9143cdf6ca334c9d2d773213bad",
+    },
+  };
+}
+
+/**
  * Retired local-lock identity before the qualified geometry-module assembler
  * catalogue promotion. The former manifest predates the current launch-group
  * schema, so this is an exact lock-history identity, not a synthetic runtime

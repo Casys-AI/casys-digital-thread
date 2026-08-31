@@ -19,6 +19,8 @@ import {
 } from "./file-capability-runtime-host-stores.ts";
 import {
   createFirstPartyCapabilityRuntimeCatalog,
+  firstPartyBuild123dObservationHistoryPredecessor,
+  firstPartyBuild123dSandboxHistoryPredecessor,
 } from "./first-party-capability-binding-catalog.ts";
 import {
   createFirstPartyCapabilityRuntimeLaunchGroups,
@@ -422,6 +424,92 @@ Deno.test("admin lock reads an exact declared transition predecessor through the
     await writeAdminLockHistory(directory, [first, second]);
     assertEquals((await store.read()).revision, 2);
     assertEquals((await store.list()).map((lock) => lock.revision), [0, 1, 2]);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("admin lock reads exact historical Build123d locks before their current readiness successors", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "casys-capability-lock-build123d-readiness-transition-",
+  });
+  try {
+    const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+    const predecessors = [
+      firstPartyBuild123dSandboxHistoryPredecessor(),
+      firstPartyBuild123dObservationHistoryPredecessor(),
+    ];
+    const transitionPredecessors = predecessors.map((predecessor) => {
+      const successor = catalog.units.find((unit) => unit.id === predecessor.id);
+      if (!successor) {
+        throw new Error(`Current catalogue lacks ${predecessor.id}.`);
+      }
+      return {
+        predecessor,
+        successor: {
+          id: successor.id,
+          version: successor.version,
+          manifestFingerprint: successor.manifestFingerprint,
+        },
+      };
+    });
+    const empty = {
+      schemaVersion: "capability-runtime-admin-lock/1.0" as const,
+      revision: 0,
+      previous: null,
+      units: [],
+    };
+    const historical = {
+      schemaVersion: empty.schemaVersion,
+      revision: 1,
+      previous: await sha256Fingerprint(empty),
+      units: catalog.units.map((unit) => {
+        const predecessor = predecessors.find((value) => value.id === unit.id);
+        const identity = predecessor ?? {
+          id: unit.id,
+          version: unit.version,
+          manifestFingerprint: unit.manifestFingerprint,
+        };
+        return { ...identity, desired: "inactive" as const };
+      }),
+    };
+    const current = {
+      schemaVersion: empty.schemaVersion,
+      revision: 2,
+      previous: await sha256Fingerprint(historical),
+      units: catalog.units.map((unit) => ({
+        id: unit.id,
+        version: unit.version,
+        manifestFingerprint: unit.manifestFingerprint,
+        desired: "inactive" as const,
+      })),
+    };
+    const store = new FileCapabilityRuntimeAdminLockStore(
+      `${directory}/admin-lock.json`,
+      catalog,
+      { transitionPredecessors },
+    );
+
+    await writeAdminLockHistory(directory, [historical]);
+    assertEquals(
+      (await store.read()).units.filter((unit) =>
+        predecessors.some((predecessor) => predecessor.id === unit.id)
+      ),
+      historical.units.filter((unit) =>
+        predecessors.some((predecessor) => predecessor.id === unit.id)
+      ),
+    );
+
+    await writeAdminLockHistory(directory, [historical, current]);
+    assertEquals((await store.read()).revision, current.revision);
+    assertEquals(
+      (await store.read()).units.filter((unit) =>
+        predecessors.some((predecessor) => predecessor.id === unit.id)
+      ),
+      current.units.filter((unit) =>
+        predecessors.some((predecessor) => predecessor.id === unit.id)
+      ),
+    );
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
