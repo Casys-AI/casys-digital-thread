@@ -94,16 +94,18 @@ export class ControlPlane {
     return server;
   }
 
-  async runList(): Promise<RunSummary[]> {
-    return this.#runs.map(toRunSummary)
-      .sort(compareRunsByEvidenceTime)
-      .map((run) => structuredClone(run));
+  runList(): Promise<RunSummary[]> {
+    return Promise.resolve(
+      this.#runs.map(toRunSummary)
+        .sort(compareRunsByEvidenceTime)
+        .map((run) => structuredClone(run)),
+    );
   }
 
-  async runDetail(id: string): Promise<RunDetail> {
+  runDetail(id: string): Promise<RunDetail> {
     const run = this.#runs.find((entry) => entry.id === id);
-    if (!run) throw new ControlPlaneNotFoundError("run", id);
-    return structuredClone(run);
+    if (!run) return Promise.reject(new ControlPlaneNotFoundError("run", id));
+    return Promise.resolve(structuredClone(run));
   }
 
   async #buildSnapshot(): Promise<ConsoleSnapshot> {

@@ -37,3 +37,11 @@ Deno.test("native Vite config defaults match preview:thread ports", async () => 
   assertStringIncludes(source, 'environmentPort("CASYS_COCKPIT_UI_PORT", 5173)');
   assertStringIncludes(source, "workbench-root-rewrite");
 });
+
+Deno.test("preview:cockpit grants the anchored state root to the read-only BFF", async () => {
+  const config = await Deno.readTextFile(
+    new URL("../../deno.json", import.meta.url),
+  );
+  assertStringIncludes(config, '"preview:cockpit"');
+  assertStringIncludes(config, "--allow-read=state,src/ui/dist/thread");
+});

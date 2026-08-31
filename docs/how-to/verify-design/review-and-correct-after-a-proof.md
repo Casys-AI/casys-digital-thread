@@ -7,10 +7,10 @@ constrained vehicle is `desk-lamp-dl05` (Heron arm). `desk-lamp-dl04` is the gen
 twin. Both live only under gitignored `state/local/`.
 
 This page is the A–Z continuation after
-[Walk through a dated engineering project](walk-through-an-engineering-project.md) §4. It
-does not start a second proof. It walks the **behave** branch: join → correction document
-→ corrected source → reseal. Measured DFM on canonical STEP is the separate **make**
-branch. Buy (BOM / cost) has no registered seal yet. See
+[Walk through a dated engineering project](walk-through-an-engineering-project.md) §4.
+It does not start a second proof. It walks the **behave** branch: join → correction
+document → corrected source → reseal. Measured DFM on canonical STEP is the separate
+**make** branch. Buy (BOM / cost) has no registered seal yet. See
 [Three judgement branches](../../explanations/product/product-direction.md#three-judgement-branches).
 
 The person never types a provider tool. The agent never invents a metric alias, a `z*`,
@@ -18,11 +18,20 @@ a unit, or a DFM limit.
 
 ## Preconditions
 
+Ordinary start is cold Deno. Do not start the root Compose provider stack: H1 activates
+enrolled groups JIT under a lease when covered work needs them, and those groups collide
+with root Compose on the same loopback ports. A root `docker compose up` remains a
+manual maintainer probe only and must not run concurrently with H1-managed groups.
+
 ```bash
-docker compose up -d
 deno task start
 deno task preview:thread --project-id=desk-lamp-dl05
 ```
+
+ERPNext is an optional sibling integration; start it separately only when its checkout
+and environment file are available. Live HTTP CalculiX sensitivity remains
+catalogue-`unqualified` and `unavailable`; historical observations on this atelier stay
+as captured.
 
 Connect the agent to `http://127.0.0.1:3020/mcp`. The cockpit is read-only.
 

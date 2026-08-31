@@ -42,7 +42,8 @@ export interface ProjectAdmittedSpiceEvaluationCloseoutReviewResolved {
   readonly basis: SpiceAdmittedObservationEvaluationCloseoutAdmission["basis"];
   readonly capture: ProjectAdmittedSpiceEvaluationCloseoutReviewEvidenceRef;
   readonly sheet: SpiceAdmittedObservationEvaluationCloseoutAdmission["sheet"];
-  readonly evaluations: readonly ProjectAdmittedSpiceEvaluationCloseoutReviewEvaluation[];
+  readonly evaluations:
+    readonly ProjectAdmittedSpiceEvaluationCloseoutReviewEvaluation[];
   readonly limitations: {
     readonly engineCalls: "none";
     readonly l4PassIsNotL5: true;

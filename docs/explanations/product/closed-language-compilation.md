@@ -101,18 +101,17 @@ both sides of the lowering.
 | `scripts/probes/capture-build123d-api-inventory.ts`                            | Regenerates the inventory from the pinned sandbox; the method as executable code.                                                                            |
 | `src/adapters/cad/source/qualified-build123d-source-analyzer.ts`               | The frontend: today's qualified slice (see its version docstring), tomorrow's generated tables.                                                              |
 | `src/domain/cad/source/geometry-script-validation.ts` (D4)                     | The security wall — orthogonal to coverage, changed only by conscious dedicated commits (`&`/`\|` are documented gaps).                                      |
-| `docs/rfcs/build123d/qualified-build123d-1.4.0-placement-grammar.md`, `-1.5.0.md`        | Delivered family RFCs (the placement grammar, sketches + operator sugar).                                                                                    |
-| `docs/rfcs/build123d/qualified-build123d-selector-grammar-study.md` + `-counterstudy.md` | The selector architecture study; its A1/E decision was superseded by this direction — selectors become one family among others, with determinism as a class. |
+| [Build123d closed subset](../../reference/domains/cad/build123d-closed-subset-v1.md)       | Living public contract for the qualified grammar, including supported placement and shape forms.                                                             |
+| [CAD coverage](../../reference/domains/cad/coverage.md)                                    | Current supported and unsupported surface; private design studies do not widen it.                                                                            |
 | `docs/reference/agent/agent-workspace.md` §6                                         | The operational frontend catalogue an agent reads first.                                                                                                     |
 
 ## Status at the time of writing
 
 Analyzer **1.6.0** is shipped (named `Pos`/`Rot` bindings, `Plane.*`, `offset`,
 `revolve`, extrude `taper=`). The hand table still includes `Ellipsoid`, which the
-0.11.1 inventory does not list. The full-coverage plan has landed as
-[`docs/rfcs/build123d/build123d-full-compilation-plan.md`](../../rfcs/build123d/build123d-full-compilation-plan.md)
-(accepted). The next family is **F1** (generated tables + analyzer 2.0.0), not a 1.7.0
-idiom lot.
+0.11.1 inventory does not list. The next proposed family is **F1** (generated tables +
+analyzer 2.0.0), not a 1.7.0 idiom lot. It remains a proposal until the public coverage
+and closed-subset contract are updated.
 
 Inventories for CalculiX, Modelica and SysML are documentary ground truth in
 `config/*-api/`. No analyzer imports them. Coverage annotations inside those JSON files

@@ -45,8 +45,10 @@ export {
 
 export { recrossGeometryModuleAssembly } from "./geometry-module-assembly-recross.ts";
 export {
+  GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
+} from "../../capability/engineering-capability.ts";
+export {
   GEOMETRY_MODULE_ASSEMBLY_ASSETS,
-  GEOMETRY_MODULE_ASSEMBLY_CAPABILITY,
   GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
   type GeometryModuleAssemblyReceipt,
   parseGeometryModuleAssemblyReceipt,

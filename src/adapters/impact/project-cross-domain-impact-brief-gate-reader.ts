@@ -21,7 +21,9 @@ export class ProjectCrossDomainImpactBriefGateReader
     this.#projects = projects;
   }
 
-  async read(projectId: string): Promise<CrossDomainImpactApprovedBriefGates | undefined> {
+  async read(
+    projectId: string,
+  ): Promise<CrossDomainImpactApprovedBriefGates | undefined> {
     const project = await this.#projects.get(projectId);
     if (!project || project.project.id !== projectId) return undefined;
     const brief = project.framing?.currentBrief;

@@ -47,8 +47,7 @@ export type ProjectElectricalObservationMethodSheetSealReviewErrorCode =
   | "snapshot_not_found"
   | "recross_failed";
 
-export class ProjectElectricalObservationMethodSheetSealReviewError
-  extends Error {
+export class ProjectElectricalObservationMethodSheetSealReviewError extends Error {
   constructor(
     readonly code: ProjectElectricalObservationMethodSheetSealReviewErrorCode,
     message: string,

@@ -30,7 +30,6 @@
 
 import { assert, assertEquals, assertExists, assertRejects } from "@std/assert";
 import {
-  deterministicJson,
   sha256Fingerprint,
   sha256Hex,
 } from "../../../domain/kernel/deterministic-json.ts";

@@ -12,7 +12,12 @@ export interface DesiredServer {
   serviceName: string;
   transport: "streamable-http";
   mcpUrl: string;
-  healthUrl: string;
+  /**
+   * Optional only for providers whose published contract has no health route.
+   * The read-only fleet probe reports that literal absence as unavailable; it
+   * never substitutes MCP discovery, a container state, or a guessed route.
+   */
+  healthUrl?: string;
   image: string;
   required: boolean;
   expectedTools: string[];

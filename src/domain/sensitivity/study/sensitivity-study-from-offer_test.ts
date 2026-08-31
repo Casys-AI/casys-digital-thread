@@ -71,7 +71,7 @@ Deno.test(
 );
 
 Deno.test(
-  "signed catalog offer compiles a sealable template with copied solver facts",
+  "signed catalog offer compiles a sealable template with copied method facts",
   () => {
     const offer = readyOffer();
     const template = compileSensitivityStudyTemplateFromOffer({
@@ -109,15 +109,15 @@ Deno.test(
       { id: "maxDisplacement", unit: "mm" },
       { id: "maxVonMises", unit: "MPa" },
     ]);
-    assertEquals(template.solver.mesh, {
+    assertEquals(template.method.mesh, {
       kind: "tetrahedral-volume",
       targetSizeMm: 3,
     });
-    assertEquals(template.solver.material.eMpa, 69000);
-    assertEquals(template.solver.material.nu, 0.33);
-    assertEquals(template.solver.material.basis, DL06_PROOF.analysis.material.basis);
-    assertEquals(template.solver.supports, DL06_PROOF.analysis.supports);
-    assertEquals(template.solver.loads, DL06_PROOF.analysis.loads);
+    assertEquals(template.method.material.eMpa, 69000);
+    assertEquals(template.method.material.nu, 0.33);
+    assertEquals(template.method.material.basis, DL06_PROOF.analysis.material.basis);
+    assertEquals(template.method.supports, DL06_PROOF.analysis.supports);
+    assertEquals(template.method.loads, DL06_PROOF.analysis.loads);
     assertEquals(template.domain.approximationOrder, "first-order-forward");
     assertEquals(template.domain.remeshingVariationIncluded, true);
     assertEquals(
@@ -184,7 +184,7 @@ Deno.test(
 );
 
 Deno.test(
-  "template compilation refuses an offer whose copied solver facts drifted from the proof",
+  "template compilation refuses an offer whose copied method facts drifted from the proof",
   () => {
     const offer = readyOffer();
     assertThrows(
@@ -192,10 +192,10 @@ Deno.test(
         compileSensitivityStudyTemplateFromOffer({
           offer: {
             ...offer,
-            solver: {
-              ...offer.solver,
+            method: {
+              ...offer.method,
               mesh: {
-                ...offer.solver.mesh,
+                ...offer.method.mesh,
                 targetSize: { value: 99, unit: "mm" },
               },
             },

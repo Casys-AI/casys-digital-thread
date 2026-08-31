@@ -60,11 +60,11 @@ let holes_schema = #{
     },
 };
 
-let root = "/Users/erwanpesle/Documents/GitHub/casys-digital-thread";
+let root = ".";
 
 phase("Confirm");
 let base = "Use read_file and grep only. Do not edit. Read the files before answering. ";
-base += "Repo: " + root + ". Empty items is valid only after a real read. ";
+base += "Current checkout (repository root): " + root + ". Empty items is valid only after a real read. ";
 base += "Do not propose ERPNext, make/buy, DFM, printability, FEA @3, or inventing SysML/CAD. ";
 base += "ERPNext 0/1 on Product is expected. ";
 
@@ -115,7 +115,7 @@ log("confirm panel returned");
 
 phase("Implement");
 
-let rules = "Repo: " + root + ". Implement in this workspace. Do not use a private worktree. ";
+let rules = "Current checkout (repository root): " + root + ". Implement in this workspace. Do not use a private worktree. ";
 rules += "Read the files, write tests first or with the change, then implement. ";
 rules += "Use @std/assert. Test names are English invariant sentences. ";
 rules += "New non-test modules must be added to deno.json check. ";

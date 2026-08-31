@@ -13,8 +13,8 @@ To validate only the source checkout, use
 project through the current design-verification path, use
 [Verify a new design from scratch](verify-a-new-design-from-scratch.md).
 
-This guide does not teach CAD, SysML, or FEA. It shows how to inspect the loop the product
-records.
+This guide does not teach CAD, SysML, or FEA. It shows how to inspect the loop the
+product records.
 
 ## What you will inspect
 
@@ -24,18 +24,18 @@ One cockpit, five spaces, one conversation:
 | ------------- | --------------------------------------------------------- |
 | **Project**   | Mission, approved brief, phase gates, “what needs review” |
 | **Activity**  | Live lineage feed: what the agent just persisted          |
-| **Product**   | One physical part across SysON, CAD, ERP identities       |
+| **Product**   | Exact registered whole-App handoffs for recorded anchors  |
 | **Evidence**  | Full graph, requirements, verdicts, named violations      |
 | **Execution** | Runs, registered work items, contributing systems         |
 
-![The five Workbench spaces. Conversation owns commands; the cockpit owns inspection.](../../assets/workbench-five-spaces.svg)
+![The five Workbench spaces. Conversation owns commands; the cockpit owns inspection.](../../media/workbench-five-spaces.svg)
 
 Focused generic candidate `desk-lamp-dl04` (revision 142). Project is the mission and
 approved brief. Activity is the live lineage feed. Neither is a command surface.
 
-![Native Workbench Project space: approved brief and phase-gate summary.](../../assets/workbench-project-dl04.png)
+![Native Workbench Project space: approved brief and phase-gate summary.](../../media/workbench-project-dl04.png)
 
-![Native Workbench Activity space: persisted lineage, not private reasoning.](../../assets/workbench-activity-dl04.png)
+![Native Workbench Activity space: persisted lineage, not private reasoning.](../../media/workbench-activity-dl04.png)
 
 The person never types a provider tool name. The agent never confirms its own proposal.
 The page never starts a solver.
@@ -94,8 +94,8 @@ After the brief is canonical:
 3. Human approves. Agent queues and executes. r2 is a **blank container identity**, not
    an architecture.
 
-See [sequence a SysON seed](../agents/sequence-a-syson-seed.md) if this
-ordering is violated.
+See [sequence a SysON seed](../agents/sequence-a-syson-seed.md) if this ordering is
+violated.
 
 ## 4. Architecture, requirements, geometry, proof
 
@@ -136,8 +136,8 @@ Object.is-equals one Thread requirement. Historical `desk-lamp-dl05` r16 publish
 `assembly_max_*` against Thread `maxDisplacement` / `maxVonMises` — that is `UNLINKED`,
 not a mapping the agent may invent. A later isolated reseal on that atelier joined. A
 new project starts at
-[Verify a new design from scratch](verify-a-new-design-from-scratch.md).
-Isolated proof `@3` evaluations stay a different authority.
+[Verify a new design from scratch](verify-a-new-design-from-scratch.md). Isolated proof
+`@3` evaluations stay a different authority.
 
 `verify.evaluate-sensitivity-base@1` then asks SysON to evaluate the
 `sensitivity-base-<metric>-<digest>` observations. Only a **fail** of those evaluations
@@ -147,10 +147,10 @@ through `project_resource_capture` plus a successor workspace file revision, the
 technical-source capture and `compile.seal-admission@3` / `design.execute-build123d@1` /
 proof steps. Each stays its own MRTR.
 
-The STEP then has **three** judgement branches: behave (this walkthrough and the post-proof
-walk), make (measured DFM), buy (BOM / cost, not registered yet). They share the
-geometry identity, not verdicts. Measured DFM is `industrialize.seal-dfm-case@1` then
-`industrialize.run-dfm-checks@1` on canonical `design.write-geometry@1` STEP only.
+The STEP then has **three** judgement branches: behave (this walkthrough and the
+post-proof walk), make (measured DFM), buy (BOM / cost, not registered yet). They share
+the geometry identity, not verdicts. Measured DFM is `industrialize.seal-dfm-case@1`
+then `industrialize.run-dfm-checks@1` on canonical `design.write-geometry@1` STEP only.
 Isolated geometry is not a DFM target. Do not open make or buy to complete a behave
 head.
 
@@ -165,21 +165,21 @@ item completed, not that the product is certified.
 On **Activity**, leave **Follow live** on. Cards are persisted facts. Select one to see
 upstream evidence and downstream impact. The feed is not the agent’s private reasoning.
 
-On **Product**, a missing CAD or ERP identity is a missing reviewed binding. Do not
-invent a join from a part name.
-
-![Product on desk-lamp-dl04: SysON structure is present; assembly CAD and ERP identities stay explicit gaps.](../../assets/workbench-product-dl04.png)
+On **Product**, use only the exact whole-App descriptors registered for the current
+Project/Thread basis. A missing or ambiguous binding stays unavailable; do not invent a
+SysON, CAD or ERP join from a part name. Domain presentation belongs to that App, not to
+a native Workbench facet.
 
 On **Evidence**, a `fail` verdict with named violations is valid published truth. Do not
 hide it. `unresolved` requirements stay unresolved.
 
-![Evidence on desk-lamp-dl04: linked entities, requirement counts, and named violations.](../../assets/workbench-evidence-dl04.png)
+![Evidence on desk-lamp-dl04: linked entities, requirement counts, and named violations.](../../media/workbench-evidence-dl04.png)
 
 On **Execution**, inspect the run journal. A `queued` run can still be cancelled with
 signed human confirmation. A completed run is replayed from CAS, never blindly
 re-dispatched.
 
-![Execution on desk-lamp-dl04: agent run journal and contributing engineering surfaces.](../../assets/workbench-execution-dl04.png)
+![Execution on desk-lamp-dl04: agent run journal and contributing engineering surfaces.](../../media/workbench-execution-dl04.png)
 
 ## 6. What this inspection does not prove
 

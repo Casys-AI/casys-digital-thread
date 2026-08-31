@@ -13,8 +13,8 @@ available on the current machine.
 | [`workbench/`](workbench/) | Preview or extend the read-only Workbench surface |
 | [`compile/`](compile/) | Capture and compile reviewed engineering source or parameters |
 | [`run/`](run/) | Execute or recover an admitted simulation path |
-| [`agents/`](agents/) | Follow agent-only sequencing procedures |
-| [`maintainers/`](maintainers/) | Preflight providers and prepare a public repository release |
+| [`agents/`](agents/) | Follow agent-only sequencing procedures, including [project capability authorization](agents/review-project-capability-authorization.md) |
+| [`maintainers/`](maintainers/) | Preflight providers, [administer the local capability runtime](maintainers/administer-local-capability-runtime.md), and prepare a public repository release |
 | [`extend/`](extend/) | Add or change a reviewed engineering capability |
 
 Human-facing filenames use an action plus an outcome. Provider names, operation IDs,
@@ -25,3 +25,9 @@ Start with [Walk through an engineering project](verify-design/walk-through-an-e
 to inspect an existing dated path, or
 [Verify a new design from scratch](verify-design/verify-a-new-design-from-scratch.md)
 when the stated prerequisites are already satisfied.
+
+For the bounded mechanism path, use
+[Verify prescribed kinematics](verify-design/verify-prescribed-kinematics.md). If its
+single L3 dispatch ends with an unknown provider outcome, switch to
+[Recover a prescribed-kinematics observation](run/recover-prescribed-kinematics-observation.md)
+instead of retrying it.

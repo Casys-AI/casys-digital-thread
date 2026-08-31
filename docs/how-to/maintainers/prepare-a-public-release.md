@@ -3,8 +3,8 @@
 Audience: maintainers · Diátaxis: how-to · Kind: release checklist
 
 Use this checklist before changing repository visibility. Passing source tests is
-necessary, but it does not prove that a fresh contributor can obtain the runtime or
-that the distributed Desktop and container images satisfy their notice obligations.
+necessary, but it does not prove that a fresh contributor can obtain the runtime or that
+the distributed Desktop and container images satisfy their notice obligations.
 
 Record the exact commit, tool versions, commands, and results for every completed item.
 Leave an unchecked or failed item literal; do not turn it into a release claim.
@@ -16,6 +16,9 @@ Leave an unchecked or failed item literal; do not turn it into a release claim.
 - Publish one reviewed commit; do not rely on a visibility toggle to synchronize
   divergent remotes.
 - Create the release from a clean clone of that exact commit.
+- When private history is intentionally outside the release boundary, use the
+  [clean public mirror procedure](prepare-a-clean-public-mirror.md) instead of exposing
+  or rewriting that history implicitly.
 
 ## 2. Audit the public data boundary
 
@@ -50,15 +53,18 @@ Leave an unchecked or failed item literal; do not turn it into a release claim.
 
 - Generate and retain an SBOM for the source checkout, each published OCI image, and
   each packaged Desktop artifact.
-- Review direct and transitive licences. The repository's MIT licence is not an
-  aggregate licence for providers, solvers, native libraries, Node, or other bundled
+- For the deliberately narrower source-alpha inventory, follow
+  [Generate a source-alpha SBOM](source-alpha-sbom.md). It does not clear the OCI or
+  Desktop artifact obligations in this checklist.
+- Review direct and transitive licences. The repository's `AGPL-3.0-only` licence is not
+  an aggregate licence for providers, solvers, native libraries, Node, or other bundled
   runtimes.
 - Preserve the licence, notice, source-availability, and relinking material required by
   every redistributed component.
 - Check final artifacts, not only package manifests: a notice present in a downloaded
   archive is insufficient if packaging copies only its executable.
-- Make OCI licence labels describe the aggregate image accurately; do not label an
-  image only with the workspace licence when it contains differently licensed software.
+- Make OCI licence labels describe the aggregate image accurately; do not label an image
+  only with the workspace licence when it contains differently licensed software.
 
 ## 6. Configure the public collaboration surface
 
@@ -83,5 +89,5 @@ bundle, or lockfile drift is not part of the release unless it is separately rev
 
 After the visibility change, use a signed-out session or isolated environment to verify
 the repository, release assets, documentation links, image pulls, security-reporting
-path, and fresh-clone commands. Tag and announce only the commit that passed the recorded
-checks.
+path, and fresh-clone commands. Tag and announce only the commit that passed the
+recorded checks.

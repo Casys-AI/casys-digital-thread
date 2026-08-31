@@ -274,6 +274,26 @@ export function unionOverviewThreadWhiteboardRects(
   };
 }
 
+/**
+ * Fits sparse whiteboard content to the records and viewers that actually
+ * exist. The nominal world is only a coordinate surface; including its whole
+ * rectangle would keep a two-hull project tiny in the middle of an otherwise
+ * empty canvas. An empty scene still falls back to that world so reset and
+ * loading states remain deterministic.
+ */
+export function overviewThreadWhiteboardContentBounds(
+  world: OverviewThreadWhiteboardSize,
+  sceneRectangles: readonly OverviewThreadWhiteboardRect[],
+): OverviewThreadWhiteboardRect | undefined {
+  return unionOverviewThreadWhiteboardRects(sceneRectangles) ??
+    unionOverviewThreadWhiteboardRects([{
+      x: 0,
+      y: 0,
+      width: world.width,
+      height: world.height,
+    }]);
+}
+
 function resolveScaleBounds(
   bounds: OverviewThreadWhiteboardScaleBounds,
 ): { readonly minScale: number; readonly maxScale: number } {

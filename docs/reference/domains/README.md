@@ -9,6 +9,7 @@ OpenModelica to Modelica, and CalculiX to FEA.
 | Domain      | Owns                                                                  | Start here                           |
 | ----------- | --------------------------------------------------------------------- | ------------------------------------ |
 | CAD         | Closed-language geometry source, execution drafts, canonical geometry | [CAD](cad/README.md)                 |
+| Mechanism   | Bounded prescribed-motion case, factual observation, evaluation, and human closeout | [Mechanism](mechanism/README.md) |
 | Modelica    | Closed-source dynamic simulation and documentary observations         | [Modelica](modelica/README.md)       |
 | FEA         | Mechanical proof declarations, isolated solves and evaluated criteria | [FEA](fea/README.md)                 |
 | Make / DFM  | Measured DFM cases and checks over one canonical STEP                 | [Make / DFM](../codebase/make-dfm.md) |
@@ -20,6 +21,7 @@ OpenModelica to Modelica, and CalculiX to FEA.
 
 H01 size inventory (enforced vs missing cardinalities; no invented numbers):
 [SysML](sysml/boundedness.md), [CAD](cad/boundedness.md),
+[Mechanism](mechanism/boundedness.md),
 [Modelica](modelica/boundedness.md), [FEA](fea/boundedness.md),
 [sensitivity](sensitivity/boundedness.md), [electrical](electrical/boundedness.md),
 [impact](impact/boundedness.md), and the shared

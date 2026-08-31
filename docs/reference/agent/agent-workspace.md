@@ -33,7 +33,7 @@ Engineering providers live in other repos and run from published images. Do not 
 (local microVM). The retired port 3016 `mcp-modelica` sidecar is not a product path.
 Change a provider only in its own repo.
 
-![Authority split: human confirms, agent proposes registered operations, server owns sequences, Workbench is read-only.](../../assets/authority-and-surfaces.svg)
+![Authority split: human confirms, agent proposes registered operations, server owns sequences, Workbench is read-only.](../../media/authority-and-surfaces.svg)
 
 ```mermaid
 flowchart LR
@@ -116,10 +116,12 @@ refuses. Product inspection is `preview:thread` / `preview:cockpit`.
 | `project_snapshot`                                     | Read             | Current project, decisions, runs, receipts. Completed FEA/DFM/sensitivity-base runs carry a read-time `join` from Thread `evaluations[]`. Sensitivity, DFM, printability, print-estimate and FEA runs carry `observations` from Thread `observations[]`. Neither field is persisted. |
 | `project_question_propose`                             | Agent mutation   | One framing question                                                                                                                                                                                                                                                                 |
 | `project_answer_record`                                | Agent or human   | Sourced answer or explicit unknown                                                                                                                                                                                                                                                   |
-| `project_brief_propose`                                | Agent mutation   | Living brief revision; not canonical. Result carries `nextTool`, `briefSnapshotId`, `briefRevision`, `inputFingerprint` for confirm                                                                                                                                                  |
-| `project_brief_confirm`                                | Human MRTR       | Promote that exact pending brief                                                                                                                                                                                                                                                     |
+| `project_brief_propose`                                | Agent mutation   | Living brief revision; not canonical. Result carries `nextTool`, `briefSnapshotId`, `briefRevision`, `inputFingerprint`, `capabilityProposal`, and its exact `capabilityProposalFingerprint` for confirmation                                                                    |
+| `project_brief_confirm`                                | Human MRTR       | Promote that exact pending brief only while echoing its exact server-derived `capabilityProposalFingerprint`                                                                                                                                                                         |
+| `project_capability_inspect`                           | Read             | Inspect the separate local operational authorization: semantic requirements, selected bindings/units/digests, host effects, and literal blockers; no runtime command, MRTR, or result claim                                                                                         |
 | `project_plan_publish`                                 | Agent mutation   | Unexecuted plan from approved brief only                                                                                                                                                                                                                                             |
 | `project_change_append`                                | Agent mutation   | Append-only next change; never rewrite history. Seed `dependsOnWorkItemIds` must name the unique baseline work item.                                                                                                                                                                 |
+| `project_capability_change_review`                     | Read / human amendment | Recompile the exact published-plan ceiling. A covered subset needs no prompt; a widening, binding/digest/profile, or host-effect delta requires the exact server-derived fingerprint and signed human confirmation. No caller-selected runtime detail                                   |
 | `project_decision_propose`                             | Agent mutation   | Typed proposal                                                                                                                                                                                                                                                                       |
 | `project_decision_approve` / `project_decision_reject` | Human MRTR       | Exact proposal only                                                                                                                                                                                                                                                                  |
 | `project_agent_run_queue`                              | Bounded mutation | Server derives run id, basis, summary                                                                                                                                                                                                                                                |
@@ -215,6 +217,14 @@ for multi-file closures.
 | `project_product_search`  | Read      | Exact-id **or** non-authoritative text discovery over the disposable Graphology index. Hits are exact `PartDefinition` / `PartUsage` element refs. Labels and tokens never join. Paginated. Grants none.                                                                                                                                                                                                                                                                                                 |
 | `project_product_inspect` | Read      | One exact element or occurrence. A `PartUsage` stays that usage. Thread evidence is definition-scoped and labelled. Authoring heads stay element-level and unmerged. Ready actions are complete calls to this server only; blocked offers have closed codes and no partial args. Grants none.                                                                                                                                                                                                            |
 | `project_source_closure`  | Read      | Technical DAG of one versioned authoring attachment from an exact selected element/occurrence plus exact `attachmentId`/`attachmentRevision` at a named workspace revision. One discriminated `entries` page of files then edges; `fileCount`, `edgeCount` and the closure fingerprint stay on every page. Cursor binds the full basis, selection, workspace revision, attachment revision and fingerprint. `PartUsage` keeps its usage id. Grants none. Not admission. Then `project_source_file_read`. |
+
+### Prescribed mechanism motion
+
+The five read-only review tools and six registered operations for the bounded mechanism
+path are indexed in [mechanism operations](../domains/mechanism/operations.md). Follow
+[verify prescribed kinematics](../../how-to/verify-design/verify-prescribed-kinematics.md)
+for the exact brief → SysON Product Structure → workspace attachments → L1–L5 order.
+Neither these reviews nor Product navigation selects a provider.
 
 ### LED-driver human source
 
@@ -389,6 +399,10 @@ rather than a Thread write.
 Source of truth:
 [`src/orchestration/operations/registry.ts`](../../../src/orchestration/operations/registry.ts).
 Unknown ids/versions are indistinguishable from absent.
+
+The prescribed-kinematics family is kept as one short, exact index in
+[mechanism operations](../domains/mechanism/operations.md); this table remains the
+cross-domain registry overview.
 
 | Operation                                                                                       | Execution                 | Provider                                                           | What a success is                                                                                                                                | What it is not                                                          |
 | ----------------------------------------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |

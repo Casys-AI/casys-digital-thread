@@ -14,7 +14,6 @@ import {
   technicalSourceAnalysisCaptureStores,
   technicalSourceCaptureInput,
 } from "../../../testing/technical-source-capture-test-support.ts";
-import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
 import {
   INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG,
 } from "../admission/fixed-technical-compilation-profile-catalog-provider.ts";

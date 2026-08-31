@@ -1,12 +1,20 @@
 import { assertEquals } from "@std/assert";
-import type { CrossDomainImpactBriefGateReader } from "../../ports/out/impact/cross-domain-impact-brief-gate-reader.ts";
-import type { CrossDomainImpactManifestReader } from "../../ports/out/impact/cross-domain-impact-manifest-reader.ts";
+import type {
+  CrossDomainImpactApprovedBriefGates,
+  CrossDomainImpactBriefGateReader,
+} from "../../ports/out/impact/cross-domain-impact-brief-gate-reader.ts";
+import type {
+  CrossDomainImpactManifestReader,
+  ReopenedCrossDomainImpactManifest,
+} from "../../ports/out/impact/cross-domain-impact-manifest-reader.ts";
 import type {
   CrossDomainImpactThreadLineage,
   CrossDomainImpactThreadLineageReader,
 } from "../../ports/out/impact/cross-domain-impact-thread-lineage-reader.ts";
+import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
 import { crossDomainImpactManifestUri } from "../../../domain/impact/cross-domain-impact-manifest-proposal.ts";
 import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
+import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import { validCrossDomainImpactManifest } from "../../../testing/cross-domain-impact-fixtures.ts";
 import { PrepareProjectCrossDomainImpactManifestSealReview } from "./prepare-project-cross-domain-impact-manifest-seal-review.ts";
 
@@ -281,8 +289,8 @@ async function reviewFixture() {
 
 class MemoryManifestReader implements CrossDomainImpactManifestReader {
   reads = 0;
-  constructor(readonly value: any) {}
-  read() {
+  constructor(readonly value: MutableReopenedCrossDomainImpactManifest) {}
+  read(): Promise<ReopenedCrossDomainImpactManifest | undefined> {
     this.reads += 1;
     return Promise.resolve(this.value);
   }
@@ -290,8 +298,8 @@ class MemoryManifestReader implements CrossDomainImpactManifestReader {
 
 class MemoryLineageReader implements CrossDomainImpactThreadLineageReader {
   reads = 0;
-  constructor(readonly value: any) {}
-  read() {
+  constructor(readonly value: MutableCrossDomainImpactThreadLineage) {}
+  read(): Promise<CrossDomainImpactThreadLineage | undefined> {
     this.reads += 1;
     return Promise.resolve(this.value);
   }
@@ -299,8 +307,8 @@ class MemoryLineageReader implements CrossDomainImpactThreadLineageReader {
 
 class MemoryBriefGateReader implements CrossDomainImpactBriefGateReader {
   reads = 0;
-  constructor(readonly value: any) {}
-  read() {
+  constructor(readonly value: MutableCrossDomainImpactApprovedBriefGates) {}
+  read(): Promise<CrossDomainImpactApprovedBriefGates | undefined> {
     this.reads += 1;
     return Promise.resolve(this.value);
   }
@@ -324,6 +332,39 @@ class MemoryProjectReader {
   get(projectId: string) {
     this.reads += 1;
     if (this.value.project.id !== projectId) return Promise.resolve(undefined);
-    return Promise.resolve(this.value as any);
+    return Promise.resolve(this.value as unknown as EngineeringProjectSnapshot);
   }
 }
+
+type MutableReopenedCrossDomainImpactManifest = {
+  reference: ReopenedCrossDomainImpactManifest["reference"];
+  uri: string;
+  manifest: ReopenedCrossDomainImpactManifest["manifest"];
+};
+
+type MutableCrossDomainImpactThreadLineage = {
+  project: CrossDomainImpactThreadLineage["project"];
+  subject: CrossDomainImpactThreadLineage["subject"];
+  basis: CrossDomainImpactThreadLineage["basis"];
+  sourceAnchors: CrossDomainImpactThreadLineage["sourceAnchors"];
+  mechanicalEvidence: readonly {
+    assertionId: string;
+    evidence: CrossDomainImpactThreadLineage["mechanicalEvidence"][number]["evidence"];
+    evidenceFreshness:
+      CrossDomainImpactThreadLineage["mechanicalEvidence"][number]["evidenceFreshness"];
+    consumptions:
+      CrossDomainImpactThreadLineage["mechanicalEvidence"][number]["consumptions"];
+  }[];
+};
+
+type MutableCrossDomainImpactApprovedBriefGates = {
+  projectId: string;
+  contractVersion: "1.0" | "2.0";
+  brief: CrossDomainImpactApprovedBriefGates["brief"];
+  gates: Array<{
+    id: string;
+    kind: "success-criterion";
+    fingerprint: ContentFingerprint;
+    dependsOnItemIds?: readonly string[];
+  }>;
+};

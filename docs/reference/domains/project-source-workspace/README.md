@@ -20,9 +20,14 @@ Read:
 How-to:
 [author and revise a project source workspace](../../../how-to/compile/author-project-source-workspace.md).
 
-RFC (accepted, not the runtime contract):
-[project source workspace](../../../rfcs/project-source-workspace/README.md).
+Internal planning history for this vertical is intentionally not exported; the public
+runtime contract is this reference and its linked model, operations, persistence, and
+coverage pages.
 
 Byte ingress remains [`project_resource_capture`](../../agent/agent-workspace.md). This
 vertical does not call technical source capture, compilation admission, CAD, FEA,
 Modelica, or SPICE.
+
+For the one `mechanism-source@1` bridge, see
+[prescribed-kinematics case and architecture binding](../mechanism/prescribed-kinematics-case-and-architecture-binding.md).
+The workspace contributes L1 source identity only; it never authorizes provider dispatch.

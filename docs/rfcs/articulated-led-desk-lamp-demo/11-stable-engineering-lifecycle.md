@@ -132,12 +132,12 @@ touched files. Run targeted `deno test`, targeted `deno lint`/`deno fmt --check`
 check when UI contracts change, and one final causal integration check. Do not run the
 whole repository suite after every lot.
 
-## Grok execution contract
+## Implementation execution contract
 
-Grok 4.6 `xhigh` is the implementation lead. Read `AGENTS.md`, `CLAUDE.md`, this RFC and
-the linked living contracts before editing. Inspect current HEAD and the clean worktree,
-then implement the complete domain-to-Workbench refactor; do not stop at an inventory or
-proposal. Preserve server/human/agent authority, literal statuses and exact provenance.
+The implementation agent reads `AGENTS.md`, this RFC and the linked living contracts
+before editing. Inspect current HEAD and the clean worktree, then implement the complete
+domain-to-Workbench refactor; do not stop at an inventory or proposal. Preserve
+server/human/agent authority, literal statuses and exact provenance.
 
 Renames and breaking changes are authorized. Old local Project snapshots need not load.
 Remove the old aliases and inference paths rather than maintaining two models. Preserve

@@ -112,12 +112,15 @@ export type TechnicalSourceCapturedEffectiveUnit =
     TechnicalSourceEffectiveUnit,
     { readonly kind: "build123d-workspace-closure-lowered" }
   >
-  | (Extract<
-    TechnicalSourceEffectiveUnit,
-    { readonly kind: "build123d-workspace-closure-lowered" }
-  > & {
-    readonly loweringManifest: Build123dWorkspaceClosureLoweringManifest;
-  });
+  | (
+    & Extract<
+      TechnicalSourceEffectiveUnit,
+      { readonly kind: "build123d-workspace-closure-lowered" }
+    >
+    & {
+      readonly loweringManifest: Build123dWorkspaceClosureLoweringManifest;
+    }
+  );
 
 export class TechnicalSourceCaptureProfileNotRegisteredError extends Error {
   constructor(

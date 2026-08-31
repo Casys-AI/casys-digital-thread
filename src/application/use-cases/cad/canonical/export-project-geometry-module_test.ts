@@ -3,9 +3,9 @@ import type { EngineeringProjectSnapshot } from "../../../../domain/project/engi
 import type { ThreadSnapshot } from "../../../../domain/thread/thread-snapshot.ts";
 import {
   GEOMETRY_MODULE_ASSEMBLY_ASSETS,
-  GEOMETRY_MODULE_ASSEMBLY_CAPABILITY,
   GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
 } from "../../../../domain/cad/module-assembly/geometry-module-assembly-receipt.ts";
+import { GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY } from "../../../../domain/capability/engineering-capability.ts";
 import type { GeometryModuleAssembler } from "../../../ports/out/cad/module-assembly/geometry-module-assembler.ts";
 import {
   CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_KIND,
@@ -122,7 +122,7 @@ Deno.test("geometry-module export recrosses exact child bytes, saves a reread dr
     );
     assertEquals(
       harness.draftStore.lastUnsigned?.receipt.capability,
-      GEOMETRY_MODULE_ASSEMBLY_CAPABILITY,
+      GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
     );
     const occurrences = harness.draftStore.lastUnsigned?.children.map((child) =>
       child.usageElementId
@@ -684,7 +684,7 @@ class FakeNeutralAssembler implements GeometryModuleAssembler {
     return {
       receipt: {
         schemaVersion: GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
-        capability: GEOMETRY_MODULE_ASSEMBLY_CAPABILITY,
+        capability: GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
         runId: command.runId,
         inputBundle: {
           fingerprint: command.bundle.fingerprint,

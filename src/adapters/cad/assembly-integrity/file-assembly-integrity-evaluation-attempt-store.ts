@@ -126,7 +126,9 @@ export class FileAssemblyIntegrityEvaluationAttemptStore {
     );
   }
 
-  async recordCapture(input: AssemblyIntegrityEvaluationAttemptCaptureRecord): Promise<void> {
+  async recordCapture(
+    input: AssemblyIntegrityEvaluationAttemptCaptureRecord,
+  ): Promise<void> {
     const identity = validateIdentity(input);
     const captureFingerprint = validateFingerprint(
       input.captureFingerprint,
@@ -153,7 +155,10 @@ export class FileAssemblyIntegrityEvaluationAttemptStore {
       runId: existing.runId,
       planDigest: existing.planDigest,
       startedAt: existing.startedAt,
-      recordedAt: isoInstant(input.recordedAt, "$assemblyIntegrityEvaluationAttempt.recordedAt"),
+      recordedAt: isoInstant(
+        input.recordedAt,
+        "$assemblyIntegrityEvaluationAttempt.recordedAt",
+      ),
       captureFingerprint,
       canonicalCaptureText,
     };
@@ -195,7 +200,10 @@ export class FileAssemblyIntegrityEvaluationAttemptStore {
       planDigest: existing.planDigest,
       startedAt: existing.startedAt,
       recordedAt: existing.recordedAt,
-      completedAt: isoInstant(input.completedAt, "$assemblyIntegrityEvaluationAttempt.completedAt"),
+      completedAt: isoInstant(
+        input.completedAt,
+        "$assemblyIntegrityEvaluationAttempt.completedAt",
+      ),
       captureFingerprint,
       canonicalCaptureText: existing.canonicalCaptureText,
     };
@@ -257,15 +265,21 @@ export interface AssemblyIntegrityEvaluationAttemptBasis {
   readonly startedAt: string;
 }
 
-export interface AssemblyIntegrityEvaluationAttemptCaptureRecord
-  extends Pick<AssemblyIntegrityEvaluationAttemptBasis, "projectId" | "runId" | "planDigest"> {
+export interface AssemblyIntegrityEvaluationAttemptCaptureRecord extends
+  Pick<
+    AssemblyIntegrityEvaluationAttemptBasis,
+    "projectId" | "runId" | "planDigest"
+  > {
   readonly recordedAt: string;
   readonly captureFingerprint: ContentFingerprint;
   readonly canonicalCaptureText: string;
 }
 
-export interface AssemblyIntegrityEvaluationAttemptCompletion
-  extends Pick<AssemblyIntegrityEvaluationAttemptBasis, "projectId" | "runId" | "planDigest"> {
+export interface AssemblyIntegrityEvaluationAttemptCompletion extends
+  Pick<
+    AssemblyIntegrityEvaluationAttemptBasis,
+    "projectId" | "runId" | "planDigest"
+  > {
   readonly completedAt: string;
   readonly captureFingerprint: ContentFingerprint;
 }
@@ -288,7 +302,10 @@ function assertPlan(
   attempt: AssemblyIntegrityEvaluationAttempt,
   planDigest: string,
 ): void {
-  if (attempt.planDigest !== hex64(planDigest, "$assemblyIntegrityEvaluationAttempt.planDigest")) {
+  if (
+    attempt.planDigest !==
+      hex64(planDigest, "$assemblyIntegrityEvaluationAttempt.planDigest")
+  ) {
     throw new AssemblyIntegrityEvaluationAttemptConflictError(
       "The L4 attempt journal belongs to a different sealed plan.",
     );
@@ -321,7 +338,9 @@ function parseAttempt(value: unknown): AssemblyIntegrityEvaluationAttempt {
     };
   }
   if (status !== "capture-recorded" && status !== "completed") {
-    throw new TypeError("Assembly-integrity evaluation attempt has an unsupported status.");
+    throw new TypeError(
+      "Assembly-integrity evaluation attempt has an unsupported status.",
+    );
   }
   const root = exactRecord(value, [
     "schemaVersion",
@@ -342,7 +361,10 @@ function parseAttempt(value: unknown): AssemblyIntegrityEvaluationAttempt {
   );
   const common = {
     ...parseBasis(root),
-    recordedAt: isoInstant(root.recordedAt, "$assemblyIntegrityEvaluationAttempt.recordedAt"),
+    recordedAt: isoInstant(
+      root.recordedAt,
+      "$assemblyIntegrityEvaluationAttempt.recordedAt",
+    ),
     captureFingerprint: parseFingerprint(
       root.captureFingerprint,
       "$assemblyIntegrityEvaluationAttempt.captureFingerprint",
@@ -370,12 +392,20 @@ function parseAttempt(value: unknown): AssemblyIntegrityEvaluationAttempt {
   };
 }
 
-function parseBasis(value: Record<string, unknown>): AssemblyIntegrityEvaluationAttemptBasis {
+function parseBasis(
+  value: Record<string, unknown>,
+): AssemblyIntegrityEvaluationAttemptBasis {
   return {
     projectId: safeId(value.projectId, "$assemblyIntegrityEvaluationAttempt.projectId"),
     runId: safeId(value.runId, "$assemblyIntegrityEvaluationAttempt.runId"),
-    planDigest: hex64(value.planDigest, "$assemblyIntegrityEvaluationAttempt.planDigest"),
-    startedAt: isoInstant(value.startedAt, "$assemblyIntegrityEvaluationAttempt.startedAt"),
+    planDigest: hex64(
+      value.planDigest,
+      "$assemblyIntegrityEvaluationAttempt.planDigest",
+    ),
+    startedAt: isoInstant(
+      value.startedAt,
+      "$assemblyIntegrityEvaluationAttempt.startedAt",
+    ),
   };
 }
 
@@ -384,7 +414,10 @@ function validateBasis(
 ): AssemblyIntegrityEvaluationAttemptBasis {
   return {
     ...validateIdentity(value),
-    startedAt: isoInstant(value.startedAt, "$assemblyIntegrityEvaluationAttempt.startedAt"),
+    startedAt: isoInstant(
+      value.startedAt,
+      "$assemblyIntegrityEvaluationAttempt.startedAt",
+    ),
   };
 }
 
@@ -392,10 +425,16 @@ function validateIdentity(value: {
   readonly projectId: string;
   readonly runId: string;
   readonly planDigest: string;
-}): Pick<AssemblyIntegrityEvaluationAttemptBasis, "projectId" | "runId" | "planDigest"> {
+}): Pick<
+  AssemblyIntegrityEvaluationAttemptBasis,
+  "projectId" | "runId" | "planDigest"
+> {
   return {
     ...validateKey(value.projectId, value.runId),
-    planDigest: hex64(value.planDigest, "$assemblyIntegrityEvaluationAttempt.planDigest"),
+    planDigest: hex64(
+      value.planDigest,
+      "$assemblyIntegrityEvaluationAttempt.planDigest",
+    ),
   };
 }
 
@@ -415,7 +454,10 @@ function parseFingerprint(value: unknown, path: string): ContentFingerprint {
   return { algorithm: "sha256", digest: hex64(root.digest, `${path}.digest`) };
 }
 
-function validateFingerprint(value: ContentFingerprint, path: string): ContentFingerprint {
+function validateFingerprint(
+  value: ContentFingerprint,
+  path: string,
+): ContentFingerprint {
   if (value.algorithm !== "sha256") {
     throw new TypeError(`${path}.algorithm must equal sha256.`);
   }

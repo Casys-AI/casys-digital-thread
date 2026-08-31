@@ -28,6 +28,9 @@ import {
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
+import {
+  canonicalResolvedCapabilityRuntimeOperationText,
+} from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
 import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
 
 export const RESOLVED_OPERATION_PLAN_STORE_DESCRIPTOR = {
@@ -56,10 +59,20 @@ export class CaptureBackedRunPlanSealer
   constructor(private readonly options: CaptureBackedRunPlanSealerOptions) {}
 
   async seal(input: RegisteredRunPlanSealInput): Promise<ResolvedOperationPlanRef> {
+    // The resolver is code-owned but still cannot be allowed to mutate the
+    // value we later use to prove queue-time operational authority.
+    const queuedOperationalCapability = input.operationalCapability === undefined
+      ? undefined
+      : canonicalResolvedCapabilityRuntimeOperationText(input.operationalCapability);
     const candidate = validateResolvedOperationPlanV2(
       await this.options.resolver.resolve(input),
     );
-    await assertPlanBindsQueuedRun(candidate, input);
+    await assertPlanBindsQueuedRun(candidate, {
+      ...input,
+      ...(queuedOperationalCapability === undefined
+        ? {}
+        : { operationalCapability: JSON.parse(queuedOperationalCapability) }),
+    });
     const text = canonicalResolvedOperationPlanV2Text(candidate);
     const bytes = new TextEncoder().encode(text);
     const fingerprint = await fingerprintResolvedOperationPlanV2(candidate);
@@ -171,6 +184,19 @@ async function assertPlanBindsQueuedRun(
   ) {
     throw new TypeError(
       "Resolved operation plan does not bind the exact pre-queue project snapshot.",
+    );
+  }
+  if (!input.operationalCapability) {
+    throw new TypeError(
+      "A resolved-operation-plan/2.0 candidate requires the queue-resolved operational capability.",
+    );
+  }
+  if (
+    canonicalResolvedCapabilityRuntimeOperationText(plan.operationalCapability) !==
+      canonicalResolvedCapabilityRuntimeOperationText(input.operationalCapability)
+  ) {
+    throw new TypeError(
+      "Resolved operation plan does not bind the exact queue-resolved operational capability.",
     );
   }
   const operation = input.workItem.operation;

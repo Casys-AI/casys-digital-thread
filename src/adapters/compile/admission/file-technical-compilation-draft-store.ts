@@ -279,64 +279,6 @@ function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
   return different === 0;
 }
 
-function cloneJsonRecord(
-  value: unknown,
-  path: string,
-): Readonly<Record<string, unknown>> {
-  if (
-    value === null || typeof value !== "object" || Array.isArray(value) ||
-    Object.keys(value).length === 0
-  ) {
-    throw new TypeError(`${path} must be a non-empty JSON object.`);
-  }
-  return cloneJsonValue(value, path, new Set()) as Readonly<
-    Record<string, unknown>
-  >;
-}
-
-function cloneJsonValue(
-  value: unknown,
-  path: string,
-  ancestors: Set<object>,
-): unknown {
-  if (
-    value === null || typeof value === "string" || typeof value === "boolean"
-  ) return value;
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) throw new TypeError(`${path} must be finite.`);
-    return value;
-  }
-  if (typeof value !== "object") {
-    throw new TypeError(`${path} must contain JSON values only.`);
-  }
-  if (ancestors.has(value)) throw new TypeError(`${path} must not be cyclic.`);
-  ancestors.add(value);
-  try {
-    if (Array.isArray(value)) {
-      return deepFreeze(
-        value.map((item, index) =>
-          cloneJsonValue(item, `${path}[${index}]`, ancestors)
-        ),
-      );
-    }
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) {
-      throw new TypeError(`${path} must contain plain JSON records only.`);
-    }
-    const result = Object.create(null) as Record<string, unknown>;
-    for (const key of Object.keys(value).sort(compareText)) {
-      result[key] = cloneJsonValue(
-        (value as Record<string, unknown>)[key],
-        `${path}.${key}`,
-        ancestors,
-      );
-    }
-    return deepFreeze(result);
-  } finally {
-    ancestors.delete(value);
-  }
-}
-
 function compareSourceCaptures(
   left: TechnicalCompilationDraft["sourceCaptures"][number],
   right: TechnicalCompilationDraft["sourceCaptures"][number],

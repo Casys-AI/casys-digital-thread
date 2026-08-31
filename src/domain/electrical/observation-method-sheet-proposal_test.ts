@@ -24,7 +24,7 @@ Deno.test(
       const encoded = JSON.stringify(parameter);
       assertEquals(encoded.includes("provider"), false);
       assertEquals(encoded.includes("ngspice"), false);
-      assertEquals(encoded.includes("\"args\""), false);
+      assertEquals(encoded.includes('"args"'), false);
       assertEquals(encoded.includes("syson"), false);
     }
     const parsed = parseElectricalObservationMethodSheetSealParameters(parameters);

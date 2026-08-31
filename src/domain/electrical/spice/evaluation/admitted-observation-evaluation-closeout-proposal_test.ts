@@ -58,9 +58,7 @@ Deno.test("SPICE L5 accept grammar refuses a reject consequence", () => {
   const parameters = encodeSpiceAdmittedObservationEvaluationCloseoutAdmission(
     admission("reject"),
   );
-  const error = throws(() =>
-    parseAcceptAdmittedSpiceEvaluationParameters(parameters)
-  );
+  const error = throws(() => parseAcceptAdmittedSpiceEvaluationParameters(parameters));
   assertEquals(error.message.includes("accept"), true);
 });
 

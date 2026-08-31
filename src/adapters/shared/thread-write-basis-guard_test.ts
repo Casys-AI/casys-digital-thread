@@ -40,6 +40,11 @@ import {
 } from "../../domain/sensitivity/study/sensitivity-study-proposal.ts";
 import { VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION } from "../../domain/sensitivity/base-evaluation/sensitivity-base-evaluation.ts";
 import { DECIDE_ACCEPT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-evaluation-closeout-proposal.ts";
+import {
+  PRESCRIBED_KINEMATICS_OPERATIONS,
+  VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+  VERIFY_RUN_PRESCRIBED_KINEMATICS_PROVIDER_OUTCOME_UNKNOWN_FAILURE,
+} from "../../domain/mechanism/prescribed-kinematics/operations.ts";
 
 const BASIS = {
   kind: "thread-snapshot" as const,
@@ -325,6 +330,113 @@ Deno.test("a running sensitivity writer blocks every sibling on the same Thread 
       "active, completed, or uncertain durable write",
     );
   }
+});
+
+Deno.test("prescribed-kinematics writers share the same Thread-basis exclusion", async () => {
+  const current = run("architecture", "queued");
+  for (const operation of PRESCRIBED_KINEMATICS_OPERATIONS) {
+    for (const status of ["running", "publishing", "completed"] as const) {
+      const sibling = {
+        ...run("geometry", status),
+        id: `run:${operation.id}:${status}`,
+        workItemId: `work:${operation.id}:${status}`,
+      };
+      const initial = project([current, sibling]);
+      const value: EngineeringProjectSnapshot = {
+        ...initial,
+        workItems: initial.workItems.map((item) =>
+          item.id === sibling.workItemId
+            ? {
+              ...item,
+              operation: {
+                ...operation,
+                bindings: item.operation?.bindings ?? [],
+              },
+            }
+            : item
+        ),
+      };
+      assertEquals(
+        threadWriteBasisLeaseScope(current),
+        threadWriteBasisLeaseScope(sibling),
+      );
+      await assertRejects(
+        () => assertThreadWriteBasisAvailable(value, current),
+        EngineeringProjectCommandError,
+        "active, completed, or uncertain durable write",
+      );
+    }
+  }
+});
+
+Deno.test("an uncertain prescribed-kinematics Chrono outcome blocks the same Thread basis", async () => {
+  const current = run("architecture", "queued");
+  const sibling = {
+    ...run("geometry", "failed"),
+    id: "run:prescribed-kinematics-uncertain",
+    workItemId: "work:prescribed-kinematics-uncertain",
+    failure: {
+      code: VERIFY_RUN_PRESCRIBED_KINEMATICS_PROVIDER_OUTCOME_UNKNOWN_FAILURE,
+      message: "Chrono outcome remains recoverable/quarantined: uncertain.",
+    },
+  };
+  const initial = project([current, sibling]);
+  const value: EngineeringProjectSnapshot = {
+    ...initial,
+    workItems: initial.workItems.map((item) =>
+      item.id === sibling.workItemId
+        ? {
+          ...item,
+          operation: {
+            ...VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+            bindings: item.operation?.bindings ?? [],
+          },
+        }
+        : item
+    ),
+  };
+
+  assertEquals(
+    TERMINAL_THREAD_WRITE_FAILURES.has(
+      VERIFY_RUN_PRESCRIBED_KINEMATICS_PROVIDER_OUTCOME_UNKNOWN_FAILURE,
+    ),
+    true,
+  );
+  await assertRejects(
+    () => assertThreadWriteBasisAvailable(value, current),
+    EngineeringProjectCommandError,
+    "active, completed, or uncertain durable write",
+  );
+});
+
+Deno.test("an ordinary prescribed-kinematics failure does not poison the Thread basis", async () => {
+  const current = run("architecture", "queued");
+  const sibling = {
+    ...run("geometry", "failed"),
+    id: "run:prescribed-kinematics-ordinary",
+    workItemId: "work:prescribed-kinematics-ordinary",
+    failure: {
+      code: "prescribed-kinematics-execution-failed",
+      message: "Chrono rejected the request before dispatch.",
+    },
+  };
+  const initial = project([current, sibling]);
+  const value: EngineeringProjectSnapshot = {
+    ...initial,
+    workItems: initial.workItems.map((item) =>
+      item.id === sibling.workItemId
+        ? {
+          ...item,
+          operation: {
+            ...VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+            bindings: item.operation?.bindings ?? [],
+          },
+        }
+        : item
+    ),
+  };
+
+  await assertThreadWriteBasisAvailable(value, current);
 });
 
 Deno.test("join writers share the same Thread-basis exclusion", async () => {

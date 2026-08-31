@@ -21,8 +21,7 @@ const GEOMETRY_DIGEST = "a".repeat(64);
 const STEP_DIGEST = "b".repeat(64);
 const DECOY_DIGEST = "c".repeat(64);
 const GEOMETRY_ID = `geometry-${GEOMETRY_DIGEST}`;
-const STEP_ID =
-  `cad-asset-${GEOMETRY_DIGEST}-definition-0-0-${STEP_DIGEST}`;
+const STEP_ID = `cad-asset-${GEOMETRY_DIGEST}-definition-0-0-${STEP_DIGEST}`;
 const TARGET_STEP_ID = `cad-asset-${GEOMETRY_DIGEST}-target-0-${STEP_DIGEST}`;
 const EXPORT_RUN = "run-build123d-export";
 const GEOMETRY_RUN = "run-write-geometry";

@@ -34,14 +34,12 @@ import {
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../../../domain/kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
 import type {
   EngineeringAgentRun,
   EngineeringApproval,
   EngineeringDecision,
   EngineeringProjectCommandReceipt,
   EngineeringProjectSnapshot,
-  EngineeringThreadEntityRef,
 } from "../../../../domain/project/engineering-project.ts";
 import type {
   ThreadArtifact,
@@ -53,7 +51,6 @@ import type { EngineeringProjectRunLease } from "../../../shared/stores/file-eng
 import { assertThreadSnapshotLineageIntact } from "../../../shared/stores/thread-snapshot-lineage.ts";
 import {
   requireBasis,
-  requiredStart,
   requireRun,
   snapshotRef,
   unexpectedStatus,

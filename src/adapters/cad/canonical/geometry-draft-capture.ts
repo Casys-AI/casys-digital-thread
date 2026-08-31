@@ -13,7 +13,7 @@
  *   c) `state/local/geometry-draft-captures/` — content-addressed JSON captures
  *      (FileCaptureStore<"geometry-draft">)
  *   d) `state/local/geometry-draft-assets/` — raw binary files keyed by their
- *      SHA-256, served by `/api/draft-assets/<digest>`
+ *      SHA-256 and reopened only by authorized CAD execution/seal flows
  *
  * The operator reviews the MRTR proposal (which carries the `draftDigest`) and
  * approves the exact bytes they previewed.  The write executor later reads the
@@ -25,10 +25,9 @@
  * both persisted and reread before build123d receives the same text. Every
  * provider-side export name and identity remains server-fixed.
  *
- * BINARY MATERIALIZATION — each file returned by the provider carries a
- * `sha256` field we treat as the expected digest.  We verify by re-computing
- * SHA-256 after copying from Docker; any mismatch aborts the capture without
- * leaving a stale file in the draft-assets directory.
+ * BINARY RESOURCE PERSISTENCE — each returned artifact names an immutable MCP URI.
+ * The server reads that exact URI, validates MIME, byte count and SHA-256, then
+ * persists only those verified bytes through the draft asset store.
  */
 
 import {
@@ -38,10 +37,8 @@ import {
 import { exactRecord } from "../../../domain/kernel/case-validation.ts";
 import type { ContentFingerprint } from "../../../domain/thread/thread-snapshot.ts";
 
-// `exactRecord` is used for the root structuredContent shape where we know
-// all keys exactly.  For per-file items we use `requireFileShape` below,
-// which allows the optional `viewer` field on glTF files without violating
-// the fail-closed contract on truly unexpected keys.
+// `exactRecord` rejects unadvertised provider fields at both the result and
+// artifact levels before a resource URI can be read.
 import type {
   GeometryComponentBinding,
   GeometryExportFormat,
@@ -60,7 +57,12 @@ import {
   type GeometryBundleManifest,
   type GeometryBundleOccurrence,
 } from "../../../domain/cad/canonical/geometry-bundle.ts";
+import type { GeometryDraftAssetStore } from "../../../application/ports/out/cad/canonical/geometry-draft-asset-store.ts";
 import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
+import type {
+  ExpectedProviderResource,
+  ProviderResourceReader,
+} from "../../../domain/compile/source/provider-resource-reader.ts";
 import type { FileCaptureStore } from "../../shared/cas/file-capture-store.ts";
 import {
   type GeometrySourceAnalysisCaptureDependencies,
@@ -69,6 +71,7 @@ import {
 import type {
   GeometrySourceAnalysisReference,
 } from "../../../domain/cad/source/geometry-source-analysis-reference.ts";
+import { BUILD123D_EXPORT_TIMEOUT_MS } from "./build123d-export-contract.ts";
 
 // ── Schema constant ───────────────────────────────────────────────────────────
 
@@ -107,8 +110,6 @@ export interface GeometryDraftAssemblyFile {
   readonly format: GeometryExportFormat;
   /** Stable server-fixed export name (no path, no extension). */
   readonly name: string;
-  /** Full path returned by the provider (inside the container). */
-  readonly containerPath: string;
   readonly bytes: number;
   readonly fingerprint: ContentFingerprint;
 }
@@ -119,8 +120,6 @@ export interface GeometryDraftPartMesh {
   readonly elementId: string;
   /** Stable server-fixed export name (no path, no extension). */
   readonly name: string;
-  /** Full path returned by the provider (inside the container). */
-  readonly containerPath: string;
   readonly bytes: number;
   readonly fingerprint: ContentFingerprint;
 }
@@ -172,35 +171,17 @@ export interface GeometryDraftCaptureInput {
 
 export interface GeometryDraftCaptureOptions {
   /**
-   * Docker Compose service that owns the private preview `/exports` volume,
-   * e.g. "mcp-build123d-sandbox".
-   * Server-fixed: never supplied by an agent.
-   */
-  readonly build123dService: "mcp-build123d-sandbox";
-  /**
    * Server-owned passive analysis path. The source and bundle stores are
    * durable CAS records; the frontend has no provider or authority access.
    */
   readonly sourceAnalysis: GeometrySourceAnalysisCaptureDependencies;
   /**
-   * Path to the directory containing `docker-compose.yml`.
-   * Passed as `--project-directory` to `docker compose cp`.
-   * Defaults to "." (the Deno process CWD).
+   * Server-owned reader for the exact immutable provider resource named by the
+   * export receipt. It can only issue `resources/read`, never discovery.
    */
-  readonly composeProjectDirectory?: string;
-  /**
-   * Override for the binary-asset materializer, used in tests to avoid
-   * Docker dependencies.  Production code leaves this undefined.
-   *
-   * WHY INJECTABLE — the materializer is a `docker compose cp` boundary.
-   * Tests that validate the JSON capture shape must not require a live Docker
-   * daemon; the materializer is the only I/O beyond the MCP client mock.
-   */
-  readonly materializeAsset?: (
-    sha256: string,
-    containerPath: string,
-    expectedBytes: number,
-  ) => Promise<void>;
+  readonly resourceReader: ProviderResourceReader;
+  /** Draft-only binary CAS. It persists only the verified resource bytes. */
+  readonly draftAssets: GeometryDraftAssetStore;
   /**
    * Exact preview-dispatch identity. Production generates one per invocation;
    * tests may inject a stable value without impersonating the later seal run.
@@ -211,7 +192,6 @@ export interface GeometryDraftCaptureOptions {
 export interface GeometryBundleDraftDefinitionFile {
   readonly format: GeometryBundleExportFormat;
   readonly name: string;
-  readonly containerPath: string;
   readonly bytes: number;
   readonly fingerprint: ContentFingerprint;
 }
@@ -245,7 +225,7 @@ export interface GeometryBundleDraftCapture {
     readonly tool: "build123d_export";
     readonly runId: string;
   };
-  /** Hash-derived namespace that isolates provider paths across concurrent previews. */
+  /** Hash-derived namespace that isolates server-owned export names across previews. */
   readonly exportNamePrefix: string;
   readonly assembly: {
     readonly script: string;
@@ -290,32 +270,6 @@ export interface GeometryBundleDraftAssetMetadata {
   readonly fingerprint: ContentFingerprint;
 }
 
-// ── Materialization errors ────────────────────────────────────────────────────
-
-export type GeometryDraftMaterializationCode =
-  | "copy_failed"
-  | "read_failed"
-  | "sha256_mismatch";
-
-/**
- * Thrown when a draft binary asset cannot be materialized from Docker.
- *
- * Callers MUST treat this as stop-for-review.  The provider outcome is
- * certain (the export succeeded), but the local copy failed.  Automatic
- * retry of the entire export is NOT permitted because we cannot predict
- * whether the Docker volume still holds the same bytes.
- */
-export class GeometryDraftMaterializationError extends Error {
-  constructor(
-    readonly code: GeometryDraftMaterializationCode,
-    readonly context: Readonly<Record<string, string>>,
-    message: string,
-  ) {
-    super(message);
-    this.name = "GeometryDraftMaterializationError";
-  }
-}
-
 // ── Main function ─────────────────────────────────────────────────────────────
 
 /**
@@ -328,7 +282,7 @@ export class GeometryDraftMaterializationError extends Error {
  *     passive source-analysis bundle.
  *  4. `build123d_export` for the assembly in the requested formats.
  *  5. Keep component bindings as metadata; per-part export is deferred to v2.
- *  6. Materialise every binary to `state/local/geometry-draft-assets/{sha256}`.
+ *  6. Read and persist every verified binary to `state/local/geometry-draft-assets/{sha256}`.
  *  7. Build + save the JSON draft capture to the FileCaptureStore.
  *  8. Return the typed capture (whose `fingerprint.digest` = the draftDigest).
  */
@@ -340,12 +294,6 @@ export async function captureGeometryDraft(
   now: () => string = () => new Date().toISOString(),
 ): Promise<GeometryDraftCapture> {
   const { script, manifest } = input;
-  const { build123dService, composeProjectDirectory = "." } = options;
-  if (build123dService !== "mcp-build123d-sandbox") {
-    throw new TypeError(
-      "Geometry preview assets must be materialized from mcp-build123d-sandbox.",
-    );
-  }
   // This is also enforced by the MRTR parser. Keep it here so the planning-only
   // preview refuses an invalid request before the provider sees any call.
   assertGeometryManifestArtifactIdentities(manifest);
@@ -354,15 +302,6 @@ export async function captureGeometryDraft(
   if (previewRunId.trim() === "") {
     throw new TypeError("previewRunId must be a non-empty string.");
   }
-  const materialize = options.materializeAsset ??
-    ((sha256: string, containerPath: string, expectedBytes: number) =>
-      materializeToDraftAssets(
-        sha256,
-        containerPath,
-        expectedBytes,
-        build123dService,
-        composeProjectDirectory,
-      ));
 
   // Step 1: fail-closed D4 validation before any provider call.
   validateGeometryScript(script);
@@ -390,22 +329,21 @@ export async function captureGeometryDraft(
       script,
       formats: [...manifest.exportFormats],
       name: PREVIEW_ASSEMBLY_NAME,
-      timeout_ms: 120000,
+      timeout_ms: BUILD123D_EXPORT_TIMEOUT_MS,
     },
   });
-  const assemblyFiles = normalizeAssemblyExport(
+  const assemblyProviderFiles = normalizeAssemblyExport(
     assemblyResult.structuredContent,
     manifest.exportFormats,
   );
+  const assemblyFiles = assemblyProviderFiles.map(providerFileToDraftFile);
   assertGeometryManifestArtifactIdentities({
     ...manifest,
     artifactHashes: { assemblyFiles, partMeshes: [] },
   });
 
-  // Materialise assembly binary assets immediately after the call.
-  for (const file of assemblyFiles) {
-    await materialize(file.fingerprint.digest, file.containerPath, file.bytes);
-  }
+  // Read and persist assembly binary assets immediately after the call.
+  await persistProviderResources(assemblyProviderFiles, options);
 
   // Step 4: per-component STL exports — DEFERRED to v2.
   //
@@ -484,11 +422,6 @@ export async function captureGeometryBundleDraft(
   now: () => string = () => new Date().toISOString(),
 ): Promise<GeometryBundleDraftCapture> {
   const { manifest } = input;
-  if (options.build123dService !== "mcp-build123d-sandbox") {
-    throw new TypeError(
-      "Geometry preview assets must be materialized from mcp-build123d-sandbox.",
-    );
-  }
   if (
     manifest.scriptHash || manifest.artifactHashes ||
     manifest.partDefinitions.some((definition) =>
@@ -599,33 +532,25 @@ export async function captureGeometryBundleDraft(
   const previewRunDigest = await sha256FingerprintOfText(previewRunId);
   const exportNamePrefix = `geometry-preview-${previewRunDigest.digest}`;
   const assemblyExportName = `${exportNamePrefix}-assembly`;
-  const materialize = options.materializeAsset ??
-    ((sha256: string, containerPath: string, expectedBytes: number) =>
-      materializeToDraftAssets(
-        sha256,
-        containerPath,
-        expectedBytes,
-        options.build123dService,
-        options.composeProjectDirectory ?? ".",
-      ));
-
   const assemblyResult = await client.callTool({
     name: "build123d_export",
     arguments: {
       script: input.assemblyScript,
       formats: [...manifest.exportFormats],
       name: assemblyExportName,
-      timeout_ms: 120000,
+      timeout_ms: BUILD123D_EXPORT_TIMEOUT_MS,
     },
   });
-  const assemblyFiles = normalizeBundleExport(
+  const assemblyProviderFiles = normalizeBundleExport(
     assemblyResult.structuredContent,
     manifest.exportFormats,
     assemblyExportName,
     "assembly",
   );
+  const assemblyFiles = assemblyProviderFiles.map(providerFileToDraftFile);
 
   const partDefinitions: GeometryBundleDraftPartDefinition[] = [];
+  const partDefinitionProviderFiles: ProviderGeometryFile[] = [];
   for (const [index, definition] of manifest.partDefinitions.entries()) {
     const name = definitionExportName(exportNamePrefix, index);
     const script = scriptsByDefinitionId.get(definition.elementId)!;
@@ -635,20 +560,22 @@ export async function captureGeometryBundleDraft(
         script,
         formats: [...manifest.partExportFormats],
         name,
-        timeout_ms: 120000,
+        timeout_ms: BUILD123D_EXPORT_TIMEOUT_MS,
       },
     });
+    const providerFiles = normalizeBundleExport(
+      result.structuredContent,
+      manifest.partExportFormats,
+      name,
+      `PartDefinition ${index}`,
+    );
+    partDefinitionProviderFiles.push(...providerFiles);
     partDefinitions.push({
       elementId: definition.elementId,
       label: definition.label,
       script,
       scriptHash: definitionScriptHashes.get(definition.elementId)!,
-      files: normalizeBundleExport(
-        result.structuredContent,
-        manifest.partExportFormats,
-        name,
-        `PartDefinition ${index}`,
-      ),
+      files: providerFiles.map(providerFileToDraftFile),
     });
   }
 
@@ -680,14 +607,13 @@ export async function captureGeometryBundleDraft(
   const admission = stampDraftAdmission(input.admission, assemblyScriptHash);
 
   // No local binary is exposed until the complete N+1 response set validates.
-  for (
-    const file of [
-      ...assemblyFiles,
-      ...partDefinitions.flatMap((definition) => definition.files),
-    ]
-  ) {
-    await materialize(file.fingerprint.digest, file.containerPath, file.bytes);
-  }
+  await persistProviderResources(
+    [
+      ...assemblyProviderFiles,
+      ...partDefinitionProviderFiles,
+    ],
+    options,
+  );
 
   const unsigned = {
     schemaVersion: GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA,
@@ -867,8 +793,7 @@ export async function requireGeometryBundleCanonicalSources(
  *   kind: "export",
  *   metrics: {},
  *   files: [
- *     { format, path, bytes, sha256 },          // non-glTF
- *     { format, path, bytes, sha256, viewer? },  // glTF may carry optional viewer
+ *     { format, artifact: { schemaVersion, uri, format, mimeType, bytes, sha256 } }
  *   ]
  * }
  *
@@ -878,7 +803,7 @@ export async function requireGeometryBundleCanonicalSources(
 function normalizeAssemblyExport(
   value: unknown,
   requestedFormats: ReadonlyArray<GeometryExportFormat>,
-): GeometryDraftAssemblyFile[] {
+): ProviderGeometryFile<GeometryExportFormat>[] {
   const root = exactRecord(
     value,
     ["files", "kind", "metrics", "schemaVersion"],
@@ -901,27 +826,12 @@ function normalizeAssemblyExport(
   }
   return (root.files as unknown[]).map((candidate: unknown, index: number) => {
     const format = requestedFormats[index]!;
-    const item = requireFileShape(candidate, format, `assembly file ${index}`);
-    if (item.format !== format) {
-      throw new Error(
-        `build123d_export assembly file ${index}: expected format "${format}", got "${item.format}".`,
-      );
-    }
-    const containerPath = requireNonEmptyString(
-      item.path,
-      `assembly file ${index} path`,
+    return normalizeProviderGeometryFile(
+      candidate,
+      format,
+      PREVIEW_ASSEMBLY_NAME,
+      `assembly file ${index}`,
     );
-    assertAssemblyExportBasename(containerPath, format, index);
-    return {
-      format: format as GeometryExportFormat,
-      name: PREVIEW_ASSEMBLY_NAME,
-      containerPath,
-      bytes: requirePositiveInt(item.bytes, `assembly file ${index} bytes`),
-      fingerprint: {
-        algorithm: "sha256" as const,
-        digest: requireSha256Digest(item.sha256, `assembly file ${index} sha256`),
-      },
-    };
   });
 }
 
@@ -934,7 +844,7 @@ function normalizeBundleExport(
   requestedFormats: ReadonlyArray<GeometryBundleExportFormat>,
   expectedName: string,
   exportContext: string,
-): GeometryBundleDraftDefinitionFile[] {
+): ProviderGeometryFile<GeometryBundleExportFormat>[] {
   const root = exactRecord(
     value,
     ["files", "kind", "metrics", "schemaVersion"],
@@ -960,66 +870,155 @@ function normalizeBundleExport(
   return (root.files as unknown[]).map((candidate, fileIndex) => {
     const format = requestedFormats[fileIndex]!;
     const context = `${exportContext} file ${fileIndex}`;
-    const item = requireFileShape(candidate, format, context);
-    if (item.format !== format) {
-      throw new Error(
-        `${context}: expected format "${format}", got "${item.format}".`,
-      );
-    }
-    const containerPath = requireNonEmptyString(item.path, `${context} path`);
-    assertFixedExportBasename(containerPath, format, expectedName, context);
-    return {
-      format,
-      name: expectedName,
-      containerPath,
-      bytes: requirePositiveInt(item.bytes, `${context} bytes`),
-      fingerprint: {
-        algorithm: "sha256" as const,
-        digest: requireSha256Digest(item.sha256, `${context} sha256`),
-      },
-    };
+    return normalizeProviderGeometryFile(candidate, format, expectedName, context);
   });
 }
 
-/**
- * Bind the provider's generic `gltf` format token to the binary GLB container
- * it actually exports. The later seal may choose a media type only after this
- * path-level contract has been proved.
- */
-function assertAssemblyExportBasename(
-  path: string,
-  format: GeometryExportFormat,
-  index: number,
-): void {
-  assertFixedExportBasename(
-    path,
-    format,
-    PREVIEW_ASSEMBLY_NAME,
-    `assembly file ${index}`,
-  );
+export interface ProviderGeometryFile<
+  Format extends GeometryExportFormat = GeometryExportFormat,
+> {
+  readonly format: Format;
+  readonly name: string;
+  readonly bytes: number;
+  readonly fingerprint: ContentFingerprint;
+  readonly resource: ExpectedProviderResource;
 }
 
-function assertFixedExportBasename(
-  path: string,
-  format: GeometryExportFormat,
-  expectedName: string,
+export function normalizeProviderGeometryFile<
+  Format extends GeometryExportFormat,
+>(
+  value: unknown,
+  expectedFormat: Format,
+  name: string,
   context: string,
-): void {
-  if (path.includes("\0")) {
-    throw new Error(`build123d_export ${context} path contains NUL.`);
-  }
-  const extension = format === "gltf" ? "glb" : format;
-  const expected = `${expectedName}.${extension}`;
-  const basename = path.split(/[\\/]/).at(-1) ?? "";
-  if (basename !== expected) {
+): ProviderGeometryFile<Format> {
+  const file = exactRecord(value, ["format", "artifact"], context);
+  if (file.format !== expectedFormat) {
     throw new Error(
-      `build123d_export ${context} did not preserve the fixed ` +
-        `basename "${expected}".`,
+      `${context}: expected format "${expectedFormat}", got "${String(file.format)}".`,
     );
   }
+  const artifact = exactRecord(
+    file.artifact,
+    ["schemaVersion", "uri", "format", "mimeType", "bytes", "sha256"],
+    `${context}.artifact`,
+  );
+  if (artifact.schemaVersion !== "build123d-export-artifact/1.0") {
+    throw new Error(`${context}.artifact schemaVersion is unsupported.`);
+  }
+  if (artifact.format !== expectedFormat) {
+    throw new Error(
+      `${context}.artifact format must equal the enclosing format "${expectedFormat}".`,
+    );
+  }
+  const bytes = requirePositiveInt(artifact.bytes, `${context}.artifact bytes`);
+  const digest = requireSha256Digest(
+    artifact.sha256,
+    `${context}.artifact sha256`,
+  );
+  const mediaType = expectedMediaType(expectedFormat);
+  if (artifact.mimeType !== mediaType) {
+    throw new Error(
+      `${context}.artifact mimeType must be ${mediaType} for ${expectedFormat}.`,
+    );
+  }
+  const uri = requireBuild123dArtifactUri(
+    artifact.uri,
+    digest,
+    expectedFormat,
+    `${context}.artifact uri`,
+  );
+  return {
+    format: expectedFormat,
+    name,
+    bytes,
+    fingerprint: { algorithm: "sha256", digest },
+    resource: { uri, mediaType, byteCount: bytes, sha256: digest },
+  };
 }
 
-/** Fail closed on every persisted v2 definition path at seal time. */
+export function providerFileToDraftFile<
+  Format extends GeometryExportFormat,
+>(file: ProviderGeometryFile<Format>): {
+  readonly format: Format;
+  readonly name: string;
+  readonly bytes: number;
+  readonly fingerprint: ContentFingerprint;
+} {
+  return {
+    format: file.format,
+    name: file.name,
+    bytes: file.bytes,
+    fingerprint: file.fingerprint,
+  };
+}
+
+function expectedMediaType(format: GeometryExportFormat): string {
+  switch (format) {
+    case "step":
+      return "model/step";
+    case "stl":
+      return "model/stl";
+    case "gltf":
+      return "model/gltf-binary";
+  }
+}
+
+function requireBuild123dArtifactUri(
+  value: unknown,
+  digest: string,
+  format: GeometryExportFormat,
+  context: string,
+): string {
+  if (typeof value !== "string") {
+    throw new Error(`${context} must be a string.`);
+  }
+  const extension = format === "gltf" ? "glb" : format;
+  const expected = `casys://build123d/artifacts/${digest}.${extension}`;
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`${context} must be an absolute build123d artifact URI.`);
+  }
+  if (
+    value !== expected || parsed.href !== expected || parsed.protocol !== "casys:" ||
+    parsed.hostname !== "build123d" || parsed.pathname !==
+      `/artifacts/${digest}.${extension}` ||
+    parsed.search !== "" || parsed.hash !== "" ||
+    parsed.username !== "" || parsed.password !== "" || parsed.port !== ""
+  ) {
+    throw new Error(`${context} must be the exact digest-bound build123d URI.`);
+  }
+  return expected;
+}
+
+export async function persistProviderResources<
+  Format extends GeometryExportFormat,
+>(
+  files: ReadonlyArray<ProviderGeometryFile<Format>>,
+  options: GeometryDraftCaptureOptions,
+): Promise<void> {
+  if (!options.resourceReader || !options.draftAssets) {
+    throw new TypeError(
+      "Geometry draft capture requires a server-owned resource reader and draft asset store.",
+    );
+  }
+  for (const file of files) {
+    const resource = await options.resourceReader.read(file.resource);
+    const persisted = await options.draftAssets.persist(resource.bytes.copy());
+    if (
+      persisted.byteCount !== file.bytes ||
+      !fingerprintsEqual(persisted.fingerprint, file.fingerprint)
+    ) {
+      throw new Error(
+        `Geometry draft asset store did not preserve ${file.fingerprint.digest}.`,
+      );
+    }
+  }
+}
+
+/** Fail closed on every persisted v2 definition export identity at seal time. */
 export function assertGeometryBundleDraftDefinitionPaths(
   value: unknown,
   exportNamePrefix: string,
@@ -1051,21 +1050,18 @@ export function assertGeometryBundleDraftDefinitionPaths(
           `Geometry bundle draft PartDefinition ${definitionIndex} file ${fileIndex} has invalid format.`,
         );
       }
-      const path = requireNonEmptyString(
-        file.containerPath,
-        `Geometry bundle draft PartDefinition ${definitionIndex} file ${fileIndex} path`,
-      );
-      assertFixedExportBasename(
-        path,
-        file.format,
-        definitionExportName(exportNamePrefix, definitionIndex),
-        `PartDefinition ${definitionIndex} file ${fileIndex}`,
-      );
+      if (
+        file.name !== definitionExportName(exportNamePrefix, definitionIndex)
+      ) {
+        throw new Error(
+          `Geometry bundle draft PartDefinition ${definitionIndex} file ${fileIndex} does not retain its server-owned export name.`,
+        );
+      }
     });
   });
 }
 
-/** Re-prove the run-scoped export namespace and every persisted v2 path. */
+/** Re-prove the run-scoped export namespace and every persisted v2 export name. */
 export async function assertGeometryBundleDraftPaths(value: unknown): Promise<void> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Geometry bundle draft must be an object.");
@@ -1107,16 +1103,11 @@ export async function assertGeometryBundleDraftPaths(value: unknown): Promise<vo
         `Geometry bundle draft assembly file ${index} has invalid format.`,
       );
     }
-    const path = requireNonEmptyString(
-      file.containerPath,
-      `Geometry bundle draft assembly file ${index} path`,
-    );
-    assertFixedExportBasename(
-      path,
-      file.format,
-      `${prefix}-assembly`,
-      `assembly file ${index}`,
-    );
+    if (file.name !== `${prefix}-assembly`) {
+      throw new Error(
+        `Geometry bundle draft assembly file ${index} does not retain its server-owned export name.`,
+      );
+    }
   });
   assertGeometryBundleDraftDefinitionPaths(draft.partDefinitions, prefix);
 }
@@ -1125,9 +1116,9 @@ export async function assertGeometryBundleDraftPaths(value: unknown): Promise<vo
  * Read the complete v2 binary inventory without trusting the TypeScript shape.
  *
  * A content-addressed JSON draft can still truthfully contain the SHA-256 of
- * zero bytes.  The seal therefore needs the provider-recorded byte count as an
- * independent, positive invariant and must compare it with the materialized
- * file before any canonical write.
+ * zero bytes. The seal therefore needs the recorded byte count as an
+ * independent, positive invariant and must compare it with the stored file
+ * before any canonical write.
  */
 export function requireGeometryBundleDraftAssetMetadata(
   value: unknown,
@@ -1226,9 +1217,9 @@ function requireDraftAssetMetadata(
 }
 
 /**
- * Revalidate persisted draft paths at seal time as well as at preview time.
- * This is intentionally `unknown`-based so a persisted current draft cannot
- * bypass the GLB/container contract through TypeScript shape trust.
+ * Revalidate persisted draft export names at seal time as well as at preview
+ * time. This is intentionally `unknown`-based so a persisted current draft
+ * cannot bypass the server-owned name contract through TypeScript shape trust.
  */
 export function assertGeometryDraftAssemblyPaths(value: unknown): void {
   if (!Array.isArray(value)) {
@@ -1242,184 +1233,23 @@ export function assertGeometryDraftAssemblyPaths(value: unknown): void {
     if (file.format !== "step" && file.format !== "gltf" && file.format !== "stl") {
       throw new Error(`Geometry draft assembly file ${index} has invalid format.`);
     }
-    const path = requireNonEmptyString(
-      file.containerPath,
-      `geometry draft assembly file ${index} containerPath`,
-    );
-    assertAssemblyExportBasename(path, file.format, index);
+    if (file.name !== PREVIEW_ASSEMBLY_NAME) {
+      throw new Error(
+        `Geometry draft assembly file ${index} does not retain the server-owned export name.`,
+      );
+    }
   });
 }
 
-/**
- * Validate a single file entry from `build123d_export`.
- *
- * Required fields: bytes, format, path, sha256.
- * Allowed extra field for glTF only: viewer (optional — may be present or absent).
- * Any other unexpected field is a contract violation.
- */
-function requireFileShape(
-  value: unknown,
-  format: GeometryExportFormat,
-  context: string,
-): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${context} must be an object.`);
-  }
-  const rec = value as Record<string, unknown>;
-  const required = ["bytes", "format", "path", "sha256"] as const;
-  for (const key of required) {
-    if (!Object.hasOwn(rec, key)) {
-      throw new Error(`${context} is missing required field '${key}'.`);
-    }
-  }
-  const allowed = new Set<string>([
-    ...required,
-    ...(format === "gltf" ? ["viewer"] : []),
-  ]);
-  for (const key of Object.keys(rec)) {
-    if (!allowed.has(key)) {
-      throw new Error(`${context} has unsupported field '${key}'.`);
-    }
-  }
-  return rec;
-}
-
-// ── Binary asset materialisation ─────────────────────────────────────────────
+// ── Geometry draft asset location ─────────────────────────────────────────────
 
 /**
  * Canonical local directory for binary draft assets, keyed by SHA-256 digest.
  *
- * WHY EXPORTED — three modules read or write this path:
- * `geometry-draft-capture.ts` (write), `design-write-geometry-run-executor.ts`
- * (verify), and `serve-native-workbench.ts` (serve).  A single export prevents
- * the three copies from silently diverging.
+ * WHY EXPORTED — composition, sealing and the Workbench BFF use the same
+ * default adapter root. Capture itself writes only through GeometryDraftAssetStore.
  */
 export const GEOMETRY_DRAFT_ASSETS_DIR = "state/local/geometry-draft-assets" as const;
-
-/**
- * Copy a provider-side binary from the Docker exports volume to the
- * local draft-assets directory, keyed by its SHA-256 digest.
- *
- * WHY KEYED BY DIGEST — the BFF endpoint `/api/draft-assets/<digest>` must
- * serve these files by content address.  Storing them by original filename
- * would require a separate name→digest index that could drift.
- *
- * Idempotent: if `GEOMETRY_DRAFT_ASSETS_DIR/{digest}` already exists and verifies,
- * no Docker copy is performed.
- */
-async function materializeToDraftAssets(
-  sha256: string,
-  containerPath: string,
-  expectedBytes: number,
-  service: string,
-  composeProjectDirectory: string,
-): Promise<void> {
-  const localPath = `${GEOMETRY_DRAFT_ASSETS_DIR}/${sha256}`;
-
-  // Idempotent: verify existing file before touching Docker.
-  const existing = await readFileSafe(localPath);
-  if (existing !== undefined) {
-    const actual = await sha256Hex(existing);
-    if (existing.length === expectedBytes && existing.length > 0 && actual === sha256) {
-      return;
-    }
-    // Stale bytes — remove and re-materialise.
-    await removeFileSafe(localPath);
-  }
-
-  await Deno.mkdir(GEOMETRY_DRAFT_ASSETS_DIR, { recursive: true });
-
-  const tmpPath = `${GEOMETRY_DRAFT_ASSETS_DIR}/.${crypto.randomUUID()}.tmp`;
-  const command = new Deno.Command("docker", {
-    args: [
-      "compose",
-      "--project-directory",
-      composeProjectDirectory,
-      "cp",
-      `${service}:${containerPath}`,
-      tmpPath,
-    ],
-    stdout: "null",
-    stderr: "piped",
-    signal: AbortSignal.timeout(60_000),
-  });
-
-  let output: Deno.CommandOutput;
-  try {
-    output = await command.output();
-  } catch (error) {
-    const timedOut = error instanceof DOMException && error.name === "TimeoutError" ||
-      error instanceof Error && error.name === "TimeoutError";
-    throw new GeometryDraftMaterializationError(
-      "copy_failed",
-      {
-        sha256,
-        containerPath,
-        service,
-        error: timedOut ? "timeout" : String(error),
-      },
-      timedOut
-        ? `docker compose cp timed out for geometry draft asset ${sha256}`
-        : `docker compose cp failed for geometry draft asset ${sha256}: ${
-          String(error)
-        }`,
-    );
-  }
-
-  if (!output.success) {
-    const stderr = new TextDecoder().decode(output.stderr).trim();
-    await removeFileSafe(tmpPath);
-    throw new GeometryDraftMaterializationError(
-      "copy_failed",
-      {
-        sha256,
-        containerPath,
-        service,
-        exitCode: String(output.code),
-        stderr: stderr.slice(0, 512),
-      },
-      `docker compose cp exited ${output.code} for geometry draft asset ${sha256}: ${
-        stderr.slice(0, 200)
-      }`,
-    );
-  }
-
-  // Verify the copied file's SHA-256.
-  const copied = await readFileSafe(tmpPath);
-  if (copied === undefined) {
-    throw new GeometryDraftMaterializationError(
-      "read_failed",
-      { sha256, tmpPath },
-      `docker compose cp succeeded but geometry draft asset ${sha256} is unreadable at ${tmpPath}.`,
-    );
-  }
-  if (copied.length === 0 || copied.length !== expectedBytes) {
-    await removeFileSafe(tmpPath);
-    throw new GeometryDraftMaterializationError(
-      "read_failed",
-      {
-        sha256,
-        expectedBytes: String(expectedBytes),
-        actualBytes: String(copied.length),
-        containerPath,
-      },
-      `Geometry draft asset byte count mismatch: expected ${expectedBytes}, got ${copied.length}.`,
-    );
-  }
-  const actual = await sha256Hex(copied);
-  if (actual !== sha256) {
-    await removeFileSafe(tmpPath);
-    throw new GeometryDraftMaterializationError(
-      "sha256_mismatch",
-      { expected: sha256, actual, containerPath },
-      `SHA-256 mismatch for geometry draft asset: expected ${sha256.slice(0, 16)}…, ` +
-        `got ${actual.slice(0, 16)}….`,
-    );
-  }
-
-  // Atomically publish: rename removes the tmp file on success.
-  await Deno.rename(tmpPath, localPath);
-}
 
 // ── Private helpers ───────────────────────────────────────────────────────────
 
@@ -1453,28 +1283,6 @@ function fingerprintsEqual(
   right: ContentFingerprint,
 ): boolean {
   return left.algorithm === right.algorithm && left.digest === right.digest;
-}
-
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
-  return [...new Uint8Array(digest)]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-async function readFileSafe(path: string): Promise<Uint8Array | undefined> {
-  try {
-    return await Deno.readFile(path);
-  } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return undefined;
-    throw error;
-  }
-}
-
-async function removeFileSafe(path: string): Promise<void> {
-  try {
-    await Deno.remove(path);
-  } catch { /* best-effort cleanup */ }
 }
 
 function requireNonEmptyString(value: unknown, context: string): string {

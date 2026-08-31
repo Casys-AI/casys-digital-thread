@@ -1,4 +1,17 @@
 import type { ContentFingerprint } from "../../../domain/thread/thread-snapshot.ts";
+import {
+  assertAnchoredMissingOrRegularFile,
+  assertAnchoredOpenRegularFile,
+  assertAnchoredRealDirectoryIfPresent,
+  assertAnchoredRegularFile,
+  ensureAnchoredDirectoryTree,
+  isAlreadyExists,
+  isEqualOrStrictLexicalDescendant,
+  isNotFound,
+  type LexicalWalkMessages,
+  resolveTrustedAnchoredStorageRoot,
+  type TrustedAnchoredStorageRoot,
+} from "../wal/trusted-anchored-storage-root.ts";
 
 /**
  * Descriptor for a content-addressed capture store.
@@ -36,6 +49,16 @@ const DENO_CAPTURE_DIRECTORY_SYNC_FILE_SYSTEM: CaptureDirectorySyncFileSystem = 
   open: (path, options) => Deno.open(path, options),
 };
 
+const CAPTURE_WALK_MESSAGES: LexicalWalkMessages = {
+  escaped: "Capture path escaped its configured storage root.",
+  appearedBehindMissingAncestor:
+    "Capture path component appeared behind a missing ancestor.",
+  notRealDirectory: "Capture storage root and ancestors must be real directories.",
+  componentChanged: "Capture storage path changed while it was checked.",
+  regularFile: "Capture final path must be a regular file inside the capture root.",
+  pathChangedWhileOpen: "Capture final path changed while it was open.",
+};
+
 /**
  * Generic content-addressed capture store parameterised by a nominal `Kind`.
  *
@@ -58,17 +81,28 @@ export class FileCaptureStore<Kind extends string> {
   declare private readonly _kind: Kind;
 
   private readonly descriptor: CaptureStoreDescriptor<Kind>;
+  private readonly root: TrustedAnchoredStorageRoot;
+  private readonly storageSyncBoundary: string | undefined;
 
   constructor(descriptor: CaptureStoreDescriptor<Kind>) {
     const directory = withoutTrailingSlash(descriptor.directory) || ".";
     const syncBoundary = descriptor.syncBoundary === undefined
       ? undefined
       : withoutTrailingSlash(descriptor.syncBoundary) || ".";
-    if (syncBoundary !== undefined && !containsPath(syncBoundary, directory)) {
+    const root = resolveTrustedAnchoredStorageRoot(directory);
+    const storageSyncBoundary = syncBoundary === undefined
+      ? undefined
+      : resolveTrustedAnchoredStorageRoot(syncBoundary).storageRoot;
+    if (
+      storageSyncBoundary !== undefined &&
+      !isEqualOrStrictLexicalDescendant(storageSyncBoundary, root.storageRoot)
+    ) {
       throw new TypeError(
         "Capture sync boundary must contain the capture directory.",
       );
     }
+    this.root = root;
+    this.storageSyncBoundary = storageSyncBoundary;
     this.descriptor = Object.freeze({
       ...descriptor,
       directory,
@@ -108,37 +142,55 @@ export class FileCaptureStore<Kind extends string> {
       );
     }
 
-    const path = this.pathFor(fingerprint);
-    await Deno.mkdir(this.descriptor.directory, { recursive: true });
+    const path = this.storagePathForDigest(d);
+    await ensureAnchoredDirectoryTree(
+      this.root,
+      this.root.storageRoot,
+      CAPTURE_WALK_MESSAGES,
+    );
+    let created = false;
     try {
-      await writeNewDurably(path, bytes, this.descriptor.label);
-      await syncCaptureDirectoryChain(
-        this.descriptor.directory,
-        this.descriptor.syncBoundary,
+      await writeNewDurably(
+        this.root,
+        path,
+        bytes,
+        this.descriptor.label,
       );
+      await syncCaptureDirectoryChain(
+        this.root.storageRoot,
+        this.storageSyncBoundary,
+      );
+      created = true;
     } catch (error) {
-      if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
-      const existing = await Deno.readTextFile(path);
-      if (existing !== text) {
-        throw new Error(
-          `${this.descriptor.label} capture ${d} already exists with different content.`,
-        );
-      }
+      if (!isAlreadyExists(error)) throw error;
+    }
+    const existing = await readAnchoredTextFile(this.root, path);
+    if (existing !== text) {
+      throw new Error(
+        `${this.descriptor.label} capture ${d} already exists with different content.`,
+      );
+    }
+    if (!created) {
       // A concurrent writer may have linked the identical final just before
       // its own directory fsync. The idempotent loser owns the same success
       // guarantee and therefore closes that durability window before return.
       await syncCaptureDirectoryChain(
-        this.descriptor.directory,
-        this.descriptor.syncBoundary,
+        this.root.storageRoot,
+        this.storageSyncBoundary,
       );
     }
-    return { uri: this.uriFor(fingerprint), path };
+    return { uri: this.uriFor(fingerprint), path: this.pathFor(fingerprint) };
   }
 
   async read(fingerprint: ContentFingerprint): Promise<string | undefined> {
-    const path = this.pathFor(fingerprint);
+    const path = this.storagePathForDigest(sha256Digest(fingerprint));
     try {
-      const text = await Deno.readTextFile(path);
+      await assertAnchoredRealDirectoryIfPresent(
+        this.root,
+        this.root.storageRoot,
+        CAPTURE_WALK_MESSAGES,
+      );
+      const text = await readAnchoredTextFile(this.root, path);
       const actual = await fingerprintBytes(new TextEncoder().encode(text));
       if (actual !== fingerprint.digest) {
         throw new Error(
@@ -147,9 +199,13 @@ export class FileCaptureStore<Kind extends string> {
       }
       return text;
     } catch (error) {
-      if (error instanceof Deno.errors.NotFound) return undefined;
+      if (isNotFound(error)) return undefined;
       throw error;
     }
+  }
+
+  private storagePathForDigest(digest: string): string {
+    return `${this.root.storageRoot}/${digest}.json`;
   }
 }
 
@@ -396,6 +452,20 @@ export const SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   label: "Sensitivity study",
 };
 
+/**
+ * Immutable L3 provenance for the server-selected recorded CalculiX runtime.
+ * It is intentionally separate from the scientific study capture: a runtime
+ * identity is evidence provenance, not a solver fact or verdict.
+ */
+export const SENSITIVITY_RUNTIME_PROVENANCE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "sensitivity-runtime-provenance"
+> = {
+  kind: "sensitivity-runtime-provenance",
+  directory: "state/local/sensitivity-runtime-provenance-captures",
+  uriNamespace: "sensitivity-runtime-provenance-capture",
+  label: "Sensitivity recorded runtime provenance",
+};
+
 export const SENSITIVITY_EDGES_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   "sensitivity-edges"
 > = {
@@ -632,6 +702,7 @@ async function fingerprintBytes(bytes: Uint8Array): Promise<string> {
 }
 
 async function writeNewDurably(
+  root: TrustedAnchoredStorageRoot,
   path: string,
   bytes: Uint8Array,
   label: string,
@@ -641,8 +712,15 @@ async function writeNewDurably(
   const parent = path.slice(0, path.lastIndexOf("/"));
   const temporary = `${parent}/.${crypto.randomUUID()}.tmp`;
   try {
+    await assertAnchoredMissingOrRegularFile(root, path, CAPTURE_WALK_MESSAGES);
     const file = await Deno.open(temporary, { createNew: true, write: true });
     try {
+      await assertAnchoredOpenRegularFile(
+        root,
+        temporary,
+        file,
+        CAPTURE_WALK_MESSAGES,
+      );
       let written = 0;
       while (written < bytes.length) {
         const count = await file.write(bytes.subarray(written));
@@ -658,12 +736,63 @@ async function writeNewDurably(
     // link(2) publishes the complete inode without overwrite semantics. A
     // competing writer can only observe a complete final file and save() will
     // compare its exact bytes for idempotence/conflict.
+    await assertAnchoredMissingOrRegularFile(root, path, CAPTURE_WALK_MESSAGES);
     await Deno.link(temporary, path);
+    await assertAnchoredRegularFile(root, path, CAPTURE_WALK_MESSAGES);
   } finally {
-    await Deno.remove(temporary).catch((error) => {
-      if (!(error instanceof Deno.errors.NotFound)) throw error;
-    });
+    await removeAnchoredTemporaryIfPresent(root, temporary);
   }
+}
+
+/**
+ * Open first, then recross the pinned handle against the current pathname
+ * before reading any bytes. A standalone lstat followed by readTextFile would
+ * allow a final-file substitution in the gap.
+ */
+async function readAnchoredTextFile(
+  root: TrustedAnchoredStorageRoot,
+  path: string,
+): Promise<string> {
+  const file = await Deno.open(path, { read: true });
+  try {
+    await assertAnchoredOpenRegularFile(root, path, file, CAPTURE_WALK_MESSAGES);
+    return new TextDecoder().decode(await readAll(file));
+  } finally {
+    file.close();
+  }
+}
+
+async function readAll(file: Deno.FsFile): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  const buffer = new Uint8Array(64 * 1024);
+  let length = 0;
+  while (true) {
+    const count = await file.read(buffer);
+    if (count === null) break;
+    if (count === 0) continue;
+    chunks.push(buffer.slice(0, count));
+    length += count;
+  }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return bytes;
+}
+
+async function removeAnchoredTemporaryIfPresent(
+  root: TrustedAnchoredStorageRoot,
+  path: string,
+): Promise<void> {
+  try {
+    await assertAnchoredRegularFile(root, path, CAPTURE_WALK_MESSAGES);
+  } catch (error) {
+    if (isNotFound(error)) return;
+    throw error;
+  }
+  await Deno.remove(path);
 }
 
 /**

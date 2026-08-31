@@ -12,9 +12,9 @@ import {
 } from "../geometry-module-contract.ts";
 import {
   GEOMETRY_MODULE_ASSEMBLY_ASSETS,
-  GEOMETRY_MODULE_ASSEMBLY_CAPABILITY,
   GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
 } from "../module-assembly/geometry-module-assembly-receipt.ts";
+import { GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY } from "../../capability/engineering-capability.ts";
 import { createGeometryModuleInputBundle } from "../module-assembly/geometry-module-input-bundle.ts";
 import { parseGeometryModuleCapture } from "../canonical/geometry-module-capture.ts";
 import {
@@ -451,7 +451,7 @@ Deno.test("mcp-build123d adapter sends only exact STEP and normalizes factual pr
   assertEquals(result.execution.profile.fingerprint, profile.profileFingerprint);
   assertEquals(result.execution.raw.producer, {
     service: "mcp-build123d",
-    packageVersion: "0.5.0",
+    packageVersion: "0.6.1",
     tool: "build123d_observe_assembly_integrity",
     engine: { id: "cadquery-ocp", version: "7.9.3.1" },
   });
@@ -847,7 +847,7 @@ async function validSource(
   const runId = "run-module-assembly";
   const receipt = {
     schemaVersion: GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
-    capability: GEOMETRY_MODULE_ASSEMBLY_CAPABILITY,
+    capability: GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
     runId,
     inputBundle: {
       fingerprint: childBundle.fingerprint,
@@ -1031,7 +1031,7 @@ function rawObservedResult(
     kind: "assembly-integrity-observation",
     producer: {
       service: "mcp-build123d",
-      packageVersion: "0.5.0",
+      packageVersion: "0.6.1",
       tool: "build123d_observe_assembly_integrity",
       engine: { name: "cadquery-ocp", version: "7.9.3.1" },
     },

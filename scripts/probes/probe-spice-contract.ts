@@ -11,11 +11,53 @@ import type { ContentFingerprint } from "../../src/domain/kernel/primitives.ts";
 
 const MANIFEST_PATH = new URL("../../config/mcp-fleet.json", import.meta.url);
 const MCP_PROTOCOL_VERSION = "2026-07-28";
-const EXPECTED_TOOLS = ["spice_simulate_op", "spice_simulate_tran"] as const;
+export const SPICE_EXPECTED_TOOLS = [
+  "ngspice_netlist_submit",
+  "spice_simulate_op",
+  "spice_simulate_tran",
+  "spice_simulate_dc",
+] as const;
 
-/** Reviewed 2026-08-22 provider identity plus exact input/output schemas. */
-const EXPECTED_CONTRACT_SHA256 =
-  "7b04e7e49cf3451f1c2ced0432490631b06c516fcd3874806dfa989a85c4217e";
+/** Reviewed desired OCI identity. It is not a runtime-image observation. */
+export const SPICE_RELEASE = {
+  image:
+    "ghcr.io/casys-ai/mcp-spice@sha256:80f8d6b34dc55e623daf936faea5ff9ee75871331aa88d7339191ea17584991b",
+  version: "0.5.2",
+  revision: "0575f2d0efdca30965c5b155187b78d9412fb1d1",
+  ociLabels: {
+    "org.opencontainers.image.created": "2026-08-28T15:49:55.406Z",
+    "org.opencontainers.image.description":
+      "MCP oracle for circuit verification — ngspice batch operating point and reduced transients. The server owns the .control block.",
+    "org.opencontainers.image.licenses": "MIT",
+    "org.opencontainers.image.revision": "0575f2d0efdca30965c5b155187b78d9412fb1d1",
+    "org.opencontainers.image.source": "https://github.com/Casys-AI/mcp-spice",
+    "org.opencontainers.image.title": "mcp-spice",
+    "org.opencontainers.image.url": "https://github.com/Casys-AI/mcp-spice",
+    "org.opencontainers.image.version": "0.5.2",
+  },
+} as const;
+
+/**
+ * Reviewed provider execution limits. Discovery/schema exposes the input bounds,
+ * timeout, transient ceiling, and DC request cap. The DC pre-read and per-stream
+ * log ceilings are release-qualified runtime limits, included here without making
+ * this read-only probe an image inspection or execution test.
+ */
+export const SPICE_EXECUTION_BUDGETS = {
+  netlistBytes: 1_048_576,
+  observablesPerKind: 32,
+  transientWrdataBytes: 8_388_608,
+  transientPoints: 50_000,
+  dcWrdataPreReadBytes: 8_388_608,
+  dcRequestPoints: 512,
+  dcParsePoints: 512,
+  ngspiceLogBytesPerStream: 1_048_576,
+  timeoutSeconds: { default: 30, min: 1, max: 300 },
+} as const;
+
+/** Reviewed 2026-08-29 identity, tool schemas, and execution-budget projection. */
+export const SPICE_CONTRACT_SHA256 =
+  "5873f79d571a67aeafd74f1749ae4a4172a692cfdf9fbab2c8032df95d0d2e8a";
 
 export const SPICE_ENDPOINT = {
   mcpUrl: "http://127.0.0.1:3023/mcp",
@@ -48,6 +90,11 @@ export interface SpiceContractPreflight {
     readonly mcpUrl?: string;
     readonly healthUrl?: string;
     readonly image?: string;
+    readonly release: {
+      readonly version?: string;
+      readonly revision?: string;
+      readonly ociLabels: Readonly<Record<string, string>>;
+    };
     readonly expectedTools: readonly string[];
     readonly manifestMatchesCodeOwnedContract: boolean;
     readonly imageDigestVerified: false;
@@ -62,13 +109,17 @@ export interface SpiceContractPreflight {
   readonly supportedResultFamilies: {
     readonly operatingPoint: readonly string[];
     readonly reducedTransient: readonly string[];
+    readonly dcSweep: readonly string[];
     readonly units: {
       readonly voltage: "supported" | "unresolved";
-      readonly ampere: "unresolved";
+      readonly ampere: "supported" | "unresolved";
       readonly watt: "unresolved";
-      readonly eventTimeSeconds: "unresolved";
+      readonly eventTimeSeconds: "supported" | "unresolved";
     };
   };
+  readonly executionBudgets:
+    | ({ readonly status: "reviewed-contract" } & typeof SPICE_EXECUTION_BUDGETS)
+    | { readonly status: "unresolved" };
   readonly gaps: readonly {
     readonly capability: string;
     readonly status: "unresolved";
@@ -134,7 +185,7 @@ export async function probeSpiceContract(
   }
 
   const observed = { health, discovery, tools, contractFingerprint };
-  const expected = options.expectedContractSha256 ?? EXPECTED_CONTRACT_SHA256;
+  const expected = options.expectedContractSha256 ?? SPICE_CONTRACT_SHA256;
   if (contractFingerprint.digest !== expected) {
     return report(
       baseline,
@@ -148,11 +199,11 @@ export async function probeSpiceContract(
     baseline,
     "current-surface",
     observed,
-    "The current surface is voltage-only and lacks A/W, event-time in seconds, provider readback, input-size bounds, and an observed tools/call error envelope.",
+    "The reviewed discovery surface exposes content-addressed netlist admission, voltage and voltage-source-current summaries, transient extrema times, and a bounded DC sweep. This preflight also reports the code-owned reviewed execution-budget projection. It still does not execute a simulation, inspect an image, observe a tools/call error, or establish product authority.",
   );
 }
 
-/** Fingerprint the exact provider identity and tool schemas relevant to E08. */
+/** Fingerprint exact provider identity, all tool schemas, and reviewed budgets. */
 export async function spiceContractFingerprint(
   health: Record<string, unknown>,
   discovery: Record<string, unknown>,
@@ -187,13 +238,13 @@ export async function spiceContractFingerprint(
     }
     byName.set(tool.name, tool);
   }
-  if (!sameStringSet([...byName.keys()], EXPECTED_TOOLS)) {
+  if (!sameStringSet([...byName.keys()], SPICE_EXPECTED_TOOLS)) {
     throw new ContractDivergenceError(
-      "tools/list does not expose exactly the two reviewed mcp-spice tools.",
+      "tools/list does not expose exactly the four reviewed mcp-spice tools.",
     );
   }
 
-  const toolContracts = EXPECTED_TOOLS.map((name) => {
+  const toolContracts = SPICE_EXPECTED_TOOLS.map((name) => {
     const tool = byName.get(name)!;
     return {
       name,
@@ -201,11 +252,13 @@ export async function spiceContractFingerprint(
       outputSchema: record(tool.outputSchema, `${name} outputSchema`),
     };
   });
+  assertExecutionBudgets(discovery, byName);
   return await sha256Fingerprint({
     provider: {
       name: serverInfo.name,
       version: serverInfo.version,
       supportedVersions: [...supportedVersions].sort(),
+      executionBudgets: SPICE_EXECUTION_BUDGETS,
     },
     tools: toolContracts,
   });
@@ -224,20 +277,29 @@ function parseDesiredIdentity(
     ? spice.expectedTools as string[]
     : [];
   const image = string(spice.image);
+  const release = isRecord(spice.release) ? spice.release : {};
+  const ociLabels = stringRecord(release.ociLabels);
   return {
     id: string(spice.id),
     serviceName: string(spice.serviceName),
     mcpUrl: string(spice.mcpUrl),
     healthUrl: string(spice.healthUrl),
     image,
+    release: {
+      version: string(release.version),
+      revision: string(release.revision),
+      ociLabels,
+    },
     expectedTools,
     manifestMatchesCodeOwnedContract: matches.length === 1 &&
       spice.serviceName === "mcp-spice" &&
       spice.mcpUrl === SPICE_ENDPOINT.mcpUrl &&
       spice.healthUrl === SPICE_ENDPOINT.healthUrl &&
-      sameStringSet(expectedTools, EXPECTED_TOOLS) &&
-      typeof image === "string" &&
-      /^ghcr\.io\/casys-ai\/mcp-spice@sha256:[a-f0-9]{64}$/.test(image),
+      sameStringSet(expectedTools, SPICE_EXPECTED_TOOLS) &&
+      image === SPICE_RELEASE.image &&
+      release.version === SPICE_RELEASE.version &&
+      release.revision === SPICE_RELEASE.revision &&
+      sameStringRecord(ociLabels, SPICE_RELEASE.ociLabels),
     // This probe has neither Docker permission nor an image-inspection path.
     imageDigestVerified: false,
   };
@@ -311,20 +373,34 @@ function report(
     contract,
     supportedResultFamilies: current
       ? {
-        operatingPoint: ["node_voltages", "measurements", "input_artifact"],
+        operatingPoint: [
+          "node_voltages:V",
+          "branch_currents_a:A",
+          "measurements:voltage-only",
+          "input_artifact:sha256,bytes,source_path",
+        ],
         reducedTransient: [
-          "node_stats:min_v,max_v,final_v",
+          "node_stats:min_v,max_v,final_v,min_at_s,max_at_s,final_at_s",
+          "branch_current_stats_a:min_a,max_a,final_a,min_at_s,max_at_s,final_at_s",
           "measurements:final_v",
           "simulation:n_points,tstop_s",
         ],
+        dcSweep: [
+          "node_stats:min_v,max_v,final_v,min_at_source_v,max_at_source_v,final_at_source_v",
+          "branch_current_stats_a:min_a,max_a,final_a,min_at_source_v,max_at_source_v,final_at_source_v",
+          "sweep:source,start_v,stop_v,step_v,n_points,max_points",
+        ],
         units: {
           voltage: "supported",
-          ampere: "unresolved",
+          ampere: "supported",
           watt: "unresolved",
-          eventTimeSeconds: "unresolved",
+          eventTimeSeconds: "supported",
         },
       }
       : unresolvedFamilies(),
+    executionBudgets: current
+      ? { status: "reviewed-contract", ...SPICE_EXECUTION_BUDGETS }
+      : { status: "unresolved" },
     gaps: GAPS.map(([capability, reason]) => ({
       capability,
       status: "unresolved" as const,
@@ -339,11 +415,12 @@ function report(
 }
 
 const GAPS = [
-  ["ampere-observation", "No listed output schema exposes branch current in A."],
   ["watt-observation", "No listed output schema exposes power in W."],
-  ["event-time-seconds", "Transient returns requested tstop_s, not event time in s."],
   ["provider-readback", "No run id or provider readback method is listed."],
-  ["input-size-bounds", "No byte, node-count, or transient-point bound is listed."],
+  [
+    "runtime-budget-enforcement",
+    "This read-only probe verifies discovery/schema bounds and reports release-qualified private limits, but never submits or runs a circuit to test runtime enforcement.",
+  ],
   [
     "error-envelope",
     "This read-only probe never observes a tools/call error envelope.",
@@ -354,6 +431,7 @@ function unresolvedFamilies(): SpiceContractPreflight["supportedResultFamilies"]
   return {
     operatingPoint: [],
     reducedTransient: [],
+    dcSweep: [],
     units: {
       voltage: "unresolved",
       ampere: "unresolved",
@@ -361,6 +439,84 @@ function unresolvedFamilies(): SpiceContractPreflight["supportedResultFamilies"]
       eventTimeSeconds: "unresolved",
     },
   };
+}
+
+function assertExecutionBudgets(
+  discovery: Record<string, unknown>,
+  byName: ReadonlyMap<string, Record<string, unknown>>,
+): void {
+  const instructions = requiredString(
+    discovery.instructions,
+    "server/discover instructions",
+  );
+  for (
+    const fragment of [
+      "Both submitted and legacy-path netlists are limited to 1 MiB",
+      "each observable kind is limited to 32 names",
+      "Transient wrdata is bounded to 8 MiB and 50,000 samples before reduction",
+    ]
+  ) {
+    if (!instructions.includes(fragment)) {
+      throw new ContractDivergenceError(
+        `server/discover instructions do not declare ${fragment}.`,
+      );
+    }
+  }
+
+  for (
+    const name of [
+      "spice_simulate_op",
+      "spice_simulate_tran",
+      "spice_simulate_dc",
+    ] as const
+  ) {
+    const properties = inputProperties(byName.get(name)!, name);
+    for (const field of ["nodes", "branch_sources"] as const) {
+      const schema = record(properties[field], `${name} ${field} schema`);
+      if (schema.maxItems !== SPICE_EXECUTION_BUDGETS.observablesPerKind) {
+        throw new ContractDivergenceError(
+          `${name} ${field} maxItems does not equal ${SPICE_EXECUTION_BUDGETS.observablesPerKind}.`,
+        );
+      }
+    }
+    const timeout = record(properties.timeout_s, `${name} timeout_s schema`);
+    if (
+      timeout.minimum !== SPICE_EXECUTION_BUDGETS.timeoutSeconds.min ||
+      timeout.maximum !== SPICE_EXECUTION_BUDGETS.timeoutSeconds.max ||
+      !requiredString(timeout.description, `${name} timeout_s description`).includes(
+        "default 30, max 300",
+      )
+    ) {
+      throw new ContractDivergenceError(
+        `${name} timeout_s does not declare the reviewed 1–300 s range and default 30 s.`,
+      );
+    }
+  }
+
+  const dcProperties = inputProperties(
+    byName.get("spice_simulate_dc")!,
+    "spice_simulate_dc",
+  );
+  if (
+    !requiredString(
+      record(dcProperties.step_v, "spice_simulate_dc step_v schema").description,
+      "spice_simulate_dc step_v description",
+    ).includes(`${SPICE_EXECUTION_BUDGETS.dcRequestPoints} internal points`)
+  ) {
+    throw new ContractDivergenceError(
+      "spice_simulate_dc does not declare the reviewed 512-point request ceiling.",
+    );
+  }
+}
+
+function inputProperties(
+  tool: Record<string, unknown>,
+  name: string,
+): Record<string, unknown> {
+  return record(
+    record(tool.inputSchema, `${name} inputSchema`).properties,
+    `${name} inputSchema properties`,
+  );
 }
 
 function record(value: unknown, label: string): Record<string, unknown> {
@@ -398,6 +554,33 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function string(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function requiredString(value: unknown, label: string): string {
+  const result = string(value);
+  if (result === undefined) {
+    throw new ContractDivergenceError(`${label} is not a string.`);
+  }
+  return result;
+}
+
+function stringRecord(value: unknown): Record<string, string> {
+  if (
+    !isRecord(value) || !Object.values(value).every((item) => typeof item === "string")
+  ) {
+    return {};
+  }
+  return value as Record<string, string>;
+}
+
+function sameStringRecord(
+  actual: Readonly<Record<string, string>>,
+  expected: Readonly<Record<string, string>>,
+): boolean {
+  const actualKeys = Object.keys(actual);
+  const expectedKeys = Object.keys(expected);
+  return actualKeys.length === expectedKeys.length &&
+    actualKeys.every((key) => actual[key] === expected[key]);
 }
 
 if (import.meta.main) {

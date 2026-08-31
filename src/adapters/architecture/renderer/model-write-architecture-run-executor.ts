@@ -52,8 +52,10 @@ import {
 } from "../../../domain/architecture/seed/syson-model-seed.ts";
 import {
   type AdoptedItem,
+  ArchitecturePackageScopeError,
   type ArchitectureProposal,
   architectureWriteSelector,
+  assertArchitecturePackageScope,
   type ExistingArchitectureStructure,
   type InsertionItem,
   MODEL_WRITE_ARCHITECTURE_OPERATION,
@@ -121,6 +123,17 @@ import {
   assertThreadWriteBasisAvailable,
   threadWriteBasisLeaseScope,
 } from "../../shared/thread-write-basis-guard.ts";
+import type { CapabilityRuntimeExecutionEligibility } from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import {
+  beginConfiguredCapabilityRuntimeSession,
+  requireConfiguredOperationalCapability,
+  settleCapabilityRuntimeSession,
+} from "../../../application/control-plane/capability-runtime-execution-admission.ts";
+import {
+  type CapabilityRuntimeExecutionSession,
+  type CapabilityRuntimeExecutionSessionCoordinator,
+  CapabilityRuntimeSessionUnavailableError,
+} from "../../../application/control-plane/capability-runtime-execution-session.ts";
 
 // ── Public re-exports ────────────────────────────────────────────────────────
 
@@ -173,6 +186,11 @@ export interface ModelWriteArchitectureRunExecutorDependencies {
   /** Fixed server-owned MCP client. No agent value reaches this boundary. */
   readonly syson: McpToolClient;
   readonly lease: EngineeringProjectRunLease;
+  readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
+  readonly capabilityRuntimeSession?: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin"
+  >;
   readonly liveUpdates?: LiveThreadUpdateMilestoneJournal;
   readonly now?: () => string;
 }
@@ -369,6 +387,10 @@ export class ModelWriteArchitectureRunExecutor {
   readonly #attempts: FileArchitectureAttemptStore;
   readonly #syson: McpToolClient;
   readonly #lease: EngineeringProjectRunLease;
+  readonly #capabilityRuntime: CapabilityRuntimeExecutionEligibility | undefined;
+  readonly #capabilityRuntimeSession:
+    | Pick<CapabilityRuntimeExecutionSessionCoordinator, "begin">
+    | undefined;
   readonly #liveUpdates: LiveThreadUpdateMilestoneJournal | undefined;
   readonly #now: () => string;
 
@@ -382,6 +404,8 @@ export class ModelWriteArchitectureRunExecutor {
     this.#attempts = dependencies.attempts;
     this.#syson = dependencies.syson;
     this.#lease = dependencies.lease;
+    this.#capabilityRuntime = dependencies.capabilityRuntime;
+    this.#capabilityRuntimeSession = dependencies.capabilityRuntimeSession;
     this.#liveUpdates = dependencies.liveUpdates;
     this.#now = dependencies.now ?? (() => new Date().toISOString());
   }
@@ -403,6 +427,10 @@ export class ModelWriteArchitectureRunExecutor {
     // MRTR gate — proposal is consumed here so it is verified before leasing.
     const { proposal } = await requireMrtrApproval(project, run);
     const architectureProposal = parseProposal(proposal);
+    await this.#assertPredecessorPackageScopeBeforeLease(
+      run,
+      architectureProposal,
+    );
 
     // A run-scoped lease is sufficient to replay one runId, but it leaves two
     // independently queued work items free to author divergent successors from
@@ -426,6 +454,7 @@ export class ModelWriteArchitectureRunExecutor {
     let providerAcknowledged = false;
     let snapshotPersisted = false;
     let materializedSnapshot: ThreadSnapshot | undefined;
+    let capabilitySession: CapabilityRuntimeExecutionSession | undefined;
 
     try {
       // Pre-claim shape re-check (post-lease).
@@ -460,6 +489,24 @@ export class ModelWriteArchitectureRunExecutor {
         requireRun(preClaim, command.runId),
         this.#attempts,
       );
+      await this.#runAttemptOrFail(preClaim.project.id, command.runId);
+      const preClaimRun = requireRun(preClaim, command.runId);
+      const operationalCapability = await this.#requireOperationalCapability(
+        preClaim,
+        preClaimRun,
+      );
+      capabilitySession = await beginConfiguredCapabilityRuntimeSession({
+        session: this.#capabilityRuntimeSession!,
+        project: preClaim,
+        runId: command.runId,
+        operationalCapability,
+        recheck: async () => {
+          const fresh = await this.#requiredProject(command.projectId);
+          const run = requireRun(fresh, command.runId);
+          requireShape(fresh, run);
+          return await this.#requireOperationalCapability(fresh, run);
+        },
+      });
 
       await this.#commands.claimRun(origin, {
         ...command,
@@ -960,6 +1007,10 @@ export class ModelWriteArchitectureRunExecutor {
         architectureProposal,
       );
       await this.#reconcileLive(complete.project.subjectId, command.runId);
+      await settleCapabilityRuntimeSession({
+        session: capabilitySession,
+        policy: { kind: "release" },
+      });
       return complete;
     } catch (error) {
       if (snapshotPersisted && materializedSnapshot) {
@@ -967,7 +1018,17 @@ export class ModelWriteArchitectureRunExecutor {
           command,
           architectureProposal,
         );
-        if (complete) return complete;
+        if (complete) {
+          await settleCapabilityRuntimeSession({
+            session: capabilitySession,
+            policy: { kind: "release" },
+          });
+          return complete;
+        }
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "retain" },
+        });
         throw new EngineeringProjectCommandError(
           "invalid_transition",
           "Generic architecture evidence is durable but project attachment did not finish. " +
@@ -975,13 +1036,15 @@ export class ModelWriteArchitectureRunExecutor {
         );
       }
       if (error instanceof ArchitectureWriteOutcomeUnknownError) {
-        if (claimed) {
-          await this.#recordFailure(origin, command, {
-            code: "model-write-architecture-provider-outcome-unknown",
-            message:
-              "The provider outcome is unknown after a durable dispatch record; automatic redispatch is forbidden pending human reconciliation.",
-          }, true);
-        }
+        await this.#recordFailure(origin, command, {
+          code: "model-write-architecture-provider-outcome-unknown",
+          message:
+            "The provider outcome is unknown after a durable dispatch record; automatic redispatch is forbidden pending human reconciliation.",
+        }, claimed);
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "retain" },
+        });
         throw new EngineeringProjectCommandError(
           "invalid_transition",
           "The SysON architecture insertion outcome is unknown. An operator must inspect " +
@@ -992,13 +1055,15 @@ export class ModelWriteArchitectureRunExecutor {
       // by a prior structural failure post-acknowledgement. Fail the run so its
       // status is visible, and surface the reason as a diagnostic error.
       if (error instanceof ArchitectureRunQuarantinedError) {
-        if (claimed) {
-          await this.#recordFailure(origin, command, {
-            code: "model-write-architecture-post-acknowledgement-quarantined",
-            message:
-              "SysON acknowledged an architecture insertion, then structural verification failed; the run is quarantined.",
-          });
-        }
+        await this.#recordFailure(origin, command, {
+          code: "model-write-architecture-post-acknowledgement-quarantined",
+          message:
+            "SysON acknowledged an architecture insertion, then structural verification failed; the run is quarantined.",
+        });
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "retain" },
+        });
         throw new EngineeringProjectCommandError(
           "invalid_transition",
           error.message,
@@ -1028,6 +1093,10 @@ export class ModelWriteArchitectureRunExecutor {
                 "SysON acknowledged an architecture insertion, but the durable quarantine could not be recorded. Automatic retry is forbidden.",
             }, true);
           }
+          await settleCapabilityRuntimeSession({
+            session: capabilitySession,
+            policy: { kind: "retain" },
+          });
           throw new EngineeringProjectCommandError(
             "invalid_transition",
             "The acknowledged SysON insertion could not be durably quarantined. " +
@@ -1041,6 +1110,10 @@ export class ModelWriteArchitectureRunExecutor {
               "SysON acknowledged an architecture insertion, then provider readback or structural verification failed; the run is quarantined.",
           });
         }
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "retain" },
+        });
         if (
           error instanceof EngineeringProjectCommandError ||
           error instanceof ArchitectureStructureExtractionError
@@ -1052,7 +1125,51 @@ export class ModelWriteArchitectureRunExecutor {
         );
       }
       if (claimed) await this.#recordFailure(origin, command);
+      await settleCapabilityRuntimeSession({
+        session: capabilitySession,
+        policy: {
+          kind: "release-if-terminal",
+          run: await this.#currentRun(command.projectId, command.runId),
+        },
+      });
       throw error;
+    }
+  }
+
+  async #requireOperationalCapability(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+  ) {
+    requireShape(project, run);
+    const workItem = project.workItems.find((item) => item.id === run.workItemId)!;
+    try {
+      return await requireConfiguredOperationalCapability({
+        runtime: this.#capabilityRuntime,
+        session: this.#capabilityRuntimeSession,
+        project,
+        run,
+        workItem,
+        unavailableMessage:
+          "Generic architecture write requires the configured JIT capability runtime session before a run can be claimed.",
+        missingBindingMessage:
+          "Generic architecture write requires the sealed model.author-system@1 operational capability before a run can be claimed.",
+      });
+    } catch (error) {
+      if (error instanceof CapabilityRuntimeSessionUnavailableError) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          error.message,
+        );
+      }
+      throw error;
+    }
+  }
+
+  async #currentRun(projectId: string, runId: string) {
+    try {
+      return requireRun(await this.#requiredProject(projectId), runId);
+    } catch {
+      return undefined;
     }
   }
 
@@ -1490,6 +1607,41 @@ export class ModelWriteArchitectureRunExecutor {
   }
 
   /**
+   * A successor may enrich only the Package scope sealed by its exact current
+   * predecessor capture. This is intentionally before the lease: changing the
+   * package is outside the registered one-package surface, not a provider
+   * outcome that needs a WAL, quarantine, or project lifecycle transition.
+   */
+  async #assertPredecessorPackageScopeBeforeLease(
+    run: EngineeringAgentRun,
+    proposal: ArchitectureProposal,
+  ): Promise<void> {
+    const { base, seedArtifact } = await this.#loadSeedInputs(requireBasis(run));
+    await assertArchitectureArtifactNotRemoved(base, this.#snapshots);
+    const predecessor = requireArchitectureTip(base);
+    const capture = await this.#assertPredecessorCaptureExact(
+      predecessor,
+      base,
+      seedArtifact,
+    );
+    if (!capture) return;
+    try {
+      assertArchitecturePackageScope({
+        packageName: capture.packageName,
+        scopeRootId: capture.scopeRoot.id,
+      }, proposal);
+    } catch (error) {
+      if (error instanceof ArchitecturePackageScopeError) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          `Architecture package scope preflight rejected (${error.code}): ${error.message}`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
    * A valid seed capture is insufficient on its own: it must be the exact r2
    * descendant of the current subject's r1 documentary baseline.  Otherwise a
    * copied capture could direct this run into another subject's SysON editing
@@ -1646,8 +1798,8 @@ export class ModelWriteArchitectureRunExecutor {
     predecessor: ThreadArtifact | undefined,
     base: ThreadSnapshot,
     seedArtifact: ThreadArtifact,
-  ): Promise<void> {
-    if (!predecessor) return;
+  ): Promise<ExactArchitectureCapture | undefined> {
+    if (!predecessor) return undefined;
     const text = await this.#captures.read(predecessor.fingerprint);
     if (!text) {
       throw new EngineeringProjectCommandError(
@@ -1751,6 +1903,7 @@ export class ModelWriteArchitectureRunExecutor {
         "The predecessor architecture capture declarations and Thread artifact inputs are not bijective.",
       );
     }
+    return capture;
   }
 
   async #recordFailure(

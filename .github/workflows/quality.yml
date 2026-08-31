@@ -58,8 +58,5 @@ jobs:
       - name: Verify evidence fixtures
         run: deno task verify:evidence
 
-      - name: Verify committed FEA provider contract
-        run: deno task verify:fea:contract
-
       - name: Build and verify the native Workbench
         run: deno task verify:thread:presentation

@@ -9,8 +9,7 @@ import {
   validateLedDriverSourceCaptureDocument,
 } from "./led-driver-source-capture.ts";
 
-const SHA256 =
-  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const SHA256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 Deno.test("LED-driver source capture assembles identity, bytes and unresolved unknowns", async () => {
   const source = validateLedDriverHumanSource(
@@ -67,9 +66,7 @@ Deno.test("LED-driver source capture refuses a mutable latest alias", () => {
     ...document,
     source: { ...document.source, casUri: "casys://led-driver-source/latest" },
   };
-  const error = assertThrowsOn(() =>
-    validateLedDriverSourceCaptureDocument(forged)
-  );
+  const error = assertThrowsOn(() => validateLedDriverSourceCaptureDocument(forged));
   assertEquals(error.message.includes("casUri"), true);
 });
 

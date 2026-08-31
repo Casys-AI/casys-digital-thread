@@ -28,6 +28,10 @@ import { ARCHITECTURE_FEATURE_TYPING_AQL } from "../renderer/architecture-struct
 import { findArchitectureArtifact } from "../renderer/model-write-architecture-run-executor.ts";
 import { ModelCapturePartDefinitionsRunExecutor } from "./model-capture-part-definitions-run-executor.ts";
 import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../../domain/architecture/part-definitions/part-definitions-capture.ts";
+import {
+  recordingCapabilityRuntimeSession,
+  successfulCapabilityRuntimeFor,
+} from "../../../testing/capability-runtime-execution-session-test-support.ts";
 import { ArchitectureArtifactRemovedError } from "../renderer/model-write-architecture-run-executor.ts";
 
 const PROJECT_ID = "project:lamp";
@@ -43,8 +47,7 @@ const PACKAGE_NAME = "LampPackage";
 const SYSTEM_ID = "part-def-system";
 const ARM_ID = "part-def-arm";
 const USAGE_ID = "part-usage-arm";
-const PART_USAGE_KIND =
-  "siriusComponents://semantic?domain=sysml&entity=PartUsage";
+const PART_USAGE_KIND = "siriusComponents://semantic?domain=sysml&entity=PartUsage";
 const AGENT = { kind: "agent" as const, actorId: "agent-1" };
 const HUMAN = { kind: "human" as const, actorId: "operator-1" };
 const HISTORICAL_PART_DEFINITIONS_ID = `part-definitions-${"d".repeat(64)}`;
@@ -144,6 +147,23 @@ Deno.test("a drone architecture URI is not a generic architecture tip", async ()
     "no generic architecture capture tip",
   );
   assertEquals(fixture.syson.calls, []);
+});
+
+Deno.test("PartDefinitions capture keeps the run queued when JIT begin fails", async () => {
+  const fixture = await productFixture();
+  const session = recordingCapabilityRuntimeSession(() =>
+    Promise.reject(new Error("exact SysON host group unavailable"))
+  );
+  await assertRejects(
+    () =>
+      fixture.executor(false, fixture.captures, fixture.publications, session)
+        .execute(AGENT, fixture.command()),
+    Error,
+    "host group unavailable",
+  );
+  assertEquals(session.events, []);
+  assertEquals(fixture.syson.calls, []);
+  assertEquals(fixture.project.agentRuns[0]!.status, "queued");
 });
 
 Deno.test("no FileArchitectureAttemptStore begin occurs before the SysON read", async () => {
@@ -255,9 +275,7 @@ Deno.test("CAS capture bytes read back exactly before the publication WAL", asyn
 
 Deno.test("the publication WAL is durable before the snapshot save", async () => {
   const fixture = await productFixture({ failSnapshotOnce: true });
-  await assertRejects(() =>
-    fixture.executor().execute(AGENT, fixture.command())
-  );
+  await assertRejects(() => fixture.executor().execute(AGENT, fixture.command()));
   assert(await fixture.publications.read(PROJECT_ID, RUN_ID));
   assertEquals(fixture.project.agentRuns[0]!.status, "running");
 });
@@ -313,9 +331,7 @@ Deno.test(
   "a WAL saved before snapshot persistence resumes without a second SysON read",
   async () => {
     const fixture = await productFixture({ failSnapshotOnce: true });
-    await assertRejects(() =>
-      fixture.executor().execute(AGENT, fixture.command())
-    );
+    await assertRejects(() => fixture.executor().execute(AGENT, fixture.command()));
     const firstCalls = fixture.syson.calls.length;
     fixture.syson.failIfCalled = true;
     const completed = await fixture.executor().execute(
@@ -329,9 +345,7 @@ Deno.test(
 
 Deno.test("a tampered publication WAL never re-queries SysON", async () => {
   const fixture = await productFixture({ failSnapshotOnce: true });
-  await assertRejects(() =>
-    fixture.executor().execute(AGENT, fixture.command())
-  );
+  await assertRejects(() => fixture.executor().execute(AGENT, fixture.command()));
   const firstCalls = fixture.syson.calls.length;
   fixture.syson.failIfCalled = true;
   const publications = new TamperedPublicationStore(
@@ -570,8 +584,7 @@ async function productFixture(options: FixtureOptions = {}) {
             relation: "derived_from" as const,
             from: { kind: "artifact" as const, id: previousCapture.id },
             to: { kind: "artifact" as const, id: architecture.id },
-            rationale:
-              "A prior PartDefinitions capture already consumed this tip.",
+            rationale: "A prior PartDefinitions capture already consumed this tip.",
           }, {
             id: "part-definitions-uses-architecture",
             relation: "uses" as const,
@@ -666,8 +679,14 @@ async function productFixture(options: FixtureOptions = {}) {
         FilePartDefinitionsPublicationStore,
         "read" | "save"
       > = publications,
-    ) =>
-      new ModelCapturePartDefinitionsRunExecutor({
+      session?: ReturnType<typeof recordingCapabilityRuntimeSession>,
+    ) => {
+      const capability = successfulCapabilityRuntimeFor(
+        PROJECT_ID,
+        MODEL_CAPTURE_PART_DEFINITIONS_OPERATION,
+        "model.inspect-system",
+      );
+      return new ModelCapturePartDefinitionsRunExecutor({
         projects: { get: async () => project } as never,
         commands: commands as never,
         snapshots,
@@ -676,9 +695,11 @@ async function productFixture(options: FixtureOptions = {}) {
         captures: replacementCaptures,
         syson: syson as unknown as McpToolClient,
         lease: immediateLease,
-        publications:
-          replacementPublications as FilePartDefinitionsPublicationStore,
-      }),
+        publications: replacementPublications as FilePartDefinitionsPublicationStore,
+        capabilityRuntime: capability.capabilityRuntime,
+        capabilityRuntimeSession: session ?? capability.capabilityRuntimeSession,
+      });
+    },
   };
 }
 
@@ -913,9 +934,7 @@ async function assertCurrentPartDefinitionsEvidence(
     id: expectedId,
   });
   assert(
-    snapshot.artifacts.some((item) =>
-      item.id === HISTORICAL_PART_DEFINITIONS_ID
-    ),
+    snapshot.artifacts.some((item) => item.id === HISTORICAL_PART_DEFINITIONS_ID),
     `expected historical distractor ${HISTORICAL_PART_DEFINITIONS_ID} to remain on the successor`,
   );
   assert(
@@ -962,9 +981,7 @@ function snapshot(
 ): ThreadSnapshot {
   return {
     schemaVersion: "1.0",
-    id: revision === 1
-      ? `${SUBJECT_ID}:r1:baseline`
-      : `${SUBJECT_ID}:r${revision}:rev`,
+    id: revision === 1 ? `${SUBJECT_ID}:r1:baseline` : `${SUBJECT_ID}:r${revision}:rev`,
     revision,
     ...(previous
       ? { previous: { snapshotId: previous.id, revision: previous.revision } }
@@ -1156,9 +1173,7 @@ class MemorySnapshots implements ThreadSnapshotStore {
     return await this.get(id);
   }
   async latest(subjectId: string): Promise<ThreadSnapshot | undefined> {
-    return [...this.#items.values()].filter((item) =>
-      item.subject.id === subjectId
-    )
+    return [...this.#items.values()].filter((item) => item.subject.id === subjectId)
       .sort((a, b) => b.revision - a.revision)[0];
   }
   async save(snapshot: ThreadSnapshot): Promise<void> {
@@ -1201,8 +1216,7 @@ class TamperedPublicationStore {
 }
 
 class LiveSyson {
-  readonly calls: Array<McpToolCall & { arguments?: Record<string, unknown> }> =
-    [];
+  readonly calls: Array<McpToolCall & { arguments?: Record<string, unknown> }> = [];
   failIfCalled = false;
   constructor(
     private readonly options: {
@@ -1266,9 +1280,7 @@ class LiveSyson {
       if (expression !== ARCHITECTURE_FEATURE_TYPING_AQL) {
         return Promise.reject(new Error(`Unexpected AQL: ${expression}`));
       }
-      const label = this.options.mistyped && objectId === USAGE_ID
-        ? "Other"
-        : "Arm";
+      const label = this.options.mistyped && objectId === USAGE_ID ? "Other" : "Arm";
       const targetId = label === "Arm" ? ARM_ID : "part-def-other";
       return Promise.resolve({
         text: "aql",

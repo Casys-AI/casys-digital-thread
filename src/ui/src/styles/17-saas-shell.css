@@ -506,21 +506,6 @@
   padding-top: clamp(0.85rem, 1.5vw, 1.2rem);
 }
 
-.requirements-matrix-frame {
-  min-width: 0;
-  overflow: hidden;
-}
-
-.requirements-matrix-grid {
-  grid-template-columns:
-    204px minmax(230px, 2fr) minmax(170px, 1.3fr)
-    minmax(140px, 1fr) 110px 96px minmax(180px, 1.3fr);
-}
-
-.requirements-compact-details {
-  display: none;
-}
-
 .component-summary-metrics {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -538,23 +523,6 @@
     grid-column: 1 / -1;
     border-block-start: 1px solid var(--ui-border);
     border-inline-start: 0;
-  }
-}
-
-@container workspace (max-width: 70rem) {
-  .requirements-matrix-grid {
-    grid-template-columns:
-      minmax(0, 1.6fr) minmax(9rem, 1fr) minmax(8rem, 0.9fr) 7rem;
-  }
-
-  .requirements-col-id,
-  .requirements-col-margin,
-  .requirements-col-evidence {
-    display: none;
-  }
-
-  .requirements-compact-details {
-    display: grid;
   }
 }
 
@@ -580,15 +548,6 @@
 
   .project-path-stage-connector {
     display: block;
-  }
-
-  .requirements-matrix-grid {
-    grid-template-columns: minmax(0, 1fr) 7rem;
-  }
-
-  .requirements-col-limit,
-  .requirements-col-observed {
-    display: none;
   }
 }
 

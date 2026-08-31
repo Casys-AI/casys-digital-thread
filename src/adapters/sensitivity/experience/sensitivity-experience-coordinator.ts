@@ -33,7 +33,8 @@ import {
 } from "../../../domain/sensitivity/experience/sensitivity-experience.ts";
 import type { SensitivityStudyCapture } from "../../../domain/sensitivity/study/sensitivity-study-capture.ts";
 import { validateSensitivityStudyCapture } from "../../../domain/sensitivity/study/sensitivity-study-capture.ts";
-import type { SensitivityStudyCaseV2 } from "../../../domain/sensitivity/study/sensitivity-study-v2.ts";
+import { liveSolverObservationForMetric } from "../../../domain/sensitivity/study/sensitivity-live-method.ts";
+import type { SensitivityStudyCaseV3 } from "../../../domain/sensitivity/study/sensitivity-study-v3.ts";
 import { SENSITIVITY_CAD_SOURCE_ADMISSION_TOOL } from "../../../domain/sensitivity/study/sensitivity-study-seal-bindings.ts";
 import {
   deterministicJson,
@@ -85,7 +86,7 @@ export class SensitivityExperienceCoordinator {
   ) {}
 
   async compileTarget(input: {
-    readonly studyCase: SensitivityStudyCaseV2;
+    readonly studyCase: SensitivityStudyCaseV3;
     readonly admission: NonNullable<
       Awaited<ReturnType<TechnicalCompilationAdmissionReader["read"]>>
     >;
@@ -523,26 +524,83 @@ async function attemptMatchesCapture(
     const solve = attempt.solves[phase];
     const capturedCad = capture.cad[phase];
     if (
-      cad.status !== "published" || solve.status !== "solver-recorded" ||
+      cad.status !== "published" || solve.status !== "captured" ||
       cad.executionRunId !== capturedCad.executionRunId ||
       cad.sourceSha256 !== capturedCad.sourceSha256 ||
       cad.stepSha256 !== capturedCad.stepSha256 ||
       cad.stepBytes !== capturedCad.stepBytes ||
-      solve.stepSha256 !== cad.stepSha256
+      solve.stepSha256 !== cad.stepSha256 || solve.stepBytes !== cad.stepBytes
     ) return false;
-    const envelope = {
-      schemaVersion: "sensitivity-solver-result/1.0",
-      phase,
-      stepSha256: cad.stepSha256,
-      stepBytes: cad.stepBytes,
-      measurements: capture.measurements[phase],
-    };
+    let envelope: unknown;
+    try {
+      envelope = JSON.parse(solve.canonicalSolveCaptureText);
+    } catch {
+      return false;
+    }
     if (
-      solve.canonicalSolverCaptureText !== deterministicJson(envelope) ||
-      solve.captureFp !== (await sha256Fingerprint(envelope)).digest
+      deterministicJson(envelope) !== solve.canonicalSolveCaptureText ||
+      solve.captureFp !== (await sha256Fingerprint(envelope)).digest ||
+      !recordedSolveMatchesMeasurements(
+        envelope,
+        phase,
+        cad,
+        capture.measurements[phase],
+      )
     ) return false;
   }
   return true;
+}
+
+/**
+ * Legacy private-reuse records stay a derived read model, but their health
+ * recross now reads the V3 recorded-run capture rather than the retired
+ * synthetic solver envelope. No provider status is promoted to a verdict.
+ */
+function recordedSolveMatchesMeasurements(
+  value: unknown,
+  phase: "base" | "stepped",
+  cad: Extract<FeaSensitivityAttempt["cad"]["base"], { readonly status: "published" }>,
+  measurements: readonly {
+    readonly metric: string;
+    readonly value: number;
+    readonly unit: string;
+  }[],
+): boolean {
+  if (
+    !isPlainRecord(value) ||
+    value.schemaVersion !== "mcp-calculix-sensitivity-capture/1.0"
+  ) {
+    return false;
+  }
+  const readback = value.readback;
+  const result = value.result;
+  if (
+    !isPlainRecord(readback) || !isPlainRecord(result) ||
+    readback.phase !== phase || readback.stepSha256 !== cad.stepSha256 ||
+    readback.stepBytes !== cad.stepBytes
+  ) {
+    return false;
+  }
+  const observations = isPlainRecord(result.observations)
+    ? result.observations
+    : undefined;
+  if (!observations) return false;
+  for (const measurement of measurements) {
+    const field = liveSolverObservationForMetric(measurement.metric);
+    const observation = field === undefined ? undefined : observations[field];
+    const magnitude = isPlainRecord(observation) && isPlainRecord(observation.magnitude)
+      ? observation.magnitude
+      : undefined;
+    if (
+      !magnitude || magnitude.value !== measurement.value ||
+      magnitude.unit !== measurement.unit
+    ) return false;
+  }
+  return true;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function requireHealthyArtifact(

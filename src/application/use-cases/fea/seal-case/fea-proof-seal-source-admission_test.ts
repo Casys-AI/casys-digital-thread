@@ -42,18 +42,19 @@ Deno.test("geometry-capture/2.0 is rejected by FEA source admission", async () =
   const admitted = await admitFeaProofSealSource({
     ...world(),
     geometryCaptures: {
-      read: () => Promise.resolve(JSON.stringify({
-        schemaVersion: "geometry-capture/2.0",
-        manifest: {
-          partDefinitions: [{
-            elementId: TARGET_ID,
-            files: [{
-              format: "step",
-              fingerprint: { algorithm: "sha256", digest: STEP_DIGEST },
+      read: () =>
+        Promise.resolve(JSON.stringify({
+          schemaVersion: "geometry-capture/2.0",
+          manifest: {
+            partDefinitions: [{
+              elementId: TARGET_ID,
+              files: [{
+                format: "step",
+                fingerprint: { algorithm: "sha256", digest: STEP_DIGEST },
+              }],
             }],
-          }],
-        },
-      })),
+          },
+        })),
     },
   });
   assertEquals(admitted.status, "unresolved");

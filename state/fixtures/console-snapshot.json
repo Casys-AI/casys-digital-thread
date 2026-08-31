@@ -742,14 +742,12 @@
         "id": "bracket-demo-2026-07-30",
         "name": "Bracket verification",
         "subject": "Al 6061 mounting bracket",
-        "status": "succeeded",
-        "verdictStatus": "passed",
+        "status": "documentary",
+        "verdictStatus": "not_evaluated",
         "source": "demo",
-        "startedAt": "2026-07-30T08:00:00.000Z",
-        "completedAt": "2026-07-30T08:00:03.200Z",
-        "passedRequirements": 2,
+        "passedRequirements": 0,
         "failedRequirements": 0,
-        "unresolvedRequirements": 0
+        "unresolvedRequirements": 2
       }
     ]
   }

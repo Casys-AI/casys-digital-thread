@@ -402,7 +402,7 @@ async function preserve(world: Awaited<ReturnType<typeof worldFixture>>) {
   });
 }
 
-async function assertNeverCarriedForward(
+function assertNeverCarriedForward(
   result: Awaited<ReturnType<typeof preserve>>,
 ) {
   if (result.status === "resolved") {
@@ -900,7 +900,6 @@ async function worldFixture(): Promise<{
     r2,
     r3,
     evaluationId,
-    decisionCapture,
     decisionFingerprint,
     fea,
   );
@@ -1543,7 +1542,6 @@ function projectFixture(
   evaluationBasis: ThreadSnapshot,
   head: ThreadSnapshot,
   evaluationId: string,
-  decisionCapture: CrossDomainImpactDecisionCapture,
   decisionFingerprint: ContentFingerprint,
   fea: ReturnType<typeof validFeaEvidence>,
 ): MutableProject {
@@ -1552,10 +1550,6 @@ function projectFixture(
     snapshotId: evaluationBasis.previous!.snapshotId,
     revision: evaluationBasis.previous!.revision,
     subjectId: SUBJECT,
-  };
-  const approvedBrief = {
-    name: "approvedBrief" as const,
-    source: { kind: "approved-brief" as const },
   };
   const evalOp = {
     id: ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.id,

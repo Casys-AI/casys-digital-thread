@@ -1,8 +1,8 @@
 import { FileCaptureStore } from "../../shared/cas/file-capture-store.ts";
 import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
 import {
-  fingerprintElectricalObservationMethodSheet,
   type ElectricalObservationMethodSheet,
+  fingerprintElectricalObservationMethodSheet,
   validateElectricalObservationMethodSheet,
 } from "../../../domain/electrical/observation-method-sheet.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";

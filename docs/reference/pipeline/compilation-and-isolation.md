@@ -218,8 +218,9 @@ authority is exact, not general: it covers only `linear-thermal-ramp-v1@0.1.0` /
 `linear-ramp-nominal` and accepts no arbitrary Modelica. The separate local product
 operation descriptor and fail-closed dispatcher entry for
 `simulate.run-qualified-modelica-kit@1` remain registered independently of runtime
-availability. Its read-only review and concrete executor become available only when
-`--local-execution` composes the exact profile, runtime and pinned qualification. The
+availability. Its read-only review and concrete executor become available only when the
+approved capability-runtime supervisor composes the exact profile, runtime and pinned
+qualification. The
 review accepts only the exact project and current Thread basis; its MRTR has no ROP,
 provider or caller-selected source. A completed run adds the execution capture,
 normalized `evidence.json`, retained `result.csv` and the one `22 degC` observation,
@@ -247,8 +248,9 @@ run-scoped claimant across concurrent calls, with one worker dispatch and identi
 evidence replay. This qualifies the worker/profile and its standalone local use case
 only. The new product operation descriptor and fail-closed dispatcher entry for
 `verify.run-fea-static-proof@3` remain registered independently of runtime availability.
-Its concrete executor becomes available only when `--local-execution` composes the exact
-local profile/runtime and a SysON oracle is available. It consumes a newly sealed local
+Its concrete executor becomes available only when the approved capability-runtime
+supervisor composes the exact local profile/runtime and a SysON oracle is available. It
+consumes a newly sealed local
 ROP2 that names `@3`; the executor refuses an `@2` plan before either solve or SysON.
 Its outer WAL separates local evidence capture from the journaled SysON evaluation,
 quarantines an ambiguous oracle outcome without a retry, and on replay reopens both CAS

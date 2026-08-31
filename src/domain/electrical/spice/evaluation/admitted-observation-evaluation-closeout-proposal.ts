@@ -43,8 +43,7 @@ export type SpiceAdmittedObservationEvaluationCloseoutOperation =
   | typeof DECIDE_REJECT_ADMITTED_SPICE_EVALUATION_OPERATION;
 
 export interface SpiceAdmittedObservationEvaluationCloseoutAdmission {
-  readonly schemaVersion:
-    typeof SPICE_ADMITTED_OBSERVATION_EVALUATION_CLOSEOUT_SCHEMA;
+  readonly schemaVersion: typeof SPICE_ADMITTED_OBSERVATION_EVALUATION_CLOSEOUT_SCHEMA;
   readonly consequence: SpiceAdmittedObservationEvaluationCloseoutConsequence;
   readonly projectId: string;
   readonly subjectId: string;
@@ -87,10 +86,8 @@ const PARAMETER_LABELS: Record<(typeof PARAMETER_KEYS)[number], string> = {
   "electrical.evaluation.closeout.subject.id": "Subject",
   "electrical.evaluation.closeout.basis.snapshotId": "Thread snapshot",
   "electrical.evaluation.closeout.basis.revision": "Thread revision",
-  "electrical.evaluation.closeout.basis.fingerprint.digest":
-    "Thread fingerprint",
-  "electrical.evaluation.closeout.sheet.id":
-    "Electrical observation method sheet",
+  "electrical.evaluation.closeout.basis.fingerprint.digest": "Thread fingerprint",
+  "electrical.evaluation.closeout.sheet.id": "Electrical observation method sheet",
   "electrical.evaluation.closeout.sheet.fingerprint.digest":
     "Electrical observation method sheet fingerprint",
   "electrical.evaluation.closeout.capture.id": "L4 evaluation capture",

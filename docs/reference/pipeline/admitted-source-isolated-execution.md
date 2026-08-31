@@ -92,8 +92,9 @@ project_technical_source_capture          # modelica-closed-subset-v2; pass resu
   -> simulate.run-admitted-modelica@1
 ```
 
-`--local-execution` (or `start:yolo`) composes the review and executor. Without that
-flag the descriptor stays registered and the dispatcher is fail-closed.
+The approved capability-runtime supervisor composes the review and executor from the
+exact atomic unit. Until then the descriptor stays registered and the dispatcher is
+fail-closed. `start:yolo` does not activate a runtime.
 
 A successful isolated Modelica run is documentary. It is not a requirement verdict and
 not `simulate.run-qualified-modelica-kit@1`.
@@ -108,8 +109,9 @@ project_technical_source_capture          # spice-circuit-closed-subset-v1; pass
   -> simulate.run-admitted-spice@1
 ```
 
-`--local-execution` (or `start:yolo`) composes the review and executor. Without that
-flag the descriptor stays registered and the dispatcher is fail-closed.
+The approved capability-runtime supervisor composes the review and executor from the
+exact atomic unit. Until then the descriptor stays registered and the dispatcher is
+fail-closed. `start:yolo` does not activate a runtime.
 
 A successful isolated SPICE run is documentary operating-point evidence. It is not
 mcp-spice, not the LED-driver fiche, and not a requirement verdict. Derived current or
@@ -137,7 +139,7 @@ not preserve pre-WAL development runs.
 | Out-port    | `TechnicalCompilationAdmissionReader`, `IsolatedCodeRunner`, language profile catalog         | Thread document shape        |
 | Use case    | Reopen + `isolatedRequestFromAdmittedSource`                                                  | Execute, publish Thread      |
 | Adapter     | Profile catalog, Microsandbox backend, language executor, image worker                        | Caller-selected runtime      |
-| Composition | `--local-execution` wires review + executor when the exact profile and runtime exist          | Implicit env-var activation  |
+| Composition | Approved capability supervisor wires review + executor from an exact unit | Implicit env-var or CLI activation |
 
 New language verticals that already compile through `compile.seal-admission@3` reuse the
 reopen port. They add a profile, worker, MRTR, review tool, and executor. They do not

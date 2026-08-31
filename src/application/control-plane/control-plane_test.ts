@@ -59,7 +59,7 @@ Deno.test("ControlPlane presents timestamped evidence newest first", async () =>
     subject: "Indexed fixture",
     status: "succeeded",
     verdictStatus: "not_evaluated",
-    source: "demo",
+    source: "observed",
     completedAt,
     passedRequirements: 0,
     failedRequirements: 0,

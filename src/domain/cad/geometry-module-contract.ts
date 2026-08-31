@@ -9,7 +9,6 @@
 import { GEOMETRY_BUNDLE_PLACEMENT_CONVENTION } from "./canonical/geometry-bundle.ts";
 import {
   GEOMETRY_MODULE_CAPTURE_SCHEMA,
-  GEOMETRY_PART_CAPTURE_SCHEMA,
   GEOMETRY_TARGET_CAPTURE_SCHEMAS,
   type GeometryTargetCaptureSchema,
 } from "./geometry-capture-contract.ts";

@@ -16,10 +16,7 @@ import type {
   ThreadViolation,
   TracedRequirement,
 } from "./thread-snapshot.ts";
-import {
-  type AnalysisGraph,
-  validateAnalysisGraph,
-} from "./analysis-graph.ts";
+import { type AnalysisGraph, validateAnalysisGraph } from "./analysis-graph.ts";
 import { deepFreeze } from "../kernel/case-validation.ts";
 
 export interface ThreadSnapshotValidationIssue {

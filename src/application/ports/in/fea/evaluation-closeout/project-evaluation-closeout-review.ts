@@ -48,7 +48,10 @@ export interface ProjectEvaluationCloseoutReviewResolved {
 }
 
 export type ProjectEvaluationCloseoutReviewResult =
-  | { readonly status: "resolved"; readonly selected: ProjectEvaluationCloseoutReviewResolved }
+  | {
+    readonly status: "resolved";
+    readonly selected: ProjectEvaluationCloseoutReviewResolved;
+  }
   | {
     readonly status: "unavailable" | "unresolved";
     readonly family: "static-mechanical";

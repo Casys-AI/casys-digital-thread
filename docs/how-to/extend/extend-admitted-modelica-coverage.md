@@ -91,9 +91,10 @@ same source. Do not add an OMC-only escape hatch.
 
 1. Update the execution profile/catalogue, output validator ref and composition so all
    profile, compilation and runtime fingerprints agree.
-2. Update the local policy/pin in [`server.ts`](../../../server.ts), including the
-   digest, policy fingerprint and exact limits if they changed. Keep activation explicit
-   through `--local-execution`; absence of the runtime must remain fail-closed.
+2. Update the server-owned profile and atomic runtime catalogue with the digest, policy
+   fingerprint and exact limits if they changed. The future capability-runtime
+   supervisor alone may activate it; until then absence of the runtime remains
+   fail-closed.
 3. Update MRTR/review/executor schemas only where the new profile contract requires it.
    Keep callers unable to choose runtime, provider, image, solver or extra source text.
 

@@ -155,24 +155,29 @@ Deno.test("module-assembler wrapper rewrites only the unique OCC FILE_NAME times
     prefix: "casys-module-step-timestamp-",
   });
   try {
-    const output = await runWrapperPython(python, [
-      "os.environ['SOURCE_DATE_EPOCH'] = '1710000000'",
-      "path = Path(sys.argv[1])",
-      "before = path.read_bytes()",
-      "assert module.CANONICAL_FILE_NAME_TIMESTAMP == b'1970-01-01T00:00:00'",
-      "module.normalize_assembly_step_file_name_timestamp(path)",
-      "after = path.read_bytes()",
-      "print(json.dumps({",
-      "    'byteCount': len(after),",
-      "    'unchangedCount': len(after) == len(before),",
-      "    'timestamp': after[after.index(b\"FILE_NAME\"):].split(b\"'\")[3].decode(),",
-      "    'geometry': after.split(b'DATA;', 1)[1] == before.split(b'DATA;', 1)[1],",
-      "    'unique': after.count(b'1970-01-01T00:00:00') == 1,",
-      "    'clockGone': b'2026-07-30T05:46:01' not in after,",
-      "}))",
-    ], [`${directory}/assembly.step`], {
-      files: { [`${directory}/assembly.step`]: VALID_OCC_STEP },
-    });
+    const output = await runWrapperPython(
+      python,
+      [
+        "os.environ['SOURCE_DATE_EPOCH'] = '1710000000'",
+        "path = Path(sys.argv[1])",
+        "before = path.read_bytes()",
+        "assert module.CANONICAL_FILE_NAME_TIMESTAMP == b'1970-01-01T00:00:00'",
+        "module.normalize_assembly_step_file_name_timestamp(path)",
+        "after = path.read_bytes()",
+        "print(json.dumps({",
+        "    'byteCount': len(after),",
+        "    'unchangedCount': len(after) == len(before),",
+        '    \'timestamp\': after[after.index(b"FILE_NAME"):].split(b"\'")[3].decode(),',
+        "    'geometry': after.split(b'DATA;', 1)[1] == before.split(b'DATA;', 1)[1],",
+        "    'unique': after.count(b'1970-01-01T00:00:00') == 1,",
+        "    'clockGone': b'2026-07-30T05:46:01' not in after,",
+        "}))",
+      ],
+      [`${directory}/assembly.step`],
+      {
+        files: { [`${directory}/assembly.step`]: VALID_OCC_STEP },
+      },
+    );
     assertEquals(output.success, true, output.stderr);
     const decoded = JSON.parse(output.stdout);
     assertEquals(decoded, {
@@ -195,68 +200,73 @@ Deno.test("module-assembler wrapper rejects missing duplicate malformed and ambi
     prefix: "casys-module-step-reject-",
   });
   try {
-    const output = await runWrapperPython(python, [
-      "cases = json.loads(Path(sys.argv[1]).read_text())",
-      "results = []",
-      "for item in cases:",
-      "    path = Path(sys.argv[2]) / item['name']",
-      "    raw = bytes(item['bytes'])",
-      "    path.write_bytes(raw)",
-      "    try:",
-      "        module.normalize_assembly_step_file_name_timestamp(path)",
-      "        results.append({'name': item['name'], 'rejected': False, 'unchanged': path.read_bytes() == raw})",
-      "    except SystemExit as error:",
-      "        text = str(error)",
-      "        results.append({",
-      "            'name': item['name'],",
-      "            'rejected': True,",
-      "            'unchanged': path.read_bytes() == raw,",
-      "            'prefix': text.startswith('casys-module-assembler:'),",
-      "            'message': text.split(':', 1)[1],",
-      "        })",
-      "print(json.dumps(results))",
-    ], [`${directory}/cases.json`, directory], {
-      files: {
-        [`${directory}/cases.json`]: JSON.stringify([
-          {
-            name: "missing-token",
-            bytes: [...stepHeader(
-              "FILE_DESCRIPTION(('Open CASCADE Model'),'2;1');\n",
-            )],
-          },
-          {
-            name: "duplicate-token",
-            bytes: [...stepHeader(
-              "FILE_NAME('Open CASCADE Shape Model','2026-07-30T05:46:01',('Author'),('Open CASCADE'),'Open CASCADE STEP processor 7.9','build123d','Unknown');\nFILE_NAME('Open CASCADE Shape Model','2026-07-31T05:46:01',('Author'),('Open CASCADE'),'Open CASCADE STEP processor 7.9','build123d','Unknown');\n",
-            )],
-          },
-          {
-            name: "malformed-millis",
-            bytes: [...stepHeader(
-              "FILE_NAME('Open CASCADE Shape Model','2026-07-30T05:46:01.000',('Author'),('Open CASCADE'),'Open CASCADE STEP processor 7.9','build123d','Unknown');\n",
-            )],
-          },
-          {
-            name: "malformed-zone",
-            bytes: [...stepHeader(
-              "FILE_NAME('Open CASCADE Shape Model','2026-07-30T05:46:01Z',('Author'),('Open CASCADE'),'Open CASCADE STEP processor 7.9','build123d','Unknown');\n",
-            )],
-          },
-          {
-            name: "not-occ-name",
-            bytes: [...stepHeader(
-              "FILE_NAME('Other Shape Model','2026-07-30T05:46:01',('Author'),('Open CASCADE'),'Open CASCADE STEP processor 7.9','build123d','Unknown');\n",
-            )],
-          },
-          {
-            name: "ambiguous-extra-iso",
-            bytes: [...stepHeader(
-              "FILE_NAME('Open CASCADE Shape Model','2026-07-30T05:46:01',('2026-07-30T05:46:01'),('Open CASCADE'),'Open CASCADE STEP processor 7.9','build123d','Unknown');\n",
-            )],
-          },
-        ]),
+    const output = await runWrapperPython(
+      python,
+      [
+        "cases = json.loads(Path(sys.argv[1]).read_text())",
+        "results = []",
+        "for item in cases:",
+        "    path = Path(sys.argv[2]) / item['name']",
+        "    raw = bytes(item['bytes'])",
+        "    path.write_bytes(raw)",
+        "    try:",
+        "        module.normalize_assembly_step_file_name_timestamp(path)",
+        "        results.append({'name': item['name'], 'rejected': False, 'unchanged': path.read_bytes() == raw})",
+        "    except SystemExit as error:",
+        "        text = str(error)",
+        "        results.append({",
+        "            'name': item['name'],",
+        "            'rejected': True,",
+        "            'unchanged': path.read_bytes() == raw,",
+        "            'prefix': text.startswith('casys-module-assembler:'),",
+        "            'message': text.split(':', 1)[1],",
+        "        })",
+        "print(json.dumps(results))",
+      ],
+      [`${directory}/cases.json`, directory],
+      {
+        files: {
+          [`${directory}/cases.json`]: JSON.stringify([
+            {
+              name: "missing-token",
+              bytes: [...stepHeader(
+                "FILE_DESCRIPTION(('Open CASCADE Model'),'2;1');\n",
+              )],
+            },
+            {
+              name: "duplicate-token",
+              bytes: [...stepHeader(
+                "FILE_NAME('Open CASCADE Shape Model','2026-07-30T05:46:01',('Author'),('Open CASCADE'),'Open CASCADE STEP processor 7.9','build123d','Unknown');\nFILE_NAME('Open CASCADE Shape Model','2026-07-31T05:46:01',('Author'),('Open CASCADE'),'Open CASCADE STEP processor 7.9','build123d','Unknown');\n",
+              )],
+            },
+            {
+              name: "malformed-millis",
+              bytes: [...stepHeader(
+                "FILE_NAME('Open CASCADE Shape Model','2026-07-30T05:46:01.000',('Author'),('Open CASCADE'),'Open CASCADE STEP processor 7.9','build123d','Unknown');\n",
+              )],
+            },
+            {
+              name: "malformed-zone",
+              bytes: [...stepHeader(
+                "FILE_NAME('Open CASCADE Shape Model','2026-07-30T05:46:01Z',('Author'),('Open CASCADE'),'Open CASCADE STEP processor 7.9','build123d','Unknown');\n",
+              )],
+            },
+            {
+              name: "not-occ-name",
+              bytes: [...stepHeader(
+                "FILE_NAME('Other Shape Model','2026-07-30T05:46:01',('Author'),('Open CASCADE'),'Open CASCADE STEP processor 7.9','build123d','Unknown');\n",
+              )],
+            },
+            {
+              name: "ambiguous-extra-iso",
+              bytes: [...stepHeader(
+                "FILE_NAME('Open CASCADE Shape Model','2026-07-30T05:46:01',('2026-07-30T05:46:01'),('Open CASCADE'),'Open CASCADE STEP processor 7.9','build123d','Unknown');\n",
+              )],
+            },
+          ]),
+        },
       },
-    });
+    );
     assertEquals(output.success, true, output.stderr);
     const decoded = JSON.parse(output.stdout);
     assertEquals(decoded.map((item: { name: string }) => item.name), [
@@ -272,7 +282,10 @@ Deno.test("module-assembler wrapper rejects missing duplicate malformed and ambi
       assertEquals(item.unchanged, true, item.name);
       assertEquals(item.prefix, true, item.name);
     }
-    assertEquals(decoded[0].message, "The assembly STEP header FILE_NAME token is missing.");
+    assertEquals(
+      decoded[0].message,
+      "The assembly STEP header FILE_NAME token is missing.",
+    );
     assertEquals(
       decoded[1].message,
       "The assembly STEP header FILE_NAME token is duplicated.",
@@ -298,8 +311,7 @@ Deno.test("module-assembler wrapper rejects missing duplicate malformed and ambi
   }
 });
 
-const FONTCONFIG_SOURCE =
-  `<?xml version="1.0"?>
+const FONTCONFIG_SOURCE = `<?xml version="1.0"?>
 <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
 <fontconfig>
   <dir>/opt/casys/fonts</dir>
@@ -330,7 +342,7 @@ Deno.test("module-assembler image pins a closed Fontconfig default at the compil
     "install -d -o root -g root -m 0555 /etc/fonts /opt/casys/fonts",
   );
   const fontFileCopy = dockerfile.search(
-    /COPY --chmod=0444 \\\n  images\/build123d-module-assembler-worker\/fonts\.conf \\\n  \/etc\/fonts\/fonts\.conf/,
+    /COPY --chmod=0444 \\\n[ ]{2}images\/build123d-module-assembler-worker\/fonts\.conf \\\n[ ]{2}\/etc\/fonts\/fonts\.conf/,
   );
   assertEquals(fontDirInstall >= 0, true);
   assertEquals(fontFileCopy > fontDirInstall, true);

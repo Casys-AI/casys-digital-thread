@@ -28,7 +28,7 @@ moving `main`, tag, or `latest` at runtime.
 - Local `main` and `origin/main` resolve to exact Casys commit
   `3c927fcee1b300f9d2a604abd38cbaa9422713ea`, containing lifeline commits
   `21dd089`, `b8b6509`, and `3c927fc` above the upstream release.
-- `/Users/erwanpesle/Documents/GitHub/acpx/package.json` declares `0.13.1`.
+- The separate acpx checkout's `package.json` declares `0.13.1`.
 - `/opt/homebrew/bin/acpx --version` reports `0.13.1`.
 - The repository contains focused runtime tests for form/URL advertisement,
   request/session/tool-call correlation, `accept`/`decline`/`cancel`, abort and late
@@ -40,8 +40,7 @@ The earlier proposed upstream issue is obsolete and must not be created.
 
 ## Completed alignment
 
-The completed work occurred in `/Users/erwanpesle/Documents/GitHub/acpx`, not in this
-repository:
+The completed work occurred in the separate acpx checkout, not in this repository:
 
 1. The fork retains exact upstream release commit `2d735cf` as its reviewed base.
 2. The three process-tree lifeline changes were reviewed and retained on fork `main`,

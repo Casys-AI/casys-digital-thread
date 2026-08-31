@@ -106,6 +106,25 @@ Deno.test("HttpMcpProbe keeps an honest unavailable observation", async () => {
   assertStringIncludes(result.error ?? "", "HTTP 503");
 });
 
+Deno.test("HttpMcpProbe keeps a provider without a declared health route unavailable without probing a guessed endpoint", async () => {
+  let calls = 0;
+  const result = await new HttpMcpProbe({
+    fetch: (() => {
+      calls += 1;
+      return Promise.reject(new Error("must not fetch"));
+    }) as typeof fetch,
+    monotonicNow: increasingClock(),
+  }).probe({
+    ...serverFixture(),
+    healthUrl: undefined,
+  });
+
+  assertEquals(result.status, "unavailable");
+  assertEquals(result.mcp.reachable, false);
+  assertStringIncludes(result.error ?? "", "No provider health endpoint");
+  assertEquals(calls, 0);
+});
+
 Deno.test("HttpMcpProbe labels MCP discovery failure as degraded", async () => {
   const fakeFetch = (async (input: string | URL | Request) => {
     await Promise.resolve();

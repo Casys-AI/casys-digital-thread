@@ -796,8 +796,7 @@ immuable. Aucun concurrent ne produit cela.", "sources": [
 
 ## Agent output 4
 
-Voici la synthèse complète :
-https://claude.ai/code/artifact/e8a433d9-08f0-418a-8d07-94d481bcc9ca
+Voici la synthèse complète, conservée directement ci-dessous.
 
 ---
 

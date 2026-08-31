@@ -111,15 +111,13 @@ export function buildStaticProofSuccessor(input: {
     uri: output.casUri,
     mediaType: output.mediaType,
     producer: localOperation,
-    inputArtifactIds: output.role === "input.step"
-      ? [input.geometryArtifact.id]
-      : [
-        outputArtifactId(
-          "input.step",
-          requiredOutput(input.evidence.outputs, "input.step").sha256,
-        ),
-        input.proofArtifact.id,
-      ],
+    inputArtifactIds: output.role === "input.step" ? [input.geometryArtifact.id] : [
+      outputArtifactId(
+        "input.step",
+        requiredOutput(input.evidence.outputs, "input.step").sha256,
+      ),
+      input.proofArtifact.id,
+    ],
     freshness,
   } satisfies ThreadArtifact));
   if (outputArtifacts.length !== CALCULIX_ISOLATED_OUTPUT_MANIFEST.length) {
@@ -331,8 +329,7 @@ export function buildStaticProofSuccessor(input: {
         relation: "addresses" as const,
         from: { kind: "action" as const, id: item.id },
         to: { kind: "violation" as const, id: violationId },
-        rationale:
-          "The proposed review addresses the named local CalculiX violation.",
+        rationale: "The proposed review addresses the named local CalculiX violation.",
       }))
     ),
   ];

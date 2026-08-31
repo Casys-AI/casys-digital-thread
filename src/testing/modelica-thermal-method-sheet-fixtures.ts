@@ -15,7 +15,7 @@ export const THERMAL_METHOD_SHEET_PLACEHOLDER_FINGERPRINT: ContentFingerprint = 
 const G4_SOURCE = {
   id: "source-g4-pending",
   kind: "human" as const,
-  reference: "docs/rfcs/articulated-led-desk-lamp-demo/00-human-input-gates.md",
+  reference: "private-history:articulated-led-desk-lamp-demo/human-input-gates",
   justification:
     "G4 thermal method is unresolved. This fixture holds the empty sheet, not a thermal result.",
 };

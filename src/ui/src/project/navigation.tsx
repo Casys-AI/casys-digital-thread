@@ -1,6 +1,5 @@
 import type { JSX, ReactNode } from "react";
 import { cn } from "../lib/utils.ts";
-import { Badge } from "../ui/badge.tsx";
 import { Separator } from "../ui/separator.tsx";
 import {
   Tooltip,
@@ -8,15 +7,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../ui/tooltip.tsx";
-import {
-  PRODUCT_FACETS,
-  productFacetHash,
-  PROJECT_VIEWS,
-} from "./navigation-model.ts";
-import type {
-  ProductWorkspaceFacet,
-  ProjectWorkspaceView,
-} from "./navigation-model.ts";
+import { PROJECT_VIEWS } from "./navigation-model.ts";
+import type { ProjectWorkspaceView } from "./navigation-model.ts";
 
 export type { ProjectWorkspaceView };
 export { projectViewLabel } from "./navigation-model.ts";
@@ -155,10 +147,6 @@ export function ProjectNavigation({
   disabledViews?: readonly ProjectWorkspaceView[];
   /** Compact projection truth kept inside the one Project header. */
   status?: ReactNode;
-  activeProductFacet?: ProductWorkspaceFacet;
-  onProductFacetChange?: (facet: ProductWorkspaceFacet) => void;
-  /** Honest coverage chip — typically GAP until ERP records exist. */
-  sourcingBadge?: string;
 }): JSX.Element {
   const projectViews = PROJECT_VIEWS.filter((view) => view.id !== "operations");
   const utilityViews = PROJECT_VIEWS.filter((view) => view.id === "operations");
@@ -223,57 +211,6 @@ export function ProjectNavigation({
         {utilityViews.map(renderView)}
       </div>
       {status && <div className="project-navigation-status">{status}</div>}
-    </nav>
-  );
-}
-
-/** Product's second level belongs to the page, not to the application rail. */
-export function ProductFacetNavigation({
-  activeFacet,
-  onChange,
-  sourcingBadge,
-}: {
-  activeFacet: ProductWorkspaceFacet;
-  onChange: (facet: ProductWorkspaceFacet) => void;
-  sourcingBadge?: string;
-}): JSX.Element {
-  return (
-    <nav
-      className="product-facet-tabs flex min-w-0 items-end gap-6 overflow-x-auto border-b border-border"
-      aria-label="Product workspace"
-    >
-      {PRODUCT_FACETS.map((facet) => {
-        const current = activeFacet === facet.id;
-        return (
-          <a
-            key={facet.id}
-            href={productFacetHash(facet.id)}
-            aria-current={current ? "page" : undefined}
-            aria-label={`${facet.label}: ${facet.description}`}
-            className={cn(
-              "flex h-10 shrink-0 items-center gap-2 border-b-2 px-0.5 text-sm font-medium transition-colors",
-              current
-                ? "border-brand text-foreground"
-                : "border-transparent text-muted-foreground hover:border-border hover:text-foreground",
-            )}
-            onClick={(event) => {
-              if (event.metaKey || event.ctrlKey || event.shiftKey) return;
-              event.preventDefault();
-              onChange(facet.id);
-            }}
-          >
-            <span>{facet.label}</span>
-            {facet.id === "sourcing" && sourcingBadge && (
-              <Badge
-                variant={sourcingBadge === "GAP" ? "warning" : "secondary"}
-                className="px-1 py-0 font-mono text-[9px]"
-              >
-                {sourcingBadge}
-              </Badge>
-            )}
-          </a>
-        );
-      })}
     </nav>
   );
 }

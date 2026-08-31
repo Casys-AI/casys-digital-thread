@@ -31,6 +31,14 @@ import {
   encodeAssemblyIntegrityEvaluationAdmissionParameters,
 } from "../../domain/cad/assembly-integrity/assembly-integrity-evaluation-admission.ts";
 import { VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-evaluation-proposal.ts";
+import {
+  VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+  VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION,
+} from "../../domain/mechanism/prescribed-kinematics/operations.ts";
+import {
+  encodePrescribedKinematicsCaseProposalParameters,
+  encodePrescribedKinematicsRunProposalParameters,
+} from "../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-proposal.ts";
 
 const VALID_ARCHITECTURE = [
   { key: "architecture.package", label: "Package", value: "DemoArchitecture" },
@@ -47,6 +55,7 @@ function fingerprint(character: string) {
 function validTechnicalCompilationAdmissionParameters() {
   const projectId = "project.technical-compilation";
   const documentFingerprint = fingerprint("a");
+  const sourceId = `technical-unit:${"d".repeat(64)}`;
   return encodeTechnicalCompilationAdmissionParameters({
     schemaVersion: TECHNICAL_COMPILATION_ADMISSION_SCHEMA,
     draft: {
@@ -75,7 +84,7 @@ function validTechnicalCompilationAdmissionParameters() {
       },
     },
     sources: [{
-      id: "source.cad",
+      id: sourceId,
       role: "cad-script",
       language: "python",
       profileId: "source-profile.build123d",
@@ -85,11 +94,18 @@ function validTechnicalCompilationAdmissionParameters() {
       sourceFingerprint: fingerprint("2"),
       captureFingerprint: fingerprint("3"),
       analysisFingerprint: fingerprint("4"),
+      effectiveUnit: {
+        kind: "authored-root",
+        closureKind: "root-only",
+        unitId: sourceId,
+        closureFingerprint: fingerprint("d"),
+        scriptFingerprint: fingerprint("2"),
+      },
       ...sampleAdmissionSourceWorkspaceFields("source.cad", { projectId }),
     }],
     bindings: [{
       id: "binding.cad-result-to-sysml-part",
-      sourceId: "source.cad",
+      sourceId,
       sourceSymbolId: "cad.result",
       sysmlElementId: "sysml.part-definition.4",
       sysmlElementKind: "PartDefinition",
@@ -99,7 +115,7 @@ function validTechnicalCompilationAdmissionParameters() {
       profileId: "compilation-profile.build123d",
       profileVersion: "1.0.0",
       target: "build123d-source",
-      sourceIds: ["source.cad"],
+      sourceIds: [sourceId],
       profileFingerprint: fingerprint("5"),
     }],
     compilation: {
@@ -437,6 +453,36 @@ Deno.test("a decision shared by distinct operations must satisfy every declared 
   );
 });
 
+Deno.test("prescribed-kinematics L1 and L3 proposals accept only their closed grammars", () => {
+  assertProposalMatchesOperationGrammar(
+    VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION,
+    encodePrescribedKinematicsCaseProposalParameters({
+      workspaceRevision: 4,
+      attachmentId: "attachment-assembly",
+      attachmentRevision: 1,
+    }),
+  );
+  assertProposalMatchesOperationGrammar(
+    VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+    encodePrescribedKinematicsRunProposalParameters({
+      algorithm: "sha256",
+      digest: "a".repeat(64),
+    }),
+  );
+  assertThrows(
+    () =>
+      assertProposalMatchesOperationGrammar(
+        VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+        [{
+          key: "observation",
+          label: "Observation",
+          value: "prescribed-kinematics",
+        }],
+      ),
+    ProposalGrammarError,
+  );
+});
+
 Deno.test("every operation carrying an MRTR grammar is gated", () => {
   // Adding a sealed or model-writing operation without registering its grammar
   // would silently reopen the round trip this module exists to close.
@@ -448,9 +494,11 @@ Deno.test("every operation carrying an MRTR grammar is gated", () => {
     "decide.accept-admitted-spice-evaluation@1",
     "decide.accept-assembly-integrity-evaluation@1",
     "decide.accept-cross-domain-impact@2",
+    "decide.accept-prescribed-kinematics-evaluation@1",
     "decide.reject-admitted-modelica-evaluation@1",
     "decide.reject-admitted-spice-evaluation@1",
     "decide.reject-assembly-integrity-evaluation@1",
+    "decide.reject-prescribed-kinematics-evaluation@1",
     "design.apply-vector-correction@1",
     "design.execute-build123d@1",
     "design.seal-isolated-geometry@1",
@@ -467,10 +515,14 @@ Deno.test("every operation carrying an MRTR grammar is gated", () => {
     "verify.evaluate-admitted-modelica-observations@1",
     "verify.evaluate-admitted-spice-observations@1",
     "verify.evaluate-assembly-integrity@1",
+    "verify.evaluate-prescribed-kinematics@1",
     "verify.observe-assembly-integrity@1",
+    "verify.run-prescribed-kinematics@1",
     "verify.seal-cross-domain-impact-manifest@2",
     "verify.seal-electrical-observation-method-sheet@1",
     "verify.seal-modelica-thermal-method-sheet@1",
+    "verify.seal-prescribed-kinematics-case@1",
+    "verify.seal-prescribed-kinematics-method@1",
     "verify.seal-proof-case@1",
   ]);
 });

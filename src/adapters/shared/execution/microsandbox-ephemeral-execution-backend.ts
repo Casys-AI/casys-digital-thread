@@ -147,6 +147,37 @@ export interface MicrosandboxImageInspection {
   readonly labels: Readonly<Record<string, string>>;
 }
 
+/**
+ * Server-owned OCI image contract reused before a JIT lease and by the
+ * execution backend itself. It attests only fields observable from an OCI
+ * inspection; execution-profile provenance is a separate cache attestation.
+ */
+export interface ExactMicrosandboxImageExpectation {
+  readonly reference: string;
+  readonly manifestDigest: string;
+  readonly os: "linux";
+  readonly architecture: string;
+  readonly user: string;
+  readonly entrypoint: readonly string[];
+}
+
+export function assertExactMicrosandboxImageInspection(
+  image: MicrosandboxImageInspection,
+  expected: ExactMicrosandboxImageExpectation,
+): MicrosandboxImageInspection {
+  if (
+    image.reference !== expected.reference ||
+    image.manifestDigest !== expected.manifestDigest ||
+    image.os !== expected.os ||
+    image.architecture !== expected.architecture ||
+    image.user !== expected.user ||
+    !stringArraysEqual(image.entrypoint, expected.entrypoint)
+  ) {
+    throw new Error("The cached local OCI image does not match the reviewed image.");
+  }
+  return image;
+}
+
 export interface MicrosandboxFsEntry {
   readonly path: string;
   readonly kind: "file" | "directory" | "symlink" | "other";
@@ -937,19 +968,14 @@ export class MicrosandboxEphemeralExecutionBackend
 
   async #inspectExactImage(): Promise<MicrosandboxImageInspection> {
     const image = await this.#options.sdk.inspectImage(this.#options.imageReference);
-    if (
-      image.reference !== this.#options.imageReference ||
-      image.manifestDigest !== `sha256:${this.#options.imageDigest}` ||
-      image.os !== "linux" || image.architecture !== microsandboxHostArchitecture() ||
-      image.user !== this.#options.expectedImageUser ||
-      !stringArraysEqual(
-        image.entrypoint,
-        this.#options.expectedImageEntrypoint,
-      )
-    ) {
-      throw new Error("The cached local OCI image does not match the reviewed image.");
-    }
-    return image;
+    return assertExactMicrosandboxImageInspection(image, {
+      reference: this.#options.imageReference,
+      manifestDigest: `sha256:${this.#options.imageDigest}`,
+      os: "linux",
+      architecture: microsandboxHostArchitecture(),
+      user: this.#options.expectedImageUser,
+      entrypoint: this.#options.expectedImageEntrypoint,
+    });
   }
 
   #assertLocalBackend(): void {

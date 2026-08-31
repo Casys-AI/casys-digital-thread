@@ -31,6 +31,23 @@ import type {
   McpToolClient,
   McpToolResult,
 } from "../../../application/ports/out/mcp-tool-client.ts";
+import type { CapabilityRuntimeExecutionEligibility } from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import {
+  beginConfiguredCapabilityRuntimeSession,
+  requireConfiguredOperationalCapability,
+  settleCapabilityRuntimeSession,
+} from "../../../application/control-plane/capability-runtime-execution-admission.ts";
+import {
+  type CapabilityRuntimeExecutionSession,
+  type CapabilityRuntimeExecutionSessionCoordinator,
+  CapabilityRuntimeSessionUnavailableError,
+} from "../../../application/control-plane/capability-runtime-execution-session.ts";
+import type { ResolvedCapabilityRuntimeOperation } from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import {
+  type CapabilityRuntimeBoundMcpClient,
+  CapabilityRuntimeConnectionError,
+} from "../../../application/ports/out/capability/capability-runtime-connection.ts";
+import { requiredQualifiedPersistentComposePublication } from "../../../application/control-plane/capability-runtime-persistent-compose-publication.ts";
 import type { EngineeringProjectRunLease } from "../../shared/stores/file-engineering-project-run-lease.ts";
 import {
   FileSysonModelSeedAttemptStore,
@@ -68,9 +85,24 @@ export interface SysonModelSeedRunExecutorDependencies {
   readonly captures: FileCaptureStore<"syson-model-seed">;
   /** Write-ahead state for non-idempotent SysON mutations. */
   readonly attempts: FileSysonModelSeedAttemptStore;
-  /** Server-owned provider client; the MCP tool exposes none of this surface. */
-  readonly syson: McpToolClient;
+  /**
+   * Lease-bound SysON publication. The executor never names a URL, host,
+   * port, bearer, provider or tool envelope; composition owns the mapping.
+   */
+  readonly capabilityRuntimeConnection: CapabilityRuntimeBoundMcpClient;
   readonly lease: EngineeringProjectRunLease;
+  /**
+   * Cold recheck of the sealed `model.author-system@1` binding. Seed does not
+   * seal a resolved-operation-plan/2.0 action; this is the same execution
+   * eligibility seam the ROP guard uses after plan provenance.
+   */
+  readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
+  /** JIT host session. Entered only after the final cold recheck and before
+   * claimRun, WAL, or SysON. */
+  readonly capabilityRuntimeSession?: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin"
+  >;
   /** Presentation only. Journal failure never triggers a provider retry. */
   readonly liveUpdates?: LiveThreadUpdateMilestoneJournal;
   readonly now?: () => string;
@@ -107,8 +139,12 @@ export class SysonModelSeedRunExecutor {
   readonly #snapshots: ThreadSnapshotStore;
   readonly #captures: FileCaptureStore<"syson-model-seed">;
   readonly #attempts: FileSysonModelSeedAttemptStore;
-  readonly #syson: McpToolClient;
+  readonly #capabilityRuntimeConnection: CapabilityRuntimeBoundMcpClient;
   readonly #lease: EngineeringProjectRunLease;
+  readonly #capabilityRuntime: CapabilityRuntimeExecutionEligibility | undefined;
+  readonly #capabilityRuntimeSession:
+    | Pick<CapabilityRuntimeExecutionSessionCoordinator, "begin">
+    | undefined;
   readonly #liveUpdates: LiveThreadUpdateMilestoneJournal | undefined;
   readonly #now: () => string;
 
@@ -118,8 +154,10 @@ export class SysonModelSeedRunExecutor {
     this.#snapshots = dependencies.snapshots;
     this.#captures = dependencies.captures;
     this.#attempts = dependencies.attempts;
-    this.#syson = dependencies.syson;
+    this.#capabilityRuntimeConnection = dependencies.capabilityRuntimeConnection;
     this.#lease = dependencies.lease;
+    this.#capabilityRuntime = dependencies.capabilityRuntime;
+    this.#capabilityRuntimeSession = dependencies.capabilityRuntimeSession;
     this.#liveUpdates = dependencies.liveUpdates;
     this.#now = dependencies.now ?? (() => new Date().toISOString());
   }
@@ -152,6 +190,7 @@ export class SysonModelSeedRunExecutor {
     let providerStateRecorded = false;
     let snapshotPersisted = false;
     let materialized: SysonModelSeedMaterialization | undefined;
+    let capabilitySession: CapabilityRuntimeExecutionSession | undefined;
     try {
       // Do not claim a queued run merely to discover this executor cannot own
       // it. This also prevents a generic MCP call from changing another
@@ -159,9 +198,24 @@ export class SysonModelSeedRunExecutor {
       const beforeClaim = await this.requiredProject(command.projectId);
       const beforeClaimRun = requireRun(beforeClaim, command.runId);
       requireSysonModelSeedShape(beforeClaim, beforeClaimRun);
-      if (beforeClaimRun.status !== "completed") {
-        await assertThreadWriteBasisAvailable(beforeClaim, beforeClaimRun);
+      if (beforeClaimRun.status === "completed") {
+        assertCompletedByThisExecution(
+          beforeClaim,
+          command.commandId,
+          command.runId,
+        );
+        await this.reconcileLive(beforeClaim.project.subjectId, command.runId);
+        return beforeClaim;
       }
+      if (
+        beforeClaimRun.status === "failed" || beforeClaimRun.status === "cancelled"
+      ) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          `SysON model seed ${beforeClaimRun.id} is ${beforeClaimRun.status}; a human must review before a new run is queued.`,
+        );
+      }
+      await assertThreadWriteBasisAvailable(beforeClaim, beforeClaimRun);
       const beforeClaimBasis = requireThreadBasis(beforeClaimRun);
       const beforeClaimBase = await this.requiredExactBase(beforeClaimBasis);
       const beforeClaimLineage = await this.requiredPlanningLineage(
@@ -174,21 +228,72 @@ export class SysonModelSeedRunExecutor {
         beforeClaimBase,
         beforeClaimLineage,
       );
-      await this.#commands.claimRun(origin, {
-        ...command,
-        commandId: stepCommandId(command.commandId, "claim"),
-        summary: "Started the bounded SysON model-container seed.",
+      await this.assertSeedWriteAheadAllowsHostSession(
+        beforeClaim.project.id,
+        command.runId,
+      );
+      const operationalCapability = await this.requireOperationalCapability(
+        beforeClaim,
+        beforeClaimRun,
+      );
+      // The session performs a second cold capability recheck itself before
+      // it may journal or start the trusted group. This is deliberately
+      // after the final documentary/capability/WAL recheck and before
+      // claimRun, WAL, or SysON, so a failed host leaves run, WAL, Thread
+      // and provider intact.
+      capabilitySession = await beginConfiguredCapabilityRuntimeSession({
+        session: this.#capabilityRuntimeSession!,
+        project: beforeClaim,
+        runId: command.runId,
+        operationalCapability,
+        recheck: async () => {
+          const fresh = await this.requiredProject(command.projectId);
+          const run = requireRun(fresh, command.runId);
+          requireSysonModelSeedShape(fresh, run);
+          return await this.requireOperationalCapability(fresh, run);
+        },
       });
-      claimSucceeded = true;
+      let syson: McpToolClient;
+      try {
+        syson = await this.openBoundSysonClient(
+          capabilitySession,
+          operationalCapability,
+        );
+      } catch (error) {
+        // Locator failure is pre-claim: not host or WAL uncertainty.
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "release" },
+        });
+        capabilitySession = undefined;
+        if (error instanceof CapabilityRuntimeConnectionError) {
+          throw new EngineeringProjectCommandError(
+            "invalid_transition",
+            error.message,
+          );
+        }
+        throw error;
+      }
+      if (beforeClaimRun.status === "queued") {
+        await this.#commands.claimRun(origin, {
+          ...command,
+          commandId: stepCommandId(command.commandId, "claim"),
+          summary: "Started the bounded SysON model-container seed.",
+        });
+        claimSucceeded = true;
+      } else if (
+        beforeClaimRun.status !== "running" &&
+        beforeClaimRun.status !== "publishing"
+      ) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          `SysON model seed ${beforeClaimRun.id} is ${beforeClaimRun.status}; expected queued, running, or publishing.`,
+        );
+      }
 
       let project = await this.requiredProject(command.projectId);
       let run = requireRun(project, command.runId);
       requireSysonModelSeedRun(project, run, origin);
-      if (run.status === "completed") {
-        assertCompletedByThisExecution(project, command.commandId, command.runId);
-        await this.reconcileLive(project.project.subjectId, command.runId);
-        return project;
-      }
       if (run.status === "failed" || run.status === "cancelled") {
         throw new EngineeringProjectCommandError(
           "invalid_transition",
@@ -209,6 +314,7 @@ export class SysonModelSeedRunExecutor {
         step: "project-create",
         capturedAt,
         live,
+        syson,
         call: {
           name: "syson_project_create",
           arguments: { name: providerProjectName(project, run) },
@@ -224,6 +330,7 @@ export class SysonModelSeedRunExecutor {
         step: "model-create",
         capturedAt,
         live,
+        syson,
         call: {
           name: "syson_model_create",
           arguments: {
@@ -246,6 +353,7 @@ export class SysonModelSeedRunExecutor {
           },
         },
         live,
+        syson,
       );
       const rootPackageGet = rootPackageGetResult(rootRead.structuredContent);
 
@@ -297,6 +405,10 @@ export class SysonModelSeedRunExecutor {
       const completed = await this.requiredProject(command.projectId);
       assertCompletedByThisExecution(completed, command.commandId, command.runId);
       await this.reconcileLive(completed.project.subjectId, command.runId);
+      await settleCapabilityRuntimeSession({
+        session: capabilitySession,
+        policy: { kind: "release" },
+      });
       return completed;
     } catch (error) {
       const snapshotPresence = !snapshotPersisted && materialized
@@ -309,8 +421,16 @@ export class SysonModelSeedRunExecutor {
         const completed = await this.completedProjectForThisExecution(command);
         if (completed) {
           await this.reconcileLive(completed.project.subjectId, command.runId);
+          await settleCapabilityRuntimeSession({
+            session: capabilitySession,
+            policy: { kind: "release" },
+          });
           return completed;
         }
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "retain" },
+        });
         throw new EngineeringProjectCommandError(
           "invalid_transition",
           "The SysON model-container record is durable, but project attachment did not finish. Retry the same execution command; it will not recreate the provider state.",
@@ -325,6 +445,10 @@ export class SysonModelSeedRunExecutor {
           command,
           error.step,
         );
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "retain" },
+        });
         throw new EngineeringProjectCommandError(
           "invalid_transition",
           quarantined
@@ -333,6 +457,10 @@ export class SysonModelSeedRunExecutor {
         );
       }
       if (providerStateRecorded) {
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "retain" },
+        });
         throw new EngineeringProjectCommandError(
           "invalid_transition",
           "SysON provider state was recorded, but the model-container record was not published. Retry the same execution command to resume; its recorded write steps will not be repeated.",
@@ -341,7 +469,139 @@ export class SysonModelSeedRunExecutor {
       if (claimSucceeded) {
         await this.recordFailureIfOwned(origin, command);
       }
+      await settleCapabilityRuntimeSession({
+        session: capabilitySession,
+        policy: {
+          kind: "release-if-terminal",
+          run: await this.currentRun(command.projectId, command.runId),
+        },
+      });
       throw error;
+    }
+  }
+
+  private async requireOperationalCapability(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+  ): Promise<ResolvedCapabilityRuntimeOperation> {
+    try {
+      return await requireConfiguredOperationalCapability({
+        runtime: this.#capabilityRuntime,
+        session: this.#capabilityRuntimeSession,
+        project,
+        run,
+        workItem: requireSysonModelSeedShape(project, run),
+        unavailableMessage:
+          "SysON model seed requires the configured JIT capability runtime session before a run can be claimed.",
+        missingBindingMessage:
+          "SysON model seed requires the sealed model.author-system@1 operational capability before a run can be claimed.",
+      });
+    } catch (error) {
+      if (error instanceof CapabilityRuntimeSessionUnavailableError) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          error.message,
+        );
+      }
+      throw error;
+    }
+  }
+
+  private async openBoundSysonClient(
+    session: CapabilityRuntimeExecutionSession,
+    operationalCapability: ResolvedCapabilityRuntimeOperation,
+  ): Promise<McpToolClient> {
+    try {
+      const publication = requiredQualifiedPersistentComposePublication(
+        operationalCapability,
+      );
+      const handle = await this.#capabilityRuntimeConnection.broker.connect({
+        lease: session.lease,
+        binding: publication.binding,
+        launchGroup: publication.launchGroup,
+      });
+      return await this.#capabilityRuntimeConnection.openMcpClient(handle);
+    } catch (error) {
+      if (error instanceof CapabilityRuntimeSessionUnavailableError) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          error.message,
+        );
+      }
+      throw error;
+    }
+  }
+
+  private async assertSeedWriteAheadAllowsHostSession(
+    projectId: string,
+    runId: string,
+  ): Promise<void> {
+    const projectCreate = await this.readSeedWriteAhead(
+      projectId,
+      runId,
+      "project-create",
+    );
+    const modelCreate = await this.readSeedWriteAhead(
+      projectId,
+      runId,
+      "model-create",
+    );
+    if (projectCreate.kind === "unreadable") {
+      throw new SysonModelSeedWriteOutcomeUnknownError("project-create");
+    }
+    if (modelCreate.kind === "unreadable") {
+      throw new SysonModelSeedWriteOutcomeUnknownError("model-create");
+    }
+    const projectAttempt = projectCreate.kind === "present"
+      ? projectCreate.attempt
+      : undefined;
+    const modelAttempt = modelCreate.kind === "present"
+      ? modelCreate.attempt
+      : undefined;
+    if (modelAttempt && projectAttempt?.status !== "completed") {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "SysON model-create write-ahead exists without a completed project-create record; host activation is forbidden.",
+      );
+    }
+    if (projectAttempt?.status === "dispatched") {
+      throw new SysonModelSeedWriteOutcomeUnknownError("project-create");
+    }
+    if (modelAttempt?.status === "dispatched") {
+      throw new SysonModelSeedWriteOutcomeUnknownError("model-create");
+    }
+  }
+
+  private async readSeedWriteAhead(
+    projectId: string,
+    runId: string,
+    step: SysonModelSeedWriteStep,
+  ): Promise<
+    | { readonly kind: "absent" }
+    | {
+      readonly kind: "present";
+      readonly attempt: NonNullable<
+        Awaited<ReturnType<FileSysonModelSeedAttemptStore["read"]>>
+      >;
+    }
+    | { readonly kind: "unreadable" }
+  > {
+    try {
+      const attempt = await this.#attempts.read(projectId, runId, step);
+      return attempt ? { kind: "present", attempt } : { kind: "absent" };
+    } catch {
+      return { kind: "unreadable" };
+    }
+  }
+
+  private async currentRun(
+    projectId: string,
+    runId: string,
+  ): Promise<EngineeringAgentRun | undefined> {
+    try {
+      return requireRun(await this.requiredProject(projectId), runId);
+    } catch {
+      return undefined;
     }
   }
 
@@ -351,6 +611,7 @@ export class SysonModelSeedRunExecutor {
     step: SysonModelSeedWriteStep;
     capturedAt: string;
     live: LiveRecorder;
+    syson: McpToolClient;
     call: {
       readonly name: "syson_project_create" | "syson_model_create";
       readonly arguments: Record<string, unknown>;
@@ -380,7 +641,7 @@ export class SysonModelSeedRunExecutor {
       }
     }
     try {
-      const response = await this.#syson.callTool(input.call);
+      const response = await input.syson.callTool(input.call);
       const normalized = input.normalize(response.structuredContent);
       await this.#attempts.complete({
         projectId: input.project.project.id,
@@ -407,9 +668,10 @@ export class SysonModelSeedRunExecutor {
       readonly arguments: Record<string, unknown>;
     },
     live: LiveRecorder,
+    syson: McpToolClient,
   ): Promise<McpToolResult> {
     try {
-      const result = await this.#syson.callTool(call);
+      const result = await syson.callTool(call);
       await live(call.name, "completed");
       return result;
     } catch (error) {

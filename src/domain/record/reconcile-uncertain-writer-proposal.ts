@@ -10,6 +10,9 @@ import {
   sha256Fingerprint,
 } from "../kernel/deterministic-json.ts";
 import { SYSON_MODEL_SEED_PROVIDER_OUTCOME_UNKNOWN_FAILURE } from "../architecture/seed/syson-model-seed.ts";
+import {
+  VERIFY_RUN_PRESCRIBED_KINEMATICS_PROVIDER_OUTCOME_UNKNOWN_FAILURE,
+} from "../mechanism/prescribed-kinematics/operations.ts";
 
 /** The reviewed MRTR operation that may annotate a terminal uncertain writer. */
 export const RECONCILE_UNCERTAIN_WRITER_OPERATION = {
@@ -20,6 +23,7 @@ export const RECONCILE_UNCERTAIN_WRITER_OPERATION = {
 /** Failure codes whose provider write outcome must remain quarantined. */
 export const TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES: ReadonlySet<string> = new Set([
   SYSON_MODEL_SEED_PROVIDER_OUTCOME_UNKNOWN_FAILURE,
+  VERIFY_RUN_PRESCRIBED_KINEMATICS_PROVIDER_OUTCOME_UNKNOWN_FAILURE,
   "model-write-architecture-provider-outcome-unknown",
   "model-write-architecture-post-acknowledgement-quarantined",
   "model-write-architecture-quarantine-write-failed",

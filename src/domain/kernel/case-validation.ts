@@ -145,6 +145,15 @@ export function safeVersion(value: unknown, path: string): string {
   return version;
 }
 
+/** Assert an immutable version identity rather than a mutable release alias. */
+export function exactVersionToken(value: unknown, path: string): string {
+  const version = safeVersion(value, path);
+  if (["latest", "current", "stable", "default"].includes(version.toLowerCase())) {
+    throw new TypeError(`${path} must not be a mutable version alias.`);
+  }
+  return version;
+}
+
 /** Assert that value is a finite number. */
 export function finite(value: unknown, path: string): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {

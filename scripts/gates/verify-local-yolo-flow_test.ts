@@ -1,14 +1,26 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { approvalModeForBinding, createConsoleServer } from "../../server.ts";
 import { FileEngineeringProjectRevisionStore } from "../../src/adapters/shared/stores/engineering-project-store.ts";
+import { FileProjectCapabilityLedgerStore } from "../../src/adapters/control-plane/file-project-capability-ledger-store.ts";
+import { createFirstPartyCapabilityRuntimeCatalog } from "../../src/adapters/control-plane/first-party-capability-binding-catalog.ts";
+import { ProjectCapabilityAuthorizationService } from "../../src/application/control-plane/project-capability-authorization-service.ts";
 import { EngineeringProjectCommandService } from "../../src/application/use-cases/project/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "../../src/application/use-cases/project/project-brief-command-service.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../src/domain/architecture/seed/syson-model-seed.ts";
+import { encodeSysonModelSeedProposalParameters } from "../../src/domain/architecture/seed/syson-model-seed-proposal.ts";
 import type { EngineeringProjectSnapshot } from "../../src/domain/project/engineering-project.ts";
+import {
+  listRegisteredEngineeringOperations,
+  REGISTERED_ENGINEERING_OPERATION_REGISTRY,
+} from "../../src/orchestration/operations/registry.ts";
 
 const BRIEF_PROJECT_ID = "local-yolo-brief-gate";
 const DECISION_PROJECT_ID = "local-yolo-decision-gate";
-const DECISION_ID = "review-local-yolo-material";
+const BASELINE_WORK_ID = "record-local-yolo-approved-brief";
+const DECISION_WORK_ID = "review-local-yolo-seed";
+const DECISION_ID = "review-local-yolo-seed";
 const YOLO_ACTOR = { id: "local-yolo:startup-opt-in", origin: "human" } as const;
+const GATE_AGENT = { kind: "agent" as const, actorId: "local-yolo:gate-agent" };
 
 Deno.test("local YOLO approves positive brief and decision through stateless HTTP", async () => {
   const directory = await Deno.makeTempDir({ prefix: "casys-local-yolo-gate-" });
@@ -21,15 +33,16 @@ Deno.test("local YOLO approves positive brief and decision through stateless HTT
     projects,
     undefined,
     clockFrom("2026-08-14T02:00:00.000Z"),
+    { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
+    { validateInitial: () => Promise.resolve() },
   );
-
-  await projects.createInitial(decisionProjectFixture());
+  const capabilityAuthorization = await localCapabilityAuthorization(directory);
 
   const { app } = await createConsoleServer({
     manifest: { version: 1, servers: [] },
     runs: [],
     projectControl: { projects, commands: projectCommands },
-    projectBrief: { projects, commands: briefCommands },
+    projectBrief: { projects, commands: briefCommands, capabilityAuthorization },
     cockpitFocus: false,
     mrtrSigningKey: "a".repeat(64),
     approvalMode: approvalModeForBinding(true, "127.0.0.1"),
@@ -48,7 +61,7 @@ Deno.test("local YOLO approves positive brief and decision through stateless HTT
   try {
     const client = new StatelessMcpClient(`http://127.0.0.1:${port}/mcp`);
     await verifyBriefAutoApproval(client, projects, directory);
-    await verifyDecisionAutoApproval(client, projects, directory);
+    await verifyDecisionAutoApproval(client, projectCommands, projects, directory);
 
     console.log(JSON.stringify({
       status: "passed",
@@ -105,6 +118,10 @@ async function verifyBriefAutoApproval(
   const framing = proposedProject.framing as Record<string, unknown>;
   const brief = framing.proposedBrief as Record<string, unknown>;
   const review = framing.proposalReview as Record<string, unknown>;
+  const capabilityProposal = proposedProject.capabilityProposal as Record<
+    string,
+    unknown
+  >;
 
   const approved = await client.tool("project_brief_confirm", {
     commandId: "local-yolo-brief-confirm",
@@ -114,6 +131,7 @@ async function verifyBriefAutoApproval(
     briefSnapshotId: brief.id,
     briefRevision: brief.revision,
     inputFingerprint: review.inputFingerprint,
+    capabilityProposalFingerprint: capabilityProposal.capabilityProposalFingerprint,
   });
   const approvedProject = approved.structuredContent as Record<string, unknown>;
   assertEquals(approvedProject.revision, 3);
@@ -134,25 +152,229 @@ async function verifyBriefAutoApproval(
   await assertRevisionFile(directory, BRIEF_PROJECT_ID, 3);
 }
 
+async function localCapabilityAuthorization(
+  directory: string,
+): Promise<ProjectCapabilityAuthorizationService> {
+  return new ProjectCapabilityAuthorizationService({
+    ledgers: new FileProjectCapabilityLedgerStore(`${directory}/capability-ledgers`),
+    registry: { list: listRegisteredEngineeringOperations },
+    catalog: await createFirstPartyCapabilityRuntimeCatalog(),
+    qualificationSpecs: [],
+    qualificationCandidates: [],
+    policy: {
+      schemaVersion: "capability-runtime-admin-policy/1.0",
+      disabledBindingIds: [],
+      preferences: [],
+    },
+    host: {
+      schemaVersion: "capability-runtime-host-observation/1.0",
+      identityFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+      platform: "linux/arm64",
+      images: [],
+    },
+    lock: {
+      schemaVersion: "capability-runtime-admin-lock/1.0",
+      revision: 0,
+      previous: null,
+      units: [],
+    },
+  });
+}
+
 async function verifyDecisionAutoApproval(
   client: StatelessMcpClient,
+  commands: EngineeringProjectCommandService,
   store: FileEngineeringProjectRevisionStore,
   directory: string,
 ): Promise<void> {
+  await client.tool("project_start", {
+    commandId: "local-yolo-decision-start",
+    projectId: DECISION_PROJECT_ID,
+    projectName: "Local YOLO decision gate",
+    issuedAt: "2026-08-14T00:59:30.000Z",
+    intent: "Prove the local YOLO decision provenance path.",
+    intentSource: { kind: "human", reference: "local-yolo-gate" },
+  });
+  let project = await requiredProject(store, DECISION_PROJECT_ID);
+  assertEquals(project.revision, 1);
+  assertEquals(project.threadSnapshots, []);
+  assertEquals(project.commandReceipts?.[0]?.type, "project.start");
+
+  const proposedBrief = await client.tool("project_brief_propose", {
+    commandId: "local-yolo-decision-brief-propose",
+    projectId: DECISION_PROJECT_ID,
+    expectedRevision: project.revision,
+    issuedAt: "2026-08-14T00:59:40.000Z",
+    items: [{
+      id: "objective",
+      kind: "objective",
+      statement: "Demonstrate explicit local decision-review provenance.",
+      sourceRefs: [{ kind: "intent", reference: "local-yolo-gate" }],
+    }, {
+      id: "mission",
+      kind: "mission-scenario",
+      statement: "Exercise the stateless MCP decision approval path on loopback.",
+      sourceRefs: [{ kind: "intent", reference: "local-yolo-gate" }],
+    }, {
+      id: "success",
+      kind: "success-criterion",
+      statement: "Persist the canonical decision under the fixed YOLO actor.",
+      sourceRefs: [{ kind: "intent", reference: "local-yolo-gate" }],
+      dependsOnItemIds: [],
+    }],
+  });
+  const proposedBriefProject = proposedBrief.structuredContent as Record<
+    string,
+    unknown
+  >;
+  const proposedFraming = proposedBriefProject.framing as Record<string, unknown>;
+  const decisionBrief = proposedFraming.proposedBrief as Record<string, unknown>;
+  const decisionBriefReview = proposedFraming.proposalReview as Record<string, unknown>;
+  const decisionCapabilityProposal = proposedBriefProject.capabilityProposal as Record<
+    string,
+    unknown
+  >;
+  await client.tool("project_brief_confirm", {
+    commandId: "local-yolo-decision-brief-confirm",
+    projectId: DECISION_PROJECT_ID,
+    expectedRevision: 2,
+    issuedAt: "2026-08-14T00:59:50.000Z",
+    briefSnapshotId: decisionBrief.id,
+    briefRevision: decisionBrief.revision,
+    inputFingerprint: decisionBriefReview.inputFingerprint,
+    capabilityProposalFingerprint:
+      decisionCapabilityProposal.capabilityProposalFingerprint,
+  });
+
+  await client.tool("project_plan_publish", {
+    commandId: "local-yolo-decision-plan-publish",
+    projectId: DECISION_PROJECT_ID,
+    expectedRevision: 3,
+    issuedAt: "2026-08-14T01:59:00.000Z",
+    startingPoint: "idea-or-spec",
+    phases: [{
+      id: "baseline",
+      name: "Baseline",
+      description: "Record the approved local YOLO brief before technical work.",
+    }],
+    workItems: [{
+      id: BASELINE_WORK_ID,
+      phaseId: "baseline",
+      owner: "agent",
+      dependsOnWorkItemIds: [],
+      decisionIds: [],
+      operation: {
+        id: "baseline.from-approved-brief",
+        version: "1",
+        bindings: [{
+          name: "approvedBrief",
+          source: { kind: "approved-brief" },
+        }],
+      },
+    }],
+    requiredDecisions: [],
+  });
+  project = await requiredProject(store, DECISION_PROJECT_ID);
+  assertEquals(project.revision, 4);
+
+  await client.tool("project_agent_run_queue", {
+    commandId: "local-yolo-decision-baseline",
+    projectId: DECISION_PROJECT_ID,
+    expectedRevision: project.revision,
+    issuedAt: "2026-08-14T01:59:05.000Z",
+    workItemId: BASELINE_WORK_ID,
+  });
+  project = await requiredProject(store, DECISION_PROJECT_ID);
+  assertEquals(project.revision, 5);
+  const baselineRun = project.agentRuns.find((run) =>
+    run.workItemId === BASELINE_WORK_ID
+  );
+  assert(baselineRun);
+
+  project = await commands.claimRun(GATE_AGENT, {
+    commandId: "local-yolo-decision-baseline-claim",
+    projectId: DECISION_PROJECT_ID,
+    expectedRevision: project.revision,
+    issuedAt: "2026-08-14T01:59:10.000Z",
+    runId: baselineRun.id,
+    summary: "Claim the local YOLO documentary baseline.",
+  });
+  project = await commands.publishRun(GATE_AGENT, {
+    commandId: "local-yolo-decision-baseline-publish",
+    projectId: DECISION_PROJECT_ID,
+    expectedRevision: project.revision,
+    issuedAt: "2026-08-14T01:59:15.000Z",
+    runId: baselineRun.id,
+    summary: "Publish the local YOLO documentary baseline.",
+  });
+  const baselineSnapshot = {
+    snapshotId: `${project.project.subjectId}:thread:r1`,
+    revision: 1,
+    subjectId: project.project.subjectId,
+  };
+  project = await commands.completeRun(GATE_AGENT, {
+    commandId: "local-yolo-decision-baseline-complete",
+    projectId: DECISION_PROJECT_ID,
+    expectedRevision: project.revision,
+    issuedAt: "2026-08-14T01:59:20.000Z",
+    runId: baselineRun.id,
+    summary: "Complete the local YOLO documentary baseline.",
+    resultSnapshot: baselineSnapshot,
+    evidenceRefs: [{
+      snapshotId: baselineSnapshot.snapshotId,
+      snapshotRevision: baselineSnapshot.revision,
+      kind: "artifact",
+      id: "local-yolo-approved-brief-baseline",
+    }],
+  });
+  assertEquals(project.revision, 8);
+
+  await client.tool("project_change_append", {
+    commandId: "local-yolo-decision-change-append",
+    projectId: DECISION_PROJECT_ID,
+    expectedRevision: project.revision,
+    issuedAt: "2026-08-14T01:59:30.000Z",
+    baseSnapshot: baselineSnapshot,
+    phases: [{
+      id: "review",
+      name: "Review",
+      description: "Review the bounded local YOLO system-model seed.",
+    }],
+    workItems: [{
+      id: DECISION_WORK_ID,
+      phaseId: "review",
+      owner: "shared",
+      dependsOnWorkItemIds: [BASELINE_WORK_ID],
+      decisionIds: [DECISION_ID],
+      operation: {
+        id: SYSON_MODEL_SEED_OPERATION.id,
+        version: SYSON_MODEL_SEED_OPERATION.version,
+        bindings: [{
+          name: "approvedBrief",
+          source: { kind: "approved-brief" },
+        }],
+      },
+    }],
+    requiredDecisions: [{
+      id: DECISION_ID,
+      phaseId: "review",
+      title: "Review the local system-model seed",
+      question:
+        "May the bounded local system-model seed be created through the registered operation?",
+    }],
+  });
+  project = await requiredProject(store, DECISION_PROJECT_ID);
+  assertEquals(project.revision, 9);
+
   const proposed = await client.tool("project_decision_propose", {
     commandId: "local-yolo-decision-propose",
     projectId: DECISION_PROJECT_ID,
-    expectedRevision: 1,
-    issuedAt: "2026-08-14T01:59:00.000Z",
+    expectedRevision: project.revision,
+    issuedAt: "2026-08-14T01:59:40.000Z",
     decisionId: DECISION_ID,
     proposal: {
-      summary: "Use the bounded local gate material card.",
-      parameters: [{
-        key: "youngs-modulus",
-        label: "Young's modulus",
-        value: 69,
-        unit: "GPa",
-      }],
+      summary: "Create the bounded local system-model seed.",
+      parameters: encodeSysonModelSeedProposalParameters(),
     },
   });
   const proposedProject = proposed.structuredContent as Record<string, unknown>;
@@ -163,14 +385,14 @@ async function verifyDecisionAutoApproval(
   const approved = await client.tool("project_decision_approve", {
     commandId: "local-yolo-decision-approve",
     projectId: DECISION_PROJECT_ID,
-    expectedRevision: 2,
-    issuedAt: "2026-08-14T01:59:10.000Z",
+    expectedRevision: 10,
+    issuedAt: "2026-08-14T01:59:50.000Z",
     decisionId: DECISION_ID,
     inputFingerprint: decision.inputFingerprint,
     rationale: "The local operator explicitly enabled YOLO for this gate.",
   });
   const approvedProject = approved.structuredContent as Record<string, unknown>;
-  assertEquals(approvedProject.revision, 3);
+  assertEquals(approvedProject.revision, 11);
 
   const persisted = await requiredProject(store, DECISION_PROJECT_ID);
   const persistedDecision = persisted.decisions.find((item) => item.id === DECISION_ID);
@@ -195,78 +417,7 @@ async function verifyDecisionAutoApproval(
       ?.actor,
     YOLO_ACTOR,
   );
-  await assertRevisionFile(directory, DECISION_PROJECT_ID, 3);
-}
-
-function decisionProjectFixture(): EngineeringProjectSnapshot {
-  const generatedAt = "2026-08-14T00:00:00.000Z";
-  const workItemId = "review-local-yolo-card";
-  return {
-    schemaVersion: "4.0",
-    id: `${DECISION_PROJECT_ID}:project:r1`,
-    revision: 1,
-    generatedAt,
-    project: {
-      id: DECISION_PROJECT_ID,
-      name: "Local YOLO decision gate",
-      subjectId: DECISION_PROJECT_ID,
-      objective: {
-        title: "Review one bounded decision",
-        statement: "Prove the local YOLO decision provenance path.",
-      },
-    },
-    threadSnapshots: [{
-      snapshotId: `${DECISION_PROJECT_ID}:thread:r1`,
-      revision: 1,
-      subjectId: DECISION_PROJECT_ID,
-    }],
-    phases: [{
-      id: "review",
-      name: "Review",
-      order: 1,
-      description: "Review one bounded material proposal.",
-      workItemIds: [workItemId],
-      requiredDecisionIds: [DECISION_ID],
-      evidenceRefs: [],
-    }],
-    workItems: [{
-      id: workItemId,
-      activityId: `activity:${workItemId}`,
-      phaseId: "review",
-      title: "Review the local material card",
-      description: "Record a human-reviewable material decision.",
-      kind: "review",
-      status: "waiting-for-decision",
-      owner: "shared",
-      dependsOnWorkItemIds: [],
-      evidenceRefs: [],
-      decisionIds: [DECISION_ID],
-      blockerIds: ["local-yolo-decision-required"],
-    }],
-    agentRuns: [],
-    decisions: [{
-      id: DECISION_ID,
-      phaseId: "review",
-      title: "Review the local material card",
-      question: "May this bounded material card be used by the gate?",
-      status: "required",
-      requestedAt: generatedAt,
-      inputEvidenceRefs: [],
-      approvalIds: [],
-    }],
-    approvals: [],
-    blockers: [{
-      id: "local-yolo-decision-required",
-      phaseId: "review",
-      title: "Material review is required",
-      description: "The bounded proposal requires explicit review authority.",
-      kind: "decision-required",
-      status: "open",
-      openedAt: generatedAt,
-      workItemIds: [workItemId],
-      decisionIds: [DECISION_ID],
-    }],
-  };
+  await assertRevisionFile(directory, DECISION_PROJECT_ID, 11);
 }
 
 async function requiredProject(

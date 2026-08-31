@@ -12,7 +12,7 @@ import {
   encodeVectorCorrectionDecisionParameters,
 } from "../../../domain/sensitivity/vector-correction/vector-correction-proposal.ts";
 import {
-  assembleSensitivityStudyCaseV2,
+  assembleSensitivityStudyCaseV3,
   validateSensitivityStudyCaseTemplate,
 } from "../../../domain/sensitivity/study/sensitivity-study-template.ts";
 import { computeSensitivities } from "../../../domain/sensitivity/study/sensitivity-study.ts";
@@ -386,7 +386,7 @@ async function buildWorld(reuseResult = false) {
       ),
     ),
   );
-  const studyCase = assembleSensitivityStudyCaseV2(template, {
+  const studyCase = assembleSensitivityStudyCaseV3(template, {
     artifactUri: `thread-artifact://${PROJECT_ID}/admission`,
     sha256: "a".repeat(64),
   });
@@ -452,7 +452,7 @@ async function buildWorld(reuseResult = false) {
   const requirementId = "req:disp";
   const briefId = "artifact.brief";
   const snapshot = validateThreadSnapshot({
-    schemaVersion: "4.0",
+    schemaVersion: "1.0",
     id: "snapshot.vector.r1",
     revision: 1,
     generatedAt: AT,

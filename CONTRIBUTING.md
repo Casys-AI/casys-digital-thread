@@ -38,7 +38,7 @@ Workbench, Desktop shell, or local worker definitions.
 - Update living documentation when a public contract, command, or workflow changes.
 - Do not combine formatting, generated output, broad renames, and behavioral changes in
   one pull request.
-- Treat RFCs as design history or proposals, not as authority over current code and
+- Treat unexported internal planning history as non-authoritative over current code and
   reference documentation.
 
 For a substantial new capability or a change to an authority boundary, open a focused
@@ -97,6 +97,7 @@ Before requesting review, confirm that:
 
 ## License
 
-The repository is licensed under the [MIT License](LICENSE). By submitting a
+The repository is licensed under the
+[GNU Affero General Public License v3.0 only (AGPL-3.0-only)](LICENSE). By submitting a
 contribution, you confirm that you have the right to submit it and agree that it may be
-distributed under that license.
+distributed under that licence.

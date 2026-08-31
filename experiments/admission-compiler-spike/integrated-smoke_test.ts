@@ -15,9 +15,7 @@ import type {
   SysonSmokeCompiledInput,
   SysonSmokeTestSeam,
 } from "./syson-smoke.ts";
-import {
-  runNativeMechanicalSmoke,
-} from "./native-smoke.ts";
+import { runNativeMechanicalSmoke } from "./native-smoke.ts";
 
 const SHA_A = "a".repeat(64);
 const SHA_B = "b".repeat(64);

@@ -40,9 +40,9 @@ Deno.test("L4 projects the L3 capture Thread basis before reopening exact inputs
   } as ThreadSnapshot;
   let received: unknown;
   const inputs: AssemblyIntegrityInputResolver = {
-    async resolve(request) {
+    resolve(request) {
       received = request;
-      return {} as ResolvedAssemblyIntegrityInput;
+      return Promise.resolve({} as ResolvedAssemblyIntegrityInput);
     },
   };
 

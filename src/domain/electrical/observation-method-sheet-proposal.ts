@@ -17,8 +17,8 @@ import type { EngineeringDecisionProposalParameter } from "../project/engineerin
 import type { EngineeringOperationRef } from "../project/engineering-project.ts";
 import {
   ELECTRICAL_OBSERVATION_METHOD_SHEET_SCHEMA,
-  fingerprintElectricalObservationMethodSheet,
   type ElectricalObservationMethodSheet,
+  fingerprintElectricalObservationMethodSheet,
 } from "./observation-method-sheet.ts";
 
 export const VERIFY_SEAL_ELECTRICAL_OBSERVATION_METHOD_SHEET_OPERATION = {
@@ -60,8 +60,7 @@ const PARAMETER_KEYS = [
 ] as const;
 
 const PARAMETER_LABELS: Record<(typeof PARAMETER_KEYS)[number], string> = {
-  "electrical.methodSheet.schemaVersion":
-    "Electrical observation method sheet schema",
+  "electrical.methodSheet.schemaVersion": "Electrical observation method sheet schema",
   "electrical.methodSheet.id": "Electrical observation method sheet id",
   "electrical.methodSheet.fingerprint.digest":
     "Electrical observation method sheet fingerprint",
@@ -73,8 +72,7 @@ const PARAMETER_LABELS: Record<(typeof PARAMETER_KEYS)[number], string> = {
   "electrical.methodSheet.review.sealDecisionId": "Seal decision",
 };
 
-export function sealElectricalObservationMethodSheetWorkItemOperation():
-  EngineeringOperationRef {
+export function sealElectricalObservationMethodSheetWorkItemOperation(): EngineeringOperationRef {
   return {
     id: VERIFY_SEAL_ELECTRICAL_OBSERVATION_METHOD_SHEET_OPERATION.id,
     version: VERIFY_SEAL_ELECTRICAL_OBSERVATION_METHOD_SHEET_OPERATION.version,

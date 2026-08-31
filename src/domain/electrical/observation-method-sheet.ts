@@ -25,7 +25,6 @@ import {
   collectNativeObservationNames,
   deriveExpressionUnit,
   type ElectricalObservationExpression,
-  type ElectricalObservationUnit,
   validateElectricalObservationExpression,
 } from "./spice/evaluation/expression.ts";
 
@@ -81,7 +80,8 @@ export interface ElectricalObservationMethodSheetSpiceArtifact {
 export interface ElectricalObservationMethodSheetSpiceBranch {
   readonly producer: {
     readonly serverId: "digital-thread";
-    readonly tool: `${typeof SIMULATE_RUN_ADMITTED_SPICE_OPERATION.id}@${typeof SIMULATE_RUN_ADMITTED_SPICE_OPERATION.version}`;
+    readonly tool:
+      `${typeof SIMULATE_RUN_ADMITTED_SPICE_OPERATION.id}@${typeof SIMULATE_RUN_ADMITTED_SPICE_OPERATION.version}`;
     readonly runId: string;
   };
   readonly capture: ElectricalObservationMethodSheetSpiceArtifact;
@@ -164,8 +164,7 @@ export function validateElectricalObservationMethodSheet(
   rejectDuplicates(sources.map((item) => item.id), "$sheet.sources");
   const sourceIds = new Set(sources.map((item) => item.id));
   const criteria = nonEmptyArray(root.criteria, "$sheet.criteria").map(
-    (item, index) =>
-      parseCriterion(item, `$sheet.criteria[${index}]`, sourceIds),
+    (item, index) => parseCriterion(item, `$sheet.criteria[${index}]`, sourceIds),
   );
   rejectDuplicates(
     criteria.map((item) => item.id),

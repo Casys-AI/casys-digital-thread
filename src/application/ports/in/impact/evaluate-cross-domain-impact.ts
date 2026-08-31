@@ -43,5 +43,7 @@ export type EvaluateCrossDomainImpactResult =
   };
 
 export interface EvaluateCrossDomainImpactUseCase {
-  execute(command: EvaluateCrossDomainImpactCommand): Promise<EvaluateCrossDomainImpactResult>;
+  execute(
+    command: EvaluateCrossDomainImpactCommand,
+  ): Promise<EvaluateCrossDomainImpactResult>;
 }

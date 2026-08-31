@@ -37,7 +37,7 @@ import {
   parseAttachmentRole,
   parseAttachmentTarget,
 } from "../../project-source-workspace/validation.ts";
-import type { TechnicalCompilationBasis } from "./technical-compilation.ts";
+import type { TechnicalCompilationBasis } from "./technical-compilation-basis.ts";
 
 export const TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA =
   "technical-source-analysis-capture/4.0" as const;

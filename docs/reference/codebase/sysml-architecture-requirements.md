@@ -5,8 +5,8 @@ Audience: agent · Diátaxis: reference · Kind: contract
 Census of renderer, agent-seal, seed, requirements, and part-definition files. Those
 authorities are not interchangeable.
 
-Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays
-on [engineering domains](../domains/README.md).
+Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays on
+[engineering domains](../domains/README.md).
 
 ## Source map
 
@@ -17,16 +17,17 @@ Architecture authorities: `renderer/` (`model.write-architecture@1` +
 agent-authored CAS, never SysON), `seed/` (`architecture.seed-syson-model@2`),
 `requirements/` (`model.write-requirements@1`), `part-definitions/`
 (`model.capture-part-definitions@1`). `product-structure-ref.ts` owns exact
-`ProductStructureElementRef` / `ProductStructureOccurrenceRef` (PartUsage path
-nonempty; a PartDefinition is never an occurrence). Not interchangeable. Product
+`ProductStructureElementRef` / `ProductStructureOccurrenceRef` (PartUsage path nonempty;
+a PartDefinition is never an occurrence). Not interchangeable. Product
 `architecture.author-inspection-drone@3` /
 `model.capture-inspection-drone-part-definitions@1` are retired and unregistered
 
 #### [`src/application/ports/in/product-navigation/`](../../../src/application/ports/in/product-navigation)
 
-Read-only SysML-first product navigation port. MCP tools and the Workbench GET/SSE slice
-are thin consumers. Not a domain aggregate. Authoring attachments and Thread evidence
-are distinct reads.
+Read-only SysML-first product navigation port. MCP tools and the standalone
+`/api/thread/product-navigation` query are thin consumers. The generic Workbench
+snapshot does not embed this projection. Not a domain aggregate. Authoring attachments
+and Thread evidence are distinct reads.
 
 #### [`src/application/ports/out/product-navigation/`](../../../src/application/ports/out/product-navigation)
 
@@ -50,9 +51,9 @@ Graphology traversal index for one exact architecture capture. Algorithmic, disp
 Not product authority. Not imported into `src/domain`. `hasElement` matches an exact
 `ProductStructureElementRef`. Search matches exact ids or normalized label/id tokens
 without expanding the occurrence tree. Occurrences are a bounded page, not a full
-materialization. The unique root is a `PartDefinition` element. Exposed by MCP tools
-and the Workbench GET/SSE DTO. The existing SysML catalog view is not a second product
-tree.
+materialization. The unique root is a `PartDefinition` element. Exposed by MCP tools and
+the standalone product-navigation query, not the generic Workbench snapshot. The
+existing SysML catalog view is not a second product tree.
 
 #### [`src/adapters/architecture/renderer/capture-product-structure-traversal.ts`](../../../src/adapters/architecture/renderer/capture-product-structure-traversal.ts)
 
@@ -62,21 +63,22 @@ fingerprint. Not a storage subsystem. Does not call `buildCatalog`.
 
 #### [`src/adapters/thread/product-navigation-workbench.ts`](../../../src/adapters/thread/product-navigation-workbench.ts)
 
-Shared catalog + admission/requirements/case recross used by inspect evidence.
-Evidence attachments only. Workbench GET still publishes only the roots slice; it is not
-a command surface.
+Shared catalog + admission/requirements/case recross used by inspect evidence. Evidence
+attachments only. The standalone query is not a command surface and its projection is
+not embedded in the generic Workbench snapshot.
 
 #### [`src/adapters/project-source-workspace/product-navigation-authoring-attachment-reader.ts`](../../../src/adapters/project-source-workspace/product-navigation-authoring-attachment-reader.ts)
 
 Outbound adapter: active workspace attachment heads for one exact SysML target. Shared
-by MCP `project_product_inspect` and Workbench GET `view=authoring-attachments`. No
-evidence, no admission.
+by MCP `project_product_inspect` and the standalone product-navigation query with
+`view=authoring-attachments`. No evidence, no admission.
 
 #### [`src/tools/project-control/product-navigation-tools.ts`](../../../src/tools/project-control/product-navigation-tools.ts)
 
 Four closed MCP reads: `project_product_explore`, `project_product_search`,
-`project_product_inspect`, `project_source_closure`. Grants none. Workbench stays
-GET/SSE. The retired `project_product_navigation_*` names are not aliases.
+`project_product_inspect`, `project_source_closure`. Grants none. The standalone
+product-navigation query stays GET-only. The retired `project_product_navigation_*`
+names are not aliases.
 
 #### [`src/application/ports/in/architecture/`](../../../src/application/ports/in/architecture)
 
@@ -195,15 +197,6 @@ only
 
 Provider-free sealer that writes a Thread document only; no SysON insertion and no
 `compile.seal-admission@3` reuse
-
-#### [`src/application/ports/out/architecture/agent-seal/architecture-sysml-seal-capture-reader.ts`](../../../src/application/ports/out/architecture/agent-seal/architecture-sysml-seal-capture-reader.ts)
-
-Outward reopen of a sealed `architecture-sysml-seal-capture/1.0` JSON document
-
-#### [`src/adapters/architecture/agent-seal/file-architecture-sysml-seal-capture-reader.ts`](../../../src/adapters/architecture/agent-seal/file-architecture-sysml-seal-capture-reader.ts)
-
-Filesystem adapter over the architecture SysML seal CAS; used by the Workbench BFF, not
-the pure projector
 
 #### [`src/tools/project-control/architecture-sysml-tools.ts`](../../../src/tools/project-control/architecture-sysml-tools.ts)
 

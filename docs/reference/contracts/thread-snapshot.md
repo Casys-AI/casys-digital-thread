@@ -130,29 +130,14 @@ matching is allowed. A CAD-to-solver edge may carry the corresponding consumptio
 attestation so the UI can distinguish a semantic relation from matching producer and
 consumer bytes.
 
-The same Evidence canvas may also receive browser-only SysML structure nodes from the
-reviewed component catalog: `part-definition`, `part-usage`, `attribute-usage`,
-`contains`, `typed_by`, and `represented_by`. They are emitted only from unique verified
-provider identities, an exact active STEP, and—when declared—its hash-matched GLB
-presentation derivative. AttributeUsage nodes are the catalog `attributes[]` of that
-PartDefinition. A sealed `compile.seal-admission@3` may add `cad-lever` nodes and a
-`parameterizes` edge onto an existing AttributeUsage; a missing unique bind adds
-nothing. The STEP remains authoritative. These nodes do not extend the canonical
-ThreadSnapshot entity vocabulary, create causal provenance, or introduce a second graph
-mode.
-
-The architecture artifact anchors the root definition. Focused Activity and Evidence
-views follow bounded upstream and downstream lineage, then add only the matching SysML
-structural context. They do not walk backward through a shared geometry capture and out
-to every sibling CAD asset; the same essential display mask drives both the rendered
-projection and its node counter.
-
-Rendering may compact one unambiguous `PartUsage --typed_by--> PartDefinition` pair into
-the component label `usage : Definition`. This quotient is browser-only: the canonical
-pair and relation stay present in `graph`, selection expands the pair for inspection,
-and a definition with multiple distinct usages always remains expanded. Display counts
-describe the compact items actually rendered, while the provider inspector continues to
-count the exact SysML identities.
+The Evidence and Activity canvases do not augment this graph from the separate component
+catalog. They receive no browser-only SysML structure, component hierarchy, provider
+facet, `systemViews`, mesh-preview payload, technical-admission source catalog, CAD
+lever, or unnamed-literal record. If records such as `part-definition`, `part-usage`,
+`attribute-usage`, `contains`, `typed_by`, or `represented_by` are present, they must
+already be literal nodes and edges in this validated graph. The browser may organize
+recorded fields generically, but it does not reopen an admission, reconstruct, compact,
+or calculate domain topology.
 
 Every projected graph node may expose `recordedAt`, copied from the closest canonical
 timestamp for that entity: applied change time, freshness change time, consumption
@@ -172,8 +157,9 @@ The UI says “verdict unavailable” when no model-owned criterion and evaluati
 present; it never treats the absence of a violation as success. Reading a snapshot or
 opening the UI never performs a solver run.
 
-Per-component identity is deliberately declared in the separate reviewed
-[`ThreadComponentCatalog`](thread-components.md). Its bindings cite artifacts in this
-canonical snapshot, including the complete ERPNext BOM-detail artifact. The catalog can
-identify cross-tool facets without adding an unrecorded causal edge to canonical
-provenance.
+Per-component identity may be declared in the separate reviewed
+[`ThreadComponentCatalog`](thread-components.md), whose bindings cite canonical
+artifacts. It is not a `ThreadWorkbenchSnapshot` field and does not inject cross-tool
+facets, hierarchy, or previews into the browser graph. Exact whole-App presentation is a
+separate [viewer-session contract](thread-viewer-sessions.md), bound to an exact graph
+anchor and never inferred from the component catalog.

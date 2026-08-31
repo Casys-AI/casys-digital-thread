@@ -14,8 +14,7 @@ Truth columns: [projects README](../README.md). This page is not a project snaps
   clone or pin `desk-lamp-dl05`
   ([from-zero how-to](../../how-to/verify-design/verify-a-new-design-from-scratch.md)).
 - **Not CA02.** `cantilever-arm-ca02` may educate the static catalogue; it must not
-  supply lamp identities
-  ([RFC 03](../../rfcs/articulated-led-desk-lamp-demo/03-mechanical-arm-correction-loop.md)).
+  supply lamp identities. Its internal planning history is not exported here.
 - **Not X10.** G6 proposed a shared coupling input for a future re-run. Generic X10
   remains `unavailable`. There was no hidden solver rerun.
 
@@ -34,18 +33,18 @@ Primary atelier listing **2026-08-23**, local:
 - `modelica-ramp-mr02`
 - `heated-mug-coaster-hc01`
 
-The fresh lamp project is `articulated-led-desk-lamp-al01`; it is not the RFC folder,
-fixture identity, historical `desk-lamp-dl04` / `desk-lamp-dl05`, or CA02. Exact local
-heads and artifacts: [runtime evidence](runtime-evidence.md).
+The fresh lamp project is `articulated-led-desk-lamp-al01`; it is not internal planning
+history, a fixture identity, historical `desk-lamp-dl04` / `desk-lamp-dl05`, or CA02.
+Exact local heads and artifacts: [runtime evidence](runtime-evidence.md).
 
 ## Tracked project and capture identities
 
 | Identity                                                                                                  | What it is                                                                                         | What it is not                                                |
 | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
 | `articulated-led-desk-lamp-al01`                                                                          | Live local EngineeringProject; approved brief r4; project r227 / Thread r26 on the dated observation | A portable fixture, a physical proof, or a whole-lamp verdict |
-| RFC queue `docs/rfcs/articulated-led-desk-lamp-demo/`                                                     | Session brief and progress journal                                                                 | Runtime project truth                                         |
+| Internal planning history (not exported)                                                                  | Session brief and progress journal                                                                 | Runtime project truth                                         |
 | `src/testing/articulated-led-desk-lamp-brief-fixture.ts` (`articulated-led-desk-lamp`)                    | Test identity; file comment: not a live project, not a dl05 relabel                                | Signed brief, SysON, or Thread                                |
-| `src/testing/fixtures/fea/mechanical-proof-cases/desk-lamp-dl*.json` and related sensitivity catalog rows | Historical specimens                                                                               | The fresh RFC lamp                                            |
+| `src/testing/fixtures/fea/mechanical-proof-cases/desk-lamp-dl*.json` and related sensitivity catalog rows | Historical specimens                                                                               | The fresh lamp project                                        |
 
 The live lamp captures are local and gitignored. Their exact dated identities are
 recorded in [runtime-evidence.md](runtime-evidence.md); the other vehicles remain
@@ -67,11 +66,10 @@ evidenced in-repo or by the dated local listing.
 | Cross-domain impact                                                          | Generic X04–X09 and X11 supported; X10 `unavailable` ([impact coverage](../../reference/domains/impact/coverage.md)). X11 is not a CalculiX call                                                                                                                                                                               | Manifest r23, X07/X08 r24, X09 r25, X11 r26                                                                                               | Observed                                                   | Electrical `invalidated`, thermal `invalidated`, mechanical `carried-forward`; `rerunProposals: none` | Human local-yolo X09 r25 applied those exact statuses. G6 is a proposed future coupling input, not a thermal result |
 | Workbench projection                                                         | Generic read-only Workbench exists                                                                                                                                                                                                                                                                                             | AL01 project r227 and Thread r26 projected                                                                                                | GET `engineering-workbench/0.3` evidence, `canonical-thread-snapshot`, `source observed`, `aligned` 26/26; SSE `articulated-led-desk-lamp-al01:227:26:13` | UI is not proof                                              | Workbench must not receive commands                                 |
 
-RFC journal (handoff index, not persisted evidence): core lots 01–07 and closeout lot
-10 are observed complete on this atelier with X10 still `unavailable`; lot 08 remains
-an independent refactor lane and lot 09 is complete
-([RFC README](../../rfcs/articulated-led-desk-lamp-demo/README.md)). Updating that
-journal does not create a project.
+Internal planning history (not persisted evidence) recorded core lots 01–07 and
+closeout lot 10 as complete on this atelier with X10 still `unavailable`; lot 08 was an
+independent refactor lane and lot 09 was complete. That history is not exported, and
+updating it does not create a project.
 
 ## Evidenced checkboxes
 
@@ -79,7 +77,7 @@ journal does not create a project.
       [`src/orchestration/operations/registry.ts`](../../../src/orchestration/operations/registry.ts)
       (SysML renderer, admission, canonical geometry, isolated FEA `@3`, admitted
       Modelica, admitted SPICE, impact recross).
-- [x] RFC queue exists and is `active` ([docs/rfcs/README.md](../../rfcs/README.md)).
+- [x] Internal planning history was kept separate from this public source export.
 - [x] Test fixture exists and declares it is not a live project
       ([`articulated-led-desk-lamp-brief-fixture.ts`](../../../src/testing/articulated-led-desk-lamp-brief-fixture.ts)).
 - [x] Fresh `articulated-led-desk-lamp-al01` EngineeringProject exists locally with
@@ -100,12 +98,10 @@ journal does not create a project.
 
 ## Human-owned remainder
 
-Gates G0–G7 stay human
-([00-human-input-gates.md](../../rfcs/articulated-led-desk-lamp-demo/00-human-input-gates.md)).
-AL01 recorded per-branch L5 accepts and one impact decision through local YOLO. Those
-records do not fill G7 as a combined lamp verdict. Missing physical inputs still do not
-justify defaults. A CalculiX, OpenModelica, or ngspice success is not an oracle and not
-L5.
+Gates G0–G7 stay human. AL01 recorded per-branch L5 accepts and one impact decision
+through local YOLO. Those records do not fill G7 as a combined lamp verdict. Missing
+physical inputs still do not justify defaults. A CalculiX, OpenModelica, or ngspice
+success is not an oracle and not L5.
 
 Use the small [domain input sheets](input-sheets/README.md) to prepare G2, G4, G5, and
 G6 without mixing them into one document. A completed sheet remains source material; the

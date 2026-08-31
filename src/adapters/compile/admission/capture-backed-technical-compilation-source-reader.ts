@@ -35,8 +35,8 @@ import {
   lowerBuild123dWorkspaceClosure,
 } from "../../../domain/cad/source/build123d-workspace-closure-lowering.ts";
 import {
-  ProjectSourceClosureError,
   type ProjectSourceClosure,
+  ProjectSourceClosureError,
   recrossProjectSourceClosure,
 } from "../../../domain/project-source-workspace/closure.ts";
 import { fingerprintSourceAnalysisBundle } from "../../../domain/compile/source/source-analysis.ts";
@@ -484,7 +484,10 @@ export class CaptureBackedTechnicalCompilationSourceReader
       file.fileRevision === input.closure.root.fileRevision
     );
     if (!root || texts.get(`${root.fileId}@${root.fileRevision}`) !== input.rootText) {
-      throw readError("closure_mismatch", "The exact closure root could not be re-opened.");
+      throw readError(
+        "closure_mismatch",
+        "The exact closure root could not be re-opened.",
+      );
     }
     let lowered;
     try {
@@ -525,7 +528,10 @@ export class CaptureBackedTechnicalCompilationSourceReader
     }
     if (
       lowered.script !== input.reopened.sourceText ||
-      !fingerprintsEqual(lowered.scriptFingerprint, input.effectiveUnit.scriptFingerprint)
+      !fingerprintsEqual(
+        lowered.scriptFingerprint,
+        input.effectiveUnit.scriptFingerprint,
+      )
     ) {
       throw readError(
         "bytes_mismatch",

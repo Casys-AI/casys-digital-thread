@@ -26,8 +26,8 @@ import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import { assertThreadSnapshotLineageIntact } from "../../shared/stores/thread-snapshot-lineage.ts";
 import {
-  type AdmittedModelicaEvaluationCloseoutEvidenceResolverDependencies,
   admittedModelicaEvaluationCloseoutAdmission,
+  type AdmittedModelicaEvaluationCloseoutEvidenceResolverDependencies,
   AdmittedModelicaEvaluationCloseoutResolutionError,
   resolveAdmittedModelicaEvaluationCloseoutEvidence,
 } from "./admitted-observation-evaluation-closeout-evidence-resolver.ts";
@@ -134,13 +134,15 @@ export class PrepareProjectAdmittedModelicaEvaluationCloseoutReview
           limitations: resolved.limitations,
           accept: {
             admission: accept,
-            decisionParameters:
-              encodeAdmittedObservationEvaluationCloseoutAdmission(accept),
+            decisionParameters: encodeAdmittedObservationEvaluationCloseoutAdmission(
+              accept,
+            ),
           },
           reject: {
             admission: reject,
-            decisionParameters:
-              encodeAdmittedObservationEvaluationCloseoutAdmission(reject),
+            decisionParameters: encodeAdmittedObservationEvaluationCloseoutAdmission(
+              reject,
+            ),
           },
         },
       });

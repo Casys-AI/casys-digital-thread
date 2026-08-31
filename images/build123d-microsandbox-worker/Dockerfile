@@ -10,7 +10,6 @@ ARG LIBGL1_VERSION=1.6.0-1
 
 LABEL org.opencontainers.image.title="Casys qualified Build123d worker" \
       org.opencontainers.image.description="Fixed local Microsandbox worker for Build123d STEP AP214 generation" \
-      org.opencontainers.image.licenses="Apache-2.0" \
       io.casys.execution-profile="build123d-closed-subset-v1" \
       io.casys.python.version="3.12.11" \
       io.casys.build123d.version="${BUILD123D_VERSION}" \

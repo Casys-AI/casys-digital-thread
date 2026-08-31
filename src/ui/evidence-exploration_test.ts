@@ -18,7 +18,7 @@ Deno.test("Evidence exploration uses 4b navigation without a full/local toggle",
   assertStringIncludes(source, "view.nodeCount");
   assertStringIncludes(source, "view.edgeCount");
   assertStringIncludes(source, "Cases");
-  assertStringIncludes(source, "Tools");
+  assertStringIncludes(source, "Recorded systems");
   assertStringIncludes(source, "Types · semantic filter");
   assertStringIncludes(source, "Selected case unavailable");
   assertStringIncludes(source, "All records");

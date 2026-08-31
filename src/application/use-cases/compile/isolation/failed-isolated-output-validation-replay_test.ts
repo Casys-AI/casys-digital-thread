@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertRejects } from "@std/assert";
 import { sha256Fingerprint } from "../../../../domain/kernel/deterministic-json.ts";
 import type {
   EngineeringAgentRun,

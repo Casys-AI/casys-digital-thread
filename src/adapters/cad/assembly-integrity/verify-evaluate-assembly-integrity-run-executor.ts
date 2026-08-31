@@ -694,12 +694,12 @@ function parseAdmission(
   }
 }
 
-async function assertAdmissionScope(
+function assertAdmissionScope(
   admission: AssemblyIntegrityEvaluationAdmission,
   projectId: string,
   basis: ReturnType<typeof requireBasis>,
   capture: AssemblyIntegrityEvaluationCapture,
-): Promise<void> {
+): void {
   if (
     admission.projectId !== projectId ||
     admission.basis.snapshotId !== basis.snapshotId ||

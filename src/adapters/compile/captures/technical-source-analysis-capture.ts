@@ -56,16 +56,14 @@ import {
   type TechnicalSourceAnalysisCaptureLocator,
   type TechnicalSourceAttachmentProvenance,
   type TechnicalSourceClosureProvenance,
-  type TechnicalSourceEffectiveUnit,
-  validateTechnicalSourceEffectiveUnit,
   validateTechnicalSourceAnalysisCaptureLocator,
   validateTechnicalSourceAttachmentProvenance,
   validateTechnicalSourceClosureProvenance,
+  validateTechnicalSourceEffectiveUnit,
 } from "../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
 import {
   BUILD123D_WORKSPACE_CLOSURE_LOWERING_KIND,
   BUILD123D_WORKSPACE_CLOSURE_LOWERING_SCHEMA,
-  type Build123dWorkspaceClosureLoweringManifest,
   validateBuild123dWorkspaceClosureLoweringManifest,
 } from "../../../domain/cad/source/build123d-workspace-closure-lowering.ts";
 
@@ -640,9 +638,9 @@ export class TechnicalSourceAnalysisCaptureService
       sourceBytes === undefined ||
       sourceBytes.byteLength !== reference.source.byteCount ||
       sourceBytes.byteLength > effectiveScriptByteLimit(
-        profile,
-        reference.effectiveUnit,
-      )
+          profile,
+          reference.effectiveUnit,
+        )
     ) {
       throw new TechnicalSourceAnalysisCaptureError(
         "source_capture_invalid",
@@ -944,16 +942,18 @@ export function validateTechnicalSourceAnalysisProfile(
     );
   }
   const workspaceClosureLowering = Object.hasOwn(
-    input,
-    "workspaceClosureLowering",
-  )
+      input,
+      "workspaceClosureLowering",
+    )
     ? validateWorkspaceClosureLoweringPolicy(
       input.workspaceClosureLowering,
       `${path}.workspaceClosureLowering`,
     )
     : undefined;
-  if (workspaceClosureLowering !== undefined &&
-    !(role === "cad-script" && language === "python")) {
+  if (
+    workspaceClosureLowering !== undefined &&
+    !(role === "cad-script" && language === "python")
+  ) {
     throw new TypeError(
       `${path}.workspaceClosureLowering is Build123d/cad-script only.`,
     );
@@ -1078,7 +1078,10 @@ async function validateCapturedEffectiveUnit(
     `${path}.loweringManifest`,
   );
   if (
-    !sameFingerprint(loweringManifest.fingerprint, compact.lowerer.manifestFingerprint) ||
+    !sameFingerprint(
+      loweringManifest.fingerprint,
+      compact.lowerer.manifestFingerprint,
+    ) ||
     !sameFingerprint(loweringManifest.closure.fingerprint, sourceClosure.fingerprint) ||
     loweringManifest.closure.root.fileId !== sourceClosure.root.fileId ||
     loweringManifest.closure.root.fileRevision !== sourceClosure.root.fileRevision ||
@@ -1090,7 +1093,9 @@ async function validateCapturedEffectiveUnit(
     profile !== undefined &&
     loweringManifest.sources.length > profile.workspaceClosureLowering!.maxClosureFiles
   ) {
-    throw new TypeError(`${path}.loweringManifest exceeds the profile closure-file limit.`);
+    throw new TypeError(
+      `${path}.loweringManifest exceeds the profile closure-file limit.`,
+    );
   }
   return deepFreeze({ ...compact, loweringManifest });
 }

@@ -95,6 +95,56 @@ export class ArchitectureProposalParseError extends Error {
   }
 }
 
+/** The immutable Package scope sealed by a predecessor architecture capture. */
+export interface ArchitecturePackageScope {
+  readonly packageName: string;
+  readonly scopeRootId: string;
+}
+
+export type ArchitecturePackageScopeErrorCode = "predecessor_package_name_changed";
+
+/**
+ * Structured refusal for a proposal that would fork the registered one-package
+ * architecture surface after the first architecture capture has been published.
+ */
+export class ArchitecturePackageScopeError extends Error {
+  readonly code: ArchitecturePackageScopeErrorCode;
+  readonly context: Readonly<Record<string, string>>;
+
+  constructor(
+    predecessor: ArchitecturePackageScope,
+    proposal: ArchitectureProposal,
+  ) {
+    super(
+      `Architecture package scope cannot change from "${predecessor.packageName}" ` +
+        `(sealed Package "${predecessor.scopeRootId}") to "${proposal.packageName}". ` +
+        "The registered operation supports only monotone enrichment of the inherited Package; " +
+        "multi-package architecture is not supported.",
+    );
+    this.name = "ArchitecturePackageScopeError";
+    this.code = "predecessor_package_name_changed";
+    this.context = {
+      predecessorPackageName: predecessor.packageName,
+      predecessorScopeRootId: predecessor.scopeRootId,
+      proposalPackageName: proposal.packageName,
+    };
+  }
+}
+
+/**
+ * A published generic architecture has one Package scope. The provider Package
+ * identity is sealed in its predecessor capture, so a later proposal may only
+ * enrich that same named scope.
+ */
+export function assertArchitecturePackageScope(
+  predecessor: ArchitecturePackageScope,
+  proposal: ArchitectureProposal,
+): void {
+  if (predecessor.packageName !== proposal.packageName) {
+    throw new ArchitecturePackageScopeError(predecessor, proposal);
+  }
+}
+
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const SYSML_IDENTIFIER = /^[A-Za-z][A-Za-z0-9_]*$/;

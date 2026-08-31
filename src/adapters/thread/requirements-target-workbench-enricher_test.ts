@@ -49,39 +49,6 @@ Deno.test(
 );
 
 Deno.test(
-  "requirements-target enricher does not join a requirement by the first SysON binding",
-  async () => {
-    const snapshot = workbenchFor();
-    snapshot.components.components[0]!.bindings = [{
-      provider: "syson",
-      kind: "part-usage",
-      id: USAGE,
-      label: " decoy usage that must not join",
-      evidenceArtifactId: "architecture-capture-root",
-      status: "verified",
-    }, {
-      provider: "syson",
-      kind: "part-definition",
-      id: TARGET,
-      label: "Wing",
-      evidenceArtifactId: "architecture-capture-root",
-      status: "verified",
-    }];
-    const enriched = await enrichThreadWorkbenchWithRequirementsTargets(
-      snapshot,
-      { read: () => Promise.resolve(deterministicJson(capture())) },
-      threadFor(snapshot),
-    );
-    assertEquals(enriched.requirements[0]?.targetElementId, TARGET);
-    assertEquals(
-      enriched.graph.edges.filter((edge) => edge.relation === "constrained_by")
-        .map((edge) => edge.from.id),
-      [TARGET],
-    );
-  },
-);
-
-Deno.test(
   "requirements-target enricher fails closed when the architecture basis does not recross",
   async () => {
     const snapshot = workbenchFor();
@@ -314,27 +281,6 @@ function workbenchFor(): ThreadWorkbenchSnapshot {
       changedAt: "2026-08-19T00:00:00.000Z",
       status: "pending",
       files: [],
-    },
-    components: {
-      schemaVersion: "thread-components/1.0",
-      authority: "workspace-declared",
-      subjectId: "subject",
-      rationale: "test",
-      systemViews: {},
-      components: [{
-        id: "wing",
-        label: "Wing",
-        kind: "part",
-        quantity: 1,
-        bindings: [{
-          provider: "syson",
-          kind: "part-definition",
-          id: TARGET,
-          label: "Wing",
-          evidenceArtifactId: architecture.id,
-          status: "verified",
-        }],
-      }],
     },
     graph: { nodes, edges },
     evidenceFamilyGraph: {

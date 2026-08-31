@@ -1,7 +1,6 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import { deterministicJson } from "../../kernel/deterministic-json.ts";
-import { validateSensitivityStudyCase } from "../study/sensitivity-study.ts";
-import { validateSensitivityStudyCaseV2 } from "../study/sensitivity-study-v2.ts";
+import { validateSensitivityStudyCaseV3 } from "../study/sensitivity-study-v3.ts";
 import { buildSensitivityAnalysisGraph } from "./sensitivity-analysis-graph.ts";
 
 const FP = (digest: string) => ({ algorithm: "sha256" as const, digest });
@@ -58,7 +57,7 @@ Deno.test("sensitivity analysis graph records one measured assertion per declare
 
 Deno.test("sensitivity analysis graph bounds a negative step by the two observed parameter points", () => {
   const input = graphInput();
-  input.sensitivityCase = validateSensitivityStudyCase({
+  input.sensitivityCase = validateSensitivityStudyCaseV3({
     ...input.sensitivityCase,
     step: { value: -1, unit: "mm" },
   });
@@ -112,25 +111,25 @@ Deno.test("sensitivity graph keeps semantic nodes stable across capture occurren
 function graphInput() {
   return {
     caseFingerprint: FP("d".repeat(64)),
-    sensitivityCase: validateSensitivityStudyCase({
-      schemaVersion: "sensitivity-study-case/1.0",
+    sensitivityCase: validateSensitivityStudyCaseV3({
+      schemaVersion: "sensitivity-study-case/3.0",
       id: "case-sensitivity",
       revision: 1,
       scope: "test",
       evidenceBoundary: "test",
       project: { id: "project", subjectId: "project:subject" },
       target: { componentKey: "part", semanticKey: "size-z" },
-      recipeSource: { schemaVersion: "recipe/1.0", key: "recipe" },
+      cadSource: {
+        artifactUri: "thread-artifact://project/admission",
+        sha256: "a".repeat(64),
+      },
       baseValue: { value: 30, unit: "mm" },
       step: { value: 1, unit: "mm" },
       metrics: [
         { id: "assembly_max_displacement", unit: "mm" },
         { id: "assembly_max_von_mises", unit: "MPa" },
       ],
-      solver: {
-        provider: "calculix",
-        tool: "calculix_solve_static",
-        resultSchemaVersion: "2.0",
+      method: {
         mesh: { kind: "tetrahedral-volume", targetSizeMm: 1 },
         material: {
           model: "isotropic-linear-elastic",
@@ -178,12 +177,12 @@ function graphInput() {
 }
 
 Deno.test(
-  "buildSensitivityAnalysisGraph emits observed measured-local-sensitivity from a 2.0 case and never a verdict",
+  "buildSensitivityAnalysisGraph emits observed measured-local-sensitivity from a 3.0 case and never a verdict",
   () => {
     const graph = buildSensitivityAnalysisGraph({
       caseFingerprint: FP("d".repeat(64)),
-      sensitivityCase: validateSensitivityStudyCaseV2({
-        schemaVersion: "sensitivity-study-case/2.0",
+      sensitivityCase: validateSensitivityStudyCaseV3({
+        schemaVersion: "sensitivity-study-case/3.0",
         id: "case-sensitivity",
         revision: 1,
         scope: "test",
@@ -197,10 +196,7 @@ Deno.test(
         baseValue: { value: 30, unit: "mm" },
         step: { value: 1, unit: "mm" },
         metrics: [{ id: "assembly_max_displacement", unit: "mm" }],
-        solver: {
-          provider: "calculix",
-          tool: "calculix_solve_static",
-          resultSchemaVersion: "2.0",
+        method: {
           mesh: { kind: "tetrahedral-volume", targetSizeMm: 1 },
           material: {
             model: "isotropic-linear-elastic",

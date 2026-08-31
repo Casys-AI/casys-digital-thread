@@ -223,7 +223,9 @@ async function materializeReadySource(
     deterministicJson(admissionSource.effectiveUnit) !==
       deterministicJson(source.effectiveUnit)
   ) {
-    throw new TypeError("Admission effective unit does not match the compilation document.");
+    throw new TypeError(
+      "Admission effective unit does not match the compilation document.",
+    );
   }
   return deepFreeze({
     reopened,

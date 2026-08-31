@@ -70,9 +70,10 @@ Deno.test("readDeclaredCockpitFleet projects the workspace fleet manifest", asyn
 
 Deno.test("readDeclaredCockpitFleet yields undefined when the file is missing", async () => {
   assertEquals(
-    await readDeclaredCockpitFleet("missing-fleet.json", async () => {
-      throw new Deno.errors.NotFound();
-    }),
+    await readDeclaredCockpitFleet(
+      "missing-fleet.json",
+      () => Promise.reject(new Deno.errors.NotFound()),
+    ),
     undefined,
   );
 });

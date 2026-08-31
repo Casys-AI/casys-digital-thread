@@ -7,7 +7,12 @@ const GEOMETRY_DIGEST = "a".repeat(64);
 const STEP_DIGEST = "b".repeat(64);
 
 Deno.test("FEA binding derives a target STEP owner from its deterministic target artifact id", () => {
-  const requirements = artifact("requirements", "sysml-model", "c".repeat(64), "application/json");
+  const requirements = artifact(
+    "requirements",
+    "sysml-model",
+    "c".repeat(64),
+    "application/json",
+  );
   const result = resolveFeaProofSealThreadBindings(
     snapshot([
       geometryArtifact(),
@@ -33,7 +38,12 @@ Deno.test("FEA binding derives a target STEP owner from its deterministic target
 });
 
 Deno.test("FEA binding never substitutes a cad-model capture for a malformed target STEP identity", () => {
-  const requirements = artifact("requirements", "sysml-model", "c".repeat(64), "application/json");
+  const requirements = artifact(
+    "requirements",
+    "sysml-model",
+    "c".repeat(64),
+    "application/json",
+  );
   const result = resolveFeaProofSealThreadBindings(
     snapshot([
       geometryArtifact(),

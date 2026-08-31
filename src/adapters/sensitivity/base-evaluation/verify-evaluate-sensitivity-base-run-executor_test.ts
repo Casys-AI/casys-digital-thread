@@ -8,7 +8,7 @@ import {
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
 import { VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION } from "../../../domain/sensitivity/base-evaluation/sensitivity-base-evaluation.ts";
 import {
-  assembleSensitivityStudyCaseV2,
+  assembleSensitivityStudyCaseV3,
   validateSensitivityStudyCaseTemplate,
 } from "../../../domain/sensitivity/study/sensitivity-study-template.ts";
 import { computeSensitivities } from "../../../domain/sensitivity/study/sensitivity-study.ts";
@@ -293,7 +293,7 @@ async function buildWorld(options: {
       ),
     ),
   );
-  const studyCase = assembleSensitivityStudyCaseV2(template, {
+  const studyCase = assembleSensitivityStudyCaseV3(template, {
     artifactUri: `thread-artifact://${PROJECT_ID}/admission`,
     sha256: "a".repeat(64),
   });
@@ -380,7 +380,7 @@ async function buildWorld(options: {
     ? requirements.slice(0, 1)
     : requirements;
   const snapshot = validateThreadSnapshot({
-    schemaVersion: "4.0",
+    schemaVersion: "1.0",
     id: "snapshot.evaluate.r1",
     revision: 1,
     generatedAt: AT,

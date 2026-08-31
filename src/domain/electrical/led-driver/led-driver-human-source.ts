@@ -18,8 +18,7 @@ import {
   safeId,
 } from "../../kernel/case-validation.ts";
 
-export const LED_DRIVER_HUMAN_SOURCE_SCHEMA =
-  "led-driver-human-source/1.0" as const;
+export const LED_DRIVER_HUMAN_SOURCE_SCHEMA = "led-driver-human-source/1.0" as const;
 
 export type LedDriverSourceProvenanceKind = "human" | "document" | "expert";
 

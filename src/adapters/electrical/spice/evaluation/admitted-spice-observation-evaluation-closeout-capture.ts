@@ -12,10 +12,10 @@ import {
 } from "../../../../domain/kernel/case-validation.ts";
 import { deterministicJson } from "../../../../domain/kernel/deterministic-json.ts";
 import {
-  type SpiceAdmittedObservationEvaluationCloseoutAdmission,
   DECIDE_ACCEPT_ADMITTED_SPICE_EVALUATION_OPERATION,
   DECIDE_REJECT_ADMITTED_SPICE_EVALUATION_OPERATION,
   SPICE_ADMITTED_OBSERVATION_EVALUATION_CLOSEOUT_SCHEMA,
+  type SpiceAdmittedObservationEvaluationCloseoutAdmission,
   validateSpiceAdmittedObservationEvaluationCloseoutAdmission,
 } from "../../../../domain/electrical/spice/evaluation/admitted-observation-evaluation-closeout-proposal.ts";
 import {

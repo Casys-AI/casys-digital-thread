@@ -39,9 +39,9 @@ let verdict_schema = #{
 };
 
 phase("Audit");
-let root = "/Users/erwanpesle/Documents/GitHub/casys-digital-thread";
+let root = ".";
 let base = "Use read_file and grep only. Do not edit. Read the files before answering. ";
-base += "Repo: " + root + ". ";
+base += "Current checkout (repository root): " + root + ". ";
 base += "Already owned (do not re-report unless still broken): cockpit_focus_set optional expectedRevision; ";
 base += "scripts/probes/mcp-call.ts CLI; preview:thread follows --workspace-id=primary. ";
 base += "Do not propose making issuedAt optional on server mutation tools (retry identity). ";

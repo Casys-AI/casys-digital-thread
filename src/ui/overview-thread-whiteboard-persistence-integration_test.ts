@@ -3,7 +3,10 @@ import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 Deno.test("Project whiteboard hydrates exact local presentation state before auto-fit", async () => {
   const source = await heroSource();
 
-  assertStringIncludes(source, "  projectId,\n  activities = [],");
+  assertStringIncludes(
+    source,
+    "  projectId,\n  viewerSessions,\n  activities = [],",
+  );
   assertStringIncludes(
     source,
     "loadOverviewThreadWhiteboardPresentation(\n        storage,\n        persistenceProjectId,\n        persistenceReconciliationRef.current,",
@@ -54,8 +57,9 @@ Deno.test("Project whiteboard reconciles viewers from current exact Thread capab
   );
   assertStringIncludes(
     source,
-    "cadAssetIds: capabilities.cadAssets.map((asset) => asset.id)",
+    "sessionIds: (viewerSessionsByNodeKey.get(item.key) ?? []).map(",
   );
+  assertEquals(source.includes("cadAssetIds:"), false);
   assertStringIncludes(
     source,
     "viewerCapabilities: persistenceViewerCapabilities",
@@ -70,7 +74,8 @@ Deno.test("Project whiteboard reconciles viewers from current exact Thread capab
     conversion,
     "expanded: viewer.restoreGeometry !== undefined",
   );
-  assertStringIncludes(conversion, "assetId: viewer.assetId");
+  assertStringIncludes(conversion, "sessionId: viewer.sessionId");
+  assertEquals(conversion.includes("assetId: viewer.assetId"), false);
   assertEquals(conversion.includes('kind: "chat"'), false);
 });
 
@@ -91,12 +96,15 @@ Deno.test("Project whiteboard debounces local saves and flushes them on pagehide
   );
   assertStringIncludes(
     source,
-    "window.setTimeout(\n      () => flushPersistenceRef.current(),\n      OVERVIEW_WHITEBOARD_SAVE_DELAY_MS,",
+    "globalThis.setTimeout(\n      () => flushPersistenceRef.current(),\n      OVERVIEW_WHITEBOARD_SAVE_DELAY_MS,",
   );
-  assertStringIncludes(source, 'window.addEventListener("pagehide", flush);');
   assertStringIncludes(
     source,
-    'window.removeEventListener("pagehide", flush);',
+    'globalThis.addEventListener("pagehide", flush);',
+  );
+  assertStringIncludes(
+    source,
+    'globalThis.removeEventListener("pagehide", flush);',
   );
   assertStringIncludes(source, 'onClick={() => changeLayoutMode("hierarchy")}');
   assertStringIncludes(source, 'onClick={() => changeLayoutMode("radial")}');

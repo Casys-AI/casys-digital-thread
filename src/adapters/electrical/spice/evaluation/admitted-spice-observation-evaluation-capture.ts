@@ -27,8 +27,7 @@ export const SPICE_ADMITTED_OBSERVATION_EVALUATION_CAPTURE_SCHEMA =
 export { SPICE_ADMITTED_OBSERVATION_EVALUATION_CAPTURE_URI_PREFIX };
 
 export interface SpiceAdmittedObservationEvaluationCapture {
-  readonly schemaVersion:
-    typeof SPICE_ADMITTED_OBSERVATION_EVALUATION_CAPTURE_SCHEMA;
+  readonly schemaVersion: typeof SPICE_ADMITTED_OBSERVATION_EVALUATION_CAPTURE_SCHEMA;
   readonly kind: "spice-admitted-observation-evaluation";
   readonly operation: {
     readonly id: typeof VERIFY_EVALUATE_ADMITTED_SPICE_OBSERVATIONS_OPERATION.id;

@@ -50,8 +50,8 @@ or other reviewed integrations may still use the network.
 
 Agents must start with [AGENTS.md](AGENTS.md), then the
 [agent workspace reference](docs/reference/agent/agent-workspace.md). The registered
-catalogue and backend code are authoritative; UI copy, examples, and RFCs are not a
-second authority model.
+catalogue and backend code are authoritative; UI copy, examples, and internal planning
+records are not a second authority model.
 
 ## Choose a path
 
@@ -84,10 +84,13 @@ deno task check:ui
 See [Validate a source checkout](docs/how-to/setup/validate-a-source-checkout.md) for
 the full source-validation sequence.
 
-Do not treat `docker compose up -d` as a clone-only quick start. The complete
-provider-backed atelier currently has additional prerequisites: published images must
-be accessible, local microVM worker images must be prepared, and the optional ERPNext
-bridge expects its external repository, environment, and Docker network. The
+Ordinary Digital Thread start is cold Deno (`deno task start`). Do not treat
+`docker compose up -d` as the atelier start or a clone-only quick start:
+CapabilityRuntime providers are H1 JIT launch groups, not the root Compose project.
+The complete provider-backed atelier currently has additional prerequisites: published
+images must be accessible, local microVM worker images must be prepared, and the
+optional ERPNext bridge expects its external repository, environment, and Docker
+network. The
 [local runtime reference](docs/reference/runtime/local-runtime-and-ports.md) and the
 task-specific how-to guide state the exact boundary for each path.
 
@@ -98,7 +101,7 @@ task-specific how-to guide state the exact boundary for each path.
 | `server.ts`, `src/` | Project control, domain contracts, orchestration, persistence, and projections |
 | `desktop/` | Native desktop shell and packaged chat/runtime integration |
 | `src/ui/` | Read-only React + Vite Workbench |
-| `docker-compose.yml`, `config/` | Declared provider topology and reviewed runtime configuration |
+| `docker-compose.yml`, `config/` | Maintainer diagnostic Compose topology and reviewed runtime configuration; H1 JIT groups are not this file |
 | `scripts/` | Gates, probes, runners, and local serving commands |
 | `state/fixtures/` | Checked-in, explicitly labelled test and demonstration fixtures |
 | `state/local/` | Ignored local project, Thread, CAS, and execution state; never commit it |
@@ -106,7 +109,6 @@ task-specific how-to guide state the exact boundary for each path.
 | `docs/reference/` | Exact contracts, runtime facts, providers, and code locations |
 | `docs/explanations/` | Product and architecture reasoning |
 | `docs/project-dossiers/` | Dated, non-authoritative observations from engineering projects |
-| `docs/rfcs/` | Proposals and studies; not the live product contract |
 
 Engineering provider servers are maintained in separate repositories and run here from
 reviewed images. Related public building blocks include
@@ -126,7 +128,10 @@ issue. Before changing repository visibility, complete the
 
 ## License
 
-This repository is licensed under the [MIT License](LICENSE). Provider images, external
-systems, bundled runtimes, and third-party dependencies retain their own licences and
-notice obligations; this repository's licence is not an aggregate licence claim for
-them.
+Copyright © 2026 Casys AI.
+
+This repository is licensed under the
+[GNU Affero General Public License v3.0 only (AGPL-3.0-only)](LICENSE). Provider images,
+external systems, bundled runtimes, and third-party dependencies retain their own
+licences and notice obligations; this repository's licence is not an aggregate licence
+claim for them.

@@ -30,7 +30,7 @@ export function deterministicJson(value: unknown): string {
 }
 
 /** SHA-256 of exact bytes as lowercase hex. Delegates to the kernel primitive. */
-export async function sha256Hex(bytes: Uint8Array): Promise<string> {
+export function sha256Hex(bytes: Uint8Array): Promise<string> {
   return fingerprintResourceBytes(bytes);
 }
 

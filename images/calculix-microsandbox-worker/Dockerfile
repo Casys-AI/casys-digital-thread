@@ -23,7 +23,6 @@ RUN apt-get update \
 
 LABEL org.opencontainers.image.title="Casys CalculiX worker candidate" \
       org.opencontainers.image.description="Fixed worker candidate awaiting Microsandbox qualification" \
-      org.opencontainers.image.licenses="Apache-2.0" \
       io.casys.execution-profile="calculix-static-proof-v1" \
       io.casys.calculix.library="@casys/mcp-calculix@0.7.0" \
       io.casys.lowering="calculix.static.abaqus-deck@1.0" \

@@ -26,12 +26,12 @@ import {
 } from "../../../domain/kernel/deterministic-json.ts";
 import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
 import {
-  type StaticMechanicalCloseoutCriterion,
+  STATIC_MECHANICAL_CLOSEOUT_LIMITS,
+  STATIC_MECHANICAL_EVALUATION_FAMILY,
   type StaticMechanicalCloseoutConsequence,
+  type StaticMechanicalCloseoutCriterion,
   type StaticMechanicalEvaluationCloseoutAdmission,
   type StaticMechanicalProofLimitations,
-  STATIC_MECHANICAL_EVALUATION_FAMILY,
-  STATIC_MECHANICAL_CLOSEOUT_LIMITS,
   validateStaticMechanicalEvaluationCloseoutAdmission,
 } from "../../../domain/fea/evaluation-closeout/static-mechanical-evaluation-closeout-proposal.ts";
 import {
@@ -157,9 +157,12 @@ export async function resolveStaticMechanicalCloseoutEvidence(
   const { project, basis, snapshot } = input;
   if (
     snapshot.id !== basis.snapshotId || snapshot.revision !== basis.revision ||
-    snapshot.subject.id !== basis.subjectId || project.project.subjectId !== basis.subjectId
+    snapshot.subject.id !== basis.subjectId ||
+    project.project.subjectId !== basis.subjectId
   ) {
-    throw integrity("The requested static-mechanical closeout basis is not the exact project Thread snapshot.");
+    throw integrity(
+      "The requested static-mechanical closeout basis is not the exact project Thread snapshot.",
+    );
   }
   const run = selectExactCompletedFeaRun(project, basis, snapshot);
   const localOperation: ThreadOperationRef = {
@@ -190,10 +193,14 @@ export async function resolveStaticMechanicalCloseoutEvidence(
       `calculix-isolated-evidence-${executionArtifact.fingerprint.digest}` ||
     evaluationArtifact.id !==
       `calculix-isolated-syson-evaluation-${evaluationArtifact.fingerprint.digest}` ||
-    executionArtifact.uri !== dependencies.executionEvidence.uriFor(executionArtifact.fingerprint) ||
-    evaluationArtifact.uri !== dependencies.evaluationCaptures.uriFor(evaluationArtifact.fingerprint)
+    executionArtifact.uri !==
+      dependencies.executionEvidence.uriFor(executionArtifact.fingerprint) ||
+    evaluationArtifact.uri !==
+      dependencies.evaluationCaptures.uriFor(evaluationArtifact.fingerprint)
   ) {
-    throw integrity("The exact FEA execution or L4 capture URI/identity is not canonical.");
+    throw integrity(
+      "The exact FEA execution or L4 capture URI/identity is not canonical.",
+    );
   }
   const proofArtifact = selectProofArtifact(snapshot, evaluationArtifact);
   assertFresh(proofArtifact, "sealed proof");
@@ -226,15 +233,30 @@ export async function resolveStaticMechanicalCloseoutEvidence(
   );
   assertFresh(requirementsArtifact, "proof requirements");
   assertFresh(geometryArtifact, "proof geometry");
-  assertProofInputs(proofArtifact, proof, stepArtifact, geometryArtifact, requirementsArtifact);
-  const stepBytes = await readCanonicalStep(dependencies.canonicalAssets, stepArtifact, proof);
-  const execution = await dependencies.executionEvidence.read(executionArtifact.fingerprint);
+  assertProofInputs(
+    proofArtifact,
+    proof,
+    stepArtifact,
+    geometryArtifact,
+    requirementsArtifact,
+  );
+  const stepBytes = await readCanonicalStep(
+    dependencies.canonicalAssets,
+    stepArtifact,
+    proof,
+  );
+  const execution = await dependencies.executionEvidence.read(
+    executionArtifact.fingerprint,
+  );
   if (
-    !execution || execution.projectId !== project.project.id || execution.agentRunId !== run.id ||
+    !execution || execution.projectId !== project.project.id ||
+    execution.agentRunId !== run.id ||
     !fingerprintsEqual(execution.fingerprint, executionArtifact.fingerprint) ||
     !fingerprintsEqual(execution.proofFingerprint, await sha256Fingerprint(proof.case))
   ) {
-    throw integrity("The isolated execution evidence does not bind the exact project, run, proof, and artifact.");
+    throw integrity(
+      "The isolated execution evidence does not bind the exact project, run, proof, and artifact.",
+    );
   }
   if (
     execution.result.metrics.maximumDisplacement.value === undefined ||
@@ -243,7 +265,9 @@ export async function resolveStaticMechanicalCloseoutEvidence(
     proof.case.expectedCadArtifact.sha256 !== stepArtifact.fingerprint.digest ||
     proof.case.expectedCadArtifact.bytes !== stepBytes.byteLength
   ) {
-    throw integrity("The reopened canonical STEP does not match the sealed mechanical proof.");
+    throw integrity(
+      "The reopened canonical STEP does not match the sealed mechanical proof.",
+    );
   }
   const capture = await readEvaluationCapture(
     dependencies,
@@ -322,10 +346,14 @@ function selectExactCompletedFeaRun(
       deterministicJson(run.resultSnapshot) === deterministicJson(expectedSnapshot);
   });
   if (candidates.length === 0) {
-    throw notFound("No completed verify.run-fea-static-proof@3 result is the exact current Thread tip.");
+    throw notFound(
+      "No completed verify.run-fea-static-proof@3 result is the exact current Thread tip.",
+    );
   }
   if (candidates.length !== 1) {
-    throw ambiguous("More than one completed static FEA run claims the exact current Thread tip.");
+    throw ambiguous(
+      "More than one completed static FEA run claims the exact current Thread tip.",
+    );
   }
   const run = candidates[0]!;
   const work = project.workItems.find((item) => item.id === run.workItemId);
@@ -352,7 +380,9 @@ function selectExactCompletedFeaRun(
     run.basis.subjectId !== basis.subjectId ||
     run.basis.snapshotId === "latest"
   ) {
-    throw integrity("The completed static FEA run does not retain an exact Thread basis.");
+    throw integrity(
+      "The completed static FEA run does not retain an exact Thread basis.",
+    );
   }
   return run;
 }
@@ -375,9 +405,14 @@ function selectProofArtifact(
   const candidates = evaluationArtifact.inputArtifactIds.map((id) =>
     snapshot.artifacts.find((artifact) => artifact.id === id)
   ).filter((artifact): artifact is ThreadArtifact =>
-    !!artifact && artifact.producer.tool === PROOF_SEAL_TOOL && artifact.kind === "document"
+    !!artifact && artifact.producer.tool === PROOF_SEAL_TOOL &&
+    artifact.kind === "document"
   );
-  return uniqueArtifact(candidates, () => true, "sealed proof referenced by L4 capture");
+  return uniqueArtifact(
+    candidates,
+    () => true,
+    "sealed proof referenced by L4 capture",
+  );
 }
 
 async function readSealedProof(
@@ -392,15 +427,22 @@ async function readSealedProof(
   }
   if (
     !opened || opened.uri !== artifact.uri || opened.mediaType !== artifact.mediaType ||
-    opened.sha256 !== artifact.fingerprint.digest || opened.byteCount !== opened.bytes.byteLength ||
+    opened.sha256 !== artifact.fingerprint.digest ||
+    opened.byteCount !== opened.bytes.byteLength ||
     await fingerprintResourceBytes(opened.bytes) !== artifact.fingerprint.digest
   ) {
-    throw integrity("The sealed proof CAS bytes do not match the exact Thread artifact.");
+    throw integrity(
+      "The sealed proof CAS bytes do not match the exact Thread artifact.",
+    );
   }
   try {
     return await parseSealedStaticProofCapture(opened.bytes);
   } catch (error) {
-    throw integrity(`The sealed proof is not a canonical mechanical proof capture: ${describe(error)}`);
+    throw integrity(
+      `The sealed proof is not a canonical mechanical proof capture: ${
+        describe(error)
+      }`,
+    );
   }
 }
 
@@ -414,9 +456,12 @@ function assertProofIdentity(
     proof.case.project.id !== project.project.id ||
     proof.case.project.subjectId !== basis.subjectId ||
     proof.trustedRunId !== artifact.producer.runId ||
-    artifact.producer.tool !== PROOF_SEAL_TOOL || artifact.producer.serverId !== "digital-thread"
+    artifact.producer.tool !== PROOF_SEAL_TOOL ||
+    artifact.producer.serverId !== "digital-thread"
   ) {
-    throw integrity("The sealed proof is foreign to the exact project, subject, or producer run.");
+    throw integrity(
+      "The sealed proof is foreign to the exact project, subject, or producer run.",
+    );
   }
 }
 
@@ -428,11 +473,16 @@ function exactArtifact(
   label: string,
 ): ThreadArtifact {
   const candidates = snapshot.artifacts.filter((artifact) => artifact.id === id);
-  if (candidates.length === 0) throw notFound(`The ${label} named by the sealed proof is absent.`);
-  if (candidates.length !== 1) throw ambiguous(`The ${label} named by the sealed proof is ambiguous.`);
+  if (candidates.length === 0) {
+    throw notFound(`The ${label} named by the sealed proof is absent.`);
+  }
+  if (candidates.length !== 1) {
+    throw ambiguous(`The ${label} named by the sealed proof is ambiguous.`);
+  }
   const artifact = candidates[0]!;
   if (
-    artifact.fingerprint.algorithm !== "sha256" || artifact.fingerprint.digest !== digest ||
+    artifact.fingerprint.algorithm !== "sha256" ||
+    artifact.fingerprint.digest !== digest ||
     artifact.producer.runId !== producerRunId
   ) {
     throw integrity(`The ${label} identity does not match the sealed proof.`);
@@ -449,12 +499,15 @@ function assertProofInputs(
 ): void {
   const expected = [proof.geometry.id, proof.requirements.id, proof.step.id].sort();
   if (
-    deterministicJson([...proofArtifact.inputArtifactIds].sort()) !== deterministicJson(expected) ||
+    deterministicJson([...proofArtifact.inputArtifactIds].sort()) !==
+      deterministicJson(expected) ||
     proof.case.expectedCadArtifact.sha256 !== step.fingerprint.digest ||
     proof.case.expectedCadArtifact.bytes !== proof.step.bytes ||
     geometry.id !== proof.geometry.id || requirements.id !== proof.requirements.id
   ) {
-    throw integrity("The sealed proof, canonical STEP, geometry, and requirements do not cross-attest.");
+    throw integrity(
+      "The sealed proof, canonical STEP, geometry, and requirements do not cross-attest.",
+    );
   }
 }
 
@@ -551,7 +604,9 @@ function exactCriteria(
   threadRequirementIds: ReadonlyMap<string, string>,
 ): StaticMechanicalCloseoutCriterion[] {
   if (expected.length !== proof.case.requirements.length) {
-    throw integrity("The L4 evaluation does not cover every declared mechanical criterion.");
+    throw integrity(
+      "The L4 evaluation does not cover every declared mechanical criterion.",
+    );
   }
   return proof.case.requirements.map((requirement, index) => {
     const evaluated = expected[index];
@@ -569,8 +624,12 @@ function exactCriteria(
       throw integrity("The L4 evaluation criteria are not in sealed-proof order.");
     }
     const matches = snapshot.evaluations.filter((item) => item.id === evaluated.id);
-    if (matches.length === 0) throw notFound(`The L4 evaluation for ${requirement.id} is absent.`);
-    if (matches.length !== 1) throw ambiguous(`The L4 evaluation for ${requirement.id} is ambiguous.`);
+    if (matches.length === 0) {
+      throw notFound(`The L4 evaluation for ${requirement.id} is absent.`);
+    }
+    if (matches.length !== 1) {
+      throw ambiguous(`The L4 evaluation for ${requirement.id} is ambiguous.`);
+    }
     const actual = matches[0]!;
     if (
       actual.freshness.status !== "fresh" ||
@@ -578,7 +637,9 @@ function exactCriteria(
       actual.evidenceArtifactIds.length !== 1 ||
       actual.evidenceArtifactIds[0] !== evaluationArtifact.id
     ) {
-      throw integrity(`The L4 evaluation for ${requirement.id} does not exactly bind the current FEA evidence.`);
+      throw integrity(
+        `The L4 evaluation for ${requirement.id} does not exactly bind the current FEA evidence.`,
+      );
     }
     return {
       proofCriterionId: requirement.id,

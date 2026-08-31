@@ -3,7 +3,7 @@
  * `analyze.seal-sensitivity-study@1` MRTR may bind.
  *
  * cadSource is an admission artifact URI + sha256. A cad-model,
- * `design.write-geometry@1` STEP, isolated-geometry document, or recipeSource
+ * `design.write-geometry@1` STEP, isolated-geometry document, or retired source
  * 1.0 is a lookalike and never a cadSource.
  */
 

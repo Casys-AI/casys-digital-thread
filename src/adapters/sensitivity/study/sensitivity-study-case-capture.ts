@@ -9,10 +9,10 @@ import {
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
 } from "../../../domain/sensitivity/study/sensitivity-study-proposal.ts";
 import {
-  SENSITIVITY_STUDY_CASE_V2_SCHEMA,
-  type SensitivityStudyCaseV2,
-  validateSensitivityStudyCaseV2,
-} from "../../../domain/sensitivity/study/sensitivity-study-v2.ts";
+  SENSITIVITY_STUDY_CASE_V3_SCHEMA,
+  type SensitivityStudyCaseV3,
+  validateSensitivityStudyCaseV3,
+} from "../../../domain/sensitivity/study/sensitivity-study-v3.ts";
 import {
   exactRecord,
   literalValue,
@@ -41,7 +41,7 @@ export interface SensitivityStudyCaseCapture {
   readonly trustedRunId: string;
   readonly caseDigest: string;
   readonly canonicalCaseText: string;
-  readonly studyCase: SensitivityStudyCaseV2;
+  readonly studyCase: SensitivityStudyCaseV3;
   readonly admissionArtifact: {
     readonly id: string;
     readonly fingerprint: ContentFingerprint;
@@ -89,8 +89,8 @@ export async function validateSensitivityStudyCaseCapture(
   if (Number.isNaN(Date.parse(sealedAt))) {
     throw new TypeError("$sensitivityStudyCaseCapture.sealedAt must be ISO-8601.");
   }
-  const studyCase = validateSensitivityStudyCaseV2(root.studyCase);
-  if (studyCase.schemaVersion !== SENSITIVITY_STUDY_CASE_V2_SCHEMA) {
+  const studyCase = validateSensitivityStudyCaseV3(root.studyCase);
+  if (studyCase.schemaVersion !== SENSITIVITY_STUDY_CASE_V3_SCHEMA) {
     throw new TypeError("$sensitivityStudyCaseCapture.studyCase schema is divergent.");
   }
   const canonicalCaseText = nonEmptyText(

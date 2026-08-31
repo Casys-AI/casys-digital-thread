@@ -50,7 +50,10 @@ function capture() {
   return {
     schemaVersion: "evaluation-closeout-capture/1.0" as const,
     kind: "static-mechanical-evaluation-closeout" as const,
-    operation: { id: "decide.reject-evaluation-closeout" as const, version: "1" as const },
+    operation: {
+      id: "decide.reject-evaluation-closeout" as const,
+      version: "1" as const,
+    },
     trustedRunId: "run-closeout",
     decisionId: "decision-closeout",
     sealedAt: "2026-08-22T00:00:00.000Z",
@@ -89,7 +92,7 @@ Deno.test("static-mechanical closeout capture is canonical, exhaustive, and prov
     rejectionGrants: "none",
   });
   assertEquals(text.includes("provider"), false);
-  assertEquals(text.includes("engineCalls\":\"none"), true);
+  assertEquals(text.includes('engineCalls":"none'), true);
 });
 
 Deno.test("static-mechanical closeout capture rejects a proof-limitation mismatch", () => {

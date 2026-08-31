@@ -8,7 +8,10 @@
  */
 
 import { exactRecord, nonEmptyText } from "../../kernel/case-validation.ts";
-import { deterministicJson, sha256Fingerprint } from "../../kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../kernel/deterministic-json.ts";
 import { VERIFY_SEAL_PROOF_CASE_OPERATION } from "../../fea/seal-case/fea-proof-proposal.ts";
 import {
   type ReadySensitivityCatalogOffer,

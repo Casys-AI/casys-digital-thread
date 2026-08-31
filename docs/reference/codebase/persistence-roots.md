@@ -5,14 +5,43 @@ Audience: agent · Diátaxis: reference · Kind: contract
 Census of `state/fixtures/` and gitignored `state/local/` roots. These directories are
 storage, not product proof.
 
-Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays
-on [engineering domains](../domains/README.md).
+Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays on
+[engineering domains](../domains/README.md).
+
+## Capture-store trust boundary
+
+`FileCaptureStore` resolves a relative CAS root from the captured working directory and
+walks only below that anchored root; an absolute root is instead walked from `/`.
+Configured paths are lexical and bounded, then every existing component is checked with
+`lstat` and rechecked before use. Symlinked roots, ancestors, and final capture files
+are refused, while a component that changes during the walk fails closed.
+
+The final-file check is deliberately open-first: the opened file handle is recrossed
+against the current pathname by file identity before any bytes are read. This closes the
+`lstat`-then-read substitution race. New captures are written and synced under a
+temporary name, published with no-overwrite linking, reread, and treated as an
+idempotent success only when the existing bytes are exact. This is a storage-integrity
+boundary, not an execution, approval, qualification, or verdict boundary.
 
 ## Source map
 
 #### [`state/fixtures/`](../../../state/fixtures)
 
 Explicitly labelled demo evidence
+
+#### `state/local/capability-runtime-host/`
+
+Host-local admin lock, journal, leases, opaque host identity, qualification attempt WAL
+and append-only qualification attestations. Not Thread, CAS, project evidence, or a
+Workbench command surface. The Chrono probe writes `qualification-attempts/` and
+`qualification-attestations/` only.
+
+#### `state/local/project-capability-ledgers/`
+
+Append-only `project-capability-ledger/1.0` revisions, prepared envelopes, and
+recoverable pending/claim material for each brief-bound operational authorization.
+Prepared or pending material alone is not authority. This root is distinct from Thread,
+CAS, MRTR, engineering result, and Workbench command state.
 
 #### `state/local/engineering-projects/`
 
@@ -22,6 +51,20 @@ Ignored immutable active project revisions and CAS claims
 
 Ignored append-only project source workspace events (`NNNNNNNNNN.claim` then `.json`).
 Rebuildable in-memory index. Not Thread evidence and not a per-mutation snapshot dump
+
+#### `state/local/mechanics/prescribed-kinematics/captures/`
+
+Five immutable CAS lanes for the exact L1 case, factual L3 observation, reviewed method,
+provider-free L4 evaluation, and human L5 closeout. They preserve separate evidence
+levels; the directory, a provider receipt, and a later artifact never promote an earlier
+level or create a verdict by themselves.
+
+#### `state/local/mechanics/prescribed-kinematics/observation-attempts/`
+
+Append-only product L3 attempt WAL and create-new dispatch claims for prescribed
+kinematics. After the durable dispatch boundary it permits only same-request readback;
+`quarantined` does not authorize a redispatch. This root is distinct from the private
+host qualification WAL under `capability-runtime-host/`.
 
 #### `state/local/engineering-project-run-leases/`
 
@@ -118,6 +161,14 @@ WAL for `industrialize.run-dfm-checks@1`; not evidence
 Content-addressed SysON join of study-base observations for
 `verify.evaluate-sensitivity-base@1`
 
+#### `state/local/sensitivity-runtime-provenance-captures/`
+
+Content-addressed L3 `sensitivity-runtime-provenance/1.0` records for the actual
+server-resolved recorded CalculiX runtime and the base then stepped recorded captures,
+including their request, readback, and ordered-resource-capture identities. Separate
+from the scientific sensitivity study capture; not a provider qualification, solver
+verdict, or evaluation.
+
 #### `state/local/sensitivity-experience/`
 
 Installation-private project-neutral records, server-private origins, reviews/receipts,
@@ -180,18 +231,34 @@ only, never an approval or execution authority
 
 Current analysis-bearing `geometry-draft-capture/1.2` and `2.1`, plus
 `geometry-module-draft-capture/1.0`. The module draft binds the exact
-`geometry-module-input-bundle/1.0` identity, provider-neutral assembly receipt, reopened child
-capture/STEP identities, and produced assembly STEP plus binary GLB. These records never
-enter a `ThreadSnapshot`. Older draft schemas are unsupported.
+`geometry-module-input-bundle/1.0` identity, provider-neutral assembly receipt, reopened
+child capture/STEP identities, and produced assembly STEP plus binary GLB. These records
+never enter a `ThreadSnapshot`. Older draft schemas are unsupported.
 
 #### `state/local/geometry-draft-assets/<sha256>`
 
-Raw STEP, STL, or binary GLB preview bytes keyed by their recomputed SHA-256; served
-read-only by `/api/draft-assets/<digest>`
+Raw STEP, STL, or binary GLB draft bytes keyed by their recomputed SHA-256. They remain
+server-internal and are reopened only by the authorized CAD MRTR, execution, and seal
+flows; the Workbench exposes no draft-byte route
+
+#### `state/local/thread-viewer-apps/registry.json`
+
+Explicit `thread-viewer-app-registry/1.0` registrations for exact Project/Thread bases,
+anchors, App identities, whole-view resources, session schemas and opaque payloads. This
+file is written by a trusted registrar outside the Workbench. The Workbench is a
+read-only consumer: an absent or invalid registry projects zero App sessions.
+
+#### `state/local/thread-viewer-apps/objects/<sha256>`
+
+Immutable manifest JSON, whole-App HTML and registered read-resource bytes named by
+their exact SHA-256. The packaged Desktop and standalone BFF reopen and rehash these
+objects before projection or service. The browser never frames the stored HTML route
+directly; it verifies MIME, byte count and digest again, applies the staged CSP
+transform and frames only the resulting Blob document.
 
 #### `state/local/geometry-captures/`
 
 Current `geometry-capture/1.2` and `2.1`, plus `geometry-module-capture/1.0`; records
 seal verified immediate-child capture plus authoritative STEP identities, predecessor
-lineage, input-bundle identity, provider-neutral assembly receipt, and independent assembly STEP plus
-binary GLB assets. Older capture schemas are unsupported.
+lineage, input-bundle identity, provider-neutral assembly receipt, and independent
+assembly STEP plus binary GLB assets. Older capture schemas are unsupported.

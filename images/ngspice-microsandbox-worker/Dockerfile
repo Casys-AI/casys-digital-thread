@@ -28,7 +28,6 @@ RUN apt-get update \
 
 LABEL org.opencontainers.image.title="Casys ngspice worker" \
       org.opencontainers.image.description="Fixed local Microsandbox worker: generic circuit-only SPICE operating-point from /input/source.cir" \
-      org.opencontainers.image.licenses="Apache-2.0" \
       io.casys.execution-profile="spice-circuit-closed-subset-v1" \
       io.casys.ngspice.package="${NGSPICE_VERSION}" \
       io.casys.admitted-profile="spice-circuit-closed-subset-v1@1.0.0" \

@@ -19,8 +19,7 @@ let status_schema = #{
 };
 
 phase("Implement");
-let impl = "Implement the next Build123d closed-subset slice in ";
-impl += "/Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
+let impl = "Implement the next Build123d closed-subset slice in the current checkout (this repository). ";
 impl += "Read src/adapters/analyzers/qualified-build123d-source-analyzer.ts, ";
 impl += "src/adapters/analyzers/qualified-build123d-source-analyzer_test.ts, ";
 impl += "and ALLOWED_BUILD123D_NAMES in src/domain/engineering/geometry-script-validation.ts. ";
@@ -40,7 +39,7 @@ if (implemented == () || !implemented.success || implemented.output.ok != true) 
 }
 
 phase("Verify");
-let ver = "Run only these Deno tests in /Users/erwanpesle/Documents/GitHub/casys-digital-thread: ";
+let ver = "Run only these Deno tests in the current checkout (this repository): ";
 ver += "deno test --allow-read --allow-write --allow-net=127.0.0.1,localhost --allow-env ";
 ver += "src/adapters/analyzers/qualified-build123d-source-analyzer_test.ts. ";
 ver += "Do not change production code unless a test you just added is red for a real bug. ";

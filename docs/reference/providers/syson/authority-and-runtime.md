@@ -2,9 +2,10 @@
 
 Audience: both · Diátaxis: reference · Kind: runtime contract
 
-The configured SysON provider advertises 31 tools and six provider views. Digital Thread
-does not hand that inventory to an agent. Registered operations currently compose only
-nine fixed provider tool names, with code-owned arguments and response validators.
+The configured SysON provider advertises a broader provider-owned tool and view surface.
+Digital Thread does not hand that inventory to an agent. Registered operations compose
+only the fixed provider calls listed below, with code-owned arguments and response
+validators.
 
 Authorities:
 
@@ -14,15 +15,15 @@ Authorities:
 
 ## Registered operation to provider call
 
-| Registered operation                                | Fixed SysON calls                                                                                                                                           |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `architecture.seed-syson-model@2`                   | `syson_project_create`, `syson_model_create`, `syson_element_get`                                                                                           |
-| `model.write-architecture@1`                        | `syson_element_children`, `syson_query_aql`, `syson_element_insert_sysml`                                                                                   |
-| `model.capture-part-definitions@1`                  | `syson_element_get`, `syson_element_children`, `syson_query_aql`                                                                                            |
-| `model.write-requirements@1`                        | `syson_element_get`, `syson_element_children`, `syson_query_aql`, `syson_element_insert_sysml`, `syson_constraint_extract`, optional `syson_element_delete` |
-| `model.write-sensitivity-edges@1`                   | `syson_element_insert_sysml`, `syson_constraint_extract`                                                                                                    |
-| `verify.evaluate-sensitivity-base@1`                | `syson_constraint_evaluate`                                                                                                                                 |
-| `verify.run-fea-static-proof@3`                     | `syson_constraint_evaluate` after local proof publication                                                                                                   |
+| Registered operation                 | Fixed SysON calls                                                                                                                                           |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `architecture.seed-syson-model@2`    | `syson_project_create`, `syson_model_create`, `syson_element_get`                                                                                           |
+| `model.write-architecture@1`         | `syson_element_children`, `syson_query_aql`, `syson_element_insert_sysml`                                                                                   |
+| `model.capture-part-definitions@1`   | `syson_element_get`, `syson_element_children`, `syson_query_aql`                                                                                            |
+| `model.write-requirements@1`         | `syson_element_get`, `syson_element_children`, `syson_query_aql`, `syson_element_insert_sysml`, `syson_constraint_extract`, optional `syson_element_delete` |
+| `model.write-sensitivity-edges@1`    | `syson_element_insert_sysml`, `syson_constraint_extract`                                                                                                    |
+| `verify.evaluate-sensitivity-base@1` | `syson_constraint_evaluate`                                                                                                                                 |
+| `verify.run-fea-static-proof@3`      | `syson_constraint_evaluate` after local proof publication                                                                                                   |
 
 The union is:
 
@@ -41,8 +42,8 @@ syson_constraint_evaluate
 `architecture.author-inspection-drone@3` and
 `model.capture-inspection-drone-part-definitions@1` are retired and unregistered;
 `syson_part_structure` is no longer composed. Generic SysML uses
-`model.write-architecture@1` or `model.seal-architecture-sysml@1`. Historical probes
-may also use `syson_search`, `syson_project_list`, `syson_project_delete` or
+`model.write-architecture@1` or `model.seal-architecture-sysml@1`. Historical probes may
+also use `syson_search`, `syson_project_list`, `syson_project_delete` or
 `syson_constraint_solve`; those scripts are not registered project operations.
 
 The shared backend MCP client is transport-generic and does not enforce a SysON

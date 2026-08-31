@@ -5,16 +5,17 @@ Audience: agent · Diátaxis: reference · Kind: contract
 Census of read-only Workbench projections, Console control-plane files, and Desktop
 packaging. The Workbench receives no commands.
 
-Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays
-on [engineering domains](../domains/README.md).
+Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays on
+[engineering domains](../domains/README.md).
 
 ## Source map
 
 #### [`src/presentation/workbench/thread/`](../../../src/presentation/workbench/thread)
 
 Browser-safe Thread graph, evidence, Engineering Case catalog (`engineering-cases/1.0`),
-architecture and component read models for BFF GET + SSE. Presentation only; no command
-authority. CAD/Modelica/SPICE admissions are not Engineering Cases.
+and exact viewer-session bindings for BFF GET + SSE. Presentation only; no command
+authority and no embedded domain-viewer payloads. CAD/Modelica/SPICE admissions are not
+Engineering Cases.
 
 #### [`src/presentation/workbench/engineering/`](../../../src/presentation/workbench/engineering)
 
@@ -33,15 +34,20 @@ Workbench presentation contract.
 
 #### [`src/application/control-plane/`](../../../src/application/control-plane)
 
-Console application service (`console_*`) and probe / container-observation ports. Not a
-human page; `preview:browser` refuses. HTTP probe lives in `adapters/shared/mcp/`;
-Docker observer is `adapters/shared/docker-observer.ts`. The retired
-`ObservedRunCatalog` / `ModelicaRunObserver` merge is gone.
+Console application service (`console_*`), probe / container-observation ports, and the
+effect-free project capability-demand compiler. Not a human page; `preview:browser`
+refuses. HTTP probe lives in `adapters/shared/mcp/`; Docker observer is
+`adapters/shared/docker-observer.ts`. The retired `ObservedRunCatalog` /
+`ModelicaRunObserver` merge is gone. `CapabilityRuntimeQualificationService` is a
+private host-local Chrono probe (`review`/`apply`/`recover` only); it is not a
+Workbench, MCP or project command.
 
 #### [`src/adapters/control-plane/`](../../../src/adapters/control-plane)
 
-Control-plane adapters: fleet-manifest loader and checked-in run-fixture catalog. Not
-Thread projectors. Shared MCP/CAS/WAL helpers live under `adapters/shared/`
+Control-plane adapters: fleet-manifest loader, checked-in run-fixture catalog, and the
+Behave capability-demand composition that projects code-owned operation routes from the
+main registry. Not Thread projectors. Shared MCP/CAS/WAL helpers live under
+`adapters/shared/`.
 
 #### [`src/tools/control-plane.ts`](../../../src/tools/control-plane.ts)
 
@@ -49,20 +55,25 @@ MCP `console_snapshot`, `console_server_detail`, `console_run_list`,
 `console_run_detail`, and leftover App-only `console_refresh`. Must not register
 `ui://casys-digital-thread/console`
 
-#### [`src/adapters/thread/architecture-sysml-seal-workbench-enricher.ts`](../../../src/adapters/thread/architecture-sysml-seal-workbench-enricher.ts)
+#### [`src/adapters/thread/thread-viewer-sessions-projector.ts`](../../../src/adapters/thread/thread-viewer-sessions-projector.ts)
 
-Post-projection BFF enricher: reopens seal + source-analysis to attach documentary
-symbol ids. Never invents part-definition/part-usage nodes
+Projects only explicit, exact whole-App bindings for a recorded Thread or Project-review
+anchor. It does not reopen SysML/CAD payloads, discover provider tools or infer an App
+from graph labels.
 
-#### [`src/adapters/thread/sealed-cad-lever-graph.ts`](../../../src/adapters/thread/sealed-cad-lever-graph.ts)
+#### [`src/adapters/thread/file-thread-viewer-app-registry.ts`](../../../src/adapters/thread/file-thread-viewer-app-registry.ts)
 
-Pure Evidence overlay: `cad-lever` nodes and `parameterizes` edges onto existing
-AttributeUsage nodes
+Read-only file/CAS gateway for explicit whole-App registrations. A trusted external
+registrar writes `state/local/thread-viewer-apps/registry.json` and the immutable
+`state/local/thread-viewer-apps/objects/` bytes. Standalone and packaged Desktop BFFs
+reuse this adapter; missing, semantically mismatched or tampered input yields zero
+sessions and no launch bytes.
 
-#### [`src/adapters/thread/sealed-cad-lever-workbench-enricher.ts`](../../../src/adapters/thread/sealed-cad-lever-workbench-enricher.ts)
+#### [`src/adapters/thread/product-navigation-technical-admission-source-reader.ts`](../../../src/adapters/thread/product-navigation-technical-admission-source-reader.ts)
 
-Post-projection BFF enricher: reopens `compile.seal-admission@3` CAS. Missing/unreadable
-seals add nothing
+Backend-only recross for the separate product-navigation evidence reader. It may reopen
+an exact sealed admission to attach source files to an agent navigation response, but it
+never enriches or changes `ThreadWorkbenchSnapshot`.
 
 #### [`src/adapters/thread/engineering-workbench-projector.ts`](../../../src/adapters/thread/engineering-workbench-projector.ts)
 
@@ -110,8 +121,11 @@ MCP App bundle. `preview:browser` refuses
 Packaged Desktop Workbench privilege domain: fixed CLI/contracts, read-only BFF rooted
 in the existing Application Support control-plane workspace, host-only session
 capability, exact GET/HEAD/SSE proxy allowlist, inspect/reconnect/owned-stop lifecycle,
-and closed compile permissions. It owns no project command, MCP/provider credential,
-Docker/process authority, or second store
+and closed compile permissions. The allowlist includes exact viewer-session GET/SSE and
+content-addressed viewer-App launch/resource routes, but excludes `/api/draft-assets`.
+The proxy preserves only a strictly shaped upstream Workbench nonce policy and permits
+only `blob:` frames; the App HTML route itself is never assigned to the iframe. It owns
+no project command, MCP/provider credential, Docker/process authority, or second store
 
 #### [`desktop/src/application/shell-handler.ts`](../../../desktop/src/application/shell-handler.ts)
 

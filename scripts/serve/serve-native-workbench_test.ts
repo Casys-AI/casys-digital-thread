@@ -29,12 +29,17 @@ import type { ThreadSnapshot } from "../../src/domain/thread/thread-snapshot.ts"
 import type { ThreadSnapshotStore } from "../../src/domain/thread/thread-snapshot-store.ts";
 import {
   createFocusedWorkspaceHandler,
+  createNativeWorkbenchCapabilityWorkbench,
   createNativeWorkbenchHandler,
   hasUnattachedDurableProjectOperationForTest,
+  injectMcpAppScriptNonce,
+  MCP_APP_SCRIPT_NONCE_META_NAME,
+  projectViewerReviewAnchors,
   resolveNativeWorkbenchProjectId,
   resolveNativeWorkbenchStartupTarget,
   resolveNativeWorkbenchSubjectId,
   resolveWorkbenchUiAssetPath,
+  ThreadViewerSessionsSequencer,
 } from "./serve-native-workbench.ts";
 import { verifiedArchitectureNavigationFixture } from "../../src/adapters/architecture/renderer/capture-product-structure-traversal_test.ts";
 import { sampleAgentResourceReference } from "../../src/testing/agent-resource-test-support.ts";
@@ -43,12 +48,202 @@ import {
   emptyProjectSourceWorkspace,
 } from "../../src/domain/project-source-workspace/transitions.ts";
 import type { ProjectSourceWorkspaceState } from "../../src/domain/project-source-workspace/types.ts";
+import { FileByteStore } from "../../src/adapters/shared/cas/file-byte-store.ts";
+import {
+  FileThreadViewerAppRegistry,
+  THREAD_VIEWER_APP_REGISTRY_SCHEMA,
+} from "../../src/adapters/thread/file-thread-viewer-app-registry.ts";
+import { sha256Fingerprint } from "../../src/domain/kernel/deterministic-json.ts";
+import type {
+  ThreadViewerAppBinding,
+  ThreadViewerSessionsProjection,
+} from "../../src/presentation/workbench/thread/viewer-sessions.ts";
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
   return [...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+}
+
+Deno.test("Workbench HTML receives one strict document-scoped MCP App nonce", () => {
+  const nonce = "A".repeat(43);
+  assertEquals(
+    injectMcpAppScriptNonce(
+      "<!doctype html><html><head><title>Workbench</title></head><body></body></html>",
+      nonce,
+    ),
+    `<!doctype html><html><head><meta name="${MCP_APP_SCRIPT_NONCE_META_NAME}" content="${nonce}"><title>Workbench</title></head><body></body></html>`,
+  );
+  assertThrows(
+    () => injectMcpAppScriptNonce("<html></html>", "not-a-nonce"),
+    TypeError,
+  );
+  assertThrows(
+    () =>
+      injectMcpAppScriptNonce(
+        `<html><head><meta name="${MCP_APP_SCRIPT_NONCE_META_NAME}" content="${nonce}"></head></html>`,
+        nonce,
+      ),
+    TypeError,
+  );
+});
+
+async function writeViewerAppRegistryFixture(
+  registryPath: string,
+  objectDirectory: string,
+  project: EngineeringProjectSnapshot,
+) {
+  const inputFingerprint = `sha256:${"1".repeat(64)}`;
+  const payload = {
+    schemaVersion: "io.casys.mcp-digital-thread.project-review-session/1.0",
+    kind: "project-review",
+    status: "provisional",
+    basis: {
+      projectId: project.project.id,
+      projectRevision: project.revision,
+      subjectId: project.project.subjectId,
+    },
+    anchor: {
+      kind: "project-review",
+      id: "brief:r2",
+      revision: project.revision,
+      fingerprint: inputFingerprint,
+    },
+    review: {
+      kind: "brief",
+      proposalId: "brief:r2",
+      question: "Approve this exact proposed brief?",
+      parameters: [],
+      inputFingerprint,
+    },
+  } as const;
+  const manifest = new TextEncoder().encode(JSON.stringify({
+    schemaVersion: "io.casys.mcp.view-app-manifest/1.0",
+    app: {
+      id: "io.casys.mcp-digital-thread.review",
+      title: "Exact project review",
+      version: "1.0.0",
+    },
+    resources: [{
+      uri: "ui://mcp-digital-thread/project-review",
+      ownership: "whole-view",
+      acceptedActions: ["viewer.session.apply"],
+      sessionSchemas: [payload.schemaVersion],
+      resultSchemas: [
+        "io.casys.mcp-digital-thread.project-review-result/1.0",
+      ],
+    }],
+  }));
+  const html = new TextEncoder().encode(
+    "<!doctype html><html><head><meta charset=utf-8><title>Exact project review</title></head><body><script type=\"module\">const c=new MessageChannel();c.port1.start();parent.postMessage({schemaVersion:'io.casys.mcp-app-host.resource-read/1.0',type:'mcp-app-host.resource.port.offer'},'*',[c.port2]);</script></body></html>",
+  );
+  const manifestDigest = await sha256Hex(manifest);
+  const htmlDigest = await sha256Hex(html);
+  const manifestFingerprint = `sha256:${manifestDigest}`;
+  const htmlFingerprint = `sha256:${htmlDigest}`;
+  const payloadSeal = await sha256Fingerprint(payload);
+  const binding: ThreadViewerAppBinding = {
+    basis: {
+      projectId: project.project.id,
+      projectRevision: project.revision,
+      subjectId: project.project.subjectId,
+    },
+    anchor: {
+      kind: "project-review",
+      id: "brief:r2",
+      revision: project.revision,
+      fingerprint: inputFingerprint,
+    },
+    app: { id: "io.casys.mcp-digital-thread.review", version: "1.0.0" },
+    manifest: {
+      uri: "ui://mcp-digital-thread/app-manifest",
+      fingerprint: manifestFingerprint,
+    },
+    resource: {
+      uri: "ui://mcp-digital-thread/project-review",
+      fingerprint: htmlFingerprint,
+      ownership: "whole-view",
+      mimeType: "text/html;profile=mcp-app",
+      bytes: html.byteLength,
+    },
+    readResources: [],
+    session: {
+      action: "viewer.session.apply",
+      schema: payload.schemaVersion,
+      payload,
+      fingerprint: `${payloadSeal.algorithm}:${payloadSeal.digest}`,
+    },
+  };
+  const store = new FileByteStore({
+    kind: "thread-viewer-app-object",
+    directory: objectDirectory,
+    uriNamespace: "thread-viewer-apps",
+    label: "Thread viewer App object",
+  });
+  await store.save({ algorithm: "sha256", digest: manifestDigest }, manifest);
+  await store.save({ algorithm: "sha256", digest: htmlDigest }, html);
+  const registryText = JSON.stringify({
+    schemaVersion: THREAD_VIEWER_APP_REGISTRY_SCHEMA,
+    bindings: [binding],
+    objects: [{
+      role: "manifest",
+      mimeType: "application/json",
+      bytes: manifest.byteLength,
+      fingerprint: manifestFingerprint,
+    }, {
+      role: "whole-view",
+      mimeType: "text/html;profile=mcp-app",
+      bytes: html.byteLength,
+      fingerprint: htmlFingerprint,
+    }],
+  });
+  await Deno.writeTextFile(registryPath, registryText);
+  return { html, htmlDigest, payload, registryText };
+}
+
+function viewerSessionsEventReader(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+) {
+  let pending = "";
+  const decoder = new TextDecoder();
+  return async (): Promise<{
+    sequence: number;
+    sessions: Array<{ launchUri?: string }>;
+  }> => {
+    while (true) {
+      const boundary = pending.indexOf("\n\n");
+      if (boundary >= 0) {
+        const block = pending.slice(0, boundary);
+        pending = pending.slice(boundary + 2);
+        if (!block.includes("event: viewer-sessions")) continue;
+        const data = /^data: (.+)$/m.exec(block)?.[1];
+        if (!data) continue;
+        return JSON.parse(data);
+      }
+      const result = await readStreamWithTimeout(reader);
+      if (result.done) throw new Error("viewer sessions SSE ended early");
+      pending += decoder.decode(result.value, { stream: true });
+    }
+  };
+}
+
+function readStreamWithTimeout(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error("timed out waiting for viewer sessions SSE")),
+      2_000,
+    );
+    reader.read().then((result) => {
+      clearTimeout(timer);
+      resolve(result);
+    }, (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
 }
 
 Deno.test("native Workbench resolves an agent-selected project and its subject", async () => {
@@ -72,7 +267,11 @@ Deno.test("native Workbench resolves an agent-selected project and its subject",
     "subject-one",
   );
   assertEquals(
-    await resolveNativeWorkbenchSubjectId("project-one", "subject-override", projects),
+    await resolveNativeWorkbenchSubjectId(
+      "project-one",
+      "subject-override",
+      projects,
+    ),
     "subject-override",
   );
 });
@@ -167,6 +366,131 @@ Deno.test("native Workbench health is independent of focus and project state", a
   assertEquals(focusReads, 1);
 });
 
+Deno.test("native Workbench exposes the redacted capability projection by GET only", async () => {
+  const project = projectFixture(
+    "project-capabilities",
+    "subject-capabilities",
+  );
+  let reads = 0;
+  const projection = {
+    schemaVersion: "project-capability-workbench/1.0",
+    project: {
+      id: "project-capabilities",
+      snapshotId: project.id,
+      revision: project.revision,
+    },
+    authorization: { status: "not-authorized", fingerprint: null },
+    demand: {
+      plannedCeiling: {
+        status: "resolved",
+        requirements: [],
+        fingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+      },
+      jit: {
+        status: "resolved",
+        requirements: [],
+        fingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
+      },
+    },
+    plan: { status: "ready", activation: "allowed", blockers: [] },
+    bindings: [],
+    units: [],
+    materials: [],
+    footprint: null,
+    effects: {
+      serviceCount: 0,
+      volumeCount: 0,
+      networkModes: [],
+      bindMountCount: 0,
+      deviceCount: 0,
+      licences: { reviewed: 0, unknown: 0 },
+      security: "reviewed",
+    },
+    projectionFingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+  } as never;
+  const handler = createNativeWorkbenchHandler({
+    store: new EmptyThreadStore(),
+    projectStore: new ProjectStore([project]),
+    projectId: project.project.id,
+    html: "unused",
+    capabilityWorkbench: {
+      read: (requested) => {
+        reads += 1;
+        assertEquals(requested.id, project.id);
+        return Promise.resolve(projection);
+      },
+    },
+  });
+
+  const response = await handler(
+    new Request("http://localhost/api/project/capabilities"),
+  );
+  assertEquals(response.status, 200);
+  const serialized = await response.text();
+  assertStringIncludes(serialized, "project-capability-workbench/1.0");
+  assertEquals(serialized.includes("docker"), false);
+  assertEquals(serialized.includes("credential"), false);
+  assertEquals(reads, 1);
+
+  const rejected = await handler(
+    new Request("http://localhost/api/project/capabilities", {
+      method: "POST",
+    }),
+  );
+  assertEquals(rejected.status, 405);
+  assertEquals(rejected.headers.get("Allow"), "GET");
+  assertEquals(reads, 1);
+});
+
+Deno.test("native Workbench projects capabilities through a non-default ledger directory", async () => {
+  const project = projectFixture(
+    "project-custom-ledger",
+    "subject-custom-ledger",
+  );
+  const ledgerDirectory = "/tmp/casys-custom-capability-ledgers";
+  let configuredLedgerDirectory: string | undefined;
+  const projection = {
+    schemaVersion: "project-capability-workbench/1.0",
+    project: {
+      id: project.project.id,
+      snapshotId: project.id,
+      revision: project.revision,
+    },
+    authorization: {
+      status: "authorized",
+      fingerprint: { algorithm: "sha256", digest: "d".repeat(64) },
+    },
+  } as never;
+  const capabilityWorkbench = await createNativeWorkbenchCapabilityWorkbench(
+    { "project-capability-ledger-dir": ledgerDirectory },
+    (options) => {
+      configuredLedgerDirectory = options.ledgerDirectory;
+      return Promise.resolve({
+        workbench: {
+          read: (requested) => {
+            assertEquals(requested.id, project.id);
+            return Promise.resolve(projection);
+          },
+        },
+      });
+    },
+  );
+  const handler = createNativeWorkbenchHandler({
+    store: new EmptyThreadStore(),
+    projectStore: new ProjectStore([project]),
+    projectId: project.project.id,
+    html: "unused",
+    capabilityWorkbench,
+  });
+
+  const response = await handler(
+    new Request("http://localhost/api/project/capabilities"),
+  );
+  assertEquals(response.status, 200);
+  assertEquals(configuredLedgerDirectory, ledgerDirectory);
+  assertEquals((await response.json()).authorization.status, "authorized");
+});
+
 Deno.test("native Workbench exposes persisted projects without inventing a default focus", async () => {
   const focus = new MutableFocus(undefined);
   const catalog = {
@@ -200,7 +524,10 @@ Deno.test("native Workbench exposes persisted projects without inventing a defau
   const page = await handler(new Request("http://localhost/"));
   const html = await page.text();
   assertEquals(page.status, 200);
-  assertStringIncludes(html, "Pump &amp; &lt;script&gt;alert(1)&lt;/script&gt;");
+  assertStringIncludes(
+    html,
+    "Pump &amp; &lt;script&gt;alert(1)&lt;/script&gt;",
+  );
   assertStringIncludes(html, "project-&lt;one&gt;");
   assertEquals(html.includes("<script>alert(1)</script>"), false);
   assertEquals(html.includes("href="), false);
@@ -262,7 +589,10 @@ Deno.test("native Workbench serves a planning-only project without borrowing a t
   const body = await response.json();
 
   assertEquals(response.status, 200);
-  assertEquals(response.headers.get("X-Casys-Data-Source"), "engineering-project-plan");
+  assertEquals(
+    response.headers.get("X-Casys-Data-Source"),
+    "engineering-project-plan",
+  );
   assertEquals(body.surface, "planning");
   assertEquals(body.project.threadSnapshots, []);
   assertEquals(body.planning.technicalBaseline.status, "not-created");
@@ -381,10 +711,11 @@ Deno.test("native Workbench applies the engineering-case read model after pure p
   });
 });
 
-Deno.test("native Workbench applies source-file and requirements-target enrichers after pure projection", async () => {
+Deno.test("native Workbench snapshot never reopens technical admissions or source workspaces", async () => {
   const r2 = genericArchitectureThreadSnapshot(2);
   const r3 = genericArchitectureThreadSnapshot(3, r2);
   const project = genericArchitectureProject("completed", r2, r3);
+  let admissionReads = 0;
   let workspaceLoads = 0;
   let requirementReads = 0;
   const handler = createNativeWorkbenchHandler({
@@ -394,7 +725,10 @@ Deno.test("native Workbench applies source-file and requirements-target enricher
     subjectId: project.project.subjectId,
     html: "unused",
     technicalCompilationAdmissions: {
-      read: () => Promise.resolve(undefined),
+      read: () => {
+        admissionReads += 1;
+        return Promise.resolve(undefined);
+      },
     },
     projectSourceWorkspace: {
       load: () => {
@@ -421,22 +755,19 @@ Deno.test("native Workbench applies source-file and requirements-target enricher
 
   assertEquals(response.status, 200);
   assertEquals(body.surface, "evidence");
-  assertEquals(body.thread.sourceFiles, {
-    schemaVersion: "thread-source-files/1.0",
-    status: "unavailable",
-    files: [],
-  });
+  assertEquals(Object.hasOwn(body.thread, "sourceFiles"), false);
   assertEquals(
     body.thread.requirements.every((item: { targetElementId?: string }) =>
       item.targetElementId === undefined
     ),
     true,
   );
+  assertEquals(admissionReads, 0);
   assertEquals(workspaceLoads, 0);
   assertEquals(requirementReads, 0);
 });
 
-Deno.test("native Workbench publishes the product-navigation slice from the architecture capture port", async () => {
+Deno.test("native Workbench does not embed product-navigation or component catalogs", async () => {
   const r2 = genericArchitectureThreadSnapshot(2);
   const r3 = genericArchitectureThreadSnapshot(3, r2);
   const project = genericArchitectureProject("completed", r2, r3);
@@ -455,18 +786,8 @@ Deno.test("native Workbench publishes the product-navigation slice from the arch
   );
   const body = await response.json();
   assertEquals(response.status, 200);
-  assertEquals(body.thread.productNavigation, {
-    schemaVersion: "product-navigation-query/2.0",
-    status: "unavailable",
-    roots: [],
-    children: [],
-    attachments: {
-      sources: [],
-      geometry: [],
-      physics: [],
-      requirements: [],
-    },
-  });
+  assertEquals(Object.hasOwn(body.thread, "productNavigation"), false);
+  assertEquals(Object.hasOwn(body.thread, "components"), false);
 });
 
 Deno.test("native Workbench product-navigation GET publishes exact roots and default projection", async () => {
@@ -516,7 +837,10 @@ Deno.test("native Workbench product-navigation GET publishes exact roots and def
     ),
     ["alpha-use-001"],
   );
-  assertEquals(def.basis.architectureArtifactId, roots.basis.architectureArtifactId);
+  assertEquals(
+    def.basis.architectureArtifactId,
+    roots.basis.architectureArtifactId,
+  );
 });
 
 Deno.test("native Workbench product-navigation GET stays on the declared Thread tip", async () => {
@@ -754,16 +1078,19 @@ Deno.test("native Workbench product-navigation GET publishes authoring attachmen
   assertEquals(body.status, "observed");
   assertEquals(body.grants, "none");
   assertEquals(
-    body.authoringAttachments.attachments.map((item: { attachmentId: string }) =>
-      item.attachmentId
-    ),
+    body.authoringAttachments.attachments.map((
+      item: { attachmentId: string },
+    ) => item.attachmentId),
     ["att-system"],
   );
   assertEquals(body.authoringAttachments.attachments[0]?.target, {
     elementId: "sys-def-001",
     elementKind: "PartDefinition",
   });
-  assertEquals(body.authoringAttachments.attachments[0]?.basisStatus, "exact-basis");
+  assertEquals(
+    body.authoringAttachments.attachments[0]?.basisStatus,
+    "exact-basis",
+  );
   const usage = await (await handler(
     new Request(
       "http://localhost/api/thread/product-navigation?view=authoring-attachments&kind=part-usage&id=alpha-use-001&path=alpha-use-001",
@@ -862,9 +1189,9 @@ Deno.test("native Workbench authoring attachments GET pins nextCursor across two
   )).json();
   assertEquals(first.status, "observed");
   assertEquals(
-    first.authoringAttachments.attachments.map((item: { attachmentId: string }) =>
-      item.attachmentId
-    ),
+    first.authoringAttachments.attachments.map((
+      item: { attachmentId: string },
+    ) => item.attachmentId),
     ["att-extra"],
   );
   assertEquals(typeof first.authoringAttachments.nextCursor, "string");
@@ -881,9 +1208,9 @@ Deno.test("native Workbench authoring attachments GET pins nextCursor across two
     first.authoringAttachments.workspaceRevision,
   );
   assertEquals(
-    second.authoringAttachments.attachments.map((item: { attachmentId: string }) =>
-      item.attachmentId
-    ),
+    second.authoringAttachments.attachments.map((
+      item: { attachmentId: string },
+    ) => item.attachmentId),
     ["att-system"],
   );
   const forged = await handler(
@@ -894,7 +1221,10 @@ Deno.test("native Workbench authoring attachments GET pins nextCursor across two
             kind: "attachment-list",
             workspaceRevision: first.workspaceRevision,
             filter: {
-              target: { elementId: "sys-def-001", elementKind: "PartDefinition" },
+              target: {
+                elementId: "sys-def-001",
+                elementKind: "PartDefinition",
+              },
             },
           })),
         )
@@ -914,7 +1244,10 @@ Deno.test("native Workbench hides durable unattached generic requirements and ge
     const r2 = genericArchitectureThreadSnapshot(2);
     const r3 = genericArchitectureThreadSnapshot(3, r2);
     const projects = new ProjectStore([
-      projectWithOperation(genericArchitectureProject("queued", r2, r3), operation),
+      projectWithOperation(
+        genericArchitectureProject("queued", r2, r3),
+        operation,
+      ),
     ]);
     const handler = createNativeWorkbenchHandler({
       store: new ThreadStore([r2, r3]),
@@ -924,15 +1257,23 @@ Deno.test("native Workbench hides durable unattached generic requirements and ge
       html: "unused",
     });
 
-    for (const status of ["queued", "running", "publishing", "failed"] as const) {
+    for (
+      const status of ["queued", "running", "publishing", "failed"] as const
+    ) {
       projects.replace(
-        projectWithOperation(genericArchitectureProject(status, r2, r3), operation),
+        projectWithOperation(
+          genericArchitectureProject(status, r2, r3),
+          operation,
+        ),
       );
       assertEquals(await previewThreadId(handler), r2.id, operation.id);
     }
 
     projects.replace(
-      projectWithOperation(genericArchitectureProject("completed", r2, r3), operation),
+      projectWithOperation(
+        genericArchitectureProject("completed", r2, r3),
+        operation,
+      ),
     );
     assertEquals(await previewThreadId(handler), r3.id, operation.id);
   }
@@ -1027,11 +1368,15 @@ Deno.test("native Workbench follows durable focus without a static target", asyn
     html: "unused",
   });
 
-  let response = await handler(new Request("http://localhost/api/thread/workbench"));
+  let response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
   assertEquals((await response.json()).project.project.id, "project-one");
 
   focus.value = focusSnapshot("project-two", 2);
-  response = await handler(new Request("http://localhost/api/thread/workbench"));
+  response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
   assertEquals((await response.json()).project.project.id, "project-two");
 });
 
@@ -1115,7 +1460,8 @@ Deno.test("native Workbench serves hashed Vite JS and CSS without a command path
       404,
     );
     assertEquals(
-      (await handler(new Request("http://localhost/api/project/commands"))).status,
+      (await handler(new Request("http://localhost/api/project/commands")))
+        .status,
       404,
     );
   } finally {
@@ -1135,10 +1481,34 @@ Deno.test("native Workbench keeps its BFF read-only and frame-protected", async 
 
   const page = await handler(new Request("http://localhost/"));
   assertEquals(page.status, 200);
-  assertStringIncludes(await page.text(), "Workbench");
+  const pageHtml = await page.text();
+  assertStringIncludes(pageHtml, "Workbench");
+  const nonceMatch = pageHtml.match(
+    new RegExp(
+      `<meta name="${MCP_APP_SCRIPT_NONCE_META_NAME}" content="([A-Za-z0-9_-]{43})">`,
+    ),
+  );
+  assertEquals(nonceMatch?.[1]?.length, 43);
+  assertStringIncludes(
+    page.headers.get("Content-Security-Policy") ?? "",
+    `'nonce-${nonceMatch?.[1]}'`,
+  );
+  const secondPageHtml = await (await handler(
+    new Request("http://localhost/native-workbench.html"),
+  )).text();
+  const secondNonce = secondPageHtml.match(
+    new RegExp(
+      `<meta name="${MCP_APP_SCRIPT_NONCE_META_NAME}" content="([A-Za-z0-9_-]{43})">`,
+    ),
+  )?.[1];
+  assertEquals(secondNonce === nonceMatch?.[1], false);
   assertStringIncludes(
     page.headers.get("Content-Security-Policy") ?? "",
     "frame-ancestors 'none'",
+  );
+  assertStringIncludes(
+    page.headers.get("Content-Security-Policy") ?? "",
+    "frame-src blob:",
   );
   assertEquals(page.headers.get("X-Frame-Options"), "DENY");
 
@@ -1150,7 +1520,8 @@ Deno.test("native Workbench keeps its BFF read-only and frame-protected", async 
   assertEquals(rejected.status, 405);
   assertEquals(rejected.headers.get("Allow"), "GET");
   assertEquals(
-    (await handler(new Request("http://localhost/api/project/commands"))).status,
+    (await handler(new Request("http://localhost/api/project/commands")))
+      .status,
     404,
   );
 });
@@ -1217,7 +1588,6 @@ Deno.test("native Workbench API routes reject non-GET verbs and keep SSE on GET"
     subjectId: project.project.subjectId,
     html: "<html><body>Workbench</body></html>",
     assetReader: () => Promise.resolve(undefined),
-    draftAssetReader: () => Promise.resolve(undefined),
     cockpitFleet: () =>
       Promise.resolve({
         servers: [{
@@ -1234,11 +1604,14 @@ Deno.test("native Workbench API routes reject non-GET verbs and keep SSE on GET"
     "/healthz",
     "/api/thread/workbench",
     "/api/thread/product-navigation",
+    "/api/thread/viewer-sessions",
+    "/api/thread/viewer-sessions/events",
+    `/api/thread/viewer-apps/launch/${digest}/${digest}`,
+    `/api/thread/viewer-apps/resources/${digest}`,
     "/api/thread/workbench/events",
     "/api/fleet",
     `/api/thread/assets/${digest}.glb`,
     `/api/thread/assets/${digest}.step`,
-    `/api/draft-assets/${digest}`,
     "/",
     "/native-workbench.html",
   ];
@@ -1274,58 +1647,350 @@ Deno.test("native Workbench API routes reject non-GET verbs and keep SSE on GET"
   );
 });
 
-Deno.test("native Workbench carries the assembly-integrity index through both GET and SSE projections", async () => {
-  const r2 = genericArchitectureThreadSnapshot(2);
-  const r3 = genericArchitectureThreadSnapshot(3, r2);
-  const project = genericArchitectureProject("completed", r2, r3);
-  const emptyAssemblyIntegrityCaptures = {
-    observations: { read: () => Promise.resolve(undefined) },
-    evaluations: { read: () => Promise.resolve(undefined) },
-    closeouts: { read: () => Promise.resolve(undefined) },
-  };
+Deno.test("native Workbench exposes viewer sessions as complete GET and SSE replacements", async () => {
+  const project = projectFixture("project-one", "subject-one");
   const handler = createNativeWorkbenchHandler({
-    store: new ThreadStore([r2, r3]),
+    store: new EmptyThreadStore(),
     projectStore: new ProjectStore([project]),
     projectId: project.project.id,
     subjectId: project.project.subjectId,
     html: "unused",
-    assemblyIntegrityCaptures: emptyAssemblyIntegrityCaptures,
     pollIntervalMs: 50,
   });
 
-  const get = await handler(
-    new Request("http://localhost/api/thread/workbench"),
+  const response = await handler(
+    new Request("http://localhost/api/thread/viewer-sessions"),
   );
-  assertEquals(get.status, 200);
-  const projection = await get.json() as {
-    surface: string;
-    thread?: {
-      assemblyIntegrity?: {
-        schemaVersion?: string;
-        status?: string;
-        family?: string;
-        chains?: unknown[];
-      };
-    };
+  assertEquals(response.status, 200);
+  const projection = await response.json() as {
+    schemaVersion: string;
+    basis: Record<string, unknown>;
+    sequence: number;
+    projectionFingerprint: string;
+    sessions: unknown[];
   };
-  assertEquals(projection.surface, "evidence");
-  assertEquals(projection.thread?.assemblyIntegrity, {
-    schemaVersion: "thread-assembly-integrity/1.0",
-    family: "assembly-integrity",
-    status: "not-recorded",
-    chains: [],
+  assertEquals(projection.schemaVersion, "thread-viewer-sessions/2.0");
+  assertEquals(projection.basis, {
+    projectId: "project-one",
+    projectRevision: 1,
+    subjectId: "subject-one",
   });
+  assertEquals(projection.sequence, 1);
+  assertEquals(
+    /^sha256:[a-f0-9]{64}$/.test(projection.projectionFingerprint),
+    true,
+  );
+  assertEquals(projection.sessions, []);
 
   const events = await handler(
-    new Request("http://localhost/api/thread/workbench/events"),
+    new Request("http://localhost/api/thread/viewer-sessions/events"),
+  );
+  assertEquals(events.status, 200);
+  assertEquals(
+    events.headers.get("Content-Type"),
+    "text/event-stream; charset=utf-8",
   );
   const reader = events.body!.getReader();
   const first = await reader.read();
   await reader.cancel();
   const text = new TextDecoder().decode(first.value);
-  assertStringIncludes(text, "event: workbench-snapshot");
-  assertStringIncludes(text, '"assemblyIntegrity"');
-  assertStringIncludes(text, '"not-recorded"');
+  assertStringIncludes(text, "event: viewer-sessions");
+  assertStringIncludes(text, '"schemaVersion":"thread-viewer-sessions/2.0"');
+  assertStringIncludes(text, `:${projection.projectionFingerprint}`);
+});
+
+Deno.test("native Workbench file registry serves and revokes an exact whole App end to end", async () => {
+  const temporary = await Deno.makeTempDir();
+  try {
+    const base = projectFixture("project-review-app", "subject-review-app");
+    const project: EngineeringProjectSnapshot = {
+      ...base,
+      id: "project-review-app:r5",
+      revision: 5,
+      framing: {
+        intent: {
+          statement: "Review the exact proposed brief",
+          source: { kind: "human", reference: "conversation" },
+          capturedAt: base.generatedAt,
+          capturedBy: { id: "human", origin: "human" },
+        },
+        questions: [],
+        answers: [],
+        proposedBrief: {
+          briefId: "brief",
+          id: "brief:r2",
+          revision: 2,
+          items: [],
+          proposedAt: base.generatedAt,
+          proposedBy: { id: "agent", origin: "agent" },
+        },
+        proposalReview: {
+          briefSnapshotId: "brief:r2",
+          briefRevision: 2,
+          status: "pending",
+          inputFingerprint: {
+            algorithm: "sha256",
+            digest: "1".repeat(64),
+          },
+          requestedAt: base.generatedAt,
+        },
+      },
+    };
+    const registryPath = `${temporary}/registry.json`;
+    const objectDirectory = `${temporary}/objects`;
+    const fixture = await writeViewerAppRegistryFixture(
+      registryPath,
+      objectDirectory,
+      project,
+    );
+    const handler = createNativeWorkbenchHandler({
+      store: new EmptyThreadStore(),
+      projectStore: new ProjectStore([project]),
+      projectId: project.project.id,
+      subjectId: project.project.subjectId,
+      html: "unused",
+      viewerAppRegistry: new FileThreadViewerAppRegistry({
+        registryPath,
+        objectDirectory,
+      }),
+      pollIntervalMs: 10,
+    });
+
+    const initialResponse = await handler(
+      new Request("http://localhost/api/thread/viewer-sessions"),
+    );
+    assertEquals(initialResponse.status, 200);
+    const initial = await initialResponse.json() as {
+      sequence: number;
+      sessions: Array<{ launchUri: string; session: { payload: unknown } }>;
+    };
+    assertEquals(initial.sessions.length, 1);
+    assertEquals(initial.sessions[0]?.session.payload, fixture.payload);
+    const launchUri = initial.sessions[0]!.launchUri;
+    const launch = await handler(new Request(`http://localhost${launchUri}`));
+    assertEquals(launch.status, 200);
+    assertEquals(await launch.text(), new TextDecoder().decode(fixture.html));
+
+    const events = await handler(
+      new Request("http://localhost/api/thread/viewer-sessions/events"),
+    );
+    const reader = events.body!.getReader();
+    const next = viewerSessionsEventReader(reader);
+    const first = await next();
+    assertEquals(first.sessions.length, 1);
+    assertEquals(first.sequence, initial.sequence);
+
+    await Deno.remove(registryPath);
+    const revoked = await next();
+    assertEquals(revoked.sessions, []);
+    assertEquals(revoked.sequence > first.sequence, true);
+    assertEquals(
+      (await handler(new Request(`http://localhost${launchUri}`))).status,
+      404,
+    );
+
+    await Deno.writeTextFile(registryPath, fixture.registryText);
+    const reattested = await next();
+    assertEquals(reattested.sessions.length, 1);
+    assertEquals(reattested.sequence > revoked.sequence, true);
+    assertEquals(reattested.sessions[0]?.launchUri, launchUri);
+
+    await Deno.writeTextFile(
+      `${objectDirectory}/${fixture.htmlDigest}`,
+      "tampered whole-App bytes",
+    );
+    const tampered = await next();
+    assertEquals(tampered.sessions, []);
+    assertEquals(tampered.sequence > reattested.sequence, true);
+    assertEquals(
+      (await handler(new Request(`http://localhost${launchUri}`))).status,
+      404,
+    );
+    await reader.cancel();
+  } finally {
+    await Deno.remove(temporary, { recursive: true });
+  }
+});
+
+Deno.test("viewer projection clock sequences resolver revocation and re-attestation", async () => {
+  const sequencer = new ThreadViewerSessionsSequencer();
+  const candidate = {
+    schemaVersion: "thread-viewer-sessions/2.0" as const,
+    basis: {
+      projectId: "project-one",
+      projectRevision: 1,
+      subjectId: "subject-one",
+    },
+    sequence: 7,
+    projectionFingerprint: `sha256:${"a".repeat(64)}`,
+    sessions: [],
+  };
+  const initial = await sequencer.admit(candidate);
+  assertEquals(initial.sequence, 7);
+  assertEquals(await sequencer.admit(candidate), initial);
+
+  const revoked = await sequencer.admit({
+    ...candidate,
+    projectionFingerprint: `sha256:${"b".repeat(64)}`,
+  });
+  assertEquals(revoked.sequence, 8);
+  assertEquals(
+    revoked.projectionFingerprint === initial.projectionFingerprint,
+    false,
+  );
+
+  const reattested = await sequencer.admit(candidate);
+  assertEquals(reattested.sequence, 9);
+  assertEquals(
+    reattested.projectionFingerprint === revoked.projectionFingerprint,
+    false,
+  );
+
+  const stale = await sequencer.admit({
+    ...candidate,
+    sequence: 6,
+    projectionFingerprint: `sha256:${"c".repeat(64)}`,
+  });
+  assertEquals(
+    stale,
+    reattested,
+    "a lower source sequence cannot become fresh",
+  );
+});
+
+Deno.test("viewer projection clock serializes slow registry factories before revocation", async () => {
+  const sequencer = new ThreadViewerSessionsSequencer();
+  const basis = {
+    projectId: "project-one",
+    projectRevision: 1,
+    subjectId: "subject-one",
+  };
+  const old = {
+    schemaVersion: "thread-viewer-sessions/2.0" as const,
+    basis,
+    sequence: 1,
+    projectionFingerprint: `sha256:${"a".repeat(64)}`,
+    sessions: [{
+      id: "old-session",
+    }] as unknown as ThreadViewerSessionsProjection["sessions"],
+  };
+  const revoked = {
+    ...old,
+    projectionFingerprint: `sha256:${"b".repeat(64)}`,
+    sessions: [],
+  };
+  let releaseOld!: () => void;
+  const oldGate = new Promise<void>((resolve) => {
+    releaseOld = resolve;
+  });
+  const starts: string[] = [];
+  const slowOld = sequencer.project(async () => {
+    starts.push("old");
+    await oldGate;
+    return old;
+  });
+  const revoke = sequencer.project(() => {
+    starts.push("revoked");
+    return Promise.resolve(revoked);
+  });
+  await Promise.resolve();
+  assertEquals(starts, ["old"]);
+  releaseOld();
+  const oldProjection = await slowOld;
+  const revokedProjection = await revoke;
+  assertEquals(oldProjection.sessions.length, 1);
+  assertEquals(starts, ["old", "revoked"]);
+  assertEquals(revokedProjection.sessions, []);
+  assertEquals(revokedProjection.sequence, oldProjection.sequence + 1);
+});
+
+Deno.test("viewer review anchors cover exact pending brief architecture requirements and geometry", () => {
+  const base = projectFixture("project-review", "subject-review");
+  const project: EngineeringProjectSnapshot = {
+    ...base,
+    id: "project-review:r5",
+    revision: 5,
+    framing: {
+      intent: {
+        statement: "Review exact proposals",
+        source: { kind: "human", reference: "conversation" },
+        capturedAt: base.generatedAt,
+        capturedBy: { id: "human", origin: "human" },
+      },
+      questions: [],
+      answers: [],
+      proposedBrief: {
+        briefId: "brief",
+        id: "brief:r2",
+        revision: 2,
+        items: [],
+        proposedAt: base.generatedAt,
+        proposedBy: { id: "agent", origin: "agent" },
+      },
+      proposalReview: {
+        briefSnapshotId: "brief:r2",
+        briefRevision: 2,
+        status: "pending",
+        inputFingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
+        requestedAt: base.generatedAt,
+      },
+    },
+    workItems: [
+      reviewWorkItem("architecture", MODEL_WRITE_ARCHITECTURE_OPERATION.id),
+      reviewWorkItem("requirements", MODEL_WRITE_REQUIREMENTS_OPERATION.id),
+      reviewWorkItem("geometry", DESIGN_WRITE_GEOMETRY_OPERATION.id),
+    ],
+    decisions: [
+      reviewDecision("architecture", "2"),
+      reviewDecision("requirements", "3"),
+      reviewDecision("geometry", "4"),
+    ],
+  };
+  assertEquals(projectViewerReviewAnchors(project), [
+    {
+      kind: "project-review",
+      id: "architecture",
+      revision: 5,
+      fingerprint: `sha256:${"2".repeat(64)}`,
+    },
+    {
+      kind: "project-review",
+      id: "brief:r2",
+      revision: 5,
+      fingerprint: `sha256:${"1".repeat(64)}`,
+    },
+    {
+      kind: "project-review",
+      id: "geometry",
+      revision: 5,
+      fingerprint: `sha256:${"4".repeat(64)}`,
+    },
+    {
+      kind: "project-review",
+      id: "requirements",
+      revision: 5,
+      fingerprint: `sha256:${"3".repeat(64)}`,
+    },
+  ]);
+});
+
+Deno.test("native Workbench viewer-sessions SSE refuses a missing declared Thread tip", async () => {
+  const r2 = genericArchitectureThreadSnapshot(2);
+  const r3 = genericArchitectureThreadSnapshot(3, r2);
+  const project = genericArchitectureProject("completed", r2, r3);
+  const handler = createNativeWorkbenchHandler({
+    store: new EmptyThreadStore(),
+    projectStore: new ProjectStore([project]),
+    projectId: project.project.id,
+    subjectId: project.project.subjectId,
+    html: "unused",
+  });
+
+  const response = await handler(
+    new Request("http://localhost/api/thread/viewer-sessions/events"),
+  );
+  assertEquals(response.status, 404);
+  assertEquals((await response.json()).error, "thread_snapshot_not_found");
 });
 
 Deno.test("native Workbench SSE invalidates a fixed project and Thread tip when its authoring workspace advances", async () => {
@@ -1351,7 +2016,9 @@ Deno.test("native Workbench SSE invalidates a fixed project and Thread tip when 
     loadAtFresh: (_projectId: string, workspaceRevision: number) => {
       const revision = revisions.get(workspaceRevision);
       if (!revision) {
-        return Promise.reject(new Error(`missing revision ${workspaceRevision}`));
+        return Promise.reject(
+          new Error(`missing revision ${workspaceRevision}`),
+        );
       }
       return Promise.resolve(revision);
     },
@@ -1381,7 +2048,9 @@ Deno.test("native Workbench SSE invalidates a fixed project and Thread tip when 
   );
   const reader = events.body!.getReader();
   const first = await reader.read();
-  const firstEvent = workbenchSnapshotEvent(new TextDecoder().decode(first.value));
+  const firstEvent = workbenchSnapshotEvent(
+    new TextDecoder().decode(first.value),
+  );
   assertEquals(firstEvent.snapshot.project.revision, project.revision);
   assertEquals(firstEvent.snapshot.thread.id, r3.id);
   assertStringIncludes(
@@ -1493,7 +2162,7 @@ Deno.test("native Workbench serves exact canonical STEP bytes with model/step", 
   assertEquals(new Uint8Array(await response.arrayBuffer()), bytes);
 });
 
-Deno.test("native Workbench refuses mutated draft bytes under a signed digest", async () => {
+Deno.test("native Workbench exposes no route for internal geometry draft bytes", async () => {
   const digest = "a".repeat(64);
   const project = projectFixture("project-one", "subject-one");
   const handler = createNativeWorkbenchHandler({
@@ -1502,36 +2171,14 @@ Deno.test("native Workbench refuses mutated draft bytes under a signed digest", 
     projectId: project.project.id,
     subjectId: project.project.subjectId,
     html: "unused",
-    draftAssetReader: () => Promise.resolve(new TextEncoder().encode("mutated")),
   });
 
-  const response = await handler(
-    new Request(`http://localhost/api/draft-assets/${digest}`),
-  );
-  assertEquals(response.status, 404);
-});
-
-Deno.test("native Workbench serves only exact draft bytes under their SHA-256", async () => {
-  const bytes = new TextEncoder().encode("reviewed-draft-bytes");
-  const digest = await sha256Hex(bytes);
-  const project = projectFixture("project-one", "subject-one");
-  const handler = createNativeWorkbenchHandler({
-    store: new EmptyThreadStore(),
-    projectStore: new ProjectStore([project]),
-    projectId: project.project.id,
-    subjectId: project.project.subjectId,
-    html: "unused",
-    draftAssetReader: (observedDigest) => {
-      assertEquals(observedDigest, digest);
-      return Promise.resolve(bytes);
-    },
-  });
-
-  const response = await handler(
-    new Request(`http://localhost/api/draft-assets/${digest}`),
-  );
-  assertEquals(response.status, 200);
-  assertEquals(new Uint8Array(await response.arrayBuffer()), bytes);
+  for (const method of ["GET", "POST"] as const) {
+    const response = await handler(
+      new Request(`http://localhost/api/draft-assets/${digest}`, { method }),
+    );
+    assertEquals(response.status, 404, method);
+  }
 });
 
 Deno.test("native Workbench reports an unknown selected project without substituting another one", async () => {
@@ -1542,7 +2189,9 @@ Deno.test("native Workbench reports an unknown selected project without substitu
     html: "unused",
   });
 
-  const response = await handler(new Request("http://localhost/api/thread/workbench"));
+  const response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
   assertEquals(response.status, 404);
   assertEquals((await response.json()).error, "engineering_project_not_found");
 });
@@ -1569,6 +2218,53 @@ function projectFixture(
     decisions: [],
     approvals: [],
     blockers: [],
+  };
+}
+
+function reviewWorkItem(
+  id: string,
+  operationId: string,
+): EngineeringProjectSnapshot["workItems"][number] {
+  return {
+    id: `work:${id}`,
+    activityId: `activity:${id}`,
+    phaseId: "review",
+    title: id,
+    description: `Review ${id}`,
+    kind: "review",
+    operation: { id: operationId, version: "1", bindings: [] },
+    status: "waiting-for-decision",
+    owner: "human",
+    dependsOnWorkItemIds: [],
+    evidenceRefs: [],
+    decisionIds: [id],
+    blockerIds: [],
+  };
+}
+
+function reviewDecision(
+  id: string,
+  digestDigit: string,
+): EngineeringProjectSnapshot["decisions"][number] {
+  return {
+    id,
+    phaseId: "review",
+    title: id,
+    question: `Approve ${id}?`,
+    status: "proposed",
+    requestedAt: "2026-08-03T12:00:00.000Z",
+    inputFingerprint: {
+      algorithm: "sha256",
+      digest: digestDigit.repeat(64),
+    },
+    inputEvidenceRefs: [],
+    approvalIds: [],
+    proposal: {
+      summary: id,
+      parameters: [],
+      proposedAt: "2026-08-03T12:00:00.000Z",
+      proposedBy: { id: "agent", origin: "agent" },
+    },
   };
 }
 
@@ -2001,7 +2697,9 @@ async function authoringWorkspaceForFixture(
       loadAtFresh: (_projectId: string, workspaceRevision: number) => {
         const named = revisions.get(workspaceRevision);
         if (!named) {
-          return Promise.reject(new Error(`missing revision ${workspaceRevision}`));
+          return Promise.reject(
+            new Error(`missing revision ${workspaceRevision}`),
+          );
         }
         return Promise.resolve(named);
       },
@@ -2055,7 +2753,9 @@ class ThreadStore implements ThreadSnapshotStore {
   readonly #snapshots = new Map<string, ThreadSnapshot>();
 
   constructor(snapshots: readonly ThreadSnapshot[]) {
-    for (const snapshot of snapshots) this.#snapshots.set(snapshot.id, snapshot);
+    for (const snapshot of snapshots) {
+      this.#snapshots.set(snapshot.id, snapshot);
+    }
   }
 
   get(snapshotId: string): Promise<ThreadSnapshot | undefined> {
@@ -2079,7 +2779,9 @@ class ProjectStore implements EngineeringProjectRevisionStore {
   readonly #projects = new Map<string, EngineeringProjectSnapshot>();
 
   constructor(projects: readonly EngineeringProjectSnapshot[]) {
-    for (const project of projects) this.#projects.set(project.project.id, project);
+    for (const project of projects) {
+      this.#projects.set(project.project.id, project);
+    }
   }
 
   replace(project: EngineeringProjectSnapshot): void {
@@ -2095,7 +2797,9 @@ class ProjectStore implements EngineeringProjectRevisionStore {
     revision: number,
   ): Promise<EngineeringProjectSnapshot | undefined> {
     const project = this.#projects.get(projectId);
-    return Promise.resolve(project?.revision === revision ? project : undefined);
+    return Promise.resolve(
+      project?.revision === revision ? project : undefined,
+    );
   }
 
   createInitial(
@@ -2104,7 +2808,9 @@ class ProjectStore implements EngineeringProjectRevisionStore {
     return Promise.resolve(snapshot);
   }
 
-  commit(snapshot: EngineeringProjectSnapshot): Promise<EngineeringProjectSnapshot> {
+  commit(
+    snapshot: EngineeringProjectSnapshot,
+  ): Promise<EngineeringProjectSnapshot> {
     return Promise.resolve(snapshot);
   }
 }

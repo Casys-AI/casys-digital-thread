@@ -14,7 +14,8 @@
  * against case.profile.sha256, and embeds the content into the build123d
  * script via base64 so that the INI text is never interpreted as Python.
  *
- * Density provenance: filamentDensityGCm3 is optional. When absent, the
+ * Density provenance: the optional density field is omitted when unavailable.
+ * When absent, the
  * executor omits the filament_density_g_cm3 override and filament_mass_g will
  * be absent from the capture record. When present, the executor passes it as
  * an explicit override to prusaslicer_estimate_fff and captures filament_mass_g
@@ -38,6 +39,11 @@ import {
 } from "../../kernel/case-validation.ts";
 
 export const PRINT_ESTIMATE_CASE_SCHEMA = "print-estimate-case/1.0" as const;
+
+// Stable public schema field, not a credential. Keep the scanner exception local
+// to this exact declaration instead of weakening the repository-wide rules.
+const FILAMENT_DENSITY_FIELD = "filamentDensityGCm3" as const; // gitleaks:allow
+const FILAMENT_DENSITY_CASE_PATH = `$case.${FILAMENT_DENSITY_FIELD}`;
 
 export interface PrintEstimateCase {
   readonly schemaVersion: typeof PRINT_ESTIMATE_CASE_SCHEMA;
@@ -71,7 +77,7 @@ export interface PrintEstimateCase {
    * filament_density_g_cm3 override to prusaslicer_estimate_fff, and the
    * capture record will contain filament_mass_g.
    */
-  readonly filamentDensityGCm3?: {
+  readonly [FILAMENT_DENSITY_FIELD]?: {
     readonly value: number;
     readonly unit: "g/cm3";
   };
@@ -104,7 +110,7 @@ const ROOT_KEYS = [
 
 const ROOT_KEYS_WITH_DENSITY = [
   ...ROOT_KEYS,
-  "filamentDensityGCm3",
+  FILAMENT_DENSITY_FIELD,
 ] as const;
 
 /** Parse and validate an untrusted value as a print-estimate-case/1.0 case. */
@@ -114,7 +120,7 @@ export function validatePrintEstimateCase(value: unknown): PrintEstimateCase {
   }
   const rec = value as Record<string, unknown>;
   // Determine which root key set applies based on presence of optional fields.
-  const hasDensity = Object.hasOwn(rec, "filamentDensityGCm3");
+  const hasDensity = Object.hasOwn(rec, FILAMENT_DENSITY_FIELD);
   const keys = hasDensity ? ROOT_KEYS_WITH_DENSITY : ROOT_KEYS;
   const root = exactRecord(value, keys, "$case");
   literalValue(
@@ -132,8 +138,8 @@ export function validatePrintEstimateCase(value: unknown): PrintEstimateCase {
   const project = parseProject(root.project);
   const target = parseTarget(root.target);
   const profile = parseProfile(root.profile);
-  const filamentDensityGCm3 = hasDensity
-    ? parseFilamentDensity(root.filamentDensityGCm3)
+  const filamentDensity = hasDensity
+    ? parseFilamentDensity(root[FILAMENT_DENSITY_FIELD])
     : undefined;
   const provider = parseProvider(root.provider);
   const rawLimitations = nonEmptyArray(root.limitations, "$case.limitations");
@@ -156,7 +162,9 @@ export function validatePrintEstimateCase(value: unknown): PrintEstimateCase {
     provenance,
   };
   return deepFreeze(
-    filamentDensityGCm3 !== undefined ? { ...base, filamentDensityGCm3 } : base,
+    filamentDensity !== undefined
+      ? { ...base, [FILAMENT_DENSITY_FIELD]: filamentDensity }
+      : base,
   );
 }
 
@@ -213,10 +221,12 @@ function parseProfile(value: unknown): PrintEstimateCase["profile"] {
 function parseFilamentDensity(
   value: unknown,
 ): { readonly value: number; readonly unit: "g/cm3" } {
-  const input = exactRecord(value, ["value", "unit"], "$case.filamentDensityGCm3");
-  literalValue(input.unit, "g/cm3", "$case.filamentDensityGCm3.unit");
-  const v = finite(input.value, "$case.filamentDensityGCm3.value");
-  if (v <= 0) throw new TypeError("$case.filamentDensityGCm3.value must be positive.");
+  const input = exactRecord(value, ["value", "unit"], FILAMENT_DENSITY_CASE_PATH);
+  literalValue(input.unit, "g/cm3", `${FILAMENT_DENSITY_CASE_PATH}.unit`);
+  const v = finite(input.value, `${FILAMENT_DENSITY_CASE_PATH}.value`);
+  if (v <= 0) {
+    throw new TypeError(`${FILAMENT_DENSITY_CASE_PATH}.value must be positive.`);
+  }
   return { value: v, unit: "g/cm3" };
 }
 

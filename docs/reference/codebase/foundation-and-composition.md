@@ -17,11 +17,7 @@ links to the parseable catalogues
 
 #### [`docs/README.md`](../../README.md)
 
-Dual reading plan (human / agent / RFC) and Diátaxis catalogue
-
-#### [`docs/rfcs/README.md`](../../rfcs/README.md)
-
-RFC home: session briefs and studies, status legend, not the product contract
+Dual reading plan (human / agent / living documentation) and Diátaxis catalogue
 
 #### [`docs/reference/agent/agent-workspace.md`](../agent/agent-workspace.md)
 
@@ -34,11 +30,16 @@ Split lookalike catalogue (SysML, CAD, Modelica, FEA, DFM). Not substitutes.
 
 #### [`docker-compose.yml`](../../../docker-compose.yml)
 
-Provider containers, networks, volumes and loopback ports
+Maintainer diagnostic Compose topology and loopback mappings. Not the H1 JIT launch
+groups and not the Digital Thread cold start.
 
 #### [`config/mcp-fleet.json`](../../../config/mcp-fleet.json)
 
-Desired MCP endpoints, tools, views and trust posture
+Desired MCP endpoints, tools, views and trust posture. URLs remain fixed current
+compatibility publications. The SysON seed and assembly-observation canaries verify
+their fleet URL against the sealed launch-group publication and wrap it in a lease-bound
+process-local handle; the remaining clients do not yet use that seam. Ephemeral ports
+remain a later, separate migration.
 
 #### [`docs/explanations/product/product-direction.md`](../../explanations/product/product-direction.md)
 

@@ -4,7 +4,8 @@ Audience: both · Diátaxis: none · Kind: RFC
 
 A file in `docs/rfcs/` is a **session brief** or a **study** (sometimes rejected). It is
 not Diátaxis. Once the lot has merged, the living truth is the how-to or the reference.
-Do not treat an RFC as the product contract.
+Do not treat an RFC as the product contract. Capability-pack living truth is
+[capability packs](../reference/runtime/capability-packs/README.md).
 
 ## Status legend
 
@@ -33,6 +34,7 @@ Do not treat an RFC as the product contract.
 | [private cross-project sensitivity reuse](sensitivity/private-cross-project-experience-reuse.md)       | `implemented` | [current sensitivity domain reference](../reference/domains/sensitivity/README.md)                                                                                                                                                     |
 | [modular project source workspace](project-source-workspace/README.md)                                  | `active`      | [living workspace reference](../reference/domains/project-source-workspace/README.md) and [coverage](../reference/domains/project-source-workspace/coverage.md). Core workspace plus attachment-rooted single-source bridge are implemented and MCS-02-proven; the large-assembly extension remains open. |
 | [inspection-drone v4 architecture slice](vehicles/inspection-drone-v4-architecture-slice.md)           | `implemented` | [author architecture SysML](../how-to/compile/author-architecture-sysml.md)                                                                                                                                                            |
+| [mechanism verification](mechanism/README.md)                                                           | `implemented` | [mechanism](../reference/domains/mechanism/README.md) for the bounded vertical; [assembly integrity](../reference/domains/cad/assembly-integrity.md) remains separate. The catalogue baseline is `unqualified`; a host-local exact qualified emulated AMD64 attestation is documented under [local runtime qualification](../reference/runtime/capability-packs/local-runtime-qualification.md) and still does not replace project authorization, sealed ROP, or JIT lease. |
 | [articulated LED desk-lamp demo queue](articulated-led-desk-lamp-demo/README.md)                       | `active`      | [AL01 tracking](../project-dossiers/articulated-led-desk-lamp/status.md); [Behave decision roadmap](../explanations/product/behave-decision-roadmap.md). Core 01–07 observed locally; X10 `unavailable`; refactor 08–09 and closeout 10 remain |
 
 Human and agent reading plans: [docs/README.md](../README.md).

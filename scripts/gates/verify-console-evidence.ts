@@ -1,8 +1,8 @@
 /**
- * Read-only verification for the console manifest, fixtures and evidence.
+ * Read-only verification for the console manifest, fixtures, and evidence.
  *
  * Usage:
- *   deno run --allow-read scripts/verify-console-evidence.ts
+ *   deno run --allow-read scripts/gates/verify-console-evidence.ts
  */
 
 interface Artifact {
@@ -16,6 +16,11 @@ interface EvidenceBundle {
   schemaVersion: string;
   bundleId: string;
   runId: string;
+  provenance: {
+    freshCadExecution: boolean;
+    freshFeaExecution: boolean;
+    statement: string;
+  };
   artifacts: Artifact[];
   measurements: {
     density: { value: number; unit: string };
@@ -24,13 +29,53 @@ interface EvidenceBundle {
     boundingBox: { value: { x: number; y: number; z: number }; unit: string };
     maxVonMises: { value: number; unit: string; source: string };
   };
+  comparisons: Array<{
+    id: string;
+    outcome: string;
+    source: string;
+    recordedValue: { value: number; unit: string };
+    recordedLimit: { value: number; unit: string };
+  }>;
+}
+
+interface FixtureStage {
+  id: string;
+  serverId: string;
+  tool: string;
+  basis: string;
+  status: string;
+  startedAt?: string;
+  completedAt?: string;
+  outputs: Record<string, unknown>;
 }
 
 interface FixtureRun {
   id: string;
+  status: string;
+  verdictStatus: string;
   source: string;
-  stages: Array<{ id: string; outputs: Record<string, unknown> }>;
-  evidence: Array<{ id: string; path?: string; sha256?: string }>;
+  startedAt?: string;
+  completedAt?: string;
+  passedRequirements: number;
+  failedRequirements: number;
+  unresolvedRequirements: number;
+  stages: FixtureStage[];
+  provenance: Array<{ label: string; value: string }>;
+  warnings: string[];
+  requirements: Array<{ id: string; status: string; message?: string }>;
+  evidence: Array<{ id: string; path?: string; sha256?: string; producedBy?: string }>;
+}
+
+interface ConsoleRunSummary {
+  id: string;
+  name: string;
+  subject: string;
+  status: string;
+  verdictStatus: string;
+  source: string;
+  passedRequirements: number;
+  failedRequirements: number;
+  unresolvedRequirements: number;
 }
 
 interface ConsoleFixture {
@@ -45,7 +90,7 @@ interface ConsoleFixture {
       demo: boolean;
     }>;
   };
-  runs: { items: Array<{ id: string; source: string }> };
+  runs: { items: ConsoleRunSummary[] };
 }
 
 interface FleetManifest {
@@ -63,6 +108,45 @@ interface FleetManifest {
 
 const repoRoot = new URL("../../", import.meta.url);
 const failures: string[] = [];
+const NO_DISPATCH_ATTESTED =
+  "No CAD, FEA, or SysON dispatch is attested by this checked-in demo.";
+const EXPECTED_DOCUMENTARY_STAGES = [
+  {
+    id: "requirements",
+    serverId: "fixture",
+    tool: "documentary-record",
+    basis: "documentary",
+    status: "documentary",
+  },
+  {
+    id: "geometry",
+    serverId: "fixture",
+    tool: "documentary-record",
+    basis: "documentary",
+    status: "documentary",
+  },
+  {
+    id: "step",
+    serverId: "fixture",
+    tool: "documentary-record",
+    basis: "documentary",
+    status: "documentary",
+  },
+  {
+    id: "fea",
+    serverId: "fixture",
+    tool: "documentary-record",
+    basis: "documentary",
+    status: "documentary",
+  },
+  {
+    id: "comparison",
+    serverId: "fixture",
+    tool: "recorded-comparison",
+    basis: "comparison",
+    status: "not_evaluated",
+  },
+] as const;
 
 function fail(message: string): void {
   failures.push(message);
@@ -102,6 +186,10 @@ async function verifyArtifact(artifact: Artifact): Promise<void> {
       `${artifact.id}: SHA-256 is ${digest}, evidence records ${artifact.sha256}`,
     );
   }
+}
+
+function normalizedWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
 }
 
 const manifest = await readJson<FleetManifest>("config/mcp-fleet.json");
@@ -170,7 +258,6 @@ expectedEngineeringViewers(
   "build123d",
   [
     "ui://mcp-build123d/results-viewer",
-    "ui://mcp-build123d/artifact-helper-viewer",
   ],
 );
 expectedEngineeringViewers(
@@ -230,18 +317,109 @@ if (
   fail("source-pinned image fixture must be fully in sync");
 }
 
-if (bundle.schemaVersion !== "1.0" || bundle.bundleId !== bundle.runId) {
+const bundleRecord = bundle as unknown as Record<string, unknown>;
+if (bundle.schemaVersion !== "2.0" || bundle.bundleId !== bundle.runId) {
   fail("evidence bundle schema or run identity is inconsistent");
 }
-if (run.id !== bundle.runId || run.source !== "demo") {
-  fail("run detail must match the evidence bundle and be labelled demo");
+if ("verdicts" in bundleRecord) {
+  fail("documentary evidence bundle must not publish authoritative verdicts");
 }
 if (
-  snapshot.runs.items.length !== 1 ||
-  snapshot.runs.items[0]?.id !== run.id ||
-  snapshot.runs.items[0]?.source !== "demo"
+  bundle.provenance.freshCadExecution !== false ||
+  bundle.provenance.freshFeaExecution !== false
 ) {
-  fail("console snapshot run summary must match the demo run detail");
+  fail("documentary evidence bundle must declare both fresh execution flags false");
+}
+if (!bundle.provenance.statement.includes(NO_DISPATCH_ATTESTED)) {
+  fail(
+    "evidence provenance must state that no CAD, FEA, or SysON dispatch is attested",
+  );
+}
+const expectedComparisonIdentity = [
+  { id: "massBudget", outcome: "within-recorded-limit", source: "recorded-comparison" },
+  { id: "holdLoad", outcome: "within-recorded-limit", source: "recorded-comparison" },
+];
+if (
+  JSON.stringify(
+      bundle.comparisons.map(({ id, outcome, source }) => ({ id, outcome, source })),
+    ) !== JSON.stringify(expectedComparisonIdentity) ||
+  bundle.comparisons.some((comparison) =>
+    "status" in (comparison as unknown as Record<string, unknown>)
+  )
+) {
+  fail(
+    "evidence bundle must contain only recorded-comparison outcomes, not verdict statuses",
+  );
+}
+
+if (
+  run.id !== bundle.runId || run.source !== "demo" ||
+  run.status !== "documentary" || run.verdictStatus !== "not_evaluated"
+) {
+  fail("run detail must match documentary evidence-bundle identity and state");
+}
+if (run.startedAt !== undefined || run.completedAt !== undefined) {
+  fail("documentary demo run must not claim execution timestamps");
+}
+if (
+  run.passedRequirements !== 0 || run.failedRequirements !== 0 ||
+  run.unresolvedRequirements !== 2
+) {
+  fail(
+    "documentary demo requirement summary must remain 0 passed, 0 failed, 2 unresolved",
+  );
+}
+if (
+  JSON.stringify(
+      run.stages.map(({ id, serverId, tool, basis, status }) => ({
+        id,
+        serverId,
+        tool,
+        basis,
+        status,
+      })),
+    ) !== JSON.stringify(EXPECTED_DOCUMENTARY_STAGES) ||
+  run.stages.some((stage) =>
+    stage.startedAt !== undefined || stage.completedAt !== undefined ||
+    stage.basis === "execution"
+  )
+) {
+  fail(
+    "documentary run stages must use exact neutral identities, bases, and no timestamps",
+  );
+}
+if (
+  run.requirements.length !== 2 ||
+  run.requirements.some((requirement) =>
+    requirement.status !== "unresolved" ||
+    typeof requirement.message !== "string" || requirement.message === ""
+  )
+) {
+  fail("documentary requirements must remain unresolved with an explicit message");
+}
+if (
+  !run.provenance.some((item) => item.value === NO_DISPATCH_ATTESTED) ||
+  !run.warnings.includes(NO_DISPATCH_ATTESTED)
+) {
+  fail("run provenance and warnings must state that no provider dispatch is attested");
+}
+
+const expectedRunSummary: ConsoleRunSummary = {
+  id: "bracket-demo-2026-07-30",
+  name: "Bracket verification",
+  subject: "Al 6061 mounting bracket",
+  status: "documentary",
+  verdictStatus: "not_evaluated",
+  source: "demo",
+  passedRequirements: 0,
+  failedRequirements: 0,
+  unresolvedRequirements: 2,
+};
+if (
+  snapshot.runs.items.length !== 1 ||
+  JSON.stringify(snapshot.runs.items[0]) !== JSON.stringify(expectedRunSummary)
+) {
+  fail("console snapshot run summary must match the documentary demo run detail");
 }
 
 const density = bundle.measurements.density.value;
@@ -257,20 +435,37 @@ if (
   recordedMassG !== 56.915761 ||
   bundle.measurements.boundingBox.value.z !== 52.5 ||
   bundle.measurements.maxVonMises.value !== 26.6 ||
-  bundle.measurements.maxVonMises.source !== "documented-example"
+  bundle.measurements.maxVonMises.source !== "recorded-comparison"
 ) {
-  fail("bracket mass, bbox z or documented FEA fixture truth has drifted");
+  fail("bracket mass, bbox z, or recorded FEA comparison truth has drifted");
 }
 
 const geometryStage = run.stages.find((stage) => stage.id === "geometry");
-const physicsStage = run.stages.find((stage) => stage.id === "physics");
+const feaStage = run.stages.find((stage) => stage.id === "fea");
 if (
   geometryStage?.outputs.massG !== recordedMassG ||
-  physicsStage?.outputs.maxVonMisesMpa !==
-    bundle.measurements.maxVonMises.value ||
-  physicsStage?.outputs.provenance !== "documented-example"
+  feaStage?.outputs.maxVonMisesMpa !== bundle.measurements.maxVonMises.value ||
+  feaStage?.outputs.provenance !== "recorded-comparison"
 ) {
-  fail("run stage outputs do not match the evidence bundle");
+  fail("documentary stage values do not match the evidence bundle");
+}
+
+const allowedDocumentaryProducers = new Set(["checkout", "recorded-comparison"]);
+if (
+  run.evidence.some((artifact) =>
+    artifact.producedBy === undefined ||
+    !allowedDocumentaryProducers.has(artifact.producedBy)
+  )
+) {
+  fail("documentary evidence must not claim provider-produced artifacts");
+}
+if (
+  run.evidence.find((artifact) => artifact.id === "step")?.producedBy !==
+    "checkout" ||
+  run.evidence.find((artifact) => artifact.id === "recorded-comparison")
+      ?.producedBy !== "recorded-comparison"
+) {
+  fail("STEP and recorded comparison evidence must retain their documentary producers");
 }
 
 const runEvidence = new Map(
@@ -282,6 +477,45 @@ for (const artifact of bundle.artifacts) {
   if (runEvidence.get(artifact.path) !== artifact.sha256) {
     fail(`${artifact.id}: RunDetail and evidence-bundle hashes differ`);
   }
+}
+
+const readme = normalizedWhitespace(
+  await Deno.readTextFile(new URL("examples/bracket/README.md", repoRoot)),
+);
+const readmeIdentity = normalizedWhitespace(
+  'The [run fixture](../../state/fixtures/runs/bracket-demo.json) is labelled `source: "demo"`. The [evidence bundle](../console/bracket-evidence.json) records `freshCadExecution: false` and `freshFeaExecution: false`.',
+);
+const readmeRoute = normalizedWhitespace(
+  "The exact fresh-evidence sequence is: admission (`compile.seal-admission@3`) → `design.execute-build123d@1` → isolated noncanonical draft; versus `project_admitted_geometry_export` → human MRTR → `design.write-geometry@1` → canonical STEP; then sealed proof case → `verify.run-fea-static-proof@3`.",
+);
+if (
+  !readme.includes("# The bracket — illustrative documented demo, not a SysON record")
+) {
+  fail(
+    "bracket README heading must label the material as an illustrative documented demo",
+  );
+}
+if (!readme.includes(readmeIdentity)) {
+  fail("bracket README must keep demo source separate from provenance execution flags");
+}
+if (!readme.includes("60 × 40 × 52.5 mm")) {
+  fail("bracket README must record the 52.5 mm bounding-box extent");
+}
+if (/\bC3D10\b|wing top/i.test(readme)) {
+  fail("bracket README must not claim unsupported C3D10 or wing-top details");
+}
+if (
+  (readme.match(/within documented limit/g) ?? []).length !== 2 ||
+  readme.includes("**pass**")
+) {
+  fail(
+    "bracket README comparisons must state documented limits without a pass verdict",
+  );
+}
+if (!readme.includes(readmeRoute)) {
+  fail(
+    "bracket README must state the exact isolated, canonical, and FEA route sequence",
+  );
 }
 
 for (const artifact of bundle.artifacts) {
@@ -303,5 +537,5 @@ if (failures.length > 0) {
 
 console.log(
   `OK ${bundle.bundleId}: ${bundle.artifacts.length} artifacts, ` +
-    `${manifest.servers.length} desired MCP servers, fixture truth consistent`,
+    `${manifest.servers.length} desired MCP servers, documentary fixture truth consistent`,
 );

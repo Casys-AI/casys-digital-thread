@@ -21,9 +21,9 @@ Deno.test(
     for (const parameter of parameters) {
       const encoded = JSON.stringify(parameter);
       assertEquals(encoded.includes("modelicaText"), false);
-      assertEquals(encoded.includes("\"provider\""), false);
-      assertEquals(encoded.includes(".mo\""), false);
-      assertEquals(encoded.includes("\"args\""), false);
+      assertEquals(encoded.includes('"provider"'), false);
+      assertEquals(encoded.includes('.mo"'), false);
+      assertEquals(encoded.includes('"args"'), false);
     }
     const parsed = parseThermalMethodSheetSealParameters(parameters);
     assertEquals(parsed.sheetId, sheet.id);

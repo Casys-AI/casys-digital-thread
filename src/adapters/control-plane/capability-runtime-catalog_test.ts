@@ -1,0 +1,402 @@
+import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
+import {
+  createFirstPartyCapabilityRuntimeCatalog,
+  createFirstPartySysonRolloverPredecessorUnit,
+  firstPartyAdmittedModelicaHistoryPredecessor,
+  firstPartyBuild123dObservationHistoryPredecessor,
+  firstPartyBuild123dSandboxHistoryPredecessor,
+  firstPartyGeometryModuleAssemblerHistoryPredecessor,
+} from "./first-party-capability-binding-catalog.ts";
+import {
+  createFirstPartySysonRolloverPredecessorLaunchGroup,
+} from "./first-party-capability-runtime-launch-groups.ts";
+import {
+  validateCapabilityRuntimeAdminLock,
+  validateCapabilityRuntimeAdminPolicy,
+  validateCapabilityRuntimeCatalog,
+  validateCapabilityRuntimeHostObservation,
+} from "./capability-runtime-catalog.ts";
+import {
+  CAPABILITY_RUNTIME_ADMIN_LOCK_SCHEMA_VERSION,
+  CAPABILITY_RUNTIME_ADMIN_POLICY_SCHEMA_VERSION,
+  CAPABILITY_RUNTIME_HOST_OBSERVATION_SCHEMA_VERSION,
+} from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
+import {
+  createGeometryModuleAssemblerMicrosandboxQualificationCandidate,
+} from "../cad/module-assembly/geometry-module-assembly-microsandbox-qualification-candidate.ts";
+
+Deno.test("first-party catalogue adopts the exact qualified geometry-module candidate", async () => {
+  const [catalog, candidate] = await Promise.all([
+    createFirstPartyCapabilityRuntimeCatalog(),
+    createGeometryModuleAssemblerMicrosandboxQualificationCandidate(),
+  ]);
+  const unit = catalog.units.find((value) => value.id === candidate.unit.id);
+  assertEquals(unit, {
+    id: candidate.unit.id,
+    version: candidate.unit.version,
+    manifestFingerprint: candidate.unit.manifestFingerprint,
+    materials: candidate.materials,
+  });
+  assertEquals(
+    catalog.bindings.find((value) => value.id === candidate.binding.id),
+    {
+      id: candidate.binding.id,
+      version: candidate.binding.version,
+      capability: candidate.selector.capability,
+      use: candidate.selector.use,
+      qualification: "qualified",
+      adapter: candidate.contract,
+      profile: {
+        id: candidate.profile.id,
+        version: candidate.profile.version,
+        fingerprint: null,
+      },
+      unitIds: [candidate.unit.id],
+      qualificationEvidence: {
+        id: `${candidate.binding.id}-qualification`,
+        source: candidate.contract.source,
+        fingerprint: null,
+      },
+      runtimeModes: [],
+      limitations: [
+        "This binding assembles an exact static immediate compound only.",
+        "It does not cover collision, contact, clearance, motion, forces, resistance, safety, or fabricability.",
+      ],
+    },
+  );
+});
+
+Deno.test("first-party catalogue binds admitted geometry export to its admission-backed adapter", async () => {
+  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+
+  assertEquals(
+    catalog.bindings.find((binding) =>
+      binding.id === "build123d-export-admitted-source"
+    )
+      ?.adapter,
+    {
+      id: "build123d-admitted-geometry-export-adapter",
+      version: "1.0.0",
+      source: "src/adapters/cad/canonical/admission-backed-geometry-export-adapter.ts",
+    },
+  );
+});
+
+Deno.test("atomic first-party runtime catalogue separates sources with distinct lifecycle and evidence", async () => {
+  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+  assertEquals(catalog.productionEligible, false);
+  const syson = catalog.units.find((unit) => unit.id === "casys.syson-stack");
+  assertEquals(syson?.version, "1.0.1");
+  assertEquals(
+    syson?.materials.find((material) => material.id === "syson-app-image")
+      ?.imageReference,
+    "ghcr.io/casys-ai/syson@sha256:d372ae26e5d32e5c599fa7c1599d42c73cf9a54e101cfe6f77175f313d7d84e9",
+  );
+  assertEquals(
+    syson?.materials.find((material) => material.id === "syson-app-image")
+      ?.platforms,
+    ["linux/amd64", "linux/arm64"],
+  );
+  const predecessorSyson = await createFirstPartySysonRolloverPredecessorUnit();
+  const predecessorGeometryModuleAssembler =
+    firstPartyGeometryModuleAssemblerHistoryPredecessor();
+  const predecessorAdmittedModelica = firstPartyAdmittedModelicaHistoryPredecessor();
+  const predecessorBuild123dSandbox = firstPartyBuild123dSandboxHistoryPredecessor();
+  const predecessorBuild123dObservation =
+    firstPartyBuild123dObservationHistoryPredecessor();
+  assertEquals(predecessorSyson.version, "1.0.0");
+  // The retired descriptor is a historical authority, not a derived alias for
+  // the current SysON material. Keep both fingerprints literal so a future
+  // successor update cannot silently rewrite the 1.0.0 rollover basis.
+  assertEquals(predecessorSyson.manifestFingerprint, {
+    algorithm: "sha256",
+    digest: "e8ac01cd5c94330d8ea89d6d1f9b24c363a3067bbb2923faac8dd56d53c7b7fd",
+  });
+  const predecessorLaunchGroup =
+    await createFirstPartySysonRolloverPredecessorLaunchGroup();
+  assertEquals(predecessorLaunchGroup.fingerprint, {
+    algorithm: "sha256",
+    digest: "8e470a77b13ae58bc70e0d4cc5b6deaff1e4f58b85f704b1ddaba74bb7e4d1a6",
+  });
+  assertEquals(
+    predecessorSyson.materials.find((material) => material.id === "syson-app-image")
+      ?.imageReference,
+    "ghcr.io/casys-ai/syson@sha256:fc599abb95587913de11ff6de68060b5593956abc0c47bc753cd19e2987141a6",
+  );
+  assertEquals(
+    predecessorSyson.materials.find((material) => material.id === "syson-app-image")
+      ?.platforms,
+    ["linux/arm64"],
+  );
+  assertEquals(predecessorGeometryModuleAssembler.manifestFingerprint, {
+    algorithm: "sha256",
+    digest: "e03e1f245088f8f49b2d680ae6d4ff7664329f4ea0227be74e701f9f579c532f",
+  });
+  assertEquals(predecessorAdmittedModelica.manifestFingerprint, {
+    algorithm: "sha256",
+    digest: "8792f440a4ee3b6f835f730082081828c87fe657044fc5d1bd6405b64bdfb515",
+  });
+  assertEquals(predecessorBuild123dSandbox.manifestFingerprint, {
+    algorithm: "sha256",
+    digest: "7450ed6ffcb1bfd2b970e2f15647eaf8097a26b1656d19864992bde6e297b15e",
+  });
+  assertEquals(predecessorBuild123dObservation.manifestFingerprint, {
+    algorithm: "sha256",
+    digest: "7540b7263f570cec0ea4218ecf902400b817e9143cdf6ca334c9d2d773213bad",
+  });
+  assertEquals(
+    catalog.units.some((unit) =>
+      unit.id === predecessorGeometryModuleAssembler.id &&
+      unit.version === predecessorGeometryModuleAssembler.version &&
+      unit.manifestFingerprint.digest ===
+        predecessorGeometryModuleAssembler.manifestFingerprint.digest
+    ),
+    false,
+  );
+  assertEquals(
+    catalog.units.some((unit) =>
+      unit.id === predecessorAdmittedModelica.id &&
+      unit.version === predecessorAdmittedModelica.version &&
+      unit.manifestFingerprint.digest ===
+        predecessorAdmittedModelica.manifestFingerprint.digest
+    ),
+    false,
+  );
+  for (
+    const predecessor of [
+      predecessorBuild123dSandbox,
+      predecessorBuild123dObservation,
+    ]
+  ) {
+    assertEquals(
+      catalog.units.some((unit) =>
+        unit.id === predecessor.id &&
+        unit.version === predecessor.version &&
+        unit.manifestFingerprint.digest === predecessor.manifestFingerprint.digest
+      ),
+      false,
+    );
+  }
+  assertEquals(catalog.units.map((unit) => unit.id), [
+    "casys.syson-stack",
+    "casys.mcp-build123d-sandbox",
+    "casys.mcp-build123d-observation",
+    "casys.build123d-isolated-worker",
+    "casys.geometry-module-assembler-worker",
+    "casys.calculix-worker",
+    "casys.mcp-calculix",
+    "casys.modelica-qualified-worker",
+    "casys.modelica-worker",
+    "casys.spice-worker",
+    "casys.mcp-chrono",
+  ]);
+  assertEquals(
+    catalog.bindings.find((binding) => binding.id === "calculix-static-structural")
+      ?.unitIds,
+    ["casys.calculix-worker"],
+  );
+  const sensitivity = catalog.bindings.find((binding) =>
+    binding.id === "calculix-http-static-sensitivity"
+  );
+  assertEquals(sensitivity?.capability, {
+    id: "mechanics.observe-static-structural-sensitivity",
+    version: "1",
+  });
+  assertEquals(sensitivity?.qualification, "unqualified");
+  assertEquals(sensitivity?.profile, null);
+  assertEquals(sensitivity?.unitIds, ["casys.mcp-calculix"]);
+  const calculix = catalog.units.find((unit) => unit.id === "casys.mcp-calculix");
+  assertEquals(calculix?.version, "0.8.2");
+  assertEquals(
+    calculix?.materials[0]?.imageReference,
+    "ghcr.io/casys-ai/mcp-calculix@sha256:ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8",
+  );
+  assertEquals(calculix?.materials[0]?.platforms, ["linux/amd64", "linux/arm64"]);
+  assertEquals(calculix?.materials[0]?.launchGroup?.id, "casys-mcp-calculix");
+  assertEquals(calculix?.materials[0]?.launchGroup?.version, "0.8.2");
+  assertEquals(
+    calculix?.materials[0]?.launchGroup?.fingerprint.algorithm,
+    "sha256",
+  );
+  assert(
+    /^[a-f0-9]{64}$/.test(
+      calculix?.materials[0]?.launchGroup?.fingerprint.digest ?? "",
+    ),
+  );
+  assertEquals(calculix?.materials[0]?.effects, {
+    downloadBytes: null,
+    storageBytes: null,
+    services: [{ id: "mcp-calculix", lifecycle: "persistent" }],
+    volumes: [
+      { id: "calculix-inputs", access: "read-write", preservation: "preserve" },
+      { id: "calculix-runs", access: "read-write", preservation: "preserve" },
+    ],
+    network: "loopback-only",
+    loopbackPorts: [3015],
+    bindMounts: [],
+    privileged: false,
+    dockerSocket: false,
+    devices: [],
+    secretSlots: [],
+    licence: {
+      status: "reviewed",
+      reference: "docs/reference/runtime/capability-packs/atomic-runtime-boundaries.md",
+    },
+    security: "reviewed",
+  });
+  assertEquals(
+    catalog.bindings.find((binding) => binding.id === "openmodelica-admitted-modelica")
+      ?.qualification,
+    "unqualified",
+  );
+  assertEquals(
+    catalog.units.find((unit) => unit.id === "casys.spice-worker")?.materials.map((
+      material,
+    ) => material.imageReference).length,
+    2,
+  );
+  assertEquals(
+    catalog.units.find((unit) => unit.id === "casys.spice-worker")?.materials[0]
+      ?.kind,
+    "oci-image",
+  );
+  const chrono = catalog.units.find((unit) => unit.id === "casys.mcp-chrono");
+  assertEquals(chrono?.version, "0.3.1");
+  assertEquals(
+    chrono?.materials[0]?.imageReference,
+    "ghcr.io/casys-ai/mcp-chrono@sha256:b6302001725df4722d84096a51eeff7e7ffeee843690a2ba0cc417191c67683c",
+  );
+  assertEquals(chrono?.materials[0]?.platforms, ["linux/amd64"]);
+  assertEquals(chrono?.materials[0]?.effects, {
+    downloadBytes: null,
+    storageBytes: null,
+    services: [{ id: "mcp-chrono", lifecycle: "persistent" }],
+    volumes: [{ id: "chrono-data", access: "read-write", preservation: "preserve" }],
+    network: "loopback-only",
+    loopbackPorts: [3025],
+    bindMounts: [],
+    privileged: false,
+    dockerSocket: false,
+    devices: [],
+    secretSlots: ["chrono-mcp-bearer-token"],
+    licence: {
+      status: "unknown",
+      reference: "docs/reference/runtime/capability-packs/atomic-runtime-boundaries.md",
+    },
+    security: "reviewed",
+  });
+  assertEquals(
+    catalog.bindings.find((binding) => binding.id === "chrono-prescribed-kinematics")
+      ?.qualification,
+    "unqualified",
+  );
+  assertEquals(
+    catalog.bindings.find((binding) => binding.id === "chrono-prescribed-kinematics")
+      ?.version,
+    "1",
+  );
+});
+
+Deno.test("runtime catalogue parsers fail closed on unsafe fields and lock/policy drift", async () => {
+  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+  const malformed = structuredClone(catalog) as unknown as Record<string, unknown>;
+  const firstMaterial = (malformed.units as Record<string, unknown>[])[0]!
+    .materials as Record<
+      string,
+      unknown
+    >[];
+  firstMaterial[0]!.effects = {
+    ...(firstMaterial[0]!.effects as Record<string, unknown>),
+    dockerSocket: true,
+  };
+  await assertRejects(
+    () => validateCapabilityRuntimeCatalog(malformed),
+    TypeError,
+    "dockerSocket must equal false",
+  );
+
+  const staleManifest = JSON.parse(JSON.stringify(catalog)) as Record<string, unknown>;
+  const staleMaterial = (staleManifest.units as Record<string, unknown>[])[0]!
+    .materials as Record<string, unknown>[];
+  (staleMaterial[0]!.effects as Record<string, unknown>).network = "deny-all";
+  await assertRejects(
+    () => validateCapabilityRuntimeCatalog(staleManifest),
+    TypeError,
+    "does not match the canonical unit body",
+  );
+
+  const runtimeModeClaim = structuredClone(catalog) as unknown as Record<
+    string,
+    unknown
+  >;
+  const claimedBinding = (runtimeModeClaim.bindings as Record<string, unknown>[])[0]!;
+  const claimedUnit = (runtimeModeClaim.units as Record<string, unknown>[])[0]!;
+  const claimedMaterial = (claimedUnit.materials as Record<string, unknown>[])[0]!;
+  claimedBinding.runtimeModes = [{
+    material: {
+      unitId: claimedUnit.id,
+      materialId: claimedMaterial.id,
+      imageDigest: String(claimedMaterial.imageReference).slice(
+        String(claimedMaterial.imageReference).lastIndexOf("@sha256:") + 8,
+      ),
+    },
+    targetPlatform: "linux/arm64",
+    mode: "native",
+    qualificationAttestationFingerprint: null,
+  }];
+  await assertRejects(
+    () => validateCapabilityRuntimeCatalog(runtimeModeClaim),
+    TypeError,
+    "runtimeModes must be empty",
+  );
+
+  assertThrows(
+    () =>
+      validateCapabilityRuntimeHostObservation({
+        schemaVersion: CAPABILITY_RUNTIME_HOST_OBSERVATION_SCHEMA_VERSION,
+        identityFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+        platform: "linux/arm64",
+        emulatedPlatforms: ["linux/arm64"],
+        images: [],
+      }),
+    TypeError,
+    "emulatedPlatforms",
+  );
+  assertThrows(
+    () =>
+      validateCapabilityRuntimeAdminPolicy({
+        schemaVersion: CAPABILITY_RUNTIME_ADMIN_POLICY_SCHEMA_VERSION,
+        disabledBindingIds: ["invented-binding"],
+        preferences: [],
+      }, catalog),
+    TypeError,
+    "unknown binding",
+  );
+  await assertRejects(
+    () =>
+      validateCapabilityRuntimeAdminLock({
+        schemaVersion: CAPABILITY_RUNTIME_ADMIN_LOCK_SCHEMA_VERSION,
+        revision: 1,
+        previous: null,
+        units: [{
+          id: "casys.calculix-worker",
+          version: "1.0.0",
+          manifestFingerprint: { algorithm: "sha256", digest: "0".repeat(64) },
+          desired: "active",
+        }],
+      }, catalog),
+    TypeError,
+    "does not match",
+  );
+  await assertRejects(
+    () =>
+      validateCapabilityRuntimeAdminLock({
+        schemaVersion: CAPABILITY_RUNTIME_ADMIN_LOCK_SCHEMA_VERSION,
+        revision: 1,
+        previous: null,
+        units: [],
+      }, catalog),
+    TypeError,
+    "greater than 0 must name the exact previous",
+  );
+});

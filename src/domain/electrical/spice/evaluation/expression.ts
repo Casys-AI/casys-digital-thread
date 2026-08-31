@@ -23,8 +23,7 @@ export const ELECTRICAL_OBSERVATION_UNITS = ["V", "A", "W", "1"] as const;
 export const ELECTRICAL_OBSERVATION_EXPRESSION_MAX_DEPTH = 8 as const;
 export const ELECTRICAL_OBSERVATION_EXPRESSION_MAX_NODES = 24 as const;
 
-export type ElectricalObservationUnit =
-  (typeof ELECTRICAL_OBSERVATION_UNITS)[number];
+export type ElectricalObservationUnit = (typeof ELECTRICAL_OBSERVATION_UNITS)[number];
 
 export type ElectricalObservationNativeUnit = SpiceOperatingPointUnit;
 

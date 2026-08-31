@@ -34,7 +34,10 @@ import {
   validateFeaSysonEvaluationCapture,
 } from "../adapters/fea/isolated-v3/fea-syson-evaluation-capture.ts";
 import type { StaticMechanicalCloseoutEvidenceResolverDependencies } from "../adapters/fea/evaluation-closeout/static-mechanical-closeout-evidence-resolver.ts";
-import { FileCaptureStore, EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR } from "../adapters/shared/cas/file-capture-store.ts";
+import {
+  EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
+  FileCaptureStore,
+} from "../adapters/shared/cas/file-capture-store.ts";
 
 const COMMAND_AT = "2026-08-22T00:00:00.000Z";
 
@@ -93,7 +96,10 @@ export async function createCompletedStaticMechanicalCloseoutFixture(options: {
         maxOutputTotalBytes: 268_435_456,
       },
     });
-    const fea = await createIsolatedCalculixV3Fixture(directory, await profiles.initial());
+    const fea = await createIsolatedCalculixV3Fixture(
+      directory,
+      await profiles.initial(),
+    );
     let project = await requiredProject(fea);
     project = await fea.commands.claimRun(ISOLATED_CALCULIX_FIXTURE_AGENT, {
       commandId: "fixture:static-mechanical-closeout:fea-claim",
@@ -133,19 +139,21 @@ export async function createCompletedStaticMechanicalCloseoutFixture(options: {
       proofFingerprint,
       result: { metrics },
     } as unknown as CalculixIsolatedExecutionEvidence;
-    const outputs = await Promise.all(CALCULIX_ISOLATED_OUTPUT_MANIFEST.map(async (output) => {
-      const sha256 = output.role === "input.step"
-        ? fea.proofCase.expectedCadArtifact.sha256
-        : await fingerprintResourceBytes(
-          new TextEncoder().encode(`static-mechanical-closeout:${output.role}`),
-        );
-      return {
-        role: output.role,
-        sha256,
-        casUri: `casys://static-mechanical-closeout-output/sha256/${sha256}`,
-        mediaType: output.mediaType,
-      };
-    }));
+    const outputs = await Promise.all(
+      CALCULIX_ISOLATED_OUTPUT_MANIFEST.map(async (output) => {
+        const sha256 = output.role === "input.step"
+          ? fea.proofCase.expectedCadArtifact.sha256
+          : await fingerprintResourceBytes(
+            new TextEncoder().encode(`static-mechanical-closeout:${output.role}`),
+          );
+        return {
+          role: output.role,
+          sha256,
+          casUri: `casys://static-mechanical-closeout-output/sha256/${sha256}`,
+          mediaType: output.mediaType,
+        };
+      }),
+    );
     const request = prepareFeaConstraintOracleCall(
       fea.proofCase.requirements,
       buildOracleValues({
@@ -187,7 +195,10 @@ export async function createCompletedStaticMechanicalCloseoutFixture(options: {
       uriNamespace: "calculix-isolated-syson-evaluation",
       label: "Static mechanical closeout L4 capture",
     });
-    await evaluationStore.save(evaluationFingerprint, new TextEncoder().encode(evaluationText));
+    await evaluationStore.save(
+      evaluationFingerprint,
+      new TextEncoder().encode(evaluationText),
+    );
     const outcomes = parseCapturedFeaConstraintOracleOutcome(
       response.structuredContent,
       fea.proofCase.requirements,
@@ -212,7 +223,8 @@ export async function createCompletedStaticMechanicalCloseoutFixture(options: {
       proofRequirements: fea.proofCase.requirements,
       evidence: {
         fingerprint: executionFingerprint,
-        uri: `casys://calculix-isolated-execution-evidence/sha256/${executionFingerprint.digest}`,
+        uri:
+          `casys://calculix-isolated-execution-evidence/sha256/${executionFingerprint.digest}`,
         outputs,
         metrics,
       },
@@ -247,7 +259,9 @@ export async function createCompletedStaticMechanicalCloseoutFixture(options: {
       evidenceRefs: exactStaticProofEvidenceRefs(snapshot, localOperation),
     });
     const completedRun = project.agentRuns.find((run) => run.id === fea.runId);
-    if (!completedRun?.resultSnapshot) throw new Error("The FEA fixture did not complete.");
+    if (!completedRun?.resultSnapshot) {
+      throw new Error("The FEA fixture did not complete.");
+    }
     const basis: EngineeringThreadSnapshotBasis = {
       kind: "thread-snapshot",
       snapshotId: snapshot.id,
@@ -262,31 +276,33 @@ export async function createCompletedStaticMechanicalCloseoutFixture(options: {
     };
     const dependencies: StaticMechanicalCloseoutEvidenceResolverDependencies = {
       artifacts: {
-        readArtifact: async (artifact) => {
+        readArtifact: (artifact) => {
           counts.artifactReads++;
-          if (artifact.id !== fea.proofArtifact.id) return undefined;
-          return {
+          if (artifact.id !== fea.proofArtifact.id) return Promise.resolve(undefined);
+          return Promise.resolve({
             uri: fea.proofArtifact.uri!,
             mediaType: fea.proofArtifact.mediaType!,
             byteCount: fea.proofBytes.byteLength,
             sha256: fea.proofArtifact.fingerprint.digest,
             bytes: Uint8Array.from(fea.proofBytes),
-          };
+          });
         },
       },
       canonicalAssets: {
-        read: async (digest) => {
+        read: (digest) => {
           counts.canonicalStepReads++;
           if (digest !== fea.proofCase.expectedCadArtifact.sha256) {
             throw new Error("The fixture has no other canonical asset.");
           }
-          return Uint8Array.from(fea.stepBytes);
+          return Promise.resolve(Uint8Array.from(fea.stepBytes));
         },
       },
       executionEvidence: {
-        read: async (fingerprint) => {
+        read: (fingerprint) => {
           counts.executionEvidenceReads++;
-          return fingerprint.digest === executionFingerprint.digest ? execution : undefined;
+          return Promise.resolve(
+            fingerprint.digest === executionFingerprint.digest ? execution : undefined,
+          );
         },
         uriFor: (fingerprint) =>
           `casys://calculix-isolated-execution-evidence/sha256/${fingerprint.digest}`,
@@ -325,6 +341,8 @@ async function requiredProject(
   fixture: IsolatedCalculixV3Fixture,
 ): Promise<EngineeringProjectSnapshot> {
   const project = await fixture.projects.get(fixture.projectId);
-  if (!project) throw new Error("The static-mechanical closeout fixture project is absent.");
+  if (!project) {
+    throw new Error("The static-mechanical closeout fixture project is absent.");
+  }
   return project;
 }

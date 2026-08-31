@@ -37,6 +37,12 @@ be replaced under the same label; each newly observed attribute must correspond 
 reviewed proposal entry. This ratchet is evidence preservation, not a generic SysML
 revision or deletion facility.
 
+After an `architecture-capture/4.0` exists, its sealed Package scope is fixed: a
+successor `model.write-architecture@1` proposal must retain that capture's
+`packageName`. The executor refuses a different package name before acquiring a lease,
+creating a WAL, or calling SysON; multi-package architecture is outside this registered
+surface.
+
 Named runtime proof: MCS-02 used `architecture-capture/4.0` to navigate eight separate
 product definitions, attach exact CAD/Modelica/SPICE sources to three of them, and write
 system plus RailFrame scalar requirements. See

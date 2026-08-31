@@ -4,8 +4,9 @@
  * No latency, no uptime, no elapsed time — none of those fields exist in
  * the data. The model joins declared fleet servers (from config/mcp-fleet.json
  * via the BFF) with systems actually observed in the thread snapshot.
- * A declared server without recorded evidence remains an explicit unrecorded
- * row. It is never presented as healthy or down.
+ * A declared server without exact recorded evidence remains explicitly
+ * unavailable. An observed system without an exact declared server remains a
+ * separate unmatched row. Neither is presented as healthy or down.
  */
 
 import type {
@@ -23,7 +24,10 @@ export type FleetFreshness =
   | "failed";
 
 /** Derived visual state of a fleet row — no latency, no uptime. */
-export type FleetCardState = "running" | "ok" | "attention" | "unrecorded";
+export type FleetCardState = "running" | "ok" | "attention" | "unavailable";
+
+/** Result of the literal declared-server id to recorded-system identity join. */
+export type FleetIdentityMatch = "exact" | "unmatched" | "unavailable";
 
 export interface FleetCardView {
   readonly id: string;
@@ -34,6 +38,8 @@ export interface FleetCardView {
   /** Undefined means that this declared surface has no project record. */
   readonly freshness: FleetFreshness | undefined;
   readonly state: FleetCardState;
+  /** No normalization, display-name alias, provider alias, or substring join. */
+  readonly match: FleetIdentityMatch;
   /** ISO string of the most recent graph-node `recordedAt` for this system. */
   readonly lastEvidenceAt: string | undefined;
   readonly stageCount: number;
@@ -65,10 +71,10 @@ interface ObservedSystem {
 /**
  * Build the Operations fleet view.
  *
- * Join strategy: a declared server matches an observed system when either
- * token (server.id or server.displayName, lowercased) appears inside the
- * lowercased thread system label, or vice versa — the same "includes"
- * heuristic as `providerMark` in feed.tsx.
+ * Join strategy: a declared server matches an observed system only when
+ * `stage.system === server.id`. This is a literal, case-sensitive identity
+ * comparison. Display names are presentation only; normalization, aliases,
+ * provider inference, and substring matching are forbidden.
  *
  * When `fleet` is absent the function falls back to rows built solely from
  * observed systems. Their requirement state stays unknown; it is never
@@ -90,6 +96,7 @@ export function buildOperationsFleetView(
         required: undefined,
         freshness: obs.freshness,
         state: freshnessToState(obs.freshness),
+        match: "unavailable",
         lastEvidenceAt: obs.lastEvidenceAt,
         stageCount: obs.stageCount,
       }),
@@ -109,14 +116,10 @@ export function buildOperationsFleetView(
 
   const cards: FleetCardView[] = [];
   const declaredIdle: string[] = [];
-  const declaredKeys = new Set<string>();
-  for (const server of fleet.servers) {
-    declaredKeys.add(server.id.toLowerCase());
-    declaredKeys.add(server.displayName.toLowerCase());
-  }
+  const matchedObservedIds = new Set<string>();
 
   for (const server of fleet.servers) {
-    const obs = findObservedMatch(observed, server, declaredKeys);
+    const obs = observed.get(server.id);
     if (obs === undefined) {
       declaredIdle.push(server.displayName);
       cards.push({
@@ -125,12 +128,14 @@ export function buildOperationsFleetView(
         role: server.role,
         required: server.required,
         freshness: undefined,
-        state: "unrecorded",
+        state: "unavailable",
+        match: "unmatched",
         lastEvidenceAt: undefined,
         stageCount: 0,
       });
       continue;
     }
+    matchedObservedIds.add(obs.id);
     cards.push({
       id: server.id,
       displayName: server.displayName,
@@ -138,6 +143,25 @@ export function buildOperationsFleetView(
       required: server.required,
       freshness: obs.freshness,
       state: freshnessToState(obs.freshness),
+      match: "exact",
+      lastEvidenceAt: obs.lastEvidenceAt,
+      stageCount: obs.stageCount,
+    });
+  }
+
+  // Preserve generic fleet navigation: recorded systems without a literal
+  // declared id stay visible as their own unmatched rows. They never lend
+  // evidence to a similarly named declared server.
+  for (const obs of observed.values()) {
+    if (matchedObservedIds.has(obs.id)) continue;
+    cards.push({
+      id: obs.id,
+      displayName: obs.label,
+      role: "",
+      required: undefined,
+      freshness: obs.freshness,
+      state: freshnessToState(obs.freshness),
+      match: "unmatched",
       lastEvidenceAt: obs.lastEvidenceAt,
       stageCount: obs.stageCount,
     });
@@ -169,7 +193,7 @@ function gatherObservedSystems(
 
   // Flow stages supply freshness and stage count.
   for (const stage of thread.flow) {
-    const key = stage.system.toLowerCase();
+    const key = stage.system;
     const existing = map.get(key);
     if (existing) {
       existing.stageCount += 1;
@@ -190,7 +214,7 @@ function gatherObservedSystems(
 
   // Graph nodes supply lastEvidenceAt per system.
   for (const node of thread.graph.nodes) {
-    const key = node.system.toLowerCase();
+    const key = node.system;
     const obs = map.get(key);
     if (!obs || node.recordedAt === undefined) continue;
     if (
@@ -202,30 +226,6 @@ function gatherObservedSystems(
   }
 
   return map;
-}
-
-function findObservedMatch(
-  observed: ReadonlyMap<string, ObservedSystem>,
-  server: { readonly id: string; readonly displayName: string },
-  declaredKeys: ReadonlySet<string>,
-): ObservedSystem | undefined {
-  const idLow = server.id.toLowerCase();
-  const nameLow = server.displayName.toLowerCase();
-  const exact = observed.get(idLow) ?? observed.get(nameLow);
-  if (exact) return exact;
-  for (const [key, obs] of observed) {
-    // A system whose label is exactly another declared server's identity can
-    // only be claimed by that server — `build123d` must never absorb the
-    // evidence recorded by `build123d-sandbox`.
-    if (declaredKeys.has(key)) continue;
-    if (
-      key.includes(idLow) || idLow.includes(key) ||
-      key.includes(nameLow) || nameLow.includes(key)
-    ) {
-      return obs;
-    }
-  }
-  return undefined;
 }
 
 /**

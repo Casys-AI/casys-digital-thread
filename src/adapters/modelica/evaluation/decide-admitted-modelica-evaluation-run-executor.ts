@@ -30,8 +30,8 @@ import {
   parseAdmittedObservationEvaluationCloseoutParameters,
 } from "../../../domain/modelica/evaluation/admitted-observation-evaluation-closeout-proposal.ts";
 import {
-  type AdmittedModelicaEvaluationCloseoutEvidenceResolverDependencies,
   admittedModelicaEvaluationCloseoutAdmission,
+  type AdmittedModelicaEvaluationCloseoutEvidenceResolverDependencies,
   AdmittedModelicaEvaluationCloseoutResolutionError,
   resolveAdmittedModelicaEvaluationCloseoutEvidence,
 } from "./admitted-observation-evaluation-closeout-evidence-resolver.ts";

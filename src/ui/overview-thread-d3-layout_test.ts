@@ -80,9 +80,7 @@ Deno.test(
     assert(first, "First reference route must be present");
     assert(second, "Second reference route must be present");
     const firstGroupPoints = new Set(
-      first.route.filter((point) => point.kind === "group").map((point) =>
-        point.key
-      ),
+      first.route.filter((point) => point.kind === "group").map((point) => point.key),
     );
     const sharedGroupPoints = second.route.filter((point) =>
       point.kind === "group" && firstGroupPoints.has(point.key)
@@ -142,15 +140,9 @@ function normalizeLayout(
 ): unknown {
   return {
     viewBox: layout.viewBox,
-    nodes: layout.nodes.toSorted((left, right) =>
-      left.key.localeCompare(right.key)
-    ),
-    edges: layout.edges.toSorted((left, right) =>
-      left.key.localeCompare(right.key)
-    ),
-    lanes: layout.lanes.toSorted((left, right) =>
-      left.lane.localeCompare(right.lane)
-    ),
+    nodes: layout.nodes.toSorted((left, right) => left.key.localeCompare(right.key)),
+    edges: layout.edges.toSorted((left, right) => left.key.localeCompare(right.key)),
+    lanes: layout.lanes.toSorted((left, right) => left.lane.localeCompare(right.lane)),
     unroutedEdgeKeys: layout.unroutedEdgeKeys.toSorted(),
   };
 }

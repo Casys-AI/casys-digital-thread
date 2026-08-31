@@ -182,9 +182,7 @@ Deno.test("relaxed cable coordinates are finite and particle count is bounded", 
   assert(route.points.length >= 4);
   assert(route.points.length <= 12);
   assert(
-    route.points.every((point) =>
-      Number.isFinite(point.x) && Number.isFinite(point.y)
-    ),
+    route.points.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y)),
   );
   assert(!/[Nn]a[Nn]|Infinity/.test(route.d));
 });
