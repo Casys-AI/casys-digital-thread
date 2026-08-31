@@ -18,7 +18,7 @@ import {
  * are admitted only after exact reconciliation with that snapshot.
  */
 
-export const OVERVIEW_THREAD_WHITEBOARD_PRESENTATION_VERSION = 1;
+export const OVERVIEW_THREAD_WHITEBOARD_PRESENTATION_VERSION = 2;
 
 const STORAGE_NAMESPACE = "casys.project-whiteboard.presentation";
 const PRESENTATION_SCHEMA = "casys-project-whiteboard-presentation";
@@ -67,22 +67,26 @@ export interface OverviewThreadWhiteboardActivityPresentationViewer
   readonly kind: "activity";
 }
 
-export interface OverviewThreadWhiteboardCadPresentationViewer
+/**
+ * One exact server-projected viewer descriptor. Local state retains only its
+ * stable session id and spatial presentation — never its URL or runtime data.
+ */
+export interface OverviewThreadWhiteboardSessionPresentationViewer
   extends OverviewThreadWhiteboardPresentationViewerBase {
-  readonly kind: "cad";
-  /** Exact artifact identity admitted by the current node capability. */
-  readonly assetId: string;
+  readonly kind: "session";
+  readonly sessionId: string;
 }
 
 export type OverviewThreadWhiteboardPresentationViewer =
   | OverviewThreadWhiteboardRecordPresentationViewer
   | OverviewThreadWhiteboardActivityPresentationViewer
-  | OverviewThreadWhiteboardCadPresentationViewer;
+  | OverviewThreadWhiteboardSessionPresentationViewer;
 
 export interface OverviewThreadWhiteboardViewerCapability {
   readonly record?: boolean;
   readonly activity?: boolean;
-  readonly cadAssetIds?: readonly string[] | ReadonlySet<string>;
+  /** Exact session keys from the current viewer-sessions replacement. */
+  readonly sessionIds?: readonly string[] | ReadonlySet<string>;
 }
 
 export interface OverviewThreadWhiteboardPresentationReconciliation {
@@ -207,7 +211,7 @@ export function reconcileOverviewThreadWhiteboardPresentation(
     if (!capability) return false;
     if (viewer.kind === "record") return capability.record === true;
     if (viewer.kind === "activity") return capability.activity === true;
-    return hasExactAssetId(capability.cadAssetIds, viewer.assetId);
+    return hasExactSessionId(capability.sessionIds, viewer.sessionId);
   });
 
   return {
@@ -375,14 +379,14 @@ function parseViewer(
   candidate: unknown,
 ): OverviewThreadWhiteboardPresentationViewer | undefined {
   if (!isRecord(candidate)) return undefined;
-  const isCad = candidate.kind === "cad";
+  const isSession = candidate.kind === "session";
   const hasRestoreGeometry = Object.hasOwn(candidate, "restoreGeometry");
-  const keys = isCad
+  const keys = isSession
     ? [
       "kind",
       "id",
       "nodeKey",
-      "assetId",
+      "sessionId",
       "geometry",
       "z",
       "expanded",
@@ -398,7 +402,8 @@ function parseViewer(
       ...(hasRestoreGeometry ? ["restoreGeometry"] : []),
     ];
   if (
-    (candidate.kind !== "record" && candidate.kind !== "activity" && !isCad) ||
+    (candidate.kind !== "record" && candidate.kind !== "activity" &&
+      !isSession) ||
     !isExactRecord(candidate, keys) ||
     !isSafeId(candidate.id) ||
     !isSafeId(candidate.nodeKey) ||
@@ -418,13 +423,13 @@ function parseViewer(
     : undefined;
   if (!geometry || (candidate.expanded && !restoreGeometry)) return undefined;
 
-  if (isCad) {
-    if (!isSafeId(candidate.assetId)) return undefined;
-    const viewer: OverviewThreadWhiteboardCadPresentationViewer = {
-      kind: "cad",
+  if (isSession) {
+    if (!isSafeId(candidate.sessionId)) return undefined;
+    const viewer: OverviewThreadWhiteboardSessionPresentationViewer = {
+      kind: "session",
       id: candidate.id,
       nodeKey: candidate.nodeKey,
-      assetId: candidate.assetId,
+      sessionId: candidate.sessionId,
       geometry,
       z: candidate.z as number,
       expanded: candidate.expanded,
@@ -470,9 +475,10 @@ function parseViewerGeometry(
 function expectedViewerId(
   viewer: OverviewThreadWhiteboardPresentationViewer,
 ): string {
-  return viewer.kind === "cad"
-    ? `cad:${viewer.nodeKey}:${viewer.assetId}`
-    : `${viewer.kind}:${viewer.nodeKey}`;
+  if (viewer.kind === "session") {
+    return `session:${viewer.nodeKey}:${viewer.sessionId}`;
+  }
+  return `${viewer.kind}:${viewer.nodeKey}`;
 }
 
 function isPlacement(
@@ -499,13 +505,13 @@ function copyDefinedCoordinates<T>(
   return result as T;
 }
 
-function hasExactAssetId(
-  assetIds: readonly string[] | ReadonlySet<string> | undefined,
-  assetId: string,
+function hasExactSessionId(
+  sessionIds: readonly string[] | ReadonlySet<string> | undefined,
+  sessionId: string,
 ): boolean {
-  return assetIds instanceof Set
-    ? assetIds.has(assetId)
-    : Array.isArray(assetIds) && assetIds.includes(assetId);
+  return sessionIds instanceof Set
+    ? sessionIds.has(sessionId)
+    : Array.isArray(sessionIds) && sessionIds.includes(sessionId);
 }
 
 function ownValue<T>(

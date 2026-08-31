@@ -412,37 +412,6 @@ node; their canonical records and internal relations live in the inspector.
 }
 
 /* ---------------------------------------------------------------------------
-Filtre par pièce du feed Activity (sélecteur de composant en tête du feed).
-Déplacé de 16-part-lane.css lors du retrait de la vue Par pièce : le filtre
-du feed est la lecture par pièce qui survit.
---------------------------------------------------------------------------- */
-
-.thread-feed-component-filter {
-  display: flex;
-  align-items: center;
-  gap: var(--space-10);
-  padding: var(--space-8) var(--space-12);
-  border-bottom: 1px solid var(--thread-border);
-  background: var(--thread-panel-muted);
-}
-.thread-feed-component-filter > label {
-  flex-shrink: 0;
-  color: var(--muted);
-  font: 600 var(--cockpit-text-2xs)/1 var(--sans);
-  letter-spacing: 0.02em;
-}
-.thread-feed-component-filter > select {
-  flex: 1;
-  min-width: 0;
-  padding: var(--space-4) var(--space-8);
-  border: 1px solid var(--thread-border-strong);
-  border-radius: 4px;
-  color: var(--thread-ink);
-  font: var(--cockpit-text-sm)/1 var(--sans);
-  background: var(--thread-panel);
-  cursor: pointer;
-  appearance: auto;
-} /* ---------------------------------------------------------------------------
 Menu burger des réglages du graphe local (vue Evidence).
 Posé en haut à gauche du canvas,
 replié par défaut — façon Obsidian.

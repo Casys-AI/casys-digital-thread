@@ -13,6 +13,7 @@ import {
 } from "../../../domain/project/project-brief.ts";
 import { cn } from "../lib/utils.ts";
 import type { ThreadStreamStatus } from "../thread/client.ts";
+import type { ThreadViewerSessionsProjection } from "../thread/viewer-sessions-client.ts";
 import type { EngineeringPlanningWorkbenchSnapshot } from "../thread/types.ts";
 import { Badge, type BadgeProps } from "../ui/badge.tsx";
 import {
@@ -34,6 +35,8 @@ import {
   workOwnerLabel,
   workStatusLabel,
 } from "./model.ts";
+import { ProjectReviewAppHandoffs } from "./control-center.tsx";
+import { buildProjectReviewRecords } from "./review-decision-model.ts";
 
 type BadgeVariant = NonNullable<BadgeProps["variant"]>;
 
@@ -44,11 +47,13 @@ type BadgeVariant = NonNullable<BadgeProps["variant"]>;
  */
 export function PlanningWorkbench({
   workbench,
+  viewerSessions,
   streamStatus,
   activeView,
   onChangeView,
 }: {
   workbench: EngineeringPlanningWorkbenchSnapshot;
+  viewerSessions?: ThreadViewerSessionsProjection;
   streamStatus: ThreadStreamStatus | "snapshot";
   activeView: ProjectWorkspaceView;
   onChangeView: (view: ProjectWorkspaceView) => void;
@@ -81,6 +86,7 @@ export function PlanningWorkbench({
     ? "Continue refining it with the agent"
     : "Shape the brief with the agent";
   const statusTone = projectStatusTone(brief.status);
+  const reviewRecords = buildProjectReviewRecords(project);
 
   return (
     <div className="thread-workbench cockpit-surface planning-workbench">
@@ -182,6 +188,12 @@ export function PlanningWorkbench({
             framing={framing}
           />
         )}
+
+        <ProjectReviewAppHandoffs
+          project={project}
+          records={reviewRecords}
+          projection={viewerSessions}
+        />
 
         <section
           aria-labelledby="planning-baseline-title"

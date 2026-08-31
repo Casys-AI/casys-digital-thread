@@ -28,7 +28,6 @@ import {
   ENGINEERING_PATH_LANE_IDS,
   type EngineeringPathLaneId,
 } from "../../../domain/project/engineering-path-lane.ts";
-import { currentRequirements } from "../thread/versioned-provenance-model.ts";
 
 export interface ProjectPhaseView {
   readonly phase: EngineeringProjectPhase;
@@ -835,35 +834,6 @@ export function projectPulseStatus(
 function sentenceStatusLabel(status: string): string {
   const label = status.replaceAll("-", " ");
   return `${label.charAt(0).toUpperCase()}${label.slice(1)}`;
-}
-
-/**
- * The overview leads with the current engineering decision, while the full
- * Evidence space retains every historical criterion and relation for review.
- */
-export function verificationChainDetail(
-  thread: ThreadWorkbenchSnapshot,
-): string {
-  const requirements = currentRequirements(
-    thread.requirements,
-    thread.evidenceFamilyGraph,
-  );
-  const historicalCount = thread.requirements.length - requirements.length;
-  const passed = requirements.filter((item) => item.status === "pass").length;
-  const failed = requirements.filter((item) => item.status === "fail").length;
-  const unresolved = requirements.length - passed - failed;
-  const currentDetail = requirements.length === 0
-    ? "No current modelled criteria"
-    : `${passed}/${requirements.length} current criteria passing`;
-  const verdictDetail = failed > 0
-    ? `${failed} failed`
-    : unresolved > 0
-    ? `${unresolved} unresolved`
-    : `${thread.violations.length} named violations`;
-  const historyDetail = historicalCount > 0
-    ? `${historicalCount} historical record${historicalCount === 1 ? "" : "s"}`
-    : `${thread.graph.edges.length} recorded relations`;
-  return `${currentDetail} · ${verdictDetail} · ${historyDetail}.`;
 }
 
 /**

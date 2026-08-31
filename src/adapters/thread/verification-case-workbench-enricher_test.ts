@@ -701,14 +701,6 @@ function workbenchFor(proofs: readonly SealedProof[]): ThreadWorkbenchSnapshot {
       status: "evaluated",
       files: [],
     },
-    components: {
-      schemaVersion: "thread-components/1.0",
-      authority: "workspace-declared",
-      subjectId: PROOF_CASE.project.subjectId,
-      rationale: "Test",
-      systemViews: {},
-      components: [],
-    },
     engineeringCases: unavailableEngineeringCaseCatalog(),
     graph: { nodes, edges },
     evidenceFamilyGraph: {

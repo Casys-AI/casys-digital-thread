@@ -1,7 +1,7 @@
 /* Project is one continuous read-only digital-thread whiteboard.
 
    The graph owns the viewport. Objective, review, current work and recorded
-   verdicts are compact perimeter instruments on the same canvas. Viewer
+   activity records are compact perimeter instruments on the same canvas. Viewer
    windows mount inside the graph's own layer; this sheet does not simulate
    one or create a second authority surface. */
 
@@ -448,51 +448,6 @@
   white-space: nowrap;
 }
 
-.overview-thread-context-menu {
-  width: min(18rem, calc(100vw - 1rem));
-  max-height: min(24rem, calc(100dvh - 1rem));
-}
-
-.overview-thread-context-members {
-  max-height: min(18rem, calc(100dvh - 8rem));
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-}
-
-.overview-thread-context-menu [data-part="item-group-label"] {
-  display: grid;
-  gap: 0.12rem;
-}
-
-.overview-thread-context-menu [data-part="item-group-label"] > small {
-  color: var(--ui-muted-foreground);
-  font-family: var(--font-mono);
-  font-size: 0.56rem;
-  font-weight: 500;
-  line-height: 1.25;
-}
-
-.overview-thread-context-member {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.12rem;
-}
-
-.overview-thread-context-member > span,
-.overview-thread-context-member > small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.overview-thread-context-member > small {
-  color: var(--ui-muted-foreground);
-  font-family: var(--font-mono);
-  font-size: 0.56rem;
-}
-
 .project-thread-board .overview-thread-hero-immersive > p.text-warning {
   position: absolute;
   z-index: 9;
@@ -527,7 +482,7 @@
 }
 
 .project-thread-now-hud,
-.project-thread-verdicts-hud {
+.project-thread-records-hud {
   min-width: 0;
   min-height: 0;
 }
@@ -572,7 +527,7 @@
 }
 
 .project-now-feed-rail,
-.overview-verdict-chip-rail {
+.overview-record-chip-rail {
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
@@ -581,7 +536,7 @@
 }
 
 .project-now-feed-rail::-webkit-scrollbar,
-.overview-verdict-chip-rail::-webkit-scrollbar {
+.overview-record-chip-rail::-webkit-scrollbar {
   display: none;
 }
 
@@ -655,11 +610,11 @@
   text-decoration: underline;
 }
 
-.project-thread-verdicts-hud {
+.project-thread-records-hud {
   padding: 0.35rem 0.75rem 0.38rem;
 }
 
-.overview-verdicts-hud-content--compact {
+.overview-records-hud-content {
   display: grid;
   height: 100%;
   min-width: 0;
@@ -668,7 +623,7 @@
   gap: 0.6rem;
 }
 
-.overview-verdicts-hud-content--compact .overview-verdicts-heading {
+.overview-records-heading {
   display: grid;
   min-width: 0;
   gap: 0.12rem;
@@ -676,13 +631,13 @@
   margin: 0;
 }
 
-.overview-verdicts-hud-content--compact .overview-verdicts-heading button {
+.overview-records-heading button {
   width: max-content;
   justify-content: flex-start;
   font-size: 0.55rem;
 }
 
-.overview-verdict-chip-rail {
+.overview-record-chip-rail {
   display: flex;
   height: 100%;
   align-items: center;
@@ -690,53 +645,74 @@
 }
 
 .project-now-feed-rail:focus-visible,
-.overview-verdict-chip-rail:focus-visible {
+.overview-record-chip-rail:focus-visible {
   outline: 1px solid var(--ui-ring);
   outline-offset: 2px;
 }
 
-.overview-verdict-chip {
-  display: grid;
+.overview-record-chip {
   min-width: min(12rem, 58vw);
   max-width: 15rem;
   height: 2.7rem;
   flex: 0 0 auto;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: auto auto;
-  align-content: center;
-  gap: 0.16rem 0.4rem;
-  padding: 0.32rem 0.5rem;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--ui-border) 76%, transparent);
   border-radius: 0.48rem;
   background: color-mix(in srgb, #fff 82%, var(--ui-muted));
 }
 
-.overview-verdict-chip-label,
-.overview-verdict-chip-value {
+.overview-record-chip-action {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  align-content: center;
+  gap: 0.16rem 0.4rem;
+  padding: 0.32rem 0.5rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.overview-record-chip:hover,
+.overview-record-chip:focus-within {
+  border-color: color-mix(in srgb, var(--ui-primary) 32%, var(--ui-border));
+}
+
+.overview-record-chip-label,
+.overview-record-chip-value {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.overview-verdict-chip-label {
+.overview-record-chip-label {
   color: var(--ui-foreground);
   font-size: 0.62rem;
   font-weight: 680;
 }
 
-.overview-verdict-chip-value {
+.overview-record-chip-value {
   grid-column: 1 / -1;
   color: var(--ui-muted-foreground);
   font-family: var(--font-mono);
   font-size: 0.5rem;
 }
 
-.overview-verdict-chip-badge {
+.overview-record-chip-badge {
   padding: 0.02rem 0.3rem;
   font-size: 0.46rem;
   line-height: 1.1;
+}
+
+.overview-records-empty {
+  margin: 0;
+  color: var(--ui-muted-foreground);
+  font-size: 0.62rem;
 }
 
 @media (max-width: 900px) {
@@ -876,16 +852,16 @@
     max-width: 62vw;
   }
 
-  .project-thread-verdicts-hud {
+  .project-thread-records-hud {
     padding-inline: 0.5rem;
   }
 
-  .overview-verdicts-hud-content--compact {
+  .overview-records-hud-content {
     grid-template-columns: 5.7rem minmax(0, 1fr);
     gap: 0.4rem;
   }
 
-  .overview-verdict-chip {
+  .overview-record-chip {
     min-width: min(10.5rem, 64vw);
   }
 }

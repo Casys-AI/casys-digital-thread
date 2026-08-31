@@ -5,10 +5,7 @@
  * regression-tested without mounting Sigma or SVG.
  */
 
-import {
-  stubEdgeOccurrenceKey,
-  versionedEdgeOccurrenceKey,
-} from "./versioned-provenance-model.ts";
+import { versionedEdgeOccurrenceKey } from "./versioned-provenance-model.ts";
 import type { ThreadGraphEdge, ThreadGraphRef } from "./types.ts";
 
 export type GraphEdgeSelectionLike = {
@@ -22,14 +19,10 @@ export type GraphEdgeSelectionLike = {
 
 /**
  * Stable occurrence key painted by both Sigma and SVG for a visible edge.
- * Versioned representatives already have a canonical group key. Stubs use a
- * distinct structured record key because their object is reconstructed when a
- * canvas projection changes.
+ * Visible representatives use the canonical versioned group key.
  */
 export function displayedGraphEdgeOccurrenceKey(edge: ThreadGraphEdge): string {
-  return edge.id.startsWith("stub:")
-    ? stubEdgeOccurrenceKey(edge)
-    : versionedEdgeOccurrenceKey(edge);
+  return versionedEdgeOccurrenceKey(edge);
 }
 
 /**

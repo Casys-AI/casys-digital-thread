@@ -5,23 +5,23 @@ Audience: agent · Diátaxis: reference · Kind: contract
 Census of `state/fixtures/` and gitignored `state/local/` roots. These directories are
 storage, not product proof.
 
-Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays
-on [engineering domains](../domains/README.md).
+Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays on
+[engineering domains](../domains/README.md).
 
 ## Capture-store trust boundary
 
 `FileCaptureStore` resolves a relative CAS root from the captured working directory and
 walks only below that anchored root; an absolute root is instead walked from `/`.
 Configured paths are lexical and bounded, then every existing component is checked with
-`lstat` and rechecked before use. Symlinked roots, ancestors, and final capture files are
-refused, while a component that changes during the walk fails closed.
+`lstat` and rechecked before use. Symlinked roots, ancestors, and final capture files
+are refused, while a component that changes during the walk fails closed.
 
 The final-file check is deliberately open-first: the opened file handle is recrossed
 against the current pathname by file identity before any bytes are read. This closes the
-`lstat`-then-read substitution race. New captures are written and synced under a temporary
-name, published with no-overwrite linking, reread, and treated as an idempotent success
-only when the existing bytes are exact. This is a storage-integrity boundary, not an
-execution, approval, qualification, or verdict boundary.
+`lstat`-then-read substitution race. New captures are written and synced under a
+temporary name, published with no-overwrite linking, reread, and treated as an
+idempotent success only when the existing bytes are exact. This is a storage-integrity
+boundary, not an execution, approval, qualification, or verdict boundary.
 
 ## Source map
 
@@ -33,8 +33,8 @@ Explicitly labelled demo evidence
 
 Host-local admin lock, journal, leases, opaque host identity, qualification attempt WAL
 and append-only qualification attestations. Not Thread, CAS, project evidence, or a
-Workbench command surface. The Chrono probe writes
-`qualification-attempts/` and `qualification-attestations/` only.
+Workbench command surface. The Chrono probe writes `qualification-attempts/` and
+`qualification-attestations/` only.
 
 #### `state/local/project-capability-ledgers/`
 
@@ -231,18 +231,34 @@ only, never an approval or execution authority
 
 Current analysis-bearing `geometry-draft-capture/1.2` and `2.1`, plus
 `geometry-module-draft-capture/1.0`. The module draft binds the exact
-`geometry-module-input-bundle/1.0` identity, provider-neutral assembly receipt, reopened child
-capture/STEP identities, and produced assembly STEP plus binary GLB. These records never
-enter a `ThreadSnapshot`. Older draft schemas are unsupported.
+`geometry-module-input-bundle/1.0` identity, provider-neutral assembly receipt, reopened
+child capture/STEP identities, and produced assembly STEP plus binary GLB. These records
+never enter a `ThreadSnapshot`. Older draft schemas are unsupported.
 
 #### `state/local/geometry-draft-assets/<sha256>`
 
-Raw STEP, STL, or binary GLB preview bytes keyed by their recomputed SHA-256; served
-read-only by `/api/draft-assets/<digest>`
+Raw STEP, STL, or binary GLB draft bytes keyed by their recomputed SHA-256. They remain
+server-internal and are reopened only by the authorized CAD MRTR, execution, and seal
+flows; the Workbench exposes no draft-byte route
+
+#### `state/local/thread-viewer-apps/registry.json`
+
+Explicit `thread-viewer-app-registry/1.0` registrations for exact Project/Thread bases,
+anchors, App identities, whole-view resources, session schemas and opaque payloads. This
+file is written by a trusted registrar outside the Workbench. The Workbench is a
+read-only consumer: an absent or invalid registry projects zero App sessions.
+
+#### `state/local/thread-viewer-apps/objects/<sha256>`
+
+Immutable manifest JSON, whole-App HTML and registered read-resource bytes named by
+their exact SHA-256. The packaged Desktop and standalone BFF reopen and rehash these
+objects before projection or service. The browser never frames the stored HTML route
+directly; it verifies MIME, byte count and digest again, applies the staged CSP
+transform and frames only the resulting Blob document.
 
 #### `state/local/geometry-captures/`
 
 Current `geometry-capture/1.2` and `2.1`, plus `geometry-module-capture/1.0`; records
 seal verified immediate-child capture plus authoritative STEP identities, predecessor
-lineage, input-bundle identity, provider-neutral assembly receipt, and independent assembly STEP plus
-binary GLB assets. Older capture schemas are unsupported.
+lineage, input-bundle identity, provider-neutral assembly receipt, and independent
+assembly STEP plus binary GLB assets. Older capture schemas are unsupported.

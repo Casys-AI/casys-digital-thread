@@ -10,6 +10,10 @@ Reusable workflows live in the [agent skill catalogue](.agents/skills/README.md)
 route into the authorities below; they never redefine operation identities, contracts,
 or persisted truth.
 
+**Motto: verification stays proportionate to the actual risk and scope of the change.**
+Use the smallest evidence set that can support the claim; do not turn a bounded check
+into a parallel product effort.
+
 ## Non-negotiable
 
 | Actor     | Owns                                                     | Must not                                                                                                         |

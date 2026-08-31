@@ -10,10 +10,7 @@ function ref(id: string): ThreadGraphRef {
   return { kind: "artifact", id };
 }
 
-function edge(
-  id: string,
-  rationale = "via folded Analyze instrument — replié",
-): ThreadGraphEdge {
+function edge(id: string, rationale = "Recorded relation"): ThreadGraphEdge {
   return {
     id,
     from: ref("source"),
@@ -24,23 +21,23 @@ function edge(
   };
 }
 
-Deno.test("a current stub remaps and highlights across Sigma and SVG", () => {
-  const sigmaStub = edge("stub:artifact:source->artifact:target");
-  const svgStub = structuredClone(sigmaStub);
+Deno.test("a current relation remaps and highlights across Sigma and SVG", () => {
+  const sigmaEdge = edge("recorded-relation");
+  const svgEdge = structuredClone(sigmaEdge);
   const selection = {
     kind: "edge" as const,
-    id: sigmaStub.id,
+    id: sigmaEdge.id,
     occurrence: {
-      key: displayedGraphEdgeOccurrenceKey(sigmaStub),
-      edge: sigmaStub,
+      key: displayedGraphEdgeOccurrenceKey(sigmaEdge),
+      edge: sigmaEdge,
     },
   };
 
   assertEquals(
-    displayedGraphEdgeOccurrenceKey(svgStub),
+    displayedGraphEdgeOccurrenceKey(svgEdge),
     selection.occurrence.key,
   );
-  assertEquals(graphEdgeSelectionMatches(selection, svgStub), true);
+  assertEquals(graphEdgeSelectionMatches(selection, svgEdge), true);
 });
 
 Deno.test("relation controls expose endpoints, rationale and an ordinal", () => {

@@ -7,13 +7,15 @@ const EXACT_PATHS = new Set([
   "/api/fleet",
   "/api/thread/workbench",
   "/api/thread/workbench/events",
+  "/api/thread/viewer-sessions",
+  "/api/thread/viewer-sessions/events",
 ]);
 
 const WORKBENCH_DOCUMENT_CSP =
   "default-src 'none'; base-uri 'none'; form-action 'none'; " +
   "frame-ancestors 'none'; object-src 'none'; script-src 'self'; " +
   "style-src 'self' 'unsafe-inline'; img-src 'self' data:; " +
-  "font-src 'self'; connect-src 'self'; media-src 'none'; " +
+  "font-src 'self'; connect-src 'self'; frame-src blob:; media-src 'none'; " +
   "worker-src 'none'; manifest-src 'none'";
 
 export interface DesktopWorkbenchProxyOptions {
@@ -33,7 +35,8 @@ export async function proxyDesktopWorkbenchRequest(
   const url = new URL(request.url);
   if (!isAllowedWorkbenchPath(url.pathname)) return undefined;
   const method = request.method.toUpperCase();
-  const isEvents = url.pathname === "/api/thread/workbench/events";
+  const isEvents = url.pathname === "/api/thread/workbench/events" ||
+    url.pathname === "/api/thread/viewer-sessions/events";
   if (method !== "GET" && (method !== "HEAD" || isEvents)) {
     return new Response("Method not allowed.\n", {
       status: 405,
@@ -64,7 +67,11 @@ export async function proxyDesktopWorkbenchRequest(
       "X-Casys-Data-Source": response.headers.get("x-casys-data-source")!,
     }),
     ...(contentType.startsWith("text/html")
-      ? { "Content-Security-Policy": WORKBENCH_DOCUMENT_CSP }
+      ? {
+        "Content-Security-Policy": forwardedWorkbenchDocumentCsp(
+          response.headers.get("content-security-policy"),
+        ),
+      }
       : {}),
     ...(contentType.startsWith("text/event-stream")
       ? { "X-Accel-Buffering": "no" }
@@ -74,6 +81,19 @@ export async function proxyDesktopWorkbenchRequest(
     status: response.status,
     headers,
   });
+}
+
+function forwardedWorkbenchDocumentCsp(value: string | null): string {
+  if (value === WORKBENCH_DOCUMENT_CSP) return value;
+  const nonce = value?.match(
+    /(?:^|; )script-src 'self' 'nonce-([A-Za-z0-9_-]{43})'(?:;|$)/,
+  )?.[1];
+  if (!nonce) return WORKBENCH_DOCUMENT_CSP;
+  const expected = WORKBENCH_DOCUMENT_CSP.replace(
+    "script-src 'self'",
+    `script-src 'self' 'nonce-${nonce}'`,
+  );
+  return value === expected ? value : WORKBENCH_DOCUMENT_CSP;
 }
 
 export function isAllowedWorkbenchPath(pathname: string): boolean {
@@ -86,9 +106,14 @@ export function isAllowedWorkbenchPath(pathname: string): boolean {
       pathname.slice("/api/thread/assets/".length),
     );
   }
-  if (pathname.startsWith("/api/draft-assets/")) {
+  if (pathname.startsWith("/api/thread/viewer-apps/launch/")) {
+    return /^[a-f0-9]{64}\/[a-f0-9]{64}$/.test(
+      pathname.slice("/api/thread/viewer-apps/launch/".length),
+    );
+  }
+  if (pathname.startsWith("/api/thread/viewer-apps/resources/")) {
     return /^[a-f0-9]{64}$/.test(
-      pathname.slice("/api/draft-assets/".length),
+      pathname.slice("/api/thread/viewer-apps/resources/".length),
     );
   }
   return false;
