@@ -51,6 +51,22 @@ hashed into `implementation.evidenceFingerprint`. The Thread stores the neutral 
 not the native execution envelope. This keeps recovery evidence without coupling
 canonical geometry to the current packaging choice.
 
+## Exact qualified runtime
+
+The fixed adapter requires the exact qualified runtime of its registered binding. Its
+native receipt is recrossed against the fixed execution profile, isolation policy,
+output manifest, destruction assurance, and exact Microsandbox runtime attestation. A
+different, absent, divergent, or unknown runtime fails closed; it is `unavailable`, not
+a reason to fall back to a Docker image, a host executable, or caller-selected settings.
+
+`prepare:geometry-module:microsandbox` only imports the reviewed Docker source image
+into the Microsandbox cache under the fixed runtime manifest reference. That cache entry
+is not a qualification attestation. The separate
+`verify:geometry-module:microsandbox:qualification` gate verifies the fixed qualification
+fixture and records its own WAL, capture, and attestation; it neither promotes a
+catalogue binding nor performs a product assembly. A product export remains a separate
+registered use of the exact qualified runtime.
+
 ## Authority limit
 
 Successful assembly proves that the registered adapter produced a parseable STEP/GLB

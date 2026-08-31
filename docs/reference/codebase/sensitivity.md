@@ -110,8 +110,9 @@ First hop before `analyze.seal-sensitivity-study@1`; does not claim a dl06 case
 
 #### [`src/adapters/sensitivity/study/analyze-seal-sensitivity-study-run-executor.ts`](../../../src/adapters/sensitivity/study/analyze-seal-sensitivity-study-run-executor.ts)
 
-Provider-free seal of a reviewed 2.0 case into a Thread document. Known catalog id still
-opens the JSON; otherwise the unique signed offer is reopened.
+Provider-free seal of a reviewed `sensitivity-study-case/3.0` into a Thread document.
+Known catalog id still opens the JSON; otherwise the unique signed offer is reopened. It
+does not call CAD or CalculiX.
 
 #### [`src/adapters/sensitivity/live-fea/analyze-run-fea-sensitivity-run-executor.ts`](../../../src/adapters/sensitivity/live-fea/analyze-run-fea-sensitivity-run-executor.ts)
 

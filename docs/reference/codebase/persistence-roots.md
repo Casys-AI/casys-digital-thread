@@ -8,6 +8,21 @@ storage, not product proof.
 Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays
 on [engineering domains](../domains/README.md).
 
+## Capture-store trust boundary
+
+`FileCaptureStore` resolves a relative CAS root from the captured working directory and
+walks only below that anchored root; an absolute root is instead walked from `/`.
+Configured paths are lexical and bounded, then every existing component is checked with
+`lstat` and rechecked before use. Symlinked roots, ancestors, and final capture files are
+refused, while a component that changes during the walk fails closed.
+
+The final-file check is deliberately open-first: the opened file handle is recrossed
+against the current pathname by file identity before any bytes are read. This closes the
+`lstat`-then-read substitution race. New captures are written and synced under a temporary
+name, published with no-overwrite linking, reread, and treated as an idempotent success
+only when the existing bytes are exact. This is a storage-integrity boundary, not an
+execution, approval, qualification, or verdict boundary.
+
 ## Source map
 
 #### [`state/fixtures/`](../../../state/fixtures)
@@ -20,6 +35,13 @@ Host-local admin lock, journal, leases, opaque host identity, qualification atte
 and append-only qualification attestations. Not Thread, CAS, project evidence, or a
 Workbench command surface. The Chrono probe writes
 `qualification-attempts/` and `qualification-attestations/` only.
+
+#### `state/local/project-capability-ledgers/`
+
+Append-only `project-capability-ledger/1.0` revisions, prepared envelopes, and
+recoverable pending/claim material for each brief-bound operational authorization.
+Prepared or pending material alone is not authority. This root is distinct from Thread,
+CAS, MRTR, engineering result, and Workbench command state.
 
 #### `state/local/engineering-projects/`
 
@@ -124,6 +146,14 @@ WAL for `industrialize.run-dfm-checks@1`; not evidence
 
 Content-addressed SysON join of study-base observations for
 `verify.evaluate-sensitivity-base@1`
+
+#### `state/local/sensitivity-runtime-provenance-captures/`
+
+Content-addressed L3 `sensitivity-runtime-provenance/1.0` records for the actual
+server-resolved recorded CalculiX runtime and the base then stepped recorded captures,
+including their request, readback, and ordered-resource-capture identities. Separate
+from the scientific sensitivity study capture; not a provider qualification, solver
+verdict, or evaluation.
 
 #### `state/local/sensitivity-experience/`
 

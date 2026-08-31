@@ -31,6 +31,8 @@ exercise that complete local microVM path end to end.
 | `gates/verify-console-evidence.ts`                | `verify:evidence`                                                            | read       | Verify persisted console evidence.                                                                                                 |
 | `gates/verify-doc-links.ts`                       | `verify:docs`                                                                | read       | Verify local Markdown links and anchors against tracked plus new non-ignored repository content.                                   |
 | `gates/verify-native-workbench-presentation.ts`   | `verify:thread:presentation`                                                 | read       | Verify the built native-workbench presentation.                                                                                    |
+| `gates/prepare-geometry-module-assembler-microsandbox.ts` | `prepare:geometry-module:microsandbox`                              | cache      | Idempotently inspect and import the exact reviewed Docker source image into the fixed Microsandbox runtime cache. No pull, build, worker execution, qualification, or product run. |
+| `gates/verify-geometry-module-assembler-microsandbox-qualification.ts` | `verify:geometry-module:microsandbox:qualification` | write      | Private `--run` / `--recover` qualification of the fixed two-bracket worker fixture, with durable attempt, capture, and attestation records. It is neither catalogue promotion nor a project product run. |
 | `gates/verify-build123d-microsandbox-worker.ts`   | `check` (static check); direct invocation to run                             | temp/image | Direct Build123d worker microVM qualification; not the broker/composition/CAS vertical.                                            |
 | `gates/verify-build123d-microsandbox-vertical.ts` | `verify:build123d:microsandbox:vertical`                                     | temp       | Run the digest-pinned local microVM, broker, CAS, STEP validation, and cleanup vertical.                                           |
 | `gates/verify-modelica-microsandbox-worker.ts`    | `check:modelica-isolated-execution` (static check); direct invocation to run | temp/image | Docker deny-all OMC worker preflight; not a microVM vertical.                                                                      |
@@ -40,6 +42,13 @@ exercise that complete local microVM path end to end.
 | `gates/verify-calculix-microsandbox-vertical.ts`  | `verify:calculix:microsandbox:vertical`                                      | temp       | Run the digest-pinned local microVM, broker, CAS, external validation, replay, and cleanup vertical.                               |
 | `gates/verify-ngspice-microsandbox-worker.ts`     | Direct invocation (`--run`)                                                  | temp/image | Docker deny-all ngspice worker preflight; not Microsandbox cache prep and not the product run.                                     |
 | `gates/prepare-ngspice-microsandbox.ts`           | `prepare:ngspice:microsandbox`                                               | cache      | Idempotent import of the Docker source digest into the Microsandbox cache under the runtime manifest pin. No pull, no product run. |
+
+The geometry-module stages are deliberately non-substitutable. Cache preparation only
+makes the exact, already reviewed runtime image visible to Microsandbox. Qualification
+then executes and rereads the fixed qualification fixture through its own WAL and
+attestation capture. Neither stage performs `project_geometry_module_export`, produces
+project evidence, or authorizes a product assembly; that remains a separately registered
+operation using the exact qualified runtime.
 
 ## release/ — source-only public-release inventory
 
