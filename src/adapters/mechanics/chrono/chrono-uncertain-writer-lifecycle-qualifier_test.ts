@@ -40,7 +40,6 @@ import type {
   ResolvedCapabilityRuntimeOperation,
 } from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
 import { TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES } from "../../../domain/record/reconcile-uncertain-writer-proposal.ts";
-import { MCP_CHRONO_031_IMAGE_REFERENCE } from "../../control-plane/first-party-capability-runtime-identities.ts";
 import { firstPartyChronoLaunchGroupReference } from "../../control-plane/first-party-capability-runtime-launch-groups.ts";
 import type { PrescribedKinematicsObservationAttempt } from "../../../application/ports/out/mechanics/prescribed-kinematics-observation-attempt-store.ts";
 import { closedUncertainWriterLifecycleQualifier } from "../../../application/ports/out/record/uncertain-writer-lifecycle-qualifier.ts";
@@ -50,6 +49,9 @@ const RUN_ID = "run-kinematics";
 const WORK_ID = "work-kinematics";
 const STARTED_AT = "2026-08-29T00:01:00.000Z";
 const GENERIC_FAILURE = "prescribed-kinematics-execution-failed";
+/** Historical 0.3.1 ROP/WAL material; it must not reuse the active runtime pin. */
+const HISTORICAL_CHRONO_031_IMAGE_REFERENCE =
+  "ghcr.io/casys-ai/mcp-chrono@sha256:b6302001725df4722d84096a51eeff7e7ffeee843690a2ba0cc417191c67683c" as const;
 const FP = (digest: string) => ({
   algorithm: "sha256" as const,
   digest: digest.length === 64 ? digest : digest.repeat(64).slice(0, 64),
@@ -700,8 +702,9 @@ async function chronoOperationalCapability(
   projectId: string,
 ): Promise<ResolvedCapabilityRuntimeOperation> {
   const launchGroup = await firstPartyChronoLaunchGroupReference();
-  const imageDigest = MCP_CHRONO_031_IMAGE_REFERENCE.slice(
-    MCP_CHRONO_031_IMAGE_REFERENCE.lastIndexOf("@sha256:") + "@sha256:".length,
+  const imageDigest = HISTORICAL_CHRONO_031_IMAGE_REFERENCE.slice(
+    HISTORICAL_CHRONO_031_IMAGE_REFERENCE.lastIndexOf("@sha256:") +
+      "@sha256:".length,
   );
   const material = {
     unitId: "casys.mcp-chrono",
