@@ -64,10 +64,10 @@ Deno.test(
       { id: "maxDisplacement", unit: "mm" },
       { id: "maxVonMises", unit: "MPa" },
     ]);
-    assertEquals(offer.solver.mesh, DL06_PROOF.analysis.mesh);
-    assertEquals(offer.solver.loads, DL06_PROOF.analysis.loads);
-    assertEquals(offer.solver.supports, DL06_PROOF.analysis.supports);
-    assertEquals(offer.solver.material, DL06_PROOF.analysis.material);
+    assertEquals(offer.method.mesh, DL06_PROOF.analysis.mesh);
+    assertEquals(offer.method.loads, DL06_PROOF.analysis.loads);
+    assertEquals(offer.method.supports, DL06_PROOF.analysis.supports);
+    assertEquals(offer.method.material, DL06_PROOF.analysis.material);
     assertEquals(
       offer.metrics.some((metric) => metric.id.startsWith("assembly_max_")),
       false,

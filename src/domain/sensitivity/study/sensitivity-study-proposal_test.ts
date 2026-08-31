@@ -7,10 +7,10 @@ import {
   SensitivityStudyProposalError,
   verifySensitivityStudyParametersMatchCase,
 } from "./sensitivity-study-proposal.ts";
-import { validateSensitivityStudyCaseV2 } from "./sensitivity-study-v2.ts";
+import { validateSensitivityStudyCaseV3 } from "./sensitivity-study-v3.ts";
 
 const CASE_JSON = {
-  schemaVersion: "sensitivity-study-case/2.0",
+  schemaVersion: "sensitivity-study-case/3.0",
   id: "dl04-size-z-sensitivity",
   revision: 1,
   scope: "mechanical-structural",
@@ -27,10 +27,7 @@ const CASE_JSON = {
     { id: "assembly_max_displacement", unit: "mm" },
     { id: "assembly_max_von_mises", unit: "MPa" },
   ],
-  solver: {
-    provider: "calculix",
-    tool: "calculix_solve_static",
-    resultSchemaVersion: "2.0",
+  method: {
     mesh: { kind: "tetrahedral-volume", targetSizeMm: 3.0 },
     material: {
       model: "isotropic-linear-elastic",
@@ -69,23 +66,23 @@ const CASE_JSON = {
 };
 
 Deno.test(
-  "sensitivity MRTR grammar round-trips a sealed 2.0 case without unexpected keys",
+  "sensitivity MRTR grammar round-trips a sealed provider-neutral 3.0 case",
   async () => {
-    const studyCase = validateSensitivityStudyCaseV2(CASE_JSON);
+    const studyCase = validateSensitivityStudyCaseV3(CASE_JSON);
     const digest = (await sha256Fingerprint(studyCase)).digest;
     const encoded = encodeSensitivityStudyDecisionParameters(digest, studyCase);
     const parsed = parseSensitivityStudyDecisionParameters(encoded);
     assertEquals(parsed.caseDigest, digest);
     verifySensitivityStudyParametersMatchCase(parsed, studyCase);
     assertEquals(
-      canonicalSensitivityStudyCaseText(studyCase).includes("recipeSource"),
+      canonicalSensitivityStudyCaseText(studyCase).includes("provider"),
       false,
     );
   },
 );
 
 Deno.test("sensitivity MRTR grammar rejects a duplicate signed parameter", () => {
-  const studyCase = validateSensitivityStudyCaseV2(CASE_JSON);
+  const studyCase = validateSensitivityStudyCaseV3(CASE_JSON);
   const encoded = encodeSensitivityStudyDecisionParameters("b".repeat(64), studyCase);
   assertThrows(
     () =>
@@ -98,8 +95,36 @@ Deno.test("sensitivity MRTR grammar rejects a duplicate signed parameter", () =>
   );
 });
 
+Deno.test("sensitivity MRTR rejects the prior schema and provider wire fields", () => {
+  const studyCase = validateSensitivityStudyCaseV3(CASE_JSON);
+  const encoded = encodeSensitivityStudyDecisionParameters("b".repeat(64), studyCase);
+  const priorSchema = encoded.map((parameter) =>
+    parameter.key === "sensitivity.case.schemaVersion"
+      ? { ...parameter, value: "sensitivity-study-case/2.0" }
+      : parameter
+  );
+  assertThrows(
+    () => parseSensitivityStudyDecisionParameters(priorSchema),
+    SensitivityStudyProposalError,
+    "must be sensitivity-study-case/3.0",
+  );
+  assertThrows(
+    () =>
+      parseSensitivityStudyDecisionParameters([
+        ...encoded,
+        {
+          key: "sensitivity.case.solver.provider",
+          label: "Legacy provider",
+          value: "calculix",
+        },
+      ]),
+    SensitivityStudyProposalError,
+    "Unexpected",
+  );
+});
+
 Deno.test("sensitivity MRTR grammar rejects a parameter mismatch against the case", () => {
-  const studyCase = validateSensitivityStudyCaseV2(CASE_JSON);
+  const studyCase = validateSensitivityStudyCaseV3(CASE_JSON);
   const parsed = parseSensitivityStudyDecisionParameters(
     encodeSensitivityStudyDecisionParameters("c".repeat(64), studyCase),
   );

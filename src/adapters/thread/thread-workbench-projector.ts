@@ -270,6 +270,7 @@ function projectArtifact(
     label: artifact.name,
     kind: artifact.kind,
     system: artifact.producer.serverId,
+    producer: { ...artifact.producer },
     revision: artifact.version,
     freshness: attestation?.status === "mismatch" ? "stale" : artifact.freshness.status,
     fingerprint: fingerprint(artifact.fingerprint),

@@ -134,8 +134,9 @@ source/result fingerprints, counts/limits, and the fixed intrinsic limitation li
 `not-safety-claim`). It never claims L4, pass, or safety. Product run:
 `project_admitted_spice_run_review` → `simulate.run-admitted-spice@1`. The server-owned
 IsolatedCodeRunner executes the Microsandbox-manifest pin `ENTRYPOINT` with no extra
-args. Without `--local-execution` the operation stays registered and the executor is
-`unavailable`. That composition state is not a worker `evidence.json` limitation. There
+args. Until the approved capability-runtime supervisor composes the exact unit, the
+operation stays registered and the executor is `unavailable`. That composition state is
+not a worker `evidence.json` limitation. There
 is no worker-gate `wiringGap`.
 
 Node `variable` symbols, component names, and `.model` cards stay

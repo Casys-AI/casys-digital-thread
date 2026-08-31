@@ -24,11 +24,14 @@ images publiées. Ne jamais les cloner ici pour « corriger » une opération.
 ## Commandes
 
 Runtime backend : **Deno** (tâches dans `deno.json`). Bundles UI : **npm + Vite** dans
-`src/ui/`. Providers : **Docker Compose**.
+`src/ui/`. Le Digital Thread démarre **à froid** via Deno. Les providers
+CapabilityRuntime (SysON, Build123d, …) sont des groupes Compose JIT du superviseur H1
+(`casys-syson`, `casys-build123d-observation`, …). Ne pas les lancer par le Compose
+racine avant un vertical JIT. Ports, groupes et couture de connexion :
+[local runtime and ports](docs/reference/runtime/local-runtime-and-ports.md),
+[capability packs](docs/reference/runtime/capability-packs/README.md).
 
 ```bash
-docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-build123d-sandbox mcp-calculix
-                                  # noyau provider ; SysON UI sur :8180
 npm --prefix src/ui ci
 npm --prefix src/ui run build:thread # bundle cockpit → src/ui/dist/thread/
 deno task start                   # serveur MCP Console + project control, :3020/mcp
@@ -77,6 +80,15 @@ deno task probe:constraint-solver --editing-context-id=<id> --element-id=<id>
 deno task probe:requirement-units --unit=<unit> --type=<SysmlType>
 ```
 
+Compose racine — **probe mainteneur seulement**. Projet Docker distinct des groupes H1
+(`casys-syson`, `casys-build123d-observation`, …) ; mêmes ports loopback ;
+**incompatible** avec un groupe JIT simultané. Ce n'est pas le démarrage de l'atelier.
+L'UI SysON historique `:8180` n'appartient pas au groupe `casys-syson` :
+
+```bash
+docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-build123d-sandbox
+```
+
 ## Les deux pièges qui ne préviennent pas
 
 **`deno task check`** type-check par globs (`server.ts`,
@@ -104,6 +116,7 @@ Ni la CI ni le serveur MCP ne lisent ce dossier.
 - Tests `_test.ts` co-localisés ; les tests UI sont des tests **Deno** à la racine de
   `src/ui/`. `@std/assert` uniquement ; noms de tests en phrases décrivant l'invariant.
 - Documentation en Diátaxis sous `docs/`. Une nouvelle frontière ou un nouveau port se
-  documente dans `docs/reference/runtime/local-runtime-and-ports.md`.
+  documente dans `docs/reference/runtime/local-runtime-and-ports.md`. Groupes JIT et
+  couture de connexion : `docs/reference/runtime/capability-packs/`.
 - Pendant l'implémentation, préférer les checks ciblés et causaux ; réserver les suites
   globales aux vrais jalons d'intégration.

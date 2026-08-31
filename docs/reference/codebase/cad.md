@@ -53,8 +53,21 @@ construction-time dispatch or legacy MCP fallback
 #### [`src/adapters/cad/server-composition.ts`](../../../src/adapters/cad/server-composition.ts)
 
 Build123d capability and CAD project contributions. Profile-only exposes review;
-isolated execution needs the empty runtime marker. Private sandbox admitted export is
-composed independently of `--local-execution`.
+isolated execution requires an approved capability-runtime supervisor to compose the
+exact worker. Private sandbox admitted export has its own atomic runtime unit.
+
+#### [`src/application/control-plane/capability-runtime-preparation-session.ts`](../../../src/application/control-plane/capability-runtime-preparation-session.ts)
+
+Sibling, short-lived exact preparation lease coordinator for canonical admitted
+geometry: one registered preparation demand, one authorised binding/material/group, no
+run/work-item or provider-WAL fabrication; successful durable capture releases,
+ambiguous dispatch retains.
+
+#### [`src/adapters/cad/canonical/file-admitted-geometry-export-replay-cache.ts`](../../../src/adapters/cad/canonical/file-admitted-geometry-export-replay-cache.ts)
+
+Create-new, append-only local replay/WAL keyed by the exact public export identity. It
+records `prepared -> dispatching -> recorded`; malformed/colliding records or a dispatch
+without a recorded result fail closed before runtime activation.
 
 #### [`scripts/gates/verify-build123d-microsandbox-vertical.ts`](../../../scripts/gates/verify-build123d-microsandbox-vertical.ts)
 
@@ -196,8 +209,10 @@ placements, assembly/definition formats, and strict flat MRTR round-trip
 
 #### [`src/adapters/cad/canonical/geometry-draft-capture.ts`](../../../src/adapters/cad/canonical/geometry-draft-capture.ts)
 
-Calls `build123d_export`, attests each binary's SHA-256, and stores draft JSON + binary
-assets in the draft stores; never writes a `ThreadSnapshot`
+Calls `build123d_export`, validates the mcp-build123d 0.6.1
+`build123d-export-artifact/1.0` URI, MIME, byte count and SHA-256, rereads only that MCP
+resource, then persists draft JSON + verified binary assets in the draft stores; never
+writes a `ThreadSnapshot`.
 
 #### [`src/adapters/cad/source/python-cad-source-analyzer.ts`](../../../src/adapters/cad/source/python-cad-source-analyzer.ts)
 

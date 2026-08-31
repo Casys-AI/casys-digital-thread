@@ -8,6 +8,25 @@
  */
 
 import type { EngineeringProjectCommandOrigin } from "../../../application/ports/in/engineering-project-command-origin.ts";
+import {
+  beginConfiguredCapabilityRuntimeSession,
+  isDurableTerminalAgentRunStatus,
+  requireConfiguredOperationalCapability,
+  settleCapabilityRuntimeSession,
+} from "../../../application/control-plane/capability-runtime-execution-admission.ts";
+import { requiredQualifiedPersistentComposePublication } from "../../../application/control-plane/capability-runtime-persistent-compose-publication.ts";
+import {
+  type CapabilityRuntimeExecutionSession,
+  type CapabilityRuntimeExecutionSessionCoordinator,
+  CapabilityRuntimeSessionUnavailableError,
+} from "../../../application/control-plane/capability-runtime-execution-session.ts";
+import type { CapabilityRuntimeExecutionEligibility } from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import type { ResolvedCapabilityRuntimeOperation } from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import {
+  type CapabilityRuntimeBoundMcpClient,
+  CapabilityRuntimeConnectionError,
+} from "../../../application/ports/out/capability/capability-runtime-connection.ts";
+import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
 import type {
   AssemblyIntegrityInputResolver,
   ResolvedAssemblyIntegrityInput,
@@ -105,6 +124,10 @@ export interface VerifyObserveAssemblyIntegrityRunExecutorCommand {
   readonly runId: string;
 }
 
+export type AssemblyIntegrityObserverFactory = (
+  client: McpToolClient,
+) => AssemblyIntegrityObserver;
+
 export interface VerifyObserveAssemblyIntegrityRunExecutorDependencies {
   readonly projects: EngineeringProjectRevisionStore;
   readonly commands: Pick<
@@ -113,10 +136,23 @@ export interface VerifyObserveAssemblyIntegrityRunExecutorDependencies {
   >;
   readonly snapshots: AssemblyIntegrityObservationThreadSnapshotStore;
   readonly inputs: AssemblyIntegrityInputResolver;
-  readonly observer: AssemblyIntegrityObserver;
+  /**
+   * Lease-bound observation publication. The executor never names a URL, host,
+   * port, bearer, provider or tool envelope; composition owns the mapping.
+   */
+  readonly capabilityRuntimeConnection: CapabilityRuntimeBoundMcpClient;
+  /** Opens the named observer only from a lease-bound MCP client. */
+  readonly openObserver: AssemblyIntegrityObserverFactory;
   readonly captures: AssemblyIntegrityObservationCaptureStore;
   readonly attempts: FileAssemblyIntegrityObservationAttemptStore;
   readonly lease: EngineeringProjectRunLease;
+  /** Cold recheck of the sealed observation binding before H1. */
+  readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
+  /** JIT host session. Entered only after the final cold recheck. */
+  readonly capabilityRuntimeSession?: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin" | "releaseRecorded"
+  >;
 }
 
 interface AssemblyIntegrityAuthorization {
@@ -145,20 +181,31 @@ export class VerifyObserveAssemblyIntegrityRunExecutor {
   readonly #commands: VerifyObserveAssemblyIntegrityRunExecutorDependencies["commands"];
   readonly #snapshots: AssemblyIntegrityObservationThreadSnapshotStore;
   readonly #inputs: AssemblyIntegrityInputResolver;
-  readonly #observer: AssemblyIntegrityObserver;
+  readonly #capabilityRuntimeConnection: CapabilityRuntimeBoundMcpClient;
+  readonly #openObserver: AssemblyIntegrityObserverFactory;
   readonly #captures: AssemblyIntegrityObservationCaptureStore;
   readonly #attempts: FileAssemblyIntegrityObservationAttemptStore;
   readonly #lease: EngineeringProjectRunLease;
+  readonly #capabilityRuntime: CapabilityRuntimeExecutionEligibility | undefined;
+  readonly #capabilityRuntimeSession:
+    | Pick<
+      CapabilityRuntimeExecutionSessionCoordinator,
+      "begin" | "releaseRecorded"
+    >
+    | undefined;
 
   constructor(dependencies: VerifyObserveAssemblyIntegrityRunExecutorDependencies) {
     this.#projects = dependencies.projects;
     this.#commands = dependencies.commands;
     this.#snapshots = dependencies.snapshots;
     this.#inputs = dependencies.inputs;
-    this.#observer = dependencies.observer;
+    this.#capabilityRuntimeConnection = dependencies.capabilityRuntimeConnection;
+    this.#openObserver = dependencies.openObserver;
     this.#captures = dependencies.captures;
     this.#attempts = dependencies.attempts;
     this.#lease = dependencies.lease;
+    this.#capabilityRuntime = dependencies.capabilityRuntime;
+    this.#capabilityRuntimeSession = dependencies.capabilityRuntimeSession;
   }
 
   async execute(
@@ -190,6 +237,7 @@ export class VerifyObserveAssemblyIntegrityRunExecutor {
     let claimed = false;
     let snapshotSaveMayHaveBeenDispatched = false;
     let dispatchedWithoutDurableCapture = false;
+    let capabilitySession: CapabilityRuntimeExecutionSession | undefined;
 
     try {
       let project = await this.#requiredProject(command.projectId);
@@ -206,22 +254,113 @@ export class VerifyObserveAssemblyIntegrityRunExecutor {
           run,
           beforeClaimAuthorization,
         );
-        return await this.#verifyCompletedReplay(project, run, completed, command);
+        return await this.#verifyCompletedReplay(
+          project,
+          run,
+          completed,
+          command,
+        );
+      }
+      if (run.status === "failed" || run.status === "cancelled") {
+        throw unexpectedStatus(run, "queued or this agent's running/publishing");
+      }
+      if (run.status === "queued") {
+        await assertThreadWriteBasisAvailable(project, run);
+      } else if (run.status === "running" || run.status === "publishing") {
+        requireClaimedShape(project, run, origin);
+      } else {
+        throw unexpectedStatus(run, "queued or this agent's running/publishing");
+      }
+
+      const prepared = await this.#prepare(
+        project,
+        run,
+        beforeClaimAuthorization,
+      );
+      const inspection = await this.#attempts.inspect({
+        projectId: command.projectId,
+        runId: run.id,
+        planDigest: prepared.planDigest,
+      });
+      if (inspection.action === "dispatched") {
+        throw new AssemblyIntegrityObservationRunOutcomeUnknownError();
+      }
+      if (
+        inspection.action === "capture-recorded" || inspection.action === "completed"
+      ) {
+        const recordedCapability = await this.#lookupOperationalCapabilityCold(
+          project,
+          run,
+        );
+        const recovered = await this.#recoverRecordedObservation({
+          origin,
+          command,
+          project,
+          run,
+          prepared,
+          wal: inspection,
+          markClaimed: (value) => {
+            claimed = value;
+          },
+          markSnapshotSave: () => {
+            snapshotSaveMayHaveBeenDispatched = true;
+          },
+        });
+        await this.#releaseRecordedRuntimeBestEffort(
+          recovered,
+          command.runId,
+          recordedCapability,
+        );
+        return recovered;
+      }
+
+      const operationalCapability = await this.#requireOperationalCapability(
+        project,
+        run,
+      );
+      capabilitySession = await beginConfiguredCapabilityRuntimeSession({
+        session: this.#capabilityRuntimeSession!,
+        project,
+        runId: command.runId,
+        operationalCapability,
+        recheck: async () => {
+          const fresh = await this.#requiredProject(command.projectId);
+          const freshRun = requireRun(fresh, command.runId);
+          requireAssemblyIntegrityShape(fresh, freshRun);
+          return await this.#requireOperationalCapability(fresh, freshRun);
+        },
+      });
+      let observer: AssemblyIntegrityObserver;
+      try {
+        observer = await this.#openBoundObserver(
+          capabilitySession,
+          operationalCapability,
+        );
+      } catch (error) {
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "release" },
+        });
+        capabilitySession = undefined;
+        if (error instanceof CapabilityRuntimeConnectionError) {
+          throw new EngineeringProjectCommandError(
+            "invalid_transition",
+            error.message,
+          );
+        }
+        throw error;
       }
 
       if (run.status === "queued") {
-        await assertThreadWriteBasisAvailable(project, run);
         await this.#commands.claimRun(origin, {
           ...command,
           commandId: commandStep(command.commandId, "claim"),
           summary: "Started the exact factual assembly-integrity observation.",
         });
         claimed = true;
-      } else if (run.status === "running" || run.status === "publishing") {
+      } else {
         requireClaimedShape(project, run, origin);
         claimed = true;
-      } else {
-        throw unexpectedStatus(run, "queued or this agent's running/publishing");
       }
 
       project = await this.#requiredProject(command.projectId);
@@ -232,12 +371,12 @@ export class VerifyObserveAssemblyIntegrityRunExecutor {
         command.projectId,
       );
       requireClaimedShape(project, run, origin);
-      const prepared = await this.#prepare(project, run, authorization);
+      const livePrepared = await this.#prepare(project, run, authorization);
       const dispatchedAt = requiredStart(run);
       const wal = await this.#attempts.begin({
         projectId: command.projectId,
         runId: run.id,
-        planDigest: prepared.planDigest,
+        planDigest: livePrepared.planDigest,
         dispatchedAt,
       });
 
@@ -247,22 +386,22 @@ export class VerifyObserveAssemblyIntegrityRunExecutor {
         // From this durable boundary onward no second observer invocation is
         // safe until the exact returned capture has been recorded in the WAL.
         dispatchedWithoutDurableCapture = true;
-        const result = await this.#observer.observe({
-          inputBundle: prepared.resolved.inputBundle,
-          profile: prepared.resolved.profile,
+        const result = await observer.observe({
+          inputBundle: livePrepared.resolved.inputBundle,
+          profile: livePrepared.resolved.profile,
         });
         capture = await captureFromObserverResult({
           result,
           run,
-          basis: prepared.basis,
-          resolved: prepared.resolved,
+          basis: livePrepared.basis,
+          resolved: livePrepared.resolved,
         });
         const persisted = await this.#captures.save(capture);
         const durable = await this.#verifySavedCapture(
           persisted.capture,
           persisted.fingerprint,
           persisted.uri,
-          prepared,
+          livePrepared,
           run,
         );
         capture = durable.capture;
@@ -270,7 +409,7 @@ export class VerifyObserveAssemblyIntegrityRunExecutor {
         await this.#attempts.recordCapture({
           projectId: command.projectId,
           runId: run.id,
-          planDigest: prepared.planDigest,
+          planDigest: livePrepared.planDigest,
           recordedAt: dispatchedAt,
           captureFingerprint,
           canonicalCaptureText: durable.canonicalText,
@@ -280,75 +419,44 @@ export class VerifyObserveAssemblyIntegrityRunExecutor {
         const replay = await this.#reopenRecordedCapture(
           wal.captureFingerprint,
           wal.canonicalCaptureText,
-          prepared,
+          livePrepared,
           run,
         );
         capture = replay.capture;
         captureFingerprint = replay.fingerprint;
       }
 
-      const successor = buildAssemblyIntegrityObservationSuccessor({
-        basisSnapshot: prepared.basisSnapshot,
-        basis: prepared.basis,
+      const completed = await this.#publishObservation({
+        origin,
+        command,
+        prepared: livePrepared,
         run,
-        geometryModule: prepared.resolved.primary,
-        assemblyStep: prepared.resolved.assemblyStep,
         capture,
         captureFingerprint,
-        captureUri: assemblyIntegrityObservationCaptureUri(captureFingerprint.digest),
+        walAction: wal.action === "dispatch" ? "capture-recorded" : wal.action,
+        dispatchedAt,
+        markSnapshotSave: () => {
+          snapshotSaveMayHaveBeenDispatched = true;
+        },
       });
-
-      if (wal.action === "completed") {
-        // A prior attempt has already recorded the exact successor and closed
-        // its WAL. A later publish/complete failure must remain resumable;
-        // falling through to failRun would make the durable recovery terminal.
-        snapshotSaveMayHaveBeenDispatched = true;
-        await this.#requireExactPersistedSuccessor(successor.snapshot);
-      } else {
-        snapshotSaveMayHaveBeenDispatched = true;
-        await this.#snapshots.save(successor.snapshot);
-        await this.#requireExactPersistedSuccessor(successor.snapshot);
-        await this.#attempts.complete({
-          projectId: command.projectId,
-          runId: run.id,
-          planDigest: prepared.planDigest,
-          completedAt: dispatchedAt,
-          captureFingerprint,
-        });
-      }
-
-      project = await this.#requiredProject(command.projectId);
-      run = requireRun(project, command.runId);
-      if (run.status === "running") {
-        await this.#commands.publishRun(origin, {
-          ...command,
-          commandId: commandStep(command.commandId, "publish"),
-          expectedRevision: project.revision,
-          summary: "Publishing factual assembly-integrity observations.",
-        });
-      }
-      project = await this.#requiredProject(command.projectId);
-      run = requireRun(project, command.runId);
-      if (run.status === "publishing") {
-        await this.#commands.completeRun(
-          origin,
-          completionCommand(
-            command,
-            project.revision,
-            successor.snapshot,
-            successor.artifact,
-          ),
-        );
-      }
-
-      const completed = await this.#requiredProject(command.projectId);
-      assertCompleted(completed, command, successor.snapshot, successor.artifact);
+      await settleCapabilityRuntimeSession({
+        session: capabilitySession,
+        policy: { kind: "release" },
+      });
       return completed;
     } catch (error) {
       if (error instanceof AssemblyIntegrityObservationRunOutcomeUnknownError) {
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "retain" },
+        });
         throw error;
       }
       if (dispatchedWithoutDurableCapture) {
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "retain" },
+        });
         throw new AssemblyIntegrityObservationRunOutcomeUnknownError(
           `The assembly-integrity observer may have been dispatched but no exact durable capture was recorded: ${
             errorMessage(error)
@@ -357,7 +465,17 @@ export class VerifyObserveAssemblyIntegrityRunExecutor {
       }
       if (snapshotSaveMayHaveBeenDispatched) {
         const completed = await this.#completedFor(command);
-        if (completed) return completed;
+        if (completed) {
+          await settleCapabilityRuntimeSession({
+            session: capabilitySession,
+            policy: { kind: "release" },
+          });
+          return completed;
+        }
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "retain" },
+        });
         // The successor write may already be durable even when a readback, WAL
         // completion, or project publication failed.  Keep the run resumable:
         // its recorded capture is the only safe recovery path and must never
@@ -379,7 +497,229 @@ export class VerifyObserveAssemblyIntegrityRunExecutor {
           // Keep the original causal error visible.
         }
       }
+      await settleCapabilityRuntimeSession({
+        session: capabilitySession,
+        policy: {
+          kind: "release-if-terminal",
+          run: await this.#currentRun(command.projectId, command.runId),
+        },
+      });
       throw error;
+    }
+  }
+
+  async #requireOperationalCapability(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+  ) {
+    try {
+      return await requireConfiguredOperationalCapability({
+        runtime: this.#capabilityRuntime,
+        session: this.#capabilityRuntimeSession,
+        project,
+        run,
+        workItem: requireAssemblyIntegrityShape(project, run).workItem,
+        unavailableMessage:
+          "Assembly-integrity observation requires the configured JIT capability runtime session before a run can be claimed.",
+        missingBindingMessage:
+          "Assembly-integrity observation requires the sealed build123d-observe-assembly-integrity@1 operational capability before a run can be claimed.",
+      });
+    } catch (error) {
+      if (error instanceof CapabilityRuntimeSessionUnavailableError) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          error.message,
+        );
+      }
+      throw error;
+    }
+  }
+
+  async #openBoundObserver(
+    session: CapabilityRuntimeExecutionSession,
+    operationalCapability: ResolvedCapabilityRuntimeOperation,
+  ): Promise<AssemblyIntegrityObserver> {
+    const publication = requiredQualifiedPersistentComposePublication(
+      operationalCapability,
+    );
+    const handle = await this.#capabilityRuntimeConnection.broker.connect({
+      lease: session.lease,
+      binding: publication.binding,
+      launchGroup: publication.launchGroup,
+    });
+    const client = await this.#capabilityRuntimeConnection.openMcpClient(handle);
+    return this.#openObserver(client);
+  }
+
+  async #recoverRecordedObservation(input: {
+    readonly origin: EngineeringProjectCommandOrigin;
+    readonly command: VerifyObserveAssemblyIntegrityRunExecutorCommand;
+    readonly project: EngineeringProjectSnapshot;
+    readonly run: EngineeringAgentRun;
+    readonly prepared: PreparedAssemblyIntegrityObservation;
+    readonly wal: {
+      readonly action: "capture-recorded" | "completed";
+      readonly recordedAt: string;
+      readonly captureFingerprint: ContentFingerprint;
+      readonly canonicalCaptureText: string;
+    };
+    readonly markClaimed: (claimed: boolean) => void;
+    readonly markSnapshotSave: () => void;
+  }): Promise<EngineeringProjectSnapshot> {
+    let project = input.project;
+    let run = input.run;
+    if (run.status === "queued") {
+      await this.#commands.claimRun(input.origin, {
+        ...input.command,
+        commandId: commandStep(input.command.commandId, "claim"),
+        summary: "Started the exact factual assembly-integrity observation.",
+      });
+      input.markClaimed(true);
+      project = await this.#requiredProject(input.command.projectId);
+      run = requireRun(project, input.command.runId);
+    } else {
+      requireClaimedShape(project, run, input.origin);
+      input.markClaimed(true);
+    }
+    const authorization = await this.#requireMrtrAuthorization(
+      project,
+      run,
+      input.command.projectId,
+    );
+    requireClaimedShape(project, run, input.origin);
+    const prepared = await this.#prepare(project, run, authorization);
+    const replay = await this.#reopenRecordedCapture(
+      input.wal.captureFingerprint,
+      input.wal.canonicalCaptureText,
+      prepared,
+      run,
+    );
+    return await this.#publishObservation({
+      origin: input.origin,
+      command: input.command,
+      prepared,
+      run,
+      capture: replay.capture,
+      captureFingerprint: replay.fingerprint,
+      walAction: input.wal.action,
+      dispatchedAt: requiredStart(run),
+      markSnapshotSave: input.markSnapshotSave,
+    });
+  }
+
+  async #publishObservation(input: {
+    readonly origin: EngineeringProjectCommandOrigin;
+    readonly command: VerifyObserveAssemblyIntegrityRunExecutorCommand;
+    readonly prepared: PreparedAssemblyIntegrityObservation;
+    readonly run: EngineeringAgentRun;
+    readonly capture: AssemblyIntegrityObservationCapture;
+    readonly captureFingerprint: ContentFingerprint;
+    readonly walAction: "capture-recorded" | "completed" | "dispatch";
+    readonly dispatchedAt: string;
+    readonly markSnapshotSave: () => void;
+  }): Promise<EngineeringProjectSnapshot> {
+    const successor = buildAssemblyIntegrityObservationSuccessor({
+      basisSnapshot: input.prepared.basisSnapshot,
+      basis: input.prepared.basis,
+      run: input.run,
+      geometryModule: input.prepared.resolved.primary,
+      assemblyStep: input.prepared.resolved.assemblyStep,
+      capture: input.capture,
+      captureFingerprint: input.captureFingerprint,
+      captureUri: assemblyIntegrityObservationCaptureUri(
+        input.captureFingerprint.digest,
+      ),
+    });
+
+    if (input.walAction === "completed") {
+      // A prior attempt has already recorded the exact successor and closed
+      // its WAL. A later publish/complete failure must remain resumable;
+      // falling through to failRun would make the durable recovery terminal.
+      input.markSnapshotSave();
+      await this.#requireExactPersistedSuccessor(successor.snapshot);
+    } else {
+      input.markSnapshotSave();
+      await this.#snapshots.save(successor.snapshot);
+      await this.#requireExactPersistedSuccessor(successor.snapshot);
+      await this.#attempts.complete({
+        projectId: input.command.projectId,
+        runId: input.run.id,
+        planDigest: input.prepared.planDigest,
+        completedAt: input.dispatchedAt,
+        captureFingerprint: input.captureFingerprint,
+      });
+    }
+
+    let project = await this.#requiredProject(input.command.projectId);
+    let run = requireRun(project, input.command.runId);
+    if (run.status === "running") {
+      await this.#commands.publishRun(input.origin, {
+        ...input.command,
+        commandId: commandStep(input.command.commandId, "publish"),
+        expectedRevision: project.revision,
+        summary: "Publishing factual assembly-integrity observations.",
+      });
+    }
+    project = await this.#requiredProject(input.command.projectId);
+    run = requireRun(project, input.command.runId);
+    if (run.status === "publishing") {
+      await this.#commands.completeRun(
+        input.origin,
+        completionCommand(
+          input.command,
+          project.revision,
+          successor.snapshot,
+          successor.artifact,
+        ),
+      );
+    }
+
+    const completed = await this.#requiredProject(input.command.projectId);
+    assertCompleted(completed, input.command, successor.snapshot, successor.artifact);
+    return completed;
+  }
+
+  async #lookupOperationalCapabilityCold(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+  ): Promise<ResolvedCapabilityRuntimeOperation | undefined> {
+    try {
+      return await this.#requireOperationalCapability(project, run);
+    } catch {
+      return undefined;
+    }
+  }
+
+  async #releaseRecordedRuntimeBestEffort(
+    project: EngineeringProjectSnapshot,
+    runId: string,
+    operationalCapability: ResolvedCapabilityRuntimeOperation | undefined,
+  ): Promise<void> {
+    if (!operationalCapability) return;
+    const run = requireRun(project, runId);
+    if (!isDurableTerminalAgentRunStatus(run.status)) return;
+    const session = this.#capabilityRuntimeSession;
+    if (!session?.releaseRecorded) return;
+    try {
+      await session.releaseRecorded({
+        project,
+        runId,
+        operationalCapability,
+      });
+    } catch {
+      // Host-stop or scope failure must not hide the completed engineering
+      // result. The exact lease remains for administrative recovery.
+    }
+  }
+
+  async #currentRun(
+    projectId: string,
+    runId: string,
+  ): Promise<EngineeringAgentRun | undefined> {
+    try {
+      return requireRun(await this.#requiredProject(projectId), runId);
+    } catch {
+      return undefined;
     }
   }
 
@@ -439,11 +779,10 @@ export class VerifyObserveAssemblyIntegrityRunExecutor {
     prepared: PreparedAssemblyIntegrityObservation,
     command: VerifyObserveAssemblyIntegrityRunExecutorCommand,
   ): Promise<EngineeringProjectSnapshot> {
-    const wal = await this.#attempts.begin({
+    const wal = await this.#attempts.inspect({
       projectId: command.projectId,
       runId: run.id,
       planDigest: prepared.planDigest,
-      dispatchedAt: requiredStart(run),
     });
     if (wal.action !== "completed") {
       throw new AssemblyIntegrityObservationRunOutcomeUnknownError(

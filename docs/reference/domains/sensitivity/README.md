@@ -14,6 +14,63 @@ execution or Build123d admission.
 A proof-run evaluation cannot authorize `design.apply-vector-correction@1`.
 `verify.evaluate-sensitivity-base@1` joins `sensitivity-base-<metric>-<digest>` only.
 
+## Sealed study declaration
+
+`analyze.seal-sensitivity-study@1` seals a
+`sensitivity-study-case/3.0`; it does not seal a CalculiX request. The case keeps the
+scientific declaration provider-neutral:
+
+- `cadSource` names the exact content-addressed Thread artifact for the sealed
+  compilation admission, with its SHA-256. The executor reopens and validates it before
+  deriving either perturbed CAD source; the agent supplies no source text.
+- `method` records physical mesh, material, supports, and loads. It contains no provider,
+  endpoint, tool, response schema, runtime, path, or wire arguments.
+- The sealed base value, finite-difference step, metrics, and domain define data to be
+  observed. They do not define a verdict, a requirement mapping, or a correction grant.
+
+`sensitivity-study-case/2.0` is not the current sealed case contract. Its provider and
+tool literals were removed because runtime binding and lowering are server-owned.
+
+## Recorded CalculiX route
+
+When the registered binding is eligible, `analyze.run-fea-sensitivity@1` has one
+server-owned path:
+
+```text
+sealed admission + sensitivity-study-case/3.0
+  -> isolated Build123d base and stepped executions
+  -> exact capability-session staging into casys-mcp-calculix
+  -> one recorded CalculiX request per phase
+  -> calculix_run_get readback and ordered resource capture
+  -> sensitivity-study-capture/1.0 + finite-difference observations
+```
+
+Each `base` and `stepped` recorded solve must expose exactly this ordered nine-resource
+ledger before its resources are independently captured into CAS:
+
+`input.step`, `request.json`, `mesh.geo`, `mesh.inp`, `gmsh.log`, `job.inp`, `ccx.log`,
+`job.dat`, `result.json`.
+
+The adapter reopens the stable request id through `calculix_run_get`, checks the ordered
+ledger, independently rehashes captured `request.json`, and normalizes only the static
+observations. The two phase captures also feed a separate
+`sensitivity-runtime-provenance/1.0` record. That record is L3 provenance of the
+server-resolved runtime and recorded bundles; it is neither a provider qualification nor
+a solver verdict.
+
+## Current live binding and the isolated proof path
+
+The HTTP `mcp-calculix` sensitivity binding is currently `unqualified`. Its exact
+`casys-mcp-calculix` launch group and recorded protocol do not change that state: it is
+non-activable until a live contract qualification is recorded. Until then, live
+sensitivity execution is `unavailable`; no completed provider call, health observation,
+or cached image may be presented as a sensitivity result or qualification.
+
+`verify.run-fea-static-proof@3` is a separate product-static path: it uses the isolated
+local CalculiX worker and a separate SysON oracle over a sealed mechanical proof case.
+It is not the HTTP sensitivity route, does not qualify it, and a proof evaluation cannot
+authorize sensitivity correction.
+
 ## Installation-private exact reuse
 
 `analyze.run-fea-sensitivity@1` owns an optional server-internal exact memoization path

@@ -190,7 +190,6 @@
       "serviceName": "mcp-calculix",
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3015/mcp",
-      "healthUrl": "http://127.0.0.1:3015/health",
       "image": "ghcr.io/casys-ai/mcp-calculix@sha256:ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8",
       "providerIdentity": {
         "version": "0.8.2",
@@ -205,7 +204,7 @@
         "contractFingerprint": "8e8b5c007299818908d424413483addf7fdde5928175c80d2817232b85839ed4",
         "ordinarySolveTimeoutMaxMs": 120000
       },
-      "required": true,
+      "required": false,
       "expectedTools": [
         "calculix_mesh_preflight",
         "calculix_solve_static",
@@ -221,11 +220,9 @@
       ],
       "network": {
         "exposure": "loopback-only",
-        "composeNetwork": "chain",
         "sharedVolumes": [
-          "exports:/exports:ro",
-          "casys-digital-thread-calculix-inputs:/inputs",
-          "casys-digital-thread-calculix-runs:/var/lib/mcp-calculix-runs"
+          "calculix-inputs:/inputs",
+          "calculix-runs:/var/lib/mcp-calculix-runs"
         ],
         "upstreams": []
       },
@@ -233,7 +230,7 @@
         "level": "first-party-local",
         "executesArbitraryCode": false,
         "notes": [
-          "The solver mounts /exports read-only. Generic content-addressed FEA inputs are staged by the Digital Thread into provider-private /inputs on a dedicated volume; it is neither a shared exchange nor evidence. Every solve snapshots its input privately, while only recorded static runs retain evidence in the separate run ledger.",
+          "Generic content-addressed FEA inputs are staged only into provider-private /inputs on an owned capability launch group; they are neither a shared exchange nor evidence. Recorded static runs retain their readback resources in the separate run ledger.",
           "Native meshing and solver processes still require untrusted-input hardening."
         ]
       }

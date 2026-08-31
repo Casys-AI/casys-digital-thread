@@ -8,11 +8,40 @@ storage, not product proof.
 Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays
 on [engineering domains](../domains/README.md).
 
+## Capture-store trust boundary
+
+`FileCaptureStore` resolves a relative CAS root from the captured working directory and
+walks only below that anchored root; an absolute root is instead walked from `/`.
+Configured paths are lexical and bounded, then every existing component is checked with
+`lstat` and rechecked before use. Symlinked roots, ancestors, and final capture files are
+refused, while a component that changes during the walk fails closed.
+
+The final-file check is deliberately open-first: the opened file handle is recrossed
+against the current pathname by file identity before any bytes are read. This closes the
+`lstat`-then-read substitution race. New captures are written and synced under a temporary
+name, published with no-overwrite linking, reread, and treated as an idempotent success
+only when the existing bytes are exact. This is a storage-integrity boundary, not an
+execution, approval, qualification, or verdict boundary.
+
 ## Source map
 
 #### [`state/fixtures/`](../../../state/fixtures)
 
 Explicitly labelled demo evidence
+
+#### `state/local/capability-runtime-host/`
+
+Host-local admin lock, journal, leases, opaque host identity, qualification attempt WAL
+and append-only qualification attestations. Not Thread, CAS, project evidence, or a
+Workbench command surface. The Chrono probe writes
+`qualification-attempts/` and `qualification-attestations/` only.
+
+#### `state/local/project-capability-ledgers/`
+
+Append-only `project-capability-ledger/1.0` revisions, prepared envelopes, and
+recoverable pending/claim material for each brief-bound operational authorization.
+Prepared or pending material alone is not authority. This root is distinct from Thread,
+CAS, MRTR, engineering result, and Workbench command state.
 
 #### `state/local/engineering-projects/`
 
@@ -22,6 +51,20 @@ Ignored immutable active project revisions and CAS claims
 
 Ignored append-only project source workspace events (`NNNNNNNNNN.claim` then `.json`).
 Rebuildable in-memory index. Not Thread evidence and not a per-mutation snapshot dump
+
+#### `state/local/mechanics/prescribed-kinematics/captures/`
+
+Five immutable CAS lanes for the exact L1 case, factual L3 observation, reviewed method,
+provider-free L4 evaluation, and human L5 closeout. They preserve separate evidence
+levels; the directory, a provider receipt, and a later artifact never promote an earlier
+level or create a verdict by themselves.
+
+#### `state/local/mechanics/prescribed-kinematics/observation-attempts/`
+
+Append-only product L3 attempt WAL and create-new dispatch claims for prescribed
+kinematics. After the durable dispatch boundary it permits only same-request readback;
+`quarantined` does not authorize a redispatch. This root is distinct from the private
+host qualification WAL under `capability-runtime-host/`.
 
 #### `state/local/engineering-project-run-leases/`
 
@@ -117,6 +160,14 @@ WAL for `industrialize.run-dfm-checks@1`; not evidence
 
 Content-addressed SysON join of study-base observations for
 `verify.evaluate-sensitivity-base@1`
+
+#### `state/local/sensitivity-runtime-provenance-captures/`
+
+Content-addressed L3 `sensitivity-runtime-provenance/1.0` records for the actual
+server-resolved recorded CalculiX runtime and the base then stepped recorded captures,
+including their request, readback, and ordered-resource-capture identities. Separate
+from the scientific sensitivity study capture; not a provider qualification, solver
+verdict, or evaluation.
 
 #### `state/local/sensitivity-experience/`
 

@@ -15,7 +15,6 @@ const MANIFEST = JSON.stringify({
     id: "calculix",
     serviceName: "mcp-calculix",
     mcpUrl: CALCULIX_ENDPOINT.mcpUrl,
-    healthUrl: CALCULIX_ENDPOINT.healthUrl,
     image: `ghcr.io/casys-ai/mcp-calculix@sha256:${IMAGE_DIGEST}`,
     providerIdentity: {
       version: "0.8.2",
@@ -36,7 +35,6 @@ const MANIFEST = JSON.stringify({
   }],
 });
 
-const HEALTH = { status: "ok", server: "mcp-calculix", version: "0.8.2" };
 const DISCOVERY = {
   supportedVersions: ["2026-07-28"],
   serverInfo: { name: "mcp-calculix", version: "0.8.2" },
@@ -44,7 +42,7 @@ const DISCOVERY = {
 };
 const TOOLS = CALCULIX_EXPECTED_TOOLS.map((name) => tool(name));
 
-Deno.test("CalculiX preflight uses only discovery and accepts the reviewed fingerprint", async () => {
+Deno.test("CalculiX preflight uses MCP discovery without inventing a health route", async () => {
   const fake = new FakeCalculixFetch();
   const expected = await fixtureFingerprint(TOOLS);
   const result = await probeCalculixContract({
@@ -55,7 +53,6 @@ Deno.test("CalculiX preflight uses only discovery and accepts the reviewed finge
   });
 
   assertEquals(fake.requests, [
-    { method: "GET", url: CALCULIX_ENDPOINT.healthUrl },
     { method: "server/discover", url: CALCULIX_ENDPOINT.mcpUrl },
     { method: "tools/list", url: CALCULIX_ENDPOINT.mcpUrl },
   ]);
@@ -124,8 +121,8 @@ Deno.test("a missing static viewer attachment is contract-divergent", async () =
   assertEquals(result.contract, "contract-divergent");
 });
 
-Deno.test("CalculiX transport failure remains unavailable", async () => {
-  const fake = new FakeCalculixFetch({ failHealth: true });
+Deno.test("CalculiX MCP discovery transport failure remains unavailable", async () => {
+  const fake = new FakeCalculixFetch({ failDiscovery: true });
   const result = await probeCalculixContract({
     manifestText: MANIFEST,
     fetch: fake.fetch,
@@ -138,24 +135,18 @@ Deno.test("CalculiX transport failure remains unavailable", async () => {
 class FakeCalculixFetch {
   readonly requests: { method: string; url: string }[] = [];
   readonly #tools: Record<string, unknown>[];
-  readonly #failHealth: boolean;
+  readonly #failDiscovery: boolean;
 
   constructor(options: {
     tools?: Record<string, unknown>[];
-    failHealth?: boolean;
+    failDiscovery?: boolean;
   } = {}) {
     this.#tools = options.tools ?? structuredClone(TOOLS);
-    this.#failHealth = options.failHealth ?? false;
+    this.#failDiscovery = options.failDiscovery ?? false;
   }
 
   readonly fetch: typeof fetch = (input, init) => {
     const url = String(input);
-    if ((init?.method ?? "GET") === "GET") {
-      this.requests.push({ method: "GET", url });
-      if (this.#failHealth) return Promise.reject(new TypeError("connection refused"));
-      return Promise.resolve(jsonResponse(HEALTH));
-    }
-
     const body = JSON.parse(String(init?.body)) as { method?: string };
     if (
       init?.method !== "POST" || url !== CALCULIX_ENDPOINT.mcpUrl ||
@@ -166,6 +157,9 @@ class FakeCalculixFetch {
       );
     }
     this.requests.push({ method: body.method, url });
+    if (this.#failDiscovery && body.method === "server/discover") {
+      return Promise.reject(new TypeError("connection refused"));
+    }
     return Promise.resolve(
       body.method === "server/discover"
         ? jsonResponse({ jsonrpc: "2.0", id: 1, result: DISCOVERY })
@@ -220,7 +214,7 @@ function objectSchema(names: string[]): Record<string, unknown> {
 async function fixtureFingerprint(
   tools: Record<string, unknown>[],
 ): Promise<string> {
-  return (await calculixContractFingerprint(HEALTH, DISCOVERY, tools)).digest;
+  return (await calculixContractFingerprint(DISCOVERY, tools)).digest;
 }
 
 function unresolvedSurface() {

@@ -13,18 +13,12 @@ import {
   safeId,
   safeVersion,
 } from "../../kernel/case-validation.ts";
+import { GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY } from "../../capability/engineering-capability.ts";
 import { fingerprintsEqual } from "../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
 
 export const GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA =
   "geometry-module-assembly-receipt/1.0" as const;
-
-export const GEOMETRY_MODULE_ASSEMBLY_CAPABILITY = Object.freeze(
-  {
-    id: "geometry.module.immediate-compound",
-    version: "1.0",
-  } as const,
-);
 
 export const GEOMETRY_MODULE_ASSEMBLY_ASSETS = Object.freeze(
   {
@@ -54,7 +48,7 @@ export interface GeometryModuleAssemblyReceiptAsset {
 
 export interface GeometryModuleAssemblyReceipt {
   readonly schemaVersion: typeof GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA;
-  readonly capability: typeof GEOMETRY_MODULE_ASSEMBLY_CAPABILITY;
+  readonly capability: typeof GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY;
   readonly runId: string;
   readonly inputBundle: {
     readonly fingerprint: ContentFingerprint;
@@ -110,12 +104,12 @@ export function parseGeometryModuleAssemblyReceipt(
   );
   literalValue(
     capability.id,
-    GEOMETRY_MODULE_ASSEMBLY_CAPABILITY.id,
+    GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY.id,
     `${path}.capability.id`,
   );
   literalValue(
     capability.version,
-    GEOMETRY_MODULE_ASSEMBLY_CAPABILITY.version,
+    GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY.version,
     `${path}.capability.version`,
   );
   const inputBundle = parseContentIdentity(
@@ -134,7 +128,7 @@ export function parseGeometryModuleAssemblyReceipt(
   );
   return deepFreeze({
     schemaVersion: GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
-    capability: GEOMETRY_MODULE_ASSEMBLY_CAPABILITY,
+    capability: GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
     runId: safeId(root.runId, `${path}.runId`),
     inputBundle,
     assembly: {

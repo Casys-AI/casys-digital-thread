@@ -12,6 +12,7 @@ export const PROJECT_SOURCE_ATTACHMENT_ROLE_IDS = [
   "architecture-source",
   "design-source",
   "behavior-source",
+  "mechanism-source",
   "verification-source",
   "supporting-document",
 ] as const;

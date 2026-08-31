@@ -49,10 +49,10 @@ import {
 import { createGeometryModuleInputBundle } from "../../../domain/cad/module-assembly/geometry-module-input-bundle.ts";
 import {
   GEOMETRY_MODULE_ASSEMBLY_ASSETS,
-  GEOMETRY_MODULE_ASSEMBLY_CAPABILITY,
   GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
   type GeometryModuleAssemblyReceipt,
 } from "../../../domain/cad/module-assembly/geometry-module-assembly-receipt.ts";
+import { GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY } from "../../../domain/capability/engineering-capability.ts";
 import {
   fingerprintResourceBytes,
   immutableBytes,
@@ -1598,7 +1598,7 @@ async function moduleAssemblyFixture(
   const runId = "run.geometry-module.assembly.1";
   const receipt = {
     schemaVersion: GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
-    capability: GEOMETRY_MODULE_ASSEMBLY_CAPABILITY,
+    capability: GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
     runId,
     inputBundle: {
       fingerprint: fp(bundleDigest),

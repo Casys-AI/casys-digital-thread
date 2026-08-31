@@ -3,7 +3,7 @@
  *
  * This module intentionally starts from the already captured finite-difference
  * facts. It does not claim a sealed CAD-script dependency: the historical
- * sensitivity-study capture proves two solver results and their STEP handoffs,
+ * sensitivity-study capture proves two solved observations and their STEP handoffs,
  * but not a source-level CAD parameter occurrence.
  */
 
@@ -22,7 +22,7 @@ import { computeSensitivities } from "../study/sensitivity-study.ts";
 export interface SensitivityAnalysisGraphEvidence {
   /**
    * The exact sensitivity-study capture which records both measurements, their
-   * solver STEP handoffs, and the finite difference. This is deliberately the
+   * solved STEP handoffs, and the finite difference. This is deliberately the
    * sole EngineeringEvidence: provider responses were normalized into this
    * persisted capture, not persisted as independent solver-result bytes.
    */
@@ -35,8 +35,8 @@ export interface SensitivityAnalysisGraphEvidenceArtifact {
 }
 
 /**
- * Case fields the graph actually reads. Both 1.0 and 2.0 satisfy this;
- * recipeSource / cadSource never enter assertion identity.
+ * Case fields the graph actually reads. The V3 source identity never enters
+ * assertion identity.
  */
 export interface SensitivityAnalysisGraphCase extends SensitivityFiniteDifferenceCase {
   readonly id: string;

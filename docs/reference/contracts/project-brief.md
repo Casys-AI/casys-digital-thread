@@ -97,8 +97,10 @@ links, not a cascade that computes them. Half a cascade cannot be exercised.
 | `project_snapshot`         | Read              | Read the complete immutable project revision                                     |
 | `project_question_propose` | Agent             | Add one adaptive question, recommendation, consequences, risk, and evidence need |
 | `project_answer_record`    | Agent or human    | Record one sourced answer or explicit unknown                                    |
-| `project_brief_propose`    | Agent             | Add an immutable review proposal without changing canonical intent               |
-| `project_brief_confirm`    | Human elicitation | Promote only the exact accepted proposal to canonical brief                      |
+| `project_brief_propose`    | Agent             | Add an immutable review proposal plus its server-derived `capabilityProposalFingerprint`; neither changes canonical intent nor selects a runtime |
+| `project_brief_confirm`    | Human elicitation | Promote only the exact accepted proposal while echoing its exact `capabilityProposalFingerprint` |
+| `project_capability_inspect` | Read            | Inspect the separate local operational authorization after brief confirmation    |
+| `project_capability_change_review` | Read / human elicitation | Recheck the exact published-plan ceiling; a covered subset needs no prompt, while a server-derived widening delta requires exact signed confirmation |
 
 Every mutation has a stable command ID, optimistic `expectedRevision` after project
 creation, and stable issue time. An identical retry is idempotent; another payload under
@@ -120,8 +122,9 @@ technical evidence by itself.
 Exact runtime capability demand can be compiled separately from the registered
 operations on that published project path. It is never stored as packs, providers,
 images, or host effects inside `ProjectBriefRevision`; a brief-only forecast remains
-provisional. The compiler is not yet invoked by `project_plan_publish` or exposed as a
-read model. See
+provisional. Operational authorization of that demand is the separate
+[project capability authorization](../runtime/capability-packs/project-capability-authorization.md)
+ledger; it is not a brief field. See
 [project capability demand](../runtime/capability-packs/project-capability-demand.md).
 
 The generic V3 bootstrap is deliberately additive and exact:

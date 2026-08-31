@@ -1769,6 +1769,7 @@ function isThreadArtifact(value: unknown): value is ThreadArtifact {
     "label",
     "kind",
     "system",
+    "producer",
     "revision",
     "freshness",
     "fingerprint",
@@ -1782,6 +1783,8 @@ function isThreadArtifact(value: unknown): value is ThreadArtifact {
   ]) && typeof value.id === "string" && value.id.length > 0 &&
     typeof value.label === "string" && typeof value.kind === "string" &&
     typeof value.system === "string" && typeof value.revision === "string" &&
+    (value.producer === undefined ||
+      isThreadArtifactProducer(value.producer)) &&
     isThreadFreshness(value.freshness) &&
     (value.fingerprint === undefined ||
       typeof value.fingerprint === "string") &&
@@ -1797,6 +1800,14 @@ function isThreadArtifact(value: unknown): value is ThreadArtifact {
       isThreadArtifactAttestation(value.attestation)) &&
     (value.architectureSysmlSeal === undefined ||
       isArchitectureSysmlSealPresentation(value.architectureSysmlSeal));
+}
+
+function isThreadArtifactProducer(value: unknown): boolean {
+  return isRecord(value) &&
+    hasExactKeys(value, ["serverId", "tool", "runId"]) &&
+    typeof value.serverId === "string" && value.serverId.length > 0 &&
+    typeof value.tool === "string" && value.tool.length > 0 &&
+    typeof value.runId === "string" && value.runId.length > 0;
 }
 
 function isArchitectureSysmlSealPresentation(value: unknown): boolean {

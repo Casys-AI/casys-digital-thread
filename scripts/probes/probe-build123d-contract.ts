@@ -9,6 +9,7 @@
 
 import { sha256Fingerprint } from "../../src/domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../src/domain/kernel/primitives.ts";
+import { BUILD123D_EXPORT_TIMEOUT_MS } from "../../src/adapters/cad/canonical/build123d-export-contract.ts";
 
 const MANIFEST_PATH = new URL("../../config/mcp-fleet.json", import.meta.url);
 const MCP_PROTOCOL_VERSION = "2026-07-28";
@@ -480,10 +481,11 @@ function assertExecutionTimeout(tool: Record<string, unknown>, name: string): vo
   const properties = record(input.properties, `${name} inputSchema properties`);
   const timeout = record(properties.timeout_ms, `${name} timeout_ms schema`);
   if (
-    timeout.type !== "integer" || timeout.minimum !== 1 || timeout.maximum !== 60_000
+    timeout.type !== "integer" || timeout.minimum !== 1 ||
+    timeout.maximum !== BUILD123D_EXPORT_TIMEOUT_MS
   ) {
     throw new ContractDivergenceError(
-      `${name} timeout_ms must be an integer in [1, 60000].`,
+      `${name} timeout_ms must be an integer in [1, ${BUILD123D_EXPORT_TIMEOUT_MS}].`,
     );
   }
 }

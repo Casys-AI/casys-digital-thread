@@ -230,19 +230,19 @@ export async function enrichThreadWorkbenchWithAssemblyIntegrity(
 
 function isObservationCandidate(artifact: ThreadArtifact): boolean {
   return artifact.kind === "evidence" &&
-    artifact.producedBy === OBSERVATION_PRODUCER &&
+    artifact.producer?.tool === OBSERVATION_PRODUCER &&
     artifact.id.startsWith("assembly-integrity-observation-");
 }
 
 function isEvaluationCandidate(artifact: ThreadArtifact): boolean {
   return artifact.kind === "evidence" &&
-    artifact.producedBy === EVALUATION_PRODUCER &&
+    artifact.producer?.tool === EVALUATION_PRODUCER &&
     artifact.id.startsWith("assembly-integrity-evaluation-");
 }
 
 function isCloseoutCandidate(artifact: ThreadArtifact): boolean {
   return artifact.kind === "document" &&
-    CLOSEOUT_PRODUCERS.has(artifact.producedBy ?? "") &&
+    CLOSEOUT_PRODUCERS.has(artifact.producer?.tool ?? "") &&
     artifact.id.startsWith("assembly-integrity-evaluation-closeout-");
 }
 
@@ -583,7 +583,7 @@ function ownArtifactRef(
   const reference = artifactRef(artifact);
   if (
     !reference || artifact.id !== expectedId || artifact.uri !== expectedUri ||
-    artifact.producedBy !== producer || artifact.producerRunId === undefined ||
+    artifact.producer?.tool !== producer ||
     !fingerprintsEqual(captureFingerprint(reference), fingerprint) ||
     !sameIds(artifact.dependsOn, dependsOn)
   ) return undefined;
@@ -615,7 +615,7 @@ function artifactRef(
   const fingerprint = parseFingerprint(artifact.fingerprint);
   if (
     !fingerprint || typeof artifact.uri !== "string" || artifact.uri.length === 0 ||
-    typeof artifact.producerRunId !== "string" || artifact.producerRunId.length === 0
+    !artifact.producer || artifact.producer.runId.length === 0
   ) {
     return undefined;
   }
@@ -623,7 +623,7 @@ function artifactRef(
     id: artifact.id,
     uri: artifact.uri,
     fingerprint: fingerprintText(fingerprint),
-    producerRunId: artifact.producerRunId,
+    producerRunId: artifact.producer.runId,
     dependsOn: [...artifact.dependsOn],
     freshness: artifact.freshness === "fresh"
       ? "fresh"

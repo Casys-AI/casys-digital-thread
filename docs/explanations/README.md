@@ -10,7 +10,7 @@ trade-offs; they do not replace a procedure or an exact contract.
 | [`product/`](product/) | Product direction, positioning, proof semantics, and judgement branches |
 | [`workbench/`](workbench/) | Read-only Workbench structure, activity/lineage, and design language |
 | [`verification/`](verification/) | Verification coverage, evidence cases, and dated market research |
-| [`runtime/`](runtime/) | Runtime architecture decisions and their consequences |
+| [`runtime/`](runtime/) | Runtime architecture decisions and their consequences, including [capability management](runtime/capability-management.md) |
 
 For action, return to [how-to guides](../how-to/README.md). For exact fields, identities,
 ports, or code locations, use [reference](../reference/README.md).

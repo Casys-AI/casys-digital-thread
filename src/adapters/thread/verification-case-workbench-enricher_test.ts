@@ -28,9 +28,9 @@ import {
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
 } from "../../domain/sensitivity/study/sensitivity-study-proposal.ts";
 import {
-  type SensitivityStudyCaseV2,
-  validateSensitivityStudyCaseV2,
-} from "../../domain/sensitivity/study/sensitivity-study-v2.ts";
+  type SensitivityStudyCaseV3,
+  validateSensitivityStudyCaseV3,
+} from "../../domain/sensitivity/study/sensitivity-study-v3.ts";
 import {
   PRINTABILITY_CASE_CAPTURE_SCHEMA,
   PRINTABILITY_CASE_CAPTURE_URI_PREFIX,
@@ -271,7 +271,7 @@ Deno.test(
     assertEquals(enriched.engineeringCases.cases, [{
       key: `verification-case:sensitivity-study:${caseDigest}`,
       family: "sensitivity-study",
-      caseSchemaVersion: "sensitivity-study-case/2.0",
+      caseSchemaVersion: "sensitivity-study-case/3.0",
       id: studyCase.id,
       revision: studyCase.revision,
       scope: studyCase.scope,
@@ -779,9 +779,9 @@ function edge(
   };
 }
 
-function sensitivityStudyCase(): SensitivityStudyCaseV2 {
-  return validateSensitivityStudyCaseV2({
-    schemaVersion: "sensitivity-study-case/2.0",
+function sensitivityStudyCase(): SensitivityStudyCaseV3 {
+  return validateSensitivityStudyCaseV3({
+    schemaVersion: "sensitivity-study-case/3.0",
     id: "dl05-arm-thickness-sensitivity",
     revision: 1,
     scope: "mechanical-structural",
@@ -798,10 +798,7 @@ function sensitivityStudyCase(): SensitivityStudyCaseV2 {
     baseValue: { value: 10, unit: "mm" },
     step: { value: 1, unit: "mm" },
     metrics: [{ id: "assembly_max_displacement", unit: "mm" }],
-    solver: {
-      provider: "calculix",
-      tool: "calculix_solve_static",
-      resultSchemaVersion: "2.0",
+    method: {
       mesh: { kind: "tetrahedral-volume", targetSizeMm: 3 },
       material: {
         model: "isotropic-linear-elastic",

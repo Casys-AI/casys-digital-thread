@@ -47,6 +47,19 @@ import {
   AssemblyIntegrityObservationRunOutcomeUnknownError,
   FileAssemblyIntegrityObservationAttemptStore,
 } from "./file-assembly-integrity-observation-attempt-store.ts";
+import { CapabilityRuntimeExecutionSessionCoordinator } from "../../../application/control-plane/capability-runtime-execution-session.ts";
+import { CapabilityRuntimeConnectionError } from "../../../application/ports/out/capability/capability-runtime-connection.ts";
+import type { CapabilityRuntimeExecutionEligibility } from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import { InMemoryCapabilityRuntimeLeaseStore } from "../../control-plane/in-memory-capability-runtime-supervisor.ts";
+import { fingerprintResolvedCapabilityRuntimeOperation } from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type { CapabilityRuntimeLease } from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type { CapabilityRuntimeLaunchGroupReference } from "../../../domain/capability/runtime/capability-runtime-launch-group.ts";
+import {
+  passthroughCapabilityRuntimeConnection,
+  type RecordingCapabilityRuntimeSession,
+  recordingCapabilityRuntimeSession,
+  testResolvedCapabilityRuntimeOperation,
+} from "../../../testing/capability-runtime-execution-session-test-support.ts";
 import {
   type AssemblyIntegrityObservationThreadSnapshotStore,
   VerifyObserveAssemblyIntegrityRunExecutor,
@@ -140,17 +153,95 @@ Deno.test("verify.observe-assembly-integrity@1 completed replay reopens exact ev
   const fixture = await createFixture();
   try {
     const completed = await fixture.executor.execute(AGENT, fixture.command);
+    assertEquals(fixture.session.events, ["begin"]);
+    assertEquals(fixture.session.releases, 1);
+    assertEquals(fixture.session.recordedReleases, 0);
     const replayed = await fixture.executor.execute(AGENT, fixture.command);
 
     assertEquals(replayed.id, completed.id);
     assertEquals(replayed.revision, completed.revision);
     assertEquals(fixture.observer.calls, 1);
+    assertEquals(fixture.session.events, ["begin"]);
+    assertEquals(fixture.session.recordedReleases, 0);
+    assertEquals(fixture.connection.opens, 1);
   } finally {
     await fixture.dispose();
   }
 });
 
-Deno.test("verify.observe-assembly-integrity@1 fails normally before durable dispatch", async () => {
+Deno.test("completed replay returns the exact proof when current capability runtime is unavailable", async () => {
+  const fixture = await createFixture();
+  try {
+    await fixture.executor.execute(AGENT, fixture.command);
+    const replayExecutor = assemblyExecutor(fixture, {
+      capabilityRuntime: {
+        requireExecution: () => Promise.resolve(undefined),
+      },
+    });
+    const replayed = await replayExecutor.execute(AGENT, fixture.command);
+    assertEquals(replayed.agentRuns[0]!.status, "completed");
+    assertEquals(fixture.observer.calls, 1);
+    assertEquals(fixture.connection.opens, 1);
+    assertEquals(fixture.session.events, ["begin"]);
+    assertEquals(fixture.session.recordedReleases, 0);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("live success still returns completed when H1 host cleanup fails", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  const activations: string[] = [];
+  const recordedCleanups: string[] = [];
+  const coordinator = new CapabilityRuntimeExecutionSessionCoordinator({
+    contexts: { read: () => Promise.resolve({ catalog: { units: [] } } as never) },
+    leases,
+    groups: {
+      ensureActive: async (input: {
+        readonly group: CapabilityRuntimeLaunchGroupReference;
+        readonly lease: CapabilityRuntimeLease;
+      }) => {
+        activations.push(input.group.id);
+        const claim = await leases.claim(input.lease);
+        return {
+          group: input.group,
+          states: new Map([[input.group.id, {
+            material: "installed" as const,
+            runtime: "active" as const,
+          }]]),
+          leaseDisposition: claim.status === "created"
+            ? "created" as const
+            : "reused" as const,
+          mutation: undefined,
+        };
+      },
+      releaseTerminal: () => Promise.reject(new Error("stop failed")),
+    } as never,
+    hasRemainingJitDemand: () => Promise.resolve(false),
+    now: () => AT,
+  });
+  const session = {
+    begin: coordinator.begin.bind(coordinator),
+    releaseRecorded: () => {
+      recordedCleanups.push("unexpected");
+      return Promise.reject(new Error("recorded cleanup must not run"));
+    },
+  };
+  const fixture = await createFixture({ capabilityRuntimeSession: session });
+  try {
+    const completed = await fixture.executor.execute(AGENT, fixture.command);
+    assertEquals(completed.agentRuns[0]!.status, "completed");
+    assertEquals(activations, ["casys-build123d-observation"]);
+    assertEquals(recordedCleanups, []);
+    assertEquals((await leases.listActive(AT)).length, 1);
+    assertEquals(fixture.observer.calls, 1);
+    assertEquals(fixture.connection.opens, 1);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("verify.observe-assembly-integrity@1 fails cold before claim when input is unavailable", async () => {
   const fixture = await createFixture({
     inputFailure: new Error("input bundle unavailable"),
   });
@@ -162,11 +253,9 @@ Deno.test("verify.observe-assembly-integrity@1 fails normally before durable dis
     );
 
     assertEquals(fixture.observer.calls, 0);
-    assertEquals(fixture.project.agentRuns[0]!.status, "failed");
-    assertEquals(
-      fixture.project.agentRuns[0]!.failure?.code,
-      "verify-observe-assembly-integrity-failed",
-    );
+    assertEquals(fixture.session.events, []);
+    assertEquals(fixture.connection.opens, 0);
+    assertEquals(fixture.project.agentRuns[0]!.status, "queued");
   } finally {
     await fixture.dispose();
   }
@@ -181,12 +270,16 @@ Deno.test("verify.observe-assembly-integrity@1 never redispatches a dispatched-o
       () => fixture.executor.execute(AGENT, fixture.command),
       AssemblyIntegrityObservationRunOutcomeUnknownError,
     );
+    assertEquals(fixture.session.events, ["begin"]);
+    assertEquals(fixture.session.retains, 1);
     await assertRejects(
       () => fixture.executor.execute(AGENT, fixture.command),
       AssemblyIntegrityObservationRunOutcomeUnknownError,
     );
 
     assertEquals(fixture.observer.calls, 1);
+    assertEquals(fixture.session.events, ["begin"]);
+    assertEquals(fixture.connection.opens, 1);
     assertEquals(fixture.project.agentRuns[0]!.status, "running");
   } finally {
     await fixture.dispose();
@@ -222,10 +315,87 @@ Deno.test("verify.observe-assembly-integrity@1 resumes a recorded capture after 
     );
     assertEquals(fixture.project.agentRuns[0]!.status, "running");
     assertEquals(fixture.observer.calls, 1);
+    assertEquals(fixture.session.retains, 1);
 
     const resumed = await fixture.executor.execute(AGENT, fixture.command);
     assertEquals(resumed.agentRuns[0]!.status, "completed");
     assertEquals(fixture.observer.calls, 1);
+    assertEquals(fixture.session.events, ["begin", "releaseRecorded"]);
+    assertEquals(fixture.connection.opens, 1);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("cold capture-recorded recovery completes and releases the retained H1 lease once", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  const activations: string[] = [];
+  const cleanups: string[] = [];
+  const operation = assemblyOperationalCapability();
+  const coordinator = new CapabilityRuntimeExecutionSessionCoordinator({
+    contexts: { read: () => Promise.resolve({ catalog: { units: [] } } as never) },
+    leases,
+    groups: {
+      ensureActive: async (input: {
+        readonly group: CapabilityRuntimeLaunchGroupReference;
+        readonly lease: CapabilityRuntimeLease;
+      }) => {
+        activations.push(input.group.id);
+        const claim = await leases.claim(input.lease);
+        return {
+          group: input.group,
+          states: new Map([[input.group.id, {
+            material: "installed" as const,
+            runtime: "active" as const,
+          }]]),
+          leaseDisposition: claim.status === "created"
+            ? "created" as const
+            : "reused" as const,
+          mutation: undefined,
+        };
+      },
+      releaseTerminal: async (input: { readonly leaseId: string }) => {
+        cleanups.push(input.leaseId);
+        await leases.release(input.leaseId);
+      },
+    } as never,
+    hasRemainingJitDemand: () => Promise.resolve(false),
+    now: () => AT,
+  });
+  const fixture = await createFixture({
+    failSnapshotSave: true,
+    capabilityRuntimeSession: coordinator,
+  });
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      Error,
+      "snapshot save interrupted",
+    );
+    assertEquals(activations, ["casys-build123d-observation"]);
+    assertEquals(fixture.observer.calls, 1);
+    assertEquals(fixture.connection.opens, 1);
+    assertEquals(cleanups, []);
+    const retained = await leases.listActive(AT);
+    assertEquals(retained.length, 1);
+    const expectedLeaseId = `capability-jit-${
+      (await sha256Fingerprint({
+        schemaVersion: "capability-runtime-jit-lease/1.0",
+        projectId: PROJECT_ID,
+        runId: RUN_ID,
+        operationalCapabilityFingerprint:
+          (await fingerprintResolvedCapabilityRuntimeOperation(operation)).digest,
+      })).digest
+    }`;
+    assertEquals(retained[0]?.id, expectedLeaseId);
+
+    const resumed = await fixture.executor.execute(AGENT, fixture.command);
+    assertEquals(resumed.agentRuns[0]!.status, "completed");
+    assertEquals(fixture.observer.calls, 1);
+    assertEquals(fixture.connection.opens, 1);
+    assertEquals(activations, ["casys-build123d-observation"]);
+    assertEquals(cleanups, [expectedLeaseId]);
+    assertEquals(await leases.listActive(AT), []);
   } finally {
     await fixture.dispose();
   }
@@ -257,6 +427,7 @@ Deno.test("verify.observe-assembly-integrity@1 keeps a completed WAL resumable w
     const completed = await fixture.executor.execute(AGENT, fixture.command);
     assertEquals(completed.agentRuns[0]!.status, "completed");
     assertEquals(fixture.observer.calls, 1);
+    assertEquals(fixture.session.events.includes("releaseRecorded"), true);
   } finally {
     await fixture.dispose();
   }
@@ -272,9 +443,161 @@ Deno.test("verify.observe-assembly-integrity@1 rejects a tampered MRTR fingerpri
     );
 
     assertEquals(fixture.observer.calls, 0);
+    assertEquals(fixture.session.events, []);
     assertEquals(fixture.project.agentRuns[0]!.status, "queued");
   } finally {
     await fixture.dispose();
+  }
+});
+
+Deno.test("verify.observe-assembly-integrity@1 exact order is recheck, begin, connect, open, claim, WAL, observe", async () => {
+  const fixture = await createFixture();
+  try {
+    const events: string[] = [];
+    const session = recordingCapabilityRuntimeSession(async (input) => {
+      events.push("begin");
+      await input.recheck();
+      return {
+        lease: { id: "capability-jit-assembly" } as Awaited<
+          ReturnType<RecordingCapabilityRuntimeSession["begin"]>
+        >["lease"],
+        releaseTerminal: () => Promise.resolve(),
+        retainForRecovery: () => undefined,
+      };
+    });
+    const connection = passthroughCapabilityRuntimeConnection(
+      { callTool: () => Promise.reject(new Error("unused")) } as never,
+      events,
+    );
+    const originalClaim = fixture.commands.claimRun.bind(fixture.commands);
+    fixture.commands.claimRun = (origin, command) => {
+      events.push("claim");
+      return originalClaim(origin, command);
+    };
+    const originalBegin = fixture.attempts.begin.bind(fixture.attempts);
+    fixture.attempts.begin = (input) => {
+      events.push("wal");
+      return originalBegin(input);
+    };
+    const originalObserve = fixture.observer.observe.bind(fixture.observer);
+    fixture.observer.observe = (request) => {
+      events.push("observe");
+      return originalObserve(request);
+    };
+    const executor = assemblyExecutor(fixture, {
+      session,
+      connection,
+    });
+    await executor.execute(AGENT, fixture.command);
+    assertEquals(events[0], "begin");
+    assertEquals(events.indexOf("begin") < events.indexOf("connect"), true);
+    assertEquals(events.indexOf("connect") < events.indexOf("open"), true);
+    assertEquals(events.indexOf("open") < events.indexOf("claim"), true);
+    assertEquals(events.indexOf("claim") < events.indexOf("wal"), true);
+    assertEquals(events.indexOf("wal") < events.indexOf("observe"), true);
+    assertEquals(connection.opens, 1);
+    assertEquals(fixture.observer.calls, 1);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("a dispatched assembly WAL forbids H1, claim, and observer", async () => {
+  const fixture = await createFixture();
+  try {
+    await fixture.attempts.begin({
+      projectId: PROJECT_ID,
+      runId: RUN_ID,
+      planDigest: await planDigestFor(fixture),
+      dispatchedAt: AT,
+    });
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      AssemblyIntegrityObservationRunOutcomeUnknownError,
+    );
+    assertEquals(fixture.session.events, []);
+    assertEquals(fixture.observer.calls, 0);
+    assertEquals(fixture.connection.opens, 0);
+    assertEquals(fixture.project.agentRuns[0]!.status, "queued");
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("unavailable runtime or connection mismatch leaves queued evidence untouched", async () => {
+  const unavailable = await createFixture({
+    capabilityRuntime: {
+      requireExecution: () => Promise.resolve(undefined),
+    },
+  });
+  try {
+    await assertRejects(
+      () => unavailable.executor.execute(AGENT, unavailable.command),
+      Error,
+      "sealed build123d-observe-assembly-integrity@1",
+    );
+    assertEquals(unavailable.session.events, []);
+    assertEquals(unavailable.observer.calls, 0);
+    assertEquals(unavailable.project.agentRuns[0]!.status, "queued");
+  } finally {
+    await unavailable.dispose();
+  }
+
+  const mismatch = await createFixture();
+  try {
+    const connection = {
+      ...passthroughCapabilityRuntimeConnection(
+        { callTool: () => Promise.reject(new Error("unused")) } as never,
+      ),
+      broker: {
+        connect: () =>
+          Promise.reject(
+            new CapabilityRuntimeConnectionError(
+              "exact Build123d observation publication is unavailable",
+            ),
+          ),
+      },
+    };
+    const executor = assemblyExecutor(mismatch, { connection });
+    await assertRejects(
+      () => executor.execute(AGENT, mismatch.command),
+      Error,
+      "publication is unavailable",
+    );
+    assertEquals(mismatch.session.events, ["begin"]);
+    assertEquals(mismatch.session.releases, 1);
+    assertEquals(mismatch.session.retains, 0);
+    assertEquals(connection.opens, 0);
+    assertEquals(mismatch.observer.calls, 0);
+    assertEquals(mismatch.project.agentRuns[0]!.status, "queued");
+  } finally {
+    await mismatch.dispose();
+  }
+});
+
+Deno.test("success releases the H1 session and observer ambiguity retains it", async () => {
+  const success = await createFixture();
+  try {
+    await success.executor.execute(AGENT, success.command);
+    assertEquals(success.session.releases, 1);
+    assertEquals(success.session.retains, 0);
+  } finally {
+    await success.dispose();
+  }
+
+  const ambiguous = await createFixture({
+    observerFailure: new Error("observer transport lost"),
+  });
+  try {
+    await assertRejects(
+      () => ambiguous.executor.execute(AGENT, ambiguous.command),
+      AssemblyIntegrityObservationRunOutcomeUnknownError,
+    );
+    assertEquals(ambiguous.session.releases, 0);
+    assertEquals(ambiguous.session.retains, 1);
+    assertEquals(ambiguous.project.agentRuns[0]!.status, "running");
+  } finally {
+    await ambiguous.dispose();
   }
 });
 
@@ -285,6 +608,11 @@ interface FixtureOptions {
   readonly failSnapshotSave?: boolean;
   readonly publishFailures?: number;
   readonly tamperDecisionFingerprint?: boolean;
+  readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
+  readonly capabilityRuntimeSession?: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin" | "releaseRecorded"
+  >;
 }
 
 interface Fixture {
@@ -300,9 +628,16 @@ interface Fixture {
   readonly snapshots: MemorySnapshots;
   readonly inputs: FakeInputs;
   readonly observer: FakeObserver;
+  readonly commands: MemoryCommands;
+  readonly projects: MemoryProjects;
+  readonly captures: MemoryCaptures;
+  readonly attempts: FileAssemblyIntegrityObservationAttemptStore;
+  readonly session: RecordingCapabilityRuntimeSession;
+  readonly connection: ReturnType<typeof passthroughCapabilityRuntimeConnection>;
   readonly profile: Awaited<
     ReturnType<typeof createAssemblyIntegrityObserverProfile>
   >;
+  readonly resolved: ResolvedAssemblyIntegrityInput;
   readonly dispose: () => Promise<void>;
 }
 
@@ -551,18 +886,29 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
   const inputs = new FakeInputs(resolved, options.inputFailure);
   const commands = new MemoryCommands(project, options.publishFailures ?? 0);
   const projects = new MemoryProjects(project, approvedBriefProject);
+  const attempts = new FileAssemblyIntegrityObservationAttemptStore(`${directory}/wal`);
+  const session = recordingCapabilityRuntimeSession();
+  const connection = passthroughCapabilityRuntimeConnection({
+    callTool: () => Promise.reject(new Error("unused")),
+  } as never);
+  const executor = new VerifyObserveAssemblyIntegrityRunExecutor({
+    projects,
+    commands,
+    snapshots,
+    inputs,
+    capabilityRuntimeConnection: connection,
+    openObserver: () => observer,
+    captures,
+    attempts,
+    lease: { withLease: (_projectId, _scope, operation) => operation() },
+    capabilityRuntime: options.capabilityRuntime ?? {
+      requireExecution: () => Promise.resolve(assemblyOperationalCapability()),
+    },
+    capabilityRuntimeSession: options.capabilityRuntimeSession ?? session,
+  });
 
   return {
-    executor: new VerifyObserveAssemblyIntegrityRunExecutor({
-      projects,
-      commands,
-      snapshots,
-      inputs,
-      observer,
-      captures,
-      attempts: new FileAssemblyIntegrityObservationAttemptStore(`${directory}/wal`),
-      lease: { withLease: (_projectId, _scope, operation) => operation() },
-    }),
+    executor,
     command: {
       commandId: "command.assembly-integrity",
       projectId: PROJECT_ID,
@@ -574,9 +920,82 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
     snapshots,
     inputs,
     observer,
+    commands,
+    projects,
+    captures,
+    attempts,
+    session,
+    connection,
     profile,
+    resolved,
     dispose: () => Deno.remove(directory, { recursive: true }),
   };
+}
+
+function assemblyExecutor(
+  fixture: Fixture,
+  extras: {
+    readonly session?: RecordingCapabilityRuntimeSession;
+    readonly connection?: ReturnType<typeof passthroughCapabilityRuntimeConnection>;
+    readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
+  } = {},
+) {
+  return new VerifyObserveAssemblyIntegrityRunExecutor({
+    projects: fixture.projects,
+    commands: fixture.commands,
+    snapshots: fixture.snapshots,
+    inputs: fixture.inputs,
+    capabilityRuntimeConnection: extras.connection ?? fixture.connection,
+    openObserver: () => fixture.observer,
+    captures: fixture.captures,
+    attempts: fixture.attempts,
+    lease: { withLease: (_projectId, _scope, operation) => operation() },
+    capabilityRuntime: extras.capabilityRuntime ?? {
+      requireExecution: () => Promise.resolve(assemblyOperationalCapability()),
+    },
+    capabilityRuntimeSession: extras.session ?? fixture.session,
+  });
+}
+
+function assemblyOperationalCapability() {
+  return testResolvedCapabilityRuntimeOperation({
+    projectId: PROJECT_ID,
+    operation: { id: "verify.observe-assembly-integrity", version: "1" },
+    capabilityId: "geometry.observe-assembly-integrity",
+    binding: { id: "build123d-observe-assembly-integrity", version: "1.0.0" },
+    unitId: "casys.mcp-build123d-observation",
+    materialId: "mcp-build123d-observation-image",
+    launchGroup: {
+      id: "casys-build123d-observation",
+      version: "1.0.0",
+      fingerprint: fingerprint("a"),
+    },
+  });
+}
+
+async function planDigestFor(fixture: Fixture): Promise<string> {
+  return (await sha256Fingerprint({
+    operation: VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION,
+    runInputFingerprint: fixture.project.agentRuns[0]!.inputFingerprint,
+    basis: fixture.project.agentRuns[0]!.basis,
+    geometryModule: {
+      artifactId: GEOMETRY_ARTIFACT_ID,
+      fingerprint: fixture.resolved.geometryModule.fingerprint,
+    },
+    observer: {
+      profile: {
+        ...fixture.profile.profile,
+        fingerprint: fixture.profile.profileFingerprint,
+      },
+      method: fixture.profile.method,
+      configuredRuntime: fixture.profile.configuredRuntime,
+    },
+    inputBundle: {
+      schemaVersion: fixture.resolved.inputBundle.manifest.schemaVersion,
+      fingerprint: fixture.resolved.inputBundle.fingerprint,
+      byteCount: fixture.resolved.inputBundle.bytes.byteLength,
+    },
+  })).digest;
 }
 
 function createBasisSnapshot(

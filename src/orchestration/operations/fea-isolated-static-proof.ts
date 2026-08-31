@@ -1,4 +1,8 @@
 import type { RegisteredEngineeringOperation } from "./operation-contract.ts";
+import {
+  MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY,
+  MODEL_EVALUATE_REQUIREMENT_CAPABILITY,
+} from "../../domain/capability/engineering-capability.ts";
 
 /**
  * Isolated CalculiX product run. Historical MCP FEA @1/@2 stay as thin
@@ -33,6 +37,21 @@ export const FEA_ISOLATED_STATIC_PROOF_OPERATION_DESCRIPTORS = [
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: {
+      kind: "required",
+      capabilities: [
+        {
+          ...MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY,
+          minimumQualification: "qualified",
+          use: "execution",
+        },
+        {
+          ...MODEL_EVALUATE_REQUIREMENT_CAPABILITY,
+          minimumQualification: "qualified",
+          use: "execution",
+        },
+      ],
+    },
     resolvedOperationPlan: "2.0",
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [

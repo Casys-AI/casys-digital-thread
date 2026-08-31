@@ -1,16 +1,19 @@
 import type { ContentFingerprint } from "../kernel/primitives.ts";
-import type { EngineeringApprovedBriefBasis } from "../project/engineering-project.ts";
+import type {
+  EngineeringApprovedBriefBasis,
+  EngineeringProjectPlan,
+  EngineeringWorkItemStatus,
+} from "../project/engineering-project.ts";
 import type {
   AllowedEngineeringCapability,
   CapabilityQualification,
   RequiredEngineeringCapability,
 } from "./engineering-capability.ts";
-import type { CapabilityDemandOperationReference } from "./capability-requirement-catalog.ts";
 
 export type { RequiredEngineeringCapability } from "./engineering-capability.ts";
 
 export const PROJECT_CAPABILITY_DEMAND_SCHEMA_VERSION =
-  "project-capability-demand/1.0" as const;
+  "project-capability-demand/2.0" as const;
 
 /** Exact immutable project revision from which an operational path was read. */
 export interface ProjectCapabilityDemandSnapshotBasis {
@@ -19,8 +22,13 @@ export interface ProjectCapabilityDemandSnapshotBasis {
   readonly revision: number;
 }
 
+export interface ProjectCapabilityOperationReference {
+  readonly id: string;
+  readonly version: string;
+}
+
 interface ProjectCapabilityOperationGroupBase {
-  readonly operation: CapabilityDemandOperationReference;
+  readonly operation: ProjectCapabilityOperationReference;
   readonly workItemIds: readonly string[];
 }
 
@@ -33,7 +41,7 @@ export interface ResolvedProjectCapabilityOperationGroup
 export interface UnresolvedProjectCapabilityOperationGroup
   extends ProjectCapabilityOperationGroupBase {
   readonly resolution: "unresolved";
-  readonly reason: "catalog-entry-missing";
+  readonly reason: "operation-unregistered";
 }
 
 /**
@@ -43,6 +51,25 @@ export interface UnresolvedProjectCapabilityOperationGroup
 export type ProjectCapabilityOperationGroup =
   | ResolvedProjectCapabilityOperationGroup
   | UnresolvedProjectCapabilityOperationGroup;
+
+/** One immutable work-item revision, including historical non-leaf revisions. */
+export interface ProjectCapabilityWorkItemHistory {
+  readonly id: string;
+  readonly activityId: string;
+  readonly predecessorRevisionId?: string;
+  readonly status: EngineeringWorkItemStatus;
+  /** Exact operation identity only; bindings are deliberately absent. */
+  readonly operation: ProjectCapabilityOperationReference | null;
+  readonly resolution: "resolved" | "unresolved";
+  readonly reason?: "operation-missing" | "operation-unregistered";
+}
+
+/** A canonical capability set for a bounded operation path. */
+export interface ProjectCapabilityDemandSlice {
+  readonly status: "resolved" | "unresolved";
+  readonly operationGroups: readonly ProjectCapabilityOperationGroup[];
+  readonly capabilityRequirements: readonly RequiredEngineeringCapability[];
+}
 
 /**
  * Provider-neutral, read-only capability demand derived from one exact planned
@@ -54,12 +81,22 @@ export interface ProjectCapabilityDemand {
   readonly status: "resolved" | "unresolved";
   readonly projectSnapshot: ProjectCapabilityDemandSnapshotBasis;
   readonly approvedBriefBasis: EngineeringApprovedBriefBasis;
-  readonly operationGroups: readonly ProjectCapabilityOperationGroup[];
-  readonly capabilityRequirements: readonly RequiredEngineeringCapability[];
-  /** Binds the exact project, approved brief and canonical operation path. */
-  readonly pathFingerprint: ContentFingerprint;
-  /** Binds canonical requirements and every unresolved operation group. */
-  readonly capabilitySetFingerprint: ContentFingerprint;
+  /** Exact project-plan publication basis; no caller-provided catalogue exists. */
+  readonly plan: EngineeringProjectPlan;
+  /** Every revision, including cancelled, abandoned and superseded history. */
+  readonly workItemHistory: readonly ProjectCapabilityWorkItemHistory[];
+  /** Current activity leaves except cancelled or abandoned: the authorization ceiling. */
+  readonly plannedCeiling: ProjectCapabilityDemandSlice;
+  /** Ready or in-progress leaves already inside the planned ceiling. */
+  readonly jitDemand: ProjectCapabilityDemandSlice;
+  /** Binds project/brief/plan/registry and the canonical full revision history. */
+  readonly historyPathFingerprint: ContentFingerprint;
+  /** Binds the exact canonical current authorization ceiling. */
+  readonly plannedCeilingFingerprint: ContentFingerprint;
+  /** Binds the exact ready/in-progress subset of that ceiling. */
+  readonly jitDemandFingerprint: ContentFingerprint;
+  /** Fingerprint of every registry operation and runtime demand, including `none`. */
+  readonly registryFingerprint: ContentFingerprint;
 }
 
 export interface ProjectCapabilityDemandCoverage {
@@ -78,11 +115,11 @@ export function evaluateProjectCapabilityDemandCoverage(
   demand: ProjectCapabilityDemand,
   allowed: readonly AllowedEngineeringCapability[],
 ): ProjectCapabilityDemandCoverage {
-  const unresolvedOperationGroups = demand.operationGroups.filter(
+  const unresolvedOperationGroups = demand.plannedCeiling.operationGroups.filter(
     (group): group is UnresolvedProjectCapabilityOperationGroup =>
       group.resolution === "unresolved",
   );
-  const missingRequirements = demand.capabilityRequirements.filter(
+  const missingRequirements = demand.plannedCeiling.capabilityRequirements.filter(
     (requirement) =>
       !allowed.some((candidate) =>
         sameCapabilityUse(candidate, requirement) &&

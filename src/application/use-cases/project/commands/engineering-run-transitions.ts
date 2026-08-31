@@ -11,6 +11,7 @@ import type {
 import { queuedRunCancellationSummary } from "../../../../domain/project/engineering-project.ts";
 import { validateEngineeringProjectSnapshot } from "../../../../domain/project/engineering-project-validation.ts";
 import { validateResolvedOperationPlanRef } from "../../../../domain/compile/rop/resolved-operation-plan-v2.ts";
+import type { ResolvedCapabilityRuntimeOperation } from "../../../../domain/capability/runtime/capability-runtime-supervision.ts";
 import { deepFreeze } from "../../../../domain/kernel/case-validation.ts";
 import { sha256Fingerprint } from "../../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../../domain/thread/thread-snapshot.ts";
@@ -311,7 +312,12 @@ async function queueV3Run(
     invalidInput("A V3 run requires a registered operation on its work item.");
   }
   const registered = assertRegisteredQueueOperation(planning, operation, basis.kind);
-  await assertQueueEligibility(planning, draft, workItem.id, basis);
+  const operationalCapability = await assertQueueEligibility(
+    planning,
+    draft,
+    workItem.id,
+    basis,
+  );
   const inputFingerprint = await sha256Fingerprint({
     workItemId: workItem.id,
     basis,
@@ -353,6 +359,7 @@ async function queueV3Run(
         revision: project.revision,
         fingerprint: await sha256Fingerprint(project),
       },
+      ...(operationalCapability ? { operationalCapability } : {}),
     });
     candidate.resolvedOperationPlan = validateResolvedOperationPlanRef(sealed);
   }
@@ -403,9 +410,9 @@ async function assertQueueEligibility(
   draft: EngineeringProjectSnapshot,
   workItemId: string,
   basis: EngineeringBasisRef,
-): Promise<void> {
+): Promise<ResolvedCapabilityRuntimeOperation | undefined> {
   const queueEligibility = planning?.queueEligibility;
-  if (!queueEligibility) return;
+  if (!queueEligibility) return undefined;
 
   const project = validateEngineeringProjectSnapshot(draft);
   const workItem = project.workItems.find((candidate) => candidate.id === workItemId);
@@ -416,7 +423,7 @@ async function assertQueueEligibility(
   }
 
   try {
-    await queueEligibility.validate({
+    return await queueEligibility.validate({
       project,
       workItem,
       operation: workItem.operation,

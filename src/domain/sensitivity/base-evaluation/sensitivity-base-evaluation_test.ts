@@ -125,7 +125,7 @@ function harness(): {
     trustedRunId: "run:study",
     caseDigest: "b".repeat(64),
     studyCase: {
-      schemaVersion: "sensitivity-study-case/2.0",
+      schemaVersion: "sensitivity-study-case/3.0",
       id: "fixture",
       revision: 1,
       scope: "mechanical-structural",
@@ -142,10 +142,7 @@ function harness(): {
         { id: "maxDisplacement", unit: "mm" },
         { id: "maxVonMises", unit: "MPa" },
       ],
-      solver: {
-        provider: "calculix",
-        tool: "calculix_solve_static",
-        resultSchemaVersion: "2.0",
+      method: {
         mesh: { kind: "tetrahedral-volume", targetSizeMm: 3 },
         material: {
           model: "isotropic-linear-elastic",

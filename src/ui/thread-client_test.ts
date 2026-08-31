@@ -68,6 +68,20 @@ Deno.test("evidence Workbench rejects unknown fields and incomplete array entiti
   extraArtifactField.thread.artifacts[0]!.sysonElementId = "must-not-leak";
   assertEquals(isEngineeringWorkbenchSnapshot(extraArtifactField), false);
 
+  const canonicalProducer = structuredClone(GENERIC_THREAD_FIXTURE);
+  canonicalProducer.artifacts[0]!.producer = {
+    serverId: "digital-thread",
+    tool: "model.write-architecture@1",
+    runId: "run-architecture",
+  };
+  assertEquals(isThreadWorkbenchSnapshot(canonicalProducer), true);
+
+  const malformedProducer = structuredClone(canonicalProducer) as unknown as {
+    artifacts: Array<{ producer?: Record<string, unknown> }>;
+  };
+  malformedProducer.artifacts[0]!.producer!.providerArgs = {};
+  assertEquals(isThreadWorkbenchSnapshot(malformedProducer), false);
+
   const sealedDocument = structuredClone(GENERIC_THREAD_FIXTURE);
   sealedDocument.artifacts[0] = {
     ...sealedDocument.artifacts[0]!,
@@ -995,7 +1009,7 @@ Deno.test("the Workbench accepts only exact verification cases and known node me
 
   const mismatchedSchema = structuredClone(observed);
   mismatchedSchema.engineeringCases!.cases[0]!.caseSchemaVersion =
-    "sensitivity-study-case/2.0" as never;
+    "sensitivity-study-case/3.0" as never;
   assertEquals(isThreadWorkbenchSnapshot(mismatchedSchema), false);
 
   const wrongAuthority = structuredClone(observed);

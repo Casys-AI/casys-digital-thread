@@ -36,9 +36,9 @@ import {
   type SensitivityDerivatives,
 } from "../study/sensitivity-study.ts";
 import {
-  type SensitivityStudyCaseV2,
-  validateSensitivityStudyCaseV2,
-} from "../study/sensitivity-study-v2.ts";
+  type SensitivityStudyCaseV3,
+  validateSensitivityStudyCaseV3,
+} from "../study/sensitivity-study-v3.ts";
 
 export const SENSITIVITY_EXPERIENCE_RECORD_SCHEMA =
   "sensitivity-experience-record/1.0" as const;
@@ -104,8 +104,8 @@ export interface SensitivityExperienceScientificStudy {
   readonly baseValue: { readonly value: number; readonly unit: string };
   readonly step: { readonly value: number; readonly unit: string };
   readonly metrics: readonly { readonly id: string; readonly unit: string }[];
-  readonly solver: SensitivityStudyCaseV2["solver"];
-  readonly domain: SensitivityStudyCaseV2["domain"];
+  readonly method: SensitivityStudyCaseV3["method"];
+  readonly domain: SensitivityStudyCaseV3["domain"];
 }
 
 export interface SensitivityExperienceMethodIdentity {
@@ -286,7 +286,7 @@ export interface SensitivityExperienceReuseReceipt {
 }
 
 export interface CompileSensitivityExperienceTargetInput {
-  readonly studyCase: SensitivityStudyCaseV2;
+  readonly studyCase: SensitivityStudyCaseV3;
   readonly admission: { readonly document: TechnicalCompilationDocument };
   readonly build123dProfile: SensitivityExperienceBuild123dProfileInput;
   readonly solverRuntime: SensitivityExperienceSolverRuntimeIdentity;
@@ -313,7 +313,7 @@ export interface SensitivityExperienceBuild123dProfileInput {
 export async function compileSensitivityExperienceTarget(
   input: CompileSensitivityExperienceTargetInput,
 ): Promise<SensitivityExperienceTarget> {
-  const studyCase = validateSensitivityStudyCaseV2(input.studyCase);
+  const studyCase = validateSensitivityStudyCaseV3(input.studyCase);
   const profile = requireSingleBuild123dProjection(input.admission);
   if (
     profile.profileFingerprint.digest !==
@@ -378,11 +378,11 @@ export async function compileSensitivityExperienceTarget(
 
 /** Recompile old evidence with the exact method identity sealed before dispatch. */
 export async function compileSensitivityExperienceTargetWithMethod(input: {
-  readonly studyCase: SensitivityStudyCaseV2;
+  readonly studyCase: SensitivityStudyCaseV3;
   readonly admission: CompileSensitivityExperienceTargetInput["admission"];
   readonly method: SensitivityExperienceMethodIdentity;
 }): Promise<SensitivityExperienceTarget> {
-  const studyCase = validateSensitivityStudyCaseV2(input.studyCase);
+  const studyCase = validateSensitivityStudyCaseV3(input.studyCase);
   const source = requireSingleAdmittedSource(input.admission);
   const sourceFingerprint = await sha256Fingerprint(source.sourceText);
   if (!fingerprintsEqual(sourceFingerprint, source.analysis.source.fingerprint)) {
@@ -510,8 +510,8 @@ export async function deriveSensitivityExperienceRecord(
 /** Exact pre-dispatch plan seal written into the existing sensitivity WAL. */
 export async function sensitivityExperienceExecutionPlanDigest(input: {
   readonly caseDigest: string;
-  readonly cadSource: SensitivityStudyCaseV2["cadSource"];
-  readonly step: SensitivityStudyCaseV2["step"];
+  readonly cadSource: SensitivityStudyCaseV3["cadSource"];
+  readonly step: SensitivityStudyCaseV3["step"];
   readonly scientificKey: ContentFingerprint;
 }): Promise<string> {
   return (await sha256Fingerprint({
@@ -1149,9 +1149,9 @@ function validateSensitivityExperienceScientificIdentity(
 }
 
 async function normalizeScientificStudy(
-  studyCase: SensitivityStudyCaseV2,
+  studyCase: SensitivityStudyCaseV3,
 ): Promise<SensitivityExperienceScientificStudy> {
-  const supports = await Promise.all(studyCase.solver.supports.map(async (item) => ({
+  const supports = await Promise.all(studyCase.method.supports.map(async (item) => ({
     ...item,
     id: await opaqueDigest(item.id),
     selection: {
@@ -1159,7 +1159,7 @@ async function normalizeScientificStudy(
       name: await opaqueDigest(item.selection.name),
     },
   })));
-  const loads = await Promise.all(studyCase.solver.loads.map(async (item) => ({
+  const loads = await Promise.all(studyCase.method.loads.map(async (item) => ({
     ...item,
     id: await opaqueDigest(item.id),
     selection: {
@@ -1179,11 +1179,11 @@ async function normalizeScientificStudy(
     metrics: [...studyCase.metrics].sort((left, right) =>
       left.id.localeCompare(right.id)
     ),
-    solver: {
-      ...studyCase.solver,
+    method: {
+      ...studyCase.method,
       material: {
-        ...studyCase.solver.material,
-        basis: await opaqueDigest(studyCase.solver.material.basis),
+        ...studyCase.method.material,
+        basis: await opaqueDigest(studyCase.method.material.basis),
       },
       supports: supports.sort(compareCanonical),
       loads: loads.sort(compareCanonical),
@@ -1206,7 +1206,7 @@ function parseScientificStudy(value: unknown): SensitivityExperienceScientificSt
     "baseValue",
     "step",
     "metrics",
-    "solver",
+    "method",
     "domain",
   ], "$scientificStudy");
   const target = exactRecord(
@@ -1214,8 +1214,8 @@ function parseScientificStudy(value: unknown): SensitivityExperienceScientificSt
     ["componentRole", "parameterRole"],
     "$scientificStudy.target",
   );
-  const parsed = validateSensitivityStudyCaseV2({
-    schemaVersion: "sensitivity-study-case/2.0",
+  const parsed = validateSensitivityStudyCaseV3({
+    schemaVersion: "sensitivity-study-case/3.0",
     id: "experience-validation",
     revision: 1,
     scope: root.scope,
@@ -1232,7 +1232,7 @@ function parseScientificStudy(value: unknown): SensitivityExperienceScientificSt
     baseValue: root.baseValue,
     step: root.step,
     metrics: root.metrics,
-    solver: root.solver,
+    method: root.method,
     domain: root.domain,
   });
   const normalized = deepFreeze({
@@ -1245,10 +1245,10 @@ function parseScientificStudy(value: unknown): SensitivityExperienceScientificSt
     baseValue: parsed.baseValue,
     step: parsed.step,
     metrics: [...parsed.metrics].sort((left, right) => left.id.localeCompare(right.id)),
-    solver: {
-      ...parsed.solver,
-      supports: [...parsed.solver.supports].sort(compareCanonical),
-      loads: [...parsed.solver.loads].sort(compareCanonical),
+    method: {
+      ...parsed.method,
+      supports: [...parsed.method.supports].sort(compareCanonical),
+      loads: [...parsed.method.loads].sort(compareCanonical),
     },
     domain: {
       ...parsed.domain,
@@ -1260,21 +1260,21 @@ function parseScientificStudy(value: unknown): SensitivityExperienceScientificSt
     "$scientificStudy.target.componentRole",
   );
   requireOpaqueDigest(
-    normalized.solver.material.basis,
-    "$scientificStudy.solver.material.basis",
+    normalized.method.material.basis,
+    "$scientificStudy.method.material.basis",
   );
-  normalized.solver.supports.forEach((item, index) => {
-    requireOpaqueDigest(item.id, `$scientificStudy.solver.supports[${index}].id`);
+  normalized.method.supports.forEach((item, index) => {
+    requireOpaqueDigest(item.id, `$scientificStudy.method.supports[${index}].id`);
     requireOpaqueDigest(
       item.selection.name,
-      `$scientificStudy.solver.supports[${index}].selection.name`,
+      `$scientificStudy.method.supports[${index}].selection.name`,
     );
   });
-  normalized.solver.loads.forEach((item, index) => {
-    requireOpaqueDigest(item.id, `$scientificStudy.solver.loads[${index}].id`);
+  normalized.method.loads.forEach((item, index) => {
+    requireOpaqueDigest(item.id, `$scientificStudy.method.loads[${index}].id`);
     requireOpaqueDigest(
       item.selection.name,
-      `$scientificStudy.solver.loads[${index}].selection.name`,
+      `$scientificStudy.method.loads[${index}].selection.name`,
     );
   });
   requireOpaqueDigest(

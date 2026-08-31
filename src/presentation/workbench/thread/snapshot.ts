@@ -15,6 +15,15 @@ export interface ThreadArtifact {
   label: string;
   kind: string;
   system: string;
+  /**
+   * Exact canonical producer identity. `system` remains the display-system
+   * facet; joins and recrosses must use this recorded operation identity.
+   */
+  producer?: {
+    serverId: string;
+    tool: string;
+    runId: string;
+  };
   revision: string;
   freshness: ThreadFreshness;
   fingerprint?: string;

@@ -18,14 +18,20 @@ a unit, or a DFM limit.
 
 ## Preconditions
 
+Ordinary start is cold Deno. Do not start the root Compose provider stack: H1 activates
+enrolled groups JIT under a lease when covered work needs them, and those groups collide
+with root Compose on the same loopback ports. A root `docker compose up` remains a
+manual maintainer probe only and must not run concurrently with H1-managed groups.
+
 ```bash
-docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-build123d-sandbox mcp-calculix
 deno task start
 deno task preview:thread --project-id=desk-lamp-dl05
 ```
 
 ERPNext is an optional sibling integration; start it separately only when its checkout
-and environment file are available.
+and environment file are available. Live HTTP CalculiX sensitivity remains
+catalogue-`unqualified` and `unavailable`; historical observations on this atelier stay
+as captured.
 
 Connect the agent to `http://127.0.0.1:3020/mcp`. The cockpit is read-only.
 

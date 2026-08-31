@@ -89,6 +89,21 @@ export interface ReconcileUncertainWriterRunExecutorCommand {
 export interface ReconcileUncertainWriterRunExecutorDependencies {
   readonly projects: EngineeringProjectRevisionStore;
   readonly commands: EngineeringProjectCommandService;
+  /**
+   * Optional host-side finalizer. The project annotation remains the durable
+   * authority; this collaborator may only release the retained JIT lease that
+   * is sealed to the same failed run after `provider-did-not-write`.
+   */
+  readonly retainedCapabilityLeaseFinalizer?:
+    ReconciledUncertainWriterCapabilityLeaseFinalizer;
+}
+
+export interface ReconciledUncertainWriterCapabilityLeaseFinalizer {
+  releaseReconciledUncertainWriterLease(input: {
+    readonly project: EngineeringProjectSnapshot;
+    readonly failedRunId: string;
+    readonly reconciliationRunId: string;
+  }): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -98,10 +113,15 @@ export interface ReconcileUncertainWriterRunExecutorDependencies {
 export class ReconcileUncertainWriterRunExecutor {
   readonly #projects: EngineeringProjectRevisionStore;
   readonly #commands: EngineeringProjectCommandService;
+  readonly #retainedCapabilityLeaseFinalizer:
+    | ReconciledUncertainWriterCapabilityLeaseFinalizer
+    | undefined;
 
   constructor(dependencies: ReconcileUncertainWriterRunExecutorDependencies) {
     this.#projects = dependencies.projects;
     this.#commands = dependencies.commands;
+    this.#retainedCapabilityLeaseFinalizer =
+      dependencies.retainedCapabilityLeaseFinalizer;
   }
 
   async execute(
@@ -184,6 +204,11 @@ export class ReconcileUncertainWriterRunExecutor {
           failedRun.uncertainWriterReconciliation.providerInspectionAttestation,
       });
       assertCompleted(replay, command);
+      await this.#releaseRetainedCapabilityLeaseIfAllowed(
+        replay,
+        failedRunId,
+        command.runId,
+      );
       return replay;
     }
     if (failedRun.evidenceRefs.length !== 0) {
@@ -209,6 +234,11 @@ export class ReconcileUncertainWriterRunExecutor {
       providerInspectionAttestation,
     });
     assertCompleted(result, command);
+    await this.#releaseRetainedCapabilityLeaseIfAllowed(
+      result,
+      failedRunId,
+      command.runId,
+    );
     return result;
   }
 
@@ -225,6 +255,25 @@ export class ReconcileUncertainWriterRunExecutor {
       );
     }
     return project;
+  }
+
+  async #releaseRetainedCapabilityLeaseIfAllowed(
+    project: EngineeringProjectSnapshot,
+    failedRunId: string,
+    reconciliationRunId: string,
+  ): Promise<void> {
+    const failedRun = requireRun(project, failedRunId);
+    if (
+      failedRun.status !== "failed" ||
+      failedRun.uncertainWriterReconciliation?.outcome !==
+        "provider-did-not-write"
+    ) return;
+    await this.#retainedCapabilityLeaseFinalizer
+      ?.releaseReconciledUncertainWriterLease({
+        project,
+        failedRunId,
+        reconciliationRunId,
+      });
   }
 }
 

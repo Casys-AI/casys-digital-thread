@@ -27,7 +27,7 @@ export const ENGINEERING_CASE_CATALOG_SCHEMA = "engineering-cases/1.0" as const;
 
 export const ENGINEERING_CASE_SCHEMA_BY_FAMILY = {
   "mechanical-proof": "mechanical-proof-case/1.0",
-  "sensitivity-study": "sensitivity-study-case/2.0",
+  "sensitivity-study": "sensitivity-study-case/3.0",
   "printability-check": "printability-check-case/1.0",
   "print-estimate": "print-estimate-case/1.0",
   "dfm-check": "dfm-check-case/1.0",
@@ -56,7 +56,7 @@ export type EngineeringCase =
     }
     | {
       family: "sensitivity-study";
-      caseSchemaVersion: "sensitivity-study-case/2.0";
+      caseSchemaVersion: "sensitivity-study-case/3.0";
     }
     | {
       family: "printability-check";

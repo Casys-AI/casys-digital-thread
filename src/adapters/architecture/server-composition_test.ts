@@ -13,7 +13,14 @@ import {
   createArchitectureFoundation,
   createArchitectureProject,
 } from "./server-composition.ts";
+import { SysonModelSeedRunExecutor } from "./seed/syson-model-seed-run-executor.ts";
+import { passthroughCapabilityRuntimeConnection } from "../../testing/capability-runtime-execution-session-test-support.ts";
 import { testReopenAgentResource } from "../../testing/agent-resource-test-support.ts";
+import type {
+  McpToolCall,
+  McpToolClient,
+  McpToolResult,
+} from "../../application/ports/out/mcp-tool-client.ts";
 
 Deno.test("architecture composition seals without SysON and writes only when a SysON URL is supplied", async () => {
   const root = await Deno.makeTempDir({
@@ -78,6 +85,16 @@ Deno.test("architecture composition seals without SysON and writes only when a S
       withSyson.modelSealArchitectureSysml,
       ModelSealArchitectureSysmlRunExecutor,
     );
+    assertEquals(withSyson.sysonModelSeed, undefined);
+
+    const withConnection = createArchitectureProject({
+      ...shared,
+      sysonMcpUrl: "http://127.0.0.1:1/mcp",
+      sysonRuntimeConnection: passthroughCapabilityRuntimeConnection(
+        new CompositionSeedSyson(),
+      ),
+    });
+    assertInstanceOf(withConnection.sysonModelSeed, SysonModelSeedRunExecutor);
 
     assertInstanceOf(
       foundation.sysmlSourceAnalysis,
@@ -97,7 +114,21 @@ Deno.test("architecture composition seals without SysON and writes only when a S
       new URL("./server-composition.ts", import.meta.url),
     );
     assertEquals(source.includes("CreateConsoleServerOptions"), false);
+    assertEquals(
+      source.includes("capabilityRuntimeConnection: sysonRuntimeConnection"),
+      true,
+    );
   } finally {
     await Deno.remove(root, { recursive: true });
   }
 });
+
+class CompositionSeedSyson implements McpToolClient {
+  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
+    return Promise.reject(new Error(`unused (${call.name})`));
+  }
+
+  callTool(call: McpToolCall): Promise<McpToolResult> {
+    return Promise.reject(new Error(`unused (${call.name})`));
+  }
+}

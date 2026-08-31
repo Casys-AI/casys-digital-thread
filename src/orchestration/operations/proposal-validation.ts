@@ -134,6 +134,15 @@ import {
   parseDfmDecisionParameters,
   parseDfmRunDecisionParameters,
 } from "../../domain/make/dfm/dfm-proposal.ts";
+import {
+  DECIDE_ACCEPT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION,
+  DECIDE_REJECT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION,
+  VERIFY_EVALUATE_PRESCRIBED_KINEMATICS_OPERATION,
+  VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+  VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION,
+  VERIFY_SEAL_PRESCRIBED_KINEMATICS_METHOD_OPERATION,
+} from "../../domain/mechanism/prescribed-kinematics/operations.ts";
+import { assertPrescribedKinematicsProposalParameters } from "../../domain/mechanism/prescribed-kinematics/proposal-validation.ts";
 
 /** Operation identity as `id@version`, the key used across the registry. */
 export type OperationKey = string;
@@ -153,6 +162,30 @@ const PROPOSAL_VALIDATORS = new Map<
   OperationKey,
   (parameters: readonly EngineeringDecisionProposalParameter[]) => void
 >([
+  [
+    keyOf(VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION),
+    assertPrescribedKinematicsProposalParameters,
+  ],
+  [
+    keyOf(VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION),
+    assertPrescribedKinematicsProposalParameters,
+  ],
+  [
+    keyOf(VERIFY_SEAL_PRESCRIBED_KINEMATICS_METHOD_OPERATION),
+    assertPrescribedKinematicsProposalParameters,
+  ],
+  [
+    keyOf(VERIFY_EVALUATE_PRESCRIBED_KINEMATICS_OPERATION),
+    assertPrescribedKinematicsProposalParameters,
+  ],
+  [
+    keyOf(DECIDE_ACCEPT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION),
+    assertPrescribedKinematicsProposalParameters,
+  ],
+  [
+    keyOf(DECIDE_REJECT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION),
+    assertPrescribedKinematicsProposalParameters,
+  ],
   [
     keyOf(COMPILE_SEAL_ADMISSION_OPERATION),
     (parameters) => {

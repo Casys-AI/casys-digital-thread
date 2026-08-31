@@ -1,9 +1,9 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { GeometryModuleAssemblyError } from "../../../application/ports/out/cad/module-assembly/geometry-module-assembler.ts";
 import {
-  GEOMETRY_MODULE_ASSEMBLY_CAPABILITY,
   GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
 } from "../../../domain/cad/module-assembly/geometry-module-assembly-receipt.ts";
+import { GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY } from "../../../domain/capability/engineering-capability.ts";
 import {
   GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
   GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
@@ -69,7 +69,10 @@ Deno.test("fixed module assembler normalizes native evidence behind the neutral 
   });
   assertEquals(world.runner.requests.length, 1);
   assertEquals(result.receipt.schemaVersion, GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA);
-  assertEquals(result.receipt.capability, GEOMETRY_MODULE_ASSEMBLY_CAPABILITY);
+  assertEquals(
+    result.receipt.capability,
+    GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
+  );
   assertEquals(
     result.receipt.implementation.id,
     FIXED_GEOMETRY_MODULE_ASSEMBLER_IMPLEMENTATION.id,
@@ -104,6 +107,26 @@ Deno.test("fixed module assembler refuses an unknown generation-zero outcome", a
   assertEquals(world.runner.requests.length, 0);
 });
 
+Deno.test("fixed module assembler invokes its adapter-only dispatch fence immediately before runner execution", async () => {
+  const world = await createWorld();
+  const calls: string[] = [];
+  const assembler = new FixedGeometryModuleAssembler({
+    profiles: world.profiles as never,
+    runner: {
+      run: async (request) => {
+        calls.push("run");
+        return await world.runner.run(request);
+      },
+    },
+    publications: world.publications,
+    beforeDispatch: (request) => {
+      calls.push(`claim:${request.runId}`);
+    },
+  });
+  await assembler.assemble({ runId: "module-dispatch-fence", bundle: world.bundle });
+  assertEquals(calls, ["claim:module-dispatch-fence", "run"]);
+});
+
 async function createWorld() {
   const bundle = await createGeometryModuleInputBundle([{
     usageElementId: "usage.child",
@@ -129,6 +152,7 @@ async function createWorld() {
     bundle,
     runner,
     publications,
+    profiles,
     assembler: new FixedGeometryModuleAssembler({
       profiles: profiles as never,
       runner,

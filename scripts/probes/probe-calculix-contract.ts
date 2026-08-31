@@ -1,12 +1,13 @@
 /**
  * Maintainer-only preflight for the pinned HTTP mcp-calculix 0.8.2 contract.
  *
- * This is deliberately not a generic MCP client. It can issue only GET
- * /health, server/discover and tools/list against the code-owned loopback
- * endpoint. It never sends tools/call, starts a mesh preflight, writes a run,
- * or reads a provider resource. Its result concerns the optional sensitivity
- * fleet only; it neither invokes nor establishes provenance for the separate
- * isolated product operation verify.run-fea-static-proof@3.
+ * This is deliberately not a generic MCP client. It can issue only
+ * server/discover and tools/list against the code-owned loopback endpoint.
+ * The published 0.8.2 provider has no /health route, so this probe does not
+ * invent one. It never sends tools/call, starts a mesh preflight, writes a
+ * run, or reads a provider resource. Its result concerns the optional
+ * sensitivity fleet only; it neither invokes nor establishes provenance for
+ * the separate isolated product operation verify.run-fea-static-proof@3.
  */
 
 import { sha256Fingerprint } from "../../src/domain/kernel/deterministic-json.ts";
@@ -23,7 +24,6 @@ export const MAX_ORDINARY_SOLVE_TIMEOUT_MS = 120_000;
 
 export const CALCULIX_ENDPOINT = {
   mcpUrl: "http://127.0.0.1:3015/mcp",
-  healthUrl: "http://127.0.0.1:3015/health",
 } as const;
 
 export const CALCULIX_EXPECTED_TOOLS = [
@@ -57,7 +57,6 @@ export interface CalculixContractPreflight {
   readonly observedAt: string;
   readonly endpoint: typeof CALCULIX_ENDPOINT;
   readonly allowedRequests: readonly [
-    "GET /health",
     "server/discover",
     "tools/list",
   ];
@@ -65,7 +64,6 @@ export interface CalculixContractPreflight {
     readonly id?: string;
     readonly serviceName?: string;
     readonly mcpUrl?: string;
-    readonly healthUrl?: string;
     readonly image?: string;
     readonly version?: string;
     readonly revision?: string;
@@ -79,7 +77,6 @@ export interface CalculixContractPreflight {
     readonly imageDigestVerified: false;
   };
   readonly observed: {
-    readonly health?: Record<string, unknown>;
     readonly discovery?: Record<string, unknown>;
     /** Names only: schemas are fingerprinted but not emitted into terminal logs. */
     readonly toolNames?: readonly string[];
@@ -122,7 +119,6 @@ export async function probeCalculixContract(
     observedAt: (options.now ?? (() => new Date()))().toISOString(),
     endpoint: CALCULIX_ENDPOINT,
     allowedRequests: [
-      "GET /health",
       "server/discover",
       "tools/list",
     ] as const,
@@ -138,30 +134,27 @@ export async function probeCalculixContract(
     );
   }
 
-  let health: Record<string, unknown> | undefined;
   let discovery: Record<string, unknown> | undefined;
   let tools: Record<string, unknown>[] | undefined;
   let contractFingerprint: ContentFingerprint | undefined;
   try {
     const fetchImpl = options.fetch ?? fetch;
-    health = await getJson(fetchImpl, CALCULIX_ENDPOINT.healthUrl);
     discovery = await rpc(fetchImpl, 1, "server/discover");
     const listed = await rpc(fetchImpl, 2, "tools/list");
     tools = records(listed.tools, "tools/list tools");
     contractFingerprint = await calculixContractFingerprint(
-      health,
       discovery,
       tools,
     );
   } catch (error) {
-    const observed = observedSurface(health, discovery, tools, contractFingerprint);
+    const observed = observedSurface(discovery, tools, contractFingerprint);
     const reason = error instanceof Error ? error.message : String(error);
     return error instanceof ContractDivergenceError
       ? report(baseline, "contract-divergent", observed, reason)
       : report(baseline, "unavailable", observed, reason);
   }
 
-  const observed = observedSurface(health, discovery, tools, contractFingerprint);
+  const observed = observedSurface(discovery, tools, contractFingerprint);
   const expected = options.expectedContractSha256 ??
     CALCULIX_EXPECTED_CONTRACT_SHA256;
   if (contractFingerprint.digest !== expected) {
@@ -183,18 +176,15 @@ export async function probeCalculixContract(
 
 /** Fingerprint provider identity, all exact schemas, and viewer attachment surface. */
 export async function calculixContractFingerprint(
-  health: Record<string, unknown>,
   discovery: Record<string, unknown>,
   tools: readonly Record<string, unknown>[],
 ): Promise<ContentFingerprint> {
   const serverInfo = record(discovery.serverInfo, "server/discover serverInfo");
   if (
-    health.status !== "ok" || health.server !== "mcp-calculix" ||
-    health.version !== VERSION || serverInfo.name !== "mcp-calculix" ||
-    serverInfo.version !== VERSION
+    serverInfo.name !== "mcp-calculix" || serverInfo.version !== VERSION
   ) {
     throw new ContractDivergenceError(
-      "Health and discovery do not expose one concordant mcp-calculix 0.8.2 identity.",
+      "Discovery does not expose the reviewed mcp-calculix 0.8.2 identity.",
     );
   }
   const supportedVersions = strings(
@@ -293,7 +283,6 @@ function parseDesiredIdentity(
     id: string(calculix.id),
     serviceName: string(calculix.serviceName),
     mcpUrl: string(calculix.mcpUrl),
-    healthUrl: string(calculix.healthUrl),
     image,
     version,
     revision,
@@ -305,7 +294,6 @@ function parseDesiredIdentity(
     manifestMatchesCodeOwnedContract: matches.length === 1 &&
       calculix.serviceName === "mcp-calculix" &&
       calculix.mcpUrl === CALCULIX_ENDPOINT.mcpUrl &&
-      calculix.healthUrl === CALCULIX_ENDPOINT.healthUrl &&
       image === IMAGE &&
       version === VERSION && revision === REVISION &&
       imageIndexDigest === IMAGE_DIGEST &&
@@ -321,15 +309,6 @@ function parseDesiredIdentity(
     // This probe has neither Docker permission nor an image-inspection path.
     imageDigestVerified: false,
   };
-}
-
-async function getJson(
-  fetchImpl: typeof fetch,
-  url: string,
-): Promise<Record<string, unknown>> {
-  const response = await fetchImpl(url, { method: "GET" });
-  if (!response.ok) throw new Error(`health returned HTTP ${response.status}`);
-  return record(await response.json(), "health response");
 }
 
 async function rpc(
@@ -423,7 +402,6 @@ function report(
 }
 
 function observedSurface(
-  health: Record<string, unknown> | undefined,
   discovery: Record<string, unknown> | undefined,
   tools: readonly Record<string, unknown>[] | undefined,
   contractFingerprint: ContentFingerprint | undefined,
@@ -437,7 +415,6 @@ function observedSurface(
     return name && resourceUri ? [{ name, resourceUri }] : [];
   });
   return {
-    health,
     discovery,
     toolNames,
     viewerAttachments,
