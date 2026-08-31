@@ -208,7 +208,7 @@ export function defaultAgentStackConfig(): AgentStackConfig {
     },
     cockpitPermissions: {
       read: [
-        "state/local",
+        "state",
         "src/ui/dist/thread",
         "config/projects",
         "config/thread-subjects",

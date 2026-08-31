@@ -45,6 +45,11 @@ Deno.test("the normal stack starts only MCP and the focused cockpit", () => {
   assertEquals(cockpit.exitPolicy, "keep-stack");
   assertEquals(cockpit.readiness?.url, "http://127.0.0.1:5175/healthz");
   assert(cockpit.args.includes("--allow-net=127.0.0.1:5175"));
+  assert(
+    cockpit.args.includes(
+      "--allow-read=state,src/ui/dist/thread,config/projects,config/thread-subjects",
+    ),
+  );
   assert(!cockpit.args.some((argument) => argument.startsWith("--allow-write")));
   assert(!cockpit.args.some((argument) => argument.startsWith("--allow-env")));
   assert(!cockpit.args.some((argument) => argument.startsWith("--allow-run")));
