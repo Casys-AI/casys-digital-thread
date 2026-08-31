@@ -13,11 +13,11 @@ local container images as stated below.
 Registered MCP operations remain the canonical writers. This directory holds operator
 recovery that must not appear on the agent MCP path.
 
-| Script                                        | Task or registration          | Effect | Scope                                                                                                                             |
-| --------------------------------------------- | ----------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `runners/reconcile-work-item-successor.ts`    | `recover:work-item-successor` | write  | Close a leftover ready work item behind a completed successor. Inspect by default; `--apply` writes.                              |
-| `runners/capability-runtime-admin.ts`         | `capability:admin`            | write  | Private local operator lock/revoke/remove. No provider, image, tool or argument flags.                                            |
-| `runners/capability-runtime-qualification.ts` | `capability:qualify`          | write  | Private Chrono `chrono-arm64-emulation-v1` review/apply/recover. No provider, image, platform, URL, tool, token, project or MRTR. |
+| Script                                        | Task or registration          | Effect | Scope                                                                                                                                      |
+| --------------------------------------------- | ----------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `runners/reconcile-work-item-successor.ts`    | `recover:work-item-successor` | write  | Close a leftover ready work item behind a completed successor. Inspect by default; `--apply` writes.                                       |
+| `runners/capability-runtime-admin.ts`         | `capability:admin`            | write  | Private local operator lock/revoke/remove, including exact non-persistent cache images. No provider, image, backend, force or prune flags. |
+| `runners/capability-runtime-qualification.ts` | `capability:qualify`          | write  | Private Chrono `chrono-arm64-emulation-v1` review/apply/recover. No provider, image, platform, URL, tool, token, project or MRTR.          |
 
 ## gates/ — verification and qualification entry points
 

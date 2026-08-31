@@ -3,8 +3,8 @@
 Audience: maintainer · Diátaxis: how-to · Kind: how-to
 
 Use this guide for the private host-administration surface. It changes neither a
-project's engineering evidence nor an MRTR, and it is not an MCP/Workbench command
-path. Exact contracts and state names live in
+project's engineering evidence nor an MRTR, and it is not an MCP/Workbench command path.
+Exact contracts and state names live in
 [local runtime administration](../../reference/runtime/capability-packs/local-runtime-administration.md).
 
 ## 1. Leave normal preload and JIT activation automatic
@@ -65,17 +65,29 @@ proofs, and a V1 revoked envelope cannot cover or receive an amendment.
 
 ## 5. Remove material only through its bounded review
 
-Exceptional removal may name one code-owned unit or one code-owned launch group:
+Exceptional persistent removal may name one code-owned unit or one code-owned launch
+group:
 
 ```bash
 deno task capability:admin remove-review --unit-id=<code-owned-id>
 deno task capability:admin remove-apply --unit-id=<code-owned-id> --review-fingerprint=<sha256> --confirm
 ```
 
+Exceptional non-persistent cache removal names one code-owned unit and material. It
+removes an unused exact Docker cache image or Microsandbox cached microVM image. It does
+not uninstall Microsandbox, and a project authorization withdrawal never deletes that
+cache:
+
+```bash
+deno task capability:admin remove-review --unit-id=<code-owned-id> --material-id=<code-owned-id>
+deno task capability:admin remove-apply --unit-id=<code-owned-id> --material-id=<code-owned-id> --review-fingerprint=<sha256> --confirm
+```
+
 The exact review refuses a still-authorized unit, a pending ledger, active lease or JIT
-demand, uncertain journal, shared digest, foreign object, or unknown observation. It
-preserves Thread, CAS, WAL, project state, and retained volumes. Never replace this with
-`down`, volume removal, prune, tag/alias removal, or a root-Compose action.
+demand, pending cache preparation, uncertain journal, shared digest, foreign object, or
+unknown observation. It preserves Thread, CAS, WAL, project state, and retained volumes.
+Never replace this with `down`, volume removal, prune, force, tag/alias removal, a
+root-Compose action, or a Microsandbox uninstall.
 
 ## 6. Use the closed SysON rollover only for its named transition
 

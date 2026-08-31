@@ -59,6 +59,10 @@ import {
   parseComposePs,
 } from "../shared/docker-observer.ts";
 import {
+  dockerInspectReportsImageAbsent,
+  samePinnedRepositoryDigest,
+} from "../shared/docker-pinned-repository-digest.ts";
+import {
   StatelessMcpHttpTransport,
 } from "../shared/mcp/stateless-mcp-http-transport.ts";
 
@@ -1332,9 +1336,7 @@ function exactImageState(
   reference: string,
 ): "exact" | "absent" | "foreign" | "unknown" {
   if (!result.success) {
-    return /no such (image|object)|not found/i.test(result.stderr)
-      ? "absent"
-      : "unknown";
+    return dockerInspectReportsImageAbsent(result.stderr) ? "absent" : "unknown";
   }
   try {
     const root = Array.isArray(JSON.parse(result.stdout))
@@ -1625,70 +1627,6 @@ function hasExactImage(value: string, reference: string): boolean {
   } catch {
     return false;
   }
-}
-
-interface PinnedRepositoryDigest {
-  readonly repository: string;
-  readonly digest: string;
-}
-
-/**
- * Docker Engine renders an official Docker Hub library repository such as
- * `docker.io/library/postgres` as the familiar `postgres` in RepoDigests.
- * These are the same immutable OCI identity. No other registry gets that
- * shorthand: in particular, `casys-ai/syson` can never stand in for its
- * `ghcr.io/casys-ai/syson` reference.
- */
-function samePinnedRepositoryDigest(
-  observed: string,
-  expected: string,
-): boolean {
-  const left = parsePinnedRepositoryDigest(observed);
-  const right = parsePinnedRepositoryDigest(expected);
-  return left !== undefined && right !== undefined &&
-    left.digest === right.digest && left.repository === right.repository;
-}
-
-function parsePinnedRepositoryDigest(
-  value: string,
-): PinnedRepositoryDigest | undefined {
-  const marker = "@sha256:";
-  const markerIndex = value.lastIndexOf(marker);
-  if (markerIndex <= 0 || value.indexOf(marker) !== markerIndex) return undefined;
-  const name = value.slice(0, markerIndex);
-  const digest = value.slice(markerIndex + marker.length);
-  if (!/^[a-f0-9]{64}$/.test(digest)) return undefined;
-
-  const segments = name.split("/");
-  const first = segments[0];
-  if (!first) return undefined;
-  const explicitRegistry = segments.length > 1 &&
-    (first === "localhost" || first.includes(".") || first.includes(":"));
-  if (explicitRegistry && !validRegistry(first)) return undefined;
-  const repositorySegments = explicitRegistry ? segments.slice(1) : segments;
-  if (
-    repositorySegments.length === 0 ||
-    repositorySegments.some((segment) =>
-      !/^[a-z0-9]+(?:[._-][a-z0-9]+)*$/.test(segment)
-    )
-  ) return undefined;
-
-  const registry = explicitRegistry ? first : "docker.io";
-  const canonicalRepository = registry === "docker.io" &&
-      repositorySegments.length === 1
-    ? `docker.io/library/${repositorySegments[0]}`
-    : `${registry}/${repositorySegments.join("/")}`;
-  return { repository: canonicalRepository, digest };
-}
-
-function validRegistry(value: string): boolean {
-  const match = /^(.*?)(?::([1-9][0-9]{0,4}))?$/.exec(value);
-  if (!match) return false;
-  const [, host, port] = match;
-  if (!host || port !== undefined && Number(port) > 65_535) return false;
-  return host === "localhost" ||
-    host.includes(".") &&
-      host.split(".").every((label) => /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label));
 }
 
 function hasOwnership(

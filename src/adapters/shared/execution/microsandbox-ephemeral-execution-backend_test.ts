@@ -675,6 +675,16 @@ class FakeMicrosandboxSdk implements MicrosandboxSdk {
     this.localAssertions += 1;
   }
 
+  removeExactCachedImage(_reference: string): Promise<void> {
+    return Promise.reject(
+      new Error("Exact cached-image removal is not used by ephemeral execution."),
+    );
+  }
+
+  isImageNotFound(_error: unknown): boolean {
+    return false;
+  }
+
   inspectImage(reference: string): Promise<{
     readonly reference: string;
     readonly manifestDigest: string;

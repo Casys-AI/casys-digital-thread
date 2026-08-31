@@ -246,6 +246,13 @@ export interface MicrosandboxCreateRequest {
 export interface MicrosandboxSdk {
   assertLocalBackend(): void;
   inspectImage(reference: string): Promise<MicrosandboxImageInspection>;
+  /**
+   * Internal exact cached-image removal. Callers cannot pass force, prune,
+   * or any other option; the native path is `Image.remove(ref, { force: false })`.
+   */
+  removeExactCachedImage(reference: string): Promise<void>;
+  /** Absence is only the SDK's recognized image-not-found condition. */
+  isImageNotFound(error: unknown): boolean;
   create(request: MicrosandboxCreateRequest): Promise<MicrosandboxSession>;
   listByLabels(
     labels: Readonly<Record<string, string>>,
@@ -413,6 +420,13 @@ async function createPinnedLocalMicrosandboxSdk(): Promise<MicrosandboxSdk> {
     throw new Error("Microsandbox refused the code-owned local backend.");
   }
   localMicrosandboxModule = module;
+  return createNativeMicrosandboxSdk(module);
+}
+
+/** Host-local SDK wrapper over an already pinned native module. */
+export function createNativeMicrosandboxSdk(
+  module: MicrosandboxModule,
+): MicrosandboxSdk {
   return new NativeMicrosandboxSdk(module);
 }
 
@@ -1021,6 +1035,18 @@ class NativeMicrosandboxSdk implements MicrosandboxSdk {
     if (this.#module.defaultBackendKind() !== "local") {
       throw new Error("Microsandbox backend drifted away from local.");
     }
+  }
+
+  async removeExactCachedImage(reference: string): Promise<void> {
+    this.assertLocalBackend();
+    await this.#module.Image.remove(reference, { force: false });
+  }
+
+  isImageNotFound(error: unknown): boolean {
+    return error instanceof this.#module.ImageNotFoundError ||
+      (typeof error === "object" && error !== null &&
+        "code" in error &&
+        (error as { readonly code: unknown }).code === "imageNotFound");
   }
 
   async inspectImage(reference: string): Promise<MicrosandboxImageInspection> {
@@ -1818,6 +1844,8 @@ function requireSdk(value: unknown): MicrosandboxSdk {
   if (
     typeof candidate.assertLocalBackend !== "function" ||
     typeof candidate.inspectImage !== "function" ||
+    typeof candidate.removeExactCachedImage !== "function" ||
+    typeof candidate.isImageNotFound !== "function" ||
     typeof candidate.create !== "function" ||
     typeof candidate.listByLabels !== "function" ||
     typeof candidate.getByName !== "function"

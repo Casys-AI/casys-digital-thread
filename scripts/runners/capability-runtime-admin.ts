@@ -8,6 +8,12 @@ import {
   FileCapabilityRuntimeLeaseStore,
 } from "../../src/adapters/control-plane/file-capability-runtime-host-stores.ts";
 import { FileCapabilityRuntimeRolloverSagaStore } from "../../src/adapters/control-plane/file-capability-runtime-rollover-saga-store.ts";
+import { FileCapabilityRuntimeCachePreparationJournal } from "../../src/adapters/control-plane/file-capability-runtime-cache-preparation-journal.ts";
+import { FileCapabilityRuntimeNonpersistentMaterialRemovalJournal } from "../../src/adapters/control-plane/file-capability-runtime-nonpersistent-material-removal-journal.ts";
+import { DockerCacheCapabilityRuntimeMaterialRemovalHost } from "../../src/adapters/control-plane/docker-cache-capability-runtime-material-removal.ts";
+import { MicrosandboxCacheCapabilityRuntimeMaterialRemovalHost } from "../../src/adapters/control-plane/microsandbox-cache-capability-runtime-material-removal.ts";
+import { LocalNonpersistentMaterialRemovalHost } from "../../src/adapters/control-plane/local-nonpersistent-material-removal-host.ts";
+import { createFirstPartyNonpersistentMicrosandboxExpectations } from "../../src/adapters/control-plane/first-party-capability-runtime-nonpersistent-materials.ts";
 import { createCapabilityRuntimeHostAdapter } from "../../src/adapters/control-plane/compose-capability-runtime-host.ts";
 import { createLocalCapabilityRuntimeReadComposition } from "../../src/adapters/control-plane/local-capability-runtime-read-composition.ts";
 import { createFirstPartySysonRolloverPredecessorUnit } from "../../src/adapters/control-plane/first-party-capability-binding-catalog.ts";
@@ -18,7 +24,11 @@ import {
 import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "../../src/adapters/control-plane/first-party-capability-runtime-qualification-candidates.ts";
 import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "../../src/adapters/control-plane/first-party-capability-runtime-qualification-specifications.ts";
 import { FileEngineeringProjectRevisionStore } from "../../src/adapters/shared/stores/engineering-project-store.ts";
-import { LocalCapabilityRuntimeAdminService } from "../../src/application/control-plane/local-capability-runtime-admin-service.ts";
+import { createLocalMicrosandboxSdk } from "../../src/adapters/shared/execution/microsandbox-ephemeral-execution-backend.ts";
+import {
+  LocalCapabilityRuntimeAdminService,
+  type LocalCapabilityRuntimeRemovalTarget,
+} from "../../src/application/control-plane/local-capability-runtime-admin-service.ts";
 import { ProjectCapabilityAuthorizationService } from "../../src/application/control-plane/project-capability-authorization-service.ts";
 import { ProjectCapabilityJitDemandReader } from "../../src/application/control-plane/project-capability-jit-demand-reader.ts";
 import { ProjectCapabilityRolloverJitDemandReader } from "../../src/application/control-plane/project-capability-rollover-jit-demand-reader.ts";
@@ -27,171 +37,291 @@ import {
   SYSON_NODE_REPACK_ROLLOVER_TRANSITION_ID,
 } from "../../src/application/control-plane/capability-runtime-syson-rollover-service.ts";
 import { engineeringOperationRegistry } from "../../src/orchestration/operations/registry.ts";
+import type { ContentFingerprint } from "../../src/domain/kernel/primitives.ts";
 
-const [command, ...argumentsList] = Deno.args;
-const flags = parseFlags(argumentsList);
-assertAllowedFlags(command, flags);
-const capability = await createLocalCapabilityRuntimeReadComposition();
-const catalog = capability.catalog;
-const lock = capability.lock;
-const ledgers = capability.ledgers;
-const hostMutationLock = new FileCapabilityRuntimeHostMutationLock();
-const leases = new FileCapabilityRuntimeLeaseStore();
-const [sysonRolloverPredecessorUnit, sysonRolloverPredecessorGroup] = await Promise.all(
-  [
-    createFirstPartySysonRolloverPredecessorUnit(),
-    createFirstPartySysonRolloverPredecessorLaunchGroup(),
-  ],
-);
-const sysonRolloverSuccessorGroup = await capability.launchGroups.require(
-  await firstPartySysonLaunchGroupReference(),
-);
-const sysonRolloverSuccessorUnit = catalog.units.find((unit) =>
-  unit.id === "casys.syson-stack"
-);
-if (!sysonRolloverSuccessorUnit) {
-  throw new Error("Current capability catalogue lacks casys.syson-stack.");
-}
-const rollovers = new FileCapabilityRuntimeRolloverSagaStore();
-const host = createCapabilityRuntimeHostAdapter({
-  registry: capability.launchGroups,
-  journal: capability.journal,
-  secrets: capability.secrets,
-  rollovers: [{
-    predecessor: sysonRolloverPredecessorGroup,
-    successor: sysonRolloverSuccessorGroup,
-  }],
-});
-const projects = new FileEngineeringProjectRevisionStore();
-const jitDemand = new ProjectCapabilityJitDemandReader({
-  projects,
-  contexts: capability.contexts,
-});
-const rolloverJitDemand = new ProjectCapabilityRolloverJitDemandReader({
-  projects,
-  operations: engineeringOperationRegistry,
-  ledgers,
-});
-const sysonRollover = new CapabilityRuntimeSysonRolloverService({
-  catalog,
-  predecessor: {
-    unit: sysonRolloverPredecessorUnit,
-    launchGroup: sysonRolloverPredecessorGroup,
-  },
-  successor: {
-    unit: sysonRolloverSuccessorUnit,
-    launchGroup: sysonRolloverSuccessorGroup,
-  },
-  ledgers,
-  lock,
-  leases,
-  journal: capability.journal,
-  sagas: rollovers,
-  host,
-  hostMutationLock,
-  jitDemand: rolloverJitDemand,
-});
-const authorization = new ProjectCapabilityAuthorizationService({
-  ledgers,
-  registry: { list: () => [] },
-  catalog,
-  qualificationSpecs:
-    await createFirstPartyCapabilityRuntimeQualificationSpecifications(),
-  qualificationCandidates:
-    await createFirstPartyCapabilityRuntimeQualificationCandidates(),
-  policy: await capability.policy.read(),
-  host: capability.host,
-  lock,
-  lockWriter: lock,
-  hostMutationLock,
-});
-const admin = new LocalCapabilityRuntimeAdminService({
-  catalog,
-  ledgers,
-  lock,
-  hostMutationLock,
-  authorization,
-  removal: {
-    groups: capability.launchGroups,
-    journal: capability.journal,
-    leases,
-    host,
-    jitDemand,
-  },
-});
+export type CapabilityRuntimeAdminCliRequest =
+  | { readonly command: "status" }
+  | { readonly command: "lock-review" }
+  | {
+    readonly command: "lock-apply";
+    readonly reviewFingerprint: ContentFingerprint;
+    readonly confirm: boolean;
+  }
+  | { readonly command: "rollback-review"; readonly revision: number }
+  | {
+    readonly command: "rollback-apply";
+    readonly revision: number;
+    readonly reviewFingerprint: ContentFingerprint;
+    readonly confirm: boolean;
+  }
+  | {
+    readonly command: "revoke-review";
+    readonly projectId: string;
+    readonly reason: string;
+  }
+  | {
+    readonly command: "revoke-apply";
+    readonly projectId: string;
+    readonly reason: string;
+    readonly reviewFingerprint: ContentFingerprint;
+    readonly confirm: boolean;
+  }
+  | {
+    readonly command: "remove-review";
+    readonly target: LocalCapabilityRuntimeRemovalTarget;
+  }
+  | {
+    readonly command: "remove-apply";
+    readonly target: LocalCapabilityRuntimeRemovalTarget;
+    readonly reviewFingerprint: ContentFingerprint;
+    readonly confirm: boolean;
+  }
+  | { readonly command: "rollover-status"; readonly transitionId: string }
+  | { readonly command: "rollover-review"; readonly transitionId: string }
+  | {
+    readonly command: "rollover-apply";
+    readonly transitionId: string;
+    readonly reviewFingerprint: ContentFingerprint;
+    readonly confirm: boolean;
+  };
 
-switch (command) {
-  case "status":
-    print(await admin.status());
-    break;
-  case "lock-review":
-    print(await admin.lockReview());
-    break;
-  case "lock-apply":
-    print(
-      await admin.lockApply(fingerprint(flags, "review-fingerprint"), confirmed(flags)),
-    );
-    break;
-  case "rollback-review":
-    print(await admin.rollbackReview(integer(flags, "revision")));
-    break;
-  case "rollback-apply":
-    print(
-      await admin.rollbackApply(
-        integer(flags, "revision"),
-        fingerprint(flags, "review-fingerprint"),
-        confirmed(flags),
-      ),
-    );
-    break;
-  case "revoke-review":
-    print(
-      await admin.revokeReview(
-        required(flags, "project-id"),
-        required(flags, "reason"),
-      ),
-    );
-    break;
-  case "revoke-apply":
-    await admin.revokeApply(
-      required(flags, "project-id"),
-      required(flags, "reason"),
-      fingerprint(flags, "review-fingerprint"),
-      confirmed(flags),
-    );
-    print({ status: "revoked" });
-    break;
-  case "remove-review":
-    print(await admin.removeReview(removalTarget(flags)));
-    break;
-  case "remove-apply":
-    print(
-      await admin.removeApply(
-        removalTarget(flags),
-        fingerprint(flags, "review-fingerprint"),
-        confirmed(flags),
-      ),
-    );
-    break;
-  case "rollover-status":
-    print(await sysonRollover.status(transitionId(flags)));
-    break;
-  case "rollover-review":
-    print(await sysonRollover.review(transitionId(flags)));
-    break;
-  case "rollover-apply":
-    print(
-      await sysonRollover.apply({
+const USAGE =
+  "Usage: capability-runtime-admin <status|lock-review|lock-apply|rollback-review|rollback-apply|revoke-review|revoke-apply|remove-review|remove-apply|rollover-status|rollover-review|rollover-apply> [--unit-id=<id>|--launch-group-id=<id>|--unit-id=<id> --material-id=<id>|--transition-id=casys-syson-node-repack-v1] [--review-fingerprint=<sha256>] [--confirm]";
+
+export function parseCapabilityRuntimeAdminCli(
+  args: readonly string[],
+): CapabilityRuntimeAdminCliRequest {
+  const [command, ...argumentsList] = args;
+  const flags = parseFlags(argumentsList);
+  assertAllowedFlags(command, flags);
+  switch (command) {
+    case "status":
+    case "lock-review":
+      return { command };
+    case "lock-apply":
+      return {
+        command,
+        reviewFingerprint: fingerprint(flags, "review-fingerprint"),
+        confirm: confirmed(flags),
+      };
+    case "rollback-review":
+      return { command, revision: integer(flags, "revision") };
+    case "rollback-apply":
+      return {
+        command,
+        revision: integer(flags, "revision"),
+        reviewFingerprint: fingerprint(flags, "review-fingerprint"),
+        confirm: confirmed(flags),
+      };
+    case "revoke-review":
+      return {
+        command,
+        projectId: required(flags, "project-id"),
+        reason: required(flags, "reason"),
+      };
+    case "revoke-apply":
+      return {
+        command,
+        projectId: required(flags, "project-id"),
+        reason: required(flags, "reason"),
+        reviewFingerprint: fingerprint(flags, "review-fingerprint"),
+        confirm: confirmed(flags),
+      };
+    case "remove-review":
+      return { command, target: removalTarget(flags) };
+    case "remove-apply":
+      return {
+        command,
+        target: removalTarget(flags),
+        reviewFingerprint: fingerprint(flags, "review-fingerprint"),
+        confirm: confirmed(flags),
+      };
+    case "rollover-status":
+    case "rollover-review":
+      return { command, transitionId: transitionId(flags) };
+    case "rollover-apply":
+      return {
+        command,
         transitionId: transitionId(flags),
         reviewFingerprint: fingerprint(flags, "review-fingerprint"),
         confirm: confirmed(flags),
-      }),
-    );
-    break;
-  default:
-    throw new Error(
-      "Usage: capability-runtime-admin <status|lock-review|lock-apply|rollback-review|rollback-apply|revoke-review|revoke-apply|remove-review|remove-apply|rollover-status|rollover-review|rollover-apply> [--unit-id=<id>|--launch-group-id=<id>|--transition-id=casys-syson-node-repack-v1] [--review-fingerprint=<sha256>] [--confirm]",
-    );
+      };
+    default:
+      throw new Error(USAGE);
+  }
+}
+
+if (import.meta.main) {
+  await main(parseCapabilityRuntimeAdminCli(Deno.args));
+}
+
+async function main(request: CapabilityRuntimeAdminCliRequest): Promise<void> {
+  const capability = await createLocalCapabilityRuntimeReadComposition();
+  const catalog = capability.catalog;
+  const lock = capability.lock;
+  const ledgers = capability.ledgers;
+  const hostMutationLock = new FileCapabilityRuntimeHostMutationLock();
+  const leases = new FileCapabilityRuntimeLeaseStore();
+  const [sysonRolloverPredecessorUnit, sysonRolloverPredecessorGroup] = await Promise
+    .all([
+      createFirstPartySysonRolloverPredecessorUnit(),
+      createFirstPartySysonRolloverPredecessorLaunchGroup(),
+    ]);
+  const sysonRolloverSuccessorGroup = await capability.launchGroups.require(
+    await firstPartySysonLaunchGroupReference(),
+  );
+  const sysonRolloverSuccessorUnit = catalog.units.find((unit) =>
+    unit.id === "casys.syson-stack"
+  );
+  if (!sysonRolloverSuccessorUnit) {
+    throw new Error("Current capability catalogue lacks casys.syson-stack.");
+  }
+  const rollovers = new FileCapabilityRuntimeRolloverSagaStore();
+  const host = createCapabilityRuntimeHostAdapter({
+    registry: capability.launchGroups,
+    journal: capability.journal,
+    secrets: capability.secrets,
+    rollovers: [{
+      predecessor: sysonRolloverPredecessorGroup,
+      successor: sysonRolloverSuccessorGroup,
+    }],
+  });
+  const projects = new FileEngineeringProjectRevisionStore();
+  const jitDemand = new ProjectCapabilityJitDemandReader({
+    projects,
+    contexts: capability.contexts,
+  });
+  const rolloverJitDemand = new ProjectCapabilityRolloverJitDemandReader({
+    projects,
+    operations: engineeringOperationRegistry,
+    ledgers,
+  });
+  const sysonRollover = new CapabilityRuntimeSysonRolloverService({
+    catalog,
+    predecessor: {
+      unit: sysonRolloverPredecessorUnit,
+      launchGroup: sysonRolloverPredecessorGroup,
+    },
+    successor: {
+      unit: sysonRolloverSuccessorUnit,
+      launchGroup: sysonRolloverSuccessorGroup,
+    },
+    ledgers,
+    lock,
+    leases,
+    journal: capability.journal,
+    sagas: rollovers,
+    host,
+    hostMutationLock,
+    jitDemand: rolloverJitDemand,
+  });
+  const authorization = new ProjectCapabilityAuthorizationService({
+    ledgers,
+    registry: { list: () => [] },
+    catalog,
+    qualificationSpecs:
+      await createFirstPartyCapabilityRuntimeQualificationSpecifications(),
+    qualificationCandidates:
+      await createFirstPartyCapabilityRuntimeQualificationCandidates(),
+    policy: await capability.policy.read(),
+    host: capability.host,
+    lock,
+    lockWriter: lock,
+    hostMutationLock,
+  });
+  const admin = new LocalCapabilityRuntimeAdminService({
+    catalog,
+    ledgers,
+    lock,
+    hostMutationLock,
+    authorization,
+    removal: {
+      groups: capability.launchGroups,
+      journal: capability.journal,
+      leases,
+      host,
+      jitDemand,
+    },
+    nonpersistentRemoval: {
+      journal: new FileCapabilityRuntimeNonpersistentMaterialRemovalJournal(),
+      leases,
+      groups: capability.launchGroups,
+      cachePreparations: new FileCapabilityRuntimeCachePreparationJournal(),
+      jitDemand,
+      host: new LocalNonpersistentMaterialRemovalHost(
+        new DockerCacheCapabilityRuntimeMaterialRemovalHost(),
+        new MicrosandboxCacheCapabilityRuntimeMaterialRemovalHost({
+          sdk: createLocalMicrosandboxSdk,
+          expectations: createFirstPartyNonpersistentMicrosandboxExpectations(
+            catalog,
+          ),
+        }),
+      ),
+    },
+  });
+
+  switch (request.command) {
+    case "status":
+      print(await admin.status());
+      break;
+    case "lock-review":
+      print(await admin.lockReview());
+      break;
+    case "lock-apply":
+      print(await admin.lockApply(request.reviewFingerprint, request.confirm));
+      break;
+    case "rollback-review":
+      print(await admin.rollbackReview(request.revision));
+      break;
+    case "rollback-apply":
+      print(
+        await admin.rollbackApply(
+          request.revision,
+          request.reviewFingerprint,
+          request.confirm,
+        ),
+      );
+      break;
+    case "revoke-review":
+      print(await admin.revokeReview(request.projectId, request.reason));
+      break;
+    case "revoke-apply":
+      await admin.revokeApply(
+        request.projectId,
+        request.reason,
+        request.reviewFingerprint,
+        request.confirm,
+      );
+      print({ status: "revoked" });
+      break;
+    case "remove-review":
+      print(await admin.removeReview(request.target));
+      break;
+    case "remove-apply":
+      print(
+        await admin.removeApply(
+          request.target,
+          request.reviewFingerprint,
+          request.confirm,
+        ),
+      );
+      break;
+    case "rollover-status":
+      print(await sysonRollover.status(request.transitionId));
+      break;
+    case "rollover-review":
+      print(await sysonRollover.review(request.transitionId));
+      break;
+    case "rollover-apply":
+      print(
+        await sysonRollover.apply({
+          transitionId: request.transitionId,
+          reviewFingerprint: request.reviewFingerprint,
+          confirm: request.confirm,
+        }),
+      );
+      break;
+  }
 }
 
 function parseFlags(values: readonly string[]): ReadonlyMap<string, string | true> {
@@ -227,9 +357,9 @@ function assertAllowedFlags(
       : command === "revoke-apply"
       ? ["project-id", "reason", "review-fingerprint", "confirm"]
       : command === "remove-review"
-      ? ["unit-id", "launch-group-id"]
+      ? ["unit-id", "launch-group-id", "material-id"]
       : command === "remove-apply"
-      ? ["unit-id", "launch-group-id", "review-fingerprint", "confirm"]
+      ? ["unit-id", "launch-group-id", "material-id", "review-fingerprint", "confirm"]
       : command === "rollover-status" || command === "rollover-review"
       ? ["transition-id"]
       : command === "rollover-apply"
@@ -278,24 +408,48 @@ function fingerprint(flags: ReadonlyMap<string, string | true>, name: string) {
 }
 
 function confirmed(flags: ReadonlyMap<string, string | true>): boolean {
-  if (flags.size === 0 || flags.get("confirm") !== true) return false;
-  return true;
+  return flags.get("confirm") === true;
 }
 
-function removalTarget(flags: ReadonlyMap<string, string | true>) {
+function removalTarget(
+  flags: ReadonlyMap<string, string | true>,
+): LocalCapabilityRuntimeRemovalTarget {
   const unitId = flags.get("unit-id");
   const launchGroupId = flags.get("launch-group-id");
+  if (flags.has("material-id")) {
+    if (flags.has("launch-group-id")) {
+      throw new Error(
+        "Administrative removal refuses mixed --material-id and --launch-group-id.",
+      );
+    }
+    const materialId = flags.get("material-id");
+    if (typeof materialId !== "string" || !materialId.trim()) {
+      throw new Error(
+        "Administrative non-persistent removal requires --material-id=<id>.",
+      );
+    }
+    if (typeof unitId !== "string") {
+      throw new Error(
+        "Administrative non-persistent removal requires --unit-id with --material-id.",
+      );
+    }
+    return {
+      kind: "material",
+      unitId: required(flags, "unit-id"),
+      materialId: required(flags, "material-id"),
+    };
+  }
   if (typeof unitId === "string" && !launchGroupId) {
-    return { kind: "unit" as const, id: required(flags, "unit-id") };
+    return { kind: "unit", id: required(flags, "unit-id") };
   }
   if (typeof launchGroupId === "string" && !unitId) {
     return {
-      kind: "launch-group" as const,
+      kind: "launch-group",
       id: required(flags, "launch-group-id"),
     };
   }
   throw new Error(
-    "Administrative removal requires exactly one --unit-id or --launch-group-id.",
+    "Administrative removal requires exactly one --unit-id, --launch-group-id, or --unit-id with --material-id.",
   );
 }
 

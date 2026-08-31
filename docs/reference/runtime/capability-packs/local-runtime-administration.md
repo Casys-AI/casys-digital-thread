@@ -39,11 +39,11 @@ No Thread/CAS/WAL/project/retained volume is removed by this boundary.
 ## Closed SysON rollover
 
 `casys-syson-node-repack-v1` is one closed, server-owned transition from
-`casys.syson-stack@1.0.0` / `casys-syson@1.0.0` to
-`casys.syson-stack@1.0.1` / `casys-syson@1.0.1`. It changes only the pinned
-SysON application image identity. The Compose project, services, loopback ports,
-secrets, mounts and retained `syson-db-data` volume stay exact. It is neither a
-general upgrade mechanism nor a provider-selection surface.
+`casys.syson-stack@1.0.0` / `casys-syson@1.0.0` to `casys.syson-stack@1.0.1` /
+`casys-syson@1.0.1`. It changes only the pinned SysON application image identity. The
+Compose project, services, loopback ports, secrets, mounts and retained `syson-db-data`
+volume stay exact. It is neither a general upgrade mechanism nor a provider-selection
+surface.
 
 Use the private local CLI only after normal project work has drained:
 
@@ -58,58 +58,90 @@ deno task capability:admin rollover-status \
   --transition-id=casys-syson-node-repack-v1
 ```
 
-The transition identifier is literal. The CLI rejects every other id and has no
-image, provider, endpoint, tool or argument option. `rollover-apply` recomputes the
-review under the host lock; it refuses a stale fingerprint or missing `--confirm`.
-The returned review is the operator record: it exposes `ready`, `blocked`,
-`in-progress`, `completed` or `recovery-required`, never an engineering verdict.
+The transition identifier is literal. The CLI rejects every other id and has no image,
+provider, endpoint, tool or argument option. `rollover-apply` recomputes the review
+under the host lock; it refuses a stale fingerprint or missing `--confirm`. The returned
+review is the operator record: it exposes `ready`, `blocked`, `in-progress`, `completed`
+or `recovery-required`, never an engineering verdict.
 
 Before it can be `ready`, the server requires one exact predecessor lock and topology,
-no pending capability ledger, no active SysON lease, no unfinished SysON runtime
-journal action, and no `ready`/`in-progress` SysON JIT demand. A hybrid, foreign or
-unobservable topology blocks; an already-present successor with no durable saga also
-blocks rather than being adopted. Thus normal SysON preload and JIT are blocked while a
-durable rollover saga is non-terminal.
+no pending capability ledger, no active SysON lease, no unfinished SysON runtime journal
+action, and no `ready`/`in-progress` SysON JIT demand. A hybrid, foreign or unobservable
+topology blocks; an already-present successor with no durable saga also blocks rather
+than being adopted. Thus normal SysON preload and JIT are blocked while a durable
+rollover saga is non-terminal.
 
 The saga records its intent before material acquisition, then observes the successor,
 appends exact per-project capability amendments, writes the successor lock and rereads
 all durable state before it can complete. An interrupted or ambiguous host observation
-becomes `recovery-required`: no automatic rollback, Docker mutation or inferred
-handoff follows. Thread, CAS, WAL, project evidence and retained volumes are preserved
-at every phase. This path never uses `down`, `down -v`, `prune`, volume removal or a
-general rollback command.
+becomes `recovery-required`: no automatic rollback, Docker mutation or inferred handoff
+follows. Thread, CAS, WAL, project evidence and retained volumes are preserved at every
+phase. This path never uses `down`, `down -v`, `prune`, volume removal or a general
+rollback command.
 
 ## Bounded material removal
 
-Removal is an exceptional local operator action for one complete, code-owned persistent
-launch group. The caller may name only `--unit-id` or `--launch-group-id`; neither form
+Removal is an exceptional local operator action. Persistent Compose material still names
+one complete, code-owned launch group: `--unit-id` or `--launch-group-id`. Neither form
 accepts an image, provider, endpoint, tool, Compose service, Docker argument or volume.
-Cache-only and microVM material without an enrolled launch group remain literally
-`unavailable` for this action.
 
-The review constructs a closed `capability-runtime-removal-plan/1.0`: its fingerprint
-binds the exact group reference, complete ordered materials and image digests, exact
-owned container IDs observed at review time, and the five literal preservation flags for
-Thread, CAS, WAL, project state and retained volumes. A review is refused if any current
-project authorization retains a target unit, its project ledger is pending, an active
-lease or fresh JIT demand intersects a target material, the administrative lock cannot
-be made exact/inactive, a group journal mutation is pending or uncertain, the image
-digest is catalogued by another group, or Docker observation is unknown/foreign. The
-ledger scan is authoritative for this check: even a project whose first visible revision
-exists only as an exact `.pending` file blocks relevant removal; a malformed or
-indeterminable pending record blocks rather than being skipped.
+Non-persistent cache material — an unused exact Docker cache image or Microsandbox
+cached microVM image whose catalogue `launchGroup` is null — is a sibling lifecycle. The
+operator names only `--unit-id` plus `--material-id`. The server resolves the exact
+catalogue unit/version/manifest and the sealed image digest/backend. This path does not
+remove, disable, uninstall or replace Microsandbox itself. It never runs after a project
+capability authorization withdrawal; withdrawal removes operational authority only and
+does not delete cache.
+
+`--material-id` must be paired with exactly one `--unit-id`. Mixed or partial targets
+are refused. A persistent launch group cannot be removed through this sibling path, and
+the Compose plan's mandatory `launchGroup` is not made nullable.
+
+The persistent review constructs a closed `capability-runtime-removal-plan/1.0`: its
+fingerprint binds the exact group reference, complete ordered materials and image
+digests, exact owned container IDs observed at review time, and the five literal
+preservation flags for Thread, CAS, WAL, project state and retained volumes. The
+non-persistent sibling constructs `capability-runtime-nonpersistent-removal-plan/1.0`:
+its fingerprint binds the exact unit `{id, version, manifestFingerprint}`, the exact
+material `{unitId, materialId, imageReference, imageDigest, launchGroup: null}`, the
+internally derived backend `docker-cache` or `microsandbox-cache`, the observed
+`owned`/`absent` state, and the same five preservation flags. Foreign or ambiguous
+observation is a refusal, not absence.
+
+A review is refused if any current project authorization retains a target unit, its
+project ledger is pending, an active lease or fresh JIT demand intersects a target
+material, cache preparation for that material is pending, in progress or unreadable, the
+administrative lock cannot be made exact/inactive, a journal mutation is pending or
+uncertain, the image digest is catalogued by another material or launch group, or host
+observation is unknown/foreign. The ledger scan is authoritative for this check: even a
+project whose first visible revision exists only as an exact `.pending` file blocks
+relevant removal; a malformed or indeterminable pending record blocks rather than being
+skipped.
 
 Apply holds the same host-mutation lock, recomputes the exact review, writes the needed
-inactive lock successor before its durable `material-remove` intent, then rereads the
-host. Recovery observes first and may resume only one exact pending removal intent for
-the same plan; it never replays an ambiguous action. An all-absent exact group is a
-successful no-op.
+inactive lock successor before its durable intent, rereads that intent, then grants a
+one-shot internal mutation authorization. No intent means no host mutation. A
+non-persistent intent carries a positive `generation` derived under that lock
+(`max + 1`, starting at 1) and included in its id, so a later owned image of the same
+material can be removed again after ordinary cache preparation. Recovery observes first
+and may resume only one exact pending removal intent for the same plan
+(`resume-pending`); if that pending owned intent is followed by exact absence after a
+host effect without a recorded outcome, apply completes it as `succeeded/absent`
+(`complete-pending-absent`) without another destructive call. Foreign, unknown,
+catalog/manifest/digest/backend drift, multiple pending intents, and a non-exact
+original fingerprint stay blocked. An all-absent exact group or an already-absent cache
+image with no pending intent is a successful no-op.
 
-The host adapter stops and removes only plan-bound owned container IDs (without `-v` or
-`--volumes`) and removes only sealed `repository@sha256:…` image references. It refuses
-foreign containers/references and shared catalogue digests. `down`, `down -v`, volume
-removal, image prune, tag/alias removal and foreign Docker objects are outside this
-surface.
+The Compose host adapter stops and removes only plan-bound owned container IDs (without
+`-v` or `--volumes`) and removes only sealed `repository@sha256:…` image references. The
+Docker-cache adapter inspects only that sealed reference, accepts equivalent catalog and
+`docker.io/` RepoDigest spellings of the same repository+digest, refuses extra tags, a
+foreign digest and any ancestor container including stopped ones, and runs exactly
+`docker image rm <sealed-ref>` without `--force`. The Microsandbox-cache adapter attests
+the exact cached image (reference/digest/platform/user/entrypoint) and calls
+`Image.remove(reference, { force: false })`. Neither adapter calls prune, force removal,
+`down -v`, sandbox/session deletion, or Microsandbox uninstallation. Foreign objects and
+shared catalogue digests stay outside this surface.
 
 ## Private operator CLI
 
@@ -127,6 +159,9 @@ deno task capability:admin remove-review --unit-id=<code-owned-id>
 deno task capability:admin remove-apply --unit-id=<code-owned-id> --review-fingerprint=<sha256> --confirm
 # Or name one code-owned group, never a Docker service:
 deno task capability:admin remove-review --launch-group-id=<code-owned-id>
+# Or one exact non-persistent cache image; never a backend, OCI digest, force or prune flag:
+deno task capability:admin remove-review --unit-id=<code-owned-id> --material-id=<code-owned-id>
+deno task capability:admin remove-apply --unit-id=<code-owned-id> --material-id=<code-owned-id> --review-fingerprint=<sha256> --confirm
 deno task capability:admin rollover-status --transition-id=casys-syson-node-repack-v1
 deno task capability:admin rollover-review --transition-id=casys-syson-node-repack-v1
 deno task capability:admin rollover-apply --transition-id=casys-syson-node-repack-v1 --review-fingerprint=<sha256> --confirm

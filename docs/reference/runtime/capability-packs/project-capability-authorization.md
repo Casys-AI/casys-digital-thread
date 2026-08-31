@@ -12,7 +12,8 @@ proposal contains the semantic needs derived from the pending brief, one policy-
 binding candidate per resolved need, atomic unit versions/manifest identities, OCI
 digests, current runtime availability, storage estimates and declared host effects.
 Secret slot names may be shown; secret values never are. A qualification or platform
-blocker remains literal while its exact candidate stays visible for one approval decision.
+blocker remains literal while its exact candidate stays visible for one approval
+decision.
 
 ## Brief confirmation
 
@@ -59,15 +60,15 @@ before they can use this local ledger.
 
 `project_capability_inspect` is read-only. After a plan is published,
 `project_capability_change_review` derives its exact demand again. A strict subset of
-the approved envelope needs no prompt and does not shrink the ceiling: the review
-unions current demand with still-authorized brief capacity so a later plan extension
-cannot silently drop unused authority. A widening, binding/profile/digest change or new
-host effect produces an amendment review with a structured delta: requirements,
-bindings, units, materials, host effects and known-or-unknown byte change. An amendment
-stores that delta rather than a duplicate successor envelope and must reconstruct its
-exact server-derived successor fingerprint. A binding, profile or digest change is
-never silent. When an already-proven project's method meaning changes, the change
-follows the existing transition/MRTR boundary.
+the approved envelope needs no prompt and does not shrink the ceiling: the review unions
+current demand with still-authorized brief capacity so a later plan extension cannot
+silently drop unused authority. A widening, binding/profile/digest change or new host
+effect produces an amendment review with a structured delta: requirements, bindings,
+units, materials, host effects and known-or-unknown byte change. An amendment stores
+that delta rather than a duplicate successor envelope and must reconstruct its exact
+server-derived successor fingerprint. A binding, profile or digest change is never
+silent. When an already-proven project's method meaning changes, the change follows the
+existing transition/MRTR boundary.
 
 `withdrawUnused: true` is a separate server-derived withdrawal of that unused surplus.
 The caller still names only the project. The server plans the exact current
@@ -75,15 +76,16 @@ The caller still names only the project. The server plans the exact current
 It may be offered only when the authorized envelope already covers that subset and the
 delta is strictly subtractive: at least one removed requirement, no added requirement,
 no requirement replacement, no remaining binding/digest/profile/unit/material change,
-and no added host effect. Removing the unused unit that made aggregate security or
-byte estimates unknown may improve `security` from `unknown` to `reviewed` and
-aggregate `downloadBytes`/`storageBytes` from `null` to a known exact remainder;
-those reductions are not new host authority. `reviewed` becoming `unknown`, a known
-aggregate becoming `null`, or a larger known estimate remains a widening. Removed
-units, materials and effects are allowed. The signed retry reuses the append-only
-`amendment-authorized` event. The confirmation removes
-unused operational authority only; it does not delete images, data or evidence, and
-does not approve or reinterpret engineering methods or results. A no-op withdrawal
+and no added host effect. Removing the unused unit that made aggregate security or byte
+estimates unknown may improve `security` from `unknown` to `reviewed` and aggregate
+`downloadBytes`/`storageBytes` from `null` to a known exact remainder; those reductions
+are not new host authority. `reviewed` becoming `unknown`, a known aggregate becoming
+`null`, or a larger known estimate remains a widening. Removed units, materials and
+effects are allowed. The signed retry reuses the append-only `amendment-authorized`
+event. The confirmation removes unused operational authority only; it does not delete
+images, cache, data or evidence, and does not approve or reinterpret engineering methods
+or results. Administrative cache-image removal is a separate local-operator CLI; see
+[local runtime administration](local-runtime-administration.md). A no-op withdrawal
 returns `no-change`. If current demand is not covered, the existing amendment or
 method-transition path remains required.
 
@@ -116,8 +118,8 @@ exposure may widen host effects while capability ids stay equal. The approval vi
 projects declared catalogue host effects: download and incremental disk bytes,
 persistence class, networks, published loopback ports, volumes, privilege and exposure,
 secret-slot names (never values), licences and notices. CPU and memory class stay
-literal `unknown` until a material declares them. The planner never invents estimates
-to make an approval look complete.
+literal `unknown` until a material declares them. The planner never invents estimates to
+make an approval look complete.
 
 ## Authority boundary
 

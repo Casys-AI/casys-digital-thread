@@ -14,10 +14,9 @@ historical SysON UI port 8180 is not part of `casys-syson`.
 qualification claim. The immutable catalogue baseline for `casys.mcp-chrono@0.3.1`
 remains `unqualified`; effective host qualification is the matching attestation overlay
 on [local runtime and ports](../local-runtime-and-ports.md). The probe that appends that
-overlay is the private
-[local runtime qualification](local-runtime-qualification.md) CLI, not an MCP operation,
-Workbench command, or engineering run. HTTP `casys.mcp-calculix@0.8.2` remains
-catalogue-`unqualified` and non-activable.
+overlay is the private [local runtime qualification](local-runtime-qualification.md)
+CLI, not an MCP operation, Workbench command, or engineering run. HTTP
+`casys.mcp-calculix@0.8.2` remains catalogue-`unqualified` and non-activable.
 
 ## Durable local read model
 
@@ -31,15 +30,16 @@ closed; it never silently becomes the neutral default.
 
 Observation is partitioned by code-owned material coverage. The Compose observer owns
 only enrolled exact launch-group materials and the Microsandbox observer owns only the
-exact CalculiX and isolated Build123d microVM cache contracts. A composite observer never
-invokes a slice that has no assigned requested material. Planning and intent review
-observe only the catalogue materials that can satisfy the known demand or brief intent;
-they do not inspect the rest of the catalogue. Full-catalogue observation remains an explicit
-`read()` with no material scope, used by administrative and qualification paths that
-need the complete host picture. A duplicate coverage declaration, unexpected material
-response, or missing response for an owned requested material is rejected. A material
-which was not observed, or which no local observer owns, remains literally `unavailable`
-in the Workbench rather than being guessed present or absent.
+exact CalculiX and isolated Build123d microVM cache contracts. A composite observer
+never invokes a slice that has no assigned requested material. Planning and intent
+review observe only the catalogue materials that can satisfy the known demand or brief
+intent; they do not inspect the rest of the catalogue. Full-catalogue observation
+remains an explicit `read()` with no material scope, used by administrative and
+qualification paths that need the complete host picture. A duplicate coverage
+declaration, unexpected material response, or missing response for an owned requested
+material is rejected. A material which was not observed, or which no local observer
+owns, remains literally `unavailable` in the Workbench rather than being guessed present
+or absent.
 
 The factual host observation contains only the Docker daemon's exact reported platform,
 installed exact images, runtime state and an opaque stable local-host identity
@@ -79,6 +79,11 @@ catalogue material -> exact launch-group reference + fingerprint
                              v
 one group intent (all materials) -> closed Compose argv -> terminal outcome -> reread
 ```
+
+Non-persistent Docker-cache and Microsandbox-cache images are a sibling administrative
+removal journal (`capability-runtime-nonpersistent-removal-plan/1.0`). That path never
+uses the Compose `material-remove` intent, never makes `launchGroup` nullable, and never
+uninstalls Microsandbox.
 
 ## Closed launch-group contract
 
