@@ -1220,6 +1220,51 @@
   pointer-events: none;
 }
 
+/* Monitor chip: aggregates of the hull, welded to its corner. It reads at any
+   zoom and never states a single leaf — that detail lives in the rows. */
+.overview-thread-flow-group-monitor {
+  position: absolute;
+  top: var(--flow-y);
+  left: var(--flow-x);
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  padding: 0.1rem 0.4rem;
+  transform: translate(-40%, -60%);
+  border: 1px solid color-mix(in srgb, var(--flow-color) 22%, #e0d3c0);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 92%);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 1px 3px rgb(31 47 53 / 9%);
+  color: color-mix(in srgb, var(--flow-color) 72%, #405158);
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  font-weight: 750;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.overview-thread-flow-group-monitor i {
+  width: 0.34rem;
+  height: 0.34rem;
+  border-radius: 999px;
+  background: var(--flow-color);
+  box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--flow-color) 18%,
+    transparent);
+}
+
+/* Alert inverts the chip and thickens the hull edge — visible zoomed out. */
+.overview-thread-flow-group-monitor[data-alert="true"] {
+  border-color: rgb(185 28 28 / 45%);
+  background: #b91c1c;
+  color: #fff;
+}
+
+.overview-thread-flow-group-monitor[data-alert="true"] i {
+  background: #fff;
+  box-shadow: none;
+}
+
 /* Folder tree inside a listed hull: indent guide, twisty, child count. */
 .overview-thread-flow-row-indent {
   flex: none;
@@ -1289,28 +1334,4 @@
 .overview-thread-flow-group-monitor[data-alert="true"] i {
   background: #fff;
   box-shadow: none;
-}
-
-/* Graph view: each leaf is a pill placed by the hull's own topology. */
-.overview-thread-hero .overview-thread-flow-node[data-shape="pill"] {
-  gap: 0.28rem;
-  padding: 0 0.35rem;
-  border: 1px solid color-mix(in srgb, var(--flow-color) 24%, #d6dcee);
-  border-radius: 0.4rem;
-  background: rgb(255 255 255 / 96%);
-  box-shadow: 0 1px 3px rgb(24 37 43 / 8%);
-}
-
-.overview-thread-hero .overview-thread-flow-node[data-shape="pill"][data-state="selected"] {
-  border-color: var(--flow-color);
-  border-width: 1.4px;
-}
-
-.overview-thread-flow-pill-name {
-  overflow: hidden;
-  min-width: 0;
-  font-size: 0.6rem;
-  font-weight: 640;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
 }

@@ -321,7 +321,7 @@ function parseGroupPlacements(
  * choices: an unknown value rejects the whole entry rather than degrading to a
  * default, so a restored board is exactly what was saved or nothing.
  */
-const HULL_VIEWS: readonly string[] = ["list", "tree", "matrix", "graph"];
+const HULL_VIEWS: readonly string[] = ["list", "matrix"];
 const HULL_SORTS: readonly string[] = ["recorded", "recent", "name"];
 
 /**

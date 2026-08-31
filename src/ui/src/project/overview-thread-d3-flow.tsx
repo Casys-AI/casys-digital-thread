@@ -1210,8 +1210,7 @@ export function OverviewThreadD3Flow({
               key={group.key}
               className="overview-thread-flow-group-band"
               data-lane={group.lane}
-              onWheel={onScrollGroup &&
-                  (group.view === "list" || group.view === "tree") &&
+              onWheel={onScrollGroup && group.view === "list" &&
                   !group.collapsed
                 ? (event) => {
                   if (group.rowCount <= group.visibleRows * group.columns) {
@@ -1321,30 +1320,6 @@ export function OverviewThreadD3Flow({
                   <button
                     type="button"
                     className="overview-thread-flow-group-control"
-                    data-active={group.view === "tree" ? "true" : "false"}
-                    aria-pressed={group.view === "tree"}
-                    aria-label={`Tree ${flowGroupCaption(group)}`}
-                    title="Arbre — une colonne, largeur fixe"
-                    onClick={() => onSetGroupView(group.key, "tree")}
-                    onPointerDown={(event) => event.stopPropagation()}
-                  >
-                    ⇥
-                  </button>
-                  <button
-                    type="button"
-                    className="overview-thread-flow-group-control"
-                    data-active={group.view === "graph" ? "true" : "false"}
-                    aria-pressed={group.view === "graph"}
-                    aria-label={`Graph ${flowGroupCaption(group)}`}
-                    title="Graphe — la topologie du hull"
-                    onClick={() => onSetGroupView(group.key, "graph")}
-                    onPointerDown={(event) => event.stopPropagation()}
-                  >
-                    ◇
-                  </button>
-                  <button
-                    type="button"
-                    className="overview-thread-flow-group-control"
                     data-active={group.view === "matrix" ? "true" : "false"}
                     aria-pressed={group.view === "matrix"}
                     aria-label={`Compact ${flowGroupCaption(group)}`}
@@ -1387,8 +1362,7 @@ export function OverviewThreadD3Flow({
             </div>
           ))}
           {layout.groups.filter((group) =>
-            (group.view === "list" || group.view === "tree") &&
-            !group.collapsed
+            group.view === "list" && !group.collapsed
           ).map((group) => (
             <div
               key={`foot:${group.key}`}
@@ -1457,7 +1431,6 @@ export function OverviewThreadD3Flow({
                 key={`resize:${group.key}`}
                 type="button"
                 className="overview-thread-flow-group-resize"
-                data-axis={group.view === "tree" ? "height" : "both"}
                 aria-label={`Resize ${flowGroupCaption(group)} hull`}
                 tabIndex={-1}
                 style={{
@@ -1548,29 +1521,8 @@ export function OverviewThreadD3Flow({
  * it. The name's distinguishing tail is lifted out of the ellipsis so a long
  * title loses its middle rather than the part that tells it from its siblings.
  */
-/** One node of a hull shown as a graph: a dot and a short name, nothing else. */
-function FlowPillBody(
-  { item }: { readonly item: OverviewHeroNode },
-): JSX.Element {
-  const label = item.kind === "activity"
-    ? item.activity.title
-    : item.node.label;
-  return (
-    <>
-      <span className="overview-thread-flow-row-dot" aria-hidden="true" />
-      <span className="overview-thread-flow-pill-name" title={label}>
-        {overviewThreadHullLabel(label, 14)}
-      </span>
-    </>
-  );
-}
-
 function FlowRowBody(
-  { item, depth, childCount }: {
-    readonly item: OverviewHeroNode;
-    readonly depth: number;
-    readonly childCount: number;
-  },
+  { item }: { readonly item: OverviewHeroNode },
 ): JSX.Element {
   const label = item.kind === "activity"
     ? item.activity.title
@@ -1579,27 +1531,12 @@ function FlowRowBody(
   const meta = flowRowMeta(item);
   return (
     <>
-      {Array.from({ length: depth }, (_, level) => (
-        <span
-          key={`indent:${level}`}
-          className="overview-thread-flow-row-indent"
-          aria-hidden="true"
-        />
-      ))}
-      {childCount > 0 && (
-        <span className="overview-thread-flow-row-twist" aria-hidden="true">
-          ▾
-        </span>
-      )}
       <span className="overview-thread-flow-row-dot" aria-hidden="true" />
       <span className="overview-thread-flow-row-name" title={label}>
         <span className="overview-thread-flow-row-head">{head}</span>
         {tail && <span className="overview-thread-flow-row-tail">{tail}</span>}
       </span>
-      {childCount > 0 && (
-        <span className="overview-thread-flow-row-children">{childCount}</span>
-      )}
-      {childCount === 0 && meta && (
+      {meta && (
         <span
           className="overview-thread-flow-row-meta"
           data-live={item.kind === "recorded" &&
@@ -1692,7 +1629,6 @@ function FlowNode({
           : "false"}
         data-overview-context-target={overviewThreadNodeContextValue(item.key)}
         data-listed={position.listed ? "true" : "false"}
-        data-shape={position.shape}
         style={{
           "--flow-x": position.listed
             ? flowXPercent(position.x, viewBox)
@@ -1724,22 +1660,12 @@ function FlowNode({
           }
         }}
       >
-        {position.shape === "pill"
-          ? <FlowPillBody item={item} />
-          : position.listed
-          ? (
-            <FlowRowBody
-              item={item}
-              depth={position.depth}
-              childCount={position.childCount}
-            />
-          )
-          : (
-            <span
-              className="overview-thread-flow-node-dot"
-              aria-hidden="true"
-            />
-          )}
+        {position.listed ? <FlowRowBody item={item} /> : (
+          <span
+            className="overview-thread-flow-node-dot"
+            aria-hidden="true"
+          />
+        )}
         {item.kind === "activity"
           ? (
             <span

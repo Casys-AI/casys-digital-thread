@@ -1,4 +1,3 @@
-import dagre from "@dagrejs/dagre";
 import { hierarchy, type HierarchyNode } from "d3-hierarchy";
 import { curveBumpX, line } from "d3-shape";
 import type { EngineeringPathLaneId } from "../../../domain/project/engineering-path-lane.ts";
@@ -195,26 +194,10 @@ export interface OverviewThreadD3FlowGroupPlacement {
 }
 
 /**
- * How a hull presents its own contents.
- *
- * `list` names every row and flows them into columns as the hull widens;
- * `tree` files each row under its declared parent and therefore stays one
- * column, because a branch split across columns no longer reads as a branch;
- * `matrix` is the dense field of points; `graph` lays the hull's own relations
- * out as a small diagram. A hull whose leaves cross-link is a graph, and
- * forcing it into a tree would state a nesting the record never declared.
+ * How a hull presents its own contents. `list` names every row and flows them
+ * into columns as the hull widens; `matrix` is the dense field of points.
  */
-export type OverviewThreadD3FlowHullView =
-  | "list"
-  | "tree"
-  | "matrix"
-  | "graph";
-
-/** Node box used inside a hull laid out as a graph. */
-const HULL_GRAPH_NODE_WIDTH = 64;
-const HULL_GRAPH_NODE_HEIGHT = 13;
-const HULL_GRAPH_RANK_SEPARATION = 26;
-const HULL_GRAPH_NODE_SEPARATION = 9;
+export type OverviewThreadD3FlowHullView = "list" | "matrix";
 
 /**
  * Reading order inside a hull. The graph's own order is not an authority here:
@@ -282,11 +265,6 @@ export interface OverviewThreadD3FlowNodeLayout
   readonly folded: boolean;
   /** Drawn as a named row rather than a point. */
   readonly listed: boolean;
-  /** How the leaf is drawn: a point, a full-width row, or a graph pill. */
-  readonly shape: "point" | "row" | "pill";
-  /** Indentation in its hull's folder tree, and how many leaves it holds. */
-  readonly depth: number;
-  readonly childCount: number;
 }
 
 export interface OverviewThreadD3FlowGroupLayout {
@@ -654,36 +632,10 @@ export function buildOverviewThreadD3FlowLayout(
         baseGroupTop,
         groupPlacement,
       );
-      const graphPositions = groupPlacement?.view === "graph"
-        ? hullGraphPositions(group.nodes, edges)
-        : undefined;
-      const graphExtent = graphPositions
-        ? {
-          width: Math.max(
-            0,
-            ...[...graphPositions.values()].map((point) => point.x),
-          ),
-          height: Math.max(
-            0,
-            ...[...graphPositions.values()].map((point) => point.y),
-          ),
-        }
-        : undefined;
-      const hull = resolveHullBox(
-        group,
-        groupPlacement,
-        nodeSize,
-        nodeGap,
-        graphExtent,
-      );
-      const outline = hullOutlineRows(
-        group.nodes,
-        groupPlacement?.sort,
-        hull.view === "tree",
-      );
+      const hull = resolveHullBox(group, groupPlacement, nodeSize, nodeGap);
+      const outline = hullOutlineRows(group.nodes, groupPlacement?.sort);
       const centerY = placedGroupTop + hull.height / 2;
-      const listed = (hull.view === "list" || hull.view === "tree") &&
-        !hull.collapsed;
+      const listed = hull.view === "list" && !hull.collapsed;
       const listColumnWidth = listed
         ? (hull.width - HULL_LIST_COLUMN_GAP * (hull.columns - 1)) /
           hull.columns
@@ -708,22 +660,10 @@ export function buildOverviewThreadD3FlowLayout(
         const matrixNodeY = placedGroupTop + HULL_HEADER_HEIGHT +
           row * (nodeSize + nodeGap);
         const nodePlacement = ownPlacement(options.nodePlacements, node.key);
-        const graphed = hull.view === "graph" && !hull.collapsed;
-        const graphPoint = graphed ? graphPositions?.get(node.key) : undefined;
-        const nodeWidth = graphed
-          ? HULL_GRAPH_NODE_WIDTH
-          : listed
-          ? listColumnWidth
-          : nodeSize;
-        const nodeHeight = graphed
-          ? HULL_GRAPH_NODE_HEIGHT
-          : listed
-          ? HULL_LIST_ROW_HEIGHT
-          : nodeSize;
+        const nodeWidth = listed ? listColumnWidth : nodeSize;
+        const nodeHeight = listed ? HULL_LIST_ROW_HEIGHT : nodeSize;
         const nodeX = hull.collapsed
           ? groupLeft + hull.width / 2 - nodeSize / 2
-          : graphPoint
-          ? groupLeft + graphPoint.x - HULL_GRAPH_NODE_WIDTH / 2
           : listed
           ? groupLeft + listColumn * (listColumnWidth + HULL_LIST_COLUMN_GAP)
           : clamp(
@@ -733,9 +673,6 @@ export function buildOverviewThreadD3FlowLayout(
           );
         const nodeY = hull.collapsed
           ? placedGroupTop + HULL_HEADER_HEIGHT / 2 - nodeSize / 2
-          : graphPoint
-          ? placedGroupTop + HULL_HEADER_HEIGHT + graphPoint.y -
-            HULL_GRAPH_NODE_HEIGHT / 2
           : listed
           ? placedGroupTop + HULL_HEADER_HEIGHT +
             clamp(listRow, 0, Math.max(0, hull.visibleRows - 1)) *
@@ -760,10 +697,7 @@ export function buildOverviewThreadD3FlowLayout(
           topPort: { x: nodeCenterX, y: nodeY },
           bottomPort: { x: nodeCenterX, y: nodeY + nodeHeight },
           folded: hull.collapsed || offWindow,
-          listed: listed || graphed,
-          shape: graphed ? "pill" : listed ? "row" : "point",
-          depth: outlineRow.depth,
-          childCount: outlineRow.childCount,
+          listed,
         });
       }
       if (outline.promoted) {
@@ -783,9 +717,6 @@ export function buildOverviewThreadD3FlowLayout(
           bottomPort: { x: bandCenterX, y: bandCenterY + nodeSize / 2 },
           folded: true,
           listed: false,
-          shape: "point",
-          depth: 0,
-          childCount: 0,
         });
       }
       groupLayouts.push({
@@ -809,8 +740,7 @@ export function buildOverviewThreadD3FlowLayout(
         scrollRow: hull.scrollRow,
         visibleRows: hull.visibleRows,
         rowCount: group.nodes.length,
-        footerHeight: (hull.view === "list" || hull.view === "tree") &&
-            !hull.collapsed
+        footerHeight: hull.view === "list" && !hull.collapsed
           ? HULL_LIST_FOOTER_HEIGHT
           : 0,
         inHub: {
@@ -2196,8 +2126,6 @@ interface ResolvedHullBox {
 
 interface HullOutlineRow {
   readonly node: OverviewThreadD3FlowNodeInput;
-  readonly depth: number;
-  readonly childCount: number;
 }
 
 interface HullOutline {
@@ -2212,24 +2140,19 @@ interface HullOutline {
 }
 
 /**
- * Lay one hull's leaves out as a folder listing.
+ * Lay one hull's leaves out, and find the container that names it.
  *
- * Children follow their parent and are indented under it, depth-first, the way
- * a Finder list stacks a folder's rows. Siblings keep the hull's reading order,
- * so sorting reorders branches without flattening the tree. A hull that
- * declares no containment lists flat — no tree is invented for it.
+ * Rows are flat, in the hull's own reading order. When a single leaf holds
+ * every other one — and only then — it names the hull instead of taking a row
+ * inside it: a folder does not list itself. A hull with several roots keeps
+ * them all, since promoting one would state a primacy the record never
+ * declared.
  */
 function hullOutlineRows(
   nodes: readonly OverviewThreadD3FlowNodeInput[],
   sort: OverviewThreadD3FlowHullSort | undefined,
-  filed: boolean,
 ): HullOutline {
   const ordered = sortHullLeaves(nodes, sort);
-  if (!filed) {
-    return {
-      rows: ordered.map((node) => ({ node, depth: 0, childCount: 0 })),
-    };
-  }
   const own = new Set(ordered.map((node) => node.key));
   const children = new Map<string, OverviewThreadD3FlowNodeInput[]>();
   let contained = 0;
@@ -2241,11 +2164,9 @@ function hullOutlineRows(
     contained += 1;
     children.set(parent, [...(children.get(parent) ?? []), node]);
   }
-  if (contained === 0) {
-    return {
-      rows: ordered.map((node) => ({ node, depth: 0, childCount: 0 })),
-    };
-  }
+  const flat = ordered.map((node) => ({ node }));
+  if (contained === 0) return { rows: flat };
+
   const roots = ordered.filter((node) => {
     const parent = node.parentKey;
     return parent === undefined || !own.has(parent);
@@ -2254,28 +2175,11 @@ function hullOutlineRows(
       (children.get(roots[0]!.key) ?? []).length > 0
     ? roots[0]
     : undefined;
-
-  const rows: HullOutlineRow[] = [];
-  const emitted = new Set<string>();
-  const walk = (node: OverviewThreadD3FlowNodeInput, depth: number): void => {
-    if (emitted.has(node.key)) return;
-    emitted.add(node.key);
-    const own = children.get(node.key) ?? [];
-    rows.push({ node, depth, childCount: own.length });
-    for (const child of own) walk(child, depth + 1);
+  if (!promoted) return { rows: flat };
+  return {
+    rows: flat.filter((row) => row.node.key !== promoted.key),
+    promoted,
   };
-  if (promoted) {
-    emitted.add(promoted.key);
-    for (const child of children.get(promoted.key) ?? []) walk(child, 0);
-  }
-  for (const node of ordered) {
-    const parent = node.parentKey;
-    if (parent !== undefined && own.has(parent)) continue;
-    walk(node, 0);
-  }
-  // A leaf reachable only through a cycle is still listed, at the root.
-  for (const node of ordered) walk(node, 0);
-  return promoted ? { rows, promoted } : { rows };
 }
 
 /**
@@ -2304,54 +2208,6 @@ function sortHullLeaves(
   return nodes;
 }
 
-/**
- * Positions for a hull laid out as a graph, from its own relations.
- *
- * Ranks run left to right, matching the board's own reading direction, so a
- * hull's internal flow and the cables leaving it point the same way. Dagre is
- * fed in exact key order, which keeps the result identical across renders.
- */
-function hullGraphPositions(
-  nodes: readonly OverviewThreadD3FlowNodeInput[],
-  edges: readonly OverviewThreadD3FlowEdgeInput[],
-): ReadonlyMap<string, OverviewThreadD3FlowPoint> {
-  const own = new Set(nodes.map((node) => node.key));
-  const graph = new dagre.graphlib.Graph({ directed: true });
-  graph.setGraph({
-    rankdir: "LR",
-    ranksep: HULL_GRAPH_RANK_SEPARATION,
-    nodesep: HULL_GRAPH_NODE_SEPARATION,
-    marginx: 0,
-    marginy: 0,
-  });
-  graph.setDefaultEdgeLabel(() => ({}));
-  for (const node of nodes.toSorted(compareNodeInput)) {
-    graph.setNode(node.key, {
-      width: HULL_GRAPH_NODE_WIDTH,
-      height: HULL_GRAPH_NODE_HEIGHT,
-    });
-  }
-  for (
-    const edge of edges.toSorted((left, right) =>
-      left.key.localeCompare(right.key)
-    )
-  ) {
-    if (!own.has(edge.fromKey) || !own.has(edge.toKey)) continue;
-    if (edge.fromKey === edge.toKey) continue;
-    graph.setEdge(edge.fromKey, edge.toKey);
-  }
-  dagre.layout(graph);
-  const positions = new Map<string, OverviewThreadD3FlowPoint>();
-  for (const node of nodes) {
-    const placed = graph.node(node.key);
-    if (!placed || !Number.isFinite(placed.x) || !Number.isFinite(placed.y)) {
-      continue;
-    }
-    positions.set(node.key, { x: placed.x, y: placed.y });
-  }
-  return positions;
-}
-
 /** Columns a listed hull flows into at this width. */
 function hullListColumns(width: number): number {
   if (width >= HULL_LIST_THREE_COLUMN_WIDTH) return 3;
@@ -2370,9 +2226,7 @@ function resolveHullBox(
   placement: OverviewThreadD3FlowGroupPlacement | undefined,
   nodeSize: number,
   nodeGap: number,
-  graphExtent?: { readonly width: number; readonly height: number },
 ): ResolvedHullBox {
-  const nodesLength = group.nodes.length;
   const requestedWidth = finiteOrUndefined(placement?.width);
   const requestedHeight = finiteOrUndefined(placement?.height);
   const collapsed = placement?.collapsed === true;
@@ -2380,11 +2234,8 @@ function resolveHullBox(
   // field of points, a wider one is a named list that flows into columns. An
   // explicit choice from the band's control overrides the size.
   const sizedWidth = Math.max(nodeSize, requestedWidth ?? group.width);
-  const filed = group.nodes.some((node) => node.parentKey !== undefined);
   const view: OverviewThreadD3FlowHullView = placement?.view ??
-    (sizedWidth >= HULL_LIST_MINIMUM_WIDTH
-      ? (filed ? "tree" : "list")
-      : "matrix");
+    (sizedWidth >= HULL_LIST_MINIMUM_WIDTH ? "list" : "matrix");
   if (collapsed) {
     return {
       width: Math.max(nodeSize, requestedWidth ?? group.width),
@@ -2397,31 +2248,9 @@ function resolveHullBox(
       visibleRows: 0,
     };
   }
-  if (view === "graph") {
+  if (view === "list") {
     const width = Math.max(HULL_LIST_MINIMUM_WIDTH, sizedWidth);
-    const extent = graphExtent ?? { width: 0, height: 0 };
-    return {
-      width: Math.max(width, extent.width + HULL_GRAPH_NODE_WIDTH),
-      height: HULL_HEADER_HEIGHT +
-        Math.max(
-          HULL_LIST_ROW_HEIGHT * 3,
-          requestedHeight === undefined
-            ? extent.height + HULL_GRAPH_NODE_HEIGHT
-            : requestedHeight - HULL_HEADER_HEIGHT,
-        ),
-      columns: 1,
-      rows: nodesLength,
-      collapsed,
-      view,
-      scrollRow: 0,
-      visibleRows: nodesLength,
-    };
-  }
-  if (view === "list" || view === "tree") {
-    const width = Math.max(HULL_LIST_MINIMUM_WIDTH, sizedWidth);
-    // A tree widens like anything else, but never flows into columns: a child
-    // in the next column no longer sits under its parent.
-    const columns = view === "tree" ? 1 : hullListColumns(width);
+    const columns = hullListColumns(width);
     // Height is a window on the list, not a scale: the operator chooses how
     // many rows to see, never how big a row is.
     const requestedRows = requestedHeight === undefined
