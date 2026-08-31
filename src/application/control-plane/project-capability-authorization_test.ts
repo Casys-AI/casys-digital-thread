@@ -213,7 +213,7 @@ Deno.test("adding prescribed kinematics later is a Chrono-only semantic amendmen
   ]);
   assertEquals(delta.bindingReplacements[0]?.previous, null);
   assertEquals(
-    projectCapabilityChangeRequiresMethodTransition(delta, true),
+    projectCapabilityChangeRequiresMethodTransition(delta, () => true),
     false,
   );
   // An amendment compares only the changed operational envelope. It neither
@@ -237,11 +237,11 @@ Deno.test("dropping an authorized binding after Thread evidence is a method tran
   assertEquals(delta.bindingReplacements[0]?.previous?.requirement.id, requirement.id);
   assertEquals(delta.bindingReplacements[0]?.next, null);
   assertEquals(
-    projectCapabilityChangeRequiresMethodTransition(delta, true),
+    projectCapabilityChangeRequiresMethodTransition(delta, () => true),
     true,
   );
   assertEquals(
-    projectCapabilityChangeRequiresMethodTransition(delta, false),
+    projectCapabilityChangeRequiresMethodTransition(delta, () => false),
     false,
   );
   assertEquals(isStrictUnusedWithdrawalDelta(delta), true);
@@ -263,7 +263,7 @@ Deno.test("Thread evidence follows versioned binding methods, not adapter source
   const sourceDelta = projectCapabilityEnvelopeDelta(initial, sourceCorrected);
   assertEquals(sourceDelta.bindingReplacements.length, 1);
   assertEquals(
-    projectCapabilityChangeRequiresMethodTransition(sourceDelta, true),
+    projectCapabilityChangeRequiresMethodTransition(sourceDelta, () => true),
     false,
   );
 
@@ -275,7 +275,7 @@ Deno.test("Thread evidence follows versioned binding methods, not adapter source
   assertEquals(
     projectCapabilityChangeRequiresMethodTransition(
       projectCapabilityEnvelopeDelta(initial, adapterVersionChanged),
-      true,
+      () => true,
     ),
     true,
   );
@@ -284,7 +284,7 @@ Deno.test("Thread evidence follows versioned binding methods, not adapter source
   assertEquals(
     projectCapabilityChangeRequiresMethodTransition(
       projectCapabilityEnvelopeDelta(initial, idChanged),
-      true,
+      () => true,
     ),
     true,
   );
@@ -293,7 +293,7 @@ Deno.test("Thread evidence follows versioned binding methods, not adapter source
   assertEquals(
     projectCapabilityChangeRequiresMethodTransition(
       projectCapabilityEnvelopeDelta(initial, versionChanged),
-      true,
+      () => true,
     ),
     true,
   );
@@ -302,7 +302,7 @@ Deno.test("Thread evidence follows versioned binding methods, not adapter source
   assertEquals(
     projectCapabilityChangeRequiresMethodTransition(
       projectCapabilityEnvelopeDelta(initial, profileChanged),
-      true,
+      () => true,
     ),
     true,
   );
@@ -311,6 +311,48 @@ Deno.test("Thread evidence follows versioned binding methods, not adapter source
       projectCapabilityEnvelopeDelta(initial, profileChanged),
     ),
     false,
+  );
+});
+
+Deno.test("method-transition evidence is scoped to the replaced requirement", async () => {
+  const cad = {
+    id: "geometry.observe-assembly-integrity",
+    version: "1",
+    minimumQualification: "qualified" as const,
+    use: "execution" as const,
+  };
+  const chrono = {
+    id: "mechanics.observe-prescribed-kinematics",
+    version: "1",
+    minimumQualification: "qualified" as const,
+    use: "execution" as const,
+  };
+  const initial = await proposal("brief-intent", [cad, chrono]);
+  const chronoAdapterChanged = await withAdapterIdentityFor(
+    initial,
+    "mechanics.observe-prescribed-kinematics",
+    "chrono-prescribed-kinematics-adapter",
+    "0.3.2",
+  );
+  const delta = projectCapabilityEnvelopeDelta(initial, chronoAdapterChanged);
+  const cadKey = "geometry.observe-assembly-integrity\u00001\u0000execution";
+  const chronoKey = "mechanics.observe-prescribed-kinematics\u00001\u0000execution";
+  assertEquals(delta.bindingReplacements.map((entry) => entry.requirementKey), [
+    chronoKey,
+  ]);
+  assertEquals(
+    projectCapabilityChangeRequiresMethodTransition(
+      delta,
+      (key) => key === cadKey,
+    ),
+    false,
+  );
+  assertEquals(
+    projectCapabilityChangeRequiresMethodTransition(
+      delta,
+      (key) => key === chronoKey,
+    ),
+    true,
   );
 });
 
@@ -734,6 +776,33 @@ async function withAdapterSource(
         adapter: { ...binding.candidate.adapter, source },
       },
     })),
+  };
+  return {
+    ...next,
+    capabilityProposalFingerprint: await fingerprintProjectCapabilityProposal(next),
+  };
+}
+
+async function withAdapterIdentityFor(
+  proposal: ProjectCapabilityProposal,
+  requirementId: string,
+  id: string,
+  version: string,
+): Promise<ProjectCapabilityProposal> {
+  const { capabilityProposalFingerprint: _fingerprint, ...body } = proposal;
+  const next = {
+    ...body,
+    bindings: body.bindings.map((binding) =>
+      binding.requirement.id !== requirementId || binding.candidate === undefined
+        ? binding
+        : {
+          ...binding,
+          candidate: {
+            ...binding.candidate,
+            adapter: { ...binding.candidate.adapter, id, version },
+          },
+        }
+    ),
   };
   return {
     ...next,

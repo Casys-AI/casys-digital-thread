@@ -26,6 +26,7 @@ import {
   PROJECT_CAPABILITY_LEDGER_SCHEMA_VERSION,
   type ProjectCapabilityApprovalReceipt,
   type ProjectCapabilityAuthorizationEvent,
+  projectCapabilityBindingReplacementChangesMethod,
   projectCapabilityChangeRequiresMethodTransition,
   type ProjectCapabilityEffectiveEnvelope,
   type ProjectCapabilityEnvelopeDelta,
@@ -43,6 +44,8 @@ import type {
 import type { ProjectCapabilityLedgerStore } from "../ports/out/project-capability-ledger-store.ts";
 import type { CapabilityRuntimeHostMutationLock } from "../ports/out/capability/capability-runtime-supervisor.ts";
 import type { EngineeringOperationRegistry } from "../../orchestration/operations/operation-contract.ts";
+import type { ResolvedRunPlanReader } from "../../domain/project/resolved-run-plan-sealer.ts";
+import { evaluateProjectCapabilityBindingEvidence } from "./project-capability-binding-evidence.ts";
 import type { BriefCapabilityIntentRouteTable } from "../../orchestration/operations/brief-capability-intent-routes.ts";
 import type { CapabilityRuntimePreloadScheduler } from "./capability-runtime-preload-scheduler.ts";
 import type { CapabilityRuntimeQualificationAttestationStore } from "../ports/out/capability/capability-runtime-qualification-attestation-store.ts";
@@ -66,6 +69,8 @@ export interface ProjectCapabilityAuthorizationServiceDependencies {
   readonly registry: Pick<EngineeringOperationRegistry, "list">;
   readonly routes?: BriefCapabilityIntentRouteTable;
   readonly catalog: CapabilityRuntimeCatalog;
+  /** Server-composed CAS reader; callers never select a plan or provider. */
+  readonly recordedPlans: ResolvedRunPlanReader;
   readonly qualificationSpecs: readonly CapabilityRuntimeQualificationSpecification[];
   readonly qualificationCandidates: readonly CapabilityRuntimeQualificationCandidate[];
   /** Durable local administrator policy or a fixed test fixture. */
@@ -432,12 +437,14 @@ export class ProjectCapabilityAuthorizationService {
         effectiveEnvelope: envelope,
       };
     }
+    const delta = projectCapabilityEnvelopeDelta(envelope.proposal, proposal);
     if (
       proposal.status === "unresolved" &&
       !unresolvedProposalOnlyRetainsAuthorizedBlockers(
         envelope.proposal,
         proposal,
         unresolvedBlockers,
+        delta,
       )
     ) {
       return {
@@ -445,17 +452,38 @@ export class ProjectCapabilityAuthorizationService {
         ledger,
         proposal,
         effectiveEnvelope: envelope,
-        delta: projectCapabilityEnvelopeDelta(envelope.proposal, proposal),
+        delta,
       };
     }
     if (projectCapabilityProposalCovers(envelope.proposal, proposal)) {
       return { status: "covered", ledger, proposal, effectiveEnvelope: envelope };
     }
-    const delta = projectCapabilityEnvelopeDelta(envelope.proposal, proposal);
+    const evidence = await evaluateProjectCapabilityBindingEvidence({
+      project,
+      registry: this.dependencies.registry,
+      recordedPlans: this.dependencies.recordedPlans,
+      replacements: delta.bindingReplacements,
+    });
+    const methodChanges = delta.bindingReplacements.filter(
+      projectCapabilityBindingReplacementChangesMethod,
+    );
+    if (
+      methodChanges.some((replacement) =>
+        evidence.get(replacement.requirementKey) === "unresolved"
+      )
+    ) {
+      return {
+        status: "unresolved",
+        ledger,
+        proposal,
+        effectiveEnvelope: envelope,
+        delta,
+      };
+    }
     return {
       status: projectCapabilityChangeRequiresMethodTransition(
           delta,
-          project.threadSnapshots.length > 0,
+          (requirementKey) => evidence.get(requirementKey) === "published",
         )
         ? "method-transition-required"
         : "amendment-required",
@@ -562,12 +590,17 @@ export class ProjectCapabilityAuthorizationService {
         effectiveEnvelope: envelope,
       };
     }
+    const withdrawalDelta = projectCapabilityEnvelopeDelta(
+      envelope.proposal,
+      proposal,
+    );
     if (
       proposal.status === "unresolved" &&
       !unresolvedProposalOnlyRetainsAuthorizedBlockers(
         envelope.proposal,
         proposal,
         unresolvedBlockers,
+        withdrawalDelta,
       )
     ) {
       return {
@@ -575,11 +608,11 @@ export class ProjectCapabilityAuthorizationService {
         ledger,
         proposal,
         effectiveEnvelope: envelope,
-        delta: projectCapabilityEnvelopeDelta(envelope.proposal, proposal),
+        delta: withdrawalDelta,
       };
     }
     if (projectCapabilityProposalCovers(envelope.proposal, proposal)) {
-      const delta = projectCapabilityEnvelopeDelta(envelope.proposal, proposal);
+      const delta = withdrawalDelta;
       if (isStrictUnusedWithdrawalDelta(delta)) {
         return {
           status: "withdrawal-required",
@@ -960,8 +993,10 @@ export class ProjectCapabilityAuthorizationService {
  * A published-plan amendment may retain an explicitly authorized unavailable
  * binding (for example, an unqualified Chrono candidate). That retained local
  * state remains visible on the successor proposal, but cannot make a wholly
- * resolved delta unamendable. Any new unresolved operation or binding, or a
- * changed retained candidate/unit/material, stays a hard unresolved review.
+ * resolved delta unamendable. A new unresolved operation or binding stays a
+ * hard unresolved review. A changed retained candidate that the envelope delta
+ * already names as a binding replacement is classified by the evidence fork
+ * instead of being treated as an unexplained unresolved blocker.
  */
 function publishedPlanUnresolvedBlockers(
   demand: Awaited<ReturnType<typeof compileProjectCapabilityDemand>>,
@@ -977,6 +1012,7 @@ function unresolvedProposalOnlyRetainsAuthorizedBlockers(
   envelope: ProjectCapabilityProposal,
   proposal: ProjectCapabilityProposal,
   unresolvedBlockers: readonly string[],
+  delta: ProjectCapabilityEnvelopeDelta,
 ): boolean {
   if (unresolvedBlockers.length > 0) return false;
   const previousBindings = new Map(
@@ -985,21 +1021,23 @@ function unresolvedProposalOnlyRetainsAuthorizedBlockers(
       binding,
     ]),
   );
+  const replaced = new Set(
+    delta.bindingReplacements.map((replacement) => replacement.requirementKey),
+  );
 
   return proposal.bindings
     .filter((binding) => binding.status !== "selected")
     .every((binding) => {
-      const previous = previousBindings.get(
-        engineeringCapabilityRequirementKey(binding.requirement),
-      );
+      const key = engineeringCapabilityRequirementKey(binding.requirement);
+      const previous = previousBindings.get(key);
+      if (!previous || previous.status === "selected") return false;
       if (
-        !previous || previous.status === "selected" ||
-        deterministicJson(retainedBlockedBindingIdentity(envelope, previous)) !==
+        deterministicJson(retainedBlockedBindingIdentity(envelope, previous)) ===
           deterministicJson(retainedBlockedBindingIdentity(proposal, binding))
       ) {
-        return false;
+        return true;
       }
-      return true;
+      return replaced.has(key);
     });
 }
 

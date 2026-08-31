@@ -9,6 +9,11 @@ import {
   FileCapabilityRuntimeHostMutationLock,
 } from "../../adapters/control-plane/file-capability-runtime-host-stores.ts";
 import { createFirstPartyCapabilityRuntimeCatalog } from "../../adapters/control-plane/first-party-capability-binding-catalog.ts";
+import { validateCapabilityRuntimeCatalog } from "../../adapters/control-plane/capability-runtime-catalog.ts";
+import type { ResolvedRunPlanReader } from "../../domain/project/resolved-run-plan-sealer.ts";
+import type { ResolvedOperationPlanV2 } from "../../domain/compile/rop/resolved-operation-plan-v2.ts";
+import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
+import type { CapabilityRuntimeCatalog } from "./read-model/capability-runtime-catalog.ts";
 import { FileEngineeringProjectRevisionStore } from "../../adapters/shared/stores/engineering-project-store.ts";
 import { ProjectBriefCommandService } from "../use-cases/project/project-brief-command-service.ts";
 import { listRegisteredEngineeringOperations } from "../../orchestration/operations/registry.ts";
@@ -59,6 +64,7 @@ Deno.test("brief capability authorization retains resolved candidates beside an 
     const authorization = new ProjectCapabilityAuthorizationService({
       ledgers,
       registry: { list: listRegisteredEngineeringOperations },
+      recordedPlans: unusedRecordedPlans(),
       catalog,
       qualificationSpecs: [],
       qualificationCandidates: [],
@@ -430,6 +436,7 @@ async function authorizationService(
   return new ProjectCapabilityAuthorizationService({
     ledgers,
     registry: { list: listRegisteredEngineeringOperations },
+    recordedPlans: unusedRecordedPlans(),
     catalog: await createFirstPartyCapabilityRuntimeCatalog(),
     qualificationSpecs: [],
     qualificationCandidates: [],
@@ -549,6 +556,7 @@ Deno.test("a qualified SysON delta can amend beside an explicitly authorized unq
     const authorization = new ProjectCapabilityAuthorizationService({
       ledgers: new InMemoryProjectCapabilityLedgerStore(),
       registry: { list: listRegisteredEngineeringOperations },
+      recordedPlans: unusedRecordedPlans(),
       catalog,
       qualificationSpecs: [],
       qualificationCandidates: [],
@@ -766,4 +774,408 @@ function plannedWorkItem(input: {
       }],
     },
   };
+}
+
+function unusedRecordedPlans() {
+  return {
+    read: () =>
+      Promise.reject(
+        new TypeError("Recorded run plans are not composed in this fixture."),
+      ),
+  };
+}
+
+Deno.test("Chrono 0.3.1 to 0.3.2 is amendment without published L3 and method-transition with it", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "capability-chrono-evidence-" });
+  try {
+    let tick = 0;
+    const now = () =>
+      new Date(Date.parse("2026-08-31T00:00:00.000Z") + ++tick * 1_000).toISOString();
+    const projects = new FileEngineeringProjectRevisionStore(directory);
+    const briefs = new ProjectBriefCommandService(projects, now);
+    const [catalog031, catalog032] = await Promise.all([
+      catalogWithChronoAdapterVersion("0.3.1"),
+      catalogWithChronoAdapterVersion("0.3.2"),
+    ]);
+    const ledgers = new InMemoryProjectCapabilityLedgerStore();
+    const predecessor = authorizationForCatalog(catalog031, ledgers, now);
+    const started = await briefs.startProject(
+      { kind: "agent", actorId: "test" },
+      {
+        commandId: "start",
+        projectId: "ml01-chrono-evidence",
+        projectName: "Chrono evidence",
+        issuedAt: "2026-08-30T23:59:00.000Z",
+        intent: "Observe prescribed kinematics after a CAD baseline.",
+        intentSource: { kind: "human", reference: "conversation" },
+      },
+    );
+    const proposed = await briefs.proposeBrief(
+      { kind: "agent", actorId: "test" },
+      {
+        commandId: "propose",
+        projectId: started.project.id,
+        expectedRevision: started.revision,
+        issuedAt: "2026-08-30T23:59:10.000Z",
+        items: [
+          item("objective", "objective", "Observe a mechanism."),
+          item("mission", "mission-scenario", "Capture CAD then kinematics."),
+          {
+            ...item("success", "success-criterion", "The result is reviewable."),
+            dependsOnItemIds: [],
+          },
+          {
+            ...item(
+              "kinematics",
+              "verification-activity",
+              "Observe prescribed rigid-body kinematics.",
+            ),
+            dependsOnItemIds: ["success"],
+            verificationAuthority: { id: "prescribed-kinematics", version: "1.0" },
+          },
+        ],
+      },
+    );
+    const proposal = await predecessor.proposeForPendingBrief(proposed);
+    assertEquals(
+      proposal.bindings.find((binding) =>
+        binding.requirement.id === "mechanics.observe-prescribed-kinematics"
+      )?.candidate?.adapter.version,
+      "0.3.1",
+    );
+    await predecessor.prepareInitial(proposal);
+    const review = proposed.framing!.proposalReview!;
+    const approved = await briefs.approveBrief(
+      { kind: "human", actorId: "operator" },
+      {
+        commandId: "approve",
+        projectId: proposed.project.id,
+        expectedRevision: proposed.revision,
+        issuedAt: "2026-08-30T23:59:20.000Z",
+        briefSnapshotId: review.briefSnapshotId,
+        briefRevision: review.briefRevision,
+        inputFingerprint: review.inputFingerprint,
+        rationale: "Confirmed.",
+      },
+    );
+    await predecessor.finalizeInitial(approved, proposal);
+
+    const cadProject = publishedProject(approved, {
+      threadSnapshots: [threadSnapshot()],
+      workItems: [
+        plannedWorkItem({
+          id: "wi-baseline",
+          status: "completed",
+          kind: "define",
+          operationId: "baseline.from-approved-brief",
+          operationVersion: "1",
+        }),
+      ],
+      agentRuns: [completedCadRun()],
+    });
+    const successor = authorizationForCatalog(
+      catalog032,
+      ledgers,
+      now,
+      unusedRecordedPlans(),
+    );
+    assertEquals(
+      (await successor.reviewPublishedPlan(cadProject)).status,
+      "amendment-required",
+    );
+
+    const failedChrono = publishedProject(approved, {
+      threadSnapshots: [threadSnapshot()],
+      workItems: [
+        ...cadProject.workItems,
+        chronoWorkItem(),
+      ],
+      agentRuns: [
+        completedCadRun(),
+        {
+          ...completedChronoRun(),
+          status: "failed",
+          resultSnapshot: undefined,
+          evidenceRefs: [],
+          resolvedOperationPlan: undefined,
+          failure: { code: "provider-failed", message: "malformed" },
+        },
+      ],
+    });
+    assertEquals(
+      (await successor.reviewPublishedPlan(failedChrono)).status,
+      "amendment-required",
+    );
+
+    const plan = kinematicsPlan("0.3.1");
+    const completed = publishedProject(approved, {
+      threadSnapshots: [threadSnapshot()],
+      workItems: [...cadProject.workItems, chronoWorkItem()],
+      agentRuns: [completedCadRun(), completedChronoRun()],
+    });
+    const publishedReader: ResolvedRunPlanReader = {
+      read: () => Promise.resolve(plan),
+    };
+    const withPublished = authorizationForCatalog(
+      catalog032,
+      ledgers,
+      now,
+      publishedReader,
+    );
+    assertEquals(
+      (await withPublished.reviewPublishedPlan(completed)).status,
+      "method-transition-required",
+    );
+
+    const wrongBinding = authorizationForCatalog(
+      catalog032,
+      ledgers,
+      now,
+      { read: () => Promise.resolve(kinematicsPlan("0.3.2")) },
+    );
+    assertEquals(
+      (await wrongBinding.reviewPublishedPlan(completed)).status,
+      "amendment-required",
+    );
+
+    const { resolvedOperationPlan: _ref, ...missingPlan } = completedChronoRun();
+    const missing = publishedProject(approved, {
+      threadSnapshots: [threadSnapshot()],
+      workItems: [...cadProject.workItems, chronoWorkItem()],
+      agentRuns: [completedCadRun(), missingPlan],
+    });
+    assertEquals((await successor.reviewPublishedPlan(missing)).status, "unresolved");
+
+    const tampered = authorizationForCatalog(
+      catalog032,
+      ledgers,
+      now,
+      {
+        read: () =>
+          Promise.reject(new TypeError("Resolved operation plan is tampered.")),
+      },
+    );
+    assertEquals((await tampered.reviewPublishedPlan(completed)).status, "unresolved");
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+function authorizationForCatalog(
+  catalog: CapabilityRuntimeCatalog,
+  ledgers: InMemoryProjectCapabilityLedgerStore,
+  now: () => string,
+  recordedPlans: ResolvedRunPlanReader = unusedRecordedPlans(),
+) {
+  return new ProjectCapabilityAuthorizationService({
+    ledgers,
+    registry: { list: listRegisteredEngineeringOperations },
+    recordedPlans,
+    catalog,
+    qualificationSpecs: [],
+    qualificationCandidates: [],
+    policy: {
+      schemaVersion: "capability-runtime-admin-policy/1.0",
+      disabledBindingIds: [],
+      preferences: [],
+    },
+    host: {
+      schemaVersion: "capability-runtime-host-observation/1.0",
+      identityFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+      platform: "linux/arm64",
+      images: [],
+    },
+    lock: {
+      schemaVersion: "capability-runtime-admin-lock/1.0",
+      revision: 0,
+      previous: null,
+      units: [],
+    },
+    now,
+  });
+}
+
+async function catalogWithChronoAdapterVersion(
+  version: string,
+): Promise<CapabilityRuntimeCatalog> {
+  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+  return await validateCapabilityRuntimeCatalog({
+    ...catalog,
+    bindings: catalog.bindings.map((binding) =>
+      binding.id === "chrono-prescribed-kinematics"
+        ? { ...binding, adapter: { ...binding.adapter, version } }
+        : binding
+    ),
+  });
+}
+
+function publishedProject(
+  approved: EngineeringProjectSnapshot,
+  extra: {
+    readonly threadSnapshots: EngineeringProjectSnapshot["threadSnapshots"];
+    readonly workItems: EngineeringProjectSnapshot["workItems"];
+    readonly agentRuns: EngineeringProjectSnapshot["agentRuns"];
+  },
+): EngineeringProjectSnapshot {
+  return {
+    ...approved,
+    plan: {
+      startingPoint: "idea-or-spec",
+      basis: {
+        kind: "approved-brief",
+        projectId: approved.project.id,
+        projectSnapshotId: approved.id,
+        projectRevision: approved.revision,
+        briefId: approved.framing!.currentBrief!.briefId,
+        briefSnapshotId: approved.framing!.currentBrief!.id,
+        briefRevision: approved.framing!.currentBrief!.revision,
+        approvedBriefFingerprint: approved.framing!.currentBriefApproval!
+          .inputFingerprint,
+      },
+      publishedAt: approved.generatedAt,
+      publishedBy: { id: "agent:test", origin: "agent" },
+    },
+    threadSnapshots: extra.threadSnapshots,
+    workItems: extra.workItems,
+    agentRuns: extra.agentRuns,
+  };
+}
+
+function chronoWorkItem() {
+  return {
+    id: "wi-chrono",
+    activityId: "activity:wi-chrono",
+    phaseId: "phase-1",
+    title: "wi-chrono",
+    description: "wi-chrono",
+    kind: "verify" as const,
+    status: "completed" as const,
+    owner: "agent" as const,
+    dependsOnWorkItemIds: [],
+    decisionIds: [],
+    evidenceRefs: [entityRef()],
+    blockerIds: [],
+    operation: {
+      id: "verify.run-prescribed-kinematics",
+      version: "1",
+      bindings: [],
+    },
+  };
+}
+
+function completedChronoRun() {
+  return {
+    id: "run-chrono",
+    workItemId: "wi-chrono",
+    status: "completed" as const,
+    summary: "Prescribed kinematics observed.",
+    queuedAt: "2026-08-31T00:00:00.000Z",
+    inputFingerprint: fingerprint("1"),
+    resolvedOperationPlan: {
+      schemaVersion: "resolved-operation-plan-ref/1.0" as const,
+      planId: "run-chrono",
+      fingerprint: fingerprint("2"),
+      byteCount: 32,
+      casUri: `casys://resolved-operation-plan/sha256/${"2".repeat(64)}`,
+    },
+    evidenceRefs: [entityRef()],
+    resultSnapshot: threadSnapshot(),
+  };
+}
+
+function completedCadRun() {
+  return {
+    id: "run-cad",
+    workItemId: "wi-cad",
+    status: "completed" as const,
+    summary: "CAD executed.",
+    queuedAt: "2026-08-31T00:00:00.000Z",
+    evidenceRefs: [entityRef()],
+    resultSnapshot: threadSnapshot(),
+  };
+}
+
+function threadSnapshot() {
+  return {
+    snapshotId: "thread-1",
+    revision: 1,
+    subjectId: "subject",
+  };
+}
+
+function entityRef() {
+  return {
+    snapshotId: "thread-1",
+    snapshotRevision: 1,
+    kind: "artifact" as const,
+    id: "artifact-1",
+  };
+}
+
+function kinematicsPlan(adapterVersion: string): ResolvedOperationPlanV2 {
+  const material = {
+    unitId: "casys.mcp-chrono",
+    materialId: "mcp-chrono-image",
+    imageDigest: "e".repeat(64),
+  };
+  return {
+    schemaVersion: "resolved-operation-plan/2.0",
+    id: "run-chrono",
+    run: {
+      projectId: "ml01-chrono-evidence",
+      runId: "run-chrono",
+      workItemId: "wi-chrono",
+      inputFingerprint: fingerprint("1"),
+      queueBasisProject: {
+        snapshotId: "project-r1",
+        revision: 1,
+        fingerprint: fingerprint("3"),
+      },
+    },
+    workItem: {
+      id: "wi-chrono",
+      operation: { id: "verify.run-prescribed-kinematics", version: "1" },
+      operationFingerprint: fingerprint("4"),
+    },
+    operationalCapability: {
+      schemaVersion: "resolved-capability-runtime-operation/2.0",
+      projectId: "ml01-chrono-evidence",
+      operation: { id: "verify.run-prescribed-kinematics", version: "1" },
+      authorizationFingerprint: fingerprint("5"),
+      demandFingerprint: fingerprint("6"),
+      registryFingerprint: fingerprint("7"),
+      bindings: [{
+        capability: {
+          id: "mechanics.observe-prescribed-kinematics",
+          version: "1",
+          use: "execution",
+          minimumQualification: "qualified",
+        },
+        binding: { id: "chrono-prescribed-kinematics", version: "1" },
+        effectiveQualification: "qualified",
+        adapter: {
+          id: "chrono-prescribed-kinematics-adapter",
+          version: adapterVersion,
+          source: "test",
+        },
+        profile: null,
+        materials: [material],
+        runtimeModes: [{
+          material,
+          targetPlatform: "linux/amd64",
+          mode: "emulated",
+          qualificationAttestationFingerprint: fingerprint("8"),
+        }],
+        hostLifecycles: [{
+          material,
+          kind: "persistent-compose",
+          launchGroup: null,
+        }],
+      }],
+    },
+  } as unknown as ResolvedOperationPlanV2;
+}
+
+function fingerprint(character: string) {
+  return { algorithm: "sha256" as const, digest: character.repeat(64) };
 }

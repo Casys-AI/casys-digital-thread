@@ -1071,6 +1071,7 @@ async function createProjectControl(
   const capabilityAuthorization = new ProjectCapabilityAuthorizationService({
     ledgers: capabilityRead.ledgers,
     registry: { list: listRegisteredEngineeringOperations },
+    recordedPlans: recordedPlans.recordedRunPlans,
     catalog: capabilityRead.catalog,
     qualificationSpecs:
       await createFirstPartyCapabilityRuntimeQualificationSpecifications(),

@@ -158,6 +158,12 @@ async function localCapabilityAuthorization(
   return new ProjectCapabilityAuthorizationService({
     ledgers: new FileProjectCapabilityLedgerStore(`${directory}/capability-ledgers`),
     registry: { list: listRegisteredEngineeringOperations },
+    recordedPlans: {
+      read: () =>
+        Promise.reject(
+          new TypeError("Recorded run plans are not composed in this fixture."),
+        ),
+    },
     catalog: await createFirstPartyCapabilityRuntimeCatalog(),
     qualificationSpecs: [],
     qualificationCandidates: [],

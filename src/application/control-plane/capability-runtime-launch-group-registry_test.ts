@@ -9,6 +9,7 @@ import {
 } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import {
   createFirstPartyCapabilityRuntimeLaunchGroups,
+  createFirstPartyChronoRolloverPredecessorLaunchGroup,
 } from "../../adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
 import { FixedCapabilityRuntimeLaunchGroupRegistry } from "./capability-runtime-launch-group-registry.ts";
 
@@ -89,6 +90,64 @@ Deno.test("first-party launch groups publish distinct loopback host ports", asyn
     3025,
   ]);
   assertEquals(new Set(published).size, published.length);
+});
+
+Deno.test("Chrono rollover predecessor is history-only and absent from the ordinary registry", async () => {
+  const [groups, predecessor] = await Promise.all([
+    createFirstPartyCapabilityRuntimeLaunchGroups(),
+    createFirstPartyChronoRolloverPredecessorLaunchGroup(),
+  ]);
+  const successor = groups.find((group) => group.id === "casys-chrono")!;
+  const registry = new FixedCapabilityRuntimeLaunchGroupRegistry(groups);
+  const listed = await registry.list();
+
+  const predecessorCompose = JSON.parse(predecessor.compose.content) as {
+    services: Record<string, Record<string, unknown>>;
+    volumes: Record<string, unknown>;
+  };
+  const successorCompose = JSON.parse(successor.compose.content) as {
+    services: Record<string, Record<string, unknown>>;
+    volumes: Record<string, unknown>;
+  };
+  assertEquals(predecessor.id, "casys-chrono");
+  assertEquals(predecessor.version, "1.0.0");
+  assertEquals(successor.version, "1.0.0");
+  assertEquals(predecessor.acquisition, successor.acquisition);
+  assertEquals(predecessor.secretSlots, successor.secretSlots);
+  assertEquals(
+    predecessorCompose.services["mcp-chrono"]?.ports,
+    successorCompose.services["mcp-chrono"]?.ports,
+  );
+  assertEquals(
+    predecessorCompose.services["mcp-chrono"]?.volumes,
+    successorCompose.services["mcp-chrono"]?.volumes,
+  );
+  assertEquals(
+    predecessorCompose.services["mcp-chrono"]?.healthcheck,
+    successorCompose.services["mcp-chrono"]?.healthcheck,
+  );
+  assertEquals(predecessorCompose.volumes, successorCompose.volumes);
+  assertEquals(
+    predecessor.materials[0]?.material.imageDigest,
+    "b6302001725df4722d84096a51eeff7e7ffeee843690a2ba0cc417191c67683c",
+  );
+  assertEquals(predecessor.fingerprint, {
+    algorithm: "sha256",
+    digest: "ddf2ea1f75ed3ca1606ab905ff7e37bfbf3b7e975e919856678484d9c0251985",
+  });
+  assertEquals(successor.fingerprint, {
+    algorithm: "sha256",
+    digest: "18a1c44546547d7d5276a82273ff8d763e808feaf6c373a8bf116f80b00aa46d",
+  });
+  assertEquals(
+    listed.some((group) => group.fingerprint.digest === predecessor.fingerprint.digest),
+    false,
+  );
+  await assertRejects(
+    () => registry.require(capabilityRuntimeLaunchGroupReference(predecessor)),
+    TypeError,
+    "0 exact matches",
+  );
 });
 
 Deno.test("launch-group registry rejects the same loopback host port on two groups", async () => {

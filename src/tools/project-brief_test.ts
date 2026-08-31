@@ -620,6 +620,7 @@ async function briefDependencies(
     capabilityAuthorization: new ProjectCapabilityAuthorizationService({
       ledgers: new InMemoryProjectCapabilityLedgerStore(),
       registry: { list: listRegisteredEngineeringOperations },
+      recordedPlans: unusedRecordedPlans(),
       catalog: await createFirstPartyCapabilityRuntimeCatalog(),
       qualificationSpecs: [],
       qualificationCandidates: [],
@@ -641,6 +642,15 @@ async function briefDependencies(
         units: [],
       },
     }),
+  };
+}
+
+function unusedRecordedPlans() {
+  return {
+    read: () =>
+      Promise.reject(
+        new TypeError("Recorded run plans are not composed in this fixture."),
+      ),
   };
 }
 

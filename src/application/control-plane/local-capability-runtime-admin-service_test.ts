@@ -6,6 +6,7 @@ import {
 import { InMemoryProjectCapabilityLedgerStore } from "../../adapters/control-plane/file-project-capability-ledger-store.ts";
 import {
   createFirstPartyCapabilityRuntimeCatalog,
+  createFirstPartyChronoRolloverPredecessorUnit,
   createFirstPartySysonRolloverPredecessorUnit,
   firstPartyAdmittedModelicaHistoryPredecessor,
   firstPartyGeometryModuleAssemblerHistoryPredecessor,
@@ -83,12 +84,14 @@ Deno.test("local lock review replaces only declared historical units with exact 
     prefix: "casys-local-admin-history-upgrade-",
   });
   try {
-    const [catalog, predecessorSyson] = await Promise.all([
+    const [catalog, predecessorSyson, predecessorChrono] = await Promise.all([
       createFirstPartyCapabilityRuntimeCatalog(),
       createFirstPartySysonRolloverPredecessorUnit(),
+      createFirstPartyChronoRolloverPredecessorUnit(),
     ]);
     const predecessors = [
       predecessorSyson,
+      predecessorChrono,
       firstPartyGeometryModuleAssemblerHistoryPredecessor(),
       firstPartyAdmittedModelicaHistoryPredecessor(),
     ];
@@ -123,7 +126,8 @@ Deno.test("local lock review replaces only declared historical units with exact 
     await writeAdminLockHistory(directory, [first, second]);
 
     const forgedPredecessors = predecessors.map((unit) =>
-      unit.id === "casys.geometry-module-assembler-worker"
+      unit.id === "casys.mcp-chrono" ||
+        unit.id === "casys.geometry-module-assembler-worker"
         ? {
           ...unit,
           manifestFingerprint: {

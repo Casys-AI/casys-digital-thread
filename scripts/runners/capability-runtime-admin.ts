@@ -218,6 +218,12 @@ async function main(request: CapabilityRuntimeAdminCliRequest): Promise<void> {
   const authorization = new ProjectCapabilityAuthorizationService({
     ledgers,
     registry: { list: () => [] },
+    recordedPlans: {
+      read: () =>
+        Promise.reject(
+          new TypeError("Recorded run plans are not composed in this admin path."),
+        ),
+    },
     catalog,
     qualificationSpecs:
       await createFirstPartyCapabilityRuntimeQualificationSpecifications(),

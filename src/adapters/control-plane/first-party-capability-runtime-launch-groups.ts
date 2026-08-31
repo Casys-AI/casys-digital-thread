@@ -22,6 +22,13 @@ export const POSTGRES_IMAGE_REFERENCE =
  */
 export const SYSON_PREDECESSOR_IMAGE_REFERENCE =
   "ghcr.io/casys-ai/syson@sha256:fc599abb95587913de11ff6de68060b5593956abc0c47bc753cd19e2987141a6" as const;
+/**
+ * Retired only as a history/transition predecessor for mcp-chrono 0.3.1.
+ * Ordinary runtime composition never publishes or selects it; the current
+ * catalogue remains `casys.mcp-chrono@0.3.2`.
+ */
+export const CHRONO_PREDECESSOR_IMAGE_REFERENCE =
+  "ghcr.io/casys-ai/mcp-chrono@sha256:b6302001725df4722d84096a51eeff7e7ffeee843690a2ba0cc417191c67683c" as const;
 export const SYSON_IMAGE_REFERENCE =
   "ghcr.io/casys-ai/syson@sha256:d372ae26e5d32e5c599fa7c1599d42c73cf9a54e101cfe6f77175f313d7d84e9" as const;
 export const MCP_SYSON_IMAGE_REFERENCE =
@@ -57,66 +64,7 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
     port: 3014,
     volume: "exports",
   });
-  const chronoComposeContent = deterministicJson({
-    services: {
-      "mcp-chrono": {
-        image: MCP_CHRONO_032_IMAGE_REFERENCE,
-        platform: "linux/amd64",
-        volumes: ["chrono-data:/data"],
-        ports: ["127.0.0.1:3025:3025"],
-        cap_drop: ["ALL"],
-        security_opt: ["no-new-privileges:true"],
-        // The token is read only inside the container from the closed runtime
-        // overlay. It is neither a Compose interpolation nor sealed content.
-        healthcheck: {
-          test: [
-            "CMD",
-            "python",
-            "-c",
-            "import os, urllib.request; token = os.environ.get('MCP_BEARER_TOKEN'); assert token; request = urllib.request.Request('http://127.0.0.1:3025/healthz', headers={'Authorization': 'Bearer ' + token}); urllib.request.urlopen(request, timeout=3).read()",
-          ],
-          interval: "30s",
-          timeout: "5s",
-          retries: 3,
-          start_period: "20s",
-        },
-      },
-    },
-    volumes: { "chrono-data": {} },
-  });
-  const chronoCompose = {
-    schemaVersion: "capability-runtime-compose-descriptor/1.0" as const,
-    content: chronoComposeContent,
-    fingerprint: await fingerprintCapabilityRuntimeComposeContent(chronoComposeContent),
-  };
-  const chronoBody = {
-    schemaVersion: "capability-runtime-launch-group/2.0" as const,
-    id: "casys-chrono",
-    version: "1.0.0",
-    activationPolicy: "persistent" as const,
-    acquisition: { kind: "compose" as const, projectName: "casys-chrono" },
-    materials: [
-      material(
-        "casys.mcp-chrono",
-        "mcp-chrono-image",
-        MCP_CHRONO_032_IMAGE_REFERENCE,
-        "mcp-chrono",
-        "casys-chrono",
-      ),
-    ],
-    compose: chronoCompose,
-    retention: {
-      containers: "stop-only" as const,
-      images: "preserve" as const,
-      volumes: "preserve" as const,
-    },
-    secretSlots: ["chrono-mcp-bearer-token"],
-    security: "reviewed" as const,
-  };
-  const chrono = {
-    ...chronoBody,
-    fingerprint: await fingerprintCapabilityRuntimeLaunchGroup(chronoBody),
-  } as const;
+  const chrono = await createFirstPartyChronoLaunchGroup("successor");
 
   // CalculiX sensitivity is a deliberately independent, single-service
   // topology. It has no CAD exchange mount: the server-owned staging adapter
@@ -196,7 +144,91 @@ export async function createFirstPartySysonRolloverPredecessorLaunchGroup(): Pro
   return await createFirstPartySysonLaunchGroup("predecessor");
 }
 
+/**
+ * The one code-owned predecessor admissible to a Chrono 0.3.1 → 0.3.2
+ * history/transition. It is intentionally not included in the ordinary
+ * registry: it shares the same Compose project, loopback port, service,
+ * volume, secret slot and healthcheck with its successor. The two group
+ * refs remain `casys-chrono@1.0.0`; only the image identity differs.
+ */
+export async function createFirstPartyChronoRolloverPredecessorLaunchGroup(): Promise<
+  CapabilityRuntimeLaunchGroup
+> {
+  return await createFirstPartyChronoLaunchGroup("predecessor");
+}
+
 type FirstPartySysonDescriptor = "predecessor" | "successor";
+type FirstPartyChronoDescriptor = "predecessor" | "successor";
+
+async function createFirstPartyChronoLaunchGroup(
+  descriptor: FirstPartyChronoDescriptor,
+): Promise<CapabilityRuntimeLaunchGroup> {
+  const image = descriptor === "predecessor"
+    ? CHRONO_PREDECESSOR_IMAGE_REFERENCE
+    : MCP_CHRONO_032_IMAGE_REFERENCE;
+  const chronoComposeContent = deterministicJson({
+    services: {
+      "mcp-chrono": {
+        image,
+        platform: "linux/amd64",
+        volumes: ["chrono-data:/data"],
+        ports: ["127.0.0.1:3025:3025"],
+        cap_drop: ["ALL"],
+        security_opt: ["no-new-privileges:true"],
+        // The token is read only inside the container from the closed runtime
+        // overlay. It is neither a Compose interpolation nor sealed content.
+        healthcheck: {
+          test: [
+            "CMD",
+            "python",
+            "-c",
+            "import os, urllib.request; token = os.environ.get('MCP_BEARER_TOKEN'); assert token; request = urllib.request.Request('http://127.0.0.1:3025/healthz', headers={'Authorization': 'Bearer ' + token}); urllib.request.urlopen(request, timeout=3).read()",
+          ],
+          interval: "30s",
+          timeout: "5s",
+          retries: 3,
+          start_period: "20s",
+        },
+      },
+    },
+    volumes: { "chrono-data": {} },
+  });
+  const compose = {
+    schemaVersion: "capability-runtime-compose-descriptor/1.0" as const,
+    content: chronoComposeContent,
+    fingerprint: await fingerprintCapabilityRuntimeComposeContent(
+      chronoComposeContent,
+    ),
+  };
+  const body = {
+    schemaVersion: "capability-runtime-launch-group/2.0" as const,
+    id: "casys-chrono",
+    version: "1.0.0",
+    activationPolicy: "persistent" as const,
+    acquisition: { kind: "compose" as const, projectName: "casys-chrono" },
+    materials: [
+      material(
+        "casys.mcp-chrono",
+        "mcp-chrono-image",
+        image,
+        "mcp-chrono",
+        "casys-chrono",
+      ),
+    ],
+    compose,
+    retention: {
+      containers: "stop-only" as const,
+      images: "preserve" as const,
+      volumes: "preserve" as const,
+    },
+    secretSlots: ["chrono-mcp-bearer-token"],
+    security: "reviewed" as const,
+  };
+  return {
+    ...body,
+    fingerprint: await fingerprintCapabilityRuntimeLaunchGroup(body),
+  };
+}
 
 async function createFirstPartySysonLaunchGroup(
   descriptor: FirstPartySysonDescriptor,

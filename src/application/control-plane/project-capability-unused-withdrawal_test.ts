@@ -29,6 +29,7 @@ Deno.test("explicit unused withdrawal shrinks a covered subset and later demand 
     const authorization = new ProjectCapabilityAuthorizationService({
       ledgers,
       registry: { list: listRegisteredEngineeringOperations },
+      recordedPlans: unusedRecordedPlans(),
       catalog,
       qualificationSpecs: [],
       qualificationCandidates: [],
@@ -232,6 +233,7 @@ Deno.test("unused withdrawal may resolve unknown security and unknown bytes by r
     const authorization = new ProjectCapabilityAuthorizationService({
       ledgers: new InMemoryProjectCapabilityLedgerStore(),
       registry: { list: listRegisteredEngineeringOperations },
+      recordedPlans: unusedRecordedPlans(),
       catalog,
       qualificationSpecs: [],
       qualificationCandidates: [],
@@ -510,6 +512,15 @@ function plannedWorkItem(input: {
         source: { kind: "approved-brief" as const },
       }],
     },
+  };
+}
+
+function unusedRecordedPlans() {
+  return {
+    read: () =>
+      Promise.reject(
+        new TypeError("Recorded run plans are not composed in this fixture."),
+      ),
   };
 }
 

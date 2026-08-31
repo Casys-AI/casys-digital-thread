@@ -182,19 +182,32 @@ export interface ProjectCapabilityBindingReplacement {
 }
 
 /**
+ * Additions (`previous === null`) stay amendments. Published evidence is
+ * scoped to the replaced requirement: unrelated Thread snapshots cannot
+ * force a method transition.
+ */
+export function projectCapabilityBindingReplacementChangesMethod(
+  replacement: ProjectCapabilityBindingReplacement,
+): boolean {
+  if (replacement.previous === null) return false;
+  if (replacement.next === null) return true;
+  return !sameVersionedMethodIdentity(replacement.previous, replacement.next);
+}
+
+/**
  * Additions (`previous === null`) stay amendments. Thread evidence binds a
  * project to a versioned method, not an adapter's internal source location.
- * Dropping a prior binding or changing that method identity needs a transition.
+ * Dropping a prior binding or changing that method identity needs a transition
+ * only when that same requirement has published method evidence.
  */
 export function projectCapabilityChangeRequiresMethodTransition(
   delta: ProjectCapabilityEnvelopeDelta,
-  hasThreadEvidence: boolean,
+  hasPublishedMethodEvidence: (requirementKey: string) => boolean,
 ): boolean {
-  return hasThreadEvidence && delta.bindingReplacements.some((replacement) => {
-    if (replacement.previous === null) return false;
-    if (replacement.next === null) return true;
-    return !sameVersionedMethodIdentity(replacement.previous, replacement.next);
-  });
+  return delta.bindingReplacements.some((replacement) =>
+    projectCapabilityBindingReplacementChangesMethod(replacement) &&
+    hasPublishedMethodEvidence(replacement.requirementKey)
+  );
 }
 
 /**

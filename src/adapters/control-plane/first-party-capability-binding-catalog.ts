@@ -53,6 +53,8 @@ import {
 } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
 import { validateCapabilityRuntimeCatalog } from "./capability-runtime-catalog.ts";
 import {
+  CHRONO_PREDECESSOR_IMAGE_REFERENCE,
+  createFirstPartyChronoRolloverPredecessorLaunchGroup,
   createFirstPartySysonRolloverPredecessorLaunchGroup,
   firstPartyBuild123dObservationLaunchGroupReference,
   firstPartyBuild123dSandboxLaunchGroupReference,
@@ -480,6 +482,34 @@ export async function createFirstPartySysonRolloverPredecessorUnit(): Promise<
     "1.0.0",
   );
   return predecessorUnit;
+}
+
+/**
+ * The only retired Chrono unit identity accepted while reading immutable
+ * host-lock history for the 0.3.1 → 0.3.2 transition. It is intentionally
+ * not a runtime catalogue: normal selection exposes the successor only.
+ */
+export async function createFirstPartyChronoRolloverPredecessorUnit(): Promise<
+  AtomicCapabilityRuntimeUnit
+> {
+  const [successor, predecessorGroup] = await Promise.all([
+    createFirstPartyCapabilityRuntimeCatalog(),
+    createFirstPartyChronoRolloverPredecessorLaunchGroup(),
+  ]);
+  const successorUnit = successor.units.find((unit) => unit.id === "casys.mcp-chrono");
+  if (!successorUnit) {
+    throw new Error("Current first-party catalogue lacks casys.mcp-chrono.");
+  }
+  const materials = successorUnit.materials.map((material) => ({
+    ...material,
+    imageReference: CHRONO_PREDECESSOR_IMAGE_REFERENCE,
+    launchGroup: {
+      id: predecessorGroup.id,
+      version: predecessorGroup.version,
+      fingerprint: structuredClone(predecessorGroup.fingerprint),
+    },
+  }));
+  return await unit("casys.mcp-chrono", materials, "0.3.1");
 }
 
 /**

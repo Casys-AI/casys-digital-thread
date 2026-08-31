@@ -42,6 +42,7 @@ import { FileCapabilityRuntimeQualificationAttestationStore } from "./file-capab
 import { FileProjectCapabilityLedgerStore } from "./file-project-capability-ledger-store.ts";
 import {
   createFirstPartyCapabilityRuntimeCatalog,
+  createFirstPartyChronoRolloverPredecessorUnit,
   createFirstPartySysonRolloverPredecessorUnit,
   firstPartyAdmittedModelicaHistoryPredecessor,
   firstPartyBuild123dObservationHistoryPredecessor,
@@ -141,12 +142,14 @@ export async function createLocalCapabilityRuntimeReadComposition(
   const [
     catalog,
     predecessorSysonUnit,
+    predecessorChronoUnit,
     launchGroups,
     qualificationCandidates,
     qualificationSpecs,
   ] = await Promise.all([
     createFirstPartyCapabilityRuntimeCatalog(),
     createFirstPartySysonRolloverPredecessorUnit(),
+    createFirstPartyChronoRolloverPredecessorUnit(),
     createFirstPartyCapabilityRuntimeLaunchGroupRegistry(),
     createFirstPartyCapabilityRuntimeQualificationCandidates(),
     createFirstPartyCapabilityRuntimeQualificationSpecifications(),
@@ -335,6 +338,7 @@ export async function createLocalCapabilityRuntimeReadComposition(
       catalog,
       [
         predecessorSysonUnit,
+        predecessorChronoUnit,
         firstPartyBuild123dSandboxHistoryPredecessor(),
         firstPartyBuild123dObservationHistoryPredecessor(),
         firstPartyGeometryModuleAssemblerHistoryPredecessor(),
