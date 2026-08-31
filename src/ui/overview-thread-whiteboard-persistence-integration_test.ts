@@ -43,6 +43,15 @@ Deno.test("Project whiteboard hydrates exact local presentation state before aut
   );
 });
 
+Deno.test("Project whiteboard persistence follows the stable project identity across revisions", async () => {
+  const overview = await Deno.readTextFile(
+    new URL("./src/project/overview.tsx", import.meta.url),
+  );
+
+  assertStringIncludes(overview, "projectId={project.project.id}");
+  assertEquals(overview.includes("projectId={project.id}"), false);
+});
+
 Deno.test("Project whiteboard reconciles viewers from current exact Thread capabilities", async () => {
   const source = await heroSource();
 
@@ -50,15 +59,16 @@ Deno.test("Project whiteboard reconciles viewers from current exact Thread capab
     source,
     "overviewThreadD3FlowGroupIdentity(item.lane, item.groupKey)",
   );
-  assertStringIncludes(source, "result[item.key] = { activity: true };");
-  assertStringIncludes(
-    source,
-    "const capabilities = resolveOverviewThreadViewerCapabilities(\n        thread,\n        item.node,",
-  );
   assertStringIncludes(
     source,
     "sessionIds: (viewerSessionsByNodeKey.get(item.key) ?? []).map(",
   );
+  assertEquals(
+    source.includes("resolveOverviewThreadViewerCapabilities"),
+    false,
+  );
+  assertEquals(source.includes("record: true"), false);
+  assertEquals(source.includes("activity: true"), false);
   assertEquals(source.includes("cadAssetIds:"), false);
   assertStringIncludes(
     source,

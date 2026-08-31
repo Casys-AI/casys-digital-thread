@@ -20,10 +20,11 @@ import {
  * are admitted only after exact reconciliation with that snapshot.
  */
 
-export const OVERVIEW_THREAD_WHITEBOARD_PRESENTATION_VERSION = 2;
+export const OVERVIEW_THREAD_WHITEBOARD_PRESENTATION_VERSION = 3;
 
 const STORAGE_NAMESPACE = "casys.project-whiteboard.presentation";
 const PRESENTATION_SCHEMA = "casys-project-whiteboard-presentation";
+const LEGACY_PRESENTATION_VERSIONS = [2, 1] as const;
 const MAX_PROJECT_ID_LENGTH = 512;
 const MAX_ID_LENGTH = 4_096;
 const MAX_PLACEMENT_COUNT = 10_000;
@@ -59,16 +60,6 @@ interface OverviewThreadWhiteboardPresentationViewerBase {
   readonly restoreGeometry?: OverviewThreadViewerGeometry;
 }
 
-export interface OverviewThreadWhiteboardRecordPresentationViewer
-  extends OverviewThreadWhiteboardPresentationViewerBase {
-  readonly kind: "record";
-}
-
-export interface OverviewThreadWhiteboardActivityPresentationViewer
-  extends OverviewThreadWhiteboardPresentationViewerBase {
-  readonly kind: "activity";
-}
-
 /**
  * One exact server-projected viewer descriptor. Local state retains only its
  * stable session id and spatial presentation — never its URL or runtime data.
@@ -80,13 +71,9 @@ export interface OverviewThreadWhiteboardSessionPresentationViewer
 }
 
 export type OverviewThreadWhiteboardPresentationViewer =
-  | OverviewThreadWhiteboardRecordPresentationViewer
-  | OverviewThreadWhiteboardActivityPresentationViewer
-  | OverviewThreadWhiteboardSessionPresentationViewer;
+  OverviewThreadWhiteboardSessionPresentationViewer;
 
 export interface OverviewThreadWhiteboardViewerCapability {
-  readonly record?: boolean;
-  readonly activity?: boolean;
   /** Exact session keys from the current viewer-sessions replacement. */
   readonly sessionIds?: readonly string[] | ReadonlySet<string>;
 }
@@ -119,11 +106,19 @@ interface OverviewThreadWhiteboardPresentationEnvelope {
 export function overviewThreadWhiteboardPresentationStorageKey(
   projectId: string,
 ): string | undefined {
+  return presentationStorageKey(
+    projectId,
+    OVERVIEW_THREAD_WHITEBOARD_PRESENTATION_VERSION,
+  );
+}
+
+function presentationStorageKey(
+  projectId: string,
+  version: number,
+): string | undefined {
   if (!isSafeId(projectId, MAX_PROJECT_ID_LENGTH)) return undefined;
   try {
-    return `${STORAGE_NAMESPACE}:v${OVERVIEW_THREAD_WHITEBOARD_PRESENTATION_VERSION}:${
-      encodeURIComponent(projectId)
-    }`;
+    return `${STORAGE_NAMESPACE}:v${version}:${encodeURIComponent(projectId)}`;
   } catch {
     return undefined;
   }
@@ -211,8 +206,6 @@ export function reconcileOverviewThreadWhiteboardPresentation(
     if (!nodeKeys.has(viewer.nodeKey)) return false;
     const capability = ownValue(current.viewerCapabilities, viewer.nodeKey);
     if (!capability) return false;
-    if (viewer.kind === "record") return capability.record === true;
-    if (viewer.kind === "activity") return capability.activity === true;
     return hasExactSessionId(capability.sessionIds, viewer.sessionId);
   });
 
@@ -239,14 +232,50 @@ export function loadOverviewThreadWhiteboardPresentation(
   } catch {
     return undefined;
   }
-  if (serialized === null) return undefined;
-  const parsed = parseOverviewThreadWhiteboardPresentation(
-    serialized,
-    projectId,
-  );
-  return parsed
-    ? reconcileOverviewThreadWhiteboardPresentation(parsed, current)
-    : undefined;
+  if (serialized !== null) {
+    const parsed = parseOverviewThreadWhiteboardPresentation(
+      serialized,
+      projectId,
+    );
+    return parsed
+      ? reconcileOverviewThreadWhiteboardPresentation(parsed, current)
+      : undefined;
+  }
+
+  for (const version of LEGACY_PRESENTATION_VERSIONS) {
+    const legacyKey = presentationStorageKey(projectId, version);
+    if (!legacyKey) continue;
+    let legacySerialized: string | null;
+    try {
+      legacySerialized = storage.getItem(legacyKey);
+    } catch {
+      return undefined;
+    }
+    if (legacySerialized === null) continue;
+    const migrated = parseLegacyOverviewThreadWhiteboardPresentation(
+      legacySerialized,
+      projectId,
+      version,
+    );
+    if (!migrated) return undefined;
+    const reconciled = reconcileOverviewThreadWhiteboardPresentation(
+      migrated,
+      current,
+    );
+    const currentSerialized = serializeOverviewThreadWhiteboardPresentation(
+      projectId,
+      reconciled,
+    );
+    if (currentSerialized) {
+      try {
+        storage.setItem(key, currentSerialized);
+      } catch {
+        // A read remains useful when local storage is temporarily read-only.
+      }
+    }
+    return reconciled;
+  }
+  return undefined;
 }
 
 /**
@@ -298,6 +327,75 @@ function parsePresentationState(
   }
   return {
     layoutMode: candidate.layoutMode,
+    groupPlacements,
+    nodePlacements,
+    transform,
+    viewers,
+  };
+}
+
+/**
+ * Migrates only presentation geometry from retired schemas. Native viewer
+ * entries are intentionally discarded; exact MCP App sessions from v2 may be
+ * retained and are still reconciled against the current Thread snapshot.
+ */
+function parseLegacyOverviewThreadWhiteboardPresentation(
+  serialized: string,
+  projectId: string,
+  version: (typeof LEGACY_PRESENTATION_VERSIONS)[number],
+): OverviewThreadWhiteboardPresentationState | undefined {
+  let candidate: unknown;
+  try {
+    candidate = JSON.parse(serialized);
+  } catch {
+    return undefined;
+  }
+  if (
+    !isExactRecord(candidate, ["schema", "version", "projectId", "state"]) ||
+    candidate.schema !== PRESENTATION_SCHEMA ||
+    candidate.version !== version ||
+    candidate.projectId !== projectId ||
+    !isRecord(candidate.state) ||
+    !isExactRecord(candidate.state, [
+      "layoutMode",
+      "groupPlacements",
+      "nodePlacements",
+      "transform",
+      "viewers",
+    ]) ||
+    (candidate.state.layoutMode !== "hierarchy" &&
+      candidate.state.layoutMode !== "radial") ||
+    !Array.isArray(candidate.state.viewers) ||
+    candidate.state.viewers.length > MAX_VIEWER_COUNT
+  ) {
+    return undefined;
+  }
+
+  const groupPlacements = parseGroupPlacements(candidate.state.groupPlacements);
+  const nodePlacements = parseNodePlacements(candidate.state.nodePlacements);
+  const transform = parseTransform(candidate.state.transform);
+  if (!groupPlacements || !nodePlacements || !transform) return undefined;
+
+  const viewers: OverviewThreadWhiteboardPresentationViewer[] = [];
+  const seenIds = new Set<string>();
+  for (const value of candidate.state.viewers) {
+    if (!isRecord(value) || typeof value.kind !== "string") return undefined;
+    if (value.kind === "session") {
+      if (version !== 2) return undefined;
+      const viewer = parseViewer(value);
+      if (!viewer || seenIds.has(viewer.id)) return undefined;
+      seenIds.add(viewer.id);
+      viewers.push(viewer);
+      continue;
+    }
+    const retiredKinds = version === 1
+      ? ["record", "activity", "cad"]
+      : ["record", "activity"];
+    if (!retiredKinds.includes(value.kind)) return undefined;
+  }
+
+  return {
+    layoutMode: candidate.state.layoutMode,
     groupPlacements,
     nodePlacements,
     transform,
@@ -454,31 +552,19 @@ function parseViewer(
   candidate: unknown,
 ): OverviewThreadWhiteboardPresentationViewer | undefined {
   if (!isRecord(candidate)) return undefined;
-  const isSession = candidate.kind === "session";
   const hasRestoreGeometry = Object.hasOwn(candidate, "restoreGeometry");
-  const keys = isSession
-    ? [
-      "kind",
-      "id",
-      "nodeKey",
-      "sessionId",
-      "geometry",
-      "z",
-      "expanded",
-      ...(hasRestoreGeometry ? ["restoreGeometry"] : []),
-    ]
-    : [
-      "kind",
-      "id",
-      "nodeKey",
-      "geometry",
-      "z",
-      "expanded",
-      ...(hasRestoreGeometry ? ["restoreGeometry"] : []),
-    ];
+  const keys = [
+    "kind",
+    "id",
+    "nodeKey",
+    "sessionId",
+    "geometry",
+    "z",
+    "expanded",
+    ...(hasRestoreGeometry ? ["restoreGeometry"] : []),
+  ];
   if (
-    (candidate.kind !== "record" && candidate.kind !== "activity" &&
-      !isSession) ||
+    candidate.kind !== "session" ||
     !isExactRecord(candidate, keys) ||
     !isSafeId(candidate.id) ||
     !isSafeId(candidate.nodeKey) ||
@@ -498,32 +584,17 @@ function parseViewer(
     : undefined;
   if (!geometry || (candidate.expanded && !restoreGeometry)) return undefined;
 
-  if (isSession) {
-    if (!isSafeId(candidate.sessionId)) return undefined;
-    const viewer: OverviewThreadWhiteboardSessionPresentationViewer = {
-      kind: "session",
-      id: candidate.id,
-      nodeKey: candidate.nodeKey,
-      sessionId: candidate.sessionId,
-      geometry,
-      z: candidate.z as number,
-      expanded: candidate.expanded,
-      ...(restoreGeometry ? { restoreGeometry } : {}),
-    };
-    return viewer.id === expectedViewerId(viewer) ? viewer : undefined;
-  }
-
-  const viewer:
-    | OverviewThreadWhiteboardRecordPresentationViewer
-    | OverviewThreadWhiteboardActivityPresentationViewer = {
-      kind: candidate.kind === "record" ? "record" : "activity",
-      id: candidate.id,
-      nodeKey: candidate.nodeKey,
-      geometry,
-      z: candidate.z as number,
-      expanded: candidate.expanded,
-      ...(restoreGeometry ? { restoreGeometry } : {}),
-    };
+  if (!isSafeId(candidate.sessionId)) return undefined;
+  const viewer: OverviewThreadWhiteboardSessionPresentationViewer = {
+    kind: "session",
+    id: candidate.id,
+    nodeKey: candidate.nodeKey,
+    sessionId: candidate.sessionId,
+    geometry,
+    z: candidate.z as number,
+    expanded: candidate.expanded,
+    ...(restoreGeometry ? { restoreGeometry } : {}),
+  };
   return viewer.id === expectedViewerId(viewer) ? viewer : undefined;
 }
 
@@ -550,10 +621,7 @@ function parseViewerGeometry(
 function expectedViewerId(
   viewer: OverviewThreadWhiteboardPresentationViewer,
 ): string {
-  if (viewer.kind === "session") {
-    return `session:${viewer.nodeKey}:${viewer.sessionId}`;
-  }
-  return `${viewer.kind}:${viewer.nodeKey}`;
+  return `session:${viewer.nodeKey}:${viewer.sessionId}`;
 }
 
 function isPlacement(

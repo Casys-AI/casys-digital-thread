@@ -280,7 +280,7 @@ export function ProjectOverview({
 
           <OverviewThreadHero
             thread={thread}
-            projectId={project.id}
+            projectId={project.project.id}
             viewerSessions={viewerSessions}
             activities={projectPath.activities}
             immersive

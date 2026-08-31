@@ -30,18 +30,17 @@ import {
   overviewThreadD3FlowRoundedPath,
   type OverviewThreadD3FlowSegmentLayout,
 } from "./overview-thread-d3-flow-layout.ts";
-import { OverviewThreadInstrument as InstrumentCard } from "./overview-thread-instrument.tsx";
-import {
-  type OverviewThreadInstrument,
-  overviewThreadInstrumentPresentation,
-} from "./overview-thread-instrument-model.ts";
 import {
   overviewThreadHullControlsVisible,
   overviewThreadHullLabel,
   overviewThreadHullLabelBudget,
   overviewThreadHullNameParts,
 } from "./overview-thread-hull-model.ts";
-import { overviewThreadInstrumentTime } from "./overview-thread-instrument-model.ts";
+import {
+  overviewThreadGroupContextValue,
+  overviewThreadNodeContextValue,
+} from "./overview-thread-context-target.ts";
+import { DropdownMenuContextTrigger } from "../ui/dropdown-menu.tsx";
 
 export type OverviewThreadD3FlowMoveDirection =
   | "ArrowUp"
@@ -67,8 +66,6 @@ export interface OverviewThreadD3FlowProps {
   readonly onHover: (key: string | undefined) => void;
   readonly onFocus: (key: string) => void;
   readonly onToggle: (key: string) => void;
-  /** Context-menu mouse/keyboard gesture for one exact App, never a chooser. */
-  readonly onRequestExactApp: (key: string) => void;
   readonly onMoveGroup?: (
     key: string,
     position: { readonly x: number; readonly y: number },
@@ -98,11 +95,8 @@ export interface OverviewThreadD3FlowProps {
     direction: OverviewThreadD3FlowMoveDirection,
   ) => void;
   readonly refNode: (key: string, node: HTMLButtonElement | null) => void;
-  /** Instruments currently open on the board, anchored to their node. */
-  readonly instruments?: readonly OverviewThreadInstrument[];
-  /** Live board scale: an instrument reads as a chip when zoomed out. */
+  /** Live board scale: hull controls retract when zoomed out. */
   readonly boardScale?: number;
-  readonly onOpenInstrument?: (key: string) => void;
 }
 
 interface OverviewFlowDragState {
@@ -768,7 +762,6 @@ export function OverviewThreadD3Flow({
   onHover,
   onFocus,
   onToggle,
-  onRequestExactApp,
   onMoveGroup,
   onMoveNode,
   onResizeGroup,
@@ -778,9 +771,7 @@ export function OverviewThreadD3Flow({
   onScrollGroup,
   onMove,
   refNode,
-  instruments = [],
   boardScale = 1,
-  onOpenInstrument,
 }: OverviewThreadD3FlowProps): JSX.Element {
   const titleId = useId();
   const descriptionId = useId();
@@ -1166,22 +1157,31 @@ export function OverviewThreadD3Flow({
           </g>
           <g className="overview-thread-flow-groups">
             {layout.groups.map((group) => (
-              <rect
+              <DropdownMenuContextTrigger
                 key={group.key}
-                x={group.x - FLOW_HULL_MARGIN}
-                y={group.y - FLOW_HULL_MARGIN}
-                width={group.width + FLOW_HULL_MARGIN * 2}
-                height={group.height + FLOW_HULL_MARGIN * 2}
-                rx="12"
-                data-lane={group.lane}
-                data-draggable={onMoveGroup ? "true" : "false"}
-                vectorEffect="non-scaling-stroke"
-                onPointerDown={(event) => beginDrag("group", group.key, event)}
-                onPointerMove={moveDrag}
-                onPointerUp={endDrag}
-                onPointerCancel={(event) => endDrag(event, false)}
-                onLostPointerCapture={(event) => endDrag(event, false)}
-              />
+                value={overviewThreadGroupContextValue(group.key)}
+                asChild
+              >
+                <rect
+                  x={group.x - FLOW_HULL_MARGIN}
+                  y={group.y - FLOW_HULL_MARGIN}
+                  width={group.width + FLOW_HULL_MARGIN * 2}
+                  height={group.height + FLOW_HULL_MARGIN * 2}
+                  rx="12"
+                  data-lane={group.lane}
+                  data-draggable={onMoveGroup ? "true" : "false"}
+                  data-overview-context-target={overviewThreadGroupContextValue(
+                    group.key,
+                  )}
+                  vectorEffect="non-scaling-stroke"
+                  onPointerDown={(event) =>
+                    beginDrag("group", group.key, event)}
+                  onPointerMove={moveDrag}
+                  onPointerUp={endDrag}
+                  onPointerCancel={(event) => endDrag(event, false)}
+                  onLostPointerCapture={(event) => endDrag(event, false)}
+                />
+              </DropdownMenuContextTrigger>
             ))}
           </g>
           <FlowSegmentLayer
@@ -1233,55 +1233,64 @@ export function OverviewThreadD3Flow({
                   "currentColor",
               } as CSSProperties}
             >
-              <button
-                type="button"
-                className="overview-thread-flow-group-label"
-                data-lane={group.lane}
-                data-draggable={onMoveGroup ? "true" : "false"}
-                disabled={!onMoveGroup}
-                aria-label={`Move ${
-                  flowGroupCaption(group)
-                } group. Drag, use the arrow keys, or open its context menu.`}
-                aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+F10"
-                title={group.title ?? flowGroupCaption(group)}
-                onPointerDown={(event) => beginDrag("group", group.key, event)}
-                onPointerMove={moveDrag}
-                onPointerUp={endDrag}
-                onPointerCancel={(event) => endDrag(event, false)}
-                onLostPointerCapture={(event) => endDrag(event, false)}
-                onKeyDown={(event) => {
-                  if (!onMoveGroup || !isFlowMoveDirection(event.key)) return;
-                  event.preventDefault();
-                  const delta = flowKeyboardMoveDelta(event.key);
-                  onMoveGroup(group.key, {
-                    x: clampNumber(
-                      group.x + delta.x,
-                      -FLOW_PRACTICAL_WORLD_LIMIT,
-                      FLOW_PRACTICAL_WORLD_LIMIT,
-                    ),
-                    y: clampNumber(
-                      group.y + delta.y,
-                      -FLOW_PRACTICAL_WORLD_LIMIT,
-                      FLOW_PRACTICAL_WORLD_LIMIT,
-                    ),
-                  });
-                }}
+              <DropdownMenuContextTrigger
+                value={overviewThreadGroupContextValue(group.key)}
+                asChild
               >
-                <span className="overview-thread-flow-group-name">
-                  {overviewThreadHullLabel(
-                    group.title ?? flowGroupCaption(group),
-                    overviewThreadHullLabelBudget(group.width),
+                <button
+                  type="button"
+                  className="overview-thread-flow-group-label"
+                  data-lane={group.lane}
+                  data-draggable={onMoveGroup ? "true" : "false"}
+                  data-overview-context-target={overviewThreadGroupContextValue(
+                    group.key,
                   )}
-                </span>
-                {bandFitsControls(group.width) && (
-                  <span
-                    className="overview-thread-flow-group-scope"
-                    aria-hidden="true"
-                  >
-                    {group.lane}
+                  disabled={!onMoveGroup}
+                  aria-label={`Move ${
+                    flowGroupCaption(group)
+                  } group. Drag, use the arrow keys, or open its context menu.`}
+                  aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+F10"
+                  title={group.title ?? flowGroupCaption(group)}
+                  onPointerDown={(event) =>
+                    beginDrag("group", group.key, event)}
+                  onPointerMove={moveDrag}
+                  onPointerUp={endDrag}
+                  onPointerCancel={(event) => endDrag(event, false)}
+                  onLostPointerCapture={(event) => endDrag(event, false)}
+                  onKeyDown={(event) => {
+                    if (!onMoveGroup || !isFlowMoveDirection(event.key)) return;
+                    event.preventDefault();
+                    const delta = flowKeyboardMoveDelta(event.key);
+                    onMoveGroup(group.key, {
+                      x: clampNumber(
+                        group.x + delta.x,
+                        -FLOW_PRACTICAL_WORLD_LIMIT,
+                        FLOW_PRACTICAL_WORLD_LIMIT,
+                      ),
+                      y: clampNumber(
+                        group.y + delta.y,
+                        -FLOW_PRACTICAL_WORLD_LIMIT,
+                        FLOW_PRACTICAL_WORLD_LIMIT,
+                      ),
+                    });
+                  }}
+                >
+                  <span className="overview-thread-flow-group-name">
+                    {overviewThreadHullLabel(
+                      group.title ?? flowGroupCaption(group),
+                      overviewThreadHullLabelBudget(group.width),
+                    )}
                   </span>
-                )}
-              </button>
+                  {bandFitsControls(group.width) && (
+                    <span
+                      className="overview-thread-flow-group-scope"
+                      aria-hidden="true"
+                    >
+                      {group.lane}
+                    </span>
+                  )}
+                </button>
+              </DropdownMenuContextTrigger>
               {controlsVisible && bandFitsControls(group.width) &&
                 !group.collapsed && onSetGroupView && (
                 <>
@@ -1343,35 +1352,36 @@ export function OverviewThreadD3Flow({
           ))}
           {layout.groups.filter((group) =>
             group.view === "list" && !group.collapsed
-          ).map((group) => (
-            <div
-              key={`foot:${group.key}`}
-              className="overview-thread-flow-group-foot"
-              data-lane={group.lane}
-              style={{
-                "--flow-x": flowXPercent(
-                  group.x + group.width / 2,
-                  layout.viewBox,
-                ),
-                "--flow-y": flowYPercent(
-                  group.y + group.height - group.footerHeight / 2,
-                  layout.viewBox,
-                ),
-                "--hull-width": flowWidthPercent(
-                  group.width + FLOW_HULL_MARGIN * 2,
-                  layout.viewBox,
-                ),
-                "--flow-color": laneColorById.get(group.lane) ??
-                  "currentColor",
-              } as CSSProperties}
-            >
-              {Math.min(group.visibleRows * group.columns, group.rowCount)}
-              {" / "}
-              {group.rowCount}
-              {group.rowCount > group.visibleRows * group.columns &&
-                " — molette dans le hull"}
-            </div>
-          ))}
+          )
+            .map((group) => (
+              <div
+                key={`foot:${group.key}`}
+                className="overview-thread-flow-group-foot"
+                data-lane={group.lane}
+                style={{
+                  "--flow-x": flowXPercent(
+                    group.x + group.width / 2,
+                    layout.viewBox,
+                  ),
+                  "--flow-y": flowYPercent(
+                    group.y + group.height - group.footerHeight / 2,
+                    layout.viewBox,
+                  ),
+                  "--hull-width": flowWidthPercent(
+                    group.width + FLOW_HULL_MARGIN * 2,
+                    layout.viewBox,
+                  ),
+                  "--flow-color": laneColorById.get(group.lane) ??
+                    "currentColor",
+                } as CSSProperties}
+              >
+                {Math.min(group.visibleRows * group.columns, group.rowCount)}
+                {" / "}
+                {group.rowCount}
+                {group.rowCount > group.visibleRows * group.columns &&
+                  " — molette dans le hull"}
+              </div>
+            ))}
           {layout.groups.filter((group) => !group.collapsed).map((group) => {
             const live = group.nodeKeys.filter((key) => {
               const item = nodesByKey.get(key);
@@ -1453,7 +1463,6 @@ export function OverviewThreadD3Flow({
                 onHover={(hovered) =>
                   onHover(hovered ? position.key : undefined)}
                 onFocus={() => onFocus(position.key)}
-                onRequestExactApp={() => onRequestExactApp(position.key)}
                 onToggle={(event) =>
                   event
                     ? toggleUnlessDragged(position.key, event)
@@ -1467,31 +1476,6 @@ export function OverviewThreadD3Flow({
             );
           })}
         </div>
-        {instruments.length > 0 && (
-          <div className="overview-thread-flow-instruments">
-            {instruments.map((instrument) => {
-              const position = layout.nodes.find((node) =>
-                node.key === instrument.nodeKey
-              );
-              if (!position) return null;
-              return (
-                <InstrumentCard
-                  key={instrument.key}
-                  instrument={instrument}
-                  presentation={overviewThreadInstrumentPresentation(
-                    boardScale,
-                  )}
-                  x={flowXPercent(position.centerX, layout.viewBox)}
-                  y={flowYPercent(position.centerY, layout.viewBox)}
-                  color={laneColorById.get(position.lane) ?? "currentColor"}
-                  onOpen={onOpenInstrument
-                    ? () => onOpenInstrument(instrument.nodeKey)
-                    : undefined}
-                />
-              );
-            })}
-          </div>
-        )}
       </div>
     </section>
   );
@@ -1537,9 +1521,21 @@ function flowRowMeta(item: OverviewHeroNode): string {
   if (item.kind === "activity") return flowStatusCaption(item.activity.status);
   if (item.node.freshness === "running") return "RUNNING";
   if (item.node.freshness === "failed") return "échec";
-  const at = overviewThreadInstrumentTime(item.node.recordedAt);
+  const at = overviewThreadRecordedTime(item.node.recordedAt);
   if (!at) return item.node.freshness === "stale" ? "périmé" : "";
   return item.node.freshness === "stale" ? `${at} périmé` : `${at} ✓`;
+}
+
+/** Wall-clock only: a compact row shows a time, never a full timestamp. */
+function overviewThreadRecordedTime(
+  recordedAt: string | undefined,
+): string | undefined {
+  if (!recordedAt) return undefined;
+  const parsed = new Date(recordedAt);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  return `${String(parsed.getHours()).padStart(2, "0")}:${
+    String(parsed.getMinutes()).padStart(2, "0")
+  }`;
 }
 
 function FlowNode({
@@ -1555,7 +1551,6 @@ function FlowNode({
   refNode,
   onHover,
   onFocus,
-  onRequestExactApp,
   onToggle,
   onDragStart,
   onDrag,
@@ -1575,7 +1570,6 @@ function FlowNode({
   readonly refNode: (node: HTMLButtonElement | null) => void;
   readonly onHover: (hovered: boolean) => void;
   readonly onFocus: () => void;
-  readonly onRequestExactApp: () => void;
   readonly onToggle: (event?: ReactMouseEvent<HTMLButtonElement>) => void;
   readonly onDragStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   readonly onDrag: (event: ReactPointerEvent<HTMLButtonElement>) => void;
@@ -1586,104 +1580,98 @@ function FlowNode({
   readonly onMove: (direction: OverviewThreadD3FlowMoveDirection) => void;
 }): JSX.Element {
   return (
-    <button
-      ref={refNode}
-      type="button"
-      tabIndex={tabIndex}
-      aria-label={flowNodeAriaLabel(item)}
-      aria-pressed={selected}
-      aria-controls={selected ? "overview-thread-selection" : undefined}
-      aria-expanded={selected}
-      className="overview-thread-flow-node"
-      data-kind={item.kind}
-      data-status={item.kind === "activity" ? item.activity.status : undefined}
-      data-lane={position.lane}
-      data-state={selected ? "selected" : related ? "related" : "muted"}
-      data-focused={focused ? "true" : "false"}
-      data-draggable={draggable ? "true" : "false"}
-      data-emphasis={item.kind === "recorded" && item.emphasis
-        ? "true"
-        : "false"}
-      data-listed={position.listed ? "true" : "false"}
-      aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+F10"
-      style={{
-        "--flow-x": position.listed
-          ? flowXPercent(position.x, viewBox)
-          : flowXPercent(position.centerX, viewBox),
-        "--flow-y": flowYPercent(position.centerY, viewBox),
-        "--row-width": flowWidthPercent(position.width, viewBox),
-        "--row-height": flowHeightPercent(position.height, viewBox),
-        "--flow-color": color,
-      } as CSSProperties}
-      onClick={onToggle}
-      onPointerDown={onDragStart}
-      onPointerMove={onDrag}
-      onPointerUp={onDragEnd}
-      onPointerCancel={onDragCancel}
-      onLostPointerCapture={onDragCancel}
-      onMouseEnter={() => onHover(true)}
-      onMouseLeave={() => onHover(false)}
-      onFocus={onFocus}
-      onBlur={() => onHover(false)}
-      onContextMenu={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onRequestExactApp();
-      }}
-      onKeyDown={(event) => {
-        if (
-          event.key === "ContextMenu" ||
-          (event.shiftKey && event.key === "F10")
-        ) {
-          event.preventDefault();
-          event.stopPropagation();
-          onRequestExactApp();
-          return;
-        }
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onToggle();
-          return;
-        }
-        if (isFlowMoveDirection(event.key)) {
-          event.preventDefault();
-          onMove(event.key);
-        }
-      }}
+    <DropdownMenuContextTrigger
+      value={overviewThreadNodeContextValue(item.key)}
+      asChild
     >
-      {position.listed ? <FlowRowBody item={item} /> : (
-        <span
-          className="overview-thread-flow-node-dot"
-          aria-hidden="true"
-        />
-      )}
-      {item.kind === "activity"
-        ? (
+      <button
+        ref={refNode}
+        type="button"
+        tabIndex={tabIndex}
+        aria-label={flowNodeAriaLabel(item)}
+        aria-pressed={selected}
+        aria-controls={selected ? "overview-thread-selection" : undefined}
+        aria-expanded={selected}
+        className="overview-thread-flow-node"
+        data-kind={item.kind}
+        data-status={item.kind === "activity"
+          ? item.activity.status
+          : undefined}
+        data-lane={position.lane}
+        data-state={selected ? "selected" : related ? "related" : "muted"}
+        data-focused={focused ? "true" : "false"}
+        data-draggable={draggable ? "true" : "false"}
+        data-emphasis={item.kind === "recorded" && item.emphasis
+          ? "true"
+          : "false"}
+        data-overview-context-target={overviewThreadNodeContextValue(item.key)}
+        data-listed={position.listed ? "true" : "false"}
+        aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+F10"
+        style={{
+          "--flow-x": position.listed
+            ? flowXPercent(position.x, viewBox)
+            : flowXPercent(position.centerX, viewBox),
+          "--flow-y": flowYPercent(position.centerY, viewBox),
+          "--row-width": flowWidthPercent(position.width, viewBox),
+          "--row-height": flowHeightPercent(position.height, viewBox),
+          "--flow-color": color,
+        } as CSSProperties}
+        onClick={onToggle}
+        onPointerDown={onDragStart}
+        onPointerMove={onDrag}
+        onPointerUp={onDragEnd}
+        onPointerCancel={onDragCancel}
+        onLostPointerCapture={onDragCancel}
+        onMouseEnter={() => onHover(true)}
+        onMouseLeave={() => onHover(false)}
+        onFocus={onFocus}
+        onBlur={() => onHover(false)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onToggle();
+            return;
+          }
+          if (isFlowMoveDirection(event.key)) {
+            event.preventDefault();
+            onMove(event.key);
+          }
+        }}
+      >
+        {position.listed ? <FlowRowBody item={item} /> : (
           <span
-            className="overview-thread-flow-activity-label"
-            data-status={item.activity.status}
+            className="overview-thread-flow-node-dot"
             aria-hidden="true"
-          >
-            <strong>{item.activity.title}</strong>
-            <span className="overview-thread-flow-activity-status">
-              <span
-                className="overview-thread-flow-activity-status-mark"
-                aria-hidden="true"
-              />
-              {flowStatusCaption(item.activity.status)}
-            </span>
-          </span>
-        )
-        : (
-          <span
-            className="overview-thread-flow-node-tooltip"
-            aria-hidden="true"
-          >
-            <strong>{item.label}</strong>
-            <span>{flowNodeDescription(item)}</span>
-          </span>
+          />
         )}
-    </button>
+        {item.kind === "activity"
+          ? (
+            <span
+              className="overview-thread-flow-activity-label"
+              data-status={item.activity.status}
+              aria-hidden="true"
+            >
+              <strong>{item.activity.title}</strong>
+              <span className="overview-thread-flow-activity-status">
+                <span
+                  className="overview-thread-flow-activity-status-mark"
+                  aria-hidden="true"
+                />
+                {flowStatusCaption(item.activity.status)}
+              </span>
+            </span>
+          )
+          : (
+            <span
+              className="overview-thread-flow-node-tooltip"
+              aria-hidden="true"
+            >
+              <strong>{item.label}</strong>
+              <span>{flowNodeDescription(item)}</span>
+            </span>
+          )}
+      </button>
+    </DropdownMenuContextTrigger>
   );
 }
 

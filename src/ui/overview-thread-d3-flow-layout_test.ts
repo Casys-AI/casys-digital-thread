@@ -1,4 +1,4 @@
-import { assert, assertAlmostEquals, assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import { overviewThreadD3CableSvgPathClear } from "./src/project/overview-thread-d3-cable-field.ts";
 import {
   buildOverviewThreadD3FlowLayout,
@@ -38,8 +38,12 @@ Deno.test(
     );
     assertEquals(layout, reversed, "Input order must not affect the layout");
 
-    const requirements = layout.nodes.filter((node) => node.lane === "requirements");
-    const geometryParts = layout.nodes.filter((node) => node.lane === "geometry");
+    const requirements = layout.nodes.filter((node) =>
+      node.lane === "requirements"
+    );
+    const geometryParts = layout.nodes.filter((node) =>
+      node.lane === "geometry"
+    );
     assertEquals(requirements.length, REQUIREMENT_COUNT);
     assertEquals(geometryParts.length, GEOMETRY_PART_COUNT);
     assert(
@@ -72,9 +76,6 @@ Deno.test(
     const corridorBackbones = layout.segments.filter((segment) =>
       segment.kind === "bundle-trunk"
     );
-    const pairFeeders = layout.segments.filter((segment) =>
-      segment.kind === "pair-feeder"
-    );
     const nodeBranches = layout.segments.filter((segment) =>
       segment.kind === "node-branch"
     );
@@ -98,10 +99,19 @@ Deno.test(
     );
     assert(firstRequirementBranch);
     assert(secondRequirementBranch);
-    assertSamePoint(
-      firstRequirementBranch.points[4]!,
-      secondRequirementBranch.points[4]!,
-      "Compatible leaves must share a physical tail before the hull gate",
+    assert(
+      Math.abs(
+        firstRequirementBranch.points[4]!.x -
+          secondRequirementBranch.points[4]!.x,
+      ) <= EPSILON,
+      "Combed arrival teeth must share the same axial station before the hull gate",
+    );
+    assert(
+      Math.abs(
+        firstRequirementBranch.points[4]!.y -
+          secondRequirementBranch.points[4]!.y,
+      ) > EPSILON,
+      "Compatible leaves keep distinct comb teeth at the hull throat",
     );
     assertSamePoint(
       firstRequirementBranch.points[5]!,
@@ -114,21 +124,28 @@ Deno.test(
       "Individual leaves must remain independently oriented before bundling",
     );
     assertEquals(
-      pairFeeders.length,
-      20,
-      "Ten exact directed group pairs need distinct source and target feeders",
+      corridorBackbones.length,
+      10,
+      "Two requirement hulls by five geometry hulls need ten exact pair trunks",
     );
     assertEquals(
-      pairFeeders.every((segment) =>
-        segment.pathCount === 50 && segment.pairKeys.length === 1
+      corridorBackbones.every((segment) =>
+        segment.curve === "catmull-rom" &&
+        segment.points.length === 8 &&
+        segment.d.includes("C") &&
+        !/[LQAS]/.test(segment.d) &&
+        segment.pathCount === 50 &&
+        segment.edgeKeys.length === 50 &&
+        segment.pairKeys.length === 1
       ),
       true,
-      "A pair feeder must retain only its exact directed pair metadata",
+      "Every exact pair needs one eight-particle cubic carrying only its recorded relations",
     );
     assertEquals(
-      corridorBackbones.length,
-      layout.nextRoutingState.corridors.length,
-      "Every current magnetic corridor needs one presentation backbone",
+      corridorBackbones.flatMap((segment) => segment.pairKeys).toSorted(),
+      layout.nextRoutingState.corridors.flatMap((corridor) => corridor.pairKeys)
+        .toSorted(),
+      "Magnetic corridor metadata must account for every exact pair trunk once",
     );
 
     for (const segment of layout.segments) {
@@ -166,6 +183,13 @@ Deno.test(
       assertEquals(route.toKey, inputEdge.toKey);
       assertEquals(route.pathCount, inputEdge.pathCount);
       assertEquals(route.pathKeys, inputEdge.pathKeys);
+      assertEquals(
+        route.segmentKeys.map((segmentKey) =>
+          segmentByKey.get(segmentKey)?.kind
+        ),
+        ["node-branch", "bundle-trunk", "node-branch"],
+        `Route ${route.edgeKey} must use the unified three-segment topology`,
+      );
 
       const source = nodeByKey.get(route.fromKey);
       const target = nodeByKey.get(route.toKey);
@@ -203,6 +227,7 @@ Deno.test(
         `Route ${route.edgeKey} must end at its geometry part`,
       );
       assertMonotoneX(routePoints, route.edgeKey);
+      assertRouteJoinsC1(layout, route.edgeKey, 0.97);
     }
     assertEquals(seenRouteKeys.size, ROUTE_COUNT);
 
@@ -253,7 +278,9 @@ Deno.test(
     );
     assert(
       layout.viewBox[3] <= 420,
-      `One compact 100-part group must not create a ${layout.viewBox[3]}px canvas`,
+      `One compact 100-part group must not create a ${
+        layout.viewBox[3]
+      }px canvas`,
     );
     assertNoNodeBoxOverlap(layout.nodes);
 
@@ -380,7 +407,9 @@ Deno.test(
       geometryIdentity !== requirementGroupIdentity,
       "The same literal group key in another lane must retain a distinct identity",
     );
-    const geometryGroup = moved.groups.find((group) => group.key === geometryIdentity);
+    const geometryGroup = moved.groups.find((group) =>
+      group.key === geometryIdentity
+    );
     const baselineGeometryGroup = baseline.groups.find((group) =>
       group.key === geometryIdentity
     );
@@ -511,7 +540,7 @@ Deno.test(
 );
 
 Deno.test(
-  "D3 same-lane trunk keeps its identity when one group crosses the other during drag",
+  "D3 same-lane pair trunk keeps its identity and switches physical sides during drag",
   () => {
     const nodes: readonly OverviewThreadD3FlowNodeInput[] = [
       {
@@ -579,10 +608,10 @@ Deno.test(
     assert(movedSourceGroup.centerY > movedTargetGroup.centerY);
 
     const baselineTrunk = baseline.segments.find((segment) =>
-      segment.kind === "same-lane-trunk"
+      segment.kind === "bundle-trunk"
     );
     const movedTrunk = moved.segments.find((segment) =>
-      segment.kind === "same-lane-trunk"
+      segment.kind === "bundle-trunk"
     );
     assert(baselineTrunk);
     assert(movedTrunk);
@@ -592,10 +621,20 @@ Deno.test(
       "The same stable trunk must still regenerate its visible geometry",
     );
     assertEquals(
-      moved.routes[0]?.segmentKeys,
-      baseline.routes[0]?.segmentKeys,
-      "Crossing vertically must not remount any route segment",
+      moved.routes[0]?.segmentKeys[1],
+      baseline.routes[0]?.segmentKeys[1],
+      "Crossing vertically must retain the exact directed-pair trunk identity",
     );
+    for (const layout of [baseline, moved]) {
+      const route = layout.routes[0];
+      assert(route);
+      assertEquals(
+        route.segmentKeys.map((key) =>
+          layout.segments.find((segment) => segment.key === key)?.kind
+        ),
+        ["node-branch", "bundle-trunk", "node-branch"],
+      );
+    }
     assertEquals(moved, movedReversed);
 
     const movedRoutePoints = collectRoutePoints(moved, "trace:same-lane");
@@ -605,19 +644,40 @@ Deno.test(
     assert(movedTarget);
     assertSamePoint(
       movedRoutePoints[0]!,
-      movedSource.rightPort,
-      "Same-lane cable must keep the live source endpoint",
+      movedSource.topPort,
+      "A source moved below its target must leave through its top port",
     );
     assertSamePoint(
       movedRoutePoints.at(-1)!,
-      movedTarget.rightPort,
-      "Same-lane cable must keep the live target endpoint",
+      movedTarget.bottomPort,
+      "The upper target must receive the cable through its bottom port",
     );
+    const baselineSource = baseline.nodes.find((node) =>
+      node.key === "cad:source"
+    );
+    const baselineTarget = baseline.nodes.find((node) =>
+      node.key === "cad:target"
+    );
+    assert(baselineSource);
+    assert(baselineTarget);
+    const baselineRoutePoints = collectRoutePoints(baseline, "trace:same-lane");
+    assertSamePoint(
+      baselineRoutePoints[0]!,
+      baselineSource.bottomPort,
+      "baseline source",
+    );
+    assertSamePoint(
+      baselineRoutePoints.at(-1)!,
+      baselineTarget.topPort,
+      "baseline target",
+    );
+    assertRouteJoinsC1(baseline, "trace:same-lane", 0.97);
+    assertRouteJoinsC1(moved, "trace:same-lane", 0.97);
   },
 );
 
 Deno.test(
-  "D3 same-lane cable stays local when unrelated lanes contain many overlapping hulls",
+  "D3 same-lane cable curves around overlapping immutable hulls without moving them",
   () => {
     const source: OverviewThreadD3FlowNodeInput = {
       key: "local-cable:source",
@@ -657,7 +717,7 @@ Deno.test(
       { groupPlacements: endpointPlacements },
     );
     const baselineTrunk = baseline.segments.find((segment) =>
-      segment.kind === "same-lane-trunk"
+      segment.kind === "bundle-trunk"
     );
     assert(baselineTrunk);
 
@@ -708,7 +768,9 @@ Deno.test(
       [edge],
       { groupPlacements: { ...endpointPlacements, ...foreignPlacements } },
     );
-    const trunk = layout.segments.find((segment) => segment.kind === "same-lane-trunk");
+    const trunk = layout.segments.find((segment) =>
+      segment.kind === "bundle-trunk"
+    );
     assert(trunk);
     assertEquals(layout.unroutedEdgeKeys, []);
     assertEquals(layout, reversed);
@@ -730,33 +792,51 @@ Deno.test(
       }),
       "The regression fixture must place a foreign-lane hull over the baseline return",
     );
-    assertEquals(
-      trunk.points,
-      baselineTrunk.points,
-      "Other lanes must not attract a same-lane cable into a global detour",
+    assert(
+      trunk.d !== baselineTrunk.d,
+      "The cable field must react when immutable foreign hulls cover its baseline",
     );
-    assertEquals(trunk.d, baselineTrunk.d);
     assert(
       trunk.curve === "catmull-rom" && trunk.d.includes("C"),
       "A successful local return must remain a D3 Catmull-Rom cubic",
     );
+    const foreignObstacles = foreignNodes.map((node) => {
+      const group = layout.groups.find((candidate) =>
+        candidate.key === overviewThreadD3FlowGroupIdentity(
+          node.lane,
+          node.groupKey,
+        )
+      );
+      assert(group);
+      return {
+        key: group.key,
+        minimumX: group.x - 12,
+        maximumX: group.x + group.width + 12,
+        minimumY: group.y - 12,
+        maximumY: group.y + group.height + 12,
+      };
+    });
+    assert(
+      overviewThreadD3CableSvgPathClear(trunk.d, foreignObstacles),
+      "The rendered same-lane cubic must clear every inflated foreign hull",
+    );
     const endpoints = [trunk.points[0]!, trunk.points.at(-1)!];
-    const minimumX = Math.min(...endpoints.map((point) => point.x)) - 24;
-    const maximumX = Math.max(...endpoints.map((point) => point.x)) + 24;
-    const minimumY = Math.min(...endpoints.map((point) => point.y)) - 24;
-    const maximumY = Math.max(...endpoints.map((point) => point.y)) + 24;
+    const minimumX = Math.min(...endpoints.map((point) => point.x)) - 40;
+    const maximumX = Math.max(...endpoints.map((point) => point.x)) + 40;
+    const minimumY = Math.min(...endpoints.map((point) => point.y)) - 40;
+    const maximumY = Math.max(...endpoints.map((point) => point.y)) + 40;
     assert(
       trunk.points.every((point) =>
         point.x >= minimumX && point.x <= maximumX &&
         point.y >= minimumY && point.y <= maximumY
       ),
-      "The local cable bbox must stay within the endpoint envelope plus 24",
+      "The local cable bbox must stay near its endpoints while clearing hulls",
     );
   },
 );
 
 Deno.test(
-  "D3 inter-lane trunk follows actual hub order without hairpins when groups approach and cross",
+  "D3 inter-lane trunk follows physical X order when freely moved hulls cross",
   () => {
     const nodes: readonly OverviewThreadD3FlowNodeInput[] = [
       {
@@ -798,148 +878,157 @@ Deno.test(
     assert(baselineSourceGroup);
     assert(baselineTargetGroup);
 
-    const layoutAtSourceHubDelta = (delta: number) =>
+    const approachedX = baselineTargetGroup.x - baselineSourceGroup.width - 48;
+    const crossedX = baselineTargetGroup.x + baselineTargetGroup.width + 48;
+    const atSourceX = (x: number) =>
       buildOverviewThreadD3FlowLayout(nodes, edges, {
-        groupPlacements: {
-          [sourceGroupIdentity]: {
-            x: baselineSourceGroup.x +
-              baselineTargetGroup.inHub.x -
-              baselineSourceGroup.outHub.x +
-              delta,
-          },
-        },
+        groupPlacements: { [sourceGroupIdentity]: { x } },
       });
-    const frames = [
-      baseline,
-      layoutAtSourceHubDelta(-1),
-      layoutAtSourceHubDelta(0),
-      layoutAtSourceHubDelta(36),
-    ];
+    const frames = [baseline, atSourceX(approachedX), atSourceX(crossedX)];
+
     for (const [index, layout] of frames.entries()) {
       assertEquals(layout.unroutedEdgeKeys, []);
       assertEquals(layout.routes.length, 1);
+      const route = layout.routes[0]!;
       assertEquals(
         {
-          edgeKey: layout.routes[0]!.edgeKey,
-          fromKey: layout.routes[0]!.fromKey,
-          toKey: layout.routes[0]!.toKey,
-          pathKeys: layout.routes[0]!.pathKeys,
+          edgeKey: route.edgeKey,
+          fromKey: route.fromKey,
+          toKey: route.toKey,
+          pathCount: route.pathCount,
+          pathKeys: route.pathKeys,
         },
         {
           edgeKey: edges[0]!.key,
           fromKey: edges[0]!.fromKey,
           toKey: edges[0]!.toKey,
+          pathCount: edges[0]!.pathCount,
           pathKeys: edges[0]!.pathKeys,
         },
         `Frame ${index} must retain the exact recorded relation`,
       );
-
       const sourceGroup = layout.groups.find((group) =>
         group.key === sourceGroupIdentity
       );
       const targetGroup = layout.groups.find((group) =>
         group.key === targetGroupIdentity
       );
-      const sourceNode = layout.nodes.find((node) => node.key === "req:movable");
+      const sourceNode = layout.nodes.find((node) =>
+        node.key === "req:movable"
+      );
       const targetNode = layout.nodes.find((node) => node.key === "cad:fixed");
-      const trunk = layout.segments.find((segment) => segment.kind === "bundle-trunk");
-      const sourceFeeder = layout.segments.find((segment) =>
-        segment.kind === "pair-feeder" && segment.role === "source"
-      );
-      const targetFeeder = layout.segments.find((segment) =>
-        segment.kind === "pair-feeder" && segment.role === "target"
-      );
       assert(sourceGroup);
       assert(targetGroup);
       assert(sourceNode);
       assert(targetNode);
-      assert(trunk);
-      assert(sourceFeeder);
-      assert(targetFeeder);
-      assertEquals(
-        trunk.direction,
-        "forward",
-        "Dragging must not rewrite the recorded lane direction",
-      );
-      assertSamePoint(
-        sourceFeeder.points[0]!,
-        sourceGroup.outHub,
-        `Frame ${index} pair feeder must start at the live source hub`,
-      );
-      assertSamePoint(
-        sourceFeeder.points.at(-1)!,
-        trunk.points[0]!,
-        `Frame ${index} source feeder must meet the corridor backbone`,
-      );
-      assertSamePoint(
-        trunk.points.at(-1)!,
-        targetFeeder.points[0]!,
-        `Frame ${index} corridor backbone must meet the target feeder`,
-      );
-      assertSamePoint(
-        targetFeeder.points.at(-1)!,
-        targetGroup.inHub,
-        `Frame ${index} pair feeder must end at the live target hub`,
-      );
-      for (const segment of [sourceFeeder, trunk, targetFeeder]) {
-        assertValidPathData(segment.d, `Frame ${index} ${segment.kind}`);
-        assert(
-          segment.points.every((point) =>
-            Number.isFinite(point.x) && Number.isFinite(point.y)
-          ),
-          `Frame ${index} ${segment.kind} needs finite field particles`,
+      const routeSegments = route.segmentKeys.map((key) => {
+        const segment = layout.segments.find((candidate) =>
+          candidate.key === key
         );
-      }
-      assertValidPathData(trunk.d, trunk.key);
-
-      const routePoints = assertConnectedRoute(
-        layout,
-        "trace:movable>fixed",
+        assert(segment);
+        return segment;
+      });
+      assertEquals(
+        routeSegments.map((segment) => segment.kind),
+        ["node-branch", "bundle-trunk", "node-branch"],
       );
+      const trunk = routeSegments[1]!;
+      assertEquals(trunk.direction, "forward");
+      assertEquals(trunk.points.length, 8);
+      assert(trunk.d.includes("C") && !/[LQAS]/.test(trunk.d));
+      const sourceIsLeft = sourceGroup.x < targetGroup.x;
+      const routePoints = assertConnectedRoute(layout, route.edgeKey);
       assertSamePoint(
         routePoints[0]!,
-        sourceNode.rightPort,
-        `Frame ${index} route must keep its exact source endpoint`,
+        sourceIsLeft ? sourceNode.rightPort : sourceNode.leftPort,
+        `Frame ${index} must leave through the physically facing source port`,
       );
       assertSamePoint(
         routePoints.at(-1)!,
-        targetNode.leftPort,
-        `Frame ${index} route must keep its exact target endpoint`,
+        sourceIsLeft ? targetNode.leftPort : targetNode.rightPort,
+        `Frame ${index} must enter through the physically facing target port`,
+      );
+      assertRouteJoinsC1(layout, route.edgeKey, 0.97);
+    }
+
+    const atFacingHubDelta = (delta: number) =>
+      atSourceX(
+        baselineSourceGroup.x +
+          baselineTargetGroup.inHub.x -
+          baselineSourceGroup.outHub.x +
+          delta,
+      );
+    for (const delta of [-1, 0, 36]) {
+      const layout = atFacingHubDelta(delta);
+      assertEquals(
+        layout.unroutedEdgeKeys,
+        [],
+        `Facing-hub delta ${delta} must not drop the exact relation`,
+      );
+      assertEquals(layout.routes.length, 1);
+      const route = layout.routes[0]!;
+      assertEquals(
+        route.segmentKeys.map((key) =>
+          layout.segments.find((segment) => segment.key === key)?.kind
+        ),
+        ["node-branch", "bundle-trunk", "node-branch"],
+      );
+      const sourceNode = layout.nodes.find((node) =>
+        node.key === "req:movable"
+      );
+      const targetNode = layout.nodes.find((node) => node.key === "cad:fixed");
+      assert(sourceNode);
+      assert(targetNode);
+      const routePoints = assertConnectedRoute(layout, route.edgeKey);
+      assertSamePoint(
+        routePoints[0]!,
+        sourceNode.topPort,
+        `delta ${delta} source`,
+      );
+      assertSamePoint(
+        routePoints.at(-1)!,
+        targetNode.topPort,
+        `delta ${delta} target`,
+      );
+      assertRouteJoinsC1(layout, route.edgeKey, 0.97);
+      assertEquals(
+        layout,
+        buildOverviewThreadD3FlowLayout(
+          nodes.toReversed(),
+          edges.toReversed(),
+          {
+            groupPlacements: {
+              [sourceGroupIdentity]: {
+                x: baselineSourceGroup.x +
+                  baselineTargetGroup.inHub.x -
+                  baselineSourceGroup.outHub.x +
+                  delta,
+              },
+            },
+          },
+        ),
       );
     }
 
-    const overlappingTrunk = frames[2]!.segments.find((segment) =>
+    const approachedTrunk = frames[1]!.segments.find((segment) =>
       segment.kind === "bundle-trunk"
     );
-    const crossedTrunk = frames[3]!.segments.find((segment) =>
+    const crossedTrunk = frames[2]!.segments.find((segment) =>
       segment.kind === "bundle-trunk"
     );
-    assert(overlappingTrunk);
+    assert(approachedTrunk);
     assert(crossedTrunk);
-    assertEquals(
-      new Set(overlappingTrunk.points.map((point) => point.x)).size,
-      1,
-      "Coincident hubs need a vertical trunk, not a horizontal foldback",
-    );
+    assert(approachedTrunk.points[0]!.x < approachedTrunk.points.at(-1)!.x);
     assert(
       crossedTrunk.points[0]!.x > crossedTrunk.points.at(-1)!.x,
-      "The crossed frame must exercise right-to-left geometric routing",
+      "The crossed frame must exercise right-to-left physical routing",
     );
     assertEquals(
-      frames[3],
+      frames[2],
       buildOverviewThreadD3FlowLayout(
         nodes.toReversed(),
         edges.toReversed(),
-        {
-          groupPlacements: {
-            [sourceGroupIdentity]: {
-              x: baselineSourceGroup.x +
-                baselineTargetGroup.inHub.x -
-                baselineSourceGroup.outHub.x +
-                36,
-            },
-          },
-        },
+        { groupPlacements: { [sourceGroupIdentity]: { x: crossedX } } },
       ),
       "Crossed routing must remain independent from input order",
     );
@@ -947,7 +1036,7 @@ Deno.test(
 );
 
 Deno.test(
-  "D3 inter-lane ports follow crossed hull geometry without branch-feeder hairpins",
+  "D3 inter-lane ports follow crossed hull geometry with a direct three-part cable",
   () => {
     const nodes: readonly OverviewThreadD3FlowNodeInput[] = [
       {
@@ -1028,7 +1117,9 @@ Deno.test(
     const requirementNode = layout.nodes.find((node) =>
       node.key === "node:requirement"
     );
-    const geometryNode = layout.nodes.find((node) => node.key === "node:geometry");
+    const geometryNode = layout.nodes.find((node) =>
+      node.key === "node:geometry"
+    );
     assert(requirementGroup);
     assert(geometryGroup);
     assert(requirementNode);
@@ -1060,7 +1151,9 @@ Deno.test(
     ]);
 
     for (const [edgeKey, expectation] of expected) {
-      const route = layout.routes.find((candidate) => candidate.edgeKey === edgeKey);
+      const route = layout.routes.find((candidate) =>
+        candidate.edgeKey === edgeKey
+      );
       assert(route, `Missing exact crossed route ${edgeKey}`);
       assertEquals(
         {
@@ -1088,13 +1181,7 @@ Deno.test(
       });
       assertEquals(
         segments.map((segment) => segment.kind),
-        [
-          "node-branch",
-          "pair-feeder",
-          "bundle-trunk",
-          "pair-feeder",
-          "node-branch",
-        ],
+        ["node-branch", "bundle-trunk", "node-branch"],
       );
       assertEquals(
         segments.every((segment) =>
@@ -1106,9 +1193,8 @@ Deno.test(
       );
 
       const sourceBranch = segments[0]!;
-      const sourceFeeder = segments[1]!;
-      const targetFeeder = segments[3]!;
-      const targetBranch = segments[4]!;
+      const trunk = segments[1]!;
+      const targetBranch = segments[2]!;
       assertSamePoint(
         sourceBranch.points[0]!,
         expectation.sourcePort,
@@ -1119,20 +1205,24 @@ Deno.test(
         expectation.targetPort,
         `${edgeKey} must enter through the physically facing target port`,
       );
-      assertCollinearSameDirection(
+      assertDirectionDotAtLeast(
         sourceBranch.points.at(-2)!,
         sourceBranch.points.at(-1)!,
-        sourceFeeder.points[0]!,
-        sourceFeeder.points[1]!,
-        `${edgeKey} source branch-to-feeder join must not reverse`,
+        trunk.points[0]!,
+        trunk.points[1]!,
+        0.97,
+        `${edgeKey} source branch-to-trunk join must stay smooth`,
       );
-      assertCollinearSameDirection(
-        targetFeeder.points.at(-2)!,
-        targetFeeder.points.at(-1)!,
+      assertDirectionDotAtLeast(
+        trunk.points.at(-2)!,
+        trunk.points.at(-1)!,
         targetBranch.points[0]!,
         targetBranch.points[1]!,
-        `${edgeKey} target feeder-to-branch join must not reverse`,
+        0.97,
+        `${edgeKey} trunk-to-target branch join must stay smooth`,
       );
+      assertEquals(trunk.points.length, 8);
+      assert(trunk.d.includes("C") && !/[LQAS]/.test(trunk.d));
 
       const points = assertConnectedRoute(layout, edgeKey);
       assertSamePoint(points[0]!, expectation.sourcePort, `${edgeKey} start`);
@@ -1146,7 +1236,7 @@ Deno.test(
 );
 
 Deno.test(
-  "D3 projects a computed corridor junction out of local overlapping foreign hulls",
+  "D3 curves an exact corridor around local overlapping foreign hulls",
   () => {
     const sourceNode: OverviewThreadD3FlowNodeInput = {
       key: "junction:source",
@@ -1189,7 +1279,9 @@ Deno.test(
       segment.kind === "bundle-trunk"
     );
     assert(baselineTrunk);
-    const proposedJunction = baselineTrunk.points[0]!;
+    const coveredInterior = baselineTrunk.points[
+      Math.floor(baselineTrunk.points.length / 2)
+    ]!;
 
     const foreignNodes: readonly OverviewThreadD3FlowNodeInput[] = [
       {
@@ -1218,12 +1310,12 @@ Deno.test(
       groupPlacements: {
         ...endpointPlacements,
         [foreignAIdentity]: {
-          x: proposedJunction.x - 5,
-          y: proposedJunction.y - 5,
+          x: coveredInterior.x - 5,
+          y: coveredInterior.y - 5,
         },
         [foreignBIdentity]: {
-          x: proposedJunction.x + 8,
-          y: proposedJunction.y - 5,
+          x: coveredInterior.x + 8,
+          y: coveredInterior.y - 5,
         },
       },
     };
@@ -1242,7 +1334,9 @@ Deno.test(
     assertEquals(layout.nodes, placementOnly.nodes);
     const foreignObstacles = [foreignAIdentity, foreignBIdentity].map(
       (identity) => {
-        const group = layout.groups.find((candidate) => candidate.key === identity);
+        const group = layout.groups.find((candidate) =>
+          candidate.key === identity
+        );
         assert(group);
         return {
           key: group.key,
@@ -1255,27 +1349,36 @@ Deno.test(
     );
     assert(
       foreignObstacles.every((obstacle) =>
-        pointInsideRectangle(proposedJunction, obstacle)
+        pointInsideRectangle(coveredInterior, obstacle)
       ),
-      "The regression fixture must cover the original computed junction",
+      "The regression fixture must cover an interior point of the baseline cable",
     );
-    const trunk = layout.segments.find((segment) => segment.kind === "bundle-trunk");
+    const trunk = layout.segments.find((segment) =>
+      segment.kind === "bundle-trunk"
+    );
     assert(trunk);
     assert(
-      foreignObstacles.every((obstacle) =>
-        !pointInsideRectangle(trunk.points[0]!, obstacle)
-      ),
-      "Only the computed junction may move, and it must leave every foreign hull",
+      overviewThreadD3CableSvgPathClear(trunk.d, foreignObstacles),
+      "The recomputed Catmull-Rom cable must clear every inflated foreign hull",
     );
     assert(
-      trunk.points[0]!.x !== proposedJunction.x ||
-        trunk.points[0]!.y !== proposedJunction.y,
-      "The covered junction must be projected before routing",
+      trunk.d !== baselineTrunk.d,
+      "Covering an interior point must regenerate the visible cable",
     );
-    const route = layout.routes.find((candidate) => candidate.edgeKey === edge.key);
+    assertSamePoint(trunk.points[0]!, baselineTrunk.points[0]!, "source hub");
+    assertSamePoint(
+      trunk.points.at(-1)!,
+      baselineTrunk.points.at(-1)!,
+      "target hub",
+    );
+    const route = layout.routes.find((candidate) =>
+      candidate.edgeKey === edge.key
+    );
     assert(route);
     for (const segmentKey of route.segmentKeys) {
-      const segment = layout.segments.find((candidate) => candidate.key === segmentKey);
+      const segment = layout.segments.find((candidate) =>
+        candidate.key === segmentKey
+      );
       assert(segment);
       if (segment.kind === "node-branch") continue;
       assert(
@@ -1284,6 +1387,7 @@ Deno.test(
       );
     }
     assertConnectedRoute(layout, edge.key);
+    assertRouteJoinsC1(layout, edge.key, 0.97);
   },
 );
 
@@ -1336,8 +1440,10 @@ Deno.test(
         },
       },
     );
-    const source = baseline.nodes.find((node) => node.key === sourceNode.key);
-    assert(source);
+    const sourceGroup = baseline.groups.find((group) =>
+      group.groupKey === sourceNode.groupKey
+    );
+    assert(sourceGroup);
     const foreignIdentity = overviewThreadD3FlowGroupIdentity(
       foreignNode.lane,
       foreignNode.groupKey,
@@ -1356,8 +1462,8 @@ Deno.test(
         )
       ]: { y: 140 },
       [foreignIdentity]: {
-        x: source.rightPort.x + 74,
-        y: source.rightPort.y - 5,
+        x: sourceGroup.outHub.x - 5,
+        y: sourceGroup.outHub.y - 5,
       },
     };
     const nodes = [sourceNode, foreignNode, targetNode];
@@ -1372,7 +1478,9 @@ Deno.test(
     const layoutSourceGroup = layout.groups.find((group) =>
       group.groupKey === sourceNode.groupKey
     );
-    const foreignGroup = layout.groups.find((group) => group.key === foreignIdentity);
+    const foreignGroup = layout.groups.find((group) =>
+      group.key === foreignIdentity
+    );
     assert(layoutSourceGroup);
     assert(foreignGroup);
     assert(
@@ -1393,7 +1501,7 @@ Deno.test(
 );
 
 Deno.test(
-  "D3 flow layout clamps group positions to the viewBox and node offsets inside their group",
+  "D3 flow layout keeps hulls unbounded while clamping node offsets inside their hull",
   () => {
     const nodes = compactGeometryGroupFixture(4);
     const groupIdentity = overviewThreadD3FlowGroupIdentity(
@@ -1411,15 +1519,17 @@ Deno.test(
         [secondNodeKey]: { offsetX: 10_000, offsetY: 10_000 },
       },
     });
-    const group = layout.groups.find((candidate) => candidate.key === groupIdentity);
+    const group = layout.groups.find((candidate) =>
+      candidate.key === groupIdentity
+    );
     const firstNode = layout.nodes.find((node) => node.key === firstNodeKey);
     const secondNode = layout.nodes.find((node) => node.key === secondNodeKey);
     assert(group);
     assert(firstNode);
     assert(secondNode);
 
-    assertEquals(group.x, 0);
-    assertEquals(group.y, layout.viewBox[3] - group.height);
+    assertEquals(group.x, -10_000);
+    assertEquals(group.y, 10_000);
     assertEquals(firstNode.x, group.x);
     assertEquals(firstNode.y, group.y);
     assertEquals(secondNode.x, group.x + group.width - secondNode.width);
@@ -1509,80 +1619,55 @@ Deno.test(
       "A near A↔B and B↔C chain must not transitively capture distant A↔C",
     );
 
-    const pairFeeders = layout.segments.filter((segment) =>
-      segment.kind === "pair-feeder"
-    );
     const backbones = layout.segments.filter((segment) =>
       segment.kind === "bundle-trunk"
     );
-    assertEquals(pairFeeders.length, 6);
     assertEquals(
-      pairFeeders.every((segment) =>
+      backbones.every((segment) =>
         segment.pairKeys.length === 1 && segment.edgeKeys.length === 1 &&
-        segment.pathKeys.length === 1 && segment.pathCount === 1
+        segment.pathKeys.length === 1 && segment.pathCount === 1 &&
+        segment.points.length === 8 && segment.curve === "catmull-rom" &&
+        segment.d.includes("C") && !/[LQAS]/.test(segment.d)
       ),
       true,
-      "Each feeder must describe only one exact directed group pair",
+      "Each exact pair trunk must retain one relation and one eight-particle cubic",
     );
-    assertEquals(backbones.length, 2);
-    const capturedBackbone = backbones.find((segment) => segment.pairKeys.length === 2);
-    const singleBackbone = backbones.find((segment) => segment.pairKeys.length === 1);
-    assert(capturedBackbone);
-    assert(singleBackbone);
-    assertEquals(capturedBackbone.pathCount, 2);
-    assertEquals(capturedBackbone.edgeKeys.length, 2);
-    assertEquals(capturedBackbone.pathKeys.length, 2);
-    assert(capturedBackbone.width > singleBackbone.width);
-    const capturedFeeders = pairFeeders.filter((segment) =>
-      segment.corridorKeys.some((key) => capturedBackbone.corridorKeys.includes(key))
+    assertEquals(backbones.length, fixture.edges.length);
+
+    const capturedCorridor = layout.nextRoutingState.corridors.find((
+      corridor,
+    ) => corridor.pairKeys.length === 2);
+    assert(capturedCorridor);
+    const capturedTrunks = backbones.filter((segment) =>
+      segment.corridorKeys.includes(capturedCorridor.id)
     );
-    assertEquals(capturedFeeders.length, 4);
-    for (const feeder of capturedFeeders) {
-      assert(
-        feeder.points.length >= 3,
-        `${feeder.key} needs a progressive cable-field fan-in`,
-      );
-      const corridorPoint = feeder.role === "source"
-        ? feeder.points.at(-1)!
-        : feeder.points[0]!;
-      const rampPoint = feeder.role === "source"
-        ? feeder.points.at(-2)!
-        : feeder.points[1]!;
-      assert(
-        corridorPoint.x !== rampPoint.x,
-        `${feeder.key} must approach the backbone tangentially, not orthogonally`,
-      );
-      assertFeederBackboneJoinC1(
-        feeder,
-        capturedBackbone,
-        `${feeder.key} must join the backbone with matching tangents`,
-      );
-    }
+    assertEquals(capturedTrunks.length, 2);
+    assertEquals(
+      capturedTrunks.flatMap((segment) => segment.pairKeys).toSorted(),
+      capturedCorridor.pairKeys,
+    );
+    const middleIndex = Math.floor(capturedTrunks[0]!.points.length / 2);
+    const endpointGap = Math.abs(
+      capturedTrunks[0]!.points[0]!.y - capturedTrunks[1]!.points[0]!.y,
+    );
+    const middleGap = Math.abs(
+      capturedTrunks[0]!.points[middleIndex]!.y -
+        capturedTrunks[1]!.points[middleIndex]!.y,
+    );
+    assert(
+      middleGap < endpointGap,
+      "Compatible exact trunks must converge progressively without losing identity",
+    );
 
     for (const corridor of layout.nextRoutingState.corridors) {
-      const backbone = backbones.find((segment) =>
+      const corridorBackbones = backbones.filter((segment) =>
         segment.corridorKeys.includes(corridor.id)
       );
-      assert(backbone, `Missing backbone for ${corridor.id}`);
-      assertEquals(backbone.pairKeys, corridor.pairKeys);
-      const corridorFeeders = pairFeeders.filter((segment) =>
-        segment.corridorKeys.includes(corridor.id)
+      assertEquals(corridorBackbones.length, corridor.pairKeys.length);
+      assertEquals(
+        corridorBackbones.flatMap((segment) => segment.pairKeys).toSorted(),
+        corridor.pairKeys,
       );
-      for (const feeder of corridorFeeders) {
-        assertFeederBackboneJoinC1(
-          feeder,
-          backbone,
-          `${feeder.key} must stay C1 with ${backbone.key}`,
-        );
-        assertEquals(feeder.d.includes("Q"), false);
-        if (feeder.curve === "catmull-rom" && feeder.points.length > 2) {
-          assert(feeder.d.includes("C"), `${feeder.key} must render cubic C`);
-        }
-      }
-      assertEquals(backbone.d.includes("Q"), false);
-      if (backbone.curve === "catmull-rom" && backbone.points.length > 2) {
-        assert(backbone.d.includes("C"), `${backbone.key} must render cubic C`);
-      }
     }
     for (const edge of fixture.edges) {
       const points = assertConnectedRoute(layout, edge.key);
@@ -1596,6 +1681,7 @@ Deno.test(
         target.leftPort,
         `${edge.key} target port`,
       );
+      assertRouteJoinsC1(layout, edge.key, 0.97);
     }
   },
 );
@@ -1642,18 +1728,27 @@ Deno.test(
     assertMagneticGroupY(retained, { a: 100, b: 122 });
     assertMagneticGroupY(released, { a: 100, b: 131 });
 
-    const capturedBackbone = captured.segments.find((segment) =>
-      segment.kind === "bundle-trunk" && segment.pairKeys.length === 2
+    const capturedCorridor = captured.nextRoutingState.corridors.find((
+      corridor,
+    ) => corridor.pairKeys.length === 2);
+    assert(capturedCorridor);
+    const releasedPairKey = capturedCorridor.pairKeys[0]!;
+    const capturedBackbone = corridorBackboneForPair(
+      captured,
+      releasedPairKey,
     );
     assert(capturedBackbone);
-    const releasedPairKey = capturedBackbone.pairKeys[0]!;
     const releasedBackbone = corridorBackboneForPair(
       released,
       releasedPairKey,
     );
-    assertEquals(capturedBackbone.pathCount, 2);
+    assertEquals(capturedBackbone.pathCount, 1);
     assertEquals(releasedBackbone.pathCount, 1);
-    assert(capturedBackbone.width > releasedBackbone.width);
+    assertEquals(capturedBackbone.pairKeys, [releasedPairKey]);
+    assertEquals(releasedBackbone.pairKeys, [releasedPairKey]);
+    assertEquals(capturedBackbone.edgeKeys, releasedBackbone.edgeKeys);
+    assertEquals(corridorForPair(captured, releasedPairKey).pairKeys.length, 2);
+    assertEquals(corridorForPair(released, releasedPairKey).pairKeys.length, 1);
     assert(capturedBackbone.d !== releasedBackbone.d);
 
     const retainedReversed = buildOverviewThreadD3FlowLayout(
@@ -1703,12 +1798,14 @@ Deno.test(
     const pairB = pairKeyForEdge(baseline, "trace:b");
     const baselineBackbone = corridorBackboneForPair(baseline, pairB);
     const movedBackbone = corridorBackboneForPair(moved, pairB);
+    const baselineCorridor = corridorForPair(baseline, pairB);
+    const movedCorridor = corridorForPair(moved, pairB);
     assertEquals(
-      baselineBackbone.pairKeys.includes(pairKeyForEdge(baseline, "trace:a")),
+      baselineCorridor.pairKeys.includes(pairKeyForEdge(baseline, "trace:a")),
       true,
     );
     assertEquals(
-      movedBackbone.pairKeys.includes(pairKeyForEdge(moved, "trace:c")),
+      movedCorridor.pairKeys.includes(pairKeyForEdge(moved, "trace:c")),
       true,
     );
     assert(
@@ -1820,10 +1917,12 @@ Deno.test(
     assert(sameB);
     const sameForward = assertConnectedRoute(sameLane, "same:a>b");
     const sameReverse = assertConnectedRoute(sameLane, "same:b>a");
-    assertSamePoint(sameForward[0]!, sameA.rightPort, "same A→B source");
-    assertSamePoint(sameForward.at(-1)!, sameB.rightPort, "same A→B target");
-    assertSamePoint(sameReverse[0]!, sameB.rightPort, "same B→A source");
-    assertSamePoint(sameReverse.at(-1)!, sameA.rightPort, "same B→A target");
+    assertSamePoint(sameForward[0]!, sameA.bottomPort, "same A→B source");
+    assertSamePoint(sameForward.at(-1)!, sameB.topPort, "same A→B target");
+    assertSamePoint(sameReverse[0]!, sameB.topPort, "same B→A source");
+    assertSamePoint(sameReverse.at(-1)!, sameA.bottomPort, "same B→A target");
+    assertRouteJoinsC1(sameLane, "same:a>b", 0.97);
+    assertRouteJoinsC1(sameLane, "same:b>a", 0.97);
   },
 );
 
@@ -1847,17 +1946,20 @@ Deno.test(
     const branches = layout.segments.filter((segment) =>
       segment.kind === "node-branch"
     );
-    const feeders = layout.segments.filter((segment) => segment.kind === "pair-feeder");
     const backbones = layout.segments.filter((segment) =>
       segment.kind === "bundle-trunk"
     );
-    const pairCount = new Set(feeders.flatMap((segment) => segment.pairKeys))
+    const pairCount = new Set(backbones.flatMap((segment) => segment.pairKeys))
       .size;
-    assertEquals(feeders.length, pairCount * 2);
-    assertEquals(backbones.length, layout.nextRoutingState.corridors.length);
+    assertEquals(backbones.length, pairCount);
+    assertEquals(
+      backbones.flatMap((segment) => segment.pairKeys).toSorted(),
+      layout.nextRoutingState.corridors.flatMap((corridor) => corridor.pairKeys)
+        .toSorted(),
+    );
     assertEquals(
       layout.segments.length,
-      branches.length + feeders.length + backbones.length,
+      branches.length + backbones.length,
     );
     assert(
       layout.segments.length < layout.routes.length,
@@ -1873,6 +1975,11 @@ Deno.test(
       );
     }
     const nodeByKey = new Map(layout.nodes.map((node) => [node.key, node]));
+    assertEquals(
+      layout.routes.map((route) => route.edgeKey).toSorted(),
+      fixture.edges.map((edge) => edge.key).toSorted(),
+      "All 500 exact recorded edge identities must survive routing",
+    );
     for (const route of layout.routes) {
       const points = assertConnectedRoute(layout, route.edgeKey);
       const source = nodeByKey.get(route.fromKey);
@@ -1885,6 +1992,13 @@ Deno.test(
         target.leftPort,
         `${route.edgeKey} target`,
       );
+      assertEquals(
+        route.segmentKeys.map((key) =>
+          layout.segments.find((segment) => segment.key === key)?.kind
+        ),
+        ["node-branch", "bundle-trunk", "node-branch"],
+      );
+      assertRouteJoinsC1(layout, route.edgeKey, 0.97);
     }
   },
 );
@@ -1954,9 +2068,15 @@ Deno.test(
     );
     assertEquals(layout, reversed);
 
-    const sourceGroup = layout.groups.find((group) => group.key === sourceIdentity);
-    const obstacleGroup = layout.groups.find((group) => group.key === obstacleIdentity);
-    const targetGroup = layout.groups.find((group) => group.key === targetIdentity);
+    const sourceGroup = layout.groups.find((group) =>
+      group.key === sourceIdentity
+    );
+    const obstacleGroup = layout.groups.find((group) =>
+      group.key === obstacleIdentity
+    );
+    const targetGroup = layout.groups.find((group) =>
+      group.key === targetIdentity
+    );
     assert(sourceGroup);
     assert(obstacleGroup);
     assert(targetGroup);
@@ -1969,7 +2089,9 @@ Deno.test(
       "Obstacle avoidance must not move the blocking node or its hull",
     );
 
-    const backbone = layout.segments.find((segment) => segment.kind === "bundle-trunk");
+    const backbone = layout.segments.find((segment) =>
+      segment.kind === "bundle-trunk"
+    );
     assert(backbone);
     const inflatedObstacle = {
       key: obstacleGroup.key,
@@ -1991,22 +2113,8 @@ Deno.test(
       backbone.curve === "catmull-rom" && backbone.d.includes("C"),
       "A successful obstacle route must remain an actual D3 Catmull-Rom cubic",
     );
-    for (
-      const feeder of layout.segments.filter((segment) =>
-        segment.kind === "pair-feeder"
-      )
-    ) {
-      assertFeederBackboneJoinC1(
-        feeder,
-        backbone,
-        `${feeder.key} must join the detour backbone progressively`,
-      );
-      assert(
-        overviewThreadD3CableSvgPathClear(feeder.d, [inflatedObstacle]),
-        `${feeder.key} rendered field curve must clear the hard-clearance hull`,
-      );
-    }
     assertConnectedRoute(layout, "obstacle-edge");
+    assertRouteJoinsC1(layout, "obstacle-edge", 0.97);
 
     const direct = buildOverviewThreadD3FlowLayout(
       [nodes[0]!, nodes[2]!],
@@ -2025,8 +2133,14 @@ Deno.test(
     assert(directBackbone);
     assertEquals(
       directBackbone.points.length,
-      2,
-      "Without a blocker the magnetic backbone must stay taut and direct",
+      8,
+      "A clear magnetic backbone must retain its eight dynamic particles",
+    );
+    assert(
+      directBackbone.curve === "catmull-rom" &&
+        directBackbone.d.includes("C") &&
+        !/[LQAS]/.test(directBackbone.d),
+      "A clear cable must remain a curved cubic, never a straight-line fallback",
     );
     const directRoutePoints = assertConnectedRoute(direct, "obstacle-edge");
     const directChord = Math.hypot(
@@ -2038,6 +2152,7 @@ Deno.test(
       "A clear complete route must stay within one percent of its shortest chord",
     );
     assertEquals(/Q/.test(directBackbone.d), false);
+    assertRouteJoinsC1(direct, "obstacle-edge", 0.97);
 
     const sameLaneNodes: readonly OverviewThreadD3FlowNodeInput[] = [
       {
@@ -2095,7 +2210,7 @@ Deno.test(
       group.key === sameObstacleIdentity
     );
     const sameTrunk = sameLane.segments.find((segment) =>
-      segment.kind === "same-lane-trunk"
+      segment.kind === "bundle-trunk"
     );
     assert(sameObstacle);
     assert(sameTrunk);
@@ -2132,7 +2247,7 @@ Deno.test(
       },
     );
     const localTrunk = unobstructedSameLane.segments.find((segment) =>
-      segment.kind === "same-lane-trunk"
+      segment.kind === "bundle-trunk"
     );
     assert(localTrunk);
     const endpointMaximumX = Math.max(
@@ -2149,7 +2264,8 @@ Deno.test(
       "The local same-lane return must be an actual smooth cubic field curve",
     );
     const localSegments = unobstructedSameLane.routes[0]!.segmentKeys.map(
-      (key) => unobstructedSameLane.segments.find((segment) => segment.key === key)!,
+      (key) =>
+        unobstructedSameLane.segments.find((segment) => segment.key === key)!,
     );
     assertDirectionDotAtLeast(
       localSegments[0]!.points.at(-2)!,
@@ -2266,7 +2382,9 @@ function assertMagneticGroupY(
       const prefix = lane === "requirements" ? "source" : "target";
       const groupKey = `magnetic-${prefix}-group:${id}`;
       const identity = overviewThreadD3FlowGroupIdentity(lane, groupKey);
-      const group = layout.groups.find((candidate) => candidate.key === identity);
+      const group = layout.groups.find((candidate) =>
+        candidate.key === identity
+      );
       const node = layout.nodes.find((candidate) =>
         candidate.key === `magnetic-${prefix}:${id}`
       );
@@ -2285,7 +2403,9 @@ function assertMagneticGroupY(
 function corridorSizes(
   layout: ReturnType<typeof buildOverviewThreadD3FlowLayout>,
 ): readonly number[] {
-  return layout.nextRoutingState.corridors.map((corridor) => corridor.pairKeys.length)
+  return layout.nextRoutingState.corridors.map((corridor) =>
+    corridor.pairKeys.length
+  )
     .toSorted((left, right) => left - right);
 }
 
@@ -2293,12 +2413,12 @@ function pairKeyForEdge(
   layout: ReturnType<typeof buildOverviewThreadD3FlowLayout>,
   edgeKey: string,
 ): string {
-  const feeder = layout.segments.find((segment) =>
-    segment.kind === "pair-feeder" && segment.edgeKeys.includes(edgeKey)
+  const trunk = layout.segments.find((segment) =>
+    segment.kind === "bundle-trunk" && segment.edgeKeys.includes(edgeKey)
   );
-  assert(feeder, `Missing exact pair feeder for ${edgeKey}`);
-  assertEquals(feeder.pairKeys.length, 1);
-  return feeder.pairKeys[0]!;
+  assert(trunk, `Missing exact pair trunk for ${edgeKey}`);
+  assertEquals(trunk.pairKeys.length, 1);
+  return trunk.pairKeys[0]!;
 }
 
 function corridorBackboneForPair(
@@ -2310,6 +2430,19 @@ function corridorBackboneForPair(
   );
   assert(backbone, `Missing corridor backbone for ${pairKey}`);
   return backbone;
+}
+
+function corridorForPair(
+  layout: ReturnType<typeof buildOverviewThreadD3FlowLayout>,
+  pairKey: string,
+): ReturnType<
+  typeof buildOverviewThreadD3FlowLayout
+>["nextRoutingState"]["corridors"][number] {
+  const corridor = layout.nextRoutingState.corridors.find((candidate) =>
+    candidate.pairKeys.includes(pairKey)
+  );
+  assert(corridor, `Missing magnetic corridor for ${pairKey}`);
+  return corridor;
 }
 
 function hundredNodeFiveHundredEdgeFixture(): {
@@ -2483,7 +2616,9 @@ function assertMonotoneX(
   key: string,
 ): void {
   assert(
-    points.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y)),
+    points.every((point) =>
+      Number.isFinite(point.x) && Number.isFinite(point.y)
+    ),
     `Non-finite point in ${key}`,
   );
   for (let index = 1; index < points.length; index++) {
@@ -2494,35 +2629,93 @@ function assertMonotoneX(
   }
 }
 
-function assertFeederBackboneJoinC1(
-  feeder: {
-    readonly role: string;
-    readonly points: readonly OverviewThreadD3FlowPoint[];
-  },
-  backbone: { readonly points: readonly OverviewThreadD3FlowPoint[] },
-  message: string,
+function assertRouteJoinsC1(
+  layout: ReturnType<typeof buildOverviewThreadD3FlowLayout>,
+  edgeKey: string,
+  minimumDot: number,
 ): void {
-  assert(feeder.points.length >= 2, `${message}: missing feeder points`);
-  assert(backbone.points.length >= 2, `${message}: missing backbone points`);
-  if (feeder.role === "source") {
-    assertDirectionDotAtLeast(
-      feeder.points.at(-2)!,
-      feeder.points.at(-1)!,
-      backbone.points[0]!,
-      backbone.points[1]!,
-      0.995,
-      message,
-    );
-    return;
-  }
-  assertDirectionDotAtLeast(
-    backbone.points.at(-2)!,
-    backbone.points.at(-1)!,
-    feeder.points[0]!,
-    feeder.points[1]!,
-    0.995,
-    message,
+  const route = layout.routes.find((candidate) =>
+    candidate.edgeKey === edgeKey
   );
+  assert(route, `Missing route ${edgeKey}`);
+  const segments = route.segmentKeys.map((key) => {
+    const segment = layout.segments.find((candidate) => candidate.key === key);
+    assert(segment, `Missing segment ${key}`);
+    assert(segment.points.length >= 2, `${key} needs a tangent`);
+    return segment;
+  });
+  for (let index = 1; index < segments.length; index++) {
+    const previous = segments[index - 1]!;
+    const next = segments[index]!;
+    assertSamePoint(
+      previous.points.at(-1)!,
+      next.points[0]!,
+      `${edgeKey} must stay connected at ${next.key}`,
+    );
+    const previousTangents = cubicEndpointTangents(previous.d, previous.key);
+    const nextTangents = cubicEndpointTangents(next.d, next.key);
+    assertDirectionDotAtLeast(
+      { x: 0, y: 0 },
+      previousTangents.arrival,
+      { x: 0, y: 0 },
+      nextTangents.departure,
+      minimumDot,
+      `${edgeKey} must stay C1 at ${next.key}`,
+    );
+  }
+}
+
+function cubicEndpointTangents(
+  d: string,
+  key: string,
+): {
+  readonly departure: OverviewThreadD3FlowPoint;
+  readonly arrival: OverviewThreadD3FlowPoint;
+} {
+  const tokens = [...d.matchAll(
+    /([MC])|(-?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)/gi,
+  )].map((match) => match[1] ?? Number(match[2]));
+  let cursor: OverviewThreadD3FlowPoint | undefined;
+  let departure: OverviewThreadD3FlowPoint | undefined;
+  let arrival: OverviewThreadD3FlowPoint | undefined;
+  let index = 0;
+  const readNumber = (): number => {
+    const token = tokens[index++];
+    assert(typeof token === "number", `${key} has malformed cubic data`);
+    return token;
+  };
+  while (index < tokens.length) {
+    const command = tokens[index++];
+    if (command === "M") {
+      cursor = {
+        x: readNumber(),
+        y: readNumber(),
+      };
+      continue;
+    }
+    assert(
+      command === "C" && cursor,
+      `${key} must contain cubic-only geometry`,
+    );
+    const control1 = {
+      x: readNumber(),
+      y: readNumber(),
+    };
+    const control2 = {
+      x: readNumber(),
+      y: readNumber(),
+    };
+    const target = {
+      x: readNumber(),
+      y: readNumber(),
+    };
+    departure ??= unitVector(cursor, control1);
+    arrival = unitVector(control2, target);
+    cursor = target;
+  }
+  assert(departure, `${key} is missing its rendered departure tangent`);
+  assert(arrival, `${key} is missing its rendered arrival tangent`);
+  return { departure, arrival };
 }
 
 function assertDirectionDotAtLeast(
@@ -2541,26 +2734,6 @@ function assertDirectionDotAtLeast(
   assert(
     dot >= minimumDot,
     `${message}: tangent dot ${dot} is below ${minimumDot}`,
-  );
-}
-
-function assertCollinearSameDirection(
-  incomingFrom: OverviewThreadD3FlowPoint,
-  incomingTo: OverviewThreadD3FlowPoint,
-  outgoingFrom: OverviewThreadD3FlowPoint,
-  outgoingTo: OverviewThreadD3FlowPoint,
-  message: string,
-): void {
-  const incoming = unitVector(incomingFrom, incomingTo);
-  const outgoing = unitVector(outgoingFrom, outgoingTo);
-  assert(incoming, `${message}: missing incoming tangent`);
-  assert(outgoing, `${message}: missing outgoing tangent`);
-  const dot = incoming.x * outgoing.x + incoming.y * outgoing.y;
-  assertAlmostEquals(
-    dot,
-    1,
-    1e-6,
-    `${message}: incoming (${incoming.x}, ${incoming.y}) outgoing (${outgoing.x}, ${outgoing.y}) dot=${dot}`,
   );
 }
 
@@ -2599,7 +2772,8 @@ function assertRoundedPathHasNoOrthogonalLinearElbow(
     const length = Math.hypot(direction.x, direction.y);
     if (length > EPSILON && previousLinear) {
       const previousLength = Math.hypot(previousLinear.x, previousLinear.y);
-      const dot = (previousLinear.x * direction.x + previousLinear.y * direction.y) /
+      const dot =
+        (previousLinear.x * direction.x + previousLinear.y * direction.y) /
         (previousLength * length);
       assert(
         Math.abs(dot) > 0.08,
@@ -2795,7 +2969,9 @@ function assertConnectedRoute(
   layout: ReturnType<typeof buildOverviewThreadD3FlowLayout>,
   edgeKey: string,
 ): readonly OverviewThreadD3FlowPoint[] {
-  const route = layout.routes.find((candidate) => candidate.edgeKey === edgeKey);
+  const route = layout.routes.find((candidate) =>
+    candidate.edgeKey === edgeKey
+  );
   assert(route, `Missing route ${edgeKey}`);
   const segmentByKey = new Map(
     layout.segments.map((segment) => [segment.key, segment]),

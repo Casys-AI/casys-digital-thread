@@ -6,6 +6,7 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import type { EngineeringPhaseStatus } from "../../../domain/project/engineering-project.ts";
 import {
   buildOverviewThreadHero,
@@ -17,6 +18,7 @@ import {
 } from "./overview-thread-hero-model.ts";
 import { buildOverviewThreadD3Layout } from "./overview-thread-d3-layout.ts";
 import {
+  flowGroupCaption,
   OverviewThreadD3Flow,
   type OverviewThreadD3FlowMoveDirection,
   type OverviewThreadStageSummary,
@@ -24,14 +26,13 @@ import {
 import {
   buildOverviewThreadD3FlowLayout,
   overviewThreadD3FlowGroupIdentity,
+  type OverviewThreadD3FlowGroupLayout,
   type OverviewThreadD3FlowGroupPlacement,
   type OverviewThreadD3FlowNodePlacement,
   type OverviewThreadD3FlowRoutingState,
 } from "./overview-thread-d3-flow-layout.ts";
 import type { ProjectPathActivityView } from "./model.ts";
-import { recordStatusVariant } from "./record-status.ts";
 import type {
-  ThreadGraphNode,
   ThreadGraphRef,
   ThreadWorkbenchSnapshot,
 } from "../thread/types.ts";
@@ -40,13 +41,14 @@ import type {
   ThreadViewerSessionsProjection,
 } from "../thread/viewer-sessions-client.ts";
 import { McpAppFrame } from "../thread/mcp-app-frame.tsx";
-import { RecordInspectorPanel } from "../thread/tool-inspectors.tsx";
-import { Badge } from "../ui/badge.tsx";
-import { Button } from "../ui/button.tsx";
 import {
-  resolveOverviewThreadViewerCapabilities,
-  uniqueOverviewThreadViewerSession,
-} from "./overview-thread-viewer-model.ts";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuContextTrigger,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+} from "../ui/dropdown-menu.tsx";
 import {
   loadOverviewThreadWhiteboardPresentation,
   type OverviewThreadWhiteboardPresentationReconciliation,
@@ -57,13 +59,17 @@ import {
   saveOverviewThreadWhiteboardPresentation,
 } from "./overview-thread-whiteboard-persistence.ts";
 import {
+  overviewThreadNodeContextValue,
+  parseOverviewThreadContextTarget,
+} from "./overview-thread-context-target.ts";
+import {
   fitOverviewThreadWhiteboardTransform,
   normalizeOverviewThreadWhiteboardTransform,
   type OverviewThreadWhiteboardBounds,
+  overviewThreadWhiteboardContentBounds,
   type OverviewThreadWhiteboardTransform,
   panOverviewThreadWhiteboard,
   resetOverviewThreadWhiteboardTransform,
-  unionOverviewThreadWhiteboardRects,
   zoomOverviewThreadWhiteboardAt,
   zoomOverviewThreadWhiteboardByWheel,
 } from "./overview-thread-whiteboard-transform.ts";
@@ -76,7 +82,6 @@ import {
   resizeOverviewThreadViewerByScreenDelta,
 } from "./overview-thread-viewer-geometry.ts";
 
-const OVERVIEW_SELECTION_ID = "overview-thread-selection";
 const OVERVIEW_GRAPH_TITLE_ID = "overview-thread-graph-title";
 const OVERVIEW_GRAPH_DESCRIPTION_ID = "overview-thread-graph-description";
 
@@ -93,11 +98,6 @@ type OverviewReactWheelEvent = Parameters<
 
 type OverviewNodeContextAction =
   | {
-    readonly kind: "inspect-record";
-    readonly nodeKey: string;
-    readonly label: string;
-  }
-  | {
     readonly kind: "open-session";
     readonly nodeKey: string;
     readonly sessionId: string;
@@ -109,19 +109,16 @@ type OverviewNodeContextAction =
     readonly label: string;
   }
   | {
-    readonly kind: "inspect-activity";
-    readonly nodeKey: string;
-    readonly label: string;
-  }
-  | {
     readonly kind: "open-activity";
     readonly label: string;
   };
 
-type OverviewViewerState =
-  | OverviewRecordViewerState
-  | OverviewSessionViewerState
-  | OverviewActivityViewerState;
+type OverviewOpenSessionContextAction = Extract<
+  OverviewNodeContextAction,
+  { readonly kind: "open-session" }
+>;
+
+type OverviewViewerState = OverviewSessionViewerState;
 
 interface OverviewViewerBase {
   readonly id: string;
@@ -133,21 +130,11 @@ interface OverviewViewerBase {
   readonly restoreGeometry?: OverviewThreadViewerGeometry;
 }
 
-interface OverviewRecordViewerState extends OverviewViewerBase {
-  readonly kind: "record";
-  readonly nodeKey: string;
-}
-
 interface OverviewSessionViewerState extends OverviewViewerBase {
   readonly kind: "session";
   readonly nodeKey: string;
   /** Stable descriptor key; URL and runtime state are never persisted. */
   readonly sessionId: string;
-}
-
-interface OverviewActivityViewerState extends OverviewViewerBase {
-  readonly kind: "activity";
-  readonly nodeKey: string;
 }
 
 interface OverviewViewerDragState {
@@ -161,6 +148,26 @@ interface OverviewViewerDragState {
 
 interface OverviewViewerResizeState {
   readonly viewerId: string;
+  readonly pointerId: number;
+  readonly startClientX: number;
+  readonly startClientY: number;
+  readonly originWidth: number;
+  readonly originHeight: number;
+}
+
+interface OverviewHullMonitorState extends OverviewThreadViewerGeometry {
+  readonly groupKey: string;
+}
+
+interface OverviewHullMonitorDragState {
+  readonly pointerId: number;
+  readonly startClientX: number;
+  readonly startClientY: number;
+  readonly originX: number;
+  readonly originY: number;
+}
+
+interface OverviewHullMonitorResizeState {
   readonly pointerId: number;
   readonly startClientX: number;
   readonly startClientY: number;
@@ -185,12 +192,6 @@ interface OverviewWhiteboardPendingPersistence {
   readonly reconciliation: OverviewThreadWhiteboardPresentationReconciliation;
 }
 
-interface OverviewExactAppLaunchStatus {
-  readonly nodeKey: string;
-  readonly state: "unavailable" | "ambiguous";
-  readonly message: string;
-}
-
 const OVERVIEW_WHITEBOARD_INITIAL_TRANSFORM = {
   x: 0,
   y: 0,
@@ -201,8 +202,8 @@ const OVERVIEW_VIEWER_DEFAULT_WIDTH = 340;
 const OVERVIEW_VIEWER_DEFAULT_HEIGHT = 280;
 const OVERVIEW_VIEWER_MIN_WIDTH = 260;
 const OVERVIEW_VIEWER_MIN_HEIGHT = 210;
-const OVERVIEW_SELECTION_CARD_WIDTH = 276;
-const OVERVIEW_SELECTION_CARD_HEIGHT = 188;
+const OVERVIEW_HULL_MONITOR_WIDTH = 360;
+const OVERVIEW_HULL_MONITOR_HEIGHT = 300;
 const OVERVIEW_WHITEBOARD_SAVE_DELAY_MS = 240;
 
 export function OverviewThreadHero({
@@ -262,11 +263,17 @@ export function OverviewThreadHero({
   const flowLayout = useMemo(
     () =>
       buildOverviewThreadD3FlowLayout(
-        view.nodes.map(({ key, lane, groupKey, label }) => ({
-          key,
-          lane,
-          groupKey,
-          label,
+        view.nodes.map((item) => ({
+          key: item.key,
+          lane: item.lane,
+          groupKey: item.groupKey,
+          label: item.label,
+          ...(item.kind === "recorded" && item.node.recordedAt
+            ? { recordedAt: item.node.recordedAt }
+            : {}),
+          ...(item.kind === "recorded" && item.parentKey
+            ? { parentKey: item.parentKey }
+            : {}),
         })),
         view.edges,
         immersive
@@ -344,23 +351,14 @@ export function OverviewThreadHero({
       OverviewThreadWhiteboardViewerCapability
     >;
     for (const item of view.nodes) {
-      if (item.kind === "activity") {
-        result[item.key] = { activity: true };
-        continue;
-      }
-      const capabilities = resolveOverviewThreadViewerCapabilities(
-        thread,
-        item.node,
-      );
       result[item.key] = {
-        record: capabilities.inspectRecord,
         sessionIds: (viewerSessionsByNodeKey.get(item.key) ?? []).map(
           (session) => session.id,
         ),
       };
     }
     return result;
-  }, [thread, view.nodes, viewerSessionsByNodeKey]);
+  }, [view.nodes, viewerSessionsByNodeKey]);
   const persistenceReconciliation = useMemo<
     OverviewThreadWhiteboardPresentationReconciliation
   >(() => ({
@@ -375,11 +373,12 @@ export function OverviewThreadHero({
   const [selectedKey, setSelectedKey] = useState<string>();
   const [hoveredKey, setHoveredKey] = useState<string>();
   const [focusedKey, setFocusedKey] = useState<string>();
-  const [exactAppLaunchStatus, setExactAppLaunchStatus] = useState<
-    OverviewExactAppLaunchStatus
-  >();
+  const [contextTriggerValue, setContextTriggerValue] = useState<
+    string | null
+  >(null);
   const [layoutMode, setLayoutMode] = useState<OverviewLayoutMode>("hierarchy");
   const [viewers, setViewers] = useState<readonly OverviewViewerState[]>([]);
+  const [hullMonitor, setHullMonitor] = useState<OverviewHullMonitorState>();
   const [persistenceHydration, setPersistenceHydration] = useState<
     OverviewWhiteboardPersistenceHydration
   >();
@@ -388,6 +387,8 @@ export function OverviewThreadHero({
   const worldRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<OverviewViewerDragState>();
   const resizeRef = useRef<OverviewViewerResizeState>();
+  const hullMonitorDragRef = useRef<OverviewHullMonitorDragState>();
+  const hullMonitorResizeRef = useRef<OverviewHullMonitorResizeState>();
   const canvasPanRef = useRef<OverviewCanvasPanState>();
   const whiteboardTouchedRef = useRef(false);
   const skipNextAutoFitRef = useRef(false);
@@ -452,6 +453,9 @@ export function OverviewThreadHero({
   }, [persistenceProjectId]);
   useEffect(() => {
     const visibleKeys = new Set(view.nodes.map((item) => item.key));
+    const availableSessionIds = viewerSessions
+      ? new Set(viewerSessions.sessions.map((session) => session.id))
+      : undefined;
     setSelectedKey((current) =>
       current && !visibleKeys.has(current) ? undefined : current
     );
@@ -465,13 +469,17 @@ export function OverviewThreadHero({
       current && visibleKeys.has(current) ? current : firstKey
     );
     setViewers((current) =>
-      current.filter((viewer) => visibleKeys.has(viewer.nodeKey))
+      current.filter((viewer) =>
+        visibleKeys.has(viewer.nodeKey) &&
+        (availableSessionIds?.has(viewer.sessionId) ?? true)
+      )
     );
   }, [
     flowLayout.nodes,
     layoutMode,
     radialLayout.nodes,
     view.nodes,
+    viewerSessions,
   ]);
   useEffect(() => {
     if (
@@ -585,14 +593,12 @@ export function OverviewThreadHero({
       flush();
     };
   }, []);
-  const selected = view.nodes.find((item) => item.key === selectedKey);
   const activeKey = selectedKey ?? hoveredKey;
   const relatedKeys = useMemo(
     () => overviewRelatedNodeKeys(view.edges, activeKey),
     [view.edges, activeKey],
   );
   const toggleSelection = (item: OverviewHeroNode) => {
-    setExactAppLaunchStatus(undefined);
     setSelectedKey((current) => nextOverviewHeroSelection(current, item.key));
   };
   const bringViewerFront = (viewerId: string) => {
@@ -604,14 +610,11 @@ export function OverviewThreadHero({
     });
   };
   const openViewer = (
-    request:
-      | { readonly kind: "record"; readonly nodeKey: string }
-      | {
-        readonly kind: "session";
-        readonly nodeKey: string;
-        readonly sessionId: string;
-      }
-      | { readonly kind: "activity"; readonly nodeKey: string },
+    request: {
+      readonly kind: "session";
+      readonly nodeKey: string;
+      readonly sessionId: string;
+    },
   ) => {
     const id = overviewViewerId(request);
     setViewers((current) => {
@@ -670,10 +673,6 @@ export function OverviewThreadHero({
     requestAnimationFrame(() => viewerRefs.current.get(id)?.focus());
   };
   const runContextAction = (action: OverviewNodeContextAction) => {
-    if (action.kind === "inspect-record") {
-      openViewer({ kind: "record", nodeKey: action.nodeKey });
-      return;
-    }
     if (action.kind === "open-session") {
       openViewer({
         kind: "session",
@@ -682,41 +681,11 @@ export function OverviewThreadHero({
       });
       return;
     }
-    if (action.kind === "inspect-activity") {
-      openViewer({ kind: "activity", nodeKey: action.nodeKey });
-      return;
-    }
     if (action.kind === "open-evidence") {
       onOpenEvidence(action.reference);
       return;
     }
     onOpenActivity();
-  };
-  const requestExactApp = (nodeKey: string) => {
-    const item = nodesByKey.get(nodeKey);
-    if (!item) return;
-    const sessions = viewerSessionsByNodeKey.get(nodeKey) ?? [];
-    const exactSession = uniqueOverviewThreadViewerSession(sessions);
-    if (exactSession) {
-      setExactAppLaunchStatus(undefined);
-      openViewer({
-        kind: "session",
-        nodeKey,
-        sessionId: exactSession.id,
-      });
-      return;
-    }
-    setSelectedKey(nodeKey);
-    setHoveredKey(undefined);
-    setFocusedKey(nodeKey);
-    setExactAppLaunchStatus({
-      nodeKey,
-      state: sessions.length === 0 ? "unavailable" : "ambiguous",
-      message: sessions.length === 0
-        ? "No exact whole-App session is registered for this node."
-        : `${sessions.length} exact whole-App sessions are registered; none was chosen automatically.`,
-    });
-    requestAnimationFrame(() => nodeRefs.current.get(nodeKey)?.focus());
   };
   const closeViewer = (viewerId: string) => {
     const viewer = viewers.find((candidate) => candidate.id === viewerId);
@@ -828,6 +797,110 @@ export function OverviewThreadHero({
   const endViewerResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (resizeRef.current?.pointerId !== event.pointerId) return;
     resizeRef.current = undefined;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+  const beginHullMonitorDrag = (
+    event: ReactPointerEvent<HTMLElement>,
+  ) => {
+    if (
+      event.button !== 0 || !hullMonitor ||
+      (event.target as Element).closest("button")
+    ) return;
+    event.stopPropagation();
+    hullMonitorDragRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      originX: hullMonitor.x,
+      originY: hullMonitor.y,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const moveHullMonitor = (event: ReactPointerEvent<HTMLElement>) => {
+    const drag = hullMonitorDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const delta = overviewThreadViewerScreenDeltaToWorld(
+      {
+        x: event.clientX - drag.startClientX,
+        y: event.clientY - drag.startClientY,
+      },
+      whiteboardTransform,
+    );
+    setHullMonitor((current) =>
+      current
+        ? {
+          ...current,
+          ...normalizeOverviewThreadViewerGeometry(
+            {
+              ...current,
+              x: drag.originX + delta.x,
+              y: drag.originY + delta.y,
+            },
+            overviewViewerGeometryConstraints(),
+          ),
+        }
+        : current
+    );
+  };
+  const endHullMonitorDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    if (hullMonitorDragRef.current?.pointerId !== event.pointerId) return;
+    hullMonitorDragRef.current = undefined;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+  const beginHullMonitorResize = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) => {
+    if (event.button !== 0 || !hullMonitor) return;
+    event.preventDefault();
+    event.stopPropagation();
+    hullMonitorResizeRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      originWidth: hullMonitor.width,
+      originHeight: hullMonitor.height,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const moveHullMonitorResize = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) => {
+    const resize = hullMonitorResizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setHullMonitor((current) =>
+      current
+        ? {
+          ...current,
+          ...resizeOverviewThreadViewerByScreenDelta(
+            {
+              ...current,
+              width: resize.originWidth,
+              height: resize.originHeight,
+            },
+            {
+              x: event.clientX - resize.startClientX,
+              y: event.clientY - resize.startClientY,
+            },
+            whiteboardTransform,
+            overviewViewerGeometryConstraints(),
+          ),
+        }
+        : current
+    );
+  };
+  const endHullMonitorResize = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) => {
+    if (hullMonitorResizeRef.current?.pointerId !== event.pointerId) return;
+    hullMonitorResizeRef.current = undefined;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -983,7 +1056,7 @@ export function OverviewThreadHero({
   ) => {
     if (
       (event.target as Element).closest(
-        ".overview-thread-viewer, .overview-thread-selection-card",
+        ".overview-thread-viewer, .overview-thread-hull-monitor",
       )
     ) return;
     const viewport = viewportRef.current;
@@ -1014,7 +1087,7 @@ export function OverviewThreadHero({
     const target = event.target as Element;
     if (
       target.closest(
-        "button, [role='button'], .overview-thread-viewer, .overview-thread-selection-card",
+        "button, [role='button'], .overview-thread-viewer, .overview-thread-hull-monitor",
       )
     ) return;
     whiteboardTouchedRef.current = true;
@@ -1056,398 +1129,513 @@ export function OverviewThreadHero({
   const unroutedEdgeCount = layoutMode === "hierarchy"
     ? flowLayout.unroutedEdgeKeys.length
     : radialLayout.unroutedEdgeKeys.length;
-  const selectedAnchor = selected
-    ? overviewViewerAnchorPoint(
-      selected.key,
-      layoutMode,
-      flowLayout,
-      radialLayout,
-      whiteboardWorldSize,
+  const contextTarget = parseOverviewThreadContextTarget(contextTriggerValue);
+  const contextNode = contextTarget?.kind === "node"
+    ? nodesByKey.get(contextTarget.key)
+    : undefined;
+  const contextGroup = contextTarget?.kind === "group"
+    ? flowLayout.groups.find((group) => group.key === contextTarget.key)
+    : undefined;
+  const contextActions = contextNode
+    ? overviewNodeContextActions(contextNode, viewerSessionsByNodeKey)
+    : [];
+  const selectNode = (key: string) => {
+    if (!nodesByKey.has(key)) return;
+    setSelectedKey(key);
+    setHoveredKey(key);
+    setFocusedKey(key);
+    requestAnimationFrame(() => nodeRefs.current.get(key)?.focus());
+  };
+  const commitContextTargetBeforeOpen = (
+    value: string | null | undefined,
+  ) => {
+    if (!parseOverviewThreadContextTarget(value)) return;
+    flushSync(() => setContextTriggerValue(value!));
+  };
+  const monitoredGroup = hullMonitor
+    ? flowLayout.groups.find((group) => group.key === hullMonitor.groupKey)
+    : undefined;
+  const monitoredMembers = monitoredGroup
+    ? overviewGroupMembers(monitoredGroup, nodesByKey)
+    : [];
+  const monitoredAnchor = monitoredGroup
+    ? overviewHullAnchorPoint(monitoredGroup, flowLayout, whiteboardWorldSize)
+    : undefined;
+  const monitoredGeometry = monitoredAnchor && hullMonitor
+    ? hullMonitor
+    : undefined;
+  const monitoredConnector = monitoredAnchor && monitoredGeometry
+    ? buildOverviewThreadViewerConnectorGeometry(
+      monitoredAnchor,
+      monitoredGeometry,
     )
     : undefined;
-  const selectedCard = selectedAnchor
-    ? overviewSelectionCardGeometry(selectedAnchor, whiteboardWorldSize)
-    : undefined;
-  const selectedCardConnector = selectedAnchor && selectedCard
-    ? buildOverviewThreadViewerConnectorGeometry(selectedAnchor, selectedCard)
-    : undefined;
   return (
-    <div
-      ref={heroRef}
-      className={cn(
-        "overview-thread-hero",
-        immersive && "overview-thread-hero-immersive",
-      )}
-      data-immersive={immersive ? "true" : undefined}
-      onPointerDownCapture={(event) => {
-        const target = event.target as Element;
-        if (
-          !target.closest(
-            ".overview-thread-flow-node, .overview-thread-node, .overview-thread-viewer, .overview-thread-layout-switch, #overview-thread-selection, button",
-          )
-        ) {
-          setExactAppLaunchStatus(undefined);
-          setSelectedKey(undefined);
-          setHoveredKey(undefined);
+    <DropdownMenu
+      triggerValue={contextTriggerValue}
+      onTriggerValueChange={(details) => {
+        if (parseOverviewThreadContextTarget(details.value)) {
+          setContextTriggerValue(details.value);
         }
       }}
     >
       <div
-        className="overview-thread-layout-switch"
-        role="group"
-        aria-label="Whiteboard controls"
-      >
-        <button
-          type="button"
-          aria-pressed={layoutMode === "hierarchy"}
-          onClick={() => changeLayoutMode("hierarchy")}
-        >
-          Hierarchy
-        </button>
-        <button
-          type="button"
-          aria-pressed={layoutMode === "radial"}
-          onClick={() => changeLayoutMode("radial")}
-        >
-          Radial
-        </button>
-        <span className="overview-thread-layout-divider" aria-hidden="true" />
-        <button
-          type="button"
-          onClick={() => zoomWhiteboard(0.82)}
-        >
-          Zoom out
-        </button>
-        <button type="button" onClick={fitWhiteboard}>
-          Fit
-        </button>
-        <button
-          type="button"
-          onClick={() => zoomWhiteboard(1.22)}
-        >
-          Zoom in
-        </button>
-        <span
-          className="overview-thread-layout-scale"
-          aria-label={`Zoom ${Math.round(whiteboardTransform.k * 100)} percent`}
-        >
-          {Math.round(whiteboardTransform.k * 100)}%
-        </span>
-        <button type="button" onClick={resetWhiteboard}>
-          Reset layout
-        </button>
-      </div>
-      <div
-        ref={viewportRef}
-        className="overview-thread-viewport"
-        data-whiteboard-grid="true"
-        aria-label="Digital thread whiteboard"
-        style={overviewWhiteboardViewportStyle(whiteboardTransform)}
-        onWheel={handleWhiteboardWheel}
-        onPointerDown={beginCanvasPan}
-        onPointerMove={moveCanvasPan}
-        onPointerUp={endCanvasPan}
-        onPointerCancel={endCanvasPan}
+        ref={heroRef}
+        className={cn(
+          "overview-thread-hero",
+          immersive && "overview-thread-hero-immersive",
+        )}
+        data-immersive={immersive ? "true" : undefined}
+        onContextMenuCapture={(event) => {
+          const target = (event.target as Element).closest(
+            "[data-overview-context-target]",
+          );
+          const value = target?.getAttribute("data-overview-context-target");
+          commitContextTargetBeforeOpen(value);
+        }}
+        onPointerDownCapture={(event) => {
+          const target = event.target as Element;
+          const contextValue = target.closest(
+            "[data-overview-context-target]",
+          )?.getAttribute("data-overview-context-target");
+          if (contextValue) setContextTriggerValue(contextValue);
+          if (
+            !target.closest(
+              ".overview-thread-flow-node, .overview-thread-node, .overview-thread-viewer, .overview-thread-hull-monitor, .overview-thread-layout-switch, [data-part='context-trigger'], button",
+            )
+          ) {
+            setSelectedKey(undefined);
+            setHoveredKey(undefined);
+          }
+        }}
       >
         <div
-          ref={worldRef}
-          className="overview-thread-whiteboard-world"
-          style={{
-            transform:
-              `translate3d(${whiteboardTransform.x}px, ${whiteboardTransform.y}px, 0) scale(${whiteboardTransform.k})`,
-          }}
+          className="overview-thread-layout-switch"
+          role="group"
+          aria-label="Whiteboard controls"
         >
-          {layoutMode === "hierarchy"
-            ? (
-              <OverviewThreadD3Flow
-                layout={flowLayout}
-                nodesByKey={nodesByKey}
-                stages={stages}
-                showLaneStrip={!immersive}
-                activeKey={activeKey}
-                selectedKey={selectedKey}
-                focusedKey={focusedKey}
-                onHover={setHoveredKey}
-                onFocus={(key) => {
-                  setFocusedKey(key);
-                  setHoveredKey(key);
-                }}
-                onToggle={(key) => {
-                  const item = nodesByKey.get(key);
-                  if (item) toggleSelection(item);
-                }}
-                onRequestExactApp={requestExactApp}
-                onMoveGroup={(key, position) => {
-                  setGroupPlacements((current) => ({
-                    ...current,
-                    [key]: position,
-                  }));
-                }}
-                onMoveNode={(key, delta) => {
-                  setNodePlacements((current) => ({
-                    ...current,
-                    [key]: {
-                      offsetX: (current[key]?.offsetX ?? 0) + delta.x,
-                      offsetY: (current[key]?.offsetY ?? 0) + delta.y,
-                    },
-                  }));
-                }}
-                onMove={(key, direction) => {
-                  const current = flowLayout.nodes.find((node) =>
-                    node.key === key
-                  );
-                  if (!current) return;
-                  const next = directionalOverviewFlowNode(
-                    flowLayout.nodes,
-                    current,
-                    direction,
-                  );
-                  if (next) moveFocus(next.key);
-                }}
-                refNode={(key, node) => {
-                  if (node) nodeRefs.current.set(key, node);
-                  else nodeRefs.current.delete(key);
-                }}
-              />
-            )
-            : (
-              <div className="overview-thread-map">
-                <svg
-                  viewBox={`${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`}
-                  width={viewBoxWidth}
-                  height={viewBoxHeight}
-                  className="overview-thread-svg"
-                  role="group"
-                  aria-labelledby={`${OVERVIEW_GRAPH_TITLE_ID} ${OVERVIEW_GRAPH_DESCRIPTION_ID}`}
-                >
-                  <title id={OVERVIEW_GRAPH_TITLE_ID}>
-                    Project digital thread
-                  </title>
-                  <desc id={OVERVIEW_GRAPH_DESCRIPTION_ID}>
-                    A static D3 hierarchical edge-bundling view of recorded
-                    requirements, system model, geometry, physics and verdicts.
-                    Use the arrow keys to move between records, then Enter to
-                    inspect one.
-                  </desc>
-                  <g aria-hidden="true" className="overview-thread-lane-arcs">
-                    {radialLayout.lanes.map((lane) => (
-                      <path
-                        key={lane.lane}
-                        d={lane.arcD}
-                        fill="none"
-                        stroke={lane.color}
-                        className="overview-thread-lane-arc"
-                        vectorEffect="non-scaling-stroke"
-                      />
-                    ))}
-                  </g>
-                  <g aria-hidden="true" className="overview-thread-cables">
-                    {radialLayout.edges.map((edge) => {
-                      const state = overviewEdgeState(edge, activeKey);
-                      return (
-                        <path
-                          key={edge.key}
-                          d={edge.d}
-                          fill="none"
-                          className="overview-thread-cable"
-                          data-state={state}
-                          strokeWidth={overviewCableWidth(edge.pathCount)}
-                          vectorEffect="non-scaling-stroke"
-                        />
-                      );
-                    })}
-                  </g>
-                  {radialLayout.lanes.map((lane) => {
-                    const point = overviewLaneLabelPoint(
-                      radialLayout.nodes,
-                      lane.labelAngle,
-                    );
-                    return (
-                      <text
-                        key={`label:${lane.lane}`}
-                        x={point.x}
-                        y={point.y}
-                        className="overview-thread-lane-label"
-                        textAnchor="middle"
-                        dominantBaseline="middle"
-                        fill={lane.color}
-                        aria-hidden="true"
-                      >
-                        {lane.title}
-                      </text>
-                    );
-                  })}
-                  {radialLayout.nodes.map((position) => {
-                    const item = nodesByKey.get(position.key);
-                    if (!item) return null;
-                    return (
-                      <HeroNode
-                        key={item.key}
-                        refNode={(node) => {
-                          if (node) nodeRefs.current.set(item.key, node);
-                          else nodeRefs.current.delete(item.key);
-                        }}
-                        item={item}
-                        position={position}
-                        tabIndex={item.key === focusedKey ? 0 : -1}
-                        selected={item.key === selectedKey}
-                        related={activeKey === undefined ||
-                          relatedKeys.has(item.key)}
-                        onHoverChange={(hovered) =>
-                          setHoveredKey(hovered ? item.key : undefined)}
-                        onFocus={() => {
-                          setFocusedKey(item.key);
-                          setHoveredKey(item.key);
-                        }}
-                        onToggle={() => toggleSelection(item)}
-                        onRequestExactApp={() => requestExactApp(item.key)}
-                        onMove={(key) => {
-                          const next = directionalOverviewNode(
-                            radialLayout.nodes,
-                            position,
-                            key,
-                          );
-                          if (next) moveFocus(next.key);
-                        }}
-                      />
-                    );
-                  })}
-                </svg>
-              </div>
-            )}
+          <button
+            type="button"
+            aria-pressed={layoutMode === "hierarchy"}
+            onClick={() => changeLayoutMode("hierarchy")}
+          >
+            Hierarchy
+          </button>
+          <button
+            type="button"
+            aria-pressed={layoutMode === "radial"}
+            onClick={() => changeLayoutMode("radial")}
+          >
+            Radial
+          </button>
+          <span className="overview-thread-layout-divider" aria-hidden="true" />
+          <button
+            type="button"
+            onClick={() => zoomWhiteboard(0.82)}
+          >
+            Zoom out
+          </button>
+          <button type="button" onClick={fitWhiteboard}>
+            Fit
+          </button>
+          <button
+            type="button"
+            onClick={() => zoomWhiteboard(1.22)}
+          >
+            Zoom in
+          </button>
+          <span
+            className="overview-thread-layout-scale"
+            aria-label={`Zoom ${
+              Math.round(whiteboardTransform.k * 100)
+            } percent`}
+          >
+            {Math.round(whiteboardTransform.k * 100)}%
+          </span>
+          <button type="button" onClick={resetWhiteboard}>
+            Reset layout
+          </button>
         </div>
-        {(viewers.length > 0 || (selected && selectedCard)) && (
+        <div
+          ref={viewportRef}
+          className="overview-thread-viewport"
+          data-whiteboard-grid="true"
+          aria-label="Digital thread whiteboard"
+          style={overviewWhiteboardViewportStyle(whiteboardTransform)}
+          onWheel={handleWhiteboardWheel}
+          onPointerDown={beginCanvasPan}
+          onPointerMove={moveCanvasPan}
+          onPointerUp={endCanvasPan}
+          onPointerCancel={endCanvasPan}
+        >
           <div
-            className="overview-thread-viewer-layer"
-            aria-label="Whiteboard selection, App windows and generic inspectors"
+            ref={worldRef}
+            className="overview-thread-whiteboard-world"
             style={{
-              width: whiteboardWorldSize.width,
-              height: whiteboardWorldSize.height,
               transform:
                 `translate3d(${whiteboardTransform.x}px, ${whiteboardTransform.y}px, 0) scale(${whiteboardTransform.k})`,
             }}
           >
-            <svg
-              className="overview-thread-viewer-connectors"
-              viewBox={`0 0 ${whiteboardWorldSize.width} ${whiteboardWorldSize.height}`}
-              width="100%"
-              height="100%"
-              preserveAspectRatio="none"
-              aria-hidden="true"
-              focusable="false"
-            >
-              {selectedCardConnector && (
-                <g data-selection-node={selected?.key}>
-                  <path
-                    className="overview-thread-selection-connector"
-                    d={selectedCardConnector.d}
-                    vectorEffect="non-scaling-stroke"
-                  />
-                  <circle
-                    className="overview-thread-selection-anchor"
-                    cx={selectedAnchor?.x}
-                    cy={selectedAnchor?.y}
-                    r="3.5"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                </g>
+            {layoutMode === "hierarchy"
+              ? (
+                <OverviewThreadD3Flow
+                  layout={flowLayout}
+                  nodesByKey={nodesByKey}
+                  stages={stages}
+                  showLaneStrip={!immersive}
+                  activeKey={activeKey}
+                  selectedKey={selectedKey}
+                  focusedKey={focusedKey}
+                  onHover={setHoveredKey}
+                  onFocus={(key) => {
+                    setFocusedKey(key);
+                    setHoveredKey(key);
+                  }}
+                  onToggle={(key) => {
+                    const item = nodesByKey.get(key);
+                    if (item) toggleSelection(item);
+                  }}
+                  onMoveGroup={(key, position) => {
+                    setGroupPlacements((current) => ({
+                      ...current,
+                      [key]: { ...current[key], ...position },
+                    }));
+                  }}
+                  onResizeGroup={(key, size) => {
+                    setGroupPlacements((current) => ({
+                      ...current,
+                      [key]: { ...current[key], ...size },
+                    }));
+                  }}
+                  onSetGroupView={(key, view) => {
+                    setGroupPlacements((current) => ({
+                      ...current,
+                      [key]: { ...current[key], view },
+                    }));
+                  }}
+                  onCycleGroupSort={(key) => {
+                    setGroupPlacements((current) => {
+                      const order = current[key]?.sort ?? "recorded";
+                      const next = order === "recorded"
+                        ? "recent"
+                        : order === "recent"
+                        ? "name"
+                        : "recorded";
+                      return {
+                        ...current,
+                        [key]: { ...current[key], sort: next },
+                      };
+                    });
+                  }}
+                  onScrollGroup={(key, rows) => {
+                    setGroupPlacements((current) => ({
+                      ...current,
+                      [key]: {
+                        ...current[key],
+                        scrollRow: Math.max(
+                          0,
+                          (current[key]?.scrollRow ?? 0) + rows,
+                        ),
+                      },
+                    }));
+                  }}
+                  onToggleGroupFold={(key) => {
+                    setGroupPlacements((current) => ({
+                      ...current,
+                      [key]: {
+                        ...current[key],
+                        collapsed: !current[key]?.collapsed,
+                      },
+                    }));
+                  }}
+                  onMoveNode={(key, delta) => {
+                    setNodePlacements((current) => ({
+                      ...current,
+                      [key]: {
+                        offsetX: (current[key]?.offsetX ?? 0) + delta.x,
+                        offsetY: (current[key]?.offsetY ?? 0) + delta.y,
+                      },
+                    }));
+                  }}
+                  boardScale={whiteboardTransform.k}
+                  onMove={(key, direction) => {
+                    const current = flowLayout.nodes.find((node) =>
+                      node.key === key
+                    );
+                    if (!current) return;
+                    const next = directionalOverviewFlowNode(
+                      flowLayout.nodes,
+                      current,
+                      direction,
+                    );
+                    if (next) moveFocus(next.key);
+                  }}
+                  refNode={(key, node) => {
+                    if (node) nodeRefs.current.set(key, node);
+                    else nodeRefs.current.delete(key);
+                  }}
+                />
+              )
+              : (
+                <div className="overview-thread-map">
+                  <svg
+                    viewBox={`${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`}
+                    width={viewBoxWidth}
+                    height={viewBoxHeight}
+                    className="overview-thread-svg"
+                    role="group"
+                    aria-labelledby={`${OVERVIEW_GRAPH_TITLE_ID} ${OVERVIEW_GRAPH_DESCRIPTION_ID}`}
+                  >
+                    <title id={OVERVIEW_GRAPH_TITLE_ID}>
+                      Project digital thread
+                    </title>
+                    <desc id={OVERVIEW_GRAPH_DESCRIPTION_ID}>
+                      A static D3 hierarchical edge-bundling view of recorded
+                      requirements, system model, geometry, physics and
+                      verdicts. Use the arrow keys to move between records, then
+                      Enter to inspect one.
+                    </desc>
+                    <g aria-hidden="true" className="overview-thread-lane-arcs">
+                      {radialLayout.lanes.map((lane) => (
+                        <path
+                          key={lane.lane}
+                          d={lane.arcD}
+                          fill="none"
+                          stroke={lane.color}
+                          className="overview-thread-lane-arc"
+                          vectorEffect="non-scaling-stroke"
+                        />
+                      ))}
+                    </g>
+                    <g aria-hidden="true" className="overview-thread-cables">
+                      {radialLayout.edges.map((edge) => {
+                        const state = overviewEdgeState(edge, activeKey);
+                        return (
+                          <path
+                            key={edge.key}
+                            d={edge.d}
+                            fill="none"
+                            className="overview-thread-cable"
+                            data-state={state}
+                            strokeWidth={overviewCableWidth(edge.pathCount)}
+                            vectorEffect="non-scaling-stroke"
+                          />
+                        );
+                      })}
+                    </g>
+                    {radialLayout.lanes.map((lane) => {
+                      const point = overviewLaneLabelPoint(
+                        radialLayout.nodes,
+                        lane.labelAngle,
+                      );
+                      return (
+                        <text
+                          key={`label:${lane.lane}`}
+                          x={point.x}
+                          y={point.y}
+                          className="overview-thread-lane-label"
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          fill={lane.color}
+                          aria-hidden="true"
+                        >
+                          {lane.title}
+                        </text>
+                      );
+                    })}
+                    {radialLayout.nodes.map((position) => {
+                      const item = nodesByKey.get(position.key);
+                      if (!item) return null;
+                      return (
+                        <HeroNode
+                          key={item.key}
+                          refNode={(node) => {
+                            if (node) nodeRefs.current.set(item.key, node);
+                            else nodeRefs.current.delete(item.key);
+                          }}
+                          item={item}
+                          position={position}
+                          tabIndex={item.key === focusedKey ? 0 : -1}
+                          selected={item.key === selectedKey}
+                          related={activeKey === undefined ||
+                            relatedKeys.has(item.key)}
+                          onHoverChange={(hovered) =>
+                            setHoveredKey(hovered ? item.key : undefined)}
+                          onFocus={() => {
+                            setFocusedKey(item.key);
+                            setHoveredKey(item.key);
+                          }}
+                          onToggle={() => toggleSelection(item)}
+                          onMove={(key) => {
+                            const next = directionalOverviewNode(
+                              radialLayout.nodes,
+                              position,
+                              key,
+                            );
+                            if (next) moveFocus(next.key);
+                          }}
+                        />
+                      );
+                    })}
+                  </svg>
+                </div>
               )}
-              {viewers.map((viewer) => {
-                const anchor = overviewViewerAnchorPoint(
-                  viewer.nodeKey,
-                  layoutMode,
-                  flowLayout,
-                  radialLayout,
-                  whiteboardWorldSize,
-                );
-                if (!anchor) return null;
-                const connector = buildOverviewThreadViewerConnectorGeometry(
-                  anchor,
-                  viewer,
-                );
-                return (
-                  <g key={viewer.id} data-viewer-id={viewer.id}>
+          </div>
+          {(viewers.length > 0 ||
+            (monitoredGroup && monitoredGeometry)) && (
+            <div
+              className="overview-thread-viewer-layer"
+              aria-label="Whiteboard hull monitor and MCP App windows"
+              style={{
+                width: whiteboardWorldSize.width,
+                height: whiteboardWorldSize.height,
+                transform:
+                  `translate3d(${whiteboardTransform.x}px, ${whiteboardTransform.y}px, 0) scale(${whiteboardTransform.k})`,
+              }}
+            >
+              <svg
+                className="overview-thread-viewer-connectors"
+                viewBox={`0 0 ${whiteboardWorldSize.width} ${whiteboardWorldSize.height}`}
+                width="100%"
+                height="100%"
+                preserveAspectRatio="none"
+                aria-hidden="true"
+                focusable="false"
+              >
+                {monitoredConnector && (
+                  <g data-hull-monitor={monitoredGroup?.key}>
                     <path
-                      className="overview-thread-viewer-connector"
-                      d={connector.d}
+                      className="overview-thread-selection-connector overview-thread-hull-monitor-connector"
+                      d={monitoredConnector.d}
                       vectorEffect="non-scaling-stroke"
                     />
                     <circle
-                      className="overview-thread-viewer-anchor"
-                      cx={anchor.x}
-                      cy={anchor.y}
+                      className="overview-thread-selection-anchor overview-thread-hull-monitor-anchor"
+                      cx={monitoredAnchor?.x}
+                      cy={monitoredAnchor?.y}
                       r="3.5"
                       vectorEffect="non-scaling-stroke"
                     />
                   </g>
+                )}
+                {viewers.map((viewer) => {
+                  const anchor = overviewViewerAnchorPoint(
+                    viewer.nodeKey,
+                    layoutMode,
+                    flowLayout,
+                    radialLayout,
+                    whiteboardWorldSize,
+                  );
+                  if (!anchor) return null;
+                  const connector = buildOverviewThreadViewerConnectorGeometry(
+                    anchor,
+                    viewer,
+                  );
+                  return (
+                    <g key={viewer.id} data-viewer-id={viewer.id}>
+                      <path
+                        className="overview-thread-viewer-connector"
+                        d={connector.d}
+                        vectorEffect="non-scaling-stroke"
+                      />
+                      <circle
+                        className="overview-thread-viewer-anchor"
+                        cx={anchor.x}
+                        cy={anchor.y}
+                        r="3.5"
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    </g>
+                  );
+                })}
+              </svg>
+              {monitoredGroup && monitoredGeometry && (
+                <OverviewHullMonitorCard
+                  group={monitoredGroup}
+                  members={monitoredMembers}
+                  viewerSessionsByNodeKey={viewerSessionsByNodeKey}
+                  geometry={monitoredGeometry}
+                  onAction={runContextAction}
+                  onSelectNode={selectNode}
+                  onDragStart={beginHullMonitorDrag}
+                  onDrag={moveHullMonitor}
+                  onDragEnd={endHullMonitorDrag}
+                  onResizeStart={beginHullMonitorResize}
+                  onResize={moveHullMonitorResize}
+                  onResizeEnd={endHullMonitorResize}
+                  onDismiss={() => setHullMonitor(undefined)}
+                />
+              )}
+              {viewers.map((viewer) => {
+                const item = nodesByKey.get(viewer.nodeKey);
+                if (!item) return null;
+                const viewerSession = item.kind === "recorded"
+                  ? viewerSessionsById.get(viewer.sessionId)
+                  : undefined;
+                return (
+                  <OverviewFloatingViewer
+                    key={viewer.id}
+                    refViewer={(node) => {
+                      if (node) viewerRefs.current.set(viewer.id, node);
+                      else viewerRefs.current.delete(viewer.id);
+                    }}
+                    viewer={viewer}
+                    item={item}
+                    viewerSession={viewerSession}
+                    onBringFront={() => bringViewerFront(viewer.id)}
+                    onClose={() => closeViewer(viewer.id)}
+                    onToggleExpanded={() => toggleViewerExpanded(viewer.id)}
+                    onMoveByKeyboard={(direction) =>
+                      moveViewerByKeyboard(viewer.id, direction)}
+                    onResizeByKeyboard={(direction) =>
+                      resizeViewerByKeyboard(viewer.id, direction)}
+                    onDragStart={(event) => beginViewerDrag(event, viewer)}
+                    onDrag={moveViewer}
+                    onDragEnd={endViewerDrag}
+                    onResizeStart={(event) => beginViewerResize(event, viewer)}
+                    onResize={moveViewerResize}
+                    onResizeEnd={endViewerResize}
+                  />
                 );
               })}
-            </svg>
-            {selected && selectedCard && (
-              <OverviewNodeSelectionCard
-                item={selected}
-                thread={thread}
-                viewerSessionsByNodeKey={viewerSessionsByNodeKey}
-                geometry={selectedCard}
-                exactAppLaunchStatus={exactAppLaunchStatus?.nodeKey ===
-                    selected.key
-                  ? exactAppLaunchStatus
-                  : undefined}
-                onAction={runContextAction}
-                onDismiss={() => {
-                  setExactAppLaunchStatus(undefined);
-                  setSelectedKey(undefined);
-                  setHoveredKey(undefined);
-                  setFocusedKey(selected.key);
-                  requestAnimationFrame(() =>
-                    nodeRefs.current.get(selected.key)?.focus()
-                  );
-                }}
-              />
-            )}
-            {viewers.map((viewer) => {
-              const item = nodesByKey.get(viewer.nodeKey);
-              if (!item) return null;
-              const viewerSession = viewer.kind === "session" &&
-                  item.kind === "recorded"
-                ? viewerSessionsById.get(viewer.sessionId)
-                : undefined;
-              return (
-                <OverviewFloatingViewer
-                  key={viewer.id}
-                  refViewer={(node) => {
-                    if (node) viewerRefs.current.set(viewer.id, node);
-                    else viewerRefs.current.delete(viewer.id);
-                  }}
-                  viewer={viewer}
-                  item={item}
-                  thread={thread}
-                  viewerSession={viewerSession}
-                  onBringFront={() => bringViewerFront(viewer.id)}
-                  onClose={() => closeViewer(viewer.id)}
-                  onToggleExpanded={() => toggleViewerExpanded(viewer.id)}
-                  onMoveByKeyboard={(direction) =>
-                    moveViewerByKeyboard(viewer.id, direction)}
-                  onResizeByKeyboard={(direction) =>
-                    resizeViewerByKeyboard(viewer.id, direction)}
-                  onDragStart={(event) => beginViewerDrag(event, viewer)}
-                  onDrag={moveViewer}
-                  onDragEnd={endViewerDrag}
-                  onResizeStart={(event) => beginViewerResize(event, viewer)}
-                  onResize={moveViewerResize}
-                  onResizeEnd={endViewerResize}
-                />
-              );
-            })}
-          </div>
+            </div>
+          )}
+        </div>
+        {unroutedEdgeCount > 0 && (
+          <p className="m-0 border-t border-border px-4 py-2 text-xs text-warning">
+            {unroutedEdgeCount}{" "}
+            graph connections unavailable in this projection.
+          </p>
         )}
       </div>
-      {unroutedEdgeCount > 0 && (
-        <p className="m-0 border-t border-border px-4 py-2 text-xs text-warning">
-          {unroutedEdgeCount} graph connections unavailable in this projection.
-        </p>
-      )}
-    </div>
+      <OverviewThreadContextMenu
+        node={contextNode}
+        group={contextGroup}
+        nodesByKey={nodesByKey}
+        viewerSessionsByNodeKey={viewerSessionsByNodeKey}
+        actions={contextActions}
+        onAction={runContextAction}
+        onOpenHullMonitor={(groupKey) => {
+          const group = flowLayout.groups.find((item) => item.key === groupKey);
+          const anchor = group
+            ? overviewHullAnchorPoint(
+              group,
+              flowLayout,
+              whiteboardWorldSize,
+            )
+            : undefined;
+          if (anchor) {
+            setHullMonitor({
+              groupKey,
+              ...overviewHullMonitorGeometry(anchor, whiteboardWorldSize),
+            });
+          }
+          setSelectedKey(undefined);
+          setHoveredKey(undefined);
+        }}
+        onSelectNode={selectNode}
+      />
+    </DropdownMenu>
   );
 }
 
@@ -1484,9 +1672,7 @@ function overviewViewerToPresentation(
       ? { restoreGeometry: viewer.restoreGeometry }
       : {}),
   };
-  return viewer.kind === "session"
-    ? { ...spatial, kind: "session", sessionId: viewer.sessionId }
-    : { ...spatial, kind: viewer.kind };
+  return { ...spatial, kind: "session", sessionId: viewer.sessionId };
 }
 
 function overviewViewerFromPresentation(
@@ -1501,9 +1687,7 @@ function overviewViewerFromPresentation(
       ? { restoreGeometry: viewer.restoreGeometry }
       : {}),
   };
-  return viewer.kind === "session"
-    ? { ...spatial, kind: "session", sessionId: viewer.sessionId }
-    : { ...spatial, kind: viewer.kind };
+  return { ...spatial, kind: "session", sessionId: viewer.sessionId };
 }
 
 function overviewWhiteboardBrowserStorage(): Storage | undefined {
@@ -1557,16 +1741,18 @@ function readOverviewWhiteboardBounds(
     viewportWidth <= 0 || viewportHeight <= 0 || worldWidth <= 0 ||
     worldHeight <= 0
   ) return undefined;
-  const content = unionOverviewThreadWhiteboardRects([
-    { x: 0, y: 0, width: worldWidth, height: worldHeight },
-    ...overviewThreadFlowSceneRects(flowLayout, {
-      width: worldWidth,
-      height: worldHeight,
-    }),
-    ...viewers.map((viewer) =>
-      viewer.restoreGeometry ?? overviewViewerGeometry(viewer)
-    ),
-  ]);
+  const content = overviewThreadWhiteboardContentBounds(
+    { width: worldWidth, height: worldHeight },
+    [
+      ...overviewThreadFlowSceneRects(flowLayout, {
+        width: worldWidth,
+        height: worldHeight,
+      }),
+      ...viewers.map((viewer) =>
+        viewer.restoreGeometry ?? overviewViewerGeometry(viewer)
+      ),
+    ],
+  );
   if (!content) return undefined;
   return {
     viewport: { width: viewportWidth, height: viewportHeight },
@@ -1689,6 +1875,53 @@ function overviewViewerAnchorPoint(
   };
 }
 
+function overviewHullAnchorPoint(
+  group: OverviewThreadD3FlowGroupLayout,
+  layout: ReturnType<typeof buildOverviewThreadD3FlowLayout>,
+  world: { readonly width: number; readonly height: number },
+): { readonly x: number; readonly y: number } | undefined {
+  const [viewBoxX, viewBoxY, viewBoxWidth, viewBoxHeight] = layout.viewBox;
+  if (viewBoxWidth <= 0 || viewBoxHeight <= 0) return undefined;
+  return {
+    x: (group.x + group.width - viewBoxX) / viewBoxWidth * world.width,
+    y: (group.y + group.headerHeight / 2 - viewBoxY) / viewBoxHeight *
+      world.height,
+  };
+}
+
+function overviewHullMonitorGeometry(
+  anchor: { readonly x: number; readonly y: number },
+  world: { readonly width: number; readonly height: number },
+): OverviewThreadViewerGeometry {
+  const padding = 8;
+  const gap = 18;
+  const width = Math.min(
+    OVERVIEW_HULL_MONITOR_WIDTH,
+    Math.max(220, world.width - padding * 2),
+  );
+  const height = Math.min(
+    OVERVIEW_HULL_MONITOR_HEIGHT,
+    Math.max(200, world.height - padding * 2),
+  );
+  const rightX = anchor.x + gap;
+  const leftX = anchor.x - gap - width;
+  const x = rightX + width <= world.width - padding
+    ? rightX
+    : leftX >= padding
+    ? leftX
+    : clamp(anchor.x - width / 2, padding, world.width - width - padding);
+  return {
+    x,
+    y: clamp(
+      anchor.y - 30,
+      padding,
+      Math.max(padding, world.height - height - padding),
+    ),
+    width,
+    height,
+  };
+}
+
 function overviewRelatedNodeKeys(
   edges: readonly OverviewHeroEdge[],
   activeKey: string | undefined,
@@ -1707,7 +1940,7 @@ function overviewCableWidth(pathCount: number): number {
 }
 
 function overviewEdgeState(
-  edge: OverviewHeroEdge,
+  edge: Pick<OverviewHeroEdge, "emphasis" | "fromKey" | "toKey">,
   activeKey: string | undefined,
 ): "default" | "emphasis" | "incoming" | "outgoing" | "muted" {
   if (!activeKey) return edge.emphasis ? "emphasis" : "default";
@@ -1821,7 +2054,6 @@ function HeroNode({
   onHoverChange,
   onFocus,
   onToggle,
-  onRequestExactApp,
   onMove,
 }: {
   item: OverviewHeroNode;
@@ -1833,7 +2065,6 @@ function HeroNode({
   onHoverChange: (hovered: boolean) => void;
   onFocus: () => void;
   onToggle: () => void;
-  onRequestExactApp: () => void;
   onMove: (
     key: "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight",
   ) => void;
@@ -1855,98 +2086,90 @@ function HeroNode({
     ? item.color
     : activityMarkerColor(item.activity.status);
   return (
-    <g
-      ref={refNode}
-      role="button"
-      tabIndex={tabIndex}
-      aria-label={ariaLabel}
-      aria-controls={selected ? OVERVIEW_SELECTION_ID : undefined}
-      aria-expanded={selected}
-      className="overview-thread-node cursor-pointer"
-      data-state={selected ? "selected" : related ? "related" : "muted"}
-      data-kind={item.kind}
-      onClick={onToggle}
-      onMouseEnter={() => onHoverChange(true)}
-      onMouseLeave={() => onHoverChange(false)}
-      onFocus={onFocus}
-      onBlur={() => onHoverChange(false)}
-      onContextMenu={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onRequestExactApp();
-      }}
-      onKeyDown={(event) => {
-        if (
-          event.key === "ContextMenu" ||
-          (event.shiftKey && event.key === "F10")
-        ) {
-          event.preventDefault();
-          event.stopPropagation();
-          onRequestExactApp();
-          return;
-        }
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onToggle();
-          return;
-        }
-        if (
-          event.key === "ArrowUp" || event.key === "ArrowDown" ||
-          event.key === "ArrowLeft" || event.key === "ArrowRight"
-        ) {
-          event.preventDefault();
-          onMove(event.key);
-        }
-      }}
+    <DropdownMenuContextTrigger
+      value={overviewThreadNodeContextValue(item.key)}
+      asChild
     >
-      <title>{title}</title>
-      <rect
-        x={hitX}
-        y={position.labelY - 10}
-        width="216"
-        height="20"
-        fill="transparent"
-      />
-      <path
-        d={position.leaderD}
-        fill="none"
-        className="overview-thread-node-leader"
-        vectorEffect="non-scaling-stroke"
-      />
-      <circle
-        cx={position.anchorX}
-        cy={position.anchorY}
-        r="8"
-        fill="transparent"
-        className="overview-thread-node-focus-ring"
-        stroke={markerColor}
-        vectorEffect="non-scaling-stroke"
-      />
-      {item.kind === "activity"
-        ? (
-          <ActivityMarker
-            item={item}
-            x={position.anchorX}
-            y={position.anchorY}
-          />
-        )
-        : (
-          <RecordedMarker
-            item={item}
-            x={position.anchorX}
-            y={position.anchorY}
-          />
-        )}
-      <text
-        x={position.labelX}
-        y={position.labelY}
-        textAnchor={position.textAnchor}
-        dominantBaseline="middle"
-        className="overview-thread-node-label"
+      <g
+        ref={refNode}
+        role="button"
+        tabIndex={tabIndex}
+        aria-label={ariaLabel}
+        aria-pressed={selected}
+        aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+F10"
+        className="overview-thread-node cursor-pointer"
+        data-state={selected ? "selected" : related ? "related" : "muted"}
+        data-kind={item.kind}
+        data-overview-context-target={overviewThreadNodeContextValue(item.key)}
+        onClick={onToggle}
+        onMouseEnter={() => onHoverChange(true)}
+        onMouseLeave={() => onHoverChange(false)}
+        onFocus={onFocus}
+        onBlur={() => onHoverChange(false)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onToggle();
+            return;
+          }
+          if (
+            event.key === "ArrowUp" || event.key === "ArrowDown" ||
+            event.key === "ArrowLeft" || event.key === "ArrowRight"
+          ) {
+            event.preventDefault();
+            onMove(event.key);
+          }
+        }}
       >
-        {item.label}
-      </text>
-    </g>
+        <title>{title}</title>
+        <rect
+          x={hitX}
+          y={position.labelY - 10}
+          width="216"
+          height="20"
+          fill="transparent"
+        />
+        <path
+          d={position.leaderD}
+          fill="none"
+          className="overview-thread-node-leader"
+          vectorEffect="non-scaling-stroke"
+        />
+        <circle
+          cx={position.anchorX}
+          cy={position.anchorY}
+          r="8"
+          fill="transparent"
+          className="overview-thread-node-focus-ring"
+          stroke={markerColor}
+          vectorEffect="non-scaling-stroke"
+        />
+        {item.kind === "activity"
+          ? (
+            <ActivityMarker
+              item={item}
+              x={position.anchorX}
+              y={position.anchorY}
+            />
+          )
+          : (
+            <RecordedMarker
+              item={item}
+              x={position.anchorX}
+              y={position.anchorY}
+            />
+          )}
+        <text
+          x={position.labelX}
+          y={position.labelY}
+          textAnchor={position.textAnchor}
+          dominantBaseline="middle"
+          className="overview-thread-node-label"
+        >
+          {item.label}
+        </text>
+      </g>
+    </DropdownMenuContextTrigger>
   );
 }
 
@@ -1997,7 +2220,6 @@ function clamp(value: number, minimum: number, maximum: number): number {
 }
 
 function overviewNodeContextActions(
-  snapshot: ThreadWorkbenchSnapshot,
   item: OverviewHeroNode,
   viewerSessionsByNodeKey: ReadonlyMap<
     string,
@@ -2005,31 +2227,17 @@ function overviewNodeContextActions(
   > = new Map(),
 ): readonly OverviewNodeContextAction[] {
   if (item.kind === "activity") {
-    return [
-      {
-        kind: "inspect-activity",
-        nodeKey: item.key,
-        label: "Inspect activity",
-      },
-      { kind: "open-activity", label: "Open Activity" },
-    ];
+    return [{ kind: "open-activity", label: "Open Activity" }];
   }
 
-  const capabilities = resolveOverviewThreadViewerCapabilities(
-    snapshot,
-    item.node,
-  );
   const actions: OverviewNodeContextAction[] = [];
-  if (capabilities.inspectRecord) {
-    actions.push({
-      kind: "inspect-record",
-      nodeKey: item.key,
-      label: "Inspect record",
-    });
-  }
-  const anchoredSessions = viewerSessionsByNodeKey.get(item.key) ?? [];
-  const session = uniqueOverviewThreadViewerSession(anchoredSessions);
-  if (session) {
+  const anchoredSessions = [...(viewerSessionsByNodeKey.get(item.key) ?? [])]
+    .toSorted((left, right) =>
+      left.app.id.localeCompare(right.app.id) ||
+      left.app.version.localeCompare(right.app.version) ||
+      left.id.localeCompare(right.id)
+    );
+  for (const session of anchoredSessions) {
     actions.push({
       kind: "open-session",
       nodeKey: item.key,
@@ -2037,13 +2245,11 @@ function overviewNodeContextActions(
       label: `Open App · ${session.app.id}@${session.app.version}`,
     });
   }
-  if (capabilities.openVerification) {
-    actions.push({
-      kind: "open-evidence",
-      reference: item.node.ref,
-      label: "Open in Verification",
-    });
-  }
+  actions.push({
+    kind: "open-evidence",
+    reference: item.node.ref,
+    label: "Open in Verification",
+  });
   return actions;
 }
 
@@ -2081,76 +2287,185 @@ function overviewLaneTitle(lane: OverviewHeroNode["lane"]): string {
     lane;
 }
 
-function overviewSelectionCardGeometry(
-  anchor: { readonly x: number; readonly y: number },
-  world: { readonly width: number; readonly height: number },
-): OverviewThreadViewerGeometry {
-  const padding = 8;
-  const gap = 16;
-  const width = Math.min(
-    OVERVIEW_SELECTION_CARD_WIDTH,
-    Math.max(180, world.width - padding * 2),
+function overviewGroupMembers(
+  group: OverviewThreadD3FlowGroupLayout,
+  nodesByKey: ReadonlyMap<string, OverviewHeroNode>,
+): readonly OverviewHeroNode[] {
+  return [...nodesByKey.values()].filter((item) =>
+    overviewThreadD3FlowGroupIdentity(item.lane, item.groupKey) === group.key
   );
-  const height = Math.min(
-    OVERVIEW_SELECTION_CARD_HEIGHT,
-    Math.max(148, world.height - padding * 2),
-  );
-  const rightX = anchor.x + gap;
-  const leftX = anchor.x - gap - width;
-  const x = rightX + width <= world.width - padding
-    ? rightX
-    : leftX >= padding
-    ? leftX
-    : clamp(anchor.x - width / 2, padding, world.width - width - padding);
-  return {
-    x,
-    y: clamp(
-      anchor.y - height / 2,
-      padding,
-      Math.max(padding, world.height - height - padding),
-    ),
-    width,
-    height,
-  };
 }
 
-function OverviewNodeSelectionCard({
-  item,
-  thread,
+function OverviewThreadContextMenu({
+  node,
+  group,
+  nodesByKey,
+  viewerSessionsByNodeKey,
+  actions,
+  onAction,
+  onOpenHullMonitor,
+  onSelectNode,
+}: {
+  readonly node?: OverviewHeroNode;
+  readonly group?: OverviewThreadD3FlowGroupLayout;
+  readonly nodesByKey: ReadonlyMap<string, OverviewHeroNode>;
+  readonly viewerSessionsByNodeKey: ReadonlyMap<
+    string,
+    readonly ThreadViewerSession[]
+  >;
+  readonly actions: readonly OverviewNodeContextAction[];
+  readonly onAction: (action: OverviewNodeContextAction) => void;
+  readonly onOpenHullMonitor: (groupKey: string) => void;
+  readonly onSelectNode: (key: string) => void;
+}): JSX.Element {
+  const members = group ? overviewGroupMembers(group, nodesByKey) : [];
+  const memberViewerEntries: Array<{
+    readonly member: OverviewHeroNode;
+    readonly action: OverviewOpenSessionContextAction;
+  }> = [];
+  for (const member of members) {
+    for (
+      const action of overviewNodeContextActions(
+        member,
+        viewerSessionsByNodeKey,
+      )
+    ) {
+      if (action.kind === "open-session") {
+        memberViewerEntries.push({ member, action });
+      }
+    }
+  }
+  const label = node?.label ?? (group ? flowGroupCaption(group) : "Thread");
+  return (
+    <DropdownMenuContent
+      className="overview-thread-context-menu"
+      aria-label={`${label} context menu`}
+    >
+      {node && (
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>{node.label}</DropdownMenuLabel>
+          {actions.length === 0 && (
+            <DropdownMenuItem
+              value={`select:${node.key}`}
+              onSelect={() => onSelectNode(node.key)}
+            >
+              Show on whiteboard
+            </DropdownMenuItem>
+          )}
+          {actions.map((action, index) => (
+            <DropdownMenuItem
+              key={overviewContextActionValue(action, index)}
+              value={overviewContextActionValue(action, index)}
+              onSelect={() => onAction(action)}
+            >
+              {action.label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
+      )}
+      {group && (
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>
+            <span>{flowGroupCaption(group)}</span>
+            <small>
+              {overviewLaneTitle(group.lane)} · {members.length} recorded{" "}
+              {members.length === 1 ? "record" : "records"}
+            </small>
+          </DropdownMenuLabel>
+          <DropdownMenuItem
+            value={`monitor:${group.key}`}
+            onSelect={() => onOpenHullMonitor(group.key)}
+          >
+            Open hull monitor
+          </DropdownMenuItem>
+          {memberViewerEntries.map(({ member, action }, index) => (
+            <DropdownMenuItem
+              key={`${member.key}:${overviewContextActionValue(action, index)}`}
+              value={`hull-viewer:${member.key}:${action.sessionId}`}
+              className="overview-thread-context-viewer"
+              onSelect={() => onAction(action)}
+            >
+              <span>{member.label}</span>
+              <small>{action.label.replace("Open App · ", "")}</small>
+            </DropdownMenuItem>
+          ))}
+          <div className="overview-thread-context-members">
+            {members.map((member) => (
+              <DropdownMenuItem
+                key={member.key}
+                value={`member:${member.key}`}
+                className="overview-thread-context-member"
+                onSelect={() => onSelectNode(member.key)}
+              >
+                <span>{member.label}</span>
+                <small>{overviewNodeContextMeta(member)}</small>
+              </DropdownMenuItem>
+            ))}
+          </div>
+        </DropdownMenuGroup>
+      )}
+    </DropdownMenuContent>
+  );
+}
+
+function OverviewHullMonitorCard({
+  group,
+  members,
   viewerSessionsByNodeKey,
   geometry,
-  exactAppLaunchStatus,
   onAction,
+  onSelectNode,
+  onDragStart,
+  onDrag,
+  onDragEnd,
+  onResizeStart,
+  onResize,
+  onResizeEnd,
   onDismiss,
 }: {
-  readonly item: OverviewHeroNode;
-  readonly thread: ThreadWorkbenchSnapshot;
+  readonly group: OverviewThreadD3FlowGroupLayout;
+  readonly members: readonly OverviewHeroNode[];
   readonly viewerSessionsByNodeKey: ReadonlyMap<
     string,
     readonly ThreadViewerSession[]
   >;
   readonly geometry: OverviewThreadViewerGeometry;
-  readonly exactAppLaunchStatus?: OverviewExactAppLaunchStatus;
   readonly onAction: (action: OverviewNodeContextAction) => void;
+  readonly onSelectNode: (key: string) => void;
+  readonly onDragStart: (event: ReactPointerEvent<HTMLElement>) => void;
+  readonly onDrag: (event: ReactPointerEvent<HTMLElement>) => void;
+  readonly onDragEnd: (event: ReactPointerEvent<HTMLElement>) => void;
+  readonly onResizeStart: (
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) => void;
+  readonly onResize: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  readonly onResizeEnd: (
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) => void;
   readonly onDismiss: () => void;
 }): JSX.Element {
-  const actions = overviewNodeContextActions(
-    thread,
-    item,
-    viewerSessionsByNodeKey,
+  const liveCount =
+    members.filter((member) =>
+      member.kind === "activity"
+        ? member.activity.status === "active"
+        : member.node.freshness === "running"
+    ).length;
+  const alertCount =
+    members.filter((member) =>
+      member.kind === "activity"
+        ? member.activity.status === "blocked"
+        : member.node.freshness === "failed" ||
+          member.node.freshness === "stale"
+    ).length;
+  const viewerCount = members.reduce(
+    (count, member) =>
+      count + (viewerSessionsByNodeKey.get(member.key)?.length ?? 0),
+    0,
   );
-  const laneLabel = overviewLaneTitle(item.lane);
-  const summary = item.kind === "recorded"
-    ? item.node.summary
-    : `Project activity · ${activityStatusCaption(item.activity.status)}`;
   return (
     <section
-      id={OVERVIEW_SELECTION_ID}
-      className="overview-thread-selection-card"
-      aria-label={`Selected ${
-        item.kind === "recorded" ? "thread record" : "project activity"
-      }: ${item.label}`}
-      aria-live="polite"
+      className="overview-thread-hull-monitor"
+      aria-label={`${flowGroupCaption(group)} hull monitor`}
       style={{
         left: geometry.x,
         top: geometry.y,
@@ -2165,50 +2480,91 @@ function OverviewNodeSelectionCard({
         onDismiss();
       }}
     >
-      <header>
+      <header
+        tabIndex={0}
+        aria-label={`Move ${flowGroupCaption(group)} hull monitor by dragging`}
+        onPointerDown={onDragStart}
+        onPointerMove={onDrag}
+        onPointerUp={onDragEnd}
+        onPointerCancel={onDragEnd}
+        onLostPointerCapture={onDragEnd}
+      >
         <div>
-          <p className={cn("m-0", SECTION_LABEL)}>{laneLabel}</p>
-          <h4>{item.label}</h4>
+          <p className={cn("m-0", SECTION_LABEL)}>
+            {overviewLaneTitle(group.lane)} · Hull monitor
+          </p>
+          <h4>{flowGroupCaption(group)}</h4>
         </div>
-        <button type="button" onClick={onDismiss} aria-label="Close selection">
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Close hull monitor"
+        >
           Close
         </button>
       </header>
-      <div className="overview-thread-selection-copy">
-        {item.kind === "recorded" && (
-          <Badge variant={freshnessBadgeVariant(item.node.freshness)}>
-            {item.node.freshness}
-          </Badge>
-        )}
-        {item.kind === "activity" && (
-          <Badge variant={recordStatusVariant(item.activity.status)}>
-            {activityStatusCaption(item.activity.status)}
-          </Badge>
-        )}
-        <p>{summary}</p>
-        <code>{overviewNodeContextMeta(item)}</code>
+      <div className="overview-thread-hull-monitor-metrics">
+        <span>
+          <strong>{members.length}</strong> nodes
+        </span>
+        <span data-live={liveCount > 0 ? "true" : undefined}>
+          <strong>{liveCount}</strong> live
+        </span>
+        <span data-alert={alertCount > 0 ? "true" : undefined}>
+          <strong>{alertCount}</strong> alerts
+        </span>
+        <span>
+          <strong>{viewerCount}</strong> Apps
+        </span>
       </div>
-      <div className="overview-thread-selection-actions">
-        {actions.map((action, index) => (
-          <Button
-            key={overviewContextActionValue(action, index)}
-            variant="outline"
-            size="sm"
-            onClick={() => onAction(action)}
-          >
-            {action.label}
-          </Button>
-        ))}
+      <div className="overview-thread-hull-monitor-list">
+        {members.map((member) => {
+          const memberActions = overviewNodeContextActions(
+            member,
+            viewerSessionsByNodeKey,
+          );
+          return (
+            <article key={member.key} data-kind={member.kind}>
+              <button
+                type="button"
+                className="overview-thread-hull-monitor-node"
+                onClick={() => onSelectNode(member.key)}
+              >
+                <span>{member.label}</span>
+                <small>{overviewNodeContextMeta(member)}</small>
+              </button>
+              <div className="overview-thread-hull-monitor-actions">
+                {memberActions.map((action, index) => (
+                  <button
+                    key={overviewContextActionValue(action, index)}
+                    type="button"
+                    data-app={action.kind === "open-session"
+                      ? "true"
+                      : undefined}
+                    onClick={() => onAction(action)}
+                  >
+                    {action.kind === "open-session"
+                      ? action.label.replace("Open App · ", "")
+                      : action.label}
+                  </button>
+                ))}
+              </div>
+            </article>
+          );
+        })}
       </div>
-      {exactAppLaunchStatus && (
-        <p
-          role="status"
-          data-app-launch-status={exactAppLaunchStatus.state}
-          className="overview-thread-viewer-unavailable"
-        >
-          {exactAppLaunchStatus.message}
-        </p>
-      )}
+      <button
+        type="button"
+        className="overview-thread-viewer-resize"
+        aria-label={`Resize ${flowGroupCaption(group)} hull monitor`}
+        onPointerDown={onResizeStart}
+        onPointerMove={onResize}
+        onPointerUp={onResizeEnd}
+        onPointerCancel={onResizeEnd}
+        onLostPointerCapture={onResizeEnd}
+      >
+        Resize
+      </button>
     </section>
   );
 }
@@ -2217,7 +2573,6 @@ function OverviewFloatingViewer({
   refViewer,
   viewer,
   item,
-  thread,
   viewerSession,
   onBringFront,
   onClose,
@@ -2234,7 +2589,6 @@ function OverviewFloatingViewer({
   readonly refViewer: (node: HTMLElement | null) => void;
   readonly viewer: OverviewViewerState;
   readonly item?: OverviewHeroNode;
-  readonly thread: ThreadWorkbenchSnapshot;
   readonly viewerSession?: ThreadViewerSession;
   readonly onBringFront: () => void;
   readonly onClose: () => void;
@@ -2256,7 +2610,7 @@ function OverviewFloatingViewer({
     event: ReactPointerEvent<HTMLButtonElement>,
   ) => void;
 }): JSX.Element {
-  const title = overviewViewerTitle(viewer, item, viewerSession);
+  const title = overviewViewerTitle(item, viewerSession);
   return (
     <article
       ref={refViewer}
@@ -2316,74 +2670,34 @@ function OverviewFloatingViewer({
         </span>
       </header>
       <div className="overview-thread-viewer-body">
-        {viewer.kind === "record" && item?.kind === "recorded" && (
-          <RecordInspectorPanel
-            snapshot={thread}
-            node={item.node}
-            selection={item.node.selection}
-          />
-        )}
-        {viewer.kind === "session" && (
-          viewerSession?.kind === "mcp-app"
-            ? (
-              <>
-                <div className="overview-thread-viewer-meta">
-                  <span>
-                    {viewerSession.app.id}@{viewerSession.app.version}
-                  </span>
-                  <code>{viewerSession.resource.fingerprint}</code>
-                </div>
-                <div className="overview-thread-viewer-session-detail">
-                  <code>
-                    {viewerSession.anchor.kind === "project-review"
-                      ? `project-review:${viewerSession.anchor.id}`
-                      : overviewThreadGraphRefKey(viewerSession.anchor)}
-                  </code>
-                  <span>{viewerSession.session.schema}</span>
-                </div>
-                <McpAppFrame
-                  className="overview-thread-viewer-app-frame"
-                  session={viewerSession}
-                />
-              </>
-            )
-            : (
-              <p className="overview-thread-viewer-unavailable">
-                Exact viewer session unavailable in this replacement.
-              </p>
-            )
-        )}
-        {viewer.kind === "activity" && item?.kind === "activity" && (
-          <div className="overview-thread-activity-viewer">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={recordStatusVariant(item.activity.status)}>
-                {activityStatusCaption(item.activity.status)}
-              </Badge>
-              <span>{item.lane}</span>
-            </div>
-            <h4>{item.activity.title}</h4>
-            <dl>
-              <div>
-                <dt>Evidence</dt>
-                <dd>{item.activity.evidenceCount}</dd>
+        {viewerSession?.kind === "mcp-app"
+          ? (
+            <>
+              <div className="overview-thread-viewer-meta">
+                <span>
+                  {viewerSession.app.id}@{viewerSession.app.version}
+                </span>
+                <code>{viewerSession.resource.fingerprint}</code>
               </div>
-              <div>
-                <dt>Decisions</dt>
-                <dd>
-                  {item.activity.approvedDecisions}/
-                  {item.activity.requiredDecisions}
-                </dd>
+              <div className="overview-thread-viewer-session-detail">
+                <code>
+                  {viewerSession.anchor.kind === "project-review"
+                    ? `project-review:${viewerSession.anchor.id}`
+                    : overviewThreadGraphRefKey(viewerSession.anchor)}
+                </code>
+                <span>{viewerSession.session.schema}</span>
               </div>
-              <div>
-                <dt>Revisions</dt>
-                <dd>{item.activity.revisions.length}</dd>
-              </div>
-            </dl>
-            <p>
-              Read-only project activity projection from the current snapshot.
+              <McpAppFrame
+                className="overview-thread-viewer-app-frame"
+                session={viewerSession}
+              />
+            </>
+          )
+          : (
+            <p className="overview-thread-viewer-unavailable">
+              Exact viewer session unavailable in this replacement.
             </p>
-          </div>
-        )}
+          )}
       </div>
       <button
         type="button"
@@ -2408,38 +2722,24 @@ function OverviewFloatingViewer({
 }
 
 function overviewViewerTitle(
-  viewer: OverviewViewerState,
   item?: OverviewHeroNode,
   viewerSession?: ThreadViewerSession,
 ): string {
-  if (viewer.kind === "session") {
-    return viewerSession
-      ? `App · ${viewerSession.app.id}@${viewerSession.app.version} · ${
-        item?.label ?? "unavailable"
-      }`
-      : "App session · unavailable";
-  }
-  if (!item) return "Thread viewer · unavailable";
-  if (viewer.kind === "activity") return `Activity · ${item.label}`;
-  if (item.kind !== "recorded") return `Thread record · ${item.label}`;
-  const owner = item.node.system.trim() || "Thread";
-  return `${owner} · ${item.node.entityKind} record`;
+  return viewerSession
+    ? `App · ${viewerSession.app.id}@${viewerSession.app.version} · ${
+      item?.label ?? "unavailable"
+    }`
+    : "App session · unavailable";
 }
 
 function overviewViewerId(
-  request:
-    | { readonly kind: "record"; readonly nodeKey: string }
-    | {
-      readonly kind: "session";
-      readonly nodeKey: string;
-      readonly sessionId: string;
-    }
-    | { readonly kind: "activity"; readonly nodeKey: string },
+  request: {
+    readonly kind: "session";
+    readonly nodeKey: string;
+    readonly sessionId: string;
+  },
 ): string {
-  if (request.kind === "session") {
-    return `${request.kind}:${request.nodeKey}:${request.sessionId}`;
-  }
-  return `${request.kind}:${request.nodeKey}`;
+  return `${request.kind}:${request.nodeKey}:${request.sessionId}`;
 }
 
 function activityStatusCaption(status: EngineeringPhaseStatus): string {
@@ -2447,13 +2747,4 @@ function activityStatusCaption(status: EngineeringPhaseStatus): string {
   if (status === "active") return "IN PROGRESS";
   if (status === "planned") return "PENDING";
   return "COMPLETED";
-}
-
-function freshnessBadgeVariant(
-  freshness: ThreadGraphNode["freshness"],
-): "success" | "warning" | "info" | "destructive" {
-  if (freshness === "failed") return "destructive";
-  if (freshness === "stale") return "warning";
-  if (freshness === "running") return "info";
-  return "success";
 }
