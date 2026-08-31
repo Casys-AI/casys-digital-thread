@@ -1,7 +1,9 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import {
   ArchitectureInsertionAmbiguityError,
+  ArchitecturePackageScopeError,
   ArchitectureProposalParseError,
+  assertArchitecturePackageScope,
   type ExistingArchitectureStructure,
   parseArchitectureProposalParameters,
   planArchitectureInsertion,
@@ -45,6 +47,42 @@ Deno.test("parseArchitectureProposalParameters: missing system.name is rejected"
     ArchitectureProposalParseError,
   ) as ArchitectureProposalParseError;
   assertEquals(error.code, "missing_system");
+});
+
+Deno.test("architecture package scope stays fixed after a predecessor capture", () => {
+  const proposal = parseArchitectureProposalParameters([
+    { key: "architecture.package", label: "Package", value: "DroneV4" },
+    { key: "system.name", label: "System", value: "DroneSystem" },
+  ]);
+  assertArchitecturePackageScope({
+    packageName: "DroneV4",
+    scopeRootId: "pkg-drone-v4",
+  }, proposal);
+});
+
+Deno.test("architecture package scope refuses a successor package change", () => {
+  const proposal = parseArchitectureProposalParameters([
+    {
+      key: "architecture.package",
+      label: "Package",
+      value: "DroneV4Mechanism",
+    },
+    { key: "system.name", label: "System", value: "DroneSystem" },
+  ]);
+  const error = assertThrows(
+    () =>
+      assertArchitecturePackageScope({
+        packageName: "DroneV4",
+        scopeRootId: "pkg-drone-v4",
+      }, proposal),
+    ArchitecturePackageScopeError,
+  );
+  assertEquals(error.code, "predecessor_package_name_changed");
+  assertEquals(error.context, {
+    predecessorPackageName: "DroneV4",
+    predecessorScopeRootId: "pkg-drone-v4",
+    proposalPackageName: "DroneV4Mechanism",
+  });
 });
 
 Deno.test("parseArchitectureProposalParameters: a system-only proposal is the unique PartDefinition", () => {

@@ -52,8 +52,10 @@ import {
 } from "../../../domain/architecture/seed/syson-model-seed.ts";
 import {
   type AdoptedItem,
+  ArchitecturePackageScopeError,
   type ArchitectureProposal,
   architectureWriteSelector,
+  assertArchitecturePackageScope,
   type ExistingArchitectureStructure,
   type InsertionItem,
   MODEL_WRITE_ARCHITECTURE_OPERATION,
@@ -425,6 +427,10 @@ export class ModelWriteArchitectureRunExecutor {
     // MRTR gate — proposal is consumed here so it is verified before leasing.
     const { proposal } = await requireMrtrApproval(project, run);
     const architectureProposal = parseProposal(proposal);
+    await this.#assertPredecessorPackageScopeBeforeLease(
+      run,
+      architectureProposal,
+    );
 
     // A run-scoped lease is sufficient to replay one runId, but it leaves two
     // independently queued work items free to author divergent successors from
@@ -1601,6 +1607,41 @@ export class ModelWriteArchitectureRunExecutor {
   }
 
   /**
+   * A successor may enrich only the Package scope sealed by its exact current
+   * predecessor capture. This is intentionally before the lease: changing the
+   * package is outside the registered one-package surface, not a provider
+   * outcome that needs a WAL, quarantine, or project lifecycle transition.
+   */
+  async #assertPredecessorPackageScopeBeforeLease(
+    run: EngineeringAgentRun,
+    proposal: ArchitectureProposal,
+  ): Promise<void> {
+    const { base, seedArtifact } = await this.#loadSeedInputs(requireBasis(run));
+    await assertArchitectureArtifactNotRemoved(base, this.#snapshots);
+    const predecessor = requireArchitectureTip(base);
+    const capture = await this.#assertPredecessorCaptureExact(
+      predecessor,
+      base,
+      seedArtifact,
+    );
+    if (!capture) return;
+    try {
+      assertArchitecturePackageScope({
+        packageName: capture.packageName,
+        scopeRootId: capture.scopeRoot.id,
+      }, proposal);
+    } catch (error) {
+      if (error instanceof ArchitecturePackageScopeError) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          `Architecture package scope preflight rejected (${error.code}): ${error.message}`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
    * A valid seed capture is insufficient on its own: it must be the exact r2
    * descendant of the current subject's r1 documentary baseline.  Otherwise a
    * copied capture could direct this run into another subject's SysON editing
@@ -1757,8 +1798,8 @@ export class ModelWriteArchitectureRunExecutor {
     predecessor: ThreadArtifact | undefined,
     base: ThreadSnapshot,
     seedArtifact: ThreadArtifact,
-  ): Promise<void> {
-    if (!predecessor) return;
+  ): Promise<ExactArchitectureCapture | undefined> {
+    if (!predecessor) return undefined;
     const text = await this.#captures.read(predecessor.fingerprint);
     if (!text) {
       throw new EngineeringProjectCommandError(
@@ -1862,6 +1903,7 @@ export class ModelWriteArchitectureRunExecutor {
         "The predecessor architecture capture declarations and Thread artifact inputs are not bijective.",
       );
     }
+    return capture;
   }
 
   async #recordFailure(

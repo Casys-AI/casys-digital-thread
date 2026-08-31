@@ -45,7 +45,10 @@ import {
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "../../shared/cas/file-capture-store.ts";
 import { FileEngineeringProjectRevisionStore } from "../../shared/stores/engineering-project-store.ts";
-import { FileEngineeringProjectRunLease } from "../../shared/stores/file-engineering-project-run-lease.ts";
+import {
+  type EngineeringProjectRunLease,
+  FileEngineeringProjectRunLease,
+} from "../../shared/stores/file-engineering-project-run-lease.ts";
 import {
   architectureWritePlanDigest,
   FileArchitectureAttemptStore,
@@ -76,6 +79,9 @@ import {
 import { ExactThreadCompletionEvidenceValidator } from "../../validators/engineering-project-completion-evidence-validator.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../../project/engineering-project-initial-baseline-evidence-validator.ts";
 import { resolveGenericProductStructureCatalog } from "./product-structure-catalog.ts";
+import type {
+  EngineeringDecisionProposalParameter,
+} from "../../../domain/project/engineering-project.ts";
 import type {
   ThreadArtifact,
   ThreadSnapshot,
@@ -1439,6 +1445,7 @@ function makeExecutor(
     leaseSubdir?: string;
     snapshots?: ThreadSnapshotStore;
     attempts?: FileArchitectureAttemptStore;
+    lease?: EngineeringProjectRunLease;
     captures?: FileCaptureStore<"architecture-capture">;
     sysmlSourceAnalysis?: SysmlSourceAnalysisCaptureService;
     projects?: EngineeringProjectRevisionStore;
@@ -1463,7 +1470,7 @@ function makeExecutor(
       fixture.sysmlSourceAnalysis,
     attempts: options.attempts ?? fixture.archAttempts,
     syson: options.syson,
-    lease: new FileEngineeringProjectRunLease(
+    lease: options.lease ?? new FileEngineeringProjectRunLease(
       `${options.directory}/${options.leaseSubdir ?? "arch-leases"}`,
     ),
     capabilityRuntime: capability.capabilityRuntime,
@@ -1577,6 +1584,11 @@ async function queuedArchitectureBasisSnapshot(
 async function queueArchitectureEnrichment(
   fixture: Pick<ArchFixture, "projects" | "commands" | "snapshots">,
   completed: Awaited<ReturnType<ModelWriteArchitectureRunExecutor["execute"]>>,
+  options: {
+    readonly parameters?: readonly EngineeringDecisionProposalParameter[];
+    readonly proposalSummary?: string;
+    readonly runSummary?: string;
+  } = {},
 ): Promise<{ readonly revision: number; readonly runId: string }> {
   const firstRun = completed.agentRuns.find((run) => run.id === "run:architecture");
   assertExists(firstRun?.resultSnapshot);
@@ -1624,8 +1636,8 @@ async function queueArchitectureEnrichment(
       subjectId: base.subject.id,
     },
     proposal: {
-      summary: "Add Motor to DroneV4",
-      parameters: DRONE_ENRICHMENT_PARAMS,
+      summary: options.proposalSummary ?? "Add Motor to DroneV4",
+      parameters: options.parameters ?? DRONE_ENRICHMENT_PARAMS,
     },
   });
   const approval = project.approvals.find((candidate) =>
@@ -1642,7 +1654,7 @@ async function queueArchitectureEnrichment(
     ...ctx("queue-architecture-enrichment", project.revision),
     runId: "run:architecture-enrichment",
     workItemId: "wi:architecture-enrichment",
-    summary: "Add Motor to DroneV4.",
+    summary: options.runSummary ?? "Add Motor to DroneV4.",
     basis: {
       kind: "thread-snapshot",
       snapshotId: base.id,
@@ -2775,6 +2787,103 @@ Deno.test(
       assertEquals(
         catalog?.components.some((component) => component.label === "Motor"),
         true,
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture rejects a predecessor package change before lease, WAL, provider, or project mutation",
+  async () => {
+    class RecordingAttemptStore extends FileArchitectureAttemptStore {
+      readonly calls: string[] = [];
+
+      override async begin(
+        input: Parameters<FileArchitectureAttemptStore["begin"]>[0],
+      ) {
+        this.calls.push("begin");
+        return await super.begin(input);
+      }
+
+      override async readRun(projectId: string, runId: string) {
+        this.calls.push("readRun");
+        return await super.readRun(projectId, runId);
+      }
+
+      override async quarantine(
+        input: Parameters<FileArchitectureAttemptStore["quarantine"]>[0],
+      ) {
+        this.calls.push("quarantine");
+        return await super.quarantine(input);
+      }
+
+      override async isQuarantined(projectId: string, runId: string) {
+        this.calls.push("isQuarantined");
+        return await super.isQuarantined(projectId, runId);
+      }
+    }
+
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-package-scope-",
+    });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const initial = await makeExecutor(fixture, {
+        syson: new InitialArchSyson(),
+        directory,
+      }).execute(AGENT, executionCommand(fixture));
+      const changedPackageParameters = DRONE_ENRICHMENT_PARAMS.map((parameter) =>
+        parameter.key === "architecture.package"
+          ? { ...parameter, value: "DroneV4Mechanism" }
+          : parameter
+      );
+      const queued = await queueArchitectureEnrichment(fixture, initial, {
+        parameters: changedPackageParameters,
+        proposalSummary: "Attempt a second architecture Package.",
+        runSummary: "Attempt unsupported multi-package architecture.",
+      });
+      const syson = new EnrichmentArchSyson();
+      const attempts = new RecordingAttemptStore(`${directory}/blocked-attempts`);
+      const leaseCalls: Array<{ projectId: string; scope: string }> = [];
+      const lease: EngineeringProjectRunLease = {
+        async withLease<T>(
+          projectId: string,
+          scope: string,
+          operation: () => Promise<T>,
+        ): Promise<T> {
+          leaseCalls.push({ projectId, scope });
+          return await operation();
+        },
+      };
+      const before = await fixture.projects.get(PROJECT_ID);
+      assertExists(before);
+
+      const error = await assertRejects(
+        () =>
+          makeExecutor(fixture, {
+            syson,
+            directory,
+            attempts,
+            lease,
+          }).execute(AGENT, {
+            commandId: "agent-refuse-package-change",
+            projectId: PROJECT_ID,
+            expectedRevision: queued.revision,
+            issuedAt: "2026-08-08T12:20:00.000Z",
+            runId: queued.runId,
+          }),
+        EngineeringProjectCommandError,
+        "predecessor_package_name_changed",
+      );
+      assertEquals(error.code, "invalid_transition");
+      assertEquals(leaseCalls, []);
+      assertEquals(syson.calls, []);
+      assertEquals(attempts.calls, []);
+      assertEquals(
+        deterministicJson(await fixture.projects.get(PROJECT_ID)),
+        deterministicJson(before),
       );
     } finally {
       await Deno.remove(directory, { recursive: true });
