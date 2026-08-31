@@ -260,6 +260,7 @@ import { FilePrescribedKinematicsObservationAttemptStore } from "./src/adapters/
 import { ChronoPrescribedKinematicsCaseLowerer } from "./src/adapters/mechanics/chrono/chrono-prescribed-kinematics-case-lowerer.ts";
 import { ChronoPrescribedKinematicsClient } from "./src/adapters/mechanics/chrono/chrono-prescribed-kinematics-client.ts";
 import { PrescribedKinematicsRunExecutor } from "./src/adapters/mechanics/chrono/prescribed-kinematics-run-executor.ts";
+import { PrepareProjectPrescribedKinematicsCaseReview } from "./src/adapters/mechanics/prepare-project-prescribed-kinematics-case-review.ts";
 import { PrepareProjectPrescribedKinematicsNextHopReview } from "./src/adapters/mechanics/prepare-project-prescribed-kinematics-next-hop-review.ts";
 import { CaptureProjectPrescribedKinematicsCase } from "./src/application/use-cases/mechanics/prescribed-kinematics/capture-project-prescribed-kinematics-case.ts";
 import { DecidePrescribedKinematicsCloseout } from "./src/application/use-cases/mechanics/prescribed-kinematics/decide-prescribed-kinematics-closeout.ts";
@@ -1280,10 +1281,8 @@ async function createProjectControl(
     architectureCaptures: architectureFoundation.genericArchitectureCaptures,
     sysmlSourceAnalysis: architectureFoundation.sysmlSourceAnalysis,
   });
-  // This provider-free review is always composable: it only recrosses the
-  // workspace and architecture evidence. The L3 executor below remains
-  // fail-closed until the fixed server-owned Chrono binding is qualified.
-  const prescribedKinematicsCaseReview = new CaptureProjectPrescribedKinematicsCase({
+  // Pure L1 recross shared by execution. It owns no project-ledger next hop.
+  const prescribedKinematicsCaseCapture = new CaptureProjectPrescribedKinematicsCase({
     workspace: sourceWorkspaceStore,
     resources: reopenAgentResource,
     architecture: new DeclaredAgainstPrescribedKinematicsArchitectureIndex(
@@ -1292,6 +1291,14 @@ async function createProjectControl(
       architectureFoundation.sysmlSourceAnalysis,
     ),
   });
+  // The public L1 review additionally proves its current Thread basis and exact
+  // architecture producer dependency before compiling a display-only next hop.
+  const prescribedKinematicsCaseReview =
+    new PrepareProjectPrescribedKinematicsCaseReview({
+      capture: prescribedKinematicsCaseCapture,
+      projects: runtime.projects,
+      snapshots: build123dThreadSnapshots,
+    });
   // Discovery of the already registered method/L4/L5 route is provider-free
   // too: it recrosses only durable project and Thread evidence. In particular,
   // it has no Chrono runtime, secret, or dispatch dependency, so unqualified
@@ -1301,6 +1308,7 @@ async function createProjectControl(
       projects: runtime.projects,
       snapshots: build123dThreadSnapshots,
       captures: prescribedKinematicsExecution.captures,
+      resources: reopenAgentResource,
     });
   // L1/L4/L5 remain provider-free. L3 is a fixed internal Chrono binding but
   // its queue/execution path remains fail-closed until the capability catalog
@@ -1311,7 +1319,7 @@ async function createProjectControl(
     commands: runtime.commands,
     snapshots: build123dThreadSnapshots,
     lease,
-    caseReview: prescribedKinematicsCaseReview,
+    caseReview: prescribedKinematicsCaseCapture,
     captures: prescribedKinematicsExecution.captures,
     plans: recordedPlans.recordedRunPlans,
     capabilityRuntime,

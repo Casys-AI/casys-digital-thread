@@ -7,6 +7,46 @@ L2 authorization, L3 facts, L4 evaluation, and a human L5 closeout. The relevant
 contracts are [mechanism](../../reference/domains/mechanism/README.md) and
 [Chrono's provider boundary](../../reference/providers/chrono/README.md).
 
+## 0. Authorize the capability and establish Product Structure
+
+Put `{"id":"prescribed-kinematics","version":"1.0"}` in the
+`verificationAuthority` of the relevant Brief V2 `verification-activity`. Review and
+confirm the server-derived operational capability proposal with the brief. This
+authorizes a bounded runtime ceiling; it does not approve a mechanism method or a
+result. Then call `project_capability_inspect` with only `projectId` and record the
+effective envelope and current host state. Follow
+[review project capability authorization](../agents/review-project-capability-authorization.md)
+and preserve every literal `unavailable` or `unresolved` state.
+
+Create the SysON container **immediately** after the approved-brief baseline:
+
+```text
+baseline.from-approved-brief@1
+  → append + propose + human approve + queue + execute architecture.seed-syson-model@2
+  → project_brief_architecture_review
+  → model.write-architecture@1
+```
+
+The seed must execute while that baseline work item is the unique completed
+`baseline.from-approved-brief@1` result for the plan. Do not insert another documentary
+Thread writer between the baseline and seed. In particular,
+`model.seal-architecture-sysml@1` only seals agent-authored SysML as a Thread document:
+it does not write SysON and creates no Product Structure. It may come later. Use the
+exact append and dependency sequence in [sequence a SysON seed](../agents/sequence-a-syson-seed.md).
+
+`model.write-architecture@1` must then create one assembly `PartUsage` and every
+declared body as its immediate child. Confirm the exact occurrences through
+`project_product_explore`, `project_product_search`, and `project_product_inspect`.
+Stop if that graph is absent or ambiguous; labels are not a substitute.
+
+Capture the canonical case JSON with `project_resource_capture`, put it in one
+ProjectSourceWorkspace file, then attach that same file revision to the assembly and
+every body occurrence with role `mechanism-source@1`. Every attachment must name the
+current Thread and architecture basis. The wider project may contain many files, but
+the V1 mechanism case is one closed file with no inferred dependency closure. See
+[author a project source workspace](../compile/author-project-source-workspace.md) and
+the [source contract](../../reference/domains/mechanism/prescribed-kinematics-source-contract.md).
+
 ## 1. Establish an exact L1 candidate
 
 Start from `project_snapshot`. Record the unique current Thread basis, current approved
@@ -19,17 +59,27 @@ recross—not a provider probe. If it returns `unavailable` or `unresolved`, pre
 state and repair the source/architecture evidence through its normal successor path.
 Do not infer bodies or joints from STEP labels or static contact.
 
-When the review is `resolved`, use the server-provided material only through the normal
-project change, decision, human approval, queue, and execution flow for
+When the review is `resolved`, paste `next.append.arguments` into `project_change_append`
+and `next.propose.arguments` into `project_decision_propose`. Both envelopes are complete
+except `issuedAt`. The server emits them only after reopening the unique current Thread
+tip and its lineage, proving the source closure declares against that same basis, and
+linking the exact architecture producer work item as the L1 dependency. The L1 decision
+carries exactly `workspaceRevision`, `attachmentId`, and `attachmentRevision`. Do not add
+a case fingerprint, provider, or runtime parameter. Finish the normal human approval,
+queue, and execution flow for
 `verify.seal-prescribed-kinematics-case@1`. Reread the resulting Thread successor. That
-is L1; it does not authorize L3.
+is L1; it does not authorize L3. Use the exact operation identities in
+[mechanism operations](../../reference/domains/mechanism/operations.md).
 
 ## 2. Obtain L2 before asking for an observation
 
-For `verify.run-prescribed-kinematics@1`, use the registered project flow to obtain an
-exact human MRTR. Its sealed ROP must bind the exact L1 artifact and current Thread
-basis. Do not recreate its action, request identity, runtime fields, or recovery policy
-by hand. `project_agent_run_plan_get` is read-only if you need to inspect the sealed ROP.
+Call `project_prescribed_kinematics_run_review` with only `projectId`. Paste its
+`next.append.arguments` then `next.propose.arguments`. The only decision parameter is
+the domain L1 case SHA-256; do not invent a placeholder, provider, runtime, or workspace
+identity. Obtain the exact human L2 MRTR through the normal approval flow. Its sealed
+ROP must bind the exact L1 artifact and current Thread basis. Do not recreate its action,
+request identity, runtime fields, or recovery policy by hand. `project_agent_run_plan_get`
+is read-only if you need to inspect the sealed ROP.
 
 Before execution, the server must be able to prove:
 
@@ -58,10 +108,20 @@ If L3 returns an unknown-outcome failure, do not retry it. Follow
 
 ## 4. Seal a method and evaluate L4
 
-Capture the reviewed method resource through the normal resource boundary. At the current
-L1/L3 basis, call `project_prescribed_kinematics_method_review` with only `projectId` and
-the closed method resource reference. Use its returned append/propose envelopes in the
-normal project/MRTR path for `verify.seal-prescribed-kinematics-method@1`.
+At the current L1/L3 basis, call `project_prescribed_kinematics_method_review` with only
+`projectId`. Copy `methodSheet.caseFingerprint` and `methodSheet.observationFingerprint`
+into the method resource. Those are the domain sealed-case SHA-256 and the SHA-256 of
+the canonical normalized `PrescribedKinematicsObservation`. Do not substitute the outer
+`evidence.*` artifact or capture fingerprints. Author the criteria yourself; the review
+does not invent them or auto-approve.
+
+Capture that reviewed method resource through the normal resource boundary. Call
+`project_prescribed_kinematics_method_review` again with `projectId` and the closed
+`methodResourceRef`. Its `mode: "review"` rereads accepted UTF-8 bytes, requires
+canonical JSON, and recrosses criteria plus both fingerprints before returning the
+append/propose envelopes. Paste those envelopes in the normal project/MRTR path for
+`verify.seal-prescribed-kinematics-method@1`. The exact schema and L4 semantics are in
+[method and evaluation](../../reference/domains/mechanism/prescribed-kinematics-method-and-evaluation.md).
 
 At the successor current basis, call
 `project_prescribed_kinematics_evaluation_review` with only `projectId`. It reopens the

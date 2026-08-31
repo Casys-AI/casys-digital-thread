@@ -50,9 +50,11 @@ another capability, but its
 `assembly-integrity-input-bundle/1.0`, method, limits, observations, and verdicts must
 not be reused as kinematic evidence.
 
-A future kinematic case must add explicit bodies, frames, joints, axes, limits, units,
-and bounded scenarios. It must never infer joints or physical properties from STEP
-labels, proximity, timestamps, or current static contact facts.
+The implemented bounded kinematic case declares explicit bodies, frames, joints, axes,
+limits, units, and one bounded scenario. It never infers joints or physical properties
+from STEP labels, proximity, timestamps, or current static contact facts. The living
+closed input is the
+[prescribed-kinematics source contract](../../reference/domains/mechanism/prescribed-kinematics-source-contract.md).
 
 ## Completed implementation boundary
 

@@ -31,6 +31,14 @@ import {
   encodeAssemblyIntegrityEvaluationAdmissionParameters,
 } from "../../domain/cad/assembly-integrity/assembly-integrity-evaluation-admission.ts";
 import { VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-evaluation-proposal.ts";
+import {
+  VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+  VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION,
+} from "../../domain/mechanism/prescribed-kinematics/operations.ts";
+import {
+  encodePrescribedKinematicsCaseProposalParameters,
+  encodePrescribedKinematicsRunProposalParameters,
+} from "../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-proposal.ts";
 
 const VALID_ARCHITECTURE = [
   { key: "architecture.package", label: "Package", value: "DemoArchitecture" },
@@ -441,6 +449,36 @@ Deno.test("a decision shared by distinct operations must satisfy every declared 
         { id: "record.archive-lineage", version: "1" },
         MODEL_WRITE_ARCHITECTURE_OPERATION,
       ], [{ key: "anything", label: "Free form", value: "accepted" }]),
+    ProposalGrammarError,
+  );
+});
+
+Deno.test("prescribed-kinematics L1 and L3 proposals accept only their closed grammars", () => {
+  assertProposalMatchesOperationGrammar(
+    VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION,
+    encodePrescribedKinematicsCaseProposalParameters({
+      workspaceRevision: 4,
+      attachmentId: "attachment-assembly",
+      attachmentRevision: 1,
+    }),
+  );
+  assertProposalMatchesOperationGrammar(
+    VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+    encodePrescribedKinematicsRunProposalParameters({
+      algorithm: "sha256",
+      digest: "a".repeat(64),
+    }),
+  );
+  assertThrows(
+    () =>
+      assertProposalMatchesOperationGrammar(
+        VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+        [{
+          key: "observation",
+          label: "Observation",
+          value: "prescribed-kinematics",
+        }],
+      ),
     ProposalGrammarError,
   );
 });

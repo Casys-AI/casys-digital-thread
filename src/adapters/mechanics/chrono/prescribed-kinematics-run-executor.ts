@@ -82,6 +82,10 @@ import type {
 import {
   applyThreadSnapshotExtensionIfNew,
 } from "../../../domain/thread/thread-snapshot-extension.ts";
+import {
+  parsePrescribedKinematicsCaseProposalParameters,
+  parsePrescribedKinematicsRunProposalParameters,
+} from "../../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-proposal.ts";
 import type {
   PrescribedKinematicsCase,
 } from "../../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-source-closure.ts";
@@ -492,11 +496,24 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
   > {
     const parameters = parameterMap(input.decision);
     if (input.operation === VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION) {
+      let caseProposal;
+      try {
+        caseProposal = parsePrescribedKinematicsCaseProposalParameters(
+          input.decision.proposal!.parameters,
+        );
+      } catch (error) {
+        throw new EngineeringProjectCommandError(
+          "invalid_input",
+          error instanceof Error
+            ? error.message
+            : "The prescribed-kinematics L1 MRTR parameters are not the closed case grammar.",
+        );
+      }
       const captured = await this.#caseReview.capture({
         projectId: input.project.project.id,
-        workspaceRevision: positive(parameters, "workspaceRevision"),
-        attachmentId: text(parameters, "attachmentId"),
-        attachmentRevision: positive(parameters, "attachmentRevision"),
+        workspaceRevision: caseProposal.workspaceRevision,
+        attachmentId: caseProposal.attachmentId,
+        attachmentRevision: caseProposal.attachmentRevision,
       });
       if (captured.status !== "resolved") {
         throw new EngineeringProjectCommandError(
@@ -543,6 +560,30 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
       "The exact prescribed-kinematics case capture is absent.",
     );
     if (l3) {
+      let runProposal;
+      try {
+        runProposal = parsePrescribedKinematicsRunProposalParameters(
+          input.decision.proposal!.parameters,
+        );
+      } catch (error) {
+        throw new EngineeringProjectCommandError(
+          "invalid_input",
+          error instanceof Error
+            ? error.message
+            : "The prescribed-kinematics L3 MRTR parameters are not the closed run grammar.",
+        );
+      }
+      if (
+        !fingerprintsEqual(
+          runProposal.caseFingerprint,
+          sealedCase.fingerprint,
+        )
+      ) {
+        throw new EngineeringProjectCommandError(
+          "invalid_input",
+          "The signed L3 caseFingerprint does not recross the ROP-bound prescribed-kinematics case.",
+        );
+      }
       // The run-to-request identity is already sealed by the exact ROP and
       // reread by `requireResolvedRunPlanExecution`.  Do not derive a second
       // local spelling from the run id: that would create a parallel request

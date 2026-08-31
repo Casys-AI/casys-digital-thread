@@ -917,6 +917,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_prescribed_kinematics_evaluation_closeout_review",
     "project_prescribed_kinematics_evaluation_review",
     "project_prescribed_kinematics_method_review",
+    "project_prescribed_kinematics_run_review",
     "project_product_explore",
     "project_product_inspect",
     "project_product_search",
@@ -1013,6 +1014,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_prescribed_kinematics_evaluation_closeout_review",
       "project_prescribed_kinematics_evaluation_review",
       "project_prescribed_kinematics_method_review",
+      "project_prescribed_kinematics_run_review",
       "project_product_explore",
       "project_product_inspect",
       "project_product_search",
@@ -1278,6 +1280,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_prescribed_kinematics_evaluation_closeout_review" ||
           tool.name === "project_prescribed_kinematics_evaluation_review" ||
           tool.name === "project_prescribed_kinematics_method_review" ||
+          tool.name === "project_prescribed_kinematics_run_review" ||
           tool.name === "project_isolated_geometry_seal_review" ||
           tool.name === "project_led_driver_source_review" ||
           tool.name === "project_evaluation_closeout_review" ||
@@ -1335,6 +1338,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_prescribed_kinematics_evaluation_closeout_review" ||
           tool.name === "project_prescribed_kinematics_evaluation_review" ||
           tool.name === "project_prescribed_kinematics_method_review" ||
+          tool.name === "project_prescribed_kinematics_run_review" ||
           tool.name === "project_architecture_sysml_preview" ||
           tool.name === "project_architecture_sysml_source_capture" ||
           tool.name === "project_cross_domain_impact_manifest_capture" ||

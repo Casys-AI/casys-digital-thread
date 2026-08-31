@@ -21,6 +21,7 @@ import {
   type PrescribedKinematicsMethodSheetSource,
   sealPrescribedKinematicsMethodSheet,
   validatePrescribedKinematicsMethodSheetSource,
+  validatePrescribedKinematicsMethodSheetSourceAgainstEvidence,
 } from "./prescribed-kinematics-method-sheet.ts";
 import {
   fingerprintPrescribedKinematicsObservation,
@@ -324,6 +325,26 @@ Deno.test("sealed method drives L4; unresolved L3 facts remain unresolved and ne
       { id: "converged", kind: "convergence" },
     ],
   };
+  const recrossed = await validatePrescribedKinematicsMethodSheetSourceAgainstEvidence({
+    source: methodSource,
+    sealedCase,
+    observation,
+  });
+  assertEquals(recrossed.sealedCase.fingerprint, sealedCase.fingerprint);
+  assertEquals(recrossed.observationFingerprint, observationFingerprint);
+  await assertRejects(
+    () =>
+      validatePrescribedKinematicsMethodSheetSourceAgainstEvidence({
+        source: {
+          ...methodSource,
+          observationFingerprint: { algorithm: "sha256", digest: "f".repeat(64) },
+        },
+        sealedCase,
+        observation,
+      }),
+    TypeError,
+    "exact L3 observation",
+  );
   const method = await sealPrescribedKinematicsMethodSheet({
     source: methodSource,
     sealedCase,

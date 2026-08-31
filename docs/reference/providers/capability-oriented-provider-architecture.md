@@ -65,6 +65,9 @@ its profile begin only after that basis exists. The raw
 provider contract is not a Digital Thread public tool. The registered profile and its
 runtime evidence make this vertical available without granting callers provider choice.
 Its exact post-publication boundary is defined in the living
-[assembly-integrity reference](../domains/cad/assembly-integrity.md). A later
-kinematics adapter would be a different capability port, not a second profile on this
-observer.
+[assembly-integrity reference](../domains/cad/assembly-integrity.md). Prescribed
+kinematics is a different capability port, not a second profile on this observer.
+
+The Chrono implementation is that separate port: its closed lowering, one-dispatch
+readback and literal L3 boundary are documented in
+[the Chrono prescribed-kinematics adapter reference](chrono/prescribed-kinematics-adapter.md).

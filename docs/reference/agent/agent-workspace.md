@@ -218,6 +218,14 @@ for multi-file closures.
 | `project_product_inspect` | Read      | One exact element or occurrence. A `PartUsage` stays that usage. Thread evidence is definition-scoped and labelled. Authoring heads stay element-level and unmerged. Ready actions are complete calls to this server only; blocked offers have closed codes and no partial args. Grants none.                                                                                                                                                                                                            |
 | `project_source_closure`  | Read      | Technical DAG of one versioned authoring attachment from an exact selected element/occurrence plus exact `attachmentId`/`attachmentRevision` at a named workspace revision. One discriminated `entries` page of files then edges; `fileCount`, `edgeCount` and the closure fingerprint stay on every page. Cursor binds the full basis, selection, workspace revision, attachment revision and fingerprint. `PartUsage` keeps its usage id. Grants none. Not admission. Then `project_source_file_read`. |
 
+### Prescribed mechanism motion
+
+The five read-only review tools and six registered operations for the bounded mechanism
+path are indexed in [mechanism operations](../domains/mechanism/operations.md). Follow
+[verify prescribed kinematics](../../how-to/verify-design/verify-prescribed-kinematics.md)
+for the exact brief → SysON Product Structure → workspace attachments → L1–L5 order.
+Neither these reviews nor Product navigation selects a provider.
+
 ### LED-driver human source
 
 | Tool                                | Writes         | Grant                                                                                                                                                                        |
@@ -391,6 +399,10 @@ rather than a Thread write.
 Source of truth:
 [`src/orchestration/operations/registry.ts`](../../../src/orchestration/operations/registry.ts).
 Unknown ids/versions are indistinguishable from absent.
+
+The prescribed-kinematics family is kept as one short, exact index in
+[mechanism operations](../domains/mechanism/operations.md); this table remains the
+cross-domain registry overview.
 
 | Operation                                                                                       | Execution                 | Provider                                                           | What a success is                                                                                                                                | What it is not                                                          |
 | ----------------------------------------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |

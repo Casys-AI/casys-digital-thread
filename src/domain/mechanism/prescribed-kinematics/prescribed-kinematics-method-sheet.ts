@@ -205,14 +205,22 @@ export function fingerprintPrescribedKinematicsMethodSheetSource(
 }
 
 /**
- * Compile a case/L3-bound method sheet. Calling it does not replace the
- * application-level signed-MRTR requirement for `verify.seal-...-method@1`.
+ * Provider-free recross of an authored method source against one exact L1/L3
+ * evidence pair. This validates readiness for human review; it does not seal
+ * or persist a method sheet.
  */
-export async function sealPrescribedKinematicsMethodSheet(input: {
+export async function validatePrescribedKinematicsMethodSheetSourceAgainstEvidence(
+  input: {
+    readonly source: PrescribedKinematicsMethodSheetSource;
+    readonly sealedCase: PrescribedKinematicsCase;
+    readonly observation: PrescribedKinematicsObservation;
+  },
+): Promise<{
   readonly source: PrescribedKinematicsMethodSheetSource;
   readonly sealedCase: PrescribedKinematicsCase;
   readonly observation: PrescribedKinematicsObservation;
-}): Promise<PrescribedKinematicsMethodSheet> {
+  readonly observationFingerprint: ContentFingerprint;
+}> {
   const sealedCase = await validatePrescribedKinematicsCase(input.sealedCase);
   const observation = await parsePrescribedKinematicsObservation(
     input.observation,
@@ -238,6 +246,22 @@ export async function sealPrescribedKinematicsMethodSheet(input: {
     sealedCase,
     "$prescribedKinematicsMethodSheetSource.criteria",
   );
+  return deepFreeze({ source, sealedCase, observation, observationFingerprint });
+}
+
+/**
+ * Compile a case/L3-bound method sheet. Calling it does not replace the
+ * application-level signed-MRTR requirement for `verify.seal-...-method@1`.
+ */
+export async function sealPrescribedKinematicsMethodSheet(input: {
+  readonly source: PrescribedKinematicsMethodSheetSource;
+  readonly sealedCase: PrescribedKinematicsCase;
+  readonly observation: PrescribedKinematicsObservation;
+}): Promise<PrescribedKinematicsMethodSheet> {
+  const recrossed = await validatePrescribedKinematicsMethodSheetSourceAgainstEvidence(
+    input,
+  );
+  const { source, sealedCase, observationFingerprint } = recrossed;
   const sourceFingerprint = await fingerprintPrescribedKinematicsMethodSheetSource(
     source,
   );

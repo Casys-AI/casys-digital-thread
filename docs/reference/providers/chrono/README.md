@@ -14,10 +14,10 @@ The Workbench remains read-only and has no provider credential or command author
 
 ## Availability is not a release claim
 
-The repository catalogue baseline for this capability is `unqualified`. A particular
-host may hold one exact, qualified emulated AMD64 attestation; it is host-local and does
-not turn the catalogue into a generally available provider, nor does it make a product
-observation by itself.
+The repository catalogue baseline for this capability is `unqualified`. Whether a
+specific host currently has one exact qualified emulated AMD64 attestation is an
+inspection result, not a repository-wide release claim. It does not turn the catalogue
+into a generally available provider or make a product observation by itself.
 
 Product L3 additionally requires all of these: project authorization, the exact sealed
 ROP, a current writable Thread basis, and the server's JIT capability-session lease. If
@@ -40,3 +40,5 @@ Read [prescribed kinematics](../../domains/mechanism/README.md) for the domain c
 and [observation recovery](../../pipeline/prescribed-kinematics-observation-recovery.md)
 for the one-dispatch WAL. Host qualification is separately documented in
 [local runtime qualification](../../runtime/capability-packs/local-runtime-qualification.md).
+The private provider boundary, lowering and paginated receipt protocol are in
+[the prescribed-kinematics adapter reference](prescribed-kinematics-adapter.md).

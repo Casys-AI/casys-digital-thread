@@ -143,6 +143,10 @@ import {
   VERIFY_SEAL_PRESCRIBED_KINEMATICS_METHOD_OPERATION,
 } from "../../domain/mechanism/prescribed-kinematics/operations.ts";
 import { assertPrescribedKinematicsProposalParameters } from "../../domain/mechanism/prescribed-kinematics/proposal-validation.ts";
+import {
+  parsePrescribedKinematicsCaseProposalParameters,
+  parsePrescribedKinematicsRunProposalParameters,
+} from "../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-proposal.ts";
 
 /** Operation identity as `id@version`, the key used across the registry. */
 export type OperationKey = string;
@@ -164,11 +168,15 @@ const PROPOSAL_VALIDATORS = new Map<
 >([
   [
     keyOf(VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION),
-    assertPrescribedKinematicsProposalParameters,
+    (parameters) => {
+      parsePrescribedKinematicsCaseProposalParameters(parameters);
+    },
   ],
   [
     keyOf(VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION),
-    assertPrescribedKinematicsProposalParameters,
+    (parameters) => {
+      parsePrescribedKinematicsRunProposalParameters(parameters);
+    },
   ],
   [
     keyOf(VERIFY_SEAL_PRESCRIBED_KINEMATICS_METHOD_OPERATION),

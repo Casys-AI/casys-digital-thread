@@ -8,14 +8,21 @@ administration, or a product verdict.
 
 | Read | Use it for |
 | --- | --- |
-| [Prescribed-kinematics coverage](prescribed-kinematics.md) | The V1 question, what its evidence can say, and its exclusions |
+| [Implementation coverage](coverage.md) | What exists end to end, what is qualified separately, and what remains absent |
+| [Evidence claim boundary](prescribed-kinematics.md) | The V1 engineering question and the claims its evidence cannot make |
+| [Source contract](prescribed-kinematics-source-contract.md) | Exact canonical JSON, workspace file and architecture attachments |
 | [Case and architecture binding](prescribed-kinematics-case-and-architecture-binding.md) | The exact source, workspace, and `PartUsage` identities that form L1 |
 | [Evidence lifecycle](prescribed-kinematics-evidence-lifecycle.md) | The explicit L1 → L2 → L3 → L4 → L5 authority chain |
+| [Method and evaluation](prescribed-kinematics-method-and-evaluation.md) | Exact method sheet, five criterion kinds and deterministic L4 aggregation |
+| [Operations](operations.md) | Brief authority, semantic capability, reviews and registered operations |
+| [Boundedness](boundedness.md) | Enforced source, observation and provider bounds, plus literal missing limits |
 | [Observation recovery](../../pipeline/prescribed-kinematics-observation-recovery.md) | The one-dispatch L3 WAL and unknown-outcome recovery boundary |
 | [Chrono provider boundary](../../providers/chrono/README.md) | The private server-owned provider adapter and its non-claims |
 
 How-to guides: [verify prescribed kinematics](../../../how-to/verify-design/verify-prescribed-kinematics.md)
 and [recover a prescribed-kinematics observation](../../../how-to/run/recover-prescribed-kinematics-observation.md).
+Shared extensions start at
+[extend the mechanism product surface](../../../how-to/extend/extend-mechanism-product-surface.md).
 
 ## Availability is layered
 

@@ -27,9 +27,12 @@ assertion of mass or inertia.
 
 The V1 server lowering accepts only its documented narrow form: matching absolute joint
 frames, literal local Z joint axes, finite bounded numbers, and the declared sampled
-ramp. Relative frames, distinct mating frames, another topology, a non-Z axis, or an
-implicit ramp remain `unavailable`. The server does not compose a missing transform,
-infer a joint from a STEP label or proximity, or synthesize geometry.
+ramp. It rejects relative frames, distinct mating frames, another topology, a non-Z
+axis, or an implicit ramp before provider dispatch. The current executor surfaces that
+rejection as terminal `prescribed-kinematics-execution-failed`, not preflight
+`unavailable`; see the [source contract](prescribed-kinematics-source-contract.md). The
+server does not compose a missing transform, infer a joint from a STEP label or
+proximity, or synthesize geometry.
 
 The source does not contain L4 criteria, a verdict, a solver payload, a provider,
 runtime, image, endpoint, tool, bearer, or arguments. It also does not establish contact,
@@ -56,9 +59,12 @@ an exact authoring edge; it is not a substitute for the architecture graph recro
 server never derives a body from CAD labels, physical proximity, timestamps, or a
 plausible mechanism shape.
 
-`resolved` means the review can prepare L1 case material. `unresolved` and `unavailable`
-remain literal states. The review does not write a Thread successor, create or approve an
-MRTR, start a runtime, call a provider, observe L3, evaluate L4, or decide L5.
+`resolved` means the review can prepare L1 case material. Against the unique current
+project head it also returns pasteable `next.append` / `next.propose` envelopes, complete
+except `issuedAt`, whose decision parameters are exactly the named `workspaceRevision`,
+`attachmentId`, and `attachmentRevision`. `unresolved` and `unavailable` remain literal
+states. The review does not write a Thread successor, create or approve an MRTR, start a
+runtime, call a provider, observe L3, evaluate L4, or decide L5.
 
 ## L1 seal
 

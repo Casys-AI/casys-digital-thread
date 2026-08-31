@@ -9,12 +9,12 @@
 
 import type {
   PrescribedKinematicsNextHopStage,
-  ProjectPrescribedKinematicsNextHop,
   ProjectPrescribedKinematicsNextHopEvidenceRef,
   ProjectPrescribedKinematicsNextHopReviewRequest,
   ProjectPrescribedKinematicsNextHopReviewResult,
   ProjectPrescribedKinematicsNextHopReviewUseCase,
 } from "../../application/ports/in/mechanics/prescribed-kinematics/project-prescribed-kinematics-next-hop-review.ts";
+import { prescribedKinematicsNextHop } from "../../application/use-cases/mechanics/prescribed-kinematics/prescribed-kinematics-next-hop.ts";
 import type { EngineeringProjectRevisionStore } from "../../application/ports/out/engineering-project-revision-store.ts";
 import type { PrescribedKinematicsCaptureStore } from "../../application/ports/out/mechanics/prescribed-kinematics-capture-store.ts";
 import {
@@ -31,23 +31,34 @@ import {
   VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION,
   VERIFY_SEAL_PRESCRIBED_KINEMATICS_METHOD_OPERATION,
 } from "../../domain/mechanism/prescribed-kinematics/operations.ts";
+import { fingerprintPrescribedKinematicsObservation } from "../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-observation.ts";
+import { encodePrescribedKinematicsRunProposalParameters } from "../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-proposal.ts";
 import type {
   EngineeringDecisionProposalParameter,
-  EngineeringOperationRef,
   EngineeringProjectSnapshot,
   EngineeringThreadSnapshotRef,
 } from "../../domain/project/engineering-project.ts";
 import { selectCurrentThreadTip } from "../../domain/project/thread-tip.ts";
 import { validateEngineeringProjectSnapshot } from "../../domain/project/engineering-project-validation.ts";
 import {
+  JSON_SOURCE_ACCEPTED_MIME_TYPES,
   parseAgentResourceReference,
 } from "../../domain/resource/agent-resource-reference.ts";
+import {
+  canonicalizePrescribedKinematicsMethodSheetSource,
+  validatePrescribedKinematicsMethodSheetSourceAgainstEvidence,
+} from "../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-method-sheet.ts";
+import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
+import type { PrescribedKinematicsCase } from "../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-source-closure.ts";
+import type { PrescribedKinematicsObservation } from "../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-observation.ts";
+import type { AgentResourceReference } from "../../domain/resource/agent-resource-capture.ts";
 import type {
   ThreadArtifact,
   ThreadSnapshot,
 } from "../../domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
+import type { ReopenAgentResource } from "../../application/use-cases/resource/reopen-agent-resource.ts";
 import { assertThreadSnapshotLineageIntact } from "../shared/stores/thread-snapshot-lineage.ts";
 
 type ExactOperation =
@@ -67,6 +78,7 @@ export interface PrepareProjectPrescribedKinematicsNextHopReviewDependencies {
   readonly projects: Pick<EngineeringProjectRevisionStore, "get">;
   readonly snapshots: PrescribedKinematicsNextHopReviewSnapshotStore;
   readonly captures: PrescribedKinematicsCaptureStore;
+  readonly resources: ReopenAgentResource;
 }
 
 /**
@@ -146,17 +158,79 @@ export class PrepareProjectPrescribedKinematicsNextHopReview
         snapshot,
         this.dependencies.captures,
       );
-      if (stage === "method") {
-        const resourceRef = request.methodResourceRef!;
+      if (stage === "run") {
         return deepFreeze({
           status: "resolved" as const,
           selected: {
             stage,
             basis: snapshotRef(tip.basis),
+            evidence: { sealedCase: evidence.case.ref },
+            caseFingerprint: evidence.case.value.fingerprint,
+            next: prescribedKinematicsNextHop({
+              project,
+              basis: tip.basis,
+              predecessorWorkItemId: evidence.case.workItemId,
+              operation: VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+              owner: "agent",
+              tokenFingerprint: evidence.case.value.fingerprint.digest,
+              phaseName: "Prescribed kinematics observation",
+              phaseDescription:
+                "Run the registered prescribed-kinematics observation against the exact current L1 case.",
+              decisionTitle: "Review the prescribed-kinematics L3 observation",
+              decisionQuestion:
+                "Approve the exact registered prescribed-kinematics observation of the current L1 case?",
+              summary:
+                "Queue the registered prescribed-kinematics observation against the displayed exact L1 case.",
+              parameters: encodePrescribedKinematicsRunProposalParameters(
+                evidence.case.value.fingerprint,
+              ),
+            }),
+          },
+        });
+      }
+      if (stage === "method") {
+        const preparedMethodSheet = {
+          caseFingerprint: evidence.case.value.fingerprint,
+          observationFingerprint: await fingerprintPrescribedKinematicsObservation(
+            evidence.observation!.value.observation,
+            evidence.case.value,
+          ),
+        };
+        const resourceRef = "methodResourceRef" in request
+          ? request.methodResourceRef
+          : undefined;
+        if (resourceRef === undefined) {
+          return deepFreeze({
+            status: "resolved" as const,
+            selected: {
+              stage,
+              mode: "preparation" as const,
+              basis: snapshotRef(tip.basis),
+              evidence: {
+                sealedCase: evidence.case.ref,
+                observation: evidence.observation!.ref,
+              },
+              methodSheet: preparedMethodSheet,
+            },
+          });
+        }
+        const validatedMethod = await validateMethodResource({
+          resources: this.dependencies.resources,
+          resourceRef,
+          sealedCase: evidence.case.value,
+          observation: evidence.observation!.value.observation,
+        });
+        return deepFreeze({
+          status: "resolved" as const,
+          selected: {
+            stage,
+            mode: "review" as const,
+            basis: snapshotRef(tip.basis),
             evidence: {
               sealedCase: evidence.case.ref,
               observation: evidence.observation!.ref,
             },
+            methodSheet: validatedMethod,
             methodResourceRef: resourceRef,
             next: prescribedKinematicsNextHop({
               project,
@@ -333,6 +407,7 @@ async function resolveEvidence(
     (artifact) => captures.readCase(artifact.fingerprint),
     "case",
   );
+  if (stage === "run") return { case: sealedCase };
   const observation = await captured(
     project,
     snapshot,
@@ -441,79 +516,18 @@ function exactCompletedProducerWorkItem(
   return work.id;
 }
 
-export function prescribedKinematicsNextHop(input: {
-  readonly project: EngineeringProjectSnapshot;
-  readonly basis: EngineeringThreadSnapshotRef;
-  readonly predecessorWorkItemId: string;
-  readonly operation: ExactOperation;
-  readonly owner: "agent" | "human";
-  readonly tokenFingerprint: string;
-  readonly phaseName: string;
-  readonly phaseDescription: string;
-  readonly decisionTitle: string;
-  readonly decisionQuestion: string;
-  readonly summary: string;
-  readonly parameters: readonly EngineeringDecisionProposalParameter[];
-}): ProjectPrescribedKinematicsNextHop {
-  const token = `${input.operation.id.replaceAll(".", "-")}-${
-    input.tokenFingerprint.slice(0, 16)
-  }-r${input.project.revision}`;
-  const phaseId = `phase-prescribed-kinematics-${token}`;
-  const workItemId = `work-prescribed-kinematics-${token}`;
-  const decisionId = `decision-prescribed-kinematics-${token}`;
-  return deepFreeze({
-    append: {
-      tool: "project_change_append" as const,
-      arguments: {
-        commandId: `append-prescribed-kinematics-${token}`,
-        projectId: input.project.project.id,
-        baseSnapshot: snapshotRef(input.basis),
-        expectedRevision: input.project.revision,
-        phases: [{
-          id: phaseId,
-          name: input.phaseName,
-          description: input.phaseDescription,
-        }],
-        workItems: [{
-          id: workItemId,
-          phaseId,
-          owner: input.owner,
-          dependsOnWorkItemIds: [input.predecessorWorkItemId],
-          decisionIds: [decisionId],
-          operation: { ...input.operation, bindings: [] },
-          gateClaims: [],
-        }],
-        requiredDecisions: [{
-          id: decisionId,
-          phaseId,
-          title: input.decisionTitle,
-          question: input.decisionQuestion,
-        }],
-      },
-    },
-    propose: {
-      tool: "project_decision_propose" as const,
-      arguments: {
-        commandId: `propose-prescribed-kinematics-${token}`,
-        projectId: input.project.project.id,
-        expectedRevision: input.project.revision + 1,
-        decisionId,
-        proposal: {
-          summary: input.summary,
-          parameters: [...input.parameters],
-        },
-      },
-    },
-  });
-}
+export { prescribedKinematicsNextHop };
 
 function parseRequest(
   stage: PrescribedKinematicsNextHopStage,
   value: unknown,
 ): ProjectPrescribedKinematicsNextHopReviewRequest {
+  const methodResourceNamed = stage === "method" &&
+    value !== null && typeof value === "object" && !Array.isArray(value) &&
+    "methodResourceRef" in value;
   const root = exactRecord(
     value,
-    stage === "method" ? ["projectId", "methodResourceRef"] : ["projectId"],
+    methodResourceNamed ? ["projectId", "methodResourceRef"] : ["projectId"],
     "$prescribedKinematicsNextHopReview",
   );
   const projectId = safeId(
@@ -523,7 +537,7 @@ function parseRequest(
   if (projectId.toLowerCase() === "latest") {
     throw new TypeError("latest is not an exact project identity.");
   }
-  return stage === "method"
+  return methodResourceNamed
     ? {
       projectId,
       methodResourceRef: parseAgentResourceReference(
@@ -532,6 +546,68 @@ function parseRequest(
       ),
     }
     : { projectId };
+}
+
+async function validateMethodResource(input: {
+  readonly resources: ReopenAgentResource;
+  readonly resourceRef: AgentResourceReference;
+  readonly sealedCase: PrescribedKinematicsCase;
+  readonly observation: PrescribedKinematicsObservation;
+}): Promise<{
+  readonly caseFingerprint: ContentFingerprint;
+  readonly observationFingerprint: ContentFingerprint;
+}> {
+  let text: string;
+  try {
+    text = (await input.resources.reopenUtf8Text(input.resourceRef, {
+      acceptedMimeTypes: JSON_SOURCE_ACCEPTED_MIME_TYPES,
+      maxBytes: 262_144,
+    })).text;
+  } catch {
+    throw new NextHopResolutionError(
+      "unavailable",
+      "method_resource_unavailable",
+      "The exact method resource could not be reopened as accepted UTF-8 JSON.",
+    );
+  }
+  let source: ReturnType<
+    typeof canonicalizePrescribedKinematicsMethodSheetSource
+  >["source"];
+  try {
+    const canonical = canonicalizePrescribedKinematicsMethodSheetSource(
+      JSON.parse(text),
+    );
+    if (canonical.text !== text) {
+      throw new TypeError("The exact method resource bytes are not canonical.");
+    }
+    source = canonical.source;
+  } catch {
+    throw new NextHopResolutionError(
+      "unresolved",
+      "method_resource_invalid",
+      "The exact method resource is not canonical prescribed-kinematics method-sheet source JSON.",
+    );
+  }
+  try {
+    const recrossed =
+      await validatePrescribedKinematicsMethodSheetSourceAgainstEvidence({
+        source,
+        sealedCase: input.sealedCase,
+        observation: input.observation,
+      });
+    return {
+      caseFingerprint: recrossed.sealedCase.fingerprint,
+      observationFingerprint: recrossed.observationFingerprint,
+    };
+  } catch (error) {
+    throw new NextHopResolutionError(
+      "unresolved",
+      "method_evidence_mismatch",
+      error instanceof Error
+        ? error.message
+        : "The method resource does not recross the exact current L1/L3 evidence.",
+    );
+  }
 }
 
 async function readExactSnapshot(
@@ -565,9 +641,7 @@ function snapshotRef(
 }
 
 function methodResourceParameters(
-  resource: NonNullable<
-    ProjectPrescribedKinematicsNextHopReviewRequest["methodResourceRef"]
-  >,
+  resource: AgentResourceReference,
 ): readonly EngineeringDecisionProposalParameter[] {
   return [
     parameter("methodResourceUri", "Method resource URI", resource.uri),

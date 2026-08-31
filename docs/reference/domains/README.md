@@ -21,6 +21,7 @@ OpenModelica to Modelica, and CalculiX to FEA.
 
 H01 size inventory (enforced vs missing cardinalities; no invented numbers):
 [SysML](sysml/boundedness.md), [CAD](cad/boundedness.md),
+[Mechanism](mechanism/boundedness.md),
 [Modelica](modelica/boundedness.md), [FEA](fea/boundedness.md),
 [sensitivity](sensitivity/boundedness.md), [electrical](electrical/boundedness.md),
 [impact](impact/boundedness.md), and the shared

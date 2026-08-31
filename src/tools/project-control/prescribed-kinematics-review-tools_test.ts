@@ -6,7 +6,7 @@ Deno.test("prescribed-kinematics review exposes only the provider-free case revi
   const app = new CapturingApp();
   registerProjectPrescribedKinematicsReviewTools(app as unknown as McpApp, {
     prescribedKinematicsCaseReview: {
-      capture: async () => ({
+      review: async () => ({
         status: "unavailable" as const,
         diagnostic: { code: "fixture", message: "fixture" },
         grants: "none" as const,
@@ -19,6 +19,55 @@ Deno.test("prescribed-kinematics review exposes only the provider-free case revi
   assertEquals(tool.description.includes("Chrono client"), false);
   assertEquals(JSON.stringify(tool.inputSchema).includes("case_json"), false);
   assertEquals(JSON.stringify(tool.inputSchema).includes("loweredCaseJson"), false);
+});
+
+Deno.test("prescribed-kinematics method review without a resource reports method-sheet identities rather than a next hop", async () => {
+  const app = new CapturingApp();
+  registerProjectPrescribedKinematicsReviewTools(app as unknown as McpApp, {
+    prescribedKinematicsNextHopReview: {
+      review() {
+        return Promise.resolve({
+          status: "resolved" as const,
+          selected: {
+            stage: "method" as const,
+            mode: "preparation" as const,
+            basis: {
+              snapshotId: "thread-kinematics",
+              revision: 5,
+              subjectId: "subject-kinematics",
+            },
+            evidence: {
+              sealedCase: {
+                id: "artifact-case",
+                fingerprint: { algorithm: "sha256" as const, digest: "c".repeat(64) },
+                producerRunId: "run-case",
+                freshness: "fresh" as const,
+              },
+              observation: {
+                id: "artifact-observation",
+                fingerprint: { algorithm: "sha256" as const, digest: "d".repeat(64) },
+                producerRunId: "run-observation",
+                freshness: "fresh" as const,
+              },
+            },
+            methodSheet: {
+              caseFingerprint: { algorithm: "sha256" as const, digest: "a".repeat(64) },
+              observationFingerprint: {
+                algorithm: "sha256" as const,
+                digest: "b".repeat(64),
+              },
+            },
+          },
+        });
+      },
+    },
+  });
+  const result = await app.handler("project_prescribed_kinematics_method_review")({
+    projectId: "project-kinematics",
+  }) as { content: string; structuredContent: { selected: { next?: unknown } } };
+  assertStringIncludes(result.content, "methodSheet.caseFingerprint");
+  assertStringIncludes(result.content, "methodSheet.observationFingerprint");
+  assertEquals("next" in result.structuredContent.selected, false);
 });
 
 Deno.test("prescribed-kinematics next-hop reviews are read-only and caller cannot choose Chrono or an L4/L5 consequence", async () => {
@@ -39,6 +88,7 @@ Deno.test("prescribed-kinematics next-hop reviews are read-only and caller canno
   });
 
   assertEquals(app.toolNames(), [
+    "project_prescribed_kinematics_run_review",
     "project_prescribed_kinematics_method_review",
     "project_prescribed_kinematics_evaluation_review",
     "project_prescribed_kinematics_evaluation_closeout_review",
@@ -52,6 +102,9 @@ Deno.test("prescribed-kinematics next-hop reviews are read-only and caller canno
     byteCount: 128,
     fingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
   } as const;
+  await app.handler("project_prescribed_kinematics_run_review")({
+    projectId: "project-kinematics",
+  });
   await app.handler("project_prescribed_kinematics_method_review")({
     projectId: "project-kinematics",
     methodResourceRef: resourceRef,
@@ -64,6 +117,7 @@ Deno.test("prescribed-kinematics next-hop reviews are read-only and caller canno
   )({ projectId: "project-kinematics" }) as { content: string };
   assertStringIncludes(closeout.content, "No project change, MRTR proposal, approval");
   assertEquals(calls, [
+    { stage: "run", value: { projectId: "project-kinematics" } },
     {
       stage: "method",
       value: { projectId: "project-kinematics", methodResourceRef: resourceRef },
@@ -88,7 +142,12 @@ Deno.test("prescribed-kinematics next-hop reviews are read-only and caller canno
       ),
       false,
     );
-    assertStringIncludes(tool.description, "Read-only next-hop review");
+    assertStringIncludes(
+      tool.description,
+      name === "project_prescribed_kinematics_method_review"
+        ? "Read-only preparation/review"
+        : "Read-only next-hop review",
+    );
   }
   assertEquals(
     Object.keys(
@@ -98,8 +157,15 @@ Deno.test("prescribed-kinematics next-hop reviews are read-only and caller canno
     ).sort(),
     ["methodResourceRef", "projectId"],
   );
+  assertEquals(
+    (app.tool("project_prescribed_kinematics_method_review").inputSchema as {
+      required: readonly string[];
+    }).required,
+    ["projectId"],
+  );
   for (
     const name of [
+      "project_prescribed_kinematics_run_review",
       "project_prescribed_kinematics_evaluation_review",
       "project_prescribed_kinematics_evaluation_closeout_review",
     ]

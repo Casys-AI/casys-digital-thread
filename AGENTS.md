@@ -34,11 +34,13 @@ or persisted truth.
    commands and source/UI gates; CM-01 retirement is below
 6. [Run the behave loop from zero](docs/how-to/verify-design/verify-a-new-design-from-scratch.md)
    — new project, behave only. Do not repair dl05. Do not open make/buy.
-7. [Walk the post-proof loop](docs/how-to/verify-design/review-and-correct-after-a-proof.md)
+7. [Verify prescribed kinematics](docs/how-to/verify-design/verify-prescribed-kinematics.md)
+   — brief capability, SysON Product Structure, exact source attachments, then L1–L5.
+8. [Walk the post-proof loop](docs/how-to/verify-design/review-and-correct-after-a-proof.md)
    — join, fail-only correction, `z*`, reseal. Historical **dl05 r16** is `UNLINKED`
    (`assembly_max_*`). A later join on that atelier can be `pass` (Thread r19). Do not
    invent a mapping or a fail.
-8. [Three judgement branches](docs/explanations/product/product-direction.md#three-judgement-branches)
+9. [Three judgement branches](docs/explanations/product/product-direction.md#three-judgement-branches)
    — one STEP, three questions; verdicts do not cross.
 
 ## Immediate traps

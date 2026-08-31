@@ -51,6 +51,7 @@ import {
   VERIFY_RUN_PRESCRIBED_KINEMATICS_PROVIDER_OUTCOME_UNKNOWN_FAILURE,
   VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION,
 } from "../../../domain/mechanism/prescribed-kinematics/operations.ts";
+import { encodePrescribedKinematicsRunProposalParameters } from "../../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-proposal.ts";
 import { TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES } from "../../../domain/record/reconcile-uncertain-writer-proposal.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../../domain/architecture/renderer/architecture-proposal.ts";
 import {
@@ -986,11 +987,9 @@ async function l3LifecycleHarness(input: {
     },
     proposal: {
       summary: "Observe the exact sealed prescribed-kinematics case.",
-      parameters: [{
-        key: "observation",
-        label: "Observation",
-        value: "prescribed-kinematics",
-      }],
+      parameters: encodePrescribedKinematicsRunProposalParameters(
+        sealedCase.fingerprint,
+      ),
     },
   });
   const decision = project.decisions.find((candidate) =>

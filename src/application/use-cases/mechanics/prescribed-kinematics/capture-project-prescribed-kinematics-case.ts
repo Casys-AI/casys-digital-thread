@@ -52,7 +52,7 @@ export class CaptureProjectPrescribedKinematicsCase
   async capture(value: unknown): Promise<ProjectPrescribedKinematicsCaseCaptureResult> {
     let command: ProjectPrescribedKinematicsCaseCaptureCommand;
     try {
-      command = parseCommand(value);
+      command = parseProjectPrescribedKinematicsCaseCaptureCommand(value);
     } catch {
       return unavailable(
         "invalid_request",
@@ -153,7 +153,9 @@ export class CaptureProjectPrescribedKinematicsCase
   }
 }
 
-function parseCommand(value: unknown): ProjectPrescribedKinematicsCaseCaptureCommand {
+export function parseProjectPrescribedKinematicsCaseCaptureCommand(
+  value: unknown,
+): ProjectPrescribedKinematicsCaseCaptureCommand {
   const root = exactRecord(value, [
     "projectId",
     "workspaceRevision",
