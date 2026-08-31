@@ -11,7 +11,7 @@ registry enrolls five persistent topologies: `casys-syson@1.0.1` (Postgres, SysO
 historical SysON UI port 8180 is not part of `casys-syson`.
 
 `casys-chrono@1.0.0` is a one-service topology. The topology itself does not carry a
-qualification claim. The immutable catalogue baseline for `casys.mcp-chrono@0.3.1`
+qualification claim. The immutable catalogue baseline for `casys.mcp-chrono@0.3.2`
 remains `unqualified`; effective host qualification is the matching attestation overlay
 on [local runtime and ports](../local-runtime-and-ports.md). The probe that appends that
 overlay is the private [local runtime qualification](local-runtime-qualification.md)

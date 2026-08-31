@@ -846,11 +846,11 @@ Deno.test("sealed Chrono topology has one exact AMD64 service with no host privi
   assertEquals(group.materials.map((member) => member.material), [{
     unitId: "casys.mcp-chrono",
     materialId: "mcp-chrono-image",
-    imageDigest: "b6302001725df4722d84096a51eeff7e7ffeee843690a2ba0cc417191c67683c",
+    imageDigest: "2e9b7d5b27e344499fe233ff4e0a1fcdbbe77c8f83bd78ee0cdbc26eb7a74557",
   }]);
   assertEquals(
     service.image,
-    "ghcr.io/casys-ai/mcp-chrono@sha256:b6302001725df4722d84096a51eeff7e7ffeee843690a2ba0cc417191c67683c",
+    "ghcr.io/casys-ai/mcp-chrono@sha256:2e9b7d5b27e344499fe233ff4e0a1fcdbbe77c8f83bd78ee0cdbc26eb7a74557",
   );
   assertEquals(service.platform, "linux/amd64");
   assertEquals(service.ports, ["127.0.0.1:3025:3025"]);

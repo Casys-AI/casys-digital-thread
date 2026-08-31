@@ -5,14 +5,15 @@ Audience: maintainer · Diátaxis: how-to · Kind: procedure
 Use this private host procedure only to qualify the one code-owned Chrono candidate. It
 does not create project evidence, authorize L3, start a normal project runtime, or make
 an engineering verdict. The repository catalogue remains `unqualified`; inspect the
-result when a later server check needs to know whether this host has an exact attestation.
+result when a later server check needs to know whether this host has an exact
+attestation.
 
 ## 1. Review the closed candidate
 
-The only accepted candidate is `chrono-arm64-emulation-v1`: Docker daemon
-`linux/arm64`, target `linux/amd64`, mode `emulated`, launch group `casys-chrono@1.0.0`,
-and exact material
-`ghcr.io/casys-ai/mcp-chrono@sha256:b6302001725df4722d84096a51eeff7e7ffeee843690a2ba0cc417191c67683c`.
+The only accepted candidate is `chrono-arm64-emulation-v1`: Docker daemon `linux/arm64`,
+target `linux/amd64`, mode `emulated`, launch group `casys-chrono@1.0.0`, and exact
+material
+`ghcr.io/casys-ai/mcp-chrono@sha256:2e9b7d5b27e344499fe233ff4e0a1fcdbbe77c8f83bd78ee0cdbc26eb7a74557`.
 
 Run:
 
@@ -24,8 +25,8 @@ Do not replace the reference with a tag, a bare digest, Docker `Image.Id`, or an
 from another repository that happens to have the same digest. The host check requires
 the exact `RepoDigests` repository-and-digest identity and rejects a tagged image as
 foreign. It also refuses an unsupported/non-ARM64 daemon, missing local bearer,
-administrative disablement, stale code-owned probe/specification, drifted host state,
-or an existing exact revocation.
+administrative disablement, stale code-owned probe/specification, drifted host state, or
+an existing exact revocation.
 
 Read the returned review. It contains the observed host identity, exact candidate,
 fixture, lowering/case/protocol/criteria fingerprints, host effects, secret-slot

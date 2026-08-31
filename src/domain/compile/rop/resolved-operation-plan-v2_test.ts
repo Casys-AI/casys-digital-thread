@@ -220,7 +220,7 @@ function validPrescribedKinematicsPlan(): Record<string, unknown> {
     effectiveQualification: "qualified",
     adapter: {
       id: "chrono-prescribed-kinematics-adapter",
-      version: "0.3.1",
+      version: "0.3.2",
       source: "test",
     },
     profile: null,

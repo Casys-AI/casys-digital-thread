@@ -3,9 +3,9 @@
 Audience: both · Diátaxis: reference · Kind: contract
 
 `capability-runtime-catalog/1.0` is the trusted server-side catalogue used to turn a
-provider-neutral brief intent or `project-capability-demand/2.0` ceiling into a concrete,
-inspectable host plan. It is not an MCP tool, a provider registry, a package marketplace,
-or an engineering verdict. The current first-party catalogue is explicitly
+provider-neutral brief intent or `project-capability-demand/2.0` ceiling into a
+concrete, inspectable host plan. It is not an MCP tool, a provider registry, a package
+marketplace, or an engineering verdict. The current first-party catalogue is explicitly
 `productionEligible: false`: it records local developer composition, not redistribution
 clearance or production qualification.
 
@@ -21,10 +21,10 @@ ProjectCapabilityIntent (pending brief) or ProjectCapabilityDemand (published pl
   -> ProjectCapabilityPlan (read-only, concrete)
 ```
 
-The initial route is documented in [project capability intent](project-capability-intent.md).
-The exact binding map is documented separately in
-[qualified binding catalogue](qualified-binding-catalog.md); neither page is a
-caller-selectable provider surface.
+The initial route is documented in
+[project capability intent](project-capability-intent.md). The exact binding map is
+documented separately in [qualified binding catalogue](qualified-binding-catalog.md);
+neither page is a caller-selectable provider surface.
 
 ## Identities that stay separate
 
@@ -38,9 +38,9 @@ caller-selectable provider surface.
 The demand contains none of the last three identities. The agent cannot name a binding,
 unit, image, endpoint, provider tool, profile, or arguments.
 
-`Behave Foundation` is consequently a derived recipe/census, never an atomic unit.
-Names such as `canonical`, `static` and `admitted` describe a method or operation use,
-not an installable package identity.
+`Behave Foundation` is consequently a derived recipe/census, never an atomic unit. Names
+such as `canonical`, `static` and `admitted` describe a method or operation use, not an
+installable package identity.
 
 ## First-party units in this lot
 
@@ -52,22 +52,21 @@ byte accounting, but retain separate services and lifecycle records.
 Published loopback numbers are the current server-owned HTTP publications for those
 persistent services. They are not a reserved-port census: a semantic capability does not
 own a port; several materials share one launch group and one MCP port; microVM workers
-publish none. See
-[capability runtime connection](capability-runtime-connection.md).
+publish none. See [capability runtime connection](capability-runtime-connection.md).
 
-| Unit                                     | Concrete scope                                 | Current HTTP loopback | Notes                                                                |
-| ---------------------------------------- | ---------------------------------------------- | --------------------- | -------------------------------------------------------------------- |
-| `casys.syson-stack`                      | Postgres, SysON app, SysON MCP                 | 3009          | `casys-syson@1.0.1` technically indivisible local stack              |
-| `casys.mcp-build123d-sandbox`            | Private Build123d Compose service              | 3024          | Separate private export volume                                       |
-| `casys.mcp-build123d-observation`        | Regular Build123d/OCCT observer service        | 3014          | Optional assembly-integrity path                                     |
-| `casys.build123d-isolated-worker`        | Admitted source microVM                        | —             | Different lifecycle from either HTTP service                         |
-| `casys.geometry-module-assembler-worker` | One-level STEP compound microVM                | —             | Catalogue: `linux/arm64`, qualified binding; exact native platform uses its code-owned qualification without attestation; emulation and upgrading unqualified/revoked bindings require exact local attestation |
-| `casys.calculix-worker`                  | Product isolated static-proof worker           | —             | Not HTTP `mcp-calculix`                                              |
-| `casys.mcp-calculix`                     | CalculiX HTTP sensitivity service              | 3015          | Separate unqualified S1 binding                                      |
-| `casys.modelica-qualified-worker`        | Narrow qualified-kit microVM                   | —             | Not arbitrary admitted Modelica                                      |
-| `casys.modelica-worker`                  | Admitted Modelica microVM                      | —             | Currently unqualified/unavailable in this catalogue                  |
-| `casys.spice-worker`                     | OCI source cache plus distinct microVM runtime | —             | The source image is not a microVM or HTTP `mcp-spice`                |
-| `casys.mcp-chrono`                       | mcp-chrono 0.3.1 persistent MCP service        | 3025          | Linux/amd64 only; catalogue baseline `unqualified`. Effective host mode is the attestation overlay, not this table |
+| Unit                                     | Concrete scope                                 | Current HTTP loopback | Notes                                                                                                                                                                                                          |
+| ---------------------------------------- | ---------------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `casys.syson-stack`                      | Postgres, SysON app, SysON MCP                 | 3009                  | `casys-syson@1.0.1` technically indivisible local stack                                                                                                                                                        |
+| `casys.mcp-build123d-sandbox`            | Private Build123d Compose service              | 3024                  | Separate private export volume                                                                                                                                                                                 |
+| `casys.mcp-build123d-observation`        | Regular Build123d/OCCT observer service        | 3014                  | Optional assembly-integrity path                                                                                                                                                                               |
+| `casys.build123d-isolated-worker`        | Admitted source microVM                        | —                     | Different lifecycle from either HTTP service                                                                                                                                                                   |
+| `casys.geometry-module-assembler-worker` | One-level STEP compound microVM                | —                     | Catalogue: `linux/arm64`, qualified binding; exact native platform uses its code-owned qualification without attestation; emulation and upgrading unqualified/revoked bindings require exact local attestation |
+| `casys.calculix-worker`                  | Product isolated static-proof worker           | —                     | Not HTTP `mcp-calculix`                                                                                                                                                                                        |
+| `casys.mcp-calculix`                     | CalculiX HTTP sensitivity service              | 3015                  | Separate unqualified S1 binding                                                                                                                                                                                |
+| `casys.modelica-qualified-worker`        | Narrow qualified-kit microVM                   | —                     | Not arbitrary admitted Modelica                                                                                                                                                                                |
+| `casys.modelica-worker`                  | Admitted Modelica microVM                      | —                     | Currently unqualified/unavailable in this catalogue                                                                                                                                                            |
+| `casys.spice-worker`                     | OCI source cache plus distinct microVM runtime | —                     | The source image is not a microVM or HTTP `mcp-spice`                                                                                                                                                          |
+| `casys.mcp-chrono`                       | mcp-chrono 0.3.2 persistent MCP service        | 3025                  | Linux/amd64 only; catalogue baseline `unqualified`. Effective host mode is the attestation overlay, not this table                                                                                             |
 
 Every material records persistence, service/volume, network, bind-mount, privileged
 container, socket, device, secret-slot, licence and security effects. No material has a
@@ -87,7 +86,7 @@ groups: `casys-build123d-sandbox@1.0.0` (`mcp-build123d-sandbox`, 3024 → 3014,
 `sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d`, have no
 shared named network or invented healthcheck, and retain their volumes.
 Catalogue/project data cannot carry Compose commands, provider endpoints, tools,
-arguments or secret values. `casys.mcp-chrono@0.3.1` names the separate single-service
+arguments or secret values. `casys.mcp-chrono@0.3.2` names the separate single-service
 `casys-chrono@1.0.0` group. `casys.mcp-calculix@0.8.2` names the separate single-service
 `casys-mcp-calculix@0.8.2` group. Its immutable Compose body remains in the server-only
 H1 registry, has no invented healthcheck, and retains its private inputs and run-ledger

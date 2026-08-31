@@ -10,7 +10,7 @@ import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import { FixedCapabilityRuntimeLaunchGroupRegistry } from "../../application/control-plane/capability-runtime-launch-group-registry.ts";
 import {
   MCP_CALCULIX_082_IMAGE_REFERENCE,
-  MCP_CHRONO_031_IMAGE_REFERENCE,
+  MCP_CHRONO_032_IMAGE_REFERENCE,
 } from "./first-party-capability-runtime-identities.ts";
 
 export const POSTGRES_IMAGE_REFERENCE =
@@ -60,7 +60,7 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
   const chronoComposeContent = deterministicJson({
     services: {
       "mcp-chrono": {
-        image: MCP_CHRONO_031_IMAGE_REFERENCE,
+        image: MCP_CHRONO_032_IMAGE_REFERENCE,
         platform: "linux/amd64",
         volumes: ["chrono-data:/data"],
         ports: ["127.0.0.1:3025:3025"],
@@ -99,7 +99,7 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
       material(
         "casys.mcp-chrono",
         "mcp-chrono-image",
-        MCP_CHRONO_031_IMAGE_REFERENCE,
+        MCP_CHRONO_032_IMAGE_REFERENCE,
         "mcp-chrono",
         "casys-chrono",
       ),

@@ -9,7 +9,7 @@ import {
 } from "../../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-case-source.ts";
 import { sha256Hex } from "../../../domain/kernel/deterministic-json.ts";
 
-Deno.test("Chrono lowerer emits the exact closed 0.3.1 provider case", async () => {
+Deno.test("Chrono lowerer emits the exact closed 0.3.2 provider case", async () => {
   const source = validSource();
   const sourceFingerprint = await fingerprintPrescribedKinematicsCaseSource(source);
   const lowered = await new ChronoPrescribedKinematicsCaseLowerer().lower({
@@ -27,8 +27,11 @@ Deno.test("Chrono lowerer emits the exact closed 0.3.1 provider case", async () 
     await sha256Hex(new TextEncoder().encode(lowered.exactRequestText)),
   );
   assertEquals(
-    lowered.loweringFingerprint.algorithm,
-    "sha256",
+    lowered.loweringFingerprint,
+    {
+      algorithm: "sha256",
+      digest: "27d65b453095e19bd56174161701a8d3711aa38d313cac1faafaaf96ed3f263b",
+    },
   );
 });
 

@@ -261,10 +261,10 @@ Deno.test("atomic first-party runtime catalogue separates sources with distinct 
     "oci-image",
   );
   const chrono = catalog.units.find((unit) => unit.id === "casys.mcp-chrono");
-  assertEquals(chrono?.version, "0.3.1");
+  assertEquals(chrono?.version, "0.3.2");
   assertEquals(
     chrono?.materials[0]?.imageReference,
-    "ghcr.io/casys-ai/mcp-chrono@sha256:b6302001725df4722d84096a51eeff7e7ffeee843690a2ba0cc417191c67683c",
+    "ghcr.io/casys-ai/mcp-chrono@sha256:2e9b7d5b27e344499fe233ff4e0a1fcdbbe77c8f83bd78ee0cdbc26eb7a74557",
   );
   assertEquals(chrono?.materials[0]?.platforms, ["linux/amd64"]);
   assertEquals(chrono?.materials[0]?.effects, {

@@ -7,10 +7,11 @@ prescribed-kinematics authority. The mechanism domain owns the case, evidence me
 and L4/L5 separation; this provider page owns neither a product verdict nor an
 agent-facing transport surface.
 
-No caller may select or send a provider, image, endpoint, MCP tool, bearer, or arguments.
-The server selects and validates the exact binding and runtime only after the project has
-authorized the semantic capability and the registered L3 operation has a sealed ROP.
-The Workbench remains read-only and has no provider credential or command authority.
+No caller may select or send a provider, image, endpoint, MCP tool, bearer, or
+arguments. The server selects and validates the exact binding and runtime only after the
+project has authorized the semantic capability and the registered L3 operation has a
+sealed ROP. The Workbench remains read-only and has no provider credential or command
+authority.
 
 ## Availability is not a release claim
 
@@ -23,6 +24,14 @@ Product L3 additionally requires all of these: project authorization, the exact 
 ROP, a current writable Thread basis, and the server's JIT capability-session lease. If
 any one is absent, the L3 path is `unavailable`. An agent must not compensate by using a
 direct Chrono client or a different provider.
+
+## Catalogued OCI identity
+
+The catalogue pins the `0.3.2` Linux/amd64 OCI index
+`ghcr.io/casys-ai/mcp-chrono@sha256:2e9b7d5b27e344499fe233ff4e0a1fcdbbe77c8f83bd78ee0cdbc26eb7a74557`.
+Its OCI revision is `18e118453111391eae632f8f5ec737e6c9f04847`. These are supply-chain
+identity facts only: they do not qualify a host or alter the literal `unqualified`
+catalogue baseline.
 
 ## L3 is factual, not a verdict
 

@@ -161,7 +161,7 @@ export class ChronoPrescribedKinematicsRequestError extends Error {
 }
 
 /**
- * Fixed mcp-chrono 0.3.1 adapter.  It exposes no provider, tool, endpoint, or
+ * Fixed mcp-chrono 0.3.2 adapter.  It exposes no provider, tool, endpoint, or
  * argument selection surface to a caller.  The only side-effecting call is
  * dispatched once; all subsequent inspection is identity readback.
  */
@@ -670,14 +670,14 @@ function parseReceipt(
   const receiptRecordedAt = isoTimestamp(root.recorded_at, `${path}.recorded_at`);
   const packageIdentity = exact(root.package, ["name", "version"], `${path}.package`);
   literal(packageIdentity.name, "@casys/mcp-chrono", `${path}.package.name`);
-  literal(packageIdentity.version, "0.3.1", `${path}.package.version`);
+  literal(packageIdentity.version, "0.3.2", `${path}.package.version`);
   const providerIdentity = exact(
     root.provider,
     ["name", "version"],
     `${path}.provider`,
   );
   literal(providerIdentity.name, "casys-chrono", `${path}.provider.name`);
-  literal(providerIdentity.version, "0.3.1", `${path}.provider.version`);
+  literal(providerIdentity.version, "0.3.2", `${path}.provider.version`);
   const worker = exact(root.worker, ["source_sha256"], `${path}.worker`);
   const runtime = exact(root.runtime, ["binding", "python_version"], `${path}.runtime`);
   literal(runtime.binding, "pychrono", `${path}.runtime.binding`);
@@ -927,7 +927,7 @@ function text(value: unknown, path: string): string {
 function providerErrorCode(value: unknown, path: string): string {
   const code = text(value, path);
   if (!CHRONO_PROVIDER_ERROR_CODES.has(code)) {
-    throw protocol(`${path} is not a published mcp-chrono 0.3.1 error code`);
+    throw protocol(`${path} is not a published mcp-chrono 0.3.2 error code`);
   }
   return code;
 }

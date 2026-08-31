@@ -12,7 +12,7 @@ import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capabili
 import {
   firstPartyChronoLaunchGroupReference,
 } from "./first-party-capability-runtime-launch-groups.ts";
-import { MCP_CHRONO_031_IMAGE_REFERENCE } from "./first-party-capability-runtime-identities.ts";
+import { MCP_CHRONO_032_IMAGE_REFERENCE } from "./first-party-capability-runtime-identities.ts";
 
 export const CHRONO_ARM64_EMULATION_QUALIFICATION_CANDIDATE_ID =
   "chrono-arm64-emulation-v1" as const;
@@ -38,16 +38,16 @@ export async function createFirstPartyCapabilityRuntimeQualificationCandidates()
     "Chrono runtime unit",
   );
   const material = exactlyOne(unit.materials, "Chrono runtime material");
-  const expectedDigest = MCP_CHRONO_031_IMAGE_REFERENCE.slice(
-    MCP_CHRONO_031_IMAGE_REFERENCE.lastIndexOf("@sha256:") + "@sha256:".length,
+  const expectedDigest = MCP_CHRONO_032_IMAGE_REFERENCE.slice(
+    MCP_CHRONO_032_IMAGE_REFERENCE.lastIndexOf("@sha256:") + "@sha256:".length,
   );
   if (
     binding.version !== "1" ||
     binding.adapter.id !== "chrono-prescribed-kinematics-adapter" ||
-    binding.adapter.version !== "0.3.1" ||
+    binding.adapter.version !== "0.3.2" ||
     binding.unitIds.length !== 1 || binding.unitIds[0] !== unit.id ||
-    unit.version !== "0.3.1" || material.id !== "mcp-chrono-image" ||
-    material.imageReference !== MCP_CHRONO_031_IMAGE_REFERENCE ||
+    unit.version !== "0.3.2" || material.id !== "mcp-chrono-image" ||
+    material.imageReference !== MCP_CHRONO_032_IMAGE_REFERENCE ||
     launchGroup.id !== "casys-chrono" || launchGroup.version !== "1.0.0"
   ) {
     throw new TypeError("The first-party Chrono qualification candidate drifted.");

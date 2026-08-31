@@ -33,20 +33,20 @@ not keep the group running.
 
 Keep these four facts distinct:
 
-| Fact | Means | Does not mean |
-| ---- | ----- | ------------- |
-| Registry enrollment | The sealed topology exists in the first-party launch-group registry | The service is running, qualified, demanded, or allowed |
+| Fact                                                    | Means                                                                     | Does not mean                                               |
+| ------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Registry enrollment                                     | The sealed topology exists in the first-party launch-group registry       | The service is running, qualified, demanded, or allowed     |
 | Effective host qualification / administrative allowance | A matching attestation overlay and/or `desired: active` lock on this host | The repository catalogue baseline changed, or Compose is up |
-| Demand | The project's planned ceiling or JIT slice from registered operations | Images pulled or a lease claimed |
-| JIT activation | Lease plus closed Compose start of the demanded enrolled group | Enrollment, qualification, or YOLO |
+| Demand                                                  | The project's planned ceiling or JIT slice from registered operations     | Images pulled or a lease claimed                            |
+| JIT activation                                          | Lease plus closed Compose start of the demanded enrolled group            | Enrollment, qualification, or YOLO                          |
 
-The immutable repository catalogue baseline for `casys.mcp-chrono@0.3.1` remains
-`unqualified` (Linux/amd64 only). This host overlays that baseline with an exact,
-matching, qualified emulated `linux/amd64` attestation for digest
-`sha256:b6302001725df4722d84096a51eeff7e7ffeee843690a2ba0cc417191c67683c`. Do not rewrite
-the catalogue as qualified. HTTP `casys.mcp-calculix@0.8.2` and admitted Modelica
-`casys.modelica-worker` remain catalogue-`unqualified` and therefore non-activable until
-their own matching live qualifications exist.
+The immutable repository catalogue baseline for `casys.mcp-chrono@0.3.2` remains
+`unqualified` (Linux/amd64 only). This repository does not claim a matching host
+attestation for digest
+`sha256:2e9b7d5b27e344499fe233ff4e0a1fcdbbe77c8f83bd78ee0cdbc26eb7a74557`; inspect or
+qualify the exact candidate separately. HTTP `casys.mcp-calculix@0.8.2` and admitted
+Modelica `casys.modelica-worker` remain catalogue-`unqualified` and therefore
+non-activable until their own matching live qualifications exist.
 
 The loopback automation task controls only the separate local-YOLO approval opt-in:
 
@@ -97,11 +97,11 @@ another CapabilityRuntime provider.
 CapabilityRuntime providers appear on a loopback port by one of three paths. They are
 not substitutes.
 
-| Path | Who starts it | Role |
-| ---- | ------------- | ---- |
-| Cold Deno | This repo's MCP/control plane | Ordinary atelier start. No CapabilityRuntime Compose project. |
+| Path                                                                                                                                | Who starts it                 | Role                                                                                                                                                        |
+| ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cold Deno                                                                                                                           | This repo's MCP/control plane | Ordinary atelier start. No CapabilityRuntime Compose project.                                                                                               |
 | H1 JIT launch group (`casys-syson`, `casys-build123d-sandbox`, `casys-build123d-observation`, `casys-chrono`, `casys-mcp-calculix`) | `CapabilityRuntimeSupervisor` | Product path after operational authorization. Separate Compose project names. Registry enrollment is candidacy; a group starts only under a demanded lease. |
-| Root `docker-compose.yml` | Maintainer diagnostic | Probe topology only. Different Compose project; same host ports. Incompatible with a simultaneous H1 group. |
+| Root `docker-compose.yml`                                                                                                           | Maintainer diagnostic         | Probe topology only. Different Compose project; same host ports. Incompatible with a simultaneous H1 group.                                                 |
 
 A successful JIT start proves the group active; the lease alone is not a locator. The
 SysON seed and assembly-observation canaries now ask the server-only broker for a
@@ -109,10 +109,9 @@ process-local handle bound to that active lease and to the sealed `casys-syson` 
 `casys-build123d-observation` publication. Other adapters and `config/mcp-fleet.json`
 still use the fixed server-owned URLs below. Ports remain the current compatibility
 publications; ephemeral ports remain a later, separate migration. That partial adoption
-is the current
-[connection seam](capability-packs/capability-runtime-connection.md), not a reserved-port
-plan: a semantic capability does not own a host port, and adding a capability does not
-allocate one.
+is the current [connection seam](capability-packs/capability-runtime-connection.md), not
+a reserved-port plan: a semantic capability does not own a host port, and adding a
+capability does not allocate one.
 
 ## Local endpoints
 
@@ -123,7 +122,7 @@ allocate one.
 | `http://127.0.0.1:3012/mcp`  | `mcp-erpnext`                    | Provider-native ERP data                                                                                                                                                                                                                                                                               |
 | `http://127.0.0.1:3014/mcp`  | `mcp-build123d`                  | Dedicated HTTP `0.6.1` provider for server-fixed CAD recipes and shared exports. `deno task probe:build123d-contract` reads health, discovery, schemas and viewer declarations only; it never calls a provider tool and is not canonical geometry.                                                     |
 | `http://127.0.0.1:3024/mcp`  | `mcp-build123d-sandbox`          | Same dedicated `0.6.1` provider identity, but agent-proposed geometry preview stays on its private export volume. It is not canonical geometry.                                                                                                                                                        |
-| `http://127.0.0.1:3025/mcp`  | `mcp-chrono`                     | Fixed server-owned prescribed-kinematics binding only. The agent never calls this endpoint or supplies its bearer/tool/arguments. Catalogue baseline is `unqualified`; this host overlays a matching qualified emulated `linux/amd64` attestation for digest `sha256:b6302001725df4722d84096a51eeff7e7ffeee843690a2ba0cc417191c67683c`. |
+| `http://127.0.0.1:3025/mcp`  | `mcp-chrono`                     | Fixed server-owned prescribed-kinematics binding only. The agent never calls this endpoint or supplies its bearer/tool/arguments. Catalogue baseline is `unqualified`; no host qualification is claimed for digest `sha256:2e9b7d5b27e344499fe233ff4e0a1fcdbbe77c8f83bd78ee0cdbc26eb7a74557`.          |
 | `http://127.0.0.1:3015/mcp`  | `mcp-calculix`                   | Sealed `casys-mcp-calculix@0.8.2` sensitivity group, not root Compose. Its binding is currently unqualified/non-activable, so fleet projection remains literally unavailable; it exposes no `/health`. A later qualification may activate its fixed recorded-run protocol. Never product static proof. |
 | `http://127.0.0.1:3016/mcp`  | retired                          | Historical `mcp-modelica` Compose sidecar. Product Modelica is the local microVM (admitted + kit). Do not start or probe this port.                                                                                                                                                                    |
 | `http://127.0.0.1:3018/mcp`  | `mcp-dfm`                        | Measured DFM checks on produced STEP (`dfm_check_envelope`, `dfm_check_min_thickness`, `dfm_check_overhangs`); SHA-256 attestation required. Live tools take `step_path`, not STL.                                                                                                                     |
@@ -136,7 +135,7 @@ allocate one.
 | `http://127.0.0.1:5175/`     | `deno task preview:cockpit`      | Read-only BFF (API/SSE) and built cockpit HTML + hashed JS/CSS                                                                                                                                                                                                                                         |
 | `http://127.0.0.1:5173/`     | `deno task preview:thread`       | Vite HMR cockpit; proxies `/api` to the BFF on :5175                                                                                                                                                                                                                                                   |
 | `/api/draft-assets/<sha256>` | BFF (native Workbench)           | Read-only geometry draft bytes; 404 if absent or hash-mismatched; Cache-Control: no-store                                                                                                                                                                                                              |
-| `/api/project/capabilities`  | BFF (native helper only)         | Read-only `project-capability-workbench/1.0` projection for the active project. It has no POST/SSE route, Desktop proxy allowlist, or visual card in this lot.                                                                                                                                          |
+| `/api/project/capabilities`  | BFF (native helper only)         | Read-only `project-capability-workbench/1.0` projection for the active project. It has no POST/SSE route, Desktop proxy allowlist, or visual card in this lot.                                                                                                                                         |
 
 The numbers above are the current server-owned publications. H1 launch groups currently
 reuse those same loopback mappings where they publish HTTP. Manual root Compose cannot
@@ -366,21 +365,21 @@ captures remain documentary evidence; they are not a live projector or executor 
 
 ## Runtime ownership
 
-| Data                         | Owner                                       | Workspace access                                                                                                                                                                                                 |
-| ---------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| SysML and requirements       | SysON                                       | Private provider MCP plus operation WAL/readback; outside local microVM isolation                                                                                                                                |
-| Local Build123d execution    | Microsandbox microVM + DT broker            | Exact admitted bytes in; declared output handles out; no repository, secrets or canonical volumes                                                                                                                |
-| Local module-assembly run    | Fixed-worker adapter in a dedicated microVM | Closed bundle in; atomic STEP + GLB out through the pinned local image. The microVM packages code-owned native dependencies; it is not caller-authored code and is replaceable behind the neutral assembler port |
-| Local Build123d output       | Recorded-analysis output CAS                | Publication-gated private STEP plus byte-free receipt; noncanonical and absent from Thread artifacts                                                                                                             |
-| CAD exports                  | Build123d `exports` volume                  | Build123d-owned CAD exchange only; the CalculiX sensitivity group never mounts it                                                                                                                                |
-| Recorded FEA staging         | CalculiX `calculix-inputs` volume           | After an active exact capability lease, the server stages content-addressed STEP bytes through the owned digest-pinned container; provider-private, non-authoritative, not evidence                              |
-| CalculiX recorded runs       | `calculix-runs` volume                      | Exact request-id `calculix_run_get` plus nine `resources/read` captures; separate from CAD exchange and retained by the launch group                                                                             |
-| Modelica execution           | Local Modelica microVM                      | Admitted closed-subset and qualified kit via `casys/modelica-microsandbox-worker`. Port 3016 sidecar and `modelica-runs` volume are retired                                                                      |
-| Chrono prescribed kinematics | `casys-chrono` Compose group                | Exact Linux/amd64 image, private `chrono-data` volume and fixed loopback MCP client. The host-only bearer snapshot never enters Thread/CAS/WAL/argv. Catalogue baseline stays `unqualified`; L3 dispatch uses the host attestation overlay, not a catalogue rewrite      |
-| ERP data                     | External ERPNext database                   | Provider-native MCP from backend only                                                                                                                                                                            |
-| Native `ThreadSnapshot`      | Immutable local file store                  | Read-only projection in the native Workbench                                                                                                                                                                     |
-| `EngineeringProjectSnapshot` | Immutable active file store                 | Intent, living brief, exact reviews, bounded runs and evidence references; CAS revisions                                                                                                                         |
-| Live engineering activity    | Append-only local JSONL                     | SSE projection; never canonical authority                                                                                                                                                                        |
+| Data                         | Owner                                       | Workspace access                                                                                                                                                                                                                                                    |
+| ---------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SysML and requirements       | SysON                                       | Private provider MCP plus operation WAL/readback; outside local microVM isolation                                                                                                                                                                                   |
+| Local Build123d execution    | Microsandbox microVM + DT broker            | Exact admitted bytes in; declared output handles out; no repository, secrets or canonical volumes                                                                                                                                                                   |
+| Local module-assembly run    | Fixed-worker adapter in a dedicated microVM | Closed bundle in; atomic STEP + GLB out through the pinned local image. The microVM packages code-owned native dependencies; it is not caller-authored code and is replaceable behind the neutral assembler port                                                    |
+| Local Build123d output       | Recorded-analysis output CAS                | Publication-gated private STEP plus byte-free receipt; noncanonical and absent from Thread artifacts                                                                                                                                                                |
+| CAD exports                  | Build123d `exports` volume                  | Build123d-owned CAD exchange only; the CalculiX sensitivity group never mounts it                                                                                                                                                                                   |
+| Recorded FEA staging         | CalculiX `calculix-inputs` volume           | After an active exact capability lease, the server stages content-addressed STEP bytes through the owned digest-pinned container; provider-private, non-authoritative, not evidence                                                                                 |
+| CalculiX recorded runs       | `calculix-runs` volume                      | Exact request-id `calculix_run_get` plus nine `resources/read` captures; separate from CAD exchange and retained by the launch group                                                                                                                                |
+| Modelica execution           | Local Modelica microVM                      | Admitted closed-subset and qualified kit via `casys/modelica-microsandbox-worker`. Port 3016 sidecar and `modelica-runs` volume are retired                                                                                                                         |
+| Chrono prescribed kinematics | `casys-chrono` Compose group                | Exact Linux/amd64 image, private `chrono-data` volume and fixed loopback MCP client. The host-only bearer snapshot never enters Thread/CAS/WAL/argv. Catalogue baseline stays `unqualified`; L3 dispatch uses the host attestation overlay, not a catalogue rewrite |
+| ERP data                     | External ERPNext database                   | Provider-native MCP from backend only                                                                                                                                                                                                                               |
+| Native `ThreadSnapshot`      | Immutable local file store                  | Read-only projection in the native Workbench                                                                                                                                                                                                                        |
+| `EngineeringProjectSnapshot` | Immutable active file store                 | Intent, living brief, exact reviews, bounded runs and evidence references; CAS revisions                                                                                                                                                                            |
+| Live engineering activity    | Append-only local JSONL                     | SSE projection; never canonical authority                                                                                                                                                                                                                           |
 
 The Console browser harness forwards only reviewed Console tools. It is not a generic
 MCP proxy. The native browser receives ordinary linked JSON and no MCP credentials.

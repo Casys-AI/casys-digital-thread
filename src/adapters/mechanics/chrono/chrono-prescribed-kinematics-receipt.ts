@@ -1,4 +1,4 @@
-/** Strict parser for the normalized, fact-only mcp-chrono 0.3.1 L3 receipt. */
+/** Strict parser for the normalized, fact-only mcp-chrono 0.3.2 L3 receipt. */
 
 import type { PrescribedKinematicsReceipt } from "../../../application/ports/out/mechanics/prescribed-kinematics-observer.ts";
 import { exactRecord, nonEmptyText } from "../../../domain/kernel/case-validation.ts";

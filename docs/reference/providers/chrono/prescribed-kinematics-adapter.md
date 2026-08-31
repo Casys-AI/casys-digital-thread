@@ -3,26 +3,26 @@
 Audience: maintainer · Diátaxis: reference · Kind: provider contract
 
 This is the private adapter for the server-selected
-`chrono-prescribed-kinematics-adapter@0.3.1`. It is not an agent tool or a
-product operation. The registered L3 operation, sealed case, ROP, runtime session and
-WAL select it; callers cannot supply a Chrono URL, bearer, tool, image, provider
-arguments, or recovery action.
+`chrono-prescribed-kinematics-adapter@0.3.2`. It is not an agent tool or a product
+operation. The registered L3 operation, sealed case, ROP, runtime session and WAL select
+it; callers cannot supply a Chrono URL, bearer, tool, image, provider arguments, or
+recovery action.
 
 ## Lowering
 
 The lowerer reopens the exact sealed prescribed-kinematics source, proves its
 fingerprint and canonical bytes, then emits deterministic
 `chrono-prescribed-kinematics-case/1.0` JSON. Its fingerprint binds the source,
-`casys.mcp-chrono@0.3.1`, target schema, and
-`absolute-zero-angle-revolute-z-ramp-v1` mapping.
+`casys.mcp-chrono@0.3.2`, target schema, and `absolute-zero-angle-revolute-z-ramp-v1`
+mapping.
 
 Only one rooted revolute tree lowers: exactly one fixed `groundBodyId`; one parent per
-non-ground body; equal parent/child zero-angle poses; equal literal local `+Z` axes;
-and a linear ramp from time zero through the full duration. The adapter refuses rather
-than inventing a frame. IDs must match `[A-Za-z][A-Za-z0-9_-]{0,63}`. The closed request
-uses metres, radians, seconds, right-handed frames, `sample_every_steps: 1`, at most
-512 KiB, absolute numeric values at most 1,000,000, duration at most 10 s,
-duration/step at most 10,000, and at most 512 stored samples.
+non-ground body; equal parent/child zero-angle poses; equal literal local `+Z` axes; and
+a linear ramp from time zero through the full duration. The adapter refuses rather than
+inventing a frame. IDs must match `[A-Za-z][A-Za-z0-9_-]{0,63}`. The closed request uses
+metres, radians, seconds, right-handed frames, `sample_every_steps: 1`, at most 512 KiB,
+absolute numeric values at most 1,000,000, duration at most 10 s, duration/step at most
+10,000, and at most 512 stored samples.
 
 Representative exact lowering failures are:
 
@@ -43,8 +43,8 @@ The adapter calls the fixed private tools in this order:
 1. `chrono_case_submit` receives exact `case_json` and its SHA-256. It must return the
    same lower-case SHA-256 and exactly `chrono-case:sha256:<digest>`.
 2. `chrono_run_prescribed_kinematics` receives the server-derived request id, that case
-   identity, optional bounded timeout (100–60,000 ms), and the first sample page.
-   The durable WAL claims dispatch before this one allowed side effect.
+   identity, optional bounded timeout (100–60,000 ms), and the first sample page. The
+   durable WAL claims dispatch before this one allowed side effect.
 3. `chrono_run_get` rereads the same request identity only. It yields `recorded`,
    `uncertain`, or `absent`; it never authorizes another `run`.
 4. `chrono_run_receipt_get` rereads a recorded receipt by its SHA-256.
@@ -83,11 +83,11 @@ are `0/NOT_CONVERGED`, `1/SUCCESS`, `2/ABSTOL_RESIDUAL`, `3/RELTOL_UPDATE`, and
 
 ## Limits
 
-L3 is a factual record of the exact prescribed case only. Its literal
-`not_evaluated` boundary is collision, clearance, contact, forces, torques, dynamics,
-strength, safety, and product fitness. It is neither L4 evaluation nor L5 closeout, and
-cannot establish physical joints, contact behavior, loads, torque, strength,
-manufacturability, certification, or an automatic correction/rerun.
+L3 is a factual record of the exact prescribed case only. Its literal `not_evaluated`
+boundary is collision, clearance, contact, forces, torques, dynamics, strength, safety,
+and product fitness. It is neither L4 evaluation nor L5 closeout, and cannot establish
+physical joints, contact behavior, loads, torque, strength, manufacturability,
+certification, or an automatic correction/rerun.
 
 For the L3 WAL and human-only reconciliation after an unknown outcome, see
 [prescribed-kinematics observation recovery](../../pipeline/prescribed-kinematics-observation-recovery.md).

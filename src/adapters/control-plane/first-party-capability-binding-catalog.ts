@@ -42,7 +42,7 @@ import {
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
   LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
   MCP_CALCULIX_082_IMAGE_REFERENCE,
-  MCP_CHRONO_031_IMAGE_REFERENCE,
+  MCP_CHRONO_032_IMAGE_REFERENCE,
 } from "./first-party-capability-runtime-identities.ts";
 import {
   type AtomicCapabilityRuntimeMaterial,
@@ -238,7 +238,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "reviewed",
       ),
     ]),
-    unit("casys.mcp-chrono", [chronoMaterial(chronoLaunchGroup)], "0.3.1"),
+    unit("casys.mcp-chrono", [chronoMaterial(chronoLaunchGroup)], "0.3.2"),
   ]);
   return await validateCapabilityRuntimeCatalog({
     schemaVersion: CAPABILITY_RUNTIME_CATALOG_SCHEMA_VERSION,
@@ -425,12 +425,12 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "execution",
         "unqualified",
         "chrono-prescribed-kinematics-adapter",
-        "0.3.1",
+        "0.3.2",
         null,
         ["casys.mcp-chrono"],
         "src/adapters/mechanics/chrono/chrono-prescribed-kinematics-client.ts",
         [
-          "Only mcp-chrono 0.3.1 at its immutable Linux/amd64 digest is catalogued.",
+          "Only mcp-chrono 0.3.2 at its immutable Linux/amd64 digest is catalogued.",
           "On an ARM64 host the material can be emulated only after an explicit qualification probe; it is never claimed native.",
           "The binding exposes factual prescribed-kinematics observations, not collision, contact, clearance, force, strength, safety, or product verdicts.",
         ],
@@ -682,7 +682,7 @@ function chronoMaterial(
   return {
     id: "mcp-chrono-image",
     kind: "compose-service",
-    imageReference: MCP_CHRONO_031_IMAGE_REFERENCE,
+    imageReference: MCP_CHRONO_032_IMAGE_REFERENCE,
     platforms: ["linux/amd64"],
     lifecycle: "persistent",
     launchGroup,

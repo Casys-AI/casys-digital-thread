@@ -14,7 +14,7 @@ const identity = {
     binding: { id: "chrono-prescribed-kinematics", version: "1" },
     adapter: {
       id: "chrono-prescribed-kinematics-adapter",
-      version: "0.3.1",
+      version: "0.3.2",
       source: "src/adapters/mechanics/chrono/chrono-prescribed-kinematics-client.ts",
     },
     profile: null,

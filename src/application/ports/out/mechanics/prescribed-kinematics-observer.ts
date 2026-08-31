@@ -101,7 +101,7 @@ export interface PrescribedKinematicsObservationRecord {
 }
 
 /**
- * Published mcp-chrono 0.3.1 failures proved to occur before a run intent is
+ * Published mcp-chrono 0.3.2 failures proved to occur before a run intent is
  * recorded. They are a definite rejection, never an uncertain dispatch.
  */
 export type PrescribedKinematicsPreDispatchRejectionCode =

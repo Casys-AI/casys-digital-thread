@@ -16,14 +16,14 @@ Deno.test("the first-party Chrono qualification candidate is exact and code-owne
   assertEquals(candidate.binding, { id: "chrono-prescribed-kinematics", version: "1" });
   assertEquals(candidate.contract, {
     id: "chrono-prescribed-kinematics-adapter",
-    version: "0.3.1",
+    version: "0.3.2",
     source: "src/adapters/mechanics/chrono/chrono-prescribed-kinematics-client.ts",
   });
   assertEquals(candidate.unit.id, "casys.mcp-chrono");
-  assertEquals(candidate.unit.version, "0.3.1");
+  assertEquals(candidate.unit.version, "0.3.2");
   assertEquals(
     candidate.material.imageDigest,
-    "b6302001725df4722d84096a51eeff7e7ffeee843690a2ba0cc417191c67683c",
+    "2e9b7d5b27e344499fe233ff4e0a1fcdbbe77c8f83bd78ee0cdbc26eb7a74557",
   );
   assertEquals(candidate.launchGroup.id, "casys-chrono");
   assertEquals(candidate.launchGroup.version, "1.0.0");

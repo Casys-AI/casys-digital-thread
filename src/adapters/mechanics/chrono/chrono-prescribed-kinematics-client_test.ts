@@ -72,7 +72,7 @@ Deno.test("Chrono adapter sends fixed tool sequence with bearer at fetch only", 
 
   assertEquals(run.state, "recorded");
   if (run.state !== "recorded") throw new Error("The fixture must record a run.");
-  // mcp-chrono 0.3.1 publishes exactly these nine provider-owned limits. It
+  // mcp-chrono 0.3.2 publishes exactly these nine provider-owned limits. It
   // deliberately does not know the Digital Thread manufacturability limit.
   assertEquals(run.record.notEvaluated, [
     "collision",
@@ -392,9 +392,11 @@ Deno.test("Chrono adapter rejects stale provider records and malformed page meta
     const params = body.params as Record<string, unknown>;
     assertEquals(params.name, "chrono_run_get");
     const record = recordView();
+    // Historical receipt fixture: the former 0.3.1 runtime is intentionally
+    // breaking and must be rejected without a receipt migration.
     (record.receipt as Record<string, unknown>).package = {
       name: "@casys/mcp-chrono",
-      version: "0.3.0",
+      version: "0.3.1",
     };
     return complete({ ok: true, state: "recorded", record });
   });
@@ -528,8 +530,8 @@ function recordView(
       outcome_sha256: OUTCOME_SHA,
       request_id: REQUEST_ID,
       recorded_at: "2026-08-29T00:00:00.000Z",
-      package: { name: "@casys/mcp-chrono", version: "0.3.1" },
-      provider: { name: "casys-chrono", version: "0.3.1" },
+      package: { name: "@casys/mcp-chrono", version: "0.3.2" },
+      provider: { name: "casys-chrono", version: "0.3.2" },
       worker: { source_sha256: WORKER_SHA },
       runtime: { binding: "pychrono", python_version: "3.13.0" },
       server_runtime: { deno_version: "2.9.6" },

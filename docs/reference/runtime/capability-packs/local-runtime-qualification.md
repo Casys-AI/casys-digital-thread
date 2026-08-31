@@ -11,7 +11,7 @@ Chrono group is allowed; provider selection stays code-owned.
 ## Candidate
 
 The only code-owned candidate is `chrono-arm64-emulation-v1`. It binds
-`chrono-prescribed-kinematics@1` to `casys.mcp-chrono@0.3.1` / `casys-chrono@1.0.0` on
+`chrono-prescribed-kinematics@1` to `casys.mcp-chrono@0.3.2` / `casys-chrono@1.0.0` on
 an observed `linux/arm64` Docker daemon, targeting `linux/amd64` as `emulated`. The
 fixture is the fixed two-body one-hinge source (`duration=1`, `timeStep=1/64`, 65
 samples) owned by server code. The matching specification
