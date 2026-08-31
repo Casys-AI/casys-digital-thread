@@ -38,3 +38,15 @@ container health into an engineering result.
 
 Loopback publications and the three start paths live on
 [local runtime and ports](../local-runtime-and-ports.md).
+
+## Guidance
+
+- [Capability management](../../../explanations/runtime/capability-management.md)
+  explains the separation between demand, binding, unit, authorization, activation, and
+  engineering evidence.
+- [Review project capability authorization](../../../how-to/agents/review-project-capability-authorization.md)
+  is the agent procedure for the brief fingerprint, inspection, subset, amendment, and
+  stop states.
+- [Administer the local capability runtime](../../../how-to/maintainers/administer-local-capability-runtime.md)
+  is the maintainer procedure for automatic lifecycle observation and bounded local
+  administration.

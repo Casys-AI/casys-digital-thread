@@ -30,6 +30,10 @@ verdict, release decision, conformity finding, or certification claim.
 - **Run admitted Modelica or SPICE:** enter [run how-tos](how-to/run/).
 - **Preview the Workbench:** use
   [Preview the native Workbench](how-to/workbench/preview-native-workbench.md).
+- **Review a project's local operational ceiling:** follow
+  [Review project capability authorization](how-to/agents/review-project-capability-authorization.md).
+- **Administer the local capability runtime:** follow
+  [Administer the local capability runtime](how-to/maintainers/administer-local-capability-runtime.md).
 - **Inspect dated project evidence:** start at the
   [project-dossier index](project-dossiers/README.md). These pages track observations;
   they do not replace persisted project, Thread, CAS, provider, or human-decision state.
