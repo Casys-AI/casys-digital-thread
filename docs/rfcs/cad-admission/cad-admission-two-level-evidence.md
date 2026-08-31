@@ -1,7 +1,6 @@
-Audience: both · Diátaxis: none · Kind: RFC
-Status: rejected
-This page is a session brief or study, not the product contract.
-Living page: [closed-language compilation](../../explanations/product/closed-language-compilation.md)
+Audience: both · Diátaxis: none · Kind: RFC Status: rejected This page is a session
+brief or study, not the product contract. Living page:
+[closed-language compilation](../../explanations/product/closed-language-compilation.md)
 
 > **Status: REJECTED.** This design explored a permanent two-level admission
 > ("semantically-proven" vs "execution-attested"). The product owner ruled it out the
@@ -301,16 +300,16 @@ Il borne ce que le script peut **atteindre** (imports, I/O, dunders, exec/eval/o
 réflexion). La microVM borne ce qu'il peut **consommer** (CPU, RAM, PIDs, deny-all
 réseau). L'en-tête le dit (`:56-75, 97-100`) : ce n'est pas un sandbox, c'est un garde.
 
-| Famille                                                         | Verdict pour un script libre en deny-all                                                                    |
-| --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `from os/sys/socket/… import`                                   | rejeté (`forbidden_import`)                                                                                 |
-| `import X` standalone                                           | rejeté                                                                                                      |
-| `from build123d import export_step`                             | hors allowlist                                                                                              |
-| dunders, `getattr` / `vars` / `type` / `exec` / `eval` / `open` | `FORBIDDEN_NAMES` + motif dunder (`:184-243, 684-687`)                                                      |
-| `result` unique, module-level                                   | imposé — le worker exporte `result`                                                                         |
-| boucles, compréhensions, lambdas, attributs, indices            | **admis** (vivacité voulue)                                                                                 |
-| `&` / `\|`                                                      | `unrecognized_token` — **vivacité**, déjà noté dans `docs/rfcs/build123d/qualified-build123d-1.5.0.md:17-31`          |
-| `FORBIDDEN_ATTRIBUTES`                                          | incomplet par construction (`:83-88`) ; un `.export(...)` non listé passerait D4 et mourrait au FS deny-all |
+| Famille                                                         | Verdict pour un script libre en deny-all                                                                     |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `from os/sys/socket/… import`                                   | rejeté (`forbidden_import`)                                                                                  |
+| `import X` standalone                                           | rejeté                                                                                                       |
+| `from build123d import export_step`                             | hors allowlist                                                                                               |
+| dunders, `getattr` / `vars` / `type` / `exec` / `eval` / `open` | `FORBIDDEN_NAMES` + motif dunder (`:184-243, 684-687`)                                                       |
+| `result` unique, module-level                                   | imposé — le worker exporte `result`                                                                          |
+| boucles, compréhensions, lambdas, attributs, indices            | **admis** (vivacité voulue)                                                                                  |
+| `&` / `\|`                                                      | `unrecognized_token` — **vivacité**, déjà noté dans `docs/rfcs/build123d/qualified-build123d-1.5.0.md:17-31` |
+| `FORBIDDEN_ATTRIBUTES`                                          | incomplet par construction (`:83-88`) ; un `.export(...)` non listé passerait D4 et mourrait au FS deny-all  |
 
 **Trou de sécurité démontré justifiant une retouche D4 dans _ce_ chantier : aucun.** Le
 deny-all + allowlist d'import + interdiction d'I/O nommé ferment la portée. Un
@@ -321,18 +320,18 @@ L'attesté n'ouvre donc **pas** une surface d'exécution plus large que ce que D
 microVM permettent déjà au chemin historique MCP (`project_geometry_preview`). Il ouvre
 l'**admission isolée**.
 
-### 2.6 Cockpit / MRTR — le niveau est invisible aujourd'hui
+### 2.6 Cockpit / MRTR — présentation déléguée
 
 `ProjectReviewKind` = `brief | architecture | requirements | geometry`
-(`review-decision-model.ts:23-26`). Le rail ne mappe que `model.write-architecture`,
-`model.write-requirements`, `design.write-geometry` (`:109-115, 542-550`).
+(`review-decision-model.ts`). Le rail mappe `model.write-architecture`,
+`model.write-requirements` et `design.write-geometry` en faits chronologiques
+génériques.
 
 `compile.seal-admission`, `design.execute-build123d` et `design.seal-isolated-geometry`
-n'ont **pas** de preview cockpit. La signature éclairée passe par l'élicitation MCP
-(liste plate de paramètres + labels). Pour l'attesté, les **labels** de la grammaire 1.1
-sont le premier afficheur. Le rail cockpit doit ensuite gagner un kind `compilation` (et
-idéalement `isolated-geometry`) qui parse ces paramètres et affiche niveau + kinds, sans
-3D.
+n'ont pas de renderer natif dans le Workbench. La signature éclairée passe par
+l'élicitation MCP, et toute représentation visuelle appartient à l'App MCP exacte
+enregistrée pour la base de revue. Le rail conserve seulement l'ancre MRTR, le statut et
+la chronologie ; il ne parse pas les paramètres de domaine.
 
 ---
 
@@ -525,10 +524,9 @@ Ordre causal. Chaque palier est relâchable sans ouvrir le suivant.
 
 ### Palier 4 — cockpit / MRTR éclairé
 
-- Kind `compilation` dans `review-decision-model.ts`.
-- Parser browser-safe des params 1.0 et 1.1 (pas d'import domain).
-- Affichage : badge de niveau, compte, kinds. Pas de 3D.
-- Même badge sur l'inspecteur d'artefact Thread.
+- Ancre de revue exacte et statut chronologique dans le modèle générique.
+- App MCP exacte pour interpréter et présenter les paramètres 1.0 ou 1.1.
+- Aucun parser, badge métier ou renderer de domaine natif dans Digital Thread.
 
 ### Palier 5 — proof-case (hors gradient, mais sur le chemin produit)
 
@@ -569,12 +567,10 @@ dire `unavailable` / pas d'autorité FEA — jamais « le STEP isolé _est_ un p
 | `src/adapters/executors/design-execute-build123d-run-executor.ts`                 | 3      | lève le mur `diagnostics.length === 0` **seulement** si 1.1 |
 | `src/domain/analysis/isolated-geometry-seal-proposal.ts`                          | 3      | paramètre niveau si 1.1                                     |
 | `src/adapters/executors/design-seal-isolated-geometry-run-executor.ts`            | 3      | capture 1.1                                                 |
-| `src/adapters/sensitivity/study/analyze-seal-sensitivity-study-run-executor.ts`           | 3      | erreur typée ; accepter capture 1.1                         |
-| `src/ui/src/project/review-decision-model.ts`                                     | 4      | kind `compilation`                                          |
-| `src/ui/src/thread/geometry-decision-model.ts` (ou sibling compilation)           | 4      | parseur 1.1                                                 |
-| `docs/reference/pipeline/analysis-authority-pipeline.md`                                   | 2–3    | gradient, plus « only ready-for-review » (`:630`)           |
-| `docs/reference/agent/agent-workspace.md`                                               | 2      | lookalike : 1.0 ≠ 1.1                                       |
-| `docs/reference/runtime/local-runtime-and-ports.md`                                                 | 1      | nouveau module                                              |
+| `src/adapters/sensitivity/study/analyze-seal-sensitivity-study-run-executor.ts`   | 3      | erreur typée ; accepter capture 1.1                         |
+| `docs/reference/pipeline/analysis-authority-pipeline.md`                          | 2–3    | gradient, plus « only ready-for-review » (`:630`)           |
+| `docs/reference/agent/agent-workspace.md`                                         | 2      | lookalike : 1.0 ≠ 1.1                                       |
+| `docs/reference/runtime/local-runtime-and-ports.md`                               | 1      | nouveau module                                              |
 | `deno.json` `check`                                                               | 1      | **chaque** nouveau module non-test                          |
 
 `src/ui/dist/**` : rebuild + commit si palier 4.

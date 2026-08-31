@@ -8,40 +8,32 @@ function cssRule(source: string, selector: string): string {
   return source.slice(start, end + 2);
 }
 
-Deno.test("overview context gestures stay distinct from exact viewer actions", async () => {
+Deno.test("overview context gestures open only one exact registered App", async () => {
   const hero = await Deno.readTextFile(
     new URL("./src/project/overview-thread-hero.tsx", import.meta.url),
   );
   const flow = await Deno.readTextFile(
     new URL("./src/project/overview-thread-d3-flow.tsx", import.meta.url),
   );
-  const menu = await Deno.readTextFile(
-    new URL("./src/ui/dropdown-menu.tsx", import.meta.url),
+  assertStringIncludes(flow, "onContextMenu={(event) =>");
+  assertStringIncludes(flow, "onRequestExactApp();");
+  assertStringIncludes(hero, "onContextMenu={(event) =>");
+  assertStringIncludes(hero, "requestExactApp(item.key)");
+  assertStringIncludes(
+    hero,
+    "uniqueOverviewThreadViewerSession(sessions)",
   );
-
-  assertStringIncludes(menu, "DropdownMenuContextTrigger = Ark.ContextTrigger");
-  assertEquals(hero.split("<DropdownMenu\n").length - 1, 1);
-  assertStringIncludes(hero, "<OverviewThreadContextMenu");
-  assertStringIncludes(hero, "onTriggerValueChange={(details) =>");
-
-  assertStringIncludes(flow, "overviewThreadGroupContextValue(group.key)");
-  assertStringIncludes(flow, "overviewThreadNodeContextValue(item.key)");
-  assertStringIncludes(flow, "<DropdownMenuContextTrigger");
-  assertStringIncludes(hero, "overviewThreadNodeContextValue(item.key)");
-  assertStringIncludes(hero, "<DropdownMenuContextTrigger");
-  assertEquals(flow.includes("onContextMenu={(event) =>"), false);
-  assertEquals(hero.includes("onContextMenu={(event) =>"), false);
+  assertStringIncludes(
+    hero,
+    'state: sessions.length === 0 ? "unavailable" : "ambiguous"',
+  );
+  assertEquals(flow.includes("DropdownMenuContextTrigger"), false);
+  assertEquals(hero.includes("OverviewThreadContextMenu"), false);
   assertEquals(hero.includes("openNodeViewer"), false);
   assertEquals(flow.includes("onOpenViewer"), false);
-
-  assertStringIncludes(hero, 'kind: "inspect-record"');
-  assertStringIncludes(hero, 'kind: "inspect-activity"');
-  assertStringIncludes(hero, 'kind: "open-evidence"');
-  assertStringIncludes(hero, 'kind: "open-cad"');
-  assertStringIncludes(hero, "for (const asset of capabilities.cadAssets)");
-  assertEquals(hero.includes(".cadAssets[0]"), false);
-  assertStringIncludes(hero, "group?.nodeKeys.flatMap");
-  assertStringIncludes(hero, 'members.length === 1 ? "record" : "records"');
+  assertStringIncludes(flow, 'event.key === "ContextMenu"');
+  assertStringIncludes(flow, 'event.shiftKey && event.key === "F10"');
+  assertStringIncludes(hero, 'event.key === "ContextMenu"');
 });
 
 Deno.test("selection details are a compact anchored whiteboard card", async () => {
@@ -75,8 +67,7 @@ Deno.test("selection details are a compact anchored whiteboard card", async () =
   assertStringIncludes(cardRule, "position: absolute;");
   assertStringIncludes(cardRule, "pointer-events: auto;");
   assertStringIncludes(canvasStyles, ".overview-thread-selection-connector");
-  assertStringIncludes(canvasStyles, ".overview-thread-context-members");
-  assertStringIncludes(canvasStyles, "overflow-y: auto;");
+  assertEquals(canvasStyles.includes(".overview-thread-context-menu"), false);
   assertEquals(
     canvasStyles.includes(".project-thread-board #overview-thread-selection"),
     false,
@@ -105,17 +96,26 @@ Deno.test("overview viewers stay read-only, spatially tethered, and keyboard rea
   const capabilityModel = await Deno.readTextFile(
     new URL("./src/project/overview-thread-viewer-model.ts", import.meta.url),
   );
+  const appFrame = await Deno.readTextFile(
+    new URL("./src/thread/mcp-app-frame.tsx", import.meta.url),
+  );
 
-  assertStringIncludes(hero, "<GltfAssetCanvas");
-  assertStringIncludes(hero, "<ToolInspectorPanel");
+  assertEquals(hero.includes("<GltfAssetCanvas"), false);
+  assertStringIncludes(hero, "<RecordInspectorPanel");
   assertStringIncludes(hero, "Read-only project activity projection");
-  assertEquals(hero.includes("<iframe"), false);
+  assertStringIncludes(hero, "<McpAppFrame");
+  assertStringIncludes(appFrame, 'document.createElement("iframe")');
+  assertStringIncludes(
+    appFrame,
+    'setAttribute("sandbox", "allow-scripts")',
+  );
+  assertStringIncludes(appFrame, 'frameNode.referrerPolicy = "no-referrer"');
   assertEquals(hero.includes("fetch("), false);
-  assertStringIncludes(capabilityModel, ".toSorted((left, right) =>");
   assertStringIncludes(
     capabilityModel,
-    "left.label.localeCompare(right.label)",
+    "Domain viewer capabilities are never inferred here.",
   );
+  assertEquals(capabilityModel.includes("cadAssets"), false);
 
   assertStringIncludes(hero, "readonly nodeKey: string;");
   assertStringIncludes(hero, "whiteboardWorldSize");
@@ -150,7 +150,7 @@ Deno.test("overview viewers stay read-only, spatially tethered, and keyboard rea
   );
 });
 
-Deno.test("viewer-session cards use only current exact descriptors and the native CAD viewer", async () => {
+Deno.test("viewer-session cards host only current exact whole-App descriptors", async () => {
   const hero = await Deno.readTextFile(
     new URL("./src/project/overview-thread-hero.tsx", import.meta.url),
   );
@@ -166,20 +166,41 @@ Deno.test("viewer-session cards use only current exact descriptors and the nativ
   const sessionClient = await Deno.readTextFile(
     new URL("./src/thread/viewer-sessions-client.ts", import.meta.url),
   );
+  const appFrame = await Deno.readTextFile(
+    new URL("./src/thread/mcp-app-frame.tsx", import.meta.url),
+  );
 
   assertStringIncludes(hero, "viewerSessions?.sessions ?? []");
   assertStringIncludes(hero, "overviewThreadGraphRefKey(session.anchor)");
   assertStringIncludes(hero, 'kind: "open-session"');
-  assertStringIncludes(hero, "Open viewer session · ${session.kind}");
-  assertStringIncludes(hero, "sessionAssetIds.has(asset.id)");
+  assertStringIncludes(
+    hero,
+    "uniqueOverviewThreadViewerSession(anchoredSessions)",
+  );
+  assertEquals(hero.includes("for (const session of anchoredSessions)"), false);
+  assertStringIncludes(
+    hero,
+    "Open App · ${session.app.id}@${session.app.version}",
+  );
   assertStringIncludes(hero, 'viewer.kind === "session"');
-  assertStringIncludes(hero, 'viewerSession?.kind === "native-cad-glb"');
-  assertStringIncludes(hero, "<GltfAssetCanvas");
-  assertEquals(hero.includes("<iframe"), false);
+  assertStringIncludes(hero, 'viewerSession?.kind === "mcp-app"');
+  assertEquals(hero.includes("<GltfAssetCanvas"), false);
+  assertStringIncludes(hero, "session={viewerSession}");
+  assertStringIncludes(appFrame, "loadVerifiedMcpAppDocument");
+  assertStringIncludes(appFrame, "frameNode.src = document.url");
+  assertEquals(appFrame.includes("frameNode.src = session.launchUri"), false);
+  assertEquals(appFrame.includes("src={session.launchUri}"), false);
+  assertStringIncludes(
+    appFrame,
+    'setAttribute("sandbox", "allow-scripts")',
+  );
+  assertEquals(appFrame.includes("allow-same-origin"), false);
   assertEquals(hero.includes("fetch("), false);
+  assertEquals(hero.includes("postMessage("), false);
   assertStringIncludes(persistence, "readonly sessionId: string;");
   assertStringIncludes(persistence, "hasExactSessionId");
   assertEquals(persistence.includes("sessionUrl"), false);
+  assertEquals(persistence.includes("launchUri"), false);
   assertEquals(persistence.includes("interactiveToken"), false);
   assertStringIncludes(nativePreview, '"/api/thread/viewer-sessions"');
   assertStringIncludes(nativePreview, '"/api/thread/viewer-sessions/events"');

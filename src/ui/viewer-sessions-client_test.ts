@@ -7,7 +7,7 @@ import {
 } from "./src/thread/viewer-sessions-client.ts";
 
 const DIGEST = "a".repeat(64);
-const SESSION_ID = `native-cad-glb:${"b".repeat(64)}`;
+const SESSION_ID = `mcp-app:${"b".repeat(64)}`;
 
 Deno.test("viewer-sessions client performs an uncached GET and rejects a non-exact descriptor", async () => {
   const requests: Array<
@@ -75,19 +75,53 @@ Deno.test("viewer-sessions SSE forwards only complete validated replacements", (
   }
 });
 
-Deno.test("viewer-session replacements require the loaded project and exact Thread tip", () => {
+Deno.test("viewer-session replacements match the exact Project and evidence Thread tip", () => {
   const projection = viewerSessionsProjection(2);
   const workbench = {
+    surface: "evidence" as const,
     project: {
-      id: "project/demo",
+      id: "project/demo:r7",
       revision: 7,
-      project: { subjectId: "subject/demo" },
+      project: { id: "project/demo", subjectId: "subject/demo" },
     },
     thread: { id: "thread/demo" },
     alignment: { currentThreadRevision: 11 },
   };
 
   assertEquals(viewerSessionsMatchWorkbench(projection, workbench), true);
+  assertEquals(
+    viewerSessionsMatchWorkbench(projection, {
+      ...workbench,
+      project: {
+        ...workbench.project,
+        project: { ...workbench.project.project, id: "project/lookalike" },
+      },
+    }),
+    false,
+  );
+  const projectOnly = {
+    ...projection,
+    basis: {
+      projectId: projection.basis.projectId,
+      projectRevision: projection.basis.projectRevision,
+      subjectId: projection.basis.subjectId,
+    },
+  };
+  assertEquals(
+    viewerSessionsMatchWorkbench(projectOnly, {
+      surface: "planning",
+      project: workbench.project,
+    }),
+    true,
+  );
+  assertEquals(
+    viewerSessionsMatchWorkbench(projection, {
+      surface: "documentary",
+      project: workbench.project,
+    }),
+    true,
+  );
+  assertEquals(viewerSessionsMatchWorkbench(projectOnly, workbench), false);
   assertEquals(
     viewerSessionsMatchWorkbench(
       { ...projection, basis: { ...projection.basis, projectRevision: 8 } },
@@ -133,7 +167,7 @@ function viewerSessionsProjection(
   sequence = 2,
 ): ThreadViewerSessionsProjection {
   return {
-    schemaVersion: "thread-viewer-sessions/1.0",
+    schemaVersion: "thread-viewer-sessions/2.0",
     basis: {
       projectId: "project/demo",
       projectRevision: 7,
@@ -144,16 +178,30 @@ function viewerSessionsProjection(
     projectionFingerprint: `sha256:${"c".repeat(64)}`,
     sessions: [{
       id: SESSION_ID,
-      kind: "native-cad-glb",
+      kind: "mcp-app",
       anchor: { kind: "part-definition", id: "part/hull" },
-      asset: {
-        id: "asset/hull.glb",
-        uri: `/api/thread/assets/${DIGEST}.glb`,
+      app: { id: "io.casys.mcp-build123d.results", version: "1.2.3" },
+      manifest: {
+        uri: "ui://mcp-build123d/app-manifest",
         fingerprint: `sha256:${DIGEST}`,
       },
-      semanticSelection: {
-        status: "unresolved",
-        reason: "correspondence-not-recorded",
+      resource: {
+        uri: "ui://mcp-build123d/results-viewer",
+        fingerprint: `sha256:${"e".repeat(64)}`,
+        ownership: "whole-view",
+        mimeType: "text/html;profile=mcp-app",
+        bytes: 321,
+      },
+      launchUri: "/viewer-apps/build123d/session-a",
+      readResources: [],
+      session: {
+        action: "viewer.session.apply",
+        schema: "io.casys.mcp-build123d.recorded-geometry-session/1.0",
+        payload: {
+          schemaVersion: "io.casys.mcp-build123d.recorded-geometry-session/1.0",
+          projection: { status: "unavailable" },
+        },
+        fingerprint: `sha256:${"f".repeat(64)}`,
       },
     }],
   };

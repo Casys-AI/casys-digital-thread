@@ -249,11 +249,6 @@ Trusted executor for `design.write-geometry@1`: seals exact bytes from a human-s
 draft into a geometry artifact; no provider call; requires a matching MRTR decision
 before promoting
 
-#### [`src/ui/src/cad/geometry-decision-model.ts`](../../../src/ui/src/cad/geometry-decision-model.ts)
-
-Browser-safe parser for MRTR geometry decision parameters; returns `{ kind: "valid" }`
-or `{ kind: "invalid", reason }`; no domain imports
-
 #### [`src/domain/cad/module-assembly/geometry-module-input-bundle.ts`](../../../src/domain/cad/module-assembly/geometry-module-input-bundle.ts)
 
 Closed `geometry-module-input-bundle/1.0`: canonical manifest, usage-ordered immediate

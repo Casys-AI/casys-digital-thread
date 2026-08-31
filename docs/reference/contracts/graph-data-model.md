@@ -27,8 +27,8 @@ BFF ThreadGraph             browser DTO (GET /api/thread/workbench)
   origin: provenance | structure | analysis
         |
         |  Evidence presentation policy (UI only)
-        |  omit analysis overlay, fold campaign instruments,
-        |  fold closed actions, essential mask, SysML compact
+        |  omit the analysis index from the main canvas,
+        |  fold explicit supersedes history, keep literal records
         v
 Graphology MultiDirectedGraph
   navigation / Sigma / neighbourhood — not Thread authority
@@ -36,7 +36,7 @@ Graphology MultiDirectedGraph
 
 | Layer             | Owns                                                   | Must not                                          |
 | ----------------- | ------------------------------------------------------ | ------------------------------------------------- |
-| `ThreadSnapshot`  | Product facts and typed provenance                     | Analysis relation names, Graphology, UI compact   |
+| `ThreadSnapshot`  | Product facts and typed provenance                     | Analysis relation names, Graphology, UI layout    |
 | `AnalysisGraph`   | Qualified assertions (`measured-local-sensitivity`, …) | Provenance rewrite, admission, a painted island   |
 | BFF `ThreadGraph` | Read-model of both, tagged by `origin`                 | Become canonical; invent a join                   |
 | Graphology        | Connected components, hops, Sigma                      | Authority, new edges, collapsing parallel records |
@@ -72,39 +72,24 @@ Sources:
 | `change`      | Snapshot extension event                     | `Requirements: Arm: captured Requirements: Arm.`                       |
 | `action`      | Proposed work (none painted as current here) | —                                                                      |
 
-### BFF-only nodes (not ThreadSnapshot entity kinds)
+### Projection records outside the canonical entity union
 
-| `entityKind`          | What it is                                              | dl05 example                                     |
-| --------------------- | ------------------------------------------------------- | ------------------------------------------------ |
-| `part-definition`     | Reviewed SysON type identity                            | `Arm` · `bfca49ea-3876-479c-9463-a55ddae57fee`   |
-| `part-usage`          | Reviewed SysON occurrence                               | `arm` · `8f041729-706d-4102-8025-4cf799c03c87`   |
-| `attribute-usage`     | Declared SysML AttributeUsage owned by a PartDefinition | `Arm · thickness` · AttributeUsage on `Arm`      |
-| `cad-lever`           | Named numeric CAD lever from a sealed admission         | `CAD · thickness = 8` · unit undeclared          |
-| `cad-unnamed-literal` | Constructor-photo hole: span + value, no invented name  | `CAD · unnamed 30` · no name                     |
-| `analysis-node`       | `AnalysisGraph` semantic endpoint                       | `sensitivity-parameter:…`, brief items, proof BC |
+The graph vocabulary retains `analysis-node` plus exact SysML structure references used
+by existing non-admission projections. Their presence in the type does not authorize the
+browser to manufacture them. The browser contract has no technical-admission source
+catalog, `cad-lever`, `cad-unnamed-literal`, or `source-file` graph kind.
 
-`part-definition` / `part-usage` / `attribute-usage` come from the reviewed component
-catalog. Geometry is optional. They are not promoted back into `ThreadSnapshot`. An
-`attribute-usage` is a declared SysML AttributeUsage from
-`catalog.components[].attributes[]` (exact id + label), not a CAD lever, unit, or
-default value. The painted label includes the owning PartDefinition (`Arm · thickness`)
-so two homonymous attributes stay distinct.
-
-`cad-lever` is BFF-only, reopened from a `compile.seal-admission@3` capture. It is
-emitted only when that admission uniquely `parameterizes` an AttributeUsage already
-present in the graph. `cad-unnamed-literal` is the constructor-photo hole: a bare
-numeric argument that reaches `result`, hung on the unique `represents` PartDefinition.
-It has a span and a value. It does not invent `width` / `length`. The unit is
-`undeclared`.
-
-`analysis-node` is the analysis overlay. The BFF still emits it. Evidence does not paint
-it.
+In particular, the separate reviewed component catalog is not embedded in
+`ThreadWorkbenchSnapshot` and no longer creates PartDefinition, PartUsage,
+AttributeUsage, or CAD-preview topology for the Workbench. `analysis-node` remains an
+index record; the generic Evidence surface does not interpret its payload as a domain
+viewer.
 
 ### Artifact kinds seen on dl05
 
 `document`, `evidence`, `cad-model`, `step`, `sysml-model`, `solver-input`, `mesh`,
-`solver-result`. Supporting kinds (`mesh`, `script`, `solver-input`, consumptions,
-changes) are hidden by the essential mask on the full map.
+`solver-result`. These are literal recorded categories. The generic full map does not
+hide a record because it recognises one of those domain labels.
 
 ## Edge origins — three vocabularies
 
@@ -136,22 +121,18 @@ A new pair is a contract change, not a projector convenience.
 ### `origin: "structure"`
 
 BFF-only. Derived from exact recorded fields (`inputArtifactIds`, observation sources,
-requirement `sourceArtifactId`, reviewed catalog). Never from a label.
+requirement `sourceArtifactId`). Never from a label or from the separate component
+catalog.
 
-| Relation         | Meaning                                                                                         | dl05 example                                                                            |
-| ---------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `input_to`       | Explicit input artifact of a later artifact                                                     | Architecture → Requirements: Arm (twins the `derived_from` pair with a different claim) |
-| `source_of`      | Observation source artifact                                                                     | `CalculiX result.json` → `maxDisplacement measured by CalculiX`                         |
-| `traces_to`      | Requirement source artifact (when provenance did not already emit the pair)                     | Requirements: Arm → `Arm tip deflection`                                                |
-| `contains`       | Architecture → root PartDefinition; PartDefinition → PartUsage; PartDefinition → AttributeUsage | `HeronLampSystem` → `arm`; `Arm` → `thickness`                                          |
-| `typed_by`       | PartUsage → PartDefinition                                                                      | `arm` → `Arm`                                                                           |
-| `represented_by` | PartDefinition → exact STEP (authoritative) or GLB (presentation)                               | `Arm` → `Authoritative STEP: Arm`                                                       |
-| `parameterizes`  | Sealed CAD lever → exact AttributeUsage. Unique compile join only.                              | `CAD · thickness = 8` → `Arm · thickness`                                               |
-| `unnamed_in`     | Constructor literal → unique represented PartDefinition. Not a named lever.                     | `CAD · unnamed 30` → `WallHook`                                                         |
-
-There is **no** structure edge `Requirements: Arm` → `arm` or → `Arm`. Requirements
-target the PartDefinition at write time; that identity lives on the capture and in a
-rationale, not as a graph endpoint. See the Arm note below.
+| Relation                                                                               | Meaning                                                                     | dl05 example                                                                            |
+| -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `input_to`                                                                             | Explicit input artifact of a later artifact                                 | Architecture → Requirements: Arm (twins the `derived_from` pair with a different claim) |
+| `source_of`                                                                            | Observation source artifact                                                 | `CalculiX result.json` → `maxDisplacement measured by CalculiX`                         |
+| `traces_to`                                                                            | Requirement source artifact (when provenance did not already emit the pair) | Requirements: Arm → `Arm tip deflection`                                                |
+| Other structure relations in the closed graph vocabulary, including `contains`,        |                                                                             |                                                                                         |
+| `typed_by`, and `represented_by`, must already name exact projected records. The       |                                                                             |                                                                                         |
+| Workbench does not derive them from a component catalog, parse an admission payload to |                                                                             |                                                                                         |
+| create them, or invent them from display text.                                         |                                                                             |                                                                                         |
 
 ### `origin: "analysis"`
 
@@ -172,107 +153,27 @@ An analysis edge carries `analysis.assertionId`, `epistemicBasis`, evidence
 fingerprints, scope. A `measured-local-sensitivity` edge also carries the base, step,
 two responses, and derivative. That is the experience record.
 
-## What the live BFF actually emits (dl05 r156)
+## What the live BFF emits
 
-Raw `thread.graph`: **173 nodes / 242 edges**.
-
-| `entityKind`    |  n |   | `origin`   |   n |
-| --------------- | -: | - | ---------- | --: |
-| consumption     | 45 |   | provenance | 155 |
-| change          | 40 |   | structure  |  66 |
-| artifact        | 40 |   | analysis   |  21 |
-| analysis-node   | 23 |   |            |     |
-| observation     | 10 |   |            |     |
-| part-definition |  5 |   |            |     |
-| evaluation      |  4 |   |            |     |
-| part-usage      |  4 |   |            |     |
-| requirement     |  2 |   |            |     |
-
-Top painted pairs:
-
-|  n | origin     | pair                                                          |
-| -: | ---------- | ------------------------------------------------------------- |
-| 45 | provenance | artifact `--uses-->` consumption                              |
-| 40 | provenance | change `--changes-->` artifact                                |
-| 36 | provenance | artifact `--derived_from-->` artifact                         |
-| 36 | structure  | artifact `--input_to-->` artifact                             |
-| 10 | provenance | artifact `--traces_to-->` artifact                            |
-| 10 | structure  | artifact `--source_of-->` observation                         |
-|  9 | analysis   | analysis-node `--structural-incidence-->` analysis-node       |
-|  9 | structure  | part-definition `--represented_by-->` artifact                |
-|  8 | analysis   | analysis-node `--declared-dependency-->` analysis-node        |
-|  4 | analysis   | analysis-node `--measured-local-sensitivity-->` analysis-node |
-|  4 | provenance | requirement `--evaluates-->` evaluation                       |
-|  4 | structure  | part-usage `--typed_by-->` part-definition                    |
-
-`input_to` and `derived_from` often share endpoints. That is two claims (explicit input
-vs derivation), not a duplicate bug. Sigma may draw one visual route and keep both
-assertions in the table.
+Counts and domain kinds depend on the exact selected Project/Thread basis. They are not
+a presentation contract. `input_to` and `derived_from` may share endpoints because they
+remain two recorded claims (explicit input versus derivation); the canvas may share a
+visual route while the generic inspector keeps both exact edges.
 
 ## What Evidence paints (presentation policy)
 
-Applied only in the UI, in this order:
+Evidence paints the recorded graph without reconstructing a domain view. It may use
+literal recorded fields such as `label`, `system`, `entityKind`, `artifactKind`, and
+lane for layout, colour, navigation, or a generic record inspector. It may version-fold
+an explicit `supersedes` family. It does not infer a provider from an id prefix, combine
+a SysML/CAD/solver chain, calculate a verdict or margin, or hide a record because the
+browser recognises a domain payload.
 
-1. Drop `analysis-node` and `origin: "analysis"` (`graphWithoutAnalysisOverlay`).
-2. Drop closed action nodes.
-3. Fold analyze.* / sensitivity _campaign_ instruments (`isAnalyzeInstrumentNode`):
-   server-fixed id prefixes `sensitivity-case-`, `sensitivity-study-`,
-   `sensitivity-edges-`, `sensitivity-relations-`, `sensitivity-base-evaluation-`, plus
-   CAD/FEA artifacts and observations whose id contains `sensitivity`.
-4. Fold provider solver envelopes (`isSolverEnvelopeNode`): `solver-input` and
-   `solver-result`. `CalculiX input.step` is a byte-identical copy of the authoritative
-   STEP; `CalculiX result.json` is the raw container of the extracted observations.
-   Neither is a second build123d product. Stubs keep STEP → observation.
-5. Version-fold `supersedes` families.
-6. Essential mask (hide mesh / script / remaining envelopes / changes / consumptions
-   unless they are the sole path).
-7. Compact one unambiguous `PartUsage --typed_by--> PartDefinition` into
-   `usage : Definition` (UI-only edge id `ui:sysml-composite:…`).
-8. Compact one unambiguous authoritative STEP + GLB preview onto the STEP (UI-only edge
-   id `ui:cad-presentation:…`). Two CAS identities stay exact; the agent still publishes
-   both. Focusing either member expands the pair.
-
-On this head after (1)+(3)+(4): campaign documents, `sensitivity-base-*` /
-`sensitivity-d-*` observations, `CalculiX input.step` and `CalculiX result.json` leave
-the canvas. **Study-base evaluations stay**, attached to the Thread requirements. Stubs
-keep the recorded path from the compilation admission
-(`via Sensitivity study case — folded`) and from Authoritative STEP: Arm to the proof
-observations (`via CalculiX result.json — folded`).
-
-Painted Evidence (full canvas, essential mask) no longer treats the solver file pair as
-a second CAD product. One Graphology + dagre + Sigma surface. The SVG Map is not a
-second organisation of this dossier.
-
-Kept construction facts include Architecture, Requirements: Arm, geometry bundle, four
-STEP nodes that each carry their GLB presentation, FEA proof observations, two proof
-evaluations, two study-base evaluations, SysML `arm : Arm` and siblings. Activity still
-lists STEP and GLB as separate recorded artifacts.
-
-## Three construction chains on this head
-
-```text
-Architecture: HeronLamp
-  --contains--> HeronLampSystem
-  --contains--> arm --typed_by--> Arm --represented_by--> STEP Arm
-  --derived_from / input_to--> Requirements: Arm
-  --traces_to--> Arm tip deflection
-                 --evaluates--> maxDisplacement evaluation (proof)
-                 --evaluates--> Arm tip deflection study-base evaluation
-
-Architecture
-  --derived_from--> Geometry bundle --traces_to--> STEP Arm
-  --derived_from--> FEA proof seal --derived_from--> CalculiX result
-  --source_of--> maxDisplacement measured by CalculiX
-  --uses--> maxDisplacement evaluation
-
-Technical compilation admission
-  --stub via folded sensitivity-case--> study-base evaluations
-```
-
-No recorded edge `Requirements: Arm` → `arm` or → `Arm`. Requirements are owned by the
-PartDefinition at write time; the graph only records Architecture as the endpoint. The
-PartDefinition id appears in the rationale, never as a `to` ref. Parsing that rationale
-to draw a line would be an invented join.
+Each recorded node and edge keeps its own identity. A separately framed whole App is a
+read-only presentation of one explicitly registered exact anchor, not a second graph and
+not a source of Thread authority. A context gesture opens the single matching exact
+whole App; zero or multiple matches remain unavailable or ambiguous. Digital Thread does
+not merge domain artifacts or render them through a native domain viewer.
 
 ## Coherence review (open, not bugs by default)
 
@@ -281,44 +182,23 @@ re-decide — not a silent defect.
 
 1. **Three origins stay three languages.** Do not merge `derived_from` with
    `declared-dependency` or `measured-local-sensitivity`.
-2. **AnalysisGraph is an index.** Painting it as islands was wrong. Hiding it on
-   Evidence is the current policy. Product/tests may still inspect `origin: "analysis"`.
-3. **Sensitivity is experience, not a second chantier.** Campaign artifacts fold.
-   Study-base evaluations stay on the requirement they evaluate.
+2. **AnalysisGraph is an index.** It remains distinct from canonical Thread provenance
+   and does not authorize a native analysis viewer.
+3. **Recorded categories stay literal.** The browser may lay them out or colour them; it
+   does not fold a provider campaign or recognise a solver envelope.
 4. **`input_to` vs `derived_from`.** Same endpoints, different claim (declared input vs
    derivation). Keep both; do not drop one to “simplify”.
 5. **Painted direction ≠ stored direction.** Reviews must say which layer they mean.
-6. **Requirements attach to Architecture, not to `arm : Arm`.** Type-level write,
-   occurrence-level compact. A future structure edge to the PartDefinition would need
-   `capture.target.elementId`, not a label.
+6. **No catalog topology.** A future structure edge to a PartDefinition would need an
+   exact recorded reference, not a label or a browser-side catalog join.
 7. **`traces_to` is overloaded** (requirement↔model and historical evidence↔design). The
    validator documents this; do not add a third use without a new relation.
-8. **BFF-only SysML nodes** are a read model. They must not appear in
-   `ThreadSnapshot.provenance`.
-9. **Graphology is a projection.** Parallel recorded edges stay distinct. Stubs are
-   synthetic and labelled `via … — folded`.
+8. **Separate catalog identities stay separate.** They are not a Workbench snapshot
+   field or an implicit viewer binding.
+9. **Graphology is a projection.** Parallel recorded edges stay distinct; it does not
+   construct provider topology.
 10. **No join from analysis → Thread.** Overlay omission must not be “fixed” by
     inventing `projection-of` into an artifact.
-
-## Review 2026-08-16 (dl05 r156)
-
-The four-layer split and the three `origin` languages are coherent. The remaining
-problems are lookalikes and presentation lies, not a second authority model.
-
-| Severity | Finding                                                                                                                                                             | Call                                                                                    |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Keep     | `input_to` is a strict subset of painted `derived_from` artifact pairs (36/36). The 10 unpaired `derived_from` are artifact→observation (already have `source_of`). | Two claims, one route. Do not drop.                                                     |
-| Keep     | Requirements target the PartDefinition; the graph endpoint is Architecture.                                                                                         | Not a missing `arm : Arm` join.                                                         |
-| Keep     | Analysis overlay omitted; campaign folded; study-base evals stay on the requirement.                                                                                | Matches “experience, not chantier”.                                                     |
-| Fixed    | Same requirement carries two `pass` evaluations (proof `@2` vs study-base join).                                                                                    | Distinct `evaluationFamily: "study-base"` chip / DisplayKind. Proof stays `evaluation`. |
-| Tension  | Two sensitivity campaigns coexist (`assembly_max_*` / `af03a261…` and `maxDisplacement` / `b9155c34…`).                                                             | Honest history. The experience index is two neighbourhoods.                             |
-| Fixed    | Header “2 independent domain branches” counted flow producers.                                                                                                      | Linked evidence now uses the painted full-map item and component counts.                |
-| Tension  | Painted provenance reverses stored `from`/`to`.                                                                                                                     | Documented. Always name the layer.                                                      |
-| Hole     | `target.elementId` (`bfca49ea-…`) lives in rationale text, not as a graph ref.                                                                                      | Project a structure edge only from the capture field, never from the rationale.         |
-| Fixed    | Folding emitted self-loop stubs (`admission → admission via case`).                                                                                                 | Stubs whose endpoints share the same ref key are not emitted.                           |
-| Fixed    | Analysis node ids were `graph:analysis-node:analysis-node:…`.                                                                                                       | `graphNodeId` does not repeat a kind prefix already on the id.                          |
-| Fixed    | `traces_to` validator text mentioned proof→PartDefinition.                                                                                                          | Comment now matches live uses; PartDef→STEP stays `represented_by`.                     |
-| Scatter  | Producer ids: `calculix` / `mcp-calculix` / `digital-thread` / `casys-digital-thread` / analysis domains `brief`/`thread`/`sysml`.                                  | Visual families are fine; do not rewrite provenance.                                    |
 
 ## Dump a live head (read only)
 

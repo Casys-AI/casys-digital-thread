@@ -6,7 +6,6 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { flushSync } from "react-dom";
 import type { EngineeringPhaseStatus } from "../../../domain/project/engineering-project.ts";
 import {
   buildOverviewThreadHero,
@@ -18,7 +17,6 @@ import {
 } from "./overview-thread-hero-model.ts";
 import { buildOverviewThreadD3Layout } from "./overview-thread-d3-layout.ts";
 import {
-  flowGroupCaption,
   OverviewThreadD3Flow,
   type OverviewThreadD3FlowMoveDirection,
   type OverviewThreadStageSummary,
@@ -26,7 +24,6 @@ import {
 import {
   buildOverviewThreadD3FlowLayout,
   overviewThreadD3FlowGroupIdentity,
-  type OverviewThreadD3FlowGroupLayout,
   type OverviewThreadD3FlowGroupPlacement,
   type OverviewThreadD3FlowNodePlacement,
   type OverviewThreadD3FlowRoutingState,
@@ -34,7 +31,6 @@ import {
 import type { ProjectPathActivityView } from "./model.ts";
 import { recordStatusVariant } from "./record-status.ts";
 import type {
-  ThreadArtifact,
   ThreadGraphNode,
   ThreadGraphRef,
   ThreadWorkbenchSnapshot,
@@ -43,19 +39,14 @@ import type {
   ThreadViewerSession,
   ThreadViewerSessionsProjection,
 } from "../thread/viewer-sessions-client.ts";
-import { GltfAssetCanvas } from "../thread/gltf-asset-canvas.tsx";
-import { ToolInspectorPanel } from "../thread/tool-inspectors.tsx";
+import { McpAppFrame } from "../thread/mcp-app-frame.tsx";
+import { RecordInspectorPanel } from "../thread/tool-inspectors.tsx";
 import { Badge } from "../ui/badge.tsx";
 import { Button } from "../ui/button.tsx";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuContextTrigger,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-} from "../ui/dropdown-menu.tsx";
-import { resolveOverviewThreadViewerCapabilities } from "./overview-thread-viewer-model.ts";
+  resolveOverviewThreadViewerCapabilities,
+  uniqueOverviewThreadViewerSession,
+} from "./overview-thread-viewer-model.ts";
 import {
   loadOverviewThreadWhiteboardPresentation,
   type OverviewThreadWhiteboardPresentationReconciliation,
@@ -65,10 +56,6 @@ import {
   type OverviewThreadWhiteboardViewerCapability,
   saveOverviewThreadWhiteboardPresentation,
 } from "./overview-thread-whiteboard-persistence.ts";
-import {
-  overviewThreadNodeContextValue,
-  parseOverviewThreadContextTarget,
-} from "./overview-thread-context-target.ts";
 import {
   fitOverviewThreadWhiteboardTransform,
   normalizeOverviewThreadWhiteboardTransform,
@@ -111,12 +98,6 @@ type OverviewNodeContextAction =
     readonly label: string;
   }
   | {
-    readonly kind: "open-cad";
-    readonly nodeKey: string;
-    readonly assetId: string;
-    readonly label: string;
-  }
-  | {
     readonly kind: "open-session";
     readonly nodeKey: string;
     readonly sessionId: string;
@@ -139,7 +120,6 @@ type OverviewNodeContextAction =
 
 type OverviewViewerState =
   | OverviewRecordViewerState
-  | OverviewCadViewerState
   | OverviewSessionViewerState
   | OverviewActivityViewerState;
 
@@ -156,12 +136,6 @@ interface OverviewViewerBase {
 interface OverviewRecordViewerState extends OverviewViewerBase {
   readonly kind: "record";
   readonly nodeKey: string;
-}
-
-interface OverviewCadViewerState extends OverviewViewerBase {
-  readonly kind: "cad";
-  readonly nodeKey: string;
-  readonly assetId: string;
 }
 
 interface OverviewSessionViewerState extends OverviewViewerBase {
@@ -209,6 +183,12 @@ interface OverviewWhiteboardPendingPersistence {
   readonly projectId: string;
   readonly state: OverviewThreadWhiteboardPresentationState;
   readonly reconciliation: OverviewThreadWhiteboardPresentationReconciliation;
+}
+
+interface OverviewExactAppLaunchStatus {
+  readonly nodeKey: string;
+  readonly state: "unavailable" | "ambiguous";
+  readonly message: string;
 }
 
 const OVERVIEW_WHITEBOARD_INITIAL_TRANSFORM = {
@@ -321,6 +301,7 @@ export function OverviewThreadHero({
       readonly ThreadViewerSession[]
     >();
     for (const session of viewerSessions?.sessions ?? []) {
+      if (session.anchor.kind === "project-review") continue;
       const nodeKey = overviewThreadGraphRefKey(session.anchor);
       const node = nodesByKey.get(nodeKey);
       if (node?.kind !== "recorded") continue;
@@ -373,7 +354,6 @@ export function OverviewThreadHero({
       );
       result[item.key] = {
         record: capabilities.inspectRecord,
-        cadAssetIds: capabilities.cadAssets.map((asset) => asset.id),
         sessionIds: (viewerSessionsByNodeKey.get(item.key) ?? []).map(
           (session) => session.id,
         ),
@@ -395,9 +375,9 @@ export function OverviewThreadHero({
   const [selectedKey, setSelectedKey] = useState<string>();
   const [hoveredKey, setHoveredKey] = useState<string>();
   const [focusedKey, setFocusedKey] = useState<string>();
-  const [contextTriggerValue, setContextTriggerValue] = useState<
-    string | null
-  >(null);
+  const [exactAppLaunchStatus, setExactAppLaunchStatus] = useState<
+    OverviewExactAppLaunchStatus
+  >();
   const [layoutMode, setLayoutMode] = useState<OverviewLayoutMode>("hierarchy");
   const [viewers, setViewers] = useState<readonly OverviewViewerState[]>([]);
   const [persistenceHydration, setPersistenceHydration] = useState<
@@ -412,7 +392,9 @@ export function OverviewThreadHero({
   const whiteboardTouchedRef = useRef(false);
   const skipNextAutoFitRef = useRef(false);
   const persistenceReconciliationRef = useRef(persistenceReconciliation);
-  const persistenceTimerRef = useRef<number>();
+  const persistenceTimerRef = useRef<
+    ReturnType<typeof globalThis.setTimeout>
+  >();
   const pendingPersistenceRef = useRef<
     OverviewWhiteboardPendingPersistence
   >();
@@ -575,7 +557,7 @@ export function OverviewThreadHero({
     if (persistenceTimerRef.current !== undefined) {
       clearTimeout(persistenceTimerRef.current);
     }
-    persistenceTimerRef.current = window.setTimeout(
+    persistenceTimerRef.current = globalThis.setTimeout(
       () => flushPersistenceRef.current(),
       OVERVIEW_WHITEBOARD_SAVE_DELAY_MS,
     );
@@ -597,9 +579,9 @@ export function OverviewThreadHero({
   ]);
   useEffect(() => {
     const flush = () => flushPersistenceRef.current();
-    window.addEventListener("pagehide", flush);
+    globalThis.addEventListener("pagehide", flush);
     return () => {
-      window.removeEventListener("pagehide", flush);
+      globalThis.removeEventListener("pagehide", flush);
       flush();
     };
   }, []);
@@ -610,14 +592,8 @@ export function OverviewThreadHero({
     [view.edges, activeKey],
   );
   const toggleSelection = (item: OverviewHeroNode) => {
+    setExactAppLaunchStatus(undefined);
     setSelectedKey((current) => nextOverviewHeroSelection(current, item.key));
-  };
-  const selectNode = (key: string) => {
-    if (!nodesByKey.has(key)) return;
-    setSelectedKey(key);
-    setHoveredKey(undefined);
-    setFocusedKey(key);
-    requestAnimationFrame(() => nodeRefs.current.get(key)?.focus());
   };
   const bringViewerFront = (viewerId: string) => {
     setViewers((current) => {
@@ -630,11 +606,6 @@ export function OverviewThreadHero({
   const openViewer = (
     request:
       | { readonly kind: "record"; readonly nodeKey: string }
-      | {
-        readonly kind: "cad";
-        readonly nodeKey: string;
-        readonly assetId: string;
-      }
       | {
         readonly kind: "session";
         readonly nodeKey: string;
@@ -703,14 +674,6 @@ export function OverviewThreadHero({
       openViewer({ kind: "record", nodeKey: action.nodeKey });
       return;
     }
-    if (action.kind === "open-cad") {
-      openViewer({
-        kind: "cad",
-        nodeKey: action.nodeKey,
-        assetId: action.assetId,
-      });
-      return;
-    }
     if (action.kind === "open-session") {
       openViewer({
         kind: "session",
@@ -728,6 +691,32 @@ export function OverviewThreadHero({
       return;
     }
     onOpenActivity();
+  };
+  const requestExactApp = (nodeKey: string) => {
+    const item = nodesByKey.get(nodeKey);
+    if (!item) return;
+    const sessions = viewerSessionsByNodeKey.get(nodeKey) ?? [];
+    const exactSession = uniqueOverviewThreadViewerSession(sessions);
+    if (exactSession) {
+      setExactAppLaunchStatus(undefined);
+      openViewer({
+        kind: "session",
+        nodeKey,
+        sessionId: exactSession.id,
+      });
+      return;
+    }
+    setSelectedKey(nodeKey);
+    setHoveredKey(undefined);
+    setFocusedKey(nodeKey);
+    setExactAppLaunchStatus({
+      nodeKey,
+      state: sessions.length === 0 ? "unavailable" : "ambiguous",
+      message: sessions.length === 0
+        ? "No exact whole-App session is registered for this node."
+        : `${sessions.length} exact whole-App sessions are registered; none was chosen automatically.`,
+    });
+    requestAnimationFrame(() => nodeRefs.current.get(nodeKey)?.focus());
   };
   const closeViewer = (viewerId: string) => {
     const viewer = viewers.find((candidate) => candidate.id === viewerId);
@@ -1067,20 +1056,6 @@ export function OverviewThreadHero({
   const unroutedEdgeCount = layoutMode === "hierarchy"
     ? flowLayout.unroutedEdgeKeys.length
     : radialLayout.unroutedEdgeKeys.length;
-  const contextTarget = parseOverviewThreadContextTarget(contextTriggerValue);
-  const contextNode = contextTarget?.kind === "node"
-    ? nodesByKey.get(contextTarget.key)
-    : undefined;
-  const contextGroup = contextTarget?.kind === "group"
-    ? flowLayout.groups.find((group) => group.key === contextTarget.key)
-    : undefined;
-  const contextActions = contextNode
-    ? overviewNodeContextActions(thread, contextNode, viewerSessionsByNodeKey)
-    : [];
-  const commitContextTargetBeforeOpen = (value: string | null | undefined) => {
-    if (!parseOverviewThreadContextTarget(value)) return;
-    flushSync(() => setContextTriggerValue(value!));
-  };
   const selectedAnchor = selected
     ? overviewViewerAnchorPoint(
       selected.key,
@@ -1097,411 +1072,382 @@ export function OverviewThreadHero({
     ? buildOverviewThreadViewerConnectorGeometry(selectedAnchor, selectedCard)
     : undefined;
   return (
-    <DropdownMenu
-      triggerValue={contextTriggerValue}
-      onTriggerValueChange={(details) => {
-        if (parseOverviewThreadContextTarget(details.value)) {
-          setContextTriggerValue(details.value);
+    <div
+      ref={heroRef}
+      className={cn(
+        "overview-thread-hero",
+        immersive && "overview-thread-hero-immersive",
+      )}
+      data-immersive={immersive ? "true" : undefined}
+      onPointerDownCapture={(event) => {
+        const target = event.target as Element;
+        if (
+          !target.closest(
+            ".overview-thread-flow-node, .overview-thread-node, .overview-thread-viewer, .overview-thread-layout-switch, #overview-thread-selection, button",
+          )
+        ) {
+          setExactAppLaunchStatus(undefined);
+          setSelectedKey(undefined);
+          setHoveredKey(undefined);
         }
       }}
     >
       <div
-        ref={heroRef}
-        className={cn(
-          "overview-thread-hero",
-          immersive && "overview-thread-hero-immersive",
-        )}
-        data-immersive={immersive ? "true" : undefined}
-        onContextMenuCapture={(event) => {
-          const target = (event.target as Element).closest(
-            "[data-overview-context-target]",
-          );
-          const value = target?.getAttribute("data-overview-context-target");
-          commitContextTargetBeforeOpen(value);
-        }}
-        onPointerDownCapture={(event) => {
-          const target = event.target as Element;
-          const contextValue = target.closest(
-            "[data-overview-context-target]",
-          )?.getAttribute("data-overview-context-target");
-          if (contextValue) setContextTriggerValue(contextValue);
-          if (
-            !target.closest(
-              ".overview-thread-flow-node, .overview-thread-node, .overview-thread-viewer, .overview-thread-layout-switch, #overview-thread-selection, [data-part='context-trigger'], button",
-            )
-          ) {
-            setSelectedKey(undefined);
-            setHoveredKey(undefined);
-          }
-        }}
+        className="overview-thread-layout-switch"
+        role="group"
+        aria-label="Whiteboard controls"
+      >
+        <button
+          type="button"
+          aria-pressed={layoutMode === "hierarchy"}
+          onClick={() => changeLayoutMode("hierarchy")}
+        >
+          Hierarchy
+        </button>
+        <button
+          type="button"
+          aria-pressed={layoutMode === "radial"}
+          onClick={() => changeLayoutMode("radial")}
+        >
+          Radial
+        </button>
+        <span className="overview-thread-layout-divider" aria-hidden="true" />
+        <button
+          type="button"
+          onClick={() => zoomWhiteboard(0.82)}
+        >
+          Zoom out
+        </button>
+        <button type="button" onClick={fitWhiteboard}>
+          Fit
+        </button>
+        <button
+          type="button"
+          onClick={() => zoomWhiteboard(1.22)}
+        >
+          Zoom in
+        </button>
+        <span
+          className="overview-thread-layout-scale"
+          aria-label={`Zoom ${Math.round(whiteboardTransform.k * 100)} percent`}
+        >
+          {Math.round(whiteboardTransform.k * 100)}%
+        </span>
+        <button type="button" onClick={resetWhiteboard}>
+          Reset layout
+        </button>
+      </div>
+      <div
+        ref={viewportRef}
+        className="overview-thread-viewport"
+        data-whiteboard-grid="true"
+        aria-label="Digital thread whiteboard"
+        style={overviewWhiteboardViewportStyle(whiteboardTransform)}
+        onWheel={handleWhiteboardWheel}
+        onPointerDown={beginCanvasPan}
+        onPointerMove={moveCanvasPan}
+        onPointerUp={endCanvasPan}
+        onPointerCancel={endCanvasPan}
       >
         <div
-          className="overview-thread-layout-switch"
-          role="group"
-          aria-label="Whiteboard controls"
+          ref={worldRef}
+          className="overview-thread-whiteboard-world"
+          style={{
+            transform:
+              `translate3d(${whiteboardTransform.x}px, ${whiteboardTransform.y}px, 0) scale(${whiteboardTransform.k})`,
+          }}
         >
-          <button
-            type="button"
-            aria-pressed={layoutMode === "hierarchy"}
-            onClick={() => changeLayoutMode("hierarchy")}
-          >
-            Hierarchy
-          </button>
-          <button
-            type="button"
-            aria-pressed={layoutMode === "radial"}
-            onClick={() => changeLayoutMode("radial")}
-          >
-            Radial
-          </button>
-          <span className="overview-thread-layout-divider" aria-hidden="true" />
-          <button
-            type="button"
-            onClick={() => zoomWhiteboard(0.82)}
-          >
-            Zoom out
-          </button>
-          <button type="button" onClick={fitWhiteboard}>
-            Fit
-          </button>
-          <button
-            type="button"
-            onClick={() => zoomWhiteboard(1.22)}
-          >
-            Zoom in
-          </button>
-          <span
-            className="overview-thread-layout-scale"
-            aria-label={`Zoom ${
-              Math.round(whiteboardTransform.k * 100)
-            } percent`}
-          >
-            {Math.round(whiteboardTransform.k * 100)}%
-          </span>
-          <button type="button" onClick={resetWhiteboard}>
-            Reset layout
-          </button>
+          {layoutMode === "hierarchy"
+            ? (
+              <OverviewThreadD3Flow
+                layout={flowLayout}
+                nodesByKey={nodesByKey}
+                stages={stages}
+                showLaneStrip={!immersive}
+                activeKey={activeKey}
+                selectedKey={selectedKey}
+                focusedKey={focusedKey}
+                onHover={setHoveredKey}
+                onFocus={(key) => {
+                  setFocusedKey(key);
+                  setHoveredKey(key);
+                }}
+                onToggle={(key) => {
+                  const item = nodesByKey.get(key);
+                  if (item) toggleSelection(item);
+                }}
+                onRequestExactApp={requestExactApp}
+                onMoveGroup={(key, position) => {
+                  setGroupPlacements((current) => ({
+                    ...current,
+                    [key]: position,
+                  }));
+                }}
+                onMoveNode={(key, delta) => {
+                  setNodePlacements((current) => ({
+                    ...current,
+                    [key]: {
+                      offsetX: (current[key]?.offsetX ?? 0) + delta.x,
+                      offsetY: (current[key]?.offsetY ?? 0) + delta.y,
+                    },
+                  }));
+                }}
+                onMove={(key, direction) => {
+                  const current = flowLayout.nodes.find((node) =>
+                    node.key === key
+                  );
+                  if (!current) return;
+                  const next = directionalOverviewFlowNode(
+                    flowLayout.nodes,
+                    current,
+                    direction,
+                  );
+                  if (next) moveFocus(next.key);
+                }}
+                refNode={(key, node) => {
+                  if (node) nodeRefs.current.set(key, node);
+                  else nodeRefs.current.delete(key);
+                }}
+              />
+            )
+            : (
+              <div className="overview-thread-map">
+                <svg
+                  viewBox={`${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`}
+                  width={viewBoxWidth}
+                  height={viewBoxHeight}
+                  className="overview-thread-svg"
+                  role="group"
+                  aria-labelledby={`${OVERVIEW_GRAPH_TITLE_ID} ${OVERVIEW_GRAPH_DESCRIPTION_ID}`}
+                >
+                  <title id={OVERVIEW_GRAPH_TITLE_ID}>
+                    Project digital thread
+                  </title>
+                  <desc id={OVERVIEW_GRAPH_DESCRIPTION_ID}>
+                    A static D3 hierarchical edge-bundling view of recorded
+                    requirements, system model, geometry, physics and verdicts.
+                    Use the arrow keys to move between records, then Enter to
+                    inspect one.
+                  </desc>
+                  <g aria-hidden="true" className="overview-thread-lane-arcs">
+                    {radialLayout.lanes.map((lane) => (
+                      <path
+                        key={lane.lane}
+                        d={lane.arcD}
+                        fill="none"
+                        stroke={lane.color}
+                        className="overview-thread-lane-arc"
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    ))}
+                  </g>
+                  <g aria-hidden="true" className="overview-thread-cables">
+                    {radialLayout.edges.map((edge) => {
+                      const state = overviewEdgeState(edge, activeKey);
+                      return (
+                        <path
+                          key={edge.key}
+                          d={edge.d}
+                          fill="none"
+                          className="overview-thread-cable"
+                          data-state={state}
+                          strokeWidth={overviewCableWidth(edge.pathCount)}
+                          vectorEffect="non-scaling-stroke"
+                        />
+                      );
+                    })}
+                  </g>
+                  {radialLayout.lanes.map((lane) => {
+                    const point = overviewLaneLabelPoint(
+                      radialLayout.nodes,
+                      lane.labelAngle,
+                    );
+                    return (
+                      <text
+                        key={`label:${lane.lane}`}
+                        x={point.x}
+                        y={point.y}
+                        className="overview-thread-lane-label"
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fill={lane.color}
+                        aria-hidden="true"
+                      >
+                        {lane.title}
+                      </text>
+                    );
+                  })}
+                  {radialLayout.nodes.map((position) => {
+                    const item = nodesByKey.get(position.key);
+                    if (!item) return null;
+                    return (
+                      <HeroNode
+                        key={item.key}
+                        refNode={(node) => {
+                          if (node) nodeRefs.current.set(item.key, node);
+                          else nodeRefs.current.delete(item.key);
+                        }}
+                        item={item}
+                        position={position}
+                        tabIndex={item.key === focusedKey ? 0 : -1}
+                        selected={item.key === selectedKey}
+                        related={activeKey === undefined ||
+                          relatedKeys.has(item.key)}
+                        onHoverChange={(hovered) =>
+                          setHoveredKey(hovered ? item.key : undefined)}
+                        onFocus={() => {
+                          setFocusedKey(item.key);
+                          setHoveredKey(item.key);
+                        }}
+                        onToggle={() => toggleSelection(item)}
+                        onRequestExactApp={() => requestExactApp(item.key)}
+                        onMove={(key) => {
+                          const next = directionalOverviewNode(
+                            radialLayout.nodes,
+                            position,
+                            key,
+                          );
+                          if (next) moveFocus(next.key);
+                        }}
+                      />
+                    );
+                  })}
+                </svg>
+              </div>
+            )}
         </div>
-        <div
-          ref={viewportRef}
-          className="overview-thread-viewport"
-          data-whiteboard-grid="true"
-          aria-label="Digital thread whiteboard"
-          style={overviewWhiteboardViewportStyle(whiteboardTransform)}
-          onWheel={handleWhiteboardWheel}
-          onPointerDown={beginCanvasPan}
-          onPointerMove={moveCanvasPan}
-          onPointerUp={endCanvasPan}
-          onPointerCancel={endCanvasPan}
-        >
+        {(viewers.length > 0 || (selected && selectedCard)) && (
           <div
-            ref={worldRef}
-            className="overview-thread-whiteboard-world"
+            className="overview-thread-viewer-layer"
+            aria-label="Whiteboard selection, App windows and generic inspectors"
             style={{
+              width: whiteboardWorldSize.width,
+              height: whiteboardWorldSize.height,
               transform:
                 `translate3d(${whiteboardTransform.x}px, ${whiteboardTransform.y}px, 0) scale(${whiteboardTransform.k})`,
             }}
           >
-            {layoutMode === "hierarchy"
-              ? (
-                <OverviewThreadD3Flow
-                  layout={flowLayout}
-                  nodesByKey={nodesByKey}
-                  stages={stages}
-                  showLaneStrip={!immersive}
-                  activeKey={activeKey}
-                  selectedKey={selectedKey}
-                  focusedKey={focusedKey}
-                  onHover={setHoveredKey}
-                  onFocus={(key) => {
-                    setFocusedKey(key);
-                    setHoveredKey(key);
-                  }}
-                  onToggle={(key) => {
-                    const item = nodesByKey.get(key);
-                    if (item) toggleSelection(item);
-                  }}
-                  onMoveGroup={(key, position) => {
-                    setGroupPlacements((current) => ({
-                      ...current,
-                      [key]: position,
-                    }));
-                  }}
-                  onMoveNode={(key, delta) => {
-                    setNodePlacements((current) => ({
-                      ...current,
-                      [key]: {
-                        offsetX: (current[key]?.offsetX ?? 0) + delta.x,
-                        offsetY: (current[key]?.offsetY ?? 0) + delta.y,
-                      },
-                    }));
-                  }}
-                  onMove={(key, direction) => {
-                    const current = flowLayout.nodes.find((node) =>
-                      node.key === key
-                    );
-                    if (!current) return;
-                    const next = directionalOverviewFlowNode(
-                      flowLayout.nodes,
-                      current,
-                      direction,
-                    );
-                    if (next) moveFocus(next.key);
-                  }}
-                  refNode={(key, node) => {
-                    if (node) nodeRefs.current.set(key, node);
-                    else nodeRefs.current.delete(key);
-                  }}
-                />
-              )
-              : (
-                <div className="overview-thread-map">
-                  <svg
-                    viewBox={`${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`}
-                    width={viewBoxWidth}
-                    height={viewBoxHeight}
-                    className="overview-thread-svg"
-                    role="group"
-                    aria-labelledby={`${OVERVIEW_GRAPH_TITLE_ID} ${OVERVIEW_GRAPH_DESCRIPTION_ID}`}
-                  >
-                    <title id={OVERVIEW_GRAPH_TITLE_ID}>
-                      Project digital thread
-                    </title>
-                    <desc id={OVERVIEW_GRAPH_DESCRIPTION_ID}>
-                      A static D3 hierarchical edge-bundling view of recorded
-                      requirements, system model, geometry, physics and
-                      verdicts. Use the arrow keys to move between records, then
-                      Enter to inspect one.
-                    </desc>
-                    <g aria-hidden="true" className="overview-thread-lane-arcs">
-                      {radialLayout.lanes.map((lane) => (
-                        <path
-                          key={lane.lane}
-                          d={lane.arcD}
-                          fill="none"
-                          stroke={lane.color}
-                          className="overview-thread-lane-arc"
-                          vectorEffect="non-scaling-stroke"
-                        />
-                      ))}
-                    </g>
-                    <g aria-hidden="true" className="overview-thread-cables">
-                      {radialLayout.edges.map((edge) => {
-                        const state = overviewEdgeState(edge, activeKey);
-                        return (
-                          <path
-                            key={edge.key}
-                            d={edge.d}
-                            fill="none"
-                            className="overview-thread-cable"
-                            data-state={state}
-                            strokeWidth={overviewCableWidth(edge.pathCount)}
-                            vectorEffect="non-scaling-stroke"
-                          />
-                        );
-                      })}
-                    </g>
-                    {radialLayout.lanes.map((lane) => {
-                      const point = overviewLaneLabelPoint(
-                        radialLayout.nodes,
-                        lane.labelAngle,
-                      );
-                      return (
-                        <text
-                          key={`label:${lane.lane}`}
-                          x={point.x}
-                          y={point.y}
-                          className="overview-thread-lane-label"
-                          textAnchor="middle"
-                          dominantBaseline="middle"
-                          fill={lane.color}
-                          aria-hidden="true"
-                        >
-                          {lane.title}
-                        </text>
-                      );
-                    })}
-                    {radialLayout.nodes.map((position) => {
-                      const item = nodesByKey.get(position.key);
-                      if (!item) return null;
-                      return (
-                        <HeroNode
-                          key={item.key}
-                          refNode={(node) => {
-                            if (node) nodeRefs.current.set(item.key, node);
-                            else nodeRefs.current.delete(item.key);
-                          }}
-                          item={item}
-                          position={position}
-                          tabIndex={item.key === focusedKey ? 0 : -1}
-                          selected={item.key === selectedKey}
-                          related={activeKey === undefined ||
-                            relatedKeys.has(item.key)}
-                          onHoverChange={(hovered) =>
-                            setHoveredKey(hovered ? item.key : undefined)}
-                          onFocus={() => {
-                            setFocusedKey(item.key);
-                            setHoveredKey(item.key);
-                          }}
-                          onToggle={() => toggleSelection(item)}
-                          onMove={(key) => {
-                            const next = directionalOverviewNode(
-                              radialLayout.nodes,
-                              position,
-                              key,
-                            );
-                            if (next) moveFocus(next.key);
-                          }}
-                        />
-                      );
-                    })}
-                  </svg>
-                </div>
-              )}
-          </div>
-          {(viewers.length > 0 || (selected && selectedCard)) && (
-            <div
-              className="overview-thread-viewer-layer"
-              aria-label="Whiteboard selection and open spatial viewers"
-              style={{
-                width: whiteboardWorldSize.width,
-                height: whiteboardWorldSize.height,
-                transform:
-                  `translate3d(${whiteboardTransform.x}px, ${whiteboardTransform.y}px, 0) scale(${whiteboardTransform.k})`,
-              }}
+            <svg
+              className="overview-thread-viewer-connectors"
+              viewBox={`0 0 ${whiteboardWorldSize.width} ${whiteboardWorldSize.height}`}
+              width="100%"
+              height="100%"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+              focusable="false"
             >
-              <svg
-                className="overview-thread-viewer-connectors"
-                viewBox={`0 0 ${whiteboardWorldSize.width} ${whiteboardWorldSize.height}`}
-                width="100%"
-                height="100%"
-                preserveAspectRatio="none"
-                aria-hidden="true"
-                focusable="false"
-              >
-                {selectedCardConnector && (
-                  <g data-selection-node={selected?.key}>
+              {selectedCardConnector && (
+                <g data-selection-node={selected?.key}>
+                  <path
+                    className="overview-thread-selection-connector"
+                    d={selectedCardConnector.d}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  <circle
+                    className="overview-thread-selection-anchor"
+                    cx={selectedAnchor?.x}
+                    cy={selectedAnchor?.y}
+                    r="3.5"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                </g>
+              )}
+              {viewers.map((viewer) => {
+                const anchor = overviewViewerAnchorPoint(
+                  viewer.nodeKey,
+                  layoutMode,
+                  flowLayout,
+                  radialLayout,
+                  whiteboardWorldSize,
+                );
+                if (!anchor) return null;
+                const connector = buildOverviewThreadViewerConnectorGeometry(
+                  anchor,
+                  viewer,
+                );
+                return (
+                  <g key={viewer.id} data-viewer-id={viewer.id}>
                     <path
-                      className="overview-thread-selection-connector"
-                      d={selectedCardConnector.d}
+                      className="overview-thread-viewer-connector"
+                      d={connector.d}
                       vectorEffect="non-scaling-stroke"
                     />
                     <circle
-                      className="overview-thread-selection-anchor"
-                      cx={selectedAnchor?.x}
-                      cy={selectedAnchor?.y}
+                      className="overview-thread-viewer-anchor"
+                      cx={anchor.x}
+                      cy={anchor.y}
                       r="3.5"
                       vectorEffect="non-scaling-stroke"
                     />
                   </g>
-                )}
-                {viewers.map((viewer) => {
-                  const anchor = overviewViewerAnchorPoint(
-                    viewer.nodeKey,
-                    layoutMode,
-                    flowLayout,
-                    radialLayout,
-                    whiteboardWorldSize,
-                  );
-                  if (!anchor) return null;
-                  const connector = buildOverviewThreadViewerConnectorGeometry(
-                    anchor,
-                    viewer,
-                  );
-                  return (
-                    <g key={viewer.id} data-viewer-id={viewer.id}>
-                      <path
-                        className="overview-thread-viewer-connector"
-                        d={connector.d}
-                        vectorEffect="non-scaling-stroke"
-                      />
-                      <circle
-                        className="overview-thread-viewer-anchor"
-                        cx={anchor.x}
-                        cy={anchor.y}
-                        r="3.5"
-                        vectorEffect="non-scaling-stroke"
-                      />
-                    </g>
-                  );
-                })}
-              </svg>
-              {selected && selectedCard && (
-                <OverviewNodeSelectionCard
-                  item={selected}
-                  thread={thread}
-                  viewerSessionsByNodeKey={viewerSessionsByNodeKey}
-                  geometry={selectedCard}
-                  onAction={runContextAction}
-                  onDismiss={() => {
-                    setSelectedKey(undefined);
-                    setHoveredKey(undefined);
-                    setFocusedKey(selected.key);
-                    requestAnimationFrame(() =>
-                      nodeRefs.current.get(selected.key)?.focus()
-                    );
-                  }}
-                />
-              )}
-              {viewers.map((viewer) => {
-                const item = nodesByKey.get(viewer.nodeKey);
-                if (!item) return null;
-                const cadAsset = viewer.kind === "cad" &&
-                    item?.kind === "recorded"
-                  ? resolveOverviewThreadViewerCapabilities(thread, item.node)
-                    .cadAssets.find((asset) => asset.id === viewer.assetId)
-                  : undefined;
-                const viewerSession = viewer.kind === "session" &&
-                    item.kind === "recorded"
-                  ? viewerSessionsById.get(viewer.sessionId)
-                  : undefined;
-                return (
-                  <OverviewFloatingViewer
-                    key={viewer.id}
-                    refViewer={(node) => {
-                      if (node) viewerRefs.current.set(viewer.id, node);
-                      else viewerRefs.current.delete(viewer.id);
-                    }}
-                    viewer={viewer}
-                    item={item}
-                    thread={thread}
-                    cadAsset={cadAsset}
-                    viewerSession={viewerSession}
-                    onBringFront={() => bringViewerFront(viewer.id)}
-                    onClose={() => closeViewer(viewer.id)}
-                    onToggleExpanded={() => toggleViewerExpanded(viewer.id)}
-                    onMoveByKeyboard={(direction) =>
-                      moveViewerByKeyboard(viewer.id, direction)}
-                    onResizeByKeyboard={(direction) =>
-                      resizeViewerByKeyboard(viewer.id, direction)}
-                    onDragStart={(event) => beginViewerDrag(event, viewer)}
-                    onDrag={moveViewer}
-                    onDragEnd={endViewerDrag}
-                    onResizeStart={(event) => beginViewerResize(event, viewer)}
-                    onResize={moveViewerResize}
-                    onResizeEnd={endViewerResize}
-                  />
                 );
               })}
-            </div>
-          )}
-        </div>
-        {unroutedEdgeCount > 0 && (
-          <p className="m-0 border-t border-border px-4 py-2 text-xs text-warning">
-            {unroutedEdgeCount}{" "}
-            graph connections unavailable in this projection.
-          </p>
+            </svg>
+            {selected && selectedCard && (
+              <OverviewNodeSelectionCard
+                item={selected}
+                thread={thread}
+                viewerSessionsByNodeKey={viewerSessionsByNodeKey}
+                geometry={selectedCard}
+                exactAppLaunchStatus={exactAppLaunchStatus?.nodeKey ===
+                    selected.key
+                  ? exactAppLaunchStatus
+                  : undefined}
+                onAction={runContextAction}
+                onDismiss={() => {
+                  setExactAppLaunchStatus(undefined);
+                  setSelectedKey(undefined);
+                  setHoveredKey(undefined);
+                  setFocusedKey(selected.key);
+                  requestAnimationFrame(() =>
+                    nodeRefs.current.get(selected.key)?.focus()
+                  );
+                }}
+              />
+            )}
+            {viewers.map((viewer) => {
+              const item = nodesByKey.get(viewer.nodeKey);
+              if (!item) return null;
+              const viewerSession = viewer.kind === "session" &&
+                  item.kind === "recorded"
+                ? viewerSessionsById.get(viewer.sessionId)
+                : undefined;
+              return (
+                <OverviewFloatingViewer
+                  key={viewer.id}
+                  refViewer={(node) => {
+                    if (node) viewerRefs.current.set(viewer.id, node);
+                    else viewerRefs.current.delete(viewer.id);
+                  }}
+                  viewer={viewer}
+                  item={item}
+                  thread={thread}
+                  viewerSession={viewerSession}
+                  onBringFront={() => bringViewerFront(viewer.id)}
+                  onClose={() => closeViewer(viewer.id)}
+                  onToggleExpanded={() => toggleViewerExpanded(viewer.id)}
+                  onMoveByKeyboard={(direction) =>
+                    moveViewerByKeyboard(viewer.id, direction)}
+                  onResizeByKeyboard={(direction) =>
+                    resizeViewerByKeyboard(viewer.id, direction)}
+                  onDragStart={(event) => beginViewerDrag(event, viewer)}
+                  onDrag={moveViewer}
+                  onDragEnd={endViewerDrag}
+                  onResizeStart={(event) => beginViewerResize(event, viewer)}
+                  onResize={moveViewerResize}
+                  onResizeEnd={endViewerResize}
+                />
+              );
+            })}
+          </div>
         )}
       </div>
-      <OverviewThreadContextMenu
-        node={contextNode}
-        group={contextGroup}
-        nodesByKey={nodesByKey}
-        actions={contextActions}
-        onAction={runContextAction}
-        onSelectNode={selectNode}
-      />
-    </DropdownMenu>
+      {unroutedEdgeCount > 0 && (
+        <p className="m-0 border-t border-border px-4 py-2 text-xs text-warning">
+          {unroutedEdgeCount} graph connections unavailable in this projection.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -1538,9 +1484,7 @@ function overviewViewerToPresentation(
       ? { restoreGeometry: viewer.restoreGeometry }
       : {}),
   };
-  return viewer.kind === "cad"
-    ? { ...spatial, kind: "cad", assetId: viewer.assetId }
-    : viewer.kind === "session"
+  return viewer.kind === "session"
     ? { ...spatial, kind: "session", sessionId: viewer.sessionId }
     : { ...spatial, kind: viewer.kind };
 }
@@ -1557,17 +1501,15 @@ function overviewViewerFromPresentation(
       ? { restoreGeometry: viewer.restoreGeometry }
       : {}),
   };
-  return viewer.kind === "cad"
-    ? { ...spatial, kind: "cad", assetId: viewer.assetId }
-    : viewer.kind === "session"
+  return viewer.kind === "session"
     ? { ...spatial, kind: "session", sessionId: viewer.sessionId }
     : { ...spatial, kind: viewer.kind };
 }
 
 function overviewWhiteboardBrowserStorage(): Storage | undefined {
-  if (typeof window === "undefined") return undefined;
+  if (!("localStorage" in globalThis)) return undefined;
   try {
-    return window.localStorage;
+    return globalThis.localStorage;
   } catch {
     return undefined;
   }
@@ -1879,6 +1821,7 @@ function HeroNode({
   onHoverChange,
   onFocus,
   onToggle,
+  onRequestExactApp,
   onMove,
 }: {
   item: OverviewHeroNode;
@@ -1890,6 +1833,7 @@ function HeroNode({
   onHoverChange: (hovered: boolean) => void;
   onFocus: () => void;
   onToggle: () => void;
+  onRequestExactApp: () => void;
   onMove: (
     key: "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight",
   ) => void;
@@ -1911,90 +1855,98 @@ function HeroNode({
     ? item.color
     : activityMarkerColor(item.activity.status);
   return (
-    <DropdownMenuContextTrigger
-      value={overviewThreadNodeContextValue(item.key)}
-      asChild
+    <g
+      ref={refNode}
+      role="button"
+      tabIndex={tabIndex}
+      aria-label={ariaLabel}
+      aria-controls={selected ? OVERVIEW_SELECTION_ID : undefined}
+      aria-expanded={selected}
+      className="overview-thread-node cursor-pointer"
+      data-state={selected ? "selected" : related ? "related" : "muted"}
+      data-kind={item.kind}
+      onClick={onToggle}
+      onMouseEnter={() => onHoverChange(true)}
+      onMouseLeave={() => onHoverChange(false)}
+      onFocus={onFocus}
+      onBlur={() => onHoverChange(false)}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onRequestExactApp();
+      }}
+      onKeyDown={(event) => {
+        if (
+          event.key === "ContextMenu" ||
+          (event.shiftKey && event.key === "F10")
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          onRequestExactApp();
+          return;
+        }
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onToggle();
+          return;
+        }
+        if (
+          event.key === "ArrowUp" || event.key === "ArrowDown" ||
+          event.key === "ArrowLeft" || event.key === "ArrowRight"
+        ) {
+          event.preventDefault();
+          onMove(event.key);
+        }
+      }}
     >
-      <g
-        ref={refNode}
-        role="button"
-        tabIndex={tabIndex}
-        aria-label={ariaLabel}
-        aria-controls={selected ? OVERVIEW_SELECTION_ID : undefined}
-        aria-expanded={selected}
-        className="overview-thread-node cursor-pointer"
-        data-state={selected ? "selected" : related ? "related" : "muted"}
-        data-kind={item.kind}
-        data-overview-context-target={overviewThreadNodeContextValue(item.key)}
-        onClick={onToggle}
-        onMouseEnter={() => onHoverChange(true)}
-        onMouseLeave={() => onHoverChange(false)}
-        onFocus={onFocus}
-        onBlur={() => onHoverChange(false)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            onToggle();
-            return;
-          }
-          if (
-            event.key === "ArrowUp" || event.key === "ArrowDown" ||
-            event.key === "ArrowLeft" || event.key === "ArrowRight"
-          ) {
-            event.preventDefault();
-            onMove(event.key);
-          }
-        }}
+      <title>{title}</title>
+      <rect
+        x={hitX}
+        y={position.labelY - 10}
+        width="216"
+        height="20"
+        fill="transparent"
+      />
+      <path
+        d={position.leaderD}
+        fill="none"
+        className="overview-thread-node-leader"
+        vectorEffect="non-scaling-stroke"
+      />
+      <circle
+        cx={position.anchorX}
+        cy={position.anchorY}
+        r="8"
+        fill="transparent"
+        className="overview-thread-node-focus-ring"
+        stroke={markerColor}
+        vectorEffect="non-scaling-stroke"
+      />
+      {item.kind === "activity"
+        ? (
+          <ActivityMarker
+            item={item}
+            x={position.anchorX}
+            y={position.anchorY}
+          />
+        )
+        : (
+          <RecordedMarker
+            item={item}
+            x={position.anchorX}
+            y={position.anchorY}
+          />
+        )}
+      <text
+        x={position.labelX}
+        y={position.labelY}
+        textAnchor={position.textAnchor}
+        dominantBaseline="middle"
+        className="overview-thread-node-label"
       >
-        <title>{title}</title>
-        <rect
-          x={hitX}
-          y={position.labelY - 10}
-          width="216"
-          height="20"
-          fill="transparent"
-        />
-        <path
-          d={position.leaderD}
-          fill="none"
-          className="overview-thread-node-leader"
-          vectorEffect="non-scaling-stroke"
-        />
-        <circle
-          cx={position.anchorX}
-          cy={position.anchorY}
-          r="8"
-          fill="transparent"
-          className="overview-thread-node-focus-ring"
-          stroke={markerColor}
-          vectorEffect="non-scaling-stroke"
-        />
-        {item.kind === "activity"
-          ? (
-            <ActivityMarker
-              item={item}
-              x={position.anchorX}
-              y={position.anchorY}
-            />
-          )
-          : (
-            <RecordedMarker
-              item={item}
-              x={position.anchorX}
-              y={position.anchorY}
-            />
-          )}
-        <text
-          x={position.labelX}
-          y={position.labelY}
-          textAnchor={position.textAnchor}
-          dominantBaseline="middle"
-          className="overview-thread-node-label"
-        >
-          {item.label}
-        </text>
-      </g>
-    </DropdownMenuContextTrigger>
+        {item.label}
+      </text>
+    </g>
   );
 }
 
@@ -2076,27 +2028,13 @@ function overviewNodeContextActions(
     });
   }
   const anchoredSessions = viewerSessionsByNodeKey.get(item.key) ?? [];
-  const sessionAssetIds = new Set(
-    anchoredSessions.map((session) => session.asset.id),
-  );
-  for (const session of anchoredSessions) {
+  const session = uniqueOverviewThreadViewerSession(anchoredSessions);
+  if (session) {
     actions.push({
       kind: "open-session",
       nodeKey: item.key,
       sessionId: session.id,
-      label: `Open viewer session · ${session.kind}`,
-    });
-  }
-  for (const asset of capabilities.cadAssets) {
-    // When the exact session describes this GLB, opening it keeps the
-    // session's recorded anchor and semantic-selection status visible. The
-    // older direct CAD affordance remains only for assets with no session.
-    if (sessionAssetIds.has(asset.id)) continue;
-    actions.push({
-      kind: "open-cad",
-      nodeKey: item.key,
-      assetId: asset.id,
-      label: `Open CAD · ${asset.label}`,
+      label: `Open App · ${session.app.id}@${session.app.version}`,
     });
   }
   if (capabilities.openVerification) {
@@ -2113,9 +2051,6 @@ function overviewContextActionValue(
   action: OverviewNodeContextAction,
   index: number,
 ): string {
-  if (action.kind === "open-cad") {
-    return `${action.kind}:${action.nodeKey}:${action.assetId}`;
-  }
   if (action.kind === "open-session") {
     return `${action.kind}:${action.nodeKey}:${action.sessionId}`;
   }
@@ -2179,90 +2114,12 @@ function overviewSelectionCardGeometry(
   };
 }
 
-function OverviewThreadContextMenu({
-  node,
-  group,
-  nodesByKey,
-  actions,
-  onAction,
-  onSelectNode,
-}: {
-  readonly node?: OverviewHeroNode;
-  readonly group?: OverviewThreadD3FlowGroupLayout;
-  readonly nodesByKey: ReadonlyMap<string, OverviewHeroNode>;
-  readonly actions: readonly OverviewNodeContextAction[];
-  readonly onAction: (action: OverviewNodeContextAction) => void;
-  readonly onSelectNode: (key: string) => void;
-}): JSX.Element {
-  const members = group?.nodeKeys.flatMap((key) => {
-    const member = nodesByKey.get(key);
-    return member ? [member] : [];
-  }) ?? [];
-  const label = node?.label ?? (group ? flowGroupCaption(group) : "Thread");
-  return (
-    <DropdownMenuContent
-      className="overview-thread-context-menu"
-      aria-label={`${label} context menu`}
-    >
-      {node && (
-        <>
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>{node.label}</DropdownMenuLabel>
-            {actions.length === 0 && (
-              <DropdownMenuItem
-                value={`select:${node.key}`}
-                onSelect={() => onSelectNode(node.key)}
-              >
-                Show on whiteboard
-              </DropdownMenuItem>
-            )}
-            {actions.map((action, index) => (
-              <DropdownMenuItem
-                key={overviewContextActionValue(action, index)}
-                value={overviewContextActionValue(action, index)}
-                onSelect={() => onAction(action)}
-              >
-                {action.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuGroup>
-        </>
-      )}
-      {group && (
-        <>
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>
-              <span>{flowGroupCaption(group)}</span>
-              <small>
-                {overviewLaneTitle(group.lane)} · {members.length} visible{" "}
-                {members.length === 1 ? "record" : "records"}
-              </small>
-            </DropdownMenuLabel>
-            <div className="overview-thread-context-members">
-              {members.map((member) => (
-                <DropdownMenuItem
-                  key={member.key}
-                  value={`member:${member.key}`}
-                  className="overview-thread-context-member"
-                  onSelect={() => onSelectNode(member.key)}
-                >
-                  <span>{member.label}</span>
-                  <small>{overviewNodeContextMeta(member)}</small>
-                </DropdownMenuItem>
-              ))}
-            </div>
-          </DropdownMenuGroup>
-        </>
-      )}
-    </DropdownMenuContent>
-  );
-}
-
 function OverviewNodeSelectionCard({
   item,
   thread,
   viewerSessionsByNodeKey,
   geometry,
+  exactAppLaunchStatus,
   onAction,
   onDismiss,
 }: {
@@ -2273,6 +2130,7 @@ function OverviewNodeSelectionCard({
     readonly ThreadViewerSession[]
   >;
   readonly geometry: OverviewThreadViewerGeometry;
+  readonly exactAppLaunchStatus?: OverviewExactAppLaunchStatus;
   readonly onAction: (action: OverviewNodeContextAction) => void;
   readonly onDismiss: () => void;
 }): JSX.Element {
@@ -2342,6 +2200,15 @@ function OverviewNodeSelectionCard({
           </Button>
         ))}
       </div>
+      {exactAppLaunchStatus && (
+        <p
+          role="status"
+          data-app-launch-status={exactAppLaunchStatus.state}
+          className="overview-thread-viewer-unavailable"
+        >
+          {exactAppLaunchStatus.message}
+        </p>
+      )}
     </section>
   );
 }
@@ -2351,7 +2218,6 @@ function OverviewFloatingViewer({
   viewer,
   item,
   thread,
-  cadAsset,
   viewerSession,
   onBringFront,
   onClose,
@@ -2369,7 +2235,6 @@ function OverviewFloatingViewer({
   readonly viewer: OverviewViewerState;
   readonly item?: OverviewHeroNode;
   readonly thread: ThreadWorkbenchSnapshot;
-  readonly cadAsset?: ThreadArtifact;
   readonly viewerSession?: ThreadViewerSession;
   readonly onBringFront: () => void;
   readonly onClose: () => void;
@@ -2391,7 +2256,7 @@ function OverviewFloatingViewer({
     event: ReactPointerEvent<HTMLButtonElement>,
   ) => void;
 }): JSX.Element {
-  const title = overviewViewerTitle(viewer, item, cadAsset, viewerSession);
+  const title = overviewViewerTitle(viewer, item, viewerSession);
   return (
     <article
       ref={refViewer}
@@ -2452,55 +2317,33 @@ function OverviewFloatingViewer({
       </header>
       <div className="overview-thread-viewer-body">
         {viewer.kind === "record" && item?.kind === "recorded" && (
-          <ToolInspectorPanel
+          <RecordInspectorPanel
             snapshot={thread}
             node={item.node}
             selection={item.node.selection}
           />
         )}
-        {viewer.kind === "cad" && (
-          cadAsset?.uri
-            ? (
-              <>
-                <div className="overview-thread-viewer-meta">
-                  <span>{cadAsset.label}</span>
-                  <code>{cadAsset.fingerprint}</code>
-                </div>
-                <GltfAssetCanvas
-                  url={cadAsset.uri}
-                  ariaLabel={`CAD viewer for ${cadAsset.label}`}
-                  loadingLabel="Loading exact GLB…"
-                  errorLabel="Exact GLB unavailable"
-                />
-              </>
-            )
-            : (
-              <p className="overview-thread-viewer-unavailable">
-                Exact fingerprint-bound GLB unavailable in this snapshot.
-              </p>
-            )
-        )}
         {viewer.kind === "session" && (
-          viewerSession?.kind === "native-cad-glb"
+          viewerSession?.kind === "mcp-app"
             ? (
               <>
                 <div className="overview-thread-viewer-meta">
-                  <span>{viewerSession.kind}</span>
-                  <code>{viewerSession.asset.fingerprint}</code>
+                  <span>
+                    {viewerSession.app.id}@{viewerSession.app.version}
+                  </span>
+                  <code>{viewerSession.resource.fingerprint}</code>
                 </div>
                 <div className="overview-thread-viewer-session-detail">
-                  <code>{overviewThreadGraphRefKey(viewerSession.anchor)}</code>
-                  <span>
-                    {overviewViewerSessionSelectionLabel(
-                      viewerSession.semanticSelection,
-                    )}
-                  </span>
+                  <code>
+                    {viewerSession.anchor.kind === "project-review"
+                      ? `project-review:${viewerSession.anchor.id}`
+                      : overviewThreadGraphRefKey(viewerSession.anchor)}
+                  </code>
+                  <span>{viewerSession.session.schema}</span>
                 </div>
-                <GltfAssetCanvas
-                  url={viewerSession.asset.uri}
-                  ariaLabel={`Viewer session for ${viewerSession.asset.id}`}
-                  loadingLabel="Loading exact GLB session…"
-                  errorLabel="Exact GLB session unavailable"
+                <McpAppFrame
+                  className="overview-thread-viewer-app-frame"
+                  session={viewerSession}
                 />
               </>
             )
@@ -2567,16 +2410,14 @@ function OverviewFloatingViewer({
 function overviewViewerTitle(
   viewer: OverviewViewerState,
   item?: OverviewHeroNode,
-  cadAsset?: ThreadArtifact,
   viewerSession?: ThreadViewerSession,
 ): string {
-  if (viewer.kind === "cad") {
-    return cadAsset ? `CAD · ${cadAsset.label}` : "CAD · unavailable";
-  }
   if (viewer.kind === "session") {
     return viewerSession
-      ? `Viewer · ${viewerSession.kind} · ${item?.label ?? "unavailable"}`
-      : "Viewer session · unavailable";
+      ? `App · ${viewerSession.app.id}@${viewerSession.app.version} · ${
+        item?.label ?? "unavailable"
+      }`
+      : "App session · unavailable";
   }
   if (!item) return "Thread viewer · unavailable";
   if (viewer.kind === "activity") return `Activity · ${item.label}`;
@@ -2589,34 +2430,16 @@ function overviewViewerId(
   request:
     | { readonly kind: "record"; readonly nodeKey: string }
     | {
-      readonly kind: "cad";
-      readonly nodeKey: string;
-      readonly assetId: string;
-    }
-    | {
       readonly kind: "session";
       readonly nodeKey: string;
       readonly sessionId: string;
     }
     | { readonly kind: "activity"; readonly nodeKey: string },
 ): string {
-  if (request.kind === "cad") {
-    return `${request.kind}:${request.nodeKey}:${request.assetId}`;
-  }
   if (request.kind === "session") {
     return `${request.kind}:${request.nodeKey}:${request.sessionId}`;
   }
   return `${request.kind}:${request.nodeKey}`;
-}
-
-function overviewViewerSessionSelectionLabel(
-  selection: ThreadViewerSession["semanticSelection"],
-): string {
-  if (selection.status === "available") {
-    const { semanticRef } = selection;
-    return `Recorded selection · ${semanticRef.domain}:${semanticRef.kind}:${semanticRef.id}`;
-  }
-  return `${selection.status} · ${selection.reason}`;
 }
 
 function activityStatusCaption(status: EngineeringPhaseStatus): string {

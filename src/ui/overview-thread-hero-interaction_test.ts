@@ -316,8 +316,9 @@ Deno.test("Overview hierarchy drags whole group surfaces or labels while constra
   assertStringIncludes(groupLabels, 'beginDrag("group", group.key, event)');
   assertStringIncludes(
     groupLabels,
-    'aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+F10"',
+    'aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"',
   );
+  assertEquals(groupLabels.includes("Shift+F10"), false);
 
   assertStringIncludes(renderer, "const FLOW_DRAG_THRESHOLD_PX = 4;");
   assertStringIncludes(renderer, "Math.hypot(clientDeltaX, clientDeltaY)");
@@ -549,7 +550,7 @@ Deno.test("Whiteboard overlay plane keeps viewers and anchored selection transfo
   assertStringIncludes(viewerPlane, "<OverviewNodeSelectionCard");
   assertEquals(source.includes("OverviewContextMenuState"), false);
   assertEquals(source.includes("requestContextMenu"), false);
-  assertStringIncludes(source, "overview-thread-context-menu");
+  assertEquals(source.includes("overview-thread-context-menu"), false);
   assertEquals(source.includes('role="menu"'), false);
 });
 
@@ -627,9 +628,10 @@ Deno.test("Overview activity markers stay distinct from recorded Verification na
   assertStringIncludes(actionModel, 'label: "Open in Verification"');
   assertStringIncludes(
     actionModel,
-    "for (const asset of capabilities.cadAssets)",
+    "const anchoredSessions = viewerSessionsByNodeKey.get(item.key) ?? []",
   );
-  assertEquals(actionModel.includes(".cadAssets[0]"), false);
+  assertStringIncludes(actionModel, 'kind: "open-session"');
+  assertEquals(actionModel.includes("capabilities.cadAssets"), false);
 
   const markerStart = source.indexOf("function ActivityMarker(");
   const markerEnd = source.indexOf(
@@ -661,14 +663,15 @@ Deno.test("Overview activity markers stay distinct from recorded Verification na
   assertStringIncludes(overview, "onOpenEvidence={openOverviewEvidence}");
 });
 
-Deno.test("Overview product facet callbacks do not also run their fallback", async () => {
+Deno.test("Overview Product destination uses the unique project route", async () => {
   const source = await Deno.readTextFile(
     new URL("./src/project/overview.tsx", import.meta.url),
   );
 
-  assertStringIncludes(source, "const openProductFacet");
-  assertEquals(source.includes('?.("requirements") ??'), false);
-  assertEquals(source.includes('?.("structure") ??'), false);
+  assertStringIncludes(source, 'onClick={() => onNavigate("product")}');
+  assertEquals(source.includes("ProductWorkspaceFacet"), false);
+  assertEquals(source.includes("onOpenProductFacet"), false);
+  assertEquals(source.includes("openProductFacet"), false);
 });
 
 function cssRule(source: string, selector: string): string {

@@ -1,4 +1,3 @@
-import { marginLabel, requirementMargin } from "./requirement-margin-model.ts";
 import { compactEmbeddedFingerprints } from "../thread/compact-identifier-model.ts";
 import type { JSX, MouseEvent } from "react";
 import { recordStatusVariant } from "./record-status.ts";
@@ -13,14 +12,14 @@ import type {
   EngineeringWorkbenchActivity,
   EngineeringWorkbenchCaseActivityJoin,
   EngineeringWorkbenchPhaseLane,
+  ThreadGraphNode,
   ThreadGraphRef,
   ThreadWorkbenchSnapshot,
 } from "../thread/types.ts";
+import { activityFeedNodes } from "../thread/feed-model.ts";
 import type { ThreadViewerSessionsProjection } from "../thread/viewer-sessions-client.ts";
-import { sealedAssemblyGeometryBlocker } from "../thread/component-workspace-model.ts";
 import { OverviewThreadHero } from "./overview-thread-hero.tsx";
 import type { OverviewThreadStageSummary } from "./overview-thread-d3-flow.tsx";
-import { Progress } from "@ark-ui/react/progress";
 import { cn } from "../lib/utils.ts";
 import {
   CARD_SURFACE,
@@ -41,19 +40,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../ui/dialog.tsx";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip.tsx";
 import type { ProjectWorkspaceView } from "./navigation.tsx";
 import {
   hasDistinctProjectObjectiveStatement,
-  type ProductWorkspaceFacet,
   type ProjectDeepLinkTarget,
 } from "./navigation-model.ts";
-import {
-  buildRequirementMatrix,
-  hasRecordedEvidence,
-  hasRecordedMargin,
-  type RequirementMatrixRow,
-} from "./product-requirements-model.ts";
 import {
   buildProjectReviewRecords,
   currentProjectReview,
@@ -83,7 +74,6 @@ export interface ProjectOverviewProps {
   /** Exact browser-safe session descriptors from the read-only Workbench BFF. */
   readonly viewerSessions?: ThreadViewerSessionsProjection;
   readonly onNavigate: (view: ProjectWorkspaceView) => void;
-  readonly onOpenProductFacet?: (facet: ProductWorkspaceFacet) => void;
   readonly onOpenActivity?: (decisionId?: string) => void;
   readonly onOpenDeepLink?: (target: ProjectDeepLinkTarget) => void;
   readonly onOpenEvidence?: (reference: ThreadGraphRef) => void;
@@ -91,7 +81,7 @@ export interface ProjectOverviewProps {
 
 /**
  * Grammaire 2a : thread-first. Une bannière de review, le bandeau cinq
- * étapes, le graphe enregistré (ThreadGraph), les verdicts et Now. Les
+ * étapes, le graphe enregistré (ThreadGraph), l'activité enregistrée et Now. Les
  * surfaces de détail appartiennent aux viewers contextuels du graphe.
  */
 export function ProjectOverview({
@@ -102,7 +92,6 @@ export function ProjectOverview({
   caseActivityJoins,
   viewerSessions,
   onNavigate,
-  onOpenProductFacet,
   onOpenActivity,
   onOpenDeepLink,
   onOpenEvidence,
@@ -115,13 +104,11 @@ export function ProjectOverview({
     activities,
     caseActivityJoins,
   );
-  const requirementMatrix = buildRequirementMatrix(thread);
-  const assemblyIntegrity = recordedAssemblyIntegrityL4(thread);
+  const recordedActivity = activityFeedNodes(thread.graph.nodes);
   const currentFocus = selectCurrentProjectFocus(project);
   const openBlocker = brief.openBlockers[0];
   const statusTone = projectStatusTone(projectPath.status);
   const statusLabel = projectPathStatusLabel(projectPath);
-  const geometryBlocker = sealedAssemblyGeometryBlocker(thread);
   const pathStages = groupProjectPathGatesByLane(
     projectPath.activities,
     phaseLanes,
@@ -134,13 +121,6 @@ export function ProjectOverview({
       count: `${group.satisfiedGates}/${group.totalGates}`,
     }),
   );
-  const openProductFacet = (facet: ProductWorkspaceFacet) => {
-    if (onOpenProductFacet) {
-      onOpenProductFacet(facet);
-      return;
-    }
-    onNavigate("product");
-  };
   const openOverviewEvidence = (reference: ThreadGraphRef) => {
     if (onOpenEvidence) {
       onOpenEvidence(reference);
@@ -239,42 +219,23 @@ export function ProjectOverview({
                       </dd>
                     </div>
                     <div>
-                      <dt>Requirements</dt>
+                      <dt>Thread records</dt>
                       <dd className="font-mono tabular-nums">
-                        <span className="text-success">
-                          {requirementMatrix.counts.pass} pass
-                        </span>
-                        {requirementMatrix.counts.fail > 0
-                          ? ` · ${requirementMatrix.counts.fail} fail`
-                          : ""}
-                        {requirementMatrix.counts.unresolved > 0
-                          ? ` · ${requirementMatrix.counts.unresolved} unresolved`
-                          : requirementMatrix.counts.all === 0
-                          ? " · none recorded"
+                        {thread.graph.nodes.length} records ·{" "}
+                        {thread.graph.edges.length} links
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Activity</dt>
+                      <dd className="font-mono tabular-nums">
+                        {recordedActivity.length} recorded
+                        {recordedActivity[0]?.recordedAt
+                          ? ` · ${
+                            formatShortTime(recordedActivity[0].recordedAt)
+                          }`
                           : ""}
                       </dd>
                     </div>
-                    {thread.assemblyIntegrity && (
-                      <div>
-                        <dt>Assembly integrity</dt>
-                        <dd className="font-mono tabular-nums">
-                          {assemblyIntegrity
-                            ? `${assemblyIntegrity.verdict} · L4`
-                            : "no L4 verdict"}
-                        </dd>
-                      </div>
-                    )}
-                    {geometryBlocker && (
-                      <div>
-                        <dt>Current geometry</dt>
-                        <dd
-                          className="font-mono font-medium text-warning"
-                          title={geometryBlocker}
-                        >
-                          Unavailable
-                        </dd>
-                      </div>
-                    )}
                     <div>
                       <dt>Snapshot</dt>
                       <dd className="font-mono tabular-nums">
@@ -289,7 +250,7 @@ export function ProjectOverview({
                 >
                   <button
                     type="button"
-                    onClick={() => openProductFacet("structure")}
+                    onClick={() => onNavigate("product")}
                   >
                     Product
                   </button>
@@ -340,11 +301,11 @@ export function ProjectOverview({
                 onNavigate={onNavigate}
               />
             </div>
-            <div className="project-thread-verdicts-hud">
-              <OverviewVerdictTiles
-                compact
+            <div className="project-thread-records-hud">
+              <OverviewRecordedActivity
                 thread={thread}
-                onOpenRequirements={() => openProductFacet("requirements")}
+                onOpenActivity={openOverviewActivity}
+                onOpenRecord={openOverviewEvidence}
               />
             </div>
           </div>
@@ -544,293 +505,95 @@ function OverviewReviewBanner({
   );
 }
 
-function OverviewVerdictTiles({
+function OverviewRecordedActivity({
   thread,
-  onOpenRequirements,
-  compact = false,
+  onOpenActivity,
+  onOpenRecord,
 }: {
   thread: ThreadWorkbenchSnapshot;
-  onOpenRequirements: () => void;
-  compact?: boolean;
-}): JSX.Element | null {
-  const matrix = buildRequirementMatrix(thread);
-  const assemblyIntegrity = recordedAssemblyIntegrityL4(thread);
-  if (matrix.rows.length === 0 && !assemblyIntegrity) return null;
-  if (compact) {
-    return (
-      <section
-        className="overview-verdicts-hud-content overview-verdicts-hud-content--compact"
-        aria-labelledby="overview-verdicts-title"
-      >
-        <div className="overview-verdicts-heading">
-          <h3
-            id="overview-verdicts-title"
-            className={cn("m-0", SECTION_LABEL)}
-          >
-            Recorded verdicts
-          </h3>
-          <Button
-            variant="link"
-            size="sm"
-            className="h-auto px-0"
-            onClick={onOpenRequirements}
-          >
-            Requirements →
-          </Button>
-        </div>
-        <div className="overview-verdict-chip-rail" tabIndex={0}>
-          {matrix.rows.map((row) => (
-            <article
-              key={row.id}
-              className="overview-verdict-chip"
-              title={`${row.id} · ${row.expression} · ${row.computed} · ${row.evidenceLabel}`}
-            >
-              <span className="overview-verdict-chip-label">
-                {row.label}
-              </span>
-              <Badge
-                className="overview-verdict-chip-badge"
-                variant={recordStatusVariant(row.status)}
-              >
-                {row.status}
-              </Badge>
-              <span className="overview-verdict-chip-value">
-                {row.lastVerdict}
-              </span>
-              <span className="sr-only">
-                {compactEmbeddedFingerprints(row.id)} · {row.expression} ·
-                {row.computed} · {row.marginLabel} · {row.evidenceLabel}
-              </span>
-            </article>
-          ))}
-          {assemblyIntegrity && (
-            <article
-              className="overview-verdict-chip"
-              data-verdict-family="assembly-integrity"
-              title="Assembly import, occurrences, placement, BRep and pairwise intersection only. Not safety, clearance, motion, load or fabrication."
-            >
-              <span className="overview-verdict-chip-label">
-                Assembly integrity
-              </span>
-              <Badge
-                className="overview-verdict-chip-badge"
-                variant={assemblyIntegrity.verdict === "pass"
-                  ? "success"
-                  : assemblyIntegrity.verdict === "fail"
-                  ? "destructive"
-                  : "warning"}
-              >
-                {assemblyIntegrity.verdict}
-              </Badge>
-              <span className="overview-verdict-chip-value">
-                Recorded L4 evaluation · {assemblyIntegrity.chainStatus}
-              </span>
-            </article>
-          )}
-        </div>
-      </section>
-    );
-  }
+  onOpenActivity: () => void;
+  onOpenRecord: (reference: ThreadGraphRef) => void;
+}): JSX.Element {
+  const records = activityFeedNodes(thread.graph.nodes)
+    .slice(0, 12);
   return (
     <section
-      className="overview-verdicts-hud-content"
-      aria-labelledby="overview-verdicts-title"
+      className="overview-records-hud-content"
+      aria-labelledby="overview-records-title"
     >
-      <div className="overview-verdicts-heading mb-3 flex items-end justify-between gap-4">
-        <h3
-          id="overview-verdicts-title"
-          className={cn("m-0", SECTION_LABEL)}
-        >
-          Recorded verdicts
+      <div className="overview-records-heading">
+        <h3 id="overview-records-title" className={cn("m-0", SECTION_LABEL)}>
+          Recorded activity
         </h3>
         <Button
           variant="link"
           size="sm"
           className="h-auto px-0"
-          onClick={onOpenRequirements}
+          onClick={onOpenActivity}
         >
-          Open requirements →
+          Activity →
         </Button>
       </div>
-      <div className="overview-verdicts-grid grid grid-cols-[repeat(auto-fit,minmax(min(100%,13rem),1fr))] gap-2.5">
-        {matrix.rows.map((row) => <VerdictTile key={row.id} row={row} />)}
-        {assemblyIntegrity && (
-          <AssemblyIntegrityVerdictTile
-            value={assemblyIntegrity}
-          />
+      {records.length === 0
+        ? (
+          <p className="overview-records-empty">
+            No Activity record is projected.
+          </p>
+        )
+        : (
+          <div
+            className="overview-record-chip-rail"
+            role="list"
+            aria-label="Recent recorded activity"
+            tabIndex={0}
+          >
+            {records.map((record) => (
+              <article
+                key={`${record.ref.kind}:${record.ref.id}`}
+                className="overview-record-chip"
+                role="listitem"
+              >
+                <OverviewRecordChip
+                  record={record}
+                  onOpen={() => onOpenRecord(record.ref)}
+                />
+              </article>
+            ))}
+          </div>
         )}
-      </div>
     </section>
   );
 }
 
-/** L4 is displayed as recorded; the browser does not derive an engineering result. */
-function AssemblyIntegrityVerdictTile({
-  value,
+function OverviewRecordChip({
+  record,
+  onOpen,
 }: {
-  value: NonNullable<ReturnType<typeof recordedAssemblyIntegrityL4>>;
+  record: ThreadGraphNode;
+  onOpen: () => void;
 }): JSX.Element {
-  const variant = value.verdict === "pass"
-    ? "success"
-    : value.verdict === "fail"
-    ? "destructive"
-    : "warning";
+  const exactIdentity = `${record.ref.kind}:${record.ref.id}`;
   return (
-    <Card
-      className="overview-verdict-tile"
-      data-verdict-family="assembly-integrity"
+    <button
+      type="button"
+      className="overview-record-chip-action"
+      title={`${exactIdentity} · ${record.freshness}`}
+      onClick={onOpen}
     >
-      <CardContent className="flex flex-col gap-0.5 px-3 py-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="min-w-0 text-[12.5px] font-medium leading-snug">
-            Assembly integrity
-          </span>
-          <Badge variant={variant}>{value.verdict}</Badge>
-        </div>
-        <span className="font-mono text-[9.5px] text-muted-foreground">
-          Recorded L4 evaluation · {value.chainStatus}
-        </span>
-        <p className="m-0 mt-1 text-[11px] leading-snug text-muted-foreground">
-          Assembly import, occurrences, placement, BRep and pairwise
-          intersection only. Not safety, clearance, motion, load or fabrication.
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function recordedAssemblyIntegrityL4(thread: ThreadWorkbenchSnapshot): {
-  readonly verdict: "pass" | "fail" | "unresolved";
-  readonly chainStatus: "current" | "historical" | "unresolved";
-} | undefined {
-  const chains = thread.assemblyIntegrity?.chains ?? [];
-  const current = chains.find((chain) =>
-    chain.status === "current" && chain.evaluation !== undefined
-  );
-  const firstRecorded = chains.find((chain) => chain.evaluation !== undefined);
-  const chain = current ?? firstRecorded;
-  return chain?.evaluation === undefined ? undefined : {
-    verdict: chain.evaluation.aggregateVerdict,
-    chainStatus: chain.status,
-  };
-}
-
-/**
- * Une tuile de verdict. La barre est un `Progress` d'Ark, donc porteuse de
- * `role="progressbar"` : sans valeur numérique enregistrée elle reste
- * indéterminée plutôt que de simuler un remplissage. La marge n'apparaît que
- * lorsqu'une violation en a produit une, et son tooltip cite la preuve.
- */
-function VerdictTile({ row }: { row: RequirementMatrixRow }): JSX.Element {
-  const running = row.status === "unresolved";
-  const hasMargin = hasRecordedMargin(row);
-  // La position dans l'intervalle admissible : c'est elle qui distingue une
-  // exigence tenue de justesse d'une exigence tenue largement.
-  const margin = requirementMargin(row.expression, row.computed);
-  const hasEvidence = hasRecordedEvidence(row);
-  return (
-    <Card
-      className={cn(
-        "overview-verdict-tile",
-        running && "border-dashed border-brand/50 bg-brand/[0.03]",
-      )}
-    >
-      <CardContent className="flex flex-col gap-0.5 px-3 py-2.5">
-        <div className="flex items-center justify-between gap-2">
-          {
-            /* Le NOM de l'exigence porte le titre : son identifiant tronqué
-              n'apprenait rien et poussait le nom en second rang. */
-          }
-          <span className="min-w-0 text-[12.5px] font-medium leading-snug">
-            {row.label}
-          </span>
-          <Badge variant={recordStatusVariant(row.status)}>{row.status}</Badge>
-        </div>
-        <span
-          className="font-mono text-[9.5px] leading-snug text-muted-foreground [overflow-wrap:anywhere]"
-          title={row.id}
-        >
-          {compactEmbeddedFingerprints(row.id)}
-        </span>
-        <Progress.Root
-          // Une jauge n'existe que si la limite ET la mesure sont lisibles
-          // dans ce qui a été enregistré. Sinon elle reste indéterminée
-          // plutôt que de suggérer une position qu'on n'a pas mesurée.
-          value={margin ? Math.round(margin.used * 100) : null}
-          min={0}
-          max={100}
-          className="mt-1 block"
-          aria-label={margin
-            ? `${row.label} — ${marginLabel(margin)}`
-            : `${row.label} — ${row.status}`}
-        >
-          <Progress.ValueText asChild>
-            <p className="m-0 truncate font-mono text-xs tabular-nums text-muted-foreground">
-              {row.lastVerdict}
-            </p>
-          </Progress.ValueText>
-          <Progress.Track className="mt-1.5 h-1 overflow-hidden rounded-full bg-muted">
-            {
-              /* Sans limite comparable, la piste reste VIDE. La remplir se
-                lirait « intervalle consommé à 100 % », soit l'inverse de
-                « on ne sait pas situer cette mesure ». Le statut, lui, est
-                déjà porté par la pastille. */
-            }
-            {running
-              ? (
-                <span className="block h-full w-full bg-[repeating-linear-gradient(90deg,var(--color-brand)_0_6px,transparent_6px_12px)] opacity-40" />
-              )
-              : margin === undefined
-              ? null
-              : (
-                <Progress.Range
-                  className={cn(
-                    "h-full rounded-full",
-                    row.status === "fail" ? "bg-warning" : "bg-success",
-                  )}
-                />
-              )}
-          </Progress.Track>
-        </Progress.Root>
-        {(margin !== undefined || hasMargin) && (
-          <Tooltip side="top">
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  "mt-1.5 block w-full cursor-help text-right font-mono text-[10px] font-medium leading-snug",
-                  row.status === "fail" ? "text-warning" : "text-success",
-                )}
-              >
-                {margin
-                  ? marginLabel(margin).replace(
-                    " margin",
-                    " computed headroom",
-                  )
-                  : row.marginLabel}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <span className="flex max-w-sm flex-col gap-1">
-                {margin && (
-                  <span>
-                    Computed in the Workbench from the recorded limit and
-                    observation; not a recorded violation margin.
-                  </span>
-                )}
-                <span className="font-mono">
-                  {margin
-                    ? `${row.expression} · ${row.computed}`
-                    : hasEvidence
-                    ? row.evidenceLabel
-                    : row.expression}
-                </span>
-              </span>
-            </TooltipContent>
-          </Tooltip>
-        )}
-      </CardContent>
-    </Card>
+      <span className="overview-record-chip-label">{record.label}</span>
+      <Badge
+        className="overview-record-chip-badge"
+        variant={recordStatusVariant(record.freshness)}
+      >
+        {record.freshness}
+      </Badge>
+      <span className="overview-record-chip-value">
+        {sentenceLabel(record.entityKind)} ·{" "}
+        {compactEmbeddedFingerprints(record.ref.id)}
+        {record.recordedAt ? ` · ${formatShortTime(record.recordedAt)}` : ""}
+      </span>
+      <span className="sr-only">Exact record {exactIdentity}</span>
+    </button>
   );
 }
 

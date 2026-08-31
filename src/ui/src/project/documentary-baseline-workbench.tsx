@@ -1,6 +1,7 @@
 import type { JSX } from "react";
 import { cn } from "../lib/utils.ts";
 import type { ThreadStreamStatus } from "../thread/client.ts";
+import type { ThreadViewerSessionsProjection } from "../thread/viewer-sessions-client.ts";
 import type { EngineeringDocumentaryWorkbenchSnapshot } from "../thread/types.ts";
 import { Badge, type BadgeProps } from "../ui/badge.tsx";
 import {
@@ -21,6 +22,8 @@ import {
 import { ProjectNavigation, type ProjectWorkspaceView } from "./navigation.tsx";
 import { hasDistinctProjectObjectiveStatement } from "./navigation-model.ts";
 import { ProjectWorkRibbon } from "./work.tsx";
+import { ProjectReviewAppHandoffs } from "./control-center.tsx";
+import { buildProjectReviewRecords } from "./review-decision-model.ts";
 
 type BadgeVariant = NonNullable<BadgeProps["variant"]>;
 
@@ -31,11 +34,13 @@ type BadgeVariant = NonNullable<BadgeProps["variant"]>;
  */
 export function DocumentaryBaselineWorkbench({
   workbench,
+  viewerSessions,
   streamStatus,
   activeView,
   onChangeView,
 }: {
   workbench: EngineeringDocumentaryWorkbenchSnapshot;
+  viewerSessions?: ThreadViewerSessionsProjection;
   streamStatus: ThreadStreamStatus | "snapshot";
   activeView: ProjectWorkspaceView;
   onChangeView: (view: ProjectWorkspaceView) => void;
@@ -46,6 +51,7 @@ export function DocumentaryBaselineWorkbench({
   const { record } = documentary;
   const technicalStart = documentary.technicalStart;
   const statusSeal = documentaryProjectStatusSeal(brief, technicalStart);
+  const reviewRecords = buildProjectReviewRecords(project);
   return (
     <div className="thread-workbench cockpit-surface">
       <ProjectNavigation
@@ -127,6 +133,12 @@ export function DocumentaryBaselineWorkbench({
             </section>
 
             <ProjectWorkRibbon project={project} />
+
+            <ProjectReviewAppHandoffs
+              project={project}
+              records={reviewRecords}
+              projection={viewerSessions}
+            />
 
             <DocumentaryProjectPath brief={brief} />
 

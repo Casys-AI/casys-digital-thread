@@ -2,17 +2,12 @@ import {
   createFocusedWorkspaceHandler,
   createNativeWorkbenchHandler,
   type NativeWorkbenchProjectCatalog,
-  resolveSnapshotComponentCatalog,
 } from "../../../scripts/serve/serve-native-workbench.ts";
 import { FileCockpitFocusStore } from "../../../src/adapters/project/file-cockpit-focus-store.ts";
 import {
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
-  ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_DESCRIPTOR,
-  ASSEMBLY_INTEGRITY_EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
-  ASSEMBLY_INTEGRITY_OBSERVATION_CAPTURE_DESCRIPTOR,
   type CaptureStoreDescriptor,
   DFM_CASE_CAPTURE_DESCRIPTOR,
-  EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
   FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   GEOMETRY_CAPTURE_DESCRIPTOR,
@@ -40,15 +35,12 @@ import {
 } from "../../../src/adapters/engineering-asset-resolver.ts";
 import { FileLiveThreadUpdateStore } from "../../../src/adapters/shared/stores/live-thread-update-store.ts";
 import { FileByteStore } from "../../../src/adapters/shared/cas/file-byte-store.ts";
-import { createArchitectureSysmlSourceAnalysisCaptureService } from "../../../src/adapters/architecture/agent-seal/architecture-sysml-source-analysis-composition.ts";
-import { fileArchitectureSysmlSealCaptureReader } from "../../../src/adapters/architecture/agent-seal/file-architecture-sysml-seal-capture-reader.ts";
-import type { SealedCadLeverAdmissionReader } from "../../../src/adapters/thread/technical-admission-workbench-enricher.ts";
+import { FileThreadViewerAppRegistry } from "../../../src/adapters/thread/file-thread-viewer-app-registry.ts";
+import type { ProductNavigationTechnicalAdmissionReader } from "../../../src/adapters/thread/product-navigation-technical-admission-source-reader.ts";
 import type { EngineeringCaseWorkbenchEnricherDependencies } from "../../../src/adapters/thread/verification-case-workbench-enricher.ts";
 import type { RequirementsCaptureReader } from "../../../src/adapters/thread/requirements-target-workbench-enricher.ts";
 import { FileProjectSourceWorkspaceStore } from "../../../src/adapters/project-source-workspace/file-project-source-workspace-store.ts";
 import { DEFAULT_PROJECT_SOURCE_WORKSPACE_DIRECTORY } from "../../../src/adapters/project-source-workspace/server-composition.ts";
-import type { EvaluationCloseoutCaptureReader } from "../../../src/adapters/thread/evaluation-closeout-workbench-enricher.ts";
-import type { AssemblyIntegrityWorkbenchCaptureReaders } from "../../../src/adapters/thread/assembly-integrity-workbench-enricher.ts";
 import { readDeclaredCockpitFleet } from "../../../src/adapters/thread/cockpit-fleet-projector.ts";
 import { joinWorkspace } from "../sidecar/contracts.ts";
 import { WORKBENCH_ACCESS_HEADER, WORKBENCH_WORKSPACE_ID } from "./contracts.ts";
@@ -61,6 +53,10 @@ const THREAD_ASSET_DIRECTORY = "state/local/thread-assets";
 const LIVE_UPDATE_DIRECTORY = "state/local/live-thread-updates";
 const FOCUS_DIRECTORY = "state/local/cockpit-focus";
 const RECORDED_ANALYSIS_DIRECTORY = "state/local/recorded-analysis";
+export const PACKAGED_VIEWER_APP_REGISTRY_PATH =
+  "state/local/thread-viewer-apps/registry.json";
+export const PACKAGED_VIEWER_APP_OBJECT_DIRECTORY =
+  "state/local/thread-viewer-apps/objects";
 
 export function createPackagedWorkbenchBff(
   accessToken: string,
@@ -108,39 +104,13 @@ export function createPackagedWorkbenchBff(
         analysisCaptures: sourceAnalysisCaptures,
       }),
   };
-  const architectureSysmlDirectory = rooted(
-    recordedAnalysisDirectory,
-    "architecture-sysml",
-  );
-  const architectureSysmlSources = createArchitectureSysmlSourceAnalysisCaptureService({
-    sourceCaptures: new FileByteStore({
-      kind: "architecture-sysml-source",
-      directory: rooted(architectureSysmlDirectory, "sources"),
-      uriNamespace: "architecture-sysml-source",
-      label: "Captured architecture SysML source",
-    }),
-    analysisCaptures: new FileByteStore({
-      kind: "architecture-sysml-source-analysis",
-      directory: rooted(architectureSysmlDirectory, "analyses"),
-      uriNamespace: "architecture-sysml-source-analysis",
-      label: "Captured architecture SysML analysis",
-    }),
-  });
-  const architectureSysmlSeals = fileArchitectureSysmlSealCaptureReader(
-    new FileByteStore({
-      kind: "architecture-sysml-seal-capture",
-      directory: rooted(architectureSysmlDirectory, "seals"),
-      uriNamespace: "architecture-sysml-seal-capture",
-      label: "Sealed architecture SysML analysis",
-    }),
-  );
   const technicalCompilationSealBytes = new FileByteStore({
     kind: "technical-compilation-admission-capture",
     directory: rooted(recordedAnalysisDirectory, "technical-compilation/seals"),
     uriNamespace: "technical-compilation-admission-capture",
     label: "Sealed technical compilation admission",
   });
-  const technicalCompilationAdmissions: SealedCadLeverAdmissionReader = {
+  const technicalCompilationAdmissions: ProductNavigationTechnicalAdmissionReader = {
     read: async (fingerprint) => {
       const stored = await technicalCompilationSealBytes.read(fingerprint);
       return stored === undefined
@@ -170,34 +140,18 @@ export function createPackagedWorkbenchBff(
     ),
     dfmCheck: captureAt(controlPlaneRoot, DFM_CASE_CAPTURE_DESCRIPTOR),
   };
-  const evaluationCloseoutCaptures: EvaluationCloseoutCaptureReader =
-    new FileCaptureStore({
-      ...EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
-      directory: rooted(
-        recordedAnalysisDirectory,
-        "calculix/evaluation-closeout-captures",
-      ),
-      syncBoundary: recordedAnalysisDirectory,
-    });
-  const assemblyIntegrityCaptures: AssemblyIntegrityWorkbenchCaptureReaders = {
-    observations: captureAt(
-      controlPlaneRoot,
-      ASSEMBLY_INTEGRITY_OBSERVATION_CAPTURE_DESCRIPTOR,
-    ),
-    evaluations: captureAt(
-      controlPlaneRoot,
-      ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_DESCRIPTOR,
-    ),
-    closeouts: captureAt(
-      controlPlaneRoot,
-      ASSEMBLY_INTEGRITY_EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
-    ),
-  };
   const assetReader = new OrderedEngineeringAssetReader([
     new FileEngineeringAssetReader(threadAssetDirectory),
     new Base64EngineeringAssetReader(projectBaselineAssetDirectory),
   ]);
   const liveUpdates = new FileLiveThreadUpdateStore(liveUpdateDirectory);
+  const viewerAppRegistry = new FileThreadViewerAppRegistry({
+    registryPath: rooted(controlPlaneRoot, PACKAGED_VIEWER_APP_REGISTRY_PATH),
+    objectDirectory: rooted(
+      controlPlaneRoot,
+      PACKAGED_VIEWER_APP_OBJECT_DIRECTORY,
+    ),
+  });
   const uiDirectory = fileUrlPath(
     new URL("../../../src/ui/dist/thread", import.meta.url),
   );
@@ -209,22 +163,6 @@ export function createPackagedWorkbenchBff(
     projectSnapshots,
     htmlPath: rooted(uiDirectory, "native-workbench.html"),
     uiAssetDirectory: uiDirectory,
-    componentCatalogForSubject: async (subjectId) =>
-      await readOptionalComponentCatalog(
-        rooted(
-          controlPlaneRoot,
-          `config/thread-subjects/${subjectId}.components.json`,
-        ),
-      ),
-    componentCatalogForSnapshot: async (snapshot) =>
-      await resolveSnapshotComponentCatalog(
-        snapshot,
-        archCaptures,
-        geometryCaptures,
-        sysmlSourceAnalysis,
-      ),
-    architectureSysmlSeals,
-    architectureSysmlSources,
     technicalCompilationAdmissions,
     projectSourceWorkspace,
     requirementsCaptures,
@@ -232,9 +170,8 @@ export function createPackagedWorkbenchBff(
     geometryCaptures,
     sysmlSourceAnalysis,
     engineeringCaseCaptures,
-    evaluationCloseoutCaptures,
-    assemblyIntegrityCaptures,
     liveUpdates,
+    viewerAppRegistry,
     assetReader: (filename) => assetReader.read(filename),
     cockpitFleet: () =>
       readDeclaredCockpitFleet(rooted(controlPlaneRoot, "config/mcp-fleet.json")),
@@ -346,16 +283,4 @@ function fileUrlPath(url: URL): string {
   return /^\/[A-Za-z]:\//u.test(pathname)
     ? pathname.slice(1).replace(/\//gu, "\\")
     : pathname;
-}
-
-async function readOptionalComponentCatalog(path: string) {
-  try {
-    const { validateThreadComponentCatalog } = await import(
-      "../../../src/domain/thread/thread-component-catalog.ts"
-    );
-    return validateThreadComponentCatalog(JSON.parse(await Deno.readTextFile(path)));
-  } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return undefined;
-    throw error;
-  }
 }

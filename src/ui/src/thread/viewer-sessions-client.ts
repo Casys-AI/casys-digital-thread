@@ -24,9 +24,11 @@ export type ThreadViewerSessionsFetch = (
 /**
  * Read-only browser client for exact viewer-session descriptors.
  *
- * This intentionally has no MCP vocabulary, credential input, command path,
- * refresh action or iframe integration. The BFF remains responsible for
- * resolving and redacting the recorded viewer descriptors.
+ * This intentionally has no MCP transport, credential input, command path or
+ * refresh action. It reads only exact, browser-safe whole-App descriptors;
+ * the spatial shell may fetch and attest their same-origin launch bytes before
+ * framing a confined Blob, while the separate App host owns every Apps
+ * handshake and session delivery.
  */
 export class HttpThreadViewerSessionsClient
   implements ThreadViewerSessionsClient {
@@ -85,21 +87,26 @@ export class HttpThreadViewerSessionsClient
 export function viewerSessionsMatchWorkbench(
   projection: ThreadViewerSessionsProjection,
   workbench: {
+    readonly surface: "planning" | "documentary" | "evidence";
     readonly project: {
       readonly id: string;
       readonly revision: number;
-      readonly project: { readonly subjectId: string };
+      readonly project: { readonly id: string; readonly subjectId: string };
     };
-    readonly thread: { readonly id: string };
-    readonly alignment: { readonly currentThreadRevision: number };
+    readonly thread?: { readonly id: string };
+    readonly alignment?: { readonly currentThreadRevision: number };
   },
 ): boolean {
   const { basis } = projection;
-  return basis.projectId === workbench.project.id &&
-    basis.projectRevision === workbench.project.revision &&
-    basis.subjectId === workbench.project.project.subjectId &&
-    basis.thread?.id === workbench.thread.id &&
-    basis.thread?.revision === workbench.alignment.currentThreadRevision;
+  if (basis.projectId !== workbench.project.project.id) return false;
+  if (
+    basis.projectRevision !== workbench.project.revision ||
+    basis.subjectId !== workbench.project.project.subjectId
+  ) return false;
+  if (workbench.surface !== "evidence") return true;
+  return basis.thread !== undefined &&
+    basis.thread.id === workbench.thread?.id &&
+    basis.thread.revision === workbench.alignment?.currentThreadRevision;
 }
 
 /** The server sequence is strictly monotonic for one exact projection basis. */
