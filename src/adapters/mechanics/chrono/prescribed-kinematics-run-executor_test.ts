@@ -316,6 +316,81 @@ Deno.test("a known Chrono pre-dispatch rejection keeps the generic failure code 
   );
 });
 
+Deno.test("a recorded L3 successor attests derived_from and uses provenance to the exact sealed case", async () => {
+  const harness = await l3LifecycleHarness({
+    status: "queued",
+    observation: recordedKinematicsObservation(),
+  });
+
+  const completed = await harness.executor.execute(AGENT, harness.command);
+  const run = completed.agentRuns.find((item) => item.id === L3_RUN_ID);
+  assertEquals(run?.status, "completed");
+  assertEquals(harness.claims, 1);
+  assertEquals(harness.observationSaves, 1);
+  assertEquals(harness.threadSaves, 1);
+  assertEquals(harness.publishes, 1);
+  assertEquals(harness.completes, 1);
+  assertEquals(harness.session.releases, 1);
+  assertEquals(harness.session.retains, 0);
+
+  const successor = harness.savedSuccessor;
+  if (!successor) {
+    throw new Error("The recorded L3 path must persist a Thread successor.");
+  }
+  validateThreadSnapshot(successor);
+  assertEquals(successor.id, run?.resultSnapshot?.snapshotId);
+  assertEquals(successor.revision, run?.resultSnapshot?.revision);
+
+  const observation = successor.artifacts.find((artifact) =>
+    artifact.producer.tool ===
+      `${VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION.id}@${VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION.version}`
+  );
+  if (!observation) {
+    throw new Error("The recorded L3 successor must contain the observation artifact.");
+  }
+  assertEquals(observation.inputArtifactIds, [L3_CASE_ARTIFACT_ID]);
+  const consumptionId =
+    `prescribed-kinematics-consume-${L3_RUN_ID}-${L3_CASE_ARTIFACT_ID}`;
+  const caseArtifact = successor.artifacts.find((artifact) =>
+    artifact.id === L3_CASE_ARTIFACT_ID
+  );
+  if (!caseArtifact) {
+    throw new Error("The successor must keep the exact sealed L1 case.");
+  }
+  assertEquals(
+    successor.consumptions.filter((item) => item.artifactId === L3_CASE_ARTIFACT_ID),
+    [{
+      id: consumptionId,
+      artifactId: L3_CASE_ARTIFACT_ID,
+      consumer: observation.producer,
+      observedFingerprint: caseArtifact.fingerprint,
+      verifiedAt: L3_AT,
+      status: "verified",
+    }],
+  );
+  assertEquals(
+    successor.provenance.filter((link) => link.relation === "derived_from"),
+    [{
+      id: `prescribed-kinematics-derived-from-${L3_RUN_ID}-${L3_CASE_ARTIFACT_ID}`,
+      relation: "derived_from",
+      from: { kind: "artifact", id: observation.id },
+      to: { kind: "artifact", id: L3_CASE_ARTIFACT_ID },
+      rationale: "The captured evidence is derived from this exact consumed artifact.",
+    }],
+  );
+  assertEquals(
+    successor.provenance.filter((link) => link.relation === "uses"),
+    [{
+      id: `prescribed-kinematics-uses-${L3_RUN_ID}-${L3_CASE_ARTIFACT_ID}`,
+      relation: "uses",
+      from: { kind: "consumption", id: consumptionId },
+      to: { kind: "artifact", id: L3_CASE_ARTIFACT_ID },
+      rationale:
+        "The verified consumption attests this exact consumed artifact fingerprint.",
+    }],
+  );
+});
+
 Deno.test("the Chrono executor carries the resolver's sealed ROP request identity unchanged", async () => {
   const requestId = await resolvedOperationPlanRequestIdFor(
     "run",
@@ -651,6 +726,7 @@ const L3_WORK_ID = "work-kinematics";
 const L3_DECISION_ID = "decision:kinematics";
 const L3_THREAD_ID = "thread:project-kinematics:r1";
 const L3_CASE_ARTIFACT_ID = "case-capture";
+const L3_OBSERVATION_DIGEST = "e".repeat(64);
 const L3_SUBJECT_ID = `project:${L3_PROJECT_ID}`;
 const THREAD_BASIS = {
   kind: "thread-snapshot" as const,
@@ -911,6 +987,85 @@ interface L3LifecycleHarness {
   observes: number;
   secretSnapshots: number;
   observationRequestId?: string;
+  savedSuccessor?: ThreadSnapshot;
+}
+
+function recordedKinematicsObservation(): RunPrescribedKinematicsObservationResult {
+  const fingerprint = {
+    algorithm: "sha256" as const,
+    digest: L3_OBSERVATION_DIGEST,
+  };
+  const limits = {
+    collision: "not_evaluated",
+    contact: "not_evaluated",
+    clearance: "not_evaluated",
+    forces: "not_evaluated",
+    strength: "not_evaluated",
+    safety: "not_evaluated",
+    manufacturability: "not_evaluated",
+  } as const;
+  return {
+    status: "recorded",
+    observation: {
+      schemaVersion: "prescribed-kinematics-observation/1.0",
+      operation: VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+      caseFingerprint: fingerprint,
+      method: {
+        schemaVersion: "prescribed-kinematics-observation-method/1.0",
+        id: "prescribed-kinematics-observation",
+        version: "1.0",
+        samples: "case-derived-required-times",
+        facts: [
+          "poses",
+          "joint-angles",
+          "joint-translation-residuals",
+          "joint-rotation-quaternion-imag-residuals",
+          "convergence",
+        ],
+        limits,
+        fingerprint,
+      },
+      samples: [],
+      convergence: { status: "observed", value: "converged" },
+      limits,
+    },
+    request: {
+      requestId: "rop2-prescribed-kinematics-recorded",
+      caseSha256: fingerprint.digest,
+    },
+    receipt: {
+      receiptSha256: fingerprint.digest,
+      caseSha256: fingerprint.digest,
+      outcomeSha256: fingerprint.digest,
+      requestId: "rop2-prescribed-kinematics-recorded",
+      recordedAt: L3_AT,
+      engine: { name: "chrono", version: "0.3.2" },
+      runtime: {
+        binding: "chrono-prescribed-kinematics",
+        pythonVersion: "3.12",
+        serverDenoVersion: "2",
+      },
+      workerSourceSha256: fingerprint.digest,
+      executionState: "completed",
+      kinematicsExit: { rawCode: 0, rawName: "ok" },
+    },
+    providerNotEvaluated: [
+      "collision",
+      "clearance",
+      "contact",
+      "forces",
+      "torques",
+      "dynamics",
+      "strength",
+      "safety",
+      "product fitness",
+    ],
+    lowering: {
+      sourceFingerprint: fingerprint,
+      loweringFingerprint: fingerprint,
+      requestFingerprint: fingerprint,
+    },
+  };
 }
 
 function assertNoObservationMaterialization(harness: L3LifecycleHarness): void {
@@ -997,7 +1152,7 @@ async function l3LifecycleHarness(input: {
   };
   const projectCommands = new EngineeringProjectCommandService(
     store,
-    undefined,
+    { validate: () => Promise.resolve() },
     () => L3_AT,
     planning,
   );
@@ -1113,6 +1268,8 @@ async function l3LifecycleHarness(input: {
     observes: 0,
     secretSnapshots: 0,
   };
+  const recordedOutcome = input.observation.status === "recorded";
+  const snapshotsById = new Map<string, ThreadSnapshot>([[snapshot.id, snapshot]]);
   const secretSnapshot = {} as CapabilityRuntimeSecretSnapshot;
   harness.executor = new PrescribedKinematicsRunExecutor({
     projects: store,
@@ -1125,30 +1282,41 @@ async function l3LifecycleHarness(input: {
         harness.failed = { code: failCommand.code, message: failCommand.message };
         return projectCommands.failRun(origin, failCommand);
       },
-      publishRun: () => {
+      publishRun: (origin, publishCommand) => {
         harness.publishes++;
-        return Promise.reject(
-          new Error("A non-recorded Chrono outcome must not publish."),
-        );
+        if (!recordedOutcome) {
+          return Promise.reject(
+            new Error("A non-recorded Chrono outcome must not publish."),
+          );
+        }
+        return projectCommands.publishRun(origin, publishCommand);
       },
-      completeRun: () => {
+      completeRun: (origin, completeCommand) => {
         harness.completes++;
-        return Promise.reject(
-          new Error("A non-recorded Chrono outcome must not complete."),
-        );
+        if (!recordedOutcome) {
+          return Promise.reject(
+            new Error("A non-recorded Chrono outcome must not complete."),
+          );
+        }
+        return projectCommands.completeRun(origin, completeCommand);
       },
     },
     snapshots: {
-      get: (snapshotId) =>
-        Promise.resolve(snapshotId === snapshot.id ? snapshot : undefined),
-      getFresh: (snapshotId) =>
-        Promise.resolve(snapshotId === snapshot.id ? snapshot : undefined),
+      get: (snapshotId) => Promise.resolve(snapshotsById.get(snapshotId)),
+      getFresh: (snapshotId) => Promise.resolve(snapshotsById.get(snapshotId)),
       latest: () => Promise.resolve(snapshot),
-      save: () => {
+      save: (successor) => {
         harness.threadSaves++;
-        return Promise.reject(
-          new Error("A non-recorded Chrono outcome must not save a Thread successor."),
-        );
+        if (!recordedOutcome) {
+          return Promise.reject(
+            new Error(
+              "A non-recorded Chrono outcome must not save a Thread successor.",
+            ),
+          );
+        }
+        snapshotsById.set(successor.id, successor);
+        harness.savedSuccessor = successor;
+        return Promise.resolve();
       },
     },
     lease: { withLease: (_projectId, _scope, work) => work() },
@@ -1162,9 +1330,19 @@ async function l3LifecycleHarness(input: {
         ),
       saveObservation: () => {
         harness.observationSaves++;
-        return Promise.reject(
-          new Error("A non-recorded Chrono outcome must not capture an observation."),
-        );
+        if (!recordedOutcome) {
+          return Promise.reject(
+            new Error("A non-recorded Chrono outcome must not capture an observation."),
+          );
+        }
+        return Promise.resolve({
+          fingerprint: {
+            algorithm: "sha256" as const,
+            digest: L3_OBSERVATION_DIGEST,
+          },
+          uri:
+            `casys://prescribed-kinematics-observation/sha256/${L3_OBSERVATION_DIGEST}`,
+        });
       },
     } as never,
     plans: {

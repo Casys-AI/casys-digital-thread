@@ -77,6 +77,7 @@ import type {
 import type { AgentResourceReference } from "../../../domain/resource/agent-resource-capture.ts";
 import type {
   ThreadArtifact,
+  ThreadProvenanceLink,
   ThreadSnapshot,
 } from "../../../domain/thread/thread-snapshot.ts";
 import {
@@ -355,27 +356,34 @@ export class PrescribedKinematicsRunExecutor implements ProjectRunExecutor {
         decision,
         l3,
       });
+      const capturedAt = requiredStart(run);
+      const consumer = producer(currentOperation, run.id);
+      const consumptions = materialized.inputArtifacts.map((artifact) => ({
+        id: `prescribed-kinematics-consume-${run.id}-${artifact.id}`,
+        artifactId: artifact.id,
+        consumer,
+        observedFingerprint: artifact.fingerprint,
+        verifiedAt: capturedAt,
+        status: "verified" as const,
+      }));
       const successor = applyThreadSnapshotExtensionIfNew(base, {
         id: `prescribed-kinematics-${run.id}`,
         name: materialized.name,
         subjectId: base.subject.id,
-        capturedAt: requiredStart(run),
+        capturedAt,
         artifacts: [materialized.artifact],
-        consumptions: materialized.inputArtifacts.map((artifact) => ({
-          id: `prescribed-kinematics-consume-${run.id}-${artifact.id}`,
-          artifactId: artifact.id,
-          consumer: producer(currentOperation, run.id),
-          observedFingerprint: artifact.fingerprint,
-          verifiedAt: requiredStart(run),
-          status: "verified" as const,
-        })),
+        consumptions,
         observations: [],
         requirements: [],
         evaluations: [],
         violations: [],
-        provenance: [],
+        provenance: attestedInputProvenance(
+          run.id,
+          materialized.artifact.id,
+          consumptions,
+        ),
         proposedActions: [],
-      }, { appliedAt: requiredStart(run) }).snapshot;
+      }, { appliedAt: capturedAt }).snapshot;
       await this.#snapshots.save(successor);
       const reread = await this.#snapshots.getFresh(successor.id);
       if (!reread || JSON.stringify(reread) !== JSON.stringify(successor)) {
@@ -1115,6 +1123,31 @@ function producer(operation: ExactOperation, runId: string) {
     tool: `${operation.id}@${operation.version}`,
     runId,
   } as const;
+}
+
+/** One derived_from and one uses link per verified input; ids include run and artifact. */
+function attestedInputProvenance(
+  runId: string,
+  outputArtifactId: string,
+  consumptions: readonly { readonly id: string; readonly artifactId: string }[],
+): ThreadProvenanceLink[] {
+  return consumptions.flatMap((consumption) => [
+    {
+      id: `prescribed-kinematics-derived-from-${runId}-${consumption.artifactId}`,
+      relation: "derived_from",
+      from: { kind: "artifact", id: outputArtifactId },
+      to: { kind: "artifact", id: consumption.artifactId },
+      rationale: "The captured evidence is derived from this exact consumed artifact.",
+    },
+    {
+      id: `prescribed-kinematics-uses-${runId}-${consumption.artifactId}`,
+      relation: "uses",
+      from: { kind: "consumption", id: consumption.id },
+      to: { kind: "artifact", id: consumption.artifactId },
+      rationale:
+        "The verified consumption attests this exact consumed artifact fingerprint.",
+    },
+  ]);
 }
 function output(
   input: { readonly run: EngineeringAgentRun; readonly operation: ExactOperation },
