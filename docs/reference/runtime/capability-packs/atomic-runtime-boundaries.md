@@ -45,11 +45,12 @@ deny-all networking, pinned images and server-owned limits. No first-party mater
 requests a privileged container, Docker socket, device, host networking, arbitrary
 Compose input or provider/tool/argument selection.
 
-The `syson-db-data` and `build123d-sandbox-exports` volumes are retained data.
-[Local runtime administration](local-runtime-administration.md) may remove an inactive
-owned group only while preserving those volumes, Thread, CAS, WAL and project state.
-This catalogue and its planner remain read-only: they never pull, start, stop, bind,
-dispatch, qualify or delete material.
+`syson-db-data`, `build123d-sandbox-exports`, `chrono-data`, and the private CalculiX
+input/run-ledger volumes are retained data where their exact material declares
+`preserve`. [Local runtime administration](local-runtime-administration.md) may remove
+an inactive owned group only while preserving those volumes, Thread, CAS, WAL and project
+state. This catalogue and its planner remain read-only: they never pull, start, stop,
+bind, dispatch, qualify or delete material.
 
 Canonical admitted geometry export has a separate short preparation lease for exactly
 `design.write-geometry@1`'s registered preparation demand. It activates only the

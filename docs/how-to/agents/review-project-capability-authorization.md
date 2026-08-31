@@ -8,6 +8,7 @@ method, or establish an engineering result.
 
 The exact contract is
 [project capability authorization](../../reference/runtime/capability-packs/project-capability-authorization.md).
+The initial briefing route is [project capability intent](../../reference/runtime/capability-packs/project-capability-intent.md).
 
 ## 1. Propose the brief and retain the exact review facts
 
@@ -20,8 +21,12 @@ review. Alongside the pending brief, preserve these values from the same respons
 | `capabilityProposal` | Show the server-derived operational ceiling and its literal blockers/effects |
 | `capabilityProposalFingerprint` | Opaque identity that must be echoed unchanged at confirmation |
 
-The proposal describes server-selected bindings and atomic units; it is not a menu. Do
-not add capabilities, providers, images, endpoints, tools, arguments, or secret values.
+The proposal's `brief-intent` is derived only from the brief's
+`verification-activity.verificationAuthority` values, the server-owned route table, and
+the registered operation demands. Its `capabilityIntentFingerprint` identifies that
+semantic forecast; it is not a value to supply on the call. The proposal describes
+server-selected bindings and atomic units; it is not a menu. Do not add capabilities,
+providers, images, endpoints, tools, arguments, or secret values.
 
 ## 2. Obtain the exact human confirmation
 
@@ -60,6 +65,12 @@ current planned ceiling; it does not accept an agent-supplied capability list.
 The subset test uses the full planned ceiling, not only work that happens to be ready for
 JIT now. A runtime becoming qualified or cached without changing the approved ceiling is
 an operational observation, not by itself an amendment.
+
+A blocked capability that was already approved may remain literally visible while the
+server reviews a wholly resolved delta beside it. Treat that only as retention of the
+same exact blocked identity, not as new availability: any new unresolved operation or
+changed candidate, adapter/profile, unit manifest, material or effect must still return
+`unresolved`.
 
 ## 5. Review a delta as a project authorization, not an engineering decision
 

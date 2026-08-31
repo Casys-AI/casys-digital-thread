@@ -96,8 +96,9 @@ means stop and inspect the durable saga rather than infer a handoff.
 Chrono's `chrono-arm64-emulation-v1` probe is a separate private local qualification
 workflow. It records an exact host attestation; it is not a project command, generic
 runtime qualification, engineering MRTR, or product result. Follow
-[local runtime qualification](../../reference/runtime/capability-packs/local-runtime-qualification.md)
-for its review, apply, and recovery sequence.
+[Qualify Chrono on an ARM64 host](qualify-chrono-on-arm64.md) for the closed review,
+apply and recovery procedure. The exact state contract remains
+[local runtime qualification](../../reference/runtime/capability-packs/local-runtime-qualification.md).
 
 For the automatic lifecycle and lease/journal boundary behind this guide, see
 [host runtime supervision](../../reference/runtime/capability-packs/host-runtime-supervision.md).

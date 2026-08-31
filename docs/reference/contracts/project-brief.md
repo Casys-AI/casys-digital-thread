@@ -119,13 +119,19 @@ approved brief. `baseline.from-approved-brief@1` then materializes a content-add
 documentary baseline. That record proves which brief and plan were used; it is not
 technical evidence by itself.
 
-Exact runtime capability demand can be compiled separately from the registered
-operations on that published project path. It is never stored as packs, providers,
-images, or host effects inside `ProjectBriefRevision`; a brief-only forecast remains
-provisional. Operational authorization of that demand is the separate
+While a brief is pending, the server derives a provider-neutral
+`project-capability-intent/1.0` from its `verification-activity` authorities and the
+code-owned route/operation registry. It produces the reviewable `brief-intent`
+capability proposal beside the brief; no pack, provider, image, endpoint, tool,
+argument, or host effect is stored in `ProjectBriefRevision` or supplied by the caller.
+The human confirmation authorizes that exact operational ceiling through the separate
 [project capability authorization](../runtime/capability-packs/project-capability-authorization.md)
-ledger; it is not a brief field. See
-[project capability demand](../runtime/capability-packs/project-capability-demand.md).
+ledger; it is not a brief field.
+
+After `project_plan_publish`, the server compiles the exact
+`project-capability-demand/2.0` from registered work-item history and rechecks it against
+that ceiling. See [project capability intent](../runtime/capability-packs/project-capability-intent.md)
+and [project capability demand](../runtime/capability-packs/project-capability-demand.md).
 
 The generic V3 bootstrap is deliberately additive and exact:
 

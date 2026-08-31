@@ -69,6 +69,13 @@ follows the existing transition/MRTR boundary. Operational authorization is not 
 fourth generic approval layer and does not replace MRTR admission of method, inputs
 and criteria.
 
+An unchanged blocked candidate already present in the approved ceiling remains visible
+without blocking an otherwise resolved comparison. For example, a previously approved
+but still-unqualified Chrono binding does not prevent review of a later exact SysON-only
+delta. This exception is identity-closed: a new unresolved operation, a new blocked
+requirement, or any change to the retained candidate, adapter/profile, unit manifest,
+material digest or declared material effects keeps the whole review `unresolved`.
+
 The review returns an explicit `revoked` state when the effective envelope was revoked;
 such an envelope can neither cover a plan nor be amended. The amendment elicitation
 returns the exact opaque proposal fingerprint in structured content, and a signed retry

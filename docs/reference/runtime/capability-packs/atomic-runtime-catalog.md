@@ -2,10 +2,10 @@
 
 Audience: both · Diátaxis: reference · Kind: contract
 
-`capability-runtime-catalog/1.0` is the trusted server-side catalogue used to turn the
-provider-neutral `project-capability-demand/2.0` ceiling into a concrete, inspectable
-host plan. It is not an MCP tool, a provider registry, a package marketplace, or an
-engineering verdict. The current first-party catalogue is explicitly
+`capability-runtime-catalog/1.0` is the trusted server-side catalogue used to turn a
+provider-neutral brief intent or `project-capability-demand/2.0` ceiling into a concrete,
+inspectable host plan. It is not an MCP tool, a provider registry, a package marketplace,
+or an engineering verdict. The current first-party catalogue is explicitly
 `productionEligible: false`: it records local developer composition, not redistribution
 clearance or production qualification.
 
@@ -15,11 +15,16 @@ recalculation of atomic manifest bodies. It cannot pull, install, start, stop, d
 change a project, or write the lock.
 
 ```text
-ProjectCapabilityDemand (semantic only)
+ProjectCapabilityIntent (pending brief) or ProjectCapabilityDemand (published plan)
   + trusted binding catalogue
   + local policy + observed host + exact lock
   -> ProjectCapabilityPlan (read-only, concrete)
 ```
+
+The initial route is documented in [project capability intent](project-capability-intent.md).
+The exact binding map is documented separately in
+[qualified binding catalogue](qualified-binding-catalog.md); neither page is a
+caller-selectable provider surface.
 
 ## Identities that stay separate
 

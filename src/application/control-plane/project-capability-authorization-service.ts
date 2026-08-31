@@ -9,6 +9,7 @@ import type { ProjectBriefRevision } from "../../domain/project/project-brief.ts
 import { capabilityRuntimeCatalogMaterialsForRequirements } from "./capability-runtime-catalog-materials.ts";
 import { compileProjectCapabilityIntent } from "./compile-project-capability-intent.ts";
 import {
+  engineeringCapabilityRequirementKey,
   flattenEngineeringCapabilityRequirements,
   type RequiredEngineeringCapability,
 } from "../../domain/capability/engineering-capability.ts";
@@ -431,7 +432,14 @@ export class ProjectCapabilityAuthorizationService {
         effectiveEnvelope: envelope,
       };
     }
-    if (proposal.status === "unresolved") {
+    if (
+      proposal.status === "unresolved" &&
+      !unresolvedProposalOnlyRetainsAuthorizedBlockers(
+        envelope.proposal,
+        proposal,
+        unresolvedBlockers,
+      )
+    ) {
       return {
         status: "unresolved",
         ledger,
@@ -774,6 +782,76 @@ export class ProjectCapabilityAuthorizationService {
         : [],
     });
   }
+}
+
+/**
+ * A published-plan amendment may retain an explicitly authorized unavailable
+ * binding (for example, an unqualified Chrono candidate). That retained local
+ * state remains visible on the successor proposal, but cannot make a wholly
+ * resolved delta unamendable. Any new unresolved operation or binding, or a
+ * changed retained candidate/unit/material, stays a hard unresolved review.
+ */
+function unresolvedProposalOnlyRetainsAuthorizedBlockers(
+  envelope: ProjectCapabilityProposal,
+  proposal: ProjectCapabilityProposal,
+  unresolvedBlockers: readonly string[],
+): boolean {
+  if (unresolvedBlockers.length > 0) return false;
+  const previousBindings = new Map(
+    envelope.bindings.map((binding) => [
+      engineeringCapabilityRequirementKey(binding.requirement),
+      binding,
+    ]),
+  );
+
+  return proposal.bindings
+    .filter((binding) => binding.status !== "selected")
+    .every((binding) => {
+      const previous = previousBindings.get(
+        engineeringCapabilityRequirementKey(binding.requirement),
+      );
+      if (
+        !previous || previous.status === "selected" ||
+        deterministicJson(retainedBlockedBindingIdentity(envelope, previous)) !==
+          deterministicJson(retainedBlockedBindingIdentity(proposal, binding))
+      ) {
+        return false;
+      }
+      return true;
+    });
+}
+
+function retainedBlockedBindingIdentity(
+  proposal: ProjectCapabilityProposal,
+  binding: ProjectCapabilityProposal["bindings"][number],
+): unknown {
+  const candidate = binding.candidate;
+  return {
+    candidate: candidate === undefined ? null : {
+      id: candidate.id,
+      version: candidate.version,
+      adapter: candidate.adapter,
+      profile: candidate.profile,
+      unitIds: candidate.unitIds,
+    },
+    units: binding.unitIds.map((unitId) => {
+      const unit = proposal.units.find((candidate) => candidate.id === unitId);
+      return unit === undefined ? null : {
+        id: unit.id,
+        version: unit.version,
+        manifestFingerprint: unit.manifestFingerprint,
+      };
+    }),
+    materials: proposal.materials
+      .filter((material) => binding.unitIds.includes(material.unitId))
+      .map((material) => ({
+        unitId: material.unitId,
+        materialId: material.materialId,
+        imageReference: material.imageReference,
+        downloadBytes: material.downloadBytes,
+        storageBytes: material.storageBytes,
+      })),
+  };
 }
 
 async function eventWithFingerprint<

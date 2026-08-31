@@ -532,7 +532,7 @@ function item(
   };
 }
 
-Deno.test("SysON seed after documentary baseline amends the brief ceiling instead of switching methods", async () => {
+Deno.test("a qualified SysON delta can amend beside an explicitly authorized unqualified Chrono candidate", async () => {
   const directory = await Deno.makeTempDir({ prefix: "capability-seed-amendment-" });
   try {
     let tick = 0;
@@ -613,10 +613,26 @@ Deno.test("SysON seed after documentary baseline amends the brief ceiling instea
             dependsOnItemIds: ["success"],
             verificationAuthority: { id: "assembly-integrity", version: "1.0" },
           },
+          {
+            ...item(
+              "kinematics",
+              "verification-activity",
+              "Observe prescribed rigid-body kinematics later.",
+            ),
+            dependsOnItemIds: ["success"],
+            verificationAuthority: { id: "prescribed-kinematics", version: "1.0" },
+          },
         ],
       },
     );
     const proposal = await authorization.proposeForPendingBrief(proposed);
+    assertEquals(proposal.status, "unresolved");
+    assertEquals(
+      proposal.bindings.find((binding) =>
+        binding.requirement.id === "mechanics.observe-prescribed-kinematics"
+      )?.candidate?.qualification,
+      "unqualified",
+    );
     await authorization.prepareInitial(proposal);
     const review = proposed.framing!.proposalReview!;
     const approved = await briefs.approveBrief(
@@ -686,6 +702,7 @@ Deno.test("SysON seed after documentary baseline amends the brief ceiling instea
       [
         "geometry.module.immediate-compound",
         "geometry.observe-assembly-integrity",
+        "mechanics.observe-prescribed-kinematics",
         "model.author-system",
       ],
     );
@@ -697,6 +714,23 @@ Deno.test("SysON seed after documentary baseline amends the brief ceiling instea
     assertEquals(
       observedMaterialKeys.some((key) => key.startsWith("casys.syson-stack\u0000")),
       true,
+    );
+    const withNewUnresolvedOperation = {
+      ...seeded,
+      workItems: [
+        ...seeded.workItems,
+        plannedWorkItem({
+          id: "wi-unregistered",
+          status: "ready",
+          kind: "architect",
+          operationId: "unregistered-operation",
+          operationVersion: "1",
+        }),
+      ],
+    };
+    assertEquals(
+      (await authorization.reviewPublishedPlan(withNewUnresolvedOperation)).status,
+      "unresolved",
     );
   } finally {
     await Deno.remove(directory, { recursive: true });

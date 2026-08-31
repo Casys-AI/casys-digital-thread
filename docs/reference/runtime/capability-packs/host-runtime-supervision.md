@@ -54,16 +54,21 @@ must match the current binding, unit manifest, digest, profile, contract, launch
 and host identity exactly; an absent or mismatched mode blocks resolution before any
 host mutation.
 
-The Workbench still displays three literal axes per planned material: physical material,
-physical runtime, and qualification. Its third axis is derived from one exact planned
-binding plus the current server catalogue/mode context; ambiguous or missing context is
-shown as `unavailable`, never copied from Docker.
+The Workbench projection exposes three literal axes per planned material: physical
+material (`absent`, `acquiring`, `installed`, `failed`, or `unavailable`), physical
+runtime (`inactive`, `starting`, `active`, `stopping`, `degraded`, or `unavailable`),
+and qualification (`compatible`, `qualified`, or `unavailable`). Its third axis is
+derived from one exact planned binding plus the current server catalogue/mode context;
+ambiguous or missing context is `unavailable`, never copied from Docker. `unqualified`,
+`revoked`, and `incompatible` remain binding/plan conditions, rather than invented
+material-axis qualification states.
 
 `GET /api/project/capabilities` exposes the existing redacted
 `project-capability-workbench/1.0` projection through the native Workbench BFF. It has
 no POST/SSE counterpart in this lot and contains no Docker argv, image repository,
 ports, mounts, credentials, secret-slot names, or mutation control. The visual card is
-deliberately deferred; the endpoint is the read-only integration surface.
+deliberately deferred; the Desktop proxy does not expose this helper. The endpoint is
+the read-only native integration surface, not a claimed Workbench UI feature.
 
 ```text
 catalogue material -> exact launch-group reference + fingerprint
