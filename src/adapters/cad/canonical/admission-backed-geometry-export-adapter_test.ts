@@ -18,6 +18,7 @@ import {
   ADMITTED_GEOMETRY_EXPORT_FORMATS,
   ADMITTED_TARGETED_PART_EXPORT_FORMATS,
 } from "./admission-backed-geometry-export-adapter.ts";
+import { BUILD123D_EXPORT_TIMEOUT_MS } from "./build123d-export-contract.ts";
 
 import {
   GEOMETRY_DRAFT_ADMISSION_SCHEMA,
@@ -202,7 +203,7 @@ Deno.test("admission-backed export sends exact admitted bytes to private build12
       script: ADMITTED_SCRIPT,
       formats: [...ADMITTED_GEOMETRY_EXPORT_FORMATS],
       name: String((calls[0]?.arguments as Record<string, unknown>).name),
-      timeout_ms: 120000,
+      timeout_ms: BUILD123D_EXPORT_TIMEOUT_MS,
     });
     assertEquals(
       String((calls[0]?.arguments as Record<string, unknown>).name)
@@ -276,7 +277,7 @@ Deno.test("targeted admission-backed export makes one fixed call and durably cap
       script: ADMITTED_SCRIPT,
       formats: [...ADMITTED_TARGETED_PART_EXPORT_FORMATS],
       name: String((calls[0]?.arguments as Record<string, unknown>).name),
-      timeout_ms: 120000,
+      timeout_ms: BUILD123D_EXPORT_TIMEOUT_MS,
     });
     assertEquals(draft.target.partDefinitionElementId, "sysml.part.box");
     assertEquals(draft.target.files.map((file) => file.format), ["step", "gltf"]);
@@ -290,12 +291,14 @@ Deno.test("targeted admission-backed export makes one fixed call and durably cap
       kind?: string;
       target?: { partDefinitionElementId?: string };
       admission?: { schemaVersion?: string; target?: { label?: string } };
+      providerCall?: { timeoutMs?: number };
     };
     assertEquals(parsed.schemaVersion, "geometry-part-draft-capture/1.1");
     assertEquals(parsed.kind, "geometry-part-draft");
     assertEquals(parsed.target?.partDefinitionElementId, "sysml.part.box");
     assertEquals(parsed.admission?.schemaVersion, GEOMETRY_PART_DRAFT_ADMISSION_SCHEMA);
     assertEquals(parsed.admission?.target?.label, "Box");
+    assertEquals(parsed.providerCall?.timeoutMs, BUILD123D_EXPORT_TIMEOUT_MS);
   } finally {
     await Deno.remove(tmpDir, { recursive: true });
   }

@@ -44,10 +44,10 @@ import {
   providerFileToDraftFile,
   type ProviderGeometryFile,
 } from "./geometry-draft-capture.ts";
+import { BUILD123D_EXPORT_TIMEOUT_MS } from "./build123d-export-contract.ts";
 
 /** Fixed by the server; no caller can choose an export profile. */
 export const GEOMETRY_PART_DRAFT_EXPORT_FORMATS = ["step", "gltf"] as const;
-export const GEOMETRY_PART_DRAFT_TIMEOUT_MS = 120_000 as const;
 export const GEOMETRY_PART_DRAFT_CAPTURE_SCHEMA =
   "geometry-part-draft-capture/1.1" as const;
 
@@ -87,7 +87,7 @@ export interface GeometryPartDraftCapture {
     readonly exportName: string;
     readonly scriptHash: ContentFingerprint;
     readonly formats: ReadonlyArray<GeometryPartExportFormat>;
-    readonly timeoutMs: typeof GEOMETRY_PART_DRAFT_TIMEOUT_MS;
+    readonly timeoutMs: typeof BUILD123D_EXPORT_TIMEOUT_MS;
   };
   /** In-memory only; the content-addressed filename carries this identity. */
   readonly fingerprint: ContentFingerprint;
@@ -148,7 +148,7 @@ export async function assertGeometryPartDraftPaths(
       exportName: expectedExportName,
       scriptHash: draft.target.scriptHash,
       formats: draft.exportFormats,
-      timeoutMs: GEOMETRY_PART_DRAFT_TIMEOUT_MS,
+      timeoutMs: BUILD123D_EXPORT_TIMEOUT_MS,
     })
   ) {
     throw new TypeError(
@@ -274,7 +274,7 @@ export async function captureGeometryPartDraft(
       script: input.script,
       formats: [...GEOMETRY_PART_DRAFT_EXPORT_FORMATS],
       name: exportName,
-      timeout_ms: GEOMETRY_PART_DRAFT_TIMEOUT_MS,
+      timeout_ms: BUILD123D_EXPORT_TIMEOUT_MS,
     },
   });
   const providerFiles = normalizeTargetExport(
@@ -315,7 +315,7 @@ export async function captureGeometryPartDraft(
       exportName,
       scriptHash,
       formats: [...GEOMETRY_PART_DRAFT_EXPORT_FORMATS],
-      timeoutMs: GEOMETRY_PART_DRAFT_TIMEOUT_MS,
+      timeoutMs: BUILD123D_EXPORT_TIMEOUT_MS,
     },
   };
   const fingerprint = await sha256Fingerprint(unsigned);

@@ -6,6 +6,7 @@ import {
   build123dContractFingerprint,
   probeBuild123dContract,
 } from "./probe-build123d-contract.ts";
+import { BUILD123D_EXPORT_TIMEOUT_MS } from "../../src/adapters/cad/canonical/build123d-export-contract.ts";
 
 const MANIFEST = JSON.stringify({
   servers: [
@@ -67,9 +68,10 @@ Deno.test("Build123d preflight rejects fleet drift before network", async () => 
 
 Deno.test("Build123d preflight rejects a changed schema or resource surface", async () => {
   const changedSchema = structuredClone(TOOLS);
-  const executeInput = changedSchema[0]!.inputSchema as Record<string, unknown>;
-  const properties = executeInput.properties as Record<string, unknown>;
-  (properties.timeout_ms as Record<string, unknown>).maximum = 60_001;
+  const exportInput = changedSchema[1]!.inputSchema as Record<string, unknown>;
+  const properties = exportInput.properties as Record<string, unknown>;
+  (properties.timeout_ms as Record<string, unknown>).maximum =
+    BUILD123D_EXPORT_TIMEOUT_MS + 1;
   const schemaResult = await probeBuild123dContract({
     manifestText: MANIFEST,
     fetch: new FakeBuild123dFetch({ tools: changedSchema }).fetch,
@@ -83,6 +85,10 @@ Deno.test("Build123d preflight rejects a changed schema or resource surface", as
     expectedContractSha256: await fixtureFingerprint(TOOLS),
   });
   assertEquals(resourceResult.contract, "contract-divergent");
+});
+
+Deno.test("Build123d export timeout cannot exceed its published 60-second ceiling", () => {
+  assertEquals(BUILD123D_EXPORT_TIMEOUT_MS, 60_000);
 });
 
 Deno.test("Build123d preflight classifies transport failure as unavailable", async () => {
@@ -119,7 +125,11 @@ function executionTool(name: string, resourceUri: string): Record<string, unknow
     inputSchema: {
       type: "object",
       properties: {
-        timeout_ms: { type: "integer", minimum: 1, maximum: 60_000 },
+        timeout_ms: {
+          type: "integer",
+          minimum: 1,
+          maximum: BUILD123D_EXPORT_TIMEOUT_MS,
+        },
       },
     },
     outputSchema: { type: "object", properties: {} },

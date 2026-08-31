@@ -71,6 +71,7 @@ import {
 import type {
   GeometrySourceAnalysisReference,
 } from "../../../domain/cad/source/geometry-source-analysis-reference.ts";
+import { BUILD123D_EXPORT_TIMEOUT_MS } from "./build123d-export-contract.ts";
 
 // ── Schema constant ───────────────────────────────────────────────────────────
 
@@ -328,7 +329,7 @@ export async function captureGeometryDraft(
       script,
       formats: [...manifest.exportFormats],
       name: PREVIEW_ASSEMBLY_NAME,
-      timeout_ms: 120000,
+      timeout_ms: BUILD123D_EXPORT_TIMEOUT_MS,
     },
   });
   const assemblyProviderFiles = normalizeAssemblyExport(
@@ -537,7 +538,7 @@ export async function captureGeometryBundleDraft(
       script: input.assemblyScript,
       formats: [...manifest.exportFormats],
       name: assemblyExportName,
-      timeout_ms: 120000,
+      timeout_ms: BUILD123D_EXPORT_TIMEOUT_MS,
     },
   });
   const assemblyProviderFiles = normalizeBundleExport(
@@ -559,7 +560,7 @@ export async function captureGeometryBundleDraft(
         script,
         formats: [...manifest.partExportFormats],
         name,
-        timeout_ms: 120000,
+        timeout_ms: BUILD123D_EXPORT_TIMEOUT_MS,
       },
     });
     const providerFiles = normalizeBundleExport(

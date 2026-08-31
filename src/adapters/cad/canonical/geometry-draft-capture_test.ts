@@ -45,6 +45,7 @@ import {
   GEOMETRY_BUNDLE_PLACEMENT_CONVENTION,
   type GeometryBundleManifest,
 } from "../../../domain/cad/canonical/geometry-bundle.ts";
+import { BUILD123D_EXPORT_TIMEOUT_MS } from "./build123d-export-contract.ts";
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -180,7 +181,10 @@ Deno.test("captureGeometryDraft saves a verifiable JSON capture for a valid scri
           (call.arguments as Record<string, unknown>).name,
           "geometry-preview-assembly",
         );
-        assertEquals((call.arguments as Record<string, unknown>).timeout_ms, 120000);
+        assertEquals(
+          (call.arguments as Record<string, unknown>).timeout_ms,
+          BUILD123D_EXPORT_TIMEOUT_MS,
+        );
         return Promise.resolve(assemblyGltfResponse());
       },
       callToolTextResult: () => Promise.reject(new Error("unexpected")),
@@ -748,6 +752,10 @@ Deno.test("captureGeometryBundleDraft exports one exact assembly and one exact s
     assertEquals(
       (calls[1]!.arguments as Record<string, unknown>).script,
       definitionScript,
+    );
+    assertEquals(
+      calls.map((call) => (call.arguments as Record<string, unknown>).timeout_ms),
+      [BUILD123D_EXPORT_TIMEOUT_MS, BUILD123D_EXPORT_TIMEOUT_MS],
     );
     assertEquals(capture.schemaVersion, GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA);
     assertEquals(capture.sourceAnalyses.assembly.selector, { kind: "assembly" });
