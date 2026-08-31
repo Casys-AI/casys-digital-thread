@@ -2649,7 +2649,14 @@ function OverviewFloatingViewer({
           onMoveByKeyboard(event.key);
         }}
       >
-        <span className="overview-thread-viewer-title">{title}</span>
+        <span
+          className="overview-thread-viewer-title"
+          title={viewerSession
+            ? `${viewerSession.app.id}@${viewerSession.app.version} · ${viewerSession.session.schema}`
+            : undefined}
+        >
+          {title}
+        </span>
         <span className="overview-thread-viewer-actions">
           <button
             type="button"
@@ -2672,26 +2679,10 @@ function OverviewFloatingViewer({
       <div className="overview-thread-viewer-body">
         {viewerSession?.kind === "mcp-app"
           ? (
-            <>
-              <div className="overview-thread-viewer-meta">
-                <span>
-                  {viewerSession.app.id}@{viewerSession.app.version}
-                </span>
-                <code>{viewerSession.resource.fingerprint}</code>
-              </div>
-              <div className="overview-thread-viewer-session-detail">
-                <code>
-                  {viewerSession.anchor.kind === "project-review"
-                    ? `project-review:${viewerSession.anchor.id}`
-                    : overviewThreadGraphRefKey(viewerSession.anchor)}
-                </code>
-                <span>{viewerSession.session.schema}</span>
-              </div>
-              <McpAppFrame
-                className="overview-thread-viewer-app-frame"
-                session={viewerSession}
-              />
-            </>
+            <McpAppFrame
+              className="overview-thread-viewer-app-frame"
+              session={viewerSession}
+            />
           )
           : (
             <p className="overview-thread-viewer-unavailable">
@@ -2725,10 +2716,9 @@ function overviewViewerTitle(
   item?: OverviewHeroNode,
   viewerSession?: ThreadViewerSession,
 ): string {
+  if (item?.label) return item.label;
   return viewerSession
-    ? `App · ${viewerSession.app.id}@${viewerSession.app.version} · ${
-      item?.label ?? "unavailable"
-    }`
+    ? `${viewerSession.app.id}@${viewerSession.app.version}`
     : "App session · unavailable";
 }
 

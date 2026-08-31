@@ -208,37 +208,9 @@
   display: none;
 }
 
-.overview-thread-viewer-meta {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(5rem, 44%);
-  gap: 0.5rem;
-  align-items: center;
-  padding: 0.34rem 0.55rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border) 72%,
-    transparent);
-  background: color-mix(in srgb, var(--ui-muted) 38%, var(--ui-card));
-  font-size: 0.66rem;
-  font-weight: 650;
-}
-
-.overview-thread-viewer-meta > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.overview-thread-viewer-meta code {
-  overflow: hidden;
-  color: var(--ui-muted-foreground);
-  font-size: 0.5rem;
-  text-align: end;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .overview-thread-viewer[data-viewer-kind="session"] .overview-thread-viewer-body {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -255,39 +227,6 @@
   padding: 0.8rem;
   color: var(--ui-muted-foreground);
   font-size: 0.7rem;
-}
-
-.overview-thread-viewer-session-detail {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 0.42rem;
-  padding: 0.26rem 0.55rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border) 72%,
-    transparent);
-  background: color-mix(in srgb, var(--ui-muted) 22%, var(--ui-card));
-  color: var(--ui-muted-foreground);
-  font-size: 0.52rem;
-  line-height: 1.2;
-}
-
-.overview-thread-viewer-session-detail code,
-.overview-thread-viewer-session-detail span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.overview-thread-viewer-session-detail code {
-  flex: 0 1 auto;
-  color: var(--ui-foreground);
-  font-family: var(--font-mono);
-}
-
-.overview-thread-viewer-session-detail span {
-  flex: 1 1 auto;
-  text-align: end;
 }
 
 @container overview-thread-viewer (max-width: 18rem) {
