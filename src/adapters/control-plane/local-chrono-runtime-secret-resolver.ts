@@ -40,8 +40,10 @@ const CHRONO_SERVICE_ENV = "MCP_BEARER_TOKEN" as const;
 
 /**
  * The only server-side implementation that can observe, mint, inject and use
- * the Chrono bearer token.  `readToken` is deliberately a scalar test seam,
- * never a caller-supplied environment map or slot-to-variable mapping.
+ * the Chrono bearer token. If the optional host-local override is absent, it
+ * mints one CSPRNG bearer generation for this server process. `readToken` is
+ * deliberately a scalar test seam, never a caller-supplied environment map
+ * or slot-to-variable mapping.
  */
 export class LocalChronoRuntimeSecretResolver
   implements
@@ -134,14 +136,16 @@ export class LocalChronoRuntimeSecretResolver
     // bearer values. A process restart deliberately gets a fresh generation
     // and forces the secret-bearing group reconciliation above.
     if (!this.#tokenRead) {
-      const token = this.#readToken();
-      // Compose performs `$` interpolation even when a descriptor is supplied
-      // on stdin. Reject it rather than letting the launch overlay and the
-      // fixed local client observe different bearer material.
-      this.#processToken = typeof token === "string" && /^[\x21-\x7e]+$/.test(token) &&
-          !token.includes("$")
-        ? token
-        : undefined;
+      const configured = this.#readToken();
+      // A missing optional override is code-owned local setup, so mint the
+      // process generation here. Compose performs `$` interpolation even when
+      // a descriptor is supplied on stdin: an explicitly configured but
+      // invalid value must therefore fail closed rather than be replaced.
+      if (configured === undefined) {
+        this.#processToken = mintChronoBearerToken();
+      } else {
+        this.#processToken = isChronoBearerToken(configured) ? configured : undefined;
+      }
       this.#tokenRead = true;
     }
     return this.#processToken;
@@ -156,6 +160,18 @@ export class LocalChronoRuntimeSecretResolver
     }
     return token;
   }
+}
+
+function mintChronoBearerToken(): string {
+  return crypto.getRandomValues(new Uint8Array(32)).toBase64({
+    alphabet: "base64url",
+    omitPadding: true,
+  });
+}
+
+function isChronoBearerToken(value: unknown): value is string {
+  return typeof value === "string" && /^[\x21-\x7e]+$/.test(value) &&
+    !value.includes("$");
 }
 
 async function assertChronoGroupReference(

@@ -177,6 +177,9 @@ endpoint; the agent never sends any of them. `casys-chrono@1.0.0` runs one
 port, bind mount, device, socket or privilege, and receives its one bearer value only
 through a host-local opaque secret snapshot at launch and client construction. The
 sealed group fingerprint covers the fixed shape and secret slot, never the value.
+With no optional `CASYS_CHRONO_MCP_BEARER_TOKEN` host override, the resolver mints the
+single CSPRNG bearer generation in process memory; an invalid explicit override stays
+`unavailable` rather than falling back to a generated value.
 
 An active secret-bearing group is reconciled with that same process-local snapshot
 before the fixed client is returned; this avoids a container/client token generation

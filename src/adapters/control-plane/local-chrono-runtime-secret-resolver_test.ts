@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assert, assertEquals, assertRejects } from "@std/assert";
 import {
   CHRONO_MCP_BEARER_TOKEN_SLOT,
   LocalChronoRuntimeSecretResolver,
@@ -39,6 +39,49 @@ Deno.test("Chrono secret resolver retains one opaque bearer generation for the s
   assertEquals(group.compose.content.includes("first-test-bearer"), false);
 });
 
+Deno.test("Chrono secret resolver mints one opaque bearer generation when host config is absent", async () => {
+  const resolver = new LocalChronoRuntimeSecretResolver({
+    readToken: () => undefined,
+  });
+  const group = (await createFirstPartyCapabilityRuntimeLaunchGroups()).find((
+    candidate,
+  ) => candidate.id === "casys-chrono");
+  if (!group) throw new Error("Expected exact Chrono group.");
+  const request = {
+    group: capabilityRuntimeLaunchGroupReference(group),
+    slots: [CHRONO_MCP_BEARER_TOKEN_SLOT],
+  } as const;
+
+  assertEquals(
+    (await resolver.observe(request.slots)).get(CHRONO_MCP_BEARER_TOKEN_SLOT),
+    "available",
+  );
+  const [first, second] = await Promise.all([
+    resolver.beginSnapshot(request),
+    resolver.beginSnapshot(request),
+  ]);
+  const [firstOverlay, secondOverlay] = await Promise.all([
+    resolver.composeOverlay({ group, snapshot: first }),
+    resolver.composeOverlay({ group, snapshot: second }),
+  ]);
+
+  assertEquals(
+    new TextDecoder().decode(firstOverlay) === new TextDecoder().decode(secondOverlay),
+    true,
+  );
+  const overlay = JSON.parse(new TextDecoder().decode(firstOverlay)) as {
+    services: { "mcp-chrono": { environment?: { MCP_BEARER_TOKEN?: unknown } } };
+  };
+  const minted = overlay.services["mcp-chrono"].environment?.MCP_BEARER_TOKEN;
+  assert(
+    typeof minted === "string" && /^[A-Za-z0-9_-]{43}$/.test(minted),
+  );
+  const descriptor = JSON.parse(group.compose.content) as {
+    services: { "mcp-chrono": { environment?: unknown } };
+  };
+  assertEquals(descriptor.services["mcp-chrono"].environment, undefined);
+});
+
 Deno.test("Chrono secret resolver refuses a same-name launch-group substitution", async () => {
   const resolver = new LocalChronoRuntimeSecretResolver({
     readToken: () => "test-bearer",
@@ -63,10 +106,7 @@ Deno.test("Chrono secret resolver refuses a same-name launch-group substitution"
   );
 });
 
-Deno.test("Chrono secret resolver treats a Compose-interpolable bearer token as unavailable", async () => {
-  const resolver = new LocalChronoRuntimeSecretResolver({
-    readToken: () => "test$chrono-bearer",
-  });
+Deno.test("Chrono secret resolver treats invalid explicit bearer tokens as unavailable", async () => {
   const group = (await createFirstPartyCapabilityRuntimeLaunchGroups()).find((
     candidate,
   ) => candidate.id === "casys-chrono");
@@ -76,13 +116,18 @@ Deno.test("Chrono secret resolver treats a Compose-interpolable bearer token as 
     slots: [CHRONO_MCP_BEARER_TOKEN_SLOT],
   } as const;
 
-  assertEquals(
-    (await resolver.observe(request.slots)).get(CHRONO_MCP_BEARER_TOKEN_SLOT),
-    "unavailable",
-  );
-  await assertRejects(
-    () => resolver.beginSnapshot(request),
-    Error,
-    "bearer credential is unavailable",
-  );
+  for (const token of ["test$chrono-bearer", "", "line\nbreak"]) {
+    const resolver = new LocalChronoRuntimeSecretResolver({
+      readToken: () => token,
+    });
+    assertEquals(
+      (await resolver.observe(request.slots)).get(CHRONO_MCP_BEARER_TOKEN_SLOT),
+      "unavailable",
+    );
+    await assertRejects(
+      () => resolver.beginSnapshot(request),
+      Error,
+      "bearer credential is unavailable",
+    );
+  }
 });

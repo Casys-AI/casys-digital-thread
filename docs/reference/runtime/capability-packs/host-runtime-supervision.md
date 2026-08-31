@@ -110,7 +110,10 @@ group fingerprint, journal, argv, Thread, CAS, WAL, Workbench and error output n
 receive the value. A group with a secret slot always performs the sealed `compose up`
 reconciliation when a session begins, even if it is already active. A non-secret active
 group remains a no-op. The resolver keeps one snapshot generation for a server process,
-so parallel leases cannot rotate one client away from its container.
+so parallel leases cannot rotate one client away from its container. When the optional
+`CASYS_CHRONO_MCP_BEARER_TOKEN` host override is absent, that resolver mints a CSPRNG
+base64url bearer in process memory. An explicitly supplied value must satisfy the safe
+Compose grammar; an invalid value remains `unavailable` and is never silently replaced.
 
 ## Lease, journal and JIT lifecycle
 
