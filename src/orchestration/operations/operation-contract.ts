@@ -75,6 +75,12 @@ export interface RegisteredEngineeringOperation {
   readonly prerequisiteOnly?: true;
   readonly resolvedOperationPlan?: "2.0";
   readonly decisionEvidenceScope?: "thread-entity-bindings";
+  /**
+   * Every thread-entity input must name the exact project-change / run basis.
+   * This keeps a state-bearing operation from carrying an older snapshot into
+   * a later append or queue.
+   */
+  readonly threadEntityBindingsMustMatchBasis?: true;
   readonly requiresAdditiveChange?: true;
   /**
    * When set, every work item for this operation must `dependsOn` exactly one

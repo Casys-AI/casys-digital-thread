@@ -3,6 +3,7 @@ import type {
   EngineeringAgentRunStatus,
   EngineeringApprovedBriefBasis,
   EngineeringBasisRef,
+  EngineeringOperationInputBinding,
   EngineeringOperationRef,
   EngineeringProjectCommandName,
   EngineeringProjectSnapshot,
@@ -312,6 +313,9 @@ async function queueV3Run(
     invalidInput("A V3 run requires a registered operation on its work item.");
   }
   const registered = assertRegisteredQueueOperation(planning, operation, basis.kind);
+  if (registered.operation.threadEntityBindingsMustMatchBasis) {
+    assertThreadEntityBindingsMatchRunBasis(registered.bindings, basis);
+  }
   const operationalCapability = await assertQueueEligibility(
     planning,
     draft,
@@ -364,6 +368,34 @@ async function queueV3Run(
     candidate.resolvedOperationPlan = validateResolvedOperationPlanRef(sealed);
   }
   return candidate;
+}
+
+/**
+ * Recheck basis-bound Thread entities immediately before a queue transition.
+ * Append validation is the primary UX guard; this remains a pre-persistence
+ * defence against a historical/corrupt work item or a changed registry seam.
+ */
+function assertThreadEntityBindingsMatchRunBasis(
+  bindings: readonly EngineeringOperationInputBinding[],
+  basis: EngineeringBasisRef,
+): void {
+  if (basis.kind !== "thread-snapshot") {
+    invalidInput(
+      "A Thread-entity basis-bound operation requires an exact ThreadSnapshot run basis.",
+    );
+  }
+  for (const binding of bindings) {
+    if (binding.source.kind !== "thread-entity") continue;
+    const reference = binding.source.reference;
+    if (
+      reference.snapshotId !== basis.snapshotId ||
+      reference.snapshotRevision !== basis.revision
+    ) {
+      invalidInput(
+        `Operation binding ${binding.name} must name the exact queued run Thread basis; historical Thread-entity references are not queueable.`,
+      );
+    }
+  }
 }
 
 /**

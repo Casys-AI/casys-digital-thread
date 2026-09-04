@@ -121,6 +121,12 @@ the one effective script, and records its full manifest. Never infer admission f
 workspace membership, MIME, path or a successful isolated run. A later correction is a
 new `project_resource_capture` plus a successor file revision, then a new capture.
 
+When a preview is `ready-for-review`, it returns the exact `compile.seal-admission@3` `operation`
+alongside its MRTR `decisionParameters`. Pass that operation verbatim to the later
+`project_change_append`; do not rebuild its `sysmlModel` binding from the review text.
+It names the exact Thread snapshot reviewed by the server. A stale or historical
+Thread-entity binding is refused both when appending the seal and when queueing it.
+
 Only stop for dependency lowering when the returned preview literally reports
 `source.dependency-lowering-unavailable`. That remains expected for Modelica and
 circuit-only SPICE multi-file closures. A Build123d direct closure uses the active V1

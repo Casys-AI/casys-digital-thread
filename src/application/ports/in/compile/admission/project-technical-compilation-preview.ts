@@ -7,6 +7,7 @@
  */
 
 import type { TechnicalCompilationDocument } from "../../../../../domain/compile/admission/technical-compilation.ts";
+import type { TechnicalCompilationAdmissionOperation } from "../../../../../domain/compile/admission/technical-compilation-admission-operation.ts";
 import type { TechnicalCompilationJoinGap } from "../../../../../domain/compile/admission/technical-compilation-preview-review.ts";
 import type { ContentFingerprint } from "../../../../../domain/kernel/primitives.ts";
 import type { EngineeringThreadSnapshotBasis } from "../../../../../domain/project/engineering-project.ts";
@@ -41,6 +42,12 @@ export interface ProjectTechnicalCompilationReadyPreview
   readonly status: "ready-for-review";
   readonly draft: TechnicalCompilationDraftReference;
   readonly decisionParameters: readonly EngineeringDecisionProposalParameter[];
+  /**
+   * Exact server-derived work-item operation for the subsequent admission
+   * append. Reuse it verbatim: its sysmlModel binding is anchored to this
+   * preview's exact Thread basis.
+   */
+  readonly operation: TechnicalCompilationAdmissionOperation;
 }
 
 export interface ProjectTechnicalCompilationNonReadyPreview

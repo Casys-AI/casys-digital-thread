@@ -93,7 +93,7 @@ export function registerProjectTechnicalCompilationTools(
       const content = compilationPreviewContent({
         status: result.status,
         ...(result.status === "ready-for-review"
-          ? { draftId: result.draft.draftId }
+          ? { draftId: result.draft.draftId, operation: result.operation }
           : {}),
         gaps: result.gaps,
       });
@@ -281,7 +281,7 @@ const projectTechnicalSourceCaptureTool: MCPTool = {
 const projectTechnicalCompilationPreviewTool: MCPTool = {
   name: "project_technical_compilation_preview",
   description:
-    "Compile captured technical sources against the unique current Thread tip using only server-owned analysis, catalog profiles, and unique SysML joins. Name projectId and sourceRefs from project_technical_source_capture result.reference locators; never pass the capture review envelope, capture document, bindings, or profileRequests. Omitted basis is the unique current Thread tip, not latest. A reachable CAD lever is reopened from the source; the server does not invent one. A ready result contains the exact review draft and compilation document. Construct a later MRTR proposal only from decisionParameters returned by the use case; never invent missing parameters. The preview writes no EngineeringProject or Thread state and grants no MRTR or execution authority.",
+    "Compile captured technical sources against the unique current Thread tip using only server-owned analysis, catalog profiles, and unique SysML joins. Name projectId and sourceRefs from project_technical_source_capture result.reference locators; never pass the capture review envelope, capture document, bindings, or profileRequests. Omitted basis is the unique current Thread tip, not latest. A reachable CAD lever is reopened from the source; the server does not invent one. A ready result contains the exact review draft, compilation document, MRTR decisionParameters, and the exact compile.seal-admission@3 operation. Reuse that operation verbatim in the later project_change_append; never reconstruct its sysmlModel binding from a historical snapshot. The preview writes no EngineeringProject or Thread state and grants no MRTR or execution authority.",
   inputSchema: {
     type: "object",
     properties: {

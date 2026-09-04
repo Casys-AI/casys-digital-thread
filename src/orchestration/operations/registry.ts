@@ -354,6 +354,10 @@ const OPERATIONS = [
     execution: "trusted",
     runtimeDemand: NO_RUNTIME_DEMAND,
     decisionEvidenceScope: "thread-entity-bindings",
+    // Admission is a current-basis review. It cannot appear in the initial
+    // plan, and every Thread entity binding must recross the appended head.
+    requiresAdditiveChange: true,
+    threadEntityBindingsMustMatchBasis: true,
     bindings: [{
       name: "sysmlModel",
       allowedSourceKinds: ["thread-entity"],

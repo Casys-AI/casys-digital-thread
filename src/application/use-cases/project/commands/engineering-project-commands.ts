@@ -258,6 +258,8 @@ export interface EngineeringProjectPlanOperationRegistry {
       /** Requires a server-sealed resolved-operation-plan/2.0 before queue commit. */
       readonly resolvedOperationPlan?: "2.0";
       readonly decisionEvidenceScope?: "thread-entity-bindings";
+      /** Every Thread-entity binding must match the exact append/run basis. */
+      readonly threadEntityBindingsMustMatchBasis?: true;
       /**
        * When true, the operation must arrive via project_change_append, not the
        * initial plan. publishPlan enforces this at planning time so the agent

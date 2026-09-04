@@ -441,6 +441,9 @@ Deno.test("technical source capture accepts only attachmentId,attachmentRevision
     false,
   );
   const preview = app.tool("project_technical_compilation_preview");
+  assertStringIncludes(preview.description, "compile.seal-admission@3");
+  assertStringIncludes(preview.description, "Reuse that operation verbatim");
+  assertStringIncludes(preview.description, "sysmlModel");
   const previewInput = preview.inputSchema as Record<string, unknown>;
   assertEquals(
     Object.keys(previewInput.properties as Record<string, unknown>).includes(

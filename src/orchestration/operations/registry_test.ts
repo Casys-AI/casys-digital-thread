@@ -758,6 +758,8 @@ Deno.test("technical compilation admission is one consequential trusted Thread o
   assertEquals(operation.riskClass, "consequential");
   assertEquals(operation.execution, "trusted");
   assertEquals(operation.decisionEvidenceScope, "thread-entity-bindings");
+  assertEquals(operation.requiresAdditiveChange, true);
+  assertEquals(operation.threadEntityBindingsMustMatchBasis, true);
   assertEquals(operation.bindings, [{
     name: "sysmlModel",
     allowedSourceKinds: ["thread-entity"],
