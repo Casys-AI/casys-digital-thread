@@ -8,7 +8,6 @@ import type {
   AtomicCapabilityRuntimeUnit,
   CapabilityRuntimeBindingCandidate,
   CapabilityRuntimeBindingPreference,
-  CapabilityRuntimeHostEffects,
   CapabilityRuntimeMode,
   CapabilityRuntimeRequirementsPlan,
   CapabilityRuntimeRequirementsPlanningInput,
@@ -397,10 +396,16 @@ function lockBlockersFor(
   return units.flatMap((unit) => {
     const locked = input.lock.units.find((candidate) => candidate.id === unit.id);
     if (!locked || exactLockFor(unit, input)) return [];
-    return [
-      `Administrative lock for ${unit.id} does not match its exact version and manifest fingerprint.`,
-    ];
+    return [capabilityRuntimeAdminLockMismatchBlocker(unit.id)];
   }).toSorted(compareText);
+}
+
+/**
+ * Exact planner-owned blocker emitted while an authorized successor manifest
+ * is waiting for the derived administrative lock to converge.
+ */
+export function capabilityRuntimeAdminLockMismatchBlocker(unitId: string): string {
+  return `Administrative lock for ${unitId} does not match its exact version and manifest fingerprint.`;
 }
 
 function exactLockFor(

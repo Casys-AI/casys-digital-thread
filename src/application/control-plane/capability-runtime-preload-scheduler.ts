@@ -10,6 +10,7 @@
 import type { ProjectCapabilityProposal } from "./project-capability-authorization.ts";
 import type { CapabilityRuntimeCachePreparationCoordinator } from "./capability-runtime-cache-preparation-coordinator.ts";
 import type { CapabilityRuntimeLaunchGroupSupervisor } from "./capability-runtime-launch-group-supervisor.ts";
+import { capabilityRuntimeAdminLockMismatchBlocker } from "./plan-project-capability.ts";
 
 export interface CapabilityRuntimePreloadSchedulerOptions {
   readonly host: Pick<CapabilityRuntimeLaunchGroupSupervisor, "ensureMaterial">;
@@ -48,7 +49,11 @@ export class CapabilityRuntimePreloadScheduler {
     proposal: ProjectCapabilityProposal,
     recheck?: () => Promise<boolean>,
   ): void {
-    if (proposal.status === "unresolved" || proposal.activation === "blocked") return;
+    if (proposal.status === "unresolved") return;
+    if (
+      proposal.activation === "blocked" &&
+      (!recheck || !isTransientAdminLockMismatchOnly(proposal))
+    ) return;
     const groups = new Map<
       string,
       NonNullable<
@@ -145,4 +150,23 @@ export class CapabilityRuntimePreloadScheduler {
       });
     }
   }
+}
+
+/**
+ * An amendment proposal records the pre-reconciliation lock as immutable
+ * review evidence. Once the ledger is durable, the authorization service
+ * reconciles that lock before scheduling preload. Only that exact transient
+ * blocker may therefore cross this boundary, and only with the service's
+ * durable authorization recheck attached to every host request.
+ */
+function isTransientAdminLockMismatchOnly(
+  proposal: ProjectCapabilityProposal,
+): boolean {
+  if (
+    proposal.effects.security === "unknown" || proposal.blockers.length === 0
+  ) return false;
+  const exactBlockers = new Set(
+    proposal.units.map((unit) => capabilityRuntimeAdminLockMismatchBlocker(unit.id)),
+  );
+  return proposal.blockers.every((blocker) => exactBlockers.has(blocker));
 }
