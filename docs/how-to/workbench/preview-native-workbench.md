@@ -52,17 +52,19 @@ http://127.0.0.1:5173/          Vite cockpit (default)
 http://127.0.0.1:5175/          BFF API / SSE; `preview:cockpit` hashed-asset shell
 ```
 
-No Docker service, Console MCP server or provider MCP is required to read an already
-persisted project and thread. A domain App window appears only when the composition has
-an exact `ThreadViewerAppBinding` and its same-origin launch resolver has attested the
-exact manifest and whole-view HTML MIME, byte count and fingerprints. The browser
-rechecks those bytes and creates a confined Blob document rather than navigating the
-frame to the launch route; otherwise the whiteboard truthfully emits no App. With no
-durable focus and no explicit `--project-id`, the BFF reports that it is awaiting
-project context. It does not write state to make the page appear populated. Subsequent
-project commands create immutable numbered revisions under
-`state/local/engineering-projects/`; preview reads those revisions without rewriting
-checked-in configuration or historical evidence.
+No Console MCP server or provider MCP is required to read an already persisted project
+and thread. `GET /api/project/capabilities` additionally observes the local Docker
+daemon and the code-owned Microsandbox image cache through fixed read-only inspections;
+the preview task grants those exact local runtime permissions but has no Docker mutation
+path. A domain App window appears only when the composition has an exact
+`ThreadViewerAppBinding` and its same-origin launch resolver has attested the exact
+manifest and whole-view HTML MIME, byte count and fingerprints. The browser rechecks
+those bytes and creates a confined Blob document rather than navigating the frame to the
+launch route; otherwise the whiteboard truthfully emits no App. With no durable focus
+and no explicit `--project-id`, the BFF reports that it is awaiting project context. It
+does not write state to make the page appear populated. Subsequent project commands
+create immutable numbered revisions under `state/local/engineering-projects/`; preview
+reads those revisions without rewriting checked-in configuration or historical evidence.
 
 A schema-3.0 project has its own identity and active revision directory from the first
 intent. Before it has a declared root record, the BFF returns its planning surface even
