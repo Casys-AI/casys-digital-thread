@@ -105,7 +105,17 @@ export const BRIEF_CAPABILITY_INTENT_ROUTES = deepFreeze(
     },
     {
       authority: ASSEMBLY_INTEGRITY_VERIFICATION_AUTHORITY,
-      operations: [{ id: "verify.observe-assembly-integrity", version: "1" }],
+      // Assembly integrity is only meaningful after the server-owned SysON
+      // structure and canonical geometry path have been made available. The
+      // Brief ceiling must therefore forecast their exact runtime-bearing
+      // registered operations as well as the factual observer itself.
+      operations: [
+        { id: "architecture.seed-syson-model", version: "2" },
+        { id: "model.write-architecture", version: "1" },
+        { id: "model.capture-part-definitions", version: "1" },
+        { id: "design.write-geometry", version: "1" },
+        { id: "verify.observe-assembly-integrity", version: "1" },
+      ],
     },
   ] satisfies readonly BriefCapabilityIntentRoute[],
 );

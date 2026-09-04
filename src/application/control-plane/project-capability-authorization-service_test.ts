@@ -133,8 +133,11 @@ Deno.test("brief capability authorization retains resolved candidates beside an 
     assertEquals(
       proposal.bindings.map((binding) => binding.candidate?.id),
       [
+        "build123d-export-admitted-source",
         "build123d-geometry-module-immediate-compound",
         "build123d-observe-assembly-integrity",
+        "syson-author-system",
+        "syson-inspect-system",
       ],
     );
     assertEquals(
@@ -142,6 +145,8 @@ Deno.test("brief capability authorization retains resolved candidates beside an 
       [
         "casys.geometry-module-assembler-worker",
         "casys.mcp-build123d-observation",
+        "casys.mcp-build123d-sandbox",
+        "casys.syson-stack",
       ],
     );
     assertEquals(proposal.activation, "blocked");
@@ -539,7 +544,7 @@ function item(
   };
 }
 
-Deno.test("a qualified SysON delta can amend beside an explicitly authorized unqualified Chrono candidate", async () => {
+Deno.test("a brief without assembly integrity still requires a SysON amendment beside an explicitly authorized unqualified Chrono candidate", async () => {
   const directory = await Deno.makeTempDir({ prefix: "capability-seed-amendment-" });
   try {
     let tick = 0;
@@ -611,15 +616,6 @@ Deno.test("a qualified SysON delta can amend beside an explicitly authorized unq
           {
             ...item("success", "success-criterion", "The seed is reviewable."),
             dependsOnItemIds: [],
-          },
-          {
-            ...item(
-              "assembly",
-              "verification-activity",
-              "Observe exact assembly facts later.",
-            ),
-            dependsOnItemIds: ["success"],
-            verificationAuthority: { id: "assembly-integrity", version: "1.0" },
           },
           {
             ...item(
@@ -708,8 +704,6 @@ Deno.test("a qualified SysON delta can amend beside an explicitly authorized unq
       change.proposal.semanticRequirements.map((requirement) => requirement.id)
         .toSorted(),
       [
-        "geometry.module.immediate-compound",
-        "geometry.observe-assembly-integrity",
         "mechanics.observe-prescribed-kinematics",
         "model.author-system",
       ],

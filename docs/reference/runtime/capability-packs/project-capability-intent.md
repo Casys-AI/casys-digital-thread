@@ -38,7 +38,7 @@ closed preparation prerequisites.
 | `admitted-modelica-thermal@1.0` | `simulate.run-admitted-modelica@1`, `verify.evaluate-admitted-modelica-observations@1` |
 | `admitted-spice-electrical@1.0` | `simulate.run-admitted-spice@1` |
 | `prescribed-kinematics@1.0` | `verify.run-prescribed-kinematics@1` |
-| `assembly-integrity@1.0` | `verify.observe-assembly-integrity@1` |
+| `assembly-integrity@1.0` | `architecture.seed-syson-model@2`, `model.write-architecture@1`, `model.capture-part-definitions@1`, `design.write-geometry@1`, `verify.observe-assembly-integrity@1` |
 
 This is an authority-to-operation route, not a second capability catalogue. Runtime
 demands, their qualifications, and preparation edges remain owned by the registered

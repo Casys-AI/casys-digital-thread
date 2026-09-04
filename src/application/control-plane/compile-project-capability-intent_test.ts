@@ -15,7 +15,9 @@ import {
   MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY,
   MECHANICS_OBSERVE_STATIC_STRUCTURAL_SENSITIVITY_CAPABILITY,
   MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY,
+  MODEL_AUTHOR_SYSTEM_CAPABILITY,
   MODEL_EVALUATE_REQUIREMENT_CAPABILITY,
+  MODEL_INSPECT_SYSTEM_CAPABILITY,
   SIMULATION_RUN_ADMITTED_MODELICA_CAPABILITY,
 } from "../../domain/capability/engineering-capability.ts";
 import type {
@@ -103,20 +105,49 @@ Deno.test(
   },
 );
 
-Deno.test("the closed assembly-integrity route resolves through registered runtime demand", async () => {
+Deno.test("the closed assembly-integrity route resolves through its exact upstream runtime demands", async () => {
   const intent = await compileProjectCapabilityIntent(
     briefOf([verification("gate-assembly", "Assembly", ASSEMBLY)]),
     registryOf([
+      operation(
+        "architecture.seed-syson-model",
+        [
+          qualified(MODEL_AUTHOR_SYSTEM_CAPABILITY),
+        ],
+        [],
+        "2",
+      ),
+      operation("model.write-architecture", [
+        qualified(MODEL_AUTHOR_SYSTEM_CAPABILITY),
+      ]),
+      operation("model.capture-part-definitions", [
+        qualified(MODEL_INSPECT_SYSTEM_CAPABILITY),
+      ]),
+      operation(
+        "design.write-geometry",
+        [qualified(GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY, "preparation")],
+      ),
       operation("verify.observe-assembly-integrity", [qualified(GEOMETRY)]),
     ]),
   );
 
   assertEquals(intent.status, "resolved");
-  assertEquals(intent.capabilityRequirements, [qualified(GEOMETRY)]);
+  assertEquals(intent.capabilityRequirements, [
+    qualified(GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY, "preparation"),
+    qualified(GEOMETRY),
+    qualified(MODEL_AUTHOR_SYSTEM_CAPABILITY),
+    qualified(MODEL_INSPECT_SYSTEM_CAPABILITY),
+  ]);
   assertEquals(intent.authorities, [{
     authority: ASSEMBLY,
     resolution: "resolved",
-    operations: [{ id: "verify.observe-assembly-integrity", version: "1" }],
+    operations: [
+      { id: "architecture.seed-syson-model", version: "2" },
+      { id: "design.write-geometry", version: "1" },
+      { id: "model.capture-part-definitions", version: "1" },
+      { id: "model.write-architecture", version: "1" },
+      { id: "verify.observe-assembly-integrity", version: "1" },
+    ],
   }]);
 });
 
@@ -261,7 +292,9 @@ Deno.test("the real route table and registry forecast the complete admitted lamp
     qualified(GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY, "preparation"),
     qualified(GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY),
     qualified(MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY),
+    qualified(MODEL_AUTHOR_SYSTEM_CAPABILITY),
     qualified(MODEL_EVALUATE_REQUIREMENT_CAPABILITY),
+    qualified(MODEL_INSPECT_SYSTEM_CAPABILITY),
     qualified(SIMULATION_RUN_ADMITTED_MODELICA_CAPABILITY),
   ]);
   assertEquals(intent.authorities, [
@@ -281,7 +314,13 @@ Deno.test("the real route table and registry forecast the complete admitted lamp
     {
       authority: ASSEMBLY,
       resolution: "resolved",
-      operations: [{ id: "verify.observe-assembly-integrity", version: "1" }],
+      operations: [
+        { id: "architecture.seed-syson-model", version: "2" },
+        { id: "design.write-geometry", version: "1" },
+        { id: "model.capture-part-definitions", version: "1" },
+        { id: "model.write-architecture", version: "1" },
+        { id: "verify.observe-assembly-integrity", version: "1" },
+      ],
     },
     {
       authority: STATIC_STRUCTURAL_FEA_VERIFICATION_AUTHORITY,
@@ -292,6 +331,44 @@ Deno.test("the real route table and registry forecast the complete admitted lamp
       ],
     },
   ]);
+});
+
+Deno.test("assembly, prescribed kinematics, and admitted SPICE forecast only their exact operational union", async () => {
+  const intent = await compileProjectCapabilityIntent(
+    briefOf([
+      verification("verify-assembly", "Observe assembly integrity.", ASSEMBLY),
+      verification(
+        "verify-prescribed-kinematics",
+        "Observe prescribed mechanism poses.",
+        PRESCRIBED_KINEMATICS_VERIFICATION_AUTHORITY,
+      ),
+      verification(
+        "verify-led-electrical",
+        "Observe admitted LED-driver electrical behavior.",
+        ADMITTED_SPICE_ELECTRICAL_VERIFICATION_AUTHORITY,
+      ),
+    ]),
+    engineeringOperationRegistry,
+  );
+
+  assertEquals(intent.status, "resolved");
+  assertEquals(intent.capabilityRequirements, [
+    qualified(ELECTRONICS_RUN_ADMITTED_SPICE_CAPABILITY),
+    qualified(GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY, "preparation"),
+    qualified(GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY, "preparation"),
+    qualified(GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY),
+    qualified(MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY),
+    qualified(MODEL_AUTHOR_SYSTEM_CAPABILITY),
+    qualified(MODEL_INSPECT_SYSTEM_CAPABILITY),
+  ]);
+  assertEquals(
+    intent.capabilityRequirements.some((requirement) =>
+      requirement.id === MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY.id ||
+      requirement.id === SIMULATION_RUN_ADMITTED_MODELICA_CAPABILITY.id ||
+      requirement.id === MODEL_EVALUATE_REQUIREMENT_CAPABILITY.id
+    ),
+    false,
+  );
 });
 
 Deno.test("sensitivity is an explicit brief authority and static FEA does not imply it", async () => {
@@ -604,10 +681,11 @@ function operation(
     readonly id: string;
     readonly version: string;
   }[] = [],
+  version = "1",
 ): RuntimePreparationPrerequisiteRegistryEntry {
   return {
     id,
-    version: "1",
+    version,
     execution: "trusted",
     runtimeDemand: { kind: "required" as const, capabilities },
     ...(runtimePreparationPrerequisites.length === 0
