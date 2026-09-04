@@ -59,9 +59,15 @@ output manifest, destruction assurance, and exact Microsandbox runtime attestati
 different, absent, divergent, or unknown runtime fails closed; it is `unavailable`, not
 a reason to fall back to a Docker image, a host executable, or caller-selected settings.
 
-`prepare:geometry-module:microsandbox` only imports the reviewed Docker source image
-into the Microsandbox cache under the fixed runtime manifest reference. That cache entry
-is not a qualification attestation. The separate
+`prepare:geometry-module:microsandbox` observes the exact Microsandbox target and, when
+the Docker source is absent, reconstructs the in-repo Dockerfile as a local candidate
+recipe, then imports under the fixed runtime manifest reference. That rebuild is not
+bit-reproducible proof: after import, the cached image must still match the exact
+target digest, or the capability stays unavailable. `oci-digest` is the preferred
+immutable distribution source when a reviewed digest exists. A moving APT repository
+does not promise reproduction of the pin. That cache entry is not a qualification
+attestation.
+The separate
 `verify:geometry-module:microsandbox:qualification` gate verifies the fixed qualification
 fixture and records its own WAL, capture, and attestation; it neither promotes a
 catalogue binding nor performs a product assembly. A product export remains a separate

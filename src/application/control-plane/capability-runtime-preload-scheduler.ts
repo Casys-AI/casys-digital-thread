@@ -67,7 +67,9 @@ export class CapabilityRuntimePreloadScheduler {
     for (const unit of proposal.units) {
       for (const material of unit.materials) {
         if (material.lifecycle !== "persistent") {
-          // Cache/microVM material is not a hidden service. The coordinator
+          // Docker source/build is internal acquisition, not a cache recipe.
+          if (material.lifecycle === "cache") continue;
+          // MicroVM material is not a hidden service. The coordinator
           // resolves a code-owned atomic recipe from this closed scope.
           if (!this.options.cachePreparer) continue;
           const digest = /@sha256:([a-f0-9]{64})$/.exec(

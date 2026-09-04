@@ -36,7 +36,6 @@ import {
   LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
 } from "../electrical/spice/admitted/local-image-references.ts";
 import {
-  LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE,
   LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
@@ -221,7 +220,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
     unit("casys.modelica-worker", [
       microvmMaterial(
         "modelica-admitted-worker-image",
-        LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE,
+        LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
         ["linux/arm64"],
         "unknown",
       ),
@@ -573,6 +572,22 @@ export function firstPartyAdmittedModelicaHistoryPredecessor() {
     manifestFingerprint: {
       algorithm: "sha256" as const,
       digest: "8792f440a4ee3b6f835f730082081828c87fe657044fc5d1bd6405b64bdfb515",
+    },
+  };
+}
+
+/**
+ * Retired local-lock identity before the qualified-kit worker shared the
+ * admitted physical image digest. Readable only as immutable history, never
+ * selectable.
+ */
+export function firstPartyQualifiedModelicaHistoryPredecessor() {
+  return {
+    id: "casys.modelica-qualified-worker",
+    version: "1.0.0",
+    manifestFingerprint: {
+      algorithm: "sha256" as const,
+      digest: "6d34121004cc91a6e9286e70b63afa768ea7fcf9dcd0b0f8360aec08e9d9a173",
     },
   };
 }

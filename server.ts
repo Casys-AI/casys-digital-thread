@@ -49,12 +49,10 @@ import type { AdmittedModelicaExecutionServerOptions } from "./src/adapters/mode
 import type { AdmittedSpiceExecutionServerOptions } from "./src/adapters/electrical/spice/admitted/execution-composition.ts";
 import { LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE } from "./src/adapters/electrical/spice/admitted/local-image-references.ts";
 import {
-  LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE,
   LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
   LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
 } from "./src/adapters/control-plane/first-party-capability-runtime-identities.ts";
 export {
-  LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE,
   LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
   LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
@@ -462,7 +460,7 @@ const LOCAL_MODELICA_EXECUTION_POLICY_BODY = Object.freeze({
 const LOCAL_ADMITTED_MODELICA_EXECUTION_POLICY_BODY = Object.freeze({
   schemaVersion: "modelica-admitted-microsandbox-policy/1.0",
   backend: "microsandbox-local@0.6.8",
-  imageReference: LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE,
+  imageReference: LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
   network: "deny-all",
   pullPolicy: "never",
   securityProfile: "restricted",
@@ -888,10 +886,6 @@ async function createProjectControl(
   const admittedSpiceExecutionProfile = admittedSpice.execution?.execution === undefined
     ? undefined
     : await admittedSpice.execution.profiles.initial();
-  const geometryModuleAssemblyRuntimeProfile =
-    geometryModuleAssembly?.execution === undefined
-      ? undefined
-      : await geometryModuleAssembly.profiles.initial();
   const calculixCapability = await createCalculixCapability({
     calculixIsolatedExecution: options.calculixIsolatedExecution,
     recordedAnalysisDirectory,
@@ -979,15 +973,10 @@ async function createProjectControl(
   );
   const capabilityRuntimeMutationLock = new FileCapabilityRuntimeHostMutationLock();
   const capabilityRuntimeCachePreparation =
-    admittedSpiceExecutionProfile === undefined &&
-      geometryModuleAssemblyRuntimeProfile === undefined
-      ? undefined
-      : await createLocalCapabilityRuntimeCachePreparationComposition({
-        catalog: capabilityRead.catalog,
-        lock: capabilityRuntimeMutationLock,
-        admittedSpiceRuntimeProfile: admittedSpiceExecutionProfile,
-        geometryModuleAssemblyRuntimeProfile,
-      });
+    await createLocalCapabilityRuntimeCachePreparationComposition({
+      catalog: capabilityRead.catalog,
+      lock: capabilityRuntimeMutationLock,
+    });
   const [sysonRolloverPredecessorGroup, chronoRolloverPredecessorGroup] = await Promise
     .all([
       createFirstPartySysonRolloverPredecessorLaunchGroup(),
@@ -1097,7 +1086,7 @@ async function createProjectControl(
     hostMutationLock: capabilityRuntimeMutationLock,
     preloadScheduler: new CapabilityRuntimePreloadScheduler({
       host: capabilityRuntimeGroups,
-      cachePreparer: capabilityRuntimeCachePreparation?.cachePreparer,
+      cachePreparer: capabilityRuntimeCachePreparation.cachePreparer,
     }),
   });
 
@@ -2266,7 +2255,7 @@ export async function createLocalAdmittedModelicaExecutionServerOptions(): Promi
   });
   return Object.freeze({
     profile: Object.freeze({
-      imageReference: LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE,
+      imageReference: LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
       policy,
       limits: LOCAL_MODELICA_EXECUTION_LIMITS,
     }),

@@ -44,13 +44,14 @@ import {
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
 import { sha256Hex } from "../../../domain/compile/source/provider-resource-reader.ts";
+import { LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE } from "../../../domain/modelica/local-execution-image.ts";
 import { MODELICA_QUALIFIED_KIT_WRAPPER_SHA256 } from "./kit-v1/qualification-kit.ts";
 
 export { MODELICA_QUALIFIED_KIT_WRAPPER_SHA256 } from "./kit-v1/qualification-kit.ts";
 
 export const MODELICA_MAXIMUM_ISOLATED_BUNDLE_BYTES = 8 * 1_048_576;
 export const MODELICA_MICROSANDBOX_WORKER_IMAGE =
-  "casys/modelica-microsandbox-worker@sha256:7d3fdeabe794b0ded5360921b16724c7904487e9d11bc24fa37c72f9b92a1894";
+  LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE;
 export const MODELICA_ISOLATED_OUTPUT_VALIDATOR = Object.freeze({
   id: "modelica-isolated-output-validator" as const,
   version: "1.0.0" as const,

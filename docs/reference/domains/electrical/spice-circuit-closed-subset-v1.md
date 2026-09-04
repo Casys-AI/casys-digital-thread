@@ -78,13 +78,17 @@ Docker smoke, Microsandbox cache preparation, and the product run are not substi
 | Surface           | Owner                                                                     | What it is not                                           |
 | ----------------- | ------------------------------------------------------------------------- | -------------------------------------------------------- |
 | Docker smoke      | `scripts/gates/verify-ngspice-microsandbox-worker.ts`                     | IsolatedCodeRunner, Microsandbox cache, product evidence |
-| Cache preparation | `deno task prepare:ngspice:microsandbox`                                  | A pull, a product run, a caller-selected image           |
+| Cache preparation | `deno task prepare:ngspice:microsandbox`                                  | A pull of aliases, a product run, a caller-selected image |
 | Product run       | `simulate.run-admitted-spice@1` after `project_admitted_spice_run_review` | mcp-spice, the LED-driver fiche, a verdict               |
 
 The Docker source/index digest (`62748f195c86…`) and the Microsandbox runtime manifest
 digest (`3350527ceba0…`) are related but distinct profile-owned constants. Product
 inspect requires `imageReference` digest == attested `manifestDigest`. `pullPolicy`
-stays `never`.
+stays `never`. A local `trusted-dockerfile` rebuild is a candidate recipe, not
+bit-reproducible proof; the imported image must still match the runtime digest or the
+capability stays unavailable. `oci-digest` is the preferred immutable distribution
+source when a reviewed digest exists. A moving APT repository does not promise that a
+later rebuild will reproduce the pin.
 
 Filesystem contract, analogous to admitted Modelica:
 

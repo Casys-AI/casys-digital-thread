@@ -23,7 +23,7 @@ Three operator surfaces. They are not substitutes.
 | Surface           | Command                                                                  | What it proves                                                                                                                              |
 | ----------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Docker smoke      | `scripts/gates/verify-ngspice-microsandbox-worker.ts --run`              | Container contract outside IsolatedCodeRunner. Not the Microsandbox cache.                                                                  |
-| Cache preparation | `deno task prepare:ngspice:microsandbox`                                 | Idempotent import of the Docker source digest into the local Microsandbox cache under the runtime manifest pin. No pull. Not a product run. |
+| Cache preparation | `deno task prepare:ngspice:microsandbox`                                 | Idempotent observe of the Microsandbox pin; on miss inspect the Docker source or reconstruct the local candidate Dockerfile, then import under the runtime pin. The imported image must still match that digest. No alias pull. Not a product run. |
 | Product run       | `project_admitted_spice_run_review` then `simulate.run-admitted-spice@1` | Documentary isolated execution over the server-owned worker profile. Boot does not import the microVM image; this worker publishes no host port. |
 
 The Docker distribution/index digest
@@ -32,7 +32,11 @@ is the `docker image save` source. The executable Microsandbox manifest
 `casys/ngspice-microsandbox-worker@sha256:3350527ceba0dbe8f2e31e435e834f962978e800134b83d6ee8f4875b7ffb79a`
 is the runtime `imageReference`. Backend inspect requires `imageReference` digest ==
 attested `manifestDigest`. Do not pin the Docker index digest as the runtime image.
-`pullPolicy` stays `never`. Server startup does not pull or import.
+`pullPolicy` stays `never`. Server startup does not pull or import. A local
+`trusted-dockerfile` rebuild is a candidate recipe, not bit-reproducible proof and not
+an `oci-digest` distribution. After import, the cached image must still match the
+runtime digest; otherwise the capability stays unavailable. A moving APT repository
+does not promise that a later rebuild will reproduce the pin.
 
 Ordinary start is cold Deno. Do not start the root Compose provider stack: H1 activates
 enrolled groups JIT under a lease when covered work needs them, and those groups collide

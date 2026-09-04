@@ -10,6 +10,7 @@ import {
   createFirstPartySysonRolloverPredecessorUnit,
   firstPartyAdmittedModelicaHistoryPredecessor,
   firstPartyGeometryModuleAssemblerHistoryPredecessor,
+  firstPartyQualifiedModelicaHistoryPredecessor,
 } from "../../adapters/control-plane/first-party-capability-binding-catalog.ts";
 import { createFirstPartyCapabilityRuntimeLaunchGroupRegistry } from "../../adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
 import {
@@ -94,6 +95,7 @@ Deno.test("local lock review replaces only declared historical units with exact 
       predecessorChrono,
       firstPartyGeometryModuleAssemblerHistoryPredecessor(),
       firstPartyAdmittedModelicaHistoryPredecessor(),
+      firstPartyQualifiedModelicaHistoryPredecessor(),
     ];
     const currentUnits = currentLockUnits(catalog);
     const first = {

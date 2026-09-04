@@ -62,25 +62,29 @@ historical `compile.seal-admission@3` creation snapshot.
 | `design.write-geometry@1`                  | Canonical STEP seal of admitted export. Not isolated execution.                                 |
 | Caller `modelicaText` / CAD script in MRTR | Refused. Source comes only from the sealed admission.                                           |
 
-## One Modelica image family
+## One physical Modelica image
 
-There is one image name: `casys/modelica-microsandbox-worker`. Do not invent a second
-image (`closed-subset-worker` or similar).
+There is one physical artefact: `casys/modelica-microsandbox-worker` at
+`LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE`
+(`sha256:d25f220287cd8d1713e9e7d773afb8bb867fc5404a112e5e50ffa2e862fd6fdf`). Do not
+invent a second image (`closed-subset-worker` or similar). Qualified-kit and admitted
+workers are two logical units and two cache recipes on that shared load identity; the
+second acquisition is a cache hit. Binding qualifications stay separate scientific
+captures.
 
-| Worker                                                 | Selected how                              | Source bytes                                      | Qualification                        |
-| ------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------- | ------------------------------------ |
-| `/opt/casys/profiles/modelica-qualified-kit-v1/run.ts` | Image `ENTRYPOINT`. Kit `@1` composition. | Pinned kit `.mo` inside the image                 | Digest `7d3fdeabe794…` (unchanged)   |
-| `/opt/casys/profiles/modelica-closed-subset-v2/run.ts` | Backend args in the admitted composition. | Generic bounded `/input/source.mo` from admission | Separate local pin (see `server.ts`) |
+| Worker                                                 | Selected how                              | Source bytes                                      | Binding qualification                                                                                         |
+| ------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `/opt/casys/profiles/modelica-qualified-kit-v1/run.ts` | Image `ENTRYPOINT`. Kit `@1` composition. | Pinned kit `.mo` inside the image                 | Capture `d6aee5fe…` remains fail-closed against the current digest until a later live gate                    |
+| `/opt/casys/profiles/modelica-closed-subset-v2/run.ts` | Backend args in the admitted composition. | Generic bounded `/input/source.mo` from admission | Separate, currently unqualified                                                                               |
 
-Kit qualification stays on the old digest until a later bake of
+The pin lives in `src/domain/modelica/local-execution-image.ts` and is the only active
+Modelica runtime constant. Adding the admitted worker to
 [`images/modelica-microsandbox-worker/Dockerfile`](../../../images/modelica-microsandbox-worker/Dockerfile)
-is itself qualified. Adding the admitted worker to that Dockerfile does **not** reroute
-kit `@1`.
-
-The current admitted pin in `server.ts`
-(`LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE`) is a local digest of that same
-image name. A later official bake of the committed Dockerfile produces a new digest and
-must update that constant. Do not reuse the kit qualification digest for admitted runs.
+does **not** merge the two binding qualifications. A later official bake of that
+Dockerfile produces a new digest and must update that constant. A local
+`trusted-dockerfile` rebuild is a candidate recipe, not that official bake and not
+bit-reproducible proof: after import, the cached image must still match the exact
+target digest, or the capability stays unavailable.
 
 ## Product Modelica AX
 

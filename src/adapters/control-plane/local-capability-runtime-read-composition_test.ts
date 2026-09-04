@@ -4,6 +4,7 @@ import {
   BUILD123D_ISOLATED_WORKER_MATERIAL_ID,
   BUILD123D_ISOLATED_WORKER_UNIT_ID,
 } from "../cad/isolated/worker-contract.ts";
+import { LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE } from "./first-party-capability-runtime-identities.ts";
 import { createLocalCapabilityRuntimeReadComposition } from "./local-capability-runtime-read-composition.ts";
 
 Deno.test("local read composition without executable admitted runners leaves Modelica and SPICE cache materials unobserved", async () => {
@@ -91,7 +92,7 @@ Deno.test("local read composition without executable admitted runners leaves Mod
 Deno.test("local read composition enrolls the exact admitted SPICE and Modelica cache materials without starting a worker", async () => {
   const composition = await createLocalCapabilityRuntimeReadComposition({
     admittedModelicaExecutionProfile: profileFor(
-      "casys/modelica-microsandbox-worker@sha256:d25f220287cd8d1713e9e7d773afb8bb867fc5404a112e5e50ffa2e862fd6fdf",
+      LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
     ),
     admittedSpiceExecutionProfile: profileFor(
       "casys/ngspice-microsandbox-worker@sha256:3350527ceba0dbe8f2e31e435e834f962978e800134b83d6ee8f4875b7ffb79a",
@@ -166,7 +167,7 @@ Deno.test("local read composition enrolls the exact admitted SPICE and Modelica 
 Deno.test("local read composition enrolls only the admitted Modelica material when only that runner exists", async () => {
   const composition = await createLocalCapabilityRuntimeReadComposition({
     admittedModelicaExecutionProfile: profileFor(
-      "casys/modelica-microsandbox-worker@sha256:d25f220287cd8d1713e9e7d773afb8bb867fc5404a112e5e50ffa2e862fd6fdf",
+      LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
     ),
   });
   const { modelica, source, runtime } = admittedMaterials(composition);

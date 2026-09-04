@@ -11,15 +11,21 @@ export const LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE =
 export const LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE =
   "casys/build123d-module-assembler-worker@sha256:40accee586603416f573386df29d881ffd682730bb8bd0e2df53ce1454ede5a2" as const;
 
+/** Hashes asserted by the assembler Dockerfile before it changes to its worker user. */
+export const LOCAL_GEOMETRY_MODULE_ASSEMBLY_SOURCE_HASH_LABELS = Object.freeze({
+  "io.casys.wrapper.sha256":
+    "609eaf93f2564b88b9103d5e0d53d1dd3e93fcdf8e54c61cc313b957370bf581",
+  "io.casys.bundle-decoder.sha256":
+    "79fb3f485581f2e732e18771817d8e2199327281c6090e6f61236b8ade68df76",
+  "io.casys.fontconfig.sha256":
+    "71f58af72fc487fe6c434dde129fa13dffd1cdc84bb7d1744170f2bd037586aa",
+});
+
 /** Microsandbox inspectImage manifest. Product runtime imageReference. */
 export const LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE =
   "docker.io/casys/build123d-module-assembler-worker@sha256:5aa833e19f1956a001013661e726c19c4566677a75f58493a6534456b99b6707" as const;
 
-export const LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE =
-  "casys/modelica-microsandbox-worker@sha256:7d3fdeabe794b0ded5360921b16724c7904487e9d11bc24fa37c72f9b92a1894" as const;
-
-export const LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE =
-  "casys/modelica-microsandbox-worker@sha256:d25f220287cd8d1713e9e7d773afb8bb867fc5404a112e5e50ffa2e862fd6fdf" as const;
+export { LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE } from "../../domain/modelica/local-execution-image.ts";
 
 /** Published mcp-chrono 0.3.2 Linux/amd64 OCI index, pinned without a tag. */
 export const MCP_CHRONO_032_IMAGE_REFERENCE =

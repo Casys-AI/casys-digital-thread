@@ -56,6 +56,7 @@ import {
   fingerprintsEqual,
 } from "../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
+import { LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE } from "../local-execution-image.ts";
 import type {
   EngineeringDecisionProposalParameter,
   EngineeringThreadSnapshotBasis,
@@ -98,7 +99,7 @@ export const MODELICA_QUALIFIED_BUNDLE_BYTE_COUNT = 2_245;
 export const MODELICA_QUALIFIED_EXECUTION_PROFILE_FINGERPRINT = Object.freeze(
   {
     algorithm: "sha256",
-    digest: "4da0506fa25721a444f7e25f8b982adb9040515a306e4bc0b4e14b5c784e54a7",
+    digest: "6e783e7b371d28f7219d22d40120016ec47a49eca8cfdaa4ffe37d4bdf7af582",
   } as const,
 );
 export const MODELICA_QUALIFIED_RUNTIME_QUALIFICATION_FINGERPRINT = Object.freeze(
@@ -108,8 +109,7 @@ export const MODELICA_QUALIFIED_RUNTIME_QUALIFICATION_FINGERPRINT = Object.freez
   } as const,
 );
 
-const QUALIFIED_IMAGE_REFERENCE =
-  "casys/modelica-microsandbox-worker@sha256:7d3fdeabe794b0ded5360921b16724c7904487e9d11bc24fa37c72f9b92a1894";
+const QUALIFIED_IMAGE_REFERENCE = LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE;
 const QUALIFIED_WRAPPER_SHA256 =
   "b5336d1615b017900f65aa9d491f3ecae8b3afb377d0bb38bc5678b03028c816";
 const QUALIFIED_POLICY = deepFreeze({
@@ -117,7 +117,7 @@ const QUALIFIED_POLICY = deepFreeze({
   version: "1.0.0",
   fingerprint: {
     algorithm: "sha256" as const,
-    digest: "a6eeca8fb305b6fecf6a5f226ddcc9dad8010147afe31d7dd4fe35853d239327",
+    digest: "bda19298410eaea88d8985fe306561c8f16881909f0f6231dad0405b8616857d",
   },
 });
 const QUALIFIED_LIMITS = deepFreeze({

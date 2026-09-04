@@ -16,7 +16,10 @@ import type {
   RunCommand,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
 import { EngineeringProjectCommandService } from "../../../application/use-cases/project/engineering-project-command-service.ts";
-import { FixedModelicaIsolatedExecutionProfileCatalog } from "./execution-profile.ts";
+import {
+  FixedModelicaIsolatedExecutionProfileCatalog,
+  MODELICA_MICROSANDBOX_WORKER_IMAGE,
+} from "./execution-profile.ts";
 import { createModelicaMicrosandboxQualificationKit } from "./kit-v1/qualification-kit.ts";
 import {
   createModelicaIsolatedExecutionCapture,
@@ -1008,14 +1011,13 @@ async function isolatedResult(input: {
 
 async function modelicaProfile(): Promise<ModelicaIsolatedExecutionProfile> {
   return await new FixedModelicaIsolatedExecutionProfileCatalog({
-    imageReference:
-      "casys/modelica-microsandbox-worker@sha256:7d3fdeabe794b0ded5360921b16724c7904487e9d11bc24fa37c72f9b92a1894",
+    imageReference: MODELICA_MICROSANDBOX_WORKER_IMAGE,
     policy: {
       id: "modelica-microsandbox-deny-all-v1",
       version: "1.0.0",
       fingerprint: {
         algorithm: "sha256",
-        digest: "a6eeca8fb305b6fecf6a5f226ddcc9dad8010147afe31d7dd4fe35853d239327",
+        digest: "bda19298410eaea88d8985fe306561c8f16881909f0f6231dad0405b8616857d",
       },
     },
     limits: {

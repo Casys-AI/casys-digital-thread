@@ -22,7 +22,6 @@ import {
   exactMicrosandboxMaterialArchitecture,
 } from "./microsandbox-capability-runtime-cache.ts";
 import {
-  LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE,
   LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
   LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
@@ -125,11 +124,12 @@ function firstPartyMicrosandboxContracts(): ReadonlyMap<string, {
     contract(
       "casys.modelica-worker",
       "modelica-admitted-worker-image",
-      LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE,
+      LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
       MODELICA_ADMITTED_MICROSANDBOX_WORKER_CONTRACT.expectedImageUser,
+      // Shared physical image ENTRYPOINT; admitted command is run args only.
       [
-        MODELICA_ADMITTED_MICROSANDBOX_WORKER_CONTRACT.executable,
-        ...MODELICA_ADMITTED_MICROSANDBOX_WORKER_CONTRACT.args,
+        MODELICA_MICROSANDBOX_WORKER_CONTRACT.executable,
+        ...MODELICA_MICROSANDBOX_WORKER_CONTRACT.args,
       ],
     ),
     contract(

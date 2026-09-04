@@ -48,6 +48,7 @@ import {
   firstPartyBuild123dObservationHistoryPredecessor,
   firstPartyBuild123dSandboxHistoryPredecessor,
   firstPartyGeometryModuleAssemblerHistoryPredecessor,
+  firstPartyQualifiedModelicaHistoryPredecessor,
 } from "./first-party-capability-binding-catalog.ts";
 import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "./first-party-capability-runtime-qualification-candidates.ts";
 import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "./first-party-capability-runtime-qualification-specifications.ts";
@@ -343,6 +344,7 @@ export async function createLocalCapabilityRuntimeReadComposition(
         firstPartyBuild123dObservationHistoryPredecessor(),
         firstPartyGeometryModuleAssemblerHistoryPredecessor(),
         firstPartyAdmittedModelicaHistoryPredecessor(),
+        firstPartyQualifiedModelicaHistoryPredecessor(),
       ],
     ),
   });

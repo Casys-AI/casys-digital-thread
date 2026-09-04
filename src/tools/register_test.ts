@@ -230,12 +230,8 @@ Deno.test("server injects the resolved Build123d execution profile into the exac
   assertStringIncludes(cad, "capabilityRuntimeSession,");
 });
 
-Deno.test("server prepares only actually composed SPICE and geometry-module cache lanes", async () => {
+Deno.test("server prepares the closed first-party Microsandbox cache recipes from the catalogue", async () => {
   const source = await Deno.readTextFile("server.ts");
-  const geometryComposition = source.indexOf("const geometryModuleAssembly =");
-  const geometryProfile = source.indexOf(
-    "const geometryModuleAssemblyRuntimeProfile =",
-  );
   const runtimeLock = source.indexOf(
     "const capabilityRuntimeMutationLock = new FileCapabilityRuntimeHostMutationLock();",
   );
@@ -246,37 +242,21 @@ Deno.test("server prepares only actually composed SPICE and geometry-module cach
     "preloadScheduler: new CapabilityRuntimePreloadScheduler({",
   );
 
-  assert(geometryComposition >= 0);
-  assert(geometryProfile > geometryComposition);
-  assert(runtimeLock > geometryProfile);
+  assert(runtimeLock >= 0);
   assert(cachePreparation > runtimeLock);
   assert(scheduler > cachePreparation);
   const cache = source.slice(cachePreparation, scheduler);
   assertStringIncludes(
     cache,
-    "admittedSpiceExecutionProfile === undefined &&",
-  );
-  assertStringIncludes(
-    cache,
-    "geometryModuleAssemblyRuntimeProfile === undefined",
-  );
-  assertStringIncludes(
-    cache,
     "catalog: capabilityRead.catalog,",
   );
   assertStringIncludes(cache, "lock: capabilityRuntimeMutationLock,");
-  assertStringIncludes(
-    cache,
-    "admittedSpiceRuntimeProfile: admittedSpiceExecutionProfile,",
-  );
-  assertStringIncludes(
-    cache,
-    "geometryModuleAssemblyRuntimeProfile,",
-  );
+  assertEquals(cache.includes("admittedSpiceRuntimeProfile"), false);
+  assertEquals(cache.includes("geometryModuleAssemblyRuntimeProfile"), false);
   const schedulerBlock = source.slice(scheduler);
   assertStringIncludes(
     schedulerBlock,
-    "cachePreparer: capabilityRuntimeCachePreparation?.cachePreparer,",
+    "cachePreparer: capabilityRuntimeCachePreparation.cachePreparer,",
   );
 });
 
@@ -288,14 +268,14 @@ Deno.test("future Modelica runtime binding factory is code-owned, digest pinned,
   assertEquals(first.profile.imageReference, LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE);
   assertEquals(
     first.profile.imageReference,
-    "casys/modelica-microsandbox-worker@sha256:7d3fdeabe794b0ded5360921b16724c7904487e9d11bc24fa37c72f9b92a1894",
+    "casys/modelica-microsandbox-worker@sha256:d25f220287cd8d1713e9e7d773afb8bb867fc5404a112e5e50ffa2e862fd6fdf",
   );
   assertEquals(first.profile.policy, {
     id: "modelica-microsandbox-deny-all-v1",
     version: "1.0.0",
     fingerprint: {
       algorithm: "sha256",
-      digest: "a6eeca8fb305b6fecf6a5f226ddcc9dad8010147afe31d7dd4fe35853d239327",
+      digest: "bda19298410eaea88d8985fe306561c8f16881909f0f6231dad0405b8616857d",
     },
   });
   assertEquals(first.profile.engine, {
@@ -342,7 +322,11 @@ Deno.test("startup composes only code-owned local engineering runtimes", async (
   assertStringIncludes(config.tasks.start, "--node-modules-dir=auto");
   assertStringIncludes(
     config.tasks.start,
-    "--allow-read=config,state,src/ui,mcp-server.yaml,node_modules",
+    "--allow-read=config,state,src,images,mcp-server.yaml,node_modules",
+  );
+  assertStringIncludes(
+    config.tasks.start,
+    "--allow-write=state/local,/tmp,/private/tmp",
   );
   assertStringIncludes(config.tasks.start, "--allow-ffi=node_modules");
 
@@ -353,9 +337,9 @@ Deno.test("startup composes only code-owned local engineering runtimes", async (
   assertEquals(yolo, `${config.tasks.start} --yolo`);
   assertStringIncludes(
     yolo,
-    "--allow-read=config,state,src/ui,mcp-server.yaml,node_modules",
+    "--allow-read=config,state,src,images,mcp-server.yaml,node_modules",
   );
-  assertStringIncludes(yolo, "--allow-write=state/local");
+  assertStringIncludes(yolo, "--allow-write=state/local,/tmp,/private/tmp");
   assertStringIncludes(yolo, "--allow-ffi=node_modules");
   assertStringIncludes(yolo, "--node-modules-dir=auto");
   assertEquals(yolo.endsWith("server.ts --yolo"), true);
@@ -393,7 +377,7 @@ Deno.test("startup composes only code-owned local engineering runtimes", async (
   }
   assertStringIncludes(
     source,
-    "cachePreparer: capabilityRuntimeCachePreparation?.cachePreparer,",
+    "cachePreparer: capabilityRuntimeCachePreparation.cachePreparer,",
   );
 });
 

@@ -7,6 +7,7 @@ import {
   firstPartyBuild123dObservationHistoryPredecessor,
   firstPartyBuild123dSandboxHistoryPredecessor,
   firstPartyGeometryModuleAssemblerHistoryPredecessor,
+  firstPartyQualifiedModelicaHistoryPredecessor,
 } from "./first-party-capability-binding-catalog.ts";
 import {
   createFirstPartyChronoRolloverPredecessorLaunchGroup,
@@ -104,6 +105,7 @@ Deno.test("atomic first-party runtime catalogue separates sources with distinct 
   const predecessorGeometryModuleAssembler =
     firstPartyGeometryModuleAssemblerHistoryPredecessor();
   const predecessorAdmittedModelica = firstPartyAdmittedModelicaHistoryPredecessor();
+  const predecessorQualifiedModelica = firstPartyQualifiedModelicaHistoryPredecessor();
   const predecessorBuild123dSandbox = firstPartyBuild123dSandboxHistoryPredecessor();
   const predecessorBuild123dObservation =
     firstPartyBuild123dObservationHistoryPredecessor();
@@ -175,6 +177,24 @@ Deno.test("atomic first-party runtime catalogue separates sources with distinct 
     algorithm: "sha256",
     digest: "8792f440a4ee3b6f835f730082081828c87fe657044fc5d1bd6405b64bdfb515",
   });
+  assertEquals(predecessorQualifiedModelica.manifestFingerprint, {
+    algorithm: "sha256",
+    digest: "6d34121004cc91a6e9286e70b63afa768ea7fcf9dcd0b0f8360aec08e9d9a173",
+  });
+  assertEquals(
+    catalog.units.find((unit) => unit.id === "casys.modelica-qualified-worker")
+      ?.manifestFingerprint,
+    {
+      algorithm: "sha256",
+      digest: "1ab8237ecd5fe98718a0f605883b6f541d7694bf755effb6a3b9260113de0732",
+    },
+  );
+  assertEquals(
+    catalog.units.find((unit) => unit.id === "casys.modelica-qualified-worker")
+      ?.materials[0]?.imageReference,
+    catalog.units.find((unit) => unit.id === "casys.modelica-worker")
+      ?.materials[0]?.imageReference,
+  );
   assertEquals(predecessorBuild123dSandbox.manifestFingerprint, {
     algorithm: "sha256",
     digest: "7450ed6ffcb1bfd2b970e2f15647eaf8097a26b1656d19864992bde6e297b15e",
@@ -198,6 +218,15 @@ Deno.test("atomic first-party runtime catalogue separates sources with distinct 
       unit.version === predecessorAdmittedModelica.version &&
       unit.manifestFingerprint.digest ===
         predecessorAdmittedModelica.manifestFingerprint.digest
+    ),
+    false,
+  );
+  assertEquals(
+    catalog.units.some((unit) =>
+      unit.id === predecessorQualifiedModelica.id &&
+      unit.version === predecessorQualifiedModelica.version &&
+      unit.manifestFingerprint.digest ===
+        predecessorQualifiedModelica.manifestFingerprint.digest
     ),
     false,
   );

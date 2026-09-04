@@ -102,6 +102,12 @@ Deno.test("cache preload is best-effort and leaves the persistent Compose path u
           launchGroup: null,
           imageReference: `example.test/worker@sha256:${"b".repeat(64)}`,
         },
+        {
+          id: "docker-source",
+          lifecycle: "cache",
+          launchGroup: null,
+          imageReference: `example.test/source@sha256:${"c".repeat(64)}`,
+        },
       ],
     }],
   } as never, () => Promise.resolve(true));

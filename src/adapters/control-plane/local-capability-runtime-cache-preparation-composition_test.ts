@@ -1,43 +1,39 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { FixedAdmittedSpiceExecutionProfileCatalog } from "../electrical/spice/admitted/execution-profile-catalog.ts";
-import {
-  LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
-} from "../electrical/spice/admitted/local-image-references.ts";
-import { createLocalGeometryModuleAssemblyServerOptions } from "../cad/module-assembly/first-party-geometry-module-assembly.ts";
-import { FixedGeometryModuleAssemblyProfileCatalog } from "../cad/module-assembly/fixed-geometry-module-assembly-profile.ts";
 import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capability-binding-catalog.ts";
 import { FileCapabilityRuntimeCachePreparationJournal } from "./file-capability-runtime-cache-preparation-journal.ts";
 import {
   createLocalCapabilityRuntimeCachePreparationComposition,
 } from "./local-capability-runtime-cache-preparation-composition.ts";
 import {
-  FIRST_PARTY_GEOMETRY_MODULE_RUNTIME_CACHE_RECIPE_ID,
-  FIRST_PARTY_GEOMETRY_MODULE_SOURCE_CACHE_RECIPE_ID,
-  FIRST_PARTY_NGSPICE_RUNTIME_CACHE_RECIPE_ID,
-  FIRST_PARTY_NGSPICE_SOURCE_CACHE_RECIPE_ID,
+  FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID,
+  FIRST_PARTY_CALCULIX_CACHE_RECIPE_ID,
+  FIRST_PARTY_GEOMETRY_MODULE_CACHE_RECIPE_ID,
+  FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID,
+  FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID,
+  FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID,
 } from "./first-party-capability-runtime-cache-preparation-registry.ts";
-import type {
-  CapabilityRuntimeCachePreparationRequestedMaterial,
-} from "../../domain/capability/runtime/capability-runtime-cache-preparation.ts";
+import type { CapabilityRuntimeCachePreparationRequestedMaterial } from "../../domain/capability/runtime/capability-runtime-cache-preparation.ts";
 
-const FINGERPRINT = { algorithm: "sha256" as const, digest: "a".repeat(64) };
 const NOW = "2026-08-31T00:00:00.000Z";
+const RECIPE_IDS = [
+  FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID,
+  FIRST_PARTY_CALCULIX_CACHE_RECIPE_ID,
+  FIRST_PARTY_GEOMETRY_MODULE_CACHE_RECIPE_ID,
+  FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID,
+  FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID,
+  FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID,
+] as const;
 
-Deno.test("local cache-preparation composition journals atomic SPICE and CAD work under the supplied host lock", async () => {
+Deno.test("local cache-preparation composition journals the six target recipes under the host lock", async () => {
   const directory = await Deno.makeTempDir({ prefix: "casys-cache-composition-" });
   try {
     let lockCalls = 0;
     const observations = new Map<string, number>();
     const acquisitions = new Map<string, number>();
-    const exact = new Set<string>([
-      FIRST_PARTY_NGSPICE_SOURCE_CACHE_RECIPE_ID,
-      FIRST_PARTY_GEOMETRY_MODULE_SOURCE_CACHE_RECIPE_ID,
-    ]);
+    const exact = new Set<string>([FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID]);
     const journal = new FileCapabilityRuntimeCachePreparationJournal(directory);
     const composition = await createLocalCapabilityRuntimeCachePreparationComposition({
       catalog: await createFirstPartyCapabilityRuntimeCatalog(),
-      admittedSpiceRuntimeProfile: await admittedSpiceRuntimeProfile(),
-      geometryModuleAssemblyRuntimeProfile: await geometryRuntimeProfile(),
       lock: {
         withLock: async <T>(operation: () => Promise<T>): Promise<T> => {
           lockCalls++;
@@ -60,52 +56,48 @@ Deno.test("local cache-preparation composition journals atomic SPICE and CAD wor
     });
 
     assertEquals(
+      composition.recipes.map((recipe) => recipe.id).toSorted(),
+      [...RECIPE_IDS].toSorted(),
+    );
+    assertEquals(
       (await composition.cachePreparer.prepare({
         projectId: "project:cache-preload",
         materials: requested(composition.recipes),
         guard: () => Promise.resolve(true),
       })).map((result) => result.status),
-      ["observed", "observed", "observed", "observed"],
+      ["observed", "observed", "observed", "observed", "observed", "observed"],
     );
     assertEquals(lockCalls, 1);
     assertEquals(
       observations,
       new Map([
-        [FIRST_PARTY_GEOMETRY_MODULE_SOURCE_CACHE_RECIPE_ID, 1],
-        [FIRST_PARTY_GEOMETRY_MODULE_RUNTIME_CACHE_RECIPE_ID, 2],
-        [FIRST_PARTY_NGSPICE_SOURCE_CACHE_RECIPE_ID, 1],
-        [FIRST_PARTY_NGSPICE_RUNTIME_CACHE_RECIPE_ID, 2],
+        [FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID, 2],
+        [FIRST_PARTY_CALCULIX_CACHE_RECIPE_ID, 2],
+        [FIRST_PARTY_GEOMETRY_MODULE_CACHE_RECIPE_ID, 2],
+        [FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID, 2],
+        [FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID, 2],
+        [FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID, 1],
       ]),
     );
     assertEquals(
       acquisitions,
       new Map([
-        [FIRST_PARTY_GEOMETRY_MODULE_RUNTIME_CACHE_RECIPE_ID, 1],
-        [FIRST_PARTY_NGSPICE_RUNTIME_CACHE_RECIPE_ID, 1],
+        [FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID, 1],
+        [FIRST_PARTY_CALCULIX_CACHE_RECIPE_ID, 1],
+        [FIRST_PARTY_GEOMETRY_MODULE_CACHE_RECIPE_ID, 1],
+        [FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID, 1],
+        [FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID, 1],
       ]),
     );
     assertEquals(
-      (await journal.list()).map((attempt) => ({
-        materialId: attempt.intent.scope.materials[0]?.material.materialId,
-        terminal: attempt.terminal?.schemaVersion,
-      })),
+      (await journal.list()).map((attempt) => attempt.intent.recipe.id),
       [
-        {
-          materialId: "geometry-module-assembler-docker-source-image",
-          terminal: "capability-runtime-cache-preparation-observed/1.0",
-        },
-        {
-          materialId: "geometry-module-assembler-worker-image",
-          terminal: "capability-runtime-cache-preparation-observed/1.0",
-        },
-        {
-          materialId: "ngspice-docker-source-image",
-          terminal: "capability-runtime-cache-preparation-observed/1.0",
-        },
-        {
-          materialId: "ngspice-runtime-image",
-          terminal: "capability-runtime-cache-preparation-observed/1.0",
-        },
+        FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID,
+        FIRST_PARTY_CALCULIX_CACHE_RECIPE_ID,
+        FIRST_PARTY_GEOMETRY_MODULE_CACHE_RECIPE_ID,
+        FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID,
+        FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID,
+        FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID,
       ],
     );
   } finally {
@@ -113,48 +105,48 @@ Deno.test("local cache-preparation composition journals atomic SPICE and CAD wor
   }
 });
 
-Deno.test("local cache-preparation composition retains a composed CAD lane independently", async () => {
+Deno.test("local cache-preparation composition refuses a journal plus journal directory", async () => {
   const directory = await Deno.makeTempDir({ prefix: "casys-cache-composition-" });
   try {
-    const composition = await createLocalCapabilityRuntimeCachePreparationComposition({
-      catalog: await createFirstPartyCapabilityRuntimeCatalog(),
-      geometryModuleAssemblyRuntimeProfile: await geometryRuntimeProfile(),
-      lock: { withLock: <T>(operation: () => Promise<T>) => operation() },
-      journalDirectory: directory,
-      actions: {
-        observe: () => Promise.resolve(true),
-        acquire: () =>
-          Promise.reject(new Error("exact source and runtime do not acquire")),
-      },
-    });
-
-    assertEquals(composition.recipes.map((recipe) => recipe.id), [
-      FIRST_PARTY_GEOMETRY_MODULE_SOURCE_CACHE_RECIPE_ID,
-      FIRST_PARTY_GEOMETRY_MODULE_RUNTIME_CACHE_RECIPE_ID,
-    ]);
-    assertEquals(
-      (await composition.cachePreparer.prepare({
-        projectId: "project:geometry-cache-preload",
-        materials: requested(composition.recipes),
-        guard: () => Promise.resolve(true),
-      })).map((result) => result.status),
-      ["observed", "observed"],
+    await assertRejects(
+      async () =>
+        await createLocalCapabilityRuntimeCachePreparationComposition({
+          catalog: await createFirstPartyCapabilityRuntimeCatalog(),
+          lock: { withLock: <T>(operation: () => Promise<T>) => operation() },
+          journal: new FileCapabilityRuntimeCachePreparationJournal(directory),
+          journalDirectory: directory,
+        }),
+      TypeError,
+      "journal or a journal directory",
     );
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
 });
 
-Deno.test("local cache-preparation composition refuses a profile-only zero-lane setup", async () => {
-  await assertRejects(
-    async () =>
-      await createLocalCapabilityRuntimeCachePreparationComposition({
-        catalog: await createFirstPartyCapabilityRuntimeCatalog(),
-        lock: { withLock: <T>(operation: () => Promise<T>) => operation() },
-      }),
-    TypeError,
-    "one actually composed executable lane",
-  );
+Deno.test("composing cache registry and actions does not call the local Microsandbox SDK factory", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "casys-cache-composition-" });
+  try {
+    let factoryCalls = 0;
+    const composition = await createLocalCapabilityRuntimeCachePreparationComposition({
+      catalog: await createFirstPartyCapabilityRuntimeCatalog(),
+      lock: { withLock: <T>(operation: () => Promise<T>) => operation() },
+      journalDirectory: directory,
+      createSdk: () => {
+        factoryCalls++;
+        return Promise.reject(new Error("local Microsandbox SDK must stay idle"));
+      },
+    });
+    assertEquals(factoryCalls, 0);
+    assertEquals(
+      composition.recipes.map((recipe) => recipe.id).toSorted(),
+      [
+        ...RECIPE_IDS,
+      ].toSorted(),
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
 });
 
 Deno.test("local cache-preparation composition uses its durable file journal by default", async () => {
@@ -162,7 +154,6 @@ Deno.test("local cache-preparation composition uses its durable file journal by 
   try {
     const composition = await createLocalCapabilityRuntimeCachePreparationComposition({
       catalog: await createFirstPartyCapabilityRuntimeCatalog(),
-      admittedSpiceRuntimeProfile: await admittedSpiceRuntimeProfile(),
       lock: { withLock: <T>(operation: () => Promise<T>) => operation() },
       journalDirectory: directory,
       actions: {
@@ -180,32 +171,6 @@ Deno.test("local cache-preparation composition uses its durable file journal by 
     await Deno.remove(directory, { recursive: true });
   }
 });
-
-async function admittedSpiceRuntimeProfile() {
-  return await new FixedAdmittedSpiceExecutionProfileCatalog({
-    imageReference: LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
-    policy: {
-      id: "spice-cache-composition-test-policy",
-      version: "1.0.0",
-      fingerprint: FINGERPRINT,
-    },
-    limits: {
-      maxWallTimeMs: 30_000,
-      maxCpuTimeMs: 25_000,
-      maxMemoryBytes: 512 * 1_048_576,
-      maxProcesses: 16,
-      maxStdoutBytes: 65_536,
-      maxStderrBytes: 65_536,
-      maxOutputFileBytes: 262_144,
-      maxOutputTotalBytes: 524_288,
-    },
-  }).initial();
-}
-
-async function geometryRuntimeProfile() {
-  const options = await createLocalGeometryModuleAssemblyServerOptions();
-  return await new FixedGeometryModuleAssemblyProfileCatalog(options.profile).initial();
-}
 
 function requested(
   recipes: readonly {
