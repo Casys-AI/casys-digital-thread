@@ -37,10 +37,12 @@ const AT = "2026-08-21T12:00:00.000Z";
 const PROJECT_ID = "project.electrical-method";
 const SUBJECT_ID = "subject.electrical-method";
 
-const UNIQUE_NATIVES: readonly ElectricalObservationNativeBinding[] = [
+const THREAD_L3_NATIVES: readonly ElectricalObservationNativeBinding[] = [
   { name: "v(n1)", value: 3, unit: "V" },
   { name: "i(vsrc)", value: -2, unit: "A" },
 ];
+
+const UNIQUE_NATIVES = THREAD_L3_NATIVES;
 
 Deno.test(
   "admitted SPICE evaluation review admits unitAlgebra by id and fingerprint only",
@@ -150,6 +152,11 @@ async function harness(
   const producerRunId = options.foreignProducerRun === true
     ? "foreign-admitted-spice-run"
     : sheet.spice.producer.runId;
+  const l3Observations = fixedL3ThreadObservations(
+    producerRunId,
+    sheet.spice.evidence.id,
+    sheet.spice.result.id,
+  );
   const snapshot = validateThreadSnapshot({
     schemaVersion: "1.0",
     id: sheet.basis.snapshotId,
@@ -229,17 +236,20 @@ async function harness(
       ),
     ],
     consumptions: [],
-    observations: [],
+    observations: l3Observations,
     requirements: [],
     evaluations: [],
     violations: [],
-    provenance: [{
-      id: "provenance.change.brief",
-      relation: "changes",
-      from: { kind: "change", id: "change.brief" },
-      to: { kind: "artifact", id: "artifact.brief" },
-      rationale: "The applied change introduced the brief document.",
-    }],
+    provenance: [
+      {
+        id: "provenance.change.brief",
+        relation: "changes",
+        from: { kind: "change", id: "change.brief" },
+        to: { kind: "artifact", id: "artifact.brief" },
+        rationale: "The applied change introduced the brief document.",
+      },
+      ...l3ObservationProvenance(l3Observations),
+    ],
     proposedActions: [],
   });
   const objective = "Evaluate admitted SPICE observations.";
@@ -387,6 +397,44 @@ function spiceArtifact(
     inputArtifactIds: [] as const,
     freshness: fresh(AT),
   };
+}
+
+function fixedL3ThreadObservations(
+  runId: string,
+  evidenceArtifactId: string,
+  resultArtifactId: string,
+) {
+  return THREAD_L3_NATIVES.map((native) => ({
+    id: `spice-native-${native.name.replaceAll(/[^a-z0-9]+/gi, "-")}-${runId}`,
+    name: `Admitted SPICE ${native.name}`,
+    metric: native.name,
+    quantity: { value: native.value, unit: native.unit },
+    source: {
+      operation: {
+        serverId: "digital-thread" as const,
+        tool: "simulate.run-admitted-spice@1",
+        runId,
+      },
+      artifactIds: [evidenceArtifactId, resultArtifactId],
+      capturedAt: AT,
+    },
+    freshness: fresh(AT),
+  }));
+}
+
+function l3ObservationProvenance(
+  observations: ReturnType<typeof fixedL3ThreadObservations>,
+) {
+  return observations.flatMap((observation) =>
+    observation.source.artifactIds.map((artifactId) => ({
+      id: `${observation.id}-from-${artifactId}`,
+      relation: "derived_from" as const,
+      from: { kind: "observation" as const, id: observation.id },
+      to: { kind: "artifact" as const, id: artifactId },
+      rationale:
+        "The exact admitted SPICE evidence and result produced this native L3 observation.",
+    }))
+  );
 }
 
 class MemoryTextCaptures {

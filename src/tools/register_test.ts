@@ -322,7 +322,7 @@ Deno.test("startup composes only code-owned local engineering runtimes", async (
   assertStringIncludes(config.tasks.start, "--node-modules-dir=auto");
   assertStringIncludes(
     config.tasks.start,
-    "--allow-read=config,state,src,images,mcp-server.yaml,node_modules",
+    "--allow-read=.,config,state,src,images,mcp-server.yaml,node_modules",
   );
   assertStringIncludes(
     config.tasks.start,
@@ -337,7 +337,7 @@ Deno.test("startup composes only code-owned local engineering runtimes", async (
   assertEquals(yolo, `${config.tasks.start} --yolo`);
   assertStringIncludes(
     yolo,
-    "--allow-read=config,state,src,images,mcp-server.yaml,node_modules",
+    "--allow-read=.,config,state,src,images,mcp-server.yaml,node_modules",
   );
   assertStringIncludes(yolo, "--allow-write=state/local,/tmp,/private/tmp");
   assertStringIncludes(yolo, "--allow-ffi=node_modules");

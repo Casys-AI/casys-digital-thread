@@ -4116,7 +4116,9 @@ Deno.test(
         Error,
         "host group unavailable",
       );
-      assertEquals(session.events, []);
+      assertEquals(session.events, ["begin"]);
+      assertEquals(session.releases, 0);
+      assertEquals(session.retains, 0);
       assertEquals(syson.calls, []);
       assertEquals(
         (await fixture.projects.get(PROJECT_ID))?.agentRuns.find((run) =>

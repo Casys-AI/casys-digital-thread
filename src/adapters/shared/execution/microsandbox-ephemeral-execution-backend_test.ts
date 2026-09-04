@@ -21,10 +21,14 @@ import {
   type MicrosandboxSdk,
   type MicrosandboxSession,
 } from "./microsandbox-ephemeral-execution-backend.ts";
+import { pinnedOciImageReference } from "../../../domain/compile/isolation/local-isolation-runtime.ts";
 
 const encoder = new TextEncoder();
 const IMAGE_DIGEST = "1".repeat(64);
-const IMAGE_REFERENCE = `casys/test-worker@sha256:${IMAGE_DIGEST}`;
+const IMAGE_REFERENCE = pinnedOciImageReference(
+  `casys/test-worker@sha256:${IMAGE_DIGEST}`,
+  "$test.imageReference",
+);
 const PROFILE = Object.freeze({ id: "test-python-v1", version: "1.0.0" });
 const POLICY: IsolatedCodePolicyRef = Object.freeze({
   id: "deny-all-test-v1",

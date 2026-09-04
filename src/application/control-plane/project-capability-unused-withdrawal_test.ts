@@ -121,11 +121,11 @@ Deno.test("explicit unused withdrawal shrinks a covered subset and later demand 
         operationVersion: "1",
       }),
       plannedWorkItem({
-        id: "wi-seed",
+        id: "wi-static-fea",
         status: "ready",
-        kind: "architect",
-        operationId: "architecture.seed-syson-model",
-        operationVersion: "2",
+        kind: "verify",
+        operationId: "verify.run-fea-static-proof",
+        operationVersion: "3",
       }),
     ]);
     const widening = await authorization.reviewPublishedPlan(seedPlan);
@@ -153,7 +153,7 @@ Deno.test("explicit unused withdrawal shrinks a covered subset and later demand 
     assertEquals(withdrawal.delta.requirementReplacements, []);
     assertEquals(
       withdrawal.delta.removedRequirementKeys.includes(
-        "model.author-system\u00001\u0000execution",
+        "mechanics.solve-static-structural\u00001\u0000execution",
       ),
       true,
     );
@@ -196,7 +196,7 @@ Deno.test("explicit unused withdrawal shrinks a covered subset and later demand 
     );
     assertEquals(
       withdrawn.effectiveEnvelope?.proposal.semanticRequirements.some(
-        (requirement) => requirement.id === "model.author-system",
+        (requirement) => requirement.id === "mechanics.solve-static-structural",
       ),
       false,
     );
@@ -210,7 +210,7 @@ Deno.test("explicit unused withdrawal shrinks a covered subset and later demand 
     if (restored.status !== "amendment-required") return;
     assertEquals(
       restored.delta.addedRequirementKeys.includes(
-        "model.author-system\u00001\u0000execution",
+        "mechanics.solve-static-structural\u00001\u0000execution",
       ),
       true,
     );
@@ -229,7 +229,7 @@ Deno.test("unused withdrawal may resolve unknown security and unknown bytes by r
       new Date(Date.parse("2026-08-30T00:00:00.000Z") + ++tick * 1_000).toISOString();
     const projects = new FileEngineeringProjectRevisionStore(directory);
     const briefs = new ProjectBriefCommandService(projects, now);
-    const catalog = await catalogWithUnknownUnusedSyson();
+    const catalog = await catalogWithUnknownUnusedCalculix();
     const authorization = new ProjectCapabilityAuthorizationService({
       ledgers: new InMemoryProjectCapabilityLedgerStore(),
       registry: { list: listRegisteredEngineeringOperations },
@@ -327,11 +327,11 @@ Deno.test("unused withdrawal may resolve unknown security and unknown bytes by r
         operationVersion: "1",
       }),
       plannedWorkItem({
-        id: "wi-seed",
+        id: "wi-static-fea",
         status: "ready",
-        kind: "architect",
-        operationId: "architecture.seed-syson-model",
-        operationVersion: "2",
+        kind: "verify",
+        operationId: "verify.run-fea-static-proof",
+        operationVersion: "3",
       }),
     ]);
     const widening = await authorization.reviewPublishedPlan(seedPlan);
@@ -417,13 +417,13 @@ Deno.test("unused withdrawal may resolve unknown security and unknown bytes by r
   }
 });
 
-async function catalogWithUnknownUnusedSyson(): Promise<CapabilityRuntimeCatalog> {
+async function catalogWithUnknownUnusedCalculix(): Promise<CapabilityRuntimeCatalog> {
   const catalog = JSON.parse(
     JSON.stringify(await createFirstPartyCapabilityRuntimeCatalog()),
   ) as CapabilityRuntimeCatalog;
   for (const unit of catalog.units as unknown as MutableCatalogUnit[]) {
     for (const material of unit.materials) {
-      if (unit.id === "casys.syson-stack") {
+      if (unit.id === "casys.calculix-worker") {
         material.effects.security = "unknown";
         material.effects.downloadBytes = null;
         material.effects.storageBytes = null;

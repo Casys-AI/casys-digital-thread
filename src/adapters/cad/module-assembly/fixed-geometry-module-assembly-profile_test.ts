@@ -30,7 +30,7 @@ Deno.test("fixed module-assembly profile binds Microsandbox, digest-pinned OCI a
   assertEquals(profile.executionProfile, GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE);
   assertEquals(
     profile.imageReference,
-    `casys/build123d-module-assembler-worker@sha256:${DIGEST}`,
+    `docker.io/casys/build123d-module-assembler-worker@sha256:${DIGEST}`,
   );
   assertEquals(profile.runtime.isolationClass, "microsandbox-local-microvm-v1");
   assertEquals(profile.runtime.imageDigest.digest, DIGEST);

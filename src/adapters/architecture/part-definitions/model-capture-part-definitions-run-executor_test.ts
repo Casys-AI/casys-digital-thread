@@ -161,7 +161,9 @@ Deno.test("PartDefinitions capture keeps the run queued when JIT begin fails", a
     Error,
     "host group unavailable",
   );
-  assertEquals(session.events, []);
+  assertEquals(session.events, ["begin"]);
+  assertEquals(session.releases, 0);
+  assertEquals(session.retains, 0);
   assertEquals(fixture.syson.calls, []);
   assertEquals(fixture.project.agentRuns[0]!.status, "queued");
 });

@@ -415,7 +415,9 @@ async function harness() {
     },
     runtimeBackend: {
       ...MICROSANDBOX_LOCAL_RUNTIME_REF,
-      imageReference: `casys/modelica-microsandbox-worker@sha256:${"5".repeat(64)}`,
+      imageReference: `docker.io/casys/modelica-microsandbox-worker@sha256:${
+        "5".repeat(64)
+      }`,
       imageDigest: { algorithm: "sha256", digest: "5".repeat(64) },
     },
     runtime: {
