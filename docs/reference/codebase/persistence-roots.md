@@ -46,6 +46,15 @@ recoverable pending/claim material for each brief-bound operational authorizatio
 Prepared or pending material alone is not authority. This root is distinct from Thread,
 CAS, MRTR, engineering result, and Workbench command state.
 
+#### `state/local/capability-runtime-microvm-preparation/`
+
+Current append-only intent and terminal journal for server-owned first-party microVM
+material preparation. Server preload and the local runtime administrator share this
+single default through `FileCapabilityRuntimeCachePreparationJournal`. The retired
+`state/local/capability-runtime-cache-preparation/` tree is neither read, migrated nor
+deleted; its records belong to an earlier recipe model and remain outside current
+runtime authority.
+
 #### `state/local/engineering-projects/`
 
 Ignored immutable active project revisions and CAS claims

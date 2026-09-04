@@ -5,7 +5,17 @@ import {
   createCapabilityRuntimeCachePreparationRecipe,
 } from "../../domain/capability/runtime/capability-runtime-cache-preparation.ts";
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
-import { FileCapabilityRuntimeCachePreparationJournal } from "./file-capability-runtime-cache-preparation-journal.ts";
+import {
+  DEFAULT_CAPABILITY_RUNTIME_MICROVM_PREPARATION_DIRECTORY,
+  FileCapabilityRuntimeCachePreparationJournal,
+} from "./file-capability-runtime-cache-preparation-journal.ts";
+
+Deno.test("microVM preparation journal has one clean-break default root", () => {
+  assertEquals(
+    DEFAULT_CAPABILITY_RUNTIME_MICROVM_PREPARATION_DIRECTORY,
+    "state/local/capability-runtime-microvm-preparation",
+  );
+});
 
 Deno.test("file cache preparation journal is append-only and reconstructs an exact observed scope", async () => {
   const directory = await Deno.makeTempDir({ prefix: "casys-cache-preparation-" });

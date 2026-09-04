@@ -33,7 +33,13 @@ import {
   writeNewAttemptFileDurably,
 } from "../shared/wal/durable-attempt-file-writes.ts";
 
-const DEFAULT_DIRECTORY = "state/local/capability-runtime-cache-preparation";
+/**
+ * Current authoritative root for first-party microVM material preparation.
+ * The retired generic cache-preparation root is deliberately not read or
+ * migrated: its recipes belonged to a different closed runtime model.
+ */
+export const DEFAULT_CAPABILITY_RUNTIME_MICROVM_PREPARATION_DIRECTORY =
+  "state/local/capability-runtime-microvm-preparation";
 
 /**
  * The cache journal deliberately uses its own anchored root, not the H1 host
@@ -44,7 +50,9 @@ export class FileCapabilityRuntimeCachePreparationJournal
   implements CapabilityRuntimeCachePreparationJournal {
   readonly #root: TrustedAnchoredStorageRoot;
 
-  constructor(directory = DEFAULT_DIRECTORY) {
+  constructor(
+    directory = DEFAULT_CAPABILITY_RUNTIME_MICROVM_PREPARATION_DIRECTORY,
+  ) {
     try {
       this.#root = resolveTrustedAnchoredStorageRoot(directory);
     } catch (error) {

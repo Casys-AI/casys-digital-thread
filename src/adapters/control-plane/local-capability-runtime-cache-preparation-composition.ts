@@ -50,7 +50,7 @@ export interface LocalCapabilityRuntimeCachePreparationCompositionOptions
   extends FirstPartyCapabilityRuntimeCachePreparationRegistryOptions {
   /** The same host mutation mutex used by H1 material acquisition and JIT. */
   readonly lock: CapabilityRuntimeHostMutationLock;
-  /** Durable journal location; defaults to the isolated cache-preparation root. */
+  /** Durable journal location; defaults to the current isolated microVM-preparation root. */
   readonly journalDirectory?: string;
   /** Internal injection seam for focused tests; never an MCP/project surface. */
   readonly journal?: CapabilityRuntimeCachePreparationJournal;
