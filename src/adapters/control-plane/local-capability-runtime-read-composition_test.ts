@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { capabilityRuntimeMaterialKey } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import { LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE } from "../electrical/spice/admitted/local-image-references.ts";
 import { LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE } from "./first-party-capability-runtime-identities.ts";
 import { createLocalCapabilityRuntimeReadComposition } from "./local-capability-runtime-read-composition.ts";
 
@@ -32,7 +33,7 @@ Deno.test("local read composition enrolls the exact admitted SPICE and Modelica 
       LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
     ),
     admittedSpiceExecutionProfile: profileFor(
-      "casys/ngspice-microsandbox-worker@sha256:3350527ceba0dbe8f2e31e435e834f962978e800134b83d6ee8f4875b7ffb79a",
+      LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
     ),
   });
   const { modelica, runtime } = admittedMaterials(composition);
@@ -85,7 +86,7 @@ Deno.test("local read composition keeps catalogued SPICE observable when only th
 Deno.test("local read composition keeps catalogued Modelica observable when only the SPICE profile is configured", async () => {
   const composition = await createLocalCapabilityRuntimeReadComposition({
     admittedSpiceExecutionProfile: profileFor(
-      "casys/ngspice-microsandbox-worker@sha256:3350527ceba0dbe8f2e31e435e834f962978e800134b83d6ee8f4875b7ffb79a",
+      LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
     ),
   });
   const { modelica, runtime } = admittedMaterials(composition);

@@ -83,16 +83,18 @@ substitutes:
 | Maintainer recovery | `deno task prepare:ngspice:microsandbox`                                  | Normal product use, a pull of aliases, or a caller-selected image                |
 | Product run         | `simulate.run-admitted-spice@1` after `project_admitted_spice_run_review` | mcp-spice, the LED-driver fiche, or a verdict                                    |
 
-The Docker source/index digest (`62748f195c86…`) is internal bootstrap acquisition
-metadata; the Microsandbox runtime manifest digest (`3350527ceba0…`) is the sole
+The Docker source/index digest (`4350b3b70bb7…`) is internal bootstrap acquisition
+metadata; the Microsandbox runtime manifest digest (`54079cf7c0e1…`) is the sole
 catalogued runtime material and product attestation target. Product inspect requires
 `imageReference` digest == attested `manifestDigest`. `pullPolicy` stays `never`.
 After authorization or restart, server-owned preload may prepare the exact target; JIT
 only observes it before a claim and never acquires from the Docker source. A local
 `trusted-dockerfile` rebuild is a candidate recipe, not bit-reproducible proof, and can
 fail the exact target attestation; the capability then stays unavailable. `oci-digest`
-distribution and GHCR promotion remain deferred until separate qualification. A moving
-APT repository does not promise that a later rebuild will reproduce the pin.
+distribution and GHCR promotion remain deferred until separate qualification. These
+local pins only unblock a host with the exact source image available; they do not make
+the worker externally reproducible. A moving APT repository does not promise that a
+later rebuild will reproduce the pin.
 
 Filesystem contract, analogous to admitted Modelica:
 
