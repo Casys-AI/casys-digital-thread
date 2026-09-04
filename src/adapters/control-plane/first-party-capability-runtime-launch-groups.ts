@@ -15,20 +15,6 @@ import {
 
 export const POSTGRES_IMAGE_REFERENCE =
   "docker.io/library/postgres@sha256:926f8799aef36e00001cfe15fba7abbd37d3c5224ea57e4c858e4bb670f10561" as const;
-/**
- * Retired only through the server-owned SysON rollover. It remains a literal
- * predecessor descriptor so an old local host can be identified exactly;
- * ordinary runtime composition never publishes or selects it.
- */
-export const SYSON_PREDECESSOR_IMAGE_REFERENCE =
-  "ghcr.io/casys-ai/syson@sha256:fc599abb95587913de11ff6de68060b5593956abc0c47bc753cd19e2987141a6" as const;
-/**
- * Retired only as a history/transition predecessor for mcp-chrono 0.3.1.
- * Ordinary runtime composition never publishes or selects it; the current
- * catalogue remains `casys.mcp-chrono@0.3.2`.
- */
-export const CHRONO_PREDECESSOR_IMAGE_REFERENCE =
-  "ghcr.io/casys-ai/mcp-chrono@sha256:b6302001725df4722d84096a51eeff7e7ffeee843690a2ba0cc417191c67683c" as const;
 export const SYSON_IMAGE_REFERENCE =
   "ghcr.io/casys-ai/syson@sha256:d372ae26e5d32e5c599fa7c1599d42c73cf9a54e101cfe6f77175f313d7d84e9" as const;
 export const MCP_SYSON_IMAGE_REFERENCE =
@@ -45,7 +31,7 @@ export const MCP_BUILD123D_061_IMAGE_REFERENCE =
 export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
   readonly CapabilityRuntimeLaunchGroup[]
 > {
-  const syson = await createFirstPartySysonLaunchGroup("successor");
+  const syson = await createFirstPartySysonLaunchGroup();
   const build123dSandbox = await build123dLaunchGroup({
     id: "casys-build123d-sandbox",
     projectName: "casys-build123d-sandbox",
@@ -64,7 +50,7 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
     port: 3014,
     volume: "exports",
   });
-  const chrono = await createFirstPartyChronoLaunchGroup("successor");
+  const chrono = await createFirstPartyChronoLaunchGroup();
 
   // CalculiX sensitivity is a deliberately independent, single-service
   // topology. It has no CAD exchange mount: the server-owned staging adapter
@@ -133,39 +119,10 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
   return [syson, build123dSandbox, build123dObservation, chrono, calculix];
 }
 
-/**
- * The one code-owned predecessor admissible to the SysON 1.0.1 rollover.
- * It is intentionally not included in the ordinary registry: it shares the
- * same Compose project and loopback port with its successor.
- */
-export async function createFirstPartySysonRolloverPredecessorLaunchGroup(): Promise<
+async function createFirstPartyChronoLaunchGroup(): Promise<
   CapabilityRuntimeLaunchGroup
 > {
-  return await createFirstPartySysonLaunchGroup("predecessor");
-}
-
-/**
- * The one code-owned predecessor admissible to a Chrono 0.3.1 → 0.3.2
- * history/transition. It is intentionally not included in the ordinary
- * registry: it shares the same Compose project, loopback port, service,
- * volume, secret slot and healthcheck with its successor. The two group
- * refs remain `casys-chrono@1.0.0`; only the image identity differs.
- */
-export async function createFirstPartyChronoRolloverPredecessorLaunchGroup(): Promise<
-  CapabilityRuntimeLaunchGroup
-> {
-  return await createFirstPartyChronoLaunchGroup("predecessor");
-}
-
-type FirstPartySysonDescriptor = "predecessor" | "successor";
-type FirstPartyChronoDescriptor = "predecessor" | "successor";
-
-async function createFirstPartyChronoLaunchGroup(
-  descriptor: FirstPartyChronoDescriptor,
-): Promise<CapabilityRuntimeLaunchGroup> {
-  const image = descriptor === "predecessor"
-    ? CHRONO_PREDECESSOR_IMAGE_REFERENCE
-    : MCP_CHRONO_032_IMAGE_REFERENCE;
+  const image = MCP_CHRONO_032_IMAGE_REFERENCE;
   const chronoComposeContent = deterministicJson({
     services: {
       "mcp-chrono": {
@@ -230,13 +187,11 @@ async function createFirstPartyChronoLaunchGroup(
   };
 }
 
-async function createFirstPartySysonLaunchGroup(
-  descriptor: FirstPartySysonDescriptor,
-): Promise<CapabilityRuntimeLaunchGroup> {
-  const image = descriptor === "predecessor"
-    ? SYSON_PREDECESSOR_IMAGE_REFERENCE
-    : SYSON_IMAGE_REFERENCE;
-  const version = descriptor === "predecessor" ? "1.0.0" : "1.0.1";
+async function createFirstPartySysonLaunchGroup(): Promise<
+  CapabilityRuntimeLaunchGroup
+> {
+  const image = SYSON_IMAGE_REFERENCE;
+  const version = "1.0.1";
   const sysonComposeContent = deterministicJson({
     services: {
       "syson-db": {

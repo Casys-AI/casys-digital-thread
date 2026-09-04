@@ -1,13 +1,7 @@
 import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import {
   createFirstPartyCapabilityRuntimeCatalog,
-  createFirstPartyChronoRolloverPredecessorUnit,
-  createFirstPartySysonRolloverPredecessorUnit,
 } from "./first-party-capability-binding-catalog.ts";
-import {
-  createFirstPartyChronoRolloverPredecessorLaunchGroup,
-  createFirstPartySysonRolloverPredecessorLaunchGroup,
-} from "./first-party-capability-runtime-launch-groups.ts";
 import {
   validateCapabilityRuntimeAdminLock,
   validateCapabilityRuntimeAdminPolicy,
@@ -94,68 +88,6 @@ Deno.test("atomic first-party runtime catalogue exposes only runtime materials a
     syson?.materials.find((material) => material.id === "syson-app-image")
       ?.platforms,
     ["linux/amd64", "linux/arm64"],
-  );
-  const predecessorSyson = await createFirstPartySysonRolloverPredecessorUnit();
-  const predecessorChrono = await createFirstPartyChronoRolloverPredecessorUnit();
-  assertEquals(predecessorSyson.version, "1.0.0");
-  // The retired descriptor is a historical authority, not a derived alias for
-  // the current SysON material. Keep both fingerprints literal so a future
-  // successor update cannot silently rewrite the 1.0.0 rollover basis.
-  assertEquals(predecessorSyson.manifestFingerprint, {
-    algorithm: "sha256",
-    digest: "e8ac01cd5c94330d8ea89d6d1f9b24c363a3067bbb2923faac8dd56d53c7b7fd",
-  });
-  const predecessorLaunchGroup =
-    await createFirstPartySysonRolloverPredecessorLaunchGroup();
-  assertEquals(predecessorLaunchGroup.fingerprint, {
-    algorithm: "sha256",
-    digest: "8e470a77b13ae58bc70e0d4cc5b6deaff1e4f58b85f704b1ddaba74bb7e4d1a6",
-  });
-  assertEquals(predecessorChrono.id, "casys.mcp-chrono");
-  assertEquals(predecessorChrono.version, "0.3.1");
-  assertEquals(predecessorChrono.manifestFingerprint, {
-    algorithm: "sha256",
-    digest: "62c24230102e9b94955ffd27c8f3d9bea49e3f90bc03ff511f650569e22d399d",
-  });
-  const predecessorChronoLaunchGroup =
-    await createFirstPartyChronoRolloverPredecessorLaunchGroup();
-  assertEquals(predecessorChronoLaunchGroup.id, "casys-chrono");
-  assertEquals(predecessorChronoLaunchGroup.version, "1.0.0");
-  assertEquals(predecessorChronoLaunchGroup.fingerprint, {
-    algorithm: "sha256",
-    digest: "ddf2ea1f75ed3ca1606ab905ff7e37bfbf3b7e975e919856678484d9c0251985",
-  });
-  assertEquals(
-    predecessorChrono.materials.find((material) => material.id === "mcp-chrono-image")
-      ?.imageReference,
-    "ghcr.io/casys-ai/mcp-chrono@sha256:b6302001725df4722d84096a51eeff7e7ffeee843690a2ba0cc417191c67683c",
-  );
-  assertEquals(
-    predecessorChrono.materials.find((material) => material.id === "mcp-chrono-image")
-      ?.launchGroup,
-    {
-      id: "casys-chrono",
-      version: "1.0.0",
-      fingerprint: predecessorChronoLaunchGroup.fingerprint,
-    },
-  );
-  assertEquals(
-    catalog.units.some((unit) =>
-      unit.id === predecessorChrono.id &&
-      unit.version === predecessorChrono.version &&
-      unit.manifestFingerprint.digest === predecessorChrono.manifestFingerprint.digest
-    ),
-    false,
-  );
-  assertEquals(
-    predecessorSyson.materials.find((material) => material.id === "syson-app-image")
-      ?.imageReference,
-    "ghcr.io/casys-ai/syson@sha256:fc599abb95587913de11ff6de68060b5593956abc0c47bc753cd19e2987141a6",
-  );
-  assertEquals(
-    predecessorSyson.materials.find((material) => material.id === "syson-app-image")
-      ?.platforms,
-    ["linux/arm64"],
   );
   assertEquals(
     catalog.units.find((unit) => unit.id === "casys.modelica-qualified-worker")

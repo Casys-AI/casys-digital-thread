@@ -19,7 +19,6 @@ import {
 } from "./file-capability-runtime-host-stores.ts";
 import {
   createFirstPartyCapabilityRuntimeCatalog,
-  createFirstPartyChronoRolloverPredecessorUnit,
 } from "./first-party-capability-binding-catalog.ts";
 import {
   createFirstPartyCapabilityRuntimeLaunchGroups,
@@ -416,78 +415,6 @@ Deno.test("admin lock reads a canonical hash-chained non-current history without
     await writeAdminLockHistory(directory, [first, second]);
     assertEquals((await store.read()).revision, 2);
     assertEquals((await store.list()).map((lock) => lock.revision), [0, 1, 2]);
-  } finally {
-    await Deno.remove(directory, { recursive: true });
-  }
-});
-
-Deno.test("admin lock reads exact historical Chrono 0.3.1 then saves only the current successor", async () => {
-  const directory = await Deno.makeTempDir({
-    prefix: "casys-capability-lock-chrono-transition-",
-  });
-  try {
-    const [catalog, predecessor] = await Promise.all([
-      createFirstPartyCapabilityRuntimeCatalog(),
-      createFirstPartyChronoRolloverPredecessorUnit(),
-    ]);
-    const empty = {
-      schemaVersion: "capability-runtime-admin-lock/1.0" as const,
-      revision: 0,
-      previous: null,
-      units: [],
-    };
-    const historical = {
-      schemaVersion: empty.schemaVersion,
-      revision: 1,
-      previous: await sha256Fingerprint(empty),
-      units: catalog.units.map((unit) => ({
-        ...(unit.id === predecessor.id
-          ? {
-            id: predecessor.id,
-            version: predecessor.version,
-            manifestFingerprint: predecessor.manifestFingerprint,
-          }
-          : {
-            id: unit.id,
-            version: unit.version,
-            manifestFingerprint: unit.manifestFingerprint,
-          }),
-        desired: "inactive" as const,
-      })),
-    };
-    const current = {
-      schemaVersion: empty.schemaVersion,
-      revision: 2,
-      previous: await sha256Fingerprint(historical),
-      units: catalog.units.map((unit) => ({
-        id: unit.id,
-        version: unit.version,
-        manifestFingerprint: unit.manifestFingerprint,
-        desired: "inactive" as const,
-      })),
-    };
-    const store = new FileCapabilityRuntimeAdminLockStore(
-      `${directory}/admin-lock.json`,
-      catalog,
-    );
-
-    await writeAdminLockHistory(directory, [historical]);
-    assertEquals(
-      (await store.read()).units.find((unit) => unit.id === "casys.mcp-chrono"),
-      historical.units.find((unit) => unit.id === "casys.mcp-chrono"),
-    );
-
-    await assertRejects(
-      () => store.save(historical),
-      TypeError,
-      "does not match the exact catalogue unit",
-    );
-
-    await writeAdminLockHistory(directory, [historical, current]);
-    assertEquals(
-      (await store.read()).units.find((unit) => unit.id === "casys.mcp-chrono"),
-      current.units.find((unit) => unit.id === "casys.mcp-chrono"),
-    );
   } finally {
     await Deno.remove(directory, { recursive: true });
   }

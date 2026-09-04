@@ -1,7 +1,5 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import { parseCapabilityRuntimeAdminCli } from "./capability-runtime-admin.ts";
-import { CHRONO_031_TO_032_ROLLOVER_TRANSITION_ID } from "../../src/application/control-plane/capability-runtime-chrono-rollover-service.ts";
-import { SYSON_NODE_REPACK_ROLLOVER_TRANSITION_ID } from "../../src/application/control-plane/capability-runtime-syson-rollover-service.ts";
 
 Deno.test("admin CLI parses exact unit+material non-persistent removal targets", () => {
   assertEquals(
@@ -127,51 +125,30 @@ Deno.test("admin CLI rejects partial, mixed, backend, image, force and prune rem
   }
 });
 
-Deno.test("admin CLI accepts only the two literal rollover transition ids", async () => {
-  assertEquals(
-    parseCapabilityRuntimeAdminCli([
-      "rollover-review",
-      `--transition-id=${SYSON_NODE_REPACK_ROLLOVER_TRANSITION_ID}`,
-    ]),
-    {
-      command: "rollover-review",
-      transitionId: SYSON_NODE_REPACK_ROLLOVER_TRANSITION_ID,
-    },
-  );
-  assertEquals(
-    parseCapabilityRuntimeAdminCli([
-      "rollover-status",
-      `--transition-id=${CHRONO_031_TO_032_ROLLOVER_TRANSITION_ID}`,
-    ]),
-    {
-      command: "rollover-status",
-      transitionId: CHRONO_031_TO_032_ROLLOVER_TRANSITION_ID,
-    },
-  );
-  const apply = parseCapabilityRuntimeAdminCli([
-    "rollover-apply",
-    `--transition-id=${CHRONO_031_TO_032_ROLLOVER_TRANSITION_ID}`,
-    `--review-fingerprint=${"a".repeat(64)}`,
-    "--confirm",
-  ]);
-  assertEquals(apply.command, "rollover-apply");
-  if (apply.command !== "rollover-apply") throw new Error("expected apply");
-  assertEquals(apply.transitionId, CHRONO_031_TO_032_ROLLOVER_TRANSITION_ID);
-  assertEquals(apply.confirm, true);
+Deno.test("admin CLI refuses retired rollover commands and --transition-id", async () => {
+  for (
+    const command of ["rollover-status", "rollover-review", "rollover-apply"] as const
+  ) {
+    assertThrows(
+      () => parseCapabilityRuntimeAdminCli([command]),
+      Error,
+      "Usage: capability-runtime-admin",
+    );
+  }
   assertThrows(
     () =>
       parseCapabilityRuntimeAdminCli([
-        "rollover-review",
-        "--transition-id=casys-chrono-latest",
+        "status",
+        "--transition-id=casys-syson-node-repack-v1",
       ]),
     Error,
-    `${SYSON_NODE_REPACK_ROLLOVER_TRANSITION_ID} or ${CHRONO_031_TO_032_ROLLOVER_TRANSITION_ID}`,
+    "is not valid for local admin",
   );
   const text = await Deno.readTextFile(
     new URL("./capability-runtime-admin.ts", import.meta.url),
   );
-  assertEquals(text.includes(SYSON_NODE_REPACK_ROLLOVER_TRANSITION_ID), true);
-  assertEquals(text.includes(CHRONO_031_TO_032_ROLLOVER_TRANSITION_ID), true);
-  assertEquals(text.includes("CapabilityRuntimeChronoRolloverService"), true);
-  assertEquals(text.includes("CapabilityRuntimeSysonRolloverService"), true);
+  assertEquals(text.includes("rollover-status"), false);
+  assertEquals(text.includes("rollover-review"), false);
+  assertEquals(text.includes("rollover-apply"), false);
+  assertEquals(text.includes("--transition-id"), false);
 });

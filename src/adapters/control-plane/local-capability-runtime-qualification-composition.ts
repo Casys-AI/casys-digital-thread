@@ -7,13 +7,11 @@ import { ChronoPrescribedKinematicsCaseLowerer } from "../mechanics/chrono/chron
 import { ChronoPrescribedKinematicsClient } from "../mechanics/chrono/chrono-prescribed-kinematics-client.ts";
 import { CapabilityRuntimeLaunchGroupSupervisor } from "../../application/control-plane/capability-runtime-launch-group-supervisor.ts";
 import { CapabilityRuntimeQualificationService } from "../../application/control-plane/capability-runtime-qualification-service.ts";
-import { CapabilityRuntimeChronoRolloverGate } from "../../application/control-plane/capability-runtime-chrono-rollover-service.ts";
 import { createCapabilityRuntimeHostAdapter } from "./compose-capability-runtime-host.ts";
 import {
   FileCapabilityRuntimeHostMutationLock,
   FileCapabilityRuntimeLeaseStore,
 } from "./file-capability-runtime-host-stores.ts";
-import { FileCapabilityRuntimeRolloverSagaStore } from "./file-capability-runtime-rollover-saga-store.ts";
 import { FileCapabilityRuntimeQualificationAttemptStore } from "./file-capability-runtime-qualification-attempt-store.ts";
 import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "./first-party-capability-runtime-qualification-candidates.ts";
 import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "./first-party-capability-runtime-qualification-specifications.ts";
@@ -40,7 +38,6 @@ export async function composeLocalCapabilityRuntimeQualification(
   const capability = await createLocalCapabilityRuntimeReadComposition({ secrets });
   const hostMutationLock = new FileCapabilityRuntimeHostMutationLock();
   const leases = new FileCapabilityRuntimeLeaseStore();
-  const sagas = new FileCapabilityRuntimeRolloverSagaStore();
   const host = createCapabilityRuntimeHostAdapter({
     registry: capability.launchGroups,
     journal: capability.journal,
@@ -56,7 +53,6 @@ export async function composeLocalCapabilityRuntimeQualification(
     host,
     secrets,
     lock: hostMutationLock,
-    availabilityGate: new CapabilityRuntimeChronoRolloverGate(sagas),
   });
   const service = new CapabilityRuntimeQualificationService({
     catalog: capability.catalog,

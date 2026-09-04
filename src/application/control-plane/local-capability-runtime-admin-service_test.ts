@@ -6,8 +6,6 @@ import {
 import { InMemoryProjectCapabilityLedgerStore } from "../../adapters/control-plane/file-project-capability-ledger-store.ts";
 import {
   createFirstPartyCapabilityRuntimeCatalog,
-  createFirstPartyChronoRolloverPredecessorUnit,
-  createFirstPartySysonRolloverPredecessorUnit,
 } from "../../adapters/control-plane/first-party-capability-binding-catalog.ts";
 import { createFirstPartyCapabilityRuntimeLaunchGroupRegistry } from "../../adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
 import {
@@ -82,13 +80,16 @@ Deno.test("local lock review reconverges catalogue-stale history and rollback-re
     prefix: "casys-local-admin-history-upgrade-",
   });
   try {
-    const [catalog, predecessorSyson, predecessorChrono] = await Promise.all([
-      createFirstPartyCapabilityRuntimeCatalog(),
-      createFirstPartySysonRolloverPredecessorUnit(),
-      createFirstPartyChronoRolloverPredecessorUnit(),
-    ]);
-    const predecessors = [predecessorSyson, predecessorChrono];
+    const catalog = await createFirstPartyCapabilityRuntimeCatalog();
     const currentUnits = currentLockUnits(catalog);
+    const retired = {
+      id: currentUnits[0]!.id,
+      version: "0.0.1",
+      manifestFingerprint: await sha256Fingerprint({
+        retiredUnit: currentUnits[0]!.id,
+        retiredVersion: "0.0.1",
+      }),
+    };
     const first = {
       schemaVersion: "capability-runtime-admin-lock/1.0" as const,
       revision: 1,
@@ -99,9 +100,7 @@ Deno.test("local lock review reconverges catalogue-stale history and rollback-re
         units: [],
       }),
       units: currentUnits.map((unit) => ({
-        ...(predecessors.find((candidate) => candidate.id === unit.id)
-          ? lockedUnit(predecessors.find((candidate) => candidate.id === unit.id)!)
-          : unit),
+        ...(unit.id === retired.id ? retired : unit),
         desired: "inactive" as const,
       })),
     };
@@ -133,9 +132,8 @@ Deno.test("local lock review reconverges catalogue-stale history and rollback-re
     });
     assertEquals((await lock.read()).revision, 2);
     assertEquals(
-      (await lock.read()).units.find((unit) => unit.id === "casys.syson-stack")
-        ?.version,
-      predecessorSyson.version,
+      (await lock.read()).units.find((unit) => unit.id === retired.id)?.version,
+      retired.version,
     );
     const review = await service.lockReview();
     assertEquals(review.nextLock.revision, 3);

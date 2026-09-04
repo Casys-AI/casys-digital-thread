@@ -613,96 +613,18 @@ Deno.test("human did-not-write reconciliation releases only the retained lease o
     microsandboxExecutionProfiles: [],
     recheck: () => Promise.resolve(operation),
   });
-  let legacyResolutionCalls = 0;
-
   await coordinator.releaseReconciledUncertainWriterLease({
     project,
     failedRunId: "run:failed",
     reconciliationRunId: "run:reconcile",
-    resolveLegacyOperationalCapability: () => {
-      legacyResolutionCalls++;
-      return Promise.reject(
-        new Error("owner provenance must bypass legacy resolution"),
-      );
-    },
   });
 
   assertEquals(cleanups, [session.lease.id]);
   assertEquals(await leases.read(session.lease.id), undefined);
   assertEquals(activations, ["casys-observation"]);
-  assertEquals(legacyResolutionCalls, 0);
 });
 
-Deno.test("human did-not-write reconciliation releases the exact pre-provenance lease only through its old server-resolved ROP", async () => {
-  const leases = new InMemoryCapabilityRuntimeLeaseStore();
-  const activations: string[] = [];
-  const cleanups: string[] = [];
-  const coordinator = recordedCleanupCoordinator(leases, activations, cleanups);
-  const operation = persistentOperation();
-  const project = await reconciledDidNotWriteProject(operation);
-  const session = await coordinator.begin({
-    project,
-    runId: "run:failed",
-    operationalCapability: operation,
-    microsandboxExecutionProfiles: [],
-    recheck: () => Promise.resolve(operation),
-  });
-  // Simulate ATS01's already-persisted deterministic lease, created before
-  // execution-owner provenance was introduced.
-  await leases.release(session.lease.id);
-  await leases.claim({ ...session.lease, executionOwner: undefined });
-  let legacyResolutionCalls = 0;
-
-  await coordinator.releaseReconciledUncertainWriterLease({
-    project,
-    failedRunId: "run:failed",
-    reconciliationRunId: "run:reconcile",
-    resolveLegacyOperationalCapability: () => {
-      legacyResolutionCalls++;
-      return Promise.resolve(operation);
-    },
-  });
-
-  assertEquals(cleanups, [session.lease.id]);
-  assertEquals(await leases.read(session.lease.id), undefined);
-  assertEquals(activations, ["casys-observation"]);
-  assertEquals(legacyResolutionCalls, 1);
-});
-
-Deno.test("pre-provenance reconciliation never releases a lease from a changed runtime binding", async () => {
-  const leases = new InMemoryCapabilityRuntimeLeaseStore();
-  const activations: string[] = [];
-  const cleanups: string[] = [];
-  const coordinator = recordedCleanupCoordinator(leases, activations, cleanups);
-  const operation = persistentOperation();
-  const project = await reconciledDidNotWriteProject(operation);
-  const session = await coordinator.begin({
-    project,
-    runId: "run:failed",
-    operationalCapability: operation,
-    microsandboxExecutionProfiles: [],
-    recheck: () => Promise.resolve(operation),
-  });
-  await leases.release(session.lease.id);
-  await leases.claim({ ...session.lease, executionOwner: undefined });
-  const rolled = {
-    ...operation,
-    authorizationFingerprint: { algorithm: "sha256" as const, digest: "b".repeat(64) },
-  };
-
-  await coordinator.releaseReconciledUncertainWriterLease({
-    project,
-    failedRunId: "run:failed",
-    reconciliationRunId: "run:reconcile",
-    resolveLegacyOperationalCapability: () => Promise.resolve(rolled),
-  });
-
-  assertEquals(cleanups, []);
-  assertEquals((await leases.read(session.lease.id))?.id, session.lease.id);
-  assertEquals(activations, ["casys-observation"]);
-});
-
-Deno.test("a plain failed run cannot release a retained pre-provenance lease", async () => {
+Deno.test("a plain failed run cannot release a retained provenance-bearing lease", async () => {
   const leases = new InMemoryCapabilityRuntimeLeaseStore();
   const activations: string[] = [];
   const cleanups: string[] = [];
@@ -724,8 +646,6 @@ Deno.test("a plain failed run cannot release a retained pre-provenance lease", a
     microsandboxExecutionProfiles: [],
     recheck: () => Promise.resolve(operation),
   });
-  await leases.release(session.lease.id);
-  await leases.claim({ ...session.lease, executionOwner: undefined });
 
   await assertRejects(
     () =>
@@ -733,11 +653,38 @@ Deno.test("a plain failed run cannot release a retained pre-provenance lease", a
         project,
         failedRunId: "run:failed",
         reconciliationRunId: "run:reconcile",
-        resolveLegacyOperationalCapability: () => Promise.resolve(operation),
       }),
     Error,
     "provider-did-not-write",
   );
+
+  assertEquals(cleanups, []);
+  assertEquals((await leases.read(session.lease.id))?.id, session.lease.id);
+  assertEquals(activations, ["casys-observation"]);
+});
+
+Deno.test("human did-not-write reconciliation does not reconstruct an ownerless lease", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  const activations: string[] = [];
+  const cleanups: string[] = [];
+  const coordinator = recordedCleanupCoordinator(leases, activations, cleanups);
+  const operation = persistentOperation();
+  const project = await reconciledDidNotWriteProject(operation);
+  const session = await coordinator.begin({
+    project,
+    runId: "run:failed",
+    operationalCapability: operation,
+    microsandboxExecutionProfiles: [],
+    recheck: () => Promise.resolve(operation),
+  });
+  await leases.release(session.lease.id);
+  await leases.claim({ ...session.lease, executionOwner: undefined });
+
+  await coordinator.releaseReconciledUncertainWriterLease({
+    project,
+    failedRunId: "run:failed",
+    reconciliationRunId: "run:reconcile",
+  });
 
   assertEquals(cleanups, []);
   assertEquals((await leases.read(session.lease.id))?.id, session.lease.id);

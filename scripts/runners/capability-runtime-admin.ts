@@ -7,7 +7,6 @@ import {
   FileCapabilityRuntimeHostMutationLock,
   FileCapabilityRuntimeLeaseStore,
 } from "../../src/adapters/control-plane/file-capability-runtime-host-stores.ts";
-import { FileCapabilityRuntimeRolloverSagaStore } from "../../src/adapters/control-plane/file-capability-runtime-rollover-saga-store.ts";
 import { FileCapabilityRuntimeCachePreparationJournal } from "../../src/adapters/control-plane/file-capability-runtime-cache-preparation-journal.ts";
 import { FileCapabilityRuntimeNonpersistentMaterialRemovalJournal } from "../../src/adapters/control-plane/file-capability-runtime-nonpersistent-material-removal-journal.ts";
 import { DockerCacheCapabilityRuntimeMaterialRemovalHost } from "../../src/adapters/control-plane/docker-cache-capability-runtime-material-removal.ts";
@@ -16,16 +15,6 @@ import { LocalNonpersistentMaterialRemovalHost } from "../../src/adapters/contro
 import { createFirstPartyNonpersistentMicrosandboxExpectations } from "../../src/adapters/control-plane/first-party-capability-runtime-nonpersistent-materials.ts";
 import { createCapabilityRuntimeHostAdapter } from "../../src/adapters/control-plane/compose-capability-runtime-host.ts";
 import { createLocalCapabilityRuntimeReadComposition } from "../../src/adapters/control-plane/local-capability-runtime-read-composition.ts";
-import {
-  createFirstPartyChronoRolloverPredecessorUnit,
-  createFirstPartySysonRolloverPredecessorUnit,
-} from "../../src/adapters/control-plane/first-party-capability-binding-catalog.ts";
-import {
-  createFirstPartyChronoRolloverPredecessorLaunchGroup,
-  createFirstPartySysonRolloverPredecessorLaunchGroup,
-  firstPartyChronoLaunchGroupReference,
-  firstPartySysonLaunchGroupReference,
-} from "../../src/adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
 import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "../../src/adapters/control-plane/first-party-capability-runtime-qualification-candidates.ts";
 import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "../../src/adapters/control-plane/first-party-capability-runtime-qualification-specifications.ts";
 import { FileEngineeringProjectRevisionStore } from "../../src/adapters/shared/stores/engineering-project-store.ts";
@@ -36,16 +25,6 @@ import {
 } from "../../src/application/control-plane/local-capability-runtime-admin-service.ts";
 import { ProjectCapabilityAuthorizationService } from "../../src/application/control-plane/project-capability-authorization-service.ts";
 import { ProjectCapabilityJitDemandReader } from "../../src/application/control-plane/project-capability-jit-demand-reader.ts";
-import { ProjectCapabilityRolloverJitDemandReader } from "../../src/application/control-plane/project-capability-rollover-jit-demand-reader.ts";
-import {
-  CapabilityRuntimeChronoRolloverService,
-  CHRONO_031_TO_032_ROLLOVER_TRANSITION_ID,
-} from "../../src/application/control-plane/capability-runtime-chrono-rollover-service.ts";
-import {
-  CapabilityRuntimeSysonRolloverService,
-  SYSON_NODE_REPACK_ROLLOVER_TRANSITION_ID,
-} from "../../src/application/control-plane/capability-runtime-syson-rollover-service.ts";
-import { engineeringOperationRegistry } from "../../src/orchestration/operations/registry.ts";
 import type { ContentFingerprint } from "../../src/domain/kernel/primitives.ts";
 
 export type CapabilityRuntimeAdminCliRequest =
@@ -84,18 +63,10 @@ export type CapabilityRuntimeAdminCliRequest =
     readonly target: LocalCapabilityRuntimeRemovalTarget;
     readonly reviewFingerprint: ContentFingerprint;
     readonly confirm: boolean;
-  }
-  | { readonly command: "rollover-status"; readonly transitionId: string }
-  | { readonly command: "rollover-review"; readonly transitionId: string }
-  | {
-    readonly command: "rollover-apply";
-    readonly transitionId: string;
-    readonly reviewFingerprint: ContentFingerprint;
-    readonly confirm: boolean;
   };
 
 const USAGE =
-  "Usage: capability-runtime-admin <status|lock-review|lock-apply|rollback-review|rollback-apply|revoke-review|revoke-apply|remove-review|remove-apply|rollover-status|rollover-review|rollover-apply> [--unit-id=<id>|--launch-group-id=<id>|--unit-id=<id> --material-id=<id>|--transition-id=casys-syson-node-repack-v1|casys-chrono-031-to-032-v1] [--review-fingerprint=<sha256>] [--confirm]";
+  "Usage: capability-runtime-admin <status|lock-review|lock-apply|rollback-review|rollback-apply|revoke-review|revoke-apply|remove-review|remove-apply> [--unit-id=<id>|--launch-group-id=<id>|--unit-id=<id> --material-id=<id>] [--review-fingerprint=<sha256>] [--confirm]";
 
 export function parseCapabilityRuntimeAdminCli(
   args: readonly string[],
@@ -145,16 +116,6 @@ export function parseCapabilityRuntimeAdminCli(
         reviewFingerprint: fingerprint(flags, "review-fingerprint"),
         confirm: confirmed(flags),
       };
-    case "rollover-status":
-    case "rollover-review":
-      return { command, transitionId: transitionId(flags) };
-    case "rollover-apply":
-      return {
-        command,
-        transitionId: transitionId(flags),
-        reviewFingerprint: fingerprint(flags, "review-fingerprint"),
-        confirm: confirmed(flags),
-      };
     default:
       throw new Error(USAGE);
   }
@@ -171,95 +132,15 @@ async function main(request: CapabilityRuntimeAdminCliRequest): Promise<void> {
   const ledgers = capability.ledgers;
   const hostMutationLock = new FileCapabilityRuntimeHostMutationLock();
   const leases = new FileCapabilityRuntimeLeaseStore();
-  const [
-    sysonRolloverPredecessorUnit,
-    sysonRolloverPredecessorGroup,
-    chronoRolloverPredecessorUnit,
-    chronoRolloverPredecessorGroup,
-  ] = await Promise.all([
-    createFirstPartySysonRolloverPredecessorUnit(),
-    createFirstPartySysonRolloverPredecessorLaunchGroup(),
-    createFirstPartyChronoRolloverPredecessorUnit(),
-    createFirstPartyChronoRolloverPredecessorLaunchGroup(),
-  ]);
-  const [sysonRolloverSuccessorGroup, chronoRolloverSuccessorGroup] = await Promise.all(
-    [
-      capability.launchGroups.require(await firstPartySysonLaunchGroupReference()),
-      capability.launchGroups.require(await firstPartyChronoLaunchGroupReference()),
-    ],
-  );
-  const sysonRolloverSuccessorUnit = catalog.units.find((unit) =>
-    unit.id === "casys.syson-stack"
-  );
-  const chronoRolloverSuccessorUnit = catalog.units.find((unit) =>
-    unit.id === "casys.mcp-chrono"
-  );
-  if (!sysonRolloverSuccessorUnit) {
-    throw new Error("Current capability catalogue lacks casys.syson-stack.");
-  }
-  if (!chronoRolloverSuccessorUnit) {
-    throw new Error("Current capability catalogue lacks casys.mcp-chrono.");
-  }
-  const rollovers = new FileCapabilityRuntimeRolloverSagaStore();
   const host = createCapabilityRuntimeHostAdapter({
     registry: capability.launchGroups,
     journal: capability.journal,
     secrets: capability.secrets,
-    rollovers: [{
-      predecessor: sysonRolloverPredecessorGroup,
-      successor: sysonRolloverSuccessorGroup,
-    }, {
-      predecessor: chronoRolloverPredecessorGroup,
-      successor: chronoRolloverSuccessorGroup,
-    }],
   });
   const projects = new FileEngineeringProjectRevisionStore();
   const jitDemand = new ProjectCapabilityJitDemandReader({
     projects,
     contexts: capability.contexts,
-  });
-  const rolloverJitDemand = new ProjectCapabilityRolloverJitDemandReader({
-    projects,
-    operations: engineeringOperationRegistry,
-    ledgers,
-  });
-  const sysonRollover = new CapabilityRuntimeSysonRolloverService({
-    catalog,
-    predecessor: {
-      unit: sysonRolloverPredecessorUnit,
-      launchGroup: sysonRolloverPredecessorGroup,
-    },
-    successor: {
-      unit: sysonRolloverSuccessorUnit,
-      launchGroup: sysonRolloverSuccessorGroup,
-    },
-    ledgers,
-    lock,
-    leases,
-    journal: capability.journal,
-    sagas: rollovers,
-    host,
-    hostMutationLock,
-    jitDemand: rolloverJitDemand,
-  });
-  const chronoRollover = new CapabilityRuntimeChronoRolloverService({
-    catalog,
-    predecessor: {
-      unit: chronoRolloverPredecessorUnit,
-      launchGroup: chronoRolloverPredecessorGroup,
-    },
-    successor: {
-      unit: chronoRolloverSuccessorUnit,
-      launchGroup: chronoRolloverSuccessorGroup,
-    },
-    ledgers,
-    lock,
-    leases,
-    journal: capability.journal,
-    sagas: rollovers,
-    host,
-    hostMutationLock,
-    jitDemand: rolloverJitDemand,
   });
   const authorization = new ProjectCapabilityAuthorizationService({
     ledgers,
@@ -312,18 +193,6 @@ async function main(request: CapabilityRuntimeAdminCliRequest): Promise<void> {
     },
   });
 
-  const rolloverService = (transitionId: string) => {
-    if (transitionId === SYSON_NODE_REPACK_ROLLOVER_TRANSITION_ID) {
-      return sysonRollover;
-    }
-    if (transitionId === CHRONO_031_TO_032_ROLLOVER_TRANSITION_ID) {
-      return chronoRollover;
-    }
-    throw new Error(
-      `--transition-id must be ${SYSON_NODE_REPACK_ROLLOVER_TRANSITION_ID} or ${CHRONO_031_TO_032_ROLLOVER_TRANSITION_ID}.`,
-    );
-  };
-
   switch (request.command) {
     case "status":
       print(await admin.status());
@@ -370,21 +239,6 @@ async function main(request: CapabilityRuntimeAdminCliRequest): Promise<void> {
         ),
       );
       break;
-    case "rollover-status":
-      print(await rolloverService(request.transitionId).status(request.transitionId));
-      break;
-    case "rollover-review":
-      print(await rolloverService(request.transitionId).review(request.transitionId));
-      break;
-    case "rollover-apply":
-      print(
-        await rolloverService(request.transitionId).apply({
-          transitionId: request.transitionId,
-          reviewFingerprint: request.reviewFingerprint,
-          confirm: request.confirm,
-        }),
-      );
-      break;
   }
 }
 
@@ -424,10 +278,6 @@ function assertAllowedFlags(
       ? ["unit-id", "launch-group-id", "material-id"]
       : command === "remove-apply"
       ? ["unit-id", "launch-group-id", "material-id", "review-fingerprint", "confirm"]
-      : command === "rollover-status" || command === "rollover-review"
-      ? ["transition-id"]
-      : command === "rollover-apply"
-      ? ["transition-id", "review-fingerprint", "confirm"]
       : [],
   );
   for (const name of flags.keys()) {
@@ -435,19 +285,6 @@ function assertAllowedFlags(
       throw new Error(`--${name} is not valid for local admin ${command}.`);
     }
   }
-}
-
-function transitionId(flags: ReadonlyMap<string, string | true>): string {
-  const value = required(flags, "transition-id");
-  if (
-    value !== SYSON_NODE_REPACK_ROLLOVER_TRANSITION_ID &&
-    value !== CHRONO_031_TO_032_ROLLOVER_TRANSITION_ID
-  ) {
-    throw new Error(
-      `--transition-id must be ${SYSON_NODE_REPACK_ROLLOVER_TRANSITION_ID} or ${CHRONO_031_TO_032_ROLLOVER_TRANSITION_ID}.`,
-    );
-  }
-  return value;
 }
 
 function required(flags: ReadonlyMap<string, string | true>, name: string): string {

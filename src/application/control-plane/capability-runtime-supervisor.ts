@@ -703,9 +703,10 @@ function sameFingerprint(left: ContentFingerprint, right: ContentFingerprint): b
 }
 
 /**
- * Keeps the host lifecycle mutation order explicit without implementing a host
- * backend. A caller must persist the journal intent before invoking the future
- * Docker/Microsandbox adapter, and recovery always rereads host observation.
+ * Keeps the host lifecycle mutation order explicit without embedding a host
+ * backend. A caller must persist the journal intent before invoking the
+ * Docker Compose or Microsandbox adapter, and recovery always rereads host
+ * observation.
  */
 export class CapabilityRuntimeLifecycleCoordinator {
   constructor(

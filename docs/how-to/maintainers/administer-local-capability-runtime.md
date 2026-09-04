@@ -100,21 +100,7 @@ later material removal. Pending or uncertain host mutations still block it, and 
 this with `down`, volume removal, prune, force, tag/alias removal, a root-Compose
 action, or a Microsandbox uninstall.
 
-## 6. Use the closed SysON rollover only for its named transition
-
-Drain normal project work, then inspect the exact transition before applying it:
-
-```bash
-deno task capability:admin rollover-status --transition-id=casys-syson-node-repack-v1
-deno task capability:admin rollover-review --transition-id=casys-syson-node-repack-v1
-deno task capability:admin rollover-apply --transition-id=casys-syson-node-repack-v1 --review-fingerprint=<sha256> --confirm
-```
-
-This is one closed SysON image transition, not a general upgrade or runtime-selection
-mechanism. A non-terminal saga blocks normal SysON preload/JIT; `recovery-required`
-means stop and inspect the durable saga rather than infer a handoff.
-
-## 7. Keep Chrono host qualification separate
+## 6. Keep Chrono host qualification separate
 
 Chrono's `chrono-arm64-emulation-v1` probe is a separate private local qualification
 workflow. It records an exact host attestation; it is not a project command, generic

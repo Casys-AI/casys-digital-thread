@@ -465,7 +465,7 @@ Deno.test("a reviewed launch group can preload material without a qualification 
 Deno.test("a server availability gate blocks SysON material preload before a journal or host mutation", async () => {
   const syson = await group("casys-syson", "syson");
   const gate: CapabilityRuntimeLaunchGroupAvailabilityGate = {
-    assertLaunchGroupAvailable: () => Promise.reject(new Error("rollover in progress")),
+    assertLaunchGroupAvailable: () => Promise.reject(new Error("availability blocked")),
   };
   const fixture = supervisor([syson], undefined, "unavailable", {
     availabilityGate: gate,
@@ -478,7 +478,7 @@ Deno.test("a server availability gate blocks SysON material preload before a jou
         at: AT,
       }),
     Error,
-    "rollover in progress",
+    "availability blocked",
   );
   assertEquals(await fixture.journal.list(), []);
   assertEquals(fixture.host.calls, []);

@@ -480,23 +480,12 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
    * Thread basis are now clean.  Unlike `releaseRecorded`, this path never
    * reconstructs a historical binding from the current capability catalogue:
    * it selects the exact lease through provenance sealed when that lease was
-   * first claimed.  Therefore a later digest rollover cannot strand it.
+   * first claimed.
    */
   async releaseReconciledUncertainWriterLease(input: {
     readonly project: EngineeringProjectSnapshot;
     readonly failedRunId: string;
     readonly reconciliationRunId: string;
-    /**
-     * Transitional, server-resolved ROP for a lease written before execution
-     * ownership provenance existed.  It is accepted only to reconstruct that
-     * old deterministic lease id after the exact human did-not-write ceremony.
-     *
-     * This is not a current-catalog fallback: if the binding has rolled over,
-     * its fingerprint yields another id and no historical lease is touched.
-     */
-    readonly resolveLegacyOperationalCapability?: () => Promise<
-      ResolvedCapabilityRuntimeOperation | undefined
-    >;
   }): Promise<void> {
     const failedRun = input.project.agentRuns.find((candidate) =>
       candidate.id === input.failedRunId
@@ -558,113 +547,13 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
         failedOperation,
       )
     );
-    if (matches.length === 0) {
-      const legacyOperationalCapability = await input
-        .resolveLegacyOperationalCapability?.();
-      await this.#releaseLegacyReconciledUncertainWriterLease({
-        ...input,
-        legacyOperationalCapability,
-        failedRun,
-        failedOperation,
-        at,
-      });
-      return;
-    }
+    if (matches.length === 0) return;
     if (matches.length !== 1) {
       throw new CapabilityRuntimeSessionUnavailableError(
         "Capability JIT reconciliation cleanup found multiple exact retained leases for one failed run.",
       );
     }
-    const lease = matches[0]!;
-    try {
-      if (lease.launchGroups.length > 0) {
-        if (!this.options.groups) {
-          throw new CapabilityRuntimeSessionUnavailableError(
-            "Capability JIT reconciliation cleanup has no configured launch-group supervisor.",
-          );
-        }
-        await this.options.groups.releaseTerminal({
-          groups: lease.launchGroups,
-          leaseId: lease.id,
-          projectId: lease.projectId,
-          at,
-          hasRemainingJitDemand: async (materialKeys) =>
-            this.options.hasAnyRemainingJitDemand === undefined
-              ? true
-              : await this.options.hasAnyRemainingJitDemand
-                .hasAnyRemainingDemand({
-                  materialKeys,
-                }),
-        });
-        return;
-      }
-      await this.options.leases.release(lease.id);
-    } catch (error) {
-      throw new CapabilityRuntimeSessionUnavailableError(
-        error instanceof Error
-          ? error.message
-          : "Capability JIT reconciliation cleanup failed; the exact lease is retained.",
-      );
-    }
-  }
-
-  /**
-   * One-way compatibility finalizer for a pre-provenance deterministic lease.
-   * Its only caller is the post-ceremony path above; an ordinary failed run
-   * cannot reach it.  The supplied ROP comes from server-owned execution
-   * eligibility while the old binding is still resolvable, never from a
-   * caller/provider envelope.
-   */
-  async #releaseLegacyReconciledUncertainWriterLease(input: {
-    readonly project: EngineeringProjectSnapshot;
-    readonly failedRunId: string;
-    readonly reconciliationRunId: string;
-    readonly failedRun: EngineeringAgentRun;
-    readonly failedOperation: { readonly id: string; readonly version: string };
-    readonly at: string;
-    readonly legacyOperationalCapability?: ResolvedCapabilityRuntimeOperation;
-  }): Promise<void> {
-    if (input.legacyOperationalCapability === undefined) return;
-    const operationalCapability = validateResolvedCapabilityRuntimeOperation(
-      input.legacyOperationalCapability,
-    );
-    if (
-      operationalCapability.projectId !== input.project.project.id ||
-      operationalCapability.operation.id !== input.failedOperation.id ||
-      operationalCapability.operation.version !== input.failedOperation.version
-    ) {
-      throw new CapabilityRuntimeSessionUnavailableError(
-        "Legacy capability JIT reconciliation cleanup requires the failed run's exact server-resolved operation.",
-      );
-    }
-    const lifecycles = uniqueCapabilityRuntimeHostLifecycles(
-      operationalCapability.bindings.flatMap((binding) => binding.hostLifecycles),
-      (message) => new CapabilityRuntimeSessionUnavailableError(message),
-    );
-    const leaseId = await executionLeaseId({
-      projectId: input.project.project.id,
-      runId: input.failedRunId,
-      operationalCapability,
-    });
-    const stored = await this.options.leases.read(leaseId);
-    if (!stored) return;
-    // A provenance-bearing lease is always handled by the normal exact-owner
-    // branch. Never downgrade it to a legacy scope lookup.
-    if (stored.executionOwner !== undefined) {
-      throw new CapabilityRuntimeSessionUnavailableError(
-        "Legacy capability JIT reconciliation cleanup found a provenance-bearing lease outside the failed-run owner match.",
-      );
-    }
-    const candidate = candidateLease({
-      id: leaseId,
-      projectId: input.project.project.id,
-      operationalCapability,
-      lifecycles,
-      executionOwner: undefined,
-      at: input.at,
-    });
-    const lease = assertEquivalentLease(stored, candidate);
-    await this.#releaseReconciledLease(lease, input.at);
+    await this.#releaseReconciledLease(matches[0]!, at);
   }
 
   async #releaseReconciledLease(
@@ -906,9 +795,8 @@ function sameOptionalExecutionLeaseOwner(
   left: CapabilityRuntimeExecutionLeaseOwner | undefined,
   right: CapabilityRuntimeExecutionLeaseOwner | undefined,
 ): boolean {
-  // Pre-provenance on-disk leases remain usable only through their exact
-  // deterministic legacy scope. They are intentionally not upgraded or
-  // guessed from host materials.
+  // A missing owner is not inferred from materials or groups. Equality is
+  // only enforced when both sides already carry an owner.
   if (left === undefined || right === undefined) return true;
   return sameExactCapabilityRuntimeExecutionLeaseOwner(left, right);
 }

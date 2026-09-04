@@ -32,14 +32,6 @@ import type {
   CapabilityRuntimeSecretSnapshot,
   CapabilityRuntimeStateObserver,
 } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
-import type {
-  AuthorizedCapabilityRuntimeRolloverHostMutation,
-  CapabilityRuntimeRolloverHost,
-  CapabilityRuntimeRolloverHostObservation,
-} from "../../application/ports/out/capability/capability-runtime-rollover-host.ts";
-import type {
-  CapabilityRuntimeRolloverIdentity,
-} from "../../domain/capability/runtime/capability-runtime-rollover-saga.ts";
 import type { CapabilityRuntimePlatform } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
 import {
   consumeAuthorizedAdministrativeMaterialRemoval,
@@ -48,11 +40,6 @@ import {
   consumeAuthorizedQualificationRuntimeStart,
   consumeAuthorizedRuntimeStop,
 } from "../../application/control-plane/capability-runtime-host-authorization.ts";
-import {
-  consumeAuthorizedRolloverPredecessorRuntimeRetire,
-  consumeAuthorizedRolloverSuccessorMaterialAcquire,
-  consumeAuthorizedRolloverSuccessorRuntimeStart,
-} from "../../application/control-plane/capability-runtime-rollover-host-authorization.ts";
 import {
   type CommandResult,
   type CommandRunner,
@@ -89,12 +76,6 @@ export interface CapabilityRuntimeHostAdapterOptions {
   /** Injectable monotonic clock and delay keep bounded readiness testable. */
   readonly monotonicNow?: () => number;
   readonly wait?: (milliseconds: number) => Promise<void>;
-  /**
-   * Exact code-owned rollover descriptors. They are deliberately separate
-   * from the normal launch-group registry because a predecessor/successor
-   * pair shares one Compose project and loopback port.
-   */
-  readonly rollovers?: readonly CapabilityRuntimeHostRolloverDefinition[];
 }
 
 /** A readiness probe may only perform the sealed group’s read-only MCP check. */
@@ -105,17 +86,11 @@ export interface CapabilityRuntimeLaunchReadinessProbe {
   }): Promise<void>;
 }
 
-export interface CapabilityRuntimeHostRolloverDefinition {
-  readonly predecessor: CapabilityRuntimeLaunchGroup;
-  readonly successor: CapabilityRuntimeLaunchGroup;
-}
-
 export type CapabilityRuntimeHostAdapter =
   & CapabilityRuntimeHostMutator
   & CapabilityRuntimeStateObserver
   & CapabilityRuntimeAdministrativeRemovalInspector
-  & CapabilityRuntimeHostPlatformObserver
-  & CapabilityRuntimeRolloverHost;
+  & CapabilityRuntimeHostPlatformObserver;
 
 /**
  * Read-only facade for consumers such as the native Workbench. It deliberately
@@ -143,8 +118,7 @@ class ComposeCapabilityRuntimeHost
     CapabilityRuntimeHostMutator,
     CapabilityRuntimeStateObserver,
     CapabilityRuntimeAdministrativeRemovalInspector,
-    CapabilityRuntimeHostPlatformObserver,
-    CapabilityRuntimeRolloverHost {
+    CapabilityRuntimeHostPlatformObserver {
   readonly #runner: CommandRunner;
   readonly #root: string;
   readonly #paths: { realPath(path: string): Promise<string> };
@@ -209,129 +183,6 @@ class ComposeCapabilityRuntimeHost
     }
     const launch = await this.#launch(group);
     return await this.#inspectRemoval(group, launch);
-  }
-
-  async observeRollover(input: {
-    readonly identity: CapabilityRuntimeRolloverIdentity;
-  }): Promise<CapabilityRuntimeRolloverHostObservation> {
-    const definition = this.#requireRolloverDefinition(input.identity);
-    return await this.#observeRolloverDefinition(definition);
-  }
-
-  /**
-   * The rollover material step has one fixed, sealed Compose pull. It never
-   * starts, stops, recreates, removes, prunes or selects a provider.
-   */
-  async acquireRolloverSuccessorMaterial(input: {
-    readonly authorization: AuthorizedCapabilityRuntimeRolloverHostMutation;
-  }): Promise<CapabilityRuntimeRolloverHostObservation> {
-    const definition = this.#requireRolloverDefinition(
-      consumeAuthorizedRolloverSuccessorMaterialAcquire(input.authorization),
-    );
-    const before = await this.#observeRolloverDefinition(definition);
-    if (
-      before.classification === "foreign" ||
-      before.classification === "hybrid" ||
-      before.classification === "unknown" ||
-      before.successor.materials === "complete"
-    ) {
-      return before;
-    }
-    const successor = await this.#launch(definition.successor);
-    await this.#compose(successor, ["pull"]);
-    return await this.#observeRolloverDefinition(definition);
-  }
-
-  /**
-   * The only H1 runtime mutation is the successor's sealed `up --wait` on
-   * the same Compose project. In particular this path has no `down`, `rm`,
-   * volume, prune, force, image-removal or arbitrary-argv branch.
-   */
-  async activateRolloverSuccessor(input: {
-    readonly authorization: AuthorizedCapabilityRuntimeRolloverHostMutation;
-  }): Promise<CapabilityRuntimeRolloverHostObservation> {
-    const definition = this.#requireRolloverDefinition(
-      consumeAuthorizedRolloverSuccessorRuntimeStart(input.authorization),
-    );
-    const before = await this.#observeRolloverDefinition(definition);
-    if (
-      before.classification === "foreign" ||
-      before.classification === "hybrid" ||
-      before.classification === "unknown" ||
-      before.successor.materials !== "complete" ||
-      (before.classification === "successor" && before.successor.runtime === "active")
-    ) {
-      return before;
-    }
-    const successor = await this.#launch(definition.successor);
-    await this.#compose(successor, [
-      "up",
-      "--detach",
-      "--wait",
-      "--wait-timeout",
-      "300",
-      "--pull",
-      "never",
-      "--no-build",
-    ]);
-    return await this.#observeRolloverDefinition(definition);
-  }
-
-  /**
-   * Closed predecessor retirement: stop then `docker container rm <id>` on
-   * freshly recrossed owned predecessor containers only. No `-v`/`--volumes`,
-   * compose down/rm, prune, image removal or successor-start branch.
-   */
-  async retireRolloverPredecessor(input: {
-    readonly authorization: AuthorizedCapabilityRuntimeRolloverHostMutation;
-  }): Promise<CapabilityRuntimeRolloverHostObservation> {
-    const definition = this.#requireRolloverDefinition(
-      consumeAuthorizedRolloverPredecessorRuntimeRetire(input.authorization),
-    );
-    const before = await this.#observeRolloverDefinition(definition);
-    if (
-      before.classification === "foreign" ||
-      before.classification === "hybrid" ||
-      before.classification === "unknown" ||
-      before.classification === "successor" ||
-      before.successor.materials !== "complete"
-    ) {
-      return before;
-    }
-    if (
-      before.classification === "absent" &&
-      before.predecessor.runtime === "inactive" &&
-      before.successor.runtime === "inactive"
-    ) {
-      return before;
-    }
-    if (before.classification !== "predecessor") {
-      return before;
-    }
-    const predecessor = await this.#launch(definition.predecessor);
-    const ownedBefore = await this.#inspect(definition.predecessor, predecessor, {
-      ignorePendingReadiness: true,
-    });
-    if (ownedBefore.ownership !== "owned") {
-      return before;
-    }
-    if (rolloverGroupObservation(ownedBefore).runtime !== "inactive") {
-      const stop = await this.#stopOwnedReverse(predecessor, ownedBefore);
-      if (!stop.success) {
-        return await this.#observeRolloverDefinition(definition);
-      }
-    }
-    const recrossed = await this.#inspect(definition.predecessor, predecessor, {
-      ignorePendingReadiness: true,
-    });
-    if (
-      recrossed.ownership !== "owned" ||
-      rolloverGroupObservation(recrossed).runtime !== "inactive"
-    ) {
-      return await this.#observeRolloverDefinition(definition);
-    }
-    await this.#removeOwnedReverse(predecessor, recrossed);
-    return await this.#observeRolloverDefinition(definition);
   }
 
   /**
@@ -423,12 +274,7 @@ class ComposeCapabilityRuntimeHost
     const before = await this.#inspect(group, launch, {
       ignorePendingReadiness: true,
     });
-    const rollover = before.ownership === "mismatch"
-      ? await this.#observeNormalStartRollover(group, entry.action, before)
-      : null;
-    const mayReconcileRolloverPredecessor = rollover?.classification ===
-        "predecessor" && rollover.successor.materials === "complete";
-    if (before.ownership === "mismatch" && !mayReconcileRolloverPredecessor) {
+    if (before.ownership === "mismatch") {
       return this.#outcome(
         entry,
         "failed",
@@ -444,11 +290,7 @@ class ComposeCapabilityRuntimeHost
         "Group ownership or health could not be observed.",
       );
     }
-    const command = commandFor(
-      entry.action,
-      before,
-      mayReconcileRolloverPredecessor,
-    );
+    const command = commandFor(entry.action, before);
     if (command === null) {
       return this.#outcome(
         entry,
@@ -614,64 +456,6 @@ class ComposeCapabilityRuntimeHost
       removalObservationValues(after),
       absent ? null : "Administrative removal did not yield an exact absent group.",
     );
-  }
-
-  #requireRolloverDefinition(
-    identity: CapabilityRuntimeRolloverIdentity,
-  ): CapabilityRuntimeHostRolloverDefinition {
-    const matches = (this.options.rollovers ?? []).filter((candidate) =>
-      sameCapabilityRuntimeLaunchGroupReference(
-        capabilityRuntimeLaunchGroupReference(candidate.predecessor),
-        identity.predecessor.launchGroup,
-      ) &&
-      sameCapabilityRuntimeLaunchGroupReference(
-        capabilityRuntimeLaunchGroupReference(candidate.successor),
-        identity.successor.launchGroup,
-      )
-    );
-    if (matches.length !== 1) {
-      throw new Error(
-        "Capability runtime rollover does not name one exact server-owned host definition.",
-      );
-    }
-    return matches[0]!;
-  }
-
-  /**
-   * A normal successor start may reconcile only the one registered predecessor
-   * topology that Docker currently observes, after the successor material is
-   * complete. All other mismatch states remain fail-closed, including
-   * qualification starts and ambiguous rollover pairs.
-   */
-  async #observeNormalStartRollover(
-    group: CapabilityRuntimeLaunchGroup,
-    action: CapabilityRuntimeJournalEntry["action"],
-    successor: GroupInspection,
-  ): Promise<CapabilityRuntimeRolloverHostObservation | null> {
-    if (action !== "runtime-start") return null;
-    const definitions = (this.options.rollovers ?? []).filter((definition) =>
-      sameCapabilityRuntimeLaunchGroupReference(
-        capabilityRuntimeLaunchGroupReference(definition.successor),
-        capabilityRuntimeLaunchGroupReference(group),
-      )
-    );
-    if (definitions.length !== 1) return null;
-    const predecessor = await this.#inspect(definitions[0]!.predecessor);
-    return rolloverObservation(predecessor, successor);
-  }
-
-  async #observeRolloverDefinition(
-    definition: CapabilityRuntimeHostRolloverDefinition,
-  ): Promise<CapabilityRuntimeRolloverHostObservation> {
-    const [predecessorLaunch, successorLaunch] = await Promise.all([
-      this.#launch(definition.predecessor),
-      this.#launch(definition.successor),
-    ]);
-    const [predecessor, successor] = await Promise.all([
-      this.#inspect(definition.predecessor, predecessorLaunch),
-      this.#inspect(definition.successor, successorLaunch),
-    ]);
-    return rolloverObservation(predecessor, successor);
   }
 
   async #missingStartSecret(
@@ -1082,20 +866,6 @@ class ComposeCapabilityRuntimeHost
     return { success: true, code: 0, stdout: "", stderr: "" };
   }
 
-  async #removeOwnedReverse(
-    launch: Launch,
-    inspection: GroupInspection,
-  ): Promise<CommandResult> {
-    for (const member of [...launch.group.materials].reverse()) {
-      const id = inspection.owned[member.serviceName];
-      if (!id) continue;
-      // Exact ID only: never `-v`/`--volumes`, compose rm/down, prune or image rm.
-      const result = await this.#docker(launch.root, ["container", "rm", id]);
-      if (!result.success) return result;
-    }
-    return successfulCommand();
-  }
-
   async #compose(
     launch: Launch,
     operation: readonly string[],
@@ -1213,78 +983,16 @@ interface GroupInspection {
   readonly owned: Readonly<Record<string, string>>;
 }
 
-function rolloverGroupObservation(
-  inspection: GroupInspection,
-): CapabilityRuntimeRolloverHostObservation["predecessor"] {
-  const states = [...inspection.states.values()];
-  const materials = states.length > 0 &&
-      states.every((state) => state.material === "installed")
-    ? "complete"
-    : "incomplete";
-  const runtime = states.length > 0 &&
-      states.every((state) => state.runtime === "active")
-    ? "active"
-    : states.every((state) => state.runtime === "inactive")
-    ? "inactive"
-    : "degraded";
-  return { materials, runtime };
-}
-
-/**
- * The two sealed SysON definitions differ only at `syson-app`, so a complete
- * owned group can identify one side exactly. With no owned containers, images
- * are merely cache state and are deliberately classified as absent rather
- * than a dangerous mixed runtime. Any incomplete/mismatched container
- * topology is foreign unless it is the expected opposite descriptor.
- */
-function classifyRolloverHost(
-  predecessor: GroupInspection,
-  successor: GroupInspection,
-): CapabilityRuntimeRolloverHostObservation["classification"] {
-  if (predecessor.ownership === "unknown" || successor.ownership === "unknown") {
-    return "unknown";
-  }
-  if (predecessor.ownership === "owned" && successor.ownership === "mismatch") {
-    return "predecessor";
-  }
-  if (successor.ownership === "owned" && predecessor.ownership === "mismatch") {
-    return "successor";
-  }
-  if (predecessor.ownership === "absent" && successor.ownership === "absent") {
-    return "absent";
-  }
-  if (predecessor.ownership === "mismatch" && successor.ownership === "mismatch") {
-    return "hybrid";
-  }
-  return "foreign";
-}
-
-function rolloverObservation(
-  predecessor: GroupInspection,
-  successor: GroupInspection,
-): CapabilityRuntimeRolloverHostObservation {
-  return {
-    schemaVersion: "capability-runtime-rollover-host-observation/1.0",
-    classification: classifyRolloverHost(predecessor, successor),
-    predecessor: rolloverGroupObservation(predecessor),
-    successor: rolloverGroupObservation(successor),
-  };
-}
-
 function commandFor(
   action: CapabilityRuntimeJournalEntry["action"],
   inspection: GroupInspection,
-  allowRolloverPredecessorReconcile = false,
 ): readonly string[] | null {
   switch (action) {
     case "material-acquire":
       return ["pull"];
     case "runtime-start":
     case "runtime-qualification-start":
-      if (
-        inspection.ownership !== "absent" && inspection.ownership !== "owned" &&
-        !(action === "runtime-start" && allowRolloverPredecessorReconcile)
-      ) {
+      if (inspection.ownership !== "absent" && inspection.ownership !== "owned") {
         return null;
       }
       // No --no-deps/remove-orphans and no implicit pull after the durable

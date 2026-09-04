@@ -2,8 +2,8 @@
  * Provider-neutral runtime supervision vocabulary.
  *
  * This is operational state only. It neither admits an engineering method nor
- * interprets an engineering result. A future host adapter observes and mutates
- * Docker, Microsandbox, or another runtime through application ports; none of
+ * interprets an engineering result. Concrete Docker Compose and Microsandbox
+ * adapters observe and mutate the host through application ports; none of
  * those details belong in this domain contract.
  */
 
@@ -1252,8 +1252,8 @@ export function validateCapabilityRuntimeJournalOutcome(
 }
 
 export function validateCapabilityRuntimeLease(value: unknown): CapabilityRuntimeLease {
-  // `executionOwner` is optional for the one-time, pre-provenance on-disk
-  // lease format.  Do not infer an owner from materials, groups or labels.
+  // Historical on-disk leases may omit `executionOwner`. Current execution
+  // always writes an exact owner and never reconstructs an ownerless lease.
   const root = closedRecord(value, [
     "id",
     "projectId",
