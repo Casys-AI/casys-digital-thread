@@ -123,12 +123,16 @@ export function createElectricalProject(
   const briefGates = new ProjectElectricalObservationMethodSheetBriefGateReader(
     options.projects,
   );
+  const evidence = createAdmittedSpiceObservationEvidenceReader(
+    options.recordedAnalysisDirectory,
+  );
   const electricalObservationMethodSheetSealReview =
     new PrepareProjectElectricalObservationMethodSheetSealReview({
       projects: options.projects,
       snapshots: options.snapshots,
       sheets: options.methodSheets.electricalObservationMethodSheets,
       briefGates,
+      evidence,
     });
   const verifySealElectricalObservationMethodSheet =
     new VerifySealElectricalObservationMethodSheetRunExecutor({
@@ -140,9 +144,6 @@ export function createElectricalProject(
       captures: options.methodSheets.electricalObservationMethodSheetSeals,
       lease: options.lease,
     });
-  const evidence = createAdmittedSpiceObservationEvidenceReader(
-    options.recordedAnalysisDirectory,
-  );
   const evaluationCaptures = new FileAdmittedSpiceObservationEvaluationCaptureStore(
     new FileCaptureStore({
       ...SPICE_ADMITTED_OBSERVATION_EVALUATION_CAPTURE_DESCRIPTOR,

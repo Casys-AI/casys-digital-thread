@@ -361,6 +361,53 @@ Deno.test("a completed print-estimate run hoists Thread observations", () => {
   assertEquals(presented.agentRuns[0]?.observations, { items: [observation] });
 });
 
+Deno.test("a completed admitted SPICE run hoists its literal L3 observations", () => {
+  const resultArtifactId = `spice-admitted-result-${"a".repeat(64)}`;
+  const observation = {
+    ...observationOf({
+      id: "spice-admitted-v.led-run-spice",
+      metric: "v(led)",
+      artifactId: resultArtifactId,
+      quantity: { value: 2.184, unit: "V" },
+    }),
+    source: {
+      operation: {
+        serverId: "digital-thread",
+        tool: "simulate.run-admitted-spice@1",
+        runId: "run:spice",
+      },
+      artifactIds: [resultArtifactId],
+      capturedAt: AT,
+    },
+  } satisfies ThreadObservation;
+  const presented = assembleAgentRunRequirementJoins(
+    projectWith(
+      {
+        ...feaRun(),
+        id: "run:spice",
+        workItemId: "wi-spice",
+        evidenceRefs: [{
+          kind: "artifact",
+          id: resultArtifactId,
+          snapshotId: "thread-r8",
+          snapshotRevision: 8,
+        }],
+      },
+      feaWork({
+        id: "wi-spice",
+        operation: {
+          id: "simulate.run-admitted-spice",
+          version: "1",
+          bindings: [],
+        },
+      }),
+    ),
+    threadMap([], [observation]),
+  );
+
+  assertEquals(presented.agentRuns[0]?.observations, { items: [observation] });
+});
+
 Deno.test("a completed @2 run hoists matching CalculiX observations next to join", () => {
   const evaluation = evaluationOf({ status: "pass" });
   const observation = observationOf({

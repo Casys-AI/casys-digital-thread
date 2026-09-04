@@ -4,7 +4,10 @@
  * or caller parameters, selects the branch.
  */
 
-import { fingerprintsEqual } from "../../../kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  fingerprintsEqual,
+} from "../../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../kernel/primitives.ts";
 import type { ElectricalObservationMethodSheet } from "../../observation-method-sheet.ts";
 import { SIMULATE_RUN_ADMITTED_SPICE_OPERATION } from "../admitted/run-proposal.ts";
@@ -33,6 +36,144 @@ export interface AdmittedSpiceEvaluationLineage {
   readonly evidence: ThreadArtifact;
   readonly result: ThreadArtifact;
   readonly observations: readonly ThreadObservation[];
+}
+
+/**
+ * Exact fresh L3 branch exposed while an agent authors the later method sheet.
+ *
+ * Selection is deliberately by the registered producer and canonical artifact
+ * topology, never by labels, timestamps or array order. The method sheet can
+ * then name this branch without learning anything about the runtime binding.
+ */
+export interface FreshAdmittedSpiceL3Lineage {
+  readonly spiceCapture: ThreadArtifact;
+  readonly evidence: ThreadArtifact;
+  readonly result: ThreadArtifact;
+  readonly observations: readonly ThreadObservation[];
+}
+
+export function uniqueFreshAdmittedSpiceL3Lineage(
+  snapshot: ThreadSnapshot,
+): FreshAdmittedSpiceL3Lineage {
+  const archived = archivedRefKeys(snapshot);
+  const captures = freshL3Artifacts(
+    snapshot,
+    archived,
+    "document",
+    SPICE_CAPTURE_ARTIFACT_ID_PREFIX,
+  );
+  const evidence = freshL3Artifacts(
+    snapshot,
+    archived,
+    "evidence",
+    SPICE_EVIDENCE_ARTIFACT_ID_PREFIX,
+  );
+  const results = freshL3Artifacts(
+    snapshot,
+    archived,
+    "solver-result",
+    SPICE_RESULT_ARTIFACT_ID_PREFIX,
+  );
+  const runIds = new Set(
+    [...captures, ...evidence, ...results].map((artifact) => artifact.producer.runId),
+  );
+  if (runIds.size === 0) {
+    throw new TypeError(
+      "The current Thread tip has no fresh admitted SPICE L3 branch.",
+    );
+  }
+  if (runIds.size !== 1) {
+    throw new TypeError(
+      `The current Thread tip has ${runIds.size} fresh admitted SPICE L3 producer branches; the server will not choose one.`,
+    );
+  }
+  const runId = [...runIds][0]!;
+  if (captures.length !== 1 || evidence.length !== 1 || results.length !== 1) {
+    throw new TypeError(
+      "The unique fresh admitted SPICE L3 producer must expose exactly one capture, evidence and result artifact.",
+    );
+  }
+  const spiceCapture = captures[0]!;
+  const evidenceArtifact = evidence[0]!;
+  const result = results[0]!;
+  if (
+    spiceCapture.producer.runId !== runId ||
+    evidenceArtifact.producer.runId !== runId || result.producer.runId !== runId
+  ) {
+    throw new TypeError(
+      "The admitted SPICE L3 artifacts do not share one exact producer run.",
+    );
+  }
+  const observations = exactFreshAdmittedSpiceObservations(
+    snapshot,
+    runId,
+    evidenceArtifact.id,
+    result.id,
+  );
+  return {
+    spiceCapture,
+    evidence: evidenceArtifact,
+    result,
+    observations,
+  };
+}
+
+/**
+ * Reopen the exact fresh L3 branch named by an unsealed method sheet.
+ *
+ * This deliberately does not require an electrical method-sheet seal artifact:
+ * it is the pre-seal recross used to decide whether that seal may be proposed.
+ */
+export function resolveNamedAdmittedSpiceL3Lineage(
+  snapshot: ThreadSnapshot,
+  sheet: ElectricalObservationMethodSheet,
+  expected?: {
+    readonly captureFingerprint?: ContentFingerprint;
+    readonly evidenceFingerprint?: ContentFingerprint;
+    readonly resultFingerprint?: ContentFingerprint;
+  },
+): FreshAdmittedSpiceL3Lineage {
+  const spiceCapture = namedFreshAdmittedSpiceCapture(snapshot, sheet);
+  const evidence = namedFreshAdmittedSpiceEvidence(snapshot, sheet);
+  const result = namedFreshAdmittedSpiceResult(snapshot, sheet);
+  if (
+    spiceCapture.producer.runId !== sheet.spice.producer.runId ||
+    evidence.producer.runId !== sheet.spice.producer.runId ||
+    result.producer.runId !== sheet.spice.producer.runId
+  ) {
+    throw new TypeError(
+      "The admitted SPICE capture, evidence and result do not share the method-sheet producer run.",
+    );
+  }
+  if (
+    expected?.captureFingerprint &&
+    !fingerprintsEqual(spiceCapture.fingerprint, expected.captureFingerprint)
+  ) {
+    throw new TypeError("The admitted SPICE capture is not the signed fingerprint.");
+  }
+  if (
+    expected?.evidenceFingerprint &&
+    !fingerprintsEqual(evidence.fingerprint, expected.evidenceFingerprint)
+  ) {
+    throw new TypeError("The admitted SPICE evidence is not the signed fingerprint.");
+  }
+  if (
+    expected?.resultFingerprint &&
+    !fingerprintsEqual(result.fingerprint, expected.resultFingerprint)
+  ) {
+    throw new TypeError("The admitted SPICE result is not the signed fingerprint.");
+  }
+  return {
+    spiceCapture,
+    evidence,
+    result,
+    observations: exactFreshAdmittedSpiceObservations(
+      snapshot,
+      sheet.spice.producer.runId,
+      evidence.id,
+      result.id,
+    ),
+  };
 }
 
 export function namedFreshAdmittedSpiceCapture(
@@ -100,18 +241,7 @@ export function resolveAdmittedSpiceEvaluationLineage(
   },
 ): AdmittedSpiceEvaluationLineage {
   const methodSheet = uniqueFreshElectricalMethodSheetSeal(snapshot);
-  const spiceCapture = namedFreshAdmittedSpiceCapture(snapshot, sheet);
-  const evidence = namedFreshAdmittedSpiceEvidence(snapshot, sheet);
-  const result = namedFreshAdmittedSpiceResult(snapshot, sheet);
-  if (
-    spiceCapture.producer.runId !== sheet.spice.producer.runId ||
-    evidence.producer.runId !== sheet.spice.producer.runId ||
-    result.producer.runId !== sheet.spice.producer.runId
-  ) {
-    throw new TypeError(
-      "The admitted SPICE capture, evidence and result do not share the method-sheet producer run.",
-    );
-  }
+  const l3 = resolveNamedAdmittedSpiceL3Lineage(snapshot, sheet, expected);
   if (
     expected?.sheetFingerprint &&
     !fingerprintsEqual(methodSheet.fingerprint, expected.sheetFingerprint)
@@ -120,35 +250,9 @@ export function resolveAdmittedSpiceEvaluationLineage(
       "The sealed electrical observation method sheet is not the signed fingerprint.",
     );
   }
-  if (
-    expected?.captureFingerprint &&
-    !fingerprintsEqual(spiceCapture.fingerprint, expected.captureFingerprint)
-  ) {
-    throw new TypeError("The admitted SPICE capture is not the signed fingerprint.");
-  }
-  if (
-    expected?.evidenceFingerprint &&
-    !fingerprintsEqual(evidence.fingerprint, expected.evidenceFingerprint)
-  ) {
-    throw new TypeError("The admitted SPICE evidence is not the signed fingerprint.");
-  }
-  if (
-    expected?.resultFingerprint &&
-    !fingerprintsEqual(result.fingerprint, expected.resultFingerprint)
-  ) {
-    throw new TypeError("The admitted SPICE result is not the signed fingerprint.");
-  }
-  const observations = snapshot.observations.filter((observation) =>
-    observation.source.operation.tool === ADMITTED_RUN_TOOL &&
-    observation.source.operation.runId === evidence.producer.runId &&
-    observation.freshness.status === "fresh"
-  );
   return {
     methodSheet,
-    spiceCapture,
-    evidence,
-    result,
-    observations,
+    ...l3,
   };
 }
 
@@ -219,4 +323,48 @@ function shapedFreshArtifact(
     artifact.fingerprint.algorithm === "sha256" &&
     artifact.id === `${prefix}${artifact.fingerprint.digest}` &&
     artifact.version === artifact.fingerprint.digest;
+}
+
+function freshL3Artifacts(
+  snapshot: ThreadSnapshot,
+  archived: ReadonlySet<string>,
+  kind: ThreadArtifact["kind"],
+  prefix: string,
+): ThreadArtifact[] {
+  return snapshot.artifacts.filter((artifact) =>
+    shapedFreshArtifact(artifact, kind, prefix, ADMITTED_RUN_TOOL) &&
+    !archived.has(`artifact:${artifact.id}`)
+  );
+}
+
+function exactFreshAdmittedSpiceObservations(
+  snapshot: ThreadSnapshot,
+  runId: string,
+  evidenceArtifactId: string,
+  resultArtifactId: string,
+): ThreadObservation[] {
+  const observations = snapshot.observations.filter((observation) =>
+    observation.source.operation.serverId === "digital-thread" &&
+    observation.source.operation.tool === ADMITTED_RUN_TOOL &&
+    observation.source.operation.runId === runId &&
+    observation.freshness.status === "fresh"
+  );
+  if (observations.length === 0) {
+    throw new TypeError(
+      "The admitted SPICE L3 branch has no factual observations.",
+    );
+  }
+  const expectedArtifactIds = [evidenceArtifactId, resultArtifactId];
+  if (
+    observations.some((observation) =>
+      deterministicJson(observation.source.artifactIds) !==
+        deterministicJson(expectedArtifactIds)
+    ) || new Set(observations.map((observation) => observation.metric)).size !==
+      observations.length
+  ) {
+    throw new TypeError(
+      "The admitted SPICE L3 observations do not recross the exact evidence/result topology or have duplicate native names.",
+    );
+  }
+  return observations;
 }

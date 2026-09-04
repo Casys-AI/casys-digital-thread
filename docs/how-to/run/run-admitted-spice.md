@@ -27,9 +27,9 @@ Three operator surfaces. They are not substitutes.
 | Product run         | `project_admitted_spice_run_review` then `simulate.run-admitted-spice@1` | Documentary isolated execution over the server-owned worker profile. After durable authorization, server-owned preload may prepare the exact runtime material; this worker publishes no host port.                                                     |
 
 The Docker distribution/index digest
-`casys/ngspice-microsandbox-worker@sha256:62748f195c86751c5fc565ea8e0ac5ab6bd283ddcae2426918d697b25ce6d392`
+`casys/ngspice-microsandbox-worker@sha256:4350b3b70bb75acee46d24ffe329b809d1132acd506cc9bd4e83c1340aa6942d`
 is an internal bootstrap acquisition input. The executable Microsandbox manifest
-`casys/ngspice-microsandbox-worker@sha256:3350527ceba0dbe8f2e31e435e834f962978e800134b83d6ee8f4875b7ffb79a`
+`casys/ngspice-microsandbox-worker@sha256:54079cf7c0e1fcdf9dc30941cc97a752460d787d8d27dd9617d4cfe462e59720`
 is the only runtime `imageReference`, catalogued material, and JIT attestation target.
 Backend inspect requires `imageReference` digest == attested `manifestDigest`. Do not
 pin the Docker index digest as the runtime image or expose it in a project plan.
@@ -132,8 +132,31 @@ This section is the generic walk. Exact AL01 identities live on
 [AL01 runtime evidence](../../project-dossiers/articulated-led-desk-lamp/runtime-evidence.md);
 this page does not substitute for them.
 
-Seal a reviewed `electrical-observation-method-sheet/1.0` with
-`project_electrical_observation_method_sheet_seal_review` then
+After the completed L3 run, call
+`project_electrical_observation_method_sheet_seal_review` with `projectId` only. Its
+`mode: preparation` result reopens the unique current completed admitted-SPICE activity
+and returns:
+
+- `methodSheet`: the exact project/subject, current Thread basis including its
+  server-computed fingerprint, and capture/evidence/result identities to copy into the
+  agent-authored `electrical-observation-method-sheet/1.0`;
+- `l3.observations`: literal native names, values and units recrossed between the
+  current Thread and the exact stored `result.json`;
+- `l3.limitations`: the documentary L3 limits, still not criteria or verdicts;
+- `briefItems`: exact approved Brief identities that a later criterion may name.
+
+The preparation returns no provider, image, endpoint, source bytes or arguments and does
+not invent a threshold. A completed `simulate.run-admitted-spice@1` also exposes its
+matching observations on `project_snapshot` for ordinary run inspection, but only the
+preparation mode supplies the current canonical Thread fingerprint required by the
+method sheet.
+
+Author the remaining `id`, `scope`, `limitations`, sources, criteria and review fields,
+then capture the canonical JSON with `project_resource_capture`. Pass only
+`interpretation.typed.fingerprint` back to
+`project_electrical_observation_method_sheet_seal_review` with the same `projectId`. Its
+`mode: review` result is returned only after the sheet's Brief gates, selected L3 branch
+and current Thread basis recross exactly. Use its MRTR parameters to seal with
 `verify.seal-electrical-observation-method-sheet@1`. That seal is not L3, not L4, and
 not ngspice.
 

@@ -11,7 +11,7 @@ import type { ContentFingerprint } from "../kernel/primitives.ts";
 import type { ElectricalObservationMethodSheet } from "./observation-method-sheet.ts";
 import { methodSheetNativeObservationNames } from "./observation-method-sheet.ts";
 import { parseNativeName } from "./spice/admitted/isolated-output.ts";
-import { resolveAdmittedSpiceEvaluationLineage } from "./spice/evaluation/lineage.ts";
+import { resolveNamedAdmittedSpiceL3Lineage } from "./spice/evaluation/lineage.ts";
 import type { ThreadSnapshot } from "../thread/thread-snapshot.ts";
 
 export type ElectricalObservationMethodSheetRecrossErrorCode =
@@ -112,7 +112,17 @@ export function recrossElectricalObservationMethodSheet(
   }
   if (snapshot) {
     try {
-      resolveAdmittedSpiceEvaluationLineage(snapshot, sheet);
+      const lineage = resolveNamedAdmittedSpiceL3Lineage(snapshot, sheet);
+      const observedNames = new Set(
+        lineage.observations.map((observation) => observation.metric),
+      );
+      for (const name of nativeObservationNames) {
+        if (!observedNames.has(name)) {
+          throw new TypeError(
+            `Native observation "${name}" is absent from the exact admitted SPICE L3 branch.`,
+          );
+        }
+      }
     } catch (error) {
       throw recrossError(
         "spice_unresolved",
