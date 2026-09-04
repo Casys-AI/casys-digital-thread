@@ -114,7 +114,25 @@ async function atomicRecipe(
 async function bootstrapCacheProfile(
   descriptor: FirstPartyMicrosandboxImageBootstrapDescriptor,
 ): Promise<CapabilityRuntimeCachePreparationProfile> {
-  const body = {
+  return Object.freeze({
+    id: descriptor.recipeId,
+    version: CACHE_BOOTSTRAP_PROFILE_VERSION,
+    fingerprint: await sha256Fingerprint(
+      firstPartyMicrosandboxBootstrapCacheProfileBody(descriptor),
+    ),
+  });
+}
+
+/**
+ * Cache-preparation fingerprint body. `buildRecipe` is included only when
+ * the acquisition source is `trusted-dockerfile`, because that recipe is
+ * then the fallback acquisition method. An `oci-digest` source fingerprints
+ * the stable physical id, exact OCI source, and target only.
+ */
+export function firstPartyMicrosandboxBootstrapCacheProfileBody(
+  descriptor: FirstPartyMicrosandboxImageBootstrapDescriptor,
+) {
+  return {
     schemaVersion: CACHE_BOOTSTRAP_PROFILE_SCHEMA,
     id: descriptor.recipeId,
     version: CACHE_BOOTSTRAP_PROFILE_VERSION,
@@ -122,20 +140,29 @@ async function bootstrapCacheProfile(
       unitId: descriptor.unitId,
       materialId: descriptor.materialId,
       imageReference: descriptor.targetImageReference,
-      kind: "microvm-image",
-      lifecycle: "ephemeral",
+      kind: "microvm-image" as const,
+      lifecycle: "ephemeral" as const,
     },
-    bootstrap: {
-      physicalImageId: descriptor.source.physicalImageId,
-      source: descriptor.source,
-      targetImageReference: descriptor.targetImageReference,
-    },
+    bootstrap: bootstrapAcquisitionFingerprint(descriptor),
   };
-  return Object.freeze({
-    id: descriptor.recipeId,
-    version: CACHE_BOOTSTRAP_PROFILE_VERSION,
-    fingerprint: await sha256Fingerprint(body),
-  });
+}
+
+function bootstrapAcquisitionFingerprint(
+  descriptor: FirstPartyMicrosandboxImageBootstrapDescriptor,
+) {
+  const source = descriptor.source;
+  const identity = {
+    physicalImageId: descriptor.physicalImageId,
+    source,
+    targetImageReference: descriptor.targetImageReference,
+  };
+  if (source.kind === "trusted-dockerfile") {
+    return {
+      ...identity,
+      buildRecipe: descriptor.buildRecipe,
+    };
+  }
+  return identity;
 }
 
 function imageDigest(reference: string): string {

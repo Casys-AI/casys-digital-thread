@@ -11,6 +11,8 @@ import {
   LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
 } from "./first-party-capability-runtime-identities.ts";
 import { LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE } from "../fea/isolated-v3/local-calculix-isolated-execution-options.ts";
+import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
+import type { CapabilityRuntimeCachePreparationRequestedMaterial } from "../../domain/capability/runtime/capability-runtime-cache-preparation.ts";
 import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capability-binding-catalog.ts";
 import {
   createFirstPartyCapabilityRuntimeCachePreparationRecipeRegistry,
@@ -20,9 +22,13 @@ import {
   FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID,
   FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID,
   FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID,
+  firstPartyMicrosandboxBootstrapCacheProfileBody,
 } from "./first-party-capability-runtime-cache-preparation-registry.ts";
-import { createFirstPartyMicrosandboxImageBootstrapDescriptors } from "./first-party-microsandbox-image-bootstrap.ts";
-import type { CapabilityRuntimeCachePreparationRequestedMaterial } from "../../domain/capability/runtime/capability-runtime-cache-preparation.ts";
+import {
+  createFirstPartyMicrosandboxImageBootstrapDescriptors,
+  type FirstPartyMicrosandboxImageBootstrapDescriptor,
+  type FirstPartyOciDigestSource,
+} from "./first-party-microsandbox-image-bootstrap.ts";
 
 Deno.test("first-party cache registry enrolls one recipe per catalogued microvm-image", async () => {
   const catalog = await createFirstPartyCapabilityRuntimeCatalog();
@@ -95,10 +101,7 @@ Deno.test("first-party cache registry enrolls one recipe per catalogued microvm-
   if (!qualified || !admitted) {
     throw new Error("Modelica bootstrap descriptors are absent");
   }
-  assertEquals(
-    qualified.source.physicalImageId,
-    admitted.source.physicalImageId,
-  );
+  assertEquals(qualified.physicalImageId, admitted.physicalImageId);
   assertEquals(
     qualified.target.manifestDigest,
     admitted.target.manifestDigest,
@@ -131,6 +134,42 @@ Deno.test("first-party cache registry refuses a catalogue missing a microvm-imag
     "do not cover the catalogue",
   );
 });
+
+Deno.test(
+  "oci-digest cache profile ignores a retained build recipe change",
+  async () => {
+    const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+    const ngspice = createFirstPartyMicrosandboxImageBootstrapDescriptors(catalog)
+      .find((descriptor) =>
+        descriptor.recipeId === FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID
+      );
+    if (!ngspice) throw new Error("ngspice bootstrap descriptor is absent");
+    const source: FirstPartyOciDigestSource = {
+      kind: "oci-digest",
+      reference: ngspice.targetImageReference,
+    };
+    const acquiredByDigest: FirstPartyMicrosandboxImageBootstrapDescriptor = {
+      ...ngspice,
+      source,
+    };
+    const retainedRecipeChanged: FirstPartyMicrosandboxImageBootstrapDescriptor = {
+      ...acquiredByDigest,
+      buildRecipe: {
+        ...acquiredByDigest.buildRecipe,
+        dockerfile: "images/calculix-microsandbox-worker/Dockerfile",
+      },
+    };
+    const original = firstPartyMicrosandboxBootstrapCacheProfileBody(
+      acquiredByDigest,
+    );
+    const changed = firstPartyMicrosandboxBootstrapCacheProfileBody(
+      retainedRecipeChanged,
+    );
+    assertEquals("buildRecipe" in original.bootstrap, false);
+    assertEquals(original, changed);
+    assertEquals(await sha256Fingerprint(original), await sha256Fingerprint(changed));
+  },
+);
 
 Deno.test("first-party cache registry options cannot select an image or profile", () => {
   const keys = Object.keys({

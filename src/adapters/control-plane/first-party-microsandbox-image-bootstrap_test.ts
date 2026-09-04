@@ -13,7 +13,6 @@ import {
   FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID,
   FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID,
   firstPartyMicrosandboxBootstrapRepoRoot,
-  physicalFirstPartyMicrosandboxImageId,
   resolveTrustedFirstPartyBootstrapPath,
 } from "./first-party-microsandbox-image-bootstrap.ts";
 
@@ -42,13 +41,22 @@ Deno.test("first-party bootstrap descriptors cover the six catalogued microvm-im
         "current first-party descriptors use the local candidate recipe; oci-digest is preferred when a reviewed digest exists",
       );
     }
-    assertEquals(descriptor.source.platform, "linux/arm64");
+    assertEquals(descriptor.buildRecipe.platform, "linux/arm64");
+    assertEquals(descriptor.buildRecipe.os, "linux");
+    assertEquals(descriptor.buildRecipe.architecture, "arm64");
+    assertEquals(typeof descriptor.physicalImageId, "string");
+    assertEquals("physicalImageId" in descriptor.buildRecipe, false);
+    assertEquals("dockerfile" in descriptor.source, false);
+    assertEquals("physicalImageId" in descriptor.source, false);
+    assertEquals("platform" in descriptor.source, false);
     assertEquals(descriptor.source.dockerImageName.endsWith(":latest"), false);
     assertEquals(descriptor.source.dockerImageName.includes("@"), false);
     const dockerfile = resolveTrustedFirstPartyBootstrapPath(
-      descriptor.source.dockerfile,
+      descriptor.buildRecipe.dockerfile,
     );
-    const context = resolveTrustedFirstPartyBootstrapPath(descriptor.source.context);
+    const context = resolveTrustedFirstPartyBootstrapPath(
+      descriptor.buildRecipe.context,
+    );
     assertEquals(
       relative(firstPartyMicrosandboxBootstrapRepoRoot(), dockerfile).startsWith(".."),
       false,
@@ -75,18 +83,17 @@ Deno.test("Modelica qualified and admitted share one physical image and target d
   assertEquals(qualified.recipeId === admitted.recipeId, false);
   assertEquals(qualified.targetImageReference, admitted.targetImageReference);
   assertEquals(qualified.target.manifestDigest, admitted.target.manifestDigest);
-  assertEquals(
-    physicalFirstPartyMicrosandboxImageId(qualified.source),
-    physicalFirstPartyMicrosandboxImageId(admitted.source),
-  );
+  assertEquals(qualified.physicalImageId, admitted.physicalImageId);
+  assertEquals(qualified.physicalImageId, "modelica-microsandbox-worker");
   if (
     qualified.source.kind !== "trusted-dockerfile" ||
     admitted.source.kind !== "trusted-dockerfile"
   ) {
     throw new Error("Modelica bootstrap must stay on trusted Dockerfiles");
   }
-  assertEquals(qualified.source.dockerfile, admitted.source.dockerfile);
-  assertEquals(qualified.source.context, admitted.source.context);
+  assertEquals(qualified.buildRecipe.dockerfile, admitted.buildRecipe.dockerfile);
+  assertEquals(qualified.buildRecipe.context, admitted.buildRecipe.context);
+  assertEquals(qualified.buildRecipe.user, admitted.buildRecipe.user);
   assertEquals(qualified.source.dockerImageName, admitted.source.dockerImageName);
   const cataloguedModelica = catalog.units.find((unit) =>
     unit.id === "casys.modelica-worker"
@@ -160,7 +167,7 @@ Deno.test(
     assertEquals(
       descriptors.some((descriptor) =>
         descriptor.source.kind === "trusted-dockerfile" &&
-        descriptor.source.context === "."
+        descriptor.buildRecipe.context === "."
       ),
       true,
     );

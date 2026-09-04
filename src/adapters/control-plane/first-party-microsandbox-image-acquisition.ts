@@ -134,9 +134,11 @@ export function parseDockerSourceInspection(value: unknown): DockerSourceInspect
 
 export function assertExactDockerSourceImage(
   inspection: DockerSourceInspection,
-  source: FirstPartyMicrosandboxImageBootstrapSource,
+  descriptor: FirstPartyMicrosandboxImageBootstrapDescriptor,
   inspectedReference: string,
 ): DockerSourceInspection {
+  const source = descriptor.source;
+  const recipe = descriptor.buildRecipe;
   const requirePinnedDigest =
     (source.kind === "oci-digest" && inspectedReference === source.reference) ||
     (source.kind === "trusted-dockerfile" &&
@@ -146,13 +148,13 @@ export function assertExactDockerSourceImage(
     samePinnedRepositoryDigest(digest, inspectedReference)
   );
   if (
-    inspection.os !== source.os ||
-    inspection.architecture !== source.architecture ||
-    inspection.user !== source.user ||
-    !stringArraysEqual(inspection.entrypoint, source.entrypoint) ||
+    inspection.os !== recipe.os ||
+    inspection.architecture !== recipe.architecture ||
+    inspection.user !== recipe.user ||
+    !stringArraysEqual(inspection.entrypoint, recipe.entrypoint) ||
     (requirePinnedDigest && !digestMatches) ||
-    (source.labels !== undefined &&
-      !Object.entries(source.labels).every(([name, value]) =>
+    (recipe.labels !== undefined &&
+      !Object.entries(recipe.labels).every(([name, value]) =>
         inspection.labels[name] === value
       ))
   ) {
@@ -263,11 +265,13 @@ async function ensureDockerSource(input: {
   readonly built: boolean;
   readonly createdLocalDockerTag: string | undefined;
 }> {
-  const source = input.descriptor.source;
+  const descriptor = input.descriptor;
+  const source = descriptor.source;
+  const recipe = descriptor.buildRecipe;
   if (source.kind === "oci-digest") {
     const existing = await inspectExactDockerSource(
       input.ports,
-      source,
+      descriptor,
       source.reference,
     );
     if (existing !== undefined) {
@@ -285,7 +289,7 @@ async function ensureDockerSource(input: {
           source.reference,
         ),
       ),
-      source,
+      descriptor,
       source.reference,
     );
     return {
@@ -297,7 +301,7 @@ async function ensureDockerSource(input: {
 
   const pinned = await inspectExactDockerSource(
     input.ports,
-    source,
+    descriptor,
     source.dockerSourceReference,
   );
   if (pinned !== undefined) {
@@ -312,7 +316,7 @@ async function ensureDockerSource(input: {
     if (existingTag !== undefined) {
       assertExactDockerSourceImage(
         parseDockerSourceInspection(existingTag),
-        source,
+        descriptor,
         source.dockerImageName,
       );
       return {
@@ -323,9 +327,9 @@ async function ensureDockerSource(input: {
     }
   }
   await input.ports.buildDockerImage({
-    dockerfile: resolveTrustedFirstPartyBootstrapPath(source.dockerfile),
-    context: resolveTrustedFirstPartyBootstrapPath(source.context),
-    platform: source.platform,
+    dockerfile: resolveTrustedFirstPartyBootstrapPath(recipe.dockerfile),
+    context: resolveTrustedFirstPartyBootstrapPath(recipe.context),
+    platform: recipe.platform,
     tag: source.dockerImageName,
   });
   try {
@@ -333,7 +337,7 @@ async function ensureDockerSource(input: {
       parseDockerSourceInspection(
         await requireDockerInspection(input.ports, source.dockerImageName),
       ),
-      source,
+      descriptor,
       source.dockerImageName,
     );
   } catch (error) {
@@ -349,14 +353,14 @@ async function ensureDockerSource(input: {
 
 async function inspectExactDockerSource(
   ports: FirstPartyMicrosandboxImageAcquisitionPorts,
-  source: FirstPartyMicrosandboxImageBootstrapSource,
+  descriptor: FirstPartyMicrosandboxImageBootstrapDescriptor,
   reference: string,
 ): Promise<DockerSourceInspection | undefined> {
   const raw = await ports.inspectDockerImage(reference);
   if (raw === undefined) return undefined;
   return assertExactDockerSourceImage(
     parseDockerSourceInspection(raw),
-    source,
+    descriptor,
     reference,
   );
 }
@@ -424,9 +428,9 @@ function assertHostArchitecture(
   descriptor: FirstPartyMicrosandboxImageBootstrapDescriptor,
   hostArchitecture: string,
 ): void {
-  if (hostArchitecture !== descriptor.source.architecture) {
+  if (hostArchitecture !== descriptor.buildRecipe.architecture) {
     throw new Error(
-      `First-party Microsandbox bootstrap is reviewed only for native ${descriptor.source.platform}.`,
+      `First-party Microsandbox bootstrap is reviewed only for native ${descriptor.buildRecipe.platform}.`,
     );
   }
 }

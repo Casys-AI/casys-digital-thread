@@ -10,6 +10,7 @@ do not add an agent-facing provider selector or give the Workbench runtime autho
 | [Project capability intent](project-capability-intent.md)               | Pending-brief verification authorities, server routes, and initial semantic forecast                          |
 | [Project capability demand](project-capability-demand.md)               | Exact provider-neutral ceiling from registered operation runtime demands                                      |
 | [Atomic runtime catalogue](atomic-runtime-catalog.md)                   | Trusted bindings, concrete units and pure project host planning                                               |
+| [First-party microVM distribution](first-party-microvm-distribution.md) | Candidate GHCR publication of the five physical Microsandbox worker images; not a catalogue pin               |
 | [Qualified binding catalogue](qualified-binding-catalog.md)             | Current semantic capability to binding and unit mapping, with literal qualification state                     |
 | [Atomic runtime boundaries](atomic-runtime-boundaries.md)               | Platform, licence, security, and retained-data limits for those units                                         |
 | [Project capability authorization](project-capability-authorization.md) | Brief-bound operational ceiling, append-only amendments, explicit unused withdrawal, and read-only inspection |
@@ -52,3 +53,6 @@ Loopback publications and the three start paths live on
 - [Administer the local capability runtime](../../../how-to/maintainers/administer-local-capability-runtime.md)
   is the maintainer procedure for automatic lifecycle observation and bounded local
   administration.
+- [Publish first-party microVM images](../../../how-to/maintainers/publish-first-party-microvm-images.md)
+  is the maintainer procedure for opt-in candidate GHCR publication of the five physical
+  Microsandbox worker images.

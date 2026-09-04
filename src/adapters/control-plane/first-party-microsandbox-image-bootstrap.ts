@@ -1,15 +1,25 @@
 /**
  * Server-owned bootstrap descriptors for first-party Microsandbox images.
  *
- * One descriptor is one catalogued microvm-image. `trusted-dockerfile` is a
- * local candidate recipe, not proof of a bit-reproducible build. After import,
- * the cached image must still be the exact target digest; otherwise the
- * capability stays unavailable. `oci-digest` is the preferred immutable
- * distribution source when a reviewed digest exists. A moving APT repository
- * does not promise that a later local rebuild will reproduce the pin.
+ * One descriptor is one catalogued microvm-image. `physicalImageId` is the
+ * stable descriptor-level identity of one physical image; it is not a
+ * field of the mutable build recipe and not an acquisition-source field.
+ * `buildRecipe` is the repo-owned candidate Dockerfile used to publish a
+ * future image. `source` is how local acquisition obtains bytes today.
+ * Those identities stay separate: a later descriptor may acquire by
+ * immutable OCI digest while still carrying the recipe that publishes the
+ * next candidate.
  *
- * Docker build context is internal acquisition material, not a second recipe
- * or project capability.
+ * A `trusted-dockerfile` rebuild is not proof of a bit-reproducible
+ * image. After import, the cached image must still be the exact target
+ * digest; otherwise the capability stays unavailable. `oci-digest` is the
+ * preferred immutable distribution source when a reviewed digest exists.
+ * A moving APT repository does not promise that a later rebuild will
+ * reproduce the pin. The catalogued Microsandbox runtime digest is never
+ * the candidate publication identity.
+ *
+ * Docker build context is internal acquisition material, not a second
+ * recipe or project capability.
  */
 
 import { isAbsolute, relative, resolve } from "node:path";
@@ -55,20 +65,17 @@ export const FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID = "cache.ngspice" as const;
 
 const REPO_ROOT = resolveRepoRoot();
 const MODELICA_PHYSICAL_IMAGE_ID = "modelica-microsandbox-worker" as const;
+const PHYSICAL_IMAGE_ID = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 
 /**
- * Local candidate recipe. Paths stay below this repository. A successful
- * `docker buildx` is not proof of a bit-reproducible image; acquisition must
- * still import the exact catalogued target digest.
+ * Repo-owned candidate build recipe. Paths stay below this repository.
+ * A successful `docker buildx` is not proof of a bit-reproducible image
+ * and does not become the catalogued Microsandbox runtime digest.
  */
-export interface FirstPartyTrustedDockerfileSource {
-  readonly kind: "trusted-dockerfile";
-  readonly physicalImageId: string;
+export interface FirstPartyMicrosandboxImageBuildRecipe {
   readonly dockerfile: string;
   readonly context: string;
   readonly platform: "linux/arm64";
-  readonly dockerImageName: string;
-  readonly dockerSourceReference: string;
   readonly os: "linux";
   readonly architecture: "arm64";
   readonly user: string;
@@ -77,19 +84,23 @@ export interface FirstPartyTrustedDockerfileSource {
 }
 
 /**
+ * Local candidate acquisition: rebuild or reuse a Docker tag/digest, then
+ * import under the catalogued Microsandbox target. Not a publication identity.
+ */
+export interface FirstPartyTrustedDockerfileSource {
+  readonly kind: "trusted-dockerfile";
+  readonly dockerImageName: string;
+  readonly dockerSourceReference: string;
+}
+
+/**
  * Preferred immutable distribution source when a reviewed digest exists.
- * No first-party descriptor uses this today.
+ * No first-party descriptor uses this today. The recipe remains the way to
+ * publish a later candidate; this source never replaces `buildRecipe`.
  */
 export interface FirstPartyOciDigestSource {
   readonly kind: "oci-digest";
-  readonly physicalImageId: string;
   readonly reference: string;
-  readonly platform: "linux/arm64";
-  readonly os: "linux";
-  readonly architecture: "arm64";
-  readonly user: string;
-  readonly entrypoint: readonly string[];
-  readonly labels?: Readonly<Record<string, string>>;
 }
 
 export type FirstPartyMicrosandboxImageBootstrapSource =
@@ -100,8 +111,10 @@ export interface FirstPartyMicrosandboxImageBootstrapDescriptor {
   readonly unitId: string;
   readonly materialId: string;
   readonly recipeId: string;
+  readonly physicalImageId: string;
   readonly targetImageReference: string;
   readonly target: ExactMicrosandboxImageExpectation;
+  readonly buildRecipe: FirstPartyMicrosandboxImageBuildRecipe;
   readonly source: FirstPartyMicrosandboxImageBootstrapSource;
 }
 
@@ -168,7 +181,7 @@ export function assertFirstPartyPhysicalImageHasUniqueTargetDigest(
 ): void {
   const seen = new Map<string, string>();
   for (const descriptor of descriptors) {
-    const physicalId = physicalFirstPartyMicrosandboxImageId(descriptor.source);
+    const physicalId = descriptor.physicalImageId;
     const digest = descriptor.target.manifestDigest;
     const previous = seen.get(physicalId);
     if (previous !== undefined && previous !== digest) {
@@ -178,12 +191,6 @@ export function assertFirstPartyPhysicalImageHasUniqueTargetDigest(
     }
     seen.set(physicalId, digest);
   }
-}
-
-export function physicalFirstPartyMicrosandboxImageId(
-  source: FirstPartyMicrosandboxImageBootstrapSource,
-): string {
-  return source.physicalImageId;
 }
 
 function closedFirstPartyBootstrapDescriptors(): readonly Omit<
@@ -198,97 +205,105 @@ function closedFirstPartyBootstrapDescriptors(): readonly Omit<
       "Modelica qualified and admitted workers must keep the same image user.",
     );
   }
-  const modelicaSource = {
+  const modelicaBuildRecipe = firstPartyBuildRecipe({
     dockerfile: "images/modelica-microsandbox-worker/Dockerfile",
     context: ".",
-    dockerImageName: "casys/modelica-microsandbox-worker:local",
-    dockerSourceReference: "casys/modelica-microsandbox-worker:local",
     user: MODELICA_MICROSANDBOX_WORKER_CONTRACT.expectedImageUser,
     entrypoint: imageEntrypoint(MODELICA_MICROSANDBOX_WORKER_CONTRACT),
-  } as const;
+  });
+  const modelicaSource = trustedDockerfileSource({
+    dockerImageName: "casys/modelica-microsandbox-worker:local",
+    dockerSourceReference: "casys/modelica-microsandbox-worker:local",
+  });
   return Object.freeze([
     {
       unitId: BUILD123D_ISOLATED_WORKER_UNIT_ID,
       materialId: BUILD123D_ISOLATED_WORKER_MATERIAL_ID,
       recipeId: FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID,
+      physicalImageId: "build123d-isolated-worker",
       targetImageReference: LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
-      source: trustedDockerfile({
-        physicalImageId: "build123d-isolated-worker",
+      buildRecipe: firstPartyBuildRecipe({
         dockerfile: "images/build123d-microsandbox-worker/Dockerfile",
         context: "images/build123d-microsandbox-worker",
-        dockerImageName: "casys/build123d-microsandbox-worker:local",
-        dockerSourceReference: "casys/build123d-microsandbox-worker:local",
         user: BUILD123D_MICROSANDBOX_WORKER_CONTRACT.expectedImageUser,
         entrypoint: imageEntrypoint(BUILD123D_MICROSANDBOX_WORKER_CONTRACT),
+      }),
+      source: trustedDockerfileSource({
+        dockerImageName: "casys/build123d-microsandbox-worker:local",
+        dockerSourceReference: "casys/build123d-microsandbox-worker:local",
       }),
     },
     {
       unitId: "casys.geometry-module-assembler-worker",
       materialId: "geometry-module-assembler-worker-image",
       recipeId: FIRST_PARTY_GEOMETRY_MODULE_CACHE_RECIPE_ID,
+      physicalImageId: "geometry-module-assembler-worker",
       targetImageReference: LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
-      source: trustedDockerfile({
-        physicalImageId: "geometry-module-assembler-worker",
+      buildRecipe: firstPartyBuildRecipe({
         dockerfile: "images/build123d-module-assembler-worker/Dockerfile",
         context: ".",
-        dockerImageName: "casys/build123d-module-assembler-worker:local",
-        dockerSourceReference:
-          LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
         user: GEOMETRY_MODULE_ASSEMBLER_MICROSANDBOX_WORKER_CONTRACT.expectedImageUser,
         entrypoint: imageEntrypoint(
           GEOMETRY_MODULE_ASSEMBLER_MICROSANDBOX_WORKER_CONTRACT,
         ),
         labels: LOCAL_GEOMETRY_MODULE_ASSEMBLY_SOURCE_HASH_LABELS,
       }),
+      source: trustedDockerfileSource({
+        dockerImageName: "casys/build123d-module-assembler-worker:local",
+        dockerSourceReference:
+          LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
+      }),
     },
     {
       unitId: "casys.calculix-worker",
       materialId: "calculix-worker-image",
       recipeId: FIRST_PARTY_CALCULIX_CACHE_RECIPE_ID,
+      physicalImageId: "calculix-worker",
       targetImageReference: LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
-      source: trustedDockerfile({
-        physicalImageId: "calculix-worker",
+      buildRecipe: firstPartyBuildRecipe({
         dockerfile: "images/calculix-microsandbox-worker/Dockerfile",
         context: ".",
-        dockerImageName: "casys/calculix-microsandbox-worker:local",
-        dockerSourceReference: "casys/calculix-microsandbox-worker:local",
         user: CALCULIX_MICROSANDBOX_WORKER_CONTRACT.expectedImageUser,
         entrypoint: imageEntrypoint(CALCULIX_MICROSANDBOX_WORKER_CONTRACT),
+      }),
+      source: trustedDockerfileSource({
+        dockerImageName: "casys/calculix-microsandbox-worker:local",
+        dockerSourceReference: "casys/calculix-microsandbox-worker:local",
       }),
     },
     {
       unitId: "casys.modelica-qualified-worker",
       materialId: "modelica-qualified-worker-image",
       recipeId: FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID,
+      physicalImageId: MODELICA_PHYSICAL_IMAGE_ID,
       targetImageReference: LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
-      source: trustedDockerfile({
-        physicalImageId: MODELICA_PHYSICAL_IMAGE_ID,
-        ...modelicaSource,
-      }),
+      buildRecipe: modelicaBuildRecipe,
+      source: modelicaSource,
     },
     {
       unitId: "casys.modelica-worker",
       materialId: "modelica-admitted-worker-image",
       recipeId: FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID,
+      physicalImageId: MODELICA_PHYSICAL_IMAGE_ID,
       targetImageReference: LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
-      source: trustedDockerfile({
-        physicalImageId: MODELICA_PHYSICAL_IMAGE_ID,
-        ...modelicaSource,
-      }),
+      buildRecipe: modelicaBuildRecipe,
+      source: modelicaSource,
     },
     {
       unitId: "casys.spice-worker",
       materialId: "ngspice-runtime-image",
       recipeId: FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID,
+      physicalImageId: "ngspice-worker",
       targetImageReference: LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
-      source: trustedDockerfile({
-        physicalImageId: "ngspice-worker",
+      buildRecipe: firstPartyBuildRecipe({
         dockerfile: "images/ngspice-microsandbox-worker/Dockerfile",
         context: ".",
-        dockerImageName: "casys/ngspice-microsandbox-worker:local",
-        dockerSourceReference: LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE,
         user: NGSPICE_ADMITTED_MICROSANDBOX_WORKER_CONTRACT.expectedImageUser,
         entrypoint: imageEntrypoint(NGSPICE_ADMITTED_MICROSANDBOX_WORKER_CONTRACT),
+      }),
+      source: trustedDockerfileSource({
+        dockerImageName: "casys/ngspice-microsandbox-worker:local",
+        dockerSourceReference: LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE,
       }),
     },
   ]);
@@ -327,13 +342,15 @@ function bindDescriptorToCatalog(
       `First-party Microsandbox bootstrap drifted from the worker contract for ${descriptor.unitId}/${descriptor.materialId}.`,
     );
   }
-  assertTrustedSource(descriptor.source);
+  assertFirstPartyPhysicalImageId(descriptor.physicalImageId);
+  assertFirstPartyBuildRecipe(descriptor.buildRecipe);
+  assertAcquisitionSource(descriptor.source);
   const architecture = exactMicrosandboxMaterialArchitecture(material.platforms);
   if (
-    descriptor.source.architecture !== architecture ||
-    descriptor.source.platform !== `linux/${architecture}` ||
-    descriptor.source.user !== expectation.image.user ||
-    !sameEntrypoint(descriptor.source.entrypoint, expectation.image.entrypoint)
+    descriptor.buildRecipe.architecture !== architecture ||
+    descriptor.buildRecipe.platform !== `linux/${architecture}` ||
+    descriptor.buildRecipe.user !== expectation.image.user ||
+    !sameEntrypoint(descriptor.buildRecipe.entrypoint, expectation.image.entrypoint)
   ) {
     throw new TypeError(
       `First-party Microsandbox bootstrap platform drifted for ${descriptor.unitId}/${descriptor.materialId}.`,
@@ -344,25 +361,25 @@ function bindDescriptorToCatalog(
     manifestDigest: `sha256:${imageDigest(material.imageReference)}`,
     os: "linux" as const,
     architecture,
-    user: descriptor.source.user,
-    entrypoint: descriptor.source.entrypoint,
+    user: descriptor.buildRecipe.user,
+    entrypoint: descriptor.buildRecipe.entrypoint,
   });
   return Object.freeze({
     ...descriptor,
     targetImageReference: material.imageReference,
+    buildRecipe: structuredClone(descriptor.buildRecipe),
     source: structuredClone(descriptor.source),
     target,
   });
 }
 
-function trustedDockerfile(
+function firstPartyBuildRecipe(
   input: Omit<
-    FirstPartyTrustedDockerfileSource,
-    "kind" | "platform" | "os" | "architecture"
+    FirstPartyMicrosandboxImageBuildRecipe,
+    "platform" | "os" | "architecture"
   >,
-): FirstPartyTrustedDockerfileSource {
+): FirstPartyMicrosandboxImageBuildRecipe {
   return Object.freeze({
-    kind: "trusted-dockerfile",
     platform: "linux/arm64",
     os: "linux",
     architecture: "arm64",
@@ -374,25 +391,79 @@ function trustedDockerfile(
   });
 }
 
-function assertTrustedSource(source: FirstPartyMicrosandboxImageBootstrapSource): void {
+function trustedDockerfileSource(
+  input: Omit<FirstPartyTrustedDockerfileSource, "kind">,
+): FirstPartyTrustedDockerfileSource {
+  return Object.freeze({
+    kind: "trusted-dockerfile",
+    ...input,
+  });
+}
+
+function assertFirstPartyPhysicalImageId(physicalImageId: string): void {
+  if (!PHYSICAL_IMAGE_ID.test(physicalImageId)) {
+    throw new TypeError(
+      "First-party Microsandbox physical image id must be a lowercase OCI repository segment.",
+    );
+  }
+}
+
+function assertFirstPartyBuildRecipe(
+  recipe: FirstPartyMicrosandboxImageBuildRecipe,
+): void {
+  if (recipe.platform !== "linux/arm64") {
+    throw new TypeError(
+      "First-party Microsandbox build recipes are reviewed only for linux/arm64.",
+    );
+  }
+  if (recipe.os !== "linux" || recipe.architecture !== "arm64") {
+    throw new TypeError(
+      "First-party Microsandbox build recipes must declare linux/arm64.",
+    );
+  }
+  if (recipe.user === "") {
+    throw new TypeError("First-party Microsandbox build recipe user is missing.");
+  }
+  if (
+    recipe.entrypoint.length === 0 ||
+    recipe.entrypoint.some((value) => value === "")
+  ) {
+    throw new TypeError(
+      "First-party Microsandbox build recipe entrypoint must be a non-empty string array.",
+    );
+  }
+  if (recipe.labels !== undefined) {
+    for (const [name, value] of Object.entries(recipe.labels)) {
+      if (name === "" || value === "") {
+        throw new TypeError(
+          "First-party Microsandbox build recipe labels must be non-empty strings.",
+        );
+      }
+    }
+  }
+  const dockerfile = resolveTrustedFirstPartyBootstrapPath(recipe.dockerfile);
+  const context = resolveTrustedFirstPartyBootstrapPath(recipe.context);
+  if (!Deno.statSync(dockerfile).isFile) {
+    throw new TypeError(
+      `First-party Microsandbox bootstrap Dockerfile is missing: ${recipe.dockerfile}.`,
+    );
+  }
+  if (!Deno.statSync(context).isDirectory) {
+    throw new TypeError(
+      `First-party Microsandbox bootstrap context is missing: ${recipe.context}.`,
+    );
+  }
+}
+
+function assertAcquisitionSource(
+  source: FirstPartyMicrosandboxImageBootstrapSource,
+): void {
   if (source.kind === "oci-digest") {
     pinnedOciImageReference(
       source.reference,
       "$firstPartyMicrosandboxBootstrap.ociDigest",
     );
     return;
-  }
-  const dockerfile = resolveTrustedFirstPartyBootstrapPath(source.dockerfile);
-  const context = resolveTrustedFirstPartyBootstrapPath(source.context);
-  if (!Deno.statSync(dockerfile).isFile) {
-    throw new TypeError(
-      `First-party Microsandbox bootstrap Dockerfile is missing: ${source.dockerfile}.`,
-    );
-  }
-  if (!Deno.statSync(context).isDirectory) {
-    throw new TypeError(
-      `First-party Microsandbox bootstrap context is missing: ${source.context}.`,
-    );
   }
   if (
     source.dockerImageName.includes("@") || source.dockerImageName.endsWith(":latest")

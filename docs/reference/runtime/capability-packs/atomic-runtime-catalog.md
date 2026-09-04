@@ -93,6 +93,13 @@ H1 registry, has no invented healthcheck, and retains its private inputs and run
 volumes. Cache-only and microVM materials keep `launchGroup: null`: an image alone never
 enrolls a topology. Registry enrollment is candidacy; it does not start a service.
 
+The six first-party microVM materials currently share five physical worker images
+(Modelica qualified and admitted load the same image). Candidate GHCR publication of
+those physical images is infrastructure release metadata only; it does not rewrite this
+catalogue or the Microsandbox runtime digest. See
+[first-party microVM distribution](first-party-microvm-distribution.md) and
+[Publish first-party microVM images](../../../how-to/maintainers/publish-first-party-microvm-images.md).
+
 The semantic capability `mechanics.observe-static-structural-sensitivity@1` names only
 two static-structural sensitivity observations, never a verdict. Its concrete
 `calculix-http-static-sensitivity@1` binding points to `casys.mcp-calculix@0.8.2` and

@@ -14,7 +14,7 @@ available on the current machine.
 | [`compile/`](compile/) | Capture and compile reviewed engineering source or parameters |
 | [`run/`](run/) | Execute or recover an admitted simulation path |
 | [`agents/`](agents/) | Follow agent-only sequencing procedures, including [project capability authorization](agents/review-project-capability-authorization.md) |
-| [`maintainers/`](maintainers/) | Preflight providers, [administer the local capability runtime](maintainers/administer-local-capability-runtime.md), and prepare a public repository release |
+| [`maintainers/`](maintainers/) | Preflight providers, [administer the local capability runtime](maintainers/administer-local-capability-runtime.md), [publish first-party microVM images](maintainers/publish-first-party-microvm-images.md), and prepare a public repository release |
 | [`extend/`](extend/) | Add or change a reviewed engineering capability |
 
 Human-facing filenames use an action plus an outcome. Provider names, operation IDs,

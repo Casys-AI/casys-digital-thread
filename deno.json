@@ -26,6 +26,7 @@
     "dev": "deno run --watch=server.ts,src,config --node-modules-dir=auto --allow-read=.,config,state,src,images,mcp-server.yaml,node_modules --allow-write=state/local,/tmp,/private/tmp --allow-net --allow-run=docker --allow-env --allow-ffi=node_modules server.ts",
     "preview:browser": "deno run scripts/serve/console-browser-harness.ts",
     "thread:capture-syson-inventory": "deno run --allow-net=127.0.0.1:3009 --allow-write=state/local scripts/probes/capture-build123d-api-inventory.ts scripts/probes/capture-syson-model-inventory.ts",
+    "release:first-party-microvm-images:matrix": "deno run --no-prompt --frozen --allow-read=. scripts/release/export-first-party-microsandbox-image-matrix.ts",
     "release:source-alpha:build": "deno run --no-prompt --frozen --allow-read --allow-write=dist/release --allow-run=git scripts/release/build-source-alpha-inventory.ts",
     "release:source-alpha:render": "deno run --no-prompt --frozen --allow-read --allow-write=dist/release scripts/release/render-third-party-notices.ts",
     "release:source-alpha:verify": "deno run --no-prompt --frozen --allow-read --allow-run=git scripts/release/verify-source-alpha-inventory.ts",

@@ -213,13 +213,7 @@ Deno.test("oci-digest source pulls by digest and never builds", async () => {
   const base = await descriptorById(FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID);
   const source: FirstPartyOciDigestSource = {
     kind: "oci-digest",
-    physicalImageId: "test-oci",
     reference: base.targetImageReference,
-    platform: "linux/arm64",
-    os: "linux",
-    architecture: "arm64",
-    user: base.source.user,
-    entrypoint: base.source.entrypoint,
   };
   const descriptor: FirstPartyMicrosandboxImageBootstrapDescriptor = {
     ...base,
@@ -338,7 +332,7 @@ Deno.test("docker inspect parser attests the pinned source digest when present",
   );
   assertExactDockerSourceImage(
     parsed,
-    descriptor.source,
+    descriptor,
     descriptor.source.dockerSourceReference,
   );
   assertExactDockerSourceImage(
@@ -348,7 +342,7 @@ Deno.test("docker inspect parser attests the pinned source digest when present",
         `docker.io/${descriptor.source.dockerSourceReference}`,
       ),
     ),
-    descriptor.source,
+    descriptor,
     descriptor.source.dockerSourceReference,
   );
 });
@@ -525,14 +519,14 @@ function dockerInspectJson(
 ): Record<string, unknown> {
   return {
     RepoDigests: [repoDigest],
-    Os: descriptor.source.os,
-    Architecture: descriptor.source.architecture,
+    Os: descriptor.buildRecipe.os,
+    Architecture: descriptor.buildRecipe.architecture,
     Config: {
-      User: descriptor.source.user,
-      Entrypoint: [...descriptor.source.entrypoint],
-      Labels: descriptor.source.labels === undefined
+      User: descriptor.buildRecipe.user,
+      Entrypoint: [...descriptor.buildRecipe.entrypoint],
+      Labels: descriptor.buildRecipe.labels === undefined
         ? {}
-        : { ...descriptor.source.labels },
+        : { ...descriptor.buildRecipe.labels },
     },
   };
 }

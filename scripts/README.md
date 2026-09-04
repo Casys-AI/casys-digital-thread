@@ -55,20 +55,26 @@ capture. Neither stage performs `project_geometry_module_export`, produces proje
 evidence, or authorizes a product assembly; that remains a separately registered
 operation using the exact qualified runtime.
 
-## release/ — source-only public-release inventory
+## release/ — source-only public-release inventory and candidate image planning
 
-These scripts generate and verify an ignored, tag-labelled source archive inventory.
-They do not pull, inspect, or claim coverage of a provider image, microVM, Desktop
-bundle, or live project. See the
+Source-alpha scripts generate and verify an ignored, tag-labelled source archive
+inventory. They do not pull, inspect, or claim coverage of a provider image, microVM,
+Desktop bundle, or live project. See the
 [source-alpha SBOM guide](../docs/how-to/maintainers/source-alpha-sbom.md).
 `release/source-alpha-inventory.ts` is their shared deterministic renderer, not a direct
 entry point.
 
-| Script                                     | Task                          | Effect | Scope                                                                                                                            |
-| ------------------------------------------ | ----------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| `release/build-source-alpha-inventory.ts`  | `release:source-alpha:build`  | write  | Builds a deterministic source archive, CycloneDX 1.6 SBOM, manifest, notices, and checksums below ignored `dist/release/<tag>/`. |
-| `release/render-third-party-notices.ts`    | `release:source-alpha:render` | write  | Re-renders the source-only third-party notice table from the generated CycloneDX document and refreshes checksums.               |
-| `release/verify-source-alpha-inventory.ts` | `release:source-alpha:verify` | read   | Rebuilds the exact source-alpha inventory in memory and compares every tagged artifact and checksum without publishing anything. |
+The first-party microVM matrix script is planning only: it prints the five physical
+candidate-image build entries derived from the bootstrap descriptors. It does not build,
+push, tag, or rewrite a catalogued Microsandbox runtime digest. See
+[Publish first-party microVM images](../docs/how-to/maintainers/publish-first-party-microvm-images.md).
+
+| Script                                                    | Task                                        | Effect | Scope                                                                                                                            |
+| --------------------------------------------------------- | ------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `release/export-first-party-microsandbox-image-matrix.ts` | `release:first-party-microvm-images:matrix` | read   | Prints the compact candidate-image distribution matrix on stdout. No network, Docker, or file writes.                            |
+| `release/build-source-alpha-inventory.ts`                 | `release:source-alpha:build`                | write  | Builds a deterministic source archive, CycloneDX 1.6 SBOM, manifest, notices, and checksums below ignored `dist/release/<tag>/`. |
+| `release/render-third-party-notices.ts`                   | `release:source-alpha:render`               | write  | Re-renders the source-only third-party notice table from the generated CycloneDX document and refreshes checksums.               |
+| `release/verify-source-alpha-inventory.ts`                | `release:source-alpha:verify`               | read   | Rebuilds the exact source-alpha inventory in memory and compares every tagged artifact and checksum without publishing anything. |
 
 ## probes/ — read-only diagnostic; `thread:capture-syson-inventory` writes a capture
 

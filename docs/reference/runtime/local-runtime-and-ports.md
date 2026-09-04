@@ -10,6 +10,7 @@ Where things run, and which page owns the file census.
 | Admitted CAD/Modelica microVM pattern            | [admitted source isolated execution](../pipeline/admitted-source-isolated-execution.md) |
 | H01 isolation, WAL, and Thread collection bounds | [isolation and Thread boundedness](isolation-and-thread-boundedness.md)                 |
 | Capability demand and packs                      | [capability packs](capability-packs/README.md)                                          |
+| First-party microVM candidate publication        | [first-party microVM distribution](capability-packs/first-party-microvm-distribution.md) |
 | Capability runtime connection                    | [capability runtime connection](capability-packs/capability-runtime-connection.md)      |
 | Agent tools, operations, grants                  | [agent workspace](../agent/agent-workspace.md)                                          |
 | Lookalike pairs                                  | [lookalike traps](../agent/lookalike-traps.md)                                          |
