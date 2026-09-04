@@ -20,11 +20,11 @@ Lookalikes: [lookalike traps](../../reference/agent/lookalike-traps.md). Domain 
 
 Three operator surfaces. They are not substitutes.
 
-| Surface           | Command                                                                  | What it proves                                                                                                                              |
-| ----------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Docker smoke      | `scripts/gates/verify-ngspice-microsandbox-worker.ts --run`              | Container contract outside IsolatedCodeRunner. Not the Microsandbox cache.                                                                  |
+| Surface           | Command                                                                  | What it proves                                                                                                                                                                                                                                     |
+| ----------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Docker smoke      | `scripts/gates/verify-ngspice-microsandbox-worker.ts --run`              | Container contract outside IsolatedCodeRunner. Not the Microsandbox cache.                                                                                                                                                                         |
 | Cache preparation | `deno task prepare:ngspice:microsandbox`                                 | Idempotent observe of the Microsandbox pin; on miss inspect the Docker source or reconstruct the local candidate Dockerfile, then import under the runtime pin. The imported image must still match that digest. No alias pull. Not a product run. |
-| Product run       | `project_admitted_spice_run_review` then `simulate.run-admitted-spice@1` | Documentary isolated execution over the server-owned worker profile. Boot does not import the microVM image; this worker publishes no host port. |
+| Product run       | `project_admitted_spice_run_review` then `simulate.run-admitted-spice@1` | Documentary isolated execution over the server-owned worker profile. Boot does not import the microVM image; this worker publishes no host port.                                                                                                   |
 
 The Docker distribution/index digest
 `casys/ngspice-microsandbox-worker@sha256:62748f195c86751c5fc565ea8e0ac5ab6bd283ddcae2426918d697b25ce6d392`
@@ -35,8 +35,8 @@ attested `manifestDigest`. Do not pin the Docker index digest as the runtime ima
 `pullPolicy` stays `never`. Server startup does not pull or import. A local
 `trusted-dockerfile` rebuild is a candidate recipe, not bit-reproducible proof and not
 an `oci-digest` distribution. After import, the cached image must still match the
-runtime digest; otherwise the capability stays unavailable. A moving APT repository
-does not promise that a later rebuild will reproduce the pin.
+runtime digest; otherwise the capability stays unavailable. A moving APT repository does
+not promise that a later rebuild will reproduce the pin.
 
 Ordinary start is cold Deno. Do not start the root Compose provider stack: H1 activates
 enrolled groups JIT under a lease when covered work needs them, and those groups collide
@@ -52,12 +52,12 @@ ERPNext is an optional sibling integration; start it separately only when its ch
 and environment file are available.
 
 Connect the agent to `http://127.0.0.1:3020/mcp`. The Workbench is read-only. The
-console does not auto-import the SPICE microVM at boot. The registered operation and
-catalogue demand exist, but the admitted-SPICE executor does not yet open an H1
-execution session and the H1 host observer does not yet cover `casys.spice-worker`.
-Consequently the cold capability path stays literal `unavailable` until that exact
-integration exists. Restarting the console or preparing the cache alone is not an
-activation mechanism.
+console does not auto-import the SPICE microVM at boot. The admitted-SPICE executor
+opens an H1 execution session before it claims the run, and the H1 host observer covers
+the exact `casys.spice-worker/ngspice-runtime-image` material. A covered work item can
+therefore prepare and lease that cache JIT; an acquisition, attestation, or lease
+failure leaves the work item and run unchanged and reports the capability literally
+`unavailable`. Restarting the console alone is not an activation mechanism.
 
 ## 1. Capture
 
@@ -105,8 +105,8 @@ work item: `compilationAdmission` names the selected admission on the current re
 Thread basis. Do not copy a historical `compile.seal-admission@3` creation snapshot.
 
 Obtain human MRTR, queue, then execute `simulate.run-admitted-spice@1`. A missing
-prepared cache, image, or operational envelope keeps the executor literal
-`unavailable`. Cache preparation or a standalone worker check is not a product run.
+prepared cache, image, or operational envelope keeps the executor literal `unavailable`.
+Cache preparation or a standalone worker check is not a product run.
 
 ## 4. Read success correctly
 
