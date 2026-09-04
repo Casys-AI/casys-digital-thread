@@ -1,4 +1,5 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
+import { CapabilityRuntimeSessionUnavailableError } from "../../../application/control-plane/capability-runtime-execution-session.ts";
 import type { EngineeringProjectCommandOrigin } from "../../../application/ports/in/engineering-project-command-origin.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
 import type { PersistedModelicaIsolatedExecutionCapture } from "../../../application/ports/out/modelica/isolated-execution-evidence-store.ts";
@@ -62,6 +63,11 @@ import {
   SimulateRunQualifiedModelicaKitRunExecutor,
   type SimulateRunQualifiedModelicaKitRunExecutorDependencies,
 } from "./run-executor.ts";
+import {
+  type RecordingCapabilityRuntimeSession,
+  recordingCapabilityRuntimeSession,
+  testResolvedCapabilityRuntimeOperation,
+} from "../../../testing/capability-runtime-execution-session-test-support.ts";
 
 const AT = "2026-08-14T00:00:00.000Z";
 const AGENT = { kind: "agent" as const, actorId: "agent.modelica" };
@@ -128,6 +134,30 @@ Deno.test("qualified Modelica executor publishes three documentary solver artifa
     revision: snapshot.revision,
     subjectId: snapshot.subject.id,
   });
+});
+
+Deno.test("qualified Modelica executor starts the exact JIT microVM session before execution and releases it on completion", async () => {
+  const fixture = await createFixture();
+  const completed = await fixture.executor.execute(AGENT, COMMAND);
+  assertEquals(runStatus(completed), "completed");
+  assertEquals(fixture.capabilitySession.events, ["begin"]);
+  assertEquals(fixture.capabilitySession.releases, 1);
+  assertEquals(fixture.capabilitySession.microsandboxExecutionProfiles?.length, 1);
+  assertEquals(fixture.execution.executeCalls, 1);
+});
+
+Deno.test("qualified Modelica executor leaves its queued run unchanged when JIT activation fails", async () => {
+  const fixture = await createFixture({ sessionUnavailable: true });
+  await assertRejects(
+    () => fixture.executor.execute(AGENT, COMMAND),
+    Error,
+    "exact qualified Modelica capability session is unavailable",
+  );
+  assertEquals(runStatus(fixture.project), "queued");
+  assertEquals(fixture.project.workItems[0]?.status, "in-progress");
+  assertEquals(fixture.project.commandReceipts.length, 0);
+  assertEquals(fixture.capabilitySession.events, ["begin"]);
+  assertEquals(fixture.execution.executeCalls, 0);
 });
 
 Deno.test("completed qualified Modelica replay only reopens durable evidence", async () => {
@@ -356,6 +386,7 @@ interface FixtureOptions {
   readonly publishAckLostOnce?: boolean;
   readonly blockExecution?: boolean;
   readonly rejectOutputValidation?: boolean;
+  readonly sessionUnavailable?: boolean;
 }
 
 interface Fixture {
@@ -367,6 +398,7 @@ interface Fixture {
   readonly snapshots: FakeSnapshots;
   readonly dependencies: SimulateRunQualifiedModelicaKitRunExecutorDependencies;
   readonly events: string[];
+  readonly capabilitySession: RecordingCapabilityRuntimeSession;
 }
 
 async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
@@ -584,6 +616,28 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
     createInitial: () => Promise.reject(new Error("unused")),
     commit: () => Promise.reject(new Error("unused")),
   };
+  const capabilitySession = recordingCapabilityRuntimeSession(
+    options.sessionUnavailable
+      ? () =>
+        Promise.reject(
+          new CapabilityRuntimeSessionUnavailableError(
+            "The exact qualified Modelica capability session is unavailable.",
+          ),
+        )
+      : undefined,
+  );
+  const capabilityRuntime = {
+    requireExecution: () =>
+      Promise.resolve(testResolvedCapabilityRuntimeOperation({
+        projectId: COMMAND.projectId,
+        operation: SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
+        capabilityId: "simulation.run-qualified-modelica",
+        unitId: "casys.modelica-qualified-worker",
+        materialId: "modelica-qualified-worker-image",
+        imageDigest: profile.runtimeBackend.imageDigest.digest,
+        hostLifecycleKind: "ephemeral-microsandbox",
+      })),
+  };
   const dependencies = {
     projects,
     commands,
@@ -592,6 +646,8 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
     execution,
     captures,
     lease: new SerialLease(),
+    capabilityRuntime,
+    capabilityRuntimeSession: capabilitySession,
   } as unknown as SimulateRunQualifiedModelicaKitRunExecutorDependencies;
   return {
     executor: new SimulateRunQualifiedModelicaKitRunExecutor(dependencies),
@@ -602,6 +658,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
     snapshots,
     dependencies,
     events,
+    capabilitySession,
   };
 }
 

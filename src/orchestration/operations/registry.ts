@@ -692,6 +692,9 @@ const OPERATIONS = [
     runtimeDemand: requiredRuntimeDemand(
       qualifiedCapability(SIMULATION_RUN_ADMITTED_MODELICA_CAPABILITY),
     ),
+    // The persisted run/queue receipt invariant requires the exact sealed
+    // ROP2 reference for admitted isolated execution.
+    resolvedOperationPlan: "2.0",
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: COMPILATION_ADMISSION_BINDING_NAME,
@@ -726,6 +729,9 @@ const OPERATIONS = [
     runtimeDemand: requiredRuntimeDemand(
       qualifiedCapability(ELECTRONICS_RUN_ADMITTED_SPICE_CAPABILITY),
     ),
+    // The persisted run/queue receipt invariant requires the exact sealed
+    // ROP2 reference for admitted isolated execution.
+    resolvedOperationPlan: "2.0",
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: COMPILATION_ADMISSION_BINDING_NAME,

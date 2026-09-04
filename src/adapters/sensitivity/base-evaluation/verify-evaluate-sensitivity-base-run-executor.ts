@@ -8,8 +8,19 @@
  */
 
 import type { EngineeringProjectCommandOrigin } from "../../../application/ports/in/engineering-project-command-origin.ts";
+import type { CapabilityRuntimeExecutionEligibility } from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
 import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
+import {
+  beginConfiguredCapabilityRuntimeSession,
+  requireConfiguredOperationalCapability,
+  settleCapabilityRuntimeSession,
+} from "../../../application/control-plane/capability-runtime-execution-admission.ts";
+import {
+  type CapabilityRuntimeExecutionSession,
+  type CapabilityRuntimeExecutionSessionCoordinator,
+  CapabilityRuntimeSessionUnavailableError,
+} from "../../../application/control-plane/capability-runtime-execution-session.ts";
 import {
   EngineeringProjectCommandError,
   type EngineeringProjectCommandService,
@@ -98,6 +109,13 @@ export interface VerifyEvaluateSensitivityBaseRunExecutorDependencies {
   readonly captures: SensitivityBaseEvaluationCaptureStore;
   readonly syson: McpToolClient;
   readonly lease: EngineeringProjectRunLease;
+  /** Cold server-owned authorization recheck for the fixed SysON binding. */
+  readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
+  /** Starts the sealed JIT group before run/WAL/SysON mutation. */
+  readonly capabilityRuntimeSession?: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin"
+  >;
 }
 
 export class VerifyEvaluateSensitivityBaseRunExecutor {
@@ -108,6 +126,10 @@ export class VerifyEvaluateSensitivityBaseRunExecutor {
   readonly #captures: SensitivityBaseEvaluationCaptureStore;
   readonly #syson: McpToolClient;
   readonly #lease: EngineeringProjectRunLease;
+  readonly #capabilityRuntime: CapabilityRuntimeExecutionEligibility | undefined;
+  readonly #capabilityRuntimeSession:
+    | Pick<CapabilityRuntimeExecutionSessionCoordinator, "begin">
+    | undefined;
 
   constructor(dependencies: VerifyEvaluateSensitivityBaseRunExecutorDependencies) {
     this.#projects = dependencies.projects;
@@ -117,6 +139,8 @@ export class VerifyEvaluateSensitivityBaseRunExecutor {
     this.#captures = dependencies.captures;
     this.#syson = dependencies.syson;
     this.#lease = dependencies.lease;
+    this.#capabilityRuntime = dependencies.capabilityRuntime;
+    this.#capabilityRuntimeSession = dependencies.capabilityRuntimeSession;
   }
 
   async execute(
@@ -145,12 +169,31 @@ export class VerifyEvaluateSensitivityBaseRunExecutor {
     command: VerifyEvaluateSensitivityBaseRunExecutorCommand,
   ): Promise<EngineeringProjectSnapshot> {
     let claimed = false;
+    let capabilitySession: CapabilityRuntimeExecutionSession | undefined;
     try {
       const preClaim = await this.#requiredProject(command.projectId);
       const preRun = requireRun(preClaim, command.runId);
       requireShape(preClaim, preRun);
       if (preRun.status === "completed") return preClaim;
       await assertThreadWriteBasisAvailable(preClaim, preRun);
+      const operationalCapability = await this.#requireOperationalCapability(
+        preClaim,
+        preRun,
+      );
+      // JIT activation is deliberately pre-claim: a denied or unavailable
+      // host must not alter the work item, run, WAL, or SysON state.
+      capabilitySession = await beginConfiguredCapabilityRuntimeSession({
+        session: this.#capabilityRuntimeSession!,
+        project: preClaim,
+        runId: command.runId,
+        operationalCapability,
+        recheck: async () => {
+          const fresh = await this.#requiredProject(command.projectId);
+          const run = requireRun(fresh, command.runId);
+          requireShape(fresh, run);
+          return await this.#requireOperationalCapability(fresh, run);
+        },
+      });
       await this.#commands.claimRun(origin, {
         ...command,
         commandId: `${command.commandId}:claim`,
@@ -159,7 +202,13 @@ export class VerifyEvaluateSensitivityBaseRunExecutor {
       claimed = true;
       let project = await this.#requiredProject(command.projectId);
       let run = requireRun(project, command.runId);
-      if (run.status === "completed") return project;
+      if (run.status === "completed") {
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "release" },
+        });
+        return project;
+      }
       if (run.status !== "running" && run.status !== "publishing") {
         throw unexpectedStatus(run, "running");
       }
@@ -245,7 +294,13 @@ export class VerifyEvaluateSensitivityBaseRunExecutor {
       await this.#snapshots.save(successor.snapshot);
       project = await this.#requiredProject(command.projectId);
       run = requireRun(project, command.runId);
-      if (run.status === "completed") return project;
+      if (run.status === "completed") {
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "release" },
+        });
+        return project;
+      }
       if (run.status === "running") {
         await this.#commands.publishRun(origin, {
           ...command,
@@ -257,7 +312,7 @@ export class VerifyEvaluateSensitivityBaseRunExecutor {
       project = await this.#requiredProject(command.projectId);
       run = requireRun(project, command.runId);
       if (run.status === "publishing") {
-        return await this.#commands.completeRun(origin, {
+        const completed = await this.#commands.completeRun(origin, {
           ...command,
           commandId: `${command.commandId}:complete`,
           expectedRevision: project.revision,
@@ -270,13 +325,31 @@ export class VerifyEvaluateSensitivityBaseRunExecutor {
             id: successor.artifact.id,
           }],
         });
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "release" },
+        });
+        return completed;
       }
-      if (run.status === "completed") return project;
+      if (run.status === "completed") {
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "release" },
+        });
+        return project;
+      }
       throw unexpectedStatus(run, "completed");
     } catch (error) {
       if (claimed) {
         await this.#recordFailure(origin, command, error);
       }
+      await settleCapabilityRuntimeSession({
+        session: capabilitySession,
+        policy: {
+          kind: "release-if-terminal",
+          run: await this.#currentRun(command.projectId, command.runId),
+        },
+      });
       throw error;
     }
   }
@@ -313,6 +386,43 @@ export class VerifyEvaluateSensitivityBaseRunExecutor {
       });
     } catch {
       // Preserve the original failure.
+    }
+  }
+
+  async #requireOperationalCapability(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+  ) {
+    requireShape(project, run);
+    const workItem = project.workItems.find((item) => item.id === run.workItemId);
+    if (!workItem) {
+      throw invalidTransition("Study-base evaluation work item is not present.");
+    }
+    try {
+      return await requireConfiguredOperationalCapability({
+        runtime: this.#capabilityRuntime,
+        session: this.#capabilityRuntimeSession,
+        project,
+        run,
+        workItem,
+        unavailableMessage:
+          "Study-base evaluation requires the configured JIT capability runtime session before a run can be claimed.",
+        missingBindingMessage:
+          "Study-base evaluation requires the sealed model.evaluate-requirement@1 operational capability before a run can be claimed.",
+      });
+    } catch (error) {
+      if (error instanceof CapabilityRuntimeSessionUnavailableError) {
+        throw invalidTransition(error.message);
+      }
+      throw error;
+    }
+  }
+
+  async #currentRun(projectId: string, runId: string) {
+    try {
+      return requireRun(await this.#requiredProject(projectId), runId);
+    } catch {
+      return undefined;
     }
   }
 }

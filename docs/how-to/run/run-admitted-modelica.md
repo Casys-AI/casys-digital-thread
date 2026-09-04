@@ -56,8 +56,11 @@ fallback.
 
 ## 2. Compile and seal
 
-Call `project_technical_compilation_preview` with `projectId` plus `result.reference`
-only. The server joins the current Thread tip, the unique `modelica-closed-subset-v2` /
+Call `project_technical_compilation_preview` with exactly
+`{ projectId, sourceRefs: [capture.result.reference] }`. When more than one capture is
+compiled, every locator in `sourceRefs` must resolve to one shared
+ProjectSourceWorkspace basis. The server joins the current Thread tip, the unique
+`modelica-closed-subset-v2` /
 `2.0.0` profile, and the unique SysML `parameterizes` bindings for every Modelica
 parameter symbol. The root model artifact does not need `represents`; that relation is
 CAD geometry identity.

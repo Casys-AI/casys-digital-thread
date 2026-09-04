@@ -58,6 +58,10 @@ export interface TechnicalCompilationFoundation {
   readonly technicalCompilationDrafts: FileTechnicalCompilationDraftStore;
   readonly technicalCompilationProfiles:
     FixedTechnicalCompilationProfileCatalogProvider;
+  /** Exact bytes sealed by compile.seal-admission@3 for closed ROP reopening. */
+  readonly technicalCompilationSealBytes: FileByteStore<
+    "technical-compilation-admission-capture"
+  >;
   readonly technicalCompilationSeals: TechnicalCompilationAdmissionCaptureStore;
   readonly technicalCompilationAdmissions:
     CaptureBackedTechnicalCompilationAdmissionReader;
@@ -173,6 +177,7 @@ export function createTechnicalCompilationFoundation(
     technicalSourceCapture,
     technicalCompilationDrafts,
     technicalCompilationProfiles,
+    technicalCompilationSealBytes,
     technicalCompilationSeals,
     technicalCompilationAdmissions,
   };

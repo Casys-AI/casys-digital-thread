@@ -18,9 +18,20 @@
 import type { EngineeringProjectCommandOrigin } from "../../../application/ports/in/engineering-project-command-origin.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
 import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
+import type { CapabilityRuntimeExecutionEligibility } from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import type { AdmittedObservationEvidenceReader } from "../../../application/ports/out/modelica/evaluation/admitted-observation-evidence-reader.ts";
 import type { ThermalMethodSheetSourceCaptureReader } from "../../../application/ports/out/modelica/thermal-method-sheet-source-capture-reader.ts";
 import type { ThermalMethodSheetStore } from "../../../application/ports/out/modelica/thermal-method-sheet-store.ts";
+import {
+  beginConfiguredCapabilityRuntimeSession,
+  requireConfiguredOperationalCapability,
+  settleCapabilityRuntimeSession,
+} from "../../../application/control-plane/capability-runtime-execution-admission.ts";
+import {
+  type CapabilityRuntimeExecutionSession,
+  type CapabilityRuntimeExecutionSessionCoordinator,
+  CapabilityRuntimeSessionUnavailableError,
+} from "../../../application/control-plane/capability-runtime-execution-session.ts";
 import {
   type CompleteRunCommand,
   EngineeringProjectCommandError,
@@ -51,6 +62,7 @@ import {
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
+import type { ResolvedCapabilityRuntimeOperation } from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
 import type {
   EngineeringAgentRun,
   EngineeringApproval,
@@ -161,6 +173,13 @@ export interface VerifyEvaluateAdmittedModelicaObservationsRunExecutorDependenci
   readonly attempts: FileAdmittedObservationEvaluationAttemptStore;
   readonly syson: McpToolClient;
   readonly lease: EngineeringProjectRunLease;
+  /** Exact runtime envelope for this registered SysON evaluation. */
+  readonly capabilityRuntime: CapabilityRuntimeExecutionEligibility;
+  /** JIT host lifecycle; it must start before any claim or SysON call. */
+  readonly capabilityRuntimeSession: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin"
+  >;
 }
 
 export class VerifyEvaluateAdmittedModelicaObservationsRunExecutor {
@@ -198,6 +217,7 @@ export class VerifyEvaluateAdmittedModelicaObservationsRunExecutor {
   ): Promise<EngineeringProjectSnapshot> {
     let claimed = false;
     let publicationStarted = false;
+    let capabilitySession: CapabilityRuntimeExecutionSession | undefined;
     try {
       let project = await this.#requiredProject(command.projectId);
       let run = requireRun(project, command.runId);
@@ -222,6 +242,24 @@ export class VerifyEvaluateAdmittedModelicaObservationsRunExecutor {
       );
 
       const firstClaim = run.status === "queued";
+      if (!firstClaim && (run.status === "running" || run.status === "publishing")) {
+        requireClaimedShape(project, run, origin);
+      } else if (!firstClaim) {
+        throw unexpectedStatus(run, "queued or this agent's running/publishing");
+      }
+      const operationalCapability = await this.#requireOperationalCapability(
+        project,
+        run,
+      );
+      capabilitySession = await this.#beginCapabilitySession({
+        project,
+        run,
+        command,
+        origin,
+        admission,
+        operationalCapability,
+      });
+
       if (firstClaim) {
         await this.dependencies.commands.claimRun(
           origin,
@@ -239,6 +277,10 @@ export class VerifyEvaluateAdmittedModelicaObservationsRunExecutor {
       run = requireRun(project, command.runId);
       requireClaimedShape(project, run, origin);
       if (run.status === "completed") {
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "release" },
+        });
         return project;
       }
       if (run.status !== "running" && run.status !== "publishing") {
@@ -268,13 +310,18 @@ export class VerifyEvaluateAdmittedModelicaObservationsRunExecutor {
         this.dependencies.sheetCaptures,
       );
       if (run.status === "publishing") {
-        return await this.#resumePublishing(
+        const resumed = await this.#resumePublishing(
           origin,
           command,
           currentAdmission,
           currentBasisSnapshot,
           run,
         );
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "release" },
+        });
+        return resumed;
       }
       const sealedAt = requiredStart(run);
       const dispatch = await this.#evaluate(
@@ -320,7 +367,12 @@ export class VerifyEvaluateAdmittedModelicaObservationsRunExecutor {
       await this.#publishExact(origin, project, command);
       project = await this.#requiredProject(command.projectId);
       await this.#completeExact(origin, project, command, successor);
-      return await this.#requiredProject(command.projectId);
+      const completed = await this.#requiredProject(command.projectId);
+      await settleCapabilityRuntimeSession({
+        session: capabilitySession,
+        policy: { kind: "release" },
+      });
+      return completed;
     } catch (error) {
       if (claimed && !publicationStarted) {
         try {
@@ -341,7 +393,120 @@ export class VerifyEvaluateAdmittedModelicaObservationsRunExecutor {
           // Preserve the original failure.
         }
       }
+      const currentRun = await this.#currentRun(command.projectId, command.runId);
+      await settleCapabilityRuntimeSession({
+        session: capabilitySession,
+        policy: currentRun?.status === "queued"
+          ? { kind: "release" }
+          : { kind: "release-if-terminal", run: currentRun },
+      });
       throw error;
+    }
+  }
+
+  async #beginCapabilitySession(input: {
+    readonly project: EngineeringProjectSnapshot;
+    readonly run: EngineeringAgentRun;
+    readonly command: VerifyEvaluateAdmittedModelicaObservationsRunExecutorCommand;
+    readonly origin: EngineeringProjectCommandOrigin;
+    readonly admission: AdmittedObservationEvaluationAdmission;
+    readonly operationalCapability: ResolvedCapabilityRuntimeOperation;
+  }): Promise<CapabilityRuntimeExecutionSession> {
+    try {
+      return await beginConfiguredCapabilityRuntimeSession({
+        session: this.dependencies.capabilityRuntimeSession,
+        project: input.project,
+        runId: input.run.id,
+        operationalCapability: input.operationalCapability,
+        recheck: async () => {
+          const fresh = await this.#requiredProject(input.command.projectId);
+          const freshRun = requireRun(fresh, input.command.runId);
+          requireShape(fresh, freshRun);
+          if (
+            freshRun.status !== "queued" && freshRun.status !== "running" &&
+            freshRun.status !== "publishing"
+          ) {
+            throw unexpectedStatus(
+              freshRun,
+              "queued or this agent's running/publishing",
+            );
+          }
+          if (freshRun.status !== "queued") {
+            requireClaimedShape(fresh, freshRun, input.origin);
+          }
+          const freshApproval = await requireMrtrApproval(fresh, freshRun);
+          const freshAdmission = parseAdmission(freshApproval.proposal.parameters);
+          if (
+            deterministicJson(freshAdmission) !==
+              deterministicJson(input.admission)
+          ) {
+            throw invalidTransition(
+              "The human-reviewed admitted observation evaluation parameters changed before host activation.",
+            );
+          }
+          const freshBasis = requireBasis(freshRun);
+          const freshBasisSnapshot = await exactBasisSnapshot(
+            this.dependencies.snapshots,
+            freshBasis,
+          );
+          await assertThreadSnapshotLineageIntact(
+            freshBasisSnapshot,
+            this.dependencies.snapshots,
+          );
+          await assertAdmissionScope(
+            freshAdmission,
+            input.command.projectId,
+            freshBasis,
+            freshBasisSnapshot,
+            this.dependencies.sheetCaptures,
+          );
+          return await this.#requireOperationalCapability(fresh, freshRun);
+        },
+      });
+    } catch (error) {
+      if (error instanceof CapabilityRuntimeSessionUnavailableError) {
+        throw invalidTransition(error.message);
+      }
+      throw error;
+    }
+  }
+
+  async #requireOperationalCapability(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+  ): Promise<ResolvedCapabilityRuntimeOperation> {
+    requireShape(project, run);
+    const workItem = project.workItems.find((item) => item.id === run.workItemId);
+    if (!workItem) {
+      throw invalidTransition(
+        "The admitted Modelica observation evaluation run has no exact work item.",
+      );
+    }
+    try {
+      return await requireConfiguredOperationalCapability({
+        runtime: this.dependencies.capabilityRuntime,
+        session: this.dependencies.capabilityRuntimeSession,
+        project,
+        run,
+        workItem,
+        unavailableMessage:
+          "Admitted Modelica observation evaluation requires the configured JIT capability runtime session before a run can be claimed.",
+        missingBindingMessage:
+          "Admitted Modelica observation evaluation requires the sealed syson-evaluate-requirement operational capability before a run can be claimed.",
+      });
+    } catch (error) {
+      if (error instanceof CapabilityRuntimeSessionUnavailableError) {
+        throw invalidTransition(error.message);
+      }
+      throw error;
+    }
+  }
+
+  async #currentRun(projectId: string, runId: string) {
+    try {
+      return requireRun(await this.#requiredProject(projectId), runId);
+    } catch {
+      return undefined;
     }
   }
 

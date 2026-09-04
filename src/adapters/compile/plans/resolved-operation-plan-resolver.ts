@@ -1009,6 +1009,7 @@ async function exactAdmittedCompilationSource(input: {
     admission.sources.length !== 1 ||
     admission.compilationProfileRequests.length !== 1 ||
     document.inputManifest.sources.length !== 1 ||
+    document.inputManifest.profileRequests.length !== 1 ||
     document.projections.length !== 1
   ) {
     throw new TypeError(
@@ -1018,6 +1019,7 @@ async function exactAdmittedCompilationSource(input: {
   const source = admission.sources[0]!;
   const request = admission.compilationProfileRequests[0]!;
   const documentSource = document.inputManifest.sources[0]!;
+  const documentRequest = document.inputManifest.profileRequests[0]!;
   const projection = document.projections[0]!;
   const expectedSource = target === "modelica-source-qualification"
     ? { role: "modelica-model", language: "modelica" }
@@ -1056,9 +1058,14 @@ async function exactAdmittedCompilationSource(input: {
     request.target !== target ||
     request.sourceIds.length !== 1 ||
     request.sourceIds[0] !== source.id ||
-    request.profileId !== source.profileId ||
-    request.profileVersion !== source.profileVersion ||
-    !fingerprintsEqual(request.profileFingerprint, source.profileFingerprint) ||
+    request.profileId !== documentRequest.profileId ||
+    request.profileVersion !== documentRequest.profileVersion ||
+    documentRequest.sourceIds.length !== 1 ||
+    documentRequest.sourceIds[0] !== source.id ||
+    projection.target !== target ||
+    projection.profile.id !== request.profileId ||
+    projection.profile.version !== request.profileVersion ||
+    !fingerprintsEqual(request.profileFingerprint, projection.profileFingerprint) ||
     deterministicJson(projection.profile) !==
       deterministicJson(profile.compilationProfile) ||
     !fingerprintsEqual(
@@ -1066,7 +1073,7 @@ async function exactAdmittedCompilationSource(input: {
       profile.compilationProfileFingerprint,
     ) ||
     !fingerprintsEqual(
-      source.profileFingerprint,
+      request.profileFingerprint,
       profile.compilationProfileFingerprint,
     ) ||
     !fingerprintsEqual(

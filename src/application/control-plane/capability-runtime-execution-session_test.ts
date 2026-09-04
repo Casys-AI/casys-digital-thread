@@ -114,6 +114,68 @@ Deno.test("JIT session deduplicates persistent group activation, preserves one l
   assertEquals(await leases.listActive(AT), []);
 });
 
+Deno.test("terminal JIT cleanup keeps a shared group active for another project's demand", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  const operation = persistentOperation();
+  let stopped = false;
+  let globalReads = 0;
+  let legacyReads = 0;
+  const coordinator = new CapabilityRuntimeExecutionSessionCoordinator({
+    contexts: contextFor(),
+    leases,
+    groups: {
+      ensureActive: async (input: { readonly lease: CapabilityRuntimeLease }) => {
+        const claim = await leases.claim(input.lease);
+        return {
+          group: launchGroup("casys-observation"),
+          states: new Map(),
+          leaseDisposition: claim.status === "created"
+            ? "created" as const
+            : "reused" as const,
+          mutation: undefined,
+        };
+      },
+      releaseTerminal: async (input: {
+        readonly leaseId: string;
+        readonly groups: readonly CapabilityRuntimeLaunchGroupReference[];
+        readonly hasRemainingJitDemand: (
+          materialKeys: readonly string[],
+        ) => Promise<boolean>;
+      }) => {
+        const remaining = await input.hasRemainingJitDemand([
+          materialKey(persistentOperation().bindings[0]!.materials[0]!),
+        ]);
+        stopped = !remaining;
+        await leases.release(input.leaseId);
+      },
+    } as never,
+    hasAnyRemainingJitDemand: {
+      hasAnyRemainingDemand: () => {
+        globalReads++;
+        return Promise.resolve(true);
+      },
+    },
+    hasRemainingJitDemand: () => {
+      legacyReads++;
+      return Promise.resolve(false);
+    },
+    now: () => AT,
+  });
+
+  const session = await coordinator.begin({
+    project: projectFor(),
+    runId: "run:session",
+    operationalCapability: operation,
+    microsandboxExecutionProfiles: [],
+    recheck: () => Promise.resolve(operation),
+  });
+  await session.releaseTerminal();
+
+  assertEquals(stopped, false);
+  assertEquals(globalReads, 1);
+  assertEquals(legacyReads, 0);
+});
+
 Deno.test("JIT session rechecks inside group activation before a revoked capability can claim a lease", async () => {
   const leases = new InMemoryCapabilityRuntimeLeaseStore();
   const alpha = launchGroup("casys-alpha");

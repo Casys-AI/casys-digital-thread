@@ -2,6 +2,7 @@ import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import type { ThreadArtifact } from "../../../domain/thread/thread-snapshot.ts";
+import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
 import { FileCaptureStore } from "../../shared/cas/file-capture-store.ts";
 import {
   RecordedAnalysisCasReader,
@@ -36,7 +37,7 @@ interface TupleReaderPort {
 }
 
 Deno.test(
-  "RecordedAnalysisCasReader reads proof, catalog-offer, and requirements captures",
+  "RecordedAnalysisCasReader reads proof, catalog-offer, requirements, and exact technical-admission captures",
   async () => {
     const fixture = await createFixture();
     try {
@@ -48,6 +49,10 @@ Deno.test(
       const requirements = await saveRequirementsText(
         fixture.requirementsCaptures,
         "FixtureComponent",
+      );
+      const admission = await saveBytes(
+        fixture.technicalCompilationAdmissionCaptures,
+        '{"schemaVersion":"technical-compilation-admission-capture/4.0"}',
       );
 
       const reader = fixture.reader();
@@ -61,9 +66,14 @@ Deno.test(
       assertEquals(await reader.read(proof.tuple), proof.bytes);
       assertEquals(await reader.read(catalogOffer.tuple), catalogOffer.bytes);
       assertEquals(await reader.read(requirements.tuple), requirements.bytes);
+      assertEquals(await reader.read(admission.tuple), admission.bytes);
       assertEquals(
         await reader.read(threadArtifact(proof.tuple, proof.fingerprint)),
         proof.bytes,
+      );
+      assertEquals(
+        await reader.read(threadArtifact(admission.tuple, admission.fingerprint)),
+        admission.bytes,
       );
       const requirementsArtifact = threadArtifact(
         requirements.tuple,
@@ -113,6 +123,15 @@ Deno.test(
       tuple(`file:///private/recorded-analysis/${digest}`, digest),
       tuple(`mcp://modelica/resources/${digest}`, digest),
       tuple(`casys://requirements-capture/sha256/${digest}`, digest),
+      tuple(
+        `casys://technical-compilation-admission-capture/not-sha256/${digest}`,
+        digest,
+      ),
+      tuple(
+        `casys://technical-compilation-admission-capture/sha256/${digest}`,
+        digest,
+        "text/plain",
+      ),
     ];
 
     for (const input of rejected) {
@@ -213,6 +232,9 @@ interface Fixture {
   readonly proofCaptures: FileCaptureStore<"fea-proof-case">;
   readonly sensitivityCatalogOffers: FileCaptureStore<"sensitivity-catalog-offer">;
   readonly requirementsCaptures: FileCaptureStore<"requirements-capture">;
+  readonly technicalCompilationAdmissionCaptures: FileByteStore<
+    "technical-compilation-admission-capture"
+  >;
   readonly bindings: () => RecordedAnalysisCasStoreBinding[];
   readonly reader: () => RecordedAnalysisCasReader;
 }
@@ -237,6 +259,12 @@ async function createFixture(): Promise<Fixture> {
     uriNamespace: "requirements-capture",
     label: "Requirements",
   });
+  const technicalCompilationAdmissionCaptures = new FileByteStore({
+    kind: "technical-compilation-admission-capture",
+    directory: `${directory}/technical-compilation-admission-captures`,
+    uriNamespace: "technical-compilation-admission-capture",
+    label: "Technical compilation admission",
+  });
   const bindings = (): RecordedAnalysisCasStoreBinding[] => [
     {
       namespace: "fea-proof-case-capture",
@@ -253,12 +281,18 @@ async function createFixture(): Promise<Fixture> {
       storage: "text",
       store: requirementsCaptures,
     },
+    {
+      namespace: "technical-compilation-admission-capture",
+      storage: "bytes",
+      store: technicalCompilationAdmissionCaptures,
+    },
   ];
   return {
     directory,
     proofCaptures,
     sensitivityCatalogOffers,
     requirementsCaptures,
+    technicalCompilationAdmissionCaptures,
     bindings,
     reader: () => new RecordedAnalysisCasReader({ stores: bindings() }),
   };
@@ -299,6 +333,25 @@ async function saveRequirementsText(
     fingerprint,
     tuple: {
       uri: `casys://requirements-capture/${component}/sha256/${fingerprint.digest}`,
+      byteCount: bytes.byteLength,
+      sha256: fingerprint.digest,
+      mediaType: "application/json",
+    },
+  };
+}
+
+async function saveBytes<K extends string>(
+  store: FileByteStore<K>,
+  text: string,
+): Promise<StoredValue> {
+  const bytes = encoder.encode(text);
+  const fingerprint = await contentFingerprint(bytes);
+  const saved = await store.save(fingerprint, bytes);
+  return {
+    bytes,
+    fingerprint,
+    tuple: {
+      uri: saved.uri,
       byteCount: bytes.byteLength,
       sha256: fingerprint.digest,
       mediaType: "application/json",
@@ -378,6 +431,18 @@ function countingBindings(
       namespace: "requirements-capture",
       storage: "text",
       store: text<"requirements-capture">("requirements-capture"),
+    },
+    {
+      namespace: "technical-compilation-admission-capture",
+      storage: "bytes",
+      store: {
+        uriFor: (fingerprint: ContentFingerprint) =>
+          `casys://technical-compilation-admission-capture/sha256/${fingerprint.digest}`,
+        read: () => {
+          onRead();
+          return Promise.resolve(undefined);
+        },
+      } as unknown as FileByteStore<"technical-compilation-admission-capture">,
     },
   ];
 }

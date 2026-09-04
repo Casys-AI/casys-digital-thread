@@ -76,8 +76,10 @@ A rejected source is a closed-language refusal. There is no mcp-spice fallback.
 
 ## 2. Compile and seal
 
-Call `project_technical_compilation_preview` with `projectId` plus `result.reference`
-only. The server joins the current Thread tip, the unique
+Call `project_technical_compilation_preview` with exactly
+`{ projectId, sourceRefs: [capture.result.reference] }`. When more than one capture is
+compiled, every locator in `sourceRefs` must resolve to one shared
+ProjectSourceWorkspace basis. The server joins the current Thread tip, the unique
 `spice-circuit-closed-subset-v1` / `1.0.0` profile, and unique SysML `parameterizes`
 bindings for every `.param` symbol. A netlist with zero named levers does not need
 `parameterizes`. Concurrent CAD or Modelica sources are not this profile.

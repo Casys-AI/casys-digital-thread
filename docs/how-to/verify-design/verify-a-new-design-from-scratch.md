@@ -165,9 +165,11 @@ the exact admission join and the seal publishes a separate catalog-offer artifac
 Omission is proof-only. `project_geometry_preview` and `design.preview-geometry@1` are
 not product entries. `project_technical_source_capture` returns `parser` and `levers` as
 separate facts. `parser.status: passed` is not admission. A constructor photo is
-`levers.status: unresolved`. Pass `projectId` and `result.reference` only to
-`project_technical_compilation_preview`. The server joins the current Thread tip and
-unique SysML names. Unresolved previews name those joins in `gaps`. It does not invent a
+`levers.status: unresolved`. Pass exactly
+`{ projectId, sourceRefs: [capture.result.reference] }` to
+`project_technical_compilation_preview`. If the preview receives multiple locators, all
+must resolve to one shared ProjectSourceWorkspace basis. The server joins the current
+Thread tip and unique SysML names. Unresolved previews name those joins in `gaps`. It does not invent a
 lever or an AttributeUsage. `design.write-geometry@1` refuses a draft that was not
 exported from a parameterized `compile.seal-admission@3`.
 

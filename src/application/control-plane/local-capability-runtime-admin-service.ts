@@ -103,7 +103,15 @@ export type LocalCapabilityRuntimeRemovalReview =
     readonly requiredInactiveLock: CapabilityRuntimeAdminLock;
     readonly plan: CapabilityRuntimeAdministrativeRemovalPlan;
     /** Recovery is allowed only for this exact pending removal plan. */
-    readonly recovery: "none" | "resume-pending";
+    /**
+     * `complete-pending-absent` is observation-only crash recovery: the
+     * exact Compose group is already absent after a durable remove intent,
+     * but its host outcome was never journalled.
+     */
+    readonly recovery:
+      | "none"
+      | "resume-pending"
+      | "complete-pending-absent";
     readonly reviewFingerprint: ContentFingerprint;
   }
   | {
@@ -352,6 +360,31 @@ export class LocalCapabilityRuntimeAdminService {
       const alreadyAbsent = review.plan.observedMaterials.every((entry) =>
         entry.state === "absent"
       ) && review.plan.ownedContainerIds.length === 0;
+      if (review.recovery === "complete-pending-absent") {
+        if (!alreadyAbsent) {
+          throw new Error(
+            "Administrative removal crash recovery requires an exact absent Compose group.",
+          );
+        }
+        const entry = await this.#pendingRemovalIntent(review, removal.journal);
+        await removal.journal.appendOutcome({
+          schemaVersion: "capability-runtime-host-mutation-outcome/1.0",
+          journalEntryId: entry.id,
+          recordedAt: removal.now?.() ?? new Date().toISOString(),
+          status: "succeeded",
+          observations: entry.materials.map((material) => ({
+            material,
+            state: { material: "absent" as const, runtime: "inactive" as const },
+          })),
+          detail: null,
+        });
+        return {
+          kind: "remove-result",
+          status: "already-absent",
+          plan: review.plan,
+          journalEntryId: entry.id,
+        };
+      }
       if (alreadyAbsent && review.recovery === "none") {
         return {
           kind: "remove-result",
@@ -1138,7 +1171,7 @@ export class LocalCapabilityRuntimeAdminService {
     group: CapabilityRuntimeLaunchGroup,
     plan: CapabilityRuntimeAdministrativeRemovalPlan,
     journal: CapabilityRuntimeJournal,
-  ): Promise<"none" | "resume-pending"> {
+  ): Promise<"none" | "resume-pending" | "complete-pending-absent"> {
     const reference = capabilityRuntimeLaunchGroupReference(group);
     const entries = (await journal.list()).filter((entry) =>
       sameCapabilityRuntimeLaunchGroupReference(entry.launchGroup, reference)
@@ -1177,11 +1210,29 @@ export class LocalCapabilityRuntimeAdminService {
     if (
       pending.length === 1 && pending[0]!.action === "material-remove" &&
       pending[0]!.projectId === null &&
-      pending[0]!.administrativeRemovalPlanFingerprint?.algorithm ===
-        plan.fingerprint.algorithm &&
-      pending[0]!.administrativeRemovalPlanFingerprint?.digest ===
-        plan.fingerprint.digest
-    ) return "resume-pending";
+      pending[0]!.administrativeRemovalPlanFingerprint !== null
+    ) {
+      const exactPending = pending[0]!;
+      const pendingFingerprint = exactPending.administrativeRemovalPlanFingerprint;
+      if (pendingFingerprint === null) {
+        throw new Error(
+          "Administrative material removal is blocked by a pending group journal mutation.",
+        );
+      }
+      if (
+        pendingFingerprint.algorithm ===
+          plan.fingerprint.algorithm &&
+        pendingFingerprint.digest ===
+          plan.fingerprint.digest
+      ) return "resume-pending";
+      // A Compose removal can finish after its durable intent but before its
+      // outcome write. The fresh exact host observation is sufficient to
+      // converge that *same* group intent without replaying Docker.
+      if (
+        plan.observedMaterials.every((entry) => entry.state === "absent") &&
+        plan.ownedContainerIds.length === 0
+      ) return "complete-pending-absent";
+    }
     throw new Error(
       "Administrative material removal is blocked by a pending group journal mutation.",
     );
@@ -1238,18 +1289,41 @@ export class LocalCapabilityRuntimeAdminService {
       sameCapabilityRuntimeLaunchGroupReference(
         entry.launchGroup,
         review.plan.launchGroup,
-      ) &&
-      entry.administrativeRemovalPlanFingerprint?.algorithm ===
-        review.plan.fingerprint.algorithm &&
-      entry.administrativeRemovalPlanFingerprint?.digest ===
-        review.plan.fingerprint.digest
+      )
     );
     if (matches.length !== 1) {
       throw new Error(
         "Administrative removal recovery requires one exact pending intent.",
       );
     }
-    return matches[0]!;
+    const pending = matches[0]!;
+    if (review.recovery === "resume-pending") {
+      if (
+        pending.administrativeRemovalPlanFingerprint?.algorithm !==
+          review.plan.fingerprint.algorithm ||
+        pending.administrativeRemovalPlanFingerprint?.digest !==
+          review.plan.fingerprint.digest
+      ) {
+        throw new Error(
+          "Administrative removal recovery requires one exact pending intent.",
+        );
+      }
+    } else if (review.recovery === "complete-pending-absent") {
+      if (
+        pending.administrativeRemovalPlanFingerprint === null ||
+        !review.plan.observedMaterials.every((entry) => entry.state === "absent") ||
+        review.plan.ownedContainerIds.length !== 0
+      ) {
+        throw new Error(
+          "Administrative removal recovery requires one exact pending intent.",
+        );
+      }
+    } else {
+      throw new Error(
+        "Administrative removal recovery requires one exact pending intent.",
+      );
+    }
+    return pending;
   }
 
   async #desiredUnion(): Promise<

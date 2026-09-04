@@ -34,6 +34,7 @@ import type {
   ProjectCapabilityRuntimeContextReader,
 } from "../ports/out/capability/capability-runtime-supervisor.ts";
 import type { CapabilityRuntimeLaunchGroupSupervisor } from "./capability-runtime-launch-group-supervisor.ts";
+import type { CapabilityRuntimeGlobalJitDemandReader } from "./capability-runtime-jit-demand.ts";
 import {
   assertExactCapabilityRuntimeLeaseScope,
   assertExactResolvedCapabilityRuntimeOperationRecheck,
@@ -84,8 +85,19 @@ export interface CapabilityRuntimeExecutionSessionCoordinatorOptions {
   /** Other cache materials (for example a source OCI cache) must opt in to a
    * distinct exact observer; they are never assumed to be Microsandbox. */
   readonly cache?: CapabilityRuntimeMaterialCache;
-  /** Omitted means keep a persistent service running; stopping on unknown
-   * future JIT demand would be an unsafe host decision. */
+  /**
+   * Host-wide, not releasing-project-scoped, demand query for a shared launch
+   * group. Omission is deliberately fail-closed: the lease may release, but
+   * the persistent group remains active until composition supplies this
+   * reader. Server wiring: `ProjectCapabilityJitDemandReader` with the local
+   * ledger census, passed as `hasAnyRemainingJitDemand`.
+   */
+  readonly hasAnyRemainingJitDemand?: CapabilityRuntimeGlobalJitDemandReader;
+  /**
+   * Transitional composition field. It is intentionally not consulted for
+   * shared-group stopping because a single project's negative demand cannot
+   * establish host-wide idleness.
+   */
   readonly hasRemainingJitDemand?: (input: {
     readonly projectId: string;
     readonly materialKeys: readonly string[];
@@ -292,9 +304,6 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
         }
       }
       if (groups.length === 0) {
-        // Cache observations are cold prerequisites, but a revocation can land
-        // while they inspect the host. Recheck immediately before this direct
-        // path claims a durable lease.
         await assertFreshOperationalCapability();
         const acquired = await acquireOrReuseExactScope(
           this.options.leases,
@@ -446,12 +455,12 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
           projectId: lease.projectId,
           at,
           hasRemainingJitDemand: async (materialKeys) =>
-            this.options.hasRemainingJitDemand === undefined
+            this.options.hasAnyRemainingJitDemand === undefined
               ? true
-              : await this.options.hasRemainingJitDemand({
-                projectId: lease.projectId,
-                materialKeys,
-              }),
+              : await this.options.hasAnyRemainingJitDemand
+                .hasAnyRemainingDemand({
+                  materialKeys,
+                }),
         });
         return;
       }
@@ -580,12 +589,12 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
           projectId: lease.projectId,
           at,
           hasRemainingJitDemand: async (materialKeys) =>
-            this.options.hasRemainingJitDemand === undefined
+            this.options.hasAnyRemainingJitDemand === undefined
               ? true
-              : await this.options.hasRemainingJitDemand({
-                projectId: lease.projectId,
-                materialKeys,
-              }),
+              : await this.options.hasAnyRemainingJitDemand
+                .hasAnyRemainingDemand({
+                  materialKeys,
+                }),
         });
         return;
       }
@@ -675,12 +684,12 @@ export class CapabilityRuntimeExecutionSessionCoordinator {
           projectId: lease.projectId,
           at,
           hasRemainingJitDemand: async (materialKeys) =>
-            this.options.hasRemainingJitDemand === undefined
+            this.options.hasAnyRemainingJitDemand === undefined
               ? true
-              : await this.options.hasRemainingJitDemand({
-                projectId: lease.projectId,
-                materialKeys,
-              }),
+              : await this.options.hasAnyRemainingJitDemand
+                .hasAnyRemainingDemand({
+                  materialKeys,
+                }),
         });
         return;
       }
@@ -723,12 +732,12 @@ class ActiveCapabilityRuntimeExecutionSession
           projectId: this.lease.projectId,
           at,
           hasRemainingJitDemand: async (materialKeys) =>
-            this.options.hasRemainingJitDemand === undefined
+            this.options.hasAnyRemainingJitDemand === undefined
               ? true
-              : await this.options.hasRemainingJitDemand({
-                projectId: this.lease.projectId,
-                materialKeys,
-              }),
+              : await this.options.hasAnyRemainingJitDemand
+                .hasAnyRemainingDemand({
+                  materialKeys,
+                }),
         });
         return;
       }

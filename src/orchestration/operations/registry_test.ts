@@ -28,6 +28,7 @@ import {
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/modelica/qualified-kit/run-proposal.ts";
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
 import { SIMULATE_RUN_ADMITTED_SPICE_OPERATION } from "../../domain/electrical/spice/admitted/run-proposal.ts";
+import { VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION } from "../../domain/mechanism/prescribed-kinematics/operations.ts";
 import { VERIFY_SEAL_ELECTRICAL_OBSERVATION_METHOD_SHEET_OPERATION } from "../../domain/electrical/observation-method-sheet-proposal.ts";
 import { VERIFY_EVALUATE_ADMITTED_SPICE_OBSERVATIONS_OPERATION } from "../../domain/electrical/spice/evaluation/admitted-observation-evaluation-proposal.ts";
 import {
@@ -293,6 +294,24 @@ Deno.test("the local CalculiX @3 successor retains the exact ROP2 and artifact-b
     "proofCase",
     "geometry",
   ]);
+});
+
+Deno.test("the registry ROP2 identities exactly match persisted run-receipt requirements", () => {
+  // Keep this explicit parity list aligned with
+  // run-receipt-invariants.ts:isResolvedOperationPlanV2Operation. The queue
+  // consults this registry marker before persistence validates that contract.
+  const requiredByPersistedRunReceipt = [
+    VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
+    VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+    SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
+    SIMULATE_RUN_ADMITTED_SPICE_OPERATION,
+  ].map((operation) => `${operation.id}@${operation.version}`).sort();
+  const registeredAsRop2 = engineeringOperationRegistry.list()
+    .filter((operation) => operation.resolvedOperationPlan === "2.0")
+    .map((operation) => `${operation.id}@${operation.version}`)
+    .sort();
+
+  assertEquals(registeredAsRop2, requiredByPersistedRunReceipt);
 });
 
 Deno.test(

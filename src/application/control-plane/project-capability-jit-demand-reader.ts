@@ -9,15 +9,23 @@ import {
   capabilityRuntimeMaterialKey,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import type { EngineeringProjectRevisionStore } from "../ports/out/engineering-project-revision-store.ts";
+import type { ProjectCapabilityLedgerStore } from "../ports/out/project-capability-ledger-store.ts";
 import type {
   ProjectCapabilityRuntimeAuthorization,
   ProjectCapabilityRuntimeContextReader,
 } from "../ports/out/capability/capability-runtime-supervisor.ts";
 import type { CapabilityRuntimeAdminLock } from "./read-model/capability-runtime-catalog.ts";
+import type { CapabilityRuntimeGlobalJitDemandReader } from "./capability-runtime-jit-demand.ts";
 
 export interface ProjectCapabilityJitDemandReaderOptions {
   readonly projects: Pick<EngineeringProjectRevisionStore, "get">;
   readonly contexts: ProjectCapabilityRuntimeContextReader;
+  /**
+   * Local host-authority census for a shared launch group. It is optional only
+   * while older compositions are being wired; a missing census is a literal
+   * unknown, never evidence that a shared group may stop.
+   */
+  readonly ledgers?: Pick<ProjectCapabilityLedgerStore, "list" | "listPending">;
 }
 
 /**
@@ -25,7 +33,8 @@ export interface ProjectCapabilityJitDemandReaderOptions {
  * an error rather than a negative answer: terminal cleanup must retain the
  * lease and leave the host untouched until recovery can reread authority.
  */
-export class ProjectCapabilityJitDemandReader {
+export class ProjectCapabilityJitDemandReader
+  implements CapabilityRuntimeGlobalJitDemandReader {
   constructor(private readonly options: ProjectCapabilityJitDemandReaderOptions) {}
 
   async hasRemainingDemand(input: {
@@ -99,6 +108,55 @@ export class ProjectCapabilityJitDemandReader {
           requested.has(capabilityRuntimeMaterialKey(material))
         )
       ) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Host-wide form required by shared Compose cleanup. The ledger is the
+   * local, durable census of projects which could have an operational
+   * envelope; pending records are included so an unreadable transition cannot
+   * be mistaken for a negative demand.
+   */
+  async hasAnyRemainingDemand(input: {
+    readonly materialKeys: readonly string[];
+  }): Promise<boolean> {
+    const ledgers = this.options.ledgers;
+    if (!ledgers) {
+      throw new Error(
+        "Capability runtime global JIT demand census is not configured; shared host cleanup is blocked.",
+      );
+    }
+    let projectIds: readonly string[];
+    try {
+      const [published, pending] = await Promise.all([
+        ledgers.list(),
+        ledgers.listPending(),
+      ]);
+      projectIds = [
+        ...new Set([
+          ...published.map((ledger) => ledger.projectId),
+          ...pending.map((ledger) => ledger.projectId),
+        ]),
+      ].toSorted();
+    } catch {
+      throw new Error(
+        "Capability runtime global JIT demand census cannot be read; shared host cleanup is blocked.",
+      );
+    }
+    for (const projectId of projectIds) {
+      try {
+        if (
+          await this.hasRemainingDemand({
+            projectId,
+            materialKeys: input.materialKeys,
+          })
+        ) return true;
+      } catch {
+        throw new Error(
+          `Capability runtime global JIT demand cannot read project ${projectId}; shared host cleanup is blocked.`,
+        );
+      }
     }
     return false;
   }

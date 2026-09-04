@@ -30,6 +30,7 @@ import type {
   CapabilityRuntimePreparationEligibility,
 } from "../ports/out/capability/capability-runtime-supervisor.ts";
 import type { CapabilityRuntimeLaunchGroupSupervisor } from "./capability-runtime-launch-group-supervisor.ts";
+import type { CapabilityRuntimeGlobalJitDemandReader } from "./capability-runtime-jit-demand.ts";
 
 /** Preparation is bounded to one brief host reservation, not a run lifetime. */
 const PREPARATION_LEASE_TTL_MS = 15 * 60 * 1_000;
@@ -54,6 +55,12 @@ export interface CapabilityRuntimePreparationSessionCoordinatorOptions {
   readonly authorization: CapabilityRuntimePreparationEligibility;
   readonly leases: CapabilityRuntimeLeaseStore;
   readonly groups: CapabilityRuntimeLaunchGroupSupervisor;
+  /**
+   * A preparation lease can share a persistent group with executions from
+   * other projects. Without a host-wide demand census, cleanup releases only
+   * its lease and retains the group rather than inferring idleness.
+   */
+  readonly hasAnyRemainingJitDemand?: CapabilityRuntimeGlobalJitDemandReader;
   readonly now?: () => string;
 }
 
@@ -171,7 +178,12 @@ export class CapabilityRuntimePreparationSessionCoordinator {
       leaseId: lease.id,
       projectId: input.project.project.id,
       at,
-      hasRemainingJitDemand: () => Promise.resolve(false),
+      hasRemainingJitDemand: (materialKeys) =>
+        this.options.hasAnyRemainingJitDemand === undefined
+          ? Promise.resolve(true)
+          : this.options.hasAnyRemainingJitDemand.hasAnyRemainingDemand({
+            materialKeys,
+          }),
     });
   }
 
@@ -314,10 +326,15 @@ class ActiveCapabilityRuntimePreparationSession
         leaseId: this.lease.id,
         projectId: this.lease.projectId,
         at: this.options.now?.() ?? new Date().toISOString(),
-        // This path has just captured its only draft. A later preparation must
-        // obtain a fresh exact lease; keeping a private sandbox warm is not an
-        // engineering result or an implicit future authorization.
-        hasRemainingJitDemand: () => Promise.resolve(false),
+        // This project just captured its draft, but another project can still
+        // have an exact ready/in-progress demand for the same shared group.
+        // Omitted global census is intentionally a retain decision.
+        hasRemainingJitDemand: (materialKeys) =>
+          this.options.hasAnyRemainingJitDemand === undefined
+            ? Promise.resolve(true)
+            : this.options.hasAnyRemainingJitDemand.hasAnyRemainingDemand({
+              materialKeys,
+            }),
       });
     } catch {
       // The draft is durable but host cleanup was not. Preserve the lease for

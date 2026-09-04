@@ -78,6 +78,56 @@ Deno.test("preparation activation leases one exact Build123d group then releases
   assertEquals(await leases.listActive(AT), []);
 });
 
+Deno.test("preparation cleanup asks the host-wide JIT reader before stopping a shared group", async () => {
+  const leases = new InMemoryCapabilityRuntimeLeaseStore();
+  let stopped = false;
+  let globalReads = 0;
+  const coordinator = new CapabilityRuntimePreparationSessionCoordinator({
+    authorization: { requirePreparation: () => Promise.resolve(preparation()) },
+    leases,
+    groups: {
+      ensureActive: async (input: { readonly lease: CapabilityRuntimeLease }) => {
+        const claim = await leases.claim(input.lease);
+        return {
+          group: GROUP,
+          states: new Map([[
+            "casys.mcp-build123d-sandbox\u0000mcp-build123d-sandbox-image",
+            { material: "installed" as const, runtime: "active" as const },
+          ]]),
+          leaseDisposition: claim.status === "created"
+            ? "created" as const
+            : "reused" as const,
+          mutation: undefined,
+        };
+      },
+      releaseTerminal: async (input: {
+        readonly leaseId: string;
+        readonly hasRemainingJitDemand: (
+          materialKeys: readonly string[],
+        ) => Promise<boolean>;
+      }) => {
+        stopped = !await input.hasRemainingJitDemand([
+          "casys.mcp-build123d-sandbox\u0000mcp-build123d-sandbox-image",
+        ]);
+        await leases.release(input.leaseId);
+      },
+    } as never,
+    hasAnyRemainingJitDemand: {
+      hasAnyRemainingDemand: () => {
+        globalReads++;
+        return Promise.resolve(true);
+      },
+    },
+    now: () => AT,
+  });
+
+  const session = await coordinator.begin({ project: PROJECT, operation: OPERATION });
+  await session.releaseSuccess();
+
+  assertEquals(stopped, false);
+  assertEquals(globalReads, 1);
+});
+
 Deno.test("preparation refuses a non-preparation or mixed resolved operation before host activation", async () => {
   let activations = 0;
   const coordinator = new CapabilityRuntimePreparationSessionCoordinator({

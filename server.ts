@@ -914,9 +914,17 @@ async function createProjectControl(
     feaProofCaptures: feaFoundation.feaProofCaptures,
     sensitivityCatalogOfferCaptures: feaFoundation.sensitivityCatalogOfferCaptures,
     requirementsCaptures: architectureFoundation.requirementsCaptures,
+    technicalCompilationAdmissionCaptureBytes:
+      compilationFoundation.technicalCompilationSealBytes,
     admissions: compilationFoundation.technicalCompilationAdmissions,
     calculixLocalProfile: calculixCapability.localProfile,
     prescribedKinematicsCaptures: prescribedKinematicsExecution.captures,
+    admittedModelicaProfiles: admittedModelica.execution?.execution === undefined
+      ? undefined
+      : admittedModelica.execution.profiles,
+    admittedSpiceProfiles: admittedSpice.execution?.execution === undefined
+      ? undefined
+      : admittedSpice.execution.profiles,
     recordedAnalysisDirectory,
     canonicalAssetDirectory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
   });
@@ -1027,12 +1035,6 @@ async function createProjectControl(
     contexts: capabilityRead.contexts,
     operations: { require: requireRegisteredEngineeringOperation },
   });
-  const capabilityRuntimePreparation =
-    new CapabilityRuntimePreparationSessionCoordinator({
-      authorization: capabilityRuntime,
-      leases: capabilityRuntimeLeases,
-      groups: capabilityRuntimeGroups,
-    });
   const runtime = await createEngineeringProjectCommandRuntime({
     projectId: options.projectId,
     trackedManifestPath: options.projectPath,
@@ -1057,7 +1059,15 @@ async function createProjectControl(
   const capabilityJitDemand = new ProjectCapabilityJitDemandReader({
     projects: runtime.projects,
     contexts: capabilityRead.contexts,
+    ledgers: capabilityRead.ledgers,
   });
+  const capabilityRuntimePreparation =
+    new CapabilityRuntimePreparationSessionCoordinator({
+      authorization: capabilityRuntime,
+      leases: capabilityRuntimeLeases,
+      groups: capabilityRuntimeGroups,
+      hasAnyRemainingJitDemand: capabilityJitDemand,
+    });
   const capabilityRuntimeSession = new CapabilityRuntimeExecutionSessionCoordinator({
     contexts: capabilityRead.contexts,
     leases: capabilityRuntimeLeases,
@@ -1066,7 +1076,7 @@ async function createProjectControl(
     // Compose start occurs during server construction or queueing.
     microsandbox: capabilityRead.microsandbox,
     cache: capabilityRead.cache,
-    hasRemainingJitDemand: (input) => capabilityJitDemand.hasRemainingDemand(input),
+    hasAnyRemainingJitDemand: capabilityJitDemand,
   });
   const capabilityAuthorization = new ProjectCapabilityAuthorizationService({
     ledgers: capabilityRead.ledgers,

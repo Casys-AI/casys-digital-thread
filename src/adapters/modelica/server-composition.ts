@@ -366,6 +366,8 @@ export function createModelicaProject(
         timeoutMs: 30_000,
       }),
       lease: options.lease,
+      capabilityRuntime: options.capabilityRuntime,
+      capabilityRuntimeSession: options.capabilityRuntimeSession,
     })
     : undefined;
   const decideAdmittedModelicaEvaluation =
@@ -423,6 +425,8 @@ export function createModelicaProject(
         }),
         captures: options.qualified.executionCaptures,
         lease: options.lease,
+        capabilityRuntime: options.capabilityRuntime,
+        capabilityRuntimeSession: options.capabilityRuntimeSession,
       });
   const exactAdmittedModelicaRunReview = options.admitted.execution === undefined
     ? undefined

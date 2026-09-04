@@ -113,7 +113,9 @@ Call `project_technical_source_capture` with `projectId`, `workspaceRevision`,
 unique active head at that snapshot. The server resolves the root file, registered
 profile and `project-source-closure/1.0`; it refuses MIME, path, `sourceText`,
 `fileId`/`fileRevision`, caller `profileId`/`sourceId`/`resourceRef`. Pass
-`result.reference` from the V4 review to `project_technical_compilation_preview`. For a
+`{ projectId, sourceRefs: [capture.result.reference] }` to
+`project_technical_compilation_preview`. If compiling from more than one capture, every
+locator in `sourceRefs` must resolve to the same ProjectSourceWorkspace basis. For a
 Build123d direct closure, capture reopens every exact closure byte, lowers and analyses
 the one effective script, and records its full manifest. Never infer admission from
 workspace membership, MIME, path or a successful isolated run. A later correction is a

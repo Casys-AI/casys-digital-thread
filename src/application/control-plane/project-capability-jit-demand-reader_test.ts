@@ -67,6 +67,64 @@ Deno.test("terminal group release sees no remaining JIT demand after the local u
   );
 });
 
+Deno.test("shared launch-group cleanup sees a ready demand from another project", async () => {
+  const alpha = { id: "snapshot:alpha", project: { id: "project:alpha" } } as never;
+  const bravo = { id: "snapshot:bravo", project: { id: "project:bravo" } } as never;
+  const alphaContext = contextWithAuthorization("successor-kinematics") as {
+    demand: { jitDemand: { capabilityRequirements: unknown[] } };
+  };
+  alphaContext.demand.jitDemand.capabilityRequirements = [];
+  const reader = new ProjectCapabilityJitDemandReader({
+    projects: {
+      get: (projectId) =>
+        Promise.resolve(
+          projectId === "project:alpha"
+            ? alpha
+            : projectId === "project:bravo"
+            ? bravo
+            : undefined,
+        ),
+    },
+    contexts: {
+      read: (project) =>
+        Promise.resolve(
+          project.project.id === "project:alpha"
+            ? alphaContext as never
+            : contextWithAuthorization("successor-kinematics") as never,
+        ),
+    },
+    ledgers: {
+      list: () =>
+        Promise.resolve([
+          { projectId: "project:alpha" },
+          { projectId: "project:bravo" },
+        ] as never),
+      listPending: () => Promise.resolve([]),
+    },
+  });
+
+  assertEquals(
+    await reader.hasAnyRemainingDemand({ materialKeys: [key(SUCCESSOR)] }),
+    true,
+  );
+});
+
+Deno.test("shared launch-group cleanup fails closed when its project census cannot be read", async () => {
+  const reader = new ProjectCapabilityJitDemandReader({
+    projects: { get: () => Promise.reject(new Error("not reached")) },
+    contexts: { read: () => Promise.reject(new Error("not reached")) },
+    ledgers: {
+      list: () => Promise.resolve([]),
+      listPending: () => Promise.reject(new Error("unreadable")),
+    },
+  });
+  await assertRejects(
+    () => reader.hasAnyRemainingDemand({ materialKeys: [key(SUCCESSOR)] }),
+    Error,
+    "global JIT demand census cannot be read",
+  );
+});
+
 Deno.test("terminal group release fails closed when selected and authorized bindings differ", async () => {
   const reader = readerForContext(contextWithAuthorization("legacy-kinematics"));
   await assertRejects(

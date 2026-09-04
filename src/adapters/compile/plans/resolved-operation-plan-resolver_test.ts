@@ -27,10 +27,16 @@ import type {
 } from "../../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import type { CanonicalAssetReader } from "../../../application/ports/out/canonical-asset-reader.ts";
+import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
+import { FileCaptureStore } from "../../shared/cas/file-capture-store.ts";
 import {
   type RecordedPlanArtifactReader,
   ResolvedOperationPlanResolver,
 } from "./resolved-operation-plan-resolver.ts";
+import {
+  RecordedAnalysisCasReader,
+  type RecordedAnalysisCasStoreBinding,
+} from "./recorded-analysis-cas-reader.ts";
 import { FixedCalculixIsolatedExecutionProfileCatalog } from "../../fea/isolated-v3/fixed-calculix-isolated-execution-profile.ts";
 import {
   MODELICA_ADMITTED_EXECUTION_PROFILE,
@@ -92,6 +98,15 @@ Deno.test("ResolvedOperationPlanResolver resolves the public CalculiX STEP route
 Deno.test("ResolvedOperationPlanResolver seals admitted Modelica and SPICE from one exact reopened admission", async () => {
   for (const language of ["modelica", "spice"] as const) {
     const fixture = await admittedExecutionFixture(language);
+    assertEquals(
+      fingerprintsEqual(
+        fixture.reopened.admission.sources[0]!.profileFingerprint,
+        fixture.reopened.admission.compilationProfileRequests[0]!
+          .profileFingerprint,
+      ),
+      false,
+      "the source-capture profile is not the compilation profile",
+    );
     const plan = await new ResolvedOperationPlanResolver(fixture.dependencies)
       .resolve(fixture.input);
     validateResolvedOperationPlanV2(plan);
@@ -132,35 +147,74 @@ Deno.test("ResolvedOperationPlanResolver seals admitted Modelica and SPICE from 
   }
 });
 
-Deno.test("ResolvedOperationPlanResolver refuses admitted mismatch, multi-source, profile, and capture tampering", async () => {
-  for (
-    const mutation of [
-      "multi-source",
-      "source-mismatch",
-      "profile-mismatch",
-      "artifact-tamper",
-    ] as const
-  ) {
-    const fixture = await admittedExecutionFixture("modelica", mutation);
-    let reads = 0;
-    fixture.dependencies.admissions = {
-      read: () => {
-        reads += 1;
-        return Promise.resolve(fixture.reopened as never);
-      },
-    };
-    await assertRejects(
-      () =>
-        new ResolvedOperationPlanResolver(fixture.dependencies).resolve(fixture.input),
-      mutation === "artifact-tamper" ? Error : TypeError,
-      mutation === "artifact-tamper"
-        ? "raw CAS bytes do not match"
-        : mutation === "multi-source"
-        ? "exactly one admitted source"
-        : "does not match",
-      mutation,
-    );
-    assertEquals(reads, mutation === "artifact-tamper" ? 0 : 1, mutation);
+Deno.test("ResolvedOperationPlanResolver reopens sealed admission bytes from the closed CAS lane for Modelica and SPICE", async () => {
+  for (const language of ["modelica", "spice"] as const) {
+    const fixture = await admittedExecutionFixture(language);
+    const root = await Deno.makeTempDir({ prefix: `casys-rop-${language}-admission-` });
+    try {
+      const admissionCaptures = new FileByteStore({
+        kind: "technical-compilation-admission-capture",
+        directory: `${root}/technical-compilation/seals`,
+        uriNamespace: "technical-compilation-admission-capture",
+        label: "Sealed technical compilation admission",
+      });
+      await admissionCaptures.save(
+        fixture.artifact.fingerprint,
+        fixture.artifactBytes,
+      );
+      const artifacts = new RecordedAnalysisCasReader({
+        stores: recordedAnalysisBindings(root, admissionCaptures),
+      });
+      const plan = await new ResolvedOperationPlanResolver({
+        ...fixture.dependencies,
+        artifacts,
+      }).resolve(fixture.input);
+      assertEquals(plan.sources[0]?.artifact.casUri, fixture.artifact.uri);
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
+  }
+});
+
+Deno.test("ResolvedOperationPlanResolver refuses admitted mismatch, multi-source, compilation request/projection/catalog drift, and capture tampering", async () => {
+  for (const language of ["modelica", "spice"] as const) {
+    for (
+      const mutation of [
+        "multi-source",
+        "source-mismatch",
+        "request-profile-mismatch",
+        "projection-profile-mismatch",
+        "profile-mismatch",
+        "artifact-tamper",
+      ] as const
+    ) {
+      const fixture = await admittedExecutionFixture(language, mutation);
+      let reads = 0;
+      fixture.dependencies.admissions = {
+        read: () => {
+          reads += 1;
+          return Promise.resolve(fixture.reopened as never);
+        },
+      };
+      await assertRejects(
+        () =>
+          new ResolvedOperationPlanResolver(fixture.dependencies).resolve(
+            fixture.input,
+          ),
+        mutation === "artifact-tamper" ? Error : TypeError,
+        mutation === "artifact-tamper"
+          ? "raw CAS bytes do not match"
+          : mutation === "multi-source"
+          ? "exactly one admitted source"
+          : "does not match",
+        `${language}/${mutation}`,
+      );
+      assertEquals(
+        reads,
+        mutation === "artifact-tamper" ? 0 : 1,
+        `${language}/${mutation}`,
+      );
+    }
   }
 });
 
@@ -1039,6 +1093,8 @@ async function admittedExecutionFixture(
   mutation?:
     | "multi-source"
     | "source-mismatch"
+    | "request-profile-mismatch"
+    | "projection-profile-mismatch"
     | "profile-mismatch"
     | "artifact-tamper",
 ) {
@@ -1090,13 +1146,14 @@ async function admittedExecutionFixture(
     requiredBindingSymbolKinds: [],
   };
   const compilationProfileFingerprint = await sha256Fingerprint(compilationProfile);
+  const sourceCaptureProfileFingerprint = testFingerprint("a");
   const admissionSource = {
     id: sourceId,
     role: sourceRole,
     language: sourceLanguage,
     profileId: compilationProfile.id,
     profileVersion: compilationProfile.version,
-    profileFingerprint: compilationProfileFingerprint,
+    profileFingerprint: sourceCaptureProfileFingerprint,
     analyzer: analysis.analyzer,
     sourceFingerprint,
     captureFingerprint: testFingerprint("c"),
@@ -1152,6 +1209,12 @@ async function admittedExecutionFixture(
   }
   if (mutation === "source-mismatch") {
     admission.sources[0]!.sourceFingerprint = testFingerprint("e");
+  }
+  if (mutation === "request-profile-mismatch") {
+    admission.compilationProfileRequests[0]!.profileFingerprint = testFingerprint("e");
+  }
+  if (mutation === "projection-profile-mismatch") {
+    document.projections[0]!.profileFingerprint = testFingerprint("e");
   }
   if (mutation === "profile-mismatch") {
     profile.compilationProfile = {
@@ -1237,7 +1300,7 @@ async function admittedExecutionFixture(
         },
       }),
   };
-  return { input, dependencies, reopened };
+  return { input, dependencies, artifact, artifactBytes, reopened };
 }
 
 function baseSnapshot(id: string, revision: number, subjectId: string): ThreadSnapshot {
@@ -1658,6 +1721,49 @@ async function refreshQueueBasisProjectFingerprint(
       fingerprint: ContentFingerprint;
     }
   ).fingerprint = await sha256Fingerprint(input.project);
+}
+
+function recordedAnalysisBindings(
+  root: string,
+  admissions: FileByteStore<"technical-compilation-admission-capture">,
+): RecordedAnalysisCasStoreBinding[] {
+  return [
+    {
+      namespace: "fea-proof-case-capture",
+      storage: "text",
+      store: new FileCaptureStore({
+        kind: "fea-proof-case",
+        directory: `${root}/fea-proof-cases`,
+        uriNamespace: "fea-proof-case-capture",
+        label: "FEA proof case",
+      }),
+    },
+    {
+      namespace: "sensitivity-catalog-offer-capture",
+      storage: "text",
+      store: new FileCaptureStore({
+        kind: "sensitivity-catalog-offer",
+        directory: `${root}/sensitivity-catalog-offers`,
+        uriNamespace: "sensitivity-catalog-offer-capture",
+        label: "Sensitivity catalog offer",
+      }),
+    },
+    {
+      namespace: "requirements-capture",
+      storage: "text",
+      store: new FileCaptureStore({
+        kind: "requirements-capture",
+        directory: `${root}/requirements`,
+        uriNamespace: "requirements-capture",
+        label: "Requirements",
+      }),
+    },
+    {
+      namespace: "technical-compilation-admission-capture",
+      storage: "bytes",
+      store: admissions,
+    },
+  ];
 }
 
 function exactSnapshotReader(snapshots: Map<string, ThreadSnapshot>) {

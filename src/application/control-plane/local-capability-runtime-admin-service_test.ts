@@ -334,6 +334,65 @@ Deno.test("administrative removal persists inactive lock before journal intent a
   }
 });
 
+Deno.test("administrative removal converges an exact Compose deletion whose outcome was lost", async () => {
+  const runtime = await removalRuntime({ state: "owned" });
+  try {
+    const review = await runtime.service.removeReview({
+      kind: "launch-group",
+      id: "casys-syson",
+    });
+    const entry = runtimeEntry(
+      runtime.group,
+      "material-remove",
+      review.plan.fingerprint,
+    );
+    await runtime.journal.appendBeforeMutation(entry);
+    // Simulate a process interruption after Compose deletion reached the host
+    // but before the terminal journal outcome could be persisted.
+    runtime.host.simulateComposeDeletion();
+
+    const recovered = await runtime.service.removeReview({
+      kind: "launch-group",
+      id: "casys-syson",
+    });
+    assertEquals(recovered.recovery, "complete-pending-absent");
+    const result = await runtime.service.removeApply(
+      { kind: "launch-group", id: "casys-syson" },
+      recovered.reviewFingerprint,
+      true,
+    );
+    if (result.kind !== "remove-result") throw new Error("expected Compose result");
+    assertEquals(result.status, "already-absent");
+    assertEquals(result.plan, recovered.plan);
+    assertEquals(result.journalEntryId, entry.id);
+    assertEquals(runtime.host.calls, []);
+    assertEquals(
+      (await runtime.journal.listOutcomes()).map((outcome) => [
+        outcome.journalEntryId,
+        outcome.status,
+      ]),
+      [[entry.id, "succeeded"]],
+    );
+
+    // A second recovery is a no-op: it neither replays Docker nor adds a
+    // duplicate terminal record.
+    const secondReview = await runtime.service.removeReview({
+      kind: "launch-group",
+      id: "casys-syson",
+    });
+    const second = await runtime.service.removeApply(
+      { kind: "launch-group", id: "casys-syson" },
+      secondReview.reviewFingerprint,
+      true,
+    );
+    assertEquals(second.status, "already-absent");
+    assertEquals(runtime.host.calls, []);
+    assertEquals((await runtime.journal.listOutcomes()).length, 1);
+  } finally {
+    await runtime.close();
+  }
+});
+
 Deno.test("administrative removal is an already-absent no-op and blocks foreign or shared material", async () => {
   const absent = await removalRuntime({ state: "absent" });
   try {
@@ -514,12 +573,7 @@ class FakeRemovalHost {
     return Promise.resolve(structuredClone(this.observation));
   }
 
-  async mutate(input: {
-    readonly authorization: { readonly entry: CapabilityRuntimeJournalEntry };
-  }): Promise<CapabilityRuntimeJournalOutcome> {
-    const entry = input.authorization.entry;
-    await this.beforeMutate?.();
-    this.calls.push(entry.id);
+  simulateComposeDeletion(): void {
     this.observation = {
       ...this.observation,
       materials: this.observation.materials.map((material) => ({
@@ -528,6 +582,15 @@ class FakeRemovalHost {
       })),
       ownedContainerIds: [],
     };
+  }
+
+  async mutate(input: {
+    readonly authorization: { readonly entry: CapabilityRuntimeJournalEntry };
+  }): Promise<CapabilityRuntimeJournalOutcome> {
+    const entry = input.authorization.entry;
+    await this.beforeMutate?.();
+    this.calls.push(entry.id);
+    this.simulateComposeDeletion();
     return {
       schemaVersion: "capability-runtime-host-mutation-outcome/1.0",
       journalEntryId: entry.id,

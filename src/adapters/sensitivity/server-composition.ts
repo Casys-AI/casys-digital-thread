@@ -209,7 +209,9 @@ export function createSensitivityComposition(
         lease: options.lease,
       })
       : undefined;
-  const verifyEvaluateSensitivityBase = options.sysonMcpUrl
+  const verifyEvaluateSensitivityBase = options.sysonMcpUrl !== undefined &&
+      options.capabilityRuntime !== undefined &&
+      options.capabilityRuntimeSession !== undefined
     ? new VerifyEvaluateSensitivityBaseRunExecutor({
       projects: options.projects,
       commands: options.commands,
@@ -221,9 +223,13 @@ export function createSensitivityComposition(
         timeoutMs: 30_000,
       }),
       lease: options.lease,
+      capabilityRuntime: options.capabilityRuntime,
+      capabilityRuntimeSession: options.capabilityRuntimeSession,
     })
     : undefined;
-  const modelWriteSensitivityEdges = options.sysonMcpUrl
+  const modelWriteSensitivityEdges = options.sysonMcpUrl !== undefined &&
+      options.capabilityRuntime !== undefined &&
+      options.capabilityRuntimeSession !== undefined
     ? new ModelWriteSensitivityEdgesRunExecutor({
       projects: options.projects,
       commands: options.commands,
@@ -262,6 +268,8 @@ export function createSensitivityComposition(
       },
       attempts: new FileSensitivityEdgesAttemptStore(),
       lease: options.lease,
+      capabilityRuntime: options.capabilityRuntime,
+      capabilityRuntimeSession: options.capabilityRuntimeSession,
     })
     : undefined;
   return {
