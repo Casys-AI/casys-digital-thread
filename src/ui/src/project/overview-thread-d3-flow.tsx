@@ -15,8 +15,12 @@ import {
 import { curveBumpX, line } from "d3-shape";
 import type { EngineeringPhaseStatus } from "../../../domain/project/engineering-project.ts";
 import type { EngineeringPathLaneId } from "../../../domain/project/engineering-path-lane.ts";
-import type { OverviewHeroNode } from "./overview-thread-hero-model.ts";
+import {
+  overviewGroupCaption,
+  type OverviewHeroNode,
+} from "./overview-thread-hero-model.ts";
 import { overviewThreadD3CableCatmullRomPath } from "./overview-thread-d3-cable-field.ts";
+import type { OverviewThreadD3FlowHullView } from "./overview-thread-d3-flow-layout.ts";
 import {
   type OverviewThreadD3FlowCurve,
   type OverviewThreadD3FlowGroupLayout,
@@ -26,6 +30,17 @@ import {
   overviewThreadD3FlowRoundedPath,
   type OverviewThreadD3FlowSegmentLayout,
 } from "./overview-thread-d3-flow-layout.ts";
+import {
+  overviewThreadHullControlsVisible,
+  overviewThreadHullLabel,
+  overviewThreadHullLabelBudget,
+  overviewThreadHullNameParts,
+} from "./overview-thread-hull-model.ts";
+import {
+  overviewThreadGroupContextValue,
+  overviewThreadNodeContextValue,
+} from "./overview-thread-context-target.ts";
+import { DropdownMenuContextTrigger } from "../ui/dropdown-menu.tsx";
 
 export type OverviewThreadD3FlowMoveDirection =
   | "ArrowUp"
@@ -51,8 +66,6 @@ export interface OverviewThreadD3FlowProps {
   readonly onHover: (key: string | undefined) => void;
   readonly onFocus: (key: string) => void;
   readonly onToggle: (key: string) => void;
-  /** Context-menu mouse/keyboard gesture for one exact App, never a chooser. */
-  readonly onRequestExactApp: (key: string) => void;
   readonly onMoveGroup?: (
     key: string,
     position: { readonly x: number; readonly y: number },
@@ -61,11 +74,29 @@ export interface OverviewThreadD3FlowProps {
     key: string,
     delta: { readonly x: number; readonly y: number },
   ) => void;
+  /** Resize one hull. The matrix re-flows; no leaf is ever dropped. */
+  readonly onResizeGroup?: (
+    key: string,
+    size: { readonly width: number; readonly height: number },
+  ) => void;
+  /** Fold or unfold one hull down to its band. */
+  readonly onToggleGroupFold?: (key: string) => void;
+  /** Choose how one hull presents its contents. */
+  readonly onSetGroupView?: (
+    key: string,
+    view: OverviewThreadD3FlowHullView,
+  ) => void;
+  /** Cycle the hull's reading order. */
+  readonly onCycleGroupSort?: (key: string) => void;
+  /** Scroll a listed hull's window, in rows. */
+  readonly onScrollGroup?: (key: string, rows: number) => void;
   readonly onMove: (
     key: string,
     direction: OverviewThreadD3FlowMoveDirection,
   ) => void;
   readonly refNode: (key: string, node: HTMLButtonElement | null) => void;
+  /** Live board scale: hull controls retract when zoomed out. */
+  readonly boardScale?: number;
 }
 
 interface OverviewFlowDragState {
@@ -89,12 +120,27 @@ interface OverviewFlowDragState {
   moved: boolean;
 }
 
+interface OverviewFlowResizeState {
+  readonly key: string;
+  readonly pointerId: number;
+  readonly startClientX: number;
+  readonly startClientY: number;
+  readonly originWidth: number;
+  readonly originHeight: number;
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
+}
+
 interface OverviewFlowDragTarget {
   readonly kind: OverviewFlowDragState["kind"];
   readonly key: string;
 }
 
 const FLOW_DRAG_THRESHOLD_PX = 4;
+const FLOW_HULL_MINIMUM_WIDTH = 24;
+/** Drawn hull bleeds this far past the layout box on every side. */
+const FLOW_HULL_MARGIN = 7;
+const FLOW_HULL_MINIMUM_HEIGHT = 28;
 const FLOW_KEYBOARD_MOVE_STEP = 12;
 const FLOW_PRACTICAL_WORLD_LIMIT = 10_000_000;
 // A strong critically damped response reads as a cable under tension: it
@@ -716,21 +762,32 @@ export function OverviewThreadD3Flow({
   onHover,
   onFocus,
   onToggle,
-  onRequestExactApp,
   onMoveGroup,
   onMoveNode,
+  onResizeGroup,
+  onToggleGroupFold,
+  onSetGroupView,
+  onCycleGroupSort,
+  onScrollGroup,
   onMove,
   refNode,
+  boardScale = 1,
 }: OverviewThreadD3FlowProps): JSX.Element {
   const titleId = useId();
   const descriptionId = useId();
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<OverviewFlowDragState>();
+  const resizeRef = useRef<OverviewFlowResizeState>();
   const dragFrameRef = useRef<number>();
   const suppressedClicksRef = useRef(new Set<string>());
   const [dragging, setDragging] = useState<OverviewFlowDragTarget>();
   const reducedMotion = usePrefersReducedMotion();
   const [viewBoxX, viewBoxY, viewBoxWidth, viewBoxHeight] = layout.viewBox;
+  // Folder controls are noise at a distance: past this scale they retract and
+  // the hull is read by its band alone.
+  const controlsVisible = overviewThreadHullControlsVisible(boardScale);
+  /** A band narrower than this has room for its name or its controls, not both. */
+  const bandFitsControls = (width: number) => width >= 120;
   const relatedKeys = useMemo(
     () => flowRelatedNodeKeys(layout, activeKey),
     [activeKey, layout],
@@ -780,6 +837,59 @@ export function OverviewThreadD3Flow({
     drag.appliedX = nextX;
     drag.appliedY = nextY;
   };
+  const beginResize = (
+    key: string,
+    event: ReactPointerEvent<Element>,
+  ) => {
+    if (event.button !== 0 || !event.isPrimary || !onResizeGroup) return;
+    const canvasBounds = canvasRef.current?.getBoundingClientRect();
+    if (!canvasBounds || canvasBounds.width <= 0) return;
+    const group = layout.groups.find((candidate) => candidate.key === key);
+    if (!group) return;
+    event.stopPropagation();
+    resizeRef.current = {
+      key,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      originWidth: group.width,
+      originHeight: group.height,
+      canvasWidth: canvasBounds.width,
+      canvasHeight: canvasBounds.height,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const moveResize = (event: ReactPointerEvent<Element>) => {
+    const resize = resizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId || !onResizeGroup) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    onResizeGroup(resize.key, {
+      width: Math.max(
+        FLOW_HULL_MINIMUM_WIDTH,
+        resize.originWidth +
+          (event.clientX - resize.startClientX) * viewBoxWidth /
+            resize.canvasWidth,
+      ),
+      height: Math.max(
+        FLOW_HULL_MINIMUM_HEIGHT,
+        resize.originHeight +
+          (event.clientY - resize.startClientY) * viewBoxHeight /
+            resize.canvasHeight,
+      ),
+    });
+  };
+
+  const endResize = (event: ReactPointerEvent<Element>) => {
+    const resize = resizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    resizeRef.current = undefined;
+    event.stopPropagation();
+  };
+
   const beginDrag = (
     kind: OverviewFlowDragState["kind"],
     key: string,
@@ -1047,22 +1157,31 @@ export function OverviewThreadD3Flow({
           </g>
           <g className="overview-thread-flow-groups">
             {layout.groups.map((group) => (
-              <rect
+              <DropdownMenuContextTrigger
                 key={group.key}
-                x={group.x - 7}
-                y={group.y - 7}
-                width={group.width + 14}
-                height={group.height + 14}
-                rx="10"
-                data-lane={group.lane}
-                data-draggable={onMoveGroup ? "true" : "false"}
-                vectorEffect="non-scaling-stroke"
-                onPointerDown={(event) => beginDrag("group", group.key, event)}
-                onPointerMove={moveDrag}
-                onPointerUp={endDrag}
-                onPointerCancel={(event) => endDrag(event, false)}
-                onLostPointerCapture={(event) => endDrag(event, false)}
-              />
+                value={overviewThreadGroupContextValue(group.key)}
+                asChild
+              >
+                <rect
+                  x={group.x - FLOW_HULL_MARGIN}
+                  y={group.y - FLOW_HULL_MARGIN}
+                  width={group.width + FLOW_HULL_MARGIN * 2}
+                  height={group.height + FLOW_HULL_MARGIN * 2}
+                  rx="12"
+                  data-lane={group.lane}
+                  data-draggable={onMoveGroup ? "true" : "false"}
+                  data-overview-context-target={overviewThreadGroupContextValue(
+                    group.key,
+                  )}
+                  vectorEffect="non-scaling-stroke"
+                  onPointerDown={(event) =>
+                    beginDrag("group", group.key, event)}
+                  onPointerMove={moveDrag}
+                  onPointerUp={endDrag}
+                  onPointerCancel={(event) => endDrag(event, false)}
+                  onLostPointerCapture={(event) => endDrag(event, false)}
+                />
+              </DropdownMenuContextTrigger>
             ))}
           </g>
           <FlowSegmentLayer
@@ -1076,60 +1195,257 @@ export function OverviewThreadD3Flow({
 
         <div className="overview-thread-flow-group-labels">
           {layout.groups.map((group) => (
-            <button
+            <div
               key={group.key}
-              type="button"
-              className="overview-thread-flow-group-label"
+              className="overview-thread-flow-group-band"
               data-lane={group.lane}
-              data-draggable={onMoveGroup ? "true" : "false"}
-              disabled={!onMoveGroup}
-              aria-label={`Move ${flowGroupCaption(group)} group`}
-              aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
-              title={`Drag ${flowGroupCaption(group)} group`}
+              onWheel={onScrollGroup && group.view === "list" &&
+                  !group.collapsed
+                ? (event) => {
+                  if (group.rowCount <= group.visibleRows * group.columns) {
+                    return;
+                  }
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onScrollGroup(group.key, event.deltaY > 0 ? 1 : -1);
+                }
+                : undefined}
+              data-collapsed={group.collapsed ? "true" : "false"}
               style={{
                 "--flow-x": flowXPercent(
                   group.x + group.width / 2,
                   layout.viewBox,
                 ),
                 "--flow-y": flowYPercent(
-                  group.y - 10,
+                  group.y - FLOW_HULL_MARGIN +
+                    (group.headerHeight + FLOW_HULL_MARGIN) / 2,
+                  layout.viewBox,
+                ),
+                "--hull-width": flowWidthPercent(
+                  group.width + FLOW_HULL_MARGIN * 2,
+                  layout.viewBox,
+                ),
+                "--hull-header": flowHeightPercent(
+                  group.headerHeight + FLOW_HULL_MARGIN,
                   layout.viewBox,
                 ),
                 "--flow-color": laneColorById.get(group.lane) ??
                   "currentColor",
               } as CSSProperties}
-              onPointerDown={(event) => beginDrag("group", group.key, event)}
-              onPointerMove={moveDrag}
-              onPointerUp={endDrag}
-              onPointerCancel={(event) => endDrag(event, false)}
-              onLostPointerCapture={(event) => endDrag(event, false)}
-              onKeyDown={(event) => {
-                if (!onMoveGroup || !isFlowMoveDirection(event.key)) return;
-                event.preventDefault();
-                const delta = flowKeyboardMoveDelta(event.key);
-                onMoveGroup(group.key, {
-                  x: clampNumber(
-                    group.x + delta.x,
-                    -FLOW_PRACTICAL_WORLD_LIMIT,
-                    FLOW_PRACTICAL_WORLD_LIMIT,
-                  ),
-                  y: clampNumber(
-                    group.y + delta.y,
-                    -FLOW_PRACTICAL_WORLD_LIMIT,
-                    FLOW_PRACTICAL_WORLD_LIMIT,
-                  ),
-                });
-              }}
             >
-              {flowGroupCaption(group)}
-            </button>
+              <DropdownMenuContextTrigger
+                value={overviewThreadGroupContextValue(group.key)}
+                asChild
+              >
+                <button
+                  type="button"
+                  className="overview-thread-flow-group-label"
+                  data-lane={group.lane}
+                  data-draggable={onMoveGroup ? "true" : "false"}
+                  data-overview-context-target={overviewThreadGroupContextValue(
+                    group.key,
+                  )}
+                  disabled={!onMoveGroup}
+                  aria-label={`Move ${
+                    flowGroupCaption(group)
+                  } group. Drag, use the arrow keys, or open its context menu.`}
+                  aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+F10"
+                  title={group.title ?? flowGroupCaption(group)}
+                  onPointerDown={(event) =>
+                    beginDrag("group", group.key, event)}
+                  onPointerMove={moveDrag}
+                  onPointerUp={endDrag}
+                  onPointerCancel={(event) => endDrag(event, false)}
+                  onLostPointerCapture={(event) => endDrag(event, false)}
+                  onKeyDown={(event) => {
+                    if (!onMoveGroup || !isFlowMoveDirection(event.key)) return;
+                    event.preventDefault();
+                    const delta = flowKeyboardMoveDelta(event.key);
+                    onMoveGroup(group.key, {
+                      x: clampNumber(
+                        group.x + delta.x,
+                        -FLOW_PRACTICAL_WORLD_LIMIT,
+                        FLOW_PRACTICAL_WORLD_LIMIT,
+                      ),
+                      y: clampNumber(
+                        group.y + delta.y,
+                        -FLOW_PRACTICAL_WORLD_LIMIT,
+                        FLOW_PRACTICAL_WORLD_LIMIT,
+                      ),
+                    });
+                  }}
+                >
+                  <span className="overview-thread-flow-group-name">
+                    {overviewThreadHullLabel(
+                      group.title ?? flowGroupCaption(group),
+                      overviewThreadHullLabelBudget(group.width),
+                    )}
+                  </span>
+                  {bandFitsControls(group.width) && (
+                    <span
+                      className="overview-thread-flow-group-scope"
+                      aria-hidden="true"
+                    >
+                      {group.lane}
+                    </span>
+                  )}
+                </button>
+              </DropdownMenuContextTrigger>
+              {controlsVisible && bandFitsControls(group.width) &&
+                !group.collapsed && onSetGroupView && (
+                <>
+                  <button
+                    type="button"
+                    className="overview-thread-flow-group-control"
+                    data-active={group.view === "list" ? "true" : "false"}
+                    aria-pressed={group.view === "list"}
+                    aria-label={`List ${flowGroupCaption(group)}`}
+                    title="Liste — colonnes selon la largeur"
+                    onClick={() => onSetGroupView(group.key, "list")}
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
+                    ≣
+                  </button>
+                  <button
+                    type="button"
+                    className="overview-thread-flow-group-control"
+                    data-active={group.view === "matrix" ? "true" : "false"}
+                    aria-pressed={group.view === "matrix"}
+                    aria-label={`Compact ${flowGroupCaption(group)}`}
+                    title="Matrice de points"
+                    onClick={() => onSetGroupView(group.key, "matrix")}
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
+                    ⠿
+                  </button>
+                </>
+              )}
+              {controlsVisible && bandFitsControls(group.width) &&
+                !group.collapsed && onCycleGroupSort && (
+                <button
+                  type="button"
+                  className="overview-thread-flow-group-control"
+                  aria-label={`Reading order of ${flowGroupCaption(group)}`}
+                  title="Ordre de lecture — enregistré / récent / nom"
+                  onClick={() => onCycleGroupSort(group.key)}
+                  onPointerDown={(event) => event.stopPropagation()}
+                >
+                  ↓t
+                </button>
+              )}
+              {onToggleGroupFold && (controlsVisible || group.collapsed) && (
+                <button
+                  type="button"
+                  className="overview-thread-flow-group-fold"
+                  aria-label={`${group.collapsed ? "Unfold" : "Fold"} ${
+                    flowGroupCaption(group)
+                  } hull`}
+                  aria-expanded={!group.collapsed}
+                  title={group.collapsed ? "Déplier" : "Plier"}
+                  onClick={() => onToggleGroupFold(group.key)}
+                  onPointerDown={(event) => event.stopPropagation()}
+                >
+                  {group.collapsed ? "▸" : "▾"}
+                </button>
+              )}
+            </div>
           ))}
+          {layout.groups.filter((group) =>
+            group.view === "list" && !group.collapsed
+          )
+            .map((group) => (
+              <div
+                key={`foot:${group.key}`}
+                className="overview-thread-flow-group-foot"
+                data-lane={group.lane}
+                style={{
+                  "--flow-x": flowXPercent(
+                    group.x + group.width / 2,
+                    layout.viewBox,
+                  ),
+                  "--flow-y": flowYPercent(
+                    group.y + group.height - group.footerHeight / 2,
+                    layout.viewBox,
+                  ),
+                  "--hull-width": flowWidthPercent(
+                    group.width + FLOW_HULL_MARGIN * 2,
+                    layout.viewBox,
+                  ),
+                  "--flow-color": laneColorById.get(group.lane) ??
+                    "currentColor",
+                } as CSSProperties}
+              >
+                {Math.min(group.visibleRows * group.columns, group.rowCount)}
+                {" / "}
+                {group.rowCount}
+                {group.rowCount > group.visibleRows * group.columns &&
+                  " — molette dans le hull"}
+              </div>
+            ))}
+          {layout.groups.filter((group) => !group.collapsed).map((group) => {
+            const live = group.nodeKeys.filter((key) => {
+              const item = nodesByKey.get(key);
+              return item?.kind === "recorded" &&
+                item.node.freshness === "running";
+            }).length;
+            const failed = group.nodeKeys.some((key) => {
+              const item = nodesByKey.get(key);
+              return item?.kind === "recorded" &&
+                item.node.freshness === "failed";
+            });
+            return (
+              <span
+                key={`monitor:${group.key}`}
+                className="overview-thread-flow-group-monitor"
+                data-alert={failed ? "true" : "false"}
+                style={{
+                  "--flow-x": flowXPercent(
+                    group.x + group.width,
+                    layout.viewBox,
+                  ),
+                  "--flow-y": flowYPercent(group.y, layout.viewBox),
+                  "--flow-color": laneColorById.get(group.lane) ??
+                    "currentColor",
+                } as CSSProperties}
+              >
+                <i aria-hidden="true" />
+                {group.rowCount}
+                {live > 0 && ` · ${live} live`}
+                {failed && " · ⚠"}
+              </span>
+            );
+          })}
+          {onResizeGroup && controlsVisible &&
+            layout.groups.filter((group) => !group.collapsed).map((group) => (
+              <button
+                key={`resize:${group.key}`}
+                type="button"
+                className="overview-thread-flow-group-resize"
+                aria-label={`Resize ${flowGroupCaption(group)} hull`}
+                tabIndex={-1}
+                style={{
+                  "--flow-x": flowXPercent(
+                    group.x + group.width,
+                    layout.viewBox,
+                  ),
+                  "--flow-y": flowYPercent(
+                    group.y + group.height,
+                    layout.viewBox,
+                  ),
+                } as CSSProperties}
+                onPointerDown={(event) => beginResize(group.key, event)}
+                onPointerMove={moveResize}
+                onPointerUp={endResize}
+                onPointerCancel={endResize}
+                onLostPointerCapture={endResize}
+              />
+            ))}
         </div>
 
         <div className="overview-thread-flow-nodes">
           {layout.nodes.map((position) => {
             const item = nodesByKey.get(position.key);
-            if (!item) return null;
+            if (!item || position.folded) return null;
             return (
               <FlowNode
                 key={position.key}
@@ -1147,7 +1463,6 @@ export function OverviewThreadD3Flow({
                 onHover={(hovered) =>
                   onHover(hovered ? position.key : undefined)}
                 onFocus={() => onFocus(position.key)}
-                onRequestExactApp={() => onRequestExactApp(position.key)}
                 onToggle={(event) =>
                   event
                     ? toggleUnlessDragged(position.key, event)
@@ -1166,6 +1481,63 @@ export function OverviewThreadD3Flow({
   );
 }
 
+/**
+ * The contents of one listed row: status, name, and the one figure that dates
+ * it. The name's distinguishing tail is lifted out of the ellipsis so a long
+ * title loses its middle rather than the part that tells it from its siblings.
+ */
+function FlowRowBody(
+  { item }: { readonly item: OverviewHeroNode },
+): JSX.Element {
+  const label = item.kind === "activity"
+    ? item.activity.title
+    : item.node.label;
+  const { head, tail } = overviewThreadHullNameParts(label);
+  const meta = flowRowMeta(item);
+  return (
+    <>
+      <span className="overview-thread-flow-row-dot" aria-hidden="true" />
+      <span className="overview-thread-flow-row-name" title={label}>
+        <span className="overview-thread-flow-row-head">{head}</span>
+        {tail && <span className="overview-thread-flow-row-tail">{tail}</span>}
+      </span>
+      {meta && (
+        <span
+          className="overview-thread-flow-row-meta"
+          data-live={item.kind === "recorded" &&
+              item.node.freshness === "running"
+            ? "true"
+            : "false"}
+        >
+          {meta}
+        </span>
+      )}
+    </>
+  );
+}
+
+/** The single figure a row carries: what it is doing, or when it settled. */
+function flowRowMeta(item: OverviewHeroNode): string {
+  if (item.kind === "activity") return flowStatusCaption(item.activity.status);
+  if (item.node.freshness === "running") return "RUNNING";
+  if (item.node.freshness === "failed") return "échec";
+  const at = overviewThreadRecordedTime(item.node.recordedAt);
+  if (!at) return item.node.freshness === "stale" ? "périmé" : "";
+  return item.node.freshness === "stale" ? `${at} périmé` : `${at} ✓`;
+}
+
+/** Wall-clock only: a compact row shows a time, never a full timestamp. */
+function overviewThreadRecordedTime(
+  recordedAt: string | undefined,
+): string | undefined {
+  if (!recordedAt) return undefined;
+  const parsed = new Date(recordedAt);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  return `${String(parsed.getHours()).padStart(2, "0")}:${
+    String(parsed.getMinutes()).padStart(2, "0")
+  }`;
+}
+
 function FlowNode({
   item,
   position,
@@ -1179,7 +1551,6 @@ function FlowNode({
   refNode,
   onHover,
   onFocus,
-  onRequestExactApp,
   onToggle,
   onDragStart,
   onDrag,
@@ -1199,7 +1570,6 @@ function FlowNode({
   readonly refNode: (node: HTMLButtonElement | null) => void;
   readonly onHover: (hovered: boolean) => void;
   readonly onFocus: () => void;
-  readonly onRequestExactApp: () => void;
   readonly onToggle: (event?: ReactMouseEvent<HTMLButtonElement>) => void;
   readonly onDragStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   readonly onDrag: (event: ReactPointerEvent<HTMLButtonElement>) => void;
@@ -1210,72 +1580,98 @@ function FlowNode({
   readonly onMove: (direction: OverviewThreadD3FlowMoveDirection) => void;
 }): JSX.Element {
   return (
-    <button
-      ref={refNode}
-      type="button"
-      tabIndex={tabIndex}
-      aria-label={flowNodeAriaLabel(item)}
-      aria-pressed={selected}
-      aria-controls={selected ? "overview-thread-selection" : undefined}
-      aria-expanded={selected}
-      className="overview-thread-flow-node"
-      data-kind={item.kind}
-      data-status={item.kind === "activity" ? item.activity.status : undefined}
-      data-lane={position.lane}
-      data-state={selected ? "selected" : related ? "related" : "muted"}
-      data-focused={focused ? "true" : "false"}
-      data-draggable={draggable ? "true" : "false"}
-      data-emphasis={item.kind === "recorded" && item.emphasis
-        ? "true"
-        : "false"}
-      aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+F10"
-      style={{
-        "--flow-x": flowXPercent(position.centerX, viewBox),
-        "--flow-y": flowYPercent(position.centerY, viewBox),
-        "--flow-color": color,
-      } as CSSProperties}
-      onClick={onToggle}
-      onPointerDown={onDragStart}
-      onPointerMove={onDrag}
-      onPointerUp={onDragEnd}
-      onPointerCancel={onDragCancel}
-      onLostPointerCapture={onDragCancel}
-      onMouseEnter={() => onHover(true)}
-      onMouseLeave={() => onHover(false)}
-      onFocus={onFocus}
-      onBlur={() => onHover(false)}
-      onContextMenu={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onRequestExactApp();
-      }}
-      onKeyDown={(event) => {
-        if (
-          event.key === "ContextMenu" ||
-          (event.shiftKey && event.key === "F10")
-        ) {
-          event.preventDefault();
-          event.stopPropagation();
-          onRequestExactApp();
-          return;
-        }
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onToggle();
-          return;
-        }
-        if (isFlowMoveDirection(event.key)) {
-          event.preventDefault();
-          onMove(event.key);
-        }
-      }}
+    <DropdownMenuContextTrigger
+      value={overviewThreadNodeContextValue(item.key)}
+      asChild
     >
-      <span className="overview-thread-flow-node-dot" aria-hidden="true" />
-      <span className="overview-thread-flow-node-tooltip" aria-hidden="true">
-        <strong>{item.label}</strong>
-        <span>{flowNodeDescription(item)}</span>
-      </span>
-    </button>
+      <button
+        ref={refNode}
+        type="button"
+        tabIndex={tabIndex}
+        aria-label={flowNodeAriaLabel(item)}
+        aria-pressed={selected}
+        aria-controls={selected ? "overview-thread-selection" : undefined}
+        aria-expanded={selected}
+        className="overview-thread-flow-node"
+        data-kind={item.kind}
+        data-status={item.kind === "activity"
+          ? item.activity.status
+          : undefined}
+        data-lane={position.lane}
+        data-state={selected ? "selected" : related ? "related" : "muted"}
+        data-focused={focused ? "true" : "false"}
+        data-draggable={draggable ? "true" : "false"}
+        data-emphasis={item.kind === "recorded" && item.emphasis
+          ? "true"
+          : "false"}
+        data-overview-context-target={overviewThreadNodeContextValue(item.key)}
+        data-listed={position.listed ? "true" : "false"}
+        aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+F10"
+        style={{
+          "--flow-x": position.listed
+            ? flowXPercent(position.x, viewBox)
+            : flowXPercent(position.centerX, viewBox),
+          "--flow-y": flowYPercent(position.centerY, viewBox),
+          "--row-width": flowWidthPercent(position.width, viewBox),
+          "--row-height": flowHeightPercent(position.height, viewBox),
+          "--flow-color": color,
+        } as CSSProperties}
+        onClick={onToggle}
+        onPointerDown={onDragStart}
+        onPointerMove={onDrag}
+        onPointerUp={onDragEnd}
+        onPointerCancel={onDragCancel}
+        onLostPointerCapture={onDragCancel}
+        onMouseEnter={() => onHover(true)}
+        onMouseLeave={() => onHover(false)}
+        onFocus={onFocus}
+        onBlur={() => onHover(false)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onToggle();
+            return;
+          }
+          if (isFlowMoveDirection(event.key)) {
+            event.preventDefault();
+            onMove(event.key);
+          }
+        }}
+      >
+        {position.listed ? <FlowRowBody item={item} /> : (
+          <span
+            className="overview-thread-flow-node-dot"
+            aria-hidden="true"
+          />
+        )}
+        {item.kind === "activity"
+          ? (
+            <span
+              className="overview-thread-flow-activity-label"
+              data-status={item.activity.status}
+              aria-hidden="true"
+            >
+              <strong>{item.activity.title}</strong>
+              <span className="overview-thread-flow-activity-status">
+                <span
+                  className="overview-thread-flow-activity-status-mark"
+                  aria-hidden="true"
+                />
+                {flowStatusCaption(item.activity.status)}
+              </span>
+            </span>
+          )
+          : (
+            <span
+              className="overview-thread-flow-node-tooltip"
+              aria-hidden="true"
+            >
+              <strong>{item.label}</strong>
+              <span>{flowNodeDescription(item)}</span>
+            </span>
+          )}
+      </button>
+    </DropdownMenuContextTrigger>
   );
 }
 
@@ -1576,6 +1972,20 @@ function flowXPercent(
   return `${((x - viewBox[0]) / viewBox[2]) * 100}%`;
 }
 
+function flowWidthPercent(
+  width: number,
+  viewBox: readonly [number, number, number, number],
+): string {
+  return `${(width / viewBox[2]) * 100}%`;
+}
+
+function flowHeightPercent(
+  height: number,
+  viewBox: readonly [number, number, number, number],
+): string {
+  return `${(height / viewBox[3]) * 100}%`;
+}
+
 function flowYPercent(
   y: number,
   viewBox: readonly [number, number, number, number],
@@ -1586,28 +1996,19 @@ function flowYPercent(
 export function flowGroupCaption(
   group: OverviewThreadD3FlowGroupLayout,
 ): string {
-  const normalized = group.groupKey.trim();
-  if (
-    !normalized || normalized === "__ungrouped__" || normalized === "unassigned"
-  ) {
-    return "Recorded items";
-  }
-  if (normalized === "project-activity") return "Project activity";
-  if (normalized.toLowerCase() === "syson") return "SysON model";
-  const leaf = normalized.split(/[/:]/).filter(Boolean).at(-1) ?? normalized;
-  return leaf.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+  return overviewGroupCaption(group.groupKey, group.lane);
 }
 
 function flowNodeDescription(item: OverviewHeroNode): string {
   if (item.kind === "activity") {
-    return `Project activity \u00b7 ${flowStatusCaption(item.activity.status)}`;
+    return `Current activity \u00b7 ${flowStatusCaption(item.activity.status)}`;
   }
   return item.node.summary;
 }
 
 function flowNodeAriaLabel(item: OverviewHeroNode): string {
   if (item.kind === "activity") {
-    return `Inspect project activity ${item.activity.title}, ${
+    return `Inspect current activity ${item.activity.title}, ${
       flowStatusCaption(item.activity.status)
     }`;
   }

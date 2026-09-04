@@ -222,6 +222,18 @@ Deno.test("whole-App plan moves one exact module before the closing child CSP", 
   assertEquals(html.includes("src="), false);
 });
 
+Deno.test("whole-App plan admits formatting whitespace between html and head", () => {
+  const formatted = APP_HTML.replace(
+    "<html><head>",
+    '<html lang="fr">\n  <head>',
+  );
+  const plan = planMcpAppDocument(formatted);
+  assertEquals(
+    plan.scriptSource,
+    "globalThis.first = 1; globalThis.second = 2; globalThis.moduleUrl = import.meta.url;",
+  );
+});
+
 Deno.test("whole-App loader revokes the HTML Blob on stale abort", async () => {
   const session = await sessionFor(APP_BYTES);
   const abort = new AbortController();

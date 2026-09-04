@@ -64,6 +64,27 @@ The gateway derives, never accepts, these same-origin routes:
 - `/api/thread/viewer-apps/launch/<manifest-sha>/<html-sha>`
 - `/api/thread/viewer-apps/resources/<resource-sha>`
 
+For local materialization, the trusted runner accepts a complete explicit catalogue and
+replaces the registry atomically:
+
+```bash
+deno task thread:viewer-apps:materialize -- \
+  --catalog=/exact/path/to/viewer-app-catalog.json
+```
+
+The catalogue supplies exact basis, anchor, App identity, manifest/HTML source paths,
+read-resource paths and the App-owned session schema/payload. The runner derives hashes,
+byte counts, resource routes and the fixed session action. It does not accept a launch
+URL, declared fingerprint, provider endpoint, tool selection, arguments or credentials.
+Materialization never changes the Workbench boundary: the BFF remains a registry/CAS
+reader only.
+
+On the Project whiteboard, business-object viewers are these exact recorded MCP Apps:
+left click only selects or manipulates the graph, and right click exposes the contextual
+App choices for a node or hull. The native Hull Monitor is the sole exception because it
+is a Digital Thread monitoring tool, not a provider result viewer. Digital Thread must
+not recreate provider result cards, summaries or fallback JSON viewers around it.
+
 The launch response serves the re-attested HTML with exact `text/html;profile=mcp-app`,
 byte count, no-store/nosniff/CORP and no redirect. The browser fetches that URI itself
 and, before decoding or parsing any HTML, requires status 200, exact MIME, exact bounded

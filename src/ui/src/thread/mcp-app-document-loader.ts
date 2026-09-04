@@ -3,8 +3,7 @@ import {
   type ThreadViewerSession,
 } from "../../../presentation/workbench/thread/viewer-sessions.ts";
 
-export const MCP_APP_SCRIPT_NONCE_META_NAME =
-  "casys-mcp-app-script-nonce" as const;
+export const MCP_APP_SCRIPT_NONCE_META_NAME = "casys-mcp-app-script-nonce" as const;
 export const MCP_APP_DOCUMENT_MIME_TYPE = "text/html;profile=mcp-app" as const;
 
 /**
@@ -205,7 +204,7 @@ export function planMcpAppDocument(html: string): McpAppDocumentPlan {
   const safePrefix = new RegExp(
     "^[\\t\\n\\f\\r ]*<!doctype[\\t\\n\\f\\r ]+html[\\t\\n\\f\\r ]*>" +
       "[\\t\\n\\f\\r ]*<html(?:[\\t\\n\\f\\r ]+lang=(?:\"[A-Za-z0-9-]+\"|'[A-Za-z0-9-]+'))?" +
-      "[\\t\\n\\f\\r ]*><head[\\t\\n\\f\\r ]*>",
+      "[\\t\\n\\f\\r ]*>[\\t\\n\\f\\r ]*<head[\\t\\n\\f\\r ]*>",
     "i",
   ).exec(html);
   if (

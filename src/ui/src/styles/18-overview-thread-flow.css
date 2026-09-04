@@ -316,9 +316,13 @@
 }
 
 .overview-thread-flow-groups rect {
-  fill: #f7faf8;
-  stroke: #d5dedb;
-  stroke-width: 1;
+  /* Glass: the hull tints what is behind it instead of covering it, and its
+     edge is a highlight rather than a drawn border. */
+  fill: rgb(255 255 255 / 42%);
+  stroke: rgb(255 255 255 / 70%);
+  stroke-width: 0.75;
+  filter: drop-shadow(0 1px 1px rgb(31 47 53 / 5%))
+    drop-shadow(0 6px 14px rgb(31 47 53 / 6%));
 }
 
 .overview-thread-flow-groups rect[data-draggable="true"] {
@@ -328,8 +332,9 @@
 }
 
 .overview-thread-flow-groups rect[data-draggable="true"]:hover {
-  stroke: color-mix(in srgb, var(--ui-brand) 34%, #cbd6d3);
-  stroke-width: 1.35;
+  fill: rgb(255 255 255 / 55%);
+  stroke: rgb(255 255 255 / 92%);
+  stroke-width: 1;
 }
 
 .overview-thread-flow-groups rect[data-draggable="true"]:active {
@@ -439,27 +444,54 @@
   pointer-events: none;
 }
 
-.overview-thread-flow-group-label {
+.overview-thread-flow-group-band {
+  /* Glass band welded to the top of the hull; also its drag handle. */
   position: absolute;
   top: var(--flow-y);
   left: var(--flow-x);
-  display: block;
-  min-height: 1.35rem;
-  max-width: 17%;
-  padding: 0.22rem 0.42rem;
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+  width: var(--hull-width, auto);
+  min-height: var(--hull-header, 1.35rem);
+  padding: 0 0.55rem 0 0.75rem;
   overflow: hidden;
-  transform: translate(-50%, -100%);
-  border: 1px solid color-mix(in srgb, var(--flow-color) 24%, #dce3e1);
-  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  border-radius: 0.62rem 0.62rem 0 0;
+  background: linear-gradient(
+    to bottom,
+    rgb(255 255 255 / 62%),
+    rgb(255 255 255 / 34%)
+  );
+  backdrop-filter: blur(14px) saturate(150%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 75%),
+    inset 0 -1px 0 color-mix(in srgb, var(--flow-color) 12%, transparent);
+  pointer-events: auto;
+}
+
+/* A folded hull is one bar: the band closes on itself. */
+.overview-thread-flow-group-band[data-collapsed="true"] {
+  border-radius: 0.62rem;
+}
+
+.overview-thread-flow-group-label {
+  flex: 1 1 auto;
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
   outline: none;
-  background: color-mix(in srgb, #fff 92%, var(--flow-color));
-  box-shadow: 0 1px 3px rgb(31 47 53 / 7%);
-  color: color-mix(in srgb, var(--flow-color) 78%, #405158);
+  background: transparent;
+  color: color-mix(in srgb, var(--flow-color) 72%, #405158);
   cursor: grab;
   font-family: var(--font-mono);
-  font-size: 0.5625rem;
-  font-weight: 700;
-  letter-spacing: 0.025em;
+  font-size: 0.594rem;
+  font-weight: 800;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
   line-height: 1.1;
   pointer-events: auto;
   text-overflow: ellipsis;
@@ -469,9 +501,42 @@
   white-space: nowrap;
 }
 
-.overview-thread-flow-group-label:hover {
-  border-color: color-mix(in srgb, var(--flow-color) 42%, #d2dcda);
-  background: color-mix(in srgb, #fff 84%, var(--flow-color));
+.overview-thread-flow-group-band:hover {
+  background: linear-gradient(
+    to bottom,
+    rgb(255 255 255 / 78%),
+    rgb(255 255 255 / 46%)
+  );
+}
+
+/* Folder control: present, never loud. No traffic lights, no close. */
+.overview-thread-flow-group-fold {
+  flex: none;
+  width: 0.85rem;
+  height: 0.85rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.28rem;
+  outline: none;
+  background: transparent;
+  color: color-mix(in srgb, var(--flow-color) 62%, #5c6b72);
+  cursor: pointer;
+  font-size: 0.5rem;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: auto;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+
+.overview-thread-flow-group-band:hover .overview-thread-flow-group-fold,
+.overview-thread-flow-group-fold:focus-visible,
+.overview-thread-flow-group-band[data-collapsed="true"] .overview-thread-flow-group-fold {
+  opacity: 0.85;
+}
+
+.overview-thread-flow-group-fold:hover {
+  background: rgb(255 255 255 / 70%);
+  opacity: 1;
 }
 
 .overview-thread-flow-group-label:focus-visible {
@@ -554,6 +619,119 @@
 .overview-thread-flow-node[data-kind="activity"][data-status="blocked"] .overview-thread-flow-node-dot {
   border-color: var(--ui-destructive);
   background: color-mix(in srgb, var(--ui-destructive) 16%, #fff);
+}
+
+/* Current work remains a graph object, not a detached inspector. The label is
+   intentionally part of the node button so click, drag and context-menu
+   semantics stay identical to the activity marker. */
+.overview-thread-flow-node[data-kind="activity"] {
+  z-index: 3;
+}
+
+.overview-thread-flow-activity-label {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 0.38rem);
+  display: grid;
+  width: max-content;
+  min-width: 5.25rem;
+  max-width: min(9rem, 22cqi);
+  gap: 0.16rem;
+  padding: 0.28rem 0.4rem 0.3rem 0.48rem;
+  transform: translateY(-50%);
+  border-left: 2px solid var(--thread-muted);
+  border-radius: 0.2rem;
+  background: color-mix(in srgb, #fff 92%, transparent);
+  box-shadow: 0 1px 3px rgb(24 38 43 / 10%);
+  color: #26363c;
+  cursor: inherit;
+  pointer-events: auto;
+  text-align: left;
+}
+
+.overview-thread-flow-activity-label > strong {
+  display: -webkit-box;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  font-size: clamp(0.5625rem, 0.88cqi, 0.6875rem);
+  font-weight: 680;
+  letter-spacing: -0.01em;
+  line-height: 1.18;
+  text-wrap: balance;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.overview-thread-flow-activity-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  color: var(--thread-muted);
+  font-family: var(--font-mono);
+  font-size: 0.475rem;
+  font-weight: 760;
+  letter-spacing: 0.055em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.overview-thread-flow-activity-status-mark {
+  display: block;
+  width: 0.28rem;
+  height: 0.28rem;
+  flex: 0 0 auto;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: #fff;
+}
+
+.overview-thread-flow-activity-label[data-status="active"] {
+  border-left-color: var(--ui-success);
+}
+
+.overview-thread-flow-activity-label[data-status="active"] .overview-thread-flow-activity-status {
+  color: var(--ui-success);
+}
+
+.overview-thread-flow-activity-label[data-status="active"] .overview-thread-flow-activity-status-mark {
+  background: currentColor;
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.overview-thread-flow-activity-label[data-status="planned"] .overview-thread-flow-activity-status-mark {
+  border-style: dashed;
+}
+
+.overview-thread-flow-activity-label[data-status="blocked"] {
+  border-left-color: var(--ui-destructive);
+}
+
+.overview-thread-flow-activity-label[data-status="blocked"] .overview-thread-flow-activity-status {
+  color: var(--ui-destructive);
+}
+
+/* The verdict lane sits against the right edge of the hierarchy. Its label
+   grows back into the canvas so long titles never create viewport overflow. */
+.overview-thread-flow-node[data-kind="activity"][data-lane="verdicts"] .overview-thread-flow-activity-label {
+  right: calc(100% + 0.38rem);
+  left: auto;
+  padding-right: 0.48rem;
+  padding-left: 0.4rem;
+  border-right: 2px solid var(--thread-muted);
+  border-left: 0;
+  text-align: right;
+}
+
+.overview-thread-flow-node[data-kind="activity"][data-lane="verdicts"] .overview-thread-flow-activity-status {
+  justify-content: flex-end;
+}
+
+.overview-thread-flow-node[data-kind="activity"][data-lane="verdicts"] .overview-thread-flow-activity-label[data-status="active"] {
+  border-right-color: var(--ui-success);
+}
+
+.overview-thread-flow-node[data-kind="activity"][data-lane="verdicts"] .overview-thread-flow-activity-label[data-status="blocked"] {
+  border-right-color: var(--ui-destructive);
 }
 
 .overview-thread-flow-node[data-emphasis="true"] .overview-thread-flow-node-dot {
@@ -719,4 +897,289 @@
   .overview-thread-hero .overview-thread-flow-segment {
     transition: none;
   }
+}
+
+/* Hull band: name folds, geometry does not. */
+.overview-thread-flow-group-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* Lane and count, stated once beside the name. */
+.overview-thread-flow-group-scope {
+  flex: none;
+  color: rgb(31 47 53 / 45%);
+  font-size: 0.5rem;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Folder controls: square, quiet, and only where the mock puts them. */
+.overview-thread-flow-group-control {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  padding: 0;
+  border: 1px solid rgb(31 47 53 / 10%);
+  border-radius: 0.3rem;
+  outline: none;
+  background: transparent;
+  color: rgb(31 47 53 / 34%);
+  cursor: pointer;
+  font-size: 0.55rem;
+  line-height: 1;
+  pointer-events: auto;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.overview-thread-flow-group-control:hover,
+.overview-thread-flow-group-control:focus-visible {
+  border-color: color-mix(in srgb, var(--flow-color) 32%, transparent);
+  background: rgb(255 255 255 / 80%);
+  color: color-mix(in srgb, var(--flow-color) 70%, #405158);
+}
+
+.overview-thread-flow-group-control[data-active="true"] {
+  border-color: color-mix(in srgb, var(--flow-color) 35%, transparent);
+  background: #fff;
+  color: color-mix(in srgb, var(--flow-color) 72%, #405158);
+}
+
+/* Hull resize grip: the corner of the folder, not a window chrome. */
+.overview-thread-flow-group-resize {
+  position: absolute;
+  top: var(--flow-y);
+  left: var(--flow-x);
+  width: 0.7rem;
+  height: 0.7rem;
+  padding: 0;
+  transform: translate(-60%, -60%);
+  border: 0;
+  border-right: 2px solid rgb(31 47 53 / 28%);
+  border-bottom: 2px solid rgb(31 47 53 / 28%);
+  border-radius: 0 0 0.25rem 0;
+  outline: none;
+  background: transparent;
+  opacity: 0;
+  cursor: nwse-resize;
+  pointer-events: auto;
+  touch-action: none;
+  transition: opacity 120ms ease;
+}
+
+.overview-thread-flow-group-resize:hover,
+.overview-thread-flow-group-resize:focus-visible,
+.overview-thread-flow:hover .overview-thread-flow-group-resize {
+  opacity: 0.75;
+}
+
+/* Listed rows: the hull reads as a folder, one named row per leaf. */
+.overview-thread-hero .overview-thread-flow-node[data-listed="true"] {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  width: var(--row-width);
+  height: var(--row-height);
+  padding: 0 0.5rem;
+  transform: translate(0, -50%);
+  border-radius: 0.34rem;
+  text-align: left;
+}
+
+.overview-thread-hero .overview-thread-flow-node[data-listed="true"]:hover,
+.overview-thread-hero .overview-thread-flow-node[data-listed="true"][data-state="selected"] {
+  background: color-mix(in srgb, var(--flow-color) 8%, transparent);
+}
+
+.overview-thread-flow-row-dot {
+  flex: none;
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 999px;
+  background: var(--flow-color);
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 85%);
+}
+
+/* A running leaf keeps a halo: it is the one thing moving in the hull. */
+.overview-thread-flow-node[data-listed="true"][data-emphasis="true"] .overview-thread-flow-row-dot,
+.overview-thread-flow-node[data-listed="true"][data-status="active"] .overview-thread-flow-row-dot {
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 85%),
+    0 0 0 4px color-mix(in srgb, var(--flow-color) 22%, transparent);
+}
+
+/* The name gives up its middle, never its distinguishing tail. */
+.overview-thread-flow-row-name {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.overview-thread-flow-row-head {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+/* The tail never grows past half the row: a very long tail would push the
+   head out of the row entirely and cut the name from its start. */
+.overview-thread-flow-row-tail {
+  flex: 0 1 auto;
+  overflow: hidden;
+  max-width: 55%;
+  text-overflow: ellipsis;
+}
+
+.overview-thread-flow-row-meta {
+  flex: none;
+  margin-left: auto;
+  color: rgb(31 47 53 / 48%);
+  font-family: var(--font-mono);
+  font-size: 0.47rem;
+  letter-spacing: 0.03em;
+}
+
+.overview-thread-flow-row-meta[data-live="true"] {
+  color: color-mix(in srgb, var(--flow-color) 72%, #405158);
+  font-weight: 700;
+}
+
+/* Foot of a listed hull: how much of it you are seeing. */
+.overview-thread-flow-group-foot {
+  position: absolute;
+  top: var(--flow-y);
+  left: var(--flow-x);
+  width: var(--hull-width);
+  padding: 0 0.75rem;
+  transform: translate(-50%, -50%);
+  border-top: 1px dashed color-mix(in srgb, var(--flow-color) 20%, transparent);
+  color: rgb(31 47 53 / 34%);
+  font-family: var(--font-mono);
+  font-size: 0.47rem;
+  line-height: 1.9;
+  pointer-events: none;
+}
+
+/* Monitor chip: aggregates of the hull, welded to its corner. It reads at any
+   zoom and never states a single leaf — that detail lives in the rows. */
+.overview-thread-flow-group-monitor {
+  position: absolute;
+  top: var(--flow-y);
+  left: var(--flow-x);
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  padding: 0.1rem 0.4rem;
+  transform: translate(-40%, -60%);
+  border: 1px solid color-mix(in srgb, var(--flow-color) 22%, #e0d3c0);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 92%);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 1px 3px rgb(31 47 53 / 9%);
+  color: color-mix(in srgb, var(--flow-color) 72%, #405158);
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  font-weight: 750;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.overview-thread-flow-group-monitor i {
+  width: 0.34rem;
+  height: 0.34rem;
+  border-radius: 999px;
+  background: var(--flow-color);
+  box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--flow-color) 18%,
+    transparent);
+}
+
+/* Alert inverts the chip and thickens the hull edge — visible zoomed out. */
+.overview-thread-flow-group-monitor[data-alert="true"] {
+  border-color: rgb(185 28 28 / 45%);
+  background: #b91c1c;
+  color: #fff;
+}
+
+.overview-thread-flow-group-monitor[data-alert="true"] i {
+  background: #fff;
+  box-shadow: none;
+}
+
+/* Folder tree inside a listed hull: indent guide, twisty, child count. */
+.overview-thread-flow-row-indent {
+  flex: none;
+  width: 0.55rem;
+  height: 0.75rem;
+  margin-left: 0.12rem;
+  border-left: 1px solid color-mix(in srgb, var(--flow-color) 22%, transparent);
+}
+
+.overview-thread-flow-row-twist {
+  flex: none;
+  width: 0.5rem;
+  color: color-mix(in srgb, var(--flow-color) 55%, #5c6b72);
+  font-size: 0.42rem;
+  line-height: 1;
+}
+
+.overview-thread-flow-row-children {
+  flex: none;
+  margin-left: auto;
+  color: rgb(31 47 53 / 42%);
+  font-family: var(--font-mono);
+  font-size: 0.47rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Monitor chip: aggregates of the hull, welded to its corner. It reads at any
+   zoom and never states a single leaf — that detail lives in the rows. */
+.overview-thread-flow-group-monitor {
+  position: absolute;
+  top: var(--flow-y);
+  left: var(--flow-x);
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  padding: 0.1rem 0.4rem;
+  transform: translate(-40%, -60%);
+  border: 1px solid color-mix(in srgb, var(--flow-color) 22%, #e0d3c0);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 92%);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 1px 3px rgb(31 47 53 / 9%);
+  color: color-mix(in srgb, var(--flow-color) 72%, #405158);
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  font-weight: 750;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.overview-thread-flow-group-monitor i {
+  width: 0.34rem;
+  height: 0.34rem;
+  border-radius: 999px;
+  background: var(--flow-color);
+  box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--flow-color) 18%,
+    transparent);
+}
+
+/* Alert inverts the chip and thickens the hull edge — visible zoomed out. */
+.overview-thread-flow-group-monitor[data-alert="true"] {
+  border-color: rgb(185 28 28 / 45%);
+  background: #b91c1c;
+  color: #fff;
+}
+
+.overview-thread-flow-group-monitor[data-alert="true"] i {
+  background: #fff;
+  box-shadow: none;
 }

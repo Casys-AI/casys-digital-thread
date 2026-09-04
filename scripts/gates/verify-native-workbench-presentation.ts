@@ -120,6 +120,8 @@ export const FORBIDDEN_NATIVE_PRESENTATION_PATHS = [
   "src/ui/src/cad/three-orbit-viewport.ts",
   "src/ui/src/project/brief-record-model.ts",
   "src/ui/src/project/brief-record.tsx",
+  "src/ui/src/project/overview-thread-instrument-model.ts",
+  "src/ui/src/project/overview-thread-instrument.tsx",
   "src/ui/src/project/product-requirements-matrix.tsx",
   "src/ui/src/project/product-requirements-model.ts",
   "src/ui/src/project/product-sourcing.tsx",

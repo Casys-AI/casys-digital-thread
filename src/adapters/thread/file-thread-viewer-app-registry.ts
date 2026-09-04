@@ -1,3 +1,8 @@
+import {
+  parseViewAppManifestJson,
+  type ViewAppManifest,
+  VIEWER_SESSION_APPLY_ACTION,
+} from "@casys/mcp-view-contracts";
 import { FileByteStore } from "../shared/cas/file-byte-store.ts";
 import type {
   ThreadViewerAppLaunchRequest,
@@ -17,7 +22,6 @@ export const THREAD_VIEWER_APP_LAUNCH_PREFIX =
   "/api/thread/viewer-apps/launch/" as const;
 export const THREAD_VIEWER_APP_RESOURCE_PREFIX =
   "/api/thread/viewer-apps/resources/" as const;
-const VIEW_APP_MANIFEST_SCHEMA = "io.casys.mcp.view-app-manifest/1.0" as const;
 
 const SHA256 = /^sha256:[a-f0-9]{64}$/;
 const MIME =
@@ -289,65 +293,24 @@ interface AdmittedViewAppResource {
 function parseViewAppManifest(
   bytes: Uint8Array,
 ): AdmittedViewAppManifest | undefined {
-  let value: unknown;
+  let manifest: ViewAppManifest;
   try {
-    value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    manifest = parseViewAppManifestJson(
+      new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+    );
   } catch {
     return undefined;
   }
-  if (!isExactRecord(value, ["schemaVersion", "app", "resources"])) {
-    return undefined;
-  }
-  if (
-    value.schemaVersion !== VIEW_APP_MANIFEST_SCHEMA ||
-    !isExactRecord(value.app, ["id", "title", "version"]) ||
-    !isIdentifier(value.app.id) || !isNonEmptyString(value.app.title) ||
-    !isExactSemver(value.app.version) ||
-    !isDenseUnadornedArray(value.resources) || value.resources.length === 0
-  ) return undefined;
-
-  const resources: AdmittedViewAppResource[] = [];
-  const uris = new Set<string>();
-  for (const resource of value.resources) {
-    if (!isRecord(resource)) return undefined;
-    const keys = ["uri", "ownership", "resultSchemas"];
-    if (resource.acceptedActions !== undefined) keys.push("acceptedActions");
-    if (resource.sessionSchemas !== undefined) keys.push("sessionSchemas");
-    if (resource.components !== undefined) keys.push("components");
-    if (!hasExactKeys(resource, keys)) return undefined;
-    if (
-      !isExactUiUri(resource.uri) || uris.has(resource.uri) ||
-      (resource.ownership !== "whole-view" &&
-        resource.ownership !== "component-catalog") ||
-      !exactSchemaSet(resource.resultSchemas)
-    ) return undefined;
-    const acceptedActions = resource.acceptedActions === undefined
-      ? undefined
-      : exactNonEmptyStringSet(resource.acceptedActions);
-    const sessionSchemas = resource.sessionSchemas === undefined
-      ? undefined
-      : exactSchemaSet(resource.sessionSchemas);
-    if (
-      (resource.acceptedActions !== undefined && !acceptedActions) ||
-      (resource.sessionSchemas !== undefined && !sessionSchemas) ||
-      (acceptedActions?.includes("viewer.session.apply") ?? false) !==
-        (sessionSchemas !== undefined) ||
-      (resource.components !== undefined &&
-        !isJsonRecord(resource.components)) ||
-      (resource.ownership === "component-catalog" &&
-        resource.components === undefined)
-    ) return undefined;
-    uris.add(resource.uri);
-    resources.push({
+  return {
+    app: { id: manifest.app.id, version: manifest.app.version },
+    resources: manifest.resources.map((resource) => ({
       uri: resource.uri,
       ownership: resource.ownership,
-      ...(acceptedActions ? { acceptedActions } : {}),
-      ...(sessionSchemas ? { sessionSchemas } : {}),
-    });
-  }
-  return {
-    app: { id: value.app.id, version: value.app.version },
-    resources,
+      ...(resource.acceptedActions
+        ? { acceptedActions: resource.acceptedActions }
+        : {}),
+      ...(resource.sessionSchemas ? { sessionSchemas: resource.sessionSchemas } : {}),
+    })),
   };
 }
 
@@ -363,7 +326,7 @@ function manifestAdmitsBinding(
     candidate.uri === binding.resource.uri
   );
   return resource?.ownership === "whole-view" &&
-    resource.acceptedActions?.includes("viewer.session.apply") === true &&
+    resource.acceptedActions?.includes(VIEWER_SESSION_APPLY_ACTION) === true &&
     resource.sessionSchemas?.includes(binding.session.schema) === true;
 }
 
@@ -470,60 +433,6 @@ function digest(fingerprint: string): string {
 
 function contentFingerprint(fingerprint: string) {
   return { algorithm: "sha256" as const, digest: digest(fingerprint) };
-}
-
-function exactSchemaSet(value: unknown): readonly string[] | undefined {
-  const values = exactNonEmptyStringSet(value);
-  if (!values) return undefined;
-  return values.every((item) => {
-      const split = item.lastIndexOf("/");
-      const name = split < 0 ? "" : item.slice(0, split);
-      const version = split < 0 ? "" : item.slice(split + 1);
-      return isIdentifier(name) &&
-        /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*))?$/.test(version) &&
-        !/(?:^|\/)(?:latest|stable|current|next|head|v\d+)(?=$|\/)/i.test(name);
-    })
-    ? values
-    : undefined;
-}
-
-function exactNonEmptyStringSet(value: unknown): readonly string[] | undefined {
-  if (!isDenseUnadornedArray(value) || value.length === 0) return undefined;
-  if (!value.every(isNonEmptyString)) return undefined;
-  return new Set(value).size === value.length ? value : undefined;
-}
-
-function isExactUiUri(value: unknown): value is string {
-  if (
-    typeof value !== "string" ||
-    !/^ui:\/\/[A-Za-z0-9][A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]*$/.test(value)
-  ) return false;
-  return !value.split(/[/?#]/).some((part) => part.toLowerCase() === "latest");
-}
-
-function isIdentifier(value: unknown): value is string {
-  return typeof value === "string" &&
-    /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/.test(value);
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim() === value &&
-    value.length > 0;
-}
-
-function isExactSemver(value: unknown): value is string {
-  if (typeof value !== "string") return false;
-  const numeric = "(?:0|[1-9]\\d*)";
-  const prerelease =
-    "(?:(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*))*)";
-  const build = "(?:[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)";
-  return new RegExp(
-    `^${numeric}\\.${numeric}\\.${numeric}(?:-${prerelease})?(?:\\+${build})?$`,
-  ).test(value);
-}
-
-function isJsonRecord(value: unknown): value is Record<string, unknown> {
-  return isRecord(value) && isJsonValue(value);
 }
 
 function isJsonValue(value: unknown): boolean {

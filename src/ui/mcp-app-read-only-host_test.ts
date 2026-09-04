@@ -11,10 +11,30 @@ import {
   MCP_APP_HOST_RESOURCE_READ_SCHEMA,
 } from "./src/thread/mcp-app-resource-bridge.ts";
 import { advanceMcpAppFrameLoad } from "./src/thread/mcp-app-frame-lifecycle.ts";
+import { resolveMcpAppTheme } from "./src/thread/mcp-app-frame-theme.ts";
 
 const RESOURCE_BYTES = new TextEncoder().encode("registered bytes");
 const RESOURCE_FINGERPRINT = await sha256Fingerprint(RESOURCE_BYTES);
 const SESSION = sessionFixture();
+
+Deno.test("MCP App theme follows the rendered Workbench before the OS preference", () => {
+  assertEquals(
+    resolveMcpAppTheme({ colorScheme: "light", prefersDark: true }),
+    "light",
+  );
+  assertEquals(
+    resolveMcpAppTheme({ colorScheme: "dark", prefersDark: false }),
+    "dark",
+  );
+  assertEquals(
+    resolveMcpAppTheme({ dataTheme: "light", darkClass: true }),
+    "light",
+  );
+  assertEquals(
+    resolveMcpAppTheme({ colorScheme: "normal", prefersDark: true }),
+    "dark",
+  );
+});
 
 Deno.test("read-only App host sends the session once and only after initialized", () => {
   const target = new FakeTarget();
@@ -49,7 +69,9 @@ Deno.test("read-only App host sends the session once and only after initialized"
   host.handleMessage(event(target, initialized()));
   host.handleMessage(event(target, initialized()));
   assertEquals(
-    target.posts.filter((post) => methodOf(post.message) === "ui/compose/event"),
+    target.posts.filter((post) =>
+      methodOf(post.message) === "ui/compose/event"
+    ),
     [{
       targetOrigin: "*",
       message: {
@@ -100,7 +122,8 @@ Deno.test("read-only App host source-locks the exact opaque App identity", () =>
     id: "wrong-app",
     error: {
       code: -32602,
-      message: "App identity does not match the registered whole-App descriptor.",
+      message:
+        "App identity does not match the registered whole-App descriptor.",
     },
   });
   assertEquals(
@@ -426,7 +449,8 @@ Deno.test("App offer delivered after its load works and a replacement document i
       );
     },
   });
-  let phase: Parameters<typeof advanceMcpAppFrameLoad>[0] = "waiting-blank-load";
+  let phase: Parameters<typeof advanceMcpAppFrameLoad>[0] =
+    "waiting-blank-load";
   [phase] = advanceMcpAppFrameLoad(phase);
   assertEquals(phase, "loading-app");
   [phase] = advanceMcpAppFrameLoad(phase);
@@ -527,7 +551,9 @@ class FakeTarget implements McpAppHostPostTarget {
     transfer?: Transferable[],
   ): void {
     this.posts.push(
-      transfer ? { message, targetOrigin, transfer } : { message, targetOrigin },
+      transfer
+        ? { message, targetOrigin, transfer }
+        : { message, targetOrigin },
     );
   }
 }

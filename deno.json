@@ -1,6 +1,7 @@
 {
   "imports": {
     "@casys/mcp-server": "jsr:@casys/mcp-server@0.27.0",
+    "@casys/mcp-view-contracts": "jsr:@casys/mcp-view-contracts@0.1.0",
     "@std/assert": "jsr:@std/assert@1.0.14",
     "@std/cli": "jsr:@std/cli@1",
     "@std/yaml": "jsr:@std/yaml@1",
@@ -16,7 +17,8 @@
   "minimumDependencyAge": {
     "age": "P1D",
     "exclude": [
-      "jsr:@casys/mcp-server"
+      "jsr:@casys/mcp-server",
+      "jsr:@casys/mcp-view-contracts"
     ]
   },
   "tasks": {
@@ -61,6 +63,7 @@
     "probe:requirement-units": "deno run --allow-net=127.0.0.1,localhost scripts/probes/probe-requirement-units.ts",
     "probe:architecture-attribute-value": "deno run --allow-net=127.0.0.1,localhost scripts/probes/probe-architecture-attribute-value.ts",
     "recover:work-item-successor": "deno run --allow-read=state/local,config/projects --allow-write=state/local scripts/runners/reconcile-work-item-successor.ts",
+    "thread:viewer-apps:materialize": "deno run --no-prompt --allow-read --allow-write=state/local scripts/runners/materialize-thread-viewer-apps.ts",
     "test:capability-runtime-qualification-os-lock": "deno test --no-prompt --frozen --allow-read --allow-write --allow-run --allow-env src/adapters/control-plane/file-capability-runtime-qualification-attempt-store_test.ts --filter \"OS processes\" -- --run-os-process-lock-test",
     "test": "deno test --no-prompt --frozen --node-modules-dir=auto --allow-ffi=node_modules --allow-read --allow-write --allow-run --allow-net=127.0.0.1,localhost --allow-env src experiments/thread-workflow && deno test --no-prompt --frozen --node-modules-dir=auto --allow-ffi=node_modules --allow-read --allow-write --allow-net=127.0.0.1,localhost --allow-env --ignore=./scripts/release/source-alpha-inventory_test.ts --ignore=./scripts/release/source-alpha/source-archive_test.ts scripts && deno task test:source-alpha-inventory && deno task test:capability-runtime-qualification-os-lock",
     "check:ui": "npm --prefix src/ui run check",

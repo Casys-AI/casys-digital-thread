@@ -3,12 +3,19 @@ import { GENERIC_THREAD_FIXTURE } from "../testing/workbench/generic-thread-work
 import {
   buildOverviewThreadHero,
   isRecordedOverviewHeroNode,
+  OVERVIEW_SEMANTIC_GROUP_KEYS,
   type OverviewActivityHeroNode,
+  overviewGroupCaption,
+  overviewGroupKeyFor,
   type OverviewHeroNode,
   overviewLaneFor,
 } from "./src/project/overview-thread-hero-model.ts";
 import type { ProjectPathActivityView } from "./src/project/model.ts";
-import type { ThreadGraphNode } from "./src/thread/types.ts";
+import type {
+  ThreadArtifact,
+  ThreadGraphEdge,
+  ThreadGraphNode,
+} from "./src/thread/types.ts";
 
 Deno.test("overview hero places recorded nodes in 2a lanes and never invents ids", () => {
   const hero = buildOverviewThreadHero(GENERIC_THREAD_FIXTURE);
@@ -79,6 +86,182 @@ Deno.test("assembly-integrity-observation/1.0 stays an observation in the physic
   assertEquals(overviewLaneFor(node) === "verdicts", false);
 });
 
+Deno.test("recorded solver results stay addressable in the physics lane", () => {
+  const node: ThreadGraphNode = {
+    id: "graph:artifact:solver-result",
+    ref: { kind: "artifact", id: "solver-result" },
+    entityKind: "artifact",
+    artifactKind: "solver-result",
+    label: "Recorded solver result",
+    system: "digital-thread",
+    freshness: "fresh",
+    summary: "Exact recorded result available to a contextual App.",
+  };
+
+  assertEquals(overviewLaneFor(node), "physics");
+});
+
+Deno.test("overview hulls use exact producer families rather than recorder labels", () => {
+  const node: ThreadGraphNode = {
+    id: "graph:artifact:semantic-record",
+    ref: { kind: "artifact", id: "semantic-record" },
+    entityKind: "artifact",
+    artifactKind: "geometry",
+    label: "Copy does not classify this record",
+    system: "digital-thread",
+    freshness: "fresh",
+    summary: "Exact producer classification",
+  };
+  const artifact = (operation: string): ThreadArtifact => ({
+    id: "semantic-record",
+    label: "Independent copy",
+    kind: "geometry",
+    system: "digital-thread",
+    revision: "1",
+    freshness: "fresh",
+    producedBy: operation,
+    dependsOn: [],
+  });
+
+  assertEquals(
+    overviewGroupKeyFor(node, artifact("design.write-geometry@1")),
+    OVERVIEW_SEMANTIC_GROUP_KEYS.canonicalGeometry,
+  );
+  assertEquals(
+    overviewGroupKeyFor(
+      node,
+      artifact("verify.observe-assembly-integrity@1"),
+    ),
+    OVERVIEW_SEMANTIC_GROUP_KEYS.assemblyIntegrity,
+  );
+  assertEquals(
+    overviewGroupKeyFor(node, artifact("unknown.operation@1")),
+    "digital-thread",
+  );
+  assertEquals(
+    overviewGroupKeyFor(node, {
+      ...artifact("design.write-geometry@1"),
+      producer: {
+        serverId: "mcp-modelica",
+        tool: "simulate.run-qualified-modelica-kit@1",
+        runId: "run:canonical-producer-wins",
+      },
+    }),
+    "digital-thread",
+  );
+  assertEquals(
+    overviewGroupCaption(OVERVIEW_SEMANTIC_GROUP_KEYS.canonicalGeometry),
+    "Canonical geometry",
+  );
+});
+
+Deno.test("overview hulls keep exact containment after a one-to-one SysML usage is folded", () => {
+  const thread = structuredClone(GENERIC_THREAD_FIXTURE);
+  const structuralNode = (
+    id: string,
+    entityKind: "part-definition" | "part-usage",
+  ): ThreadGraphNode => ({
+    id: `graph:${entityKind}:${id}`,
+    ref: { kind: entityKind, id },
+    entityKind,
+    label: id,
+    system: "syson",
+    freshness: "fresh",
+    summary: "Recorded SysML structure",
+  });
+  const assembly = structuralNode("assembly", "part-definition");
+  const childUsage = structuralNode("child-usage", "part-usage");
+  const childDefinition = structuralNode("child-definition", "part-definition");
+  const edge = (
+    id: string,
+    from: ThreadGraphNode,
+    to: ThreadGraphNode,
+    relation: ThreadGraphEdge["relation"],
+  ): ThreadGraphEdge => ({
+    id,
+    from: from.ref,
+    to: to.ref,
+    relation,
+    rationale: id,
+    origin: "structure",
+  });
+  thread.graph.nodes.push(assembly, childUsage, childDefinition);
+  thread.graph.edges.push(
+    edge("contains-child", assembly, childUsage, "contains"),
+    edge("types-child", childUsage, childDefinition, "typed_by"),
+  );
+
+  const hero = buildOverviewThreadHero(thread);
+  const child = hero.nodes.find((item) =>
+    item.key === "part-definition:child-definition"
+  );
+
+  assertEquals(
+    hero.nodes.some((item) => item.key === "part-usage:child-usage"),
+    false,
+  );
+  assertEquals(child?.kind, "recorded");
+  assertEquals(
+    child?.kind === "recorded" ? child.parentKey : undefined,
+    "part-definition:assembly",
+  );
+});
+
+Deno.test("overview connects exact project dependency evidence to open activity hulls", () => {
+  const thread = structuredClone(GENERIC_THREAD_FIXTURE);
+  const snapshotRevision = thread.evidenceFamilyGraph.asOf.revision;
+  const evidenceRef = {
+    snapshotId: thread.id,
+    snapshotRevision,
+    kind: "artifact" as const,
+    id: "project-document-admission",
+  };
+  thread.graph.nodes.push({
+    id: "graph:artifact:project-document-admission",
+    ref: { kind: "artifact", id: evidenceRef.id },
+    entityKind: "artifact",
+    artifactKind: "document",
+    label: "Project document admission",
+    system: "digital-thread",
+    freshness: "fresh",
+    summary: "Recorded documentary admission",
+  });
+  const baseline = {
+    ...activityView(
+      "activity:brief-baseline",
+      "requirements",
+      "completed",
+      ["brief-baseline"],
+    ),
+    evidenceRefs: [evidenceRef],
+  };
+  const active = {
+    ...activityView(
+      "activity:active-build",
+      "system-model",
+      "active",
+      ["active-build"],
+    ),
+    dependencyEvidenceRefs: [evidenceRef],
+  };
+
+  const hero = buildOverviewThreadHero(thread, [baseline, active]);
+  const evidence = hero.nodes.find((item) =>
+    item.key === `artifact:${evidenceRef.id}`
+  );
+  const dependency = hero.edges.find((edge) =>
+    edge.kind === "project-dependency"
+  );
+
+  assertEquals(evidence?.lane, "requirements");
+  assertEquals(dependency?.fromKey, `artifact:${evidenceRef.id}`);
+  assertEquals(
+    dependency?.toKey,
+    "project-activity:activity:active-build",
+  );
+  assertEquals(dependency?.pathCount, 1);
+});
+
 Deno.test("Overview opens registered whole Apps without a native CAD fallback", async () => {
   const overview = await Deno.readTextFile(
     new URL("./src/project/overview.tsx", import.meta.url),
@@ -98,13 +281,16 @@ Deno.test("Overview opens registered whole Apps without a native CAD fallback", 
   assertEquals(overview.includes("thread-asset-open-links"), false);
   assertEquals(overview.includes("<GltfAssetCanvas"), false);
 
-  assertStringIncludes(hero, "resolveOverviewThreadViewerCapabilities(");
+  assertEquals(
+    hero.includes("resolveOverviewThreadViewerCapabilities("),
+    false,
+  );
   assertStringIncludes(hero, "function overviewNodeContextActions(");
   assertStringIncludes(hero, "viewerSessionsByNodeKey.get(item.key) ?? []");
   assertStringIncludes(hero, 'kind: "open-session"');
   assertStringIncludes(
     hero,
-    "uniqueOverviewThreadViewerSession(anchoredSessions)",
+    "for (const session of anchoredSessions)",
   );
   assertStringIncludes(hero, "sessionId: session.id");
   assertStringIncludes(
@@ -113,14 +299,12 @@ Deno.test("Overview opens registered whole Apps without a native CAD fallback", 
   );
   assertEquals(hero.includes('kind: "open-cad"'), false);
   assertEquals(hero.includes("capabilities.cadAssets"), false);
-  assertStringIncludes(hero, "requestExactApp");
-  assertStringIncludes(
-    hero,
-    "uniqueOverviewThreadViewerSession(sessions)",
-  );
-  assertEquals(hero.includes("<OverviewThreadContextMenu"), false);
-  assertEquals(hero.includes("<DropdownMenuContextTrigger"), false);
-  assertStringIncludes(hero, "<OverviewNodeSelectionCard");
+  assertEquals(hero.includes("requestExactApp"), false);
+  assertStringIncludes(hero, "<OverviewThreadContextMenu");
+  assertStringIncludes(hero, "<DropdownMenuContextTrigger");
+  assertStringIncludes(hero, "Open hull monitor");
+  assertStringIncludes(hero, "memberViewerEntries");
+  assertEquals(hero.includes("<OverviewNodeSelectionCard"), false);
   assertEquals(hero.includes("<GltfAssetCanvas"), false);
   assertStringIncludes(hero, "session={viewerSession}");
   assertStringIncludes(appFrame, "loadVerifiedMcpAppDocument");
@@ -135,10 +319,8 @@ Deno.test("Overview opens registered whole Apps without a native CAD fallback", 
   assertStringIncludes(hero, 'className="overview-thread-viewer-layer"');
   assertEquals(hero.includes("Open STEP"), false);
 
-  assertStringIncludes(
-    capabilities,
-    "A domain surface enters\n * the whiteboard only through an exact server-projected whole-App binding.",
-  );
+  assertStringIncludes(capabilities, "Zero is unavailable");
+  assertEquals(capabilities.includes("inspectRecord"), false);
   assertEquals(capabilities.includes("GLB"), false);
   assertEquals(capabilities.includes("cadAssets"), false);
   assertEquals(overview.includes('method="POST"'), false);

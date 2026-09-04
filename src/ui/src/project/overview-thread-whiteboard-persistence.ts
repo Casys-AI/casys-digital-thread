@@ -1,5 +1,7 @@
 import type {
   OverviewThreadD3FlowGroupPlacement,
+  OverviewThreadD3FlowHullSort,
+  OverviewThreadD3FlowHullView,
   OverviewThreadD3FlowNodePlacement,
 } from "./overview-thread-d3-flow-layout.ts";
 import type { OverviewThreadViewerGeometry } from "./overview-thread-viewer-geometry.ts";
@@ -18,10 +20,11 @@ import {
  * are admitted only after exact reconciliation with that snapshot.
  */
 
-export const OVERVIEW_THREAD_WHITEBOARD_PRESENTATION_VERSION = 2;
+export const OVERVIEW_THREAD_WHITEBOARD_PRESENTATION_VERSION = 3;
 
 const STORAGE_NAMESPACE = "casys.project-whiteboard.presentation";
 const PRESENTATION_SCHEMA = "casys-project-whiteboard-presentation";
+const LEGACY_PRESENTATION_VERSIONS = [2, 1] as const;
 const MAX_PROJECT_ID_LENGTH = 512;
 const MAX_ID_LENGTH = 4_096;
 const MAX_PLACEMENT_COUNT = 10_000;
@@ -57,16 +60,6 @@ interface OverviewThreadWhiteboardPresentationViewerBase {
   readonly restoreGeometry?: OverviewThreadViewerGeometry;
 }
 
-export interface OverviewThreadWhiteboardRecordPresentationViewer
-  extends OverviewThreadWhiteboardPresentationViewerBase {
-  readonly kind: "record";
-}
-
-export interface OverviewThreadWhiteboardActivityPresentationViewer
-  extends OverviewThreadWhiteboardPresentationViewerBase {
-  readonly kind: "activity";
-}
-
 /**
  * One exact server-projected viewer descriptor. Local state retains only its
  * stable session id and spatial presentation — never its URL or runtime data.
@@ -78,13 +71,9 @@ export interface OverviewThreadWhiteboardSessionPresentationViewer
 }
 
 export type OverviewThreadWhiteboardPresentationViewer =
-  | OverviewThreadWhiteboardRecordPresentationViewer
-  | OverviewThreadWhiteboardActivityPresentationViewer
-  | OverviewThreadWhiteboardSessionPresentationViewer;
+  OverviewThreadWhiteboardSessionPresentationViewer;
 
 export interface OverviewThreadWhiteboardViewerCapability {
-  readonly record?: boolean;
-  readonly activity?: boolean;
   /** Exact session keys from the current viewer-sessions replacement. */
   readonly sessionIds?: readonly string[] | ReadonlySet<string>;
 }
@@ -117,11 +106,19 @@ interface OverviewThreadWhiteboardPresentationEnvelope {
 export function overviewThreadWhiteboardPresentationStorageKey(
   projectId: string,
 ): string | undefined {
+  return presentationStorageKey(
+    projectId,
+    OVERVIEW_THREAD_WHITEBOARD_PRESENTATION_VERSION,
+  );
+}
+
+function presentationStorageKey(
+  projectId: string,
+  version: number,
+): string | undefined {
   if (!isSafeId(projectId, MAX_PROJECT_ID_LENGTH)) return undefined;
   try {
-    return `${STORAGE_NAMESPACE}:v${OVERVIEW_THREAD_WHITEBOARD_PRESENTATION_VERSION}:${
-      encodeURIComponent(projectId)
-    }`;
+    return `${STORAGE_NAMESPACE}:v${version}:${encodeURIComponent(projectId)}`;
   } catch {
     return undefined;
   }
@@ -209,8 +206,6 @@ export function reconcileOverviewThreadWhiteboardPresentation(
     if (!nodeKeys.has(viewer.nodeKey)) return false;
     const capability = ownValue(current.viewerCapabilities, viewer.nodeKey);
     if (!capability) return false;
-    if (viewer.kind === "record") return capability.record === true;
-    if (viewer.kind === "activity") return capability.activity === true;
     return hasExactSessionId(capability.sessionIds, viewer.sessionId);
   });
 
@@ -237,14 +232,50 @@ export function loadOverviewThreadWhiteboardPresentation(
   } catch {
     return undefined;
   }
-  if (serialized === null) return undefined;
-  const parsed = parseOverviewThreadWhiteboardPresentation(
-    serialized,
-    projectId,
-  );
-  return parsed
-    ? reconcileOverviewThreadWhiteboardPresentation(parsed, current)
-    : undefined;
+  if (serialized !== null) {
+    const parsed = parseOverviewThreadWhiteboardPresentation(
+      serialized,
+      projectId,
+    );
+    return parsed
+      ? reconcileOverviewThreadWhiteboardPresentation(parsed, current)
+      : undefined;
+  }
+
+  for (const version of LEGACY_PRESENTATION_VERSIONS) {
+    const legacyKey = presentationStorageKey(projectId, version);
+    if (!legacyKey) continue;
+    let legacySerialized: string | null;
+    try {
+      legacySerialized = storage.getItem(legacyKey);
+    } catch {
+      return undefined;
+    }
+    if (legacySerialized === null) continue;
+    const migrated = parseLegacyOverviewThreadWhiteboardPresentation(
+      legacySerialized,
+      projectId,
+      version,
+    );
+    if (!migrated) return undefined;
+    const reconciled = reconcileOverviewThreadWhiteboardPresentation(
+      migrated,
+      current,
+    );
+    const currentSerialized = serializeOverviewThreadWhiteboardPresentation(
+      projectId,
+      reconciled,
+    );
+    if (currentSerialized) {
+      try {
+        storage.setItem(key, currentSerialized);
+      } catch {
+        // A read remains useful when local storage is temporarily read-only.
+      }
+    }
+    return reconciled;
+  }
+  return undefined;
 }
 
 /**
@@ -303,6 +334,75 @@ function parsePresentationState(
   };
 }
 
+/**
+ * Migrates only presentation geometry from retired schemas. Native viewer
+ * entries are intentionally discarded; exact MCP App sessions from v2 may be
+ * retained and are still reconciled against the current Thread snapshot.
+ */
+function parseLegacyOverviewThreadWhiteboardPresentation(
+  serialized: string,
+  projectId: string,
+  version: (typeof LEGACY_PRESENTATION_VERSIONS)[number],
+): OverviewThreadWhiteboardPresentationState | undefined {
+  let candidate: unknown;
+  try {
+    candidate = JSON.parse(serialized);
+  } catch {
+    return undefined;
+  }
+  if (
+    !isExactRecord(candidate, ["schema", "version", "projectId", "state"]) ||
+    candidate.schema !== PRESENTATION_SCHEMA ||
+    candidate.version !== version ||
+    candidate.projectId !== projectId ||
+    !isRecord(candidate.state) ||
+    !isExactRecord(candidate.state, [
+      "layoutMode",
+      "groupPlacements",
+      "nodePlacements",
+      "transform",
+      "viewers",
+    ]) ||
+    (candidate.state.layoutMode !== "hierarchy" &&
+      candidate.state.layoutMode !== "radial") ||
+    !Array.isArray(candidate.state.viewers) ||
+    candidate.state.viewers.length > MAX_VIEWER_COUNT
+  ) {
+    return undefined;
+  }
+
+  const groupPlacements = parseGroupPlacements(candidate.state.groupPlacements);
+  const nodePlacements = parseNodePlacements(candidate.state.nodePlacements);
+  const transform = parseTransform(candidate.state.transform);
+  if (!groupPlacements || !nodePlacements || !transform) return undefined;
+
+  const viewers: OverviewThreadWhiteboardPresentationViewer[] = [];
+  const seenIds = new Set<string>();
+  for (const value of candidate.state.viewers) {
+    if (!isRecord(value) || typeof value.kind !== "string") return undefined;
+    if (value.kind === "session") {
+      if (version !== 2) return undefined;
+      const viewer = parseViewer(value);
+      if (!viewer || seenIds.has(viewer.id)) return undefined;
+      seenIds.add(viewer.id);
+      viewers.push(viewer);
+      continue;
+    }
+    const retiredKinds = version === 1
+      ? ["record", "activity", "cad"]
+      : ["record", "activity"];
+    if (!retiredKinds.includes(value.kind)) return undefined;
+  }
+
+  return {
+    layoutMode: candidate.state.layoutMode,
+    groupPlacements,
+    nodePlacements,
+    transform,
+    viewers,
+  };
+}
+
 function parseGroupPlacements(
   candidate: unknown,
 ): Readonly<Record<string, OverviewThreadD3FlowGroupPlacement>> | undefined {
@@ -311,19 +411,92 @@ function parseGroupPlacements(
   if (entries.length > MAX_PLACEMENT_COUNT) return undefined;
   const result = nullRecord<OverviewThreadD3FlowGroupPlacement>();
   for (const [key, value] of entries) {
-    if (
-      !isSafeId(key) || !isPlacement(value, ["x", "y", "offsetX", "offsetY"])
-    ) {
-      return undefined;
-    }
-    result[key] = copyDefinedCoordinates(value, [
-      "x",
-      "y",
-      "offsetX",
-      "offsetY",
-    ]);
+    const placement = isSafeId(key) ? parseGroupPlacement(value) : undefined;
+    if (!placement) return undefined;
+    result[key] = placement;
   }
   return result;
+}
+
+/**
+ * Reading state a hull remembers, alongside its box. These are presentation
+ * choices: an unknown value rejects the whole entry rather than degrading to a
+ * default, so a restored board is exactly what was saved or nothing.
+ */
+const HULL_VIEWS: readonly string[] = ["list", "matrix"];
+const HULL_SORTS: readonly string[] = ["recorded", "recent", "name"];
+
+/**
+ * One hull's remembered box.
+ *
+ * A hull carries more than a position: an operator-chosen size and whether it
+ * is folded. All of it is presentation, and all of it is validated here — an
+ * unknown or malformed field rejects the whole entry rather than being dropped
+ * silently, so a restored board is either exactly what was saved or nothing.
+ */
+function parseGroupPlacement(
+  candidate: unknown,
+): OverviewThreadD3FlowGroupPlacement | undefined {
+  if (!isRecord(candidate)) return undefined;
+  const coordinateKeys = ["x", "y", "offsetX", "offsetY"] as const;
+  const dimensionKeys = ["width", "height"] as const;
+  const ownKeys = Object.keys(candidate);
+  if (ownKeys.length === 0) return undefined;
+  for (const key of ownKeys) {
+    const value = candidate[key];
+    if ((coordinateKeys as readonly string[]).includes(key)) {
+      if (!isCoordinate(value)) return undefined;
+      continue;
+    }
+    if ((dimensionKeys as readonly string[]).includes(key)) {
+      if (!isPositiveDimension(value)) return undefined;
+      continue;
+    }
+    if (key === "collapsed") {
+      if (typeof value !== "boolean") return undefined;
+      continue;
+    }
+    if (key === "view") {
+      if (!HULL_VIEWS.includes(value as string)) return undefined;
+      continue;
+    }
+    if (key === "sort") {
+      if (!HULL_SORTS.includes(value as string)) return undefined;
+      continue;
+    }
+    if (key === "scrollRow") {
+      if (
+        typeof value !== "number" || !Number.isInteger(value) || value < 0
+      ) {
+        return undefined;
+      }
+      continue;
+    }
+    return undefined;
+  }
+  const placement = nullRecord<number | boolean>();
+  for (const key of [...coordinateKeys, ...dimensionKeys]) {
+    const value = candidate[key];
+    if (Object.hasOwn(candidate, key) && typeof value === "number") {
+      placement[key] = value;
+    }
+  }
+  if (typeof candidate.collapsed === "boolean") {
+    placement.collapsed = candidate.collapsed;
+  }
+  const view = candidate.view;
+  const sort = candidate.sort;
+  const scrollRow = candidate.scrollRow;
+  return {
+    ...(placement as OverviewThreadD3FlowGroupPlacement),
+    ...(typeof view === "string" && HULL_VIEWS.includes(view)
+      ? { view: view as OverviewThreadD3FlowHullView }
+      : {}),
+    ...(typeof sort === "string" && HULL_SORTS.includes(sort)
+      ? { sort: sort as OverviewThreadD3FlowHullSort }
+      : {}),
+    ...(typeof scrollRow === "number" ? { scrollRow } : {}),
+  };
 }
 
 function parseNodePlacements(
@@ -379,31 +552,19 @@ function parseViewer(
   candidate: unknown,
 ): OverviewThreadWhiteboardPresentationViewer | undefined {
   if (!isRecord(candidate)) return undefined;
-  const isSession = candidate.kind === "session";
   const hasRestoreGeometry = Object.hasOwn(candidate, "restoreGeometry");
-  const keys = isSession
-    ? [
-      "kind",
-      "id",
-      "nodeKey",
-      "sessionId",
-      "geometry",
-      "z",
-      "expanded",
-      ...(hasRestoreGeometry ? ["restoreGeometry"] : []),
-    ]
-    : [
-      "kind",
-      "id",
-      "nodeKey",
-      "geometry",
-      "z",
-      "expanded",
-      ...(hasRestoreGeometry ? ["restoreGeometry"] : []),
-    ];
+  const keys = [
+    "kind",
+    "id",
+    "nodeKey",
+    "sessionId",
+    "geometry",
+    "z",
+    "expanded",
+    ...(hasRestoreGeometry ? ["restoreGeometry"] : []),
+  ];
   if (
-    (candidate.kind !== "record" && candidate.kind !== "activity" &&
-      !isSession) ||
+    candidate.kind !== "session" ||
     !isExactRecord(candidate, keys) ||
     !isSafeId(candidate.id) ||
     !isSafeId(candidate.nodeKey) ||
@@ -423,32 +584,17 @@ function parseViewer(
     : undefined;
   if (!geometry || (candidate.expanded && !restoreGeometry)) return undefined;
 
-  if (isSession) {
-    if (!isSafeId(candidate.sessionId)) return undefined;
-    const viewer: OverviewThreadWhiteboardSessionPresentationViewer = {
-      kind: "session",
-      id: candidate.id,
-      nodeKey: candidate.nodeKey,
-      sessionId: candidate.sessionId,
-      geometry,
-      z: candidate.z as number,
-      expanded: candidate.expanded,
-      ...(restoreGeometry ? { restoreGeometry } : {}),
-    };
-    return viewer.id === expectedViewerId(viewer) ? viewer : undefined;
-  }
-
-  const viewer:
-    | OverviewThreadWhiteboardRecordPresentationViewer
-    | OverviewThreadWhiteboardActivityPresentationViewer = {
-      kind: candidate.kind === "record" ? "record" : "activity",
-      id: candidate.id,
-      nodeKey: candidate.nodeKey,
-      geometry,
-      z: candidate.z as number,
-      expanded: candidate.expanded,
-      ...(restoreGeometry ? { restoreGeometry } : {}),
-    };
+  if (!isSafeId(candidate.sessionId)) return undefined;
+  const viewer: OverviewThreadWhiteboardSessionPresentationViewer = {
+    kind: "session",
+    id: candidate.id,
+    nodeKey: candidate.nodeKey,
+    sessionId: candidate.sessionId,
+    geometry,
+    z: candidate.z as number,
+    expanded: candidate.expanded,
+    ...(restoreGeometry ? { restoreGeometry } : {}),
+  };
   return viewer.id === expectedViewerId(viewer) ? viewer : undefined;
 }
 
@@ -475,10 +621,7 @@ function parseViewerGeometry(
 function expectedViewerId(
   viewer: OverviewThreadWhiteboardPresentationViewer,
 ): string {
-  if (viewer.kind === "session") {
-    return `session:${viewer.nodeKey}:${viewer.sessionId}`;
-  }
-  return `${viewer.kind}:${viewer.nodeKey}`;
+  return `session:${viewer.nodeKey}:${viewer.sessionId}`;
 }
 
 function isPlacement(

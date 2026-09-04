@@ -13,12 +13,33 @@ Deno.test("preview:thread defaults Vite to 5173 and the BFF to 5175", () => {
 });
 
 Deno.test("preview:thread launches the BFF on 5175 and Vite on 5173", () => {
-  const commands = buildPreviewThreadCommands(["--project-id=cantilever-arm-ca01"]);
+  const commands = buildPreviewThreadCommands([
+    "--project-id=cantilever-arm-ca01",
+  ]);
   assertEquals(commands.map((command) => command.name), ["bff", "ui"]);
 
   const [bff, ui] = commands;
   assertEquals(bff.args.includes(`--port=${PREVIEW_THREAD_BFF_PORT}`), true);
   assertEquals(bff.args.includes("--workspace-id=primary"), true);
+  assertEquals(bff.args.includes("--no-prompt"), true);
+  assertEquals(
+    bff.args.includes(
+      "--allow-read=state,src/ui/dist/thread,config/projects,config/thread-subjects,config/mcp-fleet.json",
+    ),
+    true,
+  );
+  assertEquals(
+    bff.args.includes(
+      "--viewer-app-registry=state/local/thread-viewer-apps/registry.json",
+    ),
+    true,
+  );
+  assertEquals(
+    bff.args.includes(
+      "--viewer-app-object-dir=state/local/thread-viewer-apps/objects",
+    ),
+    true,
+  );
   assertEquals(bff.args.includes("--project-id=cantilever-arm-ca01"), true);
 
   assertEquals(ui.command, "npm");
@@ -33,9 +54,17 @@ Deno.test("native Vite config defaults match preview:thread ports", async () => 
   const source = await Deno.readTextFile(
     new URL("../../src/ui/vite.native.config.ts", import.meta.url),
   );
-  assertStringIncludes(source, 'environmentPort("CASYS_COCKPIT_BFF_PORT", 5175)');
-  assertStringIncludes(source, 'environmentPort("CASYS_COCKPIT_UI_PORT", 5173)');
+  assertStringIncludes(
+    source,
+    'environmentPort("CASYS_COCKPIT_BFF_PORT", 5175)',
+  );
+  assertStringIncludes(
+    source,
+    'environmentPort("CASYS_COCKPIT_UI_PORT", 5173)',
+  );
   assertStringIncludes(source, "workbench-root-rewrite");
+  assertStringIncludes(source, "development-mcp-app-script-nonce");
+  assertStringIncludes(source, "casys-mcp-app-script-nonce");
 });
 
 Deno.test("preview:cockpit grants the anchored state root to the read-only BFF", async () => {

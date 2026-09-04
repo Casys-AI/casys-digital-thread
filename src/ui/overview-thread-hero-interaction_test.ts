@@ -1,6 +1,6 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 
-Deno.test("Overview thread selection opens locally and a second click closes it", async () => {
+Deno.test("Overview thread selection toggles graph focus without opening a viewer", async () => {
   const source = await Deno.readTextFile(
     new URL("./src/project/overview-thread-hero.tsx", import.meta.url),
   );
@@ -30,7 +30,8 @@ Deno.test("Overview thread keeps navigation explicit and keyboard accessible", a
   assertStringIncludes(source, 'role="group"');
   assertStringIncludes(source, 'role="button"');
   assertStringIncludes(source, "tabIndex={tabIndex}");
-  assertStringIncludes(source, "aria-expanded={selected}");
+  assertStringIncludes(source, "aria-pressed={selected}");
+  assertEquals(source.includes("aria-controls={selected"), false);
   assertStringIncludes(source, 'event.key === "Enter"');
   assertStringIncludes(source, 'event.key === "ArrowUp"');
   assertStringIncludes(source, 'event.key === "ArrowRight"');
@@ -229,7 +230,7 @@ Deno.test("Whiteboard viewers remain free spatial objects and Fit recovers the w
     "function readOverviewWhiteboardBounds(",
     "function overviewViewerGeometry(",
   );
-  assertStringIncludes(bounds, "unionOverviewThreadWhiteboardRects([");
+  assertStringIncludes(bounds, "overviewThreadWhiteboardContentBounds(");
   assertStringIncludes(bounds, "viewer.restoreGeometry ??");
   assertStringIncludes(bounds, "overviewViewerGeometry(viewer)");
 
@@ -316,9 +317,9 @@ Deno.test("Overview hierarchy drags whole group surfaces or labels while constra
   assertStringIncludes(groupLabels, 'beginDrag("group", group.key, event)');
   assertStringIncludes(
     groupLabels,
-    'aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"',
+    'aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+F10"',
   );
-  assertEquals(groupLabels.includes("Shift+F10"), false);
+  assertStringIncludes(groupLabels, "DropdownMenuContextTrigger");
 
   assertStringIncludes(renderer, "const FLOW_DRAG_THRESHOLD_PX = 4;");
   assertStringIncludes(renderer, "Math.hypot(clientDeltaX, clientDeltaY)");
@@ -484,7 +485,7 @@ Deno.test("Overview dynamic cables coalesce drag frames, flush the final point, 
   assertStringIncludes(styles, "transition: none;");
 });
 
-Deno.test("Whiteboard overlay plane keeps viewers and anchored selection transform-synchronised", async () => {
+Deno.test("Whiteboard overlay plane keeps MCP viewers and hull monitor transform-synchronised", async () => {
   const source = await Deno.readTextFile(
     new URL("./src/project/overview-thread-hero.tsx", import.meta.url),
   );
@@ -497,7 +498,7 @@ Deno.test("Whiteboard overlay plane keeps viewers and anchored selection transfo
     viewportStart,
   );
   const worldClose = source.indexOf(
-    "{(viewers.length > 0 || (selected && selectedCard)) && (",
+    "{(viewers.length > 0 ||",
     worldStart,
   );
   const viewerStart = source.indexOf(
@@ -547,10 +548,13 @@ Deno.test("Whiteboard overlay plane keeps viewers and anchored selection transfo
     "buildOverviewThreadViewerConnectorGeometry(",
   );
   assertStringIncludes(viewerPlane, "<OverviewFloatingViewer");
-  assertStringIncludes(viewerPlane, "<OverviewNodeSelectionCard");
+  assertEquals(viewerPlane.includes("<OverviewNodeSelectionCard"), false);
+  assertEquals(source.includes("selectedCard"), false);
+  assertStringIncludes(viewerPlane, "<OverviewHullMonitorCard");
   assertEquals(source.includes("OverviewContextMenuState"), false);
   assertEquals(source.includes("requestContextMenu"), false);
-  assertEquals(source.includes("overview-thread-context-menu"), false);
+  assertStringIncludes(source, "overview-thread-context-menu");
+  assertStringIncludes(source, "memberViewerEntries");
   assertEquals(source.includes('role="menu"'), false);
 });
 
@@ -622,14 +626,13 @@ Deno.test("Overview activity markers stay distinct from recorded Verification na
   const actionModel = source.slice(actionModelStart, actionModelEnd);
   assertEquals(actionModelStart >= 0, true);
   assertEquals(actionModelEnd > actionModelStart, true);
-  assertStringIncludes(actionModel, 'label: "Inspect activity"');
   assertStringIncludes(actionModel, 'label: "Open Activity"');
-  assertStringIncludes(actionModel, 'label: "Inspect record"');
   assertStringIncludes(actionModel, 'label: "Open in Verification"');
   assertStringIncludes(
     actionModel,
-    "const anchoredSessions = viewerSessionsByNodeKey.get(item.key) ?? []",
+    "viewerSessionsByNodeKey.get(item.key) ?? []",
   );
+  assertStringIncludes(actionModel, "for (const session of anchoredSessions)");
   assertStringIncludes(actionModel, 'kind: "open-session"');
   assertEquals(actionModel.includes("capabilities.cadAssets"), false);
 

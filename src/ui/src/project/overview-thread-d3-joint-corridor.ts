@@ -107,6 +107,14 @@ interface RouteLink extends SimulationLinkDatum<RouteParticle> {
 interface RelaxedTrajectory {
   readonly input: NormalizedTrajectory;
   readonly initialTopology: string;
+  /**
+   * Obstacle-safe individual route produced before magnetic relaxation.
+   * Bundling is optional physics; it must never erase a valid exact cable.
+   */
+  readonly baseline: {
+    readonly points: readonly OverviewThreadD3CablePoint[];
+    readonly d: string;
+  };
   readonly particles: readonly RouteParticle[];
 }
 
@@ -143,6 +151,9 @@ export function buildOverviewThreadD3JointCorridor(
   const particles: RouteParticle[] = [];
   const links: RouteLink[] = [];
   const relaxed: RelaxedTrajectory[] = [];
+  // Same length as GROUP_HUB_MARGIN: a combed stub has to travel the hub
+  // offset before it is allowed to bend toward the tray.
+  const COMBED_STUB = 20;
 
   // Stage 1: every edge gets its own obstacle-safe guide before any bundling.
   for (const trajectory of trajectories) {
@@ -174,8 +185,39 @@ export function buildOverviewThreadD3JointCorridor(
       independent.topologySignature,
       routePoints,
     );
+    const baselineD = catmullPathWithExactTangents(
+      shapeGuide,
+      trajectory.sourceTangent,
+      trajectory.targetTangent,
+    );
+    if (
+      !baselineD.includes("C") || /[LQAS]/.test(baselineD) ||
+      !overviewThreadD3CableSvgPathClear(
+        baselineD,
+        trajectory.obstacles,
+        0.16,
+      )
+    ) {
+      throw new Error(
+        `${trajectory.key} has no safe individual Catmull-Rom baseline`,
+      );
+    }
+    const combStubs = span > 2 * COMBED_STUB + 8;
+    const stubSource = addScaled(
+      trajectory.source,
+      trajectory.sourceTangent,
+      COMBED_STUB,
+    );
+    const stubTarget = addScaled(
+      trajectory.target,
+      trajectory.targetTangent,
+      -COMBED_STUB,
+    );
+    const lastStep = PARTICLES_PER_ROUTE - 1;
     const routeParticles = routePoints.map((point, step) => {
-      const fixed = step === 0 || step === PARTICLES_PER_ROUTE - 1;
+      const combStep = combStubs && (step === 1 || step === lastStep - 1);
+      const placed = !combStep ? point : step === 1 ? stubSource : stubTarget;
+      const fixed = step === 0 || step === lastStep || combStep;
       const node: RouteParticle = {
         id: `${encodeURIComponent(trajectory.key)}:${step}`,
         routeKey: trajectory.key,
@@ -186,12 +228,12 @@ export function buildOverviewThreadD3JointCorridor(
         ),
         shapeX: shapeGuide[step]!.x,
         shapeY: shapeGuide[step]!.y,
-        x: point.x,
-        y: point.y,
+        x: placed.x,
+        y: placed.y,
         vx: 0,
         vy: 0,
-        fx: fixed ? point.x : undefined,
-        fy: fixed ? point.y : undefined,
+        fx: fixed ? placed.x : undefined,
+        fy: fixed ? placed.y : undefined,
       };
       particles.push(node);
       return node;
@@ -210,6 +252,10 @@ export function buildOverviewThreadD3JointCorridor(
     relaxed.push({
       input: trajectory,
       initialTopology: independent.topologySignature,
+      baseline: {
+        points: Object.freeze(shapeGuide.map(copyPoint)),
+        d: baselineD,
+      },
       particles: routeParticles,
     });
   }
@@ -244,22 +290,24 @@ export function buildOverviewThreadD3JointCorridor(
 
   const routes = new Map<string, OverviewThreadD3JointCorridorRoute>();
   for (const route of relaxed) {
-    const points = Object.freeze(route.particles.map(copyPoint));
-    const d = catmullPathWithExactTangents(
-      points,
+    const relaxedPoints = Object.freeze(route.particles.map(copyPoint));
+    const relaxedD = catmullPathWithExactTangents(
+      relaxedPoints,
       route.input.sourceTangent,
       route.input.targetTangent,
     );
-    if (!d.includes("C") || /[LQAS]/.test(d)) {
+    if (!relaxedD.includes("C") || /[LQAS]/.test(relaxedD)) {
       throw new Error(
         `${route.input.key} did not produce cubic-only Catmull-Rom`,
       );
     }
-    if (!overviewThreadD3CableSvgPathClear(d, route.input.obstacles, 0.16)) {
-      throw new Error(
-        `${route.input.key} has no safe jointly bundled Catmull-Rom route`,
-      );
-    }
+    const bundled = overviewThreadD3CableSvgPathClear(
+      relaxedD,
+      route.input.obstacles,
+      0.16,
+    );
+    const points = bundled ? relaxedPoints : route.baseline.points;
+    const d = bundled ? relaxedD : route.baseline.d;
     routes.set(
       route.input.key,
       Object.freeze({
@@ -272,7 +320,9 @@ export function buildOverviewThreadD3JointCorridor(
         arrivalTangent: copyPoint(route.input.targetTangent),
         topologySignature: `${route.initialTopology}|joint-corridor:v2|bundle:${
           encodeURIComponent(route.input.bundleKey)
-        }|particles:${PARTICLES_PER_ROUTE}`,
+        }|particles:${PARTICLES_PER_ROUTE}|mode:${
+          bundled ? "magnetic" : "individual"
+        }`,
       }),
     );
   }
@@ -390,7 +440,12 @@ function compatibleGroups(
   }
   return new Map([...groups.entries()].map(([key, group]) => [
     key,
+    // Rank 0 is the topmost source so pitch offsets follow the ladder.
+    // A lexical key can belong to a geometrically higher hub and invert
+    // the bundle even when identity mapping would not cross.
     group.toSorted((left, right) =>
+      left.input.source.y - right.input.source.y ||
+      left.input.source.x - right.input.source.x ||
       left.input.key.localeCompare(right.input.key)
     ),
   ]));
@@ -436,11 +491,29 @@ function routeLaplacianForce(
 function progressiveBundleForce(
   groups: ReadonlyMap<string, readonly RelaxedTrajectory[]>,
 ): Force<RouteParticle, RouteLink> {
+  const INTER_CABLE_GAP = 3;
   const force = ((alpha: number) => {
     for (const routes of groups.values()) {
       if (routes.length < 2) continue;
       const meanDirection = weightedMeanDirection(routes);
       const normal = { x: -meanDirection.y, y: meanDirection.x };
+      // Must stay aligned with segmentWidth("bundle-trunk") in
+      // overview-thread-d3-flow-layout.ts; pitch is a rendered gap, not
+      // a topological merge.
+      const widths = routes.map((route) =>
+        0.95 + Math.min(
+          2.5,
+          Math.log2(Math.max(0, route.input.weight) + 1) * 0.34,
+        )
+      );
+      const totalWidth = widths.reduce((sum, width) => sum + width, 0);
+      let cursor = -(totalWidth + INTER_CABLE_GAP * (routes.length - 1)) /
+        2;
+      const offsets = widths.map((width) => {
+        const offset = cursor + width / 2;
+        cursor += width + INTER_CABLE_GAP;
+        return offset;
+      });
       for (let step = 1; step < PARTICLES_PER_ROUTE - 1; step++) {
         const progress = step / (PARTICLES_PER_ROUTE - 1);
         const envelope = Math.pow(Math.sin(Math.PI * progress), 1.7);
@@ -457,14 +530,9 @@ function progressiveBundleForce(
           }),
           { x: 0, y: 0 },
         );
-        const middleRank = (routes.length - 1) / 2;
         for (const [rank, route] of routes.entries()) {
           const node = route.particles[step]!;
-          const separation = clamp(
-            (rank - middleRank) * 0.18,
-            -2.2,
-            2.2,
-          ) * envelope;
+          const separation = offsets[rank]! * envelope;
           const target = {
             x: centroid.x + normal.x * separation,
             y: centroid.y + normal.y * separation,
@@ -751,9 +819,28 @@ function catmullPathWithExactTangents(
   if (visible.length !== points.length - 1) {
     throw new Error("Unexpected Catmull topology");
   }
+  const exact = visible.map((segment, index) => {
+    const first = index === 0;
+    const last = index === visible.length - 1;
+    const departureHandle = first
+      ? Math.max(2, distance(segment.source, segment.control1))
+      : 0;
+    const arrivalHandle = last
+      ? Math.max(2, distance(segment.control2, segment.target))
+      : 0;
+    return {
+      ...segment,
+      control1: first
+        ? addScaled(segment.source, departure, departureHandle)
+        : segment.control1,
+      control2: last
+        ? addScaled(segment.target, arrival, -arrivalHandle)
+        : segment.control2,
+    };
+  });
   return [
     `M${format(points[0]!.x)},${format(points[0]!.y)}`,
-    ...visible.map(serialize),
+    ...exact.map(serialize),
   ].join("");
 }
 

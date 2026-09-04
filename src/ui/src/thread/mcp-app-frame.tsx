@@ -11,6 +11,7 @@ import {
   loadVerifiedMcpAppDocument,
   readMcpAppHostScriptNonce,
 } from "./mcp-app-document-loader.ts";
+import { resolveMcpAppTheme } from "./mcp-app-frame-theme.ts";
 
 export interface McpAppFrameProps {
   readonly session: ThreadViewerSession;
@@ -156,8 +157,13 @@ export function McpAppFrame({
 }
 
 function resolvedTheme(): "light" | "dark" {
-  if (document.documentElement.classList.contains("dark")) return "dark";
-  return globalThis.matchMedia?.("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
+  const root = document.documentElement;
+  return resolveMcpAppTheme({
+    dataTheme: root.dataset.theme,
+    darkClass: root.classList.contains("dark"),
+    lightClass: root.classList.contains("light"),
+    colorScheme: globalThis.getComputedStyle?.(root).colorScheme,
+    prefersDark: globalThis.matchMedia?.("(prefers-color-scheme: dark)")
+      .matches ?? false,
+  });
 }
