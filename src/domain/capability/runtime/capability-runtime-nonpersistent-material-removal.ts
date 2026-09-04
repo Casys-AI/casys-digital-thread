@@ -26,7 +26,7 @@ import {
   parseMaterial,
   pinnedImageReference,
 } from "./capability-runtime-cache-preparation-validation.ts";
-import type { CapabilityRuntimeMaterialIdentity } from "./capability-runtime-supervision.ts";
+import type { CapabilityRuntimeMaterialIdentity } from "./capability-runtime-material.ts";
 
 export const CAPABILITY_RUNTIME_NONPERSISTENT_REMOVAL_PLAN_SCHEMA =
   "capability-runtime-nonpersistent-removal-plan/1.0" as const;

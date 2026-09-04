@@ -10,7 +10,7 @@ import {
 } from "../../kernel/case-validation.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
 import { pinnedOciImageReference } from "../../compile/isolation/local-isolation-runtime.ts";
-import type { CapabilityRuntimeMaterialIdentity } from "./capability-runtime-supervision.ts";
+import type { CapabilityRuntimeMaterialIdentity } from "./capability-runtime-material.ts";
 import {
   CAPABILITY_RUNTIME_CACHE_PREPARATION_RECIPE_SCHEMA,
   type CapabilityRuntimeCachePreparationIntent,

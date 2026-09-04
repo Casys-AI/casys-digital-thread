@@ -29,7 +29,7 @@ import {
   type CapabilityRuntimeLaunchGroupReference,
   validateCapabilityRuntimeLaunchGroupReference,
 } from "./capability-runtime-launch-group.ts";
-import type { CapabilityRuntimeMaterialIdentity } from "./capability-runtime-supervision.ts";
+import type { CapabilityRuntimeMaterialIdentity } from "./capability-runtime-material.ts";
 
 export const CAPABILITY_RUNTIME_QUALIFICATION_CANDIDATE_SCHEMA_VERSION =
   "capability-runtime-qualification-candidate/1.0" as const;

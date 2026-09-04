@@ -7,7 +7,7 @@
  */
 
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
-import type { CapabilityRuntimeMaterialIdentity } from "./capability-runtime-supervision.ts";
+import type { CapabilityRuntimeMaterialIdentity } from "./capability-runtime-material.ts";
 
 export const CAPABILITY_RUNTIME_CACHE_PREPARATION_RECIPE_SCHEMA =
   "capability-runtime-cache-preparation-recipe/1.0" as const;
