@@ -21,9 +21,18 @@ admin-lock-revisions/<revision>.json   immutable exact bodies
 admin-lock-head.json                   exact current revision fingerprint
 ```
 
-Every revision carries the hash of its predecessor. Rollback creates a new successor
-copying the selected historic unit body; it never moves the head backwards. The retired
-overwrite-era `admin-lock.json` is deliberately ignored and never migrated.
+Every revision carries the hash of its predecessor. Historical revisions are immutable
+evidence: they are read by schema, canonical JSON, the exact predecessor-hash chain and
+the exact head fingerprint. The current catalogue is not an allowlist for old bodies,
+and no code-owned historical runtime fingerprint list is maintained. New writes still
+require exact current-catalogue identities. A catalogue-stale head is readable so
+`status` and `lock-review` can display and reconverge it; it does not authorize
+activation. Rollback creates a new successor copying the selected historic unit body; it
+never moves the head backwards. `rollback-review` refuses a source whose unit identities
+are not exact in the current catalogue. Rollback to a historical revision whose
+identities still match remains allowed. The retired overwrite-era `admin-lock.json` is
+deliberately ignored and never migrated. Never edit, delete or rewrite `state/local`
+history.
 
 After each initial authorization, amendment, or full revocation, the server reads every
 local capability ledger and rebuilds the union of all currently authorized proposals.

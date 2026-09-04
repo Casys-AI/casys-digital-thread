@@ -67,6 +67,7 @@ import type {
   CapabilityRuntimeAdminLock,
   CapabilityRuntimeCatalog,
 } from "./read-model/capability-runtime-catalog.ts";
+import { validateCapabilityRuntimeAdminLock } from "./validate-capability-runtime-admin-lock.ts";
 
 export interface LocalCapabilityRuntimeLockReview {
   readonly kind: "lock-apply" | "rollback-apply";
@@ -246,7 +247,10 @@ export class LocalCapabilityRuntimeAdminService {
     return await lockReview(
       "rollback-apply",
       current,
-      await rollbackSuccessor(current, source.units),
+      await validateCapabilityRuntimeAdminLock(
+        await rollbackSuccessor(current, source.units),
+        this.options.catalog,
+      ),
     );
   }
 

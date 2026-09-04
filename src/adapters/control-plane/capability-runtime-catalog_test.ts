@@ -3,11 +3,6 @@ import {
   createFirstPartyCapabilityRuntimeCatalog,
   createFirstPartyChronoRolloverPredecessorUnit,
   createFirstPartySysonRolloverPredecessorUnit,
-  firstPartyAdmittedModelicaHistoryPredecessor,
-  firstPartyBuild123dObservationHistoryPredecessor,
-  firstPartyBuild123dSandboxHistoryPredecessor,
-  firstPartyGeometryModuleAssemblerHistoryPredecessor,
-  firstPartyQualifiedModelicaHistoryPredecessor,
 } from "./first-party-capability-binding-catalog.ts";
 import {
   createFirstPartyChronoRolloverPredecessorLaunchGroup,
@@ -102,13 +97,6 @@ Deno.test("atomic first-party runtime catalogue separates sources with distinct 
   );
   const predecessorSyson = await createFirstPartySysonRolloverPredecessorUnit();
   const predecessorChrono = await createFirstPartyChronoRolloverPredecessorUnit();
-  const predecessorGeometryModuleAssembler =
-    firstPartyGeometryModuleAssemblerHistoryPredecessor();
-  const predecessorAdmittedModelica = firstPartyAdmittedModelicaHistoryPredecessor();
-  const predecessorQualifiedModelica = firstPartyQualifiedModelicaHistoryPredecessor();
-  const predecessorBuild123dSandbox = firstPartyBuild123dSandboxHistoryPredecessor();
-  const predecessorBuild123dObservation =
-    firstPartyBuild123dObservationHistoryPredecessor();
   assertEquals(predecessorSyson.version, "1.0.0");
   // The retired descriptor is a historical authority, not a derived alias for
   // the current SysON material. Keep both fingerprints literal so a future
@@ -169,18 +157,6 @@ Deno.test("atomic first-party runtime catalogue separates sources with distinct 
       ?.platforms,
     ["linux/arm64"],
   );
-  assertEquals(predecessorGeometryModuleAssembler.manifestFingerprint, {
-    algorithm: "sha256",
-    digest: "e03e1f245088f8f49b2d680ae6d4ff7664329f4ea0227be74e701f9f579c532f",
-  });
-  assertEquals(predecessorAdmittedModelica.manifestFingerprint, {
-    algorithm: "sha256",
-    digest: "8792f440a4ee3b6f835f730082081828c87fe657044fc5d1bd6405b64bdfb515",
-  });
-  assertEquals(predecessorQualifiedModelica.manifestFingerprint, {
-    algorithm: "sha256",
-    digest: "6d34121004cc91a6e9286e70b63afa768ea7fcf9dcd0b0f8360aec08e9d9a173",
-  });
   assertEquals(
     catalog.units.find((unit) => unit.id === "casys.modelica-qualified-worker")
       ?.manifestFingerprint,
@@ -203,56 +179,6 @@ Deno.test("atomic first-party runtime catalogue separates sources with distinct 
     catalog.units.find((unit) => unit.id === "casys.modelica-worker")
       ?.materials[0]?.imageReference,
   );
-  assertEquals(predecessorBuild123dSandbox.manifestFingerprint, {
-    algorithm: "sha256",
-    digest: "7450ed6ffcb1bfd2b970e2f15647eaf8097a26b1656d19864992bde6e297b15e",
-  });
-  assertEquals(predecessorBuild123dObservation.manifestFingerprint, {
-    algorithm: "sha256",
-    digest: "7540b7263f570cec0ea4218ecf902400b817e9143cdf6ca334c9d2d773213bad",
-  });
-  assertEquals(
-    catalog.units.some((unit) =>
-      unit.id === predecessorGeometryModuleAssembler.id &&
-      unit.version === predecessorGeometryModuleAssembler.version &&
-      unit.manifestFingerprint.digest ===
-        predecessorGeometryModuleAssembler.manifestFingerprint.digest
-    ),
-    false,
-  );
-  assertEquals(
-    catalog.units.some((unit) =>
-      unit.id === predecessorAdmittedModelica.id &&
-      unit.version === predecessorAdmittedModelica.version &&
-      unit.manifestFingerprint.digest ===
-        predecessorAdmittedModelica.manifestFingerprint.digest
-    ),
-    false,
-  );
-  assertEquals(
-    catalog.units.some((unit) =>
-      unit.id === predecessorQualifiedModelica.id &&
-      unit.version === predecessorQualifiedModelica.version &&
-      unit.manifestFingerprint.digest ===
-        predecessorQualifiedModelica.manifestFingerprint.digest
-    ),
-    false,
-  );
-  for (
-    const predecessor of [
-      predecessorBuild123dSandbox,
-      predecessorBuild123dObservation,
-    ]
-  ) {
-    assertEquals(
-      catalog.units.some((unit) =>
-        unit.id === predecessor.id &&
-        unit.version === predecessor.version &&
-        unit.manifestFingerprint.digest === predecessor.manifestFingerprint.digest
-      ),
-      false,
-    );
-  }
   assertEquals(catalog.units.map((unit) => unit.id), [
     "casys.syson-stack",
     "casys.mcp-build123d-sandbox",

@@ -43,13 +43,6 @@ import { FileCapabilityRuntimeQualificationAttestationStore } from "./file-capab
 import { FileProjectCapabilityLedgerStore } from "./file-project-capability-ledger-store.ts";
 import {
   createFirstPartyCapabilityRuntimeCatalog,
-  createFirstPartyChronoRolloverPredecessorUnit,
-  createFirstPartySysonRolloverPredecessorUnit,
-  firstPartyAdmittedModelicaHistoryPredecessor,
-  firstPartyBuild123dObservationHistoryPredecessor,
-  firstPartyBuild123dSandboxHistoryPredecessor,
-  firstPartyGeometryModuleAssemblerHistoryPredecessor,
-  firstPartyQualifiedModelicaHistoryPredecessor,
 } from "./first-party-capability-binding-catalog.ts";
 import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "./first-party-capability-runtime-qualification-candidates.ts";
 import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "./first-party-capability-runtime-qualification-specifications.ts";
@@ -143,15 +136,11 @@ export async function createLocalCapabilityRuntimeReadComposition(
 ): Promise<LocalCapabilityRuntimeReadComposition> {
   const [
     catalog,
-    predecessorSysonUnit,
-    predecessorChronoUnit,
     launchGroups,
     qualificationCandidates,
     qualificationSpecs,
   ] = await Promise.all([
     createFirstPartyCapabilityRuntimeCatalog(),
-    createFirstPartySysonRolloverPredecessorUnit(),
-    createFirstPartyChronoRolloverPredecessorUnit(),
     createFirstPartyCapabilityRuntimeLaunchGroupRegistry(),
     createFirstPartyCapabilityRuntimeQualificationCandidates(),
     createFirstPartyCapabilityRuntimeQualificationSpecifications(),
@@ -347,20 +336,7 @@ export async function createLocalCapabilityRuntimeReadComposition(
       : []),
   ]);
   const policy = new FileCapabilityRuntimeAdminPolicyStore(undefined, catalog);
-  const lock = new FileCapabilityRuntimeAdminLockStore(undefined, catalog, {
-    transitionPredecessors: currentCatalogTransitionPredecessors(
-      catalog,
-      [
-        predecessorSysonUnit,
-        predecessorChronoUnit,
-        firstPartyBuild123dSandboxHistoryPredecessor(),
-        firstPartyBuild123dObservationHistoryPredecessor(),
-        firstPartyGeometryModuleAssemblerHistoryPredecessor(),
-        firstPartyAdmittedModelicaHistoryPredecessor(),
-        firstPartyQualifiedModelicaHistoryPredecessor(),
-      ],
-    ),
-  });
+  const lock = new FileCapabilityRuntimeAdminLockStore(undefined, catalog);
   const hostIdentity = new FileCapabilityRuntimeHostIdentityStore();
   const qualifications = new FileCapabilityRuntimeQualificationAttestationStore();
   const qualificationAttempts = new FileCapabilityRuntimeQualificationAttemptStore();
@@ -402,34 +378,4 @@ export async function createLocalCapabilityRuntimeReadComposition(
     contexts,
     workbench: new ProjectCapabilityWorkbenchProjector({ contexts, states }),
   };
-}
-
-function currentCatalogTransitionPredecessors(
-  catalog: LocalCapabilityRuntimeReadComposition["catalog"],
-  predecessors: readonly {
-    readonly id: string;
-    readonly version: string;
-    readonly manifestFingerprint: ContentFingerprint;
-  }[],
-) {
-  return predecessors.map((predecessor) => {
-    const successor = catalog.units.find((unit) => unit.id === predecessor.id);
-    if (!successor) {
-      throw new Error(
-        `The code-owned local-lock transition predecessor ${predecessor.id} has no current catalogue successor.`,
-      );
-    }
-    return {
-      predecessor: {
-        id: predecessor.id,
-        version: predecessor.version,
-        manifestFingerprint: structuredClone(predecessor.manifestFingerprint),
-      },
-      successor: {
-        id: successor.id,
-        version: successor.version,
-        manifestFingerprint: structuredClone(successor.manifestFingerprint),
-      },
-    };
-  });
 }

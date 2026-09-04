@@ -22,17 +22,15 @@ import type {
   CapabilityRuntimeAdminLock,
   CapabilityRuntimeAdminPolicy,
   CapabilityRuntimeCatalog,
-  CapabilityRuntimeLockedUnit,
 } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
-import { exactVersionToken, safeId } from "../../domain/kernel/case-validation.ts";
-import {
-  validateCapabilityRuntimeAdminLock,
-  validateCapabilityRuntimeAdminPolicy,
-} from "./capability-runtime-catalog.ts";
 import {
   CAPABILITY_RUNTIME_ADMIN_LOCK_SCHEMA_VERSION,
   CAPABILITY_RUNTIME_ADMIN_POLICY_SCHEMA_VERSION,
 } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
+import {
+  validateCapabilityRuntimeAdminLock,
+  validateCapabilityRuntimeAdminPolicy,
+} from "./capability-runtime-catalog.ts";
 import type {
   CapabilityRuntimeHostMutationLock,
   CapabilityRuntimeJournal,
@@ -45,35 +43,6 @@ import {
 } from "../shared/wal/durable-attempt-file-writes.ts";
 
 const DEFAULT_DIRECTORY = "state/local/capability-runtime-host";
-
-/**
- * One retired atomic-unit identity which may be read from an immutable lock
- * history during one explicitly reviewed catalogue transition.  This is
- * server-code configuration, not an admin-lock field and never project data.
- */
-export interface CapabilityRuntimeAdminLockHistoricalManifest {
-  readonly id: string;
-  readonly version: string;
-  readonly manifestFingerprint: CapabilityRuntimeLockedUnit["manifestFingerprint"];
-}
-
-/**
- * A predecessor is readable only when it names the exact old identity of one
- * migration and its successor is still an exact current catalogue unit.
- */
-export interface CapabilityRuntimeAdminLockTransitionPredecessor {
-  readonly predecessor: CapabilityRuntimeAdminLockHistoricalManifest;
-  readonly successor: CapabilityRuntimeAdminLockHistoricalManifest;
-}
-
-/**
- * Code-owned migration authority for immutable local-lock *reads*.  It never
- * relaxes validation for a newly written administrative lock.
- */
-export interface CapabilityRuntimeAdminLockHistoryAuthority {
-  readonly transitionPredecessors:
-    readonly CapabilityRuntimeAdminLockTransitionPredecessor[];
-}
 
 /**
  * Local administrator policy. It is deliberately absent-by-default: absence
@@ -361,15 +330,12 @@ export class FileCapabilityRuntimeLeaseStore implements CapabilityRuntimeLeaseSt
  */
 export class FileCapabilityRuntimeAdminLockStore {
   readonly #legacyPath: string;
-  readonly #historyAuthority: CapabilityRuntimeAdminLockHistoryAuthority;
 
   constructor(
     path = `${DEFAULT_DIRECTORY}/admin-lock.json`,
     private readonly catalog?: CapabilityRuntimeCatalog,
-    historyAuthority?: CapabilityRuntimeAdminLockHistoryAuthority,
   ) {
     this.#legacyPath = requiredPath(path);
-    this.#historyAuthority = normalizeAdminLockHistoryAuthority(historyAuthority);
   }
 
   /**
@@ -406,7 +372,7 @@ export class FileCapabilityRuntimeAdminLockStore {
     try {
       const lock = await readCanonical(
         this.#revisionPath(revision),
-        (value) => this.#validateHistoricalRevision(value),
+        (value) => validateCapabilityRuntimeAdminLock(value),
         `Capability runtime admin lock revision ${revision}`,
       );
       if (lock.revision !== revision) {
@@ -494,9 +460,6 @@ export class FileCapabilityRuntimeAdminLockStore {
   }
 
   async #saveLocked(value: CapabilityRuntimeAdminLock): Promise<void> {
-    // A predecessor declaration makes already-durable history readable while
-    // a catalogue rolls over. It never permits writing that retired material
-    // into a new desired-state revision.
     const next = await validateCapabilityRuntimeAdminLock(value, this.catalog);
     const directory = this.#historyDirectory();
     await Deno.mkdir(directory, { recursive: true });
@@ -689,69 +652,6 @@ export class FileCapabilityRuntimeAdminLockStore {
       units: [],
     }, this.catalog);
   }
-
-  /**
-   * History is immutable evidence, so a changed current catalogue must not
-   * make a previously exact revision unparsable.  The only exception to
-   * current-unit validation is one code-owned predecessor whose exact
-   * successor still appears in that current catalogue.
-   */
-  async #validateHistoricalRevision(
-    value: unknown,
-  ): Promise<CapabilityRuntimeAdminLock> {
-    const lock = await validateCapabilityRuntimeAdminLock(value);
-    if (!this.catalog) {
-      if (this.#historyAuthority.transitionPredecessors.length > 0) {
-        throw new Error(
-          "Capability runtime admin lock historical authority requires one current catalogue.",
-        );
-      }
-      return lock;
-    }
-    this.#assertHistoryAuthorityTargetsCurrentCatalog();
-    for (const locked of lock.units) {
-      if (
-        this.#isCurrentUnit(locked) || this.#isDeclaredHistoricalPredecessor(locked)
-      ) {
-        continue;
-      }
-      throw new TypeError(
-        `$adminLock unit ${locked.id} does not match one exact current unit or declared transition predecessor.`,
-      );
-    }
-    return lock;
-  }
-
-  #assertHistoryAuthorityTargetsCurrentCatalog(): void {
-    for (const transition of this.#historyAuthority.transitionPredecessors) {
-      if (!this.#isCurrentIdentity(transition.successor)) {
-        throw new Error(
-          `Capability runtime admin lock transition successor ${transition.successor.id}@${transition.successor.version} is not one exact current catalogue unit.`,
-        );
-      }
-      if (sameLockedUnitIdentity(transition.predecessor, transition.successor)) {
-        throw new Error(
-          `Capability runtime admin lock transition predecessor ${transition.predecessor.id}@${transition.predecessor.version} must differ from its successor.`,
-        );
-      }
-    }
-  }
-
-  #isCurrentUnit(locked: CapabilityRuntimeLockedUnit): boolean {
-    return this.catalog!.units.some((unit) => sameLockedUnitIdentity(unit, locked));
-  }
-
-  #isCurrentIdentity(
-    manifest: CapabilityRuntimeAdminLockHistoricalManifest,
-  ): boolean {
-    return this.catalog!.units.some((unit) => sameLockedUnitIdentity(unit, manifest));
-  }
-
-  #isDeclaredHistoricalPredecessor(locked: CapabilityRuntimeLockedUnit): boolean {
-    return this.#historyAuthority.transitionPredecessors.some((transition) =>
-      sameLockedUnitIdentity(transition.predecessor, locked)
-    );
-  }
 }
 
 /** Advisory cross-process mutation lock; it owns no project or host data. */
@@ -835,119 +735,6 @@ function sameOrderedMaterials(
       material.materialId === right[index]!.materialId &&
       material.imageDigest === right[index]!.imageDigest
     );
-}
-
-function normalizeAdminLockHistoryAuthority(
-  value: CapabilityRuntimeAdminLockHistoryAuthority | undefined,
-): CapabilityRuntimeAdminLockHistoryAuthority {
-  if (value === undefined) {
-    return Object.freeze({ transitionPredecessors: Object.freeze([]) });
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new TypeError("Capability runtime admin lock history authority is invalid.");
-  }
-  const record = value as unknown as Record<string, unknown>;
-  if (
-    deterministicJson(Object.keys(record).toSorted()) !==
-      deterministicJson(["transitionPredecessors"])
-  ) {
-    throw new TypeError(
-      "Capability runtime admin lock history authority has unsupported fields.",
-    );
-  }
-  if (!Array.isArray(record.transitionPredecessors)) {
-    throw new TypeError(
-      "Capability runtime admin lock transition predecessors must be an array.",
-    );
-  }
-  const transitionPredecessors = record.transitionPredecessors.map((entry, index) => {
-    const path = `$adminLockHistory.transitionPredecessors[${index}]`;
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      throw new TypeError(`${path} must be an object.`);
-    }
-    const transition = entry as Record<string, unknown>;
-    if (
-      deterministicJson(Object.keys(transition).toSorted()) !==
-        deterministicJson(["predecessor", "successor"])
-    ) {
-      throw new TypeError(`${path} has unsupported fields.`);
-    }
-    return Object.freeze({
-      predecessor: normalizeHistoricalManifest(
-        transition.predecessor,
-        `${path}.predecessor`,
-      ),
-      successor: normalizeHistoricalManifest(
-        transition.successor,
-        `${path}.successor`,
-      ),
-    });
-  });
-  const predecessorKeys = transitionPredecessors.map((transition) =>
-    lockedUnitIdentityKey(transition.predecessor)
-  );
-  if (new Set(predecessorKeys).size !== predecessorKeys.length) {
-    throw new TypeError(
-      "Capability runtime admin lock history authority repeats one transition predecessor.",
-    );
-  }
-  return Object.freeze({
-    transitionPredecessors: Object.freeze(transitionPredecessors),
-  });
-}
-
-function normalizeHistoricalManifest(
-  value: unknown,
-  path: string,
-): CapabilityRuntimeAdminLockHistoricalManifest {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new TypeError(`${path} must be an object.`);
-  }
-  const record = value as Record<string, unknown>;
-  if (
-    deterministicJson(Object.keys(record).toSorted()) !==
-      deterministicJson(["id", "manifestFingerprint", "version"])
-  ) {
-    throw new TypeError(`${path} has unsupported fields.`);
-  }
-  const fingerprint = record.manifestFingerprint;
-  if (!fingerprint || typeof fingerprint !== "object" || Array.isArray(fingerprint)) {
-    throw new TypeError(`${path}.manifestFingerprint must be an object.`);
-  }
-  const fingerprintRecord = fingerprint as Record<string, unknown>;
-  if (
-    deterministicJson(Object.keys(fingerprintRecord).toSorted()) !==
-      deterministicJson(["algorithm", "digest"]) ||
-    fingerprintRecord.algorithm !== "sha256" ||
-    typeof fingerprintRecord.digest !== "string" ||
-    !/^[a-f0-9]{64}$/.test(fingerprintRecord.digest)
-  ) {
-    throw new TypeError(`${path}.manifestFingerprint is invalid.`);
-  }
-  return Object.freeze({
-    id: safeId(record.id, `${path}.id`),
-    version: exactVersionToken(record.version, `${path}.version`),
-    manifestFingerprint: Object.freeze({
-      algorithm: "sha256" as const,
-      digest: fingerprintRecord.digest,
-    }),
-  });
-}
-
-function sameLockedUnitIdentity(
-  left: Pick<CapabilityRuntimeLockedUnit, "id" | "version" | "manifestFingerprint">,
-  right: Pick<CapabilityRuntimeLockedUnit, "id" | "version" | "manifestFingerprint">,
-): boolean {
-  return left.id === right.id &&
-    left.version === right.version &&
-    left.manifestFingerprint.algorithm === right.manifestFingerprint.algorithm &&
-    left.manifestFingerprint.digest === right.manifestFingerprint.digest;
-}
-
-function lockedUnitIdentityKey(
-  value: Pick<CapabilityRuntimeLockedUnit, "id" | "version" | "manifestFingerprint">,
-): string {
-  return `${value.id}\u0000${value.version}\u0000${value.manifestFingerprint.algorithm}\u0000${value.manifestFingerprint.digest}`;
 }
 
 function nonBlank(value: string, label: string): string {

@@ -15,19 +15,16 @@ import { pinnedOciImageReference } from "../../domain/compile/isolation/local-is
 import {
   type AtomicCapabilityRuntimeMaterial,
   type AtomicCapabilityRuntimeUnit,
-  CAPABILITY_RUNTIME_ADMIN_LOCK_SCHEMA_VERSION,
   CAPABILITY_RUNTIME_ADMIN_POLICY_SCHEMA_VERSION,
   CAPABILITY_RUNTIME_CATALOG_SCHEMA_VERSION,
   CAPABILITY_RUNTIME_HOST_OBSERVATION_SCHEMA_VERSION,
   type CapabilityRuntimeAdapterReference,
-  type CapabilityRuntimeAdminLock,
   type CapabilityRuntimeAdminPolicy,
   type CapabilityRuntimeBindingPreference,
   type CapabilityRuntimeCatalog,
   type CapabilityRuntimeHostEffects,
   type CapabilityRuntimeHostObservation,
   type CapabilityRuntimeLicence,
-  type CapabilityRuntimeLockedUnit,
   type CapabilityRuntimeObservedImage,
   type CapabilityRuntimePlatform,
   type CapabilityRuntimeProfileReference,
@@ -41,8 +38,10 @@ import type {
 } from "../../domain/capability/runtime/capability-runtime-binding-qualification-attestation.ts";
 import type {
   CapabilityReference,
-  RequiredEngineeringCapability,
 } from "../../domain/capability/engineering-capability.ts";
+export {
+  validateCapabilityRuntimeAdminLock,
+} from "../../application/control-plane/validate-capability-runtime-admin-lock.ts";
 
 const SHA256_HEX = /^[a-f0-9]{64}$/;
 
@@ -193,75 +192,6 @@ export function validateCapabilityRuntimeHostObservation(
     platform,
     images,
   });
-}
-
-/** Strict human-owned lock parser. No filesystem write is performed here. */
-export async function validateCapabilityRuntimeAdminLock(
-  value: unknown,
-  catalog?: CapabilityRuntimeCatalog,
-): Promise<CapabilityRuntimeAdminLock> {
-  const root = exactRecord(
-    value,
-    ["schemaVersion", "revision", "previous", "units"],
-    "$adminLock",
-  );
-  literalValue(
-    root.schemaVersion,
-    CAPABILITY_RUNTIME_ADMIN_LOCK_SCHEMA_VERSION,
-    "$adminLock.schemaVersion",
-  );
-  const units = arrayOf(root.units, "$adminLock.units").map((unit, index) =>
-    parseLockedUnit(unit, `$adminLock.units[${index}]`)
-  );
-  rejectDuplicates(units.map((unit) => unit.id), "$adminLock.units[].id");
-  if (catalog) {
-    await Promise.all(
-      catalog.units.map((unit, index) =>
-        assertAtomicUnitManifestFingerprint(unit, `$catalog.units[${index}]`)
-      ),
-    );
-    for (const locked of units) {
-      const unit = catalog.units.find((candidate) => candidate.id === locked.id);
-      if (!unit) {
-        throw new TypeError(`$adminLock references unknown unit ${locked.id}.`);
-      }
-      if (
-        unit.version !== locked.version ||
-        !sameFingerprint(unit.manifestFingerprint, locked.manifestFingerprint)
-      ) {
-        throw new TypeError(
-          `$adminLock unit ${locked.id} does not match the exact catalogue unit.`,
-        );
-      }
-    }
-  }
-  const revision = nonNegativeInteger(root.revision, "$adminLock.revision");
-  const previous = root.previous === null
-    ? null
-    : fingerprint(root.previous, "$adminLock.previous");
-  if (revision === 0 && previous !== null) {
-    throw new TypeError(
-      "$adminLock revision 0 must not name a previous administrative lock.",
-    );
-  }
-  if (revision > 0 && previous === null) {
-    throw new TypeError(
-      "$adminLock revision greater than 0 must name the exact previous administrative lock.",
-    );
-  }
-  return deepFreeze({
-    schemaVersion: CAPABILITY_RUNTIME_ADMIN_LOCK_SCHEMA_VERSION,
-    revision,
-    previous,
-    units,
-  });
-}
-
-function nonNegativeInteger(value: unknown, path: string): number {
-  if (!Number.isSafeInteger(value) || Number(value) < 0) {
-    throw new TypeError(`${path} must be a non-negative integer.`);
-  }
-  return Number(value);
 }
 
 function parseUnit(value: unknown, path: string): AtomicCapabilityRuntimeUnit {
@@ -692,23 +622,6 @@ function parseObservedImage(
   return deepFreeze({
     reference: pinnedOciImageReference(root.reference, `${path}.reference`),
     sizeBytes: nullableBytes(root.sizeBytes, `${path}.sizeBytes`),
-  });
-}
-
-function parseLockedUnit(value: unknown, path: string): CapabilityRuntimeLockedUnit {
-  const root = exactRecord(
-    value,
-    ["id", "version", "manifestFingerprint", "desired"],
-    path,
-  );
-  return deepFreeze({
-    id: safeId(root.id, `${path}.id`),
-    version: exactVersionToken(root.version, `${path}.version`),
-    manifestFingerprint: fingerprint(
-      root.manifestFingerprint,
-      `${path}.manifestFingerprint`,
-    ),
-    desired: oneOf(root.desired, ["inactive", "active"] as const, `${path}.desired`),
   });
 }
 

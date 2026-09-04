@@ -39,8 +39,12 @@ returned fingerprint, and requires `--confirm`.
 
 The admin lock records whether exact already-authorized units may activate JIT. Its
 `active` value permits JIT; it does not keep a service running. Normally the server
-updates this lock from project authorization. If an operator must apply the reviewed
-lock or restore a historic desired-state revision, use the closed CLI:
+updates this lock from project authorization. A catalogue-stale head remains visible to
+`status` and `lock-review`; `lock-apply` writes a current-catalogue successor. It does
+not authorize runtime activation while stale. `rollback-review` refuses a historic
+revision whose unit identities are retired or otherwise not exact in the current
+catalogue. If an operator must apply the reviewed lock or restore a historic
+desired-state revision whose identities still match, use the closed CLI:
 
 ```bash
 deno task capability:admin lock-apply --review-fingerprint=<sha256> --confirm
@@ -87,14 +91,14 @@ The exact review refuses a still-authorized unit, a pending ledger, active lease
 demand, pending cache preparation, uncertain journal, shared digest, foreign object, or
 unknown observation. It preserves Thread, CAS, WAL, project state, and retained volumes.
 Docker Desktop may report the exact sealed `repository@sha256:digest` in both
-`RepoDigests` and `RepoTags`; that duplicate exact identity is accepted. Any mutable tag,
-different repository, or different digest remains foreign and blocks removal.
+`RepoDigests` and `RepoTags`; that duplicate exact identity is accepted. Any mutable
+tag, different repository, or different digest remains foreign and blocks removal.
 
 A historical terminal failure from a runtime start or stop does not permanently poison
 later material removal. Pending or uncertain host mutations still block it, and a failed
-`material-remove` action must be recovered before another removal attempt.
-Never replace this with `down`, volume removal, prune, force, tag/alias removal, a
-root-Compose action, or a Microsandbox uninstall.
+`material-remove` action must be recovered before another removal attempt. Never replace
+this with `down`, volume removal, prune, force, tag/alias removal, a root-Compose
+action, or a Microsandbox uninstall.
 
 ## 6. Use the closed SysON rollover only for its named transition
 

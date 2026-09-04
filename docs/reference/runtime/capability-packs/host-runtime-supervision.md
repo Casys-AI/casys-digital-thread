@@ -25,8 +25,12 @@ catalogue, actual local read-only observation, the append-only authorization led
 two strict local administrative files. An absent `admin-policy.json` is the neutral
 trusted-catalogue order. An absent `admin-lock.json` is revision 0 with no units: it
 requests no desired activation, but does not prevent a brief-approved acquisition. A
-malformed, non-canonical, unknown-field, stale-unit or otherwise unreadable file fails
-closed; it never silently becomes the neutral default.
+malformed, non-canonical, unknown-field or otherwise unreadable administrative file
+fails closed; it never silently becomes the neutral default. Immutable lock history is
+read by schema, canonical JSON, predecessor-hash chain and head fingerprint only. A
+catalogue-stale head stays readable so `status` and `lock-review` can display and
+reconverge it; it does not authorize activation, preload, JIT or qualification. Those
+remain exact current-catalogue id+version+manifest matches.
 
 Observation is partitioned by code-owned material coverage. The Compose observer owns
 only enrolled exact launch-group materials and the Microsandbox observer owns only the

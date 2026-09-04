@@ -8,9 +8,6 @@ import {
   createFirstPartyCapabilityRuntimeCatalog,
   createFirstPartyChronoRolloverPredecessorUnit,
   createFirstPartySysonRolloverPredecessorUnit,
-  firstPartyAdmittedModelicaHistoryPredecessor,
-  firstPartyGeometryModuleAssemblerHistoryPredecessor,
-  firstPartyQualifiedModelicaHistoryPredecessor,
 } from "../../adapters/control-plane/first-party-capability-binding-catalog.ts";
 import { createFirstPartyCapabilityRuntimeLaunchGroupRegistry } from "../../adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
 import {
@@ -80,7 +77,7 @@ Deno.test("local admin lock review requires exact fingerprint and explicit confi
   }
 });
 
-Deno.test("local lock review replaces only declared historical units with exact current catalogue units", async () => {
+Deno.test("local lock review reconverges catalogue-stale history and rollback-review rejects a retired identity", async () => {
   const directory = await Deno.makeTempDir({
     prefix: "casys-local-admin-history-upgrade-",
   });
@@ -90,13 +87,7 @@ Deno.test("local lock review replaces only declared historical units with exact 
       createFirstPartySysonRolloverPredecessorUnit(),
       createFirstPartyChronoRolloverPredecessorUnit(),
     ]);
-    const predecessors = [
-      predecessorSyson,
-      predecessorChrono,
-      firstPartyGeometryModuleAssemblerHistoryPredecessor(),
-      firstPartyAdmittedModelicaHistoryPredecessor(),
-      firstPartyQualifiedModelicaHistoryPredecessor(),
-    ];
+    const predecessors = [predecessorSyson, predecessorChrono];
     const currentUnits = currentLockUnits(catalog);
     const first = {
       schemaVersion: "capability-runtime-admin-lock/1.0" as const,
@@ -127,33 +118,9 @@ Deno.test("local lock review replaces only declared historical units with exact 
     };
     await writeAdminLockHistory(directory, [first, second]);
 
-    const forgedPredecessors = predecessors.map((unit) =>
-      unit.id === "casys.mcp-chrono" ||
-        unit.id === "casys.geometry-module-assembler-worker"
-        ? {
-          ...unit,
-          manifestFingerprint: {
-            algorithm: "sha256" as const,
-            digest: "f".repeat(64),
-          },
-        }
-        : unit
-    );
-    await assertRejects(
-      () =>
-        new FileCapabilityRuntimeAdminLockStore(
-          `${directory}/admin-lock.json`,
-          catalog,
-          transitionPredecessors(catalog, forgedPredecessors),
-        ).read(),
-      TypeError,
-      "current unit or declared transition predecessor",
-    );
-
     const lock = new FileCapabilityRuntimeAdminLockStore(
       `${directory}/admin-lock.json`,
       catalog,
-      transitionPredecessors(catalog, predecessors),
     );
     const service = new LocalCapabilityRuntimeAdminService({
       catalog,
@@ -164,8 +131,13 @@ Deno.test("local lock review replaces only declared historical units with exact 
       ),
       authorization: {} as never,
     });
-    const review = await service.lockReview();
     assertEquals((await lock.read()).revision, 2);
+    assertEquals(
+      (await lock.read()).units.find((unit) => unit.id === "casys.syson-stack")
+        ?.version,
+      predecessorSyson.version,
+    );
+    const review = await service.lockReview();
     assertEquals(review.nextLock.revision, 3);
     assertEquals(review.nextLock.units, currentUnits);
 
@@ -175,6 +147,15 @@ Deno.test("local lock review replaces only declared historical units with exact 
     assertEquals((await lock.list()).map((entry) => entry.revision), [0, 1, 2, 3]);
     assertEquals((await lock.readRevision(1)).units, first.units);
     assertEquals((await lock.readRevision(2)).units, second.units);
+
+    await assertRejects(
+      () => service.rollbackReview(1),
+      TypeError,
+      "does not match the exact catalogue unit",
+    );
+    const currentRollback = await service.rollbackReview(applied.revision);
+    assertEquals(currentRollback.nextLock.revision, 4);
+    assertEquals(currentRollback.nextLock.units, currentUnits);
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
@@ -397,31 +378,6 @@ Deno.test("administrative removal is an already-absent no-op and blocks foreign 
     await shared.close();
   }
 });
-
-function transitionPredecessors(
-  catalog: Awaited<ReturnType<typeof createFirstPartyCapabilityRuntimeCatalog>>,
-  predecessors: readonly {
-    readonly id: string;
-    readonly version: string;
-    readonly manifestFingerprint: {
-      readonly algorithm: "sha256";
-      readonly digest: string;
-    };
-  }[],
-) {
-  return {
-    transitionPredecessors: predecessors.map((predecessor) => {
-      const successor = catalog.units.find((unit) => unit.id === predecessor.id);
-      if (!successor) {
-        throw new Error(`Current catalogue lacks ${predecessor.id}.`);
-      }
-      return {
-        predecessor: lockedUnit(predecessor),
-        successor: lockedUnit(successor),
-      };
-    }),
-  };
-}
 
 function lockedUnit(unit: {
   readonly id: string;

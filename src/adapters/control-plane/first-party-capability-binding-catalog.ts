@@ -446,7 +446,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
  * The only retired unit identity accepted by the server-owned 1.0.0 → 1.0.1
  * SysON rollover. It is intentionally not a runtime catalogue: normal
  * selection exposes the successor only. The caller may use this value solely
- * to recognize immutable history or the exact rollover predecessor.
+ * to recognize the exact rollover predecessor.
  */
 export async function createFirstPartySysonRolloverPredecessorUnit(): Promise<
   AtomicCapabilityRuntimeUnit
@@ -466,7 +466,7 @@ export async function createFirstPartySysonRolloverPredecessorUnit(): Promise<
       : material.imageReference,
     // The historical 1.0.0 manifest was ARM64-only. The new publication is
     // multi-architecture, so reusing successor metadata here would silently
-    // falsify the immutable predecessor fingerprint accepted by lock history.
+    // falsify the immutable predecessor fingerprint accepted by the rollover.
     platforms: material.id === "syson-app-image"
       ? ["linux/arm64"] as const
       : material.platforms,
@@ -485,9 +485,9 @@ export async function createFirstPartySysonRolloverPredecessorUnit(): Promise<
 }
 
 /**
- * The only retired Chrono unit identity accepted while reading immutable
- * host-lock history for the 0.3.1 → 0.3.2 transition. It is intentionally
- * not a runtime catalogue: normal selection exposes the successor only.
+ * The only retired Chrono unit identity accepted by the server-owned
+ * 0.3.1 → 0.3.2 rollover. It is intentionally not a runtime catalogue:
+ * normal selection exposes the successor only.
  */
 export async function createFirstPartyChronoRolloverPredecessorUnit(): Promise<
   AtomicCapabilityRuntimeUnit
@@ -510,87 +510,6 @@ export async function createFirstPartyChronoRolloverPredecessorUnit(): Promise<
     },
   }));
   return await unit("casys.mcp-chrono", materials, "0.3.1");
-}
-
-/**
- * Retired local-lock identity from before Build123d sandbox readiness became
- * part of the sealed launch-group descriptor. It is accepted only while
- * reading immutable history; the current catalogue remains the successor.
- */
-export function firstPartyBuild123dSandboxHistoryPredecessor() {
-  return {
-    id: "casys.mcp-build123d-sandbox",
-    version: "0.6.1",
-    manifestFingerprint: {
-      algorithm: "sha256" as const,
-      digest: "7450ed6ffcb1bfd2b970e2f15647eaf8097a26b1656d19864992bde6e297b15e",
-    },
-  };
-}
-
-/**
- * Retired local-lock identity from before Build123d observation readiness
- * became part of the sealed launch-group descriptor. It is history-only and
- * never an alternative runtime selection.
- */
-export function firstPartyBuild123dObservationHistoryPredecessor() {
-  return {
-    id: "casys.mcp-build123d-observation",
-    version: "0.6.1",
-    manifestFingerprint: {
-      algorithm: "sha256" as const,
-      digest: "7540b7263f570cec0ea4218ecf902400b817e9143cdf6ca334c9d2d773213bad",
-    },
-  };
-}
-
-/**
- * Retired local-lock identity before the qualified geometry-module assembler
- * catalogue promotion. The former manifest predates the current launch-group
- * schema, so this is an exact lock-history identity, not a synthetic runtime
- * descriptor.
- */
-export function firstPartyGeometryModuleAssemblerHistoryPredecessor() {
-  return {
-    id: "casys.geometry-module-assembler-worker",
-    version: "1.0.0",
-    manifestFingerprint: {
-      algorithm: "sha256" as const,
-      digest: "e03e1f245088f8f49b2d680ae6d4ff7664329f4ea0227be74e701f9f579c532f",
-    },
-  };
-}
-
-/**
- * Retired local-lock identity before the admitted Modelica worker platform
- * declaration. It is readable only as immutable history, never selectable;
- * its former manifest likewise predates the current launch-group schema.
- */
-export function firstPartyAdmittedModelicaHistoryPredecessor() {
-  return {
-    id: "casys.modelica-worker",
-    version: "1.0.0",
-    manifestFingerprint: {
-      algorithm: "sha256" as const,
-      digest: "8792f440a4ee3b6f835f730082081828c87fe657044fc5d1bd6405b64bdfb515",
-    },
-  };
-}
-
-/**
- * Retired local-lock identity before the qualified-kit worker shared the
- * admitted physical image digest. Readable only as immutable history, never
- * selectable.
- */
-export function firstPartyQualifiedModelicaHistoryPredecessor() {
-  return {
-    id: "casys.modelica-qualified-worker",
-    version: "1.0.0",
-    manifestFingerprint: {
-      algorithm: "sha256" as const,
-      digest: "6d34121004cc91a6e9286e70b63afa768ea7fcf9dcd0b0f8360aec08e9d9a173",
-    },
-  };
 }
 
 async function unit(
