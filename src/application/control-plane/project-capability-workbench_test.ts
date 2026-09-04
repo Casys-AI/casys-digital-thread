@@ -4,7 +4,7 @@ import type {
   ProjectCapabilityRuntimeContext,
   ProjectCapabilityRuntimeContextReader,
 } from "../ports/out/capability/capability-runtime-supervisor.ts";
-import type { CapabilityRuntimeMaterialIdentity } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type { CapabilityRuntimeMaterialIdentity } from "../../domain/capability/runtime/capability-runtime-material.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import {

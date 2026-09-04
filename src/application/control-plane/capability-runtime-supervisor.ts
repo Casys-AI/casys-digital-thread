@@ -14,13 +14,13 @@ import {
   type CapabilityRuntimeJournalEntry,
   type CapabilityRuntimeJournalOutcome,
   type CapabilityRuntimeLease,
-  type CapabilityRuntimeMaterialIdentity,
   capabilityRuntimeMaterialKey,
   type CapabilityRuntimeRecovery,
   recoverCapabilityRuntime,
   type ResolvedCapabilityRuntimeBinding,
   type ResolvedCapabilityRuntimeOperation,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type { CapabilityRuntimeMaterialIdentity } from "../../domain/capability/runtime/capability-runtime-material.ts";
 import {
   type CapabilityQualification,
   compareEngineeringCapabilities,

@@ -24,23 +24,16 @@ import {
   type CapabilityRuntimeLaunchGroupReference,
   validateCapabilityRuntimeLaunchGroupReference,
 } from "./capability-runtime-launch-group.ts";
-import type { CapabilityRuntimeMaterialIdentity } from "./capability-runtime-supervision.ts";
+import type {
+  CapabilityRuntimeExecutionMode,
+  CapabilityRuntimeMaterialIdentity,
+  CapabilityRuntimePlatform,
+} from "./capability-runtime-material.ts";
 
 export const CAPABILITY_RUNTIME_BINDING_QUALIFICATION_ATTESTATION_SCHEMA_VERSION =
   "capability-runtime-binding-qualification-attestation/1.1" as const;
 
-export type CapabilityRuntimePlatform = "linux/amd64" | "linux/arm64";
-export type CapabilityRuntimeExecutionMode = "native" | "emulated";
 export type CapabilityRuntimeQualificationAttestationState = "qualified" | "revoked";
-
-/** Exact runtime mode later sealed beside the ROP binding. */
-export interface CapabilityRuntimeMaterialRuntimeMode {
-  readonly material: CapabilityRuntimeMaterialIdentity;
-  readonly targetPlatform: CapabilityRuntimePlatform;
-  readonly mode: CapabilityRuntimeExecutionMode;
-  /** Null is reserved for an existing code-owned qualification baseline. */
-  readonly qualificationAttestationFingerprint: ContentFingerprint | null;
-}
 
 export interface CapabilityRuntimeBindingQualificationAttestation {
   readonly schemaVersion:

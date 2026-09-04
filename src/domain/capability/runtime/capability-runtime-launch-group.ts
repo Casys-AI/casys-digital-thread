@@ -24,7 +24,7 @@ import {
   sha256Hex,
 } from "../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
-import type { CapabilityRuntimeMaterialIdentity } from "./capability-runtime-supervision.ts";
+import type { CapabilityRuntimeMaterialIdentity } from "./capability-runtime-material.ts";
 
 export const CAPABILITY_RUNTIME_LAUNCH_GROUP_SCHEMA_VERSION =
   "capability-runtime-launch-group/2.0" as const;

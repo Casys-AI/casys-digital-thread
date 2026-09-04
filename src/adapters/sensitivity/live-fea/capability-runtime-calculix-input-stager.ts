@@ -18,9 +18,9 @@ import type {
 } from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import {
   type CapabilityRuntimeLease,
-  type CapabilityRuntimeMaterialIdentity,
   capabilityRuntimeMaterialKey,
 } from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type { CapabilityRuntimeMaterialIdentity } from "../../../domain/capability/runtime/capability-runtime-material.ts";
 import {
   type CapabilityRuntimeLaunchGroup,
   type CapabilityRuntimeLaunchGroupMaterial,

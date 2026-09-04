@@ -4,7 +4,6 @@ import type { CapabilityRuntimeMicrosandboxCache } from "../../application/contr
 import type {
   CapabilityRuntimeStateObserver,
 } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
-import type { CapabilityRuntimePlatform } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
 import {
   assertExactMicrosandboxImageInspection,
   type ExactMicrosandboxImageExpectation,
@@ -12,10 +11,13 @@ import {
 } from "../shared/execution/microsandbox-ephemeral-execution-backend.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import {
-  type CapabilityRuntimeMaterialIdentity,
   capabilityRuntimeMaterialKey,
   type CapabilityRuntimeObservedState,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type {
+  CapabilityRuntimeMaterialIdentity,
+  CapabilityRuntimePlatform,
+} from "../../domain/capability/runtime/capability-runtime-material.ts";
 
 export interface MicrosandboxCapabilityRuntimeImageExpectation {
   readonly material: { readonly unitId: string; readonly materialId: string };

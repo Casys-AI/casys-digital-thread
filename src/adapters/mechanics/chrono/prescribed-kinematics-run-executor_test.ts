@@ -11,13 +11,13 @@ import {
   recrossResolvedPrescribedKinematicsCaseArtifact,
 } from "./prescribed-kinematics-run-executor.ts";
 import type {
-  CapabilityRuntimeMaterialIdentity,
   ResolvedCapabilityRuntimeOperation,
 } from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
 import type {
   CapabilityRuntimeExecutionMode,
+  CapabilityRuntimeMaterialIdentity,
   CapabilityRuntimeMaterialRuntimeMode,
-} from "../../../domain/capability/runtime/capability-runtime-binding-qualification-attestation.ts";
+} from "../../../domain/capability/runtime/capability-runtime-material.ts";
 import {
   resolvedOperationPlanRequestIdFor,
   ResolvedOperationPlanResolver,

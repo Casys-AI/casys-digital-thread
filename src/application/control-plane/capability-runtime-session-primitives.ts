@@ -12,12 +12,12 @@ import {
   type CapabilityRuntimeExecutionLeaseOwner,
   type CapabilityRuntimeHostLifecycle,
   type CapabilityRuntimeLease,
-  type CapabilityRuntimeMaterialIdentity,
   capabilityRuntimeMaterialKey,
   type ResolvedCapabilityRuntimeOperation,
   validateCapabilityRuntimeLease,
   validateResolvedCapabilityRuntimeOperation,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type { CapabilityRuntimeMaterialIdentity } from "../../domain/capability/runtime/capability-runtime-material.ts";
 import type { CapabilityRuntimeLaunchGroupReference } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { ProjectCapabilityRuntimeContext } from "../ports/out/capability/capability-runtime-supervisor.ts";

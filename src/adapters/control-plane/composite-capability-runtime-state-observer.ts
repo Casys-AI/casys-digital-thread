@@ -1,10 +1,8 @@
 /** Composes exact, read-only runtime observers without giving either mutation authority. */
 
-import type {
-  CapabilityRuntimeMaterialIdentity,
-  CapabilityRuntimeObservedState,
-} from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type { CapabilityRuntimeObservedState } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import { capabilityRuntimeMaterialKey } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type { CapabilityRuntimeMaterialIdentity } from "../../domain/capability/runtime/capability-runtime-material.ts";
 import type { CapabilityRuntimeStateObserver } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
 
 /** One observer's closed, code-owned material coverage. */

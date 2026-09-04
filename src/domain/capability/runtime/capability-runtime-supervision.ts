@@ -30,8 +30,9 @@ import {
   validateCapabilityRuntimeLaunchGroupReference,
 } from "./capability-runtime-launch-group.ts";
 import type {
+  CapabilityRuntimeMaterialIdentity,
   CapabilityRuntimeMaterialRuntimeMode,
-} from "./capability-runtime-binding-qualification-attestation.ts";
+} from "./capability-runtime-material.ts";
 
 export type CapabilityRuntimeMaterialState =
   | "absent"
@@ -50,13 +51,6 @@ export type CapabilityRuntimeProcessState =
 export interface CapabilityRuntimeObservedState {
   readonly material: CapabilityRuntimeMaterialState;
   readonly runtime: CapabilityRuntimeProcessState;
-}
-
-/** Exact catalogue material identity, not an image tag or mutable alias. */
-export interface CapabilityRuntimeMaterialIdentity {
-  readonly unitId: string;
-  readonly materialId: string;
-  readonly imageDigest: string;
 }
 
 /**

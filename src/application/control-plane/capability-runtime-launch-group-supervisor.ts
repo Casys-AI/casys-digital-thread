@@ -18,7 +18,6 @@ import {
   type CapabilityRuntimeJournalEntry,
   type CapabilityRuntimeJournalOutcome,
   type CapabilityRuntimeLease,
-  type CapabilityRuntimeMaterialIdentity,
   capabilityRuntimeMaterialKey,
   type CapabilityRuntimeObservedState,
   type CapabilityRuntimeQualificationStartAuthority,
@@ -29,6 +28,7 @@ import {
   validateCapabilityRuntimeQualificationStartAuthority,
   validateEffectiveCapabilityRuntimeLaunchProjection,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type { CapabilityRuntimeMaterialIdentity } from "../../domain/capability/runtime/capability-runtime-material.ts";
 import {
   deterministicJson,
   sha256Fingerprint,

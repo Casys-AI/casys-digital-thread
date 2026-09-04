@@ -5,9 +5,12 @@ import type {
   CapabilityRuntimeAdministrativeRemovalPlan,
   CapabilityRuntimeJournalEntry,
   CapabilityRuntimeJournalOutcome,
-  CapabilityRuntimeMaterialIdentity,
   CapabilityRuntimeObservedState,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type {
+  CapabilityRuntimeMaterialIdentity,
+  CapabilityRuntimePlatform,
+} from "../../domain/capability/runtime/capability-runtime-material.ts";
 import {
   validateCapabilityRuntimeAdministrativeRemovalPlan,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
@@ -32,7 +35,6 @@ import type {
   CapabilityRuntimeSecretSnapshot,
   CapabilityRuntimeStateObserver,
 } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
-import type { CapabilityRuntimePlatform } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
 import {
   consumeAuthorizedAdministrativeMaterialRemoval,
   consumeAuthorizedMaterialAcquire,

@@ -9,10 +9,10 @@ import {
 } from "../../domain/capability/engineering-capability.ts";
 import type { ProjectCapabilityDemandSlice } from "../../domain/capability/project-capability-demand.ts";
 import {
-  type CapabilityRuntimeMaterialIdentity,
   capabilityRuntimeMaterialKey,
   type CapabilityRuntimeObservedState,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type { CapabilityRuntimeMaterialIdentity } from "../../domain/capability/runtime/capability-runtime-material.ts";
 import { deepFreeze } from "../../domain/kernel/case-validation.ts";
 import {
   fingerprintsEqual,

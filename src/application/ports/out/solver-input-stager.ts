@@ -1,8 +1,8 @@
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import type {
   CapabilityRuntimeLease,
-  CapabilityRuntimeMaterialIdentity,
 } from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type { CapabilityRuntimeMaterialIdentity } from "../../../domain/capability/runtime/capability-runtime-material.ts";
 import type { CapabilityRuntimeLaunchGroupReference } from "../../../domain/capability/runtime/capability-runtime-launch-group.ts";
 
 /**

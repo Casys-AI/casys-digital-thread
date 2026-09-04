@@ -18,10 +18,13 @@ import type {
   CapabilityRuntimeJournalEntry,
   CapabilityRuntimeJournalOutcome,
   CapabilityRuntimeLease,
-  CapabilityRuntimeMaterialIdentity,
   CapabilityRuntimeObservedState,
   ResolvedCapabilityRuntimeOperation,
 } from "../../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type {
+  CapabilityRuntimeMaterialIdentity,
+  CapabilityRuntimePlatform,
+} from "../../../../domain/capability/runtime/capability-runtime-material.ts";
 import type {
   CapabilityRuntimeLaunchGroup,
   CapabilityRuntimeLaunchGroupReference,
@@ -37,7 +40,6 @@ import type {
 import type {
   CapabilityRuntimeAdminLock,
   CapabilityRuntimeCatalog,
-  CapabilityRuntimePlatform,
   ProjectCapabilityPlan,
 } from "../../../control-plane/read-model/capability-runtime-catalog.ts";
 

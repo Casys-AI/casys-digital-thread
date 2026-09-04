@@ -3,8 +3,7 @@ import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts"
 import type {
   CapabilityRuntimeMaterialRuntimeMode,
   CapabilityRuntimePlatform,
-} from "../../../domain/capability/runtime/capability-runtime-binding-qualification-attestation.ts";
-export type { CapabilityRuntimePlatform } from "../../../domain/capability/runtime/capability-runtime-binding-qualification-attestation.ts";
+} from "../../../domain/capability/runtime/capability-runtime-material.ts";
 import type {
   CapabilityQualification,
   CapabilityReference,

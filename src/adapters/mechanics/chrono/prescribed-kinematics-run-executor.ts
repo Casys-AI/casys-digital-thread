@@ -56,14 +56,14 @@ import {
   type ResolvedPrescribedKinematicsObservationAction,
 } from "../../../domain/compile/rop/resolved-operation-plan-v2.ts";
 import {
-  type CapabilityRuntimeMaterialIdentity,
   fingerprintResolvedCapabilityRuntimeOperation,
   type ResolvedCapabilityRuntimeOperation,
 } from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
 import type {
   CapabilityRuntimeExecutionMode,
+  CapabilityRuntimeMaterialIdentity,
   CapabilityRuntimeMaterialRuntimeMode,
-} from "../../../domain/capability/runtime/capability-runtime-binding-qualification-attestation.ts";
+} from "../../../domain/capability/runtime/capability-runtime-material.ts";
 import {
   sameCapabilityRuntimeLaunchGroupReference,
 } from "../../../domain/capability/runtime/capability-runtime-launch-group.ts";

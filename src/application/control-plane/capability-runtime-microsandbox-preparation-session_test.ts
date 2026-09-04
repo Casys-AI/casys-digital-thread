@@ -8,9 +8,9 @@ import {
 } from "../../adapters/control-plane/in-memory-capability-runtime-supervisor.ts";
 import type {
   CapabilityRuntimeHostLifecycle,
-  CapabilityRuntimeMaterialIdentity,
   ResolvedCapabilityRuntimeOperation,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type { CapabilityRuntimeMaterialIdentity } from "../../domain/capability/runtime/capability-runtime-material.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type {
   EngineeringOperationRef,

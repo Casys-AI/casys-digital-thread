@@ -12,10 +12,10 @@
 import { deepFreeze } from "../../domain/kernel/case-validation.ts";
 import {
   type CapabilityRuntimeBindingQualificationAttestation,
-  type CapabilityRuntimeMaterialRuntimeMode,
   type CapabilityRuntimeObservedHost,
   fingerprintCapabilityRuntimeObservedHost,
 } from "../../domain/capability/runtime/capability-runtime-binding-qualification-attestation.ts";
+import type { CapabilityRuntimeMaterialRuntimeMode } from "../../domain/capability/runtime/capability-runtime-material.ts";
 import type { CapabilityRuntimeQualificationCandidate } from "../../domain/capability/runtime/capability-runtime-qualification-candidate.ts";
 import type { CapabilityRuntimeQualificationSpecification } from "../../domain/capability/runtime/capability-runtime-qualification-specification.ts";
 import type { CapabilityRuntimeQualificationAttemptStore } from "../ports/out/capability/capability-runtime-qualification-attempt-store.ts";

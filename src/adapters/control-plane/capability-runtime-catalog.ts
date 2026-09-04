@@ -26,7 +26,6 @@ import {
   type CapabilityRuntimeHostObservation,
   type CapabilityRuntimeLicence,
   type CapabilityRuntimeObservedImage,
-  type CapabilityRuntimePlatform,
   type CapabilityRuntimeProfileReference,
   type CapabilityRuntimeQualificationEvidence,
   type CapabilityRuntimeVolume,
@@ -35,7 +34,8 @@ import {
 } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
 import type {
   CapabilityRuntimeMaterialRuntimeMode,
-} from "../../domain/capability/runtime/capability-runtime-binding-qualification-attestation.ts";
+  CapabilityRuntimePlatform,
+} from "../../domain/capability/runtime/capability-runtime-material.ts";
 import type {
   CapabilityReference,
 } from "../../domain/capability/engineering-capability.ts";

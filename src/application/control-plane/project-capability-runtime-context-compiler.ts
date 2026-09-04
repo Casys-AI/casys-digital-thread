@@ -7,7 +7,7 @@
  */
 
 import { flattenEngineeringCapabilityRequirements } from "../../domain/capability/engineering-capability.ts";
-import type { CapabilityRuntimeMaterialIdentity } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type { CapabilityRuntimeMaterialIdentity } from "../../domain/capability/runtime/capability-runtime-material.ts";
 import { deepFreeze } from "../../domain/kernel/case-validation.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import type { EngineeringOperationRegistry } from "../../orchestration/operations/operation-contract.ts";

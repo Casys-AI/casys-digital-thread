@@ -11,7 +11,6 @@ import {
   type CapabilityRuntimeExecutionLeaseOwner,
   type CapabilityRuntimeHostLifecycle,
   type CapabilityRuntimeLease,
-  type CapabilityRuntimeMaterialIdentity,
   capabilityRuntimeMaterialKey,
   deriveEffectiveCapabilityRuntimeLaunchProjection,
   fingerprintResolvedCapabilityRuntimeOperation,
@@ -19,6 +18,7 @@ import {
   validateCapabilityRuntimeLease,
   validateResolvedCapabilityRuntimeOperation,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type { CapabilityRuntimeMaterialIdentity } from "../../domain/capability/runtime/capability-runtime-material.ts";
 import type { CapabilityRuntimeLaunchGroupReference } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import type {
