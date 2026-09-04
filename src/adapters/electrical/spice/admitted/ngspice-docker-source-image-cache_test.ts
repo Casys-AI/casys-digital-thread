@@ -39,6 +39,17 @@ Deno.test("ngspice Docker source cache observes only the exact inspected worker"
   );
 });
 
+Deno.test("ngspice Docker source cache accepts the equivalent docker.io catalog spelling", async () => {
+  const cache = new LocalNgspiceDockerSourceImageCache({
+    inspect: () => Promise.resolve(dockerInspection()),
+  });
+
+  await cache.ensureExactCached({
+    material: MATERIAL,
+    imageReference: `docker.io/${LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE}`,
+  });
+});
+
 Deno.test("ngspice Docker source cache fails closed without an acquisition path", async () => {
   const cache = new LocalNgspiceDockerSourceImageCache({
     inspect: () => Promise.resolve({ ...dockerInspection(), Architecture: "amd64" }),

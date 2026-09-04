@@ -341,6 +341,16 @@ Deno.test("docker inspect parser attests the pinned source digest when present",
     descriptor.source,
     descriptor.source.dockerSourceReference,
   );
+  assertExactDockerSourceImage(
+    parseDockerSourceInspection(
+      dockerInspectJson(
+        descriptor,
+        `docker.io/${descriptor.source.dockerSourceReference}`,
+      ),
+    ),
+    descriptor.source,
+    descriptor.source.dockerSourceReference,
+  );
 });
 
 interface FakePorts extends FirstPartyMicrosandboxImageAcquisitionPorts {

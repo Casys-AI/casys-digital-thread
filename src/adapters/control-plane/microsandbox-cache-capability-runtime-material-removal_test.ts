@@ -15,11 +15,12 @@ import { MicrosandboxCacheCapabilityRuntimeMaterialRemovalHost } from "./microsa
 
 const DIGEST = "a".repeat(64);
 const REFERENCE = `casys/calculix-worker@sha256:${DIGEST}`;
+const CANONICAL = `docker.io/casys/calculix-worker@sha256:${DIGEST}`;
 const CLOCK = "2026-08-31T00:00:01.000Z";
 const EXPECTATION = {
   material: { unitId: "casys.calculix-worker", materialId: "calculix-worker-image" },
   image: {
-    reference: REFERENCE,
+    reference: CANONICAL,
     manifestDigest: `sha256:${DIGEST}`,
     os: "linux" as const,
     architecture: "arm64",
@@ -34,7 +35,7 @@ Deno.test("Microsandbox cache removal uses exact Image.remove(ref,{force:false})
   const { authorization, plan } = await granted(host, "owned");
   const result = await host.mutate({ authorization, plan });
   assertEquals(result.status, "succeeded");
-  assertEquals(sdk.removeCalls, [{ reference: REFERENCE, force: false }]);
+  assertEquals(sdk.removeCalls, [{ reference: CANONICAL, force: false }]);
   assertEquals(sdk.pruneCalls, 0);
 });
 
@@ -59,7 +60,7 @@ Deno.test("Microsandbox cache remaining after in-use refusal is failed", async (
   const result = await host.mutate({ authorization, plan });
   assertEquals(result.status, "failed");
   assertEquals(result.observedState, "owned");
-  assertEquals(sdk.removeCalls, [{ reference: REFERENCE, force: false }]);
+  assertEquals(sdk.removeCalls, [{ reference: CANONICAL, force: false }]);
 });
 
 Deno.test("Microsandbox cache unreadable post-state is uncertain", async () => {
@@ -160,7 +161,7 @@ function fixtureMaterial() {
   return {
     unitId: "casys.calculix-worker",
     materialId: "calculix-worker-image",
-    imageReference: REFERENCE,
+    imageReference: CANONICAL,
     imageDigest: DIGEST,
     launchGroup: null,
   };

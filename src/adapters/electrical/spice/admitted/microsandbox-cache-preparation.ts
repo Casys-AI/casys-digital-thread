@@ -3,6 +3,7 @@
  * Acquisition lives in the generic first-party Microsandbox bootstrap.
  */
 
+import { samePinnedRepositoryDigest } from "../../../shared/docker-pinned-repository-digest.ts";
 import type { MicrosandboxImageInspection } from "../../../shared/execution/microsandbox-ephemeral-execution-backend.ts";
 import { pinnedOciImageReference } from "../../../../domain/compile/isolation/local-isolation-runtime.ts";
 import { NGSPICE_ADMITTED_MICROSANDBOX_WORKER_CONTRACT } from "./worker-contract.ts";
@@ -136,7 +137,7 @@ export function assertExactDockerNgspiceSourceImage(
 ): DockerNgspiceSourceInspection {
   const source = LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE;
   if (
-    !inspection.repoDigests.some((digest) => digestIsExactDockerSource(digest, source))
+    !inspection.repoDigests.some((digest) => samePinnedRepositoryDigest(digest, source))
   ) {
     throw new Error(
       "The Docker ngspice source image is not the reviewed linux/arm64 worker.",
@@ -171,10 +172,6 @@ export function assertExactCachedNgspiceRuntimeImage(
     );
   }
   return inspection;
-}
-
-function digestIsExactDockerSource(digest: string, source: string): boolean {
-  return digest === source || digest === `docker.io/${source}`;
 }
 
 function digestOfPinnedReference(reference: string): string {

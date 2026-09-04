@@ -1,5 +1,7 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import { relative } from "node:path";
+import { pinnedOciImageReference } from "../../domain/compile/isolation/local-isolation-runtime.ts";
+import { LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE } from "../../domain/modelica/local-execution-image.ts";
 import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capability-binding-catalog.ts";
 import {
   assertFirstPartyPhysicalImageHasUniqueTargetDigest,
@@ -86,6 +88,22 @@ Deno.test("Modelica qualified and admitted share one physical image and target d
   assertEquals(qualified.source.dockerfile, admitted.source.dockerfile);
   assertEquals(qualified.source.context, admitted.source.context);
   assertEquals(qualified.source.dockerImageName, admitted.source.dockerImageName);
+  const cataloguedModelica = catalog.units.find((unit) =>
+    unit.id === "casys.modelica-worker"
+  )?.materials.find((material) => material.id === "modelica-admitted-worker-image");
+  assertEquals(
+    admitted.targetImageReference,
+    pinnedOciImageReference(
+      LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
+      "$bootstrap.modelica",
+    ),
+  );
+  assertEquals(
+    admitted.targetImageReference,
+    "docker.io/casys/modelica-microsandbox-worker@sha256:d25f220287cd8d1713e9e7d773afb8bb867fc5404a112e5e50ffa2e862fd6fdf",
+  );
+  assertEquals(admitted.targetImageReference, cataloguedModelica?.imageReference);
+  assertEquals(admitted.target.reference, admitted.targetImageReference);
   assertFirstPartyPhysicalImageHasUniqueTargetDigest(descriptors);
   assertThrows(
     () =>

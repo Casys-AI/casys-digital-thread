@@ -9,7 +9,10 @@ import {
   createGeometryModuleInputBundle,
   type GeometryModuleInputBundle,
 } from "../../../domain/cad/module-assembly/geometry-module-input-bundle.ts";
-import { createMicrosandboxRuntimeAttestation } from "../../../domain/compile/isolation/local-isolation-runtime.ts";
+import {
+  createMicrosandboxRuntimeAttestation,
+  pinnedOciImageReference,
+} from "../../../domain/compile/isolation/local-isolation-runtime.ts";
 import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
 import {
   deterministicJson,
@@ -71,7 +74,10 @@ const QUALIFICATION_CONTRACT = Object.freeze({
 const QUALIFICATION_DOCKER_SOURCE_MATERIAL = Object.freeze({
   id: QUALIFICATION_DOCKER_SOURCE_MATERIAL_ID,
   kind: "oci-image" as const,
-  imageReference: LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
+  imageReference: pinnedOciImageReference(
+    LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
+    "$geometryModuleAssemblerQualification.dockerSource",
+  ),
   platforms: ["linux/arm64"] as const,
   lifecycle: "cache" as const,
   launchGroup: null,
@@ -98,7 +104,10 @@ const QUALIFICATION_DOCKER_SOURCE_MATERIAL = Object.freeze({
 const QUALIFICATION_RUNTIME_MATERIAL = Object.freeze({
   id: QUALIFICATION_MATERIAL_ID,
   kind: "microvm-image" as const,
-  imageReference: LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
+  imageReference: pinnedOciImageReference(
+    LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
+    "$geometryModuleAssemblerQualification.runtimeImage",
+  ),
   platforms: ["linux/arm64"] as const,
   lifecycle: "ephemeral" as const,
   launchGroup: null,

@@ -3,6 +3,7 @@
  * assembler. Acquisition lives in the generic first-party bootstrap.
  */
 
+import { samePinnedRepositoryDigest } from "../../shared/docker-pinned-repository-digest.ts";
 import type { MicrosandboxImageInspection } from "../../shared/execution/microsandbox-ephemeral-execution-backend.ts";
 import { pinnedOciImageReference } from "../../../domain/compile/isolation/local-isolation-runtime.ts";
 import {
@@ -115,9 +116,10 @@ export function assertExactDockerGeometryModuleAssemblySourceImage(
 ): DockerGeometryModuleAssemblySourceInspection {
   if (
     !inspection.repoDigests.some((digest) =>
-      digest === LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE ||
-      digest ===
-        `docker.io/${LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE}`
+      samePinnedRepositoryDigest(
+        digest,
+        LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
+      )
     ) || inspection.os !== EXPECTED_OS ||
     inspection.architecture !== EXPECTED_ARCHITECTURE ||
     inspection.user !== WORKER.expectedImageUser ||

@@ -189,7 +189,10 @@ Deno.test("absent Microsandbox image lookup is classified without swallowing oth
 Deno.test("expected host architecture is taken from the shared helper seam", () => {
   const amd64 = expectedNgspiceRuntimeImage("amd64");
   assertEquals(amd64.architecture, "amd64");
-  assertEquals(amd64.reference, LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE);
+  assertEquals(
+    amd64.reference,
+    `docker.io/${LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE}`,
+  );
   assertThrows(
     () => assertExactCachedNgspiceRuntimeImage(runtimeInspection(), amd64),
     Error,
@@ -199,7 +202,7 @@ Deno.test("expected host architecture is taken from the shared helper seam", () 
 
 function runtimeInspection(): MicrosandboxImageInspection {
   return Object.freeze({
-    reference: LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
+    reference: `docker.io/${LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE}`,
     manifestDigest: `sha256:${LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_DIGEST}`,
     architecture: HOST_ARCH,
     os: "linux",

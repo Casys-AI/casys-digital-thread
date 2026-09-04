@@ -305,24 +305,24 @@ function bindDescriptorToCatalog(
   const material = unit?.materials.find((candidate) =>
     candidate.id === descriptor.materialId
   );
+  const authoredTarget = pinnedOciImageReference(
+    descriptor.targetImageReference,
+    "$firstPartyMicrosandboxBootstrap.targetImageReference",
+  );
   if (
     !unit || !material || material.kind !== "microvm-image" ||
     material.lifecycle !== "ephemeral" || material.launchGroup !== null ||
-    material.imageReference !== descriptor.targetImageReference
+    material.imageReference !== authoredTarget
   ) {
     throw new TypeError(
       `First-party Microsandbox bootstrap lacks exact ${descriptor.unitId}/${descriptor.materialId}.`,
     );
   }
-  pinnedOciImageReference(
-    descriptor.targetImageReference,
-    "$firstPartyMicrosandboxBootstrap.targetImageReference",
-  );
   const expectation = expectations.find((entry) =>
     entry.material.unitId === descriptor.unitId &&
     entry.material.materialId === descriptor.materialId
   );
-  if (!expectation || expectation.image.reference !== descriptor.targetImageReference) {
+  if (!expectation || expectation.image.reference !== material.imageReference) {
     throw new TypeError(
       `First-party Microsandbox bootstrap drifted from the worker contract for ${descriptor.unitId}/${descriptor.materialId}.`,
     );
@@ -340,8 +340,8 @@ function bindDescriptorToCatalog(
     );
   }
   const target = Object.freeze({
-    reference: descriptor.targetImageReference,
-    manifestDigest: `sha256:${imageDigest(descriptor.targetImageReference)}`,
+    reference: material.imageReference,
+    manifestDigest: `sha256:${imageDigest(material.imageReference)}`,
     os: "linux" as const,
     architecture,
     user: descriptor.source.user,
@@ -349,6 +349,7 @@ function bindDescriptorToCatalog(
   });
   return Object.freeze({
     ...descriptor,
+    targetImageReference: material.imageReference,
     source: structuredClone(descriptor.source),
     target,
   });

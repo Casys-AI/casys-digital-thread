@@ -5,6 +5,7 @@
  */
 
 import type { CapabilityRuntimeCatalog } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
+import { pinnedOciImageReference } from "../../domain/compile/isolation/local-isolation-runtime.ts";
 import {
   BUILD123D_ISOLATED_WORKER_MATERIAL_ID,
   BUILD123D_ISOLATED_WORKER_UNIT_ID,
@@ -159,5 +160,12 @@ function contract(
     readonly entrypoint: readonly string[];
   },
 ] {
-  return [`${unitId}\u0000${materialId}`, { reference, user, entrypoint }];
+  return [`${unitId}\u0000${materialId}`, {
+    reference: pinnedOciImageReference(
+      reference,
+      `$firstPartyMicrosandboxContract.${unitId}.${materialId}`,
+    ),
+    user,
+    entrypoint,
+  }];
 }

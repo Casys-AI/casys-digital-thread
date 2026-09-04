@@ -49,6 +49,42 @@ Deno.test("Microsandbox local runtime identity accepts one exact digest-pinned O
   );
 });
 
+Deno.test("pinned OCI image reference canonicalizes omitted Docker Hub registries", () => {
+  assertEquals(
+    pinnedOciImageReference(`casys/modelica-worker@sha256:${DIGEST}`, "$image"),
+    `docker.io/casys/modelica-worker@sha256:${DIGEST}`,
+  );
+  assertEquals(
+    pinnedOciImageReference(`postgres@sha256:${DIGEST}`, "$image"),
+    `docker.io/library/postgres@sha256:${DIGEST}`,
+  );
+  assertEquals(
+    pinnedOciImageReference(
+      `docker.io/casys/modelica-worker@sha256:${DIGEST}`,
+      "$image",
+    ),
+    `docker.io/casys/modelica-worker@sha256:${DIGEST}`,
+  );
+  assertEquals(
+    pinnedOciImageReference(
+      `docker.io/library/postgres@sha256:${DIGEST}`,
+      "$image",
+    ),
+    `docker.io/library/postgres@sha256:${DIGEST}`,
+  );
+  assertEquals(
+    pinnedOciImageReference(
+      `docker.io/postgres@sha256:${DIGEST}`,
+      "$image",
+    ),
+    `docker.io/postgres@sha256:${DIGEST}`,
+  );
+  assertEquals(
+    pinnedOciImageReference(IMAGE, "$image"),
+    IMAGE,
+  );
+});
+
 Deno.test("Microsandbox runtime attestation derives image identity and exact assurance matrix", () => {
   assertEquals(
     createMicrosandboxRuntimeAttestation({

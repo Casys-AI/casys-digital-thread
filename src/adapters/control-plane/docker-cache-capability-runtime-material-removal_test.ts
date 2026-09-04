@@ -11,6 +11,7 @@ import { InMemoryCapabilityRuntimeNonpersistentMaterialRemovalJournal } from "./
 
 const DIGEST = "a".repeat(64);
 const REFERENCE = `casys/ngspice-source@sha256:${DIGEST}`;
+const CANONICAL = `docker.io/casys/ngspice-source@sha256:${DIGEST}`;
 const CLOCK = "2026-08-31T00:00:01.000Z";
 
 Deno.test("Docker cache removal inspects the sealed digest and removes without force or prune", async () => {
@@ -32,7 +33,7 @@ Deno.test("Docker cache removal inspects the sealed digest and removes without f
   );
   assertEquals(
     runner.calls.filter((call) => call[0] === "image" && call[1] === "rm"),
-    [["image", "rm", REFERENCE]],
+    [["image", "rm", CANONICAL]],
   );
   assertEquals(
     runner.calls.some((call) =>
@@ -85,7 +86,7 @@ Deno.test("Docker cache exact ownership accepts catalog and docker.io repository
     assertEquals(result.status, "succeeded", variant.name);
     assertEquals(
       runner.calls.filter((call) => call[0] === "image" && call[1] === "rm"),
-      [["image", "rm", REFERENCE]],
+      [["image", "rm", CANONICAL]],
       variant.name,
     );
   }

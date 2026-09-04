@@ -24,6 +24,7 @@ import {
 import {
   MICROSANDBOX_LOCAL_ISOLATION_CLASS,
   type MicrosandboxLocalRuntimeIdentity,
+  pinnedOciImageReference,
   validateMicrosandboxLocalRuntimeIdentity,
 } from "../../compile/isolation/local-isolation-runtime.ts";
 import {
@@ -99,7 +100,7 @@ export const MODELICA_QUALIFIED_BUNDLE_BYTE_COUNT = 2_245;
 export const MODELICA_QUALIFIED_EXECUTION_PROFILE_FINGERPRINT = Object.freeze(
   {
     algorithm: "sha256",
-    digest: "6e783e7b371d28f7219d22d40120016ec47a49eca8cfdaa4ffe37d4bdf7af582",
+    digest: "5e47b59984bddc15a7a2b645e853f33679607d787a1ed0f419de17311df412b5",
   } as const,
 );
 export const MODELICA_QUALIFIED_RUNTIME_QUALIFICATION_FINGERPRINT = Object.freeze(
@@ -109,7 +110,10 @@ export const MODELICA_QUALIFIED_RUNTIME_QUALIFICATION_FINGERPRINT = Object.freez
   } as const,
 );
 
-const QUALIFIED_IMAGE_REFERENCE = LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE;
+const QUALIFIED_IMAGE_REFERENCE = pinnedOciImageReference(
+  LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
+  "$modelicaQualified.imageReference",
+);
 const QUALIFIED_WRAPPER_SHA256 =
   "b5336d1615b017900f65aa9d491f3ecae8b3afb377d0bb38bc5678b03028c816";
 const QUALIFIED_POLICY = deepFreeze({

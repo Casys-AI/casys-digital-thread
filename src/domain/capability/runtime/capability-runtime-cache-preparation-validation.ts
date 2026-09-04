@@ -9,6 +9,7 @@ import {
   safeId,
 } from "../../kernel/case-validation.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
+import { pinnedOciImageReference } from "../../compile/isolation/local-isolation-runtime.ts";
 import type { CapabilityRuntimeMaterialIdentity } from "./capability-runtime-supervision.ts";
 import {
   CAPABILITY_RUNTIME_CACHE_PREPARATION_RECIPE_SCHEMA,
@@ -231,11 +232,7 @@ export function compareRecipe(
 }
 
 export function pinnedImageReference(value: unknown, path: string): string {
-  const reference = nonEmptyText(value, path);
-  if (!/^.+@sha256:[a-f0-9]{64}$/.test(reference) || /\s/.test(reference)) {
-    throw new TypeError(`${path} must be one digest-pinned OCI reference.`);
-  }
-  return reference;
+  return pinnedOciImageReference(value, path);
 }
 
 export function oneOf<T extends readonly string[]>(

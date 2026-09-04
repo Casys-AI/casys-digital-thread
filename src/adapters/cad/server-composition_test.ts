@@ -66,7 +66,7 @@ Deno.test("Build123d profile-only review stays independent of private sandbox ad
     assertEquals(reviewOnly.build123dExecution?.execution, undefined);
     assertEquals(
       reviewOnly.localProfile?.runtimeBackend.imageReference,
-      PROFILE.imageReference,
+      `docker.io/${PROFILE.imageReference}`,
     );
 
     const geometrySourceAnalysis = {

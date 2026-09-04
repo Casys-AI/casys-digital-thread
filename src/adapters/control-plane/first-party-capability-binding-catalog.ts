@@ -28,6 +28,7 @@ import {
 import {
   SPICE_ADMITTED_EXECUTION_PROFILE,
 } from "../../domain/electrical/spice/admitted/run-proposal.ts";
+import { pinnedOciImageReference } from "../../domain/compile/isolation/local-isolation-runtime.ts";
 import {
   LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
 } from "../fea/isolated-v3/local-calculix-isolated-execution-options.ts";
@@ -628,7 +629,7 @@ function composeMaterial(
   return {
     id,
     kind: "compose-service",
-    imageReference,
+    imageReference: cataloguedImageReference(imageReference, id),
     platforms,
     lifecycle: "persistent",
     launchGroup,
@@ -659,7 +660,7 @@ function microvmMaterial(
   return {
     id,
     kind: "microvm-image",
-    imageReference,
+    imageReference: cataloguedImageReference(imageReference, id),
     platforms,
     lifecycle: "ephemeral",
     launchGroup: null,
@@ -694,7 +695,7 @@ function ociImageMaterial(
   return {
     id,
     kind: "oci-image",
-    imageReference,
+    imageReference: cataloguedImageReference(imageReference, id),
     platforms,
     lifecycle: "cache",
     launchGroup: null,
@@ -727,7 +728,10 @@ function chronoMaterial(
   return {
     id: "mcp-chrono-image",
     kind: "compose-service",
-    imageReference: MCP_CHRONO_032_IMAGE_REFERENCE,
+    imageReference: cataloguedImageReference(
+      MCP_CHRONO_032_IMAGE_REFERENCE,
+      "mcp-chrono-image",
+    ),
     platforms: ["linux/amd64"],
     lifecycle: "persistent",
     launchGroup,
@@ -747,6 +751,13 @@ function chronoMaterial(
       security: "reviewed",
     },
   };
+}
+
+function cataloguedImageReference(imageReference: string, materialId: string): string {
+  return pinnedOciImageReference(
+    imageReference,
+    `$firstPartyCatalog.${materialId}.imageReference`,
+  );
 }
 
 function volume(

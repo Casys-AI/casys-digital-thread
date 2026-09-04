@@ -77,6 +77,14 @@ Deno.test("geometry-module Docker source requires exact digest contract and sour
   assertExactDockerGeometryModuleAssemblySourceImage(
     parseDockerGeometryModuleAssemblySourceInspection(dockerInspection()),
   );
+  assertExactDockerGeometryModuleAssemblySourceImage(
+    parseDockerGeometryModuleAssemblySourceInspection({
+      ...dockerInspection(),
+      RepoDigests: [
+        `docker.io/${LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE}`,
+      ],
+    }),
+  );
   assertThrows(
     () =>
       assertExactDockerGeometryModuleAssemblySourceImage(

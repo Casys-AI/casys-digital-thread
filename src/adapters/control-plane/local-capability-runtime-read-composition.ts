@@ -8,6 +8,7 @@ import { ProjectCapabilityRuntimeContextCompiler } from "../../application/contr
 import { ProjectCapabilityWorkbenchProjector } from "../../application/control-plane/project-capability-workbench.ts";
 import type { CapabilityRuntimeSecretSlotObserver } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import { capabilityRuntimeMaterialKey } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
+import { pinnedOciImageReference } from "../../domain/compile/isolation/local-isolation-runtime.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import { listRegisteredEngineeringOperations } from "../../orchestration/operations/registry.ts";
 import {
@@ -191,8 +192,11 @@ export async function createLocalCapabilityRuntimeReadComposition(
       materialId: "calculix-worker-image",
     },
     image: {
-      reference: options.calculixExecutionProfile?.imageReference ??
-        LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
+      reference: pinnedOciImageReference(
+        options.calculixExecutionProfile?.imageReference ??
+          LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
+        "$localCapabilityRuntime.calculix.imageReference",
+      ),
       manifestDigest: options.calculixExecutionProfile
         ? `sha256:${options.calculixExecutionProfile.imageDigest.digest}`
         : LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE.slice(
@@ -215,8 +219,11 @@ export async function createLocalCapabilityRuntimeReadComposition(
       materialId: BUILD123D_ISOLATED_WORKER_MATERIAL_ID,
     },
     image: {
-      reference: options.build123dExecutionProfile?.imageReference ??
-        LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
+      reference: pinnedOciImageReference(
+        options.build123dExecutionProfile?.imageReference ??
+          LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
+        "$localCapabilityRuntime.build123d.imageReference",
+      ),
       manifestDigest: options.build123dExecutionProfile
         ? `sha256:${options.build123dExecutionProfile.imageDigest.digest}`
         : LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE.slice(
@@ -250,7 +257,10 @@ export async function createLocalCapabilityRuntimeReadComposition(
         materialId: "modelica-admitted-worker-image",
       },
       image: {
-        reference: options.admittedModelicaExecutionProfile.imageReference,
+        reference: pinnedOciImageReference(
+          options.admittedModelicaExecutionProfile.imageReference,
+          "$localCapabilityRuntime.admittedModelica.imageReference",
+        ),
         manifestDigest:
           `sha256:${options.admittedModelicaExecutionProfile.imageDigest.digest}`,
         os: "linux",
@@ -282,7 +292,10 @@ export async function createLocalCapabilityRuntimeReadComposition(
         materialId: "ngspice-runtime-image",
       },
       image: {
-        reference: options.admittedSpiceExecutionProfile.imageReference,
+        reference: pinnedOciImageReference(
+          options.admittedSpiceExecutionProfile.imageReference,
+          "$localCapabilityRuntime.admittedSpice.imageReference",
+        ),
         manifestDigest:
           `sha256:${options.admittedSpiceExecutionProfile.imageDigest.digest}`,
         os: "linux",

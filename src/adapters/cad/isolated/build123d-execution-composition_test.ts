@@ -60,7 +60,7 @@ Deno.test("Build123d profile-only composition exposes provider-free review facts
   );
   assertEquals(profile.runtimeBackend, {
     ...MICROSANDBOX_LOCAL_RUNTIME_REF,
-    imageReference: PROFILE.imageReference,
+    imageReference: `docker.io/${PROFILE.imageReference}`,
     imageDigest: profile.runtime.imageDigest,
   });
   assertEquals(profile.runtime.requestedLimits, PROFILE.limits);

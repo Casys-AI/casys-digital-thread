@@ -13,6 +13,7 @@ import {
   capabilityRuntimeMaterialKey,
   type CapabilityRuntimeObservedState,
 } from "../../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import { samePinnedRepositoryDigest } from "../../../shared/docker-pinned-repository-digest.ts";
 import {
   assertExactDockerNgspiceSourceImage,
   parseDockerNgspiceSourceInspection,
@@ -100,7 +101,10 @@ function assertExactInput(input: {
   if (
     !isNgspiceDockerSourceMaterial(input.material) ||
     input.material.imageDigest !== NGSPICE_DOCKER_SOURCE_IMAGE_DIGEST ||
-    input.imageReference !== LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE
+    !samePinnedRepositoryDigest(
+      input.imageReference,
+      LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE,
+    )
   ) {
     throw unavailableSourceImageError();
   }

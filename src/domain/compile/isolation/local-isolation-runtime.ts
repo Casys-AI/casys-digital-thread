@@ -41,7 +41,7 @@ export const MICROSANDBOX_LOCAL_ISOLATION_CLASS =
 export type MicrosandboxLocalRuntimeRef = typeof MICROSANDBOX_LOCAL_RUNTIME_REF;
 
 export interface MicrosandboxLocalRuntimeIdentity extends MicrosandboxLocalRuntimeRef {
-  /** Immutable OCI name plus digest, never a tag or pull credential. */
+  /** Canonical digest-pinned OCI name. An omitted registry is Docker Hub. */
   readonly imageReference: string;
   readonly imageDigest: ContentFingerprint;
 }
@@ -152,6 +152,12 @@ export function validateMicrosandboxLocalRuntimeIdentity(
   return deepFreeze({ ...ref, imageReference, imageDigest });
 }
 
+/**
+ * Validate one digest-pinned OCI image name and return its canonical form.
+ * An omitted registry is Docker Hub: one repository segment becomes
+ * `docker.io/library/<name>`, otherwise `docker.io/<name>`. Explicit
+ * registries, including `ghcr.io` and `localhost`, stay unchanged.
+ */
 export function pinnedOciImageReference(value: unknown, path: string): string {
   const reference = nonEmptyText(value, path);
   const marker = "@sha256:";
@@ -181,7 +187,11 @@ export function pinnedOciImageReference(value: unknown, path: string): string {
       `${path} must be one OCI image name pinned by a lowercase sha256 digest.`,
     );
   }
-  return reference;
+  if (hasExplicitRegistry) return reference;
+  const canonicalName = repositorySegments.length === 1
+    ? `docker.io/library/${repositorySegments[0]}`
+    : `docker.io/${repositorySegments.join("/")}`;
+  return `${canonicalName}${marker}${digest}`;
 }
 
 function validRegistryHost(host: string, hasPort: boolean): boolean {

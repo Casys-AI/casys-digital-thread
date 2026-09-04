@@ -10,6 +10,7 @@
  * image, path, platform, or command.
  */
 
+import { samePinnedRepositoryDigest } from "../shared/docker-pinned-repository-digest.ts";
 import {
   assertExactMicrosandboxImageInspection,
   createLocalMicrosandboxSdk,
@@ -142,7 +143,7 @@ export function assertExactDockerSourceImage(
       inspectedReference === source.dockerSourceReference &&
       source.dockerSourceReference.includes("@sha256:"));
   const digestMatches = inspection.repoDigests.some((digest) =>
-    digest === inspectedReference || digest === `docker.io/${inspectedReference}`
+    samePinnedRepositoryDigest(digest, inspectedReference)
   );
   if (
     inspection.os !== source.os ||

@@ -57,7 +57,7 @@ Deno.test("geometry-module qualification candidate binds the ordered Docker-sour
   assertEquals(source.lifecycle, "cache");
   assertEquals(
     source.imageReference,
-    LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
+    `docker.io/${LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE}`,
   );
   assertEquals(source.platforms, ["linux/arm64"]);
   assertEquals(source.launchGroup, null);

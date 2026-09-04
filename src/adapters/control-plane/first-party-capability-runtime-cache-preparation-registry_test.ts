@@ -3,6 +3,7 @@ import {
   type CapabilityRuntimeCatalog,
   fingerprintAtomicCapabilityRuntimeUnit,
 } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
+import { pinnedOciImageReference } from "../../domain/compile/isolation/local-isolation-runtime.ts";
 import { LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE } from "../electrical/spice/admitted/local-image-references.ts";
 import {
   LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
@@ -59,7 +60,7 @@ Deno.test("first-party cache registry enrolls one recipe per catalogued microvm-
   assertEquals(
     byId.get(FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID)?.scope.materials[0]
       ?.imageReference,
-    LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
+    pinnedOciImageReference(LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE, "$test"),
   );
   assertEquals(
     byId.get(FIRST_PARTY_GEOMETRY_MODULE_CACHE_RECIPE_ID)?.scope.materials[0]
@@ -68,21 +69,21 @@ Deno.test("first-party cache registry enrolls one recipe per catalogued microvm-
   );
   assertEquals(
     byId.get(FIRST_PARTY_CALCULIX_CACHE_RECIPE_ID)?.scope.materials[0]?.imageReference,
-    LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
+    pinnedOciImageReference(LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE, "$test"),
   );
   assertEquals(
     byId.get(FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID)?.scope.materials[0]
       ?.imageReference,
-    LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
+    pinnedOciImageReference(LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE, "$test"),
   );
   assertEquals(
     byId.get(FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID)?.scope.materials[0]
       ?.imageReference,
-    LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
+    pinnedOciImageReference(LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE, "$test"),
   );
   assertEquals(
     byId.get(FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID)?.scope.materials[0]?.imageReference,
-    LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
+    pinnedOciImageReference(LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE, "$test"),
   );
 
   const qualified = descriptors.find((descriptor) =>

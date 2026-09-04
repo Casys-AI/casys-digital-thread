@@ -186,7 +186,7 @@ Deno.test("atomic first-party runtime catalogue separates sources with distinct 
       ?.manifestFingerprint,
     {
       algorithm: "sha256",
-      digest: "1ab8237ecd5fe98718a0f605883b6f541d7694bf755effb6a3b9260113de0732",
+      digest: "79d70276d7b23b2e327f32990ee9c85072e0a8746e0f867adb921ef8300be965",
     },
   );
   assertEquals(
