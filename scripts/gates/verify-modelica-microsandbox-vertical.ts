@@ -184,7 +184,9 @@ try {
     qualifiedAt: new Date().toISOString(),
     executionProfileFingerprint: profile.profileFingerprint,
     image: {
-      reference: IMAGE_REFERENCE,
+      // Persist the profile's canonical OCI identity, not the short local
+      // input spelling, so durable readback proves the profile it reopens.
+      reference: profile.runtimeBackend.imageReference,
       digest: profile.runtime.imageDigest,
     },
     worker: {

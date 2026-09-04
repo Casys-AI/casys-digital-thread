@@ -66,16 +66,16 @@ historical `compile.seal-admission@3` creation snapshot.
 
 There is one physical artefact: `casys/modelica-microsandbox-worker` at
 `LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE`
-(`sha256:d25f220287cd8d1713e9e7d773afb8bb867fc5404a112e5e50ffa2e862fd6fdf`). Do not
+(`sha256:834c759291320eb5f35ccb6eba03587445d259dcb38a2814c5def4ac41d5d730`). Do not
 invent a second image (`closed-subset-worker` or similar). Qualified-kit and admitted
 workers are two logical units and two cache recipes on that shared load identity; the
 second acquisition is a cache hit. Binding qualifications stay separate scientific
 captures.
 
-| Worker                                                 | Selected how                              | Source bytes                                      | Binding qualification                                                                                         |
-| ------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `/opt/casys/profiles/modelica-qualified-kit-v1/run.ts` | Image `ENTRYPOINT`. Kit `@1` composition. | Pinned kit `.mo` inside the image                 | Capture `d6aee5fe…` remains fail-closed against the current digest until a later live gate                    |
-| `/opt/casys/profiles/modelica-closed-subset-v2/run.ts` | Backend args in the admitted composition. | Generic bounded `/input/source.mo` from admission | Separate, currently unqualified                                                                               |
+| Worker                                                 | Selected how                              | Source bytes                                      | Binding qualification                                                                                                                               |
+| ------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/opt/casys/profiles/modelica-qualified-kit-v1/run.ts` | Image `ENTRYPOINT`. Kit `@1` composition. | Pinned kit `.mo` inside the image                 | Live-qualified for the fixed kit only; capture `bf85aa19…` (OpenModelica 1.27.0, MSL 4.1.0, exact 22 degC). Does not qualify the admitted worker     |
+| `/opt/casys/profiles/modelica-closed-subset-v2/run.ts` | Backend args in the admitted composition. | Generic bounded `/input/source.mo` from admission | Separate, currently unqualified/unknown                                                                                                             |
 
 The pin lives in `src/domain/modelica/local-execution-image.ts` and is the only active
 Modelica runtime constant. Adding the admitted worker to

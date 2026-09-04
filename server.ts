@@ -405,7 +405,7 @@ const DEFAULT_RECORDED_ANALYSIS_DIRECTORY = "state/local/recorded-analysis";
 export { LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE };
 const LOCAL_MODELICA_QUALIFICATION_CAPTURE_FINGERPRINT = Object.freeze({
   algorithm: "sha256" as const,
-  digest: "d6aee5fe375daa55cec29a32acf27181dd4bb8ea8e5c3f90f848cc718c149428",
+  digest: "bf85aa1914dddf6fb20aee1c66ef62f3eca3cdcf13b53759ee0c8710bee188db",
 });
 const LOCAL_MODELICA_QUALIFICATION_ROOT =
   "state/local/modelica-microsandbox-qualification";

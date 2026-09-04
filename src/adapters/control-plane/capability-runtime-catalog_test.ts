@@ -186,7 +186,15 @@ Deno.test("atomic first-party runtime catalogue separates sources with distinct 
       ?.manifestFingerprint,
     {
       algorithm: "sha256",
-      digest: "79d70276d7b23b2e327f32990ee9c85072e0a8746e0f867adb921ef8300be965",
+      digest: "399f9694c732189e475995662254f2ba1fba90b3d75620a0a5221c70cb3f5272",
+    },
+  );
+  assertEquals(
+    catalog.units.find((unit) => unit.id === "casys.modelica-worker")
+      ?.manifestFingerprint,
+    {
+      algorithm: "sha256",
+      digest: "defeacb0fb2e702bfa5ff73585fcdaac7ac634667d69443d7fbb45ce48dd2cf6",
     },
   );
   assertEquals(

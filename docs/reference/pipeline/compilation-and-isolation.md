@@ -209,19 +209,19 @@ materialized within the SDK protocol frame rather than paginated by the adapter.
 are explicit host trust/availability limits, not extra agent capabilities.
 
 The current Modelica microVM pin is
-`casys/modelica-microsandbox-worker@sha256:d25f220287cd8d1713e9e7d773afb8bb867fc5404a112e5e50ffa2e862fd6fdf`
+`casys/modelica-microsandbox-worker@sha256:834c759291320eb5f35ccb6eba03587445d259dcb38a2814c5def4ac41d5d730`
 (`LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE`). Qualified-kit and admitted workers are two
 logical units on that one physical artefact; binding qualifications stay separate
-scientific captures, not a second image. A deliberately narrow real Microsandbox
-qualification previously persisted capture
-`d6aee5fe375daa55cec29a32acf27181dd4bb8ea8e5c3f90f848cc718c149428` (OpenModelica 1.27.0
-with MSL 4.1.0, producer generation 0, externally validated
-`temperature_final = 22 degC`, proven destruction and CAS reread). That capture remains
-the pinned kit authority, so the current digest stays fail-closed until a later live
-gate. The authority is exact, not general: it covers only
-`linear-thermal-ramp-v1@0.1.0` / `linear-ramp-nominal` and accepts no arbitrary
-Modelica. The separate local product operation descriptor and fail-closed dispatcher
-entry for `simulate.run-qualified-modelica-kit@1` remain registered independently of
+scientific captures, not a second image. A live Microsandbox gate qualified that 834c
+runtime for the fixed qualified kit only and persisted capture
+`bf85aa1914dddf6fb20aee1c66ef62f3eca3cdcf13b53759ee0c8710bee188db` (OpenModelica 1.27.0
+with MSL 4.1.0, exact `temperature_final = 22 degC` conformance, atomic
+publication/readback, exit 0, and sandbox destruction). The authority is exact, not
+general: it covers only `linear-thermal-ramp-v1@0.1.0` / `linear-ramp-nominal` and
+accepts no arbitrary Modelica. The generic admitted-source Modelica worker on the same
+image stays unqualified/unknown and does not inherit this scientific claim. The
+separate local product operation descriptor and fail-closed dispatcher entry for
+`simulate.run-qualified-modelica-kit@1` remain registered independently of
 runtime availability. Its read-only review and concrete executor become available only
 when the approved capability-runtime supervisor composes the exact profile, runtime and
 pinned qualification. The review accepts only the exact project and current Thread
@@ -238,8 +238,8 @@ is not the pinned qualified-kit V1, not recorded `@2`, and does not accept calle
 `ReopenAdmittedCompilationSource` → `IsolatedCodeRunner`. One physical Modelica image
 (`casys/modelica-microsandbox-worker` at the pin above): kit `ENTRYPOINT` pins one
 `.mo`; admitted backend args select `modelica-closed-subset-v2/run.ts` on
-`/input/source.mo`. Kit binding qualification remains the capture above; admitted
-bindings stay unqualified until their own live gate. Product AX:
+`/input/source.mo`. Kit binding qualification is that live capture; admitted bindings
+stay unqualified/unknown and do not inherit it. Product AX:
 [run admitted Modelica](../../how-to/run/run-admitted-modelica.md). Pattern:
 [admitted source isolated execution](admitted-source-isolated-execution.md).
 

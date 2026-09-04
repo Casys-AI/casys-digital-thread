@@ -299,7 +299,7 @@ async function harness(): Promise<Harness> {
       version: "1.0.0",
       fingerprint: {
         algorithm: "sha256",
-        digest: "bda19298410eaea88d8985fe306561c8f16881909f0f6231dad0405b8616857d",
+        digest: "acd119309fd7827a09b31babdd01a46e27f9839b02145dc8e01b480d904ccabe",
       },
     },
     limits,

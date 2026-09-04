@@ -268,14 +268,14 @@ Deno.test("future Modelica runtime binding factory is code-owned, digest pinned,
   assertEquals(first.profile.imageReference, LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE);
   assertEquals(
     first.profile.imageReference,
-    "casys/modelica-microsandbox-worker@sha256:d25f220287cd8d1713e9e7d773afb8bb867fc5404a112e5e50ffa2e862fd6fdf",
+    "casys/modelica-microsandbox-worker@sha256:834c759291320eb5f35ccb6eba03587445d259dcb38a2814c5def4ac41d5d730",
   );
   assertEquals(first.profile.policy, {
     id: "modelica-microsandbox-deny-all-v1",
     version: "1.0.0",
     fingerprint: {
       algorithm: "sha256",
-      digest: "bda19298410eaea88d8985fe306561c8f16881909f0f6231dad0405b8616857d",
+      digest: "acd119309fd7827a09b31babdd01a46e27f9839b02145dc8e01b480d904ccabe",
     },
   });
   assertEquals(first.profile.engine, {

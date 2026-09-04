@@ -100,13 +100,13 @@ export const MODELICA_QUALIFIED_BUNDLE_BYTE_COUNT = 2_245;
 export const MODELICA_QUALIFIED_EXECUTION_PROFILE_FINGERPRINT = Object.freeze(
   {
     algorithm: "sha256",
-    digest: "5e47b59984bddc15a7a2b645e853f33679607d787a1ed0f419de17311df412b5",
+    digest: "7779a8fb2038ed8b6b554526196c831acdad029b660b2066b79b0860f43ad9c9",
   } as const,
 );
 export const MODELICA_QUALIFIED_RUNTIME_QUALIFICATION_FINGERPRINT = Object.freeze(
   {
     algorithm: "sha256",
-    digest: "d6aee5fe375daa55cec29a32acf27181dd4bb8ea8e5c3f90f848cc718c149428",
+    digest: "bf85aa1914dddf6fb20aee1c66ef62f3eca3cdcf13b53759ee0c8710bee188db",
   } as const,
 );
 
@@ -121,7 +121,7 @@ const QUALIFIED_POLICY = deepFreeze({
   version: "1.0.0",
   fingerprint: {
     algorithm: "sha256" as const,
-    digest: "bda19298410eaea88d8985fe306561c8f16881909f0f6231dad0405b8616857d",
+    digest: "acd119309fd7827a09b31babdd01a46e27f9839b02145dc8e01b480d904ccabe",
   },
 });
 const QUALIFIED_LIMITS = deepFreeze({
