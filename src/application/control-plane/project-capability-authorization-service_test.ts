@@ -214,6 +214,16 @@ Deno.test("brief capability authorization retains resolved candidates beside an 
         .capabilityProposalFingerprint,
       proposal.capabilityProposalFingerprint,
     );
+    preloads.length = 0;
+    const lockRevisionBeforeResume = (await lock.read()).revision;
+    await authorization.resumeAuthorizedPreloads();
+    assertEquals(preloads.length, 1);
+    assertEquals(
+      (preloads[0] as { capabilityProposalFingerprint: unknown })
+        .capabilityProposalFingerprint,
+      proposal.capabilityProposalFingerprint,
+    );
+    assertEquals((await lock.read()).revision, lockRevisionBeforeResume);
     await assertRejects(
       () => Deno.stat(`${directory}/host/admin-lock.json`),
       Deno.errors.NotFound,

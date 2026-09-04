@@ -1,8 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import {
-  type CapabilityRuntimeCatalog,
-  fingerprintAtomicCapabilityRuntimeUnit,
-} from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
+import type { CapabilityRuntimeCatalog } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
 import { pinnedOciImageReference } from "../../domain/compile/isolation/local-isolation-runtime.ts";
 import { LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE } from "../electrical/spice/admitted/local-image-references.ts";
 import {
@@ -182,21 +179,10 @@ async function catalogWithoutNgspiceRuntime(): Promise<CapabilityRuntimeCatalog>
   const catalog = await createFirstPartyCapabilityRuntimeCatalog();
   const spice = catalog.units.find((unit) => unit.id === "casys.spice-worker");
   if (!spice) throw new Error("spice unit is absent");
-  const materials = spice.materials.filter((material) =>
-    material.id !== "ngspice-runtime-image"
-  );
-  const amended = {
-    ...spice,
-    materials,
-    manifestFingerprint: await fingerprintAtomicCapabilityRuntimeUnit({
-      id: spice.id,
-      version: spice.version,
-      materials,
-    }),
-  };
   return {
     ...catalog,
-    units: catalog.units.map((unit) => unit.id === spice.id ? amended : unit),
+    units: catalog.units.filter((unit) => unit.id !== spice.id),
+    bindings: catalog.bindings.filter((binding) => !binding.unitIds.includes(spice.id)),
   };
 }
 

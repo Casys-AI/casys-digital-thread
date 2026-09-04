@@ -60,12 +60,12 @@ publish none. See [capability runtime connection](capability-runtime-connection.
 | `casys.mcp-build123d-sandbox`            | Private Build123d Compose service              | 3024                  | Separate private export volume                                                                                                                                                                                 |
 | `casys.mcp-build123d-observation`        | Regular Build123d/OCCT observer service        | 3014                  | Optional assembly-integrity path                                                                                                                                                                               |
 | `casys.build123d-isolated-worker`        | Admitted source microVM                        | —                     | Different lifecycle from either HTTP service                                                                                                                                                                   |
-| `casys.geometry-module-assembler-worker` | One-level STEP compound microVM                | —                     | Catalogue: `linux/arm64`, qualified binding; exact native platform uses its code-owned qualification without attestation; emulation and upgrading unqualified/revoked bindings require exact local attestation |
+| `casys.geometry-module-assembler-worker` | One-level STEP compound runtime microVM        | —                     | One exact runtime material only. Its trusted Dockerfile is internal bootstrap metadata; catalogue: `linux/arm64`, qualified binding; exact native platform uses its code-owned qualification without attestation; emulation and upgrading unqualified/revoked bindings require exact local attestation |
 | `casys.calculix-worker`                  | Product isolated static-proof worker           | —                     | Not HTTP `mcp-calculix`                                                                                                                                                                                        |
 | `casys.mcp-calculix`                     | CalculiX HTTP sensitivity service              | 3015                  | Separate unqualified S1 binding                                                                                                                                                                                |
 | `casys.modelica-qualified-worker`        | Narrow qualified-kit microVM                   | —                     | Not arbitrary admitted Modelica                                                                                                                                                                                |
 | `casys.modelica-worker`                  | Admitted Modelica microVM                      | —                     | Currently unqualified/unavailable in this catalogue                                                                                                                                                            |
-| `casys.spice-worker`                     | OCI source cache plus distinct microVM runtime | —                     | The source image is not a microVM or HTTP `mcp-spice`                                                                                                                                                          |
+| `casys.spice-worker`                     | Admitted ngspice runtime microVM               | —                     | One exact runtime material only. Its trusted Dockerfile source is internal bootstrap metadata, not a project-plan or JIT prerequisite; not HTTP `mcp-spice`                                                                                             |
 | `casys.mcp-chrono`                       | mcp-chrono 0.3.2 persistent MCP service        | 3025                  | Linux/amd64 only; catalogue baseline `unqualified`. Effective host mode is the attestation overlay, not this table                                                                                             |
 
 Every material records persistence, service/volume, network, bind-mount, privileged
@@ -90,8 +90,16 @@ arguments or secret values. `casys.mcp-chrono@0.3.2` names the separate single-s
 `casys-chrono@1.0.0` group. `casys.mcp-calculix@0.8.2` names the separate single-service
 `casys-mcp-calculix@0.8.2` group. Its immutable Compose body remains in the server-only
 H1 registry, has no invented healthcheck, and retains its private inputs and run-ledger
-volumes. Cache-only and microVM materials keep `launchGroup: null`: an image alone never
-enrolls a topology. Registry enrollment is candidacy; it does not start a service.
+volumes. Every current microVM material, and any future cache-only material, keeps
+`launchGroup: null`: an image alone never enrolls a topology. Registry enrollment is
+candidacy; it does not start a service.
+
+The material set is the runtime and attestation set. A first-party Dockerfile, its build
+context, and an acquisition-source digest live only in a server-owned bootstrap
+descriptor. They are not catalogued materials, project-authorized effects, Workbench
+data, or JIT prerequisites. A trusted Dockerfile rebuild can produce a candidate that
+does not attest to the exact target microVM digest; that leaves the runtime unavailable.
+GHCR OCI promotion remains a separate, deferred qualification and distribution step.
 
 The six first-party microVM materials currently share five physical worker images
 (Modelica qualified and admitted load the same image). Candidate GHCR publication of

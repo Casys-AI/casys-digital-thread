@@ -25,7 +25,6 @@ import {
   fingerprintAtomicCapabilityRuntimeUnit,
 } from "../../../application/control-plane/read-model/capability-runtime-catalog.ts";
 import {
-  LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
 } from "../../control-plane/first-party-capability-runtime-identities.ts";
 import {
@@ -49,10 +48,8 @@ const QUALIFICATION_FIXTURE_STEP_PATH = "examples/bracket/bracket.step";
 const QUALIFICATION_FIXTURE_STEP_SHA256 =
   "7e8bcb45b8ad081b701f7f5e15fd79b8e75db27bb09fba2d821fafc6c4c585ac";
 const QUALIFICATION_UNIT_ID = "casys.geometry-module-assembler-worker" as const;
-/** Successor material identity; `@1.0.0` remains the catalogue's old manifest. */
-export const GEOMETRY_MODULE_ASSEMBLER_QUALIFICATION_UNIT_VERSION = "1.1.0" as const;
-const QUALIFICATION_DOCKER_SOURCE_MATERIAL_ID =
-  "geometry-module-assembler-docker-source-image" as const;
+/** The atomic runtime unit changed with the removal of the acquisition input. */
+export const GEOMETRY_MODULE_ASSEMBLER_QUALIFICATION_UNIT_VERSION = "1.2.0" as const;
 const QUALIFICATION_MATERIAL_ID = "geometry-module-assembler-worker-image" as const;
 
 /** Evidence-only until a separate catalogue change adopts the candidate. */
@@ -66,40 +63,6 @@ const QUALIFICATION_CONTRACT = Object.freeze({
   version: "1.0.0",
   source: "src/adapters/cad/module-assembly/fixed-geometry-module-assembler.ts",
 });
-
-/**
- * Docker is a cache source, not the Microsandbox runtime identity. Keeping it
- * explicit makes the atomic unit match the cache-preparation contract.
- */
-const QUALIFICATION_DOCKER_SOURCE_MATERIAL = Object.freeze({
-  id: QUALIFICATION_DOCKER_SOURCE_MATERIAL_ID,
-  kind: "oci-image" as const,
-  imageReference: pinnedOciImageReference(
-    LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
-    "$geometryModuleAssemblerQualification.dockerSource",
-  ),
-  platforms: ["linux/arm64"] as const,
-  lifecycle: "cache" as const,
-  launchGroup: null,
-  effects: Object.freeze({
-    downloadBytes: null,
-    storageBytes: null,
-    services: [],
-    volumes: [],
-    network: "deny-all" as const,
-    loopbackPorts: [],
-    bindMounts: [],
-    privileged: false as const,
-    dockerSocket: false as const,
-    devices: [],
-    secretSlots: [],
-    licence: {
-      status: "reviewed" as const,
-      reference: "docs/reference/runtime/capability-packs/atomic-runtime-boundaries.md",
-    },
-    security: "reviewed" as const,
-  }),
-}) satisfies AtomicCapabilityRuntimeMaterial;
 
 const QUALIFICATION_RUNTIME_MATERIAL = Object.freeze({
   id: QUALIFICATION_MATERIAL_ID,
@@ -132,10 +95,7 @@ const QUALIFICATION_RUNTIME_MATERIAL = Object.freeze({
 }) satisfies AtomicCapabilityRuntimeMaterial;
 
 const QUALIFICATION_MATERIALS = Object.freeze(
-  [
-    QUALIFICATION_DOCKER_SOURCE_MATERIAL,
-    QUALIFICATION_RUNTIME_MATERIAL,
-  ] as const,
+  [QUALIFICATION_RUNTIME_MATERIAL] as const,
 );
 
 export interface GeometryModuleAssemblerMicrosandboxQualificationFixture {
@@ -166,15 +126,9 @@ export interface GeometryModuleAssemblerMicrosandboxQualificationCandidate {
     readonly version: typeof GEOMETRY_MODULE_ASSEMBLER_QUALIFICATION_UNIT_VERSION;
     readonly manifestFingerprint: ContentFingerprint;
   };
-  /** Exact ordered atomic manifest: Docker cache source, then runtime worker. */
+  /** Exact atomic manifest: the executable Microsandbox runtime worker. */
   readonly materials: typeof QUALIFICATION_MATERIALS;
-  /** The cache source is explicit but never substituted for the runtime worker. */
-  readonly sourceMaterial: {
-    readonly unitId: typeof QUALIFICATION_UNIT_ID;
-    readonly materialId: typeof QUALIFICATION_DOCKER_SOURCE_MATERIAL_ID;
-    readonly imageDigest: string;
-  };
-  /** The runtime worker remains the material carried by execution attestation. */
+  /** The runtime worker is the only material carried by execution attestation. */
   readonly material: {
     readonly unitId: typeof QUALIFICATION_UNIT_ID;
     readonly materialId: typeof QUALIFICATION_MATERIAL_ID;
@@ -254,16 +208,6 @@ export async function createGeometryModuleAssemblerMicrosandboxQualificationCand
     },
     unit,
     materials: QUALIFICATION_MATERIALS,
-    sourceMaterial: {
-      unitId: QUALIFICATION_UNIT_ID,
-      materialId: QUALIFICATION_DOCKER_SOURCE_MATERIAL_ID,
-      imageDigest: LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE
-        .slice(
-          LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE.lastIndexOf(
-            "@sha256:",
-          ) + 8,
-        ),
-    },
     material: {
       unitId: QUALIFICATION_UNIT_ID,
       materialId: QUALIFICATION_MATERIAL_ID,

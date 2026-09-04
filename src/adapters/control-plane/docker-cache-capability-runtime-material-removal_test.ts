@@ -249,7 +249,7 @@ async function granted(
 ) {
   const plan = await createCapabilityRuntimeNonpersistentMaterialRemovalPlan({
     unit: {
-      id: "casys.spice-worker",
+      id: "casys.test-cache-worker",
       version: "1.0.0",
       manifestFingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
     },
@@ -285,8 +285,8 @@ async function granted(
 
 function fixtureMaterial() {
   return {
-    unitId: "casys.spice-worker",
-    materialId: "ngspice-docker-source-image",
+    unitId: "casys.test-cache-worker",
+    materialId: "source-image",
     imageReference: REFERENCE,
     imageDigest: DIGEST,
     launchGroup: null,

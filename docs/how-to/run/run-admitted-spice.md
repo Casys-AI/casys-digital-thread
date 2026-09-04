@@ -20,23 +20,24 @@ Lookalikes: [lookalike traps](../../reference/agent/lookalike-traps.md). Domain 
 
 Three operator surfaces. They are not substitutes.
 
-| Surface           | Command                                                                  | What it proves                                                                                                                                                                                                                                     |
-| ----------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Docker smoke      | `scripts/gates/verify-ngspice-microsandbox-worker.ts --run`              | Container contract outside IsolatedCodeRunner. Not the Microsandbox cache.                                                                                                                                                                         |
-| Cache preparation | `deno task prepare:ngspice:microsandbox`                                 | Idempotent observe of the Microsandbox pin; on miss inspect the Docker source or reconstruct the local candidate Dockerfile, then import under the runtime pin. The imported image must still match that digest. No alias pull. Not a product run. |
-| Product run       | `project_admitted_spice_run_review` then `simulate.run-admitted-spice@1` | Documentary isolated execution over the server-owned worker profile. Boot does not import the microVM image; this worker publishes no host port.                                                                                                   |
+| Surface             | Command                                                                  | What it proves                                                                                                                                                                                                                                               |
+| ------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Docker smoke        | `scripts/gates/verify-ngspice-microsandbox-worker.ts --run`              | Container contract outside IsolatedCodeRunner. Not product runtime state.                                                                                                                                                                                   |
+| Maintainer recovery | `deno task prepare:ngspice:microsandbox`                                 | Exceptional recovery only: inspect a server-owned acquisition source or rebuild a candidate Dockerfile, then import only if it attests to the exact runtime digest. No alias pull and not a product run.                                                |
+| Product run         | `project_admitted_spice_run_review` then `simulate.run-admitted-spice@1` | Documentary isolated execution over the server-owned worker profile. After durable authorization, server-owned preload may prepare the exact runtime material; this worker publishes no host port.                                                     |
 
 The Docker distribution/index digest
 `casys/ngspice-microsandbox-worker@sha256:62748f195c86751c5fc565ea8e0ac5ab6bd283ddcae2426918d697b25ce6d392`
-is the `docker image save` source. The executable Microsandbox manifest
+is an internal bootstrap acquisition input. The executable Microsandbox manifest
 `casys/ngspice-microsandbox-worker@sha256:3350527ceba0dbe8f2e31e435e834f962978e800134b83d6ee8f4875b7ffb79a`
-is the runtime `imageReference`. Backend inspect requires `imageReference` digest ==
-attested `manifestDigest`. Do not pin the Docker index digest as the runtime image.
-`pullPolicy` stays `never`. Server startup does not pull or import. A local
-`trusted-dockerfile` rebuild is a candidate recipe, not bit-reproducible proof and not
-an `oci-digest` distribution. After import, the cached image must still match the
-runtime digest; otherwise the capability stays unavailable. A moving APT repository does
-not promise that a later rebuild will reproduce the pin.
+is the only runtime `imageReference`, catalogued material, and JIT attestation target.
+Backend inspect requires `imageReference` digest == attested `manifestDigest`. Do not
+pin the Docker index digest as the runtime image or expose it in a project plan.
+`pullPolicy` stays `never`. A local `trusted-dockerfile` rebuild is a candidate recipe,
+not bit-reproducible proof and not an `oci-digest` distribution. It can fail to attest
+to the exact runtime target digest; then the capability remains unavailable. GHCR OCI
+promotion is deferred until separate qualification promotes an exact digest. A moving
+APT repository does not promise that a later rebuild will reproduce the pin.
 
 Ordinary start is cold Deno. Do not start the root Compose provider stack: H1 activates
 enrolled groups JIT under a lease when covered work needs them, and those groups collide
@@ -44,20 +45,21 @@ with root Compose on the same loopback ports. A root `docker compose up` remains
 manual maintainer probe only and must not run concurrently with H1-managed groups.
 
 ```bash
-deno task prepare:ngspice:microsandbox   # once per host cache; idempotent
 deno task start:yolo    # YOLO approval only; it does not activate SPICE
 ```
 
 ERPNext is an optional sibling integration; start it separately only when its checkout
 and environment file are available.
 
-Connect the agent to `http://127.0.0.1:3020/mcp`. The Workbench is read-only. The
-console does not auto-import the SPICE microVM at boot. The admitted-SPICE executor
-opens an H1 execution session before it claims the run, and the H1 host observer covers
-the exact `casys.spice-worker/ngspice-runtime-image` material. A covered work item can
-therefore prepare and lease that cache JIT; an acquisition, attestation, or lease
-failure leaves the work item and run unchanged and reports the capability literally
-`unavailable`. Restarting the console alone is not an activation mechanism.
+Connect the agent to `http://127.0.0.1:3020/mcp`. The Workbench is read-only. After a
+durable brief authorization, the local control plane schedules a guarded preload of the
+exact `casys.spice-worker/ngspice-runtime-image` material; after a server restart it
+first reconverges the durable authorization lock and re-schedules those authorized
+preloads. The admitted-SPICE executor only observes that exact material in its H1
+execution session before it claims a run. It never pulls, rebuilds, imports, or selects
+an acquisition source JIT. An absent, acquiring, failed, or unattested preload leaves
+the work item and run unchanged and reports the capability literally `unavailable`.
+Restarting the console alone is not an activation mechanism.
 
 ## 1. Capture
 
@@ -106,9 +108,10 @@ server-selected bytes and returns the fixed parameters and registered
 work item: `compilationAdmission` names the selected admission on the current review
 Thread basis. Do not copy a historical `compile.seal-admission@3` creation snapshot.
 
-Obtain human MRTR, queue, then execute `simulate.run-admitted-spice@1`. A missing
-prepared cache, image, or operational envelope keeps the executor literal `unavailable`.
-Cache preparation or a standalone worker check is not a product run.
+Obtain human MRTR, queue, then execute `simulate.run-admitted-spice@1`. A missing or
+in-progress exact microVM preload, failed exact image attestation, or missing operational
+envelope keeps the executor literal `unavailable` before it claims the run. Maintainer
+recovery preparation or a standalone worker check is not a product run.
 
 ## 4. Read success correctly
 

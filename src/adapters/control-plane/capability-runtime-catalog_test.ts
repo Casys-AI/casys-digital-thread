@@ -80,7 +80,7 @@ Deno.test("first-party catalogue binds admitted geometry export to its admission
   );
 });
 
-Deno.test("atomic first-party runtime catalogue separates sources with distinct lifecycle and evidence", async () => {
+Deno.test("atomic first-party runtime catalogue exposes only runtime materials and keeps acquisition internal", async () => {
   const catalog = await createFirstPartyCapabilityRuntimeCatalog();
   assertEquals(catalog.productionEligible, false);
   const syson = catalog.units.find((unit) => unit.id === "casys.syson-stack");
@@ -255,12 +255,21 @@ Deno.test("atomic first-party runtime catalogue separates sources with distinct 
     catalog.units.find((unit) => unit.id === "casys.spice-worker")?.materials.map((
       material,
     ) => material.imageReference).length,
-    2,
+    1,
   );
   assertEquals(
     catalog.units.find((unit) => unit.id === "casys.spice-worker")?.materials[0]
       ?.kind,
-    "oci-image",
+    "microvm-image",
+  );
+  assertEquals(
+    catalog.units.find((unit) => unit.id === "casys.spice-worker")?.version,
+    "1.1.0",
+  );
+  assertEquals(
+    catalog.units.find((unit) => unit.id === "casys.geometry-module-assembler-worker")
+      ?.version,
+    "1.2.0",
   );
   const chrono = catalog.units.find((unit) => unit.id === "casys.mcp-chrono");
   assertEquals(chrono?.version, "0.3.2");

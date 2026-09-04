@@ -8,21 +8,21 @@ Deno.test("admin CLI parses exact unit+material non-persistent removal targets",
     parseCapabilityRuntimeAdminCli([
       "remove-review",
       "--unit-id=casys.spice-worker",
-      "--material-id=ngspice-docker-source-image",
+      "--material-id=ngspice-runtime-image",
     ]),
     {
       command: "remove-review",
       target: {
         kind: "material",
         unitId: "casys.spice-worker",
-        materialId: "ngspice-docker-source-image",
+        materialId: "ngspice-runtime-image",
       },
     },
   );
   const apply = parseCapabilityRuntimeAdminCli([
     "remove-apply",
     "--unit-id=casys.spice-worker",
-    "--material-id=ngspice-docker-source-image",
+    "--material-id=ngspice-runtime-image",
     `--review-fingerprint=${"a".repeat(64)}`,
     "--confirm",
   ]);
@@ -32,7 +32,7 @@ Deno.test("admin CLI parses exact unit+material non-persistent removal targets",
   assertEquals(apply.target, {
     kind: "material",
     unitId: "casys.spice-worker",
-    materialId: "ngspice-docker-source-image",
+    materialId: "ngspice-runtime-image",
   });
 });
 
@@ -87,7 +87,7 @@ Deno.test("admin CLI rejects partial, mixed, backend, image, force and prune rem
     () =>
       parseCapabilityRuntimeAdminCli([
         "remove-review",
-        "--material-id=ngspice-docker-source-image",
+        "--material-id=ngspice-runtime-image",
       ]),
     Error,
     "--unit-id with --material-id",
@@ -97,7 +97,7 @@ Deno.test("admin CLI rejects partial, mixed, backend, image, force and prune rem
       parseCapabilityRuntimeAdminCli([
         "remove-review",
         "--unit-id=casys.spice-worker",
-        "--material-id=ngspice-docker-source-image",
+        "--material-id=ngspice-runtime-image",
         "--launch-group-id=casys-syson",
       ]),
     Error,
@@ -118,7 +118,7 @@ Deno.test("admin CLI rejects partial, mixed, backend, image, force and prune rem
         parseCapabilityRuntimeAdminCli([
           "remove-review",
           "--unit-id=casys.spice-worker",
-          "--material-id=ngspice-docker-source-image",
+          "--material-id=ngspice-runtime-image",
           flag,
         ]),
       Error,

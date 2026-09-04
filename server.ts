@@ -1075,7 +1075,6 @@ async function createProjectControl(
     // Lazy exact inspection only: no image load, pull, sandbox create or
     // Compose start occurs during server construction or queueing.
     microsandbox: capabilityRead.microsandbox,
-    cache: capabilityRead.cache,
     hasAnyRemainingJitDemand: capabilityJitDemand,
   });
   const capabilityAuthorization = new ProjectCapabilityAuthorizationService({
@@ -1097,7 +1096,28 @@ async function createProjectControl(
     preloadScheduler: new CapabilityRuntimePreloadScheduler({
       host: capabilityRuntimeGroups,
       cachePreparer: capabilityRuntimeCachePreparation.cachePreparer,
+      onHostError: ({ projectId, launchGroupId, error }) => {
+        options.logger?.(
+          `Capability preload for ${projectId}/${launchGroupId} failed: ${
+            String(error)
+          }`,
+        );
+      },
+      onCachePreparationError: ({ projectId, error }) => {
+        options.logger?.(
+          `Capability microVM preload for ${projectId} failed: ${String(error)}`,
+        );
+      },
     }),
+  });
+  // A restart does not re-authorize anything. It only reconstructs the
+  // server-owned desired lock and restarts guarded, best-effort preloads for
+  // already-authorized envelopes. Runtime acquisition remains out of JIT's
+  // read-only exact-cache prerequisite.
+  void capabilityAuthorization.resumeAuthorizedPreloads().catch((error) => {
+    options.logger?.(
+      `Authorized capability preload resume failed: ${String(error)}`,
+    );
   });
 
   const sysonRuntimeConnection = sysonMcpUrl

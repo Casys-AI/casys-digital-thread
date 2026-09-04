@@ -177,14 +177,14 @@ Deno.test("file non-persistent removal journal refuses a noncanonical storage ke
 async function fixture() {
   const plan = await createCapabilityRuntimeNonpersistentMaterialRemovalPlan({
     unit: {
-      id: "casys.spice-worker",
+      id: "casys.test-cache-worker",
       version: "1.0.0",
       manifestFingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
     },
     material: {
-      unitId: "casys.spice-worker",
-      materialId: "ngspice-docker-source-image",
-      imageReference: `casys/ngspice-source@sha256:${DIGEST}`,
+      unitId: "casys.test-cache-worker",
+      materialId: "source-image",
+      imageReference: `casys/test-source@sha256:${DIGEST}`,
       imageDigest: DIGEST,
       launchGroup: null,
     },

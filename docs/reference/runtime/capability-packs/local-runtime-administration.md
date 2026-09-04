@@ -43,6 +43,12 @@ guard still blocks engineering execution. The ledger-to-lock handoff is fail-saf
 crash can only leave the lock stricter, and the same finalization retry converges before
 preload is scheduled.
 
+At local control-plane startup, the server repeats that lock reconciliation, enumerates
+only durable authorized effective envelopes, and re-schedules the same guarded,
+best-effort preloads. This is recovery of server-owned host intent, not a new approval,
+project mutation, caller command, or JIT acquisition path. A missing or in-progress exact
+microVM preload remains literally unavailable before a run can claim its WAL.
+
 No Thread/CAS/WAL/project/retained volume is removed by this boundary.
 
 ## Closed SysON rollover

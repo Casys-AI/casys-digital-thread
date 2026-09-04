@@ -12,23 +12,6 @@ import { pinnedOciImageReference } from "../../domain/compile/isolation/local-is
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import { listRegisteredEngineeringOperations } from "../../orchestration/operations/registry.ts";
 import {
-  BUILD123D_ISOLATED_WORKER_MATERIAL_ID,
-  BUILD123D_ISOLATED_WORKER_UNIT_ID,
-  BUILD123D_MICROSANDBOX_WORKER_CONTRACT,
-} from "../cad/isolated/worker-contract.ts";
-import {
-  NGSPICE_ADMITTED_MICROSANDBOX_WORKER_CONTRACT,
-} from "../electrical/spice/admitted/worker-contract.ts";
-import {
-  LocalNgspiceDockerSourceImageCache,
-} from "../electrical/spice/admitted/ngspice-docker-source-image-cache.ts";
-import { CALCULIX_MICROSANDBOX_WORKER_CONTRACT } from "../fea/isolated-v3/calculix-static-proof-v1/worker-contract.ts";
-import { LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE } from "../fea/isolated-v3/local-calculix-isolated-execution-options.ts";
-import {
-  MODELICA_ADMITTED_MICROSANDBOX_WORKER_CONTRACT,
-} from "../modelica/admitted/closed-subset-v2/worker-contract.ts";
-import { LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE } from "./first-party-capability-runtime-identities.ts";
-import {
   createLocalMicrosandboxSdk,
 } from "../shared/execution/microsandbox-ephemeral-execution-backend.ts";
 import { CompositeCapabilityRuntimeStateObserver } from "./composite-capability-runtime-state-observer.ts";
@@ -44,13 +27,13 @@ import { FileProjectCapabilityLedgerStore } from "./file-project-capability-ledg
 import {
   createFirstPartyCapabilityRuntimeCatalog,
 } from "./first-party-capability-binding-catalog.ts";
+import { createFirstPartyNonpersistentMicrosandboxExpectations } from "./first-party-capability-runtime-nonpersistent-materials.ts";
 import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "./first-party-capability-runtime-qualification-candidates.ts";
 import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "./first-party-capability-runtime-qualification-specifications.ts";
 import { createFirstPartyCapabilityRuntimeLaunchGroupRegistry } from "./first-party-capability-runtime-launch-groups.ts";
 import { GroupCapabilityRuntimeHostObservationReader } from "./group-capability-runtime-host-observation-reader.ts";
 import { FileCapabilityRuntimeHostIdentityStore } from "./file-capability-runtime-host-identity-store.ts";
 import {
-  exactMicrosandboxMaterialArchitecture,
   LocalMicrosandboxCapabilityRuntimeCache,
   type MicrosandboxCapabilityRuntimeImageExpectation,
 } from "./microsandbox-capability-runtime-cache.ts";
@@ -92,8 +75,8 @@ export interface LocalCapabilityRuntimeReadCompositionOptions {
     readonly profileFingerprint: ContentFingerprint;
   };
   /**
-   * The server's code-owned admitted SPICE profile. It binds the executable
-   * Microsandbox runtime, never its separate Docker source-cache material.
+   * The server's code-owned admitted SPICE profile. It binds its one
+   * executable Microsandbox runtime material.
    */
   readonly admittedSpiceExecutionProfile?: {
     readonly imageReference: string;
@@ -113,7 +96,6 @@ export interface LocalCapabilityRuntimeReadComposition {
   readonly secrets: CapabilityRuntimeSecretSlotObserver;
   readonly composeObserver: ReturnType<typeof createCapabilityRuntimeHostObserver>;
   readonly microsandbox: LocalMicrosandboxCapabilityRuntimeCache;
-  readonly cache: LocalNgspiceDockerSourceImageCache;
   readonly states: CompositeCapabilityRuntimeStateObserver;
   readonly host: GroupCapabilityRuntimeHostObservationReader;
   readonly policy: FileCapabilityRuntimeAdminPolicyStore;
@@ -157,183 +139,33 @@ export async function createLocalCapabilityRuntimeReadComposition(
     journal,
     secrets,
   });
-  const calculixWorker = catalog.units.find((unit) =>
-    unit.id === "casys.calculix-worker"
-  )?.materials.find((material) => material.id === "calculix-worker-image");
-  if (!calculixWorker) {
-    throw new Error(
-      "The code-owned catalog is missing casys.calculix-worker/calculix-worker-image.",
-    );
-  }
-  const build123dWorker = catalog.units.find((unit) =>
-    unit.id === BUILD123D_ISOLATED_WORKER_UNIT_ID
-  )?.materials.find((material) =>
-    material.id === BUILD123D_ISOLATED_WORKER_MATERIAL_ID
+  /**
+   * Read coverage derives from the complete first-party microVM catalogue,
+   * rather than from the set of executors enabled in this process. A worker
+   * stays observable as `absent` or `installed` even when its operation is
+   * not registered here. Optional execution profiles only attest invocation
+   * semantics and must recross the catalogued target image exactly.
+   */
+  const microsandboxExpectations = overlayExecutionProfiles(
+    createFirstPartyNonpersistentMicrosandboxExpectations(catalog),
+    options,
   );
-  if (!build123dWorker) {
-    throw new Error(
-      `The code-owned catalog is missing ${BUILD123D_ISOLATED_WORKER_UNIT_ID}/${BUILD123D_ISOLATED_WORKER_MATERIAL_ID}.`,
-    );
-  }
-  const microsandboxExpectations: MicrosandboxCapabilityRuntimeImageExpectation[] = [{
-    material: {
-      unitId: "casys.calculix-worker",
-      materialId: "calculix-worker-image",
-    },
-    image: {
-      reference: pinnedOciImageReference(
-        options.calculixExecutionProfile?.imageReference ??
-          LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
-        "$localCapabilityRuntime.calculix.imageReference",
-      ),
-      manifestDigest: options.calculixExecutionProfile
-        ? `sha256:${options.calculixExecutionProfile.imageDigest.digest}`
-        : LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE.slice(
-          LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE.lastIndexOf("@") + 1,
-        ),
-      os: "linux",
-      architecture: exactMicrosandboxMaterialArchitecture(
-        calculixWorker.platforms,
-      ),
-      user: CALCULIX_MICROSANDBOX_WORKER_CONTRACT.expectedImageUser,
-      entrypoint: [
-        CALCULIX_MICROSANDBOX_WORKER_CONTRACT.executable,
-        ...CALCULIX_MICROSANDBOX_WORKER_CONTRACT.args,
-      ],
-    },
-    executionProfileFingerprint: options.calculixExecutionProfile?.profileFingerprint,
-  }, {
-    material: {
-      unitId: BUILD123D_ISOLATED_WORKER_UNIT_ID,
-      materialId: BUILD123D_ISOLATED_WORKER_MATERIAL_ID,
-    },
-    image: {
-      reference: pinnedOciImageReference(
-        options.build123dExecutionProfile?.imageReference ??
-          LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
-        "$localCapabilityRuntime.build123d.imageReference",
-      ),
-      manifestDigest: options.build123dExecutionProfile
-        ? `sha256:${options.build123dExecutionProfile.imageDigest.digest}`
-        : LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE.slice(
-          LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE.lastIndexOf("@") + 1,
-        ),
-      os: "linux",
-      architecture: exactMicrosandboxMaterialArchitecture(
-        build123dWorker.platforms,
-      ),
-      user: BUILD123D_MICROSANDBOX_WORKER_CONTRACT.expectedImageUser,
-      entrypoint: [
-        BUILD123D_MICROSANDBOX_WORKER_CONTRACT.executable,
-        ...BUILD123D_MICROSANDBOX_WORKER_CONTRACT.args,
-      ],
-    },
-    executionProfileFingerprint: options.build123dExecutionProfile
-      ?.profileFingerprint,
-  }];
-  if (options.admittedModelicaExecutionProfile) {
-    const admittedModelicaWorker = catalog.units.find((unit) =>
-      unit.id === "casys.modelica-worker"
-    )?.materials.find((material) => material.id === "modelica-admitted-worker-image");
-    if (!admittedModelicaWorker) {
-      throw new Error(
-        "The code-owned catalog is missing casys.modelica-worker/modelica-admitted-worker-image.",
-      );
-    }
-    microsandboxExpectations.push({
-      material: {
-        unitId: "casys.modelica-worker",
-        materialId: "modelica-admitted-worker-image",
-      },
-      image: {
-        reference: pinnedOciImageReference(
-          options.admittedModelicaExecutionProfile.imageReference,
-          "$localCapabilityRuntime.admittedModelica.imageReference",
-        ),
-        manifestDigest:
-          `sha256:${options.admittedModelicaExecutionProfile.imageDigest.digest}`,
-        os: "linux",
-        architecture: exactMicrosandboxMaterialArchitecture(
-          admittedModelicaWorker.platforms,
-        ),
-        user: MODELICA_ADMITTED_MICROSANDBOX_WORKER_CONTRACT.expectedImageUser,
-        entrypoint: [
-          MODELICA_ADMITTED_MICROSANDBOX_WORKER_CONTRACT.executable,
-          ...MODELICA_ADMITTED_MICROSANDBOX_WORKER_CONTRACT.args,
-        ],
-      },
-      executionProfileFingerprint: options.admittedModelicaExecutionProfile
-        .profileFingerprint,
-    });
-  }
-  if (options.admittedSpiceExecutionProfile) {
-    const admittedSpiceWorker = catalog.units.find((unit) =>
-      unit.id === "casys.spice-worker"
-    )?.materials.find((material) => material.id === "ngspice-runtime-image");
-    if (!admittedSpiceWorker) {
-      throw new Error(
-        "The code-owned catalog is missing casys.spice-worker/ngspice-runtime-image.",
-      );
-    }
-    microsandboxExpectations.push({
-      material: {
-        unitId: "casys.spice-worker",
-        materialId: "ngspice-runtime-image",
-      },
-      image: {
-        reference: pinnedOciImageReference(
-          options.admittedSpiceExecutionProfile.imageReference,
-          "$localCapabilityRuntime.admittedSpice.imageReference",
-        ),
-        manifestDigest:
-          `sha256:${options.admittedSpiceExecutionProfile.imageDigest.digest}`,
-        os: "linux",
-        architecture: exactMicrosandboxMaterialArchitecture(
-          admittedSpiceWorker.platforms,
-        ),
-        user: NGSPICE_ADMITTED_MICROSANDBOX_WORKER_CONTRACT.expectedImageUser,
-        entrypoint: [
-          NGSPICE_ADMITTED_MICROSANDBOX_WORKER_CONTRACT.executable,
-          ...NGSPICE_ADMITTED_MICROSANDBOX_WORKER_CONTRACT.args,
-        ],
-      },
-      executionProfileFingerprint: options.admittedSpiceExecutionProfile
-        .profileFingerprint,
-    });
-  }
   const microsandbox = new LocalMicrosandboxCapabilityRuntimeCache(
     createLocalMicrosandboxSdk,
     microsandboxExpectations,
   );
-  const cache = new LocalNgspiceDockerSourceImageCache();
   const groupMaterialKeys = (await launchGroups.list()).flatMap((group) =>
     group.materials.map((member) => capabilityRuntimeMaterialKey(member.material))
   );
-  const microsandboxMaterialKeys = [
-    "casys.calculix-worker\u0000calculix-worker-image",
-    capabilityRuntimeMaterialKey({
-      unitId: BUILD123D_ISOLATED_WORKER_UNIT_ID,
-      materialId: BUILD123D_ISOLATED_WORKER_MATERIAL_ID,
-    }),
-    ...(options.admittedModelicaExecutionProfile
-      ? ["casys.modelica-worker\u0000modelica-admitted-worker-image"]
-      : []),
-    ...(options.admittedSpiceExecutionProfile
-      ? ["casys.spice-worker\u0000ngspice-runtime-image"]
-      : []),
-  ];
+  const microsandboxMaterialKeys = microsandboxExpectations.map((expectation) =>
+    capabilityRuntimeMaterialKey(expectation.material)
+  );
   const states = new CompositeCapabilityRuntimeStateObserver([
     { observer: composeObserver, materialKeys: groupMaterialKeys },
     {
       observer: microsandbox,
       materialKeys: microsandboxMaterialKeys,
     },
-    ...(options.admittedSpiceExecutionProfile
-      ? [{
-        observer: cache,
-        materialKeys: ["casys.spice-worker\u0000ngspice-docker-source-image"],
-      }]
-      : []),
   ]);
   const policy = new FileCapabilityRuntimeAdminPolicyStore(undefined, catalog);
   const lock = new FileCapabilityRuntimeAdminLockStore(undefined, catalog);
@@ -366,7 +198,6 @@ export async function createLocalCapabilityRuntimeReadComposition(
     secrets,
     composeObserver,
     microsandbox,
-    cache,
     states,
     host,
     policy,
@@ -378,4 +209,84 @@ export async function createLocalCapabilityRuntimeReadComposition(
     contexts,
     workbench: new ProjectCapabilityWorkbenchProjector({ contexts, states }),
   };
+}
+
+interface ConfiguredMicrosandboxExecutionProfile {
+  readonly imageReference: string;
+  readonly imageDigest: ContentFingerprint;
+  readonly profileFingerprint: ContentFingerprint;
+}
+
+function overlayExecutionProfiles(
+  expectations: readonly {
+    readonly material: { readonly unitId: string; readonly materialId: string };
+    readonly image: MicrosandboxCapabilityRuntimeImageExpectation["image"];
+  }[],
+  options: LocalCapabilityRuntimeReadCompositionOptions,
+): readonly MicrosandboxCapabilityRuntimeImageExpectation[] {
+  const configured = new Map<string, {
+    readonly profile: ConfiguredMicrosandboxExecutionProfile;
+    readonly path: string;
+  }>();
+  const register = (
+    material: { readonly unitId: string; readonly materialId: string },
+    profile: ConfiguredMicrosandboxExecutionProfile | undefined,
+    path: string,
+  ): void => {
+    if (!profile) return;
+    const key = capabilityRuntimeMaterialKey(material);
+    if (configured.has(key)) {
+      throw new Error(`Duplicate execution profile overlay for ${key}.`);
+    }
+    configured.set(key, { profile, path });
+  };
+  register(
+    { unitId: "casys.calculix-worker", materialId: "calculix-worker-image" },
+    options.calculixExecutionProfile,
+    "$localCapabilityRuntime.calculix.imageReference",
+  );
+  register(
+    {
+      unitId: "casys.build123d-isolated-worker",
+      materialId: "build123d-isolated-worker-image",
+    },
+    options.build123dExecutionProfile,
+    "$localCapabilityRuntime.build123d.imageReference",
+  );
+  register(
+    {
+      unitId: "casys.modelica-worker",
+      materialId: "modelica-admitted-worker-image",
+    },
+    options.admittedModelicaExecutionProfile,
+    "$localCapabilityRuntime.admittedModelica.imageReference",
+  );
+  register(
+    { unitId: "casys.spice-worker", materialId: "ngspice-runtime-image" },
+    options.admittedSpiceExecutionProfile,
+    "$localCapabilityRuntime.admittedSpice.imageReference",
+  );
+  return expectations.map((expectation) => {
+    const overlay = configured.get(
+      capabilityRuntimeMaterialKey(expectation.material),
+    );
+    if (!overlay) return expectation;
+    const imageReference = pinnedOciImageReference(
+      overlay.profile.imageReference,
+      overlay.path,
+    );
+    const manifestDigest = `sha256:${overlay.profile.imageDigest.digest}`;
+    if (
+      imageReference !== expectation.image.reference ||
+      manifestDigest !== expectation.image.manifestDigest
+    ) {
+      throw new Error(
+        `Execution profile target drifted from catalogued microVM material ${expectation.material.unitId}/${expectation.material.materialId}.`,
+      );
+    }
+    return {
+      ...expectation,
+      executionProfileFingerprint: overlay.profile.profileFingerprint,
+    };
+  });
 }

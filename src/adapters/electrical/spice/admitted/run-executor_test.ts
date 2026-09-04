@@ -431,13 +431,13 @@ Deno.test("dispatching admitted SPICE WAL remains fresh-runtime guarded", async 
   }
 });
 
-Deno.test("admitted SPICE cache-only OCI miss fails closed before claim", async () => {
-  const fixture = await executorHarness({ cacheOnlyMiss: true });
+Deno.test("admitted SPICE missing MicroVM preload fails closed before claim", async () => {
+  const fixture = await executorHarness({ microvmPreloadUnavailable: true });
   try {
     await assertRejects(
       () => fixture.executor.execute(EXECUTION_AGENT, EXECUTION_COMMAND),
       Error,
-      "cache-only OCI source is unavailable",
+      "ngspice Microsandbox runtime material is unavailable",
     );
     assertEquals(runStatus(fixture.project), "queued");
     assertEquals(fixture.project.revision, 3);
@@ -1283,7 +1283,9 @@ async function harness() {
     },
     runtimeBackend: {
       ...MICROSANDBOX_LOCAL_RUNTIME_REF,
-      imageReference: `casys/ngspice-microsandbox-worker@sha256:${"5".repeat(64)}`,
+      imageReference: `docker.io/casys/ngspice-microsandbox-worker@sha256:${
+        "5".repeat(64)
+      }`,
       imageDigest: { algorithm: "sha256", digest: "5".repeat(64) },
     },
     runtime: {
@@ -1346,7 +1348,7 @@ interface ExecutorHarnessOptions {
   readonly outcomeUnknownGeneration?: 0 | 1;
   readonly tamperPlan?: boolean;
   readonly revokedCapability?: boolean;
-  readonly cacheOnlyMiss?: boolean;
+  readonly microvmPreloadUnavailable?: boolean;
   readonly loseCaptureAck?: boolean;
 }
 
@@ -1606,10 +1608,12 @@ async function executorHarness(
     },
   };
   const session = recordingCapabilityRuntimeSession(
-    options.cacheOnlyMiss
+    options.microvmPreloadUnavailable
       ? async (input) => {
         await input.recheck();
-        throw new Error("The exact cache-only OCI source is unavailable.");
+        throw new Error(
+          "The exact ngspice Microsandbox runtime material is unavailable.",
+        );
       }
       : undefined,
   );
@@ -1680,11 +1684,6 @@ function admittedSpiceOperationalCapability(
   profile: AdmittedSpiceExecutionProfile,
 ): ResolvedCapabilityRuntimeOperation {
   const fingerprint = { algorithm: "sha256" as const, digest: "a".repeat(64) };
-  const cache = {
-    unitId: "casys.spice-worker",
-    materialId: "ngspice-docker-source-image",
-    imageDigest: "b".repeat(64),
-  };
   const microvm = {
     unitId: "casys.spice-worker",
     materialId: "ngspice-runtime-image",
@@ -1716,23 +1715,14 @@ function admittedSpiceOperationalCapability(
         version: profile.executionProfile.version,
         fingerprint: profile.profileFingerprint,
       },
-      materials: [cache, microvm],
+      materials: [microvm],
       runtimeModes: [{
-        material: cache,
-        targetPlatform: "linux/arm64",
-        mode: "native",
-        qualificationAttestationFingerprint: null,
-      }, {
         material: microvm,
         targetPlatform: "linux/arm64",
         mode: "native",
         qualificationAttestationFingerprint: null,
       }],
       hostLifecycles: [{
-        material: cache,
-        kind: "cache-only",
-        launchGroup: null,
-      }, {
         material: microvm,
         kind: "ephemeral-microsandbox",
         launchGroup: null,
@@ -2430,7 +2420,7 @@ async function retireHarnessProfile(profiles: FakeProfiles): Promise<void> {
     ...profiles.profile,
     runtimeBackend: {
       ...profiles.profile.runtimeBackend,
-      imageReference: `casys/ngspice-microsandbox-worker@sha256:${digest}`,
+      imageReference: `docker.io/casys/ngspice-microsandbox-worker@sha256:${digest}`,
       imageDigest: { algorithm: "sha256" as const, digest },
     },
     runtime: {

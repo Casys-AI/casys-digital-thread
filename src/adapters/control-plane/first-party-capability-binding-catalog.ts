@@ -33,12 +33,10 @@ import {
   LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
 } from "../fea/isolated-v3/local-calculix-isolated-execution-options.ts";
 import {
-  LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE,
   LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
 } from "../electrical/spice/admitted/local-image-references.ts";
 import {
   LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
-  LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
   LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
   MCP_CALCULIX_082_IMAGE_REFERENCE,
@@ -173,19 +171,13 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
       ),
     ]),
     unit("casys.geometry-module-assembler-worker", [
-      ociImageMaterial(
-        "geometry-module-assembler-docker-source-image",
-        LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
-        ["linux/arm64"],
-        "reviewed",
-      ),
       microvmMaterial(
         "geometry-module-assembler-worker-image",
         LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
         ["linux/arm64"],
         "reviewed",
       ),
-    ], "1.1.0"),
+    ], "1.2.0"),
     unit("casys.calculix-worker", [
       microvmMaterial(
         "calculix-worker-image",
@@ -227,19 +219,13 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
       ),
     ]),
     unit("casys.spice-worker", [
-      ociImageMaterial(
-        "ngspice-docker-source-image",
-        LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE,
-        ["linux/arm64"],
-        "reviewed",
-      ),
       microvmMaterial(
         "ngspice-runtime-image",
         LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
         ["linux/arm64"],
         "reviewed",
       ),
-    ]),
+    ], "1.1.0"),
     unit("casys.mcp-chrono", [chronoMaterial(chronoLaunchGroup)], "0.3.2"),
   ]);
   return await validateCapabilityRuntimeCatalog({
@@ -587,41 +573,6 @@ function microvmMaterial(
       downloadBytes: null,
       storageBytes: null,
       services: [{ id, lifecycle: "ephemeral" }],
-      volumes: [],
-      network: "deny-all",
-      loopbackPorts: [],
-      bindMounts: [],
-      privileged: false,
-      dockerSocket: false,
-      devices: [],
-      secretSlots: [],
-      licence: { status: "reviewed", reference: REVIEWED_LICENCE_DOC },
-      security,
-    },
-  };
-}
-
-/**
- * A digest-pinned OCI distribution source used to prepare the SPICE cache. It
- * is deliberately not modelled as the distinct Microsandbox execution image.
- */
-function ociImageMaterial(
-  id: string,
-  imageReference: string,
-  platforms: readonly ("linux/arm64" | "linux/amd64")[],
-  security: "reviewed" | "unknown",
-): AtomicCapabilityRuntimeMaterial {
-  return {
-    id,
-    kind: "oci-image",
-    imageReference: cataloguedImageReference(imageReference, id),
-    platforms,
-    lifecycle: "cache",
-    launchGroup: null,
-    effects: {
-      downloadBytes: null,
-      storageBytes: null,
-      services: [],
       volumes: [],
       network: "deny-all",
       loopbackPorts: [],

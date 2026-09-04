@@ -43,10 +43,14 @@ digest, or host-effect change is different: it requires the server-derived delta
 
 ## Preload, JIT, and evidence are different clocks
 
-After authorization, the local supervisor may preload approved persistent material in
-the background. Preload never starts a Compose group. Immediately before a covered run,
-the supervisor rechecks the exact plan and activates only the sealed launch group under
-its lease. Later release may stop that group when no protected JIT demand remains.
+After authorization, the local supervisor may preload approved exact material in the
+background, including a catalogued microVM runtime image. Preload never starts a Compose
+group. It uses only the server-owned bootstrap recipe for that target; the Dockerfile or
+source image is not a project material or JIT prerequisite. On control-plane restart,
+the server reconverges the durable authorization lock and re-schedules the same guarded
+preloads. Immediately before a covered run, the supervisor only rechecks the exact plan
+and material state, then activates a sealed launch group under its lease where one is
+needed. Later release may stop that group when no protected JIT demand remains.
 
 Those host events are operational facts. A `ready` plan is only alignment of recorded
 material and lock; it is not active, healthy, reachable, qualified at dispatch, or an

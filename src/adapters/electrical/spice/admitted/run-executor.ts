@@ -2207,10 +2207,6 @@ export class SimulateRunAdmittedSpiceRunExecutor {
 }
 
 interface SpiceCapabilityLifecycles {
-  readonly cache: Extract<
-    CapabilityRuntimeHostLifecycle,
-    { readonly kind: "cache-only" }
-  >;
   readonly microvm: Extract<
     CapabilityRuntimeHostLifecycle,
     { readonly kind: "ephemeral-microsandbox" }
@@ -2218,10 +2214,9 @@ interface SpiceCapabilityLifecycles {
 }
 
 /**
- * SPICE has two non-substitutable host materials. The Docker distribution
- * image is cache-only, while the distinct executable manifest is the one
- * disposable microVM. The JIT session observes both; no worker may run if
- * either exact dependency is absent or substituted.
+ * SPICE has one runtime material: the fixed executable microVM. Its Docker
+ * source/build image is internal acquisition input for the server-owned
+ * bootstrap recipe, never a plan material or JIT prerequisite.
  */
 function exactAdmittedSpiceCapabilityLifecycles(
   operationalCapability: ResolvedCapabilityRuntimeOperation,
@@ -2230,26 +2225,21 @@ function exactAdmittedSpiceCapabilityLifecycles(
   const lifecycles = operationalCapability.bindings.flatMap((binding) =>
     binding.hostLifecycles
   );
-  if (lifecycles.length !== 2) {
+  if (lifecycles.length !== 1) {
     throw invalidTransition(
-      "Admitted SPICE execution requires exactly its cache-only OCI source and ephemeral Microsandbox runtime materials.",
+      "Admitted SPICE execution requires exactly one ephemeral Microsandbox runtime material.",
     );
   }
-  const caches = lifecycles.filter((lifecycle) => lifecycle.kind === "cache-only");
   const microvms = lifecycles.filter((lifecycle) =>
     lifecycle.kind === "ephemeral-microsandbox"
   );
-  if (caches.length !== 1 || microvms.length !== 1) {
+  if (microvms.length !== 1) {
     throw invalidTransition(
-      "Admitted SPICE execution requires one exact cache-only OCI source and one exact ephemeral Microsandbox runtime material.",
+      "Admitted SPICE execution requires one exact ephemeral Microsandbox runtime material.",
     );
   }
-  const cache = caches[0]!;
   const microvm = microvms[0]!;
   if (
-    cache.launchGroup !== null ||
-    cache.material.unitId !== "casys.spice-worker" ||
-    cache.material.materialId !== "ngspice-docker-source-image" ||
     microvm.launchGroup !== null ||
     microvm.material.unitId !== "casys.spice-worker" ||
     microvm.material.materialId !== "ngspice-runtime-image" ||
@@ -2259,10 +2249,10 @@ function exactAdmittedSpiceCapabilityLifecycles(
     )
   ) {
     throw invalidTransition(
-      "Admitted SPICE execution capability does not compose the exact cache-only OCI source with the fixed ngspice Microsandbox runtime profile.",
+      "Admitted SPICE execution capability does not compose the fixed ngspice Microsandbox runtime profile.",
     );
   }
-  return { cache, microvm };
+  return { microvm };
 }
 
 function requireClaimedShape(

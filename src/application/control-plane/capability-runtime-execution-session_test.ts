@@ -7,15 +7,6 @@ import {
   InMemoryCapabilityRuntimeLeaseStore,
 } from "../../adapters/control-plane/in-memory-capability-runtime-supervisor.ts";
 import {
-  LocalNgspiceDockerSourceImageCache,
-} from "../../adapters/electrical/spice/admitted/ngspice-docker-source-image-cache.ts";
-import {
-  LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE,
-} from "../../adapters/electrical/spice/admitted/local-image-references.ts";
-import {
-  NGSPICE_ADMITTED_MICROSANDBOX_WORKER_CONTRACT,
-} from "../../adapters/electrical/spice/admitted/worker-contract.ts";
-import {
   fingerprintResolvedCapabilityRuntimeOperation,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
@@ -400,23 +391,13 @@ Deno.test("a queued run refuses a foreign or expired durable pre-claim lease", a
   }
 });
 
-Deno.test("production JIT seam observes both exact ngspice materials before its first claim", async () => {
+Deno.test("production JIT seam observes the one exact ngspice Microsandbox material before its first claim", async () => {
   const leases = new InMemoryCapabilityRuntimeLeaseStore();
   const operation = admittedSpiceOperation();
-  const sourceInspections: string[] = [];
   const microsandboxObservations: string[] = [];
   const coordinator = new CapabilityRuntimeExecutionSessionCoordinator({
-    contexts: contextForExactMaterials([
-      spiceDockerSourceMaterial(),
-      spiceRuntimeMaterial(),
-    ]),
+    contexts: contextForExactMaterials([spiceRuntimeMaterial()]),
     leases,
-    cache: new LocalNgspiceDockerSourceImageCache({
-      inspect: (reference) => {
-        sourceInspections.push(reference);
-        return Promise.resolve(exactNgspiceDockerSourceInspection());
-      },
-    }),
     microsandbox: {
       ensureExactCached: ({ material }) => {
         microsandboxObservations.push(materialKey(material));
@@ -437,7 +418,6 @@ Deno.test("production JIT seam observes both exact ngspice materials before its 
     recheck: () => Promise.resolve(operation),
   });
 
-  assertEquals(sourceInspections, [LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE]);
   assertEquals(microsandboxObservations, [materialKey(spiceRuntimeMaterial())]);
   assertEquals((await leases.listActive(AT)).map((lease) => lease.id), [
     session.lease.id,
@@ -446,27 +426,17 @@ Deno.test("production JIT seam observes both exact ngspice materials before its 
   assertEquals(await leases.listActive(AT), []);
 });
 
-Deno.test("a missing exact ngspice cache material leaves the JIT run unclaimed", async () => {
+Deno.test("a missing exact ngspice Microsandbox material leaves the JIT run unclaimed", async () => {
   const leases = new InMemoryCapabilityRuntimeLeaseStore();
   const operation = admittedSpiceOperation();
   const microsandboxObservations: string[] = [];
   const coordinator = new CapabilityRuntimeExecutionSessionCoordinator({
-    contexts: contextForExactMaterials([
-      spiceDockerSourceMaterial(),
-      spiceRuntimeMaterial(),
-    ]),
+    contexts: contextForExactMaterials([spiceRuntimeMaterial()]),
     leases,
-    cache: new LocalNgspiceDockerSourceImageCache({
-      inspect: () =>
-        Promise.resolve({
-          ...exactNgspiceDockerSourceInspection(),
-          Architecture: "amd64",
-        }),
-    }),
     microsandbox: {
       ensureExactCached: ({ material }) => {
         microsandboxObservations.push(materialKey(material));
-        return Promise.resolve();
+        return Promise.reject(new Error("exact runtime image is absent"));
       },
     },
     now: () => AT,
@@ -487,7 +457,7 @@ Deno.test("a missing exact ngspice cache material leaves the JIT run unclaimed",
     CapabilityRuntimeSessionUnavailableError,
     "no lease or provider dispatch was attempted",
   );
-  assertEquals(microsandboxObservations, []);
+  assertEquals(microsandboxObservations, [materialKey(spiceRuntimeMaterial())]);
   assertEquals(await leases.listActive(AT), []);
 });
 
@@ -935,14 +905,6 @@ function microMaterial(): CapabilityRuntimeMaterialIdentity {
   return persistentMaterial("casys.calculix-worker", "worker", "d".repeat(64));
 }
 
-function spiceDockerSourceMaterial(): CapabilityRuntimeMaterialIdentity {
-  return persistentMaterial(
-    "casys.spice-worker",
-    "ngspice-docker-source-image",
-    digestFromPinnedReference(LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE),
-  );
-}
-
 function spiceRuntimeMaterial(): CapabilityRuntimeMaterialIdentity {
   return persistentMaterial(
     "casys.spice-worker",
@@ -960,7 +922,6 @@ function modelicaRuntimeMaterial(): CapabilityRuntimeMaterialIdentity {
 }
 
 function admittedSpiceOperation(): ResolvedCapabilityRuntimeOperation {
-  const source = spiceDockerSourceMaterial();
   const runtime = spiceRuntimeMaterial();
   return {
     schemaVersion: "resolved-capability-runtime-operation/2.0",
@@ -988,13 +949,9 @@ function admittedSpiceOperation(): ResolvedCapabilityRuntimeOperation {
         version: "2",
         fingerprint: FINGERPRINT,
       },
-      materials: [source, runtime],
-      runtimeModes: [runtimeMode(source), runtimeMode(runtime)],
+      materials: [runtime],
+      runtimeModes: [runtimeMode(runtime)],
       hostLifecycles: [{
-        material: source,
-        kind: "cache-only",
-        launchGroup: null,
-      }, {
         material: runtime,
         kind: "ephemeral-microsandbox",
         launchGroup: null,
@@ -1153,10 +1110,8 @@ function contextForExactMaterials(
     };
     unit.materials.push({
       id: material.materialId,
-      imageReference: material.unitId === "casys.spice-worker" &&
-          material.materialId === "ngspice-docker-source-image"
-        ? LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE
-        : `example.test/${material.unitId}/${material.materialId}@sha256:${material.imageDigest}`,
+      imageReference:
+        `example.test/${material.unitId}/${material.materialId}@sha256:${material.imageDigest}`,
     });
     units.set(material.unitId, unit);
   }
@@ -1167,26 +1122,6 @@ function contextForExactMaterials(
 
 function materialKey(material: CapabilityRuntimeMaterialIdentity): string {
   return `${material.unitId}\u0000${material.materialId}`;
-}
-
-function exactNgspiceDockerSourceInspection(): Record<string, unknown> {
-  const worker = NGSPICE_ADMITTED_MICROSANDBOX_WORKER_CONTRACT;
-  return {
-    RepoDigests: [LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE],
-    Os: "linux",
-    Architecture: "arm64",
-    Config: {
-      User: worker.expectedImageUser,
-      Entrypoint: [worker.executable, ...worker.args],
-    },
-  };
-}
-
-function digestFromPinnedReference(reference: string): string {
-  const marker = "@sha256:";
-  const index = reference.lastIndexOf(marker);
-  if (index < 0) throw new Error(`image reference is not digest-pinned: ${reference}`);
-  return reference.slice(index + marker.length);
 }
 
 function projectFor(

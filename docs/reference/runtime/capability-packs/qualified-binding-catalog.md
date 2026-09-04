@@ -26,7 +26,7 @@ exists.
 | `mechanics.observe-static-structural-sensitivity@1` | `calculix-http-static-sensitivity@1.0.0` · execution · unqualified | `casys.mcp-calculix` | Factual sensitivity only; non-activable pending live qualification |
 | `simulation.run-qualified-modelica@1` | `openmodelica-qualified-kit@1.0.0` · execution · qualified | `casys.modelica-qualified-worker` | Pinned LinearThermalRamp kit only |
 | `simulation.run-admitted-modelica@1` | `openmodelica-admitted-modelica@1.0.0` · execution · unqualified | `casys.modelica-worker` | Admitted source path is unavailable until worker qualification exists |
-| `electronics.run-admitted-spice@1` | `ngspice-admitted-circuit@1.0.0` · execution · qualified | `casys.spice-worker` | Distribution image and microVM runtime retain distinct identities |
+| `electronics.run-admitted-spice@1` | `ngspice-admitted-circuit@1.0.0` · execution · qualified | `casys.spice-worker` | One exact microVM runtime material. Dockerfile/source provenance stays server-internal bootstrap metadata, never a project or JIT material |
 | `mechanics.observe-prescribed-kinematics@1` | `chrono-prescribed-kinematics@1` · execution · unqualified | `casys.mcp-chrono` | Factual prescribed kinematics only; ARM64 use needs the exact emulated host attestation |
 
 The table has thirteen mappings because the current catalogue has three separate SysON

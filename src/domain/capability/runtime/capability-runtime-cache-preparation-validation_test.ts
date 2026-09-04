@@ -7,8 +7,8 @@ import {
 } from "./capability-runtime-cache-preparation-validation.ts";
 
 const DIGEST = "a".repeat(64);
-const SHORT = `casys/ngspice-source@sha256:${DIGEST}`;
-const CANONICAL = `docker.io/casys/ngspice-source@sha256:${DIGEST}`;
+const SHORT = `casys/test-source@sha256:${DIGEST}`;
+const CANONICAL = `docker.io/casys/test-source@sha256:${DIGEST}`;
 const GHCR = `ghcr.io/casys-ai/mcp-chrono@sha256:${DIGEST}`;
 
 Deno.test("cache-preparation pinned image reference returns the canonical OCI form", () => {
@@ -23,7 +23,7 @@ Deno.test("cache-preparation pinned image reference returns the canonical OCI fo
     pinnedOciImageReference(SHORT, "$image"),
   );
   assertThrows(
-    () => pinnedImageReference("casys/ngspice-source:latest", "$image"),
+    () => pinnedImageReference("casys/test-source:latest", "$image"),
     TypeError,
     "must be one OCI image name pinned by a lowercase sha256 digest",
   );
@@ -40,8 +40,8 @@ Deno.test("cache-preparation requested materials expose the canonical image refe
 function requested(imageReference: string) {
   return parseRequestedMaterial({
     material: {
-      unitId: "casys.spice-worker",
-      materialId: "ngspice-docker-source-image",
+      unitId: "casys.test-cache-worker",
+      materialId: "source-image",
       imageDigest: DIGEST,
     },
     imageReference,

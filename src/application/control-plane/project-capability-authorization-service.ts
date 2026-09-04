@@ -766,6 +766,23 @@ export class ProjectCapabilityAuthorizationService {
     await this.#reconcileHostAuthorization();
   }
 
+  /**
+   * Replays only the durable local authorization ledger after control-plane
+   * startup. It first converges the derived lock, then re-enqueues the exact
+   * authorized envelopes through the same guarded, best-effort preload path
+   * used after an approval. It neither accepts caller runtime data nor
+   * changes a project, Thread, or authorization record.
+   */
+  async resumeAuthorizedPreloads(): Promise<void> {
+    await this.#reconcileHostAuthorization();
+    const ledgers = await this.dependencies.ledgers.list();
+    for (const ledger of ledgers) {
+      if (ledger.effectiveEnvelope?.status === "authorized") {
+        this.#schedulePreload(ledger);
+      }
+    }
+  }
+
   private async append(
     projectId: string,
     expectedRevision: number,

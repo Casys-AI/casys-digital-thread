@@ -73,22 +73,26 @@ is a dedicated Microsandbox family. It is not `mcp-spice` and not a qualified fi
 circuit kit. The image `ENTRYPOINT` is the complete worker command: no caller arguments,
 provider envelope, paths, or observation list.
 
-Docker smoke, Microsandbox cache preparation, and the product run are not substitutes:
+Docker smoke, server-owned preload, maintainer recovery, and the product run are not
+substitutes:
 
-| Surface           | Owner                                                                     | What it is not                                           |
-| ----------------- | ------------------------------------------------------------------------- | -------------------------------------------------------- |
-| Docker smoke      | `scripts/gates/verify-ngspice-microsandbox-worker.ts`                     | IsolatedCodeRunner, Microsandbox cache, product evidence |
-| Cache preparation | `deno task prepare:ngspice:microsandbox`                                  | A pull of aliases, a product run, a caller-selected image |
-| Product run       | `simulate.run-admitted-spice@1` after `project_admitted_spice_run_review` | mcp-spice, the LED-driver fiche, a verdict               |
+| Surface             | Owner                                                                     | What it is not                                                                    |
+| ------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Docker smoke        | `scripts/gates/verify-ngspice-microsandbox-worker.ts`                     | IsolatedCodeRunner, product runtime state, or product evidence                   |
+| Server preload      | Durable capability authorization and control-plane restart                | A run, worker activation, caller-selected image, or Docker source material       |
+| Maintainer recovery | `deno task prepare:ngspice:microsandbox`                                  | Normal product use, a pull of aliases, or a caller-selected image                |
+| Product run         | `simulate.run-admitted-spice@1` after `project_admitted_spice_run_review` | mcp-spice, the LED-driver fiche, or a verdict                                    |
 
-The Docker source/index digest (`62748f195c86…`) and the Microsandbox runtime manifest
-digest (`3350527ceba0…`) are related but distinct profile-owned constants. Product
-inspect requires `imageReference` digest == attested `manifestDigest`. `pullPolicy`
-stays `never`. A local `trusted-dockerfile` rebuild is a candidate recipe, not
-bit-reproducible proof; the imported image must still match the runtime digest or the
-capability stays unavailable. `oci-digest` is the preferred immutable distribution
-source when a reviewed digest exists. A moving APT repository does not promise that a
-later rebuild will reproduce the pin.
+The Docker source/index digest (`62748f195c86…`) is internal bootstrap acquisition
+metadata; the Microsandbox runtime manifest digest (`3350527ceba0…`) is the sole
+catalogued runtime material and product attestation target. Product inspect requires
+`imageReference` digest == attested `manifestDigest`. `pullPolicy` stays `never`.
+After authorization or restart, server-owned preload may prepare the exact target; JIT
+only observes it before a claim and never acquires from the Docker source. A local
+`trusted-dockerfile` rebuild is a candidate recipe, not bit-reproducible proof, and can
+fail the exact target attestation; the capability then stays unavailable. `oci-digest`
+distribution and GHCR promotion remain deferred until separate qualification. A moving
+APT repository does not promise that a later rebuild will reproduce the pin.
 
 Filesystem contract, analogous to admitted Modelica:
 

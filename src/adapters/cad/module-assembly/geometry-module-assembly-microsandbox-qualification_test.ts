@@ -18,7 +18,6 @@ import { FileCapabilityRuntimeQualificationAttestationStore } from "../../contro
 import type { CapabilityRuntimeQualificationAttemptStore } from "../../../application/ports/out/capability/capability-runtime-qualification-attempt-store.ts";
 import { fingerprintAtomicCapabilityRuntimeUnit } from "../../../application/control-plane/read-model/capability-runtime-catalog.ts";
 import {
-  LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
 } from "../../control-plane/first-party-capability-runtime-identities.ts";
 import { createLocalGeometryModuleAssemblyServerOptions } from "./first-party-geometry-module-assembly.ts";
@@ -43,36 +42,21 @@ const QUALIFICATION_ASSEMBLY_STEP_FIXTURE = new URL(
 const QUALIFICATION_ASSEMBLY_STEP_FIXTURE_SHA256 =
   "cf603c631e4c33b088aa904d626518c334545078eb5c5ee7778f24344b2f4d81";
 
-Deno.test("geometry-module qualification candidate binds the ordered Docker-source and Microsandbox-runtime atom", async () => {
+Deno.test("geometry-module qualification candidate binds the one exact Microsandbox-runtime atom", async () => {
   const candidate =
     await createGeometryModuleAssemblerMicrosandboxQualificationCandidate();
-  const [source, runtime] = candidate.materials;
-  if (!source || !runtime) throw new Error("candidate materials are incomplete");
+  const [runtime] = candidate.materials;
+  if (!runtime) throw new Error("candidate materials are incomplete");
 
   assertEquals(candidate.materials.map((material) => material.id), [
-    "geometry-module-assembler-docker-source-image",
     "geometry-module-assembler-worker-image",
   ]);
-  assertEquals(source.kind, "oci-image");
-  assertEquals(source.lifecycle, "cache");
-  assertEquals(
-    source.imageReference,
-    `docker.io/${LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE}`,
-  );
-  assertEquals(source.platforms, ["linux/arm64"]);
-  assertEquals(source.launchGroup, null);
-  assertEquals(source.effects.security, "reviewed");
   assertEquals(runtime.kind, "microvm-image");
   assertEquals(runtime.lifecycle, "ephemeral");
   assertEquals(runtime.imageReference, LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE);
   assertEquals(runtime.platforms, ["linux/arm64"]);
   assertEquals(runtime.launchGroup, null);
   assertEquals(runtime.effects.security, "reviewed");
-  assertEquals(candidate.sourceMaterial, {
-    unitId: "casys.geometry-module-assembler-worker",
-    materialId: source.id,
-    imageDigest: digestOf(source.imageReference),
-  });
   assertEquals(candidate.material, {
     unitId: "casys.geometry-module-assembler-worker",
     materialId: runtime.id,
