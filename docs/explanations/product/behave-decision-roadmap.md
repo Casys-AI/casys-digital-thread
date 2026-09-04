@@ -19,8 +19,11 @@ coverage](../../reference/domains/fea/coverage.md), [SysML
 coverage](../../reference/domains/sysml/coverage.md), and [Modelica
 coverage](../../reference/domains/modelica/coverage.md). The separate [Mechanism
 coverage](../../reference/domains/mechanism/coverage.md) implements one bounded
-prescribed-kinematics L1–L5 route. It is not yet a named product dossier proving a live
-provider run, and host runtime qualification remains a separate operational authority.
+prescribed-kinematics L1–L5 route. The [CL01 capability-lamp
+dossier](../../project-dossiers/capability-lamp-cl01/README.md) now records that route
+through a live local Chrono run and an exact human closeout. Host runtime qualification
+remains a separate operational authority, and the dossier does not prove external image
+distribution.
 
 `cantilever-arm-ca02` is the proposed first **mechanical-family** reference vertical:
 one isolated, parameterized rectangular cantilever part and a linear-static check of

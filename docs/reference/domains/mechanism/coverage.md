@@ -26,18 +26,17 @@ frames and literal local `+Z` axes.
 
 ## Evidence status
 
-At repository revision `e46f4fd4`, focused domain, adapter, executor and qualification
-fixtures exist, but the repository contains no named project dossier proving a fresh
-end-to-end L1→L5 mechanism walk through the public Digital Thread MCP. Host
-qualification is an operational proof and cannot fill that product-evidence gap.
+The [CL01 capability-lamp dossier](../../../project-dossiers/capability-lamp-cl01/README.md)
+records one fresh end-to-end L1→L5 mechanism walk through the public Digital Thread
+MCP: a real SysON Product Structure, a multi-file project workspace, one exact
+single-file mechanism closure, inspected capability authorization and ROP, one L3
+Chrono dispatch, a separate method, deterministic L4 and human L5. Its exact local
+runtime and Thread identities are listed in the [runtime evidence
+sheet](../../../project-dossiers/capability-lamp-cl01/runtime-evidence.md).
 
-The required demonstration is one new project with a real SysON Product Structure,
-multiple project files, one exact single-file mechanism closure, inspected capability
-authorization and ROP, one L3 dispatch, a separate method, deterministic L4 and human
-L5. The public MCP now publishes closed L1/L3 next envelopes and method-sheet domain
-identities; remaining blockers are host qualification, JIT lease, and that missing
-fresh-project walk, not invented parameters or hidden storage access. Until recorded,
-the demonstration remains missing integration proof rather than inferred success.
+That project proof does not replace host qualification or widen the admitted language.
+It proves the current integration path on the recorded local host only; provider
+distribution from a fresh external checkout remains a separate release concern.
 
 ## Outside coverage
 
