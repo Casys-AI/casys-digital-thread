@@ -21,13 +21,13 @@ import {
 import type { CapabilityRuntimeQualificationCandidate } from "../../domain/capability/runtime/capability-runtime-qualification-candidate.ts";
 import type { CapabilityRuntimeQualificationSpecification } from "../../domain/capability/runtime/capability-runtime-qualification-specification.ts";
 import type { CapabilityRuntimeQualificationAttemptStore } from "../ports/out/capability/capability-runtime-qualification-attempt-store.ts";
-import type { ProjectCapabilityEffectiveEnvelope } from "./project-capability-authorization.ts";
+import type { ProjectCapabilityEffectiveEnvelope } from "../../domain/capability/project-capability-authorization.ts";
 import type {
   CapabilityRuntimeAdminLock,
   CapabilityRuntimeAdminPolicy,
   CapabilityRuntimeCatalog,
   CapabilityRuntimeHostObservation,
-} from "./read-model/capability-runtime-catalog.ts";
+} from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import type { ProjectCapabilityLedgerStore } from "../ports/out/project-capability-ledger-store.ts";
 import type { CapabilityRuntimeQualificationAttestationStore } from "../ports/out/capability/capability-runtime-qualification-attestation-store.ts";
 import type {

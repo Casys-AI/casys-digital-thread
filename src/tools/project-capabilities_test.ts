@@ -1,7 +1,7 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-server";
 import type { EngineeringProjectSnapshot } from "../domain/project/engineering-project.ts";
-import type { ProjectCapabilityLedger } from "../application/control-plane/project-capability-authorization.ts";
+import type { ProjectCapabilityLedger } from "../domain/capability/project-capability-authorization.ts";
 import type {
   ProjectCapabilityAuthorizationService,
   ProjectCapabilityChangeReview,

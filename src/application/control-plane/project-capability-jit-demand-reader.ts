@@ -14,7 +14,7 @@ import type {
   ProjectCapabilityRuntimeAuthorization,
   ProjectCapabilityRuntimeContextReader,
 } from "../ports/out/capability/capability-runtime-supervisor.ts";
-import type { CapabilityRuntimeAdminLock } from "./read-model/capability-runtime-catalog.ts";
+import type { CapabilityRuntimeAdminLock } from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import type { CapabilityRuntimeGlobalJitDemandReader } from "./capability-runtime-jit-demand.ts";
 
 export interface ProjectCapabilityJitDemandReaderOptions {

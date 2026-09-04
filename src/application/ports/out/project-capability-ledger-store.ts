@@ -1,4 +1,4 @@
-import type { ProjectCapabilityLedger } from "../../control-plane/project-capability-authorization.ts";
+import type { ProjectCapabilityLedger } from "../../../domain/capability/project-capability-authorization.ts";
 
 /** Separate local host-authorization ledger; never an engineering Thread store. */
 export interface ProjectCapabilityLedgerStore {

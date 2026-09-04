@@ -10,8 +10,8 @@ import {
   ExportAdmittedProjectGeometry,
 } from "../../application/use-cases/cad/canonical/export-admitted-project-geometry.ts";
 import type { CapabilityRuntimeExecutionSessionCoordinator } from "../../application/control-plane/capability-runtime-execution-session.ts";
-import type { CapabilityRuntimePreparationSessionCoordinator } from "../../application/control-plane/capability-runtime-preparation-session.ts";
 import type { CapabilityRuntimeExecutionEligibility } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import type { CapabilityRuntimePreparationPort } from "../../application/ports/out/capability/capability-runtime-preparation-session.ts";
 import type { Build123dExecutionProfile } from "../../application/ports/out/cad/isolated/build123d-execution-profile-catalog.ts";
 import { PrepareProjectBuild123dExecutionReview } from "../../application/use-cases/cad/isolated/prepare-project-build123d-execution-review.ts";
 import { PrepareProjectIsolatedGeometrySealReview } from "../../application/use-cases/cad/sealed-isolated/prepare-project-isolated-geometry-seal-review.ts";
@@ -267,7 +267,7 @@ export function createCadProject(options: CadProjectOptions): CadProject {
  */
 export function composePrivateBuild123dGeometrySurfaces(input: {
   readonly projects: EngineeringProjectRevisionStore;
-  readonly preparation: CapabilityRuntimePreparationSessionCoordinator;
+  readonly preparation: CapabilityRuntimePreparationPort;
   readonly geometrySourceAnalysis: GeometrySourceAnalysisCaptureDependencies;
   readonly admissions: CaptureBackedTechnicalCompilationAdmissionReader;
   readonly snapshots: Pick<ThreadSnapshotStore, "get">;

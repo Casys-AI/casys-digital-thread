@@ -31,7 +31,7 @@ import {
   type CapabilityRuntimeVolume,
   fingerprintAtomicCapabilityRuntimeUnit,
   type QualifiedCapabilityRuntimeBinding,
-} from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
+} from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import type {
   CapabilityRuntimeMaterialRuntimeMode,
   CapabilityRuntimePlatform,

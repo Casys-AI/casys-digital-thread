@@ -25,7 +25,7 @@ import {
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import type { CapabilityRuntimeQualificationAttemptStore } from "../../../application/ports/out/capability/capability-runtime-qualification-attempt-store.ts";
 import type { CapabilityRuntimeQualificationAttestationStore } from "../../../application/ports/out/capability/capability-runtime-qualification-attestation-store.ts";
-import type { CapabilityRuntimeHostObservation } from "../../../application/control-plane/read-model/capability-runtime-catalog.ts";
+import type { CapabilityRuntimeHostObservation } from "../../../domain/capability/runtime/capability-runtime-catalog.ts";
 import type {
   IsolatedCodeRunner,
   IsolatedCodeRunRecovery,

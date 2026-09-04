@@ -29,6 +29,10 @@ import type {
   CapabilityRuntimeLeaseStore,
   CapabilityRuntimePreparationEligibility,
 } from "../ports/out/capability/capability-runtime-supervisor.ts";
+import type {
+  CapabilityRuntimePreparationPort,
+  CapabilityRuntimePreparationSession,
+} from "../ports/out/capability/capability-runtime-preparation-session.ts";
 import type { CapabilityRuntimeLaunchGroupSupervisor } from "./capability-runtime-launch-group-supervisor.ts";
 import type { CapabilityRuntimeGlobalJitDemandReader } from "./capability-runtime-jit-demand.ts";
 
@@ -40,14 +44,6 @@ export class CapabilityRuntimePreparationUnavailableError extends Error {
     super(message);
     this.name = "CapabilityRuntimePreparationUnavailableError";
   }
-}
-
-export interface CapabilityRuntimePreparationSession {
-  readonly lease: CapabilityRuntimeLease;
-  /** The completed draft was durably captured and reread. */
-  releaseSuccess(): Promise<void>;
-  /** A provider call may have dispatched, but its outcome is not certain. */
-  retainForRecovery(): void;
 }
 
 export interface CapabilityRuntimePreparationSessionCoordinatorOptions {
@@ -69,7 +65,8 @@ export interface CapabilityRuntimePreparationSessionCoordinatorOptions {
  * preparation operation.  It deliberately accepts neither a capability nor
  * provider/image/endpoint/tool/arguments/source from its caller.
  */
-export class CapabilityRuntimePreparationSessionCoordinator {
+export class CapabilityRuntimePreparationSessionCoordinator
+  implements CapabilityRuntimePreparationPort {
   readonly #now: () => string;
 
   constructor(

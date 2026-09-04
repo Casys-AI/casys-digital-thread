@@ -13,7 +13,7 @@ import type {
   ProjectBriefSourceKind,
 } from "../domain/project/project-brief.ts";
 import type { ContentFingerprint } from "../domain/thread/thread-snapshot.ts";
-import type { ProjectCapabilityProposal } from "../application/control-plane/project-capability-authorization.ts";
+import type { ProjectCapabilityProposal } from "../domain/capability/project-capability-authorization.ts";
 import { ProjectCapabilityAuthorizationService } from "../application/control-plane/project-capability-authorization-service.ts";
 import {
   autoConfirms,

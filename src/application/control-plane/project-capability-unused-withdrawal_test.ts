@@ -9,11 +9,11 @@ import {
   ProjectCapabilityAuthorizationError,
   ProjectCapabilityAuthorizationService,
 } from "./project-capability-authorization-service.ts";
-import { isStrictUnusedWithdrawalDelta } from "./project-capability-authorization.ts";
+import { isStrictUnusedWithdrawalDelta } from "../../domain/capability/project-capability-authorization.ts";
 import {
   type CapabilityRuntimeCatalog,
   fingerprintAtomicCapabilityRuntimeUnit,
-} from "./read-model/capability-runtime-catalog.ts";
+} from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 
 Deno.test("explicit unused withdrawal shrinks a covered subset and later demand needs an amendment", async () => {

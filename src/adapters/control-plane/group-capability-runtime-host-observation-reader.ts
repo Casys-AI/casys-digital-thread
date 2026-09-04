@@ -22,7 +22,7 @@ import {
   CAPABILITY_RUNTIME_HOST_OBSERVATION_SCHEMA_VERSION,
   type CapabilityRuntimeCatalog,
   type CapabilityRuntimeHostObservation,
-} from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
+} from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import { capabilityRuntimeMaterialKey } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import type { CapabilityRuntimeHostIdentityReader } from "./file-capability-runtime-host-identity-store.ts";
 

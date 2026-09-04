@@ -31,7 +31,7 @@ import type {
   CapabilityRuntimeMode,
   PlannedCapabilityRuntimeMaterial,
   PlannedProjectCapabilityBinding,
-} from "./read-model/capability-runtime-catalog.ts";
+} from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 
 export const PROJECT_CAPABILITY_WORKBENCH_SCHEMA_VERSION =
   "project-capability-workbench/1.0" as const;

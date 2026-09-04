@@ -12,7 +12,7 @@ import {
   type ProjectCapabilityLedger,
   type ProjectCapabilityProposal,
   reconstructProjectCapabilityEffectiveEnvelope,
-} from "../../application/control-plane/project-capability-authorization.ts";
+} from "../../domain/capability/project-capability-authorization.ts";
 import { projectCapabilityEnvelopeDelta } from "../../application/control-plane/plan-project-capability-intent.ts";
 import {
   FileProjectCapabilityLedgerStore,

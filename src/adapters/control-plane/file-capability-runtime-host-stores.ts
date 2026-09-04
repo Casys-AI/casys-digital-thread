@@ -22,11 +22,11 @@ import type {
   CapabilityRuntimeAdminLock,
   CapabilityRuntimeAdminPolicy,
   CapabilityRuntimeCatalog,
-} from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
+} from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import {
   CAPABILITY_RUNTIME_ADMIN_LOCK_SCHEMA_VERSION,
   CAPABILITY_RUNTIME_ADMIN_POLICY_SCHEMA_VERSION,
-} from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
+} from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import {
   validateCapabilityRuntimeAdminLock,
   validateCapabilityRuntimeAdminPolicy,

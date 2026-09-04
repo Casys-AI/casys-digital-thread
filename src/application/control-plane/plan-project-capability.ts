@@ -17,11 +17,11 @@ import type {
   ProjectCapabilityPlanEffects,
   ProjectCapabilityPlanningInput,
   QualifiedCapabilityRuntimeBinding,
-} from "./read-model/capability-runtime-catalog.ts";
+} from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import {
   fingerprintAtomicCapabilityRuntimeUnit,
   PROJECT_CAPABILITY_PLAN_SCHEMA_VERSION,
-} from "./read-model/capability-runtime-catalog.ts";
+} from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 
 /**
  * Pure server-owned composition of a provider-neutral project demand into an

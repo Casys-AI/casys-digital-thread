@@ -18,7 +18,7 @@ import {
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
-import type { CapabilityRuntimeHostObservation } from "../../../application/control-plane/read-model/capability-runtime-catalog.ts";
+import type { CapabilityRuntimeHostObservation } from "../../../domain/capability/runtime/capability-runtime-catalog.ts";
 import { FileCaptureStore } from "../../shared/cas/file-capture-store.ts";
 import {
   GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,

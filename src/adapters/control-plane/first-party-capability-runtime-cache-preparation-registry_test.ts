@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import type { CapabilityRuntimeCatalog } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
+import type { CapabilityRuntimeCatalog } from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import { pinnedOciImageReference } from "../../domain/compile/isolation/local-isolation-runtime.ts";
 import { LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE } from "../electrical/spice/admitted/local-image-references.ts";
 import {

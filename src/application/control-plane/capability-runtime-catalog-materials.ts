@@ -12,7 +12,7 @@ import {
 } from "../../domain/capability/engineering-capability.ts";
 import { capabilityRuntimeMaterialKey } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import type { CapabilityRuntimeMaterialIdentity } from "../../domain/capability/runtime/capability-runtime-material.ts";
-import type { CapabilityRuntimeCatalog } from "./read-model/capability-runtime-catalog.ts";
+import type { CapabilityRuntimeCatalog } from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 
 export function capabilityRuntimeCatalogMaterialsForRequirements(
   catalog: Pick<CapabilityRuntimeCatalog, "units" | "bindings">,

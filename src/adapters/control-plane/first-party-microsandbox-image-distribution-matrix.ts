@@ -12,7 +12,7 @@
  * `latest`, a digest pin, or a mutable alias as the candidate identity.
  */
 
-import type { CapabilityRuntimeCatalog } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
+import type { CapabilityRuntimeCatalog } from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import {
   createFirstPartyMicrosandboxImageBootstrapDescriptors,

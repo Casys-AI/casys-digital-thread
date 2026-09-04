@@ -12,7 +12,7 @@ import {
 import {
   projectCapabilityEnvelopeDelta,
   projectCapabilityProposalCovers,
-} from "./plan-project-capability-intent.ts";
+} from "../../application/control-plane/plan-project-capability-intent.ts";
 
 Deno.test("capability amendment is a structured delta that reconstructs only the exact successor", async () => {
   const initial = await proposal("brief-intent", []);

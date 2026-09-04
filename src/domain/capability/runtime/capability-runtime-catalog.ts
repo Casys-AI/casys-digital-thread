@@ -1,18 +1,18 @@
-import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
-import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
+import type { ContentFingerprint } from "../../kernel/primitives.ts";
+import { sha256Fingerprint } from "../../kernel/deterministic-json.ts";
 import type {
   CapabilityRuntimeMaterialRuntimeMode,
   CapabilityRuntimePlatform,
-} from "../../../domain/capability/runtime/capability-runtime-material.ts";
+} from "./capability-runtime-material.ts";
 import type {
   CapabilityQualification,
   CapabilityReference,
   RequiredEngineeringCapability,
-} from "../../../domain/capability/engineering-capability.ts";
-import type { ProjectCapabilityDemand } from "../../../domain/capability/project-capability-demand.ts";
+} from "../engineering-capability.ts";
+import type { ProjectCapabilityDemand } from "../project-capability-demand.ts";
 import type {
   CapabilityRuntimeLaunchGroupReference,
-} from "../../../domain/capability/runtime/capability-runtime-launch-group.ts";
+} from "./capability-runtime-launch-group.ts";
 
 export const CAPABILITY_RUNTIME_CATALOG_SCHEMA_VERSION =
   "capability-runtime-catalog/1.0" as const;

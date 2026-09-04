@@ -58,7 +58,7 @@ import type { ProjectCapabilityLedgerStore } from "../ports/out/project-capabili
 import {
   type ProjectCapabilityLedger,
   reconstructProjectCapabilityEffectiveEnvelope,
-} from "./project-capability-authorization.ts";
+} from "../../domain/capability/project-capability-authorization.ts";
 import type {
   CapabilityRuntimeAdminLockWriter,
   ProjectCapabilityAuthorizationService,
@@ -66,7 +66,7 @@ import type {
 import type {
   CapabilityRuntimeAdminLock,
   CapabilityRuntimeCatalog,
-} from "./read-model/capability-runtime-catalog.ts";
+} from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import { validateCapabilityRuntimeAdminLock } from "./validate-capability-runtime-admin-lock.ts";
 
 export interface LocalCapabilityRuntimeLockReview {

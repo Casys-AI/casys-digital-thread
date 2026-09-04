@@ -16,7 +16,7 @@ import {
   type CapabilityRuntimeCatalog,
   type CapabilityRuntimeLockedUnit,
   fingerprintAtomicCapabilityRuntimeUnit,
-} from "./read-model/capability-runtime-catalog.ts";
+} from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 
 const SHA256_HEX = /^[a-f0-9]{64}$/;
 

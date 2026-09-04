@@ -4,7 +4,7 @@
  * runtime kind.
  */
 
-import type { CapabilityRuntimeCatalog } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
+import type { CapabilityRuntimeCatalog } from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import { pinnedOciImageReference } from "../../domain/compile/isolation/local-isolation-runtime.ts";
 import {
   BUILD123D_ISOLATED_WORKER_MATERIAL_ID,

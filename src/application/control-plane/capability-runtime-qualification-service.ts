@@ -59,7 +59,7 @@ import type {
   CapabilityRuntimeCatalog,
   CapabilityRuntimeHostEffects,
   CapabilityRuntimeHostObservation,
-} from "./read-model/capability-runtime-catalog.ts";
+} from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import {
   assertPrescribedKinematicsLoweredCase,
   assertPrescribedKinematicsRecordBoundToIdentity,

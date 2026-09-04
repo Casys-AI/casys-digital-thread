@@ -70,10 +70,9 @@ import type { ThreadSnapshotStore } from "../../../../domain/thread/thread-snaps
 import { selectCurrentThreadTip } from "../../../../domain/project/thread-tip.ts";
 import type { EngineeringProjectRevisionStore } from "../../../ports/out/engineering-project-revision-store.ts";
 import {
+  type CapabilityRuntimePreparationPort,
   type CapabilityRuntimePreparationSession,
-  type CapabilityRuntimePreparationSessionCoordinator,
-  CapabilityRuntimePreparationUnavailableError,
-} from "../../../control-plane/capability-runtime-preparation-session.ts";
+} from "../../../ports/out/capability/capability-runtime-preparation-session.ts";
 import {
   deepFreeze,
   exactRecord,
@@ -182,7 +181,7 @@ export interface ExportAdmittedProjectGeometryDependencies {
    * exposing a provider choice to the public command.
    */
   readonly projects?: Pick<EngineeringProjectRevisionStore, "get">;
-  readonly preparation?: CapabilityRuntimePreparationSessionCoordinator;
+  readonly preparation?: CapabilityRuntimePreparationPort;
   readonly exporterFactory?: () => AdmittedGeometryExporter;
   readonly replayCache?: AdmittedGeometryExportReplayCache;
   readonly snapshots: Pick<ThreadSnapshotStore, "get">;
@@ -195,7 +194,7 @@ export class ExportAdmittedProjectGeometry
   readonly #admissions: TechnicalCompilationAdmissionReader;
   readonly #exporter: AdmittedGeometryExporter;
   readonly #projects: Pick<EngineeringProjectRevisionStore, "get"> | undefined;
-  readonly #preparation: CapabilityRuntimePreparationSessionCoordinator | undefined;
+  readonly #preparation: CapabilityRuntimePreparationPort | undefined;
   readonly #exporterFactory: (() => AdmittedGeometryExporter) | undefined;
   readonly #replayCache: AdmittedGeometryExportReplayCache | undefined;
   readonly #snapshots: Pick<ThreadSnapshotStore, "get">;
@@ -633,13 +632,7 @@ export class ExportAdmittedProjectGeometry
         project,
         operation: { ...DESIGN_WRITE_GEOMETRY_OPERATION, bindings: [] },
       });
-    } catch (error) {
-      if (error instanceof CapabilityRuntimePreparationUnavailableError) {
-        throw exportError(
-          "runtime_unavailable",
-          "The server-owned Build123d preparation runtime is unavailable.",
-        );
-      }
+    } catch {
       throw exportError(
         "runtime_unavailable",
         "The server-owned Build123d preparation runtime is unavailable.",

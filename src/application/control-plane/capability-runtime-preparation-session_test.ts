@@ -66,10 +66,11 @@ Deno.test("preparation activation leases one exact Build123d group then releases
   });
 
   const session = await coordinator.begin({ project: PROJECT, operation: OPERATION });
+  const [activeLease] = await leases.listActive(AT);
 
   assertEquals(activations, ["casys-build123d-sandbox"]);
-  assertEquals(session.lease.projectId, PROJECT.project.id);
-  assertEquals(session.lease.expiresAt, "2026-08-29T00:15:00.000Z");
+  assertEquals(activeLease?.projectId, PROJECT.project.id);
+  assertEquals(activeLease?.expiresAt, "2026-08-29T00:15:00.000Z");
   assertEquals((await leases.listActive(AT)).length, 1);
   assertEquals("agentRuns" in PROJECT, false);
 
@@ -168,17 +169,20 @@ Deno.test("an interrupted pre-dispatch preparation reuses its exact live lease o
   const reuse: ("allow" | "reject")[] = [];
   const coordinator = preparationCoordinator(leases, () => now, reuse);
 
-  const original = await coordinator.begin({ project: PROJECT, operation: OPERATION });
+  await coordinator.begin({ project: PROJECT, operation: OPERATION });
+  const [originalLease] = await leases.listActive(now);
   now = "2026-08-29T00:05:00.000Z";
-  const resumed = await coordinator.begin({ project: PROJECT, operation: OPERATION });
-  assertEquals(resumed.lease.id, original.lease.id);
+  await coordinator.begin({ project: PROJECT, operation: OPERATION });
+  const [resumedLease] = await leases.listActive(now);
+  assertEquals(resumedLease?.id, originalLease?.id);
   assertEquals(reuse, ["reject", "allow"]);
 
   now = "2026-08-29T00:16:00.000Z";
   const renewed = await coordinator.begin({ project: PROJECT, operation: OPERATION });
-  assertEquals(renewed.lease.id === original.lease.id, false);
+  const [renewedLease] = await leases.listActive(now);
+  assertEquals(renewedLease?.id === originalLease?.id, false);
   assertEquals(reuse, ["reject", "allow", "reject"]);
-  assertEquals(await leases.read(original.lease.id), original.lease);
+  assertEquals(await leases.read(originalLease!.id), originalLease);
 
   await renewed.releaseSuccess();
   assertEquals(await leases.listActive(now), []);
@@ -188,12 +192,13 @@ Deno.test("recorded replay cleanup releases only its exact extant lease without 
   const leases = new InMemoryCapabilityRuntimeLeaseStore();
   const reuse: ("allow" | "reject")[] = [];
   const coordinator = preparationCoordinator(leases, () => AT, reuse);
-  const session = await coordinator.begin({ project: PROJECT, operation: OPERATION });
+  await coordinator.begin({ project: PROJECT, operation: OPERATION });
+  const [activeLease] = await leases.listActive(AT);
 
   await coordinator.releaseRecorded({ project: PROJECT, operation: OPERATION });
 
   assertEquals(reuse, ["reject"]);
-  assertEquals(await leases.read(session.lease.id), undefined);
+  assertEquals(await leases.read(activeLease!.id), undefined);
 });
 
 function preparationCoordinator(

@@ -48,7 +48,7 @@ import {
   CAPABILITY_RUNTIME_CATALOG_SCHEMA_VERSION,
   type CapabilityRuntimeCatalog,
   fingerprintAtomicCapabilityRuntimeUnit,
-} from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
+} from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import { validateCapabilityRuntimeCatalog } from "./capability-runtime-catalog.ts";
 import {
   firstPartyBuild123dObservationLaunchGroupReference,

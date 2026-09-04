@@ -19,7 +19,7 @@ import {
   type CapabilityRuntimeCatalog,
   fingerprintAtomicCapabilityRuntimeUnit,
   type ProjectCapabilityPlanningInput,
-} from "./read-model/capability-runtime-catalog.ts";
+} from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import { planProjectCapability } from "./plan-project-capability.ts";
 import { createFirstPartyCapabilityRuntimeCatalog } from "../../adapters/control-plane/first-party-capability-binding-catalog.ts";
 import {
@@ -533,6 +533,6 @@ async function refreshCatalogUnitFingerprint(
 ): Promise<void> {
   const unit = mutableCatalogUnit(catalog, id);
   unit.manifestFingerprint = await fingerprintAtomicCapabilityRuntimeUnit(
-    unit as unknown as import("./read-model/capability-runtime-catalog.ts").AtomicCapabilityRuntimeUnit,
+    unit as unknown as import("../../domain/capability/runtime/capability-runtime-catalog.ts").AtomicCapabilityRuntimeUnit,
   );
 }

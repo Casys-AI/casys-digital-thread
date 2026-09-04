@@ -1,21 +1,21 @@
-import { deepFreeze } from "../../domain/kernel/case-validation.ts";
+import { deepFreeze } from "../kernel/case-validation.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
   sha256Fingerprint,
-} from "../../domain/kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
+} from "../kernel/deterministic-json.ts";
+import type { ContentFingerprint } from "../kernel/primitives.ts";
 import {
   PROJECT_CAPABILITY_INTENT_SCHEMA_VERSION,
   type ProjectCapabilityIntent,
-} from "../../domain/capability/project-capability-intent.ts";
+} from "./project-capability-intent.ts";
 import {
   engineeringCapabilityRequirementKey,
   type RequiredEngineeringCapability,
-} from "../../domain/capability/engineering-capability.ts";
+} from "./engineering-capability.ts";
 import {
   validateCapabilityRuntimeLaunchGroupReference,
-} from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
+} from "./runtime/capability-runtime-launch-group.ts";
 import type {
   AtomicCapabilityRuntimeUnit,
   CapabilityRuntimeBindingCandidate,
@@ -27,8 +27,8 @@ import type {
   PlannedCapabilityRuntimeMaterial,
   PlannedProjectCapabilityBinding,
   ProjectCapabilityPlanEffects,
-} from "./read-model/capability-runtime-catalog.ts";
-import { fingerprintAtomicCapabilityRuntimeUnit } from "./read-model/capability-runtime-catalog.ts";
+} from "./runtime/capability-runtime-catalog.ts";
+import { fingerprintAtomicCapabilityRuntimeUnit } from "./runtime/capability-runtime-catalog.ts";
 
 /** Separate host-operational authority; it is not an MRTR or result verdict. */
 export const PROJECT_CAPABILITY_PROPOSAL_SCHEMA_VERSION =

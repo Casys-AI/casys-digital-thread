@@ -32,7 +32,7 @@ import type {
   CapabilityRuntimeCatalog,
   CapabilityRuntimeHostObservation,
   QualifiedCapabilityRuntimeBinding,
-} from "./read-model/capability-runtime-catalog.ts";
+} from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 
 export interface CapabilityRuntimeQualificationEvaluationInput {
   readonly catalog: CapabilityRuntimeCatalog;

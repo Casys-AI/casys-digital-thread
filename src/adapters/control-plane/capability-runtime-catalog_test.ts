@@ -12,7 +12,7 @@ import {
   CAPABILITY_RUNTIME_ADMIN_LOCK_SCHEMA_VERSION,
   CAPABILITY_RUNTIME_ADMIN_POLICY_SCHEMA_VERSION,
   CAPABILITY_RUNTIME_HOST_OBSERVATION_SCHEMA_VERSION,
-} from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
+} from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import {
   createGeometryModuleAssemblerMicrosandboxQualificationCandidate,
 } from "../cad/module-assembly/geometry-module-assembly-microsandbox-qualification-candidate.ts";

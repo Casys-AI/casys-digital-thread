@@ -9,7 +9,7 @@ import {
   type ProjectCapabilityLedger,
   reconstructProjectCapabilityEffectiveEnvelope,
   validateProjectCapabilityProposal,
-} from "../../application/control-plane/project-capability-authorization.ts";
+} from "../../domain/capability/project-capability-authorization.ts";
 import {
   ProjectCapabilityLedgerConflictError,
   type ProjectCapabilityLedgerStore,

@@ -10,7 +10,7 @@ import {
   type ProjectCapabilityBriefBasis,
   type ProjectCapabilityEnvelopeDelta,
   type ProjectCapabilityProposal,
-} from "./project-capability-authorization.ts";
+} from "../../domain/capability/project-capability-authorization.ts";
 import { planCapabilityRuntimeRequirements } from "./plan-project-capability.ts";
 import type {
   AtomicCapabilityRuntimeUnit,
@@ -18,7 +18,7 @@ import type {
   CapabilityRuntimeAdminPolicy,
   CapabilityRuntimeCatalog,
   CapabilityRuntimeHostObservation,
-} from "./read-model/capability-runtime-catalog.ts";
+} from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 
 export interface ProjectCapabilityIntentPlanningInput {
   readonly projectId: string;

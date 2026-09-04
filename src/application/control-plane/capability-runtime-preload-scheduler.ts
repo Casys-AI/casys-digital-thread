@@ -7,7 +7,7 @@
  * never compensate, roll back, or alter the already-confirmed project brief.
  */
 
-import type { ProjectCapabilityProposal } from "./project-capability-authorization.ts";
+import type { ProjectCapabilityProposal } from "../../domain/capability/project-capability-authorization.ts";
 import type { CapabilityRuntimeCachePreparationCoordinator } from "./capability-runtime-cache-preparation-coordinator.ts";
 import type { CapabilityRuntimeLaunchGroupSupervisor } from "./capability-runtime-launch-group-supervisor.ts";
 import { capabilityRuntimeAdminLockMismatchBlocker } from "./plan-project-capability.ts";

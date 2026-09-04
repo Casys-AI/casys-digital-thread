@@ -65,7 +65,7 @@ import type {
   CapabilityRuntimeAdminLock,
   CapabilityRuntimeAdminPolicy,
   CapabilityRuntimeHostObservation,
-} from "./read-model/capability-runtime-catalog.ts";
+} from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 
 const HOST = { algorithm: "sha256" as const, digest: "a".repeat(64) };
 const HOST_B = { algorithm: "sha256" as const, digest: "b".repeat(64) };

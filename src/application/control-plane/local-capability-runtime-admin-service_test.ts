@@ -25,7 +25,7 @@ import type {
   CapabilityRuntimeJournalEntry,
   CapabilityRuntimeJournalOutcome,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
-import type { ProjectCapabilityLedger } from "./project-capability-authorization.ts";
+import type { ProjectCapabilityLedger } from "../../domain/capability/project-capability-authorization.ts";
 import { LocalCapabilityRuntimeAdminService } from "./local-capability-runtime-admin-service.ts";
 
 Deno.test("local admin lock review requires exact fingerprint and explicit confirmation", async () => {

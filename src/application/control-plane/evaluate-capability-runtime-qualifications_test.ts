@@ -31,7 +31,7 @@ import type {
   CapabilityRuntimeCatalog,
   CapabilityRuntimeHostObservation,
   QualifiedCapabilityRuntimeBinding,
-} from "./read-model/capability-runtime-catalog.ts";
+} from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "../../adapters/control-plane/first-party-capability-runtime-qualification-candidates.ts";
 import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "../../adapters/control-plane/first-party-capability-runtime-qualification-specifications.ts";
 import { createCapabilityRuntimeQualificationSpecification } from "../../domain/capability/runtime/capability-runtime-qualification-specification.ts";

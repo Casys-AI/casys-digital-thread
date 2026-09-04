@@ -34,13 +34,13 @@ import {
   type ProjectCapabilityProposal,
   projectCapabilityProposalsHaveEquivalentCeilings,
   reconstructProjectCapabilityEffectiveEnvelope,
-} from "./project-capability-authorization.ts";
+} from "../../domain/capability/project-capability-authorization.ts";
 import type {
   CapabilityRuntimeAdminLock,
   CapabilityRuntimeAdminPolicy,
   CapabilityRuntimeCatalog,
   CapabilityRuntimeHostObservation,
-} from "./read-model/capability-runtime-catalog.ts";
+} from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import type { ProjectCapabilityLedgerStore } from "../ports/out/project-capability-ledger-store.ts";
 import type { CapabilityRuntimeHostMutationLock } from "../ports/out/capability/capability-runtime-supervisor.ts";
 import type { EngineeringOperationRegistry } from "../../orchestration/operations/operation-contract.ts";

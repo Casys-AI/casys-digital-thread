@@ -7,8 +7,8 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringWorkItem,
 } from "../../domain/project/engineering-project.ts";
-import type { PlannedProjectCapabilityBinding } from "./read-model/capability-runtime-catalog.ts";
-import type { ProjectCapabilityBindingReplacement } from "./project-capability-authorization.ts";
+import type { PlannedProjectCapabilityBinding } from "../../domain/capability/runtime/capability-runtime-catalog.ts";
+import type { ProjectCapabilityBindingReplacement } from "../../domain/capability/project-capability-authorization.ts";
 import { evaluateProjectCapabilityBindingEvidence } from "./project-capability-binding-evidence.ts";
 
 const CHRONO_KEY = "mechanics.observe-prescribed-kinematics\u00001\u0000execution";

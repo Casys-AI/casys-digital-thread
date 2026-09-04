@@ -43,7 +43,7 @@ import type {
   CapabilityRuntimeCatalog,
   ProjectCapabilityPlan,
   QualifiedCapabilityRuntimeBinding,
-} from "./read-model/capability-runtime-catalog.ts";
+} from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import type {
   CapabilityRuntimeExecutionEligibility,
   CapabilityRuntimeHostMutator,

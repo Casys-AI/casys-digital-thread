@@ -41,7 +41,7 @@ import type {
   CapabilityRuntimeAdminLock,
   CapabilityRuntimeCatalog,
   ProjectCapabilityPlan,
-} from "../../../control-plane/read-model/capability-runtime-catalog.ts";
+} from "../../../../domain/capability/runtime/capability-runtime-catalog.ts";
 
 /**
  * Effective append-only project authorization reconstructed by the authority

@@ -1,6 +1,6 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import { capabilityRuntimeNonpersistentRemovalBackend } from "./capability-runtime-nonpersistent-removal-backend.ts";
-import type { AtomicCapabilityRuntimeMaterial } from "./read-model/capability-runtime-catalog.ts";
+import type { AtomicCapabilityRuntimeMaterial } from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 
 Deno.test("non-persistent backend is derived from catalogue kind and lifecycle, never caller flags", () => {
   assertEquals(

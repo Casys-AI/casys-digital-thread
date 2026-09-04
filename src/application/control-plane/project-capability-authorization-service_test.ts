@@ -13,7 +13,7 @@ import { validateCapabilityRuntimeCatalog } from "../../adapters/control-plane/c
 import type { ResolvedRunPlanReader } from "../../domain/project/resolved-run-plan-sealer.ts";
 import type { ResolvedOperationPlanV2 } from "../../domain/compile/rop/resolved-operation-plan-v2.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
-import type { CapabilityRuntimeCatalog } from "./read-model/capability-runtime-catalog.ts";
+import type { CapabilityRuntimeCatalog } from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import { FileEngineeringProjectRevisionStore } from "../../adapters/shared/stores/engineering-project-store.ts";
 import { ProjectBriefCommandService } from "../use-cases/project/project-brief-command-service.ts";
 import { listRegisteredEngineeringOperations } from "../../orchestration/operations/registry.ts";
@@ -25,9 +25,9 @@ import { LocalCapabilityRuntimeAdminService } from "./local-capability-runtime-a
 import {
   fingerprintProjectCapabilityProposal,
   validateProjectCapabilityProposal,
-} from "./project-capability-authorization.ts";
+} from "../../domain/capability/project-capability-authorization.ts";
 import type { ProjectCapabilityLedgerStore } from "../ports/out/project-capability-ledger-store.ts";
-import type { ProjectCapabilityLedger } from "./project-capability-authorization.ts";
+import type { ProjectCapabilityLedger } from "../../domain/capability/project-capability-authorization.ts";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 
 Deno.test("brief capability authorization retains resolved candidates beside an unresolved authority and finalizes idempotently", async () => {

@@ -5,7 +5,7 @@
  * internal acquisition material, never a second planner/UI recipe.
  */
 
-import type { CapabilityRuntimeCatalog } from "../../application/control-plane/read-model/capability-runtime-catalog.ts";
+import type { CapabilityRuntimeCatalog } from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import type { CapabilityRuntimeCachePreparationRecipeRegistry } from "../../application/ports/out/capability/capability-runtime-cache-preparation.ts";
 import { validateCapabilityRuntimeCatalog } from "./capability-runtime-catalog.ts";
 import {

@@ -3,7 +3,7 @@
  * supply docker/microsandbox, an OCI reference, or a runtime kind.
  */
 
-import type { AtomicCapabilityRuntimeMaterial } from "./read-model/capability-runtime-catalog.ts";
+import type { AtomicCapabilityRuntimeMaterial } from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import type { CapabilityRuntimeNonpersistentRemovalBackend } from "../../domain/capability/runtime/capability-runtime-nonpersistent-material-removal.ts";
 
 export function capabilityRuntimeNonpersistentRemovalBackend(

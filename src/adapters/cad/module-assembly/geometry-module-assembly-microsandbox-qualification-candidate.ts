@@ -23,7 +23,7 @@ import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import {
   type AtomicCapabilityRuntimeMaterial,
   fingerprintAtomicCapabilityRuntimeUnit,
-} from "../../../application/control-plane/read-model/capability-runtime-catalog.ts";
+} from "../../../domain/capability/runtime/capability-runtime-catalog.ts";
 import {
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
 } from "../../control-plane/first-party-capability-runtime-identities.ts";

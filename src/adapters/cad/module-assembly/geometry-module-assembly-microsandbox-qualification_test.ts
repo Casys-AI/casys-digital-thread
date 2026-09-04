@@ -16,7 +16,7 @@ import { FileIsolatedOutputCas } from "../../shared/cas/file-isolated-output-cas
 import { FileCapabilityRuntimeQualificationAttemptStore } from "../../control-plane/file-capability-runtime-qualification-attempt-store.ts";
 import { FileCapabilityRuntimeQualificationAttestationStore } from "../../control-plane/file-capability-runtime-qualification-attestation-store.ts";
 import type { CapabilityRuntimeQualificationAttemptStore } from "../../../application/ports/out/capability/capability-runtime-qualification-attempt-store.ts";
-import { fingerprintAtomicCapabilityRuntimeUnit } from "../../../application/control-plane/read-model/capability-runtime-catalog.ts";
+import { fingerprintAtomicCapabilityRuntimeUnit } from "../../../domain/capability/runtime/capability-runtime-catalog.ts";
 import {
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
 } from "../../control-plane/first-party-capability-runtime-identities.ts";

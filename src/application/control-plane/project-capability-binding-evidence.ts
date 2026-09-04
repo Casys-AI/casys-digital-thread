@@ -27,8 +27,8 @@ import type {
   EngineeringOperationRegistry,
   RegisteredEngineeringOperation,
 } from "../../orchestration/operations/operation-contract.ts";
-import type { ProjectCapabilityBindingReplacement } from "./project-capability-authorization.ts";
-import type { PlannedProjectCapabilityBinding } from "./read-model/capability-runtime-catalog.ts";
+import type { ProjectCapabilityBindingReplacement } from "../../domain/capability/project-capability-authorization.ts";
+import type { PlannedProjectCapabilityBinding } from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import type { ResolvedCapabilityRuntimeBinding } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 
 export type ProjectCapabilityBindingEvidenceDecision =

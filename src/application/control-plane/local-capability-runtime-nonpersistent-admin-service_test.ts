@@ -13,8 +13,8 @@ import {
 } from "../../domain/capability/runtime/capability-runtime-cache-preparation.ts";
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import type { CapabilityRuntimeNonpersistentMaterialRemovalObservation } from "../../domain/capability/runtime/capability-runtime-nonpersistent-material-removal.ts";
-import type { ProjectCapabilityLedger } from "./project-capability-authorization.ts";
-import type { CapabilityRuntimeCatalog } from "./read-model/capability-runtime-catalog.ts";
+import type { ProjectCapabilityLedger } from "../../domain/capability/project-capability-authorization.ts";
+import type { CapabilityRuntimeCatalog } from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import { LocalCapabilityRuntimeAdminService } from "./local-capability-runtime-admin-service.ts";
 
 const DIGEST = "a".repeat(64);
