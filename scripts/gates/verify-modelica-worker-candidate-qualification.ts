@@ -37,6 +37,7 @@ export const MODELICA_WORKER_CANDIDATE_QUALIFICATION_USAGE = [
   "Pass --run to execute the exact cached candidate image through both proofs,",
   "composition, broker, domain validators, CAS reread, WAL and proven destruction.",
   "Pass --recover to reconcile the exact durable WAL without redispatched worker calls.",
+  "If successor.json exists, --recover reconciles that canonical successor without a worker call.",
   "Pass --retry-infrastructure-failure to authorize exactly one successor covering both",
   "profile predecessors after proven not-published destruction. A second retry fails closed.",
   "",

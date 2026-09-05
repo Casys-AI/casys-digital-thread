@@ -65,9 +65,11 @@ deno task verify:ngspice-worker:candidate-qualification --import-record=<path> -
 
 `--run` is the mutation acknowledgement. Geometry, CalculiX, Modelica and ngspice also
 accept `--recover` for the existing durable WAL; recovery never redispatches the worker.
-Modelica has no profile selector: one run always owns both server-owned proofs. ngspice
-has no profile, source or netlist selector: one run always owns the server-owned
-admitted circuit profile and the code-owned resistor-divider fixture.
+When a Modelica `successor.json` exists, `--recover` reconciles that canonical successor
+authority without a worker call. Modelica has no profile selector: one run always owns
+both server-owned proofs. ngspice has no profile, source or netlist selector: one run
+always owns the server-owned admitted circuit profile and the code-owned
+resistor-divider fixture.
 
 The gates execute the exact cached candidate image through the production composition,
 broker, output validator, CAS reread, and proven run-scoped destruction. CalculiX reuses

@@ -57,9 +57,12 @@ import {
   assertNoCandidateQualificationRecord,
   assertNoCandidateQualificationSuccessor,
   buildFirstPartyMicrosandboxImageCandidateQualificationSuccessor,
+  type FirstPartyMicrosandboxImageCandidateQualificationSuccessor,
+  type FirstPartyMicrosandboxImageCandidateQualificationSuccessorAttempt,
   firstPartyMicrosandboxImageCandidateQualificationSuccessorRoot,
   persistFirstPartyMicrosandboxImageCandidateQualificationSuccessor,
   proveCandidateQualificationPredecessorUnpublishedAndDestroyed,
+  readFirstPartyMicrosandboxImageCandidateQualificationSuccessor,
   requireSuccessorAttempt,
 } from "../control-plane/first-party-microsandbox-image-candidate-qualification-successor.ts";
 import {
@@ -448,6 +451,8 @@ async function orchestrateModelicaWorkerCandidateQualification(
   );
   const bound = mode === "retry-infrastructure-failure"
     ? await authorizeModelicaWorkerCandidateSuccessor(composed, ports)
+    : mode === "recover"
+    ? await bindExistingModelicaWorkerCandidateSuccessor(composed)
     : composed;
   const settleMode = mode === "retry-infrastructure-failure" ? "run" : mode;
   const kit = await settleProfile(bound.kit, settleMode);
@@ -601,6 +606,104 @@ async function authorizeModelicaWorkerCandidateSuccessor(
       retryRoot,
       startedAt,
     ),
+  };
+}
+
+async function bindExistingModelicaWorkerCandidateSuccessor(
+  composed: ComposedModelicaWorkerCandidateQualification,
+): Promise<ComposedModelicaWorkerCandidateQualification> {
+  const successor =
+    await readFirstPartyMicrosandboxImageCandidateQualificationSuccessor(
+      composed.stateRoot,
+    );
+  if (successor === undefined) return composed;
+  assertModelicaSuccessorAuthority(successor, composed.importRecordFingerprint);
+  const retryRoot = firstPartyMicrosandboxImageCandidateQualificationSuccessorRoot(
+    composed.stateRoot,
+  );
+  return {
+    ...composed,
+    kit: await rebindExistingSuccessorProfile(
+      composed.kit,
+      requireSuccessorAttempt(
+        successor,
+        MODELICA_WORKER_CANDIDATE_QUALIFIED_KIT_PROOF_ID,
+      ),
+      retryRoot,
+    ),
+    admitted: await rebindExistingSuccessorProfile(
+      composed.admitted,
+      requireSuccessorAttempt(
+        successor,
+        MODELICA_WORKER_CANDIDATE_ADMITTED_PROOF_ID,
+      ),
+      retryRoot,
+    ),
+  };
+}
+
+function assertModelicaSuccessorAuthority(
+  successor: FirstPartyMicrosandboxImageCandidateQualificationSuccessor,
+  importRecordFingerprint: string,
+): void {
+  if (successor.physicalImageId !== MODELICA_MICROSANDBOX_WORKER_PHYSICAL_IMAGE_ID) {
+    throw new Error(
+      "Modelica candidate qualification recovery successor does not belong to modelica-microsandbox-worker.",
+    );
+  }
+  if (successor.importRecord.fingerprint !== importRecordFingerprint) {
+    throw new Error(
+      "Modelica candidate qualification recovery successor does not belong to the bound import.",
+    );
+  }
+}
+
+async function rebindExistingSuccessorProfile(
+  ctx: ProfileContext,
+  successorAttempt: FirstPartyMicrosandboxImageCandidateQualificationSuccessorAttempt,
+  retryRoot: string,
+): Promise<ProfileContext> {
+  const root = `${retryRoot}/targets/${ctx.profileId}`;
+  const wal = new FileModelicaWorkerCandidateProfileAttemptStore(
+    `${root}/attempts`,
+    ctx.stateRoot,
+  );
+  const existing = await wal.read();
+  if (existing === undefined) {
+    throw new Error(
+      "Modelica candidate qualification recovery of a successor requires an existing WAL attempt.",
+    );
+  }
+  if (existing.identity.profileId !== ctx.profileId) {
+    throw new Error(
+      "The Modelica candidate successor WAL profile diverged from the bound proof.",
+    );
+  }
+  if (existing.identity.importRecordFingerprint !== ctx.importRecordFingerprint) {
+    throw new Error(
+      "The Modelica candidate successor WAL does not belong to the bound import.",
+    );
+  }
+  if (existing.identity.executionRunId !== successorAttempt.runId) {
+    throw new Error(
+      "The Modelica candidate successor WAL run identity diverged from the successor authority.",
+    );
+  }
+  const identity = Object.freeze({
+    ...ctx.identity,
+    executionRunId: successorAttempt.runId,
+    startedAt: existing.identity.startedAt,
+  });
+  if (deterministicJson(existing.identity) !== deterministicJson(identity)) {
+    throw new Error(
+      "The Modelica candidate successor WAL identity diverged from the bound import.",
+    );
+  }
+  return {
+    ...ctx,
+    identity,
+    wal,
+    proofPath: `${root}/proof.json`,
   };
 }
 

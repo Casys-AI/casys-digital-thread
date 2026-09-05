@@ -134,6 +134,10 @@ Deno.test("Modelica candidate qualification CLI is planning by default and refus
     MODELICA_WORKER_CANDIDATE_QUALIFICATION_USAGE,
     /openmodelica-qualified-kit and openmodelica-admitted-modelica/u,
   );
+  assertMatch(
+    MODELICA_WORKER_CANDIDATE_QUALIFICATION_USAGE,
+    /If successor\.json exists, --recover reconciles that canonical successor without a worker call/u,
+  );
 });
 
 Deno.test("Modelica candidate qualification CLI plan validates the import record without mutation", async () => {

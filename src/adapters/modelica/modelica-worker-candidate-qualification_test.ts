@@ -1023,6 +1023,122 @@ Deno.test("Modelica successor aggregate stays incomplete unless both new proofs 
   }
 });
 
+Deno.test("Modelica recover reconciles an existing successor without redispatched worker calls", async () => {
+  const { modelica } = await records();
+  const directory = await Deno.realPath(
+    await Deno.makeTempDir({ prefix: "casys-modelica-candidate-successor-recover-" }),
+  );
+  const recoverIds: string[] = [];
+  try {
+    await seedDispatchingBoth(modelica, directory);
+    const passed =
+      await retryModelicaWorkerCandidateQualificationFromInfrastructureFailure(
+        modelica,
+        trackingPorts(directory, []),
+      );
+    assertEquals(passed.status, "passed");
+    const admittedRoot =
+      `${directory}/successor/targets/${MODELICA_WORKER_CANDIDATE_ADMITTED_PROOF_ID}`;
+    await Deno.remove(`${directory}/qualification.json`);
+    await Deno.remove(`${admittedRoot}/attempts/attested.json`);
+    await Deno.remove(`${admittedRoot}/proof.json`);
+    const result = await recoverModelicaWorkerCandidateQualification(
+      modelica,
+      trackingPorts(directory, recoverIds),
+    );
+    assertEquals(result.status, "passed");
+    assertEquals(result.eligibleForPromotion, false);
+    assertEquals(result.proofs.length, 2);
+    assertEquals(recoverIds, []);
+    assertEquals(
+      (await Deno.stat(`${directory}/qualification.json`)).isFile,
+      true,
+    );
+    assertEquals(
+      (await Deno.stat(`${admittedRoot}/attempts/attested.json`)).isFile,
+      true,
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("Modelica recover of a successor requires both profile WALs and does not fall back", async () => {
+  const { modelica } = await records();
+  const directory = await Deno.realPath(
+    await Deno.makeTempDir({
+      prefix: "casys-modelica-candidate-successor-recover-missing-",
+    }),
+  );
+  const recoverIds: string[] = [];
+  try {
+    await seedDispatchingBoth(modelica, directory);
+    await retryModelicaWorkerCandidateQualificationFromInfrastructureFailure(
+      modelica,
+      trackingPorts(directory, []),
+    );
+    await Deno.remove(`${directory}/qualification.json`);
+    await Deno.remove(
+      `${directory}/successor/targets/${MODELICA_WORKER_CANDIDATE_ADMITTED_PROOF_ID}`,
+      { recursive: true },
+    );
+    await assertRejects(
+      () =>
+        recoverModelicaWorkerCandidateQualification(
+          modelica,
+          trackingPorts(directory, recoverIds),
+        ),
+      Error,
+      "recovery of a successor requires an existing WAL attempt",
+    );
+    assertEquals(recoverIds, []);
+    await assertRejects(
+      () => Deno.stat(`${directory}/qualification.json`),
+      Deno.errors.NotFound,
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("Modelica recover refuses a successor WAL that diverged from the successor authority", async () => {
+  const { modelica } = await records();
+  const directory = await Deno.realPath(
+    await Deno.makeTempDir({
+      prefix: "casys-modelica-candidate-successor-recover-divergent-",
+    }),
+  );
+  const recoverIds: string[] = [];
+  try {
+    await seedDispatchingBoth(modelica, directory);
+    await retryModelicaWorkerCandidateQualificationFromInfrastructureFailure(
+      modelica,
+      trackingPorts(directory, []),
+    );
+    const admittedRoot =
+      `${directory}/successor/targets/${MODELICA_WORKER_CANDIDATE_ADMITTED_PROOF_ID}`;
+    await Deno.remove(`${admittedRoot}/attempts/attested.json`);
+    const dispatchingPath = `${admittedRoot}/attempts/dispatching.json`;
+    const attempt = JSON.parse(await Deno.readTextFile(dispatchingPath)) as {
+      identity: { executionRunId: string };
+    };
+    attempt.identity.executionRunId = "foreign-modelica-successor-run";
+    await Deno.writeTextFile(dispatchingPath, `${deterministicJson(attempt)}\n`);
+    await assertRejects(
+      () =>
+        recoverModelicaWorkerCandidateQualification(
+          modelica,
+          trackingPorts(directory, recoverIds),
+        ),
+      Error,
+      "diverged from the successor authority",
+    );
+    assertEquals(recoverIds, []);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 Deno.test("Modelica candidate qualification source never deletes images or builds Docker", async () => {
   const source = await Deno.readTextFile(
     new URL("./modelica-worker-candidate-qualification.ts", import.meta.url),
