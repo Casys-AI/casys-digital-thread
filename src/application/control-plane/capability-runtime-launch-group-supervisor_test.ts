@@ -965,7 +965,7 @@ Deno.test("qualification start crash after host mutation reconverges all-active 
 
 Deno.test("qualification start pending/uncertain/failed all-active is read-only; inactive retry and foreign/partial block", async () => {
   const first = await group("casys-qualification-start-matrix", "qualification-start");
-  const requestOf = (fixture: ReturnType<typeof supervisor>) => ({
+  const requestOf = (_fixture: ReturnType<typeof supervisor>) => ({
     group: capabilityRuntimeLaunchGroupReference(first),
     expectedMaterials: exactMaterials(first),
     qualificationStartAuthority: qualificationAuthority(),

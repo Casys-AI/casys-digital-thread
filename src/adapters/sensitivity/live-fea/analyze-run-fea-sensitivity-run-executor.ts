@@ -73,13 +73,7 @@ import {
   validateIsolatedCodeExecutionRequest,
   validateIsolatedCodeOutputValidationRejection,
 } from "../../../domain/compile/isolation/isolated-code-execution.ts";
-import {
-  exactRecord,
-  finite,
-  literalValue,
-  nonEmptyText,
-  safeId,
-} from "../../../domain/kernel/case-validation.ts";
+import { safeId } from "../../../domain/kernel/case-validation.ts";
 import {
   deterministicJson,
   fingerprintsEqual,

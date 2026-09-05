@@ -13,7 +13,6 @@ import {
 } from "../../domain/capability/project-capability-authorization.ts";
 import { planCapabilityRuntimeRequirements } from "./plan-project-capability.ts";
 import type {
-  AtomicCapabilityRuntimeUnit,
   CapabilityRuntimeAdminLock,
   CapabilityRuntimeAdminPolicy,
   CapabilityRuntimeCatalog,

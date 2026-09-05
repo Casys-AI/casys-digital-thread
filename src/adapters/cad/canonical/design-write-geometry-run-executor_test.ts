@@ -3077,7 +3077,6 @@ export async function queueGeometryPartSeal(
       callTool: (call) => {
         providerCalls.value++;
         const args = call.arguments as Record<string, unknown>;
-        const name = String(args.name);
         const formats = args.formats as Array<"step" | "gltf">;
         return Promise.resolve({
           structuredContent: {

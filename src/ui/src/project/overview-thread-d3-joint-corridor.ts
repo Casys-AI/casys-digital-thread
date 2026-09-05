@@ -158,6 +158,8 @@ export function buildOverviewThreadD3JointCorridor(
   // Stage 1: every edge gets its own obstacle-safe guide before any bundling.
   for (const trajectory of trajectories) {
     const span = distance(trajectory.source, trajectory.target);
+    const vertical = Math.abs(trajectory.source.y - trajectory.target.y) >=
+      Math.abs(trajectory.source.x - trajectory.target.x);
     const guard = clamp(span * 0.12, 6, 20);
     const independent = buildOverviewThreadD3CableFieldRoute(
       trajectory.source,
@@ -166,6 +168,7 @@ export function buildOverviewThreadD3JointCorridor(
       {
         maxParticles: 12,
         tickCount: 8,
+        cornerClearance: vertical && span < 160 ? 4 : undefined,
         sourceTangentTarget: addScaled(
           trajectory.source,
           trajectory.sourceTangent,
@@ -363,8 +366,14 @@ function buildIndividualShapeGuide(
   if (!quasiStraight) return initial.map(copyPoint);
 
   const normal = { x: -chord.y, y: chord.x };
-  const amplitude = clamp(span * 0.05, 8, 24);
-  const preferredSign = stableStringHash(trajectory.key) % 2 === 0 ? 1 : -1;
+  const vertical = Math.abs(chord.y) >= Math.abs(chord.x);
+  const rightSign = normal.x > 0 ? 1 : normal.x < 0 ? -1 : 1;
+  const amplitude = vertical ? clamp(span * 0.35, 16, 24) : 0;
+  const preferredSign = vertical
+    ? rightSign
+    : stableStringHash(trajectory.key) % 2 === 0
+    ? 1
+    : -1;
   for (const sign of [preferredSign, -preferredSign]) {
     const candidate = initial.map((point, step) => {
       const progress = step / (initial.length - 1);

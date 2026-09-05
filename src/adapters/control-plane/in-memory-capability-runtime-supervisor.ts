@@ -31,14 +31,16 @@ export class InMemoryProjectCapabilityRuntimeContextReader
     this.#contexts.set(projectSnapshotId, structuredClone(context));
   }
 
-  async read(
+  read(
     project: EngineeringProjectSnapshot,
   ): Promise<ProjectCapabilityRuntimeContext> {
     const context = this.#contexts.get(project.id);
     if (!context) {
-      throw new Error(`No capability runtime context exists for ${project.id}.`);
+      return Promise.reject(
+        new Error(`No capability runtime context exists for ${project.id}.`),
+      );
     }
-    return structuredClone(context);
+    return Promise.resolve(structuredClone(context));
   }
 }
 
@@ -53,16 +55,20 @@ export class InMemoryCapabilityRuntimeStateObserver
     this.#states.set(capabilityRuntimeMaterialKey(material), structuredClone(state));
   }
 
-  async observe(
+  observe(
     materials: readonly CapabilityRuntimeMaterialIdentity[],
   ): Promise<ReadonlyMap<string, CapabilityRuntimeObservedState>> {
-    return new Map(
-      materials.flatMap((material) => {
-        const state = this.#states.get(capabilityRuntimeMaterialKey(material));
-        return state
-          ? [[capabilityRuntimeMaterialKey(material), structuredClone(state)] as const]
-          : [];
-      }),
+    return Promise.resolve(
+      new Map(
+        materials.flatMap((material) => {
+          const state = this.#states.get(capabilityRuntimeMaterialKey(material));
+          return state
+            ? [
+              [capabilityRuntimeMaterialKey(material), structuredClone(state)] as const,
+            ]
+            : [];
+        }),
+      ),
     );
   }
 }
@@ -71,32 +77,38 @@ export class InMemoryCapabilityRuntimeJournal implements CapabilityRuntimeJourna
   #entries: CapabilityRuntimeJournalEntry[] = [];
   #outcomes: CapabilityRuntimeJournalOutcome[] = [];
 
-  async appendBeforeMutation(entry: CapabilityRuntimeJournalEntry): Promise<void> {
+  appendBeforeMutation(entry: CapabilityRuntimeJournalEntry): Promise<void> {
     if (this.#entries.some((candidate) => candidate.id === entry.id)) {
-      throw new Error(`Capability runtime journal entry ${entry.id} already exists.`);
+      return Promise.reject(
+        new Error(`Capability runtime journal entry ${entry.id} already exists.`),
+      );
     }
     this.#entries.push(structuredClone(entry));
+    return Promise.resolve();
   }
 
-  async list(): Promise<readonly CapabilityRuntimeJournalEntry[]> {
-    return structuredClone(this.#entries);
+  list(): Promise<readonly CapabilityRuntimeJournalEntry[]> {
+    return Promise.resolve(structuredClone(this.#entries));
   }
 
-  async appendOutcome(outcome: CapabilityRuntimeJournalOutcome): Promise<void> {
+  appendOutcome(outcome: CapabilityRuntimeJournalOutcome): Promise<void> {
     if (
       this.#outcomes.some((candidate) =>
         candidate.journalEntryId === outcome.journalEntryId
       )
     ) {
-      throw new Error(
-        `Capability runtime journal outcome ${outcome.journalEntryId} already exists.`,
+      return Promise.reject(
+        new Error(
+          `Capability runtime journal outcome ${outcome.journalEntryId} already exists.`,
+        ),
       );
     }
     this.#outcomes.push(structuredClone(outcome));
+    return Promise.resolve();
   }
 
-  async listOutcomes(): Promise<readonly CapabilityRuntimeJournalOutcome[]> {
-    return structuredClone(this.#outcomes);
+  listOutcomes(): Promise<readonly CapabilityRuntimeJournalOutcome[]> {
+    return Promise.resolve(structuredClone(this.#outcomes));
   }
 }
 
@@ -104,29 +116,35 @@ export class InMemoryCapabilityRuntimeLeaseStore
   implements CapabilityRuntimeLeaseStore {
   #leases = new Map<string, CapabilityRuntimeLease>();
 
-  async claim(lease: CapabilityRuntimeLease): Promise<CapabilityRuntimeLeaseClaim> {
+  claim(lease: CapabilityRuntimeLease): Promise<CapabilityRuntimeLeaseClaim> {
     const existing = this.#leases.get(lease.id);
     if (existing) {
-      return { status: "existing", lease: structuredClone(existing) };
+      return Promise.resolve({
+        status: "existing",
+        lease: structuredClone(existing),
+      });
     }
     this.#leases.set(lease.id, structuredClone(lease));
-    return { status: "created", lease: structuredClone(lease) };
+    return Promise.resolve({ status: "created", lease: structuredClone(lease) });
   }
 
-  async read(leaseId: string): Promise<CapabilityRuntimeLease | undefined> {
+  read(leaseId: string): Promise<CapabilityRuntimeLease | undefined> {
     const lease = this.#leases.get(leaseId);
-    return lease ? structuredClone(lease) : undefined;
+    return Promise.resolve(lease ? structuredClone(lease) : undefined);
   }
 
-  async release(leaseId: string): Promise<void> {
+  release(leaseId: string): Promise<void> {
     this.#leases.delete(leaseId);
+    return Promise.resolve();
   }
 
-  async listActive(at: string): Promise<readonly CapabilityRuntimeLease[]> {
-    return [...this.#leases.values()]
-      .filter((lease) => lease.expiresAt > at)
-      .map((lease) => structuredClone(lease))
-      .toSorted((left, right) => left.id.localeCompare(right.id));
+  listActive(at: string): Promise<readonly CapabilityRuntimeLease[]> {
+    return Promise.resolve(
+      [...this.#leases.values()]
+        .filter((lease) => lease.expiresAt > at)
+        .map((lease) => structuredClone(lease))
+        .toSorted((left, right) => left.id.localeCompare(right.id)),
+    );
   }
 }
 
@@ -138,7 +156,7 @@ export class InMemoryCapabilityRuntimeHostMutator
     removalPlan?: CapabilityRuntimeAdministrativeRemovalPlan;
   }[] = [];
 
-  async mutate(input: {
+  mutate(input: {
     readonly authorization: AuthorizedCapabilityRuntimeHostMutation;
     readonly removalPlan?: CapabilityRuntimeAdministrativeRemovalPlan;
   }): Promise<CapabilityRuntimeJournalOutcome> {
@@ -147,13 +165,13 @@ export class InMemoryCapabilityRuntimeHostMutator
       entry,
       ...(input.removalPlan ? { removalPlan: input.removalPlan } : {}),
     }));
-    return {
+    return Promise.resolve({
       schemaVersion: "capability-runtime-host-mutation-outcome/1.0",
       journalEntryId: entry.id,
       recordedAt: entry.plannedAt,
       status: "succeeded",
       observations: entry.materials.map((material) => ({ material, state: null })),
       detail: null,
-    };
+    });
   }
 }

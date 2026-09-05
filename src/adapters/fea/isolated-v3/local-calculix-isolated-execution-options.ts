@@ -15,9 +15,9 @@ import {
   CALCULIX_WORKER_PHYSICAL_IMAGE_ID,
 } from "../../control-plane/first-party-microsandbox-image-candidate-qualification.ts";
 import type { CalculixIsolatedExecutionServerOptions } from "./calculix-isolated-execution-composition.ts";
+import { LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE } from "./local-calculix-image-reference.ts";
 
-export const LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE =
-  "casys/calculix-microsandbox-worker@sha256:9b3a7468bfbc3f0fe27f7a9ac17c0eb72f1925968173e5a01d985cfa19cbc0a2" as const;
+export { LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE } from "./local-calculix-image-reference.ts";
 
 export const LOCAL_CALCULIX_WRAPPER_SHA256 =
   "507c29da72e346aa87465ce96572b19b42e96105c64b2854be73d6894592e4e2" as const;

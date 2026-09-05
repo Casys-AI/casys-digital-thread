@@ -76,9 +76,19 @@ export interface GeometryModuleCapture {
   readonly sealedAt: string;
 }
 
-export async function parseGeometryModuleCapture(
+export function parseGeometryModuleCapture(
   value: unknown,
 ): Promise<GeometryModuleCapture> {
+  try {
+    return Promise.resolve(parseGeometryModuleCaptureValue(value));
+  } catch (error) {
+    return Promise.reject(error);
+  }
+}
+
+function parseGeometryModuleCaptureValue(
+  value: unknown,
+): GeometryModuleCapture {
   const root = closedRecord(
     value,
     [

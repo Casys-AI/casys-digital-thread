@@ -109,9 +109,9 @@ Deno.test("prescribed-kinematics next-hop discovery rejects caller-selected prov
   let projectReads = 0;
   const review = new PrepareProjectPrescribedKinematicsNextHopReview({
     projects: {
-      get: async () => {
+      get: () => {
         projectReads += 1;
-        return undefined;
+        return Promise.resolve(undefined);
       },
     },
     snapshots: {} as never,

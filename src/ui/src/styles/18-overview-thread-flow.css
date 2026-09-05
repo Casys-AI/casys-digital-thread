@@ -1104,7 +1104,7 @@
 /* Alert inverts the chip and thickens the hull edge — visible zoomed out. */
 .overview-thread-flow-group-monitor[data-alert="true"] {
   border-color: rgb(185 28 28 / 45%);
-  background: #b91c1c;
+  background: var(--cockpit-danger);
   color: #fff;
 }
 
@@ -1175,7 +1175,7 @@
 /* Alert inverts the chip and thickens the hull edge — visible zoomed out. */
 .overview-thread-flow-group-monitor[data-alert="true"] {
   border-color: rgb(185 28 28 / 45%);
-  background: #b91c1c;
+  background: var(--cockpit-danger);
   color: #fff;
 }
 

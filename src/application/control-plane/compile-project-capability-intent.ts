@@ -18,7 +18,6 @@ import {
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import type { ProjectBriefRevision } from "../../domain/project/project-brief.ts";
 import type {
-  BriefCapabilityIntentRoute,
   BriefCapabilityIntentRouteTable,
 } from "../../orchestration/operations/brief-capability-intent-routes.ts";
 import { briefCapabilityIntentRouteTable } from "../../orchestration/operations/brief-capability-intent-routes.ts";

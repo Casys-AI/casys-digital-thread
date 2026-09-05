@@ -65,25 +65,26 @@ function review(declaredAgainst: {
   readonly version: string;
 }): PrepareProjectPrescribedKinematicsCaseReview {
   const capture: ProjectPrescribedKinematicsCaseCaptureUseCase = {
-    capture: async () => ({
-      status: "resolved",
-      grants: "none",
-      sealedCase: {
-        sourceClosure: {
-          workspace: {
-            declaredAgainst: {
-              thread: declaredAgainst,
-              architecture: {
-                artifactId: ARCHITECTURE_ID,
-                fingerprint: ARCHITECTURE_FINGERPRINT,
-                captureSchema: "architecture-capture/4.0",
+    capture: () =>
+      Promise.resolve({
+        status: "resolved",
+        grants: "none",
+        sealedCase: {
+          sourceClosure: {
+            workspace: {
+              declaredAgainst: {
+                thread: declaredAgainst,
+                architecture: {
+                  artifactId: ARCHITECTURE_ID,
+                  fingerprint: ARCHITECTURE_FINGERPRINT,
+                  captureSchema: "architecture-capture/4.0",
+                },
               },
             },
           },
-        },
-        fingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
-      } as never,
-    }),
+          fingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
+        } as never,
+      }),
   };
   const snapshots = currentSnapshots();
   return new PrepareProjectPrescribedKinematicsCaseReview({
@@ -122,8 +123,8 @@ function review(declaredAgainst: {
       },
     },
     snapshots: {
-      get: async (snapshotId) => snapshots.get(snapshotId),
-      getFresh: async (snapshotId) => snapshots.get(snapshotId),
+      get: (snapshotId) => Promise.resolve(snapshots.get(snapshotId)),
+      getFresh: (snapshotId) => Promise.resolve(snapshots.get(snapshotId)),
     },
   });
 }

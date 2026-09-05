@@ -408,7 +408,7 @@ Deno.test("lifecycle coordinator refuses a private qualification-start before an
   assertEquals(host.calls, []);
 });
 
-async function readyFixture() {
+function readyFixture() {
   const material = {
     unitId: "casys.calculix-worker",
     materialId: "calculix-worker",
@@ -417,7 +417,7 @@ async function readyFixture() {
   const context = runtimeContext(material);
   const contexts = new InMemoryProjectCapabilityRuntimeContextReader();
   contexts.set(PROJECT.id, context);
-  return {
+  return Promise.resolve({
     material,
     context,
     contexts,
@@ -425,7 +425,7 @@ async function readyFixture() {
       contexts,
       operations: registry(requiredDemand()),
     }),
-  };
+  });
 }
 
 function queueInput() {

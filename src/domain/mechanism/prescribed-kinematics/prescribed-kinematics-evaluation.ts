@@ -9,7 +9,6 @@ import {
 } from "../../kernel/case-validation.ts";
 import {
   deterministicJson,
-  fingerprintsEqual,
   sha256Fingerprint,
 } from "../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
@@ -18,7 +17,6 @@ import {
   type PrescribedKinematicsMethodCriterion,
   type PrescribedKinematicsMethodSheet,
   recrossPrescribedKinematicsMethodSheet,
-  validatePrescribedKinematicsMethodSheet,
 } from "./prescribed-kinematics-method-sheet.ts";
 import {
   fingerprintPrescribedKinematicsObservation,
@@ -111,10 +109,21 @@ export async function evaluatePrescribedKinematics(input: {
   });
 }
 
-export async function validatePrescribedKinematicsEvaluation(
+export function validatePrescribedKinematicsEvaluation(
   value: unknown,
   path = "$prescribedKinematicsEvaluation",
 ): Promise<PrescribedKinematicsEvaluation> {
+  try {
+    return Promise.resolve(validatePrescribedKinematicsEvaluationValue(value, path));
+  } catch (error) {
+    return Promise.reject(error);
+  }
+}
+
+function validatePrescribedKinematicsEvaluationValue(
+  value: unknown,
+  path: string,
+): PrescribedKinematicsEvaluation {
   const root = exactRecord(
     value,
     [

@@ -770,34 +770,6 @@ function verificationAuthority(value: unknown, path: string) {
   };
 }
 
-async function requiredPendingBrief(
-  projects: ProjectBriefToolDependencies["projects"],
-  projectId: string,
-  expectedRevision: number,
-  briefSnapshotId: string,
-  briefRevision: number,
-  inputFingerprint: ContentFingerprint,
-): Promise<EngineeringProjectSnapshot> {
-  const project = await projects.get(projectId);
-  if (!project || project.revision !== expectedRevision) {
-    throw new TypeError(
-      `Engineering project ${projectId} is not readable at revision ${expectedRevision}.`,
-    );
-  }
-  const brief = project.framing?.proposedBrief;
-  const review = project.framing?.proposalReview;
-  if (
-    !brief || !review || review.status !== "pending" ||
-    brief.id !== briefSnapshotId || brief.revision !== briefRevision ||
-    !fingerprintsEqual(review.inputFingerprint, inputFingerprint)
-  ) {
-    throw new TypeError(
-      `Brief ${briefSnapshotId}@${briefRevision} is not the exact pending project brief.`,
-    );
-  }
-  return project;
-}
-
 function briefConfirmationRequest(
   project: EngineeringProjectSnapshot,
   proposal: ProjectCapabilityProposal,

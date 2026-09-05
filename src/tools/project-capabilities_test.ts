@@ -1,5 +1,10 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-server";
+import type {
+  McpApp,
+  MCPTool,
+  ToolHandler,
+  ToolHandlerContext,
+} from "@casys/mcp-server";
 import type { EngineeringProjectSnapshot } from "../domain/project/engineering-project.ts";
 import type { ProjectCapabilityLedger } from "../domain/capability/project-capability-authorization.ts";
 import type {
@@ -50,21 +55,23 @@ Deno.test("capability amendment emits its exact fingerprint then accepts only th
   });
   const handler = app.handler("project_capability_change_review");
 
-  const first = await handler({ projectId: "amendment-test" });
+  const first = reviewResult(await handler({ projectId: "amendment-test" }));
   assertEquals(first.resultType, "input_required");
   assertEquals(first.structuredContent.capabilityProposalFingerprint, fingerprint);
 
-  const accepted = await handler(
-    { projectId: "amendment-test", capabilityProposalFingerprint: fingerprint },
-    {
-      retryVerified: true,
-      inputResponses: {
-        capability_change_confirmation: {
-          action: "accept",
-          content: { confirmed: true },
+  const accepted = reviewResult(
+    await handler(
+      { projectId: "amendment-test", capabilityProposalFingerprint: fingerprint },
+      {
+        retryVerified: true,
+        inputResponses: {
+          capability_change_confirmation: {
+            action: "accept",
+            content: { confirmed: true },
+          },
         },
-      },
-    } as unknown as ToolHandlerContext,
+      } as unknown as ToolHandlerContext,
+    ),
   );
   assertEquals(calls, [fingerprint]);
   assertEquals(accepted.structuredContent, {
@@ -92,9 +99,11 @@ Deno.test("a revoked capability review remains explicit and cannot open an amend
     },
     authorization,
   });
-  const result = await app.handler("project_capability_change_review")({
-    projectId: "revoked-test",
-  });
+  const result = reviewResult(
+    await app.handler("project_capability_change_review")({
+      projectId: "revoked-test",
+    }),
+  );
   assertEquals(result.resultType, undefined);
   assertEquals(result.structuredContent, review);
   assertEquals(result.content.includes("revoked"), true);
@@ -147,11 +156,13 @@ Deno.test("covered subset stays covered unless withdrawUnused is explicit", asyn
     authorization,
   });
   const handler = app.handler("project_capability_change_review");
-  const omitted = await handler({ projectId: "covered-test" });
-  const explicitFalse = await handler({
-    projectId: "covered-test",
-    withdrawUnused: false,
-  });
+  const omitted = reviewResult(await handler({ projectId: "covered-test" }));
+  const explicitFalse = reviewResult(
+    await handler({
+      projectId: "covered-test",
+      withdrawUnused: false,
+    }),
+  );
   assertEquals(calls, ["reviewPublishedPlan", "reviewPublishedPlan"]);
   assertEquals(omitted.structuredContent.status, "covered");
   assertEquals(explicitFalse.structuredContent.status, "covered");
@@ -201,10 +212,12 @@ Deno.test("unused withdrawal elicits then appends only the signed retry", async 
     authorization,
   });
   const handler = app.handler("project_capability_change_review");
-  const first = await handler({
-    projectId: "withdrawal-test",
-    withdrawUnused: true,
-  });
+  const first = reviewResult(
+    await handler({
+      projectId: "withdrawal-test",
+      withdrawUnused: true,
+    }),
+  );
   assertEquals(first.resultType, "input_required");
   assertEquals(first.structuredContent.capabilityProposalFingerprint, fingerprint);
   assertStringIncludes(
@@ -216,21 +229,23 @@ Deno.test("unused withdrawal elicits then appends only the signed retry", async 
     "does not delete images",
   );
 
-  const accepted = await handler(
-    {
-      projectId: "withdrawal-test",
-      withdrawUnused: true,
-      capabilityProposalFingerprint: fingerprint,
-    },
-    {
-      retryVerified: true,
-      inputResponses: {
-        capability_change_confirmation: {
-          action: "accept",
-          content: { confirmed: true },
-        },
+  const accepted = reviewResult(
+    await handler(
+      {
+        projectId: "withdrawal-test",
+        withdrawUnused: true,
+        capabilityProposalFingerprint: fingerprint,
       },
-    } as unknown as ToolHandlerContext,
+      {
+        retryVerified: true,
+        inputResponses: {
+          capability_change_confirmation: {
+            action: "accept",
+            content: { confirmed: true },
+          },
+        },
+      } as unknown as ToolHandlerContext,
+    ),
   );
   assertEquals(calls, [fingerprint]);
   assertEquals(accepted.structuredContent, {
@@ -281,10 +296,12 @@ Deno.test("YOLO may auto-confirm unused withdrawal through capability-amend", as
     } as unknown as ProjectCapabilityAuthorizationService,
     approvalMode: LOCAL_YOLO_PROJECT_APPROVAL_MODE,
   });
-  const result = await app.handler("project_capability_change_review")({
-    projectId: "yolo-withdrawal",
-    withdrawUnused: true,
-  });
+  const result = reviewResult(
+    await app.handler("project_capability_change_review")({
+      projectId: "yolo-withdrawal",
+      withdrawUnused: true,
+    }),
+  );
   assertEquals(calls, [fingerprint]);
   assertStringIncludes(result.content, "YOLO");
   assertStringIncludes(result.content, "unused capability withdrawal");
@@ -314,10 +331,12 @@ Deno.test("no-op unused withdrawal returns a literal no-change result", async ()
       },
     } as unknown as ProjectCapabilityAuthorizationService,
   });
-  const result = await app.handler("project_capability_change_review")({
-    projectId: "noop-withdrawal",
-    withdrawUnused: true,
-  });
+  const result = reviewResult(
+    await app.handler("project_capability_change_review")({
+      projectId: "noop-withdrawal",
+      withdrawUnused: true,
+    }),
+  );
   assertEquals(result.structuredContent.status, "no-change");
   assertStringIncludes(result.content, "authorized ceiling is unchanged");
 });
@@ -364,10 +383,12 @@ Deno.test("withdrawUnused falls closed when current demand is a widening", async
       },
     } as unknown as ProjectCapabilityAuthorizationService,
   });
-  const result = await app.handler("project_capability_change_review")({
-    projectId: "widening-withdrawal",
-    withdrawUnused: true,
-  });
+  const result = reviewResult(
+    await app.handler("project_capability_change_review")({
+      projectId: "widening-withdrawal",
+      withdrawUnused: true,
+    }),
+  );
   assertEquals(calls, []);
   assertEquals(result.resultType, undefined);
   assertEquals(result.structuredContent.status, "amendment-required");
@@ -411,19 +432,32 @@ Deno.test("capability change review schema stays closed to caller runtime fields
   }
 });
 
+type CapabilityReviewResult = {
+  readonly resultType?: string;
+  readonly structuredContent: {
+    readonly capabilityProposalFingerprint?: unknown;
+    readonly status?: string;
+    readonly authorization?: unknown;
+  };
+  readonly content: string;
+  readonly inputRequests: {
+    readonly capability_change_confirmation: {
+      readonly params: { readonly message: string };
+    };
+  };
+};
+
+function reviewResult(value: unknown): CapabilityReviewResult {
+  return value as CapabilityReviewResult;
+}
+
 class CapturingApp {
   readonly tools: MCPTool[] = [];
-  readonly #handlers = new Map<
-    string,
-    (args: Record<string, unknown>, context?: ToolHandlerContext) => Promise<any>
-  >();
+  readonly #handlers = new Map<string, ToolHandler>();
 
   registerTool(
     tool: MCPTool,
-    handler: (
-      args: Record<string, unknown>,
-      context?: ToolHandlerContext,
-    ) => Promise<any>,
+    handler: ToolHandler,
   ): void {
     this.tools.push(tool);
     this.#handlers.set(tool.name, handler);

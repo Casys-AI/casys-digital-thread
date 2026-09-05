@@ -4,7 +4,6 @@ import {
   fingerprintProjectCapabilityProposal,
   isStrictUnusedWithdrawalDelta,
   PROJECT_CAPABILITY_PROPOSAL_SCHEMA_VERSION,
-  type ProjectCapabilityAuthorizationEvent,
   projectCapabilityChangeRequiresMethodTransition,
   type ProjectCapabilityProposal,
   reconstructProjectCapabilityEffectiveEnvelope,

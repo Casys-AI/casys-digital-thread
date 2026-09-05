@@ -38,7 +38,7 @@ import {
 } from "../electrical/spice/admitted/local-image-references.ts";
 import { NGSPICE_ADMITTED_MICROSANDBOX_WORKER_CONTRACT } from "../electrical/spice/admitted/worker-contract.ts";
 import { CALCULIX_MICROSANDBOX_WORKER_CONTRACT } from "../fea/isolated-v3/calculix-static-proof-v1/worker-contract.ts";
-import { LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE } from "../fea/isolated-v3/local-calculix-isolated-execution-options.ts";
+import { LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE } from "../fea/isolated-v3/local-calculix-image-reference.ts";
 import { MODELICA_ADMITTED_MICROSANDBOX_WORKER_CONTRACT } from "../modelica/admitted/closed-subset-v2/worker-contract.ts";
 import { MODELICA_MICROSANDBOX_WORKER_CONTRACT } from "../modelica/qualified-kit/kit-v1/worker-contract.ts";
 import type { ExactMicrosandboxImageExpectation } from "../shared/execution/microsandbox-ephemeral-execution-backend.ts";

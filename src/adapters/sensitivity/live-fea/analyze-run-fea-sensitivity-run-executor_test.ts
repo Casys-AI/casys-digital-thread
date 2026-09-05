@@ -1167,18 +1167,18 @@ class FakeSolver {
     });
   }
 
-  async dispatch(plan: {
+  dispatch(plan: {
     readonly requestId: string;
     readonly phase: "base" | "stepped";
   }) {
     this.calls += 1;
-    return {
+    return Promise.resolve({
       requestId: plan.requestId,
       runId: `r-11111111-1111-1111-1111-${
         plan.phase === "base" ? "111111111111" : "222222222222"
       }`,
       requestSha256: plan.phase === "base" ? "6".repeat(64) : "7".repeat(64),
-    };
+    });
   }
 
   async readback(
@@ -1220,10 +1220,12 @@ class FakeSolver {
     return readback;
   }
 
-  async reopenReadback(text: string) {
+  reopenReadback(text: string) {
     const readback = this.#readbacks.get(text);
-    if (!readback) throw new Error("fixture readback is absent");
-    return readback;
+    if (!readback) {
+      return Promise.reject(new Error("fixture readback is absent"));
+    }
+    return Promise.resolve(readback);
   }
 
   async capture(readback: {
@@ -1292,10 +1294,12 @@ class FakeSolver {
     return capture;
   }
 
-  async reopenCapture(text: string) {
+  reopenCapture(text: string) {
     const capture = this.#captures.get(text);
-    if (!capture) throw new Error("fixture capture is absent");
-    return capture;
+    if (!capture) {
+      return Promise.reject(new Error("fixture capture is absent"));
+    }
+    return Promise.resolve(capture);
   }
 }
 

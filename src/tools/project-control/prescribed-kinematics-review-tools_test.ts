@@ -6,11 +6,12 @@ Deno.test("prescribed-kinematics review exposes only the provider-free case revi
   const app = new CapturingApp();
   registerProjectPrescribedKinematicsReviewTools(app as unknown as McpApp, {
     prescribedKinematicsCaseReview: {
-      review: async () => ({
-        status: "unavailable" as const,
-        diagnostic: { code: "fixture", message: "fixture" },
-        grants: "none" as const,
-      }),
+      review: () =>
+        Promise.resolve({
+          status: "unavailable" as const,
+          diagnostic: { code: "fixture", message: "fixture" },
+          grants: "none" as const,
+        }),
     },
   });
   assertEquals(app.toolNames(), ["project_prescribed_kinematics_case_review"]);

@@ -157,18 +157,18 @@ function capture(
 ): CaptureProjectPrescribedKinematicsCase {
   return new CaptureProjectPrescribedKinematicsCase({
     workspace: {
-      loadAtFresh: async (projectId: string, revision: number) => {
+      loadAtFresh: (projectId: string, revision: number) => {
         if (projectId !== PROJECT || revision !== state.workspaceRevision) {
-          throw new Error("foreign exact workspace request");
+          return Promise.reject(new Error("foreign exact workspace request"));
         }
-        return state;
+        return Promise.resolve(state);
       },
     } as unknown as ProjectSourceWorkspaceEventStore,
     resources: {
-      reopenUtf8Text: async () => ({ text }),
+      reopenUtf8Text: () => Promise.resolve({ text }),
     } as unknown as ReopenAgentResource,
     architecture: {
-      open: async () => facts,
+      open: () => Promise.resolve(facts),
     },
   });
 }

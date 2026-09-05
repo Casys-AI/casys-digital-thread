@@ -390,23 +390,27 @@ function parseMaterial(
   });
 }
 
-async function parseObservedHost(
+function parseObservedHost(
   value: unknown,
   path: string,
 ): Promise<CapabilityRuntimeObservedHost> {
-  const root = exactRecord(
-    value,
-    ["identityFingerprint", "platform", "fingerprint"],
-    path,
-  );
-  return deepFreeze({
-    identityFingerprint: fingerprint(
-      root.identityFingerprint,
-      `${path}.identityFingerprint`,
-    ),
-    platform: platform(root.platform, `${path}.platform`),
-    fingerprint: fingerprint(root.fingerprint, `${path}.fingerprint`),
-  });
+  try {
+    const root = exactRecord(
+      value,
+      ["identityFingerprint", "platform", "fingerprint"],
+      path,
+    );
+    return Promise.resolve(deepFreeze({
+      identityFingerprint: fingerprint(
+        root.identityFingerprint,
+        `${path}.identityFingerprint`,
+      ),
+      platform: platform(root.platform, `${path}.platform`),
+      fingerprint: fingerprint(root.fingerprint, `${path}.fingerprint`),
+    }));
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 function parseEvidenceReference(

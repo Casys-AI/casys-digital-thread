@@ -243,14 +243,16 @@ function ownedRunner(input: {
   readonly mounts?: readonly Record<string, unknown>[];
 }): ContainerCommandRunner {
   const member = input.group.materials[0]!;
-  return async (exe, args) => {
+  return (exe, args) => {
     input.calls.push([exe, ...args]);
-    if (exe !== "docker") throw new Error(`unexpected executable ${exe}`);
+    if (exe !== "docker") {
+      return Promise.reject(new Error(`unexpected executable ${exe}`));
+    }
     if (args[0] === "container" && args[1] === "ls") {
-      return result(true, `${CONTAINER_ID}\n`);
+      return Promise.resolve(result(true, `${CONTAINER_ID}\n`));
     }
     if (args[0] === "inspect" && args[1] === CONTAINER_ID) {
-      return result(
+      return Promise.resolve(result(
         true,
         JSON.stringify([{
           Id: CONTAINER_ID,
@@ -263,28 +265,28 @@ function ownedRunner(input: {
           State: { Status: "running" },
           Mounts: input.mounts ?? ownedMounts(input.group),
         }]),
-      );
+      ));
     }
     if (args[0] === "image" && args[1] === "inspect") {
-      return result(
+      return Promise.resolve(result(
         input.imageDigestMatches !== false,
         JSON.stringify([{
           RepoDigests: input.imageDigestMatches === false
             ? ["ghcr.io/casys-ai/mcp-calculix@sha256:deadbeef"]
             : [member.imageReference],
         }]),
-      );
+      ));
     }
     if (args[0] === "exec" && args[2] === "cat") {
-      return input.copied()
-        ? result(true, input.bytes)
-        : result(false, "", "not found");
+      return Promise.resolve(
+        input.copied() ? result(true, input.bytes) : result(false, "", "not found"),
+      );
     }
     if (args[0] === "cp") {
       input.copy();
-      return result(true, "");
+      return Promise.resolve(result(true, ""));
     }
-    throw new Error(`unexpected docker argv ${args.join(" ")}`);
+    return Promise.reject(new Error(`unexpected docker argv ${args.join(" ")}`));
   };
 }
 

@@ -363,34 +363,30 @@ type ResolvedEvidence = {
   readonly case: {
     readonly ref: ProjectPrescribedKinematicsNextHopEvidenceRef;
     readonly workItemId: string;
-    readonly value:
-      & Awaited<ReturnType<PrescribedKinematicsCaptureStore["readCase"]>>
-      & {};
+    readonly value: NonNullable<
+      Awaited<ReturnType<PrescribedKinematicsCaptureStore["readCase"]>>
+    >;
   };
   readonly observation?: {
     readonly ref: ProjectPrescribedKinematicsNextHopEvidenceRef;
     readonly workItemId: string;
-    readonly value:
-      & Awaited<
-        ReturnType<PrescribedKinematicsCaptureStore["readObservation"]>
-      >
-      & {};
+    readonly value: NonNullable<
+      Awaited<ReturnType<PrescribedKinematicsCaptureStore["readObservation"]>>
+    >;
   };
   readonly method?: {
     readonly ref: ProjectPrescribedKinematicsNextHopEvidenceRef;
     readonly workItemId: string;
-    readonly value:
-      & Awaited<ReturnType<PrescribedKinematicsCaptureStore["readMethod"]>>
-      & {};
+    readonly value: NonNullable<
+      Awaited<ReturnType<PrescribedKinematicsCaptureStore["readMethod"]>>
+    >;
   };
   readonly evaluation?: {
     readonly ref: ProjectPrescribedKinematicsNextHopEvidenceRef;
     readonly workItemId: string;
-    readonly value:
-      & Awaited<
-        ReturnType<PrescribedKinematicsCaptureStore["readEvaluation"]>
-      >
-      & {};
+    readonly value: NonNullable<
+      Awaited<ReturnType<PrescribedKinematicsCaptureStore["readEvaluation"]>>
+    >;
   };
 };
 
