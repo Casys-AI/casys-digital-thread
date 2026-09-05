@@ -220,6 +220,16 @@ Deno.test("server injects the resolved Build123d execution profile into the exac
     block,
     "profileFingerprint: build123dCapability.localProfile.profileFingerprint",
   );
+  assertStringIncludes(block, "qualifiedModelicaExecutionProfile:");
+  assertStringIncludes(block, "admittedModelicaExecutionProfile:");
+  assertStringIncludes(
+    source,
+    "qualifiedModelica.isolatedExecution?.execution === undefined",
+  );
+  assertStringIncludes(
+    source,
+    "admittedModelica.execution?.execution === undefined",
+  );
   assertEquals(block.includes("Deno.env"), false);
   const cadStart = source.indexOf("const cadProject = createCadProject({");
   const cadEnd = source.indexOf("const assemblyIntegrityEvaluationCaptures");

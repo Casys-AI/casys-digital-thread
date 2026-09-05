@@ -24,18 +24,19 @@ import {
 } from "./first-party-microsandbox-image-bootstrap.ts";
 
 export const FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_MATRIX_SCHEMA =
-  "first-party-microsandbox-image-distribution-matrix/2.0" as const;
+  "first-party-microsandbox-image-distribution-matrix/3.0" as const;
 
 /**
  * This release surface is intentionally closed. The catalogue currently has
- * six logical workers, but Modelica qualified and admitted share one physical
- * OCI image. Keeping the cardinalities here makes a missing descriptor fail
- * before a workflow can publish a partial candidate set, without duplicating
- * a worker list in CI configuration.
+ * five logical microVM workers and five physical OCI images. Modelica
+ * qualified-kit and admitted-source bindings share one installable atom and
+ * therefore one logical target. Keeping the cardinalities here makes a
+ * missing descriptor fail before a workflow can publish a partial candidate
+ * set, without duplicating a worker list in CI configuration.
  */
 export const FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_CONTRACT = Object.freeze({
   physicalImageCount: 5,
-  logicalTargetCount: 6,
+  logicalTargetCount: 5,
 });
 
 const GHCR_REGISTRY = "ghcr.io/casys-ai" as const;
@@ -140,8 +141,9 @@ export async function fingerprintFirstPartyMicrosandboxImageDistributionMatrix(
 
 /**
  * Runtime guard shared by release adapters. It is deliberately cardinality
- * and identity based: physical image IDs stay unique, while the Modelica
- * logical targets are allowed to share their one physical publication.
+ * and identity based: physical image IDs stay unique, and each logical
+ * target is unique. Grouping still allows distinct descriptors to share one
+ * physical publication only when they already pin the same image.
  */
 export function assertFirstPartyMicrosandboxImageDistributionContract(
   matrix: FirstPartyMicrosandboxImageDistributionMatrix,

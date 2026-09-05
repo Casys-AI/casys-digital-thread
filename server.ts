@@ -873,6 +873,10 @@ async function createProjectControl(
   // Pass cache-attestation identity only when the fixed local worker exists;
   // otherwise a queued run must remain unavailable before it can claim a JIT
   // lease or reach a provider boundary.
+  const qualifiedModelicaExecutionProfile =
+    qualifiedModelica.isolatedExecution?.execution === undefined
+      ? undefined
+      : await qualifiedModelica.isolatedExecution.profiles.initial();
   const admittedModelicaExecutionProfile =
     admittedModelica.execution?.execution === undefined
       ? undefined
@@ -953,6 +957,14 @@ async function createProjectControl(
         imageReference: build123dCapability.localProfile.runtimeBackend.imageReference,
         imageDigest: build123dCapability.localProfile.runtimeBackend.imageDigest,
         profileFingerprint: build123dCapability.localProfile.profileFingerprint,
+      },
+    qualifiedModelicaExecutionProfile: qualifiedModelicaExecutionProfile === undefined
+      ? undefined
+      : {
+        imageReference: qualifiedModelicaExecutionProfile.runtimeBackend
+          .imageReference,
+        imageDigest: qualifiedModelicaExecutionProfile.runtimeBackend.imageDigest,
+        profileFingerprint: qualifiedModelicaExecutionProfile.profileFingerprint,
       },
     admittedModelicaExecutionProfile: admittedModelicaExecutionProfile === undefined
       ? undefined

@@ -198,22 +198,14 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         calculixLaunchGroup,
       ),
     ], "0.8.2"),
-    unit("casys.modelica-qualified-worker", [
+    unit("casys.modelica-worker", [
       microvmMaterial(
-        "modelica-qualified-worker-image",
+        "modelica-worker-image",
         LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
         ["linux/arm64"],
         "reviewed",
       ),
-    ]),
-    unit("casys.modelica-worker", [
-      microvmMaterial(
-        "modelica-admitted-worker-image",
-        LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
-        ["linux/arm64"],
-        "unknown",
-      ),
-    ]),
+    ], "2.0.0"),
     unit("casys.spice-worker", [
       microvmMaterial(
         "ngspice-runtime-image",
@@ -369,7 +361,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "modelica-qualified-kit-adapter",
         "1.0.0",
         MODELICA_ISOLATED_EXECUTION_PROFILE,
-        ["casys.modelica-qualified-worker"],
+        ["casys.modelica-worker"],
         "src/adapters/modelica/qualified-kit/execution-profile.ts",
         [
           "Qualification covers only the pinned LinearThermalRamp kit, not arbitrary admitted Modelica source.",
@@ -386,7 +378,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         ["casys.modelica-worker"],
         "src/adapters/modelica/admitted/execution-profile-catalog.ts",
         [
-          "The exact admitted worker platform and qualification capture are not yet catalogued here.",
+          "The admitted Modelica method remains unqualified; sharing the reviewed worker image does not qualify this binding.",
         ],
       ),
       binding(

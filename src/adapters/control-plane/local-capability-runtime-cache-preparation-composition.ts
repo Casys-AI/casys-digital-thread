@@ -179,7 +179,9 @@ export function createLocalFirstPartyCapabilityRuntimeCachePreparationActions(
           materialId: material.material.materialId,
         },
         image: descriptor.target,
-        executionProfileFingerprint: material.profile.fingerprint,
+        allowedExecutionProfileFingerprints: Object.freeze([
+          material.profile.fingerprint,
+        ]),
       };
     }),
   );

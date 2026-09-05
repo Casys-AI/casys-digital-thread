@@ -57,10 +57,7 @@ export const FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID =
 export const FIRST_PARTY_GEOMETRY_MODULE_CACHE_RECIPE_ID =
   "cache.geometry-module" as const;
 export const FIRST_PARTY_CALCULIX_CACHE_RECIPE_ID = "cache.calculix" as const;
-export const FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID =
-  "cache.modelica-qualified" as const;
-export const FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID =
-  "cache.modelica-admitted" as const;
+export const FIRST_PARTY_MODELICA_CACHE_RECIPE_ID = "cache.modelica" as const;
 export const FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID = "cache.ngspice" as const;
 
 const REPO_ROOT = resolveRepoRoot();
@@ -272,18 +269,9 @@ function closedFirstPartyBootstrapDescriptors(): readonly Omit<
       }),
     },
     {
-      unitId: "casys.modelica-qualified-worker",
-      materialId: "modelica-qualified-worker-image",
-      recipeId: FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID,
-      physicalImageId: MODELICA_PHYSICAL_IMAGE_ID,
-      targetImageReference: LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
-      buildRecipe: modelicaBuildRecipe,
-      source: modelicaSource,
-    },
-    {
       unitId: "casys.modelica-worker",
-      materialId: "modelica-admitted-worker-image",
-      recipeId: FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID,
+      materialId: "modelica-worker-image",
+      recipeId: FIRST_PARTY_MODELICA_CACHE_RECIPE_ID,
       physicalImageId: MODELICA_PHYSICAL_IMAGE_ID,
       targetImageReference: LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
       buildRecipe: modelicaBuildRecipe,

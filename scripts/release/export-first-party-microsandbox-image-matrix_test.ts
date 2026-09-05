@@ -92,13 +92,48 @@ Deno.test(
       ),
       true,
     );
+    const exportStep = prepare.steps.find((step) =>
+      (step.run ?? "").includes("logical_contract_count")
+    );
     assertEquals(
-      prepare.steps.some((step) =>
-        (step.run ?? "").includes("logical_contract_count") &&
-        (step.run ?? "").includes("unique_physical_count") &&
-        (step.run ?? "").includes("{include: .images}")
+      (exportStep?.run ?? "").includes(
+        "first-party-microsandbox-image-distribution-matrix/3.0",
       ),
       true,
+    );
+    assertEquals(
+      (exportStep?.run ?? "").includes("five-physical/five-logical"),
+      true,
+    );
+    assertEquals(
+      (exportStep?.run ?? "").includes("distribution-matrix/2.0"),
+      false,
+    );
+    assertEquals(
+      (exportStep?.run ?? "").includes("five-physical/six-logical"),
+      false,
+    );
+    assertEquals(
+      (exportStep?.run ?? "").includes("unique_physical_count") &&
+        (exportStep?.run ?? "").includes("{include: .images}"),
+      true,
+    );
+    const restoreStep = build.steps.find((step) =>
+      (step.run ?? "").includes(
+        "Prepare did not provide the complete distribution matrix.",
+      )
+    );
+    assertEquals(
+      (restoreStep?.run ?? "").includes(
+        "first-party-microsandbox-image-distribution-matrix/3.0",
+      ),
+      true,
+    );
+    assertEquals(
+      (restoreStep?.run ?? "").includes(
+        "first-party-microsandbox-image-distribution-matrix/2.0",
+      ),
+      false,
     );
     assertEquals(
       build.steps.some((step) =>

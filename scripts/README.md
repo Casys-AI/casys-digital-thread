@@ -65,7 +65,7 @@ Desktop bundle, or live project. See the
 entry point.
 
 The first-party microVM matrix script is planning only: it prints the versioned
-five-physical/six-logical candidate-image contract derived from the bootstrap
+five-physical/five-logical candidate-image contract derived from the bootstrap
 descriptors. It does not build, push, tag, or rewrite a catalogued Microsandbox runtime
 digest. The CI-only receipt writer rereads that complete matrix and exact Buildx
 metadata to emit a candidate receipt; it keeps licence, anonymous pull, and runtime

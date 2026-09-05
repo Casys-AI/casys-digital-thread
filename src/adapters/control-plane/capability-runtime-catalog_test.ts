@@ -89,27 +89,19 @@ Deno.test("atomic first-party runtime catalogue exposes only runtime materials a
       ?.platforms,
     ["linux/amd64", "linux/arm64"],
   );
+  const modelica = catalog.units.find((unit) => unit.id === "casys.modelica-worker");
+  assertEquals(modelica?.version, "2.0.0");
+  assertEquals(modelica?.materials.map((material) => material.id), [
+    "modelica-worker-image",
+  ]);
+  assertEquals(modelica?.materials[0]?.effects.security, "reviewed");
+  assertEquals(modelica?.manifestFingerprint, {
+    algorithm: "sha256",
+    digest: "152f2581bb59a9c6ed0a05e145b9fae21b7ae0e72ccea5f2c36ab16a94aff4d5",
+  });
   assertEquals(
-    catalog.units.find((unit) => unit.id === "casys.modelica-qualified-worker")
-      ?.manifestFingerprint,
-    {
-      algorithm: "sha256",
-      digest: "399f9694c732189e475995662254f2ba1fba90b3d75620a0a5221c70cb3f5272",
-    },
-  );
-  assertEquals(
-    catalog.units.find((unit) => unit.id === "casys.modelica-worker")
-      ?.manifestFingerprint,
-    {
-      algorithm: "sha256",
-      digest: "defeacb0fb2e702bfa5ff73585fcdaac7ac634667d69443d7fbb45ce48dd2cf6",
-    },
-  );
-  assertEquals(
-    catalog.units.find((unit) => unit.id === "casys.modelica-qualified-worker")
-      ?.materials[0]?.imageReference,
-    catalog.units.find((unit) => unit.id === "casys.modelica-worker")
-      ?.materials[0]?.imageReference,
+    modelica?.materials[0]?.imageReference,
+    "docker.io/casys/modelica-microsandbox-worker@sha256:834c759291320eb5f35ccb6eba03587445d259dcb38a2814c5def4ac41d5d730",
   );
   assertEquals(catalog.units.map((unit) => unit.id), [
     "casys.syson-stack",
@@ -119,11 +111,20 @@ Deno.test("atomic first-party runtime catalogue exposes only runtime materials a
     "casys.geometry-module-assembler-worker",
     "casys.calculix-worker",
     "casys.mcp-calculix",
-    "casys.modelica-qualified-worker",
     "casys.modelica-worker",
     "casys.spice-worker",
     "casys.mcp-chrono",
   ]);
+  assertEquals(
+    catalog.bindings.find((binding) => binding.id === "openmodelica-qualified-kit")
+      ?.unitIds,
+    ["casys.modelica-worker"],
+  );
+  assertEquals(
+    catalog.bindings.find((binding) => binding.id === "openmodelica-qualified-kit")
+      ?.qualification,
+    "qualified",
+  );
   assertEquals(
     catalog.bindings.find((binding) => binding.id === "calculix-static-structural")
       ?.unitIds,
@@ -182,6 +183,11 @@ Deno.test("atomic first-party runtime catalogue exposes only runtime materials a
     catalog.bindings.find((binding) => binding.id === "openmodelica-admitted-modelica")
       ?.qualification,
     "unqualified",
+  );
+  assertEquals(
+    catalog.bindings.find((binding) => binding.id === "openmodelica-admitted-modelica")
+      ?.unitIds,
+    ["casys.modelica-worker"],
   );
   assertEquals(
     catalog.units.find((unit) => unit.id === "casys.spice-worker")?.materials.map((

@@ -44,7 +44,11 @@ Deno.test("candidate receipt writer binds the full matrix and exact Buildx outpu
         PLATFORM_MANIFEST_DIGEST,
     );
     assertEquals(receipt.inputMatrix.images.length, 5);
-    assertEquals(receipt.inputMatrix.contract.logicalTargetCount, 6);
+    assertEquals(receipt.inputMatrix.contract.logicalTargetCount, 5);
+    assertEquals(
+      receipt.inputMatrix.schemaVersion,
+      "first-party-microsandbox-image-distribution-matrix/3.0",
+    );
     assertEquals(
       receipt.candidate.build.metadata["buildx.build.ref"],
       "exact-build-output",

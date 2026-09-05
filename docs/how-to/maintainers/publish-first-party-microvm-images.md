@@ -26,8 +26,9 @@ deno task release:first-party-microvm-images:matrix
 ```
 
 The command prints compact JSON on stdout. It performs no network, Docker, or file
-writes. Its versioned contract requires exactly five unique physical images and six
-logical targets; Modelica qualified and admitted share one entry. Confirm lowercase
+writes. Its versioned contract requires exactly five unique physical images and five
+logical targets; Modelica qualified-kit and admitted-source bindings share one
+installable atom and therefore one entry. Confirm lowercase
 `ghcr.io/casys-ai/casys-digital-thread-<physicalImageId>` names and no `latest` or
 digest publication identity.
 

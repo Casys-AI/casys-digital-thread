@@ -56,9 +56,13 @@ Deno.test("candidate receipt preserves exact build facts while keeping promotion
     "ghcr.io/casys-ai/casys-digital-thread-modelica-microsandbox-worker:" +
       `git-${GIT_SHA}-run-42-1`,
   );
-  assertEquals(receipt.candidate.logicalTargets.length, 2);
+  assertEquals(receipt.candidate.logicalTargets.length, 1);
   assertEquals(receipt.inputMatrix.images.length, 5);
-  assertEquals(receipt.inputMatrix.contract.logicalTargetCount, 6);
+  assertEquals(receipt.inputMatrix.contract.logicalTargetCount, 5);
+  assertEquals(
+    receipt.inputMatrix.schemaVersion,
+    "first-party-microsandbox-image-distribution-matrix/3.0",
+  );
   assertEquals(receipt.artifactCompliance, {
     licence: "unresolved",
     anonymousPull: "not-run",

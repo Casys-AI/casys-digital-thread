@@ -8,8 +8,7 @@ import {
   FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID,
   FIRST_PARTY_CALCULIX_CACHE_RECIPE_ID,
   FIRST_PARTY_GEOMETRY_MODULE_CACHE_RECIPE_ID,
-  FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID,
-  FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID,
+  FIRST_PARTY_MODELICA_CACHE_RECIPE_ID,
   FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID,
 } from "./first-party-capability-runtime-cache-preparation-registry.ts";
 import type { CapabilityRuntimeCachePreparationRequestedMaterial } from "../../domain/capability/runtime/capability-runtime-cache-preparation.ts";
@@ -19,12 +18,11 @@ const RECIPE_IDS = [
   FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID,
   FIRST_PARTY_CALCULIX_CACHE_RECIPE_ID,
   FIRST_PARTY_GEOMETRY_MODULE_CACHE_RECIPE_ID,
-  FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID,
-  FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID,
+  FIRST_PARTY_MODELICA_CACHE_RECIPE_ID,
   FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID,
 ] as const;
 
-Deno.test("local cache-preparation composition journals the six target recipes under the host lock", async () => {
+Deno.test("local cache-preparation composition journals the five target recipes under the host lock", async () => {
   const directory = await Deno.makeTempDir({ prefix: "casys-cache-composition-" });
   try {
     let lockCalls = 0;
@@ -65,7 +63,7 @@ Deno.test("local cache-preparation composition journals the six target recipes u
         materials: requested(composition.recipes),
         guard: () => Promise.resolve(true),
       })).map((result) => result.status),
-      ["observed", "observed", "observed", "observed", "observed", "observed"],
+      ["observed", "observed", "observed", "observed", "observed"],
     );
     assertEquals(lockCalls, 1);
     assertEquals(
@@ -74,8 +72,7 @@ Deno.test("local cache-preparation composition journals the six target recipes u
         [FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID, 2],
         [FIRST_PARTY_CALCULIX_CACHE_RECIPE_ID, 2],
         [FIRST_PARTY_GEOMETRY_MODULE_CACHE_RECIPE_ID, 2],
-        [FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID, 2],
-        [FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID, 2],
+        [FIRST_PARTY_MODELICA_CACHE_RECIPE_ID, 2],
         [FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID, 1],
       ]),
     );
@@ -85,8 +82,7 @@ Deno.test("local cache-preparation composition journals the six target recipes u
         [FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID, 1],
         [FIRST_PARTY_CALCULIX_CACHE_RECIPE_ID, 1],
         [FIRST_PARTY_GEOMETRY_MODULE_CACHE_RECIPE_ID, 1],
-        [FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID, 1],
-        [FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID, 1],
+        [FIRST_PARTY_MODELICA_CACHE_RECIPE_ID, 1],
       ]),
     );
     assertEquals(
@@ -95,8 +91,7 @@ Deno.test("local cache-preparation composition journals the six target recipes u
         FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID,
         FIRST_PARTY_CALCULIX_CACHE_RECIPE_ID,
         FIRST_PARTY_GEOMETRY_MODULE_CACHE_RECIPE_ID,
-        FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID,
-        FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID,
+        FIRST_PARTY_MODELICA_CACHE_RECIPE_ID,
         FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID,
       ],
     );

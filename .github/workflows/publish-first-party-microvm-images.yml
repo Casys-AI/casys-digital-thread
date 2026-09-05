@@ -63,14 +63,14 @@ jobs:
           set -euo pipefail
           deno task release:first-party-microvm-images:matrix > matrix.json
           schema="$(jq -r '.schemaVersion' matrix.json)"
-          if [ "${schema}" != "first-party-microsandbox-image-distribution-matrix/2.0" ]; then
+          if [ "${schema}" != "first-party-microsandbox-image-distribution-matrix/3.0" ]; then
             echo "Unexpected distribution matrix schema: ${schema}." >&2
             exit 1
           fi
           physical_contract_count="$(jq -er '.contract.physicalImageCount' matrix.json)"
           logical_contract_count="$(jq -er '.contract.logicalTargetCount' matrix.json)"
-          if [ "${physical_contract_count}" != "5" ] || [ "${logical_contract_count}" != "6" ]; then
-            echo "Distribution matrix does not declare the five-physical/six-logical release contract." >&2
+          if [ "${physical_contract_count}" != "5" ] || [ "${logical_contract_count}" != "5" ]; then
+            echo "Distribution matrix does not declare the five-physical/five-logical release contract." >&2
             exit 1
           fi
           physical_count="$(jq -er '.images | length' matrix.json)"
@@ -151,7 +151,7 @@ jobs:
             exit 1
           fi
           printf '%s\n' "${MATRIX_DOCUMENT}" > matrix.json
-          jq -e '.schemaVersion == "first-party-microsandbox-image-distribution-matrix/2.0"' matrix.json >/dev/null
+          jq -e '.schemaVersion == "first-party-microsandbox-image-distribution-matrix/3.0"' matrix.json >/dev/null
 
       - name: Set up Deno
         uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5

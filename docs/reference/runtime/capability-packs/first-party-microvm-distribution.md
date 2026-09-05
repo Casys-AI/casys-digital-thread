@@ -26,12 +26,12 @@ observation.
 | Candidate Microsandbox digest    | Manifest digest observed after `docker save` + Microsandbox `Image.load` of that arm64 image  | A replacement for the separately recorded OCI index, platform-manifest, or catalogue pin |
 | Qualification target             | The current catalogued Microsandbox runtime pin the candidate may later be compared against   | An output image identity or an automatic pin update                                      |
 
-Six logical bootstrap descriptors currently map to five physical images. Modelica
-qualified and admitted share one physical image. The versioned distribution contract
-rejects any count other than five unique physical images and six unique logical targets.
-The distribution matrix is derived from
-`createFirstPartyMicrosandboxImageBootstrapDescriptors(catalog)`; it is not a second
-hard-coded worker list.
+Five logical bootstrap descriptors currently map one-to-one to five physical images.
+Modelica qualified-kit and admitted-source bindings share one installable atom, so they
+are one logical target. The versioned distribution contract rejects any count other than
+five unique physical images and five unique logical targets. The distribution matrix is
+derived from `createFirstPartyMicrosandboxImageBootstrapDescriptors(catalog)`; it is not
+a second hard-coded worker list.
 
 Package names are lowercase repositories under `ghcr.io/casys-ai/` of the form
 `casys-digital-thread-<physicalImageId>`. Publication never uses `latest`.

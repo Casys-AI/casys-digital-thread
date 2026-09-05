@@ -22,8 +22,12 @@ import type {
 export interface MicrosandboxCapabilityRuntimeImageExpectation {
   readonly material: { readonly unitId: string; readonly materialId: string };
   readonly image: ExactMicrosandboxImageExpectation;
-  /** Server-selected execution profile which owns image invocation semantics. */
-  readonly executionProfileFingerprint?: ContentFingerprint;
+  /**
+   * Closed server-owned execution-profile fingerprints allowed to invoke this
+   * one material. `ensureExactCached` still receives exactly one fingerprint
+   * for the current operation and requires membership in this list.
+   */
+  readonly allowedExecutionProfileFingerprints: readonly ContentFingerprint[];
 }
 
 /**
@@ -67,7 +71,7 @@ export class LocalMicrosandboxCapabilityRuntimeCache
       if (records.has(key)) {
         throw new TypeError(`Microsandbox capability cache has duplicate ${key}.`);
       }
-      records.set(key, structuredClone(expectation));
+      records.set(key, freezeExpectation(expectation, key));
     }
     this.#expectations = records;
   }
@@ -96,9 +100,8 @@ export class LocalMicrosandboxCapabilityRuntimeCache
       );
     }
     if (
-      !expected.executionProfileFingerprint || !sameFingerprint(
-        input.executionProfileFingerprint,
-        expected.executionProfileFingerprint,
+      !expected.allowedExecutionProfileFingerprints.some((fingerprint) =>
+        sameFingerprint(input.executionProfileFingerprint, fingerprint)
       )
     ) {
       throw new Error(
@@ -167,6 +170,28 @@ function absentState(): CapabilityRuntimeObservedState {
   return {
     material: "absent",
     runtime: "inactive",
+  };
+}
+
+function freezeExpectation(
+  expectation: MicrosandboxCapabilityRuntimeImageExpectation,
+  key: string,
+): MicrosandboxCapabilityRuntimeImageExpectation {
+  const cloned = structuredClone(expectation);
+  const fingerprints = cloned.allowedExecutionProfileFingerprints ?? [];
+  const seen = new Set<string>();
+  for (const fingerprint of fingerprints) {
+    const token = `${fingerprint.algorithm}:${fingerprint.digest}`;
+    if (seen.has(token)) {
+      throw new TypeError(
+        `Microsandbox capability cache has duplicate execution-profile fingerprint for ${key}.`,
+      );
+    }
+    seen.add(token);
+  }
+  return {
+    ...cloned,
+    allowedExecutionProfileFingerprints: Object.freeze(fingerprints),
   };
 }
 

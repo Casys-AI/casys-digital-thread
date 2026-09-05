@@ -65,9 +65,20 @@ export interface LocalCapabilityRuntimeReadCompositionOptions {
     readonly profileFingerprint: ContentFingerprint;
   };
   /**
+   * The server's code-owned qualified Modelica kit profile. It is supplied
+   * only when the actual worker composition exists; a profile-only
+   * construction is not an executable host composition.
+   */
+  readonly qualifiedModelicaExecutionProfile?: {
+    readonly imageReference: string;
+    readonly imageDigest: ContentFingerprint;
+    readonly profileFingerprint: ContentFingerprint;
+  };
+  /**
    * The server's code-owned admitted Modelica profile. It is supplied only
    * when the actual worker composition exists; a profile-only construction is
-   * not an executable host composition.
+   * not an executable host composition. Sharing the Modelica worker image
+   * does not qualify this method.
    */
   readonly admittedModelicaExecutionProfile?: {
     readonly imageReference: string;
@@ -217,16 +228,18 @@ interface ConfiguredMicrosandboxExecutionProfile {
   readonly profileFingerprint: ContentFingerprint;
 }
 
-function overlayExecutionProfiles(
+export function overlayExecutionProfiles(
   expectations: readonly {
     readonly material: { readonly unitId: string; readonly materialId: string };
     readonly image: MicrosandboxCapabilityRuntimeImageExpectation["image"];
+    readonly allowedExecutionProfileFingerprints?: readonly ContentFingerprint[];
   }[],
   options: LocalCapabilityRuntimeReadCompositionOptions,
 ): readonly MicrosandboxCapabilityRuntimeImageExpectation[] {
   const configured = new Map<string, {
-    readonly profile: ConfiguredMicrosandboxExecutionProfile;
-    readonly path: string;
+    readonly imageReference: string;
+    readonly manifestDigest: string;
+    readonly fingerprints: ContentFingerprint[];
   }>();
   const register = (
     material: { readonly unitId: string; readonly materialId: string },
@@ -235,10 +248,33 @@ function overlayExecutionProfiles(
   ): void => {
     if (!profile) return;
     const key = capabilityRuntimeMaterialKey(material);
-    if (configured.has(key)) {
-      throw new Error(`Duplicate execution profile overlay for ${key}.`);
+    const imageReference = pinnedOciImageReference(profile.imageReference, path);
+    const manifestDigest = `sha256:${profile.imageDigest.digest}`;
+    const existing = configured.get(key);
+    if (existing) {
+      if (
+        existing.imageReference !== imageReference ||
+        existing.manifestDigest !== manifestDigest
+      ) {
+        throw new Error(`Execution profile overlay targets conflict for ${key}.`);
+      }
+      if (
+        existing.fingerprints.some((fingerprint) =>
+          sameFingerprint(fingerprint, profile.profileFingerprint)
+        )
+      ) {
+        throw new Error(
+          `Duplicate execution profile fingerprint overlay for ${key}.`,
+        );
+      }
+      existing.fingerprints.push(profile.profileFingerprint);
+      return;
     }
-    configured.set(key, { profile, path });
+    configured.set(key, {
+      imageReference,
+      manifestDigest,
+      fingerprints: [profile.profileFingerprint],
+    });
   };
   register(
     { unitId: "casys.calculix-worker", materialId: "calculix-worker-image" },
@@ -256,7 +292,15 @@ function overlayExecutionProfiles(
   register(
     {
       unitId: "casys.modelica-worker",
-      materialId: "modelica-admitted-worker-image",
+      materialId: "modelica-worker-image",
+    },
+    options.qualifiedModelicaExecutionProfile,
+    "$localCapabilityRuntime.qualifiedModelica.imageReference",
+  );
+  register(
+    {
+      unitId: "casys.modelica-worker",
+      materialId: "modelica-worker-image",
     },
     options.admittedModelicaExecutionProfile,
     "$localCapabilityRuntime.admittedModelica.imageReference",
@@ -270,23 +314,36 @@ function overlayExecutionProfiles(
     const overlay = configured.get(
       capabilityRuntimeMaterialKey(expectation.material),
     );
-    if (!overlay) return expectation;
-    const imageReference = pinnedOciImageReference(
-      overlay.profile.imageReference,
-      overlay.path,
-    );
-    const manifestDigest = `sha256:${overlay.profile.imageDigest.digest}`;
+    if (!overlay) {
+      return {
+        material: expectation.material,
+        image: expectation.image,
+        allowedExecutionProfileFingerprints: Object.freeze([
+          ...(expectation.allowedExecutionProfileFingerprints ?? []),
+        ]),
+      };
+    }
     if (
-      imageReference !== expectation.image.reference ||
-      manifestDigest !== expectation.image.manifestDigest
+      overlay.imageReference !== expectation.image.reference ||
+      overlay.manifestDigest !== expectation.image.manifestDigest
     ) {
       throw new Error(
         `Execution profile target drifted from catalogued microVM material ${expectation.material.unitId}/${expectation.material.materialId}.`,
       );
     }
     return {
-      ...expectation,
-      executionProfileFingerprint: overlay.profile.profileFingerprint,
+      material: expectation.material,
+      image: expectation.image,
+      allowedExecutionProfileFingerprints: Object.freeze([
+        ...overlay.fingerprints,
+      ]),
     };
   });
+}
+
+function sameFingerprint(
+  left: ContentFingerprint,
+  right: ContentFingerprint,
+): boolean {
+  return left.algorithm === right.algorithm && left.digest === right.digest;
 }

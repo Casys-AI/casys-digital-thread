@@ -495,7 +495,7 @@ Deno.test("admitted project executor journals, dispatches once, completes, and r
       fixture.session.microsandboxExecutionProfiles?.[0]?.material,
       {
         unitId: "casys.modelica-worker",
-        materialId: "modelica-admitted-worker-image",
+        materialId: "modelica-worker-image",
         imageDigest: "5".repeat(64),
       },
     );
@@ -1992,7 +1992,7 @@ function admittedModelicaOperationalCapability(
   const fingerprint = { algorithm: "sha256" as const, digest: "a".repeat(64) };
   const microvm = {
     unitId: "casys.modelica-worker",
-    materialId: "modelica-admitted-worker-image",
+    materialId: "modelica-worker-image",
     imageDigest: profile.runtimeBackend.imageDigest.digest,
   };
   return {

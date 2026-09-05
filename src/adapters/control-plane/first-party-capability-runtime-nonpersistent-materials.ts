@@ -15,7 +15,6 @@ import { GEOMETRY_MODULE_ASSEMBLER_MICROSANDBOX_WORKER_CONTRACT } from "../cad/m
 import { NGSPICE_ADMITTED_MICROSANDBOX_WORKER_CONTRACT } from "../electrical/spice/admitted/worker-contract.ts";
 import { CALCULIX_MICROSANDBOX_WORKER_CONTRACT } from "../fea/isolated-v3/calculix-static-proof-v1/worker-contract.ts";
 import { LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE } from "../fea/isolated-v3/local-calculix-isolated-execution-options.ts";
-import { MODELICA_ADMITTED_MICROSANDBOX_WORKER_CONTRACT } from "../modelica/admitted/closed-subset-v2/worker-contract.ts";
 import { MODELICA_MICROSANDBOX_WORKER_CONTRACT } from "../modelica/qualified-kit/kit-v1/worker-contract.ts";
 import { LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE } from "../electrical/spice/admitted/local-image-references.ts";
 import type { ExactMicrosandboxImageExpectation } from "../shared/execution/microsandbox-ephemeral-execution-backend.ts";
@@ -113,21 +112,10 @@ function firstPartyMicrosandboxContracts(): ReadonlyMap<string, {
       ],
     ),
     contract(
-      "casys.modelica-qualified-worker",
-      "modelica-qualified-worker-image",
+      "casys.modelica-worker",
+      "modelica-worker-image",
       LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
       MODELICA_MICROSANDBOX_WORKER_CONTRACT.expectedImageUser,
-      [
-        MODELICA_MICROSANDBOX_WORKER_CONTRACT.executable,
-        ...MODELICA_MICROSANDBOX_WORKER_CONTRACT.args,
-      ],
-    ),
-    contract(
-      "casys.modelica-worker",
-      "modelica-admitted-worker-image",
-      LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
-      MODELICA_ADMITTED_MICROSANDBOX_WORKER_CONTRACT.expectedImageUser,
-      // Shared physical image ENTRYPOINT; admitted command is run args only.
       [
         MODELICA_MICROSANDBOX_WORKER_CONTRACT.executable,
         ...MODELICA_MICROSANDBOX_WORKER_CONTRACT.args,

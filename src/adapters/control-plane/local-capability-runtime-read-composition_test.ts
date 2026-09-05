@@ -1,8 +1,13 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { capabilityRuntimeMaterialKey } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import { LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE } from "../electrical/spice/admitted/local-image-references.ts";
 import { LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE } from "./first-party-capability-runtime-identities.ts";
-import { createLocalCapabilityRuntimeReadComposition } from "./local-capability-runtime-read-composition.ts";
+import {
+  createLocalCapabilityRuntimeReadComposition,
+  overlayExecutionProfiles,
+} from "./local-capability-runtime-read-composition.ts";
+import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capability-binding-catalog.ts";
+import { createFirstPartyNonpersistentMicrosandboxExpectations } from "./first-party-capability-runtime-nonpersistent-materials.ts";
 
 Deno.test("local read composition observes every catalogued microVM without optional executors", async () => {
   const composition = await createLocalCapabilityRuntimeReadComposition();
@@ -51,11 +56,11 @@ Deno.test("local read composition enrolls the exact admitted SPICE and Modelica 
     identityFor(runtime, "casys.spice-worker"),
   ]);
   assertEquals(microsandboxRequests, [[
-    "casys.modelica-worker\u0000modelica-admitted-worker-image",
+    "casys.modelica-worker\u0000modelica-worker-image",
     "casys.spice-worker\u0000ngspice-runtime-image",
   ]]);
   assertEquals([...observed.keys()].toSorted(), [
-    "casys.modelica-worker\u0000modelica-admitted-worker-image",
+    "casys.modelica-worker\u0000modelica-worker-image",
     "casys.spice-worker\u0000ngspice-runtime-image",
   ]);
 });
@@ -74,11 +79,11 @@ Deno.test("local read composition keeps catalogued SPICE observable when only th
   ]);
 
   assertEquals(microsandboxRequests, [[
-    "casys.modelica-worker\u0000modelica-admitted-worker-image",
+    "casys.modelica-worker\u0000modelica-worker-image",
     "casys.spice-worker\u0000ngspice-runtime-image",
   ]]);
   assertEquals([...observed.keys()].toSorted(), [
-    "casys.modelica-worker\u0000modelica-admitted-worker-image",
+    "casys.modelica-worker\u0000modelica-worker-image",
     "casys.spice-worker\u0000ngspice-runtime-image",
   ]);
 });
@@ -97,11 +102,11 @@ Deno.test("local read composition keeps catalogued Modelica observable when only
   ]);
 
   assertEquals(microsandboxRequests, [[
-    "casys.modelica-worker\u0000modelica-admitted-worker-image",
+    "casys.modelica-worker\u0000modelica-worker-image",
     "casys.spice-worker\u0000ngspice-runtime-image",
   ]]);
   assertEquals([...observed.keys()].toSorted(), [
-    "casys.modelica-worker\u0000modelica-admitted-worker-image",
+    "casys.modelica-worker\u0000modelica-worker-image",
     "casys.spice-worker\u0000ngspice-runtime-image",
   ]);
 });
@@ -119,6 +124,68 @@ Deno.test("local read composition rejects an optional execution profile that dri
   );
 });
 
+Deno.test("qualified and admitted Modelica profiles overlay the same catalogued worker image", async () => {
+  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+  const qualified = profileFor(LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE, "b");
+  const admitted = profileFor(LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE, "c");
+  const overlaid = overlayExecutionProfiles(
+    createFirstPartyNonpersistentMicrosandboxExpectations(catalog),
+    {
+      qualifiedModelicaExecutionProfile: qualified,
+      admittedModelicaExecutionProfile: admitted,
+    },
+  );
+  const modelica = overlaid.find((expectation) =>
+    expectation.material.unitId === "casys.modelica-worker" &&
+    expectation.material.materialId === "modelica-worker-image"
+  );
+  assertEquals(modelica?.allowedExecutionProfileFingerprints, [
+    qualified.profileFingerprint,
+    admitted.profileFingerprint,
+  ]);
+  await createLocalCapabilityRuntimeReadComposition({
+    qualifiedModelicaExecutionProfile: qualified,
+    admittedModelicaExecutionProfile: admitted,
+  });
+});
+
+Deno.test("Modelica profile overlays reject a conflicting image target on the same material", async () => {
+  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+  const expectations = createFirstPartyNonpersistentMicrosandboxExpectations(catalog);
+  assertThrows(
+    () =>
+      overlayExecutionProfiles(expectations, {
+        qualifiedModelicaExecutionProfile: profileFor(
+          LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
+          "b",
+        ),
+        admittedModelicaExecutionProfile: profileFor(
+          `casys/modelica-microsandbox-worker@sha256:${"f".repeat(64)}`,
+          "c",
+        ),
+      }),
+    Error,
+    "targets conflict",
+  );
+});
+
+Deno.test("Modelica profile overlays reject a duplicate fingerprint claim on the same material", async () => {
+  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+  const shared = profileFor(LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE, "b");
+  assertThrows(
+    () =>
+      overlayExecutionProfiles(
+        createFirstPartyNonpersistentMicrosandboxExpectations(catalog),
+        {
+          qualifiedModelicaExecutionProfile: shared,
+          admittedModelicaExecutionProfile: shared,
+        },
+      ),
+    Error,
+    "Duplicate execution profile fingerprint",
+  );
+});
+
 function digestFromPinnedReference(reference: string): string {
   const marker = "@sha256:";
   const index = reference.lastIndexOf(marker);
@@ -126,14 +193,17 @@ function digestFromPinnedReference(reference: string): string {
   return reference.slice(index + marker.length);
 }
 
-function profileFor(imageReference: string) {
+function profileFor(imageReference: string, fingerprintSeed = "a") {
   return {
     imageReference,
     imageDigest: {
       algorithm: "sha256" as const,
       digest: digestFromPinnedReference(imageReference),
     },
-    profileFingerprint: { algorithm: "sha256" as const, digest: "a".repeat(64) },
+    profileFingerprint: {
+      algorithm: "sha256" as const,
+      digest: fingerprintSeed.repeat(64),
+    },
   };
 }
 
@@ -155,7 +225,7 @@ function admittedMaterials(
 ) {
   const modelica = composition.catalog.units.find((unit) =>
     unit.id === "casys.modelica-worker"
-  )?.materials.find((material) => material.id === "modelica-admitted-worker-image");
+  )?.materials.find((material) => material.id === "modelica-worker-image");
   const runtime = composition.catalog.units.find((unit) =>
     unit.id === "casys.spice-worker"
   )?.materials.find((material) => material.id === "ngspice-runtime-image");
