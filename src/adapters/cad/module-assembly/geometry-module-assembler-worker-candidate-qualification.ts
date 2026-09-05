@@ -23,6 +23,15 @@ import {
   persistFirstPartyMicrosandboxImageCandidateQualificationRecord,
   readObservedLinuxArm64Host,
 } from "../../control-plane/first-party-microsandbox-image-candidate-qualification.ts";
+import {
+  assertNoCandidateQualificationRecord,
+  assertNoCandidateQualificationSuccessor,
+  buildFirstPartyMicrosandboxImageCandidateQualificationSuccessor,
+  firstPartyMicrosandboxImageCandidateQualificationSuccessorRoot,
+  persistFirstPartyMicrosandboxImageCandidateQualificationSuccessor,
+  proveCandidateQualificationPredecessorUnpublishedAndDestroyed,
+  requireSuccessorAttempt,
+} from "../../control-plane/first-party-microsandbox-image-candidate-qualification-successor.ts";
 import { FileCapabilityRuntimeQualificationAttemptStore } from "../../control-plane/file-capability-runtime-qualification-attempt-store.ts";
 import { FileCapabilityRuntimeQualificationAttestationStore } from "../../control-plane/file-capability-runtime-qualification-attestation-store.ts";
 import { FileIsolatedOutputCas } from "../../shared/cas/file-isolated-output-cas.ts";
@@ -176,6 +185,104 @@ export async function recoverGeometryModuleAssemblerWorkerCandidateQualification
   );
 }
 
+export async function retryGeometryModuleAssemblerWorkerCandidateQualificationFromInfrastructureFailure(
+  record: FirstPartyMicrosandboxImageCandidateImportRecord,
+  ports: GeometryModuleAssemblerWorkerCandidateQualificationPorts,
+): Promise<GeometryModuleAssemblerWorkerCandidateQualificationResult> {
+  const original = await composeGeometryModuleAssemblerWorkerCandidateQualification(
+    record,
+    ports,
+  );
+  await assertNoCandidateQualificationSuccessor(original.stateRoot);
+  await assertNoCandidateQualificationRecord(original.stateRoot);
+  const predecessor = await original.service.inspect();
+  if (predecessor.attempt === undefined) {
+    throw new Error(
+      "Candidate qualification successor requires an existing producerGeneration-0 predecessor.",
+    );
+  }
+  if (
+    predecessor.attempt.phase === "prepared" ||
+    predecessor.attempt.phase === "active" ||
+    predecessor.attempt.phase === "case-submitted"
+  ) {
+    throw new Error(
+      "Candidate qualification successor refuses a prepared-only predecessor.",
+    );
+  }
+  if (
+    predecessor.attempt.phase === "recorded" ||
+    predecessor.attempt.phase === "outcome" ||
+    predecessor.attempt.phase === "stopped"
+  ) {
+    throw new Error(
+      "Candidate qualification successor refuses an already-successful predecessor.",
+    );
+  }
+  if (predecessor.attempt.phase !== "dispatching") {
+    throw new Error(
+      "Candidate qualification successor requires a dispatched unpublished predecessor.",
+    );
+  }
+  if (predecessor.attempt.requestId !== predecessor.runId) {
+    throw new Error(
+      "Candidate qualification successor predecessor does not belong to the bound import.",
+    );
+  }
+  const predecessorFiles = await snapshotDirectory(`${original.stateRoot}/attempts`);
+  const destruction =
+    await proveCandidateQualificationPredecessorUnpublishedAndDestroyed(
+      original.execution,
+      predecessor.runId,
+    );
+  await assertUnchangedSnapshot(
+    `${original.stateRoot}/attempts`,
+    predecessorFiles,
+    "Geometry candidate qualification successor mutated predecessor WAL.",
+  );
+  const successor =
+    await persistFirstPartyMicrosandboxImageCandidateQualificationSuccessor(
+      original.stateRoot,
+      await buildFirstPartyMicrosandboxImageCandidateQualificationSuccessor({
+        physicalImageId: GEOMETRY_MODULE_ASSEMBLER_WORKER_PHYSICAL_IMAGE_ID,
+        importRecordFingerprint: original.importRecordFingerprint,
+        predecessorAttempts: [{
+          id: GEOMETRY_MODULE_ASSEMBLER_WORKER_PHYSICAL_IMAGE_ID,
+          runId: predecessor.runId,
+          destruction,
+        }],
+      }),
+    );
+  const attempt = requireSuccessorAttempt(
+    successor,
+    GEOMETRY_MODULE_ASSEMBLER_WORKER_PHYSICAL_IMAGE_ID,
+  );
+  const retryRoot = firstPartyMicrosandboxImageCandidateQualificationSuccessorRoot(
+    original.stateRoot,
+  );
+  const retried = await composeGeometryModuleAssemblerWorkerCandidateQualification(
+    record,
+    ports,
+    {
+      attemptsDirectory: `${retryRoot}/attempts`,
+      attestationsDirectory: `${retryRoot}/attestations`,
+      capturesDirectory: `${retryRoot}/captures`,
+      executionRunId: attempt.runId,
+    },
+  );
+  const result = await retried.service.apply();
+  await assertUnchangedSnapshot(
+    `${original.stateRoot}/attempts`,
+    predecessorFiles,
+    "Geometry candidate qualification successor mutated predecessor WAL.",
+  );
+  return await settleGeometryModuleAssemblerWorkerCandidateQualification(
+    record,
+    retried,
+    result,
+  );
+}
+
 export function geometryCandidateRuntimeQualification(
   status: GeometryModuleAssemblerQualificationResult["status"],
 ): GeometryModuleAssemblerWorkerCandidateQualificationResult["runtimeQualification"] {
@@ -205,10 +312,17 @@ export function renderGeometryModuleAssemblerWorkerCandidateQualificationResultT
 async function composeGeometryModuleAssemblerWorkerCandidateQualification(
   record: FirstPartyMicrosandboxImageCandidateImportRecord,
   ports: GeometryModuleAssemblerWorkerCandidateQualificationPorts,
+  successor?: {
+    readonly attemptsDirectory: string;
+    readonly attestationsDirectory: string;
+    readonly capturesDirectory: string;
+    readonly executionRunId: string;
+  },
 ): Promise<{
   readonly importRecordFingerprint: string;
   readonly stateRoot: string;
   readonly observedHost: CapabilityRuntimeHostObservation;
+  readonly execution: NonNullable<GeometryModuleAssemblyComposition["execution"]>;
   readonly service: GeometryModuleAssemblerQualificationService;
 }> {
   assertBoundCandidateImportPhysicalImageId(
@@ -267,21 +381,61 @@ async function composeGeometryModuleAssemblerWorkerCandidateQualification(
     recovery: composition.execution.recovery,
     restartPublications: () => new FileIsolatedOutputCas(outputCasDirectory),
     attempts: new FileCapabilityRuntimeQualificationAttemptStore(
-      `${stateRoot}/attempts`,
+      successor?.attemptsDirectory ?? `${stateRoot}/attempts`,
     ),
     attestations: new FileCapabilityRuntimeQualificationAttestationStore(
-      `${stateRoot}/attestations`,
+      successor?.attestationsDirectory ?? `${stateRoot}/attestations`,
     ),
     captures: new FileGeometryModuleAssemblerMicrosandboxQualificationStore(
-      `${stateRoot}/captures`,
+      successor?.capturesDirectory ?? `${stateRoot}/captures`,
     ),
+    executionRunId: successor?.executionRunId,
   });
   return {
     importRecordFingerprint,
     stateRoot,
     observedHost: host.observation,
+    execution: composition.execution,
     service,
   };
+}
+
+async function snapshotDirectory(
+  directory: string,
+): Promise<ReadonlyMap<string, string>> {
+  const files = new Map<string, string>();
+  async function walk(current: string): Promise<void> {
+    let entries: Deno.DirEntry[];
+    try {
+      entries = await Array.fromAsync(Deno.readDir(current));
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) return;
+      throw error;
+    }
+    for (const entry of entries) {
+      const path = `${current}/${entry.name}`;
+      if (entry.isDirectory) {
+        await walk(path);
+        continue;
+      }
+      if (!entry.isFile) continue;
+      files.set(path, await Deno.readTextFile(path));
+    }
+  }
+  await walk(directory);
+  return files;
+}
+
+async function assertUnchangedSnapshot(
+  directory: string,
+  expected: ReadonlyMap<string, string>,
+  message: string,
+): Promise<void> {
+  const actual = await snapshotDirectory(directory);
+  if (actual.size !== expected.size) throw new Error(message);
+  for (const [path, text] of expected) {
+    if (actual.get(path) !== text) throw new Error(message);
+  }
 }
 
 async function settleGeometryModuleAssemblerWorkerCandidateQualification(

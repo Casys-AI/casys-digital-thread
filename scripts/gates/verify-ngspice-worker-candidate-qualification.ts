@@ -21,10 +21,11 @@ import {
   recoverNgspiceWorkerCandidateQualification,
   renderNgspiceWorkerCandidateQualificationPlanText,
   renderNgspiceWorkerCandidateQualificationResultText,
+  retryNgspiceWorkerCandidateQualificationFromInfrastructureFailure,
 } from "../../src/adapters/electrical/spice/admitted/ngspice-worker-candidate-qualification.ts";
 
 export const NGSPICE_WORKER_CANDIDATE_QUALIFICATION_USAGE = [
-  "Usage: verify-ngspice-worker-candidate-qualification --import-record=<path> [--run|--recover]",
+  "Usage: verify-ngspice-worker-candidate-qualification --import-record=<path> [--run|--recover|--retry-infrastructure-failure]",
   "",
   "Maintainer-only qualification of one imported ngspice-worker candidate.",
   "Input is only an exact import record bound to the current distribution matrix.",
@@ -35,6 +36,8 @@ export const NGSPICE_WORKER_CANDIDATE_QUALIFICATION_USAGE = [
   "Pass --run to execute the exact cached candidate image through the production",
   "composition, broker, admitted SPICE validators, CAS reread, WAL and proven destruction.",
   "Pass --recover to reconcile the exact durable WAL without redispatched worker calls.",
+  "Pass --retry-infrastructure-failure to authorize exactly one successor after a",
+  "proven not-published, destroyed dispatched predecessor. A second retry fails closed.",
   "",
   "This path never touches the active catalogue pin or deletes the candidate image.",
   "Success is host/runtime candidate qualification only.",
@@ -51,6 +54,7 @@ export function parseNgspiceWorkerCandidateQualificationCli(
   return parseFirstPartyMicrosandboxImageCandidateQualificationCli(args, {
     usage: NGSPICE_WORKER_CANDIDATE_QUALIFICATION_USAGE,
     allowRecover: true,
+    allowRetryInfrastructureFailure: true,
   });
 }
 
@@ -79,6 +83,11 @@ export async function runNgspiceWorkerCandidateQualificationCli(
   const ports = { observedHost: capabilityRuntime.host };
   const result = request.mode === "recover"
     ? await recoverNgspiceWorkerCandidateQualification(record, ports)
+    : request.mode === "retry-infrastructure-failure"
+    ? await retryNgspiceWorkerCandidateQualificationFromInfrastructureFailure(
+      record,
+      ports,
+    )
     : await qualifyNgspiceWorkerCandidate(record, ports);
   const text = `${deterministicJson(result)}\n${
     renderNgspiceWorkerCandidateQualificationResultText(result)

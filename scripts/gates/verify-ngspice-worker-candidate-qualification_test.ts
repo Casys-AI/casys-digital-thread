@@ -168,6 +168,16 @@ Deno.test("ngspice candidate qualification CLI is planning by default and refuse
     TypeError,
     "does not accept provider, image, digest, platform",
   );
+  assertEquals(
+    parseNgspiceWorkerCandidateQualificationCli([
+      "--import-record=record.json",
+      "--retry-infrastructure-failure",
+    ]),
+    {
+      mode: "retry-infrastructure-failure",
+      importRecordPath: "record.json",
+    },
+  );
   assertThrows(
     () =>
       parseNgspiceWorkerCandidateQualificationCli([
@@ -176,7 +186,17 @@ Deno.test("ngspice candidate qualification CLI is planning by default and refuse
         "--recover",
       ]),
     TypeError,
-    "only one of --run or --recover",
+    "only one of --run, --recover, or --retry-infrastructure-failure",
+  );
+  assertThrows(
+    () =>
+      parseNgspiceWorkerCandidateQualificationCli([
+        "--import-record=record.json",
+        "--image=caller",
+        "--retry-infrastructure-failure",
+      ]),
+    TypeError,
+    "does not accept provider, image, digest, platform",
   );
   assertMatch(
     NGSPICE_WORKER_CANDIDATE_QUALIFICATION_USAGE,

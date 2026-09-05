@@ -78,6 +78,11 @@ export interface GeometryModuleAssemblerQualificationServiceOptions {
   readonly attempts: CapabilityRuntimeQualificationAttemptStore;
   readonly attestations: CapabilityRuntimeQualificationAttestationStore;
   readonly captures: FileGeometryModuleAssemblerMicrosandboxQualificationStore;
+  /**
+   * Candidate-qualification successor only. The active-pin path never sets
+   * this; IsolatedCodeRunner generation stays 0 on the successor run identity.
+   */
+  readonly executionRunId?: string;
   /** Test-only seam; the durable recheck below remains the authority boundary. */
   readonly beforeDispatchClaim?: () => Promise<void> | void;
   readonly now?: () => string;
@@ -115,6 +120,21 @@ export class GeometryModuleAssemblerQualificationService {
     private readonly options: GeometryModuleAssemblerQualificationServiceOptions,
   ) {
     this.#now = options.now ?? (() => new Date().toISOString());
+  }
+
+  async inspect(): Promise<{
+    readonly runId: string;
+    readonly identity: CapabilityRuntimeQualificationAttemptIdentity;
+    readonly attempt: CapabilityRuntimeQualificationAttempt | undefined;
+  }> {
+    const context = await this.#context();
+    return {
+      runId: context.runId,
+      identity: context.identity,
+      attempt: await this.options.attempts.read(
+        qualificationAttemptKeyFor(context.identity),
+      ),
+    };
   }
 
   async apply(): Promise<GeometryModuleAssemblerQualificationResult> {
@@ -200,16 +220,18 @@ export class GeometryModuleAssemblerQualificationService {
       specification: candidate.specification.fingerprint,
       profile: profile.profileFingerprint,
     });
-    const runId = `geometry-module-assembler-qualification-${
-      (
-        await sha256Fingerprint({
-          schemaVersion: "geometry-module-assembler-microsandbox-qualification-run/1.0",
-          candidate: candidate.fingerprint,
-          observedHost: observedHost.fingerprint,
-          specification: candidate.specification.fingerprint,
-        })
-      ).digest
-    }`;
+    const runId = this.options.executionRunId ??
+      `geometry-module-assembler-qualification-${
+        (
+          await sha256Fingerprint({
+            schemaVersion:
+              "geometry-module-assembler-microsandbox-qualification-run/1.0",
+            candidate: candidate.fingerprint,
+            observedHost: observedHost.fingerprint,
+            specification: candidate.specification.fingerprint,
+          })
+        ).digest
+      }`;
     const identity: CapabilityRuntimeQualificationAttemptIdentity = {
       candidate: { id: candidate.id, fingerprint: candidate.fingerprint },
       observedHost,

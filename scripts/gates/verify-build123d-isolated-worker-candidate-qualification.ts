@@ -19,10 +19,11 @@ import {
   qualifyBuild123dIsolatedWorkerCandidate,
   renderBuild123dIsolatedWorkerCandidateQualificationPlanText,
   renderBuild123dIsolatedWorkerCandidateQualificationResultText,
+  retryBuild123dIsolatedWorkerCandidateQualificationFromInfrastructureFailure,
 } from "../../src/adapters/cad/isolated/build123d-isolated-worker-candidate-qualification.ts";
 
 export const BUILD123D_ISOLATED_WORKER_CANDIDATE_QUALIFICATION_USAGE = [
-  "Usage: verify-build123d-isolated-worker-candidate-qualification --import-record=<path> [--run]",
+  "Usage: verify-build123d-isolated-worker-candidate-qualification --import-record=<path> [--run|--retry-infrastructure-failure]",
   "",
   "Maintainer-only qualification of one imported Build123d isolated-worker candidate.",
   "Input is only an exact import record bound to the current distribution matrix.",
@@ -31,6 +32,8 @@ export const BUILD123D_ISOLATED_WORKER_CANDIDATE_QUALIFICATION_USAGE = [
   "Default mode is planning/read: validate the import record and print the plan.",
   "Pass --run to execute the exact cached candidate image through the production",
   "composition, broker, OCCT validator, CAS reread, and proven destruction.",
+  "Pass --retry-infrastructure-failure to authorize exactly one successor after a",
+  "proven not-published, destroyed producerGeneration-0 predecessor. A second retry fails closed.",
   "",
   "This path never touches the active catalogue pin or deletes the candidate image.",
   "Success is host/runtime candidate qualification only.",
@@ -44,6 +47,7 @@ export function parseBuild123dIsolatedWorkerCandidateQualificationCli(
 ) {
   return parseFirstPartyMicrosandboxImageCandidateQualificationCli(args, {
     usage: BUILD123D_ISOLATED_WORKER_CANDIDATE_QUALIFICATION_USAGE,
+    allowRetryInfrastructureFailure: true,
   });
 }
 
@@ -69,9 +73,13 @@ export async function runBuild123dIsolatedWorkerCandidateQualificationCli(
     }`;
   }
   const capabilityRuntime = await createLocalCapabilityRuntimeReadComposition();
-  const result = await qualifyBuild123dIsolatedWorkerCandidate(record, {
-    observedHost: capabilityRuntime.host,
-  });
+  const ports = { observedHost: capabilityRuntime.host };
+  const result = request.mode === "retry-infrastructure-failure"
+    ? await retryBuild123dIsolatedWorkerCandidateQualificationFromInfrastructureFailure(
+      record,
+      ports,
+    )
+    : await qualifyBuild123dIsolatedWorkerCandidate(record, ports);
   return `${deterministicJson(result)}\n${
     renderBuild123dIsolatedWorkerCandidateQualificationResultText(result)
   }`;

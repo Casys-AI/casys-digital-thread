@@ -83,6 +83,34 @@ Policy, limits, worker command, fixture and oracle stay code-owned. Import alrea
 acquisition: the gates do not build Docker, load or remove images, or assume Docker and
 Microsandbox digest identity.
 
+## 2.1 Retry once after a proven infrastructure failure
+
+Maintainer-only. Build123d, geometry-module assembler, Modelica and ngspice accept
+`--retry-infrastructure-failure` as a distinct acknowledgement. It is not a provider,
+image, digest, tool, or args selector. `--run` and `--recover` stay unchanged. CalculiX
+already owns its generation 0→1 cycle and does not take this flag.
+
+Retry is allowed only when the exact predecessor belongs to the bound import record, has
+no attested or published result, publication is proven `not-published`, and run-scoped
+sandbox destruction is proven. Missing predecessor, prepared-only, already-successful,
+foreign, unknown/divergent/refused publication, unproven destruction, or an already
+consumed successor fail closed. The predecessor WAL/CAS/events stay byte-for-byte; the
+gate writes one immutable successor authority with reason `infrastructure-failure`,
+ordinal 1, IsolatedCodeRunner `producerGeneration` 0, and the proven destruction
+fingerprint of each unpublished predecessor. It is not CalculiX's same-run generation
+0→1 advance.
+
+```bash
+deno task verify:build123d-isolated-worker:candidate-qualification --import-record=<path> --retry-infrastructure-failure
+deno task verify:geometry-module-assembler-worker:candidate-qualification --import-record=<path> --retry-infrastructure-failure
+deno task verify:modelica-worker:candidate-qualification --import-record=<path> --retry-infrastructure-failure
+deno task verify:ngspice-worker:candidate-qualification --import-record=<path> --retry-infrastructure-failure
+```
+
+Modelica remains one physical image and one aggregate: the successor covers both
+predecessor profile attempts and passes only if both new proofs pass.
+`eligibleForPromotion` stays false.
+
 ## 3. Isolated candidate state
 
 Candidate outputs and records live under

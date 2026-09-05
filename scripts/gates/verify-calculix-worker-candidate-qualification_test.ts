@@ -88,6 +88,15 @@ Deno.test("CalculiX candidate qualification CLI is planning by default and refus
     TypeError,
     "only one of --run or --recover",
   );
+  assertThrows(
+    () =>
+      parseCalculixWorkerCandidateQualificationCli([
+        "--import-record=record.json",
+        "--retry-infrastructure-failure",
+      ]),
+    TypeError,
+    "is not valid for first-party candidate qualification",
+  );
   assertMatch(
     CALCULIX_WORKER_CANDIDATE_QUALIFICATION_USAGE,
     /eligibleForPromotion remains false/u,

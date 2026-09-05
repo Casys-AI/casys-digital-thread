@@ -114,6 +114,49 @@ Deno.test("candidate qualification CLI accepts only --import-record and boolean 
     TypeError,
     "is not valid for first-party candidate qualification",
   );
+  assertEquals(
+    parseFirstPartyMicrosandboxImageCandidateQualificationCli(
+      ["--import-record=record.json", "--retry-infrastructure-failure"],
+      { usage: USAGE, allowRetryInfrastructureFailure: true },
+    ),
+    { mode: "retry-infrastructure-failure", importRecordPath: "record.json" },
+  );
+  assertThrows(
+    () =>
+      parseFirstPartyMicrosandboxImageCandidateQualificationCli(
+        ["--import-record=record.json", "--retry-infrastructure-failure"],
+        { usage: USAGE },
+      ),
+    TypeError,
+    "is not valid for first-party candidate qualification",
+  );
+  assertThrows(
+    () =>
+      parseFirstPartyMicrosandboxImageCandidateQualificationCli(
+        ["--import-record=record.json", "--run", "--retry-infrastructure-failure"],
+        { usage: USAGE, allowRetryInfrastructureFailure: true },
+      ),
+    TypeError,
+    "only one of --run, --recover, or --retry-infrastructure-failure",
+  );
+  assertThrows(
+    () =>
+      parseFirstPartyMicrosandboxImageCandidateQualificationCli(
+        ["--import-record=record.json", "--retry-infrastructure-failure=true"],
+        { usage: USAGE, allowRetryInfrastructureFailure: true },
+      ),
+    TypeError,
+    "boolean acknowledgement and takes no value",
+  );
+  assertThrows(
+    () =>
+      parseFirstPartyMicrosandboxImageCandidateQualificationCli(
+        ["--import-record=record.json", "--image=caller"],
+        { usage: USAGE, allowRetryInfrastructureFailure: true },
+      ),
+    TypeError,
+    "does not accept provider, image, digest, platform",
+  );
 });
 
 Deno.test("candidate qualification record binds host identity and the exact run/receipt", async () => {

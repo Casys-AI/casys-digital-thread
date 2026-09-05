@@ -40,6 +40,7 @@ import {
   firstPartyMicrosandboxImageCandidateQualificationRoot,
   NGSPICE_WORKER_PHYSICAL_IMAGE_ID,
 } from "../../../control-plane/first-party-microsandbox-image-candidate-qualification.ts";
+import { readFirstPartyMicrosandboxImageCandidateQualificationSuccessor } from "../../../control-plane/first-party-microsandbox-image-candidate-qualification-successor.ts";
 import { FileIsolatedOutputCas } from "../../../shared/cas/file-isolated-output-cas.ts";
 import { deterministicJson } from "../../../../domain/kernel/deterministic-json.ts";
 import type { AdmittedSpiceExecutionComposition } from "./execution-composition.ts";
@@ -56,6 +57,7 @@ import {
   qualifyNgspiceWorkerCandidate,
   readNgspiceWorkerCandidateQualificationSource,
   recoverNgspiceWorkerCandidateQualification,
+  retryNgspiceWorkerCandidateQualificationFromInfrastructureFailure,
 } from "./ngspice-worker-candidate-qualification.ts";
 
 const GIT_SHA = "a".repeat(40);
@@ -682,6 +684,192 @@ Deno.test("ngspice candidate recovery fails closed without WAL, unpublished or u
   }
 });
 
+Deno.test("ngspice successor dispatches a distinct run from a dispatched not-published predecessor", async () => {
+  const { ngspice } = await records();
+  const directory = await Deno.realPath(
+    await Deno.makeTempDir({ prefix: "casys-ngspice-candidate-successor-" }),
+  );
+  const calls = {
+    run: 0,
+    imageRemove: 0,
+    source: new Uint8Array(),
+    runIds: [] as string[],
+  };
+  try {
+    await seedDispatching(ngspice, directory);
+    const predecessorWal = await Deno.readTextFile(
+      `${
+        ngspiceWorkerCandidateQualificationPaths(directory).attemptDirectory
+      }/dispatching.json`,
+    );
+    const predecessorRunId = JSON.parse(predecessorWal).identity
+      .executionRunId as string;
+    const result =
+      await retryNgspiceWorkerCandidateQualificationFromInfrastructureFailure(
+        ngspice,
+        {
+          observedHost: { read: () => Promise.resolve(observedHost()) },
+          stateRoot: directory,
+          compose: async (options, paths) =>
+            await fakeComposition(options.profile, paths, calls),
+        },
+      );
+    assertEquals(result.status, "passed");
+    assertEquals(result.eligibleForPromotion, false);
+    assertEquals(result.qualification.execution.runId === predecessorRunId, false);
+    assertEquals(calls.runIds, [result.qualification.execution.runId]);
+    const successor =
+      await readFirstPartyMicrosandboxImageCandidateQualificationSuccessor(directory);
+    assertEquals(successor?.predecessor.attempts[0]?.runId, predecessorRunId);
+    assertEquals(successor?.predecessor.ordinal, 0);
+    assertEquals(successor?.successor.ordinal, 1);
+    assertEquals(successor?.predecessor.attempts[0]?.producerGeneration, 0);
+    assertEquals(successor?.successor.attempts[0]?.producerGeneration, 0);
+    assertEquals(successor?.predecessor.attempts[0]?.publication, "not-published");
+    assertEquals(successor?.predecessor.attempts[0]?.destruction.status, "proven");
+    assertEquals(
+      successor?.predecessor.attempts[0]?.destruction.runId,
+      predecessorRunId,
+    );
+    assertEquals(successor?.eligibleForPromotion, false);
+    assertEquals(
+      await Deno.readTextFile(
+        `${
+          ngspiceWorkerCandidateQualificationPaths(directory).attemptDirectory
+        }/dispatching.json`,
+      ),
+      predecessorWal,
+    );
+    await assertRejects(
+      () =>
+        retryNgspiceWorkerCandidateQualificationFromInfrastructureFailure(
+          ngspice,
+          {
+            observedHost: { read: () => Promise.resolve(observedHost()) },
+            stateRoot: directory,
+            compose: async (options, paths) =>
+              await fakeComposition(options.profile, paths, calls),
+          },
+        ),
+      Error,
+      "already consumed this predecessor",
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("ngspice successor refuses missing, prepared, published and unknown predecessors", async () => {
+  const { ngspice } = await records();
+  const directory = await Deno.realPath(
+    await Deno.makeTempDir({ prefix: "casys-ngspice-candidate-successor-refuse-" }),
+  );
+  const calls = {
+    run: 0,
+    imageRemove: 0,
+    source: new Uint8Array(),
+    runIds: [] as string[],
+  };
+  try {
+    await assertRejects(
+      () =>
+        retryNgspiceWorkerCandidateQualificationFromInfrastructureFailure(
+          ngspice,
+          {
+            observedHost: { read: () => Promise.resolve(observedHost()) },
+            stateRoot: `${directory}/missing`,
+            compose: async (options, paths) =>
+              await fakeComposition(options.profile, paths, calls),
+          },
+        ),
+      Error,
+      "existing producerGeneration-0 predecessor",
+    );
+
+    await seedDispatching(ngspice, `${directory}/prepared`);
+    await Deno.remove(
+      `${
+        ngspiceWorkerCandidateQualificationPaths(`${directory}/prepared`)
+          .attemptDirectory
+      }/dispatching.json`,
+    );
+    await assertRejects(
+      () =>
+        retryNgspiceWorkerCandidateQualificationFromInfrastructureFailure(
+          ngspice,
+          {
+            observedHost: { read: () => Promise.resolve(observedHost()) },
+            stateRoot: `${directory}/prepared`,
+            compose: async (options, paths) =>
+              await fakeComposition(options.profile, paths, calls),
+          },
+        ),
+      Error,
+      "prepared-only",
+    );
+
+    await qualifyNgspiceWorkerCandidate(ngspice, {
+      observedHost: { read: () => Promise.resolve(observedHost()) },
+      stateRoot: `${directory}/published`,
+      compose: async (options, paths) =>
+        await fakeComposition(options.profile, paths, calls),
+    });
+    await assertRejects(
+      () =>
+        retryNgspiceWorkerCandidateQualificationFromInfrastructureFailure(
+          ngspice,
+          {
+            observedHost: { read: () => Promise.resolve(observedHost()) },
+            stateRoot: `${directory}/published`,
+            compose: async (options, paths) =>
+              await fakeComposition(options.profile, paths, calls),
+          },
+        ),
+      Error,
+      "already-successful",
+    );
+
+    await seedDispatching(ngspice, `${directory}/unknown`);
+    await assertRejects(
+      () =>
+        retryNgspiceWorkerCandidateQualificationFromInfrastructureFailure(
+          ngspice,
+          {
+            observedHost: { read: () => Promise.resolve(observedHost()) },
+            stateRoot: `${directory}/unknown`,
+            compose: async (options, paths) => {
+              const composition = await fakeComposition(
+                options.profile,
+                paths,
+                calls,
+              );
+              return {
+                ...composition,
+                execution: {
+                  ...composition.execution!,
+                  publications: {
+                    resolvePublicationByRunId: (runId, producerGeneration) =>
+                      Promise.resolve({
+                        status: "outcome-unknown" as const,
+                        runId,
+                        producerGeneration,
+                      }),
+                    readReceipt: () => Promise.resolve(undefined),
+                    readPublishedObject: () => Promise.resolve(undefined),
+                  },
+                },
+              };
+            },
+          },
+        ),
+      Error,
+      "publication outcome is unknown",
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 Deno.test("ngspice candidate qualification source never deletes images or builds Docker", async () => {
   const source = await Deno.readTextFile(
     new URL("./ngspice-worker-candidate-qualification.ts", import.meta.url),
@@ -727,13 +915,14 @@ async function seedDispatching(
 function fakeComposition(
   options: ConstructorParameters<typeof FixedAdmittedSpiceExecutionProfileCatalog>[0],
   paths: { readonly outputCasDirectory: string },
-  calls: { run?: number; imageRemove: number; source: Uint8Array },
+  calls: { run?: number; imageRemove: number; source: Uint8Array; runIds?: string[] },
 ): AdmittedSpiceExecutionComposition {
   const profiles = new FixedAdmittedSpiceExecutionProfileCatalog(options);
   const publications = new FileIsolatedOutputCas(paths.outputCasDirectory);
   const runner = {
     async run(request: IsolatedCodeExecutionRequest) {
       calls.run = (calls.run ?? 0) + 1;
+      calls.runIds?.push(request.runId);
       const validated = await validateIsolatedCodeExecutionRequest(request);
       calls.source = validated.source.bytes.copy();
       const profile = await profiles.initial();
