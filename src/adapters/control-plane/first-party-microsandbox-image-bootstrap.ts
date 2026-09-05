@@ -436,7 +436,7 @@ function assertFirstPartyBuildRecipe(
       `First-party Microsandbox bootstrap Dockerfile is missing: ${recipe.dockerfile}.`,
     );
   }
-  if (!Deno.statSync(context).isDirectory) {
+  if (recipe.context !== "." && !Deno.statSync(context).isDirectory) {
     throw new TypeError(
       `First-party Microsandbox bootstrap context is missing: ${recipe.context}.`,
     );

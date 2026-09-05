@@ -42,11 +42,11 @@ server-owned matrix, rejects the wrong `physicalImageId` before any runtime effe
 prints the planned candidate reference. It does not call Docker or Microsandbox.
 
 ```bash
-deno task verify:build123d-isolated-worker:candidate-qualification -- --import-record=<path>
-deno task verify:geometry-module-assembler-worker:candidate-qualification -- --import-record=<path>
-deno task verify:calculix-worker:candidate-qualification -- --import-record=<path>
-deno task verify:modelica-worker:candidate-qualification -- --import-record=<path>
-deno task verify:ngspice-worker:candidate-qualification -- --import-record=<path>
+deno task verify:build123d-isolated-worker:candidate-qualification --import-record=<path>
+deno task verify:geometry-module-assembler-worker:candidate-qualification --import-record=<path>
+deno task verify:calculix-worker:candidate-qualification --import-record=<path>
+deno task verify:modelica-worker:candidate-qualification --import-record=<path>
+deno task verify:ngspice-worker:candidate-qualification --import-record=<path>
 ```
 
 Callers cannot pass provider, image, digest, platform, command, endpoint, tool, worker,
@@ -56,11 +56,11 @@ from `candidate.microsandbox.candidateReference` on the bound record.
 ## 2. Qualify only with `--run`
 
 ```bash
-deno task verify:build123d-isolated-worker:candidate-qualification -- --import-record=<path> --run
-deno task verify:geometry-module-assembler-worker:candidate-qualification -- --import-record=<path> --run
-deno task verify:calculix-worker:candidate-qualification -- --import-record=<path> --run
-deno task verify:modelica-worker:candidate-qualification -- --import-record=<path> --run
-deno task verify:ngspice-worker:candidate-qualification -- --import-record=<path> --run
+deno task verify:build123d-isolated-worker:candidate-qualification --import-record=<path> --run
+deno task verify:geometry-module-assembler-worker:candidate-qualification --import-record=<path> --run
+deno task verify:calculix-worker:candidate-qualification --import-record=<path> --run
+deno task verify:modelica-worker:candidate-qualification --import-record=<path> --run
+deno task verify:ngspice-worker:candidate-qualification --import-record=<path> --run
 ```
 
 `--run` is the mutation acknowledgement. Geometry, CalculiX, Modelica and ngspice also
