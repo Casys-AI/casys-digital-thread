@@ -15,11 +15,14 @@ provider/tool/endpoint selector, and not a catalogue rewrite. Procedure:
 | `physicalImageId`                | Stable descriptor-level identity of one physical worker image                                 | A field of the mutable build recipe or of the acquisition source |
 | `buildRecipe`                    | Repo-owned Dockerfile, context, `linux/arm64`, expected user/entrypoint/labels                | Proof of a bit-reproducible image or a runtime pin               |
 | Acquisition `source`             | How local cache preparation obtains bytes today (`trusted-dockerfile` or future `oci-digest`) | The GHCR candidate name or the Microsandbox runtime digest       |
-| Candidate GHCR image             | Digest-addressed publication with a unique commit-and-workflow-run locator tag                | The catalogued Microsandbox runtime digest                       |
+| Candidate OCI index              | Buildx output digest with requested SBOM/provenance and a unique commit-and-workflow-run tag  | The `linux/arm64` image manifest or a Microsandbox runtime pin   |
+| Candidate arm64 manifest         | Exact `linux/arm64` child selected from the raw OCI index                                     | The index digest, a qualification result, or a runtime pin       |
 | Qualification target             | The current catalogued Microsandbox runtime pin the candidate may later be compared against   | An output image identity or an automatic pin update              |
 
 Six logical bootstrap descriptors currently map to five physical images. Modelica
-qualified and admitted share one physical image. The distribution matrix is derived from
+qualified and admitted share one physical image. The versioned distribution contract
+rejects any count other than five unique physical images and six unique logical targets.
+The distribution matrix is derived from
 `createFirstPartyMicrosandboxImageBootstrapDescriptors(catalog)`; it is not a second
 hard-coded worker list.
 
@@ -38,8 +41,15 @@ Distribution emits candidate OCI images for the current recipes. It does not:
 
 A successful GHCR push creates only a candidate. Publication leaves the current
 capability and qualification state unchanged; the candidate is not an acquisition source
-until a separate review qualifies it on the target ARM Mac and promotes its exact OCI
-digest.
+until a separate review qualifies its exact arm64 manifest on the target ARM Mac and
+promotes its exact OCI digest.
+
+Every candidate receipt carries the complete input matrix, its fingerprint, the index
+and arm64-manifest references, exact Buildx metadata, and the existing qualification
+target. It deliberately records `licence: unresolved`, `anonymousPull: not-run`,
+`runtimeQualification: not-run`, `eligibleForPromotion: false`, and SBOM/provenance as
+`requested`. These literal states prevent a successful build from being mistaken for
+distribution clearance, anonymous availability, or runtime evidence.
 
 ## Non-reproducibility and notices
 
@@ -50,7 +60,11 @@ artifacts. They do not clear third-party licence, notice, or source obligations 
 aggregate image. Do not label an image only with this repository's `AGPL-3.0-only`
 licence.
 
-New GHCR packages are not assumed public. Anonymous pull is not a publication claim.
+New GHCR packages are not assumed public. Anonymous pull is not a publication claim. The
+workflow must run from the reviewed GitHub publication mirror; an internal development
+remote alone is not a public distribution surface. Package visibility, anonymous pull,
+and aggregate-image licence review happen after candidate build, before any runtime
+promotion.
 
 ## Platform
 

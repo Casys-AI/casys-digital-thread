@@ -10,7 +10,9 @@ import {
   type FirstPartyOciDigestSource,
 } from "./first-party-microsandbox-image-bootstrap.ts";
 import {
+  assertFirstPartyMicrosandboxImageDistributionContract,
   createFirstPartyMicrosandboxImageDistributionMatrix,
+  FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_CONTRACT,
   FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_MATRIX_SCHEMA,
   firstPartyMicrosandboxGhcrImageName,
   firstPartyMicrosandboxGhcrPackageName,
@@ -29,6 +31,10 @@ Deno.test(
     assertEquals(
       matrix.schemaVersion,
       FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_MATRIX_SCHEMA,
+    );
+    assertEquals(
+      matrix.contract,
+      FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_CONTRACT,
     );
     assertEquals(matrix.platform, "linux/arm64");
     assertEquals(matrix.images.map((image) => image.physicalImageId), [
@@ -117,6 +123,51 @@ Deno.test("Modelica qualified and admitted share one physical publication", asyn
   );
 });
 
+Deno.test("distribution matrix rejects incomplete or duplicate physical release entries", async () => {
+  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+  const matrix = createFirstPartyMicrosandboxImageDistributionMatrix(catalog);
+  assertThrows(
+    () =>
+      assertFirstPartyMicrosandboxImageDistributionContract(
+        {
+          ...matrix,
+          schemaVersion: "first-party-microsandbox-image-distribution-matrix/1.0",
+        } as unknown as typeof matrix,
+      ),
+    TypeError,
+    "unsupported schema or platform",
+  );
+  assertThrows(
+    () =>
+      assertFirstPartyMicrosandboxImageDistributionContract({
+        ...matrix,
+        images: matrix.images.slice(1),
+      }),
+    TypeError,
+    "exactly 5 physical images",
+  );
+  assertThrows(
+    () =>
+      assertFirstPartyMicrosandboxImageDistributionContract({
+        ...matrix,
+        images: [matrix.images[0]!, matrix.images[0]!, ...matrix.images.slice(2)],
+      }),
+    TypeError,
+    "duplicate physical image ids",
+  );
+  assertThrows(
+    () =>
+      assertFirstPartyMicrosandboxImageDistributionContract({
+        ...matrix,
+        images: matrix.images.map((image, index) =>
+          index === 0 ? { ...image, logicalTargets: [] } : image
+        ),
+      }),
+    TypeError,
+    "exactly 6 logical targets",
+  );
+});
+
 Deno.test("divergent recipes for one physical image are refused", async () => {
   const catalog = await createFirstPartyCapabilityRuntimeCatalog();
   const descriptors = createFirstPartyMicrosandboxImageBootstrapDescriptors(
@@ -199,8 +250,16 @@ Deno.test(
       ...ngspice,
       source: ociSource,
     };
-    const matrix = planFirstPartyMicrosandboxImageDistribution([acquiredByDigest]);
-    const image = matrix.images[0];
+    const matrix = planFirstPartyMicrosandboxImageDistribution(
+      descriptors.map((descriptor) =>
+        descriptor.recipeId === FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID
+          ? acquiredByDigest
+          : descriptor
+      ),
+    );
+    const image = matrix.images.find((candidate) =>
+      candidate.physicalImageId === "ngspice-worker"
+    );
     if (!image) throw new Error("planned image is absent");
     assertEquals(image.physicalImageId, "ngspice-worker");
     assertEquals(image.dockerfile, ngspice.buildRecipe.dockerfile);

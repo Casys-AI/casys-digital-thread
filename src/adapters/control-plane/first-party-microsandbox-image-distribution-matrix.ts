@@ -21,7 +21,19 @@ import {
 } from "./first-party-microsandbox-image-bootstrap.ts";
 
 export const FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_MATRIX_SCHEMA =
-  "first-party-microsandbox-image-distribution-matrix/1.0" as const;
+  "first-party-microsandbox-image-distribution-matrix/2.0" as const;
+
+/**
+ * This release surface is intentionally closed. The catalogue currently has
+ * six logical workers, but Modelica qualified and admitted share one physical
+ * OCI image. Keeping the cardinalities here makes a missing descriptor fail
+ * before a workflow can publish a partial candidate set, without duplicating
+ * a worker list in CI configuration.
+ */
+export const FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_CONTRACT = Object.freeze({
+  physicalImageCount: 5,
+  logicalTargetCount: 6,
+});
 
 const GHCR_REGISTRY = "ghcr.io/casys-ai" as const;
 const PACKAGE_PREFIX = "casys-digital-thread-" as const;
@@ -59,6 +71,7 @@ export interface FirstPartyMicrosandboxImageDistributionEntry {
 export interface FirstPartyMicrosandboxImageDistributionMatrix {
   readonly schemaVersion:
     typeof FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_MATRIX_SCHEMA;
+  readonly contract: typeof FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_CONTRACT;
   readonly platform: "linux/arm64";
   readonly images: readonly FirstPartyMicrosandboxImageDistributionEntry[];
 }
@@ -97,15 +110,81 @@ export function planFirstPartyMicrosandboxImageDistribution(
     assertSameQualificationTarget(existing[0]!, descriptor);
     existing.push(descriptor);
   }
-  return Object.freeze({
-    schemaVersion: FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_MATRIX_SCHEMA,
-    platform: "linux/arm64",
-    images: Object.freeze(
-      order.map((physicalImageId) =>
-        distributionEntry(physicalImageId, groups.get(physicalImageId)!)
-      ),
+  const images = Object.freeze(
+    order.map((physicalImageId) =>
+      distributionEntry(physicalImageId, groups.get(physicalImageId)!)
     ),
+  );
+  const matrix = Object.freeze({
+    schemaVersion: FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_MATRIX_SCHEMA,
+    contract: FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_CONTRACT,
+    platform: "linux/arm64",
+    images,
   });
+  assertFirstPartyMicrosandboxImageDistributionContract(matrix);
+  return matrix;
+}
+
+/**
+ * Runtime guard shared by release adapters. It is deliberately cardinality
+ * and identity based: physical image IDs stay unique, while the Modelica
+ * logical targets are allowed to share their one physical publication.
+ */
+export function assertFirstPartyMicrosandboxImageDistributionContract(
+  matrix: FirstPartyMicrosandboxImageDistributionMatrix,
+): void {
+  const { contract, images } = matrix;
+  if (
+    matrix.schemaVersion !==
+      FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_MATRIX_SCHEMA ||
+    matrix.platform !== "linux/arm64"
+  ) {
+    throw new TypeError(
+      "First-party Microsandbox image distribution declares an unsupported schema or platform.",
+    );
+  }
+  if (
+    contract.physicalImageCount !==
+      FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_CONTRACT.physicalImageCount ||
+    contract.logicalTargetCount !==
+      FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_CONTRACT.logicalTargetCount
+  ) {
+    throw new TypeError(
+      "First-party Microsandbox image distribution declares an unsupported contract.",
+    );
+  }
+  if (images.length !== contract.physicalImageCount) {
+    throw new TypeError(
+      `First-party Microsandbox image distribution requires exactly ${contract.physicalImageCount} physical images, received ${images.length}.`,
+    );
+  }
+  const physicalImageIds = new Set(images.map((image) => image.physicalImageId));
+  if (physicalImageIds.size !== images.length) {
+    throw new TypeError(
+      "First-party Microsandbox image distribution contains duplicate physical image ids.",
+    );
+  }
+  const logicalTargets = images.flatMap((image) => image.logicalTargets);
+  if (logicalTargets.length !== contract.logicalTargetCount) {
+    throw new TypeError(
+      `First-party Microsandbox image distribution requires exactly ${contract.logicalTargetCount} logical targets, received ${logicalTargets.length}.`,
+    );
+  }
+  const logicalTargetIds = new Set(
+    logicalTargets.map((target) =>
+      `${target.unitId}\u0000${target.materialId}\u0000${target.recipeId}`
+    ),
+  );
+  if (logicalTargetIds.size !== logicalTargets.length) {
+    throw new TypeError(
+      "First-party Microsandbox image distribution contains duplicate logical targets.",
+    );
+  }
+  if (images.some((image) => image.logicalTargets.length === 0)) {
+    throw new TypeError(
+      "Every first-party Microsandbox physical image must cover a logical target.",
+    );
+  }
 }
 
 function distributionEntry(

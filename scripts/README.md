@@ -64,14 +64,18 @@ Desktop bundle, or live project. See the
 `release/source-alpha-inventory.ts` is their shared deterministic renderer, not a direct
 entry point.
 
-The first-party microVM matrix script is planning only: it prints the five physical
-candidate-image build entries derived from the bootstrap descriptors. It does not build,
-push, tag, or rewrite a catalogued Microsandbox runtime digest. See
+The first-party microVM matrix script is planning only: it prints the versioned
+five-physical/six-logical candidate-image contract derived from the bootstrap
+descriptors. It does not build, push, tag, or rewrite a catalogued Microsandbox runtime
+digest. The CI-only receipt writer rereads that complete matrix and exact Buildx metadata
+to emit a candidate receipt; it keeps licence, anonymous pull, and runtime qualification
+literal as unresolved/not-run rather than inferring promotion. See
 [Publish first-party microVM images](../docs/how-to/maintainers/publish-first-party-microvm-images.md).
 
 | Script                                                    | Task                                        | Effect | Scope                                                                                                                            |
 | --------------------------------------------------------- | ------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------- |
 | `release/export-first-party-microsandbox-image-matrix.ts` | `release:first-party-microvm-images:matrix` | read   | Prints the compact candidate-image distribution matrix on stdout. No network, Docker, or file writes.                            |
+| `release/write-first-party-microsandbox-image-candidate-receipt.ts` | Direct CI invocation | write | Validates the complete server-owned matrix, then writes `receipt.json` and `receipt.txt` from exact Buildx outputs. It neither publishes nor qualifies/promotes an image. |
 | `release/build-source-alpha-inventory.ts`                 | `release:source-alpha:build`                | write  | Builds a deterministic source archive, CycloneDX 1.6 SBOM, manifest, notices, and checksums below ignored `dist/release/<tag>/`. |
 | `release/render-third-party-notices.ts`                   | `release:source-alpha:render`               | write  | Re-renders the source-only third-party notice table from the generated CycloneDX document and refreshes checksums.               |
 | `release/verify-source-alpha-inventory.ts`                | `release:source-alpha:verify`               | read   | Rebuilds the exact source-alpha inventory in memory and compares every tagged artifact and checksum without publishing anything. |
