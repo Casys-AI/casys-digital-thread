@@ -1,4 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
+import { pinnedOciImageReference } from "../../domain/compile/isolation/local-isolation-runtime.ts";
 import { sha256Hex } from "../../domain/kernel/deterministic-json.ts";
 import type {
   MicrosandboxImageImportHandle,
@@ -6,6 +7,7 @@ import type {
 } from "../shared/execution/microsandbox-ephemeral-execution-backend.ts";
 import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capability-binding-catalog.ts";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
+import { samePinnedRepositoryDigest } from "../shared/docker-pinned-repository-digest.ts";
 import {
   type FirstPartyMicrosandboxImageCandidateImportPorts,
   firstPartyMicrosandboxImageCandidateStagingReference,
@@ -86,6 +88,7 @@ Deno.test("candidate import records three typed digest identities in operation o
     "ngspice-worker",
     MICROSANDBOX_DIGEST,
   );
+  const cacheReference = canonicalCandidateCacheReference(candidate);
   assertEquals(record.identities.ociIndexDigest, receipt.candidate.oci.indexDigest);
   assertEquals(
     record.identities.ociPlatformManifestDigest,
@@ -96,6 +99,11 @@ Deno.test("candidate import records three typed digest identities in operation o
   assertEquals(record.artifactCompliance.runtimeQualification, "not-run");
   assertEquals(record.artifactCompliance.eligibleForPromotion, false);
   assertEquals(record.candidate.microsandbox.candidateReference, candidate);
+  assertEquals(cacheReference, `docker.io/${candidate}`);
+  assertEquals(
+    record.candidate.microsandbox.candidateReference === cacheReference,
+    false,
+  );
   assertEquals(
     record.candidate.qualificationTarget.imageReference === candidate,
     false,
@@ -125,14 +133,17 @@ Deno.test("candidate import records three typed digest identities in operation o
     `saveDockerImage:${receipt.candidate.oci.platformManifestReference}`,
     `loadImageFromArchive:${staging}`,
     `inspectCachedImage:${staging}`,
-    `inspectCachedImage:${candidate}`,
+    `inspectCachedImage:${cacheReference}`,
     `removeExactCachedImage:${staging}`,
-    `loadImageFromArchive:${candidate}`,
-    `inspectCachedImage:${candidate}`,
+    `loadImageFromArchive:${cacheReference}`,
+    `inspectCachedImage:${cacheReference}`,
     "writeImportRecord",
     "cleanup",
   ]);
+  assertEquals(ports.loads.map((load) => load.tag), [staging, cacheReference]);
   assertEquals(ports.exactCachedImageRemoves, [staging]);
+  assertEquals(ports.loads.some((load) => load.tag === candidate), false);
+  assertEquals(ports.exactCachedImageRemoves.includes(candidate), false);
   assertNeverTouchesCatalogPin(ports, receipt);
 });
 
@@ -457,6 +468,11 @@ Deno.test("candidate import refuses a final load that did not apply its requeste
     receipt,
     "attempt-a",
   );
+  const candidate = firstPartyMicrosandboxImageCandidateReference(
+    "ngspice-worker",
+    MICROSANDBOX_DIGEST,
+  );
+  const cacheReference = canonicalCandidateCacheReference(candidate);
   const ports = fakePorts({
     receipt,
     indexDocument,
@@ -467,6 +483,34 @@ Deno.test("candidate import refuses a final load that did not apply its requeste
     Error,
     "did not apply the requested final candidate reference",
   );
+  assertEquals(ports.loads.map((load) => load.tag), [staging, cacheReference]);
+  assertEquals(ports.exactCachedImageRemoves, [staging]);
+  assertEquals(ports.records, []);
+  assertNeverTouchesCatalogPin(ports, receipt);
+});
+
+Deno.test("candidate import refuses a final load that only applied the short candidate identity", async () => {
+  const { receipt, indexDocument, matrix } = await fixtures();
+  const staging = firstPartyMicrosandboxImageCandidateStagingReference(
+    receipt,
+    "attempt-a",
+  );
+  const candidate = firstPartyMicrosandboxImageCandidateReference(
+    "ngspice-worker",
+    MICROSANDBOX_DIGEST,
+  );
+  const cacheReference = canonicalCandidateCacheReference(candidate);
+  const ports = fakePorts({
+    receipt,
+    indexDocument,
+    candidateLoadReferences: [candidate],
+  });
+  await assertRejects(
+    () => importFirstPartyMicrosandboxImageCandidate({ receipt, matrix, ports }),
+    Error,
+    "did not apply the requested final candidate reference",
+  );
+  assertEquals(ports.loads.map((load) => load.tag), [staging, cacheReference]);
   assertEquals(ports.exactCachedImageRemoves, [staging]);
   assertEquals(ports.records, []);
   assertNeverTouchesCatalogPin(ports, receipt);
@@ -482,6 +526,7 @@ Deno.test("record-write failure quarantines only the final candidate newly impor
     "ngspice-worker",
     MICROSANDBOX_DIGEST,
   );
+  const cacheReference = canonicalCandidateCacheReference(candidate);
   const ports = fakePorts({
     receipt,
     indexDocument,
@@ -492,7 +537,9 @@ Deno.test("record-write failure quarantines only the final candidate newly impor
     Error,
     "record filesystem unavailable",
   );
-  assertEquals(ports.exactCachedImageRemoves, [staging, candidate]);
+  assertEquals(ports.loads.map((load) => load.tag), [staging, cacheReference]);
+  assertEquals(ports.exactCachedImageRemoves, [staging, cacheReference]);
+  assertEquals(ports.exactCachedImageRemoves.includes(candidate), false);
   assertEquals(ports.records, []);
   assertNeverTouchesCatalogPin(ports, receipt);
 });
@@ -507,10 +554,11 @@ Deno.test("record-write failure retains a coherent pre-existing final candidate"
     "ngspice-worker",
     MICROSANDBOX_DIGEST,
   );
+  const cacheReference = canonicalCandidateCacheReference(candidate);
   const ports = fakePorts({
     receipt,
     indexDocument,
-    preexisting: candidateInspection(receipt, candidate, MICROSANDBOX_DIGEST),
+    preexisting: candidateInspection(receipt, cacheReference, MICROSANDBOX_DIGEST),
     writeRecordError: new Error("record filesystem unavailable"),
   });
   await assertRejects(
@@ -528,6 +576,7 @@ Deno.test("incoherent pre-existing final candidate fails without deletion", asyn
     "ngspice-worker",
     MICROSANDBOX_DIGEST,
   );
+  const cacheReference = canonicalCandidateCacheReference(candidate);
   const staging = firstPartyMicrosandboxImageCandidateStagingReference(
     receipt,
     "attempt-a",
@@ -536,7 +585,7 @@ Deno.test("incoherent pre-existing final candidate fails without deletion", asyn
     receipt,
     indexDocument,
     preexisting: {
-      ...candidateInspection(receipt, candidate, MICROSANDBOX_DIGEST),
+      ...candidateInspection(receipt, cacheReference, MICROSANDBOX_DIGEST),
       user: "root",
     },
   });
@@ -547,6 +596,8 @@ Deno.test("incoherent pre-existing final candidate fails without deletion", asyn
   );
   assertEquals(ports.loads.map((load) => load.tag), [staging]);
   assertEquals(ports.exactCachedImageRemoves, [staging]);
+  assertEquals(ports.exactCachedImageRemoves.includes(cacheReference), false);
+  assertEquals(ports.exactCachedImageRemoves.includes(candidate), false);
   assertEquals(ports.records, []);
   assertEquals(ports.cleaned, 1);
   assertNeverTouchesCatalogPin(ports, receipt);
@@ -558,6 +609,42 @@ Deno.test("coherent pre-existing final candidate is retained without a second lo
     "ngspice-worker",
     MICROSANDBOX_DIGEST,
   );
+  const cacheReference = canonicalCandidateCacheReference(candidate);
+  const staging = firstPartyMicrosandboxImageCandidateStagingReference(
+    receipt,
+    "attempt-a",
+  );
+  const ports = fakePorts({
+    receipt,
+    indexDocument,
+    preexisting: candidateInspection(receipt, cacheReference, MICROSANDBOX_DIGEST),
+  });
+  const record = await importFirstPartyMicrosandboxImageCandidate({
+    receipt,
+    matrix,
+    ports,
+  });
+  assertEquals(record.import.status, "already-cached");
+  assertEquals(record.candidate.microsandbox.candidateReference, candidate);
+  assertEquals(record.artifactCompliance.eligibleForPromotion, false);
+  assertEquals(
+    ports.operations.includes(`inspectCachedImage:${cacheReference}`),
+    true,
+  );
+  assertEquals(ports.operations.includes(`inspectCachedImage:${candidate}`), false);
+  assertEquals(ports.loads.map((load) => load.tag), [staging]);
+  assertEquals(ports.exactCachedImageRemoves, [staging]);
+  assertEquals(ports.cleaned, 1);
+  assertNeverTouchesCatalogPin(ports, receipt);
+});
+
+Deno.test("short-identity pre-existing cache is not the canonical candidate and is not deleted", async () => {
+  const { receipt, indexDocument, matrix } = await fixtures();
+  const candidate = firstPartyMicrosandboxImageCandidateReference(
+    "ngspice-worker",
+    MICROSANDBOX_DIGEST,
+  );
+  const cacheReference = canonicalCandidateCacheReference(candidate);
   const staging = firstPartyMicrosandboxImageCandidateStagingReference(
     receipt,
     "attempt-a",
@@ -572,10 +659,12 @@ Deno.test("coherent pre-existing final candidate is retained without a second lo
     matrix,
     ports,
   });
-  assertEquals(record.import.status, "already-cached");
-  assertEquals(ports.loads.map((load) => load.tag), [staging]);
+  assertEquals(record.import.status, "imported");
+  assertEquals(record.candidate.microsandbox.candidateReference, candidate);
+  assertEquals(record.artifactCompliance.eligibleForPromotion, false);
+  assertEquals(ports.loads.map((load) => load.tag), [staging, cacheReference]);
   assertEquals(ports.exactCachedImageRemoves, [staging]);
-  assertEquals(ports.cleaned, 1);
+  assertEquals(ports.exactCachedImageRemoves.includes(candidate), false);
   assertNeverTouchesCatalogPin(ports, receipt);
 });
 
@@ -787,9 +876,42 @@ function assertNeverTouchesCatalogPin(
   receipt: FirstPartyMicrosandboxImageCandidateReceipt,
 ): void {
   const pin = receipt.candidate.qualificationTarget.imageReference;
-  assertEquals(ports.loads.some((load) => load.tag === pin), false);
-  assertEquals(ports.exactCachedImageRemoves.includes(pin), false);
-  assertEquals(ports.pulls.includes(pin), false);
+  assertEquals(ports.loads.some((load) => isCatalogPin(load.tag, pin)), false);
+  assertEquals(
+    ports.exactCachedImageRemoves.some((reference) => isCatalogPin(reference, pin)),
+    false,
+  );
+  assertEquals(ports.pulls.some((reference) => isCatalogPin(reference, pin)), false);
+  assertEquals(
+    ports.operations.some((operation) =>
+      operation.startsWith("inspectCachedImage:") &&
+      isCatalogPin(operation.slice("inspectCachedImage:".length), pin)
+    ),
+    false,
+  );
+  assertEquals(
+    ports.operations.some((operation) =>
+      operation.startsWith("loadImageFromArchive:") &&
+      isCatalogPin(operation.slice("loadImageFromArchive:".length), pin)
+    ),
+    false,
+  );
+  assertEquals(
+    ports.operations.some((operation) =>
+      operation.startsWith("removeExactCachedImage:") &&
+      isCatalogPin(operation.slice("removeExactCachedImage:".length), pin)
+    ),
+    false,
+  );
+}
+
+function isCatalogPin(reference: string, catalogPin: string): boolean {
+  return reference === catalogPin ||
+    samePinnedRepositoryDigest(reference, catalogPin);
+}
+
+function canonicalCandidateCacheReference(candidateReference: string): string {
+  return pinnedOciImageReference(candidateReference, "$test");
 }
 
 function candidateInspection(

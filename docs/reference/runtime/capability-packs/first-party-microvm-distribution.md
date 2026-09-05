@@ -97,12 +97,15 @@ OS/arch/user/entrypoint/labels, saves, and generates an invocation-owned nonce f
 unique non-catalog staging tag. It refuses a pre-existing staging tag. Returned
 `Image.load` handles must prove the requested tag was applied and must not include the
 active catalogue pin. The observed Microsandbox digest is recorded, only the
-proven-owned staging reference is removed, and the same archive is loaded again as
-`casys/first-party-candidate-<physicalImageId>@sha256:<observed-msb-digest>`.
+proven-owned staging reference is removed, and the same archive is loaded again as the
+canonical Microsandbox cache reference
+`docker.io/casys/first-party-candidate-<physicalImageId>@sha256:<observed-msb-digest>`
+derived by `pinnedOciImageReference`. The factual import record still stores the short
+`casys/first-party-candidate-<physicalImageId>@sha256:<observed-msb-digest>` identity.
 
 Microsandbox SDK 0.6.8 has `Image.load`, `Image.inspect`, and
 `Image.remove(reference, { force: false })`. It has no tag or relabel API. The second
-`Image.load` is therefore a re-import that applies the candidate reference, not an
+`Image.load` is therefore a re-import that applies the canonical cache reference, not an
 in-place retag. `Image.remove` is exact and never force or prune. The active catalogue
 target is never loaded, rewritten, or deleted. A generated staging reference is not part
 of the deterministic factual import record. If record persistence fails, only a new
