@@ -25,6 +25,7 @@ import {
 } from "./fixed-geometry-module-assembly-execution.ts";
 import {
   assertExactGeometryModuleAssemblerQualificationCandidate,
+  createGeometryModuleAssemblerMicrosandboxQualificationCandidate,
   type GeometryModuleAssemblerMicrosandboxQualificationCandidate,
   geometryModuleAssemblerQualificationRuntime,
 } from "./geometry-module-assembly-microsandbox-qualification-candidate.ts";
@@ -85,6 +86,14 @@ export const GEOMETRY_MODULE_ASSEMBLER_MICROSANDBOX_QUALIFICATION_DESCRIPTOR = {
 export async function createGeometryModuleAssemblerMicrosandboxQualificationCapture(
   input: {
     readonly candidate: GeometryModuleAssemblerMicrosandboxQualificationCandidate;
+    /**
+     * Independent server-created expected authority. Omit only for the active
+     * catalogue pin; imported-candidate capture must pass the bound-record
+     * factory rather than trust fields inside the candidate value.
+     */
+    readonly expectedCandidate?: () => Promise<
+      GeometryModuleAssemblerMicrosandboxQualificationCandidate
+    >;
     readonly qualifiedAt: string;
     /** Authoritative capability-runtime observation; never Deno.build. */
     readonly observedHost: CapabilityRuntimeHostObservation;
@@ -102,6 +111,8 @@ export async function createGeometryModuleAssemblerMicrosandboxQualificationCapt
 ): Promise<GeometryModuleAssemblerMicrosandboxQualificationCapture> {
   const candidate = await assertExactGeometryModuleAssemblerQualificationCandidate(
     input.candidate,
+    await (input.expectedCandidate ??
+      createGeometryModuleAssemblerMicrosandboxQualificationCandidate)(),
   );
   const qualifiedAt = canonicalGeometryModuleAssemblerQualificationTimestamp(
     input.qualifiedAt,

@@ -40,6 +40,7 @@ import {
 } from "./geometry-module-assembly-microsandbox-qualification-capture.ts";
 import {
   assertExactGeometryModuleAssemblerQualificationCandidate,
+  createGeometryModuleAssemblerMicrosandboxQualificationCandidate,
   type GeometryModuleAssemblerMicrosandboxQualificationCandidate,
 } from "./geometry-module-assembly-microsandbox-qualification-candidate.ts";
 import {
@@ -57,6 +58,14 @@ import {
  */
 export interface GeometryModuleAssemblerQualificationServiceOptions {
   readonly candidate: () => Promise<
+    GeometryModuleAssemblerMicrosandboxQualificationCandidate
+  >;
+  /**
+   * Independent server-created expected authority. Omit only for the active
+   * catalogue pin; imported-candidate qualification must pass the bound-record
+   * factory rather than trust the supplied candidate value.
+   */
+  readonly expectedCandidate?: () => Promise<
     GeometryModuleAssemblerMicrosandboxQualificationCandidate
   >;
   readonly observedHost: { read(): Promise<CapabilityRuntimeHostObservation> };
@@ -80,6 +89,7 @@ export interface GeometryModuleAssemblerQualificationResult {
   readonly runId: string;
   readonly capture: GeometryModuleAssemblerMicrosandboxQualificationReference | null;
   readonly attestationFingerprint: ContentFingerprint | null;
+  readonly receiptFingerprint: ContentFingerprint | null;
 }
 
 const QUALIFICATION_DISPATCH_DEADLINE_MS = 5 * 60 * 1_000;
@@ -159,13 +169,16 @@ export class GeometryModuleAssemblerQualificationService {
   }
 
   async #context(): Promise<GeometryModuleAssemblerQualificationContext> {
-    const [candidateValue, host, profile] = await Promise.all([
+    const [candidateValue, expectedCandidate, host, profile] = await Promise.all([
       this.options.candidate(),
+      this.options.expectedCandidate?.() ??
+        createGeometryModuleAssemblerMicrosandboxQualificationCandidate(),
       this.options.observedHost.read(),
       this.options.profiles.initial(),
     ]);
     const candidate = await assertExactGeometryModuleAssemblerQualificationCandidate(
       candidateValue,
+      expectedCandidate,
     );
     if (host.platform !== "linux/arm64") {
       throw new Error(
@@ -734,6 +747,7 @@ export class GeometryModuleAssemblerQualificationService {
     const capture = await createGeometryModuleAssemblerMicrosandboxQualificationCapture(
       {
         candidate: context.candidate,
+        expectedCandidate: this.options.expectedCandidate,
         qualifiedAt: attempt.outcome.recordedAt,
         observedHost: context.host,
         receipt,
@@ -783,6 +797,12 @@ function resultOf(
     capture,
     attestationFingerprint: attempt.phase === "attested"
       ? attempt.attestationFingerprint
+      : null,
+    receiptFingerprint: status === "qualified" &&
+        (attempt.phase === "attested" || attempt.phase === "stopped") &&
+        attempt.outcome.status === "qualified" &&
+        attempt.outcome.basis === "recorded"
+      ? attempt.outcome.basisFingerprint
       : null,
   });
 }

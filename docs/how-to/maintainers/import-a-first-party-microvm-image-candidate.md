@@ -64,7 +64,7 @@ only the exact final candidate it just imported. An incoherent or coherent pre-e
 final candidate is never deleted. The active catalogue pin is never loaded, rewritten,
 or deleted.
 
-## 4. Stop before qualification
+## 4. Hand the bound record to a per-domain qualification gate
 
 The import record is the later-gate input: a later per-domain qualification reads only
 `readBoundFirstPartyMicrosandboxImageCandidateImportRecord` against the current
@@ -74,5 +74,6 @@ verifies its fingerprint on parse/bind, keeps OCI index, platform-manifest, and
 Microsandbox digest as separate identities, and leaves `runtimeQualification=not-run`
 and `eligibleForPromotion=false`.
 
-Do not run the five domain qualification gates from this path, and do not edit catalogue
-pins.
+CAD candidate qualification is a separate maintainer path:
+[Qualify a first-party CAD microVM image candidate](qualify-a-first-party-cad-microvm-image-candidate.md).
+Do not run those gates from this import command, and do not edit catalogue pins.

@@ -5,19 +5,19 @@ Audience: both · Diátaxis: reference · Kind: index
 Capability-pack pages separate project engineering demand from host runtime state. They
 do not add an agent-facing provider selector or give the Workbench runtime authority.
 
-| Page                                                                    | Scope                                                                                                         |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| [Project capability intent](project-capability-intent.md)               | Pending-brief verification authorities, server routes, and initial semantic forecast                          |
-| [Project capability demand](project-capability-demand.md)               | Exact provider-neutral ceiling from registered operation runtime demands                                      |
-| [Atomic runtime catalogue](atomic-runtime-catalog.md)                   | Trusted bindings, concrete units and pure project host planning                                               |
+| Page                                                                    | Scope                                                                                                                                    |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| [Project capability intent](project-capability-intent.md)               | Pending-brief verification authorities, server routes, and initial semantic forecast                                                     |
+| [Project capability demand](project-capability-demand.md)               | Exact provider-neutral ceiling from registered operation runtime demands                                                                 |
+| [Atomic runtime catalogue](atomic-runtime-catalog.md)                   | Trusted bindings, concrete units and pure project host planning                                                                          |
 | [First-party microVM distribution](first-party-microvm-distribution.md) | Candidate GHCR publication of the five physical Microsandbox worker images, plus maintainer-only non-catalog import; not a catalogue pin |
-| [Qualified binding catalogue](qualified-binding-catalog.md)             | Current semantic capability to binding and unit mapping, with literal qualification state                     |
-| [Atomic runtime boundaries](atomic-runtime-boundaries.md)               | Platform, licence, security, and retained-data limits for those units                                         |
-| [Project capability authorization](project-capability-authorization.md) | Brief-bound operational ceiling, append-only amendments, explicit unused withdrawal, and read-only inspection |
-| [Host runtime supervision](host-runtime-supervision.md)                 | Immutable launch groups, local leases, journaling and closed Compose host control                             |
-| [Capability runtime connection](capability-runtime-connection.md)       | Current fixed loopback seam; progressive lease-bound connection handle                                        |
-| [Local runtime administration](local-runtime-administration.md)         | Append-only lock/revocation and bounded exact private Compose or cache-image removal                          |
-| [Local runtime qualification](local-runtime-qualification.md)           | Private Chrono `chrono-arm64-emulation-v1` review/apply/recover probe                                         |
+| [Qualified binding catalogue](qualified-binding-catalog.md)             | Current semantic capability to binding and unit mapping, with literal qualification state                                                |
+| [Atomic runtime boundaries](atomic-runtime-boundaries.md)               | Platform, licence, security, and retained-data limits for those units                                                                    |
+| [Project capability authorization](project-capability-authorization.md) | Brief-bound operational ceiling, append-only amendments, explicit unused withdrawal, and read-only inspection                            |
+| [Host runtime supervision](host-runtime-supervision.md)                 | Immutable launch groups, local leases, journaling and closed Compose host control                                                        |
+| [Capability runtime connection](capability-runtime-connection.md)       | Current fixed loopback seam; progressive lease-bound connection handle                                                                   |
+| [Local runtime administration](local-runtime-administration.md)         | Append-only lock/revocation and bounded exact private Compose or cache-image removal                                                     |
+| [Local runtime qualification](local-runtime-qualification.md)           | Private Chrono `chrono-arm64-emulation-v1` review/apply/recover probe                                                                    |
 
 `Behave Foundation` remains a derived recipe name only: it is neither an installable
 pack nor a separate capability authority. Names such as `canonical`, `static` and
@@ -57,5 +57,8 @@ Loopback publications and the three start paths live on
   is the maintainer procedure for opt-in candidate GHCR publication of the five physical
   Microsandbox worker images.
 - [Import a first-party microVM image candidate](../../../how-to/maintainers/import-a-first-party-microvm-image-candidate.md)
-  is the maintainer procedure for receipt-bound, non-catalog Microsandbox import. It does
-  not qualify or promote.
+  is the maintainer procedure for receipt-bound, non-catalog Microsandbox import. It
+  does not qualify or promote.
+- [Qualify a first-party CAD microVM image candidate](../../../how-to/maintainers/qualify-a-first-party-cad-microvm-image-candidate.md)
+  is the maintainer procedure that binds that import record to one CAD worker atom and
+  records host/runtime evidence with `eligibleForPromotion=false`.

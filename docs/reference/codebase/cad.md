@@ -71,10 +71,33 @@ without a recorded result fail closed before runtime activation.
 
 #### [`scripts/gates/verify-build123d-microsandbox-vertical.ts`](../../../scripts/gates/verify-build123d-microsandbox-vertical.ts)
 
-Explicit generation-0 real-runtime gate for the exact Build123d worker digest: local
-microVM execution, AP214/OCCT validation, proven broker destruction, published
-resolution and CAS reread; it is not a recovery, production project-run or
-canonical-promotion gate
+Explicit generation-0 real-runtime gate for the exact active Build123d worker digest:
+local microVM execution, AP214/OCCT validation, proven broker destruction, published
+resolution and CAS reread; it is not a recovery, production project-run,
+candidate-qualification or canonical-promotion gate
+
+#### [`scripts/gates/verify-build123d-isolated-worker-candidate-qualification.ts`](../../../scripts/gates/verify-build123d-isolated-worker-candidate-qualification.ts)
+
+Maintainer-only imported-candidate qualification for `build123d-isolated-worker`. Input
+is only a bound `first-party-microsandbox-image-candidate-import/3.0` record plus
+`--run`. It reads the control-plane host observation, refuses anything other than
+`linux/arm64` before composition, then reuses the production composition, broker, OCCT
+validator, CAS reread and proven destruction. The persisted record binds that host
+identity and the exact run/receipt. It never builds Docker, never deletes the candidate
+image, and never promotes a pin
+
+#### [`src/adapters/cad/isolated/first-party-build123d-execution.ts`](../../../src/adapters/cad/isolated/first-party-build123d-execution.ts)
+
+Code-owned active Build123d policy, limits and local server options. The server, the
+active vertical and the imported-candidate gate share this builder. The candidate
+factory accepts only an already-bound import record
+
+#### [`scripts/gates/verify-geometry-module-assembler-worker-candidate-qualification.ts`](../../../scripts/gates/verify-geometry-module-assembler-worker-candidate-qualification.ts)
+
+Maintainer-only imported-candidate qualification for `geometry-module-assembler-worker`.
+Distinct from the active-pin qualification gate. It binds the import record, isolates
+WAL/captures/outputs under the candidate-specific root, and leaves
+`eligibleForPromotion=false`
 
 #### [`src/adapters/cad/isolated/occt-step-output-validator.ts`](../../../src/adapters/cad/isolated/occt-step-output-validator.ts)
 

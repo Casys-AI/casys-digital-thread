@@ -45,11 +45,12 @@ import {
 import { BriefSourceAnalysisCaptureService } from "./src/adapters/compile/captures/brief-source-analysis-capture.ts";
 import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "./src/adapters/architecture/agent-seal/model-seal-architecture-sysml-run-executor.ts";
 import type { Build123dExecutionServerOptions } from "./src/adapters/cad/isolated/build123d-execution-composition.ts";
+import { createLocalBuild123dExecutionServerOptions } from "./src/adapters/cad/isolated/first-party-build123d-execution.ts";
+export { createLocalBuild123dExecutionServerOptions };
 import type { AdmittedModelicaExecutionServerOptions } from "./src/adapters/modelica/admitted/execution-composition.ts";
 import type { AdmittedSpiceExecutionServerOptions } from "./src/adapters/electrical/spice/admitted/execution-composition.ts";
 import { LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE } from "./src/adapters/electrical/spice/admitted/local-image-references.ts";
 import {
-  LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
   LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
 } from "./src/adapters/control-plane/first-party-capability-runtime-identities.ts";
 export {
@@ -404,29 +405,6 @@ const LOCAL_MODELICA_QUALIFICATION_CAPTURE_FINGERPRINT = Object.freeze({
 const LOCAL_MODELICA_QUALIFICATION_ROOT =
   "state/local/modelica-microsandbox-qualification";
 const DEFAULT_AGENT_RESOURCE_CAPTURE_DIRECTORY = "state/local/agent-resource-captures";
-
-const LOCAL_BUILD123D_EXECUTION_LIMITS = Object.freeze({
-  maxWallTimeMs: 30_000,
-  maxCpuTimeMs: 25_000,
-  maxMemoryBytes: 1_024 * 1_048_576,
-  maxProcesses: 32,
-  maxStdoutBytes: 65_536,
-  maxStderrBytes: 65_536,
-  maxOutputFileBytes: 128 * 1_048_576,
-  maxOutputTotalBytes: 128 * 1_048_576,
-});
-
-const LOCAL_BUILD123D_EXECUTION_POLICY_BODY = Object.freeze({
-  schemaVersion: "build123d-microsandbox-policy/1.0",
-  backend: "microsandbox-local@0.6.8",
-  imageReference: LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
-  network: "deny-all",
-  pullPolicy: "never",
-  securityProfile: "restricted",
-  supervisorUser: "0:0",
-  untrustedChildUser: "65532:65532",
-  limits: LOCAL_BUILD123D_EXECUTION_LIMITS,
-});
 
 const LOCAL_MODELICA_EXECUTION_LIMITS = Object.freeze({
   maxWallTimeMs: 120_000,
@@ -2171,31 +2149,6 @@ export function parseConsoleCli(args: string[]): ConsoleCliOptions {
     throw new TypeError("--hostname must not be empty");
   }
   return result;
-}
-
-/**
- * Code-owned product binding for the only qualified local Build123d runtime.
- * No environment value or CLI argument can select its image, policy, limits,
- * command, network, lifecycle, or backend.
- */
-export async function createLocalBuild123dExecutionServerOptions(): Promise<
-  Build123dExecutionServerOptions
-> {
-  const policy = Object.freeze({
-    id: "build123d-microsandbox-deny-all-v1",
-    version: "1.0.0",
-    fingerprint: await sha256Fingerprint(
-      LOCAL_BUILD123D_EXECUTION_POLICY_BODY,
-    ),
-  });
-  return Object.freeze({
-    profile: Object.freeze({
-      imageReference: LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
-      policy,
-      limits: LOCAL_BUILD123D_EXECUTION_LIMITS,
-    }),
-    runtime: Object.freeze({}),
-  });
 }
 
 /**

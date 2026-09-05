@@ -55,6 +55,16 @@ source candidate receipt. Parse/bind recalculates that receipt's fingerprint and
 the record to the current distribution matrix. It is not a qualification attestation,
 catalogue pin, Thread evidence, or Workbench command.
 
+#### `state/local/first-party-microsandbox-image-candidate-qualification/`
+
+Per-physical-image, per-import-record host/runtime candidate qualification. CAD uses
+`build123d-isolated-worker/<import-record fingerprint>/` and
+`geometry-module-assembler-worker/<import-record fingerprint>/` with isolated attempts,
+attestations, captures, outputs and the strict qualification record. That record binds
+the observed `linux/arm64` host identity and the exact run/receipt. It is not the normal
+`capability-runtime-host` qualification store, not a catalogue pin, and not L3, L4 or L5
+engineering evidence. `eligibleForPromotion` stays `false`.
+
 #### `state/local/capability-runtime-microvm-preparation/`
 
 Current append-only intent and terminal journal for server-owned first-party microVM

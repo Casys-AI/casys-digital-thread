@@ -122,6 +122,17 @@ export async function fingerprintFirstPartyMicrosandboxImageCandidateImportSourc
   )}`;
 }
 
+export async function fingerprintFirstPartyMicrosandboxImageCandidateImportRecord(
+  record: FirstPartyMicrosandboxImageCandidateImportRecord,
+): Promise<string> {
+  const exact = await parseFirstPartyMicrosandboxImageCandidateImportRecord(
+    JSON.parse(deterministicJson(record)),
+  );
+  return `sha256:${await sha256Hex(
+    new TextEncoder().encode(deterministicJson(exact)),
+  )}`;
+}
+
 export async function buildFirstPartyMicrosandboxImageCandidateImportRecord(
   input: {
     readonly receipt: FirstPartyMicrosandboxImageCandidateReceipt;

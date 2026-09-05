@@ -62,16 +62,24 @@ a reason to fall back to a Docker image, a host executable, or caller-selected s
 `prepare:geometry-module:microsandbox` observes the exact Microsandbox target and, when
 the Docker source is absent, reconstructs the in-repo Dockerfile as a local candidate
 recipe, then imports under the fixed runtime manifest reference. That rebuild is not
-bit-reproducible proof: after import, the cached image must still match the exact
-target digest, or the capability stays unavailable. `oci-digest` is the preferred
-immutable distribution source when a reviewed digest exists. A moving APT repository
-does not promise reproduction of the pin. That cache entry is not a qualification
-attestation.
-The separate
-`verify:geometry-module:microsandbox:qualification` gate verifies the fixed qualification
-fixture and records its own WAL, capture, and attestation; it neither promotes a
-catalogue binding nor performs a product assembly. A product export remains a separate
-registered use of the exact qualified runtime.
+bit-reproducible proof: after import, the cached image must still match the exact target
+digest, or the capability stays unavailable. `oci-digest` is the preferred immutable
+distribution source when a reviewed digest exists. A moving APT repository does not
+promise reproduction of the pin. That cache entry is not a qualification attestation.
+The separate `verify:geometry-module:microsandbox:qualification` gate verifies the fixed
+active-pin qualification fixture and records its own WAL, capture, and attestation; it
+neither promotes a catalogue binding nor performs a product assembly. A product export
+remains a separate registered use of the exact qualified runtime.
+
+An imported candidate uses
+`verify:geometry-module-assembler-worker:candidate-qualification` with only
+`--import-record=<path>` plus `--run` or `--recover`. That path binds
+`first-party-microsandbox-image-candidate-import/3.0` to the current matrix, executes
+the exact cached candidate image, and isolates state under
+`state/local/first-party-microsandbox-image-candidate-qualification/geometry-module-assembler-worker/`.
+It cannot substitute the active-pin authority, does not write
+`state/local/capability-runtime-host` qualification stores, and leaves
+`eligibleForPromotion=false`.
 
 ## Authority limit
 

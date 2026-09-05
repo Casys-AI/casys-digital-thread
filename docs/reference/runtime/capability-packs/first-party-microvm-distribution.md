@@ -45,7 +45,7 @@ under a non-catalog Microsandbox candidate identity. That path still does not:
 
 - change or claim the catalogued Microsandbox runtime digest;
 - load under the active catalogue pin;
-- run the five domain qualification gates;
+- run a per-domain qualification gate;
 - select a provider, tool, endpoint, or argument;
 - make a package public;
 - grant redistribution clearance.
@@ -118,3 +118,20 @@ the current matrix on read, and lives locally under
 `state/local/first-party-microsandbox-image-candidate-import/`. It is not a
 qualification attestation, catalogue pin, or promotion. Callers cannot select a
 provider, image, digest, tool, or argument.
+
+## Candidate qualification
+
+After import, each domain gate consumes only that bound
+`first-party-microsandbox-image-candidate-import/3.0` record and executes the exact
+cached candidate image. CAD currently owns two distinct physical/runtime atoms:
+`build123d-isolated-worker` and `geometry-module-assembler-worker`. They are not
+substitutes. The gates accept only `--import-record=<path>` plus `--run` (geometry also
+`--recover`). Policy, limits, worker command, fixture and oracle stay code-owned. Import
+already owns acquisition; qualification never builds Docker, never deletes the candidate
+cache, and never writes the active catalogue pin.
+
+Candidate state lives under
+`state/local/first-party-microsandbox-image-candidate-qualification/<physicalImageId>/<import-record fingerprint>/`.
+Success is host/runtime evidence only: `eligibleForPromotion` stays `false`. It is not
+L3/L4/L5 engineering evidence. Procedure:
+[Qualify a first-party CAD microVM image candidate](../../../how-to/maintainers/qualify-a-first-party-cad-microvm-image-candidate.md).
