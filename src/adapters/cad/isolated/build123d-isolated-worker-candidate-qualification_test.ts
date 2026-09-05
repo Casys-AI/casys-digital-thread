@@ -7,6 +7,7 @@ import {
   type IsolatedCodeExecutionRequest,
   validateIsolatedCodeExecutionRequest,
 } from "../../../domain/compile/isolation/isolated-code-execution.ts";
+import { fingerprintCapabilityRuntimeObservedHost } from "../../../domain/capability/runtime/capability-runtime-binding-qualification-attestation.ts";
 import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
 import { pinnedOciImageReference } from "../../../domain/compile/isolation/local-isolation-runtime.ts";
 import { createFirstPartyCapabilityRuntimeCatalog } from "../../control-plane/first-party-capability-binding-catalog.ts";
@@ -25,8 +26,15 @@ import {
   firstPartyMicrosandboxImageCandidateQualificationRoot,
   GEOMETRY_MODULE_ASSEMBLER_WORKER_PHYSICAL_IMAGE_ID,
 } from "../../control-plane/first-party-microsandbox-image-candidate-qualification.ts";
+import {
+  readCandidateQualificationPredecessorRunFence,
+  readFirstPartyMicrosandboxImageCandidateQualificationSuccessor,
+} from "../../control-plane/first-party-microsandbox-image-candidate-qualification-successor.ts";
 import { FileIsolatedOutputCas } from "../../shared/cas/file-isolated-output-cas.ts";
-import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../../domain/kernel/deterministic-json.ts";
 import { LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE } from "../../control-plane/first-party-capability-runtime-identities.ts";
 import type { Build123dExecutionComposition } from "./build123d-execution-composition.ts";
 import { FixedBuild123dExecutionProfileCatalog } from "./fixed-build123d-execution-profile-catalog.ts";
@@ -34,6 +42,7 @@ import {
   BUILD123D_ISOLATED_WORKER_CANDIDATE_QUALIFICATION_SOURCE,
   planBuild123dIsolatedWorkerCandidateQualification,
   qualifyBuild123dIsolatedWorkerCandidate,
+  retryBuild123dIsolatedWorkerCandidateQualificationFromInfrastructureFailure,
 } from "./build123d-isolated-worker-candidate-qualification.ts";
 
 const GIT_SHA = "a".repeat(40);
@@ -257,6 +266,187 @@ Deno.test("Build123d candidate qualification refuses a non-linux/arm64 host befo
   assertEquals(composed, 0);
 });
 
+Deno.test("Build123d successor dispatches a distinct run from a fenced not-published predecessor", async () => {
+  const { build123d } = await records();
+  const directory = await Deno.realPath(
+    await Deno.makeTempDir({ prefix: "casys-build123d-candidate-successor-" }),
+  );
+  const calls = { runIds: [] as string[], imageRemove: 0 };
+  try {
+    const predecessorRunId = await predecessorRunIdFor(build123d);
+    const cas = new FileIsolatedOutputCas(`${directory}/outputs`);
+    await cas.abortByRunId(predecessorRunId, 0);
+    const fence = await readCandidateQualificationPredecessorRunFence(
+      `${directory}/outputs`,
+      predecessorRunId,
+    );
+    const result =
+      await retryBuild123dIsolatedWorkerCandidateQualificationFromInfrastructureFailure(
+        build123d,
+        {
+          observedHost: { read: () => Promise.resolve(observedHost()) },
+          stateRoot: directory,
+          validateOutput: () => Promise.resolve(),
+          compose: async (options, paths) =>
+            await fakeComposition(options.profile, paths, calls),
+        },
+      );
+    assertEquals(result.eligibleForPromotion, false);
+    assertEquals(result.qualification.eligibleForPromotion, false);
+    assertEquals(result.qualification.execution.runId === predecessorRunId, false);
+    assertEquals(calls.runIds, [result.qualification.execution.runId]);
+    assertEquals(
+      await readCandidateQualificationPredecessorRunFence(
+        `${directory}/outputs`,
+        predecessorRunId,
+      ),
+      fence,
+    );
+    const successor =
+      await readFirstPartyMicrosandboxImageCandidateQualificationSuccessor(
+        directory,
+      );
+    assertEquals(successor?.predecessor.attempts[0]?.runId, predecessorRunId);
+    assertEquals(successor?.predecessor.ordinal, 0);
+    assertEquals(successor?.successor.ordinal, 1);
+    assertEquals(successor?.predecessor.attempts[0]?.producerGeneration, 0);
+    assertEquals(successor?.successor.attempts[0]?.producerGeneration, 0);
+    assertEquals(successor?.predecessor.attempts[0]?.publication, "not-published");
+    assertEquals(successor?.predecessor.attempts[0]?.destruction.status, "proven");
+    assertEquals(
+      successor?.predecessor.attempts[0]?.destruction.runId,
+      predecessorRunId,
+    );
+    assertEquals(
+      successor?.successor.attempts[0]?.runId,
+      result.qualification.execution.runId,
+    );
+    assertEquals(successor?.reason, "infrastructure-failure");
+    assertEquals(successor?.eligibleForPromotion, false);
+    await assertRejects(
+      () =>
+        retryBuild123dIsolatedWorkerCandidateQualificationFromInfrastructureFailure(
+          build123d,
+          {
+            observedHost: { read: () => Promise.resolve(observedHost()) },
+            stateRoot: directory,
+            validateOutput: () => Promise.resolve(),
+            compose: async (options, paths) =>
+              await fakeComposition(options.profile, paths, calls),
+          },
+        ),
+      Error,
+      "already consumed this predecessor",
+    );
+    assertEquals(calls.runIds.length, 1);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("Build123d successor refuses missing, published, unknown and foreign predecessors", async () => {
+  const { build123d, geometry } = await records();
+  const directory = await Deno.realPath(
+    await Deno.makeTempDir({ prefix: "casys-build123d-candidate-successor-refuse-" }),
+  );
+  const calls = { runIds: [] as string[], imageRemove: 0 };
+  try {
+    await assertRejects(
+      () =>
+        retryBuild123dIsolatedWorkerCandidateQualificationFromInfrastructureFailure(
+          build123d,
+          {
+            observedHost: { read: () => Promise.resolve(observedHost()) },
+            stateRoot: `${directory}/missing`,
+            compose: async (options, paths) =>
+              await fakeComposition(options.profile, paths, calls),
+          },
+        ),
+      Error,
+      "existing producerGeneration-0 predecessor",
+    );
+    assertEquals(calls.runIds.length, 0);
+
+    await qualifyBuild123dIsolatedWorkerCandidate(build123d, {
+      observedHost: { read: () => Promise.resolve(observedHost()) },
+      stateRoot: `${directory}/published`,
+      validateOutput: () => Promise.resolve(),
+      compose: async (options, paths) =>
+        await fakeComposition(options.profile, paths, calls),
+    });
+    await assertRejects(
+      () =>
+        retryBuild123dIsolatedWorkerCandidateQualificationFromInfrastructureFailure(
+          build123d,
+          {
+            observedHost: { read: () => Promise.resolve(observedHost()) },
+            stateRoot: `${directory}/published`,
+            compose: async (options, paths) =>
+              await fakeComposition(options.profile, paths, calls),
+          },
+        ),
+      Error,
+      "already-successful",
+    );
+
+    const unknownRoot = `${directory}/unknown`;
+    const predecessorRunId = await predecessorRunIdFor(build123d);
+    await new FileIsolatedOutputCas(`${unknownRoot}/outputs`).abortByRunId(
+      predecessorRunId,
+      0,
+    );
+    await assertRejects(
+      () =>
+        retryBuild123dIsolatedWorkerCandidateQualificationFromInfrastructureFailure(
+          build123d,
+          {
+            observedHost: { read: () => Promise.resolve(observedHost()) },
+            stateRoot: unknownRoot,
+            compose: async (options, paths) => {
+              const composition = await fakeComposition(
+                options.profile,
+                paths,
+                calls,
+              );
+              return {
+                ...composition,
+                execution: {
+                  ...composition.execution!,
+                  publications: {
+                    resolvePublicationByRunId: (runId, producerGeneration) =>
+                      Promise.resolve({
+                        status: "outcome-unknown" as const,
+                        runId,
+                        producerGeneration,
+                      }),
+                    readReceipt: () => Promise.resolve(undefined),
+                    readPublishedObject: () => Promise.resolve(undefined),
+                  },
+                },
+              };
+            },
+          },
+        ),
+      Error,
+      "publication outcome is unknown",
+    );
+    await assertRejects(
+      () =>
+        retryBuild123dIsolatedWorkerCandidateQualificationFromInfrastructureFailure(
+          geometry,
+          {
+            observedHost: { read: () => Promise.resolve(observedHost()) },
+            compose: () => Promise.reject(new Error("composition must not run")),
+          },
+        ),
+      TypeError,
+      "physicalImageId=build123d-isolated-worker",
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 Deno.test("Build123d candidate qualification source never deletes images or builds Docker", async () => {
   const source = await Deno.readTextFile(
     new URL("./build123d-isolated-worker-candidate-qualification.ts", import.meta.url),
@@ -287,7 +477,7 @@ async function fakeComposition(
     >[0]["limits"];
   },
   paths: { readonly outputCasDirectory: string },
-  calls: { imageRemove: number },
+  calls: { imageRemove: number; runIds?: string[] },
   overrides: { readonly destruction?: "acknowledged-unattested" } = {},
 ): Promise<Build123dExecutionComposition> {
   const profiles = new FixedBuild123dExecutionProfileCatalog(options);
@@ -295,6 +485,7 @@ async function fakeComposition(
   const publications = new FileIsolatedOutputCas(paths.outputCasDirectory);
   const runner = {
     async run(request: IsolatedCodeExecutionRequest) {
+      calls.runIds?.push(request.runId);
       return await publishReceipt(
         await validateIsolatedCodeExecutionRequest(request),
         publications,
@@ -383,6 +574,28 @@ async function publishReceipt(
   })));
   await cas.commit(staged.batch, isolatedCodeExecutionReceiptRecord(receipt));
   return receipt;
+}
+
+async function predecessorRunIdFor(
+  record: Awaited<ReturnType<typeof records>>["build123d"],
+): Promise<string> {
+  const host = observedHost();
+  const sourceSha256 = await fingerprintResourceBytes(
+    new TextEncoder().encode(BUILD123D_ISOLATED_WORKER_CANDIDATE_QUALIFICATION_SOURCE),
+  );
+  return `build123d-isolated-worker-candidate-qualification-${
+    (await sha256Fingerprint({
+      schemaVersion: "build123d-isolated-worker-candidate-qualification-run/1.0",
+      importRecordFingerprint:
+        await fingerprintFirstPartyMicrosandboxImageCandidateImportRecord(record),
+      candidateReference: record.candidate.microsandbox.candidateReference,
+      sourceSha256,
+      observedHost: await fingerprintCapabilityRuntimeObservedHost(
+        "linux/arm64",
+        host.identityFingerprint,
+      ),
+    })).digest
+  }`;
 }
 
 function observedHost() {

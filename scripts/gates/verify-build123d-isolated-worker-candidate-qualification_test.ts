@@ -53,6 +53,16 @@ Deno.test("Build123d candidate qualification CLI is planning by default and refu
     TypeError,
     "does not accept provider, image, digest, platform",
   );
+  assertEquals(
+    parseBuild123dIsolatedWorkerCandidateQualificationCli([
+      "--import-record=record.json",
+      "--retry-infrastructure-failure",
+    ]),
+    {
+      mode: "retry-infrastructure-failure",
+      importRecordPath: "record.json",
+    },
+  );
   assertThrows(
     () =>
       parseBuild123dIsolatedWorkerCandidateQualificationCli([
@@ -61,6 +71,26 @@ Deno.test("Build123d candidate qualification CLI is planning by default and refu
       ]),
     TypeError,
     "is not valid for first-party candidate qualification",
+  );
+  assertThrows(
+    () =>
+      parseBuild123dIsolatedWorkerCandidateQualificationCli([
+        "--import-record=record.json",
+        "--run",
+        "--retry-infrastructure-failure",
+      ]),
+    TypeError,
+    "only one of --run, --recover, or --retry-infrastructure-failure",
+  );
+  assertThrows(
+    () =>
+      parseBuild123dIsolatedWorkerCandidateQualificationCli([
+        "--import-record=record.json",
+        "--image=caller",
+        "--retry-infrastructure-failure",
+      ]),
+    TypeError,
+    "does not accept provider, image, digest, platform",
   );
   assertMatch(
     BUILD123D_ISOLATED_WORKER_CANDIDATE_QUALIFICATION_USAGE,

@@ -91,7 +91,11 @@ export type FirstPartyMicrosandboxImageCandidateQualificationCliRequest =
   | { readonly mode: "help" }
   | { readonly mode: "plan"; readonly importRecordPath: string }
   | { readonly mode: "run"; readonly importRecordPath: string }
-  | { readonly mode: "recover"; readonly importRecordPath: string };
+  | { readonly mode: "recover"; readonly importRecordPath: string }
+  | {
+    readonly mode: "retry-infrastructure-failure";
+    readonly importRecordPath: string;
+  };
 
 export function assertBoundCandidateImportPhysicalImageId(
   record: FirstPartyMicrosandboxImageCandidateImportRecord,
@@ -299,6 +303,7 @@ export function parseFirstPartyMicrosandboxImageCandidateQualificationCli(
   options: {
     readonly usage: string;
     readonly allowRecover?: boolean;
+    readonly allowRetryInfrastructureFailure?: boolean;
   },
 ): FirstPartyMicrosandboxImageCandidateQualificationCliRequest {
   const flags = parseFlags(args, options.usage);
@@ -310,6 +315,9 @@ export function parseFirstPartyMicrosandboxImageCandidateQualificationCli(
   }
   const allowed = new Set(["import-record", "run"]);
   if (options.allowRecover === true) allowed.add("recover");
+  if (options.allowRetryInfrastructureFailure === true) {
+    allowed.add("retry-infrastructure-failure");
+  }
   for (const name of flags.keys()) {
     if (!allowed.has(name)) {
       throw new TypeError(
@@ -323,9 +331,13 @@ export function parseFirstPartyMicrosandboxImageCandidateQualificationCli(
   }
   const run = flags.get("run");
   const recover = flags.get("recover");
-  if (run !== undefined && recover !== undefined) {
+  const retry = flags.get("retry-infrastructure-failure");
+  const acknowledgements = [run, recover, retry].filter((value) => value !== undefined);
+  if (acknowledgements.length > 1) {
     throw new TypeError(
-      "Candidate qualification accepts only one of --run or --recover.",
+      options.allowRetryInfrastructureFailure === true
+        ? "Candidate qualification accepts only one of --run, --recover, or --retry-infrastructure-failure."
+        : "Candidate qualification accepts only one of --run or --recover.",
     );
   }
   if (run === true) {
@@ -342,6 +354,14 @@ export function parseFirstPartyMicrosandboxImageCandidateQualificationCli(
   if (recover !== undefined) {
     throw new TypeError(
       "Candidate qualification --recover is a boolean acknowledgement and takes no value.",
+    );
+  }
+  if (retry === true) {
+    return { mode: "retry-infrastructure-failure", importRecordPath };
+  }
+  if (retry !== undefined) {
+    throw new TypeError(
+      "Candidate qualification --retry-infrastructure-failure is a boolean acknowledgement and takes no value.",
     );
   }
   return { mode: "plan", importRecordPath };

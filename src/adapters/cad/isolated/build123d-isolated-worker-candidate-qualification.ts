@@ -34,6 +34,15 @@ import {
   readObservedLinuxArm64Host,
 } from "../../control-plane/first-party-microsandbox-image-candidate-qualification.ts";
 import {
+  assertNoCandidateQualificationRecord,
+  assertNoCandidateQualificationSuccessor,
+  buildFirstPartyMicrosandboxImageCandidateQualificationSuccessor,
+  persistFirstPartyMicrosandboxImageCandidateQualificationSuccessor,
+  proveCandidateQualificationPredecessorUnpublishedAndDestroyed,
+  readCandidateQualificationPredecessorRunFence,
+  requireSuccessorAttempt,
+} from "../../control-plane/first-party-microsandbox-image-candidate-qualification-successor.ts";
+import {
   type Build123dExecutionComposition,
   type Build123dExecutionCompositionPaths,
   type Build123dExecutionServerOptions,
@@ -198,6 +207,72 @@ export async function qualifyBuild123dIsolatedWorkerCandidate(
   record: FirstPartyMicrosandboxImageCandidateImportRecord,
   ports: Build123dIsolatedWorkerCandidateQualificationPorts,
 ): Promise<Build123dIsolatedWorkerCandidateQualificationResult> {
+  const ctx = await composeBuild123dIsolatedWorkerCandidateQualification(
+    record,
+    ports,
+  );
+  return await dispatchBuild123dIsolatedWorkerCandidateQualification(
+    ctx,
+    ctx.predecessorRunId,
+  );
+}
+
+export async function retryBuild123dIsolatedWorkerCandidateQualificationFromInfrastructureFailure(
+  record: FirstPartyMicrosandboxImageCandidateImportRecord,
+  ports: Build123dIsolatedWorkerCandidateQualificationPorts,
+): Promise<Build123dIsolatedWorkerCandidateQualificationResult> {
+  const ctx = await composeBuild123dIsolatedWorkerCandidateQualification(
+    record,
+    ports,
+  );
+  await assertNoCandidateQualificationSuccessor(ctx.stateRoot);
+  await assertNoCandidateQualificationRecord(ctx.stateRoot);
+  const predecessorFence = await readCandidateQualificationPredecessorRunFence(
+    ctx.outputCasDirectory,
+    ctx.predecessorRunId,
+  );
+  const destruction =
+    await proveCandidateQualificationPredecessorUnpublishedAndDestroyed(
+      ctx.execution,
+      ctx.predecessorRunId,
+    );
+  if (
+    await readCandidateQualificationPredecessorRunFence(
+      ctx.outputCasDirectory,
+      ctx.predecessorRunId,
+    ) !== predecessorFence
+  ) {
+    throw new Error(
+      "Build123d candidate qualification successor mutated the predecessor fence.",
+    );
+  }
+  const successor =
+    await persistFirstPartyMicrosandboxImageCandidateQualificationSuccessor(
+      ctx.stateRoot,
+      await buildFirstPartyMicrosandboxImageCandidateQualificationSuccessor({
+        physicalImageId: BUILD123D_ISOLATED_WORKER_PHYSICAL_IMAGE_ID,
+        importRecordFingerprint: ctx.importRecordFingerprint,
+        predecessorAttempts: [{
+          id: BUILD123D_ISOLATED_WORKER_PHYSICAL_IMAGE_ID,
+          runId: ctx.predecessorRunId,
+          destruction,
+        }],
+      }),
+    );
+  const attempt = requireSuccessorAttempt(
+    successor,
+    BUILD123D_ISOLATED_WORKER_PHYSICAL_IMAGE_ID,
+  );
+  return await dispatchBuild123dIsolatedWorkerCandidateQualification(
+    ctx,
+    attempt.runId,
+  );
+}
+
+async function composeBuild123dIsolatedWorkerCandidateQualification(
+  record: FirstPartyMicrosandboxImageCandidateImportRecord,
+  ports: Build123dIsolatedWorkerCandidateQualificationPorts,
+): Promise<Build123dIsolatedWorkerCandidateQualificationContext> {
   assertBoundCandidateImportPhysicalImageId(
     record,
     BUILD123D_ISOLATED_WORKER_PHYSICAL_IMAGE_ID,
@@ -236,12 +311,11 @@ export async function qualifyBuild123dIsolatedWorkerCandidate(
       "The composed Build123d candidate profile did not retain the bound Microsandbox candidate reference and digest.",
     );
   }
-
   const source = new TextEncoder().encode(
     BUILD123D_ISOLATED_WORKER_CANDIDATE_QUALIFICATION_SOURCE,
   );
   const sourceSha256 = await fingerprintResourceBytes(source);
-  const runId = `build123d-isolated-worker-candidate-qualification-${
+  const predecessorRunId = `build123d-isolated-worker-candidate-qualification-${
     (await sha256Fingerprint({
       schemaVersion: "build123d-isolated-worker-candidate-qualification-run/1.0",
       importRecordFingerprint,
@@ -250,24 +324,43 @@ export async function qualifyBuild123dIsolatedWorkerCandidate(
       observedHost: host.identity.fingerprint,
     })).digest
   }`;
+  return {
+    record,
+    ports,
+    host,
+    importRecordFingerprint,
+    stateRoot,
+    outputCasDirectory,
+    execution,
+    profile,
+    source,
+    sourceSha256,
+    predecessorRunId,
+  };
+}
+
+async function dispatchBuild123dIsolatedWorkerCandidateQualification(
+  ctx: Build123dIsolatedWorkerCandidateQualificationContext,
+  runId: string,
+): Promise<Build123dIsolatedWorkerCandidateQualificationResult> {
   const producerGeneration = 0 as const;
   let publicationKnown = false;
   try {
-    const receipt = await execution.runner.run({
+    const receipt = await ctx.execution.runner.run({
       schemaVersion: ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
       runId,
       producerGeneration,
-      profile: profile.executionProfile,
-      source: { bytes: source, sha256: sourceSha256 },
-      policy: profile.isolationPolicy,
-      outputs: profile.outputManifest,
+      profile: ctx.profile.executionProfile,
+      source: { bytes: ctx.source, sha256: ctx.sourceSha256 },
+      policy: ctx.profile.isolationPolicy,
+      outputs: ctx.profile.outputManifest,
     });
     if (receipt.termination.kind !== "exited" || receipt.termination.exitCode !== 0) {
       throw new Error(
         "The imported Build123d candidate worker did not exit successfully.",
       );
     }
-    const resolution = await execution.publications.resolvePublicationByRunId(
+    const resolution = await ctx.execution.publications.resolvePublicationByRunId(
       runId,
       producerGeneration,
     );
@@ -290,7 +383,9 @@ export async function qualifyBuild123dIsolatedWorkerCandidate(
         "The Build123d candidate qualification CAS receipt record differs from the run receipt.",
       );
     }
-    const rereadReceipt = await execution.publications.readReceipt(resolution.ref);
+    const rereadReceipt = await ctx.execution.publications.readReceipt(
+      resolution.ref,
+    );
     if (rereadReceipt === undefined) {
       throw new Error(
         "The Build123d candidate qualification publication-gated receipt could not be reopened.",
@@ -307,7 +402,7 @@ export async function qualifyBuild123dIsolatedWorkerCandidate(
       );
     }
     const member = resolution.receipt.outputs[0]!;
-    const stepBytes = await execution.publications.readPublishedObject(
+    const stepBytes = await ctx.execution.publications.readPublishedObject(
       resolution.ref,
       member,
     );
@@ -324,30 +419,33 @@ export async function qualifyBuild123dIsolatedWorkerCandidate(
         "The reopened Build123d candidate STEP drifted after CAS reread.",
       );
     }
-    const validateOutput = ports.validateOutput ??
+    const validateOutput = ctx.ports.validateOutput ??
       new OcctStepOutputValidator().validateOutput;
-    await validateOutput(profile.outputManifest[0]!, stepBytes);
+    await validateOutput(ctx.profile.outputManifest[0]!, stepBytes);
     const qualification =
       await persistFirstPartyMicrosandboxImageCandidateQualificationRecord(
-        stateRoot,
-        await buildFirstPartyMicrosandboxImageCandidateQualificationRecord(record, {
-          observedHost: host.observation,
-          runId,
-          receiptFingerprint: receipt.fingerprint,
-        }),
+        ctx.stateRoot,
+        await buildFirstPartyMicrosandboxImageCandidateQualificationRecord(
+          ctx.record,
+          {
+            observedHost: ctx.host.observation,
+            runId,
+            receiptFingerprint: receipt.fingerprint,
+          },
+        ),
       );
     const result: Build123dIsolatedWorkerCandidateQualificationResult = {
       schemaVersion: BUILD123D_ISOLATED_WORKER_CANDIDATE_QUALIFICATION_RESULT_SCHEMA,
       kind: "candidate-qualification",
       status: "passed",
       physicalImageId: BUILD123D_ISOLATED_WORKER_PHYSICAL_IMAGE_ID,
-      candidateReference: record.candidate.microsandbox.candidateReference,
-      identities: record.identities,
-      importRecordFingerprint,
-      stateRoot,
+      candidateReference: ctx.record.candidate.microsandbox.candidateReference,
+      identities: ctx.record.identities,
+      importRecordFingerprint: ctx.importRecordFingerprint,
+      stateRoot: ctx.stateRoot,
       isolationClass: receipt.runtime.isolationClass,
-      executionProfile: profile.executionProfile,
-      sourceSha256,
+      executionProfile: ctx.profile.executionProfile,
+      sourceSha256: ctx.sourceSha256,
       receiptFingerprint: receipt.fingerprint,
       output: {
         role: member.role,
@@ -367,9 +465,25 @@ export async function qualifyBuild123dIsolatedWorkerCandidate(
     return Object.freeze(result);
   } finally {
     if (!publicationKnown) {
-      await recoverUnpublishedRun(execution, runId, producerGeneration);
+      await recoverUnpublishedRun(ctx.execution, runId, producerGeneration);
     }
   }
+}
+
+interface Build123dIsolatedWorkerCandidateQualificationContext {
+  readonly record: FirstPartyMicrosandboxImageCandidateImportRecord;
+  readonly ports: Build123dIsolatedWorkerCandidateQualificationPorts;
+  readonly host: Awaited<ReturnType<typeof readObservedLinuxArm64Host>>;
+  readonly importRecordFingerprint: string;
+  readonly stateRoot: string;
+  readonly outputCasDirectory: string;
+  readonly execution: NonNullable<Build123dExecutionComposition["execution"]>;
+  readonly profile: Awaited<
+    ReturnType<Build123dExecutionComposition["profiles"]["initial"]>
+  >;
+  readonly source: Uint8Array;
+  readonly sourceSha256: string;
+  readonly predecessorRunId: string;
 }
 
 export function renderBuild123dIsolatedWorkerCandidateQualificationResultText(

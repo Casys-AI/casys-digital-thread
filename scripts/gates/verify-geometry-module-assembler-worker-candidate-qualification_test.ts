@@ -43,6 +43,16 @@ Deno.test("geometry candidate qualification CLI is planning by default and allow
     TypeError,
     "does not accept provider, image, digest, platform",
   );
+  assertEquals(
+    parseGeometryModuleAssemblerWorkerCandidateQualificationCli([
+      "--import-record=record.json",
+      "--retry-infrastructure-failure",
+    ]),
+    {
+      mode: "retry-infrastructure-failure",
+      importRecordPath: "record.json",
+    },
+  );
   assertThrows(
     () =>
       parseGeometryModuleAssemblerWorkerCandidateQualificationCli([
@@ -51,7 +61,17 @@ Deno.test("geometry candidate qualification CLI is planning by default and allow
         "--recover",
       ]),
     TypeError,
-    "only one of --run or --recover",
+    "only one of --run, --recover, or --retry-infrastructure-failure",
+  );
+  assertThrows(
+    () =>
+      parseGeometryModuleAssemblerWorkerCandidateQualificationCli([
+        "--import-record=record.json",
+        "--image=caller",
+        "--retry-infrastructure-failure",
+      ]),
+    TypeError,
+    "does not accept provider, image, digest, platform",
   );
   assertMatch(
     GEOMETRY_MODULE_ASSEMBLER_WORKER_CANDIDATE_QUALIFICATION_USAGE,

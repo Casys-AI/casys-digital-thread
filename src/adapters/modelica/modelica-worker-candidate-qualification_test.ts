@@ -25,6 +25,7 @@ import {
   firstPartyMicrosandboxImageCandidateQualificationRoot,
   MODELICA_MICROSANDBOX_WORKER_PHYSICAL_IMAGE_ID,
 } from "../control-plane/first-party-microsandbox-image-candidate-qualification.ts";
+import { readFirstPartyMicrosandboxImageCandidateQualificationSuccessor } from "../control-plane/first-party-microsandbox-image-candidate-qualification-successor.ts";
 import { FileIsolatedOutputCas } from "../shared/cas/file-isolated-output-cas.ts";
 import {
   deterministicJson,
@@ -55,6 +56,7 @@ import {
   planModelicaWorkerCandidateQualification,
   qualifyModelicaWorkerCandidate,
   recoverModelicaWorkerCandidateQualification,
+  retryModelicaWorkerCandidateQualificationFromInfrastructureFailure,
 } from "./modelica-worker-candidate-qualification.ts";
 import type { ModelicaIsolatedExecutionComposition } from "./qualified-kit/execution-composition.ts";
 import { FixedModelicaIsolatedExecutionProfileCatalog } from "./qualified-kit/execution-profile.ts";
@@ -813,6 +815,330 @@ Deno.test("Modelica candidate aggregate rejects missing, duplicate or foreign pr
   }
 });
 
+Deno.test("Modelica successor covers both unpublished predecessors and stays promotion-false", async () => {
+  const { modelica } = await records();
+  const directory = await Deno.realPath(
+    await Deno.makeTempDir({ prefix: "casys-modelica-candidate-successor-" }),
+  );
+  const runIds: string[] = [];
+  try {
+    await seedDispatchingBoth(modelica, directory);
+    const kitWal = await Deno.readTextFile(
+      `${
+        modelicaWorkerCandidateProfileRoot(
+          directory,
+          MODELICA_WORKER_CANDIDATE_QUALIFIED_KIT_PROOF_ID,
+        )
+      }/attempts/dispatching.json`,
+    );
+    const admittedWal = await Deno.readTextFile(
+      `${
+        modelicaWorkerCandidateProfileRoot(
+          directory,
+          MODELICA_WORKER_CANDIDATE_ADMITTED_PROOF_ID,
+        )
+      }/attempts/dispatching.json`,
+    );
+    const result =
+      await retryModelicaWorkerCandidateQualificationFromInfrastructureFailure(
+        modelica,
+        trackingPorts(directory, runIds),
+      );
+    assertEquals(result.status, "passed");
+    assertEquals(result.eligibleForPromotion, false);
+    assertEquals(result.proofs.length, 2);
+    assertEquals(runIds.length, 2);
+    assertEquals(runIds[0] === JSON.parse(kitWal).identity.executionRunId, false);
+    assertEquals(
+      runIds[1] === JSON.parse(admittedWal).identity.executionRunId,
+      false,
+    );
+    const successor =
+      await readFirstPartyMicrosandboxImageCandidateQualificationSuccessor(directory);
+    assertEquals(successor?.predecessor.attempts.length, 2);
+    assertEquals(successor?.predecessor.ordinal, 0);
+    assertEquals(successor?.successor.ordinal, 1);
+    assertEquals(
+      successor?.predecessor.attempts.map((attempt) => attempt.producerGeneration),
+      [0, 0],
+    );
+    assertEquals(
+      successor?.predecessor.attempts.map((attempt) => attempt.publication),
+      ["not-published", "not-published"],
+    );
+    assertEquals(
+      successor?.predecessor.attempts.map((attempt) => attempt.destruction.status),
+      ["proven", "proven"],
+    );
+    assertEquals(
+      successor?.predecessor.attempts[0]?.destruction.runId ===
+        successor?.predecessor.attempts[1]?.destruction.runId,
+      false,
+    );
+    assertEquals(
+      successor?.successor.attempts.map((attempt) => attempt.producerGeneration),
+      [0, 0],
+    );
+    assertEquals(successor?.eligibleForPromotion, false);
+    assertEquals(
+      await Deno.readTextFile(
+        `${
+          modelicaWorkerCandidateProfileRoot(
+            directory,
+            MODELICA_WORKER_CANDIDATE_QUALIFIED_KIT_PROOF_ID,
+          )
+        }/attempts/dispatching.json`,
+      ),
+      kitWal,
+    );
+    assertEquals(
+      await Deno.readTextFile(
+        `${
+          modelicaWorkerCandidateProfileRoot(
+            directory,
+            MODELICA_WORKER_CANDIDATE_ADMITTED_PROOF_ID,
+          )
+        }/attempts/dispatching.json`,
+      ),
+      admittedWal,
+    );
+    await assertRejects(
+      () =>
+        retryModelicaWorkerCandidateQualificationFromInfrastructureFailure(
+          modelica,
+          trackingPorts(directory, runIds),
+        ),
+      Error,
+      "already consumed this predecessor",
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("Modelica successor refuses missing, prepared, published and mixed-profile predecessors", async () => {
+  const { modelica } = await records();
+  const directory = await Deno.realPath(
+    await Deno.makeTempDir({ prefix: "casys-modelica-candidate-successor-refuse-" }),
+  );
+  try {
+    await assertRejects(
+      () =>
+        retryModelicaWorkerCandidateQualificationFromInfrastructureFailure(
+          modelica,
+          trackingPorts(`${directory}/missing`, []),
+        ),
+      Error,
+      "existing producerGeneration-0 predecessor",
+    );
+
+    await seedDispatchingBoth(modelica, `${directory}/prepared`);
+    await Deno.remove(
+      `${
+        modelicaWorkerCandidateProfileRoot(
+          `${directory}/prepared`,
+          MODELICA_WORKER_CANDIDATE_ADMITTED_PROOF_ID,
+        )
+      }/attempts/dispatching.json`,
+    );
+    await assertRejects(
+      () =>
+        retryModelicaWorkerCandidateQualificationFromInfrastructureFailure(
+          modelica,
+          trackingPorts(`${directory}/prepared`, []),
+        ),
+      Error,
+      "prepared-only",
+    );
+
+    await qualifyModelicaWorkerCandidate(
+      modelica,
+      trackingPorts(`${directory}/published`, []),
+    );
+    await assertRejects(
+      () =>
+        retryModelicaWorkerCandidateQualificationFromInfrastructureFailure(
+          modelica,
+          trackingPorts(`${directory}/published`, []),
+        ),
+      Error,
+      "already-successful",
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("Modelica successor aggregate stays incomplete unless both new proofs pass", async () => {
+  const { modelica } = await records();
+  const directory = await Deno.realPath(
+    await Deno.makeTempDir({ prefix: "casys-modelica-candidate-successor-atomic-" }),
+  );
+  try {
+    await seedDispatchingBoth(modelica, directory);
+    const result =
+      await retryModelicaWorkerCandidateQualificationFromInfrastructureFailure(
+        modelica,
+        {
+          observedHost: { read: () => Promise.resolve(observedHost()) },
+          stateRoot: directory,
+          composeQualifiedKit: async (options, paths) =>
+            await fakeKitComposition(options.profile, paths, { imageRemove: 0 }),
+          composeAdmitted: async (options, paths) => {
+            const composition = fakeAdmittedComposition(options.profile, paths, {
+              imageRemove: 0,
+            });
+            return {
+              ...composition,
+              execution: {
+                ...composition.execution!,
+                runner: {
+                  ...composition.execution!.runner,
+                  run: () => {
+                    throw new Error("admitted successor infrastructure failure");
+                  },
+                },
+              },
+            };
+          },
+        },
+      );
+    assertEquals(result.status, "incomplete");
+    assertEquals(result.eligibleForPromotion, false);
+    await assertRejects(
+      () => Deno.stat(`${directory}/qualification.json`),
+      Deno.errors.NotFound,
+    );
+    await assertRejects(
+      () =>
+        retryModelicaWorkerCandidateQualificationFromInfrastructureFailure(
+          modelica,
+          trackingPorts(directory, []),
+        ),
+      Error,
+      "already consumed this predecessor",
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("Modelica recover reconciles an existing successor without redispatched worker calls", async () => {
+  const { modelica } = await records();
+  const directory = await Deno.realPath(
+    await Deno.makeTempDir({ prefix: "casys-modelica-candidate-successor-recover-" }),
+  );
+  const recoverIds: string[] = [];
+  try {
+    await seedDispatchingBoth(modelica, directory);
+    const passed =
+      await retryModelicaWorkerCandidateQualificationFromInfrastructureFailure(
+        modelica,
+        trackingPorts(directory, []),
+      );
+    assertEquals(passed.status, "passed");
+    const admittedRoot =
+      `${directory}/successor/targets/${MODELICA_WORKER_CANDIDATE_ADMITTED_PROOF_ID}`;
+    await Deno.remove(`${directory}/qualification.json`);
+    await Deno.remove(`${admittedRoot}/attempts/attested.json`);
+    await Deno.remove(`${admittedRoot}/proof.json`);
+    const result = await recoverModelicaWorkerCandidateQualification(
+      modelica,
+      trackingPorts(directory, recoverIds),
+    );
+    assertEquals(result.status, "passed");
+    assertEquals(result.eligibleForPromotion, false);
+    assertEquals(result.proofs.length, 2);
+    assertEquals(recoverIds, []);
+    assertEquals(
+      (await Deno.stat(`${directory}/qualification.json`)).isFile,
+      true,
+    );
+    assertEquals(
+      (await Deno.stat(`${admittedRoot}/attempts/attested.json`)).isFile,
+      true,
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("Modelica recover of a successor requires both profile WALs and does not fall back", async () => {
+  const { modelica } = await records();
+  const directory = await Deno.realPath(
+    await Deno.makeTempDir({
+      prefix: "casys-modelica-candidate-successor-recover-missing-",
+    }),
+  );
+  const recoverIds: string[] = [];
+  try {
+    await seedDispatchingBoth(modelica, directory);
+    await retryModelicaWorkerCandidateQualificationFromInfrastructureFailure(
+      modelica,
+      trackingPorts(directory, []),
+    );
+    await Deno.remove(`${directory}/qualification.json`);
+    await Deno.remove(
+      `${directory}/successor/targets/${MODELICA_WORKER_CANDIDATE_ADMITTED_PROOF_ID}`,
+      { recursive: true },
+    );
+    await assertRejects(
+      () =>
+        recoverModelicaWorkerCandidateQualification(
+          modelica,
+          trackingPorts(directory, recoverIds),
+        ),
+      Error,
+      "recovery of a successor requires an existing WAL attempt",
+    );
+    assertEquals(recoverIds, []);
+    await assertRejects(
+      () => Deno.stat(`${directory}/qualification.json`),
+      Deno.errors.NotFound,
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("Modelica recover refuses a successor WAL that diverged from the successor authority", async () => {
+  const { modelica } = await records();
+  const directory = await Deno.realPath(
+    await Deno.makeTempDir({
+      prefix: "casys-modelica-candidate-successor-recover-divergent-",
+    }),
+  );
+  const recoverIds: string[] = [];
+  try {
+    await seedDispatchingBoth(modelica, directory);
+    await retryModelicaWorkerCandidateQualificationFromInfrastructureFailure(
+      modelica,
+      trackingPorts(directory, []),
+    );
+    const admittedRoot =
+      `${directory}/successor/targets/${MODELICA_WORKER_CANDIDATE_ADMITTED_PROOF_ID}`;
+    await Deno.remove(`${admittedRoot}/attempts/attested.json`);
+    const dispatchingPath = `${admittedRoot}/attempts/dispatching.json`;
+    const attempt = JSON.parse(await Deno.readTextFile(dispatchingPath)) as {
+      identity: { executionRunId: string };
+    };
+    attempt.identity.executionRunId = "foreign-modelica-successor-run";
+    await Deno.writeTextFile(dispatchingPath, `${deterministicJson(attempt)}\n`);
+    await assertRejects(
+      () =>
+        recoverModelicaWorkerCandidateQualification(
+          modelica,
+          trackingPorts(directory, recoverIds),
+        ),
+      Error,
+      "diverged from the successor authority",
+    );
+    assertEquals(recoverIds, []);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 Deno.test("Modelica candidate qualification source never deletes images or builds Docker", async () => {
   const source = await Deno.readTextFile(
     new URL("./modelica-worker-candidate-qualification.ts", import.meta.url),
@@ -830,6 +1156,76 @@ Deno.test("Modelica candidate qualification source never deletes images or build
   );
   assertEquals(source.includes("LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE"), true);
 });
+
+async function seedDispatchingBoth(
+  record: Awaited<ReturnType<typeof records>>["modelica"],
+  stateRoot: string,
+): Promise<void> {
+  await qualifyModelicaWorkerCandidate(record, trackingPorts(stateRoot, []));
+  await Deno.remove(`${stateRoot}/qualification.json`);
+  for (
+    const profileId of [
+      MODELICA_WORKER_CANDIDATE_QUALIFIED_KIT_PROOF_ID,
+      MODELICA_WORKER_CANDIDATE_ADMITTED_PROOF_ID,
+    ]
+  ) {
+    const root = modelicaWorkerCandidateProfileRoot(stateRoot, profileId);
+    await Deno.remove(`${root}/attempts/attested.json`);
+    await Deno.remove(`${root}/proof.json`);
+    await Deno.remove(`${root}/outputs`, { recursive: true });
+    await Deno.mkdir(`${root}/outputs`, { recursive: true });
+  }
+}
+
+function trackingPorts(
+  stateRoot: string,
+  runIds: string[],
+): ModelicaWorkerCandidateQualificationPorts {
+  return {
+    observedHost: { read: () => Promise.resolve(observedHost()) },
+    stateRoot,
+    composeQualifiedKit: async (options, paths) => {
+      const composition = fakeKitComposition(options.profile, paths, {
+        imageRemove: 0,
+      });
+      return withTrackedRun(composition, runIds);
+    },
+    composeAdmitted: async (options, paths) => {
+      const composition = fakeAdmittedComposition(options.profile, paths, {
+        imageRemove: 0,
+      });
+      return withTrackedRun(composition, runIds);
+    },
+  };
+}
+
+function withTrackedRun<
+  T extends {
+    readonly execution?: {
+      readonly runner: {
+        run: (request: IsolatedCodeExecutionRequest) => Promise<unknown>;
+      };
+      readonly recovery: unknown;
+      readonly publications: unknown;
+    };
+  },
+>(composition: T, runIds: string[]): T {
+  const execution = composition.execution!;
+  const runner = execution.runner;
+  return {
+    ...composition,
+    execution: {
+      ...execution,
+      runner: {
+        ...runner,
+        run: async (request: IsolatedCodeExecutionRequest) => {
+          runIds.push(request.runId);
+          return await runner.run(request);
+        },
+      },
+    },
+  };
+}
 
 async function seedDispatchingKit(
   record: Awaited<ReturnType<typeof records>>["modelica"],
@@ -1045,10 +1441,10 @@ async function kitOutputs(source: Uint8Array): Promise<Map<string, Uint8Array>> 
 
 async function admittedOutputs(source: Uint8Array): Promise<Map<string, Uint8Array>> {
   const authorized = await authorizeAdmittedModelicaSource(source);
-  const rows = ['"der(position)","velocity","time","position","der(velocity)"'];
+  const rows = ['"time","position","velocity"'];
   for (let index = 0; index <= 20; index += 1) {
     const time = index / 10;
-    rows.push(`${time},${time},${time},${1 + time},${2 - time}`);
+    rows.push(`${time},${1 + time},${time}`);
   }
   const csv = `${rows.join("\n")}\n`;
   const resultBytes = ENCODER.encode(csv);

@@ -22,10 +22,11 @@ import {
   recoverModelicaWorkerCandidateQualification,
   renderModelicaWorkerCandidateQualificationPlanText,
   renderModelicaWorkerCandidateQualificationResultText,
+  retryModelicaWorkerCandidateQualificationFromInfrastructureFailure,
 } from "../../src/adapters/modelica/modelica-worker-candidate-qualification.ts";
 
 export const MODELICA_WORKER_CANDIDATE_QUALIFICATION_USAGE = [
-  "Usage: verify-modelica-worker-candidate-qualification --import-record=<path> [--run|--recover]",
+  "Usage: verify-modelica-worker-candidate-qualification --import-record=<path> [--run|--recover|--retry-infrastructure-failure]",
   "",
   "Maintainer-only qualification of one imported Modelica worker candidate.",
   "Input is only an exact import record bound to the current distribution matrix.",
@@ -36,6 +37,9 @@ export const MODELICA_WORKER_CANDIDATE_QUALIFICATION_USAGE = [
   "Pass --run to execute the exact cached candidate image through both proofs,",
   "composition, broker, domain validators, CAS reread, WAL and proven destruction.",
   "Pass --recover to reconcile the exact durable WAL without redispatched worker calls.",
+  "If successor.json exists, --recover reconciles that canonical successor without a worker call.",
+  "Pass --retry-infrastructure-failure to authorize exactly one successor covering both",
+  "profile predecessors after proven not-published destruction. A second retry fails closed.",
   "",
   "This path never touches the active catalogue pin or deletes the candidate image.",
   "Success is host/runtime candidate qualification only.",
@@ -51,6 +55,7 @@ export function parseModelicaWorkerCandidateQualificationCli(
   return parseFirstPartyMicrosandboxImageCandidateQualificationCli(args, {
     usage: MODELICA_WORKER_CANDIDATE_QUALIFICATION_USAGE,
     allowRecover: true,
+    allowRetryInfrastructureFailure: true,
   });
 }
 
@@ -79,6 +84,11 @@ export async function runModelicaWorkerCandidateQualificationCli(
   const ports = { observedHost: capabilityRuntime.host };
   const result = request.mode === "recover"
     ? await recoverModelicaWorkerCandidateQualification(record, ports)
+    : request.mode === "retry-infrastructure-failure"
+    ? await retryModelicaWorkerCandidateQualificationFromInfrastructureFailure(
+      record,
+      ports,
+    )
     : await qualifyModelicaWorkerCandidate(record, ports);
   const text = `${deterministicJson(result)}\n${
     renderModelicaWorkerCandidateQualificationResultText(result)

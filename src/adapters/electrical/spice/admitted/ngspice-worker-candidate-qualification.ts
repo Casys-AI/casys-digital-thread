@@ -55,6 +55,15 @@ import {
   readObservedLinuxArm64Host,
 } from "../../../control-plane/first-party-microsandbox-image-candidate-qualification.ts";
 import {
+  assertNoCandidateQualificationRecord,
+  assertNoCandidateQualificationSuccessor,
+  buildFirstPartyMicrosandboxImageCandidateQualificationSuccessor,
+  firstPartyMicrosandboxImageCandidateQualificationSuccessorRoot,
+  persistFirstPartyMicrosandboxImageCandidateQualificationSuccessor,
+  proveCandidateQualificationPredecessorUnpublishedAndDestroyed,
+  requireSuccessorAttempt,
+} from "../../../control-plane/first-party-microsandbox-image-candidate-qualification-successor.ts";
+import {
   type AdmittedSpiceExecutionComposition,
   type AdmittedSpiceExecutionCompositionPaths,
   type AdmittedSpiceExecutionServerOptions,
@@ -291,6 +300,17 @@ export async function recoverNgspiceWorkerCandidateQualification(
   );
 }
 
+export async function retryNgspiceWorkerCandidateQualificationFromInfrastructureFailure(
+  record: FirstPartyMicrosandboxImageCandidateImportRecord,
+  ports: NgspiceWorkerCandidateQualificationPorts,
+): Promise<NgspiceWorkerCandidateQualificationResult> {
+  return await orchestrateNgspiceWorkerCandidateQualification(
+    record,
+    ports,
+    "retry-infrastructure-failure",
+  );
+}
+
 export function renderNgspiceWorkerCandidateQualificationResultText(
   result: NgspiceWorkerCandidateQualificationResult,
 ): string {
@@ -322,10 +342,20 @@ export function renderNgspiceWorkerCandidateQualificationResultText(
 async function orchestrateNgspiceWorkerCandidateQualification(
   record: FirstPartyMicrosandboxImageCandidateImportRecord,
   ports: NgspiceWorkerCandidateQualificationPorts,
-  mode: "run" | "recover",
+  mode: "run" | "recover" | "retry-infrastructure-failure",
 ): Promise<NgspiceWorkerCandidateQualificationResult> {
-  const ctx = await composeNgspiceWorkerCandidateQualification(record, ports, mode);
-  const proof = await settleAttempt(ctx, mode);
+  const composed = await composeNgspiceWorkerCandidateQualification(
+    record,
+    ports,
+    mode === "retry-infrastructure-failure" ? "run" : mode,
+  );
+  const ctx = mode === "retry-infrastructure-failure"
+    ? await authorizeNgspiceWorkerCandidateSuccessor(composed, ports)
+    : composed;
+  const proof = await settleAttempt(
+    ctx,
+    mode === "retry-infrastructure-failure" ? "run" : mode,
+  );
   const qualification =
     await persistFirstPartyMicrosandboxImageCandidateQualificationRecord(
       ctx.stateRoot,
@@ -366,6 +396,124 @@ async function orchestrateNgspiceWorkerCandidateQualification(
     proof,
     qualification,
   });
+}
+
+async function authorizeNgspiceWorkerCandidateSuccessor(
+  ctx: QualificationContext,
+  ports: NgspiceWorkerCandidateQualificationPorts,
+): Promise<QualificationContext> {
+  await assertNoCandidateQualificationSuccessor(ctx.stateRoot);
+  await assertNoCandidateQualificationRecord(ctx.stateRoot);
+  const attempt = await ctx.wal.read();
+  if (attempt === undefined) {
+    throw new Error(
+      "Candidate qualification successor requires an existing producerGeneration-0 predecessor.",
+    );
+  }
+  if (attempt.phase === "prepared") {
+    throw new Error(
+      "Candidate qualification successor refuses a prepared-only predecessor.",
+    );
+  }
+  if (attempt.phase === "attested") {
+    throw new Error(
+      "Candidate qualification successor refuses an already-successful predecessor.",
+    );
+  }
+  if (attempt.phase !== "dispatching") {
+    throw new Error(
+      "Candidate qualification successor requires a dispatched unpublished predecessor.",
+    );
+  }
+  if (attempt.identity.importRecordFingerprint !== ctx.importRecordFingerprint) {
+    throw new Error(
+      "Candidate qualification successor predecessor does not belong to the bound import.",
+    );
+  }
+  const predecessorFiles = await snapshotDirectory(
+    ngspiceWorkerCandidateQualificationPaths(ctx.stateRoot).attemptDirectory,
+  );
+  const destruction =
+    await proveCandidateQualificationPredecessorUnpublishedAndDestroyed(
+      ctx.execution,
+      attempt.identity.executionRunId,
+    );
+  await assertUnchangedSnapshot(
+    ngspiceWorkerCandidateQualificationPaths(ctx.stateRoot).attemptDirectory,
+    predecessorFiles,
+    "ngspice-worker candidate qualification successor mutated the predecessor WAL.",
+  );
+  const successor =
+    await persistFirstPartyMicrosandboxImageCandidateQualificationSuccessor(
+      ctx.stateRoot,
+      await buildFirstPartyMicrosandboxImageCandidateQualificationSuccessor({
+        physicalImageId: NGSPICE_WORKER_PHYSICAL_IMAGE_ID,
+        importRecordFingerprint: ctx.importRecordFingerprint,
+        predecessorAttempts: [{
+          id: NGSPICE_WORKER_PHYSICAL_IMAGE_ID,
+          runId: attempt.identity.executionRunId,
+          destruction,
+        }],
+      }),
+    );
+  const retryRoot = firstPartyMicrosandboxImageCandidateQualificationSuccessorRoot(
+    ctx.stateRoot,
+  );
+  const startedAt = (ports.now ?? (() => new Date().toISOString()))();
+  return {
+    ...ctx,
+    identity: Object.freeze({
+      ...ctx.identity,
+      executionRunId: requireSuccessorAttempt(
+        successor,
+        NGSPICE_WORKER_PHYSICAL_IMAGE_ID,
+      ).runId,
+      startedAt,
+    }),
+    wal: new FileNgspiceWorkerCandidateAttemptStore(
+      `${retryRoot}/attempts`,
+      ctx.stateRoot,
+    ),
+    proofPath: `${retryRoot}/captures/proof.json`,
+  };
+}
+
+async function snapshotDirectory(
+  directory: string,
+): Promise<ReadonlyMap<string, string>> {
+  const files = new Map<string, string>();
+  async function walk(current: string): Promise<void> {
+    let entries: Deno.DirEntry[];
+    try {
+      entries = await Array.fromAsync(Deno.readDir(current));
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) return;
+      throw error;
+    }
+    for (const entry of entries) {
+      const path = `${current}/${entry.name}`;
+      if (entry.isDirectory) {
+        await walk(path);
+        continue;
+      }
+      if (!entry.isFile) continue;
+      files.set(path, await Deno.readTextFile(path));
+    }
+  }
+  await walk(directory);
+  return files;
+}
+
+async function assertUnchangedSnapshot(
+  directory: string,
+  expected: ReadonlyMap<string, string>,
+  message: string,
+): Promise<void> {
+  const actual = await snapshotDirectory(directory);
+  if (actual.size !== expected.size) throw new Error(message);
+  for (const [path, text] of expected) {
+    if (actual.get(path) !== text) throw new Error(message);
+  }
 }
 
 async function composeNgspiceWorkerCandidateQualification(

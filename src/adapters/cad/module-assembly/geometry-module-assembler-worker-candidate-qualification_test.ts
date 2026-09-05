@@ -32,10 +32,12 @@ import {
   createGeometryModuleAssemblerMicrosandboxQualificationCandidateFromBoundImport,
   createGeometryModuleAssemblerMicrosandboxQualificationCapture,
 } from "./geometry-module-assembly-microsandbox-qualification.ts";
+import { readFirstPartyMicrosandboxImageCandidateQualificationSuccessor } from "../../control-plane/first-party-microsandbox-image-candidate-qualification-successor.ts";
 import {
   applyGeometryModuleAssemblerWorkerCandidateQualification,
   geometryCandidateRuntimeQualification,
   planGeometryModuleAssemblerWorkerCandidateQualification,
+  retryGeometryModuleAssemblerWorkerCandidateQualificationFromInfrastructureFailure,
 } from "./geometry-module-assembler-worker-candidate-qualification.ts";
 import type { GeometryModuleAssemblyComposition } from "./geometry-module-assembly-composition.ts";
 
@@ -269,6 +271,165 @@ Deno.test("geometry candidate qualification refuses a non-linux/arm64 host befor
   assertEquals(composed, 0);
 });
 
+Deno.test("geometry successor dispatches a distinct run from a dispatched not-published predecessor", async () => {
+  const { geometry } = await records();
+  const directory = await Deno.realPath(
+    await Deno.makeTempDir({ prefix: "casys-geometry-candidate-successor-" }),
+  );
+  const calls = { runIds: [] as string[] };
+  try {
+    await seedDispatching(geometry, `${directory}/candidate`, calls);
+    const predecessorFiles = await snapshot(`${directory}/candidate/attempts`);
+    const result =
+      await retryGeometryModuleAssemblerWorkerCandidateQualificationFromInfrastructureFailure(
+        geometry,
+        {
+          observedHost: { read: () => Promise.resolve(observedHost()) },
+          stateRoot: `${directory}/candidate`,
+          compose: async (options, paths) =>
+            fakeComposition(options.profile, paths, calls),
+        },
+      );
+    assertEquals(result.eligibleForPromotion, false);
+    assertEquals(result.runtimeQualification, "passed");
+    assertEquals(result.result.status, "qualified");
+    assertEquals(calls.runIds.length >= 2, true);
+    assertEquals(calls.runIds[0] === calls.runIds.at(-1), false);
+    assertEquals(result.result.runId, calls.runIds.at(-1));
+    const successor =
+      await readFirstPartyMicrosandboxImageCandidateQualificationSuccessor(
+        `${directory}/candidate`,
+      );
+    assertEquals(successor?.predecessor.ordinal, 0);
+    assertEquals(successor?.successor.ordinal, 1);
+    assertEquals(successor?.predecessor.attempts[0]?.producerGeneration, 0);
+    assertEquals(successor?.successor.attempts[0]?.producerGeneration, 0);
+    assertEquals(successor?.predecessor.attempts[0]?.publication, "not-published");
+    assertEquals(successor?.predecessor.attempts[0]?.destruction.status, "proven");
+    assertEquals(successor?.successor.attempts[0]?.runId, result.result.runId);
+    assertEquals(successor?.eligibleForPromotion, false);
+    assertEquals(
+      await snapshot(`${directory}/candidate/attempts`),
+      predecessorFiles,
+    );
+    await assertRejects(
+      () =>
+        retryGeometryModuleAssemblerWorkerCandidateQualificationFromInfrastructureFailure(
+          geometry,
+          {
+            observedHost: { read: () => Promise.resolve(observedHost()) },
+            stateRoot: `${directory}/candidate`,
+            compose: async (options, paths) =>
+              fakeComposition(options.profile, paths, calls),
+          },
+        ),
+      Error,
+      "already consumed this predecessor",
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("geometry successor refuses missing, prepared, published and unknown predecessors", async () => {
+  const { geometry } = await records();
+  const directory = await Deno.realPath(
+    await Deno.makeTempDir({ prefix: "casys-geometry-candidate-successor-refuse-" }),
+  );
+  const calls = { runIds: [] as string[] };
+  try {
+    await assertRejects(
+      () =>
+        retryGeometryModuleAssemblerWorkerCandidateQualificationFromInfrastructureFailure(
+          geometry,
+          {
+            observedHost: { read: () => Promise.resolve(observedHost()) },
+            stateRoot: `${directory}/missing`,
+            compose: async (options, paths) =>
+              fakeComposition(options.profile, paths, calls),
+          },
+        ),
+      Error,
+      "existing producerGeneration-0 predecessor",
+    );
+
+    await seedDispatching(geometry, `${directory}/prepared`, calls);
+    await keepOnlyPrepared(`${directory}/prepared/attempts`);
+    await assertRejects(
+      () =>
+        retryGeometryModuleAssemblerWorkerCandidateQualificationFromInfrastructureFailure(
+          geometry,
+          {
+            observedHost: { read: () => Promise.resolve(observedHost()) },
+            stateRoot: `${directory}/prepared`,
+            compose: async (options, paths) =>
+              fakeComposition(options.profile, paths, calls),
+          },
+        ),
+      Error,
+      "prepared-only",
+    );
+
+    await applyGeometryModuleAssemblerWorkerCandidateQualification(geometry, {
+      observedHost: { read: () => Promise.resolve(observedHost()) },
+      stateRoot: `${directory}/published`,
+      compose: async (options, paths) => fakeComposition(options.profile, paths, calls),
+    });
+    await assertRejects(
+      () =>
+        retryGeometryModuleAssemblerWorkerCandidateQualificationFromInfrastructureFailure(
+          geometry,
+          {
+            observedHost: { read: () => Promise.resolve(observedHost()) },
+            stateRoot: `${directory}/published`,
+            compose: async (options, paths) =>
+              fakeComposition(options.profile, paths, calls),
+          },
+        ),
+      Error,
+      "already-successful",
+    );
+
+    await seedDispatching(geometry, `${directory}/unknown`, calls);
+    await assertRejects(
+      () =>
+        retryGeometryModuleAssemblerWorkerCandidateQualificationFromInfrastructureFailure(
+          geometry,
+          {
+            observedHost: { read: () => Promise.resolve(observedHost()) },
+            stateRoot: `${directory}/unknown`,
+            compose: async (options, paths) => {
+              const composition = fakeComposition(options.profile, paths, calls);
+              return {
+                ...composition,
+                execution: {
+                  ...composition.execution!,
+                  publications: {
+                    resolvePublicationByRunId: (
+                      runId: string,
+                      producerGeneration: 0 | 1,
+                    ) =>
+                      Promise.resolve({
+                        status: "outcome-unknown" as const,
+                        runId,
+                        producerGeneration,
+                      }),
+                    readReceipt: () => Promise.resolve(undefined),
+                    readPublishedObject: () => Promise.resolve(undefined),
+                  },
+                },
+              };
+            },
+          },
+        ),
+      Error,
+      "publication outcome is unknown",
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 Deno.test("geometry candidate qualification source never deletes images", async () => {
   const source = await Deno.readTextFile(
     new URL(
@@ -282,21 +443,102 @@ Deno.test("geometry candidate qualification source never deletes images", async 
   assertEquals(source.includes("Deno.build"), false);
 });
 
+async function seedDispatching(
+  record: Awaited<ReturnType<typeof records>>["geometry"],
+  stateRoot: string,
+  calls: { runIds: string[] },
+): Promise<void> {
+  let fail = true;
+  await assertRejects(
+    () =>
+      applyGeometryModuleAssemblerWorkerCandidateQualification(record, {
+        observedHost: { read: () => Promise.resolve(observedHost()) },
+        stateRoot,
+        compose: async (options, paths) =>
+          fakeComposition(options.profile, paths, calls, {
+            run: async (_request, publish) => {
+              if (fail) {
+                fail = false;
+                throw new Error("ephemeral execution environment could not be created");
+              }
+              return await publish();
+            },
+          }),
+      }),
+    Error,
+    "The registered geometry-module assembler failed closed.",
+  );
+}
+
+async function keepOnlyPrepared(attemptsRoot: string): Promise<void> {
+  for await (const group of Deno.readDir(attemptsRoot)) {
+    if (!group.isDirectory) continue;
+    const directory = `${attemptsRoot}/${group.name}`;
+    for await (const entry of Deno.readDir(directory)) {
+      if (
+        entry.name.startsWith("event-prepared-") ||
+        entry.name === "attempt.lock"
+      ) continue;
+      await Deno.remove(`${directory}/${entry.name}`);
+    }
+  }
+}
+
+async function snapshot(directory: string): Promise<string> {
+  const files: string[] = [];
+  async function walk(current: string): Promise<void> {
+    let entries: Deno.DirEntry[];
+    try {
+      entries = await Array.fromAsync(Deno.readDir(current));
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) return;
+      throw error;
+    }
+    for (
+      const entry of entries.toSorted((left, right) =>
+        left.name.localeCompare(right.name)
+      )
+    ) {
+      const path = `${current}/${entry.name}`;
+      if (entry.isDirectory) {
+        await walk(path);
+        continue;
+      }
+      if (!entry.isFile) continue;
+      files.push(`${path}\n${await Deno.readTextFile(path)}`);
+    }
+  }
+  await walk(directory);
+  return files.join("\n");
+}
+
 function fakeComposition(
   profileOptions: ConstructorParameters<
     typeof FixedGeometryModuleAssemblyProfileCatalog
   >[0],
   paths: { readonly outputCasDirectory: string },
+  calls: { runIds?: string[] } = {},
+  hooks: {
+    readonly run?: (
+      request: IsolatedCodeExecutionRequest,
+      publish: () => Promise<
+        Awaited<ReturnType<typeof publishValidReceipt>>
+      >,
+    ) => Promise<Awaited<ReturnType<typeof publishValidReceipt>>>;
+  } = {},
 ): GeometryModuleAssemblyComposition {
   const profiles = new FixedGeometryModuleAssemblyProfileCatalog(profileOptions);
   const publications = new FileIsolatedOutputCas(paths.outputCasDirectory);
   const runner = {
     async run(request: IsolatedCodeExecutionRequest) {
-      return await publishValidReceipt(
-        await validateIsolatedCodeExecutionRequest(request),
-        publications,
-        await profiles.initial(),
-      );
+      calls.runIds?.push(request.runId);
+      const publish = async () =>
+        await publishValidReceipt(
+          await validateIsolatedCodeExecutionRequest(request),
+          publications,
+          await profiles.initial(),
+        );
+      return hooks.run ? await hooks.run(request, publish) : await publish();
     },
     destroyByRunId(runId: string) {
       return Promise.resolve({

@@ -22,10 +22,11 @@ import {
   recoverGeometryModuleAssemblerWorkerCandidateQualification,
   renderGeometryModuleAssemblerWorkerCandidateQualificationPlanText,
   renderGeometryModuleAssemblerWorkerCandidateQualificationResultText,
+  retryGeometryModuleAssemblerWorkerCandidateQualificationFromInfrastructureFailure,
 } from "../../src/adapters/cad/module-assembly/geometry-module-assembler-worker-candidate-qualification.ts";
 
 export const GEOMETRY_MODULE_ASSEMBLER_WORKER_CANDIDATE_QUALIFICATION_USAGE = [
-  "Usage: verify-geometry-module-assembler-worker-candidate-qualification --import-record=<path> [--run|--recover]",
+  "Usage: verify-geometry-module-assembler-worker-candidate-qualification --import-record=<path> [--run|--recover|--retry-infrastructure-failure]",
   "",
   "Maintainer-only qualification of one imported geometry-module assembler candidate.",
   "Input is only an exact import record bound to the current distribution matrix.",
@@ -35,6 +36,8 @@ export const GEOMETRY_MODULE_ASSEMBLER_WORKER_CANDIDATE_QUALIFICATION_USAGE = [
   "Pass --run to dispatch the exact cached candidate image through the production",
   "assembler, CAS reread, validator, oracle, and proven destruction.",
   "Pass --recover to reconcile the exact durable WAL without redispatched worker calls.",
+  "Pass --retry-infrastructure-failure to authorize exactly one successor after a",
+  "proven not-published, destroyed dispatched predecessor. A second retry fails closed.",
   "",
   "This path never touches the active catalogue pin or deletes the candidate image.",
   "Success is host/runtime candidate qualification only.",
@@ -49,6 +52,7 @@ export function parseGeometryModuleAssemblerWorkerCandidateQualificationCli(
   return parseFirstPartyMicrosandboxImageCandidateQualificationCli(args, {
     usage: GEOMETRY_MODULE_ASSEMBLER_WORKER_CANDIDATE_QUALIFICATION_USAGE,
     allowRecover: true,
+    allowRetryInfrastructureFailure: true,
   });
 }
 
@@ -78,6 +82,11 @@ export async function runGeometryModuleAssemblerWorkerCandidateQualificationCli(
   const ports = { observedHost: capabilityRuntime.host };
   const result = request.mode === "recover"
     ? await recoverGeometryModuleAssemblerWorkerCandidateQualification(record, ports)
+    : request.mode === "retry-infrastructure-failure"
+    ? await retryGeometryModuleAssemblerWorkerCandidateQualificationFromInfrastructureFailure(
+      record,
+      ports,
+    )
     : await applyGeometryModuleAssemblerWorkerCandidateQualification(record, ports);
   return `${deterministicJson(result)}\n${
     renderGeometryModuleAssemblerWorkerCandidateQualificationResultText(result)

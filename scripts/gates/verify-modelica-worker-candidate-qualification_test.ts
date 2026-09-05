@@ -96,6 +96,16 @@ Deno.test("Modelica candidate qualification CLI is planning by default and refus
     TypeError,
     "is not valid for first-party candidate qualification",
   );
+  assertEquals(
+    parseModelicaWorkerCandidateQualificationCli([
+      "--import-record=record.json",
+      "--retry-infrastructure-failure",
+    ]),
+    {
+      mode: "retry-infrastructure-failure",
+      importRecordPath: "record.json",
+    },
+  );
   assertThrows(
     () =>
       parseModelicaWorkerCandidateQualificationCli([
@@ -104,7 +114,17 @@ Deno.test("Modelica candidate qualification CLI is planning by default and refus
         "--recover",
       ]),
     TypeError,
-    "only one of --run or --recover",
+    "only one of --run, --recover, or --retry-infrastructure-failure",
+  );
+  assertThrows(
+    () =>
+      parseModelicaWorkerCandidateQualificationCli([
+        "--import-record=record.json",
+        "--image=caller",
+        "--retry-infrastructure-failure",
+      ]),
+    TypeError,
+    "does not accept provider, image, digest, platform",
   );
   assertMatch(
     MODELICA_WORKER_CANDIDATE_QUALIFICATION_USAGE,
@@ -113,6 +133,10 @@ Deno.test("Modelica candidate qualification CLI is planning by default and refus
   assertMatch(
     MODELICA_WORKER_CANDIDATE_QUALIFICATION_USAGE,
     /openmodelica-qualified-kit and openmodelica-admitted-modelica/u,
+  );
+  assertMatch(
+    MODELICA_WORKER_CANDIDATE_QUALIFICATION_USAGE,
+    /If successor\.json exists, --recover reconciles that canonical successor without a worker call/u,
   );
 });
 

@@ -42,10 +42,10 @@ Deno.test("generic v2 worker validates output columns, grid, finite starts and m
   const authorized = await authorizeAdmittedModelicaSource(
     new TextEncoder().encode(SOURCE),
   );
-  const rows = ['"der(position)","velocity","time","position","der(velocity)"'];
+  const rows = ['"time","position","velocity"'];
   for (let index = 0; index <= 20; index += 1) {
     const time = index / 10;
-    rows.push(`${time},${time},${time},${1 + time},${2 - time}`);
+    rows.push(`${time},${1 + time},${time}`);
   }
   const csv = `${rows.join("\n")}\n`;
   assertEquals(normalizeAdmittedResult(csv, authorized.source), [
@@ -57,17 +57,36 @@ Deno.test("generic v2 worker validates output columns, grid, finite starts and m
   assertThrows(
     () =>
       normalizeAdmittedResult(
-        csv.replace('"der(velocity)"', '"arbitrary"'),
+        extraColumnCsv(csv, '"arbitrary"'),
         authorized.source,
       ),
     TypeError,
+    "OpenModelica CSV columns are not the admitted output set.",
   );
   assertThrows(
     () =>
-      normalizeAdmittedResult(csv.replace("0,0,0,1,2", "0,0,0,2,2"), authorized.source),
+      normalizeAdmittedResult(
+        extraColumnCsv(csv, '"der(position)"'),
+        authorized.source,
+      ),
+    TypeError,
+    "OpenModelica CSV columns are not the admitted output set.",
+  );
+  assertThrows(
+    () => normalizeAdmittedResult(csv.replace("0,1,0", "0,2,0"), authorized.source),
     TypeError,
   );
 });
+
+function extraColumnCsv(csv: string, column: string): string {
+  const lines = csv.slice(0, -1).split("\n");
+  return `${
+    [
+      `${lines[0]},${column}`,
+      ...lines.slice(1).map((line) => `${line},0`),
+    ].join("\n")
+  }\n`;
+}
 
 Deno.test("generic v2 worker rejects non UTF-8 bytes", async () => {
   await assertRejects(

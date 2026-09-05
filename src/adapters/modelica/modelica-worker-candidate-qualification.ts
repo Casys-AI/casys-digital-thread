@@ -54,6 +54,18 @@ import {
   readObservedLinuxArm64Host,
 } from "../control-plane/first-party-microsandbox-image-candidate-qualification.ts";
 import {
+  assertNoCandidateQualificationRecord,
+  assertNoCandidateQualificationSuccessor,
+  buildFirstPartyMicrosandboxImageCandidateQualificationSuccessor,
+  type FirstPartyMicrosandboxImageCandidateQualificationSuccessor,
+  type FirstPartyMicrosandboxImageCandidateQualificationSuccessorAttempt,
+  firstPartyMicrosandboxImageCandidateQualificationSuccessorRoot,
+  persistFirstPartyMicrosandboxImageCandidateQualificationSuccessor,
+  proveCandidateQualificationPredecessorUnpublishedAndDestroyed,
+  readFirstPartyMicrosandboxImageCandidateQualificationSuccessor,
+  requireSuccessorAttempt,
+} from "../control-plane/first-party-microsandbox-image-candidate-qualification-successor.ts";
+import {
   authorizeAdmittedModelicaSource,
   normalizeAdmittedResult,
 } from "./admitted/closed-subset-v2/run.ts";
@@ -383,6 +395,17 @@ export async function recoverModelicaWorkerCandidateQualification(
   );
 }
 
+export async function retryModelicaWorkerCandidateQualificationFromInfrastructureFailure(
+  record: FirstPartyMicrosandboxImageCandidateImportRecord,
+  ports: ModelicaWorkerCandidateQualificationPorts,
+): Promise<ModelicaWorkerCandidateQualificationResult> {
+  return await orchestrateModelicaWorkerCandidateQualification(
+    record,
+    ports,
+    "retry-infrastructure-failure",
+  );
+}
+
 export function renderModelicaWorkerCandidateQualificationResultText(
   result: ModelicaWorkerCandidateQualificationResult,
 ): string {
@@ -419,31 +442,37 @@ export function modelicaWorkerCandidateProfileRoot(
 async function orchestrateModelicaWorkerCandidateQualification(
   record: FirstPartyMicrosandboxImageCandidateImportRecord,
   ports: ModelicaWorkerCandidateQualificationPorts,
-  mode: "run" | "recover",
+  mode: "run" | "recover" | "retry-infrastructure-failure",
 ): Promise<ModelicaWorkerCandidateQualificationResult> {
   const composed = await composeModelicaWorkerCandidateQualification(
     record,
     ports,
-    mode,
+    mode === "retry-infrastructure-failure" ? "run" : mode,
   );
-  const kit = await settleProfile(composed.kit, mode);
-  const admitted = await settleProfile(composed.admitted, mode);
+  const bound = mode === "retry-infrastructure-failure"
+    ? await authorizeModelicaWorkerCandidateSuccessor(composed, ports)
+    : mode === "recover"
+    ? await bindExistingModelicaWorkerCandidateSuccessor(composed)
+    : composed;
+  const settleMode = mode === "retry-infrastructure-failure" ? "run" : mode;
+  const kit = await settleProfile(bound.kit, settleMode);
+  const admitted = await settleProfile(bound.admitted, settleMode);
   if (kit.status === "passed" && admitted.status === "passed") {
     const kitProof = requireQualifiedKitProof(kit.proof);
     const admittedProof = requireAdmittedProof(admitted.proof);
     const qualification = await persistAggregate(
-      composed.stateRoot,
-      buildAggregate(composed, kitProof, admittedProof),
+      bound.stateRoot,
+      buildAggregate(bound, kitProof, admittedProof),
     );
     return Object.freeze({
       schemaVersion: MODELICA_WORKER_CANDIDATE_QUALIFICATION_RESULT_SCHEMA,
       kind: "candidate-qualification",
       status: "passed",
       physicalImageId: MODELICA_MICROSANDBOX_WORKER_PHYSICAL_IMAGE_ID,
-      candidateReference: composed.record.candidate.microsandbox.candidateReference,
-      identities: composed.record.identities,
-      importRecordFingerprint: composed.importRecordFingerprint,
-      stateRoot: composed.stateRoot,
+      candidateReference: bound.record.candidate.microsandbox.candidateReference,
+      identities: bound.record.identities,
+      importRecordFingerprint: bound.importRecordFingerprint,
+      stateRoot: bound.stateRoot,
       proofs: Object.freeze([kitProof, admittedProof] as const),
       destruction: "proven",
       runtimeQualification: "passed",
@@ -472,10 +501,10 @@ async function orchestrateModelicaWorkerCandidateQualification(
     kind: "candidate-qualification",
     status: "incomplete",
     physicalImageId: MODELICA_MICROSANDBOX_WORKER_PHYSICAL_IMAGE_ID,
-    candidateReference: composed.record.candidate.microsandbox.candidateReference,
-    identities: composed.record.identities,
-    importRecordFingerprint: composed.importRecordFingerprint,
-    stateRoot: composed.stateRoot,
+    candidateReference: bound.record.candidate.microsandbox.candidateReference,
+    identities: bound.record.identities,
+    importRecordFingerprint: bound.importRecordFingerprint,
+    stateRoot: bound.stateRoot,
     proofs: Object.freeze(proofs),
     runtimeQualification: "incomplete" as const,
     eligibleForPromotion: false as const,
@@ -487,6 +516,287 @@ async function orchestrateModelicaWorkerCandidateQualification(
     }),
     admittedMethodQualification: "unqualified" as const,
   });
+}
+
+async function authorizeModelicaWorkerCandidateSuccessor(
+  composed: ComposedModelicaWorkerCandidateQualification,
+  ports: ModelicaWorkerCandidateQualificationPorts,
+): Promise<ComposedModelicaWorkerCandidateQualification> {
+  await assertNoCandidateQualificationSuccessor(composed.stateRoot);
+  await assertNoCandidateQualificationRecord(composed.stateRoot);
+  const kitAttempt = await requireDispatchedPredecessor(composed.kit);
+  const admittedAttempt = await requireDispatchedPredecessor(composed.admitted);
+  const kitFiles = await snapshotDirectory(`${
+    profileRoot(
+      composed.stateRoot,
+      MODELICA_WORKER_CANDIDATE_QUALIFIED_KIT_PROOF_ID,
+    )
+  }/attempts`);
+  const admittedFiles = await snapshotDirectory(`${
+    profileRoot(
+      composed.stateRoot,
+      MODELICA_WORKER_CANDIDATE_ADMITTED_PROOF_ID,
+    )
+  }/attempts`);
+  const kitDestruction =
+    await proveCandidateQualificationPredecessorUnpublishedAndDestroyed(
+      composed.kit.execution,
+      kitAttempt.identity.executionRunId,
+    );
+  const admittedDestruction =
+    await proveCandidateQualificationPredecessorUnpublishedAndDestroyed(
+      composed.admitted.execution,
+      admittedAttempt.identity.executionRunId,
+    );
+  await assertUnchangedSnapshot(
+    `${
+      profileRoot(composed.stateRoot, MODELICA_WORKER_CANDIDATE_QUALIFIED_KIT_PROOF_ID)
+    }/attempts`,
+    kitFiles,
+    "Modelica candidate qualification successor mutated the qualified-kit predecessor WAL.",
+  );
+  await assertUnchangedSnapshot(
+    `${
+      profileRoot(composed.stateRoot, MODELICA_WORKER_CANDIDATE_ADMITTED_PROOF_ID)
+    }/attempts`,
+    admittedFiles,
+    "Modelica candidate qualification successor mutated the admitted predecessor WAL.",
+  );
+  const successor =
+    await persistFirstPartyMicrosandboxImageCandidateQualificationSuccessor(
+      composed.stateRoot,
+      await buildFirstPartyMicrosandboxImageCandidateQualificationSuccessor({
+        physicalImageId: MODELICA_MICROSANDBOX_WORKER_PHYSICAL_IMAGE_ID,
+        importRecordFingerprint: composed.importRecordFingerprint,
+        predecessorAttempts: [
+          {
+            id: MODELICA_WORKER_CANDIDATE_QUALIFIED_KIT_PROOF_ID,
+            runId: kitAttempt.identity.executionRunId,
+            destruction: kitDestruction,
+          },
+          {
+            id: MODELICA_WORKER_CANDIDATE_ADMITTED_PROOF_ID,
+            runId: admittedAttempt.identity.executionRunId,
+            destruction: admittedDestruction,
+          },
+        ],
+      }),
+    );
+  const startedAt = (ports.now ?? (() => new Date().toISOString()))();
+  const retryRoot = firstPartyMicrosandboxImageCandidateQualificationSuccessorRoot(
+    composed.stateRoot,
+  );
+  return {
+    ...composed,
+    kit: bindSuccessorProfile(
+      composed.kit,
+      requireSuccessorAttempt(
+        successor,
+        MODELICA_WORKER_CANDIDATE_QUALIFIED_KIT_PROOF_ID,
+      ).runId,
+      retryRoot,
+      startedAt,
+    ),
+    admitted: bindSuccessorProfile(
+      composed.admitted,
+      requireSuccessorAttempt(
+        successor,
+        MODELICA_WORKER_CANDIDATE_ADMITTED_PROOF_ID,
+      ).runId,
+      retryRoot,
+      startedAt,
+    ),
+  };
+}
+
+async function bindExistingModelicaWorkerCandidateSuccessor(
+  composed: ComposedModelicaWorkerCandidateQualification,
+): Promise<ComposedModelicaWorkerCandidateQualification> {
+  const successor =
+    await readFirstPartyMicrosandboxImageCandidateQualificationSuccessor(
+      composed.stateRoot,
+    );
+  if (successor === undefined) return composed;
+  assertModelicaSuccessorAuthority(successor, composed.importRecordFingerprint);
+  const retryRoot = firstPartyMicrosandboxImageCandidateQualificationSuccessorRoot(
+    composed.stateRoot,
+  );
+  return {
+    ...composed,
+    kit: await rebindExistingSuccessorProfile(
+      composed.kit,
+      requireSuccessorAttempt(
+        successor,
+        MODELICA_WORKER_CANDIDATE_QUALIFIED_KIT_PROOF_ID,
+      ),
+      retryRoot,
+    ),
+    admitted: await rebindExistingSuccessorProfile(
+      composed.admitted,
+      requireSuccessorAttempt(
+        successor,
+        MODELICA_WORKER_CANDIDATE_ADMITTED_PROOF_ID,
+      ),
+      retryRoot,
+    ),
+  };
+}
+
+function assertModelicaSuccessorAuthority(
+  successor: FirstPartyMicrosandboxImageCandidateQualificationSuccessor,
+  importRecordFingerprint: string,
+): void {
+  if (successor.physicalImageId !== MODELICA_MICROSANDBOX_WORKER_PHYSICAL_IMAGE_ID) {
+    throw new Error(
+      "Modelica candidate qualification recovery successor does not belong to modelica-microsandbox-worker.",
+    );
+  }
+  if (successor.importRecord.fingerprint !== importRecordFingerprint) {
+    throw new Error(
+      "Modelica candidate qualification recovery successor does not belong to the bound import.",
+    );
+  }
+}
+
+async function rebindExistingSuccessorProfile(
+  ctx: ProfileContext,
+  successorAttempt: FirstPartyMicrosandboxImageCandidateQualificationSuccessorAttempt,
+  retryRoot: string,
+): Promise<ProfileContext> {
+  const root = `${retryRoot}/targets/${ctx.profileId}`;
+  const wal = new FileModelicaWorkerCandidateProfileAttemptStore(
+    `${root}/attempts`,
+    ctx.stateRoot,
+  );
+  const existing = await wal.read();
+  if (existing === undefined) {
+    throw new Error(
+      "Modelica candidate qualification recovery of a successor requires an existing WAL attempt.",
+    );
+  }
+  if (existing.identity.profileId !== ctx.profileId) {
+    throw new Error(
+      "The Modelica candidate successor WAL profile diverged from the bound proof.",
+    );
+  }
+  if (existing.identity.importRecordFingerprint !== ctx.importRecordFingerprint) {
+    throw new Error(
+      "The Modelica candidate successor WAL does not belong to the bound import.",
+    );
+  }
+  if (existing.identity.executionRunId !== successorAttempt.runId) {
+    throw new Error(
+      "The Modelica candidate successor WAL run identity diverged from the successor authority.",
+    );
+  }
+  const identity = Object.freeze({
+    ...ctx.identity,
+    executionRunId: successorAttempt.runId,
+    startedAt: existing.identity.startedAt,
+  });
+  if (deterministicJson(existing.identity) !== deterministicJson(identity)) {
+    throw new Error(
+      "The Modelica candidate successor WAL identity diverged from the bound import.",
+    );
+  }
+  return {
+    ...ctx,
+    identity,
+    wal,
+    proofPath: `${root}/proof.json`,
+  };
+}
+
+async function requireDispatchedPredecessor(
+  ctx: ProfileContext,
+): Promise<Extract<ModelicaWorkerCandidateProfileAttempt, { phase: "dispatching" }>> {
+  const attempt = await ctx.wal.read();
+  if (attempt === undefined) {
+    throw new Error(
+      "Candidate qualification successor requires an existing producerGeneration-0 predecessor.",
+    );
+  }
+  if (attempt.phase === "prepared") {
+    throw new Error(
+      "Candidate qualification successor refuses a prepared-only predecessor.",
+    );
+  }
+  if (attempt.phase === "attested") {
+    throw new Error(
+      "Candidate qualification successor refuses an already-successful predecessor.",
+    );
+  }
+  if (attempt.phase !== "dispatching") {
+    throw new Error(
+      "Candidate qualification successor requires a dispatched unpublished predecessor.",
+    );
+  }
+  if (attempt.identity.importRecordFingerprint !== ctx.importRecordFingerprint) {
+    throw new Error(
+      "Candidate qualification successor predecessor does not belong to the bound import.",
+    );
+  }
+  return attempt;
+}
+
+function bindSuccessorProfile(
+  ctx: ProfileContext,
+  executionRunId: string,
+  retryRoot: string,
+  startedAt: string,
+): ProfileContext {
+  const root = `${retryRoot}/targets/${ctx.profileId}`;
+  return {
+    ...ctx,
+    identity: Object.freeze({
+      ...ctx.identity,
+      executionRunId,
+      startedAt,
+    }),
+    wal: new FileModelicaWorkerCandidateProfileAttemptStore(
+      `${root}/attempts`,
+      ctx.stateRoot,
+    ),
+    proofPath: `${root}/proof.json`,
+  };
+}
+
+async function snapshotDirectory(
+  directory: string,
+): Promise<ReadonlyMap<string, string>> {
+  const files = new Map<string, string>();
+  async function walk(current: string): Promise<void> {
+    let entries: Deno.DirEntry[];
+    try {
+      entries = await Array.fromAsync(Deno.readDir(current));
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) return;
+      throw error;
+    }
+    for (const entry of entries) {
+      const path = `${current}/${entry.name}`;
+      if (entry.isDirectory) {
+        await walk(path);
+        continue;
+      }
+      if (!entry.isFile) continue;
+      files.set(path, await Deno.readTextFile(path));
+    }
+  }
+  await walk(directory);
+  return files;
+}
+
+async function assertUnchangedSnapshot(
+  directory: string,
+  expected: ReadonlyMap<string, string>,
+  message: string,
+): Promise<void> {
+  const actual = await snapshotDirectory(directory);
+  if (actual.size !== expected.size) throw new Error(message);
+  for (const [path, text] of expected) {
+    if (actual.get(path) !== text) throw new Error(message);
+  }
 }
 
 async function composeModelicaWorkerCandidateQualification(
