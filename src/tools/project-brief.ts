@@ -530,7 +530,7 @@ const projectBriefConfirmTool: MCPTool = {
     capabilityProposalFingerprint: {
       ...FINGERPRINT_SCHEMA,
       description:
-        "Exact server-derived operational capability proposal fingerprint from project_brief_propose. It binds the concrete selected bindings, profiles, units, image digests, host mode and effects; it contains no secret.",
+        "Exact server-derived operational capability proposal fingerprint from project_brief_propose. It binds the concrete selected bindings, profiles, units, image digests, and host effects; it excludes runtime mode, current availability, qualification, activation, and blockers, and contains no secret.",
     },
     rationale: {
       type: "string",
