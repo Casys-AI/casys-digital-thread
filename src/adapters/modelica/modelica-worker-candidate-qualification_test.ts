@@ -1441,10 +1441,10 @@ async function kitOutputs(source: Uint8Array): Promise<Map<string, Uint8Array>> 
 
 async function admittedOutputs(source: Uint8Array): Promise<Map<string, Uint8Array>> {
   const authorized = await authorizeAdmittedModelicaSource(source);
-  const rows = ['"der(position)","velocity","time","position","der(velocity)"'];
+  const rows = ['"time","position","velocity"'];
   for (let index = 0; index <= 20; index += 1) {
     const time = index / 10;
-    rows.push(`${time},${time},${time},${1 + time},${2 - time}`);
+    rows.push(`${time},${1 + time},${time}`);
   }
   const csv = `${rows.join("\n")}\n`;
   const resultBytes = ENCODER.encode(csv);
