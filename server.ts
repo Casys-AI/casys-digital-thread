@@ -51,8 +51,13 @@ import type { AdmittedModelicaExecutionServerOptions } from "./src/adapters/mode
 import type { AdmittedSpiceExecutionServerOptions } from "./src/adapters/electrical/spice/admitted/execution-composition.ts";
 import { LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE } from "./src/adapters/electrical/spice/admitted/local-image-references.ts";
 import {
-  LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
-} from "./src/adapters/control-plane/first-party-capability-runtime-identities.ts";
+  createLocalAdmittedModelicaExecutionServerOptions,
+  createLocalModelicaIsolatedExecutionServerOptions,
+} from "./src/adapters/modelica/first-party-modelica-execution.ts";
+export {
+  createLocalAdmittedModelicaExecutionServerOptions,
+  createLocalModelicaIsolatedExecutionServerOptions,
+};
 export {
   LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
@@ -405,41 +410,6 @@ const LOCAL_MODELICA_QUALIFICATION_CAPTURE_FINGERPRINT = Object.freeze({
 const LOCAL_MODELICA_QUALIFICATION_ROOT =
   "state/local/modelica-microsandbox-qualification";
 const DEFAULT_AGENT_RESOURCE_CAPTURE_DIRECTORY = "state/local/agent-resource-captures";
-
-const LOCAL_MODELICA_EXECUTION_LIMITS = Object.freeze({
-  maxWallTimeMs: 120_000,
-  maxCpuTimeMs: 120_000,
-  maxMemoryBytes: 3 * 1_073_741_824,
-  maxProcesses: 64,
-  maxStdoutBytes: 1_048_576,
-  maxStderrBytes: 1_048_576,
-  maxOutputFileBytes: 16 * 1_048_576,
-  maxOutputTotalBytes: 17 * 1_048_576,
-});
-
-const LOCAL_MODELICA_EXECUTION_POLICY_BODY = Object.freeze({
-  schemaVersion: "modelica-microsandbox-policy/1.0",
-  backend: "microsandbox-local@0.6.8",
-  imageReference: LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
-  network: "deny-all",
-  pullPolicy: "never",
-  securityProfile: "restricted",
-  workerUser: "65532:65532",
-  fixedExecutables: ["omc", "perl"],
-  limits: LOCAL_MODELICA_EXECUTION_LIMITS,
-});
-
-const LOCAL_ADMITTED_MODELICA_EXECUTION_POLICY_BODY = Object.freeze({
-  schemaVersion: "modelica-admitted-microsandbox-policy/1.0",
-  backend: "microsandbox-local@0.6.8",
-  imageReference: LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
-  network: "deny-all",
-  pullPolicy: "never",
-  securityProfile: "restricted",
-  workerUser: "65532:65532",
-  fixedExecutables: ["omc", "perl"],
-  limits: LOCAL_MODELICA_EXECUTION_LIMITS,
-});
 
 const LOCAL_ADMITTED_SPICE_EXECUTION_LIMITS = Object.freeze({
   maxWallTimeMs: 30_000,
@@ -2149,57 +2119,6 @@ export function parseConsoleCli(args: string[]): ConsoleCliOptions {
     throw new TypeError("--hostname must not be empty");
   }
   return result;
-}
-
-/**
- * Code-owned product binding for the only qualified local Modelica runtime.
- * The separately persisted qualification capture is intentionally not part of
- * this option: review and execution reopen it through the pinned authority.
- */
-export async function createLocalModelicaIsolatedExecutionServerOptions(): Promise<
-  ModelicaIsolatedExecutionServerOptions
-> {
-  const policy = Object.freeze({
-    id: "modelica-microsandbox-deny-all-v1",
-    version: "1.0.0",
-    fingerprint: await sha256Fingerprint(
-      LOCAL_MODELICA_EXECUTION_POLICY_BODY,
-    ),
-  });
-  return Object.freeze({
-    profile: Object.freeze({
-      imageReference: LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
-      policy,
-      limits: LOCAL_MODELICA_EXECUTION_LIMITS,
-      engine: Object.freeze({
-        name: "OpenModelica" as const,
-        version: "1.27.0",
-        mslVersion: "4.1.0",
-      }),
-    }),
-    runtime: Object.freeze({}),
-  });
-}
-
-/** Code-owned binding for admitted Modelica closed-subset execution. */
-export async function createLocalAdmittedModelicaExecutionServerOptions(): Promise<
-  AdmittedModelicaExecutionServerOptions
-> {
-  const policy = Object.freeze({
-    id: "modelica-admitted-microsandbox-deny-all-v1",
-    version: "1.0.0",
-    fingerprint: await sha256Fingerprint(
-      LOCAL_ADMITTED_MODELICA_EXECUTION_POLICY_BODY,
-    ),
-  });
-  return Object.freeze({
-    profile: Object.freeze({
-      imageReference: LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
-      policy,
-      limits: LOCAL_MODELICA_EXECUTION_LIMITS,
-    }),
-    runtime: Object.freeze({}),
-  });
 }
 
 /** Code-owned binding for admitted SPICE closed-subset operating-point execution. */

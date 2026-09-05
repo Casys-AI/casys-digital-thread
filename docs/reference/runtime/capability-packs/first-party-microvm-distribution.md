@@ -125,12 +125,16 @@ After import, each domain gate consumes only that bound
 `first-party-microsandbox-image-candidate-import/3.0` record and executes the exact
 cached candidate image. CAD currently owns two distinct physical/runtime atoms:
 `build123d-isolated-worker` and `geometry-module-assembler-worker`. CalculiX owns
-`calculix-worker`. They are not substitutes. The gates accept only
-`--import-record=<path>` plus `--run` (geometry and CalculiX also `--recover`). Policy,
+`calculix-worker`. Modelica owns `modelica-microsandbox-worker` as one physical image
+and one logical target; qualification still requires two server-owned profile proofs
+(`openmodelica-qualified-kit` and `openmodelica-admitted-modelica`). They are not
+substitutes. The gates accept only `--import-record=<path>` plus `--run` (geometry,
+CalculiX and Modelica also `--recover`). Modelica has no profile selector. Policy,
 limits, worker command, fixture and validators stay code-owned. Import already owns
 acquisition; qualification never builds Docker, never deletes the candidate cache, and
 never writes the active catalogue pin. CalculiX candidate qualification is not a product
-FEA verdict and not L3/L4/L5 engineering evidence.
+FEA verdict. Modelica candidate qualification is not method qualification, not
+promotion, and not L3/L4/L5 engineering evidence.
 
 Candidate state lives under
 `state/local/first-party-microsandbox-image-candidate-qualification/<physicalImageId>/<import-record fingerprint>/`.

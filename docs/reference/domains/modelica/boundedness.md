@@ -51,8 +51,8 @@ the same two roles (evidence format `modelica-isolated-evidence-v1` vs admitted 
 Receipts that are not exactly those two roles fail closed.
 
 Runtime authority: `LOCAL_MODELICA_EXECUTION_LIMITS` in
-[`server.ts`](../../../../server.ts) (admitted and qualified-kit policy bodies). The
-qualified-kit grammar
+[`first-party-modelica-execution.ts`](../../../../src/adapters/modelica/first-party-modelica-execution.ts)
+(admitted and qualified-kit policy bodies). The qualified-kit grammar
 [`QUALIFIED_LIMITS`](../../../../src/domain/modelica/qualified-kit/run-proposal.ts)
 repeats the same numbers and adds `QUALIFIED_MAXIMUM_BUNDLE_BYTES = 8_388_608`.
 

@@ -19,11 +19,15 @@ The physical images stay distinct. Do not merge them.
 | `build123d-isolated-worker`        | `verify:build123d-isolated-worker:candidate-qualification`        | Arbitrary admitted Build123d source, isolated worker |
 | `geometry-module-assembler-worker` | `verify:geometry-module-assembler-worker:candidate-qualification` | Deterministic sealed module assembly                 |
 | `calculix-worker`                  | `verify:calculix-worker:candidate-qualification`                  | Code-owned synthetic static-proof worker fixture     |
+| `modelica-microsandbox-worker`     | `verify:modelica-worker:candidate-qualification`                  | Two proofs: qualified-kit and admitted closed-subset |
 
 The Docker CalculiX worker preflight
 (`scripts/gates/verify-calculix-microsandbox-worker.ts`) remains source-image and
 worker-contract evidence. It is not this imported-candidate Microsandbox path and not
-the active-pin vertical (`verify:calculix:microsandbox:vertical`).
+the active-pin vertical (`verify:calculix:microsandbox:vertical`). The Docker Modelica
+worker preflight (`scripts/gates/verify-modelica-microsandbox-worker.ts`) and the
+active-pin vertical (`verify:modelica:microsandbox:vertical`) remain distinct
+source-image and pinned-capture contracts. They are not this imported-candidate path.
 
 ## 1. Plan first
 
@@ -37,11 +41,12 @@ prints the planned candidate reference. It does not call Docker or Microsandbox.
 deno task verify:build123d-isolated-worker:candidate-qualification -- --import-record=<path>
 deno task verify:geometry-module-assembler-worker:candidate-qualification -- --import-record=<path>
 deno task verify:calculix-worker:candidate-qualification -- --import-record=<path>
+deno task verify:modelica-worker:candidate-qualification -- --import-record=<path>
 ```
 
 Callers cannot pass provider, image, digest, platform, command, endpoint, tool, worker,
-binding, unit, proof, STEP, or args. The Microsandbox candidate reference comes only from
-`candidate.microsandbox.candidateReference` on the bound record.
+binding, unit, proof, STEP, or args. The Microsandbox candidate reference comes only
+from `candidate.microsandbox.candidateReference` on the bound record.
 
 ## 2. Qualify only with `--run`
 
@@ -49,17 +54,23 @@ binding, unit, proof, STEP, or args. The Microsandbox candidate reference comes 
 deno task verify:build123d-isolated-worker:candidate-qualification -- --import-record=<path> --run
 deno task verify:geometry-module-assembler-worker:candidate-qualification -- --import-record=<path> --run
 deno task verify:calculix-worker:candidate-qualification -- --import-record=<path> --run
+deno task verify:modelica-worker:candidate-qualification -- --import-record=<path> --run
 ```
 
-`--run` is the mutation acknowledgement. Geometry and CalculiX also accept `--recover`
-for the existing durable WAL; recovery never redispatches the worker.
+`--run` is the mutation acknowledgement. Geometry, CalculiX and Modelica also accept
+`--recover` for the existing durable WAL; recovery never redispatches the worker.
+Modelica has no profile selector: one run always owns both server-owned proofs.
 
 The gates execute the exact cached candidate image through the production composition,
 broker, output validator, CAS reread, and proven run-scoped destruction. CalculiX reuses
 the code-owned worker contract, wrapper digest, nine-file validators and batch inspector
-under a candidate-specific root. Policy, limits, worker command, fixture and oracle stay
-code-owned. Import already owns acquisition: the gates do not build Docker, load or
-remove images, or assume Docker and Microsandbox digest identity.
+under a candidate-specific root. Modelica reuses the qualified-kit bundle/validators and
+the admitted closed-subset v2 worker/validators under distinct `targets/<proof-id>/`
+subroots; the aggregate is `passed` only after both proofs are durably reread. Partial
+success stays `incomplete` and does not write a passed aggregate. Admitted
+method/binding qualification remains `unqualified`. Policy, limits, worker command,
+fixture and oracle stay code-owned. Import already owns acquisition: the gates do not
+build Docker, load or remove images, or assume Docker and Microsandbox digest identity.
 
 ## 3. Isolated candidate state
 
@@ -67,12 +78,15 @@ Candidate outputs and records live under
 `state/local/first-party-microsandbox-image-candidate-qualification/<physicalImageId>/<import-record fingerprint>/`.
 Geometry keeps attempts, attestations, captures and outputs there. Build123d keeps
 outputs and the qualification record there. CalculiX keeps WAL, CAS outputs, evidence,
-leases and the qualification record there. The record binds the observed host identity
-and the exact run/receipt. Host observation comes from the existing control-plane
-composition (`linux/arm64` only), is read once, and is refused before composition. None
-of these paths write qualification attempts or attestations into
-`state/local/capability-runtime-host`, and CalculiX never writes
-`state/local/calculix-*`.
+leases and the qualification record there. Modelica keeps per-profile WAL, CAS and
+attestations under `targets/openmodelica-qualified-kit/` and
+`targets/openmodelica-admitted-modelica/`, with the aggregate `qualification.json` at
+the physical root. The record binds the observed host identity and the exact
+run/receipt. Host observation comes from the existing control-plane composition
+(`linux/arm64` only), is read once for the whole qualification, and is refused before
+composition. None of these paths write qualification attempts or attestations into
+`state/local/capability-runtime-host`. CalculiX never writes `state/local/calculix-*`.
+Modelica never writes `state/local/modelica-microsandbox-qualification`.
 
 The imported candidate cache is preserved on success and failure. Only run-scoped
 sandboxes, staging and CAS temporary artifacts that the gate owns are removed. The

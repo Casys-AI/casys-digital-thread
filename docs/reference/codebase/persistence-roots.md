@@ -61,10 +61,16 @@ Per-physical-image, per-import-record host/runtime candidate qualification. CAD 
 `build123d-isolated-worker/<import-record fingerprint>/` and
 `geometry-module-assembler-worker/<import-record fingerprint>/`. CalculiX uses
 `calculix-worker/<import-record fingerprint>/` with isolated WAL, CAS outputs, evidence,
-leases and the strict qualification record. That record binds the observed `linux/arm64`
-host identity and the exact run/receipt. It is not the normal `capability-runtime-host`
-qualification store, not `state/local/calculix-*`, not a catalogue pin, and not L3, L4
-or L5 engineering evidence. `eligibleForPromotion` stays `false`.
+leases and the strict qualification record. Modelica uses
+`modelica-microsandbox-worker/<import-record fingerprint>/` with one aggregate
+`qualification.json` at that physical root and two profile-distinct subroots under
+`targets/openmodelica-qualified-kit/` and `targets/openmodelica-admitted-modelica/`
+(WAL, CAS outputs, profile attestations). The Modelica aggregate is a two-proof physical
+record; it is not the shared one-execution CAD/CalculiX schema. None of these paths
+write `state/local/modelica-microsandbox-qualification`, the active
+`capability-runtime-host` qualification store, Thread, or project state. Host
+observation is `linux/arm64`. `eligibleForPromotion` stays `false`. This is not L3, L4
+or L5 engineering evidence.
 
 #### `state/local/capability-runtime-microvm-preparation/`
 
