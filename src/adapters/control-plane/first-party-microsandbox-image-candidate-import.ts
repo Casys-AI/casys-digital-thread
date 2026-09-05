@@ -16,12 +16,16 @@
  * the active catalogue pin). Microsandbox SDK 0.6.8 has no tag/relabel API:
  * staging is Image.load(archive, { tag: staging }), then exact Image.remove of
  * that staging reference, then a second Image.load of the same archive with
- * tag casys/first-party-candidate-<physicalImageId>@sha256:<observed-msb-digest>.
- * That second load is a re-import that applies the candidate reference, not an
- * in-place retag.
+ * the canonical Microsandbox cache reference
+ * docker.io/casys/first-party-candidate-<physicalImageId>@sha256:<observed-msb-digest>
+ * derived by pinnedOciImageReference. The factual import record still stores
+ * the short casys/first-party-candidate-<physicalImageId>@sha256:<observed-msb-digest>
+ * as candidateReference. That second load is a re-import that applies the
+ * cache reference, not an in-place retag.
  */
 
 import { samePinnedRepositoryDigest } from "../shared/docker-pinned-repository-digest.ts";
+import { pinnedOciImageReference } from "../../domain/compile/isolation/local-isolation-runtime.ts";
 import type {
   MicrosandboxImageImportHandle,
   MicrosandboxImageInspection,
@@ -78,7 +82,8 @@ export interface FirstPartyMicrosandboxImageCandidateImportPorts {
   /**
    * Exact Microsandbox cached-image removal. No force, prune, or volume.
    * Callers of this port from the candidate-import flow may pass only the
-   * staging reference or a final candidate this flow just imported.
+   * exact staging reference or the exact canonical cache reference derived
+   * for this physical candidate digest.
    */
   removeExactCachedImage(reference: string): Promise<void>;
   createTemporaryArchiveDirectory(): Promise<FirstPartyMicrosandboxTemporaryArchive>;
@@ -200,6 +205,7 @@ export async function importFirstPartyMicrosandboxImageCandidate(input: {
 
   let stagingLoaded = false;
   let importedFinalReference: string | undefined;
+  let observedDigest: string | undefined;
   let recordWritten = false;
   let archiveCleaned = false;
   const temporary = await ports.createTemporaryArchiveDirectory();
@@ -221,7 +227,7 @@ export async function importFirstPartyMicrosandboxImageCandidate(input: {
     stagingLoaded = true;
     assertNoCatalogPinReturnedByLoad(stagingHandles, catalogPin);
     const staged = await ports.inspectCachedImage(stagingReference);
-    const observedDigest = assertExactCandidateMicrosandboxInspection(
+    observedDigest = assertExactCandidateMicrosandboxInspection(
       staged,
       receipt,
       stagingReference,
@@ -231,18 +237,30 @@ export async function importFirstPartyMicrosandboxImageCandidate(input: {
       receipt.candidate.physicalImageId,
       observedDigest,
     );
+    const candidateCacheReference = firstPartyMicrosandboxImageCandidateCacheReference(
+      receipt.candidate.physicalImageId,
+      observedDigest,
+    );
     assertDistinctFromCatalogPin(
       candidateReference,
       catalogPin,
       "final candidate reference",
     );
-    const preexisting = await lookupCachedRuntimeImage(ports, candidateReference);
+    assertDistinctFromCatalogPin(
+      candidateCacheReference,
+      catalogPin,
+      "final candidate cache reference",
+    );
+    const preexisting = await lookupCachedRuntimeImage(
+      ports,
+      candidateCacheReference,
+    );
     if (preexisting !== undefined) {
       try {
         assertExactCandidateMicrosandboxInspection(
           preexisting,
           receipt,
-          candidateReference,
+          candidateCacheReference,
           observedDigest,
         );
       } catch (error) {
@@ -254,23 +272,27 @@ export async function importFirstPartyMicrosandboxImageCandidate(input: {
       receipt,
       stagingReference,
       stagingReference,
+      observedDigest,
     );
     stagingLoaded = false;
     if (preexisting === undefined) {
-      assertNonCatalogLoadTag(candidateReference, catalogPin);
+      assertNonCatalogLoadTag(candidateCacheReference, catalogPin);
       const candidateHandles = await ports.loadImageFromArchive(
         archivePath,
-        candidateReference,
+        candidateCacheReference,
       );
       assertRequestedLoadReference(
         candidateHandles,
-        candidateReference,
+        candidateCacheReference,
         "final candidate",
       );
-      importedFinalReference = candidateReference;
+      importedFinalReference = candidateCacheReference;
       assertNoCatalogPinReturnedByLoad(candidateHandles, catalogPin);
     }
-    const imported = await lookupCachedRuntimeImage(ports, candidateReference);
+    const imported = await lookupCachedRuntimeImage(
+      ports,
+      candidateCacheReference,
+    );
     if (imported === undefined) {
       throw new Error(
         "The cached first-party Microsandbox candidate is absent after import.",
@@ -279,7 +301,7 @@ export async function importFirstPartyMicrosandboxImageCandidate(input: {
     assertExactCandidateMicrosandboxInspection(
       imported,
       receipt,
-      candidateReference,
+      candidateCacheReference,
       observedDigest,
     );
     const record = await buildFirstPartyMicrosandboxImageCandidateImportRecord({
@@ -301,6 +323,7 @@ export async function importFirstPartyMicrosandboxImageCandidate(input: {
           receipt,
           stagingReference,
           importedFinalReference,
+          observedDigest,
         );
       } catch (cleanupError) {
         cleanupErrors.push(cleanupError);
@@ -313,6 +336,7 @@ export async function importFirstPartyMicrosandboxImageCandidate(input: {
           receipt,
           stagingReference,
           stagingReference,
+          observedDigest,
         );
         stagingLoaded = false;
       } catch (cleanupError) {
@@ -510,8 +534,14 @@ async function removeOwnedCandidateReference(
   receipt: FirstPartyMicrosandboxImageCandidateReceipt,
   stagingReference: string,
   reference: string,
+  observedDigest: string | undefined,
 ): Promise<void> {
-  assertOwnedCandidateCacheReference(reference, receipt, stagingReference);
+  assertOwnedCandidateCacheReference(
+    reference,
+    receipt,
+    stagingReference,
+    observedDigest,
+  );
   await ports.removeExactCachedImage(reference);
 }
 
@@ -522,21 +552,42 @@ function wrapIncoherentPreexistingCandidate(error: unknown): Error {
   );
 }
 
+function firstPartyMicrosandboxImageCandidateCacheReference(
+  physicalImageId: string,
+  microsandboxManifestDigest: string,
+): string {
+  return pinnedOciImageReference(
+    firstPartyMicrosandboxImageCandidateReference(
+      physicalImageId,
+      microsandboxManifestDigest,
+    ),
+    "$firstPartyCandidateImport.microsandbox.cacheReference",
+  );
+}
+
 function assertOwnedCandidateCacheReference(
   reference: string,
   receipt: FirstPartyMicrosandboxImageCandidateReceipt,
   stagingReference: string,
+  observedDigest: string | undefined,
 ): void {
   const catalogPin = receipt.candidate.qualificationTarget.imageReference;
-  if (reference === catalogPin) {
+  if (isActiveCataloguePin(reference, catalogPin)) {
     throw new Error(
       "First-party candidate import must not remove the active catalogue pin.",
     );
   }
-  const candidatePrefix = `${
-    firstPartyMicrosandboxImageCandidateName(receipt.candidate.physicalImageId)
-  }@sha256:`;
-  if (reference !== stagingReference && !reference.startsWith(candidatePrefix)) {
+  if (reference === stagingReference) return;
+  if (observedDigest === undefined) {
+    throw new Error(
+      "First-party candidate import may remove only its staging or final candidate reference.",
+    );
+  }
+  const expectedCacheReference = firstPartyMicrosandboxImageCandidateCacheReference(
+    receipt.candidate.physicalImageId,
+    observedDigest,
+  );
+  if (reference !== expectedCacheReference) {
     throw new Error(
       "First-party candidate import may remove only its staging or final candidate reference.",
     );
@@ -544,7 +595,7 @@ function assertOwnedCandidateCacheReference(
 }
 
 function assertNonCatalogLoadTag(tag: string, catalogPin: string): void {
-  if (tag === catalogPin) {
+  if (isActiveCataloguePin(tag, catalogPin)) {
     throw new Error(
       "First-party candidate import must not load under the active catalogue pin.",
     );
@@ -567,12 +618,7 @@ function assertNoCatalogPinReturnedByLoad(
   handles: readonly MicrosandboxImageImportHandle[],
   catalogPin: string,
 ): void {
-  if (
-    handles.some((handle) =>
-      handle.reference === catalogPin ||
-      samePinnedRepositoryDigest(handle.reference, catalogPin)
-    )
-  ) {
+  if (handles.some((handle) => isActiveCataloguePin(handle.reference, catalogPin))) {
     throw new Error(
       "Microsandbox archive load returned the active catalogue pin; the candidate import is refused.",
     );
@@ -584,11 +630,16 @@ function assertDistinctFromCatalogPin(
   catalogPin: string,
   label: string,
 ): void {
-  if (reference === catalogPin) {
+  if (isActiveCataloguePin(reference, catalogPin)) {
     throw new Error(
       `First-party candidate ${label} must not equal the active catalogue pin.`,
     );
   }
+}
+
+function isActiveCataloguePin(reference: string, catalogPin: string): boolean {
+  return reference === catalogPin ||
+    samePinnedRepositoryDigest(reference, catalogPin);
 }
 
 function assertLiteralNotRunCompliance(

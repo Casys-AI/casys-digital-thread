@@ -52,8 +52,10 @@ an invocation-owned nonce, preflights that exact non-catalog staging tag is abse
 loads Microsandbox under it. The returned `Image.load` handles must include that
 requested staging tag and must not include the active catalogue pin. The flow records
 the observed Microsandbox digest, removes only its proven-owned staging reference, and
-re-imports the same archive as
-`casys/first-party-candidate-<physicalImageId>@sha256:<observed-msb-digest>`.
+re-imports the same archive under the canonical Microsandbox cache reference
+`docker.io/casys/first-party-candidate-<physicalImageId>@sha256:<observed-msb-digest>`
+derived by `pinnedOciImageReference`. The factual import record still stores the short
+`casys/first-party-candidate-<physicalImageId>@sha256:<observed-msb-digest>` identity.
 Microsandbox 0.6.8 has no relabel API; the second load is a re-import, not an in-place
 retag.
 
