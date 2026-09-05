@@ -12,13 +12,13 @@
    light even when the operating system prefers dark, without `!important`. */
 html:root {
   color-scheme: light;
-  --bg: #f7f8fa;
-  --surface-0: #fbfcfd;
+  --bg: #f4f5f2;
+  --surface-0: #fafbf8;
   --surface-1: #ffffff;
-  --surface-2: #f2f4f6;
-  --surface-3: #e9ecef;
-  --line: #e2e5e9;
-  --line-strong: #c6cbd2;
+  --surface-2: #f0f2ef;
+  --surface-3: #e7ebe7;
+  --line: #dfe3df;
+  --line-strong: #c3cbc5;
   --text: #1c2126;
   --text-soft: #49515a;
   --muted: #5f6773;
@@ -54,17 +54,20 @@ html:root {
   --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.05);
   --shadow-pop: 0 4px 16px rgba(16, 24, 40, 0.08);
 
-  --text-3xs: 0.6rem;
-  --text-2xs: 0.65rem;
-  --text-xs: 0.7rem;
-  --text-sm: 0.75rem;
-  --text-base: 0.8125rem;
-  --text-md: 0.875rem;
-  --text-lg: 1rem;
-  --text-xl: 1.125rem;
-  --text-2xl: 1.375rem;
-  --text-3xl: 1.75rem;
-  --text-4xl: 2.125rem;
+  /* Historical cockpit sizes are namespaced so they no longer override
+     Tailwind v4's --text-* scale. Utility text now keeps its expected,
+     readable size; graph internals can retain the denser legacy scale. */
+  --cockpit-text-3xs: 0.6rem;
+  --cockpit-text-2xs: 0.65rem;
+  --cockpit-text-xs: 0.7rem;
+  --cockpit-text-sm: 0.75rem;
+  --cockpit-text-base: 0.8125rem;
+  --cockpit-text-md: 0.875rem;
+  --cockpit-text-lg: 1rem;
+  --cockpit-text-xl: 1.125rem;
+  --cockpit-text-2xl: 1.375rem;
+  --cockpit-text-3xl: 1.75rem;
+  --cockpit-text-4xl: 2.125rem;
 
   --page-max: 1180px;
   --page-inline: clamp(1rem, 5vw, 5.75rem);

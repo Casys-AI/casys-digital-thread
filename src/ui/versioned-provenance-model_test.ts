@@ -1,12 +1,10 @@
 import { assertEquals, assertStrictEquals, assertStringIncludes } from "@std/assert";
 import {
-  buildVersionedGraphSelectionIndex,
   buildVersionedProvenanceProjection,
   currentArtifacts,
   currentRequirements,
   edgeForVersionedGraphSelection,
   presentedFamilyMemberRef,
-  stubEdgeOccurrenceKey,
   versionedEdgeGroupForSelection,
   visibleGraphRef,
   visibleGraphSelection,
@@ -180,77 +178,6 @@ Deno.test("historic selections resolve to the visible node without changing the 
   assertEquals(
     selected?.kind === "edge" ? selected.occurrence?.edge.id : undefined,
     "proof-r3-to-requirement",
-  );
-});
-
-Deno.test("synthetic stubs reproject to their exact current renderer occurrence", () => {
-  const projection = buildVersionedProvenanceProjection(
-    rawGraph(),
-    familyGraph("current"),
-  );
-  const stub = {
-    ...edge(
-      "stub:proof-to-requirement",
-      "proof-r3",
-      "requirement",
-      "evidences",
-    ),
-    rationale: "via folded instrument — replié",
-  };
-
-  const selected = {
-    kind: "edge",
-    id: stub.id,
-    occurrence: { key: stubEdgeOccurrenceKey(stub), edge: stub },
-  } as const;
-  const refreshedStub = structuredClone(stub);
-  const refreshedIndex = buildVersionedGraphSelectionIndex(projection, [
-    refreshedStub,
-  ]);
-  const visible = visibleGraphSelection(
-    projection,
-    selected,
-    refreshedIndex,
-  );
-
-  assertStrictEquals(
-    visible?.kind === "edge" ? visible.occurrence?.edge : undefined,
-    refreshedStub,
-  );
-  assertStrictEquals(
-    edgeForVersionedGraphSelection(projection, selected, refreshedIndex),
-    refreshedStub,
-  );
-});
-
-Deno.test("a removed stub clears a keyed renderer and inspector selection", () => {
-  const projection = buildVersionedProvenanceProjection(
-    rawGraph(),
-    familyGraph("current"),
-  );
-  const stub = {
-    ...edge(
-      "stub:proof-to-requirement",
-      "proof-r3",
-      "requirement",
-      "evidences",
-    ),
-    rationale: "via folded instrument — replié",
-  };
-  const selection = {
-    kind: "edge" as const,
-    id: stub.id,
-    occurrence: { key: stubEdgeOccurrenceKey(stub), edge: stub },
-  };
-  const withoutStub = buildVersionedGraphSelectionIndex(projection);
-
-  assertEquals(
-    visibleGraphSelection(projection, selection, withoutStub),
-    undefined,
-  );
-  assertEquals(
-    edgeForVersionedGraphSelection(projection, selection, withoutStub),
-    undefined,
   );
 });
 

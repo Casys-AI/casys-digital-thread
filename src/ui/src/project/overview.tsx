@@ -1,6 +1,5 @@
-import { marginLabel, requirementMargin } from "./requirement-margin-model.ts";
 import { compactEmbeddedFingerprints } from "../thread/compact-identifier-model.ts";
-import type { JSX } from "react";
+import type { JSX, MouseEvent } from "react";
 import { recordStatusVariant } from "./record-status.ts";
 import type {
   EngineeringAgentRun,
@@ -13,18 +12,14 @@ import type {
   EngineeringWorkbenchActivity,
   EngineeringWorkbenchCaseActivityJoin,
   EngineeringWorkbenchPhaseLane,
+  ThreadGraphNode,
   ThreadGraphRef,
   ThreadWorkbenchSnapshot,
 } from "../thread/types.ts";
-import { exactThreadAssetHref } from "../cad/exact-thread-asset.ts";
-import { ThreadAssetOpenLinks } from "../cad/thread-asset-open-links.tsx";
-import { GltfAssetCanvas } from "../thread/gltf-asset-canvas.tsx";
-import {
-  resolveSealedAssemblyGeometry,
-  sealedAssemblyGlbAsset,
-} from "../thread/component-workspace-model.ts";
+import { activityFeedNodes } from "../thread/feed-model.ts";
+import type { ThreadViewerSessionsProjection } from "../thread/viewer-sessions-client.ts";
 import { OverviewThreadHero } from "./overview-thread-hero.tsx";
-import { Progress } from "@ark-ui/react/progress";
+import type { OverviewThreadStageSummary } from "./overview-thread-d3-flow.tsx";
 import { cn } from "../lib/utils.ts";
 import {
   CARD_SURFACE,
@@ -45,19 +40,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../ui/dialog.tsx";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip.tsx";
 import type { ProjectWorkspaceView } from "./navigation.tsx";
 import {
   hasDistinctProjectObjectiveStatement,
-  type ProductWorkspaceFacet,
   type ProjectDeepLinkTarget,
 } from "./navigation-model.ts";
-import {
-  buildRequirementMatrix,
-  hasRecordedEvidence,
-  hasRecordedMargin,
-  type RequirementMatrixRow,
-} from "./product-requirements-model.ts";
 import {
   buildProjectReviewRecords,
   currentProjectReview,
@@ -84,8 +71,9 @@ export interface ProjectOverviewProps {
   readonly phaseLanes: readonly EngineeringWorkbenchPhaseLane[];
   readonly activities: readonly EngineeringWorkbenchActivity[];
   readonly caseActivityJoins: readonly EngineeringWorkbenchCaseActivityJoin[];
+  /** Exact browser-safe session descriptors from the read-only Workbench BFF. */
+  readonly viewerSessions?: ThreadViewerSessionsProjection;
   readonly onNavigate: (view: ProjectWorkspaceView) => void;
-  readonly onOpenProductFacet?: (facet: ProductWorkspaceFacet) => void;
   readonly onOpenActivity?: (decisionId?: string) => void;
   readonly onOpenDeepLink?: (target: ProjectDeepLinkTarget) => void;
   readonly onOpenEvidence?: (reference: ThreadGraphRef) => void;
@@ -93,8 +81,8 @@ export interface ProjectOverviewProps {
 
 /**
  * Grammaire 2a : thread-first. Une bannière de review, le bandeau cinq
- * étapes, le graphe enregistré (ThreadGraph), les tuiles de verdict, Now
- * en feed, GLB en vignette.
+ * étapes, le graphe enregistré (ThreadGraph), l'activité enregistrée et Now. Les
+ * surfaces de détail appartiennent aux viewers contextuels du graphe.
  */
 export function ProjectOverview({
   project,
@@ -102,8 +90,8 @@ export function ProjectOverview({
   phaseLanes,
   activities,
   caseActivityJoins,
+  viewerSessions,
   onNavigate,
-  onOpenProductFacet,
   onOpenActivity,
   onOpenDeepLink,
   onOpenEvidence,
@@ -116,30 +104,23 @@ export function ProjectOverview({
     activities,
     caseActivityJoins,
   );
-  const requirementMatrix = buildRequirementMatrix(thread);
-  const assemblyIntegrity = recordedAssemblyIntegrityL4(thread);
+  const recordedActivity = activityFeedNodes(thread.graph.nodes);
   const currentFocus = selectCurrentProjectFocus(project);
   const openBlocker = brief.openBlockers[0];
   const statusTone = projectStatusTone(projectPath.status);
   const statusLabel = projectPathStatusLabel(projectPath);
-  const sealedAssembly = resolveSealedAssemblyGeometry(thread);
-  const sealedAssemblyGlb = sealedAssembly
-    ? sealedAssemblyGlbAsset(sealedAssembly)
-    : undefined;
-  const sealedAssemblyStep = sealedAssembly?.assemblyAssets.find((artifact) =>
-    artifact.kind === "step"
-  );
   const pathStages = groupProjectPathGatesByLane(
     projectPath.activities,
     phaseLanes,
   );
-  const openProductFacet = (facet: ProductWorkspaceFacet) => {
-    if (onOpenProductFacet) {
-      onOpenProductFacet(facet);
-      return;
-    }
-    onNavigate("product");
-  };
+  const overviewStages: readonly OverviewThreadStageSummary[] = pathStages.map(
+    (group) => ({
+      lane: group.id,
+      label: PROJECT_PATH_STAGE_LABELS[group.id],
+      status: projectPathLaneStageStatus(group),
+      count: `${group.satisfiedGates}/${group.totalGates}`,
+    }),
+  );
   const openOverviewEvidence = (reference: ThreadGraphRef) => {
     if (onOpenEvidence) {
       onOpenEvidence(reference);
@@ -159,224 +140,177 @@ export function ProjectOverview({
   // min-content à toute la colonne (piège grid).
   return (
     <main
-      className="overview-2a grid grid-cols-[minmax(0,1fr)] gap-3"
+      className="overview-2a project-thread-page grid grid-cols-[minmax(0,1fr)]"
       id="project-workspace-panel"
       tabIndex={-1}
     >
       <section
-        className="flex flex-col items-start justify-between gap-6 pb-3 md:flex-row md:items-end"
+        className="project-thread-canvas"
         aria-labelledby="project-objective-title"
+        data-tone={statusTone}
+        data-surface="digital-thread-whiteboard"
       >
-        <div className="min-w-0 [&>h3]:m-0 [&>h3]:max-w-[620px] [&>h3]:text-balance [&>h3]:text-[19px] [&>h3]:font-semibold [&>h3]:leading-snug [&>h3]:tracking-tight">
-          <p className={cn("mb-1", PAGE_EYEBROW)}>
-            Project objective
-          </p>
-          <h3 id="project-objective-title">
-            {project.project.objective.title}
-          </h3>
-          {hasDistinctProjectObjectiveStatement(
-            project.project.objective.title,
-            project.project.objective.statement,
-          ) && (
-            <blockquote className="mt-3 max-w-3xl border-l-2 border-brand/30 pl-4 text-sm text-muted-foreground">
-              {project.project.objective.statement}
-            </blockquote>
-          )}
-        </div>
-        <div
-          className="flex shrink-0 flex-col items-start gap-1.5 md:items-end"
-          data-tone={statusTone}
-          aria-label={`Project status: ${statusLabel}`}
+        <section
+          id="project-thread-whiteboard"
+          className="project-thread-board"
+          aria-labelledby="project-phase-title"
+          data-viewer-layer="reserved"
         >
-          <dl
-            className={cn(
-              "grid max-w-full divide-x divide-border overflow-hidden",
-              thread.assemblyIntegrity
-                ? "grid-cols-[minmax(0,1.4fr)_auto_auto_auto]"
-                : "grid-cols-[minmax(0,1.4fr)_auto_auto]",
-              CARD_SURFACE,
-            )}
-          >
-            <div className="flex min-w-0 flex-col gap-px px-3 py-1.5">
-              <dt className="font-mono text-[9px] font-medium tracking-wider text-muted-foreground">
-                Status
-              </dt>
-              <dd className="m-0 flex items-center gap-1.5 text-[13px] font-medium">
-                <i
-                  aria-hidden="true"
-                  className={cn(
-                    "size-1.5 shrink-0 rounded-full",
-                    toneDotClass(statusTone),
+          <h3 id="project-phase-title" className="sr-only">
+            Project path and digital thread
+          </h3>
+          <div className="project-thread-top-hud">
+            <header className="project-thread-hud">
+              <div className="project-thread-mission">
+                <p className={cn("m-0", PAGE_EYEBROW)}>
+                  Project control
+                </p>
+                <h2 id="project-objective-title">
+                  {project.project.objective.title}
+                </h2>
+                {hasDistinctProjectObjectiveStatement(
+                  project.project.objective.title,
+                  project.project.objective.statement,
+                ) && (
+                  <blockquote className="project-thread-mission-statement">
+                    {project.project.objective.statement}
+                  </blockquote>
+                )}
+                <p
+                  className="project-thread-context-meta"
+                  title={`${project.id}@${project.revision} · ${thread.id} · ${project.project.subjectId}`}
+                >
+                  {project.id}@{project.revision}
+                  <span aria-hidden="true">·</span>
+                  {thread.id}
+                  <span aria-hidden="true">·</span>
+                  {project.project.subjectId}
+                  {projectPath.status === "completed" && (
+                    <>
+                      <span aria-hidden="true">—</span>
+                      Concept/integration proof only · not certification or
+                      release
+                    </>
                   )}
-                />
-                <span className="truncate" title={statusLabel}>
-                  {statusLabel}
-                </span>
-              </dd>
-            </div>
-            <div className="flex flex-col gap-px px-3 py-1.5">
-              <dt className="font-mono text-[9px] font-medium tracking-wider text-muted-foreground">
-                Requirements
-              </dt>
-              <dd className="m-0 font-mono text-[13px] tabular-nums">
-                <span className="text-success">
-                  {requirementMatrix.counts.pass} pass
-                </span>
-                {requirementMatrix.counts.fail > 0
-                  ? ` · ${requirementMatrix.counts.fail} fail`
-                  : ""}
-                {requirementMatrix.counts.unresolved > 0
-                  ? ` · ${requirementMatrix.counts.unresolved} unresolved`
-                  : requirementMatrix.counts.all === 0
-                  ? " · none recorded"
-                  : ""}
-              </dd>
-            </div>
-            {thread.assemblyIntegrity && (
-              <div className="flex min-w-0 flex-col gap-px px-3 py-1.5">
-                <dt className="font-mono text-[9px] font-medium tracking-wider text-muted-foreground">
-                  Assembly integrity
-                </dt>
-                <dd className="m-0 truncate font-mono text-[13px] tabular-nums">
-                  {assemblyIntegrity
-                    ? `${assemblyIntegrity.verdict} · L4`
-                    : "no L4 verdict"}
-                </dd>
+                </p>
               </div>
-            )}
-            <div className="flex flex-col gap-px px-3 py-1.5">
-              <dt className="font-mono text-[9px] font-medium tracking-wider text-muted-foreground">
-                Snapshot
-              </dt>
-              <dd className="m-0 font-mono text-[13px] tabular-nums">
-                @{project.revision}
-              </dd>
-            </div>
-          </dl>
-          {projectPath.status === "completed" && (
-            <p className="text-xs text-muted-foreground">
-              Concept/integration proof only · not certification or release
-            </p>
-          )}
-        </div>
-      </section>
-
-      <OverviewReviewBanner
-        project={project}
-        thread={thread}
-        onOpenActivity={onOpenActivity}
-        onOpenDeepLink={onOpenDeepLink}
-        onOpenEvidence={onOpenEvidence}
-      />
-
-      <Card className="overflow-hidden">
-        <section aria-labelledby="project-phase-title">
-          <h3 id="project-phase-title" className="sr-only">Project path</h3>
-          <ProjectPathStageBand groups={pathStages} />
-        </section>
-        <OverviewThreadHero
-          thread={thread}
-          activities={projectPath.activities}
-          onOpenEvidence={openOverviewEvidence}
-          onOpenActivity={openOverviewActivity}
-        />
-      </Card>
-
-      <OverviewVerdictTiles
-        thread={thread}
-        onOpenRequirements={() => openProductFacet("requirements")}
-      />
-
-      <div
-        className={cn(
-          "grid items-start gap-3.5",
-          sealedAssemblyGlb?.uri && "lg:grid-cols-[minmax(0,1fr)_340px]",
-        )}
-      >
-        <Card className="overflow-hidden">
-          <NowPanel
-            project={project}
-            activeRun={currentFocus.activeRun}
-            focusWork={currentFocus.work}
-            lastSettledRun={brief.lastSettledRun}
-            nextWork={currentWork.nextWork[0]}
-            openBlocker={openBlocker}
-            onNavigate={onNavigate}
-          />
-        </Card>
-        {sealedAssemblyGlb?.uri && (
-          <Card className="overflow-hidden">
-            <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-              <p className={cn("m-0", SECTION_LABEL)}>
-                Sealed assembly preview · GLB
-              </p>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <ThreadAssetOpenLinks
-                  stepHref={exactThreadAssetHref(
-                    sealedAssemblyStep?.uri,
-                    sealedAssemblyStep?.fingerprint,
-                    "step",
-                  )}
-                  glbHref={exactThreadAssetHref(
-                    sealedAssemblyGlb.uri,
-                    sealedAssemblyGlb.fingerprint,
-                    "glb",
-                  )}
-                  subject="sealed assembly"
-                />
-                <span className="font-mono text-[9.5px] text-muted-foreground">
-                  {sealedAssembly?.assemblyFormats.join(" · ") || "GLB"}
-                </span>
+              <div className="project-thread-hud-controls">
+                <div
+                  className="overview-status-cluster project-thread-status-hud"
+                  aria-label={`Project path: ${statusLabel}`}
+                >
+                  <dl
+                    className={cn(
+                      "overview-status-grid project-thread-status-grid",
+                      CARD_SURFACE,
+                    )}
+                  >
+                    <div>
+                      <dt>Project path</dt>
+                      <dd>
+                        <i
+                          aria-hidden="true"
+                          className={cn(
+                            "project-thread-status-dot",
+                            toneDotClass(statusTone),
+                          )}
+                        />
+                        <span title={statusLabel}>{statusLabel}</span>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Thread records</dt>
+                      <dd className="font-mono tabular-nums">
+                        {thread.graph.nodes.length} records ·{" "}
+                        {thread.graph.edges.length} links
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Activity</dt>
+                      <dd className="font-mono tabular-nums">
+                        {recordedActivity.length} recorded
+                        {recordedActivity[0]?.recordedAt
+                          ? ` · ${
+                            formatShortTime(recordedActivity[0].recordedAt)
+                          }`
+                          : ""}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Snapshot</dt>
+                      <dd className="font-mono tabular-nums">
+                        @{project.revision}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+                <nav
+                  className="project-thread-destination-dock"
+                  aria-label="Project destinations"
+                >
+                  <button
+                    type="button"
+                    onClick={() => onNavigate("product")}
+                  >
+                    Product
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate("verification")}
+                  >
+                    Evidence
+                  </button>
+                  <button type="button" onClick={() => onNavigate("work")}>
+                    Activity
+                  </button>
+                </nav>
               </div>
-            </div>
-            <div className="h-[158px] overflow-hidden bg-muted/30">
-              <GltfAssetCanvas
-                url={sealedAssemblyGlb.uri}
-                ariaLabel="Interactive sealed assembly geometry"
-                loadingLabel="Loading sealed model…"
-                errorLabel="Sealed model unavailable"
+            </header>
+
+            <div className="project-thread-review-rail">
+              <OverviewReviewBanner
+                project={project}
+                thread={thread}
+                onOpenActivity={onOpenActivity}
+                onOpenDeepLink={onOpenDeepLink}
+                onOpenEvidence={onOpenEvidence}
               />
             </div>
-            <PanelFoot className="font-mono text-[10px] tabular-nums text-muted-foreground">
-              <span>{sealedAssembly?.captureArtifact.label}</span>
-              <span>
-                {thread.components.components.length} recorded components
-              </span>
-            </PanelFoot>
-          </Card>
-        )}
-      </div>
-      <p className="m-0 font-mono text-[10px] text-muted-foreground">
-        {project.id}@{project.revision}
-        {" · "}
-        {thread.id}
-        {" · "}
-        {project.project.subjectId}
-        {" — "}
-        <button
-          type="button"
-          className="text-brand"
-          onClick={() => openProductFacet("structure")}
-        >
-          Product
-        </button>
-        {" · "}
-        <button
-          type="button"
-          className="text-brand"
-          onClick={() => onNavigate("verification")}
-        >
-          Evidence
-        </button>
-        {" · "}
-        <button
-          type="button"
-          className="text-brand"
-          onClick={() => onNavigate("work")}
-        >
-          Activity
-        </button>
-      </p>
+          </div>
+
+          <OverviewThreadHero
+            thread={thread}
+            projectId={project.project.id}
+            viewerSessions={viewerSessions}
+            activities={projectPath.activities}
+            immersive
+            stages={overviewStages}
+            onOpenEvidence={openOverviewEvidence}
+            onOpenActivity={openOverviewActivity}
+          />
+          <div className="project-thread-bottom-hud">
+            <div className="project-thread-now-hud">
+              <NowPanel
+                compact
+                project={project}
+                activeRun={currentFocus.activeRun}
+                focusWork={currentFocus.work}
+                lastSettledRun={brief.lastSettledRun}
+                nextWork={currentWork.nextWork[0]}
+                openBlocker={openBlocker}
+                onNavigate={onNavigate}
+              />
+            </div>
+            <div className="project-thread-records-hud">
+              <OverviewRecordedActivity
+                thread={thread}
+                onOpenActivity={openOverviewActivity}
+                onOpenRecord={openOverviewEvidence}
+              />
+            </div>
+          </div>
+        </section>
+      </section>
     </main>
   );
 }
@@ -386,12 +320,12 @@ export function ProjectOverview({
  * `flex` et `role="list"` conservent le rôle liste ; `display:grid` le
  * retirerait sous VoiceOver/Safari.
  */
-function ProjectPathStageBand(
+export function ProjectPathStageBand(
   { groups }: { readonly groups: readonly ProjectPathLaneGroup[] },
 ): JSX.Element {
   return (
     <ol
-      className="flex items-center gap-0 overflow-x-auto px-4 py-2 tabular-nums"
+      className="project-path-stage-band flex items-center gap-0 overflow-x-auto px-4 py-2 tabular-nums"
       role="list"
     >
       {groups.map((group, index) => {
@@ -435,7 +369,7 @@ function ProjectPathStageBand(
               <span
                 aria-hidden="true"
                 className={cn(
-                  "mx-1.5 h-px min-w-3 flex-1",
+                  "project-path-stage-connector mx-1.5 h-px min-w-3 flex-1",
                   status === "completed" ? "bg-success/40" : "bg-border",
                 )}
               />
@@ -470,7 +404,7 @@ function OverviewReviewBanner({
   return (
     <Card
       className={cn(
-        "gap-0 py-0 shadow-sm",
+        "overview-review-banner gap-0 py-0 shadow-sm",
         nextReview && "border-warning/40",
       )}
     >
@@ -514,7 +448,7 @@ function OverviewReviewBanner({
                     size="sm"
                     className="h-7 bg-zinc-900 px-3 text-xs text-zinc-50 hover:bg-zinc-800"
                   >
-                    Open in Activity
+                    Inspect review
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="max-w-md">
@@ -549,7 +483,7 @@ function OverviewReviewBanner({
                           onOpenActivity?.(nextReview.decision?.id);
                         }}
                       >
-                        Continue in Activity →
+                        Open in Activity →
                       </Button>
                     </DialogClose>
                   </DialogFooter>
@@ -562,7 +496,7 @@ function OverviewReviewBanner({
                 className="h-7 bg-zinc-900 px-3 text-xs text-zinc-50 hover:bg-zinc-800"
                 onClick={() => onOpenActivity?.()}
               >
-                Open in Activity
+                Open Activity
               </Button>
             )}
         </div>
@@ -571,196 +505,95 @@ function OverviewReviewBanner({
   );
 }
 
-function OverviewVerdictTiles({
+function OverviewRecordedActivity({
   thread,
-  onOpenRequirements,
+  onOpenActivity,
+  onOpenRecord,
 }: {
   thread: ThreadWorkbenchSnapshot;
-  onOpenRequirements: () => void;
-}): JSX.Element | null {
-  const matrix = buildRequirementMatrix(thread);
-  const assemblyIntegrity = recordedAssemblyIntegrityL4(thread);
-  if (matrix.rows.length === 0 && !assemblyIntegrity) return null;
+  onOpenActivity: () => void;
+  onOpenRecord: (reference: ThreadGraphRef) => void;
+}): JSX.Element {
+  const records = activityFeedNodes(thread.graph.nodes)
+    .slice(0, 12);
   return (
-    <section aria-labelledby="overview-verdicts-title">
-      <div className="mb-3 flex items-end justify-between gap-4">
-        <h3
-          id="overview-verdicts-title"
-          className={cn("m-0", SECTION_LABEL)}
-        >
-          Recorded verdicts
+    <section
+      className="overview-records-hud-content"
+      aria-labelledby="overview-records-title"
+    >
+      <div className="overview-records-heading">
+        <h3 id="overview-records-title" className={cn("m-0", SECTION_LABEL)}>
+          Recorded activity
         </h3>
         <Button
           variant="link"
           size="sm"
           className="h-auto px-0"
-          onClick={onOpenRequirements}
+          onClick={onOpenActivity}
         >
-          Open requirements →
+          Activity →
         </Button>
       </div>
-      <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-5">
-        {matrix.rows.map((row) => <VerdictTile key={row.id} row={row} />)}
-        {assemblyIntegrity && (
-          <AssemblyIntegrityVerdictTile
-            value={assemblyIntegrity}
-          />
+      {records.length === 0
+        ? (
+          <p className="overview-records-empty">
+            No Activity record is projected.
+          </p>
+        )
+        : (
+          <div
+            className="overview-record-chip-rail"
+            role="list"
+            aria-label="Recent recorded activity"
+            tabIndex={0}
+          >
+            {records.map((record) => (
+              <article
+                key={`${record.ref.kind}:${record.ref.id}`}
+                className="overview-record-chip"
+                role="listitem"
+              >
+                <OverviewRecordChip
+                  record={record}
+                  onOpen={() => onOpenRecord(record.ref)}
+                />
+              </article>
+            ))}
+          </div>
         )}
-      </div>
     </section>
   );
 }
 
-/** L4 is displayed as recorded; the browser does not derive an engineering result. */
-function AssemblyIntegrityVerdictTile({
-  value,
+function OverviewRecordChip({
+  record,
+  onOpen,
 }: {
-  value: NonNullable<ReturnType<typeof recordedAssemblyIntegrityL4>>;
+  record: ThreadGraphNode;
+  onOpen: () => void;
 }): JSX.Element {
-  const variant = value.verdict === "pass"
-    ? "success"
-    : value.verdict === "fail"
-    ? "destructive"
-    : "warning";
+  const exactIdentity = `${record.ref.kind}:${record.ref.id}`;
   return (
-    <Card data-verdict-family="assembly-integrity">
-      <CardContent className="flex flex-col gap-0.5 px-3 py-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-[12.5px] font-medium">
-            Assembly integrity
-          </span>
-          <Badge variant={variant}>{value.verdict}</Badge>
-        </div>
-        <span className="font-mono text-[9.5px] text-muted-foreground">
-          Recorded L4 evaluation · {value.chainStatus}
-        </span>
-        <p className="m-0 mt-1 text-[11px] leading-snug text-muted-foreground">
-          Assembly import, occurrences, placement, BRep and pairwise
-          intersection only. Not safety, clearance, motion, load or fabrication.
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function recordedAssemblyIntegrityL4(thread: ThreadWorkbenchSnapshot): {
-  readonly verdict: "pass" | "fail" | "unresolved";
-  readonly chainStatus: "current" | "historical" | "unresolved";
-} | undefined {
-  const chains = thread.assemblyIntegrity?.chains ?? [];
-  const current = chains.find((chain) =>
-    chain.status === "current" && chain.evaluation !== undefined
-  );
-  const firstRecorded = chains.find((chain) => chain.evaluation !== undefined);
-  const chain = current ?? firstRecorded;
-  return chain?.evaluation === undefined ? undefined : {
-    verdict: chain.evaluation.aggregateVerdict,
-    chainStatus: chain.status,
-  };
-}
-
-/**
- * Une tuile de verdict. La barre est un `Progress` d'Ark, donc porteuse de
- * `role="progressbar"` : sans valeur numérique enregistrée elle reste
- * indéterminée plutôt que de simuler un remplissage. La marge n'apparaît que
- * lorsqu'une violation en a produit une, et son tooltip cite la preuve.
- */
-function VerdictTile({ row }: { row: RequirementMatrixRow }): JSX.Element {
-  const running = row.status === "unresolved";
-  const hasMargin = hasRecordedMargin(row);
-  // La position dans l'intervalle admissible : c'est elle qui distingue une
-  // exigence tenue de justesse d'une exigence tenue largement.
-  const margin = requirementMargin(row.expression, row.computed);
-  const hasEvidence = hasRecordedEvidence(row);
-  return (
-    <Card
-      className={cn(
-        running && "border-dashed border-brand/50 bg-brand/[0.03]",
-      )}
+    <button
+      type="button"
+      className="overview-record-chip-action"
+      title={`${exactIdentity} · ${record.freshness}`}
+      onClick={onOpen}
     >
-      <CardContent className="flex flex-col gap-0.5 px-3 py-2.5">
-        <div className="flex items-center justify-between gap-2">
-          {
-            /* Le NOM de l'exigence porte le titre : son identifiant tronqué
-              n'apprenait rien et poussait le nom en second rang. */
-          }
-          <span className="truncate text-[12.5px] font-medium">
-            {row.label}
-          </span>
-          <Badge variant={recordStatusVariant(row.status)}>{row.status}</Badge>
-        </div>
-        <span
-          className="truncate font-mono text-[9.5px] text-muted-foreground"
-          title={row.id}
-        >
-          {compactEmbeddedFingerprints(row.id)}
-        </span>
-        <Progress.Root
-          // Une jauge n'existe que si la limite ET la mesure sont lisibles
-          // dans ce qui a été enregistré. Sinon elle reste indéterminée
-          // plutôt que de suggérer une position qu'on n'a pas mesurée.
-          value={margin ? Math.round(margin.used * 100) : null}
-          min={0}
-          max={100}
-          className="mt-1 block"
-          aria-label={margin
-            ? `${row.label} — ${marginLabel(margin)}`
-            : `${row.label} — ${row.status}`}
-        >
-          <Progress.ValueText asChild>
-            <p className="m-0 truncate font-mono text-xs tabular-nums text-muted-foreground">
-              {row.lastVerdict}
-            </p>
-          </Progress.ValueText>
-          <Progress.Track className="mt-1.5 h-1 overflow-hidden rounded-full bg-muted">
-            {
-              /* Sans limite comparable, la piste reste VIDE. La remplir se
-                lirait « intervalle consommé à 100 % », soit l'inverse de
-                « on ne sait pas situer cette mesure ». Le statut, lui, est
-                déjà porté par la pastille. */
-            }
-            {running
-              ? (
-                <span className="block h-full w-full bg-[repeating-linear-gradient(90deg,var(--color-brand)_0_6px,transparent_6px_12px)] opacity-40" />
-              )
-              : margin === undefined
-              ? null
-              : (
-                <Progress.Range
-                  className={cn(
-                    "h-full rounded-full",
-                    row.status === "fail" ? "bg-warning" : "bg-success",
-                  )}
-                />
-              )}
-          </Progress.Track>
-        </Progress.Root>
-        {(margin !== undefined || hasMargin) && (
-          <Tooltip side="top">
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  "mt-1.5 block w-full cursor-help truncate text-right font-mono text-[10px] font-medium",
-                  row.status === "fail" ? "text-warning" : "text-success",
-                )}
-              >
-                {margin ? marginLabel(margin) : row.marginLabel}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <span className="font-mono">
-                {margin
-                  ? `${row.expression} · ${row.computed}`
-                  : hasEvidence
-                  ? row.evidenceLabel
-                  : row.expression}
-              </span>
-            </TooltipContent>
-          </Tooltip>
-        )}
-      </CardContent>
-    </Card>
+      <span className="overview-record-chip-label">{record.label}</span>
+      <Badge
+        className="overview-record-chip-badge"
+        variant={recordStatusVariant(record.freshness)}
+      >
+        {record.freshness}
+      </Badge>
+      <span className="overview-record-chip-value">
+        {sentenceLabel(record.entityKind)} ·{" "}
+        {compactEmbeddedFingerprints(record.ref.id)}
+        {record.recordedAt ? ` · ${formatShortTime(record.recordedAt)}` : ""}
+      </span>
+      <span className="sr-only">Exact record {exactIdentity}</span>
+    </button>
   );
 }
 
@@ -778,6 +611,7 @@ function NowPanel({
   nextWork,
   openBlocker,
   onNavigate,
+  compact = false,
 }: {
   project: EngineeringProjectSnapshot;
   activeRun?: EngineeringAgentRun;
@@ -786,6 +620,7 @@ function NowPanel({
   nextWork?: EngineeringWorkItem;
   openBlocker?: EngineeringBlocker;
   onNavigate: (view: ProjectWorkspaceView) => void;
+  compact?: boolean;
 }): JSX.Element {
   const liveRunCount = project.agentRuns.filter(
     (r) => r.status === "running",
@@ -844,8 +679,77 @@ function NowPanel({
     });
   }
 
+  const openActivity = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (event.metaKey || event.ctrlKey || event.shiftKey) return;
+    event.preventDefault();
+    onNavigate("work");
+  };
+
+  if (compact) {
+    return (
+      <section
+        className="project-now-panel project-now-panel--compact"
+        aria-label="Current project control"
+      >
+        <div className="project-now-heading">
+          <p className={cn("m-0", SECTION_LABEL)}>NOW</p>
+          {liveRunCount > 0 && (
+            <span className="project-now-live">
+              <i aria-hidden="true" />
+              {liveRunCount} RUN LIVE
+            </span>
+          )}
+        </div>
+        <div className="project-now-feed-rail" tabIndex={0} title="Agent now">
+          {feed.length === 0
+            ? (
+              <p className="project-now-empty">
+                No active work or agent run is recorded.
+              </p>
+            )
+            : feed.map((entry, index) => {
+              const glyph = entry.glyph === "running"
+                ? "▸"
+                : entry.glyph === "settled"
+                ? "✓"
+                : entry.glyph === "blocked"
+                ? "•"
+                : "⧗";
+              return (
+                <span
+                  key={index}
+                  className="project-now-feed-chip"
+                  data-state={entry.glyph}
+                  title={[entry.time, entry.description, entry.tag]
+                    .filter(Boolean).join(" · ")}
+                >
+                  <span aria-hidden="true" className="project-now-feed-glyph">
+                    {glyph}
+                  </span>
+                  {entry.time && (
+                    <time dateTime={entry.time}>
+                      {formatShortTime(entry.time)}
+                    </time>
+                  )}
+                  <span className="project-now-feed-description">
+                    {entry.description}
+                  </span>
+                  {entry.tag && (
+                    <span className="project-now-feed-tag">{entry.tag}</span>
+                  )}
+                </span>
+              );
+            })}
+        </div>
+        <a href="#work" className="project-now-open" onClick={openActivity}>
+          Activity →
+        </a>
+      </section>
+    );
+  }
+
   return (
-    <section aria-label="Current project control">
+    <section className="project-now-panel" aria-label="Current project control">
       <div className="flex items-center justify-between border-b border-border px-3.5 py-2">
         <p className={cn("m-0", SECTION_LABEL)}>
           NOW
@@ -873,11 +777,7 @@ function NowPanel({
         <a
           href="#work"
           className="text-[12px] font-medium text-brand hover:underline"
-          onClick={(event) => {
-            if (event.metaKey || event.ctrlKey || event.shiftKey) return;
-            event.preventDefault();
-            onNavigate("work");
-          }}
+          onClick={openActivity}
         >
           Open activity →
         </a>

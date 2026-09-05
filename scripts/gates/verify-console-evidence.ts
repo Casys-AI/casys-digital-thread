@@ -99,7 +99,7 @@ interface FleetManifest {
   servers: Array<{
     id: string;
     mcpUrl: string;
-    healthUrl: string;
+    healthUrl?: string;
     image: string;
     expectedTools: string[];
     expectedViews?: string[];
@@ -228,7 +228,7 @@ for (const server of manifest.servers) {
   if (!server.mcpUrl.endsWith("/mcp")) {
     fail(`${server.id}: MCP endpoint must end in /mcp`);
   }
-  if (!server.healthUrl.endsWith("/health")) {
+  if (server.healthUrl !== undefined && !server.healthUrl.endsWith("/health")) {
     fail(`${server.id}: health endpoint must end in /health`);
   }
   if (server.expectedTools.length === 0) {
@@ -258,7 +258,6 @@ expectedEngineeringViewers(
   "build123d",
   [
     "ui://mcp-build123d/results-viewer",
-    "ui://mcp-build123d/artifact-helper-viewer",
   ],
 );
 expectedEngineeringViewers(

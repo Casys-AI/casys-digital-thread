@@ -28,15 +28,26 @@ verdict, release decision, conformity finding, or certification claim.
   [Review and correct after a proof](how-to/verify-design/review-and-correct-after-a-proof.md).
 - **Author or compile engineering source:** enter [compile how-tos](how-to/compile/).
 - **Run admitted Modelica or SPICE:** enter [run how-tos](how-to/run/).
+- **Verify or recover prescribed motion:** start with the
+  [mechanism domain](reference/domains/mechanism/README.md), then follow either
+  [Verify prescribed kinematics](how-to/verify-design/verify-prescribed-kinematics.md)
+  or
+  [Recover a prescribed-kinematics observation](how-to/run/recover-prescribed-kinematics-observation.md).
 - **Preview the Workbench:** use
   [Preview the native Workbench](how-to/workbench/preview-native-workbench.md).
+- **Review a project's local operational ceiling:** follow
+  [Review project capability authorization](how-to/agents/review-project-capability-authorization.md).
+- **Administer the local capability runtime:** follow
+  [Administer the local capability runtime](how-to/maintainers/administer-local-capability-runtime.md).
 - **Inspect dated project evidence:** start at the
   [project-dossier index](project-dossiers/README.md). These pages track observations;
   they do not replace persisted project, Thread, CAS, provider, or human-decision state.
 - **Find an exact contract, operation, port, or code location:** enter
   [reference](reference/README.md), especially the
   [engineering domains](reference/domains/README.md),
-  [local runtime and ports](reference/runtime/local-runtime-and-ports.md), and
+  [mechanism](reference/domains/mechanism/README.md),
+  [local runtime and ports](reference/runtime/local-runtime-and-ports.md),
+  [capability packs](reference/runtime/capability-packs/README.md), and
   [codebase map](reference/codebase/codebase-map.md).
 - **Understand why a boundary exists:** enter [explanations](explanations/README.md).
 

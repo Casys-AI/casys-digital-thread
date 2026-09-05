@@ -3,7 +3,8 @@
 Audience: both · Diátaxis: explanation · Kind: contract
 
 > **Diátaxis category: explanation.** This page explains the architectural boundary. For
-> file locations, use the [building-block reference](../../reference/providers/building-blocks.md).
+> file locations, use the
+> [building-block reference](../../reference/providers/building-blocks.md).
 
 A tool succeeding means it completed the work it owns. It does not mean a product is
 compliant. Geometry, FEA, and dynamic simulation answer different physical questions; a
@@ -24,12 +25,12 @@ flowchart LR
 
 ## Four questions, four owners
 
-| Question                                                                                 | Owner                                | A successful response proves                                                               | It does not prove                                                                          |
-| ---------------------------------------------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| What shape, volume, mass, or export was produced?                                        | `mcp-build123d`                      | A parametric geometry execution and its exact geometry/export evidence.                    | Local stress, transient behaviour, or requirement compliance.                              |
-| Does this geometry withstand a stated static load model?                                 | Isolated CalculiX `@3` local microVM | A mesh/solver result for that geometry, load case, material assumptions, and solver setup. | That the CAD is the only valid design or that an unrelated requirement passed.             |
+| Question                                                                                 | Owner                                | A successful response proves                                                               | It does not prove                                                                                                                           |
+| ---------------------------------------------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| What shape, volume, mass, or export was produced?                                        | `mcp-build123d`                      | A parametric geometry execution and its exact geometry/export evidence.                    | Local stress, transient behaviour, or requirement compliance.                                                                               |
+| Does this geometry withstand a stated static load model?                                 | Isolated CalculiX `@3` local microVM | A mesh/solver result for that geometry, load case, material assumptions, and solver setup. | That the CAD is the only valid design or that an unrelated requirement passed.                                                              |
 | What happens over time in coupled thermal, hydraulic, electrical, and control behaviour? | Local Modelica microVM               | A versioned admitted or kit run, observations, and hashed artifacts.                       | A SysML requirement verdict; its `succeeded` run intentionally has no `pass`/`fail` field. The port 3016 `mcp-modelica` sidecar is retired. |
-| Is a named, unit-bearing condition satisfied by supplied evidence?                       | `mcp-syson` and the constraint layer | A comparison with the condition, values, units, and margin visible.                        | That the input evidence is broader, newer, or more applicable than its provenance says.    |
+| Is a named, unit-bearing condition satisfied by supplied evidence?                       | `mcp-syson` and the constraint layer | A comparison with the condition, values, units, and margin visible.                        | That the input evidence is broader, newer, or more applicable than its provenance says.                                                     |
 
 This separation prevents a common but dangerous shortcut: treating a green solver exit
 code as a product claim. A solver is authoritative about its own execution and result.
@@ -78,8 +79,10 @@ a distinction worth keeping while the simulation path still awaits its first rea
 
 `mcp-server` transports tools and resources using the stateless `2026-07-28` contract.
 The Console MCP tools observe those stages read-only (`console_snapshot`). The native
-Workbench renders one linked `ThreadSnapshot` through trusted local React components.
-A provider result-viewer is not the atelier product page.
+Workbench projects one linked `ThreadSnapshot` as generic records and relationships. An
+exact registered whole MCP App may present one recorded anchor in the Workbench's
+sandboxed, read-only App frame; it remains provider-owned presentation, not a native
+domain renderer or the atelier product page.
 
 None of these presentation or transport layers may turn an evidence payload into an
 unstated verdict. A view can make the relationship legible—stage, metric, limit, margin,
@@ -87,18 +90,19 @@ hashes, and provenance—but it cannot supply missing requirements, infer a unit
 override an `unresolved` state. Presentation is useful for navigation and review but is
 not itself the engineering authority.
 
-## Structured results make the separation usable
+## App-owned sessions make the separation usable
 
-A v1 `structuredContent` envelope gives the view an explicit, testable contract instead
-of requiring it to scrape human text. The Modelica example has a `schemaVersion: "1.0"`,
-a `kind`, and a run payload; a comparison is another typed stage with its own status and
-provenance. This supports standard views without normalising away domain meaning:
+An exact App-owned session schema gives a whole App an explicit, testable contract
+instead of requiring it to scrape human text. The Workbench relays the registered opaque
+payload through `viewer.session.apply`; it does not hydrate an initiating MCP tool
+result. A comparison remains a typed provider-owned stage with its own status and
+provenance. This supports App-owned views without normalising away domain meaning:
 
-- a CAD viewer can show dimensions and exported artifacts;
-- an FEA viewer can show load assumptions and solver evidence;
-- a Modelica viewer can show metrics and time-series artifacts;
-- a verification view can show the exact condition, units, margin, and result.
+- a CAD App can show dimensions and exported artifacts;
+- an FEA App can show load assumptions and solver evidence;
+- a Modelica App can show metrics and time-series artifacts;
+- a verification App can show the exact condition, units, margin, and result.
 
-The common rendering shell is not a common physical model or a universal verdict schema.
-Standardise the transport and visible evidence discipline; keep calculation semantics
-with the server that owns them.
+The Workbench frame is only a generic host; it does not parse those payloads or
+reconstruct their domain. Standardise the transport and visible evidence discipline;
+keep rendering and calculation semantics with the MCP server that owns them.

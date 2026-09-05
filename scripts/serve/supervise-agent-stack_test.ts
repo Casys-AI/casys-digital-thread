@@ -19,6 +19,16 @@ import {
 
 const EXITED = { success: true, code: 0, signal: null } satisfies Deno.CommandStatus;
 const FAILED = { success: false, code: 42, signal: null } satisfies Deno.CommandStatus;
+const denoConfig = JSON.parse(
+  await Deno.readTextFile(new URL("../../deno.json", import.meta.url)),
+) as { tasks: Record<string, string> };
+
+Deno.test("start:agent grants the supervisor portable run permission", () => {
+  const command = denoConfig.tasks["start:agent"];
+
+  assertStringIncludes(command, "deno run --allow-run --allow-net=127.0.0.1:5175");
+  assert(!command.includes("--allow-run=deno"));
+});
 
 Deno.test("the normal stack starts only MCP and the focused cockpit", () => {
   const config = defaultAgentStackConfig();
@@ -35,6 +45,11 @@ Deno.test("the normal stack starts only MCP and the focused cockpit", () => {
   assertEquals(cockpit.exitPolicy, "keep-stack");
   assertEquals(cockpit.readiness?.url, "http://127.0.0.1:5175/healthz");
   assert(cockpit.args.includes("--allow-net=127.0.0.1:5175"));
+  assert(
+    cockpit.args.includes(
+      "--allow-read=state,src/ui/dist/thread,config/projects,config/thread-subjects",
+    ),
+  );
   assert(!cockpit.args.some((argument) => argument.startsWith("--allow-write")));
   assert(!cockpit.args.some((argument) => argument.startsWith("--allow-env")));
   assert(!cockpit.args.some((argument) => argument.startsWith("--allow-run")));
@@ -45,21 +60,28 @@ Deno.test("the normal stack starts only MCP and the focused cockpit", () => {
   );
   assert(
     mcp.args.includes(
-      "--allow-read=config,state,src/ui,mcp-server.yaml",
+      "--allow-read=config,state,src/ui,mcp-server.yaml,node_modules",
     ),
   );
+  assert(mcp.args.includes("--node-modules-dir=auto"));
   assert(mcp.args.includes("--allow-write=state/local"));
   assert(!mcp.args.some((argument) => argument.includes("review-intent")));
   assert(mcp.args.includes("--allow-net=127.0.0.1,localhost,127.0.0.1:3020"));
   assert(
     mcp.args.includes(
-      "--allow-env=MCP_FLEET_MANIFEST,MCP_RUN_FIXTURE,MCP_MRTR_SIGNING_KEY," +
-        "MCP_AUTH_PROVIDER,MCP_AUTH_AUDIENCE,MCP_AUTH_RESOURCE,MCP_AUTH_DOMAIN," +
+      "--allow-env=LOG,MCP_FLEET_MANIFEST,MCP_RUN_FIXTURE,MCP_MRTR_SIGNING_KEY," +
+        "CASYS_CHRONO_MCP_BEARER_TOKEN,MCP_AUTH_PROVIDER,MCP_AUTH_AUDIENCE," +
+        "MCP_AUTH_RESOURCE,MCP_AUTH_DOMAIN," +
         "MCP_AUTH_ISSUER,MCP_AUTH_JWKS_URI,MCP_AUTH_SCOPES," +
-        "MCP_AUTH_RESOURCE_METADATA_URL",
+        "MCP_AUTH_RESOURCE_METADATA_URL,NAPI_RS_ENFORCE_VERSION_CHECK," +
+        "NAPI_RS_NATIVE_LIBRARY_PATH,NAPI_RS_FORCE_WASI,NAPI_RS_WASI_FLAVOR," +
+        "MSB_PATH,MSB_LIBKRUNFW_PATH,MSB_CONFIG_PATH,MSB_HOME,MSB_BACKEND," +
+        "MSB_API_URL,MSB_API_KEY,MSB_PROFILE",
     ),
   );
   assert(mcp.args.includes("--allow-run=docker"));
+  assert(mcp.args.includes("--allow-ffi=node_modules"));
+  assert(!cockpit.args.some((argument) => argument.startsWith("--allow-ffi")));
   assert(!mcp.args.includes("--allow-net"));
   assert(!commands.some((command) => command.command === "npm"));
 });
@@ -137,6 +159,14 @@ Deno.test("passthrough arguments cannot override supervised ports or focus", () 
   );
   assertThrows(
     () => parseAgentStackArgs(["--ui-arg=--port=9998"]),
+    TypeError,
+    "cannot override supervised argument",
+  );
+});
+
+Deno.test("MCP passthrough cannot enable local execution", () => {
+  assertThrows(
+    () => parseAgentStackArgs(["--mcp-arg=--local-execution"]),
     TypeError,
     "cannot override supervised argument",
   );

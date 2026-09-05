@@ -8,6 +8,16 @@
 import type { EngineeringProjectCommandOrigin } from "../../../application/ports/in/engineering-project-command-origin.ts";
 import type { RegisteredProjectRunExecutorCommand } from "../../../application/ports/in/project-run-executor.ts";
 import {
+  isDurableTerminalAgentRunStatus,
+  settleCapabilityRuntimeSession,
+} from "../../../application/control-plane/capability-runtime-execution-admission.ts";
+import {
+  type CapabilityRuntimeExecutionSession,
+  type CapabilityRuntimeExecutionSessionCoordinator,
+  CapabilityRuntimeSessionUnavailableError,
+} from "../../../application/control-plane/capability-runtime-execution-session.ts";
+import type { CapabilityRuntimeExecutionEligibility } from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import {
   IsolatedCodeOutputValidationRejectedError,
   type IsolatedCodeRunner,
   type IsolatedCodeRunRecovery,
@@ -22,8 +32,15 @@ import type {
 } from "../../../application/ports/out/modelica/admitted-execution-attempt-store.ts";
 import { fingerprintAdmittedModelicaExecutionAttemptIdentity } from "../../../application/ports/out/modelica/admitted-execution-attempt-store.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
+import type { ResolvedRunPlanReader } from "../../../domain/project/resolved-run-plan-sealer.ts";
+import {
+  requireRecordedResolvedRunPlanExecution,
+  requireResolvedRunPlanExecution,
+  type ResolvedRunPlanExecutionAuthorization,
+} from "../../compile/plans/resolved-run-plan-execution-guard.ts";
 import type { TechnicalCompilationAdmissionReader } from "../../../application/ports/out/compile/admission/technical-compilation-admission-reader.ts";
 import type {
+  AdmittedModelicaExecutionProfile,
   AdmittedModelicaExecutionProfileCatalog,
 } from "../../../application/ports/out/modelica/admitted-execution-profile-catalog.ts";
 import {
@@ -32,13 +49,16 @@ import {
 import {
   type AdmittedExecutionRequest,
   assertAdmittedModelicaAdmissionScope,
+  assertResolvedAdmittedModelicaExecutionPlan,
   assertSameReviewedAdmittedModelicaAuthority,
   reopenAdmittedExecutionRequest,
+  reopenRecordedAdmittedModelicaExecutionRequest,
   requireAdmittedModelicaExecutionShape,
   requireReviewedAdmittedModelicaAuthority,
   type ReviewedAdmittedModelicaAuthority,
 } from "../../../application/use-cases/modelica/admitted/reopen-reviewed-execution.ts";
 import {
+  assertFailedIsolatedExecutionReplay,
   assertFailedIsolatedOutputValidationReplay,
   isolatedOutputValidationFailedMessage,
 } from "../../../application/use-cases/compile/isolation/failed-isolated-output-validation-replay.ts";
@@ -88,6 +108,10 @@ import {
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
+import type {
+  CapabilityRuntimeHostLifecycle,
+  ResolvedCapabilityRuntimeOperation,
+} from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
 import type {
   EngineeringAgentRun,
   EngineeringProjectCommandReceipt,
@@ -159,6 +183,14 @@ const assertAdmissionScope = assertAdmittedModelicaAdmissionScope;
 const assertSameAuthority = assertSameReviewedAdmittedModelicaAuthority;
 const requireExecutionShape = requireAdmittedModelicaExecutionShape;
 
+const ADMITTED_MODELICA_RETRY_GENERATION_CLOSED = {
+  summary:
+    "Isolated admitted Modelica retry generation was closed before Thread publication.",
+  code: "isolated_redispatch_exhausted",
+  message:
+    "The sole admitted Modelica retry generation produced no publication and was closed; no third dispatch exists.",
+} as const;
+
 export interface AdmittedModelicaThreadSnapshotStore extends ThreadSnapshotStore {
   getFresh(snapshotId: string): Promise<ThreadSnapshot | undefined>;
 }
@@ -187,12 +219,37 @@ export interface SimulateRunAdmittedModelicaRunExecutorDependencies {
   readonly attempts: AdmittedModelicaExecutionAttemptStore;
   readonly captures: AdmittedModelicaExecutionCaptureStore;
   readonly lease: EngineeringProjectRunLease;
+  /** Exact ROP2 reader; admitted Modelica has no legacy execution path. */
+  readonly plans: ResolvedRunPlanReader;
+  /** Fresh operational-capability recheck paired with the sealed ROP. */
+  readonly capabilityRuntime: CapabilityRuntimeExecutionEligibility;
+  /** JIT lease lifecycle. It is entered only after a final cold recheck. */
+  readonly capabilityRuntimeSession: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin" | "releaseRecorded"
+  >;
 }
 
 interface PersistedAdmittedExecutionCapture {
   readonly capture: ModelicaAdmittedExecutionCapture;
   readonly fingerprint: ContentFingerprint;
   readonly uri: string;
+}
+
+interface PreparedAdmittedModelicaExecution {
+  readonly authorization: ResolvedRunPlanExecutionAuthorization;
+  readonly execution: AdmittedExecutionRequest;
+  readonly microvm: Extract<
+    CapabilityRuntimeHostLifecycle,
+    { readonly kind: "ephemeral-microsandbox" }
+  >;
+}
+
+interface ReopenedRecordedAdmittedModelicaExecution {
+  readonly basis: EngineeringThreadSnapshotBasis;
+  readonly basisSnapshot: ThreadSnapshot;
+  readonly context: AdmittedExecutionRequest;
+  readonly key: AdmittedModelicaExecutionAttemptKey;
 }
 
 export class SimulateRunAdmittedModelicaRunExecutor {
@@ -213,13 +270,610 @@ export class SimulateRunAdmittedModelicaRunExecutor {
     const project = await this.#requiredProject(command.projectId);
     const run = requireRun(project, command.runId);
     requireExecutionShape(project, run);
+    const attempt = await this.d.attempts.read(project.project.id, run.id);
+    if (isAdmittedModelicaGenerationOneHistoricalRecoveryEligible(run, attempt)) {
+      const authority = await requireReviewedAuthority(project, run);
+      assertAdmissionScope(project, run, authority.decision, authority.admission);
+      const authorization = await this.#requireRecordedPlan(project, run);
+      const recovered = await this.d.lease.withLease(
+        command.projectId,
+        threadWriteBasisLeaseScope(run),
+        () =>
+          this.#recoverHistoricalGenerationOneClosure(
+            origin,
+            command,
+            authority,
+            authorization,
+          ),
+      );
+      await this.#releaseRecordedRuntimeBestEffort(recovered, command.runId, {
+        authorization,
+      });
+      return recovered;
+    }
+    if (isRecordedAdmittedModelicaTerminalAttempt(attempt)) {
+      const replay = await this.d.lease.withLease(
+        command.projectId,
+        threadWriteBasisLeaseScope(run),
+        () => this.#replayRecordedTerminalAttempt(origin, command),
+      );
+      await this.#releaseRecordedRuntimeBestEffort(
+        replay.project,
+        command.runId,
+        { authorization: replay.authorization },
+      );
+      return replay.project;
+    }
     const authority = await requireReviewedAuthority(project, run);
     assertAdmissionScope(project, run, authority.decision, authority.admission);
-    return await this.d.lease.withLease(
-      command.projectId,
-      threadWriteBasisLeaseScope(run),
-      () => this.#executeLeased(origin, command, authority),
+    if (isDurableTerminalAgentRunStatus(run.status)) {
+      const authorization = await this.#requireRecordedPlan(project, run);
+      const terminal = run.status === "completed"
+        ? await this.#reopenCompleted(origin, command, authority, authorization)
+        : await this.#reopenFailedOutputValidation(origin, command);
+      await this.#releaseRecordedRuntimeBestEffort(terminal, command.runId, {
+        authorization,
+      });
+      return terminal;
+    }
+
+    const prepared = await this.#prepareResolvedExecution(project, run, authority);
+
+    const requiresJit = await this.#requiresJitBeforeLease(
+      project,
+      run,
+      prepared.execution.request.runId,
     );
+    if (!requiresJit) {
+      const result = await this.d.lease.withLease(
+        command.projectId,
+        threadWriteBasisLeaseScope(run),
+        () => this.#executeLeased(origin, command, authority),
+      );
+      await this.#releaseRecordedRuntimeBestEffort(result, command.runId, {
+        authorization: prepared.authorization,
+      });
+      return result;
+    }
+
+    // This is deliberately before `claimRun`: a missing/revoked or stale
+    // capability cannot leave a queued run with a misleading WAL claim.
+    const session = await this.#beginCapabilitySession(
+      project,
+      run,
+      prepared,
+      command,
+      origin,
+      authority,
+    );
+    return await this.#executeWithCapabilitySession(
+      session,
+      origin,
+      command,
+      authority,
+    );
+  }
+
+  async #prepareResolvedExecution(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+    authority: ReviewedAuthority,
+  ): Promise<PreparedAdmittedModelicaExecution> {
+    const authorization = await this.#requireResolvedPlan(project, run);
+    const basis = requireBasis(run);
+    const basisSnapshot = await exactBasisSnapshot(this.d.snapshots, basis, true);
+    await assertThreadSnapshotLineageIntact(basisSnapshot, this.d.snapshots);
+    exactAdmissionArtifact(
+      basisSnapshot,
+      authority.admission.admissionArtifact.id,
+      authority.admission.admissionArtifact.fingerprint,
+    );
+    const execution = await reopenAdmittedExecutionRequest({
+      admissions: this.d.admissions,
+      profiles: this.d.profiles,
+      project,
+      run,
+      admission: authority.admission,
+    });
+    assertResolvedAdmittedModelicaExecutionPlan({
+      run,
+      plan: authorization.plan,
+      admission: authority.admission,
+      execution,
+    });
+    return {
+      authorization,
+      execution,
+      microvm: exactAdmittedModelicaMicrosandboxLifecycle(
+        authorization.capabilityRuntime!,
+        execution.executionProfile,
+      ),
+    };
+  }
+
+  async #requireResolvedPlan(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+  ): Promise<ResolvedRunPlanExecutionAuthorization> {
+    try {
+      return await requireResolvedRunPlanExecution({
+        project,
+        runId: run.id,
+        expectedOperation: SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
+        expectedRunStatuses: [run.status],
+        projects: this.d.projects,
+        snapshots: this.d.snapshots,
+        plans: this.d.plans,
+        capabilityRuntime: this.d.capabilityRuntime,
+      });
+    } catch (error) {
+      throw invalidTransition(
+        error instanceof Error
+          ? error.message
+          : "The resolved admitted Modelica execution plan could not be reopened.",
+      );
+    }
+  }
+
+  async #requireRecordedPlan(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+  ): Promise<ResolvedRunPlanExecutionAuthorization> {
+    try {
+      return await requireRecordedResolvedRunPlanExecution({
+        project,
+        runId: run.id,
+        expectedOperation: SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
+        expectedRunStatuses: [run.status],
+        projects: this.d.projects,
+        snapshots: this.d.snapshots,
+        plans: this.d.plans,
+      });
+    } catch (error) {
+      throw invalidTransition(
+        error instanceof Error
+          ? error.message
+          : "The recorded admitted Modelica execution plan could not be reopened.",
+      );
+    }
+  }
+
+  /**
+   * Once the attempt itself proves an output publication or a validator
+   * rejection, completion is a Thread/project reconciliation, never a new
+   * execution admission.  The recorded ROP and attempt profile remain the
+   * only authority that can reopen the exact bytes.
+   */
+  async #replayRecordedTerminalAttempt(
+    origin: EngineeringProjectCommandOrigin,
+    command: RegisteredProjectRunExecutorCommand,
+  ): Promise<{
+    readonly project: EngineeringProjectSnapshot;
+    readonly authorization: ResolvedRunPlanExecutionAuthorization;
+  }> {
+    const project = await this.#requiredProject(command.projectId);
+    const run = requireRun(project, command.runId);
+    requireExecutionShape(project, run);
+    requireClaimedShape(project, run, origin);
+    const authority = await requireReviewedAuthority(project, run);
+    assertAdmissionScope(project, run, authority.decision, authority.admission);
+    const authorization = await this.#requireRecordedPlan(project, run);
+    const attempt = await this.d.attempts.read(project.project.id, run.id);
+    if (!isRecordedAdmittedModelicaTerminalAttempt(attempt)) {
+      throw invalidTransition(
+        "The admitted Modelica journal no longer proves a durable terminal output or validation rejection.",
+      );
+    }
+
+    if (attempt.phase === "output-validation-rejected") {
+      const reopened = await this.#reopenRecordedAttempt(
+        project,
+        run,
+        authority,
+        authorization,
+        attempt,
+      );
+      const terminal = await this.#failOutputValidationRejected(
+        origin,
+        command,
+        isolatedOutputValidationRejectionError(
+          reopened.key.executionRunId,
+          attempt.outputValidationRejection,
+        ),
+      );
+      return { project: terminal, authorization };
+    }
+
+    if (run.status === "completed") {
+      return {
+        project: await this.#reopenCompleted(
+          origin,
+          command,
+          authority,
+          authorization,
+        ),
+        authorization,
+      };
+    }
+
+    if (run.status !== "running" && run.status !== "publishing") {
+      throw unexpectedStatus(run, "running, publishing, completed, or failed");
+    }
+    if (attempt.phase !== "output-published") {
+      throw invalidTransition(
+        "The active admitted Modelica run cannot reconcile a completed journal without a durable output publication.",
+      );
+    }
+    const reopened = await this.#reopenRecordedAttempt(
+      project,
+      run,
+      authority,
+      authorization,
+      attempt,
+    );
+    const terminal = run.status === "publishing"
+      ? await this.#resumePublishingReadOnly(
+        origin,
+        command,
+        project,
+        run,
+        reopened.basisSnapshot,
+        reopened.context,
+        attempt,
+        reopened.key,
+      )
+      : await this.#finalizePublishedOutput(
+        origin,
+        command,
+        project,
+        run,
+        reopened.basisSnapshot,
+        reopened.context,
+        attempt,
+        reopened.key,
+      );
+    return { project: terminal, authorization };
+  }
+
+  async #reopenRecordedAttempt(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+    authority: ReviewedAuthority,
+    authorization: ResolvedRunPlanExecutionAuthorization,
+    attempt: AdmittedModelicaExecutionAttempt,
+  ): Promise<ReopenedRecordedAdmittedModelicaExecution> {
+    const basis = requireBasis(run);
+    const basisSnapshot = await exactBasisSnapshot(this.d.snapshots, basis, true);
+    await assertThreadSnapshotLineageIntact(basisSnapshot, this.d.snapshots);
+    exactAdmissionArtifact(
+      basisSnapshot,
+      authority.admission.admissionArtifact.id,
+      authority.admission.admissionArtifact.fingerprint,
+    );
+    const context = await reopenRecordedAdmittedModelicaExecutionRequest({
+      admissions: this.d.admissions,
+      project,
+      run,
+      admission: authority.admission,
+      executionProfile: attempt.identity.executionProfile,
+    });
+    assertResolvedAdmittedModelicaExecutionPlan({
+      run,
+      plan: authorization.plan,
+      admission: authority.admission,
+      execution: context,
+    });
+    const identity = await attemptIdentity(
+      project,
+      run,
+      basisSnapshot,
+      authority,
+      context,
+    );
+    const key: AdmittedModelicaExecutionAttemptKey = {
+      projectId: project.project.id,
+      agentRunId: run.id,
+      executionRunId: context.request.runId,
+      attemptFingerprint: await fingerprintAdmittedModelicaExecutionAttemptIdentity(
+        identity,
+      ),
+    };
+    assertAttemptIdentity(attempt, key, identity);
+    return { basis, basisSnapshot, context, key };
+  }
+
+  /**
+   * A dispatching generation one has already consumed the sole retry.  It may
+   * therefore reconcile its publication or close from the WAL, exact ROP and
+   * the attempt-recorded profile alone.  In particular, a later
+   * profile/catalogue rollover or capability revocation must not cause another
+   * profile reopen, JIT lease or runner call.
+   */
+  async #recoverHistoricalGenerationOneClosure(
+    origin: EngineeringProjectCommandOrigin,
+    command: RegisteredProjectRunExecutorCommand,
+    initialAuthority: ReviewedAuthority,
+    authorization: ResolvedRunPlanExecutionAuthorization,
+  ): Promise<EngineeringProjectSnapshot> {
+    const project = await this.#requiredProject(command.projectId);
+    const run = requireRun(project, command.runId);
+    requireExecutionShape(project, run);
+    requireClaimedShape(project, run, origin);
+    const authority = await requireReviewedAuthority(project, run);
+    assertSameAuthority(initialAuthority, authority);
+    assertAdmissionScope(project, run, authority.decision, authority.admission);
+    const attempt = await this.d.attempts.read(project.project.id, run.id);
+    if (!isAdmittedModelicaGenerationOneHistoricalRecoveryEligible(run, attempt)) {
+      throw invalidTransition(
+        "The admitted Modelica journal no longer proves a dispatching generation-one historical recovery.",
+      );
+    }
+    const reopened = await this.#reopenRecordedAttempt(
+      project,
+      run,
+      authority,
+      authorization,
+      attempt,
+    );
+    const failure = admittedModelicaRetryGenerationClosedFailure();
+    if (run.status === "failed") {
+      await this.#assertFailedRetryGenerationClosedReplay(
+        origin,
+        command,
+        project,
+        run,
+        failure,
+      );
+      return project;
+    }
+    if (run.status !== "running") {
+      throw unexpectedStatus(run, "running or failed");
+    }
+    if (run.resultSnapshot || run.evidenceRefs.length !== 0) {
+      throw invalidTransition(
+        "The claimed admitted Modelica run already carries Thread evidence and cannot take an evidence-free terminal failure.",
+      );
+    }
+    let resolution;
+    try {
+      resolution = await this.d.publications.resolvePublicationByRunId(
+        attempt.executionRunId,
+        1,
+      );
+    } catch {
+      throw invalidTransition(
+        "The admitted Modelica publication cannot be resolved; no isolated redispatch is authorized.",
+      );
+    }
+    const decision = decideAdmittedModelicaAttemptResume({
+      phase: "dispatching",
+      executionRunId: attempt.executionRunId,
+      producerGeneration: 1,
+      resolution,
+    });
+    if (decision.action === "adopt-publication") {
+      const receipt = await this.#reopenReceipt(decision.receipt);
+      const recorded = await this.#recordPublishedReceipt(
+        attempt,
+        reopened.key,
+        receipt,
+      );
+      if (recorded.phase !== "output-published") {
+        throw invalidTransition(
+          "The admitted Modelica output publication was not durably recorded.",
+        );
+      }
+      return await this.#finalizePublishedOutput(
+        origin,
+        command,
+        project,
+        run,
+        reopened.basisSnapshot,
+        reopened.context,
+        recorded,
+        reopened.key,
+      );
+    }
+    if (decision.action !== "close-g1") {
+      throw invalidTransition(
+        decision.action === "quarantine"
+          ? decision.message
+          : "The admitted Modelica journal phase is not recoverable.",
+      );
+    }
+    await this.#proveGenerationClosed(attempt.executionRunId, 1);
+    const startedAt = run.startedAt;
+    await this.d.commands.failRun(
+      origin,
+      failCommand(command, failure, project.revision),
+    );
+    const failed = await this.#requiredProject(command.projectId);
+    await this.#assertFailedRetryGenerationClosedReplay(
+      origin,
+      command,
+      failed,
+      requireRun(failed, command.runId),
+      failure,
+      startedAt,
+    );
+    return failed;
+  }
+
+  async #requiresJitBeforeLease(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+    executionRunId: string,
+  ): Promise<boolean> {
+    const attempt = await this.d.attempts.read(project.project.id, run.id);
+    if (run.status === "queued") {
+      if (attempt) {
+        throw invalidTransition(
+          "A queued admitted Modelica run already has a durable execution journal and will not claim a second attempt.",
+        );
+      }
+      return true;
+    }
+    if (run.status === "publishing") return false;
+    if (run.status !== "running") {
+      throw unexpectedStatus(run, "queued, running, publishing, completed, or failed");
+    }
+    if (!attempt) {
+      throw invalidTransition(
+        "The active admitted Modelica run has no durable execution journal; no JIT lease or worker dispatch is permitted.",
+      );
+    }
+    if (attempt.phase === "prepared" || attempt.phase === "generation-zero-cleaned") {
+      return true;
+    }
+    if (
+      attempt.phase === "output-validation-rejected" ||
+      attempt.phase === "output-published" || attempt.phase === "completed"
+    ) {
+      return false;
+    }
+    if (attempt.phase !== "dispatching") {
+      throw invalidTransition(
+        "The admitted Modelica execution journal has no recognized pre-dispatch or replay state.",
+      );
+    }
+    let resolution;
+    try {
+      resolution = await this.d.publications.resolvePublicationByRunId(
+        executionRunId,
+        attempt.dispatch.producerGeneration,
+      );
+    } catch {
+      throw invalidTransition(
+        "The run-keyed admitted Modelica publication cannot be resolved; the active execution is retained without a JIT retry.",
+      );
+    }
+    if (
+      resolution.runId !== executionRunId ||
+      resolution.producerGeneration !== attempt.dispatch.producerGeneration
+    ) {
+      throw invalidTransition(
+        "The admitted Modelica publication resolution names another generation; the active execution is retained without a JIT retry.",
+      );
+    }
+    if (resolution.status === "outcome-unknown") {
+      throw invalidTransition(
+        "The admitted Modelica publication outcome remains unknown; the active execution is retained without a JIT retry.",
+      );
+    }
+    return resolution.status === "not-published";
+  }
+
+  async #beginCapabilitySession(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+    prepared: PreparedAdmittedModelicaExecution,
+    command: RegisteredProjectRunExecutorCommand,
+    origin: EngineeringProjectCommandOrigin,
+    authority: ReviewedAuthority,
+  ): Promise<CapabilityRuntimeExecutionSession> {
+    try {
+      return await this.d.capabilityRuntimeSession.begin({
+        project,
+        runId: run.id,
+        operationalCapability: prepared.authorization.capabilityRuntime!,
+        microsandboxExecutionProfiles: [{
+          material: prepared.microvm.material,
+          executionProfileFingerprint:
+            prepared.execution.executionProfile.profileFingerprint,
+        }],
+        recheck: async () => {
+          const fresh = await this.#requiredProject(command.projectId);
+          const freshRun = requireRun(fresh, command.runId);
+          requireExecutionShape(fresh, freshRun);
+          if (freshRun.status !== "queued") {
+            requireClaimedShape(fresh, freshRun, origin);
+          }
+          const freshAuthority = await requireReviewedAuthority(fresh, freshRun);
+          assertSameAuthority(authority, freshAuthority);
+          assertAdmissionScope(
+            fresh,
+            freshRun,
+            freshAuthority.decision,
+            freshAuthority.admission,
+          );
+          const rechecked = await this.#prepareResolvedExecution(
+            fresh,
+            freshRun,
+            freshAuthority,
+          );
+          return rechecked.authorization.capabilityRuntime!;
+        },
+      });
+    } catch (error) {
+      if (error instanceof CapabilityRuntimeSessionUnavailableError) {
+        throw invalidTransition(error.message);
+      }
+      throw error;
+    }
+  }
+
+  async #executeWithCapabilitySession(
+    session: CapabilityRuntimeExecutionSession,
+    origin: EngineeringProjectCommandOrigin,
+    command: RegisteredProjectRunExecutorCommand,
+    authority: ReviewedAuthority,
+  ): Promise<EngineeringProjectSnapshot> {
+    try {
+      const result = await this.d.lease.withLease(
+        command.projectId,
+        threadWriteBasisLeaseScope(requireRun(
+          await this.#requiredProject(command.projectId),
+          command.runId,
+        )),
+        () => this.#executeLeased(origin, command, authority),
+      );
+      await settleCapabilityRuntimeSession({
+        session,
+        policy: {
+          kind: "release-if-terminal",
+          run: result.agentRuns.find((candidate) => candidate.id === command.runId),
+        },
+      });
+      return result;
+    } catch (error) {
+      const current = await this.#requiredProject(command.projectId).catch(() =>
+        undefined
+      );
+      const run = current?.agentRuns.find((candidate) =>
+        candidate.id === command.runId
+      );
+      const attempt = current && run
+        ? await this.d.attempts.read(current.project.id, run.id).catch(() => undefined)
+        : undefined;
+      await settleCapabilityRuntimeSession({
+        session,
+        policy: run?.status === "queued" && !attempt
+          ? { kind: "release" }
+          : { kind: "release-if-terminal", run },
+      });
+      throw error;
+    }
+  }
+
+  async #releaseRecordedRuntimeBestEffort(
+    project: EngineeringProjectSnapshot,
+    runId: string,
+    prepared: {
+      readonly authorization: ResolvedRunPlanExecutionAuthorization;
+    },
+  ): Promise<void> {
+    const run = requireRun(project, runId);
+    if (!isDurableTerminalAgentRunStatus(run.status)) return;
+    try {
+      await this.d.capabilityRuntimeSession.releaseRecorded({
+        project,
+        runId,
+        operationalCapability: prepared.authorization.capabilityRuntime!,
+      });
+    } catch {
+      // Recorded terminal cleanup is intentionally best-effort: an old lease
+      // must not revive a runner or prevent the exact terminal replay.
+    }
   }
 
   async #executeLeased(
@@ -354,40 +1008,16 @@ export class SimulateRunAdmittedModelicaRunExecutor {
           "The admitted Modelica execution did not reach durable output publication.",
         );
       }
-      const receipt = await this.#reopenReceipt(attempt.receiptRecord);
-      const persistedCapture = await this.#persistCapture(
+      return await this.#finalizePublishedOutput(
+        origin,
+        command,
         project,
         run,
-        context,
-        receipt,
-      );
-      const expected = buildDocumentarySuccessor({
         basisSnapshot,
-        basis,
-        run,
-        capture: persistedCapture.capture,
-        captureFingerprint: persistedCapture.fingerprint,
-        captureUri: persistedCapture.uri,
-        receipt,
-      });
-      await this.#saveAndReopenThread(expected);
-      project = await this.#requiredProject(command.projectId);
-      await this.#publishExact(origin, project, command);
-      project = await this.#requiredProject(command.projectId);
-      await this.#completeExact(origin, project, command, expected);
-      const completed = await this.#requiredProject(command.projectId);
-      await this.#assertCompletedEvidence(
-        origin,
-        completed,
-        command,
-        run,
-        expected,
-        persistedCapture,
         context,
         attempt,
+        key,
       );
-      await this.#completeAttempt(attempt, key, expected);
-      return completed;
     } catch (error) {
       if (error instanceof IsolatedAdmittedModelicaOutputValidationRejectedError) {
         return await this.#failOutputValidationRejected(origin, command, error);
@@ -959,6 +1589,7 @@ export class SimulateRunAdmittedModelicaRunExecutor {
     origin: EngineeringProjectCommandOrigin,
     command: RegisteredProjectRunExecutorCommand,
     authority: ReviewedAuthority,
+    authorization?: ResolvedRunPlanExecutionAuthorization,
   ): Promise<EngineeringProjectSnapshot> {
     const project = await this.#requiredProject(command.projectId);
     const run = requireRun(project, command.runId);
@@ -972,58 +1603,34 @@ export class SimulateRunAdmittedModelicaRunExecutor {
       currentAuthority.decision,
       currentAuthority.admission,
     );
-    const basis = requireBasis(run);
-    const basisSnapshot = await exactBasisSnapshot(this.d.snapshots, basis, true);
-    await assertThreadSnapshotLineageIntact(basisSnapshot, this.d.snapshots);
-    exactAdmissionArtifact(
-      basisSnapshot,
-      currentAuthority.admission.admissionArtifact.id,
-      currentAuthority.admission.admissionArtifact.fingerprint,
-    );
-    const context = await reopenAdmittedExecutionRequest({
-      admissions: this.d.admissions,
-      profiles: this.d.profiles,
-      project,
-      run,
-      admission: currentAuthority.admission,
-    });
-    const identity = await attemptIdentity(
-      project,
-      run,
-      basisSnapshot,
-      currentAuthority,
-      context,
-    );
-    const key: AdmittedModelicaExecutionAttemptKey = {
-      projectId: project.project.id,
-      agentRunId: run.id,
-      executionRunId: context.request.runId,
-      attemptFingerprint: await fingerprintAdmittedModelicaExecutionAttemptIdentity(
-        identity,
-      ),
-    };
     const attempt = await this.d.attempts.read(project.project.id, run.id);
     if (!attempt) {
       throw invalidTransition(
         "The completed admitted Modelica project run has no durable execution journal.",
       );
     }
-    assertAttemptIdentity(attempt, key, identity);
     if (attempt.phase !== "output-published" && attempt.phase !== "completed") {
       throw invalidTransition(
         "The completed admitted Modelica project run has no durable published-output receipt.",
       );
     }
+    const reopened = await this.#reopenRecordedAttempt(
+      project,
+      run,
+      currentAuthority,
+      authorization ?? await this.#requireRecordedPlan(project, run),
+      attempt,
+    );
     const receipt = await this.#reopenReceipt(attempt.receiptRecord);
     const capture = await this.#reopenPersistedCapture(
       project,
       run,
-      context,
+      reopened.context,
       receipt,
     );
     const expected = buildDocumentarySuccessor({
-      basisSnapshot,
-      basis,
+      basisSnapshot: reopened.basisSnapshot,
+      basis: reopened.basis,
       run,
       capture: capture.capture,
       captureFingerprint: capture.fingerprint,
@@ -1037,11 +1644,11 @@ export class SimulateRunAdmittedModelicaRunExecutor {
       run,
       expected,
       capture,
-      context,
+      reopened.context,
       attempt,
     );
     if (attempt.phase === "output-published") {
-      await this.#completeAttempt(attempt, key, expected);
+      await this.#completeAttempt(attempt, reopened.key, expected);
     } else {
       assertThreadEvidenceExact(attempt.threadEvidence, expected);
     }
@@ -1091,6 +1698,52 @@ export class SimulateRunAdmittedModelicaRunExecutor {
       run,
       expected,
       capture,
+      context,
+      attempt,
+    );
+    await this.#completeAttempt(attempt, key, expected);
+    return completed;
+  }
+
+  async #finalizePublishedOutput(
+    origin: EngineeringProjectCommandOrigin,
+    command: RegisteredProjectRunExecutorCommand,
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+    basisSnapshot: ThreadSnapshot,
+    context: AdmittedExecutionRequest,
+    attempt: Extract<AdmittedModelicaExecutionAttempt, { phase: "output-published" }>,
+    key: AdmittedModelicaExecutionAttemptKey,
+  ): Promise<EngineeringProjectSnapshot> {
+    const receipt = await this.#reopenReceipt(attempt.receiptRecord);
+    const persistedCapture = await this.#persistCapture(
+      project,
+      run,
+      context,
+      receipt,
+    );
+    const expected = buildDocumentarySuccessor({
+      basisSnapshot,
+      basis: requireBasis(run),
+      run,
+      capture: persistedCapture.capture,
+      captureFingerprint: persistedCapture.fingerprint,
+      captureUri: persistedCapture.uri,
+      receipt,
+    });
+    await this.#saveAndReopenThread(expected);
+    project = await this.#requiredProject(command.projectId);
+    await this.#publishExact(origin, project, command);
+    project = await this.#requiredProject(command.projectId);
+    await this.#completeExact(origin, project, command, expected);
+    const completed = await this.#requiredProject(command.projectId);
+    await this.#assertCompletedEvidence(
+      origin,
+      completed,
+      command,
+      run,
+      expected,
+      persistedCapture,
       context,
       attempt,
     );
@@ -1315,6 +1968,29 @@ export class SimulateRunAdmittedModelicaRunExecutor {
         failCommand(command, failure, expectedRevision, issuedAt),
     });
   }
+
+  async #assertFailedRetryGenerationClosedReplay(
+    origin: EngineeringProjectCommandOrigin,
+    command: RegisteredProjectRunExecutorCommand,
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+    failure: ReturnType<typeof admittedModelicaRetryGenerationClosedFailure>,
+    originalStartedAt = run.startedAt,
+  ): Promise<void> {
+    await assertFailedIsolatedExecutionReplay({
+      project,
+      run,
+      origin,
+      originalStartedAt,
+      failure,
+      claimCommandId: commandStep(command.commandId, "claim"),
+      failCommandId: commandStep(command.commandId, "fail"),
+      buildClaimCommand: (expectedRevision, issuedAt) =>
+        claimCommand(command, expectedRevision, issuedAt),
+      buildFailCommand: (expectedRevision, issuedAt) =>
+        failCommand(command, failure, expectedRevision, issuedAt),
+    });
+  }
 }
 
 function requireClaimedShape(
@@ -1487,6 +2163,44 @@ function boundedCause(error: unknown, maximum = 300): string {
   return message.length <= maximum ? message : `${message.slice(0, maximum)}…`;
 }
 
+/**
+ * Modelica admits one disposable worker only. In particular, another
+ * Microsandbox material cannot borrow the closed-subset profile authority.
+ */
+function exactAdmittedModelicaMicrosandboxLifecycle(
+  operationalCapability: ResolvedCapabilityRuntimeOperation,
+  profile: AdmittedModelicaExecutionProfile,
+): Extract<
+  CapabilityRuntimeHostLifecycle,
+  { readonly kind: "ephemeral-microsandbox" }
+> {
+  const microsandbox = operationalCapability.bindings.flatMap((binding) =>
+    binding.hostLifecycles.filter((lifecycle) =>
+      lifecycle.kind === "ephemeral-microsandbox"
+    )
+  );
+  if (microsandbox.length !== 1) {
+    throw invalidTransition(
+      "Admitted Modelica execution requires exactly one sealed Microsandbox material before host activation.",
+    );
+  }
+  const lifecycle = microsandbox[0]!;
+  if (
+    lifecycle.launchGroup !== null ||
+    lifecycle.material.unitId !== "casys.modelica-worker" ||
+    lifecycle.material.materialId !== "modelica-worker-image" ||
+    lifecycle.material.imageDigest !== profile.runtimeBackend.imageDigest.digest ||
+    !profile.runtimeBackend.imageReference.endsWith(
+      `@sha256:${lifecycle.material.imageDigest}`,
+    )
+  ) {
+    throw invalidTransition(
+      "Admitted Modelica execution requires the exact casys.modelica-worker/modelica-worker-image Microsandbox profile before host activation.",
+    );
+  }
+  return lifecycle;
+}
+
 function invalidTransition(message: string): EngineeringProjectCommandError {
   return new EngineeringProjectCommandError("invalid_transition", message);
 }
@@ -1515,11 +2229,55 @@ function throwOutputValidationRejected(
       "The admitted Modelica output-validation rejection WAL transition was not durable.",
     );
   }
-  throw new IsolatedAdmittedModelicaOutputValidationRejectedError({
-    executionRunId: attempt.executionRunId,
-    observation: attempt.outputValidationRejection.observation,
-    destruction: attempt.outputValidationRejection.destruction,
+  throw isolatedOutputValidationRejectionError(
+    attempt.executionRunId,
+    attempt.outputValidationRejection,
+  );
+}
+
+function isolatedOutputValidationRejectionError(
+  executionRunId: string,
+  rejection: Extract<
+    AdmittedModelicaExecutionAttempt,
+    { phase: "output-validation-rejected" }
+  >["outputValidationRejection"],
+): IsolatedAdmittedModelicaOutputValidationRejectedError {
+  return new IsolatedAdmittedModelicaOutputValidationRejectedError({
+    executionRunId,
+    observation: rejection.observation,
+    destruction: rejection.destruction,
   });
+}
+
+function isRecordedAdmittedModelicaTerminalAttempt(
+  attempt: AdmittedModelicaExecutionAttempt | undefined,
+): attempt is Extract<
+  AdmittedModelicaExecutionAttempt,
+  { phase: "output-published" | "output-validation-rejected" | "completed" }
+> {
+  return attempt?.phase === "output-published" ||
+    attempt?.phase === "output-validation-rejected" ||
+    attempt?.phase === "completed";
+}
+
+function isAdmittedModelicaGenerationOneHistoricalRecoveryEligible(
+  run: EngineeringAgentRun,
+  attempt: AdmittedModelicaExecutionAttempt | undefined,
+): attempt is Extract<
+  AdmittedModelicaExecutionAttempt,
+  { phase: "dispatching" }
+> {
+  return (run.status === "running" || run.status === "failed") &&
+    attempt?.phase === "dispatching" &&
+    attempt.dispatch.producerGeneration === 1;
+}
+
+function admittedModelicaRetryGenerationClosedFailure(): {
+  readonly summary: string;
+  readonly code: string;
+  readonly message: string;
+} {
+  return ADMITTED_MODELICA_RETRY_GENERATION_CLOSED;
 }
 
 function domainTransition(error: unknown): EngineeringProjectCommandError {

@@ -14,7 +14,7 @@ export function nextLiveActivityNode(
   previous: ThreadWorkbenchSnapshot | undefined,
   incoming: ThreadWorkbenchSnapshot,
 ): ThreadGraphNode | undefined {
-  const feed = activityFeedNodes(incoming.graph.nodes, incoming.graph.edges);
+  const feed = activityFeedNodes(incoming.graph.nodes);
   if (!previous) return feed[0];
   const previousKeys = new Set(previous.graph.nodes.map((node) => node.id));
   return feed.find((node) => !previousKeys.has(node.id));

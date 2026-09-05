@@ -15,20 +15,7 @@ import {
 import {
   EngineeringProjectCommandError,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
-import type { IsolatedOutputPublicationReader } from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
-import type {
-  IsolatedCodeOutputReceiptRecord,
-  IsolatedOutputPublicationRef,
-} from "../../../domain/compile/isolation/isolated-code-execution.ts";
-import {
-  createIsolatedCodeExecutionReceipt,
-  createIsolatedOutputPublicationRef,
-  fingerprintIsolatedOutputPublicationManifest,
-  ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
-  type IsolatedCodeExecutionReceiptRecord,
-  isolatedCodeExecutionReceiptRecord,
-  validateIsolatedCodeExecutionRequest,
-} from "../../../domain/compile/isolation/isolated-code-execution.ts";
+import type { GeometryDraftAssetStore } from "../../../application/ports/out/cad/canonical/geometry-draft-asset-store.ts";
 import {
   encodeGeometryModuleDecisionParameters,
   GEOMETRY_MODULE_CAPTURE_SCHEMA,
@@ -61,10 +48,15 @@ import {
 } from "../../../domain/cad/canonical/geometry-bundle.ts";
 import { createGeometryModuleInputBundle } from "../../../domain/cad/module-assembly/geometry-module-input-bundle.ts";
 import {
-  GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
-  GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
-} from "../../../domain/cad/module-assembly/geometry-module-assembly-execution.ts";
-import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
+  GEOMETRY_MODULE_ASSEMBLY_ASSETS,
+  GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
+  type GeometryModuleAssemblyReceipt,
+} from "../../../domain/cad/module-assembly/geometry-module-assembly-receipt.ts";
+import { GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY } from "../../../domain/capability/engineering-capability.ts";
+import {
+  fingerprintResourceBytes,
+  immutableBytes,
+} from "../../../domain/compile/source/provider-resource-reader.ts";
 import {
   deterministicJson,
   sha256Fingerprint,
@@ -116,7 +108,7 @@ const PLACEMENT = {
   casUri: `${CAD_PLACEMENT_ANALYSIS_CAPTURE_URI_PREFIX}${A}`,
 };
 
-Deno.test("module seal reopens exact child STEP, promotes isolated outputs, and parses the capture", async () => {
+Deno.test("module seal reopens exact child STEP, promotes assembly outputs, and parses the capture", async () => {
   const tmpDir = await Deno.makeTempDir({ prefix: "geo-module-seal-" });
   try {
     const world = await prepareModuleWorld(tmpDir);
@@ -337,7 +329,7 @@ Deno.test("module seal refuses a missing, ambiguous, superseded, or shallow chil
   }
 });
 
-Deno.test("module seal refuses isolated assembly output digest mismatch", async () => {
+Deno.test("module seal refuses assembly output digest mismatch", async () => {
   const tmpDir = await Deno.makeTempDir({ prefix: "geo-module-output-" });
   try {
     const world = await prepareModuleWorld(tmpDir, { outputDigestMismatch: true });
@@ -677,7 +669,7 @@ interface ModuleWorld {
   readonly draft: Omit<GeometryModuleDraftCapture, "fingerprint">;
   readonly bundle: Awaited<ReturnType<typeof createGeometryModuleInputBundle>>;
   readonly children: ReadonlyArray<GeometryModuleChild>;
-  readonly publications: IsolatedOutputPublicationReader;
+  readonly draftAssets: GeometryDraftAssetStore;
   readonly validator: GeometryModuleAssemblyOutputValidator;
   readonly assemblyStep: { readonly digest: string; readonly bytes: Uint8Array };
   readonly assemblyGlb: { readonly digest: string; readonly bytes: Uint8Array };
@@ -861,7 +853,7 @@ async function prepareModuleWorld(
   );
   const assemblyStep = part21("MODULE-ASSEMBLY");
   const assemblyGlb = structuralGlb();
-  const isolation = await moduleIsolation(
+  const assembly = await moduleAssemblyFixture(
     bundle.bytes.copy(),
     assemblyStep,
     assemblyGlb,
@@ -872,7 +864,7 @@ async function prepareModuleWorld(
     structure: structure.artifact,
     children,
     bundle,
-    isolation,
+    assembly,
     assemblyStep,
     assemblyGlb,
     predecessor: options.wrongPredecessor
@@ -903,14 +895,12 @@ async function prepareModuleWorld(
     : reconstructed;
   const draftFp = await sha256Fingerprint(draft);
   await initial.draftCaptures.save(draftFp, deterministicJson(draft));
-  const publications = new FakeModulePublications(
-    isolation.receipt.publication.ref,
-    isolation.receipt.outputs,
-    {
-      step: options.outputDigestMismatch ? part21("WRONG-OUTPUT") : assemblyStep,
-      glb: assemblyGlb,
-    },
+  const draftAssets = new FixtureModuleDraftAssets();
+  draftAssets.set(
+    fp(assembly.stepDigest),
+    options.outputDigestMismatch ? part21("WRONG-OUTPUT") : assemblyStep,
   );
+  draftAssets.set(fp(assembly.glbDigest), assemblyGlb);
   const validator = stubModuleValidator();
   const queued = await queueModuleSeal({
     fixture: initial,
@@ -929,7 +919,7 @@ async function prepareModuleWorld(
       directory,
       queued.geoCaptures,
       queued.snapshots,
-      moduleExecutorExtras({ publications, validator }),
+      moduleExecutorExtras({ draftAssets, validator }),
     ),
     command: {
       ...executionCommand(queued),
@@ -940,10 +930,10 @@ async function prepareModuleWorld(
     draft,
     bundle,
     children,
-    publications,
+    draftAssets,
     validator,
-    assemblyStep: { digest: isolation.stepDigest, bytes: assemblyStep },
-    assemblyGlb: { digest: isolation.glbDigest, bytes: assemblyGlb },
+    assemblyStep: { digest: assembly.stepDigest, bytes: assemblyStep },
+    assemblyGlb: { digest: assembly.glbDigest, bytes: assemblyGlb },
     v1PrimaryId: v1Primary.id,
     unrelatedChildId: bolt.child.childGeometry.artifactId,
     ...(systemLeaf
@@ -973,7 +963,7 @@ async function queueModuleSuccessor(
   assertExists(structure);
   const assemblyStep = part21("MODULE-ASSEMBLY-2");
   const assemblyGlb = structuralGlb(2);
-  const isolation = await moduleIsolation(
+  const assembly = await moduleAssemblyFixture(
     first.bundle.bytes.copy(),
     assemblyStep,
     assemblyGlb,
@@ -984,7 +974,7 @@ async function queueModuleSuccessor(
     structure,
     children: first.children,
     bundle: first.bundle,
-    isolation,
+    assembly,
     assemblyStep,
     assemblyGlb,
     predecessor: {
@@ -997,11 +987,9 @@ async function queueModuleSuccessor(
   const manifest = geometryModuleManifestFromDraft(draft);
   const draftFp = await sha256Fingerprint(draft);
   await first.fixture.draftCaptures.save(draftFp, deterministicJson(draft));
-  const publications = new FakeModulePublications(
-    isolation.receipt.publication.ref,
-    isolation.receipt.outputs,
-    { step: assemblyStep, glb: assemblyGlb },
-  );
+  const draftAssets = new FixtureModuleDraftAssets();
+  draftAssets.set(fp(assembly.stepDigest), assemblyStep);
+  draftAssets.set(fp(assembly.glbDigest), assemblyGlb);
   const validator = stubModuleValidator();
   const queued = await queueModuleSeal({
     fixture: first.fixture,
@@ -1021,7 +1009,7 @@ async function queueModuleSuccessor(
       first.directory,
       queued.geoCaptures,
       queued.snapshots,
-      moduleExecutorExtras({ publications, validator }, SUCCESSOR_NOW),
+      moduleExecutorExtras({ draftAssets, validator }, SUCCESSOR_NOW),
     ),
     command: {
       ...executionCommand(queued),
@@ -1030,22 +1018,22 @@ async function queueModuleSuccessor(
     },
     manifest,
     draft,
-    publications,
+    draftAssets,
     validator,
-    assemblyStep: { digest: isolation.stepDigest, bytes: assemblyStep },
-    assemblyGlb: { digest: isolation.glbDigest, bytes: assemblyGlb },
+    assemblyStep: { digest: assembly.stepDigest, bytes: assemblyStep },
+    assemblyGlb: { digest: assembly.glbDigest, bytes: assemblyGlb },
   };
 }
 
 function moduleExecutorExtras(
   world: {
-    readonly publications: IsolatedOutputPublicationReader;
+    readonly draftAssets: GeometryDraftAssetStore;
     readonly validator: GeometryModuleAssemblyOutputValidator;
   },
   now = MODULE_NOW,
 ) {
   return {
-    moduleAssemblyPublications: world.publications,
+    moduleAssemblyDraftAssets: world.draftAssets,
     moduleAssemblyOutputValidator: world.validator,
     now: () => now,
   };
@@ -1138,7 +1126,7 @@ async function queueModuleSeal(options: {
     expectedRevision: project.revision,
     issuedAt: tick(20),
     decisionId: `decision:geometry-${suffix}`,
-    rationale: "The module draft, children and isolated outputs were reviewed.",
+    rationale: "The module draft, children and assembly outputs were reviewed.",
     inputFingerprint: approval.inputFingerprint,
   });
   project = await fixture.commands.queueRun(AGENT, {
@@ -1527,7 +1515,7 @@ function unsignedDraft(options: {
   readonly structure: ThreadArtifact;
   readonly children: ReadonlyArray<GeometryModuleChild>;
   readonly bundle: Awaited<ReturnType<typeof createGeometryModuleInputBundle>>;
-  readonly isolation: Awaited<ReturnType<typeof moduleIsolation>>;
+  readonly assembly: Awaited<ReturnType<typeof moduleAssemblyFixture>>;
   readonly assemblyStep: Uint8Array;
   readonly assemblyGlb: Uint8Array;
   readonly predecessor?: GeometryModuleManifest["predecessor"];
@@ -1559,13 +1547,13 @@ function unsignedDraft(options: {
       byteCount: options.bundle.bytes.byteLength,
       manifest: options.bundle.manifest,
     },
-    receipt: options.isolation.receipt,
+    receipt: options.assembly.receipt,
     assemblyStep: {
-      fingerprint: fp(options.isolation.stepDigest),
+      fingerprint: fp(options.assembly.stepDigest),
       bytes: options.assemblyStep.byteLength,
     },
     assemblyGlb: {
-      fingerprint: fp(options.isolation.glbDigest),
+      fingerprint: fp(options.assembly.glbDigest),
       bytes: options.assemblyGlb.byteLength,
     },
   };
@@ -1595,12 +1583,12 @@ function fixtureStructureCaptureIdentity(
   };
 }
 
-async function moduleIsolation(
+async function moduleAssemblyFixture(
   bundleBytes: Uint8Array,
   stepBytes: Uint8Array,
   glbBytes: Uint8Array,
 ): Promise<{
-  readonly receipt: IsolatedCodeExecutionReceiptRecord;
+  readonly receipt: GeometryModuleAssemblyReceipt;
   readonly stepDigest: string;
   readonly glbDigest: string;
 }> {
@@ -1608,137 +1596,51 @@ async function moduleIsolation(
   const stepDigest = await fingerprintResourceBytes(stepBytes);
   const glbDigest = await fingerprintResourceBytes(glbBytes);
   const runId = "run.geometry-module.assembly.1";
-  const outputs = GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST.map((declaration) => ({
-    ...declaration,
-    bytes: declaration.role === "assembly.step" ? stepBytes : glbBytes,
-    sha256: declaration.role === "assembly.step" ? stepDigest : glbDigest,
-  }));
-  const request = await validateIsolatedCodeExecutionRequest({
-    schemaVersion: ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
+  const receipt = {
+    schemaVersion: GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
+    capability: GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
     runId,
-    producerGeneration: 0,
-    profile: {
-      id: GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE.id,
-      version: GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE.version,
+    inputBundle: {
+      fingerprint: fp(bundleDigest),
+      byteCount: bundleBytes.byteLength,
     },
-    source: { bytes: bundleBytes, sha256: bundleDigest },
-    policy: {
-      id: "isolation.geometry-module-assembly-v1",
-      version: "1.0.0",
-      fingerprint: fp(A),
+    assembly: {
+      step: {
+        ...GEOMETRY_MODULE_ASSEMBLY_ASSETS.step,
+        fingerprint: fp(stepDigest),
+        byteCount: stepBytes.byteLength,
+      },
+      glb: {
+        ...GEOMETRY_MODULE_ASSEMBLY_ASSETS.glb,
+        fingerprint: fp(glbDigest),
+        byteCount: glbBytes.byteLength,
+      },
     },
-    outputs: outputs.map(({ role, basename, mediaType, format }) => ({
-      role,
-      basename,
-      mediaType,
-      format,
-    })),
-  });
-  const publicationMembers = outputs.map((output) => ({
-    role: output.role,
-    basename: output.basename,
-    mediaType: output.mediaType,
-    format: output.format,
-    byteCount: output.bytes.byteLength,
-    sha256: output.sha256,
-    casUri: `casys://isolated-output/sha256/${output.sha256}`,
-  }));
-  const receipt = isolatedCodeExecutionReceiptRecord(
-    await createIsolatedCodeExecutionReceipt({
-      request,
-      runtime: {
-        isolationClass: "kernel-isolated",
-        imageDigest: fp(A),
-        requestedLimits: {
-          maxWallTimeMs: 1_000,
-          maxCpuTimeMs: 500,
-          maxMemoryBytes: 64_000_000,
-          maxProcesses: 4,
-          maxStdoutBytes: 1_024,
-          maxStderrBytes: 1_024,
-          maxOutputFileBytes: 1_024,
-          maxOutputTotalBytes: 2_048,
-        },
-        limitAssurance: {
-          maxWallTimeMs: "backend-attested",
-          maxCpuTimeMs: "unattested",
-          maxMemoryBytes: "backend-attested",
-          maxProcesses: "unattested",
-          maxStdoutBytes: "broker-observed-cap",
-          maxStderrBytes: "broker-observed-cap",
-          maxOutputFileBytes: "broker-observed-cap",
-          maxOutputTotalBytes: "broker-observed-cap",
-        },
-      },
-      termination: { kind: "exited", exitCode: 0, signal: null },
-      logs: {
-        stdout: { bytes: new Uint8Array(), truncated: false },
-        stderr: { bytes: new Uint8Array(), truncated: false },
-      },
-      outputs: publicationMembers.map((member, index) => ({
-        ...member,
-        validation: "accepted" as const,
-        persistence: "staged-reread-atomic-commit" as const,
-        bytes: outputs[index]!.bytes,
-      })),
-      destruction: {
-        status: "proven",
-        runId,
-        proofFingerprint: fp(E),
-      },
-      publication: await createIsolatedOutputPublicationRef(
-        runId,
-        0,
-        await fingerprintIsolatedOutputPublicationManifest(
-          runId,
-          0,
-          publicationMembers,
-        ),
-      ),
-    }),
-  );
+    implementation: {
+      id: "fixture-neutral-cad-assembler",
+      version: "2026.1",
+      evidenceFingerprint: fp(E),
+    },
+  } as const;
   return { receipt, stepDigest, glbDigest };
 }
 
-class FakeModulePublications implements IsolatedOutputPublicationReader {
-  constructor(
-    readonly publicationRef: IsolatedOutputPublicationRef,
-    readonly members: readonly IsolatedCodeOutputReceiptRecord[],
-    readonly bytes: { readonly step: Uint8Array; readonly glb: Uint8Array },
-  ) {}
+class FixtureModuleDraftAssets implements GeometryDraftAssetStore {
+  readonly #bytes = new Map<string, Uint8Array>();
 
-  resolvePublicationByRunId() {
-    return Promise.resolve({
-      status: "published" as const,
-      runId: this.publicationRef.runId,
-      producerGeneration: this.publicationRef.producerGeneration,
-      ref: this.publicationRef,
-      receipt: undefined as never,
-    });
+  set(fingerprint: ContentFingerprint, bytes: Uint8Array): void {
+    this.#bytes.set(fingerprint.digest, Uint8Array.from(bytes));
   }
 
-  readReceipt() {
-    return Promise.resolve(undefined);
+  async persist(bytes: Uint8Array) {
+    const digest = await fingerprintResourceBytes(bytes);
+    this.set(fp(digest), bytes);
+    return { fingerprint: fp(digest), byteCount: bytes.byteLength };
   }
 
-  readPublishedObject(
-    ref: IsolatedOutputPublicationRef,
-    member: IsolatedCodeOutputReceiptRecord,
-  ) {
-    if (deterministicJson(ref) !== deterministicJson(this.publicationRef)) {
-      return Promise.resolve(undefined);
-    }
-    const known = this.members.find((candidate) =>
-      candidate.role === member.role && candidate.sha256 === member.sha256
-    );
-    if (!known) {
-      return Promise.resolve(undefined);
-    }
-    return Promise.resolve(
-      Uint8Array.from(
-        member.role === "assembly.step" ? this.bytes.step : this.bytes.glb,
-      ),
-    );
+  read(fingerprint: ContentFingerprint) {
+    const bytes = this.#bytes.get(fingerprint.digest);
+    return Promise.resolve(bytes === undefined ? undefined : immutableBytes(bytes));
   }
 }
 

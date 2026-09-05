@@ -177,6 +177,20 @@ Deno.test("ready preview content does not invent a next bind", () => {
   assertEquals(text.includes("binding.missing"), false);
 });
 
+Deno.test("ready preview content instructs callers to reuse its exact admission operation", () => {
+  const text = compilationPreviewContent({
+    status: "ready-for-review",
+    draftId: "technical-compilation:project.drip-tray:abcd",
+    operation: { id: "compile.seal-admission", version: "3" },
+    gaps: [],
+  });
+  assertEquals(text.includes("compile.seal-admission@3"), true);
+  assertEquals(text.includes("Reuse the returned"), true);
+  assertEquals(text.includes("verbatim"), true);
+  assertEquals(text.includes("project_change_append"), true);
+  assertEquals(text.includes("do not reconstruct its sysmlModel binding"), true);
+});
+
 function cadSource(): FixtureSource {
   return {
     sourceText: CAD_SOURCE_TEXT,

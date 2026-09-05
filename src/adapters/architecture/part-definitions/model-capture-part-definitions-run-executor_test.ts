@@ -28,6 +28,10 @@ import { ARCHITECTURE_FEATURE_TYPING_AQL } from "../renderer/architecture-struct
 import { findArchitectureArtifact } from "../renderer/model-write-architecture-run-executor.ts";
 import { ModelCapturePartDefinitionsRunExecutor } from "./model-capture-part-definitions-run-executor.ts";
 import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../../domain/architecture/part-definitions/part-definitions-capture.ts";
+import {
+  recordingCapabilityRuntimeSession,
+  successfulCapabilityRuntimeFor,
+} from "../../../testing/capability-runtime-execution-session-test-support.ts";
 import { ArchitectureArtifactRemovedError } from "../renderer/model-write-architecture-run-executor.ts";
 
 const PROJECT_ID = "project:lamp";
@@ -143,6 +147,25 @@ Deno.test("a drone architecture URI is not a generic architecture tip", async ()
     "no generic architecture capture tip",
   );
   assertEquals(fixture.syson.calls, []);
+});
+
+Deno.test("PartDefinitions capture keeps the run queued when JIT begin fails", async () => {
+  const fixture = await productFixture();
+  const session = recordingCapabilityRuntimeSession(() =>
+    Promise.reject(new Error("exact SysON host group unavailable"))
+  );
+  await assertRejects(
+    () =>
+      fixture.executor(false, fixture.captures, fixture.publications, session)
+        .execute(AGENT, fixture.command()),
+    Error,
+    "host group unavailable",
+  );
+  assertEquals(session.events, ["begin"]);
+  assertEquals(session.releases, 0);
+  assertEquals(session.retains, 0);
+  assertEquals(fixture.syson.calls, []);
+  assertEquals(fixture.project.agentRuns[0]!.status, "queued");
 });
 
 Deno.test("no FileArchitectureAttemptStore begin occurs before the SysON read", async () => {
@@ -658,8 +681,14 @@ async function productFixture(options: FixtureOptions = {}) {
         FilePartDefinitionsPublicationStore,
         "read" | "save"
       > = publications,
-    ) =>
-      new ModelCapturePartDefinitionsRunExecutor({
+      session?: ReturnType<typeof recordingCapabilityRuntimeSession>,
+    ) => {
+      const capability = successfulCapabilityRuntimeFor(
+        PROJECT_ID,
+        MODEL_CAPTURE_PART_DEFINITIONS_OPERATION,
+        "model.inspect-system",
+      );
+      return new ModelCapturePartDefinitionsRunExecutor({
         projects: { get: async () => project } as never,
         commands: commands as never,
         snapshots,
@@ -669,7 +698,10 @@ async function productFixture(options: FixtureOptions = {}) {
         syson: syson as unknown as McpToolClient,
         lease: immediateLease,
         publications: replacementPublications as FilePartDefinitionsPublicationStore,
-      }),
+        capabilityRuntime: capability.capabilityRuntime,
+        capabilityRuntimeSession: session ?? capability.capabilityRuntimeSession,
+      });
+    },
   };
 }
 

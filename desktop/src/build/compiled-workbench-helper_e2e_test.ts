@@ -120,6 +120,13 @@ Deno.test({
       assertEquals(body.surface, "evidence");
       assertEquals(body.project.project.id, "offline-project");
 
+      const viewerSessions = await fetch(
+        `${WORKBENCH_ORIGIN}/api/thread/viewer-sessions`,
+        authenticated,
+      );
+      assertEquals(viewerSessions.status, 200);
+      assertEquals((await viewerSessions.json()).sessions, []);
+
       const workbench = await fetch(`${WORKBENCH_ORIGIN}/`, authenticated);
       assertEquals(workbench.status, 200);
       assertStringIncludes(
@@ -130,7 +137,21 @@ Deno.test({
         workbench.headers.get("content-security-policy") ?? "",
         "script-src 'self'",
       );
+      assertStringIncludes(
+        workbench.headers.get("content-security-policy") ?? "",
+        "frame-src blob:",
+      );
       const workbenchHtml = await workbench.text();
+      const appNonce = workbenchHtml.match(
+        /<meta name="casys-mcp-app-script-nonce" content="([A-Za-z0-9_-]{43})">/,
+      )?.[1];
+      if (!appNonce) {
+        throw new Error("Compiled Workbench HTML has no MCP App host nonce.");
+      }
+      assertStringIncludes(
+        workbench.headers.get("content-security-policy") ?? "",
+        `'nonce-${appNonce}'`,
+      );
       const scriptPath = workbenchHtml.match(
         /<script[^>]+src="\.?(\/assets\/[^"]+\.js)"/u,
       )?.[1];

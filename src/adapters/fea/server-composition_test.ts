@@ -65,6 +65,8 @@ Deno.test("FEA @3 requires SysON plus CalculiX runtime and keeps the historical 
       feaProofCaptures: foundation.feaProofCaptures,
       sensitivityCatalogOfferCaptures: foundation.sensitivityCatalogOfferCaptures,
       requirementsCaptures: architecture.requirementsCaptures,
+      technicalCompilationAdmissionCaptureBytes:
+        compilation.technicalCompilationSealBytes,
       admissions: compilation.technicalCompilationAdmissions,
       recordedAnalysisDirectory: `${root}/analysis`,
       canonicalAssetDirectory: `${root}/assets`,

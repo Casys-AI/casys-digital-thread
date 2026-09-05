@@ -2,11 +2,11 @@ import { assertEquals, assertRejects } from "@std/assert";
 import type { TechnicalCompilationDocument } from "../../compile/admission/technical-compilation.ts";
 import { sha256Fingerprint } from "../../kernel/deterministic-json.ts";
 import {
-  assembleSensitivityStudyCaseV2,
+  assembleSensitivityStudyCaseV3,
   validateSensitivityStudyCaseTemplate,
 } from "../study/sensitivity-study-template.ts";
 import { computeSensitivities } from "../study/sensitivity-study.ts";
-import type { SensitivityStudyCaseV2 } from "../study/sensitivity-study-v2.ts";
+import type { SensitivityStudyCaseV3 } from "../study/sensitivity-study-v3.ts";
 import {
   compileSensitivityExperienceTarget,
   deriveSensitivityExperienceRecord,
@@ -36,7 +36,7 @@ Deno.test("experience identity excludes project-local case and capture identitie
       artifactUri: "thread-artifact://target-project/other-admission",
       sha256: DIGEST_C,
     },
-  } satisfies SensitivityStudyCaseV2;
+  } satisfies SensitivityStudyCaseV3;
   const admission = await admittedSource();
   const first = await compileSensitivityExperienceTarget({
     studyCase: firstCase,
@@ -172,7 +172,7 @@ async function studyCase(
   subjectId: string,
   id: string,
   revision: number,
-): Promise<SensitivityStudyCaseV2> {
+): Promise<SensitivityStudyCaseV3> {
   const template = validateSensitivityStudyCaseTemplate(
     JSON.parse(
       await Deno.readTextFile(
@@ -180,7 +180,7 @@ async function studyCase(
       ),
     ),
   );
-  return assembleSensitivityStudyCaseV2({
+  return assembleSensitivityStudyCaseV3({
     ...template,
     id,
     revision,
@@ -311,7 +311,7 @@ function solverRuntime(digest: string) {
 }
 
 async function studyCapture(
-  studyCase: SensitivityStudyCaseV2,
+  studyCase: SensitivityStudyCaseV3,
   reverse = false,
 ) {
   const base = [

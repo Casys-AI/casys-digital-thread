@@ -3,14 +3,17 @@ import { GENERIC_THREAD_FIXTURE } from "../testing/workbench/generic-thread-work
 import {
   buildOverviewThreadHero,
   isRecordedOverviewHeroNode,
+  OVERVIEW_SEMANTIC_GROUP_KEYS,
   type OverviewActivityHeroNode,
+  overviewGroupCaption,
+  overviewGroupKeyFor,
   type OverviewHeroNode,
   overviewLaneFor,
 } from "./src/project/overview-thread-hero-model.ts";
 import type { ProjectPathActivityView } from "./src/project/model.ts";
 import type {
   ThreadArtifact,
-  ThreadAssemblyIntegrityArtifactRef,
+  ThreadGraphEdge,
   ThreadGraphNode,
 } from "./src/thread/types.ts";
 
@@ -53,6 +56,18 @@ Deno.test("overview hero places recorded nodes in 2a lanes and never invents ids
     hero.nodes.find((item) => recordedId(item) === "OBS-STRESS-MAX")?.lane,
     "physics",
   );
+  assertEquals(
+    hero.edges.reduce((count, edge) => count + edge.pathCount, 0),
+    hero.projectedPathCount,
+  );
+  assertEquals(
+    hero.edges.every((edge) => edge.pathKeys.length === edge.pathCount),
+    true,
+  );
+  assertEquals(
+    new Set(hero.edges.map((edge) => `${edge.fromKey}>${edge.toKey}`)).size,
+    hero.edges.length,
+  );
 });
 
 Deno.test("assembly-integrity-observation/1.0 stays an observation in the physics lane", () => {
@@ -71,181 +86,244 @@ Deno.test("assembly-integrity-observation/1.0 stays an observation in the physic
   assertEquals(overviewLaneFor(node) === "verdicts", false);
 });
 
-Deno.test("overview promotes exact assembly-integrity L3 and L4 records without promoting L5", () => {
-  const thread = structuredClone(GENERIC_THREAD_FIXTURE);
-  const geometry = assemblyIntegrityRef("assembly-module", "a", []);
-  const step = assemblyIntegrityRef("assembly-step", "b", [geometry.id]);
-  const observation = assemblyIntegrityRef("assembly-observation", "c", [
-    geometry.id,
-    step.id,
-  ]);
-  const evaluation = assemblyIntegrityRef("assembly-evaluation", "d", [
-    geometry.id,
-    step.id,
-    observation.id,
-  ]);
-  const closeout = assemblyIntegrityRef("assembly-closeout", "e", [
-    evaluation.id,
-  ]);
-  thread.artifacts.push(
-    integrityArtifact(geometry, "Assembly module", "geometry"),
-    integrityArtifact(step, "Assembly STEP", "step"),
-    integrityArtifact(
-      observation,
-      "Assembly integrity observation",
-      "evidence",
-    ),
-    integrityArtifact(evaluation, "Assembly integrity evaluation", "evidence"),
-    integrityArtifact(closeout, "Assembly integrity closeout", "document"),
-  );
-  thread.graph.nodes.push(
-    integrityGraphNode(
-      observation,
-      "Assembly integrity observation",
-      "evidence",
-    ),
-    integrityGraphNode(evaluation, "Assembly integrity evaluation", "evidence"),
-    integrityGraphNode(closeout, "Assembly integrity closeout", "document"),
-  );
-  thread.assemblyIntegrity = {
-    schemaVersion: "thread-assembly-integrity/1.0",
-    family: "assembly-integrity",
-    status: "current",
-    chains: [{
-      id: "assembly-chain-current",
-      status: "current",
-      observation: {
-        record: observation,
-        basis: {
-          snapshotId: "thread-assembly-basis",
-          revision: 1,
-          subjectId: thread.subject.id,
-        },
-        inputBundle: {
-          fingerprint: `sha256:${"f".repeat(64)}`,
-          byteCount: 42,
-        },
-        evidence: { geometryModule: geometry, assemblyStep: step },
-        facts: {
-          importability: { status: "observed", value: "imported" },
-          importFacts: {
-            unitSystem: { status: "observed", value: "mm" },
-            solidCount: { status: "observed", value: 1 },
-          },
-          topology: {
-            brepValidity: { status: "observed", value: "valid" },
-            degenerateEdgeCount: { status: "observed", value: 0 },
-            freeEdgeCount: { status: "observed", value: 0 },
-            shellCount: { status: "observed", value: 1 },
-          },
-          occurrences: [{
-            usageElementId: "usage:part",
-            target: {
-              status: "observed",
-              value: { partDefinitionElementId: "part:definition" },
-            },
-            transformStatus: "observed",
-          }],
-          pairs: [],
-        },
-        limitations: {
-          verdict: "none",
-          fitness: "none",
-          safety: "none",
-          motion: "none",
-          strength: "none",
-        },
-      },
-      evaluation: {
-        record: evaluation,
-        basis: {
-          snapshotId: "thread-observation-basis",
-          revision: 2,
-          subjectId: thread.subject.id,
-        },
-        evidence: {
-          geometryModule: geometry,
-          assemblyStep: step,
-          observation,
-        },
-        method: {
-          id: "assembly-integrity-evaluation",
-          version: "1.0",
-          fingerprint: `sha256:${"1".repeat(64)}`,
-        },
-        criteria: [
-          { id: "assembly-import", verdict: "pass" },
-          { id: "occurrence-coverage", verdict: "pass" },
-          { id: "placement-recross", verdict: "pass" },
-          { id: "brep-validity", verdict: "pass" },
-          { id: "pairwise-intersection", verdict: "pass" },
-        ],
-        aggregateVerdict: "pass",
-        limitations: {
-          providerCalls: "none",
-          genericSysmlRequirementEvaluation: "none",
-          safety: "not-evaluated",
-          physicalJoints: "not-evaluated",
-          clearance: "not-evaluated",
-          motion: "not-evaluated",
-          load: "not-evaluated",
-          fabricability: "not-evaluated",
-        },
-      },
-    }],
+Deno.test("recorded solver results stay addressable in the physics lane", () => {
+  const node: ThreadGraphNode = {
+    id: "graph:artifact:solver-result",
+    ref: { kind: "artifact", id: "solver-result" },
+    entityKind: "artifact",
+    artifactKind: "solver-result",
+    label: "Recorded solver result",
+    system: "digital-thread",
+    freshness: "fresh",
+    summary: "Exact recorded result available to a contextual App.",
   };
 
-  const hero = buildOverviewThreadHero(thread);
-  const l3 = hero.nodes.find((item) => recordedId(item) === observation.id);
-  const l4 = hero.nodes.find((item) => recordedId(item) === evaluation.id);
+  assertEquals(overviewLaneFor(node), "physics");
+});
 
-  assertEquals(l3?.lane, "physics");
-  assertEquals(l3?.kind === "recorded" ? l3.node.ref : undefined, {
-    kind: "artifact",
-    id: observation.id,
+Deno.test("overview hulls use exact producer families rather than recorder labels", () => {
+  const node: ThreadGraphNode = {
+    id: "graph:artifact:semantic-record",
+    ref: { kind: "artifact", id: "semantic-record" },
+    entityKind: "artifact",
+    artifactKind: "geometry",
+    label: "Copy does not classify this record",
+    system: "digital-thread",
+    freshness: "fresh",
+    summary: "Exact producer classification",
+  };
+  const artifact = (operation: string): ThreadArtifact => ({
+    id: "semantic-record",
+    label: "Independent copy",
+    kind: "geometry",
+    system: "digital-thread",
+    revision: "1",
+    freshness: "fresh",
+    producedBy: operation,
+    dependsOn: [],
   });
+
   assertEquals(
-    l3?.kind === "recorded" ? l3.node.summary : undefined,
-    "Recorded L3 observation · current",
-  );
-  assertEquals(l4?.lane, "verdicts");
-  assertEquals(l4?.kind === "recorded" ? l4.node.ref : undefined, {
-    kind: "artifact",
-    id: evaluation.id,
-  });
-  assertEquals(
-    l4?.kind === "recorded" ? l4.node.summary : undefined,
-    "Recorded L4 pass · current",
+    overviewGroupKeyFor(node, artifact("design.write-geometry@1")),
+    OVERVIEW_SEMANTIC_GROUP_KEYS.canonicalGeometry,
   );
   assertEquals(
-    hero.lanes.find((column) => column.lane.id === "verdicts")?.systems
-      .includes("digital-thread"),
-    true,
+    overviewGroupKeyFor(
+      node,
+      artifact("verify.observe-assembly-integrity@1"),
+    ),
+    OVERVIEW_SEMANTIC_GROUP_KEYS.assemblyIntegrity,
   );
   assertEquals(
-    hero.nodes.some((item) => recordedId(item) === closeout.id),
-    false,
+    overviewGroupKeyFor(node, artifact("unknown.operation@1")),
+    "digital-thread",
+  );
+  assertEquals(
+    overviewGroupKeyFor(node, {
+      ...artifact("design.write-geometry@1"),
+      producer: {
+        serverId: "mcp-modelica",
+        tool: "simulate.run-qualified-modelica-kit@1",
+        runId: "run:canonical-producer-wins",
+      },
+    }),
+    "digital-thread",
+  );
+  assertEquals(
+    overviewGroupCaption(OVERVIEW_SEMANTIC_GROUP_KEYS.canonicalGeometry),
+    "Canonical geometry",
   );
 });
 
-Deno.test("Overview sealed preview opens exact STEP and GLB as accessible GET links", async () => {
-  const source = await Deno.readTextFile(
+Deno.test("overview hulls keep exact containment after a one-to-one SysML usage is folded", () => {
+  const thread = structuredClone(GENERIC_THREAD_FIXTURE);
+  const structuralNode = (
+    id: string,
+    entityKind: "part-definition" | "part-usage",
+  ): ThreadGraphNode => ({
+    id: `graph:${entityKind}:${id}`,
+    ref: { kind: entityKind, id },
+    entityKind,
+    label: id,
+    system: "syson",
+    freshness: "fresh",
+    summary: "Recorded SysML structure",
+  });
+  const assembly = structuralNode("assembly", "part-definition");
+  const childUsage = structuralNode("child-usage", "part-usage");
+  const childDefinition = structuralNode("child-definition", "part-definition");
+  const edge = (
+    id: string,
+    from: ThreadGraphNode,
+    to: ThreadGraphNode,
+    relation: ThreadGraphEdge["relation"],
+  ): ThreadGraphEdge => ({
+    id,
+    from: from.ref,
+    to: to.ref,
+    relation,
+    rationale: id,
+    origin: "structure",
+  });
+  thread.graph.nodes.push(assembly, childUsage, childDefinition);
+  thread.graph.edges.push(
+    edge("contains-child", assembly, childUsage, "contains"),
+    edge("types-child", childUsage, childDefinition, "typed_by"),
+  );
+
+  const hero = buildOverviewThreadHero(thread);
+  const child = hero.nodes.find((item) =>
+    item.key === "part-definition:child-definition"
+  );
+
+  assertEquals(
+    hero.nodes.some((item) => item.key === "part-usage:child-usage"),
+    false,
+  );
+  assertEquals(child?.kind, "recorded");
+  assertEquals(
+    child?.kind === "recorded" ? child.parentKey : undefined,
+    "part-definition:assembly",
+  );
+});
+
+Deno.test("overview connects exact project dependency evidence to open activity hulls", () => {
+  const thread = structuredClone(GENERIC_THREAD_FIXTURE);
+  const snapshotRevision = thread.evidenceFamilyGraph.asOf.revision;
+  const evidenceRef = {
+    snapshotId: thread.id,
+    snapshotRevision,
+    kind: "artifact" as const,
+    id: "project-document-admission",
+  };
+  thread.graph.nodes.push({
+    id: "graph:artifact:project-document-admission",
+    ref: { kind: "artifact", id: evidenceRef.id },
+    entityKind: "artifact",
+    artifactKind: "document",
+    label: "Project document admission",
+    system: "digital-thread",
+    freshness: "fresh",
+    summary: "Recorded documentary admission",
+  });
+  const baseline = {
+    ...activityView(
+      "activity:brief-baseline",
+      "requirements",
+      "completed",
+      ["brief-baseline"],
+    ),
+    evidenceRefs: [evidenceRef],
+  };
+  const active = {
+    ...activityView(
+      "activity:active-build",
+      "system-model",
+      "active",
+      ["active-build"],
+    ),
+    dependencyEvidenceRefs: [evidenceRef],
+  };
+
+  const hero = buildOverviewThreadHero(thread, [baseline, active]);
+  const evidence = hero.nodes.find((item) => item.key === `artifact:${evidenceRef.id}`);
+  const dependency = hero.edges.find((edge) => edge.kind === "project-dependency");
+
+  assertEquals(evidence?.lane, "requirements");
+  assertEquals(dependency?.fromKey, `artifact:${evidenceRef.id}`);
+  assertEquals(
+    dependency?.toKey,
+    "project-activity:activity:active-build",
+  );
+  assertEquals(dependency?.pathCount, 1);
+});
+
+Deno.test("Overview opens registered whole Apps without a native CAD fallback", async () => {
+  const overview = await Deno.readTextFile(
     new URL("./src/project/overview.tsx", import.meta.url),
   );
-  const links = await Deno.readTextFile(
-    new URL("./src/cad/thread-asset-open-links.tsx", import.meta.url),
+  const hero = await Deno.readTextFile(
+    new URL("./src/project/overview-thread-hero.tsx", import.meta.url),
   );
-  assertStringIncludes(source, 'from "../cad/thread-asset-open-links.tsx"');
-  assertStringIncludes(source, "<ThreadAssetOpenLinks");
-  assertStringIncludes(links, "{`Open ${format}`}");
-  assertStringIncludes(links, 'target="_blank"');
-  assertStringIncludes(links, 'rel="noreferrer"');
-  assertStringIncludes(links, "aria-label={`Open ${format} for ${subject}`}");
-  assertStringIncludes(links, "Open CAD assets for ${subject}");
-  assertEquals(source.includes('method="POST"'), false);
-  assertEquals(source.includes('method: "POST"'), false);
-  assertEquals(source.includes("download="), false);
-  assertEquals(source.includes("fetch("), false);
+  const capabilities = await Deno.readTextFile(
+    new URL("./src/project/overview-thread-viewer-model.ts", import.meta.url),
+  );
+  const appFrame = await Deno.readTextFile(
+    new URL("./src/thread/mcp-app-frame.tsx", import.meta.url),
+  );
+
+  assertStringIncludes(overview, "<OverviewThreadHero");
+  assertEquals(overview.includes("ThreadAssetOpenLinks"), false);
+  assertEquals(overview.includes("thread-asset-open-links"), false);
+  assertEquals(overview.includes("<GltfAssetCanvas"), false);
+
+  assertEquals(
+    hero.includes("resolveOverviewThreadViewerCapabilities("),
+    false,
+  );
+  assertStringIncludes(hero, "function overviewNodeContextActions(");
+  assertStringIncludes(hero, "viewerSessionsByNodeKey.get(item.key) ?? []");
+  assertStringIncludes(hero, 'kind: "open-session"');
+  assertStringIncludes(
+    hero,
+    "for (const session of anchoredSessions)",
+  );
+  assertStringIncludes(hero, "sessionId: session.id");
+  assertStringIncludes(
+    hero,
+    "label: `Open App · ${session.app.id}@${session.app.version}`",
+  );
+  assertEquals(hero.includes('kind: "open-cad"'), false);
+  assertEquals(hero.includes("capabilities.cadAssets"), false);
+  assertEquals(hero.includes("requestExactApp"), false);
+  assertStringIncludes(hero, "<OverviewThreadContextMenu");
+  assertStringIncludes(hero, "<DropdownMenuContextTrigger");
+  assertStringIncludes(hero, "Open hull monitor");
+  assertStringIncludes(hero, "memberViewerEntries");
+  assertEquals(hero.includes("<OverviewNodeSelectionCard"), false);
+  assertEquals(hero.includes("<GltfAssetCanvas"), false);
+  assertStringIncludes(hero, "session={viewerSession}");
+  assertStringIncludes(appFrame, "loadVerifiedMcpAppDocument");
+  assertStringIncludes(appFrame, "frameNode.src = document.url");
+  assertEquals(appFrame.includes("frameNode.src = session.launchUri"), false);
+  assertEquals(appFrame.includes("src={session.launchUri}"), false);
+  assertStringIncludes(
+    appFrame,
+    'setAttribute("sandbox", "allow-scripts")',
+  );
+  assertEquals(appFrame.includes("allow-same-origin"), false);
+  assertStringIncludes(hero, 'className="overview-thread-viewer-layer"');
+  assertEquals(hero.includes("Open STEP"), false);
+
+  assertStringIncludes(capabilities, "Zero is unavailable");
+  assertEquals(capabilities.includes("inspectRecord"), false);
+  assertEquals(capabilities.includes("GLB"), false);
+  assertEquals(capabilities.includes("cadAssets"), false);
+  assertEquals(overview.includes('method="POST"'), false);
+  assertEquals(overview.includes('method: "POST"'), false);
+  assertEquals(overview.includes("download="), false);
+  assertEquals(overview.includes("fetch("), false);
+  assertEquals(hero.includes("fetch("), false);
 });
 
 Deno.test("overview lane assignment skips change and action nodes", () => {
@@ -259,7 +337,29 @@ Deno.test("overview lane assignment skips change and action nodes", () => {
   assertEquals(overviewLaneFor(action), undefined);
 });
 
-Deno.test("overview hero wraps every recorded semantic point instead of truncating a lane", () => {
+Deno.test("overview lane assignment projects reviewed SysML structure into the system-model lane", () => {
+  const requirement = GENERIC_THREAD_FIXTURE.graph.nodes.find((node) =>
+    node.entityKind === "requirement"
+  )!;
+  for (
+    const entityKind of [
+      "part-definition",
+      "part-usage",
+      "attribute-usage",
+    ] as const
+  ) {
+    assertEquals(
+      overviewLaneFor({
+        ...requirement,
+        ref: { kind: entityKind, id: `structure:${entityKind}` },
+        entityKind,
+      }),
+      "system-model",
+    );
+  }
+});
+
+Deno.test("overview hero retains every recorded semantic point instead of truncating a lane", () => {
   const thread = structuredClone(GENERIC_THREAD_FIXTURE);
   const requirement = thread.graph.nodes.find((node) =>
     node.entityKind === "requirement"
@@ -296,8 +396,11 @@ Deno.test("overview hero wraps every recorded semantic point instead of truncati
     item.node.ref.id.startsWith("wrap-")
   );
   assertEquals(verdicts.length, 6);
-  assertEquals(new Set(verdicts.map((item) => item.x)).size, 2);
-  assertEquals(new Set(verdicts.map((item) => item.y)).size >= 3, true);
+  assertEquals(new Set(verdicts.map((item) => item.key)).size, 6);
+  assertEquals(
+    verdicts.every((item) => item.label.startsWith("Wrapped verdict")),
+    true,
+  );
 });
 
 Deno.test("overview hero appends one non-completed activity marker per stable activity in its exact lane", () => {
@@ -393,58 +496,7 @@ function activityView(
     approvedDecisions: 0,
     requiredDecisions: 0,
     evidenceCount: 0,
-  };
-}
-
-function assemblyIntegrityRef(
-  id: string,
-  digestCharacter: string,
-  dependsOn: string[],
-): ThreadAssemblyIntegrityArtifactRef {
-  const digest = digestCharacter.repeat(64);
-  return {
-    id,
-    uri: `casys://test/${id}/sha256/${digest}`,
-    fingerprint: `sha256:${digest}`,
-    producerRunId: `run:${id}`,
-    dependsOn,
-    freshness: "fresh",
-  };
-}
-
-function integrityArtifact(
-  reference: ThreadAssemblyIntegrityArtifactRef,
-  label: string,
-  kind: string,
-): ThreadArtifact {
-  return {
-    id: reference.id,
-    label,
-    kind,
-    system: "digital-thread",
-    revision: reference.fingerprint.slice("sha256:".length),
-    freshness: "fresh",
-    fingerprint: reference.fingerprint,
-    uri: reference.uri,
-    producerRunId: reference.producerRunId,
-    dependsOn: reference.dependsOn,
-  };
-}
-
-function integrityGraphNode(
-  reference: ThreadAssemblyIntegrityArtifactRef,
-  label: string,
-  artifactKind: string,
-): ThreadGraphNode {
-  return {
-    id: `graph:artifact:${reference.id}`,
-    ref: { kind: "artifact", id: reference.id },
-    entityKind: "artifact",
-    artifactKind,
-    label,
-    system: "digital-thread",
-    freshness: "fresh",
-    summary: `${artifactKind} · ${reference.fingerprint}`,
-    selection: { kind: "artifact", id: reference.id },
+    evidenceRefs: [],
+    dependencyEvidenceRefs: [],
   };
 }

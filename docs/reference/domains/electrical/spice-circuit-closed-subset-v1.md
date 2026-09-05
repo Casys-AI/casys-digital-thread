@@ -73,18 +73,28 @@ is a dedicated Microsandbox family. It is not `mcp-spice` and not a qualified fi
 circuit kit. The image `ENTRYPOINT` is the complete worker command: no caller arguments,
 provider envelope, paths, or observation list.
 
-Docker smoke, Microsandbox cache preparation, and the product run are not substitutes:
+Docker smoke, server-owned preload, maintainer recovery, and the product run are not
+substitutes:
 
-| Surface           | Owner                                                                     | What it is not                                           |
-| ----------------- | ------------------------------------------------------------------------- | -------------------------------------------------------- |
-| Docker smoke      | `scripts/gates/verify-ngspice-microsandbox-worker.ts`                     | IsolatedCodeRunner, Microsandbox cache, product evidence |
-| Cache preparation | `deno task prepare:ngspice:microsandbox`                                  | A pull, a product run, a caller-selected image           |
-| Product run       | `simulate.run-admitted-spice@1` after `project_admitted_spice_run_review` | mcp-spice, the LED-driver fiche, a verdict               |
+| Surface             | Owner                                                                     | What it is not                                                                    |
+| ------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Docker smoke        | `scripts/gates/verify-ngspice-microsandbox-worker.ts`                     | IsolatedCodeRunner, product runtime state, or product evidence                   |
+| Server preload      | Durable capability authorization and control-plane restart                | A run, worker activation, caller-selected image, or Docker source material       |
+| Maintainer recovery | `deno task prepare:ngspice:microsandbox`                                  | Normal product use, a pull of aliases, or a caller-selected image                |
+| Product run         | `simulate.run-admitted-spice@1` after `project_admitted_spice_run_review` | mcp-spice, the LED-driver fiche, or a verdict                                    |
 
-The Docker source/index digest (`62748f195c86…`) and the Microsandbox runtime manifest
-digest (`3350527ceba0…`) are related but distinct profile-owned constants. Product
-inspect requires `imageReference` digest == attested `manifestDigest`. `pullPolicy`
-stays `never`.
+The Docker source/index digest (`4350b3b70bb7…`) is internal bootstrap acquisition
+metadata; the Microsandbox runtime manifest digest (`54079cf7c0e1…`) is the sole
+catalogued runtime material and product attestation target. Product inspect requires
+`imageReference` digest == attested `manifestDigest`. `pullPolicy` stays `never`.
+After authorization or restart, server-owned preload may prepare the exact target; JIT
+only observes it before a claim and never acquires from the Docker source. A local
+`trusted-dockerfile` rebuild is a candidate recipe, not bit-reproducible proof, and can
+fail the exact target attestation; the capability then stays unavailable. `oci-digest`
+distribution and GHCR promotion remain deferred until separate qualification. These
+local pins only unblock a host with the exact source image available; they do not make
+the worker externally reproducible. A moving APT repository does not promise that a
+later rebuild will reproduce the pin.
 
 Filesystem contract, analogous to admitted Modelica:
 
@@ -134,8 +144,9 @@ source/result fingerprints, counts/limits, and the fixed intrinsic limitation li
 `not-safety-claim`). It never claims L4, pass, or safety. Product run:
 `project_admitted_spice_run_review` → `simulate.run-admitted-spice@1`. The server-owned
 IsolatedCodeRunner executes the Microsandbox-manifest pin `ENTRYPOINT` with no extra
-args. Without `--local-execution` the operation stays registered and the executor is
-`unavailable`. That composition state is not a worker `evidence.json` limitation. There
+args. Until the approved capability-runtime supervisor composes the exact unit, the
+operation stays registered and the executor is `unavailable`. That composition state is
+not a worker `evidence.json` limitation. There
 is no worker-gate `wiringGap`.
 
 Node `variable` symbols, component names, and `.model` cards stay

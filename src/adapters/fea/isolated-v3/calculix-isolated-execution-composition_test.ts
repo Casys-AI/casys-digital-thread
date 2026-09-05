@@ -39,7 +39,7 @@ Deno.test("CalculiX profile-only composition exposes facts without a runtime", a
   );
   assertEquals(composition.execution, undefined);
   const profile = await composition.profiles.initial();
-  assertEquals(profile.imageReference, PROFILE.imageReference);
+  assertEquals(profile.imageReference, `docker.io/${PROFILE.imageReference}`);
   assertEquals(profile.wrapper.sha256, PROFILE.wrapperSha256);
   assertEquals(profile.runtime.requestedLimits, PROFILE.limits);
 });

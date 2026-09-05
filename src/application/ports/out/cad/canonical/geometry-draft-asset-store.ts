@@ -6,6 +6,7 @@
  */
 
 import type { ContentFingerprint } from "../../../../../domain/kernel/primitives.ts";
+import type { ImmutableBytes } from "../../../../../domain/compile/source/provider-resource-reader.ts";
 
 export interface PersistedGeometryDraftAsset {
   readonly fingerprint: ContentFingerprint;
@@ -14,4 +15,5 @@ export interface PersistedGeometryDraftAsset {
 
 export interface GeometryDraftAssetStore {
   persist(bytes: Uint8Array): Promise<PersistedGeometryDraftAsset>;
+  read(fingerprint: ContentFingerprint): Promise<ImmutableBytes | undefined>;
 }

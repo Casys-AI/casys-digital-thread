@@ -1,5 +1,7 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import {
+  GEOMETRY_MODULE_ASSEMBLY_ASSETS,
+  GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
   GEOMETRY_MODULE_CAPTURE_SCHEMA,
   GEOMETRY_MODULE_CHILD_STEP_MEDIA_TYPE,
   GEOMETRY_MODULE_DRAFT_CAPTURE_SCHEMA,
@@ -13,12 +15,9 @@ import {
   type GeometryModuleDraftCapture,
   type GeometryModuleManifest,
 } from "../../../domain/cad/canonical/geometry-module-evidence.ts";
+import { GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY } from "../../../domain/capability/engineering-capability.ts";
 import { GEOMETRY_PART_CAPTURE_SCHEMA } from "../../../domain/cad/canonical/geometry-part-manifest.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../../domain/cad/canonical/geometry-proposal.ts";
-import {
-  GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
-  GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
-} from "../../../domain/cad/module-assembly/geometry-module-assembly-execution.ts";
 import { validateGeometryModuleInputBundleManifest } from "../../../domain/cad/module-assembly/geometry-module-input-bundle.ts";
 import {
   CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_KIND,
@@ -31,14 +30,6 @@ import {
   PROJECT_SOURCE_CLOSURE_LOCATOR_SCHEMA,
   PROJECT_SOURCE_CLOSURE_URI_PREFIX,
 } from "../../../domain/project-source-workspace/closure.ts";
-import {
-  createIsolatedCodeExecutionReceipt,
-  createIsolatedOutputPublicationRef,
-  fingerprintIsolatedOutputPublicationManifest,
-  ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
-  isolatedCodeExecutionReceiptRecord,
-  validateIsolatedCodeExecutionRequest,
-} from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
 import {
   FileCaptureStore,
@@ -71,92 +62,6 @@ async function fixture() {
   const glbDigest = await fingerprintResourceBytes(GLB_BYTES);
   const armDigest = await fingerprintResourceBytes(ARM_STEP_BYTES);
   const runId = "run.geometry-module.assembly.1";
-  const outputs = GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST.map((declaration) => ({
-    ...declaration,
-    bytes: declaration.role === "assembly.step" ? STEP_BYTES : GLB_BYTES,
-    sha256: declaration.role === "assembly.step" ? stepDigest : glbDigest,
-  }));
-  const request = await validateIsolatedCodeExecutionRequest({
-    schemaVersion: ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
-    runId,
-    producerGeneration: 0,
-    profile: GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
-    source: { bytes: BUNDLE_BYTES, sha256: bundleDigest },
-    policy: {
-      id: "isolation.geometry-module-assembly-v1",
-      version: "1.0.0",
-      fingerprint: fp(A),
-    },
-    outputs: outputs.map(({ role, basename, mediaType, format }) => ({
-      role,
-      basename,
-      mediaType,
-      format,
-    })),
-  });
-  const publicationMembers = outputs.map((output) => ({
-    role: output.role,
-    basename: output.basename,
-    mediaType: output.mediaType,
-    format: output.format,
-    byteCount: output.bytes.byteLength,
-    sha256: output.sha256,
-    casUri: `casys://isolated-output/sha256/${output.sha256}`,
-  }));
-  const receipt = isolatedCodeExecutionReceiptRecord(
-    await createIsolatedCodeExecutionReceipt({
-      request,
-      runtime: {
-        isolationClass: "kernel-isolated",
-        imageDigest: fp(A),
-        requestedLimits: {
-          maxWallTimeMs: 1_000,
-          maxCpuTimeMs: 500,
-          maxMemoryBytes: 64_000_000,
-          maxProcesses: 4,
-          maxStdoutBytes: 1_024,
-          maxStderrBytes: 1_024,
-          maxOutputFileBytes: 1_024,
-          maxOutputTotalBytes: 2_048,
-        },
-        limitAssurance: {
-          maxWallTimeMs: "backend-attested",
-          maxCpuTimeMs: "unattested",
-          maxMemoryBytes: "backend-attested",
-          maxProcesses: "unattested",
-          maxStdoutBytes: "broker-observed-cap",
-          maxStderrBytes: "broker-observed-cap",
-          maxOutputFileBytes: "broker-observed-cap",
-          maxOutputTotalBytes: "broker-observed-cap",
-        },
-      },
-      termination: { kind: "exited", exitCode: 0, signal: null },
-      logs: {
-        stdout: { bytes: new Uint8Array(), truncated: false },
-        stderr: { bytes: new Uint8Array(), truncated: false },
-      },
-      outputs: publicationMembers.map((member, index) => ({
-        ...member,
-        validation: "accepted" as const,
-        persistence: "staged-reread-atomic-commit" as const,
-        bytes: outputs[index]!.bytes,
-      })),
-      destruction: {
-        status: "proven",
-        runId,
-        proofFingerprint: fp(E),
-      },
-      publication: await createIsolatedOutputPublicationRef(
-        runId,
-        0,
-        await fingerprintIsolatedOutputPublicationManifest(
-          runId,
-          0,
-          publicationMembers,
-        ),
-      ),
-    }),
-  );
   const children = [{
     usageElementId: "sysml.usage.arm",
     partDefinitionElementId: "sysml.part.arm",
@@ -196,6 +101,32 @@ async function fixture() {
   };
   const assemblyStep = { fingerprint: fp(stepDigest), bytes: STEP_BYTES.byteLength };
   const assemblyGlb = { fingerprint: fp(glbDigest), bytes: GLB_BYTES.byteLength };
+  const receipt = {
+    schemaVersion: GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
+    capability: GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
+    runId,
+    inputBundle: {
+      fingerprint: inputBundle.fingerprint,
+      byteCount: inputBundle.byteCount,
+    },
+    assembly: {
+      step: {
+        ...GEOMETRY_MODULE_ASSEMBLY_ASSETS.step,
+        fingerprint: assemblyStep.fingerprint,
+        byteCount: assemblyStep.bytes,
+      },
+      glb: {
+        ...GEOMETRY_MODULE_ASSEMBLY_ASSETS.glb,
+        fingerprint: assemblyGlb.fingerprint,
+        byteCount: assemblyGlb.bytes,
+      },
+    },
+    implementation: {
+      id: "fixture-neutral-cad-assembler",
+      version: "2026.1",
+      evidenceFingerprint: fp(E),
+    },
+  } as const;
   const manifest: GeometryModuleManifest = {
     schemaVersion: GEOMETRY_MODULE_MANIFEST_SCHEMA,
     architectureBasis: {
@@ -363,7 +294,7 @@ Deno.test("module evidence stores reject foreign schemas and corrupted bytes", a
       Error,
     );
     await assertRejects(
-      () => draftStore.save({ schemaVersion: "geometry-part-draft-capture/1.0" }),
+      () => draftStore.save({ schemaVersion: "geometry-part-draft-capture/1.1" }),
       Error,
     );
   });

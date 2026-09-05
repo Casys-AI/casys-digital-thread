@@ -11,7 +11,10 @@ Optional product Modelica is a separate capture → admission → admitted micro
 The paired conversation commands. The Workbench is read-only. The person never types a
 provider tool. The agent never invents a metric, a unit, a `z*`, or an operation id.
 
-This page is the live from-zero script. The dated five-space inspection is
+This page is the from-zero authority sequence. Ordinary start is cold Deno; H1 activates
+enrolled launch groups JIT under a lease when covered work needs them. Missing qualified
+material stays literal `unavailable`; do not present that as a completed proof. The
+dated five-space inspection is
 [Walk through a dated engineering project](walk-through-an-engineering-project.md).
 After a proof exists, join and fail-only correction are
 [Review and correct after a proof](review-and-correct-after-a-proof.md).
@@ -36,27 +39,33 @@ below is a **typed refusal** or a lookalike. Surface it. Do not work around it.
 
 ## 0. Prepare the required surfaces
 
+Ordinary start is cold Deno. Do not start the root Compose provider stack: H1 owns JIT
+launch groups after operational authorization, and those groups collide with root
+Compose on the same loopback ports. A root `docker compose up` remains a manual
+maintainer probe only and must not run concurrently with H1-managed groups.
+
 This path assumes that the published provider images are accessible and that the exact
 code-owned CalculiX microVM worker image has already been prepared and qualified. The
 local Microsandbox config file is deliberately empty; worker pins live in the
 server-owned profiles. Missing images remain `unavailable`. ERPNext is not part of this
-Behave path, so do not start the default all-services Compose topology.
+Behave path.
 
 ```bash
-docker compose up -d syson-db syson-app mcp-syson mcp-build123d-sandbox
 npm --prefix src/ui ci
 npm --prefix src/ui run build:thread
-deno task start:local
+deno task start
 deno task preview:thread
 ```
 
-The private Build123d service prepares the admitted canonical draft before
-`design.write-geometry@1`; that operation only promotes verified bytes. The regular
-`mcp-build123d` observer is for optional assembly integrity, and the HTTP `mcp-calculix`
-service is for optional sensitivity. Product FEA `@3` uses the local CalculiX microVM
-instead. `start:local` currently makes all six local profiles available, but this
-mandatory walk dispatches only the CalculiX worker; selective composition is a
-capability-pack follow-up.
+The current cold-start vertical opens H1 sessions for the SysON authoring/inspection
+operations, for `verify.observe-assembly-integrity@1` through
+`casys-build123d-observation`, and a preparation lease for the private Build123d sandbox
+before `design.write-geometry@1`; that operation only promotes verified bytes.
+Enrollment is not a running service. Do not start root Compose to work around an
+`unavailable` runtime. Product FEA `@3` uses the local CalculiX microVM
+(`casys.calculix-worker`), not HTTP `mcp-calculix`. HTTP `casys.mcp-calculix@0.8.2`
+remains catalogue-`unqualified` and non-activable. An `unavailable` local run is not a
+completed proof.
 
 Connect the agent to `http://127.0.0.1:3020/mcp`. Open `http://127.0.0.1:5173/`.
 `deno task preview:thread` already follows cockpit focus (`--workspace-id=primary`). Do
@@ -156,9 +165,11 @@ the exact admission join and the seal publishes a separate catalog-offer artifac
 Omission is proof-only. `project_geometry_preview` and `design.preview-geometry@1` are
 not product entries. `project_technical_source_capture` returns `parser` and `levers` as
 separate facts. `parser.status: passed` is not admission. A constructor photo is
-`levers.status: unresolved`. Pass `projectId` and `result.reference` only to
-`project_technical_compilation_preview`. The server joins the current Thread tip and
-unique SysML names. Unresolved previews name those joins in `gaps`. It does not invent a
+`levers.status: unresolved`. Pass exactly
+`{ projectId, sourceRefs: [capture.result.reference] }` to
+`project_technical_compilation_preview`. If the preview receives multiple locators, all
+must resolve to one shared ProjectSourceWorkspace basis. The server joins the current
+Thread tip and unique SysML names. Unresolved previews name those joins in `gaps`. It does not invent a
 lever or an AttributeUsage. `design.write-geometry@1` refuses a draft that was not
 exported from a parameterized `compile.seal-admission@3`.
 

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "sensitivity-study-case-template/2.0",
+  "schemaVersion": "sensitivity-study-case-template/3.0",
   "id": "dl05-arm-thickness-sensitivity",
   "revision": 1,
   "scope": "mechanical-structural",
@@ -30,10 +30,7 @@
       "unit": "MPa"
     }
   ],
-  "solver": {
-    "provider": "calculix",
-    "tool": "calculix_solve_static",
-    "resultSchemaVersion": "2.0",
+  "method": {
     "mesh": {
       "kind": "tetrahedral-volume",
       "targetSizeMm": 3

@@ -53,6 +53,11 @@ import { FileThreadSnapshotStore } from "../../shared/stores/file-thread-snapsho
 import { ApprovedBriefBaselineRunExecutor } from "../../project/approved-brief-baseline-run-executor.ts";
 import { approvedBriefSourceAnalysisFixture } from "../../../testing/approved-brief-source-analysis-fixture.ts";
 import { SysonModelSeedRunExecutor } from "../seed/syson-model-seed-run-executor.ts";
+import {
+  passthroughCapabilityRuntimeConnection,
+  recordingCapabilityRuntimeSession,
+  successfulCapabilityRuntimeFor,
+} from "../../../testing/capability-runtime-execution-session-test-support.ts";
 import type {
   McpToolCall,
   McpToolClient,
@@ -1413,8 +1418,15 @@ async function queuedRequirementsFixture(
     snapshots,
     captures: seedCaptures,
     attempts: seedAttempts,
-    syson: new SeedSyson(),
+    capabilityRuntimeConnection: passthroughCapabilityRuntimeConnection(
+      new SeedSyson(),
+    ),
     lease: new FileEngineeringProjectRunLease(`${directory}/seed-leases`),
+    ...successfulCapabilityRuntimeFor(
+      PROJECT_ID,
+      SYSON_MODEL_SEED_OPERATION,
+      "model.author-system",
+    ),
     now: () => "2026-08-08T12:10:00.000Z",
   }).execute(AGENT, {
     commandId: "agent-seed",
@@ -1491,6 +1503,11 @@ async function queuedRequirementsFixture(
     attempts: archAttempts,
     syson: new InitialArchSyson(),
     lease: new FileEngineeringProjectRunLease(`${directory}/arch-leases`),
+    ...successfulCapabilityRuntimeFor(
+      PROJECT_ID,
+      MODEL_WRITE_ARCHITECTURE_OPERATION,
+      "model.author-system",
+    ),
     now: () => "2026-08-08T12:15:00.000Z",
   }).execute(AGENT, {
     commandId: "agent-arch",
@@ -1663,8 +1680,16 @@ function makeExecutor(
     nowStr?: string;
     leaseSubdir?: string;
     attempts?: FileRequirementsAttemptStore;
+    capabilityRuntimeSession?: ReturnType<
+      typeof recordingCapabilityRuntimeSession
+    >;
   },
 ): ModelWriteRequirementsRunExecutor {
+  const capability = successfulCapabilityRuntimeFor(
+    PROJECT_ID,
+    MODEL_WRITE_REQUIREMENTS_OPERATION,
+    "model.author-system",
+  );
   return new ModelWriteRequirementsRunExecutor({
     projects: fixture.projects,
     commands: fixture.commands,
@@ -1678,6 +1703,9 @@ function makeExecutor(
     lease: new FileEngineeringProjectRunLease(
       `${options.directory}/${options.leaseSubdir ?? "reqs-leases"}`,
     ),
+    capabilityRuntime: capability.capabilityRuntime,
+    capabilityRuntimeSession: options.capabilityRuntimeSession ??
+      capability.capabilityRuntimeSession,
     now: () => options.nowStr ?? "2026-08-08T12:20:00.000Z",
   });
 }
@@ -4031,35 +4059,72 @@ Deno.test(
         `${directory}/dispatched-attempts`,
       );
 
-      // Pre-seed the WAL with "dispatched" status.  The executor will see
-      // this on entry (after claimRun) and raise RequirementsWriteOutcomeUnknownError,
-      // which is surfaced as EngineeringProjectCommandError("invalid_transition").
+      // Pre-seed the WAL with "dispatched" status. Host activation and claim
+      // are forbidden until a human inspects SysON.
       await dispatchedAttempts.begin({
         projectId: PROJECT_ID,
         runId: "run:requirements",
         planDigest: "pre-seeded-plan-digest",
         dispatchedAt: "2026-08-08T12:10:00.000Z",
       });
+      const session = recordingCapabilityRuntimeSession();
+      const syson = new InitialReqsSyson();
 
       await assertRejects(
         () =>
           makeExecutor(fixture, {
-            syson: new InitialReqsSyson(),
+            syson,
             directory,
             leaseSubdir: "dispatched-leases",
             attempts: dispatchedAttempts,
+            capabilityRuntimeSession: session,
           }).execute(AGENT, executionCommand(fixture)),
         EngineeringProjectCommandError,
         "outcome is unknown",
       );
 
-      // The run must be "failed" with the unknown-outcome code.
+      assertEquals(session.events, []);
+      assertEquals(syson.calls, []);
       const afterFail = await fixture.projects.get(PROJECT_ID);
       const failedRun = afterFail?.agentRuns.find((r) => r.id === "run:requirements");
+      assertEquals(failedRun?.status, "queued");
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-requirements keeps the run queued when JIT begin fails",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-reqs-jit-unavailable-",
+    });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const session = recordingCapabilityRuntimeSession(() =>
+        Promise.reject(new Error("exact SysON host group unavailable"))
+      );
+      const syson = new InitialReqsSyson();
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, {
+            syson,
+            directory,
+            capabilityRuntimeSession: session,
+          }).execute(AGENT, executionCommand(fixture)),
+        Error,
+        "host group unavailable",
+      );
+      assertEquals(session.events, ["begin"]);
+      assertEquals(session.releases, 0);
+      assertEquals(session.retains, 0);
+      assertEquals(syson.calls, []);
       assertEquals(
-        failedRun?.failure?.code,
-        "model-write-requirements-provider-outcome-unknown",
-        "run must be failed with the unknown-outcome failure code",
+        (await fixture.projects.get(PROJECT_ID))?.agentRuns.find((run) =>
+          run.id === fixture.queued.runId
+        )?.status,
+        "queued",
       );
     } finally {
       await Deno.remove(directory, { recursive: true });
@@ -5248,6 +5313,7 @@ Deno.test(
       );
       const attempts = new FileRequirementsAttemptStore(attemptsDirectory);
       const syson = new InitialReqsSyson();
+      const session = recordingCapabilityRuntimeSession();
       await assertRejects(
         () =>
           makeExecutor(fixture, {
@@ -5255,16 +5321,17 @@ Deno.test(
             directory,
             attempts,
             leaseSubdir: "legacy-wal-leases",
+            capabilityRuntimeSession: session,
           }).execute(AGENT, executionCommand(fixture)),
         EngineeringProjectCommandError,
         "outcome is unknown",
       );
       assertEquals(syson.calls, []);
+      assertEquals(session.events, []);
       const project = await fixture.projects.get(PROJECT_ID);
       assertEquals(
-        project?.agentRuns.find((run) => run.id === fixture.queued.runId)?.failure
-          ?.code,
-        "model-write-requirements-provider-outcome-unknown",
+        project?.agentRuns.find((run) => run.id === fixture.queued.runId)?.status,
+        "queued",
       );
     } finally {
       await Deno.remove(directory, { recursive: true });

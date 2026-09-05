@@ -1,0 +1,282 @@
+name: Publish first-party microVM images
+
+on:
+  workflow_dispatch:
+
+# Every job declares the smallest rights it needs below.
+permissions: {}
+
+concurrency:
+  group: publish-first-party-microvm-images-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Validate tag and emit matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.export.outputs.matrix }}
+      matrix_document: ${{ steps.export.outputs.matrix_document }}
+      git_sha: ${{ github.sha }}
+      git_tag: ${{ github.ref_name }}
+    steps:
+      - name: Check out the tagged commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 1
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Require an exact git tag
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            echo "This workflow must be invoked on an exact git tag; github.ref_type=${GITHUB_REF_TYPE}." >&2
+            exit 1
+          fi
+          if [ -z "${GITHUB_REF_NAME}" ] || [ -z "${GITHUB_SHA}" ]; then
+            echo "Missing git tag name or commit SHA." >&2
+            exit 1
+          fi
+          if [ "$(git rev-parse HEAD)" != "${GITHUB_SHA}" ]; then
+            echo "Checked-out HEAD $(git rev-parse HEAD) is not github.sha ${GITHUB_SHA}." >&2
+            exit 1
+          fi
+          tag_commit="$(git rev-parse "refs/tags/${GITHUB_REF_NAME}^{commit}")"
+          if [ "${tag_commit}" != "${GITHUB_SHA}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} peels to ${tag_commit}, not github.sha ${GITHUB_SHA}." >&2
+            exit 1
+          fi
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.9.2
+
+      - name: Export the distribution matrix
+        id: export
+        run: |
+          set -euo pipefail
+          deno task release:first-party-microvm-images:matrix > matrix.json
+          schema="$(jq -r '.schemaVersion' matrix.json)"
+          if [ "${schema}" != "first-party-microsandbox-image-distribution-matrix/3.0" ]; then
+            echo "Unexpected distribution matrix schema: ${schema}." >&2
+            exit 1
+          fi
+          physical_contract_count="$(jq -er '.contract.physicalImageCount' matrix.json)"
+          logical_contract_count="$(jq -er '.contract.logicalTargetCount' matrix.json)"
+          if [ "${physical_contract_count}" != "5" ] || [ "${logical_contract_count}" != "5" ]; then
+            echo "Distribution matrix does not declare the five-physical/five-logical release contract." >&2
+            exit 1
+          fi
+          physical_count="$(jq -er '.images | length' matrix.json)"
+          logical_count="$(jq -er '[.images[].logicalTargets[]] | length' matrix.json)"
+          unique_physical_count="$(jq -er '[.images[].physicalImageId] | unique | length' matrix.json)"
+          if [ "${physical_count}" != "${physical_contract_count}" ] || [ "${logical_count}" != "${logical_contract_count}" ] || [ "${unique_physical_count}" != "${physical_count}" ]; then
+            echo "Distribution matrix is incomplete or has duplicate physical image ids." >&2
+            exit 1
+          fi
+          if jq -e '.images[] | select((.logicalTargets | length) == 0)' matrix.json >/dev/null; then
+            echo "Distribution matrix contains a physical image without a logical target." >&2
+            exit 1
+          fi
+          if jq -e '.images[] | select(.imageName | test("latest|@|:"))' matrix.json >/dev/null; then
+            echo "Distribution matrix contains a mutable or digest publication reference." >&2
+            exit 1
+          fi
+          {
+            echo "matrix<<EOF"
+            jq -c '{include: .images}' matrix.json
+            echo "EOF"
+            echo "matrix_document<<EOF"
+            jq -c . matrix.json
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Upload the planning matrix
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: first-party-microvm-image-matrix
+          path: matrix.json
+          if-no-files-found: error
+
+  build:
+    name: Build ${{ matrix.physicalImageId }}
+    needs: prepare
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    env:
+      IMAGE_TAG: git-${{ github.sha }}-run-${{ github.run_id }}-${{ github.run_attempt }}
+      MATRIX_DOCUMENT: ${{ needs.prepare.outputs.matrix_document }}
+    steps:
+      - name: Check out the exact commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Confirm the checked-out commit
+        env:
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          CONTEXT: ${{ matrix.context }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            echo "Build jobs require the same exact git tag as prepare." >&2
+            exit 1
+          fi
+          if [ "$(git rev-parse HEAD)" != "${GITHUB_SHA}" ]; then
+            echo "Build checkout HEAD $(git rev-parse HEAD) is not github.sha ${GITHUB_SHA}." >&2
+            exit 1
+          fi
+          test -f "${DOCKERFILE}"
+          test -d "${CONTEXT}"
+
+      - name: Restore the complete planning matrix
+        run: |
+          set -euo pipefail
+          if [ -z "${MATRIX_DOCUMENT}" ]; then
+            echo "Prepare did not provide the complete distribution matrix." >&2
+            exit 1
+          fi
+          printf '%s\n' "${MATRIX_DOCUMENT}" > matrix.json
+          jq -e '.schemaVersion == "first-party-microsandbox-image-distribution-matrix/3.0"' matrix.json >/dev/null
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.9.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          driver: docker-container
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the candidate image
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platform }}
+          push: true
+          provenance: true
+          sbom: true
+          tags: ${{ matrix.imageName }}:${{ env.IMAGE_TAG }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.title=Casys first-party ${{ matrix.physicalImageId }} candidate
+
+      - name: Capture exact Buildx metadata
+        env:
+          BUILD_METADATA: ${{ steps.build.outputs.metadata }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BUILD_METADATA}" ]; then
+            echo "Build did not produce metadata." >&2
+            exit 1
+          fi
+          printf '%s\n' "${BUILD_METADATA}" > build-metadata.json
+          jq -e 'type == "object"' build-metadata.json >/dev/null
+
+      - name: Read the exact OCI index and linux arm64 manifest
+        env:
+          IMAGE_NAME: ${{ matrix.imageName }}
+          IMAGE_INDEX_DIGEST: ${{ steps.build.outputs.digest }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          if [ "${PLATFORM}" != "linux/arm64" ]; then
+            echo "Candidate receipt only supports the declared linux/arm64 platform, received ${PLATFORM}." >&2
+            exit 1
+          fi
+          if [ -z "${IMAGE_INDEX_DIGEST}" ] || [ "${IMAGE_INDEX_DIGEST#sha256:}" = "${IMAGE_INDEX_DIGEST}" ]; then
+            echo "Build did not produce an OCI index sha256 digest." >&2
+            exit 1
+          fi
+          docker buildx imagetools inspect --raw "${IMAGE_NAME}@${IMAGE_INDEX_DIGEST}" > oci-index.json
+          platform_manifest_digest="$(jq -er '
+            [
+              .manifests[]
+              | select(.platform.os == "linux" and .platform.architecture == "arm64")
+              | .digest
+            ]
+            | if length == 1 then .[0] else error("expected exactly one linux/arm64 manifest") end
+          ' oci-index.json)"
+          if [ "${platform_manifest_digest#sha256:}" = "${platform_manifest_digest}" ]; then
+            echo "OCI index did not contain a sha256 linux/arm64 manifest digest." >&2
+            exit 1
+          fi
+          echo "PLATFORM_MANIFEST_DIGEST=${platform_manifest_digest}" >> "${GITHUB_ENV}"
+
+      - name: Write the candidate receipt
+        env:
+          PHYSICAL_IMAGE_ID: ${{ matrix.physicalImageId }}
+          GIT_TAG: ${{ github.ref_name }}
+          OCI_INDEX_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OCI_INDEX_DIGEST}" ] || [ "${OCI_INDEX_DIGEST#sha256:}" = "${OCI_INDEX_DIGEST}" ]; then
+            echo "Build did not produce a sha256 OCI index receipt." >&2
+            exit 1
+          fi
+          if [ -z "${PLATFORM_MANIFEST_DIGEST}" ] || [ "${PLATFORM_MANIFEST_DIGEST#sha256:}" = "${PLATFORM_MANIFEST_DIGEST}" ]; then
+            echo "Build did not produce a sha256 linux/arm64 manifest receipt." >&2
+            exit 1
+          fi
+          if [ "${IMAGE_TAG}" = "latest" ]; then
+            echo "Candidate publication must not use latest." >&2
+            exit 1
+          fi
+          deno run --no-prompt --frozen --allow-read=. --allow-write=receipt.json,receipt.txt \
+            scripts/release/write-first-party-microsandbox-image-candidate-receipt.ts \
+            --matrix matrix.json \
+            --build-metadata build-metadata.json \
+            --physical-image-id "${PHYSICAL_IMAGE_ID}" \
+            --oci-index-digest "${OCI_INDEX_DIGEST}" \
+            --platform-manifest-digest "${PLATFORM_MANIFEST_DIGEST}" \
+            --locator-tag "${IMAGE_TAG}" \
+            --git-sha "${GITHUB_SHA}" \
+            --git-tag "${GIT_TAG}" \
+            --output-directory .
+          {
+            echo "### ${PHYSICAL_IMAGE_ID}"
+            echo
+            echo "- image: \`$(jq -r '.candidate.locatorReference' receipt.json)\`"
+            echo "- OCI index: \`$(jq -r '.candidate.oci.indexReference' receipt.json)\`"
+            echo "- linux/arm64 manifest: \`$(jq -r '.candidate.oci.platformManifestReference' receipt.json)\`"
+            echo "- commit: \`${GITHUB_SHA}\`"
+            echo "- tag: \`${GIT_TAG}\`"
+            echo
+            echo "This is a candidate OCI image. Licence, anonymous pull, and runtime qualification remain unresolved/not-run."
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload the digest receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: digest-receipt-${{ matrix.physicalImageId }}
+          path: |
+            receipt.json
+            receipt.txt
+            build-metadata.json
+            oci-index.json
+          if-no-files-found: error

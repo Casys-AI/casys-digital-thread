@@ -7,6 +7,12 @@ import {
   requireApprovedUncertainWriterReconciliationDecision,
   TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES,
 } from "../../../../domain/record/reconcile-uncertain-writer-proposal.ts";
+import type {
+  UncertainWriterLifecycleEligibility,
+} from "../../../../domain/record/uncertain-writer-lifecycle-eligibility.ts";
+import {
+  UNCERTAIN_WRITER_LIFECYCLE_NOT_QUALIFIED,
+} from "../../../../domain/record/uncertain-writer-lifecycle-eligibility.ts";
 import {
   uncertainWriterBasisReleaseIds,
   uncertainWriterBasisReleaseText,
@@ -29,11 +35,27 @@ import {
 
 const ELIGIBLE_UNCERTAIN_WRITE_FAILURE_CODES = TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES;
 
+/** Shared eligibility rule for the annotation and later successor closeout. */
+export function isEligibleUncertainWriterFailure(
+  failureCode: string,
+  operation: { readonly id: string; readonly version: string } | undefined,
+  lifecycle: UncertainWriterLifecycleEligibility =
+    UNCERTAIN_WRITER_LIFECYCLE_NOT_QUALIFIED,
+): boolean {
+  return ELIGIBLE_UNCERTAIN_WRITE_FAILURE_CODES.has(failureCode) ||
+    (operation !== undefined &&
+      `${operation.id}@${operation.version}` ===
+        `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}`) ||
+    lifecycle.status === "qualified-uncertain-write";
+}
+
 export async function applyReconcileAnnotationRun(
   draft: Mutable<EngineeringProjectSnapshot>,
   appliedAt: string,
   origin: EngineeringProjectCommandOrigin,
   command: ReconcileAnnotationRunCommand,
+  lifecycle: UncertainWriterLifecycleEligibility =
+    UNCERTAIN_WRITER_LIFECYCLE_NOT_QUALIFIED,
 ): Promise<void> {
   nonEmpty(command.reconciliationRunId, "reconciliationRunId");
   nonEmpty(command.failedRunId, "failedRunId");
@@ -91,18 +113,17 @@ export async function applyReconcileAnnotationRun(
   if (!failedWorkItem) {
     notFound("work item for failed run", failedRun.workItemId);
   }
-  const failedOperation = failedWorkItem.operation;
-  const isGeometryWrite = failedOperation
-    ? `${failedOperation.id}@${failedOperation.version}` ===
-      `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}`
-    : false;
   if (
-    !ELIGIBLE_UNCERTAIN_WRITE_FAILURE_CODES.has(failedRun.failure.code) &&
-    !isGeometryWrite
+    !isEligibleUncertainWriterFailure(
+      failedRun.failure.code,
+      failedWorkItem.operation,
+      lifecycle,
+    )
   ) {
     invalidTransition(
       `Target run ${failedRun.id} failure code "${failedRun.failure.code}" is not in ` +
-        "ELIGIBLE_UNCERTAIN_WRITE_FAILURE_CODES and is not the geometry write operation. " +
+        "ELIGIBLE_UNCERTAIN_WRITE_FAILURE_CODES, is not the geometry write operation, " +
+        "and is not a server-qualified uncertain writer. " +
         "Only terminal-uncertain failures are eligible for uncertain-writer reconciliation.",
     );
   }
@@ -198,6 +219,11 @@ export async function applyReconcileAnnotationRun(
       ids.blockerId,
     ];
   }
+
+  // Recovery never reopens the original provider attempt.  Its failed run
+  // remains the durable failure record, while the work item becomes terminal
+  // so that the next attempt must be an append-only successor revision.
+  failedWorkItem.status = "cancelled";
 
   // Complete the reconciliation run (annotation-only, no ThreadSnapshot).
   const summary = "Uncertain-writer reconciliation completed by human operator.";

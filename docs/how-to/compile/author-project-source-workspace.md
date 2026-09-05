@@ -113,11 +113,19 @@ Call `project_technical_source_capture` with `projectId`, `workspaceRevision`,
 unique active head at that snapshot. The server resolves the root file, registered
 profile and `project-source-closure/1.0`; it refuses MIME, path, `sourceText`,
 `fileId`/`fileRevision`, caller `profileId`/`sourceId`/`resourceRef`. Pass
-`result.reference` from the V4 review to `project_technical_compilation_preview`. For a
+`{ projectId, sourceRefs: [capture.result.reference] }` to
+`project_technical_compilation_preview`. If compiling from more than one capture, every
+locator in `sourceRefs` must resolve to the same ProjectSourceWorkspace basis. For a
 Build123d direct closure, capture reopens every exact closure byte, lowers and analyses
 the one effective script, and records its full manifest. Never infer admission from
 workspace membership, MIME, path or a successful isolated run. A later correction is a
 new `project_resource_capture` plus a successor file revision, then a new capture.
+
+When a preview is `ready-for-review`, it returns the exact `compile.seal-admission@3` `operation`
+alongside its MRTR `decisionParameters`. Pass that operation verbatim to the later
+`project_change_append`; do not rebuild its `sysmlModel` binding from the review text.
+It names the exact Thread snapshot reviewed by the server. A stale or historical
+Thread-entity binding is refused both when appending the seal and when queueing it.
 
 Only stop for dependency lowering when the returned preview literally reports
 `source.dependency-lowering-unavailable`. That remains expected for Modelica and

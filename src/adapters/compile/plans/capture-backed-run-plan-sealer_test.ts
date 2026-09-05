@@ -97,6 +97,13 @@ Deno.test("CaptureBackedRunPlanSealer recomputes the registered operation and di
           authorization: { mrtr: { approvalId: string } };
         }).authorization.mrtr.approvalId = "approval:unrelated";
       },
+    }, {
+      expected: "exact queue-resolved operational capability",
+      apply(plan) {
+        (plan.operationalCapability.bindings[0]!.profile as {
+          fingerprint: ReturnType<typeof fingerprint>;
+        }).fingerprint = fingerprint("f");
+      },
     }];
     for (const corruption of corruptions) {
       const sealer = new CaptureBackedRunPlanSealer({
@@ -150,6 +157,7 @@ function sealInput(): RegisteredRunPlanSealInput {
         subjectId: "coffee-machine",
       },
     } as unknown as RegisteredRunPlanSealInput["run"],
+    operationalCapability: operationalCapabilityFor("project.cm01", "3"),
     queueBasisProject: {
       snapshotId: "project.cm01:project:r17:abcdabcdabcdabcd",
       revision: 17,
@@ -186,6 +194,7 @@ async function planFor(
       },
       operationFingerprint: await sha256Fingerprint(input.workItem.operation!),
     },
+    operationalCapability: input.operationalCapability!,
     authorization: {
       kind: "human-mrtr-and-qualified-method",
       mrtr: {
@@ -273,6 +282,60 @@ async function planFor(
       ambiguousOutcome: "quarantine-for-human-review",
       capturedOutcome: "cas-only-recovery",
     },
+  };
+}
+
+function operationalCapabilityFor(
+  projectId: string,
+  operationVersion: "2" | "3",
+): NonNullable<RegisteredRunPlanSealInput["operationalCapability"]> {
+  return {
+    schemaVersion: "resolved-capability-runtime-operation/2.0",
+    projectId,
+    operation: { id: "verify.run-fea-static-proof", version: operationVersion },
+    authorizationFingerprint: fingerprint("a"),
+    demandFingerprint: fingerprint("b"),
+    registryFingerprint: fingerprint("c"),
+    bindings: [{
+      capability: {
+        id: "mechanics.solve-static-structural",
+        version: "1",
+        use: "execution",
+        minimumQualification: "qualified",
+      },
+      binding: { id: "calculix-static-structural", version: "1" },
+      effectiveQualification: "qualified",
+      adapter: { id: "casys.calculix-worker", version: "1", source: "test" },
+      profile: {
+        id: "calculix-static",
+        version: "1",
+        fingerprint: fingerprint("d"),
+      },
+      materials: [{
+        unitId: "casys.calculix-worker",
+        materialId: "calculix-worker",
+        imageDigest: "e".repeat(64),
+      }],
+      runtimeModes: [{
+        material: {
+          unitId: "casys.calculix-worker",
+          materialId: "calculix-worker",
+          imageDigest: "e".repeat(64),
+        },
+        targetPlatform: "linux/arm64",
+        mode: "native",
+        qualificationAttestationFingerprint: null,
+      }],
+      hostLifecycles: [{
+        material: {
+          unitId: "casys.calculix-worker",
+          materialId: "calculix-worker",
+          imageDigest: "e".repeat(64),
+        },
+        kind: "ephemeral-microsandbox",
+        launchGroup: null,
+      }],
+    }],
   };
 }
 

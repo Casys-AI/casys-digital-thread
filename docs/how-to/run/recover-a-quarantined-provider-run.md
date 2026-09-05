@@ -27,20 +27,23 @@ as CalculiX this is usually a short check: the container is up, the staged input
 present and still matches its content address, no working directory remains, and the
 write-ahead record shows whether the solve completed.
 
-```bash
-docker compose ps mcp-calculix
-docker exec "$(docker compose ps -q mcp-calculix)" ls -la /inputs/fea-<digest>.step
-```
+Use the recorded request id with the server-owned recovery path. The provider is
+owned by the sealed `casys-mcp-calculix` launch group, not by the repository
+Compose project, so a root-Compose container id is neither an input nor a
+recovery authority.
 
 `/inputs` is a provider-private, content-addressed staging volume, not the CAD exchange
 or a ledger. It may survive a container restart, but its contents are never evidence and
 do not settle the provider outcome; use the write-ahead record and recorded-run resources
 for that.
 
-The write-ahead record under `state/local/fea-static-proof-attempts/` tells you whether
-the solver ran and whether both captures were taken. A `completed` status there with a
-quarantine file beside it means the provider finished and the _publication_ failed — a
-very different situation from an unknown dispatch.
+For a sensitivity run, the write-ahead record under
+`state/local/fea-sensitivity-attempts/` records each phase as `prepared`, `dispatched`,
+`readback-recorded`, `captured`, or known terminal `rejected`. A prepared or dispatched
+request is never reset or reissued: reopen it with the same request id through
+`calculix_run_get`. A completed attempt with a quarantine file beside it means the
+provider evidence was captured and later publication failed — a different situation from
+an unknown dispatch.
 
 Decide the outcome from what you saw:
 
@@ -94,9 +97,10 @@ refused at the executor gate.
 
 Once it completes, the annotation is attached to the failed run. The failed run stays
 failed — reconciliation records a judgement, it never converts a failure into a success.
-`provider-did-not-write` can release the basis only while its exact signed MRTR ceremony
-remains valid. `write-effect-accepted` deliberately keeps the basis locked and creates a
-separate server-fixed release decision linked to the blocker.
+The original failed work item becomes terminal `cancelled` for either outcome and cannot
+be queued again. `provider-did-not-write` can release the basis only while its exact
+signed MRTR ceremony remains valid. `write-effect-accepted` deliberately keeps the basis
+locked and creates a separate server-fixed release decision linked to the blocker.
 
 ## 6. Approve the basis release when the write effect was accepted
 
@@ -126,8 +130,12 @@ partial record stays blocked.
 
 ## 7. Requeue the work
 
-Append a new work item for the retry and take it through the normal path: propose,
-approve, queue, execute. The original work item keeps its failed run in history.
+Append a successor work-item revision for the retry and take it through the normal path:
+propose, approve, queue, execute. The original work item keeps its failed run in
+history; do not make it `ready` again. After the successor has completed with exact
+evidence, the separate successor-reconciliation closeout may record that relation on the
+cancelled original work item. That successor must name the cancelled work item directly
+through `predecessorRevisionId`; a same-activity sibling is not a recovery successor.
 
 ## What this procedure is not
 

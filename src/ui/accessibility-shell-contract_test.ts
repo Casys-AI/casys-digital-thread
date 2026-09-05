@@ -86,7 +86,7 @@ Deno.test("Overview captions use the readable cockpit token", async () => {
   );
 
   assertEquals(hero.includes('fill="#a1a1aa"'), false);
-  assertStringIncludes(hero, 'fill="var(--thread-muted)"');
+  assertStringIncludes(hero, 'return "var(--thread-muted)"');
 
   const muted = atelier.match(/--thread-muted:\s*(#[0-9a-f]{6})/i)?.[1];
   const panel = tokens.match(/--surface-1:\s*(#[0-9a-f]{6})/i)?.[1];

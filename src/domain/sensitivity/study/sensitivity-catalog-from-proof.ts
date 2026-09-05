@@ -2,7 +2,7 @@
  * Compile a sensitivity-catalog opt-in from a sealed proof case plus levers.
  *
  * The offer copies already catalogued proof fields. It does not invent mesh,
- * loads, a step, or a complete sensitivity-study-case-template/2.0. Metric
+ * loads, a step, or a complete sensitivity-study-case-template/3.0. Metric
  * units come from the code-owned live-method contract, not requirement limits.
  */
 
@@ -32,7 +32,7 @@ const READY_OFFER_KEYS = [
   "optInDefault",
   "lever",
   "metrics",
-  "solver",
+  "method",
   "target",
   "authority",
   "baseValue",
@@ -69,11 +69,7 @@ export type SensitivityCatalogOffer =
     readonly optInDefault: false;
     readonly lever: { readonly semanticKey: string; readonly value: number };
     readonly metrics: readonly { readonly id: string; readonly unit: string }[];
-    readonly solver: {
-      readonly provider: MechanicalProofCase["solver"]["provider"];
-      readonly tool: MechanicalProofCase["solver"]["tool"];
-      readonly resultSchemaVersion:
-        MechanicalProofCase["solver"]["resultSchemaVersion"];
+    readonly method: {
       readonly mesh: MechanicalProofCase["analysis"]["mesh"];
       readonly material: MechanicalProofCase["analysis"]["material"];
       readonly supports: MechanicalProofCase["analysis"]["supports"];
@@ -153,10 +149,7 @@ export function compileSensitivityCatalogOffer(
         id: requirement.feature,
         unit: SENSITIVITY_LIVE_METRIC_UNITS.get(requirement.feature)!,
       })),
-    solver: {
-      provider: proofCase.solver.provider,
-      tool: proofCase.solver.tool,
-      resultSchemaVersion: proofCase.solver.resultSchemaVersion,
+    method: {
       mesh: proofCase.analysis.mesh,
       material: proofCase.analysis.material,
       supports: proofCase.analysis.supports,
@@ -276,7 +269,7 @@ export function validateReadySensitivityCatalogOffer(
   const metrics = nonEmptyArray(record.metrics, `${path}.metrics`).map(
     (metric, index) => parseOfferMetric(metric, `${path}.metrics[${index}]`),
   );
-  const solver = parseOfferSolver(record.solver, `${path}.solver`);
+  const method = parseOfferMethod(record.method, `${path}.method`);
   const target = exactRecord(
     record.target,
     ["componentKey", "semanticKey"],
@@ -304,7 +297,7 @@ export function validateReadySensitivityCatalogOffer(
     optInDefault: false,
     lever: { semanticKey: leverSemanticKey, value: leverValue },
     metrics,
-    solver,
+    method,
     target: {
       componentKey: safeId(target.componentKey, `${path}.target.componentKey`),
       semanticKey: targetSemanticKey,
@@ -332,16 +325,13 @@ function parseOfferMetric(
   return { id, unit };
 }
 
-function parseOfferSolver(
+function parseOfferMethod(
   value: unknown,
   path: string,
-): ReadySensitivityCatalogOffer["solver"] {
+): ReadySensitivityCatalogOffer["method"] {
   const record = exactRecord(
     value,
     [
-      "provider",
-      "tool",
-      "resultSchemaVersion",
       "mesh",
       "material",
       "supports",
@@ -349,13 +339,7 @@ function parseOfferSolver(
     ],
     path,
   );
-  literalValue(record.provider, "calculix", `${path}.provider`);
-  literalValue(record.tool, "calculix_solve_static", `${path}.tool`);
-  literalValue(record.resultSchemaVersion, "2.0", `${path}.resultSchemaVersion`);
   return {
-    provider: "calculix",
-    tool: "calculix_solve_static",
-    resultSchemaVersion: "2.0",
     mesh: parseOfferMesh(record.mesh, `${path}.mesh`),
     material: parseOfferMaterial(record.material, `${path}.material`),
     supports: nonEmptyArray(record.supports, `${path}.supports`).map((
@@ -371,7 +355,7 @@ function parseOfferSolver(
 function parseOfferMesh(
   value: unknown,
   path: string,
-): ReadySensitivityCatalogOffer["solver"]["mesh"] {
+): ReadySensitivityCatalogOffer["method"]["mesh"] {
   const record = exactRecord(value, ["kind", "targetSize"], path);
   literalValue(record.kind, "tetrahedral-volume", `${path}.kind`);
   const targetSize = parseScalar(record.targetSize, "mm", `${path}.targetSize`);
@@ -384,7 +368,7 @@ function parseOfferMesh(
 function parseOfferMaterial(
   value: unknown,
   path: string,
-): ReadySensitivityCatalogOffer["solver"]["material"] {
+): ReadySensitivityCatalogOffer["method"]["material"] {
   const record = exactRecord(
     value,
     ["model", "basis", "youngModulus", "poissonRatio"],
@@ -416,7 +400,7 @@ function parseOfferMaterial(
 function parseOfferSupport(
   value: unknown,
   path: string,
-): ReadySensitivityCatalogOffer["solver"]["supports"][number] {
+): ReadySensitivityCatalogOffer["method"]["supports"][number] {
   const record = exactRecord(value, ["id", "kind", "selection"], path);
   literalValue(record.kind, "fixed", `${path}.kind`);
   return {
@@ -429,7 +413,7 @@ function parseOfferSupport(
 function parseOfferLoad(
   value: unknown,
   path: string,
-): ReadySensitivityCatalogOffer["solver"]["loads"][number] {
+): ReadySensitivityCatalogOffer["method"]["loads"][number] {
   const record = exactRecord(value, ["id", "kind", "selection", "force"], path);
   literalValue(record.kind, "force", `${path}.kind`);
   const force = parseVector(record.force, "N", `${path}.force`);
@@ -447,7 +431,7 @@ function parseOfferLoad(
 function parseOfferSelection(
   value: unknown,
   path: string,
-): ReadySensitivityCatalogOffer["solver"]["supports"][number]["selection"] {
+): ReadySensitivityCatalogOffer["method"]["supports"][number]["selection"] {
   const record = exactRecord(value, ["name", "box"], path);
   const name = nonEmptyText(record.name, `${path}.name`);
   if (!SELECTION_NAME.test(name)) {

@@ -7,8 +7,11 @@
   background: var(--thread-panel);
 }
 .thread-graph-workspace.is-verification {
-  grid-template-columns: minmax(0, 1fr) 312px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
+}
+.thread-graph-workspace.is-verification.has-inspector {
+  grid-template-columns: minmax(0, 1fr) 312px;
 }
 .thread-graph-workspace.is-wide {
   grid-template-columns: minmax(0, 1fr);
@@ -173,7 +176,7 @@ au flux du feed sans prendre toute la page. */
   padding: var(--space-8) var(--space-8) var(--space-8) var(--space-12);
   border-left: 2px solid var(--thread-border-strong);
   background: var(--thread-panel);
-  font: var(--text-3xs)/1.4 var(--sans);
+  font: var(--cockpit-text-3xs)/1.4 var(--sans);
 }
 .thread-graph-density-toggle {
   flex: 0 0 auto;
@@ -293,20 +296,20 @@ nouveau reperables sur le canevas. */
   font-family: var(--mono);
 }
 .thread-graph-node-system {
-  font-size: var(--text-3xs);
+  font-size: var(--cockpit-text-3xs);
   font-weight: 800;
   letter-spacing: 0.7px;
 }
 .thread-graph-node-kind {
-  font-size: var(--text-3xs);
+  font-size: var(--cockpit-text-3xs);
 }
 .thread-graph-node-label {
   font-family: var(--sans);
-  font-size: var(--text-sm);
+  font-size: var(--cockpit-text-sm);
   font-weight: 700;
 }
 .thread-graph-node-summary {
-  font-size: var(--text-3xs);
+  font-size: var(--cockpit-text-3xs);
 }
 .thread-graph-caption,
 .thread-graph-notice {
@@ -314,14 +317,14 @@ nouveau reperables sur le canevas. */
   padding-left: var(--space-10);
   border-left: 2px solid var(--thread-warning);
   color: var(--thread-muted);
-  font: var(--text-3xs)/1.45 var(--sans);
+  font: var(--cockpit-text-3xs)/1.45 var(--sans);
 }
 .thread-graph-empty {
   min-height: 26rem;
   display: grid;
   place-items: center;
   color: var(--muted);
-  font-size: var(--text-xs);
+  font-size: var(--cockpit-text-xs);
 } /* --------------------------------------------------------------------------
 Versioned provenance
 
@@ -335,6 +338,8 @@ node; their canonical records and internal relations live in the inspector.
   min-width: 0;
   border: 1px solid var(--thread-border, var(--line));
   background: var(--thread-panel, var(--surface-1));
+  container-name: evidence-map;
+  container-type: inline-size;
 }
 .thread-versioned-provenance > .thread-graph {
   padding: var(--space-12);
@@ -346,12 +351,26 @@ node; their canonical records and internal relations live in the inspector.
   max-height: none;
 }
 
-@media (width <= 720px) {
+@container workspace (max-width: 45rem) {
   .thread-versioned-provenance > header {
     flex-direction: column;
   }
   .thread-versioned-provenance > header > span {
     text-align: left;
+  }
+}
+
+@container evidence-map (max-width: 45rem) {
+  .evidence-exploration {
+    flex-direction: column;
+  }
+
+  .evidence-exploration-legend {
+    width: 100%;
+    flex: none;
+    flex-flow: row wrap;
+    border-right: 0;
+    border-bottom: 1px solid var(--thread-border);
   }
 }
 /* Sigma needs an absolute containing block. Do not use height:100% on the
@@ -381,8 +400,8 @@ node; their canonical records and internal relations live in the inspector.
   accent-color: var(--thread-focus);
 }
 
-@media (max-width: 1120px) {
-  .thread-graph-workspace.is-verification {
+@container workspace (max-width: 70rem) {
+  .thread-graph-workspace.is-verification.has-inspector {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -393,37 +412,6 @@ node; their canonical records and internal relations live in the inspector.
 }
 
 /* ---------------------------------------------------------------------------
-Filtre par pièce du feed Activity (sélecteur de composant en tête du feed).
-Déplacé de 16-part-lane.css lors du retrait de la vue Par pièce : le filtre
-du feed est la lecture par pièce qui survit.
---------------------------------------------------------------------------- */
-
-.thread-feed-component-filter {
-  display: flex;
-  align-items: center;
-  gap: var(--space-10);
-  padding: var(--space-8) var(--space-12);
-  border-bottom: 1px solid var(--thread-border);
-  background: var(--thread-panel-muted);
-}
-.thread-feed-component-filter > label {
-  flex-shrink: 0;
-  color: var(--muted);
-  font: 600 var(--text-2xs)/1 var(--sans);
-  letter-spacing: 0.02em;
-}
-.thread-feed-component-filter > select {
-  flex: 1;
-  min-width: 0;
-  padding: var(--space-4) var(--space-8);
-  border: 1px solid var(--thread-border-strong);
-  border-radius: 4px;
-  color: var(--thread-ink);
-  font: var(--text-sm)/1 var(--sans);
-  background: var(--thread-panel);
-  cursor: pointer;
-  appearance: auto;
-} /* ---------------------------------------------------------------------------
 Menu burger des réglages du graphe local (vue Evidence).
 Posé en haut à gauche du canvas,
 replié par défaut — façon Obsidian.
@@ -448,7 +436,7 @@ replié par défaut — façon Obsidian.
   border: 1px solid var(--thread-border);
   color: var(--thread-muted);
   background: var(--thread-panel);
-  font: 600 var(--text-3xs) / 1 var(--sans);
+  font: 600 var(--cockpit-text-3xs) / 1 var(--sans);
   letter-spacing: 0.02em;
 }
 .thread-graph-controls > div {
@@ -469,7 +457,7 @@ replié par défaut — façon Obsidian.
 .thread-graph-controls button:last-child {
   width: 28px;
   padding: 0;
-  font-size: var(--text-base);
+  font-size: var(--cockpit-text-base);
 }
 .thread-graph-controls button:hover:not(:disabled),
 .thread-graph-controls button:focus-visible {
@@ -536,13 +524,13 @@ le feed n'invente pas de famille de couleur pour un kind inconnu.
   gap: var(--space-10);
   padding: var(--space-12) 0 var(--space-6);
   color: var(--thread-muted);
-  font: 500 var(--text-3xs) / 1.2 var(--mono);
+  font: 500 var(--cockpit-text-3xs) / 1.2 var(--mono);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 .thread-feed-eyebrow {
   color: var(--thread-muted);
-  font: 500 var(--text-3xs) / 1.2 var(--mono);
+  font: 500 var(--cockpit-text-3xs) / 1.2 var(--mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }

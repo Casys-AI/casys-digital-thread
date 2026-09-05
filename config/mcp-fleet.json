@@ -14,7 +14,7 @@
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3009/mcp",
       "healthUrl": "http://127.0.0.1:3009/health",
-      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:c04922cc2c0f503c34277c5a1dc81ab28b141945acad90345e2d16882535b4bc",
+      "image": "ghcr.io/casys-ai/mcp-syson@sha256:87eee6e35a636124d5ba6911492a245d69edcdf1ba67575676c22a0e9d7ce65e",
       "required": true,
       "expectedTools": [
         "syson_project_list",
@@ -82,17 +82,35 @@
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3014/mcp",
       "healthUrl": "http://127.0.0.1:3014/health",
-      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:7a255f24448ddb6de496c4e47c2d1634c63daea67e9082b558257287215b23b5",
+      "image": "ghcr.io/casys-ai/mcp-build123d@sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d",
+      "providerIdentity": {
+        "releaseTag": "v0.6.1",
+        "version": "0.6.1",
+        "revision": "beaeb648a979437cce8676da103a39d9eb312290",
+        "imageIndexDigest": "765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d",
+        "platformManifests": {
+          "linux/amd64": "e040ee6385df909d481ac58ec290a1b13f50ca40b0e48eec58949fb5efde8309",
+          "linux/arm64": "420d9ba94b71605443ee59cc1160f94e17ead0c5b6a3f5e7a80f76dffa1ea84b"
+        },
+        "ociLabels": {
+          "org.opencontainers.image.created": "2026-08-28T16:59:19Z",
+          "org.opencontainers.image.description": "Qualified Build123d MCP provider",
+          "org.opencontainers.image.licenses": "MIT",
+          "org.opencontainers.image.revision": "beaeb648a979437cce8676da103a39d9eb312290",
+          "org.opencontainers.image.source": "https://github.com/Casys-AI/mcp-build123d",
+          "org.opencontainers.image.title": "mcp-build123d",
+          "org.opencontainers.image.url": "https://github.com/denoland/deno_docker",
+          "org.opencontainers.image.version": "0.6.1"
+        },
+        "contractFingerprint": "43801a71a10eb91959b616947b6ca028fa2ca05e8bf010159180fbf1067f68fa"
+      },
       "required": true,
       "expectedTools": [
         "build123d_execute",
         "build123d_export",
         "build123d_observe_assembly_integrity"
       ],
-      "expectedViews": [
-        "ui://mcp-build123d/results-viewer",
-        "ui://mcp-build123d/artifact-helper-viewer"
-      ],
+      "expectedViews": ["ui://mcp-build123d/results-viewer"],
       "network": {
         "exposure": "loopback-only",
         "composeNetwork": "chain",
@@ -118,17 +136,35 @@
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3024/mcp",
       "healthUrl": "http://127.0.0.1:3024/health",
-      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:7a255f24448ddb6de496c4e47c2d1634c63daea67e9082b558257287215b23b5",
+      "image": "ghcr.io/casys-ai/mcp-build123d@sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d",
+      "providerIdentity": {
+        "releaseTag": "v0.6.1",
+        "version": "0.6.1",
+        "revision": "beaeb648a979437cce8676da103a39d9eb312290",
+        "imageIndexDigest": "765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d",
+        "platformManifests": {
+          "linux/amd64": "e040ee6385df909d481ac58ec290a1b13f50ca40b0e48eec58949fb5efde8309",
+          "linux/arm64": "420d9ba94b71605443ee59cc1160f94e17ead0c5b6a3f5e7a80f76dffa1ea84b"
+        },
+        "ociLabels": {
+          "org.opencontainers.image.created": "2026-08-28T16:59:19Z",
+          "org.opencontainers.image.description": "Qualified Build123d MCP provider",
+          "org.opencontainers.image.licenses": "MIT",
+          "org.opencontainers.image.revision": "beaeb648a979437cce8676da103a39d9eb312290",
+          "org.opencontainers.image.source": "https://github.com/Casys-AI/mcp-build123d",
+          "org.opencontainers.image.title": "mcp-build123d",
+          "org.opencontainers.image.url": "https://github.com/denoland/deno_docker",
+          "org.opencontainers.image.version": "0.6.1"
+        },
+        "contractFingerprint": "43801a71a10eb91959b616947b6ca028fa2ca05e8bf010159180fbf1067f68fa"
+      },
       "required": false,
       "expectedTools": [
         "build123d_execute",
         "build123d_export",
         "build123d_observe_assembly_integrity"
       ],
-      "expectedViews": [
-        "ui://mcp-build123d/results-viewer",
-        "ui://mcp-build123d/artifact-helper-viewer"
-      ],
+      "expectedViews": ["ui://mcp-build123d/results-viewer"],
       "network": {
         "exposure": "loopback-only",
         "composeNetwork": "chain",
@@ -154,10 +190,23 @@
       "serviceName": "mcp-calculix",
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3015/mcp",
-      "healthUrl": "http://127.0.0.1:3015/health",
-      "image": "ghcr.io/casys-ai/mcp-calculix@sha256:76c9630eeecfe164c6b3c4d8b845c51fa7f8b48528773cb149b6c7a0ae2799a8",
-      "required": true,
+      "image": "ghcr.io/casys-ai/mcp-calculix@sha256:ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8",
+      "providerIdentity": {
+        "version": "0.8.2",
+        "revision": "6fb30a75c4876ad469cc472ffa8ca691e0a6b58b",
+        "imageIndexDigest": "ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8",
+        "ociLabels": {
+          "org.opencontainers.image.source": "https://github.com/Casys-AI/mcp-calculix",
+          "org.opencontainers.image.title": "mcp-calculix",
+          "org.opencontainers.image.version": "0.8.2",
+          "org.opencontainers.image.revision": "6fb30a75c4876ad469cc472ffa8ca691e0a6b58b"
+        },
+        "contractFingerprint": "8e8b5c007299818908d424413483addf7fdde5928175c80d2817232b85839ed4",
+        "ordinarySolveTimeoutMaxMs": 120000
+      },
+      "required": false,
       "expectedTools": [
+        "calculix_mesh_preflight",
         "calculix_solve_static",
         "calculix_solve_modal",
         "calculix_solve_buckling",
@@ -171,11 +220,9 @@
       ],
       "network": {
         "exposure": "loopback-only",
-        "composeNetwork": "chain",
         "sharedVolumes": [
-          "exports:/exports:ro",
-          "casys-digital-thread-calculix-inputs:/inputs",
-          "casys-digital-thread-calculix-runs:/var/lib/mcp-calculix-runs"
+          "calculix-inputs:/inputs",
+          "calculix-runs:/var/lib/mcp-calculix-runs"
         ],
         "upstreams": []
       },
@@ -183,7 +230,7 @@
         "level": "first-party-local",
         "executesArbitraryCode": false,
         "notes": [
-          "The solver mounts /exports read-only. Generic content-addressed FEA inputs are staged by the Digital Thread into provider-private /inputs on a dedicated volume; it is neither a shared exchange nor evidence. Every solve snapshots its input privately, while only recorded static runs retain evidence in the separate run ledger.",
+          "Generic content-addressed FEA inputs are staged only into provider-private /inputs on an owned capability launch group; they are neither a shared exchange nor evidence. Recorded static runs retain their readback resources in the separate run ledger.",
           "Native meshing and solver processes still require untrusted-input hardening."
         ]
       }
@@ -323,16 +370,32 @@
     {
       "id": "spice",
       "displayName": "ngspice verification",
-      "role": "DC operating points and reduced transients from attested netlists",
+      "role": "Content-addressed netlist admission, DC operating points, reduced transients, and bounded DC source sweeps",
       "serviceName": "mcp-spice",
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3023/mcp",
       "healthUrl": "http://127.0.0.1:3023/health",
-      "image": "ghcr.io/casys-ai/mcp-spice@sha256:cabf9a87e2006811484625f833859b96724faaf5dab6d60f1a10dc7cc6777a69",
+      "image": "ghcr.io/casys-ai/mcp-spice@sha256:80f8d6b34dc55e623daf936faea5ff9ee75871331aa88d7339191ea17584991b",
+      "release": {
+        "version": "0.5.2",
+        "revision": "0575f2d0efdca30965c5b155187b78d9412fb1d1",
+        "ociLabels": {
+          "org.opencontainers.image.created": "2026-08-28T15:49:55.406Z",
+          "org.opencontainers.image.description": "MCP oracle for circuit verification — ngspice batch operating point and reduced transients. The server owns the .control block.",
+          "org.opencontainers.image.licenses": "MIT",
+          "org.opencontainers.image.revision": "0575f2d0efdca30965c5b155187b78d9412fb1d1",
+          "org.opencontainers.image.source": "https://github.com/Casys-AI/mcp-spice",
+          "org.opencontainers.image.title": "mcp-spice",
+          "org.opencontainers.image.url": "https://github.com/Casys-AI/mcp-spice",
+          "org.opencontainers.image.version": "0.5.2"
+        }
+      },
       "required": false,
       "expectedTools": [
+        "ngspice_netlist_submit",
         "spice_simulate_op",
-        "spice_simulate_tran"
+        "spice_simulate_tran",
+        "spice_simulate_dc"
       ],
       "network": {
         "exposure": "loopback-only",
@@ -347,7 +410,9 @@
         "executesArbitraryCode": false,
         "notes": [
           "The server owns the .control block; caller netlists are circuit-only and .control/.include/.lib/shell are refused with typed errors.",
-          "Reduced statistics only; the full time series never crosses the boundary."
+          "Submitted and legacy-path netlists share a 1 MiB ceiling; each observable kind is capped at 32 names.",
+          "Reduced statistics only; transient and DC private wrdata are capped at 8 MiB before decoding; transient reduction stops at 50,000 samples, while DC request and parsing each stop at 512 points.",
+          "ngspice stdout and stderr are each capped at 1 MiB before diagnostic parsing."
         ]
       }
     }

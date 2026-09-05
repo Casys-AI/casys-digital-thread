@@ -147,6 +147,49 @@ export interface MicrosandboxImageInspection {
   readonly labels: Readonly<Record<string, string>>;
 }
 
+/**
+ * Factual result of one `Image.load` reference. This deliberately exposes
+ * only immutable, immediately returned handle fields; callers still inspect
+ * a requested reference before treating an import as usable.
+ */
+export interface MicrosandboxImageImportHandle {
+  readonly reference: string;
+  readonly manifestDigest: string | null;
+  readonly architecture: string | null;
+  readonly os: string | null;
+}
+
+/**
+ * Server-owned OCI image contract reused before a JIT lease and by the
+ * execution backend itself. It attests only fields observable from an OCI
+ * inspection; execution-profile provenance is a separate cache attestation.
+ */
+export interface ExactMicrosandboxImageExpectation {
+  readonly reference: string;
+  readonly manifestDigest: string;
+  readonly os: "linux";
+  readonly architecture: string;
+  readonly user: string;
+  readonly entrypoint: readonly string[];
+}
+
+export function assertExactMicrosandboxImageInspection(
+  image: MicrosandboxImageInspection,
+  expected: ExactMicrosandboxImageExpectation,
+): MicrosandboxImageInspection {
+  if (
+    image.reference !== expected.reference ||
+    image.manifestDigest !== expected.manifestDigest ||
+    image.os !== expected.os ||
+    image.architecture !== expected.architecture ||
+    image.user !== expected.user ||
+    !stringArraysEqual(image.entrypoint, expected.entrypoint)
+  ) {
+    throw new Error("The cached local OCI image does not match the reviewed image.");
+  }
+  return image;
+}
+
 export interface MicrosandboxFsEntry {
   readonly path: string;
   readonly kind: "file" | "directory" | "symlink" | "other";
@@ -215,6 +258,13 @@ export interface MicrosandboxCreateRequest {
 export interface MicrosandboxSdk {
   assertLocalBackend(): void;
   inspectImage(reference: string): Promise<MicrosandboxImageInspection>;
+  /**
+   * Internal exact cached-image removal. Callers cannot pass force, prune,
+   * or any other option; the native path is `Image.remove(ref, { force: false })`.
+   */
+  removeExactCachedImage(reference: string): Promise<void>;
+  /** Absence is only the SDK's recognized image-not-found condition. */
+  isImageNotFound(error: unknown): boolean;
   create(request: MicrosandboxCreateRequest): Promise<MicrosandboxSession>;
   listByLabels(
     labels: Readonly<Record<string, string>>,
@@ -338,6 +388,18 @@ export async function loadLocalMicrosandboxImageFromArchive(
   archivePath: string,
   tag: string,
 ): Promise<void> {
+  await loadLocalMicrosandboxImageImportHandlesFromArchive(archivePath, tag);
+}
+
+/**
+ * Lower-level archive import for maintainer workflows which must prove that
+ * Microsandbox applied their requested reference. The ordinary loader above
+ * intentionally preserves its existing void contract for runtime callers.
+ */
+export async function loadLocalMicrosandboxImageImportHandlesFromArchive(
+  archivePath: string,
+  tag: string,
+): Promise<readonly MicrosandboxImageImportHandle[]> {
   const sdk = await createLocalMicrosandboxSdk();
   sdk.assertLocalBackend();
   const module = localMicrosandboxModule;
@@ -353,6 +415,16 @@ export async function loadLocalMicrosandboxImageFromArchive(
       "Microsandbox imported no image from the docker save archive.",
     );
   }
+  return Object.freeze(
+    handles.map((handle) =>
+      Object.freeze({
+        reference: handle.reference,
+        manifestDigest: handle.manifestDigest,
+        architecture: handle.architecture,
+        os: handle.os,
+      })
+    ),
+  );
 }
 
 /** Guest architecture string Microsandbox inspectImage attests on this host. */
@@ -382,6 +454,13 @@ async function createPinnedLocalMicrosandboxSdk(): Promise<MicrosandboxSdk> {
     throw new Error("Microsandbox refused the code-owned local backend.");
   }
   localMicrosandboxModule = module;
+  return createNativeMicrosandboxSdk(module);
+}
+
+/** Host-local SDK wrapper over an already pinned native module. */
+export function createNativeMicrosandboxSdk(
+  module: MicrosandboxModule,
+): MicrosandboxSdk {
   return new NativeMicrosandboxSdk(module);
 }
 
@@ -937,19 +1016,14 @@ export class MicrosandboxEphemeralExecutionBackend
 
   async #inspectExactImage(): Promise<MicrosandboxImageInspection> {
     const image = await this.#options.sdk.inspectImage(this.#options.imageReference);
-    if (
-      image.reference !== this.#options.imageReference ||
-      image.manifestDigest !== `sha256:${this.#options.imageDigest}` ||
-      image.os !== "linux" || image.architecture !== microsandboxHostArchitecture() ||
-      image.user !== this.#options.expectedImageUser ||
-      !stringArraysEqual(
-        image.entrypoint,
-        this.#options.expectedImageEntrypoint,
-      )
-    ) {
-      throw new Error("The cached local OCI image does not match the reviewed image.");
-    }
-    return image;
+    return assertExactMicrosandboxImageInspection(image, {
+      reference: this.#options.imageReference,
+      manifestDigest: `sha256:${this.#options.imageDigest}`,
+      os: "linux",
+      architecture: microsandboxHostArchitecture(),
+      user: this.#options.expectedImageUser,
+      entrypoint: this.#options.expectedImageEntrypoint,
+    });
   }
 
   #assertLocalBackend(): void {
@@ -995,6 +1069,18 @@ class NativeMicrosandboxSdk implements MicrosandboxSdk {
     if (this.#module.defaultBackendKind() !== "local") {
       throw new Error("Microsandbox backend drifted away from local.");
     }
+  }
+
+  async removeExactCachedImage(reference: string): Promise<void> {
+    this.assertLocalBackend();
+    await this.#module.Image.remove(reference, { force: false });
+  }
+
+  isImageNotFound(error: unknown): boolean {
+    return error instanceof this.#module.ImageNotFoundError ||
+      (typeof error === "object" && error !== null &&
+        "code" in error &&
+        (error as { readonly code: unknown }).code === "imageNotFound");
   }
 
   async inspectImage(reference: string): Promise<MicrosandboxImageInspection> {
@@ -1792,6 +1878,8 @@ function requireSdk(value: unknown): MicrosandboxSdk {
   if (
     typeof candidate.assertLocalBackend !== "function" ||
     typeof candidate.inspectImage !== "function" ||
+    typeof candidate.removeExactCachedImage !== "function" ||
+    typeof candidate.isImageNotFound !== "function" ||
     typeof candidate.create !== "function" ||
     typeof candidate.listByLabels !== "function" ||
     typeof candidate.getByName !== "function"

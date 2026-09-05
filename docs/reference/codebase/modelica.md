@@ -5,8 +5,8 @@ Audience: agent · Diátaxis: reference · Kind: contract
 Census of admitted Modelica, the qualified kit, and the retired recorded island. Those
 authorities are not interchangeable.
 
-Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays
-on [engineering domains](../domains/README.md).
+Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays on
+[engineering domains](../domains/README.md).
 
 ## Source map
 
@@ -66,8 +66,31 @@ does not execute a project run or broaden the one-kit authority
 #### [`scripts/gates/verify-modelica-microsandbox-worker.ts`](../../../scripts/gates/verify-modelica-microsandbox-worker.ts)
 
 Earlier Docker worker preflight for the fixed Modelica bundle; useful worker-contract
-evidence but not a substitute for the real local microVM qualification gate or project
-activation
+evidence but not a substitute for the real local microVM qualification gate, imported
+candidate qualification, or project activation
+
+#### [`scripts/gates/verify-modelica-worker-candidate-qualification.ts`](../../../scripts/gates/verify-modelica-worker-candidate-qualification.ts)
+
+Maintainer-only imported-candidate qualification for `modelica-microsandbox-worker`.
+Input is only a bound `first-party-microsandbox-image-candidate-import/3.0` record plus
+`--run` or `--recover`. One run owns both server-owned proofs
+(`openmodelica-qualified-kit` and `openmodelica-admitted-modelica`). Host observation is
+read once. The aggregate is `passed` only after both profile proofs are durably reread.
+`eligibleForPromotion` stays `false`. Admitted method/binding remain `unqualified`. It
+is not the Docker preflight, not the active-pin vertical, and not project/Thread
+authority
+
+#### [`src/adapters/modelica/first-party-modelica-execution.ts`](../../../src/adapters/modelica/first-party-modelica-execution.ts)
+
+Code-owned active Modelica policy, limits and local server options for qualified-kit and
+admitted execution. The server, the active vertical and the imported-candidate gate
+share these builders. Candidate factories accept only an already-bound import record
+
+#### [`src/adapters/modelica/modelica-worker-candidate-qualification.ts`](../../../src/adapters/modelica/modelica-worker-candidate-qualification.ts)
+
+Record-bound plan/run/recover orchestration for an imported Modelica worker candidate.
+Two profile-distinct proofs under `targets/<proof-id>/`; aggregate `qualification.json`
+only after both pass. Never reopens admission, MRTR, project or Thread authority
 
 #### [`src/adapters/modelica/qualified-kit/run-executor.ts`](../../../src/adapters/modelica/qualified-kit/run-executor.ts)
 

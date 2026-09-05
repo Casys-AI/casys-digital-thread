@@ -1,6 +1,7 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import type { EngineeringProjectCommandOrigin } from "../../../../application/ports/in/engineering-project-command-origin.ts";
 import type { EngineeringProjectRevisionStore } from "../../../../application/ports/out/engineering-project-revision-store.ts";
+import type { CapabilityRuntimeExecutionEligibility } from "../../../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import type { AdmittedSpiceExecutionAttemptStore } from "../../../../application/ports/out/electrical/spice/admitted-execution-attempt-store.ts";
 import {
   IsolatedCodeExecutionRejectedError,
@@ -16,6 +17,7 @@ import {
   ADMITTED_SPICE_ISOLATED_OUTPUT_VALIDATION_FAILED,
   ADMITTED_SPICE_RETRY_GENERATION_CLOSED,
 } from "../../../../application/use-cases/electrical/spice/admitted/completed-replay-verification.ts";
+import { assertResolvedAdmittedSpiceExecutionPlan } from "../../../../application/use-cases/electrical/spice/admitted/reopen-reviewed-execution.ts";
 import type {
   EngineeringProjectCommandReceipt,
   EngineeringProjectSnapshot,
@@ -44,6 +46,9 @@ import {
   SPICE_ADMITTED_OUTPUT_MANIFEST,
   type SpiceAdmittedRunAdmission,
 } from "../../../../domain/electrical/spice/admitted/run-proposal.ts";
+import {
+  deriveAdmittedSpiceExecutionRunId,
+} from "../../../../domain/electrical/spice/admitted/execution-evidence.ts";
 import {
   SPICE_ADMITTED_MAX_DURATION_MS,
   SPICE_ADMITTED_MAX_EVIDENCE_BYTES,
@@ -89,6 +94,18 @@ import {
   sha256Fingerprint,
 } from "../../../../domain/kernel/deterministic-json.ts";
 import {
+  canonicalResolvedOperationPlanV2Text,
+  fingerprintResolvedOperationPlanV2,
+  resolvedOperationPlanIdForRun,
+  type ResolvedOperationPlanRef,
+  type ResolvedOperationPlanV2,
+} from "../../../../domain/compile/rop/resolved-operation-plan-v2.ts";
+import type { ResolvedCapabilityRuntimeOperation } from "../../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import {
+  type RecordingCapabilityRuntimeSession,
+  recordingCapabilityRuntimeSession,
+} from "../../../../testing/capability-runtime-execution-session-test-support.ts";
+import {
   createIsolatedCodeExecutionReceipt,
   createIsolatedCodeExecutionRejectionDiagnostic,
   createIsolatedOutputProducerGenerationAdvance,
@@ -106,7 +123,6 @@ import { FileEngineeringProjectRunLease } from "../../../shared/stores/file-engi
 import {
   reopenAdmittedExecutionRequest,
   SimulateRunAdmittedSpiceRunExecutor,
-  type SimulateRunAdmittedSpiceRunExecutorDependencies,
 } from "./run-executor.ts";
 
 const SPICE_DIVIDER_SOURCE = "Vin in 0 DC 5\nR1 in out 1k\nR2 out 0 1k\n";
@@ -191,7 +207,7 @@ const EXECUTION_AGENT = { kind: "agent" as const, actorId: "agent.spice" };
 const EXECUTION_COMMAND = {
   commandId: "execute.spice.admitted",
   projectId: "project.ramp",
-  expectedRevision: 1,
+  expectedRevision: 3,
   issuedAt: EXECUTION_AT,
   runId: "run.admitted",
 };
@@ -224,6 +240,209 @@ Deno.test("admitted SPICE executor publishes documentary evidence with CAS objec
     assertEquals(fixture.snapshots.saveCalls, 1);
     assertEquals(fixture.captures.saveCalls, 1);
     assertEquals(completed.agentRuns[0]?.evidenceRefs.length, 3);
+    assertEquals(fixture.session.events, ["begin"]);
+    assertEquals(fixture.session.releases, 1);
+    assertEquals(fixture.session.retains, 0);
+    assertEquals(
+      fixture.session.microsandboxExecutionProfiles?.[0]?.material.materialId,
+      "ngspice-runtime-image",
+    );
+    assertEquals(
+      completed.commandReceipts?.some((receipt) => receipt.type === "agent-run.claim"),
+      true,
+    );
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("admitted SPICE refuses a tampered sealed ROP before JIT session or claim", async () => {
+  const fixture = await executorHarness({ tamperPlan: true });
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(EXECUTION_AGENT, EXECUTION_COMMAND),
+      Error,
+      "must equal $plan.action.executionRunId",
+    );
+    assertEquals(runStatus(fixture.project), "queued");
+    assertEquals(fixture.project.revision, 3);
+    assertEquals(fixture.session.events, []);
+    assertEquals(fixture.runtime.runs, []);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("admitted SPICE exact ROP action cross-check rejects a capability substitution", async () => {
+  const fixture = await executorHarness();
+  try {
+    const run = fixture.project.agentRuns[0]!;
+    const execution = await reopenAdmittedExecutionRequest({
+      admissions: fixture.admissions,
+      profiles: fixture.profiles,
+      project: fixture.project,
+      run,
+      admission: fixture.admission,
+    });
+    await assertRejects(
+      () =>
+        assertResolvedAdmittedSpiceExecutionPlan({
+          plan: fixture.plan,
+          operationalCapability: {
+            ...fixture.operationalCapability,
+            authorizationFingerprint: {
+              algorithm: "sha256",
+              digest: "e".repeat(64),
+            },
+          },
+          project: fixture.project,
+          run,
+          admission: fixture.admission,
+          execution,
+        }),
+      Error,
+      "exact admitted SPICE execution run and operational capability",
+    );
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("completed admitted SPICE replay uses its recorded profile and releases recorded JIT state", async () => {
+  const fixture = await executorHarness();
+  try {
+    const completed = await fixture.executor.execute(
+      EXECUTION_AGENT,
+      EXECUTION_COMMAND,
+    );
+    await retireHarnessProfile(fixture.profiles);
+    const profileCalls = fixture.profiles.initialCalls;
+    const capabilityCalls = fixture.runtimeAuthorizationCalls;
+    fixture.revokeCapability();
+    const replayed = await fixture.executor.execute(EXECUTION_AGENT, {
+      ...EXECUTION_COMMAND,
+      expectedRevision: completed.revision,
+    });
+    assertEquals(replayed, completed);
+    assertEquals(fixture.profiles.initialCalls, profileCalls);
+    assertEquals(fixture.runtimeAuthorizationCalls, capabilityCalls);
+    assertEquals(fixture.runtime.runs, [0]);
+    assertEquals(fixture.session.events, ["begin", "releaseRecorded"]);
+    assertEquals(fixture.session.releases, 1);
+    assertEquals(fixture.session.recordedReleases, 1);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("running admitted SPICE output WAL finalizes after catalog rollover and runtime revocation", async () => {
+  const fixture = await executorHarness({ loseCaptureAck: true });
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(EXECUTION_AGENT, EXECUTION_COMMAND),
+      Error,
+    );
+    assertEquals(runStatus(fixture.project), "running");
+    assertEquals(
+      (await fixture.attempts.read(
+        EXECUTION_COMMAND.projectId,
+        EXECUTION_COMMAND.runId,
+      ))?.phase,
+      "output-published",
+    );
+    const profileCalls = fixture.profiles.initialCalls;
+    const capabilityCalls = fixture.runtimeAuthorizationCalls;
+    const begins = fixture.session.events.filter((event) => event === "begin").length;
+    await retireHarnessProfile(fixture.profiles);
+    fixture.revokeCapability();
+
+    const completed = await fixture.executor.execute(EXECUTION_AGENT, {
+      ...EXECUTION_COMMAND,
+      expectedRevision: fixture.project.revision,
+    });
+    assertEquals(runStatus(completed), "completed");
+    assertEquals(fixture.profiles.initialCalls, profileCalls);
+    assertEquals(fixture.runtimeAuthorizationCalls, capabilityCalls);
+    assertEquals(fixture.runtime.runs, [0]);
+    assertEquals(
+      fixture.session.events.filter((event) => event === "begin").length,
+      begins,
+    );
+    assertEquals(fixture.session.recordedReleases, 1);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("admitted SPICE refuses capability revocation before JIT session or claim", async () => {
+  const fixture = await executorHarness({ revokedCapability: true });
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(EXECUTION_AGENT, EXECUTION_COMMAND),
+      Error,
+      "Capability runtime binding changed after queueing",
+    );
+    assertEquals(runStatus(fixture.project), "queued");
+    assertEquals(fixture.project.revision, 3);
+    assertEquals(fixture.session.events, []);
+    assertEquals(fixture.runtime.runs, []);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("dispatching admitted SPICE WAL remains fresh-runtime guarded", async () => {
+  const fixture = await executorHarness({
+    failGenerationZero: true,
+    outcomeUnknownGeneration: 0,
+  });
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(EXECUTION_AGENT, EXECUTION_COMMAND),
+      Error,
+      "outcome remains unknown",
+    );
+    assertEquals(runStatus(fixture.project), "running");
+    assertEquals(
+      (await fixture.attempts.read(
+        EXECUTION_COMMAND.projectId,
+        EXECUTION_COMMAND.runId,
+      ))?.phase,
+      "dispatching",
+    );
+    const begins = fixture.session.events.filter((event) => event === "begin").length;
+    fixture.revokeCapability();
+    await assertRejects(
+      () =>
+        fixture.executor.execute(EXECUTION_AGENT, {
+          ...EXECUTION_COMMAND,
+          expectedRevision: fixture.project.revision,
+        }),
+      Error,
+      "Capability runtime binding changed after queueing",
+    );
+    assertEquals(fixture.runtime.runs, [0]);
+    assertEquals(
+      fixture.session.events.filter((event) => event === "begin").length,
+      begins,
+    );
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("admitted SPICE missing MicroVM preload fails closed before claim", async () => {
+  const fixture = await executorHarness({ microvmPreloadUnavailable: true });
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(EXECUTION_AGENT, EXECUTION_COMMAND),
+      Error,
+      "ngspice Microsandbox runtime material is unavailable",
+    );
+    assertEquals(runStatus(fixture.project), "queued");
+    assertEquals(fixture.project.revision, 3);
+    assertEquals(fixture.session.events, ["begin"]);
+    assertEquals(fixture.runtime.runs, []);
   } finally {
     await fixture.dispose();
   }
@@ -302,6 +521,48 @@ Deno.test("first-dispatch output-validation rejection fails the exact claimed ru
   }
 });
 
+Deno.test("running admitted SPICE rejection WAL closes after catalog rollover and runtime revocation", async () => {
+  const fixture = await executorHarness({
+    rejectOutputValidation: true,
+    failFailOnce: true,
+  });
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(EXECUTION_AGENT, EXECUTION_COMMAND),
+      Error,
+    );
+    assertEquals(runStatus(fixture.project), "running");
+    assertEquals(
+      (await fixture.attempts.read(
+        EXECUTION_COMMAND.projectId,
+        EXECUTION_COMMAND.runId,
+      ))?.phase,
+      "output-validation-rejected",
+    );
+    const profileCalls = fixture.profiles.initialCalls;
+    const capabilityCalls = fixture.runtimeAuthorizationCalls;
+    const begins = fixture.session.events.filter((event) => event === "begin").length;
+    await retireHarnessProfile(fixture.profiles);
+    fixture.revokeCapability();
+
+    const failed = await fixture.executor.execute(EXECUTION_AGENT, {
+      ...EXECUTION_COMMAND,
+      expectedRevision: fixture.project.revision,
+    });
+    assertEquals(runStatus(failed), "failed");
+    assertEquals(fixture.profiles.initialCalls, profileCalls);
+    assertEquals(fixture.runtimeAuthorizationCalls, capabilityCalls);
+    assertEquals(fixture.runtime.runs, [0]);
+    assertEquals(
+      fixture.session.events.filter((event) => event === "begin").length,
+      begins,
+    );
+    assertEquals(fixture.session.recordedReleases, 1);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 Deno.test("retrying an already-failed admitted SPICE rejection is idempotent", async () => {
   const fixture = await executorHarness({ rejectExecution: true });
   try {
@@ -322,11 +583,14 @@ Deno.test("retrying an already-failed admitted SPICE rejection is idempotent", a
         ?.failure?.code,
       ADMITTED_SPICE_ISOLATED_EXECUTION_REJECTED.code,
     );
-    assertEquals(receipts, 2);
+    assertEquals(receipts, 5);
     assertEquals(replayed.commandReceipts?.length, receipts);
     assertEquals(fixture.runtime.runs, [0]);
     assertEquals(fixture.snapshots.saveCalls, 0);
     assertEquals(fixture.captures.saveCalls, 0);
+    assertEquals(fixture.session.events, ["begin", "releaseRecorded"]);
+    assertEquals(fixture.session.releases, 1);
+    assertEquals(fixture.session.recordedReleases, 1);
 
     const unrelated = await executorHarness();
     try {
@@ -402,7 +666,7 @@ Deno.test("generation-one closed without publication fails the exact claimed run
     });
     assertEquals(replayed.revision, failed.revision);
     assertEquals(runStatus(replayed), "failed");
-    assertEquals(receipts, 2);
+    assertEquals(receipts, 5);
     assertEquals(replayed.commandReceipts?.length, receipts);
     assertEquals(fixture.runtime.runs, [0, 1]);
     assertEquals(fixture.runtime.recoveries, [0, 1]);
@@ -513,7 +777,7 @@ Deno.test(
       assertEquals(fixture.runtime.recoveries, [0, 1]);
       assertEquals(fixture.runtime.resolves, [0, 1]);
       assertEquals(fixture.snapshots.saveCalls, 0);
-      assertEquals(failed.commandReceipts?.length, 2);
+      assertEquals(failed.commandReceipts?.length, 5);
     } finally {
       await fixture.dispose();
     }
@@ -568,7 +832,7 @@ Deno.test(
       assertEquals(closed?.phase, "retry-generation-closed");
       assertEquals(fixture.profiles.initialCalls, profileCalls);
       assertEquals(fixture.profiles.resolveCalls, resolveCalls);
-      assertEquals(fixture.admissions.reads, admissionReads);
+      assertEquals(fixture.admissions.reads, admissionReads + 1);
       assertEquals(fixture.runtime.runs, runs);
       assertEquals(fixture.runtime.recoveries, [0, 1]);
       assertEquals(fixture.snapshots.saveCalls, 0);
@@ -622,7 +886,7 @@ Deno.test(
       );
       assertEquals(fixture.profiles.initialCalls, profileCalls);
       assertEquals(fixture.profiles.resolveCalls, resolveCalls);
-      assertEquals(fixture.admissions.reads, admissionReads);
+      assertEquals(fixture.admissions.reads, admissionReads + 1);
       assertEquals(fixture.runtime.runs, runs);
       assertEquals(fixture.runtime.recoveries, recoveries);
       assertEquals(fixture.runtime.resolves, resolves);
@@ -650,17 +914,17 @@ Deno.test(
       assertEquals(runStatus(nonterminal.project), "running");
       await retireHarnessProfile(nonterminal.profiles);
       const profileCalls = nonterminal.profiles.initialCalls;
-      await assertRejects(
+      const error = await assertRejects(
         () =>
           nonterminal.executor.execute(EXECUTION_AGENT, {
             ...EXECUTION_COMMAND,
             expectedRevision: nonterminal.project.revision,
           }),
         Error,
-        "The reopened admitted SPICE review differs from the signed MRTR.",
       );
+      assertEquals(error.message.includes("unknown"), true);
       assertEquals(runStatus(nonterminal.project), "running");
-      assertEquals(nonterminal.profiles.initialCalls > profileCalls, true);
+      assertEquals(nonterminal.profiles.initialCalls, profileCalls);
       assertEquals(nonterminal.runtime.runs, [0]);
       assertEquals(nonterminal.snapshots.saveCalls, 0);
     } finally {
@@ -1019,7 +1283,9 @@ async function harness() {
     },
     runtimeBackend: {
       ...MICROSANDBOX_LOCAL_RUNTIME_REF,
-      imageReference: `casys/ngspice-microsandbox-worker@sha256:${"5".repeat(64)}`,
+      imageReference: `docker.io/casys/ngspice-microsandbox-worker@sha256:${
+        "5".repeat(64)
+      }`,
       imageDigest: { algorithm: "sha256", digest: "5".repeat(64) },
     },
     runtime: {
@@ -1080,6 +1346,10 @@ interface ExecutorHarnessOptions {
   readonly failGenerationOneDestroyOnce?: boolean;
   readonly failFailOnce?: boolean;
   readonly outcomeUnknownGeneration?: 0 | 1;
+  readonly tamperPlan?: boolean;
+  readonly revokedCapability?: boolean;
+  readonly microvmPreloadUnavailable?: boolean;
+  readonly loseCaptureAck?: boolean;
 }
 
 interface ExecutorHarness {
@@ -1091,6 +1361,12 @@ interface ExecutorHarness {
   readonly snapshots: FakeAdmittedSnapshots;
   readonly profiles: FakeProfiles;
   readonly admissions: FakeAdmissionReader;
+  readonly session: RecordingCapabilityRuntimeSession;
+  readonly plan: ResolvedOperationPlanV2;
+  readonly admission: SpiceAdmittedRunAdmission;
+  readonly operationalCapability: ResolvedCapabilityRuntimeOperation;
+  readonly runtimeAuthorizationCalls: number;
+  readonly revokeCapability: () => void;
   readonly dispose: () => Promise<void>;
 }
 
@@ -1139,14 +1415,25 @@ async function executorHarness(
   });
   const project = {
     schemaVersion: "4.0",
-    id: "project.ramp:r1",
-    revision: 1,
+    id: "project.ramp:r2",
+    revision: 2,
+    previous: { snapshotId: "project.ramp:r1", revision: 1 },
     generatedAt: EXECUTION_AT,
     project: {
       id: EXECUTION_COMMAND.projectId,
       name: "Ramp",
       subjectId: basis.subject.id,
       objective: { title: "Ramp", statement: "Execute admitted SPICE." },
+    },
+    framing: {
+      intent: {
+        statement: "Execute the reviewed admitted SPICE source.",
+        source: { kind: "human", reference: "conversation:spice-fixture" },
+        capturedAt: EXECUTION_AT,
+        capturedBy: { id: "human.reviewer", origin: "human" },
+      },
+      questions: [],
+      answers: [],
     },
     threadSnapshots: [basisRef],
     phases: [{
@@ -1209,13 +1496,80 @@ async function executorHarness(
       decidedAt: EXECUTION_AT,
       decidedBy: "human.reviewer",
       decidedByOrigin: "human",
+      rationale: "Approved exact admitted SPICE execution.",
       baseSnapshot: basisRef,
       inputFingerprint: decisionFingerprint,
       inputEvidenceRefs: [evidenceRef],
     }],
     blockers: [],
-    commandReceipts: [],
+    commandReceipts: [{
+      commandId: "start.spice.fixture",
+      type: "project.start",
+      actor: { id: "human.reviewer", origin: "human" },
+      issuedAt: EXECUTION_AT,
+      appliedAt: EXECUTION_AT,
+      requestFingerprint: await sha256Fingerprint({
+        start: "admitted-spice-fixture",
+      }),
+      resultingSnapshot: { snapshotId: "project.ramp:r1", revision: 1 },
+    }, {
+      commandId: "plan.spice.fixture",
+      type: "decision.propose",
+      actor: { id: EXECUTION_AGENT.actorId, origin: EXECUTION_AGENT.kind },
+      issuedAt: EXECUTION_AT,
+      appliedAt: EXECUTION_AT,
+      requestFingerprint: await sha256Fingerprint({
+        plan: "admitted-spice-fixture",
+      }),
+      resultingSnapshot: { snapshotId: "project.ramp:r2", revision: 2 },
+    }],
   } as unknown as MutableProject;
+  const queueBasisProject = {
+    ...structuredClone(project),
+    agentRuns: [],
+  } as EngineeringProjectSnapshot;
+  const operationalCapability = admittedSpiceOperationalCapability(
+    project.project.id,
+    source.profiles.profile,
+  );
+  const plan = await admittedSpiceResolvedPlan({
+    project,
+    queueBasisProject,
+    basis,
+    admission,
+    profile: source.profiles.profile,
+    operationalCapability,
+  });
+  const ref = await admittedSpiceResolvedPlanRef(plan);
+  project.previous = { snapshotId: project.id, revision: project.revision };
+  project.revision = 3;
+  project.id = "project.ramp:r3";
+  const queuedRun = project.agentRuns[0] as MutableRun;
+  queuedRun.resolvedOperationPlan = ref;
+  queuedRun.statusHistory = [{
+    commandId: "queue.spice.admitted",
+    status: "queued",
+    at: EXECUTION_AT,
+    actor: { id: EXECUTION_AGENT.actorId, origin: EXECUTION_AGENT.kind },
+    summary: queuedRun.summary,
+  }];
+  project.commandReceipts.push({
+    commandId: "queue.spice.admitted",
+    type: "agent-run.queue",
+    actor: { id: EXECUTION_AGENT.actorId, origin: EXECUTION_AGENT.kind },
+    issuedAt: EXECUTION_AT,
+    appliedAt: EXECUTION_AT,
+    requestFingerprint: await sha256Fingerprint({
+      queue: "admitted-spice",
+      runId: queuedRun.id,
+    }),
+    resultingSnapshot: { snapshotId: project.id, revision: project.revision },
+    queuedRun: {
+      runId: queuedRun.id,
+      workItemId: queuedRun.workItemId,
+      resolvedOperationPlan: ref,
+    },
+  });
   const directory = await Deno.realPath(
     await Deno.makeTempDir({ prefix: "casys-admitted-spice-executor-" }),
   );
@@ -1223,16 +1577,46 @@ async function executorHarness(
     `${directory}/attempts`,
   );
   const runtime = new FakeAdmittedRuntime(source.profiles.profile, options);
-  const captures = new FakeAdmittedCaptures();
+  const captures = new FakeAdmittedCaptures(options.loseCaptureAck ?? false);
   const snapshots = new FakeAdmittedSnapshots(lineage);
   const commands = new FakeAdmittedCommands(project, options);
   const projects: EngineeringProjectRevisionStore = {
     get: () => Promise.resolve(project),
     getRevision: (_projectId, revision) =>
-      Promise.resolve(commands.reopenRevision(revision)),
+      Promise.resolve(
+        revision === queueBasisProject.revision
+          ? structuredClone(queueBasisProject)
+          : commands.reopenRevision(revision),
+      ),
     createInitial: () => Promise.reject(new Error("unused")),
     commit: () => Promise.reject(new Error("unused")),
   };
+  let runtimeCapability: ResolvedCapabilityRuntimeOperation = options.revokedCapability
+    ? {
+      ...operationalCapability,
+      authorizationFingerprint: {
+        algorithm: "sha256" as const,
+        digest: "c".repeat(64),
+      },
+    }
+    : operationalCapability;
+  let runtimeAuthorizationCalls = 0;
+  const capabilityRuntime: CapabilityRuntimeExecutionEligibility = {
+    requireExecution: () => {
+      runtimeAuthorizationCalls += 1;
+      return Promise.resolve(runtimeCapability);
+    },
+  };
+  const session = recordingCapabilityRuntimeSession(
+    options.microvmPreloadUnavailable
+      ? async (input) => {
+        await input.recheck();
+        throw new Error(
+          "The exact ngspice Microsandbox runtime material is unavailable.",
+        );
+      }
+      : undefined,
+  );
   const executor = new SimulateRunAdmittedSpiceRunExecutor({
     projects,
     commands,
@@ -1245,7 +1629,27 @@ async function executorHarness(
     attempts,
     captures,
     lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
-  } as unknown as SimulateRunAdmittedSpiceRunExecutorDependencies);
+    plans: {
+      read: (candidate) => {
+        if (deterministicJson(candidate) !== deterministicJson(ref)) {
+          return Promise.reject(new Error("unexpected resolved operation plan ref"));
+        }
+        return Promise.resolve(structuredClone(
+          options.tamperPlan
+            ? {
+              ...plan,
+              recovery: {
+                ...plan.recovery,
+                executionRunId: "admitted-spice-tampered",
+              },
+            }
+            : plan,
+        ));
+      },
+    },
+    capabilityRuntime,
+    capabilityRuntimeSession: session,
+  });
   return {
     executor,
     project,
@@ -1255,7 +1659,206 @@ async function executorHarness(
     snapshots,
     profiles: source.profiles,
     admissions: source.reader,
+    session,
+    plan,
+    admission,
+    operationalCapability,
+    get runtimeAuthorizationCalls() {
+      return runtimeAuthorizationCalls;
+    },
+    revokeCapability: () => {
+      runtimeCapability = {
+        ...operationalCapability,
+        authorizationFingerprint: {
+          algorithm: "sha256",
+          digest: "d".repeat(64),
+        },
+      };
+    },
     dispose: () => Deno.remove(directory, { recursive: true }),
+  };
+}
+
+function admittedSpiceOperationalCapability(
+  projectId: string,
+  profile: AdmittedSpiceExecutionProfile,
+): ResolvedCapabilityRuntimeOperation {
+  const fingerprint = { algorithm: "sha256" as const, digest: "a".repeat(64) };
+  const microvm = {
+    unitId: "casys.spice-worker",
+    materialId: "ngspice-runtime-image",
+    imageDigest: profile.runtimeBackend.imageDigest.digest,
+  };
+  return {
+    schemaVersion: "resolved-capability-runtime-operation/2.0",
+    projectId,
+    operation: SIMULATE_RUN_ADMITTED_SPICE_OPERATION,
+    authorizationFingerprint: fingerprint,
+    demandFingerprint: fingerprint,
+    registryFingerprint: fingerprint,
+    bindings: [{
+      capability: {
+        id: "electronics.run-admitted-spice",
+        version: "1",
+        use: "execution",
+        minimumQualification: "qualified",
+      },
+      binding: { id: "ngspice-admitted-circuit", version: "1" },
+      effectiveQualification: "qualified",
+      adapter: {
+        id: "ngspice-admitted-execution-adapter",
+        version: "1.0.0",
+        source: "server",
+      },
+      profile: {
+        id: profile.executionProfile.id,
+        version: profile.executionProfile.version,
+        fingerprint: profile.profileFingerprint,
+      },
+      materials: [microvm],
+      runtimeModes: [{
+        material: microvm,
+        targetPlatform: "linux/arm64",
+        mode: "native",
+        qualificationAttestationFingerprint: null,
+      }],
+      hostLifecycles: [{
+        material: microvm,
+        kind: "ephemeral-microsandbox",
+        launchGroup: null,
+      }],
+    }],
+  };
+}
+
+async function admittedSpiceResolvedPlan(input: {
+  readonly project: EngineeringProjectSnapshot;
+  readonly queueBasisProject: EngineeringProjectSnapshot;
+  readonly basis: ThreadSnapshot;
+  readonly admission: SpiceAdmittedRunAdmission;
+  readonly profile: AdmittedSpiceExecutionProfile;
+  readonly operationalCapability: ResolvedCapabilityRuntimeOperation;
+}): Promise<ResolvedOperationPlanV2> {
+  const run = input.project.agentRuns[0]!;
+  const workItem = input.project.workItems[0]!;
+  const decision = input.project.decisions[0]!;
+  const approval = input.project.approvals[0]!;
+  const artifact = input.basis.artifacts.find((candidate) =>
+    candidate.id === input.admission.admissionArtifact.id
+  );
+  if (!artifact || !run.inputFingerprint || !decision.inputFingerprint) {
+    throw new Error("admitted SPICE ROP fixture is incomplete");
+  }
+  const executionRunId = await deriveAdmittedSpiceExecutionRunId(
+    input.project.project.id,
+    run.id,
+  );
+  return {
+    schemaVersion: "resolved-operation-plan/2.0",
+    id: resolvedOperationPlanIdForRun(run.id),
+    run: {
+      projectId: input.project.project.id,
+      runId: run.id,
+      workItemId: workItem.id,
+      inputFingerprint: run.inputFingerprint,
+      queueBasisProject: {
+        snapshotId: input.queueBasisProject.id,
+        revision: input.queueBasisProject.revision,
+        fingerprint: await sha256Fingerprint(input.queueBasisProject),
+      },
+    },
+    workItem: {
+      id: workItem.id,
+      operation: {
+        id: workItem.operation!.id,
+        version: workItem.operation!.version,
+      },
+      operationFingerprint: await sha256Fingerprint(workItem.operation),
+    },
+    operationalCapability: input.operationalCapability,
+    authorization: {
+      kind: "human-mrtr-and-qualified-method",
+      mrtr: {
+        decisionId: decision.id,
+        decisionInputFingerprint: decision.inputFingerprint,
+        approvalId: approval.id,
+        approvalFingerprint: await sha256Fingerprint(approval),
+      },
+      methodQualification: {
+        id: input.profile.executionProfile.id,
+        version: input.profile.executionProfile.version,
+        fingerprint: input.profile.profileFingerprint,
+      },
+    },
+    basis: {
+      kind: "thread-snapshot",
+      snapshotId: input.basis.id,
+      revision: input.basis.revision,
+      subjectId: input.basis.subject.id,
+      fingerprint: await sha256Fingerprint(input.basis),
+    },
+    sources: [{
+      bindingName: "compilationAdmission",
+      role: "compilation-admission",
+      threadRef: {
+        snapshotId: input.basis.id,
+        snapshotRevision: input.basis.revision,
+        kind: "artifact",
+        id: artifact.id,
+      },
+      artifact: {
+        fingerprint: artifact.fingerprint,
+        byteCount: artifact.id.length,
+        mediaType: artifact.mediaType ?? "application/json",
+        casUri: artifact.uri!,
+      },
+    }],
+    action: {
+      kind: "admitted-spice-isolated-execution",
+      executionProfile: {
+        id: input.profile.executionProfile.id,
+        version: input.profile.executionProfile.version,
+        fingerprint: input.profile.profileFingerprint,
+      },
+      executionRunId,
+      input: {
+        compilationAdmission: {
+          id: input.admission.admissionArtifact.id,
+          fingerprint: input.admission.admissionArtifact.fingerprint,
+          sourceBinding: "compilationAdmission",
+        },
+        source: input.admission.compilation.source,
+      },
+    },
+    expectedProviderResources: {
+      receiptSchema: "isolated-code-execution-receipt-record/1.0",
+      evidenceSchema: "spice-admitted-execution-capture/1.0",
+      resourceProfile: {
+        id: "spice-admitted.isolated-artifacts",
+        version: "1.0",
+      },
+    },
+    recovery: {
+      policy: "spice-admitted-generation-recovery@1.0",
+      executionRunId,
+      mode: "same-request-readback-no-blind-redispatch",
+      ambiguousOutcome: "quarantine-for-human-review",
+      capturedOutcome: "cas-only-recovery",
+    },
+  };
+}
+
+async function admittedSpiceResolvedPlanRef(
+  plan: ResolvedOperationPlanV2,
+): Promise<ResolvedOperationPlanRef> {
+  const fingerprint = await fingerprintResolvedOperationPlanV2(plan);
+  return {
+    schemaVersion: "resolved-operation-plan-ref/1.0",
+    planId: plan.id,
+    fingerprint,
+    byteCount: new TextEncoder().encode(canonicalResolvedOperationPlanV2Text(plan))
+      .byteLength,
+    casUri: `casys://resolved-operation-plan/sha256/${fingerprint.digest}`,
   };
 }
 
@@ -1603,6 +2206,11 @@ class FakeAdmittedRuntime {
 class FakeAdmittedCaptures {
   readonly items = new Map<string, string>();
   saveCalls = 0;
+  #loseSaveAck: boolean;
+
+  constructor(loseSaveAck: boolean) {
+    this.#loseSaveAck = loseSaveAck;
+  }
 
   save(
     fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
@@ -1610,6 +2218,10 @@ class FakeAdmittedCaptures {
   ) {
     this.saveCalls += 1;
     this.items.set(fingerprint.digest, canonicalText);
+    if (this.#loseSaveAck) {
+      this.#loseSaveAck = false;
+      return Promise.reject(new Error("capture save acknowledgement lost"));
+    }
     return Promise.resolve({
       uri: this.uriFor(fingerprint),
       fingerprint,
@@ -1751,6 +2363,10 @@ class FakeAdmittedCommands {
     origin: EngineeringProjectCommandOrigin,
     command: RunCommand | CompleteRunCommand | FailRunCommand,
   ) {
+    this.project.previous = {
+      snapshotId: this.project.id,
+      revision: this.project.revision,
+    };
     this.project.revision += 1;
     this.project.id = `project.ramp:r${this.project.revision}`;
     this.project.generatedAt = EXECUTION_AT;
@@ -1804,7 +2420,7 @@ async function retireHarnessProfile(profiles: FakeProfiles): Promise<void> {
     ...profiles.profile,
     runtimeBackend: {
       ...profiles.profile.runtimeBackend,
-      imageReference: `casys/ngspice-microsandbox-worker@sha256:${digest}`,
+      imageReference: `docker.io/casys/ngspice-microsandbox-worker@sha256:${digest}`,
       imageDigest: { algorithm: "sha256" as const, digest },
     },
     runtime: {
@@ -1821,6 +2437,7 @@ async function retireHarnessProfile(profiles: FakeProfiles): Promise<void> {
 type MutableProject = EngineeringProjectSnapshot & {
   id: string;
   revision: number;
+  previous?: EngineeringProjectSnapshot["previous"];
   generatedAt: string;
   threadSnapshots: Array<EngineeringProjectSnapshot["threadSnapshots"][number]>;
   phases: Array<EngineeringProjectSnapshot["phases"][number]>;

@@ -1,7 +1,21 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertMatch, assertStringIncludes } from "@std/assert";
 
-Deno.test("browser preview keeps the real Chat rail visible without simulating native authority", async () => {
-  const source = await Deno.readTextFile(
+function occurrences(source: string, value: string): number {
+  return source.split(value).length - 1;
+}
+
+async function readProjectSources(): Promise<string> {
+  const directory = new URL("./src/project/", import.meta.url);
+  const sources: string[] = [];
+  for await (const entry of Deno.readDir(directory)) {
+    if (!entry.isFile || !/\.tsx?$/.test(entry.name)) continue;
+    sources.push(await Deno.readTextFile(new URL(entry.name, directory)));
+  }
+  return sources.join("\n");
+}
+
+Deno.test("browser preview keeps one real Project Chat body without simulating native authority", async () => {
+  const chat = await Deno.readTextFile(
     new URL("./src/thread/desktop-chat.tsx", import.meta.url),
   );
   const shell = await Deno.readTextFile(
@@ -11,107 +25,181 @@ Deno.test("browser preview keeps the real Chat rail visible without simulating n
     new URL("./src/styles/18-desktop-chat.css", import.meta.url),
   );
 
-  assertEquals(source.includes("if (!bindings) return null"), false);
-  assertStringIncludes(shell, "useState(false)");
+  assertEquals(chat.includes("if (!bindings) return null"), false);
   assertStringIncludes(
     shell,
-    "if (!desktopChatRuntimeAvailable()) setChatOpen(true)",
+    "const [chatOpen, setChatOpen] = useState(false)",
   );
-  assertStringIncludes(shell, 'data-chat-open={chatOpen ? "true" : "false"}');
-  assertStringIncludes(source, "open={open}");
+  assertEquals(shell.includes("setChatOpen(true)"), false);
   assertStringIncludes(
-    source,
-    "onOpenChange={(details) => onOpenChange(details.open)}",
+    shell,
+    'data-chat-open={chatOpen ? "true" : "false"}',
   );
   assertStringIncludes(
-    source,
+    shell,
+    'data-project-chat-panel={projectChatAvailable ? "true" : "false"}',
+  );
+  assertEquals(
+    shell.indexOf("<DesktopChat"),
+    shell.lastIndexOf("<DesktopChat"),
+  );
+  assertEquals(
+    shell.indexOf("<DesktopChat") <
+      shell.indexOf('id="native-preview-content"'),
+    true,
+  );
+
+  assertStringIncludes(chat, "const panel = (");
+  assertEquals(chat.includes("createPortal"), false);
+  assertEquals(chat.includes("spatialHost"), false);
+  assertEquals(chat.includes('data-chat-presentation="whiteboard"'), false);
+  assertStringIncludes(
+    chat,
     'data-chat-runtime={nativeChatAvailable ? "native" : "browser-preview"}',
   );
-  assertStringIncludes(source, 'aria-controls="desktop-chat-panel"');
-  assertStringIncludes(source, 'content: "desktop-chat-panel"');
-  assertStringIncludes(source, 'title: "desktop-chat-title"');
-  assertStringIncludes(source, 'description: "desktop-chat-description"');
   assertStringIncludes(
-    source,
-    '<ArkDialog.Title className="desktop-chat-title">',
-  );
-  assertStringIncludes(
-    source,
-    '<ArkDialog.Description className="desktop-chat-description">',
-  );
-  assertStringIncludes(
-    source,
+    chat,
     "<BrowserPreviewUnavailable projectId={projectId} />",
   );
-  assertStringIncludes(source, "Browser preview · non-native");
-  assertStringIncludes(
-    source,
-    "conversation is loaded and no command can be sent from this panel.",
+  assertStringIncludes(chat, "Browser preview · non-native");
+  assertMatch(
+    chat,
+    /No\s+conversation is loaded and no command can be sent from this panel\./,
   );
-  assertStringIncludes(source, "disabled={!interactive}");
+  assertStringIncludes(chat, "disabled={!interactive}");
   assertStringIncludes(styles, ".desktop-chat-preview");
   assertStringIncludes(
     styles,
     ".desktop-chat .desktop-chat-rail-button:disabled",
   );
-  assertEquals(source.includes("Casys agent console"), false);
-  assertEquals(source.includes("›_"), false);
-  assertEquals(source.includes("function ChatIcon"), false);
-  assertEquals(source.includes("function CloseIcon"), false);
-  assertEquals(source.includes("<button"), false);
 
-  assertEquals(source.includes("globalThis.bindings ="), false);
-  assertEquals(source.includes("casysChatSnapshot: async"), false);
-  assertEquals(source.includes("casysChatCommand: async"), false);
+  assertEquals(occurrences(chat, 'content: "desktop-chat-panel"'), 1);
+  assertEquals(occurrences(chat, 'title: "desktop-chat-title"'), 1);
+  assertEquals(occurrences(chat, 'description: "desktop-chat-description"'), 1);
+  assertEquals(occurrences(chat, 'id="desktop-chat-message"'), 1);
+  assertEquals(occurrences(chat, "<ArkDialog.Content"), 1);
+  assertMatch(
+    chat,
+    /<Conversation\s+key=\{selected\.id\}\s+conversation=\{selected\}/,
+  );
+  assertStringIncludes(chat, "key={conversation.id}");
+  assertStringIncludes(chat, "key={message.id}");
+
+  assertEquals(chat.includes("Casys agent console"), false);
+  assertEquals(chat.includes("›_"), false);
+  assertEquals(chat.includes("function ChatIcon"), false);
+  assertEquals(chat.includes("function CloseIcon"), false);
+  assertEquals(chat.includes("<button"), false);
+  assertEquals(chat.includes("globalThis.bindings ="), false);
+  assertEquals(chat.includes("casysChatSnapshot: async"), false);
+  assertEquals(chat.includes("casysChatCommand: async"), false);
 });
 
-Deno.test("native Chat keeps command dispatch behind the injected Desktop binding", async () => {
-  const source = await Deno.readTextFile(
+Deno.test("native Chat commands remain owned by the Desktop sibling, never Project or Workbench", async () => {
+  const chat = await Deno.readTextFile(
+    new URL("./src/thread/desktop-chat.tsx", import.meta.url),
+  );
+  const shell = await Deno.readTextFile(
+    new URL("./src/thread/native-preview.tsx", import.meta.url),
+  );
+  const workbench = await Deno.readTextFile(
+    new URL("./src/thread/workbench.tsx", import.meta.url),
+  );
+  const projectSources = await readProjectSources();
+  const projectedSurfaces = [shell, workbench, projectSources].join("\n");
+
+  assertStringIncludes(chat, "if (!bindings) return;");
+  assertStringIncludes(chat, "if (!bindings) return undefined;");
+  assertStringIncludes(chat, "await bindings.casysChatSnapshot");
+  assertStringIncludes(chat, "await bindings.casysChatCommand(request)");
+  assertStringIncludes(chat, "interactive={nativeChatAvailable}");
+  assertStringIncludes(chat, "export function desktopChatRuntimeAvailable");
+
+  for (
+    const privilegedToken of [
+      "globalThis.bindings",
+      "DesktopBindings",
+      "casysChatSnapshot",
+      "casysChatCommand",
+      "DesktopChatBindingCommandRequest",
+      "DESKTOP_CHAT_PROTOCOL",
+      "desktopBindings(",
+      "presentation/desktop/chat/contracts.ts",
+    ]
+  ) {
+    assertEquals(
+      projectedSurfaces.includes(privilegedToken),
+      false,
+      `${privilegedToken} escaped the Desktop Chat sibling`,
+    );
+  }
+  assertEquals(workbench.includes("DesktopChat"), false);
+  assertEquals(projectSources.includes("<DesktopChat"), false);
+  assertEquals(projectSources.includes("desktop-chat.tsx"), false);
+});
+
+Deno.test("Project Chat uses fixed panel, left sheet, compact modal, and fallback panel presentations", async () => {
+  const chat = await Deno.readTextFile(
     new URL("./src/thread/desktop-chat.tsx", import.meta.url),
   );
 
-  assertStringIncludes(source, "if (!bindings) return;");
-  assertStringIncludes(source, "if (!bindings) return undefined;");
-  assertStringIncludes(source, "await bindings.casysChatSnapshot");
-  assertStringIncludes(source, "await bindings.casysChatCommand(request)");
-  assertStringIncludes(source, "interactive={nativeChatAvailable}");
-  assertStringIncludes(source, "export function desktopChatRuntimeAvailable");
-});
-
-Deno.test("small Chat surfaces use Ark modal focus management without making the dock modal", async () => {
-  const source = await Deno.readTextFile(
-    new URL("./src/thread/desktop-chat.tsx", import.meta.url),
-  );
-
-  assertStringIncludes(source, 'useMediaQuery("(max-width: 899px)")');
-  assertStringIncludes(source, 'key={compactModal ? "modal" : "panel"}');
-  assertStringIncludes(source, "modal={compactModal}");
-  assertStringIncludes(source, "trapFocus={compactModal}");
-  assertStringIncludes(source, "preventScroll={compactModal}");
-  assertStringIncludes(source, "closeOnInteractOutside={compactModal}");
-  assertStringIncludes(source, "<ArkDialog.CloseTrigger asChild>");
-  assertStringIncludes(source, 'aria-label="Close project chat"');
-  assertStringIncludes(source, "aria-pressed={!selectedId}");
-  assertStringIncludes(source, "aria-pressed={conversation.id === selectedId}");
-  assertStringIncludes(source, 'event.key === "Escape"');
+  assertStringIncludes(chat, 'useMediaQuery("(max-width: 899px)")');
+  assertStringIncludes(chat, 'useMediaQuery("(max-width: 767px)")');
+  assertStringIncludes(chat, 'useMediaQuery("(min-width: 1200px)")');
   assertStringIncludes(
-    source,
-    'globalThis.addEventListener("keydown", dismiss)',
+    chat,
+    'const fixedPanelAvailable = typeof projectId === "string"',
   );
+  assertStringIncludes(
+    chat,
+    "const fixedProjectPanel = fixedPanelAvailable && wideDesktop",
+  );
+  assertStringIncludes(
+    chat,
+    "const projectSheet = fixedPanelAvailable && !wideDesktop && !compactModal",
+  );
+  assertStringIncludes(chat, 'key={compactModal ? "modal" : "panel"}');
+  assertStringIncludes(chat, "modal={compactModal}");
+  assertStringIncludes(chat, "trapFocus={compactModal}");
+  assertStringIncludes(chat, "preventScroll={compactModal}");
+  assertStringIncludes(chat, "closeOnInteractOutside={compactModal}");
+  assertStringIncludes(
+    chat,
+    "closeOnEscape={!fixedPanelAvailable || compactModal}",
+  );
+  for (
+    const presentation of ["project-panel", "project-sheet", "modal", "panel"]
+  ) {
+    assertStringIncludes(chat, `"${presentation}"`);
+  }
+  assertStringIncludes(chat, "<ArkDialog.Backdrop");
+  assertStringIncludes(chat, "<ArkDialog.Positioner");
+  assertStringIncludes(chat, "<ArkDialog.CloseTrigger asChild>");
+  assertStringIncludes(chat, 'aria-label="Close project chat"');
+  assertStringIncludes(chat, "aria-pressed={!selectedId}");
+  assertStringIncludes(chat, "aria-pressed={conversation.id === selectedId}");
 });
 
-Deno.test("responsive Chat rebuilds Ark effects and restores panel focus", async () => {
-  const source = await Deno.readTextFile(
+Deno.test("responsive Chat restores launcher focus and limits manual Escape handling to fallback panels", async () => {
+  const chat = await Deno.readTextFile(
     new URL("./src/thread/desktop-chat.tsx", import.meta.url),
   );
 
-  assertStringIncludes(source, 'key={compactModal ? "modal" : "panel"}');
   assertStringIncludes(
-    source,
+    chat,
     "const triggerRef = useRef<HTMLButtonElement>(null)",
   );
-  assertStringIncludes(source, "previous.open && !open");
-  assertStringIncludes(source, "!previous.compactModal");
-  assertStringIncludes(source, "triggerRef.current?.focus()");
-  assertStringIncludes(source, "ref={triggerRef}");
+  assertStringIncludes(
+    chat,
+    "previous.open && !open && !previous.compactModal",
+  );
+  assertStringIncludes(chat, "triggerRef.current?.focus()");
+  assertStringIncludes(chat, "ref={triggerRef}");
+  assertStringIncludes(chat, 'aria-controls="desktop-chat-panel"');
+  assertStringIncludes(
+    chat,
+    "if (!open || fixedPanelAvailable || compactModal) return;",
+  );
+  assertStringIncludes(chat, 'if (event.key === "Escape") onOpenChange(false)');
+  assertStringIncludes(chat, 'globalThis.addEventListener("keydown", dismiss)');
 });

@@ -189,11 +189,12 @@ Deno.test(
 );
 
 Deno.test(
-  "electrical method-sheet seal review exposes only projectId and sheetFingerprint",
+  "electrical method-sheet review supports project-only preparation then exact sheet review",
   async () => {
     const app = new CapturingApp();
     const calls: unknown[] = [];
     const resultIdentity = Object.freeze({
+      mode: "review" as const,
       admission: Object.freeze({ marker: "sheet-seal" }),
       decisionParameters: Object.freeze([]),
     }) as unknown as ProjectElectricalObservationMethodSheetSealReviewResult;
@@ -227,6 +228,7 @@ Deno.test(
       Object.keys(inputSchema.properties as Record<string, unknown>).sort(),
       ["projectId", "sheetFingerprint"],
     );
+    assertEquals(inputSchema.required, ["projectId"]);
     await assertRejects(
       () =>
         app.handler("project_electrical_observation_method_sheet_seal_review")({
@@ -236,6 +238,34 @@ Deno.test(
         }) as Promise<unknown>,
       TypeError,
       "unsupported field(s)",
+    );
+
+    const preparation = new CapturingApp();
+    const preparationIdentity = Object.freeze({
+      mode: "preparation" as const,
+      methodSheet: Object.freeze({ marker: "exact-thread-basis" }),
+      l3: Object.freeze({
+        observations: Object.freeze([{ name: "v(led)", value: 2.1, unit: "V" }]),
+        limitations: Object.freeze(["not-a-requirement-verdict"]),
+      }),
+      briefItems: Object.freeze([]),
+    }) as unknown as ProjectElectricalObservationMethodSheetSealReviewResult;
+    registerProjectSpiceReviewTools(preparation as unknown as McpApp, {
+      electricalObservationMethodSheetSealReview: {
+        execute(value) {
+          assertEquals(value, { projectId: "project.spice-al01" });
+          return Promise.resolve(preparationIdentity);
+        },
+      },
+    });
+    const prepared = await preparation.handler(
+      "project_electrical_observation_method_sheet_seal_review",
+    )({ projectId: "project.spice-al01" }) as Record<string, unknown>;
+    assert(prepared.structuredContent === preparationIdentity);
+    assertStringIncludes(prepared.content as string, "exact current admitted SPICE L3");
+    assertStringIncludes(
+      prepared.content as string,
+      "No threshold or verdict was invented",
     );
   },
 );

@@ -21,7 +21,6 @@ import {
   projectPulseStatus,
   projectStatusLabel,
   selectCurrentProjectFocus,
-  verificationChainDetail,
   workOwnerLabel,
 } from "./src/project/model.ts";
 import { PROJECT_PATH_STAGE_LABELS } from "./src/project/overview-lanes.ts";
@@ -93,64 +92,6 @@ Deno.test("only concrete proposals wait for human confirmation", () => {
   );
 });
 
-Deno.test("overview verification copy counts current criteria before retained history", () => {
-  const seed = GENERIC_THREAD_FIXTURE.requirements[0]!;
-  const thread = {
-    ...GENERIC_THREAD_FIXTURE,
-    requirements: [
-      { ...seed, id: "REQ-R1", status: "unresolved" as const },
-      { ...seed, id: "REQ-R2", status: "pass" as const },
-      { ...seed, id: "REQ-R3", status: "pass" as const },
-    ],
-    violations: [],
-    evidenceFamilyGraph: {
-      schemaVersion: "thread-evidence-family-graph/1.0" as const,
-      asOf: { snapshotId: "thread-r3", revision: 3 },
-      families: [{
-        id: "requirement-family",
-        entityKind: "requirement" as const,
-        historicalRefs: [
-          { kind: "requirement" as const, id: "REQ-R1" },
-          { kind: "requirement" as const, id: "REQ-R2" },
-        ],
-        currentRefs: [{ kind: "requirement" as const, id: "REQ-R3" }],
-        revisionCount: 2,
-        status: "current" as const,
-        relationship: {
-          relation: "supersedes" as const,
-          classification: "not-recorded" as const,
-          equivalence: "not-recorded" as const,
-        },
-        transitions: [{
-          edgeRef: {
-            id: "REQ-R1-to-R3",
-            relation: "supersedes" as const,
-            origin: "provenance" as const,
-          },
-          historical: { kind: "requirement" as const, id: "REQ-R1" },
-          successor: { kind: "requirement" as const, id: "REQ-R3" },
-        }, {
-          edgeRef: {
-            id: "REQ-R2-to-R3",
-            relation: "supersedes" as const,
-            origin: "provenance" as const,
-          },
-          historical: { kind: "requirement" as const, id: "REQ-R2" },
-          successor: { kind: "requirement" as const, id: "REQ-R3" },
-        }],
-      }],
-      edges: [],
-      omittedSelfLoops: [],
-      omittedCycleEdges: [],
-    },
-  };
-
-  assertEquals(
-    verificationChainDetail(thread),
-    "1/1 current criteria passing · 0 named violations · 2 historical records.",
-  );
-});
-
 Deno.test("Project Path groups explicit activity revisions instead of guessing from operations", () => {
   const { project, thread } = correctionPathFixture();
   const path = buildProjectPath(project, thread);
@@ -180,6 +121,61 @@ Deno.test("Project Path keeps failed and ready revisions visible inside their ac
     ),
     true,
   );
+});
+
+Deno.test("ML01 Project Path retains exact activity and named dependency evidence joins", () => {
+  const snapshotRevision = GENERIC_THREAD_FIXTURE.evidenceFamilyGraph.asOf.revision;
+  const admissionRef = {
+    snapshotId: GENERIC_THREAD_FIXTURE.id,
+    snapshotRevision,
+    kind: "artifact" as const,
+    id: "ml01-document-admission",
+  };
+  const project = {
+    ...GENERIC_PROJECT_FIXTURE,
+    workItems: GENERIC_PROJECT_FIXTURE.workItems.map((item) => {
+      if (item.id === "work-define") {
+        return { ...item, evidenceRefs: [admissionRef] };
+      }
+      if (item.id === "work-architect") {
+        return {
+          ...item,
+          status: "in-progress" as const,
+          dependsOnWorkItemIds: ["work-define", "work-not-recorded"],
+        };
+      }
+      return item;
+    }),
+  };
+  const activities: readonly EngineeringWorkbenchActivity[] = [{
+    id: "activity:work-define",
+    lane: "requirements",
+    rootRevisionId: "work-define",
+    revisionIds: ["work-define"],
+  }, {
+    id: "activity:work-architect",
+    lane: "system-model",
+    rootRevisionId: "work-architect",
+    revisionIds: ["work-architect"],
+  }];
+
+  const path = buildProjectPath(
+    project,
+    GENERIC_THREAD_FIXTURE,
+    activities,
+  );
+  const baseline = path.activities.find((activity) =>
+    activity.id === "activity:work-define"
+  );
+  const active = path.activities.find((activity) =>
+    activity.id === "activity:work-architect"
+  );
+
+  assertEquals(baseline?.evidenceRefs, [admissionRef]);
+  assertEquals(baseline?.dependencyEvidenceRefs, []);
+  assertEquals(active?.evidenceRefs, []);
+  assertEquals(active?.dependencyEvidenceRefs, [admissionRef]);
+  assertEquals(active?.status, "active");
 });
 
 Deno.test("Project Path folds a model enrichment under the phase that owns the enriched model", () => {
@@ -2397,6 +2393,8 @@ Deno.test("path band status follows group gates and leaves empty lanes planned",
       title: "gate",
       status,
       revisions: [],
+      evidenceRefs: [],
+      dependencyEvidenceRefs: [],
       approvedDecisions: 0,
       requiredDecisions: 0,
       evidenceCount: 0,
@@ -2450,6 +2448,8 @@ Deno.test("project path gates always occupy the five projected thread lanes with
     title: "Same deliberately uninformative label",
     status: "completed" as const,
     revisions: [],
+    evidenceRefs: [],
+    dependencyEvidenceRefs: [],
     approvedDecisions: 1,
     requiredDecisions: 1,
     evidenceCount,

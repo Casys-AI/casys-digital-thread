@@ -1,6 +1,6 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import {
-  assembleSensitivityStudyCaseV2,
+  assembleSensitivityStudyCaseV3,
   SENSITIVITY_STUDY_CASE_TEMPLATE_SCHEMA,
   validateSensitivityStudyCaseTemplate,
 } from "./sensitivity-study-template.ts";
@@ -16,10 +16,7 @@ const TEMPLATE = {
   baseValue: { value: 50, unit: "mm" },
   step: { value: 1, unit: "mm" },
   metrics: [{ id: "assembly_max_displacement", unit: "mm" }],
-  solver: {
-    provider: "calculix",
-    tool: "calculix_solve_static",
-    resultSchemaVersion: "2.0",
+  method: {
     mesh: { kind: "tetrahedral-volume", targetSizeMm: 3 },
     material: {
       model: "isotropic-linear-elastic",
@@ -69,11 +66,11 @@ Deno.test("a catalog template rejects a legacy cadSource key", () => {
 
 Deno.test("assembling a template binds only the reviewed cadSource", () => {
   const template = validateSensitivityStudyCaseTemplate(TEMPLATE);
-  const studyCase = assembleSensitivityStudyCaseV2(template, {
+  const studyCase = assembleSensitivityStudyCaseV3(template, {
     artifactUri: "thread-artifact://desk-lamp-dl04/admission-1",
     sha256: "b".repeat(64),
   });
-  assertEquals(studyCase.schemaVersion, "sensitivity-study-case/2.0");
+  assertEquals(studyCase.schemaVersion, "sensitivity-study-case/3.0");
   assertEquals(
     studyCase.cadSource.artifactUri,
     "thread-artifact://desk-lamp-dl04/admission-1",

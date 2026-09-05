@@ -5,6 +5,27 @@ import type {
   EngineeringThreadEntityRef,
 } from "../../domain/project/engineering-project.ts";
 import type { ThreadEntityKind } from "../../domain/thread/thread-snapshot.ts";
+import {
+  type CapabilityReference,
+  ELECTRONICS_RUN_ADMITTED_SPICE_CAPABILITY,
+  GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY,
+  GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY,
+  GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
+  GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY,
+  MANUFACTURING_ESTIMATE_FFF_CAPABILITY,
+  MANUFACTURING_OBSERVE_PRINTABILITY_CAPABILITY,
+  MANUFACTURING_RUN_DFM_CHECKS_CAPABILITY,
+  MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY,
+  MECHANICS_OBSERVE_STATIC_STRUCTURAL_SENSITIVITY_CAPABILITY,
+  MODEL_AUTHOR_SYSTEM_CAPABILITY,
+  MODEL_EVALUATE_REQUIREMENT_CAPABILITY,
+  MODEL_INSPECT_SYSTEM_CAPABILITY,
+  type RequiredEngineeringCapability,
+  SIMULATION_RUN_ADMITTED_MODELICA_CAPABILITY,
+  SIMULATION_RUN_QUALIFIED_MODELICA_CAPABILITY,
+} from "../../domain/capability/engineering-capability.ts";
+import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
+import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/architecture/seed/syson-model-seed.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/architecture/renderer/architecture-proposal.ts";
 import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../domain/architecture/part-definitions/part-definitions-capture.ts";
@@ -21,6 +42,14 @@ import {
   DECIDE_ACCEPT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION,
   DECIDE_REJECT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION,
 } from "../../domain/cad/assembly-integrity/assembly-integrity-evaluation-closeout-proposal.ts";
+import {
+  DECIDE_ACCEPT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION,
+  DECIDE_REJECT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION,
+  VERIFY_EVALUATE_PRESCRIBED_KINEMATICS_OPERATION,
+  VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+  VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION,
+  VERIFY_SEAL_PRESCRIBED_KINEMATICS_METHOD_OPERATION,
+} from "../../domain/mechanism/prescribed-kinematics/operations.ts";
 import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "../../domain/sensitivity/vector-correction/vector-correction-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/modelica/qualified-kit/run-proposal.ts";
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
@@ -69,13 +98,52 @@ import {
   type EngineeringOperationBasisKind,
   type EngineeringOperationRegistry,
   EngineeringOperationRegistryError,
+  type EngineeringOperationRuntimeDemand,
   type EngineeringOperationValidationStage,
   type RegisteredEngineeringOperation,
   type RegisteredEngineeringOperationInput,
   type ValidatedRegisteredEngineeringOperationInput,
 } from "./operation-contract.ts";
+import {
+  resolveRuntimePreparationPrerequisiteRegistry,
+  runtimePreparationPrerequisiteRegistryFingerprintPayload,
+} from "./runtime-preparation-prerequisite-closure.ts";
 
 export * from "./operation-contract.ts";
+
+const NO_RUNTIME_DEMAND = Object.freeze({ kind: "none" } as const);
+
+export const DESIGN_PREPARE_GEOMETRY_MODULE_OPERATION = Object.freeze(
+  {
+    id: "design.prepare-geometry-module",
+    version: "1",
+  } as const,
+);
+
+function qualifiedCapability(
+  capability: CapabilityReference,
+  use: RequiredEngineeringCapability["use"] = "execution",
+): RequiredEngineeringCapability {
+  return Object.freeze({
+    ...capability,
+    minimumQualification: "qualified" as const,
+    use,
+  });
+}
+
+function requiredRuntimeDemand(
+  ...capabilities: readonly RequiredEngineeringCapability[]
+): EngineeringOperationRuntimeDemand {
+  if (capabilities.length === 0) {
+    throw new TypeError("A required runtime demand must name one capability.");
+  }
+  return Object.freeze({
+    kind: "required" as const,
+    capabilities: Object.freeze(
+      capabilities.map((capability) => Object.freeze({ ...capability })),
+    ),
+  });
+}
 
 /**
  * Reviewed, code-owned engineering operations.
@@ -107,6 +175,7 @@ const OPERATIONS = [
     workItemKind: "define",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -123,6 +192,9 @@ const OPERATIONS = [
     workItemKind: "architect",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MODEL_AUTHOR_SYSTEM_CAPABILITY),
+    ),
     // The executor verifies that this work item arrived via exactly one
     // planChange (assertChangeCanAppend requires a completed baseline first).
     // Publishing it in the initial plan silently passes planning but fails at
@@ -161,6 +233,9 @@ const OPERATIONS = [
     workItemKind: "architect",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MODEL_AUTHOR_SYSTEM_CAPABILITY),
+    ),
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -180,6 +255,9 @@ const OPERATIONS = [
     workItemKind: "define",
     riskClass: "low",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MODEL_INSPECT_SYSTEM_CAPABILITY),
+    ),
     requiresAdditiveChange: true,
     bindings: [{
       name: "architecture",
@@ -206,6 +284,7 @@ const OPERATIONS = [
     workItemKind: "architect",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [],
   },
   /**
@@ -241,6 +320,9 @@ const OPERATIONS = [
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MODEL_AUTHOR_SYSTEM_CAPABILITY),
+    ),
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -270,7 +352,12 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     decisionEvidenceScope: "thread-entity-bindings",
+    // Admission is a current-basis review. It cannot appear in the initial
+    // plan, and every Thread entity binding must recross the appended head.
+    requiresAdditiveChange: true,
+    threadEntityBindingsMustMatchBasis: true,
     bindings: [{
       name: "sysmlModel",
       allowedSourceKinds: ["thread-entity"],
@@ -302,6 +389,9 @@ const OPERATIONS = [
     workItemKind: "design",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY),
+    ),
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: COMPILATION_ADMISSION_BINDING_NAME,
@@ -335,6 +425,7 @@ const OPERATIONS = [
     workItemKind: "design",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: "executionCapture",
@@ -342,6 +433,31 @@ const OPERATIONS = [
       cardinality: "one",
       allowedThreadEntityKinds: ["artifact"],
     }],
+  },
+  /**
+   * Internal capability preparation for the exact immediate-compound geometry
+   * module. It is resolved only as a prerequisite of a registered operation;
+   * no caller can plan, queue, or execute it as a work item.
+   */
+  {
+    id: DESIGN_PREPARE_GEOMETRY_MODULE_OPERATION.id,
+    version: DESIGN_PREPARE_GEOMETRY_MODULE_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Prepare the immediate-compound geometry module runtime",
+    description:
+      "Internal preparation-only prerequisite for server-owned immediate-compound geometry module assembly. It accepts no caller binding and grants no geometry, evidence, verdict, provider, runtime, or execution authority.",
+    workItemKind: "design",
+    riskClass: "low",
+    execution: "planning-only",
+    prerequisiteOnly: true,
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(
+        GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
+        "preparation",
+      ),
+    ),
+    bindings: [],
   },
   /**
    * Trusted factual assembly-integrity observation.
@@ -362,6 +478,12 @@ const OPERATIONS = [
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY),
+    ),
+    runtimePreparationPrerequisites: [
+      DESIGN_PREPARE_GEOMETRY_MODULE_OPERATION,
+    ],
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: "geometryModule",
@@ -392,10 +514,135 @@ const OPERATIONS = [
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     requiresAdditiveChange: true,
     requiresDependsOnOperation: {
       id: VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION.id,
       version: VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION.version,
+    },
+    bindings: [],
+  },
+  /**
+   * Provider-free L1 source closure seal.  The executor recrosses the exact
+   * mechanism-source@1 workspace heads and declared-against architecture; no
+   * STEP label, CAD inference, runtime, or provider surface is accepted.
+   */
+  {
+    id: VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION.id,
+    version: VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Seal the prescribed-kinematics case",
+    description:
+      "Recross one exact mechanism-source@1 workspace closure against its declared architecture capture, then seal the bounded prescribed-kinematics case. No provider, runtime, tool, CAD label, STEP inference, or dynamics claim is accepted.",
+    workItemKind: "verify",
+    riskClass: "consequential",
+    execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
+    bindings: [],
+  },
+  /** The sole runtime-demanding operation in this vertical. */
+  {
+    id: VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION.id,
+    version: VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Run the prescribed-kinematics observation",
+    description:
+      "Reopen one exact sealed prescribed-kinematics case, record a durable request identity before dispatch, and capture factual kinematic observations. The server owns the qualified runtime and all lowering; collision, clearance, contact, forces, torques, dynamics, strength, safety, and manufacturability remain not_evaluated.",
+    workItemKind: "verify",
+    riskClass: "consequential",
+    execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY),
+    ),
+    // The exact runtime binding is captured with the queued run. It is not a
+    // provider request and cannot be reconstructed from a later project tip.
+    resolvedOperationPlan: "2.0",
+    requiresAdditiveChange: true,
+    requiresDependsOnOperation: {
+      id: VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION.id,
+      version: VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION.version,
+    },
+    bindings: [],
+  },
+  {
+    id: VERIFY_SEAL_PRESCRIBED_KINEMATICS_METHOD_OPERATION.id,
+    version: VERIFY_SEAL_PRESCRIBED_KINEMATICS_METHOD_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Seal the prescribed-kinematics method",
+    description:
+      "Reopen the exact human-signed method resource, sealed case, and factual L3 observation, then seal the bounded method sheet. No provider call, runtime choice, result value, or verdict is accepted.",
+    workItemKind: "review",
+    riskClass: "consequential",
+    execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
+    requiresAdditiveChange: true,
+    requiresDependsOnOperation: {
+      id: VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION.id,
+      version: VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION.version,
+    },
+    bindings: [],
+  },
+  {
+    id: VERIFY_EVALUATE_PRESCRIBED_KINEMATICS_OPERATION.id,
+    version: VERIFY_EVALUATE_PRESCRIBED_KINEMATICS_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Evaluate prescribed kinematics",
+    description:
+      "Recross exact sealed case, factual L3 observation, and sealed method, then record the deterministic L4 kinematic evaluation. No provider, tool, tolerance, fact, or requested verdict is caller-selected.",
+    workItemKind: "verify",
+    riskClass: "consequential",
+    execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
+    requiresAdditiveChange: true,
+    requiresDependsOnOperation: {
+      id: VERIFY_SEAL_PRESCRIBED_KINEMATICS_METHOD_OPERATION.id,
+      version: VERIFY_SEAL_PRESCRIBED_KINEMATICS_METHOD_OPERATION.version,
+    },
+    bindings: [],
+  },
+  // L5 identities are registered deliberately and individually: never expand
+  // PRESCRIBED_KINEMATICS_OPERATIONS here, because only these two are human-only.
+  {
+    id: DECIDE_ACCEPT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION.id,
+    version: DECIDE_ACCEPT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Accept the prescribed-kinematics evaluation closeout",
+    description:
+      "Reopen one exact current prescribed-kinematics L4 result and record a human accept closeout only when its literal verdict is pass. It is neither a dynamics, safety, manufacturing, nor certification conclusion.",
+    workItemKind: "review",
+    riskClass: "consequential",
+    execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
+    mustOrigin: "human",
+    requiresAdditiveChange: true,
+    requiresDependsOnOperation: {
+      id: VERIFY_EVALUATE_PRESCRIBED_KINEMATICS_OPERATION.id,
+      version: VERIFY_EVALUATE_PRESCRIBED_KINEMATICS_OPERATION.version,
+    },
+    bindings: [],
+  },
+  {
+    id: DECIDE_REJECT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION.id,
+    version: DECIDE_REJECT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Reject the prescribed-kinematics evaluation closeout",
+    description:
+      "Reopen one exact current prescribed-kinematics L4 result and record a human reject closeout. Reject grants no correction, provider, CAD, FEA, safety, manufacturing, or certification authority.",
+    workItemKind: "review",
+    riskClass: "consequential",
+    execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
+    mustOrigin: "human",
+    requiresAdditiveChange: true,
+    requiresDependsOnOperation: {
+      id: VERIFY_EVALUATE_PRESCRIBED_KINEMATICS_OPERATION.id,
+      version: VERIFY_EVALUATE_PRESCRIBED_KINEMATICS_OPERATION.version,
     },
     bindings: [],
   },
@@ -419,6 +666,9 @@ const OPERATIONS = [
     workItemKind: "simulate",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(SIMULATION_RUN_QUALIFIED_MODELICA_CAPABILITY),
+    ),
     bindings: [],
   },
   /**
@@ -443,6 +693,12 @@ const OPERATIONS = [
     workItemKind: "simulate",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(SIMULATION_RUN_ADMITTED_MODELICA_CAPABILITY),
+    ),
+    // The persisted run/queue receipt invariant requires the exact sealed
+    // ROP2 reference for admitted isolated execution.
+    resolvedOperationPlan: "2.0",
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: COMPILATION_ADMISSION_BINDING_NAME,
@@ -474,6 +730,12 @@ const OPERATIONS = [
     workItemKind: "simulate",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(ELECTRONICS_RUN_ADMITTED_SPICE_CAPABILITY),
+    ),
+    // The persisted run/queue receipt invariant requires the exact sealed
+    // ROP2 reference for admitted isolated execution.
+    resolvedOperationPlan: "2.0",
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: COMPILATION_ADMISSION_BINDING_NAME,
@@ -501,6 +763,7 @@ const OPERATIONS = [
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -525,6 +788,7 @@ const OPERATIONS = [
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -549,6 +813,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     mustOrigin: "human",
     bindings: [{
       name: "approvedBrief",
@@ -568,6 +833,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     mustOrigin: "human",
     bindings: [{
       name: "approvedBrief",
@@ -593,6 +859,7 @@ const OPERATIONS = [
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -618,6 +885,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -642,6 +910,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "low",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     requiresAdditiveChange: true,
     requiresDependsOnOperation: {
       id: VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.id,
@@ -676,6 +945,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     mustOrigin: "human",
     requiresAdditiveChange: true,
     requiresDependsOnOperation: {
@@ -711,6 +981,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "low",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     requiresAdditiveChange: true,
     requiresDependsOnOperation: {
       id: DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.id,
@@ -739,6 +1010,9 @@ const OPERATIONS = [
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MODEL_EVALUATE_REQUIREMENT_CAPABILITY),
+    ),
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -762,6 +1036,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     mustOrigin: "human",
     bindings: [{
       name: "approvedBrief",
@@ -781,6 +1056,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     mustOrigin: "human",
     bindings: [{
       name: "approvedBrief",
@@ -805,6 +1081,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     mustOrigin: "human",
     requiresAdditiveChange: true,
     requiresDependsOnOperation: {
@@ -827,6 +1104,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     mustOrigin: "human",
     requiresAdditiveChange: true,
     requiresDependsOnOperation: {
@@ -856,6 +1134,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -872,6 +1151,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -898,6 +1178,7 @@ const OPERATIONS = [
     workItemKind: "design",
     riskClass: "low",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [
       {
@@ -935,6 +1216,9 @@ const OPERATIONS = [
     workItemKind: "design",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY, "preparation"),
+    ),
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -962,13 +1246,14 @@ const OPERATIONS = [
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
     }],
   },
   /**
-   * Provider-free seal of one reviewed sensitivity-study-case/2.0. The catalog
+   * Provider-free seal of one reviewed sensitivity-study-case/3.0. The catalog
    * holds the scientific template; the signed MRTR binds the exact Thread
    * compilation admission. No provider is called and no derivative is computed.
    */
@@ -981,11 +1266,12 @@ const OPERATIONS = [
     description:
       "Resolve the reviewed sensitivity-study template through the server-owned catalog, " +
       "bind the exact compilation-admission cadSource from the current Thread, verify the " +
-      "operator-signed digest against the assembled sensitivity-study-case/2.0 bytes, and " +
+      "operator-signed digest against the assembled sensitivity-study-case/3.0 bytes, and " +
       "publish the content-addressed case artifact. No provider is called.",
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -1003,13 +1289,17 @@ const OPERATIONS = [
     allowedBasisKinds: ["thread-snapshot"],
     title: "Run the sealed FEA sensitivity study and publish observations",
     description:
-      "Re-read the sealed sensitivity-study-case/2.0, execute the exact admitted " +
+      "Re-read the sealed sensitivity-study-case/3.0, execute the exact admitted " +
       "Build123d source and one server-owned stepped substitution, dispatch two " +
       "attested CalculiX static solves, compute finite-difference derivatives from " +
       "the sealed step, and publish unit-carrying observations. No verdict is derived.",
     workItemKind: "simulate",
     riskClass: "low",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY, "preparation"),
+      qualifiedCapability(MECHANICS_OBSERVE_STATIC_STRUCTURAL_SENSITIVITY_CAPABILITY),
+    ),
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: "studyCase",
@@ -1036,6 +1326,9 @@ const OPERATIONS = [
     workItemKind: "architect",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MODEL_AUTHOR_SYSTEM_CAPABILITY),
+    ),
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: "studyCapture",
@@ -1062,6 +1355,9 @@ const OPERATIONS = [
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MODEL_EVALUATE_REQUIREMENT_CAPABILITY),
+    ),
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: "studyCapture",
@@ -1088,6 +1384,7 @@ const OPERATIONS = [
     workItemKind: "industrialize",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -1111,6 +1408,9 @@ const OPERATIONS = [
     workItemKind: "industrialize",
     riskClass: "low",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MANUFACTURING_OBSERVE_PRINTABILITY_CAPABILITY),
+    ),
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [
       {
@@ -1145,6 +1445,7 @@ const OPERATIONS = [
     workItemKind: "industrialize",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -1168,6 +1469,9 @@ const OPERATIONS = [
     workItemKind: "industrialize",
     riskClass: "low",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MANUFACTURING_ESTIMATE_FFF_CAPABILITY),
+    ),
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [
       {
@@ -1202,6 +1506,7 @@ const OPERATIONS = [
     workItemKind: "industrialize",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -1227,6 +1532,9 @@ const OPERATIONS = [
     workItemKind: "industrialize",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MANUFACTURING_RUN_DFM_CHECKS_CAPABILITY),
+    ),
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [
       {
@@ -1276,6 +1584,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     mustOrigin: "human",
     bindings: [
       {
@@ -1309,6 +1618,7 @@ const OPERATIONS = [
     workItemKind: "architect",
     riskClass: "consequential",
     execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [
       {
@@ -1379,6 +1689,35 @@ export function listRegisteredEngineeringOperationKeys(): readonly string[] {
   return OPERATIONS.map((operation) => operationKey(operation));
 }
 
+/**
+ * Enumerate immutable descriptor copies. The registry remains the only
+ * authority for operation demand: callers receive no mutable backdoor into
+ * its code-owned entries.
+ */
+export function listRegisteredEngineeringOperations(): readonly RegisteredEngineeringOperation[] {
+  return Object.freeze(
+    OPERATIONS.map(immutableOperationCopy).toSorted(
+      compareRegisteredEngineeringOperations,
+    ),
+  );
+}
+
+/**
+ * Stable identity of the complete semantic demand registry. `none` entries
+ * deliberately participate, so adding a newly registered provider-free
+ * operation changes the trusted demand basis too.
+ */
+export function fingerprintRegisteredEngineeringOperationRegistry(): Promise<
+  ContentFingerprint
+> {
+  const closure = resolveRuntimePreparationPrerequisiteRegistry(
+    { list: listRegisteredEngineeringOperations },
+  );
+  return sha256Fingerprint(
+    runtimePreparationPrerequisiteRegistryFingerprintPayload(closure.entries()),
+  );
+}
+
 /** Return the one bounded V1 intake operation for a product starting point. */
 export function getRegisteredIntakeOperation(
   startingPoint: EngineeringProjectStartingPoint,
@@ -1418,6 +1757,16 @@ export function validateRegisteredEngineeringOperationInput(
   };
   const bindings = bindingsValue(referenceRecord.bindings);
   const operation = requireRegisteredEngineeringOperation(reference);
+  if (operation.prerequisiteOnly) {
+    throw new EngineeringOperationRegistryError(
+      "prerequisite_only",
+      `${
+        operationLabel(reference)
+      } is an internal runtime preparation prerequisite and cannot be ${
+        stage === "planning" ? "planned" : "queued"
+      }.`,
+    );
+  }
   const basisKind = stage === "queue"
     ? basisKindValue(input.basisKind, "operation input.basisKind")
     : undefined;
@@ -1444,6 +1793,8 @@ export const engineeringOperationRegistry: EngineeringOperationRegistry = Object
     get: getRegisteredEngineeringOperation,
     require: requireRegisteredEngineeringOperation,
     getIntake: getRegisteredIntakeOperation,
+    list: listRegisteredEngineeringOperations,
+    fingerprint: fingerprintRegisteredEngineeringOperationRegistry,
     validate: validateRegisteredEngineeringOperationInput,
   },
 );
@@ -1640,6 +1991,31 @@ function operationKey(
   return `${reference.id}@${reference.version}`;
 }
 
+/**
+ * Exact code-unit identity used to order the registry fingerprint. This is
+ * deliberately shared in shape with the demand compiler's registry identity:
+ * `id` and `version` are distinct fields, never a locale-dependent label.
+ */
+function registryFingerprintOperationKey(
+  reference: Pick<EngineeringOperationRef, "id" | "version">,
+): string {
+  return `${reference.id}\u0000${reference.version}`;
+}
+
+function compareRegisteredEngineeringOperations(
+  left: Pick<EngineeringOperationRef, "id" | "version">,
+  right: Pick<EngineeringOperationRef, "id" | "version">,
+): number {
+  return compareCodeUnitText(
+    registryFingerprintOperationKey(left),
+    registryFingerprintOperationKey(right),
+  );
+}
+
+function compareCodeUnitText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 function operationLabel(
   reference: Pick<EngineeringOperationRef, "id" | "version">,
 ): string {
@@ -1656,6 +2032,19 @@ function copyOperation(
   return {
     ...operation,
     allowedBasisKinds: [...operation.allowedBasisKinds],
+    runtimeDemand: copyRuntimeDemand(operation.runtimeDemand),
+    ...(operation.runtimePreparationPrerequisites
+      ? {
+        runtimePreparationPrerequisites: operation.runtimePreparationPrerequisites.map((
+          reference,
+        ) => ({
+          ...reference,
+        })),
+      }
+      : {}),
+    ...(operation.requiresDependsOnOperation
+      ? { requiresDependsOnOperation: { ...operation.requiresDependsOnOperation } }
+      : {}),
     bindings: operation.bindings.map((binding) => ({
       ...binding,
       allowedSourceKinds: [...binding.allowedSourceKinds],
@@ -1664,6 +2053,63 @@ function copyOperation(
         : {}),
     })),
   };
+}
+
+function immutableOperationCopy(
+  operation: RegisteredEngineeringOperation,
+): RegisteredEngineeringOperation {
+  const copy = copyOperation(operation);
+  return Object.freeze({
+    ...copy,
+    allowedBasisKinds: Object.freeze([...copy.allowedBasisKinds]),
+    runtimeDemand: immutableRuntimeDemand(copy.runtimeDemand),
+    ...(copy.runtimePreparationPrerequisites
+      ? {
+        runtimePreparationPrerequisites: Object.freeze(
+          copy.runtimePreparationPrerequisites.map((reference) =>
+            Object.freeze({ ...reference })
+          ),
+        ),
+      }
+      : {}),
+    ...(copy.requiresDependsOnOperation
+      ? {
+        requiresDependsOnOperation: Object.freeze({
+          ...copy.requiresDependsOnOperation,
+        }),
+      }
+      : {}),
+    bindings: Object.freeze(copy.bindings.map((binding) =>
+      Object.freeze({
+        ...binding,
+        allowedSourceKinds: Object.freeze([...binding.allowedSourceKinds]),
+        ...(binding.allowedThreadEntityKinds
+          ? {
+            allowedThreadEntityKinds: Object.freeze([
+              ...binding.allowedThreadEntityKinds,
+            ]),
+          }
+          : {}),
+      })
+    )),
+  });
+}
+
+function copyRuntimeDemand(
+  runtimeDemand: EngineeringOperationRuntimeDemand,
+): EngineeringOperationRuntimeDemand {
+  if (runtimeDemand.kind === "none") return { kind: "none" };
+  return {
+    kind: "required",
+    capabilities: runtimeDemand.capabilities.map((capability) => ({ ...capability })),
+  };
+}
+
+function immutableRuntimeDemand(
+  runtimeDemand: EngineeringOperationRuntimeDemand,
+): EngineeringOperationRuntimeDemand {
+  if (runtimeDemand.kind === "none") return NO_RUNTIME_DEMAND;
+  return requiredRuntimeDemand(...runtimeDemand.capabilities);
 }
 
 function copyInputBinding(

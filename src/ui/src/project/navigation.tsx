@@ -1,6 +1,5 @@
 import type { JSX, ReactNode } from "react";
 import { cn } from "../lib/utils.ts";
-import { Badge } from "../ui/badge.tsx";
 import { Separator } from "../ui/separator.tsx";
 import {
   Tooltip,
@@ -8,15 +7,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../ui/tooltip.tsx";
-import {
-  PRODUCT_FACETS,
-  productFacetHash,
-  PROJECT_VIEWS,
-} from "./navigation-model.ts";
-import type {
-  ProductWorkspaceFacet,
-  ProjectWorkspaceView,
-} from "./navigation-model.ts";
+import { PROJECT_VIEWS } from "./navigation-model.ts";
+import type { ProjectWorkspaceView } from "./navigation-model.ts";
 
 export type { ProjectWorkspaceView };
 export { projectViewLabel } from "./navigation-model.ts";
@@ -52,12 +44,14 @@ export function ProjectCockpitHeader({
   badge?: ReactNode;
 }): JSX.Element {
   return (
-    <header className="thread-cockpit-header sticky top-0 z-40 flex h-12 min-w-0 items-center gap-3 border-b border-border bg-background px-4">
+    <header className="thread-cockpit-header sticky top-0 z-40 flex h-14 min-w-0 items-center gap-3 border-b border-border bg-background/95 px-5 backdrop-blur">
       <div className="flex shrink-0 items-center gap-2">
-        <span className="grid size-6 place-items-center rounded-md bg-brand text-[10px] font-bold text-white">
+        <span className="grid size-7 place-items-center rounded-md bg-brand font-mono text-[9px] font-bold tracking-wide text-white">
           DT
         </span>
-        <span className="text-sm font-semibold tracking-tight">Casys</span>
+        <span className="hidden text-[11px] font-semibold uppercase tracking-[0.12em] text-foreground sm:inline">
+          Casys
+        </span>
       </div>
       <Separator orientation="vertical" />
       <div className="flex min-w-0 items-center gap-2">
@@ -77,7 +71,7 @@ export function ProjectCockpitHeader({
         </TooltipProvider>
         {badge && <span className="shrink-0">{badge}</span>}
       </div>
-      <div className="ml-auto flex shrink-0 items-center gap-4 text-xs text-muted-foreground">
+      <div className="thread-header-signals ml-auto flex shrink-0 items-center gap-4 text-xs text-muted-foreground">
         <span
           className="group flex items-center gap-1.5"
           data-state={streamState}
@@ -89,13 +83,13 @@ export function ProjectCockpitHeader({
           />
           <strong className="font-medium">{streamLabel}</strong>
         </span>
-        <span className="hidden items-center gap-1.5 md:flex">
+        <span className="thread-header-status hidden items-center gap-1.5 md:flex">
           <span>{statusLabel}</span>
           <strong className="max-w-64 truncate font-medium text-foreground">
             {statusValue}
           </strong>
         </span>
-        <span className="hidden items-center gap-1.5 sm:flex">
+        <span className="thread-header-meta hidden items-center gap-1.5 sm:flex">
           <span>{metaLabel}</span>
           <strong className="font-medium text-foreground">{metaValue}</strong>
         </span>
@@ -145,115 +139,78 @@ export function ProjectNavigation({
   activeView,
   onChange,
   disabledViews = [],
-  activeProductFacet,
-  onProductFacetChange,
-  sourcingBadge,
+  status,
 }: {
   activeView: ProjectWorkspaceView;
   onChange: (view: ProjectWorkspaceView) => void;
   /** A pre-approval discovery has no technical record to inspect yet. */
   disabledViews?: readonly ProjectWorkspaceView[];
-  activeProductFacet?: ProductWorkspaceFacet;
-  onProductFacetChange?: (facet: ProductWorkspaceFacet) => void;
-  /** Honest coverage chip — typically GAP until ERP records exist. */
-  sourcingBadge?: string;
+  /** Compact projection truth kept inside the one Project header. */
+  status?: ReactNode;
 }): JSX.Element {
+  const projectViews = PROJECT_VIEWS.filter((view) => view.id !== "operations");
+  const utilityViews = PROJECT_VIEWS.filter((view) => view.id === "operations");
+  const renderView = (view: (typeof PROJECT_VIEWS)[number]) => {
+    const unavailable = disabledViews.includes(view.id);
+    return (
+      <div key={view.id} className="project-navigation-item shrink-0">
+        <a
+          href={`#${view.id}`}
+          aria-current={activeView === view.id ? "page" : undefined}
+          aria-disabled={unavailable || undefined}
+          aria-label={`${view.label}: ${
+            unavailable ? "After technical work" : view.description
+          }`}
+          className={cn(
+            "group relative flex h-10 items-center gap-2 rounded-md px-2.5 text-[13px] font-medium transition-colors hover:bg-accent hover:text-accent-foreground",
+            activeView !== view.id && "text-muted-foreground",
+            activeView === view.id &&
+              "bg-accent text-accent-foreground before:absolute before:inset-x-2 before:bottom-0 before:h-0.5 before:rounded-full before:bg-brand",
+            unavailable && "opacity-50",
+          )}
+          onClick={(event) => {
+            if (unavailable) {
+              event.preventDefault();
+              return;
+            }
+            if (event.metaKey || event.ctrlKey || event.shiftKey) return;
+            event.preventDefault();
+            onChange(view.id);
+          }}
+        >
+          <ViewIcon view={view.id} />
+          <span>{view.label}</span>
+        </a>
+      </div>
+    );
+  };
+
   return (
     <nav
-      className="project-navigation flex flex-col gap-0.5 p-3"
+      className="project-navigation"
       aria-label="Project workspace"
     >
-      {PROJECT_VIEWS.map((view) => {
-        const unavailable = disabledViews.includes(view.id);
-        const productOpen = view.id === "product" && activeView === "product" &&
-          !unavailable;
-        return (
-          <div key={view.id} className="flex flex-col">
-            <a
-              href={`#${view.id}`}
-              aria-current={activeView === view.id && !productOpen
-                ? "page"
-                : activeView === view.id
-                ? "true"
-                : undefined}
-              aria-disabled={unavailable || undefined}
-              aria-expanded={view.id === "product"
-                ? productOpen || undefined
-                : undefined}
-              aria-label={`${view.label}: ${
-                unavailable ? "After technical work" : view.description
-              }`}
-              className={cn(
-                "group flex h-[29px] shrink-0 items-center gap-2.5 rounded-md px-2.5 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground",
-                activeView !== view.id && "text-muted-foreground",
-                activeView === view.id && !productOpen &&
-                  "bg-accent text-accent-foreground",
-                activeView === view.id && productOpen && "bg-accent text-brand",
-                unavailable && "opacity-50",
-              )}
-              onClick={(event) => {
-                if (unavailable) {
-                  event.preventDefault();
-                  return;
-                }
-                // Le lien reste un vrai lien — clic milieu, Cmd+clic et « copier
-                // l'adresse » doivent marcher. On n'intercepte que le clic simple.
-                if (event.metaKey || event.ctrlKey || event.shiftKey) return;
-                event.preventDefault();
-                onChange(view.id);
-              }}
-            >
-              <ViewIcon view={view.id} />
-              <span>{view.label}</span>
-            </a>
-            {productOpen && (
-              <div
-                className="ml-[17px] mt-0.5 flex flex-col gap-px border-l border-border pl-2.5"
-                aria-label="Product facets"
-              >
-                {PRODUCT_FACETS.map((facet) => {
-                  const current = (activeProductFacet ?? "structure") ===
-                    facet.id;
-                  return (
-                    <a
-                      key={facet.id}
-                      href={productFacetHash(facet.id)}
-                      aria-current={current ? "page" : undefined}
-                      aria-label={`${facet.label}: ${facet.description}`}
-                      className={cn(
-                        "flex h-6 items-center justify-between gap-2 rounded-[5px] px-2 text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
-                        current &&
-                          "bg-accent font-medium text-accent-foreground",
-                        facet.id === "sourcing" && !current &&
-                          "text-muted-foreground/70",
-                      )}
-                      onClick={(event) => {
-                        if (
-                          event.metaKey || event.ctrlKey || event.shiftKey
-                        ) return;
-                        event.preventDefault();
-                        onProductFacetChange?.(facet.id);
-                      }}
-                    >
-                      <span>{facet.label}</span>
-                      {facet.id === "sourcing" && sourcingBadge && (
-                        <Badge
-                          variant={sourcingBadge === "GAP"
-                            ? "warning"
-                            : "secondary"}
-                          className="px-1 py-0 font-mono text-[9px]"
-                        >
-                          {sourcingBadge}
-                        </Badge>
-                      )}
-                    </a>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        );
-      })}
+      <span className="project-navigation-heading sr-only">
+        Project
+      </span>
+      <div
+        className="project-navigation-primary"
+        role="group"
+        aria-label="Project views"
+      >
+        {projectViews.map(renderView)}
+      </div>
+      <div
+        className="project-navigation-utility"
+        role="group"
+        aria-label="Project utilities"
+      >
+        <span className="project-navigation-heading sr-only">
+          Utility
+        </span>
+        {utilityViews.map(renderView)}
+      </div>
+      {status && <div className="project-navigation-status">{status}</div>}
     </nav>
   );
 }

@@ -36,6 +36,7 @@ export const THREAD_OBSERVATION_OPERATIONS = [
   { id: "industrialize.run-dfm-checks", version: "1" },
   { id: "industrialize.observe-printability", version: "1" },
   { id: "industrialize.observe-print-estimate", version: "1" },
+  { id: "simulate.run-admitted-spice", version: "1" },
 ] as const;
 
 export type AgentRunRequirementJoinStatus =

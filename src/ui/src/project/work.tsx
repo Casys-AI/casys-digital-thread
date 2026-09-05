@@ -64,9 +64,45 @@ export function ProjectWorkRibbon({
       label: sentenceLabel(blocker.kind),
     }
     : { variant: "success" as const, label: "Clear" };
+  const calm = agentNow.kind !== "active-run" &&
+    agentNow.kind !== "current-work" && !decisionToReview &&
+    !decisionBeingPrepared && !blocker;
+  if (calm) {
+    const lastActivity = agentNow.kind === "last-settled-run"
+      ? `${workTitle(project, agentNow.run)} · ${
+        formatDateTime(agentRunRecordedAt(agentNow.run))
+      }`
+      : "No recorded agent execution";
+    return (
+      <section
+        className="flex flex-wrap items-center gap-x-3 gap-y-1 border-y border-border py-2.5"
+        aria-label="Shared work plan"
+      >
+        <i aria-hidden="true" className="size-2 rounded-full bg-success" />
+        <strong className="text-sm font-medium">Nothing needs attention</strong>
+        <span
+          className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
+          title={lastActivity}
+        >
+          Last recorded activity: {lastActivity}.
+        </span>
+        <Badge variant="success">Clear</Badge>
+        <details className="basis-full pl-5 text-xs text-muted-foreground">
+          <summary className="w-fit cursor-pointer font-medium text-foreground">
+            Status details
+          </summary>
+          <p className="mt-1 max-w-3xl">
+            No run is active, no proposal is waiting for review, and no open
+            blocker is recorded. Discuss any change of intent with the agent;
+            this cockpit follows the recorded plan.
+          </p>
+        </details>
+      </section>
+    );
+  }
   return (
     <section
-      className="grid grid-cols-1 gap-3 md:grid-cols-3"
+      className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] gap-3"
       aria-label="Shared work plan"
     >
       <Card className="p-3">
@@ -225,31 +261,44 @@ export function ProjectOperations({
   const queuedCount = activeRuns.filter(
     (r) => r.status === "queued",
   ).length;
+  const noAttention = activeRuns.length === 0 &&
+    pendingDecisions.length === 0 &&
+    preparationDecisions.length === 0;
+  const attentionCards = (
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,24rem),1fr))] items-start gap-3">
+      <QueueCard
+        runs={activeRuns}
+        runningCount={runningCount}
+        queuedCount={queuedCount}
+        onOpenWork={onOpenWork}
+        project={project}
+      />
+      <div className="flex flex-col gap-3">
+        <MrtrCard decisions={pendingDecisions} />
+        <AgentPreparationCard decisions={preparationDecisions} />
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex flex-col gap-4">
       {/* Recorded execution and human attention come before implementation surfaces. */}
-      <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
-        <QueueCard
-          runs={activeRuns}
-          runningCount={runningCount}
-          queuedCount={queuedCount}
-          onOpenWork={onOpenWork}
-          project={project}
-        />
-        <div className="flex flex-col gap-3">
-          <MrtrCard decisions={pendingDecisions} />
-          <AgentPreparationCard decisions={preparationDecisions} />
-        </div>
-      </div>
-
-      {thread.evaluationCloseouts && (
-        <EvaluationCloseoutCard index={thread.evaluationCloseouts} />
-      )}
-
-      {thread.assemblyIntegrity && (
-        <AssemblyIntegrityCard index={thread.assemblyIntegrity} />
-      )}
+      {noAttention
+        ? (
+          <details className={cn("overflow-hidden", CARD_SURFACE)}>
+            <summary className="cursor-pointer px-4 py-3 select-none">
+              <strong className="block text-sm font-semibold">
+                No operation needs attention
+              </strong>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                0 running · 0 queued · no human confirmation · no agent proposal
+                · Show operational details
+              </span>
+            </summary>
+            <div className="border-t border-border p-3">{attentionCards}</div>
+          </details>
+        )
+        : attentionCards}
 
       <ContributingSystemsCard view={view} />
 
@@ -338,347 +387,6 @@ export function ProjectOperations({
   );
 }
 
-/** Read-only L5 evidence card. The paired conversation owns every command. */
-function EvaluationCloseoutCard({
-  index,
-}: {
-  index: NonNullable<ThreadWorkbenchSnapshot["evaluationCloseouts"]>;
-}): JSX.Element {
-  const current = index.cards.find((card) => card.status === "current");
-  const card = current ?? index.cards[0];
-  const variant: BadgeVariant = index.status === "current"
-    ? "success"
-    : index.status === "historical" || index.status === "unresolved"
-    ? "warning"
-    : "secondary";
-  const passingCriteria =
-    card?.criteria.filter((criterion) => criterion.status === "pass").length ??
-      0;
-  return (
-    <Card
-      className="overflow-hidden"
-      data-closeout-family="static-mechanical"
-      aria-labelledby="operations-closeout-title"
-    >
-      <CardHeader className="flex-row items-center justify-between gap-3 border-b border-border px-3 py-2">
-        <h4
-          id="operations-closeout-title"
-          className="font-mono text-[9.5px] tracking-[.1em] text-muted-foreground"
-        >
-          STATIC-MECHANICAL L5 CLOSEOUT
-        </h4>
-        <Badge variant={variant}>{sentenceLabel(index.status)}</Badge>
-      </CardHeader>
-      <CardContent className="px-3 py-3">
-        {!card
-          ? (
-            <p className="text-sm text-muted-foreground">
-              No human static-mechanical closeout is recorded on this Thread. L4
-              evidence, including a pass, is not L5.
-            </p>
-          )
-          : (
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge
-                  variant={card.humanDisposition === "accept"
-                    ? "success"
-                    : "warning"}
-                >
-                  Human {card.humanDisposition}
-                </Badge>
-                <span className="font-mono text-[10px] text-muted-foreground">
-                  {card.acceptanceEligibility
-                    ? "all declared L4 criteria pass"
-                    : "accept not eligible"}
-                </span>
-                <span className="font-mono text-[10px] text-muted-foreground">
-                  {passingCriteria}/{card.criteria.length}{" "}
-                  declared L4 criteria pass
-                </span>
-                {card.humanDisposition === "reject" && (
-                  <span className="font-mono text-[10px] text-muted-foreground">
-                    disposition · {card.rejectionDisposition}
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Read-only record: no engine, SysON, CAD, correction, or MCP
-                command is available here.
-              </p>
-              <details className="rounded-md border border-border bg-muted/20">
-                <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted-foreground select-none">
-                  Review criteria, proof boundaries and evidence identifiers
-                </summary>
-                <div className="space-y-2.5 border-t border-border px-3 py-3">
-                  <ul className="space-y-1.5">
-                    {card.criteria.map((criterion) => (
-                      <li
-                        key={criterion.evaluationId}
-                        className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs"
-                      >
-                        <Badge
-                          variant={criterion.status === "pass"
-                            ? "success"
-                            : criterion.status === "fail"
-                            ? "destructive"
-                            : "warning"}
-                        >
-                          {criterion.status}
-                        </Badge>
-                        <span className="font-mono text-[10px] text-muted-foreground">
-                          {criterion.proofCriterionId} →{" "}
-                          {criterion.evaluationId}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="text-xs text-muted-foreground leading-snug">
-                    Proof boundary ·{" "}
-                    {card.proofLimitations.proofScope}. Evidence boundary ·{" "}
-                    {card.proofLimitations.evidenceBoundary}.
-                  </p>
-                  <p className="font-mono text-[10px] text-muted-foreground break-all">
-                    basis {card.basis.snapshotId}@{card.basis.revision} · STEP
-                    {" "}
-                    {card.evidence.canonicalStep.id} · proof{" "}
-                    {card.evidence.sealedProof.id} · execution{" "}
-                    {card.evidence.executionEvidence.id} · L4{" "}
-                    {card.evidence.evaluationCapture.id}
-                  </p>
-                </div>
-              </details>
-            </div>
-          )}
-      </CardContent>
-    </Card>
-  );
-}
-
-/**
- * Read-only L3 → L4 → L5 assembly-integrity lineage. L4 is the only
- * engineering verdict shown here; L5 is an independently signed disposition.
- */
-function AssemblyIntegrityCard({
-  index,
-}: {
-  index: NonNullable<ThreadWorkbenchSnapshot["assemblyIntegrity"]>;
-}): JSX.Element {
-  const current = index.chains.find((chain) => chain.status === "current");
-  const chain = current ?? index.chains[0];
-  const l4 = chain?.evaluation;
-  const l5 = chain?.closeout;
-  const variant: BadgeVariant = index.status === "current"
-    ? "success"
-    : index.status === "historical" || index.status === "unresolved"
-    ? "warning"
-    : "secondary";
-  return (
-    <Card
-      className="overflow-hidden"
-      data-closeout-family="assembly-integrity"
-      aria-labelledby="operations-assembly-integrity-title"
-    >
-      <CardHeader className="flex-row items-center justify-between gap-3 border-b border-border px-3 py-2">
-        <div>
-          <h4
-            id="operations-assembly-integrity-title"
-            className="font-mono text-[9.5px] tracking-[.1em] text-muted-foreground"
-          >
-            ASSEMBLY INTEGRITY · L3 → L4 → L5
-          </h4>
-          <p className="m-0 mt-0.5 text-[10px] text-muted-foreground">
-            Versioned evidence chain · read only
-          </p>
-        </div>
-        <Badge variant={variant}>{sentenceLabel(index.status)}</Badge>
-      </CardHeader>
-      <CardContent className="space-y-3 px-3 py-3">
-        {!chain
-          ? (
-            <p className="text-sm text-muted-foreground">
-              No assembly-integrity record is available on this Thread.
-            </p>
-          )
-          : (
-            <>
-              <section className="rounded-md border border-border bg-muted/15 px-3 py-2.5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="m-0 text-xs font-medium">L3 · observed facts</p>
-                  <Badge variant="secondary">No verdict</Badge>
-                </div>
-                <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
-                  Import{" "}
-                  {assemblyFactLabel(chain.observation.facts.importability)} ·
-                  {" "}
-                  solid count {assemblyFactLabel(
-                    chain.observation.facts.importFacts.solidCount,
-                  )} · {chain.observation.facts.occurrences.length}{" "}
-                  occurrence facts · {chain.observation.facts.pairs.length}{" "}
-                  pair facts.
-                </p>
-                <p className="m-0 text-[10px] text-muted-foreground">
-                  Limits · no fitness, safety, motion or strength conclusion.
-                </p>
-              </section>
-
-              <section className="rounded-md border border-border px-3 py-2.5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="m-0 text-xs font-medium">
-                    L4 · recorded evaluation
-                  </p>
-                  {l4
-                    ? (
-                      <Badge
-                        variant={assemblyVerdictVariant(l4.aggregateVerdict)}
-                      >
-                        {l4.aggregateVerdict}
-                      </Badge>
-                    )
-                    : <Badge variant="secondary">Not recorded</Badge>}
-                </div>
-                {l4
-                  ? (
-                    <>
-                      <ul className="mt-2 grid gap-1 sm:grid-cols-2 xl:grid-cols-5">
-                        {l4.criteria.map((criterion) => (
-                          <li
-                            key={criterion.id}
-                            className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground"
-                          >
-                            <span>{sentenceLabel(criterion.id)}</span>
-                            <Badge
-                              variant={assemblyVerdictVariant(
-                                criterion.verdict,
-                              )}
-                            >
-                              {criterion.verdict}
-                            </Badge>
-                          </li>
-                        ))}
-                      </ul>
-                      <p className="mb-0 mt-2 text-[10px] leading-snug text-muted-foreground">
-                        Scope only: import, occurrence coverage, placement
-                        recross, BRep validity and pairwise intersection. Not
-                        safety, joints, clearance, motion, load or fabrication.
-                      </p>
-                    </>
-                  )
-                  : (
-                    <p className="mb-0 mt-1.5 text-[11px] text-muted-foreground">
-                      No L4 evaluation is recorded for this L3 observation.
-                    </p>
-                  )}
-              </section>
-
-              <section className="rounded-md border border-border px-3 py-2.5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="m-0 text-xs font-medium">
-                    L5 · human disposition
-                  </p>
-                  {l5
-                    ? (
-                      <Badge
-                        variant={l5.humanDisposition === "accept"
-                          ? "success"
-                          : "warning"}
-                      >
-                        Human {l5.humanDisposition}
-                      </Badge>
-                    )
-                    : <Badge variant="secondary">Not recorded</Badge>}
-                </div>
-                {l5
-                  ? (
-                    <>
-                      <p className="mb-0 mt-1.5 text-[11px] text-muted-foreground">
-                        Authority · {l5.verificationAuthority.id}@
-                        {l5.verificationAuthority.version}. A recorded L4 pass
-                        is not the human L5 decision.
-                      </p>
-                      <div
-                        className="mt-2 rounded border border-border bg-muted/20 px-2.5 py-2"
-                        data-formal-gate="assembly-integrity"
-                      >
-                        <p className="m-0 text-[10px] font-medium text-muted-foreground">
-                          Formal gate claims · separate from the activity stage
-                          band
-                        </p>
-                        {l5.gateClaims.length
-                          ? (
-                            <ul className="mt-1 space-y-1">
-                              {l5.gateClaims.map((claim) => (
-                                <li
-                                  key={claim.gateItemId}
-                                  className="font-mono text-[10px] text-muted-foreground"
-                                >
-                                  {claim.gateItemId} · {claim.role} ·{" "}
-                                  {claim.status}
-                                </li>
-                              ))}
-                            </ul>
-                          )
-                          : (
-                            <p className="mb-0 mt-1 text-[10px] text-muted-foreground">
-                              No signed gate claim is recorded.
-                            </p>
-                          )}
-                      </div>
-                      <p className="mb-0 mt-2 text-[10px] leading-snug text-muted-foreground">
-                        Limits · no certification; no generic SysML requirement
-                        evaluation; L4 scope remains unchanged.
-                      </p>
-                    </>
-                  )
-                  : (
-                    <p className="mb-0 mt-1.5 text-[11px] text-muted-foreground">
-                      No human L5 disposition is recorded. L4 remains a separate
-                      engineering result.
-                    </p>
-                  )}
-              </section>
-
-              <details className="rounded-md border border-border bg-muted/10">
-                <summary className="cursor-pointer px-3 py-2 text-[10px] text-muted-foreground select-none">
-                  Exact lineage and evidence identities
-                </summary>
-                <div className="space-y-1 border-t border-border px-3 py-2 font-mono text-[9.5px] text-muted-foreground break-all">
-                  <p className="m-0">L3 · {chain.observation.record.id}</p>
-                  {l4 && <p className="m-0">L4 · {l4.record.id}</p>}
-                  {l5 && <p className="m-0">L5 · {l5.record.id}</p>}
-                  <p className="m-0">
-                    chain state · {chain.status} · basis{" "}
-                    {chain.observation.basis.snapshotId}@
-                    {chain.observation.basis.revision}
-                  </p>
-                </div>
-              </details>
-            </>
-          )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function assemblyFactLabel(
-  fact:
-    | { readonly status: "observed"; readonly value: unknown }
-    | { readonly status: "unresolved"; readonly reason: string }
-    | { readonly status: "unavailable"; readonly reason: string },
-): string {
-  return fact.status === "observed" ? String(fact.value) : fact.status;
-}
-
-function assemblyVerdictVariant(
-  verdict: "pass" | "fail" | "unresolved",
-): BadgeVariant {
-  return verdict === "pass"
-    ? "success"
-    : verdict === "fail"
-    ? "destructive"
-    : "warning";
-}
-
 // ---------------------------------------------------------------------------
 // Contributing systems
 // ---------------------------------------------------------------------------
@@ -696,7 +404,7 @@ function ContributingSystemsCard({
       className="overflow-hidden"
       aria-labelledby="operations-systems-title"
     >
-      <CardHeader className="flex-row items-center justify-between gap-4 border-b border-border px-4 py-3">
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-4 border-b border-border px-4 py-3">
         <h4
           id="operations-systems-title"
           className={SECTION_LABEL}
@@ -720,7 +428,7 @@ function ContributingSystemsCard({
                   {[
                     "Surface",
                     "Role",
-                    "Requirement",
+                    "Fleet declaration",
                     "Recorded state",
                     "Last evidence",
                     "Stages",
@@ -827,12 +535,12 @@ function AgentPreparationCard({
       className="overflow-hidden"
       aria-labelledby="operations-preparation-title"
     >
-      <CardHeader className="flex-row items-center justify-between gap-4 border-b border-border px-3 py-2">
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-4 border-b border-border px-3 py-2">
         <h4
           id="operations-preparation-title"
           className="font-mono text-[9.5px] tracking-[.1em] text-muted-foreground"
         >
-          AGENT PROPOSAL PREPARATION
+          Agent proposals in preparation
         </h4>
         {decisions.length > 0 && (
           <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
@@ -898,12 +606,12 @@ function MrtrCard({
       className="overflow-hidden"
       aria-labelledby="operations-confirmations-title"
     >
-      <CardHeader className="flex-row items-center justify-between gap-4 border-b border-border px-3 py-2">
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-4 border-b border-border px-3 py-2">
         <h4
           id="operations-confirmations-title"
           className="font-mono text-[9.5px] tracking-[.1em] text-muted-foreground"
         >
-          HUMAN CONFIRMATIONS · MRTR
+          Human confirmations
         </h4>
         {decisions.length > 0 && (
           <span className="shrink-0 font-mono text-[10px] text-warning">
@@ -972,12 +680,12 @@ function QueueCard({
       className="overflow-hidden flex flex-col"
       aria-labelledby="operations-queue-title"
     >
-      <CardHeader className="flex-row items-center justify-between gap-4 border-b border-border px-3 py-2">
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-4 border-b border-border px-3 py-2">
         <h4
           id="operations-queue-title"
           className="font-mono text-[9.5px] tracking-[.1em] text-muted-foreground"
         >
-          EXECUTION NOW · QUEUE
+          Execution
         </h4>
         <span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
           {runningCount} {runningCount === 1 ? "RUNNING" : "RUNNING"}·
@@ -1143,7 +851,7 @@ function RunTimelineCard(
     `${(seconds / view.scaleSeconds) * 100}%`;
   return (
     <Card className="overflow-hidden">
-      <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-2">
         <span className={SECTION_LABEL}>Run timeline · queued vs running</span>
         {share !== undefined && (
           <span className="font-mono text-[9.5px] text-muted-foreground">

@@ -262,6 +262,13 @@ export function applyAppendChange(
       );
     }
     assertPlanBindingsResolve(draft, resolved.bindings);
+    if (resolved.operation.threadEntityBindingsMustMatchBasis) {
+      assertThreadEntityBindingsMatchSnapshot(
+        resolved.bindings,
+        currentHead,
+        "project-change baseSnapshot",
+      );
+    }
     assertChangeWorkItemReferences(
       item,
       knownPhaseIds,
@@ -760,6 +767,31 @@ function assertPlanBindingsResolve(
         );
       }
       continue;
+    }
+  }
+}
+
+/**
+ * A flagged operation is always authored against one exact snapshot. Refuse a
+ * historical Thread-entity binding before the append can create a decision or
+ * persist any work item. The generic registry flag keeps this policy out of
+ * individual provider or executor contracts.
+ */
+function assertThreadEntityBindingsMatchSnapshot(
+  bindings: readonly EngineeringOperationInputBinding[],
+  snapshot: EngineeringThreadSnapshotRef,
+  snapshotLabel: string,
+): void {
+  for (const binding of bindings) {
+    if (binding.source.kind !== "thread-entity") continue;
+    const reference = binding.source.reference;
+    if (
+      reference.snapshotId !== snapshot.snapshotId ||
+      reference.snapshotRevision !== snapshot.revision
+    ) {
+      invalidInput(
+        `Operation binding ${binding.name} must name the exact ${snapshotLabel}; historical Thread-entity references are not appendable.`,
+      );
     }
   }
 }

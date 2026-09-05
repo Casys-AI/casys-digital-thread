@@ -24,7 +24,7 @@ import {
 } from "./sensitivity-study-seal-bindings.ts";
 import { compileSensitivityStudyTemplateFromOffer } from "./sensitivity-study-from-offer.ts";
 import type { SensitivityStudyCaseTemplate } from "./sensitivity-study-template.ts";
-import type { SensitivityCadSource } from "./sensitivity-study-v2.ts";
+import type { SensitivityCadSource } from "./sensitivity-study-v3.ts";
 
 export interface OfferJoinArtifactIdentity {
   readonly id: string;

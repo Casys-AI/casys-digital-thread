@@ -2,10 +2,10 @@
 
 Audience: both · Diátaxis: reference · Kind: contract
 
-> **Diátaxis category: reference.** This page describes the schema-`3.0` framing
+> **Diátaxis category: reference.** This page describes the schema-`4.0` framing
 > contract implemented by
-> [`src/domain/project/project-brief.ts`](../../../src/domain/project/project-brief.ts) and
-> stored inside each immutable `EngineeringProjectSnapshot` revision.
+> [`src/domain/project/project-brief.ts`](../../../src/domain/project/project-brief.ts)
+> and stored inside each immutable `EngineeringProjectSnapshot` revision.
 
 A project exists from the first reported intent. There is no pre-project aggregate,
 Discovery page, or handoff in the current product contract. The paired conversation is
@@ -97,8 +97,10 @@ links, not a cascade that computes them. Half a cascade cannot be exercised.
 | `project_snapshot`         | Read              | Read the complete immutable project revision                                     |
 | `project_question_propose` | Agent             | Add one adaptive question, recommendation, consequences, risk, and evidence need |
 | `project_answer_record`    | Agent or human    | Record one sourced answer or explicit unknown                                    |
-| `project_brief_propose`    | Agent             | Add an immutable review proposal without changing canonical intent               |
-| `project_brief_confirm`    | Human elicitation | Promote only the exact accepted proposal to canonical brief                      |
+| `project_brief_propose`    | Agent             | Add an immutable review proposal plus its server-derived `capabilityProposalFingerprint`; neither changes canonical intent nor selects a runtime |
+| `project_brief_confirm`    | Human elicitation | Promote only the exact accepted proposal while echoing its exact `capabilityProposalFingerprint` |
+| `project_capability_inspect` | Read            | Inspect the separate local operational authorization after brief confirmation    |
+| `project_capability_change_review` | Read / human elicitation | Recheck the exact published-plan ceiling; a covered subset needs no prompt and does not shrink the ceiling, `withdrawUnused: true` may confirm a strictly subtractive unused-authority withdrawal, and a server-derived widening delta still requires exact signed confirmation |
 
 Every mutation has a stable command ID, optimistic `expectedRevision` after project
 creation, and stable issue time. An identical retry is idempotent; another payload under
@@ -116,6 +118,20 @@ After approval, `project_plan_publish` binds the first reviewed path to the exac
 approved brief. `baseline.from-approved-brief@1` then materializes a content-addressed
 documentary baseline. That record proves which brief and plan were used; it is not
 technical evidence by itself.
+
+While a brief is pending, the server derives a provider-neutral
+`project-capability-intent/1.0` from its `verification-activity` authorities and the
+code-owned route/operation registry. It produces the reviewable `brief-intent`
+capability proposal beside the brief; no pack, provider, image, endpoint, tool,
+argument, or host effect is stored in `ProjectBriefRevision` or supplied by the caller.
+The human confirmation authorizes that exact operational ceiling through the separate
+[project capability authorization](../runtime/capability-packs/project-capability-authorization.md)
+ledger; it is not a brief field.
+
+After `project_plan_publish`, the server compiles the exact
+`project-capability-demand/2.0` from registered work-item history and rechecks it against
+that ceiling. See [project capability intent](../runtime/capability-packs/project-capability-intent.md)
+and [project capability demand](../runtime/capability-packs/project-capability-demand.md).
 
 The generic V3 bootstrap is deliberately additive and exact:
 

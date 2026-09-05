@@ -6,7 +6,8 @@
  *      x/y positions via a deterministic dagre layout (rankdir: LR) — causal
  *      origins on the left, observations/verdicts on the right.
  *   2. Attach sigma-ready visual attributes to each node and edge (color, size,
- *      type, label). Stub edges get a "stub" type and a "via … — folded" label.
+ *      type, label). Generic version-history connectors retain an explicit
+ *      "stub" type when present.
  *   3. Derive a legend of named components (EvidenceGraphComponent) with a count
  *      of their visible nodes in the current projection — never from layout coords.
  *
@@ -29,7 +30,7 @@ import { MultiDirectedGraph } from "graphology";
 import dagreLib from "@dagrejs/dagre";
 // deno-lint-ignore no-explicit-any
 const dagre = dagreLib as any;
-// essential-graph-filter: re-export the display-kind helpers so callers that
+// Re-export literal display-kind helpers so callers that
 // import from this module get the full exploration API without knowing where
 // each function lives internally.
 export {
@@ -38,11 +39,7 @@ export {
   type DisplayKind,
   displayKindOf,
   isDisplayKindVisible,
-} from "./essential-graph-filter.ts";
-import {
-  DISPLAY_KIND_COLOR_TOKEN,
-  displayKindOf,
-} from "./essential-graph-filter.ts";
+} from "./graph-record-display.ts";
 import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
 import type { EvidenceCanvasProjection } from "./evidence-canvas-model.ts";
 import {
@@ -53,7 +50,6 @@ import {
   displayedGraphEdgeOccurrenceKey,
   graphRelationAccessibleLabel,
 } from "./graph-selection-model.ts";
-import { isUiOnlyPresentationEdge } from "../cad/cad-presentation-projection.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,
@@ -76,7 +72,7 @@ export interface ExplorationLegendItem {
   /** Structural name derived from the full raw graph. */
   readonly name: string;
   readonly intentionallyIsolated: boolean;
-  /** Number of visible nodes (after folding + essential filter) in this entry. */
+  /** Number of visible nodes after explicit history and kind projection. */
   readonly visibleNodeCount: number;
   /**
    * Accent color for the legend chip — same color family used for the dominant
@@ -136,7 +132,7 @@ export interface SigmaEdgeAttrs {
   memberOccurrenceKeys: readonly string[];
   label: string;
   /** "stub" marks synthetic connector edges rendered with a dashed style. */
-  edgeType: "regular" | "stub";
+  edgeType: "regular";
   color: string;
   size: number;
 }
@@ -158,18 +154,14 @@ interface ExplorationVisualEdgeGroup {
 }
 
 /** Prepared model consumed directly by the EvidenceExploration component. */
-/**
- * Une entrée du regroupement par système producteur. Elle ne porte AUCUNE
- * couleur : le canvas peint par type d'enregistrement, pas par outil, et une
- * couleur d'outil ici serait un mapping que rien ne rend.
- */
+/** One entry for an exact literal recorded system id. */
 export interface SystemLegendItem {
-  /** Stable visual family id (e.g. "calculix"). */
+  /** Exact `ThreadGraphNode.system` value. */
   readonly system: string;
-  /** Exact producer ids represented by this family; provenance stays distinct. */
-  readonly systems: readonly string[];
-  /** Human label (e.g. "FEA · CalculiX"). */
+  /** Literal label; no provider alias or domain family is inferred. */
   readonly label: string;
+  /** Generic deterministic colour derived only from the literal system id. */
+  readonly color: string;
   /** Number of visible nodes produced by this system. */
   readonly count: number;
 }
@@ -186,16 +178,16 @@ export interface ExplorationModel {
    */
   readonly legend: readonly ExplorationLegendItem[];
   /**
-   * Tool color key derived from the VISIBLE nodes — one entry per visual tool
-   * family present in the projection, with exact producer ids retained.
+   * Recorded-system key derived from the VISIBLE nodes — one entry per exact
+   * literal system id present in the projection.
    */
   readonly systemLegend: readonly SystemLegendItem[];
   readonly tokens: CssTokens;
   /**
-   * Count of supporting nodes hidden by the essential filter in full-map mode.
-   * 0 when the projection is already a bounded local view (isFiltered=true).
+   * Count hidden by an explicit literal-kind toggle. Zero for the base and
+   * bounded-local projections.
    */
-  readonly hiddenSupportingCount: number;
+  readonly hiddenByKindCount: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -277,8 +269,7 @@ export function buildExplorationRelationRecords(
 ): readonly ExplorationRelationRecord[] {
   const visibleEdges = edges.filter((edge) =>
     visibleNodeKeys.has(nodeKey(edge.from)) &&
-    visibleNodeKeys.has(nodeKey(edge.to)) &&
-    !isUiOnlyPresentationEdge(edge)
+    visibleNodeKeys.has(nodeKey(edge.to))
   );
   const keyFor = makeSigmaEdgeKeyFactory(visibleEdges);
   const groupByMember = new Map<ThreadGraphEdge, ExplorationVisualEdgeGroup>();
@@ -349,19 +340,11 @@ export function buildExplorationModel(
   // but one, which makes the inspector lie about the record.
   const graph = new MultiDirectedGraph<SigmaNodeAttrs, SigmaEdgeAttrs>();
 
-  // The essential display mask has been applied once, upstream, by
-  // buildEvidenceCanvasProjection. Consume the pre-filtered projection directly:
-  //   - Full-map (isFiltered=false): projection.nodes already excludes supporting
-  //     nodes (mesh, script, solver-input, change events, consumption records),
-  //     so the layout here starts from the essential set with no extra filtering.
-  //   - Local view (isFiltered=true): all neighbours including supporting nodes
-  //     are present for full inspector context — still no filtering here.
-  //
-  // hiddenSupportingCount is read from the projection (set by the upstream
-  // filter call) so the banner counters remain consistent across both renderers.
+  // Consume the shared generic projection directly. The renderer never
+  // reclassifies records by provider or artifact kind.
   const displayNodes = projection.nodes as ThreadGraphNode[];
   const displayEdges = projection.edges as ThreadGraphEdge[];
-  const hiddenSupportingCount = projection.supportingNodeCount;
+  const hiddenByKindCount = projection.hiddenByKindCount;
 
   // Add nodes with placeholder positions (dagre will set the final x/y).
   for (const node of displayNodes) {
@@ -374,7 +357,7 @@ export function buildExplorationModel(
       y: 0,
       size: nodeSizeFor(node),
       color: nodeColorFor(node, tokens),
-      label: explorationNodeLabel(node, evidenceModel),
+      label: node.label,
       componentId: compId,
     });
   }
@@ -383,12 +366,6 @@ export function buildExplorationModel(
   // drawing quotient, where one exact structural/provenance pair becomes one
   // route whose attributes retain both recorded assertions.
   const visualEdgeGroups = buildExplorationVisualEdgeGroups(displayEdges);
-  const regularEdgeGroups = visualEdgeGroups.filter(
-    ({ primary }) => !primary.id.startsWith("stub:"),
-  );
-  const stubEdgeGroups = visualEdgeGroups.filter(({ primary }) =>
-    primary.id.startsWith("stub:")
-  );
 
   // Graphology edge keys are graph-local occurrence keys, not domain ids:
   // historic imports may contain duplicate edge.id values. Keep edgeId on the
@@ -398,8 +375,8 @@ export function buildExplorationModel(
     visualEdgeGroups.map(({ primary }) => primary),
   );
 
-  // Add regular edges to the graphology graph.
-  for (const { primary: edge, members } of regularEdgeGroups) {
+  // Add every exact recorded edge group to the graphology graph.
+  for (const { primary: edge, members } of visualEdgeGroups) {
     const from = nodeKey(edge.from);
     const to = nodeKey(edge.to);
     if (!graph.hasNode(from) || !graph.hasNode(to) || from === to) continue;
@@ -415,26 +392,6 @@ export function buildExplorationModel(
       edgeType: "regular",
       color: tokens.lineStrong,
       size: 2,
-    });
-  }
-
-  // Add stub edges (dashed rendering cue for folded instruments).
-  for (const { primary: edge, members } of stubEdgeGroups) {
-    const from = nodeKey(edge.from);
-    const to = nodeKey(edge.to);
-    if (!graph.hasNode(from) || !graph.hasNode(to) || from === to) continue;
-    const graphKey = edgeKeyFor(edge);
-    graph.addEdgeWithKey(graphKey, from, to, {
-      graphKey,
-      occurrenceKey: displayedGraphEdgeOccurrenceKey(edge),
-      edgeId: edge.id,
-      edge,
-      memberEdges: members,
-      memberOccurrenceKeys: members.map(displayedGraphEdgeOccurrenceKey),
-      label: edge.rationale ?? `via ${edge.relation} — folded`,
-      edgeType: "stub",
-      color: tokens.muted,
-      size: 1.5,
     });
   }
 
@@ -542,140 +499,22 @@ export function buildExplorationModel(
     }),
   );
 
-  // Tool color key: one entry per visual tool family among the VISIBLE nodes.
-  // Raw producer ids remain on each node and in `systems`, so grouping
-  // `calculix` with `mcp-calculix` cannot erase provenance in the inspector.
-  const systemCounts = new Map<
-    string,
-    { count: number; systems: Set<string> }
-  >();
+  // One entry per exact recorded system. No alias or provider family is
+  // inferred by the browser.
+  const systemCounts = new Map<string, number>();
   for (const node of displayNodes) {
-    const system = evidenceSystemFamily(node.system);
-    const entry = systemCounts.get(system) ?? {
-      count: 0,
-      systems: new Set<string>(),
-    };
-    entry.count += 1;
-    entry.systems.add(node.system);
-    systemCounts.set(system, entry);
+    systemCounts.set(node.system, (systemCounts.get(node.system) ?? 0) + 1);
   }
   const systemLegend: SystemLegendItem[] = [...systemCounts.entries()]
-    .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]))
-    .map(([system, entry]) => ({
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([system, count]) => ({
       system,
-      systems: [...entry.systems].sort(),
-      label: SYSTEM_LEGEND_LABEL[system] ?? system,
-      count: entry.count,
+      label: system,
+      color: literalKeyColor(system, tokens),
+      count,
     }));
 
-  return { graph, legend, systemLegend, tokens, hiddenSupportingCount };
-}
-
-/**
- * Human labels of the tool color key. Keys are the raw system ids recorded on
- * graph nodes; a system absent from this table keeps its raw id as label
- * (visible fallback, never a silent drop).
- */
-const SYSTEM_LEGEND_LABEL: Record<string, string> = {
-  "syson": "SysON · model",
-  "build123d": "build123d · CAD",
-  "build123d-sandbox": "build123d · CAD",
-  "calculix": "CalculiX · FEA",
-  "modelica": "Modelica · simulation",
-  "openmodelica": "Modelica · simulation",
-  "mcp-modelica": "Modelica · simulation",
-  "erpnext": "ERPNext · ERP",
-  "digital-thread": "Digital thread",
-  "casys-digital-thread": "Digital thread · plan",
-  "brief": "Brief · semantic concept",
-  "sysml": "SysML · semantic concept",
-  "cad": "CAD · semantic concept",
-  "thread": "Thread · semantic concept",
-};
-
-/**
- * Canonical visual identity of one recorded producer system.
- *
- * This is deliberately presentation-only: `ThreadGraphNode.system` is never
- * rewritten. The two CalculiX ids describe different recorded layers of the
- * same solver family, so they share one color and legend entry while their
- * exact source ids remain inspectable.
- */
-export function evidenceSystemFamily(system: string): string {
-  const normalized = system.toLowerCase();
-  if (normalized === "calculix" || normalized === "mcp-calculix") {
-    return "calculix";
-  }
-  return system;
-}
-
-/**
- * Clarifies the sealed geometry-capture node without mutating its canonical
- * label or inventing a shortcut edge to the SysML model.
- *
- * A geometry bundle is recognized only from the recorded topology:
- *   architecture artifact -> geometry capture -> represented CAD assets,
- * with SysML PartUsage -> PartDefinition -> represented asset chains. The
- * count is therefore the number of explicit modeled usages, not text parsed
- * from a friendly label or artifact id.
- */
-export function explorationNodeLabel(
-  node: ThreadGraphNode,
-  evidenceModel: EvidenceGraphModel,
-): string {
-  if (
-    node.entityKind !== "artifact" || node.artifactKind !== "cad-model" ||
-    node.system !== "digital-thread"
-  ) {
-    return node.label;
-  }
-
-  const nodeByRef = new Map(
-    evidenceModel.nodes.map((candidate) => [nodeKey(candidate.ref), candidate]),
-  );
-  const geometryKey = nodeKey(node.ref);
-  const hasArchitectureInput = evidenceModel.edges.some((edge) => {
-    if (
-      nodeKey(edge.to) !== geometryKey ||
-      (edge.relation !== "derived_from" && edge.relation !== "input_to")
-    ) {
-      return false;
-    }
-    const source = nodeByRef.get(nodeKey(edge.from));
-    return source?.entityKind === "artifact" &&
-      source.artifactKind === "sysml-model";
-  });
-  if (!hasArchitectureInput) return node.label;
-
-  const representedAssetKeys = new Set(
-    evidenceModel.edges
-      .filter((edge) =>
-        edge.relation === "traces_to" && nodeKey(edge.from) === geometryKey
-      )
-      .map((edge) => nodeKey(edge.to)),
-  );
-  const representedDefinitionKeys = new Set(
-    evidenceModel.edges
-      .filter((edge) =>
-        edge.relation === "represented_by" &&
-        edge.from.kind === "part-definition" &&
-        representedAssetKeys.has(nodeKey(edge.to))
-      )
-      .map((edge) => nodeKey(edge.from)),
-  );
-  const modeledUsageKeys = new Set(
-    evidenceModel.edges
-      .filter((edge) =>
-        edge.relation === "typed_by" && edge.from.kind === "part-usage" &&
-        representedDefinitionKeys.has(nodeKey(edge.to))
-      )
-      .map((edge) => nodeKey(edge.from)),
-  );
-
-  if (modeledUsageKeys.size === 0) return node.label;
-  return `Geometry bundle · ${modeledUsageKeys.size} modeled part${
-    modeledUsageKeys.size === 1 ? "" : "s"
-  }`;
+  return { graph, legend, systemLegend, tokens, hiddenByKindCount };
 }
 
 // ---------------------------------------------------------------------------
@@ -760,8 +599,7 @@ function isCollapsibleStructuralRelation(edge: ThreadGraphEdge): boolean {
 }
 
 function isRecordedCanvasEdge(edge: ThreadGraphEdge): boolean {
-  return !edge.id.startsWith("stub:") && !isUiOnlyPresentationEdge(edge) &&
-    edge.analysis === undefined;
+  return edge.analysis === undefined;
 }
 
 function relationsDescribeSameRoute(edge: ThreadGraphEdge): boolean {
@@ -822,8 +660,8 @@ function makeSigmaEdgeKeyFactory(
 }
 
 /**
- * Node visual size. Requirements and verdicts deserve emphasis. Attribute and
- * CAD literal holes stay smaller than parts and artifacts.
+ * Node visual size. Requirements and verdicts deserve emphasis. Attribute
+ * records stay smaller than parts and artifacts.
  */
 export function nodeSizeFor(node: ThreadGraphNode): number {
   switch (node.entityKind) {
@@ -837,8 +675,6 @@ export function nodeSizeFor(node: ThreadGraphNode): number {
     case "artifact":
       return 8;
     case "attribute-usage":
-    case "cad-lever":
-    case "cad-unnamed-literal":
       return 4;
     default:
       return 7;
@@ -848,29 +684,18 @@ export function nodeSizeFor(node: ThreadGraphNode): number {
 function dagreNodeBox(
   node: ThreadGraphNode,
 ): { width: number; height: number } {
-  if (
-    node.entityKind === "attribute-usage" ||
-    node.entityKind === "cad-lever" ||
-    node.entityKind === "cad-unnamed-literal"
-  ) {
+  if (node.entityKind === "attribute-usage") {
     return { width: 72, height: 24 };
   }
   return { width: 120, height: 40 };
 }
 
 /**
- * Node color per dominant system. Colours match the thread-blue/green/amber
- * tokens so the graph reads as the same design system as the SVG canvas.
- */
-/**
- * La couleur d'un nœud vient de son TYPE d'enregistrement, pas du système qui
- * l'a produit : un provider est un moyen remplaçable, la nature de la preuve
- * ne l'est pas. C'est aussi ce qui rend la légende TYPES exacte — auparavant
- * elle affichait la couleur d'outil majoritaire d'un type et mentait donc
- * pour ses nœuds minoritaires.
+ * Colour distinguishes literal system ids generically, never a provider
+ * family or verdict. The semantic type filter remains independent.
  */
 function nodeColorFor(node: ThreadGraphNode, tokens: CssTokens): string {
-  return tokens[DISPLAY_KIND_COLOR_TOKEN[displayKindOf(node)]];
+  return literalKeyColor(node.system, tokens);
 }
 
 export interface EvidenceMinimapNode {
@@ -964,11 +789,24 @@ export function buildEvidenceMinimapView(
 }
 
 function componentColor(name: string, tokens: CssTokens): string {
-  if (name.startsWith("SysML")) return tokens.cyan;
-  if (name.startsWith("CAD")) return tokens.amber;
-  if (name.startsWith("FEA")) return tokens.red;
-  if (name.startsWith("Thermal")) return tokens.violet;
-  if (name.startsWith("ERP")) return tokens.blue;
-  if (name.startsWith("Digital thread")) return tokens.green;
-  return tokens.muted;
+  return literalKeyColor(name, tokens);
+}
+
+/** Stable generic palette selection with no provider vocabulary or aliases. */
+function literalKeyColor(key: string, tokens: CssTokens): string {
+  const palette = [
+    tokens.cyan,
+    tokens.blue,
+    tokens.violet,
+    tokens.amber,
+    tokens.green,
+    tokens.red,
+    tokens.muted,
+  ] as const;
+  let hash = 2_166_136_261;
+  for (let index = 0; index < key.length; index += 1) {
+    hash ^= key.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return palette[(hash >>> 0) % palette.length]!;
 }

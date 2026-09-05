@@ -41,6 +41,20 @@ supply Python, provider, tool, path, image, or output formats. The exporter fixe
 and GLTF and creates a draft stamped with the admission identity. It does not write
 Thread state.
 
+Before the fixed export call, the server completes cold validation, obtains the exact
+short Build123d preparation lease, repeats that full cold validation, then creates the
+private loopback client. A local monotone record advances `prepared -> dispatching`
+before this non-idempotent provider call, then to `recorded` only after capture+reread
+and an exact durable result. Replay hits never activate a runtime; `dispatching` without
+`recorded`, an unreadable record, or a collision is `unavailable` for recovery rather
+than a fresh provider dispatch.
+
+If an interruption occurs while only `prepared` exists, the server may resume the same
+exact preparation reservation after cold validation; an expired reservation gains an
+immutable linked successor rather than overwriting history. If `recorded` exists but the
+success-path cleanup did not run, replay returns the captured result and releases only the
+exact residual lease without activating Build123d or calling the provider.
+
 For a lowered closure, every reopen and replay recrosses the sealed closure, reopens all
 named file bytes, re-lowers them, compares the full manifest and effective script, and
 reanalyses before this exporter is reached. A mismatch fails before a provider call.
@@ -146,7 +160,8 @@ verdict. It records import/topology, recross and pairwise geometry facts with th
 provenance; `unavailable` and `unresolved` remain literal. `mcp-build123d` does not
 receive a Casys project, Thread snapshot, MRTR or evaluation context.
 
-The observer consumes the canonical module artifact as it is sealed today. Migrating the
-module assembler itself to a provider is a separate bounded follow-up, not an outcome
-claimed by this vertical. Kinematics is a different capability, not a richer profile on
-this observer.
+The observer consumes the canonical module artifact produced through the
+[provider-neutral module-assembly boundary](module-assembly.md). The current assembly
+adapter uses a fixed Build123d worker, while the application and sealed receipt stay
+provider-neutral. Kinematics is a different capability, not a richer profile on this
+observer.

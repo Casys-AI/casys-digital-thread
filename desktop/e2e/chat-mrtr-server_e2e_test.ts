@@ -1,6 +1,9 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import { createConsoleServer } from "../../server.ts";
 import { FileEngineeringProjectRevisionStore } from "../../src/adapters/shared/stores/engineering-project-store.ts";
+import { FileProjectCapabilityLedgerStore } from "../../src/adapters/control-plane/file-project-capability-ledger-store.ts";
+import { createFirstPartyCapabilityRuntimeCatalog } from "../../src/adapters/control-plane/first-party-capability-binding-catalog.ts";
+import { ProjectCapabilityAuthorizationService } from "../../src/application/control-plane/project-capability-authorization-service.ts";
 import { ProjectBriefCommandService } from "../../src/application/use-cases/project/project-brief-command-service.ts";
 import { ChatCoordinator } from "../src/chat/coordinator.ts";
 import { DESKTOP_CHAT_PROTOCOL } from "../../src/presentation/desktop/chat/contracts.ts";
@@ -13,16 +16,20 @@ import type {
   RuntimeTurn,
 } from "../src/chat/runtime-port.ts";
 import { MemoryChatConversationStore } from "../src/chat/store.ts";
+import {
+  listRegisteredEngineeringOperations,
+} from "../../src/orchestration/operations/registry.ts";
 
 Deno.test("Desktop Chat carries one Casys MRTR through server-signed retry validation", async () => {
   const directory = await Deno.makeTempDir({ prefix: "desktop-chat-mrtr-" });
   const projects = new FileEngineeringProjectRevisionStore(`${directory}/projects`);
   const commands = new ProjectBriefCommandService(projects);
+  const capabilityAuthorization = await localCapabilityAuthorization(directory);
   const { app } = await createConsoleServer({
     manifest: { version: 1, servers: [] },
     runs: [],
     projectControl: false,
-    projectBrief: { projects, commands },
+    projectBrief: { projects, commands, capabilityAuthorization },
     mrtrSigningKey: "d".repeat(64),
     logger: () => {},
   });
@@ -73,6 +80,7 @@ Deno.test("Desktop Chat carries one Casys MRTR through server-signed retry valid
     const framing = projection.framing as Record<string, unknown>;
     const proposal = framing.proposedBrief as Record<string, unknown>;
     const review = framing.proposalReview as Record<string, unknown>;
+    const capabilityProposal = projection.capabilityProposal as Record<string, unknown>;
     const confirmArgs = {
       commandId: "confirm",
       projectId,
@@ -81,6 +89,7 @@ Deno.test("Desktop Chat carries one Casys MRTR through server-signed retry valid
       briefSnapshotId: proposal.id,
       briefRevision: proposal.revision,
       inputFingerprint: review.inputFingerprint,
+      capabilityProposalFingerprint: capabilityProposal.capabilityProposalFingerprint,
     };
     const adapter = mrtrRuntime(client, confirmArgs);
     const coordinator = await ChatCoordinator.create({
@@ -142,6 +151,41 @@ Deno.test("Desktop Chat carries one Casys MRTR through server-signed retry valid
     await Deno.remove(directory, { recursive: true });
   }
 });
+
+async function localCapabilityAuthorization(
+  directory: string,
+): Promise<ProjectCapabilityAuthorizationService> {
+  return new ProjectCapabilityAuthorizationService({
+    ledgers: new FileProjectCapabilityLedgerStore(`${directory}/capability-ledgers`),
+    registry: { list: listRegisteredEngineeringOperations },
+    recordedPlans: {
+      read: () =>
+        Promise.reject(
+          new TypeError("Recorded run plans are not composed in this fixture."),
+        ),
+    },
+    catalog: await createFirstPartyCapabilityRuntimeCatalog(),
+    qualificationSpecs: [],
+    qualificationCandidates: [],
+    policy: {
+      schemaVersion: "capability-runtime-admin-policy/1.0",
+      disabledBindingIds: [],
+      preferences: [],
+    },
+    host: {
+      schemaVersion: "capability-runtime-host-observation/1.0",
+      identityFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+      platform: "linux/arm64",
+      images: [],
+    },
+    lock: {
+      schemaVersion: "capability-runtime-admin-lock/1.0",
+      revision: 0,
+      previous: null,
+      units: [],
+    },
+  });
+}
 
 function mrtrRuntime(
   client: TestMcpClient,

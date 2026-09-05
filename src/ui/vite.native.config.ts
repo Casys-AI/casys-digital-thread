@@ -1,7 +1,10 @@
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { randomBytes } from "node:crypto";
 import { defineConfig, type Plugin } from "vite";
 import tailwindcss from "@tailwindcss/vite";
+
+const MCP_APP_SCRIPT_NONCE_META_NAME = "casys-mcp-app-script-nonce";
 
 function trimGeneratedHtml(): Plugin {
   return {
@@ -36,6 +39,25 @@ function workbenchRootRewrite(): Plugin {
   };
 }
 
+function developmentMcpAppScriptNonce(): Plugin {
+  const nonce = randomBytes(32).toString("base64url");
+  if (!/^[A-Za-z0-9_-]{43}$/.test(nonce)) {
+    throw new Error("Vite could not create the Workbench MCP App nonce.");
+  }
+  return {
+    name: "development-mcp-app-script-nonce",
+    apply: "serve",
+    transformIndexHtml: {
+      order: "pre",
+      handler: () => [{
+        tag: "meta",
+        attrs: { name: MCP_APP_SCRIPT_NONCE_META_NAME, content: nonce },
+        injectTo: "head-prepend",
+      }],
+    },
+  };
+}
+
 const root = dirname(fileURLToPath(import.meta.url));
 const workbenchBffPort = environmentPort("CASYS_COCKPIT_BFF_PORT", 5175);
 const nativeUiPort = environmentPort("CASYS_COCKPIT_UI_PORT", 5173);
@@ -59,6 +81,7 @@ export default defineConfig({
     tailwindcss(),
     trimGeneratedHtml(),
     workbenchRootRewrite(),
+    developmentMcpAppScriptNonce(),
   ],
   base: "./",
   /**

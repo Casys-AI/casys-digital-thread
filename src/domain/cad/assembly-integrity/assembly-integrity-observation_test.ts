@@ -5,23 +5,16 @@ import {
 } from "../../kernel/deterministic-json.ts";
 import { fingerprintResourceBytes } from "../../compile/source/provider-resource-reader.ts";
 import {
-  createIsolatedCodeExecutionReceipt,
-  createIsolatedOutputPublicationRef,
-  fingerprintIsolatedOutputPublicationManifest,
-  ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
-  isolatedCodeExecutionReceiptRecord,
-  validateIsolatedCodeExecutionRequest,
-} from "../../compile/isolation/isolated-code-execution.ts";
-import {
   GEOMETRY_MODULE_CAPTURE_SCHEMA,
   GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
   GEOMETRY_MODULE_PLACEMENT_CONVENTION,
   GEOMETRY_MODULE_UNIT_SYSTEM,
 } from "../geometry-module-contract.ts";
 import {
-  GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
-  GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
-} from "../module-assembly/geometry-module-assembly-execution.ts";
+  GEOMETRY_MODULE_ASSEMBLY_ASSETS,
+  GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
+} from "../module-assembly/geometry-module-assembly-receipt.ts";
+import { GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY } from "../../capability/engineering-capability.ts";
 import { createGeometryModuleInputBundle } from "../module-assembly/geometry-module-input-bundle.ts";
 import { parseGeometryModuleCapture } from "../canonical/geometry-module-capture.ts";
 import {
@@ -458,7 +451,7 @@ Deno.test("mcp-build123d adapter sends only exact STEP and normalizes factual pr
   assertEquals(result.execution.profile.fingerprint, profile.profileFingerprint);
   assertEquals(result.execution.raw.producer, {
     service: "mcp-build123d",
-    packageVersion: "0.5.0",
+    packageVersion: "0.6.1",
     tool: "build123d_observe_assembly_integrity",
     engine: { id: "cadquery-ocp", version: "7.9.3.1" },
   });
@@ -852,76 +845,32 @@ async function validSource(
   const assemblyStepSha = await fingerprintResourceBytes(assemblyStep);
   const assemblyGlbSha = await fingerprintResourceBytes(assemblyGlb);
   const runId = "run-module-assembly";
-  const outputs = GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST.map((declaration) => ({
-    ...declaration,
-    bytes: declaration.role === "assembly.step" ? assemblyStep : assemblyGlb,
-    sha256: declaration.role === "assembly.step" ? assemblyStepSha : assemblyGlbSha,
-  }));
-  const request = await validateIsolatedCodeExecutionRequest({
-    schemaVersion: ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
+  const receipt = {
+    schemaVersion: GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
+    capability: GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
     runId,
-    producerGeneration: 0,
-    profile: GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
-    source: { bytes: childBundle.bytes.copy(), sha256: childBundle.fingerprint.digest },
-    policy: { id: "isolation-module", version: "1", fingerprint: fp(A) },
-    outputs: GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
-  });
-  const publicationOutputs = outputs.map((output) => ({
-    role: output.role,
-    basename: output.basename,
-    mediaType: output.mediaType,
-    format: output.format,
-    byteCount: output.bytes.byteLength,
-    sha256: output.sha256,
-    casUri: `casys://isolated-output/sha256/${output.sha256}`,
-  }));
-  const publication = await createIsolatedOutputPublicationRef(
-    runId,
-    0,
-    await fingerprintIsolatedOutputPublicationManifest(runId, 0, publicationOutputs),
-  );
-  const receipt = isolatedCodeExecutionReceiptRecord(
-    await createIsolatedCodeExecutionReceipt({
-      request,
-      runtime: {
-        isolationClass: "kernel-isolated",
-        imageDigest: fp(A),
-        requestedLimits: {
-          maxWallTimeMs: 1_000,
-          maxCpuTimeMs: 500,
-          maxMemoryBytes: 64_000_000,
-          maxProcesses: 4,
-          maxStdoutBytes: 1_024,
-          maxStderrBytes: 1_024,
-          maxOutputFileBytes: 1_024,
-          maxOutputTotalBytes: 2_048,
-        },
-        limitAssurance: {
-          maxWallTimeMs: "backend-attested",
-          maxCpuTimeMs: "unattested",
-          maxMemoryBytes: "backend-attested",
-          maxProcesses: "unattested",
-          maxStdoutBytes: "broker-observed-cap",
-          maxStderrBytes: "broker-observed-cap",
-          maxOutputFileBytes: "broker-observed-cap",
-          maxOutputTotalBytes: "broker-observed-cap",
-        },
+    inputBundle: {
+      fingerprint: childBundle.fingerprint,
+      byteCount: childBundle.bytes.byteLength,
+    },
+    assembly: {
+      step: {
+        ...GEOMETRY_MODULE_ASSEMBLY_ASSETS.step,
+        fingerprint: fp(assemblyStepSha),
+        byteCount: assemblyStep.byteLength,
       },
-      termination: { kind: "exited", exitCode: 0, signal: null },
-      logs: {
-        stdout: { bytes: new Uint8Array(), truncated: false },
-        stderr: { bytes: new Uint8Array(), truncated: false },
+      glb: {
+        ...GEOMETRY_MODULE_ASSEMBLY_ASSETS.glb,
+        fingerprint: fp(assemblyGlbSha),
+        byteCount: assemblyGlb.byteLength,
       },
-      outputs: outputs.map((output) => ({
-        ...publicationOutputs.find((entry) => entry.role === output.role)!,
-        validation: "accepted" as const,
-        persistence: "staged-reread-atomic-commit" as const,
-        bytes: output.bytes,
-      })),
-      destruction: { status: "proven", runId, proofFingerprint: fp(B) },
-      publication,
-    }),
-  );
+    },
+    implementation: {
+      id: "fixture-neutral-cad-assembler",
+      version: "2026.1",
+      evidenceFingerprint: fp(B),
+    },
+  } as const;
   const children = childBundle.manifest.occurrences.map((occurrence) => ({
     usageElementId: occurrence.usageElementId,
     partDefinitionElementId: occurrence.partDefinitionElementId,
@@ -1082,7 +1031,7 @@ function rawObservedResult(
     kind: "assembly-integrity-observation",
     producer: {
       service: "mcp-build123d",
-      packageVersion: "0.5.0",
+      packageVersion: "0.6.1",
       tool: "build123d_observe_assembly_integrity",
       engine: { name: "cadquery-ocp", version: "7.9.3.1" },
     },

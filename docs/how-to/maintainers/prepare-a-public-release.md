@@ -48,6 +48,10 @@ Leave an unchecked or failed item literal; do not turn it into a release claim.
   image. `pullPolicy: "never"` is not a bootstrap path.
 - Verify the expected CPU architecture for each published image and Desktop artifact.
 - Keep a missing image, failed pull, or absent qualification `unavailable`.
+- Candidate publication of the five physical first-party microVM images is a separate
+  opt-in workflow. It does not update catalogue pins or prove anonymous availability.
+  Follow
+  [Publish first-party microVM images](publish-first-party-microvm-images.md).
 
 ## 5. Reconcile licences, notices, and software inventory
 

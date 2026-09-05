@@ -32,57 +32,6 @@ export const GENERIC_THREAD_FIXTURE: ThreadWorkbenchSnapshot = {
     status: "partially_evaluated",
     files: ["bracket.py", "GEN-01.sysml"],
   },
-  components: {
-    schemaVersion: "thread-components/1.0",
-    authority: "workspace-declared",
-    subjectId: "GEN-01",
-    rationale:
-      "Labelled product fixture showing exact provider identities; it is not live engineering evidence.",
-    systemViews: {
-      syson: {
-        projectId: "fixture-project",
-        editingContextId: "fixture-context",
-        diagramId: "fixture-structure",
-        diagramLabel: "GEN-01 Internal Structure",
-      },
-      erpnext: { bomName: "BOM-GEN-01-FIXTURE" },
-    },
-    components: [{
-      id: "generic-support-bracket",
-      label: "Support bracket",
-      kind: "part",
-      quantity: 1,
-      bindings: [
-        {
-          provider: "syson",
-          kind: "part-usage",
-          id: "fixture-part-usage",
-          label: "supportBracket : SupportBracket",
-          evidenceArtifactId: "ART-SYSML-018",
-          status: "verified",
-          selection: { kind: "artifact", id: "ART-SYSML-018" },
-        },
-        {
-          provider: "build123d",
-          kind: "artifact",
-          id: "cad/bracket@18",
-          label: "Brew-unit support bracket",
-          evidenceArtifactId: "ART-CAD-018",
-          status: "verified",
-          selection: { kind: "artifact", id: "ART-CAD-018" },
-        },
-        {
-          provider: "erpnext",
-          kind: "item",
-          id: "CASYS-GEN01-BRACKET",
-          label: "GEN-01 support bracket",
-          evidenceArtifactId: "missing-erp-evidence",
-          status: "unverified",
-          reason: "No ERP evidence artifact is present in this fixture revision.",
-        },
-      ],
-    }],
-  },
   engineeringCases: unavailableEngineeringCaseCatalog(),
   graph: {
     nodes: [

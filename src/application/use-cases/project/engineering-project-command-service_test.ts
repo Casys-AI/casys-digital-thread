@@ -26,6 +26,7 @@ import {
   validateEngineeringProjectSnapshot,
 } from "../../../domain/project/engineering-project-validation.ts";
 import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
+import type { UncertainWriterLifecycleQualifier } from "../../ports/out/record/uncertain-writer-lifecycle-qualifier.ts";
 
 const CONFIG = new URL(
   "../../../testing/generic-engineering-project.fixture.json",
@@ -535,6 +536,61 @@ Deno.test(
           successorRunSnapshot: project.threadSnapshots.at(-1)!,
           successorEvidenceRefs: evidence,
           rationale: "Should be rejected: a different stable activity.",
+        }),
+      "invalid_input",
+    );
+  },
+);
+
+Deno.test(
+  "direct reconciliation rejects a same-activity sibling with the matching operation",
+  async () => {
+    const base = structuredClone(await reconciliableProject()) as Mutable<
+      EngineeringProjectSnapshot
+    >;
+    const rootId = "verify-current-mechanical-design-root";
+    const activityId = `activity:${rootId}`;
+    const failedWork = base.workItems.find((item) =>
+      item.id === "verify-current-mechanical-design"
+    )!;
+    const successorWork = base.workItems.find((item) =>
+      item.id === "verify-current-mechanical-design-r3"
+    )!;
+    const phase = base.phases.find((item) => item.id === failedWork.phaseId)!;
+    base.workItems.push({
+      ...structuredClone(failedWork),
+      id: rootId,
+      activityId,
+      title: "Root revision for the sibling guard",
+      description: "The stable activity root has no successor closeout evidence.",
+      status: "cancelled",
+      dependsOnWorkItemIds: [],
+      evidenceRefs: [],
+      decisionIds: [],
+      blockerIds: [],
+    });
+    failedWork.activityId = activityId;
+    failedWork.predecessorRevisionId = rootId;
+    successorWork.activityId = activityId;
+    successorWork.predecessorRevisionId = rootId;
+    phase.workItemIds = [rootId, ...phase.workItemIds];
+    const project = validateEngineeringProjectSnapshot(base);
+    const store = new MemoryRevisionStore(project);
+    const service = serviceFor(store);
+    const evidence = findWorkItem(project, "verify-current-mechanical-design-r3")
+      .evidenceRefs;
+
+    await assertCommandError(
+      () =>
+        service.reconcileWorkItemWithSuccessor(AGENT, {
+          ...context("reject-same-activity-sibling", project.revision),
+          failedWorkItemId: "verify-current-mechanical-design",
+          failedRunId: "run:mechanical-r2-failed",
+          successorRunId: "run:mechanical-r3-completed",
+          successorRunSnapshot: project.threadSnapshots.at(-1)!,
+          successorEvidenceRefs: evidence,
+          rationale:
+            "A same-activity sibling cannot substitute for the direct successor revision.",
         }),
       "invalid_input",
     );
@@ -1337,13 +1393,14 @@ function serviceFor(
   store: EngineeringProjectRevisionStore,
   validator?: EngineeringProjectCompletionEvidenceValidator,
   reconciliationOperationPolicy?: EngineeringProjectReconciliationOperationPolicy,
+  firstAppliedAt = "2026-08-01T11:00:00.000Z",
+  uncertainWriterLifecycle?: UncertainWriterLifecycleQualifier,
 ) {
   let tick = 0;
   return new EngineeringProjectCommandService(
     store,
     validator,
-    () =>
-      new Date(Date.parse("2026-08-01T11:00:00.000Z") + ++tick * 1_000).toISOString(),
+    () => new Date(Date.parse(firstAppliedAt) + ++tick * 1_000).toISOString(),
     lifecyclePlanning(),
     undefined,
     {
@@ -1367,7 +1424,18 @@ function serviceFor(
       },
     },
     reconciliationOperationPolicy,
+    uncertainWriterLifecycle,
   );
+}
+
+async function kinematicsGenericReconciliationProject(): Promise<
+  EngineeringProjectSnapshot
+> {
+  return await reconcileAnnotationProject({
+    failureCode: "prescribed-kinematics-execution-failed",
+    outcome: "write-effect-accepted",
+    legacyDecisionFingerprint: false,
+  });
 }
 
 async function projectFixture(): Promise<EngineeringProjectSnapshot> {
@@ -1820,7 +1888,15 @@ Deno.test(
  * snapshot structure, then splices in the two runs needed for these tests.
  */
 async function reconcileAnnotationProject(
-  failureCode?: string,
+  {
+    failureCode,
+    outcome = "write-effect-accepted",
+    legacyDecisionFingerprint = true,
+  }: {
+    readonly failureCode?: string;
+    readonly outcome?: "provider-did-not-write" | "write-effect-accepted";
+    readonly legacyDecisionFingerprint?: boolean;
+  } = {},
 ): Promise<EngineeringProjectSnapshot> {
   const base = structuredClone(await projectFixture()) as Mutable<
     EngineeringProjectSnapshot
@@ -1842,8 +1918,7 @@ async function reconcileAnnotationProject(
   const eligibleCode = failureCode ??
     "model-write-architecture-provider-outcome-unknown";
   const decisionId = "decision-mrtr-1";
-  const attestation =
-    "Inspected the SysON history: the element was written successfully.";
+  const attestation = uncertainWriterAttestation(outcome);
   const proposal = {
     summary: "Record the exact inspected provider outcome.",
     proposedAt: "2026-08-01T10:00:03.000Z",
@@ -1877,7 +1952,7 @@ async function reconcileAnnotationProject(
       {
         key: "reconcileOutcome",
         label: "Outcome",
-        value: "write-effect-accepted",
+        value: outcome,
       },
       {
         key: "reconcileAttestation",
@@ -1886,11 +1961,19 @@ async function reconcileAnnotationProject(
       },
     ],
   };
-  const inputFingerprint = await sha256Fingerprint({
-    basis: { kind: "thread-snapshot", ...head },
-    inputEvidenceRefs: [],
-    proposal: { summary: proposal.summary, parameters: proposal.parameters },
-  });
+  const inputFingerprint = await sha256Fingerprint(
+    legacyDecisionFingerprint
+      ? {
+        basis: { kind: "thread-snapshot", ...head },
+        inputEvidenceRefs: [],
+        proposal: { summary: proposal.summary, parameters: proposal.parameters },
+      }
+      : {
+        baseSnapshot: head,
+        inputEvidenceRefs: [],
+        proposal: { summary: proposal.summary, parameters: proposal.parameters },
+      },
+  );
   base.decisions = [{
     id: decisionId,
     phaseId: "verification",
@@ -1980,6 +2063,83 @@ async function reconcileAnnotationProject(
   return validateEngineeringProjectSnapshot(base);
 }
 
+function uncertainWriterAttestation(
+  outcome: "provider-did-not-write" | "write-effect-accepted",
+): string {
+  return outcome === "provider-did-not-write"
+    ? "Inspected the SysON history: no durable provider write was found."
+    : "Inspected the SysON history: the provider write was found and accepted.";
+}
+
+async function reconciledUncertainWriterProjectWithCompletedSuccessor(): Promise<
+  EngineeringProjectSnapshot
+> {
+  const project = await reconcileAnnotationProject({
+    outcome: "provider-did-not-write",
+    legacyDecisionFingerprint: false,
+  });
+  const store = new MemoryRevisionStore(project);
+  const service = serviceFor(store);
+  const reconciled = await service.reconcileAnnotationRun(HUMAN, {
+    ...context("prepare-exact-reconciled-writer", project.revision),
+    reconciliationRunId: "run:reconcile-annotation",
+    failedRunId: "run:uncertain-write-failed",
+    decisionId: "decision-mrtr-1",
+    outcome: "provider-did-not-write",
+    providerInspectionAttestation: uncertainWriterAttestation(
+      "provider-did-not-write",
+    ),
+  });
+  const draft = structuredClone(reconciled) as Mutable<
+    EngineeringProjectSnapshot
+  >;
+  const failedWork = draft.workItems.find((workItem) =>
+    workItem.id === "verify-current-mechanical-design"
+  )!;
+  const phase = draft.phases.find((candidate) => candidate.id === failedWork.phaseId)!;
+  const evidence = structuredClone(
+    draft.workItems.find((workItem) => workItem.id === "build-current-cad")!
+      .evidenceRefs,
+  );
+  const snapshot = draft.threadSnapshots.at(-1)!;
+  const successorId = "verify-current-mechanical-design-r3";
+  draft.workItems.push({
+    id: successorId,
+    activityId: failedWork.activityId,
+    predecessorRevisionId: failedWork.id,
+    phaseId: failedWork.phaseId,
+    title: "Retry the exact reconciled verification work",
+    description:
+      "Append-only successor for the uncertain writer's cancelled original work.",
+    kind: failedWork.kind,
+    operation: structuredClone(failedWork.operation!),
+    status: "completed",
+    owner: "agent",
+    dependsOnWorkItemIds: [],
+    evidenceRefs: evidence,
+    decisionIds: [],
+    blockerIds: [],
+  });
+  phase.workItemIds = [...phase.workItemIds, successorId];
+  phase.evidenceRefs = structuredClone(evidence);
+  draft.agentRuns.push({
+    id: "run:mechanical-r3-completed",
+    workItemId: successorId,
+    status: "completed",
+    summary: "The append-only successor published replacement evidence.",
+    queuedAt: "2026-08-01T11:00:02.000Z",
+    startedAt: "2026-08-01T11:00:03.000Z",
+    claimedAt: "2026-08-01T11:00:03.000Z",
+    claimedBy: { id: AGENT.actorId, origin: AGENT.kind },
+    completedAt: "2026-08-01T11:00:04.000Z",
+    basis: { kind: "thread-snapshot", ...snapshot },
+    inputFingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
+    resultSnapshot: structuredClone(snapshot),
+    evidenceRefs: evidence,
+  });
+  return validateEngineeringProjectSnapshot(draft);
+}
+
 Deno.test(
   "reconcileAnnotationRun rejects a legacy V1 ceremony without an exact V3 basis",
   async () => {
@@ -1993,8 +2153,9 @@ Deno.test(
       failedRunId: "run:uncertain-write-failed",
       decisionId: "decision-mrtr-1",
       outcome: "write-effect-accepted",
-      providerInspectionAttestation:
-        "Inspected the SysON history: the element was written successfully.",
+      providerInspectionAttestation: uncertainWriterAttestation(
+        "write-effect-accepted",
+      ),
     } as const;
     await assertCommandError(
       () => service.reconcileAnnotationRun(HUMAN, command),
@@ -2015,7 +2176,10 @@ Deno.test(
       "test pre-condition: code must not be eligible",
     );
 
-    const project = await reconcileAnnotationProject(ineligibleCode);
+    const project = await reconcileAnnotationProject({
+      failureCode: ineligibleCode,
+      outcome: "provider-did-not-write",
+    });
     const store = new MemoryRevisionStore(project);
     const service = serviceFor(store);
 
@@ -2027,10 +2191,81 @@ Deno.test(
           failedRunId: "run:uncertain-write-failed",
           decisionId: "decision-mrtr-1",
           outcome: "provider-did-not-write",
-          providerInspectionAttestation:
-            "Confirmed: the provider did not write anything.",
+          providerInspectionAttestation: uncertainWriterAttestation(
+            "provider-did-not-write",
+          ),
         }),
       "invalid_transition",
+    );
+  },
+);
+
+Deno.test(
+  "reconcileAnnotationRun rejects an unqualified generic prescribed-kinematics failure",
+  async () => {
+    const project = await kinematicsGenericReconciliationProject();
+    const store = new MemoryRevisionStore(project);
+    const service = serviceFor(store);
+    await assertCommandError(
+      () =>
+        service.reconcileAnnotationRun(HUMAN, {
+          ...context("reconcile-generic-kinematics", project.revision),
+          reconciliationRunId: "run:reconcile-annotation",
+          failedRunId: "run:uncertain-write-failed",
+          decisionId: "decision-mrtr-1",
+          outcome: "write-effect-accepted",
+          providerInspectionAttestation: uncertainWriterAttestation(
+            "write-effect-accepted",
+          ),
+        }),
+      "invalid_transition",
+    );
+  },
+);
+
+Deno.test(
+  "reconciliation of a lifecycle-qualified generic Chrono failure annotates without evidence or rewriting the failure",
+  async () => {
+    const project = await kinematicsGenericReconciliationProject();
+    const store = new MemoryRevisionStore(project);
+    const qualifier: UncertainWriterLifecycleQualifier = {
+      qualify: (input) =>
+        Promise.resolve({
+          status: input.failedRunId === "run:uncertain-write-failed"
+            ? "qualified-uncertain-write"
+            : "not-qualified",
+        }),
+    };
+    const service = serviceFor(
+      store,
+      undefined,
+      undefined,
+      "2026-08-01T11:00:00.000Z",
+      qualifier,
+    );
+    const reconciled = await service.reconcileAnnotationRun(HUMAN, {
+      ...context("reconcile-qualified-generic-kinematics", project.revision),
+      reconciliationRunId: "run:reconcile-annotation",
+      failedRunId: "run:uncertain-write-failed",
+      decisionId: "decision-mrtr-1",
+      outcome: "write-effect-accepted",
+      providerInspectionAttestation: uncertainWriterAttestation(
+        "write-effect-accepted",
+      ),
+    });
+    const failed = reconciled.agentRuns.find((run) =>
+      run.id === "run:uncertain-write-failed"
+    )!;
+    assertEquals(failed.status, "failed");
+    assertEquals(failed.failure?.code, "prescribed-kinematics-execution-failed");
+    assertEquals(failed.evidenceRefs, []);
+    assertEquals(
+      failed.uncertainWriterReconciliation?.outcome,
+      "write-effect-accepted",
+    );
+    assertEquals(
+      findWorkItem(reconciled, "reconcile-uncertain-writer").status,
+      "completed",
     );
   },
 );
@@ -2061,12 +2296,180 @@ Deno.test(
           failedRunId: "run:uncertain-write-failed",
           decisionId: "decision-mrtr-1",
           outcome: "write-effect-accepted",
-          providerInspectionAttestation:
-            "Inspected the SysON history: the element was written successfully.",
+          providerInspectionAttestation: uncertainWriterAttestation(
+            "write-effect-accepted",
+          ),
         }),
       "invalid_transition",
     );
     assertEquals((await store.get(project.project.id))?.revision, project.revision);
+  },
+);
+
+Deno.test(
+  "reconcileAnnotationRun terminally cancels the failed work item for both human outcomes",
+  async () => {
+    for (
+      const outcome of [
+        "provider-did-not-write",
+        "write-effect-accepted",
+      ] as const
+    ) {
+      const project = await reconcileAnnotationProject({
+        outcome,
+        legacyDecisionFingerprint: false,
+      });
+      const store = new MemoryRevisionStore(project);
+      const service = serviceFor(store);
+      const reconciled = await service.reconcileAnnotationRun(HUMAN, {
+        ...context(`reconcile-${outcome}`, project.revision),
+        reconciliationRunId: "run:reconcile-annotation",
+        failedRunId: "run:uncertain-write-failed",
+        decisionId: "decision-mrtr-1",
+        outcome,
+        providerInspectionAttestation: uncertainWriterAttestation(outcome),
+      });
+
+      const failedWork = findWorkItem(
+        reconciled,
+        "verify-current-mechanical-design",
+      );
+      const failedRun = reconciled.agentRuns.find((run) =>
+        run.id === "run:uncertain-write-failed"
+      )!;
+      assertEquals(failedWork.status, "cancelled");
+      assertEquals(failedRun.status, "failed");
+      assertEquals(failedRun.uncertainWriterReconciliation?.outcome, outcome);
+      assertEquals(
+        findWorkItem(reconciled, "reconcile-uncertain-writer").status,
+        "completed",
+      );
+      assertEquals(
+        reconciled.blockers.some((blocker) =>
+          blocker.workItemIds.includes(failedWork.id)
+        ),
+        outcome === "write-effect-accepted",
+      );
+
+      await assertCommandError(
+        () =>
+          service.queueRun(
+            AGENT,
+            queueRunCommand(`requeue-${outcome}`, reconciled, {
+              runId: `run:requeue-${outcome}`,
+              workItemId: failedWork.id,
+              summary: "The terminal failed work item must not be queued again.",
+            }),
+          ),
+        "invalid_transition",
+      );
+    }
+  },
+);
+
+Deno.test(
+  "successor reconciliation accepts only a cancelled work item with its exact durable uncertain-writer ceremony",
+  async () => {
+    const project = await reconciledUncertainWriterProjectWithCompletedSuccessor();
+    const store = new MemoryRevisionStore(project);
+    const service = serviceFor(
+      store,
+      undefined,
+      undefined,
+      "2026-08-01T11:00:04.000Z",
+    );
+    const successorWork = findWorkItem(
+      project,
+      "verify-current-mechanical-design-r3",
+    );
+    const reconciled = await service.reconcileWorkItemWithSuccessor(AGENT, {
+      ...context("close-exact-reconciled-writer", project.revision),
+      failedWorkItemId: "verify-current-mechanical-design",
+      failedRunId: "run:uncertain-write-failed",
+      successorRunId: "run:mechanical-r3-completed",
+      successorRunSnapshot: project.threadSnapshots.at(-1)!,
+      successorEvidenceRefs: successorWork.evidenceRefs,
+      rationale:
+        "The later appended successor completed with the exact replacement evidence.",
+    });
+
+    const failedWork = findWorkItem(
+      reconciled,
+      "verify-current-mechanical-design",
+    );
+    assertEquals(failedWork.status, "cancelled");
+    assertEquals(failedWork.reconciliation?.kind, "superseded-by-successor");
+    assertEquals(
+      reconciled.agentRuns.find((run) => run.id === "run:uncertain-write-failed")
+        ?.status,
+      "failed",
+    );
+  },
+);
+
+Deno.test(
+  "successor reconciliation refuses malformed and ordinary cancelled work items",
+  async () => {
+    const malformed = structuredClone(
+      await reconciledUncertainWriterProjectWithCompletedSuccessor(),
+    ) as Mutable<EngineeringProjectSnapshot>;
+    const malformedFailedRun = malformed.agentRuns.find((run) =>
+      run.id === "run:uncertain-write-failed"
+    )!;
+    malformedFailedRun.uncertainWriterReconciliation = {
+      ...malformedFailedRun.uncertainWriterReconciliation!,
+      reconciledBy: { id: AGENT.actorId, origin: AGENT.kind },
+    };
+    const malformedService = serviceFor(
+      new MemoryRevisionStore(
+        validateEngineeringProjectSnapshot(malformed),
+      ),
+    );
+    const malformedSuccessor = findWorkItem(
+      malformed,
+      "verify-current-mechanical-design-r3",
+    );
+    await assertCommandError(
+      () =>
+        malformedService.reconcileWorkItemWithSuccessor(AGENT, {
+          ...context("reject-malformed-cancelled-writer", malformed.revision),
+          failedWorkItemId: "verify-current-mechanical-design",
+          failedRunId: "run:uncertain-write-failed",
+          successorRunId: "run:mechanical-r3-completed",
+          successorRunSnapshot: malformed.threadSnapshots.at(-1)!,
+          successorEvidenceRefs: malformedSuccessor.evidenceRefs,
+          rationale: "A malformed annotation cannot close the old work item.",
+        }),
+      "invalid_transition",
+    );
+
+    const ordinary = structuredClone(
+      await reconciliableProject(),
+    ) as Mutable<EngineeringProjectSnapshot>;
+    const ordinaryFailedWork = ordinary.workItems.find((workItem) =>
+      workItem.id === "verify-current-mechanical-design"
+    )!;
+    ordinaryFailedWork.status = "cancelled";
+    const ordinaryProject = validateEngineeringProjectSnapshot(ordinary);
+    const ordinaryService = serviceFor(new MemoryRevisionStore(ordinaryProject));
+    const ordinarySuccessor = findWorkItem(
+      ordinaryProject,
+      "verify-current-mechanical-design-r3",
+    );
+    await assertCommandError(
+      () =>
+        ordinaryService.reconcileWorkItemWithSuccessor(AGENT, {
+          ...context("reject-ordinary-cancelled-writer", ordinaryProject.revision),
+          failedWorkItemId: "verify-current-mechanical-design",
+          failedRunId: "run:mechanical-r2-failed",
+          successorRunId: "run:mechanical-r3-completed",
+          successorRunSnapshot: ordinaryProject.threadSnapshots.at(-1)!,
+          successorEvidenceRefs: ordinarySuccessor.evidenceRefs,
+          rationale:
+            "An ordinary cancelled work item has no uncertain-writer authority.",
+        }),
+      "invalid_transition",
+    );
   },
 );
 

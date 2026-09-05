@@ -45,12 +45,37 @@ import {
 import { BriefSourceAnalysisCaptureService } from "./src/adapters/compile/captures/brief-source-analysis-capture.ts";
 import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "./src/adapters/architecture/agent-seal/model-seal-architecture-sysml-run-executor.ts";
 import type { Build123dExecutionServerOptions } from "./src/adapters/cad/isolated/build123d-execution-composition.ts";
+import { createLocalBuild123dExecutionServerOptions } from "./src/adapters/cad/isolated/first-party-build123d-execution.ts";
+export { createLocalBuild123dExecutionServerOptions };
 import type { AdmittedModelicaExecutionServerOptions } from "./src/adapters/modelica/admitted/execution-composition.ts";
 import type { AdmittedSpiceExecutionServerOptions } from "./src/adapters/electrical/spice/admitted/execution-composition.ts";
+import { createLocalAdmittedSpiceExecutionServerOptions } from "./src/adapters/electrical/spice/admitted/first-party-spice-execution.ts";
+export { createLocalAdmittedSpiceExecutionServerOptions };
 import { LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE } from "./src/adapters/electrical/spice/admitted/local-image-references.ts";
+import {
+  createLocalAdmittedModelicaExecutionServerOptions,
+  createLocalModelicaIsolatedExecutionServerOptions,
+} from "./src/adapters/modelica/first-party-modelica-execution.ts";
+export {
+  createLocalAdmittedModelicaExecutionServerOptions,
+  createLocalModelicaIsolatedExecutionServerOptions,
+};
+export {
+  LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
+  LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
+  LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
+} from "./src/adapters/control-plane/first-party-capability-runtime-identities.ts";
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "./src/adapters/cad/sealed-isolated/design-seal-isolated-geometry-run-executor.ts";
 import type { ModelicaIsolatedExecutionServerOptions } from "./src/adapters/modelica/qualified-kit/execution-composition.ts";
 import type { CalculixIsolatedExecutionServerOptions } from "./src/adapters/fea/isolated-v3/calculix-isolated-execution-composition.ts";
+import {
+  createLocalCalculixIsolatedExecutionServerOptions,
+  LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
+} from "./src/adapters/fea/isolated-v3/local-calculix-isolated-execution-options.ts";
+export {
+  createLocalCalculixIsolatedExecutionServerOptions,
+  LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
+};
 import { VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION } from "./src/adapters/modelica/evaluation/verify-evaluate-admitted-modelica-observations-run-executor.ts";
 import {
   DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
@@ -159,7 +184,35 @@ import { loadRunFixtures } from "./src/adapters/control-plane/run-fixtures.ts";
 import { ControlPlane } from "./src/application/control-plane/control-plane.ts";
 import { EngineeringProjectCommandError } from "./src/application/use-cases/project/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "./src/application/use-cases/project/project-brief-command-service.ts";
-import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "./src/orchestration/operations/registry.ts";
+import { ProjectCapabilityAuthorizationService } from "./src/application/control-plane/project-capability-authorization-service.ts";
+import { CapabilityRuntimeSupervisor } from "./src/application/control-plane/capability-runtime-supervisor.ts";
+import { CapabilityRuntimeExecutionSessionCoordinator } from "./src/application/control-plane/capability-runtime-execution-session.ts";
+import { ProjectCapabilityJitDemandReader } from "./src/application/control-plane/project-capability-jit-demand-reader.ts";
+import { CapabilityRuntimePreparationSessionCoordinator } from "./src/application/control-plane/capability-runtime-preparation-session.ts";
+import {
+  FileCapabilityRuntimeHostMutationLock,
+  FileCapabilityRuntimeLeaseStore,
+} from "./src/adapters/control-plane/file-capability-runtime-host-stores.ts";
+import { DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY } from "./src/adapters/control-plane/file-project-capability-ledger-store.ts";
+import { createCapabilityRuntimeHostAdapter } from "./src/adapters/control-plane/compose-capability-runtime-host.ts";
+import { CapabilityRuntimeLaunchGroupSupervisor } from "./src/application/control-plane/capability-runtime-launch-group-supervisor.ts";
+import { CapabilityRuntimePreloadScheduler } from "./src/application/control-plane/capability-runtime-preload-scheduler.ts";
+import { createLocalCapabilityRuntimeCachePreparationComposition } from "./src/adapters/control-plane/local-capability-runtime-cache-preparation-composition.ts";
+import { createLocalCapabilityRuntimeReadComposition } from "./src/adapters/control-plane/local-capability-runtime-read-composition.ts";
+import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "./src/adapters/control-plane/first-party-capability-runtime-qualification-candidates.ts";
+import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "./src/adapters/control-plane/first-party-capability-runtime-qualification-specifications.ts";
+import { LocalChronoRuntimeSecretResolver } from "./src/adapters/control-plane/local-chrono-runtime-secret-resolver.ts";
+import { createLocalFixedCapabilityRuntimeConnection } from "./src/adapters/control-plane/local-fixed-capability-runtime-connection.ts";
+import {
+  firstPartyBuild123dObservationLaunchGroupReference,
+  firstPartySysonLaunchGroupReference,
+} from "./src/adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
+import type { CapabilityRuntimeLaunchGroup } from "./src/domain/capability/runtime/capability-runtime-launch-group.ts";
+import {
+  listRegisteredEngineeringOperations,
+  REGISTERED_ENGINEERING_OPERATION_REGISTRY,
+  requireRegisteredEngineeringOperation,
+} from "./src/orchestration/operations/registry.ts";
 import {
   VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
 } from "./src/orchestration/operations/fea-isolated-static-proof.ts";
@@ -182,10 +235,13 @@ import {
   registerProjectBriefTools,
 } from "./src/tools/project-brief.ts";
 import {
+  type ProjectCapabilityToolDependencies,
+  registerProjectCapabilityTools,
+} from "./src/tools/project-capabilities.ts";
+import {
   type CockpitFocusToolDependencies,
   registerCockpitFocusTools,
 } from "./src/tools/cockpit-focus.ts";
-import { sha256Fingerprint } from "./src/domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "./src/domain/kernel/primitives.ts";
 import { pinnedOciImageReference } from "./src/domain/compile/isolation/local-isolation-runtime.ts";
 import {
@@ -199,10 +255,39 @@ import {
 } from "./src/adapters/cad/server-composition.ts";
 import { createAssemblyIntegrityCloseoutProject } from "./src/adapters/cad/assembly-integrity/assembly-integrity-closeout-composition.ts";
 import { createCadPlacementComposition } from "./src/adapters/cad/placement/server-composition.ts";
+import { DeclaredAgainstPrescribedKinematicsArchitectureIndex } from "./src/adapters/mechanics/chrono/declared-against-prescribed-kinematics-architecture-index.ts";
+import { FilePrescribedKinematicsCaptureStore } from "./src/adapters/mechanics/chrono/file-prescribed-kinematics-capture-store.ts";
+import { FilePrescribedKinematicsObservationAttemptStore } from "./src/adapters/mechanics/chrono/file-prescribed-kinematics-observation-attempt-store.ts";
+import { ChronoUncertainWriterLifecycleQualifier } from "./src/adapters/mechanics/chrono/chrono-uncertain-writer-lifecycle-qualifier.ts";
+import { ChronoPrescribedKinematicsCaseLowerer } from "./src/adapters/mechanics/chrono/chrono-prescribed-kinematics-case-lowerer.ts";
+import { ChronoPrescribedKinematicsClient } from "./src/adapters/mechanics/chrono/chrono-prescribed-kinematics-client.ts";
+import { PrescribedKinematicsRunExecutor } from "./src/adapters/mechanics/chrono/prescribed-kinematics-run-executor.ts";
+import { PrepareProjectPrescribedKinematicsCaseReview } from "./src/adapters/mechanics/prepare-project-prescribed-kinematics-case-review.ts";
+import { PrepareProjectPrescribedKinematicsNextHopReview } from "./src/adapters/mechanics/prepare-project-prescribed-kinematics-next-hop-review.ts";
+import { CaptureProjectPrescribedKinematicsCase } from "./src/application/use-cases/mechanics/prescribed-kinematics/capture-project-prescribed-kinematics-case.ts";
+import { DecidePrescribedKinematicsCloseout } from "./src/application/use-cases/mechanics/prescribed-kinematics/decide-prescribed-kinematics-closeout.ts";
+import { EvaluatePrescribedKinematics } from "./src/application/use-cases/mechanics/prescribed-kinematics/evaluate-prescribed-kinematics.ts";
+import { SealPrescribedKinematicsMethod } from "./src/application/use-cases/mechanics/prescribed-kinematics/seal-prescribed-kinematics-method.ts";
+import { RunPrescribedKinematicsObservation } from "./src/application/use-cases/mechanics/prescribed-kinematics/run-prescribed-kinematics-observation.ts";
+import {
+  DECIDE_ACCEPT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION,
+  DECIDE_REJECT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION,
+  VERIFY_EVALUATE_PRESCRIBED_KINEMATICS_OPERATION,
+  VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+  VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION,
+  VERIFY_SEAL_PRESCRIBED_KINEMATICS_METHOD_OPERATION,
+} from "./src/domain/mechanism/prescribed-kinematics/operations.ts";
 import {
   createGeometryModuleAssemblyComposition,
   type GeometryModuleAssemblyServerOptions,
 } from "./src/adapters/cad/module-assembly/geometry-module-assembly-composition.ts";
+import {
+  createLocalGeometryModuleAssemblyServerOptions,
+} from "./src/adapters/cad/module-assembly/first-party-geometry-module-assembly.ts";
+export {
+  createLocalGeometryModuleAssemblyServerOptions,
+  LOCAL_GEOMETRY_MODULE_ASSEMBLY_WRAPPER_SHA256,
+} from "./src/adapters/cad/module-assembly/first-party-geometry-module-assembly.ts";
 import { createGeometryModuleExportComposition } from "./src/adapters/cad/module-assembly/geometry-module-export-composition.ts";
 import { GEOMETRY_DRAFT_ASSETS_DIR } from "./src/adapters/cad/canonical/geometry-draft-capture.ts";
 import {
@@ -251,7 +336,6 @@ import {
   createQualifiedModelicaCapability,
 } from "./src/adapters/modelica/server-composition.ts";
 import { createSensitivityComposition } from "./src/adapters/sensitivity/server-composition.ts";
-import { DockerSensitivitySolverRuntimeAuthority } from "./src/adapters/sensitivity/experience/docker-sensitivity-solver-runtime-authority.ts";
 import { createCrossDomainImpactProject } from "./src/adapters/impact/server-composition.ts";
 
 const DEFAULT_PORT = 3020;
@@ -284,7 +368,6 @@ const DEFAULT_REQUIREMENTS_ATTEMPT_DIRECTORY = "state/local/requirements-attempt
  */
 const DEFAULT_CANONICAL_ASSET_DIRECTORY = "state/local/thread-assets";
 const DEFAULT_SENSITIVITY_STEP_CACHE_DIRECTORY = "state/local/sensitivity-step-cache";
-const DEFAULT_SENSITIVITY_EXPERIENCE_DIRECTORY = "state/local/sensitivity-experience";
 const DEFAULT_PRINTABILITY_CASE_CAPTURE_DIRECTORY =
   "state/local/printability-case-captures";
 const DEFAULT_PRINTABILITY_ATTEMPT_DIRECTORY = "state/local/printability-attempts";
@@ -311,6 +394,8 @@ const DEFAULT_ASSEMBLY_INTEGRITY_EVALUATION_ATTEMPT_DIRECTORY =
   "state/local/assembly-integrity-evaluation-attempts";
 const DEFAULT_ENGINEERING_PROJECT_RUN_LEASE_DIRECTORY =
   "state/local/engineering-project-run-leases";
+const DEFAULT_CAPABILITY_RUNTIME_LEASE_DIRECTORY =
+  "state/local/capability-runtime-host/leases";
 const DEFAULT_PROJECT_BASELINE_DIRECTORY = "config/projects/baselines";
 /**
  * One closed local root for the recorded-analysis vertical. Every child store
@@ -318,156 +403,14 @@ const DEFAULT_PROJECT_BASELINE_DIRECTORY = "config/projects/baselines";
  */
 const DEFAULT_RECORDED_ANALYSIS_DIRECTORY = "state/local/recorded-analysis";
 
-export const LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE =
-  "casys/build123d-microsandbox-worker@sha256:0e19aee61aaab326ec29e50753a0ef56432d255fb44fd21c40988e90ff7601f8" as const;
-export const LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE =
-  "casys/build123d-module-assembler-worker@sha256:5aa833e19f1956a001013661e726c19c4566677a75f58493a6534456b99b6707" as const;
-export const LOCAL_GEOMETRY_MODULE_ASSEMBLY_WRAPPER_SHA256 =
-  "609eaf93f2564b88b9103d5e0d53d1dd3e93fcdf8e54c61cc313b957370bf581" as const;
-
-export const LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE =
-  "casys/modelica-microsandbox-worker@sha256:7d3fdeabe794b0ded5360921b16724c7904487e9d11bc24fa37c72f9b92a1894" as const;
-export const LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE =
-  "casys/modelica-microsandbox-worker@sha256:d25f220287cd8d1713e9e7d773afb8bb867fc5404a112e5e50ffa2e862fd6fdf" as const;
-export const LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE =
-  "casys/calculix-microsandbox-worker@sha256:9b3a7468bfbc3f0fe27f7a9ac17c0eb72f1925968173e5a01d985cfa19cbc0a2" as const;
 export { LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE };
-const LOCAL_CALCULIX_WRAPPER_SHA256 =
-  "507c29da72e346aa87465ce96572b19b42e96105c64b2854be73d6894592e4e2";
 const LOCAL_MODELICA_QUALIFICATION_CAPTURE_FINGERPRINT = Object.freeze({
   algorithm: "sha256" as const,
-  digest: "d6aee5fe375daa55cec29a32acf27181dd4bb8ea8e5c3f90f848cc718c149428",
+  digest: "bf85aa1914dddf6fb20aee1c66ef62f3eca3cdcf13b53759ee0c8710bee188db",
 });
 const LOCAL_MODELICA_QUALIFICATION_ROOT =
   "state/local/modelica-microsandbox-qualification";
 const DEFAULT_AGENT_RESOURCE_CAPTURE_DIRECTORY = "state/local/agent-resource-captures";
-
-const LOCAL_BUILD123D_EXECUTION_LIMITS = Object.freeze({
-  maxWallTimeMs: 30_000,
-  maxCpuTimeMs: 25_000,
-  maxMemoryBytes: 1_024 * 1_048_576,
-  maxProcesses: 32,
-  maxStdoutBytes: 65_536,
-  maxStderrBytes: 65_536,
-  maxOutputFileBytes: 128 * 1_048_576,
-  maxOutputTotalBytes: 128 * 1_048_576,
-});
-
-const LOCAL_BUILD123D_EXECUTION_POLICY_BODY = Object.freeze({
-  schemaVersion: "build123d-microsandbox-policy/1.0",
-  backend: "microsandbox-local@0.6.8",
-  imageReference: LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
-  network: "deny-all",
-  pullPolicy: "never",
-  securityProfile: "restricted",
-  supervisorUser: "0:0",
-  untrustedChildUser: "65532:65532",
-  limits: LOCAL_BUILD123D_EXECUTION_LIMITS,
-});
-
-const LOCAL_GEOMETRY_MODULE_ASSEMBLY_LIMITS = Object.freeze({
-  maxWallTimeMs: 120_000,
-  maxCpuTimeMs: 90_000,
-  maxMemoryBytes: 2 * 1_073_741_824,
-  maxProcesses: 32,
-  maxStdoutBytes: 65_536,
-  maxStderrBytes: 65_536,
-  maxOutputFileBytes: 64 * 1_048_576,
-  maxOutputTotalBytes: 128 * 1_048_576,
-});
-
-const LOCAL_GEOMETRY_MODULE_ASSEMBLY_POLICY_BODY = Object.freeze({
-  schemaVersion: "geometry-module-assembler-microsandbox-policy/1.0",
-  backend: "microsandbox-local@0.6.8",
-  imageReference: LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
-  network: "deny-all",
-  pullPolicy: "never",
-  securityProfile: "restricted",
-  workerUser: "65532:65532",
-  fixedExecutable: "/usr/local/bin/python3",
-  limits: LOCAL_GEOMETRY_MODULE_ASSEMBLY_LIMITS,
-});
-
-const LOCAL_MODELICA_EXECUTION_LIMITS = Object.freeze({
-  maxWallTimeMs: 120_000,
-  maxCpuTimeMs: 120_000,
-  maxMemoryBytes: 3 * 1_073_741_824,
-  maxProcesses: 64,
-  maxStdoutBytes: 1_048_576,
-  maxStderrBytes: 1_048_576,
-  maxOutputFileBytes: 16 * 1_048_576,
-  maxOutputTotalBytes: 17 * 1_048_576,
-});
-
-const LOCAL_MODELICA_EXECUTION_POLICY_BODY = Object.freeze({
-  schemaVersion: "modelica-microsandbox-policy/1.0",
-  backend: "microsandbox-local@0.6.8",
-  imageReference: LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
-  network: "deny-all",
-  pullPolicy: "never",
-  securityProfile: "restricted",
-  workerUser: "65532:65532",
-  fixedExecutables: ["omc", "perl"],
-  limits: LOCAL_MODELICA_EXECUTION_LIMITS,
-});
-
-const LOCAL_ADMITTED_MODELICA_EXECUTION_POLICY_BODY = Object.freeze({
-  schemaVersion: "modelica-admitted-microsandbox-policy/1.0",
-  backend: "microsandbox-local@0.6.8",
-  imageReference: LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE,
-  network: "deny-all",
-  pullPolicy: "never",
-  securityProfile: "restricted",
-  workerUser: "65532:65532",
-  fixedExecutables: ["omc", "perl"],
-  limits: LOCAL_MODELICA_EXECUTION_LIMITS,
-});
-
-const LOCAL_ADMITTED_SPICE_EXECUTION_LIMITS = Object.freeze({
-  maxWallTimeMs: 30_000,
-  maxCpuTimeMs: 25_000,
-  maxMemoryBytes: 512 * 1_048_576,
-  maxProcesses: 16,
-  maxStdoutBytes: 65_536,
-  maxStderrBytes: 65_536,
-  maxOutputFileBytes: 262_144,
-  maxOutputTotalBytes: 524_288,
-});
-
-const LOCAL_ADMITTED_SPICE_EXECUTION_POLICY_BODY = Object.freeze({
-  schemaVersion: "spice-admitted-microsandbox-policy/1.0",
-  backend: "microsandbox-local@0.6.8",
-  imageReference: LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
-  network: "deny-all",
-  pullPolicy: "never",
-  securityProfile: "restricted",
-  workerUser: "65532:65532",
-  fixedExecutables: ["ngspice"],
-  limits: LOCAL_ADMITTED_SPICE_EXECUTION_LIMITS,
-});
-
-const LOCAL_CALCULIX_EXECUTION_LIMITS = Object.freeze({
-  maxWallTimeMs: 180_000,
-  maxCpuTimeMs: 160_000,
-  maxMemoryBytes: 3 * 1_073_741_824,
-  maxProcesses: 64,
-  maxStdoutBytes: 1_048_576,
-  maxStderrBytes: 1_048_576,
-  maxOutputFileBytes: 128 * 1_048_576,
-  maxOutputTotalBytes: 256 * 1_048_576,
-});
-
-const LOCAL_CALCULIX_EXECUTION_POLICY_BODY = Object.freeze({
-  schemaVersion: "calculix-microsandbox-policy/1.0",
-  backend: "microsandbox-local@0.6.8",
-  imageReference: LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
-  network: "deny-all",
-  pullPolicy: "never",
-  securityProfile: "restricted",
-  workerUser: "65532:65532",
-  fixedExecutables: ["gmsh", "ccx"],
-  limits: LOCAL_CALCULIX_EXECUTION_LIMITS,
-});
 
 export interface CreateConsoleServerOptions {
   manifest?: FleetManifest;
@@ -543,6 +486,10 @@ export interface CreateConsoleServerOptions {
   assemblyIntegrityEvaluationCaptureDirectory?: string;
   /** Durable L4 assembly-integrity evaluation publication journal. */
   assemblyIntegrityEvaluationAttemptDirectory?: string;
+  /** Immutable prescribed-kinematics L1/L3/L4/L5 capture lanes. */
+  prescribedKinematicsCaptureDirectory?: string;
+  /** Durable prescribed-kinematics L3 dispatch-intent WAL. */
+  prescribedKinematicsObservationAttemptDirectory?: string;
   engineeringProjectRunLeaseDirectory?: string;
   projectBaselineDirectory?: string;
   /** Root of the closed CAS/WAL layout used by isolated-analysis operations. */
@@ -551,6 +498,8 @@ export interface CreateConsoleServerOptions {
   agentResourceDirectory?: string;
   /** Append-only project source workspace event log. */
   projectSourceWorkspaceDirectory?: string;
+  /** Separate local host-operational authorization ledger; never Thread state. */
+  projectCapabilityLedgerDirectory?: string;
   /**
    * Explicit qualified Build123d profile and optional isolated runtime.
    * Omitted means no review tool and no executor. A profile without a runtime
@@ -599,10 +548,6 @@ export async function createConsoleServer(
     );
   const syson = manifest.servers.find((server) => server.id === "syson");
   const build123d = manifest.servers.find((server) => server.id === "build123d");
-  const build123dSandbox = manifest.servers.find((server) =>
-    server.id === "build123d-sandbox"
-  );
-  const calculix = manifest.servers.find((server) => server.id === "calculix");
   const dfm = manifest.servers.find((server) => server.id === "dfm");
   const prusaslicer = manifest.servers.find((server) => server.id === "prusaslicer");
   const docker = options.docker ?? new DockerComposeObserver();
@@ -620,12 +565,7 @@ export async function createConsoleServer(
     ? await createProjectControl(
       options,
       syson?.mcpUrl,
-      build123dSandbox?.mcpUrl,
       build123d,
-      calculix?.mcpUrl,
-      calculix?.image,
-      calculix,
-      docker,
       dfm?.mcpUrl,
       prusaslicer?.mcpUrl,
     )
@@ -636,6 +576,12 @@ export async function createConsoleServer(
   const projectBrief = options.projectBrief === false
     ? undefined
     : options.projectBrief ?? defaultProjectTools?.brief;
+  const projectCapabilities = projectBrief === undefined
+    ? undefined
+    : defaultProjectTools?.capabilities ?? {
+      projects: projectBrief.projects,
+      authorization: projectBrief.capabilityAuthorization,
+    };
   const cockpitFocus = options.cockpitFocus === false || !projectControl
     ? undefined
     : options.cockpitFocus ?? createCockpitFocus(options);
@@ -706,6 +652,9 @@ export async function createConsoleServer(
   if (projectBrief) {
     registerProjectBriefTools(app, { ...projectBrief, approvalMode });
   }
+  if (projectCapabilities) {
+    registerProjectCapabilityTools(app, { ...projectCapabilities, approvalMode });
+  }
   if (cockpitFocus) registerCockpitFocusTools(app, cockpitFocus);
   return { app, controlPlane };
 }
@@ -713,17 +662,13 @@ export async function createConsoleServer(
 async function createProjectControl(
   options: CreateConsoleServerOptions,
   sysonMcpUrl?: string,
-  build123dSandboxMcpUrl?: string,
   assemblyIntegrityBuild123dServer?: DesiredServer,
-  calculixMcpUrl?: string,
-  calculixRuntimeImage?: string,
-  calculixServer?: DesiredServer,
-  docker?: DockerObserver,
   dfmMcpUrl?: string,
   prusaslicerMcpUrl?: string,
 ): Promise<{
   readonly control: ProjectControlToolDependencies;
   readonly brief: ProjectBriefToolDependencies;
+  readonly capabilities: ProjectCapabilityToolDependencies;
   readonly bindAgentResources: ReturnType<
     typeof createAgentResourceIngress
   >["bind"];
@@ -842,9 +787,49 @@ async function createProjectControl(
     admittedSpiceExecution: options.admittedSpiceExecution,
     recordedAnalysisDirectory,
   });
+  const geometryModuleAssembly = options.geometryModuleAssembly === undefined
+    ? undefined
+    : await createGeometryModuleAssemblyComposition(
+      options.geometryModuleAssembly,
+      {
+        outputCasDirectory: `${recordedAnalysisDirectory}/geometry-module/outputs`,
+      },
+    );
+  // A profile catalog alone is deliberately not an executable composition.
+  // Pass cache-attestation identity only when the fixed local worker exists;
+  // otherwise a queued run must remain unavailable before it can claim a JIT
+  // lease or reach a provider boundary.
+  const qualifiedModelicaExecutionProfile =
+    qualifiedModelica.isolatedExecution?.execution === undefined
+      ? undefined
+      : await qualifiedModelica.isolatedExecution.profiles.initial();
+  const admittedModelicaExecutionProfile =
+    admittedModelica.execution?.execution === undefined
+      ? undefined
+      : await admittedModelica.execution.profiles.initial();
+  const admittedSpiceExecutionProfile = admittedSpice.execution?.execution === undefined
+    ? undefined
+    : await admittedSpice.execution.profiles.initial();
   const calculixCapability = await createCalculixCapability({
     calculixIsolatedExecution: options.calculixIsolatedExecution,
     recordedAnalysisDirectory,
+  });
+
+  // The immutable mechanism capture lanes are created before ROP composition
+  // so queue-time sealing can reopen the exact L1 case bytes. This is inert:
+  // it neither starts Chrono nor resolves a secret.
+  const prescribedKinematicsExecution = Object.freeze({
+    captures: new FilePrescribedKinematicsCaptureStore(
+      options.prescribedKinematicsCaptureDirectory ??
+        "state/local/mechanics/prescribed-kinematics/captures",
+    ),
+    observationAttempts: new FilePrescribedKinematicsObservationAttemptStore(
+      options.prescribedKinematicsObservationAttemptDirectory ??
+        "state/local/mechanics/prescribed-kinematics/observation-attempts",
+    ),
+    sealMethod: new SealPrescribedKinematicsMethod(reopenAgentResource),
+    evaluate: new EvaluatePrescribedKinematics(),
+    decideCloseout: new DecidePrescribedKinematicsCloseout(),
   });
 
   const feaFoundation = createFeaFoundation();
@@ -853,14 +838,104 @@ async function createProjectControl(
     feaProofCaptures: feaFoundation.feaProofCaptures,
     sensitivityCatalogOfferCaptures: feaFoundation.sensitivityCatalogOfferCaptures,
     requirementsCaptures: architectureFoundation.requirementsCaptures,
+    technicalCompilationAdmissionCaptureBytes:
+      compilationFoundation.technicalCompilationSealBytes,
     admissions: compilationFoundation.technicalCompilationAdmissions,
     calculixLocalProfile: calculixCapability.localProfile,
+    prescribedKinematicsCaptures: prescribedKinematicsExecution.captures,
+    admittedModelicaProfiles: admittedModelica.execution?.execution === undefined
+      ? undefined
+      : admittedModelica.execution.profiles,
+    admittedSpiceProfiles: admittedSpice.execution?.execution === undefined
+      ? undefined
+      : admittedSpice.execution.profiles,
     recordedAnalysisDirectory,
     canonicalAssetDirectory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
+  });
+  const chronoCaseLowerer = new ChronoPrescribedKinematicsCaseLowerer();
+  const uncertainWriterLifecycle = new ChronoUncertainWriterLifecycleQualifier({
+    attempts: prescribedKinematicsExecution.observationAttempts,
+    plans: recordedPlans.recordedRunPlans,
+    captures: prescribedKinematicsExecution.captures,
+    lowerer: chronoCaseLowerer,
   });
 
   const activeProjectDirectory = options.activeProjectDirectory ??
     DEFAULT_ACTIVE_PROJECT_DIRECTORY;
+  // The resolver is the only component that may read the host-local Chrono
+  // bearer token. It returns opaque snapshots only; neither values nor a
+  // generic environment map cross server composition.
+  const capabilityRuntimeSecrets = new LocalChronoRuntimeSecretResolver();
+  const capabilityRead = await createLocalCapabilityRuntimeReadComposition({
+    ledgerDirectory: options.projectCapabilityLedgerDirectory ??
+      DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY,
+    secrets: capabilityRuntimeSecrets,
+    calculixExecutionProfile: calculixCapability.localProfile === undefined
+      ? undefined
+      : {
+        imageReference: calculixCapability.localProfile.runtimeBackend.imageReference,
+        imageDigest: calculixCapability.localProfile.runtimeBackend.imageDigest,
+        profileFingerprint: calculixCapability.localProfile.profileFingerprint,
+      },
+    build123dExecutionProfile: build123dCapability.localProfile === undefined
+      ? undefined
+      : {
+        imageReference: build123dCapability.localProfile.runtimeBackend.imageReference,
+        imageDigest: build123dCapability.localProfile.runtimeBackend.imageDigest,
+        profileFingerprint: build123dCapability.localProfile.profileFingerprint,
+      },
+    qualifiedModelicaExecutionProfile: qualifiedModelicaExecutionProfile === undefined
+      ? undefined
+      : {
+        imageReference: qualifiedModelicaExecutionProfile.runtimeBackend
+          .imageReference,
+        imageDigest: qualifiedModelicaExecutionProfile.runtimeBackend.imageDigest,
+        profileFingerprint: qualifiedModelicaExecutionProfile.profileFingerprint,
+      },
+    admittedModelicaExecutionProfile: admittedModelicaExecutionProfile === undefined
+      ? undefined
+      : {
+        imageReference: admittedModelicaExecutionProfile.runtimeBackend
+          .imageReference,
+        imageDigest: admittedModelicaExecutionProfile.runtimeBackend.imageDigest,
+        profileFingerprint: admittedModelicaExecutionProfile.profileFingerprint,
+      },
+    admittedSpiceExecutionProfile: admittedSpiceExecutionProfile === undefined
+      ? undefined
+      : {
+        imageReference: admittedSpiceExecutionProfile.runtimeBackend.imageReference,
+        imageDigest: admittedSpiceExecutionProfile.runtimeBackend.imageDigest,
+        profileFingerprint: admittedSpiceExecutionProfile.profileFingerprint,
+      },
+  });
+  const capabilityRuntimeLeases = new FileCapabilityRuntimeLeaseStore(
+    DEFAULT_CAPABILITY_RUNTIME_LEASE_DIRECTORY,
+  );
+  const capabilityRuntimeMutationLock = new FileCapabilityRuntimeHostMutationLock();
+  const capabilityRuntimeCachePreparation =
+    await createLocalCapabilityRuntimeCachePreparationComposition({
+      catalog: capabilityRead.catalog,
+      lock: capabilityRuntimeMutationLock,
+    });
+  const capabilityRuntimeHost = createCapabilityRuntimeHostAdapter({
+    registry: capabilityRead.launchGroups,
+    journal: capabilityRead.journal,
+    secrets: capabilityRuntimeSecrets,
+    secretInjector: capabilityRuntimeSecrets,
+  });
+  const capabilityRuntimeGroups = new CapabilityRuntimeLaunchGroupSupervisor({
+    groups: capabilityRead.launchGroups,
+    journal: capabilityRead.journal,
+    leases: capabilityRuntimeLeases,
+    states: capabilityRead.composeObserver,
+    host: capabilityRuntimeHost,
+    secrets: capabilityRuntimeSecrets,
+    lock: capabilityRuntimeMutationLock,
+  });
+  const capabilityRuntime = new CapabilityRuntimeSupervisor({
+    contexts: capabilityRead.contexts,
+    operations: { require: requireRegisteredEngineeringOperation },
+  });
   const runtime = await createEngineeringProjectCommandRuntime({
     projectId: options.projectId,
     trackedManifestPath: options.projectPath,
@@ -869,6 +944,7 @@ async function createProjectControl(
     planning: {
       operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY,
       runPlanSealer: recordedPlans.recordedRunPlans,
+      queueEligibility: capabilityRuntime,
     },
     initialEvidenceValidator: new ExactInitialBaselineEvidenceValidator(
       activeThreadSnapshots,
@@ -879,8 +955,85 @@ async function createProjectControl(
         frontends: briefSourceAnalysisFrontends,
       },
     ),
+    uncertainWriterLifecycle,
+  });
+  const capabilityJitDemand = new ProjectCapabilityJitDemandReader({
+    projects: runtime.projects,
+    contexts: capabilityRead.contexts,
+    ledgers: capabilityRead.ledgers,
+  });
+  const capabilityRuntimePreparation =
+    new CapabilityRuntimePreparationSessionCoordinator({
+      authorization: capabilityRuntime,
+      leases: capabilityRuntimeLeases,
+      groups: capabilityRuntimeGroups,
+      hasAnyRemainingJitDemand: capabilityJitDemand,
+    });
+  const capabilityRuntimeSession = new CapabilityRuntimeExecutionSessionCoordinator({
+    contexts: capabilityRead.contexts,
+    leases: capabilityRuntimeLeases,
+    groups: capabilityRuntimeGroups,
+    // Lazy exact inspection only: no image load, pull, sandbox create or
+    // Compose start occurs during server construction or queueing.
+    microsandbox: capabilityRead.microsandbox,
+    hasAnyRemainingJitDemand: capabilityJitDemand,
+  });
+  const capabilityAuthorization = new ProjectCapabilityAuthorizationService({
+    ledgers: capabilityRead.ledgers,
+    registry: { list: listRegisteredEngineeringOperations },
+    recordedPlans: recordedPlans.recordedRunPlans,
+    catalog: capabilityRead.catalog,
+    qualificationSpecs:
+      await createFirstPartyCapabilityRuntimeQualificationSpecifications(),
+    qualificationCandidates:
+      await createFirstPartyCapabilityRuntimeQualificationCandidates(),
+    policy: capabilityRead.policy,
+    host: capabilityRead.host,
+    qualifications: capabilityRead.qualifications,
+    qualificationAttempts: capabilityRead.qualificationAttempts,
+    lock: capabilityRead.lock,
+    lockWriter: capabilityRead.lock,
+    hostMutationLock: capabilityRuntimeMutationLock,
+    preloadScheduler: new CapabilityRuntimePreloadScheduler({
+      host: capabilityRuntimeGroups,
+      cachePreparer: capabilityRuntimeCachePreparation.cachePreparer,
+      onHostError: ({ projectId, launchGroupId, error }) => {
+        options.logger?.(
+          `Capability preload for ${projectId}/${launchGroupId} failed: ${
+            String(error)
+          }`,
+        );
+      },
+      onCachePreparationError: ({ projectId, error }) => {
+        options.logger?.(
+          `Capability microVM preload for ${projectId} failed: ${String(error)}`,
+        );
+      },
+    }),
+  });
+  // A restart does not re-authorize anything. It only reconstructs the
+  // server-owned desired lock and restarts guarded, best-effort preloads for
+  // already-authorized envelopes. Runtime acquisition remains out of JIT's
+  // read-only exact-cache prerequisite.
+  void capabilityAuthorization.resumeAuthorizedPreloads().catch((error) => {
+    options.logger?.(
+      `Authorized capability preload resume failed: ${String(error)}`,
+    );
   });
 
+  const sysonRuntimeConnection = sysonMcpUrl
+    ? (await createLocalFixedCapabilityRuntimeConnection({
+      leases: capabilityRuntimeLeases,
+      binding: requiredCatalogBinding(
+        capabilityRead.catalog,
+        "syson-author-system",
+      ),
+      launchGroup: await capabilityRead.launchGroups.require(
+        await firstPartySysonLaunchGroupReference(),
+      ),
+      fleetMcpUrl: sysonMcpUrl,
+    })).boundClient()
+    : undefined;
   const architectureProject = createArchitectureProject({
     projects: runtime.projects,
     commands: runtime.commands,
@@ -888,7 +1041,10 @@ async function createProjectControl(
     lease,
     liveUpdates,
     sysonMcpUrl,
+    sysonRuntimeConnection,
     foundation: architectureFoundation,
+    capabilityRuntime,
+    capabilityRuntimeSession,
     sysonModelSeedAttemptDirectory: options.sysonModelSeedAttemptDirectory ??
       DEFAULT_SYSON_MODEL_SEED_ATTEMPT_DIRECTORY,
     architectureAttemptDirectory: options.architectureAttemptDirectory ??
@@ -920,15 +1076,6 @@ async function createProjectControl(
     projects: runtime.projects,
     methodSheets: thermalJoin.thermalMethodSheetCompilationJoin,
   });
-  const geometryModuleAssembly = options.geometryModuleAssembly === undefined
-    ? undefined
-    : await createGeometryModuleAssemblyComposition(
-      options.geometryModuleAssembly,
-      {
-        outputCasDirectory: `${recordedAnalysisDirectory}/geometry-module/outputs`,
-      },
-    );
-
   const cadProject = createCadProject({
     projects: runtime.projects,
     commands: runtime.commands,
@@ -942,8 +1089,10 @@ async function createProjectControl(
     architectureCaptures: architectureFoundation.genericArchitectureCaptures,
     sysmlSourceAnalysis: architectureFoundation.sysmlSourceAnalysis,
     geometryDraftCaptureDirectory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
+    geometryDraftAssetDirectory: GEOMETRY_DRAFT_ASSETS_DIR,
     geometryCaptureDirectory: DEFAULT_GEOMETRY_CAPTURE_DIRECTORY,
-    moduleAssembly: geometryModuleAssembly?.execution?.publications,
+    capabilityRuntime,
+    capabilityRuntimeSession,
   });
   const assemblyIntegrityEvaluationCaptures =
     new FileAssemblyIntegrityEvaluationCaptureStore(
@@ -976,6 +1125,9 @@ async function createProjectControl(
     thermal: thermalJoin,
     qualified: qualifiedModelica,
     admitted: admittedModelica,
+    plans: recordedPlans.recordedRunPlans,
+    capabilityRuntime,
+    capabilityRuntimeSession,
   });
   const impactProject = createCrossDomainImpactProject({
     projects: runtime.projects,
@@ -1002,6 +1154,8 @@ async function createProjectControl(
     recordedAnalysisDirectory,
     canonicalAssetDirectory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
     resources: reopenAgentResource,
+    capabilityRuntime,
+    capabilityRuntimeSession,
   });
   const sensitivity = createSensitivityComposition({
     projects: runtime.projects,
@@ -1014,14 +1168,11 @@ async function createProjectControl(
     sensitivityCatalogOfferCaptures: feaFoundation.sensitivityCatalogOfferCaptures,
     sysonModelSeedCaptures: architectureFoundation.sysonModelSeedCaptures,
     build123dExecution: build123dCapability.build123dExecution,
-    calculixMcpUrl,
-    calculixRuntimeImage,
-    sensitivitySolverRuntimeAuthority: calculixServer && docker
-      ? new DockerSensitivitySolverRuntimeAuthority(docker, calculixServer)
-      : undefined,
+    capabilityRuntime,
+    capabilityRuntimeSession,
+    capabilityRuntimeLaunchGroups: capabilityRead.launchGroups,
     sysonMcpUrl,
     sensitivityStepCacheDirectory: DEFAULT_SENSITIVITY_STEP_CACHE_DIRECTORY,
-    sensitivityExperienceDirectory: DEFAULT_SENSITIVITY_EXPERIENCE_DIRECTORY,
   });
   const electrical = createLedDriverSourceComposition({
     recordedAnalysisDirectory,
@@ -1035,6 +1186,9 @@ async function createProjectControl(
     recordedAnalysisDirectory,
     admissions: compilationFoundation.technicalCompilationAdmissions,
     admitted: admittedSpice,
+    recordedRunPlans: recordedPlans.recordedRunPlans,
+    capabilityRuntime,
+    capabilityRuntimeSession,
   });
   const electricalMethodSheets = createElectricalMethodSheetJoin({
     recordedAnalysisDirectory,
@@ -1068,6 +1222,66 @@ async function createProjectControl(
     architectureCaptures: architectureFoundation.genericArchitectureCaptures,
     sysmlSourceAnalysis: architectureFoundation.sysmlSourceAnalysis,
   });
+  // Pure L1 recross shared by execution. It owns no project-ledger next hop.
+  const prescribedKinematicsCaseCapture = new CaptureProjectPrescribedKinematicsCase({
+    workspace: sourceWorkspaceStore,
+    resources: reopenAgentResource,
+    architecture: new DeclaredAgainstPrescribedKinematicsArchitectureIndex(
+      threadSnapshots,
+      architectureFoundation.genericArchitectureCaptures,
+      architectureFoundation.sysmlSourceAnalysis,
+    ),
+  });
+  // The public L1 review additionally proves its current Thread basis and exact
+  // architecture producer dependency before compiling a display-only next hop.
+  const prescribedKinematicsCaseReview =
+    new PrepareProjectPrescribedKinematicsCaseReview({
+      capture: prescribedKinematicsCaseCapture,
+      projects: runtime.projects,
+      snapshots: build123dThreadSnapshots,
+    });
+  // Discovery of the already registered method/L4/L5 route is provider-free
+  // too: it recrosses only durable project and Thread evidence. In particular,
+  // it has no Chrono runtime, secret, or dispatch dependency, so unqualified
+  // Chrono remains literally unavailable for any future L3 execution.
+  const prescribedKinematicsNextHopReview =
+    new PrepareProjectPrescribedKinematicsNextHopReview({
+      projects: runtime.projects,
+      snapshots: build123dThreadSnapshots,
+      captures: prescribedKinematicsExecution.captures,
+      resources: reopenAgentResource,
+    });
+  // L1/L4/L5 remain provider-free. L3 is a fixed internal Chrono binding but
+  // its queue/execution path remains fail-closed until the capability catalog
+  // carries a live qualified (or compatible) binding; no caller can choose an
+  // endpoint, image, tool, argument envelope, or bearer token.
+  const prescribedKinematicsRunExecutor = new PrescribedKinematicsRunExecutor({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: build123dThreadSnapshots,
+    lease,
+    caseReview: prescribedKinematicsCaseCapture,
+    captures: prescribedKinematicsExecution.captures,
+    plans: recordedPlans.recordedRunPlans,
+    capabilityRuntime,
+    capabilityRuntimeSession,
+    chronoRuntime: {
+      secrets: capabilityRuntimeSecrets,
+      createObservation: (secretSnapshot) =>
+        new RunPrescribedKinematicsObservation({
+          attempts: prescribedKinematicsExecution.observationAttempts,
+          observer: ChronoPrescribedKinematicsClient.fromTrustedRuntime({
+            secretResolver: capabilityRuntimeSecrets,
+            secretSnapshot,
+          }),
+          lowerer: chronoCaseLowerer,
+        }),
+    },
+    uncertainWriterLifecycle,
+    sealMethod: prescribedKinematicsExecution.sealMethod,
+    evaluate: prescribedKinematicsExecution.evaluate,
+    decideCloseout: prescribedKinematicsExecution.decideCloseout,
+  });
   const agentResourceIngress = createAgentResourceIngress({
     store: agentResourceStore,
     thermalSheets: thermalJoin.thermalMethodSheets,
@@ -1097,6 +1311,11 @@ async function createProjectControl(
   const genericReconcileUncertainWriter = new ReconcileUncertainWriterRunExecutor({
     projects: runtime.projects,
     commands: runtime.commands,
+    uncertainWriterLifecycle,
+    retainedCapabilityLeaseFinalizer: {
+      releaseReconciledUncertainWriterLease: async (input) =>
+        await capabilityRuntimeSession.releaseReconciledUncertainWriterLease(input),
+    },
   });
   const printabilityCaseCaptures = new FileCaptureStore({
     ...PRINTABILITY_CASE_CAPTURE_DESCRIPTOR,
@@ -1226,8 +1445,22 @@ async function createProjectControl(
     | VerifyEvaluateAssemblyIntegrityRunExecutor
     | undefined;
   if (assemblyIntegrityBuild123d !== undefined) {
+    const observationLaunchGroup = await capabilityRead.launchGroups.require(
+      await firstPartyBuild123dObservationLaunchGroupReference(),
+    );
+    const observationDigest = requiredBuild123dObservationMaterialDigest(
+      observationLaunchGroup,
+    );
+    if (assemblyIntegrityBuild123d.imageDigest.digest !== observationDigest) {
+      throw new TypeError(
+        "Assembly-integrity fleet image digest does not match the sealed casys-build123d-observation launch-group material.",
+      );
+    }
     const profiles = new FixedAssemblyIntegrityObserverProfileCatalog({
-      imageDigest: assemblyIntegrityBuild123d.imageDigest,
+      imageDigest: Object.freeze({
+        algorithm: "sha256" as const,
+        digest: observationDigest,
+      }),
     });
     const inputs = new ExactAssemblyIntegrityInputReopener({
       basis: new ExactStaticAssemblyBasisReopener({
@@ -1253,23 +1486,32 @@ async function createProjectControl(
         profiles,
       }),
     });
+    const assemblyObservationRuntimeConnection =
+      (await createLocalFixedCapabilityRuntimeConnection({
+        leases: capabilityRuntimeLeases,
+        binding: requiredCatalogBinding(
+          capabilityRead.catalog,
+          "build123d-observe-assembly-integrity",
+        ),
+        launchGroup: observationLaunchGroup,
+        fleetMcpUrl: assemblyIntegrityBuild123d.mcpUrl,
+        timeoutMs: 120_000,
+      })).boundClient();
     verifyObserveAssemblyIntegrity = new VerifyObserveAssemblyIntegrityRunExecutor({
       projects: runtime.projects,
       commands: runtime.commands,
       snapshots: build123dThreadSnapshots,
       inputs,
-      observer: new McpBuild123dAssemblyIntegrityObserver({
-        client: new HttpMcpToolClient({
-          mcpUrl: assemblyIntegrityBuild123d.mcpUrl,
-          timeoutMs: 120_000,
-        }),
-      }),
+      capabilityRuntimeConnection: assemblyObservationRuntimeConnection,
+      openObserver: (client) => new McpBuild123dAssemblyIntegrityObserver({ client }),
       captures,
       attempts: new FileAssemblyIntegrityObservationAttemptStore(
         options.assemblyIntegrityObservationAttemptDirectory ??
           DEFAULT_ASSEMBLY_INTEGRITY_OBSERVATION_ATTEMPT_DIRECTORY,
       ),
       lease,
+      capabilityRuntime,
+      capabilityRuntimeSession,
     });
     const evaluation = new PrepareAssemblyIntegrityEvaluation({
       projects: runtime.projects,
@@ -1316,14 +1558,17 @@ async function createProjectControl(
       canonicalAssetDirectory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
       geometryDraftCaptureDirectory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
       geometryDraftAssetDirectory: GEOMETRY_DRAFT_ASSETS_DIR,
-      profiles: geometryModuleAssembly.profiles,
-      runner: geometryModuleAssembly.execution?.runner,
-      publications: geometryModuleAssembly.execution?.publications,
+      assembler: geometryModuleAssembly.assembler,
     }).geometryModuleExport;
   return {
     brief: {
       projects: runtime.projects,
       commands: new ProjectBriefCommandService(runtime.projects),
+      capabilityAuthorization,
+    },
+    capabilities: {
+      projects: runtime.projects,
+      authorization: capabilityAuthorization,
     },
     bindAgentResources: (app) => agentResourceIngress.bind(app),
     control: {
@@ -1336,6 +1581,8 @@ async function createProjectControl(
       runPlanReader: recordedPlans.recordedRunPlans,
       technicalSourceCapture: compilationFoundation.technicalSourceCapture,
       cadPlacementCapture: cadPlacement.cadPlacementCapture,
+      prescribedKinematicsCaseReview,
+      prescribedKinematicsNextHopReview,
       geometryModuleExport,
       assemblyIntegrityReview,
       assemblyIntegrityEvaluationReview,
@@ -1378,9 +1625,6 @@ async function createProjectControl(
         traversal: productStructureTraversal,
         workspace: sourceWorkspaceStore,
         evidenceAttachments: new WorkbenchProductNavigationEvidenceAttachmentReader({
-          architectureCaptures: architectureFoundation.genericArchitectureCaptures,
-          geometryCaptures: productNavigationGeometryCaptures,
-          sysmlSourceAnalysis: architectureFoundation.sysmlSourceAnalysis,
           admissions: compilationFoundation.technicalCompilationSeals,
           workspace: sourceWorkspaceStore,
           requirementsCaptures: architectureFoundation.requirementsCaptures,
@@ -1400,15 +1644,17 @@ async function createProjectControl(
       admittedSpiceEvaluationReview: electricalProject.admittedSpiceEvaluationReview,
       admittedSpiceEvaluationCloseoutReview:
         electricalProject.admittedSpiceEvaluationCloseoutReview,
-      ...composePrivateBuild123dGeometrySurfaces(
-        build123dSandboxMcpUrl,
-        cadProject.geometrySourceAnalysis,
-        compilationFoundation.technicalCompilationAdmissions,
-        threadSnapshots,
-        architectureFoundation.genericArchitectureCaptures,
-        DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
-        DEFAULT_GEOMETRY_CAPTURE_DIRECTORY,
-      ),
+      ...composePrivateBuild123dGeometrySurfaces({
+        projects: runtime.projects,
+        preparation: capabilityRuntimePreparation,
+        geometrySourceAnalysis: cadProject.geometrySourceAnalysis,
+        admissions: compilationFoundation.technicalCompilationAdmissions,
+        snapshots: threadSnapshots,
+        architectureCaptures: architectureFoundation.genericArchitectureCaptures,
+        geometryDraftCaptureDirectory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
+        geometryDraftAssetDirectory: GEOMETRY_DRAFT_ASSETS_DIR,
+        geometryCaptureDirectory: DEFAULT_GEOMETRY_CAPTURE_DIRECTORY,
+      }),
       runExecutor: new RegisteredProjectRunExecutor({
         projects: runtime.projects,
         baseline,
@@ -1633,6 +1879,36 @@ async function createProjectControl(
               "The server has no trusted verify.evaluate-assembly-integrity@1 executor " +
               "configured for this run (exact L3 observation evidence and its closed recross are required).",
           },
+          // Provider-free L1/L4/L5 handlers are fully composed below. L3 is
+          // the sole conditional registration: it appears only with the
+          // explicit server-owned qualified observation runner, never from an
+          // agent choice of provider, image, tool, arguments, or runtime.
+          {
+            operation: VERIFY_SEAL_PRESCRIBED_KINEMATICS_CASE_OPERATION,
+            executor: prescribedKinematicsRunExecutor,
+          },
+          {
+            operation: VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+            executor: prescribedKinematicsRunExecutor,
+          },
+          {
+            operation: VERIFY_SEAL_PRESCRIBED_KINEMATICS_METHOD_OPERATION,
+            executor: prescribedKinematicsRunExecutor,
+          },
+          {
+            operation: VERIFY_EVALUATE_PRESCRIBED_KINEMATICS_OPERATION,
+            executor: prescribedKinematicsRunExecutor,
+          },
+          // L5 remains an explicit pair. Do not derive these registrations by
+          // iterating the operation family: both require a human origin.
+          {
+            operation: DECIDE_ACCEPT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION,
+            executor: prescribedKinematicsRunExecutor,
+          },
+          {
+            operation: DECIDE_REJECT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION,
+            executor: prescribedKinematicsRunExecutor,
+          },
           {
             operation: DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
             executor: sensitivity.designApplyVectorCorrection,
@@ -1646,6 +1922,44 @@ async function createProjectControl(
 interface AssemblyIntegrityBuild123dProvider {
   readonly mcpUrl: string;
   readonly imageDigest: ContentFingerprint;
+}
+
+function requiredBuild123dObservationMaterialDigest(
+  group: CapabilityRuntimeLaunchGroup,
+): string {
+  if (group.id !== "casys-build123d-observation" || group.version !== "1.0.0") {
+    throw new TypeError(
+      "Assembly-integrity observation requires the exact casys-build123d-observation launch group.",
+    );
+  }
+  if (group.materials.length !== 1) {
+    throw new TypeError(
+      "Assembly-integrity observation requires exactly one launch-group material.",
+    );
+  }
+  const item = group.materials[0]!;
+  const digest = item.material.imageDigest;
+  if (!item.imageReference.endsWith(`@sha256:${digest}`)) {
+    throw new TypeError(
+      "Assembly-integrity observation launch-group material digest does not match its image reference.",
+    );
+  }
+  return digest;
+}
+
+function requiredCatalogBinding(
+  catalog: {
+    readonly bindings: readonly { readonly id: string; readonly version: string }[];
+  },
+  id: string,
+): { readonly id: string; readonly version: string } {
+  const matches = catalog.bindings.filter((binding) => binding.id === id);
+  if (matches.length !== 1) {
+    throw new TypeError(
+      `Server composition requires exactly one catalogue binding ${id}.`,
+    );
+  }
+  return { id: matches[0]!.id, version: matches[0]!.version };
 }
 
 /**
@@ -1692,31 +2006,30 @@ if (import.meta.main) {
   const hostname = cli.hostname ?? env("MCP_HOSTNAME") ?? DEFAULT_HOSTNAME;
   const projectToolsEnabled = isExplicitLoopbackHostname(hostname);
   const approvalMode = approvalModeForBinding(cli.yolo === true, hostname);
-  const localExecution = localExecutionForBinding(
-    cli.localExecution === true,
-    hostname,
-  );
+  const [
+    build123dExecution,
+    geometryModuleAssembly,
+    modelicaIsolatedExecution,
+    admittedModelicaExecution,
+    admittedSpiceExecution,
+    calculixIsolatedExecution,
+  ] = await Promise.all([
+    createLocalBuild123dExecutionServerOptions(),
+    createLocalGeometryModuleAssemblyServerOptions(),
+    createLocalModelicaIsolatedExecutionServerOptions(),
+    createLocalAdmittedModelicaExecutionServerOptions(),
+    createLocalAdmittedSpiceExecutionServerOptions(),
+    createLocalCalculixIsolatedExecutionServerOptions(),
+  ]);
   const { app } = await createConsoleServer({
     projectControl: projectToolsEnabled ? undefined : false,
     approvalMode,
-    build123dExecution: localExecution
-      ? await createLocalBuild123dExecutionServerOptions()
-      : undefined,
-    geometryModuleAssembly: localExecution
-      ? await createLocalGeometryModuleAssemblyServerOptions()
-      : undefined,
-    modelicaIsolatedExecution: localExecution
-      ? await createLocalModelicaIsolatedExecutionServerOptions()
-      : undefined,
-    admittedModelicaExecution: localExecution
-      ? await createLocalAdmittedModelicaExecutionServerOptions()
-      : undefined,
-    admittedSpiceExecution: localExecution
-      ? await createLocalAdmittedSpiceExecutionServerOptions()
-      : undefined,
-    calculixIsolatedExecution: localExecution
-      ? await createLocalCalculixIsolatedExecutionServerOptions()
-      : undefined,
+    build123dExecution,
+    geometryModuleAssembly,
+    modelicaIsolatedExecution,
+    admittedModelicaExecution,
+    admittedSpiceExecution,
+    calculixIsolatedExecution,
   });
   const http = await app.startHttp({
     port,
@@ -1729,11 +2042,6 @@ if (import.meta.main) {
       if (approvalMode.kind === "local-yolo") {
         console.error(
           "YOLO ACTIVE: documented positive human confirmation gates use human/local-yolo:startup-opt-in; rejection remains interactive.",
-        );
-      }
-      if (localExecution) {
-        console.error(
-          `LOCAL EXECUTION ACTIVE: qualified Build123d, geometry-module assembly, Modelica kit, admitted Modelica, admitted SPICE, and CalculiX runs use ${LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE}, ${LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE}, ${LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE}, ${LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE}, ${LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE}, and ${LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE} through the attached local Microsandbox backend; CalculiX publication still requires the SysON oracle.`,
         );
       }
       if (!projectToolsEnabled) {
@@ -1759,7 +2067,6 @@ export interface ConsoleCliOptions {
   port?: number;
   hostname?: string;
   yolo?: true;
-  localExecution?: true;
 }
 
 export function parseConsoleCli(args: string[]): ConsoleCliOptions {
@@ -1770,8 +2077,6 @@ export function parseConsoleCli(args: string[]): ConsoleCliOptions {
       throw new TypeError("--stdio is not supported; use stateless HTTP on /mcp.");
     } else if (argument === "--yolo") {
       result.yolo = true;
-    } else if (argument === "--local-execution") {
-      result.localExecution = true;
     } else if (argument.startsWith("--port=")) {
       result.port = positiveInteger(argument.slice("--port=".length), "--port");
     } else if (argument === "--port") {
@@ -1794,147 +2099,6 @@ export function parseConsoleCli(args: string[]): ConsoleCliOptions {
   return result;
 }
 
-/**
- * Code-owned product binding for the only qualified local Build123d runtime.
- * No environment value or CLI argument can select its image, policy, limits,
- * command, network, lifecycle, or backend.
- */
-export async function createLocalBuild123dExecutionServerOptions(): Promise<
-  Build123dExecutionServerOptions
-> {
-  const policy = Object.freeze({
-    id: "build123d-microsandbox-deny-all-v1",
-    version: "1.0.0",
-    fingerprint: await sha256Fingerprint(
-      LOCAL_BUILD123D_EXECUTION_POLICY_BODY,
-    ),
-  });
-  return Object.freeze({
-    profile: Object.freeze({
-      imageReference: LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
-      policy,
-      limits: LOCAL_BUILD123D_EXECUTION_LIMITS,
-    }),
-    runtime: Object.freeze({}),
-  });
-}
-
-/** Code-owned binding for deterministic one-level geometry-module assembly. */
-export async function createLocalGeometryModuleAssemblyServerOptions(): Promise<
-  GeometryModuleAssemblyServerOptions
-> {
-  const policy = Object.freeze({
-    id: "geometry-module-assembler-microsandbox-deny-all-v1",
-    version: "1.0.0",
-    fingerprint: await sha256Fingerprint(
-      LOCAL_GEOMETRY_MODULE_ASSEMBLY_POLICY_BODY,
-    ),
-  });
-  return Object.freeze({
-    profile: Object.freeze({
-      imageReference: LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
-      wrapperSha256: LOCAL_GEOMETRY_MODULE_ASSEMBLY_WRAPPER_SHA256,
-      policy,
-      limits: LOCAL_GEOMETRY_MODULE_ASSEMBLY_LIMITS,
-    }),
-    runtime: Object.freeze({}),
-  });
-}
-
-/**
- * Code-owned product binding for the only qualified local Modelica runtime.
- * The separately persisted qualification capture is intentionally not part of
- * this option: review and execution reopen it through the pinned authority.
- */
-export async function createLocalModelicaIsolatedExecutionServerOptions(): Promise<
-  ModelicaIsolatedExecutionServerOptions
-> {
-  const policy = Object.freeze({
-    id: "modelica-microsandbox-deny-all-v1",
-    version: "1.0.0",
-    fingerprint: await sha256Fingerprint(
-      LOCAL_MODELICA_EXECUTION_POLICY_BODY,
-    ),
-  });
-  return Object.freeze({
-    profile: Object.freeze({
-      imageReference: LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
-      policy,
-      limits: LOCAL_MODELICA_EXECUTION_LIMITS,
-      engine: Object.freeze({
-        name: "OpenModelica" as const,
-        version: "1.27.0",
-        mslVersion: "4.1.0",
-      }),
-    }),
-    runtime: Object.freeze({}),
-  });
-}
-
-/** Code-owned binding for admitted Modelica closed-subset execution. */
-export async function createLocalAdmittedModelicaExecutionServerOptions(): Promise<
-  AdmittedModelicaExecutionServerOptions
-> {
-  const policy = Object.freeze({
-    id: "modelica-admitted-microsandbox-deny-all-v1",
-    version: "1.0.0",
-    fingerprint: await sha256Fingerprint(
-      LOCAL_ADMITTED_MODELICA_EXECUTION_POLICY_BODY,
-    ),
-  });
-  return Object.freeze({
-    profile: Object.freeze({
-      imageReference: LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE,
-      policy,
-      limits: LOCAL_MODELICA_EXECUTION_LIMITS,
-    }),
-    runtime: Object.freeze({}),
-  });
-}
-
-/** Code-owned binding for admitted SPICE closed-subset operating-point execution. */
-export async function createLocalAdmittedSpiceExecutionServerOptions(): Promise<
-  AdmittedSpiceExecutionServerOptions
-> {
-  const policy = Object.freeze({
-    id: "spice-admitted-microsandbox-deny-all-v1",
-    version: "1.0.0",
-    fingerprint: await sha256Fingerprint(
-      LOCAL_ADMITTED_SPICE_EXECUTION_POLICY_BODY,
-    ),
-  });
-  return Object.freeze({
-    profile: Object.freeze({
-      imageReference: LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
-      policy,
-      limits: LOCAL_ADMITTED_SPICE_EXECUTION_LIMITS,
-    }),
-    runtime: Object.freeze({}),
-  });
-}
-
-/** Code-owned binding for the qualified local CalculiX microVM profile. */
-export async function createLocalCalculixIsolatedExecutionServerOptions(): Promise<
-  CalculixIsolatedExecutionServerOptions
-> {
-  const policy = Object.freeze({
-    id: "calculix-microsandbox-deny-all-v1",
-    version: "1.0.0",
-    fingerprint: await sha256Fingerprint(
-      LOCAL_CALCULIX_EXECUTION_POLICY_BODY,
-    ),
-  });
-  return Object.freeze({
-    profile: Object.freeze({
-      imageReference: LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
-      wrapperSha256: LOCAL_CALCULIX_WRAPPER_SHA256,
-      policy,
-      limits: LOCAL_CALCULIX_EXECUTION_LIMITS,
-    }),
-    runtime: Object.freeze({}),
-  });
-}
-
 /** Mandatory bind guard for every network-facing composition using local YOLO. */
 export function approvalModeForBinding(
   yolo: boolean,
@@ -1946,19 +2110,6 @@ export function approvalModeForBinding(
     );
   }
   return yolo ? LOCAL_YOLO_PROJECT_APPROVAL_MODE : INTERACTIVE_PROJECT_APPROVAL_MODE;
-}
-
-/** Native local execution is never composed on a remotely reachable bind. */
-export function localExecutionForBinding(
-  requested: boolean,
-  hostname: string,
-): boolean {
-  if (requested && !isExplicitLoopbackHostname(hostname)) {
-    throw new TypeError(
-      "--local-execution is restricted to an explicit loopback MCP hostname.",
-    );
-  }
-  return requested;
 }
 
 function integerEnv(name: string): number | undefined {

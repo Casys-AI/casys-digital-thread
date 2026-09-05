@@ -42,7 +42,7 @@ export const LANE_LABEL =
  * qu'elles restent la même carte sans recopier les classes.
  */
 export const CARD_SURFACE =
-  "rounded-lg border border-border bg-card text-card-foreground shadow-sm";
+  "rounded-lg border border-border bg-card text-card-foreground";
 
 /** Ligne de données : mono discret, pour les identités et les empreintes. */
 export const DATA_LINE = "font-mono text-[10px] text-muted-foreground";

@@ -2,16 +2,12 @@
  * Closed `geometry-module-input-bundle/1.0` input for one-level module assembly.
  *
  * The server orders immediate occurrences by exact usage identity, then packs a
- * canonical manifest and the exact child STEP bytes. The isolated assembler
- * decodes and rehashes this blob; it never receives agent CAD source.
+ * canonical manifest and the exact child STEP bytes. The selected assembler
+ * adapter decodes and rehashes this blob; it never receives agent CAD source.
  */
 
 import type { GeometryBundlePlacement } from "../canonical/geometry-bundle.ts";
-import type { IsolatedCodeExecutionRequest } from "../../compile/isolation/isolated-code-execution.ts";
 import {
-  ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
-  isolatedCodeOutputManifestsEqual,
-  type IsolatedOutputProducerGeneration,
   validateContentFingerprint,
 } from "../../compile/isolation/isolated-code-execution.ts";
 import {
@@ -42,11 +38,6 @@ import {
 } from "../../kernel/case-validation.ts";
 import { deterministicJson } from "../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
-import {
-  GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
-  GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
-  type GeometryModuleAssemblyRequestProfile,
-} from "./geometry-module-assembly-execution.ts";
 
 export const GEOMETRY_MODULE_INPUT_BUNDLE_MAGIC = new TextEncoder().encode(
   "CASYS-GEOMETRY-MODULE-BUNDLE/1.0\n",
@@ -226,40 +217,6 @@ export function validateGeometryModuleInputBundleManifest(
     placementConvention: GEOMETRY_MODULE_PLACEMENT_CONVENTION,
     occurrences,
   });
-}
-
-export function geometryModuleAssemblyExecutionRequest(input: {
-  readonly profile: GeometryModuleAssemblyRequestProfile;
-  readonly bundle: GeometryModuleInputBundle;
-  readonly runId: string;
-  readonly producerGeneration: IsolatedOutputProducerGeneration;
-}): IsolatedCodeExecutionRequest {
-  if (
-    input.profile.executionProfile.id !==
-      GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE.id ||
-    input.profile.executionProfile.version !==
-      GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE.version ||
-    !isolatedCodeOutputManifestsEqual(
-      input.profile.outputManifest,
-      GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
-    )
-  ) {
-    throw new TypeError(
-      "The geometry-module assembly request is not bound to the registered profile.",
-    );
-  }
-  return {
-    schemaVersion: ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
-    runId: safeId(input.runId, "$moduleAssembly.request.runId"),
-    producerGeneration: input.producerGeneration,
-    profile: GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
-    source: {
-      bytes: input.bundle.bytes.copy(),
-      sha256: input.bundle.fingerprint.digest,
-    },
-    policy: input.profile.isolationPolicy,
-    outputs: GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
-  };
 }
 
 async function prepareOccurrences(

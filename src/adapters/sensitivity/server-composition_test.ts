@@ -16,9 +16,11 @@ import { createFeaFoundation } from "../fea/server-composition.ts";
 import { AnalyzeRunFeaSensitivityRunExecutor } from "./live-fea/analyze-run-fea-sensitivity-run-executor.ts";
 import { DesignApplyVectorCorrectionRunExecutor } from "./vector-correction/design-apply-vector-correction-run-executor.ts";
 import { VerifyEvaluateSensitivityBaseRunExecutor } from "./base-evaluation/verify-evaluate-sensitivity-base-run-executor.ts";
+import { ModelWriteSensitivityEdgesRunExecutor } from "./edges/model-write-sensitivity-edges-run-executor.ts";
 import { createSensitivityComposition } from "./server-composition.ts";
 import { testReopenAgentResource } from "../../testing/agent-resource-test-support.ts";
 import { FileProjectSourceWorkspaceStore } from "../project-source-workspace/file-project-source-workspace-store.ts";
+import { createFirstPartyCapabilityRuntimeLaunchGroupRegistry } from "../control-plane/first-party-capability-runtime-launch-groups.ts";
 
 Deno.test("sensitivity live-FEA and base evaluation stay gated; vector correction is not a proof-run grant", async () => {
   const root = await Deno.makeTempDir({
@@ -67,6 +69,8 @@ Deno.test("sensitivity live-FEA and base evaluation stay gated; vector correctio
       methodSheets: { read: () => Promise.resolve(undefined) },
     });
     const fea = createFeaFoundation();
+    const capabilityRuntimeLaunchGroups =
+      await createFirstPartyCapabilityRuntimeLaunchGroupRegistry();
     const baseOptions = {
       projects: runtime.projects,
       commands: runtime.commands,
@@ -78,6 +82,13 @@ Deno.test("sensitivity live-FEA and base evaluation stay gated; vector correctio
       sensitivityCatalogOfferCaptures: fea.sensitivityCatalogOfferCaptures,
       sysonModelSeedCaptures: architecture.sysonModelSeedCaptures,
       sensitivityStepCacheDirectory: `${root}/step-cache`,
+      capabilityRuntime: {
+        requireExecution: () => Promise.resolve(undefined),
+      },
+      capabilityRuntimeSession: {
+        begin: () => Promise.reject(new Error("not invoked by composition test")),
+      },
+      capabilityRuntimeLaunchGroups,
     };
 
     const ungated = createSensitivityComposition({
@@ -86,6 +97,7 @@ Deno.test("sensitivity live-FEA and base evaluation stay gated; vector correctio
     });
     assertEquals(ungated.analyzeRunFeaSensitivity, undefined);
     assertEquals(ungated.verifyEvaluateSensitivityBase, undefined);
+    assertEquals(ungated.modelWriteSensitivityEdges, undefined);
     assertInstanceOf(
       ungated.designApplyVectorCorrection,
       DesignApplyVectorCorrectionRunExecutor,
@@ -111,7 +123,6 @@ Deno.test("sensitivity live-FEA and base evaluation stay gated; vector correctio
           publications: {},
         },
       } as unknown as Build123dExecutionComposition,
-      calculixMcpUrl: "http://127.0.0.1:1/mcp",
       sysonMcpUrl: "http://127.0.0.1:1/mcp",
     });
     assertInstanceOf(
@@ -122,6 +133,10 @@ Deno.test("sensitivity live-FEA and base evaluation stay gated; vector correctio
       live.verifyEvaluateSensitivityBase,
       VerifyEvaluateSensitivityBaseRunExecutor,
     );
+    assertInstanceOf(
+      live.modelWriteSensitivityEdges,
+      ModelWriteSensitivityEdgesRunExecutor,
+    );
     assertEquals(
       live.analyzeRunFeaSensitivity ===
         (live
@@ -129,10 +144,23 @@ Deno.test("sensitivity live-FEA and base evaluation stay gated; vector correctio
       false,
     );
 
+    const sysonWithoutJit = createSensitivityComposition({
+      ...baseOptions,
+      build123dExecution: undefined,
+      capabilityRuntime: undefined,
+      capabilityRuntimeSession: undefined,
+      sysonMcpUrl: "http://127.0.0.1:1/mcp",
+    });
+    assertEquals(sysonWithoutJit.verifyEvaluateSensitivityBase, undefined);
+    assertEquals(sysonWithoutJit.modelWriteSensitivityEdges, undefined);
+
     const source = await Deno.readTextFile(
       new URL("./server-composition.ts", import.meta.url),
     );
     assertEquals(source.includes("CreateConsoleServerOptions"), false);
+    assertEquals(source.includes("calculixMcpUrl"), false);
+    assertEquals(source.includes("calculixRuntimeImage"), false);
+    assertEquals(source.includes("DockerVolumeAssetStager"), false);
   } finally {
     await Deno.remove(root, { recursive: true });
   }

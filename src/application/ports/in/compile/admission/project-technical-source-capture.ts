@@ -11,6 +11,7 @@
  */
 
 import type { TechnicalSourceCaptureReview } from "../../../../../domain/compile/admission/technical-source-capture-review.ts";
+import type { Build123dWorkspaceClosureLoweringErrorCode } from "../../../../../domain/cad/source/build123d-workspace-closure-lowering.ts";
 
 export interface ProjectTechnicalSourceCaptureCommand {
   readonly projectId: string;
@@ -39,7 +40,9 @@ export type ProjectTechnicalSourceCaptureErrorCode =
   | "closure_persist_failed"
   | "closure_integrity_failed"
   | "locator_persist_failed"
-  | "locator_integrity_failed";
+  | "locator_integrity_failed"
+  /** Exact fail-closed diagnostic emitted by the registered Build123d lowerer. */
+  | Build123dWorkspaceClosureLoweringErrorCode;
 
 export class ProjectTechnicalSourceCaptureError extends Error {
   constructor(

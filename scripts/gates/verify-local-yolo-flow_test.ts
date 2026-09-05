@@ -1,12 +1,18 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { approvalModeForBinding, createConsoleServer } from "../../server.ts";
 import { FileEngineeringProjectRevisionStore } from "../../src/adapters/shared/stores/engineering-project-store.ts";
+import { FileProjectCapabilityLedgerStore } from "../../src/adapters/control-plane/file-project-capability-ledger-store.ts";
+import { createFirstPartyCapabilityRuntimeCatalog } from "../../src/adapters/control-plane/first-party-capability-binding-catalog.ts";
+import { ProjectCapabilityAuthorizationService } from "../../src/application/control-plane/project-capability-authorization-service.ts";
 import { EngineeringProjectCommandService } from "../../src/application/use-cases/project/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "../../src/application/use-cases/project/project-brief-command-service.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../src/domain/architecture/seed/syson-model-seed.ts";
 import { encodeSysonModelSeedProposalParameters } from "../../src/domain/architecture/seed/syson-model-seed-proposal.ts";
 import type { EngineeringProjectSnapshot } from "../../src/domain/project/engineering-project.ts";
-import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../src/orchestration/operations/registry.ts";
+import {
+  listRegisteredEngineeringOperations,
+  REGISTERED_ENGINEERING_OPERATION_REGISTRY,
+} from "../../src/orchestration/operations/registry.ts";
 
 const BRIEF_PROJECT_ID = "local-yolo-brief-gate";
 const DECISION_PROJECT_ID = "local-yolo-decision-gate";
@@ -30,12 +36,13 @@ Deno.test("local YOLO approves positive brief and decision through stateless HTT
     { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
     { validateInitial: () => Promise.resolve() },
   );
+  const capabilityAuthorization = await localCapabilityAuthorization(directory);
 
   const { app } = await createConsoleServer({
     manifest: { version: 1, servers: [] },
     runs: [],
     projectControl: { projects, commands: projectCommands },
-    projectBrief: { projects, commands: briefCommands },
+    projectBrief: { projects, commands: briefCommands, capabilityAuthorization },
     cockpitFocus: false,
     mrtrSigningKey: "a".repeat(64),
     approvalMode: approvalModeForBinding(true, "127.0.0.1"),
@@ -111,6 +118,10 @@ async function verifyBriefAutoApproval(
   const framing = proposedProject.framing as Record<string, unknown>;
   const brief = framing.proposedBrief as Record<string, unknown>;
   const review = framing.proposalReview as Record<string, unknown>;
+  const capabilityProposal = proposedProject.capabilityProposal as Record<
+    string,
+    unknown
+  >;
 
   const approved = await client.tool("project_brief_confirm", {
     commandId: "local-yolo-brief-confirm",
@@ -120,6 +131,7 @@ async function verifyBriefAutoApproval(
     briefSnapshotId: brief.id,
     briefRevision: brief.revision,
     inputFingerprint: review.inputFingerprint,
+    capabilityProposalFingerprint: capabilityProposal.capabilityProposalFingerprint,
   });
   const approvedProject = approved.structuredContent as Record<string, unknown>;
   assertEquals(approvedProject.revision, 3);
@@ -138,6 +150,41 @@ async function verifyBriefAutoApproval(
     YOLO_ACTOR,
   );
   await assertRevisionFile(directory, BRIEF_PROJECT_ID, 3);
+}
+
+async function localCapabilityAuthorization(
+  directory: string,
+): Promise<ProjectCapabilityAuthorizationService> {
+  return new ProjectCapabilityAuthorizationService({
+    ledgers: new FileProjectCapabilityLedgerStore(`${directory}/capability-ledgers`),
+    registry: { list: listRegisteredEngineeringOperations },
+    recordedPlans: {
+      read: () =>
+        Promise.reject(
+          new TypeError("Recorded run plans are not composed in this fixture."),
+        ),
+    },
+    catalog: await createFirstPartyCapabilityRuntimeCatalog(),
+    qualificationSpecs: [],
+    qualificationCandidates: [],
+    policy: {
+      schemaVersion: "capability-runtime-admin-policy/1.0",
+      disabledBindingIds: [],
+      preferences: [],
+    },
+    host: {
+      schemaVersion: "capability-runtime-host-observation/1.0",
+      identityFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+      platform: "linux/arm64",
+      images: [],
+    },
+    lock: {
+      schemaVersion: "capability-runtime-admin-lock/1.0",
+      revision: 0,
+      previous: null,
+      units: [],
+    },
+  });
 }
 
 async function verifyDecisionAutoApproval(
@@ -189,6 +236,10 @@ async function verifyDecisionAutoApproval(
   const proposedFraming = proposedBriefProject.framing as Record<string, unknown>;
   const decisionBrief = proposedFraming.proposedBrief as Record<string, unknown>;
   const decisionBriefReview = proposedFraming.proposalReview as Record<string, unknown>;
+  const decisionCapabilityProposal = proposedBriefProject.capabilityProposal as Record<
+    string,
+    unknown
+  >;
   await client.tool("project_brief_confirm", {
     commandId: "local-yolo-decision-brief-confirm",
     projectId: DECISION_PROJECT_ID,
@@ -197,6 +248,8 @@ async function verifyDecisionAutoApproval(
     briefSnapshotId: decisionBrief.id,
     briefRevision: decisionBrief.revision,
     inputFingerprint: decisionBriefReview.inputFingerprint,
+    capabilityProposalFingerprint:
+      decisionCapabilityProposal.capabilityProposalFingerprint,
   });
 
   await client.tool("project_plan_publish", {

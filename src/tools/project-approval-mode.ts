@@ -22,6 +22,7 @@ export type ProjectApprovalMode =
 /** One human confirmation the MCP host would otherwise elicit. */
 export const HUMAN_CONFIRMATION_GATES = [
   "brief-confirm",
+  "capability-amend",
   "decision-approve",
   "decision-reject",
   "queued-run-cancel",
@@ -41,6 +42,7 @@ export type HumanConfirmationGate = typeof HUMAN_CONFIRMATION_GATES[number];
  */
 const YOLO_AUTO_GATES: readonly HumanConfirmationGate[] = [
   "brief-confirm",
+  "capability-amend",
   "decision-approve",
   "queued-run-cancel",
   "work-item-abandon",

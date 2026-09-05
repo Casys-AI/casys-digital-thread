@@ -5,8 +5,8 @@ Audience: agent · Diátaxis: reference · Kind: contract
 Census of isolated Build123d execution, isolated-geometry seal, and canonical geometry
 files. Shared admission lives on [compile](compile.md).
 
-Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays
-on [engineering domains](../domains/README.md).
+Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays on
+[engineering domains](../domains/README.md).
 
 ## Source map
 
@@ -53,15 +53,51 @@ construction-time dispatch or legacy MCP fallback
 #### [`src/adapters/cad/server-composition.ts`](../../../src/adapters/cad/server-composition.ts)
 
 Build123d capability and CAD project contributions. Profile-only exposes review;
-isolated execution needs the empty runtime marker. Private sandbox admitted export is
-composed independently of `--local-execution`.
+isolated execution requires an approved capability-runtime supervisor to compose the
+exact worker. Private sandbox admitted export has its own atomic runtime unit.
+
+#### [`src/application/control-plane/capability-runtime-preparation-session.ts`](../../../src/application/control-plane/capability-runtime-preparation-session.ts)
+
+Sibling, short-lived exact preparation lease coordinator for canonical admitted
+geometry: one registered preparation demand, one authorised binding/material/group, no
+run/work-item or provider-WAL fabrication; successful durable capture releases,
+ambiguous dispatch retains.
+
+#### [`src/adapters/cad/canonical/file-admitted-geometry-export-replay-cache.ts`](../../../src/adapters/cad/canonical/file-admitted-geometry-export-replay-cache.ts)
+
+Create-new, append-only local replay/WAL keyed by the exact public export identity. It
+records `prepared -> dispatching -> recorded`; malformed/colliding records or a dispatch
+without a recorded result fail closed before runtime activation.
 
 #### [`scripts/gates/verify-build123d-microsandbox-vertical.ts`](../../../scripts/gates/verify-build123d-microsandbox-vertical.ts)
 
-Explicit generation-0 real-runtime gate for the exact Build123d worker digest: local
-microVM execution, AP214/OCCT validation, proven broker destruction, published
-resolution and CAS reread; it is not a recovery, production project-run or
-canonical-promotion gate
+Explicit generation-0 real-runtime gate for the exact active Build123d worker digest:
+local microVM execution, AP214/OCCT validation, proven broker destruction, published
+resolution and CAS reread; it is not a recovery, production project-run,
+candidate-qualification or canonical-promotion gate
+
+#### [`scripts/gates/verify-build123d-isolated-worker-candidate-qualification.ts`](../../../scripts/gates/verify-build123d-isolated-worker-candidate-qualification.ts)
+
+Maintainer-only imported-candidate qualification for `build123d-isolated-worker`. Input
+is only a bound `first-party-microsandbox-image-candidate-import/3.0` record plus
+`--run`. It reads the control-plane host observation, refuses anything other than
+`linux/arm64` before composition, then reuses the production composition, broker, OCCT
+validator, CAS reread and proven destruction. The persisted record binds that host
+identity and the exact run/receipt. It never builds Docker, never deletes the candidate
+image, and never promotes a pin
+
+#### [`src/adapters/cad/isolated/first-party-build123d-execution.ts`](../../../src/adapters/cad/isolated/first-party-build123d-execution.ts)
+
+Code-owned active Build123d policy, limits and local server options. The server, the
+active vertical and the imported-candidate gate share this builder. The candidate
+factory accepts only an already-bound import record
+
+#### [`scripts/gates/verify-geometry-module-assembler-worker-candidate-qualification.ts`](../../../scripts/gates/verify-geometry-module-assembler-worker-candidate-qualification.ts)
+
+Maintainer-only imported-candidate qualification for `geometry-module-assembler-worker`.
+Distinct from the active-pin qualification gate. It binds the import record, isolates
+WAL/captures/outputs under the candidate-specific root, and leaves
+`eligibleForPromotion=false`
 
 #### [`src/adapters/cad/isolated/occt-step-output-validator.ts`](../../../src/adapters/cad/isolated/occt-step-output-validator.ts)
 
@@ -129,8 +165,8 @@ encoding for `design.write-geometry@1`
 
 #### [`src/domain/cad/canonical/geometry-module-evidence.ts`](../../../src/domain/cad/canonical/geometry-module-evidence.ts)
 
-Public facade for the bounded module family. Identities, isolation recross, manifest,
-draft and capture stay in the sibling files below.
+Public facade for the bounded module family. Identities, neutral assembly recross,
+manifest, draft and capture stay in the sibling files below.
 
 #### [`src/domain/cad/geometry-module-contract.ts`](../../../src/domain/cad/geometry-module-contract.ts)
 
@@ -146,12 +182,11 @@ runtime manifest, and child capture plus authoritative STEP identities. Placemen
 locator authority stays on `cad-placement-analysis-capture.ts`. No program, lowerer, or
 admission stamp.
 
-#### [`src/domain/cad/canonical/geometry-module-isolation.ts`](../../../src/domain/cad/canonical/geometry-module-isolation.ts)
+#### [`src/domain/cad/canonical/geometry-module-assembly-recross.ts`](../../../src/domain/cad/canonical/geometry-module-assembly-recross.ts)
 
-Recross of the existing `IsolatedCodeExecutionReceiptRecord` to the code-owned
-`build123d-module-assembler-v1` profile, input-bundle digest, proven destruction,
-accepted termination, and `assembly.step` / `assembly.glb` outputs. Does not restate
-receipt fields.
+Recross of the provider-neutral `geometry-module-assembly-receipt/1.0` against the exact
+input-bundle and `assembly.step` / `assembly.glb` identities. Native provider or
+isolation evidence stays behind the selected assembler adapter.
 
 #### [`src/domain/cad/canonical/geometry-module-manifest.ts`](../../../src/domain/cad/canonical/geometry-module-manifest.ts)
 
@@ -161,8 +196,8 @@ mandatory.
 
 #### [`src/domain/cad/canonical/geometry-module-draft.ts`](../../../src/domain/cad/canonical/geometry-module-draft.ts)
 
-Review-only `geometry-module-draft-capture/1.0`: complete input-bundle identity,
-isolated receipt, reopened child capture/STEP identities, produced STEP+GLB. No Thread
+Review-only `geometry-module-draft-capture/1.0`: complete input-bundle identity, neutral
+assembly receipt, reopened child capture/STEP identities, produced STEP+GLB. No Thread
 write.
 
 #### [`src/domain/cad/canonical/geometry-module-capture.ts`](../../../src/domain/cad/canonical/geometry-module-capture.ts)
@@ -197,8 +232,10 @@ placements, assembly/definition formats, and strict flat MRTR round-trip
 
 #### [`src/adapters/cad/canonical/geometry-draft-capture.ts`](../../../src/adapters/cad/canonical/geometry-draft-capture.ts)
 
-Calls `build123d_export`, attests each binary's SHA-256, and stores draft JSON + binary
-assets in the draft stores; never writes a `ThreadSnapshot`
+Calls `build123d_export`, validates the mcp-build123d 0.6.1
+`build123d-export-artifact/1.0` URI, MIME, byte count and SHA-256, rereads only that MCP
+resource, then persists draft JSON + verified binary assets in the draft stores; never
+writes a `ThreadSnapshot`.
 
 #### [`src/adapters/cad/source/python-cad-source-analyzer.ts`](../../../src/adapters/cad/source/python-cad-source-analyzer.ts)
 
@@ -235,11 +272,6 @@ Trusted executor for `design.write-geometry@1`: seals exact bytes from a human-s
 draft into a geometry artifact; no provider call; requires a matching MRTR decision
 before promoting
 
-#### [`src/ui/src/cad/geometry-decision-model.ts`](../../../src/ui/src/cad/geometry-decision-model.ts)
-
-Browser-safe parser for MRTR geometry decision parameters; returns `{ kind: "valid" }`
-or `{ kind: "invalid", reason }`; no domain imports
-
 #### [`src/domain/cad/module-assembly/geometry-module-input-bundle.ts`](../../../src/domain/cad/module-assembly/geometry-module-input-bundle.ts)
 
 Closed `geometry-module-input-bundle/1.0`: canonical manifest, usage-ordered immediate
@@ -247,11 +279,28 @@ occurrences, placements, child-capture and STEP identities, packed offsets, then
 child STEP bytes. Shared literals come from `geometry-module-contract.ts`.
 Encode/decode/re-hash only. No agent CAD source and no exporter
 
+#### [`src/domain/cad/module-assembly/geometry-module-assembly-receipt.ts`](../../../src/domain/cad/module-assembly/geometry-module-assembly-receipt.ts)
+
+Provider-neutral `geometry-module-assembly-receipt/1.0`: stable capability, exact input
+bundle, STEP/GLB identities, and implementation provenance. It carries no
+caller-selected provider or runtime envelope.
+
+#### [`src/application/ports/out/cad/module-assembly/geometry-module-assembler.ts`](../../../src/application/ports/out/cad/module-assembly/geometry-module-assembler.ts)
+
+Single outward assembly port. The application supplies one run id and closed bundle and
+receives the neutral receipt plus immutable STEP/GLB bytes.
+
+#### [`src/adapters/cad/module-assembly/fixed-geometry-module-assembler.ts`](../../../src/adapters/cad/module-assembly/fixed-geometry-module-assembler.ts)
+
+Current Build123d/Microsandbox adapter. It privately selects the fixed execution
+profile, owns generation-zero recovery, and normalizes native evidence behind the
+neutral port.
+
 #### [`src/adapters/cad/module-assembly/geometry-module-assembly-composition.ts`](../../../src/adapters/cad/module-assembly/geometry-module-assembly-composition.ts)
 
-Digest-pinned module-assembler composition: profile-only review facts; empty runtime
-marker reuses the single-source Microsandbox broker and atomic output CAS. Not the
-public export tool and not the sealer
+Digest-pinned module-assembler composition. The empty runtime marker reuses the
+single-source Microsandbox broker and atomic output CAS, then exposes the neutral
+assembler adapter. Not the public export tool and not the sealer
 
 #### [`src/application/ports/in/cad/canonical/project-geometry-module-export.ts`](../../../src/application/ports/in/cad/canonical/project-geometry-module-export.ts)
 
@@ -262,15 +311,15 @@ composite PartDefinition and placement locator only
 
 Server recross of the exact Thread architecture, part-definitions CAS URI/digest/byte
 count, immediate placement coverage, unique active child capture and authoritative STEP
-bytes. A published generation-zero receipt is reopened exactly on retry; outcome-unknown
-never redispatches and no artificial generation one exists. Produces a review-only
-draft. No Thread write
+bytes. It delegates the closed bundle through `GeometryModuleAssembler`, persists the
+returned bytes against the neutral receipt, and produces a review-only draft. No Thread
+write
 
 #### [`src/adapters/cad/module-assembly/geometry-module-export-composition.ts`](../../../src/adapters/cad/module-assembly/geometry-module-export-composition.ts)
 
-Separate composition for the public export vertical. Wires the use case only when the
-same runtime exposes both `IsolatedCodeRunner` and its publication-gated receipt reader.
-Does not enter `createCadProject` or the sealer
+Separate composition for the public export vertical. Wires the use case only when server
+composition supplies a `GeometryModuleAssembler`. Provider/runtime mechanics do not
+enter the application use case or the sealer
 
 #### [`src/tools/project-control/geometry-module-export-tools.ts`](../../../src/tools/project-control/geometry-module-export-tools.ts)
 

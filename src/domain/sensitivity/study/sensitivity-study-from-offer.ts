@@ -1,5 +1,5 @@
 /**
- * Compile a sealable sensitivity-study-case-template/2.0 from a signed
+ * Compile a sealable sensitivity-study-case-template/3.0 from a signed
  * catalog offer plus the sealed proof it already joined.
  *
  * The offer still carries `step.status = not-compiled`. This profile copies
@@ -17,7 +17,7 @@ import type { MechanicalProofCase } from "../../fea/seal-case/mechanical-proof-c
 import { assertSensitivityLiveMethod } from "./sensitivity-live-method.ts";
 import type { ReadySensitivityCatalogOffer } from "./sensitivity-catalog-from-proof.ts";
 import {
-  assembleSensitivityStudyCaseV2,
+  assembleSensitivityStudyCaseV3,
   type SensitivityStudyCaseTemplate,
   validateSensitivityStudyCaseTemplate,
 } from "./sensitivity-study-template.ts";
@@ -99,10 +99,10 @@ export function compileSensitivityStudyTemplateFromOffer(input: {
       "Catalog offer target.componentKey is not the sealed proof target.",
     );
   }
-  assertCopiedSolverFacts(offer, proofCase);
+  assertCopiedMethodFacts(offer, proofCase);
   const step = compileSensitivityStudyStep(proofCase.analysis.mesh);
   const template = validateSensitivityStudyCaseTemplate({
-    schemaVersion: "sensitivity-study-case-template/2.0",
+    schemaVersion: "sensitivity-study-case-template/3.0",
     id: sensitivityStudyCaseIdFromOffer(proofCase, offer),
     revision: 1,
     scope: SENSITIVITY_STUDY_COMPILED_SCOPE,
@@ -112,22 +112,19 @@ export function compileSensitivityStudyTemplateFromOffer(input: {
     baseValue: { value: offer.baseValue.value, unit: step.unit },
     step,
     metrics: offer.metrics,
-    solver: {
-      provider: offer.solver.provider,
-      tool: offer.solver.tool,
-      resultSchemaVersion: offer.solver.resultSchemaVersion,
+    method: {
       mesh: {
-        kind: offer.solver.mesh.kind,
-        targetSizeMm: offer.solver.mesh.targetSize.value,
+        kind: offer.method.mesh.kind,
+        targetSizeMm: offer.method.mesh.targetSize.value,
       },
       material: {
-        model: offer.solver.material.model,
-        eMpa: offer.solver.material.youngModulus.value,
-        nu: offer.solver.material.poissonRatio.value,
-        basis: offer.solver.material.basis,
+        model: offer.method.material.model,
+        eMpa: offer.method.material.youngModulus.value,
+        nu: offer.method.material.poissonRatio.value,
+        basis: offer.method.material.basis,
       },
-      supports: offer.solver.supports,
-      loads: offer.solver.loads,
+      supports: offer.method.supports,
+      loads: offer.method.loads,
     },
     domain: {
       approximationOrder: "first-order-forward",
@@ -146,23 +143,23 @@ export function compileSensitivityStudyTemplateFromOffer(input: {
     },
   });
   assertSensitivityLiveMethod(
-    assembleSensitivityStudyCaseV2(template, TEMPLATE_CAD_SOURCE_PLACEHOLDER),
+    assembleSensitivityStudyCaseV3(template, TEMPLATE_CAD_SOURCE_PLACEHOLDER),
   );
   return deepFreeze(template);
 }
 
-function assertCopiedSolverFacts(
+function assertCopiedMethodFacts(
   offer: ReadySensitivityCatalogOffer,
   proofCase: MechanicalProofCase,
 ): void {
   if (
-    deterministicJson(offer.solver.mesh) !==
+    deterministicJson(offer.method.mesh) !==
       deterministicJson(proofCase.analysis.mesh)
   ) {
     throw new TypeError("The catalog offer mesh is not the sealed proof mesh.");
   }
   if (
-    deterministicJson(offer.solver.material) !==
+    deterministicJson(offer.method.material) !==
       deterministicJson(proofCase.analysis.material)
   ) {
     throw new TypeError(
@@ -170,7 +167,7 @@ function assertCopiedSolverFacts(
     );
   }
   if (
-    deterministicJson(offer.solver.supports) !==
+    deterministicJson(offer.method.supports) !==
       deterministicJson(proofCase.analysis.supports)
   ) {
     throw new TypeError(
@@ -178,20 +175,11 @@ function assertCopiedSolverFacts(
     );
   }
   if (
-    deterministicJson(offer.solver.loads) !==
+    deterministicJson(offer.method.loads) !==
       deterministicJson(proofCase.analysis.loads)
   ) {
     throw new TypeError(
       "The catalog offer loads are not the sealed proof loads.",
-    );
-  }
-  if (
-    offer.solver.provider !== proofCase.solver.provider ||
-    offer.solver.tool !== proofCase.solver.tool ||
-    offer.solver.resultSchemaVersion !== proofCase.solver.resultSchemaVersion
-  ) {
-    throw new TypeError(
-      "The catalog offer solver identity is not the sealed proof solver.",
     );
   }
 }

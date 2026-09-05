@@ -19,6 +19,7 @@ import type {
   ProjectTechnicalSourceCaptureCommand,
   ProjectTechnicalSourceCaptureUseCase,
 } from "../../application/ports/in/compile/admission/project-technical-source-capture.ts";
+import { ProjectTechnicalSourceCaptureError } from "../../application/ports/in/compile/admission/project-technical-source-capture.ts";
 import { compilationPreviewContent } from "../../domain/compile/admission/technical-compilation-preview-review.ts";
 import {
   captureReviewContent,
@@ -63,7 +64,20 @@ export function registerProjectTechnicalCompilationTools(
     const capture = dependencies.technicalSourceCapture;
     app.registerTool(projectTechnicalSourceCaptureTool, async (args) => {
       const command = technicalSourceCaptureCommand(args);
-      const review = await capture.capture(command);
+      let review;
+      try {
+        review = await capture.capture(command);
+      } catch (cause) {
+        if (cause instanceof ProjectTechnicalSourceCaptureError) {
+          // McpApp serialises mapped tool errors as text, not Error properties.
+          // Keep the application rejection fail-closed while making its exact,
+          // server-owned lowerer diagnosis actionable to the MCP caller.
+          throw new TypeError(
+            `project_technical_source_capture rejected (${cause.code}): ${cause.message}`,
+          );
+        }
+        throw cause;
+      }
       return {
         content: captureReviewContent(review),
         structuredContent: review as unknown as Readonly<Record<string, unknown>>,
@@ -79,7 +93,7 @@ export function registerProjectTechnicalCompilationTools(
       const content = compilationPreviewContent({
         status: result.status,
         ...(result.status === "ready-for-review"
-          ? { draftId: result.draft.draftId }
+          ? { draftId: result.draft.draftId, operation: result.operation }
           : {}),
         gaps: result.gaps,
       });
@@ -267,7 +281,7 @@ const projectTechnicalSourceCaptureTool: MCPTool = {
 const projectTechnicalCompilationPreviewTool: MCPTool = {
   name: "project_technical_compilation_preview",
   description:
-    "Compile captured technical sources against the unique current Thread tip using only server-owned analysis, catalog profiles, and unique SysML joins. Name projectId and sourceRefs from project_technical_source_capture result.reference locators; never pass the capture review envelope, capture document, bindings, or profileRequests. Omitted basis is the unique current Thread tip, not latest. A reachable CAD lever is reopened from the source; the server does not invent one. A ready result contains the exact review draft and compilation document. Construct a later MRTR proposal only from decisionParameters returned by the use case; never invent missing parameters. The preview writes no EngineeringProject or Thread state and grants no MRTR or execution authority.",
+    "Compile captured technical sources against the unique current Thread tip using only server-owned analysis, catalog profiles, and unique SysML joins. Name projectId and sourceRefs from project_technical_source_capture result.reference locators; never pass the capture review envelope, capture document, bindings, or profileRequests. Omitted basis is the unique current Thread tip, not latest. A reachable CAD lever is reopened from the source; the server does not invent one. A ready result contains the exact review draft, compilation document, MRTR decisionParameters, and the exact compile.seal-admission@3 operation. Reuse that operation verbatim in the later project_change_append; never reconstruct its sysmlModel binding from a historical snapshot. The preview writes no EngineeringProject or Thread state and grants no MRTR or execution authority.",
   inputSchema: {
     type: "object",
     properties: {

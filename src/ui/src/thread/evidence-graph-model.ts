@@ -5,11 +5,8 @@
  * ThreadSnapshot + AnalysisGraph remain the source of truth. Graphology
  * never grants admission, a join, or an execution.
  *
- * Solves the false-island bug: connected components are computed on the FULL
- * raw graph, and folding (version supersession, analyze.* instruments) is
- * applied AFTER component assignment. A folded connector between two clusters
- * never silently drops their link — it leaves a stub edge that carries the
- * original relation and a human label describing what was folded.
+ * Connected components are computed on the full raw graph before the generic
+ * version projection. No provider, id-prefix or artifact-kind fold is applied.
  *
  * Why MultiDirectedGraph: the painted Sigma canvas is already a directed
  * multigraph. Topology, components, and neighbourhood share that same
@@ -59,10 +56,9 @@ export function graphWithoutAnalysisOverlay(graph: ThreadGraph): ThreadGraph {
 /**
  * A named connected component derived from the FULL raw graph.
  *
- * `name` is derived structurally from the dominant producer system and entity
- * kind present in the component — never from a node label.
- * `intentionallyIsolated` marks components whose isolation from the main
- * cluster is expected (e.g. the thermal Modelica simulation family).
+ * `name` is derived structurally from the recorded system and entity kind
+ * fields. It is graph organisation, not a domain payload reconstruction.
+ * `intentionallyIsolated` is an explicit layout hint supplied by the caller.
  */
 export interface EvidenceGraphComponent {
   readonly id: number;
@@ -74,42 +70,22 @@ export interface EvidenceGraphComponent {
   readonly visibleNodeRefKeys: ReadonlySet<string>;
 }
 
-/**
- * A synthetic connector edge that preserves a link severed by folding.
- *
- * When an analyze.* instrument node that is the only path between two clusters
- * is folded out, a stub is emitted so the canvas can render a "via … — folded"
- * indicator instead of presenting a false island.
- */
-export interface EvidenceGraphStub {
-  readonly id: string;
-  readonly from: ThreadGraphRef;
-  readonly to: ThreadGraphRef;
-  /** Human-readable label of the folded node, used as tooltip / moignon text. */
-  readonly viaLabel: string;
-  readonly relation: ThreadGraphRelation;
-  readonly origin: ThreadGraphEdge["origin"];
-}
-
 export interface EvidenceGraphNeighborhood {
   readonly nodes: readonly ThreadGraphNode[];
   readonly edges: readonly ThreadGraphEdge[];
 }
 
 export interface EvidenceGraphModel {
-  /** Visible nodes for the default canvas (versioned + analyze* folded). */
+  /** Visible nodes for the default canvas after generic version projection. */
   readonly nodes: readonly ThreadGraphNode[];
-  /** Visible edges for the default canvas (versioned + stubs preserved). */
+  /** Visible edges for the default canvas after generic version projection. */
   readonly edges: readonly ThreadGraphEdge[];
   /**
    * Graphology presentation graph: the same visible nodes and recorded
-   * edges, stored as a directed multigraph. Stubs stay a separate list so a
-   * folded instrument never silently becomes a recorded Thread relation.
+   * edges, stored as a directed multigraph.
    * This graph is navigation only — never admission, join, or execution.
    */
   readonly graph: MultiDirectedGraph<ThreadGraphNode, ThreadGraphEdge>;
-  /** Synthetic connector stubs for folded instruments bridging clusters. */
-  readonly stubs: readonly EvidenceGraphStub[];
   /** Connected components from the FULL raw graph. Never re-computed after folding. */
   readonly components: readonly EvidenceGraphComponent[];
   /** Total raw node count before any folding. */
@@ -160,10 +136,9 @@ export function boundedLineageNeighborhood(
     ...upstream.nodes.map((node) => refKey(node.ref)),
     ...downstream.nodes.map((node) => refKey(node.ref)),
   ]);
-  // Add a bounded structural halo around the selected result and its
-  // consequences. This lets a geometry bundle reveal the PartDefinition /
-  // PartUsage identities of the CAD assets it published, while deliberately
-  // avoiding a direction change through an upstream capture hub.
+  // Add a bounded structural halo around the selected record and its
+  // consequences. Only literal recorded structural relations participate;
+  // the Workbench does not reconstruct a provider or domain topology.
   let frontier = new Set([
     refKey(ref),
     ...downstream.nodes.map((node) => refKey(node.ref)),
@@ -182,13 +157,9 @@ export function boundedLineageNeighborhood(
   }
   const nodes = model.nodes.filter((node) => nodeKeys.has(refKey(node.ref)));
   const edgeKeys = new Set<string>();
-  const edges = [
-    ...model.edges.filter((edge) =>
-      nodeKeys.has(refKey(edge.from)) && nodeKeys.has(refKey(edge.to))
-    ),
-    ...upstream.edges.filter((edge) => edge.id.startsWith("stub:")),
-    ...downstream.edges.filter((edge) => edge.id.startsWith("stub:")),
-  ].filter((edge) => {
+  const edges = model.edges.filter((edge) =>
+    nodeKeys.has(refKey(edge.from)) && nodeKeys.has(refKey(edge.to))
+  ).filter((edge) => {
     const key = edgeOccurrenceKey(edge);
     if (edgeKeys.has(key)) return false;
     edgeKeys.add(key);
@@ -199,18 +170,9 @@ export function boundedLineageNeighborhood(
 
 /**
  * Configuration for the evidence graph model.
- *
- * isAnalyzeInstrumentNode is the structural criterion for the analyze.* family.
- * Implementations MUST check against operation identifiers (e.g. prefix of
- * node.ref.id derived from the operation registration), never against
- * node.label or node.summary. The default predicate excludes nothing.
  */
 export interface EvidenceGraphConfig {
-  isAnalyzeInstrumentNode?: (node: ThreadGraphNode) => boolean;
-  /**
-   * Server IDs whose nodes form an intentionally isolated component.
-   * Matched against node.system with exact equality.
-   */
+  /** Exact recorded system ids whose graph component is intentionally isolated. */
   intentionallyIsolatedSystems?: readonly string[];
   /**
    * Canonical versioned projection owned by the Workbench. Sharing it with
@@ -230,7 +192,6 @@ export function buildEvidenceGraphModel(
   familyGraph: ThreadEvidenceFamilyGraph,
   config: EvidenceGraphConfig = {},
 ): EvidenceGraphModel {
-  const isInstrument = config.isAnalyzeInstrumentNode ?? (() => false);
   const isolatedSystems = new Set(config.intentionallyIsolatedSystems ?? []);
 
   // Step 1 — load the FULL raw graph into Graphology. Direction is the BFF
@@ -273,109 +234,23 @@ export function buildEvidenceGraphModel(
     buildVersionedProvenanceProjection(raw, familyGraph);
   const afterVersioning = versionedProjection.graph;
 
-  // Step 4 — identify analyze.* instrument nodes in the versioned projection.
-  const instrumentRefKeys = new Set(
-    afterVersioning.nodes
-      .filter(isInstrument)
-      .map((n) => refKey(n.ref)),
-  );
-
-  // Step 5 — compute visible nodes and edges (instruments removed).
-  const visibleNodes = afterVersioning.nodes.filter(
-    (n) => !instrumentRefKeys.has(refKey(n.ref)),
-  );
+  // Step 4 — keep every record selected by the generic version projection.
+  // Domain-specific Apps own any further presentation; the Workbench never
+  // folds records by provider, artifact kind or id prefix.
+  const visibleNodes = afterVersioning.nodes;
   const visibleRefKeys = new Set(visibleNodes.map((n) => refKey(n.ref)));
+  const visibleEdges = afterVersioning.edges;
 
-  // Step 6 — compute visible edges.
-  // An edge is visible when both endpoints are visible.
-  // When an instrument node is the only path connecting two visible nodes,
-  // we emit a stub that preserves the link for the renderer.
-  const visibleEdges: ThreadGraphEdge[] = [];
-  const stubs: EvidenceGraphStub[] = [];
-  const stubIds = new Set<string>();
-
-  for (const edge of afterVersioning.edges) {
-    const fromKey = refKey(edge.from);
-    const toKey = refKey(edge.to);
-    const fromVisible = visibleRefKeys.has(fromKey);
-    const toVisible = visibleRefKeys.has(toKey);
-
-    if (fromVisible && toVisible) {
-      visibleEdges.push(edge);
-      continue;
-    }
-
-    // One or both endpoints are instruments — try to bridge visible neighbours.
-    if (fromVisible && instrumentRefKeys.has(toKey)) {
-      // `to` is an instrument: emit a stub for each visible node reachable
-      // through `to` within the full graph.
-      const toNode = nodeByRefKey(afterVersioning.nodes, toKey);
-      const downstream = visibleNeighboursOf(
-        toKey,
-        fullGraph,
-        visibleRefKeys,
-        "downstream",
-      );
-      for (const targetKey of downstream) {
-        if (targetKey === fromKey) continue;
-        const target = nodeByRefKey(afterVersioning.nodes, targetKey) ??
-          nodeByRefKey(raw.nodes, targetKey);
-        if (!target) continue;
-        const stubId = `stub:${fromKey}->${targetKey}`;
-        if (stubIds.has(stubId)) continue;
-        stubIds.add(stubId);
-        stubs.push({
-          id: stubId,
-          from: edge.from,
-          to: target.ref,
-          viaLabel: toNode?.label ?? toKey,
-          relation: edge.relation,
-          origin: edge.origin,
-        });
-      }
-      continue;
-    }
-
-    if (instrumentRefKeys.has(fromKey) && toVisible) {
-      // `from` is an instrument: emit a stub from each visible upstream node.
-      const fromNode = nodeByRefKey(afterVersioning.nodes, fromKey);
-      const upstream = visibleNeighboursOf(
-        fromKey,
-        fullGraph,
-        visibleRefKeys,
-        "upstream",
-      );
-      for (const sourceKey of upstream) {
-        if (sourceKey === toKey) continue;
-        const source = nodeByRefKey(afterVersioning.nodes, sourceKey) ??
-          nodeByRefKey(raw.nodes, sourceKey);
-        if (!source) continue;
-        const stubId = `stub:${sourceKey}->${toKey}`;
-        if (stubIds.has(stubId)) continue;
-        stubIds.add(stubId);
-        stubs.push({
-          id: stubId,
-          from: source.ref,
-          to: edge.to,
-          viaLabel: fromNode?.label ?? fromKey,
-          relation: edge.relation,
-          origin: edge.origin,
-        });
-      }
-    }
-  }
-
-  // Step 7 — build component descriptors with names and visibility sets.
+  // Step 5 — build neutral connected-component descriptors.
   const components: EvidenceGraphComponent[] = componentNodeKeys.map(
     (keys, id) => {
       const allNodeRefKeys = new Set(keys);
       const visibleNodeRefKeys = new Set(
         keys.filter((k) => visibleRefKeys.has(k)),
       );
-      // Dominant system: most frequent node.system value in this component.
       const systemCounts = new Map<string, number>();
-      for (const k of keys) {
-        const node = fullGraph.getNodeAttributes(k) as ThreadGraphNode;
+      for (const key of keys) {
+        const node = fullGraph.getNodeAttributes(key) as ThreadGraphNode;
         systemCounts.set(
           node.system,
           (systemCounts.get(node.system) ?? 0) + 1,
@@ -383,8 +258,8 @@ export function buildEvidenceGraphModel(
       }
       const dominantSystem = maxEntry(systemCounts) ?? "unknown";
       const name = componentName(dominantSystem, allNodeRefKeys, fullGraph);
-      const intentionallyIsolated = keys.every((k) => {
-        const node = fullGraph.getNodeAttributes(k) as ThreadGraphNode;
+      const intentionallyIsolated = keys.every((key) => {
+        const node = fullGraph.getNodeAttributes(key) as ThreadGraphNode;
         return isolatedSystems.has(node.system);
       }) && isolatedSystems.size > 0;
       return {
@@ -397,9 +272,7 @@ export function buildEvidenceGraphModel(
     },
   );
 
-  // Step 8 — the visible dossier is one Graphology MultiDirectedGraph.
-  // Neighbourhood walks this graph; stubs stay off it so a folded
-  // instrument cannot be mistaken for a recorded Thread edge.
+  // Step 6 — the visible dossier is one Graphology MultiDirectedGraph.
   const presentation = new MultiDirectedGraph<
     ThreadGraphNode,
     ThreadGraphEdge
@@ -414,7 +287,6 @@ export function buildEvidenceGraphModel(
     nodes: visibleNodes,
     edges: visibleEdges,
     graph: presentation,
-    stubs,
     components,
     rawNodeCount: raw.nodes.length,
     rawEdgeCount: raw.edges.length,
@@ -451,16 +323,9 @@ export function buildEvidenceGraphModel(
         const to = refKey(e.to);
         return visited.has(from) && visited.has(to);
       });
-      const resultStubEdges: ThreadGraphEdge[] = stubs
-        .filter((s) => {
-          const from = refKey(s.from);
-          const to = refKey(s.to);
-          return visited.has(from) && visited.has(to);
-        })
-        .map((s) => stubAsEdge(s));
       return {
         nodes: resultNodes,
-        edges: [...resultEdges, ...resultStubEdges],
+        edges: resultEdges,
       };
     },
   };
@@ -508,46 +373,6 @@ function firstSorted(set: Set<string>): string | undefined {
   return sorted[0];
 }
 
-function nodeByRefKey(
-  nodes: readonly ThreadGraphNode[],
-  key: string,
-): ThreadGraphNode | undefined {
-  return nodes.find((n) => refKey(n.ref) === key);
-}
-
-/**
- * Returns the first visible nodes reachable from `key` through folded nodes
- * in one causal direction. Direction matters: treating a directed evidence
- * graph as undirected can manufacture reverse stubs and cycles that were
- * never recorded in the Thread.
- */
-function visibleNeighboursOf(
-  key: string,
-  graph: MultiDirectedGraph<ThreadGraphNode, ThreadGraphEdge>,
-  visibleRefKeys: Set<string>,
-  direction: "downstream" | "upstream",
-): Set<string> {
-  const result = new Set<string>();
-  const visited = new Set<string>([key]);
-  const queue = [key];
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    const neighbours = direction === "downstream"
-      ? graph.outNeighbors(current)
-      : graph.inNeighbors(current);
-    for (const neighbour of neighbours) {
-      if (visited.has(neighbour)) continue;
-      visited.add(neighbour);
-      if (visibleRefKeys.has(neighbour)) {
-        result.add(neighbour);
-        continue; // stop at first visible hop
-      }
-      queue.push(neighbour); // continue through invisible nodes
-    }
-  }
-  return result;
-}
-
 function maxEntry(counts: Map<string, number>): string | undefined {
   let best: string | undefined;
   let bestCount = -1;
@@ -561,16 +386,15 @@ function maxEntry(counts: Map<string, number>): string | undefined {
 }
 
 /**
- * Derives a human component name from the dominant producer system and the
- * entity kinds present. Uses only structural fields (system, entityKind,
- * artifactKind) — never node labels.
+ * Names a connected graph component from literal recorded fields only. This
+ * remains layout/legend metadata; it never parses a provider payload or
+ * computes a domain result.
  */
 function componentName(
   dominantSystem: string,
   allNodeRefKeys: ReadonlySet<string>,
   graph: MultiDirectedGraph<ThreadGraphNode, ThreadGraphEdge>,
 ): string {
-  // Collect entity kinds.
   const kinds = new Set<string>();
   for (const key of allNodeRefKeys) {
     const node = graph.getNodeAttributes(key) as ThreadGraphNode;
@@ -578,34 +402,17 @@ function componentName(
     if (node.artifactKind) kinds.add(node.artifactKind);
   }
 
-  const systemLabel = SYSTEM_LABEL[dominantSystem] ?? dominantSystem;
-
-  // Dominant entity kind heuristic.
+  const systemLabel = dominantSystem;
   if (kinds.has("evaluation") || kinds.has("violation")) {
     return `${systemLabel} · verification`;
   }
-  if (kinds.has("observation")) {
-    return `${systemLabel} · measurements`;
-  }
-  if (kinds.has("requirement")) {
-    return `${systemLabel} · requirements`;
-  }
+  if (kinds.has("observation")) return `${systemLabel} · measurements`;
+  if (kinds.has("requirement")) return `${systemLabel} · requirements`;
   if (kinds.has("step") || kinds.has("stl") || kinds.has("glb")) {
     return `${systemLabel} · geometry`;
   }
   return systemLabel;
 }
-
-const SYSTEM_LABEL: Record<string, string> = {
-  "digital-thread": "Digital thread",
-  "syson": "SysML",
-  "build123d": "CAD",
-  "calculix": "FEA",
-  "openmodelica": "Thermal",
-  "mcp-modelica": "Thermal",
-  "modelica": "Thermal",
-  "erpnext": "ERP",
-};
 
 function neighboursOn(
   graph: MultiDirectedGraph<ThreadGraphNode, ThreadGraphEdge>,
@@ -615,19 +422,4 @@ function neighboursOn(
   if (direction === "downstream") return graph.outNeighbors(key);
   if (direction === "upstream") return graph.inNeighbors(key);
   return graph.neighbors(key);
-}
-
-/**
- * Converts a stub into a ThreadGraphEdge for inclusion in neighbourhood
- * results. The id encodes the stub origin so callers can distinguish it.
- */
-function stubAsEdge(stub: EvidenceGraphStub): ThreadGraphEdge {
-  return {
-    id: stub.id,
-    from: stub.from,
-    to: stub.to,
-    relation: stub.relation,
-    rationale: `via ${stub.viaLabel} — folded`,
-    origin: stub.origin,
-  };
 }

@@ -20,6 +20,7 @@ import type {
   TechnicalCompilationJoinElement,
   TechnicalCompilationJoinSource,
 } from "./technical-compilation-join.ts";
+import type { TechnicalCompilationAdmissionOperation } from "./technical-compilation-admission-operation.ts";
 
 export const TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY = {
   noNamedNumericLever:
@@ -329,6 +330,8 @@ export function assembleThermalMethodSheetCompilationGaps(
 export function compilationPreviewContent(input: {
   readonly status: TechnicalCompilationStatus;
   readonly draftId?: string;
+  /** Present only for a ready preview; it is server-derived and appendable. */
+  readonly operation?: Pick<TechnicalCompilationAdmissionOperation, "id" | "version">;
   readonly gaps: readonly TechnicalCompilationJoinGap[];
 }): string {
   if (input.status === "ready-for-review") {
@@ -337,7 +340,11 @@ export function compilationPreviewContent(input: {
       `Technical compilation ${draft} is ready for review and was reread from draft CAS. ` +
       `Its document and exact draft reference are not EngineeringProject or Thread state, ` +
       `an MRTR decision, or execution authority. Construct a later MRTR proposal only from ` +
-      `decisionParameters returned by this preview; if none are present, do not invent them.`
+      `decisionParameters returned by this preview; if none are present, do not invent them. ` +
+      (input.operation
+        ? `Reuse the returned ${input.operation.id}@${input.operation.version} operation verbatim ` +
+          `inside the later project_change_append; do not reconstruct its sysmlModel binding. `
+        : "Do not reconstruct a work-item operation from the draft or document. ")
     );
   }
   const explained = input.gaps.map(gapSentence).join(" ");

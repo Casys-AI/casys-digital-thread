@@ -86,9 +86,16 @@ Deno.test("exact executor retry reaches immutable command-service replay instead
     },
   } as unknown as EngineeringProjectRevisionStore;
   const commands = new EngineeringProjectCommandService(store);
+  let retainedLeaseFinalizations = 0;
   const executor = new ReconcileUncertainWriterRunExecutor({
     projects: store,
     commands,
+    retainedCapabilityLeaseFinalizer: {
+      releaseReconciledUncertainWriterLease: () => {
+        retainedLeaseFinalizations++;
+        return Promise.resolve();
+      },
+    },
   });
 
   const result = await executor.execute(origin, command);
@@ -98,6 +105,7 @@ Deno.test("exact executor retry reaches immutable command-service replay instead
   assertEquals(result.id === current.id, false);
   assertEquals(result.commandReceipts?.length, 1);
   assertEquals(commits, 0);
+  assertEquals(retainedLeaseFinalizations, 0);
 
   const conflict = await assertRejects(
     () =>
@@ -116,6 +124,7 @@ Deno.test("exact executor retry reaches immutable command-service replay instead
   );
   assertEquals(differentCommand.code, "invalid_transition");
   assertEquals(commits, 0);
+  assertEquals(retainedLeaseFinalizations, 0);
 });
 
 Deno.test("exact executor retry accepts the immutable legacy annotation-command fingerprint", async () => {
@@ -224,6 +233,115 @@ Deno.test("exact executor retry accepts the immutable legacy annotation-command 
   }
   assertEquals(commits, 0);
 });
+
+Deno.test("did-not-write reconciliation finalizes only the exact retained capability lease after the durable annotation", async () => {
+  const base = didNotWriteReplaySnapshot();
+  const decision = base.decisions[0]!;
+  const decisionFingerprint = await sha256Fingerprint({
+    baseSnapshot: decision.baseSnapshot,
+    inputEvidenceRefs: decision.inputEvidenceRefs,
+    proposal: {
+      summary: decision.proposal!.summary,
+      parameters: decision.proposal!.parameters,
+    },
+  });
+  const sealed: EngineeringProjectSnapshot = {
+    ...base,
+    decisions: [{ ...decision, inputFingerprint: decisionFingerprint }],
+    approvals: base.approvals.map((approval) => ({
+      ...approval,
+      inputFingerprint: decisionFingerprint,
+    })),
+  };
+  const origin = { kind: "human" as const, actorId: "operator" };
+  const command = {
+    commandId: "reconcile-command",
+    projectId: "project",
+    expectedRevision: 8,
+    issuedAt: "2026-08-10T00:00:00.000Z",
+    runId: "run:reconcile",
+  };
+  const serviceCommand = {
+    commandId: command.commandId,
+    projectId: command.projectId,
+    expectedRevision: command.expectedRevision,
+    issuedAt: command.issuedAt,
+    reconciliationRunId: command.runId,
+    failedRunId: "run:failed",
+    decisionId: "decision:reconcile",
+    outcome: "provider-did-not-write" as const,
+    providerInspectionAttestation: "Provider history shows no write.",
+  };
+  const requestFingerprint = await sha256Fingerprint({
+    type: "agent-run.reconcile-annotation",
+    origin,
+    command: serviceCommand,
+  });
+  const historical: EngineeringProjectSnapshot = {
+    ...sealed,
+    commandReceipts: [{
+      ...sealed.commandReceipts![0]!,
+      requestFingerprint,
+    }],
+  };
+  const store = {
+    get: () => Promise.resolve(historical),
+    getRevision: (_projectId: string, revision: number) =>
+      Promise.resolve(revision === historical.revision ? historical : undefined),
+    commit: () => Promise.reject(new Error("replay must never commit")),
+  } as unknown as EngineeringProjectRevisionStore;
+  const released: unknown[] = [];
+  const executor = new ReconcileUncertainWriterRunExecutor({
+    projects: store,
+    commands: new EngineeringProjectCommandService(store),
+    retainedCapabilityLeaseFinalizer: {
+      releaseReconciledUncertainWriterLease: (input) => {
+        released.push(input);
+        return Promise.resolve();
+      },
+    },
+  });
+
+  await executor.execute(origin, command);
+
+  assertEquals(released, [{
+    project: historical,
+    failedRunId: "run:failed",
+    reconciliationRunId: "run:reconcile",
+  }]);
+});
+
+function didNotWriteReplaySnapshot(): EngineeringProjectSnapshot {
+  const base = replaySnapshot();
+  const failed = base.agentRuns.find((run) => run.id === "run:failed")!;
+  const decision = base.decisions[0]!;
+  return {
+    ...base,
+    agentRuns: base.agentRuns.map((run) =>
+      run.id !== failed.id ? run : {
+        ...run,
+        uncertainWriterReconciliation: {
+          ...failed.uncertainWriterReconciliation!,
+          outcome: "provider-did-not-write" as const,
+          providerInspectionAttestation: "Provider history shows no write.",
+        },
+      }
+    ),
+    decisions: [{
+      ...decision,
+      proposal: {
+        ...decision.proposal!,
+        parameters: decision.proposal!.parameters.map((parameter) =>
+          parameter.key === "reconcileOutcome"
+            ? { ...parameter, value: "provider-did-not-write" }
+            : parameter.key === "reconcileAttestation"
+            ? { ...parameter, value: "Provider history shows no write." }
+            : parameter
+        ),
+      },
+    }],
+  };
+}
 
 function replaySnapshot(): EngineeringProjectSnapshot {
   const reconciliation = {

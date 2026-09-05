@@ -45,7 +45,10 @@ import {
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "../../shared/cas/file-capture-store.ts";
 import { FileEngineeringProjectRevisionStore } from "../../shared/stores/engineering-project-store.ts";
-import { FileEngineeringProjectRunLease } from "../../shared/stores/file-engineering-project-run-lease.ts";
+import {
+  type EngineeringProjectRunLease,
+  FileEngineeringProjectRunLease,
+} from "../../shared/stores/file-engineering-project-run-lease.ts";
 import {
   architectureWritePlanDigest,
   FileArchitectureAttemptStore,
@@ -77,12 +80,20 @@ import { ExactThreadCompletionEvidenceValidator } from "../../validators/enginee
 import { ExactInitialBaselineEvidenceValidator } from "../../project/engineering-project-initial-baseline-evidence-validator.ts";
 import { resolveGenericProductStructureCatalog } from "./product-structure-catalog.ts";
 import type {
+  EngineeringDecisionProposalParameter,
+} from "../../../domain/project/engineering-project.ts";
+import type {
   ThreadArtifact,
   ThreadSnapshot,
 } from "../../../domain/thread/thread-snapshot.ts";
 import type { ContentFingerprint } from "../../../domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../../shared/stores/live-thread-update-store.ts";
+import {
+  passthroughCapabilityRuntimeConnection,
+  recordingCapabilityRuntimeSession,
+  successfulCapabilityRuntimeFor,
+} from "../../../testing/capability-runtime-execution-session-test-support.ts";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -1274,8 +1285,15 @@ async function queuedArchitectureFixture(
     snapshots,
     captures: seedCaptures,
     attempts: seedAttempts,
-    syson: new SeedSyson(),
+    capabilityRuntimeConnection: passthroughCapabilityRuntimeConnection(
+      new SeedSyson(),
+    ),
     lease: new FileEngineeringProjectRunLease(`${directory}/seed-leases`),
+    ...successfulCapabilityRuntimeFor(
+      PROJECT_ID,
+      SYSON_MODEL_SEED_OPERATION,
+      "model.author-system",
+    ),
     now: () => "2026-08-08T12:10:00.000Z",
   }).execute(AGENT, {
     commandId: "agent-seed",
@@ -1427,12 +1445,21 @@ function makeExecutor(
     leaseSubdir?: string;
     snapshots?: ThreadSnapshotStore;
     attempts?: FileArchitectureAttemptStore;
+    lease?: EngineeringProjectRunLease;
     captures?: FileCaptureStore<"architecture-capture">;
     sysmlSourceAnalysis?: SysmlSourceAnalysisCaptureService;
     projects?: EngineeringProjectRevisionStore;
     liveUpdates?: LiveThreadUpdateMilestoneJournal;
+    capabilityRuntimeSession?: ReturnType<
+      typeof recordingCapabilityRuntimeSession
+    >;
   },
 ): ModelWriteArchitectureRunExecutor {
+  const capability = successfulCapabilityRuntimeFor(
+    PROJECT_ID,
+    MODEL_WRITE_ARCHITECTURE_OPERATION,
+    "model.author-system",
+  );
   return new ModelWriteArchitectureRunExecutor({
     projects: options.projects ?? fixture.projects,
     commands: fixture.commands,
@@ -1443,9 +1470,12 @@ function makeExecutor(
       fixture.sysmlSourceAnalysis,
     attempts: options.attempts ?? fixture.archAttempts,
     syson: options.syson,
-    lease: new FileEngineeringProjectRunLease(
+    lease: options.lease ?? new FileEngineeringProjectRunLease(
       `${options.directory}/${options.leaseSubdir ?? "arch-leases"}`,
     ),
+    capabilityRuntime: capability.capabilityRuntime,
+    capabilityRuntimeSession: options.capabilityRuntimeSession ??
+      capability.capabilityRuntimeSession,
     liveUpdates: options.liveUpdates,
     now: () => options.nowStr ?? "2026-08-08T12:15:00.000Z",
   });
@@ -1554,6 +1584,11 @@ async function queuedArchitectureBasisSnapshot(
 async function queueArchitectureEnrichment(
   fixture: Pick<ArchFixture, "projects" | "commands" | "snapshots">,
   completed: Awaited<ReturnType<ModelWriteArchitectureRunExecutor["execute"]>>,
+  options: {
+    readonly parameters?: readonly EngineeringDecisionProposalParameter[];
+    readonly proposalSummary?: string;
+    readonly runSummary?: string;
+  } = {},
 ): Promise<{ readonly revision: number; readonly runId: string }> {
   const firstRun = completed.agentRuns.find((run) => run.id === "run:architecture");
   assertExists(firstRun?.resultSnapshot);
@@ -1601,8 +1636,8 @@ async function queueArchitectureEnrichment(
       subjectId: base.subject.id,
     },
     proposal: {
-      summary: "Add Motor to DroneV4",
-      parameters: DRONE_ENRICHMENT_PARAMS,
+      summary: options.proposalSummary ?? "Add Motor to DroneV4",
+      parameters: options.parameters ?? DRONE_ENRICHMENT_PARAMS,
     },
   });
   const approval = project.approvals.find((candidate) =>
@@ -1619,7 +1654,7 @@ async function queueArchitectureEnrichment(
     ...ctx("queue-architecture-enrichment", project.revision),
     runId: "run:architecture-enrichment",
     workItemId: "wi:architecture-enrichment",
-    summary: "Add Motor to DroneV4.",
+    summary: options.runSummary ?? "Add Motor to DroneV4.",
     basis: {
       kind: "thread-snapshot",
       snapshotId: base.id,
@@ -2759,6 +2794,103 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "model.write-architecture rejects a predecessor package change before lease, WAL, provider, or project mutation",
+  async () => {
+    class RecordingAttemptStore extends FileArchitectureAttemptStore {
+      readonly calls: string[] = [];
+
+      override async begin(
+        input: Parameters<FileArchitectureAttemptStore["begin"]>[0],
+      ) {
+        this.calls.push("begin");
+        return await super.begin(input);
+      }
+
+      override async readRun(projectId: string, runId: string) {
+        this.calls.push("readRun");
+        return await super.readRun(projectId, runId);
+      }
+
+      override async quarantine(
+        input: Parameters<FileArchitectureAttemptStore["quarantine"]>[0],
+      ) {
+        this.calls.push("quarantine");
+        return await super.quarantine(input);
+      }
+
+      override async isQuarantined(projectId: string, runId: string) {
+        this.calls.push("isQuarantined");
+        return await super.isQuarantined(projectId, runId);
+      }
+    }
+
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-package-scope-",
+    });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const initial = await makeExecutor(fixture, {
+        syson: new InitialArchSyson(),
+        directory,
+      }).execute(AGENT, executionCommand(fixture));
+      const changedPackageParameters = DRONE_ENRICHMENT_PARAMS.map((parameter) =>
+        parameter.key === "architecture.package"
+          ? { ...parameter, value: "DroneV4Mechanism" }
+          : parameter
+      );
+      const queued = await queueArchitectureEnrichment(fixture, initial, {
+        parameters: changedPackageParameters,
+        proposalSummary: "Attempt a second architecture Package.",
+        runSummary: "Attempt unsupported multi-package architecture.",
+      });
+      const syson = new EnrichmentArchSyson();
+      const attempts = new RecordingAttemptStore(`${directory}/blocked-attempts`);
+      const leaseCalls: Array<{ projectId: string; scope: string }> = [];
+      const lease: EngineeringProjectRunLease = {
+        async withLease<T>(
+          projectId: string,
+          scope: string,
+          operation: () => Promise<T>,
+        ): Promise<T> {
+          leaseCalls.push({ projectId, scope });
+          return await operation();
+        },
+      };
+      const before = await fixture.projects.get(PROJECT_ID);
+      assertExists(before);
+
+      const error = await assertRejects(
+        () =>
+          makeExecutor(fixture, {
+            syson,
+            directory,
+            attempts,
+            lease,
+          }).execute(AGENT, {
+            commandId: "agent-refuse-package-change",
+            projectId: PROJECT_ID,
+            expectedRevision: queued.revision,
+            issuedAt: "2026-08-08T12:20:00.000Z",
+            runId: queued.runId,
+          }),
+        EngineeringProjectCommandError,
+        "predecessor_package_name_changed",
+      );
+      assertEquals(error.code, "invalid_transition");
+      assertEquals(leaseCalls, []);
+      assertEquals(syson.calls, []);
+      assertEquals(attempts.calls, []);
+      assertEquals(
+        deterministicJson(await fixture.projects.get(PROJECT_ID)),
+        deterministicJson(before),
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
 function deferred<T>(): {
   readonly promise: Promise<T>;
   readonly resolve: (value: T | PromiseLike<T>) => void;
@@ -3452,6 +3584,132 @@ Deno.test(
 );
 
 Deno.test(
+  "model.write-architecture dispatched WAL never opens a JIT session",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-wal-no-jit-",
+    });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      await fixture.archAttempts.begin(
+        await currentWalInput(fixture, {
+          runId: fixture.queued.runId,
+          dispatchedAt: "2026-08-08T12:15:00.000Z",
+        }),
+      );
+      const session = recordingCapabilityRuntimeSession();
+      const syson = new InitialArchSyson();
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, {
+            syson,
+            directory,
+            capabilityRuntimeSession: session,
+          }).execute(AGENT, executionCommand(fixture)),
+        EngineeringProjectCommandError,
+        "outcome is unknown",
+      );
+      assertEquals(session.events, []);
+      assertEquals(syson.calls.length, 0);
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture opens JIT before claim and SysON, and keeps the run queued if begin fails",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-jit-order-",
+    });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const events: string[] = [];
+      const session = recordingCapabilityRuntimeSession(async (input) => {
+        events.push("begin");
+        await input.recheck();
+        return {
+          lease: { id: "capability-jit-arch" } as never,
+          releaseTerminal: () => Promise.resolve(),
+          retainForRecovery: () => undefined,
+        };
+      });
+      const syson = new InitialArchSyson();
+      const originalInsert = syson.callTool.bind(syson);
+      syson.callTool = (call) => {
+        events.push(`provider:${call.name}`);
+        return originalInsert(call);
+      };
+      const commands = Object.create(
+        fixture.commands,
+      ) as typeof fixture.commands;
+      commands.claimRun = (origin, command) => {
+        events.push("claim");
+        return fixture.commands.claimRun(origin, command);
+      };
+      const executor = new ModelWriteArchitectureRunExecutor({
+        projects: fixture.projects,
+        commands,
+        snapshots: fixture.snapshots,
+        seedCaptures: fixture.seedCaptures,
+        captures: fixture.archCaptures,
+        sysmlSourceAnalysis: fixture.sysmlSourceAnalysis,
+        attempts: fixture.archAttempts,
+        syson,
+        lease: new FileEngineeringProjectRunLease(`${directory}/arch-leases`),
+        ...successfulCapabilityRuntimeFor(
+          PROJECT_ID,
+          MODEL_WRITE_ARCHITECTURE_OPERATION,
+          "model.author-system",
+        ),
+        capabilityRuntimeSession: session,
+        now: () => "2026-08-08T12:15:00.000Z",
+      });
+      await executor.execute(AGENT, executionCommand(fixture));
+      assertEquals(events[0], "begin");
+      assertEquals(events.includes("claim"), true);
+      assertEquals(events.indexOf("begin") < events.indexOf("claim"), true);
+      assertEquals(
+        events.indexOf("claim") <
+          events.findIndex((event) => event.startsWith("provider:")),
+        true,
+      );
+
+      const failing = recordingCapabilityRuntimeSession(() =>
+        Promise.reject(new Error("exact SysON host group unavailable"))
+      );
+      const fixture2 = await queuedArchitectureFixture(
+        `${directory}/second`,
+      );
+      const syson2 = new InitialArchSyson();
+      await assertRejects(
+        () =>
+          makeExecutor(fixture2, {
+            syson: syson2,
+            directory: `${directory}/second`,
+            capabilityRuntimeSession: failing,
+          }).execute(AGENT, executionCommand(fixture2)),
+        Error,
+        "host group unavailable",
+      );
+      assertEquals(failing.events, ["begin"]);
+      assertEquals(failing.releases, 0);
+      assertEquals(failing.retains, 0);
+      assertEquals(syson2.calls.length, 0);
+      assertEquals(
+        (await fixture2.projects.get(PROJECT_ID))?.agentRuns.find((run) =>
+          run.id === fixture2.queued.runId
+        )?.status,
+        "queued",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
   "model.write-architecture rejects reordered v3 WAL items or selectors before CAS reopen and provider access",
   async () => {
     class ReopenProbe extends SysmlSourceAnalysisCaptureService {
@@ -3863,9 +4121,16 @@ Deno.test(
           snapshots: snapshots2,
           captures: seedCaptures2,
           attempts: seedAttempts2,
-          syson: new SeedSyson(),
+          capabilityRuntimeConnection: passthroughCapabilityRuntimeConnection(
+            new SeedSyson(),
+          ),
           lease: new FileEngineeringProjectRunLease(
             `${directory2}/seed-leases`,
+          ),
+          ...successfulCapabilityRuntimeFor(
+            PROJECT_ID,
+            SYSON_MODEL_SEED_OPERATION,
+            "model.author-system",
           ),
           now: () => "2026-08-08T12:10:00.000Z",
         }).execute(AGENT, {
@@ -3935,6 +4200,11 @@ Deno.test(
           } as unknown as McpToolClient,
           lease: new FileEngineeringProjectRunLease(
             `${directory2}/arch-leases`,
+          ),
+          ...successfulCapabilityRuntimeFor(
+            PROJECT_ID,
+            MODEL_WRITE_ARCHITECTURE_OPERATION,
+            "model.author-system",
           ),
           now: () => "2026-08-08T12:15:00.000Z",
         });

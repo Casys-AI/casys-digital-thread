@@ -2,7 +2,7 @@
  * Canonical geometry-module Thread evidence after the existing geometry seal.
  *
  * The capture recrosses the signed manifest, the same input-bundle identity,
- * the isolation receipt, and the produced assembly STEP plus binary GLB. It
+ * the provider-neutral assembly receipt, and the produced assembly STEP plus binary GLB. It
  * does not invent a second receipt vocabulary.
  */
 
@@ -15,7 +15,7 @@ import {
   safeId,
 } from "../../kernel/case-validation.ts";
 import { fingerprintsEqual } from "../../kernel/deterministic-json.ts";
-import type { IsolatedCodeExecutionReceiptRecord } from "../../compile/isolation/isolated-code-execution.ts";
+import type { GeometryModuleAssemblyReceipt } from "../module-assembly/geometry-module-assembly-receipt.ts";
 import type { ProjectSourceClosureLocator } from "../../project-source-workspace/closure.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "./geometry-proposal.ts";
 import {
@@ -44,7 +44,7 @@ import {
   samePlacementAnalysis,
   sameStructureCapture,
 } from "./geometry-module-identities.ts";
-import { recrossGeometryModuleIsolation } from "./geometry-module-isolation.ts";
+import { recrossGeometryModuleAssembly } from "./geometry-module-assembly-recross.ts";
 import {
   type GeometryModuleManifest,
   parseGeometryModuleManifest,
@@ -70,15 +70,25 @@ export interface GeometryModuleCapture {
   readonly children: ReadonlyArray<GeometryModuleChild>;
   readonly predecessor?: GeometryModulePredecessor;
   readonly inputBundle: GeometryModuleInputBundleIdentity;
-  readonly receipt: IsolatedCodeExecutionReceiptRecord;
+  readonly receipt: GeometryModuleAssemblyReceipt;
   readonly assemblyStep: GeometryModuleAssetIdentity;
   readonly assemblyGlb: GeometryModuleAssetIdentity;
   readonly sealedAt: string;
 }
 
-export async function parseGeometryModuleCapture(
+export function parseGeometryModuleCapture(
   value: unknown,
 ): Promise<GeometryModuleCapture> {
+  try {
+    return Promise.resolve(parseGeometryModuleCaptureValue(value));
+  } catch (error) {
+    return Promise.reject(error);
+  }
+}
+
+function parseGeometryModuleCaptureValue(
+  value: unknown,
+): GeometryModuleCapture {
   const root = closedRecord(
     value,
     [
@@ -249,7 +259,7 @@ export async function parseGeometryModuleCapture(
       "Module capture assembly assets must equal the signed STEP and GLB fingerprints.",
     );
   }
-  const receipt = await recrossGeometryModuleIsolation(
+  const receipt = recrossGeometryModuleAssembly(
     inputBundle,
     root.receipt,
     assemblyStep,

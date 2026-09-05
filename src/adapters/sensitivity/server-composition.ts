@@ -8,6 +8,11 @@
  */
 
 import type { EngineeringProjectRevisionStore } from "../../application/ports/out/engineering-project-revision-store.ts";
+import type {
+  CapabilityRuntimeExecutionEligibility,
+  CapabilityRuntimeLaunchGroupRegistry,
+} from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import type { CapabilityRuntimeExecutionSessionCoordinator } from "../../application/control-plane/capability-runtime-execution-session.ts";
 import type { EngineeringProjectCommandService } from "../../application/use-cases/project/engineering-project-command-service.ts";
 import { PreviewProjectTechnicalCompilation } from "../../application/use-cases/compile/admission/preview-project-technical-compilation.ts";
 import { PrepareProjectSensitivityBaseEvaluationReview } from "../../application/use-cases/sensitivity/base-evaluation/prepare-project-sensitivity-base-evaluation-review.ts";
@@ -16,8 +21,6 @@ import { PrepareProjectVectorCorrectionReview } from "../../application/use-case
 import { parseSysonModelSeedCapture } from "../../domain/architecture/seed/syson-model-seed.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
-import { IsolatedStepSolverStager } from "../assets/isolated-step-solver-stager.ts";
-import { DockerVolumeAssetStager } from "../assets/container-asset-stager.ts";
 import { findArchitectureArtifact } from "../architecture/renderer/model-write-architecture-run-executor.ts";
 import type { Build123dExecutionComposition } from "../cad/isolated/build123d-execution-composition.ts";
 
@@ -27,6 +30,7 @@ import {
   FileCaptureStore,
   SENSITIVITY_BASE_EVALUATION_CAPTURE_DESCRIPTOR,
   SENSITIVITY_EDGES_CAPTURE_DESCRIPTOR,
+  SENSITIVITY_RUNTIME_PROVENANCE_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
 } from "../shared/cas/file-capture-store.ts";
@@ -47,7 +51,12 @@ import {
   AnalyzeRunFeaSensitivityRunExecutor,
 } from "./live-fea/analyze-run-fea-sensitivity-run-executor.ts";
 import { FileFeaSensitivityAttemptStore } from "./live-fea/file-fea-sensitivity-attempt-store.ts";
-import { McpCalculixSensitivitySolver } from "./live-fea/mcp-calculix-sensitivity-solver.ts";
+import {
+  createFixedMcpCalculixSensitivitySolver,
+} from "./live-fea/mcp-calculix-sensitivity-solver.ts";
+import {
+  CapabilityRuntimeCalculixInputStagerFactory,
+} from "./live-fea/capability-runtime-calculix-input-stager.ts";
 import {
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
   AnalyzeSealSensitivityStudyRunExecutor,
@@ -57,11 +66,6 @@ import {
   DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
   DesignApplyVectorCorrectionRunExecutor,
 } from "./vector-correction/design-apply-vector-correction-run-executor.ts";
-import { FileSensitivityExperienceRepository } from "./experience/file-sensitivity-experience-repository.ts";
-import { FileSensitivityExperienceReuseAttemptStore } from "./experience/file-sensitivity-experience-reuse-attempt-store.ts";
-import { SensitivityExperienceCoordinator } from "./experience/sensitivity-experience-coordinator.ts";
-import type { SensitivityExperienceSolverRuntimeAuthority } from "./experience/sensitivity-experience-coordinator.ts";
-import { solverRuntimeIdentityFromImageReference } from "../../domain/sensitivity/experience/sensitivity-experience.ts";
 
 export {
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
@@ -86,13 +90,17 @@ export interface SensitivityCompositionOptions {
   >;
   readonly sysonModelSeedCaptures: FileCaptureStore<"syson-model-seed">;
   readonly build123dExecution: Build123dExecutionComposition | undefined;
-  readonly calculixMcpUrl?: string;
-  readonly calculixRuntimeImage?: string;
-  readonly sensitivitySolverRuntimeAuthority?:
-    SensitivityExperienceSolverRuntimeAuthority;
+  /** Cold server-owned authorization recheck for the fixed CalculiX binding. */
+  readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
+  /** Starts the sealed JIT group before run/WAL/provider/CAD mutation. */
+  readonly capabilityRuntimeSession?: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin"
+  >;
+  /** Exact server-owned registry, used only after the JIT lease is active. */
+  readonly capabilityRuntimeLaunchGroups?: CapabilityRuntimeLaunchGroupRegistry;
   readonly sysonMcpUrl?: string;
   readonly sensitivityStepCacheDirectory: string;
-  readonly sensitivityExperienceDirectory?: string;
 }
 
 export interface SensitivityComposition {
@@ -173,72 +181,37 @@ export function createSensitivityComposition(
     lease: options.lease,
   });
   const feaSensitivityAttempts = new FileFeaSensitivityAttemptStore();
-  const experienceRepository = options.calculixRuntimeImage &&
-      options.sensitivitySolverRuntimeAuthority
-    ? new FileSensitivityExperienceRepository(
-      options.sensitivityExperienceDirectory ??
-        "state/local/sensitivity-experience",
-    )
-    : undefined;
-  const experienceCoordinator = experienceRepository && options.calculixRuntimeImage &&
-      options.sensitivitySolverRuntimeAuthority
-    ? new SensitivityExperienceCoordinator({
-      repository: experienceRepository,
-      projects: options.projects,
-      snapshots: options.snapshots,
-      caseCaptures: sensitivityCaseCaptures,
-      studyCaptures: sensitivityStudyCaptures,
-      admissions: options.admissions,
-      executionAttempts: feaSensitivityAttempts,
-      solverRuntime: solverRuntimeIdentityFromImageReference(
-        options.calculixRuntimeImage,
-      ),
-      solverRuntimeAuthority: options.sensitivitySolverRuntimeAuthority,
-    })
-    : undefined;
   const analyzeRunFeaSensitivity =
     options.build123dExecution?.execution !== undefined &&
-      options.calculixMcpUrl
+      options.capabilityRuntime !== undefined &&
+      options.capabilityRuntimeSession !== undefined &&
+      options.capabilityRuntimeLaunchGroups !== undefined
       ? new AnalyzeRunFeaSensitivityRunExecutor({
         projects: options.projects,
         commands: options.commands,
         snapshots: options.snapshots,
         caseCaptures: sensitivityCaseCaptures,
         studyCaptures: sensitivityStudyCaptures,
+        runtimeProvenanceCaptures: new FileCaptureStore(
+          SENSITIVITY_RUNTIME_PROVENANCE_CAPTURE_DESCRIPTOR,
+        ),
         admissions: options.admissions,
         profiles: options.build123dExecution.profiles,
         runner: options.build123dExecution.execution.runner,
-        stager: new IsolatedStepSolverStager(
-          options.sensitivityStepCacheDirectory,
-          new DockerVolumeAssetStager({
-            service: "mcp-calculix",
-            containerDirectory: "/inputs",
-          }),
-        ),
-        solver: new McpCalculixSensitivitySolver(
-          new HttpMcpToolClient({
-            mcpUrl: options.calculixMcpUrl,
-            timeoutMs: 180_000,
-          }),
-        ),
+        stagerFactory: new CapabilityRuntimeCalculixInputStagerFactory({
+          groups: options.capabilityRuntimeLaunchGroups,
+          hostCacheDirectory: options.sensitivityStepCacheDirectory,
+        }),
+        solver: createFixedMcpCalculixSensitivitySolver(),
         attempts: feaSensitivityAttempts,
-        ...(experienceCoordinator && experienceRepository
-          ? {
-            experience: {
-              coordinator: experienceCoordinator,
-              attempts: new FileSensitivityExperienceReuseAttemptStore(
-                `${
-                  options.sensitivityExperienceDirectory ??
-                    "state/local/sensitivity-experience"
-                }/reuse-attempts`,
-              ),
-            },
-          }
-          : {}),
+        capabilityRuntime: options.capabilityRuntime,
+        capabilityRuntimeSession: options.capabilityRuntimeSession,
         lease: options.lease,
       })
       : undefined;
-  const verifyEvaluateSensitivityBase = options.sysonMcpUrl
+  const verifyEvaluateSensitivityBase = options.sysonMcpUrl !== undefined &&
+      options.capabilityRuntime !== undefined &&
+      options.capabilityRuntimeSession !== undefined
     ? new VerifyEvaluateSensitivityBaseRunExecutor({
       projects: options.projects,
       commands: options.commands,
@@ -250,9 +223,13 @@ export function createSensitivityComposition(
         timeoutMs: 30_000,
       }),
       lease: options.lease,
+      capabilityRuntime: options.capabilityRuntime,
+      capabilityRuntimeSession: options.capabilityRuntimeSession,
     })
     : undefined;
-  const modelWriteSensitivityEdges = options.sysonMcpUrl
+  const modelWriteSensitivityEdges = options.sysonMcpUrl !== undefined &&
+      options.capabilityRuntime !== undefined &&
+      options.capabilityRuntimeSession !== undefined
     ? new ModelWriteSensitivityEdgesRunExecutor({
       projects: options.projects,
       commands: options.commands,
@@ -291,6 +268,8 @@ export function createSensitivityComposition(
       },
       attempts: new FileSensitivityEdgesAttemptStore(),
       lease: options.lease,
+      capabilityRuntime: options.capabilityRuntime,
+      capabilityRuntimeSession: options.capabilityRuntimeSession,
     })
     : undefined;
   return {

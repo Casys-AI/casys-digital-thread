@@ -9,6 +9,17 @@
  * capture document.
  */
 
+import {
+  isDurableTerminalAgentRunStatus,
+  requireConfiguredOperationalCapability,
+  settleCapabilityRuntimeSession,
+} from "../../../application/control-plane/capability-runtime-execution-admission.ts";
+import {
+  type CapabilityRuntimeExecutionSession,
+  type CapabilityRuntimeExecutionSessionCoordinator,
+  CapabilityRuntimeSessionUnavailableError,
+} from "../../../application/control-plane/capability-runtime-execution-session.ts";
+import type { CapabilityRuntimeExecutionEligibility } from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import type { EngineeringProjectCommandOrigin } from "../../../application/ports/in/engineering-project-command-origin.ts";
 import type { RegisteredProjectRunExecutorCommand } from "../../../application/ports/in/project-run-executor.ts";
 import {
@@ -31,6 +42,7 @@ import {
   type IsolatedCodeRunner,
   type IsolatedCodeRunRecovery,
   type IsolatedOutputPublicationReader,
+  type IsolatedOutputRunPublicationResolution,
 } from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
 import type {
   ReopenedTechnicalCompilationAdmission,
@@ -90,6 +102,10 @@ import {
 } from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import type {
+  CapabilityRuntimeHostLifecycle,
+  ResolvedCapabilityRuntimeOperation,
+} from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type {
   EngineeringAgentRun,
   EngineeringApproval,
   EngineeringDecision,
@@ -97,6 +113,7 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotBasis,
+  EngineeringWorkItem,
 } from "../../../domain/project/engineering-project.ts";
 import type {
   ThreadArtifact,
@@ -118,10 +135,11 @@ import {
   snapshotRef,
   unexpectedStatus,
 } from "../../shared/executor-run-helpers.ts";
+import { threadWriteBasisLeaseScope } from "../../shared/thread-write-basis-guard.ts";
 import {
-  assertThreadWriteBasisAvailable,
-  threadWriteBasisLeaseScope,
-} from "../../shared/thread-write-basis-guard.ts";
+  BUILD123D_ISOLATED_WORKER_MATERIAL_ID,
+  BUILD123D_ISOLATED_WORKER_UNIT_ID,
+} from "./worker-contract.ts";
 
 export { DESIGN_EXECUTE_BUILD123D_OPERATION };
 
@@ -193,27 +211,64 @@ export interface DesignExecuteBuild123dRunExecutorDependencies {
   readonly drafts: Build123dExecutionDraftStore;
   readonly captures: Build123dExecutionCaptureStore;
   readonly lease: EngineeringProjectRunLease;
+  /**
+   * Server-owned operational envelope recheck. Isolated execution is
+   * fail-closed until this seam admits the exact queued binding.
+   */
+  readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
+  /** JIT host session. Entered only after the final cold recheck. */
+  readonly capabilityRuntimeSession?: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin" | "releaseRecorded"
+  >;
 }
 
-interface ReviewedExecutionContext {
+interface PreparedReviewedExecution {
   readonly admission: Build123dExecutionAdmission;
   readonly reopened: ReopenedTechnicalCompilationAdmission;
   readonly request: IsolatedCodeExecutionRequest;
+  readonly profile: Build123dExecutionProfile;
+  readonly executionRunId: string;
+}
+
+interface ReviewedExecutionContext extends PreparedReviewedExecution {
   readonly attemptIdentity: Build123dExecutionAttemptIdentity;
   readonly attemptFingerprint: ContentFingerprint;
 }
 
-async function reopenReviewedExecutionContext(input: {
+interface ColdBuild123dExecution {
+  readonly prepared: PreparedReviewedExecution;
+  readonly approval: Awaited<ReturnType<typeof requireMrtrApproval>>;
+  readonly admission: Build123dExecutionAdmission;
+  readonly basisSnapshot: ThreadSnapshot;
+}
+
+interface AuthorizedBuild123dExecution extends ColdBuild123dExecution {
+  readonly operationalCapability: ResolvedCapabilityRuntimeOperation;
+}
+
+type PublishedIsolatedOutputRunPublicationResolution = Extract<
+  IsolatedOutputRunPublicationResolution,
+  { readonly status: "published" }
+>;
+
+type ColdBuild123dRecoveryDisposition =
+  | {
+    readonly kind: "replay";
+    readonly publishedResolution?: PublishedIsolatedOutputRunPublicationResolution;
+  }
+  | { readonly kind: "requires-jit" };
+
+async function prepareReviewedExecution(input: {
   readonly admissions: TechnicalCompilationAdmissionReader;
   readonly profiles: Build123dExecutionProfileCatalog;
   readonly project: EngineeringProjectSnapshot;
   readonly run: EngineeringAgentRun;
   readonly basisSnapshot: ThreadSnapshot;
   readonly decision: EngineeringDecision;
-  readonly approval: EngineeringApproval;
   readonly admission: Build123dExecutionAdmission;
   readonly executionRunId: string;
-}): Promise<ReviewedExecutionContext> {
+}): Promise<PreparedReviewedExecution> {
   const basis = requireBasis(input.run);
   const reviewRequest = {
     projectId: input.project.project.id,
@@ -316,10 +371,41 @@ async function reopenReviewedExecutionContext(input: {
     outputs: profile.outputManifest,
     maximumSourceBytes: profile.maximumSourceBytes,
   });
+  return {
+    admission: reviewed.admission,
+    reopened: admitted.reopened,
+    request: {
+      schemaVersion: request.schemaVersion,
+      runId: request.runId,
+      producerGeneration: 0,
+      profile: request.profile,
+      source: {
+        bytes: Uint8Array.from(request.source.bytes),
+        sha256: request.source.sha256,
+      },
+      policy: request.policy,
+      outputs: request.outputs,
+    },
+    profile,
+    executionRunId: input.executionRunId,
+  };
+}
+
+async function reviewedExecutionContextFromPreparation(input: {
+  readonly prepared: PreparedReviewedExecution;
+  readonly project: EngineeringProjectSnapshot;
+  readonly run: EngineeringAgentRun;
+  readonly basisSnapshot: ThreadSnapshot;
+  readonly decision: EngineeringDecision;
+  readonly approval: EngineeringApproval;
+  readonly admission: Build123dExecutionAdmission;
+}): Promise<ReviewedExecutionContext> {
+  const basis = requireBasis(input.run);
+  const { prepared } = input;
   const attemptIdentity: Build123dExecutionAttemptIdentity = {
     projectId: input.project.project.id,
     agentRunId: input.run.id,
-    executionRunId: input.executionRunId,
+    executionRunId: prepared.executionRunId,
     basis: {
       ...basis,
       fingerprint: await sha256Fingerprint(input.basisSnapshot),
@@ -340,23 +426,23 @@ async function reopenReviewedExecutionContext(input: {
     },
     admission: input.admission,
     technicalAdmission: {
-      trustedRunId: admitted.reopened.trustedRunId,
-      decisionId: admitted.reopened.decisionId,
-      sealedAt: admitted.reopened.sealedAt,
-      draftReference: admitted.reopened.draftReference,
-      documentFingerprint,
-      projectionFingerprint,
-      sourceFingerprint,
+      trustedRunId: prepared.reopened.trustedRunId,
+      decisionId: prepared.reopened.decisionId,
+      sealedAt: prepared.reopened.sealedAt,
+      draftReference: prepared.reopened.draftReference,
+      documentFingerprint: input.admission.compilation.document.fingerprint,
+      projectionFingerprint: input.admission.compilation.projection.fingerprint,
+      sourceFingerprint: input.admission.compilation.source.sourceFingerprint,
     },
-    executionProfile: profile,
+    executionProfile: prepared.profile,
     isolatedRequest: {
-      schemaVersion: request.schemaVersion,
-      runId: request.runId,
+      schemaVersion: prepared.request.schemaVersion,
+      runId: prepared.request.runId,
       producerGeneration: 0,
-      profile: request.profile,
-      sourceSha256: request.source.sha256,
-      policy: request.policy,
-      outputs: request.outputs,
+      profile: prepared.request.profile,
+      sourceSha256: prepared.request.source.sha256,
+      policy: prepared.request.policy,
+      outputs: prepared.request.outputs,
     },
     document: input.admission.compilation.document,
     projection: input.admission.compilation.projection,
@@ -368,23 +454,33 @@ async function reopenReviewedExecutionContext(input: {
     attemptIdentity,
   );
   return {
-    admission: reviewed.admission,
-    reopened: admitted.reopened,
-    request: {
-      schemaVersion: request.schemaVersion,
-      runId: request.runId,
-      producerGeneration: 0,
-      profile: request.profile,
-      source: {
-        bytes: Uint8Array.from(request.source.bytes),
-        sha256: request.source.sha256,
-      },
-      policy: request.policy,
-      outputs: request.outputs,
-    },
+    ...prepared,
     attemptIdentity,
     attemptFingerprint,
   };
+}
+
+async function reopenReviewedExecutionContext(input: {
+  readonly admissions: TechnicalCompilationAdmissionReader;
+  readonly profiles: Build123dExecutionProfileCatalog;
+  readonly project: EngineeringProjectSnapshot;
+  readonly run: EngineeringAgentRun;
+  readonly basisSnapshot: ThreadSnapshot;
+  readonly decision: EngineeringDecision;
+  readonly approval: EngineeringApproval;
+  readonly admission: Build123dExecutionAdmission;
+  readonly executionRunId: string;
+}): Promise<ReviewedExecutionContext> {
+  const prepared = await prepareReviewedExecution(input);
+  return await reviewedExecutionContextFromPreparation({
+    prepared,
+    project: input.project,
+    run: input.run,
+    basisSnapshot: input.basisSnapshot,
+    decision: input.decision,
+    approval: input.approval,
+    admission: input.admission,
+  });
 }
 
 async function assertExecutionProfileExact(
@@ -452,6 +548,13 @@ export class DesignExecuteBuild123dRunExecutor {
   readonly #drafts: Build123dExecutionDraftStore;
   readonly #captures: Build123dExecutionCaptureStore;
   readonly #lease: EngineeringProjectRunLease;
+  readonly #capabilityRuntime: CapabilityRuntimeExecutionEligibility | undefined;
+  readonly #capabilityRuntimeSession:
+    | Pick<
+      CapabilityRuntimeExecutionSessionCoordinator,
+      "begin" | "releaseRecorded"
+    >
+    | undefined;
 
   constructor(dependencies: DesignExecuteBuild123dRunExecutorDependencies) {
     this.#projects = dependencies.projects;
@@ -466,6 +569,8 @@ export class DesignExecuteBuild123dRunExecutor {
     this.#drafts = dependencies.drafts;
     this.#captures = dependencies.captures;
     this.#lease = dependencies.lease;
+    this.#capabilityRuntime = dependencies.capabilityRuntime;
+    this.#capabilityRuntimeSession = dependencies.capabilityRuntimeSession;
   }
 
   async execute(
@@ -501,6 +606,7 @@ export class DesignExecuteBuild123dRunExecutor {
     let claimed = false;
     let dispatchMayHaveStarted = false;
     let threadSaveMayHaveStarted = false;
+    let capabilitySession: CapabilityRuntimeExecutionSession | undefined;
     try {
       let project = await this.#requiredProject(command.projectId);
       let run = requireRun(project, command.runId);
@@ -513,38 +619,117 @@ export class DesignExecuteBuild123dRunExecutor {
         approvedDecision,
         admission,
       );
-      if (completed) return completed;
+      if (completed) {
+        await this.#releaseRecordedRuntimeBestEffort(completed, command.runId);
+        return completed;
+      }
       if (run.status === "failed") {
-        return await this.#reopenFailedOutputValidation(
+        const failed = await this.#reopenFailedOutputValidation(
           origin,
           command,
           approvedDecision,
           admission,
         );
+        await this.#releaseRecordedRuntimeBestEffort(failed, command.runId);
+        return failed;
       }
 
-      await assertThreadWriteBasisAvailable(project, run);
-      const preClaimBasis = requireBasis(run);
-      const preClaimSnapshot = await exactBasisSnapshot(
-        this.#snapshots,
-        preClaimBasis,
-      );
-      await assertThreadSnapshotLineageIntact(preClaimSnapshot, this.#snapshots);
-      exactAdmissionArtifact(
-        preClaimSnapshot,
-        admission.admissionArtifact.id,
-        admission.admissionArtifact.fingerprint,
-      );
-
+      project = await this.#requiredProject(command.projectId);
+      run = requireRun(project, command.runId);
+      requireExecutionShape(project, run);
+      if (run.status === "completed") {
+        const recovered = await this.#completedFor(
+          origin,
+          command,
+          approvedDecision,
+          admission,
+        );
+        if (recovered) {
+          await this.#releaseRecordedRuntimeBestEffort(recovered, command.runId);
+          return recovered;
+        }
+        throw invalidTransition("The completed Build123d run failed exact replay.");
+      }
+      if (run.status === "failed") {
+        const failed = await this.#reopenFailedOutputValidation(
+          origin,
+          command,
+          approvedDecision,
+          admission,
+        );
+        await this.#releaseRecordedRuntimeBestEffort(failed, command.runId);
+        return failed;
+      }
       if (
-        run.status === "queued" || run.status === "running" ||
-        run.status === "publishing"
+        run.status !== "queued" && run.status !== "running" &&
+        run.status !== "publishing"
       ) {
-        if (run.status !== "queued") requireClaimedShape(project, run, origin);
+        throw unexpectedStatus(run, "queued or this agent's running/publishing");
+      }
+      if (run.status !== "queued") requireClaimedShape(project, run, origin);
+
+      const cold = await this.#prepareColdExecution(
+        project,
+        run,
+        approvedDecision,
+        admission,
+      );
+      let recoveryDisposition: ColdBuild123dRecoveryDisposition | undefined;
+      if (run.status !== "queued") {
+        const context = await reviewedExecutionContextFromPreparation({
+          prepared: cold.prepared,
+          project,
+          run,
+          basisSnapshot: cold.basisSnapshot,
+          decision: cold.approval.decision,
+          approval: cold.approval.approval,
+          admission: cold.admission,
+        });
+        const attempt = await this.#attempts.read(command.projectId, run.id);
+        recoveryDisposition = await this.#inspectColdRecovery({
+          attempt,
+          context,
+          projectId: command.projectId,
+          agentRunId: run.id,
+        });
+      }
+      if (
+        run.status === "queued" ||
+        recoveryDisposition?.kind === "requires-jit"
+      ) {
+        const authorized = await this.#authorizeColdExecution(
+          project,
+          run,
+          cold,
+        );
+        capabilitySession = await this.#beginCapabilitySession(
+          project,
+          command.runId,
+          authorized,
+          command,
+          origin,
+          approvedDecision,
+          admission,
+        );
+      }
+
+      try {
         await this.#commands.claimRun(origin, claimCommand(command));
         claimed = true;
-      } else {
-        throw unexpectedStatus(run, "queued or this agent's running/publishing");
+      } catch (error) {
+        if (error instanceof EngineeringProjectCommandError) {
+          await settleCapabilityRuntimeSession({
+            session: capabilitySession,
+            policy: { kind: "release" },
+          });
+        } else {
+          await settleCapabilityRuntimeSession({
+            session: capabilitySession,
+            policy: { kind: "retain" },
+          });
+        }
+        capabilitySession = undefined;
+        throw error;
       }
 
       project = await this.#requiredProject(command.projectId);
@@ -557,53 +742,55 @@ export class DesignExecuteBuild123dRunExecutor {
           approvedDecision,
           admission,
         );
-        if (recovered) return recovered;
+        if (recovered) {
+          await settleCapabilityRuntimeSession({
+            session: capabilitySession,
+            policy: { kind: "release" },
+          });
+          return recovered;
+        }
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "release" },
+        });
         throw invalidTransition("The completed Build123d run failed exact replay.");
+      }
+      if (run.status === "failed") {
+        const failed = await this.#reopenFailedOutputValidation(
+          origin,
+          command,
+          approvedDecision,
+          admission,
+        );
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "release" },
+        });
+        return failed;
       }
       if (run.status !== "running" && run.status !== "publishing") {
         throw unexpectedStatus(run, "running or publishing");
       }
 
-      const currentApproval = await requireMrtrApproval(project, run);
-      const currentAdmission = parseExecutionAdmission(
-        currentApproval.proposal.parameters,
-      );
-      if (
-        currentApproval.decision.id !== approvedDecision.id ||
-        deterministicJson(currentAdmission) !== deterministicJson(admission)
-      ) {
-        throw invalidTransition(
-          "The exact human-reviewed Build123d decision changed after the run was claimed.",
-        );
-      }
-      assertAdmissionScope(
+      const coldAfterClaim = await this.#prepareColdExecution(
         project,
         run,
-        currentApproval.decision,
-        currentAdmission,
+        approvedDecision,
+        admission,
       );
+      const currentApproval = coldAfterClaim.approval;
+      const currentAdmission = coldAfterClaim.admission;
       const basis = requireBasis(run);
-      const basisSnapshot = await exactBasisSnapshot(this.#snapshots, basis);
-      await assertThreadSnapshotLineageIntact(basisSnapshot, this.#snapshots);
-      exactAdmissionArtifact(
-        basisSnapshot,
-        currentAdmission.admissionArtifact.id,
-        currentAdmission.admissionArtifact.fingerprint,
-      );
-      const executionRunId = await deriveBuild123dExecutionRunId(
-        command.projectId,
-        run.id,
-      );
-      const context = await reopenReviewedExecutionContext({
-        admissions: this.#admissions,
-        profiles: this.#profiles,
+      const basisSnapshot = coldAfterClaim.basisSnapshot;
+      const executionRunId = coldAfterClaim.prepared.executionRunId;
+      const context = await reviewedExecutionContextFromPreparation({
+        prepared: coldAfterClaim.prepared,
         project,
         run,
         basisSnapshot,
         decision: currentApproval.decision,
         approval: currentApproval.approval,
         admission: currentAdmission,
-        executionRunId,
       });
       const attemptKey = {
         projectId: command.projectId,
@@ -636,6 +823,9 @@ export class DesignExecuteBuild123dRunExecutor {
           context,
           attempt,
           attemptKey,
+          recoveryDisposition?.kind === "replay"
+            ? recoveryDisposition.publishedResolution
+            : undefined,
         );
       }
       const durableDispatchAttempt = await this.#attempts.read(
@@ -771,26 +961,283 @@ export class DesignExecuteBuild123dRunExecutor {
         context.admission,
         true,
       );
+      const completedWithoutJit = capabilitySession === undefined;
+      await settleCapabilityRuntimeSession({
+        session: capabilitySession,
+        policy: { kind: "release" },
+      });
+      if (completedWithoutJit) {
+        await this.#releaseRecordedRuntimeBestEffort(complete, command.runId);
+      }
       return complete;
     } catch (error) {
       if (error instanceof IsolatedBuild123dOutputValidationRejectedError) {
-        return await this.#failOutputValidationRejected(origin, command, error);
+        try {
+          const failed = await this.#failOutputValidationRejected(
+            origin,
+            command,
+            error,
+          );
+          const failedWithoutJit = capabilitySession === undefined;
+          await settleCapabilityRuntimeSession({
+            session: capabilitySession,
+            policy: { kind: "release" },
+          });
+          if (failedWithoutJit) {
+            await this.#releaseRecordedRuntimeBestEffort(failed, command.runId);
+          }
+          return failed;
+        } catch (failError) {
+          await settleCapabilityRuntimeSession({
+            session: capabilitySession,
+            policy: { kind: "retain" },
+          });
+          throw failError;
+        }
       }
       if (dispatchMayHaveStarted || threadSaveMayHaveStarted) {
-        const completed = await this.#completedFor(
-          origin,
-          command,
-          approvedDecision,
-          admission,
-        );
-        if (completed) return completed;
+        try {
+          const recovered = await this.#completedFor(
+            origin,
+            command,
+            approvedDecision,
+            admission,
+          );
+          if (recovered) {
+            const completedWithoutJit = capabilitySession === undefined;
+            await settleCapabilityRuntimeSession({
+              session: capabilitySession,
+              policy: { kind: "release" },
+            });
+            if (completedWithoutJit) {
+              await this.#releaseRecordedRuntimeBestEffort(
+                recovered,
+                command.runId,
+              );
+            }
+            return recovered;
+          }
+        } catch {
+          // Evidence replay failed; the dispatch/publication remains uncertain.
+        }
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "retain" },
+        });
         throw invalidTransition(
           "The Build123d execution or its documentary Thread write has a durable or uncertain effect. " +
             "Retry this exact command; recovery will inspect the run-keyed publication and journal before any further dispatch.",
         );
       }
       if (claimed) await this.#recordFailure(origin, command);
+      await settleCapabilityRuntimeSession({
+        session: capabilitySession,
+        policy: { kind: "release" },
+      });
       throw error;
+    }
+  }
+
+  /**
+   * Reopen every engineering authority needed to replay documented evidence.
+   * This deliberately stays independent of host capability availability: once
+   * a receipt is durable, recovering its Thread publication must not require
+   * the disposable worker image to still be cached.
+   */
+  async #prepareColdExecution(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+    approvedDecision: EngineeringDecision,
+    admission: Build123dExecutionAdmission,
+  ): Promise<ColdBuild123dExecution> {
+    const approval = await requireMrtrApproval(project, run);
+    const currentAdmission = parseExecutionAdmission(
+      approval.proposal.parameters,
+    );
+    if (
+      approval.decision.id !== approvedDecision.id ||
+      deterministicJson(currentAdmission) !== deterministicJson(admission)
+    ) {
+      throw invalidTransition(
+        "The exact human-reviewed Build123d decision is no longer the current authorized admission.",
+      );
+    }
+    assertAdmissionScope(project, run, approval.decision, currentAdmission);
+    const basis = requireBasis(run);
+    const basisSnapshot = await exactBasisSnapshot(this.#snapshots, basis);
+    await assertThreadSnapshotLineageIntact(basisSnapshot, this.#snapshots);
+    exactAdmissionArtifact(
+      basisSnapshot,
+      currentAdmission.admissionArtifact.id,
+      currentAdmission.admissionArtifact.fingerprint,
+    );
+    const executionRunId = await deriveBuild123dExecutionRunId(
+      project.project.id,
+      run.id,
+    );
+    const prepared = await prepareReviewedExecution({
+      admissions: this.#admissions,
+      profiles: this.#profiles,
+      project,
+      run,
+      basisSnapshot,
+      decision: approval.decision,
+      admission: currentAdmission,
+      executionRunId,
+    });
+    return {
+      prepared,
+      approval,
+      admission: currentAdmission,
+      basisSnapshot,
+    };
+  }
+
+  /**
+   * Host admission is separate from the cold evidence recheck. Call this only
+   * when the next transition can create a sandbox, clean an uncertain sandbox,
+   * or consume the one permitted redispatch authorization.
+   */
+  async #authorizeColdExecution(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+    cold: ColdBuild123dExecution,
+  ): Promise<AuthorizedBuild123dExecution> {
+    const operationalCapability = await this.#requireOperationalCapability(
+      project,
+      run,
+    );
+    exactBuild123dMicrosandboxLifecycle(
+      operationalCapability,
+      cold.prepared.profile,
+    );
+    return { ...cold, operationalCapability };
+  }
+
+  async #prepareAuthorizedExecution(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+    approvedDecision: EngineeringDecision,
+    admission: Build123dExecutionAdmission,
+  ): Promise<AuthorizedBuild123dExecution> {
+    const cold = await this.#prepareColdExecution(
+      project,
+      run,
+      approvedDecision,
+      admission,
+    );
+    return await this.#authorizeColdExecution(project, run, cold);
+  }
+
+  async #beginCapabilitySession(
+    project: EngineeringProjectSnapshot,
+    runId: string,
+    cold: AuthorizedBuild123dExecution,
+    command: RegisteredProjectRunExecutorCommand,
+    origin: EngineeringProjectCommandOrigin,
+    approvedDecision: EngineeringDecision,
+    admission: Build123dExecutionAdmission,
+  ): Promise<CapabilityRuntimeExecutionSession> {
+    const lifecycle = exactBuild123dMicrosandboxLifecycle(
+      cold.operationalCapability,
+      cold.prepared.profile,
+    );
+    try {
+      return await this.#capabilityRuntimeSession!.begin({
+        project,
+        runId,
+        operationalCapability: cold.operationalCapability,
+        microsandboxExecutionProfiles: [{
+          material: lifecycle.material,
+          executionProfileFingerprint: cold.prepared.profile.profileFingerprint,
+        }],
+        recheck: async () => {
+          const fresh = await this.#requiredProject(command.projectId);
+          const freshRun = requireRun(fresh, command.runId);
+          requireExecutionShape(fresh, freshRun);
+          if (freshRun.status !== "queued") {
+            requireClaimedShape(fresh, freshRun, origin);
+          }
+          const rechecked = await this.#prepareAuthorizedExecution(
+            fresh,
+            freshRun,
+            approvedDecision,
+            admission,
+          );
+          return rechecked.operationalCapability;
+        },
+      });
+    } catch (error) {
+      if (error instanceof CapabilityRuntimeSessionUnavailableError) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          error.message,
+        );
+      }
+      throw error;
+    }
+  }
+
+  async #requireOperationalCapability(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+  ): Promise<ResolvedCapabilityRuntimeOperation> {
+    try {
+      return await requireConfiguredOperationalCapability({
+        runtime: this.#capabilityRuntime,
+        session: this.#capabilityRuntimeSession,
+        project,
+        run,
+        workItem: requireExecutionShape(project, run).workItem,
+        unavailableMessage:
+          "Isolated Build123d execution requires the configured JIT capability runtime session before a run can be claimed.",
+        missingBindingMessage:
+          "Isolated Build123d execution requires the sealed build123d-execute-admitted-source operational capability before a run can be claimed.",
+      });
+    } catch (error) {
+      if (error instanceof CapabilityRuntimeSessionUnavailableError) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          error.message,
+        );
+      }
+      throw error;
+    }
+  }
+
+  async #lookupOperationalCapabilityCold(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+  ): Promise<ResolvedCapabilityRuntimeOperation | undefined> {
+    try {
+      return await this.#requireOperationalCapability(project, run);
+    } catch {
+      return undefined;
+    }
+  }
+
+  async #releaseRecordedRuntimeBestEffort(
+    project: EngineeringProjectSnapshot,
+    runId: string,
+  ): Promise<void> {
+    const run = requireRun(project, runId);
+    if (!isDurableTerminalAgentRunStatus(run.status)) return;
+    const operationalCapability = await this.#lookupOperationalCapabilityCold(
+      project,
+      run,
+    );
+    if (!operationalCapability) return;
+    const session = this.#capabilityRuntimeSession;
+    if (!session?.releaseRecorded) return;
+    try {
+      await session.releaseRecorded({
+        project,
+        runId,
+        operationalCapability,
+      });
+    } catch {
+      // Host-stop or scope failure must not hide the completed engineering
+      // result. The exact lease remains for administrative recovery.
     }
   }
 
@@ -824,6 +1271,65 @@ export class DesignExecuteBuild123dRunExecutor {
     );
   }
 
+  /**
+   * Inspect only durable evidence before deciding whether this call can touch
+   * the disposable Microsandbox host. A recorded receipt, output-validation
+   * rejection, or published run-keyed marker is recovered entirely from the
+   * exact journal/CAS/Thread chain.
+   */
+  async #inspectColdRecovery(input: {
+    readonly projectId: string;
+    readonly agentRunId: string;
+    readonly context: ReviewedExecutionContext;
+    readonly attempt: Build123dExecutionAttempt | undefined;
+  }): Promise<ColdBuild123dRecoveryDisposition> {
+    const attempt = input.attempt;
+    if (!attempt) return { kind: "requires-jit" };
+    const key = {
+      projectId: input.projectId,
+      agentRunId: input.agentRunId,
+      executionRunId: input.context.executionRunId,
+      attemptFingerprint: input.context.attemptFingerprint,
+    };
+    assertAttemptIdentity(attempt, key);
+    if (
+      attempt.phase === "output-validation-rejected" ||
+      "receiptRecord" in attempt
+    ) {
+      return { kind: "replay" };
+    }
+    if (attempt.phase === "prepared") return { kind: "requires-jit" };
+
+    let resolution: IsolatedOutputRunPublicationResolution;
+    try {
+      resolution = await this.#publications.resolvePublicationByRunId(
+        key.executionRunId,
+        attempt.dispatch.producerGeneration,
+      );
+    } catch {
+      throw invalidTransition(
+        "The run-keyed isolated-output publication could not be resolved; the execution remains active and will not be redispatched.",
+      );
+    }
+    if (
+      resolution.runId !== key.executionRunId ||
+      resolution.producerGeneration !== attempt.dispatch.producerGeneration
+    ) {
+      throw invalidTransition(
+        "The run-keyed isolated-output resolution names another producer generation; the execution remains active and will not be redispatched.",
+      );
+    }
+    if (resolution.status === "published") {
+      return { kind: "replay", publishedResolution: resolution };
+    }
+    if (resolution.status === "outcome-unknown") {
+      throw invalidTransition(
+        "The isolated-output publication outcome is unknown; the execution remains active and will not be redispatched.",
+      );
+    }
+    return { kind: "requires-jit" };
+  }
+
   async #recoverReceiptOrRedispatch(
     context: ReviewedExecutionContext,
     attempt: Build123dExecutionAttempt,
@@ -833,6 +1339,7 @@ export class DesignExecuteBuild123dRunExecutor {
       readonly executionRunId: string;
       readonly attemptFingerprint: ContentFingerprint;
     },
+    publishedResolution?: PublishedIsolatedOutputRunPublicationResolution,
   ): Promise<IsolatedCodeExecutionReceipt> {
     if (attempt.phase === "output-validation-rejected") {
       throwOutputValidationRejected(attempt);
@@ -851,13 +1358,21 @@ export class DesignExecuteBuild123dRunExecutor {
         "The execution journal has no durable dispatch to recover.",
       );
     }
-    let resolution;
-    try {
-      resolution = await this.#publications.resolvePublicationByRunId(
-        key.executionRunId,
-        attempt.dispatch.producerGeneration,
-      );
-    } catch {
+    let resolution: IsolatedOutputRunPublicationResolution | undefined =
+      publishedResolution;
+    if (!resolution) {
+      try {
+        resolution = await this.#publications.resolvePublicationByRunId(
+          key.executionRunId,
+          attempt.dispatch.producerGeneration,
+        );
+      } catch {
+        throw invalidTransition(
+          "The run-keyed isolated-output publication could not be resolved; the execution remains active and will not be redispatched.",
+        );
+      }
+    }
+    if (!resolution) {
       throw invalidTransition(
         "The run-keyed isolated-output publication could not be resolved; the execution remains active and will not be redispatched.",
       );
@@ -1359,7 +1874,7 @@ export class DesignExecuteBuild123dRunExecutor {
 function requireExecutionShape(
   project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
-): void {
+): { readonly workItem: EngineeringWorkItem } {
   const workItem = project.workItems.find((item) => item.id === run.workItemId);
   const operation = workItem?.operation;
   const binding = operation?.bindings[0];
@@ -1385,6 +1900,7 @@ function requireExecutionShape(
       "The compilationAdmission binding must name an artifact in the run's exact Thread basis revision.",
     );
   }
+  return { workItem };
 }
 
 function requireClaimedShape(
@@ -1979,6 +2495,45 @@ function assertCompleted(
 
 function commandStep(commandId: string, step: string): string {
   return `${commandId}:design-execute-build123d:${step}`;
+}
+
+function exactBuild123dMicrosandboxLifecycle(
+  operationalCapability: ResolvedCapabilityRuntimeOperation,
+  profile: Build123dExecutionProfile,
+): Extract<
+  CapabilityRuntimeHostLifecycle,
+  { readonly kind: "ephemeral-microsandbox" }
+> {
+  const microsandbox = operationalCapability.bindings.flatMap((binding) =>
+    binding.hostLifecycles.filter((lifecycle) =>
+      lifecycle.kind === "ephemeral-microsandbox"
+    )
+  );
+  if (microsandbox.length !== 1) {
+    throw invalidTransition(
+      "Isolated Build123d execution requires exactly one sealed Microsandbox material before host activation.",
+    );
+  }
+  const lifecycle = microsandbox[0]!;
+  if (
+    lifecycle.material.unitId !== BUILD123D_ISOLATED_WORKER_UNIT_ID ||
+    lifecycle.material.materialId !== BUILD123D_ISOLATED_WORKER_MATERIAL_ID
+  ) {
+    throw invalidTransition(
+      "Isolated Build123d execution requires the exact code-owned casys.build123d-isolated-worker/build123d-isolated-worker-image material before host activation.",
+    );
+  }
+  if (
+    lifecycle.material.imageDigest !== profile.runtimeBackend.imageDigest.digest ||
+    !profile.runtimeBackend.imageReference.endsWith(
+      `@sha256:${lifecycle.material.imageDigest}`,
+    )
+  ) {
+    throw invalidTransition(
+      "Isolated Build123d execution sealed Microsandbox digest does not match the freshly reopened server-owned execution profile.",
+    );
+  }
+  return lifecycle;
 }
 
 function invalidTransition(message: string): EngineeringProjectCommandError {

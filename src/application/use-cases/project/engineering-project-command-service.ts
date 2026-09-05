@@ -15,6 +15,10 @@ import {
 import type { ContentFingerprint } from "../../../domain/thread/thread-snapshot.ts";
 import { TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES } from "../../../domain/record/reconcile-uncertain-writer-proposal.ts";
 import {
+  closedUncertainWriterLifecycleQualifier,
+  type UncertainWriterLifecycleQualifier,
+} from "../../ports/out/record/uncertain-writer-lifecycle-qualifier.ts";
+import {
   type EngineeringProjectRevisionStore,
   EngineeringProjectStoreConflictError,
 } from "../../ports/out/engineering-project-revision-store.ts";
@@ -126,12 +130,21 @@ export type {
  * published.  Only these codes (or the geometry write, which is conservatively
  * terminal regardless of code) are eligible for uncertain-writer reconciliation.
  *
- * WHY IN DOMAIN — eligibility is a domain invariant enforced by
- * `reconcileAnnotationRun`, not just an adapter-level gate. The domain set is
- * the single authority; the executor and basis guard import or alias it.
+ * WHY IN DOMAIN — dedicated codes are a domain invariant enforced by
+ * `reconcileAnnotationRun`. A server-computed lifecycle qualification may
+ * additionally admit a historical generic failure; callers cannot supply it.
  */
 export const ELIGIBLE_UNCERTAIN_WRITE_FAILURE_CODES =
   TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES;
+
+/**
+ * Optional pre-claim hook for Thread writers. The command service never
+ * selects a provider; composition injects the shared basis guard.
+ */
+export type EngineeringProjectThreadWriteClaimGuard = (
+  project: EngineeringProjectSnapshot,
+  run: EngineeringAgentRun,
+) => Promise<void>;
 
 interface CancellationFingerprintInput extends EngineeringProjectCommandInput {
   readonly runId?: string;
@@ -157,6 +170,9 @@ export class EngineeringProjectCommandService {
       EngineeringProjectReconciliationSnapshotValidator,
     private readonly reconciliationOperationPolicy?:
       EngineeringProjectReconciliationOperationPolicy,
+    private readonly uncertainWriterLifecycle: UncertainWriterLifecycleQualifier =
+      closedUncertainWriterLifecycleQualifier,
+    private readonly threadWriteClaimGuard?: EngineeringProjectThreadWriteClaimGuard,
   ) {}
 
   /**
@@ -248,7 +264,8 @@ export class EngineeringProjectCommandService {
       command,
       ["queued"],
       "running",
-      (run, appliedAt) => {
+      async (run, appliedAt, draft) => {
+        await this.threadWriteClaimGuard?.(draft, run);
         applyClaimRun(run, appliedAt, origin);
       },
     );
@@ -360,7 +377,17 @@ export class EngineeringProjectCommandService {
       "agent-run.reconcile-annotation",
       command,
       async (draft, appliedAt) => {
-        await applyReconcileAnnotationRun(draft, appliedAt, origin, command);
+        const lifecycle = await this.uncertainWriterLifecycle.qualify({
+          project: draft,
+          failedRunId: command.failedRunId,
+        });
+        await applyReconcileAnnotationRun(
+          draft,
+          appliedAt,
+          origin,
+          command,
+          lifecycle,
+        );
       },
     );
   }
@@ -404,6 +431,10 @@ export class EngineeringProjectCommandService {
       "work-item.reconcile-successor",
       command,
       async (draft, appliedAt) => {
+        const lifecycle = await this.uncertainWriterLifecycle.qualify({
+          project: draft,
+          failedRunId: command.failedRunId,
+        });
         await applyReconcileWorkItemWithSuccessor(
           draft,
           appliedAt,
@@ -411,6 +442,7 @@ export class EngineeringProjectCommandService {
           command,
           this.reconciliationSnapshotValidator,
           this.reconciliationOperationPolicy,
+          lifecycle,
         );
       },
     );

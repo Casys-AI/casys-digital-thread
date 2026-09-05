@@ -20,7 +20,9 @@
  *     decisionIds whose proposal parameters name the exact failedRunId,
  *     failureCode, basisSnapshotId, outcome and providerInspectionAttestation.
  *  4. Validate the target failed run: must be failed, terminal-uncertain (or
- *     geometry), no existing reconciliation, empty evidenceRefs.
+ *     geometry, or server-qualified lifecycle recross), no existing
+ *     reconciliation, empty evidenceRefs. An existing annotation is replayed
+ *     before that extra recross so the sealed ceremony remains lifecycle truth.
  *  5. commands.reconcileAnnotationRun — single atomic write.
  *  6. CAS readback.
  *
@@ -48,10 +50,6 @@ import type {
   EngineeringThreadSnapshotBasis,
   EngineeringThreadSnapshotRef,
 } from "../../domain/project/engineering-project.ts";
-import {
-  GEOMETRY_WRITE_OPERATION,
-  TERMINAL_THREAD_WRITE_FAILURES,
-} from "../shared/thread-write-basis-guard.ts";
 import { requireBasis, requireRun } from "../shared/executor-run-helpers.ts";
 import {
   fingerprintsEqual,
@@ -61,6 +59,11 @@ import {
   parseReconcileUncertainWriterProposal,
   RECONCILE_UNCERTAIN_WRITER_OPERATION,
 } from "../../domain/record/reconcile-uncertain-writer-proposal.ts";
+import {
+  closedUncertainWriterLifecycleQualifier,
+  type UncertainWriterLifecycleQualifier,
+} from "../../application/ports/out/record/uncertain-writer-lifecycle-qualifier.ts";
+import { isEligibleUncertainWriterFailure } from "../../application/use-cases/project/commands/reconcile-uncertain-writer-transition.ts";
 
 // ---------------------------------------------------------------------------
 // Public constants — operation identity
@@ -89,6 +92,26 @@ export interface ReconcileUncertainWriterRunExecutorCommand {
 export interface ReconcileUncertainWriterRunExecutorDependencies {
   readonly projects: EngineeringProjectRevisionStore;
   readonly commands: EngineeringProjectCommandService;
+  /**
+   * Optional host-side finalizer. The project annotation remains the durable
+   * authority; this collaborator may only release the retained JIT lease that
+   * is sealed to the same failed run after `provider-did-not-write`.
+   */
+  readonly retainedCapabilityLeaseFinalizer?:
+    ReconciledUncertainWriterCapabilityLeaseFinalizer;
+  /**
+   * Server-computed extra eligibility for historical generic failures.
+   * Closed by default: dedicated catalogue codes remain the only grant.
+   */
+  readonly uncertainWriterLifecycle?: UncertainWriterLifecycleQualifier;
+}
+
+export interface ReconciledUncertainWriterCapabilityLeaseFinalizer {
+  releaseReconciledUncertainWriterLease(input: {
+    readonly project: EngineeringProjectSnapshot;
+    readonly failedRunId: string;
+    readonly reconciliationRunId: string;
+  }): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -98,10 +121,18 @@ export interface ReconcileUncertainWriterRunExecutorDependencies {
 export class ReconcileUncertainWriterRunExecutor {
   readonly #projects: EngineeringProjectRevisionStore;
   readonly #commands: EngineeringProjectCommandService;
+  readonly #retainedCapabilityLeaseFinalizer:
+    | ReconciledUncertainWriterCapabilityLeaseFinalizer
+    | undefined;
+  readonly #uncertainWriterLifecycle: UncertainWriterLifecycleQualifier;
 
   constructor(dependencies: ReconcileUncertainWriterRunExecutorDependencies) {
     this.#projects = dependencies.projects;
     this.#commands = dependencies.commands;
+    this.#retainedCapabilityLeaseFinalizer =
+      dependencies.retainedCapabilityLeaseFinalizer;
+    this.#uncertainWriterLifecycle = dependencies.uncertainWriterLifecycle ??
+      closedUncertainWriterLifecycleQualifier;
   }
 
   async execute(
@@ -150,14 +181,6 @@ export class ReconcileUncertainWriterRunExecutor {
           `"${failedRun.failure.code}".  The MRTR must name the exact failure code.`,
       );
     }
-    if (!isEligibleForReconciliation(project, failedRun, expectedFailureCode)) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `Target run ${failedRunId} failure code "${failedRun.failure.code}" is not in ` +
-          "TERMINAL_THREAD_WRITE_FAILURES and is not the geometry write operation.  " +
-          "Only terminal-uncertain failures are eligible for reconciliation.",
-      );
-    }
     const failedRunBasis = requireBasis(failedRun);
     if (failedRunBasis.snapshotId !== expectedBasisSnapshotId) {
       throw new EngineeringProjectCommandError(
@@ -184,6 +207,11 @@ export class ReconcileUncertainWriterRunExecutor {
           failedRun.uncertainWriterReconciliation.providerInspectionAttestation,
       });
       assertCompleted(replay, command);
+      await this.#releaseRetainedCapabilityLeaseIfAllowed(
+        replay,
+        failedRunId,
+        command.runId,
+      );
       return replay;
     }
     if (failedRun.evidenceRefs.length !== 0) {
@@ -191,6 +219,15 @@ export class ReconcileUncertainWriterRunExecutor {
         "invalid_transition",
         `Target run ${failedRunId} has evidence refs; uncertain writer reconciliation ` +
           "is not applicable to runs that produced evidence.",
+      );
+    }
+    if (!await this.#isEligibleForReconciliation(project, failedRun)) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        `Target run ${failedRunId} failure code "${failedRun.failure.code}" is not in ` +
+          "TERMINAL_THREAD_WRITE_FAILURES, is not the geometry write operation, " +
+          "and is not a server-qualified uncertain writer.  " +
+          "Only terminal-uncertain failures are eligible for reconciliation.",
       );
     }
 
@@ -209,6 +246,11 @@ export class ReconcileUncertainWriterRunExecutor {
       providerInspectionAttestation,
     });
     assertCompleted(result, command);
+    await this.#releaseRetainedCapabilityLeaseIfAllowed(
+      result,
+      failedRunId,
+      command.runId,
+    );
     return result;
   }
 
@@ -225,6 +267,41 @@ export class ReconcileUncertainWriterRunExecutor {
       );
     }
     return project;
+  }
+
+  async #releaseRetainedCapabilityLeaseIfAllowed(
+    project: EngineeringProjectSnapshot,
+    failedRunId: string,
+    reconciliationRunId: string,
+  ): Promise<void> {
+    const failedRun = requireRun(project, failedRunId);
+    if (
+      failedRun.status !== "failed" ||
+      failedRun.uncertainWriterReconciliation?.outcome !==
+        "provider-did-not-write"
+    ) return;
+    await this.#retainedCapabilityLeaseFinalizer
+      ?.releaseReconciledUncertainWriterLease({
+        project,
+        failedRunId,
+        reconciliationRunId,
+      });
+  }
+
+  async #isEligibleForReconciliation(
+    project: EngineeringProjectSnapshot,
+    failedRun: EngineeringAgentRun,
+  ): Promise<boolean> {
+    const workItem = project.workItems.find((item) => item.id === failedRun.workItemId);
+    const lifecycle = await this.#uncertainWriterLifecycle.qualify({
+      project,
+      failedRunId: failedRun.id,
+    });
+    return isEligibleUncertainWriterFailure(
+      failedRun.failure!.code,
+      workItem?.operation,
+      lifecycle,
+    );
   }
 }
 
@@ -356,28 +433,6 @@ function parseApprovedProposal(
       }`,
     );
   }
-}
-
-// ---------------------------------------------------------------------------
-// Private: terminal-uncertain eligibility check
-// ---------------------------------------------------------------------------
-
-/**
- * A run is eligible for reconciliation when its failure code is in
- * TERMINAL_THREAD_WRITE_FAILURES (post-acknowledgement quarantine) OR the
- * operation is the geometry write (which is conservatively terminal regardless
- * of code).
- */
-function isEligibleForReconciliation(
-  project: EngineeringProjectSnapshot,
-  failedRun: EngineeringAgentRun,
-  failureCode: string,
-): boolean {
-  if (TERMINAL_THREAD_WRITE_FAILURES.has(failureCode)) return true;
-  const workItem = project.workItems.find((item) => item.id === failedRun.workItemId);
-  const operation = workItem?.operation;
-  if (!operation) return false;
-  return `${operation.id}@${operation.version}` === GEOMETRY_WRITE_OPERATION;
 }
 
 // ---------------------------------------------------------------------------

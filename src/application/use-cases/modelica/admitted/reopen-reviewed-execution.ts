@@ -7,6 +7,10 @@
  */
 
 import { COMPILATION_ADMISSION_BINDING_NAME } from "../../../../domain/compile/admission/compilation-admission-run-operation.ts";
+import {
+  MODELICA_ADMITTED_ISOLATED_RESOURCE_PROFILE,
+  type ResolvedOperationPlanV2,
+} from "../../../../domain/compile/rop/resolved-operation-plan-v2.ts";
 import type { IsolatedCodeExecutionRequest } from "../../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
   deterministicJson,
@@ -125,6 +129,69 @@ export async function reopenAdmittedExecutionRequest(input: {
   };
 }
 
+/**
+ * Reopen a previously dispatched execution from the exact profile sealed in
+ * its durable attempt. A terminal replay must not reinterpret recorded
+ * evidence through the current catalog profile after a catalog rollover.
+ */
+export async function reopenRecordedAdmittedModelicaExecutionRequest(input: {
+  readonly admissions: TechnicalCompilationAdmissionReader;
+  readonly project: EngineeringProjectSnapshot;
+  readonly run: EngineeringAgentRun;
+  readonly admission: ModelicaAdmittedRunAdmission;
+  readonly executionProfile: AdmittedModelicaExecutionProfile;
+}): Promise<AdmittedExecutionRequest> {
+  const basis = requireThreadSnapshotBasis(input.run);
+  let admitted;
+  try {
+    admitted = await new ReopenAdmittedCompilationSource({
+      admissions: input.admissions,
+    }).execute({
+      projectId: input.project.project.id,
+      basis,
+      artifactId: input.admission.admissionArtifact.id,
+      artifactFingerprint: input.admission.admissionArtifact.fingerprint,
+      expectedTarget: "modelica-source-qualification",
+    });
+  } catch {
+    throw invalidTransition(
+      "The reopened admission is not a ready Modelica compilation.",
+    );
+  }
+  if (
+    !fingerprintsEqual(
+      admitted.sourceFingerprint,
+      input.admission.compilation.source.sourceFingerprint,
+    ) ||
+    !fingerprintsEqual(
+      admitted.documentFingerprint,
+      input.admission.compilation.document.fingerprint,
+    )
+  ) {
+    throw invalidTransition(
+      "The reopened Modelica source is not the signed admission.",
+    );
+  }
+  const executionRunId = await deriveAdmittedModelicaExecutionRunId(
+    input.project.project.id,
+    input.run.id,
+  );
+  const request = await isolatedRequestFromAdmittedSource({
+    runId: executionRunId,
+    sourceText: admitted.sourceText,
+    sourceSha256: admitted.sourceFingerprint.digest,
+    profile: input.executionProfile.executionProfile,
+    policy: input.executionProfile.isolationPolicy,
+    outputs: input.executionProfile.outputManifest,
+    maximumSourceBytes: input.executionProfile.maximumSourceBytes,
+  });
+  return {
+    admission: input.admission,
+    executionProfile: input.executionProfile,
+    request,
+  };
+}
+
 export function requireAdmittedModelicaExecutionShape(
   project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
@@ -134,7 +201,7 @@ export function requireAdmittedModelicaExecutionShape(
   const binding = operation?.bindings[0];
   if (
     run.basis?.kind !== "thread-snapshot" ||
-    run.baseSnapshot !== undefined || run.resolvedOperationPlan !== undefined ||
+    run.baseSnapshot !== undefined || run.resolvedOperationPlan === undefined ||
     !workItem || operation?.id !== SIMULATE_RUN_ADMITTED_MODELICA_OPERATION.id ||
     operation.version !== SIMULATE_RUN_ADMITTED_MODELICA_OPERATION.version ||
     workItem.decisionIds.length !== 1 ||
@@ -145,6 +212,75 @@ export function requireAdmittedModelicaExecutionShape(
   ) {
     throw invalidTransition(
       `Run ${run.id} is not bound to simulate.run-admitted-modelica@1 with compilationAdmission.`,
+    );
+  }
+}
+
+/**
+ * The ROP parser validates the closed action grammar. This recrosses its
+ * semantic Modelica action with the independently reopened MRTR/admission
+ * bytes and server-owned profile before the executor can claim a WAL entry.
+ */
+export function assertResolvedAdmittedModelicaExecutionPlan(input: {
+  readonly run: EngineeringAgentRun;
+  readonly plan: ResolvedOperationPlanV2;
+  readonly admission: ModelicaAdmittedRunAdmission;
+  readonly execution: AdmittedExecutionRequest;
+}): void {
+  const action = input.plan.action;
+  if (
+    action.kind !== "admitted-modelica-isolated-execution" ||
+    action.executionRunId !== input.execution.request.runId ||
+    action.input.compilationAdmission.id !== input.admission.admissionArtifact.id ||
+    !fingerprintsEqual(
+      action.input.compilationAdmission.fingerprint,
+      input.admission.admissionArtifact.fingerprint,
+    ) ||
+    action.input.compilationAdmission.sourceBinding !==
+      COMPILATION_ADMISSION_BINDING_NAME ||
+    action.input.source.id !== input.admission.compilation.source.id ||
+    !fingerprintsEqual(
+      action.input.source.sourceFingerprint,
+      input.admission.compilation.source.sourceFingerprint,
+    ) ||
+    !fingerprintsEqual(
+      action.input.source.captureFingerprint,
+      input.admission.compilation.source.captureFingerprint,
+    ) ||
+    !fingerprintsEqual(
+      action.input.source.analysisFingerprint,
+      input.admission.compilation.source.analysisFingerprint,
+    ) ||
+    action.executionProfile.id !==
+      input.execution.executionProfile.executionProfile.id ||
+    action.executionProfile.version !==
+      input.execution.executionProfile.executionProfile.version ||
+    !fingerprintsEqual(
+      action.executionProfile.fingerprint,
+      input.execution.executionProfile.profileFingerprint,
+    ) ||
+    input.plan.expectedProviderResources.resourceProfile.id !==
+      MODELICA_ADMITTED_ISOLATED_RESOURCE_PROFILE.id ||
+    input.plan.expectedProviderResources.resourceProfile.version !==
+      MODELICA_ADMITTED_ISOLATED_RESOURCE_PROFILE.version ||
+    !("receiptSchema" in input.plan.expectedProviderResources) ||
+    input.plan.expectedProviderResources.receiptSchema !==
+      "isolated-code-execution-receipt-record/1.0" ||
+    input.plan.expectedProviderResources.evidenceSchema !==
+      "modelica-admitted-execution-capture/2.0" ||
+    input.plan.recovery.policy !==
+      "modelica-admitted-generation-recovery@1.0" ||
+    !("executionRunId" in input.plan.recovery) ||
+    input.plan.recovery.executionRunId !== action.executionRunId ||
+    input.plan.operationalCapability.projectId !== input.plan.run.projectId ||
+    input.plan.operationalCapability.operation.id !==
+      SIMULATE_RUN_ADMITTED_MODELICA_OPERATION.id ||
+    input.plan.operationalCapability.operation.version !==
+      SIMULATE_RUN_ADMITTED_MODELICA_OPERATION.version ||
+    input.plan.run.runId !== input.run.id
+  ) {
+    throw invalidTransition(
+      "The resolved admitted Modelica execution plan does not match the exact reopened admission, source, profile, outputs, recovery, or operational capability.",
     );
   }
 }

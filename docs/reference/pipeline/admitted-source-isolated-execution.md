@@ -62,25 +62,29 @@ historical `compile.seal-admission@3` creation snapshot.
 | `design.write-geometry@1`                  | Canonical STEP seal of admitted export. Not isolated execution.                                 |
 | Caller `modelicaText` / CAD script in MRTR | Refused. Source comes only from the sealed admission.                                           |
 
-## One Modelica image family
+## One physical Modelica image
 
-There is one image name: `casys/modelica-microsandbox-worker`. Do not invent a second
-image (`closed-subset-worker` or similar).
+There is one physical artefact: `casys/modelica-microsandbox-worker` at
+`LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE`
+(`sha256:834c759291320eb5f35ccb6eba03587445d259dcb38a2814c5def4ac41d5d730`). Do not
+invent a second image (`closed-subset-worker` or similar). Qualified-kit and admitted
+workers are two logical units and two cache recipes on that shared load identity; the
+second acquisition is a cache hit. Binding qualifications stay separate scientific
+captures.
 
-| Worker                                                 | Selected how                              | Source bytes                                      | Qualification                        |
-| ------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------- | ------------------------------------ |
-| `/opt/casys/profiles/modelica-qualified-kit-v1/run.ts` | Image `ENTRYPOINT`. Kit `@1` composition. | Pinned kit `.mo` inside the image                 | Digest `7d3fdeabe794…` (unchanged)   |
-| `/opt/casys/profiles/modelica-closed-subset-v2/run.ts` | Backend args in the admitted composition. | Generic bounded `/input/source.mo` from admission | Separate local pin (see `server.ts`) |
+| Worker                                                 | Selected how                              | Source bytes                                      | Binding qualification                                                                                                                               |
+| ------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/opt/casys/profiles/modelica-qualified-kit-v1/run.ts` | Image `ENTRYPOINT`. Kit `@1` composition. | Pinned kit `.mo` inside the image                 | Live-qualified for the fixed kit only; capture `bf85aa19…` (OpenModelica 1.27.0, MSL 4.1.0, exact 22 degC). Does not qualify the admitted worker     |
+| `/opt/casys/profiles/modelica-closed-subset-v2/run.ts` | Backend args in the admitted composition. | Generic bounded `/input/source.mo` from admission | Separate, currently unqualified/unknown                                                                                                             |
 
-Kit qualification stays on the old digest until a later bake of
+The pin lives in `src/domain/modelica/local-execution-image.ts` and is the only active
+Modelica runtime constant. Adding the admitted worker to
 [`images/modelica-microsandbox-worker/Dockerfile`](../../../images/modelica-microsandbox-worker/Dockerfile)
-is itself qualified. Adding the admitted worker to that Dockerfile does **not** reroute
-kit `@1`.
-
-The current admitted pin in `server.ts`
-(`LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE`) is a local digest of that same
-image name. A later official bake of the committed Dockerfile produces a new digest and
-must update that constant. Do not reuse the kit qualification digest for admitted runs.
+does **not** merge the two binding qualifications. A later official bake of that
+Dockerfile produces a new digest and must update that constant. A local
+`trusted-dockerfile` rebuild is a candidate recipe, not that official bake and not
+bit-reproducible proof: after import, the cached image must still match the exact
+target digest, or the capability stays unavailable.
 
 ## Product Modelica AX
 
@@ -92,8 +96,9 @@ project_technical_source_capture          # modelica-closed-subset-v2; pass resu
   -> simulate.run-admitted-modelica@1
 ```
 
-`--local-execution` (or `start:yolo`) composes the review and executor. Without that
-flag the descriptor stays registered and the dispatcher is fail-closed.
+The approved capability-runtime supervisor composes the review and executor from the
+exact atomic unit. Until then the descriptor stays registered and the dispatcher is
+fail-closed. `start:yolo` does not activate a runtime.
 
 A successful isolated Modelica run is documentary. It is not a requirement verdict and
 not `simulate.run-qualified-modelica-kit@1`.
@@ -108,8 +113,9 @@ project_technical_source_capture          # spice-circuit-closed-subset-v1; pass
   -> simulate.run-admitted-spice@1
 ```
 
-`--local-execution` (or `start:yolo`) composes the review and executor. Without that
-flag the descriptor stays registered and the dispatcher is fail-closed.
+The approved capability-runtime supervisor composes the review and executor from the
+exact atomic unit. Until then the descriptor stays registered and the dispatcher is
+fail-closed. `start:yolo` does not activate a runtime.
 
 A successful isolated SPICE run is documentary operating-point evidence. It is not
 mcp-spice, not the LED-driver fiche, and not a requirement verdict. Derived current or
@@ -137,7 +143,7 @@ not preserve pre-WAL development runs.
 | Out-port    | `TechnicalCompilationAdmissionReader`, `IsolatedCodeRunner`, language profile catalog         | Thread document shape        |
 | Use case    | Reopen + `isolatedRequestFromAdmittedSource`                                                  | Execute, publish Thread      |
 | Adapter     | Profile catalog, Microsandbox backend, language executor, image worker                        | Caller-selected runtime      |
-| Composition | `--local-execution` wires review + executor when the exact profile and runtime exist          | Implicit env-var activation  |
+| Composition | Approved capability supervisor wires review + executor from an exact unit | Implicit env-var or CLI activation |
 
 New language verticals that already compile through `compile.seal-admission@3` reuse the
 reopen port. They add a profile, worker, MRTR, review tool, and executor. They do not

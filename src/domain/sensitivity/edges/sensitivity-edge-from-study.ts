@@ -13,7 +13,7 @@ import {
   validateSensitivityEdgeSet,
 } from "./sensitivity-edge.ts";
 import { computeSensitivities } from "../study/sensitivity-study.ts";
-import type { SensitivityStudyCaseV2 } from "../study/sensitivity-study-v2.ts";
+import type { SensitivityStudyCaseV3 } from "../study/sensitivity-study-v3.ts";
 import type { SensitivityMetricMeasurement } from "../study/sensitivity-study.ts";
 
 export interface SensitivityEdgeStudyProvenance {
@@ -22,7 +22,7 @@ export interface SensitivityEdgeStudyProvenance {
 }
 
 export function sensitivityEdgesFromStudy(
-  studyCase: SensitivityStudyCaseV2,
+  studyCase: SensitivityStudyCaseV3,
   baseMetrics: ReadonlyMap<string, SensitivityMetricMeasurement>,
   steppedMetrics: ReadonlyMap<string, SensitivityMetricMeasurement>,
   provenance: SensitivityEdgeStudyProvenance,

@@ -13,10 +13,6 @@ import type {
   ThreadViolation as CanonicalViolation,
   TracedRequirement,
 } from "../../domain/thread/thread-snapshot.ts";
-import {
-  resolveThreadComponentCatalog,
-  type ThreadComponentCatalog,
-} from "../../domain/thread/thread-component-catalog.ts";
 import { archivedRefKeys } from "../../domain/thread/thread-snapshot.ts";
 import { ARCHITECTURE_CAPTURE_URI_PREFIX } from "../shared/cas/file-capture-store.ts";
 import { REQUIREMENTS_CAPTURE_URI_PREFIX } from "../../domain/thread/requirements-tip.ts";
@@ -61,7 +57,6 @@ import type {
  */
 export function projectThreadWorkbenchSnapshot(
   snapshot: ThreadSnapshot,
-  componentCatalog?: ThreadComponentCatalog,
 ): ThreadWorkbenchSnapshot {
   // A retirement is current-state truth, not merely feed metadata. The
   // immutable source still retains every entity and change for audit, while
@@ -83,8 +78,7 @@ export function projectThreadWorkbenchSnapshot(
   const actions = current.proposedActions.map((action) =>
     projectAction(action, context)
   );
-  const components = projectComponents(current, componentCatalog);
-  const graph = projectGraph(current, context, components);
+  const graph = projectGraph(current, context);
   const evidenceFamilyGraph = projectEvidenceFamilyGraph(graph, {
     snapshotId: snapshot.id,
     revision: snapshot.revision,
@@ -125,7 +119,6 @@ export function projectThreadWorkbenchSnapshot(
       status: changeEvaluationStatus(snapshot, context),
       files: [],
     },
-    components,
     engineeringCases: unavailableEngineeringCaseCatalog(),
     graph,
     evidenceFamilyGraph,
@@ -182,33 +175,6 @@ function currentThreadView(snapshot: ThreadSnapshot): ThreadSnapshot {
       (link.from.kind === "change" || active(link.from.kind, link.from.id)) &&
       (link.to.kind === "change" || active(link.to.kind, link.to.id))
     ),
-  };
-}
-
-function projectComponents(
-  snapshot: ThreadSnapshot,
-  componentCatalog?: ThreadComponentCatalog,
-): ThreadWorkbenchSnapshot["components"] {
-  const catalog = resolveThreadComponentCatalog(snapshot, componentCatalog);
-  const artifactIds = new Set(
-    snapshot.artifacts.map((artifact) => artifact.id),
-  );
-  return {
-    ...catalog,
-    components: catalog.components.map((component) => ({
-      ...component,
-      bindings: component.bindings.map((binding) => ({
-        ...binding,
-        ...(artifactIds.has(binding.evidenceArtifactId)
-          ? {
-            selection: {
-              kind: "artifact" as const,
-              id: binding.evidenceArtifactId,
-            },
-          }
-          : {}),
-      })),
-    })),
   };
 }
 
@@ -270,6 +236,7 @@ function projectArtifact(
     label: artifact.name,
     kind: artifact.kind,
     system: artifact.producer.serverId,
+    producer: { ...artifact.producer },
     revision: artifact.version,
     freshness: attestation?.status === "mismatch" ? "stale" : artifact.freshness.status,
     fingerprint: fingerprint(artifact.fingerprint),
@@ -425,12 +392,7 @@ function projectAction(
 function projectGraph(
   snapshot: ThreadSnapshot,
   context: ProjectionContext,
-  components: ThreadWorkbenchSnapshot["components"],
 ): ThreadGraph {
-  const componentStructure = projectComponentStructureGraph(
-    context,
-    components,
-  );
   const analysis = projectAnalysisGraph(
     snapshot.analysisGraph,
     snapshot.freshness.status,
@@ -460,9 +422,6 @@ function projectGraph(
         summary: `${artifact.kind} · ${artifact.version}`,
         recordedAt: artifact.freshness.changedAt,
         selection: { kind: "artifact", id: artifact.id },
-        ...(isDemoLoopPrimaryArtifact(artifact.id)
-          ? { activityRole: "milestone" as const }
-          : {}),
       }),
     ),
     ...snapshot.consumptions.map((consumption): ThreadGraphNode => {
@@ -556,7 +515,6 @@ function projectGraph(
         : {}),
     })),
     ...analysis.nodes,
-    ...componentStructure.nodes,
   ];
   const nodeKeys = new Set(nodes.map((node) => entityKey(node.ref)));
 
@@ -569,7 +527,6 @@ function projectGraph(
       }),
       ...projectStructuralGraphEdges(snapshot, context),
       ...analysis.edges,
-      ...componentStructure.edges,
     ],
   };
 }
@@ -772,407 +729,6 @@ function projectStructuralGraphEdges(
   return [...artifactEdges, ...observationEdges, ...requirementEdges];
 }
 
-type ProjectedComponent = ThreadWorkbenchSnapshot["components"]["components"][number];
-type ProjectedComponentBinding = ProjectedComponent["bindings"][number];
-type ProjectedAttribute = NonNullable<ProjectedComponent["attributes"]>[number];
-
-interface ExactComponentStructureRecord {
-  component: ProjectedComponent;
-  definition: ProjectedComponentBinding;
-  usage?: ProjectedComponentBinding;
-  architecture: CanonicalArtifact;
-  cadBinding?: ProjectedComponentBinding;
-  cad?: CanonicalArtifact;
-  preview?: CanonicalArtifact;
-}
-
-interface ExactPartUsageStructureRecord {
-  record: ExactComponentStructureRecord & {
-    usage: ProjectedComponentBinding;
-  };
-  ownerDefinition: ProjectedComponentBinding;
-}
-
-/**
- * Projects the reviewed SysML product structure into the existing Evidence
- * graph without adding a second renderer or promoting read-model entities into
- * the canonical ThreadSnapshot vocabulary.
- *
- * The overlay is all-or-nothing for SysML identity: one ambiguous, missing, or
- * unverified PartDefinition/PartUsage binding suppresses the complete overlay.
- * Geometry is optional before publication, but any declared CAD binding or
- * preview must name an exact active canonical artifact. Reused
- * PartDefinitions must agree on both their authoritative STEP, their GLB
- * presentation derivative, and their AttributeUsage rows. Each AttributeUsage
- * is a structure node owned by that definition; a shared id on two
- * definitions suppresses the overlay.
- */
-function projectComponentStructureGraph(
-  context: ProjectionContext,
-  catalog: ThreadWorkbenchSnapshot["components"],
-): ThreadGraph {
-  const empty = (): ThreadGraph => ({ nodes: [], edges: [] });
-  const components = catalog.components;
-  if (components.length === 0) return empty();
-
-  const roots = components.filter((component) =>
-    component.kind === "assembly" && component.parentId === undefined
-  );
-  if (roots.length !== 1) return empty();
-  const root = roots[0]!;
-  const byComponentId = new Map(
-    components.map((component) => [component.id, component] as const),
-  );
-  if (byComponentId.size !== components.length) return empty();
-
-  const records: ExactComponentStructureRecord[] = [];
-  let architectureArtifactId: string | undefined;
-  for (const component of components) {
-    if (component !== root) {
-      if (component.kind !== "part" || component.parentId === undefined) {
-        return empty();
-      }
-      if (!byComponentId.has(component.parentId)) return empty();
-    }
-
-    const definitions = exactBindings(component, "syson", "part-definition");
-    const usages = exactBindings(component, "syson", "part-usage");
-    if (definitions.length !== 1 || definitions[0]!.status !== "verified") {
-      return empty();
-    }
-    if (
-      component === root
-        ? usages.length !== 0
-        : usages.length !== 1 || usages[0]!.status !== "verified"
-    ) {
-      return empty();
-    }
-
-    const definition = definitions[0]!;
-    const usage = usages[0];
-    if (usage && usage.evidenceArtifactId !== definition.evidenceArtifactId) {
-      return empty();
-    }
-    if (
-      architectureArtifactId !== undefined &&
-      architectureArtifactId !== definition.evidenceArtifactId
-    ) {
-      return empty();
-    }
-    architectureArtifactId = definition.evidenceArtifactId;
-    const architecture = context.artifacts.get(definition.evidenceArtifactId);
-    if (
-      !architecture || architecture.kind !== "sysml-model" ||
-      architecture.producer.serverId !== "syson"
-    ) {
-      return empty();
-    }
-
-    const cadBindings = exactBindings(component, "digital-thread", "artifact");
-    if (cadBindings.length > 1) return empty();
-    const cadBinding = cadBindings[0];
-    let cad: CanonicalArtifact | undefined;
-    if (cadBinding) {
-      if (cadBinding.status !== "verified") return empty();
-      cad = context.artifacts.get(cadBinding.id);
-      const capture = context.artifacts.get(cadBinding.evidenceArtifactId);
-      if (
-        !cad || cad.kind !== "step" || !capture ||
-        capture.producer.serverId !== "digital-thread"
-      ) {
-        return empty();
-      }
-    }
-    let preview: CanonicalArtifact | undefined;
-    if (component.preview) {
-      preview = context.artifacts.get(component.preview.artifactId);
-      const expectedUri = `/api/thread/assets/${component.preview.sha256}.glb`;
-      if (
-        component.preview.mediaType !== "model/gltf-binary" ||
-        !preview || preview.kind !== "cad-model" ||
-        preview.mediaType !== "model/gltf-binary" ||
-        preview.uri !== component.preview.url ||
-        preview.uri !== expectedUri ||
-        preview.fingerprint.algorithm !== "sha256" ||
-        preview.fingerprint.digest !== component.preview.sha256
-      ) {
-        return empty();
-      }
-    }
-    records.push({
-      component,
-      definition,
-      ...(usage ? { usage } : {}),
-      architecture,
-      ...(cadBinding ? { cadBinding } : {}),
-      cad,
-      preview,
-    });
-  }
-
-  const definitions = new Map<
-    string,
-    {
-      binding: ProjectedComponentBinding;
-      architecture: CanonicalArtifact;
-      cad?: CanonicalArtifact;
-      preview?: CanonicalArtifact;
-      attributes: readonly ProjectedAttribute[];
-    }
-  >();
-  for (const record of records) {
-    const attributes = normalizedAttributes(record.component);
-    const existing = definitions.get(record.definition.id);
-    if (existing) {
-      if (
-        existing.binding.label !== record.definition.label ||
-        existing.binding.evidenceArtifactId !==
-          record.definition.evidenceArtifactId ||
-        existing.cad?.id !== record.cad?.id ||
-        existing.preview?.id !== record.preview?.id ||
-        !sameAttributes(existing.attributes, attributes)
-      ) {
-        return empty();
-      }
-      continue;
-    }
-    definitions.set(record.definition.id, {
-      binding: record.definition,
-      architecture: record.architecture,
-      attributes,
-      ...(record.cad ? { cad: record.cad } : {}),
-      ...(record.preview ? { preview: record.preview } : {}),
-    });
-  }
-  const attributeOwnerById = new Map<string, string>();
-  for (const [definitionId, definition] of definitions) {
-    for (const attribute of definition.attributes) {
-      const owner = attributeOwnerById.get(attribute.id);
-      if (owner !== undefined && owner !== definitionId) return empty();
-      attributeOwnerById.set(attribute.id, definitionId);
-    }
-  }
-
-  const recordByComponentId = new Map(
-    records.map((record) => [record.component.id, record] as const),
-  );
-  const rootRecord = recordByComponentId.get(root.id);
-  if (!rootRecord) return empty();
-  const usages = new Map<string, ExactPartUsageStructureRecord>();
-  for (const record of records) {
-    if (!record.usage || !record.component.parentId) continue;
-    const parent = recordByComponentId.get(record.component.parentId);
-    if (!parent) return empty();
-    const occurrence: ExactPartUsageStructureRecord = {
-      record: {
-        ...record,
-        usage: record.usage,
-      },
-      ownerDefinition: parent.definition,
-    };
-    const existing = usages.get(record.usage.id);
-    if (existing) {
-      if (!samePartUsageStructure(existing, occurrence)) return empty();
-      continue;
-    }
-    usages.set(record.usage.id, occurrence);
-  }
-
-  const nodes: ThreadGraphNode[] = [
-    ...[...definitions.values()]
-      .sort((left, right) => left.binding.id.localeCompare(right.binding.id))
-      .map(({ binding, architecture }): ThreadGraphNode => ({
-        id: graphNodeId({ kind: "part-definition", id: binding.id }),
-        ref: { kind: "part-definition", id: binding.id },
-        entityKind: "part-definition",
-        label: binding.label,
-        system: "syson",
-        freshness: effectiveArtifactFreshness(architecture, context),
-        summary: `PartDefinition · ${binding.id}`,
-        recordedAt: architecture.freshness.changedAt,
-        selection: { kind: "artifact", id: architecture.id },
-      })),
-    ...[...usages.values()]
-      .sort((left, right) => left.record.usage.id.localeCompare(right.record.usage.id))
-      .map(({ record }): ThreadGraphNode => ({
-        id: graphNodeId({ kind: "part-usage", id: record.usage.id }),
-        ref: { kind: "part-usage", id: record.usage.id },
-        entityKind: "part-usage",
-        label: record.usage.label,
-        system: "syson",
-        freshness: effectiveArtifactFreshness(record.architecture, context),
-        summary: `PartUsage · typed by ${record.definition.label}`,
-        recordedAt: record.architecture.freshness.changedAt,
-        selection: { kind: "artifact", id: record.architecture.id },
-      })),
-    ...[...definitions.values()]
-      .sort((left, right) => left.binding.id.localeCompare(right.binding.id))
-      .flatMap(({ binding, architecture, attributes }): ThreadGraphNode[] =>
-        attributes.map((attribute) => ({
-          id: graphNodeId({ kind: "attribute-usage", id: attribute.id }),
-          ref: { kind: "attribute-usage" as const, id: attribute.id },
-          entityKind: "attribute-usage" as const,
-          label: `${binding.label} · ${attribute.label}`,
-          system: "syson",
-          freshness: effectiveArtifactFreshness(architecture, context),
-          summary: `AttributeUsage · owned by ${binding.label}`,
-          recordedAt: architecture.freshness.changedAt,
-          selection: { kind: "artifact" as const, id: architecture.id },
-        }))
-      ),
-  ];
-
-  const hierarchyEdges: ThreadGraphEdge[] = [{
-    id: `structure:contains:${rootRecord.architecture.id}:${rootRecord.definition.id}`,
-    from: { kind: "artifact", id: rootRecord.architecture.id },
-    to: { kind: "part-definition", id: rootRecord.definition.id },
-    relation: "contains",
-    rationale:
-      `${rootRecord.architecture.name} contains the exact root SysON PartDefinition ${rootRecord.definition.label}.`,
-    origin: "structure",
-  }];
-  for (const { record, ownerDefinition } of usages.values()) {
-    hierarchyEdges.push(
-      {
-        id: `structure:contains:${ownerDefinition.id}:${record.usage.id}`,
-        from: { kind: "part-definition", id: ownerDefinition.id },
-        to: { kind: "part-usage", id: record.usage.id },
-        relation: "contains",
-        rationale:
-          `${ownerDefinition.label} contains the exact SysON PartUsage ${record.usage.label}.`,
-        origin: "structure",
-      },
-      {
-        id: `structure:typed-by:${record.usage.id}:${record.definition.id}`,
-        from: { kind: "part-usage", id: record.usage.id },
-        to: { kind: "part-definition", id: record.definition.id },
-        relation: "typed_by",
-        rationale:
-          `${record.usage.label} is typed by the exact SysON PartDefinition ${record.definition.label}.`,
-        origin: "structure",
-      },
-    );
-  }
-  for (
-    const { binding, attributes } of [...definitions.values()]
-      .sort((left, right) => left.binding.id.localeCompare(right.binding.id))
-  ) {
-    for (const attribute of attributes) {
-      hierarchyEdges.push({
-        id: `structure:contains:${binding.id}:${attribute.id}`,
-        from: { kind: "part-definition", id: binding.id },
-        to: { kind: "attribute-usage", id: attribute.id },
-        relation: "contains",
-        rationale:
-          `${binding.label} contains the exact SysON AttributeUsage ${attribute.label}.`,
-        origin: "structure",
-      });
-    }
-  }
-  const representationEdges = [...definitions.values()]
-    .sort((left, right) => left.binding.id.localeCompare(right.binding.id))
-    .flatMap(({ binding, cad, preview }): ThreadGraphEdge[] => [
-      ...(cad
-        ? [{
-          id: `structure:represented-by:${binding.id}:${cad.id}`,
-          from: { kind: "part-definition" as const, id: binding.id },
-          to: { kind: "artifact" as const, id: cad.id },
-          relation: "represented_by" as const,
-          rationale:
-            `${binding.label} is linked by the reviewed component catalog to exact authoritative STEP artifact ${cad.name}.`,
-          origin: "structure" as const,
-        }]
-        : []),
-      ...(preview
-        ? [{
-          id: `structure:represented-by:${binding.id}:${preview.id}`,
-          from: { kind: "part-definition" as const, id: binding.id },
-          to: { kind: "artifact" as const, id: preview.id },
-          relation: "represented_by" as const,
-          rationale:
-            `${binding.label} is linked to exact GLB presentation derivative ${preview.name}; this artifact is inspectable presentation evidence, not authoritative CAD.`,
-          origin: "structure" as const,
-        }]
-        : []),
-    ]);
-
-  return {
-    nodes,
-    edges: [...hierarchyEdges, ...representationEdges].sort((left, right) =>
-      left.id.localeCompare(right.id)
-    ),
-  };
-}
-
-function samePartUsageStructure(
-  left: ExactPartUsageStructureRecord,
-  right: ExactPartUsageStructureRecord,
-): boolean {
-  return sameComponentBinding(left.record.usage, right.record.usage) &&
-    sameComponentBinding(left.ownerDefinition, right.ownerDefinition) &&
-    sameComponentBinding(left.record.definition, right.record.definition) &&
-    sameOptionalComponentBinding(
-      left.record.cadBinding,
-      right.record.cadBinding,
-    ) &&
-    left.record.component.kind === right.record.component.kind &&
-    left.record.component.label === right.record.component.label &&
-    left.record.component.quantity === right.record.component.quantity;
-}
-
-function sameOptionalComponentBinding(
-  left: ProjectedComponentBinding | undefined,
-  right: ProjectedComponentBinding | undefined,
-): boolean {
-  return left === undefined || right === undefined
-    ? left === right
-    : sameComponentBinding(left, right);
-}
-
-function normalizedAttributes(
-  component: ProjectedComponent,
-): readonly ProjectedAttribute[] {
-  return [...(component.attributes ?? [])].sort((left, right) =>
-    left.id.localeCompare(right.id) || left.label.localeCompare(right.label)
-  );
-}
-
-function sameAttributes(
-  left: readonly ProjectedAttribute[],
-  right: readonly ProjectedAttribute[],
-): boolean {
-  if (left.length !== right.length) return false;
-  return left.every((attribute, index) =>
-    attribute.id === right[index]!.id &&
-    attribute.kind === right[index]!.kind &&
-    attribute.label === right[index]!.label
-  );
-}
-
-function sameComponentBinding(
-  left: ProjectedComponentBinding,
-  right: ProjectedComponentBinding,
-): boolean {
-  return left.provider === right.provider && left.kind === right.kind &&
-    left.id === right.id && left.label === right.label &&
-    left.evidenceArtifactId === right.evidenceArtifactId &&
-    left.status === right.status && left.reason === right.reason &&
-    (left.selection === undefined || right.selection === undefined
-      ? left.selection === right.selection
-      : left.selection.kind === right.selection.kind &&
-        left.selection.id === right.selection.id);
-}
-
-function exactBindings(
-  component: ProjectedComponent,
-  provider: ProjectedComponentBinding["provider"],
-  kind: ProjectedComponentBinding["kind"],
-): ProjectedComponentBinding[] {
-  return component.bindings.filter((binding) =>
-    binding.provider === provider && binding.kind === kind
-  );
-}
-
 function graphEdgeAttestation(
   from: ThreadGraphRef,
   to: ThreadGraphRef,
@@ -1209,11 +765,6 @@ function graphNodeId(reference: ThreadGraphRef): string {
     return `graph:${reference.id}`;
   }
   return `graph:${kindPrefix}${reference.id}`;
-}
-
-function isDemoLoopPrimaryArtifact(id: string): boolean {
-  return id.startsWith("dfm-check-") ||
-    id.startsWith("sensitivity-base-evaluation-");
 }
 
 function graphActionSelection(

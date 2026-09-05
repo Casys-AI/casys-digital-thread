@@ -6,7 +6,10 @@
  */
 
 import type { EngineeringProjectRevisionStore } from "../../../../application/ports/out/engineering-project-revision-store.ts";
+import type { CapabilityRuntimeExecutionSessionCoordinator } from "../../../../application/control-plane/capability-runtime-execution-session.ts";
+import type { CapabilityRuntimeExecutionEligibility } from "../../../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import type { EngineeringProjectCommandService } from "../../../../application/use-cases/project/engineering-project-command-service.ts";
+import type { ResolvedRunPlanReader } from "../../../../domain/project/resolved-run-plan-sealer.ts";
 import { PrepareProjectAdmittedSpiceRunReview } from "../../../../application/use-cases/electrical/spice/admitted/prepare-run-review.ts";
 import { ResolveProjectAdmittedSpiceRunReview } from "../../../../application/use-cases/electrical/spice/admitted/resolve-run-review.ts";
 import type { ThreadSnapshot } from "../../../../domain/thread/thread-snapshot.ts";
@@ -48,6 +51,13 @@ export interface AdmittedSpiceProjectOptions {
   readonly recordedAnalysisDirectory: string;
   readonly admissions: CaptureBackedTechnicalCompilationAdmissionReader;
   readonly admitted: AdmittedSpiceCapability;
+  /** Required by execution: construction must preserve the JIT authority seam. */
+  readonly recordedRunPlans: ResolvedRunPlanReader;
+  readonly capabilityRuntime: CapabilityRuntimeExecutionEligibility;
+  readonly capabilityRuntimeSession: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin" | "releaseRecorded"
+  >;
 }
 
 export interface AdmittedSpiceProject {
@@ -132,6 +142,9 @@ export function createAdmittedSpiceProject(
         ),
         captures: options.admitted.captures,
         lease: options.lease,
+        plans: options.recordedRunPlans,
+        capabilityRuntime: options.capabilityRuntime,
+        capabilityRuntimeSession: options.capabilityRuntimeSession,
       });
   return {
     admittedSpiceRunReview,

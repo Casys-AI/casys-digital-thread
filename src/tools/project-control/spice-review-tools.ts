@@ -92,8 +92,9 @@ export function registerProjectSpiceReviewTools(
         const command = electricalObservationMethodSheetSealReviewCommand(args);
         const result = await review.execute(command);
         return {
-          content:
-            "Electrical observation method-sheet seal review for the named sheet fingerprint was prepared from exact server-reopened identities. The returned admission and decisionParameters are review material only: they contain no SPICE source bytes, no ngspice capability, no EngineeringProject or Thread state, no MRTR decision, and no provider or dispatch authority. This is not an admitted run and not an L4 evaluation.",
+          content: result.mode === "preparation"
+            ? "Resolved the exact current admitted SPICE L3 authoring basis. Copy methodSheet into the agent-authored electrical-observation-method-sheet/1.0 resource, use only the displayed literal observation names/values/units and limitations as facts, and author human-sourced criteria separately. After project_resource_capture interprets the completed sheet, call this review again with its exact typed fingerprint. No threshold or verdict was invented; no provider, runtime, source bytes, project write, Thread write, MRTR proposal, approval or dispatch occurred."
+            : "Electrical observation method-sheet seal review for the named sheet fingerprint was prepared from exact server-reopened identities. The returned admission and decisionParameters are review material only: they contain no SPICE source bytes, no ngspice capability, no EngineeringProject or Thread state, no MRTR decision, and no provider or dispatch authority. This is not an admitted run and not an L4 evaluation.",
           structuredContent: result as unknown as Record<string, unknown>,
         };
       },
@@ -143,14 +144,14 @@ const projectAdmittedSpiceEvaluationReviewTool: MCPTool = {
 const projectElectricalObservationMethodSheetSealReviewTool: MCPTool = {
   name: "project_electrical_observation_method_sheet_seal_review",
   description:
-    "Prepare the exact human-review identity and canonical MRTR parameters for one later verify.seal-electrical-observation-method-sheet@1 document seal by reopening a reviewed electrical-observation-method-sheet/1.0 and recrossing its brief gates and selected L3 identities. The caller may name only the exact project and sheet fingerprint. This provider-free read performs no ngspice execution, returns no source bytes, mutates no EngineeringProject or Thread state, and grants no MRTR, admission, evaluation, or dispatch authority.",
+    "Read-only preparation/review for verify.seal-electrical-observation-method-sheet@1. With projectId alone, the server reopens the unique current completed simulate.run-admitted-spice@1 branch and returns its exact Thread basis fingerprint, capture/evidence/result identities, approved Brief item identities, literal native observation names/values/units, and L3 limitations so the agent can author the method resource without reading host state. With sheetFingerprint, it reopens the typed electrical-observation-method-sheet/1.0 and recrosses its brief gates, selected L3 identities and current Thread basis before returning canonical MRTR parameters. Neither mode invents thresholds or verdicts. Provider, runtime, image, endpoint, source bytes, args and caller observations are refused; no ngspice execution, project/Thread mutation, MRTR, evaluation or dispatch occurs.",
   inputSchema: {
     type: "object",
     properties: {
       projectId: TECHNICAL_ID_SCHEMA,
       sheetFingerprint: FINGERPRINT_SCHEMA,
     },
-    required: ["projectId", "sheetFingerprint"],
+    required: ["projectId"],
     additionalProperties: false,
   },
   outputSchema: OBJECT_OUTPUT_SCHEMA,
@@ -204,19 +205,23 @@ function admittedSpiceEvaluationReviewCommand(
 function electricalObservationMethodSheetSealReviewCommand(
   value: Record<string, unknown>,
 ): ProjectElectricalObservationMethodSheetSealReviewCommand {
+  const includesSheet = "sheetFingerprint" in value;
   exactKeys(
     value,
-    ["projectId", "sheetFingerprint"],
+    includesSheet ? ["projectId", "sheetFingerprint"] : ["projectId"],
     [],
     "electricalObservationMethodSheetSealReview",
   );
-  return {
-    projectId: technicalId(value.projectId, "projectId"),
-    sheetFingerprint: fingerprintInput(
-      value.sheetFingerprint,
-      "sheetFingerprint",
-    ),
-  };
+  const projectId = technicalId(value.projectId, "projectId");
+  return includesSheet
+    ? {
+      projectId,
+      sheetFingerprint: fingerprintInput(
+        value.sheetFingerprint,
+        "sheetFingerprint",
+      ),
+    }
+    : { projectId };
 }
 
 function fingerprintInput(value: unknown, name: string) {

@@ -1,6 +1,7 @@
 import type { JSX } from "react";
 import { cn } from "../lib/utils.ts";
 import type { ThreadStreamStatus } from "../thread/client.ts";
+import type { ThreadViewerSessionsProjection } from "../thread/viewer-sessions-client.ts";
 import type { EngineeringDocumentaryWorkbenchSnapshot } from "../thread/types.ts";
 import { Badge, type BadgeProps } from "../ui/badge.tsx";
 import {
@@ -18,13 +19,11 @@ import {
   projectBriefStatusLabel,
   projectStatusTone,
 } from "./model.ts";
-import {
-  ProjectCockpitHeader,
-  ProjectNavigation,
-  type ProjectWorkspaceView,
-} from "./navigation.tsx";
+import { ProjectNavigation, type ProjectWorkspaceView } from "./navigation.tsx";
 import { hasDistinctProjectObjectiveStatement } from "./navigation-model.ts";
 import { ProjectWorkRibbon } from "./work.tsx";
+import { ProjectReviewAppHandoffs } from "./control-center.tsx";
+import { buildProjectReviewRecords } from "./review-decision-model.ts";
 
 type BadgeVariant = NonNullable<BadgeProps["variant"]>;
 
@@ -35,11 +34,13 @@ type BadgeVariant = NonNullable<BadgeProps["variant"]>;
  */
 export function DocumentaryBaselineWorkbench({
   workbench,
+  viewerSessions,
   streamStatus,
   activeView,
   onChangeView,
 }: {
   workbench: EngineeringDocumentaryWorkbenchSnapshot;
+  viewerSessions?: ThreadViewerSessionsProjection;
   streamStatus: ThreadStreamStatus | "snapshot";
   activeView: ProjectWorkspaceView;
   onChangeView: (view: ProjectWorkspaceView) => void;
@@ -50,22 +51,34 @@ export function DocumentaryBaselineWorkbench({
   const { record } = documentary;
   const technicalStart = documentary.technicalStart;
   const statusSeal = documentaryProjectStatusSeal(brief, technicalStart);
+  const reviewRecords = buildProjectReviewRecords(project);
   return (
     <div className="thread-workbench cockpit-surface">
-      <ProjectCockpitHeader
-        projectId={project.project.id}
-        revision={project.revision}
-        projectName={project.project.name}
-        context={`Documentary · ${project.project.subjectId}`}
-        streamState={streamStatus}
-        streamLabel={documentaryStreamLabel(streamStatus)}
-        statusLabel="Technical proof"
-        statusValue="Not recorded yet"
-        metaLabel="Recorded"
-        metaValue={formatTime(record.recordedAt)}
+      <ProjectNavigation
+        activeView={activeView}
+        onChange={onChangeView}
+        status={
+          <>
+            <span
+              className="project-navigation-stream"
+              data-state={streamStatus}
+              aria-live="polite"
+            >
+              <i aria-hidden="true" />
+              <span className="project-navigation-stream-label">
+                {documentaryStreamLabel(streamStatus)}
+              </span>
+            </span>
+            <time
+              className="project-navigation-time"
+              dateTime={record.recordedAt}
+              title={`Recorded ${record.recordedAt}`}
+            >
+              {formatTime(record.recordedAt)}
+            </time>
+          </>
+        }
       />
-
-      <ProjectNavigation activeView={activeView} onChange={onChangeView} />
 
       {activeView === "overview"
         ? (
@@ -120,6 +133,12 @@ export function DocumentaryBaselineWorkbench({
             </section>
 
             <ProjectWorkRibbon project={project} />
+
+            <ProjectReviewAppHandoffs
+              project={project}
+              records={reviewRecords}
+              projection={viewerSessions}
+            />
 
             <DocumentaryProjectPath brief={brief} />
 

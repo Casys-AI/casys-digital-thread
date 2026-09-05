@@ -1,5 +1,7 @@
 import { assertEquals, assertStrictEquals } from "@std/assert";
 import type { CalculixIsolatedExecutionProfile } from "../../../application/ports/out/fea/isolated-v3/calculix-isolated-execution-profile.ts";
+import type { AdmittedSpiceExecutionProfileCatalog } from "../../../application/ports/out/electrical/spice/admitted-execution-profile-catalog.ts";
+import type { AdmittedModelicaExecutionProfileCatalog } from "../../../application/ports/out/modelica/admitted-execution-profile-catalog.ts";
 import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
 import { FileCaptureStore } from "../../shared/cas/file-capture-store.ts";
 import { FileThreadSnapshotStore } from "../../shared/stores/file-thread-snapshot-store.ts";
@@ -43,6 +45,8 @@ Deno.test("ROP composition reopens the exact shared proof and requirements CAS i
       feaProofCaptures: fea.feaProofCaptures,
       sensitivityCatalogOfferCaptures: fea.sensitivityCatalogOfferCaptures,
       requirementsCaptures: architecture.requirementsCaptures,
+      technicalCompilationAdmissionCaptureBytes:
+        compilation.technicalCompilationSealBytes,
       admissions: compilation.technicalCompilationAdmissions,
       recordedAnalysisDirectory: `${root}/analysis`,
       canonicalAssetDirectory: `${root}/assets`,
@@ -78,6 +82,64 @@ Deno.test("ROP composition reopens the exact shared proof and requirements CAS i
         source.includes("calculix/proof-cases"),
       false,
     );
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("ROP composition retains the exact admitted Modelica and SPICE profile catalogues", async () => {
+  const root = await Deno.makeTempDir({ prefix: "casys-rop-admitted-profiles-" });
+  try {
+    const snapshots = new FileThreadSnapshotStore(`${root}/snapshots`);
+    const architecture = createArchitectureFoundation({
+      recordedAnalysisDirectory: `${root}/analysis`,
+      sourceAnalysisCaptures: new FileCaptureStore({
+        kind: "source-analysis",
+        directory: `${root}/source-analysis`,
+        uriNamespace: "source-analysis",
+        label: "Source analysis",
+      }),
+      sysmlSourceCaptureDirectory: `${root}/sysml`,
+      sysonModelSeedCaptureDirectory: `${root}/seed`,
+      architectureCaptureDirectory: `${root}/architecture`,
+      requirementsCaptureDirectory: `${root}/requirements`,
+      resources: testReopenAgentResource(`${root}/agent-resources`),
+    });
+    const compilation = createTechnicalCompilationFoundation({
+      recordedAnalysisDirectory: `${root}/analysis`,
+      snapshots,
+      resources: testReopenAgentResource(`${root}/agent-resources-compile`),
+      workspace: new FileProjectSourceWorkspaceStore(`${root}/workspace`),
+    });
+    const fea = createFeaFoundation();
+    const modelicaProfiles = {
+      initial: () => Promise.resolve({}),
+    } as unknown as Pick<AdmittedModelicaExecutionProfileCatalog, "initial">;
+    const spiceProfiles = {
+      initial: () => Promise.resolve({}),
+    } as unknown as Pick<AdmittedSpiceExecutionProfileCatalog, "initial">;
+    const plans = createRecordedOperationPlanComposition({
+      snapshots,
+      feaProofCaptures: fea.feaProofCaptures,
+      sensitivityCatalogOfferCaptures: fea.sensitivityCatalogOfferCaptures,
+      requirementsCaptures: architecture.requirementsCaptures,
+      technicalCompilationAdmissionCaptureBytes:
+        compilation.technicalCompilationSealBytes,
+      admissions: compilation.technicalCompilationAdmissions,
+      admittedModelicaProfiles: modelicaProfiles,
+      admittedSpiceProfiles: spiceProfiles,
+      recordedAnalysisDirectory: `${root}/analysis`,
+      canonicalAssetDirectory: `${root}/assets`,
+    });
+    const resolver = plans.recordedPlanResolver as unknown as {
+      readonly options: {
+        readonly admittedModelica?: { readonly profiles: unknown };
+        readonly admittedSpice?: { readonly profiles: unknown };
+      };
+    };
+
+    assertStrictEquals(resolver.options.admittedModelica?.profiles, modelicaProfiles);
+    assertStrictEquals(resolver.options.admittedSpice?.profiles, spiceProfiles);
   } finally {
     await Deno.remove(root, { recursive: true });
   }

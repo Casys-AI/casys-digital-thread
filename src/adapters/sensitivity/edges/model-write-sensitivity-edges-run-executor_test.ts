@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
+import { MODEL_AUTHOR_SYSTEM_CAPABILITY } from "../../../domain/capability/engineering-capability.ts";
 import {
   type CompleteRunCommand,
   EngineeringProjectCommandError,
@@ -12,7 +13,7 @@ import {
   sensitivityPartDefName,
 } from "../../../domain/sensitivity/edges/sensitivity-edge-from-study.ts";
 import {
-  assembleSensitivityStudyCaseV2,
+  assembleSensitivityStudyCaseV3,
   validateSensitivityStudyCaseTemplate,
 } from "../../../domain/sensitivity/study/sensitivity-study-template.ts";
 import { computeSensitivities } from "../../../domain/sensitivity/study/sensitivity-study.ts";
@@ -31,6 +32,11 @@ import {
 } from "../../../domain/sensitivity/study/sensitivity-study-result.ts";
 import { FileSensitivityEdgesAttemptStore } from "./file-sensitivity-edges-attempt-store.ts";
 import {
+  recordingCapabilityRuntimeSession,
+  successfulCapabilityRuntimeFor,
+} from "../../../testing/capability-runtime-execution-session-test-support.ts";
+import {
+  MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
   ModelWriteSensitivityEdgesRunExecutor,
   SENSITIVITY_EDGES_CAPTURE_URI_PREFIX,
 } from "./model-write-sensitivity-edges-run-executor.ts";
@@ -69,6 +75,7 @@ Deno.test(
       assertEquals(capture.sysml, fixture.expectedSysml);
       assertEquals(fixture.syson.inserted[0], fixture.expectedSysml);
       assertEquals(findArchitectureArtifactStillDistinct(snapshot!), true);
+      assertEquals(fixture.capabilityRuntimeSession.releases, 1);
     } finally {
       await fixture.dispose();
     }
@@ -208,6 +215,28 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "model.write-sensitivity-edges@1 keeps the run queued when JIT activation fails",
+  async () => {
+    const capabilityRuntimeSession = recordingCapabilityRuntimeSession(() =>
+      Promise.reject(new Error("exact SysON host group unavailable"))
+    );
+    const fixture = await createFixture(false, { capabilityRuntimeSession });
+    try {
+      await assertRejects(
+        () => fixture.executor.execute(AGENT, fixture.command),
+        Error,
+        "host group unavailable",
+      );
+      assertEquals(capabilityRuntimeSession.events, ["begin"]);
+      assertEquals(fixture.syson.inserted, []);
+      assertEquals(fixture.commands.project.agentRuns[0]?.status, "queued");
+    } finally {
+      await fixture.dispose();
+    }
+  },
+);
+
 function findArchitectureArtifactStillDistinct(snapshot: ThreadSnapshot): boolean {
   const sensitivity = snapshot.artifacts.filter((item) =>
     item.uri?.startsWith(SENSITIVITY_EDGES_CAPTURE_URI_PREFIX)
@@ -218,7 +247,14 @@ function findArchitectureArtifactStillDistinct(snapshot: ThreadSnapshot): boolea
   return sensitivity.length === 1 && architecture.length === 1;
 }
 
-async function createFixture(reuseResult = false) {
+async function createFixture(
+  reuseResult = false,
+  options: {
+    readonly capabilityRuntimeSession?: ReturnType<
+      typeof recordingCapabilityRuntimeSession
+    >;
+  } = {},
+) {
   const directory = await Deno.makeTempDir({ prefix: "sensitivity-edges-" });
   const template = validateSensitivityStudyCaseTemplate(
     JSON.parse(
@@ -227,7 +263,7 @@ async function createFixture(reuseResult = false) {
       ),
     ),
   );
-  const studyCase = assembleSensitivityStudyCaseV2(template, {
+  const studyCase = assembleSensitivityStudyCaseV3(template, {
     artifactUri: `thread-artifact://${PROJECT_ID}/admission`,
     sha256: "a".repeat(64),
   });
@@ -532,12 +568,21 @@ async function createFixture(reuseResult = false) {
   const syson = new FakeSyson(expectedSysml);
   const commands = new MemoryCommands(project);
   const attempts = new FileSensitivityEdgesAttemptStore(`${directory}/wal`);
+  const capability = successfulCapabilityRuntimeFor(
+    PROJECT_ID,
+    MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
+    MODEL_AUTHOR_SYSTEM_CAPABILITY.id,
+  );
+  const capabilityRuntimeSession = options.capabilityRuntimeSession ??
+    capability.capabilityRuntimeSession;
   return {
     expectedSysml,
     studyCapture,
     studyFingerprint,
     studyCaptures,
     syson,
+    commands,
+    capabilityRuntimeSession,
     snapshots,
     edgeCaptures,
     command: {
@@ -567,6 +612,8 @@ async function createFixture(reuseResult = false) {
         }),
       attempts,
       lease: { withLease: (_projectId, _scope, operation) => operation() },
+      capabilityRuntime: capability.capabilityRuntime,
+      capabilityRuntimeSession,
     }),
     attempts,
     dispose: () => Deno.remove(directory, { recursive: true }),

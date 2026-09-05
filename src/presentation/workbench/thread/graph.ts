@@ -20,10 +20,7 @@ export interface ThreadGraphRef {
     | "analysis-node"
     | "part-definition"
     | "part-usage"
-    | "attribute-usage"
-    | "cad-lever"
-    | "cad-unnamed-literal"
-    | "source-file";
+    | "attribute-usage";
   id: string;
 }
 
@@ -42,8 +39,6 @@ export type ProvenanceThreadGraphRelation =
   | "contains"
   | "typed_by"
   | "represented_by"
-  | "parameterizes"
-  | "unnamed_in"
   | "verified_by"
   | "constrained_by";
 

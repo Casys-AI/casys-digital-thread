@@ -33,6 +33,22 @@ command surface. Graphology is a disposable index, never domain or authority.
 | `project_source_closure`  | Technical DAG of one versioned authoring attachment (`attachmentId` + `attachmentRevision` at an exact workspace revision). One `entries` stream of files and edges. `PartUsage` keeps its usage id | Product structure, a free `fileId`/`fileRevision` root, or admission    |
 | Graphology                | Disposable algorithmic index reconstructed from exact `architecture-capture/4.0`                                                                                                                    | Domain authority, persistence, or a second Workbench product browser    |
 
+## Capability runtime
+
+The server owns the translation from engineering need to local runtime. These identities
+are deliberately separate; an agent proposes registered work but does not select or
+supply any of them.
+
+| This                        | Is                                                                                                     | Is not                                                              |
+| --------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| Semantic capability         | Provider-neutral engineering need, for example `mechanics.solve-static-structural@1`                   | A provider, package, image, endpoint, or runtime command            |
+| Binding                     | Policy-selected concrete adapter/profile for one semantic capability, with its catalogue qualification | An agent choice or a scientific verdict                             |
+| Atomic unit                 | Concrete installable material or technically indivisible cluster                                       | A semantic capability or a method/MRTR approval                     |
+| Immutable material / digest | Exact versioned runtime artifact identity inside an atomic unit                                        | A mutable tag, an authorization by itself, or an engineering result |
+
+The [capability pack references](../runtime/capability-packs/README.md) own the exact
+catalogue, authorization and lifecycle rules.
+
 ## Engineering Case catalog
 
 The Workbench read-side `engineering-cases/1.0` catalog is the typed id+revision case
@@ -40,41 +56,59 @@ families that seal a case document with authority artifacts and producer run IDs
 admissions, isolated CAD execution, admitted Modelica and admitted SPICE are not members
 of that catalog.
 
-| This                                                                         | Is                                                                              | Is not                                       |
-| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------- |
-| `mechanical-proof-case/1.0`                                                  | Exact FEA proof-case identity (`verify.seal-proof-case@1`)                      | A CalculiX solve or evaluation closeout      |
-| `sensitivity-study-case/2.0`                                                 | Exact sensitivity-study identity (`analyze.seal-sensitivity-study@1`)           | A proof-run or a CAD admission               |
-| `printability-check-case/1.0`                                                | Exact FDM printability-case identity (`industrialize.seal-printability-case@1`) | A DFM payload or a STEP                      |
-| `print-estimate-case/1.0`                                                    | Exact FFF print-estimate identity (`industrialize.seal-print-estimate-case@1`)  | A price, slicer log, or CAD admission        |
-| `dfm-check-case/1.0`                                                         | Exact measured DFM-case identity (`industrialize.seal-dfm-case@1`)              | Printability thresholds or mcp-dfm by itself |
-| `compile.seal-admission@3` / `technical-compilation-admission-capture/4.0`   | Closed-subset admission bytes                                                   | An Engineering Case                          |
-| `design.execute-build123d@1` / `design.seal-isolated-geometry@1`             | Isolated CAD execution / documentary seal of that execution                     | An Engineering Case or canonical STEP        |
-| `simulate.run-admitted-modelica@1` / `simulate.run-qualified-modelica-kit@1` | Admitted `.mo` run or pinned kit                                                | An Engineering Case                          |
-| `simulate.run-admitted-spice@1`                                              | Circuit-only admitted SPICE                                                     | An Engineering Case or mcp-spice             |
-| Historical `simulate.seal-simulation-case@1`/`@2`                            | Retired recorded-provider route. Not registered                                 | An Engineering Case family                   |
+| This                                                                         | Is                                                                              | Is not                                          |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `mechanical-proof-case/1.0`                                                  | Exact FEA proof-case identity (`verify.seal-proof-case@1`)                      | A CalculiX solve or evaluation closeout         |
+| `sensitivity-study-case/3.0`                                                 | Exact provider-neutral sensitivity-study identity                               | A proof-run, CAD admission, or provider request |
+| `printability-check-case/1.0`                                                | Exact FDM printability-case identity (`industrialize.seal-printability-case@1`) | A DFM payload or a STEP                         |
+| `print-estimate-case/1.0`                                                    | Exact FFF print-estimate identity (`industrialize.seal-print-estimate-case@1`)  | A price, slicer log, or CAD admission           |
+| `dfm-check-case/1.0`                                                         | Exact measured DFM-case identity (`industrialize.seal-dfm-case@1`)              | Printability thresholds or mcp-dfm by itself    |
+| `compile.seal-admission@3` / `technical-compilation-admission-capture/4.0`   | Closed-subset admission bytes                                                   | An Engineering Case                             |
+| `design.execute-build123d@1` / `design.seal-isolated-geometry@1`             | Isolated CAD execution / documentary seal of that execution                     | An Engineering Case or canonical STEP           |
+| `simulate.run-admitted-modelica@1` / `simulate.run-qualified-modelica-kit@1` | Admitted `.mo` run or pinned kit                                                | An Engineering Case                             |
+| `simulate.run-admitted-spice@1`                                              | Circuit-only admitted SPICE                                                     | An Engineering Case or mcp-spice                |
+| Historical `simulate.seal-simulation-case@1`/`@2`                            | Retired recorded-provider route. Not registered                                 | An Engineering Case family                      |
+
+## Mechanism
+
+Domain contract: [mechanism](../domains/mechanism/README.md). Recovery:
+[prescribed-kinematics observation recovery](../pipeline/prescribed-kinematics-observation-recovery.md).
+
+| This                                                                 | Is                                                                                                                                           | Is not                                                                                              |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `project_prescribed_kinematics_case_review`                          | Read-only recross of one exact same-file `mechanism-source@1` closure and assembly-context architecture binding, plus pasteable L1 envelopes | L1 seal, provider probe, MRTR, L3 observation, L4 evaluation, or L5 decision                        |
+| `verify.seal-prescribed-kinematics-case@1`                           | L1 Thread seal of the exact recrossed case                                                                                                   | The L2 run MRTR, a provider request, or an L3 observation                                           |
+| `project_prescribed_kinematics_run_review`                           | Read-only next-hop for `verify.run-prescribed-kinematics@1` from the unique current L1 case                                                  | L2 approval, Chrono call, or a caller-selected provider/runtime                                     |
+| `methodSheet.caseFingerprint` / `methodSheet.observationFingerprint` | Domain sealed-case SHA-256 and canonical observation SHA-256 required by the method sheet                                                    | Outer Thread artifact or observation-capture fingerprints on `evidence.*`                           |
+| L2 signed MRTR + sealed ROP                                          | Exact authority for one registered L3 observation action                                                                                     | A runtime qualification, a provider request, or L3 facts                                            |
+| `deno task capability:qualify`                                       | Private host-local qualification attestation; an exact host may be qualified in emulated AMD64 mode                                          | A catalogue rewrite, project authorization, sealed ROP, JIT lease, MCP operation, or L3 product run |
+| `verify.run-prescribed-kinematics@1`                                 | L3 factual observation after the server's one-dispatch WAL and same-request receipt readback                                                 | L4, L5, collision/clearance/force/safety verdict, or an agent-selected provider call                |
+| `verify.evaluate-prescribed-kinematics@1`                            | Provider-free L4 application of an exact sealed method to L1/L3 evidence                                                                     | Provider dispatch, a method seal, or human closeout                                                 |
+| `record.reconcile-uncertain-writer@1`                                | Human-only resolution of a terminal unknown provider outcome                                                                                 | A missing L3 capture, basis release by itself, or a retry of the failed run                         |
+| Product L3 WAL                                                       | Run/case/request identity, one dispatch claim, and same-request readback                                                                     | The separate host qualification WAL                                                                 |
 
 ## CAD and compile
 
 Domain contracts: [closed subset](../domains/cad/build123d-closed-subset-v1.md) and
 [execution paths](../domains/cad/execution-paths.md).
 
-| This                                                      | Is                                                                                                                            | Is not                                                                       |
-| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `project_geometry_preview` + `design.write-geometry@1`    | Retired product entry. Preview is not registered. `write-geometry` refuses a draft without an admission stamp                 | Isolated compiler execution or a photo STEP                                  |
-| `design.preview-geometry@1`                               | Retired identity. Not registered                                                                                              | A product CAD verb or sandbox entry                                          |
-| `parser.status` on a technical capture                    | Closed-subset parser fact                                                                                                     | Admission, a named lever, or a SysML bind                                    |
-| `levers.status` on a technical capture                    | Reachable named numeric literals                                                                                              | A SysML `parameterizes` bind or `compile.seal-admission@3`                   |
-| `source.no-named-numeric-lever`                           | No reachable named literal (constructor photo or dead assignment)                                                             | Missing `parameterizes` (`binding.missing`)                                  |
-| `compile.seal-admission@3` + `design.execute-build123d@1` | Provider-free admission then local microVM draft execution                                                                    | Canonical geometry promotion                                                 |
-| `design.seal-isolated-geometry@1`                         | Provider-free Thread-document seal of isolated execution                                                                      | Canonical STEP, cad-model, `write-geometry`, or FEA geometry                 |
-| `cad-immediate-placement-source/1.0`                      | Closed JSON of exact immediate `PartUsage` transforms. File role `cad-placement-source`; attachments stay `design-source@1`   | A CAD script, compiler profile, assembly manifest, or new attachment role    |
-| `project_cad_placement_capture`                           | Same-file coverage recross. Opaque `cad-placement-analysis-capture` locator only when fully resolved                          | `project_technical_source_capture`, module export, or a verdict              |
-| `project_geometry_module_export`                          | Accepted public draft from exact project, Thread, PartDefinition and placement identities; grants none                        | Placement capture or `design.write-geometry@1`                               |
-| Isolated Build123d worker (`/input/source.py`)            | Untrusted admitted CAD source executed in the existing image                                                                  | The module assembler; it never execs agent Python                            |
-| `geometry-module-input-bundle/1.0` assembler image        | Code-owned one-level STEP compound from a closed child-STEP bundle                                                            | Concatenated CAD scripts, `design.execute-build123d@1`, or collision freedom |
-| `geometry-part-capture/1.0`                               | One exact PartDefinition; no assembly, occurrence, or placement claim                                                         | `geometry-module-capture/1.0` or a v2 bundle                                 |
-| `geometry-module-capture/1.0`                             | One composite PartDefinition and only its immediate child capture references                                                  | A flat descendant manifest or `geometry-manifest/2.0`                        |
-| `geometry-module-draft-capture/1.0`                       | Review-only module draft: complete input-bundle identity, isolated receipt, reopened child STEP identities, produced STEP+GLB | Child source text, a generated program, a provider call, or Thread evidence  |
+| This                                                      | Is                                                                                                                                    | Is not                                                                       |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `project_geometry_preview` + `design.write-geometry@1`    | Retired product entry. Preview is not registered. `write-geometry` refuses a draft without an admission stamp                         | Isolated compiler execution or a photo STEP                                  |
+| `design.preview-geometry@1`                               | Retired identity. Not registered                                                                                                      | A product CAD verb or sandbox entry                                          |
+| `parser.status` on a technical capture                    | Closed-subset parser fact                                                                                                             | Admission, a named lever, or a SysML bind                                    |
+| `levers.status` on a technical capture                    | Reachable named numeric literals                                                                                                      | A SysML `parameterizes` bind or `compile.seal-admission@3`                   |
+| `source.no-named-numeric-lever`                           | No reachable named literal (constructor photo or dead assignment)                                                                     | Missing `parameterizes` (`binding.missing`)                                  |
+| `compile.seal-admission@3` + `design.execute-build123d@1` | Provider-free admission then local microVM draft execution                                                                            | Canonical geometry promotion                                                 |
+| `design.seal-isolated-geometry@1`                         | Provider-free Thread-document seal of isolated execution                                                                              | Canonical STEP, cad-model, `write-geometry`, or FEA geometry                 |
+| `cad-immediate-placement-source/1.0`                      | Closed JSON of exact immediate `PartUsage` transforms. File role `cad-placement-source`; attachments stay `design-source@1`           | A CAD script, compiler profile, assembly manifest, or new attachment role    |
+| `project_cad_placement_capture`                           | Same-file coverage recross. Opaque `cad-placement-analysis-capture` locator only when fully resolved                                  | `project_technical_source_capture`, module export, or a verdict              |
+| `project_geometry_module_export`                          | Accepted public draft from exact project, Thread, PartDefinition and placement identities; grants none                                | Placement capture or `design.write-geometry@1`                               |
+| Isolated Build123d worker (`/input/source.py`)            | Untrusted admitted CAD source executed in the existing image                                                                          | The module assembler; it never execs agent Python                            |
+| `geometry-module-input-bundle/1.0` assembler image        | Code-owned one-level STEP compound from a closed child-STEP bundle                                                                    | Concatenated CAD scripts, `design.execute-build123d@1`, or collision freedom |
+| `geometry-part-capture/1.0`                               | One exact PartDefinition; no assembly, occurrence, or placement claim                                                                 | `geometry-module-capture/1.0` or a v2 bundle                                 |
+| `geometry-module-capture/1.0`                             | One composite PartDefinition and only its immediate child capture references                                                          | A flat descendant manifest or `geometry-manifest/2.0`                        |
+| `geometry-module-draft-capture/1.0`                       | Review-only module draft: complete input-bundle identity, neutral assembly receipt, reopened child STEP identities, produced STEP+GLB | Child source text, a generated program, a provider call, or Thread evidence  |
 
 ## Modelica
 
@@ -152,7 +186,7 @@ Domain contracts:
 | STEP inside a sensitivity-study capture  | Isolated solver input for that study only                                                           | Canonical geometry or a proof-run `geometry` binding                                              |
 | `model.write-sensitivity-edges@1`        | Server-rendered derivative PartDef inserted into SysON                                              | `model.write-architecture@1`                                                                      |
 | `renderSensitivityEdgeSetSysml`          | Flat PartDef renderer for measured edges                                                            | `renderSensitivityRelationsSysml`                                                                 |
-| `sensitivity-study-case/2.0` `cadSource` | Sealed compilation-admission artifact URI + sha256                                                  | `recipeSource` 1.0 or a STEP artifact                                                             |
+| `sensitivity-study-case/3.0` `cadSource` | Sealed compilation-admission URI + sha256; provider-neutral `method`                                | Retired recipe reference, STEP, or provider request                                               |
 | `design.apply-vector-correction@1`       | Provider-free Thread-document seal of a bounded correction proposal (`grants: none`)                | CAD write, SysON insert, provider run, or execution admission                                     |
 | `compile.capture-corrected-source@1`     | Not registered. Corrections return through `AgentResource` plus a successor workspace file revision | `compile.seal-admission@3` or `design.execute-build123d@1`                                        |
 | Binding `studyCapture`                   | Fresh `sensitivity-study-capture/1.0` or target-local `sensitivity-study-reuse-result/1.0`          | Source-project capture, `sensitivity-edges-capture/1.0`, or a SysON PartDef                       |

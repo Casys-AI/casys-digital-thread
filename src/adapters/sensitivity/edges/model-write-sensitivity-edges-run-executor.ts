@@ -7,8 +7,19 @@
  */
 
 import type { EngineeringProjectCommandOrigin } from "../../../application/ports/in/engineering-project-command-origin.ts";
+import type { CapabilityRuntimeExecutionEligibility } from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
+import {
+  beginConfiguredCapabilityRuntimeSession,
+  requireConfiguredOperationalCapability,
+  settleCapabilityRuntimeSession,
+} from "../../../application/control-plane/capability-runtime-execution-admission.ts";
+import {
+  type CapabilityRuntimeExecutionSession,
+  type CapabilityRuntimeExecutionSessionCoordinator,
+  CapabilityRuntimeSessionUnavailableError,
+} from "../../../application/control-plane/capability-runtime-execution-session.ts";
 import {
   EngineeringProjectCommandError,
   type EngineeringProjectCommandService,
@@ -102,6 +113,13 @@ export interface ModelWriteSensitivityEdgesRunExecutorDependencies {
   ) => Promise<SensitivityEdgesSysonContext>;
   readonly attempts: FileSensitivityEdgesAttemptStore;
   readonly lease: EngineeringProjectRunLease;
+  /** Cold server-owned authorization recheck for the fixed SysON binding. */
+  readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
+  /** Starts the sealed JIT group before run/WAL/SysON mutation. */
+  readonly capabilityRuntimeSession?: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin"
+  >;
 }
 
 export class ModelWriteSensitivityEdgesRunExecutor {
@@ -117,6 +135,10 @@ export class ModelWriteSensitivityEdgesRunExecutor {
     ModelWriteSensitivityEdgesRunExecutorDependencies["resolveSysonContext"];
   readonly #attempts: FileSensitivityEdgesAttemptStore;
   readonly #lease: EngineeringProjectRunLease;
+  readonly #capabilityRuntime: CapabilityRuntimeExecutionEligibility | undefined;
+  readonly #capabilityRuntimeSession:
+    | Pick<CapabilityRuntimeExecutionSessionCoordinator, "begin">
+    | undefined;
 
   constructor(deps: ModelWriteSensitivityEdgesRunExecutorDependencies) {
     this.#projects = deps.projects;
@@ -128,6 +150,8 @@ export class ModelWriteSensitivityEdgesRunExecutor {
     this.#resolveSysonContext = deps.resolveSysonContext;
     this.#attempts = deps.attempts;
     this.#lease = deps.lease;
+    this.#capabilityRuntime = deps.capabilityRuntime;
+    this.#capabilityRuntimeSession = deps.capabilityRuntimeSession;
   }
 
   async execute(
@@ -167,175 +191,225 @@ export class ModelWriteSensitivityEdgesRunExecutor {
       readonly runId: string;
     },
   ): Promise<EngineeringProjectSnapshot> {
-    const preClaim = await this.#requiredProject(command.projectId);
-    const preRun = requireRun(preClaim, command.runId);
-    if (preRun.status === "completed") return preClaim;
-    await assertThreadWriteBasisAvailable(preClaim, preRun);
-    await this.#commands.claimRun(origin, {
-      ...command,
-      commandId: `${command.commandId}:claim`,
-      summary: "Started the sensitivity-edges SysON write.",
-    });
-    let project = await this.#requiredProject(command.projectId);
-    let run = requireRun(project, command.runId);
-    if (run.status === "completed") return project;
-    if (run.status !== "running" && run.status !== "publishing") {
-      throw unexpectedStatus(run, "running");
-    }
-    const basis = requireBasis(run);
-    const basisSnapshot = await exactBasisSnapshot(this.#snapshots, basis);
-    await assertThreadSnapshotLineageIntact(basisSnapshot, this.#snapshots);
-    if (!findArchitectureArtifact(basisSnapshot)) {
-      throw invalidTransition(
-        "No architecture artifact is present on the Thread basis.",
+    let claimed = false;
+    let capabilitySession: CapabilityRuntimeExecutionSession | undefined;
+    try {
+      const preClaim = await this.#requiredProject(command.projectId);
+      const preRun = requireRun(preClaim, command.runId);
+      requireShape(preClaim, preRun);
+      if (preRun.status === "completed") return preClaim;
+      await assertThreadWriteBasisAvailable(preClaim, preRun);
+      const operationalCapability = await this.#requireOperationalCapability(
+        preClaim,
+        preRun,
       );
-    }
-    const studyArtifact = requireBoundArtifact(
-      project,
-      run,
-      basisSnapshot,
-      "studyCapture",
-    );
-    const studyText = await this.#studyCaptures.read(studyArtifact.fingerprint);
-    if (!studyText) {
-      throw invalidTransition("The sensitivity-study capture is not readable.");
-    }
-    let parsedStudy: unknown;
-    try {
-      parsedStudy = JSON.parse(studyText);
-    } catch {
-      throw invalidTransition("The sensitivity-study capture is not valid JSON.");
-    }
-    let studyCapture;
-    try {
-      studyCapture = await validateSensitivityStudyResult(parsedStudy);
+      // JIT activation is deliberately pre-claim: a denied or unavailable
+      // host must not alter the work item, run, WAL, or SysON state.
+      capabilitySession = await beginConfiguredCapabilityRuntimeSession({
+        session: this.#capabilityRuntimeSession!,
+        project: preClaim,
+        runId: command.runId,
+        operationalCapability,
+        recheck: async () => {
+          const fresh = await this.#requiredProject(command.projectId);
+          const run = requireRun(fresh, command.runId);
+          requireShape(fresh, run);
+          return await this.#requireOperationalCapability(fresh, run);
+        },
+      });
+      await this.#commands.claimRun(origin, {
+        ...command,
+        commandId: `${command.commandId}:claim`,
+        summary: "Started the sensitivity-edges SysON write.",
+      });
+      claimed = true;
+      let project = await this.#requiredProject(command.projectId);
+      let run = requireRun(project, command.runId);
+      if (run.status === "completed") {
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "release" },
+        });
+        return project;
+      }
+      if (run.status !== "running" && run.status !== "publishing") {
+        throw unexpectedStatus(run, "running");
+      }
+      const basis = requireBasis(run);
+      const basisSnapshot = await exactBasisSnapshot(this.#snapshots, basis);
+      await assertThreadSnapshotLineageIntact(basisSnapshot, this.#snapshots);
+      if (!findArchitectureArtifact(basisSnapshot)) {
+        throw invalidTransition(
+          "No architecture artifact is present on the Thread basis.",
+        );
+      }
+      const studyArtifact = requireBoundArtifact(
+        project,
+        run,
+        basisSnapshot,
+        "studyCapture",
+      );
+      const studyText = await this.#studyCaptures.read(studyArtifact.fingerprint);
+      if (!studyText) {
+        throw invalidTransition("The sensitivity-study capture is not readable.");
+      }
+      let parsedStudy: unknown;
+      try {
+        parsedStudy = JSON.parse(studyText);
+      } catch {
+        throw invalidTransition("The sensitivity-study capture is not valid JSON.");
+      }
+      let studyCapture;
+      try {
+        studyCapture = await validateSensitivityStudyResult(parsedStudy);
+      } catch (error) {
+        throw invalidTransition(
+          error instanceof Error
+            ? error.message
+            : "The bound artifact is not a sensitivity-study capture.",
+        );
+      }
+      const baseMetrics = new Map(
+        studyCapture.measurements.base.map((item) => [item.metric, item]),
+      );
+      const steppedMetrics = new Map(
+        studyCapture.measurements.stepped.map((item) => [item.metric, item]),
+      );
+      const edges = sensitivityEdgesFromStudy(
+        studyCapture.studyCase,
+        baseMetrics,
+        steppedMetrics,
+        { runId: studyCapture.trustedRunId, capturedAt: studyCapture.capturedAt },
+      );
+      const partDefName = sensitivityPartDefName(studyCapture.studyCase.id);
+      const sysml = renderSensitivityEdgeSetSysml(partDefName, edges);
+      const context = await this.#resolveSysonContext(basisSnapshot);
+      const planDigest = (await sha256Fingerprint({
+        sysml,
+        parentElementId: context.parentElementId,
+        editingContextId: context.editingContextId,
+      })).digest;
+      const wal = await this.#attempts.begin({
+        projectId: command.projectId,
+        runId: run.id,
+        planDigest,
+        dispatchedAt: requiredStart(run),
+      });
+      if (wal === "dispatch") {
+        await this.#syson.callTool({
+          name: "syson_element_insert_sysml",
+          arguments: {
+            editing_context_id: context.editingContextId,
+            parent_id: context.parentElementId,
+            sysml_text: sysml,
+          },
+        });
+      }
+      if (wal !== "completed") {
+        // On "verify" the insert was already dispatched once: never re-insert
+        // (that would duplicate the PartDef); re-extract and require the exact
+        // attributes instead, failing labelled if they are not observable.
+        const extracted = await this.#syson.callTool({
+          name: "syson_constraint_extract",
+          arguments: {
+            editing_context_id: context.editingContextId,
+            element_id: context.parentElementId,
+          },
+        });
+        assertExtractedFeaturePaths(extracted.structuredContent, edges);
+      }
+      const capturedAt = requiredStart(run);
+      const capture: SensitivityEdgesCapture = {
+        schemaVersion: SENSITIVITY_EDGES_CAPTURE_SCHEMA,
+        operation: MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
+        trustedRunId: run.id,
+        studyCaptureId: studyArtifact.id,
+        partDefName,
+        sysml,
+        edges,
+        capturedAt,
+      };
+      // Fail-closed self-check before hashing: the persisted bytes must satisfy
+      // the same exactRecord contract any future reader will re-validate with.
+      validateSensitivityEdgesCapture(capture);
+      const captureFingerprint = await sha256Fingerprint(capture);
+      const captureText = deterministicJson(capture);
+      await this.#edgeCaptures.save(captureFingerprint, captureText);
+      if (await this.#edgeCaptures.read(captureFingerprint) !== captureText) {
+        throw new Error(
+          "Sensitivity-edges capture was not durably readable after save.",
+        );
+      }
+      const successor = buildEdgesSuccessor({
+        basisSnapshot,
+        basis,
+        run,
+        studyArtifact,
+        capture,
+        captureFingerprint,
+        captureUri: this.#edgeCaptures.uriFor(captureFingerprint),
+      });
+      await this.#snapshots.save(successor.snapshot);
+      const readback = await this.#snapshots.getFresh(successor.snapshot.id);
+      if (
+        !readback ||
+        deterministicJson(readback) !== deterministicJson(successor.snapshot)
+      ) {
+        throw new Error(
+          "Sensitivity-edges ThreadSnapshot was not durably readable after save.",
+        );
+      }
+      await this.#attempts.complete({
+        projectId: command.projectId,
+        runId: run.id,
+        snapshotId: successor.snapshot.id,
+      });
+      project = await this.#requiredProject(command.projectId);
+      run = requireRun(project, command.runId);
+      if (run.status === "running") {
+        await this.#commands.publishRun(origin, {
+          ...command,
+          commandId: `${command.commandId}:publish`,
+          expectedRevision: project.revision,
+          summary: "Publishing the sensitivity-edges artifact.",
+        });
+      }
+      project = await this.#requiredProject(command.projectId);
+      run = requireRun(project, command.runId);
+      if (run.status === "publishing") {
+        await this.#commands.completeRun(origin, {
+          ...command,
+          commandId: `${command.commandId}:complete`,
+          expectedRevision: project.revision,
+          summary: "Inserted server-rendered sensitivity edges into SysON.",
+          resultSnapshot: snapshotRef(successor.snapshot),
+          evidenceRefs: [{
+            snapshotId: successor.snapshot.id,
+            snapshotRevision: successor.snapshot.revision,
+            kind: "artifact",
+            id: successor.artifact.id,
+          }],
+        });
+      }
+      const completed = await this.#requiredProject(command.projectId);
+      await settleCapabilityRuntimeSession({
+        session: capabilitySession,
+        policy: { kind: "release" },
+      });
+      return completed;
     } catch (error) {
-      throw invalidTransition(
-        error instanceof Error
-          ? error.message
-          : "The bound artifact is not a sensitivity-study capture.",
-      );
-    }
-    const baseMetrics = new Map(
-      studyCapture.measurements.base.map((item) => [item.metric, item]),
-    );
-    const steppedMetrics = new Map(
-      studyCapture.measurements.stepped.map((item) => [item.metric, item]),
-    );
-    const edges = sensitivityEdgesFromStudy(
-      studyCapture.studyCase,
-      baseMetrics,
-      steppedMetrics,
-      { runId: studyCapture.trustedRunId, capturedAt: studyCapture.capturedAt },
-    );
-    const partDefName = sensitivityPartDefName(studyCapture.studyCase.id);
-    const sysml = renderSensitivityEdgeSetSysml(partDefName, edges);
-    const context = await this.#resolveSysonContext(basisSnapshot);
-    const planDigest = (await sha256Fingerprint({
-      sysml,
-      parentElementId: context.parentElementId,
-      editingContextId: context.editingContextId,
-    })).digest;
-    const wal = await this.#attempts.begin({
-      projectId: command.projectId,
-      runId: run.id,
-      planDigest,
-      dispatchedAt: requiredStart(run),
-    });
-    if (wal === "dispatch") {
-      await this.#syson.callTool({
-        name: "syson_element_insert_sysml",
-        arguments: {
-          editing_context_id: context.editingContextId,
-          parent_id: context.parentElementId,
-          sysml_text: sysml,
+      if (claimed) {
+        await this.#recordFailure(origin, command, error);
+      }
+      await settleCapabilityRuntimeSession({
+        session: capabilitySession,
+        policy: {
+          kind: "release-if-terminal",
+          run: await this.#currentRun(command.projectId, command.runId),
         },
       });
+      throw error;
     }
-    if (wal !== "completed") {
-      // On "verify" the insert was already dispatched once: never re-insert
-      // (that would duplicate the PartDef); re-extract and require the exact
-      // attributes instead, failing labelled if they are not observable.
-      const extracted = await this.#syson.callTool({
-        name: "syson_constraint_extract",
-        arguments: {
-          editing_context_id: context.editingContextId,
-          element_id: context.parentElementId,
-        },
-      });
-      assertExtractedFeaturePaths(extracted.structuredContent, edges);
-    }
-    const capturedAt = requiredStart(run);
-    const capture: SensitivityEdgesCapture = {
-      schemaVersion: SENSITIVITY_EDGES_CAPTURE_SCHEMA,
-      operation: MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
-      trustedRunId: run.id,
-      studyCaptureId: studyArtifact.id,
-      partDefName,
-      sysml,
-      edges,
-      capturedAt,
-    };
-    // Fail-closed self-check before hashing: the persisted bytes must satisfy
-    // the same exactRecord contract any future reader will re-validate with.
-    validateSensitivityEdgesCapture(capture);
-    const captureFingerprint = await sha256Fingerprint(capture);
-    const captureText = deterministicJson(capture);
-    await this.#edgeCaptures.save(captureFingerprint, captureText);
-    if (await this.#edgeCaptures.read(captureFingerprint) !== captureText) {
-      throw new Error("Sensitivity-edges capture was not durably readable after save.");
-    }
-    const successor = buildEdgesSuccessor({
-      basisSnapshot,
-      basis,
-      run,
-      studyArtifact,
-      capture,
-      captureFingerprint,
-      captureUri: this.#edgeCaptures.uriFor(captureFingerprint),
-    });
-    await this.#snapshots.save(successor.snapshot);
-    const readback = await this.#snapshots.getFresh(successor.snapshot.id);
-    if (
-      !readback || deterministicJson(readback) !== deterministicJson(successor.snapshot)
-    ) {
-      throw new Error(
-        "Sensitivity-edges ThreadSnapshot was not durably readable after save.",
-      );
-    }
-    await this.#attempts.complete({
-      projectId: command.projectId,
-      runId: run.id,
-      snapshotId: successor.snapshot.id,
-    });
-    project = await this.#requiredProject(command.projectId);
-    run = requireRun(project, command.runId);
-    if (run.status === "running") {
-      await this.#commands.publishRun(origin, {
-        ...command,
-        commandId: `${command.commandId}:publish`,
-        expectedRevision: project.revision,
-        summary: "Publishing the sensitivity-edges artifact.",
-      });
-    }
-    project = await this.#requiredProject(command.projectId);
-    run = requireRun(project, command.runId);
-    if (run.status === "publishing") {
-      await this.#commands.completeRun(origin, {
-        ...command,
-        commandId: `${command.commandId}:complete`,
-        expectedRevision: project.revision,
-        summary: "Inserted server-rendered sensitivity edges into SysON.",
-        resultSnapshot: snapshotRef(successor.snapshot),
-        evidenceRefs: [{
-          snapshotId: successor.snapshot.id,
-          snapshotRevision: successor.snapshot.revision,
-          kind: "artifact",
-          id: successor.artifact.id,
-        }],
-      });
-    }
-    return await this.#requiredProject(command.projectId);
   }
 
   async #requiredProject(projectId: string): Promise<EngineeringProjectSnapshot> {
@@ -347,6 +421,74 @@ export class ModelWriteSensitivityEdgesRunExecutor {
       );
     }
     return project;
+  }
+
+  async #requireOperationalCapability(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+  ) {
+    requireShape(project, run);
+    const workItem = project.workItems.find((item) => item.id === run.workItemId);
+    if (!workItem) {
+      throw invalidTransition("Sensitivity-edges work item is not present.");
+    }
+    try {
+      return await requireConfiguredOperationalCapability({
+        runtime: this.#capabilityRuntime,
+        session: this.#capabilityRuntimeSession,
+        project,
+        run,
+        workItem,
+        unavailableMessage:
+          "Sensitivity-edges SysON write requires the configured JIT capability runtime session before a run can be claimed.",
+        missingBindingMessage:
+          "Sensitivity-edges SysON write requires the sealed model.author-system@1 operational capability before a run can be claimed.",
+      });
+    } catch (error) {
+      if (error instanceof CapabilityRuntimeSessionUnavailableError) {
+        throw invalidTransition(error.message);
+      }
+      throw error;
+    }
+  }
+
+  async #currentRun(projectId: string, runId: string) {
+    try {
+      return requireRun(await this.#requiredProject(projectId), runId);
+    } catch {
+      return undefined;
+    }
+  }
+
+  async #recordFailure(
+    origin: EngineeringProjectCommandOrigin,
+    command: {
+      readonly commandId: string;
+      readonly projectId: string;
+      readonly expectedRevision: number;
+      readonly issuedAt: string;
+      readonly runId: string;
+    },
+    error: unknown,
+  ): Promise<void> {
+    try {
+      const project = await this.#requiredProject(command.projectId);
+      const run = requireRun(project, command.runId);
+      if (run.status !== "running" && run.status !== "publishing") return;
+      await this.#commands.failRun(origin, {
+        ...command,
+        commandId: `${command.commandId}:fail`,
+        expectedRevision: project.revision,
+        summary:
+          "Sensitivity-edges SysON write stopped before Thread publication completed.",
+        code: error instanceof EngineeringProjectCommandError
+          ? error.code
+          : "internal_error",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } catch {
+      // Preserve the original execution failure.
+    }
   }
 }
 

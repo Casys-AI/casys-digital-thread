@@ -1,14 +1,10 @@
 /**
- * Operator-owned ngspice Microsandbox cache preparation. Not an agent tool.
- * Product inspect still requires imageReference digest == manifestDigest.
+ * Exact Docker-source and Microsandbox contracts for the ngspice worker image.
+ * Acquisition lives in the generic first-party Microsandbox bootstrap.
  */
 
+import { samePinnedRepositoryDigest } from "../../../shared/docker-pinned-repository-digest.ts";
 import type { MicrosandboxImageInspection } from "../../../shared/execution/microsandbox-ephemeral-execution-backend.ts";
-import {
-  createLocalMicrosandboxSdk,
-  loadLocalMicrosandboxImageFromArchive,
-  microsandboxHostArchitecture,
-} from "../../../shared/execution/microsandbox-ephemeral-execution-backend.ts";
 import { pinnedOciImageReference } from "../../../../domain/compile/isolation/local-isolation-runtime.ts";
 import { NGSPICE_ADMITTED_MICROSANDBOX_WORKER_CONTRACT } from "./worker-contract.ts";
 import {
@@ -16,14 +12,9 @@ import {
   LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
 } from "./local-image-references.ts";
 
-export const NGSPICE_MICROSANDBOX_CACHE_PREPARATION_SCHEMA =
-  "ngspice-microsandbox-cache-preparation/1.0" as const;
-
 const ALLOWED_TEMP_PREFIXES = Object.freeze(["/tmp/", "/private/tmp/"] as const);
-const ARCHIVE_BASENAME = "ngspice-worker.tar";
 const DOCKER_LINUX = "linux";
 const DOCKER_ARM64 = "arm64";
-const PULL_POLICY_NEVER = "never" as const;
 
 const WORKER = NGSPICE_ADMITTED_MICROSANDBOX_WORKER_CONTRACT;
 const EXPECTED_ENTRYPOINT = Object.freeze([
@@ -53,35 +44,6 @@ export interface ExpectedNgspiceRuntimeImage {
   readonly architecture: string;
   readonly user: string;
   readonly entrypoint: readonly string[];
-}
-
-export interface NgspiceMicrosandboxTemporaryArchive {
-  readonly directory: string;
-  readonly archivePath: string;
-  cleanup(): Promise<void>;
-}
-
-export interface NgspiceMicrosandboxCachePorts {
-  readonly expectedHostArchitecture: string;
-  inspectCachedImage(reference: string): Promise<MicrosandboxImageInspection>;
-  loadImageFromArchive(archivePath: string, tag: string): Promise<void>;
-  inspectDockerSource(): Promise<unknown>;
-  saveDockerSource(archivePath: string): Promise<void>;
-  createTemporaryArchiveDirectory(): Promise<NgspiceMicrosandboxTemporaryArchive>;
-}
-
-export interface NgspiceMicrosandboxCachePreparation {
-  readonly schemaVersion: typeof NGSPICE_MICROSANDBOX_CACHE_PREPARATION_SCHEMA;
-  readonly status: "already-cached" | "imported";
-  readonly dockerSourceImageReference:
-    typeof LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE;
-  readonly runtimeImageReference: typeof LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE;
-  readonly manifestDigest: string;
-  readonly os: "linux";
-  readonly architecture: string;
-  readonly user: string;
-  readonly entrypoint: readonly string[];
-  readonly pullPolicy: typeof PULL_POLICY_NEVER;
 }
 
 export function expectedNgspiceRuntimeImage(
@@ -175,7 +137,7 @@ export function assertExactDockerNgspiceSourceImage(
 ): DockerNgspiceSourceInspection {
   const source = LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE;
   if (
-    !inspection.repoDigests.some((digest) => digestIsExactDockerSource(digest, source))
+    !inspection.repoDigests.some((digest) => samePinnedRepositoryDigest(digest, source))
   ) {
     throw new Error(
       "The Docker ngspice source image is not the reviewed linux/arm64 worker.",
@@ -212,99 +174,6 @@ export function assertExactCachedNgspiceRuntimeImage(
   return inspection;
 }
 
-export async function prepareAdmittedNgspiceMicrosandboxCache(
-  ports: NgspiceMicrosandboxCachePorts,
-): Promise<NgspiceMicrosandboxCachePreparation> {
-  const expected = expectedNgspiceRuntimeImage(ports.expectedHostArchitecture);
-  const cached = await lookupCachedRuntimeImage(ports, expected.reference);
-  if (cached !== undefined) {
-    return preparation(
-      "already-cached",
-      assertExactCachedNgspiceRuntimeImage(
-        cached,
-        expected,
-      ),
-    );
-  }
-
-  assertExactDockerNgspiceSourceImage(
-    parseDockerNgspiceSourceInspection(await ports.inspectDockerSource()),
-  );
-
-  const temporary = await ports.createTemporaryArchiveDirectory();
-  try {
-    assertAllowedNgspiceCacheTempPath(temporary.directory);
-    const archivePath = assertAllowedNgspiceCacheTempPath(temporary.archivePath);
-    await ports.saveDockerSource(archivePath);
-    await ports.loadImageFromArchive(
-      archivePath,
-      LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
-    );
-    const imported = await lookupCachedRuntimeImage(ports, expected.reference);
-    if (imported === undefined) {
-      throw new Error(
-        "The cached ngspice Microsandbox image is not the reviewed runtime manifest.",
-      );
-    }
-    return preparation(
-      "imported",
-      assertExactCachedNgspiceRuntimeImage(imported, expected),
-    );
-  } finally {
-    await temporary.cleanup();
-  }
-}
-
-export async function createLocalNgspiceMicrosandboxCachePorts(): Promise<
-  NgspiceMicrosandboxCachePorts
-> {
-  const sdk = await createLocalMicrosandboxSdk();
-  sdk.assertLocalBackend();
-  return Object.freeze({
-    expectedHostArchitecture: microsandboxHostArchitecture(),
-    inspectCachedImage: (reference: string) => sdk.inspectImage(reference),
-    loadImageFromArchive: (archivePath: string, tag: string) =>
-      loadLocalMicrosandboxImageFromArchive(archivePath, tag),
-    inspectDockerSource: inspectDockerNgspiceSource,
-    saveDockerSource: saveDockerNgspiceSource,
-    createTemporaryArchiveDirectory: createAllowedNgspiceCacheArchive,
-  });
-}
-
-async function lookupCachedRuntimeImage(
-  ports: NgspiceMicrosandboxCachePorts,
-  reference: string,
-): Promise<MicrosandboxImageInspection | undefined> {
-  try {
-    return await ports.inspectCachedImage(reference);
-  } catch (error) {
-    if (isCachedMicrosandboxImageAbsent(error)) return undefined;
-    throw error;
-  }
-}
-
-function preparation(
-  status: NgspiceMicrosandboxCachePreparation["status"],
-  inspection: MicrosandboxImageInspection,
-): NgspiceMicrosandboxCachePreparation {
-  return Object.freeze({
-    schemaVersion: NGSPICE_MICROSANDBOX_CACHE_PREPARATION_SCHEMA,
-    status,
-    dockerSourceImageReference: LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE,
-    runtimeImageReference: LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
-    manifestDigest: inspection.manifestDigest,
-    os: "linux",
-    architecture: inspection.architecture,
-    user: inspection.user ?? WORKER.expectedImageUser,
-    entrypoint: Object.freeze([...(inspection.entrypoint ?? EXPECTED_ENTRYPOINT)]),
-    pullPolicy: PULL_POLICY_NEVER,
-  });
-}
-
-function digestIsExactDockerSource(digest: string, source: string): boolean {
-  return digest === source || digest === `docker.io/${source}`;
-}
-
 function digestOfPinnedReference(reference: string): string {
   return reference.slice(reference.lastIndexOf("@sha256:") + 8);
 }
@@ -315,66 +184,4 @@ function stringArraysEqual(
 ): boolean {
   return left !== null && left.length === right.length &&
     left.every((value, index) => value === right[index]);
-}
-
-async function inspectDockerNgspiceSource(): Promise<unknown> {
-  const output = await docker([
-    "image",
-    "inspect",
-    "--format",
-    "{{json .}}",
-    LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE,
-  ]);
-  if (!output.success) {
-    throw new Error(
-      `docker inspect failed: ${decode(output.stderr).slice(-2_000)}`,
-    );
-  }
-  return JSON.parse(decode(output.stdout)) as unknown;
-}
-
-async function saveDockerNgspiceSource(archivePath: string): Promise<void> {
-  const output = await docker([
-    "image",
-    "save",
-    "-o",
-    archivePath,
-    LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE,
-  ]);
-  if (!output.success) {
-    throw new Error(
-      `docker image save failed: ${decode(output.stderr).slice(-2_000)}`,
-    );
-  }
-}
-
-async function createAllowedNgspiceCacheArchive(): Promise<
-  NgspiceMicrosandboxTemporaryArchive
-> {
-  const directory = assertAllowedNgspiceCacheTempPath(
-    await Deno.makeTempDir({
-      dir: "/tmp",
-      prefix: "casys-ngspice-microsandbox-cache-",
-    }),
-  );
-  return Object.freeze({
-    directory,
-    archivePath: `${directory}/${ARCHIVE_BASENAME}`,
-    cleanup: async () => {
-      await Deno.remove(directory, { recursive: true });
-    },
-  });
-}
-
-async function docker(args: readonly string[]): Promise<Deno.CommandOutput> {
-  return await new Deno.Command("docker", {
-    args: [...args],
-    stdin: "null",
-    stdout: "piped",
-    stderr: "piped",
-  }).output();
-}
-
-function decode(bytes: Uint8Array): string {
-  return new TextDecoder().decode(bytes);
 }

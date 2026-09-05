@@ -4,10 +4,10 @@ import {
   sensitivityPartDefName,
 } from "./sensitivity-edge-from-study.ts";
 import { renderSensitivityEdgeSetSysml } from "./sensitivity-edge.ts";
-import { validateSensitivityStudyCaseV2 } from "../study/sensitivity-study-v2.ts";
+import { validateSensitivityStudyCaseV3 } from "../study/sensitivity-study-v3.ts";
 
-const STUDY = validateSensitivityStudyCaseV2({
-  schemaVersion: "sensitivity-study-case/2.0",
+const STUDY = validateSensitivityStudyCaseV3({
+  schemaVersion: "sensitivity-study-case/3.0",
   id: "dl04-size-z-sensitivity",
   revision: 1,
   scope: "mechanical-structural",
@@ -24,10 +24,7 @@ const STUDY = validateSensitivityStudyCaseV2({
     { id: "assembly_max_displacement", unit: "mm" },
     { id: "assembly_max_von_mises", unit: "MPa" },
   ],
-  solver: {
-    provider: "calculix",
-    tool: "calculix_solve_static",
-    resultSchemaVersion: "2.0",
+  method: {
     mesh: { kind: "tetrahedral-volume", targetSizeMm: 3 },
     material: {
       model: "isotropic-linear-elastic",

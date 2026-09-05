@@ -50,6 +50,7 @@ Deno.test("Build123d profile-only review stays independent of private sandbox ad
       snapshots,
     });
     assertEquals(absent.build123dExecution, undefined);
+    assertEquals(absent.localProfile, undefined);
     assertEquals(absent.build123dExecutionReview, undefined);
 
     const reviewOnly = await createBuild123dCapability({
@@ -63,6 +64,10 @@ Deno.test("Build123d profile-only review stays independent of private sandbox ad
       PrepareProjectBuild123dExecutionReview,
     );
     assertEquals(reviewOnly.build123dExecution?.execution, undefined);
+    assertEquals(
+      reviewOnly.localProfile?.runtimeBackend.imageReference,
+      `docker.io/${PROFILE.imageReference}`,
+    );
 
     const geometrySourceAnalysis = {
       sourceCaptures: new FileCaptureStore({
@@ -85,34 +90,27 @@ Deno.test("Build123d profile-only review stays independent of private sandbox ad
       uriNamespace: "architecture-capture",
       label: "Architecture",
     });
-    const withSandbox = composePrivateBuild123dGeometrySurfaces(
-      "http://127.0.0.1:1/mcp",
+    const withSandbox = composePrivateBuild123dGeometrySurfaces({
+      projects: {} as never,
+      preparation: {} as never,
       geometrySourceAnalysis,
-      compilation.technicalCompilationAdmissions,
+      admissions: compilation.technicalCompilationAdmissions,
       snapshots,
       architectureCaptures,
-      `${root}/drafts`,
-      `${root}/geometry-captures`,
-    );
+      geometryDraftCaptureDirectory: `${root}/drafts`,
+      geometryDraftAssetDirectory: `${root}/draft-assets`,
+      geometryCaptureDirectory: `${root}/geometry-captures`,
+    });
     assertInstanceOf(
       withSandbox.admittedGeometryExport,
       ExportAdmittedProjectGeometry,
     );
-    const withoutSandbox = composePrivateBuild123dGeometrySurfaces(
-      undefined,
-      geometrySourceAnalysis,
-      compilation.technicalCompilationAdmissions,
-      snapshots,
-      architectureCaptures,
-      `${root}/drafts`,
-      `${root}/geometry-captures`,
-    );
-    assertEquals(withoutSandbox.admittedGeometryExport, undefined);
-
     const source = await Deno.readTextFile(
       new URL("./server-composition.ts", import.meta.url),
     );
     assertEquals(source.includes("CreateConsoleServerOptions"), false);
+    assertEquals(source.includes("build123dSandbox" + "McpUrl"), false);
+    assertEquals(source.includes("http://127.0.0.1:3024/mcp"), true);
   } finally {
     await Deno.remove(root, { recursive: true });
   }

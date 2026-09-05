@@ -3,8 +3,9 @@ import { assertEquals, assertMatch, assertStringIncludes } from "@std/assert";
 const STYLE_FILES = [
   "04-feed-and-graph.css",
   "05-tool-drawer.css",
-  "06-component-workspace.css",
+  "06-compact-identifier.css",
   "17-saas-shell.css",
+  "18-overview-thread-flow.css",
   "18-desktop-chat.css",
 ] as const;
 
@@ -89,18 +90,21 @@ Deno.test("retired mcp-view card selectors cannot come back", async () => {
   }
 });
 
-Deno.test("the 3D viewers cannot reintroduce a dark scene background", async () => {
-  // La teinte exacte est un choix de design ; l'invariant est qu'aucun canvas
-  // WebGL ne repasse sur le fond sombre du thème abandonné.
-  for (
-    const file of [
-      "./src/thread/component-workspace.tsx",
-      "./src/thread/gltf-asset-canvas.tsx",
-      "./src/project/control-center.tsx",
-    ]
-  ) {
-    const source = await Deno.readTextFile(new URL(file, import.meta.url));
-    assertEquals(source.includes("0x0b0f10"), false, file);
-    assertEquals(source.includes("0x1a1c1e"), false, file);
+Deno.test("Digital Thread does not bundle a native 3D renderer", async () => {
+  const workbench = await Deno.readTextFile(
+    new URL("./src/thread/workbench.tsx", import.meta.url),
+  );
+  const controlCenter = await Deno.readTextFile(
+    new URL("./src/project/control-center.tsx", import.meta.url),
+  );
+  const packageJson = await Deno.readTextFile(
+    new URL("./package.json", import.meta.url),
+  );
+  for (const source of [workbench, controlCenter, packageJson]) {
+    assertEquals(source.includes('from "three"'), false);
+    assertEquals(source.includes("GltfAssetCanvas"), false);
+    assertEquals(source.includes("STLLoader"), false);
   }
+  assertEquals(packageJson.includes('"three"'), false);
+  assertEquals(packageJson.includes('"@types/three"'), false);
 });

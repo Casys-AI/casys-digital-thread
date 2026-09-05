@@ -24,6 +24,7 @@ import {
 import {
   MICROSANDBOX_LOCAL_ISOLATION_CLASS,
   type MicrosandboxLocalRuntimeIdentity,
+  pinnedOciImageReference,
   validateMicrosandboxLocalRuntimeIdentity,
 } from "../../compile/isolation/local-isolation-runtime.ts";
 import {
@@ -56,6 +57,7 @@ import {
   fingerprintsEqual,
 } from "../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
+import { LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE } from "../local-execution-image.ts";
 import type {
   EngineeringDecisionProposalParameter,
   EngineeringThreadSnapshotBasis,
@@ -98,18 +100,20 @@ export const MODELICA_QUALIFIED_BUNDLE_BYTE_COUNT = 2_245;
 export const MODELICA_QUALIFIED_EXECUTION_PROFILE_FINGERPRINT = Object.freeze(
   {
     algorithm: "sha256",
-    digest: "4da0506fa25721a444f7e25f8b982adb9040515a306e4bc0b4e14b5c784e54a7",
+    digest: "7779a8fb2038ed8b6b554526196c831acdad029b660b2066b79b0860f43ad9c9",
   } as const,
 );
 export const MODELICA_QUALIFIED_RUNTIME_QUALIFICATION_FINGERPRINT = Object.freeze(
   {
     algorithm: "sha256",
-    digest: "d6aee5fe375daa55cec29a32acf27181dd4bb8ea8e5c3f90f848cc718c149428",
+    digest: "bf85aa1914dddf6fb20aee1c66ef62f3eca3cdcf13b53759ee0c8710bee188db",
   } as const,
 );
 
-const QUALIFIED_IMAGE_REFERENCE =
-  "casys/modelica-microsandbox-worker@sha256:7d3fdeabe794b0ded5360921b16724c7904487e9d11bc24fa37c72f9b92a1894";
+const QUALIFIED_IMAGE_REFERENCE = pinnedOciImageReference(
+  LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
+  "$modelicaQualified.imageReference",
+);
 const QUALIFIED_WRAPPER_SHA256 =
   "b5336d1615b017900f65aa9d491f3ecae8b3afb377d0bb38bc5678b03028c816";
 const QUALIFIED_POLICY = deepFreeze({
@@ -117,7 +121,7 @@ const QUALIFIED_POLICY = deepFreeze({
   version: "1.0.0",
   fingerprint: {
     algorithm: "sha256" as const,
-    digest: "a6eeca8fb305b6fecf6a5f226ddcc9dad8010147afe31d7dd4fe35853d239327",
+    digest: "acd119309fd7827a09b31babdd01a46e27f9839b02145dc8e01b480d904ccabe",
   },
 });
 const QUALIFIED_LIMITS = deepFreeze({

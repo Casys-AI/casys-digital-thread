@@ -1,8 +1,15 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 
-Deno.test("project surfaces share one compact cockpit header", async () => {
+function occurrences(source: string, value: string): number {
+  return source.split(value).length - 1;
+}
+
+Deno.test("project surfaces share one ProjectNavigation header without a second cockpit header", async () => {
   const navigation = await Deno.readTextFile(
     new URL("./src/project/navigation.tsx", import.meta.url),
+  );
+  const navigationModel = await Deno.readTextFile(
+    new URL("./src/project/navigation-model.ts", import.meta.url),
   );
   const workbench = await Deno.readTextFile(
     new URL("./src/thread/workbench.tsx", import.meta.url),
@@ -17,9 +24,22 @@ Deno.test("project surfaces share one compact cockpit header", async () => {
     ),
   );
 
-  assertStringIncludes(navigation, "export function ProjectCockpitHeader");
+  assertStringIncludes(navigation, "export function ProjectNavigation");
+  for (
+    const label of [
+      'label: "Project"',
+      'label: "Activity"',
+      'label: "Product"',
+      'label: "Evidence"',
+      'label: "Systems & runs"',
+    ]
+  ) {
+    assertStringIncludes(navigationModel, label);
+  }
   for (const surface of [workbench, planning, documentary]) {
-    assertStringIncludes(surface, "<ProjectCockpitHeader");
+    assertEquals(occurrences(surface, "<ProjectNavigation"), 1);
+    assertEquals(surface.includes("<ProjectCockpitHeader"), false);
+    assertEquals(surface.includes("ProjectCockpitHeader,"), false);
     assertEquals(surface.includes("ENGINEERING PROJECT COCKPIT"), false);
     assertEquals(surface.includes('className="thread-subject-mark"'), false);
     assertEquals(surface.includes('className="thread-session-panel"'), false);
@@ -38,18 +58,26 @@ Deno.test("cockpit wayfinding keeps descriptions accessible without a second lab
   assertEquals(navigationBody.includes("<small>"), false);
 });
 
-Deno.test("the compact header keeps agent activity and exact projection freshness", async () => {
+Deno.test("the single navigation header keeps agent activity and exact projection freshness", async () => {
   const workbench = await Deno.readTextFile(
     new URL("./src/thread/workbench.tsx", import.meta.url),
   );
 
   assertStringIncludes(workbench, "buildAgentNowPresentation(project)");
   assertStringIncludes(workbench, 'label: "Last agent run"');
-  assertStringIncludes(workbench, "statusLabel={agentHeader.label}");
-  assertStringIncludes(workbench, "title={agentHeader.value}");
-  assertStringIncludes(workbench, 'metaLabel="Projection"');
+  assertStringIncludes(workbench, "<ProjectNavigation");
+  assertStringIncludes(workbench, 'className="project-navigation-agent"');
+  assertStringIncludes(
+    workbench,
+    "title={`${agentHeader.label}: ${agentHeader.value}`}",
+  );
+  assertStringIncludes(workbench, "<strong>{agentHeader.value}</strong>");
+  assertStringIncludes(workbench, 'className="project-navigation-time"');
   assertStringIncludes(workbench, "dateTime={snapshot.generatedAt}");
-  assertStringIncludes(workbench, "title={snapshot.generatedAt}");
+  assertStringIncludes(
+    workbench,
+    "title={`Projection ${snapshot.generatedAt}`}",
+  );
   assertStringIncludes(workbench, "formatTime(snapshot.generatedAt)");
   assertEquals(
     workbench.includes("metaValue={formatTime(project.generatedAt)}"),

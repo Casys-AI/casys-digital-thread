@@ -1,19 +1,26 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import type { EngineeringProjectCommandOrigin } from "../../../application/ports/in/engineering-project-command-origin.ts";
+import { CapabilityRuntimeSessionUnavailableError } from "../../../application/control-plane/capability-runtime-execution-session.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
+import type { CapabilityRuntimeExecutionEligibility } from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import type {
   AdmittedModelicaExecutionAttemptStore,
   AdmittedModelicaExecutionDispatchTransition,
 } from "../../../application/ports/out/modelica/admitted-execution-attempt-store.ts";
 import type {
   CompleteRunCommand,
+  EngineeringProjectPlanningDependencies,
+  EngineeringProjectPlanOperationRegistry,
   FailRunCommand,
   RunCommand,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
+import { EngineeringProjectCommandService } from "../../../application/use-cases/project/engineering-project-command-service.ts";
+import { ProjectBriefCommandService } from "../../../application/use-cases/project/project-brief-command-service.ts";
 import type {
   EngineeringProjectCommandReceipt,
   EngineeringProjectSnapshot,
 } from "../../../domain/project/engineering-project.ts";
+import type { ProjectBriefItem } from "../../../domain/project/project-brief.ts";
 import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import { applyThreadSnapshotExtensionIfNew } from "../../../domain/thread/thread-snapshot-extension.ts";
@@ -38,7 +45,10 @@ import {
   type ModelicaAdmittedRunAdmission,
   SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
 } from "../../../domain/modelica/admitted/run-proposal.ts";
-import { admittedModelicaExecutionContractFromSourceBytes } from "../../../domain/modelica/admitted/execution-evidence.ts";
+import {
+  admittedModelicaExecutionContractFromSourceBytes,
+  deriveAdmittedModelicaExecutionRunId,
+} from "../../../domain/modelica/admitted/execution-evidence.ts";
 import {
   MICROSANDBOX_LOCAL_ISOLATION_CLASS,
   MICROSANDBOX_LOCAL_RUNTIME_REF,
@@ -64,6 +74,18 @@ import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
+import {
+  canonicalResolvedOperationPlanV2Text,
+  fingerprintResolvedOperationPlanV2,
+  resolvedOperationPlanIdForRun,
+  type ResolvedOperationPlanRef,
+  type ResolvedOperationPlanV2,
+} from "../../../domain/compile/rop/resolved-operation-plan-v2.ts";
+import type { ResolvedCapabilityRuntimeOperation } from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import {
+  type RecordingCapabilityRuntimeSession,
+  recordingCapabilityRuntimeSession,
+} from "../../../testing/capability-runtime-execution-session-test-support.ts";
 import {
   sampleAdmissionSourceWorkspaceFields,
   technicalSourceCaptureInput,
@@ -147,11 +169,18 @@ class FakeAdmissionReader implements TechnicalCompilationAdmissionReader {
 }
 
 class FakeProfiles implements AdmittedModelicaExecutionProfileCatalog {
+  available = true;
+  initialCalls = 0;
+  resolveCalls = 0;
+
   constructor(public profile: AdmittedModelicaExecutionProfile) {}
   initial(): Promise<AdmittedModelicaExecutionProfile> {
+    this.initialCalls += 1;
+    if (!this.available) return Promise.reject(new Error("profile rollover"));
     return Promise.resolve(structuredClone(this.profile));
   }
   resolve(): Promise<AdmittedModelicaExecutionProfile> {
+    this.resolveCalls += 1;
     return Promise.resolve(structuredClone(this.profile));
   }
 }
@@ -205,7 +234,7 @@ async function harness() {
   const basis: TechnicalCompilationBasis = {
     thread: {
       projectId: "project.ramp",
-      subjectId: "subject.ramp",
+      subjectId: "project:project.ramp",
       snapshotId: "snapshot.7",
       revision: 7,
       snapshotFingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
@@ -348,7 +377,7 @@ async function harness() {
       kind: "thread-snapshot" as const,
       snapshotId: "snapshot.8",
       revision: 8,
-      subjectId: "subject.ramp",
+      subjectId: "project:project.ramp",
     },
     artifactId: `technical-compilation-admission-${artifactFingerprint.digest}`,
     artifactFingerprint,
@@ -386,7 +415,9 @@ async function harness() {
     },
     runtimeBackend: {
       ...MICROSANDBOX_LOCAL_RUNTIME_REF,
-      imageReference: `casys/modelica-microsandbox-worker@sha256:${"5".repeat(64)}`,
+      imageReference: `docker.io/casys/modelica-microsandbox-worker@sha256:${
+        "5".repeat(64)
+      }`,
       imageDigest: { algorithm: "sha256", digest: "5".repeat(64) },
     },
     runtime: {
@@ -444,7 +475,7 @@ const EXECUTION_AGENT = { kind: "agent" as const, actorId: "agent.modelica" };
 const EXECUTION_COMMAND = {
   commandId: "execute.modelica.admitted",
   projectId: "project.ramp",
-  expectedRevision: 1,
+  expectedRevision: 7,
   issuedAt: EXECUTION_AT,
   runId: "run.admitted",
 };
@@ -459,6 +490,15 @@ Deno.test("admitted project executor journals, dispatches once, completes, and r
     assertEquals(runStatus(completed), "completed");
     assertEquals(fixture.runtime.runs, [0]);
     assertEquals(fixture.attempts.prepareCalls, 1);
+    assertEquals(fixture.session.releases, 1);
+    assertEquals(
+      fixture.session.microsandboxExecutionProfiles?.[0]?.material,
+      {
+        unitId: "casys.modelica-worker",
+        materialId: "modelica-worker-image",
+        imageDigest: "5".repeat(64),
+      },
+    );
     assertEquals(
       (await fixture.attempts.read(
         EXECUTION_COMMAND.projectId,
@@ -477,6 +517,128 @@ Deno.test("admitted project executor journals, dispatches once, completes, and r
     assertEquals(fixture.runtime.recoveries, []);
     assertEquals(fixture.snapshots.saveCalls, saveCalls);
     assertEquals(fixture.captures.saveCalls, captureSaves);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("completed admitted Modelica replay uses journaled authority after catalog rollover and runtime revocation", async () => {
+  const fixture = await executorHarness();
+  try {
+    const completed = await fixture.executor.execute(
+      EXECUTION_AGENT,
+      EXECUTION_COMMAND,
+    );
+    fixture.profiles.available = false;
+    fixture.revokeRuntime();
+    const replay = await fixture.executor.execute(EXECUTION_AGENT, {
+      ...EXECUTION_COMMAND,
+      expectedRevision: completed.revision,
+    });
+    assertEquals(runStatus(replay), "completed");
+    assertEquals(fixture.runtime.runs, [0]);
+    assertEquals(fixture.session.events, ["begin", "releaseRecorded"]);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("running admitted Modelica output WAL finalizes after catalog rollover and runtime revocation", async () => {
+  const fixture = await executorHarness({ acknowledgementLoss: "capture" });
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(EXECUTION_AGENT, EXECUTION_COMMAND),
+      Error,
+    );
+    assertEquals(runStatus(fixture.project), "running");
+    assertEquals(
+      (await fixture.attempts.read(
+        EXECUTION_COMMAND.projectId,
+        EXECUTION_COMMAND.runId,
+      ))?.phase,
+      "output-published",
+    );
+    const begins = fixture.session.events.filter((event) => event === "begin").length;
+    fixture.profiles.available = false;
+    fixture.revokeRuntime();
+
+    const completed = await fixture.executor.execute(EXECUTION_AGENT, {
+      ...EXECUTION_COMMAND,
+      expectedRevision: fixture.project.revision,
+    });
+    assertEquals(runStatus(completed), "completed");
+    assertEquals(fixture.runtime.runs, [0]);
+    assertEquals(
+      fixture.session.events.filter((event) => event === "begin").length,
+      begins,
+    );
+    assertEquals(fixture.session.recordedReleases, 1);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("resolved-plan tamper, capability revocation, and unavailable JIT leave a queued run unclaimed", async () => {
+  for (
+    const options of [
+      { resolvedPlanTamper: true, begins: 0 },
+      { runtimeRevoked: true, begins: 0 },
+      { sessionUnavailable: true, begins: 1 },
+    ] as const
+  ) {
+    const fixture = await executorHarness(options);
+    try {
+      await assertRejects(
+        () => fixture.executor.execute(EXECUTION_AGENT, EXECUTION_COMMAND),
+        Error,
+      );
+      assertEquals(runStatus(fixture.project), "queued");
+      assertEquals(fixture.attempts.prepareCalls, 0);
+      assertEquals(fixture.runtime.runs, []);
+      assertEquals(fixture.project.commandReceipts.length, fixture.initialReceiptCount);
+      assertEquals(
+        fixture.session.events.filter((event) => event === "begin").length,
+        options.begins,
+      );
+      assertEquals(fixture.session.releases, 0);
+      assertEquals(fixture.session.retains, 0);
+    } finally {
+      await fixture.dispose();
+    }
+  }
+});
+
+Deno.test("dispatching admitted Modelica WAL remains fresh-runtime guarded", async () => {
+  const fixture = await executorHarness({ loseDispatchAck: true });
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(EXECUTION_AGENT, EXECUTION_COMMAND),
+      Error,
+    );
+    assertEquals(runStatus(fixture.project), "running");
+    assertEquals(
+      (await fixture.attempts.read(
+        EXECUTION_COMMAND.projectId,
+        EXECUTION_COMMAND.runId,
+      ))?.phase,
+      "dispatching",
+    );
+    const begins = fixture.session.events.filter((event) => event === "begin").length;
+    fixture.revokeRuntime();
+    await assertRejects(
+      () =>
+        fixture.executor.execute(EXECUTION_AGENT, {
+          ...EXECUTION_COMMAND,
+          expectedRevision: fixture.project.revision,
+        }),
+      Error,
+      "active operational capability binding",
+    );
+    assertEquals(fixture.runtime.runs, []);
+    assertEquals(
+      fixture.session.events.filter((event) => event === "begin").length,
+      begins,
+    );
   } finally {
     await fixture.dispose();
   }
@@ -531,7 +693,11 @@ Deno.test("admitted authority and basis-artifact drift stop before WAL and isola
       assertEquals(fixture.runtime.runs, [], drift);
       assertEquals(fixture.runtime.recoveries, [], drift);
       assertEquals(runStatus(fixture.project), "queued", drift);
-      assertEquals(fixture.project.commandReceipts, [], drift);
+      assertEquals(
+        fixture.project.commandReceipts.length,
+        fixture.initialReceiptCount,
+        drift,
+      );
     } finally {
       await fixture.dispose();
     }
@@ -629,10 +795,9 @@ Deno.test("active claim and publishing receipts must reopen from their exact his
     const claimReceipt = active.project.commandReceipts.find((receipt) =>
       receipt.type === "agent-run.claim"
     ) as MutableReceipt;
-    claimReceipt.resultingSnapshot = {
-      ...claimReceipt.resultingSnapshot,
-      snapshotId: "project.ramp:r1",
-    };
+    active.commands.driftHistoricalSnapshotId(
+      claimReceipt.resultingSnapshot.revision,
+    );
     const receiptCount = active.project.commandReceipts.length;
     await assertRejects(
       () =>
@@ -661,10 +826,9 @@ Deno.test("active claim and publishing receipts must reopen from their exact his
     const publishReceipt = publishing.project.commandReceipts.find((receipt) =>
       receipt.type === "agent-run.publish"
     ) as MutableReceipt;
-    publishReceipt.resultingSnapshot = {
-      ...publishReceipt.resultingSnapshot,
-      snapshotId: "project.ramp:r2",
-    };
+    publishing.commands.driftHistoricalSnapshotId(
+      publishReceipt.resultingSnapshot.revision,
+    );
     const receiptCount = publishing.project.commandReceipts.length;
     const snapshotSaves = publishing.snapshots.saveCalls;
     const captureSaves = publishing.captures.saveCalls;
@@ -709,7 +873,7 @@ Deno.test("a lost generation-zero WAL acknowledgement never dispatches from repl
   }
 });
 
-Deno.test("a lost generation-one WAL acknowledgement is CAS-only and never dispatches generation one", async () => {
+Deno.test("a lost generation-one WAL acknowledgement closes without dispatching generation one", async () => {
   const fixture = await executorHarness({
     failGenerationZero: true,
     loseRedispatchAck: true,
@@ -720,6 +884,154 @@ Deno.test("a lost generation-one WAL acknowledgement is CAS-only and never dispa
       Error,
     );
     assertEquals(fixture.runtime.runs, [0]);
+    const failed = await fixture.executor.execute(EXECUTION_AGENT, {
+      ...EXECUTION_COMMAND,
+      expectedRevision: fixture.project.revision,
+    });
+    assertEquals(runStatus(failed), "failed");
+    assertEquals(
+      failed.agentRuns.find((run) => run.id === EXECUTION_COMMAND.runId)?.failure
+        ?.code,
+      "isolated_redispatch_exhausted",
+    );
+    assertEquals(fixture.runtime.runs, [0]);
+    assertEquals(fixture.runtime.recoveries, [0, 1]);
+    assertEquals(fixture.runtime.advances, 1);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("dispatching generation one closes historically after profile rollover and runtime revocation", async () => {
+  const fixture = await executorHarness({
+    failGenerationZero: true,
+    failGenerationOne: true,
+  });
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(EXECUTION_AGENT, EXECUTION_COMMAND),
+      Error,
+      "no third dispatch",
+    );
+    assertEquals(runStatus(fixture.project), "running");
+    assertEquals(
+      (await fixture.attempts.read(
+        EXECUTION_COMMAND.projectId,
+        EXECUTION_COMMAND.runId,
+      ))?.phase,
+      "dispatching",
+    );
+    const initialCalls = fixture.profiles.initialCalls;
+    const resolveCalls = fixture.profiles.resolveCalls;
+    const begins = fixture.session.events.filter((event) => event === "begin").length;
+    const runs = [...fixture.runtime.runs];
+    fixture.profiles.available = false;
+    fixture.revokeRuntime();
+
+    const failed = await fixture.executor.execute(EXECUTION_AGENT, {
+      ...EXECUTION_COMMAND,
+      expectedRevision: fixture.project.revision,
+    });
+    assertEquals(runStatus(failed), "failed");
+    assertEquals(
+      failed.agentRuns.find((run) => run.id === EXECUTION_COMMAND.runId)?.failure,
+      {
+        code: "isolated_redispatch_exhausted",
+        message:
+          "The sole admitted Modelica retry generation produced no publication and was closed; no third dispatch exists.",
+      },
+    );
+    assertEquals(fixture.profiles.initialCalls, initialCalls);
+    assertEquals(fixture.profiles.resolveCalls, resolveCalls);
+    assertEquals(
+      fixture.session.events.filter((event) => event === "begin").length,
+      begins,
+    );
+    assertEquals(fixture.runtime.runs, runs);
+    assertEquals(fixture.runtime.recoveries, [0, 1, 1]);
+    assertEquals(fixture.session.recordedReleases, 1);
+
+    const replayed = await fixture.executor.execute(EXECUTION_AGENT, {
+      ...EXECUTION_COMMAND,
+      expectedRevision: failed.revision,
+    });
+    assertEquals(runStatus(replayed), "failed");
+    assertEquals(fixture.profiles.initialCalls, initialCalls);
+    assertEquals(fixture.profiles.resolveCalls, resolveCalls);
+    assertEquals(
+      fixture.session.events.filter((event) => event === "begin").length,
+      begins,
+    );
+    assertEquals(fixture.runtime.runs, runs);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("dispatching generation one adopts an exact published receipt after profile rollover and runtime revocation", async () => {
+  const fixture = await executorHarness({
+    failGenerationZero: true,
+    publishThenThrow: [1],
+    losePublicationResolveAckGeneration: 1,
+  });
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(EXECUTION_AGENT, EXECUTION_COMMAND),
+      Error,
+      "publication cannot be resolved",
+    );
+    assertEquals(runStatus(fixture.project), "running");
+    assertEquals(
+      (await fixture.attempts.read(
+        EXECUTION_COMMAND.projectId,
+        EXECUTION_COMMAND.runId,
+      ))?.phase,
+      "dispatching",
+    );
+    const initialCalls = fixture.profiles.initialCalls;
+    const resolveCalls = fixture.profiles.resolveCalls;
+    const begins = fixture.session.events.filter((event) => event === "begin").length;
+    const runs = [...fixture.runtime.runs];
+    fixture.profiles.available = false;
+    fixture.revokeRuntime();
+
+    const completed = await fixture.executor.execute(EXECUTION_AGENT, {
+      ...EXECUTION_COMMAND,
+      expectedRevision: fixture.project.revision,
+    });
+    assertEquals(runStatus(completed), "completed");
+    assertEquals(fixture.profiles.initialCalls, initialCalls);
+    assertEquals(fixture.profiles.resolveCalls, resolveCalls);
+    assertEquals(
+      fixture.session.events.filter((event) => event === "begin").length,
+      begins,
+    );
+    assertEquals(fixture.runtime.runs, runs);
+    assertEquals(fixture.session.recordedReleases, 1);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("dispatching generation one rejects a tampered historical publication receipt", async () => {
+  const fixture = await executorHarness({
+    failGenerationZero: true,
+    publishThenThrow: [1],
+    losePublicationResolveAckGeneration: 1,
+    receiptDriftGeneration: 1,
+  });
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(EXECUTION_AGENT, EXECUTION_COMMAND),
+      Error,
+      "publication cannot be resolved",
+    );
+    const initialCalls = fixture.profiles.initialCalls;
+    const begins = fixture.session.events.filter((event) => event === "begin").length;
+    const runs = [...fixture.runtime.runs];
+    fixture.profiles.available = false;
+    fixture.revokeRuntime();
+
     await assertRejects(
       () =>
         fixture.executor.execute(EXECUTION_AGENT, {
@@ -727,13 +1039,62 @@ Deno.test("a lost generation-one WAL acknowledgement is CAS-only and never dispa
           expectedRevision: fixture.project.revision,
         }),
       Error,
-      "no third dispatch",
+      "differs from its durable journal record",
     );
-    assertEquals(fixture.runtime.runs, [0]);
-    assertEquals(fixture.runtime.recoveries, [0, 1]);
-    assertEquals(fixture.runtime.advances, 1);
+    assertEquals(runStatus(fixture.project), "running");
+    assertEquals(fixture.profiles.initialCalls, initialCalls);
+    assertEquals(
+      fixture.session.events.filter((event) => event === "begin").length,
+      begins,
+    );
+    assertEquals(fixture.runtime.runs, runs);
   } finally {
     await fixture.dispose();
+  }
+});
+
+Deno.test("mismatched historical generation-one plan or attempt remains fail-closed", async () => {
+  for (const mismatch of ["plan", "attempt"] as const) {
+    const fixture = await executorHarness({
+      failGenerationZero: true,
+      failGenerationOne: true,
+    });
+    try {
+      await assertRejects(
+        () => fixture.executor.execute(EXECUTION_AGENT, EXECUTION_COMMAND),
+        Error,
+        "no third dispatch",
+      );
+      const initialCalls = fixture.profiles.initialCalls;
+      const resolveCalls = fixture.profiles.resolveCalls;
+      const begins = fixture.session.events.filter((event) => event === "begin").length;
+      const runs = [...fixture.runtime.runs];
+      const recoveries = [...fixture.runtime.recoveries];
+      if (mismatch === "plan") fixture.tamperRecordedPlan();
+      else fixture.tamperAttemptIdentity();
+      fixture.profiles.available = false;
+      fixture.revokeRuntime();
+
+      await assertRejects(
+        () =>
+          fixture.executor.execute(EXECUTION_AGENT, {
+            ...EXECUTION_COMMAND,
+            expectedRevision: fixture.project.revision,
+          }),
+        Error,
+      );
+      assertEquals(runStatus(fixture.project), "running");
+      assertEquals(fixture.profiles.initialCalls, initialCalls);
+      assertEquals(fixture.profiles.resolveCalls, resolveCalls);
+      assertEquals(
+        fixture.session.events.filter((event) => event === "begin").length,
+        begins,
+      );
+      assertEquals(fixture.runtime.runs, runs);
+      assertEquals(fixture.runtime.recoveries, recoveries);
+    } finally {
+      await fixture.dispose();
+    }
   }
 });
 
@@ -796,6 +1157,8 @@ Deno.test("outcome-unknown CAS recovery never cleans, advances, or redispatches"
       Error,
       "outcome remains unknown",
     );
+    assertEquals(fixture.session.retains, 1);
+    assertEquals(fixture.session.releases, 0);
     assertEquals(fixture.runtime.runs, []);
     assertEquals(fixture.runtime.recoveries, []);
     assertEquals(fixture.runtime.advances, 0);
@@ -1142,6 +1505,44 @@ Deno.test("admitted Modelica fails the claimed run on output-validation rejectio
   }
 });
 
+Deno.test("running admitted Modelica rejection WAL closes after catalog rollover and runtime revocation", async () => {
+  const fixture = await executorHarness({
+    rejectOutputValidation: true,
+    loseFailAck: true,
+  });
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(EXECUTION_AGENT, EXECUTION_COMMAND),
+      Error,
+    );
+    assertEquals(runStatus(fixture.project), "running");
+    assertEquals(
+      (await fixture.attempts.read(
+        EXECUTION_COMMAND.projectId,
+        EXECUTION_COMMAND.runId,
+      ))?.phase,
+      "output-validation-rejected",
+    );
+    const begins = fixture.session.events.filter((event) => event === "begin").length;
+    fixture.profiles.available = false;
+    fixture.revokeRuntime();
+
+    const failed = await fixture.executor.execute(EXECUTION_AGENT, {
+      ...EXECUTION_COMMAND,
+      expectedRevision: fixture.project.revision,
+    });
+    assertEquals(runStatus(failed), "failed");
+    assertEquals(fixture.runtime.runs, [0]);
+    assertEquals(
+      fixture.session.events.filter((event) => event === "begin").length,
+      begins,
+    );
+    assertEquals(fixture.session.recordedReleases, 1);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 Deno.test("admitted Modelica refuses a divergent fail code on output-validation replay without redispatch", async () => {
   const fixture = await executorHarness({ rejectOutputValidation: true });
   try {
@@ -1219,6 +1620,7 @@ interface ExecutorHarnessOptions {
   readonly drift?: ExecutorDrift;
   readonly initialStatus?: "queued" | "running";
   readonly failGenerationZero?: boolean;
+  readonly failGenerationOne?: boolean;
   readonly rejectOutputValidation?: boolean;
   readonly losePrepareAck?: boolean;
   readonly loseDispatchAck?: boolean;
@@ -1227,6 +1629,8 @@ interface ExecutorHarnessOptions {
   readonly loseOutputPublishedAck?: boolean;
   readonly loseCompletedAck?: boolean;
   readonly publishThenThrow?: readonly (0 | 1)[];
+  readonly losePublicationResolveAckGeneration?: 0 | 1;
+  readonly receiptDriftGeneration?: 0 | 1;
   readonly outcomeUnknownGeneration?: 0 | 1;
   readonly resolutionRefDrift?: boolean;
   readonly loseDestroyAck?: boolean;
@@ -1234,20 +1638,30 @@ interface ExecutorHarnessOptions {
   readonly acknowledgementLoss?: "capture" | "publish";
   readonly loseThreadSaveAck?: boolean;
   readonly loseCompleteAck?: boolean;
+  readonly loseFailAck?: boolean;
   readonly loseCompletionJournalBeforeWrite?: boolean;
   readonly twoInstances?: boolean;
   readonly evidenceInputBundleDrift?: boolean;
   readonly evidenceResultDrift?: boolean;
+  readonly resolvedPlanTamper?: boolean;
+  readonly runtimeRevoked?: boolean;
+  readonly sessionUnavailable?: boolean;
 }
 
 interface ExecutorHarness {
   readonly executor: SimulateRunAdmittedModelicaRunExecutor;
   readonly project: MutableProject;
+  readonly initialReceiptCount: number;
   readonly attempts: FaultInjectingAttemptStore;
   readonly runtime: FakeAdmittedRuntime;
+  readonly profiles: FakeProfiles;
+  readonly session: RecordingCapabilityRuntimeSession;
+  readonly revokeRuntime: () => void;
   readonly captures: FakeAdmittedCaptures;
   readonly snapshots: FakeAdmittedSnapshots;
   readonly commands: FakeAdmittedCommands;
+  readonly tamperRecordedPlan: () => void;
+  readonly tamperAttemptIdentity: () => void;
   readonly peerExecutor?: SimulateRunAdmittedModelicaRunExecutor;
   readonly dispose: () => Promise<void>;
 }
@@ -1277,11 +1691,6 @@ async function executorHarness(
     summary: "Execute the exact admitted Modelica source.",
     parameters: encodeModelicaAdmittedRunAdmissionParameters(admission),
   };
-  const decisionFingerprint = await sha256Fingerprint({
-    baseSnapshot: basisRef,
-    inputEvidenceRefs: [evidenceRef],
-    proposal,
-  });
   const operation = {
     ...SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
     bindings: [{
@@ -1289,133 +1698,169 @@ async function executorHarness(
       source: { kind: "thread-entity" as const, reference: evidenceRef },
     }],
   };
-  const runFingerprint = await sha256Fingerprint({
-    workItemId: "work.modelica.admitted",
-    basis: runBasis,
-    operation,
-    approvedDecisions: [{
-      id: "decision.modelica.admitted",
-      inputFingerprint: decisionFingerprint,
-    }],
-  });
-  const project = {
-    schemaVersion: "4.0",
-    id: options.initialStatus === "running" ? "project.ramp:r2" : "project.ramp:r1",
-    revision: options.initialStatus === "running" ? 2 : 1,
-    generatedAt: EXECUTION_AT,
-    project: {
-      id: EXECUTION_COMMAND.projectId,
-      name: "Ramp",
-      subjectId: basis.subject.id,
-      objective: { title: "Ramp", statement: "Execute admitted Modelica." },
+  const operationalCapability = admittedModelicaOperationalCapability(
+    EXECUTION_COMMAND.projectId,
+    source.profiles.profile,
+  );
+  const store = new ModelicaMemoryProjectStore();
+  const briefs = new ProjectBriefCommandService(store, () => EXECUTION_AT);
+  let project = await approvedModelicaProject(briefs);
+  let sealed:
+    | { readonly plan: ResolvedOperationPlanV2; readonly ref: ResolvedOperationPlanRef }
+    | undefined;
+  const planning: EngineeringProjectPlanningDependencies = {
+    operations: admittedModelicaOperationRegistry(),
+    queueEligibility: {
+      validate: () => Promise.resolve(operationalCapability),
     },
-    threadSnapshots: [basisRef],
+    runPlanSealer: {
+      seal: async (input) => {
+        let plan = await admittedModelicaResolvedPlan({
+          project: input.project,
+          run: input.run,
+          workItem: input.workItem,
+          basis,
+          admission,
+          profile: source.profiles.profile,
+          operationalCapability,
+        });
+        if (options.resolvedPlanTamper) {
+          if (
+            plan.action.kind !== "admitted-modelica-isolated-execution" ||
+            !("executionRunId" in plan.recovery)
+          ) {
+            throw new Error("Modelica fixture plan has the wrong action shape.");
+          }
+          plan = {
+            ...plan,
+            action: { ...plan.action, executionRunId: "run.tampered" },
+            recovery: { ...plan.recovery, executionRunId: "run.tampered" },
+          };
+        }
+        const ref = await admittedModelicaResolvedPlanRef(plan);
+        sealed = { plan, ref };
+        return ref;
+      },
+    },
+  };
+  const projectCommands = new EngineeringProjectCommandService(
+    store,
+    undefined,
+    () => EXECUTION_AT,
+    planning,
+  );
+  project = await projectCommands.publishPlan(EXECUTION_AGENT, {
+    commandId: "publish.modelica.admitted.plan",
+    projectId: EXECUTION_COMMAND.projectId,
+    expectedRevision: project.revision,
+    issuedAt: EXECUTION_AT,
+    startingPoint: "idea-or-spec",
     phases: [{
       id: "phase.simulate",
       name: "Simulate",
-      order: 1,
       description: "Run admitted Modelica.",
-      workItemIds: ["work.modelica.admitted"],
-      requiredDecisionIds: ["decision.modelica.admitted"],
-      evidenceRefs: [],
     }],
     workItems: [{
       id: "work.modelica.admitted",
-      activityId: "activity:work.modelica.admitted",
       phaseId: "phase.simulate",
-      title: "Run admitted Modelica",
-      description: "Run the sealed source.",
-      kind: "simulate",
-      operation,
-      status: "in-progress",
       owner: "agent",
       dependsOnWorkItemIds: [],
-      evidenceRefs: [],
       decisionIds: ["decision.modelica.admitted"],
-      blockerIds: [],
+      operation: {
+        ...SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
+        bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+      },
     }],
-    agentRuns: [{
-      id: EXECUTION_COMMAND.runId,
-      workItemId: "work.modelica.admitted",
-      status: options.initialStatus ?? "queued",
-      summary: "Run admitted Modelica.",
-      queuedAt: EXECUTION_AT,
-      ...(options.initialStatus === "running"
-        ? {
-          startedAt: EXECUTION_AT,
-          claimedAt: EXECUTION_AT,
-          claimedBy: { id: EXECUTION_AGENT.actorId, origin: EXECUTION_AGENT.kind },
-        }
-        : {}),
-      basis: runBasis,
-      inputFingerprint: options.drift === "run-fingerprint"
-        ? { algorithm: "sha256", digest: "e".repeat(64) }
-        : runFingerprint,
-      evidenceRefs: [],
-      statusHistory: [],
-    }],
-    decisions: [{
+    requiredDecisions: [{
       id: "decision.modelica.admitted",
       phaseId: "phase.simulate",
       title: "Admitted Modelica run",
       question: "Execute this admission?",
-      status: "approved",
-      requestedAt: EXECUTION_AT,
-      baseSnapshot: basisRef,
-      inputFingerprint: options.drift === "decision-fingerprint"
-        ? { algorithm: "sha256", digest: "d".repeat(64) }
-        : decisionFingerprint,
-      inputEvidenceRefs: [evidenceRef],
-      approvalIds: ["approval.modelica.admitted"],
-      proposal: {
-        ...proposal,
-        proposedAt: EXECUTION_AT,
-        proposedBy: { id: EXECUTION_AGENT.actorId, origin: EXECUTION_AGENT.kind },
-      },
     }],
-    approvals: [{
-      id: "approval.modelica.admitted",
-      decisionId: "decision.modelica.admitted",
-      status: "approved",
-      requestedAt: EXECUTION_AT,
-      decidedAt: EXECUTION_AT,
-      decidedBy: "human.reviewer",
-      decidedByOrigin: options.drift === "agent-approval" ? "agent" : "human",
-      baseSnapshot: basisRef,
-      inputFingerprint: decisionFingerprint,
-      inputEvidenceRefs: [evidenceRef],
-    }],
-    blockers: [],
-    commandReceipts: [],
-  } as unknown as MutableProject;
+  });
+  const preparedProject = {
+    ...project,
+    threadSnapshots: [basisRef],
+    workItems: project.workItems.map((item) =>
+      item.id === "work.modelica.admitted" ? { ...item, operation } : item
+    ),
+    decisions: project.decisions.map((item) =>
+      item.id === "decision.modelica.admitted"
+        ? { ...item, inputEvidenceRefs: [evidenceRef] }
+        : item
+    ),
+  };
+  await store.commit(preparedProject, project.revision);
+  project = (await store.get(EXECUTION_COMMAND.projectId))!;
+  project = await projectCommands.proposeDecision(EXECUTION_AGENT, {
+    commandId: "propose.modelica.admitted",
+    projectId: EXECUTION_COMMAND.projectId,
+    expectedRevision: project.revision,
+    issuedAt: EXECUTION_AT,
+    decisionId: "decision.modelica.admitted",
+    baseSnapshot: basisRef,
+    proposal,
+  });
+  const decision = project.decisions.find((candidate) =>
+    candidate.id === "decision.modelica.admitted"
+  )!;
+  project = await projectCommands.approveDecision(
+    { kind: "human", actorId: "human.modelica-reviewer" },
+    {
+      commandId: "approve.modelica.admitted",
+      projectId: EXECUTION_COMMAND.projectId,
+      expectedRevision: project.revision,
+      issuedAt: EXECUTION_AT,
+      decisionId: decision.id,
+      inputFingerprint: decision.inputFingerprint!,
+      rationale: "The exact admitted Modelica execution is approved.",
+    },
+  );
+  const queueBasisProject = structuredClone(project);
+  project = await projectCommands.queueRun(EXECUTION_AGENT, {
+    commandId: "queue.modelica.admitted",
+    projectId: EXECUTION_COMMAND.projectId,
+    expectedRevision: project.revision,
+    issuedAt: EXECUTION_AT,
+    runId: EXECUTION_COMMAND.runId,
+    workItemId: "work.modelica.admitted",
+    summary: "Run admitted Modelica.",
+    basis: runBasis,
+  });
+  if (!sealed) throw new Error("Modelica ROP fixture was not sealed at queue.");
+  if (options.drift === "agent-approval") {
+    (project.approvals[0] as { decidedByOrigin: "agent" }).decidedByOrigin = "agent";
+  } else if (options.drift === "decision-fingerprint") {
+    (project.decisions[0] as {
+      inputFingerprint: { algorithm: "sha256"; digest: string };
+    })
+      .inputFingerprint = { algorithm: "sha256", digest: "d".repeat(64) };
+  } else if (options.drift === "run-fingerprint") {
+    (project.agentRuns[0] as {
+      inputFingerprint: { algorithm: "sha256"; digest: string };
+    })
+      .inputFingerprint = { algorithm: "sha256", digest: "e".repeat(64) };
+  }
   if (options.initialStatus === "running") {
-    const claim = {
-      ...EXECUTION_COMMAND,
-      commandId: `${EXECUTION_COMMAND.commandId}:simulate-run-admitted-modelica:claim`,
-      expectedRevision: 1,
+    project = await projectCommands.claimRun(EXECUTION_AGENT, {
+      commandId: "claim.modelica.admitted.fixture",
+      projectId: EXECUTION_COMMAND.projectId,
+      expectedRevision: project.revision,
+      issuedAt: EXECUTION_AT,
+      runId: EXECUTION_COMMAND.runId,
       summary: "Started the exact reviewed admitted Modelica run.",
-    };
-    project.commandReceipts.push({
-      commandId: claim.commandId,
-      type: "agent-run.claim",
-      actor: { id: EXECUTION_AGENT.actorId, origin: EXECUTION_AGENT.kind },
-      issuedAt: claim.issuedAt,
-      appliedAt: EXECUTION_AT,
-      requestFingerprint: await sha256Fingerprint({
-        type: "agent-run.claim",
-        origin: EXECUTION_AGENT,
-        command: claim,
-      }),
-      resultingSnapshot: { snapshotId: project.id, revision: project.revision },
     });
-    (project.agentRuns[0] as MutableRun).statusHistory = [{
-      commandId: claim.commandId,
-      status: "running",
-      at: EXECUTION_AT,
-      actor: { id: EXECUTION_AGENT.actorId, origin: EXECUTION_AGENT.kind },
-      summary: claim.summary,
-    }];
-    (project.agentRuns[0] as MutableRun).summary = claim.summary;
+  }
+  const plan = sealed.plan;
+  const ref = sealed.ref;
+  let recordedPlanTampered = false;
+  if (options.initialStatus === "running") {
+    const run = project.agentRuns.find((candidate) =>
+      candidate.id === EXECUTION_COMMAND.runId
+    );
+    if (run?.status !== "running") {
+      throw new Error("Modelica fixture claim did not enter running state.");
+    }
   }
   const directory = await Deno.realPath(
     await Deno.makeTempDir({
@@ -1438,17 +1883,23 @@ async function executorHarness(
     options.loseThreadSaveAck ?? false,
   );
   const commands = new FakeAdmittedCommands(
-    project,
+    project as MutableProject,
     options.acknowledgementLoss === "publish",
     options.loseCompleteAck ?? false,
+    options.loseFailAck ?? false,
   );
   const projects: EngineeringProjectRevisionStore = {
     get: () => Promise.resolve(project),
     getRevision: (_projectId, revision) =>
-      Promise.resolve(commands.reopenRevision(revision)),
+      Promise.resolve(
+        revision === queueBasisProject.revision
+          ? structuredClone(queueBasisProject)
+          : commands.reopenRevision(revision),
+      ),
     createInitial: () => Promise.reject(new Error("unused")),
     commit: () => Promise.reject(new Error("unused")),
   };
+  let runtimeAvailable = !options.runtimeRevoked;
   const commonDependencies = {
     projects,
     commands,
@@ -1459,13 +1910,46 @@ async function executorHarness(
     recovery: runtime,
     publications: runtime,
     captures,
+    plans: {
+      read: (candidate: ResolvedOperationPlanRef) =>
+        deterministicJson(candidate) === deterministicJson(ref)
+          ? Promise.resolve(structuredClone(
+            recordedPlanTampered
+              ? {
+                ...plan,
+                recovery: {
+                  ...plan.recovery,
+                  executionRunId: "run.recorded-plan-tampered",
+                },
+              }
+              : plan,
+          ))
+          : Promise.reject(new Error("unexpected resolved operation plan ref")),
+    },
+    capabilityRuntime: {
+      requireExecution: () =>
+        Promise.resolve(
+          runtimeAvailable ? operationalCapability : undefined,
+        ),
+    } satisfies CapabilityRuntimeExecutionEligibility,
   };
+  const session = recordingCapabilityRuntimeSession(
+    options.sessionUnavailable
+      ? () =>
+        Promise.reject(
+          new CapabilityRuntimeSessionUnavailableError(
+            "The exact Modelica microsandbox cache is unavailable.",
+          ),
+        )
+      : undefined,
+  );
   const dependencies = {
     ...commonDependencies,
     attempts,
     lease: options.twoInstances
       ? new FileEngineeringProjectRunLease(`${directory}/leases`)
       : new TestSerialLease(),
+    capabilityRuntimeSession: session,
   } as unknown as SimulateRunAdmittedModelicaRunExecutorDependencies;
   const peerExecutor = options.twoInstances
     ? new SimulateRunAdmittedModelicaRunExecutor({
@@ -1475,18 +1959,301 @@ async function executorHarness(
         options,
       ),
       lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
+      capabilityRuntimeSession: session,
     } as unknown as SimulateRunAdmittedModelicaRunExecutorDependencies)
     : undefined;
   return {
     executor: new SimulateRunAdmittedModelicaRunExecutor(dependencies),
-    project,
+    project: project as MutableProject,
+    initialReceiptCount: project.commandReceipts?.length ?? 0,
     attempts,
     runtime,
+    profiles: source.profiles,
+    session,
+    revokeRuntime: () => {
+      runtimeAvailable = false;
+    },
     captures,
     snapshots,
     commands,
+    tamperRecordedPlan: () => {
+      recordedPlanTampered = true;
+    },
+    tamperAttemptIdentity: () => attempts.tamperReadIdentity(),
     peerExecutor,
     dispose: () => Deno.remove(directory, { recursive: true }),
+  };
+}
+
+function admittedModelicaOperationalCapability(
+  projectId: string,
+  profile: AdmittedModelicaExecutionProfile,
+): ResolvedCapabilityRuntimeOperation {
+  const fingerprint = { algorithm: "sha256" as const, digest: "a".repeat(64) };
+  const microvm = {
+    unitId: "casys.modelica-worker",
+    materialId: "modelica-worker-image",
+    imageDigest: profile.runtimeBackend.imageDigest.digest,
+  };
+  return {
+    schemaVersion: "resolved-capability-runtime-operation/2.0",
+    projectId,
+    operation: SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
+    authorizationFingerprint: fingerprint,
+    demandFingerprint: fingerprint,
+    registryFingerprint: fingerprint,
+    bindings: [{
+      capability: {
+        id: "simulation.run-admitted-modelica",
+        version: "1",
+        use: "execution",
+        minimumQualification: "qualified",
+      },
+      binding: { id: "openmodelica-admitted-modelica", version: "1" },
+      effectiveQualification: "qualified",
+      adapter: {
+        id: "modelica-admitted-execution-adapter",
+        version: "1.0.0",
+        source: "server",
+      },
+      profile: {
+        id: profile.executionProfile.id,
+        version: profile.executionProfile.version,
+        fingerprint: profile.profileFingerprint,
+      },
+      materials: [microvm],
+      runtimeModes: [{
+        material: microvm,
+        targetPlatform: "linux/arm64",
+        mode: "native",
+        qualificationAttestationFingerprint: null,
+      }],
+      hostLifecycles: [{
+        material: microvm,
+        kind: "ephemeral-microsandbox",
+        launchGroup: null,
+      }],
+    }],
+  };
+}
+
+async function approvedModelicaProject(
+  service: ProjectBriefCommandService,
+): Promise<EngineeringProjectSnapshot> {
+  let project = await service.startProject(EXECUTION_AGENT, {
+    commandId: "start.modelica-admitted-project",
+    projectId: EXECUTION_COMMAND.projectId,
+    projectName: "Admitted Modelica fixture",
+    issuedAt: EXECUTION_AT,
+    intent: "Execute one sealed admitted Modelica source after human review.",
+    intentSource: { kind: "human", reference: "conversation:modelica-admitted" },
+  });
+  project = await service.proposeBrief(EXECUTION_AGENT, {
+    commandId: "propose.modelica-admitted-brief",
+    projectId: EXECUTION_COMMAND.projectId,
+    expectedRevision: project.revision,
+    issuedAt: EXECUTION_AT,
+    items: modelicaBriefItems(),
+  });
+  const brief = project.framing!.proposedBrief!;
+  const review = project.framing!.proposalReview!;
+  return await service.approveBrief(
+    { kind: "human", actorId: "human.modelica-reviewer" },
+    {
+      commandId: "approve.modelica-admitted-brief",
+      projectId: EXECUTION_COMMAND.projectId,
+      expectedRevision: project.revision,
+      issuedAt: EXECUTION_AT,
+      briefSnapshotId: brief.id,
+      briefRevision: brief.revision,
+      rationale: "The bounded admitted Modelica objective is approved.",
+      inputFingerprint: review.inputFingerprint,
+    },
+  );
+}
+
+function modelicaBriefItems(): readonly ProjectBriefItem[] {
+  return [{
+    id: "objective",
+    kind: "objective",
+    statement: "Execute a sealed admitted Modelica simulation.",
+    sourceRefs: [{ kind: "intent", reference: "conversation:modelica-admitted" }],
+  }, {
+    id: "mission",
+    kind: "mission-scenario",
+    statement: "Run one exact Modelica source only after review.",
+    sourceRefs: [{ kind: "intent", reference: "conversation:modelica-admitted" }],
+  }, {
+    id: "success",
+    kind: "success-criterion",
+    statement: "The execution stays tied to its admitted source and profile.",
+    sourceRefs: [{ kind: "intent", reference: "conversation:modelica-admitted" }],
+    dependsOnItemIds: [],
+  }, {
+    id: "verify",
+    kind: "verification-activity",
+    statement: "Verify the reviewed Modelica authority before execution.",
+    sourceRefs: [{ kind: "intent", reference: "conversation:modelica-admitted" }],
+    dependsOnItemIds: ["success"],
+  }];
+}
+
+function admittedModelicaOperationRegistry(): EngineeringProjectPlanOperationRegistry {
+  return {
+    validate(input) {
+      if (
+        input.operation.id !== SIMULATE_RUN_ADMITTED_MODELICA_OPERATION.id ||
+        input.operation.version !== SIMULATE_RUN_ADMITTED_MODELICA_OPERATION.version
+      ) {
+        throw new TypeError("Fixture registry accepts only admitted Modelica.");
+      }
+      return {
+        operation: {
+          ...SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
+          startingPoint: "idea-or-spec",
+          title: "Run admitted Modelica",
+          description: "Execute exact reviewed admitted Modelica bytes.",
+          workItemKind: "simulate",
+          execution: "trusted",
+          resolvedOperationPlan: "2.0",
+          decisionEvidenceScope: "thread-entity-bindings",
+        },
+        bindings: input.operation.bindings,
+      };
+    },
+  };
+}
+
+async function admittedModelicaResolvedPlan(input: {
+  readonly project: EngineeringProjectSnapshot;
+  readonly run: EngineeringProjectSnapshot["agentRuns"][number];
+  readonly workItem: EngineeringProjectSnapshot["workItems"][number];
+  readonly basis: ThreadSnapshot;
+  readonly admission: ModelicaAdmittedRunAdmission;
+  readonly profile: AdmittedModelicaExecutionProfile;
+  readonly operationalCapability: ResolvedCapabilityRuntimeOperation;
+}): Promise<ResolvedOperationPlanV2> {
+  const run = input.run;
+  const workItem = input.workItem;
+  const decision = input.project.decisions[0]!;
+  const approval = input.project.approvals[0]!;
+  const artifact = input.basis.artifacts.find((candidate) =>
+    candidate.id === input.admission.admissionArtifact.id
+  );
+  if (!run.inputFingerprint || !decision.inputFingerprint) {
+    throw new Error("admitted Modelica ROP fixture is incomplete");
+  }
+  const executionRunId = await deriveAdmittedModelicaExecutionRunId(
+    input.project.project.id,
+    run.id,
+  );
+  return {
+    schemaVersion: "resolved-operation-plan/2.0",
+    id: resolvedOperationPlanIdForRun(run.id),
+    run: {
+      projectId: input.project.project.id,
+      runId: run.id,
+      workItemId: workItem.id,
+      inputFingerprint: run.inputFingerprint,
+      queueBasisProject: {
+        snapshotId: input.project.id,
+        revision: input.project.revision,
+        fingerprint: await sha256Fingerprint(input.project),
+      },
+    },
+    workItem: {
+      id: workItem.id,
+      operation: {
+        id: workItem.operation!.id,
+        version: workItem.operation!.version,
+      },
+      operationFingerprint: await sha256Fingerprint(workItem.operation),
+    },
+    operationalCapability: input.operationalCapability,
+    authorization: {
+      kind: "human-mrtr-and-qualified-method",
+      mrtr: {
+        decisionId: decision.id,
+        decisionInputFingerprint: decision.inputFingerprint,
+        approvalId: approval.id,
+        approvalFingerprint: await sha256Fingerprint(approval),
+      },
+      methodQualification: {
+        id: input.profile.executionProfile.id,
+        version: input.profile.executionProfile.version,
+        fingerprint: input.profile.profileFingerprint,
+      },
+    },
+    basis: {
+      kind: "thread-snapshot",
+      snapshotId: input.basis.id,
+      revision: input.basis.revision,
+      subjectId: input.basis.subject.id,
+      fingerprint: await sha256Fingerprint(input.basis),
+    },
+    sources: [{
+      bindingName: "compilationAdmission",
+      role: "compilation-admission",
+      threadRef: {
+        snapshotId: input.basis.id,
+        snapshotRevision: input.basis.revision,
+        kind: "artifact",
+        id: input.admission.admissionArtifact.id,
+      },
+      artifact: {
+        fingerprint: input.admission.admissionArtifact.fingerprint,
+        byteCount: artifact?.id.length ?? input.admission.admissionArtifact.id.length,
+        mediaType: "application/json",
+        casUri:
+          `casys://technical-compilation-admission-capture/sha256/${input.admission.admissionArtifact.fingerprint.digest}`,
+      },
+    }],
+    action: {
+      kind: "admitted-modelica-isolated-execution",
+      executionProfile: {
+        id: input.profile.executionProfile.id,
+        version: input.profile.executionProfile.version,
+        fingerprint: input.profile.profileFingerprint,
+      },
+      executionRunId,
+      input: {
+        compilationAdmission: {
+          id: input.admission.admissionArtifact.id,
+          fingerprint: input.admission.admissionArtifact.fingerprint,
+          sourceBinding: "compilationAdmission",
+        },
+        source: input.admission.compilation.source,
+      },
+    },
+    expectedProviderResources: {
+      receiptSchema: "isolated-code-execution-receipt-record/1.0",
+      evidenceSchema: "modelica-admitted-execution-capture/2.0",
+      resourceProfile: {
+        id: "modelica-admitted.isolated-artifacts",
+        version: "1.0",
+      },
+    },
+    recovery: {
+      policy: "modelica-admitted-generation-recovery@1.0",
+      executionRunId,
+      mode: "same-request-readback-no-blind-redispatch",
+      ambiguousOutcome: "quarantine-for-human-review",
+      capturedOutcome: "cas-only-recovery",
+    },
+  };
+}
+
+async function admittedModelicaResolvedPlanRef(
+  plan: ResolvedOperationPlanV2,
+): Promise<ResolvedOperationPlanRef> {
+  const fingerprint = await fingerprintResolvedOperationPlanV2(plan);
+  return {
+    schemaVersion: "resolved-operation-plan-ref/1.0",
+    planId: plan.id,
+    fingerprint,
+    byteCount: new TextEncoder().encode(canonicalResolvedOperationPlanV2Text(plan))
+      .byteLength,
+    casUri: `casys://resolved-operation-plan/sha256/${fingerprint.digest}`,
   };
 }
 
@@ -1513,7 +2280,7 @@ async function admittedThreadLineage(
     revision: 1,
     generatedAt: EXECUTION_AT,
     subject: {
-      id: "subject.ramp",
+      id: `project:${EXECUTION_COMMAND.projectId}`,
       name: "Ramp",
       kind: "system",
       version: "1",
@@ -1693,6 +2460,7 @@ class FaultInjectingAttemptStore implements AdmittedModelicaExecutionAttemptStor
   #loseOutputPublishedAck: boolean;
   #loseCompletedAck: boolean;
   #loseCompletionBeforeWrite: boolean;
+  #tamperReadIdentity = false;
 
   constructor(
     readonly inner: AdmittedModelicaExecutionAttemptStore,
@@ -1707,8 +2475,26 @@ class FaultInjectingAttemptStore implements AdmittedModelicaExecutionAttemptStor
     this.#loseCompletionBeforeWrite = options.loseCompletionJournalBeforeWrite ?? false;
   }
 
-  read(projectId: string, agentRunId: string) {
-    return this.inner.read(projectId, agentRunId);
+  async read(projectId: string, agentRunId: string) {
+    const attempt = await this.inner.read(projectId, agentRunId);
+    if (!attempt || !this.#tamperReadIdentity) return attempt;
+    return {
+      ...attempt,
+      identity: {
+        ...attempt.identity,
+        executionProfile: {
+          ...attempt.identity.executionProfile,
+          profileFingerprint: {
+            algorithm: "sha256" as const,
+            digest: "f".repeat(64),
+          },
+        },
+      },
+    };
+  }
+
+  tamperReadIdentity(): void {
+    this.#tamperReadIdentity = true;
   }
 
   async prepare(
@@ -1815,6 +2601,7 @@ class FakeAdmittedRuntime {
     | undefined;
   #loseDestroyAck: boolean;
   #loseAdvanceAck: boolean;
+  #losePublicationResolveAckGeneration: 0 | 1 | undefined;
 
   constructor(
     readonly profile: AdmittedModelicaExecutionProfile,
@@ -1822,6 +2609,8 @@ class FakeAdmittedRuntime {
   ) {
     this.#loseDestroyAck = options.loseDestroyAck ?? false;
     this.#loseAdvanceAck = options.loseAdvanceAck ?? false;
+    this.#losePublicationResolveAckGeneration =
+      options.losePublicationResolveAckGeneration;
   }
 
   async run(request: IsolatedCodeExecutionRequest) {
@@ -1846,12 +2635,19 @@ class FakeAdmittedRuntime {
     if (this.options.failGenerationZero && request.producerGeneration === 0) {
       throw new Error("generation-zero acknowledgement lost before publication");
     }
+    if (this.options.failGenerationOne && request.producerGeneration === 1) {
+      throw new Error("generation-one acknowledgement lost before publication");
+    }
     const receipt = await this.#receipt(request);
     this.#receipts.set(request.producerGeneration, receipt);
     return receipt;
   }
 
   resolvePublicationByRunId(runId: string, producerGeneration: 0 | 1) {
+    if (this.#losePublicationResolveAckGeneration === producerGeneration) {
+      this.#losePublicationResolveAckGeneration = undefined;
+      return Promise.reject(new Error("publication resolution acknowledgement lost"));
+    }
     if (this.options.outcomeUnknownGeneration === producerGeneration) {
       return Promise.resolve({
         status: "outcome-unknown" as const,
@@ -1883,7 +2679,17 @@ class FakeAdmittedRuntime {
   }
 
   readReceipt(ref: { readonly producerGeneration: 0 | 1 }) {
-    return Promise.resolve(this.#receipts.get(ref.producerGeneration));
+    const receipt = this.#receipts.get(ref.producerGeneration);
+    if (
+      receipt &&
+      this.options.receiptDriftGeneration === ref.producerGeneration
+    ) {
+      return Promise.resolve({
+        ...receipt,
+        termination: { kind: "exited" as const, exitCode: 7, signal: null },
+      });
+    }
+    return Promise.resolve(receipt);
   }
 
   readPublishedObject(
@@ -2121,18 +2927,64 @@ class FakeAdmittedSnapshots {
   }
 }
 
+class ModelicaMemoryProjectStore implements EngineeringProjectRevisionStore {
+  readonly #revisions = new Map<number, EngineeringProjectSnapshot>();
+
+  get(projectId: string): Promise<EngineeringProjectSnapshot | undefined> {
+    const current = [...this.#revisions.values()]
+      .filter((snapshot) => snapshot.project.id === projectId)
+      .sort((left, right) => right.revision - left.revision)[0];
+    return Promise.resolve(current && structuredClone(current));
+  }
+
+  getRevision(
+    projectId: string,
+    revision: number,
+  ): Promise<EngineeringProjectSnapshot | undefined> {
+    const snapshot = this.#revisions.get(revision);
+    return Promise.resolve(
+      snapshot?.project.id === projectId ? structuredClone(snapshot) : undefined,
+    );
+  }
+
+  createInitial(
+    snapshot: EngineeringProjectSnapshot,
+  ): Promise<EngineeringProjectSnapshot> {
+    if (this.#revisions.size > 0) {
+      return Promise.reject(new Error("Project already exists."));
+    }
+    this.#revisions.set(snapshot.revision, structuredClone(snapshot));
+    return Promise.resolve(structuredClone(snapshot));
+  }
+
+  async commit(
+    snapshot: EngineeringProjectSnapshot,
+    expectedRevision: number,
+  ): Promise<EngineeringProjectSnapshot> {
+    const current = await this.get(snapshot.project.id);
+    if (!current || current.revision !== expectedRevision) {
+      throw new Error("Stale project revision.");
+    }
+    this.#revisions.set(snapshot.revision, structuredClone(snapshot));
+    return structuredClone(snapshot);
+  }
+}
+
 class FakeAdmittedCommands {
   #losePublishAck: boolean;
   #loseCompleteAck: boolean;
+  #loseFailAck: boolean;
   readonly #revisions = new Map<number, MutableProject>();
 
   constructor(
     readonly project: MutableProject,
     losePublishAck: boolean,
     loseCompleteAck: boolean,
+    loseFailAck: boolean,
   ) {
     this.#losePublishAck = losePublishAck;
     this.#loseCompleteAck = loseCompleteAck;
+    this.#loseFailAck = loseFailAck;
     for (let revision = 1; revision <= project.revision; revision += 1) {
       const snapshot = structuredClone(project);
       snapshot.id = `project.ramp:r${revision}`;
@@ -2173,6 +3025,12 @@ class FakeAdmittedCommands {
     const snapshot = this.#revisions.get(revision);
     if (!snapshot) throw new Error("historical revision not found");
     snapshot.generatedAt = "2026-08-20T05:00:01.000Z";
+  }
+
+  driftHistoricalSnapshotId(revision: number): void {
+    const snapshot = this.#revisions.get(revision);
+    if (!snapshot) throw new Error("historical revision not found");
+    snapshot.id = `foreign:project:r${revision}`;
   }
 
   async claimRun(origin: EngineeringProjectCommandOrigin, command: RunCommand) {
@@ -2242,6 +3100,10 @@ class FakeAdmittedCommands {
   }
 
   async failRun(origin: EngineeringProjectCommandOrigin, command: FailRunCommand) {
+    if (this.#loseFailAck) {
+      this.#loseFailAck = false;
+      throw new Error("fail acknowledgement lost before project transition");
+    }
     const run = this.project.agentRuns[0] as MutableRun;
     if (run.status === "running" || run.status === "publishing") {
       run.status = "failed";
@@ -2264,8 +3126,16 @@ class FakeAdmittedCommands {
     origin: EngineeringProjectCommandOrigin,
     command: RunCommand | CompleteRunCommand | FailRunCommand,
   ) {
+    const previous = {
+      snapshotId: this.project.id,
+      revision: this.project.revision,
+    };
+    const requestFingerprint = await sha256Fingerprint({ type, origin, command });
     this.project.revision += 1;
-    this.project.id = `project.ramp:r${this.project.revision}`;
+    this.project.id = `${this.project.project.id}:project:r${this.project.revision}:${
+      requestFingerprint.digest.slice(0, 16)
+    }`;
+    this.project.previous = previous;
     this.project.generatedAt = EXECUTION_AT;
     this.project.commandReceipts.push({
       commandId: command.commandId,
@@ -2273,9 +3143,9 @@ class FakeAdmittedCommands {
       actor: { id: origin.actorId, origin: origin.kind },
       issuedAt: command.issuedAt,
       appliedAt: EXECUTION_AT,
-      requestFingerprint: await sha256Fingerprint({ type, origin, command }),
+      requestFingerprint,
       resultingSnapshot: {
-        snapshotId: `project.ramp:r${this.project.revision}`,
+        snapshotId: this.project.id,
         revision: this.project.revision,
       },
     });
@@ -2334,6 +3204,7 @@ function runStatus(project: EngineeringProjectSnapshot) {
 type MutableProject = EngineeringProjectSnapshot & {
   id: string;
   revision: number;
+  previous?: EngineeringProjectSnapshot["previous"];
   generatedAt: string;
   threadSnapshots: Array<EngineeringProjectSnapshot["threadSnapshots"][number]>;
   phases: Array<EngineeringProjectSnapshot["phases"][number]>;

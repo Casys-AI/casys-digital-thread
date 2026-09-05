@@ -197,9 +197,9 @@ export function requireCanonicalGeometryPartDraftAdmission(
     throw new TypeError("Target geometry draft capture must be an object.");
   }
   const record = draft as Record<string, unknown>;
-  if (record.schemaVersion !== "geometry-part-draft-capture/1.0") {
+  if (record.schemaVersion !== "geometry-part-draft-capture/1.1") {
     throw new TypeError(
-      "Target geometry draft capture must use geometry-part-draft-capture/1.0.",
+      "Target geometry draft capture must use geometry-part-draft-capture/1.1.",
     );
   }
   const target = exactRecord(

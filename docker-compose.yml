@@ -1,5 +1,12 @@
-# The core provider chain, one command:
-#   docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-build123d-sandbox mcp-calculix
+# Maintainer diagnostic Compose topology. Not the Digital Thread cold start.
+# Ordinary atelier start is Deno (`deno task start` / `dev` / `start:yolo`).
+# CapabilityRuntime providers are H1 JIT launch groups (`casys-syson`,
+# `casys-build123d-observation`, `casys-build123d-sandbox`, …). Those groups
+# cannot adopt these root-project containers; the same loopback ports collide
+# if both run. This file is not the atelier start.
+#
+# Manual probe only, incompatible with simultaneous H1 groups:
+#   docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-build123d-sandbox
 #
 # mcp-erpnext is an optional, separate sibling integration. Start it explicitly only
 # when its sibling checkout and environment file are available.
@@ -8,7 +15,6 @@
 #   syson-db / syson-app   SysON (SysML v2 modeler) on http://localhost:8180
 #   mcp-syson              MCP over HTTP on http://localhost:3009
 #   mcp-build123d          MCP over HTTP on http://localhost:3014
-#   mcp-calculix           MCP over HTTP on http://localhost:3015
 #   mcp-erpnext            MCP over HTTP on http://localhost:3012
 #
 # The historical mcp-modelica sidecar on port 3016 is retired. Product
@@ -18,18 +24,14 @@
 # reachable through the port mapping); the mapping itself is loopback-only,
 # so nothing is exposed beyond this machine.
 #
-# build123d and CalculiX share the /exports volume: a STEP exported by
-# build123d_export is immediately readable by CalculiX at /exports/<name>.step;
-# CalculiX mounts that CAD exchange read-only.
-# The Digital Thread stages its generic content-addressed FEA input in the
-# provider-private calculix-inputs volume at /inputs. It is neither an exchange
-# nor evidence: CalculiX snapshots and hashes the file into its private workdir.
-# CalculiX keeps its own bounded, durable run ledger in calculix-runs; it never
-# treats the shared CAD exchange as its evidence store.
+# The optional recorded CalculiX sensitivity provider is deliberately absent
+# from this repository Compose topology. It is activated only by the sealed
+# `casys-mcp-calculix` capability launch group, with its own private `/inputs`
+# and durable run-ledger volumes; it never mounts the shared CAD `/exports`.
 #
 services:
   syson-db:
-    image: postgres:15
+    image: "postgres@sha256:926f8799aef36e00001cfe15fba7abbd37d3c5224ea57e4c858e4bb670f10561"
     environment:
       POSTGRES_DB: syson
       POSTGRES_USER: syson
@@ -49,7 +51,7 @@ services:
     # (startup measured 40.6 s emulated vs 14.4 s native). It is the SysON
     # application, not mcp-syson. Set SYSON_IMAGE to use a reviewed alternative
     # or a local rebuild from images/syson-runtime-repack/.
-    image: "${SYSON_IMAGE:-ghcr.io/casys-ai/syson@sha256:fc599abb95587913de11ff6de68060b5593956abc0c47bc753cd19e2987141a6}"
+    image: "${SYSON_IMAGE:-ghcr.io/casys-ai/syson@sha256:d372ae26e5d32e5c599fa7c1599d42c73cf9a54e101cfe6f77175f313d7d84e9}"
     ports:
       - "127.0.0.1:8180:8080"
     environment:
@@ -76,11 +78,12 @@ services:
     networks: [chain]
 
   mcp-syson:
-    # Keep the SysON sidecar independently selectable for a locally verified
-    # protocol fix. This avoids replacing it with the shared toolchain image
-    # when Compose is started for build123d or CalculiX.
-    image: "${MCP_SYSON_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:c04922cc2c0f503c34277c5a1dc81ab28b141945acad90345e2d16882535b4bc}"
-    command: ["syson", "--port=3009", "--hostname=0.0.0.0"]
+    # The dedicated provider owns its own server entrypoint. Keep this distinct
+    # from the shared engineering toolchain used by the CAD services.
+    image: "${MCP_SYSON_IMAGE:-ghcr.io/casys-ai/mcp-syson@sha256:87eee6e35a636124d5ba6911492a245d69edcdf1ba67575676c22a0e9d7ce65e}"
+    # Do not reintroduce the legacy `syson` command token: the dedicated image
+    # already starts server.ts, so only valid server arguments belong here.
+    command: ["--port=3009", "--hostname=0.0.0.0"]
     environment:
       SYSON_URL: http://syson-app:8080
     ports:
@@ -91,8 +94,9 @@ services:
     networks: [chain]
 
   mcp-build123d:
-    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:7a255f24448ddb6de496c4e47c2d1634c63daea67e9082b558257287215b23b5}"
-    command: ["build123d", "--port=3014", "--hostname=0.0.0.0"]
+    # The dedicated provider image owns its ENTRYPOINT and default HTTP CMD.
+    # Do not restore the legacy engineering-toolchain `build123d` subcommand.
+    image: "${MCP_BUILD123D_IMAGE:-ghcr.io/casys-ai/mcp-build123d@sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d}"
     ports:
       - "127.0.0.1:3014:3014"
     volumes:
@@ -126,8 +130,9 @@ services:
   # its bytes out with `docker compose cp` + fail-closed SHA-256 verification,
   # exactly as it already does for attested assets.
   mcp-build123d-sandbox:
-    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:7a255f24448ddb6de496c4e47c2d1634c63daea67e9082b558257287215b23b5}"
-    command: ["build123d", "--port=3014", "--hostname=0.0.0.0"]
+    # Same dedicated provider release, but the private volume and server-owned
+    # admission boundary below remain distinct from the canonical service.
+    image: "${MCP_BUILD123D_IMAGE:-ghcr.io/casys-ai/mcp-build123d@sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d}"
     ports:
       - "127.0.0.1:3024:3014"
     volumes:
@@ -140,27 +145,6 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-
-  mcp-calculix:
-    # CalculiX has its own release and durable-record contract. In particular,
-    # its published entrypoint already owns HTTP startup; do not pass the
-    # legacy engineering-toolchain subcommand here.
-    image: "${MCP_CALCULIX_IMAGE:-ghcr.io/casys-ai/mcp-calculix@sha256:76c9630eeecfe164c6b3c4d8b845c51fa7f8b48528773cb149b6c7a0ae2799a8}"
-    ports:
-      - "127.0.0.1:3015:3015"
-    environment:
-      CALCULIX_RUNS_DIRECTORY: /var/lib/mcp-calculix-runs
-      CALCULIX_MAX_RECORDED_RUNS: "24"
-    volumes:
-      - exports:/exports:ro
-      - calculix-inputs:/inputs
-      - calculix-runs:/var/lib/mcp-calculix-runs
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:3015/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-    networks: [chain]
 
   # Until the mcp-server 0.24 base is reviewed and released by mcp-erpnext, the
   # local tag combines base 17ca098 with viewer/UOM fix 1d99467. Build only from
@@ -205,8 +189,9 @@ services:
   # The four standalone engineering-capability servers, each pinned to its published ghcr
   # image. Their entrypoints default to HTTP mode binding 0.0.0.0 inside the
   # container on their park port; the mappings stay loopback-only. dfm,
-  # prusaslicer and spice mount /exports read-only: they verify artifacts the
-  # chain produced (or dropped) there — they never write into it.
+  # prusaslicer and spice mount /exports read-only. mcp-spice normally consumes a
+  # content-addressed submitted netlist; its legacy-path compatibility input may only
+  # snapshot an artifact already present here — it never writes into this volume.
   mcp-dfm:
     image: "${MCP_DFM_IMAGE:-ghcr.io/casys-ai/mcp-dfm@sha256:a31aa702e45e4445c67454f807832b60455211664fa98ff36f54948aedec4fb9}"
     ports:
@@ -263,7 +248,7 @@ services:
     networks: [chain]
 
   mcp-spice:
-    image: "${MCP_SPICE_IMAGE:-ghcr.io/casys-ai/mcp-spice@sha256:cabf9a87e2006811484625f833859b96724faaf5dab6d60f1a10dc7cc6777a69}"
+    image: "${MCP_SPICE_IMAGE:-ghcr.io/casys-ai/mcp-spice@sha256:80f8d6b34dc55e623daf936faea5ff9ee75871331aa88d7339191ea17584991b}"
     ports:
       - "127.0.0.1:3023:3023"
     volumes:
@@ -291,13 +276,3 @@ volumes:
   build123d-sandbox-exports:
   syson-db-data:
   exports:
-  # Generic FEA staging is content-addressed and non-authoritative. It may be
-  # removed only as the explicit, known input volume of a stopped topology;
-  # it is never a run ledger or evidence store.
-  calculix-inputs:
-    name: "${CALCULIX_INPUTS_VOLUME:-casys-digital-thread-calculix-inputs}"
-  # Retained CalculiX ledgers support calculix_run_get recovery across a
-  # container restart. A local integration run can select a fresh volume
-  # instead of deleting the default evidence history.
-  calculix-runs:
-    name: "${CALCULIX_RUNS_VOLUME:-casys-digital-thread-calculix-runs}"

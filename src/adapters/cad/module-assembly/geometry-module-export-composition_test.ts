@@ -5,7 +5,6 @@ import {
 } from "./geometry-module-export-composition.ts";
 import { ExportProjectGeometryModule } from "../../../application/use-cases/cad/canonical/export-project-geometry-module.ts";
 import { PART_DEFINITIONS_CAPTURE_STATEMENT } from "../../../domain/architecture/part-definitions/part-definitions-capture.ts";
-import { GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE } from "../../../domain/cad/module-assembly/geometry-module-assembly-execution.ts";
 import {
   deterministicJson,
   sha256Fingerprint,
@@ -25,33 +24,22 @@ const ARCH_DIGEST = "a".repeat(64);
 const ARCH_ID = `architecture-${ARCH_DIGEST}`;
 const fp = (digest: string) => ({ algorithm: "sha256" as const, digest });
 
-Deno.test("module-export composition stays unregistered without an isolated runner", () => {
+Deno.test("module-export composition stays unregistered without an assembler", () => {
   const composition = createGeometryModuleExportComposition(baseOptions());
   assertEquals(composition.geometryModuleExport, undefined);
 });
 
-Deno.test("module-export composition wires the use case only when a runner is supplied", () => {
+Deno.test("module-export composition wires the use case only when an assembler is supplied", () => {
   const composition = createGeometryModuleExportComposition({
     ...baseOptions(),
-    runner: {
-      run: () => Promise.reject(new Error("not dispatched")),
+    assembler: {
+      assemble: () => Promise.reject(new Error("not assembled")),
     },
-    publications: fakePublications(),
   });
   assertEquals(
     composition.geometryModuleExport instanceof ExportProjectGeometryModule,
     true,
   );
-});
-
-Deno.test("module-export composition stays unregistered without the publication reader", () => {
-  const composition = createGeometryModuleExportComposition({
-    ...baseOptions(),
-    runner: {
-      run: () => Promise.reject(new Error("not dispatched")),
-    },
-  });
-  assertEquals(composition.geometryModuleExport, undefined);
 });
 
 Deno.test("module-export composition does not import the geometry sealer or product catalog", () => {
@@ -134,13 +122,6 @@ function baseOptions() {
     canonicalAssetDirectory: "/tmp/casys-module-export-composition/assets",
     geometryDraftCaptureDirectory: "/tmp/casys-module-export-composition/drafts",
     geometryDraftAssetDirectory: "/tmp/casys-module-export-composition/draft-assets",
-    profiles: {
-      initial: () =>
-        Promise.resolve({
-          executionProfile: GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
-        } as never),
-      resolve: () => Promise.reject(new Error("not used")),
-    },
   };
 }
 
@@ -196,17 +177,4 @@ async function storedStructure() {
   };
   const text = deterministicJson(capture);
   return { text, fingerprint: await sha256Fingerprint(JSON.parse(text)) };
-}
-
-function fakePublications() {
-  return {
-    resolvePublicationByRunId: () =>
-      Promise.resolve({
-        status: "not-published" as const,
-        runId: "not-dispatched",
-        producerGeneration: 0 as const,
-      }),
-    readReceipt: () => Promise.resolve(undefined),
-    readPublishedObject: () => Promise.resolve(undefined),
-  };
 }

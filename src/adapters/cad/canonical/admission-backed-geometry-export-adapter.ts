@@ -14,7 +14,9 @@ import type {
   AdmittedGeometryTargetedPartExportDraft,
   AdmittedGeometryTargetedPartExportRequest,
 } from "../../../application/ports/out/cad/canonical/admitted-geometry-exporter.ts";
+import type { GeometryDraftAssetStore } from "../../../application/ports/out/cad/canonical/geometry-draft-asset-store.ts";
 import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
+import type { ProviderResourceReader } from "../../../domain/compile/source/provider-resource-reader.ts";
 import {
   parseGeometryDraftAdmission,
   parseGeometryPartDraftAdmission,
@@ -47,14 +49,10 @@ export const ADMITTED_TARGETED_PART_EXPORT_FORMATS: readonly GeometryExportForma
 
 export interface AdmissionBackedGeometryExportDependencies {
   readonly client: McpToolClient;
+  readonly resourceReader: ProviderResourceReader;
   readonly draftCaptures: FileCaptureStore<"geometry-draft">;
+  readonly draftAssets: GeometryDraftAssetStore;
   readonly sourceAnalysis: GeometrySourceAnalysisCaptureDependencies;
-  readonly build123dService: "mcp-build123d-sandbox";
-  readonly materializeAsset?: (
-    sha256: string,
-    containerPath: string,
-    expectedBytes: number,
-  ) => Promise<void>;
   readonly previewRunId?: string;
 }
 
@@ -67,11 +65,6 @@ export class AdmissionBackedGeometryExportAdapter implements AdmittedGeometryExp
     value: AdmittedGeometryExportRequest,
   ): Promise<AdmittedGeometryExportDraft> {
     const request = parseRequest(value);
-    if (this.dependencies.build123dService !== "mcp-build123d-sandbox") {
-      throw new TypeError(
-        "Admitted geometry assets must be materialized from mcp-build123d-sandbox.",
-      );
-    }
     const manifest = admittedBundleManifest(request);
     const draft = await captureGeometryBundleDraft(
       this.dependencies.client,
@@ -132,11 +125,6 @@ export class AdmissionBackedGeometryExportAdapter implements AdmittedGeometryExp
     value: AdmittedGeometryTargetedPartExportRequest,
   ): Promise<AdmittedGeometryTargetedPartExportDraft> {
     const request = parseTargetedPartRequest(value);
-    if (this.dependencies.build123dService !== "mcp-build123d-sandbox") {
-      throw new TypeError(
-        "Target geometry assets must be materialized from mcp-build123d-sandbox.",
-      );
-    }
     const manifest = admittedPartManifest(request);
     const draft = await captureGeometryPartDraft(
       this.dependencies.client,
@@ -176,11 +164,9 @@ export class AdmissionBackedGeometryExportAdapter implements AdmittedGeometryExp
 
   private options() {
     return {
-      build123dService: this.dependencies.build123dService,
       sourceAnalysis: this.dependencies.sourceAnalysis,
-      ...(this.dependencies.materializeAsset === undefined
-        ? {}
-        : { materializeAsset: this.dependencies.materializeAsset }),
+      resourceReader: this.dependencies.resourceReader,
+      draftAssets: this.dependencies.draftAssets,
       ...(this.dependencies.previewRunId === undefined
         ? {}
         : { previewRunId: this.dependencies.previewRunId }),

@@ -12,8 +12,10 @@ import {
   fingerprintResourceBytes,
   sha256Hex,
 } from "../../../domain/compile/source/provider-resource-reader.ts";
+import type { ImmutableBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import type { ThreadArtifact } from "../../../domain/thread/thread-snapshot.ts";
+import type { FileByteStore } from "../../shared/cas/file-byte-store.ts";
 import { FileCaptureStore } from "../../shared/cas/file-capture-store.ts";
 
 const PROBE_FINGERPRINT: ContentFingerprint = {
@@ -32,6 +34,10 @@ const PROFILE = {
   },
   "requirements-capture": {
     storage: "text",
+    mediaTypes: ["application/json"],
+  },
+  "technical-compilation-admission-capture": {
+    storage: "bytes",
     mediaTypes: ["application/json"],
   },
 } as const;
@@ -64,6 +70,20 @@ type RequirementsCaptureStoreBinding = {
 };
 
 /**
+ * The admission sealer publishes canonical bytes into this dedicated local
+ * CAS lane.  ROP reopening consumes those bytes directly; it never rebuilds
+ * an admission capture from a Thread document or a specialised reader.
+ */
+type TechnicalCompilationAdmissionCaptureStoreBinding = {
+  readonly namespace: "technical-compilation-admission-capture";
+  readonly storage: "bytes";
+  readonly store: Pick<
+    FileByteStore<"technical-compilation-admission-capture">,
+    "read" | "uriFor"
+  >;
+};
+
+/**
  * This union is intentionally closed. A caller may inject only the reviewed
  * stores; it cannot register an arbitrary namespace, provider URI, or STEP
  * asset reader.
@@ -71,7 +91,8 @@ type RequirementsCaptureStoreBinding = {
 export type RecordedAnalysisCasStoreBinding =
   | FeaProofCaptureStoreBinding
   | SensitivityCatalogOfferCaptureStoreBinding
-  | RequirementsCaptureStoreBinding;
+  | RequirementsCaptureStoreBinding
+  | TechnicalCompilationAdmissionCaptureStoreBinding;
 
 export interface RecordedAnalysisCasReaderOptions {
   readonly stores: readonly RecordedAnalysisCasStoreBinding[];
@@ -82,6 +103,11 @@ interface TextStoreReader {
   read(fingerprint: ContentFingerprint): Promise<string | undefined>;
 }
 
+interface ByteStoreReader {
+  uriFor(fingerprint: ContentFingerprint): string;
+  read(fingerprint: ContentFingerprint): Promise<ImmutableBytes | undefined>;
+}
+
 export interface RecordedAnalysisArtifactRead {
   readonly uri: string;
   readonly mediaType: string;
@@ -90,11 +116,19 @@ export interface RecordedAnalysisArtifactRead {
   readonly bytes: Uint8Array;
 }
 
-type RegisteredStore = {
+type RegisteredTextStore = {
   readonly storage: "text";
   readonly mediaTypes: readonly string[];
   readonly store: TextStoreReader;
 };
+
+type RegisteredByteStore = {
+  readonly storage: "bytes";
+  readonly mediaTypes: readonly string[];
+  readonly store: ByteStoreReader;
+};
+
+type RegisteredStore = RegisteredTextStore | RegisteredByteStore;
 
 /**
  * A local read adapter that structurally satisfies Thread-artifact reader
@@ -125,14 +159,18 @@ export class RecordedAnalysisCasReader {
           "Recorded-analysis CAS store does not own its configured namespace.",
         );
       }
-      stores.set(
-        binding.namespace,
-        {
+      const registered: RegisteredStore = binding.storage === "text"
+        ? {
           storage: "text",
           mediaTypes: profile.mediaTypes,
           store: binding.store,
-        },
-      );
+        }
+        : {
+          storage: "bytes",
+          mediaTypes: profile.mediaTypes,
+          store: binding.store,
+        };
+      stores.set(binding.namespace, registered);
     }
     if (stores.size !== Object.keys(PROFILE).length) {
       throw new TypeError(
@@ -240,7 +278,9 @@ export class RecordedAnalysisCasReader {
         "Recorded-analysis CAS URI does not match its exact local store.",
       );
     }
-    const bytes = await readTextBytes(registered.store);
+    const bytes = registered.storage === "text"
+      ? await readTextBytes(registered.store)
+      : await readByteStoreBytes(registered.store);
     if (!bytes) return undefined;
     if (await fingerprintResourceBytes(bytes) !== expected.sha256) {
       throw new TypeError(
@@ -275,6 +315,13 @@ export class RecordedAnalysisCasReader {
         );
       }
       return bytes;
+    }
+
+    async function readByteStoreBytes(
+      store: ByteStoreReader,
+    ): Promise<Uint8Array | undefined> {
+      const stored = await store.read(fingerprint);
+      return stored === undefined ? undefined : stored.copy();
     }
   }
 }

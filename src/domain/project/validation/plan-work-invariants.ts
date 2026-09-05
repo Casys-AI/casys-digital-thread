@@ -393,6 +393,14 @@ export function validateWorkItemReconciliationInvariant(
     );
     return;
   }
+  if (successorWork?.predecessorRevisionId !== item.id) {
+    issue(
+      issues,
+      "invalid_transition",
+      `${path}.reconciliation.successorRunId`,
+      "successor work item must name this failed work item as its direct predecessor revision",
+    );
+  }
   if (
     !sameSnapshotRef(successor.resultSnapshot, reconciliation.successorRunSnapshot)
   ) {

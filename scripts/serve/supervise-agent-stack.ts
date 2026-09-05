@@ -8,6 +8,7 @@ export interface ChildPermissions {
   net: string[];
   env: string[];
   run: string[];
+  ffi: string[];
 }
 
 export interface AgentStackConfig {
@@ -107,7 +108,7 @@ interface RunningService {
   settled: boolean;
 }
 
-const PERMISSION_KEYS = ["read", "write", "net", "env", "run"] as const;
+const PERMISSION_KEYS = ["read", "write", "net", "env", "run", "ffi"] as const;
 type PermissionKey = (typeof PERMISSION_KEYS)[number];
 
 const SCALAR_FLAGS = new Set([
@@ -137,11 +138,13 @@ const LIST_FLAGS = new Set([
   "--mcp-allow-net",
   "--mcp-allow-env",
   "--mcp-allow-run",
+  "--mcp-allow-ffi",
   "--cockpit-allow-read",
   "--cockpit-allow-write",
   "--cockpit-allow-net",
   "--cockpit-allow-env",
   "--cockpit-allow-run",
+  "--cockpit-allow-ffi",
   "--mcp-arg",
   "--cockpit-arg",
   "--ui-arg",
@@ -170,13 +173,15 @@ export function defaultAgentStackConfig(): AgentStackConfig {
     readinessPollMs: 100,
     shutdownGraceMs: 5_000,
     mcpPermissions: {
-      read: ["config", "state", "src/ui", "mcp-server.yaml"],
+      read: ["config", "state", "src/ui", "mcp-server.yaml", "node_modules"],
       write: ["state/local"],
       net: ["127.0.0.1", "localhost"],
       env: [
+        "LOG",
         "MCP_FLEET_MANIFEST",
         "MCP_RUN_FIXTURE",
         "MCP_MRTR_SIGNING_KEY",
+        "CASYS_CHRONO_MCP_BEARER_TOKEN",
         "MCP_AUTH_PROVIDER",
         "MCP_AUTH_AUDIENCE",
         "MCP_AUTH_RESOURCE",
@@ -185,12 +190,25 @@ export function defaultAgentStackConfig(): AgentStackConfig {
         "MCP_AUTH_JWKS_URI",
         "MCP_AUTH_SCOPES",
         "MCP_AUTH_RESOURCE_METADATA_URL",
+        "NAPI_RS_ENFORCE_VERSION_CHECK",
+        "NAPI_RS_NATIVE_LIBRARY_PATH",
+        "NAPI_RS_FORCE_WASI",
+        "NAPI_RS_WASI_FLAVOR",
+        "MSB_PATH",
+        "MSB_LIBKRUNFW_PATH",
+        "MSB_CONFIG_PATH",
+        "MSB_HOME",
+        "MSB_BACKEND",
+        "MSB_API_URL",
+        "MSB_API_KEY",
+        "MSB_PROFILE",
       ],
       run: ["docker"],
+      ffi: ["node_modules"],
     },
     cockpitPermissions: {
       read: [
-        "state/local",
+        "state",
         "src/ui/dist/thread",
         "config/projects",
         "config/thread-subjects",
@@ -199,6 +217,7 @@ export function defaultAgentStackConfig(): AgentStackConfig {
       net: [],
       env: [],
       run: [],
+      ffi: [],
     },
     mcpExtraArgs: [],
     cockpitExtraArgs: [],
@@ -365,6 +384,7 @@ export function buildAgentStackCommands(
       cwd: config.cwd,
       args: [
         "run",
+        "--node-modules-dir=auto",
         ...watchArgs,
         ...denoPermissionArgs(mcpPermissions),
         config.mcpEntryPoint,
@@ -627,8 +647,8 @@ Commands:
   --shutdown-grace-ms MS      Grace before SIGKILL (default: 5000)
 
 Permissions and passthrough arguments:
-  --mcp-allow-{read,write,net,env,run}=CSV
-  --cockpit-allow-{read,write,net,env,run}=CSV
+  --mcp-allow-{read,write,net,env,run,ffi}=CSV
+  --cockpit-allow-{read,write,net,env,run,ffi}=CSV
   --mcp-arg=ARG --cockpit-arg=ARG --ui-arg=ARG
 
 For --ui on POSIX, the parent needs unscoped --allow-run so Deno can signal the
@@ -655,7 +675,7 @@ function setListFlag(
     target.push(argument);
     return;
   }
-  const match = /^--(mcp|cockpit)-allow-(read|write|net|env|run)$/.exec(flag);
+  const match = /^--(mcp|cockpit)-allow-(read|write|net|env|run|ffi)$/.exec(flag);
   if (!match) throw new TypeError(`Unknown list argument: ${flag}`);
   const service = match[1] as "mcp" | "cockpit";
   const key = match[2] as PermissionKey;
@@ -688,6 +708,7 @@ function clonePermissions(permissions: ChildPermissions): ChildPermissions {
     net: [...permissions.net],
     env: [...permissions.env],
     run: [...permissions.run],
+    ffi: [...permissions.ffi],
   };
 }
 
@@ -906,7 +927,7 @@ function healthPath(value: string, flag: string): string {
 
 function rejectReservedExtraArgument(flag: string, argument: string): void {
   const reserved = flag === "--mcp-arg"
-    ? ["--hostname", "--port"]
+    ? ["--hostname", "--port", "--local-execution"]
     : flag === "--cockpit-arg"
     ? [
       "--host",

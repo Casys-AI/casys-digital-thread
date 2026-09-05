@@ -7,6 +7,7 @@ import {
   MICROSANDBOX_LOCAL_RUNTIME_REF,
 } from "../../../domain/compile/isolation/local-isolation-runtime.ts";
 import { createBuild123dExecutionComposition } from "./build123d-execution-composition.ts";
+import { BUILD123D_MICROSANDBOX_WORKER_CONTRACT } from "./worker-contract.ts";
 
 const PROFILE = Object.freeze({
   imageReference:
@@ -32,6 +33,18 @@ const PATHS = Object.freeze({
   outputCasDirectory: "/tmp/casys-build123d-composition-test",
 });
 
+Deno.test("Build123d composition reuses the code-owned Microsandbox worker contract", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./build123d-execution-composition.ts", import.meta.url),
+  );
+  assertEquals(source.includes("BUILD123D_MICROSANDBOX_WORKER_CONTRACT"), true);
+  assertEquals(source.includes("/usr/local/bin/python3"), false);
+  assertEquals(
+    BUILD123D_MICROSANDBOX_WORKER_CONTRACT.executable,
+    "/usr/local/bin/python3",
+  );
+});
+
 Deno.test("Build123d profile-only composition exposes provider-free review facts and no runner", async () => {
   const composition = await createBuild123dExecutionComposition(
     { profile: PROFILE },
@@ -47,7 +60,7 @@ Deno.test("Build123d profile-only composition exposes provider-free review facts
   );
   assertEquals(profile.runtimeBackend, {
     ...MICROSANDBOX_LOCAL_RUNTIME_REF,
-    imageReference: PROFILE.imageReference,
+    imageReference: `docker.io/${PROFILE.imageReference}`,
     imageDigest: profile.runtime.imageDigest,
   });
   assertEquals(profile.runtime.requestedLimits, PROFILE.limits);

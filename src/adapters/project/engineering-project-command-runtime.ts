@@ -3,6 +3,10 @@ import {
   type EngineeringProjectInitialCompletionEvidenceValidator,
   type EngineeringProjectPlanningDependencies,
 } from "../../application/use-cases/project/engineering-project-command-service.ts";
+import type {
+  UncertainWriterLifecycleQualifier,
+} from "../../application/ports/out/record/uncertain-writer-lifecycle-qualifier.ts";
+import { assertThreadWriteClaimAllowed } from "../shared/thread-write-basis-guard.ts";
 import {
   EngineeringProjectStoreConflictError,
 } from "../../application/ports/out/engineering-project-revision-store.ts";
@@ -32,6 +36,11 @@ export interface EngineeringProjectCommandRuntimeOptions {
   /** Required by the trusted approved-brief documentary baseline executor. */
   readonly initialEvidenceValidator?:
     EngineeringProjectInitialCompletionEvidenceValidator;
+  /**
+   * Server-computed uncertain-writer lifecycle qualification. Closed by
+   * default when omitted; composition injects the Chrono adapter.
+   */
+  readonly uncertainWriterLifecycle?: UncertainWriterLifecycleQualifier;
 }
 
 export interface EngineeringProjectCommandRuntime {
@@ -94,6 +103,16 @@ export async function createEngineeringProjectCommandRuntime(
       options.planning,
       options.initialEvidenceValidator,
       new ExactThreadReconciliationSnapshotValidator(options.evidenceSnapshots),
+      undefined,
+      options.uncertainWriterLifecycle,
+      options.uncertainWriterLifecycle
+        ? (project, run) =>
+          assertThreadWriteClaimAllowed(
+            project,
+            run,
+            options.uncertainWriterLifecycle,
+          )
+        : undefined,
     ),
   };
 }

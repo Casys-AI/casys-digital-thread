@@ -18,15 +18,23 @@ Lookalikes: [lookalike traps](../../reference/agent/lookalike-traps.md). Domain 
 
 ## 0. Surfaces
 
+Ordinary start is cold Deno. Do not start the root Compose provider stack: H1 activates
+enrolled groups JIT under a lease when covered work needs them, and those groups collide
+with root Compose on the same loopback ports. A root `docker compose up` remains a
+manual maintainer probe only and must not run concurrently with H1-managed groups.
+
 ```bash
-docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-build123d-sandbox mcp-calculix
-deno task start:yolo    # or start:local; review/executor need --local-execution
+deno task start:yolo    # YOLO approval only; it does not activate Modelica
 ```
 
 ERPNext is an optional sibling integration; start it separately only when its checkout
 and environment file are available.
 
-Connect the agent to `http://127.0.0.1:3020/mcp`. The Workbench is read-only.
+Connect the agent to `http://127.0.0.1:3020/mcp`. The Workbench is read-only. Covered
+SysON starts JIT after operational authorization. The catalogue binding
+`openmodelica-admitted-modelica` remains `unqualified`, so the registered executor stays
+literal `unavailable` until a matching host qualification overlay exists. That is a
+qualification gap, not a missing supervisor.
 
 ## 1. Capture
 
@@ -48,8 +56,11 @@ fallback.
 
 ## 2. Compile and seal
 
-Call `project_technical_compilation_preview` with `projectId` plus `result.reference`
-only. The server joins the current Thread tip, the unique `modelica-closed-subset-v2` /
+Call `project_technical_compilation_preview` with exactly
+`{ projectId, sourceRefs: [capture.result.reference] }`. When more than one capture is
+compiled, every locator in `sourceRefs` must resolve to one shared
+ProjectSourceWorkspace basis. The server joins the current Thread tip, the unique
+`modelica-closed-subset-v2` /
 `2.0.0` profile, and the unique SysML `parameterizes` bindings for every Modelica
 parameter symbol. The root model artifact does not need `represents`; that relation is
 CAD geometry identity.
@@ -78,7 +89,8 @@ later work item: `compilationAdmission` names the selected admission on the curr
 review Thread basis. Do not copy a historical `compile.seal-admission@3` creation
 snapshot.
 
-Obtain human MRTR, queue, then execute `simulate.run-admitted-modelica@1`.
+Obtain human MRTR, queue, then execute `simulate.run-admitted-modelica@1`. The catalogue
+binding remains `unqualified`; a successful review does not make the executor available.
 
 ## 4. Read success correctly
 

@@ -1,0 +1,64 @@
+/* Identifiant compact + repli générique du graphe et de l'inspecteur. */
+
+.compact-identifier {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+.compact-identifier code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: inherit;
+  font: 500 var(--cockpit-text-3xs) / 1.35 var(--mono);
+}
+
+.compact-identifier-copy {
+  flex: 0 0 auto;
+  min-height: 26px;
+  padding: var(--space-4) var(--space-6);
+  border: 1px solid var(--thread-border-strong);
+  color: var(--text-soft);
+  background: transparent;
+  font: 700 var(--cockpit-text-3xs) / 1 var(--mono);
+  cursor: pointer;
+}
+
+.compact-identifier-copy:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+.compact-identifier[data-copy-state="copied"] .compact-identifier-copy {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+@media (max-width: 840px) {
+  .thread-graph-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .thread-tool-drawer {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+    box-shadow: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .thread-graph-stage {
+    min-height: 0;
+    padding: var(--space-8);
+  }
+
+  .thread-graph-canvas {
+    min-height: 320px;
+  }
+
+  .thread-graph-density {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

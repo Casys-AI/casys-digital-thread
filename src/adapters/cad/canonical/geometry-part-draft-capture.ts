@@ -7,6 +7,7 @@
  * later targeted sealer.
  */
 
+import type { GeometryDraftAssetStore } from "../../../application/ports/out/cad/canonical/geometry-draft-asset-store.ts";
 import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
 import {
   assertPartDraftJoinsAdmission,
@@ -28,6 +29,7 @@ import {
 } from "../../../domain/kernel/deterministic-json.ts";
 import { exactRecord } from "../../../domain/kernel/case-validation.ts";
 import type { ContentFingerprint } from "../../../domain/thread/thread-snapshot.ts";
+import type { ProviderResourceReader } from "../../../domain/compile/source/provider-resource-reader.ts";
 import type { FileCaptureStore } from "../../shared/cas/file-capture-store.ts";
 import {
   type GeometrySourceAnalysisCaptureDependencies,
@@ -36,19 +38,23 @@ import {
 import type {
   GeometrySourceAnalysisReference,
 } from "../../../domain/cad/source/geometry-source-analysis-reference.ts";
-import { GEOMETRY_DRAFT_ASSETS_DIR } from "./geometry-draft-capture.ts";
+import {
+  normalizeProviderGeometryFile,
+  persistProviderResources,
+  providerFileToDraftFile,
+  type ProviderGeometryFile,
+} from "./geometry-draft-capture.ts";
+import { BUILD123D_EXPORT_TIMEOUT_MS } from "./build123d-export-contract.ts";
 
 /** Fixed by the server; no caller can choose an export profile. */
 export const GEOMETRY_PART_DRAFT_EXPORT_FORMATS = ["step", "gltf"] as const;
-export const GEOMETRY_PART_DRAFT_TIMEOUT_MS = 120_000 as const;
 export const GEOMETRY_PART_DRAFT_CAPTURE_SCHEMA =
-  "geometry-part-draft-capture/1.0" as const;
+  "geometry-part-draft-capture/1.1" as const;
 
 export interface GeometryPartDraftFile {
   readonly format: GeometryPartExportFormat;
   /** Server-owned basename; no provider path becomes a semantic identity. */
   readonly name: string;
-  readonly containerPath: string;
   readonly bytes: number;
   readonly fingerprint: ContentFingerprint;
 }
@@ -81,7 +87,7 @@ export interface GeometryPartDraftCapture {
     readonly exportName: string;
     readonly scriptHash: ContentFingerprint;
     readonly formats: ReadonlyArray<GeometryPartExportFormat>;
-    readonly timeoutMs: typeof GEOMETRY_PART_DRAFT_TIMEOUT_MS;
+    readonly timeoutMs: typeof BUILD123D_EXPORT_TIMEOUT_MS;
   };
   /** In-memory only; the content-addressed filename carries this identity. */
   readonly fingerprint: ContentFingerprint;
@@ -142,7 +148,7 @@ export async function assertGeometryPartDraftPaths(
       exportName: expectedExportName,
       scriptHash: draft.target.scriptHash,
       formats: draft.exportFormats,
-      timeoutMs: GEOMETRY_PART_DRAFT_TIMEOUT_MS,
+      timeoutMs: BUILD123D_EXPORT_TIMEOUT_MS,
     })
   ) {
     throw new TypeError(
@@ -150,12 +156,11 @@ export async function assertGeometryPartDraftPaths(
     );
   }
   draft.target.files.forEach((file, index) => {
-    assertFixedExportBasename(
-      file.containerPath,
-      file.format,
-      expectedExportName,
-      `target file ${index}`,
-    );
+    if (file.name !== expectedExportName) {
+      throw new TypeError(
+        `Target geometry draft file ${index} does not retain its server-owned export name.`,
+      );
+    }
   });
 }
 
@@ -188,20 +193,15 @@ export function geometryPartDraftAssetMetadata(
 }
 
 export interface GeometryPartDraftCaptureOptions {
-  readonly build123dService: "mcp-build123d-sandbox";
   readonly sourceAnalysis: GeometrySourceAnalysisCaptureDependencies;
-  readonly composeProjectDirectory?: string;
-  readonly materializeAsset?: (
-    sha256: string,
-    containerPath: string,
-    expectedBytes: number,
-  ) => Promise<void>;
+  readonly resourceReader: ProviderResourceReader;
+  readonly draftAssets: GeometryDraftAssetStore;
   /** Server-generated invocation identity; tests may pin it. */
   readonly previewRunId?: string;
 }
 
 /**
- * Analyze, export, materialize and persist exactly one target part draft.
+ * Analyze, export, read the exact provider resources and persist one target draft.
  * All validation and source capture happens before the sole provider call.
  */
 export async function captureGeometryPartDraft(
@@ -211,11 +211,6 @@ export async function captureGeometryPartDraft(
   options: GeometryPartDraftCaptureOptions,
   now: () => string = () => new Date().toISOString(),
 ): Promise<GeometryPartDraftCapture> {
-  if (options.build123dService !== "mcp-build123d-sandbox") {
-    throw new TypeError(
-      "Target geometry assets must be materialized from mcp-build123d-sandbox.",
-    );
-  }
   const manifest = parseGeometryPartManifest(input.manifest);
   assertGeometryPartManifest(manifest);
   if (manifest.target.scriptHash !== undefined || manifest.target.files !== undefined) {
@@ -254,15 +249,6 @@ export async function captureGeometryPartDraft(
     previewRunId,
     manifest.target.partDefinitionElementId,
   );
-  const materialize = options.materializeAsset ??
-    ((sha256: string, containerPath: string, expectedBytes: number) =>
-      materializeToDraftAssets(
-        sha256,
-        containerPath,
-        expectedBytes,
-        options.build123dService,
-        options.composeProjectDirectory ?? ".",
-      ));
 
   validateGeometryScript(input.script);
   const scriptHash = await sha256FingerprintOfText(input.script);
@@ -288,18 +274,17 @@ export async function captureGeometryPartDraft(
       script: input.script,
       formats: [...GEOMETRY_PART_DRAFT_EXPORT_FORMATS],
       name: exportName,
-      timeout_ms: GEOMETRY_PART_DRAFT_TIMEOUT_MS,
+      timeout_ms: BUILD123D_EXPORT_TIMEOUT_MS,
     },
   });
-  const files = normalizeTargetExport(
+  const providerFiles = normalizeTargetExport(
     providerResult.structuredContent,
     GEOMETRY_PART_DRAFT_EXPORT_FORMATS,
     exportName,
   );
+  const files = providerFiles.map(providerFileToDraftFile);
 
-  for (const file of files) {
-    await materialize(file.fingerprint.digest, file.containerPath, file.bytes);
-  }
+  await persistProviderResources(providerFiles, options);
 
   const unsigned = {
     schemaVersion: GEOMETRY_PART_DRAFT_CAPTURE_SCHEMA,
@@ -330,7 +315,7 @@ export async function captureGeometryPartDraft(
       exportName,
       scriptHash,
       formats: [...GEOMETRY_PART_DRAFT_EXPORT_FORMATS],
-      timeoutMs: GEOMETRY_PART_DRAFT_TIMEOUT_MS,
+      timeoutMs: BUILD123D_EXPORT_TIMEOUT_MS,
     },
   };
   const fingerprint = await sha256Fingerprint(unsigned);
@@ -346,7 +331,7 @@ function normalizeTargetExport(
   value: unknown,
   formats: ReadonlyArray<GeometryPartExportFormat>,
   exportName: string,
-): GeometryPartDraftFile[] {
+): ProviderGeometryFile<GeometryPartExportFormat>[] {
   const root = exactRecord(
     value,
     ["files", "kind", "metrics", "schemaVersion"],
@@ -367,67 +352,13 @@ function normalizeTargetExport(
   }
   return root.files.map((candidate, index) => {
     const format = formats[index]!;
-    const file = parseProviderFile(candidate, format, `target file ${index}`);
-    const containerPath = nonEmpty(file.path, `target file ${index} path`);
-    assertFixedExportBasename(
-      containerPath,
+    return normalizeProviderGeometryFile(
+      candidate,
       format,
       exportName,
       `target file ${index}`,
     );
-    return {
-      format,
-      name: exportName,
-      containerPath,
-      bytes: positive(file.bytes, `target file ${index} bytes`),
-      fingerprint: {
-        algorithm: "sha256" as const,
-        digest: sha256(file.sha256, `target file ${index} sha256`),
-      },
-    };
   });
-}
-
-function parseProviderFile(
-  value: unknown,
-  format: GeometryPartExportFormat,
-  context: string,
-): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${context} must be an object.`);
-  }
-  const file = value as Record<string, unknown>;
-  const required = ["bytes", "format", "path", "sha256"];
-  const allowed = new Set([
-    ...required,
-    ...(format === "gltf" ? ["viewer"] : []),
-  ]);
-  for (const key of required) {
-    if (!Object.hasOwn(file, key)) throw new Error(`${context} is missing ${key}.`);
-  }
-  for (const key of Object.keys(file)) {
-    if (!allowed.has(key)) throw new Error(`${context} has unsupported field ${key}.`);
-  }
-  if (file.format !== format) {
-    throw new Error(`${context} returned ${String(file.format)} instead of ${format}.`);
-  }
-  return file;
-}
-
-function assertFixedExportBasename(
-  path: string,
-  format: GeometryPartExportFormat,
-  exportName: string,
-  context: string,
-): void {
-  if (path.includes("\0")) throw new Error(`${context} path contains NUL.`);
-  const extension = format === "gltf" ? "glb" : format;
-  const basename = path.split(/[\\/]/).at(-1) ?? "";
-  if (basename !== `${exportName}.${extension}`) {
-    throw new Error(
-      `${context} did not preserve server-fixed basename ${exportName}.${extension}.`,
-    );
-  }
 }
 
 async function targetExportName(runId: string, targetId: string): Promise<string> {
@@ -440,108 +371,4 @@ async function sha256FingerprintOfText(text: string): Promise<ContentFingerprint
     algorithm: "sha256",
     digest: await sha256Bytes(new TextEncoder().encode(text)),
   };
-}
-
-async function materializeToDraftAssets(
-  digest: string,
-  containerPath: string,
-  expectedBytes: number,
-  service: "mcp-build123d-sandbox",
-  composeProjectDirectory: string,
-): Promise<void> {
-  const localPath = `${GEOMETRY_DRAFT_ASSETS_DIR}/${digest}`;
-  const existing = await readFileSafe(localPath);
-  if (existing !== undefined) {
-    if (
-      existing.length === expectedBytes &&
-      existing.length > 0 &&
-      await sha256Hex(existing) === digest
-    ) return;
-    await removeFileSafe(localPath);
-  }
-  await Deno.mkdir(GEOMETRY_DRAFT_ASSETS_DIR, { recursive: true });
-  const tmpPath = `${GEOMETRY_DRAFT_ASSETS_DIR}/.${crypto.randomUUID()}.tmp`;
-  let output: Deno.CommandOutput;
-  try {
-    output = await new Deno.Command("docker", {
-      args: [
-        "compose",
-        "--project-directory",
-        composeProjectDirectory,
-        "cp",
-        `${service}:${containerPath}`,
-        tmpPath,
-      ],
-      stdout: "null",
-      stderr: "piped",
-      signal: AbortSignal.timeout(60_000),
-    }).output();
-  } catch (error) {
-    throw new Error(`Target geometry draft asset copy failed: ${String(error)}`);
-  }
-  if (!output.success) {
-    await removeFileSafe(tmpPath);
-    throw new Error("Target geometry draft asset copy failed.");
-  }
-  const copied = await readFileSafe(tmpPath);
-  if (
-    copied === undefined ||
-    copied.length === 0 ||
-    copied.length !== expectedBytes ||
-    await sha256Hex(copied) !== digest
-  ) {
-    await removeFileSafe(tmpPath);
-    throw new Error(
-      "Target geometry draft asset did not match its provider attestation.",
-    );
-  }
-  await Deno.rename(tmpPath, localPath);
-}
-
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
-  return [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-async function readFileSafe(path: string): Promise<Uint8Array | undefined> {
-  try {
-    return await Deno.readFile(path);
-  } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return undefined;
-    throw error;
-  }
-}
-
-async function removeFileSafe(path: string): Promise<void> {
-  try {
-    await Deno.remove(path);
-  } catch {
-    // Best-effort cleanup of a stale or failed temporary asset.
-  }
-}
-
-function nonEmpty(value: unknown, context: string): string {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new Error(`${context} must be non-empty.`);
-  }
-  return value;
-}
-
-function positive(value: unknown, context: string): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(`${context} must be a positive integer.`);
-  }
-  return value;
-}
-
-function sha256(value: unknown, context: string): string {
-  if (typeof value !== "string" || !/^[a-f0-9]{64}$/.test(value)) {
-    throw new Error(`${context} must be a lowercase SHA-256 digest.`);
-  }
-  if (value === "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855") {
-    throw new Error(`${context} cannot attest an empty geometry asset.`);
-  }
-  return value;
 }

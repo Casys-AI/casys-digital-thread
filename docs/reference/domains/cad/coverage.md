@@ -93,14 +93,17 @@ envelopes, automatic assembly mapping in V1, and promotion of private isolated o
 canonical geometry. A new geometry inside this surface is **source text only**: there is
 no new agent, Workbench, or provider command for it.
 
-The qualified observer consumes a canonical module artifact; it does not migrate or
-replace the module assembler. Moving that assembler to a provider remains a separately
-bounded follow-up, with its own profile and runtime proof.
+The qualified observer consumes a canonical module artifact; it does not replace the
+[provider-neutral module assembler](module-assembly.md). The current fixed Build123d
+worker is one adapter implementation. Another qualified backend must implement the same
+closed input, neutral receipt, exact-output, and recovery contract.
 
 ## Targeted PartDefinition seal
 
-`geometry-part-manifest/1.0` and `geometry-part-draft-capture/1.0` are a separate
-target-only review family. Promotion remains exclusively `design.write-geometry@1`: it
+`geometry-part-manifest/1.0` and `geometry-part-draft-capture/1.1` are a separate
+target-only review family. Version `geometry-part-draft-capture/1.0` is unsupported:
+it retained a provider container path, so readers do not migrate or dual-read it.
+Promotion remains exclusively `design.write-geometry@1`: it
 reopens the human-signed target MRTR and the exact capture-backed
 `compile.seal-admission@3` artifact named by the v2 target-bound stamp, re-crossing
 admitted source bytes/hash plus the unique P1 `represents` PartDefinition, passive

@@ -38,6 +38,7 @@ import {
   GEOMETRY_PART_DRAFT_ADMISSION_SCHEMA,
 } from "../../../../domain/cad/canonical/geometry-draft-admission.ts";
 import {
+  DESIGN_WRITE_GEOMETRY_OPERATION,
   parseGeometryDecisionParameters,
 } from "../../../../domain/cad/canonical/geometry-proposal.ts";
 import {
@@ -50,6 +51,7 @@ import {
   ExportAdmittedProjectGeometry,
   ProjectAdmittedGeometryExportError,
 } from "./export-admitted-project-geometry.ts";
+import { FileAdmittedGeometryExportReplayCache } from "../../../../adapters/cad/canonical/file-admitted-geometry-export-replay-cache.ts";
 import type { ThreadSnapshot } from "../../../../domain/thread/thread-snapshot.ts";
 import {
   GEOMETRY_BUNDLE_MANIFEST_SCHEMA,
@@ -303,6 +305,241 @@ Deno.test("admitted geometry export is deterministic across exact reopens", asyn
   assertEquals(fixture.reader.calls.length, 2);
   assertEquals(fixture.exporter.calls.length, 2);
   assertEquals(fixture.exporter.calls[0], fixture.exporter.calls[1]);
+});
+
+Deno.test("a durable replay survives a new server composition without another preparation activation", async () => {
+  const fixture = await harness();
+  const root = await Deno.makeTempDir();
+  try {
+    const cache = new FileAdmittedGeometryExportReplayCache(`${root}/replay`);
+    const state = { begins: 0, releases: 0, retains: 0, recordedReleases: 0 };
+    const begunOperations: unknown[] = [];
+    const project = {
+      project: { id: fixture.command.projectId },
+      threadSnapshots: [{
+        snapshotId: fixture.command.basis.snapshotId,
+        revision: fixture.command.basis.revision,
+        subjectId: fixture.command.basis.subjectId,
+      }],
+    } as never;
+    const preparation = {
+      begin: ({ operation }: { readonly operation: unknown }) => {
+        state.begins++;
+        begunOperations.push(structuredClone(operation));
+        return Promise.resolve({
+          lease: { id: "lease:geometry" },
+          releaseSuccess: () => {
+            state.releases++;
+            return Promise.resolve();
+          },
+          retainForRecovery: () => state.retains++,
+        });
+      },
+      releaseRecorded: () => {
+        state.recordedReleases++;
+        return Promise.resolve();
+      },
+    } as never;
+    const compose = () =>
+      new ExportAdmittedProjectGeometry({
+        admissions: fixture.reader,
+        exporter: fixture.exporter,
+        exporterFactory: () => fixture.exporter,
+        projects: { get: () => Promise.resolve(project) },
+        preparation,
+        replayCache: new FileAdmittedGeometryExportReplayCache(`${root}/replay`),
+        architecture: fixture.architecture,
+        snapshots: fixture.snapshots,
+        geometryCaptures: fixture.geometryCaptures,
+      });
+
+    const first = await compose().execute(fixture.command);
+    const second = await compose().execute(fixture.command);
+
+    assertEquals(second, first);
+    assertEquals(state, {
+      begins: 1,
+      releases: 1,
+      retains: 0,
+      recordedReleases: 1,
+    });
+    assertEquals(begunOperations, [{
+      ...DESIGN_WRITE_GEOMETRY_OPERATION,
+      bindings: [],
+    }]);
+    assertEquals(fixture.exporter.calls.length, 1);
+    assert((await cache.read(await replayKey(fixture.command))) !== undefined);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("a corrupt durable replay refuses before preparation instead of blindly redispatching", async () => {
+  const fixture = await harness();
+  const root = await Deno.makeTempDir();
+  try {
+    const key = await replayKey(fixture.command);
+    await Deno.mkdir(`${root}/replay`, { recursive: true });
+    await Deno.writeTextFile(`${root}/replay/${key.digest}.dispatching.json`, "{");
+    let begins = 0;
+    const service = new ExportAdmittedProjectGeometry({
+      admissions: fixture.reader,
+      exporter: fixture.exporter,
+      exporterFactory: () => fixture.exporter,
+      projects: {
+        get: () =>
+          Promise.resolve({
+            project: { id: fixture.command.projectId },
+            threadSnapshots: [{
+              snapshotId: fixture.command.basis.snapshotId,
+              revision: fixture.command.basis.revision,
+              subjectId: fixture.command.basis.subjectId,
+            }],
+          } as never),
+      },
+      preparation: {
+        begin: () => {
+          begins++;
+          return Promise.reject(new Error("must not activate"));
+        },
+      } as never,
+      replayCache: new FileAdmittedGeometryExportReplayCache(`${root}/replay`),
+      architecture: fixture.architecture,
+      snapshots: fixture.snapshots,
+      geometryCaptures: fixture.geometryCaptures,
+    });
+
+    await assertExportError(
+      () => service.execute(fixture.command),
+      "runtime_unavailable",
+    );
+    assertEquals(begins, 0);
+    assertEquals(fixture.exporter.calls.length, 0);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("a generic replay-store failure is fail-closed before preparation or provider", async () => {
+  const fixture = await harness();
+  let begins = 0;
+  const service = new ExportAdmittedProjectGeometry({
+    admissions: fixture.reader,
+    exporter: fixture.exporter,
+    exporterFactory: () => fixture.exporter,
+    projects: {
+      get: () =>
+        Promise.resolve({
+          project: { id: fixture.command.projectId },
+          threadSnapshots: [{
+            snapshotId: fixture.command.basis.snapshotId,
+            revision: fixture.command.basis.revision,
+            subjectId: fixture.command.basis.subjectId,
+          }],
+        } as never),
+    },
+    preparation: {
+      begin: () => {
+        begins++;
+        return Promise.reject(new Error("must not activate"));
+      },
+      releaseRecorded: () => Promise.resolve(),
+    } as never,
+    replayCache: {
+      read: () => Promise.reject(new Error("disk I/O failed")),
+      prepare: () => Promise.resolve(),
+      dispatch: () => Promise.resolve(),
+      save: () => Promise.resolve(),
+    },
+    architecture: fixture.architecture,
+    snapshots: fixture.snapshots,
+    geometryCaptures: fixture.geometryCaptures,
+  });
+
+  await assertExportError(
+    () => service.execute(fixture.command),
+    "runtime_unavailable",
+  );
+  assertEquals(begins, 0);
+  assertEquals(fixture.exporter.calls.length, 0);
+});
+
+Deno.test("a durable dispatching record quarantines a non-idempotent Build123d retry before activation", async () => {
+  const fixture = await harness();
+  const root = await Deno.makeTempDir();
+  try {
+    const cache = new FileAdmittedGeometryExportReplayCache(`${root}/replay`);
+    const key = await replayKey(fixture.command);
+    await cache.prepare(key);
+    await cache.dispatch(key);
+    let begins = 0;
+    const service = new ExportAdmittedProjectGeometry({
+      admissions: fixture.reader,
+      exporter: fixture.exporter,
+      exporterFactory: () => fixture.exporter,
+      projects: {
+        get: () =>
+          Promise.resolve({
+            project: { id: fixture.command.projectId },
+            threadSnapshots: [{
+              snapshotId: fixture.command.basis.snapshotId,
+              revision: fixture.command.basis.revision,
+              subjectId: fixture.command.basis.subjectId,
+            }],
+          } as never),
+      },
+      preparation: {
+        begin: () => {
+          begins++;
+          return Promise.reject(new Error("must not activate"));
+        },
+      } as never,
+      replayCache: new FileAdmittedGeometryExportReplayCache(`${root}/replay`),
+      architecture: fixture.architecture,
+      snapshots: fixture.snapshots,
+      geometryCaptures: fixture.geometryCaptures,
+    });
+
+    await assertExportError(
+      () => service.execute(fixture.command),
+      "runtime_unavailable",
+    );
+    assertEquals(begins, 0);
+    assertEquals(fixture.exporter.calls.length, 0);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("concurrent dispatch claims permit exactly one Build123d provider call", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const cache = new FileAdmittedGeometryExportReplayCache(`${root}/replay`);
+    const key = { algorithm: "sha256" as const, digest: "7".repeat(64) };
+    await cache.prepare(key);
+
+    const claims = await Promise.allSettled([
+      cache.dispatch(key),
+      cache.dispatch(key),
+    ]);
+    let providerCalls = 0;
+    for (const claim of claims) {
+      if (claim.status === "fulfilled") providerCalls++;
+    }
+
+    assertEquals(providerCalls, 1);
+    assertEquals(
+      claims.filter((claim) => claim.status === "rejected").length,
+      1,
+    );
+    await assertRejects(
+      () => cache.read(key),
+      Error,
+      "may have dispatched",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
 });
 
 Deno.test("unknown caller fields and non-derived artifact ids perform no outward I/O", async () => {
@@ -891,6 +1128,16 @@ function multiPartArchitecture(): ArchitecturePartGraph {
       usages: [],
     }],
   };
+}
+
+async function replayKey(command: ProjectAdmittedGeometryExportCommand) {
+  return await sha256Fingerprint({
+    schemaVersion: "project-admitted-geometry-export-replay/1.0",
+    projectId: command.projectId,
+    basis: command.basis,
+    artifactId: command.artifactId,
+    artifactFingerprint: command.artifactFingerprint,
+  });
 }
 
 async function addV2Capture(

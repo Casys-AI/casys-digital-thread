@@ -33,11 +33,11 @@ Deno.test("planning Workbench is a native project-path surface, not an empty evi
     const forbiddenEvidenceSurface of [
       "ThreadGraph",
       "ComponentWorkspace",
-      "ToolInspectorPanel",
+      "RecordInspectorPanel",
       "thread.graph",
       "thread.components",
       "ThreadGraph",
-      "ToolInspectorPanel",
+      "RecordInspectorPanel",
       "structuredContent",
       "callTool(",
     ]

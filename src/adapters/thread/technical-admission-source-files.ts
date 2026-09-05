@@ -15,7 +15,36 @@ import type {
 import { recrossTechnicalSourceAuthority } from "../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
 import type { ProjectSourceWorkspaceState } from "../../domain/project-source-workspace/types.ts";
 import { derivedFilePath } from "../../domain/project-source-workspace/validation.ts";
-import type { ThreadSourceFileRecord } from "../../presentation/workbench/thread/source-files.ts";
+
+/**
+ * Backend-only recrossed source identity used by product-navigation evidence.
+ *
+ * This record deliberately does not belong to the browser Workbench contract.
+ * The generic Workbench never receives admission source closures or bindings.
+ */
+export interface TechnicalAdmissionSourceFileBinding {
+  readonly relation: "represents" | "parameterizes";
+  readonly sourceSymbolId: string;
+  readonly sysmlElementId: string;
+  readonly sysmlElementKind: string;
+}
+
+export interface TechnicalAdmissionSourceFileRecord {
+  readonly fileId: string;
+  readonly fileRevision: number;
+  readonly workspaceRevision: number;
+  readonly workspaceEventFingerprint: string;
+  readonly fileFingerprint: string;
+  readonly resourceFingerprint: string;
+  readonly resourceUri: string;
+  readonly resourceName: string;
+  readonly mimeType: string;
+  readonly moduleId: string;
+  readonly role: string;
+  readonly admissionArtifactId: string;
+  readonly bindings: readonly TechnicalAdmissionSourceFileBinding[];
+  readonly derivedPath?: string;
+}
 
 export interface TechnicalAdmissionSourceFileFacts {
   readonly admissionArtifactId: string;
@@ -42,7 +71,7 @@ export function recrossTechnicalAdmissionSourceFiles(input: {
   readonly workspaceHead: ProjectSourceWorkspaceState | undefined;
   readonly workspaceAtNamedRevision: ProjectSourceWorkspaceState | undefined;
   readonly projectId?: string;
-}): readonly ThreadSourceFileRecord[] {
+}): readonly TechnicalAdmissionSourceFileRecord[] {
   const { facts } = input;
   if (facts.sources.length === 0) return [];
   if (!sameArchitecture(facts.architecture, input.currentArchitecture)) {
@@ -63,7 +92,7 @@ export function recrossTechnicalAdmissionSourceFiles(input: {
     return [];
   }
 
-  const files: ThreadSourceFileRecord[] = [];
+  const files: TechnicalAdmissionSourceFileRecord[] = [];
   for (const source of facts.sources) {
     try {
       const record = recrossTechnicalSourceAuthority(namedState, {

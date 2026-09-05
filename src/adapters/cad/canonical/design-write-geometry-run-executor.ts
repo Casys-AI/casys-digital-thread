@@ -39,6 +39,7 @@ import {
 import type {
   TechnicalCompilationAdmissionReader,
 } from "../../../application/ports/out/compile/admission/technical-compilation-admission-reader.ts";
+import type { GeometryDraftAssetStore } from "../../../application/ports/out/cad/canonical/geometry-draft-asset-store.ts";
 import type {
   EngineeringAgentRun,
   EngineeringApproval,
@@ -168,7 +169,6 @@ import {
   type SysmlSourceAnalysisReader,
 } from "../../architecture/renderer/sysml-source-analysis-capture.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../../shared/stores/live-thread-update-store.ts";
-import type { IsolatedOutputPublicationReader } from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
 import {
   GEOMETRY_MODULE_ASSET_DERIVATION_RATIONALE,
   GEOMETRY_MODULE_CAPTURE_SCHEMA,
@@ -478,13 +478,8 @@ export interface DesignWriteGeometryRunExecutorDependencies {
    * reopens the actual `compile.seal-admission@3` evidence through this port.
    */
   readonly admissions: Pick<TechnicalCompilationAdmissionReader, "read">;
-  /**
-   * Publication-gated module-assembly CAS. Required for the geometry-module
-   * family; assembly STEP/GLB are reopened by draft/receipt identity, never
-   * by filename. Absent means module sealing fails closed. Leaf
-   * `design.write-geometry@1` does not read this port.
-   */
-  readonly moduleAssemblyPublications?: IsolatedOutputPublicationReader;
+  /** Review-only asset CAS used to reopen exact module STEP/GLB draft bytes. */
+  readonly moduleAssemblyDraftAssets?: GeometryDraftAssetStore;
   readonly moduleAssemblyOutputValidator?: GeometryModuleAssemblyOutputValidation;
   readonly lease: EngineeringProjectRunLease;
   readonly liveUpdates?: LiveThreadUpdateMilestoneJournal;
@@ -519,7 +514,7 @@ export class DesignWriteGeometryRunExecutor {
   readonly #sourceAnalysisCaptures: FileCaptureStore<"source-analysis">;
   readonly #geometryCaptures: GeometryCaptureStore;
   readonly #admissions: Pick<TechnicalCompilationAdmissionReader, "read">;
-  readonly #moduleAssemblyPublications: IsolatedOutputPublicationReader | undefined;
+  readonly #moduleAssemblyDraftAssets: GeometryDraftAssetStore | undefined;
   readonly #moduleAssemblyOutputValidator:
     | GeometryModuleAssemblyOutputValidation
     | undefined;
@@ -540,7 +535,7 @@ export class DesignWriteGeometryRunExecutor {
     this.#sourceAnalysisCaptures = dependencies.sourceAnalysisCaptures;
     this.#geometryCaptures = dependencies.geometryCaptures;
     this.#admissions = dependencies.admissions;
-    this.#moduleAssemblyPublications = dependencies.moduleAssemblyPublications;
+    this.#moduleAssemblyDraftAssets = dependencies.moduleAssemblyDraftAssets;
     this.#moduleAssemblyOutputValidator = dependencies.moduleAssemblyOutputValidator;
     this.#lease = dependencies.lease;
     this.#liveUpdates = dependencies.liveUpdates;
@@ -683,7 +678,7 @@ export class DesignWriteGeometryRunExecutor {
           admissions: this.#admissions,
           baseSnapshot: preClaimBase,
           geometryCaptures: this.#geometryCaptures,
-          moduleAssemblyPublications: this.#moduleAssemblyPublications,
+          moduleAssemblyDraftAssets: this.#moduleAssemblyDraftAssets,
           moduleAssemblyOutputValidator: this.#moduleAssemblyOutputValidator,
           canonicalAssetDirectory: this.#canonicalAssetDirectory,
         },
@@ -753,7 +748,7 @@ export class DesignWriteGeometryRunExecutor {
           admissions: this.#admissions,
           baseSnapshot: base,
           geometryCaptures: this.#geometryCaptures,
-          moduleAssemblyPublications: this.#moduleAssemblyPublications,
+          moduleAssemblyDraftAssets: this.#moduleAssemblyDraftAssets,
           moduleAssemblyOutputValidator: this.#moduleAssemblyOutputValidator,
           canonicalAssetDirectory: this.#canonicalAssetDirectory,
         },
@@ -1243,7 +1238,7 @@ export class DesignWriteGeometryRunExecutor {
           admissions: this.#admissions,
           baseSnapshot: baseSnapshot,
           geometryCaptures: this.#geometryCaptures,
-          moduleAssemblyPublications: this.#moduleAssemblyPublications,
+          moduleAssemblyDraftAssets: this.#moduleAssemblyDraftAssets,
           moduleAssemblyOutputValidator: this.#moduleAssemblyOutputValidator,
           canonicalAssetDirectory: this.#canonicalAssetDirectory,
         },
@@ -3498,7 +3493,7 @@ interface TargetPartAdmissionReopenContext {
   readonly admissions: Pick<TechnicalCompilationAdmissionReader, "read">;
   readonly baseSnapshot?: ThreadSnapshot;
   readonly geometryCaptures?: GeometryCaptureStore;
-  readonly moduleAssemblyPublications?: IsolatedOutputPublicationReader;
+  readonly moduleAssemblyDraftAssets?: GeometryDraftAssetStore;
   readonly moduleAssemblyOutputValidator?: GeometryModuleAssemblyOutputValidation;
   readonly canonicalAssetDirectory?: string;
 }
@@ -3686,13 +3681,13 @@ async function loadReviewedGeometryDraft(
     if (
       !targetAdmissionContext?.baseSnapshot ||
       !targetAdmissionContext.geometryCaptures ||
-      !targetAdmissionContext.moduleAssemblyPublications ||
+      !targetAdmissionContext.moduleAssemblyDraftAssets ||
       !targetAdmissionContext.moduleAssemblyOutputValidator ||
       !targetAdmissionContext.canonicalAssetDirectory
     ) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
-        "Geometry-module sealing requires the exact Thread basis, child capture store, module-assembly publication reader, and registered output validators.",
+        "Geometry-module sealing requires the exact Thread basis, child capture store, draft asset store, and registered output validators.",
       );
     }
     const moduleDraft = await loadReviewedGeometryModuleDraft(
@@ -3701,7 +3696,7 @@ async function loadReviewedGeometryDraft(
       {
         base: targetAdmissionContext.baseSnapshot,
         geometryCaptures: targetAdmissionContext.geometryCaptures,
-        publications: targetAdmissionContext.moduleAssemblyPublications,
+        draftAssets: targetAdmissionContext.moduleAssemblyDraftAssets,
         outputValidator: targetAdmissionContext.moduleAssemblyOutputValidator,
         canonicalDirectory: targetAdmissionContext.canonicalAssetDirectory,
       },
@@ -3871,7 +3866,7 @@ async function loadReviewedGeometryPartDraft(
     for (const [index, file] of target.files.entries()) {
       exactRecord(
         file,
-        ["format", "name", "containerPath", "bytes", "fingerprint"],
+        ["format", "name", "bytes", "fingerprint"],
         `$geometryPartDraft.target.files[${index}]`,
       );
     }
@@ -4243,7 +4238,7 @@ function isGeometryBundleDraftSchema(value: unknown): boolean {
   return value === GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA;
 }
 
-/** Fail closed on current draft paths before canonical capture writes. */
+/** Fail closed on current server-owned draft export names before canonical writes. */
 function requireDraftAssemblyPaths(value: unknown): void {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new EngineeringProjectCommandError(
@@ -4258,7 +4253,7 @@ function requireDraftAssemblyPaths(value: unknown): void {
   } catch (error) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
-      `Geometry draft export path contract mismatch: ${
+      `Geometry draft export identity contract mismatch: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );

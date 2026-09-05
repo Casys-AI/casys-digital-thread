@@ -8,6 +8,14 @@ import { isAllowedWorkbenchPath, proxyDesktopWorkbenchRequest } from "./proxy.ts
 
 const TOKEN = "a".repeat(64);
 const SESSION = { origin: WORKBENCH_ORIGIN, accessToken: TOKEN } as const;
+const APP_NONCE = "A".repeat(43);
+const DYNAMIC_WORKBENCH_CSP =
+  "default-src 'none'; base-uri 'none'; form-action 'none'; " +
+  "frame-ancestors 'none'; object-src 'none'; " +
+  `script-src 'self' 'nonce-${APP_NONCE}'; ` +
+  "style-src 'self' 'unsafe-inline'; img-src 'self' data:; " +
+  "font-src 'self'; connect-src 'self'; frame-src blob:; media-src 'none'; " +
+  "worker-src 'none'; manifest-src 'none'";
 
 Deno.test("Desktop Workbench proxy forwards only bounded read headers and its host token", async () => {
   let upstreamUrl = "";
@@ -67,7 +75,10 @@ Deno.test("Desktop Workbench proxy translates HEAD to a bodyless upstream GET", 
         upstreamMethod = init?.method ?? "";
         return Promise.resolve(
           new Response("must be stripped", {
-            headers: { "Content-Type": "text/html; charset=utf-8" },
+            headers: {
+              "Content-Type": "text/html; charset=utf-8",
+              "Content-Security-Policy": DYNAMIC_WORKBENCH_CSP,
+            },
           }),
         );
       },
@@ -78,6 +89,19 @@ Deno.test("Desktop Workbench proxy translates HEAD to a bodyless upstream GET", 
   assertStringIncludes(
     response?.headers.get("content-security-policy") ?? "",
     "connect-src 'self'",
+  );
+  assertStringIncludes(
+    response?.headers.get("content-security-policy") ?? "",
+    "frame-src blob:",
+  );
+  assertStringIncludes(
+    response?.headers.get("content-security-policy") ?? "",
+    `'nonce-${APP_NONCE}'`,
+  );
+  assertFalse(
+    (response?.headers.get("content-security-policy") ?? "").includes(
+      "frame-src 'self'",
+    ),
   );
 });
 
@@ -106,6 +130,56 @@ Deno.test("Desktop Workbench proxy streams SSE and preserves only Last-Event-ID"
   assertEquals(upstreamHeaders.get("x-provider-key"), null);
   assertEquals(response?.headers.get("x-accel-buffering"), "no");
   assertEquals(await response?.text(), "event: snapshot\ndata: {}\n\n");
+});
+
+Deno.test("Desktop Workbench proxy exposes only exact viewer session and CAS routes", async () => {
+  const digest = "a".repeat(64);
+  for (
+    const path of [
+      "/api/thread/viewer-sessions",
+      "/api/thread/viewer-sessions/events",
+      `/api/thread/viewer-apps/launch/${digest}/${digest}`,
+      `/api/thread/viewer-apps/resources/${digest}`,
+    ]
+  ) {
+    assertEquals(isAllowedWorkbenchPath(path), true, path);
+  }
+  for (
+    const path of [
+      "/api/thread/viewer-apps/launch/latest/latest",
+      `/api/thread/viewer-apps/launch/${digest}`,
+      `/api/thread/viewer-apps/launch/${digest}/${digest}/extra`,
+      "/api/thread/viewer-apps/resources/latest",
+      `/api/thread/viewer-apps/resources/${digest}/extra`,
+      `/api/draft-assets/${digest}`,
+    ]
+  ) {
+    assertFalse(isAllowedWorkbenchPath(path), path);
+  }
+
+  let upstream = "";
+  const response = await proxyDesktopWorkbenchRequest(
+    new Request("http://desktop.local/api/thread/viewer-sessions/events", {
+      headers: { "Last-Event-ID": "viewer-sessions:7" },
+    }),
+    {
+      session: SESSION,
+      fetchImpl: (input, init) => {
+        upstream = String(input);
+        assertEquals(
+          new Headers(init?.headers).get("last-event-id"),
+          "viewer-sessions:7",
+        );
+        return Promise.resolve(
+          new Response("event: viewer-sessions\ndata: {}\n\n", {
+            headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+          }),
+        );
+      },
+    },
+  );
+  assertEquals(upstream, `${WORKBENCH_ORIGIN}/api/thread/viewer-sessions/events`);
+  assertEquals(response?.headers.get("x-accel-buffering"), "no");
 });
 
 Deno.test("Desktop Workbench proxy rejects methods, commands, and traversal before fetch", async () => {

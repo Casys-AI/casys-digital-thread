@@ -6,7 +6,7 @@
  * Seal and run refuse a case that would publish a false method claim.
  */
 
-import type { SensitivityStudyCaseV2 } from "./sensitivity-study-v2.ts";
+import type { SensitivityStudyCaseV3 } from "./sensitivity-study-v3.ts";
 
 export const SENSITIVITY_LIVE_METRIC_UNITS: ReadonlyMap<string, string> = new Map([
   ["assembly_max_displacement", "mm"],
@@ -38,7 +38,7 @@ export function liveSolverObservationForMetric(
 }
 
 export function assertSensitivityLiveMethod(
-  studyCase: SensitivityStudyCaseV2,
+  studyCase: SensitivityStudyCaseV3,
 ): void {
   if (studyCase.baseValue.unit !== studyCase.step.unit) {
     throw new TypeError(

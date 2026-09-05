@@ -24,6 +24,8 @@ import type {
 import { FixedGeometryModuleAssemblyProfileCatalog } from "./fixed-geometry-module-assembly-profile.ts";
 import { GEOMETRY_MODULE_ASSEMBLER_MICROSANDBOX_WORKER_CONTRACT } from "./worker-contract.ts";
 import { GeometryModuleAssemblyOutputValidator } from "./geometry-module-assembly-output-validator.ts";
+import type { GeometryModuleAssembler } from "../../../application/ports/out/cad/module-assembly/geometry-module-assembler.ts";
+import { FixedGeometryModuleAssembler } from "./fixed-geometry-module-assembler.ts";
 
 export interface GeometryModuleAssemblyProfileServerOptions {
   readonly imageReference: string;
@@ -50,6 +52,7 @@ export interface GeometryModuleAssemblyRuntimeComposition {
 export interface GeometryModuleAssemblyComposition {
   readonly profiles: FixedGeometryModuleAssemblyProfileCatalog;
   readonly execution?: GeometryModuleAssemblyRuntimeComposition;
+  readonly assembler?: GeometryModuleAssembler;
 }
 
 export interface GeometryModuleAssemblyCompositionPaths {
@@ -123,6 +126,11 @@ export async function createGeometryModuleAssemblyComposition(
   });
   return Object.freeze({
     profiles,
+    assembler: new FixedGeometryModuleAssembler({
+      profiles,
+      runner,
+      publications,
+    }),
     execution: Object.freeze({
       runner,
       recovery: runner,

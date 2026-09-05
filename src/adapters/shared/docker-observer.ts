@@ -10,7 +10,16 @@ export interface CommandResult {
 }
 
 export interface CommandRunner {
-  run(command: string, args: string[], cwd: string): Promise<CommandResult>;
+  run(
+    command: string,
+    args: string[],
+    cwd: string,
+    options?: {
+      readonly stdin?: Uint8Array;
+      readonly env?: Readonly<Record<string, string>>;
+      readonly clearEnv?: boolean;
+    },
+  ): Promise<CommandResult>;
 }
 
 /** Compatibility name for callers which describe the concrete Docker source. */
@@ -28,12 +37,20 @@ export class DenoCommandRunner implements CommandRunner {
     command: string,
     args: string[],
     cwd: string,
+    options: {
+      readonly stdin?: Uint8Array;
+      readonly env?: Readonly<Record<string, string>>;
+      readonly clearEnv?: boolean;
+    } = {},
   ): Promise<CommandResult> {
     let child: Deno.ChildProcess;
     try {
       child = new Deno.Command(command, {
         args,
         cwd,
+        stdin: options.stdin ? "piped" : "null",
+        clearEnv: options.clearEnv,
+        env: options.env,
         stdout: "piped",
         stderr: "piped",
       }).spawn();
@@ -48,6 +65,14 @@ export class DenoCommandRunner implements CommandRunner {
 
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
+      if (options.stdin) {
+        const writer = child.stdin.getWriter();
+        try {
+          await writer.write(options.stdin);
+        } finally {
+          await writer.close();
+        }
+      }
       const output = await Promise.race([
         child.output(),
         new Promise<never>((_, reject) => {

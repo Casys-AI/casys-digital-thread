@@ -6,10 +6,11 @@
  * claims mesh fitness, collision freedom, or physical geometry validity.
  */
 
-import type { IsolatedCodeOutputDeclaration } from "../../../domain/compile/isolation/isolated-code-execution.ts";
-import { isolatedCodeOutputManifestsEqual } from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
-import { GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST } from "../../../domain/cad/module-assembly/geometry-module-assembly-execution.ts";
+import type { IsolatedCodeOutputDeclaration } from "../../../domain/compile/isolation/isolated-code-execution.ts";
+import {
+  GEOMETRY_MODULE_ASSEMBLY_ASSETS,
+} from "../../../domain/cad/module-assembly/geometry-module-assembly-receipt.ts";
 import {
   loadOcctStepReader,
   OcctStepOutputValidationError,
@@ -50,9 +51,11 @@ export class GeometryModuleAssemblyOutputValidator {
     declaration: IsolatedCodeOutputDeclaration,
     observedBytes: Uint8Array,
   ): Promise<void> => {
-    const expected = GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST.find((entry) =>
-      entry.role === declaration.role
-    );
+    const expected = declaration.role === "assembly.step"
+      ? GEOMETRY_MODULE_ASSEMBLY_ASSETS.step
+      : declaration.role === "assembly.glb"
+      ? GEOMETRY_MODULE_ASSEMBLY_ASSETS.glb
+      : undefined;
     if (
       !expected ||
       deterministicJson(expected) !== deterministicJson(declaration)
@@ -89,21 +92,6 @@ export class GeometryModuleAssemblyOutputValidator {
     }
     validateGlb(bytes);
   };
-}
-
-export function validateGeometryModuleAssemblyOutputManifest(
-  value: readonly IsolatedCodeOutputDeclaration[],
-): void {
-  if (
-    !isolatedCodeOutputManifestsEqual(
-      value,
-      GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
-    )
-  ) {
-    throw new TypeError(
-      "The geometry-module assembly output manifest is not registered.",
-    );
-  }
 }
 
 const GLB_MAGIC = 0x46546c67;

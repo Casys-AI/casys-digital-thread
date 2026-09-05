@@ -27,8 +27,14 @@ import type {
   ThreadArtifact,
   ThreadSnapshot,
 } from "../../../domain/thread/thread-snapshot.ts";
+import type {
+  CapabilityRuntimeExecutionEligibility,
+} from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
-import { requireResolvedRunPlanExecution } from "./resolved-run-plan-execution-guard.ts";
+import {
+  requireRecordedResolvedRunPlanExecution,
+  requireResolvedRunPlanExecution,
+} from "./resolved-run-plan-execution-guard.ts";
 
 const PROJECT_ID = "project-rop2-guard";
 const AGENT = { kind: "agent" as const, actorId: "agent:rop2-guard" };
@@ -66,6 +72,34 @@ Deno.test("resolved run-plan execution guard admits one fully reread local Calcu
   );
 });
 
+Deno.test("recorded run-plan guard reopens exact seals without a current runtime authorization", async () => {
+  const fixture = await createFixture("isolated");
+  let planReads = 0;
+  const recorded = await requireRecordedResolvedRunPlanExecution({
+    project: fixture.project,
+    runId: fixture.plan.run.runId,
+    expectedOperation: operationFor(fixture.kind),
+    expectedRunStatuses: ["queued"],
+    projects: fixture.store,
+    snapshots: { get: () => Promise.resolve(fixture.snapshot) },
+    plans: {
+      read: (ref) => {
+        planReads += 1;
+        if (!sameResolvedOperationPlanRef(ref, fixture.ref)) {
+          throw new TypeError("Plan reader refuses an arbitrary CAS reference.");
+        }
+        return Promise.resolve(fixture.plan);
+      },
+    },
+  });
+
+  assertEquals(planReads, 1);
+  assertEquals(
+    recorded.capabilityRuntime,
+    fixture.plan.operationalCapability,
+  );
+});
+
 Deno.test("resolved run-plan execution guard admits one fully reread CalculiX authorization", async () => {
   const fixture = await createFixture("calculix");
   const admitted = await admit(fixture);
@@ -83,6 +117,50 @@ Deno.test("resolved run-plan execution guard admits one fully reread CalculiX au
     admitted.plan.sources.find((source) => source.bindingName === "geometry")
       ?.artifact.casUri,
     `casys://thread-asset/sha256/${"9".repeat(64)}`,
+  );
+});
+
+Deno.test("resolved run-plan execution guard rechecks the capability runtime before an executor boundary", async () => {
+  const fixture = await createFixture("isolated");
+  const calls: string[] = [];
+  const capabilityRuntime: CapabilityRuntimeExecutionEligibility = {
+    requireExecution(input) {
+      calls.push(`${input.project.id}:${input.run.id}:${input.operation.id}`);
+      return Promise.resolve(undefined);
+    },
+  };
+
+  await assertRejects(
+    () => admit(fixture, undefined, ["queued"], capabilityRuntime),
+    TypeError,
+    "resolved none",
+  );
+
+  assertEquals(calls, [
+    `${fixture.project.id}:${fixture.plan.run.runId}:verify.run-fea-static-proof`,
+  ]);
+});
+
+Deno.test("resolved run-plan execution guard rejects a runtime binding drift after queueing", async () => {
+  const fixture = await createFixture("isolated");
+  const capabilityRuntime: CapabilityRuntimeExecutionEligibility = {
+    requireExecution: () =>
+      Promise.resolve({
+        ...fixture.plan.operationalCapability,
+        bindings: fixture.plan.operationalCapability.bindings.map((binding) => ({
+          ...binding,
+          profile: binding.profile && {
+            ...binding.profile,
+            fingerprint: fingerprint("f"),
+          },
+        })),
+      }),
+  };
+
+  await assertRejects(
+    () => admit(fixture, undefined, ["queued"], capabilityRuntime),
+    TypeError,
+    "binding changed after queueing",
   );
 });
 
@@ -386,6 +464,7 @@ async function admit(
     "queued" | "running" | "publishing",
     ...("queued" | "running" | "publishing")[],
   ] = ["queued"],
+  capabilityRuntime?: CapabilityRuntimeExecutionEligibility,
 ) {
   return await requireResolvedRunPlanExecution({
     project: fixture.project,
@@ -401,6 +480,9 @@ async function admit(
         }
         return Promise.resolve(fixture.plan);
       },
+    },
+    capabilityRuntime: capabilityRuntime ?? {
+      requireExecution: () => Promise.resolve(fixture.plan.operationalCapability),
     },
   });
 }
@@ -472,6 +554,10 @@ async function createFixture(kind: RecordedKind): Promise<Fixture> {
     | undefined;
   const planning: EngineeringProjectPlanningDependencies = {
     operations: recordedOperationRegistry(kind),
+    queueEligibility: {
+      validate: ({ project, operation }) =>
+        Promise.resolve(operationalCapabilityFor(project.project.id, operation)),
+    },
     runPlanSealer: {
       seal: async (input) => {
         const plan = await planFor(kind, input, snapshot);
@@ -690,6 +776,7 @@ async function planFor(
       },
       operationFingerprint: await sha256Fingerprint(input.workItem.operation!),
     },
+    operationalCapability: input.operationalCapability!,
     authorization: {
       kind: "human-mrtr-and-qualified-method" as const,
       mrtr: {
@@ -853,6 +940,60 @@ function operationFor(kind: RecordedKind) {
   return kind === "isolated"
     ? { id: "verify.run-fea-static-proof", version: "3" }
     : { id: "verify.run-fea-static-proof", version: "2" };
+}
+
+function operationalCapabilityFor(
+  projectId: string,
+  operation: { readonly id: string; readonly version: string },
+): NonNullable<RegisteredRunPlanSealInput["operationalCapability"]> {
+  return {
+    schemaVersion: "resolved-capability-runtime-operation/2.0",
+    projectId,
+    operation: { id: operation.id, version: operation.version },
+    authorizationFingerprint: fingerprint("a"),
+    demandFingerprint: fingerprint("b"),
+    registryFingerprint: fingerprint("c"),
+    bindings: [{
+      capability: {
+        id: "mechanics.solve-static-structural",
+        version: "1",
+        use: "execution",
+        minimumQualification: "qualified",
+      },
+      binding: { id: "calculix-static-structural", version: "1" },
+      effectiveQualification: "qualified",
+      adapter: { id: "casys.calculix-worker", version: "1", source: "test" },
+      profile: {
+        id: "calculix-static",
+        version: "1",
+        fingerprint: fingerprint("d"),
+      },
+      materials: [{
+        unitId: "casys.calculix-worker",
+        materialId: "calculix-worker",
+        imageDigest: "e".repeat(64),
+      }],
+      runtimeModes: [{
+        material: {
+          unitId: "casys.calculix-worker",
+          materialId: "calculix-worker",
+          imageDigest: "e".repeat(64),
+        },
+        targetPlatform: "linux/arm64",
+        mode: "native",
+        qualificationAttestationFingerprint: null,
+      }],
+      hostLifecycles: [{
+        material: {
+          unitId: "casys.calculix-worker",
+          materialId: "calculix-worker",
+          imageDigest: "e".repeat(64),
+        },
+        kind: "ephemeral-microsandbox",
+        launchGroup: null,
+      }],
+    }],
+  };
 }
 
 function recordedOperationRegistry(

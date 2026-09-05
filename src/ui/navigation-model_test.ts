@@ -1,13 +1,9 @@
 import { assertEquals } from "@std/assert";
 import {
-  DEFAULT_PRODUCT_FACET,
   DEFAULT_PROJECT_VIEW,
   hasDistinctProjectObjectiveStatement,
   parseProjectLocationHash,
   parseProjectViewHash,
-  PRODUCT_FACETS,
-  productFacetHash,
-  productFacetLabel,
   PROJECT_VIEWS,
   projectDeepLinkDomId,
   projectDeepLinkHash,
@@ -103,21 +99,16 @@ Deno.test("review deep links round-trip through a fixed fail-closed vocabulary",
   });
 });
 
-Deno.test("Product facets round-trip through a fail-closed fragment", () => {
+Deno.test("Product has one exact handoff route and rejects retired facets", () => {
   assertEquals(parseProjectLocationHash("#product"), {
     view: "product",
-    productFacet: DEFAULT_PRODUCT_FACET,
   });
-  for (const facet of PRODUCT_FACETS) {
-    assertEquals(parseProjectLocationHash(productFacetHash(facet.id)), {
-      view: "product",
-      productFacet: facet.id,
-    });
-    assertEquals(productFacetLabel(facet.id), facet.label);
-  }
-  assertEquals(parseProjectLocationHash("#product/not-a-facet"), {
-    view: "product",
-    productFacet: DEFAULT_PRODUCT_FACET,
-  });
-  assertEquals(parseProjectViewHash("#product/requirements"), "product");
+  assertEquals(
+    parseProjectLocationHash("#product/requirements"),
+    { view: DEFAULT_PROJECT_VIEW },
+  );
+  assertEquals(
+    parseProjectLocationHash("#product/sourcing"),
+    { view: DEFAULT_PROJECT_VIEW },
+  );
 });

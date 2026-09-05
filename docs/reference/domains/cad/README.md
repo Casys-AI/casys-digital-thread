@@ -17,13 +17,15 @@ Read:
    ceilings and missing AST cardinality.
 4. [CAD execution paths](execution-paths.md) — canonical admitted export versus the
    documentary isolated microVM path.
-5. [Exact static assembly basis](static-assembly-basis.md) — profile-free reopening of
+5. [Provider-neutral module assembly](module-assembly.md) — one stable capability and
+   receipt, with the current fixed Build123d micro-VM hidden behind an adapter.
+6. [Exact static assembly basis](static-assembly-basis.md) — profile-free reopening of
    one canonical module, assembly STEP, structure, occurrences, and placements.
-6. [Assembly integrity](assembly-integrity.md) — factual post-publication observation,
+7. [Assembly integrity](assembly-integrity.md) — factual post-publication observation,
    five provider-free evaluation criteria, and human closeout; it is not CAD export.
-7. Immediate placement capture lives under `src/domain/cad/placement/`. It is not a CAD
+8. Immediate placement capture lives under `src/domain/cad/placement/`. It is not a CAD
    script, not technical-source admission, and not module export.
-8. [Extension runbook](../../../how-to/extend/extend-cad-closed-subset.md) — the
+9. [Extension runbook](../../../how-to/extend/extend-cad-closed-subset.md) — the
    required end-to-end work to add a construct without widening authority.
 
 Shared contracts:

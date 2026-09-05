@@ -1,6 +1,19 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import type { EngineeringProjectCommandOrigin } from "../../../application/ports/in/engineering-project-command-origin.ts";
+import type { CapabilityRuntimeExecutionEligibility } from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import type { Build123dExecutionProfile } from "../../../application/ports/out/cad/isolated/build123d-execution-profile-catalog.ts";
 import type { Build123dExecutionProfileCatalog } from "../../../application/ports/out/cad/isolated/build123d-execution-profile-catalog.ts";
+import type { ResolvedCapabilityRuntimeOperation } from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import { GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY } from "../../../domain/capability/engineering-capability.ts";
+import {
+  type RecordingCapabilityRuntimeSession,
+  recordingCapabilityRuntimeSession,
+  testResolvedCapabilityRuntimeOperation,
+} from "../../../testing/capability-runtime-execution-session-test-support.ts";
+import {
+  BUILD123D_ISOLATED_WORKER_MATERIAL_ID,
+  BUILD123D_ISOLATED_WORKER_UNIT_ID,
+} from "./worker-contract.ts";
 import {
   type Build123dExecutionAttempt,
   type Build123dExecutionAttemptStore,
@@ -101,6 +114,22 @@ Deno.test("Build123d executor publishes one documentary artifact and never a STE
   const completed = await fixture.executor.execute(AGENT, COMMAND);
   assertEquals(completed.agentRuns[0]!.status, "completed");
   assertEquals(fixture.runner.calls, 1);
+  assertEquals(fixture.session.events, ["begin"]);
+  assertEquals(fixture.session.releases, 1);
+  assertEquals(fixture.session.retains, 0);
+  assertEquals(fixture.session.microsandboxExecutionProfiles?.length, 1);
+  assertEquals(
+    fixture.session.microsandboxExecutionProfiles?.[0]?.material.unitId,
+    BUILD123D_ISOLATED_WORKER_UNIT_ID,
+  );
+  assertEquals(
+    fixture.session.microsandboxExecutionProfiles?.[0]?.material.materialId,
+    BUILD123D_ISOLATED_WORKER_MATERIAL_ID,
+  );
+  assertEquals(
+    fixture.session.microsandboxExecutionProfiles?.[0]?.executionProfileFingerprint,
+    fixture.profile.profileFingerprint,
+  );
   const result = completed.agentRuns[0]!.resultSnapshot!;
   const snapshot = await fixture.snapshots.getFresh(result.snapshotId);
   if (!snapshot) throw new Error("missing result snapshot");
@@ -130,6 +159,9 @@ Deno.test("completed Build123d replay reopens all evidence without a second isol
   assertEquals(fixture.runner.calls, 1);
   assertEquals(fixture.snapshots.saveCalls, saved);
   assertEquals(new Set(fixture.snapshots.successorIds).size, 1);
+  assertEquals(fixture.session.events, ["begin", "releaseRecorded"]);
+  assertEquals(fixture.session.releases, 1);
+  assertEquals(fixture.session.recordedReleases, 1);
 });
 
 Deno.test("completed generation-one replay rejects WAL drift from its captured receipt and draft", async () => {
@@ -184,6 +216,44 @@ Deno.test("dispatching recovery adopts a published receipt and never reruns", as
   assertEquals(fixture.publications.resolveCalls, 1);
 });
 
+Deno.test("published dispatch replay completes cold when JIT cache or current capability is unavailable", async () => {
+  const cacheUnavailable = await createFixture({
+    resume: "published",
+    beginFailure: new Error("exact Build123d Microsandbox cache is absent"),
+  });
+  const cacheRecovered = await cacheUnavailable.executor.execute(AGENT, COMMAND);
+  assertEquals(cacheRecovered.agentRuns[0]!.status, "completed");
+  assertEquals(cacheUnavailable.session.events, ["releaseRecorded"]);
+  assertEquals(cacheUnavailable.runner.calls, 0);
+  assertEquals(cacheUnavailable.publications.resolveCalls, 1);
+
+  const capabilityUnavailable = await createFixture({
+    resume: "published",
+    omitCapabilityRuntime: true,
+  });
+  const capabilityRecovered = await capabilityUnavailable.executor.execute(
+    AGENT,
+    COMMAND,
+  );
+  assertEquals(capabilityRecovered.agentRuns[0]!.status, "completed");
+  assertEquals(capabilityUnavailable.session.events, []);
+  assertEquals(capabilityUnavailable.runner.calls, 0);
+  assertEquals(capabilityUnavailable.publications.resolveCalls, 1);
+});
+
+Deno.test("cold published replay releases recorded runtime after a completion-WAL ACK loss", async () => {
+  const fixture = await createFixture({
+    resume: "published",
+    walCompletionFailsOnce: true,
+    beginFailure: new Error("exact Build123d Microsandbox cache is absent"),
+  });
+  const completed = await fixture.executor.execute(AGENT, COMMAND);
+  assertEquals(completed.agentRuns[0]!.status, "completed");
+  assertEquals(fixture.session.events, ["releaseRecorded"]);
+  assertEquals(fixture.runner.calls, 0);
+  assertEquals(fixture.attempts.completionCalls, 2);
+});
+
 Deno.test("unknown publication outcome leaves the run active and never reruns", async () => {
   const fixture = await createFixture({ resume: "outcome-unknown" });
   await assertRejects(
@@ -194,6 +264,9 @@ Deno.test("unknown publication outcome leaves the run active and never reruns", 
   assertEquals(fixture.runner.calls, 0);
   assertEquals(fixture.recovery.calls, 0);
   assertEquals(fixture.project.agentRuns[0]!.status, "running");
+  assertEquals(fixture.session.events, []);
+  assertEquals(fixture.session.releases, 0);
+  assertEquals(fixture.session.retains, 0);
 });
 
 Deno.test("not-published recovery records cleanup before the single permitted redispatch", async () => {
@@ -370,6 +443,7 @@ Deno.test("publication ACK loss replays the exact receipt without another isolat
   );
   assertEquals(fixture.project.agentRuns[0]!.status, "publishing");
   assertEquals(fixture.runner.calls, 1);
+  assertEquals(fixture.session.retains, 1);
 
   const completed = await fixture.executor.execute(AGENT, COMMAND);
   assertEquals(completed.agentRuns[0]!.status, "completed");
@@ -410,6 +484,9 @@ Deno.test("human permission and profile drift stop before runner and WAL", async
   );
   assertEquals(drift.runner.calls, 0);
   assertEquals(drift.attempts.prepareCalls, 0);
+  assertEquals(drift.commands.claimCalls, 0);
+  assertEquals(drift.session.events, []);
+  assertEquals(drift.project.agentRuns[0]!.status, "queued");
 });
 
 Deno.test("Build123d executor fails the claimed run on output-validation rejection without Thread write", async () => {
@@ -430,6 +507,9 @@ Deno.test("Build123d executor fails the claimed run on output-validation rejecti
   assertEquals(fixture.runner.calls, 1);
   assertEquals(fixture.recovery.calls, 0);
   assertEquals(replayed.threadSnapshots, beforeSnapshots);
+  assertEquals(fixture.session.events, ["begin", "releaseRecorded"]);
+  assertEquals(fixture.session.releases, 1);
+  assertEquals(fixture.session.recordedReleases, 1);
 });
 
 Deno.test("Build123d refuses a divergent fail code on output-validation replay without redispatch", async () => {
@@ -468,6 +548,139 @@ Deno.test("Build123d refuses a divergent fail receipt on output-validation repla
   assertEquals(fixture.recovery.calls, 0);
 });
 
+Deno.test("Build123d exact H1 order is session begin, claim, attempt/WAL, then runner", async () => {
+  const events: string[] = [];
+  const fixture = await createFixture({
+    onBegin: () => {
+      events.push("begin");
+    },
+  });
+  const originalClaim = fixture.commands.claimRun.bind(fixture.commands);
+  fixture.commands.claimRun = (origin, command) => {
+    events.push("claim");
+    return originalClaim(origin, command);
+  };
+  const originalPrepare = fixture.attempts.prepare.bind(fixture.attempts);
+  fixture.attempts.prepare = (input) => {
+    events.push("attempt");
+    return originalPrepare(input);
+  };
+  const originalDispatch = fixture.attempts.markDispatching.bind(
+    fixture.attempts,
+  );
+  fixture.attempts.markDispatching = (input) => {
+    events.push("dispatch");
+    return originalDispatch(input);
+  };
+  const originalRun = fixture.runner.run.bind(fixture.runner);
+  fixture.runner.run = (request) => {
+    events.push("runner");
+    return originalRun(request);
+  };
+  await fixture.executor.execute(AGENT, COMMAND);
+  assertEquals(events[0], "begin");
+  assertEquals(events.indexOf("begin") < events.indexOf("claim"), true);
+  assertEquals(events.indexOf("claim") < events.indexOf("attempt"), true);
+  assertEquals(events.indexOf("attempt") < events.indexOf("dispatch"), true);
+  assertEquals(events.indexOf("dispatch") < events.indexOf("runner"), true);
+  assertEquals(fixture.session.microsandboxExecutionProfiles?.length, 1);
+});
+
+Deno.test("missing extra or foreign Microsandbox lifecycle and digest drift stay cold", async () => {
+  const cases: readonly {
+    readonly label: string;
+    readonly operationalCapability: (
+      profile: Build123dExecutionProfile,
+    ) => ResolvedCapabilityRuntimeOperation;
+    readonly message: string;
+  }[] = [
+    {
+      label: "missing",
+      operationalCapability: (profile) =>
+        testResolvedCapabilityRuntimeOperation({
+          projectId: COMMAND.projectId,
+          operation: DESIGN_EXECUTE_BUILD123D_OPERATION,
+          capabilityId: GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY.id,
+          unitId: BUILD123D_ISOLATED_WORKER_UNIT_ID,
+          materialId: BUILD123D_ISOLATED_WORKER_MATERIAL_ID,
+          imageDigest: profile.runtimeBackend.imageDigest.digest,
+        }),
+      message: "exactly one sealed Microsandbox",
+    },
+    {
+      label: "foreign",
+      operationalCapability: (profile) =>
+        testResolvedCapabilityRuntimeOperation({
+          projectId: COMMAND.projectId,
+          operation: DESIGN_EXECUTE_BUILD123D_OPERATION,
+          capabilityId: GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY.id,
+          unitId: "casys.calculix-worker",
+          materialId: "calculix-worker-image",
+          imageDigest: profile.runtimeBackend.imageDigest.digest,
+          hostLifecycleKind: "ephemeral-microsandbox",
+        }),
+      message: "exact code-owned",
+    },
+    {
+      label: "digest",
+      operationalCapability: () => build123dOperationalCapability("9".repeat(64)),
+      message: "digest does not match",
+    },
+    {
+      label: "extra",
+      operationalCapability: (profile) => extraMicrosandboxCapability(profile),
+      message: "exactly one sealed Microsandbox",
+    },
+  ];
+  for (const testCase of cases) {
+    const fixture = await createFixture({
+      operationalCapability: testCase.operationalCapability,
+    });
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, COMMAND),
+      Error,
+      testCase.message,
+    );
+    assertEquals(fixture.session.events, [], testCase.label);
+    assertEquals(fixture.commands.claimCalls, 0, testCase.label);
+    assertEquals(fixture.attempts.prepareCalls, 0, testCase.label);
+    assertEquals(fixture.runner.calls, 0, testCase.label);
+    assertEquals(fixture.project.agentRuns[0]!.status, "queued", testCase.label);
+  }
+});
+
+Deno.test("absent JIT session leaves the queued Build123d run untouched", async () => {
+  const fixture = await createFixture({ omitCapabilityRuntime: true });
+  await assertRejects(
+    () => fixture.executor.execute(AGENT, COMMAND),
+    Error,
+    "configured JIT capability runtime session",
+  );
+  assertEquals(fixture.session.events, []);
+  assertEquals(fixture.commands.claimCalls, 0);
+  assertEquals(fixture.attempts.prepareCalls, 0);
+  assertEquals(fixture.runner.calls, 0);
+  assertEquals(fixture.project.agentRuns[0]!.status, "queued");
+});
+
+Deno.test("cache profile mismatch leaves the queued Build123d run untouched", async () => {
+  const fixture = await createFixture({
+    beginFailure: new Error(
+      "Microsandbox cache execution profile does not attest casys.build123d-isolated-worker/build123d-isolated-worker-image.",
+    ),
+  });
+  await assertRejects(
+    () => fixture.executor.execute(AGENT, COMMAND),
+    Error,
+    "does not attest",
+  );
+  assertEquals(fixture.session.events, ["begin"]);
+  assertEquals(fixture.commands.claimCalls, 0);
+  assertEquals(fixture.attempts.prepareCalls, 0);
+  assertEquals(fixture.runner.calls, 0);
+  assertEquals(fixture.project.agentRuns[0]!.status, "queued");
+});
+
 interface FixtureOptions {
   readonly resume?: "published" | "not-published" | "outcome-unknown";
   readonly profileDrift?: boolean;
@@ -479,6 +692,12 @@ interface FixtureOptions {
   readonly walCompletionFailsOnce?: boolean;
   readonly runnerFailsOnce?: boolean;
   readonly rejectOutputValidation?: boolean;
+  readonly omitCapabilityRuntime?: boolean;
+  readonly operationalCapability?: (
+    profile: Build123dExecutionProfile,
+  ) => ResolvedCapabilityRuntimeOperation;
+  readonly beginFailure?: Error;
+  readonly onBegin?: () => void;
 }
 
 interface Fixture {
@@ -490,6 +709,9 @@ interface Fixture {
   readonly attempts: FakeAttempts;
   readonly snapshots: FakeSnapshots;
   readonly commands: FakeCommands;
+  readonly session: RecordingCapabilityRuntimeSession;
+  readonly profile: Build123dExecutionProfile;
+  readonly capabilityRuntime: CapabilityRuntimeExecutionEligibility;
 }
 
 async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
@@ -1203,6 +1425,27 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
     createInitial: () => Promise.reject(new Error("unused")),
     commit: () => Promise.reject(new Error("unused")),
   };
+  const operationalCapability = options.operationalCapability?.(profile) ??
+    build123dOperationalCapability(profile.runtimeBackend.imageDigest.digest);
+  const capabilityRuntime: CapabilityRuntimeExecutionEligibility = {
+    requireExecution: () => Promise.resolve(operationalCapability),
+  };
+  const session = recordingCapabilityRuntimeSession(
+    options.onBegin || options.beginFailure
+      ? async (input) => {
+        options.onBegin?.();
+        await input.recheck();
+        if (options.beginFailure) throw options.beginFailure;
+        return {
+          lease: { id: "capability-jit-build123d" } as Awaited<
+            ReturnType<RecordingCapabilityRuntimeSession["begin"]>
+          >["lease"],
+          releaseTerminal: () => Promise.resolve(),
+          retainForRecovery: () => undefined,
+        };
+      }
+      : undefined,
+  );
   const dependencies: DesignExecuteBuild123dRunExecutorDependencies = {
     projects,
     commands,
@@ -1216,6 +1459,10 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
     drafts,
     captures,
     lease: { withLease: (_projectId, _scope, operation) => operation() },
+    ...(options.omitCapabilityRuntime ? {} : {
+      capabilityRuntime,
+      capabilityRuntimeSession: session,
+    }),
   };
   return {
     executor: new DesignExecuteBuild123dRunExecutor(dependencies),
@@ -1226,6 +1473,56 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
     attempts,
     snapshots,
     commands,
+    session,
+    profile,
+    capabilityRuntime,
+  };
+}
+
+function build123dOperationalCapability(
+  imageDigest: string,
+): ResolvedCapabilityRuntimeOperation {
+  return testResolvedCapabilityRuntimeOperation({
+    projectId: COMMAND.projectId,
+    operation: DESIGN_EXECUTE_BUILD123D_OPERATION,
+    capabilityId: GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY.id,
+    binding: { id: "build123d-execute-admitted-source", version: "1" },
+    unitId: BUILD123D_ISOLATED_WORKER_UNIT_ID,
+    materialId: BUILD123D_ISOLATED_WORKER_MATERIAL_ID,
+    imageDigest,
+    hostLifecycleKind: "ephemeral-microsandbox",
+  });
+}
+
+function extraMicrosandboxCapability(
+  profile: Build123dExecutionProfile,
+): ResolvedCapabilityRuntimeOperation {
+  const exact = build123dOperationalCapability(
+    profile.runtimeBackend.imageDigest.digest,
+  );
+  const extraMaterial = {
+    unitId: "casys.calculix-worker",
+    materialId: "calculix-worker-image",
+    imageDigest: profile.runtimeBackend.imageDigest.digest,
+  };
+  const binding = exact.bindings[0]!;
+  return {
+    ...exact,
+    bindings: [{
+      ...binding,
+      materials: [...binding.materials, extraMaterial],
+      runtimeModes: [...binding.runtimeModes, {
+        material: extraMaterial,
+        targetPlatform: "linux/arm64",
+        mode: "native",
+        qualificationAttestationFingerprint: null,
+      }],
+      hostLifecycles: [...binding.hostLifecycles, {
+        material: extraMaterial,
+        kind: "ephemeral-microsandbox",
+        launchGroup: null,
+      }],
+    }],
   };
 }
 
@@ -1698,6 +1995,7 @@ class FakeSnapshots {
 
 class FakeCommands {
   claimIdentity?: string;
+  claimCalls = 0;
   publishCalls = 0;
   #publishAckLostOnce: boolean;
   #publishIdentity?: string;
@@ -1708,6 +2006,7 @@ class FakeCommands {
     this.#publishAckLostOnce = options.publishAckLostOnce ?? false;
   }
   async claimRun(origin: EngineeringProjectCommandOrigin, command: RunCommand) {
+    this.claimCalls += 1;
     const run = this.project.agentRuns[0] as MutableRun;
     const identity = deterministicJson({ origin, command });
     if (run.status === "queued") {

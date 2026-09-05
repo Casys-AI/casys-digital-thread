@@ -1,5 +1,6 @@
 import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
 import {
+  DESIGN_PREPARE_GEOMETRY_MODULE_OPERATION,
   engineeringOperationRegistry,
   EngineeringOperationRegistryError,
   getRegisteredEngineeringOperation,
@@ -27,6 +28,7 @@ import {
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/modelica/qualified-kit/run-proposal.ts";
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
 import { SIMULATE_RUN_ADMITTED_SPICE_OPERATION } from "../../domain/electrical/spice/admitted/run-proposal.ts";
+import { VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION } from "../../domain/mechanism/prescribed-kinematics/operations.ts";
 import { VERIFY_SEAL_ELECTRICAL_OBSERVATION_METHOD_SHEET_OPERATION } from "../../domain/electrical/observation-method-sheet-proposal.ts";
 import { VERIFY_EVALUATE_ADMITTED_SPICE_OBSERVATIONS_OPERATION } from "../../domain/electrical/spice/evaluation/admitted-observation-evaluation-proposal.ts";
 import {
@@ -294,6 +296,24 @@ Deno.test("the local CalculiX @3 successor retains the exact ROP2 and artifact-b
   ]);
 });
 
+Deno.test("the registry ROP2 identities exactly match persisted run-receipt requirements", () => {
+  // Keep this explicit parity list aligned with
+  // run-receipt-invariants.ts:isResolvedOperationPlanV2Operation. The queue
+  // consults this registry marker before persistence validates that contract.
+  const requiredByPersistedRunReceipt = [
+    VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
+    VERIFY_RUN_PRESCRIBED_KINEMATICS_OPERATION,
+    SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
+    SIMULATE_RUN_ADMITTED_SPICE_OPERATION,
+  ].map((operation) => `${operation.id}@${operation.version}`).sort();
+  const registeredAsRop2 = engineeringOperationRegistry.list()
+    .filter((operation) => operation.resolvedOperationPlan === "2.0")
+    .map((operation) => `${operation.id}@${operation.version}`)
+    .sort();
+
+  assertEquals(registeredAsRop2, requiredByPersistedRunReceipt);
+});
+
 Deno.test(
   "model.capture-part-definitions@1 is a trusted low-risk define operation that binds one architecture artifact",
   () => {
@@ -386,6 +406,34 @@ Deno.test("assembly-integrity observation is trusted and binds exactly one canon
       EngineeringOperationRegistryError,
     );
     assertEquals(error.code, "invalid_bindings");
+  }
+});
+
+Deno.test("runtime preparation prerequisites are invisible to direct planning and queueing", () => {
+  for (const stage of ["planning", "queue"] as const) {
+    const error = assertThrows(
+      () =>
+        validateRegisteredEngineeringOperationInput(
+          stage === "planning"
+            ? {
+              operation: {
+                ...DESIGN_PREPARE_GEOMETRY_MODULE_OPERATION,
+                bindings: [],
+              },
+              stage,
+            }
+            : {
+              operation: {
+                ...DESIGN_PREPARE_GEOMETRY_MODULE_OPERATION,
+                bindings: [],
+              },
+              stage,
+              basisKind: "thread-snapshot",
+            },
+        ),
+      EngineeringOperationRegistryError,
+    );
+    assertEquals(error.code, "prerequisite_only");
   }
 });
 
@@ -710,6 +758,8 @@ Deno.test("technical compilation admission is one consequential trusted Thread o
   assertEquals(operation.riskClass, "consequential");
   assertEquals(operation.execution, "trusted");
   assertEquals(operation.decisionEvidenceScope, "thread-entity-bindings");
+  assertEquals(operation.requiresAdditiveChange, true);
+  assertEquals(operation.threadEntityBindingsMustMatchBasis, true);
   assertEquals(operation.bindings, [{
     name: "sysmlModel",
     allowedSourceKinds: ["thread-entity"],

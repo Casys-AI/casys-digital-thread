@@ -1,7 +1,3 @@
-import {
-  applyEssentialFilter,
-  isSupportingNode,
-} from "./essential-graph-filter.ts";
 import { graphEdgeSelectionMatches } from "./graph-selection-model.ts";
 import {
   compareThreadGraphNodes,
@@ -31,81 +27,22 @@ export type ThreadGraphSelection =
     occurrence?: { readonly key: string; readonly edge: ThreadGraphEdge };
   };
 
-export interface EssentialThreadGraphProjection {
+export interface CompleteThreadGraphProjection {
   nodes: ThreadGraphNode[];
   edges: ThreadGraphEdge[];
-  supportingCount: number;
-  hiddenNodeCount: number;
 }
 
 /**
- * Keeps the essential reading compact without replacing the canonical graph.
- * Supporting nodes which connect two essential entities stay visible so the
- * condensed view never invents a direct edge or breaks an existing path.
+ * Preserve the complete recorded graph for layout and interaction.
+ *
+ * Focus and selection affect emphasis only; they never classify away a
+ * recorded node or relation.
  */
-export function projectEssentialThreadGraph(
+export function projectCompleteThreadGraph(
   nodes: ThreadGraphNode[],
   edges: ThreadGraphEdge[],
-  showSupporting: boolean,
-  focus: ThreadGraphRef | undefined,
-  selection: ThreadGraphSelection | undefined,
-): EssentialThreadGraphProjection {
-  const supportingCount = nodes.filter(isSupportingNode).length;
-  if (showSupporting || supportingCount === 0) {
-    return {
-      nodes,
-      edges,
-      supportingCount,
-      hiddenNodeCount: 0,
-    };
-  }
-
-  const requiredRefKeys = new Set<string>();
-  if (focus) requiredRefKeys.add(threadGraphRefKey(focus));
-  if (selection?.kind === "node") {
-    requiredRefKeys.add(threadGraphRefKey(selection.ref));
-  }
-  if (selection?.kind === "edge") {
-    const selectedEdge = selection.occurrence?.edge ??
-      edges.find((edge) => edge.id === selection.id);
-    if (selectedEdge) {
-      requiredRefKeys.add(threadGraphRefKey(selectedEdge.from));
-      requiredRefKeys.add(threadGraphRefKey(selectedEdge.to));
-    }
-  }
-
-  if (requiredRefKeys.size === 0) {
-    const projection = applyEssentialFilter(nodes, edges);
-    return {
-      nodes: [...projection.nodes],
-      edges: [...projection.edges],
-      supportingCount: projection.supportingCount,
-      hiddenNodeCount: projection.hiddenCount,
-    };
-  }
-
-  const requiredSupportingByRef = new Map(
-    nodes.filter((node) =>
-      isSupportingNode(node) && requiredRefKeys.has(threadGraphRefKey(node.ref))
-    ).map((node) => [threadGraphRefKey(node.ref), node]),
-  );
-  const projection = applyEssentialFilter(
-    nodes.map((node) =>
-      requiredSupportingByRef.has(threadGraphRefKey(node.ref))
-        ? { ...node, entityKind: "observation" as const }
-        : node
-    ),
-    edges,
-  );
-  const projectedNodes = projection.nodes.map((node) =>
-    requiredSupportingByRef.get(threadGraphRefKey(node.ref)) ?? node
-  );
-  return {
-    nodes: projectedNodes,
-    edges: [...projection.edges],
-    supportingCount,
-    hiddenNodeCount: nodes.length - projectedNodes.length,
-  };
+): CompleteThreadGraphProjection {
+  return { nodes, edges };
 }
 
 export function threadGraphSelectionMatchesEdge(

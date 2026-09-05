@@ -61,9 +61,10 @@ operations on a sealed method sheet; they are not this worker. Safety stays
 | Wall time | 30000 ms code-owned timeout | Enforced | None |
 | Network / caller args / `.include` | Denied | Enforced | None |
 
-These ceilings are the worker contract. Product IsolatedCodeRunner composition is
-`--local-execution` plus the digest-pinned ngspice image. Without that flag the
-registered operation stays `unavailable`. That composition state is not a
+These ceilings are the worker contract. Product IsolatedCodeRunner composition is the
+approved capability-runtime supervisor plus the digest-pinned ngspice image. Until that
+supervisor activates the unit, the registered operation stays `unavailable`. That
+composition state is not a
 `spice-isolated-evidence/1.0` limitation.
 
 ## What does not exist

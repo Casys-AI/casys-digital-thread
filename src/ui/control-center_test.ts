@@ -1,6 +1,6 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 
-Deno.test("Decision Center hands review previews to the chronological Activity feed", async () => {
+Deno.test("Decision Center hands generic review records to the chronological Activity feed", async () => {
   const source = await Deno.readTextFile(
     new URL("./src/project/control-center.tsx", import.meta.url),
   );
@@ -14,7 +14,22 @@ Deno.test("Decision Center hands review previews to the chronological Activity f
   assertStringIncludes(source, "activityReviewStatusLabel(status)");
   assertStringIncludes(source, "data-review-status={status}");
   assertStringIncludes(source, "data-canonical-review-status={status}");
-  assertStringIncludes(source, "ReviewBusinessPreview");
+  assertStringIncludes(source, "ReviewRecordSummary");
+  assertStringIncludes(source, "export function ProjectReviewAppHandoff");
+  assertStringIncludes(source, "export function ProjectReviewAppHandoffs");
+  assertStringIncludes(source, "resolveProjectReviewApp");
+  assertStringIncludes(
+    source,
+    "projection.basis.projectId !== project.project.id",
+  );
+  assertStringIncludes(source, 'session.anchor.kind === "project-review"');
+  assertStringIncludes(
+    source,
+    "session.anchor.fingerprint === anchor.fingerprint",
+  );
+  assertStringIncludes(source, "data-app-resolution={resolution.status}");
+  assertStringIncludes(source, "Multiple exact bindings match this review");
+  assertStringIncludes(source, "<McpAppFrame");
   assertEquals(source.includes("activity-review-events"), false);
   assertEquals(source.includes("CompactDecisionRecord"), false);
   assertEquals(source.includes("RESULT PUBLISHED"), false);
@@ -23,47 +38,17 @@ Deno.test("Decision Center hands review previews to the chronological Activity f
   assertStringIncludes(source, "Approved · result pending");
   assertEquals(source.includes("AGENT PREPARING"), false);
   assertEquals(source.includes("<dd>{nextReview ? 1 : 0}</dd>"), false);
-  assertStringIncludes(source, "PartDefinition binding diagram");
-  assertStringIncludes(source, "Requirements proposal · target");
-  assertStringIncludes(source, "GltfAssetCanvas");
-  assertStringIncludes(source, "isDuplicateSealedGlbCopy");
-  assertStringIncludes(source, "const targetAssets = view.targetPart");
-  assertStringIncludes(source, "{targetAssets.map((asset) => (");
-  assertStringIncludes(source, "Sealed result · exact recorded bytes");
-  assertStringIncludes(source, "Validated proposal · result pending");
-  assertStringIncludes(source, "Draft · geometry proposal");
-  const geometryProse = source.replace(/\s+/g, " ");
-  assertStringIncludes(
-    geometryProse,
-    "Canonical PartDefinition STEP ${elementId}; no assembly/occurrence/placement claim.",
-  );
-  assertStringIncludes(
-    geometryProse,
-    "Reviewed target PartDefinition STEP ${elementId}; canonical seal pending; no assembly/occurrence/placement claim.",
-  );
-  assertStringIncludes(
-    geometryProse,
-    "Proposed target PartDefinition STEP ${elementId}; canonical seal pending; no assembly/occurrence/placement claim.",
-  );
-  const targetStatusStart = source.indexOf("function targetPartSealStatus(");
-  const targetStatusEnd = source.indexOf(
-    "function GeometryDecisionDetails(",
-    targetStatusStart,
-  );
-  const targetStatus = source.slice(targetStatusStart, targetStatusEnd);
-  assertEquals(targetStatusStart >= 0, true);
-  assertEquals(targetStatusEnd > targetStatusStart, true);
-  // Only a sealed Thread projection may be called canonical.  Reviewed and
-  // proposed target drafts remain explicitly pending, even though they have
-  // a target PartDefinition and reviewable STEP bytes.
-  assertEquals(
-    targetStatus.match(/Canonical PartDefinition STEP/g)?.length,
-    1,
-  );
-  assertEquals(targetStatus.match(/canonical seal pending/g)?.length, 2);
-  assertStringIncludes(targetStatus, 'if (mode === "sealed")');
-  assertStringIncludes(targetStatus, 'if (mode === "approved")');
-  assertStringIncludes(targetStatus, 'if (mode === "draft")');
+  assertStringIncludes(source, 'aria-label="Generic review record"');
+  assertStringIncludes(source, "owned by the exact whole MCP App");
+  assertStringIncludes(source, "Open it from the App handoff in");
+  assertEquals(source.includes("record.preview"), false);
+  assertEquals(source.includes("data-superseded"), false);
+  assertEquals(source.includes("PartDefinition binding diagram"), false);
+  assertEquals(source.includes("Requirements proposal · target"), false);
+  assertEquals(source.includes("GeometryDraftPreview"), false);
+  assertEquals(source.includes("GltfAssetCanvas"), false);
+  assertEquals(source.includes("STLLoader"), false);
+  assertEquals(source.includes('from "three"'), false);
   assertEquals(source.includes("0x1a1c1e"), false);
   assertEquals(source.includes("Comment for the agent"), false);
   assertStringIncludes(source, "paired conversation");
@@ -86,6 +71,8 @@ Deno.test("Decision Center hands review previews to the chronological Activity f
   assertStringIncludes(feed, "data-review-status={reviewStatus}");
   assertStringIncludes(feed, "activityCurrency(node, familyGraph)");
   assertStringIncludes(feed, "data-currency={currency}");
+  assertStringIncludes(feed, "project={project}");
+  assertStringIncludes(feed, "viewerSessions={viewerSessions}");
   assertEquals(feed.includes("{node.freshness}"), false);
   assertEquals(feed.includes("effectiveActivityReviewStatus"), false);
   assertEquals(feed.includes("activityReviewDisplayStatusLabel"), false);
@@ -97,6 +84,19 @@ Deno.test("Decision Center hands review previews to the chronological Activity f
     workbench,
     "familyGraph={snapshot.evidenceFamilyGraph}",
   );
+  assertStringIncludes(workbench, "viewerSessions={viewerSessions}");
+
+  const planning = await Deno.readTextFile(
+    new URL("./src/project/planning-workbench.tsx", import.meta.url),
+  );
+  const documentary = await Deno.readTextFile(
+    new URL(
+      "./src/project/documentary-baseline-workbench.tsx",
+      import.meta.url,
+    ),
+  );
+  assertStringIncludes(planning, "<ProjectReviewAppHandoffs");
+  assertStringIncludes(documentary, "<ProjectReviewAppHandoffs");
 
   const styles = await Deno.readTextFile(
     new URL("./src/styles/11-review-notifications.css", import.meta.url),
@@ -130,60 +130,21 @@ Deno.test("Decision Center hands review previews to the chronological Activity f
   }
 });
 
-Deno.test("Activity reuses one exact GLB viewer across selectable PartDefinitions", async () => {
-  const source = await Deno.readTextFile(
-    new URL("./src/project/control-center.tsx", import.meta.url),
-  );
-  const start = source.indexOf("function PartDefinitionGlbReview(");
-  const end = source.indexOf("function partDefinitionPreviewCopy(", start);
-  const viewer = source.slice(start, end);
-
-  assertEquals(start >= 0, true);
-  assertEquals(end > start, true);
-  assertStringIncludes(
-    source,
-    'asset.format === "gltf" && asset.path !== undefined &&',
-  );
-  assertStringIncludes(source, "asset.path.length > 0");
-  assertStringIncludes(
-    source,
-    "partDefinitionIds.has(asset.partDefinitionElementId)",
-  );
-  assertStringIncludes(viewer, 'aria-label="PartDefinition GLB previews"');
-  assertStringIncludes(viewer, "aria-pressed={isSelected}");
-  assertStringIncludes(viewer, "url={selected.asset.path}");
-  assertEquals(viewer.match(/<GltfAssetCanvas/g)?.length, 1);
-  // Les phrases d'autorité vivent dans du JSX que `deno fmt` re-enroule : on
-  // normalise les blancs avant de les chercher, sinon un simple retour à la
-  // ligne casse la garde sans que la phrase ait changé.
-  const prose = source.replace(/\s+/g, " ");
-  assertStringIncludes(prose, "STEP remains the");
-  assertStringIncludes(prose, "authoritative per-part CAD");
-  assertStringIncludes(prose, "no per-part browser viewer is");
-  assertStringIncludes(source, "Sealed part presentation · exact recorded GLB");
-  assertStringIncludes(
-    source,
-    "Validated part proposal · result pending · GLB",
-  );
-  assertStringIncludes(
-    source,
-    "Validated historical part proposal · superseded · GLB",
-  );
-  assertStringIncludes(source, "Draft part proposal · GLB · not canonical");
-  assertEquals(source.includes("Desk Lamp"), false);
-});
-
-Deno.test("Project keeps its brief and path without duplicate engineering summaries", async () => {
+Deno.test("Project keeps its path on one whiteboard without duplicate engineering summaries", async () => {
   const overview = await Deno.readTextFile(
     new URL("./src/project/overview.tsx", import.meta.url),
   );
-  const brief = await Deno.readTextFile(
-    new URL("./src/project/brief-record.tsx", import.meta.url),
-  );
-  assertStringIncludes(brief, "Complete engineering brief");
-  assertStringIncludes(brief, "Approved engineering project brief");
-  assertStringIncludes(overview, ">Project path</h3>");
+  assertStringIncludes(overview, "Project path and digital thread");
+  assertStringIncludes(overview, 'data-surface="digital-thread-whiteboard"');
+  assertStringIncludes(overview, "<OverviewThreadHero");
+  assertStringIncludes(overview, "immersive");
+  assertEquals(overview.match(/<OverviewThreadHero/g)?.length, 1);
+  assertStringIncludes(overview, 'className="project-thread-top-hud"');
+  assertStringIncludes(overview, 'className="project-thread-bottom-hud"');
+  assertStringIncludes(overview, 'className="project-thread-now-hud"');
   assertStringIncludes(overview, 'title="Agent now"');
+  assertEquals(overview.includes("<ThreadAssetOpenLinks"), false);
+  assertEquals(overview.includes("<GltfAssetCanvas"), false);
   assertEquals(overview.includes("RUNNING"), false);
   assertEquals(overview.includes("168.4 g"), false);
   assertEquals(overview.includes("REQ-M-001"), false);
@@ -210,12 +171,15 @@ Deno.test("Workbench keeps navigation and recorded review projection without a m
   assertStringIncludes(source, "buildActivityReviewRecords");
   assertStringIncludes(source, "reviewRecords={activityReviewRecords}");
   assertStringIncludes(source, "onOpenReviewEvidence={openPublishedEvidence}");
-  assertStringIncludes(source, 'target.startsWith("review/")');
-  assertStringIncludes(source, "const changeProductFacet");
-  assertStringIncludes(source, "productFacetHash");
-  assertStringIncludes(source, "<ProductRequirementsMatrix");
-  assertStringIncludes(source, "<ProductSourcingLane");
-  assertStringIncludes(source, "activeProductFacet={activeProductFacet}");
+  assertEquals(source.includes("const changeProductFacet"), false);
+  assertEquals(source.includes("productFacetHash"), false);
+  assertStringIncludes(source, "<McpAppProductHandoff");
+  assertStringIncludes(source, "projection={viewerSessions}");
+  assertStringIncludes(source, "Open Project whiteboard");
+  assertEquals(source.includes("<ProductFacetNavigation"), false);
+  assertEquals(source.includes("<ProductRequirementsMatrix"), false);
+  assertEquals(source.includes("<ProductSourcingLane"), false);
+  assertEquals(source.includes("<ComponentWorkspace"), false);
   assertEquals(source.includes("<ReviewNotifications"), false);
   assertEquals(source.includes('surface="activity"'), false);
   assertEquals(source.includes("onOpenOwner"), false);
@@ -269,44 +233,19 @@ Deno.test("native Workbench has no review-intent client or POST outbox", async (
   assertEquals(source.includes("reviewIntentClient"), false);
   assertStringIncludes(source, "HttpThreadWorkbenchClient");
   assertStringIncludes(source, "HttpCockpitFleetClient");
+  assertEquals(source.includes("HttpProductAuthoringSourceClient"), false);
 });
 
-Deno.test("Product structure is geometry-first with a compact SysML rail", async () => {
+Deno.test("Product has no native domain renderer and hands exact Apps to the whiteboard", async () => {
   const source = await Deno.readTextFile(
-    new URL("./src/thread/component-workspace.tsx", import.meta.url),
+    new URL("./src/thread/workbench.tsx", import.meta.url),
   );
-  assertStringIncludes(source, "Product · sealed geometry");
-  assertStringIncludes(source, "StructurePartChips");
-  assertStringIncludes(source, "SysmlRail");
-  assertStringIncludes(source, "disabled={!available}");
-  assertStringIncludes(source, "ProductSourcingCoverageLine");
-  assertStringIncludes(source, "sealedAssemblyGlbAsset");
-  assertStringIncludes(source, "GltfAssetCanvas");
-  assertStringIncludes(source, "Sealed assembly preview · GLB");
-  assertStringIncludes(source, "productStructureHeadline");
-  assertStringIncludes(source, "AttributeUsage");
-  assertEquals(source.includes("function ErpBom"), false);
-  assertEquals(source.includes('role="tablist"'), false);
-  assertEquals(source.includes("168.4 g"), false);
-  assertEquals(source.includes("COM "), false);
-  assertEquals(source.includes("Ixx "), false);
-  assertEquals(source.includes("RUNNING"), false);
-  assertEquals(source.includes("partOccurrenceCount).padStart"), false);
-  assertEquals(source.includes("Review published geometry"), false);
-  assertEquals(source.includes("per-part GLB"), false);
-  assertEquals(source.includes("Catalog-bound meshes"), false);
-  assertEquals(
-    source.includes("if (inspect) onBindingSelect(inspect)"),
-    false,
-  );
-});
-
-Deno.test("the shared GLB viewer stays on a light surface", async () => {
-  const source = await Deno.readTextFile(
-    new URL("./src/thread/gltf-asset-canvas.tsx", import.meta.url),
-  );
-  assertStringIncludes(source, "GLTFLoader");
-  assertStringIncludes(source, "Fit / reset");
-  assertEquals(source.includes("0x1a1c1e"), false);
-  assertEquals(source.includes("0x0b0f10"), false);
+  assertStringIncludes(source, "function McpAppProductHandoff");
+  assertStringIncludes(source, "Digital Thread keeps no native CAD, SysML");
+  assertStringIncludes(source, "no exact whole-App binding is registered");
+  assertStringIncludes(source, "artifact kinds, providers or graph proximity");
+  assertEquals(source.includes("GltfAssetCanvas"), false);
+  assertEquals(source.includes("ComponentWorkspace"), false);
+  assertEquals(source.includes("STLLoader"), false);
+  assertEquals(source.includes('from "three"'), false);
 });

@@ -131,6 +131,16 @@ Deno.test("Modelica kit and admitted stay distinct; L4 evaluation requires SysON
       snapshots,
       executionSnapshots: snapshots,
       planSnapshots: snapshots,
+      plans: {
+        read: () => Promise.reject(new Error("unused Modelica ROP reader")),
+      },
+      capabilityRuntime: {
+        requireExecution: () => Promise.resolve(undefined),
+      },
+      capabilityRuntimeSession: {
+        begin: () => Promise.reject(new Error("unused Modelica JIT session")),
+        releaseRecorded: () => Promise.resolve(),
+      },
       lease: new FileEngineeringProjectRunLease(`${root}/modelica-leases`),
       recordedAnalysisDirectory: `${root}/analysis`,
       admissions: compilation.technicalCompilationAdmissions,

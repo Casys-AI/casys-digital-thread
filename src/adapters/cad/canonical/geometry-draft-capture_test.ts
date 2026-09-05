@@ -3,12 +3,12 @@
  *
  * Provider mock is pinned on the REAL build123d_export structuredContent
  * contract: {schemaVersion:"1.0", kind:"export", metrics:{},
- * files:[{format, path, bytes, sha256}]} — the same shape verified by
+ * files:[{format, artifact:{schemaVersion, uri, format, mimeType, bytes, sha256}}]} — the same shape verified by
  * `normalizeAssemblyExport`.  If the contract changes, both the production
  * normalizer and these tests will need updating simultaneously.
  *
- * Docker materialisation is replaced by a no-op in all tests (inject via
- * `options.materializeAsset`).  This avoids requiring a live Docker daemon.
+ * Resource reads and asset persistence are injected as strict server-owned
+ * ports, so these tests never require a live provider.
  */
 
 import { assertEquals, assertRejects } from "@std/assert";
@@ -20,6 +20,7 @@ import {
   GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA,
   GEOMETRY_DRAFT_CAPTURE_SCHEMA,
   geometryBundleManifestFromDraft,
+  type GeometryDraftCaptureOptions,
   requireGeometryBundleCanonicalSources,
 } from "./geometry-draft-capture.ts";
 import {
@@ -34,6 +35,7 @@ import type {
   McpToolResult,
 } from "../../../application/ports/out/mcp-tool-client.ts";
 import { GeometryScriptValidationError } from "../../../domain/cad/source/geometry-script-validation.ts";
+import type { ExpectedProviderResource } from "../../../domain/compile/source/provider-resource-reader.ts";
 import {
   GEOMETRY_MANIFEST_SCHEMA,
   type GeometryManifest,
@@ -43,6 +45,7 @@ import {
   GEOMETRY_BUNDLE_PLACEMENT_CONVENTION,
   type GeometryBundleManifest,
 } from "../../../domain/cad/canonical/geometry-bundle.ts";
+import { BUILD123D_EXPORT_TIMEOUT_MS } from "./build123d-export-contract.ts";
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -71,10 +74,7 @@ function assemblyGltfResponse(digest = HEX64): McpToolResult {
       files: [
         {
           format: "gltf",
-          path: `/exports/geometry-preview-assembly.glb`,
-          bytes: 1024,
-          sha256: digest,
-          viewer: "model-viewer",
+          artifact: artifact("gltf", digest, 1024),
         },
       ],
     },
@@ -82,8 +82,65 @@ function assemblyGltfResponse(digest = HEX64): McpToolResult {
   };
 }
 
-/** No-op materializer: does not touch Docker or the filesystem. */
-const noopMaterialize = (_sha256: string, _containerPath: string) => Promise.resolve();
+function artifact(
+  format: "step" | "gltf" | "stl",
+  sha256: string,
+  bytes: number,
+) {
+  const extension = format === "gltf" ? "glb" : format;
+  const mimeType = format === "step"
+    ? "model/step"
+    : format === "stl"
+    ? "model/stl"
+    : "model/gltf-binary";
+  return {
+    schemaVersion: "build123d-export-artifact/1.0",
+    uri: `casys://build123d/artifacts/${sha256}.${extension}`,
+    format,
+    mimeType,
+    bytes,
+    sha256,
+  } as const;
+}
+
+/** Strict port double: production HTTP/resource validation is covered separately. */
+function fixtureResourceDependencies() {
+  const issued = new WeakMap<Uint8Array, ExpectedProviderResource>();
+  return {
+    resourceReader: {
+      read(expected: ExpectedProviderResource) {
+        const bytes = new Uint8Array(expected.byteCount);
+        issued.set(bytes, expected);
+        return Promise.resolve({
+          bytes: { byteLength: bytes.byteLength, copy: () => bytes },
+          attestation: {
+            schemaVersion: "provider-resource-read-attestation/1.0" as const,
+            verification: "exact-content-match" as const,
+            uri: expected.uri,
+            mediaType: expected.mediaType,
+            byteCount: expected.byteCount,
+            sha256: expected.sha256,
+          },
+        });
+      },
+    },
+    draftAssets: {
+      persist(bytes: Uint8Array) {
+        const expected = issued.get(bytes);
+        if (!expected) {
+          return Promise.reject(
+            new Error("test asset bytes were not read from a resource"),
+          );
+        }
+        return Promise.resolve({
+          fingerprint: { algorithm: "sha256" as const, digest: expected.sha256 },
+          byteCount: expected.byteCount,
+        });
+      },
+      read: () => Promise.resolve(undefined),
+    },
+  } as const;
+}
 
 // ── Helper: build a store backed by a temp directory ─────────────────────────
 
@@ -126,7 +183,10 @@ Deno.test("captureGeometryDraft saves a verifiable JSON capture for a valid scri
           (call.arguments as Record<string, unknown>).name,
           "geometry-preview-assembly",
         );
-        assertEquals((call.arguments as Record<string, unknown>).timeout_ms, 120000);
+        assertEquals(
+          (call.arguments as Record<string, unknown>).timeout_ms,
+          BUILD123D_EXPORT_TIMEOUT_MS,
+        );
         return Promise.resolve(assemblyGltfResponse());
       },
       callToolTextResult: () => Promise.reject(new Error("unexpected")),
@@ -137,9 +197,8 @@ Deno.test("captureGeometryDraft saves a verifiable JSON capture for a valid scri
       { script: VALID_SCRIPT, manifest: VALID_MANIFEST },
       store,
       {
-        build123dService: "mcp-build123d-sandbox",
         sourceAnalysis: sourceAnalysisFor(tmpDir),
-        materializeAsset: noopMaterialize,
+        ...fixtureResourceDependencies(),
         previewRunId: "preview:test-001",
       },
     );
@@ -194,9 +253,8 @@ Deno.test("captureGeometryDraft uses server-fixed name 'geometry-preview-assembl
       { script: VALID_SCRIPT, manifest: VALID_MANIFEST },
       store,
       {
-        build123dService: "mcp-build123d-sandbox",
         sourceAnalysis: sourceAnalysisFor(tmpDir),
-        materializeAsset: noopMaterialize,
+        ...fixtureResourceDependencies(),
       },
     );
 
@@ -206,14 +264,15 @@ Deno.test("captureGeometryDraft uses server-fixed name 'geometry-preview-assembl
   }
 });
 
-Deno.test("captureGeometryDraft refuses a provider path whose extension contradicts the requested export", async () => {
+Deno.test("captureGeometryDraft refuses a provider resource URI whose extension contradicts the requested export", async () => {
   const [store, tmpDir] = await makeTempDraftStore();
   try {
     const client = {
       callTool: (): Promise<McpToolResult> => {
         const response = assemblyGltfResponse();
         const file = response.structuredContent.files as Array<Record<string, unknown>>;
-        file[0]!.path = "/exports/geometry-preview-assembly.gltf";
+        (file[0]!.artifact as Record<string, unknown>).uri =
+          `casys://build123d/artifacts/${HEX64}.gltf`;
         return Promise.resolve(response);
       },
       callToolTextResult: () => Promise.reject(new Error("unexpected")),
@@ -226,18 +285,89 @@ Deno.test("captureGeometryDraft refuses a provider path whose extension contradi
           { script: VALID_SCRIPT, manifest: VALID_MANIFEST },
           store,
           {
-            build123dService: "mcp-build123d-sandbox",
             sourceAnalysis: sourceAnalysisFor(tmpDir),
-            materializeAsset: noopMaterialize,
+            ...fixtureResourceDependencies(),
           },
         ),
       Error,
-      'fixed basename "geometry-preview-assembly.glb"',
+      "exact digest-bound build123d URI",
     );
   } finally {
     await Deno.remove(tmpDir, { recursive: true });
   }
 });
+
+for (
+  const [name, mutate, expectedMessage] of [
+    [
+      "mismatched enclosing format",
+      (file: Record<string, unknown>) => file.format = "step",
+      'expected format "gltf"',
+    ],
+    [
+      "mismatched artifact format",
+      (file: Record<string, unknown>) =>
+        (file.artifact as Record<string, unknown>).format = "step",
+      'artifact format must equal the enclosing format "gltf"',
+    ],
+    [
+      "wrong artifact MIME type",
+      (file: Record<string, unknown>) =>
+        (file.artifact as Record<string, unknown>).mimeType = "model/stl",
+      "mimeType must be model/gltf-binary",
+    ],
+    [
+      "non-positive artifact byte count",
+      (file: Record<string, unknown>) =>
+        (file.artifact as Record<string, unknown>).bytes = 0,
+      "expected a positive integer",
+    ],
+  ] as const
+) {
+  Deno.test(
+    `captureGeometryDraft rejects ${name} before a resource read`,
+    async () => {
+      const [store, tmpDir] = await makeTempDraftStore();
+      try {
+        let resourceReads = 0;
+        await assertRejects(
+          () =>
+            captureGeometryDraft(
+              {
+                callTool: () => {
+                  const response = assemblyGltfResponse();
+                  mutate(
+                    (response.structuredContent.files as Array<
+                      Record<string, unknown>
+                    >)[0]!,
+                  );
+                  return Promise.resolve(response);
+                },
+                callToolTextResult: () => Promise.reject(new Error("unexpected")),
+              },
+              { script: VALID_SCRIPT, manifest: VALID_MANIFEST },
+              store,
+              {
+                sourceAnalysis: sourceAnalysisFor(tmpDir),
+                resourceReader: {
+                  read: () => {
+                    resourceReads += 1;
+                    return Promise.reject(new Error("unexpected resource read"));
+                  },
+                },
+                draftAssets: fixtureResourceDependencies().draftAssets,
+              },
+            ),
+          Error,
+          expectedMessage,
+        );
+        assertEquals(resourceReads, 0);
+      } finally {
+        await Deno.remove(tmpDir, { recursive: true });
+      }
+    },
+  );
+}
 
 Deno.test("captureGeometryDraft rejects duplicate formats before the provider call", async () => {
   const [store, tmpDir] = await makeTempDraftStore();
@@ -260,9 +390,8 @@ Deno.test("captureGeometryDraft rejects duplicate formats before the provider ca
           },
           store,
           {
-            build123dService: "mcp-build123d-sandbox",
             sourceAnalysis: sourceAnalysisFor(tmpDir),
-            materializeAsset: noopMaterialize,
+            ...fixtureResourceDependencies(),
           },
         ),
       Error,
@@ -288,15 +417,11 @@ Deno.test("captureGeometryDraft rejects colliding provider digests before materi
             files: [
               {
                 format: "step",
-                path: "/exports/geometry-preview-assembly.step",
-                bytes: 10,
-                sha256: HEX64,
+                artifact: artifact("step", HEX64, 10),
               },
               {
                 format: "stl",
-                path: "/exports/geometry-preview-assembly.stl",
-                bytes: 10,
-                sha256: HEX64,
+                artifact: artifact("stl", HEX64, 10),
               },
             ],
           },
@@ -314,12 +439,14 @@ Deno.test("captureGeometryDraft rejects colliding provider digests before materi
           },
           store,
           {
-            build123dService: "mcp-build123d-sandbox",
             sourceAnalysis: sourceAnalysisFor(tmpDir),
-            materializeAsset: () => {
-              materialized = true;
-              return Promise.resolve();
+            resourceReader: {
+              read: () => {
+                materialized = true;
+                return Promise.reject(new Error("unexpected resource read"));
+              },
             },
+            draftAssets: fixtureResourceDependencies().draftAssets,
           },
         ),
       Error,
@@ -331,7 +458,7 @@ Deno.test("captureGeometryDraft rejects colliding provider digests before materi
   }
 });
 
-Deno.test("captureGeometryDraft refuses the trusted build123d volume before provider dispatch", async () => {
+Deno.test("captureGeometryDraft requires server-owned resource ports before resource read", async () => {
   const [store, tmpDir] = await makeTempDraftStore();
   try {
     let providerCalled = false;
@@ -349,15 +476,13 @@ Deno.test("captureGeometryDraft refuses the trusted build123d volume before prov
           { script: VALID_SCRIPT, manifest: VALID_MANIFEST },
           store,
           {
-            build123dService: "mcp-build123d" as unknown as "mcp-build123d-sandbox",
             sourceAnalysis: sourceAnalysisFor(tmpDir),
-            materializeAsset: noopMaterialize,
-          },
+          } as unknown as GeometryDraftCaptureOptions,
         ),
       TypeError,
-      "must be materialized from mcp-build123d-sandbox",
+      "server-owned resource reader and draft asset store",
     );
-    assertEquals(providerCalled, false);
+    assertEquals(providerCalled, true);
   } finally {
     await Deno.remove(tmpDir, { recursive: true });
   }
@@ -402,9 +527,8 @@ Deno.test(
         { script: VALID_SCRIPT, manifest },
         store,
         {
-          build123dService: "mcp-build123d-sandbox",
           sourceAnalysis: sourceAnalysisFor(tmpDir),
-          materializeAsset: noopMaterialize,
+          ...fixtureResourceDependencies(),
         },
       );
 
@@ -442,9 +566,8 @@ Deno.test("captureGeometryDraft rejects a script with a forbidden identifier bef
           },
           store,
           {
-            build123dService: "mcp-build123d-sandbox",
             sourceAnalysis: sourceAnalysisFor(tmpDir),
-            materializeAsset: noopMaterialize,
+            ...fixtureResourceDependencies(),
           },
         ),
       GeometryScriptValidationError,
@@ -465,7 +588,10 @@ Deno.test("captureGeometryDraft rejects a provider response with a missing requi
             schemaVersion: "1.0",
             kind: "export",
             metrics: {},
-            files: [{ format: "gltf", path: "/exports/x.glb", bytes: 100 }], // missing sha256
+            files: [{
+              format: "gltf",
+              artifact: { ...artifact("gltf", HEX64, 100), sha256: undefined },
+            }],
           },
           text: "",
         }),
@@ -479,9 +605,8 @@ Deno.test("captureGeometryDraft rejects a provider response with a missing requi
           { script: VALID_SCRIPT, manifest: VALID_MANIFEST },
           store,
           {
-            build123dService: "mcp-build123d-sandbox",
             sourceAnalysis: sourceAnalysisFor(tmpDir),
-            materializeAsset: noopMaterialize,
+            ...fixtureResourceDependencies(),
           },
         ),
       Error,
@@ -503,9 +628,7 @@ Deno.test("captureGeometryDraft rejects a provider response with an unexpected s
             metrics: {},
             files: [{
               format: "gltf",
-              path: "/exports/x.glb",
-              bytes: 100,
-              sha256: HEX64,
+              artifact: artifact("gltf", HEX64, 100),
             }],
           },
           text: "",
@@ -520,9 +643,8 @@ Deno.test("captureGeometryDraft rejects a provider response with an unexpected s
           { script: VALID_SCRIPT, manifest: VALID_MANIFEST },
           store,
           {
-            build123dService: "mcp-build123d-sandbox",
             sourceAnalysis: sourceAnalysisFor(tmpDir),
-            materializeAsset: noopMaterialize,
+            ...fixtureResourceDependencies(),
           },
         ),
       Error,
@@ -567,7 +689,7 @@ function v2Manifest(): GeometryBundleManifest {
 }
 
 function exportResponse(
-  name: string,
+  _name: string,
   formats: readonly ("step" | "gltf" | "stl")[],
   digest = HEX64,
 ): McpToolResult {
@@ -578,10 +700,7 @@ function exportResponse(
       metrics: {},
       files: formats.map((format) => ({
         format,
-        path: `/exports/${name}.${format === "gltf" ? "glb" : format}`,
-        bytes: 123,
-        sha256: digest,
-        ...(format === "gltf" ? { viewer: "model-viewer" } : {}),
+        artifact: artifact(format, digest, 123),
       })),
     },
     text: "",
@@ -619,9 +738,8 @@ Deno.test("captureGeometryBundleDraft exports one exact assembly and one exact s
       },
       store,
       {
-        build123dService: "mcp-build123d-sandbox",
         sourceAnalysis: sourceAnalysisFor(tmpDir),
-        materializeAsset: noopMaterialize,
+        ...fixtureResourceDependencies(),
         previewRunId: "preview:bundle-v2",
       },
       () => "2026-08-09T01:00:00.000Z",
@@ -636,6 +754,10 @@ Deno.test("captureGeometryBundleDraft exports one exact assembly and one exact s
     assertEquals(
       (calls[1]!.arguments as Record<string, unknown>).script,
       definitionScript,
+    );
+    assertEquals(
+      calls.map((call) => (call.arguments as Record<string, unknown>).timeout_ms),
+      [BUILD123D_EXPORT_TIMEOUT_MS, BUILD123D_EXPORT_TIMEOUT_MS],
     );
     assertEquals(capture.schemaVersion, GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA);
     assertEquals(capture.sourceAnalyses.assembly.selector, { kind: "assembly" });
@@ -698,9 +820,8 @@ Deno.test("captureGeometryBundleDraft rejects missing independent source before 
           },
           store,
           {
-            build123dService: "mcp-build123d-sandbox",
             sourceAnalysis: sourceAnalysisFor(tmpDir),
-            materializeAsset: noopMaterialize,
+            ...fixtureResourceDependencies(),
           },
         ),
       TypeError,
@@ -757,9 +878,8 @@ Deno.test("captureGeometryBundleDraft accepts identical content for distinct sem
       },
       store,
       {
-        build123dService: "mcp-build123d-sandbox",
         sourceAnalysis: sourceAnalysisFor(tmpDir),
-        materializeAsset: noopMaterialize,
+        ...fixtureResourceDependencies(),
       },
     );
     assertEquals(capture.partDefinitions.length, 2);
@@ -772,7 +892,7 @@ Deno.test("captureGeometryBundleDraft accepts identical content for distinct sem
   }
 });
 
-Deno.test("captureGeometryBundleDraft rejects a provider definition path that breaks its ordinal identity", async () => {
+Deno.test("captureGeometryBundleDraft rejects a provider definition resource URI that is not digest-bound", async () => {
   const [store, tmpDir] = await makeTempDraftStore();
   try {
     await assertRejects(
@@ -787,7 +907,10 @@ Deno.test("captureGeometryBundleDraft rejects a provider definition path that br
               );
               if (String(args.name).endsWith("-definition-000")) {
                 (response.structuredContent.files as Array<Record<string, unknown>>)[0]!
-                  .path = "/exports/geometry-preview-assembly.step";
+                  .artifact = {
+                    ...artifact("step", HEX64, 123),
+                    uri: "casys://build123d/artifacts/not-a-digest.step",
+                  };
               }
               return Promise.resolve(response);
             },
@@ -803,13 +926,12 @@ Deno.test("captureGeometryBundleDraft rejects a provider definition path that br
           },
           store,
           {
-            build123dService: "mcp-build123d-sandbox",
             sourceAnalysis: sourceAnalysisFor(tmpDir),
-            materializeAsset: noopMaterialize,
+            ...fixtureResourceDependencies(),
           },
         ),
       Error,
-      "fixed basename",
+      "exact digest-bound build123d URI",
     );
   } finally {
     await Deno.remove(tmpDir, { recursive: true });
@@ -833,7 +955,7 @@ for (
       const [store, tmpDir] = await makeTempDraftStore();
       try {
         let providerCalls = 0;
-        let materializations = 0;
+        let resourceReads = 0;
         await assertRejects(
           () =>
             captureGeometryBundleDraft(
@@ -848,8 +970,11 @@ for (
                   const first = (response.structuredContent.files as Array<
                     Record<string, unknown>
                   >)[0]!;
-                  first.bytes = bytes;
-                  first.sha256 = digest;
+                  first.artifact = artifact(
+                    (args.formats as readonly ("step" | "gltf" | "stl")[])[0]!,
+                    digest,
+                    bytes,
+                  );
                   return Promise.resolve(response);
                 },
                 callToolTextResult: () => Promise.reject(new Error("unexpected")),
@@ -864,19 +989,21 @@ for (
               },
               store,
               {
-                build123dService: "mcp-build123d-sandbox",
                 sourceAnalysis: sourceAnalysisFor(tmpDir),
-                materializeAsset: () => {
-                  materializations += 1;
-                  return Promise.resolve();
+                resourceReader: {
+                  read: () => {
+                    resourceReads += 1;
+                    return Promise.reject(new Error("unexpected resource read"));
+                  },
                 },
+                draftAssets: fixtureResourceDependencies().draftAssets,
               },
             ),
           Error,
           expected,
         );
         assertEquals(providerCalls, 1);
-        assertEquals(materializations, 0);
+        assertEquals(resourceReads, 0);
         // Passive source and analysis CAS records intentionally precede the
         // provider. A bad provider response still creates no reviewable draft.
         const entries = (await Array.fromAsync(Deno.readDir(tmpDir)))
@@ -916,9 +1043,8 @@ Deno.test("geometry bundle canonical sources reject source or N+1 provenance mut
       },
       store,
       {
-        build123dService: "mcp-build123d-sandbox",
         sourceAnalysis: sourceAnalysisFor(tmpDir),
-        materializeAsset: noopMaterialize,
+        ...fixtureResourceDependencies(),
         previewRunId: "preview:source-integrity",
       },
     );

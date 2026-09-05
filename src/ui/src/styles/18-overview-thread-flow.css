@@ -1,0 +1,1185 @@
+/* Compact left-to-right D3 thread presentation.
+
+   Record families are matrices of small nodes. Names only surface on hover,
+   focus or selection, leaving enough room for 10x10 part families without a
+   nested scrollbar or a wall of cards. */
+
+.overview-thread-hero {
+  position: relative;
+}
+
+.overview-thread-hero > .overview-thread-viewport:has(.overview-thread-flow) {
+  max-height: none;
+  overflow: hidden;
+  overscroll-behavior: none;
+  scrollbar-width: none;
+  cursor: grab;
+  touch-action: none;
+}
+
+.overview-thread-hero > .overview-thread-viewport:has(.overview-thread-flow)::-webkit-scrollbar {
+  display: none;
+}
+
+.overview-thread-hero > .overview-thread-viewport:has(.overview-thread-flow):active {
+  cursor: grabbing;
+}
+
+.overview-thread-hero > .overview-thread-viewport:has(.overview-thread-map) {
+  max-height: none;
+  overflow: hidden;
+}
+
+.overview-thread-hero .overview-thread-map {
+  width: 100%;
+  min-width: 0;
+}
+
+.overview-thread-hero .overview-thread-svg {
+  width: 100%;
+  height: auto;
+}
+
+.overview-thread-hero .overview-thread-layout-switch {
+  position: relative;
+  top: auto;
+  right: auto;
+  z-index: 5;
+  justify-content: flex-end;
+  min-height: 2rem;
+  padding: 0.25rem 0.5rem 0.125rem;
+  border-bottom: 0;
+  background: #fff;
+}
+
+.overview-thread-hero .overview-thread-layout-switch > button {
+  min-height: 1.5rem;
+  padding: 0.15rem 0.5rem;
+  border-color: transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: #68767c;
+  font-size: 0.5625rem;
+  letter-spacing: 0.055em;
+}
+
+.overview-thread-hero .overview-thread-layout-switch > button:first-child,
+.overview-thread-hero .overview-thread-layout-switch > button:last-child {
+  margin: 0;
+  border-radius: 999px;
+}
+
+.overview-thread-hero .overview-thread-layout-switch > button[aria-pressed="true"] {
+  border-color: #dbe2e4;
+  background: #eef2f2;
+  color: #27363d;
+}
+
+.overview-thread-hero .overview-thread-flow {
+  container-name: overview-thread-flow;
+  container-type: inline-size;
+  width: 100%;
+  min-width: 0;
+  overflow: visible;
+  background: #fff;
+}
+
+.overview-thread-flow-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.overview-thread-hero .overview-thread-flow-lane-strip {
+  position: relative;
+  top: auto;
+  z-index: 3;
+  width: 100%;
+  height: 3.375rem;
+  border-top: 1px solid #edf0ef;
+  border-bottom: 1px solid #e7ebea;
+  background: #fbfcfb;
+  backdrop-filter: none;
+}
+
+.overview-thread-hero .overview-thread-flow-lane {
+  position: absolute;
+  top: 0;
+  left: var(--flow-x);
+  display: flex;
+  width: clamp(4.25rem, 17cqi, 11rem);
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  transform: translateX(-50%);
+  color: var(--flow-color);
+}
+
+.overview-thread-flow-lane-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.14rem;
+  line-height: 1;
+}
+
+.overview-thread-flow-stage-title {
+  overflow: hidden;
+  color: color-mix(in srgb, var(--flow-color) 88%, #1f2f35);
+  font-family: var(--font-mono);
+  font-size: clamp(0.5625rem, 0.88cqi, 0.6875rem);
+  font-weight: 820;
+  letter-spacing: 0.075em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.overview-thread-flow-lane-meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.2rem;
+  color: #6d797e;
+  font-family: var(--font-mono);
+  font-size: clamp(0.4375rem, 0.66cqi, 0.525rem);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.overview-thread-flow-stage-count {
+  flex: 0 0 auto;
+  color: #4e5d63;
+  font-weight: 720;
+}
+
+.overview-thread-flow-stage-status {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.16rem;
+  color: var(--thread-muted);
+  font-weight: 720;
+}
+
+.overview-thread-flow-status-dot {
+  display: block;
+  width: 0.3rem;
+  height: 0.3rem;
+  flex: 0 0 auto;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: #fff;
+}
+
+.overview-thread-flow-stage-status[data-status="active"] {
+  color: var(--ui-success);
+}
+
+.overview-thread-flow-stage-status[data-status="active"] .overview-thread-flow-status-dot,
+.overview-thread-flow-stage-status[data-status="completed"] .overview-thread-flow-status-dot {
+  background: currentColor;
+}
+
+.overview-thread-flow-stage-status[data-status="blocked"] {
+  color: var(--ui-destructive);
+}
+
+.overview-thread-flow-stage-status[data-status="planned"] .overview-thread-flow-status-dot {
+  border-style: dashed;
+}
+
+.overview-thread-flow-lane-index {
+  display: grid;
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--flow-color) 36%, #dfe5e3);
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--flow-color) 74%, #26343a);
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.overview-thread-hero .overview-thread-flow-lane-title {
+  min-width: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--flow-color) 70%, #26343a);
+  font-family: var(--font-mono);
+  font-size: clamp(0.5rem, 0.78cqi, 0.625rem);
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.overview-thread-flow-lane-meta .overview-thread-flow-lane-title {
+  flex: 1 1 auto;
+  color: #6d797e;
+  font-size: inherit;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.overview-thread-flow-canvas {
+  position: relative;
+  width: 100%;
+  overflow: visible;
+  background: #fff;
+  isolation: isolate;
+}
+
+.overview-thread-flow-activity-legend {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.75rem;
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.25rem 0.6rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--ui-border) 78%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, #fff 88%, transparent);
+  color: #5c6a70;
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  font-weight: 720;
+  letter-spacing: 0.035em;
+  pointer-events: none;
+  text-transform: uppercase;
+}
+
+.overview-thread-flow-activity-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.overview-thread-flow-activity-key {
+  display: block;
+  width: 0.42rem;
+  height: 0.42rem;
+  border: 1.5px solid var(--thread-muted);
+  border-radius: 0.1rem;
+  background: #fff;
+}
+
+.overview-thread-flow-activity-key[data-status="planned"] {
+  border-style: dashed;
+}
+
+.overview-thread-flow-activity-key[data-status="active"] {
+  border-color: var(--ui-success);
+  background: color-mix(in srgb, var(--ui-success) 22%, #fff);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-success) 12%, transparent);
+}
+
+.overview-thread-flow-activity-key[data-status="blocked"] {
+  border-color: var(--ui-destructive);
+  background: color-mix(in srgb, var(--ui-destructive) 16%, #fff);
+}
+
+.overview-thread-hero .overview-thread-flow-svg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  overflow: visible;
+  background: transparent;
+}
+
+.overview-thread-flow-guides line {
+  stroke: #819097;
+  stroke-dasharray: 1 6;
+  stroke-linecap: round;
+  stroke-opacity: 0.14;
+}
+
+.overview-thread-hero-immersive .overview-thread-flow-guides {
+  display: none;
+}
+
+.overview-thread-flow-groups rect {
+  /* Glass: the hull tints what is behind it instead of covering it, and its
+     edge is a highlight rather than a drawn border. */
+  fill: rgb(255 255 255 / 42%);
+  stroke: rgb(255 255 255 / 70%);
+  stroke-width: 0.75;
+  filter: drop-shadow(0 1px 1px rgb(31 47 53 / 5%))
+    drop-shadow(0 6px 14px rgb(31 47 53 / 6%));
+}
+
+.overview-thread-flow-groups rect[data-draggable="true"] {
+  cursor: grab;
+  pointer-events: all;
+  touch-action: none;
+}
+
+.overview-thread-flow-groups rect[data-draggable="true"]:hover {
+  fill: rgb(255 255 255 / 55%);
+  stroke: rgb(255 255 255 / 92%);
+  stroke-width: 1;
+}
+
+.overview-thread-flow-groups rect[data-draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.overview-thread-flow-groups rect[data-lane="requirements"] {
+  fill: color-mix(in srgb, var(--ui-lane-req) 4%, #fff);
+}
+
+.overview-thread-flow-groups rect[data-lane="system-model"] {
+  fill: color-mix(in srgb, var(--ui-lane-model) 4%, #fff);
+}
+
+.overview-thread-flow-groups rect[data-lane="geometry"] {
+  fill: color-mix(in srgb, var(--ui-lane-geom) 4%, #fff);
+}
+
+.overview-thread-flow-groups rect[data-lane="physics"] {
+  fill: color-mix(in srgb, var(--ui-lane-phys) 4%, #fff);
+}
+
+.overview-thread-flow-groups rect[data-lane="verdicts"] {
+  fill: color-mix(in srgb, var(--ui-lane-verdict) 4%, #fff);
+}
+
+.overview-thread-hero .overview-thread-flow-segment {
+  pointer-events: none;
+  stroke: #6e7f86;
+  opacity: 0.16;
+  transition:
+    stroke 120ms ease,
+    opacity 120ms ease;
+}
+
+.overview-thread-hero .overview-thread-flow-segment[data-kind="bundle-trunk"] {
+  stroke: #3f555e;
+  opacity: 0.3;
+}
+
+.overview-thread-hero .overview-thread-flow-segment[data-kind="pair-feeder"] {
+  stroke: #566b73;
+  opacity: 0.22;
+}
+
+.overview-thread-hero .overview-thread-flow-segment[data-kind="node-branch"] {
+  opacity: 0.14;
+}
+
+.overview-thread-hero .overview-thread-flow-segment[data-state="emphasis"] {
+  stroke: #986a12;
+  opacity: 0.58;
+}
+
+.overview-thread-hero .overview-thread-flow-segment[data-state="incoming"] {
+  stroke: #6d28d9;
+  opacity: 0.7;
+}
+
+.overview-thread-hero .overview-thread-flow-segment[data-state="outgoing"] {
+  stroke: #0f766e;
+  opacity: 0.7;
+}
+
+.overview-thread-hero .overview-thread-flow-segment[data-state="muted"] {
+  opacity: 0.055;
+}
+
+.overview-thread-flow[data-inspection="hover"] .overview-thread-flow-segment[data-state="incoming"],
+.overview-thread-flow[data-inspection="hover"] .overview-thread-flow-segment[data-state="outgoing"] {
+  opacity: 0.42;
+}
+
+.overview-thread-flow[data-inspection="hover"] .overview-thread-flow-segment[data-state="muted"] {
+  opacity: 0.06;
+}
+
+.overview-thread-flow[data-inspection="hover"] .overview-thread-flow-segment[data-state="incoming"] {
+  stroke: color-mix(in srgb, #6d28d9 56%, #75868d);
+}
+
+.overview-thread-flow[data-inspection="hover"] .overview-thread-flow-segment[data-state="outgoing"] {
+  stroke: color-mix(in srgb, #0f766e 58%, #75868d);
+}
+
+.overview-thread-flow[data-inspection="selected"] .overview-thread-flow-segment[data-state="incoming"],
+.overview-thread-flow[data-inspection="selected"] .overview-thread-flow-segment[data-state="outgoing"] {
+  opacity: 0.68;
+}
+
+.overview-thread-flow[data-dragging="true"] .overview-thread-flow-segment[data-drag-route="idle"] {
+  opacity: 0.06;
+}
+
+.overview-thread-flow[data-dragging="true"] .overview-thread-flow-segment[data-drag-route="connected"] {
+  opacity: 0.46;
+}
+
+.overview-thread-flow[data-dragging="true"] .overview-thread-flow-segment[data-kind="bundle-trunk"][data-drag-route="connected"] {
+  opacity: 0.56;
+}
+
+.overview-thread-flow-group-labels {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.overview-thread-flow-group-band {
+  /* Glass band welded to the top of the hull; also its drag handle. */
+  position: absolute;
+  top: var(--flow-y);
+  left: var(--flow-x);
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+  width: var(--hull-width, auto);
+  min-height: var(--hull-header, 1.35rem);
+  padding: 0 0.55rem 0 0.75rem;
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+  border-radius: 0.62rem 0.62rem 0 0;
+  background: linear-gradient(
+    to bottom,
+    rgb(255 255 255 / 62%),
+    rgb(255 255 255 / 34%)
+  );
+  backdrop-filter: blur(14px) saturate(150%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 75%),
+    inset 0 -1px 0 color-mix(in srgb, var(--flow-color) 12%, transparent);
+  pointer-events: auto;
+}
+
+/* A folded hull is one bar: the band closes on itself. */
+.overview-thread-flow-group-band[data-collapsed="true"] {
+  border-radius: 0.62rem;
+}
+
+.overview-thread-flow-group-label {
+  flex: 1 1 auto;
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: color-mix(in srgb, var(--flow-color) 72%, #405158);
+  cursor: grab;
+  font-family: var(--font-mono);
+  font-size: 0.594rem;
+  font-weight: 800;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+  line-height: 1.1;
+  pointer-events: auto;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  touch-action: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.overview-thread-flow-group-band:hover {
+  background: linear-gradient(
+    to bottom,
+    rgb(255 255 255 / 78%),
+    rgb(255 255 255 / 46%)
+  );
+}
+
+/* Folder control: present, never loud. No traffic lights, no close. */
+.overview-thread-flow-group-fold {
+  flex: none;
+  width: 0.85rem;
+  height: 0.85rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.28rem;
+  outline: none;
+  background: transparent;
+  color: color-mix(in srgb, var(--flow-color) 62%, #5c6b72);
+  cursor: pointer;
+  font-size: 0.5rem;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: auto;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+
+.overview-thread-flow-group-band:hover .overview-thread-flow-group-fold,
+.overview-thread-flow-group-fold:focus-visible,
+.overview-thread-flow-group-band[data-collapsed="true"] .overview-thread-flow-group-fold {
+  opacity: 0.85;
+}
+
+.overview-thread-flow-group-fold:hover {
+  background: rgb(255 255 255 / 70%);
+  opacity: 1;
+}
+
+.overview-thread-flow-group-label:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--flow-color) 70%, #fff);
+  outline-offset: 2px;
+}
+
+.overview-thread-flow-group-label:active {
+  cursor: grabbing;
+}
+
+.overview-thread-flow-group-label[data-draggable="false"] {
+  pointer-events: none;
+}
+
+.overview-thread-flow-nodes {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.overview-thread-hero .overview-thread-flow-node {
+  position: absolute;
+  top: var(--flow-y);
+  left: var(--flow-x);
+  display: grid;
+  width: 0.875rem;
+  height: 0.875rem;
+  place-items: center;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border: 0;
+  border-radius: 999px;
+  outline: none;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.overview-thread-hero .overview-thread-flow-node[data-draggable="true"] {
+  cursor: grab;
+  touch-action: none;
+}
+
+.overview-thread-hero .overview-thread-flow-node[data-draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.overview-thread-flow-node-dot {
+  display: block;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border: 1px solid color-mix(in srgb, var(--flow-color) 76%, #fff);
+  border-radius: 999px;
+  background: var(--flow-color);
+  box-shadow: 0 0 0 2px #fff;
+}
+
+.overview-thread-flow-node[data-kind="activity"] .overview-thread-flow-node-dot {
+  border-width: 1.5px;
+  border-color: var(--thread-muted);
+  border-radius: 0.125rem;
+  background: #fff;
+  box-shadow: none;
+}
+
+.overview-thread-flow-node[data-kind="activity"][data-status="planned"] .overview-thread-flow-node-dot {
+  border-style: dashed;
+}
+
+.overview-thread-flow-node[data-kind="activity"][data-status="active"] .overview-thread-flow-node-dot {
+  border-color: var(--ui-success);
+  background: color-mix(in srgb, var(--ui-success) 22%, #fff);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-success) 12%, transparent);
+}
+
+.overview-thread-flow-node[data-kind="activity"][data-status="blocked"] .overview-thread-flow-node-dot {
+  border-color: var(--ui-destructive);
+  background: color-mix(in srgb, var(--ui-destructive) 16%, #fff);
+}
+
+/* Current work remains a graph object, not a detached inspector. The label is
+   intentionally part of the node button so click, drag and context-menu
+   semantics stay identical to the activity marker. */
+.overview-thread-flow-node[data-kind="activity"] {
+  z-index: 3;
+}
+
+.overview-thread-flow-activity-label {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 0.38rem);
+  display: grid;
+  width: max-content;
+  min-width: 5.25rem;
+  max-width: min(9rem, 22cqi);
+  gap: 0.16rem;
+  padding: 0.28rem 0.4rem 0.3rem 0.48rem;
+  transform: translateY(-50%);
+  border-left: 2px solid var(--thread-muted);
+  border-radius: 0.2rem;
+  background: color-mix(in srgb, #fff 92%, transparent);
+  box-shadow: 0 1px 3px rgb(24 38 43 / 10%);
+  color: #26363c;
+  cursor: inherit;
+  pointer-events: auto;
+  text-align: left;
+}
+
+.overview-thread-flow-activity-label > strong {
+  display: -webkit-box;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  font-size: clamp(0.5625rem, 0.88cqi, 0.6875rem);
+  font-weight: 680;
+  letter-spacing: -0.01em;
+  line-height: 1.18;
+  text-wrap: balance;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.overview-thread-flow-activity-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  color: var(--thread-muted);
+  font-family: var(--font-mono);
+  font-size: 0.475rem;
+  font-weight: 760;
+  letter-spacing: 0.055em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.overview-thread-flow-activity-status-mark {
+  display: block;
+  width: 0.28rem;
+  height: 0.28rem;
+  flex: 0 0 auto;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: #fff;
+}
+
+.overview-thread-flow-activity-label[data-status="active"] {
+  border-left-color: var(--ui-success);
+}
+
+.overview-thread-flow-activity-label[data-status="active"] .overview-thread-flow-activity-status {
+  color: var(--ui-success);
+}
+
+.overview-thread-flow-activity-label[data-status="active"] .overview-thread-flow-activity-status-mark {
+  background: currentColor;
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.overview-thread-flow-activity-label[data-status="planned"] .overview-thread-flow-activity-status-mark {
+  border-style: dashed;
+}
+
+.overview-thread-flow-activity-label[data-status="blocked"] {
+  border-left-color: var(--ui-destructive);
+}
+
+.overview-thread-flow-activity-label[data-status="blocked"] .overview-thread-flow-activity-status {
+  color: var(--ui-destructive);
+}
+
+/* The verdict lane sits against the right edge of the hierarchy. Its label
+   grows back into the canvas so long titles never create viewport overflow. */
+.overview-thread-flow-node[data-kind="activity"][data-lane="verdicts"] .overview-thread-flow-activity-label {
+  right: calc(100% + 0.38rem);
+  left: auto;
+  padding-right: 0.48rem;
+  padding-left: 0.4rem;
+  border-right: 2px solid var(--thread-muted);
+  border-left: 0;
+  text-align: right;
+}
+
+.overview-thread-flow-node[data-kind="activity"][data-lane="verdicts"] .overview-thread-flow-activity-status {
+  justify-content: flex-end;
+}
+
+.overview-thread-flow-node[data-kind="activity"][data-lane="verdicts"] .overview-thread-flow-activity-label[data-status="active"] {
+  border-right-color: var(--ui-success);
+}
+
+.overview-thread-flow-node[data-kind="activity"][data-lane="verdicts"] .overview-thread-flow-activity-label[data-status="blocked"] {
+  border-right-color: var(--ui-destructive);
+}
+
+.overview-thread-flow-node[data-emphasis="true"] .overview-thread-flow-node-dot {
+  width: 0.5625rem;
+  height: 0.5625rem;
+}
+
+.overview-thread-flow-node-tooltip {
+  position: absolute;
+  bottom: calc(100% + 0.35rem);
+  left: 50%;
+  z-index: 10;
+  display: none;
+  width: max-content;
+  max-width: min(12rem, 32cqi);
+  padding: 0.32rem 0.45rem;
+  transform: translateX(-50%);
+  border: 1px solid var(--ui-border);
+  border-radius: 0.35rem;
+  background: var(--ui-popover);
+  box-shadow: 0 4px 14px rgb(19 31 36 / 18%);
+  color: var(--ui-popover-foreground);
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.25;
+  pointer-events: none;
+  text-align: left;
+}
+
+.overview-thread-flow-node-tooltip strong,
+.overview-thread-flow-node-tooltip > span {
+  display: block;
+}
+
+.overview-thread-flow-node-tooltip > span {
+  display: -webkit-box;
+  margin-top: 0.18rem;
+  overflow: hidden;
+  color: var(--ui-muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  font-weight: 500;
+  line-height: 1.25;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.overview-thread-flow-node:hover .overview-thread-flow-node-tooltip,
+.overview-thread-flow-node:focus-visible .overview-thread-flow-node-tooltip {
+  display: block;
+}
+
+.overview-thread-flow-node[data-lane="requirements"] .overview-thread-flow-node-tooltip {
+  left: 0;
+  transform: none;
+}
+
+.overview-thread-flow-node[data-lane="verdicts"] .overview-thread-flow-node-tooltip {
+  right: 0;
+  left: auto;
+  transform: none;
+}
+
+.overview-thread-hero .overview-thread-flow-node:hover .overview-thread-flow-node-dot,
+.overview-thread-hero .overview-thread-flow-node:focus-visible .overview-thread-flow-node-dot,
+.overview-thread-hero .overview-thread-flow-node[data-state="selected"] .overview-thread-flow-node-dot {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px color-mix(in srgb, var(--flow-color) 48%, transparent);
+}
+
+.overview-thread-hero .overview-thread-flow-node[data-kind="activity"][data-status="planned"]:hover .overview-thread-flow-node-dot,
+.overview-thread-hero .overview-thread-flow-node[data-kind="activity"][data-status="planned"]:focus-visible .overview-thread-flow-node-dot,
+.overview-thread-hero .overview-thread-flow-node[data-kind="activity"][data-status="planned"][data-state="selected"] .overview-thread-flow-node-dot {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px color-mix(in srgb, var(--thread-muted)
+    34%, transparent);
+}
+
+.overview-thread-hero .overview-thread-flow-node[data-kind="activity"][data-status="active"]:hover .overview-thread-flow-node-dot,
+.overview-thread-hero .overview-thread-flow-node[data-kind="activity"][data-status="active"]:focus-visible .overview-thread-flow-node-dot,
+.overview-thread-hero .overview-thread-flow-node[data-kind="activity"][data-status="active"][data-state="selected"] .overview-thread-flow-node-dot {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px color-mix(in srgb, var(--ui-success)
+    34%, transparent);
+}
+
+.overview-thread-hero .overview-thread-flow-node[data-kind="activity"][data-status="blocked"]:hover .overview-thread-flow-node-dot,
+.overview-thread-hero .overview-thread-flow-node[data-kind="activity"][data-status="blocked"]:focus-visible .overview-thread-flow-node-dot,
+.overview-thread-hero .overview-thread-flow-node[data-kind="activity"][data-status="blocked"][data-state="selected"] .overview-thread-flow-node-dot {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px color-mix(in srgb, var(--ui-destructive)
+    30%, transparent);
+}
+
+.overview-thread-hero .overview-thread-flow-node:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--flow-color) 72%, #fff);
+  outline-offset: 2px;
+}
+
+.overview-thread-hero .overview-thread-flow-node[data-state="muted"] {
+  opacity: 0.28;
+}
+
+.overview-thread-flow[data-inspection="hover"] .overview-thread-flow-node[data-state="muted"] {
+  opacity: 0.5;
+}
+
+.overview-thread-flow[data-inspection="selected"] .overview-thread-flow-node[data-state="muted"] {
+  opacity: 0.18;
+}
+
+@container overview-thread-flow (max-width: 44rem) {
+  .overview-thread-flow-lane-index {
+    display: none;
+  }
+
+  .overview-thread-hero .overview-thread-flow-lane {
+    width: 18cqi;
+  }
+
+  .overview-thread-hero .overview-thread-flow-lane-title {
+    font-size: clamp(0.4375rem, 1.55cqi, 0.5625rem);
+    letter-spacing: 0.02em;
+  }
+
+  .overview-thread-flow-status-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+
+  .overview-thread-hero .overview-thread-flow-node {
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+
+  .overview-thread-flow-node-dot {
+    width: 0.375rem;
+    height: 0.375rem;
+    border: 0;
+    box-shadow: 0 0 0 1px #fff;
+  }
+
+  .overview-thread-flow-node-tooltip {
+    max-width: min(10rem, 40cqi);
+    font-size: 0.625rem;
+  }
+
+  .overview-thread-flow-group-label {
+    font-size: 0.5rem;
+  }
+}
+
+@container overview-thread-flow (max-width: 30rem) {
+  .overview-thread-hero .overview-thread-flow-lane-title {
+    font-size: 0.5rem;
+    letter-spacing: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overview-thread-hero .overview-thread-flow-segment {
+    transition: none;
+  }
+}
+
+/* Hull band: name folds, geometry does not. */
+.overview-thread-flow-group-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* Lane and count, stated once beside the name. */
+.overview-thread-flow-group-scope {
+  flex: none;
+  color: rgb(31 47 53 / 45%);
+  font-size: 0.5rem;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Folder controls: square, quiet, and only where the mock puts them. */
+.overview-thread-flow-group-control {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  padding: 0;
+  border: 1px solid rgb(31 47 53 / 10%);
+  border-radius: 0.3rem;
+  outline: none;
+  background: transparent;
+  color: rgb(31 47 53 / 34%);
+  cursor: pointer;
+  font-size: 0.55rem;
+  line-height: 1;
+  pointer-events: auto;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.overview-thread-flow-group-control:hover,
+.overview-thread-flow-group-control:focus-visible {
+  border-color: color-mix(in srgb, var(--flow-color) 32%, transparent);
+  background: rgb(255 255 255 / 80%);
+  color: color-mix(in srgb, var(--flow-color) 70%, #405158);
+}
+
+.overview-thread-flow-group-control[data-active="true"] {
+  border-color: color-mix(in srgb, var(--flow-color) 35%, transparent);
+  background: #fff;
+  color: color-mix(in srgb, var(--flow-color) 72%, #405158);
+}
+
+/* Hull resize grip: the corner of the folder, not a window chrome. */
+.overview-thread-flow-group-resize {
+  position: absolute;
+  top: var(--flow-y);
+  left: var(--flow-x);
+  width: 0.7rem;
+  height: 0.7rem;
+  padding: 0;
+  transform: translate(-60%, -60%);
+  border: 0;
+  border-right: 2px solid rgb(31 47 53 / 28%);
+  border-bottom: 2px solid rgb(31 47 53 / 28%);
+  border-radius: 0 0 0.25rem 0;
+  outline: none;
+  background: transparent;
+  opacity: 0;
+  cursor: nwse-resize;
+  pointer-events: auto;
+  touch-action: none;
+  transition: opacity 120ms ease;
+}
+
+.overview-thread-flow-group-resize:hover,
+.overview-thread-flow-group-resize:focus-visible,
+.overview-thread-flow:hover .overview-thread-flow-group-resize {
+  opacity: 0.75;
+}
+
+/* Listed rows: the hull reads as a folder, one named row per leaf. */
+.overview-thread-hero .overview-thread-flow-node[data-listed="true"] {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  width: var(--row-width);
+  height: var(--row-height);
+  padding: 0 0.5rem;
+  transform: translate(0, -50%);
+  border-radius: 0.34rem;
+  text-align: left;
+}
+
+.overview-thread-hero .overview-thread-flow-node[data-listed="true"]:hover,
+.overview-thread-hero .overview-thread-flow-node[data-listed="true"][data-state="selected"] {
+  background: color-mix(in srgb, var(--flow-color) 8%, transparent);
+}
+
+.overview-thread-flow-row-dot {
+  flex: none;
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 999px;
+  background: var(--flow-color);
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 85%);
+}
+
+/* A running leaf keeps a halo: it is the one thing moving in the hull. */
+.overview-thread-flow-node[data-listed="true"][data-emphasis="true"] .overview-thread-flow-row-dot,
+.overview-thread-flow-node[data-listed="true"][data-status="active"] .overview-thread-flow-row-dot {
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 85%),
+    0 0 0 4px color-mix(in srgb, var(--flow-color) 22%, transparent);
+}
+
+/* The name gives up its middle, never its distinguishing tail. */
+.overview-thread-flow-row-name {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.overview-thread-flow-row-head {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+/* The tail never grows past half the row: a very long tail would push the
+   head out of the row entirely and cut the name from its start. */
+.overview-thread-flow-row-tail {
+  flex: 0 1 auto;
+  overflow: hidden;
+  max-width: 55%;
+  text-overflow: ellipsis;
+}
+
+.overview-thread-flow-row-meta {
+  flex: none;
+  margin-left: auto;
+  color: rgb(31 47 53 / 48%);
+  font-family: var(--font-mono);
+  font-size: 0.47rem;
+  letter-spacing: 0.03em;
+}
+
+.overview-thread-flow-row-meta[data-live="true"] {
+  color: color-mix(in srgb, var(--flow-color) 72%, #405158);
+  font-weight: 700;
+}
+
+/* Foot of a listed hull: how much of it you are seeing. */
+.overview-thread-flow-group-foot {
+  position: absolute;
+  top: var(--flow-y);
+  left: var(--flow-x);
+  width: var(--hull-width);
+  padding: 0 0.75rem;
+  transform: translate(-50%, -50%);
+  border-top: 1px dashed color-mix(in srgb, var(--flow-color) 20%, transparent);
+  color: rgb(31 47 53 / 34%);
+  font-family: var(--font-mono);
+  font-size: 0.47rem;
+  line-height: 1.9;
+  pointer-events: none;
+}
+
+/* Monitor chip: aggregates of the hull, welded to its corner. It reads at any
+   zoom and never states a single leaf — that detail lives in the rows. */
+.overview-thread-flow-group-monitor {
+  position: absolute;
+  top: var(--flow-y);
+  left: var(--flow-x);
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  padding: 0.1rem 0.4rem;
+  transform: translate(-40%, -60%);
+  border: 1px solid color-mix(in srgb, var(--flow-color) 22%, #e0d3c0);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 92%);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 1px 3px rgb(31 47 53 / 9%);
+  color: color-mix(in srgb, var(--flow-color) 72%, #405158);
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  font-weight: 750;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.overview-thread-flow-group-monitor i {
+  width: 0.34rem;
+  height: 0.34rem;
+  border-radius: 999px;
+  background: var(--flow-color);
+  box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--flow-color) 18%,
+    transparent);
+}
+
+/* Alert inverts the chip and thickens the hull edge — visible zoomed out. */
+.overview-thread-flow-group-monitor[data-alert="true"] {
+  border-color: rgb(185 28 28 / 45%);
+  background: var(--cockpit-danger);
+  color: #fff;
+}
+
+.overview-thread-flow-group-monitor[data-alert="true"] i {
+  background: #fff;
+  box-shadow: none;
+}
+
+/* Folder tree inside a listed hull: indent guide, twisty, child count. */
+.overview-thread-flow-row-indent {
+  flex: none;
+  width: 0.55rem;
+  height: 0.75rem;
+  margin-left: 0.12rem;
+  border-left: 1px solid color-mix(in srgb, var(--flow-color) 22%, transparent);
+}
+
+.overview-thread-flow-row-twist {
+  flex: none;
+  width: 0.5rem;
+  color: color-mix(in srgb, var(--flow-color) 55%, #5c6b72);
+  font-size: 0.42rem;
+  line-height: 1;
+}
+
+.overview-thread-flow-row-children {
+  flex: none;
+  margin-left: auto;
+  color: rgb(31 47 53 / 42%);
+  font-family: var(--font-mono);
+  font-size: 0.47rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Monitor chip: aggregates of the hull, welded to its corner. It reads at any
+   zoom and never states a single leaf — that detail lives in the rows. */
+.overview-thread-flow-group-monitor {
+  position: absolute;
+  top: var(--flow-y);
+  left: var(--flow-x);
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  padding: 0.1rem 0.4rem;
+  transform: translate(-40%, -60%);
+  border: 1px solid color-mix(in srgb, var(--flow-color) 22%, #e0d3c0);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 92%);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 1px 3px rgb(31 47 53 / 9%);
+  color: color-mix(in srgb, var(--flow-color) 72%, #405158);
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  font-weight: 750;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.overview-thread-flow-group-monitor i {
+  width: 0.34rem;
+  height: 0.34rem;
+  border-radius: 999px;
+  background: var(--flow-color);
+  box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--flow-color) 18%,
+    transparent);
+}
+
+/* Alert inverts the chip and thickens the hull edge — visible zoomed out. */
+.overview-thread-flow-group-monitor[data-alert="true"] {
+  border-color: rgb(185 28 28 / 45%);
+  background: var(--cockpit-danger);
+  color: #fff;
+}
+
+.overview-thread-flow-group-monitor[data-alert="true"] i {
+  background: #fff;
+  box-shadow: none;
+}

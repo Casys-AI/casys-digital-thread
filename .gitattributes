@@ -12,3 +12,8 @@ docs/rfcs/** export-ignore
 docs/assets/** export-ignore
 docs/rfcs export-ignore
 docs/assets export-ignore
+
+# STEP Part 21 files are byte-authoritative generated CAD artefacts. Treating
+# them as binary preserves their exact solver/export bytes and avoids applying
+# source-code whitespace or line-ending normalization to engineering evidence.
+*.step binary

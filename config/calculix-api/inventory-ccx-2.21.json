@@ -21,8 +21,7 @@
   "declarativeCoverage": {
     "schemas": [
       "mechanical-proof-case/1.0",
-      "sensitivity-study-case/1.0",
-      "sensitivity-study-case/2.0"
+      "sensitivity-study-case/3.0"
     ],
     "surface": {
       "procedure": "linear-static",
@@ -155,8 +154,7 @@
       "covered": true,
       "coveredBy": [
         "mechanical-proof-case/1.0",
-        "sensitivity-study-case/1.0",
-        "sensitivity-study-case/2.0"
+        "sensitivity-study-case/3.0"
       ],
       "schemaField": "supports[].kind=fixed (dofs 1-3)"
     },
@@ -270,8 +268,7 @@
       "covered": true,
       "coveredBy": [
         "mechanical-proof-case/1.0",
-        "sensitivity-study-case/1.0",
-        "sensitivity-study-case/2.0"
+        "sensitivity-study-case/3.0"
       ],
       "schemaField": "loads[].kind=force (total N, split per node by the lowering)"
     },
@@ -576,8 +573,7 @@
       "covered": true,
       "coveredBy": [
         "mechanical-proof-case/1.0",
-        "sensitivity-study-case/1.0",
-        "sensitivity-study-case/2.0"
+        "sensitivity-study-case/3.0"
       ],
       "schemaField": "requirements metric maximum-von-mises-stress (S on ELSET=PART)",
       "notes": "Official spaced name is in the *EL PRINT% Fortran table; compact table has *ELFILE / *ELEMENTOUTPUT, not *ELPRINT."
@@ -591,8 +587,7 @@
       "covered": true,
       "coveredBy": [
         "mechanical-proof-case/1.0",
-        "sensitivity-study-case/1.0",
-        "sensitivity-study-case/2.0"
+        "sensitivity-study-case/3.0"
       ],
       "schemaField": "material.model=isotropic-linear-elastic (E, nu)"
     },
@@ -623,8 +618,7 @@
       "covered": true,
       "coveredBy": [
         "mechanical-proof-case/1.0",
-        "sensitivity-study-case/1.0",
-        "sensitivity-study-case/2.0"
+        "sensitivity-study-case/3.0"
       ],
       "schemaField": "mesh.kind=tetrahedral-volume (C3D4 / C3D10 from Gmsh)"
     },
@@ -646,8 +640,7 @@
       "covered": true,
       "coveredBy": [
         "mechanical-proof-case/1.0",
-        "sensitivity-study-case/1.0",
-        "sensitivity-study-case/2.0"
+        "sensitivity-study-case/3.0"
       ],
       "schemaField": "volume part set PART used by *SOLID SECTION and *EL PRINT"
     },
@@ -660,8 +653,7 @@
       "covered": true,
       "coveredBy": [
         "mechanical-proof-case/1.0",
-        "sensitivity-study-case/1.0",
-        "sensitivity-study-case/2.0"
+        "sensitivity-study-case/3.0"
       ],
       "schemaField": "lowering wrapper around the single linear-static step",
       "notes": "Absent from the compact table and the *KEYWORD% table; attested by '*ERROR in calinput: *END STEP card in step' and an embedded example deck, plus the 2.21 manual TOC."
@@ -941,10 +933,9 @@
       "covered": true,
       "coveredBy": [
         "mechanical-proof-case/1.0",
-        "sensitivity-study-case/1.0",
-        "sensitivity-study-case/2.0"
+        "sensitivity-study-case/3.0"
       ],
-      "schemaField": "analysis.material / solver.material container"
+      "schemaField": "analysis.material / method.material container"
     },
     "*MATRIX ASSEMBLE": {
       "family": "mesh",
@@ -1055,8 +1046,7 @@
       "covered": true,
       "coveredBy": [
         "mechanical-proof-case/1.0",
-        "sensitivity-study-case/1.0",
-        "sensitivity-study-case/2.0"
+        "sensitivity-study-case/3.0"
       ],
       "schemaField": "mesh.kind=tetrahedral-volume (Gmsh *NODE block)"
     },
@@ -1088,8 +1078,7 @@
       "covered": true,
       "coveredBy": [
         "mechanical-proof-case/1.0",
-        "sensitivity-study-case/1.0",
-        "sensitivity-study-case/2.0"
+        "sensitivity-study-case/3.0"
       ],
       "schemaField": "requirements metric maximum-displacement (U on NSET=NALL)"
     },
@@ -1111,8 +1100,7 @@
       "covered": true,
       "coveredBy": [
         "mechanical-proof-case/1.0",
-        "sensitivity-study-case/1.0",
-        "sensitivity-study-case/2.0"
+        "sensitivity-study-case/3.0"
       ],
       "schemaField": "supports/loads selection names + generated NALL"
     },
@@ -1291,8 +1279,7 @@
       "covered": true,
       "coveredBy": [
         "mechanical-proof-case/1.0",
-        "sensitivity-study-case/1.0",
-        "sensitivity-study-case/2.0"
+        "sensitivity-study-case/3.0"
       ],
       "schemaField": "tetrahedral-volume section, ELSET=PART, MATERIAL=MAT"
     },
@@ -1332,8 +1319,7 @@
       "covered": true,
       "coveredBy": [
         "mechanical-proof-case/1.0",
-        "sensitivity-study-case/1.0",
-        "sensitivity-study-case/2.0"
+        "sensitivity-study-case/3.0"
       ],
       "schemaField": "analysis.kind=linear-static"
     },
@@ -1355,8 +1341,7 @@
       "covered": true,
       "coveredBy": [
         "mechanical-proof-case/1.0",
-        "sensitivity-study-case/1.0",
-        "sensitivity-study-case/2.0"
+        "sensitivity-study-case/3.0"
       ],
       "schemaField": "lowering wrapper around the single linear-static step"
     },

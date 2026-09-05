@@ -24,10 +24,15 @@ import {
   validateTechnicalSourceEffectiveUnit,
 } from "../../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
 import {
+  assembleTechnicalCompilationAdmissionOperation,
+  type TechnicalCompilationAdmissionOperation,
+} from "../../../../domain/compile/admission/technical-compilation-admission-operation.ts";
+import {
   encodeTechnicalCompilationAdmissionParameters,
   parseTechnicalCompilationAdmissionParameters,
   TECHNICAL_COMPILATION_ADMISSION_LIMITS,
   TECHNICAL_COMPILATION_ADMISSION_SCHEMA,
+  type TechnicalCompilationAdmission,
 } from "../../../../domain/compile/admission/technical-compilation-proposal.ts";
 import {
   compileTechnicalSources,
@@ -75,7 +80,10 @@ import {
   safeVersion,
 } from "../../../../domain/kernel/case-validation.ts";
 import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
-import type { EngineeringThreadSnapshotBasis } from "../../../../domain/project/engineering-project.ts";
+import type {
+  EngineeringDecisionProposalParameter,
+  EngineeringThreadSnapshotBasis,
+} from "../../../../domain/project/engineering-project.ts";
 
 export type ProjectTechnicalCompilationPreviewErrorCode =
   | "invalid_request"
@@ -406,10 +414,20 @@ export class PreviewProjectTechnicalCompilation
       })).sort(compareBySourceId),
     });
     const expectedReference = await draftReference(draft);
-    const decisionParameters = deriveAdmissionParameters(
+    const admissionReview = deriveAdmissionReview(
       compiled,
       expectedReference,
       reopenedSources,
+    );
+    const operation = deriveReadyAdmissionOperation(
+      admissionReview.admission,
+      command.projectId,
+      {
+        kind: "thread-snapshot",
+        snapshotId: basis.thread.snapshotId,
+        revision: basis.thread.revision,
+        subjectId: basis.thread.subjectId,
+      },
     );
     // Persist only after the complete server-derived MRTR identity has passed
     // canonical encode/parse verification; otherwise no reviewable draft is
@@ -421,7 +439,8 @@ export class PreviewProjectTechnicalCompilation
       fingerprint: compiled.fingerprint,
       gaps,
       draft: expectedReference,
-      decisionParameters,
+      decisionParameters: admissionReview.decisionParameters,
+      operation,
     });
   }
 
@@ -834,11 +853,14 @@ function assertDerivedReferencesResolve(
   }
 }
 
-function deriveAdmissionParameters(
+function deriveAdmissionReview(
   compiled: TechnicalCompilationResult,
   draft: TechnicalCompilationDraftReference,
   reopenedSources: readonly ReopenedTechnicalCompilationSource[],
-) {
+): {
+  readonly decisionParameters: readonly EngineeringDecisionProposalParameter[];
+  readonly admission: TechnicalCompilationAdmission;
+} {
   try {
     if (compiled.document.status !== "ready-for-review") {
       throw new TypeError("Only a ready compilation can derive MRTR parameters.");
@@ -949,12 +971,52 @@ function deriveAdmissionParameters(
         "Technical compilation admission parameters failed canonical round-trip.",
       );
     }
-    return parameters;
+    return deepFreeze({ decisionParameters: parameters, admission: reparsed });
   } catch (cause) {
     if (cause instanceof ProjectTechnicalCompilationPreviewError) throw cause;
     throw previewError(
       "configuration_failure",
       "Server-derived technical compilation admission parameters are invalid.",
+      cause,
+    );
+  }
+}
+
+/**
+ * Build the only appendable admission-seal operation from the canonical MRTR
+ * parse, rather than from raw preview/document fields. This keeps the
+ * operation's Thread-entity binding aligned with the exact review basis.
+ */
+function deriveReadyAdmissionOperation(
+  admission: TechnicalCompilationAdmission,
+  projectId: string,
+  basis: EngineeringThreadSnapshotBasis,
+): TechnicalCompilationAdmissionOperation {
+  try {
+    if (
+      admission.draft.projectId !== projectId ||
+      admission.basis.thread.projectId !== projectId ||
+      admission.basis.thread.snapshotId !== basis.snapshotId ||
+      admission.basis.thread.revision !== basis.revision ||
+      admission.basis.thread.subjectId !== basis.subjectId
+    ) {
+      throw new TypeError(
+        "Canonical admission parameters do not retain the exact preview Thread basis.",
+      );
+    }
+    return assembleTechnicalCompilationAdmissionOperation({
+      basis: {
+        kind: "thread-snapshot",
+        snapshotId: admission.basis.thread.snapshotId,
+        revision: admission.basis.thread.revision,
+        subjectId: admission.basis.thread.subjectId,
+      },
+      sysmlArtifactId: admission.basis.sysml.artifactId,
+    });
+  } catch (cause) {
+    throw previewError(
+      "configuration_failure",
+      "Server-derived technical compilation admission operation is invalid.",
       cause,
     );
   }

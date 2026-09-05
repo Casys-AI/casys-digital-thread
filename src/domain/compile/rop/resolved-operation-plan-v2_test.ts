@@ -4,9 +4,11 @@ import {
   CALCULIX_RECORDED_STATIC_RESOURCE_PROFILE,
   canonicalResolvedOperationPlanV2Text,
   fingerprintResolvedOperationPlanV2,
+  MODELICA_ADMITTED_ISOLATED_RESOURCE_PROFILE,
   RESOLVED_OPERATION_PLAN_REF_SCHEMA,
   RESOLVED_OPERATION_PLAN_V2_SCHEMA,
   sameResolvedOperationPlanRef,
+  SPICE_ADMITTED_ISOLATED_RESOURCE_PROFILE,
   validateResolvedOperationPlanRef,
   validateResolvedOperationPlanV2,
 } from "./resolved-operation-plan-v2.ts";
@@ -40,6 +42,7 @@ function validCalculixPlan(): Record<string, unknown> {
       operation: { id: "verify.run-fea-static-proof", version: "2" },
       operationFingerprint: fingerprint("3"),
     },
+    operationalCapability: operationalCapabilityFor("2"),
     authorization: {
       kind: "human-mrtr-and-qualified-method",
       mrtr: {
@@ -135,6 +138,7 @@ function validCalculixPlan(): Record<string, unknown> {
 function validLocalCalculixPlan(): Record<string, unknown> {
   const plan = validCalculixPlan();
   (plan.workItem as Record<string, Record<string, unknown>>).operation.version = "3";
+  plan.operationalCapability = operationalCapabilityFor("3");
   (plan.authorization as Record<string, Record<string, unknown>>)
     .methodQualification = {
       id: "qualified-calculix-isolated-static-proof",
@@ -179,6 +183,260 @@ function validLocalCalculixPlan(): Record<string, unknown> {
   return plan;
 }
 
+function validPrescribedKinematicsPlan(): Record<string, unknown> {
+  const plan = validCalculixPlan();
+  plan.id = "run-kinematics";
+  const run = plan.run as Record<string, unknown>;
+  run.runId = "run-kinematics";
+  run.workItemId = "verify-kinematics";
+  const workItem = plan.workItem as Record<string, unknown>;
+  workItem.id = "verify-kinematics";
+  workItem.operation = {
+    id: "verify.run-prescribed-kinematics",
+    version: "1",
+  };
+
+  const operational = plan.operationalCapability as {
+    operation: Record<string, unknown>;
+    bindings: Array<Record<string, unknown>>;
+  };
+  operational.operation = {
+    id: "verify.run-prescribed-kinematics",
+    version: "1",
+  };
+  const material = {
+    unitId: "casys.mcp-chrono",
+    materialId: "mcp-chrono-image",
+    imageDigest: "e".repeat(64),
+  };
+  operational.bindings[0] = {
+    capability: {
+      id: "mechanics.observe-prescribed-kinematics",
+      version: "1",
+      use: "execution",
+      minimumQualification: "qualified",
+    },
+    binding: { id: "chrono-prescribed-kinematics", version: "1" },
+    effectiveQualification: "qualified",
+    adapter: {
+      id: "chrono-prescribed-kinematics-adapter",
+      version: "0.3.2",
+      source: "test",
+    },
+    profile: null,
+    materials: [material],
+    runtimeModes: [{
+      material,
+      targetPlatform: "linux/amd64",
+      mode: "emulated",
+      qualificationAttestationFingerprint: fingerprint("f"),
+    }],
+    hostLifecycles: [{
+      material,
+      kind: "persistent-compose",
+      launchGroup: null,
+    }],
+  };
+
+  (plan.authorization as Record<string, unknown>).methodQualification = {
+    id: "prescribed-kinematics-observation",
+    version: "1.0",
+    fingerprint: fingerprint("c"),
+  };
+  const caseSource = (plan.sources as Record<string, unknown>[]).find((source) =>
+    source.bindingName === "proofCase"
+  )!;
+  caseSource.bindingName = "case";
+  caseSource.role = "prescribed-kinematics-case";
+  ((caseSource.artifact as Record<string, unknown>).casUri) =
+    `casys://prescribed-kinematics-case/sha256/${"c".repeat(64)}`;
+  plan.sources = [caseSource];
+
+  const requestId = "rop2-prescribed-kinematics-0123456789abcdef0123456789abcdef";
+  plan.action = {
+    kind: "prescribed-kinematics-observation",
+    lowering: { id: "prescribed-kinematics.case-json", version: "1.0" },
+    requestId,
+    input: {
+      prescribedKinematicsCase: {
+        id: "case-capture",
+        fingerprint: fingerprint("c"),
+        sourceBinding: "case",
+      },
+    },
+  };
+  plan.expectedProviderResources = {
+    receiptSchema: "chrono-prescribed-kinematics-receipt/1.0",
+    evidenceSchema: "prescribed-kinematics-observation/1.0",
+    resourceProfile: {
+      id: "prescribed-kinematics.observation-artifacts",
+      version: "1.0",
+    },
+  };
+  plan.recovery = {
+    policy: "prescribed-kinematics.observation-recovery@1.0",
+    requestId,
+    mode: "same-request-readback-no-blind-redispatch",
+    ambiguousOutcome: "quarantine-for-human-review",
+    capturedOutcome: "cas-only-recovery",
+  };
+  return plan;
+}
+
+function validAdmittedExecutionPlan(
+  language: "modelica" | "spice",
+): Record<string, unknown> {
+  const plan = validCalculixPlan();
+  const modelica = language === "modelica";
+  const operation = modelica
+    ? { id: "simulate.run-admitted-modelica", version: "1" }
+    : { id: "simulate.run-admitted-spice", version: "1" };
+  const executionProfile = modelica
+    ? { id: "modelica-closed-subset-v2", version: "2.0.0" }
+    : { id: "spice-circuit-closed-subset-v1", version: "1.0.0" };
+  const resourceProfile = modelica
+    ? MODELICA_ADMITTED_ISOLATED_RESOURCE_PROFILE
+    : SPICE_ADMITTED_ISOLATED_RESOURCE_PROFILE;
+  const recoveryPolicy = modelica
+    ? "modelica-admitted-generation-recovery@1.0"
+    : "spice-admitted-generation-recovery@1.0";
+  const evidenceSchema = modelica
+    ? "modelica-admitted-execution-capture/2.0"
+    : "spice-admitted-execution-capture/1.0";
+  const run = plan.run as Record<string, unknown>;
+  run.runId = modelica ? "run-admitted-modelica" : "run-admitted-spice";
+  run.workItemId = modelica ? "simulate-modelica" : "simulate-spice";
+  plan.id = run.runId;
+  const workItem = plan.workItem as Record<string, unknown>;
+  workItem.id = run.workItemId;
+  workItem.operation = operation;
+  const operational = plan.operationalCapability as {
+    operation: Record<string, unknown>;
+  };
+  operational.operation = operation;
+  const profileFingerprint = fingerprint(modelica ? "a" : "b");
+  (plan.authorization as Record<string, unknown>).methodQualification = {
+    ...executionProfile,
+    fingerprint: profileFingerprint,
+  };
+  const admissionSource = (plan.sources as Record<string, unknown>[]).find(
+    (source) => source.bindingName === "proofCase",
+  )!;
+  admissionSource.bindingName = "compilationAdmission";
+  admissionSource.role = "compilation-admission";
+  admissionSource.threadRef = {
+    snapshotId: "thread.cm01",
+    snapshotRevision: 12,
+    kind: "artifact",
+    id: `technical-compilation-admission-${"c".repeat(64)}`,
+  };
+  (admissionSource.artifact as Record<string, unknown>).casUri =
+    `casys://technical-compilation-admission-capture/sha256/${"c".repeat(64)}`;
+  plan.sources = [admissionSource];
+  const executionRunId = modelica
+    ? `admitted-modelica-${"a".repeat(64)}`
+    : `admitted-spice-${"b".repeat(64)}`;
+  plan.action = {
+    kind: modelica
+      ? "admitted-modelica-isolated-execution"
+      : "admitted-spice-isolated-execution",
+    executionProfile: { ...executionProfile, fingerprint: profileFingerprint },
+    executionRunId,
+    input: {
+      compilationAdmission: {
+        id: (admissionSource.threadRef as Record<string, unknown>).id,
+        fingerprint: fingerprint("c"),
+        sourceBinding: "compilationAdmission",
+      },
+      source: {
+        id: modelica ? "source.modelica" : "source.spice",
+        sourceFingerprint: fingerprint("d"),
+        captureFingerprint: fingerprint("e"),
+        analysisFingerprint: fingerprint("f"),
+      },
+    },
+  };
+  plan.expectedProviderResources = {
+    receiptSchema: "isolated-code-execution-receipt-record/1.0",
+    evidenceSchema,
+    resourceProfile: {
+      id: resourceProfile.id,
+      version: resourceProfile.version,
+    },
+  };
+  plan.recovery = {
+    policy: recoveryPolicy,
+    executionRunId,
+    mode: "same-request-readback-no-blind-redispatch",
+    ambiguousOutcome: "quarantine-for-human-review",
+    capturedOutcome: "cas-only-recovery",
+  };
+  return plan;
+}
+
+function operationalCapabilityFor(
+  operationVersion: "2" | "3",
+): Record<string, unknown> {
+  return {
+    schemaVersion: "resolved-capability-runtime-operation/2.0",
+    projectId: "project.cm01",
+    operation: {
+      id: "verify.run-fea-static-proof",
+      version: operationVersion,
+    },
+    authorizationFingerprint: fingerprint("a"),
+    demandFingerprint: fingerprint("b"),
+    registryFingerprint: fingerprint("c"),
+    bindings: [{
+      capability: {
+        id: "mechanics.solve-static-structural",
+        version: "1",
+        use: "execution",
+        minimumQualification: "qualified",
+      },
+      binding: {
+        id: "calculix-static-structural",
+        version: "1",
+      },
+      effectiveQualification: "qualified",
+      adapter: {
+        id: "casys.calculix-worker",
+        version: "1",
+        source: "test",
+      },
+      profile: {
+        id: "calculix-static",
+        version: "1",
+        fingerprint: fingerprint("d"),
+      },
+      materials: [{
+        unitId: "casys.calculix-worker",
+        materialId: "calculix-worker",
+        imageDigest: "e".repeat(64),
+      }],
+      runtimeModes: [{
+        material: {
+          unitId: "casys.calculix-worker",
+          materialId: "calculix-worker",
+          imageDigest: "e".repeat(64),
+        },
+        targetPlatform: "linux/arm64",
+        mode: "native",
+        qualificationAttestationFingerprint: null,
+      }],
+      hostLifecycles: [{
+        material: {
+          unitId: "casys.calculix-worker",
+          materialId: "calculix-worker",
+          imageDigest: "e".repeat(64),
+        },
+        kind: "ephemeral-microsandbox",
+        launchGroup: null,
+      }],
+    }],
+  };
+}
+
 Deno.test("ResolvedOperationPlan keeps MCP @2 and local @3 CalculiX identities disjoint", async () => {
   const historical = validateResolvedOperationPlanV2(validCalculixPlan());
   const historicalText = canonicalResolvedOperationPlanV2Text(historical);
@@ -201,6 +459,90 @@ Deno.test("ResolvedOperationPlan keeps MCP @2 and local @3 CalculiX identities d
   const transplanted = validLocalCalculixPlan();
   (transplanted.action as Record<string, unknown>).kind = "static-structural-analysis";
   assertThrows(() => validateResolvedOperationPlanV2(transplanted), TypeError);
+});
+
+Deno.test("ResolvedOperationPlan closes admitted Modelica and SPICE to their semantic execution profiles", () => {
+  const modelica = validateResolvedOperationPlanV2(
+    validAdmittedExecutionPlan("modelica"),
+  );
+  const spice = validateResolvedOperationPlanV2(
+    validAdmittedExecutionPlan("spice"),
+  );
+  assertEquals(modelica.action.kind, "admitted-modelica-isolated-execution");
+  assertEquals(spice.action.kind, "admitted-spice-isolated-execution");
+  assertEquals(modelica.expectedProviderResources.resourceProfile, {
+    id: MODELICA_ADMITTED_ISOLATED_RESOURCE_PROFILE.id,
+    version: MODELICA_ADMITTED_ISOLATED_RESOURCE_PROFILE.version,
+  });
+  assertEquals(spice.expectedProviderResources.resourceProfile, {
+    id: SPICE_ADMITTED_ISOLATED_RESOURCE_PROFILE.id,
+    version: SPICE_ADMITTED_ISOLATED_RESOURCE_PROFILE.version,
+  });
+  assertEquals(Object.hasOwn(modelica.action, "provider"), false);
+  assertEquals(Object.hasOwn(spice.action, "provider"), false);
+});
+
+Deno.test("ResolvedOperationPlan rejects admitted execution profile, exact admission identity, source, resource, and recovery tampering", () => {
+  const mutations: readonly ((plan: Record<string, unknown>) => void)[] = [
+    (plan) =>
+      ((plan.action as Record<string, unknown>).executionProfile as Record<
+        string,
+        unknown
+      >).id = "caller-selected-runtime",
+    (plan) =>
+      (((plan.action as Record<string, unknown>).input as Record<string, unknown>)
+        .compilationAdmission as Record<string, unknown>).fingerprint = fingerprint(
+          "a",
+        ),
+    (plan) =>
+      (((plan.action as Record<string, unknown>).input as Record<string, unknown>)
+        .compilationAdmission as Record<string, unknown>).sourceBinding =
+          "foreignAdmission",
+    (plan) =>
+      ((plan.expectedProviderResources as Record<string, unknown>)
+        .resourceProfile as Record<string, unknown>).id = "invented-admitted-output",
+    (plan) =>
+      (plan.recovery as Record<string, unknown>).policy =
+        "modelica-admitted-generation-recovery@2.0",
+    (plan) =>
+      (plan.recovery as Record<string, unknown>).executionRunId = `admitted-modelica-${
+        "f".repeat(64)
+      }`,
+    (plan) => ((plan.action as Record<string, unknown>).tool = "ngspice"),
+    (plan) =>
+      (plan.action as Record<string, unknown>).requestId = "rop2-admitted-modelica",
+    (plan) =>
+      (plan.recovery as Record<string, unknown>).requestId = "rop2-admitted-modelica",
+  ];
+  for (const mutate of mutations) {
+    const plan = validAdmittedExecutionPlan("modelica");
+    mutate(plan);
+    assertThrows(() => validateResolvedOperationPlanV2(plan), TypeError);
+  }
+});
+
+Deno.test("ResolvedOperationPlan rejects an admitted compilation admission id detached from its Thread source", () => {
+  const plan = validAdmittedExecutionPlan("modelica");
+  (((plan.action as Record<string, unknown>).input as Record<string, unknown>)
+    .compilationAdmission as Record<string, unknown>).id = "foreignAdmission";
+  assertThrows(
+    () => validateResolvedOperationPlanV2(plan),
+    TypeError,
+    "compilationAdmission.id must equal its exact source threadRef.id",
+  );
+});
+
+Deno.test("ResolvedOperationPlan rejects a lifecycle record with an unknown field", () => {
+  const plan = validLocalCalculixPlan();
+  const operational = plan.operationalCapability as {
+    bindings: Array<{ hostLifecycles: Array<Record<string, unknown>> }>;
+  };
+  operational.bindings[0]!.hostLifecycles[0]!.unexpected = true;
+  assertThrows(
+    () => validateResolvedOperationPlanV2(plan),
+    TypeError,
+    "unexpected",
+  );
 });
 
 Deno.test("ResolvedOperationPlan 2.0 canonicalizes unordered evidence and freezes the closed local CalculiX action", async () => {
@@ -363,6 +705,10 @@ Deno.test("ResolvedOperationPlan 2.0 closes each action to its exact registered 
     id: "verify.run-fea-static-proof",
     version: "2",
   };
+  (wrongOperation.operationalCapability as Record<string, unknown>).operation = {
+    id: "verify.run-fea-static-proof",
+    version: "2",
+  };
   assertThrows(
     () => validateResolvedOperationPlanV2(wrongOperation),
     TypeError,
@@ -371,6 +717,10 @@ Deno.test("ResolvedOperationPlan 2.0 closes each action to its exact registered 
 
   const historicalOperation = validPlan();
   (historicalOperation.workItem as Record<string, unknown>).operation = {
+    id: "verify.run-fea-static-proof",
+    version: "1",
+  };
+  (historicalOperation.operationalCapability as Record<string, unknown>).operation = {
     id: "verify.run-fea-static-proof",
     version: "1",
   };
@@ -448,8 +798,12 @@ Deno.test("ResolvedOperationPlan 2.0 enforces exact provider request ids and tim
   const calculixColon = validCalculixPlan();
   (calculixColon.action as Record<string, unknown>).requestId = "request:calculix:1";
   (calculixColon.recovery as Record<string, unknown>).requestId = "request:calculix:1";
+  const parsedCalculixColon = validateResolvedOperationPlanV2(calculixColon);
+  if (parsedCalculixColon.action.kind !== "static-structural-analysis") {
+    throw new Error("Expected a recorded CalculiX action.");
+  }
   assertEquals(
-    validateResolvedOperationPlanV2(calculixColon).action.requestId,
+    parsedCalculixColon.action.requestId,
     "request:calculix:1",
   );
 
@@ -475,6 +829,38 @@ Deno.test("ResolvedOperationPlan 2.0 enforces exact provider request ids and tim
       "positive integer",
     );
   }
+});
+
+Deno.test("ResolvedOperationPlan rejects a colon-bearing Chrono request before the L3 WAL", () => {
+  const plan = validPrescribedKinematicsPlan();
+  const exact = validateResolvedOperationPlanV2(plan);
+  assertEquals(
+    exact.action.kind === "prescribed-kinematics-observation" && exact.action.requestId,
+    "rop2-prescribed-kinematics-0123456789abcdef0123456789abcdef",
+  );
+
+  const colon = validPrescribedKinematicsPlan();
+  (colon.action as Record<string, unknown>).requestId = "rop2:prescribed-kinematics";
+  (colon.recovery as Record<string, unknown>).requestId = "rop2:prescribed-kinematics";
+  assertThrows(
+    () => validateResolvedOperationPlanV2(colon),
+    TypeError,
+    "exact prescribed kinematics request_id contract",
+  );
+});
+
+Deno.test("ResolvedOperationPlan rejects a prescribed-kinematics action case fingerprint detached from its source artifact", () => {
+  const plan = validPrescribedKinematicsPlan();
+  const action = plan.action as Record<string, unknown>;
+  const input = action.input as Record<string, unknown>;
+  const caseIdentity = input.prescribedKinematicsCase as Record<string, unknown>;
+  caseIdentity.fingerprint = fingerprint("d");
+
+  assertThrows(
+    () => validateResolvedOperationPlanV2(plan),
+    TypeError,
+    "prescribed kinematics case fingerprint must equal its exact source artifact fingerprint",
+  );
 });
 
 Deno.test("ResolvedOperationPlan 2.0 validates a closed CalculiX action and its exact geometry source", () => {

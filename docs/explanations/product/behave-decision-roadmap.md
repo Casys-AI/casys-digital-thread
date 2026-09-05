@@ -17,7 +17,13 @@ current covered surfaces and their exclusions are authoritative in [CAD
 coverage](../../reference/domains/cad/coverage.md), [FEA
 coverage](../../reference/domains/fea/coverage.md), [SysML
 coverage](../../reference/domains/sysml/coverage.md), and [Modelica
-coverage](../../reference/domains/modelica/coverage.md).
+coverage](../../reference/domains/modelica/coverage.md). The separate [Mechanism
+coverage](../../reference/domains/mechanism/coverage.md) implements one bounded
+prescribed-kinematics L1–L5 route. The [CL01 capability-lamp
+dossier](../../project-dossiers/capability-lamp-cl01/README.md) now records that route
+through a live local Chrono run and an exact human closeout. Host runtime qualification
+remains a separate operational authority, and the dossier does not prove external image
+distribution.
 
 `cantilever-arm-ca02` is the proposed first **mechanical-family** reference vertical:
 one isolated, parameterized rectangular cantilever part and a linear-static check of
@@ -46,7 +52,7 @@ choice, or a release claim.
 | **L1 — framed** | “We have identified the question and its limits.” | Exact project/source identities, explicit unknowns and the intended engineering question. | A method, result, or conclusion. |
 | **L2 — reviewable** | “I can approve this bounded method and its consequential inputs.” | A server-derived proposal bound to the current revision, declared criteria and assumptions, and the required human MRTR. | That a run occurred or a criterion passed. |
 | **L3 — evidenced** | “This exact admitted input was executed and can be inspected or replayed.” | Sealed admission, fixed lowering/runtime, validated outputs, receipt, lineage and recovery/replay evidence. | A requirement verdict, safety, manufacturability or release. |
-| **L4 — evaluated** | “The named criterion passed, failed, or remains explicitly unresolved for this exact evidence.” | Oracle evaluation of declared criteria on the exact evidence and canonical STEP lineage, including units and margins where the oracle defines them. | A cross-branch Make/Buy conclusion, certification, or permission to silently alter geometry. |
+| **L4 — evaluated** | “The named criterion passed, failed, or remains explicitly unresolved for this exact evidence.” | Oracle evaluation of declared criteria on the exact evidence lineage, including canonical STEP only when the method consumes geometry, plus units and margins where defined. | A cross-branch Make/Buy conclusion, certification, or permission to silently alter geometry. |
 | **L5 — decided** | “The responsible human accepted or rejected the stated consequence of this L4 result.” | The L4 record, its stated scope/limits and an explicit human decision recorded against that exact revision. | A general product guarantee or a decision for a successor geometry. |
 
 `pass` belongs at L4; it is not L5. A new canonical STEP supersedes its Behave evidence,
@@ -58,8 +64,9 @@ Behave, Make and Buy judgement branches.
 A Behave vertical is done at L5 only when it has one complete, inspectable chain:
 
 ```text
-bounded question → human-confirmed method → admitted source and canonical STEP
-  → separate reviewed proof/run → validated evidence and replay → oracle evaluation
+bounded question → human-confirmed method → exact admitted or declared source identities
+  → canonical STEP when the method consumes geometry → separate reviewed proof/run
+  → validated evidence and replay → oracle evaluation
   → human decision with stated scope
 ```
 
@@ -119,8 +126,8 @@ investment. Repetition alone never widens the covered language or FEA method.
 
 This is the product ratchet: a new *instance* is source/data only; a new *capability* is
 shared code and an end-to-end authority proof. Candidate examples—richer CAD forms,
-value-bearing SysML, non-static mechanics, or Modelica component composition—remain
-candidates until that complete path exists.
+value-bearing SysML, mechanics beyond bounded prescribed kinematics, or Modelica
+component composition—remain candidates until that complete path exists.
 
 ## Resolving the old oracle-coverage claim
 

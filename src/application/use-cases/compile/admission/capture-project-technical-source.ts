@@ -56,6 +56,7 @@ import {
   type ReopenAgentResource,
 } from "../../resource/reopen-agent-resource.ts";
 import {
+  Build123dWorkspaceClosureLoweringError,
   lowerBuild123dWorkspaceClosure,
 } from "../../../../domain/cad/source/build123d-workspace-closure-lowering.ts";
 
@@ -267,8 +268,12 @@ export class CaptureProjectTechnicalSource
         });
       } catch (cause) {
         throw captureError(
-          "analysis_rejected",
-          "The exact Build123d workspace closure cannot be lowered by the registered profile.",
+          cause instanceof Build123dWorkspaceClosureLoweringError
+            ? cause.code
+            : "analysis_rejected",
+          cause instanceof Build123dWorkspaceClosureLoweringError
+            ? cause.message
+            : "The exact Build123d workspace closure cannot be lowered by the registered profile.",
           cause,
         );
       }

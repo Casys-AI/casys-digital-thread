@@ -2,8 +2,9 @@
  * Trusted executor for `analyze.run-fea-sensitivity@1`.
  *
  * Two isolated CAD executions (exact admitted source + one numeric step),
- * two attested calculix_solve_static solves, finite differences from the
- * sealed case step. Publishes observations and a study capture. Never a verdict.
+ * two recorded `calculix_solve_static_recorded` requests with exact readback,
+ * and finite differences from the sealed case step. Publishes observations and
+ * a study capture. Never a verdict.
  */
 
 import type { EngineeringProjectCommandOrigin } from "../../../application/ports/in/engineering-project-command-origin.ts";
@@ -12,12 +13,25 @@ import type {
   Build123dExecutionProfileCatalog,
 } from "../../../application/ports/out/cad/isolated/build123d-execution-profile-catalog.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
+import type { CapabilityRuntimeExecutionEligibility } from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import type {
+  CapabilityRuntimeExecutionSession,
+  CapabilityRuntimeExecutionSessionCoordinator,
+} from "../../../application/control-plane/capability-runtime-execution-session.ts";
 import {
   IsolatedCodeOutputValidationRejectedError,
   type IsolatedCodeRunner,
 } from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
-import type { SensitivityStaticStructuralSolver } from "../../../application/ports/out/sensitivity/live-fea/sensitivity-static-structural-solver.ts";
-import type { SolverInputStager } from "../../../application/ports/out/solver-input-stager.ts";
+import {
+  type SensitivityRecordedSolveCapture,
+  SensitivityRecordedSolveOutcomeUnknownError,
+  SensitivityRecordedSolveRejectedError,
+  type SensitivityStaticStructuralSolver,
+} from "../../../application/ports/out/sensitivity/live-fea/sensitivity-static-structural-solver.ts";
+import type {
+  CapabilitySessionSolverInputStagerFactory,
+  SolverInputStager,
+} from "../../../application/ports/out/solver-input-stager.ts";
 import type { TechnicalCompilationAdmissionReader } from "../../../application/ports/out/compile/admission/technical-compilation-admission-reader.ts";
 import {
   assertFailedIsolatedOutputValidationReplay,
@@ -35,6 +49,11 @@ import {
   SENSITIVITY_LIVE_METRIC_UNITS,
 } from "../../../domain/sensitivity/study/sensitivity-live-method.ts";
 import { ANALYZE_RUN_FEA_SENSITIVITY_OPERATION } from "../../../domain/sensitivity/study/sensitivity-study-proposal.ts";
+import { MECHANICS_OBSERVE_STATIC_STRUCTURAL_SENSITIVITY_CAPABILITY } from "../../../domain/capability/engineering-capability.ts";
+import {
+  fingerprintResolvedCapabilityRuntimeOperation,
+  type ResolvedCapabilityRuntimeOperation,
+} from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
 import { SENSITIVITY_CAD_SOURCE_ADMISSION_TOOL } from "../../../domain/sensitivity/study/sensitivity-study-seal-bindings.ts";
 import { locateModuleLevelNumericBinding } from "../../../domain/sensitivity/study/sensitivity-source-substitution.ts";
 import {
@@ -42,8 +61,8 @@ import {
   type SensitivityMetricMeasurement,
 } from "../../../domain/sensitivity/study/sensitivity-study.ts";
 import { substituteModuleLevelNumericLiteral } from "../../../domain/sensitivity/study/sensitivity-source-substitution.ts";
-import type { SensitivityStudyCaseV2 } from "../../../domain/sensitivity/study/sensitivity-study-v2.ts";
-import { parseSensitivityCadSourceUri } from "../../../domain/sensitivity/study/sensitivity-study-v2.ts";
+import type { SensitivityStudyCaseV3 } from "../../../domain/sensitivity/study/sensitivity-study-v3.ts";
+import { parseSensitivityCadSourceUri } from "../../../domain/sensitivity/study/sensitivity-study-v3.ts";
 import { BUILD123D_EXECUTION_PROFILE } from "../../../domain/cad/isolated/build123d-execution-proposal.ts";
 import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
 import {
@@ -54,13 +73,7 @@ import {
   validateIsolatedCodeExecutionRequest,
   validateIsolatedCodeOutputValidationRejection,
 } from "../../../domain/compile/isolation/isolated-code-execution.ts";
-import {
-  exactRecord,
-  finite,
-  literalValue,
-  nonEmptyText,
-  safeId,
-} from "../../../domain/kernel/case-validation.ts";
+import { safeId } from "../../../domain/kernel/case-validation.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
@@ -71,9 +84,11 @@ import type {
   EngineeringAgentRun,
   EngineeringApproval,
   EngineeringDecision,
+  EngineeringOperationRef,
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotBasis,
+  EngineeringWorkItem,
 } from "../../../domain/project/engineering-project.ts";
 import type {
   ThreadArtifact,
@@ -112,8 +127,10 @@ import { assertThreadSnapshotLineageIntact } from "../../shared/stores/thread-sn
 import {
   type FeaSensitivityAttempt,
   FeaSensitivityOutcomeUnknownError,
+  type FeaSensitivityRuntimeAttestation,
   FileFeaSensitivityAttemptStore,
   type SensitivityPhase,
+  type SensitivitySolveSlot,
 } from "./file-fea-sensitivity-attempt-store.ts";
 import {
   requireBasis,
@@ -204,12 +221,24 @@ export interface AnalyzeRunFeaSensitivityRunExecutorDependencies {
     FileCaptureStore<"sensitivity-study">,
     "save" | "read" | "uriFor"
   >;
+  /** L3-only receipt of the actual server-resolved provider runtime. */
+  readonly runtimeProvenanceCaptures: Pick<
+    FileCaptureStore<"sensitivity-runtime-provenance">,
+    "save" | "read" | "uriFor"
+  >;
   readonly admissions: TechnicalCompilationAdmissionReader;
   readonly profiles: Build123dExecutionProfileCatalog;
   readonly runner: IsolatedCodeRunner;
-  readonly stager: SolverInputStager;
+  /** Bound after the JIT runtime session has acquired the exact group lease. */
+  readonly stagerFactory: CapabilitySessionSolverInputStagerFactory;
   readonly solver: SensitivityStaticStructuralSolver;
   readonly attempts: FileFeaSensitivityAttemptStore;
+  /** Cold execution-time authorization, before claim/WAL/provider/CAD. */
+  readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
+  readonly capabilityRuntimeSession?: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin"
+  >;
   readonly experience?: {
     readonly coordinator: Pick<
       SensitivityExperienceCoordinator,
@@ -242,12 +271,18 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
     AnalyzeRunFeaSensitivityRunExecutorDependencies["caseCaptures"];
   readonly #studyCaptures:
     AnalyzeRunFeaSensitivityRunExecutorDependencies["studyCaptures"];
+  readonly #runtimeProvenanceCaptures:
+    AnalyzeRunFeaSensitivityRunExecutorDependencies["runtimeProvenanceCaptures"];
   readonly #admissions: TechnicalCompilationAdmissionReader;
   readonly #profiles: Build123dExecutionProfileCatalog;
   readonly #runner: IsolatedCodeRunner;
-  readonly #stager: SolverInputStager;
+  readonly #stagerFactory: CapabilitySessionSolverInputStagerFactory;
   readonly #solver: SensitivityStaticStructuralSolver;
   readonly #attempts: FileFeaSensitivityAttemptStore;
+  readonly #capabilityRuntime: CapabilityRuntimeExecutionEligibility | undefined;
+  readonly #capabilityRuntimeSession:
+    | Pick<CapabilityRuntimeExecutionSessionCoordinator, "begin">
+    | undefined;
   readonly #experience:
     | AnalyzeRunFeaSensitivityRunExecutorDependencies["experience"]
     | undefined;
@@ -259,12 +294,15 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
     this.#snapshots = deps.snapshots;
     this.#caseCaptures = deps.caseCaptures;
     this.#studyCaptures = deps.studyCaptures;
+    this.#runtimeProvenanceCaptures = deps.runtimeProvenanceCaptures;
     this.#admissions = deps.admissions;
     this.#profiles = deps.profiles;
     this.#runner = deps.runner;
-    this.#stager = deps.stager;
+    this.#stagerFactory = deps.stagerFactory;
     this.#solver = deps.solver;
     this.#attempts = deps.attempts;
+    this.#capabilityRuntime = deps.capabilityRuntime;
+    this.#capabilityRuntimeSession = deps.capabilityRuntimeSession;
     this.#experience = deps.experience;
     this.#lease = deps.lease;
   }
@@ -327,20 +365,34 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
       throw unexpectedStatus(preRun, "queued or this agent's running/publishing");
     }
     await assertThreadWriteBasisAvailable(preClaim, preRun);
-
-    await this.#commands.claimRun(origin, {
-      ...command,
-      commandId: `${command.commandId}:claim`,
-      summary: "Started the FEA sensitivity study run.",
-    });
-    let project = await this.#requiredProject(command.projectId);
-    let run = requireRun(project, command.runId);
-    if (run.status === "completed") return project;
-    if (run.status !== "running" && run.status !== "publishing") {
-      throw unexpectedStatus(run, "running");
-    }
+    await requireMrtrApproval(preClaim, preRun);
+    const { capabilitySession, runtime } = await this.#beginCapabilitySession(
+      preClaim,
+      preRun,
+      command.runId,
+    );
+    const terminal = async (result: EngineeringProjectSnapshot) => {
+      await capabilitySession.releaseTerminal();
+      return result;
+    };
 
     try {
+      const stager = await this.#stagerFactory.forActiveCapabilitySession({
+        lease: capabilitySession.lease,
+        launchGroup: runtime.launchGroup,
+        material: runtime.material,
+      });
+      await this.#commands.claimRun(origin, {
+        ...command,
+        commandId: `${command.commandId}:claim`,
+        summary: "Started the FEA sensitivity study run.",
+      });
+      let project = await this.#requiredProject(command.projectId);
+      let run = requireRun(project, command.runId);
+      if (run.status === "completed") return await terminal(project);
+      if (run.status !== "running" && run.status !== "publishing") {
+        throw unexpectedStatus(run, "running");
+      }
       const basis = requireBasis(run);
       const basisSnapshot = await exactBasisSnapshot(this.#snapshots, basis);
       await assertThreadSnapshotLineageIntact(basisSnapshot, this.#snapshots);
@@ -448,11 +500,13 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
         existingExecutionAttempt?.status === "completed" &&
         existingExecutionAttempt.snapshot
       ) {
-        return await this.#completeFromRecordedSnapshot(
-          origin,
-          command,
-          run.id,
-          existingExecutionAttempt,
+        return await terminal(
+          await this.#completeFromRecordedSnapshot(
+            origin,
+            command,
+            run.id,
+            existingExecutionAttempt,
+          ),
         );
       }
       if (existingExecutionAttempt) {
@@ -507,11 +561,13 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
           throw invalidTransition("Sensitivity experience target is unavailable.");
         }
         if (!memoizationDisabled && reuseAttempt?.status === "completed") {
-          return await this.#completeFromRecordedReuseSnapshot(
-            origin,
-            command,
-            run.id,
-            reuseAttempt,
+          return await terminal(
+            await this.#completeFromRecordedReuseSnapshot(
+              origin,
+              command,
+              run.id,
+              reuseAttempt,
+            ),
           );
         }
         let lookup: SensitivityExperienceLookupResult | undefined;
@@ -568,31 +624,36 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
         if (
           !memoizationDisabled && lookup?.review.outcome === "exact" && reuseAttempt
         ) {
-          return await this.#completeFromExperienceReuse({
-            origin,
-            command,
-            run,
-            basis,
-            basisSnapshot,
-            caseArtifact,
-            studyCase,
-            target: reuseTarget!,
-            lookup,
-            attempt: reuseAttempt,
-          });
+          return await terminal(
+            await this.#completeFromExperienceReuse({
+              origin,
+              command,
+              run,
+              basis,
+              basisSnapshot,
+              caseArtifact,
+              studyCase,
+              target: reuseTarget!,
+              lookup,
+              attempt: reuseAttempt,
+            }),
+          );
         }
       }
       const attempt = await this.#attempts.prepare({
         projectId: command.projectId,
         runId: run.id,
         planDigest,
+        runtime,
       });
       if (attempt.status === "completed" && attempt.snapshot) {
-        return await this.#completeFromRecordedSnapshot(
-          origin,
-          command,
-          run.id,
-          attempt,
+        return await terminal(
+          await this.#completeFromRecordedSnapshot(
+            origin,
+            command,
+            run.id,
+            attempt,
+          ),
         );
       }
 
@@ -604,6 +665,7 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
         sourceText: admitted.sourceText,
         dispatchedAt: requiredStart(run),
         profile,
+        stager,
       });
       const steppedCad = await this.#executeCad({
         projectId: command.projectId,
@@ -613,24 +675,56 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
         sourceText: steppedText,
         dispatchedAt: requiredStart(run),
         profile,
+        stager,
       });
 
-      const baseMetrics = await this.#executeSolve({
+      const baseSolve = await this.#executeSolve({
         projectId: command.projectId,
         runId: run.id,
         phase: "base",
         studyCase,
         cad: baseCad,
         dispatchedAt: requiredStart(run),
+        planDigest,
+        stager,
       });
-      const steppedMetrics = await this.#executeSolve({
+      const steppedSolve = await this.#executeSolve({
         projectId: command.projectId,
         runId: run.id,
         phase: "stepped",
         studyCase,
         cad: steppedCad,
         dispatchedAt: requiredStart(run),
+        planDigest,
+        stager,
       });
+      const baseMetrics = baseSolve.measurements;
+      const steppedMetrics = steppedSolve.measurements;
+
+      const runtimeProvenance = recordedRuntimeProvenance({
+        trustedRunId: run.id,
+        runtime: attempt.runtime,
+        solves: [
+          { phase: "base", capture: baseSolve.capture },
+          { phase: "stepped", capture: steppedSolve.capture },
+        ],
+      });
+      const runtimeProvenanceFingerprint = await sha256Fingerprint(
+        runtimeProvenance,
+      );
+      const runtimeProvenanceText = deterministicJson(runtimeProvenance);
+      await this.#runtimeProvenanceCaptures.save(
+        runtimeProvenanceFingerprint,
+        runtimeProvenanceText,
+      );
+      if (
+        await this.#runtimeProvenanceCaptures.read(runtimeProvenanceFingerprint) !==
+          runtimeProvenanceText
+      ) {
+        throw new Error(
+          "Recorded CalculiX runtime provenance was not durably readable after save.",
+        );
+      }
 
       const derivatives = computeSensitivities(studyCase, baseMetrics, steppedMetrics);
       const capturedAt = requiredStart(run);
@@ -688,6 +782,10 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
         capture,
         captureFingerprint,
         captureUri: this.#studyCaptures.uriFor(captureFingerprint),
+        runtimeProvenance: {
+          fingerprint: runtimeProvenanceFingerprint,
+          uri: this.#runtimeProvenanceCaptures.uriFor(runtimeProvenanceFingerprint),
+        },
         graph,
         ...(missReview
           ? {
@@ -771,24 +869,33 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
           }],
         });
       }
-      return await this.#requiredProject(command.projectId);
+      return await terminal(await this.#requiredProject(command.projectId));
     } catch (error) {
       if (error instanceof IsolatedFeaSensitivityCadOutputValidationRejectedError) {
-        return await this.#failOutputValidationRejected(origin, command, error);
+        return await terminal(
+          await this.#failOutputValidationRejected(origin, command, error),
+        );
       }
       const reconstructed = await this.#reconstructKnownCadOutputValidationRejection(
         command,
       );
       if (reconstructed) {
-        return await this.#failOutputValidationRejected(
-          origin,
-          command,
-          reconstructed,
+        return await terminal(
+          await this.#failOutputValidationRejected(
+            origin,
+            command,
+            reconstructed,
+          ),
         );
+      }
+      if (isUncertainSensitivityExecutionError(error)) {
+        capabilitySession.retainForRecovery();
+        throw error;
       }
       if (!(error instanceof EngineeringProjectCommandError)) {
         await this.#recordFailure(origin, command, error);
       }
+      await capabilitySession.releaseTerminal();
       throw error;
     }
   }
@@ -870,7 +977,7 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
     readonly basis: EngineeringThreadSnapshotBasis;
     readonly basisSnapshot: ThreadSnapshot;
     readonly caseArtifact: ThreadArtifact;
-    readonly studyCase: SensitivityStudyCaseV2;
+    readonly studyCase: SensitivityStudyCaseV3;
     readonly target: SensitivityExperienceTarget;
     readonly lookup: SensitivityExperienceLookupResult;
     readonly attempt: SensitivityExperienceReuseAttempt;
@@ -1250,6 +1357,7 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
     readonly sourceText: string;
     readonly dispatchedAt: string;
     readonly profile: Build123dExecutionProfile;
+    readonly stager: SolverInputStager;
   }): Promise<CadPublicationWithBytes> {
     const sourceBytes = new TextEncoder().encode(input.sourceText);
     const sourceSha256 = await fingerprintResourceBytes(sourceBytes);
@@ -1261,7 +1369,7 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
           "WAL CAD sourceSha256 does not match the admitted source.",
         );
       }
-      const bytes = await this.#stager.read({
+      const bytes = await input.stager.read({
         fingerprint: { algorithm: "sha256", digest: slot.stepSha256 },
         byteCount: slot.stepBytes,
       });
@@ -1370,7 +1478,7 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
     // Persist the STEP into the private cache BEFORE journalling "published":
     // a published WAL slot must always be re-readable on resume, or the run
     // dead-ends fail-closed with no recovery path.
-    await this.#stager.stage({
+    await input.stager.stage({
       bytes: step.bytes,
       fingerprint: { algorithm: "sha256", digest: step.sha256 },
       byteCount: step.byteCount,
@@ -1395,104 +1503,269 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
     readonly projectId: string;
     readonly runId: string;
     readonly phase: SensitivityPhase;
-    readonly studyCase: SensitivityStudyCaseV2;
+    readonly studyCase: SensitivityStudyCaseV3;
     readonly cad: CadPublicationWithBytes;
     readonly dispatchedAt: string;
-  }): Promise<Map<string, SensitivityMetricMeasurement>> {
+    readonly planDigest: string;
+    readonly stager: SolverInputStager;
+  }): Promise<SensitivitySolveExecution> {
     const current = await this.#attempts.read(input.projectId, input.runId);
     const slot = current?.solves[input.phase];
-    if (slot?.status === "solver-recorded") {
-      if (slot.stepSha256 !== input.cad.stepSha256) {
-        throw invalidTransition(
-          "WAL solver stepSha256 does not match the published CAD STEP.",
-        );
-      }
-      return await measurementsFromRecordedSolve(
-        slot.canonicalSolverCaptureText,
-        slot.captureFp,
-        input.phase,
-        input.cad.stepSha256,
-        input.studyCase,
+    if (!current || !slot) {
+      throw invalidTransition(
+        "FEA sensitivity execution WAL is absent before a recorded solve.",
       );
     }
-    if (slot?.status === "dispatched") {
-      // The sensitivity solver is a synchronous MCP call: a dispatched slot
-      // seen on resume means the previous process died or received a
-      // synchronous provider error — no capture will ever arrive. Free the
-      // orphan so this resume may re-dispatch.
-      await this.#attempts.markSolveFailed({
-        projectId: input.projectId,
-        runId: input.runId,
-        phase: input.phase,
-      });
+    if (slot.status === "rejected") {
+      throw new SensitivityRecordedSolveRejectedError(
+        `Recorded CalculiX ${input.phase} solve was terminally rejected: ${slot.reason}`,
+      );
+    }
+    if (slot.status === "captured") {
+      assertSolveStep(slot, input.cad, input.phase);
+      const capture = await this.#solver.reopenCapture(
+        slot.canonicalSolveCaptureText,
+      );
+      assertRecordedCapture(capture, input);
+      if (capture.fingerprint.digest !== slot.captureFp) {
+        throw invalidTransition(
+          "WAL recorded CalculiX capture fingerprint does not match the reopened capture.",
+        );
+      }
+      return {
+        measurements: measurementsFromSolve(input.studyCase, capture.result),
+        capture,
+      };
     }
     const fingerprint = {
       algorithm: "sha256" as const,
       digest: input.cad.stepSha256,
     };
-    const staged = await this.#stager.stage({
+    const staged = await input.stager.stage({
       bytes: input.cad.bytes,
       fingerprint,
       byteCount: input.cad.stepBytes,
     });
+    const plan = await this.#solver.resolve({
+      method: input.studyCase.method,
+      inputArtifact: {
+        fingerprint,
+        byteCount: input.cad.stepBytes,
+        stagedAsset: staged.stagedAsset,
+      },
+      execution: {
+        projectId: input.projectId,
+        runId: input.runId,
+        phase: input.phase,
+        planDigest: input.planDigest,
+      },
+    });
+    if (
+      plan.inputArtifact.fingerprint.digest !== input.cad.stepSha256 ||
+      plan.inputArtifact.byteCount !== input.cad.stepBytes || plan.phase !== input.phase
+    ) {
+      throw invalidTransition(
+        "Server-owned recorded CalculiX plan does not match the exact CAD STEP.",
+      );
+    }
+
+    if (slot.status === "idle") {
+      try {
+        await this.#attempts.markSolvePrepared({
+          projectId: input.projectId,
+          runId: input.runId,
+          phase: input.phase,
+          preparedAt: input.dispatchedAt,
+          stepSha256: input.cad.stepSha256,
+          stepBytes: input.cad.stepBytes,
+          requestId: plan.requestId,
+        });
+      } catch (error) {
+        // A durable preparation is the hard no-redispatch boundary. If its
+        // write is ambiguous, recovery must inspect the same run/WAL rather
+        // than infer that no provider call was possible.
+        throw new FeaSensitivityOutcomeUnknownError(
+          `Could not durably prepare recorded CalculiX ${input.phase} request ${plan.requestId}: ${
+            errorMessage(error)
+          }`,
+        );
+      }
+      // This is the only branch allowed to call the recorded solve tool. Once
+      // prepared exists, even an acknowledgement loss is recovered through
+      // calculix_run_get using the same request id.
+      let dispatch;
+      try {
+        dispatch = await this.#solver.dispatch(plan);
+      } catch (error) {
+        if (error instanceof SensitivityRecordedSolveRejectedError) {
+          await this.#recordKnownSolveRejection(input, error);
+        }
+        throw error;
+      }
+      await this.#markSolveDispatched(input, dispatch);
+      return await this.#readbackAndCaptureSolve(input, plan, dispatch);
+    }
+
+    assertSolveStep(slot, input.cad, input.phase);
+    if (slot.requestId !== plan.requestId) {
+      throw new FeaSensitivityOutcomeUnknownError(
+        `WAL recorded CalculiX ${input.phase} request id differs from the server-derived request id.`,
+      );
+    }
+    if (slot.status === "prepared") {
+      // Do not infer that a prior process stopped before dispatch. It may have
+      // dispatched and lost the acknowledgement, so readback is the only safe
+      // action for this request id.
+      const readback = await this.#readback(input, plan);
+      await this.#markSolveDispatched(input, readback);
+      return await this.#captureReadback(input, readback);
+    }
+    if (slot.status === "dispatched") {
+      return await this.#readbackAndCaptureSolve(input, plan, {
+        requestId: slot.requestId,
+        runId: slot.providerRunId,
+        requestSha256: slot.requestSha256,
+      });
+    }
+    if (slot.status === "readback-recorded") {
+      const readback = await this.#solver.reopenReadback(slot.canonicalReadbackText);
+      if (readback.fingerprint.digest !== slot.readbackFp) {
+        throw invalidTransition(
+          "WAL recorded CalculiX readback fingerprint does not match the reopened readback.",
+        );
+      }
+      return await this.#captureReadback(input, readback);
+    }
+    throw invalidTransition(`Unknown recorded CalculiX ${input.phase} WAL state.`);
+  }
+
+  async #readbackAndCaptureSolve(
+    input: SensitivitySolveInputForExecutor,
+    plan: Awaited<ReturnType<SensitivityStaticStructuralSolver["resolve"]>>,
+    expected: {
+      readonly requestId: string;
+      readonly runId: string;
+      readonly requestSha256: string;
+    },
+  ): Promise<SensitivitySolveExecution> {
+    const readback = await this.#readback(input, plan, expected);
+    return await this.#captureReadback(input, readback);
+  }
+
+  async #readback(
+    input: SensitivitySolveInputForExecutor,
+    plan: Awaited<ReturnType<SensitivityStaticStructuralSolver["resolve"]>>,
+    expected?: {
+      readonly requestId: string;
+      readonly runId: string;
+      readonly requestSha256: string;
+    },
+  ): Promise<Awaited<ReturnType<SensitivityStaticStructuralSolver["readback"]>>> {
+    try {
+      return await this.#solver.readback(plan, expected);
+    } catch (error) {
+      if (error instanceof SensitivityRecordedSolveRejectedError) {
+        await this.#recordKnownSolveRejection(input, error);
+      }
+      throw error;
+    }
+  }
+
+  async #markSolveDispatched(
+    input: SensitivitySolveInputForExecutor,
+    dispatch: {
+      readonly runId: string;
+      readonly requestSha256: string;
+    },
+  ): Promise<void> {
     try {
       await this.#attempts.markSolveDispatched({
         projectId: input.projectId,
         runId: input.runId,
         phase: input.phase,
         dispatchedAt: input.dispatchedAt,
-        stepSha256: input.cad.stepSha256,
+        providerRunId: dispatch.runId,
+        requestSha256: dispatch.requestSha256,
       });
     } catch (error) {
-      throw unknownOutcome(error);
+      throw new FeaSensitivityOutcomeUnknownError(
+        `Recorded CalculiX ${input.phase} acknowledgement could not be durably journalled: ${
+          errorMessage(error)
+        }`,
+      );
     }
-    const plan = this.#solver.resolve({
-      declaration: input.studyCase.solver,
-      inputArtifact: {
-        fingerprint,
-        byteCount: input.cad.stepBytes,
-        stagedAsset: staged.stagedAsset,
-      },
-    });
-    let execution;
+  }
+
+  async #recordKnownSolveRejection(
+    input: SensitivitySolveInputForExecutor,
+    rejection: SensitivityRecordedSolveRejectedError,
+  ): Promise<void> {
     try {
-      execution = await this.#solver.solve(plan);
-    } catch (error) {
-      // Synchronous provider failure: a known terminal outcome, not an
-      // unknown one. Free the WAL slot so a later run can re-dispatch.
-      await this.#attempts.markSolveFailed({
+      await this.#attempts.markSolveRejected({
         projectId: input.projectId,
         runId: input.runId,
         phase: input.phase,
+        rejectedAt: input.dispatchedAt,
+        reason: rejection.message,
       });
-      throw error;
-    }
-    if (execution.result.inputAttestation.fingerprint.digest !== input.cad.stepSha256) {
-      throw invalidTransition(
-        "CalculiX input attestation does not match the staged STEP sha256.",
+    } catch (error) {
+      throw new FeaSensitivityOutcomeUnknownError(
+        `Recorded CalculiX ${input.phase} rejection could not be durably journalled: ${
+          errorMessage(error)
+        }`,
       );
     }
-    const measurements = measurementsFromSolve(input.studyCase, execution.result);
-    const envelope = deterministicJson({
-      schemaVersion: SENSITIVITY_SOLVER_RESULT_SCHEMA,
-      phase: input.phase,
-      stepSha256: input.cad.stepSha256,
-      stepBytes: input.cad.stepBytes,
-      measurements: [...measurements.entries()].map(([metric, item]) => ({
-        metric,
-        value: item.value,
-        unit: item.unit,
-      })),
-    });
-    const captureFp = (await sha256Fingerprint(JSON.parse(envelope))).digest;
-    await this.#attempts.markSolveRecorded({
-      projectId: input.projectId,
-      runId: input.runId,
-      phase: input.phase,
-      captureFp,
-      canonicalSolverCaptureText: envelope,
-    });
-    return measurements;
+  }
+
+  async #captureReadback(
+    input: SensitivitySolveInputForExecutor,
+    readback: Awaited<ReturnType<SensitivityStaticStructuralSolver["readback"]>>,
+  ): Promise<SensitivitySolveExecution> {
+    assertRecordedReadback(readback, input);
+    try {
+      await this.#attempts.markSolveReadbackRecorded({
+        projectId: input.projectId,
+        runId: input.runId,
+        phase: input.phase,
+        readbackFp: readback.fingerprint.digest,
+        canonicalReadbackText: readback.canonicalText,
+      });
+    } catch (error) {
+      throw new FeaSensitivityOutcomeUnknownError(
+        `Recorded CalculiX ${input.phase} completed readback could not be durably journalled: ${
+          errorMessage(error)
+        }`,
+      );
+    }
+    let capture: SensitivityRecordedSolveCapture;
+    try {
+      capture = await this.#solver.capture(readback, input.studyCase.method);
+    } catch (error) {
+      if (error instanceof SensitivityRecordedSolveRejectedError) {
+        await this.#recordKnownSolveRejection(input, error);
+      }
+      throw error;
+    }
+    assertRecordedCapture(capture, input);
+    try {
+      await this.#attempts.markSolveCaptured({
+        projectId: input.projectId,
+        runId: input.runId,
+        phase: input.phase,
+        captureFp: capture.fingerprint.digest,
+        canonicalSolveCaptureText: capture.canonicalText,
+      });
+    } catch (error) {
+      throw new FeaSensitivityOutcomeUnknownError(
+        `Recorded CalculiX ${input.phase} CAS capture could not be durably journalled: ${
+          errorMessage(error)
+        }`,
+      );
+    }
+    return {
+      measurements: measurementsFromSolve(input.studyCase, capture.result),
+      capture,
+    };
   }
 
   async #requiredProject(projectId: string): Promise<EngineeringProjectSnapshot> {
@@ -1505,12 +1778,84 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
     }
     return project;
   }
-}
 
-const SENSITIVITY_SOLVER_RESULT_SCHEMA = "sensitivity-solver-result/1.0" as const;
+  /**
+   * Resolve and recheck the server-selected runtime before the project run is
+   * claimed.  This deliberately has no fallback to endpoint/image options:
+   * absent authorization, qualification, host state, or session wiring leaves
+   * project, execution WAL, CAD and provider untouched.
+   */
+  async #beginCapabilitySession(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+    runId: string,
+  ): Promise<{
+    readonly capabilitySession: CapabilityRuntimeExecutionSession;
+    readonly runtime: FeaSensitivityRuntimeAttestation;
+  }> {
+    if (!this.#capabilityRuntime || !this.#capabilityRuntimeSession) {
+      throw invalidTransition(
+        "Recorded CalculiX sensitivity execution requires the configured JIT capability runtime session before a run can be claimed.",
+      );
+    }
+    const context = requireSensitivityExecutionContext(project, run);
+    const operationalCapability = await this.#capabilityRuntime.requireExecution({
+      project,
+      run,
+      workItem: context.workItem,
+      operation: context.operation,
+    });
+    if (!operationalCapability) {
+      throw invalidTransition(
+        "Recorded CalculiX sensitivity execution has no authorized qualified operational capability binding.",
+      );
+    }
+    const runtime = await sensitivityRuntimeAttestation(operationalCapability);
+    const capabilitySession = await this.#capabilityRuntimeSession.begin({
+      project,
+      runId,
+      operationalCapability,
+      microsandboxExecutionProfiles: [],
+      recheck: async () => {
+        const currentProject = await this.#requiredProject(project.project.id);
+        const currentRun = requireRun(currentProject, runId);
+        requireShape(currentProject, currentRun);
+        const current = requireSensitivityExecutionContext(currentProject, currentRun);
+        const rechecked = await this.#capabilityRuntime!.requireExecution({
+          project: currentProject,
+          run: currentRun,
+          workItem: current.workItem,
+          operation: current.operation,
+        });
+        if (!rechecked) {
+          throw invalidTransition(
+            "Recorded CalculiX sensitivity execution lost its required operational capability binding before host activation.",
+          );
+        }
+        return rechecked;
+      },
+    });
+    return { capabilitySession, runtime };
+  }
+}
 
 interface CadPublicationWithBytes extends SensitivityCadPublication {
   readonly bytes: Uint8Array;
+}
+
+interface SensitivitySolveInputForExecutor {
+  readonly projectId: string;
+  readonly runId: string;
+  readonly phase: SensitivityPhase;
+  readonly studyCase: SensitivityStudyCaseV3;
+  readonly cad: CadPublicationWithBytes;
+  readonly dispatchedAt: string;
+  readonly planDigest: string;
+}
+
+interface SensitivitySolveExecution {
+  readonly measurements: Map<string, SensitivityMetricMeasurement>;
+  readonly capture: SensitivityRecordedSolveCapture;
 }
 
 function publicationOf(cad: CadPublicationWithBytes): SensitivityCadPublication {
@@ -1524,7 +1869,7 @@ function publicationOf(cad: CadPublicationWithBytes): SensitivityCadPublication 
 
 function findAdmissionArtifact(
   snapshot: ThreadSnapshot,
-  studyCase: SensitivityStudyCaseV2,
+  studyCase: SensitivityStudyCaseV3,
   sealedAdmission: {
     readonly id: string;
     readonly fingerprint: ContentFingerprint;
@@ -1567,72 +1912,120 @@ function findAdmissionArtifact(
   return artifact;
 }
 
-async function measurementsFromRecordedSolve(
-  canonicalSolverCaptureText: string,
-  captureFp: string,
+function assertSolveStep(
+  slot: Exclude<SensitivitySolveSlot, { readonly status: "idle" }>,
+  cad: CadPublicationWithBytes,
   phase: SensitivityPhase,
-  stepSha256: string,
-  studyCase: SensitivityStudyCaseV2,
-): Promise<Map<string, SensitivityMetricMeasurement>> {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(canonicalSolverCaptureText);
-  } catch {
-    throw invalidTransition("WAL solver capture is not valid JSON.");
-  }
-  const observed = (await sha256Fingerprint(parsed)).digest;
-  if (observed !== captureFp) {
+): void {
+  if (slot.stepSha256 !== cad.stepSha256 || slot.stepBytes !== cad.stepBytes) {
     throw invalidTransition(
-      "WAL solver capture fingerprint does not match the recorded digest.",
+      `WAL recorded CalculiX ${phase} STEP does not match the published CAD STEP.`,
     );
   }
-  const root = exactRecord(parsed, [
-    "schemaVersion",
-    "phase",
-    "stepSha256",
-    "stepBytes",
-    "measurements",
-  ], "$sensitivitySolverResult");
-  literalValue(
-    root.schemaVersion,
-    SENSITIVITY_SOLVER_RESULT_SCHEMA,
-    "$sensitivitySolverResult.schemaVersion",
+}
+
+function assertRecordedReadback(
+  readback: Awaited<ReturnType<SensitivityStaticStructuralSolver["readback"]>>,
+  input: SensitivitySolveInputForExecutor,
+): void {
+  if (
+    readback.phase !== input.phase ||
+    readback.stepSha256 !== input.cad.stepSha256 ||
+    readback.stepBytes !== input.cad.stepBytes
+  ) {
+    throw invalidTransition(
+      "Recorded CalculiX readback does not bind the exact published CAD STEP.",
+    );
+  }
+}
+
+function assertRecordedCapture(
+  capture: SensitivityRecordedSolveCapture,
+  input: SensitivitySolveInputForExecutor,
+): void {
+  assertRecordedReadback(capture.readback, input);
+  if (capture.canonicalText !== deterministicJson(JSON.parse(capture.canonicalText))) {
+    throw invalidTransition("Recorded CalculiX capture is not canonical.");
+  }
+}
+
+function isUncertainSensitivityExecutionError(error: unknown): boolean {
+  return error instanceof FeaSensitivityOutcomeUnknownError ||
+    error instanceof SensitivityRecordedSolveOutcomeUnknownError;
+}
+
+function requireSensitivityExecutionContext(
+  project: EngineeringProjectSnapshot,
+  run: EngineeringAgentRun,
+): {
+  readonly workItem: EngineeringWorkItem;
+  readonly operation: EngineeringOperationRef;
+} {
+  const workItem = project.workItems.find((item) => item.id === run.workItemId);
+  if (!workItem?.operation) {
+    throw invalidTransition(
+      "FEA sensitivity run has no exact registered work-item operation.",
+    );
+  }
+  if (
+    workItem.operation.id !== ANALYZE_RUN_FEA_SENSITIVITY_OPERATION.id ||
+    workItem.operation.version !== ANALYZE_RUN_FEA_SENSITIVITY_OPERATION.version
+  ) {
+    throw invalidTransition(
+      "FEA sensitivity run is bound to another registered operation.",
+    );
+  }
+  return { workItem, operation: workItem.operation };
+}
+
+async function sensitivityRuntimeAttestation(
+  operationalCapability: ResolvedCapabilityRuntimeOperation,
+): Promise<FeaSensitivityRuntimeAttestation> {
+  const matches = operationalCapability.bindings.filter((binding) =>
+    binding.capability.id ===
+      MECHANICS_OBSERVE_STATIC_STRUCTURAL_SENSITIVITY_CAPABILITY.id &&
+    binding.capability.version ===
+      MECHANICS_OBSERVE_STATIC_STRUCTURAL_SENSITIVITY_CAPABILITY.version &&
+    binding.capability.use === "execution"
   );
-  literalValue(root.phase, phase, "$sensitivitySolverResult.phase");
-  literalValue(root.stepSha256, stepSha256, "$sensitivitySolverResult.stepSha256");
-  if (!Array.isArray(root.measurements)) {
-    throw invalidTransition("WAL solver capture measurements must be an array.");
-  }
-  const map = new Map<string, SensitivityMetricMeasurement>();
-  for (const [index, item] of root.measurements.entries()) {
-    const row = exactRecord(
-      item,
-      ["metric", "value", "unit"],
-      `$sensitivitySolverResult.measurements[${index}]`,
-    );
-    map.set(
-      safeId(row.metric, `$sensitivitySolverResult.measurements[${index}].metric`),
-      {
-        value: finite(
-          row.value,
-          `$sensitivitySolverResult.measurements[${index}].value`,
-        ),
-        unit: nonEmptyText(
-          row.unit,
-          `$sensitivitySolverResult.measurements[${index}].unit`,
-        ),
-      },
+  if (matches.length !== 1) {
+    throw invalidTransition(
+      "Recorded CalculiX sensitivity runtime must resolve exactly one execution binding.",
     );
   }
-  for (const metric of studyCase.metrics) {
-    const observedMetric = map.get(metric.id);
-    if (!observedMetric || observedMetric.unit !== metric.unit) {
-      throw invalidTransition(
-        `WAL solver capture is missing sealed metric ${metric.id}.`,
-      );
-    }
+  const binding = matches[0]!;
+  const lifecycles = binding.hostLifecycles.filter((lifecycle) =>
+    lifecycle.kind === "persistent-compose" && lifecycle.launchGroup !== null
+  );
+  if (lifecycles.length !== 1) {
+    throw invalidTransition(
+      "Recorded CalculiX sensitivity runtime must resolve exactly one persistent launch group material.",
+    );
   }
-  return map;
+  const lifecycle = lifecycles[0]!;
+  const material = binding.materials.find((candidate) =>
+    candidate.unitId === lifecycle.material.unitId &&
+    candidate.materialId === lifecycle.material.materialId &&
+    candidate.imageDigest === lifecycle.material.imageDigest
+  );
+  if (!material || binding.materials.length !== 1) {
+    throw invalidTransition(
+      "Recorded CalculiX sensitivity runtime material is not an exact single binding material.",
+    );
+  }
+  return {
+    operationalCapabilityFingerprint:
+      await fingerprintResolvedCapabilityRuntimeOperation(
+        operationalCapability,
+      ),
+    binding: { id: binding.binding.id, version: binding.binding.version },
+    material: {
+      unitId: material.unitId,
+      materialId: material.materialId,
+      imageDigest: material.imageDigest,
+    },
+    launchGroup: lifecycle.launchGroup!,
+  };
 }
 
 function isolatedOutputValidationFailure(
@@ -1692,8 +2085,12 @@ function unknownOutcome(error: unknown): EngineeringProjectCommandError {
   throw error;
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function measurementsFromSolve(
-  studyCase: SensitivityStudyCaseV2,
+  studyCase: SensitivityStudyCaseV3,
   result: {
     readonly observations: {
       readonly maximumDisplacement: {
@@ -1843,6 +2240,53 @@ async function exactBasisSnapshot(
   return snapshot;
 }
 
+/**
+ * L3 provenance only. This records the actual resolved capability attestation
+ * already sealed into the execution WAL plus each completed recorded-run
+ * identity and ordered resource-capture receipt. It does not claim a solver
+ * verdict, provider qualification, or an engineering evaluation.
+ */
+function recordedRuntimeProvenance(input: {
+  readonly trustedRunId: string;
+  readonly runtime: FeaSensitivityRuntimeAttestation;
+  readonly solves: readonly {
+    readonly phase: SensitivityPhase;
+    readonly capture: SensitivityRecordedSolveCapture;
+  }[];
+}) {
+  if (
+    input.solves.length !== 2 || input.solves[0]?.phase !== "base" ||
+    input.solves[1]?.phase !== "stepped"
+  ) {
+    throw invalidTransition(
+      "Recorded CalculiX runtime provenance requires exactly base then stepped captures.",
+    );
+  }
+  return {
+    schemaVersion: "sensitivity-runtime-provenance/1.0" as const,
+    trustedRunId: safeId(input.trustedRunId, "$runtimeProvenance.trustedRunId"),
+    runtime: input.runtime,
+    solves: input.solves.map(({ phase, capture }) => ({
+      phase,
+      requestId: capture.readback.requestId,
+      providerRunId: capture.readback.runId,
+      requestSha256: capture.readback.requestSha256,
+      readbackFingerprint: capture.readback.fingerprint,
+      providerManifestFingerprint: capture.providerCapture.manifestFingerprint,
+      providerManifestUri: capture.providerCapture.manifestUri,
+      orderedResourceSequenceFingerprint:
+        capture.providerCapture.artifactSequenceFingerprint,
+      requestResourceFingerprint:
+        capture.providerCapture.requestBinding.requestResourceFingerprint,
+      loweredRequestFingerprint:
+        capture.providerCapture.requestBinding.loweredRequestFingerprint,
+      executionIdentityFingerprint:
+        capture.providerCapture.requestBinding.executionIdentityFingerprint,
+      solveCaptureFingerprint: capture.fingerprint,
+    })),
+  };
+}
+
 function buildStudySuccessor(input: {
   readonly basisSnapshot: ThreadSnapshot;
   readonly basis: EngineeringThreadSnapshotBasis;
@@ -1851,6 +2295,11 @@ function buildStudySuccessor(input: {
   readonly capture: SensitivityStudyCapture;
   readonly captureFingerprint: ContentFingerprint;
   readonly captureUri: string;
+  /** L3-only provenance of the exact server-resolved runtime and bundle. */
+  readonly runtimeProvenance: {
+    readonly fingerprint: ContentFingerprint;
+    readonly uri: string;
+  };
   readonly graph: ReturnType<typeof buildSensitivityAnalysisGraph>;
   readonly reuseReview?: {
     readonly review: SensitivityExperienceReuseReview;
@@ -1873,6 +2322,21 @@ function buildStudySuccessor(input: {
     version: input.captureFingerprint.digest,
     fingerprint: input.captureFingerprint,
     uri: input.captureUri,
+    mediaType: "application/json",
+    producer: operationRef,
+    inputArtifactIds: [
+      input.caseArtifact.id,
+      `sensitivity-runtime-${input.runtimeProvenance.fingerprint.digest}`,
+    ],
+    freshness: { status: "fresh", changedAt: capturedAt, invalidatedByChangeIds: [] },
+  };
+  const runtimeArtifact: ThreadArtifact = {
+    id: `sensitivity-runtime-${input.runtimeProvenance.fingerprint.digest}`,
+    name: "Recorded CalculiX sensitivity runtime provenance",
+    kind: "evidence",
+    version: input.runtimeProvenance.fingerprint.digest,
+    fingerprint: input.runtimeProvenance.fingerprint,
+    uri: input.runtimeProvenance.uri,
     mediaType: "application/json",
     producer: operationRef,
     inputArtifactIds: [input.caseArtifact.id],
@@ -1935,12 +2399,19 @@ function buildStudySuccessor(input: {
     name: "Run the sealed FEA sensitivity study",
     subjectId: input.basis.subjectId,
     capturedAt,
-    artifacts: [artifact, ...(reviewArtifact ? [reviewArtifact] : [])],
+    artifacts: [runtimeArtifact, artifact, ...(reviewArtifact ? [reviewArtifact] : [])],
     consumptions: [{
       id: `consume-${input.caseArtifact.id}-by-${artifactId}`,
       artifactId: input.caseArtifact.id,
       consumer: operationRef,
       observedFingerprint: input.caseArtifact.fingerprint,
+      verifiedAt: capturedAt,
+      status: "verified",
+    }, {
+      id: `consume-${runtimeArtifact.id}-by-${artifactId}`,
+      artifactId: runtimeArtifact.id,
+      consumer: operationRef,
+      observedFingerprint: runtimeArtifact.fingerprint,
       verifiedAt: capturedAt,
       status: "verified",
     }],
@@ -1955,6 +2426,22 @@ function buildStudySuccessor(input: {
         from: { kind: "artifact", id: artifactId },
         to: { kind: "artifact", id: input.caseArtifact.id },
         rationale: "The sensitivity run consumes the sealed study-case mandate.",
+      },
+      {
+        id: `derived-from-${input.caseArtifact.id}-by-${runtimeArtifact.id}`,
+        relation: "derived_from",
+        from: { kind: "artifact", id: runtimeArtifact.id },
+        to: { kind: "artifact", id: input.caseArtifact.id },
+        rationale:
+          "The runtime provenance records the server-resolved capability used for the sealed study case.",
+      },
+      {
+        id: `derived-from-${runtimeArtifact.id}-by-${artifactId}`,
+        relation: "derived_from",
+        from: { kind: "artifact", id: artifactId },
+        to: { kind: "artifact", id: runtimeArtifact.id },
+        rationale:
+          "The factual sensitivity observations retain their recorded runtime and provider-resource provenance.",
       },
       ...(reviewArtifact
         ? [{
@@ -1975,6 +2462,17 @@ function buildStudySuccessor(input: {
         },
         to: { kind: "artifact", id: input.caseArtifact.id },
         rationale: "The executor re-read the sealed study-case capture.",
+      },
+      {
+        id: `uses-consume-${runtimeArtifact.id}-by-${artifactId}`,
+        relation: "uses",
+        from: {
+          kind: "consumption",
+          id: `consume-${runtimeArtifact.id}-by-${artifactId}`,
+        },
+        to: { kind: "artifact", id: runtimeArtifact.id },
+        rationale:
+          "The factual study capture retains the exact recorded runtime provenance capture.",
       },
       ...observations.map((observation) => ({
         id: `derived-from-${artifactId}-by-${observation.id}`,
@@ -2004,7 +2502,7 @@ function buildReuseSuccessor(input: {
   readonly basis: EngineeringThreadSnapshotBasis;
   readonly run: EngineeringAgentRun;
   readonly caseArtifact: ThreadArtifact;
-  readonly studyCase: SensitivityStudyCaseV2;
+  readonly studyCase: SensitivityStudyCaseV3;
   readonly caseDigest: string;
   readonly record: SensitivityExperienceRecord;
   readonly review: SensitivityExperienceReuseReview;

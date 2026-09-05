@@ -97,6 +97,56 @@ Deno.test("isolated CalculiX @3 publishes nine local outputs and two evidence ar
   });
 });
 
+Deno.test("isolated CalculiX @3 keeps a queued run cold when JIT host activation is unavailable", async () => {
+  await withRuntime(async (runtime) => {
+    let sessions = 0;
+    const executor = runtime.executorWith({
+      capabilityRuntimeSession: {
+        begin: () => {
+          sessions++;
+          return Promise.reject(new Error("exact host profile unavailable"));
+        },
+      },
+    });
+
+    await assertRejects(
+      () => executor.execute(ISOLATED_CALCULIX_FIXTURE_AGENT, runtime.fixture.command),
+      Error,
+      "profile unavailable",
+    );
+    const project = await runtime.fixture.projects.get(
+      runtime.fixture.command.projectId,
+    );
+    assertEquals(
+      project!.agentRuns.find((run) => run.id === runtime.fixture.runId)?.status,
+      "queued",
+    );
+    assertEquals(sessions, 1);
+    assertEquals(runtime.counts.execute, 0);
+    assertEquals(runtime.counts.syson, 0);
+  });
+});
+
+Deno.test("isolated CalculiX @3 completed replay stays cold and opens no JIT session", async () => {
+  await withRuntime(async (runtime) => {
+    await runtime.executor.execute(
+      ISOLATED_CALCULIX_FIXTURE_AGENT,
+      runtime.fixture.command,
+    );
+    let sessions = 0;
+    const replay = runtime.executorWith({
+      capabilityRuntimeSession: {
+        begin: () => {
+          sessions++;
+          return Promise.reject(new Error("replay must not activate JIT"));
+        },
+      },
+    });
+    await replay.execute(ISOLATED_CALCULIX_FIXTURE_AGENT, runtime.fixture.command);
+    assertEquals(sessions, 0);
+  });
+});
+
 Deno.test("isolated CalculiX @3 fails the claimed run on a known execution rejection without Thread write", async () => {
   await withRuntime(async (runtime) => {
     const diagnostic = await createIsolatedCodeExecutionRejectionDiagnostic({
@@ -1059,6 +1109,16 @@ function executorDependencies(
       uriFor: (fingerprint) =>
         `casys://calculix-isolated-execution-evidence/sha256/${fingerprint.digest}`,
     },
+    capabilityRuntime: {
+      async requireExecution({ run }) {
+        if (!run.resolvedOperationPlan) {
+          throw new Error("Fixture run is missing its resolved operation plan.");
+        }
+        return (await fixture.plans.read(run.resolvedOperationPlan))
+          .operationalCapability;
+      },
+    },
+    capabilityRuntimeSession: successfulCapabilitySession(),
     sysonEvaluationCaptureStore: evaluations,
     attempts: new FileCalculixIsolatedProductAttemptStore(`${directory}/attempts`),
     syson: {
@@ -1067,6 +1127,19 @@ function executorDependencies(
     },
     lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
     now: monotonicNow(),
+  };
+}
+
+function successfulCapabilitySession() {
+  return {
+    async begin(input: { readonly recheck: () => Promise<unknown> }) {
+      await input.recheck();
+      return {
+        lease: {} as never,
+        releaseTerminal: () => Promise.resolve(),
+        retainForRecovery: () => undefined,
+      };
+    },
   };
 }
 

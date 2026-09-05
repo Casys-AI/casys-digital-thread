@@ -1,7 +1,11 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertNotEquals, assertStringIncludes } from "@std/assert";
 import { createConsoleServer } from "../../server.ts";
 import { FileEngineeringProjectRevisionStore } from "../adapters/shared/stores/engineering-project-store.ts";
 import { ProjectBriefCommandService } from "../application/use-cases/project/project-brief-command-service.ts";
+import { ProjectCapabilityAuthorizationService } from "../application/control-plane/project-capability-authorization-service.ts";
+import { InMemoryProjectCapabilityLedgerStore } from "../adapters/control-plane/file-project-capability-ledger-store.ts";
+import { createFirstPartyCapabilityRuntimeCatalog } from "../adapters/control-plane/first-party-capability-binding-catalog.ts";
+import { listRegisteredEngineeringOperations } from "../orchestration/operations/registry.ts";
 import { LOCAL_YOLO_PROJECT_APPROVAL_MODE } from "./project-approval-mode.ts";
 
 Deno.test("project MCP framing uses one project identity from intent through approved brief", async () => {
@@ -18,7 +22,7 @@ Deno.test("project MCP framing uses one project identity from intent through app
     manifest: { version: 1, servers: [] },
     runs: [],
     projectControl: false,
-    projectBrief: { projects, commands },
+    projectBrief: await briefDependencies(projects, commands),
     mrtrSigningKey: "b".repeat(64),
     logger: () => {},
   });
@@ -47,6 +51,8 @@ Deno.test("project MCP framing uses one project identity from intent through app
     const names = tools.map((tool) => tool.name);
     assertEquals(names.includes("project_start"), true);
     assertEquals(names.includes("project_brief_confirm"), true);
+    assertEquals(names.includes("project_capability_inspect"), true);
+    assertEquals(names.includes("project_capability_change_review"), true);
     const startSchema = tools.find((tool) => tool.name === "project_start")
       ?.inputSchema?.properties;
     const startIssuedAt = startSchema?.issuedAt?.description ?? "";
@@ -117,6 +123,11 @@ Deno.test("project MCP framing uses one project identity from intent through app
     assertEquals(project.briefSnapshotId, proposal.id);
     assertEquals(project.briefRevision, proposal.revision);
     assertEquals(project.inputFingerprint, review.inputFingerprint);
+    assertEquals(
+      project.capabilityProposalFingerprint,
+      (project.capabilityProposal as Record<string, unknown>)
+        .capabilityProposalFingerprint,
+    );
     assertEquals(proposal.contractVersion, "2.0");
     assertEquals(
       ((proposal.items as Array<Record<string, unknown>>).find((item) =>
@@ -137,10 +148,42 @@ Deno.test("project MCP framing uses one project identity from intent through app
       briefSnapshotId: proposal.id,
       briefRevision: proposal.revision,
       inputFingerprint: review.inputFingerprint,
+      capabilityProposalFingerprint:
+        (project.capabilityProposal as Record<string, unknown>)
+          .capabilityProposalFingerprint,
     };
     const inputRequired = await client.toolInputRequired(
       "project_brief_confirm",
       confirmArgs,
+    );
+    const confirmation = (
+      inputRequired.inputRequests as Record<string, {
+        params: Record<string, unknown>;
+      }>
+    ).brief_confirmation;
+    const confirmationProposal = confirmation.params.capabilityProposal as Record<
+      string,
+      unknown
+    >;
+    assertEquals(
+      confirmation.params.capabilityProposalFingerprint,
+      confirmArgs.capabilityProposalFingerprint,
+    );
+    assertEquals(
+      confirmationProposal.capabilityProposalFingerprint,
+      confirmArgs.capabilityProposalFingerprint,
+    );
+    assertEquals(
+      confirmation.params.capabilityEnvelopeDelta,
+      null,
+    );
+    assertEquals(
+      Object.keys(
+        (confirmation.params.requestedSchema as {
+          properties: Record<string, unknown>;
+        }).properties,
+      ),
+      ["confirmed"],
     );
     result = await client.toolRetry(
       "project_brief_confirm",
@@ -155,6 +198,20 @@ Deno.test("project MCP framing uses one project identity from intent through app
     );
     project = result.structuredContent as Record<string, unknown>;
     assertEquals(project.revision, 3);
+    const replay = await client.tool("project_brief_confirm", confirmArgs);
+    assertEquals((replay.structuredContent as Record<string, unknown>).revision, 3);
+    assertEquals(
+      ((replay.structuredContent as Record<string, unknown>)
+        .capabilityAuthorization as Record<string, unknown>).status,
+      "authorized",
+    );
+    const inspected = await client.tool("project_capability_inspect", {
+      projectId: "project-v3",
+    });
+    assertEquals(
+      (inspected.structuredContent as Record<string, unknown>).authorization,
+      "authorized",
+    );
     assertEquals(
       ((project.framing as Record<string, unknown>).currentBriefApproval as Record<
         string,
@@ -162,9 +219,65 @@ Deno.test("project MCP framing uses one project identity from intent through app
       >).status,
       "approved",
     );
+    const approvedBrief = (project.framing as Record<string, unknown>)
+      .currentBrief as Record<string, unknown>;
+    result = await client.tool("project_brief_propose", {
+      ...common("propose-editorial-brief", 3),
+      items: (approvedBrief.items as Array<Record<string, unknown>>).map((item) =>
+        item.id === "objective"
+          ? {
+            ...item,
+            statement: "Demonstrate the same reviewable system with clearer wording.",
+          }
+          : item
+      ),
+    });
+    const editorial = result.structuredContent as Record<string, unknown>;
+    const editorialFraming = editorial.framing as Record<string, unknown>;
+    const editorialBrief = editorialFraming.proposedBrief as Record<string, unknown>;
+    const editorialReview = editorialFraming.proposalReview as Record<string, unknown>;
+    const editorialProposal = editorial.capabilityProposal as Record<string, unknown>;
+    assertNotEquals(
+      editorialProposal.capabilityProposalFingerprint,
+      confirmArgs.capabilityProposalFingerprint,
+    );
+    const editorialArgs = {
+      ...common("confirm-editorial-brief", 4),
+      briefSnapshotId: editorialBrief.id,
+      briefRevision: editorialBrief.revision,
+      inputFingerprint: editorialReview.inputFingerprint,
+      capabilityProposalFingerprint: editorialProposal.capabilityProposalFingerprint,
+    };
+    const editorialInput = await client.toolInputRequired(
+      "project_brief_confirm",
+      editorialArgs,
+    );
+    result = await client.toolRetry(
+      "project_brief_confirm",
+      editorialArgs,
+      editorialInput.requestState as string,
+      {
+        brief_confirmation: { action: "accept", content: { confirmed: true } },
+      },
+    );
+    project = result.structuredContent as Record<string, unknown>;
+    assertEquals(project.revision, 5);
+    const editorialReplay = await client.tool(
+      "project_brief_confirm",
+      editorialArgs,
+    );
+    assertEquals(
+      (editorialReplay.structuredContent as Record<string, unknown>).revision,
+      5,
+    );
+    assertEquals(
+      ((editorialReplay.structuredContent as Record<string, unknown>)
+        .capabilityAuthorization as Record<string, unknown>).status,
+      "authorized",
+    );
     assertEquals(
       (await projects.get("project-v3"))?.project.objective.statement,
-      "Demonstrate a reviewable system safely.",
+      "Demonstrate the same reviewable system with clearer wording.",
     );
   } finally {
     await http.shutdown();
@@ -190,7 +303,7 @@ Deno.test(
       manifest: { version: 1, servers: [] },
       runs: [],
       projectControl: false,
-      projectBrief: { projects, commands },
+      projectBrief: await briefDependencies(projects, commands),
       mrtrSigningKey: "b".repeat(64),
       logger: () => {},
     });
@@ -248,6 +361,10 @@ Deno.test(
         briefSnapshotId: proposal.id,
         briefRevision: proposal.revision,
         inputFingerprint: review.inputFingerprint,
+        capabilityProposalFingerprint:
+          ((result.structuredContent as Record<string, unknown>)
+            .capabilityProposal as Record<string, unknown>)
+            .capabilityProposalFingerprint,
         rationale: "Operator explicitly confirmed this brief captures the intent.",
       };
       const inputRequired = await client.toolInputRequired(
@@ -296,7 +413,7 @@ Deno.test("local YOLO confirms the exact brief directly with a persisted human s
     manifest: { version: 1, servers: [] },
     runs: [],
     projectControl: false,
-    projectBrief: { projects, commands },
+    projectBrief: await briefDependencies(projects, commands),
     approvalMode: LOCAL_YOLO_PROJECT_APPROVAL_MODE,
     logger: () => {},
   });
@@ -344,6 +461,9 @@ Deno.test("local YOLO confirms the exact brief directly with a persisted human s
       briefSnapshotId: proposedContent.briefSnapshotId,
       briefRevision: proposedContent.briefRevision,
       inputFingerprint: proposedContent.inputFingerprint,
+      capabilityProposalFingerprint:
+        (proposedContent.capabilityProposal as Record<string, unknown>)
+          .capabilityProposalFingerprint,
       rationale: "Proceed locally.",
     });
     assertEquals(result.resultType, "complete");
@@ -384,7 +504,7 @@ Deno.test(
       manifest: { version: 1, servers: [] },
       runs: [],
       projectControl: false,
-      projectBrief: { projects, commands },
+      projectBrief: await briefDependencies(projects, commands),
       mrtrSigningKey: "b".repeat(64),
       logger: () => {},
     });
@@ -444,6 +564,10 @@ Deno.test(
         briefSnapshotId: proposal.id,
         briefRevision: proposal.revision,
         inputFingerprint: review.inputFingerprint,
+        capabilityProposalFingerprint:
+          ((result.structuredContent as Record<string, unknown>)
+            .capabilityProposal as Record<string, unknown>)
+            .capabilityProposalFingerprint,
       };
       const inputRequired = await client.toolInputRequired(
         "project_brief_confirm",
@@ -483,6 +607,50 @@ function common(commandId: string, expectedRevision: number) {
     projectId: "project-v3",
     expectedRevision,
     issuedAt: "2026-08-03T08:59:30.000Z",
+  };
+}
+
+async function briefDependencies(
+  projects: FileEngineeringProjectRevisionStore,
+  commands: ProjectBriefCommandService,
+) {
+  return {
+    projects,
+    commands,
+    capabilityAuthorization: new ProjectCapabilityAuthorizationService({
+      ledgers: new InMemoryProjectCapabilityLedgerStore(),
+      registry: { list: listRegisteredEngineeringOperations },
+      recordedPlans: unusedRecordedPlans(),
+      catalog: await createFirstPartyCapabilityRuntimeCatalog(),
+      qualificationSpecs: [],
+      qualificationCandidates: [],
+      policy: {
+        schemaVersion: "capability-runtime-admin-policy/1.0",
+        disabledBindingIds: [],
+        preferences: [],
+      },
+      host: {
+        schemaVersion: "capability-runtime-host-observation/1.0",
+        identityFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+        platform: "linux/arm64",
+        images: [],
+      },
+      lock: {
+        schemaVersion: "capability-runtime-admin-lock/1.0",
+        revision: 0,
+        previous: null,
+        units: [],
+      },
+    }),
+  };
+}
+
+function unusedRecordedPlans() {
+  return {
+    read: () =>
+      Promise.reject(
+        new TypeError("Recorded run plans are not composed in this fixture."),
+      ),
   };
 }
 

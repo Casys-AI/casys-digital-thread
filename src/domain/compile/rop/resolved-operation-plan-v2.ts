@@ -22,6 +22,10 @@ import {
 } from "../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
 import { canonicalCalculixStepPlanCasUri } from "../../fea/isolated-v3/calculix-step-asset-uri.ts";
+import {
+  type ResolvedCapabilityRuntimeOperation,
+  validateResolvedCapabilityRuntimeOperation,
+} from "../../capability/runtime/capability-runtime-supervision.ts";
 
 export const RESOLVED_OPERATION_PLAN_V2_SCHEMA = "resolved-operation-plan/2.0" as const;
 export const RESOLVED_OPERATION_PLAN_REF_SCHEMA =
@@ -55,6 +59,38 @@ export const CALCULIX_ISOLATED_STATIC_RESOURCE_PROFILE = deepFreeze(
   } as const,
 );
 
+/** Closed factual-capture profile for prescribed kinematics L3. */
+export const PRESCRIBED_KINEMATICS_OBSERVATION_RESOURCE_PROFILE = deepFreeze(
+  {
+    id: "prescribed-kinematics.observation-artifacts",
+    version: "1.0",
+  } as const,
+);
+
+/** Closed documentary outputs for one admitted Modelica isolated execution. */
+export const MODELICA_ADMITTED_ISOLATED_RESOURCE_PROFILE = deepFreeze(
+  {
+    id: "modelica-admitted.isolated-artifacts",
+    version: "1.0",
+    resources: [
+      { role: "evidence.json", mediaType: "application/json" },
+      { role: "result.csv", mediaType: "text/csv" },
+    ],
+  } as const,
+);
+
+/** Closed documentary outputs for one admitted SPICE isolated execution. */
+export const SPICE_ADMITTED_ISOLATED_RESOURCE_PROFILE = deepFreeze(
+  {
+    id: "spice-admitted.isolated-artifacts",
+    version: "1.0",
+    resources: [
+      { role: "evidence.json", mediaType: "application/json" },
+      { role: "result.json", mediaType: "application/json" },
+    ],
+  } as const,
+);
+
 export interface ResolvedOperationPlanRef {
   readonly schemaVersion: typeof RESOLVED_OPERATION_PLAN_REF_SCHEMA;
   readonly planId: string;
@@ -85,6 +121,12 @@ export interface ResolvedOperationPlanV2 {
     /** Canonical fingerprint of the complete server-reviewed operation binding. */
     readonly operationFingerprint: ContentFingerprint;
   };
+  /**
+   * Exact operational binding selected by the server at queue time. It is
+   * independent of MRTR and results, yet seals the binding/profile/digests
+   * that execution must recheck before WAL or provider contact.
+   */
+  readonly operationalCapability: ResolvedCapabilityRuntimeOperation;
   /** Exact human decision/approval and the qualified execution method. */
   readonly authorization: {
     readonly kind: "human-mrtr-and-qualified-method";
@@ -114,7 +156,10 @@ export interface ResolvedOperationPlanV2 {
   readonly sources: readonly ResolvedOperationPlanSource[];
   readonly action:
     | ResolvedCalculixStaticStructuralAction
-    | ResolvedCalculixIsolatedStaticStructuralAction;
+    | ResolvedCalculixIsolatedStaticStructuralAction
+    | ResolvedPrescribedKinematicsObservationAction
+    | ResolvedAdmittedModelicaIsolatedExecutionAction
+    | ResolvedAdmittedSpiceIsolatedExecutionAction;
   /** Resource roles expected from the provider ledger/capture boundary. */
   readonly expectedProviderResources: ResolvedOperationPlanExpectedResources;
   /** Names a code-owned recovery policy; it does not define a state machine. */
@@ -149,24 +194,57 @@ export type ResolvedOperationPlanExpectedResources =
   }
   | {
     readonly receiptSchema: "isolated-code-execution-receipt-record/1.0";
+    readonly evidenceSchema: "modelica-admitted-execution-capture/2.0";
+    readonly resourceProfile: {
+      readonly id: "modelica-admitted.isolated-artifacts";
+      readonly version: "1.0";
+    };
+  }
+  | {
+    readonly receiptSchema: "isolated-code-execution-receipt-record/1.0";
+    readonly evidenceSchema: "spice-admitted-execution-capture/1.0";
+    readonly resourceProfile: {
+      readonly id: "spice-admitted.isolated-artifacts";
+      readonly version: "1.0";
+    };
+  }
+  | {
+    readonly receiptSchema: "isolated-code-execution-receipt-record/1.0";
     readonly evidenceSchema: "calculix-isolated-static-evidence/1.0";
     readonly resourceProfile: {
       readonly id: "calculix-isolated.static-artifacts";
       readonly version: "1.0";
     };
+  }
+  | {
+    readonly receiptSchema: "chrono-prescribed-kinematics-receipt/1.0";
+    readonly evidenceSchema: "prescribed-kinematics-observation/1.0";
+    readonly resourceProfile: {
+      readonly id: "prescribed-kinematics.observation-artifacts";
+      readonly version: "1.0";
+    };
   };
 
+type ResolvedOperationPlanRecoveryCommon = {
+  readonly mode: "same-request-readback-no-blind-redispatch";
+  readonly ambiguousOutcome: "quarantine-for-human-review";
+  readonly capturedOutcome: "cas-only-recovery";
+};
+
 export type ResolvedOperationPlanRecovery =
-  & {
+  | (ResolvedOperationPlanRecoveryCommon & {
     readonly requestId: string;
-    readonly mode: "same-request-readback-no-blind-redispatch";
-    readonly ambiguousOutcome: "quarantine-for-human-review";
-    readonly capturedOutcome: "cas-only-recovery";
-  }
-  & (
-    | { readonly policy: "mcp-calculix.recorded-static-recovery@1.0" }
-    | { readonly policy: "calculix-isolated-generation-recovery@1.0" }
-  );
+    readonly policy:
+      | "mcp-calculix.recorded-static-recovery@1.0"
+      | "calculix-isolated-generation-recovery@1.0"
+      | "prescribed-kinematics.observation-recovery@1.0";
+  })
+  | (ResolvedOperationPlanRecoveryCommon & {
+    readonly executionRunId: string;
+    readonly policy:
+      | "modelica-admitted-generation-recovery@1.0"
+      | "spice-admitted-generation-recovery@1.0";
+  });
 
 export interface ResolvedCalculixStaticStructuralAction {
   readonly kind: "static-structural-analysis";
@@ -220,8 +298,75 @@ export interface ResolvedCalculixIsolatedStaticStructuralAction {
   readonly input: ResolvedCalculixStaticStructuralAction["input"];
 }
 
+/**
+ * Semantic L3 action only. Its concrete selected binding/image/launch group
+ * lives in `operationalCapability`, never in agent-visible action input.
+ */
+export interface ResolvedPrescribedKinematicsObservationAction {
+  readonly kind: "prescribed-kinematics-observation";
+  readonly lowering: {
+    readonly id: "prescribed-kinematics.case-json";
+    readonly version: "1.0";
+  };
+  readonly requestId: string;
+  readonly input: {
+    readonly prescribedKinematicsCase: {
+      readonly id: string;
+      readonly fingerprint: ContentFingerprint;
+      readonly sourceBinding: string;
+    };
+  };
+}
+
+/**
+ * Semantic execution of source reopened from one sealed Modelica admission.
+ * The server-owned operational capability and qualified profile own the
+ * runtime, image, worker, lowering and output validation.
+ */
+export interface ResolvedAdmittedModelicaIsolatedExecutionAction {
+  readonly kind: "admitted-modelica-isolated-execution";
+  readonly executionProfile: ResolvedAdmittedExecutionProfile;
+  readonly executionRunId: string;
+  readonly input: ResolvedAdmittedCompilationInput;
+}
+
+/**
+ * Semantic operating-point execution of source reopened from one sealed SPICE
+ * admission. It deliberately contains no ngspice/provider invocation data.
+ */
+export interface ResolvedAdmittedSpiceIsolatedExecutionAction {
+  readonly kind: "admitted-spice-isolated-execution";
+  readonly executionProfile: ResolvedAdmittedExecutionProfile;
+  readonly executionRunId: string;
+  readonly input: ResolvedAdmittedCompilationInput;
+}
+
+export interface ResolvedAdmittedExecutionProfile {
+  readonly id: string;
+  readonly version: string;
+  readonly fingerprint: ContentFingerprint;
+}
+
+export interface ResolvedAdmittedCompilationInput {
+  readonly compilationAdmission: {
+    readonly id: string;
+    readonly fingerprint: ContentFingerprint;
+    readonly sourceBinding: string;
+  };
+  readonly source: {
+    readonly id: string;
+    readonly sourceFingerprint: ContentFingerprint;
+    readonly captureFingerprint: ContentFingerprint;
+    readonly analysisFingerprint: ContentFingerprint;
+  };
+}
+
 const SHA256_HEX = /^[a-f0-9]{64}$/;
 const CALCULIX_REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+// Chrono publishes a narrower request-id wire contract than CalculiX. In
+// particular a colon is not permitted, so a plan must fail before it can
+// reach the L3 WAL or any provider readback/dispatch path.
+const CHRONO_REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MEDIA_TYPE =
   /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*(?:; [a-z0-9!#$&^_.+-]+=(?:[a-z0-9!#$&^_.+-]+|"[^"\r\n]*"))*$/;
 const ROOT_KEYS = [
@@ -229,6 +374,7 @@ const ROOT_KEYS = [
   "id",
   "run",
   "workItem",
+  "operationalCapability",
   "authorization",
   "basis",
   "sources",
@@ -258,6 +404,19 @@ export function validateResolvedOperationPlanV2(
   const workItem = parseWorkItem(root.workItem, "$plan.workItem");
   if (workItem.id !== run.workItemId) {
     throw new TypeError("$plan.workItem.id must equal $plan.run.workItemId.");
+  }
+  const operationalCapability = validateResolvedCapabilityRuntimeOperation(
+    root.operationalCapability,
+  );
+  if (
+    operationalCapability.projectId !== run.projectId ||
+    operationalCapability.operation.id !== workItem.operation.id ||
+    operationalCapability.operation.version !== workItem.operation.version ||
+    operationalCapability.bindings.length === 0
+  ) {
+    throw new TypeError(
+      "$plan.operationalCapability does not bind the exact runtime-demanding plan operation.",
+    );
   }
   const authorization = parseAuthorization(root.authorization, "$plan.authorization");
   const basis = parseBasis(root.basis, "$plan.basis");
@@ -295,7 +454,21 @@ export function validateResolvedOperationPlanV2(
     "$plan.expectedProviderResources",
   );
   const recovery = parseRecovery(root.recovery, "$plan.recovery");
-  if (recovery.requestId !== action.requestId) {
+  if (
+    action.kind === "admitted-modelica-isolated-execution" ||
+    action.kind === "admitted-spice-isolated-execution"
+  ) {
+    if (
+      !("executionRunId" in recovery) ||
+      recovery.executionRunId !== action.executionRunId
+    ) {
+      throw new TypeError(
+        "$plan.recovery.executionRunId must equal $plan.action.executionRunId.",
+      );
+    }
+  } else if (
+    !("requestId" in recovery) || recovery.requestId !== action.requestId
+  ) {
     throw new TypeError("$plan.recovery.requestId must equal $plan.action.requestId.");
   }
   assertProviderEvidenceMatchesAction(
@@ -311,6 +484,7 @@ export function validateResolvedOperationPlanV2(
     id,
     run,
     workItem,
+    operationalCapability,
     authorization,
     basis,
     sources,
@@ -549,6 +723,120 @@ function parseSource(value: unknown, path: string): ResolvedOperationPlanSource 
 function parseAction(value: unknown, path: string): ResolvedOperationPlanV2["action"] {
   const root = dataRecord(value, path);
   if (
+    root.kind === "admitted-modelica-isolated-execution" ||
+    root.kind === "admitted-spice-isolated-execution"
+  ) {
+    const input = strictRecord(
+      value,
+      ["kind", "executionProfile", "executionRunId", "input"],
+      path,
+    );
+    const executionProfile = strictRecord(
+      input.executionProfile,
+      ["id", "version", "fingerprint"],
+      `${path}.executionProfile`,
+    );
+    const actionInput = strictRecord(
+      input.input,
+      ["compilationAdmission", "source"],
+      `${path}.input`,
+    );
+    const admittedInput: ResolvedAdmittedCompilationInput = {
+      compilationAdmission: sourceBoundCaseIdentity(
+        actionInput.compilationAdmission,
+        `${path}.input.compilationAdmission`,
+      ),
+      source: admittedSourceIdentity(
+        actionInput.source,
+        `${path}.input.source`,
+      ),
+    };
+    const executionRunId = safeId(
+      input.executionRunId,
+      `${path}.executionRunId`,
+    );
+    const profileFingerprint = parseFingerprint(
+      executionProfile.fingerprint,
+      `${path}.executionProfile.fingerprint`,
+    );
+    return root.kind === "admitted-modelica-isolated-execution"
+      ? {
+        kind: "admitted-modelica-isolated-execution",
+        executionProfile: {
+          id: exactAdmittedExecutionProfileField(
+            executionProfile.id,
+            "modelica-closed-subset-v2",
+            `${path}.executionProfile.id`,
+          ),
+          version: exactAdmittedExecutionProfileField(
+            executionProfile.version,
+            "2.0.0",
+            `${path}.executionProfile.version`,
+          ),
+          fingerprint: profileFingerprint,
+        },
+        executionRunId,
+        input: admittedInput,
+      }
+      : {
+        kind: "admitted-spice-isolated-execution",
+        executionProfile: {
+          id: exactAdmittedExecutionProfileField(
+            executionProfile.id,
+            "spice-circuit-closed-subset-v1",
+            `${path}.executionProfile.id`,
+          ),
+          version: exactAdmittedExecutionProfileField(
+            executionProfile.version,
+            "1.0.0",
+            `${path}.executionProfile.version`,
+          ),
+          fingerprint: profileFingerprint,
+        },
+        executionRunId,
+        input: admittedInput,
+      };
+  }
+  if (root.kind === "prescribed-kinematics-observation") {
+    const input = strictRecord(
+      value,
+      ["kind", "lowering", "requestId", "input"],
+      path,
+    );
+    const lowering = strictRecord(
+      input.lowering,
+      ["id", "version"],
+      `${path}.lowering`,
+    );
+    literal(
+      lowering.id,
+      "prescribed-kinematics.case-json",
+      `${path}.lowering.id`,
+    );
+    literal(lowering.version, "1.0", `${path}.lowering.version`);
+    const actionInput = strictRecord(
+      input.input,
+      ["prescribedKinematicsCase"],
+      `${path}.input`,
+    );
+    return {
+      kind: "prescribed-kinematics-observation",
+      lowering: { id: "prescribed-kinematics.case-json", version: "1.0" },
+      requestId: providerRequestId(
+        input.requestId,
+        CHRONO_REQUEST_ID,
+        `${path}.requestId`,
+        "prescribed kinematics",
+      ),
+      input: {
+        prescribedKinematicsCase: sourceBoundCaseIdentity(
+          actionInput.prescribedKinematicsCase,
+          `${path}.input.prescribedKinematicsCase`,
+        ),
+      },
+    };
+  }
+  if (
     root.kind === "static-structural-analysis" ||
     root.kind === "isolated-static-structural-analysis"
   ) {
@@ -759,6 +1047,96 @@ function parseExpectedResources(
       },
     };
   }
+  if (profile.id === PRESCRIBED_KINEMATICS_OBSERVATION_RESOURCE_PROFILE.id) {
+    const input = strictRecord(
+      value,
+      ["receiptSchema", "evidenceSchema", "resourceProfile"],
+      path,
+    );
+    literal(
+      input.receiptSchema,
+      "chrono-prescribed-kinematics-receipt/1.0",
+      `${path}.receiptSchema`,
+    );
+    literal(
+      input.evidenceSchema,
+      "prescribed-kinematics-observation/1.0",
+      `${path}.evidenceSchema`,
+    );
+    literal(
+      profile.version,
+      PRESCRIBED_KINEMATICS_OBSERVATION_RESOURCE_PROFILE.version,
+      `${path}.resourceProfile.version`,
+    );
+    return {
+      receiptSchema: "chrono-prescribed-kinematics-receipt/1.0",
+      evidenceSchema: "prescribed-kinematics-observation/1.0",
+      resourceProfile: {
+        id: "prescribed-kinematics.observation-artifacts",
+        version: "1.0",
+      },
+    };
+  }
+  if (profile.id === MODELICA_ADMITTED_ISOLATED_RESOURCE_PROFILE.id) {
+    const input = strictRecord(
+      value,
+      ["receiptSchema", "evidenceSchema", "resourceProfile"],
+      path,
+    );
+    literal(
+      input.receiptSchema,
+      "isolated-code-execution-receipt-record/1.0",
+      `${path}.receiptSchema`,
+    );
+    literal(
+      input.evidenceSchema,
+      "modelica-admitted-execution-capture/2.0",
+      `${path}.evidenceSchema`,
+    );
+    literal(
+      profile.version,
+      MODELICA_ADMITTED_ISOLATED_RESOURCE_PROFILE.version,
+      `${path}.resourceProfile.version`,
+    );
+    return {
+      receiptSchema: "isolated-code-execution-receipt-record/1.0",
+      evidenceSchema: "modelica-admitted-execution-capture/2.0",
+      resourceProfile: {
+        id: "modelica-admitted.isolated-artifacts",
+        version: "1.0",
+      },
+    };
+  }
+  if (profile.id === SPICE_ADMITTED_ISOLATED_RESOURCE_PROFILE.id) {
+    const input = strictRecord(
+      value,
+      ["receiptSchema", "evidenceSchema", "resourceProfile"],
+      path,
+    );
+    literal(
+      input.receiptSchema,
+      "isolated-code-execution-receipt-record/1.0",
+      `${path}.receiptSchema`,
+    );
+    literal(
+      input.evidenceSchema,
+      "spice-admitted-execution-capture/1.0",
+      `${path}.evidenceSchema`,
+    );
+    literal(
+      profile.version,
+      SPICE_ADMITTED_ISOLATED_RESOURCE_PROFILE.version,
+      `${path}.resourceProfile.version`,
+    );
+    return {
+      receiptSchema: "isolated-code-execution-receipt-record/1.0",
+      evidenceSchema: "spice-admitted-execution-capture/1.0",
+      resourceProfile: {
+        id: "spice-admitted.isolated-artifacts",
+        version: "1.0",
+      },
+    };
+  }
   throw new TypeError(`${path}.resourceProfile.id is not a code-owned profile.`);
 }
 
@@ -782,17 +1160,17 @@ function parseRecovery(
   value: unknown,
   path: string,
 ): ResolvedOperationPlanV2["recovery"] {
+  const root = dataRecord(value, path);
+  const usesExecutionRunId =
+    root.policy === "modelica-admitted-generation-recovery@1.0" ||
+    root.policy === "spice-admitted-generation-recovery@1.0";
   const input = strictRecord(
     value,
-    ["policy", "requestId", "mode", "ambiguousOutcome", "capturedOutcome"],
+    usesExecutionRunId
+      ? ["policy", "executionRunId", "mode", "ambiguousOutcome", "capturedOutcome"]
+      : ["policy", "requestId", "mode", "ambiguousOutcome", "capturedOutcome"],
     path,
   );
-  if (
-    input.policy !== "mcp-calculix.recorded-static-recovery@1.0" &&
-    input.policy !== "calculix-isolated-generation-recovery@1.0"
-  ) {
-    throw new TypeError(`${path}.policy is not a code-owned recovery policy.`);
-  }
   literal(input.mode, "same-request-readback-no-blind-redispatch", `${path}.mode`);
   literal(
     input.ambiguousOutcome,
@@ -800,12 +1178,35 @@ function parseRecovery(
     `${path}.ambiguousOutcome`,
   );
   literal(input.capturedOutcome, "cas-only-recovery", `${path}.capturedOutcome`);
+  const common = {
+    mode: "same-request-readback-no-blind-redispatch" as const,
+    ambiguousOutcome: "quarantine-for-human-review" as const,
+    capturedOutcome: "cas-only-recovery" as const,
+  };
+  if (
+    input.policy === "modelica-admitted-generation-recovery@1.0" ||
+    input.policy === "spice-admitted-generation-recovery@1.0"
+  ) {
+    return {
+      policy: input.policy,
+      executionRunId: safeId(
+        input.executionRunId,
+        `${path}.executionRunId`,
+      ),
+      ...common,
+    };
+  }
+  if (
+    input.policy !== "mcp-calculix.recorded-static-recovery@1.0" &&
+    input.policy !== "calculix-isolated-generation-recovery@1.0" &&
+    input.policy !== "prescribed-kinematics.observation-recovery@1.0"
+  ) {
+    throw new TypeError(`${path}.policy is not a code-owned recovery policy.`);
+  }
   return {
     policy: input.policy,
     requestId: safeId(input.requestId, `${path}.requestId`),
-    mode: "same-request-readback-no-blind-redispatch",
-    ambiguousOutcome: "quarantine-for-human-review",
-    capturedOutcome: "cas-only-recovery",
+    ...common,
   };
 }
 
@@ -823,6 +1224,41 @@ function sourceBoundCaseIdentity(
     fingerprint: parseFingerprint(input.fingerprint, `${path}.fingerprint`),
     sourceBinding: safeId(input.sourceBinding, `${path}.sourceBinding`),
   };
+}
+
+function admittedSourceIdentity(
+  value: unknown,
+  path: string,
+): ResolvedAdmittedCompilationInput["source"] {
+  const input = strictRecord(
+    value,
+    ["id", "sourceFingerprint", "captureFingerprint", "analysisFingerprint"],
+    path,
+  );
+  return {
+    id: safeId(input.id, `${path}.id`),
+    sourceFingerprint: parseFingerprint(
+      input.sourceFingerprint,
+      `${path}.sourceFingerprint`,
+    ),
+    captureFingerprint: parseFingerprint(
+      input.captureFingerprint,
+      `${path}.captureFingerprint`,
+    ),
+    analysisFingerprint: parseFingerprint(
+      input.analysisFingerprint,
+      `${path}.analysisFingerprint`,
+    ),
+  };
+}
+
+function exactAdmittedExecutionProfileField(
+  value: unknown,
+  expected: string,
+  path: string,
+): string {
+  literal(value, expected, path);
+  return expected;
 }
 
 function assertActionMatchesOperation(
@@ -847,6 +1283,30 @@ function assertActionMatchesOperation(
       `${path}.kind isolated-static-structural-analysis requires verify.run-fea-static-proof@3.`,
     );
   }
+  if (
+    action.kind === "prescribed-kinematics-observation" &&
+    (operation.id !== "verify.run-prescribed-kinematics" || operation.version !== "1")
+  ) {
+    throw new TypeError(
+      `${path}.kind prescribed-kinematics-observation requires verify.run-prescribed-kinematics@1.`,
+    );
+  }
+  if (
+    action.kind === "admitted-modelica-isolated-execution" &&
+    (operation.id !== "simulate.run-admitted-modelica" || operation.version !== "1")
+  ) {
+    throw new TypeError(
+      `${path}.kind admitted-modelica-isolated-execution requires simulate.run-admitted-modelica@1.`,
+    );
+  }
+  if (
+    action.kind === "admitted-spice-isolated-execution" &&
+    (operation.id !== "simulate.run-admitted-spice" || operation.version !== "1")
+  ) {
+    throw new TypeError(
+      `${path}.kind admitted-spice-isolated-execution requires simulate.run-admitted-spice@1.`,
+    );
+  }
 }
 
 function assertActionCaseMatchesSource(
@@ -854,6 +1314,60 @@ function assertActionCaseMatchesSource(
   sources: readonly ResolvedOperationPlanSource[],
   path: string,
 ): void {
+  if (
+    action.kind === "admitted-modelica-isolated-execution" ||
+    action.kind === "admitted-spice-isolated-execution"
+  ) {
+    const admission = action.input.compilationAdmission;
+    const source = sources.find((candidate) =>
+      candidate.bindingName === admission.sourceBinding
+    );
+    if (!source) {
+      throw new TypeError(
+        `${path} compilationAdmission sourceBinding must name an exact $plan.sources binding.`,
+      );
+    }
+    if (admission.id !== source.threadRef.id) {
+      throw new TypeError(
+        `${path} compilationAdmission.id must equal its exact source threadRef.id.`,
+      );
+    }
+    if (!fingerprintsEqual(source.artifact.fingerprint, admission.fingerprint)) {
+      throw new TypeError(
+        `${path} compilationAdmission fingerprint must equal its exact source artifact fingerprint.`,
+      );
+    }
+    assertSourceRoleAndMedia(
+      source,
+      "compilation-admission",
+      "application/json",
+      `${path}.input.compilationAdmission.sourceBinding`,
+    );
+    return;
+  }
+  if (action.kind === "prescribed-kinematics-observation") {
+    const caseIdentity = action.input.prescribedKinematicsCase;
+    const source = sources.find((candidate) =>
+      candidate.bindingName === caseIdentity.sourceBinding
+    );
+    if (!source) {
+      throw new TypeError(
+        `${path} prescribed kinematics sourceBinding must name an exact $plan.sources binding.`,
+      );
+    }
+    if (!fingerprintsEqual(source.artifact.fingerprint, caseIdentity.fingerprint)) {
+      throw new TypeError(
+        `${path} prescribed kinematics case fingerprint must equal its exact source artifact fingerprint.`,
+      );
+    }
+    assertSourceRoleAndMedia(
+      source,
+      "prescribed-kinematics-case",
+      "application/json",
+      `${path}.input.prescribedKinematicsCase.sourceBinding`,
+    );
+    return;
+  }
   const caseIdentity = action.input.proofCase;
   const source = sources.find((candidate) =>
     candidate.bindingName === caseIdentity.sourceBinding
@@ -937,6 +1451,101 @@ function assertProviderEvidenceMatchesAction(
   recovery: ResolvedOperationPlanRecovery,
   path: string,
 ): void {
+  if (action.kind === "admitted-modelica-isolated-execution") {
+    if (
+      expected.resourceProfile.id !==
+        MODELICA_ADMITTED_ISOLATED_RESOURCE_PROFILE.id ||
+      !("receiptSchema" in expected) ||
+      expected.receiptSchema !== "isolated-code-execution-receipt-record/1.0" ||
+      expected.evidenceSchema !== "modelica-admitted-execution-capture/2.0" ||
+      recovery.policy !== "modelica-admitted-generation-recovery@1.0"
+    ) {
+      throw new TypeError(
+        `${path} admitted Modelica action requires its exact documentary output and generation-recovery profiles.`,
+      );
+    }
+    if (
+      authorization.methodQualification.id !== "modelica-closed-subset-v2" ||
+      authorization.methodQualification.version !== "2.0.0" ||
+      action.executionProfile.id !== authorization.methodQualification.id ||
+      action.executionProfile.version !== authorization.methodQualification.version ||
+      !fingerprintsEqual(
+        action.executionProfile.fingerprint,
+        authorization.methodQualification.fingerprint,
+      )
+    ) {
+      throw new TypeError(
+        `${path} admitted Modelica action requires the exact code-owned execution profile.`,
+      );
+    }
+    assertClosedSourceProfile(
+      sources,
+      [["compilationAdmission", "compilation-admission", "application/json"]],
+      `${path}.sources`,
+    );
+    return;
+  }
+  if (action.kind === "admitted-spice-isolated-execution") {
+    if (
+      expected.resourceProfile.id !== SPICE_ADMITTED_ISOLATED_RESOURCE_PROFILE.id ||
+      !("receiptSchema" in expected) ||
+      expected.receiptSchema !== "isolated-code-execution-receipt-record/1.0" ||
+      expected.evidenceSchema !== "spice-admitted-execution-capture/1.0" ||
+      recovery.policy !== "spice-admitted-generation-recovery@1.0"
+    ) {
+      throw new TypeError(
+        `${path} admitted SPICE action requires its exact documentary output and generation-recovery profiles.`,
+      );
+    }
+    if (
+      authorization.methodQualification.id !== "spice-circuit-closed-subset-v1" ||
+      authorization.methodQualification.version !== "1.0.0" ||
+      action.executionProfile.id !== authorization.methodQualification.id ||
+      action.executionProfile.version !== authorization.methodQualification.version ||
+      !fingerprintsEqual(
+        action.executionProfile.fingerprint,
+        authorization.methodQualification.fingerprint,
+      )
+    ) {
+      throw new TypeError(
+        `${path} admitted SPICE action requires the exact code-owned execution profile.`,
+      );
+    }
+    assertClosedSourceProfile(
+      sources,
+      [["compilationAdmission", "compilation-admission", "application/json"]],
+      `${path}.sources`,
+    );
+    return;
+  }
+  if (action.kind === "prescribed-kinematics-observation") {
+    if (
+      expected.resourceProfile.id !==
+        PRESCRIBED_KINEMATICS_OBSERVATION_RESOURCE_PROFILE.id ||
+      !("receiptSchema" in expected) ||
+      expected.receiptSchema !== "chrono-prescribed-kinematics-receipt/1.0" ||
+      expected.evidenceSchema !== "prescribed-kinematics-observation/1.0" ||
+      recovery.policy !== "prescribed-kinematics.observation-recovery@1.0"
+    ) {
+      throw new TypeError(
+        `${path} prescribed kinematics action requires its exact factual receipt and recovery profiles.`,
+      );
+    }
+    if (
+      authorization.methodQualification.id !== "prescribed-kinematics-observation" ||
+      authorization.methodQualification.version !== "1.0"
+    ) {
+      throw new TypeError(
+        `${path} prescribed kinematics action requires the exact code-owned observation method.`,
+      );
+    }
+    assertClosedSourceProfile(
+      sources,
+      [["case", "prescribed-kinematics-case", "application/json"]],
+      `${path}.sources`,
+    );
+    return;
+  }
   if (action.kind === "isolated-static-structural-analysis") {
     if (
       expected.resourceProfile.id !== CALCULIX_ISOLATED_STATIC_RESOURCE_PROFILE.id ||

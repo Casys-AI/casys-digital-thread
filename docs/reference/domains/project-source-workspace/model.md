@@ -36,6 +36,17 @@ Role or target change is an explicit successor. Detach writes a tombstone. File 
 does not cascade; reads publish `source-removed`. Snapshot schema is
 `project-source-workspace-snapshot/2.0` and includes `activeAttachmentCount`.
 
+`mechanism-source@1` is one of the fixed generic attachment roles. It is the draft
+bridge for a canonical `prescribed-kinematics-case-source/1.0`: the same exact JSON file
+is attached to the assembly context (`PartDefinition` or `PartUsage`) and to every
+declared immediate body `PartUsage`, on one exact workspace revision and one exact
+declared-against architecture basis. The workspace still grants no mechanism case,
+Chrono dispatch, MRTR, L3 observation, L4 evaluation, or L5 closeout. The later
+provider-free case review recrosses this attachment set. The repository catalogue
+baseline is `unqualified`; a host-local exact qualified emulated AMD64 attestation does
+not change the workspace grant or authorize product L3, which still needs project
+authorization, sealed ROP, current Thread basis, and JIT lease.
+
 `attachment_recross` is an internal, one-event successor batch generated only by
 `project_source_attachment_recross`. Its public intent is the exact workspace revision
 and a nonempty bounded set of `{attachmentId, activeAttachmentRevision}` selections; the

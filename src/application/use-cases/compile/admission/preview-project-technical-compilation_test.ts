@@ -361,6 +361,24 @@ Deno.test("preview reopens server facts, saves and rereads a deterministic provi
   assertEquals(admission.basis.fingerprint, result.document.basisFingerprint);
   assertEquals(admission.basis.sysml.rootElementId, "sysml.package.main");
   assertEquals(admission.basis.sysml.rootElementKind, "Package");
+  assertEquals(result.operation, {
+    id: "compile.seal-admission",
+    version: "3",
+    bindings: [{
+      name: "sysmlModel",
+      source: {
+        kind: "thread-entity",
+        reference: {
+          snapshotId: admission.basis.thread.snapshotId,
+          snapshotRevision: admission.basis.thread.revision,
+          kind: "artifact",
+          id: admission.basis.sysml.artifactId,
+        },
+      },
+    }],
+  });
+  assert(Object.isFrozen(result.operation));
+  assert(Object.isFrozen(result.operation.bindings));
   assertEquals(admission.sources[0].id, TECHNICAL_UNIT_ID);
   assertEquals(admission.sources[0].role, "cad-script");
   assertEquals(admission.sources[0].language, "python");
@@ -627,6 +645,7 @@ Deno.test("unresolved and rejected previews expose no draft or sealing parameter
   assertEquals(unresolvedResult.status, "unresolved");
   assert(!Object.hasOwn(unresolvedResult, "draft"));
   assert(!Object.hasOwn(unresolvedResult, "decisionParameters"));
+  assert(!Object.hasOwn(unresolvedResult, "operation"));
   assertEquals(unresolvedResult.gaps, [{
     code: "binding.missing",
     relation: "parameterizes",
@@ -664,6 +683,7 @@ Deno.test("unresolved and rejected previews expose no draft or sealing parameter
   assertEquals(rejectedResult.gaps, []);
   assert(!Object.hasOwn(rejectedResult, "draft"));
   assert(!Object.hasOwn(rejectedResult, "decisionParameters"));
+  assert(!Object.hasOwn(rejectedResult, "operation"));
   assertEquals(rejected.draftStore.saves, 0);
 });
 

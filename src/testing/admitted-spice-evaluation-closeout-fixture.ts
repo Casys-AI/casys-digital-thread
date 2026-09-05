@@ -273,6 +273,35 @@ export async function createAdmittedSpiceCloseoutEvidenceFixture(
       freshness: fresh(SPICE_CLOSEOUT_REVIEW_AT),
     },
   );
+  const l3NativeObservations = [{
+    id: `spice-native-v-n1-${SPICE_CLOSEOUT_L3_RUN_ID}`,
+    name: "Admitted SPICE v(n1)",
+    metric: "v(n1)",
+    quantity: { value: 1, unit: "V" as const },
+    source: {
+      operation: {
+        serverId: "digital-thread" as const,
+        tool: "simulate.run-admitted-spice@1",
+        runId: SPICE_CLOSEOUT_L3_RUN_ID,
+      },
+      artifactIds: [
+        `spice-admitted-evidence-${l3EvidenceFingerprint.digest}`,
+        `spice-admitted-result-${l3ResultFingerprint.digest}`,
+      ],
+      capturedAt: SPICE_CLOSEOUT_REVIEW_AT,
+    },
+    freshness: fresh(SPICE_CLOSEOUT_REVIEW_AT),
+  }];
+  const l3NativeProvenance = l3NativeObservations.flatMap((observation) =>
+    observation.source.artifactIds.map((artifactId) => ({
+      id: `${observation.id}-from-${artifactId}`,
+      relation: "derived_from" as const,
+      from: { kind: "observation" as const, id: observation.id },
+      to: { kind: "artifact" as const, id: artifactId },
+      rationale:
+        "The exact admitted SPICE evidence and result produced this native L3 observation.",
+    }))
+  );
   const l4Fingerprints = [storedFingerprint];
   if (l4Count === 2) l4Fingerprints.push(secondFingerprint);
   const l4Artifacts: ThreadArtifact[] = includeL4Artifact
@@ -597,7 +626,7 @@ export async function createAdmittedSpiceCloseoutEvidenceFixture(
     },
     artifacts: [brief, ...sourceArtifacts],
     consumptions: [],
-    observations: [],
+    observations: l3NativeObservations,
     requirements: [{
       id: requirementId,
       name: `Electrical observation ${criterion.id}`,
@@ -651,6 +680,7 @@ export async function createAdmittedSpiceCloseoutEvidenceFixture(
             "The documentary electrical requirement is defined by the sealed observation method sheet.",
         }]
         : []),
+      ...l3NativeProvenance,
     ],
     proposedActions: [],
   });
@@ -688,27 +718,30 @@ export async function createAdmittedSpiceCloseoutEvidenceFixture(
     },
     artifacts,
     consumptions,
-    observations: observationNeeded && actual
-      ? [{
-        id: observationId,
-        name: `Derived electrical observation ${criterion.id}`,
-        metric: criterion.id,
-        quantity: actual,
-        source: {
-          operation: {
-            serverId: producerServerId,
-            tool: producerTool,
-            runId: producerRunId,
+    observations: [
+      ...l3NativeObservations,
+      ...(observationNeeded && actual
+        ? [{
+          id: observationId,
+          name: `Derived electrical observation ${criterion.id}`,
+          metric: criterion.id,
+          quantity: actual,
+          source: {
+            operation: {
+              serverId: producerServerId,
+              tool: producerTool,
+              runId: producerRunId,
+            },
+            artifactIds: [
+              primaryL4!.id,
+              `spice-admitted-result-${l3ResultFingerprint.digest}`,
+            ],
+            capturedAt: SPICE_CLOSEOUT_REVIEW_AT,
           },
-          artifactIds: [
-            primaryL4!.id,
-            `spice-admitted-result-${l3ResultFingerprint.digest}`,
-          ],
-          capturedAt: SPICE_CLOSEOUT_REVIEW_AT,
-        },
-        freshness: fresh(SPICE_CLOSEOUT_REVIEW_AT),
-      }]
-      : [],
+          freshness: fresh(SPICE_CLOSEOUT_REVIEW_AT),
+        }]
+        : []),
+    ],
     requirements: [{
       id: requirementId,
       name: `Electrical observation ${criterion.id}`,
@@ -733,7 +766,7 @@ export async function createAdmittedSpiceCloseoutEvidenceFixture(
     }],
     evaluations,
     violations,
-    provenance,
+    provenance: [...provenance, ...l3NativeProvenance],
     proposedActions,
   });
   const reviewBasis = {
@@ -769,6 +802,23 @@ export async function createAdmittedSpiceCloseoutEvidenceFixture(
       },
     }],
   };
+  const l3ResolvedOperationPlan = {
+    schemaVersion: "resolved-operation-plan-ref/1.0" as const,
+    planId: SPICE_CLOSEOUT_L3_RUN_ID,
+    fingerprint: { algorithm: "sha256" as const, digest: "4".repeat(64) },
+    byteCount: 256,
+    casUri: `casys://resolved-operation-plan/sha256/${"4".repeat(64)}`,
+  };
+  const l3EvidenceRefs = [
+    `spice-admitted-capture-${l3CaptureFingerprint.digest}`,
+    `spice-admitted-evidence-${l3EvidenceFingerprint.digest}`,
+    `spice-admitted-result-${l3ResultFingerprint.digest}`,
+  ].map((id) => ({
+    snapshotId: previousSnapshot.id,
+    snapshotRevision: previousSnapshot.revision,
+    kind: "artifact" as const,
+    id,
+  }));
   const objective = "Close out the exact L4 evaluation.";
   const project = {
     schemaVersion: "4.0",
@@ -828,12 +878,7 @@ export async function createAdmittedSpiceCloseoutEvidenceFixture(
           status: "completed",
           owner: "agent",
           dependsOnWorkItemIds: [],
-          evidenceRefs: [{
-            snapshotId: previousSnapshot.id,
-            snapshotRevision: previousSnapshot.revision,
-            kind: "artifact" as const,
-            id: `spice-admitted-result-${l3ResultFingerprint.digest}`,
-          }],
+          evidenceRefs: l3EvidenceRefs,
           decisionIds: [],
           blockerIds: [],
         }]
@@ -873,6 +918,8 @@ export async function createAdmittedSpiceCloseoutEvidenceFixture(
           queuedAt: SPICE_CLOSEOUT_REVIEW_AT,
           startedAt: SPICE_CLOSEOUT_REVIEW_AT,
           completedAt: SPICE_CLOSEOUT_REVIEW_AT,
+          claimedAt: SPICE_CLOSEOUT_REVIEW_AT,
+          claimedBy: { id: "agent:fixture", origin: "agent" as const },
           basis: {
             kind: "thread-snapshot",
             snapshotId: previousSnapshot.id,
@@ -880,17 +927,26 @@ export async function createAdmittedSpiceCloseoutEvidenceFixture(
             subjectId,
           },
           inputFingerprint: { algorithm: "sha256", digest: "3".repeat(64) },
-          evidenceRefs: [{
-            snapshotId: previousSnapshot.id,
-            snapshotRevision: previousSnapshot.revision,
-            kind: "artifact" as const,
-            id: `spice-admitted-result-${l3ResultFingerprint.digest}`,
-          }],
+          resolvedOperationPlan: l3ResolvedOperationPlan,
+          evidenceRefs: l3EvidenceRefs,
           resultSnapshot: {
             snapshotId: previousSnapshot.id,
             revision: previousSnapshot.revision,
             subjectId,
           },
+          statusHistory: [{
+            commandId: "queue.admitted-spice",
+            status: "queued" as const,
+            at: SPICE_CLOSEOUT_REVIEW_AT,
+            actor: { id: "agent:fixture", origin: "agent" as const },
+            summary: "Queued the exact admitted SPICE compilation.",
+          }, {
+            commandId: "complete.admitted-spice",
+            status: "completed" as const,
+            at: SPICE_CLOSEOUT_REVIEW_AT,
+            actor: { id: "agent:fixture", origin: "agent" as const },
+            summary: "Executed the exact admitted SPICE compilation.",
+          }],
         }]
         : []),
       ...(attachProducerRun
@@ -937,13 +993,18 @@ export async function createAdmittedSpiceCloseoutEvidenceFixture(
       requestFingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
       resultingSnapshot: { snapshotId: `${projectId}:r1`, revision: 1 },
     }, {
-      commandId: "project-question-propose",
-      type: "project.question-propose",
-      actor: { id: "agent:guide", origin: "agent" },
+      commandId: "queue.admitted-spice",
+      type: "agent-run.queue",
+      actor: { id: "agent:fixture", origin: "agent" },
       issuedAt: SPICE_CLOSEOUT_REVIEW_AT,
       appliedAt: SPICE_CLOSEOUT_REVIEW_AT,
-      requestFingerprint: { algorithm: "sha256", digest: "2".repeat(64) },
+      requestFingerprint: { algorithm: "sha256", digest: "3".repeat(64) },
       resultingSnapshot: { snapshotId: `${projectId}:r2`, revision: 2 },
+      queuedRun: {
+        runId: SPICE_CLOSEOUT_L3_RUN_ID,
+        workItemId: SPICE_CLOSEOUT_L3_WORK_ID,
+        resolvedOperationPlan: l3ResolvedOperationPlan,
+      },
     }],
   } as unknown as EngineeringProjectSnapshot;
   const sheets = new MemorySheetStore(canonicalSheetText, sheetFingerprint);

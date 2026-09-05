@@ -1,4 +1,9 @@
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
+import type {
+  CapabilityRuntimeLease,
+} from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type { CapabilityRuntimeMaterialIdentity } from "../../../domain/capability/runtime/capability-runtime-material.ts";
+import type { CapabilityRuntimeLaunchGroupReference } from "../../../domain/capability/runtime/capability-runtime-launch-group.ts";
 
 /**
  * Stage exact STEP bytes into the private CalculiX input volume.
@@ -25,4 +30,18 @@ export interface SolverInputStager {
     readonly fingerprint: ContentFingerprint;
     readonly byteCount: number;
   }): Promise<Uint8Array | undefined>;
+}
+
+/**
+ * Builds a private input stager only after an exact capability JIT lease is
+ * active. The factory owns container discovery and must reject foreign or
+ * stale launch-group membership; neither an agent nor a project supplies a
+ * Docker container, Compose project, volume, endpoint or provider path.
+ */
+export interface CapabilitySessionSolverInputStagerFactory {
+  forActiveCapabilitySession(input: {
+    readonly lease: CapabilityRuntimeLease;
+    readonly launchGroup: CapabilityRuntimeLaunchGroupReference;
+    readonly material: CapabilityRuntimeMaterialIdentity;
+  }): Promise<SolverInputStager>;
 }

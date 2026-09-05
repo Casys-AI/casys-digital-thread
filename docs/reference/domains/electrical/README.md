@@ -25,7 +25,8 @@ evaluation chain on admitted SPICE observations:
 
 LED-driver unknowns stay `unresolved`. Capture and review of the fiche grant no seal,
 run, or ngspice authority. Circuit-only SPICE admits through `compile.seal-admission@3`
-then, when `--local-execution` is composed, `simulate.run-admitted-spice@1`. That run is
+then, when the approved capability-runtime supervisor composes its exact atomic unit,
+`simulate.run-admitted-spice@1`. That run is
 documentary L3 evidence. It is not mcp-spice. L4 derives named criteria from a reviewed
 method sheet with a server-owned comparator; ngspice is not the oracle. An L4 `pass` is
 never L5. Safety, EMC, optical output, lifetime, and vendor validity stay `unavailable`.

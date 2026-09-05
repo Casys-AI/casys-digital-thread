@@ -6,7 +6,13 @@
  * admitted export is composed separately from local isolated execution.
  */
 
-import { ExportAdmittedProjectGeometry } from "../../application/use-cases/cad/canonical/export-admitted-project-geometry.ts";
+import {
+  ExportAdmittedProjectGeometry,
+} from "../../application/use-cases/cad/canonical/export-admitted-project-geometry.ts";
+import type { CapabilityRuntimeExecutionSessionCoordinator } from "../../application/control-plane/capability-runtime-execution-session.ts";
+import type { CapabilityRuntimeExecutionEligibility } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import type { CapabilityRuntimePreparationPort } from "../../application/ports/out/capability/capability-runtime-preparation-session.ts";
+import type { Build123dExecutionProfile } from "../../application/ports/out/cad/isolated/build123d-execution-profile-catalog.ts";
 import { PrepareProjectBuild123dExecutionReview } from "../../application/use-cases/cad/isolated/prepare-project-build123d-execution-review.ts";
 import { PrepareProjectIsolatedGeometrySealReview } from "../../application/use-cases/cad/sealed-isolated/prepare-project-isolated-geometry-seal-review.ts";
 import type { EngineeringProjectRevisionStore } from "../../application/ports/out/engineering-project-revision-store.ts";
@@ -27,13 +33,16 @@ import {
 } from "../shared/cas/file-capture-store.ts";
 import { FileIsolatedOutputCas } from "../shared/cas/file-isolated-output-cas.ts";
 import { HttpMcpToolClient } from "../shared/mcp/http-mcp-tool-client.ts";
+import { HttpMcpResourceReader } from "../shared/mcp/http-mcp-resource-reader.ts";
 import type { EngineeringProjectRunLease } from "../shared/stores/file-engineering-project-run-lease.ts";
 import { AdmissionBackedGeometryExportAdapter } from "./canonical/admission-backed-geometry-export-adapter.ts";
+import { FileAdmittedGeometryExportReplayCache } from "./canonical/file-admitted-geometry-export-replay-cache.ts";
 import {
   DESIGN_WRITE_GEOMETRY_OPERATION,
   DesignWriteGeometryRunExecutor,
 } from "./canonical/design-write-geometry-run-executor.ts";
 import { GeometryModuleAssemblyOutputValidator } from "./module-assembly/geometry-module-assembly-output-validator.ts";
+import { FileGeometryDraftAssetStore } from "./canonical/file-geometry-draft-asset-store.ts";
 import type { Build123dExecutionServerOptions } from "./isolated/build123d-execution-composition.ts";
 import type { Build123dExecutionComposition } from "./isolated/build123d-execution-composition.ts";
 import {
@@ -70,6 +79,7 @@ export interface Build123dCapabilityOptions {
 
 export interface Build123dCapability {
   readonly build123dExecution: Build123dExecutionComposition | undefined;
+  readonly localProfile: Build123dExecutionProfile | undefined;
   readonly build123dExecutionReview:
     | PrepareProjectBuild123dExecutionReview
     | undefined;
@@ -90,19 +100,20 @@ export interface CadProjectOptions {
   readonly writeSnapshots: ThreadSnapshotStore;
   readonly lease: EngineeringProjectRunLease;
   readonly capability: Build123dCapability;
-  /**
-   * Optional publication-gated reader for geometry-module assembly STEP/GLB.
-   * Never taken from Build123d `isolatedOutputPublications`. Absent means
-   * module sealing fails closed. Leaf `design.write-geometry@1` is unchanged.
-   */
-  readonly moduleAssembly?: IsolatedOutputPublicationReader;
   readonly admissions: CaptureBackedTechnicalCompilationAdmissionReader;
   readonly recordedAnalysisDirectory: string;
   readonly sourceAnalysisCaptures: FileCaptureStore<"source-analysis">;
   readonly architectureCaptures: FileCaptureStore<"architecture-capture">;
   readonly sysmlSourceAnalysis: SysmlSourceAnalysisCaptureService;
   readonly geometryDraftCaptureDirectory: string;
+  readonly geometryDraftAssetDirectory: string;
   readonly geometryCaptureDirectory: string;
+  /** Optional until isolated execution is composed; then required at execute. */
+  readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
+  readonly capabilityRuntimeSession?: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin" | "releaseRecorded"
+  >;
 }
 
 export interface CadProject {
@@ -117,6 +128,8 @@ export interface PrivateBuild123dGeometrySurfaces {
     | ExportAdmittedProjectGeometry
     | undefined;
 }
+
+const PRIVATE_BUILD123D_SANDBOX_MCP_URL = "http://127.0.0.1:3024/mcp";
 
 export async function createBuild123dCapability(
   options: Build123dCapabilityOptions,
@@ -152,8 +165,12 @@ export async function createBuild123dCapability(
     snapshots: options.snapshots,
     captures: build123dExecutionCaptures,
   });
+  const localProfile = build123dExecution === undefined
+    ? undefined
+    : await build123dExecution.profiles.initial();
   return {
     build123dExecution,
+    localProfile,
     build123dExecutionReview,
     build123dExecutionCaptures,
     isolatedOutputPublications,
@@ -185,6 +202,8 @@ export function createCadProject(options: CadProjectOptions): CadProject {
       ),
       captures: capability.build123dExecutionCaptures,
       lease: options.lease,
+      capabilityRuntime: options.capabilityRuntime,
+      capabilityRuntimeSession: options.capabilityRuntimeSession,
     });
   const designSealIsolatedGeometry = new DesignSealIsolatedGeometryRunExecutor({
     projects: options.projects,
@@ -200,6 +219,14 @@ export function createCadProject(options: CadProjectOptions): CadProject {
     analysisCaptures: options.sourceAnalysisCaptures,
     frontend: new PythonCadSourceAnalyzer(),
   } as const;
+  const moduleAssemblyDraftAssets = new FileGeometryDraftAssetStore(
+    new FileByteStore({
+      kind: "geometry-draft-asset",
+      directory: options.geometryDraftAssetDirectory,
+      uriNamespace: "geometry-draft-asset",
+      label: "Geometry draft asset",
+    }),
+  );
   const genericDesignWriteGeometry = new DesignWriteGeometryRunExecutor({
     projects: options.projects,
     commands: options.commands,
@@ -217,7 +244,7 @@ export function createCadProject(options: CadProjectOptions): CadProject {
       directory: options.geometryCaptureDirectory,
     }),
     admissions: options.admissions,
-    moduleAssemblyPublications: options.moduleAssembly,
+    moduleAssemblyDraftAssets,
     moduleAssemblyOutputValidator: new GeometryModuleAssemblyOutputValidator(),
     lease: options.lease,
     now: () => new Date().toISOString(),
@@ -233,42 +260,52 @@ export function createCadProject(options: CadProjectOptions): CadProject {
 /**
  * WHY THE SANDBOX INSTANCE AND NOT THE TRUSTED ONE — admitted export
  * reopens sealed CAD bytes. A fingerprint proves identity after sealing,
- * never causal provenance. The sandbox owns a private export volume, so
- * those bytes never touch evidence. No sandbox entry ⇒ no admitted-export
- * tool. It is not gated on --local-execution.
+ * never causal provenance. The sandbox owns private resource staging, so
+ * those bytes never touch evidence. The server reads only the returned immutable
+ * MCP resource receipt. No sandbox entry ⇒ no admitted-export tool. Its private
+ * sandbox binding is independent from local microVM activation.
  */
-export function composePrivateBuild123dGeometrySurfaces(
-  build123dSandboxMcpUrl: string | undefined,
-  geometrySourceAnalysis: GeometrySourceAnalysisCaptureDependencies,
-  admissions: CaptureBackedTechnicalCompilationAdmissionReader,
-  snapshots: Pick<ThreadSnapshotStore, "get">,
-  architectureCaptures: FileCaptureStore<"architecture-capture">,
-  geometryDraftCaptureDirectory: string,
-  geometryCaptureDirectory: string,
-): PrivateBuild123dGeometrySurfaces {
-  if (!build123dSandboxMcpUrl) {
-    return { admittedGeometryExport: undefined };
-  }
-  const client = new HttpMcpToolClient({
-    mcpUrl: build123dSandboxMcpUrl,
-    timeoutMs: 120_000,
-  });
+export function composePrivateBuild123dGeometrySurfaces(input: {
+  readonly projects: EngineeringProjectRevisionStore;
+  readonly preparation: CapabilityRuntimePreparationPort;
+  readonly geometrySourceAnalysis: GeometrySourceAnalysisCaptureDependencies;
+  readonly admissions: CaptureBackedTechnicalCompilationAdmissionReader;
+  readonly snapshots: Pick<ThreadSnapshotStore, "get">;
+  readonly architectureCaptures: FileCaptureStore<"architecture-capture">;
+  readonly geometryDraftCaptureDirectory: string;
+  readonly geometryDraftAssetDirectory: string;
+  readonly geometryCaptureDirectory: string;
+}): PrivateBuild123dGeometrySurfaces {
   const draftCaptures = new FileCaptureStore({
     ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
-    directory: geometryDraftCaptureDirectory,
+    directory: input.geometryDraftCaptureDirectory,
   });
   const geometryCaptures = new FileCaptureStore({
     ...GEOMETRY_CAPTURE_DESCRIPTOR,
-    directory: geometryCaptureDirectory,
+    directory: input.geometryCaptureDirectory,
   });
+  const draftAssets = new FileGeometryDraftAssetStore(
+    new FileByteStore({
+      kind: "geometry-draft-asset",
+      directory: input.geometryDraftAssetDirectory,
+      uriNamespace: "geometry-draft-asset",
+      label: "Geometry draft asset",
+    }),
+  );
+  const replayCache = new FileAdmittedGeometryExportReplayCache(
+    `${input.geometryDraftCaptureDirectory}/replay`,
+  );
   return {
     admittedGeometryExport: new ExportAdmittedProjectGeometry({
-      admissions,
-      snapshots,
+      admissions: input.admissions,
+      snapshots: input.snapshots,
+      projects: input.projects,
+      preparation: input.preparation,
+      replayCache,
       geometryCaptures,
       architecture: {
         async read(fingerprint) {
-          const text = await architectureCaptures.read(fingerprint);
+          const text = await input.architectureCaptures.read(fingerprint);
           if (!text) return undefined;
           let parsed: unknown;
           try {
@@ -294,12 +331,30 @@ export function composePrivateBuild123dGeometrySurfaces(
           }
         },
       },
-      exporter: new AdmissionBackedGeometryExportAdapter({
-        client,
-        draftCaptures,
-        sourceAnalysis: geometrySourceAnalysis,
-        build123dService: "mcp-build123d-sandbox",
-      }),
+      // No private MCP client exists while cold validation is running. The
+      // use case invokes this factory only after the exact preparation lease
+      // has reached active state, then repeats cold validation before calling
+      // the fixed server-owned tool.
+      exporter: unavailableAdmittedGeometryExporter(),
+      exporterFactory: () =>
+        new AdmissionBackedGeometryExportAdapter({
+          client: new HttpMcpToolClient({
+            mcpUrl: PRIVATE_BUILD123D_SANDBOX_MCP_URL,
+            timeoutMs: 120_000,
+          }),
+          resourceReader: new HttpMcpResourceReader({
+            mcpUrl: PRIVATE_BUILD123D_SANDBOX_MCP_URL,
+            timeoutMs: 120_000,
+          }),
+          draftCaptures,
+          draftAssets,
+          sourceAnalysis: input.geometrySourceAnalysis,
+        }),
     }),
   };
+}
+
+function unavailableAdmittedGeometryExporter() {
+  const unavailable = () => Promise.reject(new Error("Preparation required."));
+  return { export: unavailable, exportTargetedPart: unavailable };
 }

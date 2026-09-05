@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
+import { MODEL_EVALUATE_REQUIREMENT_CAPABILITY } from "../../../domain/capability/engineering-capability.ts";
 import {
   type CompleteRunCommand,
   EngineeringProjectCommandError,
@@ -8,7 +9,7 @@ import {
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
 import { VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION } from "../../../domain/sensitivity/base-evaluation/sensitivity-base-evaluation.ts";
 import {
-  assembleSensitivityStudyCaseV2,
+  assembleSensitivityStudyCaseV3,
   validateSensitivityStudyCaseTemplate,
 } from "../../../domain/sensitivity/study/sensitivity-study-template.ts";
 import { computeSensitivities } from "../../../domain/sensitivity/study/sensitivity-study.ts";
@@ -30,6 +31,10 @@ import type { EngineeringProjectSnapshot } from "../../../domain/project/enginee
 import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import { VerifyEvaluateSensitivityBaseRunExecutor } from "./verify-evaluate-sensitivity-base-run-executor.ts";
+import {
+  recordingCapabilityRuntimeSession,
+  successfulCapabilityRuntimeFor,
+} from "../../../testing/capability-runtime-execution-session-test-support.ts";
 
 const AT = "2026-08-15T00:00:00.000Z";
 const PROJECT_ID = "desk-lamp-dl05";
@@ -86,6 +91,7 @@ Deno.test(
       ),
       true,
     );
+    assertEquals(fixture.capabilityRuntimeSession.releases, 1);
     assertEquals(added.map((item) => item.status).sort(), ["fail", "pass"]);
     assertEquals(
       snapshot!.violations.some((item) =>
@@ -123,6 +129,22 @@ Deno.test("a SysON failure after claim fails the run and writes no Thread succes
   assertEquals(fixture.syson.calls, 1);
   assertEquals(fixture.commands.project.agentRuns[0]?.status, "failed");
   assertEquals(fixture.snapshots.saved, 0);
+  assertEquals(fixture.capabilityRuntimeSession.releases, 1);
+});
+
+Deno.test("the base evaluator keeps the run queued when JIT activation fails", async () => {
+  const capabilityRuntimeSession = recordingCapabilityRuntimeSession(() =>
+    Promise.reject(new Error("exact SysON host group unavailable"))
+  );
+  const fixture = await createFixture({ capabilityRuntimeSession });
+  await assertRejects(
+    () => fixture.executor.execute(AGENT, fixture.command),
+    Error,
+    "host group unavailable",
+  );
+  assertEquals(capabilityRuntimeSession.events, ["begin"]);
+  assertEquals(fixture.syson.calls, 0);
+  assertEquals(fixture.commands.project.agentRuns[0]?.status, "queued");
 });
 
 async function createFixture(
@@ -130,6 +152,9 @@ async function createFixture(
     readonly dropRequirement?: boolean;
     readonly sysonDown?: boolean;
     readonly reuseResult?: boolean;
+    readonly capabilityRuntimeSession?: ReturnType<
+      typeof recordingCapabilityRuntimeSession
+    >;
   } = {},
 ) {
   const world = await buildWorld(options);
@@ -251,6 +276,13 @@ async function createFixture(
   const snapshots = new MemorySnapshots(world.snapshot);
   const syson = new MemorySyson(options.sysonDown === true);
   const commands = new MemoryCommands(project);
+  const capability = successfulCapabilityRuntimeFor(
+    PROJECT_ID,
+    VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION,
+    MODEL_EVALUATE_REQUIREMENT_CAPABILITY.id,
+  );
+  const capabilityRuntimeSession = options.capabilityRuntimeSession ??
+    capability.capabilityRuntimeSession;
   const projects = {
     get: () => Promise.resolve(project as unknown as EngineeringProjectSnapshot),
     getRevision: () =>
@@ -263,6 +295,7 @@ async function createFixture(
     syson,
     snapshots,
     commands,
+    capabilityRuntimeSession,
     command: {
       commandId: COMMAND_ID,
       projectId: PROJECT_ID,
@@ -278,6 +311,8 @@ async function createFixture(
       captures: new MemoryEvalCaptures(),
       syson,
       lease: { withLease: (_projectId, _scope, operation) => operation() },
+      capabilityRuntime: capability.capabilityRuntime,
+      capabilityRuntimeSession,
     }),
   };
 }
@@ -293,7 +328,7 @@ async function buildWorld(options: {
       ),
     ),
   );
-  const studyCase = assembleSensitivityStudyCaseV2(template, {
+  const studyCase = assembleSensitivityStudyCaseV3(template, {
     artifactUri: `thread-artifact://${PROJECT_ID}/admission`,
     sha256: "a".repeat(64),
   });

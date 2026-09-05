@@ -1,11 +1,12 @@
-/** Closed module-assembler-on-Microsandbox profile; no caller can register commands. */
+/** Adapter-private module-assembler-on-Microsandbox profile. */
 
-import {
-  GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE_SCHEMA,
-  type GeometryModuleAssemblyExecutionProfile,
-  type GeometryModuleAssemblyExecutionProfileCatalog,
-} from "../../../application/ports/out/cad/module-assembly/geometry-module-assembly-profile.ts";
-import type { IsolatedCodeExecutionLimits } from "../../../domain/compile/isolation/isolated-code-execution.ts";
+import type {
+  IsolatedCodeExecutionLimits,
+  IsolatedCodeOutputDeclaration,
+  IsolatedCodePolicyRef,
+  IsolatedCodeProfileRef,
+  IsolatedCodeRuntimeAttestation,
+} from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
   isolatedCodeOutputManifestsEqual,
   validateContentFingerprint,
@@ -18,6 +19,7 @@ import {
 import {
   createMicrosandboxRuntimeAttestation,
   MICROSANDBOX_LOCAL_RUNTIME_REF,
+  type MicrosandboxLocalRuntimeIdentity,
   pinnedOciImageReference,
   validateMicrosandboxLocalRuntimeIdentity,
 } from "../../../domain/compile/isolation/local-isolation-runtime.ts";
@@ -25,7 +27,7 @@ import {
   GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
   GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
   GEOMETRY_MODULE_ASSEMBLY_OUTPUT_VALIDATOR,
-} from "../../../domain/cad/module-assembly/geometry-module-assembly-execution.ts";
+} from "./fixed-geometry-module-assembly-execution.ts";
 import { GEOMETRY_MODULE_MAXIMUM_BUNDLE_BYTES } from "../../../domain/cad/module-assembly/geometry-module-input-bundle.ts";
 import {
   deepFreeze,
@@ -39,6 +41,46 @@ import {
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
 import { sha256Hex } from "../../../domain/compile/source/provider-resource-reader.ts";
+import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
+
+export const GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE_SCHEMA =
+  "geometry-module-assembly-execution-profile/1.0" as const;
+
+export interface GeometryModuleAssemblyExecutionProfile {
+  readonly schemaVersion: typeof GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE_SCHEMA;
+  readonly executionProfile: IsolatedCodeProfileRef;
+  readonly imageReference: string;
+  readonly wrapper: {
+    readonly id: "build123d-module-assembler-v1";
+    readonly version: "1.0.0";
+    readonly sha256: string;
+    readonly invocation: "direct-executable-no-shell";
+  };
+  readonly lowering: {
+    readonly id: "geometry.module.immediate-compound";
+    readonly version: "1.0";
+    readonly source: "reviewed-child-step-and-placement-bundle";
+  };
+  readonly isolationPolicy: IsolatedCodePolicyRef;
+  readonly runtimeBackend: MicrosandboxLocalRuntimeIdentity;
+  readonly runtime: IsolatedCodeRuntimeAttestation;
+  readonly limits: IsolatedCodeExecutionLimits;
+  readonly outputManifest: readonly IsolatedCodeOutputDeclaration[];
+  readonly outputValidator: {
+    readonly id: "geometry-module-assembly-output-validator";
+    readonly version: "1.0.0";
+  };
+  readonly maximumBundleBytes: number;
+  readonly minimumDestructionAssurance: "proven";
+  readonly profileFingerprint: ContentFingerprint;
+}
+
+export interface GeometryModuleAssemblyExecutionProfileCatalog {
+  initial(): Promise<GeometryModuleAssemblyExecutionProfile>;
+  resolve(
+    profile: IsolatedCodeProfileRef,
+  ): Promise<GeometryModuleAssemblyExecutionProfile>;
+}
 
 export const GEOMETRY_MODULE_MAXIMUM_ISOLATED_BUNDLE_BYTES =
   GEOMETRY_MODULE_MAXIMUM_BUNDLE_BYTES;

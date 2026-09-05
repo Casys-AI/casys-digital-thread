@@ -6,8 +6,8 @@
 
 /** Docker source for `docker image save`. Not the IsolatedCodeRunner pin. */
 export const LOCAL_ADMITTED_SPICE_DOCKER_SOURCE_IMAGE_REFERENCE =
-  "casys/ngspice-microsandbox-worker@sha256:62748f195c86751c5fc565ea8e0ac5ab6bd283ddcae2426918d697b25ce6d392" as const;
+  "casys/ngspice-microsandbox-worker@sha256:4350b3b70bb75acee46d24ffe329b809d1132acd506cc9bd4e83c1340aa6942d" as const;
 
 /** Microsandbox inspectImage manifest. Product runtime imageReference. */
 export const LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE =
-  "casys/ngspice-microsandbox-worker@sha256:3350527ceba0dbe8f2e31e435e834f962978e800134b83d6ee8f4875b7ffb79a" as const;
+  "casys/ngspice-microsandbox-worker@sha256:54079cf7c0e1fcdf9dc30941cc97a752460d787d8d27dd9617d4cfe462e59720" as const;

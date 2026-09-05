@@ -17,9 +17,10 @@ import {
   fingerprintResourceBytes,
   immutableBytes,
 } from "../../../domain/compile/source/provider-resource-reader.ts";
+import { fingerprintResolvedCapabilityRuntimeOperation } from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
 import type { IsolatedCodeExecutionReceipt } from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
-  assembleSensitivityStudyCaseV2,
+  assembleSensitivityStudyCaseV3,
   validateSensitivityStudyCaseTemplate,
 } from "../../../domain/sensitivity/study/sensitivity-study-template.ts";
 import {
@@ -284,6 +285,7 @@ Deno.test("dispatched CAD without a published STEP is terminal", async () => {
       projectId: PROJECT_ID,
       runId: RUN_ID,
       planDigest: fixture.planDigest,
+      runtime: fixture.runtime,
     });
     await fixture.attempts.markCadDispatched({
       projectId: PROJECT_ID,
@@ -305,6 +307,23 @@ Deno.test("dispatched CAD without a published STEP is terminal", async () => {
   }
 });
 
+Deno.test("capability session failure happens before claim, execution WAL, CAD, or provider work", async () => {
+  const fixture = await createFixture({ failCapabilitySession: true });
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      Error,
+      "fixture capability session unavailable",
+    );
+    assertEquals(fixture.project.agentRuns[0]?.status, "queued");
+    assertEquals(await fixture.attempts.read(PROJECT_ID, RUN_ID), undefined);
+    assertEquals(fixture.runner.sources, []);
+    assertEquals(fixture.solver.calls, 0);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 Deno.test("the published study capture has no isolated STEP bytes", async () => {
   const fixture = await createFixture();
   try {
@@ -313,7 +332,8 @@ Deno.test("the published study capture has no isolated STEP bytes", async () => 
       project.agentRuns[0]!.resultSnapshot!.snapshotId,
     );
     const artifact = snapshot?.artifacts.find((item) =>
-      item.producer.tool === "analyze.run-fea-sensitivity@1"
+      item.producer.tool === "analyze.run-fea-sensitivity@1" &&
+      item.uri?.startsWith("casys://sensitivity-study-capture/sha256/")
     );
     const text = await fixture.studyCaptures.read(artifact!.fingerprint);
     const capture = await validateSensitivityStudyCapture(JSON.parse(text!));
@@ -339,12 +359,15 @@ Deno.test(
       snapshots: {} as never,
       caseCaptures: {} as never,
       studyCaptures: {} as never,
+      runtimeProvenanceCaptures: {} as never,
       admissions: {} as never,
       profiles: {} as never,
       runner: {} as never,
-      stager: {} as never,
+      stagerFactory: {} as never,
       solver: {} as never,
       attempts: {} as never,
+      capabilityRuntime: {} as never,
+      capabilityRuntimeSession: {} as never,
       lease: {} as never,
     });
     await assertRejects(
@@ -470,6 +493,7 @@ async function createFixture(options: {
   readonly experienceAdmissionFails?: boolean;
   readonly rejectOutputValidation?: boolean;
   readonly loseCadRejectionAckOnce?: boolean;
+  readonly failCapabilitySession?: boolean;
 } = {}) {
   const directory = await Deno.realPath(
     await Deno.makeTempDir({ prefix: "sensitivity-run-" }),
@@ -481,7 +505,7 @@ async function createFixture(options: {
       ),
     ),
   );
-  const studyCase = assembleSensitivityStudyCaseV2(template, {
+  const studyCase = assembleSensitivityStudyCaseV3(template, {
     artifactUri: `thread-artifact://${PROJECT_ID}/${ADMISSION_ID}`,
     sha256: ADMISSION_DIGEST,
   });
@@ -866,6 +890,22 @@ async function createFixture(options: {
     step: studyCase.step,
     executionProfile: BUILD123D_EXECUTION_PROFILE,
   })).digest;
+  const runtimeOperation = sensitivityRuntimeOperation();
+  const runtime = {
+    operationalCapabilityFingerprint:
+      await fingerprintResolvedCapabilityRuntimeOperation(runtimeOperation),
+    binding: { id: "calculix-static-sensitivity", version: "1" },
+    material: {
+      unitId: "casys.mcp-calculix",
+      materialId: "mcp-calculix-image",
+      imageDigest: "4".repeat(64),
+    },
+    launchGroup: {
+      id: "casys-mcp-calculix",
+      version: "0.8.2",
+      fingerprint: { algorithm: "sha256" as const, digest: "5".repeat(64) },
+    },
+  };
   const projects: EngineeringProjectRevisionStore = {
     get: () => Promise.resolve(project as unknown as EngineeringProjectSnapshot),
     getRevision: () =>
@@ -881,6 +921,7 @@ async function createFixture(options: {
     reuseAttempts,
     experienceStats,
     planDigest,
+    runtime,
     studyCaptures,
     snapshots,
     command: {
@@ -907,6 +948,9 @@ async function createFixture(options: {
       snapshots,
       caseCaptures: caseCaptures as never,
       studyCaptures: studyCaptures as never,
+      runtimeProvenanceCaptures: new MemoryCaptures(
+        "sensitivity-runtime-provenance-capture",
+      ) as never,
       admissions: {
         read: () =>
           Promise.resolve({
@@ -943,9 +987,27 @@ async function createFixture(options: {
         },
       },
       runner,
-      stager,
+      stagerFactory: {
+        forActiveCapabilitySession: () => Promise.resolve(stager),
+      },
       solver: solver as never,
       attempts,
+      capabilityRuntime: {
+        requireExecution: () => Promise.resolve(runtimeOperation as never),
+      },
+      capabilityRuntimeSession: {
+        async begin(input: { readonly recheck: () => Promise<unknown> }) {
+          if (options.failCapabilitySession) {
+            throw new Error("fixture capability session unavailable");
+          }
+          await input.recheck();
+          return {
+            lease: {} as never,
+            releaseTerminal: () => Promise.resolve(),
+            retainForRecovery: () => undefined,
+          };
+        },
+      },
       ...(experience ? { experience } : {}),
       lease: { withLease: (_projectId, _scope, operation) => operation() },
     }),
@@ -969,6 +1031,50 @@ function fakeProfile(): Build123dExecutionProfile {
     }],
     maximumSourceBytes: 1_000_000,
   } as unknown as Build123dExecutionProfile;
+}
+
+function sensitivityRuntimeOperation() {
+  const material = {
+    unitId: "casys.mcp-calculix",
+    materialId: "mcp-calculix-image",
+    imageDigest: "4".repeat(64),
+  };
+  return {
+    schemaVersion: "resolved-capability-runtime-operation/2.0" as const,
+    projectId: PROJECT_ID,
+    operation: { id: "analyze.run-fea-sensitivity", version: "1" },
+    authorizationFingerprint: { algorithm: "sha256" as const, digest: "1".repeat(64) },
+    demandFingerprint: { algorithm: "sha256" as const, digest: "2".repeat(64) },
+    registryFingerprint: { algorithm: "sha256" as const, digest: "3".repeat(64) },
+    bindings: [{
+      capability: {
+        id: "mechanics.observe-static-structural-sensitivity",
+        version: "1",
+        use: "execution" as const,
+        minimumQualification: "qualified" as const,
+      },
+      binding: { id: "calculix-static-sensitivity", version: "1" },
+      effectiveQualification: "qualified" as const,
+      adapter: { id: "casys.mcp-calculix", version: "0.8.2", source: "fixture" },
+      profile: null,
+      materials: [material],
+      runtimeModes: [{
+        material,
+        targetPlatform: "linux/arm64" as const,
+        mode: "native" as const,
+        qualificationAttestationFingerprint: null,
+      }],
+      hostLifecycles: [{
+        material,
+        kind: "persistent-compose" as const,
+        launchGroup: {
+          id: "casys-mcp-calculix",
+          version: "0.8.2",
+          fingerprint: { algorithm: "sha256" as const, digest: "5".repeat(64) },
+        },
+      }],
+    }],
+  };
 }
 
 function fresh(changedAt: string) {
@@ -1039,33 +1145,161 @@ class FakeStager {
 
 class FakeSolver {
   calls = 0;
-  resolve(
-    input: { readonly inputArtifact: { readonly fingerprint: ContentFingerprint } },
-  ) {
-    return { input: input.inputArtifact.fingerprint.digest };
+  readonly #readbacks = new Map<string, unknown>();
+  readonly #captures = new Map<string, unknown>();
+
+  resolve(input: {
+    readonly inputArtifact: {
+      readonly fingerprint: ContentFingerprint;
+      readonly byteCount: number;
+    };
+    readonly execution: {
+      readonly phase: "base" | "stepped";
+    };
+  }) {
+    return Promise.resolve({
+      requestId: `request-${input.execution.phase}-${
+        input.inputArtifact.fingerprint.digest.slice(0, 16)
+      }`,
+      phase: input.execution.phase,
+      inputArtifact: input.inputArtifact,
+      exactRequest: {},
+    });
   }
-  solve(plan: { readonly input: string }) {
+
+  dispatch(plan: {
+    readonly requestId: string;
+    readonly phase: "base" | "stepped";
+  }) {
     this.calls += 1;
-    const stepped = this.calls > 1;
+    return Promise.resolve({
+      requestId: plan.requestId,
+      runId: `r-11111111-1111-1111-1111-${
+        plan.phase === "base" ? "111111111111" : "222222222222"
+      }`,
+      requestSha256: plan.phase === "base" ? "6".repeat(64) : "7".repeat(64),
+    });
+  }
+
+  async readback(
+    plan: {
+      readonly requestId: string;
+      readonly phase: "base" | "stepped";
+      readonly inputArtifact: {
+        readonly fingerprint: ContentFingerprint;
+        readonly byteCount: number;
+      };
+    },
+    expected?: {
+      readonly runId: string;
+      readonly requestSha256: string;
+    },
+  ) {
+    const runId = expected?.runId ??
+      `r-11111111-1111-1111-1111-${
+        plan.phase === "base" ? "111111111111" : "222222222222"
+      }`;
+    const requestSha256 = expected?.requestSha256 ??
+      (plan.phase === "base" ? "6" : "7").repeat(64);
+    const body = {
+      schemaVersion: "mcp-calculix-sensitivity-readback/1.0",
+      phase: plan.phase,
+      stepSha256: plan.inputArtifact.fingerprint.digest,
+      stepBytes: plan.inputArtifact.byteCount,
+      requestId: plan.requestId,
+      runId,
+      requestSha256,
+      resources: [],
+    };
+    const readback = {
+      ...body,
+      canonicalText: deterministicJson(body),
+      fingerprint: await sha256Fingerprint(body),
+    };
+    this.#readbacks.set(readback.canonicalText, readback);
+    return readback;
+  }
+
+  reopenReadback(text: string) {
+    const readback = this.#readbacks.get(text);
+    if (!readback) {
+      return Promise.reject(new Error("fixture readback is absent"));
+    }
+    return Promise.resolve(readback);
+  }
+
+  async capture(readback: {
+    readonly phase: "base" | "stepped";
+    readonly stepSha256: string;
+    readonly stepBytes: number;
+    readonly canonicalText: string;
+    readonly fingerprint: ContentFingerprint;
+  }) {
+    const stepped = readback.phase === "stepped";
     const displacement = stepped ? 1.5 : 0.5;
     const stress = stepped ? 8 : 10;
-    return Promise.resolve({
-      result: {
-        inputAttestation: {
-          fingerprint: { algorithm: "sha256", digest: plan.input },
-          byteCount: 10,
+    const result = {
+      inputAttestation: {
+        fingerprint: { algorithm: "sha256" as const, digest: readback.stepSha256 },
+        byteCount: readback.stepBytes,
+      },
+      boundaryConditions: { supports: [], loads: [] },
+      mesh: { nodeCount: 4, elementCount: 1 },
+      observations: {
+        maximumDisplacement: {
+          magnitude: { value: displacement, unit: "mm" as const },
+          vector: { value: [0, 0, displacement] as const, unit: "mm" as const },
         },
-        observations: {
-          maximumDisplacement: {
-            magnitude: { value: displacement, unit: "mm" },
-            vector: { value: [0, 0, displacement], unit: "mm" },
-          },
-          maximumVonMisesStress: {
-            magnitude: { value: stress, unit: "MPa" },
-          },
+        maximumVonMisesStress: {
+          magnitude: { value: stress, unit: "MPa" as const },
         },
       },
-    });
+    };
+    const providerCapture = {
+      manifestFingerprint: { algorithm: "sha256" as const, digest: "8".repeat(64) },
+      manifestUri: "casys://fixture-calculix-manifest/sha256/" + "8".repeat(64),
+      artifactSequenceFingerprint: {
+        algorithm: "sha256" as const,
+        digest: "9".repeat(64),
+      },
+      requestBinding: {
+        requestResourceFingerprint: {
+          algorithm: "sha256" as const,
+          digest: "a".repeat(64),
+        },
+        loweredRequestFingerprint: {
+          algorithm: "sha256" as const,
+          digest: "b".repeat(64),
+        },
+        executionIdentityFingerprint: {
+          algorithm: "sha256" as const,
+          digest: "c".repeat(64),
+        },
+      },
+    };
+    const body = {
+      schemaVersion: "mcp-calculix-sensitivity-capture/1.0",
+      readback: JSON.parse(readback.canonicalText),
+      providerCapture,
+      result,
+    };
+    const capture = {
+      result,
+      readback: { ...readback, resources: [] },
+      providerCapture,
+      canonicalText: deterministicJson(body),
+      fingerprint: await sha256Fingerprint(body),
+    };
+    this.#captures.set(capture.canonicalText, capture);
+    return capture;
+  }
+
+  reopenCapture(text: string) {
+    const capture = this.#captures.get(text);
+    if (!capture) {
+      return Promise.reject(new Error("fixture capture is absent"));
+    }
+    return Promise.resolve(capture);
   }
 }
 
@@ -1091,6 +1325,7 @@ class MemorySnapshots {
 
 class MemoryCaptures {
   readonly #byDigest = new Map<string, string>();
+  constructor(private readonly namespace = "sensitivity-study-capture") {}
   save(fingerprint: ContentFingerprint, text: string) {
     this.#byDigest.set(fingerprint.digest, text);
     return Promise.resolve({
@@ -1102,7 +1337,7 @@ class MemoryCaptures {
     return Promise.resolve(this.#byDigest.get(fingerprint.digest));
   }
   uriFor(fingerprint: ContentFingerprint) {
-    return `casys://sensitivity-study-capture/sha256/${fingerprint.digest}`;
+    return `casys://${this.namespace}/sha256/${fingerprint.digest}`;
   }
 }
 

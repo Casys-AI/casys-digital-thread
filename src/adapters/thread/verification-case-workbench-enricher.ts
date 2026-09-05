@@ -115,7 +115,7 @@ type ExtractedCase =
     }
     | {
       readonly family: "sensitivity-study";
-      readonly caseSchemaVersion: "sensitivity-study-case/2.0";
+      readonly caseSchemaVersion: "sensitivity-study-case/3.0";
     }
     | {
       readonly family: "printability-check";

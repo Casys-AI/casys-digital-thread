@@ -20,31 +20,46 @@ Lookalikes: [lookalike traps](../../reference/agent/lookalike-traps.md). Domain 
 
 Three operator surfaces. They are not substitutes.
 
-| Surface           | Command                                                                  | What it proves                                                                                                                              |
-| ----------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Docker smoke      | `scripts/gates/verify-ngspice-microsandbox-worker.ts --run`              | Container contract outside IsolatedCodeRunner. Not the Microsandbox cache.                                                                  |
-| Cache preparation | `deno task prepare:ngspice:microsandbox`                                 | Idempotent import of the Docker source digest into the local Microsandbox cache under the runtime manifest pin. No pull. Not a product run. |
-| Product run       | `project_admitted_spice_run_review` then `simulate.run-admitted-spice@1` | Documentary isolated execution after `--local-execution`.                                                                                   |
+| Surface             | Command                                                                  | What it proves                                                                                                                                                                                                                                               |
+| ------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Docker smoke        | `scripts/gates/verify-ngspice-microsandbox-worker.ts --run`              | Container contract outside IsolatedCodeRunner. Not product runtime state.                                                                                                                                                                                   |
+| Maintainer recovery | `deno task prepare:ngspice:microsandbox`                                 | Exceptional recovery only: inspect a server-owned acquisition source or rebuild a candidate Dockerfile, then import only if it attests to the exact runtime digest. No alias pull and not a product run.                                                |
+| Product run         | `project_admitted_spice_run_review` then `simulate.run-admitted-spice@1` | Documentary isolated execution over the server-owned worker profile. After durable authorization, server-owned preload may prepare the exact runtime material; this worker publishes no host port.                                                     |
 
 The Docker distribution/index digest
-`casys/ngspice-microsandbox-worker@sha256:62748f195c86751c5fc565ea8e0ac5ab6bd283ddcae2426918d697b25ce6d392`
-is the `docker image save` source. The executable Microsandbox manifest
-`casys/ngspice-microsandbox-worker@sha256:3350527ceba0dbe8f2e31e435e834f962978e800134b83d6ee8f4875b7ffb79a`
-is the runtime `imageReference`. Backend inspect requires `imageReference` digest ==
-attested `manifestDigest`. Do not pin the Docker index digest as the runtime image.
-`pullPolicy` stays `never`. Server startup does not pull or import.
+`casys/ngspice-microsandbox-worker@sha256:4350b3b70bb75acee46d24ffe329b809d1132acd506cc9bd4e83c1340aa6942d`
+is an internal bootstrap acquisition input. The executable Microsandbox manifest
+`casys/ngspice-microsandbox-worker@sha256:54079cf7c0e1fcdf9dc30941cc97a752460d787d8d27dd9617d4cfe462e59720`
+is the only runtime `imageReference`, catalogued material, and JIT attestation target.
+Backend inspect requires `imageReference` digest == attested `manifestDigest`. Do not
+pin the Docker index digest as the runtime image or expose it in a project plan.
+`pullPolicy` stays `never`. A local `trusted-dockerfile` rebuild is a candidate recipe,
+not bit-reproducible proof and not an `oci-digest` distribution. It can fail to attest
+to the exact runtime target digest; then the capability remains unavailable. GHCR OCI
+promotion is deferred until separate qualification promotes an exact digest. A moving
+APT repository does not promise that a later rebuild will reproduce the pin.
+
+Ordinary start is cold Deno. Do not start the root Compose provider stack: H1 activates
+enrolled groups JIT under a lease when covered work needs them, and those groups collide
+with root Compose on the same loopback ports. A root `docker compose up` remains a
+manual maintainer probe only and must not run concurrently with H1-managed groups.
 
 ```bash
-docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-build123d-sandbox mcp-calculix
-deno task prepare:ngspice:microsandbox   # once per host cache; idempotent
-deno task start:yolo    # or start:local; review/executor need --local-execution
+deno task start:yolo    # YOLO approval only; it does not activate SPICE
 ```
 
 ERPNext is an optional sibling integration; start it separately only when its checkout
 and environment file are available.
 
-Connect the agent to `http://127.0.0.1:3020/mcp`. The Workbench is read-only. Restart is
-required after composing `--local-execution` so the review tool and executor are wired.
+Connect the agent to `http://127.0.0.1:3020/mcp`. The Workbench is read-only. After a
+durable brief authorization, the local control plane schedules a guarded preload of the
+exact `casys.spice-worker/ngspice-runtime-image` material; after a server restart it
+first reconverges the durable authorization lock and re-schedules those authorized
+preloads. The admitted-SPICE executor only observes that exact material in its H1
+execution session before it claims a run. It never pulls, rebuilds, imports, or selects
+an acquisition source JIT. An absent, acquiring, failed, or unattested preload leaves
+the work item and run unchanged and reports the capability literally `unavailable`.
+Restarting the console alone is not an activation mechanism.
 
 ## 1. Capture
 
@@ -63,8 +78,10 @@ A rejected source is a closed-language refusal. There is no mcp-spice fallback.
 
 ## 2. Compile and seal
 
-Call `project_technical_compilation_preview` with `projectId` plus `result.reference`
-only. The server joins the current Thread tip, the unique
+Call `project_technical_compilation_preview` with exactly
+`{ projectId, sourceRefs: [capture.result.reference] }`. When more than one capture is
+compiled, every locator in `sourceRefs` must resolve to one shared
+ProjectSourceWorkspace basis. The server joins the current Thread tip, the unique
 `spice-circuit-closed-subset-v1` / `1.0.0` profile, and unique SysML `parameterizes`
 bindings for every `.param` symbol. A netlist with zero named levers does not need
 `parameterizes`. Concurrent CAD or Modelica sources are not this profile.
@@ -91,10 +108,10 @@ server-selected bytes and returns the fixed parameters and registered
 work item: `compilationAdmission` names the selected admission on the current review
 Thread basis. Do not copy a historical `compile.seal-admission@3` creation snapshot.
 
-Obtain human MRTR, queue, then execute `simulate.run-admitted-spice@1`.
-
-Without `--local-execution` the operation stays registered and the executor is
-`unavailable`.
+Obtain human MRTR, queue, then execute `simulate.run-admitted-spice@1`. A missing or
+in-progress exact microVM preload, failed exact image attestation, or missing operational
+envelope keeps the executor literal `unavailable` before it claims the run. Maintainer
+recovery preparation or a standalone worker check is not a product run.
 
 ## 4. Read success correctly
 
@@ -115,8 +132,31 @@ This section is the generic walk. Exact AL01 identities live on
 [AL01 runtime evidence](../../project-dossiers/articulated-led-desk-lamp/runtime-evidence.md);
 this page does not substitute for them.
 
-Seal a reviewed `electrical-observation-method-sheet/1.0` with
-`project_electrical_observation_method_sheet_seal_review` then
+After the completed L3 run, call
+`project_electrical_observation_method_sheet_seal_review` with `projectId` only. Its
+`mode: preparation` result reopens the unique current completed admitted-SPICE activity
+and returns:
+
+- `methodSheet`: the exact project/subject, current Thread basis including its
+  server-computed fingerprint, and capture/evidence/result identities to copy into the
+  agent-authored `electrical-observation-method-sheet/1.0`;
+- `l3.observations`: literal native names, values and units recrossed between the
+  current Thread and the exact stored `result.json`;
+- `l3.limitations`: the documentary L3 limits, still not criteria or verdicts;
+- `briefItems`: exact approved Brief identities that a later criterion may name.
+
+The preparation returns no provider, image, endpoint, source bytes or arguments and does
+not invent a threshold. A completed `simulate.run-admitted-spice@1` also exposes its
+matching observations on `project_snapshot` for ordinary run inspection, but only the
+preparation mode supplies the current canonical Thread fingerprint required by the
+method sheet.
+
+Author the remaining `id`, `scope`, `limitations`, sources, criteria and review fields,
+then capture the canonical JSON with `project_resource_capture`. Pass only
+`interpretation.typed.fingerprint` back to
+`project_electrical_observation_method_sheet_seal_review` with the same `projectId`. Its
+`mode: review` result is returned only after the sheet's Brief gates, selected L3 branch
+and current Thread basis recross exactly. Use its MRTR parameters to seal with
 `verify.seal-electrical-observation-method-sheet@1`. That seal is not L3, not L4, and
 not ngspice.
 

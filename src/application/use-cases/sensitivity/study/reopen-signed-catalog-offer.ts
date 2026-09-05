@@ -22,7 +22,7 @@ import {
   type SensitivityStudySealDiagnostic,
 } from "../../../../domain/sensitivity/study/sensitivity-study-seal-bindings.ts";
 import type { SensitivityStudyCaseTemplate } from "../../../../domain/sensitivity/study/sensitivity-study-template.ts";
-import type { SensitivityCadSource } from "../../../../domain/sensitivity/study/sensitivity-study-v2.ts";
+import type { SensitivityCadSource } from "../../../../domain/sensitivity/study/sensitivity-study-v3.ts";
 import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
 import type { EngineeringThreadSnapshotBasis } from "../../../../domain/project/engineering-project.ts";
 import type {

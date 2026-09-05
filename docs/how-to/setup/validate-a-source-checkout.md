@@ -55,12 +55,13 @@ validation.
 
 ```bash
 deno task verify:evidence
-deno task verify:fea:contract
 deno task verify:thread:presentation
 ```
 
 These gates validate checked-in fixtures and build the read-only Workbench presentation.
-They still do not contact live providers or prove a live engineering execution.
+They still do not contact live providers or prove a live engineering execution. The old
+root-Compose CalculiX smoke gate was retired: recorded sensitivity now runs only through
+the sealed capability launch group after its own runtime qualification.
 
 ## 5. Check for validation side effects
 

@@ -1,10 +1,6 @@
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import { fingerprintResourceBytes } from "../../compile/source/provider-resource-reader.ts";
 import { deterministicJson } from "../../kernel/deterministic-json.ts";
-import {
-  GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
-  GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
-} from "./geometry-module-assembly-execution.ts";
 import {
   GEOMETRY_MODULE_CHILD_STEP_MEDIA_TYPE,
   GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
@@ -14,7 +10,6 @@ import {
   createGeometryModuleInputBundle,
   GEOMETRY_MODULE_INPUT_BUNDLE_MAGIC,
   GEOMETRY_MODULE_MAXIMUM_OCCURRENCES,
-  geometryModuleAssemblyExecutionRequest,
   type GeometryModuleInputOccurrenceInput,
   parseGeometryModuleInputBundle,
   rehashGeometryModuleInputBundleSteps,
@@ -166,57 +161,6 @@ Deno.test("geometry-module input bundle refuses a non-canonical or incomplete Pa
     () => parseGeometryModuleInputBundle(withoutMagic),
     TypeError,
     "invalid magic",
-  );
-});
-
-Deno.test("geometry-module assembly request reuses IsolatedCodeExecutionRequest without widening it", async () => {
-  const bundle = await createGeometryModuleInputBundle([
-    occurrence("usage-a", "def-a", STEP_A, [0, 0, 0], [0, 0, 0]),
-  ]);
-  const request = geometryModuleAssemblyExecutionRequest({
-    profile: {
-      executionProfile: GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
-      isolationPolicy: {
-        id: "geometry-module-assembler-deny-all-v1",
-        version: "1.0.0",
-        fingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
-      },
-      outputManifest: GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
-    },
-    bundle,
-    runId: "run-module-1",
-    producerGeneration: 0,
-  });
-  assertEquals(Object.keys(request).sort(), [
-    "outputs",
-    "policy",
-    "producerGeneration",
-    "profile",
-    "runId",
-    "schemaVersion",
-    "source",
-  ]);
-  assertEquals(request.source.sha256, bundle.fingerprint.digest);
-  assertEquals(request.source.bytes, bundle.bytes.copy());
-  assertEquals(request.outputs, GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST);
-  assertThrows(
-    () =>
-      geometryModuleAssemblyExecutionRequest({
-        profile: {
-          executionProfile: { id: "build123d-closed-subset-v1", version: "1.0.0" },
-          isolationPolicy: {
-            id: "geometry-module-assembler-deny-all-v1",
-            version: "1.0.0",
-            fingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
-          },
-          outputManifest: GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
-        },
-        bundle,
-        runId: "run-module-1",
-        producerGeneration: 0,
-      }),
-    TypeError,
-    "not bound to the registered profile",
   );
 });
 

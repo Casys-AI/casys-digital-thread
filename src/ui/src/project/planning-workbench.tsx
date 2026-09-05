@@ -13,6 +13,7 @@ import {
 } from "../../../domain/project/project-brief.ts";
 import { cn } from "../lib/utils.ts";
 import type { ThreadStreamStatus } from "../thread/client.ts";
+import type { ThreadViewerSessionsProjection } from "../thread/viewer-sessions-client.ts";
 import type { EngineeringPlanningWorkbenchSnapshot } from "../thread/types.ts";
 import { Badge, type BadgeProps } from "../ui/badge.tsx";
 import {
@@ -24,7 +25,7 @@ import {
 } from "../ui/card.tsx";
 import { BaselineRunActivity } from "./baseline-run-activity.tsx";
 import { ProjectBriefElicitation } from "./brief-elicitation.tsx";
-import { ProjectCockpitHeader } from "./navigation.tsx";
+import { ProjectNavigation, type ProjectWorkspaceView } from "./navigation.tsx";
 import { hasDistinctProjectObjectiveStatement } from "./navigation-model.ts";
 import {
   buildProjectBrief,
@@ -34,6 +35,8 @@ import {
   workOwnerLabel,
   workStatusLabel,
 } from "./model.ts";
+import { ProjectReviewAppHandoffs } from "./control-center.tsx";
+import { buildProjectReviewRecords } from "./review-decision-model.ts";
 
 type BadgeVariant = NonNullable<BadgeProps["variant"]>;
 
@@ -44,10 +47,16 @@ type BadgeVariant = NonNullable<BadgeProps["variant"]>;
  */
 export function PlanningWorkbench({
   workbench,
+  viewerSessions,
   streamStatus,
+  activeView,
+  onChangeView,
 }: {
   workbench: EngineeringPlanningWorkbenchSnapshot;
+  viewerSessions?: ThreadViewerSessionsProjection;
   streamStatus: ThreadStreamStatus | "snapshot";
+  activeView: ProjectWorkspaceView;
+  onChangeView: (view: ProjectWorkspaceView) => void;
 }): JSX.Element {
   const project = workbench.project;
   const brief = buildProjectBrief(project);
@@ -77,20 +86,35 @@ export function PlanningWorkbench({
     ? "Continue refining it with the agent"
     : "Shape the brief with the agent";
   const statusTone = projectStatusTone(brief.status);
+  const reviewRecords = buildProjectReviewRecords(project);
 
   return (
     <div className="thread-workbench cockpit-surface planning-workbench">
-      <ProjectCockpitHeader
-        projectId={project.project.id}
-        revision={project.revision}
-        projectName={project.project.name}
-        context={`Planning · ${project.project.subjectId}`}
-        streamState={streamStatus}
-        streamLabel={planningStreamLabel(streamStatus)}
-        statusLabel="Project"
-        statusValue={projectStateLabel}
-        metaLabel="Updated"
-        metaValue={formatTime(project.generatedAt)}
+      <ProjectNavigation
+        activeView={activeView}
+        onChange={onChangeView}
+        disabledViews={["work", "product", "verification", "operations"]}
+        status={
+          <>
+            <span
+              className="project-navigation-stream"
+              data-state={streamStatus}
+              aria-live="polite"
+            >
+              <i aria-hidden="true" />
+              <span className="project-navigation-stream-label">
+                {planningStreamLabel(streamStatus)}
+              </span>
+            </span>
+            <time
+              className="project-navigation-time"
+              dateTime={project.generatedAt}
+              title={`Updated ${project.generatedAt}`}
+            >
+              {formatTime(project.generatedAt)}
+            </time>
+          </>
+        }
       />
 
       <main
@@ -164,6 +188,12 @@ export function PlanningWorkbench({
             framing={framing}
           />
         )}
+
+        <ProjectReviewAppHandoffs
+          project={project}
+          records={reviewRecords}
+          projection={viewerSessions}
+        />
 
         <section
           aria-labelledby="planning-baseline-title"

@@ -7,6 +7,8 @@
  */
 
 import type { EngineeringProjectRevisionStore } from "../../application/ports/out/engineering-project-revision-store.ts";
+import type { CapabilityRuntimeExecutionEligibility } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import type { CapabilityRuntimeExecutionSessionCoordinator } from "../../application/control-plane/capability-runtime-execution-session.ts";
 import type { EngineeringProjectCommandService } from "../../application/use-cases/project/engineering-project-command-service.ts";
 import { PrepareProjectAdmittedModelicaRunReview } from "../../application/use-cases/modelica/admitted/prepare-run-review.ts";
 import { ResolveProjectAdmittedModelicaRunReview } from "../../application/use-cases/modelica/admitted/resolve-run-review.ts";
@@ -16,6 +18,7 @@ import { PrepareProjectModelicaQualifiedKitRunReview } from "../../application/u
 import { ExecuteIsolatedModelicaRun } from "../../application/use-cases/modelica/qualified-kit/execute-isolated-run.ts";
 import { PrepareProjectThermalMethodSheetSealReview } from "../../application/use-cases/modelica/thermal-method-sheet/prepare-project-thermal-method-sheet-seal-review.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
+import type { ResolvedRunPlanReader } from "../../domain/project/resolved-run-plan-sealer.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import type { CaptureBackedTechnicalCompilationAdmissionReader } from "../compile/admission/capture-backed-technical-compilation-admission-reader.ts";
@@ -136,6 +139,15 @@ export interface ModelicaProjectOptions {
     getFresh(snapshotId: string): Promise<ThreadSnapshot | undefined>;
   };
   readonly planSnapshots: Pick<ThreadSnapshotStore, "get">;
+  /** Exact persisted ROP2 reader used by admitted Modelica execution only. */
+  readonly plans: ResolvedRunPlanReader;
+  /** Runtime authority remains fail-closed while its Modelica binding is unqualified. */
+  readonly capabilityRuntime: CapabilityRuntimeExecutionEligibility;
+  /** JIT lifecycle coordinator; no provider envelope reaches the executor. */
+  readonly capabilityRuntimeSession: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin" | "releaseRecorded"
+  >;
   readonly lease: EngineeringProjectRunLease;
   readonly recordedAnalysisDirectory: string;
   readonly sysonMcpUrl?: string;
@@ -354,6 +366,8 @@ export function createModelicaProject(
         timeoutMs: 30_000,
       }),
       lease: options.lease,
+      capabilityRuntime: options.capabilityRuntime,
+      capabilityRuntimeSession: options.capabilityRuntimeSession,
     })
     : undefined;
   const decideAdmittedModelicaEvaluation =
@@ -411,6 +425,8 @@ export function createModelicaProject(
         }),
         captures: options.qualified.executionCaptures,
         lease: options.lease,
+        capabilityRuntime: options.capabilityRuntime,
+        capabilityRuntimeSession: options.capabilityRuntimeSession,
       });
   const exactAdmittedModelicaRunReview = options.admitted.execution === undefined
     ? undefined
@@ -444,6 +460,9 @@ export function createModelicaProject(
         ),
         captures: options.admitted.captures,
         lease: options.lease,
+        plans: options.plans,
+        capabilityRuntime: options.capabilityRuntime,
+        capabilityRuntimeSession: options.capabilityRuntimeSession,
       });
   return {
     thermalMethodSheetSealReview,

@@ -7,6 +7,10 @@
  */
 
 import { COMPILATION_ADMISSION_BINDING_NAME } from "../../../../../domain/compile/admission/compilation-admission-run-operation.ts";
+import {
+  type ResolvedOperationPlanV2,
+  SPICE_ADMITTED_ISOLATED_RESOURCE_PROFILE,
+} from "../../../../../domain/compile/rop/resolved-operation-plan-v2.ts";
 import type { IsolatedCodeExecutionRequest } from "../../../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
   deterministicJson,
@@ -32,6 +36,7 @@ import type {
   AdmittedSpiceExecutionProfile,
   AdmittedSpiceExecutionProfileCatalog,
 } from "../../../../ports/out/electrical/spice/admitted-execution-profile-catalog.ts";
+import type { ResolvedCapabilityRuntimeOperation } from "../../../../../domain/capability/runtime/capability-runtime-supervision.ts";
 import {
   isolatedRequestFromAdmittedSource,
   ReopenAdmittedCompilationSource,
@@ -50,6 +55,115 @@ export interface AdmittedExecutionRequest {
   readonly admission: SpiceAdmittedRunAdmission;
   readonly executionProfile: AdmittedSpiceExecutionProfile;
   readonly request: IsolatedCodeExecutionRequest;
+}
+
+/**
+ * Cross-check the ROP2 action with the independently reopened sealed
+ * admission and fixed profile. The ROP guard validates the queue/MRTR/Thread
+ * chain; this language boundary additionally refuses an action that no longer
+ * names the exact SPICE source, documentary resources, recovery policy, or
+ * code-owned request identity that it is about to execute.
+ */
+export async function assertResolvedAdmittedSpiceExecutionPlan(input: {
+  readonly plan: ResolvedOperationPlanV2;
+  readonly operationalCapability: ResolvedCapabilityRuntimeOperation;
+  readonly project: EngineeringProjectSnapshot;
+  readonly run: EngineeringAgentRun;
+  readonly admission: SpiceAdmittedRunAdmission;
+  readonly execution: AdmittedExecutionRequest;
+}): Promise<void> {
+  const action = input.plan.action;
+  const expectedExecutionRunId = await deriveAdmittedSpiceExecutionRunId(
+    input.project.project.id,
+    input.run.id,
+  );
+  if (
+    action.kind !== "admitted-spice-isolated-execution" ||
+    action.executionRunId !== expectedExecutionRunId ||
+    input.execution.request.runId !== expectedExecutionRunId ||
+    input.plan.run.projectId !== input.project.project.id ||
+    input.plan.run.runId !== input.run.id ||
+    deterministicJson(input.plan.operationalCapability) !==
+      deterministicJson(input.operationalCapability)
+  ) {
+    throw invalidTransition(
+      "The resolved operation plan does not name this exact admitted SPICE execution run and operational capability.",
+    );
+  }
+  if (
+    action.executionProfile.id !==
+      input.execution.executionProfile.executionProfile.id ||
+    action.executionProfile.version !==
+      input.execution.executionProfile.executionProfile.version ||
+    !fingerprintsEqual(
+      action.executionProfile.fingerprint,
+      input.execution.executionProfile.profileFingerprint,
+    ) ||
+    !fingerprintsEqual(
+      input.admission.execution.profile.fingerprint,
+      input.execution.executionProfile.profileFingerprint,
+    )
+  ) {
+    throw invalidTransition(
+      "The resolved operation plan execution profile differs from the exact reopened admitted SPICE profile.",
+    );
+  }
+  const source = input.admission.compilation.source;
+  const admission = action.input.compilationAdmission;
+  const planSources = input.plan.sources.filter((candidate) =>
+    candidate.bindingName === admission.sourceBinding
+  );
+  const planSource = planSources[0];
+  if (
+    admission.sourceBinding !== COMPILATION_ADMISSION_BINDING_NAME ||
+    admission.id !== input.admission.admissionArtifact.id ||
+    !fingerprintsEqual(
+      admission.fingerprint,
+      input.admission.admissionArtifact.fingerprint,
+    ) ||
+    action.input.source.id !== source.id ||
+    !fingerprintsEqual(
+      action.input.source.sourceFingerprint,
+      source.sourceFingerprint,
+    ) ||
+    !fingerprintsEqual(
+      action.input.source.captureFingerprint,
+      source.captureFingerprint,
+    ) ||
+    !fingerprintsEqual(
+      action.input.source.analysisFingerprint,
+      source.analysisFingerprint,
+    ) ||
+    planSources.length !== 1 || !planSource ||
+    planSource.threadRef.id !== input.admission.admissionArtifact.id ||
+    !fingerprintsEqual(
+      planSource.artifact.fingerprint,
+      input.admission.admissionArtifact.fingerprint,
+    )
+  ) {
+    throw invalidTransition(
+      "The resolved operation plan source binding differs from the exact admitted SPICE source.",
+    );
+  }
+  const resources = input.plan.expectedProviderResources;
+  const recovery = input.plan.recovery;
+  if (
+    resources.resourceProfile.id !== SPICE_ADMITTED_ISOLATED_RESOURCE_PROFILE.id ||
+    resources.resourceProfile.version !==
+      SPICE_ADMITTED_ISOLATED_RESOURCE_PROFILE.version ||
+    !("receiptSchema" in resources) ||
+    resources.receiptSchema !== "isolated-code-execution-receipt-record/1.0" ||
+    resources.evidenceSchema !== "spice-admitted-execution-capture/1.0" ||
+    recovery.policy !== "spice-admitted-generation-recovery@1.0" ||
+    recovery.executionRunId !== expectedExecutionRunId ||
+    recovery.mode !== "same-request-readback-no-blind-redispatch" ||
+    recovery.ambiguousOutcome !== "quarantine-for-human-review" ||
+    recovery.capturedOutcome !== "cas-only-recovery"
+  ) {
+    throw invalidTransition(
+      "The resolved operation plan resources or recovery contract differs from admitted SPICE @1.",
+    );
+  }
 }
 
 export async function reopenAdmittedExecutionRequest(input: {
@@ -125,6 +239,70 @@ export async function reopenAdmittedExecutionRequest(input: {
   };
 }
 
+/**
+ * Reopen one already-dispatched execution from its WAL-sealed execution
+ * profile. Terminal replay must never reinterpret a durable result through a
+ * replacement catalog profile; source bytes are still reopened from the
+ * sealed compilation admission.
+ */
+export async function reopenRecordedAdmittedSpiceExecutionRequest(input: {
+  readonly admissions: TechnicalCompilationAdmissionReader;
+  readonly project: EngineeringProjectSnapshot;
+  readonly run: EngineeringAgentRun;
+  readonly admission: SpiceAdmittedRunAdmission;
+  readonly executionProfile: AdmittedSpiceExecutionProfile;
+}): Promise<AdmittedExecutionRequest> {
+  const basis = requireThreadSnapshotBasis(input.run);
+  let admitted;
+  try {
+    admitted = await new ReopenAdmittedCompilationSource({
+      admissions: input.admissions,
+    }).execute({
+      projectId: input.project.project.id,
+      basis,
+      artifactId: input.admission.admissionArtifact.id,
+      artifactFingerprint: input.admission.admissionArtifact.fingerprint,
+      expectedTarget: "spice-circuit-source",
+    });
+  } catch {
+    throw invalidTransition(
+      "The reopened admission is not a ready SPICE compilation.",
+    );
+  }
+  if (
+    !fingerprintsEqual(
+      admitted.sourceFingerprint,
+      input.admission.compilation.source.sourceFingerprint,
+    ) ||
+    !fingerprintsEqual(
+      admitted.documentFingerprint,
+      input.admission.compilation.document.fingerprint,
+    )
+  ) {
+    throw invalidTransition(
+      "The reopened SPICE source is not the signed admission.",
+    );
+  }
+  const executionRunId = await deriveAdmittedSpiceExecutionRunId(
+    input.project.project.id,
+    input.run.id,
+  );
+  const request = await isolatedRequestFromAdmittedSource({
+    runId: executionRunId,
+    sourceText: admitted.sourceText,
+    sourceSha256: admitted.sourceFingerprint.digest,
+    profile: input.executionProfile.executionProfile,
+    policy: input.executionProfile.isolationPolicy,
+    outputs: input.executionProfile.outputManifest,
+    maximumSourceBytes: input.executionProfile.maximumSourceBytes,
+  });
+  return {
+    admission: input.admission,
+    executionProfile: input.executionProfile,
+    request,
+  };
+}
+
 export function requireAdmittedSpiceExecutionShape(
   project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
@@ -134,7 +312,7 @@ export function requireAdmittedSpiceExecutionShape(
   const binding = operation?.bindings[0];
   if (
     run.basis?.kind !== "thread-snapshot" ||
-    run.baseSnapshot !== undefined || run.resolvedOperationPlan !== undefined ||
+    run.baseSnapshot !== undefined || run.resolvedOperationPlan === undefined ||
     !workItem || operation?.id !== SIMULATE_RUN_ADMITTED_SPICE_OPERATION.id ||
     operation.version !== SIMULATE_RUN_ADMITTED_SPICE_OPERATION.version ||
     workItem.decisionIds.length !== 1 ||

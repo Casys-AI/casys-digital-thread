@@ -14,7 +14,7 @@ import {
   validateSensitivityStudyCapture,
   validateSensitivityStudyScientificResult,
 } from "./sensitivity-study-capture.ts";
-import type { SensitivityStudyCaseV2 } from "./sensitivity-study-v2.ts";
+import type { SensitivityStudyCaseV3 } from "./sensitivity-study-v3.ts";
 
 export const SENSITIVITY_STUDY_REUSE_RESULT_SCHEMA =
   "sensitivity-study-reuse-result/1.0" as const;
@@ -32,7 +32,7 @@ export interface SensitivityStudyReuseResult {
   };
   readonly trustedRunId: string;
   readonly caseDigest: string;
-  readonly studyCase: SensitivityStudyCaseV2;
+  readonly studyCase: SensitivityStudyCaseV3;
   readonly measurements: SensitivityExperienceRecord["result"]["measurements"];
   readonly derivatives: SensitivityExperienceRecord["result"]["derivatives"];
   readonly reuseReceiptFingerprint: ContentFingerprint;
@@ -56,7 +56,7 @@ export function isSensitivityStudyResultArtifactId(
 
 export async function makeSensitivityStudyReuseResult(input: {
   readonly trustedRunId: string;
-  readonly studyCase: SensitivityStudyCaseV2;
+  readonly studyCase: SensitivityStudyCaseV3;
   readonly record: SensitivityExperienceRecord;
   readonly reuseReceiptFingerprint: ContentFingerprint;
   readonly capturedAt: string;

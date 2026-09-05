@@ -1,7 +1,7 @@
 /**
  * Public facade for bounded hierarchical CAD module evidence.
  *
- * Identities, the isolation recross, the signed manifest, the review-only
+ * Identities, the assembly recross, the signed manifest, the review-only
  * draft, and the canonical capture stay in sibling modules. This file only
  * re-exports that closed family.
  */
@@ -43,7 +43,17 @@ export {
   sameInputBundle,
 } from "./geometry-module-identities.ts";
 
-export { recrossGeometryModuleIsolation } from "./geometry-module-isolation.ts";
+export { recrossGeometryModuleAssembly } from "./geometry-module-assembly-recross.ts";
+export {
+  GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
+} from "../../capability/engineering-capability.ts";
+export {
+  GEOMETRY_MODULE_ASSEMBLY_ASSETS,
+  GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
+  type GeometryModuleAssemblyReceipt,
+  parseGeometryModuleAssemblyReceipt,
+  recrossGeometryModuleAssemblyReceipt,
+} from "../module-assembly/geometry-module-assembly-receipt.ts";
 
 export {
   assertGeometryModuleManifest,

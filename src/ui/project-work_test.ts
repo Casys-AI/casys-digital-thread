@@ -62,27 +62,25 @@ Deno.test("operations leads with recorded execution and human confirmations", as
     new URL("./src/project/work.tsx", import.meta.url),
   );
   const start = source.indexOf("export function ProjectOperations");
-  const end = source.indexOf("/** Read-only L5 evidence card", start);
+  const end = source.indexOf("// Contributing systems", start);
   const operations = source.slice(start, end);
 
   const queue = operations.indexOf("<QueueCard");
   const confirmations = operations.indexOf("<MrtrCard");
-  const closeout = operations.indexOf("<EvaluationCloseoutCard");
-  const assemblyIntegrity = operations.indexOf("<AssemblyIntegrityCard");
   const systems = operations.indexOf("<ContributingSystemsCard");
   assertEquals(start >= 0 && end > start, true);
   assertEquals(queue >= 0 && queue < confirmations, true);
-  assertEquals(
-    confirmations < closeout && closeout < assemblyIntegrity &&
-      assemblyIntegrity < systems,
-    true,
-  );
+  assertEquals(confirmations < systems, true);
   assertStringIncludes(
     operations,
     "pendingHumanConfirmationDecisions(project)",
   );
   assertStringIncludes(operations, "agentPreparationDecisions(project)");
   assertEquals(operations.includes('status === "required"'), false);
+  assertEquals(operations.includes("EvaluationCloseoutCard"), false);
+  assertEquals(operations.includes("AssemblyIntegrityCard"), false);
+  assertEquals(operations.includes("evaluationCloseouts"), false);
+  assertEquals(operations.includes("assemblyIntegrity"), false);
   assertStringIncludes(operations, "Technical provenance");
   assertStringIncludes(operations, "They are not runtime health checks.");
 });
@@ -95,8 +93,11 @@ Deno.test("operations keeps agent preparation outside concrete proposed MRTR dec
   const preparationEnd = source.indexOf("// MRTR card", preparationStart);
   const preparation = source.slice(preparationStart, preparationEnd);
 
-  assertEquals(preparationStart >= 0 && preparationEnd > preparationStart, true);
-  assertStringIncludes(preparation, "AGENT PROPOSAL PREPARATION");
+  assertEquals(
+    preparationStart >= 0 && preparationEnd > preparationStart,
+    true,
+  );
+  assertStringIncludes(preparation, "Agent proposals in preparation");
   assertStringIncludes(preparation, 'decision.status === "rejected"');
   assertStringIncludes(preparation, "Only a later <strong>proposed</strong>");
   assertStringIncludes(preparation, "the MRTR card above");
@@ -113,7 +114,7 @@ Deno.test("operations systems expose literal recorded state without row commands
   assertEquals(start >= 0 && end > start, true);
   for (
     const label of [
-      "Requirement",
+      "Fleet declaration",
       "Recorded state",
       "Last evidence",
       "Required",
@@ -133,50 +134,6 @@ Deno.test("operations systems expose literal recorded state without row commands
   assertEquals(systems.includes("<a "), false);
   assertEquals(systems.includes("p50"), false);
   assertEquals(systems.includes("uptime"), false);
-});
-
-Deno.test("operations closeout keeps exact evidence identifiers behind details", async () => {
-  const source = await Deno.readTextFile(
-    new URL("./src/project/work.tsx", import.meta.url),
-  );
-  const start = source.indexOf("function EvaluationCloseoutCard");
-  const end = source.indexOf("// Contributing systems", start);
-  const closeout = source.slice(start, end);
-
-  assertEquals(start >= 0 && end > start, true);
-  assertStringIncludes(closeout, "<details");
-  assertStringIncludes(
-    closeout,
-    "Review criteria, proof boundaries and evidence identifiers",
-  );
-  assertStringIncludes(closeout, "card.evidence.canonicalStep.id");
-  assertStringIncludes(closeout, "card.evidence.sealedProof.id");
-  assertStringIncludes(closeout, "card.evidence.executionEvidence.id");
-  assertStringIncludes(closeout, "card.evidence.evaluationCapture.id");
-});
-
-Deno.test("assembly-integrity work card keeps L3 facts, L4 verdict and L5 formal gates separate", async () => {
-  const source = await Deno.readTextFile(
-    new URL("./src/project/work.tsx", import.meta.url),
-  );
-  const start = source.indexOf("function AssemblyIntegrityCard");
-  const end = source.indexOf("// Contributing systems", start);
-  const card = source.slice(start, end);
-
-  assertEquals(start >= 0 && end > start, true);
-  assertStringIncludes(card, "L3 · observed facts");
-  assertStringIncludes(card, "No verdict");
-  assertStringIncludes(card, "L4 · recorded evaluation");
-  assertStringIncludes(card, "l4.aggregateVerdict");
-  assertStringIncludes(card, "L5 · human disposition");
-  assertStringIncludes(card, 'data-formal-gate="assembly-integrity"');
-  assertStringIncludes(
-    card.replace(/\s+/g, " "),
-    "separate from the activity stage band",
-  );
-  assertStringIncludes(card, "Exact lineage and evidence identities");
-  assertEquals(card.includes("onClick"), false);
-  assertEquals(card.includes("<button"), false);
 });
 
 Deno.test("run timeline keeps historical attempts behind details on one activity row", async () => {
@@ -206,7 +163,7 @@ Deno.test("operations page heading describes recorded state rather than fleet he
   const heading = source.slice(start, end);
 
   assertEquals(start >= 0 && end > start, true);
-  assertStringIncludes(source, "Operations · recorded execution");
+  assertStringIncludes(source, "Utility · systems and runs");
   assertStringIncludes(heading, 'run.status === "running"');
   assertStringIncludes(heading, 'run.status === "queued"');
   assertStringIncludes(heading, "pendingHumanConfirmationDecisions(project)");

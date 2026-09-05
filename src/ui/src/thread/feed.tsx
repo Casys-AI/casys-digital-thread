@@ -9,7 +9,6 @@ import {
   type ProjectReviewRecord,
 } from "../project/review-decision-model.ts";
 import { Badge } from "../ui/badge.tsx";
-import { Select } from "../ui/select.tsx";
 import { Button } from "../ui/button.tsx";
 import type { ThreadStreamStatus } from "./client.ts";
 import {
@@ -17,13 +16,9 @@ import {
   activityFeedNodes,
   activityKindLabel,
   buildActivityTimeline,
-  buildFeedComponentCounts,
-  buildFilterOptions,
   compactLineageCounters,
   compactLineageProjection,
-  filterFeedNodesByScope,
   isActivityEntryExpanded,
-  isArchitectureSysmlSealArtifactId,
   refKey,
   traceThreadLineage,
 } from "./feed-model.ts";
@@ -35,17 +30,15 @@ import { ThreadGraph, type ThreadGraphSelection } from "./graph.tsx";
 import { EvidenceExploration } from "./evidence-exploration.tsx";
 import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
 import type { EvidenceCanvasProjection } from "./evidence-canvas-model.ts";
-import { RecomputeHistoryPanel } from "./recompute.tsx";
 import type {
-  ThreadComponentCatalog,
   ThreadEvidenceFamilyGraph,
   ThreadGraphEdge,
   ThreadGraphNode,
   ThreadGraphRef,
   ThreadRef,
 } from "./types.ts";
-import type { FeedScope } from "./feed-model.ts";
-import type { PartAnchorageResolution } from "./part-anchorage-model.ts";
+import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
+import type { ThreadViewerSessionsProjection } from "./viewer-sessions-client.ts";
 
 export interface ThreadFeedProps {
   nodes: ThreadGraphNode[];
@@ -67,24 +60,6 @@ export interface ThreadFeedProps {
    */
   evidenceModel?: EvidenceGraphModel;
   /**
-   * Component filter for the feed entries. When set, only activity events
-   * anchored to this component are shown. Conflicting and absent anchors have
-   * explicit, separate filter scopes and are never treated as assembly.
-   * undefined = "Tout le projet" (no filter).
-   */
-  filterComponentId?: FeedScope;
-  /**
-   * Complete anchorage outcome used to filter feed entries. Must be provided
-   * together with filterComponentId so unique, ambiguous and orphan outcomes
-   * retain their distinct meaning.
-   */
-  anchorage?: PartAnchorageResolution;
-  /**
-   * Component catalog for the filter selector labels. Must be provided when
-   * anchorage is present.
-   */
-  components?: ThreadComponentCatalog;
-  /**
    * Evidence family graph already projected on the workbench snapshot.
    * Activity currency reads `historicalRefs` from it; the feed does not
    * reconstruct supersession from labels or timestamps.
@@ -92,8 +67,10 @@ export interface ThreadFeedProps {
   familyGraph?: ThreadEvidenceFamilyGraph;
   /** Durable human reviews merged into the same chronological Activity rail. */
   reviewRecords?: readonly ProjectReviewRecord[];
-  /** Fires when the user changes the component filter in the feed toolbar. */
-  onFilterChange?: (componentId: FeedScope | undefined) => void;
+  /** Exact Project identity used to match pre-MRTR review App anchors. */
+  project?: EngineeringProjectSnapshot;
+  /** Complete exact App projection; the feed never discovers a replacement. */
+  viewerSessions?: ThreadViewerSessionsProjection;
   onFollowLiveChange: (follow: boolean) => void;
   onSelectNode: (node: ThreadGraphNode, origin: "feed" | "lineage") => void;
   onSelectEdge: (edge: ThreadGraphEdge) => void;
@@ -123,12 +100,10 @@ export function ThreadFeed({
   streamStatus,
   threadIdentity,
   evidenceModel,
-  filterComponentId,
-  anchorage,
-  components,
   familyGraph,
   reviewRecords = [],
-  onFilterChange,
+  project,
+  viewerSessions,
   onFollowLiveChange,
   onSelectNode,
   onSelectEdge,
@@ -136,35 +111,10 @@ export function ThreadFeed({
   onOpenEvidenceAnchored,
   onOpenReviewEvidence,
 }: ThreadFeedProps): JSX.Element {
-  const allFeedNodes = activityFeedNodes(nodes, edges);
+  const allFeedNodes = activityFeedNodes(nodes);
+  const entries = buildActivityTimeline(allFeedNodes, reviewRecords);
 
-  // Counts per component target across ALL feed events (before filtering).
-  // Used to populate the selector with only meaningful options + true counts.
-  const componentCounts = anchorage
-    ? buildFeedComponentCounts(allFeedNodes, anchorage)
-    : undefined;
-
-  // Apply a component or explicit non-anchored scope filter. The complete
-  // resolution prevents ambiguous/orphan facts acquiring assembly scope.
-  const feedNodes = filterComponentId !== undefined && anchorage
-    ? filterFeedNodesByScope(allFeedNodes, anchorage, filterComponentId)
-    : allFeedNodes;
-
-  // A component filter is authoritative. Keeping an old global focus by
-  // prepending it here made Activity show an out-of-filter fact while every
-  // counter still claimed the filtered total.
-  const entries = buildActivityTimeline(
-    feedNodes,
-    reviewRecords,
-    filterComponentId === undefined,
-  );
-  // Build component options for the filter selector.
-  // Only parts with >= 1 event appear; counts are shown in the label.
-  const filterOptions = components
-    ? buildFilterOptions(components, componentCounts)
-    : undefined;
-
-  if (entries.length === 0 && !filterOptions) {
+  if (entries.length === 0) {
     return (
       <div
         className="px-8 py-8 text-sm text-muted-foreground"
@@ -215,48 +165,6 @@ export function ThreadFeed({
       data-follow-live={followLive ? "true" : "false"}
       data-stream={streamStatus}
     >
-      {filterOptions && onFilterChange && (
-        <div
-          className="thread-feed-component-filter flex items-center gap-2"
-          aria-label="Filter by part"
-        >
-          <span
-            id="feed-component-filter-label"
-            className="text-xs font-medium text-muted-foreground"
-          >
-            Part
-          </span>
-          <Select
-            aria-labelledby="feed-component-filter-label"
-            className="min-w-44"
-            value={filterComponentId ?? "entire-project"}
-            options={[
-              { value: "entire-project", label: "Entire project" },
-              ...filterOptions.map((opt) => ({
-                value: opt.id,
-                label: opt.label,
-              })),
-            ]}
-            onValueChange={(value) => {
-              onFilterChange(
-                value === "entire-project" ? undefined : value as FeedScope,
-              );
-            }}
-          />
-        </div>
-      )}
-
-      {entries.length === 0 && (
-        <div
-          className="px-8 py-8 text-sm text-muted-foreground"
-          role="status"
-        >
-          {filterComponentId
-            ? "No event is recorded for this scope."
-            : "Waiting for the first linked engineering fact."}
-        </div>
-      )}
-
       <div className="thread-feed-rail-grid">
         <div className="thread-feed-rail-line" aria-hidden="true" />
         <ol
@@ -306,6 +214,8 @@ export function ThreadFeed({
                   <div className="thread-feed-event">
                     <ActivityReviewFeedCard
                       record={entry.review}
+                      project={project}
+                      viewerSessions={viewerSessions}
                       onOpenEvidence={onOpenReviewEvidence}
                     />
                   </div>
@@ -347,11 +257,6 @@ export function ThreadFeed({
                 className="thread-feed-entry"
                 data-active={active ? "true" : "false"}
                 data-kind={node.entityKind}
-                data-authority={node.entityKind === "artifact" &&
-                    node.artifactKind === "document" &&
-                    isArchitectureSysmlSealArtifactId(node.ref.id)
-                  ? "documentary"
-                  : undefined}
                 data-currency={currency}
                 data-freshness={currency}
                 data-review-status={reviewStatus}
@@ -421,6 +326,8 @@ export function ThreadFeed({
                   {attachedReview && (
                     <ActivityReviewFeedCard
                       record={attachedReview}
+                      project={project}
+                      viewerSessions={viewerSessions}
                       onOpenEvidence={onOpenReviewEvidence}
                     />
                   )}
@@ -465,13 +372,6 @@ export function ThreadFeed({
                           )}
                         </div>
                       </header>
-                      <RecomputeHistoryPanel
-                        nodes={nodes}
-                        edges={edges}
-                        focus={node.ref}
-                        onSelectNode={(related) =>
-                          onSelectNode(related, "lineage")}
-                      />
                       {lineageCount === 0
                         ? (
                           <p className="px-8 py-8 text-sm text-muted-foreground">
@@ -504,8 +404,6 @@ export function ThreadFeed({
                             edges={lineage.edges}
                             focus={node.ref}
                             selection={selection}
-                            showSupporting
-                            showDensityControl={false}
                             animate
                             ariaLabel={`Complete recorded lineage for ${node.label}`}
                             onSelectionChange={(next) => {
@@ -592,8 +490,7 @@ function FeedLineageGraph({
   ariaLabel,
 }: FeedLineageGraphProps): JSX.Element {
   // Bounded neighborhood depth 2: direct neighbours + their direct neighbours.
-  // The shared essential mask then folds display-only plumbing exactly as it
-  // does for the counters in the card header.
+  // Every recorded node inside that exact neighbourhood stays visible.
   const neighborhood = useMemo(
     () => compactLineageProjection(evidenceModel, focusRef),
     [evidenceModel, focusRef],
@@ -605,9 +502,8 @@ function FeedLineageGraph({
       nodes: neighborhood.nodes,
       edges: neighborhood.edges,
       displayedCount: neighborhood.nodes.length,
-      foldedInstrumentCount: 0,
       isFiltered: true,
-      supportingNodeCount: neighborhood.hiddenSupportingCount,
+      hiddenByKindCount: 0,
     };
   }, [neighborhood]);
 

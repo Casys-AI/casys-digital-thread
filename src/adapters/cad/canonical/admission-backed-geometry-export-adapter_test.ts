@@ -4,6 +4,7 @@ import type {
   McpToolCall,
   McpToolResult,
 } from "../../../application/ports/out/mcp-tool-client.ts";
+import type { ExpectedProviderResource } from "../../../domain/compile/source/provider-resource-reader.ts";
 import { stubCallToolTextResult } from "../../../testing/stub-mcp-tool-client.ts";
 import {
   FileCaptureStore,
@@ -17,6 +18,7 @@ import {
   ADMITTED_GEOMETRY_EXPORT_FORMATS,
   ADMITTED_TARGETED_PART_EXPORT_FORMATS,
 } from "./admission-backed-geometry-export-adapter.ts";
+import { BUILD123D_EXPORT_TIMEOUT_MS } from "./build123d-export-contract.ts";
 
 import {
   GEOMETRY_DRAFT_ADMISSION_SCHEMA,
@@ -29,7 +31,6 @@ const ADMITTED_SCRIPT =
 
 function exportResponse(
   formats: readonly string[],
-  name: string,
   digest = HEX64,
 ): McpToolResult {
   return {
@@ -39,17 +40,71 @@ function exportResponse(
       metrics: {},
       files: formats.map((format) => ({
         format,
-        path: `/exports/${name}.${format === "gltf" ? "glb" : format}`,
-        bytes: 1024,
-        sha256: digest,
-        ...(format === "gltf" ? { viewer: "model-viewer" } : {}),
+        artifact: artifact(format as "step" | "gltf" | "stl", digest, 1024),
       })),
     },
     text: "",
   };
 }
 
-const noopMaterialize = () => Promise.resolve();
+function artifact(
+  format: "step" | "gltf" | "stl",
+  sha256: string,
+  bytes: number,
+) {
+  const extension = format === "gltf" ? "glb" : format;
+  const mimeType = format === "step"
+    ? "model/step"
+    : format === "stl"
+    ? "model/stl"
+    : "model/gltf-binary";
+  return {
+    schemaVersion: "build123d-export-artifact/1.0",
+    uri: `casys://build123d/artifacts/${sha256}.${extension}`,
+    format,
+    mimeType,
+    bytes,
+    sha256,
+  } as const;
+}
+
+function fixtureResourceDependencies() {
+  const issued = new WeakMap<Uint8Array, ExpectedProviderResource>();
+  return {
+    resourceReader: {
+      read(expected: ExpectedProviderResource) {
+        const bytes = new Uint8Array(expected.byteCount);
+        issued.set(bytes, expected);
+        return Promise.resolve({
+          bytes: { byteLength: bytes.byteLength, copy: () => bytes },
+          attestation: {
+            schemaVersion: "provider-resource-read-attestation/1.0" as const,
+            verification: "exact-content-match" as const,
+            uri: expected.uri,
+            mediaType: expected.mediaType,
+            byteCount: expected.byteCount,
+            sha256: expected.sha256,
+          },
+        });
+      },
+    },
+    draftAssets: {
+      persist(bytes: Uint8Array) {
+        const expected = issued.get(bytes);
+        if (!expected) {
+          return Promise.reject(
+            new Error("test asset bytes were not read from a resource"),
+          );
+        }
+        return Promise.resolve({
+          fingerprint: { algorithm: "sha256" as const, digest: expected.sha256 },
+          byteCount: expected.byteCount,
+        });
+      },
+      read: () => Promise.resolve(undefined),
+    },
+  } as const;
+}
 
 async function makeTempDraftStore(): Promise<
   [FileCaptureStore<"geometry-draft">, string]
@@ -128,7 +183,6 @@ Deno.test("admission-backed export sends exact admitted bytes to private build12
         return Promise.resolve(
           exportResponse(
             args.formats as string[],
-            String(args.name),
           ),
         );
       },
@@ -138,8 +192,7 @@ Deno.test("admission-backed export sends exact admitted bytes to private build12
       client,
       draftCaptures: store,
       sourceAnalysis: sourceAnalysisFor(tmpDir),
-      build123dService: "mcp-build123d-sandbox",
-      materializeAsset: noopMaterialize,
+      ...fixtureResourceDependencies(),
       previewRunId: "admitted-geometry:test-001",
     });
 
@@ -152,7 +205,7 @@ Deno.test("admission-backed export sends exact admitted bytes to private build12
       script: ADMITTED_SCRIPT,
       formats: [...ADMITTED_GEOMETRY_EXPORT_FORMATS],
       name: String((calls[0]?.arguments as Record<string, unknown>).name),
-      timeout_ms: 120000,
+      timeout_ms: BUILD123D_EXPORT_TIMEOUT_MS,
     });
     assertEquals(
       String((calls[0]?.arguments as Record<string, unknown>).name)
@@ -207,15 +260,14 @@ Deno.test("targeted admission-backed export makes one fixed call and durably cap
           calls.push(call);
           const args = call.arguments as Record<string, unknown>;
           return Promise.resolve(
-            exportResponse(args.formats as string[], String(args.name)),
+            exportResponse(args.formats as string[]),
           );
         },
         callToolTextResult: stubCallToolTextResult,
       },
       draftCaptures: store,
       sourceAnalysis: sourceAnalysisFor(tmpDir),
-      build123dService: "mcp-build123d-sandbox",
-      materializeAsset: noopMaterialize,
+      ...fixtureResourceDependencies(),
       previewRunId: "admitted-geometry-part:test-001",
     });
 
@@ -227,7 +279,7 @@ Deno.test("targeted admission-backed export makes one fixed call and durably cap
       script: ADMITTED_SCRIPT,
       formats: [...ADMITTED_TARGETED_PART_EXPORT_FORMATS],
       name: String((calls[0]?.arguments as Record<string, unknown>).name),
-      timeout_ms: 120000,
+      timeout_ms: BUILD123D_EXPORT_TIMEOUT_MS,
     });
     assertEquals(draft.target.partDefinitionElementId, "sysml.part.box");
     assertEquals(draft.target.files.map((file) => file.format), ["step", "gltf"]);
@@ -241,12 +293,55 @@ Deno.test("targeted admission-backed export makes one fixed call and durably cap
       kind?: string;
       target?: { partDefinitionElementId?: string };
       admission?: { schemaVersion?: string; target?: { label?: string } };
+      providerCall?: { timeoutMs?: number };
     };
-    assertEquals(parsed.schemaVersion, "geometry-part-draft-capture/1.0");
+    assertEquals(parsed.schemaVersion, "geometry-part-draft-capture/1.1");
     assertEquals(parsed.kind, "geometry-part-draft");
     assertEquals(parsed.target?.partDefinitionElementId, "sysml.part.box");
     assertEquals(parsed.admission?.schemaVersion, GEOMETRY_PART_DRAFT_ADMISSION_SCHEMA);
     assertEquals(parsed.admission?.target?.label, "Box");
+    assertEquals(parsed.providerCall?.timeoutMs, BUILD123D_EXPORT_TIMEOUT_MS);
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("targeted export leaves no reviewable draft or provider retry when resource reading fails", async () => {
+  const [store, tmpDir] = await makeTempDraftStore();
+  try {
+    const calls: McpToolCall[] = [];
+    const dependencies = fixtureResourceDependencies();
+    const adapter = new AdmissionBackedGeometryExportAdapter({
+      client: {
+        callTool: (call) => {
+          calls.push(call);
+          const args = call.arguments as Record<string, unknown>;
+          return Promise.resolve(exportResponse(args.formats as string[]));
+        },
+        callToolTextResult: stubCallToolTextResult,
+      },
+      draftCaptures: store,
+      sourceAnalysis: sourceAnalysisFor(tmpDir),
+      ...dependencies,
+      resourceReader: {
+        read: () => Promise.reject(new Error("resource reader failure")),
+      },
+      previewRunId: "admitted-geometry-part:resource-read-failure",
+    });
+
+    await assertRejects(
+      async () => adapter.exportTargetedPart(await targetedRequest()),
+      Error,
+      "resource reader failure",
+    );
+    assertEquals(calls.length, 1);
+    const draftFiles: string[] = [];
+    for await (const entry of Deno.readDir(tmpDir)) {
+      if (entry.isFile && entry.name.endsWith(".json")) {
+        draftFiles.push(entry.name);
+      }
+    }
+    assertEquals(draftFiles, []);
   } finally {
     await Deno.remove(tmpDir, { recursive: true });
   }
@@ -262,15 +357,14 @@ Deno.test("admission-backed export refuses caller-selected provider fields and e
           calls += 1;
           const args = call.arguments as Record<string, unknown>;
           return Promise.resolve(
-            exportResponse(args.formats as string[], String(args.name)),
+            exportResponse(args.formats as string[]),
           );
         },
         callToolTextResult: stubCallToolTextResult,
       },
       draftCaptures: store,
       sourceAnalysis: sourceAnalysisFor(tmpDir),
-      build123dService: "mcp-build123d-sandbox",
-      materializeAsset: noopMaterialize,
+      ...fixtureResourceDependencies(),
     });
 
     const valid = await request();
@@ -304,7 +398,7 @@ Deno.test("admission-backed export refuses caller-selected provider fields and e
   }
 });
 
-Deno.test("admission-backed export uses the server-fixed sandbox service and assembly name", async () => {
+Deno.test("admission-backed export uses server-fixed export names", async () => {
   const [store, tmpDir] = await makeTempDraftStore();
   try {
     const names: string[] = [];
@@ -314,15 +408,14 @@ Deno.test("admission-backed export uses the server-fixed sandbox service and ass
           const args = call.arguments as Record<string, unknown>;
           names.push(String(args.name));
           return Promise.resolve(
-            exportResponse(args.formats as string[], String(args.name)),
+            exportResponse(args.formats as string[]),
           );
         },
         callToolTextResult: stubCallToolTextResult,
       },
       draftCaptures: store,
       sourceAnalysis: sourceAnalysisFor(tmpDir),
-      build123dService: "mcp-build123d-sandbox",
-      materializeAsset: noopMaterialize,
+      ...fixtureResourceDependencies(),
     });
     await adapter.export(await request());
     assertEquals(names.length, 2);

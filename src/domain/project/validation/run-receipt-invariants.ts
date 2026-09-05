@@ -500,6 +500,15 @@ function isResolvedOperationPlanV2Operation(
   return (
     operation?.id === "verify.run-fea-static-proof" &&
     (operation.version === "2" || operation.version === "3")
+  ) || (
+    operation?.id === "verify.run-prescribed-kinematics" &&
+    operation.version === "1"
+  ) || (
+    operation?.id === "simulate.run-admitted-modelica" &&
+    operation.version === "1"
+  ) || (
+    operation?.id === "simulate.run-admitted-spice" &&
+    operation.version === "1"
   );
 }
 

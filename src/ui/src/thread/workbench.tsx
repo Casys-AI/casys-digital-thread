@@ -1,12 +1,11 @@
 import { cn } from "../lib/utils.ts";
-import { CARD_SURFACE, PAGE_EYEBROW } from "../ui/cockpit.tsx";
+import { CARD_SURFACE, PAGE_EYEBROW, SECTION_LABEL } from "../ui/cockpit.tsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Badge, type BadgeProps } from "../ui/badge.tsx";
 import { Button } from "../ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.tsx";
 import { EmptyNotice, Notice } from "../ui/notice.tsx";
-import { Tabs, TabsList, TabsTrigger } from "../ui/tabs.tsx";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -26,17 +25,12 @@ import {
   pendingHumanConfirmationDecisions,
 } from "../project/model.ts";
 import {
-  ProjectCockpitHeader,
   ProjectNavigation,
   type ProjectWorkspaceView,
 } from "../project/navigation.tsx";
 import {
-  DEFAULT_PRODUCT_FACET,
   parseProjectLocationHash,
   parseProjectViewHash,
-  productFacetHash,
-  productFacetLabel,
-  type ProductWorkspaceFacet,
   projectDeepLinkDomId,
   projectDeepLinkHash,
   type ProjectDeepLinkTarget,
@@ -44,9 +38,6 @@ import {
   shouldScrollProjectDeepLink,
 } from "../project/navigation-model.ts";
 import { DocumentaryBaselineWorkbench } from "../project/documentary-baseline-workbench.tsx";
-import { ProductRequirementsMatrix } from "../project/product-requirements-matrix.tsx";
-import { productSourcingCoverage } from "../project/product-requirements-model.ts";
-import { ProductSourcingLane } from "../project/product-sourcing.tsx";
 import { ProjectOverview } from "../project/overview.tsx";
 import { PlanningWorkbench } from "../project/planning-workbench.tsx";
 import { ProjectOperations, ProjectWorkRibbon } from "../project/work.tsx";
@@ -55,15 +46,20 @@ import {
   type ThreadStreamStatus,
   type ThreadWorkbenchClient,
 } from "./client.ts";
+import {
+  shouldAcceptViewerSessionsUpdate,
+  type ThreadViewerSessionsClient,
+  type ThreadViewerSessionsProjection,
+  viewerSessionsMatchWorkbench,
+} from "./viewer-sessions-client.ts";
 import type { CockpitFleetProjection } from "../../../presentation/workbench/fleet/projection.ts";
-import { activityFeedNodes, type FeedScope } from "./feed-model.ts";
+import { activityFeedNodes } from "./feed-model.ts";
 import { shouldAcceptWorkbenchUpdate } from "./live-update.ts";
 import { ThreadFeed } from "./feed.tsx";
 import { type ThreadGraphSelection } from "./graph.tsx";
 import {
   buildEvidenceCanvasProjection,
   buildExplorationKindProjection,
-  isFoldedEvidenceNode,
   linkedEvidenceDetail,
   paintedDossierMetric,
 } from "./evidence-canvas-model.ts";
@@ -79,30 +75,21 @@ import {
 } from "./evidence-graph-model.ts";
 import { EvidenceExploration } from "./evidence-exploration.tsx";
 import {
+  buildVerificationCaseLegend,
   filterGraphByVerificationCase,
   reconcileVerificationCaseContext,
   UNAVAILABLE_VERIFICATION_CASE_CATALOG,
   type VerificationCaseFilter,
 } from "./verification-case-model.ts";
-import {
-  buildPartAnchorageResolution,
-  type PartAnchorageResolution,
-} from "./part-anchorage-model.ts";
-import { ComponentWorkspace } from "./component-workspace.tsx";
-import {
-  ToolInspectorPanel,
-  type WorkbenchToolIdentity,
-} from "./tool-inspectors.tsx";
+import { RecordInspectorPanel } from "./tool-inspectors.tsx";
 import {
   graphNodeForSelection,
-  resolveToolInspectorTarget,
+  resolveRecordInspectorTarget,
 } from "./tool-inspector-model.ts";
 import { EvidenceVersionHistory } from "./version-history.tsx";
 import {
   buildVersionedGraphSelectionIndex,
   buildVersionedProvenanceProjection,
-  currentArtifacts,
-  currentRequirements,
   edgeForVersionedGraphSelection,
   isStaleAmbiguousVersionedEdgeSelection,
   versionedEdgeGroupForSelection,
@@ -113,27 +100,23 @@ import {
   visibleGraphSelection,
 } from "./versioned-provenance-model.ts";
 
-const EMPTY_PART_ANCHORAGE: PartAnchorageResolution = {
-  anchors: new Map(),
-  ambiguousByRef: new Map(),
-  orphanRefKeys: new Set(),
-};
+function focusProjectWorkspace(): void {
+  requestAnimationFrame(() => {
+    globalThis.document?.getElementById("project-workspace-panel")?.focus({
+      preventScroll: true,
+    });
+    globalThis.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  });
+}
 import type {
+  EngineeringCaseCatalog,
   EngineeringWorkbenchSnapshot,
   ThreadAction,
-  ThreadArtifact,
-  ThreadComponent,
-  ThreadComponentBinding,
-  ThreadComponentProvider,
-  ThreadFreshness,
   ThreadGraph as ThreadGraphData,
   ThreadGraphEdge,
   ThreadGraphNode,
   ThreadGraphRef,
-  ThreadObservation,
   ThreadRef,
-  ThreadRequirement,
-  ThreadViolation,
   ThreadWorkbenchSnapshot,
 } from "./types.ts";
 
@@ -174,6 +157,8 @@ export interface ThreadWorkbenchProps {
   client: ThreadWorkbenchClient;
   /** Declared fleet topology; absent when the BFF has no manifest. */
   fleetClient?: CockpitFleetClient;
+  /** Optional GET+SSE reader for exact browser-safe viewer descriptors. */
+  viewerSessionsClient?: ThreadViewerSessionsClient;
   /** Validated read-only projection focus for sibling Desktop capabilities. */
   onProjectFocus?: (projectId: string | undefined) => void;
 }
@@ -181,10 +166,14 @@ export interface ThreadWorkbenchProps {
 export function ThreadWorkbench({
   client,
   fleetClient,
+  viewerSessionsClient,
   onProjectFocus,
 }: ThreadWorkbenchProps): JSX.Element {
   const [workbench, setWorkbench] = useState<EngineeringWorkbenchSnapshot>();
   const [fleet, setFleet] = useState<CockpitFleetProjection>();
+  const [viewerSessions, setViewerSessions] = useState<
+    ThreadViewerSessionsProjection
+  >();
   const [selection, setSelection] = useState<ThreadRef>();
   const [graphSelection, setGraphSelection] = useState<ThreadGraphSelection>();
   const [lineageFocus, setLineageFocus] = useState<ThreadGraphRef>();
@@ -195,26 +184,15 @@ export function ThreadWorkbench({
   const [activeView, setActiveView] = useState<ProjectWorkspaceView>(() =>
     parseProjectViewHash(globalThis.location?.hash ?? "")
   );
-  const [activeProductFacet, setActiveProductFacet] = useState<
-    ProductWorkspaceFacet
-  >(() =>
-    parseProjectLocationHash(globalThis.location?.hash ?? "").productFacet ??
-      DEFAULT_PRODUCT_FACET
-  );
   const [activeDeepLink, setActiveDeepLink] = useState<
     ProjectDeepLinkTarget | undefined
   >(() => parseProjectLocationHash(globalThis.location?.hash ?? "").target);
-  const [activeComponentProvider, setActiveComponentProvider] = useState<
-    ThreadComponentProvider
-  >("syson");
-  const [selectedComponentId, setSelectedComponentId] = useState<string>();
   const [followLive, setFollowLive] = useState(true);
   const [streamStatus, setStreamStatus] = useState<
     ThreadStreamStatus | "snapshot"
   >(
     client.subscribe ? "connecting" : "snapshot",
   );
-  const [drawerMode, setDrawerMode] = useState<"tool" | "record">("tool");
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [error, setError] = useState<string>();
   useEffect(() => {
@@ -231,25 +209,23 @@ export function ThreadWorkbench({
   >({ kind: "all" });
   // Panneau burger des réglages du graphe (fermé par défaut).
   // Type visibility for the full-map Exploration view (kind-projection, dagre
-  // remounts on change). Defaults: artifact/observation/requirement/evaluation/
-  // violation/action visible; change/consumption/supporting-artifact hidden.
+  // remounts on change). Defaults: literal record kinds visible, except
+  // change and consumption records.
   const [explorationMapKinds, setExplorationMapKinds] = useState<
     Record<DisplayKind, boolean>
   >({
     "artifact": true,
-    "supporting-artifact": false,
     "observation": true,
     "requirement": true,
     "evaluation": true,
-    "study-base-evaluation": true,
     "violation": true,
     "change": false,
     "consumption": false,
     "action": true,
-    "analysis": true,
-    "sysml-element": true,
-    "cad-lever": true,
-    "cad-unnamed-literal": true,
+    "analysis-node": true,
+    "part-definition": true,
+    "part-usage": true,
+    "attribute-usage": true,
   });
   // Type visibility for the local Exploration view (in-place sigma reducer,
   // no re-layout). Defaults: all kinds visible.
@@ -257,26 +233,20 @@ export function ThreadWorkbench({
     Record<DisplayKind, boolean>
   >({
     "artifact": true,
-    "supporting-artifact": true,
     "observation": true,
     "requirement": true,
     "evaluation": true,
-    "study-base-evaluation": true,
     "violation": true,
     "change": true,
     "consumption": true,
     "action": true,
-    "analysis": true,
-    "sysml-element": true,
-    "cad-lever": true,
-    "cad-unnamed-literal": true,
+    "analysis-node": true,
+    "part-definition": true,
+    "part-usage": true,
+    "attribute-usage": true,
   });
-  // Feed component filter: a catalog component, an explicit non-anchored
-  // scope, or undefined ("Tout le projet").
-  const [feedFilterComponentId, setFeedFilterComponentId] = useState<
-    FeedScope | undefined
-  >(undefined);
   const snapshotRef = useRef<EngineeringWorkbenchSnapshot>();
+  const viewerSessionsRef = useRef<ThreadViewerSessionsProjection>();
   const lastScrolledDeepLinkRef = useRef<string>();
 
   // Retour arriere et avance du navigateur : le fragment fait autorite sur
@@ -290,11 +260,7 @@ export function ThreadWorkbench({
       if (location.target) lastScrolledDeepLinkRef.current = undefined;
       setActiveView(location.view);
       setActiveDeepLink(location.target);
-      if (location.view === "product") {
-        setActiveProductFacet(
-          location.productFacet ?? DEFAULT_PRODUCT_FACET,
-        );
-      }
+      focusProjectWorkspace();
     };
     globalThis.addEventListener("popstate", syncFromHash);
     globalThis.addEventListener("hashchange", syncFromHash);
@@ -344,16 +310,13 @@ export function ThreadWorkbench({
       snapshotRef.current = next;
       setWorkbench(next);
       if (next.surface !== "evidence") {
-        setSelectedComponentId(undefined);
         setSelection(undefined);
         setLineageFocus(undefined);
         setGraphSelection(undefined);
         setInspectorOpen(false);
       } else {
         const thread = next.thread;
-        setSelectedComponentId(thread.components.components[0]?.id);
-        const liveNode =
-          activityFeedNodes(thread.graph.nodes, thread.graph.edges)[0];
+        const liveNode = activityFeedNodes(thread.graph.nodes)[0];
         const initialSelection: ThreadRef = liveNode?.selection ??
           (thread.violations[0]
             ? { kind: "violation", id: thread.violations[0].id }
@@ -377,7 +340,6 @@ export function ThreadWorkbench({
           snapshotRef.current = incoming;
           setWorkbench(incoming);
           if (incoming.surface !== "evidence") {
-            setSelectedComponentId(undefined);
             setSelection(undefined);
             setLineageFocus(undefined);
             setGraphSelection(undefined);
@@ -386,9 +348,7 @@ export function ThreadWorkbench({
           }
           if (previous?.surface !== "evidence") {
             const thread = incoming.thread;
-            setSelectedComponentId(thread.components.components[0]?.id);
-            const liveNode =
-              activityFeedNodes(thread.graph.nodes, thread.graph.edges)[0];
+            const liveNode = activityFeedNodes(thread.graph.nodes)[0];
             const initialSelection: ThreadRef = liveNode?.selection ??
               (thread.violations[0]
                 ? { kind: "violation", id: thread.violations[0].id }
@@ -417,6 +377,45 @@ export function ThreadWorkbench({
       unsubscribe?.();
     };
   }, [client]);
+
+  const viewerSessionsBasis = workbench;
+  useEffect(() => {
+    viewerSessionsRef.current = undefined;
+    setViewerSessions(undefined);
+    if (!viewerSessionsClient || !viewerSessionsBasis) return;
+
+    const controller = new AbortController();
+    const accept = (incoming: ThreadViewerSessionsProjection) => {
+      if (!viewerSessionsMatchWorkbench(incoming, viewerSessionsBasis)) return;
+      if (
+        !shouldAcceptViewerSessionsUpdate(viewerSessionsRef.current, incoming)
+      ) {
+        return;
+      }
+      viewerSessionsRef.current = incoming;
+      setViewerSessions(incoming);
+    };
+    viewerSessionsClient.load(controller.signal).then(accept).catch(() => {
+      // The read-only workbench remains usable when this optional projection
+      // is unavailable. It does not invent a session from the Thread graph.
+    });
+    const unsubscribe = viewerSessionsClient.subscribe?.(accept);
+    return () => {
+      controller.abort();
+      unsubscribe?.();
+    };
+  }, [
+    viewerSessionsBasis?.surface === "evidence"
+      ? viewerSessionsBasis.alignment.currentThreadRevision
+      : undefined,
+    viewerSessionsBasis?.project.id,
+    viewerSessionsBasis?.project.project.subjectId,
+    viewerSessionsBasis?.project.revision,
+    viewerSessionsBasis?.surface === "evidence"
+      ? viewerSessionsBasis.thread.id
+      : undefined,
+    viewerSessionsClient,
+  ]);
 
   const activityReviewRecords = workbench
     ? buildActivityReviewRecords(
@@ -485,12 +484,6 @@ export function ThreadWorkbench({
       evidenceRawGraphMemo,
       thread.evidenceFamilyGraph,
       {
-        isAnalyzeInstrumentNode: isFoldedEvidenceNode,
-        intentionallyIsolatedSystems: [
-          "openmodelica",
-          "mcp-modelica",
-          "modelica",
-        ],
         versionedProjection: versionedProvenanceMemo!,
       },
     );
@@ -507,12 +500,6 @@ export function ThreadWorkbench({
       verificationRawGraphMemo,
       workbench.thread.evidenceFamilyGraph,
       {
-        isAnalyzeInstrumentNode: isFoldedEvidenceNode,
-        intentionallyIsolatedSystems: [
-          "openmodelica",
-          "mcp-modelica",
-          "modelica",
-        ],
         versionedProjection: verificationVersionedProvenanceMemo,
       },
     );
@@ -521,23 +508,6 @@ export function ThreadWorkbench({
     verificationRawGraphMemo,
     verificationVersionedProvenanceMemo,
   ]);
-
-  // ---------------------------------------------------------------------------
-  // Part anchorage — memoized on snapshot (same cost centre as evidenceModel).
-  // Built lazily only when the evidence surface is active; the planning/
-  // documentary early-returns above fire before it is consumed.
-  //
-  // Uses the FULL graph (before closed-action filter) so the Activity feed
-  // part filter stays consistent with the Product workspace anchor.
-  // ---------------------------------------------------------------------------
-
-  const partAnchorage = useMemo(() => {
-    if (!workbench || workbench.surface !== "evidence") {
-      return EMPTY_PART_ANCHORAGE;
-    }
-    const thread = workbench.thread;
-    return buildPartAnchorageResolution(thread.graph, thread.components);
-  }, [workbench]);
 
   // The projection identity must be stable across non-data renders (depth
   // control, selection highlight): rebuilding it per render remounted sigma
@@ -649,45 +619,29 @@ export function ThreadWorkbench({
     verificationVersionedProvenanceMemo,
   ]);
 
-  // The renderer re-creates synthetic stub objects for each projection. Keep
-  // one current occurrence index for the active canvas so a controlled keyed
-  // selection can remap to that exact object, or be cleared after SSE if its
+  // Keep one current occurrence index so a controlled keyed selection can
+  // remap to the exact recorded relation, or be cleared after SSE if that
   // occurrence disappeared. Raw ids are intentionally absent from this path.
   const graphSelectionIndexMemo = useMemo(() => {
     if (!versionedProvenanceMemo || !evidenceCanvasMemo) return undefined;
-    const activeProjection = !evidenceCanvasMemo.isFiltered
-      ? (explorationKindProjectionMemo ?? evidenceCanvasMemo)
-      : evidenceCanvasMemo;
-    return buildVersionedGraphSelectionIndex(
-      versionedProvenanceMemo,
-      activeProjection.edges.filter((edge) => edge.id.startsWith("stub:")),
-    );
-  }, [
-    versionedProvenanceMemo,
-    evidenceCanvasMemo,
-    explorationKindProjectionMemo,
-  ]);
+    return buildVersionedGraphSelectionIndex(versionedProvenanceMemo);
+  }, [versionedProvenanceMemo, evidenceCanvasMemo]);
 
   const verificationGraphSelectionIndexMemo = useMemo(() => {
     if (
       !verificationVersionedProvenanceMemo ||
       !verificationEvidenceCanvasMemo
     ) return undefined;
-    const activeProjection = !verificationEvidenceCanvasMemo.isFiltered
-      ? (verificationKindProjectionMemo ?? verificationEvidenceCanvasMemo)
-      : verificationEvidenceCanvasMemo;
     return buildVersionedGraphSelectionIndex(
       verificationVersionedProvenanceMemo,
-      activeProjection.edges.filter((edge) => edge.id.startsWith("stub:")),
     );
   }, [
     verificationVersionedProvenanceMemo,
     verificationEvidenceCanvasMemo,
-    verificationKindProjectionMemo,
   ]);
 
   // An occurrence key is an exact selection contract. When a live snapshot
-  // changes duplicate cardinality or removes a stub, do not let an inspector
+  // changes duplicate cardinality or removes a relation, do not let an inspector
   // retain a previous object or degrade to edge.id: close it deterministically.
   useEffect(() => {
     if (graphSelection?.kind !== "edge" || !graphSelection.occurrence) return;
@@ -768,15 +722,6 @@ export function ThreadWorkbench({
     }
   };
 
-  const changeProductFacet = (facet: ProductWorkspaceFacet) => {
-    lastScrolledDeepLinkRef.current = undefined;
-    setActiveView("product");
-    setActiveProductFacet(facet);
-    setActiveDeepLink(undefined);
-    setInspectorOpen(false);
-    pushWorkspaceHash(productFacetHash(facet));
-  };
-
   const changeView = (next: ProjectWorkspaceView) => {
     lastScrolledDeepLinkRef.current = undefined;
     if (next === "verification" && activeView !== "verification") {
@@ -792,11 +737,8 @@ export function ThreadWorkbench({
     setInspectorOpen(false);
     // Le fragment suit l'espace ouvert : recharger, revenir en arriere ou
     // partager le lien ramene au meme endroit du cockpit.
-    pushWorkspaceHash(
-      next === "product"
-        ? productFacetHash(activeProductFacet)
-        : projectViewHash(next),
-    );
+    pushWorkspaceHash(projectViewHash(next));
+    focusProjectWorkspace();
   };
 
   /**
@@ -807,7 +749,6 @@ export function ThreadWorkbench({
    */
   const openInspector = () => {
     if (activeView !== "verification") changeView("verification");
-    setDrawerMode("tool");
     setInspectorOpen(true);
   };
 
@@ -816,7 +757,6 @@ export function ThreadWorkbench({
     const location = parseProjectLocationHash(projectDeepLinkHash(target));
     setActiveView(location.view);
     setActiveDeepLink(target);
-    if (target.startsWith("review/")) setFeedFilterComponentId(undefined);
     setInspectorOpen(false);
     if (globalThis.location && globalThis.history) {
       const hash = projectDeepLinkHash(target);
@@ -824,6 +764,7 @@ export function ThreadWorkbench({
         globalThis.history.pushState(null, "", hash);
       }
     }
+    focusProjectWorkspace();
   };
 
   /**
@@ -877,7 +818,10 @@ export function ThreadWorkbench({
     return (
       <PlanningWorkbench
         workbench={workbench}
+        viewerSessions={viewerSessions}
         streamStatus={streamStatus}
+        activeView={activeView}
+        onChangeView={changeView}
       />
     );
   }
@@ -886,6 +830,7 @@ export function ThreadWorkbench({
     return (
       <DocumentaryBaselineWorkbench
         workbench={workbench}
+        viewerSessions={viewerSessions}
         streamStatus={streamStatus}
         activeView={activeView}
         onChangeView={changeView}
@@ -1085,64 +1030,6 @@ export function ThreadWorkbench({
     setFollowLive(next);
   };
 
-  const selectComponent = (component: ThreadComponent) => {
-    setSelectedComponentId(component.id);
-    // Mirror the component selection to the feed filter so the Activity view
-    // pre-filters to this component when the reviewer navigates there.
-    setFeedFilterComponentId(component.id);
-    setInspectorOpen(false);
-    const binding = component.bindings.find((item) =>
-      item.provider === activeComponentProvider && item.status === "verified"
-    );
-    if (binding?.selection) selectThreadElement(binding.selection);
-  };
-
-  const inspectComponentBinding = (binding: ThreadComponentBinding) => {
-    if (!binding.selection) return;
-    selectThreadElement(binding.selection);
-    openInspector();
-  };
-
-  const changeComponentProvider = (provider: ThreadComponentProvider) => {
-    setActiveComponentProvider(provider);
-    setInspectorOpen(false);
-    const component = snapshot.components.components.find((candidate) =>
-      candidate.id === selectedComponentId
-    );
-    const binding = component?.bindings.find((candidate) =>
-      candidate.provider === provider && candidate.status === "verified"
-    );
-    if (binding?.selection) {
-      selectThreadElement(binding.selection);
-      setDrawerMode("tool");
-    }
-  };
-
-  const openToolView = (
-    tool: WorkbenchToolIdentity,
-    nextSelection: ThreadRef,
-  ) => {
-    if (
-      tool.id !== "syson" && tool.id !== "build123d" &&
-      tool.id !== "erpnext"
-    ) return;
-    setActiveComponentProvider(tool.id);
-    const component =
-      snapshot.components.components.find((candidate) =>
-        candidate.bindings.some((binding) =>
-          binding.provider === tool.id &&
-          binding.selection?.kind === nextSelection.kind &&
-          binding.selection.id === nextSelection.id
-        )
-      ) ?? snapshot.components.components.find((candidate) =>
-        candidate.bindings.some((binding) =>
-          binding.provider === tool.id
-        )
-      );
-    if (component) setSelectedComponentId(component.id);
-    changeProductFacet("structure");
-  };
-
   const selectedEdge = graphSelection?.kind === "edge"
     ? edgeForVersionedGraphSelection(
       versionedProvenance,
@@ -1157,7 +1044,7 @@ export function ThreadWorkbench({
       graphSelectionIndex,
     )
     : undefined;
-  const inspectorTarget = resolveToolInspectorTarget(
+  const inspectorTarget = resolveRecordInspectorTarget(
     snapshot,
     graphSelection,
     inspectorOpen ? selection : undefined,
@@ -1181,9 +1068,22 @@ export function ThreadWorkbench({
           <p className={PAGE_EYEBROW}>
             Inspector
           </p>
-          <Badge variant="secondary" className="font-mono text-[9px]">
-            Read only
-          </Badge>
+          <div className="flex items-center gap-1.5">
+            <Badge variant="secondary" className="font-mono text-[9px]">
+              Read only
+            </Badge>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              aria-label="Close details"
+              title="Close details"
+              onClick={() => setInspectorOpen(false)}
+            >
+              <span aria-hidden="true">×</span>
+            </Button>
+          </div>
         </div>
         <p className="mt-1 truncate text-xs font-medium text-foreground">
           {selectedEdge
@@ -1203,24 +1103,6 @@ export function ThreadWorkbench({
           )
           : (
             <>
-              <Tabs
-                value={drawerMode}
-                onValueChange={(mode) =>
-                  setDrawerMode(mode as "tool" | "record")}
-              >
-                <TabsList aria-label="Inspector mode" className="w-full">
-                  <TabsTrigger value="tool" className="flex-1">
-                    Tool context
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="record"
-                    className="flex-1"
-                    disabled={!inspectorRecord}
-                  >
-                    Exact record
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
               {selectedVersionFamily && (
                 <EvidenceVersionHistory
                   family={selectedVersionFamily}
@@ -1228,32 +1110,13 @@ export function ThreadWorkbench({
                   onSelectVersion={selectPresentedVersion}
                 />
               )}
-              {drawerMode === "tool"
-                ? (
-                  <ToolInspectorPanel
-                    snapshot={snapshot}
-                    node={selectedGraphNode}
-                    selection={inspectorRecord}
-                    onSelect={selectThreadElement}
-                    onSelectGraphNode={selectGraphNode}
-                    onOpenToolView={openToolView}
-                    availableFullViews={["syson", "build123d", "erpnext"]}
-                  />
-                )
-                : inspectorRecord
-                ? (
-                  <SelectionInspector
-                    snapshot={snapshot}
-                    selection={inspectorRecord}
-                    onSelect={selectThreadElement}
-                  />
-                )
-                : (
-                  <EmptyNotice>
-                    This graph entity has no richer record projection. Use the
-                    tool context to inspect its recorded neighbours.
-                  </EmptyNotice>
-                )}
+              <RecordInspectorPanel
+                snapshot={snapshot}
+                node={selectedGraphNode}
+                selection={inspectorRecord}
+                onSelect={selectThreadElement}
+                onSelectGraphNode={selectGraphNode}
+              />
             </>
           )}
       </div>
@@ -1262,40 +1125,42 @@ export function ThreadWorkbench({
 
   return (
     <div className="thread-workbench cockpit-surface">
-      <ProjectCockpitHeader
-        projectId={project.project.id}
-        revision={project.revision}
-        projectName={project.project.name}
-        context={snapshot.subject.label}
-        streamState={followLive ? streamStatus : "history"}
-        streamLabel={streamStatusLabel(streamStatus, followLive)}
-        statusLabel={agentHeader.label}
-        statusValue={
-          <span title={agentHeader.value}>
-            {agentHeader.value}
-          </span>
-        }
-        metaLabel="Projection"
-        metaValue={
-          <time dateTime={snapshot.generatedAt} title={snapshot.generatedAt}>
-            {formatTime(snapshot.generatedAt)}
-          </time>
-        }
-        badge={
-          <Badge
-            variant={snapshot.source === "fixture" ? "warning" : "success"}
-          >
-            {snapshot.sourceLabel}
-          </Badge>
-        }
-      />
-
       <ProjectNavigation
         activeView={activeView}
         onChange={changeView}
-        activeProductFacet={activeProductFacet}
-        onProductFacetChange={changeProductFacet}
-        sourcingBadge={productSourcingCoverage(snapshot).badge}
+        status={
+          <>
+            <span
+              className="project-navigation-stream"
+              data-state={followLive ? streamStatus : "history"}
+              aria-live="polite"
+            >
+              <i aria-hidden="true" />
+              <span className="project-navigation-stream-label">
+                {streamStatusLabel(streamStatus, followLive)}
+              </span>
+            </span>
+            <span
+              className="project-navigation-agent"
+              title={`${agentHeader.label}: ${agentHeader.value}`}
+            >
+              <span>{agentHeader.label}</span>
+              <strong>{agentHeader.value}</strong>
+            </span>
+            <time
+              className="project-navigation-time"
+              dateTime={snapshot.generatedAt}
+              title={`Projection ${snapshot.generatedAt}`}
+            >
+              {formatTime(snapshot.generatedAt)}
+            </time>
+            <Badge
+              variant={snapshot.source === "fixture" ? "warning" : "success"}
+            >
+              {snapshot.sourceLabel}
+            </Badge>
+          </>
+        }
       />
 
       {workbench.alignment.status === "thread-ahead" && (
@@ -1336,11 +1201,11 @@ export function ThreadWorkbench({
           <ProjectOverview
             project={project}
             thread={snapshot}
+            viewerSessions={viewerSessions}
             phaseLanes={workbench.projectPath.phaseLanes}
             activities={workbench.projectPath.activities}
             caseActivityJoins={workbench.caseActivityJoins}
             onNavigate={changeView}
-            onOpenProductFacet={changeProductFacet}
             onOpenActivity={openDecisionActivity}
             onOpenDeepLink={openProjectDeepLink}
             onOpenEvidence={openPublishedEvidence}
@@ -1353,29 +1218,21 @@ export function ThreadWorkbench({
             tabIndex={-1}
             aria-labelledby="thread-flow-title"
           >
-            <div className="mb-3 flex items-end justify-between gap-4 max-md:flex-col max-md:items-start">
+            <div className="project-page-heading mb-5 flex items-end justify-between gap-4 max-md:flex-col max-md:items-start">
               <div className="min-w-0">
                 <p className="mb-1 font-mono text-[10px] font-medium uppercase tracking-[.1em] text-brand">
-                  {workspaceEyebrow(activeView, activeProductFacet)}
+                  {workspaceEyebrow(activeView)}
                 </p>
-                <h3
+                <h2
                   id="thread-flow-title"
-                  className="text-lg font-semibold tracking-tight"
+                  className="text-[22px] font-semibold leading-tight tracking-tight"
                 >
-                  {activeView === "verification"
-                    ? presentedMemberRef
-                      ? "Selected version path"
-                      : evidenceCanvas.isFiltered
-                      ? `Local view · depth ${localDepth}`
-                      : "Full evidence map"
-                    : activeView === "operations"
-                    // Ce qu'on vient lire ici, c'est « combien de surfaces,
-                    // dans quel état » — pas le mot « flotte ».
-                    ? operationsHeadline(project)
-                    : workspaceTitle(activeView, activeProductFacet)}
-                </h3>
+                  {workspaceTitle(activeView)}
+                </h2>
                 <p className="text-sm text-muted-foreground">
-                  {workspaceDescription(activeView, activeProductFacet)}
+                  {activeView === "operations"
+                    ? operationsHeadline(project)
+                    : workspaceDescription(activeView)}
                 </p>
               </div>
               <div className="flex shrink-0 items-center justify-end gap-3">
@@ -1392,16 +1249,27 @@ export function ThreadWorkbench({
               </div>
             )}
             {activeView === "verification" && (
-              <MetricTiles
-                items={summaryMetrics(
-                  snapshot,
-                  paintedDossierMetric(displayedEvidenceModel, fullMapCanvas),
-                )}
-              />
+              <>
+                <EvidenceCaseNavigator
+                  catalog={snapshot.engineeringCases ??
+                    UNAVAILABLE_VERIFICATION_CASE_CATALOG}
+                  nodes={evidenceRawGraphMemo!.nodes}
+                  filter={verificationCaseFilter}
+                  onChange={changeVerificationCaseFilter}
+                />
+                <MetricTiles
+                  items={summaryMetrics(
+                    snapshot,
+                    paintedDossierMetric(displayedEvidenceModel, fullMapCanvas),
+                  )}
+                />
+              </>
             )}
             <div
               className={`thread-graph-workspace ${
-                activeView === "verification" ? "is-verification" : "is-wide"
+                activeView === "verification"
+                  ? `is-verification ${inspectorOpen ? "has-inspector" : ""}`
+                  : "is-wide"
               }`}
             >
               <div
@@ -1421,26 +1289,10 @@ export function ThreadWorkbench({
                         revision: snapshot.change.revision,
                       }}
                       evidenceModel={evidenceModel}
-                      filterComponentId={feedFilterComponentId}
-                      anchorage={partAnchorage}
-                      components={snapshot.components}
                       familyGraph={snapshot.evidenceFamilyGraph}
                       reviewRecords={activityReviewRecords}
-                      onFilterChange={(id) => {
-                        setFeedFilterComponentId(id);
-                        // Only catalog components can be selected by the
-                        // Product workspace. Ambiguous/orphan feed scopes are
-                        // audit buckets, not invented component identities.
-                        if (
-                          id !== undefined &&
-                          (id === "assembly" ||
-                            snapshot.components.components.some((component) =>
-                              component.id === id
-                            ))
-                        ) {
-                          setSelectedComponentId(id);
-                        }
-                      }}
+                      project={project}
+                      viewerSessions={viewerSessions}
                       onFollowLiveChange={changeFollowLive}
                       onSelectNode={selectActivityNode}
                       onSelectEdge={(edge) => {
@@ -1471,7 +1323,7 @@ export function ThreadWorkbench({
                       className="thread-versioned-provenance"
                       aria-labelledby="thread-versioned-provenance-title"
                     >
-                      <div className="flex items-start justify-between gap-4 px-5 py-4">
+                      <header className="flex items-start justify-between gap-4 px-5 py-4">
                         <div className="min-w-0 space-y-1">
                           <h4
                             id="thread-versioned-provenance-title"
@@ -1479,14 +1331,16 @@ export function ThreadWorkbench({
                           >
                             {presentedMemberRef
                               ? "Selected version path"
-                              : "Evidence map"}
+                              : evidenceCanvas.isFiltered
+                              ? `Local evidence · depth ${localDepth}`
+                              : "Full evidence map"}
                           </h4>
                           <p className="text-sm text-muted-foreground">
                             {presentedMemberRef
                               ? `Depth ${localDepth}; the alternate version stays hidden.`
                               : evidenceCanvas.isFiltered
                               ? "Local view. Select the background for the full map."
-                              : "Select a record to inspect. Double-click for the local neighbourhood."}
+                              : "Select a record to inspect. Double-click a node to focus its neighbourhood."}
                           </p>
                         </div>
                         <p className="shrink-0 font-mono text-xs text-muted-foreground">
@@ -1498,20 +1352,20 @@ export function ThreadWorkbench({
                               const parts: string[] = [
                                 `${kp.displayedCount} items shown`,
                               ];
-                              const totalFolded = kp.foldedInstrumentCount +
+                              const totalFolded =
                                 versionedProvenance.collapsedVersionCount;
                               if (totalFolded > 0) {
                                 parts.push(`${totalFolded} folded`);
                               }
-                              if (kp.supportingNodeCount > 0) {
+                              if (kp.hiddenByKindCount > 0) {
                                 parts.push(
-                                  `${kp.supportingNodeCount} hidden by type`,
+                                  `${kp.hiddenByKindCount} hidden by type`,
                                 );
                               }
                               return parts.join(" · ");
                             })()}
                         </p>
-                      </div>
+                      </header>
                       <div className="evidence-graph-menu">
                         <DropdownMenu align="end">
                           <DropdownMenuTrigger asChild>
@@ -1609,30 +1463,12 @@ export function ThreadWorkbench({
                     </section>
                   )
                   : activeView === "product"
-                  ? activeProductFacet === "requirements"
-                    ? (
-                      <ProductRequirementsMatrix
-                        thread={snapshot}
-                        onOpenVerification={() => changeView("verification")}
-                      />
-                    )
-                    : activeProductFacet === "sourcing"
-                    ? <ProductSourcingLane thread={snapshot} />
-                    : (
-                      <ComponentWorkspace
-                        snapshot={snapshot}
-                        activeProvider={activeComponentProvider}
-                        selectedComponentId={selectedComponentId}
-                        onProviderChange={changeComponentProvider}
-                        onComponentSelect={selectComponent}
-                        onBindingSelect={inspectComponentBinding}
-                        onRevisionOpen={(node) => {
-                          selectGraphNode(node, { inspect: false });
-                          changeView("work");
-                        }}
-                        onOpenSourcing={() => changeProductFacet("sourcing")}
-                      />
-                    )
+                  ? (
+                    <McpAppProductHandoff
+                      projection={viewerSessions}
+                      onOpenWhiteboard={() => changeView("overview")}
+                    />
+                  )
                   : (
                     <ProjectOperations
                       project={project}
@@ -1642,11 +1478,76 @@ export function ThreadWorkbench({
                     />
                   )}
               </div>
-              {activeView === "verification" && inspector}
+              {activeView === "verification" && inspectorOpen && inspector}
             </div>
           </main>
         )}
     </div>
+  );
+}
+
+function McpAppProductHandoff({
+  projection,
+  onOpenWhiteboard,
+}: {
+  projection?: ThreadViewerSessionsProjection;
+  onOpenWhiteboard: () => void;
+}): JSX.Element {
+  const sessions = projection?.sessions ?? [];
+  return (
+    <Card data-surface="mcp-app-product-handoff">
+      <CardHeader className="flex-row items-start justify-between gap-4 max-md:flex-col">
+        <div className="min-w-0 space-y-1.5">
+          <p className={PAGE_EYEBROW}>Whole MCP Apps</p>
+          <CardTitle className="text-base">
+            Domain presentations live on the Project whiteboard
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Digital Thread keeps no native CAD, SysML, simulation or ERP
+            renderer. It can host only an explicitly registered exact App for
+            this Thread basis.
+          </p>
+        </div>
+        <Badge variant={sessions.length > 0 ? "success" : "secondary"}>
+          {sessions.length > 0
+            ? `${sessions.length} exact App${sessions.length === 1 ? "" : "s"}`
+            : "unavailable"}
+        </Badge>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {sessions.length === 0
+          ? (
+            <EmptyNotice>
+              Unavailable — no exact whole-App binding is registered for this
+              Thread basis. Digital Thread will not infer one from labels,
+              artifact kinds, providers or graph proximity.
+            </EmptyNotice>
+          )
+          : (
+            <ul className="divide-y divide-border rounded-md border border-border">
+              {sessions.map((viewer) => (
+                <li className="space-y-1.5 px-3 py-3" key={viewer.id}>
+                  <strong className="block text-sm font-medium">
+                    {viewer.app.id}@{viewer.app.version}
+                  </strong>
+                  <code className="block break-all font-mono text-xs text-muted-foreground">
+                    {viewer.resource.uri}
+                  </code>
+                  <span className="block text-xs text-muted-foreground">
+                    {viewer.anchor.kind}:{viewer.anchor.id} ·{" "}
+                    {viewer.session.schema}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        <div>
+          <Button type="button" variant="outline" onClick={onOpenWhiteboard}>
+            Open Project whiteboard
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1665,14 +1566,11 @@ function shouldAcceptPlanningActivityUpdate(
 
 function workspaceEyebrow(
   view: Exclude<ProjectWorkspaceView, "overview">,
-  productFacet: ProductWorkspaceFacet = DEFAULT_PRODUCT_FACET,
 ): string {
-  if (view === "work") return "Work · recorded activity";
-  if (view === "product") {
-    return `Product · ${productFacetLabel(productFacet).toLowerCase()}`;
-  }
-  if (view === "verification") return "Verification · evidence exploration";
-  return "Operations · recorded execution";
+  if (view === "work") return "Project · recorded activity";
+  if (view === "product") return "Product dossier";
+  if (view === "verification") return "Evidence · verification";
+  return "Utility · systems and runs";
 }
 
 /** Recorded run and human-attention state; never provider liveness. */
@@ -1694,51 +1592,138 @@ function operationsHeadline(
 
 function workspaceTitle(
   view: Exclude<ProjectWorkspaceView, "overview">,
-  productFacet: ProductWorkspaceFacet = DEFAULT_PRODUCT_FACET,
 ): string {
-  if (view === "work") return "Recorded activity";
-  if (view === "product") {
-    if (productFacet === "requirements") {
-      return "What the current revision must hold";
-    }
-    if (productFacet === "sourcing") return "To Buy stays a reserved lane";
-    return "Product structure";
-  }
-  if (view === "verification") return "Evidence map";
-  return "Engineering fleet";
+  if (view === "work") return "Activity";
+  if (view === "product") return "Product";
+  if (view === "verification") return "Evidence";
+  return "Systems & runs";
 }
 
 function workspaceDescription(
   view: Exclude<ProjectWorkspaceView, "overview">,
-  productFacet: ProductWorkspaceFacet = DEFAULT_PRODUCT_FACET,
 ): string {
   if (view === "work") {
-    return "Recorded results and review requests, in order.";
+    return "Recorded activity, reviews and lineage.";
   }
   if (view === "product") {
-    if (productFacet === "requirements") {
-      return "Requirement expressions and the last recorded verdict.";
-    }
-    if (productFacet === "sourcing") {
-      return "ERP coverage stays GAP until sourcing records exist.";
-    }
-    return "Components matched across system, CAD and ERP records.";
+    return "Exact whole MCP Apps registered for the current Thread basis.";
   }
   if (view === "verification") {
-    return "Recorded support and impact for each result.";
+    return "Start from a verification case, then inspect its exact evidence chain.";
   }
-  return "Read-only projection of recorded runs, agent preparation, human confirmations, closeouts and contributing systems.";
+  return "Read-only execution, integrations and record diagnostics.";
+}
+
+function EvidenceCaseNavigator({
+  catalog,
+  nodes,
+  filter,
+  onChange,
+}: {
+  catalog: EngineeringCaseCatalog;
+  nodes: readonly ThreadGraphNode[];
+  filter: VerificationCaseFilter;
+  onChange: (filter: VerificationCaseFilter) => void;
+}): JSX.Element {
+  const cases = buildVerificationCaseLegend(catalog, nodes);
+  const statusVariant = catalog.status === "observed"
+    ? "success"
+    : catalog.status === "unresolved"
+    ? "warning"
+    : "secondary";
+  return (
+    <section
+      className="evidence-case-navigator mb-4 border-y border-border py-4"
+      aria-labelledby="evidence-cases-title"
+    >
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className={SECTION_LABEL}>Verification cases</p>
+          <h3
+            id="evidence-cases-title"
+            className="mt-1 text-base font-semibold"
+          >
+            Start with the engineering question
+          </h3>
+        </div>
+        <Badge variant={statusVariant}>{catalog.status}</Badge>
+      </div>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] gap-2">
+        <button
+          type="button"
+          aria-pressed={filter.kind === "all"}
+          className={cn(
+            "min-w-0 rounded-lg border p-3 text-left transition-colors",
+            filter.kind === "all"
+              ? "border-brand bg-brand/[0.04]"
+              : "border-border bg-card hover:border-brand/40",
+          )}
+          onClick={() => onChange({ kind: "all" })}
+        >
+          <span className="block text-sm font-semibold">
+            Complete project record
+          </span>
+          <span className="mt-1 block text-xs text-muted-foreground">
+            {nodes.length} linked evidence items across every recorded case
+          </span>
+        </button>
+        {cases.map((item) => {
+          const selected = filter.kind === "case" &&
+            filter.caseKey === item.case.key;
+          return (
+            <button
+              key={item.case.key}
+              type="button"
+              aria-pressed={selected}
+              className={cn(
+                "min-w-0 rounded-lg border p-3 text-left transition-colors",
+                selected
+                  ? "border-brand bg-brand/[0.04]"
+                  : "border-border bg-card hover:border-brand/40",
+              )}
+              onClick={() => onChange({ kind: "case", caseKey: item.case.key })}
+            >
+              <span className="block text-sm font-semibold">
+                {sentenceCaseLabel(item.case.family)}
+              </span>
+              <span className="mt-1 block break-words text-xs text-muted-foreground">
+                {item.case.id} · r{item.case.revision} · {item.nodeCount}{" "}
+                linked items
+              </span>
+              <span
+                className="mt-2 line-clamp-2 block text-xs text-foreground/75"
+                title={item.case.scope}
+              >
+                {item.case.scope}
+              </span>
+            </button>
+          );
+        })}
+        {cases.length === 0 && (
+          <div className="rounded-lg border border-dashed border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+            No engineering case is recorded in this exact snapshot. Catalog
+            status: {catalog.status}.
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function sentenceCaseLabel(value: string): string {
+  const label = value.replaceAll("-", " ");
+  return `${label.charAt(0).toUpperCase()}${label.slice(1)}`;
 }
 
 function FactList(
   { items }: { items: readonly FactItem[] },
 ): JSX.Element {
   return (
-    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
+    <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5">
       {items.map((item) => (
         <div key={item.id} className="contents">
           <dt className="text-xs text-muted-foreground">{item.label}</dt>
-          <dd className="text-sm">{item.value}</dd>
+          <dd className="min-w-0 break-words text-sm">{item.value}</dd>
         </div>
       ))}
     </dl>
@@ -1749,7 +1734,7 @@ function MetricTiles(
   { items }: { items: readonly MetricTileItem[] },
 ): JSX.Element {
   return (
-    <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+    <div className="mb-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,9rem),1fr))] gap-3">
       {items.map((metric) => (
         <article
           key={metric.id}
@@ -1980,411 +1965,6 @@ function GraphEndpoint({ label, node, onSelect }: {
   );
 }
 
-function SelectionInspector({ snapshot, selection, onSelect }: {
-  snapshot: ThreadWorkbenchSnapshot;
-  selection: ThreadRef;
-  onSelect: (selection: ThreadRef) => void;
-}): JSX.Element {
-  if (selection.kind === "change") {
-    return <ChangeInspector snapshot={snapshot} />;
-  }
-  if (selection.kind === "artifact") {
-    const artifact = snapshot.artifacts.find((item) =>
-      item.id === selection.id
-    );
-    return artifact
-      ? (
-        <ArtifactInspector
-          snapshot={snapshot}
-          artifact={artifact}
-          onSelect={onSelect}
-        />
-      )
-      : <EmptyNotice>Artifact not present in this snapshot.</EmptyNotice>;
-  }
-  if (selection.kind === "observation") {
-    const observation = snapshot.observations.find((item) =>
-      item.id === selection.id
-    );
-    return observation
-      ? (
-        <ObservationInspector
-          snapshot={snapshot}
-          observation={observation}
-          onSelect={onSelect}
-        />
-      )
-      : <EmptyNotice>Observation not present in this snapshot.</EmptyNotice>;
-  }
-  if (selection.kind === "requirement") {
-    const requirement = snapshot.requirements.find((item) =>
-      item.id === selection.id
-    );
-    return requirement
-      ? (
-        <RequirementInspector
-          snapshot={snapshot}
-          requirement={requirement}
-          onSelect={onSelect}
-        />
-      )
-      : <EmptyNotice>Requirement not present in this snapshot.</EmptyNotice>;
-  }
-  const violation = snapshot.violations.find((item) =>
-    item.id === selection.id
-  );
-  return violation
-    ? (
-      <ViolationInspector
-        snapshot={snapshot}
-        violation={violation}
-        onSelect={onSelect}
-      />
-    )
-    : <EmptyNotice>Violation not present in this snapshot.</EmptyNotice>;
-}
-
-function InspectorShell({ eyebrow, title, tone, children }: {
-  eyebrow: string;
-  title: string;
-  tone: PresentationTone;
-  children: ReactNode;
-}): JSX.Element {
-  return (
-    <Card>
-      <CardHeader className="flex-row items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <p className="text-xs font-medium text-muted-foreground">
-            {eyebrow}
-          </p>
-          <CardTitle className="text-base">{title}</CardTitle>
-        </div>
-        <Badge variant={TONE_BADGE_VARIANT[tone]}>{eyebrow}</Badge>
-      </CardHeader>
-      <CardContent className="space-y-4">{children}</CardContent>
-    </Card>
-  );
-}
-
-function ChangeInspector(
-  { snapshot }: { snapshot: ThreadWorkbenchSnapshot },
-): JSX.Element {
-  const change = snapshot.change;
-  const state = changeState(snapshot);
-  const facts: FactItem[] = [
-    { id: "author", label: "Changed by", value: change.author },
-    {
-      id: "revision",
-      label: "Revision",
-      value: <Mono>{change.revision}</Mono>,
-    },
-    {
-      id: "time",
-      label: "Changed",
-      value: formatDateTime(change.changedAt),
-    },
-  ];
-  if (change.files.length) {
-    facts.push({
-      id: "files",
-      label: "Touched",
-      value: change.files.join(" · "),
-    });
-  }
-  return (
-    <InspectorShell eyebrow="Revision" title={change.id} tone="info">
-      <p className="text-sm text-muted-foreground">{change.summary}</p>
-      <FactList items={facts} />
-      <Notice title={state.title} tone={state.tone}>
-        {state.message}
-      </Notice>
-      <ActionList actions={snapshot.actions} />
-    </InspectorShell>
-  );
-}
-
-function ArtifactInspector({ snapshot, artifact, onSelect }: {
-  snapshot: ThreadWorkbenchSnapshot;
-  artifact: ThreadArtifact;
-  onSelect: (selection: ThreadRef) => void;
-}): JSX.Element {
-  const downstream = snapshot.artifacts.filter((item) =>
-    item.dependsOn.includes(artifact.id)
-  );
-  return (
-    <InspectorShell
-      eyebrow={artifact.kind}
-      title={artifact.label}
-      tone={freshnessTone(artifact.freshness)}
-    >
-      <FactList items={artifactFacts(artifact)} />
-      {artifact.freshness === "stale" && (
-        <Notice title="Evidence invalidated" tone="warning">
-          This result predates a dependency. It remains available for provenance
-          but cannot support a current verdict.
-        </Notice>
-      )}
-      {artifact.attestation && (
-        <Notice
-          title={artifact.attestation.status === "verified"
-            ? "Producer / consumer hash verified"
-            : "Producer / consumer hash mismatch"}
-          tone={artifact.attestation.status === "verified"
-            ? "success"
-            : "danger"}
-        >
-          {artifact.attestation.status === "verified"
-            ? "The consumer used the exact fingerprint emitted by its upstream producer."
-            : "This result consumed a different upstream fingerprint and cannot support the current verdict."}
-        </Notice>
-      )}
-      <RelationLinks
-        title="Depends on"
-        refs={artifact.dependsOn.map((id) => ({
-          kind: "artifact" as const,
-          id,
-        }))}
-        snapshot={snapshot}
-        onSelect={onSelect}
-      />
-      <RelationLinks
-        title="Invalidates / feeds"
-        refs={downstream.map((item) => ({
-          kind: "artifact" as const,
-          id: item.id,
-        }))}
-        snapshot={snapshot}
-        onSelect={onSelect}
-      />
-    </InspectorShell>
-  );
-}
-
-function ObservationInspector({ snapshot, observation, onSelect }: {
-  snapshot: ThreadWorkbenchSnapshot;
-  observation: ThreadObservation;
-  onSelect: (selection: ThreadRef) => void;
-}): JSX.Element {
-  const artifact = snapshot.artifacts.find((item) =>
-    item.id === observation.sourceArtifactId
-  );
-  return (
-    <InspectorShell
-      eyebrow="Observation"
-      title={observation.label}
-      tone={freshnessTone(observation.freshness)}
-    >
-      <div className="flex items-end justify-between gap-3">
-        <strong className="text-xl font-semibold tabular-nums">
-          {observation.display}
-        </strong>
-        <Freshness freshness={observation.freshness} />
-      </div>
-      <FactList
-        items={[
-          {
-            id: "id",
-            label: "Stable id",
-            value: <Mono>{observation.id}</Mono>,
-          },
-          {
-            id: "source",
-            label: "Source",
-            value: artifact?.label ?? observation.sourceArtifactId,
-          },
-          {
-            id: "measured",
-            label: "Measured",
-            value: formatDateTime(observation.measuredAt),
-          },
-        ]}
-      />
-      <RelationLinks
-        title="Evaluates"
-        refs={observation.requirementIds.map((id) => ({
-          kind: "requirement" as const,
-          id,
-        }))}
-        snapshot={snapshot}
-        onSelect={onSelect}
-      />
-      {artifact && (
-        <div
-          role="group"
-          aria-label="Observation provenance"
-          className="flex flex-wrap items-center gap-2"
-        >
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onSelect({ kind: "artifact", id: artifact.id })}
-          >
-            Trace source artifact →
-          </Button>
-        </div>
-      )}
-    </InspectorShell>
-  );
-}
-
-function RequirementInspector({ snapshot, requirement, onSelect }: {
-  snapshot: ThreadWorkbenchSnapshot;
-  requirement: ThreadRequirement;
-  onSelect: (selection: ThreadRef) => void;
-}): JSX.Element {
-  return (
-    <InspectorShell
-      eyebrow={requirement.id}
-      title={requirement.label}
-      tone={verdictTone(requirement.status)}
-    >
-      <div className="rounded-lg bg-muted/50 p-4 font-mono text-sm">
-        {requirement.expression}
-      </div>
-      <p className="text-sm text-muted-foreground">{requirement.rationale}</p>
-      <FactList
-        items={[
-          { id: "source", label: "Authority", value: requirement.source },
-          { id: "status", label: "Verdict", value: requirement.status },
-        ]}
-      />
-      <RelationLinks
-        title="Computed from"
-        refs={requirement.observationIds.map((id) => ({
-          kind: "observation" as const,
-          id,
-        }))}
-        snapshot={snapshot}
-        onSelect={onSelect}
-      />
-      <RelationLinks
-        title="Named violations"
-        refs={requirement.violationIds.map((id) => ({
-          kind: "violation" as const,
-          id,
-        }))}
-        snapshot={snapshot}
-        onSelect={onSelect}
-      />
-    </InspectorShell>
-  );
-}
-
-function ViolationInspector({ snapshot, violation, onSelect }: {
-  snapshot: ThreadWorkbenchSnapshot;
-  violation: ThreadViolation;
-  onSelect: (selection: ThreadRef) => void;
-}): JSX.Element {
-  const actions = snapshot.actions.filter((action) =>
-    violation.proposedActionIds.includes(action.id)
-  );
-  return (
-    <InspectorShell eyebrow={violation.id} title={violation.name} tone="danger">
-      <div className="flex items-baseline justify-between gap-3 rounded-md bg-destructive/10 px-3 py-2 text-destructive">
-        <span className="text-xs font-medium">Blocking</span>
-        <strong className="text-xl font-semibold tabular-nums">
-          {violation.margin}
-        </strong>
-      </div>
-      <p className="text-sm text-muted-foreground">{violation.message}</p>
-      <RelationLinks
-        title="Failed requirement"
-        refs={[{ kind: "requirement", id: violation.requirementId }]}
-        snapshot={snapshot}
-        onSelect={onSelect}
-      />
-      <RelationLinks
-        title="Computed evidence"
-        refs={[{ kind: "observation", id: violation.observationId }]}
-        snapshot={snapshot}
-        onSelect={onSelect}
-      />
-      <ActionList actions={actions} />
-    </InspectorShell>
-  );
-}
-
-function ActionList({ actions }: {
-  actions: ThreadAction[];
-}): JSX.Element | null {
-  if (!actions.length) return null;
-  return (
-    <div className="space-y-2">
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="text-xs font-medium text-muted-foreground">
-          Proposed next actions
-        </p>
-        <p className="text-xs text-muted-foreground">discuss with the agent</p>
-      </div>
-      <div className="divide-y divide-border">
-        {actions.map((action, index) => (
-          <article
-            key={action.id}
-            className="flex items-start gap-3 py-2"
-            data-readiness={action.readiness}
-          >
-            <span className="font-mono text-xs text-muted-foreground">
-              {pad(index + 1)}
-            </span>
-            <div className="min-w-0 flex-1">
-              <strong className="text-sm">{action.label}</strong>
-              <p className="text-xs text-muted-foreground">
-                {action.description}
-              </p>
-            </div>
-            <Badge
-              variant={action.readiness === "blocked" ? "warning" : "secondary"}
-            >
-              {action.readiness === "blocked" ? "Blocked" : action.readiness}
-            </Badge>
-          </article>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function RelationLinks({ title, refs, snapshot, onSelect }: {
-  title: string;
-  refs: ThreadRef[];
-  snapshot: ThreadWorkbenchSnapshot;
-  onSelect: (selection: ThreadRef) => void;
-}): JSX.Element | null {
-  if (!refs.length) return null;
-  return (
-    <div className="space-y-2">
-      <p className="text-xs font-medium text-muted-foreground">{title}</p>
-      <div className="divide-y divide-border">
-        {refs.map((ref) => (
-          <button
-            type="button"
-            key={`${ref.kind}:${ref.id}`}
-            className="flex w-full items-center gap-3 py-2 text-left"
-            onClick={() => onSelect(ref)}
-          >
-            <Mono>{ref.id}</Mono>
-            <span className="min-w-0 flex-1 truncate text-sm">
-              {refLabel(snapshot, ref)}
-            </span>
-            <span aria-hidden="true" className="text-muted-foreground">↗</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function Freshness({ freshness }: { freshness: ThreadFreshness }): JSX.Element {
-  return (
-    <Badge
-      variant={TONE_BADGE_VARIANT[freshnessTone(freshness)]}
-      data-state={freshness}
-    >
-      {freshness}
-    </Badge>
-  );
-}
-
 /**
  * A completed replacement closes only the exact action target declared by the
  * project lifecycle projection. The raw action and every attempt stay in the
@@ -2417,22 +1997,6 @@ function summaryMetrics(
   snapshot: ThreadWorkbenchSnapshot,
   painted: ReturnType<typeof paintedDossierMetric>,
 ): MetricTileItem[] {
-  const artifacts = currentArtifacts(
-    snapshot.artifacts,
-    snapshot.evidenceFamilyGraph,
-  );
-  const historicalArtifactCount = snapshot.artifacts.length - artifacts.length;
-  const fresh = artifacts.filter((item) => item.freshness === "fresh").length;
-  const stale = artifacts.filter((item) => item.freshness === "stale").length;
-  const requirements = currentRequirements(
-    snapshot.requirements,
-    snapshot.evidenceFamilyGraph,
-  );
-  const historicalRequirementCount = snapshot.requirements.length -
-    requirements.length;
-  const passed = requirements.filter((item) => item.status === "pass").length;
-  const failed = requirements.filter((item) => item.status === "fail").length;
-  const noCriterion = requirements.length === 0;
   return [
     {
       id: "impact",
@@ -2443,87 +2007,32 @@ function summaryMetrics(
       tone: "info",
     },
     {
-      id: "evidence",
-      label: "Evidence currency",
-      value: artifacts.length,
-      unit: `current${
-        historicalArtifactCount > 0
-          ? ` · ${historicalArtifactCount} historical`
-          : ""
-      }`,
-      detail: stale > 0
-        ? `${fresh} fresh · ${stale} current stale`
-        : `${fresh} current fresh`,
-      tone: stale ? "warning" : "success",
+      id: "records",
+      label: "Recorded graph",
+      value: snapshot.graph.nodes.length,
+      unit: "records",
+      detail: `${snapshot.graph.edges.length} explicit relations`,
+      tone: "neutral",
     },
     {
-      id: "requirements",
-      label: "Requirements",
-      value: noCriterion ? 0 : `${passed}/${requirements.length}`,
-      unit: noCriterion ? "modelled" : "passing",
-      detail: noCriterion
-        ? "No model-owned criterion"
-        : `${failed} failed · ${
-          requirements.length - passed - failed
-        } unresolved` +
-          (historicalRequirementCount > 0
-            ? ` · ${historicalRequirementCount} prior version${
-              historicalRequirementCount === 1 ? "" : "s"
-            } in history`
-            : ""),
-      tone: noCriterion ? "warning" : failed ? "danger" : "success",
+      id: "activity",
+      label: "Recorded activity",
+      value: snapshot.flow.length,
+      unit: "entries",
+      detail: "chronological identities",
+      tone: "neutral",
     },
     {
-      id: "violations",
-      label: "Named violations",
-      value: snapshot.violations.length,
-      unit: "open",
-      detail: snapshot.violations[0]?.id ??
-        (noCriterion ? "verdict unavailable" : "no active violation"),
-      tone: snapshot.violations.length
-        ? "danger"
-        : noCriterion
-        ? "warning"
-        : "success",
+      id: "history",
+      label: "Recorded history",
+      value: snapshot.evidenceFamilyGraph.families.length,
+      unit: "families",
+      detail: snapshot.previous
+        ? `previous snapshot ${snapshot.previous.snapshotId}`
+        : "no previous snapshot",
+      tone: "neutral",
     },
   ];
-}
-
-function changeState(snapshot: ThreadWorkbenchSnapshot): {
-  title: string;
-  message: string;
-  tone: PresentationTone;
-} {
-  if (snapshot.requirements.length === 0) {
-    return {
-      title: "Verification criterion missing",
-      message:
-        "The engineering evidence is linked to this declared subject and the CAD to FEA input is hash-attested, but no model-owned mechanical criterion is available. The observed values cannot be called compliant or non-compliant yet.",
-      tone: "warning",
-    };
-  }
-  if (snapshot.change.status === "evaluated") {
-    return {
-      title: "Impact evaluation is current",
-      message:
-        "Every modelled requirement in this snapshot has a current evaluation. Review named violations before closing the change.",
-      tone: snapshot.violations.length ? "danger" : "success",
-    };
-  }
-  if (snapshot.change.status === "partially_evaluated") {
-    return {
-      title: "Impact evaluation is partial",
-      message:
-        "Some modelled requirements still lack current evidence. Recompute only the explicitly selected stale branch.",
-      tone: "warning",
-    };
-  }
-  return {
-    title: "Impact evaluation pending",
-    message:
-      "The snapshot contains modelled requirements but no current evaluation for this change.",
-    tone: "warning",
-  };
 }
 
 function graphNodeByRef(
@@ -2544,84 +2053,6 @@ function relationTitle(relation: ThreadGraphEdge["relation"]): string {
 
 function relationLabel(relation: ThreadGraphEdge["relation"]): string {
   return relation.replaceAll("_", " ").replaceAll("-", " ");
-}
-
-function artifactFacts(artifact: ThreadArtifact): FactItem[] {
-  const facts: FactItem[] = [
-    {
-      id: "revision",
-      label: "Revision",
-      value: <Mono>{artifact.revision}</Mono>,
-    },
-    {
-      id: "system",
-      label: "Produced by",
-      value: artifact.producedBy ?? artifact.system,
-    },
-    {
-      id: "time",
-      label: "Produced",
-      value: formatDateTime(artifact.producedAt),
-    },
-    {
-      id: "fingerprint",
-      label: "Fingerprint",
-      value: <Mono>{artifact.fingerprint ?? "not recorded"}</Mono>,
-    },
-    {
-      id: "uri",
-      label: "Artifact URI",
-      value: <Mono>{artifact.uri ?? "not persisted"}</Mono>,
-    },
-  ];
-  if (artifact.attestation) {
-    facts.push(
-      {
-        id: "producer-hash",
-        label: "Producer hash",
-        value: <Mono>{artifact.attestation.producerFingerprint}</Mono>,
-      },
-      {
-        id: "consumer-hash",
-        label: "Consumed hash",
-        value: <Mono>{artifact.attestation.consumedFingerprint}</Mono>,
-      },
-    );
-  }
-  return facts;
-}
-
-function refLabel(snapshot: ThreadWorkbenchSnapshot, ref: ThreadRef): string {
-  if (ref.kind === "change") return snapshot.change.title;
-  if (ref.kind === "artifact") {
-    return snapshot.artifacts.find((item) => item.id === ref.id)?.label ??
-      ref.id;
-  }
-  if (ref.kind === "observation") {
-    return snapshot.observations.find((item) => item.id === ref.id)?.label ??
-      ref.id;
-  }
-  if (ref.kind === "requirement") {
-    return snapshot.requirements.find((item) => item.id === ref.id)?.label ??
-      ref.id;
-  }
-  return snapshot.violations.find((item) => item.id === ref.id)?.name ?? ref.id;
-}
-
-function freshnessTone(freshness: ThreadFreshness): PresentationTone {
-  if (freshness === "fresh") return "success";
-  if (freshness === "stale" || freshness === "running") return "warning";
-  return "danger";
-}
-
-function verdictTone(status: ThreadRequirement["status"]): PresentationTone {
-  if (status === "pass") return "success";
-  if (status === "fail") return "danger";
-  return "warning";
-}
-
-function pad(value: number): string {
-  return String(value).padStart(2, "0");
 }
 
 function streamStatusLabel(

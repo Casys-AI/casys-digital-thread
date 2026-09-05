@@ -1,21 +1,12 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import type { EngineeringProjectSnapshot } from "../../../../domain/project/engineering-project.ts";
 import type { ThreadSnapshot } from "../../../../domain/thread/thread-snapshot.ts";
-import type {
-  IsolatedCodeExecutionReceipt,
-  IsolatedCodeExecutionRequest,
-} from "../../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
-  createIsolatedCodeExecutionReceipt,
-  createIsolatedOutputPublicationRef,
-  fingerprintIsolatedOutputPublicationManifest,
-  isolatedCodeExecutionReceiptRecord,
-  validateIsolatedCodeExecutionRequest,
-} from "../../../../domain/compile/isolation/isolated-code-execution.ts";
-import {
-  GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
-  GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
-} from "../../../../domain/cad/module-assembly/geometry-module-assembly-execution.ts";
+  GEOMETRY_MODULE_ASSEMBLY_ASSETS,
+  GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
+} from "../../../../domain/cad/module-assembly/geometry-module-assembly-receipt.ts";
+import { GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY } from "../../../../domain/capability/engineering-capability.ts";
+import type { GeometryModuleAssembler } from "../../../ports/out/cad/module-assembly/geometry-module-assembler.ts";
 import {
   CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_KIND,
   CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
@@ -37,7 +28,10 @@ import {
   sha256Fingerprint,
   sha256Hex,
 } from "../../../../domain/kernel/deterministic-json.ts";
-import { fingerprintResourceBytes } from "../../../../domain/compile/source/provider-resource-reader.ts";
+import {
+  fingerprintResourceBytes,
+  immutableBytes,
+} from "../../../../domain/compile/source/provider-resource-reader.ts";
 import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
 import type { OpenedProductStructure } from "../../../ports/out/product-navigation/product-structure-traversal.ts";
 import type { CadPlacementArchitectureFacts } from "../../../../domain/cad/placement/cad-placement-coverage.ts";
@@ -74,33 +68,6 @@ const ASSEMBLY_GLB = new Uint8Array([0x67, 0x6c, 0x54, 0x46, 1, 2, 3, 4]);
 function fp(digest: string): ContentFingerprint {
   return { algorithm: "sha256", digest };
 }
-
-const FAKE_LIMITS = {
-  maxWallTimeMs: 1_000,
-  maxCpuTimeMs: 500,
-  maxMemoryBytes: 64_000_000,
-  maxProcesses: 4,
-  maxStdoutBytes: 1_024,
-  maxStderrBytes: 1_024,
-  maxOutputFileBytes: 1_024,
-  maxOutputTotalBytes: 2_048,
-} as const;
-
-const FAKE_RUNTIME = {
-  isolationClass: "kernel-isolated",
-  imageDigest: fp("a".repeat(64)),
-  requestedLimits: FAKE_LIMITS,
-  limitAssurance: {
-    maxWallTimeMs: "backend-attested",
-    maxCpuTimeMs: "unattested",
-    maxMemoryBytes: "backend-attested",
-    maxProcesses: "unattested",
-    maxStdoutBytes: "broker-observed-cap",
-    maxStderrBytes: "broker-observed-cap",
-    maxOutputFileBytes: "broker-observed-cap",
-    maxOutputTotalBytes: "broker-observed-cap",
-  },
-} as const;
 
 function basis(revision = 12) {
   return {
@@ -148,15 +115,14 @@ Deno.test("geometry-module export recrosses exact child bytes, saves a reread dr
     );
     assertEquals(armCall, harness.armStepDigest);
     assertEquals(baseCall, harness.baseStepDigest);
-    assertEquals(harness.runner.requests.length, 1);
-    const request = harness.runner.requests[0]!;
+    assertEquals(harness.assembler.calls.length, 1);
     assertEquals(
-      request.profile.id,
-      GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE.id,
+      harness.draftStore.lastUnsigned?.receipt.implementation.id,
+      "fixture-neutral-cad-assembler",
     );
     assertEquals(
-      request.profile.version,
-      GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE.version,
+      harness.draftStore.lastUnsigned?.receipt.capability,
+      GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
     );
     const occurrences = harness.draftStore.lastUnsigned?.children.map((child) =>
       child.usageElementId
@@ -417,33 +383,10 @@ Deno.test("geometry-module export fails when the structure capture URI is not th
   });
 });
 
-Deno.test("geometry-module export fails when isolated assembly is rejected", async () => {
+Deno.test("geometry-module export fails when the neutral assembler rejects the bundle", async () => {
   await withHarness(async (harness) => {
-    harness.runner.failure = new Error("isolated assembler rejected");
-    await assertCode(harness, "isolated_failure");
-  });
-});
-
-Deno.test("geometry-module export reopens the same published generation zero without redispatch", async () => {
-  await withHarness(async (harness) => {
-    const first = await harness.service.execute(harness.command);
-    const second = await harness.service.execute(harness.command);
-    assertEquals(second.draftDigest, first.draftDigest);
-    assertEquals(harness.runner.requests.length, 1);
-    assertEquals(harness.publications.resolveCalls, 2);
-    assertEquals(harness.publications.readCalls, 1);
-    assertEquals(
-      harness.runner.requests.map((request) => request.producerGeneration),
-      [0],
-    );
-  });
-});
-
-Deno.test("geometry-module export never dispatches when generation-zero publication outcome is unknown", async () => {
-  await withHarness(async (harness) => {
-    harness.publications.outcomeUnknown = true;
-    await assertCode(harness, "isolated_failure");
-    assertEquals(harness.runner.requests.length, 0);
+    harness.assembler.failure = new Error("assembler rejected");
+    await assertCode(harness, "assembly_failure");
   });
 });
 
@@ -471,8 +414,7 @@ interface Harness {
   readonly placements: FakePlacements;
   readonly geometryCaptures: FakeGeometryCaptures;
   readonly stepAssets: FakeStepAssets;
-  readonly runner: FakeRunner;
-  readonly publications: FakePublications;
+  readonly assembler: FakeNeutralAssembler;
   readonly draftStore: FakeDraftStore;
   readonly armStepDigest: string;
   readonly baseStepDigest: string;
@@ -510,8 +452,7 @@ async function createHarness(): Promise<Harness> {
   const stepAssets = new FakeStepAssets();
   stepAssets.bytes.set(armStepDigest, ARM_STEP);
   stepAssets.bytes.set(baseStepDigest, BASE_STEP);
-  const publications = new FakePublications();
-  const runner = new FakeRunner(publications);
+  const assembler = new FakeNeutralAssembler();
   const draftStore = new FakeDraftStore();
   const draftAssets = new FakeDraftAssets();
   const service = new ExportProjectGeometryModule({
@@ -527,23 +468,7 @@ async function createHarness(): Promise<Harness> {
     placements,
     geometryCaptures,
     stepAssets,
-    profiles: {
-      initial: () =>
-        Promise.resolve({
-          executionProfile: GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
-          isolationPolicy: {
-            id: "isolation.geometry-module-assembly-v1",
-            version: "1.0.0",
-            fingerprint: fp("a".repeat(64)),
-          },
-          outputManifest: GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST,
-          runtime: FAKE_RUNTIME,
-          minimumDestructionAssurance: "proven",
-        } as never),
-      resolve: () => Promise.reject(new Error("not used")),
-    },
-    runner,
-    publications,
+    assembler,
     draftStore,
     draftAssets,
   });
@@ -560,8 +485,7 @@ async function createHarness(): Promise<Harness> {
     placements,
     geometryCaptures,
     stepAssets,
-    runner,
-    publications,
+    assembler,
     draftStore,
     armStepDigest,
     baseStepDigest,
@@ -748,134 +672,52 @@ class FakeStepAssets {
   }
 }
 
-class FakeRunner {
-  readonly requests: IsolatedCodeExecutionRequest[] = [];
+class FakeNeutralAssembler implements GeometryModuleAssembler {
+  readonly calls: Parameters<GeometryModuleAssembler["assemble"]>[0][] = [];
   failure?: Error;
 
-  constructor(readonly publications: FakePublications) {}
-
-  async run(request: IsolatedCodeExecutionRequest) {
-    this.requests.push(request);
+  async assemble(command: Parameters<GeometryModuleAssembler["assemble"]>[0]) {
+    this.calls.push(command);
     if (this.failure) throw this.failure;
     const stepDigest = await fingerprintResourceBytes(ASSEMBLY_STEP);
     const glbDigest = await fingerprintResourceBytes(ASSEMBLY_GLB);
-    const validated = await validateIsolatedCodeExecutionRequest(request);
-    const outputs = GEOMETRY_MODULE_ASSEMBLY_OUTPUT_MANIFEST.map((declaration) => ({
-      ...declaration,
-      bytes: declaration.role === "assembly.step" ? ASSEMBLY_STEP : ASSEMBLY_GLB,
-      sha256: declaration.role === "assembly.step" ? stepDigest : glbDigest,
-    }));
-    const publicationMembers = outputs.map((output) => ({
-      role: output.role,
-      basename: output.basename,
-      mediaType: output.mediaType,
-      format: output.format,
-      byteCount: output.bytes.byteLength,
-      sha256: output.sha256,
-      casUri: `casys://isolated-output/sha256/${output.sha256}`,
-    }));
-    const receipt = await createIsolatedCodeExecutionReceipt({
-      request: validated,
-      runtime: FAKE_RUNTIME,
-      termination: { kind: "exited", exitCode: 0, signal: null },
-      logs: {
-        stdout: { bytes: new Uint8Array(), truncated: false },
-        stderr: { bytes: new Uint8Array(), truncated: false },
+    return {
+      receipt: {
+        schemaVersion: GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
+        capability: GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
+        runId: command.runId,
+        inputBundle: {
+          fingerprint: command.bundle.fingerprint,
+          byteCount: command.bundle.bytes.byteLength,
+        },
+        assembly: {
+          step: {
+            ...GEOMETRY_MODULE_ASSEMBLY_ASSETS.step,
+            fingerprint: fp(stepDigest),
+            byteCount: ASSEMBLY_STEP.byteLength,
+          },
+          glb: {
+            ...GEOMETRY_MODULE_ASSEMBLY_ASSETS.glb,
+            fingerprint: fp(glbDigest),
+            byteCount: ASSEMBLY_GLB.byteLength,
+          },
+        },
+        implementation: {
+          id: "fixture-neutral-cad-assembler",
+          version: "2026.1",
+          evidenceFingerprint: fp("f".repeat(64)),
+        },
       },
-      outputs: publicationMembers.map((member, index) => ({
-        ...member,
-        validation: "accepted" as const,
-        persistence: "staged-reread-atomic-commit" as const,
-        bytes: outputs[index]!.bytes,
-      })),
-      destruction: {
-        status: "proven",
-        runId: request.runId,
-        proofFingerprint: fp("e".repeat(64)),
-      },
-      publication: await createIsolatedOutputPublicationRef(
-        request.runId,
-        0,
-        await fingerprintIsolatedOutputPublicationManifest(
-          request.runId,
-          0,
-          publicationMembers,
-        ),
-      ),
-    });
-    this.publications.publish(receipt);
-    return receipt;
-  }
-}
-
-class FakePublications {
-  receipt?: IsolatedCodeExecutionReceipt;
-  outcomeUnknown = false;
-  resolveCalls = 0;
-  readCalls = 0;
-
-  publish(receipt: IsolatedCodeExecutionReceipt) {
-    this.receipt = receipt;
-  }
-
-  resolvePublicationByRunId(runId: string, producerGeneration: 0 | 1) {
-    this.resolveCalls += 1;
-    if (this.outcomeUnknown) {
-      return Promise.resolve({
-        status: "outcome-unknown" as const,
-        runId,
-        producerGeneration,
-      });
-    }
-    if (
-      this.receipt?.runId === runId &&
-      this.receipt.producerGeneration === producerGeneration
-    ) {
-      return Promise.resolve({
-        status: "published" as const,
-        runId,
-        producerGeneration,
-        ref: this.receipt.publication.ref,
-        receipt: isolatedCodeExecutionReceiptRecord(this.receipt),
-      });
-    }
-    return Promise.resolve({
-      status: "not-published" as const,
-      runId,
-      producerGeneration,
-    });
-  }
-
-  readReceipt() {
-    this.readCalls += 1;
-    return Promise.resolve(this.receipt);
-  }
-
-  readPublishedObject() {
-    return Promise.resolve(undefined);
+      assemblyStep: immutableBytes(ASSEMBLY_STEP),
+      assemblyGlb: immutableBytes(ASSEMBLY_GLB),
+    };
   }
 }
 
 class FakeDraftStore {
   saveCalls = 0;
   readCalls = 0;
-  lastUnsigned?: {
-    readonly predecessor?: {
-      readonly schemaVersion: string;
-      readonly artifactId: string;
-      readonly fingerprint: ContentFingerprint;
-      readonly partDefinitionElementId: string;
-    };
-    readonly children: readonly {
-      readonly usageElementId: string;
-      readonly authoritativeStep: { readonly fingerprint: ContentFingerprint };
-    }[];
-    readonly inputBundle: {
-      readonly manifest: {
-        readonly occurrences: readonly { readonly usageElementId: string }[];
-      };
-    };
-  };
+  lastUnsigned?: Omit<GeometryModuleDraftCapture, "fingerprint">;
   saved?: GeometryModuleDraftCapture;
 
   async save(value: unknown) {
@@ -904,12 +746,20 @@ class FakeDraftStore {
 }
 
 class FakeDraftAssets {
+  readonly bytes = new Map<string, Uint8Array>();
+
   async persist(bytes: Uint8Array) {
     const digest = await fingerprintResourceBytes(bytes);
+    this.bytes.set(digest, Uint8Array.from(bytes));
     return {
       fingerprint: fp(digest),
       byteCount: bytes.byteLength,
     };
+  }
+
+  read(fingerprint: ContentFingerprint) {
+    const bytes = this.bytes.get(fingerprint.digest);
+    return Promise.resolve(bytes === undefined ? undefined : immutableBytes(bytes));
   }
 }
 

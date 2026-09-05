@@ -21,6 +21,9 @@ Deno.test("Overview path band uses the five stage labels and not the old gate sp
   const hero = await Deno.readTextFile(
     new URL("./src/project/overview-thread-hero.tsx", import.meta.url),
   );
+  const flow = await Deno.readTextFile(
+    new URL("./src/project/overview-thread-d3-flow.tsx", import.meta.url),
+  );
 
   assertStringIncludes(lanes, 'requirements: "FRAME"');
   assertStringIncludes(lanes, '"system-model": "SYSTEM MODEL"');
@@ -61,7 +64,8 @@ Deno.test("Overview path band uses the five stage labels and not the old gate sp
   assertEquals(band.includes("style={{ color:"), false);
 
   assertStringIncludes(hero, "OVERVIEW_LANES");
-  assertStringIncludes(hero, "column.lane.color");
+  assertStringIncludes(flow, "layout.lanes.map");
+  assertStringIncludes(flow, '"--flow-color": lane.color');
   assertEquals(hero.includes("PROJECT_PATH_STAGE_LABELS"), false);
   assertEquals(hero.includes("FRAME"), false);
 });

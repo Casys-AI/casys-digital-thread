@@ -8,6 +8,7 @@ import {
   type EngineeringProjectPhase,
   type EngineeringProjectSnapshot,
   type EngineeringProjectStatus,
+  type EngineeringThreadEntityRef,
   type EngineeringWorkItem,
   isEngineeringDecisionSatisfied,
 } from "../../../domain/project/engineering-project.ts";
@@ -27,7 +28,6 @@ import {
   ENGINEERING_PATH_LANE_IDS,
   type EngineeringPathLaneId,
 } from "../../../domain/project/engineering-path-lane.ts";
-import { currentRequirements } from "../thread/versioned-provenance-model.ts";
 
 export interface ProjectPhaseView {
   readonly phase: EngineeringProjectPhase;
@@ -152,6 +152,14 @@ export interface ProjectPathActivityView {
   readonly title: string;
   readonly status: EngineeringPhaseStatus;
   readonly revisions: readonly ProjectPathRevisionView[];
+  /** Exact evidence recorded by revisions of this stable activity. */
+  readonly evidenceRefs: readonly EngineeringThreadEntityRef[];
+  /**
+   * Exact evidence recorded by work items directly named in this activity's
+   * `dependsOnWorkItemIds`. This is a presentation join only: it does not add
+   * a Thread relation or imply technical consumption.
+   */
+  readonly dependencyEvidenceRefs: readonly EngineeringThreadEntityRef[];
   readonly approvedDecisions: number;
   readonly requiredDecisions: number;
   readonly evidenceCount: number;
@@ -474,6 +482,10 @@ export function buildProjectPath(
     buildCurrentProjectWork(snapshot).historicalWorkItemIds,
   );
   const activities = projectedActivities.map((projected) => {
+    const activityWorkItems = projected.revisionIds.flatMap((id) => {
+      const item = workById.get(id);
+      return item ? [item] : [];
+    });
     const revisions = projected.revisionIds.flatMap((id) => {
       const item = workById.get(id);
       return item
@@ -496,6 +508,16 @@ export function buildProjectPath(
         total + (workById.get(revision.id)?.evidenceRefs.length ?? 0),
       0,
     );
+    const evidenceRefs = uniqueExactThreadEntityRefs(
+      activityWorkItems.flatMap((item) => item.evidenceRefs),
+    );
+    const dependencyEvidenceRefs = uniqueExactThreadEntityRefs(
+      activityWorkItems.flatMap((item) =>
+        item.dependsOnWorkItemIds.flatMap((dependencyId) =>
+          workById.get(dependencyId)?.evidenceRefs ?? []
+        )
+      ),
+    );
     const decisionIds = new Set(
       revisions.flatMap((revision) =>
         workById.get(revision.id)?.decisionIds ?? []
@@ -510,6 +532,8 @@ export function buildProjectPath(
       title: root?.title ?? projected.id,
       status,
       revisions,
+      evidenceRefs,
+      dependencyEvidenceRefs,
       approvedDecisions: decisions.filter((decision) =>
         isEngineeringDecisionSatisfied(snapshot, decision)
       ).length,
@@ -531,6 +555,22 @@ export function buildProjectPath(
       .length,
     pendingDecisions,
   };
+}
+
+function uniqueExactThreadEntityRefs(
+  refs: readonly EngineeringThreadEntityRef[],
+): readonly EngineeringThreadEntityRef[] {
+  const seen = new Set<string>();
+  return refs.filter((ref) => {
+    const key = exactThreadEntityRefKey(ref);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function exactThreadEntityRefKey(ref: EngineeringThreadEntityRef): string {
+  return `${ref.snapshotId}@${ref.snapshotRevision}:${ref.kind}:${ref.id}`;
 }
 
 function deriveProjectPathActivityStatus(
@@ -794,35 +834,6 @@ export function projectPulseStatus(
 function sentenceStatusLabel(status: string): string {
   const label = status.replaceAll("-", " ");
   return `${label.charAt(0).toUpperCase()}${label.slice(1)}`;
-}
-
-/**
- * The overview leads with the current engineering decision, while the full
- * Evidence space retains every historical criterion and relation for review.
- */
-export function verificationChainDetail(
-  thread: ThreadWorkbenchSnapshot,
-): string {
-  const requirements = currentRequirements(
-    thread.requirements,
-    thread.evidenceFamilyGraph,
-  );
-  const historicalCount = thread.requirements.length - requirements.length;
-  const passed = requirements.filter((item) => item.status === "pass").length;
-  const failed = requirements.filter((item) => item.status === "fail").length;
-  const unresolved = requirements.length - passed - failed;
-  const currentDetail = requirements.length === 0
-    ? "No current modelled criteria"
-    : `${passed}/${requirements.length} current criteria passing`;
-  const verdictDetail = failed > 0
-    ? `${failed} failed`
-    : unresolved > 0
-    ? `${unresolved} unresolved`
-    : `${thread.violations.length} named violations`;
-  const historyDetail = historicalCount > 0
-    ? `${historicalCount} historical record${historicalCount === 1 ? "" : "s"}`
-    : `${thread.graph.edges.length} recorded relations`;
-  return `${currentDetail} · ${verdictDetail} · ${historyDetail}.`;
 }
 
 /**

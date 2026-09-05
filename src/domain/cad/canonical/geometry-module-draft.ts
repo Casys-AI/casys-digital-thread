@@ -1,7 +1,7 @@
 /**
  * Review-only geometry-module draft.
  *
- * It binds the exact input-bundle identity, the validated isolation receipt,
+ * It binds the exact input-bundle identity, the validated assembly receipt,
  * reopened child capture plus STEP identities, and the produced assembly
  * STEP plus binary GLB. A successful draft writes no Thread state.
  */
@@ -17,7 +17,7 @@ import {
 } from "../../kernel/case-validation.ts";
 import { fingerprintsEqual } from "../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
-import type { IsolatedCodeExecutionReceiptRecord } from "../../compile/isolation/isolated-code-execution.ts";
+import type { GeometryModuleAssemblyReceipt } from "../module-assembly/geometry-module-assembly-receipt.ts";
 import type { ProjectSourceClosureLocator } from "../../project-source-workspace/closure.ts";
 import {
   type CadPlacementAnalysisCaptureLocator,
@@ -45,7 +45,7 @@ import {
   recrossStructureCaptureArchitecture,
   unsignedDraftRecord,
 } from "./geometry-module-identities.ts";
-import { recrossGeometryModuleIsolation } from "./geometry-module-isolation.ts";
+import { recrossGeometryModuleAssembly } from "./geometry-module-assembly-recross.ts";
 import {
   type GeometryModuleManifest,
   parseGeometryModuleManifest,
@@ -64,15 +64,25 @@ export interface GeometryModuleDraftCapture {
   readonly unitSystem: typeof GEOMETRY_MODULE_UNIT_SYSTEM;
   readonly placementConvention: typeof GEOMETRY_MODULE_PLACEMENT_CONVENTION;
   readonly inputBundle: GeometryModuleInputBundleIdentity;
-  readonly receipt: IsolatedCodeExecutionReceiptRecord;
+  readonly receipt: GeometryModuleAssemblyReceipt;
   readonly assemblyStep: GeometryModuleAssetIdentity;
   readonly assemblyGlb: GeometryModuleAssetIdentity;
   readonly fingerprint: ContentFingerprint;
 }
 
-export async function parseGeometryModuleDraftCapture(
+export function parseGeometryModuleDraftCapture(
   value: unknown,
 ): Promise<Omit<GeometryModuleDraftCapture, "fingerprint">> {
+  try {
+    return Promise.resolve(parseGeometryModuleDraftCaptureValue(value));
+  } catch (error) {
+    return Promise.reject(error);
+  }
+}
+
+function parseGeometryModuleDraftCaptureValue(
+  value: unknown,
+): Omit<GeometryModuleDraftCapture, "fingerprint"> {
   const root = closedRecord(
     unsignedDraftRecord(value),
     [
@@ -168,7 +178,7 @@ export async function parseGeometryModuleDraftCapture(
       "$geometryModuleDraft assembly STEP and GLB fingerprints must be distinct.",
     );
   }
-  const receipt = await recrossGeometryModuleIsolation(
+  const receipt = recrossGeometryModuleAssembly(
     inputBundle,
     root.receipt,
     assemblyStep,

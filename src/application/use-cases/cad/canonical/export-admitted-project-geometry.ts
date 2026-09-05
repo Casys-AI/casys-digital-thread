@@ -67,6 +67,12 @@ import {
   type ThreadSnapshot,
 } from "../../../../domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../../../domain/thread/thread-snapshot-store.ts";
+import { selectCurrentThreadTip } from "../../../../domain/project/thread-tip.ts";
+import type { EngineeringProjectRevisionStore } from "../../../ports/out/engineering-project-revision-store.ts";
+import {
+  type CapabilityRuntimePreparationPort,
+  type CapabilityRuntimePreparationSession,
+} from "../../../ports/out/capability/capability-runtime-preparation-session.ts";
 import {
   deepFreeze,
   exactRecord,
@@ -97,6 +103,9 @@ export type ProjectAdmittedGeometryExportErrorCode =
   | "geometry_part_tip_ambiguous"
   | "geometry_part_v2_bundle_conflict"
   | "geometry_part_target_conflict"
+  | "project_unavailable"
+  | "basis_mismatch"
+  | "runtime_unavailable"
   | "export_failed";
 
 /** Captured PartDefinition graph needed to author a system-only v2 draft. */
@@ -125,6 +134,33 @@ export interface CanonicalGeometryCaptureReader {
   read(fingerprint: ContentFingerprint): Promise<string | undefined>;
 }
 
+/**
+ * Narrow server replay index for this exact canonical command. It contains a
+ * completed, already-captured draft result only; it never stores source bytes
+ * or selects a provider/runtime.
+ */
+export interface AdmittedGeometryExportReplayCache {
+  /** Durable no-provider intent. A retry may safely revalidate from here. */
+  prepare(key: ContentFingerprint): Promise<void>;
+  /** Durable boundary immediately before the non-idempotent provider call. */
+  dispatch(key: ContentFingerprint): Promise<void>;
+  read(
+    key: ContentFingerprint,
+  ): Promise<ProjectAdmittedGeometryExportResult | undefined>;
+  save(
+    key: ContentFingerprint,
+    value: ProjectAdmittedGeometryExportResult,
+  ): Promise<void>;
+}
+
+/** A present replay record was unreadable or disagreed with its exact key. */
+export class AdmittedGeometryExportReplayUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AdmittedGeometryExportReplayUnavailableError";
+  }
+}
+
 /** Stable application error. Provider details, storage paths and causes stay internal. */
 export class ProjectAdmittedGeometryExportError extends Error {
   constructor(
@@ -139,6 +175,15 @@ export class ProjectAdmittedGeometryExportError extends Error {
 export interface ExportAdmittedProjectGeometryDependencies {
   readonly admissions: TechnicalCompilationAdmissionReader;
   readonly exporter: AdmittedGeometryExporter;
+  /**
+   * Present only on the real server-owned canonical path.  Keeping the
+   * exporter seam permits deterministic domain/application tests without
+   * exposing a provider choice to the public command.
+   */
+  readonly projects?: Pick<EngineeringProjectRevisionStore, "get">;
+  readonly preparation?: CapabilityRuntimePreparationPort;
+  readonly exporterFactory?: () => AdmittedGeometryExporter;
+  readonly replayCache?: AdmittedGeometryExportReplayCache;
   readonly snapshots: Pick<ThreadSnapshotStore, "get">;
   readonly architecture: ArchitecturePartGraphReader;
   readonly geometryCaptures?: CanonicalGeometryCaptureReader;
@@ -148,6 +193,10 @@ export class ExportAdmittedProjectGeometry
   implements ProjectAdmittedGeometryExportUseCase {
   readonly #admissions: TechnicalCompilationAdmissionReader;
   readonly #exporter: AdmittedGeometryExporter;
+  readonly #projects: Pick<EngineeringProjectRevisionStore, "get"> | undefined;
+  readonly #preparation: CapabilityRuntimePreparationPort | undefined;
+  readonly #exporterFactory: (() => AdmittedGeometryExporter) | undefined;
+  readonly #replayCache: AdmittedGeometryExportReplayCache | undefined;
   readonly #snapshots: Pick<ThreadSnapshotStore, "get">;
   readonly #architecture: ArchitecturePartGraphReader;
   readonly #geometryCaptures: CanonicalGeometryCaptureReader | undefined;
@@ -155,6 +204,18 @@ export class ExportAdmittedProjectGeometry
   constructor(dependencies: ExportAdmittedProjectGeometryDependencies) {
     this.#admissions = dependencies.admissions;
     this.#exporter = dependencies.exporter;
+    this.#projects = dependencies.projects;
+    this.#preparation = dependencies.preparation;
+    this.#exporterFactory = dependencies.exporterFactory;
+    this.#replayCache = dependencies.replayCache;
+    if (
+      (this.#projects === undefined) !== (this.#preparation === undefined) ||
+      (this.#preparation !== undefined && this.#exporterFactory === undefined)
+    ) {
+      throw new TypeError(
+        "Canonical runtime preparation requires exact project authority and a private exporter factory.",
+      );
+    }
     this.#snapshots = dependencies.snapshots;
     this.#architecture = dependencies.architecture;
     this.#geometryCaptures = dependencies.geometryCaptures;
@@ -170,6 +231,15 @@ export class ExportAdmittedProjectGeometry
         "The admitted-geometry export request failed exact validation.",
       );
     }
+
+    return await this.#executeCold(command, false);
+  }
+
+  async #executeCold(
+    command: ProjectAdmittedGeometryExportCommand,
+    runtimePrepared: boolean,
+  ): Promise<ProjectAdmittedGeometryExportResult> {
+    await this.#assertCurrentProjectBasis(command);
 
     let reopened: ReopenedTechnicalCompilationAdmission | undefined;
     try {
@@ -292,9 +362,19 @@ export class ExportAdmittedProjectGeometry
         );
       }
 
+      const replay = await this.#readReplay(command);
+      if (replay) return replay;
+
+      await this.#prepareReplay(command, runtimePrepared);
+      const repeated = await this.#repeatColdValidationAfterPreparation(
+        command,
+        runtimePrepared,
+      );
+      if (repeated) return repeated;
+
       let draft: AdmittedGeometryExportDraft;
       try {
-        draft = await this.#exporter.export({
+        draft = await this.#exporterForProvider(runtimePrepared).export({
           script,
           architectureBasis,
           admission: {
@@ -321,7 +401,9 @@ export class ExportAdmittedProjectGeometry
       }
 
       try {
-        return assembleResult(draft, architectureBasis);
+        const result = assembleResult(draft, architectureBasis);
+        await this.#saveReplay(command, result);
+        return result;
       } catch {
         throw exportError(
           "export_failed",
@@ -353,9 +435,19 @@ export class ExportAdmittedProjectGeometry
       );
     }
 
+    const replay = await this.#readReplay(command);
+    if (replay) return replay;
+
+    await this.#prepareReplay(command, runtimePrepared);
+    const repeated = await this.#repeatColdValidationAfterPreparation(
+      command,
+      runtimePrepared,
+    );
+    if (repeated) return repeated;
+
     let draft: AdmittedGeometryTargetedPartExportDraft;
     try {
-      draft = await this.#exporter.exportTargetedPart({
+      draft = await this.#exporterForProvider(runtimePrepared).exportTargetedPart({
         script,
         architectureBasis,
         admission: {
@@ -390,7 +482,9 @@ export class ExportAdmittedProjectGeometry
       );
     }
     try {
-      return assembleTargetedPartResult(draft, architectureBasis);
+      const result = assembleTargetedPartResult(draft, architectureBasis);
+      await this.#saveReplay(command, result);
+      return result;
     } catch {
       throw exportError(
         "export_failed",
@@ -398,6 +492,183 @@ export class ExportAdmittedProjectGeometry
       );
     }
   }
+
+  async #assertCurrentProjectBasis(
+    command: ProjectAdmittedGeometryExportCommand,
+  ): Promise<void> {
+    if (!this.#projects) return;
+    let project;
+    try {
+      project = await this.#projects.get(command.projectId);
+    } catch {
+      throw exportError("project_unavailable", "The named project is unavailable.");
+    }
+    if (!project || project.project.id !== command.projectId) {
+      throw exportError("project_unavailable", "The named project is unavailable.");
+    }
+    const tip = selectCurrentThreadTip(project.threadSnapshots);
+    if (
+      tip.status !== "ok" || tip.basis.snapshotId !== command.basis.snapshotId ||
+      tip.basis.revision !== command.basis.revision ||
+      tip.basis.subjectId !== command.basis.subjectId
+    ) {
+      throw exportError(
+        "basis_mismatch",
+        "The current project Thread basis is not the named command basis.",
+      );
+    }
+  }
+
+  #exporterForProvider(runtimePrepared: boolean): AdmittedGeometryExporter {
+    if (!runtimePrepared) return this.#exporter;
+    if (!this.#exporterFactory) {
+      throw exportError(
+        "runtime_unavailable",
+        "The private Build123d exporter is unavailable after preparation.",
+      );
+    }
+    return this.#exporterFactory();
+  }
+
+  async #readReplay(
+    command: ProjectAdmittedGeometryExportCommand,
+  ): Promise<ProjectAdmittedGeometryExportResult | undefined> {
+    if (!this.#replayCache) return undefined;
+    try {
+      const replay = await this.#replayCache.read(
+        await admittedGeometryReplayKey(command),
+      );
+      if (replay) await this.#releaseRecordedPreparation(command);
+      return replay;
+    } catch {
+      // The replay/WAL records the only non-idempotent provider boundary. Any
+      // storage, parsing or hash failure is recoverable unavailable; returning
+      // a cache miss here could cause a second Build123d dispatch.
+      throw exportError(
+        "runtime_unavailable",
+        "The durable admitted-geometry replay record requires recovery.",
+      );
+    }
+  }
+
+  async #releaseRecordedPreparation(
+    command: ProjectAdmittedGeometryExportCommand,
+  ): Promise<void> {
+    if (!this.#preparation || !this.#projects) return;
+    try {
+      const project = await this.#projects.get(command.projectId);
+      if (!project || project.project.id !== command.projectId) {
+        throw new Error("Exact project unavailable.");
+      }
+      await this.#preparation.releaseRecorded({
+        project,
+        operation: { ...DESIGN_WRITE_GEOMETRY_OPERATION, bindings: [] },
+      });
+    } catch {
+      // Returning a recorded draft while silently retaining a matching lease
+      // would block later exact exports. This path performs no activation or
+      // provider call, but it must finish exact cleanup or remain recoverable.
+      throw exportError(
+        "runtime_unavailable",
+        "The recorded admitted-geometry replay requires exact lease cleanup.",
+      );
+    }
+  }
+
+  async #saveReplay(
+    command: ProjectAdmittedGeometryExportCommand,
+    result: ProjectAdmittedGeometryExportResult,
+  ): Promise<void> {
+    if (!this.#replayCache) return;
+    try {
+      await this.#replayCache.save(await admittedGeometryReplayKey(command), result);
+    } catch {
+      // The provider result was already durably captured, but its replay key
+      // was not. Treat the outcome as ambiguous and retain the preparation
+      // lease for recovery instead of allowing a blind redispatch.
+      throw exportError(
+        "export_failed",
+        "The admitted geometry draft could not be durably indexed for replay.",
+      );
+    }
+  }
+
+  async #prepareReplay(
+    command: ProjectAdmittedGeometryExportCommand,
+    runtimePrepared: boolean,
+  ): Promise<void> {
+    if (!this.#replayCache) return;
+    try {
+      const key = await admittedGeometryReplayKey(command);
+      if (!runtimePrepared) {
+        await this.#replayCache.prepare(key);
+        return;
+      }
+      await this.#replayCache.dispatch(key);
+    } catch {
+      // The dispatch marker is written before client construction. A failure
+      // after activation is conservatively ambiguous and retains its lease.
+      throw exportError(
+        runtimePrepared ? "export_failed" : "runtime_unavailable",
+        runtimePrepared
+          ? "The admitted geometry export could not record its durable dispatch boundary."
+          : "The admitted geometry export could not prepare its durable replay record.",
+      );
+    }
+  }
+
+  async #repeatColdValidationAfterPreparation(
+    command: ProjectAdmittedGeometryExportCommand,
+    runtimePrepared: boolean,
+  ): Promise<ProjectAdmittedGeometryExportResult | undefined> {
+    if (runtimePrepared || !this.#preparation || !this.#projects) return undefined;
+    const project = await this.#projects.get(command.projectId);
+    if (!project || project.project.id !== command.projectId) {
+      throw exportError("project_unavailable", "The named project is unavailable.");
+    }
+    let session: CapabilityRuntimePreparationSession;
+    try {
+      session = await this.#preparation.begin({
+        project,
+        operation: { ...DESIGN_WRITE_GEOMETRY_OPERATION, bindings: [] },
+      });
+    } catch {
+      throw exportError(
+        "runtime_unavailable",
+        "The server-owned Build123d preparation runtime is unavailable.",
+      );
+    }
+    try {
+      const result = await this.#executeCold(command, true);
+      await session.releaseSuccess();
+      return result;
+    } catch (error) {
+      // A second cold validation failure has not called the provider; all
+      // provider/adapter failures are normalized as export_failed and retain
+      // the lease because dispatch certainty is unavailable at this boundary.
+      if (
+        error instanceof ProjectAdmittedGeometryExportError &&
+        error.code !== "export_failed"
+      ) {
+        await session.releaseSuccess();
+      } else {
+        session.retainForRecovery();
+      }
+      throw error;
+    }
+  }
+}
+
+async function admittedGeometryReplayKey(
+  command: ProjectAdmittedGeometryExportCommand,
+): Promise<ContentFingerprint> {
+  return await sha256Fingerprint({
+    schemaVersion: "project-admitted-geometry-export-replay/1.0",
+    projectId: command.projectId,
+    basis: command.basis,
+    artifactId: command.artifactId,
+    artifactFingerprint: command.artifactFingerprint,
+  });
 }
 
 interface ReadyBuild123dCompilation {

@@ -1,9 +1,10 @@
 import { createRoot } from "react-dom/client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import type { JSX } from "react";
 import { HttpCockpitFleetClient, HttpThreadWorkbenchClient } from "./client.ts";
+import { HttpThreadViewerSessionsClient } from "./viewer-sessions-client.ts";
 import { ThreadWorkbench } from "./workbench.tsx";
-import { DesktopChat, desktopChatRuntimeAvailable } from "./desktop-chat.tsx";
+import { DesktopChat } from "./desktop-chat.tsx";
 import "../styles.css";
 
 const root = document.querySelector<HTMLElement>("#native-preview");
@@ -18,28 +19,31 @@ const fleetClient = new HttpCockpitFleetClient(
   "/api/fleet",
   globalThis.fetch.bind(globalThis),
 );
+const viewerSessionsClient = new HttpThreadViewerSessionsClient(
+  "/api/thread/viewer-sessions",
+  "/api/thread/viewer-sessions/events",
+  globalThis.fetch.bind(globalThis),
+);
 
 /**
  * One browser shell over one durable EngineeringProject from first intent.
  * Framing, planning and evidence are surfaces of that same project contract.
- * The product topbar lives inside the workbench (`ProjectCockpitHeader`) —
- * the harness adds no chrome of its own.
+ * Project navigation owns the single application header; this harness adds no
+ * competing chrome.
  */
 function NativeCockpit(): JSX.Element {
   const [projectId, setProjectId] = useState<string>();
   const [chatOpen, setChatOpen] = useState(false);
-  useEffect(() => {
-    // Browser preview reveals the honest unavailable state after Ark has mounted
-    // its content refs. Native Desktop keeps Chat closed until the operator asks.
-    if (!desktopChatRuntimeAvailable()) setChatOpen(true);
-  }, []);
   const focusProject = useCallback((next: string | undefined) => {
     setProjectId(next);
   }, []);
+  const projectChatAvailable = typeof projectId === "string" &&
+    projectId.length > 0;
   return (
     <div
       className="native-preview-shell"
       data-chat-open={chatOpen ? "true" : "false"}
+      data-project-chat-panel={projectChatAvailable ? "true" : "false"}
     >
       <a
         className="skip-link"
@@ -54,6 +58,11 @@ function NativeCockpit(): JSX.Element {
       >
         Skip to project workspace
       </a>
+      <DesktopChat
+        projectId={projectId}
+        open={chatOpen}
+        onOpenChange={setChatOpen}
+      />
       {/* Chaque vue possède son propre <main> : le harnais reste un div. */}
       <div
         id="native-preview-content"
@@ -63,14 +72,10 @@ function NativeCockpit(): JSX.Element {
         <ThreadWorkbench
           client={client}
           fleetClient={fleetClient}
+          viewerSessionsClient={viewerSessionsClient}
           onProjectFocus={focusProject}
         />
       </div>
-      <DesktopChat
-        projectId={projectId}
-        open={chatOpen}
-        onOpenChange={setChatOpen}
-      />
     </div>
   );
 }

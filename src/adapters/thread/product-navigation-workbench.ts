@@ -1,10 +1,11 @@
 /**
  * Shared Thread projection for product-navigation evidence attachments.
  *
- * MCP context and source-closure recross catalog, sealed admissions,
- * requirements targets and engineering cases from the exact Thread snapshot
- * already selected by the application port. Not authoring attachments and
- * not a command surface.
+ * MCP context and source-closure recross the canonical Thread evidence from
+ * the exact snapshot already selected by the application port. Product
+ * structure stays owned by the standalone navigation traversal; this adapter
+ * does not rebuild it from a component catalog. Admission sources are attached
+ * only to this agent read model and never to the browser Workbench snapshot.
  */
 
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
@@ -13,18 +14,13 @@ import type {
   ProductNavigationEvidenceAttachmentFacts,
   ProductNavigationEvidenceAttachmentReader,
 } from "../../application/ports/out/product-navigation/product-navigation-evidence-attachment-reader.ts";
-import {
-  type GenericArchitectureCaptureReader,
-  resolveGenericProductStructureCatalog,
-} from "../architecture/renderer/product-structure-catalog.ts";
-import type { SysmlSourceAnalysisReader } from "../architecture/renderer/sysml-source-analysis-capture.ts";
-import type { GenericGeometryCaptureReader } from "../cad/canonical/geometry-bundle-product-catalog.ts";
 import { projectThreadWorkbenchSnapshot } from "./thread-workbench-projector.ts";
 import {
-  enrichThreadWorkbenchWithTechnicalAdmissions,
-  type SealedCadLeverAdmissionReader,
-  type TechnicalAdmissionWorkbenchEnricherDependencies,
-} from "./technical-admission-workbench-enricher.ts";
+  type ProductNavigationTechnicalAdmissionReader,
+  type ProductNavigationTechnicalAdmissionSourceDependencies,
+  readProductNavigationTechnicalAdmissionSources,
+} from "./product-navigation-technical-admission-source-reader.ts";
+import type { TechnicalAdmissionSourceFileRecord } from "./technical-admission-source-files.ts";
 import { readRecrossedRequirementsCaptureScopes } from "./requirements-definition-scope-reader.ts";
 import {
   enrichThreadWorkbenchWithRequirementsTargets,
@@ -36,11 +32,9 @@ import {
 } from "./verification-case-workbench-enricher.ts";
 
 export interface ProductNavigationWorkbenchDependencies {
-  readonly architectureCaptures: GenericArchitectureCaptureReader;
-  readonly geometryCaptures?: GenericGeometryCaptureReader;
-  readonly sysmlSourceAnalysis?: SysmlSourceAnalysisReader;
-  readonly admissions?: SealedCadLeverAdmissionReader;
-  readonly workspace?: TechnicalAdmissionWorkbenchEnricherDependencies["workspace"];
+  readonly admissions?: ProductNavigationTechnicalAdmissionReader;
+  readonly workspace?:
+    ProductNavigationTechnicalAdmissionSourceDependencies["workspace"];
   readonly requirementsCaptures?: RequirementsCaptureReader;
   readonly engineeringCases?: EngineeringCaseWorkbenchEnricherDependencies;
 }
@@ -66,6 +60,17 @@ export class WorkbenchProductNavigationEvidenceAttachmentReader
       context.projectId,
       this.#dependencies,
     );
+    const sourceFiles = this.#dependencies.admissions && this.#dependencies.workspace
+      ? await readProductNavigationTechnicalAdmissionSources(
+        projected,
+        {
+          admissions: this.#dependencies.admissions,
+          workspace: this.#dependencies.workspace,
+        },
+        { projectId: context.projectId },
+      )
+      : undefined;
+    const sourceGraph = technicalSourceAttachmentGraph(sourceFiles ?? []);
     const requirementScopes = this.#dependencies.requirementsCaptures &&
         context.architectureArtifactId &&
         context.architectureFingerprint
@@ -79,21 +84,23 @@ export class WorkbenchProductNavigationEvidenceAttachmentReader
       )
       : undefined;
     return {
-      nodes: projected.graph.nodes.map((node) => ({
-        ref: node.ref,
-        label: node.label,
-      })),
-      edges: projected.graph.edges.map((edge) => ({
-        relation: edge.relation,
-        from: edge.from,
-        to: edge.to,
-      })),
-      sourceFileIds: projected.sourceFiles
-        ? projected.sourceFiles.files.map((file) =>
-          `${file.fileId}@${file.fileRevision}`
-        )
-        : undefined,
-      sourceFiles: projected.sourceFiles?.files.map((file) => ({
+      nodes: [
+        ...projected.graph.nodes.map((node) => ({
+          ref: node.ref,
+          label: node.label,
+        })),
+        ...sourceGraph.nodes,
+      ],
+      edges: [
+        ...projected.graph.edges.map((edge) => ({
+          relation: edge.relation,
+          from: edge.from,
+          to: edge.to,
+        })),
+        ...sourceGraph.edges,
+      ],
+      sourceFileIds: sourceFiles?.map((file) => `${file.fileId}@${file.fileRevision}`),
+      sourceFiles: sourceFiles?.map((file) => ({
         fileId: file.fileId,
         fileRevision: file.fileRevision,
         workspaceRevision: file.workspaceRevision,
@@ -108,23 +115,7 @@ export async function projectProductNavigationWorkbench(
   projectId: string,
   dependencies: ProductNavigationWorkbenchDependencies,
 ): Promise<ThreadWorkbenchSnapshot> {
-  const catalog = await resolveGenericProductStructureCatalog(
-    snapshot,
-    dependencies.architectureCaptures,
-    dependencies.geometryCaptures,
-    dependencies.sysmlSourceAnalysis,
-  );
-  let projected = projectThreadWorkbenchSnapshot(snapshot, catalog);
-  if (dependencies.admissions) {
-    projected = await enrichThreadWorkbenchWithTechnicalAdmissions(
-      projected,
-      {
-        admissions: dependencies.admissions,
-        workspace: dependencies.workspace,
-      },
-      { projectId },
-    );
-  }
+  let projected = projectThreadWorkbenchSnapshot(snapshot);
   if (dependencies.requirementsCaptures) {
     projected = await enrichThreadWorkbenchWithRequirementsTargets(
       projected,
@@ -140,4 +131,48 @@ export async function projectProductNavigationWorkbench(
     );
   }
   return projected;
+}
+
+function technicalSourceAttachmentGraph(
+  files: readonly TechnicalAdmissionSourceFileRecord[],
+): {
+  readonly nodes: readonly {
+    readonly ref: { readonly kind: "source-file"; readonly id: string };
+    readonly label: string;
+  }[];
+  readonly edges: readonly {
+    readonly relation: "represented_by";
+    readonly from: { readonly kind: "part-definition"; readonly id: string };
+    readonly to: { readonly kind: "source-file"; readonly id: string };
+  }[];
+} {
+  const nodes = files.map((file) => ({
+    ref: {
+      kind: "source-file" as const,
+      id: `${file.fileId}@${file.fileRevision}`,
+    },
+    label: file.resourceName,
+  }));
+  const edges = files.flatMap((file) => {
+    const represented = [
+      ...new Set(
+        file.bindings
+          .filter((binding) =>
+            binding.relation === "represents" &&
+            binding.sysmlElementKind === "PartDefinition"
+          )
+          .map((binding) => binding.sysmlElementId),
+      ),
+    ];
+    if (represented.length !== 1) return [];
+    return [{
+      relation: "represented_by" as const,
+      from: { kind: "part-definition" as const, id: represented[0]! },
+      to: {
+        kind: "source-file" as const,
+        id: `${file.fileId}@${file.fileRevision}`,
+      },
+    }];
+  });
+  return { nodes, edges };
 }

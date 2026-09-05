@@ -96,13 +96,12 @@ Only after a passed captured preview:
 The executor reopens the exact CAS identities, writes
 `architecture-sysml-seal-capture/1.0`, and adds one Thread **document**.
 
-The native Workbench treats that document as Activity evidence when its id starts with
-`architecture-sysml-seal-`. The digital-thread inspector shows producer
-`model.seal-architecture-sysml@1`, fingerprint, URI, the `documentary` label, and
-reopened symbol **ids** (labels stay display-only). When source analysis reopens, it
-also shows the exact `sourceText` (read-only) and copied line/col spans. Unresolved rows
-show the analysis `message` after a successful reopen; they stay id+kind when reopen
-fails. It is not Product Structure and not a SysON model.
+The Workbench treats that document as Activity evidence when its id starts with
+`architecture-sysml-seal-`. Its generic record inspector shows exact identity and
+provenance only. It does not reopen `sourceText`, interpret symbols or render a native
+SysML seal surface. A domain presentation is available only through one explicitly
+registered whole App for the exact recorded anchor; zero or multiple matches stay
+unavailable or ambiguous. The seal is not Product Structure and not a SysON model.
 
 It does **not**:
 
@@ -112,14 +111,13 @@ It does **not**:
 
 ## Fail closed
 
-| Symptom                                                               | Meaning                            | Recovery                                           |
-| --------------------------------------------------------------------- | ---------------------------------- | -------------------------------------------------- |
-| Lexical error (`comment_not_qualified`, `attribute_not_qualified`, …) | Bytes are outside the subset       | Rewrite source; do not strip diagnostics           |
-| `syntax_not_recognized`                                               | Not one of the three write forms   | One form per source                                |
-| Unresolved constructs in preview                                      | Extra SysML that tokenized         | Keep them visible; do not seal as `passed`         |
-| Preview without `decisionParameters`                                  | Raw-text preview or failed capture | Capture first, then preview the reference          |
-| Mixing this seal with `model.write-architecture@1`                    | Different authorities              | Use write-architecture to change SysON             |
-| Source reopen fails (`sourceStatus=unavailable`)                      | CAS analysis cannot be reread      | No `sourceText`, no spans; unresolved stay id+kind |
+| Symptom                                                               | Meaning                            | Recovery                                   |
+| --------------------------------------------------------------------- | ---------------------------------- | ------------------------------------------ |
+| Lexical error (`comment_not_qualified`, `attribute_not_qualified`, …) | Bytes are outside the subset       | Rewrite source; do not strip diagnostics   |
+| `syntax_not_recognized`                                               | Not one of the three write forms   | One form per source                        |
+| Unresolved constructs in preview                                      | Extra SysML that tokenized         | Keep them visible; do not seal as `passed` |
+| Preview without `decisionParameters`                                  | Raw-text preview or failed capture | Capture first, then preview the reference  |
+| Mixing this seal with `model.write-architecture@1`                    | Different authorities              | Use write-architecture to change SysON     |
 
 ## Related
 

@@ -5,7 +5,7 @@
  * operation identities and the same parse. Defining them in an adapter would
  * force the registry to import outward.
  *
- * The human signs the complete sensitivity-study-case/2.0 identity, including
+ * The human signs the complete provider-neutral sensitivity-study-case/3.0 identity, including
  * the Thread cadSource. The step, mesh and boundary conditions are reviewed
  * fields, never chosen at execution.
  */
@@ -16,15 +16,15 @@ import type {
   EngineeringOperationRef,
 } from "../../project/engineering-project.ts";
 import {
-  SENSITIVITY_STUDY_CASE_V2_SCHEMA,
+  SENSITIVITY_STUDY_CASE_V3_SCHEMA,
   type SensitivityCadSource,
-  type SensitivityStudyCaseV2,
-} from "./sensitivity-study-v2.ts";
+  type SensitivityStudyCaseV3,
+} from "./sensitivity-study-v3.ts";
 import type {
   SensitivityDomain,
   SensitivityLoad,
   SensitivityMetricDeclaration,
-  SensitivitySolverDeclaration,
+  SensitivityStaticStructuralMethod,
   SensitivitySupport,
 } from "./sensitivity-study.ts";
 
@@ -76,32 +76,32 @@ export class SensitivityStudyProposalError extends Error {
 
 export interface SensitivityStudyDecisionParameters {
   readonly caseDigest: string;
-  readonly schemaVersion: typeof SENSITIVITY_STUDY_CASE_V2_SCHEMA;
+  readonly schemaVersion: typeof SENSITIVITY_STUDY_CASE_V3_SCHEMA;
   readonly id: string;
   readonly revision: number;
   readonly scope: string;
   readonly evidenceBoundary: string;
-  readonly project: SensitivityStudyCaseV2["project"];
-  readonly target: SensitivityStudyCaseV2["target"];
+  readonly project: SensitivityStudyCaseV3["project"];
+  readonly target: SensitivityStudyCaseV3["target"];
   readonly cadSource: SensitivityCadSource;
-  readonly baseValue: SensitivityStudyCaseV2["baseValue"];
-  readonly step: SensitivityStudyCaseV2["step"];
+  readonly baseValue: SensitivityStudyCaseV3["baseValue"];
+  readonly step: SensitivityStudyCaseV3["step"];
   readonly metrics: readonly SensitivityMetricDeclaration[];
-  readonly solver: SensitivitySolverDeclaration;
+  readonly method: SensitivityStaticStructuralMethod;
   readonly domain: SensitivityDomain;
 }
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
 export function canonicalSensitivityStudyCaseText(
-  studyCase: SensitivityStudyCaseV2,
+  studyCase: SensitivityStudyCaseV3,
 ): string {
   return deterministicJson(studyCase);
 }
 
 export function encodeSensitivityStudyDecisionParameters(
   caseDigest: string,
-  studyCase: SensitivityStudyCaseV2,
+  studyCase: SensitivityStudyCaseV3,
 ): readonly EngineeringDecisionProposalParameter[] {
   assertFingerprint(caseDigest, "caseDigest");
   assertFingerprint(studyCase.cadSource.sha256, "cadSource.sha256");
@@ -176,59 +176,48 @@ export function encodeSensitivityStudyDecisionParameters(
     p(`sensitivity.case.metrics.${i}.unit`, `Metric ${i} unit`, metric.unit);
   }
 
+  p("sensitivity.case.method.mesh.kind", "Mesh kind", studyCase.method.mesh.kind);
   p(
-    "sensitivity.case.solver.provider",
-    "Solver provider literal",
-    studyCase.solver.provider,
-  );
-  p("sensitivity.case.solver.tool", "Solver tool literal", studyCase.solver.tool);
-  p(
-    "sensitivity.case.solver.resultSchemaVersion",
-    "Solver result schema",
-    studyCase.solver.resultSchemaVersion,
-  );
-  p("sensitivity.case.solver.mesh.kind", "Mesh kind", studyCase.solver.mesh.kind);
-  p(
-    "sensitivity.case.solver.mesh.targetSizeMm",
+    "sensitivity.case.method.mesh.targetSizeMm",
     "Mesh target size (mm)",
-    studyCase.solver.mesh.targetSizeMm,
+    studyCase.method.mesh.targetSizeMm,
   );
   p(
-    "sensitivity.case.solver.material.model",
+    "sensitivity.case.method.material.model",
     "Material model",
-    studyCase.solver.material.model,
+    studyCase.method.material.model,
   );
   p(
-    "sensitivity.case.solver.material.eMpa",
+    "sensitivity.case.method.material.eMpa",
     "Young modulus (MPa)",
-    studyCase.solver.material.eMpa,
+    studyCase.method.material.eMpa,
   );
   p(
-    "sensitivity.case.solver.material.nu",
+    "sensitivity.case.method.material.nu",
     "Poisson ratio",
-    studyCase.solver.material.nu,
+    studyCase.method.material.nu,
   );
   p(
-    "sensitivity.case.solver.material.basis",
+    "sensitivity.case.method.material.basis",
     "Material basis",
-    studyCase.solver.material.basis,
+    studyCase.method.material.basis,
   );
 
   p(
-    "sensitivity.case.solver.supports.count",
+    "sensitivity.case.method.supports.count",
     "Fixed support count",
-    studyCase.solver.supports.length,
+    studyCase.method.supports.length,
   );
-  for (const [i, support] of studyCase.solver.supports.entries()) {
+  for (const [i, support] of studyCase.method.supports.entries()) {
     encodeSupport(p, i, support);
   }
 
   p(
-    "sensitivity.case.solver.loads.count",
+    "sensitivity.case.method.loads.count",
     "Force load count",
-    studyCase.solver.loads.length,
+    studyCase.method.loads.length,
   );
-  for (const [i, load] of studyCase.solver.loads.entries()) {
+  for (const [i, load] of studyCase.method.loads.entries()) {
     encodeLoad(p, i, load);
   }
 
@@ -346,10 +335,10 @@ export function parseSensitivityStudyDecisionParameterMap(
   assertFingerprint(caseDigest, "sensitivity.case.digest");
 
   const schemaVersion = str("sensitivity.case.schemaVersion");
-  if (schemaVersion !== SENSITIVITY_STUDY_CASE_V2_SCHEMA) {
+  if (schemaVersion !== SENSITIVITY_STUDY_CASE_V3_SCHEMA) {
     invalid(
       "invalid_schema",
-      `sensitivity.case.schemaVersion must be ${SENSITIVITY_STUDY_CASE_V2_SCHEMA} (got: ${schemaVersion}).`,
+      `sensitivity.case.schemaVersion must be ${SENSITIVITY_STUDY_CASE_V3_SCHEMA} (got: ${schemaVersion}).`,
     );
   }
 
@@ -389,46 +378,31 @@ export function parseSensitivityStudyDecisionParameterMap(
     });
   }
 
-  const provider = str("sensitivity.case.solver.provider");
-  const tool = str("sensitivity.case.solver.tool");
-  const resultSchemaVersion = str("sensitivity.case.solver.resultSchemaVersion");
-  if (provider !== "calculix" || tool !== "calculix_solve_static") {
-    invalid(
-      "invalid_format",
-      "sensitivity.case.solver must declare calculix / calculix_solve_static.",
-    );
-  }
-  if (resultSchemaVersion !== "2.0") {
-    invalid(
-      "invalid_format",
-      "sensitivity.case.solver.resultSchemaVersion must be 2.0.",
-    );
-  }
-  const meshKind = str("sensitivity.case.solver.mesh.kind");
+  const meshKind = str("sensitivity.case.method.mesh.kind");
   if (meshKind !== "tetrahedral-volume") {
     invalid(
       "invalid_format",
-      "sensitivity.case.solver.mesh.kind must be tetrahedral-volume.",
+      "sensitivity.case.method.mesh.kind must be tetrahedral-volume.",
     );
   }
-  const materialModel = str("sensitivity.case.solver.material.model");
+  const materialModel = str("sensitivity.case.method.material.model");
   if (materialModel !== "isotropic-linear-elastic") {
     invalid(
       "invalid_format",
-      "sensitivity.case.solver.material.model must be isotropic-linear-elastic.",
+      "sensitivity.case.method.material.model must be isotropic-linear-elastic.",
     );
   }
-  const targetSizeMm = finiteNum("sensitivity.case.solver.mesh.targetSizeMm");
-  const eMpa = finiteNum("sensitivity.case.solver.material.eMpa");
-  const nu = finiteNum("sensitivity.case.solver.material.nu");
-  const materialBasis = str("sensitivity.case.solver.material.basis");
+  const targetSizeMm = finiteNum("sensitivity.case.method.mesh.targetSizeMm");
+  const eMpa = finiteNum("sensitivity.case.method.material.eMpa");
+  const nu = finiteNum("sensitivity.case.method.material.nu");
+  const materialBasis = str("sensitivity.case.method.material.basis");
 
-  const supportCount = posInt("sensitivity.case.solver.supports.count");
+  const supportCount = posInt("sensitivity.case.method.supports.count");
   const supports: SensitivitySupport[] = [];
   for (let i = 0; i < supportCount; i++) {
     supports.push(parseSupport(str, finiteNum, i));
   }
-  const loadCount = posInt("sensitivity.case.solver.loads.count");
+  const loadCount = posInt("sensitivity.case.method.loads.count");
   const loads: SensitivityLoad[] = [];
   for (let i = 0; i < loadCount; i++) {
     loads.push(parseLoad(str, finiteNum, i));
@@ -459,7 +433,7 @@ export function parseSensitivityStudyDecisionParameterMap(
 
   return {
     caseDigest,
-    schemaVersion: SENSITIVITY_STUDY_CASE_V2_SCHEMA,
+    schemaVersion: SENSITIVITY_STUDY_CASE_V3_SCHEMA,
     id,
     revision,
     scope,
@@ -470,10 +444,7 @@ export function parseSensitivityStudyDecisionParameterMap(
     baseValue,
     step,
     metrics,
-    solver: {
-      provider: "calculix",
-      tool: "calculix_solve_static",
-      resultSchemaVersion: "2.0",
+    method: {
       mesh: {
         kind: "tetrahedral-volume",
         targetSizeMm,
@@ -498,7 +469,7 @@ export function parseSensitivityStudyDecisionParameterMap(
 
 export function verifySensitivityStudyParametersMatchCase(
   params: SensitivityStudyDecisionParameters,
-  studyCase: SensitivityStudyCaseV2,
+  studyCase: SensitivityStudyCaseV3,
 ): void {
   match(params.schemaVersion, studyCase.schemaVersion, "schemaVersion");
   match(params.id, studyCase.id, "id");
@@ -530,72 +501,65 @@ export function verifySensitivityStudyParametersMatchCase(
     match(metric.id, studyCase.metrics[i]!.id, `metrics.${i}.id`);
     match(metric.unit, studyCase.metrics[i]!.unit, `metrics.${i}.unit`);
   }
-  match(params.solver.provider, studyCase.solver.provider, "solver.provider");
-  match(params.solver.tool, studyCase.solver.tool, "solver.tool");
+  match(params.method.mesh.kind, studyCase.method.mesh.kind, "method.mesh.kind");
   match(
-    params.solver.resultSchemaVersion,
-    studyCase.solver.resultSchemaVersion,
-    "solver.resultSchemaVersion",
-  );
-  match(params.solver.mesh.kind, studyCase.solver.mesh.kind, "solver.mesh.kind");
-  match(
-    params.solver.mesh.targetSizeMm,
-    studyCase.solver.mesh.targetSizeMm,
-    "solver.mesh.targetSizeMm",
+    params.method.mesh.targetSizeMm,
+    studyCase.method.mesh.targetSizeMm,
+    "method.mesh.targetSizeMm",
   );
   match(
-    params.solver.material.model,
-    studyCase.solver.material.model,
-    "solver.material.model",
+    params.method.material.model,
+    studyCase.method.material.model,
+    "method.material.model",
   );
   match(
-    params.solver.material.eMpa,
-    studyCase.solver.material.eMpa,
-    "solver.material.eMpa",
+    params.method.material.eMpa,
+    studyCase.method.material.eMpa,
+    "method.material.eMpa",
   );
-  match(params.solver.material.nu, studyCase.solver.material.nu, "solver.material.nu");
+  match(params.method.material.nu, studyCase.method.material.nu, "method.material.nu");
   match(
-    params.solver.material.basis,
-    studyCase.solver.material.basis,
-    "solver.material.basis",
+    params.method.material.basis,
+    studyCase.method.material.basis,
+    "method.material.basis",
   );
-  if (params.solver.supports.length !== studyCase.solver.supports.length) {
+  if (params.method.supports.length !== studyCase.method.supports.length) {
     mismatch(
-      "solver.supports.count",
-      params.solver.supports.length,
-      studyCase.solver.supports.length,
+      "method.supports.count",
+      params.method.supports.length,
+      studyCase.method.supports.length,
     );
   }
-  for (const [i, support] of params.solver.supports.entries()) {
-    const ref = studyCase.solver.supports[i]!;
-    match(support.id, ref.id, `solver.supports.${i}.id`);
-    match(support.kind, ref.kind, `solver.supports.${i}.kind`);
+  for (const [i, support] of params.method.supports.entries()) {
+    const ref = studyCase.method.supports[i]!;
+    match(support.id, ref.id, `method.supports.${i}.id`);
+    match(support.kind, ref.kind, `method.supports.${i}.kind`);
     match(
       support.selection.name,
       ref.selection.name,
-      `solver.supports.${i}.selection.name`,
+      `method.supports.${i}.selection.name`,
     );
     matchBox(
       support.selection.box,
       ref.selection.box,
-      `solver.supports.${i}.selection.box`,
+      `method.supports.${i}.selection.box`,
     );
   }
-  if (params.solver.loads.length !== studyCase.solver.loads.length) {
+  if (params.method.loads.length !== studyCase.method.loads.length) {
     mismatch(
-      "solver.loads.count",
-      params.solver.loads.length,
-      studyCase.solver.loads.length,
+      "method.loads.count",
+      params.method.loads.length,
+      studyCase.method.loads.length,
     );
   }
-  for (const [i, load] of params.solver.loads.entries()) {
-    const ref = studyCase.solver.loads[i]!;
-    match(load.id, ref.id, `solver.loads.${i}.id`);
-    match(load.kind, ref.kind, `solver.loads.${i}.kind`);
-    match(load.selection.name, ref.selection.name, `solver.loads.${i}.selection.name`);
-    matchBox(load.selection.box, ref.selection.box, `solver.loads.${i}.selection.box`);
-    match(load.force.unit, ref.force.unit, `solver.loads.${i}.force.unit`);
-    matchTriple(load.force.value, ref.force.value, `solver.loads.${i}.force.value`);
+  for (const [i, load] of params.method.loads.entries()) {
+    const ref = studyCase.method.loads[i]!;
+    match(load.id, ref.id, `method.loads.${i}.id`);
+    match(load.kind, ref.kind, `method.loads.${i}.kind`);
+    match(load.selection.name, ref.selection.name, `method.loads.${i}.selection.name`);
+    matchBox(load.selection.box, ref.selection.box, `method.loads.${i}.selection.box`);
+    match(load.force.unit, ref.force.unit, `method.loads.${i}.force.unit`);
+    matchTriple(load.force.value, ref.force.value, `method.loads.${i}.force.value`);
   }
   match(
     params.domain.approximationOrder,
@@ -629,20 +593,20 @@ function encodeSupport(
   index: number,
   support: SensitivitySupport,
 ): void {
-  p(`sensitivity.case.solver.supports.${index}.id`, `Support ${index} ID`, support.id);
+  p(`sensitivity.case.method.supports.${index}.id`, `Support ${index} ID`, support.id);
   p(
-    `sensitivity.case.solver.supports.${index}.kind`,
+    `sensitivity.case.method.supports.${index}.kind`,
     `Support ${index} kind`,
     support.kind,
   );
   p(
-    `sensitivity.case.solver.supports.${index}.selection.name`,
+    `sensitivity.case.method.supports.${index}.selection.name`,
     `Support ${index} selection`,
     support.selection.name,
   );
   encodeBox(
     p,
-    `sensitivity.case.solver.supports.${index}.selection`,
+    `sensitivity.case.method.supports.${index}.selection`,
     support.selection.box,
   );
 }
@@ -652,22 +616,22 @@ function encodeLoad(
   index: number,
   load: SensitivityLoad,
 ): void {
-  p(`sensitivity.case.solver.loads.${index}.id`, `Load ${index} ID`, load.id);
-  p(`sensitivity.case.solver.loads.${index}.kind`, `Load ${index} kind`, load.kind);
+  p(`sensitivity.case.method.loads.${index}.id`, `Load ${index} ID`, load.id);
+  p(`sensitivity.case.method.loads.${index}.kind`, `Load ${index} kind`, load.kind);
   p(
-    `sensitivity.case.solver.loads.${index}.selection.name`,
+    `sensitivity.case.method.loads.${index}.selection.name`,
     `Load ${index} selection`,
     load.selection.name,
   );
-  encodeBox(p, `sensitivity.case.solver.loads.${index}.selection`, load.selection.box);
+  encodeBox(p, `sensitivity.case.method.loads.${index}.selection`, load.selection.box);
   p(
-    `sensitivity.case.solver.loads.${index}.force.unit`,
+    `sensitivity.case.method.loads.${index}.force.unit`,
     `Load ${index} force unit`,
     load.force.unit,
   );
   for (const axis of [0, 1, 2] as const) {
     p(
-      `sensitivity.case.solver.loads.${index}.force.value.${axis}`,
+      `sensitivity.case.method.loads.${index}.force.value.${axis}`,
       `Load ${index} force ${axis} (N)`,
       load.force.value[axis],
     );
@@ -691,22 +655,22 @@ function parseSupport(
   finiteNum: (key: string) => number,
   index: number,
 ): SensitivitySupport {
-  const kind = str(`sensitivity.case.solver.supports.${index}.kind`);
+  const kind = str(`sensitivity.case.method.supports.${index}.kind`);
   if (kind !== "fixed") {
     invalid(
       "invalid_format",
-      `sensitivity.case.solver.supports.${index}.kind must be fixed.`,
+      `sensitivity.case.method.supports.${index}.kind must be fixed.`,
     );
   }
   return {
-    id: str(`sensitivity.case.solver.supports.${index}.id`),
+    id: str(`sensitivity.case.method.supports.${index}.id`),
     kind: "fixed",
     selection: {
-      name: str(`sensitivity.case.solver.supports.${index}.selection.name`),
+      name: str(`sensitivity.case.method.supports.${index}.selection.name`),
       box: parseBox(
         str,
         finiteNum,
-        `sensitivity.case.solver.supports.${index}.selection`,
+        `sensitivity.case.method.supports.${index}.selection`,
       ),
     },
   };
@@ -717,33 +681,33 @@ function parseLoad(
   finiteNum: (key: string) => number,
   index: number,
 ): SensitivityLoad {
-  const kind = str(`sensitivity.case.solver.loads.${index}.kind`);
+  const kind = str(`sensitivity.case.method.loads.${index}.kind`);
   if (kind !== "force") {
     invalid(
       "invalid_format",
-      `sensitivity.case.solver.loads.${index}.kind must be force.`,
+      `sensitivity.case.method.loads.${index}.kind must be force.`,
     );
   }
-  const forceUnit = str(`sensitivity.case.solver.loads.${index}.force.unit`);
+  const forceUnit = str(`sensitivity.case.method.loads.${index}.force.unit`);
   if (forceUnit !== "N") {
     invalid(
       "invalid_format",
-      `sensitivity.case.solver.loads.${index}.force.unit must be N.`,
+      `sensitivity.case.method.loads.${index}.force.unit must be N.`,
     );
   }
   return {
-    id: str(`sensitivity.case.solver.loads.${index}.id`),
+    id: str(`sensitivity.case.method.loads.${index}.id`),
     kind: "force",
     selection: {
-      name: str(`sensitivity.case.solver.loads.${index}.selection.name`),
-      box: parseBox(str, finiteNum, `sensitivity.case.solver.loads.${index}.selection`),
+      name: str(`sensitivity.case.method.loads.${index}.selection.name`),
+      box: parseBox(str, finiteNum, `sensitivity.case.method.loads.${index}.selection`),
     },
     force: {
       unit: "N",
       value: [
-        finiteNum(`sensitivity.case.solver.loads.${index}.force.value.0`),
-        finiteNum(`sensitivity.case.solver.loads.${index}.force.value.1`),
-        finiteNum(`sensitivity.case.solver.loads.${index}.force.value.2`),
+        finiteNum(`sensitivity.case.method.loads.${index}.force.value.0`),
+        finiteNum(`sensitivity.case.method.loads.${index}.force.value.1`),
+        finiteNum(`sensitivity.case.method.loads.${index}.force.value.2`),
       ],
     },
   };

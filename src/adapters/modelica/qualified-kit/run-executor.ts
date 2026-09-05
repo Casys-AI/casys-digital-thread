@@ -10,7 +10,14 @@
 import type { EngineeringProjectCommandOrigin } from "../../../application/ports/in/engineering-project-command-origin.ts";
 import type { RegisteredProjectRunExecutorCommand } from "../../../application/ports/in/project-run-executor.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
+import type { CapabilityRuntimeExecutionEligibility } from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import type { ModelicaIsolatedExecutionCaptureStore } from "../../../application/ports/out/modelica/isolated-execution-evidence-store.ts";
+import { settleCapabilityRuntimeSession } from "../../../application/control-plane/capability-runtime-execution-admission.ts";
+import {
+  type CapabilityRuntimeExecutionSession,
+  type CapabilityRuntimeExecutionSessionCoordinator,
+  CapabilityRuntimeSessionUnavailableError,
+} from "../../../application/control-plane/capability-runtime-execution-session.ts";
 import {
   type ExecuteIsolatedModelicaRun,
   type ExecuteIsolatedModelicaRunResult,
@@ -46,6 +53,10 @@ import {
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
+import type {
+  CapabilityRuntimeHostLifecycle,
+  ResolvedCapabilityRuntimeOperation,
+} from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
 import type {
   EngineeringAgentRun,
   EngineeringApproval,
@@ -110,6 +121,13 @@ export interface SimulateRunQualifiedModelicaKitRunExecutorDependencies {
   >;
   readonly captures: ModelicaIsolatedExecutionCaptureStore;
   readonly lease: EngineeringProjectRunLease;
+  /** Exact operational envelope for the registered qualified-kit run. */
+  readonly capabilityRuntime: CapabilityRuntimeExecutionEligibility;
+  /** JIT lifecycle; the exact microVM profile is server-owned. */
+  readonly capabilityRuntimeSession: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin"
+  >;
 }
 
 interface ReviewedAuthority {
@@ -225,26 +243,52 @@ export class SimulateRunQualifiedModelicaKitRunExecutor {
       false,
     );
     await assertThreadSnapshotLineageIntact(preClaimSnapshot, this.d.snapshots);
-    await this.#prepareExactReview(project, run, initialAuthority);
-
-    const firstClaim = run.status === "queued";
-    if (firstClaim) {
-      await this.d.commands.claimRun(origin, claimCommand(command));
-    } else {
-      requireClaimedShape(project, run, origin);
-      await this.#replayClaim(origin, command);
-    }
-
+    const preClaimPrepared = await this.#prepareExactReview(
+      project,
+      run,
+      initialAuthority,
+    );
+    const operationalCapability = await this.#requireOperationalCapability(
+      project,
+      run,
+    );
+    const microvm = exactQualifiedModelicaMicrosandboxLifecycle(
+      operationalCapability,
+      preClaimPrepared.admission.execution.profile,
+    );
+    const capabilitySession = await this.#beginCapabilitySession({
+      project,
+      run,
+      command,
+      origin,
+      initialAuthority,
+      prepared: preClaimPrepared,
+      operationalCapability,
+      microvm,
+    });
     try {
+      const firstClaim = run.status === "queued";
+      if (firstClaim) {
+        await this.d.commands.claimRun(origin, claimCommand(command));
+      } else {
+        requireClaimedShape(project, run, origin);
+        await this.#replayClaim(origin, command);
+      }
+
       project = await this.#requiredProject(command.projectId);
       run = requireRun(project, command.runId);
       requireClaimedShape(project, run, origin);
       if (run.status === "completed") {
-        return await this.#reopenAndAssertCompleted(
+        const completed = await this.#reopenAndAssertCompleted(
           origin,
           command,
           initialAuthority.decision.id,
         );
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "release" },
+        });
+        return completed;
       }
       if (run.status !== "running" && run.status !== "publishing") {
         throw unexpectedStatus(run, "running or publishing");
@@ -323,11 +367,36 @@ export class SimulateRunQualifiedModelicaKitRunExecutor {
         origin,
         command,
       );
+      await settleCapabilityRuntimeSession({
+        session: capabilitySession,
+        policy: { kind: "release" },
+      });
       return project;
     } catch (error) {
       if (error instanceof IsolatedQualifiedModelicaOutputValidationRejectedError) {
-        return await this.#failOutputValidationRejected(origin, command, error);
+        try {
+          return await this.#failOutputValidationRejected(origin, command, error);
+        } finally {
+          const currentRun = await this.#currentRun(
+            command.projectId,
+            command.runId,
+          );
+          await settleCapabilityRuntimeSession({
+            session: capabilitySession,
+            policy: !currentRun || currentRun.status === "queued"
+              ? { kind: "release" }
+              : { kind: "release-if-terminal", run: currentRun },
+          });
+        }
       }
+      const currentRun = await this.#currentRun(command.projectId, command.runId);
+      await settleCapabilityRuntimeSession({
+        session: capabilitySession,
+        policy: !currentRun || currentRun.status === "queued"
+          ? { kind: "release" }
+          : { kind: "release-if-terminal", run: currentRun },
+      });
+      if (!currentRun || currentRun.status === "queued") throw error;
       throw invalidTransition(
         "The qualified Modelica execution or documentary Thread publication has a durable or uncertain effect. " +
           "Retry this exact command; recovery will reopen the inner WAL and deterministic successor without blindly redispatching. " +
@@ -350,6 +419,113 @@ export class SimulateRunQualifiedModelicaKitRunExecutor {
       );
     }
     return project;
+  }
+
+  async #beginCapabilitySession(input: {
+    readonly project: EngineeringProjectSnapshot;
+    readonly run: EngineeringAgentRun;
+    readonly command: RegisteredProjectRunExecutorCommand;
+    readonly origin: EngineeringProjectCommandOrigin;
+    readonly initialAuthority: ReviewedAuthority;
+    readonly prepared: PreparedQualifiedModelicaRunReview;
+    readonly operationalCapability: ResolvedCapabilityRuntimeOperation;
+    readonly microvm: Extract<
+      CapabilityRuntimeHostLifecycle,
+      { readonly kind: "ephemeral-microsandbox" }
+    >;
+  }): Promise<CapabilityRuntimeExecutionSession> {
+    try {
+      return await this.d.capabilityRuntimeSession.begin({
+        project: input.project,
+        runId: input.run.id,
+        operationalCapability: input.operationalCapability,
+        microsandboxExecutionProfiles: [{
+          material: input.microvm.material,
+          executionProfileFingerprint:
+            input.prepared.admission.execution.profile.profileFingerprint,
+        }],
+        recheck: async () => {
+          const fresh = await this.#requiredProject(input.command.projectId);
+          const freshRun = requireRun(fresh, input.command.runId);
+          requireExecutionShape(fresh, freshRun);
+          if (
+            freshRun.status !== "queued" && freshRun.status !== "running" &&
+            freshRun.status !== "publishing"
+          ) {
+            throw unexpectedStatus(
+              freshRun,
+              "queued or this agent's running/publishing",
+            );
+          }
+          if (freshRun.status !== "queued") {
+            requireClaimedShape(fresh, freshRun, input.origin);
+          }
+          const freshAuthority = await requireReviewedAuthority(fresh, freshRun);
+          if (
+            freshAuthority.decision.id !== input.initialAuthority.decision.id ||
+            deterministicJson(freshAuthority.admission) !==
+              deterministicJson(input.initialAuthority.admission)
+          ) {
+            throw invalidTransition(
+              "The exact human-approved qualified Modelica decision changed before host activation.",
+            );
+          }
+          assertAdmissionScope(fresh, freshRun, freshAuthority.admission);
+          const freshPrepared = await this.#prepareExactReview(
+            fresh,
+            freshRun,
+            freshAuthority,
+          );
+          const operationalCapability = await this.#requireOperationalCapability(
+            fresh,
+            freshRun,
+          );
+          exactQualifiedModelicaMicrosandboxLifecycle(
+            operationalCapability,
+            freshPrepared.admission.execution.profile,
+          );
+          return operationalCapability;
+        },
+      });
+    } catch (error) {
+      if (error instanceof CapabilityRuntimeSessionUnavailableError) {
+        throw invalidTransition(error.message);
+      }
+      throw error;
+    }
+  }
+
+  async #requireOperationalCapability(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+  ): Promise<ResolvedCapabilityRuntimeOperation> {
+    requireExecutionShape(project, run);
+    const workItem = project.workItems.find((item) => item.id === run.workItemId);
+    if (!workItem?.operation) {
+      throw invalidTransition(
+        "The qualified Modelica run has no exact registered work-item operation.",
+      );
+    }
+    const operationalCapability = await this.d.capabilityRuntime.requireExecution({
+      project,
+      run,
+      workItem,
+      operation: workItem.operation,
+    });
+    if (!operationalCapability) {
+      throw invalidTransition(
+        "Qualified Modelica execution requires the sealed openmodelica-qualified-kit operational capability before a run can be claimed.",
+      );
+    }
+    return operationalCapability;
+  }
+
+  async #currentRun(projectId: string, runId: string) {
+    try {
+      return requireRun(await this.#requiredProject(projectId), runId);
+    } catch {
+      return undefined;
+    }
   }
 
   async #prepareExactReview(
@@ -1119,6 +1295,44 @@ function boundedCause(error: unknown, maximum = 300): string {
     ? `${error.name}: ${error.message}`
     : `non-error throw: ${String(error)}`;
   return message.length <= maximum ? message : `${message.slice(0, maximum)}…`;
+}
+
+/**
+ * The closed qualified kit owns one disposable worker. A different material
+ * must not borrow the qualified profile merely because it is also Modelica.
+ */
+function exactQualifiedModelicaMicrosandboxLifecycle(
+  operationalCapability: ResolvedCapabilityRuntimeOperation,
+  profile: ModelicaQualifiedKitRunAdmission["execution"]["profile"],
+): Extract<
+  CapabilityRuntimeHostLifecycle,
+  { readonly kind: "ephemeral-microsandbox" }
+> {
+  const microsandbox = operationalCapability.bindings.flatMap((binding) =>
+    binding.hostLifecycles.filter((lifecycle) =>
+      lifecycle.kind === "ephemeral-microsandbox"
+    )
+  );
+  if (microsandbox.length !== 1) {
+    throw invalidTransition(
+      "Qualified Modelica execution requires exactly one sealed Microsandbox material before host activation.",
+    );
+  }
+  const lifecycle = microsandbox[0]!;
+  if (
+    lifecycle.launchGroup !== null ||
+    lifecycle.material.unitId !== "casys.modelica-worker" ||
+    lifecycle.material.materialId !== "modelica-worker-image" ||
+    lifecycle.material.imageDigest !== profile.runtimeBackend.imageDigest.digest ||
+    !profile.runtimeBackend.imageReference.endsWith(
+      `@sha256:${lifecycle.material.imageDigest}`,
+    )
+  ) {
+    throw invalidTransition(
+      "Qualified Modelica execution requires the exact casys.modelica-worker/modelica-worker-image Microsandbox profile before host activation.",
+    );
+  }
+  return lifecycle;
 }
 
 function invalidTransition(message: string): EngineeringProjectCommandError {

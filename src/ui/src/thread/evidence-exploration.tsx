@@ -19,7 +19,6 @@ import {
   buildEvidenceMinimapView,
   buildExplorationModel,
   buildExplorationRelationRecords,
-  DISPLAY_KIND_COLOR_TOKEN,
   DISPLAY_KIND_LABELS,
   type DisplayKind,
   displayKindOf,
@@ -40,7 +39,6 @@ import type {
   ThreadGraphRef,
 } from "./types.ts";
 import type { ThreadGraphSelection } from "./graph.tsx";
-import { isUiOnlyPresentationEdge } from "../cad/cad-presentation-projection.ts";
 import {
   buildVerificationCaseLegend,
   type VerificationCaseFilter,
@@ -184,7 +182,7 @@ export function EvidenceExploration({
       if (!compact) {
         instance.on("clickEdge", ({ edge: edgeKey }) => {
           const attrs = explorationModel.graph.getEdgeAttributes(edgeKey);
-          if (!attrs || isUiOnlyPresentationEdge(attrs.edge)) return;
+          if (!attrs) return;
           onSelectionChangeRef.current?.({
             kind: "edge",
             id: attrs.edgeId,
@@ -344,7 +342,7 @@ export function EvidenceExploration({
   // Truthful legend counters: when the visible-depth or type filter hides nodes,
   // the TYPES, OUTILS and COMPOSANTES counts must reflect what is on screen,
   // not the computed max-depth neighbourhood.
-  const kindLegend = useMemo(() => {
+  const { systemLegend, kindLegend } = useMemo(() => {
     const depths = projection.isFiltered
       ? projection.localDepthByRefKey
       : undefined;
@@ -359,39 +357,30 @@ export function EvidenceExploration({
       }
       return true;
     };
-    if (!filtersActive) {
-      // Compute kindLegend from all visible nodes in the full projection.
-      const kindCounts = new Map<DisplayKind, number>();
-      explorationModel.graph.forEachNode((_key, attrs) => {
-        const dk = displayKindOf(attrs.node);
-        kindCounts.set(dk, (kindCounts.get(dk) ?? 0) + 1);
-      });
-      const kl = ([...kindCounts.entries()] as [DisplayKind, number][])
+    const systemCounts = new Map<string, number>();
+    const kindCounts = new Map<DisplayKind, number>();
+    explorationModel.graph.forEachNode((key, attrs) => {
+      if (filtersActive && !isVisible(key, attrs)) return;
+      const system = attrs.node.system;
+      systemCounts.set(system, (systemCounts.get(system) ?? 0) + 1);
+      const dk = displayKindOf(attrs.node);
+      kindCounts.set(dk, (kindCounts.get(dk) ?? 0) + 1);
+    });
+    return {
+      systemLegend: explorationModel.systemLegend
+        .map((item) => ({
+          ...item,
+          count: systemCounts.get(item.system) ?? 0,
+        }))
+        .filter((item) => item.count > 0),
+      kindLegend: ([...kindCounts.entries()] as [DisplayKind, number][])
         .filter(([, count]) => count > 0)
         .map(([kind, count]) => ({
           kind,
           label: DISPLAY_KIND_LABELS[kind],
           count,
-          color: explorationModel
-            .tokens[DISPLAY_KIND_COLOR_TOKEN[kind]],
-        }));
-      return kl;
-    }
-    const kindCounts = new Map<DisplayKind, number>();
-    explorationModel.graph.forEachNode((key, attrs) => {
-      if (!isVisible(key, attrs)) return;
-      const dk = displayKindOf(attrs.node);
-      kindCounts.set(dk, (kindCounts.get(dk) ?? 0) + 1);
-    });
-    const kl = ([...kindCounts.entries()] as [DisplayKind, number][])
-      .filter(([, count]) => count > 0)
-      .map(([kind, count]) => ({
-        kind,
-        label: DISPLAY_KIND_LABELS[kind],
-        count,
-        color: explorationModel.tokens[DISPLAY_KIND_COLOR_TOKEN[kind]],
-      }));
-    return kl;
+        })),
+    };
   }, [explorationModel, displayDepth, visibleKinds, projection]);
 
   const verificationCaseLegend = useMemo(
@@ -474,23 +463,24 @@ export function EvidenceExploration({
   return (
     <div
       className={cn(
-        "evidence-exploration relative flex min-h-[540px] overflow-hidden max-[720px]:flex-col",
+        "evidence-exploration relative flex min-h-[540px] overflow-hidden",
         CARD_SURFACE,
       )}
     >
       {!compact && (
         <aside
-          className="flex w-[208px] shrink-0 flex-col gap-2 overflow-y-auto border-r border-border bg-muted/30 px-2.5 py-3 text-[11.5px] max-[720px]:w-full max-[720px]:flex-none max-[720px]:flex-row max-[720px]:flex-wrap max-[720px]:border-r-0 max-[720px]:border-b"
+          className="evidence-exploration-legend flex w-[208px] shrink-0 flex-col gap-2 overflow-y-auto border-r border-border bg-muted/30 px-2.5 py-3 text-[11.5px]"
           aria-label="Evidence legend"
         >
-          {kindLegend.length > 0 && (
+          {systemLegend.length > 0 && (
             <div className="flex min-w-[10rem] flex-col">
-              <p className={legendTitleClass}>Types</p>
-              {kindLegend.map((item) => (
+              <p className={legendTitleClass}>Recorded systems</p>
+              {systemLegend.map((item) => (
                 <span
-                  key={item.kind}
+                  key={item.system}
                   className={legendRowClass}
                   aria-label={`${item.label} — ${item.count} visible items`}
+                  title={`Recorded system: ${item.system}`}
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     <span
@@ -500,6 +490,21 @@ export function EvidenceExploration({
                     />
                     <span className="truncate">{item.label}</span>
                   </span>
+                  <span className={legendCountClass}>{item.count}</span>
+                </span>
+              ))}
+            </div>
+          )}
+          {kindLegend.length > 0 && (
+            <div className="flex min-w-[10rem] flex-col">
+              <p className={legendTitleClass}>Types · semantic filter</p>
+              {kindLegend.map((item) => (
+                <span
+                  key={item.kind}
+                  className={legendRowClass}
+                  aria-label={`${item.label} — ${item.count} visible items`}
+                >
+                  <span className="truncate">{item.label}</span>
                   <span className={legendCountClass}>{item.count}</span>
                 </span>
               ))}
@@ -658,16 +663,8 @@ export function EvidenceExploration({
           ref={containerRef}
           aria-label={compact
             ? "Evidence preview graph — select a node with the pointer; inspect relations in Evidence"
-            : "Evidence exploration graph — sigma renderer"}
-          role={compact ? undefined : "application"}
-          tabIndex={compact ? undefined : 0}
-          onKeyDown={(event) => {
-            // Sigma owns its canvas; provide a predictable keyboard escape
-            // route back to the surrounding inspection controls.
-            if (!compact && event.key === "Escape") {
-              onSelectionChange?.(undefined);
-            }
-          }}
+            : "Evidence map. Use the adjacent accessible evidence table to inspect records and relations with the keyboard."}
+          role={compact ? undefined : "img"}
         />
         {minimap && (
           <EvidenceMinimap
@@ -708,7 +705,7 @@ function EvidenceMinimap({
   return (
     <button
       type="button"
-      className="evidence-minimap absolute top-2.5 right-2.5 z-[2] w-[132px] cursor-pointer overflow-hidden rounded-md border border-border bg-card/90 p-0 text-left shadow-sm hover:border-brand/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+      className="evidence-minimap absolute top-12 right-2.5 z-[2] w-[132px] cursor-pointer overflow-hidden rounded-md border border-border bg-card/90 p-0 text-left shadow-sm hover:border-brand/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
       aria-label={`Full map · ${view.nodeCount} items · ${view.edgeCount} relations. Select to leave the local view.`}
       onClick={onOpenFullMap}
     >

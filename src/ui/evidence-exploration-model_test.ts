@@ -7,7 +7,7 @@
  * 2. buildExplorationModel — source strictement à gauche de ce qui en dérive
  *    sur la topologie réelle (input_to : SysML à gauche, observation à droite)
  * 3. buildExplorationModel — déterminisme : deux appels identiques, mêmes positions
- * 4. buildExplorationModel — les arêtes moignons sont marquées edgeType:"stub"
+ * 4. buildExplorationModel — every recorded edge remains a regular exact edge
  * 5. buildExplorationModel — la légende reflète les composantes nommées du modèle
  * 6. buildExplorationModel — les couleurs viennent du paramètre CssTokens, jamais
  *    codées en dur
@@ -24,11 +24,9 @@ import {
   type CssTokens,
   DISPLAY_KIND_LABELS,
   displayKindOf,
-  evidenceSystemFamily,
   FALLBACK_TOKENS,
   nodeSizeFor,
   normalizeEdgeDirection,
-  type SigmaEdgeAttrs,
   type SigmaNodeAttrs,
 } from "./src/thread/evidence-exploration-model.ts";
 import { buildEvidenceGraphModel } from "./src/thread/evidence-graph-model.ts";
@@ -37,7 +35,6 @@ import {
   buildVersionedGraphSelectionIndex,
   buildVersionedProvenanceProjection,
   edgeForVersionedGraphSelection,
-  stubEdgeOccurrenceKey,
 } from "./src/thread/versioned-provenance-model.ts";
 import type {
   ThreadEvidenceFamilyGraph,
@@ -349,76 +346,6 @@ Deno.test(
 );
 
 // ---------------------------------------------------------------------------
-// 4. Arêtes moignons → edgeType: "stub"
-// ---------------------------------------------------------------------------
-
-Deno.test(
-  "les arêtes moignons du modèle sont marquées edgeType:stub dans le graphe sigma",
-  () => {
-    // A ← B (instrument) → C : B est un outil analyze.* qui devient un moignon.
-    const nodeA = node("A", "artifact", "calculix", "artifact");
-    const nodeB = node("B", "artifact", "analyze", "artifact");
-    const nodeC = node("C", "requirement", "syson", "requirement");
-
-    const rawGraph = {
-      nodes: [nodeA, nodeB, nodeC],
-      edges: [
-        edge("e1", nodeA.ref, nodeB.ref, "input_to"),
-        edge("e2", nodeB.ref, nodeC.ref, "input_to"),
-      ],
-    };
-
-    const evidenceModel = buildEvidenceGraphModel(rawGraph, EMPTY_FAMILY, {
-      isAnalyzeInstrumentNode: (n) => n.system === "analyze",
-    });
-
-    const projection = buildEvidenceCanvasProjection(
-      evidenceModel,
-      0,
-      undefined,
-      new Map(),
-    );
-
-    // La projection contient au moins un moignon (id commence par "stub:")
-    const hasStub = projection.edges.some((e) => e.id.startsWith("stub:"));
-    assertEquals(
-      hasStub,
-      true,
-      "La projection doit contenir au moins un moignon",
-    );
-
-    const explorationModel = buildExplorationModel(
-      evidenceModel,
-      projection,
-      FALLBACK_TOKENS,
-    );
-
-    // Dans le graphe sigma, les arêtes moignons doivent être marquées "stub".
-    let stubEdgeFound = false;
-    const sigmaStubOccurrences: Array<{ key: string; edge: ThreadGraphEdge }> = [];
-    explorationModel.graph.forEachEdge(
-      (_key: string, attrs: SigmaEdgeAttrs) => {
-        if (attrs.edgeType === "stub") {
-          stubEdgeFound = true;
-          sigmaStubOccurrences.push({
-            key: attrs.occurrenceKey,
-            edge: attrs.edge,
-          });
-        }
-      },
-    );
-    assertEquals(
-      stubEdgeFound,
-      true,
-      "Le graphe sigma doit contenir une arête de type stub",
-    );
-    for (const occurrence of sigmaStubOccurrences) {
-      assertEquals(occurrence.key, stubEdgeOccurrenceKey(occurrence.edge));
-    }
-  },
-);
-
-// ---------------------------------------------------------------------------
 // 5. Légende = composantes nommées du modèle
 // ---------------------------------------------------------------------------
 
@@ -478,7 +405,7 @@ Deno.test(
 // ---------------------------------------------------------------------------
 
 Deno.test(
-  "nodeColorFor utilise les tokens passés en paramètre, pas des constantes",
+  "node colors use the literal recorded system and passed generic palette",
   () => {
     const nodeSys = node("SYS-1", "requirement", "syson", "requirement");
     const rawGraph = { nodes: [nodeSys], edges: [] };
@@ -490,11 +417,9 @@ Deno.test(
       new Map(),
     );
 
-    // Tokens avec une couleur violette distincte : une exigence est peinte
-    // par son TYPE, et ce type prend le jeton violet.
     const customTokens: CssTokens = {
       ...FALLBACK_TOKENS,
-      violet: "#123456",
+      cyan: "#123456",
     };
 
     const model = buildExplorationModel(
@@ -508,16 +433,26 @@ Deno.test(
       if (attrs.node.system === "syson") sysonColor = attrs.color;
     });
 
+    assertEquals(model.systemLegend[0]?.system, "syson");
+    assertEquals(model.systemLegend[0]?.label, "syson");
+    assertEquals(model.systemLegend[0]?.color, sysonColor);
     assertEquals(
-      sysonColor,
-      "#123456",
-      "La couleur d'une exigence doit utiliser tokens.violet",
+      new Set([
+        customTokens.cyan,
+        customTokens.blue,
+        customTokens.violet,
+        customTokens.amber,
+        customTokens.green,
+        customTokens.red,
+        customTokens.muted,
+      ]).has(sysonColor ?? ""),
+      true,
     );
   },
 );
 
 Deno.test(
-  "a sandbox CAD artifact is painted by type and keeps its declared family",
+  "a recorded system remains literal in the generic system key",
   () => {
     const sandboxCad = node(
       "CAD-SANDBOX",
@@ -527,95 +462,21 @@ Deno.test(
     );
     const customTokens: CssTokens = {
       ...FALLBACK_TOKENS,
-      cyan: "#0e7490",
+      amber: "#0e7490",
       muted: "#777777",
     };
     const model = buildMinimalModel([sandboxCad], [], customTokens);
 
-    // La couleur vient du type d'enregistrement, jamais du système : un
-    // provider nouveau ne peut donc plus tomber dans le gris par défaut.
-    assertEquals(
-      model.graph.getNodeAttribute("artifact:CAD-SANDBOX", "color"),
-      "#0e7490",
-    );
-    assertNotEquals(
-      model.graph.getNodeAttribute("artifact:CAD-SANDBOX", "color"),
-      customTokens.muted,
+    const color = model.graph.getNodeAttribute(
+      "artifact:CAD-SANDBOX",
+      "color",
     );
     assertEquals(model.systemLegend, [{
       system: "build123d-sandbox",
-      systems: ["build123d-sandbox"],
-      label: "build123d · CAD",
+      label: "build123d-sandbox",
+      color,
       count: 1,
     }]);
-  },
-);
-
-// ---------------------------------------------------------------------------
-// 7. Les endpoints des moignons reçoivent des positions cohérentes
-// ---------------------------------------------------------------------------
-
-Deno.test(
-  "les endpoints des arêtes moignons ont des positions dans le graphe sigma",
-  () => {
-    // A (calculix) ← B (analyze instrument) → C (syson) :
-    // B est replié en moignon ; A et C doivent chacun avoir une position dagre.
-    const nodeA = node("A", "artifact", "calculix", "artifact");
-    const nodeB = node("B", "artifact", "analyze", "artifact");
-    const nodeC = node("C", "requirement", "syson", "requirement");
-
-    const evidenceModel = buildEvidenceGraphModel(
-      {
-        nodes: [nodeA, nodeB, nodeC],
-        edges: [
-          edge("e1", nodeA.ref, nodeB.ref, "input_to"),
-          edge("e2", nodeB.ref, nodeC.ref, "input_to"),
-        ],
-      },
-      EMPTY_FAMILY,
-      { isAnalyzeInstrumentNode: (n) => n.system === "analyze" },
-    );
-
-    const projection = buildEvidenceCanvasProjection(
-      evidenceModel,
-      0,
-      undefined,
-      new Map(),
-    );
-
-    const model = buildExplorationModel(
-      evidenceModel,
-      projection,
-      FALLBACK_TOKENS,
-    );
-
-    // Vérifie que les stubs ont des endpoints présents dans le graphe sigma.
-    projection.edges.filter((e) => e.id.startsWith("stub:")).forEach((stub) => {
-      const fromKey = `${stub.from.kind}:${stub.from.id}`;
-      const toKey = `${stub.to.kind}:${stub.to.id}`;
-      assertEquals(
-        model.graph.hasNode(fromKey) || model.graph.hasNode(toKey),
-        true,
-        `Au moins un endpoint du moignon ${stub.id} doit être présent dans le graphe`,
-      );
-      // Si les deux endpoints sont présents, leurs positions doivent exister.
-      if (model.graph.hasNode(fromKey)) {
-        const x = model.graph.getNodeAttribute(fromKey, "x");
-        assertEquals(
-          typeof x === "number",
-          true,
-          `Le nœud source ${fromKey} du moignon doit avoir une position x`,
-        );
-      }
-      if (model.graph.hasNode(toKey)) {
-        const x = model.graph.getNodeAttribute(toKey, "x");
-        assertEquals(
-          typeof x === "number",
-          true,
-          `Le nœud cible ${toKey} du moignon doit avoir une position x`,
-        );
-      }
-    });
   },
 );
 
@@ -626,9 +487,8 @@ Deno.test(
 Deno.test(
   "Carte et Exploration reçoivent exactement les mêmes node refs en mode full-map",
   () => {
-    // Fixture: essential node (syson requirement) + supporting node (mesh artifact).
-    // The essential filter (applied once upstream by buildEvidenceCanvasProjection)
-    // must remove the supporting node from both renderers' inputs.
+    // Fixture deliberately mixes literal recorded kinds. The generic
+    // projection must not hide a node because it recognises a mesh payload.
     const nodeReq: ThreadGraphNode = {
       id: "REQ-1",
       ref: ref("REQ-1", "requirement"),
@@ -636,7 +496,7 @@ Deno.test(
       label: "Requirement 1",
       system: "syson",
       freshness: "fresh",
-      summary: "essential",
+      summary: "recorded result",
     };
     const nodeMesh: ThreadGraphNode = {
       id: "mesh-xyz",
@@ -646,7 +506,7 @@ Deno.test(
       label: "Mesh XYZ",
       system: "build123d",
       freshness: "fresh",
-      summary: "supporting mesh",
+      summary: "recorded mesh",
     };
     const nodeObs: ThreadGraphNode = {
       id: "OBS-1",
@@ -659,7 +519,7 @@ Deno.test(
     };
 
     const evidenceModel = buildEvidenceGraphModel(
-      // REQ-1 ← OBS-1 (via evidences edge); mesh-xyz is disconnected (supporting).
+      // REQ-1 ← OBS-1 (via evidences edge); mesh-xyz is disconnected.
       {
         nodes: [nodeReq, nodeMesh, nodeObs],
         edges: [
@@ -701,19 +561,20 @@ Deno.test(
       "Carte and Exploration must have identical visible node refs",
     );
 
-    // mesh-xyz (supporting) must be absent from both.
+    // The exact mesh record stays visible in both; an MCP App may present its
+    // domain payload separately, but the graph does not classify it away.
     assertEquals(
       carteRefs.has("artifact:mesh-xyz"),
-      false,
-      "Supporting mesh node must not be visible in Carte",
+      true,
+      "Recorded mesh node must remain visible in Carte",
     );
     assertEquals(
       explorationRefs.has("artifact:mesh-xyz"),
-      false,
-      "Supporting mesh node must not be visible in Exploration",
+      true,
+      "Recorded mesh node must remain visible in Exploration",
     );
 
-    // REQ-1 and OBS-1 (essential) must be present in both.
+    // REQ-1 and OBS-1 must also be present in both.
     assertEquals(carteRefs.has("requirement:REQ-1"), true);
     assertEquals(explorationRefs.has("requirement:REQ-1"), true);
     assertEquals(carteRefs.has("observation:OBS-1"), true);
@@ -722,11 +583,11 @@ Deno.test(
 );
 
 // ---------------------------------------------------------------------------
-// Tool color key (systemLegend)
+// Literal recorded-system key (systemLegend)
 // ---------------------------------------------------------------------------
 
 Deno.test(
-  "an artifact is painted by its type, whichever tool produced it",
+  "literal systems receive stable generic colours",
   () => {
     const model = buildMinimalModel(
       [
@@ -740,15 +601,13 @@ Deno.test(
     );
     const modelica = model.graph.getNodeAttributes("artifact:m1");
     const syson = model.graph.getNodeAttributes("artifact:s1");
-    // Deux outils différents, un seul type : une seule couleur. C'est ce qui
-    // rend la légende des types exacte au lieu d'afficher une dominante.
-    assertEquals(modelica.color, syson.color);
+    assertNotEquals(modelica.color, syson.color);
     assertNotEquals(modelica.color, FALLBACK_TOKENS.muted);
   },
 );
 
 Deno.test(
-  "the tool key lists one entry per visible family and claims no color",
+  "the system key lists exact literal ids and visible counts",
   () => {
     const model = buildMinimalModel(
       [
@@ -770,22 +629,18 @@ Deno.test(
     const bySystem = new Map(
       model.systemLegend.map((item) => [item.system, item]),
     );
-    assertEquals(bySystem.size, 3, "One legend entry per visible family.");
+    assertEquals(bySystem.size, 3, "One legend entry per exact system id.");
     assertEquals(bySystem.get("modelica")?.count, 1);
-    // Le canvas ne peint plus par outil : une couleur ici serait un mapping
-    // que rien ne rend.
+    assertEquals(bySystem.get("modelica")?.label, "modelica");
     for (const item of model.systemLegend) {
-      assertEquals(
-        Object.hasOwn(item, "color"),
-        false,
-        "a producer family must not carry a canvas color",
-      );
+      assertEquals(typeof item.color, "string");
+      assertNotEquals(item.color, "");
     }
   },
 );
 
 Deno.test(
-  "CalculiX recording layers share one visual family without rewriting provenance",
+  "similar system ids remain separate without browser aliases",
   () => {
     const legacy = node("c1", "artifact", "calculix", "artifact");
     const provider = node("c2", "artifact", "mcp-calculix", "artifact");
@@ -794,16 +649,17 @@ Deno.test(
       [edge("e1", legacy.ref, provider.ref)],
     );
 
-    assertEquals(evidenceSystemFamily("calculix"), "calculix");
-    assertEquals(evidenceSystemFamily("mcp-calculix"), "calculix");
-    assertEquals(model.systemLegend, [{
-      system: "calculix",
-      systems: ["calculix", "mcp-calculix"],
-      label: "CalculiX · FEA",
-      count: 2,
-    }]);
-    // Regrouper deux couches d'enregistrement sous une famille ne doit pas
-    // toucher le système déclaré de chaque nœud : c'est la provenance.
+    assertEquals(
+      model.systemLegend.map(({ system, label, count }) => ({
+        system,
+        label,
+        count,
+      })),
+      [
+        { system: "calculix", label: "calculix", count: 1 },
+        { system: "mcp-calculix", label: "mcp-calculix", count: 1 },
+      ],
+    );
     assertEquals(
       model.graph.getNodeAttribute("artifact:c1", "node").system,
       "calculix",
@@ -815,119 +671,12 @@ Deno.test(
   },
 );
 
-Deno.test(
-  "geometry capture label counts explicit SysML part usages from recorded topology",
-  () => {
-    const architecture: ThreadGraphNode = {
-      ...node("architecture", "artifact", "syson", "artifact"),
-      artifactKind: "sysml-model",
-    };
-    const geometry: ThreadGraphNode = {
-      ...node("geometry", "artifact", "digital-thread", "artifact"),
-      artifactKind: "cad-model",
-      label: "Geometry: base, arm",
-    };
-    const definitionA = node(
-      "definition-a",
-      "part-definition",
-      "syson",
-      "part-definition",
-    );
-    const definitionB = node(
-      "definition-b",
-      "part-definition",
-      "syson",
-      "part-definition",
-    );
-    const usageA = node("usage-a", "part-usage", "syson", "part-usage");
-    const usageB = node("usage-b", "part-usage", "syson", "part-usage");
-    const stepA: ThreadGraphNode = {
-      ...node("step-a", "artifact", "build123d-sandbox", "artifact"),
-      artifactKind: "step",
-    };
-    const stepB: ThreadGraphNode = {
-      ...node("step-b", "artifact", "build123d-sandbox", "artifact"),
-      artifactKind: "step",
-    };
-    const model = buildMinimalModel(
-      [
-        architecture,
-        geometry,
-        definitionA,
-        definitionB,
-        usageA,
-        usageB,
-        stepA,
-        stepB,
-      ],
-      [
-        edge(
-          "architecture-geometry",
-          architecture.ref,
-          geometry.ref,
-          "derived_from",
-        ),
-        edge("geometry-step-a", geometry.ref, stepA.ref, "traces_to"),
-        edge("geometry-step-b", geometry.ref, stepB.ref, "traces_to"),
-        edge("definition-step-a", definitionA.ref, stepA.ref, "represented_by"),
-        edge("definition-step-b", definitionB.ref, stepB.ref, "represented_by"),
-        edge("usage-definition-a", usageA.ref, definitionA.ref, "typed_by"),
-        edge("usage-definition-b", usageB.ref, definitionB.ref, "typed_by"),
-      ],
-    );
-
-    assertEquals(
-      model.graph.getNodeAttribute("artifact:geometry", "label"),
-      "Geometry bundle · 2 modeled parts",
-    );
-    assertEquals(
-      model.graph.getNodeAttribute("artifact:geometry", "node").label,
-      "Geometry: base, arm",
-      "The canonical graph node label must remain untouched for inspection.",
-    );
-  },
-);
-
-Deno.test(
-  "geometry-like CAD topology without a SysML architecture keeps its canonical label",
-  () => {
-    const artifact: ThreadGraphNode = {
-      ...node("cad-model", "artifact", "digital-thread", "artifact"),
-      artifactKind: "cad-model",
-      label: "Reviewed CAD document",
-    };
-    const definition = node(
-      "definition",
-      "part-definition",
-      "syson",
-      "part-definition",
-    );
-    const usage = node("usage", "part-usage", "syson", "part-usage");
-    const step: ThreadGraphNode = {
-      ...node("step", "artifact", "build123d-sandbox", "artifact"),
-      artifactKind: "step",
-    };
-    const model = buildMinimalModel(
-      [artifact, definition, usage, step],
-      [
-        edge("artifact-step", artifact.ref, step.ref, "traces_to"),
-        edge("definition-step", definition.ref, step.ref, "represented_by"),
-        edge("usage-definition", usage.ref, definition.ref, "typed_by"),
-      ],
-    );
-    assertEquals(
-      model.graph.getNodeAttribute("artifact:cad-model", "label"),
-      "Reviewed CAD document",
-    );
-  },
-);
-
 // ---------------------------------------------------------------------------
 // displayKindOf — classification per node type
 // ---------------------------------------------------------------------------
 
 Deno.test(
-  "displayKindOf: an essential artifact (non-supporting artifactKind) returns 'artifact'",
+  "displayKindOf returns the literal artifact kind regardless of artifactKind",
   () => {
     const n: ThreadGraphNode = {
       ...node("a1", "artifact", "build123d", "artifact"),
@@ -938,7 +687,7 @@ Deno.test(
 );
 
 Deno.test(
-  "displayKindOf: an artifact whose artifactKind is in SUPPORTING_ARTIFACT_KINDS returns 'supporting-artifact'",
+  "displayKindOf never reclassifies an artifact from its artifactKind",
   () => {
     for (
       const kind of [
@@ -956,18 +705,18 @@ Deno.test(
       };
       assertEquals(
         displayKindOf(n),
-        "supporting-artifact",
-        `artifactKind '${kind}' should produce 'supporting-artifact'`,
+        "artifact",
+        `artifactKind '${kind}' must remain the literal artifact entity kind`,
       );
     }
   },
 );
 
 Deno.test(
-  "displayKindOf: an artifact with undefined artifactKind returns 'artifact' (not supporting)",
+  "displayKindOf returns artifact when artifactKind is absent",
   () => {
     const n: ThreadGraphNode = node("a2", "artifact", "syson", "artifact");
-    // No artifactKind set — essential by default.
+    // No artifactKind is required for the literal entity kind.
     assertEquals(displayKindOf(n), "artifact");
   },
 );
@@ -983,12 +732,10 @@ Deno.test(
       ["change", "change"],
       ["consumption", "consumption"],
       ["action", "action"],
-      ["analysis-node", "analysis"],
-      ["part-definition", "sysml-element"],
-      ["part-usage", "sysml-element"],
-      ["attribute-usage", "sysml-element"],
-      ["cad-lever", "cad-lever"],
-      ["cad-unnamed-literal", "cad-unnamed-literal"],
+      ["analysis-node", "analysis-node"],
+      ["part-definition", "part-definition"],
+      ["part-usage", "part-usage"],
+      ["attribute-usage", "attribute-usage"],
     ];
     for (const [entityKind, expected] of cases) {
       const n = node(
@@ -1006,30 +753,21 @@ Deno.test(
   },
 );
 
-Deno.test("nodeSizeFor keeps attribute and CAD literal holes smaller than parts", () => {
+Deno.test("nodeSizeFor keeps attribute records smaller than parts", () => {
   const part = node("def", "part-definition", "syson", "part-definition");
   const attribute = node("attr", "attribute-usage", "syson", "attribute-usage");
-  const lever = node("lever", "cad-lever", "build123d", "cad-lever");
-  const unnamed = node(
-    "unnamed",
-    "cad-unnamed-literal",
-    "build123d",
-    "cad-unnamed-literal",
-  );
   assertEquals(nodeSizeFor(part), 7);
   assertEquals(nodeSizeFor(attribute), 4);
-  assertEquals(nodeSizeFor(lever), 4);
-  assertEquals(nodeSizeFor(unnamed), 4);
 });
 
 Deno.test(
-  "displayKindOf: study-base evaluationFamily is a distinct type chip",
+  "displayKindOf does not create a special view from evaluationFamily",
   () => {
     const n: ThreadGraphNode = {
       ...node("eval-join", "evaluation", "syson", "evaluation"),
       evaluationFamily: "study-base",
     };
-    assertEquals(displayKindOf(n), "study-base-evaluation");
+    assertEquals(displayKindOf(n), "evaluation");
   },
 );
 
@@ -1038,17 +776,17 @@ Deno.test(
   () => {
     const expectedKinds = [
       "artifact",
-      "supporting-artifact",
+      "consumption",
       "observation",
       "requirement",
       "evaluation",
-      "study-base-evaluation",
       "violation",
       "change",
-      "consumption",
       "action",
-      "analysis",
-      "sysml-element",
+      "analysis-node",
+      "part-definition",
+      "part-usage",
+      "attribute-usage",
     ];
     for (const kind of expectedKinds) {
       const label = DISPLAY_KIND_LABELS[kind as keyof typeof DISPLAY_KIND_LABELS];
@@ -1526,9 +1264,8 @@ Deno.test("exploration labels preserve canonical evidence records", () => {
     nodes,
     edges,
     displayedCount: nodes.length,
-    foldedInstrumentCount: 0,
     isFiltered: false,
-    supportingNodeCount: 0,
+    hiddenByKindCount: 0,
   };
   const model = buildExplorationModel(
     evidenceModel,

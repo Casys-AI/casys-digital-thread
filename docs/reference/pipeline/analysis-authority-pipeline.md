@@ -7,6 +7,10 @@ authority transition explicit and reviewable. The agent talks directly to the Ca
 Digital Thread MCP server. Provider MCP servers remain private backend dependencies;
 they are never a second, bypassable tool surface.
 
+The prescribed-kinematics L3 path has a bounded provider-specific WAL and recovery
+contract: [observation recovery](prescribed-kinematics-observation-recovery.md). It
+does not make the private host qualification WAL into project or Thread evidence.
+
 | Open                                                                        | Owns                                                                     |
 | --------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | [Compilation and isolation](compilation-and-isolation.md)                   | Admission compiler, CAD/Modelica/CalculiX isolated verticals (extracted) |

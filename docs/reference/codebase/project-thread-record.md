@@ -237,6 +237,11 @@ provider call or ThreadSnapshot
 Single fail-closed reconciliation grammar plus persisted human-ceremony verification for
 both outcomes
 
+#### [`src/application/ports/out/record/uncertain-writer-lifecycle-qualifier.ts`](../../../src/application/ports/out/record/uncertain-writer-lifecycle-qualifier.ts)
+
+Provider-neutral extra eligibility for historical generic uncertain writes. Closed by
+default. The Chrono adapter lives under `src/adapters/mechanics/chrono/`
+
 #### [`src/domain/record/uncertain-writer-basis-release.ts`](../../../src/domain/record/uncertain-writer-basis-release.ts)
 
 Exact 11-field accepted-write basis-release contract; validates canonical reciprocal

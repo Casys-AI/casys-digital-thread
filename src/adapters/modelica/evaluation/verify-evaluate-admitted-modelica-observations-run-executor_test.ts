@@ -1,4 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
+import { CapabilityRuntimeSessionUnavailableError } from "../../../application/control-plane/capability-runtime-execution-session.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
 import type {
   McpToolCall,
@@ -47,6 +48,10 @@ import { requirementEvaluationIdentity } from "../../../domain/thread/requiremen
 import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import { validThermalMethodSheetPlaceholder } from "../../../testing/modelica-thermal-method-sheet-fixtures.ts";
+import {
+  recordingCapabilityRuntimeSession,
+  testResolvedCapabilityRuntimeOperation,
+} from "../../../testing/capability-runtime-execution-session-test-support.ts";
 import {
   canonicalAdmittedObservationEvaluationCaptureText,
   validateAdmittedObservationEvaluationCapture,
@@ -202,6 +207,43 @@ Deno.test(
         EngineeringProjectCommandError,
         "authenticated agent",
       );
+    } finally {
+      await fixture.dispose();
+    }
+  },
+);
+
+Deno.test(
+  "evaluate-admitted-modelica-observations acquires JIT before claim and releases it after L4 completion",
+  async () => {
+    const fixture = await executeFixture();
+    try {
+      const project = await fixture.executor.execute(AGENT, fixture.command);
+      assertEquals(project.agentRuns[0]?.status, "completed");
+      assertEquals(fixture.capabilitySession.events, ["begin"]);
+      assertEquals(fixture.capabilitySession.releases, 1);
+      assertEquals(fixture.syson.calls.length, 1);
+    } finally {
+      await fixture.dispose();
+    }
+  },
+);
+
+Deno.test(
+  "evaluate-admitted-modelica-observations leaves a queued run unchanged when JIT activation is unavailable",
+  async () => {
+    const fixture = await executeFixture({ sessionUnavailable: true });
+    try {
+      await assertRejects(
+        () => fixture.executor.execute(AGENT, fixture.command),
+        EngineeringProjectCommandError,
+        "exact SysON capability session is unavailable",
+      );
+      assertEquals(fixture.project.agentRuns[0]?.status, "queued");
+      assertEquals(fixture.project.workItems[0]?.status, "in-progress");
+      assertEquals(fixture.project.commandReceipts.length, 0);
+      assertEquals(fixture.capabilitySession.events, ["begin"]);
+      assertEquals(fixture.syson.calls.length, 0);
     } finally {
       await fixture.dispose();
     }
@@ -630,6 +672,7 @@ async function executeFixture(
     readonly sysonContent?: Record<string, unknown>;
     readonly extraSharedElementRequirements?: boolean;
     readonly omitMatchingRequirement?: boolean;
+    readonly sessionUnavailable?: boolean;
   } = {},
 ) {
   const directory = await Deno.makeTempDir({
@@ -987,6 +1030,24 @@ async function executeFixture(
     createInitial: () => Promise.reject(new Error("unused")),
     commit: () => Promise.reject(new Error("unused")),
   };
+  const capabilitySession = recordingCapabilityRuntimeSession(
+    options.sessionUnavailable
+      ? () =>
+        Promise.reject(
+          new CapabilityRuntimeSessionUnavailableError(
+            "The exact SysON capability session is unavailable.",
+          ),
+        )
+      : undefined,
+  );
+  const capabilityRuntime = {
+    requireExecution: () =>
+      Promise.resolve(testResolvedCapabilityRuntimeOperation({
+        projectId: PROJECT_ID,
+        operation: VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION,
+        capabilityId: "model.evaluate-requirement",
+      })),
+  };
   return {
     executor: new VerifyEvaluateAdmittedModelicaObservationsRunExecutor({
       projects,
@@ -1000,6 +1061,8 @@ async function executeFixture(
       attempts,
       syson,
       lease: { withLease: (_projectId, _scope, operation) => operation() },
+      capabilityRuntime,
+      capabilityRuntimeSession: capabilitySession,
     }),
     command: {
       commandId: COMMAND_ID,
@@ -1013,6 +1076,7 @@ async function executeFixture(
     captures,
     attempts,
     syson,
+    capabilitySession,
     sheetSealDigest: sheetSeal.fingerprint.digest,
     dispose: () => Deno.remove(directory, { recursive: true }),
   };

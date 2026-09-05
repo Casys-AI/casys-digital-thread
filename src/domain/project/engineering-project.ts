@@ -411,12 +411,15 @@ export interface EngineeringAgentRunFailure {
  * whether the lock may be lifted for a subsequent run from the same basis.
  *
  * WHY THIS EXISTS — an executor may crash after the provider has acknowledged a
- * write but before the ThreadSnapshot is published.  The failure code enters
- * TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES (reconciliation domain contract), making the basis
- * permanently unavailable from the server side.  A human operator who inspects
- * the provider and determines the side-effect is known can seal this annotation
- * to unblock the basis.  The trust model is identical to every MRTR mechanism:
- * the attestation is documented, not technically verified.
+ * write but before the ThreadSnapshot is published.  Dedicated failure codes
+ * enter TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES, making the basis unavailable
+ * from the server side.  A server-computed lifecycle recross may also qualify a
+ * historical generic failure; callers cannot supply that eligibility.  A human
+ * operator who inspects the provider and determines the side-effect is known
+ * can seal this annotation to unblock the basis.  Once approved, the annotation
+ * is lifecycle truth even if the original failure code was generic.  The trust
+ * model is identical to every MRTR mechanism: the attestation is documented,
+ * not technically verified.
  */
 export interface EngineeringAgentRunUncertainWriterReconciliation {
   readonly kind: "uncertain-writer-resolved";

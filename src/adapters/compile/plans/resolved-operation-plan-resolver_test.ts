@@ -13,6 +13,7 @@ import {
 } from "../../../domain/sensitivity/study/sensitivity-catalog-from-proof.ts";
 import {
   deterministicJson,
+  fingerprintsEqual,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
@@ -26,11 +27,32 @@ import type {
 } from "../../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import type { CanonicalAssetReader } from "../../../application/ports/out/canonical-asset-reader.ts";
+import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
+import { FileCaptureStore } from "../../shared/cas/file-capture-store.ts";
 import {
   type RecordedPlanArtifactReader,
   ResolvedOperationPlanResolver,
 } from "./resolved-operation-plan-resolver.ts";
+import {
+  RecordedAnalysisCasReader,
+  type RecordedAnalysisCasStoreBinding,
+} from "./recorded-analysis-cas-reader.ts";
 import { FixedCalculixIsolatedExecutionProfileCatalog } from "../../fea/isolated-v3/fixed-calculix-isolated-execution-profile.ts";
+import {
+  MODELICA_ADMITTED_EXECUTION_PROFILE,
+  MODELICA_ADMITTED_OUTPUT_MANIFEST,
+} from "../../../domain/modelica/admitted/run-proposal.ts";
+import {
+  deriveAdmittedModelicaExecutionRunId,
+} from "../../../domain/modelica/admitted/execution-evidence.ts";
+import {
+  SPICE_ADMITTED_EXECUTION_PROFILE,
+  SPICE_ADMITTED_OUTPUT_MANIFEST,
+} from "../../../domain/electrical/spice/admitted/run-proposal.ts";
+import {
+  deriveAdmittedSpiceExecutionRunId,
+} from "../../../domain/electrical/spice/admitted/execution-evidence.ts";
+import { fingerprintSourceAnalysisBundle } from "../../../domain/compile/source/source-analysis.ts";
 
 const AT = "2026-08-12T00:00:00.000Z";
 
@@ -71,6 +93,129 @@ Deno.test("ResolvedOperationPlanResolver resolves the public CalculiX STEP route
     decisionId: "seal-decision-fea",
   });
   assertEquals(plan.authorization.mrtr.decisionId, "decision-fea");
+});
+
+Deno.test("ResolvedOperationPlanResolver seals admitted Modelica and SPICE from one exact reopened admission", async () => {
+  for (const language of ["modelica", "spice"] as const) {
+    const fixture = await admittedExecutionFixture(language);
+    assertEquals(
+      fingerprintsEqual(
+        fixture.reopened.admission.sources[0]!.profileFingerprint,
+        fixture.reopened.admission.compilationProfileRequests[0]!
+          .profileFingerprint,
+      ),
+      false,
+      "the source-capture profile is not the compilation profile",
+    );
+    const plan = await new ResolvedOperationPlanResolver(fixture.dependencies)
+      .resolve(fixture.input);
+    validateResolvedOperationPlanV2(plan);
+    assertEquals(
+      plan.action.kind,
+      language === "modelica"
+        ? "admitted-modelica-isolated-execution"
+        : "admitted-spice-isolated-execution",
+    );
+    assertEquals(plan.sources.map((source) => source.bindingName), [
+      "compilationAdmission",
+    ]);
+    const expectedExecutionRunId = language === "modelica"
+      ? await deriveAdmittedModelicaExecutionRunId(
+        fixture.input.project.project.id,
+        fixture.input.run.id,
+      )
+      : await deriveAdmittedSpiceExecutionRunId(
+        fixture.input.project.project.id,
+        fixture.input.run.id,
+      );
+    if (
+      plan.action.kind !== "admitted-modelica-isolated-execution" &&
+      plan.action.kind !== "admitted-spice-isolated-execution"
+    ) {
+      throw new Error("Expected an admitted isolated execution action.");
+    }
+    assertEquals(plan.action.executionRunId, expectedExecutionRunId);
+    assertEquals(
+      "executionRunId" in plan.recovery && plan.recovery.executionRunId,
+      expectedExecutionRunId,
+    );
+    assertEquals(Object.hasOwn(plan.action, "requestId"), false);
+    assertEquals(Object.hasOwn(plan.recovery, "requestId"), false);
+    assertEquals(Object.hasOwn(plan.action, "provider"), false);
+    assertEquals(Object.hasOwn(plan.action, "tool"), false);
+    assertEquals(Object.hasOwn(plan.action, "args"), false);
+  }
+});
+
+Deno.test("ResolvedOperationPlanResolver reopens sealed admission bytes from the closed CAS lane for Modelica and SPICE", async () => {
+  for (const language of ["modelica", "spice"] as const) {
+    const fixture = await admittedExecutionFixture(language);
+    const root = await Deno.makeTempDir({ prefix: `casys-rop-${language}-admission-` });
+    try {
+      const admissionCaptures = new FileByteStore({
+        kind: "technical-compilation-admission-capture",
+        directory: `${root}/technical-compilation/seals`,
+        uriNamespace: "technical-compilation-admission-capture",
+        label: "Sealed technical compilation admission",
+      });
+      await admissionCaptures.save(
+        fixture.artifact.fingerprint,
+        fixture.artifactBytes,
+      );
+      const artifacts = new RecordedAnalysisCasReader({
+        stores: recordedAnalysisBindings(root, admissionCaptures),
+      });
+      const plan = await new ResolvedOperationPlanResolver({
+        ...fixture.dependencies,
+        artifacts,
+      }).resolve(fixture.input);
+      assertEquals(plan.sources[0]?.artifact.casUri, fixture.artifact.uri);
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
+  }
+});
+
+Deno.test("ResolvedOperationPlanResolver refuses admitted mismatch, multi-source, compilation request/projection/catalog drift, and capture tampering", async () => {
+  for (const language of ["modelica", "spice"] as const) {
+    for (
+      const mutation of [
+        "multi-source",
+        "source-mismatch",
+        "request-profile-mismatch",
+        "projection-profile-mismatch",
+        "profile-mismatch",
+        "artifact-tamper",
+      ] as const
+    ) {
+      const fixture = await admittedExecutionFixture(language, mutation);
+      let reads = 0;
+      fixture.dependencies.admissions = {
+        read: () => {
+          reads += 1;
+          return Promise.resolve(fixture.reopened as never);
+        },
+      };
+      await assertRejects(
+        () =>
+          new ResolvedOperationPlanResolver(fixture.dependencies).resolve(
+            fixture.input,
+          ),
+        mutation === "artifact-tamper" ? Error : TypeError,
+        mutation === "artifact-tamper"
+          ? "raw CAS bytes do not match"
+          : mutation === "multi-source"
+          ? "exactly one admitted source"
+          : "does not match",
+        `${language}/${mutation}`,
+      );
+      assertEquals(
+        reads,
+        mutation === "artifact-tamper" ? 0 : 1,
+        `${language}/${mutation}`,
+      );
+    }
+  }
 });
 
 Deno.test("ResolvedOperationPlanResolver seals only @3 with the exact local CalculiX profile", async () => {
@@ -943,6 +1088,221 @@ async function calculixFixture(
   };
 }
 
+async function admittedExecutionFixture(
+  language: "modelica" | "spice",
+  mutation?:
+    | "multi-source"
+    | "source-mismatch"
+    | "request-profile-mismatch"
+    | "projection-profile-mismatch"
+    | "profile-mismatch"
+    | "artifact-tamper",
+) {
+  const modelica = language === "modelica";
+  const target = modelica
+    ? "modelica-source-qualification" as const
+    : "spice-circuit-source" as const;
+  const sourceRole = modelica ? "modelica-model" as const : "spice-circuit" as const;
+  const sourceLanguage = modelica ? "modelica" as const : "spice" as const;
+  const executionProfile = modelica
+    ? MODELICA_ADMITTED_EXECUTION_PROFILE
+    : SPICE_ADMITTED_EXECUTION_PROFILE;
+  const outputManifest = modelica
+    ? MODELICA_ADMITTED_OUTPUT_MANIFEST
+    : SPICE_ADMITTED_OUTPUT_MANIFEST;
+  const projectId = modelica ? "project-modelica" : "project-spice";
+  const sourceId = modelica ? "source.modelica" : "source.spice";
+  const sourceText = modelica
+    ? "model Ramp\n  Real temperature;\nend Ramp;\n"
+    : "R1 in 0 100\nV1 in 0 5\n";
+  const sourceFingerprint = await rawFingerprint(new TextEncoder().encode(sourceText));
+  const analysis = {
+    schemaVersion: "source-analysis/1.0" as const,
+    source: {
+      id: sourceId,
+      role: sourceRole,
+      language: sourceLanguage,
+      fingerprint: sourceFingerprint,
+    },
+    analyzer: { id: `${language}-closed-subset`, version: "1.0.0" },
+    policy: {
+      profile: `${language}-test-policy`,
+      status: "passed" as const,
+      findings: [],
+    },
+    symbols: [],
+    dependencies: [],
+    unresolvedConstructs: [],
+  };
+  const analysisFingerprint = await fingerprintSourceAnalysisBundle(analysis);
+  const compilationProfile = {
+    id: executionProfile.id,
+    version: executionProfile.version,
+    target,
+    sourceRole,
+    language: sourceLanguage,
+    analyzer: analysis.analyzer,
+    analysisPolicyProfile: analysis.policy.profile,
+    requiredBindingSymbolKinds: [],
+  };
+  const compilationProfileFingerprint = await sha256Fingerprint(compilationProfile);
+  const sourceCaptureProfileFingerprint = testFingerprint("a");
+  const admissionSource = {
+    id: sourceId,
+    role: sourceRole,
+    language: sourceLanguage,
+    profileId: compilationProfile.id,
+    profileVersion: compilationProfile.version,
+    profileFingerprint: sourceCaptureProfileFingerprint,
+    analyzer: analysis.analyzer,
+    sourceFingerprint,
+    captureFingerprint: testFingerprint("c"),
+    analysisFingerprint,
+  };
+  const request = {
+    profileId: compilationProfile.id,
+    profileVersion: compilationProfile.version,
+    target,
+    sourceIds: [sourceId],
+    profileFingerprint: compilationProfileFingerprint,
+  };
+  const documentSource = {
+    sourceText,
+    analysis,
+    analysisFingerprint,
+    effectiveUnit: { kind: "single-source" as const, sourceId },
+  };
+  const document = {
+    schemaVersion: "technical-compilation/2.0" as const,
+    status: "ready-for-review" as const,
+    inputManifest: {
+      sources: [documentSource],
+      bindings: [],
+      profileRequests: [request],
+    },
+    projections: [{
+      target,
+      profile: compilationProfile,
+      profileFingerprint: compilationProfileFingerprint,
+      status: "ready-for-review" as const,
+      diagnostics: [],
+      sources: [documentSource],
+    }],
+  };
+  const admission = {
+    draft: { projectId },
+    sources: [admissionSource],
+    compilationProfileRequests: [request],
+  };
+  const profile = {
+    compilationTarget: target,
+    executionProfile,
+    compilationProfile,
+    compilationProfileFingerprint,
+    outputManifest,
+    maximumSourceBytes: 8_192,
+    minimumDestructionAssurance: "proven" as const,
+    profileFingerprint: testFingerprint("d"),
+  };
+  if (mutation === "multi-source") {
+    admission.sources.push({ ...admissionSource, id: `${sourceId}.second` });
+  }
+  if (mutation === "source-mismatch") {
+    admission.sources[0]!.sourceFingerprint = testFingerprint("e");
+  }
+  if (mutation === "request-profile-mismatch") {
+    admission.compilationProfileRequests[0]!.profileFingerprint = testFingerprint("e");
+  }
+  if (mutation === "projection-profile-mismatch") {
+    document.projections[0]!.profileFingerprint = testFingerprint("e");
+  }
+  if (mutation === "profile-mismatch") {
+    profile.compilationProfile = {
+      ...compilationProfile,
+      version: "9.9.9",
+    } as never;
+  }
+
+  const artifactBytes = new TextEncoder().encode(`${language}-admission-capture`);
+  const artifactFingerprint = await rawFingerprint(artifactBytes);
+  const artifact = {
+    ...threadArtifact(
+      `technical-compilation-admission-${artifactFingerprint.digest}`,
+      "document",
+      artifactFingerprint,
+      `casys://technical-compilation-admission-capture/sha256/${artifactFingerprint.digest}`,
+      "application/json",
+      [],
+      {
+        serverId: "digital-thread",
+        tool: "compile.seal-admission@3",
+        runId: `seal-${language}`,
+      },
+    ),
+    version: artifactFingerprint.digest,
+  };
+  const basis = successor(
+    baseSnapshot(`basis-${language}`, 1, `subject-${language}`),
+    [artifact],
+    `seal-${language}`,
+  );
+  const input = await planInput({
+    basis,
+    projectId,
+    workItemId: `simulate-${language}`,
+    decisionId: `decision-${language}`,
+    operationId: modelica
+      ? "simulate.run-admitted-modelica"
+      : "simulate.run-admitted-spice",
+    operationVersion: "1",
+    bindings: [binding("compilationAdmission", basis, artifact.id)],
+  });
+  const reopened = {
+    trustedRunId: artifact.producer.runId,
+    admission,
+    document,
+  };
+  const bytes = new Map<string, Uint8Array>([[
+    artifact.uri!,
+    mutation === "artifact-tamper" ? new Uint8Array([0]) : artifactBytes,
+  ]]);
+  const dependencies = {
+    snapshots: exactSnapshotReader(new Map([[basis.id, basis]])),
+    artifacts: artifactReader(bytes),
+    stepAssets: { read: () => Promise.resolve(new Uint8Array()) },
+    admissions: {
+      read: (requestValue: {
+        projectId: string;
+        basis: { snapshotId: string; revision: number; subjectId: string };
+        artifactId: string;
+        artifactFingerprint: ContentFingerprint;
+      }) =>
+        Promise.resolve(
+          requestValue.projectId === projectId &&
+            requestValue.basis.snapshotId === basis.id &&
+            requestValue.basis.revision === basis.revision &&
+            requestValue.basis.subjectId === basis.subject.id &&
+            requestValue.artifactId === artifact.id &&
+            fingerprintsEqual(requestValue.artifactFingerprint, artifact.fingerprint)
+            ? reopened as never
+            : undefined,
+        ),
+    },
+    ...(modelica
+      ? {
+        admittedModelica: {
+          profiles: { initial: () => Promise.resolve(profile as never) },
+        },
+      }
+      : {
+        admittedSpice: {
+          profiles: { initial: () => Promise.resolve(profile as never) },
+        },
+      }),
+  };
+  return { input, dependencies, artifact, artifactBytes, reopened };
+}
+
 function baseSnapshot(id: string, revision: number, subjectId: string): ThreadSnapshot {
   const modelFp = { algorithm: "sha256" as const, digest: "a".repeat(64) };
   return validateThreadSnapshot({
@@ -1151,12 +1511,76 @@ async function planInput(options: {
       basis: runBasis,
       evidenceRefs: [],
     } as unknown as RegisteredRunPlanSealInput["run"],
+    operationalCapability: operationalCapabilityFor(
+      options.projectId,
+      options.operationId,
+      options.operationVersion ?? "2",
+    ),
     queueBasisProject: {
       snapshotId: project.id,
       revision: project.revision,
       fingerprint: await sha256Fingerprint(project),
     },
   };
+}
+
+function operationalCapabilityFor(
+  projectId: string,
+  operationId: string,
+  operationVersion: string,
+): NonNullable<RegisteredRunPlanSealInput["operationalCapability"]> {
+  return {
+    schemaVersion: "resolved-capability-runtime-operation/2.0",
+    projectId,
+    operation: { id: operationId, version: operationVersion },
+    authorizationFingerprint: testFingerprint("a"),
+    demandFingerprint: testFingerprint("b"),
+    registryFingerprint: testFingerprint("c"),
+    bindings: [{
+      capability: {
+        id: "mechanics.solve-static-structural",
+        version: "1",
+        use: "execution",
+        minimumQualification: "qualified",
+      },
+      binding: { id: "calculix-static-structural", version: "1" },
+      effectiveQualification: "qualified",
+      adapter: { id: "casys.calculix-worker", version: "1", source: "test" },
+      profile: {
+        id: "calculix-static",
+        version: "1",
+        fingerprint: testFingerprint("d"),
+      },
+      materials: [{
+        unitId: "casys.calculix-worker",
+        materialId: "calculix-worker",
+        imageDigest: "e".repeat(64),
+      }],
+      runtimeModes: [{
+        material: {
+          unitId: "casys.calculix-worker",
+          materialId: "calculix-worker",
+          imageDigest: "e".repeat(64),
+        },
+        targetPlatform: "linux/arm64",
+        mode: "native",
+        qualificationAttestationFingerprint: null,
+      }],
+      hostLifecycles: [{
+        material: {
+          unitId: "casys.calculix-worker",
+          materialId: "calculix-worker",
+          imageDigest: "e".repeat(64),
+        },
+        kind: "ephemeral-microsandbox",
+        launchGroup: null,
+      }],
+    }],
+  };
+}
+
+function testFingerprint(character: string): ContentFingerprint {
+  return { algorithm: "sha256", digest: character.repeat(64) };
 }
 
 function binding(name: string, basis: ThreadSnapshot, id: string) {
@@ -1297,6 +1721,49 @@ async function refreshQueueBasisProjectFingerprint(
       fingerprint: ContentFingerprint;
     }
   ).fingerprint = await sha256Fingerprint(input.project);
+}
+
+function recordedAnalysisBindings(
+  root: string,
+  admissions: FileByteStore<"technical-compilation-admission-capture">,
+): RecordedAnalysisCasStoreBinding[] {
+  return [
+    {
+      namespace: "fea-proof-case-capture",
+      storage: "text",
+      store: new FileCaptureStore({
+        kind: "fea-proof-case",
+        directory: `${root}/fea-proof-cases`,
+        uriNamespace: "fea-proof-case-capture",
+        label: "FEA proof case",
+      }),
+    },
+    {
+      namespace: "sensitivity-catalog-offer-capture",
+      storage: "text",
+      store: new FileCaptureStore({
+        kind: "sensitivity-catalog-offer",
+        directory: `${root}/sensitivity-catalog-offers`,
+        uriNamespace: "sensitivity-catalog-offer-capture",
+        label: "Sensitivity catalog offer",
+      }),
+    },
+    {
+      namespace: "requirements-capture",
+      storage: "text",
+      store: new FileCaptureStore({
+        kind: "requirements-capture",
+        directory: `${root}/requirements`,
+        uriNamespace: "requirements-capture",
+        label: "Requirements",
+      }),
+    },
+    {
+      namespace: "technical-compilation-admission-capture",
+      storage: "bytes",
+      store: admissions,
+    },
+  ];
 }
 
 function exactSnapshotReader(snapshots: Map<string, ThreadSnapshot>) {

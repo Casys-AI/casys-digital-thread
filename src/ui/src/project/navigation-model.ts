@@ -14,20 +14,8 @@ export type ProjectWorkspaceView =
   | "verification"
   | "operations";
 
-/**
- * Product facets live under the Product space (validated mockup 5a).
- * Sourcing is a reserved to-Buy lane: the hash is real, the record may be GAP.
- */
-export type ProductWorkspaceFacet = "structure" | "requirements" | "sourcing";
-
 export interface ProjectWorkspaceViewDescriptor {
   readonly id: ProjectWorkspaceView;
-  readonly label: string;
-  readonly description: string;
-}
-
-export interface ProductWorkspaceFacetDescriptor {
-  readonly id: ProductWorkspaceFacet;
   readonly label: string;
   readonly description: string;
 }
@@ -35,51 +23,32 @@ export interface ProductWorkspaceFacetDescriptor {
 export const PROJECT_VIEWS: readonly ProjectWorkspaceViewDescriptor[] = [
   {
     id: "overview",
-    label: "Overview",
-    description: "Mission and record",
+    label: "Project",
+    description: "Objective, status and next attention",
   },
   {
     id: "work",
-    label: "Work",
-    description: "What the agent changes",
+    label: "Activity",
+    description: "Recorded work, reviews and lineage",
   },
   {
     id: "product",
     label: "Product",
-    description: "The system and its parts",
+    description: "Exact registered App handoffs",
   },
   {
     id: "verification",
-    label: "Verification",
-    description: "Why a result can be trusted",
+    label: "Evidence",
+    description: "Cases, results and exact provenance",
   },
   {
     id: "operations",
-    label: "Operations",
-    description: "Runs, plans and tools",
-  },
-] as const;
-
-export const PRODUCT_FACETS: readonly ProductWorkspaceFacetDescriptor[] = [
-  {
-    id: "structure",
-    label: "Structure",
-    description: "Sealed geometry and the SysML model that names it",
-  },
-  {
-    id: "requirements",
-    label: "Requirements",
-    description: "What the product must hold, and the last recorded verdict",
-  },
-  {
-    id: "sourcing",
-    label: "Sourcing · ERP",
-    description: "To Buy coverage — reserved until sourcing starts",
+    label: "Systems & runs",
+    description: "Execution, integrations and record diagnostics",
   },
 ] as const;
 
 export const DEFAULT_PROJECT_VIEW: ProjectWorkspaceView = "overview";
-export const DEFAULT_PRODUCT_FACET: ProductWorkspaceFacet = "structure";
 
 /**
  * Keep an objective's supporting sentence only when it adds information.
@@ -106,7 +75,6 @@ export type ProjectDeepLinkTarget =
 export interface ProjectWorkspaceLocation {
   readonly view: ProjectWorkspaceView;
   readonly target?: ProjectDeepLinkTarget;
-  readonly productFacet?: ProductWorkspaceFacet;
 }
 
 const DEEP_LINK_VIEW: Readonly<
@@ -125,15 +93,6 @@ export function projectViewLabel(view: ProjectWorkspaceView): string {
 
 export function projectViewHash(view: ProjectWorkspaceView): string {
   return `#${view}`;
-}
-
-export function productFacetLabel(facet: ProductWorkspaceFacet): string {
-  return PRODUCT_FACETS.find((candidate) => candidate.id === facet)?.label ??
-    facet;
-}
-
-export function productFacetHash(facet: ProductWorkspaceFacet): string {
-  return `#product/${facet}`;
 }
 
 /**
@@ -158,16 +117,6 @@ export function parseProjectLocationHash(
     (item) => `${DEEP_LINK_VIEW[item]}/${item}` === candidate,
   );
   if (target) return { view: DEEP_LINK_VIEW[target], target };
-  if (candidate === "product" || candidate.startsWith("product/")) {
-    const facetId = candidate === "product"
-      ? DEFAULT_PRODUCT_FACET
-      : candidate.slice("product/".length);
-    const facet = PRODUCT_FACETS.find((item) => item.id === facetId);
-    return {
-      view: "product",
-      productFacet: facet?.id ?? DEFAULT_PRODUCT_FACET,
-    };
-  }
   return PROJECT_VIEWS.some((view) => view.id === candidate)
     ? { view: candidate as ProjectWorkspaceView }
     : { view: DEFAULT_PROJECT_VIEW };

@@ -3,6 +3,7 @@ import {
   closedRecord,
   deepFreeze,
   exactRecord,
+  exactVersionToken,
   finite,
   literalValue,
   nonEmptyArray,
@@ -190,6 +191,28 @@ Deno.test("case-validation safeVersion rejects unsafe or overlong versions", () 
       "safe ASCII version",
     );
   }
+});
+
+Deno.test("case-validation exactVersionToken rejects mutable aliases case-insensitively", () => {
+  for (
+    const alias of [
+      "latest",
+      "LATEST",
+      "current",
+      "Current",
+      "stable",
+      "STABLE",
+      "default",
+      "Default",
+    ]
+  ) {
+    assertThrows(
+      () => exactVersionToken(alias, "$version"),
+      TypeError,
+      "mutable version alias",
+    );
+  }
+  assertEquals(exactVersionToken("1.0.0+occt", "$version"), "1.0.0+occt");
 });
 
 // ---------------------------------------------------------------------------

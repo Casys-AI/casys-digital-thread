@@ -133,6 +133,18 @@ function temporaryPath(directory: string): string {
   return `${withoutTrailingSlash(directory)}/.${crypto.randomUUID()}.tmp`;
 }
 
+/**
+ * Recognizes only the private same-directory temporary basename created by
+ * this module. Readers may ignore one while a concurrent durable publication
+ * is in flight, but must continue to reject every other unexpected entry.
+ */
+export function isDurableAttemptTemporaryFileName(name: string): boolean {
+  return /^\.[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.tmp$/
+    .test(
+      name,
+    );
+}
+
 function withoutTrailingSlash(path: string): string {
   return path.replace(/\/$/, "");
 }

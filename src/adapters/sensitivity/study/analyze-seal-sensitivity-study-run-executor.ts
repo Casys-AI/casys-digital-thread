@@ -1,7 +1,7 @@
 /**
  * Provider-free executor for `analyze.seal-sensitivity-study@1`.
  *
- * Seals a reviewed sensitivity-study-case/2.0 into the Thread. A known catalog
+ * Seals a reviewed provider-neutral sensitivity-study-case/3.0 into the Thread. A known catalog
  * id still opens the reviewed JSON. Otherwise the unique signed catalog offer
  * on the exact run-basis snapshot is reopened and recompiled. The signed MRTR
  * binds cadSource. No CAD or CalculiX call is made.
@@ -34,14 +34,14 @@ import {
 import { locateModuleLevelNumericBinding } from "../../../domain/sensitivity/study/sensitivity-source-substitution.ts";
 import { SENSITIVITY_CAD_SOURCE_ADMISSION_TOOL } from "../../../domain/sensitivity/study/sensitivity-study-seal-bindings.ts";
 import {
-  assembleSensitivityStudyCaseV2,
+  assembleSensitivityStudyCaseV3,
   type SensitivityStudyCaseTemplate,
   validateSensitivityStudyCaseTemplate,
 } from "../../../domain/sensitivity/study/sensitivity-study-template.ts";
 import {
   parseSensitivityCadSourceUri,
-  type SensitivityStudyCaseV2,
-} from "../../../domain/sensitivity/study/sensitivity-study-v2.ts";
+  type SensitivityStudyCaseV3,
+} from "../../../domain/sensitivity/study/sensitivity-study-v3.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
@@ -228,7 +228,7 @@ export class AnalyzeSealSensitivityStudyRunExecutor {
     },
     approvedDecision: EngineeringDecision,
     decisionParams: SensitivityStudyDecisionParameters,
-    studyCase: SensitivityStudyCaseV2,
+    studyCase: SensitivityStudyCaseV3,
     caseDigest: string,
     authority: SensitivityStudySealAuthorityKind,
   ): Promise<EngineeringProjectSnapshot> {
@@ -447,7 +447,7 @@ export class AnalyzeSealSensitivityStudyRunExecutor {
       readonly snapshot: ThreadSnapshot;
     },
   ): Promise<{
-    readonly studyCase: SensitivityStudyCaseV2;
+    readonly studyCase: SensitivityStudyCaseV3;
     readonly caseDigest: string;
     readonly authority: SensitivityStudySealAuthorityKind;
   }> {
@@ -537,10 +537,10 @@ export class AnalyzeSealSensitivityStudyRunExecutor {
     template: SensitivityStudyCaseTemplate,
     decisionParams: SensitivityStudyDecisionParameters,
   ): Promise<{
-    readonly studyCase: SensitivityStudyCaseV2;
+    readonly studyCase: SensitivityStudyCaseV3;
     readonly caseDigest: string;
   }> {
-    const studyCase = assembleSensitivityStudyCaseV2(
+    const studyCase = assembleSensitivityStudyCaseV3(
       template,
       decisionParams.cadSource,
     );
@@ -590,7 +590,7 @@ export class AnalyzeSealSensitivityStudyRunExecutor {
 
 function findAdmissionArtifact(
   snapshot: ThreadSnapshot,
-  studyCase: SensitivityStudyCaseV2,
+  studyCase: SensitivityStudyCaseV3,
   projectId: string,
 ): ThreadArtifact {
   const parsed = parseSensitivityCadSourceUri(studyCase.cadSource.artifactUri);
@@ -623,7 +623,7 @@ function findAdmissionArtifact(
 
 function assertAdmittedParameterMatchesCase(
   reopened: ReopenedTechnicalCompilationAdmission,
-  studyCase: SensitivityStudyCaseV2,
+  studyCase: SensitivityStudyCaseV3,
 ): void {
   const sources = reopened.document.inputManifest.sources;
   if (sources.length !== 1) {

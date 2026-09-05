@@ -5,6 +5,24 @@ import {
   FileFeaSensitivityAttemptStore,
 } from "./file-fea-sensitivity-attempt-store.ts";
 
+const RUNTIME = {
+  operationalCapabilityFingerprint: {
+    algorithm: "sha256" as const,
+    digest: "0".repeat(64),
+  },
+  binding: { id: "calculix-static-sensitivity", version: "1.0.0" },
+  material: {
+    unitId: "casys.mcp-calculix",
+    materialId: "mcp-calculix-image",
+    imageDigest: "1".repeat(64),
+  },
+  launchGroup: {
+    id: "casys-mcp-calculix",
+    version: "0.8.2",
+    fingerprint: { algorithm: "sha256" as const, digest: "2".repeat(64) },
+  },
+};
+
 Deno.test("a dispatched CAD slot cannot be dispatched again", async () => {
   const directory = await Deno.makeTempDir({ prefix: "fea-sensitivity-wal-" });
   try {
@@ -13,6 +31,7 @@ Deno.test("a dispatched CAD slot cannot be dispatched again", async () => {
       projectId: "p",
       runId: "r",
       planDigest: "d".repeat(64),
+      runtime: RUNTIME,
     });
     await store.markCadDispatched({
       projectId: "p",
@@ -40,7 +59,7 @@ Deno.test("a dispatched CAD slot cannot be dispatched again", async () => {
   }
 });
 
-Deno.test("a dispatched solve without solver-recorded cannot be dispatched again", async () => {
+Deno.test("a prepared or dispatched solve is never reset or redispatched", async () => {
   const directory = await Deno.makeTempDir({ prefix: "fea-sensitivity-wal-" });
   try {
     const store = new FileFeaSensitivityAttemptStore(directory);
@@ -48,14 +67,35 @@ Deno.test("a dispatched solve without solver-recorded cannot be dispatched again
       projectId: "p",
       runId: "r",
       planDigest: "d".repeat(64),
+      runtime: RUNTIME,
+    });
+    await store.markSolvePrepared({
+      projectId: "p",
+      runId: "r",
+      phase: "base",
+      preparedAt: "2026-08-14T00:00:00.000Z",
+      stepSha256: "a".repeat(64),
+      stepBytes: 10,
+      requestId: "request-base",
     });
     await store.markSolveDispatched({
       projectId: "p",
       runId: "r",
       phase: "base",
       dispatchedAt: "2026-08-14T00:00:00.000Z",
-      stepSha256: "a".repeat(64),
+      providerRunId: "r-11111111-1111-1111-1111-111111111111",
+      requestSha256: "b".repeat(64),
     });
+    const preserved = await store.markSolvePrepared({
+      projectId: "p",
+      runId: "r",
+      phase: "base",
+      preparedAt: "2026-08-14T00:00:00.000Z",
+      stepSha256: "a".repeat(64),
+      stepBytes: 10,
+      requestId: "request-base",
+    });
+    assertEquals(preserved.solves.base.status, "dispatched");
     await assertRejects(
       () =>
         store.markSolveDispatched({
@@ -63,9 +103,10 @@ Deno.test("a dispatched solve without solver-recorded cannot be dispatched again
           runId: "r",
           phase: "base",
           dispatchedAt: "2026-08-14T00:00:01.000Z",
-          stepSha256: "a".repeat(64),
+          providerRunId: "r-11111111-1111-1111-1111-111111111111",
+          requestSha256: "b".repeat(64),
         }),
-      FeaSensitivityOutcomeUnknownError,
+      FeaSensitivityIllegalTransitionError,
     );
   } finally {
     await Deno.remove(directory, { recursive: true });
@@ -80,6 +121,7 @@ Deno.test("WAL parse rejects a published CAD slot with an extra key", async () =
       projectId: "p",
       runId: "r",
       planDigest: "d".repeat(64),
+      runtime: RUNTIME,
     });
     const path = `${directory}/p__r.json`;
     const tampered = JSON.parse(await Deno.readTextFile(path));
@@ -111,6 +153,7 @@ Deno.test("sensitivity CAD WAL persists output-validation rejection and refuses 
       projectId: "p",
       runId: "r",
       planDigest: "d".repeat(64),
+      runtime: RUNTIME,
     });
     await store.markCadDispatched({
       projectId: "p",

@@ -12,11 +12,7 @@ import { FileCockpitFocusStore } from "../../src/adapters/project/file-cockpit-f
 import type { CockpitFocusStore } from "../../src/application/ports/out/project/cockpit-focus-store.ts";
 import {
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
-  ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_DESCRIPTOR,
-  ASSEMBLY_INTEGRITY_EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
-  ASSEMBLY_INTEGRITY_OBSERVATION_CAPTURE_DESCRIPTOR,
   DFM_CASE_CAPTURE_DESCRIPTOR,
-  EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
   FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   GEOMETRY_CAPTURE_DESCRIPTOR,
@@ -33,7 +29,6 @@ import {
   requireSysmlSourceAnalysis,
   type SysmlSourceAnalysisReader,
 } from "../../src/adapters/architecture/renderer/sysml-source-analysis-capture.ts";
-import { GEOMETRY_DRAFT_ASSETS_DIR } from "../../src/adapters/cad/canonical/geometry-draft-capture.ts";
 import { FileEngineeringProjectRevisionStore } from "../../src/adapters/shared/stores/engineering-project-store.ts";
 import { isExplicitLoopbackHostname } from "../../src/adapters/loopback-host.ts";
 import {
@@ -80,15 +75,25 @@ import {
   OrderedEngineeringAssetReader,
 } from "../../src/adapters/engineering-asset-resolver.ts";
 import { projectThreadWorkbenchSnapshot } from "../../src/adapters/thread/thread-workbench-projector.ts";
-import { FileByteStore } from "../../src/adapters/shared/cas/file-byte-store.ts";
-import { fileArchitectureSysmlSealCaptureReader } from "../../src/adapters/architecture/agent-seal/file-architecture-sysml-seal-capture-reader.ts";
-import { createArchitectureSysmlSourceAnalysisCaptureService } from "../../src/adapters/architecture/agent-seal/architecture-sysml-source-analysis-composition.ts";
-import { enrichThreadWorkbenchWithArchitectureSysmlSeals } from "../../src/adapters/thread/architecture-sysml-seal-workbench-enricher.ts";
 import {
-  enrichThreadWorkbenchWithTechnicalAdmissions,
-  type SealedCadLeverAdmissionReader,
-  type TechnicalAdmissionWorkbenchEnricherDependencies,
-} from "../../src/adapters/thread/technical-admission-workbench-enricher.ts";
+  projectThreadViewerSessions,
+  type ThreadViewerAppLaunchResolver,
+} from "../../src/adapters/thread/thread-viewer-sessions-projector.ts";
+import {
+  FileThreadViewerAppRegistry,
+  type ThreadViewerAppRegistryReader,
+} from "../../src/adapters/thread/file-thread-viewer-app-registry.ts";
+import {
+  type ThreadViewerAppBinding,
+  type ThreadViewerProjectReviewAnchor,
+  type ThreadViewerSessionsProjection,
+} from "../../src/presentation/workbench/thread/viewer-sessions.ts";
+import { sha256Fingerprint } from "../../src/domain/kernel/deterministic-json.ts";
+import { FileByteStore } from "../../src/adapters/shared/cas/file-byte-store.ts";
+import type {
+  ProductNavigationTechnicalAdmissionReader,
+  ProductNavigationTechnicalAdmissionSourceDependencies,
+} from "../../src/adapters/thread/product-navigation-technical-admission-source-reader.ts";
 import {
   type EngineeringCaseWorkbenchEnricherDependencies,
   enrichThreadWorkbenchWithEngineeringCases,
@@ -117,55 +122,24 @@ import {
   productStructureElementRefsEqual,
   type ProductStructureOccurrenceRef,
 } from "../../src/domain/architecture/product-structure-ref.ts";
-import {
-  enrichThreadWorkbenchWithEvaluationCloseouts,
-  type EvaluationCloseoutCaptureReader,
-} from "../../src/adapters/thread/evaluation-closeout-workbench-enricher.ts";
-import {
-  type AssemblyIntegrityWorkbenchCaptureReaders,
-  enrichThreadWorkbenchWithAssemblyIntegrity,
-} from "../../src/adapters/thread/assembly-integrity-workbench-enricher.ts";
 import { readDeclaredCockpitFleet } from "../../src/adapters/thread/cockpit-fleet-projector.ts";
 import type { CockpitFleetProjection } from "../../src/presentation/workbench/fleet/projection.ts";
-import type { ArchitectureSysmlSealCaptureReader } from "../../src/application/ports/out/architecture/agent-seal/architecture-sysml-seal-capture-reader.ts";
-import type { ArchitectureSysmlSourceAnalysisReader } from "../../src/application/ports/out/architecture/agent-seal/architecture-sysml-source-analysis-reader.ts";
 import {
   FileLiveThreadUpdateStore,
   type LiveThreadUpdate,
   type LiveThreadUpdateJournal,
   overlayLiveThreadUpdates,
 } from "../../src/adapters/shared/stores/live-thread-update-store.ts";
-import {
-  type ThreadComponentCatalog,
-  validateThreadComponentCatalog,
-} from "../../src/domain/thread/thread-component-catalog.ts";
 import type {
   GenericArchitectureCaptureReader,
 } from "../../src/adapters/architecture/renderer/product-structure-catalog.ts";
-import { resolveGenericProductStructureCatalog } from "../../src/adapters/architecture/renderer/product-structure-catalog.ts";
 import type { GenericGeometryCaptureReader } from "../../src/adapters/cad/canonical/geometry-bundle-product-catalog.ts";
-
-// ── Catalog resolution: generic active-project projection ────────────────────
-
-/**
- * Resolve a snapshot-bound component catalog from generic, exact architecture
- * evidence. Archived golden projects do not participate in the active BFF.
- *
- * Exported so it can be unit-tested without an HTTP layer.
- */
-export async function resolveSnapshotComponentCatalog(
-  snapshot: ThreadSnapshot,
-  archCaptures: GenericArchitectureCaptureReader,
-  geometryCaptures?: GenericGeometryCaptureReader,
-  sysmlSourceAnalysis?: SysmlSourceAnalysisReader,
-): Promise<ThreadComponentCatalog | undefined> {
-  return await resolveGenericProductStructureCatalog(
-    snapshot,
-    archCaptures,
-    geometryCaptures,
-    sysmlSourceAnalysis,
-  );
-}
+import type { ProjectCapabilityWorkbenchReader } from "../../src/application/control-plane/project-capability-workbench.ts";
+import {
+  createLocalCapabilityRuntimeReadComposition,
+  type LocalCapabilityRuntimeReadCompositionOptions,
+} from "../../src/adapters/control-plane/local-capability-runtime-read-composition.ts";
+import { DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY } from "../../src/adapters/control-plane/file-project-capability-ledger-store.ts";
 
 export interface NativeWorkbenchHandlerOptions {
   store: ThreadSnapshotStore;
@@ -189,56 +163,37 @@ export interface NativeWorkbenchHandlerOptions {
    * receives a command route through these files.
    */
   uiAssetDirectory?: string;
-  componentCatalog?: ThreadComponentCatalog;
-  componentCatalogForSubject?: (
-    subjectId: string,
-  ) => Promise<ThreadComponentCatalog | undefined>;
-  /**
-   * Snapshot-bound catalogs may only be derived from evidence in that exact
-   * revision. They take precedence over a static subject catalog when present.
-   */
-  componentCatalogForSnapshot?: (
-    snapshot: ThreadSnapshot,
-  ) => Promise<ThreadComponentCatalog | undefined>;
-  /**
-   * Optional CAS reopen of `model.seal-architecture-sysml@1` Thread documents.
-   * The pure projector never reads these stores.
-   */
-  architectureSysmlSeals?: ArchitectureSysmlSealCaptureReader;
-  architectureSysmlSources?: ArchitectureSysmlSourceAnalysisReader;
-  /**
-   * Optional CAS reopen of `compile.seal-admission@3` Thread documents.
-   * The pure projector never reads this store.
-   */
-  technicalCompilationAdmissions?: SealedCadLeverAdmissionReader;
-  /**
-   * Optional exact ProjectSourceWorkspace recross for source-file projection.
-   * Absent means source-file attachments stay unavailable.
-   */
-  projectSourceWorkspace?: TechnicalAdmissionWorkbenchEnricherDependencies["workspace"];
+  /** Backend-only admission reader for the separate product-navigation query. */
+  technicalCompilationAdmissions?: ProductNavigationTechnicalAdmissionReader;
+  /** Exact workspace recross for product-navigation source attachments. */
+  projectSourceWorkspace?:
+    ProductNavigationTechnicalAdmissionSourceDependencies["workspace"];
   /** Optional exact CAS reopen of `model.write-requirements@1` captures. */
   requirementsCaptures?: RequirementsCaptureReader;
   /**
-   * Optional exact architecture-capture/4.0 reopen for the product-navigation
-   * GET slice. Same application port as MCP read tools. Workbench stays GET/SSE.
+   * Optional exact architecture-capture/4.0 reopen for the standalone
+   * product-navigation GET query. Same application port as MCP read tools.
    */
   productStructureCaptures?: GenericArchitectureCaptureReader;
   geometryCaptures?: GenericGeometryCaptureReader;
   sysmlSourceAnalysis?: SysmlSourceAnalysisReader;
   /** Optional exact CAS reopen of supported sealed engineering cases. */
   engineeringCaseCaptures?: EngineeringCaseWorkbenchEnricherDependencies;
-  /** Optional exact CAS reopen of provider-free static-mechanical L5 records. */
-  evaluationCloseoutCaptures?: EvaluationCloseoutCaptureReader;
-  /**
-   * Optional exact CAS reopen of the versioned assembly-integrity L3/L4/L5
-   * chain. The Workbench remains a GET/SSE projection and never dispatches it.
-   */
-  assemblyIntegrityCaptures?: AssemblyIntegrityWorkbenchCaptureReaders;
   /** Optional non-canonical activity journal projected into the same feed. */
   liveUpdates?: LiveThreadUpdateJournal;
+  /**
+   * Exact whole-App viewer registrations. They cannot choose a browser route.
+   * No binding means no App session.
+   */
+  viewerAppBindings?: readonly ThreadViewerAppBinding[];
+  /**
+   * Optional gateway attesting the exact manifest/resource HTML behind a
+   * same-origin launch route. No resolver means no App session is projected.
+   */
+  viewerAppLaunchResolver?: ThreadViewerAppLaunchResolver;
+  /** Production file registry; when present it is authoritative over test seams. */
+  viewerAppRegistry?: ThreadViewerAppRegistryReader;
   assetReader?: (filename: string) => Promise<Uint8Array | undefined>;
-  /** Testable boundary for content-addressed, non-canonical geometry previews. */
-  draftAssetReader?: (digest: string) => Promise<Uint8Array | undefined>;
   /** Polling only observes persisted snapshots; it never executes a tool. */
   pollIntervalMs?: number;
   /**
@@ -252,6 +207,11 @@ export interface NativeWorkbenchHandlerOptions {
    * This is a read-only navigation projection, never a focus mutation.
    */
   projectCatalog?: () => Promise<NativeWorkbenchProjectCatalog>;
+  /**
+   * Redacted operational-capability projection. The native Workbench may
+   * observe it but never creates a runtime plan or host mutation.
+   */
+  capabilityWorkbench?: ProjectCapabilityWorkbenchReader;
 }
 
 export interface NativeWorkbenchProjectCatalogItem {
@@ -293,6 +253,30 @@ export interface NativeWorkbenchStartupTarget {
   readonly workspaceId?: string;
   readonly projectId?: string;
   readonly explicitSubjectId?: string;
+}
+
+/** Read-only factory boundary: it exposes only the BFF projection, never a mutator. */
+export type NativeWorkbenchCapabilityReadCompositionFactory = (
+  options: Pick<
+    LocalCapabilityRuntimeReadCompositionOptions,
+    "ledgerDirectory"
+  >,
+) => Promise<{ readonly workbench: ProjectCapabilityWorkbenchReader }>;
+
+/**
+ * The BFF must read the same local authorization ledger as its paired MCP.
+ * This path changes where immutable operational authority is read, never which
+ * binding or provider is selected.
+ */
+export async function createNativeWorkbenchCapabilityWorkbench(
+  cliArgs: Readonly<Record<string, string | undefined>>,
+  createComposition: NativeWorkbenchCapabilityReadCompositionFactory =
+    createLocalCapabilityRuntimeReadComposition,
+): Promise<ProjectCapabilityWorkbenchReader> {
+  return (await createComposition({
+    ledgerDirectory: cliArgs["project-capability-ledger-dir"] ??
+      DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY,
+  })).workbench;
 }
 
 /**
@@ -347,7 +331,6 @@ type ResolvedActiveProject = {
   readonly projectId: string;
   readonly project: EngineeringProjectSnapshot;
   readonly subjectId: string;
-  readonly componentCatalog?: ThreadComponentCatalog;
 };
 
 type ActiveTargetResolution = ResolvedActiveProject;
@@ -374,7 +357,6 @@ async function resolveActiveProject(
     projectId,
     project,
     subjectId,
-    componentCatalog: await options.componentCatalogForSubject?.(subjectId),
   };
 }
 
@@ -408,6 +390,7 @@ export function createNativeWorkbenchHandler(
   options: NativeWorkbenchHandlerOptions,
 ): (request: Request) => Promise<Response> {
   const navigation = composeProductNavigation(options);
+  const viewerSessionsSequencer = new ThreadViewerSessionsSequencer();
   return async (request) => {
     const url = new URL(request.url);
     if (url.pathname === "/healthz") {
@@ -418,9 +401,11 @@ export function createNativeWorkbenchHandler(
       if (request.method !== "GET") return methodNotAllowed();
       return serveThreadAsset(url.pathname, options.assetReader);
     }
-    if (url.pathname.startsWith("/api/draft-assets/")) {
+    if (url.pathname.startsWith("/api/thread/viewer-apps/")) {
       if (request.method !== "GET") return methodNotAllowed();
-      return serveDraftAsset(url.pathname, options.draftAssetReader);
+      return options.viewerAppRegistry
+        ? await options.viewerAppRegistry.serve(url.pathname)
+        : new Response("Not found", { status: 404 });
     }
     if (url.pathname === "/api/fleet") {
       if (request.method !== "GET") return methodNotAllowed();
@@ -430,13 +415,58 @@ export function createNativeWorkbenchHandler(
       if (request.method !== "GET") return methodNotAllowed();
       return await serveProjectCatalog(options);
     }
+    if (url.pathname === "/api/project/capabilities") {
+      if (request.method !== "GET") return methodNotAllowed();
+      return await serveProjectCapabilityWorkbench(options);
+    }
     if (url.pathname === "/api/thread/product-navigation") {
       if (request.method !== "GET") return methodNotAllowed();
       return await serveProductNavigationQuery(url, options, navigation);
     }
+    if (url.pathname === "/api/thread/viewer-sessions/events") {
+      if (request.method !== "GET") return methodNotAllowed();
+      return await viewerSessionsEventStream(
+        request,
+        options,
+        viewerSessionsSequencer,
+      );
+    }
+    if (url.pathname === "/api/thread/viewer-sessions") {
+      if (request.method !== "GET") return methodNotAllowed();
+      let context: ActiveTargetResolution;
+      try {
+        context = await resolveActiveProject(options);
+      } catch (error) {
+        if (error instanceof NativeWorkbenchProjectNotFoundError) {
+          return projectNotFound(error.projectId);
+        }
+        throw error;
+      }
+      const snapshot = await resolveCurrentThreadSnapshot(
+        context.project,
+        options,
+        context.subjectId,
+      );
+      if (!snapshot && context.project.threadSnapshots.length > 0) {
+        return json({
+          error: "thread_snapshot_not_found",
+          subjectId: context.subjectId,
+        }, 404);
+      }
+      return json(
+        await projectViewerSessions(
+          context,
+          snapshot,
+          options,
+          undefined,
+          viewerSessionsSequencer,
+        ),
+        200,
+      );
+    }
     if (url.pathname === "/api/thread/workbench/events") {
       if (request.method !== "GET") return methodNotAllowed();
-      return await snapshotEventStream(request, options, navigation);
+      return await snapshotEventStream(request, options);
     }
     if (url.pathname === "/api/thread/workbench") {
       if (request.method !== "GET") return methodNotAllowed();
@@ -465,9 +495,7 @@ export function createNativeWorkbenchHandler(
         snapshot,
         options,
         context.subjectId,
-        context.componentCatalog,
         undefined,
-        navigation,
       );
       return json(
         projection,
@@ -482,11 +510,16 @@ export function createNativeWorkbenchHandler(
       const html = options.htmlPath
         ? await Deno.readTextFile(options.htmlPath)
         : options.html ?? "";
-      return new Response(html, {
-        headers: workbenchDocumentHeaders({
-          "Content-Type": "text/html; charset=utf-8",
-        }),
-      });
+      const appScriptNonce = createMcpAppScriptNonce();
+      return new Response(
+        injectMcpAppScriptNonce(html, appScriptNonce),
+        {
+          headers: workbenchDocumentHeaders(
+            { "Content-Type": "text/html; charset=utf-8" },
+            appScriptNonce,
+          ),
+        },
+      );
     }
     if (request.method === "GET") {
       const asset = await serveWorkbenchUiAsset(url.pathname, options);
@@ -499,7 +532,6 @@ export function createNativeWorkbenchHandler(
 async function snapshotEventStream(
   request: Request,
   options: NativeWorkbenchHandlerOptions,
-  navigation: ProductNavigationUseCase | undefined,
 ): Promise<Response> {
   let initial: ActiveTargetResolution;
   try {
@@ -573,9 +605,7 @@ async function snapshotEventStream(
               snapshot,
               options,
               current.subjectId,
-              current.componentCatalog,
               liveUpdates,
-              navigation,
             );
             controller.enqueue(encoder.encode(
               `id: ${eventId}\nevent: workbench-snapshot\ndata: ${
@@ -619,6 +649,316 @@ async function snapshotEventStream(
   });
 }
 
+async function viewerSessionsEventStream(
+  request: Request,
+  options: NativeWorkbenchHandlerOptions,
+  sequencer: ThreadViewerSessionsSequencer,
+): Promise<Response> {
+  let initial: ActiveTargetResolution;
+  try {
+    initial = await resolveActiveProject(options);
+  } catch (error) {
+    if (error instanceof NativeWorkbenchProjectNotFoundError) {
+      return projectNotFound(error.projectId);
+    }
+    throw error;
+  }
+  const initialSnapshot = await resolveCurrentThreadSnapshot(
+    initial.project,
+    options,
+    initial.subjectId,
+  );
+  if (!initialSnapshot && initial.project.threadSnapshots.length > 0) {
+    return json({
+      error: "thread_snapshot_not_found",
+      subjectId: initial.subjectId,
+    }, 404);
+  }
+  let current = initial;
+  const encoder = new TextEncoder();
+  const pollIntervalMs = options.pollIntervalMs ?? 500;
+  let lastEventId = request.headers.get("Last-Event-ID") ?? "";
+  let cancelled = false;
+  let lastWrite = Date.now();
+
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const run = async () => {
+        while (!cancelled) {
+          let latestProject: ActiveTargetResolution;
+          try {
+            latestProject = await resolveActiveProject(options);
+          } catch (error) {
+            if (!(error instanceof NativeWorkbenchProjectNotFoundError)) {
+              throw error;
+            }
+            await waitForPoll(pollIntervalMs);
+            continue;
+          }
+          if (latestProject.projectId !== current.projectId) {
+            const targetId = `focus:project:${latestProject.projectId}`;
+            if (targetId !== lastEventId) {
+              controller.enqueue(encoder.encode(
+                `id: ${targetId}\nevent: cockpit-focus\ndata: ${
+                  JSON.stringify({ target: publicFocusTarget(latestProject) })
+                }\n\n`,
+              ));
+              lastEventId = targetId;
+              lastWrite = Date.now();
+            }
+            current = latestProject;
+            await waitForPoll(pollIntervalMs);
+            continue;
+          }
+          current = latestProject;
+          const snapshot = await resolveCurrentThreadSnapshot(
+            current.project,
+            options,
+            current.subjectId,
+          );
+          if (!snapshot && current.project.threadSnapshots.length > 0) {
+            throw new Error(
+              "A declared technical baseline could not be resolved for viewer sessions.",
+            );
+          }
+          const liveUpdates = await options.liveUpdates?.list(current.subjectId) ?? [];
+          const projection = await projectViewerSessions(
+            current,
+            snapshot,
+            options,
+            liveUpdates,
+            sequencer,
+          );
+          const eventId =
+            `viewer-sessions:${current.projectId}:${projection.sequence}:${projection.projectionFingerprint}`;
+          if (eventId !== lastEventId) {
+            controller.enqueue(encoder.encode(
+              `id: ${eventId}\nevent: viewer-sessions\ndata: ${
+                JSON.stringify(projection)
+              }\n\n`,
+            ));
+            lastEventId = eventId;
+            lastWrite = Date.now();
+          } else if (Date.now() - lastWrite >= 15_000) {
+            controller.enqueue(encoder.encode(": keep-alive\n\n"));
+            lastWrite = Date.now();
+          }
+          await waitForPoll(pollIntervalMs);
+        }
+      };
+      void run().then(() => {
+        try {
+          controller.close();
+        } catch {
+          // The browser may have cancelled the stream first.
+        }
+      }).catch((error) => {
+        try {
+          controller.error(error);
+        } catch {
+          // The browser may have cancelled the stream first.
+        }
+      });
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+
+  return new Response(body, {
+    headers: workbenchReadHeaders({
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
+    }),
+  });
+}
+
+async function projectViewerSessions(
+  context: ActiveTargetResolution,
+  snapshot: ThreadSnapshot | undefined,
+  options: NativeWorkbenchHandlerOptions,
+  liveUpdates?: LiveThreadUpdate[],
+  sequencer?: ThreadViewerSessionsSequencer,
+) {
+  const project = async () => {
+    const thread = snapshot
+      ? await projectThreadSnapshot(
+        snapshot,
+        options,
+        context.projectId,
+        context.subjectId,
+        liveUpdates,
+      )
+      : undefined;
+    const registrySnapshot = await options.viewerAppRegistry?.read();
+    return await projectThreadViewerSessions(
+      {
+        projectId: context.projectId,
+        projectRevision: context.project.revision,
+        subjectId: context.subjectId,
+        sequence: thread?.live.version ?? context.project.revision,
+        ...(snapshot
+          ? { thread: { id: snapshot.id, revision: snapshot.revision } }
+          : {}),
+        projectReviewAnchors: projectViewerReviewAnchors(context.project),
+      },
+      thread,
+      options.viewerAppRegistry
+        ? registrySnapshot?.bindings ?? []
+        : options.viewerAppBindings ?? [],
+      options.viewerAppRegistry
+        ? registrySnapshot?.launchResolver
+        : options.viewerAppLaunchResolver,
+    );
+  };
+  return sequencer ? await sequencer.project(project) : await project();
+}
+
+interface ThreadViewerProjectionSequenceState {
+  readonly sourceSequence: number;
+  readonly sourceFingerprint: string;
+  readonly projection: ThreadViewerSessionsProjection;
+}
+
+/**
+ * Owns a monotonic viewer-projection clock per exact basis. Resolver
+ * attestation changes are observable even when Project/Thread revisions do
+ * not move; regressing source reads are ignored.
+ */
+export class ThreadViewerSessionsSequencer {
+  readonly #states = new Map<string, ThreadViewerProjectionSequenceState>();
+  #tail: Promise<void> = Promise.resolve();
+
+  admit(
+    candidate: ThreadViewerSessionsProjection,
+  ): Promise<ThreadViewerSessionsProjection> {
+    const result = this.#tail.then(() => this.#admit(candidate));
+    this.#tail = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
+  /**
+   * Sequence the complete registry-read/resolver/projector factory. Queuing
+   * only its completed candidate lets an older slow resolver finish after a
+   * revocation and falsely resurrect the old App as a newer replacement.
+   */
+  project(
+    factory: () => Promise<ThreadViewerSessionsProjection>,
+  ): Promise<ThreadViewerSessionsProjection> {
+    const result = this.#tail.then(async () => this.#admit(await factory()));
+    this.#tail = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
+  async #admit(
+    candidate: ThreadViewerSessionsProjection,
+  ): Promise<ThreadViewerSessionsProjection> {
+    const key = viewerProjectionBasisKey(candidate);
+    const previous = this.#states.get(key);
+    if (previous && candidate.sequence < previous.sourceSequence) {
+      return previous.projection;
+    }
+    if (
+      previous && candidate.sequence === previous.sourceSequence &&
+      candidate.projectionFingerprint === previous.sourceFingerprint
+    ) return previous.projection;
+
+    const sequence = previous
+      ? Math.max(candidate.sequence, previous.projection.sequence + 1)
+      : candidate.sequence;
+    const body = {
+      schemaVersion: candidate.schemaVersion,
+      basis: candidate.basis,
+      sequence,
+      sessions: candidate.sessions,
+    };
+    const fingerprint = await sha256Fingerprint(body);
+    const projection: ThreadViewerSessionsProjection = {
+      ...body,
+      projectionFingerprint: `${fingerprint.algorithm}:${fingerprint.digest}`,
+    };
+    this.#states.set(key, {
+      sourceSequence: candidate.sequence,
+      sourceFingerprint: candidate.projectionFingerprint,
+      projection,
+    });
+    return projection;
+  }
+}
+
+function viewerProjectionBasisKey(
+  projection: ThreadViewerSessionsProjection,
+): string {
+  const { basis } = projection;
+  return `${basis.projectId}\u0000${basis.projectRevision}\u0000${basis.subjectId}\u0000${
+    basis.thread?.id ?? ""
+  }\u0000${basis.thread?.revision ?? ""}`;
+}
+
+/** Exact pre-MRTR anchors only; payloads remain App-owned registry data. */
+export function projectViewerReviewAnchors(
+  project: EngineeringProjectSnapshot,
+): readonly ThreadViewerProjectReviewAnchor[] {
+  const anchors = new Map<string, ThreadViewerProjectReviewAnchor>();
+  const briefReview = project.framing?.proposalReview;
+  if (briefReview?.status === "pending") {
+    const anchor = projectReviewAnchor(
+      briefReview.briefSnapshotId,
+      project.revision,
+      briefReview.inputFingerprint,
+    );
+    anchors.set(projectReviewAnchorIdentity(anchor), anchor);
+  }
+
+  const supportedOperations = new Set<string>([
+    MODEL_WRITE_ARCHITECTURE_OPERATION.id,
+    MODEL_WRITE_REQUIREMENTS_OPERATION.id,
+    DESIGN_WRITE_GEOMETRY_OPERATION.id,
+  ]);
+  const reviewDecisionIds = new Set(
+    project.workItems.flatMap((item) =>
+      item.operation && supportedOperations.has(item.operation.id)
+        ? [...item.decisionIds]
+        : []
+    ),
+  );
+  for (const decision of project.decisions) {
+    if (
+      decision.status !== "proposed" || !decision.inputFingerprint ||
+      !reviewDecisionIds.has(decision.id)
+    ) continue;
+    const anchor = projectReviewAnchor(
+      decision.id,
+      project.revision,
+      decision.inputFingerprint,
+    );
+    anchors.set(projectReviewAnchorIdentity(anchor), anchor);
+  }
+  return [...anchors.values()].toSorted((left, right) =>
+    left.id.localeCompare(right.id)
+  );
+}
+
+function projectReviewAnchor(
+  id: string,
+  revision: number,
+  fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
+): ThreadViewerProjectReviewAnchor {
+  return {
+    kind: "project-review",
+    id,
+    revision,
+    fingerprint: `${fingerprint.algorithm}:${fingerprint.digest}`,
+  };
+}
+
+function projectReviewAnchorIdentity(
+  anchor: ThreadViewerProjectReviewAnchor,
+): string {
+  return `${anchor.id}:${anchor.revision}:${anchor.fingerprint}`;
+}
+
 async function currentProjectSourceWorkspaceHeadIdentity(
   projectId: string,
   options: NativeWorkbenchHandlerOptions,
@@ -636,9 +976,7 @@ async function projectWorkbenchSnapshot(
   snapshot: ThreadSnapshot | undefined,
   options: NativeWorkbenchHandlerOptions,
   subjectId: string,
-  componentCatalog?: ThreadComponentCatalog,
   liveUpdates?: LiveThreadUpdate[],
-  navigation?: ProductNavigationUseCase,
 ): Promise<EngineeringWorkbenchSnapshot> {
   if (!snapshot) {
     if (project.threadSnapshots.length > 0) {
@@ -683,9 +1021,7 @@ async function projectWorkbenchSnapshot(
       options,
       validatedProject.project.id,
       subjectId,
-      componentCatalog,
       updates,
-      navigation,
     ),
     snapshot.revision,
     updates,
@@ -839,40 +1175,16 @@ async function projectThreadSnapshot(
   options: NativeWorkbenchHandlerOptions,
   projectId: string,
   subjectId: string,
-  componentCatalog: ThreadComponentCatalog | undefined,
   liveUpdates?: LiveThreadUpdate[],
-  navigation?: ProductNavigationUseCase,
 ) {
-  const evidenceCatalog = await options.componentCatalogForSnapshot?.(snapshot);
-  const projected = projectThreadWorkbenchSnapshot(
-    snapshot,
-    evidenceCatalog ?? componentCatalog ??
-      (subjectId === options.subjectId ? options.componentCatalog : undefined),
-  );
-  const withArchitecture =
-    options.architectureSysmlSeals && options.architectureSysmlSources
-      ? await enrichThreadWorkbenchWithArchitectureSysmlSeals(projected, {
-        seals: options.architectureSysmlSeals,
-        sources: options.architectureSysmlSources,
-      })
-      : projected;
-  const withAdmissions = options.technicalCompilationAdmissions
-    ? await enrichThreadWorkbenchWithTechnicalAdmissions(
-      withArchitecture,
-      {
-        admissions: options.technicalCompilationAdmissions,
-        workspace: options.projectSourceWorkspace,
-      },
-      { projectId },
-    )
-    : withArchitecture;
+  const projected = projectThreadWorkbenchSnapshot(snapshot);
   const withRequirements = options.requirementsCaptures
     ? await enrichThreadWorkbenchWithRequirementsTargets(
-      withAdmissions,
+      projected,
       options.requirementsCaptures,
       snapshot,
     )
-    : withAdmissions;
+    : projected;
   const withEngineeringCases = options.engineeringCaseCaptures
     ? await enrichThreadWorkbenchWithEngineeringCases(
       withRequirements,
@@ -880,28 +1192,10 @@ async function projectThreadSnapshot(
       { projectId },
     )
     : withRequirements;
-  const withCases = options.evaluationCloseoutCaptures
-    ? await enrichThreadWorkbenchWithEvaluationCloseouts(
-      withEngineeringCases,
-      options.evaluationCloseoutCaptures,
-    )
-    : withEngineeringCases;
-  const withAssemblyIntegrity = options.assemblyIntegrityCaptures
-    ? await enrichThreadWorkbenchWithAssemblyIntegrity(
-      withCases,
-      options.assemblyIntegrityCaptures,
-    )
-    : withCases;
-  const canonical = navigation
-    ? {
-      ...withAssemblyIntegrity,
-      productNavigation: await navigation.projection({ projectId }),
-    }
-    : withAssemblyIntegrity;
   const updates = liveUpdates ??
     (await options.liveUpdates?.list(subjectId) ?? []);
   return overlayLiveThreadUpdates(
-    canonical,
+    withEngineeringCases,
     snapshot.revision,
     updates,
     updates.at(-1)?.sequence ?? 0,
@@ -921,15 +1215,14 @@ function composeProductNavigation(
       options.sysmlSourceAnalysis,
     ),
     workspace: options.projectSourceWorkspace,
-    evidenceAttachments: new WorkbenchProductNavigationEvidenceAttachmentReader({
-      architectureCaptures: captures,
-      geometryCaptures: options.geometryCaptures,
-      sysmlSourceAnalysis: options.sysmlSourceAnalysis,
-      admissions: options.technicalCompilationAdmissions,
-      workspace: options.projectSourceWorkspace,
-      requirementsCaptures: options.requirementsCaptures,
-      engineeringCases: options.engineeringCaseCaptures,
-    }),
+    evidenceAttachments: new WorkbenchProductNavigationEvidenceAttachmentReader(
+      {
+        admissions: options.technicalCompilationAdmissions,
+        workspace: options.projectSourceWorkspace,
+        requirementsCaptures: options.requirementsCaptures,
+        engineeringCases: options.engineeringCaseCaptures,
+      },
+    ),
     authoringAttachments: options.projectSourceWorkspace
       ? new ProjectSourceWorkspaceAuthoringAttachmentReader(
         options.projectSourceWorkspace,
@@ -1181,7 +1474,9 @@ function exactSemanticRootExplore(
   });
 }
 
-function parseExactPageSize(value: string | null): number | undefined | "invalid" {
+function parseExactPageSize(
+  value: string | null,
+): number | undefined | "invalid" {
   if (value === null || value === "") return undefined;
   if (value === "latest") return "invalid";
   if (!/^[1-9][0-9]*$/.test(value)) return "invalid";
@@ -1196,7 +1491,9 @@ function parseExactPageSize(value: string | null): number | undefined | "invalid
   return size;
 }
 
-function parseExactCursor(value: string | null): string | undefined | "invalid" {
+function parseExactCursor(
+  value: string | null,
+): string | undefined | "invalid" {
   if (value === null || value === "") return undefined;
   if (value === "latest") return "invalid";
   if (value.length > PROJECT_SOURCE_WORKSPACE_BOUNDS.maxCursorLength) {
@@ -1248,49 +1545,6 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return [...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
-}
-
-/**
- * Serve a geometry draft binary asset by its SHA-256 digest.
- *
- * WHY SEPARATE FROM /api/thread/assets — draft assets are keyed by digest
- * (content-addressed) and may be any format (GLB, STEP, STL).  They are
- * never promoted into the ThreadSnapshot until the write executor seals them.
- * This endpoint allows the Workbench preview to render a draft without
- * treating it as evidence.
- *
- * The path segment after the prefix is the bare hex digest.  Only
- * well-formed 64-char hex digests are accepted; any other path returns 400.
- */
-async function serveDraftAsset(
-  pathname: string,
-  reader?: (digest: string) => Promise<Uint8Array | undefined>,
-): Promise<Response> {
-  const digest = pathname.slice("/api/draft-assets/".length);
-  if (!/^[a-f0-9]{64}$/.test(digest)) {
-    return new Response("Invalid draft asset digest", { status: 400 });
-  }
-  let bytes: Uint8Array | undefined;
-  if (reader) {
-    bytes = await reader(digest);
-  } else {
-    const localPath = `${GEOMETRY_DRAFT_ASSETS_DIR}/${digest}`;
-    try {
-      bytes = await Deno.readFile(localPath);
-    } catch (error) {
-      if (!(error instanceof Deno.errors.NotFound)) throw error;
-    }
-  }
-  if (!bytes) return new Response("Draft asset not found", { status: 404 });
-  if (await sha256Hex(bytes) !== digest) {
-    return new Response("Draft asset fingerprint mismatch", { status: 404 });
-  }
-  return new Response(Uint8Array.from(bytes).buffer, {
-    headers: workbenchReadHeaders({
-      "Content-Type": "application/octet-stream",
-      "Cache-Control": "no-store",
-    }),
-  });
 }
 
 const WORKBENCH_UI_ASSET_TYPES: Record<string, string> = {
@@ -1410,8 +1664,22 @@ if (import.meta.main) {
     ARCHITECTURE_CAPTURE_DESCRIPTOR.directory;
   const geometryCaptureDirectory = cliArgs["geometry-capture-dir"] ??
     GEOMETRY_CAPTURE_DESCRIPTOR.directory;
-  const recordedAnalysisDirectory = cliArgs["recorded-analysis-dir"] ??
-    "state/local/recorded-analysis";
+  const viewerAppRegistryPath = cliArgs["viewer-app-registry"];
+  const viewerAppObjectDirectory = cliArgs["viewer-app-object-dir"];
+  if (
+    (viewerAppRegistryPath === undefined) !==
+      (viewerAppObjectDirectory === undefined)
+  ) {
+    throw new TypeError(
+      "--viewer-app-registry and --viewer-app-object-dir must be configured together.",
+    );
+  }
+  const viewerAppRegistry = viewerAppRegistryPath && viewerAppObjectDirectory
+    ? new FileThreadViewerAppRegistry({
+      registryPath: viewerAppRegistryPath,
+      objectDirectory: viewerAppObjectDirectory,
+    })
+    : undefined;
   const store = new FileThreadSnapshotStore(snapshotDirectory);
   const projectSnapshots = new OrderedExactThreadSnapshotReader([
     store,
@@ -1441,30 +1709,6 @@ if (import.meta.main) {
     ...GEOMETRY_CAPTURE_DESCRIPTOR,
     directory: geometryCaptureDirectory,
   });
-  const architectureSysmlDirectory = cliArgs["architecture-sysml-dir"] ??
-    "state/local/recorded-analysis/architecture-sysml";
-  const architectureSysmlSources = createArchitectureSysmlSourceAnalysisCaptureService({
-    sourceCaptures: new FileByteStore({
-      kind: "architecture-sysml-source",
-      directory: `${architectureSysmlDirectory}/sources`,
-      uriNamespace: "architecture-sysml-source",
-      label: "Captured architecture SysML source",
-    }),
-    analysisCaptures: new FileByteStore({
-      kind: "architecture-sysml-source-analysis",
-      directory: `${architectureSysmlDirectory}/analyses`,
-      uriNamespace: "architecture-sysml-source-analysis",
-      label: "Captured architecture SysML analysis",
-    }),
-  });
-  const architectureSysmlSeals = fileArchitectureSysmlSealCaptureReader(
-    new FileByteStore({
-      kind: "architecture-sysml-seal-capture",
-      directory: `${architectureSysmlDirectory}/seals`,
-      uriNamespace: "architecture-sysml-seal-capture",
-      label: "Sealed architecture SysML analysis",
-    }),
-  );
   const technicalCompilationSealBytes = new FileByteStore({
     kind: "technical-compilation-admission-capture",
     directory: cliArgs["technical-compilation-admission-dir"] ??
@@ -1472,7 +1716,7 @@ if (import.meta.main) {
     uriNamespace: "technical-compilation-admission-capture",
     label: "Sealed technical compilation admission",
   });
-  const technicalCompilationAdmissions: SealedCadLeverAdmissionReader = {
+  const technicalCompilationAdmissions: ProductNavigationTechnicalAdmissionReader = {
     read: async (fingerprint) => {
       const stored = await technicalCompilationSealBytes.read(fingerprint);
       return stored === undefined
@@ -1502,28 +1746,13 @@ if (import.meta.main) {
     ),
     dfmCheck: new FileCaptureStore(DFM_CASE_CAPTURE_DESCRIPTOR),
   };
-  const evaluationCloseoutCaptures: EvaluationCloseoutCaptureReader =
-    new FileCaptureStore({
-      ...EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
-      directory: cliArgs["evaluation-closeout-capture-dir"] ??
-        `${recordedAnalysisDirectory}/calculix/evaluation-closeout-captures`,
-      syncBoundary: recordedAnalysisDirectory,
-    });
-  const assemblyIntegrityCaptures: AssemblyIntegrityWorkbenchCaptureReaders = {
-    observations: new FileCaptureStore(
-      ASSEMBLY_INTEGRITY_OBSERVATION_CAPTURE_DESCRIPTOR,
-    ),
-    evaluations: new FileCaptureStore(
-      ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_DESCRIPTOR,
-    ),
-    closeouts: new FileCaptureStore(
-      ASSEMBLY_INTEGRITY_EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
-    ),
-  };
   // The paired MCP owns all project commands and initialisation. The cockpit
   // reads existing immutable revisions and never seeds a fallback.
   const projectStore: EngineeringProjectRevisionStore =
     new FileEngineeringProjectRevisionStore(activeProjectDirectory);
+  const capabilityWorkbench = await createNativeWorkbenchCapabilityWorkbench(
+    cliArgs,
+  );
   const subjectId = projectId === undefined
     ? undefined
     : await resolveNativeWorkbenchSubjectId(
@@ -1531,13 +1760,6 @@ if (import.meta.main) {
       explicitSubjectId,
       projectStore,
     );
-  const componentCatalogPath = cliArgs["component-catalog"] ??
-    (subjectId === undefined
-      ? undefined
-      : `config/thread-subjects/${subjectId}.components.json`);
-  const componentCatalog = componentCatalogPath === undefined
-    ? undefined
-    : await readOptionalComponentCatalog(componentCatalogPath);
   const assetReader = new OrderedEngineeringAssetReader([
     new FileEngineeringAssetReader(assetDirectory),
     new Base64EngineeringAssetReader(projectBaselineAssetDirectory),
@@ -1553,20 +1775,6 @@ if (import.meta.main) {
     subjectId,
     htmlPath,
     uiAssetDirectory: dirnameOf(htmlPath),
-    componentCatalog,
-    componentCatalogForSubject: async (resolvedSubjectId) =>
-      await readOptionalComponentCatalog(
-        `config/thread-subjects/${resolvedSubjectId}.components.json`,
-      ),
-    componentCatalogForSnapshot: async (snapshot) =>
-      await resolveSnapshotComponentCatalog(
-        snapshot,
-        archCaptures,
-        geometryCaptures,
-        sysmlSourceAnalysis,
-      ),
-    architectureSysmlSeals,
-    architectureSysmlSources,
     technicalCompilationAdmissions,
     projectSourceWorkspace,
     requirementsCaptures,
@@ -1574,14 +1782,14 @@ if (import.meta.main) {
     geometryCaptures,
     sysmlSourceAnalysis,
     engineeringCaseCaptures,
-    evaluationCloseoutCaptures,
-    assemblyIntegrityCaptures,
     liveUpdates,
+    viewerAppRegistry,
     assetReader: (filename) => assetReader.read(filename),
     cockpitFleet: () =>
       readDeclaredCockpitFleet(
         cliArgs["fleet-manifest"] ?? "config/mcp-fleet.json",
       ),
+    capabilityWorkbench,
   });
   const workspaceHandler = workspaceId === undefined || !cockpitFocus
     ? handler
@@ -1610,11 +1818,6 @@ if (import.meta.main) {
       console.log(`Versioned project baselines: ${projectBaselineDirectory}`);
       console.log(
         `Versioned presentation baselines: ${projectBaselineAssetDirectory}`,
-      );
-      console.log(
-        componentCatalogPath === undefined
-          ? "Component identities: resolved from the focused subject"
-          : `Component identities: ${componentCatalogPath}`,
       );
       console.log(`Live activity journal: ${liveUpdateDirectory}`);
       if (workspaceId) {
@@ -1692,6 +1895,27 @@ async function serveCockpitFleet(
   return json(projection, 200);
 }
 
+async function serveProjectCapabilityWorkbench(
+  options: NativeWorkbenchHandlerOptions,
+): Promise<Response> {
+  if (!options.capabilityWorkbench) {
+    return json({
+      error: "project_capability_workbench_unavailable",
+      message: "Operational capability projection is not configured.",
+    }, 503);
+  }
+  let context: ActiveTargetResolution;
+  try {
+    context = await resolveActiveProject(options);
+  } catch (error) {
+    if (error instanceof NativeWorkbenchProjectNotFoundError) {
+      return projectNotFound(error.projectId);
+    }
+    throw error;
+  }
+  return json(await options.capabilityWorkbench.read(context.project), 200);
+}
+
 async function serveProjectCatalog(
   options: NativeWorkbenchHandlerOptions,
 ): Promise<Response> {
@@ -1708,19 +1932,6 @@ async function serveProjectCatalog(
   }
   const catalog = await options.projectCatalog();
   return json(catalog, catalog.state === "available" ? 200 : 503);
-}
-
-async function readOptionalComponentCatalog(
-  path: string,
-): Promise<ThreadComponentCatalog | undefined> {
-  try {
-    return validateThreadComponentCatalog(
-      JSON.parse(await Deno.readTextFile(path)),
-    );
-  } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return undefined;
-    throw error;
-  }
 }
 
 function json(
@@ -1808,11 +2019,57 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
-const WORKBENCH_CSP = "default-src 'none'; base-uri 'none'; form-action 'none'; " +
-  "frame-ancestors 'none'; object-src 'none'; script-src 'self'; " +
-  "style-src 'self' 'unsafe-inline'; img-src 'self' data:; " +
-  "font-src 'self'; connect-src 'self'; media-src 'none'; " +
-  "worker-src 'none'; manifest-src 'none'";
+export const MCP_APP_SCRIPT_NONCE_META_NAME = "casys-mcp-app-script-nonce" as const;
+
+function workbenchCsp(appScriptNonce?: string): string {
+  const scriptSource = appScriptNonce === undefined
+    ? "script-src 'self'"
+    : `script-src 'self' 'nonce-${appScriptNonce}'`;
+  return "default-src 'none'; base-uri 'none'; form-action 'none'; " +
+    `frame-ancestors 'none'; object-src 'none'; ${scriptSource}; ` +
+    "style-src 'self' 'unsafe-inline'; img-src 'self' data:; " +
+    "font-src 'self'; connect-src 'self'; frame-src blob:; media-src 'none'; " +
+    "worker-src 'none'; manifest-src 'none'";
+}
+
+/**
+ * Add the host-owned nonce that the browser uses only while wrapping an exact
+ * MCP App HTML resource. It is document-scoped and deliberately absent from
+ * the viewer-session projection, so it cannot perturb session sequencing.
+ */
+export function injectMcpAppScriptNonce(html: string, nonce: string): string {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(nonce)) {
+    throw new TypeError("The MCP App script nonce is invalid.");
+  }
+  if (
+    new RegExp(
+      `<meta\\s+[^>]*name=["']${MCP_APP_SCRIPT_NONCE_META_NAME}["']`,
+      "i",
+    ).test(html)
+  ) {
+    throw new TypeError("The Workbench HTML already declares an MCP App nonce.");
+  }
+  const meta = `<meta name="${MCP_APP_SCRIPT_NONCE_META_NAME}" content="${nonce}">`;
+  const head = /<head(?:\s[^>]*)?>/i.exec(html);
+  if (head?.index !== undefined) {
+    const insertion = head.index + head[0].length;
+    return `${html.slice(0, insertion)}${meta}${html.slice(insertion)}`;
+  }
+  const documentElement = /<html(?:\s[^>]*)?>/i.exec(html);
+  if (documentElement?.index !== undefined) {
+    const insertion = documentElement.index + documentElement[0].length;
+    return `${html.slice(0, insertion)}<head>${meta}</head>${html.slice(insertion)}`;
+  }
+  return `<!doctype html><html><head>${meta}</head><body>${html}</body></html>`;
+}
+
+function createMcpAppScriptNonce(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return btoa(String.fromCharCode(...bytes))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/, "");
+}
 
 function workbenchReadHeaders(
   headers: Readonly<Record<string, string>> = {},
@@ -1832,9 +2089,10 @@ function workbenchReadHeaders(
 
 function workbenchDocumentHeaders(
   headers: Readonly<Record<string, string>> = {},
+  appScriptNonce?: string,
 ): Headers {
   const result = workbenchReadHeaders(headers);
-  result.set("Content-Security-Policy", WORKBENCH_CSP);
+  result.set("Content-Security-Policy", workbenchCsp(appScriptNonce));
   return result;
 }
 

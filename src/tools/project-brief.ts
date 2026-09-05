@@ -13,6 +13,8 @@ import type {
   ProjectBriefSourceKind,
 } from "../domain/project/project-brief.ts";
 import type { ContentFingerprint } from "../domain/thread/thread-snapshot.ts";
+import type { ProjectCapabilityProposal } from "../domain/capability/project-capability-authorization.ts";
+import { ProjectCapabilityAuthorizationService } from "../application/control-plane/project-capability-authorization-service.ts";
 import {
   autoConfirms,
   INTERACTIVE_PROJECT_APPROVAL_MODE,
@@ -80,6 +82,8 @@ export interface ProjectBriefToolDependencies {
     "get" | "getRevision"
   >;
   readonly commands: ProjectBriefCommandService;
+  /** Separate host-operational authority; never stored in the project Thread. */
+  readonly capabilityAuthorization: ProjectCapabilityAuthorizationService;
   /** Explicit startup policy; omission preserves signed MRTR elicitation. */
   readonly approvalMode?: ProjectApprovalMode;
 }
@@ -134,9 +138,12 @@ export function registerProjectBriefTools(
       agentOrigin(context),
       { ...commonMutation(args), items },
     );
+    const capabilityProposal = await dependencies.capabilityAuthorization
+      .proposeForPendingBrief(snapshot);
     return projectResult(
       `A sourced project brief revision is awaiting human review at project revision ${snapshot.revision}. Pass briefSnapshotId, briefRevision, and inputFingerprint from this result to project_brief_confirm. It is intent and planning context, not technical or certification evidence.`,
       snapshot,
+      { capabilityProposal },
     );
   });
 
@@ -151,14 +158,106 @@ export function registerProjectBriefTools(
       args.inputFingerprint,
       "inputFingerprint",
     );
-    const current = await requiredPendingBrief(
-      dependencies.projects,
-      common.projectId,
-      common.expectedRevision,
-      briefSnapshotId,
-      briefRevision,
-      inputFingerprint,
+    const capabilityProposalFingerprint = fingerprintInput(
+      args.capabilityProposalFingerprint,
+      "capabilityProposalFingerprint",
     );
+    const current = await dependencies.projects.get(common.projectId);
+    let proposal: ProjectCapabilityProposal;
+    if (
+      current && isExactApprovedBriefBasis(
+        current,
+        briefSnapshotId,
+        briefRevision,
+        inputFingerprint,
+      )
+    ) {
+      proposal = await dependencies.capabilityAuthorization.proposeForApprovedBrief(
+        current,
+      );
+      if (
+        !fingerprintsEqual(
+          proposal.capabilityProposalFingerprint,
+          capabilityProposalFingerprint,
+        )
+      ) {
+        throw new TypeError(
+          "The approved brief no longer matches the reviewed capability proposal.",
+        );
+      }
+    } else if (
+      current && current.revision === common.expectedRevision &&
+      isExactPendingBrief(current, briefSnapshotId, briefRevision, inputFingerprint)
+    ) {
+      proposal = await dependencies.capabilityAuthorization.proposeForPendingBrief(
+        current,
+      );
+      if (
+        !fingerprintsEqual(
+          proposal.capabilityProposalFingerprint,
+          capabilityProposalFingerprint,
+        )
+      ) {
+        throw new TypeError(
+          "The pending brief no longer matches the reviewed capability proposal.",
+        );
+      }
+      await dependencies.capabilityAuthorization.prepareInitial(proposal);
+    } else {
+      proposal = await dependencies.capabilityAuthorization.preparedProposal(
+        common.projectId,
+        capabilityProposalFingerprint,
+      ) ?? (() => {
+        throw new TypeError(
+          "The exact prepared capability proposal is unavailable for this brief confirmation retry.",
+        );
+      })();
+      if (
+        proposal.brief.briefSnapshotId !== briefSnapshotId ||
+        proposal.brief.briefRevision !== briefRevision ||
+        !fingerprintsEqual(proposal.brief.briefReviewFingerprint, inputFingerprint)
+      ) {
+        throw new TypeError(
+          "The prepared capability proposal belongs to another brief review.",
+        );
+      }
+    }
+    // The project write may have committed before this local ledger finalizes.
+    // Re-entering with the same command id must replay that exact human brief
+    // receipt and complete the prepared ledger rather than asking a second
+    // question or treating the already-approved brief as pending.
+    if (current && isExactApprovedBrief(current, proposal)) {
+      const replayMode = dependencies.approvalMode ??
+        INTERACTIVE_PROJECT_APPROVAL_MODE;
+      const snapshot = await dependencies.commands.approveBrief(
+        autoConfirms(replayMode, "brief-confirm")
+          ? replayMode.origin
+          : elicitedHumanOrigin(context),
+        {
+          ...common,
+          briefSnapshotId,
+          briefRevision,
+          inputFingerprint,
+          rationale: autoConfirms(replayMode, "brief-confirm")
+            ? localYoloRationale(
+              `positive confirmation of brief ${briefSnapshotId}@${briefRevision}`,
+              typeof args.rationale === "string" ? args.rationale : undefined,
+            )
+            : typeof args.rationale === "string" && args.rationale.trim()
+            ? args.rationale
+            : "The paired MCP host returned an accepted confirmation response.",
+        },
+      );
+      const finalized = await dependencies.capabilityAuthorization.finalizeInitial(
+        snapshot,
+        proposal,
+      );
+      return projectResult(
+        `The existing exact brief approval was replayed and its prepared operational capability authorization was finalized at project revision ${snapshot.revision}.`,
+        snapshot,
+        { capabilityAuthorization: finalized.effectiveEnvelope },
+      );
+    }
     const approvalMode = dependencies.approvalMode ??
       INTERACTIVE_PROJECT_APPROVAL_MODE;
     if (autoConfirms(approvalMode, "brief-confirm")) {
@@ -178,17 +277,35 @@ export function registerProjectBriefTools(
           ),
         },
       );
+      const finalized = await dependencies.capabilityAuthorization.finalizeInitial(
+        snapshot,
+        proposal,
+      );
       return projectResult(
         `YOLO local startup opt-in auto-confirmed the exact brief at project revision ${snapshot.revision}. No inputResponses or retryVerified value was fabricated.`,
         snapshot,
+        { capabilityAuthorization: finalized.effectiveEnvelope },
       );
     }
     const confirmation = briefConfirmationResponse(context);
-    if (confirmation === undefined) return briefConfirmationRequest(current);
+    if (confirmation === undefined) {
+      return briefConfirmationRequest(
+        current ?? (() => {
+          throw new TypeError(
+            "The pending brief is unavailable for interactive confirmation.",
+          );
+        })(),
+        proposal,
+      );
+    }
     if (!confirmation) {
       return projectResult(
         "The brief was not confirmed. Project truth did not change; continue refining it in the paired conversation.",
-        current,
+        current ?? (() => {
+          throw new TypeError(
+            "The pending brief is unavailable for interactive confirmation.",
+          );
+        })(),
       );
     }
     // Blank-only rationale (e.g. "   ") is explicitly treated as absent and
@@ -207,9 +324,14 @@ export function registerProjectBriefTools(
         rationale,
       },
     );
+    const finalized = await dependencies.capabilityAuthorization.finalizeInitial(
+      snapshot,
+      proposal,
+    );
     return projectResult(
       `The exact brief revision is now the canonical project intent at project revision ${snapshot.revision}. No technical evidence was created.`,
       snapshot,
+      { capabilityAuthorization: finalized.effectiveEnvelope },
     );
   });
 }
@@ -405,13 +527,23 @@ const projectBriefConfirmTool: MCPTool = {
       description:
         "Exact pending review fingerprint. Copy inputFingerprint from the latest project_brief_propose result, or framing.proposalReview.inputFingerprint.",
     },
+    capabilityProposalFingerprint: {
+      ...FINGERPRINT_SCHEMA,
+      description:
+        "Exact server-derived operational capability proposal fingerprint from project_brief_propose. It binds the concrete selected bindings, profiles, units, image digests, and host effects; it excludes runtime mode, current availability, qualification, activation, and blockers, and contains no secret.",
+    },
     rationale: {
       type: "string",
       minLength: 1,
       description:
         "Optional verbatim record of why this brief reflects the paired conversation. Stored verbatim (including leading/trailing whitespace) in the approval record. Absent or blank-only values (all whitespace) are treated identically and fall back to a generic host-confirmation message.",
     },
-  }, ["briefSnapshotId", "briefRevision", "inputFingerprint"]),
+  }, [
+    "briefSnapshotId",
+    "briefRevision",
+    "inputFingerprint",
+    "capabilityProposalFingerprint",
+  ]),
   outputSchema: OBJECT_OUTPUT_SCHEMA,
   annotations: MUTATION,
 };
@@ -638,35 +770,10 @@ function verificationAuthority(value: unknown, path: string) {
   };
 }
 
-async function requiredPendingBrief(
-  projects: ProjectBriefToolDependencies["projects"],
-  projectId: string,
-  expectedRevision: number,
-  briefSnapshotId: string,
-  briefRevision: number,
-  inputFingerprint: ContentFingerprint,
-): Promise<EngineeringProjectSnapshot> {
-  const project = await projects.get(projectId);
-  if (!project || project.revision !== expectedRevision) {
-    throw new TypeError(
-      `Engineering project ${projectId} is not readable at revision ${expectedRevision}.`,
-    );
-  }
-  const brief = project.framing?.proposedBrief;
-  const review = project.framing?.proposalReview;
-  if (
-    !brief || !review || review.status !== "pending" ||
-    brief.id !== briefSnapshotId || brief.revision !== briefRevision ||
-    !fingerprintsEqual(review.inputFingerprint, inputFingerprint)
-  ) {
-    throw new TypeError(
-      `Brief ${briefSnapshotId}@${briefRevision} is not the exact pending project brief.`,
-    );
-  }
-  return project;
-}
-
-function briefConfirmationRequest(project: EngineeringProjectSnapshot) {
+function briefConfirmationRequest(
+  project: EngineeringProjectSnapshot,
+  proposal: ProjectCapabilityProposal,
+) {
   const brief = project.framing!.proposedBrief!;
   const objective = brief.items.find((item) => item.kind === "objective")!.statement;
   return {
@@ -677,7 +784,13 @@ function briefConfirmationRequest(project: EngineeringProjectSnapshot) {
         params: {
           mode: "form",
           message:
-            `The agent consolidated this project brief: “${objective}”. Confirm this exact framing, or decline and continue the conversation.`,
+            `The agent consolidated this project brief: “${objective}”. This confirmation also authorizes the exact server-derived operational capability proposal ${proposal.capabilityProposalFingerprint.digest} (${proposal.bindings.length} semantic requirement(s), ${proposal.units.length} installable unit(s)). The structured proposal and initial-envelope delta below are display-only server facts; this form offers no capability, provider, image, tool, or argument selection. Runtime activation remains separately blocked wherever qualification/platform/security says so. Confirm this exact framing and operational ceiling, or decline and continue the conversation.`,
+          capabilityProposalFingerprint: structuredClone(
+            proposal.capabilityProposalFingerprint,
+          ),
+          capabilityProposal: structuredClone(proposal),
+          /** The first envelope has no predecessor, so its exact delta is literal. */
+          capabilityEnvelopeDelta: null,
           requestedSchema: {
             type: "object",
             properties: {
@@ -753,14 +866,35 @@ function elicitedHumanOrigin(context?: ToolHandlerContext) {
   return { kind: "human" as const, actorId: `mcp-elicitation:${channel}` };
 }
 
-function projectResult(content: string, snapshot: EngineeringProjectSnapshot) {
+function projectResult(
+  content: string,
+  snapshot: EngineeringProjectSnapshot,
+  extra: Record<string, unknown> = {},
+) {
+  const capabilityProposal = extra.capabilityProposal;
   return {
     content,
     structuredContent: {
       ...(snapshot as unknown as Record<string, unknown>),
       ...pendingBriefConfirmArgs(snapshot),
+      ...(isProjectCapabilityProposal(capabilityProposal)
+        ? {
+          capabilityProposalFingerprint:
+            capabilityProposal.capabilityProposalFingerprint,
+        }
+        : {}),
+      ...extra,
     },
   };
+}
+
+function isProjectCapabilityProposal(
+  value: unknown,
+): value is ProjectCapabilityProposal {
+  return !!value && typeof value === "object" && !Array.isArray(value) &&
+    (value as ProjectCapabilityProposal).schemaVersion ===
+      "project-capability-proposal/1.0" &&
+    !!(value as ProjectCapabilityProposal).capabilityProposalFingerprint;
 }
 
 function pendingBriefConfirmArgs(
@@ -775,6 +909,47 @@ function pendingBriefConfirmArgs(
     briefRevision: brief.revision,
     inputFingerprint: review.inputFingerprint,
   };
+}
+
+function isExactPendingBrief(
+  project: EngineeringProjectSnapshot,
+  briefSnapshotId: string,
+  briefRevision: number,
+  inputFingerprint: ContentFingerprint,
+): boolean {
+  const brief = project.framing?.proposedBrief;
+  const review = project.framing?.proposalReview;
+  return !!brief && !!review && review.status === "pending" &&
+    brief.id === briefSnapshotId && brief.revision === briefRevision &&
+    fingerprintsEqual(review.inputFingerprint, inputFingerprint);
+}
+
+function isExactApprovedBrief(
+  project: EngineeringProjectSnapshot,
+  proposal: ProjectCapabilityProposal,
+): boolean {
+  const brief = project.framing?.currentBrief;
+  const approval = project.framing?.currentBriefApproval;
+  return !!brief && !!approval && approval.status === "approved" &&
+    brief.id === proposal.brief.briefSnapshotId &&
+    brief.revision === proposal.brief.briefRevision &&
+    fingerprintsEqual(
+      approval.inputFingerprint,
+      proposal.brief.briefReviewFingerprint,
+    );
+}
+
+function isExactApprovedBriefBasis(
+  project: EngineeringProjectSnapshot,
+  briefSnapshotId: string,
+  briefRevision: number,
+  inputFingerprint: ContentFingerprint,
+): boolean {
+  const brief = project.framing?.currentBrief;
+  const approval = project.framing?.currentBriefApproval;
+  return !!brief && !!approval && approval.status === "approved" &&
+    brief.id === briefSnapshotId && brief.revision === briefRevision &&
+    fingerprintsEqual(approval.inputFingerprint, inputFingerprint);
 }
 
 function fingerprintInput(value: unknown, name: string): ContentFingerprint {

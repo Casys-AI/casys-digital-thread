@@ -25,7 +25,7 @@ Deno.test("documentary baseline stays inside the project cockpit, without preten
       "ThreadGraph",
       "ThreadFeed",
       "ComponentWorkspace",
-      "ToolInspectorPanel",
+      "RecordInspectorPanel",
       "thread.graph",
       "thread.components",
       "callTool(",

@@ -4,7 +4,7 @@ import {
   ProjectVectorCorrectionReviewError,
 } from "./prepare-project-vector-correction-review.ts";
 import {
-  assembleSensitivityStudyCaseV2,
+  assembleSensitivityStudyCaseV3,
   validateSensitivityStudyCaseTemplate,
 } from "../../../../domain/sensitivity/study/sensitivity-study-template.ts";
 import { computeSensitivities } from "../../../../domain/sensitivity/study/sensitivity-study.ts";
@@ -116,7 +116,7 @@ async function buildStudyWorld(
       ),
     ),
   );
-  const studyCase = assembleSensitivityStudyCaseV2(template, {
+  const studyCase = assembleSensitivityStudyCaseV3(template, {
     artifactUri: `thread-artifact://${PROJECT_ID}/admission`,
     sha256: "a".repeat(64),
   });

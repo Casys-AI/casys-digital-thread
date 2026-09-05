@@ -165,7 +165,7 @@ Deno.test(
     assertEquals(parsed.step, { value: 3, unit: "mm" });
     assertEquals(parsed.baseValue, { value: 10, unit: "mm" });
     assertEquals(parsed.target.semanticKey, "arm_thickness");
-    assertEquals(parsed.solver.mesh.targetSizeMm, 3);
+    assertEquals(parsed.method.mesh.targetSizeMm, 3);
     assertEquals(parsed.cadSource.artifactUri, fixture.cadSource.artifactUri);
     assertEquals(
       result.next.append.arguments.workItems[0]?.id,

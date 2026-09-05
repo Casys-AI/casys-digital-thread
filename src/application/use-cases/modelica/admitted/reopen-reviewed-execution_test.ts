@@ -258,6 +258,7 @@ async function reviewedProject(
       workItemId: "work.modelica.admitted",
       basis: runBasis,
       inputFingerprint: runFingerprint,
+      resolvedOperationPlan: {} as never,
     }],
     decisions: [{
       id: "decision.modelica.admitted",
@@ -512,7 +513,9 @@ async function harness() {
     },
     runtimeBackend: {
       ...MICROSANDBOX_LOCAL_RUNTIME_REF,
-      imageReference: `casys/modelica-microsandbox-worker@sha256:${"5".repeat(64)}`,
+      imageReference: `docker.io/casys/modelica-microsandbox-worker@sha256:${
+        "5".repeat(64)
+      }`,
       imageDigest: { algorithm: "sha256", digest: "5".repeat(64) },
     },
     runtime: {

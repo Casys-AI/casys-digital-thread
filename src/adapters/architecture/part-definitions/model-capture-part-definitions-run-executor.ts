@@ -64,6 +64,17 @@ import {
   assertThreadWriteBasisAvailable,
   threadWriteBasisLeaseScope,
 } from "../../shared/thread-write-basis-guard.ts";
+import type { CapabilityRuntimeExecutionEligibility } from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import {
+  beginConfiguredCapabilityRuntimeSession,
+  requireConfiguredOperationalCapability,
+  settleCapabilityRuntimeSession,
+} from "../../../application/control-plane/capability-runtime-execution-admission.ts";
+import {
+  type CapabilityRuntimeExecutionSession,
+  type CapabilityRuntimeExecutionSessionCoordinator,
+  CapabilityRuntimeSessionUnavailableError,
+} from "../../../application/control-plane/capability-runtime-execution-session.ts";
 import {
   assertArchitectureArtifactNotRemoved,
   findArchitectureArtifact,
@@ -102,6 +113,11 @@ export interface ModelCapturePartDefinitionsRunExecutorDependencies {
   readonly syson: McpToolClient;
   readonly lease: EngineeringProjectRunLease;
   readonly publications: FilePartDefinitionsPublicationStore;
+  readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
+  readonly capabilityRuntimeSession?: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin"
+  >;
 }
 
 /**
@@ -134,6 +150,7 @@ export class ModelCapturePartDefinitionsRunExecutor {
         let persisted = false;
         let publicationPersisted = false;
         let publicationAttempted = false;
+        let capabilitySession: CapabilityRuntimeExecutionSession | undefined;
         try {
           let project = await this.project(command.projectId);
           let run = requireRun(project, command.runId);
@@ -168,6 +185,22 @@ export class ModelCapturePartDefinitionsRunExecutor {
             return await this.resumePublication(origin, command, project, run);
           }
           await this.inputs(project, run);
+          const operationalCapability = await this.requireOperationalCapability(
+            project,
+            run,
+          );
+          capabilitySession = await beginConfiguredCapabilityRuntimeSession({
+            session: this.d.capabilityRuntimeSession!,
+            project,
+            runId: command.runId,
+            operationalCapability,
+            recheck: async () => {
+              const fresh = await this.project(command.projectId);
+              const freshRun = requireRun(fresh, command.runId);
+              shape(fresh, freshRun);
+              return await this.requireOperationalCapability(fresh, freshRun);
+            },
+          });
           await this.d.commands.claimRun(origin, {
             ...command,
             commandId: step(command.commandId, "claim"),
@@ -263,7 +296,15 @@ export class ModelCapturePartDefinitionsRunExecutor {
               ],
             });
           }
-          return complete(await this.project(command.projectId), command);
+          const completed = complete(
+            await this.project(command.projectId),
+            command,
+          );
+          await settleCapabilityRuntimeSession({
+            session: capabilitySession,
+            policy: { kind: "release" },
+          });
+          return completed;
         } catch (error) {
           const recoveredPublication = publicationAttempted && !publicationPersisted
             ? await this.d.publications.read(command.projectId, command.runId)
@@ -276,6 +317,28 @@ export class ModelCapturePartDefinitionsRunExecutor {
             !recoveredPublication
           ) {
             await this.fail(origin, command);
+          }
+          if (publicationPersisted || recoveredPublication) {
+            const finished = await this.project(command.projectId).catch(
+              () => undefined,
+            );
+            const finishedRun = finished?.agentRuns.find((candidate) =>
+              candidate.id === command.runId
+            );
+            await settleCapabilityRuntimeSession({
+              session: capabilitySession,
+              policy: finishedRun?.status === "completed"
+                ? { kind: "release" }
+                : { kind: "retain" },
+            });
+          } else {
+            await settleCapabilityRuntimeSession({
+              session: capabilitySession,
+              policy: {
+                kind: "release-if-terminal",
+                run: await this.currentRun(command.projectId, command.runId),
+              },
+            });
           }
           throw error;
         }
@@ -586,6 +649,40 @@ export class ModelCapturePartDefinitionsRunExecutor {
         });
       }
     } catch { /* original refusal wins */ }
+  }
+
+  private async requireOperationalCapability(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+  ) {
+    shape(project, run);
+    const workItem = project.workItems.find((item) => item.id === run.workItemId)!;
+    try {
+      return await requireConfiguredOperationalCapability({
+        runtime: this.d.capabilityRuntime,
+        session: this.d.capabilityRuntimeSession,
+        project,
+        run,
+        workItem,
+        unavailableMessage:
+          "Generic PartDefinitions capture requires the configured JIT capability runtime session before a run can be claimed.",
+        missingBindingMessage:
+          "Generic PartDefinitions capture requires the sealed model.inspect-system@1 operational capability before a run can be claimed.",
+      });
+    } catch (error) {
+      if (error instanceof CapabilityRuntimeSessionUnavailableError) {
+        throw denied(error.message);
+      }
+      throw error;
+    }
+  }
+
+  private async currentRun(projectId: string, runId: string) {
+    try {
+      return requireRun(await this.project(projectId), runId);
+    } catch {
+      return undefined;
+    }
   }
 }
 

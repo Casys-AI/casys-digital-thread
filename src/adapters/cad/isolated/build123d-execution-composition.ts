@@ -24,26 +24,7 @@ import type {
   IsolatedOutputPublicationReader,
 } from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
 import { FixedBuild123dExecutionProfileCatalog } from "./fixed-build123d-execution-profile-catalog.ts";
-
-const BUILD123D_MICROSANDBOX_EXECUTABLE = "/usr/local/bin/python3";
-const BUILD123D_MICROSANDBOX_ARGS = Object.freeze([
-  "-I",
-  "-B",
-  "/opt/casys/bin/run-build123d.py",
-]);
-const BUILD123D_MICROSANDBOX_SUPERVISOR_USER = "0:0";
-const BUILD123D_MICROSANDBOX_WORKDIR = "/work";
-const BUILD123D_MICROSANDBOX_SOURCE_PATH = "/input/source.py";
-const BUILD123D_MICROSANDBOX_OUTPUT_DIRECTORY = "/out";
-const BUILD123D_MICROSANDBOX_QUIESCENCE_PATH = "/run/casys/quiesced.json";
-const BUILD123D_MICROSANDBOX_STDOUT_PATH = "/run/casys/stdout.bin";
-const BUILD123D_MICROSANDBOX_STDERR_PATH = "/run/casys/stderr.bin";
-const BUILD123D_MICROSANDBOX_QUIESCENCE_CONTENT =
-  '{"schemaVersion":"casys-build123d-worker-quiescence/1.0","status":"descendants-killed-and-reaped"}\n';
-const BUILD123D_MICROSANDBOX_CPUS = 1;
-const BUILD123D_MICROSANDBOX_ROOT_DISK_MIB = 1_024;
-const BUILD123D_MICROSANDBOX_MAX_DURATION_MS = 120_000;
-const BUILD123D_MICROSANDBOX_MAX_OPEN_FILES = 128;
+import { BUILD123D_MICROSANDBOX_WORKER_CONTRACT } from "./worker-contract.ts";
 
 export interface Build123dExecutionProfileServerOptions {
   /** Reviewed local runtime image; mutable tags are never accepted. */
@@ -122,32 +103,33 @@ export async function createBuild123dExecutionComposition(
     import("./occt-step-output-validator.ts"),
     import("../../shared/execution/microsandbox-ephemeral-execution-backend.ts"),
   ]);
+  const worker = BUILD123D_MICROSANDBOX_WORKER_CONTRACT;
   const backend = new MicrosandboxEphemeralExecutionBackend({
     sdk: await createLocalMicrosandboxSdk(),
     imageReference: profile.runtimeBackend.imageReference,
-    expectedImageUser: BUILD123D_MICROSANDBOX_SUPERVISOR_USER,
-    executable: BUILD123D_MICROSANDBOX_EXECUTABLE,
-    args: BUILD123D_MICROSANDBOX_ARGS,
-    workdir: BUILD123D_MICROSANDBOX_WORKDIR,
-    sourcePath: BUILD123D_MICROSANDBOX_SOURCE_PATH,
-    outputDirectory: BUILD123D_MICROSANDBOX_OUTPUT_DIRECTORY,
+    expectedImageUser: worker.expectedImageUser,
+    executable: worker.executable,
+    args: worker.args,
+    workdir: worker.workDirectory,
+    sourcePath: worker.sourcePath,
+    outputDirectory: worker.outputDirectory,
     controlFiles: {
-      quiescencePath: BUILD123D_MICROSANDBOX_QUIESCENCE_PATH,
+      quiescencePath: worker.controlFiles.quiescencePath,
       quiescenceBytes: new TextEncoder().encode(
-        BUILD123D_MICROSANDBOX_QUIESCENCE_CONTENT,
+        worker.controlFiles.quiescenceText,
       ),
-      stdoutPath: BUILD123D_MICROSANDBOX_STDOUT_PATH,
-      stderrPath: BUILD123D_MICROSANDBOX_STDERR_PATH,
+      stdoutPath: worker.controlFiles.stdoutPath,
+      stderrPath: worker.controlFiles.stderrPath,
     },
     profile: profile.executionProfile,
     policy: profile.isolationPolicy,
     runtime: profile.runtime,
     outputManifest: profile.outputManifest,
-    cpus: BUILD123D_MICROSANDBOX_CPUS,
-    rootDiskMiB: BUILD123D_MICROSANDBOX_ROOT_DISK_MIB,
-    maxDurationMs: BUILD123D_MICROSANDBOX_MAX_DURATION_MS,
-    maxOpenFiles: BUILD123D_MICROSANDBOX_MAX_OPEN_FILES,
-    supervisorUser: BUILD123D_MICROSANDBOX_SUPERVISOR_USER,
+    cpus: worker.cpus,
+    rootDiskMiB: worker.rootDiskMiB,
+    maxDurationMs: worker.maxDurationMs,
+    maxOpenFiles: worker.maxOpenFiles,
+    supervisorUser: worker.expectedImageUser,
   });
   const publications = new FileIsolatedOutputCas(paths.outputCasDirectory);
   const validator = new OcctStepOutputValidator();

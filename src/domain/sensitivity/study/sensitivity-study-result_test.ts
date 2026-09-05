@@ -2,7 +2,7 @@ import { assertEquals, assertRejects } from "@std/assert";
 import { reconstructSensitivityEdgesFromStudyCapture } from "../edges/sensitivity-edge-from-study.ts";
 import { computeSensitivities } from "./sensitivity-study.ts";
 import {
-  assembleSensitivityStudyCaseV2,
+  assembleSensitivityStudyCaseV3,
   validateSensitivityStudyCaseTemplate,
 } from "./sensitivity-study-template.ts";
 import {
@@ -13,7 +13,7 @@ import {
 const AT = "2026-08-23T00:00:00.000Z";
 
 Deno.test("exact reuse publishes only validated target scientific facts, never synthetic CAD", async () => {
-  const studyCase = assembleSensitivityStudyCaseV2(
+  const studyCase = assembleSensitivityStudyCaseV3(
     validateSensitivityStudyCaseTemplate(JSON.parse(
       await Deno.readTextFile(
         "config/sensitivity-study-cases/dl04-size-z-sensitivity.json",

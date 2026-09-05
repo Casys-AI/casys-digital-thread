@@ -1,5 +1,6 @@
 import type { EngineeringProjectSnapshot } from "../../../../domain/project/engineering-project.ts";
 import { deterministicJson } from "../../../../domain/kernel/deterministic-json.ts";
+import { assertApprovedUncertainWriterReconciliation } from "../../../../domain/record/reconcile-uncertain-writer-proposal.ts";
 import type { EngineeringProjectCommandOrigin } from "../../../ports/in/engineering-project-command-origin.ts";
 import type {
   EngineeringProjectReconciliationOperationPolicy,
@@ -21,6 +22,13 @@ import {
   sameEvidenceReferences,
   sameSnapshotReference,
 } from "./engineering-project-transition-values.ts";
+import type {
+  UncertainWriterLifecycleEligibility,
+} from "../../../../domain/record/uncertain-writer-lifecycle-eligibility.ts";
+import {
+  UNCERTAIN_WRITER_LIFECYCLE_NOT_QUALIFIED,
+} from "../../../../domain/record/uncertain-writer-lifecycle-eligibility.ts";
+import { isEligibleUncertainWriterFailure } from "./reconcile-uncertain-writer-transition.ts";
 
 export async function applyReconcileWorkItemWithSuccessor(
   draft: Mutable<EngineeringProjectSnapshot>,
@@ -33,6 +41,8 @@ export async function applyReconcileWorkItemWithSuccessor(
   reconciliationOperationPolicy:
     | EngineeringProjectReconciliationOperationPolicy
     | undefined,
+  lifecycle: UncertainWriterLifecycleEligibility =
+    UNCERTAIN_WRITER_LIFECYCLE_NOT_QUALIFIED,
 ): Promise<void> {
   nonEmpty(command.failedWorkItemId, "failedWorkItemId");
   nonEmpty(command.failedRunId, "failedRunId");
@@ -95,11 +105,6 @@ export async function applyReconcileWorkItemWithSuccessor(
   }
   const failedWork = findWorkItem(draft, command.failedWorkItemId);
   if (!failedWork) notFound("work item", command.failedWorkItemId);
-  if (failedWork.status !== "ready") {
-    invalidTransition(
-      `Work item ${failedWork.id} can reconcile only from ready after its failed attempt.`,
-    );
-  }
   if (failedWork.evidenceRefs.length !== 0) {
     invalidTransition(
       `Work item ${failedWork.id} already owns evidence and cannot be reconciled as failed work.`,
@@ -124,6 +129,35 @@ export async function applyReconcileWorkItemWithSuccessor(
   ) {
     invalidTransition(
       `Run ${command.failedRunId} must be an evidence-free failed attempt or a pre-claim cancelled run for ${failedWork.id}.`,
+    );
+  }
+  const isTerminalUncertainWriterFailure = !!failedRun.failure &&
+    (isEligibleUncertainWriterFailure(
+      failedRun.failure.code,
+      failedWork.operation,
+      lifecycle,
+    ) ||
+      failedRun.uncertainWriterReconciliation !== undefined);
+  let hasExactUncertainWriterCancellation = false;
+  if (
+    failedWork.status === "cancelled" &&
+    failedWork.reconciliation === undefined &&
+    isTerminalUncertainWriterFailure
+  ) {
+    try {
+      await assertApprovedUncertainWriterReconciliation(draft, failedRun);
+      hasExactUncertainWriterCancellation = true;
+    } catch {
+      // A structural annotation is not durable authority. Fall through to the
+      // common terminal-state refusal below.
+    }
+  }
+  if (
+    failedWork.status !== "ready" && !hasExactUncertainWriterCancellation
+  ) {
+    invalidTransition(
+      `Work item ${failedWork.id} can reconcile only from ready after its failed attempt, ` +
+        "or from cancelled with one exact durable terminal uncertain-writer reconciliation and no successor reconciliation.",
     );
   }
   const successor = findRun(draft, command.successorRunId);
@@ -154,6 +188,12 @@ export async function applyReconcileWorkItemWithSuccessor(
   if (successorWork.activityId !== failedWork.activityId) {
     invalidInput(
       `Successor work item ${successorWork.id} is not in the same stable activity as ${failedWork.id}.`,
+    );
+  }
+  if (successorWork.predecessorRevisionId !== failedWork.id) {
+    invalidInput(
+      `Successor work item ${successorWork.id} must name failed work item ${failedWork.id} ` +
+        "as its direct predecessor revision.",
     );
   }
   if (

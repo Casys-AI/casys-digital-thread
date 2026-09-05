@@ -18,6 +18,8 @@ Deno.test("Evidence exploration uses 4b navigation without a full/local toggle",
   assertStringIncludes(source, "view.nodeCount");
   assertStringIncludes(source, "view.edgeCount");
   assertStringIncludes(source, "Cases");
+  assertStringIncludes(source, "Recorded systems");
+  assertStringIncludes(source, "Types · semantic filter");
   assertStringIncludes(source, "Selected case unavailable");
   assertStringIncludes(source, "All records");
   assertStringIncludes(source, "verificationCaseFilter");
@@ -35,12 +37,12 @@ Deno.test("Evidence exploration uses 4b navigation without a full/local toggle",
   assertStringIncludes(workbench, "focusLineage: false");
   assertStringIncludes(
     workbench,
-    "Double-click for the local neighbourhood.",
+    "Double-click a node to focus its neighbourhood.",
   );
   assertEquals(workbench.includes("full/local"), false);
 });
 
-Deno.test("Verification keeps its inspector and depth control in the three-column graph workspace", async () => {
+Deno.test("Verification opens a closable inspector without shrinking the default graph", async () => {
   const source = await Deno.readTextFile(
     new URL("./src/thread/evidence-exploration.tsx", import.meta.url),
   );
@@ -67,12 +69,17 @@ Deno.test("Verification keeps its inspector and depth control in the three-colum
   assertStringIncludes(source, "Accessible evidence table");
   assertStringIncludes(
     workbench,
-    'activeView === "verification" ? "is-verification"',
+    'activeView === "verification"',
   );
-  assertStringIncludes(workbench, 'activeView === "verification" && inspector');
+  assertStringIncludes(workbench, "`is-verification ${");
+  assertStringIncludes(
+    workbench,
+    'activeView === "verification" && inspectorOpen && inspector',
+  );
   assertStringIncludes(workbench, "inspectorOpen ? selection : undefined");
   assertStringIncludes(workbench, "onNeighborDepthChange={setLocalDepth}");
-  assertEquals(workbench.includes("Close details"), false);
+  assertStringIncludes(workbench, "Close details");
+  assertStringIncludes(workbench, 'inspectorOpen ? "has-inspector" : ""');
   assertStringIncludes(
     styles,
     "grid-template-columns: minmax(0, 1fr) 312px",
@@ -81,5 +88,5 @@ Deno.test("Verification keeps its inspector and depth control in the three-colum
     styles,
     ".thread-graph-workspace.is-verification > .thread-tool-drawer",
   );
-  assertStringIncludes(styles, "@media (max-width: 1120px)");
+  assertStringIncludes(styles, "@container workspace (max-width: 70rem)");
 });

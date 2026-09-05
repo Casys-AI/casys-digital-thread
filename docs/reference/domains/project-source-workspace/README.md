@@ -27,3 +27,7 @@ coverage pages.
 Byte ingress remains [`project_resource_capture`](../../agent/agent-workspace.md). This
 vertical does not call technical source capture, compilation admission, CAD, FEA,
 Modelica, or SPICE.
+
+For the one `mechanism-source@1` bridge, see
+[prescribed-kinematics case and architecture binding](../mechanism/prescribed-kinematics-case-and-architecture-binding.md).
+The workspace contributes L1 source identity only; it never authorizes provider dispatch.

@@ -36,6 +36,8 @@ projects those bytes; it is not a second upload. Roots carry no payload.
 | FEA proof-case JSON          | `application/json`, `text/plain`                    | `project_fea_proof_case_capture`               |
 | Impact manifest JSON         | `application/json`, `text/plain`                    | `project_cross_domain_impact_manifest_capture` |
 | LED-driver human-source JSON | `application/json`, `text/plain`                    | `project_led_driver_source_capture`            |
+| Prescribed-kinematics case JSON | `application/json`, `text/plain`                 | file + `mechanism-source@1` attachments → case review |
+| Prescribed-kinematics method JSON | `application/json`, `text/plain`               | `project_prescribed_kinematics_method_review`  |
 
 For CAD, Modelica and SPICE, pass the `resourceRef` to `project_source_file_put`, with a
 registered `captureRequest.profileId`, then attach the stable file revision to one exact
@@ -46,10 +48,18 @@ resolves the file, resource bytes, profile and dependency closure. It refuses
 
 Architecture SysML capture remains a separate direct resource path: it names
 `profileId` (`sysml-architecture-closed-subset-v1`), `sourceId` and `resourceRef`. The
-other JSON domain captures in the table take `resourceRef` only. None accepts
+FEA, Impact and LED-driver direct JSON captures in the table take `resourceRef` only.
+The mechanism case instead enters a workspace file and attachments. None accepts
 `sourceText`.
 
 MIME does not choose the parser. `profileId` / the closed domain schema does.
+
+The two prescribed-kinematics JSON documents must already be exact canonical bytes.
+The case follows the
+[source contract](../../reference/domains/mechanism/prescribed-kinematics-source-contract.md)
+and enters one workspace file before its architecture attachments. The method remains
+an exact resource reference and follows the
+[method and evaluation contract](../../reference/domains/mechanism/prescribed-kinematics-method-and-evaluation.md).
 
 ## Method sheets
 
@@ -57,6 +67,16 @@ MIME does not choose the parser. `profileId` / the closed domain schema does.
 interpreted inside `project_resource_capture` by the existing codecs. Pass
 `interpretation.typed.fingerprint` to the existing seal-review tools. Do not invent a
 second capture tool. Do not pass raw CAS to a microVM.
+
+The prescribed-kinematics method is different: resource capture stores its bytes but
+does not interpret them as one of those typed sheets. Call
+`project_prescribed_kinematics_method_review` with `projectId` first and copy
+`methodSheet.caseFingerprint` and `methodSheet.observationFingerprint` into the JSON
+before capture. After capture, call the same review with the opaque `methodResourceRef`;
+the review reopens the exact UTF-8 bytes, requires byte-for-byte canonical JSON, and
+recrosses the criteria plus both domain fingerprints against the current L1/L3 evidence
+before it returns a next hop. The seal operation reopens and validates that same exact
+resource again at execution time.
 
 ## Do not
 

@@ -73,6 +73,7 @@ import type {
   ThreadProvenanceLink,
   ThreadSnapshot,
 } from "../../../domain/thread/thread-snapshot.ts";
+import type { ExpectedProviderResource } from "../../../domain/compile/source/provider-resource-reader.ts";
 import { archivedRefKeys } from "../../../domain/thread/thread-snapshot.ts";
 import type { EngineeringThreadSnapshotRef } from "../../../domain/project/engineering-project.ts";
 import {
@@ -163,6 +164,92 @@ function geometrySourceAnalysisFor(directory: string) {
       directory: `${directory}/source-analysis-captures`,
     }),
     frontend: new PythonCadSourceAnalyzer(),
+  } as const;
+}
+
+function exportArtifact(
+  format: "step" | "gltf" | "stl",
+  sha256: string,
+  bytes: number,
+) {
+  const extension = format === "gltf" ? "glb" : format;
+  const mimeType = format === "step"
+    ? "model/step"
+    : format === "stl"
+    ? "model/stl"
+    : "model/gltf-binary";
+  return {
+    schemaVersion: "build123d-export-artifact/1.0",
+    uri: `casys://build123d/artifacts/${sha256}.${extension}`,
+    format,
+    mimeType,
+    bytes,
+    sha256,
+  } as const;
+}
+
+/** Strict in-memory resources plus the same digest-addressed draft-asset layout. */
+function fixtureResourceDependencies(
+  bytesByDigest: ReadonlyMap<string, Uint8Array>,
+  directory: string,
+) {
+  const issued = new WeakMap<Uint8Array, ExpectedProviderResource>();
+  return {
+    resourceReader: {
+      async read(expected: ExpectedProviderResource) {
+        const source = bytesByDigest.get(expected.sha256);
+        if (!source || source.byteLength !== expected.byteCount) {
+          throw new Error("test resource receipt does not match supplied bytes");
+        }
+        const actualDigest = await sha256Bytes(source);
+        if (actualDigest !== expected.sha256) {
+          throw new Error("test resource receipt does not match supplied digest");
+        }
+        return {
+          bytes: {
+            byteLength: source.byteLength,
+            copy: () => {
+              const copy = Uint8Array.from(source);
+              issued.set(copy, expected);
+              return copy;
+            },
+          },
+          attestation: {
+            schemaVersion: "provider-resource-read-attestation/1.0" as const,
+            verification: "exact-content-match" as const,
+            uri: expected.uri,
+            mediaType: expected.mediaType,
+            byteCount: expected.byteCount,
+            sha256: expected.sha256,
+          },
+        };
+      },
+    },
+    draftAssets: {
+      async persist(bytes: Uint8Array) {
+        const expected = issued.get(bytes);
+        if (!expected) {
+          throw new Error("test asset bytes were not read from a resource");
+        }
+        await Deno.mkdir(directory, { recursive: true });
+        await Deno.writeFile(`${directory}/${expected.sha256}`, bytes);
+        return {
+          fingerprint: { algorithm: "sha256" as const, digest: expected.sha256 },
+          byteCount: expected.byteCount,
+        };
+      },
+      async read(fingerprint: ContentFingerprint) {
+        try {
+          const bytes = await Deno.readFile(`${directory}/${fingerprint.digest}`);
+          return {
+            byteLength: bytes.byteLength,
+            copy: () => Uint8Array.from(bytes),
+          };
+        } catch {
+          return undefined;
+        }
+      },
+    },
   } as const;
 }
 
@@ -617,12 +704,12 @@ Deno.test("geometry preview provenance rejects old draft schemas and requires th
   );
 });
 
-Deno.test("geometry seal revalidates current GLB paths before canonical writes", () => {
+Deno.test("geometry seal revalidates server-owned current GLB export names before canonical writes", () => {
   requireDraftAssemblyPaths({
     schemaVersion: GEOMETRY_DRAFT_CAPTURE_SCHEMA,
     assemblyFiles: [{
       format: "gltf",
-      containerPath: "/exports/geometry-preview-assembly.glb",
+      name: "geometry-preview-assembly",
     }],
   });
   assertThrows(
@@ -631,11 +718,11 @@ Deno.test("geometry seal revalidates current GLB paths before canonical writes",
         schemaVersion: GEOMETRY_DRAFT_CAPTURE_SCHEMA,
         assemblyFiles: [{
           format: "gltf",
-          containerPath: "/exports/geometry-preview-assembly.gltf",
+          name: "geometry-preview-assembly-wrong",
         }],
       }),
     EngineeringProjectCommandError,
-    'fixed basename "geometry-preview-assembly.glb"',
+    "server-owned export name",
   );
 });
 
@@ -1377,7 +1464,7 @@ export async function buildGeoFixture(
   directory: string,
   opts: {
     mode: "no-mrtr" | "with-mrtr" | "happy";
-    legacyDraftPath?: "glb" | "gltf";
+    legacyDraft?: true;
     emptyComponents?: boolean;
     architectureCaptureDefect?:
       | "duplicate-id"
@@ -1977,13 +2064,9 @@ export async function buildGeoFixture(
                     ? definitionStlDigest
                     : definitionGlbDigest;
                   const bytes = previewBytes.get(digest)!;
-                  const extension = format === "gltf" ? "glb" : format;
                   return {
                     format,
-                    path: `/exports/${name}.${extension}`,
-                    bytes: bytes.length,
-                    sha256: digest,
-                    ...(format === "gltf" ? { viewer: "model-viewer" } : {}),
+                    artifact: exportArtifact(format, digest, bytes.length),
                   };
                 }),
               },
@@ -2008,15 +2091,9 @@ export async function buildGeoFixture(
         },
         draftCaptures,
         {
-          build123dService: "mcp-build123d-sandbox",
           sourceAnalysis,
           previewRunId: "run:geometry-preview-v2",
-          materializeAsset: async (digest) => {
-            const bytes = previewBytes.get(digest);
-            assertExists(bytes);
-            await Deno.mkdir(draftAssetDirectory, { recursive: true });
-            await Deno.writeFile(`${draftAssetDirectory}/${digest}`, bytes);
-          },
+          ...fixtureResourceDependencies(previewBytes, draftAssetDirectory),
         },
         () => "2026-08-08T12:01:45.000Z",
       );
@@ -2080,10 +2157,7 @@ export async function buildGeoFixture(
                 metrics: {},
                 files: [{
                   format: "gltf",
-                  path: "/exports/geometry-preview-assembly.glb",
-                  bytes: assetBytes.length,
-                  sha256: assetDigest,
-                  viewer: "model-viewer",
+                  artifact: exportArtifact("gltf", assetDigest, assetBytes.length),
                 }],
               },
               text: "",
@@ -2099,22 +2173,17 @@ export async function buildGeoFixture(
         },
         draftCaptures,
         {
-          build123dService: "mcp-build123d-sandbox",
           sourceAnalysis,
           previewRunId: "run:geometry-preview",
-          materializeAsset: async (digest) => {
-            assertEquals(digest, assetDigest);
-            await Deno.mkdir(draftAssetDirectory, { recursive: true });
-            await Deno.writeFile(
-              `${draftAssetDirectory}/${digest}`,
-              assetBytes,
-            );
-          },
+          ...fixtureResourceDependencies(
+            new Map([[assetDigest, assetBytes]]),
+            draftAssetDirectory,
+          ),
         },
         () => "2026-08-08T12:01:45.000Z",
       );
       signedDraftDigest = draft.fingerprint.digest;
-      if (opts.legacyDraftPath) {
+      if (opts.legacyDraft) {
         const legacyDraft = {
           schemaVersion: "geometry-draft-capture/1.0",
           kind: draft.kind,
@@ -2128,10 +2197,7 @@ export async function buildGeoFixture(
           scriptHash: draft.scriptHash,
           exportFormats: draft.exportFormats,
           components: draft.components,
-          assemblyFiles: draft.assemblyFiles.map((file) => ({
-            ...file,
-            containerPath: `/exports/geometry-preview-assembly.${opts.legacyDraftPath}`,
-          })),
+          assemblyFiles: draft.assemblyFiles,
           partMeshes: draft.partMeshes,
           ...(draft.admission === undefined ? {} : { admission: draft.admission }),
         };
@@ -2394,9 +2460,9 @@ export function makeExecutor(
   geometryCaptures: GeometryCaptureStore = fixture.geoCaptures,
   snapshots: ThreadSnapshotStore = fixture.snapshots,
   extras: {
-    readonly moduleAssemblyPublications?: ConstructorParameters<
+    readonly moduleAssemblyDraftAssets?: ConstructorParameters<
       typeof DesignWriteGeometryRunExecutor
-    >[0]["moduleAssemblyPublications"];
+    >[0]["moduleAssemblyDraftAssets"];
     readonly moduleAssemblyOutputValidator?: ConstructorParameters<
       typeof DesignWriteGeometryRunExecutor
     >[0]["moduleAssemblyOutputValidator"];
@@ -2414,7 +2480,7 @@ export function makeExecutor(
     sourceAnalysisCaptures: fixture.sourceAnalysis.analysisCaptures,
     geometryCaptures,
     admissions: fixture.admissions,
-    moduleAssemblyPublications: extras.moduleAssemblyPublications,
+    moduleAssemblyDraftAssets: extras.moduleAssemblyDraftAssets,
     moduleAssemblyOutputValidator: extras.moduleAssemblyOutputValidator,
     lease: new FileEngineeringProjectRunLease(`${directory}/geo-leases`),
     draftAssetDirectory: fixture.draftAssetDirectory,
@@ -2526,10 +2592,11 @@ async function queueSuccessiveGeometrySeal(
             metrics: {},
             files: [{
               format: "gltf",
-              path: "/exports/geometry-preview-assembly.glb",
-              bytes: assetBytes.length,
-              sha256: existingBinary.fingerprint.digest,
-              viewer: "model-viewer",
+              artifact: exportArtifact(
+                "gltf",
+                existingBinary.fingerprint.digest,
+                assetBytes.length,
+              ),
             }],
           },
           text: "",
@@ -2543,13 +2610,12 @@ async function queueSuccessiveGeometrySeal(
     },
     fixture.draftCaptures,
     {
-      build123dService: "mcp-build123d-sandbox",
       sourceAnalysis: fixture.sourceAnalysis,
       previewRunId: "run:geometry-preview-second",
-      materializeAsset: (digest) => {
-        assertEquals(digest, existingBinary.fingerprint.digest);
-        return Promise.resolve();
-      },
+      ...fixtureResourceDependencies(
+        new Map([[existingBinary.fingerprint.digest, assetBytes]]),
+        fixture.draftAssetDirectory,
+      ),
     },
     () => "2026-08-08T12:11:00.000Z",
   );
@@ -2748,10 +2814,11 @@ async function queueGeometryBundleUpgrade(
               const bytes = bytesBySuffix.get(suffix)!;
               return {
                 format,
-                path: `/exports/${name}.${extension}`,
-                bytes: bytes.length,
-                sha256: digestBySuffix.get(suffix)!,
-                ...(format === "gltf" ? { viewer: "model-viewer" } : {}),
+                artifact: exportArtifact(
+                  format,
+                  digestBySuffix.get(suffix)!,
+                  bytes.length,
+                ),
               };
             }),
           },
@@ -2771,19 +2838,17 @@ async function queueGeometryBundleUpgrade(
     },
     fixture.draftCaptures,
     {
-      build123dService: "mcp-build123d-sandbox",
       sourceAnalysis: fixture.sourceAnalysis,
       previewRunId: "run:geometry-preview-upgrade-v2",
-      materializeAsset: async (digest) => {
-        const suffix = [...digestBySuffix].find(([, value]) => value === digest)
-          ?.[0];
-        assertExists(suffix);
-        await Deno.mkdir(fixture.draftAssetDirectory, { recursive: true });
-        await Deno.writeFile(
-          `${fixture.draftAssetDirectory}/${digest}`,
-          bytesBySuffix.get(suffix)!,
-        );
-      },
+      ...fixtureResourceDependencies(
+        new Map(
+          [...digestBySuffix].map(([suffix, digest]) => [
+            digest,
+            bytesBySuffix.get(suffix)!,
+          ]),
+        ),
+        fixture.draftAssetDirectory,
+      ),
     },
     () => "2026-08-08T12:11:00.000Z",
   );
@@ -3012,7 +3077,6 @@ export async function queueGeometryPartSeal(
       callTool: (call) => {
         providerCalls.value++;
         const args = call.arguments as Record<string, unknown>;
-        const name = String(args.name);
         const formats = args.formats as Array<"step" | "gltf">;
         return Promise.resolve({
           structuredContent: {
@@ -3021,13 +3085,13 @@ export async function queueGeometryPartSeal(
             metrics: {},
             files: formats.map((format) => {
               const bytes = bytesByFormat.get(format)!;
-              const extension = format === "gltf" ? "glb" : format;
               return {
                 format,
-                path: `/exports/${name}.${extension}`,
-                bytes: bytes.length,
-                sha256: digestByFormat.get(format)!,
-                ...(format === "gltf" ? { viewer: "model-viewer" } : {}),
+                artifact: exportArtifact(
+                  format,
+                  digestByFormat.get(format)!,
+                  bytes.length,
+                ),
               };
             }),
           },
@@ -3047,22 +3111,17 @@ export async function queueGeometryPartSeal(
     },
     fixture.draftCaptures,
     {
-      build123dService: "mcp-build123d-sandbox",
       sourceAnalysis: fixture.sourceAnalysis,
       previewRunId: `run:geometry-part-preview-${options.suffix}`,
-      materializeAsset: async (digest) => {
-        const format = [...digestByFormat].find(([, value]) => value === digest)
-          ?.[0];
-        assertExists(format);
-        if (format !== "step" && format !== "gltf") {
-          throw new Error("unexpected target export format");
-        }
-        await Deno.mkdir(fixture.draftAssetDirectory, { recursive: true });
-        await Deno.writeFile(
-          `${fixture.draftAssetDirectory}/${digest}`,
-          bytesByFormat.get(format)!,
-        );
-      },
+      ...fixtureResourceDependencies(
+        new Map(
+          [...digestByFormat].map(([format, digest]) => [
+            digest,
+            bytesByFormat.get(format as "step" | "gltf")!,
+          ]),
+        ),
+        fixture.draftAssetDirectory,
+      ),
     },
     () => "2026-08-08T12:20:00.000Z",
   );
@@ -5416,12 +5475,12 @@ Deno.test(
   },
 );
 
-Deno.test("the full executor rejects a legacy v1.0 GLB draft before canonical writes", async () => {
+Deno.test("the full executor rejects a legacy v1.0 draft before canonical writes", async () => {
   const tmpDir = await Deno.makeTempDir({ prefix: "geo-legacy-glb-" });
   try {
     const fixture = await buildGeoFixture(tmpDir, {
       mode: "happy",
-      legacyDraftPath: "glb",
+      legacyDraft: true,
     });
     let captureWrites = 0;
     const noCanonicalWriteStore: GeometryCaptureStore = {
@@ -5447,12 +5506,12 @@ Deno.test("the full executor rejects a legacy v1.0 GLB draft before canonical wr
   }
 });
 
-Deno.test("the full executor rejects a legacy v1.0 .gltf path before canonical writes", async () => {
+Deno.test("the full executor leaves the project unchanged for a legacy v1.0 draft", async () => {
   const tmpDir = await Deno.makeTempDir({ prefix: "geo-legacy-gltf-" });
   try {
     const fixture = await buildGeoFixture(tmpDir, {
       mode: "happy",
-      legacyDraftPath: "gltf",
+      legacyDraft: true,
     });
     let captureWrites = 0;
     const noCanonicalWriteStore: GeometryCaptureStore = {

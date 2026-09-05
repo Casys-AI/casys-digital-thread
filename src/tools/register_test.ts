@@ -31,9 +31,10 @@ import {
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_WRAPPER_SHA256,
   LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
-  localExecutionForBinding,
   parseConsoleCli,
 } from "../../server.ts";
+import { MCP_BUILD123D_061_IMAGE_REFERENCE } from "../adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
+import { LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE } from "../adapters/control-plane/first-party-capability-runtime-identities.ts";
 import { CONSOLE_RESOURCE_URI } from "./control-plane.ts";
 import {
   createNeutralStartedProject,
@@ -47,13 +48,11 @@ Deno.test("console CLI parses loopback bind options without a review-intent outb
       "--port",
       "6202",
       "--yolo",
-      "--local-execution",
     ]),
     {
       hostname: "localhost",
       port: 6202,
       yolo: true,
-      localExecution: true,
     },
   );
   assertThrows(
@@ -65,17 +64,6 @@ Deno.test("console CLI parses loopback bind options without a review-intent outb
 
 Deno.test("YOLO CLI activation is explicit and restricted to loopback", () => {
   assertEquals(parseConsoleCli([]).yolo, undefined);
-  assertEquals(parseConsoleCli([]).localExecution, undefined);
-  assertEquals(parseConsoleCli(["--local-execution"]), {
-    localExecution: true,
-  });
-  assertEquals(localExecutionForBinding(false, "0.0.0.0"), false);
-  assertEquals(localExecutionForBinding(true, "127.0.0.1"), true);
-  assertThrows(
-    () => localExecutionForBinding(true, "0.0.0.0"),
-    TypeError,
-    "--local-execution is restricted to an explicit loopback",
-  );
   assertEquals(approvalModeForBinding(false, "0.0.0.0"), {
     kind: "interactive",
   });
@@ -92,6 +80,7 @@ Deno.test("YOLO CLI activation is explicit and restricted to loopback", () => {
     const unknown of [
       "--yoloo",
       "--yolo=true",
+      "--local-execution",
       "--local-execution=true",
       "serve",
     ]
@@ -109,7 +98,7 @@ Deno.test("YOLO CLI activation is explicit and restricted to loopback", () => {
   );
 });
 
-Deno.test("local execution startup binding is code-owned and digest pinned", async () => {
+Deno.test("future Build123d runtime binding factory is code-owned and digest pinned", async () => {
   const first = await createLocalBuild123dExecutionServerOptions();
   const second = await createLocalBuild123dExecutionServerOptions();
 
@@ -140,7 +129,7 @@ Deno.test("local execution startup binding is code-owned and digest pinned", asy
   ]);
 });
 
-Deno.test("local geometry-module assembly binding is code-owned and digest pinned", async () => {
+Deno.test("future geometry-module runtime binding factory is code-owned and digest pinned", async () => {
   const first = await createLocalGeometryModuleAssemblyServerOptions();
   const second = await createLocalGeometryModuleAssemblyServerOptions();
 
@@ -151,7 +140,11 @@ Deno.test("local geometry-module assembly binding is code-owned and digest pinne
   );
   assertEquals(
     first.profile.imageReference,
-    "casys/build123d-module-assembler-worker@sha256:5aa833e19f1956a001013661e726c19c4566677a75f58493a6534456b99b6707",
+    "docker.io/casys/build123d-module-assembler-worker@sha256:5aa833e19f1956a001013661e726c19c4566677a75f58493a6534456b99b6707",
+  );
+  assertEquals(
+    LOCAL_GEOMETRY_MODULE_ASSEMBLY_DOCKER_SOURCE_IMAGE_REFERENCE,
+    "casys/build123d-module-assembler-worker@sha256:40accee586603416f573386df29d881ffd682730bb8bd0e2df53ce1454ede5a2",
   );
   assertEquals(
     first.profile.wrapperSha256,
@@ -186,7 +179,7 @@ Deno.test("local geometry-module assembly binding is code-owned and digest pinne
   ]);
 });
 
-Deno.test("server shares one module-assembly composition with export and geometry sealing", async () => {
+Deno.test("server hides native module assembly behind the neutral export and draft store", async () => {
   const source = await Deno.readTextFile("server.ts");
   const assemblyStart = source.indexOf("const geometryModuleAssembly =");
   const cadProjectStart = source.indexOf("const cadProject = createCadProject({");
@@ -199,12 +192,85 @@ Deno.test("server shares one module-assembly composition with export and geometr
   assert(cadProjectStart < moduleExportStart);
   assertStringIncludes(
     source.slice(cadProjectStart, moduleExportStart),
-    "moduleAssembly: geometryModuleAssembly?.execution?.publications,",
+    "geometryDraftAssetDirectory: GEOMETRY_DRAFT_ASSETS_DIR,",
+  );
+  assertStringIncludes(
+    source.slice(moduleExportStart),
+    "assembler: geometryModuleAssembly.assembler,",
   );
   assertEquals((source.match(/const geometryModuleAssembly =/g) ?? []).length, 1);
 });
 
-Deno.test("local Modelica startup binding is code-owned, digest pinned, and qualification-gated", async () => {
+Deno.test("server injects the resolved Build123d execution profile into the exact cache composition", async () => {
+  const source = await Deno.readTextFile("server.ts");
+  const readStart = source.indexOf(
+    "const capabilityRead = await createLocalCapabilityRuntimeReadComposition({",
+  );
+  const readEnd = source.indexOf(
+    "const capabilityRuntimeLeases = new FileCapabilityRuntimeLeaseStore(",
+  );
+  assert(readStart >= 0);
+  assert(readEnd > readStart);
+  const block = source.slice(readStart, readEnd);
+  assertStringIncludes(
+    block,
+    "build123dExecutionProfile: build123dCapability.localProfile",
+  );
+  assertStringIncludes(
+    block,
+    "profileFingerprint: build123dCapability.localProfile.profileFingerprint",
+  );
+  assertStringIncludes(block, "qualifiedModelicaExecutionProfile:");
+  assertStringIncludes(block, "admittedModelicaExecutionProfile:");
+  assertStringIncludes(
+    source,
+    "qualifiedModelica.isolatedExecution?.execution === undefined",
+  );
+  assertStringIncludes(
+    source,
+    "admittedModelica.execution?.execution === undefined",
+  );
+  assertEquals(block.includes("Deno.env"), false);
+  const cadStart = source.indexOf("const cadProject = createCadProject({");
+  const cadEnd = source.indexOf("const assemblyIntegrityEvaluationCaptures");
+  assert(cadStart >= 0);
+  assert(cadEnd > cadStart);
+  const cad = source.slice(cadStart, cadEnd);
+  assertStringIncludes(cad, "capabilityRuntime,");
+  assertStringIncludes(cad, "capabilityRuntimeSession,");
+});
+
+Deno.test("server prepares the closed first-party Microsandbox cache recipes from the catalogue", async () => {
+  const source = await Deno.readTextFile("server.ts");
+  const runtimeLock = source.indexOf(
+    "const capabilityRuntimeMutationLock = new FileCapabilityRuntimeHostMutationLock();",
+  );
+  const cachePreparation = source.indexOf(
+    "const capabilityRuntimeCachePreparation =",
+  );
+  const scheduler = source.indexOf(
+    "preloadScheduler: new CapabilityRuntimePreloadScheduler({",
+  );
+
+  assert(runtimeLock >= 0);
+  assert(cachePreparation > runtimeLock);
+  assert(scheduler > cachePreparation);
+  const cache = source.slice(cachePreparation, scheduler);
+  assertStringIncludes(
+    cache,
+    "catalog: capabilityRead.catalog,",
+  );
+  assertStringIncludes(cache, "lock: capabilityRuntimeMutationLock,");
+  assertEquals(cache.includes("admittedSpiceRuntimeProfile"), false);
+  assertEquals(cache.includes("geometryModuleAssemblyRuntimeProfile"), false);
+  const schedulerBlock = source.slice(scheduler);
+  assertStringIncludes(
+    schedulerBlock,
+    "cachePreparer: capabilityRuntimeCachePreparation.cachePreparer,",
+  );
+});
+
+Deno.test("future Modelica runtime binding factory is code-owned, digest pinned, and qualification-gated", async () => {
   const first = await createLocalModelicaIsolatedExecutionServerOptions();
   const second = await createLocalModelicaIsolatedExecutionServerOptions();
 
@@ -212,14 +278,14 @@ Deno.test("local Modelica startup binding is code-owned, digest pinned, and qual
   assertEquals(first.profile.imageReference, LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE);
   assertEquals(
     first.profile.imageReference,
-    "casys/modelica-microsandbox-worker@sha256:7d3fdeabe794b0ded5360921b16724c7904487e9d11bc24fa37c72f9b92a1894",
+    "casys/modelica-microsandbox-worker@sha256:834c759291320eb5f35ccb6eba03587445d259dcb38a2814c5def4ac41d5d730",
   );
   assertEquals(first.profile.policy, {
     id: "modelica-microsandbox-deny-all-v1",
     version: "1.0.0",
     fingerprint: {
       algorithm: "sha256",
-      digest: "a6eeca8fb305b6fecf6a5f226ddcc9dad8010147afe31d7dd4fe35853d239327",
+      digest: "acd119309fd7827a09b31babdd01a46e27f9839b02145dc8e01b480d904ccabe",
     },
   });
   assertEquals(first.profile.engine, {
@@ -228,9 +294,23 @@ Deno.test("local Modelica startup binding is code-owned, digest pinned, and qual
     mslVersion: "4.1.0",
   });
   assertEquals(first.runtime, {});
+
+  const admitted = await createLocalAdmittedModelicaExecutionServerOptions();
+  const admittedAgain = await createLocalAdmittedModelicaExecutionServerOptions();
+  assertEquals(admitted, admittedAgain);
+  assertEquals(
+    admitted.profile.imageReference,
+    LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
+  );
+  assertEquals(
+    admitted.profile.policy.id,
+    "modelica-admitted-microsandbox-deny-all-v1",
+  );
+  assertEquals(admitted.profile.policy.version, "1.0.0");
+  assertEquals(admitted.runtime, {});
 });
 
-Deno.test("local CalculiX startup binding is code-owned, digest pinned, and SysON-gated", async () => {
+Deno.test("future CalculiX runtime binding factory is code-owned, digest pinned, and SysON-gated", async () => {
   const first = await createLocalCalculixIsolatedExecutionServerOptions();
   const second = await createLocalCalculixIsolatedExecutionServerOptions();
 
@@ -255,7 +335,7 @@ Deno.test("local CalculiX startup binding is code-owned, digest pinned, and SysO
   assertEquals(first.runtime, {});
 });
 
-Deno.test("local execution tasks are explicit, frozen, and capability-bounded", async () => {
+Deno.test("startup composes only code-owned local engineering runtimes", async () => {
   const config = JSON.parse(await Deno.readTextFile("deno.json")) as {
     imports: Record<string, string>;
     tasks: Record<string, string>;
@@ -263,23 +343,66 @@ Deno.test("local execution tasks are explicit, frozen, and capability-bounded", 
   assertEquals(config.imports[["@deno", "sandbox"].join("/")], undefined);
   assertEquals(config.imports.microsandbox, "npm:microsandbox@0.6.8");
   assertEquals(config.tasks.start.includes("--local-execution"), false);
-  assertEquals(config.tasks.start.includes("--node-modules-dir"), false);
+  assertStringIncludes(config.tasks.start, "--node-modules-dir=auto");
+  assertStringIncludes(
+    config.tasks.start,
+    "--allow-read=.,config,state,src,images,mcp-server.yaml,node_modules",
+  );
+  assertStringIncludes(
+    config.tasks.start,
+    "--allow-write=state/local,/tmp,/private/tmp",
+  );
+  assertStringIncludes(config.tasks.start, "--allow-ffi=node_modules");
 
-  const local = config.tasks["start:local"];
   const yolo = config.tasks["start:yolo"];
-  for (const task of [local, yolo]) {
-    assertStringIncludes(task, "--no-prompt --frozen --node-modules-dir=auto");
-    assertStringIncludes(
-      task,
-      "--allow-read=config,state,src/ui,mcp-server.yaml,node_modules",
-    );
-    assertStringIncludes(task, "--allow-write=state/local");
-    assertStringIncludes(task, "--allow-ffi=node_modules");
-    assertEquals(task.includes("--allow-ffi "), false);
-    assertEquals(task.includes("--allow-env "), false);
+  assertEquals(config.tasks["start:local"], undefined);
+  assertEquals(config.tasks["capability:behave:inspect"], undefined);
+  assertEquals(config.tasks["capability:behave:doctor"], undefined);
+  assertEquals(yolo, `${config.tasks.start} --yolo`);
+  assertStringIncludes(
+    yolo,
+    "--allow-read=.,config,state,src,images,mcp-server.yaml,node_modules",
+  );
+  assertStringIncludes(yolo, "--allow-write=state/local,/tmp,/private/tmp");
+  assertStringIncludes(yolo, "--allow-ffi=node_modules");
+  assertStringIncludes(yolo, "--node-modules-dir=auto");
+  assertEquals(yolo.endsWith("server.ts --yolo"), true);
+  assertEquals(yolo.includes("--local-execution"), false);
+  const source = await Deno.readTextFile("server.ts");
+  assertEquals(source.includes("localExecutionForBinding"), false);
+  assertEquals(source.includes("cli.localExecution"), false);
+  assertEquals(source.includes("build123dExecution: localExecution"), false);
+  const mainStart = source.indexOf("if (import.meta.main) {");
+  assert(mainStart >= 0);
+  const main = source.slice(mainStart);
+  for (
+    const factory of [
+      "createLocalBuild123dExecutionServerOptions()",
+      "createLocalGeometryModuleAssemblyServerOptions()",
+      "createLocalModelicaIsolatedExecutionServerOptions()",
+      "createLocalAdmittedModelicaExecutionServerOptions()",
+      "createLocalAdmittedSpiceExecutionServerOptions()",
+      "createLocalCalculixIsolatedExecutionServerOptions()",
+    ]
+  ) {
+    assertStringIncludes(main, factory);
   }
-  assertEquals(local.endsWith("server.ts --local-execution"), true);
-  assertEquals(yolo.endsWith("server.ts --yolo --local-execution"), true);
+  for (
+    const option of [
+      "build123dExecution,",
+      "geometryModuleAssembly,",
+      "modelicaIsolatedExecution,",
+      "admittedModelicaExecution,",
+      "admittedSpiceExecution,",
+      "calculixIsolatedExecution,",
+    ]
+  ) {
+    assertStringIncludes(main, option);
+  }
+  assertStringIncludes(
+    source,
+    "cachePreparer: capabilityRuntimeCachePreparation.cachePreparer,",
+  );
 });
 
 Deno.test("server orchestrates one historical proof and requirements CAS into ROP2", async () => {
@@ -647,7 +770,7 @@ Deno.test(
 
       const normal = await createConsoleServer({
         manifest: assemblyIntegrityBuild123dManifest(
-          `example.test/build123d@sha256:${"a".repeat(64)}`,
+          MCP_BUILD123D_061_IMAGE_REFERENCE,
         ),
         runs: [],
         logger: () => {},
@@ -676,6 +799,57 @@ Deno.test(
           }),
         TypeError,
         "$assemblyIntegrityBuild123d.image must be one OCI image name pinned by a lowercase sha256 digest.",
+      );
+
+      await assertRejects(
+        () =>
+          createConsoleServer({
+            manifest: assemblyIntegrityBuild123dManifest(
+              MCP_BUILD123D_061_IMAGE_REFERENCE,
+              "http://127.0.0.1:3024/mcp",
+            ),
+            runs: [],
+            logger: () => {},
+            activeProjectDirectory: `${temporaryDirectory}/sandbox-url/projects`,
+          }),
+        Error,
+        "does not match the sealed launch-group loopback host port",
+      );
+
+      await assertRejects(
+        () =>
+          createConsoleServer({
+            manifest: assemblyIntegrityBuild123dManifest(
+              `example.test/build123d@sha256:${"0".repeat(64)}`,
+            ),
+            runs: [],
+            logger: () => {},
+            activeProjectDirectory: `${temporaryDirectory}/digest-mismatch/projects`,
+          }),
+        TypeError,
+        "does not match the sealed casys-build123d-observation launch-group material",
+      );
+
+      const composition = await Deno.readTextFile(
+        new URL("../../server.ts", import.meta.url),
+      );
+      assertEquals(
+        composition.includes("firstPartyBuild123dObservationLaunchGroupReference"),
+        true,
+      );
+      assertEquals(
+        composition.includes("build123d-observe-assembly-integrity"),
+        true,
+      );
+      assertEquals(
+        composition.includes("createLocalFixedCapabilityRuntimeConnection"),
+        true,
+      );
+      assertEquals(
+        composition.includes(
+          "openObserver: (client) => new McpBuild123dAssemblyIntegrityObserver",
+        ),
+        true,
       );
     } finally {
       await Deno.remove(temporaryDirectory, { recursive: true });
@@ -711,6 +885,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "console_run_list",
     "console_server_detail",
     "console_snapshot",
+    "project_admitted_geometry_export",
     "project_admitted_modelica_evaluation_closeout_review",
     "project_admitted_modelica_evaluation_review",
     "project_admitted_spice_evaluation_closeout_review",
@@ -728,6 +903,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_brief_propose",
     "project_brief_requirements_review",
     "project_cad_placement_capture",
+    "project_capability_change_review",
+    "project_capability_inspect",
     "project_change_append",
     "project_cross_domain_impact_decision_review",
     "project_cross_domain_impact_manifest_capture",
@@ -744,6 +921,11 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_led_driver_source_capture",
     "project_led_driver_source_review",
     "project_plan_publish",
+    "project_prescribed_kinematics_case_review",
+    "project_prescribed_kinematics_evaluation_closeout_review",
+    "project_prescribed_kinematics_evaluation_review",
+    "project_prescribed_kinematics_method_review",
+    "project_prescribed_kinematics_run_review",
     "project_product_explore",
     "project_product_inspect",
     "project_product_search",
@@ -800,6 +982,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "console_run_list",
       "console_server_detail",
       "console_snapshot",
+      "project_admitted_geometry_export",
       "project_admitted_modelica_evaluation_closeout_review",
       "project_admitted_modelica_evaluation_review",
       "project_admitted_spice_evaluation_closeout_review",
@@ -817,6 +1000,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_brief_propose",
       "project_brief_requirements_review",
       "project_cad_placement_capture",
+      "project_capability_change_review",
+      "project_capability_inspect",
       "project_change_append",
       "project_cross_domain_impact_decision_review",
       "project_cross_domain_impact_manifest_capture",
@@ -833,6 +1018,11 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_led_driver_source_capture",
       "project_led_driver_source_review",
       "project_plan_publish",
+      "project_prescribed_kinematics_case_review",
+      "project_prescribed_kinematics_evaluation_closeout_review",
+      "project_prescribed_kinematics_evaluation_review",
+      "project_prescribed_kinematics_method_review",
+      "project_prescribed_kinematics_run_review",
       "project_product_explore",
       "project_product_inspect",
       "project_product_search",
@@ -1093,6 +1283,12 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_product_search" ||
           tool.name === "project_source_closure" ||
           tool.name === "project_agent_run_plan_get" ||
+          tool.name === "project_capability_inspect" ||
+          tool.name === "project_prescribed_kinematics_case_review" ||
+          tool.name === "project_prescribed_kinematics_evaluation_closeout_review" ||
+          tool.name === "project_prescribed_kinematics_evaluation_review" ||
+          tool.name === "project_prescribed_kinematics_method_review" ||
+          tool.name === "project_prescribed_kinematics_run_review" ||
           tool.name === "project_isolated_geometry_seal_review" ||
           tool.name === "project_led_driver_source_review" ||
           tool.name === "project_evaluation_closeout_review" ||
@@ -1144,6 +1340,13 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_agent_run_execute" ||
           tool.name === "project_agent_run_plan_get" ||
           tool.name === "project_agent_run_queue" ||
+          tool.name === "project_capability_change_review" ||
+          tool.name === "project_capability_inspect" ||
+          tool.name === "project_prescribed_kinematics_case_review" ||
+          tool.name === "project_prescribed_kinematics_evaluation_closeout_review" ||
+          tool.name === "project_prescribed_kinematics_evaluation_review" ||
+          tool.name === "project_prescribed_kinematics_method_review" ||
+          tool.name === "project_prescribed_kinematics_run_review" ||
           tool.name === "project_architecture_sysml_preview" ||
           tool.name === "project_architecture_sysml_source_capture" ||
           tool.name === "project_cross_domain_impact_manifest_capture" ||
@@ -1152,6 +1355,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_technical_compilation_preview" ||
           tool.name === "project_technical_source_capture" ||
           tool.name === "project_cad_placement_capture" ||
+          tool.name === "project_admitted_geometry_export" ||
           tool.name === "project_work_item_abandon" ||
           tool.name === "project_decision_approve" ||
           tool.name === "project_decision_reject" ||
@@ -1434,7 +1638,10 @@ function manifestFixture(): FleetManifest {
   };
 }
 
-function assemblyIntegrityBuild123dManifest(image: string): FleetManifest {
+function assemblyIntegrityBuild123dManifest(
+  image: string,
+  mcpUrl = "http://127.0.0.1:3014/mcp",
+): FleetManifest {
   return {
     version: 1,
     servers: [{
@@ -1443,8 +1650,8 @@ function assemblyIntegrityBuild123dManifest(image: string): FleetManifest {
       role: "factual assembly integrity",
       serviceName: "mcp-build123d",
       transport: "streamable-http",
-      mcpUrl: "http://127.0.0.1:3014/mcp",
-      healthUrl: "http://127.0.0.1:3014/health",
+      mcpUrl,
+      healthUrl: mcpUrl.replace(/\/mcp$/, "/health"),
       image,
       required: true,
       expectedTools: ["build123d_observe_assembly_integrity"],

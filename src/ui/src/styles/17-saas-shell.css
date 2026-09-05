@@ -2,7 +2,7 @@
 
    Le chrome (topbar, liens de nav) est en utilities dans `navigation.tsx`.
    Cette feuille porte ce que les utilities ne couvrent pas : la grille
-   topbar/sidebar/contenu, le punch-out Overview, et la politique
+   du header unique et du contenu, le punch-out Overview, et la politique
    transversale (focus, reduced-motion) héritée de 16.
    -------------------------------------------------------------------------- */
 
@@ -11,7 +11,8 @@
 }
 
 .native-preview-shell {
-  --desktop-chat-width: clamp(22rem, 28vw, 27rem);
+  --desktop-chat-width: clamp(20rem, 24vw, 23rem);
+  --desktop-chat-rail-width: 3.25rem;
   width: 100%;
   min-height: 100dvh;
   margin: 0;
@@ -32,12 +33,14 @@
 .native-preview-content {
   grid-column: 1;
   grid-row: 1;
+  container-name: desktop-workbench;
+  container-type: inline-size;
 }
 
 .thread-workbench {
   flex: 1;
   display: grid;
-  grid-template-columns: 12.25rem minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   grid-auto-rows: max-content;
   border: 0;
   background: var(--thread-canvas);
@@ -46,23 +49,107 @@
 
 .thread-workbench > * {
   min-width: 0;
-  grid-column: 2;
+  grid-column: 1;
 }
 
 .thread-workbench > .thread-cockpit-header {
-  grid-column: 1 / -1;
+  grid-column: 1;
 }
 
 .thread-workbench > .project-navigation {
   position: sticky;
-  top: 48px;
+  z-index: 40;
+  top: 0;
   grid-column: 1;
-  grid-row: 2 / span 14;
-  align-self: start;
-  height: calc(100dvh - 48px);
-  overflow-y: auto;
-  border-right: 1px solid var(--ui-border);
-  background: var(--ui-background);
+  display: flex;
+  height: 56px;
+  min-height: 56px;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.3rem clamp(0.65rem, 1.7vw, 1.25rem);
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid var(--ui-border);
+  background: color-mix(in srgb, var(--ui-background) 96%, transparent);
+  box-shadow: 0 1px 0 rgb(24 37 43 / 2%);
+  backdrop-filter: blur(10px);
+  scrollbar-width: none;
+}
+
+.thread-workbench > .project-navigation::-webkit-scrollbar {
+  display: none;
+}
+
+.project-navigation-primary,
+.project-navigation-utility {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+.project-navigation-utility {
+  margin-left: auto;
+  padding-left: 0.45rem;
+  border-left: 1px solid var(--ui-border);
+}
+
+.project-navigation-status {
+  display: flex;
+  min-width: 0;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 0.55rem;
+  padding-left: 0.55rem;
+  border-left: 1px solid var(--ui-border);
+  color: var(--ui-muted-foreground);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+
+.project-navigation-stream {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.project-navigation-stream > i {
+  width: 0.4rem;
+  height: 0.4rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--ui-success);
+}
+
+.project-navigation-stream[data-state="connecting"] > i,
+.project-navigation-stream[data-state="reconnecting"] > i {
+  background: var(--ui-warning);
+}
+
+.project-navigation-stream[data-state="history"] > i,
+.project-navigation-stream[data-state="snapshot"] > i {
+  background: var(--ui-muted-foreground);
+}
+
+.project-navigation-agent {
+  display: flex;
+  min-width: 0;
+  max-width: 15rem;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.project-navigation-agent > strong {
+  overflow: hidden;
+  color: var(--ui-foreground);
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+
+.project-navigation-time {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
 }
 
 .planning-workbench {
@@ -75,8 +162,8 @@
 
 .thread-workbench > :not(.thread-cockpit-header):not(.project-navigation) {
   width: auto;
-  max-width: 1280px;
-  margin: var(--space-20) clamp(1rem, 2.5vw, 2rem) 0;
+  max-width: 1400px;
+  margin: var(--space-24) clamp(1rem, 2.5vw, 2.25rem) 0;
 }
 
 .thread-workbench > :last-child:not(.project-navigation) {
@@ -86,9 +173,9 @@
 .thread-workbench > #project-workspace-panel.overview-2a {
   max-width: none;
   margin: 0;
-  padding: 18px 24px 28px;
-  background: #f7f8fa;
-  min-height: calc(100dvh - 48px);
+  padding: 28px clamp(1.25rem, 3vw, 3rem) 40px;
+  background: var(--thread-canvas);
+  min-height: calc(100dvh - 56px);
   overflow-y: auto;
 }
 
@@ -97,15 +184,400 @@
   border-bottom: 1px solid var(--line);
 }
 
+.project-workspace-page,
+.overview-2a {
+  container-name: workspace;
+  container-type: inline-size;
+}
+
+/* Overview digital-thread bundle -----------------------------------------
+
+   D3 owns deterministic hierarchy and cable geometry. CSS keeps the drawing
+   quiet, readable and motionless while preserving local inspection states.
+   -------------------------------------------------------------------------- */
+
+.overview-thread-hero {
+  position: relative;
+  min-width: 0;
+  background: var(--ui-card);
+}
+
+.overview-thread-layout-switch {
+  position: absolute;
+  top: 3.2rem;
+  right: 0.6rem;
+  z-index: 8;
+  display: flex;
+  padding: 2px;
+  border: 1px solid var(--ui-border);
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, #fff 94%, transparent);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 8%);
+  backdrop-filter: blur(8px);
+}
+
+.overview-thread-layout-switch > button {
+  min-height: 1.55rem;
+  padding: 0.15rem 0.5rem;
+  border: 0;
+  background: transparent;
+  color: var(--thread-muted);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 650;
+  letter-spacing: 0.035em;
+  cursor: pointer;
+}
+
+.overview-thread-layout-switch > button:first-child {
+  border-radius: 0.35rem 0 0 0.35rem;
+}
+
+.overview-thread-layout-switch > button:last-child {
+  border-radius: 0 0.35rem 0.35rem 0;
+}
+
+.overview-thread-layout-switch > button[aria-pressed="true"] {
+  z-index: 1;
+  background: var(--ui-accent);
+  color: var(--ui-foreground);
+}
+
+.overview-thread-layout-switch > button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--ui-brand) 65%, white);
+  outline-offset: 2px;
+}
+
+.overview-thread-viewport {
+  min-width: 0;
+  max-height: min(64vh, 620px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: #fff;
+  scrollbar-width: none;
+}
+
+.overview-thread-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.overview-thread-map {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  justify-content: center;
+}
+
+.overview-thread-svg {
+  display: block;
+  flex: none;
+  max-width: none;
+  background: #fff;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.overview-thread-lane-arc {
+  stroke-width: 4;
+  stroke-linecap: round;
+  opacity: 0.7;
+}
+
+.overview-thread-lane-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.overview-thread-cable {
+  pointer-events: none;
+  stroke: #53666f;
+  stroke-linecap: round;
+  opacity: 0.18;
+}
+
+.overview-thread-cable[data-state="emphasis"] {
+  stroke: var(--ui-warning);
+  opacity: 0.58;
+}
+
+.overview-thread-cable[data-state="incoming"] {
+  stroke: #6d28d9;
+  opacity: 0.88;
+}
+
+.overview-thread-cable[data-state="outgoing"] {
+  stroke: #0f766e;
+  opacity: 0.88;
+}
+
+.overview-thread-cable[data-state="muted"] {
+  opacity: 0.025;
+}
+
+.overview-thread-node {
+  opacity: 1;
+  outline: none;
+}
+
+.overview-thread-node-leader {
+  stroke: #718087;
+  stroke-width: 0.8;
+  opacity: 0.5;
+}
+
+.overview-thread-node-label {
+  fill: #202b31;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.overview-thread-node-focus-ring {
+  stroke-width: 2;
+  opacity: 0;
+}
+
+.overview-thread-node:hover .overview-thread-node-label,
+.overview-thread-node:focus-visible .overview-thread-node-label,
+.overview-thread-node[data-state="selected"] .overview-thread-node-label {
+  fill: #09090b;
+  font-weight: 700;
+}
+
+.overview-thread-node:focus-visible .overview-thread-node-focus-ring,
+.overview-thread-node[data-state="selected"] .overview-thread-node-focus-ring {
+  opacity: 1;
+}
+
+.overview-thread-node[data-state="muted"] {
+  opacity: 0.24;
+}
+
+.overview-thread-node[data-kind="activity"] .overview-thread-node-label {
+  fill: #4b5563;
+  font-style: italic;
+}
+
+/* Left-to-right hierarchy. Shared segments are emitted once by the D3 routing
+   graph, so line weight represents concentration without implying a quantity. */
+
+.overview-thread-flow {
+  width: max-content;
+  min-width: 100%;
+  background: #fff;
+}
+
+.overview-thread-flow-lane-strip {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  height: 44px;
+  border-bottom: 1px solid var(--ui-border);
+  background: color-mix(in srgb, #fff 96%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.overview-thread-flow-lane {
+  position: absolute;
+  top: 0;
+  display: flex;
+  width: 160px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  transform: translateX(-50%);
+}
+
+.overview-thread-flow-lane-rule {
+  width: 1rem;
+  height: 2px;
+  border-radius: 999px;
+  opacity: 0.8;
+}
+
+.overview-thread-flow-lane-title {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+
+.overview-thread-flow-svg {
+  display: block;
+  max-width: none;
+  overflow: visible;
+  background: #fff;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.overview-thread-flow-segment {
+  pointer-events: none;
+  stroke: #62747c;
+  opacity: 0.22;
+}
+
+.overview-thread-flow-segment[data-kind="node-branch"] {
+  opacity: 0.34;
+}
+
+.overview-thread-flow-segment[data-state="emphasis"] {
+  stroke: var(--ui-warning);
+  opacity: 0.7;
+}
+
+.overview-thread-flow-segment[data-state="incoming"] {
+  stroke: #6d28d9;
+  opacity: 0.9;
+}
+
+.overview-thread-flow-segment[data-state="outgoing"] {
+  stroke: #0f766e;
+  opacity: 0.9;
+}
+
+.overview-thread-flow-segment[data-state="muted"] {
+  opacity: 0.025;
+}
+
+.overview-thread-flow-node {
+  cursor: pointer;
+  outline: none;
+}
+
+.overview-thread-flow-node-card {
+  fill: #fff;
+  stroke: #ced7db;
+  stroke-width: 1;
+}
+
+.overview-thread-flow-node-label {
+  fill: #202b31;
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 2px;
+  stroke-linejoin: round;
+}
+
+.overview-thread-flow-node-focus {
+  opacity: 0;
+}
+
+.overview-thread-flow-node:hover .overview-thread-flow-node-card,
+.overview-thread-flow-node:focus-visible .overview-thread-flow-node-card,
+.overview-thread-flow-node[data-state="selected"] .overview-thread-flow-node-card {
+  fill: #f8fafb;
+}
+
+.overview-thread-flow-node:focus-visible .overview-thread-flow-node-focus {
+  opacity: 1;
+}
+
+.overview-thread-flow-node[data-state="muted"] {
+  opacity: 0.2;
+}
+
+.overview-thread-flow-node[data-kind="activity"] .overview-thread-flow-node-card {
+  stroke-dasharray: 4 3;
+}
+
+@container workspace (min-width: 62rem) {
+  .overview-objective-band {
+    flex-direction: row;
+    align-items: flex-end;
+  }
+
+  .overview-status-cluster {
+    align-items: flex-end;
+  }
+}
+
 .project-workspace-page.is-work {
   padding-top: clamp(0.85rem, 1.5vw, 1.2rem);
 }
 
-.thread-workbench :is(.thread-flow-section, .thread-tool-drawer) {
+.component-summary-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.component-summary-metrics > div + div {
+  border-inline-start: 1px solid var(--ui-border);
+}
+
+@container workspace (max-width: 52rem) {
+  .component-summary-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .component-summary-metrics > div:nth-child(3) {
+    grid-column: 1 / -1;
+    border-block-start: 1px solid var(--ui-border);
+    border-inline-start: 0;
+  }
+}
+
+@container workspace (max-width: 40rem) {
+  .project-path-stage-band {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .project-path-stage-band::-webkit-scrollbar {
+    display: none;
+  }
+
+  .project-path-stage-band > li {
+    flex: 0 0 8.5rem;
+    padding-block: var(--space-4);
+  }
+
+  .project-path-stage-band > li:last-child {
+    flex-basis: 8.5rem;
+  }
+
+  .project-path-stage-connector {
+    display: block;
+  }
+}
+
+@container workspace (max-width: 34rem) {
+  .component-summary-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .component-summary-metrics > div + div {
+    border-block-start: 1px solid var(--ui-border);
+    border-inline-start: 0;
+  }
+
+  .component-summary-metrics > div:nth-child(3) {
+    grid-column: auto;
+  }
+}
+
+.thread-workbench .thread-flow-section {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.thread-workbench .thread-tool-drawer {
   border: 1px solid var(--thread-border);
   border-radius: var(--radius-lg);
   background: var(--thread-panel);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-pop);
 }
 
 .thread-workbench :is(a, button, [role="button"], [role="tab"], summary, select):focus-visible {
@@ -129,37 +601,71 @@
 }
 
 @media (min-width: 1200px) {
-  .native-preview-shell[data-chat-open="true"] {
+  .native-preview-shell[data-project-chat-panel="true"] {
+    grid-template-columns: var(--desktop-chat-rail-width) minmax(0, 1fr);
+  }
+
+  .native-preview-shell[data-project-chat-panel="true"][data-chat-open="true"] {
+    grid-template-columns: var(--desktop-chat-width) minmax(0, 1fr);
+  }
+
+  .native-preview-shell[data-project-chat-panel="true"] > .native-preview-content {
+    grid-column: 2;
+  }
+
+  .native-preview-shell[data-project-chat-panel="false"][data-chat-open="true"] {
     grid-template-columns: minmax(0, 1fr) var(--desktop-chat-width);
   }
 }
 
 @media (max-width: 900px) {
-  .thread-workbench {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .thread-workbench > * {
-    grid-column: 1;
-  }
-
-  .thread-workbench > .thread-cockpit-header {
-    grid-column: 1;
-  }
-
   .thread-workbench > .project-navigation {
-    position: static;
-    grid-column: 1;
-    grid-row: auto;
-    height: auto;
-    flex-direction: row;
-    overflow-x: auto;
-    padding: var(--space-6) var(--space-10);
-    border-right: 0;
-    border-bottom: 1px solid var(--ui-border);
+    padding-inline: 0.5rem;
   }
 
   .thread-workbench > :not(.thread-cockpit-header):not(.project-navigation) {
     margin: var(--space-12) var(--space-12) 0;
+  }
+}
+
+/* The app can become narrow because Chat is docked even when the viewport is
+   wide. These rules therefore follow the actual Workbench column, not only
+   the browser window. */
+@container desktop-workbench (max-width: 900px) {
+  .thread-workbench > .project-navigation {
+    padding-inline: 0.5rem;
+  }
+
+  .project-navigation-item {
+    flex: 0 0 auto;
+  }
+
+  .thread-workbench > :not(.thread-cockpit-header):not(.project-navigation) {
+    margin: var(--space-12) var(--space-12) 0;
+  }
+}
+
+@container desktop-workbench (max-width: 64rem) {
+  .project-navigation-agent,
+  .project-navigation-time {
+    display: none;
+  }
+
+  .thread-header-meta {
+    display: none;
+  }
+}
+
+@container desktop-workbench (max-width: 48rem) {
+  .project-navigation-stream-label {
+    display: none;
+  }
+
+  .thread-header-status {
+    display: none;
+  }
+
+  .thread-header-signals {
+    gap: var(--space-8);
   }
 }

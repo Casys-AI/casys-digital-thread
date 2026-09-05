@@ -11,9 +11,9 @@ import {
   type SensitivityDerivatives,
 } from "./sensitivity-study.ts";
 import {
-  type SensitivityStudyCaseV2,
-  validateSensitivityStudyCaseV2,
-} from "./sensitivity-study-v2.ts";
+  type SensitivityStudyCaseV3,
+  validateSensitivityStudyCaseV3,
+} from "./sensitivity-study-v3.ts";
 import {
   arrayOf,
   exactRecord,
@@ -57,7 +57,7 @@ export interface SensitivityStudyScientificResult {
   };
   readonly trustedRunId: string;
   readonly caseDigest: string;
-  readonly studyCase: SensitivityStudyCaseV2;
+  readonly studyCase: SensitivityStudyCaseV3;
   readonly measurements: {
     readonly base: readonly SensitivityStudyMeasurement[];
     readonly stepped: readonly SensitivityStudyMeasurement[];
@@ -170,7 +170,7 @@ export async function validateSensitivityStudyScientificResult(
   if (Number.isNaN(Date.parse(capturedAt))) {
     throw new TypeError(`${path}.capturedAt must be ISO-8601.`);
   }
-  const studyCase = validateSensitivityStudyCaseV2(root.studyCase);
+  const studyCase = validateSensitivityStudyCaseV3(root.studyCase);
   const observedDigest = (await sha256Fingerprint(studyCase)).digest;
   if (caseDigest !== observedDigest) {
     throw new TypeError(
@@ -239,7 +239,7 @@ function parseCadPublication(
 
 function parseMeasurements(
   value: unknown,
-  studyCase: SensitivityStudyCaseV2,
+  studyCase: SensitivityStudyCaseV3,
   path: string,
 ): readonly SensitivityStudyMeasurement[] {
   const items = arrayOf(value, path);

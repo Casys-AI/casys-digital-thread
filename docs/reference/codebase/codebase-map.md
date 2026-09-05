@@ -25,6 +25,7 @@ not repeat that catalogue.
 | [Compile](../codebase/compile.md)                                                       | Admission, source analysis, ROP, shared isolation runner             |
 | [SysML architecture and requirements](../codebase/sysml-architecture-requirements.md)   | Renderer, agent-seal, seed, requirements, part definitions           |
 | [CAD](../codebase/cad.md)                                                               | Isolated Build123d, isolated-geometry seal, canonical geometry       |
+| [Mechanism](../codebase/mechanism.md)                                                   | Prescribed case, L3 one-dispatch recovery, L4/L5 evidence             |
 | [Modelica](../codebase/modelica.md)                                                     | Admitted run, qualified kit, retired recorded island                 |
 | [FEA](../codebase/fea.md)                                                               | Proof-case seal and isolated CalculiX `@3`                           |
 | [Sensitivity](../codebase/sensitivity.md)                                               | Study, edges, base evaluation, vector correction, live-FEA           |

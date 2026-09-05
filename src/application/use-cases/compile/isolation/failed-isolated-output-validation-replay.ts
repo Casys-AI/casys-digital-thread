@@ -51,6 +51,34 @@ export interface FailedIsolatedOutputValidationReplayInput {
   ) => FailRunCommand;
 }
 
+/**
+ * Exact evidence-free reconciliation for an isolated execution which has a
+ * domain-owned terminal failure other than output validation.  The caller
+ * still owns the allowed failure code and the WAL fact which authorizes it;
+ * this helper owns only the project claim/fail receipt shape.
+ */
+export interface FailedIsolatedExecutionReplayInput {
+  readonly project: EngineeringProjectSnapshot;
+  readonly run: EngineeringAgentRun;
+  readonly origin: EngineeringProjectCommandOrigin;
+  readonly originalStartedAt: string | undefined;
+  readonly failure: {
+    readonly summary: string;
+    readonly code: string;
+    readonly message: string;
+  };
+  readonly claimCommandId: string;
+  readonly failCommandId: string;
+  readonly buildClaimCommand: (
+    expectedRevision: number,
+    issuedAt: string,
+  ) => RunCommand;
+  readonly buildFailCommand: (
+    expectedRevision: number,
+    issuedAt: string,
+  ) => FailRunCommand;
+}
+
 export function isolatedOutputValidationFailedMessage(observation: {
   readonly role: string;
   readonly byteCount: number;
@@ -72,6 +100,24 @@ export function assertFailedIsolatedOutputValidationBinding(input: {
     readonly message: string;
   };
 }): void {
+  if (input.failure.code !== ISOLATED_OUTPUT_VALIDATION_FAILED_CODE) {
+    throw invalidTransition(
+      "The failed isolated output-validation project state does not exactly bind its evidence-free terminal failure.",
+    );
+  }
+  assertFailedIsolatedExecutionBinding(input);
+}
+
+export function assertFailedIsolatedExecutionBinding(input: {
+  readonly project: EngineeringProjectSnapshot;
+  readonly run: EngineeringAgentRun;
+  readonly originalStartedAt: string | undefined;
+  readonly failure: {
+    readonly summary: string;
+    readonly code: string;
+    readonly message: string;
+  };
+}): void {
   const workItem = input.project.workItems.find((item) =>
     item.id === input.run.workItemId
   );
@@ -80,7 +126,6 @@ export function assertFailedIsolatedOutputValidationBinding(input: {
     input.run.resultSnapshot !== undefined ||
     input.run.evidenceRefs.length !== 0 ||
     workItem.evidenceRefs.length !== 0 ||
-    input.failure.code !== ISOLATED_OUTPUT_VALIDATION_FAILED_CODE ||
     input.run.failure.code !== input.failure.code ||
     input.run.failure.message !== input.failure.message ||
     input.run.summary !== input.failure.summary ||
@@ -162,6 +207,13 @@ export async function assertFailedIsolatedOutputValidationReplay(
   input: FailedIsolatedOutputValidationReplayInput,
 ): Promise<void> {
   assertFailedIsolatedOutputValidationBinding(input);
+  await assertFailedIsolatedExecutionReplay(input);
+}
+
+export async function assertFailedIsolatedExecutionReplay(
+  input: FailedIsolatedExecutionReplayInput,
+): Promise<void> {
+  assertFailedIsolatedExecutionBinding(input);
   const receipts = requireFailedIsolatedOutputValidationReceipts(input);
   await assertIsolatedOutputValidationCommandReceiptExact(
     input.run,

@@ -3,6 +3,7 @@ import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
 import type { ProjectAdmittedGeometryExportResult } from "../../application/ports/in/cad/canonical/project-admitted-geometry-export.ts";
 import type { ProjectBuild123dExecutionReviewResult } from "../../application/ports/in/cad/isolated/project-build123d-execution-review.ts";
 import type { ProjectIsolatedGeometrySealReviewResult } from "../../application/ports/in/cad/sealed-isolated/project-isolated-geometry-seal-review.ts";
+import { ProjectTechnicalSourceCaptureError } from "../../application/ports/in/compile/admission/project-technical-source-capture.ts";
 import { registerProjectTechnicalCompilationTools } from "./technical-compilation-tools.ts";
 
 const ARTIFACT_DIGEST = "a".repeat(64);
@@ -440,6 +441,9 @@ Deno.test("technical source capture accepts only attachmentId,attachmentRevision
     false,
   );
   const preview = app.tool("project_technical_compilation_preview");
+  assertStringIncludes(preview.description, "compile.seal-admission@3");
+  assertStringIncludes(preview.description, "Reuse that operation verbatim");
+  assertStringIncludes(preview.description, "sysmlModel");
   const previewInput = preview.inputSchema as Record<string, unknown>;
   assertEquals(
     Object.keys(previewInput.properties as Record<string, unknown>).includes(
@@ -464,6 +468,33 @@ Deno.test("technical source capture accepts only attachmentId,attachmentRevision
   assertEquals(
     reference.kind.const,
     "technical-source-analysis-capture-locator",
+  );
+});
+
+Deno.test("technical source capture exposes an exact lowerer rejection to MCP", async () => {
+  const app = new CapturingApp();
+  registerProjectTechnicalCompilationTools(app as unknown as McpApp, {
+    technicalSourceCapture: {
+      capture: () =>
+        Promise.reject(
+          new ProjectTechnicalSourceCaptureError(
+            "workspace_import_not_prelude",
+            "Workspace imports must form one leading module-level prelude.",
+          ),
+        ),
+    },
+  });
+
+  await assertRejects(
+    () =>
+      app.handler("project_technical_source_capture")({
+        projectId: "project.drip-tray",
+        workspaceRevision: 2,
+        attachmentId: "att.source.cad",
+        attachmentRevision: 1,
+      }) as Promise<unknown>,
+    TypeError,
+    "project_technical_source_capture rejected (workspace_import_not_prelude)",
   );
 });
 

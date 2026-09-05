@@ -11,7 +11,6 @@ import {
   isThreadWorkbenchSnapshot,
   type ThreadArtifact,
   type ThreadGraphNode,
-  type ThreadWorkbenchSnapshot,
 } from "./src/thread/types.ts";
 
 Deno.test("native Workbench rejects a missing bootstrap instead of selecting a product fixture", async () => {
@@ -68,130 +67,37 @@ Deno.test("evidence Workbench rejects unknown fields and incomplete array entiti
   extraArtifactField.thread.artifacts[0]!.sysonElementId = "must-not-leak";
   assertEquals(isEngineeringWorkbenchSnapshot(extraArtifactField), false);
 
-  const sealedDocument = structuredClone(GENERIC_THREAD_FIXTURE);
-  sealedDocument.artifacts[0] = {
-    ...sealedDocument.artifacts[0]!,
-    kind: "document",
-    producedBy: "model.seal-architecture-sysml@1",
-    architectureSysmlSeal: {
-      producer: "model.seal-architecture-sysml@1",
-      authority: "documentary",
-      artifactKind: "document",
-      notSyson: true,
-      notWriteArchitecture: true,
-      notCompilationAdmission: true,
-      symbolsStatus: "observed",
-      sourceStatus: "observed",
-      sourceText: "package DroneV4 {}\n",
-      symbols: [{
-        id: "symbol:package",
-        kind: "artifact",
-        label: "DroneV4",
-        span: { start: { line: 1, column: 8 }, end: { line: 1, column: 15 } },
-      }],
-      incidences: [{
-        id: "dependency:usage-type",
-        kind: "structural-incidence",
-        fromSymbolId: "symbol:package",
-        toSymbolId: "symbol:package-type",
-        span: { start: { line: 1, column: 0 }, end: { line: 1, column: 18 } },
-      }],
-      unresolvedConstructs: [{
-        id: "unresolved:comment",
-        kind: "comment",
-        message: "A comment is outside the architecture closed subset.",
-        span: { start: { line: 2, column: 0 }, end: { line: 2, column: 8 } },
-      }],
-    },
+  const canonicalProducer = structuredClone(GENERIC_THREAD_FIXTURE);
+  canonicalProducer.artifacts[0]!.producer = {
+    serverId: "digital-thread",
+    tool: "model.write-architecture@1",
+    runId: "run-architecture",
   };
-  assertEquals(isThreadWorkbenchSnapshot(sealedDocument), true);
+  assertEquals(isThreadWorkbenchSnapshot(canonicalProducer), true);
 
-  const missingIncidences = structuredClone(sealedDocument);
-  delete (missingIncidences.artifacts[0] as {
-    architectureSysmlSeal?: {
-      incidences?: unknown;
-    };
-  }).architectureSysmlSeal?.incidences;
-  assertEquals(isThreadWorkbenchSnapshot(missingIncidences), false);
-
-  const labelledIncidence = structuredClone(sealedDocument) as {
-    artifacts: Array<{
-      architectureSysmlSeal?: {
-        incidences: Array<
-          Record<string, unknown>
-        >;
-      };
-    }>;
+  const malformedProducer = structuredClone(canonicalProducer) as unknown as {
+    artifacts: Array<{ producer?: Record<string, unknown> }>;
   };
-  labelledIncidence.artifacts[0]!.architectureSysmlSeal!.incidences[0]!
-    .fromLabel = "must-not-be-a-join-key";
-  assertEquals(isThreadWorkbenchSnapshot(labelledIncidence), false);
+  malformedProducer.artifacts[0]!.producer!.providerArgs = {};
+  assertEquals(isThreadWorkbenchSnapshot(malformedProducer), false);
 
-  const missingSourceStatus = structuredClone(sealedDocument);
-  delete (missingSourceStatus.artifacts[0] as {
-    architectureSysmlSeal?: { sourceStatus?: unknown };
-  }).architectureSysmlSeal?.sourceStatus;
-  assertEquals(isThreadWorkbenchSnapshot(missingSourceStatus), false);
-
-  const observedWithoutSourceText = structuredClone(sealedDocument);
-  delete (observedWithoutSourceText.artifacts[0] as {
-    architectureSysmlSeal?: { sourceText?: unknown };
-  }).architectureSysmlSeal?.sourceText;
-  assertEquals(isThreadWorkbenchSnapshot(observedWithoutSourceText), false);
-
-  const unavailableWithSource = structuredClone(sealedDocument) as {
-    artifacts: Array<{
-      architectureSysmlSeal?: {
-        sourceStatus?: string;
-        sourceText?: string;
-        symbols: Array<Record<string, unknown>>;
-        incidences: Array<Record<string, unknown>>;
-        unresolvedConstructs: Array<Record<string, unknown>>;
-      };
-    }>;
+  const embeddedSealProjection = structuredClone(
+    GENERIC_THREAD_FIXTURE,
+  ) as unknown as {
+    artifacts: Array<Record<string, unknown>>;
   };
-  unavailableWithSource.artifacts[0]!.architectureSysmlSeal!.sourceStatus =
-    "unavailable";
-  assertEquals(isThreadWorkbenchSnapshot(unavailableWithSource), false);
-
-  const unavailableCaptureOnly = structuredClone(sealedDocument) as {
-    artifacts: Array<{
-      architectureSysmlSeal?: {
-        symbolsStatus?: string;
-        sourceStatus?: string;
-        sourceText?: string;
-        symbols: unknown[];
-        incidences: unknown[];
-        unresolvedConstructs: Array<Record<string, unknown>>;
-      };
-    }>;
+  embeddedSealProjection.artifacts[0]!.architectureSysmlSeal = {
+    sourceText: "must-stay-in-the-exact-app",
   };
-  const unavailableSeal = unavailableCaptureOnly.artifacts[0]!
-    .architectureSysmlSeal!;
-  unavailableSeal.symbolsStatus = "unavailable";
-  unavailableSeal.sourceStatus = "unavailable";
-  delete unavailableSeal.sourceText;
-  unavailableSeal.symbols = [];
-  unavailableSeal.incidences = [];
-  unavailableSeal.unresolvedConstructs = [{
-    id: "unresolved:comment",
-    kind: "comment",
-  }];
-  assertEquals(isThreadWorkbenchSnapshot(unavailableCaptureOnly), true);
+  assertEquals(isThreadWorkbenchSnapshot(embeddedSealProjection), false);
 
-  unavailableSeal.unresolvedConstructs[0]!.message = "must-not-invent";
-  assertEquals(isThreadWorkbenchSnapshot(unavailableCaptureOnly), false);
-
-  const extraSpanField = structuredClone(sealedDocument) as {
-    artifacts: Array<{
-      architectureSysmlSeal?: {
-        symbols: Array<{ span?: Record<string, unknown> }>;
-      };
-    }>;
+  const embeddedProductNavigation = structuredClone(
+    GENERIC_THREAD_FIXTURE,
+  ) as unknown as Record<string, unknown>;
+  embeddedProductNavigation.productNavigation = {
+    status: "must-use-the-standalone-endpoint",
   };
-  extraSpanField.artifacts[0]!.architectureSysmlSeal!.symbols[0]!.span!.origin =
-    "invented";
-  assertEquals(isThreadWorkbenchSnapshot(extraSpanField), false);
+  assertEquals(isThreadWorkbenchSnapshot(embeddedProductNavigation), false);
 
   const malformedActions = structuredClone(
     GENERIC_ENGINEERING_WORKBENCH_FIXTURE,
@@ -200,39 +106,6 @@ Deno.test("evidence Workbench rejects unknown fields and incomplete array entiti
     id: "action-without-authority-boundary",
   }];
   assertEquals(isEngineeringWorkbenchSnapshot(malformedActions), false);
-});
-
-Deno.test("client validator accepts only exact provider-free assembly-integrity L3/L4/L5 projection", () => {
-  const snapshot = assemblyIntegrityThreadFixture();
-  assertEquals(isThreadWorkbenchSnapshot(snapshot), true);
-
-  const rawProvider = structuredClone(snapshot) as unknown as {
-    assemblyIntegrity: {
-      chains: Array<{ observation: { record: Record<string, unknown> } }>;
-    };
-  };
-  rawProvider.assemblyIntegrity.chains[0]!.observation.record.provider =
-    "must-not-leak";
-  assertEquals(isThreadWorkbenchSnapshot(rawProvider), false);
-
-  const sixthCriterion = structuredClone(snapshot) as {
-    assemblyIntegrity: {
-      chains: Array<{ evaluation: { criteria: unknown[] } }>;
-    };
-  };
-  sixthCriterion.assemblyIntegrity.chains[0]!.evaluation.criteria.push({
-    id: "invented-criterion",
-    verdict: "pass",
-  });
-  assertEquals(isThreadWorkbenchSnapshot(sixthCriterion), false);
-
-  const l3Verdict = structuredClone(snapshot) as unknown as {
-    assemblyIntegrity: {
-      chains: Array<{ observation: Record<string, unknown> }>;
-    };
-  };
-  l3Verdict.assemblyIntegrity.chains[0]!.observation.aggregateVerdict = "pass";
-  assertEquals(isThreadWorkbenchSnapshot(l3Verdict), false);
 });
 
 Deno.test("evidence Workbench rejects incoherent revisions and malformed live overlays", () => {
@@ -815,41 +688,8 @@ Deno.test("the Workbench contract accepts exact SysML structure nodes and reject
     relation: "contains",
     rationale: "GenericAssembly contains thickness.",
     origin: "structure",
-  }, {
-    id: "structure:parameterizes:admission:attr-thickness",
-    from: { kind: "cad-lever", id: "admission:parameter.thickness" },
-    to: { kind: "attribute-usage", id: "attr-thickness" },
-    relation: "parameterizes",
-    rationale: "Sealed admission uniquely parameterizes thickness.",
-    origin: "structure",
-  });
-  snapshot.graph.nodes.push({
-    id: "graph:cad-lever:admission:parameter.thickness",
-    ref: { kind: "cad-lever", id: "admission:parameter.thickness" },
-    entityKind: "cad-lever",
-    label: "CAD · thickness = 8",
-    system: "build123d",
-    freshness: "fresh",
-    summary: "named numeric lever · unit undeclared",
-    selection: { kind: "artifact", id: "ART-SYSML-017" },
-  }, {
-    id: "graph:source-file:source.cad@1",
-    ref: { kind: "source-file", id: "source.cad@1" },
-    entityKind: "source-file",
-    label: "rail.py",
-    system: "project-source-workspace",
-    freshness: "fresh",
-    summary: "cad-script · source.cad@1",
-    selection: { kind: "artifact", id: "ART-SYSML-017" },
   });
   snapshot.graph.edges.push({
-    id: "structure:represented-by:def-system:source.cad@1",
-    from: { kind: "part-definition", id: "def-system" },
-    to: { kind: "source-file", id: "source.cad@1" },
-    relation: "represented_by",
-    rationale: "The exact source file represents this PartDefinition.",
-    origin: "structure",
-  }, {
     id: "structure:verified-by:def-system:fea-proof",
     from: { kind: "part-definition", id: "def-system" },
     to: { kind: "artifact", id: "ART-STEP-018" },
@@ -864,30 +704,6 @@ Deno.test("the Workbench contract accepts exact SysML structure nodes and reject
     rationale: "The exact requirements capture targets this PartDefinition.",
     origin: "structure",
   });
-  snapshot.sourceFiles = {
-    schemaVersion: "thread-source-files/1.0",
-    status: "observed",
-    files: [{
-      fileId: "source.cad",
-      fileRevision: 1,
-      workspaceRevision: 2,
-      workspaceEventFingerprint: `sha256:${"e".repeat(64)}`,
-      fileFingerprint: `sha256:${"f".repeat(64)}`,
-      resourceFingerprint: `sha256:${"c".repeat(64)}`,
-      resourceUri: `casys://agent-resource-capture/sha256/${"c".repeat(64)}`,
-      resourceName: "rail.py",
-      mimeType: "text/x-python",
-      moduleId: "mod-rail",
-      role: "cad-script",
-      admissionArtifactId: "technical-compilation-admission-" + "a".repeat(64),
-      bindings: [{
-        relation: "represents",
-        sourceSymbolId: "artifact.result",
-        sysmlElementId: "def-system",
-        sysmlElementKind: "PartDefinition",
-      }],
-    }],
-  };
   snapshot.requirements[1]!.targetElementId = "def-system";
   assertEquals(isThreadWorkbenchSnapshot(snapshot), true);
 
@@ -995,7 +811,7 @@ Deno.test("the Workbench accepts only exact verification cases and known node me
 
   const mismatchedSchema = structuredClone(observed);
   mismatchedSchema.engineeringCases!.cases[0]!.caseSchemaVersion =
-    "sensitivity-study-case/2.0" as never;
+    "sensitivity-study-case/3.0" as never;
   assertEquals(isThreadWorkbenchSnapshot(mismatchedSchema), false);
 
   const wrongAuthority = structuredClone(observed);
@@ -1276,39 +1092,19 @@ Deno.test("thread-workbench/0.2 keeps the case extension additive and fail-close
   assertEquals(isThreadWorkbenchSnapshot(legacy), false);
 });
 
-Deno.test("the Workbench contract requires evidence-backed component facets", () => {
-  const missingComponents = JSON.parse(
-    JSON.stringify(GENERIC_THREAD_FIXTURE),
-  ) as Partial<typeof GENERIC_THREAD_FIXTURE>;
-  delete missingComponents.components;
-  assertEquals(isThreadWorkbenchSnapshot(missingComponents), false);
+Deno.test("the generic Workbench rejects a hidden domain component catalog", () => {
+  const withComponents = structuredClone(GENERIC_THREAD_FIXTURE) as unknown as
+    & Record<string, unknown>
+    & { components: unknown };
+  withComponents.components = {
+    schemaVersion: "thread-components/1.0",
+    authority: "workspace-declared",
+    subjectId: GENERIC_THREAD_FIXTURE.subject.id,
+    rationale: "Domain payload must stay outside the generic Workbench snapshot.",
+    components: [],
+  };
 
-  const fuzzyBinding = JSON.parse(
-    JSON.stringify(GENERIC_THREAD_FIXTURE),
-  ) as typeof GENERIC_THREAD_FIXTURE;
-  fuzzyBinding.components.components[0].bindings[0].status = "fuzzy" as never;
-  assertEquals(isThreadWorkbenchSnapshot(fuzzyBinding), false);
-
-  const partDefinition = structuredClone(GENERIC_THREAD_FIXTURE);
-  partDefinition.components.components[0].bindings[0].kind = "part-definition";
-  assertEquals(isThreadWorkbenchSnapshot(partDefinition), true);
-
-  partDefinition.components.components[0].bindings[0].kind = "invented" as never;
-  assertEquals(isThreadWorkbenchSnapshot(partDefinition), false);
-
-  const withAttributes = structuredClone(GENERIC_THREAD_FIXTURE);
-  withAttributes.components.components[0].attributes = [{
-    id: "attr-thickness",
-    kind: "AttributeUsage",
-    label: "thickness",
-  }];
-  assertEquals(isThreadWorkbenchSnapshot(withAttributes), true);
-  withAttributes.components.components[0].attributes = [{
-    id: "attr-thickness",
-    kind: "PartUsage",
-    label: "thickness",
-  }] as never;
-  assertEquals(isThreadWorkbenchSnapshot(withAttributes), false);
+  assertEquals(isThreadWorkbenchSnapshot(withComponents), false);
 });
 
 Deno.test("HTTP Workbench client performs one uncached read-only JSON GET", async () => {
@@ -1466,220 +1262,4 @@ function evidenceWorkbenchWithDeclaredFamily() {
   }];
   workbench.thread.evidenceFamilyGraph.omittedCycleEdges = [];
   return workbench;
-}
-
-function assemblyIntegrityThreadFixture(): ThreadWorkbenchSnapshot {
-  const a = "a".repeat(64);
-  const b = "b".repeat(64);
-  const c = "c".repeat(64);
-  const d = "d".repeat(64);
-  const e = "e".repeat(64);
-  const geometry = assemblyProjectionRef(
-    "geometry-" + a,
-    a,
-    "run-geometry",
-    [],
-  );
-  const step = assemblyProjectionRef(
-    "cad-asset-" + a + "-module-step-" + b,
-    b,
-    "run-geometry",
-    [],
-  );
-  const observation = assemblyProjectionRef(
-    "assembly-integrity-observation-" + c,
-    c,
-    "run-l3",
-    [geometry.id, step.id],
-  );
-  const evaluation = assemblyProjectionRef(
-    "assembly-integrity-evaluation-" + d,
-    d,
-    "run-l4",
-    [geometry.id, step.id, observation.id],
-  );
-  const closeout = assemblyProjectionRef(
-    "assembly-integrity-evaluation-closeout-" + e,
-    e,
-    "run-l5",
-    [evaluation.id],
-  );
-  const snapshot = structuredClone(GENERIC_THREAD_FIXTURE);
-  snapshot.previous = { snapshotId: "assembly-basis", revision: 4 };
-  snapshot.artifacts = [
-    ...snapshot.artifacts,
-    assemblyProjectionArtifact(geometry, "cad-model", "design.write-geometry@1"),
-    assemblyProjectionArtifact(step, "step", "design.write-geometry@1"),
-    assemblyProjectionArtifact(
-      observation,
-      "evidence",
-      "verify.observe-assembly-integrity@1",
-    ),
-    assemblyProjectionArtifact(
-      evaluation,
-      "evidence",
-      "verify.evaluate-assembly-integrity@1",
-    ),
-    assemblyProjectionArtifact(
-      closeout,
-      "document",
-      "decide.accept-assembly-integrity-evaluation@1",
-    ),
-  ];
-  snapshot.assemblyIntegrity = {
-    schemaVersion: "thread-assembly-integrity/1.0",
-    family: "assembly-integrity",
-    status: "current",
-    chains: [{
-      id: closeout.id,
-      status: "current",
-      observation: {
-        record: observation,
-        basis: {
-          snapshotId: "assembly-basis",
-          revision: 2,
-          subjectId: snapshot.subject.id,
-        },
-        inputBundle: { fingerprint: "sha256:" + a, byteCount: 1 },
-        evidence: { geometryModule: geometry, assemblyStep: step },
-        facts: {
-          importability: { status: "observed", value: "imported" },
-          importFacts: {
-            unitSystem: { status: "observed", value: "mm" },
-            solidCount: { status: "observed", value: 1 },
-          },
-          topology: {
-            brepValidity: { status: "observed", value: "valid" },
-            degenerateEdgeCount: { status: "observed", value: 0 },
-            freeEdgeCount: { status: "observed", value: 0 },
-            shellCount: { status: "observed", value: 1 },
-          },
-          occurrences: [],
-          pairs: [],
-        },
-        limitations: {
-          verdict: "none",
-          fitness: "none",
-          safety: "none",
-          motion: "none",
-          strength: "none",
-        },
-      },
-      evaluation: {
-        record: evaluation,
-        basis: {
-          snapshotId: "assembly-basis",
-          revision: 3,
-          subjectId: snapshot.subject.id,
-        },
-        evidence: {
-          geometryModule: geometry,
-          assemblyStep: step,
-          observation,
-        },
-        method: {
-          id: "assembly-integrity-evaluation",
-          version: "1.0",
-          fingerprint: "sha256:" + a,
-        },
-        criteria: [
-          { id: "assembly-import", verdict: "pass" },
-          { id: "occurrence-coverage", verdict: "pass" },
-          { id: "placement-recross", verdict: "pass" },
-          { id: "brep-validity", verdict: "pass" },
-          { id: "pairwise-intersection", verdict: "pass" },
-        ],
-        aggregateVerdict: "pass",
-        limitations: {
-          providerCalls: "none",
-          genericSysmlRequirementEvaluation: "none",
-          safety: "not-evaluated",
-          physicalJoints: "not-evaluated",
-          clearance: "not-evaluated",
-          motion: "not-evaluated",
-          load: "not-evaluated",
-          fabricability: "not-evaluated",
-        },
-      },
-      closeout: {
-        record: closeout,
-        basis: {
-          snapshotId: "assembly-basis",
-          revision: 4,
-          fingerprint: "sha256:" + b,
-        },
-        humanDisposition: "accept",
-        rejectionDisposition: "none",
-        approvedBriefBasis: {
-          projectId: "project-generic",
-          projectSnapshotId: "project-generic-r2",
-          projectRevision: 2,
-          briefId: "brief-generic",
-          briefSnapshotId: "brief-generic-r2",
-          briefRevision: 2,
-          fingerprint: "sha256:" + c,
-        },
-        verificationAuthority: { id: "assembly-integrity", version: "1.0" },
-        gateClaims: [{
-          gateItemId: "assembly-gate",
-          role: "satisfies",
-          status: "current",
-        }],
-        evidence: {
-          evaluation,
-          geometryModule: geometry,
-          assemblyStep: step,
-          observation,
-        },
-        l4Limitations: {
-          providerCalls: "none",
-          genericSysmlRequirementEvaluation: "none",
-          safety: "not-evaluated",
-          physicalJoints: "not-evaluated",
-          clearance: "not-evaluated",
-          motion: "not-evaluated",
-          load: "not-evaluated",
-          fabricability: "not-evaluated",
-        },
-        limitations: {
-          providerCalls: "none",
-          genericSysmlRequirementEvaluation: "none",
-          certification: "not-issued",
-          l4PassIsNotL5: true,
-        },
-      },
-    }],
-  };
-  return snapshot;
-}
-
-function assemblyProjectionRef(
-  id: string,
-  digest: string,
-  producerRunId: string,
-  dependsOn: string[],
-) {
-  return {
-    id,
-    uri: "casys://fixture/sha256/" + digest,
-    fingerprint: "sha256:" + digest,
-    producerRunId,
-    dependsOn,
-    freshness: "fresh" as const,
-  };
-}
-
-function assemblyProjectionArtifact(
-  reference: ReturnType<typeof assemblyProjectionRef>,
-  kind: string,
-  producedBy: string,
-): ThreadArtifact {
-  return {
-    ...reference,
-    label: reference.id,
-    kind,
-    system: "assembly-fixture",
-    revision: reference.fingerprint,
-    producedBy,
-  };
 }

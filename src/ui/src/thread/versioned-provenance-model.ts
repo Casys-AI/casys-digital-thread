@@ -87,7 +87,7 @@ export interface VersionedProvenanceProjection {
  * The map is deliberately keyed by occurrence identity, never by the
  * provider-facing `edge.id`: edge ids are not unique in the thread contract.
  * `legacyEdgesById` exists only for selections produced before occurrence keys
- * were introduced and is resolved only when exactly one raw/stub edge matches.
+ * were introduced and is resolved only when exactly one recorded edge matches.
  */
 export interface VersionedGraphSelectionIndex {
   readonly edgeByOccurrenceKey: ReadonlyMap<string, ThreadGraphEdge>;
@@ -335,13 +335,11 @@ export function visibleGraphRef(
 }
 
 /**
- * Builds the current selection index shared by the raw Feed, folded graph,
- * Sigma and SVG renderers. Synthetic stubs are re-created for each canvas
- * projection, so callers must pass the current stub edge objects here.
+ * Builds the current selection index shared by the raw Feed, versioned graph,
+ * Sigma and SVG renderers.
  */
 export function buildVersionedGraphSelectionIndex(
   projection: VersionedProvenanceProjection,
-  stubEdges: readonly ThreadGraphEdge[] = [],
 ): VersionedGraphSelectionIndex {
   const edgeByOccurrenceKey = new Map<string, ThreadGraphEdge>();
   const legacyEdgesById = new Map<string, ThreadGraphEdge[]>();
@@ -358,11 +356,6 @@ export function buildVersionedGraphSelectionIndex(
   for (const [key, edge] of projection.visibleEdgeByOccurrenceKey) {
     edgeByOccurrenceKey.set(key, edge);
   }
-  for (const edge of stubEdges) {
-    edgeByOccurrenceKey.set(stubEdgeOccurrenceKey(edge), edge);
-    addLegacyEdge(edge);
-  }
-
   return { edgeByOccurrenceKey, legacyEdgesById };
 }
 
@@ -407,7 +400,7 @@ export function visibleGraphSelection(
       : undefined;
   }
   // Legacy selections have no occurrence identity and can only stay visible
-  // when the current graph contains exactly one raw/stub record with this id.
+  // when the current graph contains exactly one recorded relation with this id.
   const currentEdge = uniqueLegacyEdgeForId(selectionIndex, selection.id);
   return currentEdge ? { kind: "edge", id: currentEdge.id } : undefined;
 }
@@ -511,17 +504,6 @@ export function versionedEdgeOccurrenceKey(edge: ThreadGraphEdge): string {
     edge.relation,
     edge.origin,
     edge.attestation?.status ?? null,
-  ]);
-}
-
-/**
- * Synthetic stubs share a domain occurrence identity between Sigma and SVG.
- * Their provider id is only a display convenience; the full record signature
- * keeps endpoints, relation and rationale boundary-safe and stable.
- */
-export function stubEdgeOccurrenceKey(edge: ThreadGraphEdge): string {
-  return structuredOccurrenceKey("stub-edge", [
-    threadGraphEdgeRecordSignature(edge),
   ]);
 }
 

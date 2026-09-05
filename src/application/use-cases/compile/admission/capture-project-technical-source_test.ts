@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import {
   CaptureBackedTechnicalCompilationSourceReader,
   TechnicalCompilationSourceReadError,
@@ -340,6 +340,49 @@ Deno.test("a multi-file Build123d closure captures and reopens the exact lowered
       reopened.source.effectiveUnit,
       compactEffectiveUnit,
     );
+  });
+});
+
+Deno.test("a rejected Build123d workspace closure preserves its exact lowerer diagnosis", async () => {
+  await withWorkspace(async (harness) => {
+    const dependency = await harness.putFile({
+      fileId: "dep-dimensions",
+      role: "cad-script",
+      profileId: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
+      name: "dimensions.py",
+      mimeType: "text/x-python",
+      text: "width = 20\n",
+    });
+    const root = await harness.putAttachedFile({
+      fileId: "file.bad-prelude",
+      role: "cad-script",
+      profileId: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
+      name: "bad-prelude.py",
+      mimeType: "text/x-python",
+      text: [
+        "from build123d import Box",
+        "result = Box(width, 10, 2)",
+        "from casys_workspace.f_6465702d64696d656e73696f6e73 import width",
+        "",
+      ].join("\n"),
+      dependencies: [{
+        fileId: "dep-dimensions",
+        fileRevision: dependency.fileRevision,
+      }],
+    });
+
+    const error = await assertRejects(
+      () =>
+        harness.capture.capture({
+          projectId: PROJECT,
+          workspaceRevision: root.workspaceRevision,
+          attachmentId: root.attachmentId,
+          attachmentRevision: root.attachmentRevision,
+        }),
+      ProjectTechnicalSourceCaptureError,
+    );
+    assertEquals(error.code, "workspace_import_not_prelude");
+    assertStringIncludes(error.message, "must form one leading module-level prelude");
   });
 });
 

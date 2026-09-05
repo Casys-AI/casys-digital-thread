@@ -67,11 +67,11 @@ Deno.test("admitted SPICE profile-only composition exposes review facts and no r
   assertEquals(profile.isolationPolicy, PROFILE.policy);
   assertEquals(
     profile.runtime.imageDigest.digest,
-    "3350527ceba0dbe8f2e31e435e834f962978e800134b83d6ee8f4875b7ffb79a",
+    "54079cf7c0e1fcdf9dc30941cc97a752460d787d8d27dd9617d4cfe462e59720",
   );
   assertEquals(profile.runtimeBackend, {
     ...MICROSANDBOX_LOCAL_RUNTIME_REF,
-    imageReference: PROFILE.imageReference,
+    imageReference: `docker.io/${PROFILE.imageReference}`,
     imageDigest: profile.runtime.imageDigest,
   });
   assertEquals(profile.runtime.requestedLimits, PROFILE.limits);

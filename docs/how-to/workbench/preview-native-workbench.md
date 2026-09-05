@@ -52,12 +52,19 @@ http://127.0.0.1:5173/          Vite cockpit (default)
 http://127.0.0.1:5175/          BFF API / SSE; `preview:cockpit` hashed-asset shell
 ```
 
-No Docker service, Console MCP server, MCP Apps host, or provider MCP is required to
-read an already persisted project and thread. With no durable focus and no explicit
-`--project-id`, the BFF reports that it is awaiting project context. It does not write
-state to make the page appear populated. Subsequent project commands create immutable
-numbered revisions under `state/local/engineering-projects/`; preview reads those
-revisions without rewriting checked-in configuration or historical evidence.
+No Console MCP server or provider MCP is required to read an already persisted project
+and thread. `GET /api/project/capabilities` additionally observes the local Docker
+daemon and the code-owned Microsandbox image cache through fixed read-only inspections;
+the preview task grants those exact local runtime permissions but has no Docker mutation
+path. A domain App window appears only when the composition has an exact
+`ThreadViewerAppBinding` and its same-origin launch resolver has attested the exact
+manifest and whole-view HTML MIME, byte count and fingerprints. The browser rechecks
+those bytes and creates a confined Blob document rather than navigating the frame to the
+launch route; otherwise the whiteboard truthfully emits no App. With no durable focus
+and no explicit `--project-id`, the BFF reports that it is awaiting project context. It
+does not write state to make the page appear populated. Subsequent project commands
+create immutable numbered revisions under `state/local/engineering-projects/`; preview
+reads those revisions without rewriting checked-in configuration or historical evidence.
 
 A schema-3.0 project has its own identity and active revision directory from the first
 intent. Before it has a declared root record, the BFF returns its planning surface even
@@ -182,19 +189,23 @@ BFF does not use the current subject head as a substitute for that missing basel
 After `baseline.from-approved-brief@1` has completed, it instead returns
 `"surface": "documentary"`. That surface contains one immutable record of the exact
 human-approved brief and reviewed path, its snapshot/artifact identity, capture URI and
-SHA-256 fingerprint. It deliberately has no technical `thread`, `alignment`, component
-catalog, graph, tool facet, observation, requirement, evaluation, violation, or verdict.
-It answers “what approved project did we start from?”, not “what has engineering
-proved?”
+SHA-256 fingerprint. It deliberately has no technical `thread`, `alignment`, graph,
+provider-specific viewer payload, observation, requirement, evaluation, violation, or
+verdict. It answers “what approved project did we start from?”, not “what has
+engineering proved?”
 
 The standard technical `"surface": "evidence"` is used only once a later operation has
-created and validated technical evidence. `architecture.seed-syson-model@2` first adds
-r2 with normalized identities for one blank, read-back SysON project container, SysML
-document, and root package, bound to the exact approved brief and documentary artifact.
-It makes no CAD, simulation, measurement, requirement evaluation, or physical verdict
-appear by itself. From that basis, the generic architecture, integer-requirements, and
-geometry-seal operations may publish their own exact reviewed descendants. No surface
-receives an automatic schema conversion or thread-head fallback.
+created and validated technical evidence. It also does not embed the separate
+`ThreadComponentCatalog`, provider topology, or mesh-preview payload. The browser
+receives literal generic graph records; exact whole-App sessions and their admitted
+resources arrive through the separate viewer-session projection.
+`architecture.seed-syson-model@2` first adds r2 with normalized identities for one
+blank, read-back SysON project container, SysML document, and root package, bound to the
+exact approved brief and documentary artifact. It makes no CAD, simulation, measurement,
+requirement evaluation, or physical verdict appear by itself. From that basis, the
+generic architecture, integer-requirements, and geometry-seal operations may publish
+their own exact reviewed descendants. No surface receives an automatic schema conversion
+or thread-head fallback.
 
 Before serving planning, documentary, or evidence state, the BFF resolves every declared
 project snapshot by exact ID and validates its entity references. A missing exact
@@ -237,8 +248,8 @@ On the **evidence** surface, the projection must show:
 
 On the **documentary** surface, the page instead shows the durable starting record and a
 plain-language boundary: technical proof is not recorded yet. It must not show an empty
-graph as if it were a technical model, nor reuse another project's component or evidence
-panels.
+graph as if it were a technical model, nor reuse another project's graph or evidence
+records.
 
 ## Review the initial V3 sequence
 
@@ -323,13 +334,15 @@ execute the exact reviewed architecture, integer-requirements, and geometry-seal
 contracts. The provider-free `model.seal-architecture-sysml@1` slice seals
 agent-authored closed-subset SysML as a Thread **document** and does not appear as a
 SysON insertion. In Activity, only the `architecture-sysml-seal-` document is primary;
-generic `document` artifacts stay in lineage. Selecting it opens the digital-thread
-inspector, which keeps the `documentary` label visible and lists symbol ids from the
-reopened seal. It is not the approved-brief `surface: "documentary"` and is not Product
-Structure. These operations persist and read back their closed captures and refuse an
-uncertain non-idempotent write instead of retrying it blindly. Generic simulation,
-measurement, requirement evaluation, manufacturing, and certification still need their
-own reviewed executors and evidence contracts.
+generic `document` artifacts stay in lineage. Selecting it exposes only the generic
+exact record and provenance. A domain presentation opens only when one whole App is
+registered for that exact anchor; otherwise it remains unavailable. Digital Thread does
+not reopen SysML source or render a native seal inspector. It is not the approved-brief
+`surface: "documentary"` and is not Product Structure. These operations persist and read
+back their closed captures and refuse an uncertain non-idempotent write instead of
+retrying it blindly. Generic simulation, measurement, requirement evaluation,
+manufacturing, and certification still need their own reviewed executors and evidence
+contracts.
 
 The page opens on **Project**, which answers what the focused project is trying to
 achieve, what needs attention, and where to go next. The five product sections have
@@ -339,7 +352,7 @@ distinct jobs.
 flowchart LR
   project["Project\nmission, brief, gates"]
   activity["Activity\nlive lineage feed"]
-  product["Product\npart identities"]
+  product["Product\nexact App handoff"]
   evidence["Evidence\ngraph and verdicts"]
   execution["Execution\nruns and tools"]
   project --- activity --- product --- evidence --- execution
@@ -351,24 +364,21 @@ flowchart LR
 
 ![Activity on desk-lamp-dl04: persisted lineage, not private reasoning.](../../media/workbench-activity-dl04.png)
 
-![Product: exact SysON / CAD / ERP facets. Missing identities stay visible.](../../media/workbench-product-dl04.png)
-
 ![Evidence: counts, requirements, violations. Unresolved stays unresolved.](../../media/workbench-evidence-dl04.png)
 
 ![Execution: run journal and contributing systems. Queued is not published.](../../media/workbench-execution-dl04.png)
 
 A first-time walkthrough of the same loop is
-[Follow the engineering loop](../../how-to/verify-design/walk-through-an-engineering-project.md). Agents that
-must not confuse write/seal/compile paths should read
+[Follow the engineering loop](../../how-to/verify-design/walk-through-an-engineering-project.md).
+Agents that must not confuse write/seal/compile paths should read
 [agent workspace](../../reference/agent/agent-workspace.md) before calling tools.
 
 - **Project** — objective, lightweight notifications, derived phase gates, current work,
   next work, blockers, and routes into the relevant context;
 - **Activity** — agent work plus the live lineage feed: the primary evidence and impact
   context for a review, never private chain-of-thought;
-- **Product** — one physical component traversed across its SysON, build123d and ERPNext
-  identities, including the SysON/specification context in which a follow-up correction
-  can be scoped with the agent;
+- **Product** — a read-only handoff to the exact whole Apps registered for this Thread
+  basis; domain presentation opens spatially on the Project whiteboard;
 - **Evidence** — full graph, causal impact, requirements, verdicts and named violations;
 - **Execution** — agent-run journal, declared work items and engineering systems that
   contributed evidence.
@@ -382,30 +392,24 @@ In **Activity**:
   downstream impact;
 - pause following or select an older card only when revisiting history;
 - select an edge to inspect its typed relation, rationale, and any hash attestation;
-- switch between **Tool context** and **Exact record** in the right drawer;
+- inspect graph fields, exact record fields and recorded relations in the right drawer;
 - open **Graph** for the complete subject graph and **Show all evidence** only when
   implementation artifacts and consumption proof nodes are needed;
 - treat separate component frames as missing causal links, not layout errors.
 
-Use **Product** when navigation starts from a physical component instead of a thread
-event:
+Use **Product** as the explicit handoff when navigation starts from a physical component
+instead of a thread event. It lists only exact whole-App descriptors already accepted
+for the current project/Thread basis and returns to the Project whiteboard to open one.
+It does not reconstruct a SysML tree, geometry canvas, solver surface or ERP table.
 
-- use the affected SysON/specification context to inspect or refine technical intent; do
-  not turn the Project review notification into a substitute technical editor;
-- select a PartUsage in the SysON structure, then switch to ERPNext without losing the
-  selected component;
-- read the exact provider IDs in the trace strip and open their canonical evidence in
-  the right inspector;
-- select a reviewed component, then **build123d**, to orbit its real STL display mesh;
-  every reviewed child keeps its own exact assembly identity;
-- treat `Unlinked facet`, `TRACE GAP`, and `UNLINKED` literally. They mean that the
-  current snapshot has no reviewed provider identity for that component;
-- distinguish the STL display hash from the authoritative STEP SHA-256 shown below the
-  viewer.
-
-Project and component declarations are domain-validated before projection. ERP
-identities must be backed by the persisted provider record, not by a display-only list
-header.
+On the Project whiteboard, right-click the exact recorded anchor, or focus it and press
+the Context Menu key / Shift+F10. When exactly one whole App is registered the gesture
+opens it directly, with no intermediate menu. Zero matches stays `Unavailable`; more
+than one stays `Ambiguous`, and the browser chooses neither. It never infers an App from
+a provider label or artifact kind. The floating window remains sandboxed with scripts
+only. An App that needs exact binary bytes requests the registered `sha256:<digest>`
+over its one-shot document-scoped MessagePort; it never raw-fetches a provider or
+chooses a URI.
 
 The local snapshot records its exact provider revisions and capture timestamps. Treat it
 as integration evidence unless those provider revisions are released and reproduced in
@@ -414,11 +418,13 @@ the target environment.
 ## Know what this slice proves
 
 It proves durable project and canonical-thread validation, exact project-to-evidence
-references, explicit provider-to-subject and component identity, persisted Modelica
-observations and ERPNext BOM detail, passive read/SSE paths, signed revision-bound human
-elicitation in the agent channel, the bounded V3 documentary r1 flow, and the fixed
-r1-to-r2 SysON container seed with read-back normalized identities and no blind retry.
-It also proves one coherent native UI with shared selection and no nested Apps.
+references, explicit provider-to-subject references and literal recorded graph
+identities, persisted Modelica observations and ERPNext BOM detail, passive read/SSE
+paths, signed revision-bound human elicitation in the agent channel, the bounded V3
+documentary r1 flow, and the fixed r1-to-r2 SysON container seed with read-back
+normalized identities and no blind retry. It also proves one coherent native shell with
+shared selection and exact contextual App windows that do not add provider authority to
+Digital Thread.
 
 It does **not** prove:
 
@@ -440,8 +446,9 @@ It does **not** prove:
 | `deno task preview:thread`  | `http://127.0.0.1:5173/` | Vite HMR cockpit; `/api` proxies to :5175                      |
 | `deno task preview:cockpit` | `http://127.0.0.1:5175/` | Same BFF; serves built HTML + hashed JS/CSS from `dist/thread` |
 
-Provider MCP Apps remain useful for one rich tool result in another host. They are not
-used to compose the first-party product page. `preview:browser` refuses.
+Provider MCP Apps own rich domain results. Digital Thread hosts only their exact
+registered whole view as a sandboxed whiteboard window; it does not copy their renderer
+or Apps handshake into the native bundle. `preview:browser` refuses.
 
 ## Stop the preview
 

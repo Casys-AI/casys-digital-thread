@@ -18,6 +18,7 @@ import type {
   ModelicaIsolatedExecutionQualificationAuthority,
 } from "../../../ports/out/modelica/isolated-execution-qualification.ts";
 import { FixedModelicaIsolatedExecutionProfileCatalog } from "../../../../adapters/modelica/qualified-kit/execution-profile.ts";
+import { LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE } from "../../../../domain/modelica/local-execution-image.ts";
 import { createModelicaMicrosandboxQualificationKit } from "../../../../adapters/modelica/qualified-kit/kit-v1/qualification-kit.ts";
 import type {
   PreparedModelicaIsolatedInputBundle,
@@ -290,8 +291,7 @@ async function harness(): Promise<Harness> {
     maxOutputFileBytes: 16 * 1_048_576,
     maxOutputTotalBytes: 17 * 1_048_576,
   };
-  const imageReference =
-    "casys/modelica-microsandbox-worker@sha256:7d3fdeabe794b0ded5360921b16724c7904487e9d11bc24fa37c72f9b92a1894";
+  const imageReference = LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE;
   const catalog = new FixedModelicaIsolatedExecutionProfileCatalog({
     imageReference,
     policy: {
@@ -299,7 +299,7 @@ async function harness(): Promise<Harness> {
       version: "1.0.0",
       fingerprint: {
         algorithm: "sha256",
-        digest: "a6eeca8fb305b6fecf6a5f226ddcc9dad8010147afe31d7dd4fe35853d239327",
+        digest: "acd119309fd7827a09b31babdd01a46e27f9839b02145dc8e01b480d904ccabe",
       },
     },
     limits,

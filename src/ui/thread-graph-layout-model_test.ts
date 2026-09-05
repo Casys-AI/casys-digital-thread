@@ -1,7 +1,7 @@
 import { assertEquals, assertNotEquals } from "@std/assert";
 import {
   directionalThreadGraphNode,
-  projectEssentialThreadGraph,
+  projectCompleteThreadGraph,
   threadGraphImpactContext,
   threadGraphNodeImpactState,
 } from "./src/thread/thread-graph-interaction-model.ts";
@@ -64,7 +64,7 @@ Deno.test("thread graph layout routes parallel edges separately and reports abse
   assertEquals(layout.unresolvedEdgeIds, ["a-missing", "z-missing"]);
 });
 
-Deno.test("essential thread projection hides dead-end support but preserves explicit focus", () => {
+Deno.test("generic thread projection keeps every recorded node regardless of focus", () => {
   const requirement = node("requirement", "requirement");
   const observation = node("observation", "observation");
   const mesh = node("mesh", "artifact", "mesh");
@@ -73,26 +73,20 @@ Deno.test("essential thread projection hides dead-end support but preserves expl
     edge("mesh-input", requirement.ref, mesh.ref),
   ];
 
-  const compact = projectEssentialThreadGraph(
+  const compact = projectCompleteThreadGraph(
     [requirement, observation, mesh],
     edges,
-    false,
-    undefined,
-    undefined,
   );
-  const focused = projectEssentialThreadGraph(
+  const focused = projectCompleteThreadGraph(
     [requirement, observation, mesh],
     edges,
-    false,
-    mesh.ref,
-    undefined,
   );
 
   assertEquals(compact.nodes.map((item) => item.id), [
     "requirement",
     "observation",
+    "mesh",
   ]);
-  assertEquals(compact.hiddenNodeCount, 1);
   assertEquals(focused.nodes.map((item) => item.id), [
     "requirement",
     "observation",
@@ -101,19 +95,16 @@ Deno.test("essential thread projection hides dead-end support but preserves expl
   assertEquals(focused.edges.map((item) => item.id), ["result", "mesh-input"]);
 });
 
-Deno.test("essential thread projection preserves a focused requirement identity", () => {
+Deno.test("generic thread projection preserves a focused requirement identity", () => {
   const requirement = node("requirement", "requirement");
   const observation = node("observation", "observation");
   const mesh = node("mesh", "artifact", "mesh");
-  const projection = projectEssentialThreadGraph(
+  const projection = projectCompleteThreadGraph(
     [requirement, observation, mesh],
     [
       edge("result", requirement.ref, observation.ref),
       edge("mesh-input", requirement.ref, mesh.ref),
     ],
-    false,
-    requirement.ref,
-    undefined,
   );
 
   const focused = projection.nodes.find((item) => item.id === requirement.id);
@@ -122,17 +113,14 @@ Deno.test("essential thread projection preserves a focused requirement identity"
   assertEquals(focused?.ref.kind, "requirement");
 });
 
-Deno.test("essential edge selection never rewrites its endpoint kinds", () => {
+Deno.test("generic edge selection never filters or rewrites endpoint kinds", () => {
   const requirement = node("requirement", "requirement");
   const observation = node("observation", "observation");
   const mesh = node("mesh", "artifact", "mesh");
   const result = edge("result", requirement.ref, observation.ref);
-  const projection = projectEssentialThreadGraph(
+  const projection = projectCompleteThreadGraph(
     [requirement, observation, mesh],
     [result, edge("mesh-input", requirement.ref, mesh.ref)],
-    false,
-    undefined,
-    { kind: "edge", id: result.id },
   );
 
   assertEquals(
@@ -143,9 +131,13 @@ Deno.test("essential edge selection never rewrites its endpoint kinds", () => {
     [
       ["requirement", "requirement"],
       ["observation", "observation"],
+      ["artifact", "artifact"],
     ],
   );
-  assertEquals(projection.edges.map((item) => item.id), ["result"]);
+  assertEquals(projection.edges.map((item) => item.id), [
+    "result",
+    "mesh-input",
+  ]);
 });
 
 Deno.test("thread graph impact distinguishes upstream downstream and cyclic peers", () => {
