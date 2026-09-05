@@ -127,17 +127,20 @@ cached candidate image. CAD currently owns two distinct physical/runtime atoms:
 `build123d-isolated-worker` and `geometry-module-assembler-worker`. CalculiX owns
 `calculix-worker`. Modelica owns `modelica-microsandbox-worker` as one physical image
 and one logical target; qualification still requires two server-owned profile proofs
-(`openmodelica-qualified-kit` and `openmodelica-admitted-modelica`). They are not
-substitutes. The gates accept only `--import-record=<path>` plus `--run` (geometry,
-CalculiX and Modelica also `--recover`). Modelica has no profile selector. Policy,
-limits, worker command, fixture and validators stay code-owned. Import already owns
-acquisition; qualification never builds Docker, never deletes the candidate cache, and
-never writes the active catalogue pin. CalculiX candidate qualification is not a product
-FEA verdict. Modelica candidate qualification is not method qualification, not
-promotion, and not L3/L4/L5 engineering evidence.
+(`openmodelica-qualified-kit` and `openmodelica-admitted-modelica`). ngspice owns
+`ngspice-worker` as one physical image and one logical target (`casys.spice-worker` /
+`ngspice-runtime-image` / `ngspice-admitted-circuit`). They are not substitutes. The
+gates accept only `--import-record=<path>` plus `--run` (geometry, CalculiX, Modelica
+and ngspice also `--recover`). Modelica has no profile selector. ngspice has no profile,
+source or netlist selector. Policy, limits, worker command, fixture and validators stay
+code-owned. Import already owns acquisition; qualification never builds Docker, never
+deletes the candidate cache, and never writes the active catalogue pin. CalculiX
+candidate qualification is not a product FEA verdict. Modelica and ngspice candidate
+qualification is not method qualification, not promotion, and not L3/L4/L5 engineering
+evidence. The Docker ngspice worker smoke remains distinct.
 
 Candidate state lives under
 `state/local/first-party-microsandbox-image-candidate-qualification/<physicalImageId>/<import-record fingerprint>/`.
 Success is host/runtime evidence only: `eligibleForPromotion` stays `false`. It is not
 L3/L4/L5 engineering evidence. Procedure:
-[Qualify a first-party microVM image candidate](../../../how-to/maintainers/qualify-a-first-party-cad-microvm-image-candidate.md).
+[Qualify a first-party microVM image candidate](../../../how-to/maintainers/qualify-a-first-party-microvm-image-candidate.md).

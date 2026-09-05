@@ -20,6 +20,7 @@ The physical images stay distinct. Do not merge them.
 | `geometry-module-assembler-worker` | `verify:geometry-module-assembler-worker:candidate-qualification` | Deterministic sealed module assembly                 |
 | `calculix-worker`                  | `verify:calculix-worker:candidate-qualification`                  | Code-owned synthetic static-proof worker fixture     |
 | `modelica-microsandbox-worker`     | `verify:modelica-worker:candidate-qualification`                  | Two proofs: qualified-kit and admitted closed-subset |
+| `ngspice-worker`                   | `verify:ngspice-worker:candidate-qualification`                   | Code-owned resistor-divider admitted-circuit source  |
 
 The Docker CalculiX worker preflight
 (`scripts/gates/verify-calculix-microsandbox-worker.ts`) remains source-image and
@@ -28,6 +29,9 @@ the active-pin vertical (`verify:calculix:microsandbox:vertical`). The Docker Mo
 worker preflight (`scripts/gates/verify-modelica-microsandbox-worker.ts`) and the
 active-pin vertical (`verify:modelica:microsandbox:vertical`) remain distinct
 source-image and pinned-capture contracts. They are not this imported-candidate path.
+The Docker ngspice worker smoke (`scripts/gates/verify-ngspice-microsandbox-worker.ts`)
+remains a container contract outside IsolatedCodeRunner. It is not this
+imported-candidate path, not cache preparation, and not product admitted-SPICE.
 
 ## 1. Plan first
 
@@ -42,6 +46,7 @@ deno task verify:build123d-isolated-worker:candidate-qualification -- --import-r
 deno task verify:geometry-module-assembler-worker:candidate-qualification -- --import-record=<path>
 deno task verify:calculix-worker:candidate-qualification -- --import-record=<path>
 deno task verify:modelica-worker:candidate-qualification -- --import-record=<path>
+deno task verify:ngspice-worker:candidate-qualification -- --import-record=<path>
 ```
 
 Callers cannot pass provider, image, digest, platform, command, endpoint, tool, worker,
@@ -55,11 +60,14 @@ deno task verify:build123d-isolated-worker:candidate-qualification -- --import-r
 deno task verify:geometry-module-assembler-worker:candidate-qualification -- --import-record=<path> --run
 deno task verify:calculix-worker:candidate-qualification -- --import-record=<path> --run
 deno task verify:modelica-worker:candidate-qualification -- --import-record=<path> --run
+deno task verify:ngspice-worker:candidate-qualification -- --import-record=<path> --run
 ```
 
-`--run` is the mutation acknowledgement. Geometry, CalculiX and Modelica also accept
-`--recover` for the existing durable WAL; recovery never redispatches the worker.
-Modelica has no profile selector: one run always owns both server-owned proofs.
+`--run` is the mutation acknowledgement. Geometry, CalculiX, Modelica and ngspice also
+accept `--recover` for the existing durable WAL; recovery never redispatches the worker.
+Modelica has no profile selector: one run always owns both server-owned proofs. ngspice
+has no profile, source or netlist selector: one run always owns the server-owned
+admitted circuit profile and the code-owned resistor-divider fixture.
 
 The gates execute the exact cached candidate image through the production composition,
 broker, output validator, CAS reread, and proven run-scoped destruction. CalculiX reuses
@@ -67,10 +75,13 @@ the code-owned worker contract, wrapper digest, nine-file validators and batch i
 under a candidate-specific root. Modelica reuses the qualified-kit bundle/validators and
 the admitted closed-subset v2 worker/validators under distinct `targets/<proof-id>/`
 subroots; the aggregate is `passed` only after both proofs are durably reread. Partial
-success stays `incomplete` and does not write a passed aggregate. Admitted
-method/binding qualification remains `unqualified`. Policy, limits, worker command,
-fixture and oracle stay code-owned. Import already owns acquisition: the gates do not
-build Docker, load or remove images, or assume Docker and Microsandbox digest identity.
+success stays `incomplete` and does not write a passed aggregate. ngspice reuses the
+admitted circuit profile, IsolatedCodeRunner composition, `result.json`/`evidence.json`
+validators and the code-owned resistor-divider operating-point check under a
+candidate-specific root. Admitted method/binding qualification remains `unqualified`.
+Policy, limits, worker command, fixture and oracle stay code-owned. Import already owns
+acquisition: the gates do not build Docker, load or remove images, or assume Docker and
+Microsandbox digest identity.
 
 ## 3. Isolated candidate state
 
@@ -81,12 +92,15 @@ outputs and the qualification record there. CalculiX keeps WAL, CAS outputs, evi
 leases and the qualification record there. Modelica keeps per-profile WAL, CAS and
 attestations under `targets/openmodelica-qualified-kit/` and
 `targets/openmodelica-admitted-modelica/`, with the aggregate `qualification.json` at
-the physical root. The record binds the observed host identity and the exact
-run/receipt. Host observation comes from the existing control-plane composition
-(`linux/arm64` only), is read once for the whole qualification, and is refused before
-composition. None of these paths write qualification attempts or attestations into
-`state/local/capability-runtime-host`. CalculiX never writes `state/local/calculix-*`.
-Modelica never writes `state/local/modelica-microsandbox-qualification`.
+the physical root. ngspice keeps WAL, CAS outputs, captures/attestations and the
+qualification record under `ngspice-worker/<import-record fingerprint>/`. The record
+binds the observed host identity and the exact run/receipt. Host observation comes from
+the existing control-plane composition (`linux/arm64` only), is read once for the whole
+qualification, and is refused before composition. None of these paths write
+qualification attempts or attestations into `state/local/capability-runtime-host`.
+CalculiX never writes `state/local/calculix-*`. Modelica never writes
+`state/local/modelica-microsandbox-qualification`. ngspice never writes
+`state/local/recorded-analysis/electrical/spice/admitted/`.
 
 The imported candidate cache is preserved on success and failure. Only run-scoped
 sandboxes, staging and CAS temporary artifacts that the gate owns are removed. The

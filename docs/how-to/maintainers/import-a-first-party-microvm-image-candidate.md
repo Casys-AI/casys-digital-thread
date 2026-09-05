@@ -75,5 +75,5 @@ Microsandbox digest as separate identities, and leaves `runtimeQualification=not
 and `eligibleForPromotion=false`.
 
 Per-domain candidate qualification is a separate maintainer path:
-[Qualify a first-party microVM image candidate](qualify-a-first-party-cad-microvm-image-candidate.md).
+[Qualify a first-party microVM image candidate](qualify-a-first-party-microvm-image-candidate.md).
 Do not run those gates from this import command, and do not edit catalogue pins.

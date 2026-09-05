@@ -66,8 +66,11 @@ leases and the strict qualification record. Modelica uses
 `qualification.json` at that physical root and two profile-distinct subroots under
 `targets/openmodelica-qualified-kit/` and `targets/openmodelica-admitted-modelica/`
 (WAL, CAS outputs, profile attestations). The Modelica aggregate is a two-proof physical
-record; it is not the shared one-execution CAD/CalculiX schema. None of these paths
-write `state/local/modelica-microsandbox-qualification`, the active
+record; it is not the shared one-execution CAD/CalculiX schema. ngspice uses
+`ngspice-worker/<import-record fingerprint>/` with isolated WAL, CAS outputs,
+captures/attestations and the shared one-execution qualification record. None of these
+paths write `state/local/modelica-microsandbox-qualification`,
+`state/local/recorded-analysis/electrical/spice/admitted/`, the active
 `capability-runtime-host` qualification store, Thread, or project state. Host
 observation is `linux/arm64`. `eligibleForPromotion` stays `false`. This is not L3, L4
 or L5 engineering evidence.

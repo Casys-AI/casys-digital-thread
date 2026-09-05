@@ -39,6 +39,8 @@ export const CALCULIX_WORKER_PHYSICAL_IMAGE_ID = "calculix-worker" as const;
 export const MODELICA_MICROSANDBOX_WORKER_PHYSICAL_IMAGE_ID =
   "modelica-microsandbox-worker" as const;
 
+export const NGSPICE_WORKER_PHYSICAL_IMAGE_ID = "ngspice-worker" as const;
+
 const SHA256 = /^sha256:[0-9a-f]{64}$/u;
 const SHA256_DIGEST = /^[0-9a-f]{64}$/u;
 const FORBIDDEN_FLAG_PATTERN =

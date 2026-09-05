@@ -49,6 +49,8 @@ import { createLocalBuild123dExecutionServerOptions } from "./src/adapters/cad/i
 export { createLocalBuild123dExecutionServerOptions };
 import type { AdmittedModelicaExecutionServerOptions } from "./src/adapters/modelica/admitted/execution-composition.ts";
 import type { AdmittedSpiceExecutionServerOptions } from "./src/adapters/electrical/spice/admitted/execution-composition.ts";
+import { createLocalAdmittedSpiceExecutionServerOptions } from "./src/adapters/electrical/spice/admitted/first-party-spice-execution.ts";
+export { createLocalAdmittedSpiceExecutionServerOptions };
 import { LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE } from "./src/adapters/electrical/spice/admitted/local-image-references.ts";
 import {
   createLocalAdmittedModelicaExecutionServerOptions,
@@ -240,7 +242,6 @@ import {
   type CockpitFocusToolDependencies,
   registerCockpitFocusTools,
 } from "./src/tools/cockpit-focus.ts";
-import { sha256Fingerprint } from "./src/domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "./src/domain/kernel/primitives.ts";
 import { pinnedOciImageReference } from "./src/domain/compile/isolation/local-isolation-runtime.ts";
 import {
@@ -410,29 +411,6 @@ const LOCAL_MODELICA_QUALIFICATION_CAPTURE_FINGERPRINT = Object.freeze({
 const LOCAL_MODELICA_QUALIFICATION_ROOT =
   "state/local/modelica-microsandbox-qualification";
 const DEFAULT_AGENT_RESOURCE_CAPTURE_DIRECTORY = "state/local/agent-resource-captures";
-
-const LOCAL_ADMITTED_SPICE_EXECUTION_LIMITS = Object.freeze({
-  maxWallTimeMs: 30_000,
-  maxCpuTimeMs: 25_000,
-  maxMemoryBytes: 512 * 1_048_576,
-  maxProcesses: 16,
-  maxStdoutBytes: 65_536,
-  maxStderrBytes: 65_536,
-  maxOutputFileBytes: 262_144,
-  maxOutputTotalBytes: 524_288,
-});
-
-const LOCAL_ADMITTED_SPICE_EXECUTION_POLICY_BODY = Object.freeze({
-  schemaVersion: "spice-admitted-microsandbox-policy/1.0",
-  backend: "microsandbox-local@0.6.8",
-  imageReference: LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
-  network: "deny-all",
-  pullPolicy: "never",
-  securityProfile: "restricted",
-  workerUser: "65532:65532",
-  fixedExecutables: ["ngspice"],
-  limits: LOCAL_ADMITTED_SPICE_EXECUTION_LIMITS,
-});
 
 export interface CreateConsoleServerOptions {
   manifest?: FleetManifest;
@@ -2119,27 +2097,6 @@ export function parseConsoleCli(args: string[]): ConsoleCliOptions {
     throw new TypeError("--hostname must not be empty");
   }
   return result;
-}
-
-/** Code-owned binding for admitted SPICE closed-subset operating-point execution. */
-export async function createLocalAdmittedSpiceExecutionServerOptions(): Promise<
-  AdmittedSpiceExecutionServerOptions
-> {
-  const policy = Object.freeze({
-    id: "spice-admitted-microsandbox-deny-all-v1",
-    version: "1.0.0",
-    fingerprint: await sha256Fingerprint(
-      LOCAL_ADMITTED_SPICE_EXECUTION_POLICY_BODY,
-    ),
-  });
-  return Object.freeze({
-    profile: Object.freeze({
-      imageReference: LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
-      policy,
-      limits: LOCAL_ADMITTED_SPICE_EXECUTION_LIMITS,
-    }),
-    runtime: Object.freeze({}),
-  });
 }
 
 /** Mandatory bind guard for every network-facing composition using local YOLO. */
